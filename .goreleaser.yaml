@@ -1,0 +1,60 @@
+version: 2
+
+project_name: archigraph
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: archigraph
+    main: ./cmd/archigraph
+    binary: archigraph
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/cajasmota/archigraph/internal/version.Version={{.Version}}
+      - -X github.com/cajasmota/archigraph/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/cajasmota/archigraph/internal/version.Date={{.Date}}
+
+archives:
+  - id: archigraph
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macos
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+release:
+  github:
+    owner: cajasmota
+    name: archigraph
+  draft: false
+  prerelease: auto
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
