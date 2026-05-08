@@ -8,7 +8,7 @@
 
 archigraph needs to be installable across macOS (Intel + Apple Silicon), Linux (x86_64 + arm64), and Windows with the smallest possible install friction. The target users are software developers and AI agents working inside developer machines and CI runners. They expect a tool to be obtainable with a single command and to "just work" without further setup.
 
-Prior tooling in this problem space required a polyglot runtime: Python 3.11+ with `uv`, Node.js for some auxiliary scripts, system-level `pip install` of a dozen dependencies, plus a tree-sitter toolchain compiled at install time. Each of these is a failure point on at least one OS, and the cumulative effect was that "install and forget" was unattainable. End users routinely hit broken installs, version skew between machines, and tooling drift.
+A polyglot runtime would require Python 3.11+ with `uv`, Node.js for auxiliary scripts, system-level `pip install` of a dozen dependencies, plus a tree-sitter toolchain compiled at install time. Each of these is a failure point on at least one OS, and the cumulative effect makes "install and forget" unattainable: broken installs, version skew between machines, and tooling drift are routine outcomes for end users on stacks like that.
 
 We want a distribution story where the user runs one command, gets one executable, and never thinks about runtimes again. The tool also needs to embed parsers (tree-sitter) and be fast on cold start, which favors AOT compilation over an interpreter.
 
@@ -39,7 +39,7 @@ Binaries are uploaded to GitHub Releases. End users install via a one-line scrip
 
 ## Alternatives considered
 
-- **Python + pip / uv** — what prior tooling used. Rejected: the install-and-forget UX problem this ADR is designed to fix.
+- **Python + pip / uv** — Rejected: the install-and-forget UX problem this ADR is designed to fix; pip and uv both require a Python runtime on the user's machine and amplify cross-platform install failure modes.
 - **Rust + cargo-dist** — viable, similar UX. Rejected because the team's Go fluency is higher and Go's MCP ecosystem (see ADR-002) is more mature for our needs.
 - **Node.js / npm global install** — rejected: requires Node runtime on the user's machine, and `npm i -g` is fragile across version managers.
 - **Docker image as primary distribution** — rejected: Docker is not universally installed on developer machines, and running a container per indexer invocation is too heavy. We may publish an image as a secondary artifact for CI use.

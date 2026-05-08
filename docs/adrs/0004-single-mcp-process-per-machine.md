@@ -8,7 +8,7 @@
 
 In the standard MCP integration model, an IDE or agent host reads a per-project `.mcp.json` and spawns one MCP server process per configured project. For a developer with 10+ active repositories, this produces 10+ idle MCP processes, each holding its own graph in memory, none of which can share state.
 
-Observed pain in prior tooling using this model:
+The per-project model has predictable failure modes at this scale:
 
 - **Memory waste**: each idle process held tens of MB; the total across projects became significant on developer laptops.
 - **No cross-project queries**: an agent working in repo A could not query repo B without spinning up its server and switching context.

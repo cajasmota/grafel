@@ -1,4 +1,4 @@
-# ADR-002: Clean-room MCP server in Go (no derived code)
+# ADR-002: First-principles MCP server in Go (no derived code)
 
 - **Status**: Accepted
 - **Date**: 2026-05-08
@@ -6,11 +6,9 @@
 
 ## Context
 
-archigraph exposes its graph to AI agents through a Model Context Protocol (MCP) server. Earlier internal MCP-server work in this problem space was derived from upstream code under permissive open-source licenses. While permissive licenses allow reuse with attribution, they create a non-trivial lineage debt: every public release must carry attribution notices, contribution provenance must be tracked, and any divergence from upstream behavior has to be reasoned about against the original implementation.
+archigraph exposes its graph to AI agents through a Model Context Protocol (MCP) server. The implementation choice here has license, audit, and maintenance implications that outlast the initial coding effort: a server built by adapting code from another OSS MCP server inherits attribution requirements, makes every public release carry upstream notices, ties divergence decisions to an original implementation we have to keep reasoning about, and complicates security audits because not all of the code is something we wrote.
 
-For a public OSS launch under archigraph's own name we want zero lineage debt. The server should be implementable from publicly available specifications and from a third-party Go library's own public API, without referencing any prior implementation's source code. This keeps the codebase auditable, releases unencumbered, and the project's narrative clean.
-
-The MCP specification is itself public and stable enough to implement against directly. The behavioral contract that agents will see — tool names, argument shapes, response schemas — is captured in our own `SCHEMA.md`, which doubles as the source of truth for tests.
+archigraph wants zero attribution overhead in distributed binaries and a codebase that is fully owned end-to-end. The MCP specification is public and stable enough to implement against directly, and a maintained third-party Go MCP library handles the transport layer as a normal module dependency. The behavioral contract that agents see — tool names, argument shapes, response schemas — is fully captured in our own `SCHEMA.md`, which doubles as the source of truth for tests.
 
 ## Decision
 
@@ -20,7 +18,7 @@ The archigraph MCP server is written from scratch in Go using a maintained third
 2. The chosen Go library's public API documentation.
 3. archigraph's own `SCHEMA.md` and ADRs.
 
-No code, comments, structure, or naming is copied or transliterated from any other MCP-server implementation. Contributors are instructed in `CONTRIBUTING.md` not to consult prior implementations when working on the server. The tool surface (see ADR-003 for the entity taxonomy and ADR-008 for routing) is specified in our own documents and tested against our own behavioral fixtures.
+No code, comments, structure, or naming is copied or transliterated from any other MCP-server implementation. Contributors are instructed in `CONTRIBUTING.md` to work only from the three sources above and not to read other MCP-server source trees while implementing archigraph's server. The tool surface (see ADR-003 for the entity taxonomy and ADR-008 for routing) is specified in our own documents and tested against our own behavioral fixtures.
 
 ## Consequences
 
@@ -42,7 +40,7 @@ No code, comments, structure, or naming is copied or transliterated from any oth
 
 ## Alternatives considered
 
-- **Fork an existing MCP server with attribution** — rejected: attribution would name external projects we do not want to mention in archigraph's release narrative, and lineage debt accumulates over time.
+- **Fork an existing MCP server with attribution** — rejected: attribution obligations propagate into every binary release, the codebase carries audit overhead for code archigraph did not write, and divergence decisions get tangled with an unrelated upstream's roadmap.
 - **Write the MCP server in Python** — rejected: would split the binary distribution story (see ADR-001), forcing users to install Python alongside the Go binary. Defeats the single-artifact goal.
 - **Implement the MCP wire protocol from scratch without a library** — rejected: the MCP spec is broad enough that re-implementing the transport layer is not a good use of time, and `mark3labs/mcp-go` is well-maintained.
 - **Defer the MCP server to v1.1 and ship CLI-only at v1.0** — rejected: the AI-agent integration is the primary user value; shipping without it would invert the project's positioning.
