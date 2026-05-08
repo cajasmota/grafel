@@ -454,3 +454,82 @@ func TestWriteAtomic_PrettyVsMinified(t *testing.T) {
 		t.Fatalf("pretty and minified outputs decode to different content")
 	}
 }
+
+// TestExternalSynthesis_DjangoFixture confirms the Pass 4.5 external
+// synthesis pass emits an ext:django placeholder against the Django
+// fixture (which has `from django.db import models`) and rewrites the
+// IMPORTS edge to point at it. PORT-EXT (issue #32).
+func TestExternalSynthesis_DjangoFixture(t *testing.T) {
+	doc := runIndexerOn(t, "testdata/django_app", "django_app", nil)
+
+	var ext *graph.Entity
+	for k := range doc.Entities {
+		if doc.Entities[k].ID == "ext:django" {
+			ext = &doc.Entities[k]
+			break
+		}
+	}
+	if ext == nil {
+		t.Fatalf("ext:django placeholder not synthesised; entity count=%d", len(doc.Entities))
+	}
+	if ext.Kind != "SCOPE.External" {
+		t.Fatalf("ext:django kind=%q, want SCOPE.External", ext.Kind)
+	}
+	if v, ok := ext.Metadata["is_external"].(bool); !ok || !v {
+		t.Fatalf("ext:django missing is_external metadata: %+v", ext.Metadata)
+	}
+
+	// At least one relationship should now point at ext:django.
+	hits := 0
+	for _, r := range doc.Relationships {
+		if r.ToID == "ext:django" {
+			hits++
+		}
+	}
+	if hits == 0 {
+		t.Fatalf("no relationships rewritten to ext:django")
+	}
+}
+
+// TestExternalSynthesis_VerboseCounter confirms the ext-synthesis log
+// line appears when ARCHIGRAPH_VERBOSE=1. PORT-EXT (issue #32).
+func TestExternalSynthesis_VerboseCounter(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_VERBOSE", "1")
+
+	// Capture stderr by redirecting the os.Stderr file handle for the
+	// duration of the run. We use a pipe so the writer can be closed
+	// without truncating any in-flight writes from the indexer.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	origStderr := os.Stderr
+	os.Stderr = w
+
+	done := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 0, 8192)
+		tmp := make([]byte, 1024)
+		for {
+			n, err := r.Read(tmp)
+			if n > 0 {
+				buf = append(buf, tmp[:n]...)
+			}
+			if err != nil {
+				break
+			}
+		}
+		done <- string(buf)
+	}()
+
+	_ = runIndexerOn(t, "testdata/django_app", "django_app", nil)
+
+	// Restore stderr and close the writer so the goroutine returns.
+	os.Stderr = origStderr
+	w.Close()
+	got := <-done
+
+	if !strings.Contains(got, "ext-synthesis: synthesized=") {
+		t.Fatalf("verbose ext-synthesis line missing from stderr; got: %s", got)
+	}
+}

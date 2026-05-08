@@ -15,6 +15,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/classifier"
 	"github.com/cajasmota/archigraph/internal/engine"
+	"github.com/cajasmota/archigraph/internal/external"
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/extractors"
 	"github.com/cajasmota/archigraph/internal/extractors/cross"
@@ -85,6 +86,9 @@ type indexerStats struct {
 	// pass3RelsByExt["httpclient"] = 56
 	pass1RelsByLang map[string]int
 	pass3RelsByExt  map[string]int
+
+	// PORT-EXT: external-entity synthesis counters (Pass 4.5).
+	extSynth external.Stats
 }
 
 // Index walks repoPath, runs the orchestrated passes, and writes the
@@ -212,6 +216,18 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 
 	// Pass 5 — build document (deduped).
 	doc := i.buildDocument(pass1Records, pass2Records, pass2Rels, pass3Records)
+
+	// Pass 4.5 — external entity synthesis. Runs BEFORE Pass 4 so the
+	// synthesised "ext:<name>" placeholders participate in the graph
+	// algorithms (community detection, centrality, articulation points).
+	// PORT-EXT (issue #32). Idempotent + counter-instrumented.
+	extStats := external.Synthesize(doc)
+	if verbose() {
+		fmt.Fprintf(os.Stderr,
+			"ext-synthesis: synthesized=%d relationships_resolved=%d unique_externals=%d\n",
+			extStats.Synthesized, extStats.RelationshipsResolved, extStats.UniqueExternals)
+	}
+	i.stats.extSynth = extStats
 
 	// Pass 4 — graph algorithms. Conceptually this runs "between" pass 3 and
 	// pass 5, but it operates on the merged/deduped entity set so we run it
