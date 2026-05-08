@@ -39,6 +39,10 @@ func newTestIndexer(t *testing.T, repoTag string, skipPasses []string) *Indexer 
 		detector:   engine.New(rules),
 		skipPasses: skipSet,
 		workers:    2,
+		stats: indexerStats{
+			pass1RelsByLang: make(map[string]int),
+			pass3RelsByExt:  make(map[string]int),
+		},
 	}
 }
 
@@ -316,6 +320,37 @@ func isHex16(s string) bool {
 		}
 	}
 	return true
+}
+
+// TestPythonEmbeddedRelationshipsReachOutput is the orchestrator-level
+// regression for issue #25 (PORT-2-FIX-2). It confirms that the relationships
+// the Python extractor embeds inside EntityRecord.Relationships — CONTAINS,
+// CALLS, IMPORTS — are merged into the final graph.Document by buildDocument.
+//
+// The fixture (testdata/crossfile_python) has:
+//   - a.py: free function make_message() and class Greeter with greet/shout.
+//   - b.py: imports Greeter from a, defines main() which calls greet().
+//
+// Expected coverage:
+//   - At least one CONTAINS edge (Greeter → greet or Greeter → shout).
+//   - At least one CALLS edge (greet → make_message OR main → greet).
+//   - At least one IMPORTS edge (b.py → a.Greeter).
+func TestPythonEmbeddedRelationshipsReachOutput(t *testing.T) {
+	doc := runIndexerOn(t, "testdata/crossfile_python", "crossfile_python", nil)
+
+	kinds := make(map[string]int, 8)
+	for _, r := range doc.Relationships {
+		kinds[r.Kind]++
+	}
+	if kinds["CONTAINS"] == 0 {
+		t.Errorf("expected at least one CONTAINS edge in output, got kinds=%v", kinds)
+	}
+	if kinds["CALLS"] == 0 {
+		t.Errorf("expected at least one CALLS edge in output, got kinds=%v", kinds)
+	}
+	if kinds["IMPORTS"] == 0 {
+		t.Errorf("expected at least one IMPORTS edge in output, got kinds=%v", kinds)
+	}
 }
 
 // TestPass4Algorithms_AttributesPresent runs the orchestrator on the Go

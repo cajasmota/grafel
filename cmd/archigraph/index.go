@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -78,6 +79,12 @@ type indexerStats struct {
 	pass1Rels int
 	pass2Rels int
 	pass3Rels int
+
+	// Per-extractor relationship counters (PORT-2-FIX-2 / issue #25):
+	// pass1RelsByLang["python"]    = 1234
+	// pass3RelsByExt["httpclient"] = 56
+	pass1RelsByLang map[string]int
+	pass3RelsByExt  map[string]int
 }
 
 // Index walks repoPath, runs the orchestrated passes, and writes the
@@ -131,6 +138,10 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool) 
 		detector:   detector,
 		skipPasses: skipSet,
 		workers:    8,
+		stats: indexerStats{
+			pass1RelsByLang: make(map[string]int),
+			pass3RelsByExt:  make(map[string]int),
+		},
 	}
 
 	doc, err := idx.Run(context.Background(), absRepo)
@@ -220,7 +231,44 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		doc.Stats.Entities, doc.Stats.Relationships,
 		i.stats.pass1Rels, i.stats.pass2Rels, i.stats.pass3Rels,
 		dur.Round(time.Millisecond))
+
+	if verbose() {
+		printRelBreakdown(os.Stderr, i.stats.pass1RelsByLang, "pass1")
+		printRelBreakdown(os.Stderr, i.stats.pass3RelsByExt, "pass3")
+	}
 	return doc, nil
+}
+
+// verbose reports whether the indexer should emit the per-extractor
+// relationship breakdown to stderr. Controlled by ARCHIGRAPH_VERBOSE=1.
+func verbose() bool {
+	v := strings.TrimSpace(os.Getenv("ARCHIGRAPH_VERBOSE"))
+	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+}
+
+// printRelBreakdown writes a sorted "label rels by source" table to w.
+// Empty or nil maps print a single zero-line so the absence of any signal
+// is itself observable in the log.
+func printRelBreakdown(w *os.File, counts map[string]int, label string) {
+	if len(counts) == 0 {
+		fmt.Fprintf(w, "archigraph: %s_rels_by_source: (none)\n", label)
+		return
+	}
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(a, b int) bool {
+		if counts[keys[a]] != counts[keys[b]] {
+			return counts[keys[a]] > counts[keys[b]]
+		}
+		return keys[a] < keys[b]
+	})
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", k, counts[k]))
+	}
+	fmt.Fprintf(w, "archigraph: %s_rels_by_source: %s\n", label, strings.Join(parts, " "))
 }
 
 // runPass4Algorithms executes the gonum-backed graph-algorithm sweep against
@@ -346,6 +394,11 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 				}
 
 				ents, err := extractors.Extract(ctx, file)
+				// Per-language relationship count for the verbose breakdown.
+				relCount := 0
+				for k := range ents {
+					relCount += len(ents[k].Relationships)
+				}
 				mu.Lock()
 				i.stats.processed++
 				if err != nil {
@@ -353,6 +406,9 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 				} else {
 					i.stats.extracted++
 					allRecords = append(allRecords, ents...)
+					if i.stats.pass1RelsByLang != nil {
+						i.stats.pass1RelsByLang[cr.Language] += relCount
+					}
 				}
 				classified = append(classified, cf)
 				mu.Unlock()
@@ -459,8 +515,15 @@ func (i *Indexer) runPass3CrossLang(ctx context.Context, classified []classified
 					if len(ents) == 0 {
 						continue
 					}
+					rc := 0
+					for k := range ents {
+						rc += len(ents[k].Relationships)
+					}
 					mu.Lock()
 					out = append(out, ents...)
+					if i.stats.pass3RelsByExt != nil {
+						i.stats.pass3RelsByExt[e.Name] += rc
+					}
 					mu.Unlock()
 				}
 			}
