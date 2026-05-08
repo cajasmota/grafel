@@ -1099,41 +1099,34 @@ func (idx Index) lookupLocationKind(filePath, name string, families []string) (s
 // single graph entity. Such stubs should land in DispositionDynamic, not
 // the bug buckets — see classifyDispositionLang for the categorisation
 // rationale. Issue #89.
+//
+// Issue #94 follow-up: the original list over-reached. Prefixes that are
+// in fact concrete (file-path-keyed, with a verifiable producer in the
+// extractors that maps to a real entity ID) MUST NOT be routed here, or
+// the apparent bug-rate drop becomes artificial. Verified producers for
+// scope:operation:, scope:component:project:, scope:dataaccess:,
+// scope:endpoint:, and scope:schema: emit concrete file-keyed IDs and
+// were removed from this list.
+//
+// Kept: short-form stubs whose target genuinely cannot resolve to a
+// single entity at link time (runtime-built URLs for http callers,
+// unresolved local imports, file/coverage wrappers).
 func isHeuristicScopeStub(s string) bool {
 	if !strings.HasPrefix(s, stubPrefixScope) {
 		return false
 	}
 	switch {
-	// testmap pattern entity — test-function → production-function edges
-	// inferred from regex over test bodies.
-	case strings.HasPrefix(s, "scope:operation:"):
-		return true
 	// testmap coverage entity (the wrapper Pattern itself).
 	case strings.HasPrefix(s, "scope:testcoverage:"):
-		return true
-	// dbmap pattern entity — test/data-access scopes inferred from ORM
-	// call shapes.
-	case strings.HasPrefix(s, "scope:dataaccess:"):
-		return true
-	// endpoint pattern entity — HTTP route scopes inferred from
-	// router-decorator shapes.
-	case strings.HasPrefix(s, "scope:endpoint:"):
-		return true
-	// schema pattern entity — react/typescript prop schemas inferred from
-	// component declarations.
-	case strings.HasPrefix(s, "scope:schema:"):
 		return true
 	// imports cross-language extractor — local relative imports the
 	// extractor doesn't resolve to a specific file.
 	case strings.HasPrefix(s, "scope:component:import:local:"):
 		return true
-	// http-client cross-language extractor — http-caller component scope.
+	// http-client cross-language extractor — http-caller component scope
+	// where the target URL is runtime-built and cannot be tied to a
+	// specific external_api entity.
 	case strings.HasPrefix(s, "scope:component:http_caller:"):
-		return true
-	// manifest cross-language extractor — project component scope (the
-	// project-level pattern entity, distinct from external_dep which goes
-	// through external synthesis).
-	case strings.HasPrefix(s, "scope:component:project:"):
 		return true
 	// imports cross-language extractor — file component scope. These are
 	// internal "the file is a component" markers; targets aren't real

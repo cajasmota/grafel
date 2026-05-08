@@ -401,6 +401,77 @@ func TestSynthesize_DanglingExtendsLocalUntouched(t *testing.T) {
 // TestSynthesize_ExpandedAllowlist exercises a handful of the v1.1
 // allowlist additions to guard against accidental regressions when the
 // list is edited.
+// TestStdlibBareNames_NoCollisionNames asserts that names which commonly
+// appear as user-defined methods are NOT classified as stdlib bare-names
+// when seen unqualified. Issue #94: the original list (issue #89) over-
+// reached and treated identifiers like `write`, `read`, `close`, `index`,
+// etc. as built-ins, masking real bug-extractor cases.
+func TestStdlibBareNames_NoCollisionNames(t *testing.T) {
+	collisions := []string{
+		"write", "read", "close", "index", "copy", "replace",
+		"items", "keys", "values", "update", "pop", "clear",
+		"extend", "append", "remove",
+	}
+	for _, name := range collisions {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, ok := stdlibFunction(name); ok {
+				t.Fatalf("stdlibFunction(%q) classified as stdlib bare-name; "+
+					"this name commonly collides with user-defined methods "+
+					"and must not synthesise a placeholder", name)
+			}
+			doc := &graph.Document{
+				Relationships: []graph.Relationship{
+					{ID: "r", FromID: "src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 0 {
+				t.Fatalf("Synthesize(%q) created %d placeholder(s); "+
+					"want 0 — collision name must fall through", name,
+					stats.Synthesized)
+			}
+			if doc.Relationships[0].ToID != name {
+				t.Fatalf("ToID=%q, want %q (must not be rewritten)",
+					doc.Relationships[0].ToID, name)
+			}
+		})
+	}
+}
+
+// TestExternalAPIHost_IPv6 covers the IPv6 host parsing fix from
+// issue #94. The previous byte-scanner stripped the first ':' before the
+// closing bracket and produced "[" as the host.
+func TestExternalAPIHost_IPv6(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{"https://[::1]:8080", "::1"},
+		{"https://[::1]/path", "::1"},
+		{"https://[fe80::1]:443", "fe80::1"},
+		{"https://[2001:db8::1]:8443/api", "2001:db8::1"},
+		// Sanity: regular hosts still work.
+		{"https://example.com:8080/foo", "example.com"},
+		{"http://user:pass@example.com:80/p", "example.com"},
+		// Empty / non-URL inputs.
+		{"", ""},
+		{"not-a-url", ""},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.raw, func(t *testing.T) {
+			t.Parallel()
+			got := externalAPIHost(c.raw)
+			if got != c.want {
+				t.Fatalf("externalAPIHost(%q) = %q, want %q",
+					c.raw, got, c.want)
+			}
+		})
+	}
+}
+
 func TestSynthesize_ExpandedAllowlist(t *testing.T) {
 	cases := []struct {
 		stub string

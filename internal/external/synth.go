@@ -14,6 +14,7 @@
 package external
 
 import (
+	"net/url"
 	"sort"
 	"strings"
 
@@ -499,19 +500,16 @@ var stdlibBareNames = map[string]struct{}{
 	// These bare-name calls arrive at the resolver after the extractor
 	// strips the receiver (`s.append(x)` → `append`). Without this list
 	// they all land in bug-extractor; with it they correctly classify as
-	// external-known builtins. Curated to names extremely unlikely to
-	// collide with user-defined entity names: standard collection /
-	// string / IO methods that ship with Python's core types.
-	"append":     {},
-	"extend":     {},
+	// external-known builtins.
+	//
+	// Issue #94 follow-up: removed names that collide with common
+	// user-defined method identifiers — write/read/close/index/copy/
+	// replace/items/keys/values/update/pop/clear/extend/append/remove.
+	// Misclassifying a real local method as a stdlib bare-name turns a
+	// genuine bug into a synthesised placeholder, hiding the real fix.
+	// Kept: names that are unambiguously built-in across mainstream
+	// Python codebases (no/extremely rare user-method collisions).
 	"insert":     {},
-	"remove":     {},
-	"clear":      {},
-	"copy":       {},
-	"index":      {},
-	"items":      {},
-	"keys":       {},
-	"values":     {},
 	"setdefault": {},
 	"startswith": {},
 	"endswith":   {},
@@ -522,7 +520,6 @@ var stdlibBareNames = map[string]struct{}{
 	"rsplit":     {},
 	"splitlines": {},
 	"join":       {},
-	"replace":    {},
 	"lower":      {},
 	"upper":      {},
 	"title":      {},
@@ -531,13 +528,10 @@ var stdlibBareNames = map[string]struct{}{
 	"isdigit":    {},
 	"isalpha":    {},
 	"isalnum":    {},
-	"read":       {},
 	"readline":   {},
 	"readlines":  {},
-	"write":      {},
 	"writelines": {},
 	"flush":      {},
-	"close":      {},
 	"seek":       {},
 	"tell":       {},
 	// Python os/path/io stdlib functions seen at high volume in real
@@ -647,7 +641,6 @@ var knownExternalPackages = map[string]struct{}{
 	"dataclasses":     {},
 	"contextlib":      {},
 	"warnings":        {},
-	"copy":            {},
 	"tempfile":        {},
 	"subprocess":      {},
 	"argparse":        {},
@@ -841,38 +834,39 @@ func isIdentSegment(s string) bool {
 // externalAPIHost extracts the host segment from a URL-shaped string.
 // Returns "" when raw doesn't look like a URL with a recognisable host.
 // Issue #89.
+//
+// Issue #94 follow-up: the original byte-scanning implementation broke
+// on IPv6 hosts ("https://[::1]:8080" canonicalised to "[" because the
+// port-stripping ran before the bracket-balanced host was extracted).
+// Switched to net/url which understands bracketed IPv6 hosts and gives
+// a clean Hostname() without brackets or port. Falls back to "" on
+// parse error or any URL without a host.
 func externalAPIHost(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
-	// "http://example.com/path" → "example.com"
-	if i := strings.Index(raw, "://"); i >= 0 {
-		host := raw[i+3:]
-		if j := strings.IndexAny(host, "/?#"); j >= 0 {
-			host = host[:j]
-		}
-		host = strings.TrimSpace(host)
-		// Strip "user@" if present.
-		if at := strings.IndexByte(host, '@'); at >= 0 && at < len(host)-1 {
-			host = host[at+1:]
-		}
-		// Strip ":port" if present.
-		if c := strings.IndexByte(host, ':'); c > 0 {
-			host = host[:c]
-		}
-		if host == "" {
+	// Require an explicit scheme to keep behaviour close to the prior
+	// "://" gate; net/url is permissive about scheme-less inputs.
+	if !strings.Contains(raw, "://") {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	host := u.Hostname()
+	if host == "" {
+		return ""
+	}
+	// Reject obviously malformed hosts (e.g. percent-encoded garbage
+	// that survived parsing).
+	for _, r := range host {
+		if r == '%' {
 			return ""
 		}
-		// Reject obviously malformed hosts (e.g. "%zz").
-		for _, r := range host {
-			if r == '%' {
-				return ""
-			}
-		}
-		return host
 	}
-	return ""
+	return host
 }
 
 // isHexID mirrors resolve.isHexID — a 16-char lower-hex string is
