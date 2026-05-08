@@ -146,3 +146,143 @@ func TestSynthesize_NilDoc(t *testing.T) {
 		t.Fatalf("nil doc produced stats: %+v", stats)
 	}
 }
+
+// TestSynthesize_ScopeExternalStructuralRef covers the
+// "scope:<kind>:import:external:<name>" branch emitted by Pass 3
+// cross-language extractors. The trailing segment after ":external:"
+// is the canonical package name, and the placeholder is created even
+// when the package isn't on the static allowlist (extractor has
+// already classified it as not-local).
+func TestSynthesize_ScopeExternalStructuralRef(t *testing.T) {
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "a.py", ToID: "scope:Module:import:external:some_obscure_pkg", Kind: "IMPORTS"},
+			{ID: "rel-2", FromID: "b.py", ToID: "scope:Module:import:external:some_obscure_pkg.submodule", Kind: "IMPORTS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 1 {
+		t.Fatalf("synthesized=%d, want 1 (collapsed to package root)", stats.Synthesized)
+	}
+	if stats.RelationshipsResolved != 2 {
+		t.Fatalf("resolved=%d, want 2", stats.RelationshipsResolved)
+	}
+	for k, r := range doc.Relationships {
+		if r.ToID != "ext:some_obscure_pkg" {
+			t.Fatalf("rel[%d].ToID=%q, want ext:some_obscure_pkg", k, r.ToID)
+		}
+	}
+}
+
+// TestSynthesize_ScopeExternalRejectsPathSeparator confirms the
+// scope-external branch refuses stubs with embedded path separators —
+// those are file paths, not external package names.
+func TestSynthesize_ScopeExternalRejectsPathSeparator(t *testing.T) {
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "a.py", ToID: "scope:Module:import:external:some/path", Kind: "IMPORTS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 || stats.RelationshipsResolved != 0 {
+		t.Fatalf("expected no synthesis on path-shaped scope-external; got %+v", stats)
+	}
+}
+
+// TestSynthesize_KindNameForm covers the "Kind:Name" stub shape, e.g.
+// "Module:django" or "Function:Println" — the leading kind hint is
+// stripped and the bare Name is classified.
+func TestSynthesize_KindNameForm(t *testing.T) {
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "a", ToID: "Module:django", Kind: "IMPORTS"},
+			{ID: "rel-2", FromID: "b", ToID: "Function:Println", Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 2 {
+		t.Fatalf("synthesized=%d, want 2", stats.Synthesized)
+	}
+	gotIDs := map[string]string{}
+	for _, e := range doc.Entities {
+		gotIDs[e.ID] = e.Subtype
+	}
+	if gotIDs["ext:django"] != "package" {
+		t.Fatalf("ext:django subtype=%q, want package", gotIDs["ext:django"])
+	}
+	if gotIDs["ext:Println"] != "function" {
+		t.Fatalf("ext:Println subtype=%q, want function", gotIDs["ext:Println"])
+	}
+}
+
+// TestSynthesize_CollisionWithLocalEntity is a defensive check: if a
+// previous run (or a malformed document) already contains an entity
+// with ID "ext:foo", a relationship pointing at "foo" should rewrite
+// to "ext:foo" without producing a duplicate entity.
+func TestSynthesize_CollisionWithLocalEntity(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			// Pre-existing placeholder with the same ID we'd synthesise.
+			{ID: "ext:django", Name: "django", Kind: KindExternal, Subtype: "package"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "a", ToID: "django.db.models", Kind: "IMPORTS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("synthesized=%d, want 0 (entity already present)", stats.Synthesized)
+	}
+	if stats.RelationshipsResolved != 1 {
+		t.Fatalf("resolved=%d, want 1", stats.RelationshipsResolved)
+	}
+	if doc.Relationships[0].ToID != "ext:django" {
+		t.Fatalf("rel ToID=%q, want ext:django", doc.Relationships[0].ToID)
+	}
+	count := 0
+	for _, e := range doc.Entities {
+		if e.ID == "ext:django" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("ext:django entity count=%d, want 1 (no duplicates)", count)
+	}
+}
+
+// TestSynthesize_ExpandedAllowlist exercises a handful of the v1.1
+// allowlist additions to guard against accidental regressions when the
+// list is edited.
+func TestSynthesize_ExpandedAllowlist(t *testing.T) {
+	cases := []struct {
+		stub string
+		want string
+	}{
+		{"zod", "ext:zod"},
+		{"prisma.client", "ext:prisma"},
+		{"axios", "ext:axios"},
+		{"pytest", "ext:pytest"},
+		{"httpx.AsyncClient", "ext:httpx"},
+		{"testify.Suite", "ext:testify"},
+		{"junit", "ext:junit"},
+	}
+	doc := &graph.Document{}
+	for i, c := range cases {
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:     "rel-" + c.stub,
+			FromID: "src",
+			ToID:   c.stub,
+			Kind:   "IMPORTS",
+		})
+		_ = i
+	}
+	stats := Synthesize(doc)
+	if stats.RelationshipsResolved != len(cases) {
+		t.Fatalf("resolved=%d, want %d", stats.RelationshipsResolved, len(cases))
+	}
+	for k, c := range cases {
+		if doc.Relationships[k].ToID != c.want {
+			t.Fatalf("case %q: ToID=%q, want %q", c.stub, doc.Relationships[k].ToID, c.want)
+		}
+	}
+}
