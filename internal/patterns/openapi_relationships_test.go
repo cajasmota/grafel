@@ -106,9 +106,10 @@ func TestOpenAPI_SpecContainsOperationsAndSchemas(t *testing.T) {
 	src := loadOpenAPIFixture(t, "openapi_petstore.yml")
 	results := d.Detect("api/openapi.yml", "yaml", src)
 
-	// Title regex matches column-0 only; nested info.title is not parsed,
-	// so the spec falls back to default title "api".
-	spec := findByName(results, "openapi_spec_api")
+	// info.title is parsed via the YAML-aware helper, so the spec name uses
+	// the real title from the fixture ("Petstore") rather than the "api"
+	// fallback. (Refs #85)
+	spec := findByName(results, "openapi_spec_Petstore")
 	if spec == nil {
 		t.Fatal("spec entity not found")
 	}
@@ -171,4 +172,51 @@ func TestOpenAPI_OperationTaggedAs(t *testing.T) {
 	if !hasPetsTag {
 		t.Error("expected get /pets TAGGED_AS pets (block form)")
 	}
+}
+
+// TestOpenAPI_NestedInfoTitleExtracted verifies info.title is parsed from the
+// canonical nested YAML form rather than falling back to the literal "api".
+// (Refs #85)
+func TestOpenAPI_NestedInfoTitleExtracted(t *testing.T) {
+	d := &openAPIExtractor{}
+	src := `openapi: "3.0.0"
+info:
+  title: My API
+  version: "1.0"
+paths:
+  /users:
+    get:
+      summary: list
+`
+	results := d.Detect("openapi.yaml", "yaml", src)
+	if findByName(results, "openapi_spec_My API") == nil {
+		t.Fatalf("expected spec entity with title 'My API', got names=%v", entityNames(results))
+	}
+	if findByName(results, "openapi_spec_api") != nil {
+		t.Error("did not expect fallback 'api' title when info.title is present")
+	}
+}
+
+// TestOpenAPI_MissingInfoTitleFallsBack verifies the "api" fallback still
+// fires when no title is declared anywhere.
+func TestOpenAPI_MissingInfoTitleFallsBack(t *testing.T) {
+	d := &openAPIExtractor{}
+	src := `openapi: "3.0.0"
+paths:
+  /users:
+    get:
+      summary: list
+`
+	results := d.Detect("openapi.yaml", "yaml", src)
+	if findByName(results, "openapi_spec_api") == nil {
+		t.Errorf("expected fallback spec name 'openapi_spec_api', got names=%v", entityNames(results))
+	}
+}
+
+func entityNames(entities []types.EntityRecord) []string {
+	out := make([]string, 0, len(entities))
+	for _, e := range entities {
+		out = append(out, e.Name)
+	}
+	return out
 }

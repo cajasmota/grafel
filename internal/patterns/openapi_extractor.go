@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
+	"gopkg.in/yaml.v3"
 )
 
 // openAPIExtractor extracts OpenAPI/Swagger spec paths, operations, schemas
@@ -69,9 +70,13 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 		specVersion = strings.TrimSpace(m[1])
 	}
 
-	// Get API title
+	// Get API title. Prefer the YAML-aware path (handles the canonical nested
+	// "info: { title: ... }" form). Fall back to the flat column-0 regex for
+	// degenerate / non-conforming inputs, then to the literal "api" default.
 	title := "api"
-	if m := oaInfoTitleRE.FindStringSubmatch(src); m != nil {
+	if t := extractInfoTitleYAML(src); t != "" {
+		title = t
+	} else if m := oaInfoTitleRE.FindStringSubmatch(src); m != nil {
 		title = strings.TrimSpace(m[1])
 	}
 
@@ -490,6 +495,26 @@ func extractOperationTags(body string) []string {
 		}
 	}
 	return out
+}
+
+// extractInfoTitleYAML parses src as YAML and returns the value of info.title
+// if present and a non-empty string. Returns "" on any parse failure or when
+// the field is absent — callers should fall back to other strategies. This
+// handles the canonical nested form:
+//
+//	info:
+//	  title: My API
+//	  version: 1.0
+func extractInfoTitleYAML(src string) string {
+	var doc struct {
+		Info struct {
+			Title string `yaml:"title"`
+		} `yaml:"info"`
+	}
+	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(doc.Info.Title)
 }
 
 func init() {
