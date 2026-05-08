@@ -57,10 +57,10 @@ REPOS=(
   # --- JavaScript / TypeScript ---
   "express|https://github.com/expressjs/express.git|master|javascript"                             # ~4 MB
   "nestjs|https://github.com/nestjs/nest.git|master|typescript|packages/core"                      # ~120 MB full; sparse subset
-  "nextjs|https://github.com/vercel/next.js.git|canary|typescript|packages/next/src/server"        # >1 GB full; sparse subset
+  "nextjs|https://github.com/vercel/next.js.git|canary|typescript|packages/next/src"                # >1 GB full; full src dir for representative TS
   # --- Java ---
-  "spring-boot|https://github.com/spring-projects/spring-boot.git|main|java|spring-boot-project/spring-boot-actuator-autoconfigure"  # >300 MB full; sparse
-  "kafka|https://github.com/apache/kafka.git|trunk|java|clients/src/main/java/org/apache/kafka/clients"                              # >200 MB full; sparse
+  "spring-petclinic|https://github.com/spring-projects/spring-petclinic.git|main|java"              # ~30 Java files; canonical Spring Boot sample with @RestController/@Service/@Repository
+  "kafka|https://github.com/apache/kafka.git|trunk|java|clients/src/main/java/org/apache/kafka/clients"                              # >200 MB full; sparse Java client
   # --- Kotlin ---
   "exposed|https://github.com/JetBrains/Exposed.git|main|kotlin"                                   # ~15 MB
   "ktor|https://github.com/ktorio/ktor.git|main|kotlin|ktor-server/ktor-server-core"               # >200 MB full; sparse
