@@ -639,6 +639,69 @@ func TestExtract_ClassSubtypeLabels(t *testing.T) {
 	}
 }
 
+// TestExtract_NestedClassesFromFixture is the regression test for issue #68.
+// Methods declared inside a nested class must carry the FULL dotted scope
+// path in their Name (e.g. "Outer.Inner.foo"), not just the immediate parent.
+// This guarantees ComputeID(SourceFile+Kind+Name) is unique across sibling
+// nested classes that declare same-named methods, and that Format B
+// structural references can address them via the resolver's byMember index.
+func TestExtract_NestedClassesFromFixture(t *testing.T) {
+	path := filepath.Join("testdata", "nested_classes.py.fixture")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	tree := parse(t, src)
+	ext, _ := extractor.Get("python")
+
+	entities, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     path,
+		Content:  src,
+		Language: "python",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	wantMethods := map[string]bool{
+		"Outer.Inner.foo":         false,
+		"Outer.Inner.Deep.bar":    false,
+		"Outer.Sibling.foo":       false,
+		"Outer.Sibling.Deep.bar":  false,
+		"Standalone.foo":          false,
+	}
+	for _, e := range entities {
+		if e.Kind != "SCOPE.Operation" || e.Subtype != "method" {
+			continue
+		}
+		if _, want := wantMethods[e.Name]; want {
+			wantMethods[e.Name] = true
+		}
+	}
+	for name, seen := range wantMethods {
+		if !seen {
+			t.Errorf("expected method entity %q (got names=%v)", name, entityNames(entities))
+		}
+	}
+
+	// Distinct-entity assertion: each fully-qualified Name must appear exactly
+	// once and produce a distinct entity (different Name → different ComputeID
+	// at emit time). Sibling Inner/Sibling classes share the bare "foo" name;
+	// the dotted scope path is what keeps them apart.
+	counts := map[string]int{}
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Operation" && e.Subtype == "method" {
+			counts[e.Name]++
+		}
+	}
+	for name, n := range counts {
+		if n != 1 {
+			t.Errorf("method %q emitted %d times, want 1", name, n)
+		}
+	}
+}
+
 // entityNames returns entity names for test diagnostics.
 func entityNames(entities []types.EntityRecord) []string {
 	names := make([]string, len(entities))

@@ -111,7 +111,10 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 }
 
 // walkNode performs a depth-first traversal of the CST, collecting entities.
-// parentClass is "" when outside a class body, or the class name when inside.
+// parentClass is "" when outside a class body, or the dotted class path when
+// inside (e.g. "Outer" for a top-level class, "Outer.Inner" for a nested one).
+// Issue #68 — multi-level nesting is preserved by appending each enclosing
+// class name with a "." separator as the walker descends.
 func walkNode(
 	node *sitter.Node,
 	file extractor.FileInput,
@@ -132,11 +135,16 @@ func walkNode(
 			*out = append(*out, rec)
 			*classCount++
 			// Walk the class body so methods are captured with parentClass set.
+			// For nested classes the parent path accumulates: "Outer" → "Outer.Inner".
+			childParent := rec.Name
+			if parentClass != "" {
+				childParent = parentClass + "." + rec.Name
+			}
 			body := node.ChildByFieldName("body")
 			if body != nil {
 				before := len(*out)
 				for i := range int(body.ChildCount()) {
-					walkNode(body.Child(i), file, rec.Name, out, funcCount, classCount)
+					walkNode(body.Child(i), file, childParent, out, funcCount, classCount)
 				}
 				// Emit CONTAINS edges from the class to every operation entity
 				// the walker just appended (methods inside this class).
@@ -201,11 +209,15 @@ func walkNode(
 				classIdx := len(*out)
 				*out = append(*out, rec)
 				*classCount++
+				childParent := rec.Name
+				if parentClass != "" {
+					childParent = parentClass + "." + rec.Name
+				}
 				body := inner.ChildByFieldName("body")
 				if body != nil {
 					before := len(*out)
 					for i := range int(body.ChildCount()) {
-						walkNode(body.Child(i), file, rec.Name, out, funcCount, classCount)
+						walkNode(body.Child(i), file, childParent, out, funcCount, classCount)
 					}
 					after := len(*out)
 					for k := before; k < after; k++ {
@@ -254,13 +266,16 @@ func buildClass(node *sitter.Node, file extractor.FileInput) types.EntityRecord 
 }
 
 // buildFunction constructs a SCOPE.Operation EntityRecord for a function_definition.
-// parentClass is "" for module-level functions, or the class name for methods.
+// parentClass is "" for module-level functions, or the dotted class path for
+// methods (e.g. "Foo" for a top-level class method, "Outer.Inner" for a method
+// defined on a nested class — issue #68).
 //
-// Methods are emitted with Name="<class>.<method>" (issue #45) so two classes
-// declaring a same-named method in the same file produce distinct entity IDs
-// via ComputeID(SourceFile+Kind+Name). The dotted form is the same encoding
-// used by Format B structural references and is indexed natively by
-// resolve.Index.byMember (which splits Name on the first '.').
+// Methods are emitted with Name="<dotted.class.path>.<method>" (issue #45 +
+// issue #68) so two classes declaring a same-named method in the same file
+// produce distinct entity IDs via ComputeID(SourceFile+Kind+Name). The dotted
+// form is the same encoding used by Format B structural references and is
+// indexed natively by resolve.Index.byMember, which splits Name on the LAST
+// '.' to preserve multi-level scopes.
 func buildFunction(node *sitter.Node, file extractor.FileInput, parentClass string) types.EntityRecord {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {

@@ -1,0 +1,33 @@
+"""Fixture for issue #68: nested-class methods must be qualified by the
+full dotted scope path, not just the immediate parent class.
+
+Distinct entities expected (one per method):
+  - Outer.Inner.foo
+  - Outer.Inner.Deep.bar
+  - Outer.Sibling.foo            # same method name as Outer.Inner.foo
+  - Outer.Sibling.Deep.bar       # same nested-class shape as Outer.Inner.Deep
+  - Standalone.foo               # top-level class with the same method name
+"""
+
+
+class Outer:
+    class Inner:
+        def foo(self):
+            return 1
+
+        class Deep:
+            def bar(self):
+                return 2
+
+    class Sibling:
+        def foo(self):
+            return 3
+
+        class Deep:
+            def bar(self):
+                return 4
+
+
+class Standalone:
+    def foo(self):
+        return 5
