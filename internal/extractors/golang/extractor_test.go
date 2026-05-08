@@ -150,8 +150,8 @@ func (s *Store) Save(item string) error {
 		if r.Kind != "SCOPE.Operation" {
 			t.Errorf("method kind: expected SCOPE.Operation, got %q", r.Kind)
 		}
-		if r.Name != "Save" {
-			t.Errorf("method name: expected Save, got %q", r.Name)
+		if r.Name != "Store.Save" {
+			t.Errorf("method name: expected Store.Save (issue #66), got %q", r.Name)
 		}
 		recv, _ := r.Metadata["receiver"].(string)
 		if recv != "Store" {
@@ -166,8 +166,8 @@ func (s *Store) Save(item string) error {
 		if r2.Kind != "SCOPE.Operation" {
 			t.Errorf("method kind: expected SCOPE.Operation, got %q", r2.Kind)
 		}
-		if r2.Name != "Save" {
-			t.Errorf("method name: expected Save, got %q", r2.Name)
+		if r2.Name != "Store.Save" {
+			t.Errorf("method name: expected Store.Save (issue #66), got %q", r2.Name)
 		}
 		recv, _ := r2.Metadata["receiver"].(string)
 		if recv != "Store" {
@@ -535,7 +535,8 @@ func TestExtractGoldenFixture(t *testing.T) {
 	for _, r := range results {
 		names[r.Name] = true
 	}
-	for _, want := range []string{"main", "User", "UserStore", "NewUserStore", "GetUser", "SaveUser"} {
+	// issue #66: method entities are emitted as "<Receiver>.<method>".
+	for _, want := range []string{"main", "User", "UserStore", "NewUserStore", "UserStore.GetUser", "UserStore.SaveUser"} {
 		if !names[want] {
 			t.Errorf("expected entity %q not found in extraction results", want)
 		}
@@ -1035,12 +1036,13 @@ type Store struct{}
 func (s *Store) Save() error { return nil }
 `
 	records := extractRecords(t, src, "store.go")
-	save := findEntity(records, "Save")
+	// issue #66: method entity Name is "<Receiver>.<method>".
+	save := findEntity(records, "Store.Save")
 	if save == nil {
-		t.Fatal("Save method not found")
+		t.Fatal("Store.Save method not found")
 	}
 	if !hasRelationship(save, "DEPENDS_ON", "Store") {
-		t.Errorf("expected DEPENDS_ON → Store on Save method, got %+v", save.Relationships)
+		t.Errorf("expected DEPENDS_ON → Store on Store.Save method, got %+v", save.Relationships)
 	}
 }
 
@@ -1280,4 +1282,129 @@ func TestRelationships_SampleHandlerFixture(t *testing.T) {
 			t.Errorf("expected at least one %s edge in sample_handler fixture, got kinds=%v", wantKind, kinds)
 		}
 	}
+}
+
+// ---- issue #66: receiver-qualified method entity IDs -----------------------
+
+// TestExtract_DuplicateMethodNamesAcrossReceivers asserts that two structs in
+// the same file each declaring same-named methods produce four distinct
+// entities with distinct ComputeIDs. Before issue #66, the Go extractor set
+// EntityRecord.Name to the bare identifier — so `Save` on `*UserStore` and
+// `Save` on `*OrderStore` collapsed under ComputeID(Source+Kind+Name).
+//
+// Fix: methods are emitted with Name="<Receiver>.<method>" using the bare
+// receiver type name (pointer-vs-value collapsed) so the dotted form is
+// canonical and matches resolve.Index.byMember's first-dot split.
+func TestExtract_DuplicateMethodNamesAcrossReceivers(t *testing.T) {
+	src := `package store
+
+type UserStore struct{}
+
+func (s *UserStore) Save(item string) error { return nil }
+
+func (s *UserStore) Load(id int) (string, error) { return "", nil }
+
+type OrderStore struct{}
+
+func (s *OrderStore) Save(item string) error { return nil }
+
+func (s OrderStore) Load(id int) (string, error) { return "", nil }
+`
+	records := extractRecords(t, src, "store.go")
+
+	// Collect the four method entities.
+	methods := make(map[string]*types.EntityRecord)
+	for i := range records {
+		if records[i].Subtype != "method" {
+			continue
+		}
+		r := &records[i]
+		methods[r.Name] = r
+	}
+
+	want := []string{"UserStore.Save", "UserStore.Load", "OrderStore.Save", "OrderStore.Load"}
+	if len(methods) != 4 {
+		t.Fatalf("expected 4 distinct method entities, got %d: %v", len(methods), keysOf(methods))
+	}
+	for _, n := range want {
+		if methods[n] == nil {
+			t.Errorf("expected method entity %q not found; got %v", n, keysOf(methods))
+		}
+	}
+
+	// Distinct ComputeIDs — the regression guard.
+	ids := make(map[string]string)
+	for name, rec := range methods {
+		// SourceFile must be set for ComputeID to differentiate entries; the
+		// extractor populates it from FileInput.Path.
+		rec.SourceFile = "store.go"
+		id := rec.ComputeID()
+		if existing, dup := ids[id]; dup {
+			t.Errorf("ComputeID collision: %q and %q both hash to %s", existing, name, id)
+		}
+		ids[id] = name
+	}
+
+	// Pointer vs value receiver should normalize to the same receiver type
+	// name (no leading * in the qualifier).
+	if m := methods["OrderStore.Load"]; m != nil {
+		recv, _ := m.Metadata["receiver"].(string)
+		if recv != "OrderStore" {
+			t.Errorf("value receiver should yield receiver=OrderStore (no pointer), got %q", recv)
+		}
+	}
+	if m := methods["UserStore.Save"]; m != nil {
+		recv, _ := m.Metadata["receiver"].(string)
+		if recv != "UserStore" {
+			t.Errorf("pointer receiver should yield receiver=UserStore (pointer stripped), got %q", recv)
+		}
+	}
+}
+
+// TestExtract_DuplicateMethodsFromFixture parses the fixture file directly to
+// guard against drift between the inline-source assertion above and the
+// canonical fixture used by snapshot/golden flows.
+func TestExtract_DuplicateMethodsFromFixture(t *testing.T) {
+	content, err := os.ReadFile("testdata/duplicate_methods.go.fixture")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ext, _ := extractor.Get("go")
+	records, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "testdata/duplicate_methods.go.fixture",
+		Content:  content,
+		Language: "go",
+		Tree:     parseGo(content),
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	wantNames := map[string]bool{
+		"UserStore.Save":  false,
+		"UserStore.Load":  false,
+		"OrderStore.Save": false,
+		"OrderStore.Load": false,
+	}
+	for _, r := range records {
+		if r.Subtype != "method" {
+			continue
+		}
+		if _, ok := wantNames[r.Name]; ok {
+			wantNames[r.Name] = true
+		}
+	}
+	for name, found := range wantNames {
+		if !found {
+			t.Errorf("fixture: missing method entity %q", name)
+		}
+	}
+}
+
+func keysOf(m map[string]*types.EntityRecord) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

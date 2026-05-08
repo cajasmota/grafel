@@ -1,0 +1,19 @@
+package store
+
+// Two structs declaring same-named methods. Before issue #66 the Go
+// extractor emitted EntityRecord.Name as the bare method identifier, so
+// `(*UserStore).Save` and `(*OrderStore).Save` collapsed to a single ID
+// when ComputeID hashed Source+Kind+Name. Each pair must now produce a
+// distinct entity.
+
+type UserStore struct{}
+
+func (s *UserStore) Save(item string) error { return nil }
+
+func (s *UserStore) Load(id int) (string, error) { return "", nil }
+
+type OrderStore struct{}
+
+func (s *OrderStore) Save(item string) error { return nil }
+
+func (s OrderStore) Load(id int) (string, error) { return "", nil }
