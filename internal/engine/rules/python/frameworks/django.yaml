@@ -87,10 +87,13 @@ source_patterns:
     name_group: 1
     scope: file
   # DRF router registration: router.register(r"users", UserViewSet, ...).
-  # Captures the URL prefix as the Route name. Receiver may be any router
-  # variable (router, api_router, v1_router); raw-string `r"..."` and plain
-  # `"..."` / `'...'` quoting both supported.
-  - pattern: "\\w+\\.register\\s*\\(\\s*r?[\"']([^\"']+)[\"']\\s*,\\s*\\w+"
+  # Captures the URL prefix as the Route name. Receiver is anchored to
+  # router-like identifiers (router, DefaultRouter, SimpleRouter, api_router,
+  # v1_router, router_v2, ...) to avoid false positives from unrelated
+  # `.register(...)` calls (e.g. signal.register, queue.register,
+  # blueprint.register, events.register). Raw-string `r"..."` and plain
+  # `"..."` / `'...'` quoting both supported. Refs #63.
+  - pattern: "(?:\\w*[Rr]outer|api_router|v\\d+_router|router_v\\d+)\\.register\\s*\\(\\s*r?[\"']([^\"']+)[\"']\\s*,\\s*\\w+"
     entity_type: Route
     name_group: 1
     scope: file
@@ -128,9 +131,10 @@ relationship_rules:
     target_group: 1
   # DRF router registration: router.register(r"users", UserViewSet, ...).
   # Emits ROUTES_TO from the URL prefix Route to the ViewSet (View entity).
-  # Receiver name is unconstrained (router, api_router, v1_router, etc.) and
-  # both raw-string `r"..."` and plain quoted forms are supported.
-  - pattern: "\\w+\\.register\\s*\\(\\s*r?[\"']([^\"']+)[\"']\\s*,\\s*(\\w+)"
+  # Receiver is anchored to router-like identifiers (router, DefaultRouter,
+  # SimpleRouter, api_router, v1_router, router_v2, ...) to avoid spurious
+  # edges from unrelated `.register(...)` calls. Refs #63.
+  - pattern: "(?:\\w*[Rr]outer|api_router|v\\d+_router|router_v\\d+)\\.register\\s*\\(\\s*r?[\"']([^\"']+)[\"']\\s*,\\s*(\\w+)"
     source_type: Route
     target_type: View
     relationship: ROUTES_TO

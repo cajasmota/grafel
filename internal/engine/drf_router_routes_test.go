@@ -100,3 +100,70 @@ func TestDetect_DRFRouterRoutes(t *testing.T) {
 		t.Error("expected DRF router ROUTES_TO edge with pattern_type=yaml_driven")
 	}
 }
+
+// sampleNonRouterRegisters exercises non-router `.register(...)` call sites
+// that previously matched the unanchored DRF pattern and produced spurious
+// Route entities. The tightened receiver anchor (router-like names only)
+// must reject all of these. Refs #63.
+const sampleNonRouterRegisters = `from django.dispatch import Signal
+from myapp.queues import queue
+from flask import Blueprint
+from myapp.events import events
+
+signal = Signal()
+signal.register('user_created', some_handler)
+queue.register('email_jobs', email_worker)
+blueprint = Blueprint('admin', __name__)
+blueprint.register('admin_panel', AdminView)
+events.register('on_login', login_callback)
+`
+
+// TestDetect_NonRouterRegister_NoFalsePositives asserts that .register(...)
+// calls on non-router receivers do NOT emit Route entities or ROUTES_TO
+// edges from the DRF rule. Refs #63.
+func TestDetect_NonRouterRegister_NoFalsePositives(t *testing.T) {
+	rules, err := LoadAllRules()
+	if err != nil {
+		t.Fatalf("LoadAllRules failed: %v", err)
+	}
+
+	det := New(rules)
+	result, err := det.Detect(context.Background(), extractor.FileInput{
+		Path:     "myapp/handlers.py",
+		Content:  []byte(sampleNonRouterRegisters),
+		Language: "python",
+	})
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+
+	forbidden := map[string]bool{
+		"user_created": true,
+		"email_jobs":   true,
+		"admin_panel":  true,
+		"on_login":     true,
+	}
+
+	for _, e := range result.Entities {
+		if e.Kind != "Route" {
+			continue
+		}
+		if forbidden[e.Name] {
+			t.Errorf("unexpected Route entity from non-router .register: %q", e.Name)
+		}
+	}
+
+	for _, r := range result.Relationships {
+		if r.Kind != "ROUTES_TO" {
+			continue
+		}
+		// Strip the "Route:" prefix to compare with forbidden names.
+		const p = "Route:"
+		if len(r.FromID) > len(p) && r.FromID[:len(p)] == p {
+			name := r.FromID[len(p):]
+			if forbidden[name] {
+				t.Errorf("unexpected ROUTES_TO edge from non-router .register: %s -> %s", r.FromID, r.ToID)
+			}
+		}
+	}
+}
