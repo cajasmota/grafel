@@ -19,11 +19,90 @@
 package resolve
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// Stub-format constants. The resolver speaks a small grammar of "stub"
+// strings emitted by upstream extractors; collecting the literal tokens
+// here keeps the parsing logic legible and avoids the magic-string drift
+// that caused issue #49.
+const (
+	// stubPrefixScope marks a structural-ref stub of the form
+	//   scope:<kind>:<subtype>:<lang>:<file_path>:<tail>
+	// (Format A) or with `#` separating scope/member in the tail
+	// (Format B).
+	stubPrefixScope = "scope:"
+	// stubPrefixExternal marks an external-package placeholder
+	// emitted by the external synthesiser (e.g. "ext:django").
+	stubPrefixExternal = "ext:"
+	// scopeKindPrefix is the optional family prefix on entity kinds
+	// emitted by Pass 3 cross-language extractors (e.g. "SCOPE.View").
+	scopeKindPrefix = "SCOPE."
+
+	// stubDelim separates the segments of a colon-joined stub. Stub
+	// keys are graph identifiers and use forward-slash file paths; we
+	// never embed an OS-native path separator in them.
+	stubDelim = ":"
+	// stubMemberDelim separates the scope and member halves of the
+	// Format B tail.
+	stubMemberDelim = '#'
+	// stubScopeSegments is the number of colon-delimited segments in a
+	// well-formed structural-ref stub:
+	//   scope:<kind>:<subtype>:<lang>:<file_path>:<tail>
+	stubScopeSegments = 6
+	// stubScopeKindIndex / stubScopeFileIndex / stubScopeTailIndex are
+	// the canonical positions of the segments after SplitN. Indexing
+	// them by name keeps lookup-structural readable.
+	stubScopeKindIndex = 1
+	stubScopeLangIndex = 3
+	stubScopeFileIndex = 4
+	stubScopeTailIndex = 5
+
+	// dottedNameSep is the character that splits a qualified entity
+	// name into <scope>.<member> when building the byMember index.
+	dottedNameSep = '.'
+
+	// hexIDLen is the length of a graph.EntityID() output string.
+	hexIDLen = 16
+
+	// maxDispositionSamples caps the per-disposition sample list.
+	maxDispositionSamples = 5
+
+	// Property keys read off a RelationshipRecord to recover the
+	// source language of an edge.
+	propLanguage = "language"
+	propLang     = "lang"
+)
+
+// LookupStatus result codes. These were previously defined as untyped
+// const blocks inside multiple functions; centralising them eliminates
+// the chance of drift and lets callers type-check on the named values.
+const (
+	statusSkip      = 0
+	statusRewritten = 1
+	statusAmbiguous = 2
+	statusUnmatched = 3
+)
+
+// normalizePath rewrites an OS-native file-system path into the
+// forward-slash form used as a graph identifier. Stub keys, the
+// byLocation index, and structural-ref file segments all live in this
+// canonical form so a Windows extractor emitting "src\foo\bar.py" and
+// a POSIX extractor emitting "src/foo/bar.py" agree on a single key.
+//
+// Only call filepath.FromSlash at the OS-disk boundary (i.e. when
+// reading from disk). Inside the resolver every path stays in slash
+// form.
+func normalizePath(p string) string {
+	if p == "" {
+		return ""
+	}
+	return filepath.ToSlash(p)
+}
 
 // Disposition classifies the outcome the resolver assigned to an individual
 // relationship endpoint. Every endpoint inspected by References() and
@@ -245,14 +324,14 @@ func normalizeLang(lang string) string {
 // (`scope:<kind>:<subtype>:<lang>:<file>:<tail>`). Returns "" for stubs that
 // aren't structural refs.
 func inferLangFromStub(stub string) string {
-	if !strings.HasPrefix(stub, "scope:") {
+	if !strings.HasPrefix(stub, stubPrefixScope) {
 		return ""
 	}
-	parts := strings.SplitN(stub, ":", 6)
-	if len(parts) < 5 {
+	parts := strings.SplitN(stub, stubDelim, stubScopeSegments)
+	if len(parts) <= stubScopeLangIndex {
 		return ""
 	}
-	return normalizeLang(parts[3])
+	return normalizeLang(parts[stubScopeLangIndex])
 }
 
 // isDynamicPattern reports whether the stub matches any reflective /
@@ -407,9 +486,8 @@ func (s *Stats) initDispositions() {
 func (s *Stats) recordDisposition(d Disposition, stub string) {
 	s.initDispositions()
 	s.DispositionCounts[d]++
-	const maxSamples = 5
 	cur := s.DispositionSamples[d]
-	if len(cur) >= maxSamples {
+	if len(cur) >= maxDispositionSamples {
 		return
 	}
 	for _, existing := range cur {
@@ -499,12 +577,11 @@ func MergeDispositions(dst, src *Stats) {
 	for d, n := range src.DispositionCounts {
 		dst.DispositionCounts[d] += n
 	}
-	const maxSamples = 5
 	for d, samples := range src.DispositionSamples {
 		cur := dst.DispositionSamples[d]
 	sampleLoop:
 		for _, s := range samples {
-			if len(cur) >= maxSamples {
+			if len(cur) >= maxDispositionSamples {
 				break
 			}
 			for _, existing := range cur {
@@ -549,9 +626,14 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// Index under both the plain kind and the trimmed kind ("SCOPE.View"
 		// → "View"), so stubs can match either form.
 		kinds := []string{e.Kind}
-		if trimmed := strings.TrimPrefix(e.Kind, "SCOPE."); trimmed != e.Kind && trimmed != "" {
+		if trimmed := strings.TrimPrefix(e.Kind, scopeKindPrefix); trimmed != e.Kind && trimmed != "" {
 			kinds = append(kinds, trimmed)
 		}
+		// File paths are graph identifiers — keep them in forward-slash
+		// form regardless of the host OS (issue #49). Without this a
+		// Windows extractor emitting "src\foo\bar.py" indexes against a
+		// key that no structural-ref stub will ever request.
+		sourceFile := normalizePath(e.SourceFile)
 		for _, kind := range kinds {
 			if kind == "" {
 				continue
@@ -601,14 +683,14 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		// Location index — (file_path, name) -> entity_id. Same logic as
 		// byKind: ambiguous (file, name) tuples are tracked separately so
 		// the structural-ref resolver leaves the stub alone.
-		if e.SourceFile != "" {
+		if sourceFile != "" {
 			// Kind-aware (file, name, kind) bucket — collision-safe under
 			// PORT-2-FIX-2 emissions. Indexed under both raw and SCOPE-
 			// trimmed kinds to mirror byKind.
-			fileKindBucket := idx.byLocationKind[e.SourceFile]
+			fileKindBucket := idx.byLocationKind[sourceFile]
 			if fileKindBucket == nil {
 				fileKindBucket = make(map[string]map[string]string)
-				idx.byLocationKind[e.SourceFile] = fileKindBucket
+				idx.byLocationKind[sourceFile] = fileKindBucket
 			}
 			nameKindBucketLoc := fileKindBucket[e.Name]
 			if nameKindBucketLoc == nil {
@@ -626,18 +708,18 @@ func BuildIndex(entities []types.EntityRecord) Index {
 				}
 			}
 
-			if idx.ambigLocation[e.SourceFile] == nil || !idx.ambigLocation[e.SourceFile][e.Name] {
-				bucket := idx.byLocation[e.SourceFile]
+			if idx.ambigLocation[sourceFile] == nil || !idx.ambigLocation[sourceFile][e.Name] {
+				bucket := idx.byLocation[sourceFile]
 				if bucket == nil {
 					bucket = make(map[string]string)
-					idx.byLocation[e.SourceFile] = bucket
+					idx.byLocation[sourceFile] = bucket
 				}
 				if existing, ok := bucket[e.Name]; ok && existing != e.ID {
 					delete(bucket, e.Name)
-					if idx.ambigLocation[e.SourceFile] == nil {
-						idx.ambigLocation[e.SourceFile] = make(map[string]bool)
+					if idx.ambigLocation[sourceFile] == nil {
+						idx.ambigLocation[sourceFile] = make(map[string]bool)
 					}
-					idx.ambigLocation[e.SourceFile][e.Name] = true
+					idx.ambigLocation[sourceFile][e.Name] = true
 				} else {
 					bucket[e.Name] = e.ID
 				}
@@ -650,12 +732,12 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			// scopes ("Outer.Inner.foo" — issue #68) bind scope="Outer.Inner"
 			// and member="foo". Single-level names ("Foo.bar") still bind
 			// scope="Foo", member="bar" — unchanged from issue #45.
-			if dot := strings.LastIndexByte(e.Name, '.'); dot > 0 {
+			if dot := strings.LastIndexByte(e.Name, dottedNameSep); dot > 0 {
 				scope, member := e.Name[:dot], e.Name[dot+1:]
-				fileBucket := idx.byMember[e.SourceFile]
+				fileBucket := idx.byMember[sourceFile]
 				if fileBucket == nil {
 					fileBucket = make(map[string]map[string]string)
-					idx.byMember[e.SourceFile] = fileBucket
+					idx.byMember[sourceFile] = fileBucket
 				}
 				scopeBucket := fileBucket[scope]
 				if scopeBucket == nil {
@@ -696,20 +778,23 @@ func BuildLocationIndex(entities []types.EntityRecord) LocationIndex {
 		if e.ID == "" || e.Name == "" || e.SourceFile == "" {
 			continue
 		}
-		if ambig[e.SourceFile] != nil && ambig[e.SourceFile][e.Name] {
+		// Forward-slash form so Windows extractors and POSIX stubs hit
+		// the same key (issue #49).
+		sourceFile := normalizePath(e.SourceFile)
+		if ambig[sourceFile] != nil && ambig[sourceFile][e.Name] {
 			continue
 		}
-		bucket := loc[e.SourceFile]
+		bucket := loc[sourceFile]
 		if bucket == nil {
 			bucket = make(map[string]string)
-			loc[e.SourceFile] = bucket
+			loc[sourceFile] = bucket
 		}
 		if existing, ok := bucket[e.Name]; ok && existing != e.ID {
 			delete(bucket, e.Name)
-			if ambig[e.SourceFile] == nil {
-				ambig[e.SourceFile] = make(map[string]bool)
+			if ambig[sourceFile] == nil {
+				ambig[sourceFile] = make(map[string]bool)
 			}
-			ambig[e.SourceFile][e.Name] = true
+			ambig[sourceFile][e.Name] = true
 			continue
 		}
 		bucket[e.Name] = e.ID
@@ -767,11 +852,6 @@ func (idx Index) LookupStatus(stub string) (id string, status int) {
 //
 // When passed "" the function behaves exactly like LookupStatus.
 func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) {
-	const (
-		statusRewritten = 1
-		statusAmbiguous = 2
-		statusUnmatched = 3
-	)
 	if stub == "" {
 		return "", statusUnmatched
 	}
@@ -813,15 +893,32 @@ func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) 
 	return "", statusUnmatched
 }
 
+// componentKindFamily / operationKindFamily are the entity-kind families
+// the hint resolver biases toward for type-shaped vs call-shaped edges.
+// Centralising the slices keeps hintKinds and structuralKindFamilies in
+// agreement (issue #49).
+var (
+	componentKindFamily = []string{
+		"Component", "Class", "View", "Model",
+		scopeKindPrefix + "Component",
+		scopeKindPrefix + "View",
+		scopeKindPrefix + "Model",
+	}
+	operationKindFamily = []string{
+		"Operation", "Function", "Method",
+		scopeKindPrefix + "Operation",
+	}
+)
+
 // hintKinds returns the entity-kind families preferred for a given
 // relationship kind. EXTENDS / IMPLEMENTS prefer Component-shaped kinds;
 // CALLS prefers Operation-shaped kinds. Everything else returns nil.
 func hintKinds(relKind string) []string {
 	switch strings.ToUpper(relKind) {
 	case "EXTENDS", "IMPLEMENTS":
-		return []string{"Component", "Class", "View", "Model", "SCOPE.Component", "SCOPE.View", "SCOPE.Model"}
+		return componentKindFamily
 	case "CALLS":
-		return []string{"Operation", "Function", "Method", "SCOPE.Operation"}
+		return operationKindFamily
 	}
 	return nil
 }
@@ -864,27 +961,25 @@ func (idx Index) lookupByKindHint(name, relKind string) (string, bool) {
 // Format A: scope:<kind>:<subtype>:<lang>:<file_path>:<name>
 // Format B: scope:<kind>:<subtype>:<lang>:<file_path>:<scope_name>#<member_name>
 func (idx Index) lookupStructural(stub string) (id string, status int, handled bool) {
-	const (
-		statusRewritten = 1
-		statusAmbiguous = 2
-		statusUnmatched = 3
-	)
-	if !strings.HasPrefix(stub, "scope:") {
-		return "", 0, false
+	if !strings.HasPrefix(stub, stubPrefixScope) {
+		return "", statusSkip, false
 	}
-	parts := strings.SplitN(stub, ":", 6)
-	if len(parts) != 6 {
+	parts := strings.SplitN(stub, stubDelim, stubScopeSegments)
+	if len(parts) != stubScopeSegments {
 		return "", statusUnmatched, true
 	}
-	scopeKind := parts[1] // e.g. "component", "operation"
-	filePath := parts[4]
-	tail := parts[5]
+	scopeKind := parts[stubScopeKindIndex] // e.g. "component", "operation"
+	// Stubs encode file paths in forward-slash form; normalise defensively
+	// in case an upstream emitter slipped an OS-native separator through
+	// (issue #49).
+	filePath := normalizePath(parts[stubScopeFileIndex])
+	tail := parts[stubScopeTailIndex]
 	if filePath == "" || tail == "" {
 		return "", statusUnmatched, true
 	}
 
-	// Format B: tail contains "#" → (scope_name, member_name).
-	if hash := strings.IndexByte(tail, '#'); hash >= 0 {
+	// Format B: tail contains stubMemberDelim → (scope_name, member_name).
+	if hash := strings.IndexByte(tail, stubMemberDelim); hash >= 0 {
 		scopeName, memberName := tail[:hash], tail[hash+1:]
 		if scopeName == "" || memberName == "" {
 			return "", statusUnmatched, true
@@ -929,9 +1024,9 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 func structuralKindFamilies(scopeKind string) []string {
 	switch strings.ToLower(scopeKind) {
 	case "component":
-		return []string{"Component", "Class", "View", "Model", "SCOPE.Component", "SCOPE.View", "SCOPE.Model"}
+		return componentKindFamily
 	case "operation":
-		return []string{"Operation", "Function", "Method", "SCOPE.Operation"}
+		return operationKindFamily
 	}
 	return nil
 }
@@ -971,7 +1066,7 @@ func (idx Index) lookupLocationKind(filePath, name string, families []string) (s
 // splitStub splits a stub string on the first ':' into (kind, name). If no
 // ':' is present the full string is returned as the name and kind is empty.
 func splitStub(s string) (kind, name string) {
-	if i := strings.IndexByte(s, ':'); i >= 0 {
+	if i := strings.IndexByte(s, stubDelim[0]); i >= 0 {
 		return s[:i], s[i+1:]
 	}
 	return "", s
@@ -985,7 +1080,7 @@ func (idx Index) rewriteOne(ref, relKind string) (string, int) {
 		return ref, 0
 	}
 	id, st := idx.LookupStatusHint(ref, relKind)
-	if st == 1 { // statusRewritten
+	if st == statusRewritten {
 		return id, st
 	}
 	return ref, st
@@ -1039,11 +1134,11 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if isHexID(resolvedID) {
 		return DispositionResolved
 	}
-	if strings.HasPrefix(resolvedID, "ext:") {
-		pkg := strings.TrimPrefix(resolvedID, "ext:")
+	if strings.HasPrefix(resolvedID, stubPrefixExternal) {
+		pkg := strings.TrimPrefix(resolvedID, stubPrefixExternal)
 		// Collapse dotted submodules to root for the allowlist check.
 		root := pkg
-		if dot := strings.IndexByte(pkg, '.'); dot > 0 {
+		if dot := strings.IndexByte(pkg, dottedNameSep); dot > 0 {
 			root = pkg[:dot]
 		}
 		if allow != nil && (allow(pkg) || allow(root)) {
@@ -1068,12 +1163,12 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// kind-agnostic. Structural-ref ("scope:...") stubs pull their name
 	// from the trailing segment after the last ':' or '#'.
 	_, name := splitStub(originalStub)
-	if strings.HasPrefix(originalStub, "scope:") {
+	if strings.HasPrefix(originalStub, stubPrefixScope) {
 		// scope:<kind>:<subtype>:<lang>:<file>:<tail>
-		parts := strings.SplitN(originalStub, ":", 6)
-		if len(parts) == 6 {
-			tail := parts[5]
-			if hash := strings.IndexByte(tail, '#'); hash >= 0 {
+		parts := strings.SplitN(originalStub, stubDelim, stubScopeSegments)
+		if len(parts) == stubScopeSegments {
+			tail := parts[stubScopeTailIndex]
+			if hash := strings.IndexByte(tail, stubMemberDelim); hash >= 0 {
 				name = tail[hash+1:]
 			} else {
 				name = tail
@@ -1092,11 +1187,6 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 // applyEndpointStats records a single endpoint's outcome into the Stats
 // counters, updating both the per-endpoint totals and the aggregate ones.
 func applyEndpointStats(stats *Stats, status int, isFrom bool) {
-	const (
-		statusRewritten = 1
-		statusAmbiguous = 2
-		statusUnmatched = 3
-	)
 	switch status {
 	case statusRewritten:
 		stats.Rewritten++
@@ -1174,10 +1264,10 @@ func relLanguage(r *types.RelationshipRecord) string {
 	if r == nil || r.Properties == nil {
 		return ""
 	}
-	if v, ok := r.Properties["language"]; ok && v != "" {
+	if v, ok := r.Properties[propLanguage]; ok && v != "" {
 		return v
 	}
-	if v, ok := r.Properties["lang"]; ok && v != "" {
+	if v, ok := r.Properties[propLang]; ok && v != "" {
 		return v
 	}
 	return ""
@@ -1244,7 +1334,7 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 // graph.EntityID() output. Anything matching this shape is assumed to be an
 // already-resolved entity ID and is left untouched.
 func isHexID(s string) bool {
-	if len(s) != 16 {
+	if len(s) != hexIDLen {
 		return false
 	}
 	for _, c := range s {
