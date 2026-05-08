@@ -194,6 +194,133 @@ func TestExtract_ImportsFromSymbol(t *testing.T) {
 	}
 }
 
+// relProperty returns the value of a property on the first relationship
+// matching (kind, toID) on the named entity, or "" when not found.
+func relProperty(ents []types.EntityRecord, fromName, kind, toID, key string) string {
+	src := findEntity(ents, fromName)
+	if src == nil {
+		return ""
+	}
+	for _, r := range src.Relationships {
+		if r.Kind == kind && r.ToID == toID {
+			return r.Properties[key]
+		}
+	}
+	return ""
+}
+
+// TestExtract_CallsReceiverTypeBinding covers issue #69. Two classes declare
+// a same-named method `process`; a third class's method calls both via
+// constructor expressions `A().process()` and `B().process()`. Both calls
+// must bind to distinct dotted method targets ("A.process", "B.process")
+// rather than collapsing to the bare leaf "process" — which would otherwise
+// either drop as self-recursion (when the caller is also named `process`)
+// or resolve ambiguously across the two same-named entities.
+func TestExtract_CallsReceiverTypeBinding(t *testing.T) {
+	src := `class A:
+    def process(self, x):
+        return x
+
+class B:
+    def process(self, x):
+        return x + 1
+
+class Driver:
+    def process(self, x):
+        a = A().process(x)
+        b = B().process(x)
+        return a + b
+
+    def run(self, x):
+        return self.process(x)
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	ents, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	// Driver.process → A.process and Driver.process → B.process must both
+	// be present as distinct CALLS edges. Critically, even though the caller
+	// is itself named `process`, the bare-leaf self-recursion guard must NOT
+	// drop the receiver-typed targets.
+	if !hasRel(ents, "Driver.process", "CALLS", "A.process") {
+		t.Errorf("expected CALLS Driver.process→A.process, got %+v",
+			findEntity(ents, "Driver.process").Relationships)
+	}
+	if !hasRel(ents, "Driver.process", "CALLS", "B.process") {
+		t.Errorf("expected CALLS Driver.process→B.process, got %+v",
+			findEntity(ents, "Driver.process").Relationships)
+	}
+	// Bare "process" must NOT be emitted — both calls have inferable
+	// receiver types and should be qualified.
+	if hasRel(ents, "Driver.process", "CALLS", "process") {
+		t.Errorf("did not expect bare CALLS Driver.process→process; "+
+			"receiver-typed calls should bind dotted: %+v",
+			findEntity(ents, "Driver.process").Relationships)
+	}
+	// Receiver-typed targets must not carry the ambiguous hint.
+	if h := relProperty(ents, "Driver.process", "CALLS", "A.process",
+		"disposition_hint"); h != "" {
+		t.Errorf("A.process edge should not be marked ambiguous, got %q", h)
+	}
+
+	// Driver.run calls self.process — qualifies to Driver.process. Since
+	// the caller is `run` (not `process`), the edge is a real intra-class
+	// call and must be emitted.
+	if !hasRel(ents, "Driver.run", "CALLS", "Driver.process") {
+		t.Errorf("expected CALLS Driver.run→Driver.process (self.process), "+
+			"got %+v", findEntity(ents, "Driver.run").Relationships)
+	}
+}
+
+// TestExtract_CallsAmbiguousReceiver covers the fallback path: a method call
+// on an unknown-typed receiver (parameter `obj`) must still produce a
+// CALLS edge to the bare leaf, but tagged with disposition_hint=ambiguous
+// so the resolver can classify the edge correctly when it cannot bind.
+func TestExtract_CallsAmbiguousReceiver(t *testing.T) {
+	src := `class C:
+    def run(self, obj):
+        obj.foo()
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	ents, _ := ext.Extract(context.Background(), makeFile(src, tree))
+
+	if !hasRel(ents, "C.run", "CALLS", "foo") {
+		t.Errorf("expected fallback CALLS C.run→foo (bare leaf), got %+v",
+			findEntity(ents, "C.run").Relationships)
+	}
+	if h := relProperty(ents, "C.run", "CALLS", "foo",
+		"disposition_hint"); h != "ambiguous" {
+		t.Errorf("expected disposition_hint=ambiguous on bare-leaf edge, got %q", h)
+	}
+}
+
+// TestExtract_SelfRecursionStillDropped guards the original self-recursion
+// drop after the issue #69 receiver-type fix. `self.process()` inside
+// `class C.process` resolves to C.process — i.e. true self-recursion — and
+// must continue to drop, matching the Go extractor and the legacy Python
+// indexer dedup semantics.
+func TestExtract_SelfRecursionStillDropped(t *testing.T) {
+	src := `class C:
+    def process(self, n):
+        if n <= 0:
+            return 0
+        return self.process(n - 1)
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	ents, _ := ext.Extract(context.Background(), makeFile(src, tree))
+
+	for _, r := range findEntity(ents, "C.process").Relationships {
+		if r.Kind == "CALLS" && (r.ToID == "process" || r.ToID == "C.process") {
+			t.Errorf("self-recursion should not produce a CALLS edge: %+v", r)
+		}
+	}
+}
+
 // TestExtract_NoSelfCall confirms self-recursion is not emitted as a CALLS edge.
 func TestExtract_NoSelfCall(t *testing.T) {
 	src := `def fact(n):
