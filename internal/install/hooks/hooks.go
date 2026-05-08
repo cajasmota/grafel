@@ -28,8 +28,10 @@ var HookNames = []string{"post-commit", "post-merge", "post-checkout"}
 
 // Install writes archigraph hook blocks into <repo>/.git/hooks for every
 // name in HookNames. binPath is the absolute path to the archigraph
-// binary that the hook should invoke.
-func Install(repo, binPath string) error {
+// binary that the hook should invoke. When group is non-empty, the
+// post-commit hook also refreshes the group's cross-repo links file by
+// invoking `archigraph links pass <group>` after re-indexing.
+func Install(repo, binPath string, group ...string) error {
 	hooksDir, err := hooksDir(repo)
 	if err != nil {
 		return err
@@ -37,9 +39,13 @@ func Install(repo, binPath string) error {
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return err
 	}
+	g := ""
+	if len(group) > 0 {
+		g = group[0]
+	}
 	for _, name := range HookNames {
 		path := filepath.Join(hooksDir, name)
-		if err := installOne(path, BlockFor(name, binPath, repo)); err != nil {
+		if err := installOne(path, BlockFor(name, binPath, repo, g)); err != nil {
 			return fmt.Errorf("hook %s: %w", name, err)
 		}
 	}
@@ -75,12 +81,26 @@ func Uninstall(repo string) error {
 }
 
 // BlockFor returns the managed hook body for a single hook name.
-func BlockFor(hookName, binPath, repo string) string {
-	return fmt.Sprintf(`%s
+// When group is non-empty the block also refreshes the cross-repo
+// links table by invoking `archigraph links pass <group>`.
+func BlockFor(hookName, binPath, repo string, group ...string) string {
+	g := ""
+	if len(group) > 0 {
+		g = group[0]
+	}
+	if g == "" {
+		return fmt.Sprintf(`%s
 # archigraph %s — re-index the repo after %s.
 %q index %q >/dev/null 2>&1 || true
 %s
 `, MarkerBegin, hookName, hookName, binPath, repo, MarkerEnd)
+	}
+	return fmt.Sprintf(`%s
+# archigraph %s — re-index the repo and refresh cross-repo links for group %s.
+%q index %q >/dev/null 2>&1 || true
+%q links pass %q >/dev/null 2>&1 || true
+%s
+`, MarkerBegin, hookName, g, binPath, repo, binPath, g, MarkerEnd)
 }
 
 func hooksDir(repo string) (string, error) {

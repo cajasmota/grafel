@@ -52,6 +52,7 @@ func newRoot() *cobra.Command {
 		newWatchCmd(),
 		newIndexCmd(),
 		newMCPCmd(),
+		newLinksCmd(),
 		newHelpCmd(),
 	)
 

@@ -90,5 +90,10 @@ func runRebuild(cmd *cobra.Command, args []string, wipe bool) error {
 			return err
 		}
 	}
+	// After re-indexing, refresh cross-repo link passes for the group.
+	// Best-effort: a failure here shouldn't abort the rebuild.
+	if err := runLinksForGroup(cmd, groupName); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: link passes failed: %v\n", err)
+	}
 	return nil
 }

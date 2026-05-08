@@ -92,7 +92,7 @@ func Apply(opts Options) (*Result, error) {
 		}
 		if !opts.SkipHooks && opts.Config.Features.GitHooks {
 			if !opts.DryRun {
-				if err := hooks.Install(repo, opts.BinPath); err != nil {
+				if err := hooks.Install(repo, opts.BinPath, opts.Group); err != nil {
 					return nil, fmt.Errorf("hooks for %s: %w", repo, err)
 				}
 			}
