@@ -625,8 +625,10 @@ on-disk `graph.json` keeps the namespaced form.
 | `SCOPE.CodeBlock` | `CodeBlock` | Anonymous block / lambda / closure. |
 | `SCOPE.Document` | `Document` | Markdown / RST / ADoc documents. |
 | `SCOPE.Heading` | `Heading` | In-document headings (markdown extractor). |
-| `SCOPE.TestCoverage` | `TestCoverage` | Test-coverage units (test fn → covered entity). |
-| `SCOPE.DeprecationAnnotation` | `DeprecationAnnotation` | Deprecation markers (`@deprecated`, `Obsolete`). |
+| `SCOPE.External` | `External` | Synthesised placeholder for an external package or symbol. |
+| `SCOPE.Project` | `Project` | Project-level marker entity (one per repo / project root). |
+| `SCOPE.Config` | `Config` | Config files, env vars, auth/CORS/connection-pool/logging policies. |
+| `SCOPE.Model` | `Model` | Domain / data model entities (Django/Rails/ActiveRecord etc.). |
 | `SCOPE.ScopeUnknown` | `ScopeUnknown` | Catch-all when extractor cannot classify. |
 
 ---
@@ -650,10 +652,8 @@ Relationship `kind` is a closed enum (ADR-0003). All edges are directed
 | `ROUTES_TO` | Router/route declaration points at a handler (DRF router, Spring `@GetMapping`, Express route). |
 | `SERVES` | Endpoint serves a route, view, or resource. |
 | `PUBLISHES_TO` | Producer writes to a queue / topic / event bus. |
-| `CONSUMES_QUEUE` | Consumer reads from a queue / topic. |
-| `TRIGGERS_LAMBDA` | Trigger source fires a serverless function. |
-| `READS_TABLE` | DataAccess reads from a Datastore. |
-| `WRITES_TABLE` | DataAccess writes to a Datastore. |
+| `RENDERS` | UI Component renders another Component (React / Vue / JSX subtree). |
+| `RETURNS` | Operation/Function returns a Schema or typed value. |
 | `TESTS` | Test entity exercises another entity. |
 
 The full list of edge kinds the agent may pass to `archigraph_search`'s

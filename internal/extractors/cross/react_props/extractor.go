@@ -94,18 +94,18 @@ func (e *Extractor) Language() string { return "_cross_react_props" }
 
 const (
 	// KindOperation mirrors the JS/TS extractor so props-annotated components
-	// dedupe via EntityRecord.ComputeID.
-	KindOperation = "SCOPE.Operation"
+	// dedupe via EntityRecord.ComputeID. Source of truth: types.EntityKindOperation.
+	KindOperation = string(types.EntityKindOperation)
 	// KindSchema mirrors the JS/TS extractor for interface / type decls.
-	KindSchema = "SCOPE.Schema"
+	KindSchema = string(types.EntityKindSchema)
 
 	// RelHasProps, RelRenders, RelUsesHook are the three relationship kinds
 	// this extractor emits. These string values are mapped to the proto
 	// RELATIONSHIP_TYPE_HAS_PROPS / _RENDERS / _USES_HOOK enum entries on the
-	// graph ingestion side.
-	RelHasProps = "HAS_PROPS"
-	RelRenders  = "RENDERS"
-	RelUsesHook = "USES_HOOK"
+	// graph ingestion side. Source of truth: types.RelationshipKind* (Issue #77).
+	RelHasProps = string(types.RelationshipKindHasProps)
+	RelRenders  = string(types.RelationshipKindRenders)
+	RelUsesHook = string(types.RelationshipKindUsesHook)
 
 	// propsMaxLen is the max byte length of the comma-separated `props`
 	// entity property.
