@@ -195,6 +195,34 @@ func classifyExternal(stub, relKind string) (canonical, subtype string, ok bool)
 		}
 	}
 
+	// Issue #82: Format A structural-refs that survived the resolver are
+	// dangling by definition (the resolver rewrites resolved endpoints
+	// to hex IDs). For EXTENDS edges from cross/hierarchy, the tail is
+	// the parent class name — when it looks like an external import
+	// (dotted, e.g. "serializers.ModelSerializer" or "rest_framework.
+	// generics.ListAPIView"), synthesise a placeholder for the package
+	// root. Bare-name tails are intentionally NOT handled here because
+	// they could be either a local class or an external base — the
+	// existing allowlist branch below already catches the well-known
+	// cases.
+	//
+	// Format A: scope:<kind>:<subtype>:<lang>:<file_path>:<name>
+	// We pull the trailing segment after the last ':' (file paths in
+	// archigraph entity refs are normalised to forward slashes, so the
+	// last ':' is the kind/name separator, not part of the path).
+	if strings.HasPrefix(stub, "scope:") {
+		if idx := strings.LastIndexByte(stub, ':'); idx >= 0 && idx < len(stub)-1 {
+			tail := stub[idx+1:]
+			if looksLikeExternalImport(tail) {
+				root := tail
+				if dot := strings.IndexByte(tail, '.'); dot > 0 {
+					root = tail[:dot]
+				}
+				return root, "package", true
+			}
+		}
+	}
+
 	// Strip a leading "Kind:" prefix if present — e.g. "Module:django"
 	// or "Function:Println". The remainder is what we classify.
 	name := stub
@@ -647,6 +675,65 @@ func isKindLikePrefix(s string) bool {
 	}
 	for _, c := range s {
 		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '.') {
+			return false
+		}
+	}
+	return true
+}
+
+// looksLikeExternalImport reports whether a bare name has the shape of
+// a dotted external import — at least one dot, terminal segment is a
+// capitalised identifier, and no path separators. Used by Pass 4.5
+// (issue #82) to synthesise placeholders for dangling EXTENDS targets
+// like "serializers.ModelSerializer" that cross/hierarchy emits as
+// structural-refs without an :external: marker.
+func looksLikeExternalImport(s string) bool {
+	if s == "" {
+		return false
+	}
+	if strings.ContainsAny(s, "/\\ \t") {
+		return false
+	}
+	dot := strings.IndexByte(s, '.')
+	if dot <= 0 || dot >= len(s)-1 {
+		return false
+	}
+	// Every segment must be a valid identifier (letters, digits, '_'),
+	// non-empty, and not start with a digit.
+	for _, seg := range strings.Split(s, ".") {
+		if !isIdentSegment(seg) {
+			return false
+		}
+	}
+	// Terminal segment must start with an uppercase letter — the
+	// convention for class/type names that show up as EXTENDS targets.
+	last := s[strings.LastIndexByte(s, '.')+1:]
+	if last == "" {
+		return false
+	}
+	c := last[0]
+	if !(c >= 'A' && c <= 'Z') {
+		return false
+	}
+	return true
+}
+
+// isIdentSegment reports whether s is a non-empty identifier segment
+// (ASCII letters/digits/underscore, not starting with a digit).
+func isIdentSegment(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c == '_':
+		case c >= '0' && c <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
 			return false
 		}
 	}

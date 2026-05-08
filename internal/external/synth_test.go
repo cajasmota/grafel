@@ -328,6 +328,76 @@ func TestSynthesize_ScopedNpm(t *testing.T) {
 	}
 }
 
+// TestSynthesize_DanglingExtendsStructuralRef covers issue #82:
+// cross/hierarchy emits EXTENDS edges to parent classes as Format A
+// structural-refs ("scope:component:class:<lang>:<file>:<name>"). When
+// the parent isn't declared in the corpus, the resolver leaves the
+// stub untouched and Pass 4.5 must synthesise an external placeholder
+// rather than leaving the edge dangling.
+func TestSynthesize_DanglingExtendsStructuralRef(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "abcdef0123456789", Name: "MySerializer", Kind: "SCOPE.Component", SourceFile: "myapp/serializers.py"},
+		},
+		Relationships: []graph.Relationship{
+			{
+				ID:     "rel-1",
+				FromID: "abcdef0123456789",
+				ToID:   "scope:component:class:python:myapp/serializers.py:serializers.ModelSerializer",
+				Kind:   "EXTENDS",
+			},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 1 {
+		t.Fatalf("synthesized=%d, want 1", stats.Synthesized)
+	}
+	if stats.RelationshipsResolved != 1 {
+		t.Fatalf("resolved=%d, want 1", stats.RelationshipsResolved)
+	}
+	if doc.Relationships[0].ToID != "ext:serializers" {
+		t.Fatalf("rel ToID=%q, want ext:serializers", doc.Relationships[0].ToID)
+	}
+	// Verify the placeholder entity exists and has the expected shape.
+	var found bool
+	for _, e := range doc.Entities {
+		if e.ID == "ext:serializers" {
+			found = true
+			if e.Kind != KindExternal {
+				t.Fatalf("placeholder kind=%q, want %q", e.Kind, KindExternal)
+			}
+			if e.Subtype != "package" {
+				t.Fatalf("placeholder subtype=%q, want package", e.Subtype)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("ext:serializers entity not appended; entities=%+v", doc.Entities)
+	}
+}
+
+// TestSynthesize_DanglingExtendsLocalUntouched confirms the dangling
+// structural-ref branch does NOT synthesise placeholders for tails
+// that look like local class names — bare identifiers without a dot
+// or terminal-lowercase tails should fall through unchanged.
+func TestSynthesize_DanglingExtendsLocalUntouched(t *testing.T) {
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			// Bare local class — no dot, must not be synthesised.
+			{ID: "rel-1", FromID: "x", ToID: "scope:component:class:python:myapp/models.py:LocalBase", Kind: "EXTENDS"},
+			// Format B (member ref) — must not be synthesised.
+			{ID: "rel-2", FromID: "y", ToID: "scope:component:class:python:myapp/models.py:Outer#inner", Kind: "EXTENDS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("synthesized=%d, want 0", stats.Synthesized)
+	}
+	if stats.RelationshipsResolved != 0 {
+		t.Fatalf("resolved=%d, want 0", stats.RelationshipsResolved)
+	}
+}
+
 // TestSynthesize_ExpandedAllowlist exercises a handful of the v1.1
 // allowlist additions to guard against accidental regressions when the
 // list is edited.
