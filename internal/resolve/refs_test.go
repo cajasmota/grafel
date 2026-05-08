@@ -443,7 +443,12 @@ func TestDisposition_ExternalUnknown(t *testing.T) {
 }
 
 func TestDisposition_Dynamic(t *testing.T) {
-	rels := []types.RelationshipRecord{{FromID: "0000000000000000", ToID: "getattr(self, name)", Kind: "CALLS"}}
+	rels := []types.RelationshipRecord{{
+		FromID:     "0000000000000000",
+		ToID:       "getattr(self, name)",
+		Kind:       "CALLS",
+		Properties: map[string]string{"language": "python"},
+	}}
 	idx := BuildIndex(nil)
 	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
 	if got := stats.DispositionCounts[DispositionDynamic]; got != 1 {

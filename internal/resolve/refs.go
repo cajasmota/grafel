@@ -94,92 +94,198 @@ var AllDispositions = []Disposition{
 	DispositionUnclassified,
 }
 
-// dynamicPatterns is the catalog of stub shapes that are intrinsically
-// unresolvable by static analysis. Matches here are tagged DispositionDynamic
-// instead of being classified as resolver/extractor bugs. Patterns are kept
-// tight — false positives steal accuracy from `resolved` / `external-*`.
+// Per-language dynamic-dispatch pattern catalogs (Refs #44).
 //
-// v1.0 was a small seed list (Python getattr, JS Reflect, env-driven names,
-// template-built strings). Refs #44 expands it per-language to cover the
-// reflective / string-built / runtime-dispatched call forms commonly emitted
-// as stubs by the per-language extractors.
-var dynamicPatterns = []*regexp.Regexp{
-	// ---- Python ---------------------------------------------------------
-	regexp.MustCompile(`^getattr\(`),                // getattr(obj, name)(...)
-	regexp.MustCompile(`^__getattr__$`),             // __getattr__ magic name
-	regexp.MustCompile(`^.*\.__getattr__\(`),        // obj.__getattr__("name")
-	regexp.MustCompile(`^.*\.__getattribute__\(`),   // obj.__getattribute__(...)
-	regexp.MustCompile(`^setattr\(`),                // setattr-driven dispatch
-	regexp.MustCompile(`^globals\(\)\[`),            // globals()[name](...)
-	regexp.MustCompile(`^locals\(\)\[`),             // locals()[name](...)
-	regexp.MustCompile(`^vars\(\)\[`),               // vars()[name](...)
-	regexp.MustCompile(`^eval\(`),                   // eval(...)
-	regexp.MustCompile(`^exec\(`),                   // exec(...)
-	regexp.MustCompile(`^__import__\(`),             // __import__("modname")
-	regexp.MustCompile(`^importlib\.`),              // importlib.import_module / etc
-	regexp.MustCompile(`^functools\.partial\(`),     // functools.partial(...)
-	regexp.MustCompile(`^functools\.partialmethod\(`),
-	regexp.MustCompile(`^functools\.reduce\(`),
-	regexp.MustCompile(`^operator\.methodcaller\(`), // operator.methodcaller("name")
-	regexp.MustCompile(`^operator\.attrgetter\(`),   // operator.attrgetter(...)
-	regexp.MustCompile(`^operator\.itemgetter\(`),   // operator.itemgetter(...)
-	regexp.MustCompile(`^os\.environ\[`),            // env-driven (Python)
-	regexp.MustCompile(`^os\.getenv\(`),             // env-driven (Python)
-	// dispatch via dict/list subscript: handlers[key](...), funcs["x"](...).
-	// Anchored "<ident>[...](...)" so we don't bite plain attribute access.
-	regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]*\[[^\]]+\]\(`),
+// Matches here tag a stub as DispositionDynamic instead of bug-extractor /
+// bug-resolver. The original Refs #44 commit used a single flat slice tested
+// against every stub regardless of source language; that produced false
+// positives (a Node `res.send("hello")` matched the Ruby `.send(` pattern,
+// `repo.Lookup(id)` matched the Go `plugin.Lookup` pattern, etc.).
+//
+// The fix groups patterns by the language that owns the runtime-dispatch
+// idiom. Patterns that are intrinsically reflective regardless of language
+// (template-built names) live in crossLangDynamicPatterns. Receiver-anchored
+// reflection APIs that have a unique fully-qualified shape (Go's
+// `plugin.Lookup`, JVM `Method.invoke` / `Class.forName().newInstance()`)
+// stay tight enough to be safe even when language is unknown — they go in
+// the per-language slice plus a small "safe-anchored" cross-language slice.
+//
+// Language identifiers follow the structural-ref `<lang>:` segment
+// convention: "python", "go", "javascript" (also "typescript"), "ruby",
+// "java" (also "kotlin", "scala", "jvm"). Unknown / empty languages fall
+// back to crossLangDynamicPatterns + safeAnchoredDynamicPatterns only.
+var (
+	pythonDynamicPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`^getattr\(`),                  // getattr(obj, name)(...)
+		regexp.MustCompile(`^__getattr__$`),               // __getattr__ magic name
+		regexp.MustCompile(`^.*\.__getattr__\(`),          // obj.__getattr__("name")
+		regexp.MustCompile(`^.*\.__getattribute__\(`),     // obj.__getattribute__(...)
+		regexp.MustCompile(`^setattr\(`),                  // setattr-driven dispatch
+		regexp.MustCompile(`^globals\(\)\[`),              // globals()[name](...)
+		regexp.MustCompile(`^locals\(\)\[`),               // locals()[name](...)
+		regexp.MustCompile(`^vars\(\)\[`),                 // vars()[name](...)
+		regexp.MustCompile(`^eval\(`),                     // eval(...)
+		regexp.MustCompile(`^exec\(`),                     // exec(...)
+		regexp.MustCompile(`^__import__\(`),               // __import__("modname")
+		regexp.MustCompile(`^importlib\.`),                // importlib.import_module / etc
+		regexp.MustCompile(`^functools\.partial\(`),       // functools.partial(...)
+		regexp.MustCompile(`^functools\.partialmethod\(`),
+		regexp.MustCompile(`^functools\.reduce\(`),
+		regexp.MustCompile(`^operator\.methodcaller\(`), // operator.methodcaller("name")
+		regexp.MustCompile(`^operator\.attrgetter\(`),   // operator.attrgetter(...)
+		regexp.MustCompile(`^operator\.itemgetter\(`),   // operator.itemgetter(...)
+		regexp.MustCompile(`^os\.environ\[`),            // env-driven (Python)
+		regexp.MustCompile(`^os\.getenv\(`),             // env-driven (Python)
+		// dispatch via dict/list subscript: handlers[key](...), funcs["x"](...).
+		// Anchored "<ident>[...](...)" so we don't bite plain attribute access.
+		regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]*\[[^\]]+\]\(`),
+	}
 
-	// ---- Go -------------------------------------------------------------
-	regexp.MustCompile(`^reflect\.`),                  // reflect.* (Call, ValueOf, MethodByName, ...)
-	regexp.MustCompile(`\.MethodByName\(`),            // v.MethodByName("X").Call(...)
-	regexp.MustCompile(`\.FieldByName\(`),             // v.FieldByName("X")
-	regexp.MustCompile(`^plugin\.Open\(`),             // Go plugin loader
-	regexp.MustCompile(`\.Lookup\(`),                  // plugin.Lookup / sym lookup
+	goDynamicPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`^reflect\.`),       // reflect.* (Call, ValueOf, MethodByName, ...)
+		regexp.MustCompile(`\.MethodByName\(`), // v.MethodByName("X").Call(...)
+		regexp.MustCompile(`\.FieldByName\(`),  // v.FieldByName("X")
+		regexp.MustCompile(`^plugin\.Open\(`),  // Go plugin loader
+		// Anchored: only `plugin.Lookup(` (or `<x>.plugin.Lookup(`) — bare
+		// `repo.Lookup(id)` / `cache.Lookup(...)` are NOT reflection.
+		regexp.MustCompile(`\bplugin\.Lookup\(`),
+	}
 
-	// ---- TypeScript / JavaScript ----------------------------------------
-	regexp.MustCompile(`^Reflect\.`),                  // Reflect.apply / Reflect.construct / Reflect.get
-	regexp.MustCompile(`^Function\(`),                 // new Function(src)
-	regexp.MustCompile(`^new Function\(`),             // new Function(src)
-	regexp.MustCompile(`^import\(`),                   // dynamic import("...")
-	regexp.MustCompile(`^require\(`),                  // dynamic require(expr)
-	regexp.MustCompile(`^.*\.bind\(`),                 // dynamic this binding
-	regexp.MustCompile(`^.*\.apply\(`),                // .apply(thisArg, args)
-	regexp.MustCompile(`^.*\.call\(`),                 // .call(thisArg, ...)
-	regexp.MustCompile(`^process\.env\.`),             // env-driven (JS)
+	jsDynamicPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`^Reflect\.`),     // Reflect.apply / Reflect.construct / Reflect.get
+		regexp.MustCompile(`^Function\(`),    // Function(src)
+		regexp.MustCompile(`^new Function\(`), // new Function(src)
+		// Dynamic import / require: must NOT be a literal-string first arg —
+		// `require("fs")` and `import("./mod")` are statically resolvable.
+		regexp.MustCompile("^require\\([^\"'`)]"),
+		regexp.MustCompile("^import\\([^\"'`)]"),
+		regexp.MustCompile(`^process\.env\.`), // env-driven (JS)
+		// JS reflective `Function.prototype.{bind,apply,call}` is real, but
+		// the bare `.bind(` / `.apply(` / `.call(` patterns collide with too
+		// many domain methods (DB driver `bind`, `discount.apply(order)`,
+		// `controller.call(...)`). Keep them out of the JS catalog; the
+		// extractors tag truly reflective uses (e.g. `Reflect.apply`) which
+		// the explicit `Reflect\.` pattern above already covers.
+	}
 
-	// ---- Ruby -----------------------------------------------------------
-	regexp.MustCompile(`^.*\.send\(`),                 // obj.send(:name)
-	regexp.MustCompile(`^send\(`),                     // bare send(:name)
-	regexp.MustCompile(`^.*\.public_send\(`),          // obj.public_send(:name)
-	regexp.MustCompile(`^public_send\(`),
-	regexp.MustCompile(`^.*\.__send__\(`),             // obj.__send__(:name)
-	regexp.MustCompile(`^method_missing$`),            // ruby method_missing hook
-	regexp.MustCompile(`^.*\.method_missing\(`),
-	regexp.MustCompile(`^define_method\(`),            // metaprogramming
-	regexp.MustCompile(`^.*\.define_method\(`),
-	regexp.MustCompile(`^.*\.instance_eval\(`),
-	regexp.MustCompile(`^.*\.class_eval\(`),
+	rubyDynamicPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`^.*\.send\(`),        // obj.send(:name) — Ruby ONLY
+		regexp.MustCompile(`^send\(`),            // bare send(:name)
+		regexp.MustCompile(`^.*\.public_send\(`), // obj.public_send(:name)
+		regexp.MustCompile(`^public_send\(`),
+		regexp.MustCompile(`^.*\.__send__\(`),    // obj.__send__(:name)
+		regexp.MustCompile(`^method_missing$`),   // ruby method_missing hook
+		regexp.MustCompile(`^.*\.method_missing\(`),
+		regexp.MustCompile(`^define_method\(`),   // metaprogramming
+		regexp.MustCompile(`^.*\.define_method\(`),
+		regexp.MustCompile(`^.*\.instance_eval\(`),
+		regexp.MustCompile(`^.*\.class_eval\(`),
+	}
 
-	// ---- Java / Kotlin / JVM --------------------------------------------
-	regexp.MustCompile(`\.invoke\(`),                  // Method.invoke(...)
-	regexp.MustCompile(`^Class\.forName\(`),           // Class.forName("...")
-	regexp.MustCompile(`\.newInstance\(`),             // Class.forName(x).newInstance()
-	regexp.MustCompile(`^ServiceLoader\.load\(`),      // ServiceLoader.load(...)
-	regexp.MustCompile(`^System\.getenv\(`),           // env-driven (JVM)
+	jvmDynamicPatterns = []*regexp.Regexp{
+		// JVM reflection invoke is `Method.invoke(...)` or
+		// `Constructor.invoke(...)`. Anchored to those receivers so a
+		// user-defined `cli.invoke(...)` / `cmd.invoke(...)` does NOT match.
+		regexp.MustCompile(`\b(?:Method|Constructor)\.invoke\(`),
+		regexp.MustCompile(`^Class\.forName\(`), // Class.forName("...")
+		// Anchored to the reflective `Class.forName(...).newInstance()` /
+		// `<Type>.class.newInstance()` shape so a plain factory method
+		// named `newInstance()` on a domain class does NOT match.
+		regexp.MustCompile(`Class\.forName\([^)]*\)\.newInstance\(`),
+		regexp.MustCompile(`\.class\.newInstance\(`),
+		regexp.MustCompile(`^ServiceLoader\.load\(`), // ServiceLoader.load(...)
+		regexp.MustCompile(`^System\.getenv\(`),      // env-driven (JVM)
+	}
 
-	// ---- Cross-language: string interpolation / templated names --------
-	regexp.MustCompile(`.*\$\{.*\}.*`), // template-built strings ${x}
+	// Cross-language patterns that are safe to evaluate when language is
+	// unknown. Template-built names (`${x}` interpolation) are reflection-
+	// shaped in every language that has them.
+	crossLangDynamicPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`.*\$\{.*\}.*`), // template-built strings ${x}
+	}
+
+	// dynamicPatternsByLang dispatches a normalized language tag to its
+	// per-language pattern slice. Keys are lower-case canonical names; the
+	// resolver normalizes incoming tags before lookup.
+	dynamicPatternsByLang = map[string][]*regexp.Regexp{
+		"python":     pythonDynamicPatterns,
+		"go":         goDynamicPatterns,
+		"javascript": jsDynamicPatterns,
+		"typescript": jsDynamicPatterns,
+		"ruby":       rubyDynamicPatterns,
+		"java":       jvmDynamicPatterns,
+		"kotlin":     jvmDynamicPatterns,
+		"scala":      jvmDynamicPatterns,
+		"jvm":        jvmDynamicPatterns,
+	}
+)
+
+// normalizeLang lowercases a language tag and maps a few common aliases to
+// the canonical key used by dynamicPatternsByLang. Unknown tags pass
+// through unchanged so the lookup miss falls through to the cross-language
+// catalog.
+func normalizeLang(lang string) string {
+	l := strings.ToLower(strings.TrimSpace(lang))
+	switch l {
+	case "py":
+		return "python"
+	case "js":
+		return "javascript"
+	case "ts":
+		return "typescript"
+	case "rb":
+		return "ruby"
+	case "kt":
+		return "kotlin"
+	}
+	return l
 }
 
-// isDynamicPattern reports whether the stub matches any pattern in
-// dynamicPatterns. Empty stubs return false.
+// inferLangFromStub extracts the language tag from a structural-ref stub
+// (`scope:<kind>:<subtype>:<lang>:<file>:<tail>`). Returns "" for stubs that
+// aren't structural refs.
+func inferLangFromStub(stub string) string {
+	if !strings.HasPrefix(stub, "scope:") {
+		return ""
+	}
+	parts := strings.SplitN(stub, ":", 6)
+	if len(parts) < 5 {
+		return ""
+	}
+	return normalizeLang(parts[3])
+}
+
+// isDynamicPattern reports whether the stub matches any reflective /
+// runtime-dispatch pattern. Equivalent to isDynamicPatternLang with a
+// best-effort language inference (structural-ref segment when available;
+// empty otherwise → cross-language catalog only).
 func isDynamicPattern(stub string) bool {
+	return isDynamicPatternLang(stub, inferLangFromStub(stub))
+}
+
+// isDynamicPatternLang gates pattern evaluation on the supplied language.
+// When lang resolves to a known per-language catalog only that catalog plus
+// the cross-language catalog runs; the receiver-anchored patterns inside
+// each per-language slice are already tight enough to be safe.
+//
+// Empty / unknown languages run only the cross-language catalog. This is
+// deliberately conservative: a language-agnostic call site like
+// `res.send("hello")` (Node) or `repo.Lookup(id)` (Go domain code) must
+// NOT be classified Dynamic without positive evidence.
+func isDynamicPatternLang(stub, lang string) bool {
 	if stub == "" {
 		return false
 	}
-	for _, re := range dynamicPatterns {
+	for _, re := range crossLangDynamicPatterns {
 		if re.MatchString(stub) {
 			return true
+		}
+	}
+	if patterns, ok := dynamicPatternsByLang[normalizeLang(lang)]; ok {
+		for _, re := range patterns {
+			if re.MatchString(stub) {
+				return true
+			}
 		}
 	}
 	return false
@@ -905,14 +1011,26 @@ func (idx Index) nameExists(name string) bool {
 // carries (post-rewrite); originalStub is the value the endpoint had on
 // entry. allow is the optional external-package allowlist.
 //
+// Equivalent to classifyDispositionLang with no caller-supplied language.
+// Language is inferred from the stub itself (structural-ref `<lang>:`
+// segment) when possible.
+func (idx Index) classifyDisposition(resolvedID, originalStub string, allow ExternalAllowlist) Disposition {
+	return idx.classifyDispositionLang(resolvedID, originalStub, "", allow)
+}
+
+// classifyDispositionLang is classifyDisposition with an explicit language
+// tag (typically pulled from RelationshipRecord.Properties["language"] or
+// the equivalent edge-level field). The language gates which per-language
+// dynamic-dispatch catalog runs.
+//
 // Order of checks matters:
 //  1. Already a 16-char hex → Resolved.
 //  2. "ext:<pkg>" prefix → ExternalKnown / ExternalUnknown depending on allow.
-//  3. Dynamic-pattern match on the original stub → Dynamic.
+//  3. Dynamic-pattern match on the original stub (gated by language) → Dynamic.
 //  4. Stub of form "Kind:Name" or bare "Name" → BugExtractor when the name
 //     has zero entities in the graph; BugResolver when it does.
 //  5. Anything else → Unclassified.
-func (idx Index) classifyDisposition(resolvedID, originalStub string, allow ExternalAllowlist) Disposition {
+func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, allow ExternalAllowlist) Disposition {
 	if isHexID(resolvedID) {
 		return DispositionResolved
 	}
@@ -929,7 +1047,16 @@ func (idx Index) classifyDisposition(resolvedID, originalStub string, allow Exte
 		return DispositionExternalUnknown
 	}
 	// Endpoint still carries its original stub (resolver left it alone).
-	if isDynamicPattern(originalStub) {
+	// Language preference order: caller-supplied tag (from the edge's
+	// Properties["language"], threaded through ReferencesWithAllowlist),
+	// then structural-ref `<lang>:` segment as fallback. Non-structural
+	// stubs without a caller-supplied language run only the cross-language
+	// catalog — see isDynamicPatternLang.
+	effLang := lang
+	if effLang == "" {
+		effLang = inferLangFromStub(originalStub)
+	}
+	if isDynamicPatternLang(originalStub, effLang) {
 		return DispositionDynamic
 	}
 	// Strip a "Kind:" prefix when present so the name-existence check is
@@ -1008,12 +1135,13 @@ func ReferencesWithAllowlist(rels []types.RelationshipRecord, idx Index, allow E
 	var stats Stats
 	for k := range rels {
 		r := &rels[k]
+		lang := relLanguage(r)
 		if r.FromID != "" && !isHexID(r.FromID) {
 			orig := r.FromID
 			newID, st := idx.rewriteOne(r.FromID, r.Kind)
 			r.FromID = newID
 			applyEndpointStats(&stats, st, true)
-			d := idx.classifyDisposition(r.FromID, orig, allow)
+			d := idx.classifyDispositionLang(r.FromID, orig, lang, allow)
 			stats.recordDisposition(d, orig)
 		} else if isHexID(r.FromID) {
 			stats.recordDisposition(DispositionResolved, r.FromID)
@@ -1023,7 +1151,7 @@ func ReferencesWithAllowlist(rels []types.RelationshipRecord, idx Index, allow E
 			newID, st := idx.rewriteOne(r.ToID, r.Kind)
 			r.ToID = newID
 			applyEndpointStats(&stats, st, false)
-			d := idx.classifyDisposition(r.ToID, orig, allow)
+			d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
 			stats.recordDisposition(d, orig)
 		} else if isHexID(r.ToID) {
 			stats.recordDisposition(DispositionResolved, r.ToID)
@@ -1031,6 +1159,23 @@ func ReferencesWithAllowlist(rels []types.RelationshipRecord, idx Index, allow E
 	}
 	stats.finalizeDispositions()
 	return stats
+}
+
+// relLanguage extracts the source-language tag for a RelationshipRecord.
+// Looks first at Properties["language"] (the canonical key emitted by the
+// per-language extractors), then Properties["lang"] (legacy alias), then
+// returns "" so the classifier falls back to structural-ref inference.
+func relLanguage(r *types.RelationshipRecord) string {
+	if r == nil || r.Properties == nil {
+		return ""
+	}
+	if v, ok := r.Properties["language"]; ok && v != "" {
+		return v
+	}
+	if v, ok := r.Properties["lang"]; ok && v != "" {
+		return v
+	}
+	return ""
 }
 
 // ReferencesEmbedded walks every EntityRecord's embedded Relationships slice
@@ -1053,14 +1198,23 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 	var stats Stats
 	for k := range records {
 		rels := records[k].Relationships
+		// Embedded relationships inherit the parent entity's language when
+		// the edge itself doesn't carry one — Pass 1 extractors emit edges
+		// without a language property because their parent entity already
+		// pins it.
+		parentLang := records[k].Language
 		for j := range rels {
 			r := &rels[j]
+			lang := relLanguage(r)
+			if lang == "" {
+				lang = parentLang
+			}
 			if r.FromID != "" && !isHexID(r.FromID) {
 				orig := r.FromID
 				newID, st := idx.rewriteOne(r.FromID, r.Kind)
 				r.FromID = newID
 				applyEndpointStats(&stats, st, true)
-				d := idx.classifyDisposition(r.FromID, orig, allow)
+				d := idx.classifyDispositionLang(r.FromID, orig, lang, allow)
 				stats.recordDisposition(d, orig)
 			} else if isHexID(r.FromID) {
 				stats.recordDisposition(DispositionResolved, r.FromID)
@@ -1070,7 +1224,7 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 				newID, st := idx.rewriteOne(r.ToID, r.Kind)
 				r.ToID = newID
 				applyEndpointStats(&stats, st, false)
-				d := idx.classifyDisposition(r.ToID, orig, allow)
+				d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
 				stats.recordDisposition(d, orig)
 			} else if isHexID(r.ToID) {
 				stats.recordDisposition(DispositionResolved, r.ToID)
