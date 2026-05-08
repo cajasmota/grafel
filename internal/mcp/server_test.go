@@ -64,7 +64,7 @@ func fixtureDoc(repo string) *graph.Document {
 	return &graph.Document{
 		Version: 1, GeneratedAt: time.Now(), Repo: repo,
 		Entities: []graph.Entity{
-			mk("a1", "DashboardScreen", "src/DashboardScreen.tsx", "SCOPE.component", 10),
+			mk("a1", "DashboardScreen", "src/DashboardScreen.tsx", "SCOPE.Component", 10),
 			mk("a2", "useProposalCounts", "src/hooks/proposals.ts", "function", 20),
 			mk("a3", "ProposalsService", "src/services/Proposals.ts", "class", 30),
 			mk("a4", "rareUniqueWidget", "src/widgets/Rare.tsx", "function", 40),
@@ -238,9 +238,11 @@ func TestCompactFormatStripsScope(t *testing.T) {
 	rr := renderResult{
 		MatchedTotal: 1,
 		Nodes: []nodeWithRepo{{
-			Repo: "x", Score: 1, Entity: &graph.Entity{Name: "Foo", Kind: "SCOPE.component", SourceFile: "f.go", StartLine: 1},
+			Repo: "x", Score: 1, Entity: &graph.Entity{Name: "Foo", Kind: "SCOPE.Component", SourceFile: "f.go", StartLine: 1},
 		}},
 		Edges:   []renderEdge{{From: "Foo", To: "Bar", Kind: "SCOPE.IMPORTS"}, {From: "A", To: "B", Kind: "calls"}},
+		// Note: "SCOPE.IMPORTS" left intact as input to verify the renderer
+		// still strips the historical-bug prefix form (Issue #77 reconciliation).
 		OneRepo: true,
 	}
 	out := renderCompact(rr, 0)

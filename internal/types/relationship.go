@@ -6,7 +6,7 @@ import (
 )
 
 // RelationshipRecord represents a directed edge between two entities.
-// Kind values: CALLS, IMPORTS, EXTENDS, IMPLEMENTS, USES.
+// Kind values are enumerated by RelationshipKind (see kinds.go).
 type RelationshipRecord struct {
 	FromID     string            `json:"from_id"`
 	ToID       string            `json:"to_id"`

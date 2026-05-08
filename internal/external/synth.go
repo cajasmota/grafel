@@ -18,12 +18,14 @@ import (
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // KindExternal is the entity kind stamped on every synthesised
 // placeholder. It joins the existing SCOPE.* taxonomy used elsewhere
-// in the indexer.
-const KindExternal = "SCOPE.External"
+// in the indexer. Kept as a string alias for callers; the source of
+// truth is types.EntityKindExternal (Issue #77).
+const KindExternal = string(types.EntityKindExternal)
 
 // ExtIDPrefix is the deterministic prefix used by external-entity IDs.
 // It is intentionally NOT a 16-char hex string so the resolver's
