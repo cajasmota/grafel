@@ -1401,6 +1401,165 @@ func TestExtract_DuplicateMethodsFromFixture(t *testing.T) {
 	}
 }
 
+// ---- issue #79: generic method receiver names ----------------------------
+
+// TestExtract_GenericMethodReceiverStripsTypeParams asserts that methods
+// declared on parameterised types collapse their type parameter list in
+// the entity Name. Before the fix, `(s *Set[T]) Add` produced
+// Name="Set[T].Add" — every instantiation of Set looked like a separate
+// receiver to resolve.Index.byMember (which splits Name on the first '.').
+// The fix unwraps generic_type AST nodes to their bare type_identifier so
+// pointer (*Set[T]) and value (Cache[K, V]) receivers both yield the
+// canonical Name "<Type>.<method>".
+func TestExtract_GenericMethodReceiverStripsTypeParams(t *testing.T) {
+	src := `package store
+
+type Set[T comparable] struct{}
+
+func (s *Set[T]) Add(item T) {}
+
+func (s *Set[T]) Has(item T) bool { return false }
+
+type Cache[K comparable, V any] struct{}
+
+func (c Cache[K, V]) Get(k K) (V, bool) {
+	var zero V
+	return zero, false
+}
+`
+	records := extractRecords(t, src, "store.go")
+
+	methods := make(map[string]*types.EntityRecord)
+	for i := range records {
+		if records[i].Subtype != "method" {
+			continue
+		}
+		r := &records[i]
+		methods[r.Name] = r
+	}
+
+	// Stripped receiver names — no "[T]", no "[K, V]".
+	want := []string{"Set.Add", "Set.Has", "Cache.Get"}
+	for _, n := range want {
+		if methods[n] == nil {
+			t.Errorf("expected method entity %q with stripped type params; got %v", n, keysOf(methods))
+		}
+	}
+
+	// Regression guard: the un-stripped forms must NOT appear.
+	for _, bad := range []string{"Set[T].Add", "Set[T].Has", "Cache[K, V].Get"} {
+		if methods[bad] != nil {
+			t.Errorf("unexpected method entity with un-stripped type params: %q", bad)
+		}
+	}
+
+	// receiver metadata should also be the bare type name.
+	if m := methods["Set.Add"]; m != nil {
+		recv, _ := m.Metadata["receiver"].(string)
+		if recv != "Set" {
+			t.Errorf("Set.Add receiver metadata: want %q, got %q", "Set", recv)
+		}
+	}
+	if m := methods["Cache.Get"]; m != nil {
+		recv, _ := m.Metadata["receiver"].(string)
+		if recv != "Cache" {
+			t.Errorf("Cache.Get receiver metadata: want %q, got %q", "Cache", recv)
+		}
+	}
+
+	// Single-dot guard: the qualified Name must contain exactly one '.'
+	// so resolve.Index.byMember's IndexByte('.', ...) split (introduced
+	// in the issue #66 fix) recovers the correct receiver/member halves.
+	for name := range methods {
+		if strings.Count(name, ".") != 1 {
+			t.Errorf("method Name %q must contain exactly one '.' for byMember split", name)
+		}
+	}
+}
+
+// TestExtract_GenericAndNonGenericSameMethodCollidesByName asserts the
+// design contract: in a single file, a non-generic struct `Set` and a
+// generic struct `Set[T]` both declaring `Add` resolve to the same Name
+// "Set.Add" — they ARE the same canonical entity. ComputeID hashes
+// Source+Kind+Name, so the per-file source path differentiates entries
+// across files; within one file the two methods collapse, which matches
+// Go's own rule that you cannot declare both a generic and non-generic
+// type named `Set` in the same package.
+func TestExtract_GenericAndNonGenericSameMethodSingleFile(t *testing.T) {
+	// Note: this is intentionally invalid Go (duplicate type Set) — we
+	// only feed it through the tree-sitter extractor, never compile it.
+	// The point is to verify Name canonicalisation.
+	src := `package store
+
+type Set struct{}
+
+func (s *Set) Add(item string) {}
+
+type SetG[T comparable] struct{}
+
+func (s *SetG[T]) Add(item T) {}
+`
+	records := extractRecords(t, src, "store.go")
+
+	methods := make(map[string]int)
+	for _, r := range records {
+		if r.Subtype != "method" {
+			continue
+		}
+		methods[r.Name]++
+	}
+
+	if methods["Set.Add"] != 1 {
+		t.Errorf("expected exactly one Set.Add entity, got %d (methods=%v)", methods["Set.Add"], methods)
+	}
+	if methods["SetG.Add"] != 1 {
+		t.Errorf("expected exactly one SetG.Add entity, got %d (methods=%v)", methods["SetG.Add"], methods)
+	}
+}
+
+// TestExtract_GenericMethodsFromFixture parses the duplicate_methods
+// fixture and asserts the issue #79 generic receivers appear with
+// stripped type parameter lists.
+func TestExtract_GenericMethodsFromFixture(t *testing.T) {
+	content, err := os.ReadFile("testdata/duplicate_methods.go.fixture")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	ext, _ := extractor.Get("go")
+	records, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "testdata/duplicate_methods.go.fixture",
+		Content:  content,
+		Language: "go",
+		Tree:     parseGo(content),
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	wantNames := map[string]bool{
+		"Set.Add":   false,
+		"Set.Has":   false,
+		"Cache.Get": false,
+	}
+	for _, r := range records {
+		if r.Subtype != "method" {
+			continue
+		}
+		if _, ok := wantNames[r.Name]; ok {
+			wantNames[r.Name] = true
+		}
+		// Negative guard against un-stripped names.
+		if strings.Contains(r.Name, "[") {
+			t.Errorf("fixture: method Name %q still carries type parameter list", r.Name)
+		}
+	}
+	for name, found := range wantNames {
+		if !found {
+			t.Errorf("fixture: missing generic method entity %q", name)
+		}
+	}
+}
+
 func keysOf(m map[string]*types.EntityRecord) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
