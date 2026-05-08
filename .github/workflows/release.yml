@@ -1,0 +1,116 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+          - os: macos-15-intel
+            goos: darwin
+            goarch: amd64
+          - os: macos-14
+            goos: darwin
+            goarch: arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Cache Go build and module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ matrix.goarch }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.goarch }}-go-
+
+      - name: Build
+        env:
+          CGO_ENABLED: '1'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          BIN=archigraph
+          if [ "${{ matrix.goos }}" = "windows" ]; then BIN=archigraph.exe; fi
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          SHORT_SHA=${GITHUB_SHA::7}
+          VERSION=${GITHUB_REF_NAME}
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/cajasmota/archigraph/internal/version.Version=${VERSION} -X github.com/cajasmota/archigraph/internal/version.Commit=${SHORT_SHA} -X github.com/cajasmota/archigraph/internal/version.Date=${BUILD_DATE}" \
+            -o dist/${BIN} ./cmd/archigraph
+        shell: bash
+
+      - name: Package archive
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          ARCH_LABEL=${{ matrix.goarch }}
+          if [ "${ARCH_LABEL}" = "amd64" ]; then ARCH_LABEL=x86_64; fi
+          OS_LABEL=${{ matrix.goos }}
+          if [ "${OS_LABEL}" = "darwin" ]; then OS_LABEL=macos; fi
+          NAME="archigraph_${VERSION}_${OS_LABEL}_${ARCH_LABEL}"
+          mkdir -p out
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            cp LICENSE README.md dist/
+            (cd dist && 7z a -tzip "../out/${NAME}.zip" archigraph.exe LICENSE README.md)
+          else
+            cp LICENSE README.md dist/
+            (cd dist && tar czf "../out/${NAME}.tar.gz" archigraph LICENSE README.md)
+          fi
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archigraph-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum -- * > checksums.txt
+        shell: bash
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
