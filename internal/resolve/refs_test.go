@@ -534,6 +534,68 @@ func TestDisposition_BugRate(t *testing.T) {
 	}
 }
 
+// TestDisposition_Unclassified covers the catch-all Disposition bucket
+// (issue #81). DispositionUnclassified fires when an endpoint slips past
+// every other check in classifyDispositionLang: it's not a hex ID, not an
+// "ext:" placeholder, doesn't match a dynamic-dispatch pattern, and the
+// name extracted from the stub is empty — leaving nothing for the bug-*
+// classifier to look up. Real production stubs that hit this path include
+// trailing-colon ("Kind:") forms emitted when an extractor failed to
+// capture the target name, and malformed structural-refs whose tail
+// segment is blank.
+func TestDisposition_Unclassified(t *testing.T) {
+	cases := []struct {
+		name string
+		stub string
+	}{
+		{
+			// Bare "Kind:" with no name half — splitStub yields
+			// ("Kind", "") → name == "" → Unclassified.
+			name: "trailing colon empty name",
+			stub: "View:",
+		},
+		{
+			// Just the delimiter — both halves empty, kind-agnostic
+			// path also has nothing to look up.
+			name: "delimiter only",
+			stub: ":",
+		},
+		{
+			// Structural-ref with all 6 segments but a blank tail.
+			// classifyDispositionLang's scope-aware extraction pulls
+			// tail → name == "" → Unclassified. Note: the resolver's
+			// lookupStructural separately rejects this with
+			// statusUnmatched, but the disposition classifier still
+			// has to bucket the endpoint.
+			name: "scope ref with empty tail",
+			stub: "scope:component:class:python:pkg/file.py:",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rels := []types.RelationshipRecord{{
+				FromID: "0000000000000000",
+				ToID:   tc.stub,
+				Kind:   "USES",
+			}}
+			idx := BuildIndex(nil)
+			stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+			if got := stats.DispositionCounts[DispositionUnclassified]; got != 1 {
+				t.Fatalf("stub %q: expected 1 unclassified, got counts=%+v",
+					tc.stub, stats.DispositionCounts)
+			}
+			// Sanity: the catch-all must NOT leak into the bug-*
+			// buckets — those fire only when a name was extracted.
+			if got := stats.DispositionCounts[DispositionBugExtractor]; got != 0 {
+				t.Fatalf("stub %q: unexpected bug-extractor count %d", tc.stub, got)
+			}
+			if got := stats.DispositionCounts[DispositionBugResolver]; got != 0 {
+				t.Fatalf("stub %q: unexpected bug-resolver count %d", tc.stub, got)
+			}
+		})
+	}
+}
+
 func TestBuildLocationIndex(t *testing.T) {
 	entities := []types.EntityRecord{
 		entAt("aaaaaaaaaaaaaaaa", "Component", "Foo", "a.py"),
