@@ -44,6 +44,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 }
 
 // walk performs a depth-first traversal of the CST, collecting entities.
+//
+// PORT-2-FIX-2-ALL (#41): trait_item and impl_item attach a CONTAINS edge
+// per function_item declared inside their declaration_list, every
+// function_item body emits CALLS edges with stub to_id, and use_declaration
+// nodes already emit IMPORTS (untouched).
 func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
@@ -61,19 +66,74 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		}
 
 	case "trait_item":
-		if rec, ok := buildComponent(node, file, "trait"); ok {
-			*out = append(*out, rec)
+		rec, ok := buildComponent(node, file, "trait")
+		if !ok {
+			for i := range node.ChildCount() {
+				walk(node.Child(int(i)), file, out)
+			}
+			return
 		}
+		traitIdx := len(*out)
+		*out = append(*out, rec)
+		body := findRustDeclList(node)
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				(*out)[traitIdx].Relationships = append((*out)[traitIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: child.Name,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
 
 	case "impl_item":
-		if rec, ok := buildImpl(node, file); ok {
-			*out = append(*out, rec)
+		rec, ok := buildImpl(node, file)
+		if !ok {
+			for i := range node.ChildCount() {
+				walk(node.Child(int(i)), file, out)
+			}
+			return
 		}
+		implIdx := len(*out)
+		*out = append(*out, rec)
+		body := findRustDeclList(node)
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				(*out)[implIdx].Relationships = append((*out)[implIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: child.Name,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
 
 	case "function_item":
 		if rec, ok := buildOperation(node, file); ok {
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
 			*out = append(*out, rec)
 		}
+		return
 
 	case "use_declaration":
 		if rec, ok := buildImport(node, file); ok {
@@ -84,6 +144,129 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	for i := range node.ChildCount() {
 		walk(node.Child(int(i)), file, out)
 	}
+}
+
+// findRustDeclList returns the declaration_list child of a trait_item or
+// impl_item, or nil when the body is missing.
+func findRustDeclList(node *sitter.Node) *sitter.Node {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch.Type() == "declaration_list" {
+			return ch
+		}
+	}
+	return nil
+}
+
+// extractCallRelationships returns one CALLS RelationshipRecord per unique
+// call_expression / macro_invocation descendant of body. Targets resolve to
+// the rightmost identifier in the function expression; FromID is left empty
+// so buildDocument substitutes the caller's entity ID at emit time.
+func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+	if body == nil || callerName == "" {
+		return nil
+	}
+	calls := findAllNodes(body, "call_expression", "macro_invocation")
+	if len(calls) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(calls))
+	rels := make([]types.RelationshipRecord, 0, len(calls))
+	for _, call := range calls {
+		target := rustCallTarget(call, src)
+		if target == "" || target == callerName {
+			continue
+		}
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: target,
+			Kind: "CALLS",
+		})
+	}
+	return rels
+}
+
+// rustCallTarget resolves the callee identifier from a Rust call_expression
+// or macro_invocation. For call_expression the function is the first child;
+// for scoped_identifier / field_expression we use the rightmost identifier.
+func rustCallTarget(call *sitter.Node, src []byte) string {
+	switch call.Type() {
+	case "call_expression":
+		fn := call.ChildByFieldName("function")
+		if fn == nil && call.ChildCount() > 0 {
+			fn = call.Child(0)
+		}
+		if fn == nil {
+			return ""
+		}
+		switch fn.Type() {
+		case "identifier":
+			return string(src[fn.StartByte():fn.EndByte()])
+		case "scoped_identifier":
+			if name := fn.ChildByFieldName("name"); name != nil {
+				return string(src[name.StartByte():name.EndByte()])
+			}
+		case "field_expression":
+			if name := fn.ChildByFieldName("field"); name != nil {
+				return string(src[name.StartByte():name.EndByte()])
+			}
+		case "generic_function":
+			if path := fn.ChildByFieldName("function"); path != nil {
+				switch path.Type() {
+				case "identifier":
+					return string(src[path.StartByte():path.EndByte()])
+				case "scoped_identifier":
+					if name := path.ChildByFieldName("name"); name != nil {
+						return string(src[name.StartByte():name.EndByte()])
+					}
+				case "field_expression":
+					if name := path.ChildByFieldName("field"); name != nil {
+						return string(src[name.StartByte():name.EndByte()])
+					}
+				}
+			}
+		}
+	case "macro_invocation":
+		if m := call.ChildByFieldName("macro"); m != nil {
+			t := m.Type()
+			if t == "identifier" {
+				return string(src[m.StartByte():m.EndByte()])
+			}
+			if t == "scoped_identifier" {
+				if name := m.ChildByFieldName("name"); name != nil {
+					return string(src[name.StartByte():name.EndByte()])
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// findAllNodes returns every descendant of root whose Type() is in kinds.
+func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []*sitter.Node
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
 }
 
 // buildComponent creates a Component entity for struct/enum/trait items.

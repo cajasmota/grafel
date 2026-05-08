@@ -67,31 +67,70 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 }
 
 // walk performs a depth-first traversal of the CST, collecting entities.
+//
+// PORT-2-FIX-2-ALL (#41): class/interface declarations attach a CONTAINS
+// edge per method/constructor declared inside the body, and every method
+// or constructor body is scanned for method_invocation / object_creation
+// nodes that yield CALLS edges with stub `to_id` (resolver rewrites
+// cross-file refs in pass 5).
 func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
 
 	switch node.Type() {
-	case "class_declaration":
-		if rec, ok := buildComponent(node, file, "class"); ok {
-			*out = append(*out, rec)
+	case "class_declaration", "interface_declaration":
+		subtype := "class"
+		if node.Type() == "interface_declaration" {
+			subtype = "interface"
 		}
-
-	case "interface_declaration":
-		if rec, ok := buildComponent(node, file, "interface"); ok {
-			*out = append(*out, rec)
+		rec, ok := buildComponent(node, file, subtype)
+		if !ok {
+			// Still recurse so nested types/imports below this node are
+			// captured even when the class itself is malformed.
+			for i := range node.ChildCount() {
+				walk(node.Child(int(i)), file, out)
+			}
+			return
 		}
+		classIdx := len(*out)
+		*out = append(*out, rec)
+		body := node.ChildByFieldName("body")
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: child.Name,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
 
 	case "method_declaration":
 		if rec, ok := buildOperation(node, file, "method"); ok {
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
 			*out = append(*out, rec)
 		}
+		return
 
 	case "constructor_declaration":
 		if rec, ok := buildOperation(node, file, "constructor"); ok {
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
 			*out = append(*out, rec)
 		}
+		return
 
 	case "field_declaration":
 		if rec, ok := buildField(node, file); ok {
@@ -107,6 +146,88 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	for i := range node.ChildCount() {
 		walk(node.Child(int(i)), file, out)
 	}
+}
+
+// extractCallRelationships returns one CALLS RelationshipRecord per unique
+// method_invocation / object_creation_expression descendant of body. Target
+// resolves to the bare callee name (last identifier of a selector chain).
+// FromID is left empty so buildDocument substitutes the caller's entity ID
+// at emit time. Self-recursion is skipped.
+func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+	if body == nil || callerName == "" {
+		return nil
+	}
+	calls := findAllNodes(body, "method_invocation", "object_creation_expression")
+	if len(calls) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(calls))
+	rels := make([]types.RelationshipRecord, 0, len(calls))
+	for _, call := range calls {
+		target := javaCallTarget(call, src)
+		if target == "" || target == callerName {
+			continue
+		}
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: target,
+			Kind: "CALLS",
+		})
+	}
+	return rels
+}
+
+// javaCallTarget resolves the callee name from a method_invocation or
+// object_creation_expression node. For method_invocation it uses the "name"
+// field; for object_creation_expression it uses the "type" field's trailing
+// identifier (e.g. `new com.foo.Bar()` → "Bar").
+func javaCallTarget(call *sitter.Node, src []byte) string {
+	switch call.Type() {
+	case "method_invocation":
+		if name := call.ChildByFieldName("name"); name != nil {
+			return string(src[name.StartByte():name.EndByte()])
+		}
+	case "object_creation_expression":
+		typ := call.ChildByFieldName("type")
+		if typ == nil {
+			return ""
+		}
+		// Walk to the rightmost type_identifier.
+		ids := findAllNodes(typ, "type_identifier")
+		if len(ids) > 0 {
+			n := ids[len(ids)-1]
+			return string(src[n.StartByte():n.EndByte()])
+		}
+		return string(src[typ.StartByte():typ.EndByte()])
+	}
+	return ""
+}
+
+// findAllNodes returns every descendant of root whose Type() is in kinds.
+func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []*sitter.Node
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
 }
 
 // buildComponent creates a Component entity for class/interface declarations.

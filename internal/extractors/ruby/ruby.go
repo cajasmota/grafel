@@ -42,29 +42,78 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 }
 
 // walk performs a depth-first traversal of the CST, collecting entities.
+//
+// PORT-2-FIX-2-ALL (#41): class/module declarations attach a CONTAINS edge
+// per method declared inside the body, every method body emits CALLS edges
+// with stub to_id, and top-level `require`/`require_relative`/`load` calls
+// emit IMPORTS module entities mirroring the Python extractor's shape.
 func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
 
 	switch node.Type() {
-	case "class":
-		if rec, ok := buildComponent(node, file, "class"); ok {
-			*out = append(*out, rec)
+	case "class", "module":
+		subtype := node.Type() // "class" or "module"
+		rec, ok := buildComponent(node, file, subtype)
+		if !ok {
+			for i := range node.ChildCount() {
+				walk(node.Child(int(i)), file, out)
+			}
+			return
 		}
-
-	case "module":
-		if rec, ok := buildComponent(node, file, "module"); ok {
-			*out = append(*out, rec)
+		classIdx := len(*out)
+		*out = append(*out, rec)
+		body := node.ChildByFieldName("body")
+		if body == nil {
+			// Tree-sitter ruby exposes the class body as the unnamed `body_statement`
+			// child rather than a labelled field; fall back to scanning children.
+			for i := range node.ChildCount() {
+				ch := node.Child(int(i))
+				if ch.Type() == "body_statement" {
+					body = ch
+					break
+				}
+			}
 		}
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: child.Name,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
 
 	case "method":
 		if rec, ok := buildMethod(node, file, "function"); ok {
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
 			*out = append(*out, rec)
 		}
+		return
 
 	case "singleton_method":
 		if rec, ok := buildMethod(node, file, "function"); ok {
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
+			*out = append(*out, rec)
+		}
+		return
+
+	case "call":
+		if rec, ok := buildRequireImport(node, file); ok {
 			*out = append(*out, rec)
 		}
 	}
@@ -72,6 +121,149 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	for i := range node.ChildCount() {
 		walk(node.Child(int(i)), file, out)
 	}
+}
+
+// extractCallRelationships returns one CALLS RelationshipRecord per unique
+// invocation descendant of body. Tree-sitter-ruby distinguishes:
+//
+//	call       — receiver.method(args) form, "method" field carries the name
+//	command    — bare method args  (e.g. `puts "x"`), no receiver
+//	identifier — bare invocation w/o args (e.g. `helper`) — appears as a
+//	             standalone identifier statement inside body_statement
+//
+// All three shapes resolve to a bare callee name; FromID is left empty so
+// buildDocument substitutes the caller's entity ID at emit time. Self-recursion
+// is dropped.
+func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+	if body == nil || callerName == "" {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var rels []types.RelationshipRecord
+	add := func(target string) {
+		if target == "" || target == callerName {
+			return
+		}
+		if seen[target] {
+			return
+		}
+		seen[target] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: target,
+			Kind: "CALLS",
+		})
+	}
+	// Pass 1: explicit call / command / method_call / yield / super.
+	for _, n := range findAllNodes(body, "call", "command", "method_call") {
+		add(rubyCallTarget(n, src))
+	}
+	// Pass 2: bare identifier statements inside body_statement / then / else
+	// blocks. These are method invocations like `helper` with no args.
+	for _, ident := range findAllNodes(body, "identifier") {
+		parent := ident.Parent()
+		if parent == nil {
+			continue
+		}
+		pt := parent.Type()
+		if pt != "body_statement" && pt != "then" && pt != "else" && pt != "begin" && pt != "ensure" {
+			continue
+		}
+		add(string(src[ident.StartByte():ident.EndByte()]))
+	}
+	return rels
+}
+
+// rubyCallTarget resolves the callee identifier from a Ruby call node.
+// Ruby's tree-sitter grammar uses field names "method" (the called name)
+// and "receiver" (optional left-hand side). Falls back to the first
+// identifier child for older grammar variants.
+func rubyCallTarget(call *sitter.Node, src []byte) string {
+	if m := call.ChildByFieldName("method"); m != nil {
+		t := m.Type()
+		if t == "identifier" || t == "constant" || t == "operator" {
+			return string(src[m.StartByte():m.EndByte()])
+		}
+	}
+	// command: command_call has no `method` field — first identifier child is the name.
+	for i := 0; i < int(call.ChildCount()); i++ {
+		ch := call.Child(i)
+		if ch.Type() == "identifier" || ch.Type() == "constant" {
+			return string(src[ch.StartByte():ch.EndByte()])
+		}
+	}
+	return ""
+}
+
+// buildRequireImport emits a SCOPE.Component module entity with a single
+// IMPORTS relationship for top-level require / require_relative / load calls.
+// Returns (_, false) for any other call node.
+func buildRequireImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	// Only consider call nodes whose method identifier is one of the loaders.
+	method := node.ChildByFieldName("method")
+	if method == nil {
+		return types.EntityRecord{}, false
+	}
+	mname := string(file.Content[method.StartByte():method.EndByte()])
+	switch mname {
+	case "require", "require_relative", "load", "autoload":
+	default:
+		return types.EntityRecord{}, false
+	}
+	args := node.ChildByFieldName("arguments")
+	if args == nil {
+		return types.EntityRecord{}, false
+	}
+	// First string argument literal.
+	for i := 0; i < int(args.NamedChildCount()); i++ {
+		arg := args.NamedChild(i)
+		if arg.Type() != "string" {
+			continue
+		}
+		raw := strings.TrimSpace(string(file.Content[arg.StartByte():arg.EndByte()]))
+		raw = strings.Trim(raw, "\"'")
+		if raw == "" {
+			continue
+		}
+		return types.EntityRecord{
+			Name:       raw,
+			Kind:       "SCOPE.Component",
+			Subtype:    "module",
+			SourceFile: file.Path,
+			Language:   "ruby",
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID: file.Path,
+					ToID:   raw,
+					Kind:   "IMPORTS",
+				},
+			},
+		}, true
+	}
+	return types.EntityRecord{}, false
+}
+
+// findAllNodes returns every descendant of root whose Type() is in kinds.
+func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []*sitter.Node
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
 }
 
 // buildComponent creates a Component entity for class/module definitions.

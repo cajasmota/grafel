@@ -52,6 +52,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 }
 
 // walk performs a depth-first traversal of the CST, collecting entities.
+//
+// PORT-2-FIX-2-ALL (#41): class/object declarations attach a CONTAINS edge
+// per function declared inside the body, and every function body is scanned
+// for call_expression / call_suffix nodes that yield CALLS edges with stub
+// to_id. Imports are still NOT emitted (MX-1081 — see package doc).
 func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
@@ -60,32 +65,83 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	switch node.Type() {
 	case "class_declaration":
 		subtype := "class"
-		// Detect data class by checking modifiers or raw text.
 		raw := string(file.Content[node.StartByte():node.EndByte()])
 		if strings.Contains(raw, "data class ") {
 			subtype = "data_class"
 		}
-		if rec, ok := buildComponent(node, file, subtype); ok {
-			*out = append(*out, rec)
-			// MX-1081: If the class is annotated with a Spring stereotype,
-			// emit a parallel SCOPE.Service entity matching the Python
-			// indexer's output shape. This lets the kotlin extractor own
-			// service detection locally — the global service_detector
-			// pattern is suppressed for kotlin to avoid double-emission.
-			if svc, ok := buildSpringService(node, file, rec.Name); ok {
-				*out = append(*out, svc)
+		rec, ok := buildComponent(node, file, subtype)
+		if !ok {
+			for i := range node.ChildCount() {
+				walk(node.Child(int(i)), file, out)
+			}
+			return
+		}
+		classIdx := len(*out)
+		*out = append(*out, rec)
+		// MX-1081: emit Spring stereotype service entity alongside the class.
+		if svc, ok := buildSpringService(node, file, rec.Name); ok {
+			*out = append(*out, svc)
+		}
+		// CONTAINS: every function declared in the class body.
+		body := findClassBody(node)
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: child.Name,
+						Kind: "CONTAINS",
+					})
 			}
 		}
+		return
 
 	case "object_declaration":
-		if rec, ok := buildComponent(node, file, "object"); ok {
-			*out = append(*out, rec)
+		rec, ok := buildComponent(node, file, "object")
+		if !ok {
+			for i := range node.ChildCount() {
+				walk(node.Child(int(i)), file, out)
+			}
+			return
 		}
+		classIdx := len(*out)
+		*out = append(*out, rec)
+		body := findClassBody(node)
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: child.Name,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
 
 	case "function_declaration":
 		if rec, ok := buildOperation(node, file); ok {
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(findFunctionBody(node), file.Content, rec.Name)...)
 			*out = append(*out, rec)
 		}
+		return
 
 		// MX-1081: import_header intentionally NOT handled — see package doc.
 	}
@@ -93,6 +149,111 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	for i := range node.ChildCount() {
 		walk(node.Child(int(i)), file, out)
 	}
+}
+
+// findClassBody returns the class_body / object_body / enum_class_body child
+// of a class/object declaration, or nil when the declaration has no body.
+func findClassBody(node *sitter.Node) *sitter.Node {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		t := ch.Type()
+		if t == "class_body" || t == "object_body" || t == "enum_class_body" {
+			return ch
+		}
+	}
+	return nil
+}
+
+// findFunctionBody returns the function_body child of a function_declaration,
+// or nil when the function is abstract / interface / expression-body without
+// a block. Tree-sitter-kotlin uses an unnamed `function_body` child.
+func findFunctionBody(node *sitter.Node) *sitter.Node {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch.Type() == "function_body" {
+			return ch
+		}
+	}
+	return nil
+}
+
+// extractCallRelationships returns one CALLS RelationshipRecord per unique
+// call_expression descendant of body. The target name is the trailing
+// simple_identifier of the call's expression. FromID is left empty so
+// buildDocument substitutes the caller's entity ID at emit time. Self-recursion
+// is dropped to match Python/Go extractor dedup semantics.
+func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+	if body == nil || callerName == "" {
+		return nil
+	}
+	calls := findAllNodes(body, "call_expression")
+	if len(calls) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(calls))
+	rels := make([]types.RelationshipRecord, 0, len(calls))
+	for _, call := range calls {
+		target := kotlinCallTarget(call, src)
+		if target == "" || target == callerName {
+			continue
+		}
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: target,
+			Kind: "CALLS",
+		})
+	}
+	return rels
+}
+
+// kotlinCallTarget resolves the callee name from a call_expression node.
+// Tree-sitter-kotlin shapes a call as `<expression> <call_suffix>`. When the
+// expression is a simple_identifier or navigation_expression we pull the
+// rightmost simple_identifier; otherwise we return "".
+func kotlinCallTarget(call *sitter.Node, src []byte) string {
+	if call.ChildCount() == 0 {
+		return ""
+	}
+	first := call.Child(0)
+	switch first.Type() {
+	case "simple_identifier":
+		return string(src[first.StartByte():first.EndByte()])
+	case "navigation_expression":
+		// Walk to the last simple_identifier descendant.
+		ids := findAllNodes(first, "simple_identifier")
+		if len(ids) > 0 {
+			n := ids[len(ids)-1]
+			return string(src[n.StartByte():n.EndByte()])
+		}
+	}
+	return ""
+}
+
+// findAllNodes returns every descendant of root whose Type() is in kinds.
+func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []*sitter.Node
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
 }
 
 // buildComponent creates a Component entity for class/object declarations.

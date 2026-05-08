@@ -156,6 +156,15 @@ func (x *extractor) emit(name, kind string, n *sitter.Node, subtype string, sig 
 	if name == "" || name == "?" {
 		return
 	}
+	x.emitWithRels(name, kind, n, subtype, sig, nil)
+}
+
+// emitWithRels appends an entity to the extraction results carrying the
+// supplied embedded relationships.
+func (x *extractor) emitWithRels(name, kind string, n *sitter.Node, subtype string, sig string, rels []types.RelationshipRecord) {
+	if name == "" || name == "?" {
+		return
+	}
 	start, end := lines(n)
 	e := types.EntityRecord{
 		Name:       name,
@@ -172,6 +181,7 @@ func (x *extractor) emit(name, kind string, n *sitter.Node, subtype string, sig 
 		},
 		EnrichmentStatus: types.StatusPending,
 		QualityScore:     1.0,
+		Relationships:    rels,
 	}
 	e.ID = e.ComputeID()
 	x.entities = append(x.entities, e)
@@ -239,28 +249,49 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 		subtype = "method"
 	}
 	sig := fmt.Sprintf("function %s", name)
-	x.emit(name, "SCOPE.Operation", n, subtype, sig)
+	body := n.ChildByFieldName("body")
+	rels := x.extractCallRelationships(body, name)
+	x.emitWithRels(name, "SCOPE.Operation", n, subtype, sig, rels)
 
 	// Recurse into the body for nested declarations.
-	body := n.ChildByFieldName("body")
 	if body != nil {
 		x.walkChildren(body, parentClass)
 	}
 }
 
 // handleClassDeclaration handles: class Foo { ... }
+//
+// Emits one CONTAINS edge per method/operation entity declared directly inside
+// the class body. The CONTAINS source is the class entity (FromID empty →
+// substituted at emit time); the target is the bare method name.
 func (x *extractor) handleClassDeclaration(n *sitter.Node) {
 	nameNode := n.ChildByFieldName("name")
 	className := x.nodeText(nameNode)
 	if className == "" {
 		return
 	}
+
+	// Snapshot the entity slice length before walking the body so we can
+	// attribute every operation appended during the walk to this class.
+	classIdx := len(x.entities)
 	x.emit(className, "SCOPE.Component", n, "class", fmt.Sprintf("class %s", className))
 
-	// Recurse into the class body with parentClass set.
 	body := n.ChildByFieldName("body")
 	if body != nil {
+		before := len(x.entities)
 		x.walkChildren(body, className)
+		after := len(x.entities)
+		for k := before; k < after; k++ {
+			child := &x.entities[k]
+			if child.Kind != "SCOPE.Operation" {
+				continue
+			}
+			x.entities[classIdx].Relationships = append(x.entities[classIdx].Relationships,
+				types.RelationshipRecord{
+					ToID: child.Name,
+					Kind: "CONTAINS",
+				})
+		}
 	}
 }
 
@@ -271,7 +302,9 @@ func (x *extractor) handleMethodDefinition(n *sitter.Node, _ string) {
 	if name == "" || name == "constructor" {
 		return
 	}
-	x.emit(name, "SCOPE.Operation", n, "method", fmt.Sprintf("method %s", name))
+	body := n.ChildByFieldName("body")
+	rels := x.extractCallRelationships(body, name)
+	x.emitWithRels(name, "SCOPE.Operation", n, "method", fmt.Sprintf("method %s", name), rels)
 }
 
 // handleInterfaceDeclaration handles TypeScript interface declarations.
@@ -324,9 +357,9 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string)
 		if parentClass != "" {
 			subtype = "method"
 		}
-		x.emit(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = (...) =>", name))
-		// Recurse into the arrow function body.
 		body := valueNode.ChildByFieldName("body")
+		rels := x.extractCallRelationships(body, name)
+		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = (...) =>", name), rels)
 		if body != nil {
 			x.walkChildren(body, parentClass)
 		}
@@ -336,12 +369,115 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string)
 		if parentClass != "" {
 			subtype = "method"
 		}
-		x.emit(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = function", name))
 		body := valueNode.ChildByFieldName("body")
+		rels := x.extractCallRelationships(body, name)
+		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = function", name), rels)
 		if body != nil {
 			x.walkChildren(body, parentClass)
 		}
 	}
+}
+
+// extractCallRelationships returns one CALLS RelationshipRecord per unique
+// call_expression / new_expression descendant of body. The target name is
+// computed from the function child of the call:
+//
+//	identifier               → bare name      (e.g. "foo")
+//	member_expression a.b.c  → trailing prop  (e.g. "c")
+//	parenthesized_expression → inner target   (best-effort)
+//
+// FromID is left empty so buildDocument substitutes the caller's entity ID
+// at emit time. ToID is the bare callee name; the resolver rewrites
+// cross-file references in pass 5. Self-recursion is dropped to match the
+// Python and Go extractor dedup semantics. The require() call form is
+// excluded so it does not double-count as both a call and an import.
+func (x *extractor) extractCallRelationships(body *sitter.Node, callerName string) []types.RelationshipRecord {
+	if body == nil || callerName == "" {
+		return nil
+	}
+	calls := findAllNodes(body, "call_expression", "new_expression")
+	if len(calls) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(calls))
+	rels := make([]types.RelationshipRecord, 0, len(calls))
+	for _, call := range calls {
+		target := x.callTarget(call)
+		if target == "" || target == callerName || target == "require" {
+			continue
+		}
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: target,
+			Kind: "CALLS",
+		})
+	}
+	return rels
+}
+
+// callTarget resolves the callee name from a call_expression / new_expression.
+// Returns the trailing identifier of the function expression, or "" when the
+// callee is an unsupported expression form (numeric literal, complex
+// destructuring, etc.).
+func (x *extractor) callTarget(call *sitter.Node) string {
+	fn := call.ChildByFieldName("function")
+	if fn == nil {
+		// new_expression uses "constructor" field.
+		fn = call.ChildByFieldName("constructor")
+	}
+	if fn == nil {
+		return ""
+	}
+	switch fn.Type() {
+	case "identifier", "type_identifier", "property_identifier":
+		return x.nodeText(fn)
+	case "member_expression":
+		prop := fn.ChildByFieldName("property")
+		if prop != nil {
+			return x.nodeText(prop)
+		}
+	case "parenthesized_expression":
+		for i := 0; i < int(fn.ChildCount()); i++ {
+			ch := fn.Child(i)
+			if ch.Type() == "identifier" {
+				return x.nodeText(ch)
+			}
+			if ch.Type() == "member_expression" {
+				if p := ch.ChildByFieldName("property"); p != nil {
+					return x.nodeText(p)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// findAllNodes returns every descendant of root whose Type() is in kinds.
+// Iterative to stay safe on deeply-nested trees.
+func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []*sitter.Node
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
 }
 
 // collectImports scans the tree for ES6 import statements and CommonJS
@@ -422,6 +558,13 @@ func (x *extractor) emitImport(module string, n *sitter.Node) {
 		},
 		EnrichmentStatus: types.StatusPending,
 		QualityScore:     1.0,
+		Relationships: []types.RelationshipRecord{
+			{
+				FromID: x.filePath,
+				ToID:   module,
+				Kind:   "IMPORTS",
+			},
+		},
 	}
 	e.ID = e.ComputeID()
 	x.entities = append(x.entities, e)
