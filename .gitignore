@@ -28,6 +28,11 @@ coverage.html
 BACKLOG.md
 SCRATCH.md
 
+# Local-only verification reports (may reference private corpora)
+/docs/verification/
+/reports/
+/.verify/
+
 # Go module cache
 /vendor/
 
