@@ -35,9 +35,16 @@ var (
 	// $ref: '#/components/schemas/Foo' or "#/definitions/Foo"
 	oaRefRE = regexp.MustCompile(`\$ref\s*:\s*['"]?#/(?:components/schemas|definitions)/([A-Za-z0-9_.\-]+)['"]?`)
 
+	// $ref: '#/components/parameters/Foo' or "#/parameters/Foo" (Swagger 2)
+	oaParamRefRE = regexp.MustCompile(`\$ref\s*:\s*['"]?#/(?:components/parameters|parameters)/([A-Za-z0-9_.\-]+)['"]?`)
+
 	// schema name lines under components.schemas: indented exactly 4 spaces
 	// "    Foo:" — must NOT be deeper. Matches the canonical layout.
 	oaSchemaNameRE = regexp.MustCompile(`(?m)^    ([A-Za-z_][A-Za-z0-9_.\-]*)\s*:`)
+
+	// Swagger-2 schema name lines under top-level "definitions:" / "parameters:"
+	// — names are indented exactly 2 spaces.
+	oaSwagger2NameRE = regexp.MustCompile(`(?m)^  ([A-Za-z_][A-Za-z0-9_.\-]*)\s*:`)
 
 	// tag list entry "    - tagname"
 	oaTagItemRE = regexp.MustCompile(`(?m)^\s*-\s*([A-Za-z0-9_.\-]+)\s*$`)
@@ -84,6 +91,26 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 	// downstream resolvers can validate; we still emit refs unconditionally).
 	schemaNames := extractSchemaNames(src)
 	schemaBlocks := extractSchemaBlocks(src)
+
+	// Parameter components (OpenAPI 3 components.parameters / Swagger 2 parameters).
+	parameterNames := extractParameterNames(src)
+	var parameterEntities []types.EntityRecord
+	for _, name := range parameterNames {
+		entityName := "openapi_parameter_" + name
+		key := "parameter:" + name
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		ent := makeEntity(filePath,
+			entityName, "SCOPE.Schema", "openapi_parameter", language, 1,
+			map[string]string{
+				"kind":           "openapi",
+				"parameter_name": name,
+			})
+		ent.QualifiedName = "openapi/parameter/" + name
+		parameterEntities = append(parameterEntities, ent)
+	}
 
 	// Build schema entities with intra-schema $ref edges.
 	var schemaEntities []types.EntityRecord
@@ -218,6 +245,27 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 			)
 		}
 
+		// Operation → Parameter REFERENCES from $ref to component parameters
+		paramRefSeen := map[string]bool{}
+		for _, m := range oaParamRefRE.FindAllStringSubmatch(body, -1) {
+			target := m[1]
+			if paramRefSeen[target] {
+				continue
+			}
+			paramRefSeen[target] = true
+			pendingOps[i].entity.Relationships = append(
+				pendingOps[i].entity.Relationships,
+				types.RelationshipRecord{
+					FromID: pendingOps[i].entity.Name,
+					ToID:   "openapi_parameter_" + target,
+					Kind:   "REFERENCES",
+					Properties: map[string]string{
+						"reference_kind": "parameter_ref",
+					},
+				},
+			)
+		}
+
 		// Tags: each tag becomes a Properties tag list and is also exposed as
 		// a TAGGED_AS relationship using the tag string as the ToID. Downstream
 		// resolvers can match on the tag name.
@@ -269,11 +317,25 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 					},
 				})
 		}
+		for _, p := range parameterEntities {
+			specEntity.Relationships = append(specEntity.Relationships,
+				types.RelationshipRecord{
+					FromID: specEntity.Name,
+					ToID:   p.Name,
+					Kind:   "CONTAINS",
+					Properties: map[string]string{
+						"contained_kind": "parameter",
+					},
+				})
+		}
 		results = append(results, *specEntity)
 	}
 
 	for _, s := range schemaEntities {
 		results = append(results, s)
+	}
+	for _, p := range parameterEntities {
+		results = append(results, p)
 	}
 	for _, po := range pendingOps {
 		results = append(results, *po.entity)
@@ -284,13 +346,18 @@ func (o *openAPIExtractor) Detect(filePath, language, src string) []types.Entity
 
 // extractSchemaNames returns ordered, unique schema names declared under
 // "components.schemas:" (OpenAPI 3) or "definitions:" (Swagger 2). Names are
-// identified by exactly 4-space-indented keys following the section header,
-// stopping at the next top-level key (column 0).
+// identified by 4-space-indented keys following the OpenAPI 3 section header
+// or 2-space-indented keys for Swagger 2 top-level "definitions:", stopping at
+// the next top-level key (column 0).
 func extractSchemaNames(src string) []string {
 	var names []string
 	seen := map[string]bool{}
-	for _, body := range schemaSectionBodies(src) {
-		for _, m := range oaSchemaNameRE.FindAllStringSubmatch(body, -1) {
+	for _, sec := range schemaSectionBodiesTagged(src) {
+		re := oaSchemaNameRE
+		if sec.swagger2 {
+			re = oaSwagger2NameRE
+		}
+		for _, m := range re.FindAllStringSubmatch(sec.body, -1) {
 			name := m[1]
 			if seen[name] {
 				continue
@@ -307,12 +374,16 @@ func extractSchemaNames(src string) []string {
 // until the next 4-space-indented sibling key).
 func extractSchemaBlocks(src string) map[string]string {
 	blocks := map[string]string{}
-	for _, sectionBody := range schemaSectionBodies(src) {
-		lines := strings.Split(sectionBody, "\n")
+	for _, sec := range schemaSectionBodiesTagged(src) {
+		nameRE := oaSchemaNameRE
+		if sec.swagger2 {
+			nameRE = oaSwagger2NameRE
+		}
+		lines := strings.Split(sec.body, "\n")
 		currentName := ""
 		var buf []string
 		for _, line := range lines {
-			if m := oaSchemaNameRE.FindStringSubmatch(line); m != nil {
+			if m := nameRE.FindStringSubmatch(line); m != nil {
 				if currentName != "" {
 					blocks[currentName] = strings.Join(buf, "\n")
 				}
@@ -339,11 +410,72 @@ func extractSchemaBlocks(src string) map[string]string {
 	return blocks
 }
 
-// schemaSectionBodies returns the body text under "components.schemas:" and
-// "definitions:" sections (anchored at column 0). Each body excludes the
-// header line and stops at the next column-0 key.
-func schemaSectionBodies(src string) []string {
-	var bodies []string
+// extractParameterNames returns ordered, unique parameter component names
+// declared under "components.parameters:" (OpenAPI 3) or top-level
+// "parameters:" (Swagger 2). Names are identified by exactly 4-space-indented
+// keys following the section header for OpenAPI 3, or 2-space-indented keys
+// for Swagger 2 — same indent strategy as schema extraction.
+func extractParameterNames(src string) []string {
+	var names []string
+	seen := map[string]bool{}
+	for _, sec := range parameterSectionBodiesTagged(src) {
+		re := oaSchemaNameRE
+		if sec.swagger2 {
+			re = oaSwagger2NameRE
+		}
+		for _, m := range re.FindAllStringSubmatch(sec.body, -1) {
+			name := m[1]
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// parameterSectionBodiesTagged returns tagged bodies for
+// "components.parameters:" (OpenAPI 3) and Swagger-2 top-level "parameters:".
+func parameterSectionBodiesTagged(src string) []schemaSection {
+	var sections []schemaSection
+	lines := strings.Split(src, "\n")
+	for i := 0; i < len(lines); i++ {
+		l := lines[i]
+		if strings.HasPrefix(l, "components:") {
+			for j := i + 1; j < len(lines); j++ {
+				lj := lines[j]
+				if len(lj) > 0 && lj[0] != ' ' && lj[0] != '\t' && strings.TrimSpace(lj) != "" {
+					break
+				}
+				if strings.HasPrefix(lj, "  parameters:") {
+					body := collectIndentedBlock(lines, j+1, 4)
+					sections = append(sections, schemaSection{body: body, swagger2: false})
+					break
+				}
+			}
+		}
+		if strings.HasPrefix(l, "parameters:") {
+			body := collectIndentedBlock(lines, i+1, 2)
+			sections = append(sections, schemaSection{body: body, swagger2: true})
+		}
+	}
+	return sections
+}
+
+// schemaSection is a body of YAML carrying schema definitions plus a flag
+// indicating whether it came from a Swagger-2 (top-level "definitions:") block,
+// where names are indented at 2 spaces rather than the OpenAPI-3 convention of 4.
+type schemaSection struct {
+	body     string
+	swagger2 bool
+}
+
+// schemaSectionBodiesTagged returns the bodies of schema-defining sections
+// (OpenAPI-3 "components.schemas:" and Swagger-2 top-level "definitions:")
+// tagged with the dialect so callers can pick the right name regex.
+func schemaSectionBodiesTagged(src string) []schemaSection {
+	var sections []schemaSection
 	lines := strings.Split(src, "\n")
 
 	// Find every "components:" header at column 0, then locate "  schemas:"
@@ -359,17 +491,17 @@ func schemaSectionBodies(src string) []string {
 				}
 				if strings.HasPrefix(lj, "  schemas:") {
 					body := collectIndentedBlock(lines, j+1, 4)
-					bodies = append(bodies, body)
+					sections = append(sections, schemaSection{body: body, swagger2: false})
 					break
 				}
 			}
 		}
 		if strings.HasPrefix(l, "definitions:") {
 			body := collectIndentedBlock(lines, i+1, 2)
-			bodies = append(bodies, body)
+			sections = append(sections, schemaSection{body: body, swagger2: true})
 		}
 	}
-	return bodies
+	return sections
 }
 
 // collectIndentedBlock returns the text of consecutive lines starting at
@@ -397,10 +529,12 @@ func collectIndentedBlock(lines []string, startIdx, minIndent int) string {
 }
 
 // schemaLineNumber returns the 1-indexed line number of a schema declaration.
+// Matches both OpenAPI-3 (4-space indent) and Swagger-2 (2-space indent) forms.
 func schemaLineNumber(src, name string) int {
-	target := "    " + name + ":"
+	t4 := "    " + name + ":"
+	t2 := "  " + name + ":"
 	for i, line := range strings.Split(src, "\n") {
-		if strings.HasPrefix(line, target) {
+		if strings.HasPrefix(line, t4) || strings.HasPrefix(line, t2) {
 			return i + 1
 		}
 	}
