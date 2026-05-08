@@ -15,6 +15,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/classifier"
 	"github.com/cajasmota/archigraph/internal/engine"
+	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/external"
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/extractors"
@@ -33,11 +34,12 @@ const (
 	PassCrossLang     = "cross-lang"     // Pass 3: cross-language extractors
 	PassGraphAlgo     = "graph-algo"     // Pass 4: placeholder for PORT-4
 	PassBuildDocument = "build-document" // Pass 5: assemble graph.Document
+	PassEnrichment    = "enrichment"     // Pass 6: emit enrichment candidates
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument,
+	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassEnrichment,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -237,6 +239,13 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		i.runPass4Algorithms(doc)
 	}
 
+	// Pass 6 — enrichment candidate emission (PORT-LLM / issue #15). Runs
+	// AFTER Pass 4 so emitters can consult community/centrality/god-node
+	// signals. Resolutions from prior runs are merged back onto entity
+	// Properties BEFORE candidate emission, so previously agent-resolved
+	// values are preserved AND emitters skip already-described entities.
+	i.runPass6EmitEnrichmentCandidates(doc, absRepo)
+
 	dur := time.Since(start)
 	fmt.Fprintf(os.Stderr,
 		"archigraph: processed=%d extracted=%d skipped=%d failed=%d "+
@@ -324,6 +333,47 @@ func (i *Indexer) runPass4Algorithms(doc *graph.Document) {
 	doc.SurpriseEdges = res.SurpriseEdges
 	stats := res.Stats
 	doc.AlgorithmStats = &stats
+}
+
+// runPass6EmitEnrichmentCandidates merges any prior agent-resolved
+// enrichment values back onto entity Properties, then runs the registered
+// CandidateEmitters and writes the resulting candidate list to
+// <repo>/.archigraph/enrichment-candidates.json. The pass is no-op when
+// PassEnrichment is in the skip set.
+func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo string) {
+	if i.skipPasses[PassEnrichment] {
+		return
+	}
+	if doc == nil {
+		return
+	}
+	archigraphDir := filepath.Join(absRepo, ".archigraph")
+
+	// 1) Merge resolutions back onto entities BEFORE emitting. This both
+	//    persists agent values across rebuilds and short-circuits emitters
+	//    whose "already filled?" check looks at Properties (e.g.
+	//    describe_entity skips entities that already have a description).
+	resolutions := enrichment.ReadResolutions(archigraphDir)
+	if len(resolutions) > 0 {
+		applied := enrichment.ApplyResolutions(doc, resolutions)
+		if verbose() {
+			fmt.Fprintf(os.Stderr,
+				"enrichment: applied %d resolutions to entities\n", applied)
+		}
+	}
+
+	// 2) Emit candidates. Rejected (subject_id, kind) pairs are dropped.
+	cands := enrichment.CollectCandidatesSkippingRejected(
+		doc, enrichment.DefaultEmitters(), archigraphDir,
+	)
+
+	if err := enrichment.WriteCandidates(archigraphDir, cands); err != nil {
+		fmt.Fprintf(os.Stderr, "archigraph: enrichment candidate write failed: %v\n", err)
+		return
+	}
+	fmt.Fprintf(os.Stderr,
+		"archigraph: emitted %d enrichment candidates to %s\n",
+		len(cands), filepath.Join(archigraphDir, "enrichment-candidates.json"))
 }
 
 // runPass1Extract runs the per-file AST extractors in parallel. The classified

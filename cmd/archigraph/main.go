@@ -24,7 +24,7 @@ func runIndex(argv []string) error {
 	fs := flag.NewFlagSet("index", flag.ContinueOnError)
 	out := fs.String("out", "", "output path for graph.json (default: <repo>/.archigraph/graph.json)")
 	repoTag := fs.String("repo-tag", "", "repository tag stored on entities (default: dirname of repo path)")
-	skip := fs.String("skip-pass", "", "comma-separated list of passes to skip (extract,framework,cross-lang,graph-algo,build-document)")
+	skip := fs.String("skip-pass", "", "comma-separated list of passes to skip (extract,framework,cross-lang,graph-algo,build-document,enrichment)")
 	pretty := fs.Bool("pretty", false, "emit indented JSON for graph.json and graph-stats.json (default: minified)")
 	if err := fs.Parse(argv); err != nil {
 		return err
