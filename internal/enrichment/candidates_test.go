@@ -1,10 +1,12 @@
 package enrichment
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
 )
@@ -144,5 +146,56 @@ func TestWriteCandidates_AndApplyResolutions(t *testing.T) {
 	}
 	if doc2.Entities[0].Properties["description"] != "An auth service." {
 		t.Fatalf("description not applied: %v", doc2.Entities[0].Properties)
+	}
+}
+
+// Test 6 (issue #53): two consecutive WriteCandidates runs over the same
+// input produce byte-identical output, even though emitters stamp
+// DiscoveredAt with the wall clock between runs. This is the byte-stable
+// idempotence guarantee the README and Pass 6 docstring promise.
+func TestWriteCandidates_ByteIdenticalAcrossRuns(t *testing.T) {
+	// Drive nowRFC3339 from a counter so each emit-pass produces a
+	// different "current" timestamp. If WriteCandidates didn't preserve
+	// the prior discovered_at, the second run's bytes would differ.
+	origNow := nowRFC3339
+	t.Cleanup(func() { nowRFC3339 = origNow })
+	var ticks int
+	nowRFC3339 = func() string {
+		ticks++
+		return time.Date(2026, 5, 9, 0, 0, ticks, 0, time.UTC).Format(time.RFC3339)
+	}
+
+	dir := t.TempDir()
+	mkInput := func() *graph.Document {
+		return mkDoc(
+			graph.Entity{ID: "e1", Name: "AuthService", Kind: "class"},
+			graph.Entity{ID: "g1", Name: "Coordinator", Kind: "class", IsGodNode: true},
+			graph.Entity{ID: "a1", Name: "Bridge", Kind: "class", IsArticulationPt: true},
+		)
+	}
+
+	// Run 1.
+	first := CollectCandidates(mkInput(), DefaultEmitters(), nil)
+	if err := WriteCandidates(dir, first); err != nil {
+		t.Fatalf("first WriteCandidates: %v", err)
+	}
+	bytes1, err := os.ReadFile(filepath.Join(dir, "enrichment-candidates.json"))
+	if err != nil {
+		t.Fatalf("read after first run: %v", err)
+	}
+
+	// Run 2 — fresh emit pass, fresh "now" timestamps.
+	second := CollectCandidates(mkInput(), DefaultEmitters(), nil)
+	if err := WriteCandidates(dir, second); err != nil {
+		t.Fatalf("second WriteCandidates: %v", err)
+	}
+	bytes2, err := os.ReadFile(filepath.Join(dir, "enrichment-candidates.json"))
+	if err != nil {
+		t.Fatalf("read after second run: %v", err)
+	}
+
+	if !bytes.Equal(bytes1, bytes2) {
+		t.Fatalf("byte-stability violated:\n--- run 1 ---\n%s\n--- run 2 ---\n%s",
+			string(bytes1), string(bytes2))
 	}
 }
