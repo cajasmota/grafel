@@ -169,6 +169,83 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 		}
 	}
 
+	// ALTER TABLE ... ADD [CONSTRAINT ...] FOREIGN KEY (...)
+	//
+	// Real migration suites split FK declarations into ALTER statements rather
+	// than inlining them in CREATE TABLE bodies. We synthesize Column→Table
+	// REFERENCES edges identical to the inline-FK shape so downstream consumers
+	// don't need to handle two shapes. When a column entity for (table, col)
+	// already exists from a prior CREATE TABLE pass in this file, the edge is
+	// attached to it; otherwise a stand-alone column entity is emitted carrying
+	// the edge (mirroring the inline-FK column shape).
+	for _, m := range alterTableFkRE.FindAllStringSubmatchIndex(src, -1) {
+		fromTable := src[m[2]:m[3]]
+		fromColsRaw := src[m[4]:m[5]]
+		toTable := src[m[6]:m[7]]
+		toColsRaw := src[m[8]:m[9]]
+		fromCols := splitAndTrim(fromColsRaw, ",")
+		toCols := splitAndTrim(toColsRaw, ",")
+		startLine := strings.Count(src[:m[0]], "\n") + 1
+
+		for i, fc := range fromCols {
+			tc := ""
+			if i < len(toCols) {
+				tc = toCols[i]
+			}
+			rel := types.RelationshipRecord{
+				FromID: fc,
+				ToID:   toTable,
+				Kind:   "REFERENCES",
+				Properties: map[string]string{
+					"reference_kind": "foreign_key",
+					"to_column":      tc,
+					"from_table":     fromTable,
+				},
+			}
+
+			// Attach to an existing column entity if one was emitted for this
+			// (table, column) pair. Otherwise emit a synthetic column entity.
+			attached := false
+			for j := range entities {
+				e := &entities[j]
+				if e.Subtype != "column" || e.Name != fc {
+					continue
+				}
+				if e.Properties == nil || e.Properties["table"] != fromTable {
+					continue
+				}
+				e.Relationships = append(e.Relationships, rel)
+				attached = true
+				break
+			}
+			if attached {
+				continue
+			}
+
+			altKey := "alter_fk_col:" + fromTable + "." + fc
+			if seen[altKey] {
+				continue
+			}
+			seen[altKey] = true
+			entities = append(entities, types.EntityRecord{
+				Name:               fc,
+				Kind:               "SCOPE.Schema",
+				Subtype:            "column",
+				SourceFile:         filePath,
+				Language:           "sql",
+				StartLine:          startLine,
+				EndLine:            startLine,
+				QualifiedName:      fromTable + "." + fc,
+				Signature:          fmt.Sprintf("ALTER TABLE %s ADD FOREIGN KEY (%s) REFERENCES %s(%s)", fromTable, fc, toTable, tc),
+				EnrichmentRequired: false,
+				Properties: map[string]string{
+					"table": fromTable,
+				},
+				Relationships: []types.RelationshipRecord{rel},
+			})
+		}
+	}
+
 	// Views.
 	for _, m := range viewRE.FindAllStringSubmatchIndex(src, -1) {
 		name := src[m[2]:m[3]]
@@ -404,6 +481,12 @@ var (
 	//   "FOREIGN KEY (user_id) REFERENCES users(id)"
 	//   "CONSTRAINT fk_a FOREIGN KEY (a, b) REFERENCES other(x, y)"
 	tableLevelFkRE = regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(\s*([^)]+?)\s*\)\s+REFERENCES\s+(?:\w+\.)?(\w+)\s*\(\s*([^)]+?)\s*\)`)
+
+	// ALTER TABLE ... ADD [CONSTRAINT name] FOREIGN KEY (cols) REFERENCES tbl(cols) [ON DELETE/UPDATE ...]
+	// Matches both forms (with and without explicit CONSTRAINT name) across newlines.
+	alterTableFkRE = regexp.MustCompile(
+		`(?is)ALTER\s+TABLE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)\s+ADD\s+(?:CONSTRAINT\s+\w+\s+)?FOREIGN\s+KEY\s*\(\s*([^)]+?)\s*\)\s+REFERENCES\s+(?:\w+\.)?(\w+)\s*\(\s*([^)]+?)\s*\)`,
+	)
 
 	// Identifier-then-rest: column lines start with an identifier (or quoted ident)
 	// at the top level — used to filter constraint clauses.
