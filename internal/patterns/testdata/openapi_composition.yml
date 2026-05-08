@@ -1,0 +1,92 @@
+openapi: "3.0.3"
+info:
+  title: Composition
+  version: "1.0.0"
+paths:
+  /animals:
+    get:
+      summary: List animals
+      tags:
+        - zoo
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnimalList'
+  /animals/{id}:
+    get:
+      summary: Fetch animal
+      tags: [zoo]
+      parameters:
+        - $ref: '#/components/parameters/AnimalId'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Cat'
+                  - $ref: '#/components/schemas/Dog'
+components:
+  parameters:
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+    PageToken:
+      name: page_token
+      in: query
+      schema:
+        type: string
+    AnimalId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  schemas:
+    Animal:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+    Pet:
+      type: object
+      properties:
+        owner:
+          type: string
+    Cat:
+      allOf:
+        - $ref: '#/components/schemas/Animal'
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          properties:
+            indoor:
+              type: boolean
+    Dog:
+      allOf:
+        - $ref: '#/components/schemas/Animal'
+        - $ref: '#/components/schemas/Pet'
+    Wild:
+      anyOf:
+        - $ref: '#/components/schemas/Animal'
+        - type: object
+          properties:
+            habitat:
+              type: string
+    AnimalList:
+      type: array
+      items:
+        oneOf:
+          - $ref: '#/components/schemas/Cat'
+          - $ref: '#/components/schemas/Dog'
+          - $ref: '#/components/schemas/Wild'
