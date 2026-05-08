@@ -447,13 +447,12 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 			metadata["receiver"] = receiverType
 		}
 
-		// QualifiedName is the same dotted form as Name for methods (issue
-		// #66 — kept duplicated so downstream consumers that read either
-		// field see consistent values).
-		var qualifiedName string
-		if receiverType != "" {
-			qualifiedName = receiverType + "." + nameText
-		}
+		// QualifiedName is intentionally left empty for Go entities (issue
+		// #80). Since issue #66, Name already carries the Receiver.method
+		// dotted form for methods, so a separate QualifiedName field would
+		// be redundant. Other languages (Python, Razor, HCL, Markdown,
+		// Kotlin, YAML, OpenAPI) keep QualifiedName for forms that differ
+		// from Name (e.g. package paths, file::class joins).
 
 		// CALLS relationships — one per call_expression in the body.
 		// Unknown/external targets are emitted with the bare function name
@@ -482,7 +481,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 
 		rec := types.EntityRecord{
 			Name:               name,
-			QualifiedName:      qualifiedName,
+			QualifiedName:      "",
 			Kind:               "SCOPE.Operation",
 			Subtype:            entitySubtype,
 			SourceFile:         filePath,

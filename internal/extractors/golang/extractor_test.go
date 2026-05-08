@@ -157,8 +157,8 @@ func (s *Store) Save(item string) error {
 		if recv != "Store" {
 			t.Errorf("receiver: expected Store, got %q", recv)
 		}
-		if r.QualifiedName != "Store.Save" {
-			t.Errorf("qualified_name: expected Store.Save, got %q", r.QualifiedName)
+		if r.QualifiedName != "" {
+			t.Errorf("qualified_name: expected empty (issue #80), got %q", r.QualifiedName)
 		}
 	} else {
 		// method is at index 1
@@ -173,13 +173,16 @@ func (s *Store) Save(item string) error {
 		if recv != "Store" {
 			t.Errorf("receiver: expected Store, got %q", recv)
 		}
-		if r2.QualifiedName != "Store.Save" {
-			t.Errorf("qualified_name: expected Store.Save, got %q", r2.QualifiedName)
+		if r2.QualifiedName != "" {
+			t.Errorf("qualified_name: expected empty (issue #80), got %q", r2.QualifiedName)
 		}
 	}
 }
 
-func TestExtractMethodQualifiedName(t *testing.T) {
+// TestExtractMethodQualifiedNameEmpty verifies that Go methods leave
+// QualifiedName empty (issue #80). The dotted Receiver.method form lives
+// on Name (issue #66), so QualifiedName would be redundant.
+func TestExtractMethodQualifiedNameEmpty(t *testing.T) {
 	src := `package main
 
 type Server struct{}
@@ -201,8 +204,11 @@ func (srv *Server) Run() error {
 
 	for _, r := range results {
 		if r.Subtype == "method" {
-			if !strings.HasPrefix(r.QualifiedName, "Server.") {
-				t.Errorf("expected qualified_name to start with Server., got %q", r.QualifiedName)
+			if r.QualifiedName != "" {
+				t.Errorf("expected qualified_name to be empty (issue #80), got %q", r.QualifiedName)
+			}
+			if !strings.HasPrefix(r.Name, "Server.") {
+				t.Errorf("expected name to start with Server. (issue #66), got %q", r.Name)
 			}
 			return
 		}
