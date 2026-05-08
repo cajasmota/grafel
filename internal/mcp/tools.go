@@ -1053,11 +1053,33 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	if errRes != nil {
 		return errRes, nil
 	}
+	// Build the set of repo names to consider. Empty filter or ["*"]
+	// means "every loaded repo" (matching reposToConsider semantics).
+	filter := argStringSlice(req, "repo_filter")
+	all := len(filter) == 0 || (len(filter) == 1 && filter[0] == "*")
+	wanted := map[string]bool{}
+	if !all {
+		for _, n := range filter {
+			wanted[n] = true
+		}
+	}
 	totals := map[string]any{}
 	repoStats := []map[string]any{}
 	totalE, totalR := 0, 0
 	unavailable := []string{}
-	for name, r := range lg.Repos {
+	// Sort for stable output.
+	names := make([]string, 0, len(lg.Repos))
+	for n := range lg.Repos {
+		if all || wanted[n] {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		r := lg.Repos[name]
+		if r == nil {
+			continue
+		}
 		if r.Doc == nil {
 			unavailable = append(unavailable, name+": "+r.loadErr)
 			continue
@@ -1074,7 +1096,20 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	totals["entities"] = totalE
 	totals["relationships"] = totalR
 	totals["repos"] = repoStats
-	totals["cross_repo_links"] = len(lg.Links)
+	// Filter cross-repo links to those that touch the considered repos
+	// when an explicit repo_filter is supplied.
+	links := len(lg.Links)
+	if !all {
+		links = 0
+		for _, l := range lg.Links {
+			sr, _ := splitPrefixed(l.Source)
+			tr, _ := splitPrefixed(l.Target)
+			if wanted[sr] || wanted[tr] {
+				links++
+			}
+		}
+	}
+	totals["cross_repo_links"] = links
 	if len(unavailable) > 0 {
 		totals["unavailable"] = unavailable
 	}

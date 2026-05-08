@@ -550,7 +550,10 @@ Corpus-level metrics for the resolved group: per-repo entity / relationship /
 community counts, plus group-level totals and any unavailable repos (with
 load errors).
 
-**Inputs** — common args only.
+**Inputs** — common args only. When `repo_filter` is supplied, totals,
+the `repos` array, and `cross_repo_links` are scoped to the named repos
+(a link counts if either endpoint is in the filter). `["*"]` and `[]`
+both mean "every loaded repo".
 
 **Output**
 
