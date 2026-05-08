@@ -569,6 +569,112 @@ func TestExtract_DuplicateMethodsFromFixture(t *testing.T) {
 		t.Errorf("fixture: expected 4 method entities, got %d (names=%v)",
 			methodCount, entityNames(entities))
 	}
+
+	// Issue #70 — strengthen the regression contract: each emitted method
+	// must produce a distinct ComputeID(). Counting alone would silently
+	// pass if two same-named methods on different classes collided to the
+	// same ID under ComputeID(SourceFile+Kind+Name).
+	ids := map[string]string{}
+	for _, e := range entities {
+		if e.Kind != "SCOPE.Operation" || e.Subtype != "method" {
+			continue
+		}
+		id := e.ComputeID()
+		if existing, ok := ids[id]; ok {
+			t.Errorf("fixture: ComputeID collision: %q and %q both compute to %s",
+				existing, e.Name, id)
+		}
+		ids[id] = e.Name
+	}
+	if len(ids) != 4 {
+		t.Errorf("fixture: expected 4 distinct method ComputeIDs, got %d", len(ids))
+	}
+}
+
+// TestExtract_ControlFlowMethodsInheritClassQualifier is the regression test
+// for issue #70: methods declared inside if/try/with blocks within a class
+// body must inherit the enclosing class qualifier (emitted as "Foo.trace",
+// not bare "trace"). The walker preserves parentClass through its default
+// recursion branch — this test pins that behavior to the on-disk fixture.
+func TestExtract_ControlFlowMethodsInheritClassQualifier(t *testing.T) {
+	path := filepath.Join("testdata", "control_flow_methods.py.fixture")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	tree := parse(t, src)
+	ext, _ := extractor.Get("python")
+
+	entities, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     path,
+		Content:  src,
+		Language: "python",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	// Every method declared in the fixture lives inside an if/try/with block
+	// nested in a class body. None of them must appear as bare names.
+	wantQualified := map[string]bool{
+		"Foo.trace":       false,
+		"Foo.trace_off":   false,
+		"Foo.maybe":       false,
+		"Foo.fallback":    false,
+		"Foo.with_method": false,
+		"Bar.only_in_bar": false,
+	}
+	forbiddenBare := map[string]bool{
+		"trace":       true,
+		"trace_off":   true,
+		"maybe":       true,
+		"fallback":    true,
+		"with_method": true,
+		"only_in_bar": true,
+	}
+
+	for _, e := range entities {
+		if e.Kind != "SCOPE.Operation" || e.Subtype != "method" {
+			continue
+		}
+		if forbiddenBare[e.Name] {
+			t.Errorf("method %q emitted without class qualifier — expected <Class>.%s",
+				e.Name, e.Name)
+		}
+		if _, ok := wantQualified[e.Name]; ok {
+			wantQualified[e.Name] = true
+		}
+	}
+	for name, seen := range wantQualified {
+		if !seen {
+			t.Errorf("expected qualified method %q not found in %v",
+				name, entityNames(entities))
+		}
+	}
+
+	// CONTAINS edges from each class must reach the methods declared inside
+	// its control-flow blocks — proving the walker treated those nested
+	// function_definitions as members of the class body.
+	wantContains := map[string]int{
+		"Foo": 5, // trace, trace_off, maybe, fallback, with_method
+		"Bar": 1, // only_in_bar
+	}
+	for cls, want := range wantContains {
+		count := 0
+		for _, e := range entities {
+			if e.Kind == "SCOPE.Component" && e.Name == cls {
+				for _, r := range e.Relationships {
+					if r.Kind == "CONTAINS" {
+						count++
+					}
+				}
+			}
+		}
+		if count != want {
+			t.Errorf("class %s: expected %d CONTAINS edges, got %d", cls, want, count)
+		}
+	}
 }
 
 // TestExtract_ClassSubtypeLabels is the regression test for issue #46.
