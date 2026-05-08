@@ -367,7 +367,19 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 				recvText = nodeText(recvNode, src)
 			}
 			signature = strings.TrimSpace(fmt.Sprintf("func %s %s%s%s", recvText, nameText, paramsText, resultText))
-			name = nameText
+			// issue #66: methods are emitted with Name="<Receiver>.<method>"
+			// so two structs in the same file declaring a same-named method
+			// produce distinct entity IDs (ComputeID hashes Source+Kind+Name).
+			// receiverTypeName already strips the pointer/value distinction,
+			// so `(*UserStore).Save` and `(UserStore).Save` collapse to the
+			// canonical `UserStore.Save`. The dotted form is the same
+			// encoding used for Format B references and is indexed natively
+			// by resolve.Index.byMember (splits Name on the first '.').
+			if receiverType != "" {
+				name = receiverType + "." + nameText
+			} else {
+				name = nameText
+			}
 		} else {
 			entitySubtype = "function"
 			signature = strings.TrimSpace(fmt.Sprintf("func %s%s%s", nameText, paramsText, resultText))
@@ -396,15 +408,27 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 			metadata["receiver"] = receiverType
 		}
 
+		// QualifiedName is the same dotted form as Name for methods (issue
+		// #66 — kept duplicated so downstream consumers that read either
+		// field see consistent values).
 		var qualifiedName string
 		if receiverType != "" {
-			qualifiedName = receiverType + "." + name
+			qualifiedName = receiverType + "." + nameText
 		}
 
 		// CALLS relationships — one per call_expression in the body.
 		// Unknown/external targets are emitted with the bare function name
 		// behaviour rule #6. Deduplicated by (source, target).
-		relationships := extractCallRelationships(bodyOrNode, src, name)
+		// Self-recursion detection compares against the bare identifier
+		// (issue #66): a method `(s *Foo) bar()` calling `bar()` should
+		// still suppress the self-edge even though the entity Name is now
+		// "Foo.bar".
+		relationships := extractCallRelationships(bodyOrNode, src, nameText)
+		// Rewrite FromID on each CALLS edge to the qualified Name so the
+		// edge source matches the entity ID downstream.
+		for i := range relationships {
+			relationships[i].FromID = name
+		}
 
 		// DEPENDS_ON edge from each method to its receiver type.
 		// Enables graph traversal from method → owning schema without
@@ -833,10 +857,17 @@ func attachImplementsRelationships(records []types.EntityRecord, idx *typeIndex)
 		if recv == "" {
 			continue
 		}
+		// r.Name is now "<Receiver>.<method>" (issue #66). Strip the
+		// receiver qualifier so the method-set comparison against
+		// interface.method names continues to operate on bare identifiers.
+		bareName := r.Name
+		if dot := strings.IndexByte(r.Name, '.'); dot > 0 {
+			bareName = r.Name[dot+1:]
+		}
 		if idx.methodsByReceiver[recv] == nil {
 			idx.methodsByReceiver[recv] = make(map[string]bool)
 		}
-		idx.methodsByReceiver[recv][r.Name] = true
+		idx.methodsByReceiver[recv][bareName] = true
 	}
 
 	// For each struct with methods, compare against every interface's
