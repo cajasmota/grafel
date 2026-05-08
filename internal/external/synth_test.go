@@ -250,6 +250,84 @@ func TestSynthesize_CollisionWithLocalEntity(t *testing.T) {
 	}
 }
 
+// TestIsKnownExternalPackage_ScopedNpm guards the scoped-npm fix
+// from issue #71: full "@scope/pkg" forms must match through the
+// scope-level allowlist entry, while bare names still resolve and
+// path-shaped strings are still rejected.
+func TestIsKnownExternalPackage_ScopedNpm(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		// Scoped npm — must match via @scope fallback.
+		{"@radix-ui/react-dialog", true},
+		{"@tanstack/react-query", true},
+		{"@reduxjs/toolkit", true},
+		{"@mui/material", true},
+		{"@testing-library/react", true},
+		// Bare names — no regression.
+		{"react", true},
+		{"django", true},
+		{"lodash", true},
+		// Path-shaped non-scoped strings — still rejected.
+		{"./local/path", false},
+		{"../parent/file", false},
+		{"/absolute/path", false},
+		{"some/random/path", false},
+		// Unknown scopes — must NOT pass.
+		{"@unknown-scope/random-pkg", false},
+		{"@nope/whatever", false},
+		// Edge cases.
+		{"", false},
+		{"@", false},
+		{"@scope", false}, // bare scope without /pkg — not on the allowlist
+		{"@/", false},
+	}
+	for _, c := range cases {
+		got := IsKnownExternalPackage(c.name)
+		if got != c.want {
+			t.Errorf("IsKnownExternalPackage(%q) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestSynthesize_ScopedNpm covers the end-to-end synthesis pass for
+// scoped npm imports — the placeholder ID is the canonical
+// "@scope/pkg" form, the relationship is rewritten to point at it,
+// and the synthesis is idempotent on a re-run.
+func TestSynthesize_ScopedNpm(t *testing.T) {
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "src/Dialog.tsx", ToID: "@radix-ui/react-dialog", Kind: "IMPORTS"},
+			{ID: "rel-2", FromID: "src/Query.tsx", ToID: "@tanstack/react-query", Kind: "IMPORTS"},
+			{ID: "rel-3", FromID: "src/Sub.tsx", ToID: "@radix-ui/react-dialog/dist/utils", Kind: "IMPORTS"},
+			{ID: "rel-4", FromID: "src/Random.tsx", ToID: "@unknown-scope/random-pkg", Kind: "IMPORTS"},
+		},
+	}
+	stats := Synthesize(doc)
+	// rel-1, rel-2, rel-3 should resolve; rel-3 collapses to the same
+	// "@radix-ui/react-dialog" placeholder as rel-1.
+	if stats.RelationshipsResolved != 3 {
+		t.Fatalf("resolved=%d, want 3", stats.RelationshipsResolved)
+	}
+	if stats.Synthesized != 2 {
+		t.Fatalf("synthesized=%d, want 2 (radix + tanstack)", stats.Synthesized)
+	}
+	if doc.Relationships[0].ToID != "ext:@radix-ui/react-dialog" {
+		t.Fatalf("rel-1 ToID=%q", doc.Relationships[0].ToID)
+	}
+	if doc.Relationships[1].ToID != "ext:@tanstack/react-query" {
+		t.Fatalf("rel-2 ToID=%q", doc.Relationships[1].ToID)
+	}
+	if doc.Relationships[2].ToID != "ext:@radix-ui/react-dialog" {
+		t.Fatalf("rel-3 ToID=%q (deep subpath should collapse to pkg root)", doc.Relationships[2].ToID)
+	}
+	// rel-4 (unknown scope) must NOT be rewritten.
+	if doc.Relationships[3].ToID != "@unknown-scope/random-pkg" {
+		t.Fatalf("rel-4 ToID=%q (unknown scope should stay untouched)", doc.Relationships[3].ToID)
+	}
+}
+
 // TestSynthesize_ExpandedAllowlist exercises a handful of the v1.1
 // allowlist additions to guard against accidental regressions when the
 // list is edited.
