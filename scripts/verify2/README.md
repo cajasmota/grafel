@@ -69,21 +69,74 @@ scripts/verify2/compare.sh \
 The output shows per-repo entity/relationship deltas plus the change in
 `bug_rate` and `resolution_rate` (both as percentage-point deltas).
 
+## Corpus coverage (Refs #87)
+
+The corpus targets the full extractor matrix — 32 languages plus
+representative frameworks, ORMs, manifests, and tools. To make
+regressions diagnosable, the corpus is also diversified across stack
+characteristics:
+
+| characteristic | repos in corpus |
+| --- | --- |
+| ORM-heavy | `django`, `rails-actionpack` |
+| HTTP routing | `gin`, `chi`, `express`, `actix-web`, `vapor`, `laravel-routing`, `symfony-routing` |
+| microservice / RPC / messaging | `etcd`, `kafka` |
+| CLI tool | `click` |
+| config-heavy / framework | `spring-boot` (autoconfigure), `pandas` (core), `nestjs`, `nextjs` (server), `aspnetcore-mvc` |
+| async runtime / concurrency | `tokio`, `ktor` |
+
+Add new repos to grow the matrix — coverage gaps surface immediately as
+empty per-language rows in the aggregate report.
+
 ## How to add a new corpus repo
 
 Edit the `REPOS` array near the top of `run.sh`. Each entry is a
-pipe-separated `<name>|<git-url>|<ref>|<primary-language>` quad. The
-language tag is consumed by the per-language aggregate section in the
-report:
+pipe-separated tuple:
+
+```
+<name>|<git-url>|<ref>|<primary-language>[|<sparse-path>]
+```
+
+The fifth field is **optional**. When present, the cloner switches to a
+blob-less partial clone (`git clone --filter=blob:none --no-checkout`)
+plus cone-mode sparse checkout (`git sparse-checkout set <sparse-path>`)
+so we only materialise that sub-tree on disk. Use it for any repo whose
+full HEAD checkout exceeds **~200 MB**.
 
 ```bash
 REPOS=(
-  "requests|https://github.com/psf/requests.git|main|python"
-  "gin|https://github.com/gin-gonic/gin.git|master|go"
-  ...
+  # Plain (small) clone:
   "myrepo|https://github.com/owner/repo.git|main|typescript"
+
+  # Sparse checkout (monorepo):
+  "myrepo-core|https://github.com/owner/big-monorepo.git|main|java|modules/core"
 )
 ```
+
+### Size guidance
+
+Estimate the HEAD clone size **before** adding a repo. Rough rules of
+thumb:
+
+| range | action |
+| --- | --- |
+| < 50 MB | full clone is fine |
+| 50–200 MB | full clone acceptable; consider a subtree if a small focused module exists |
+| > 200 MB | **required** to use the sparse-path field — pick the smallest module that exercises the language/framework you care about |
+| > 1 GB | sparse-path is mandatory; pick a single package directory and document the choice in a `# comment` next to the entry |
+
+A quick estimate from the GitHub UI: open the repo, hit `t` to enter the
+file finder — the badge at the top shows total file count. Multiply the
+average source-file size (~5–20 KB) for a rough working-tree number.
+
+### Per-repo wall-clock cap
+
+Large repos can keep the indexer running for a long time. The harness
+caps each repo at `ARCHIGRAPH_VERIFY2_TIMEOUT` seconds (default
+**600s = 10 min**) using `gtimeout` (coreutils) when available, falling
+back to `timeout`. Set `ARCHIGRAPH_VERIFY2_TIMEOUT=0` to disable the cap.
+A timed-out repo is recorded as `ERROR` in the per-repo table and does
+not abort the rest of the run.
 
 **Constraint:** only public OSS repositories. Private code, vendored
 client trees, and internal codenames must never appear here — the
