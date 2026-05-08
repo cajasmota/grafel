@@ -18,6 +18,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractors"
 	"github.com/cajasmota/archigraph/internal/extractors/cross"
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/resolve"
 	"github.com/cajasmota/archigraph/internal/treesitter"
 	"github.com/cajasmota/archigraph/internal/types"
 	"github.com/cajasmota/archigraph/internal/version"
@@ -474,70 +475,17 @@ func (i *Indexer) runPass3CrossLang(ctx context.Context, classified []classified
 	return out, nil
 }
 
-// resolveCrossFileRefs walks the merged entity slice and rewrites
-// RelationshipRecord.ToID values that look like bare names into entity IDs
-// when a unique match exists in the index. This is the substance of the
-// "imports / hierarchy" cross-resolution flagged in the PORT-2 spec —
-// previously every cross-file CALLS edge stored a literal name (e.g.
-// "Println") which could never match a graph node by ID.
-func (i *Indexer) resolveCrossFileRefs(records []types.EntityRecord) {
-	// Build a name index — name -> deterministic graph entity ID. We index
-	// by name only (kind-agnostic) because Pass 1 extractors emit CALLS edges
-	// with just the bare callee name; we don't know the callee kind upfront.
-	// Collisions (same name, multiple kinds) are kept on the side and skipped
-	// during resolution to avoid wrong matches.
-	type idEntry struct {
-		id   string
-		hits int
-	}
-	byName := make(map[string]*idEntry, len(records))
+// stampEntityIDs computes the deterministic graph entity ID for every
+// EntityRecord in the merged slice and writes it into EntityRecord.ID. The
+// resolver consumes EntityRecord.ID, so this must run before BuildIndex.
+func (i *Indexer) stampEntityIDs(records []types.EntityRecord) {
 	for k := range records {
 		r := &records[k]
 		if r.Name == "" {
 			continue
 		}
-		id := graph.EntityID(i.repoTag, r.Kind, r.Name, r.SourceFile)
-		e, ok := byName[r.Name]
-		if !ok {
-			byName[r.Name] = &idEntry{id: id, hits: 1}
-			continue
-		}
-		e.hits++
-		// Keep first id; ambiguous names are skipped at lookup time via hits>1.
+		r.ID = graph.EntityID(i.repoTag, r.Kind, r.Name, r.SourceFile)
 	}
-
-	for k := range records {
-		r := &records[k]
-		for j := range r.Relationships {
-			rel := &r.Relationships[j]
-			if rel.ToID == "" {
-				continue
-			}
-			// If ToID already looks like a 16-char hex id we trust it.
-			if isHexID(rel.ToID) {
-				continue
-			}
-			e, ok := byName[rel.ToID]
-			if !ok || e.hits != 1 {
-				continue
-			}
-			rel.ToID = e.id
-		}
-	}
-}
-
-// isHexID reports whether s is a 16-char lower-hex string — the shape of
-// graph.EntityID() output.
-func isHexID(s string) bool {
-	if len(s) != 16 {
-		return false
-	}
-	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			return false
-		}
-	}
-	return true
 }
 
 // buildDocument merges entity records from every pass, dedupes by stable
@@ -549,10 +497,25 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	merged = append(merged, pass2...)
 	merged = append(merged, pass3...)
 
-	// Resolve bare-name CALLS / EXTENDS / IMPLEMENTS / etc. ToID references
-	// against the merged entity index. Pass 3 explicitly relies on this
-	// step to upgrade Pass 1's bare-name edges into real graph IDs.
-	i.resolveCrossFileRefs(merged)
+	// Stamp deterministic entity IDs onto every record so the resolver can
+	// look them up by (kind, name).
+	i.stampEntityIDs(merged)
+
+	// Resolver pass — rewrite stub-form FromID/ToID values across:
+	//   - embedded EntityRecord.Relationships (Pass 1 + Pass 2.5 + Pass 3)
+	//   - standalone Pass 2.5 RelationshipRecords (engine output)
+	// against the merged entity index. Stubs that are ambiguous (≥2 matches)
+	// or unmatched are left in place and counted in the log line below.
+	idx := resolve.BuildIndex(merged)
+	embStats := resolve.ReferencesEmbedded(merged, idx)
+	standStats := resolve.References(pass2Rels, idx)
+	totalStats := resolve.Stats{
+		Rewritten: embStats.Rewritten + standStats.Rewritten,
+		Ambiguous: embStats.Ambiguous + standStats.Ambiguous,
+		Unmatched: embStats.Unmatched + standStats.Unmatched,
+	}
+	fmt.Fprintf(os.Stderr, "resolver: rewrote=%d ambiguous=%d unmatched=%d\n",
+		totalStats.Rewritten, totalStats.Ambiguous, totalStats.Unmatched)
 
 	entities := make([]graph.Entity, 0, len(merged))
 	relationships := make([]graph.Relationship, 0)

@@ -269,6 +269,55 @@ func TestCrossFileBareNameResolution(t *testing.T) {
 	// it only rewrites bare-name to_id values found in the merged set.
 }
 
+// TestCrossFileResolutionInOutput runs the indexer on a fixture where one
+// Go file (b.go) calls a function defined in another file (a.go). After the
+// resolver runs, at least one CALLS edge in the output document MUST have
+// to_id set to a 16-char hex entity ID (not a bare name like "Hello").
+//
+// This is the regression test for PORT-2-FIX (issue #24): before the fix,
+// every cross-file CALLS edge stored a literal name and would dead-end
+// graph traversal in the MCP server.
+func TestCrossFileResolutionInOutput(t *testing.T) {
+	doc := runIndexerOn(t, "testdata/crossfile_go", "crossfile_go", nil)
+	if len(doc.Relationships) == 0 {
+		t.Fatalf("no relationships emitted")
+	}
+
+	// Build a set of valid entity IDs for resolution check.
+	validIDs := make(map[string]bool, len(doc.Entities))
+	for _, e := range doc.Entities {
+		validIDs[e.ID] = true
+	}
+
+	resolved := 0
+	for _, r := range doc.Relationships {
+		if r.Kind != "CALLS" {
+			continue
+		}
+		if isHex16(r.ToID) && validIDs[r.ToID] {
+			resolved++
+		}
+	}
+	if resolved == 0 {
+		t.Fatalf("no CALLS edge has a resolved to_id (rels=%d, entities=%d)",
+			len(doc.Relationships), len(doc.Entities))
+	}
+}
+
+// isHex16 reports whether s is a 16-char lower-hex string — the shape of
+// graph.EntityID() output. Used by TestCrossFileResolutionInOutput.
+func isHex16(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
 // TestPass4Algorithms_AttributesPresent runs the orchestrator on the Go
 // crossfile fixture with and without --skip-pass=algorithms; with Pass 4 on
 // every entity should have community_id/centrality/pagerank populated and the
