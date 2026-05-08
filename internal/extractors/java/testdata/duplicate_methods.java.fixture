@@ -1,6 +1,11 @@
 // Fixture for issue #65: same-named methods on different classes must
 // be emitted as distinct entities (no Java-extractor dedup). Mirrors
 // the Python fixture for #45.
+//
+// Expanded for issue #76 to cover additional collision scenarios:
+//   - interface + class collision (Greeter / LoggingGreeter)
+//   - outer/inner class collision (Outer.validate / Inner.validate)
+//   - enum-with-method emission (Status.describe)
 package com.example;
 
 public class UserSerializer {
@@ -20,5 +25,44 @@ public class OrderSerializer {
 
     public Object save(Object value) {
         return value;
+    }
+}
+
+// Interface + class collision: both declare `process` and `greet`.
+public interface Greeter {
+    String greet(String name);
+}
+
+public class LoggingGreeter implements Greeter {
+    public String greet(String name) {
+        return "hello " + name;
+    }
+
+    public void process() {
+    }
+}
+
+// Outer with inner class — both declare `validate`. Per #65, the
+// member's Name is qualified by its immediate parent (Inner), not the
+// fully qualified path Outer.Inner.
+public class Outer {
+    public Object validate(Object value) {
+        return value;
+    }
+
+    public static class Inner {
+        public Object validate(Object value) {
+            return value;
+        }
+    }
+}
+
+// Enum with a method — exercises enum-method emission added in #65.
+public enum Status {
+    ACTIVE,
+    INACTIVE;
+
+    public String describe() {
+        return name();
     }
 }

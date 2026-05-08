@@ -11,6 +11,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/extractor"
 	_ "github.com/cajasmota/archigraph/internal/extractors/java"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // parseForTest parses Java source using the real grammar.
@@ -524,14 +525,79 @@ func TestJavaExtractor_DuplicateMethodsFromFixture(t *testing.T) {
 
 	methodCount := 0
 	var allNames []string
+	byName := map[string]types.EntityRecord{}
 	for _, e := range entities {
 		allNames = append(allNames, e.Name)
 		if e.Kind == "SCOPE.Operation" && e.Subtype == "method" {
 			methodCount++
 		}
+		// Last-write-wins is fine — names are unique by construction
+		// in this fixture (that's the whole point of the test).
+		byName[e.Name] = e
 	}
-	if methodCount != 4 {
-		t.Errorf("fixture: expected 4 method entities, got %d (names=%v)",
+	// Expanded for #76:
+	//   UserSerializer.{validate,save}      = 2
+	//   OrderSerializer.{validate,save}     = 2
+	//   Greeter.greet                       = 1 (interface method)
+	//   LoggingGreeter.{greet,process}      = 2
+	//   Outer.validate                      = 1
+	//   Inner.validate                      = 1
+	//   Status.describe                     = 1
+	// Total                                 = 10
+	if methodCount != 10 {
+		t.Errorf("fixture: expected 10 method entities, got %d (names=%v)",
 			methodCount, allNames)
+	}
+
+	// #76: interface + class collision — Greeter.greet and
+	// LoggingGreeter.greet must be distinct entities with distinct IDs.
+	ifaceGreet, okIface := byName["Greeter.greet"]
+	classGreet, okClass := byName["LoggingGreeter.greet"]
+	if !okIface {
+		t.Errorf("expected interface method Greeter.greet (have=%v)", allNames)
+	}
+	if !okClass {
+		t.Errorf("expected class method LoggingGreeter.greet (have=%v)", allNames)
+	}
+	if okIface && okClass && ifaceGreet.ComputeID() == classGreet.ComputeID() {
+		t.Errorf("Greeter.greet and LoggingGreeter.greet share ComputeID %s",
+			ifaceGreet.ComputeID())
+	}
+
+	// #76: outer/inner collision — single-level qualification per #65
+	// means Inner.validate uses Inner (immediate parent), not
+	// Outer.Inner.
+	outerValidate, okOuter := byName["Outer.validate"]
+	innerValidate, okInner := byName["Inner.validate"]
+	if !okOuter {
+		t.Errorf("expected Outer.validate (have=%v)", allNames)
+	}
+	if !okInner {
+		t.Errorf("expected Inner.validate (immediate-parent qualification, have=%v)", allNames)
+	}
+	if okOuter && okInner && outerValidate.ComputeID() == innerValidate.ComputeID() {
+		t.Errorf("Outer.validate and Inner.validate share ComputeID %s",
+			outerValidate.ComputeID())
+	}
+
+	// #76: enum-with-method — enclosing Status must be emitted with
+	// subtype="enum", and Status.describe must be emitted as a method.
+	status, okStatus := byName["Status"]
+	if !okStatus {
+		t.Errorf("expected enum entity Status (have=%v)", allNames)
+	} else {
+		if status.Kind != "SCOPE.Component" {
+			t.Errorf("Status: expected Kind=SCOPE.Component, got %s", status.Kind)
+		}
+		if status.Subtype != "enum" {
+			t.Errorf("Status: expected Subtype=enum, got %s", status.Subtype)
+		}
+	}
+	describe, okDescribe := byName["Status.describe"]
+	if !okDescribe {
+		t.Errorf("expected enum method Status.describe (have=%v)", allNames)
+	} else if describe.Kind != "SCOPE.Operation" || describe.Subtype != "method" {
+		t.Errorf("Status.describe: expected SCOPE.Operation/method, got %s/%s",
+			describe.Kind, describe.Subtype)
 	}
 }
