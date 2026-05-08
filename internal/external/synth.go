@@ -212,6 +212,22 @@ func classifyExternal(stub, relKind string) (canonical, subtype string, ok bool)
 		return "", "", false
 	}
 
+	// Scoped npm packages — "@scope/pkg" or "@scope/pkg/subpath" — are
+	// the only legitimate external shape that contains a '/'. Detect
+	// them BEFORE the path-separator rejection below so they reach the
+	// allowlist; everything else with a separator is a structural-ref
+	// or local file path and is dropped (issue #71).
+	if scope, ok := scopedNpmRoot(name); ok {
+		// Collapse to "@scope/pkg" form (drop any deeper subpath) for
+		// allowlist lookup, then to the scope itself if the full form
+		// isn't catalogued. Either match yields a single placeholder
+		// per scoped package.
+		if isKnownExternalPackage(scope) {
+			return scope, "package", true
+		}
+		return "", "", false
+	}
+
 	// Reject obviously non-external shapes: anything containing a path
 	// separator was either a structural-ref or a local file path, both
 	// already handled upstream.
@@ -247,6 +263,64 @@ func classifyExternal(stub, relKind string) (canonical, subtype string, ok bool)
 	}
 
 	return "", "", false
+}
+
+// scopedNpmRoot recognises the npm scoped-package shape "@scope/pkg"
+// (optionally followed by "/subpath") and returns the "@scope/pkg"
+// root. Returns ("", false) when s doesn't match the scoped-npm
+// convention — typical reject cases are bare names, "./relative",
+// "/absolute", or backslash-bearing paths.
+//
+// The scope and package segments must each be non-empty and may
+// contain only word chars, '-', and '.' — the npm name grammar's
+// safe subset (https://docs.npmjs.com/cli/v10/configuring-npm/package-json#name).
+func scopedNpmRoot(s string) (string, bool) {
+	if len(s) < 4 || s[0] != '@' {
+		return "", false
+	}
+	slash := strings.IndexByte(s, '/')
+	if slash <= 1 {
+		// Need at least one char after '@' before the '/'.
+		return "", false
+	}
+	scope := s[1:slash]
+	rest := s[slash+1:]
+	if !isNpmSegment(scope) {
+		return "", false
+	}
+	// Trim any sub-path after the package name.
+	pkg := rest
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		pkg = rest[:i]
+	}
+	if !isNpmSegment(pkg) {
+		return "", false
+	}
+	// Backslashes are never legal in an npm name.
+	if strings.ContainsRune(s, '\\') {
+		return "", false
+	}
+	return "@" + scope + "/" + pkg, true
+}
+
+// isNpmSegment reports whether s is a valid scope or package segment
+// for the scoped-npm allowlist gate. Conservatively limited to
+// [A-Za-z0-9_.-].
+func isNpmSegment(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '_' || c == '-' || c == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // stdlibFunction returns the subtype for a bare stdlib function name
@@ -359,8 +433,24 @@ var stdlibBareNames = map[string]struct{}{
 // allowlist is intentionally narrow for v1.0 — false positives turn a
 // local name into a placeholder, which is worse than missing one.
 func isKnownExternalPackage(s string) bool {
-	_, ok := knownExternalPackages[strings.ToLower(s)]
-	return ok
+	lower := strings.ToLower(s)
+	if _, ok := knownExternalPackages[lower]; ok {
+		return true
+	}
+	// Scoped npm fallback: a full "@scope/pkg" key matches if the bare
+	// "@scope" key is on the allowlist. This lets us keep the existing
+	// scope-level entries (@radix-ui, @tanstack, ...) functional for
+	// every package they ship without enumerating each one. The scope
+	// must be non-empty and start with '@' (issue #71).
+	if strings.HasPrefix(lower, "@") {
+		if slash := strings.IndexByte(lower, '/'); slash > 1 {
+			scope := lower[:slash]
+			if _, ok := knownExternalPackages[scope]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // IsKnownExternalPackage is the exported form of the allowlist check.
@@ -475,6 +565,24 @@ var knownExternalPackages = map[string]struct{}{
 	"@types":           {},
 	"@nestjs":          {},
 	"@apollo":          {},
+	"@mui":             {},
+	"@emotion":         {},
+	"@chakra-ui":       {},
+	"@headlessui":      {},
+	"@hookform":        {},
+	"@trpc":            {},
+	"@storybook":       {},
+	"@vitejs":          {},
+	"@babel":           {},
+	"@swc":             {},
+	"@sentry":          {},
+	"@auth0":           {},
+	"@aws-sdk":         {},
+	"@azure":           {},
+	"@google-cloud":    {},
+	"@graphql-tools":   {},
+	"@vue":             {},
+	"@angular":         {},
 	// Go stdlib top-level
 	"fmt":           {},
 	"strings":       {},
