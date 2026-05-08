@@ -641,12 +641,20 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	embStats := resolve.ReferencesEmbedded(merged, idx)
 	standStats := resolve.References(pass2Rels, idx)
 	totalStats := resolve.Stats{
-		Rewritten: embStats.Rewritten + standStats.Rewritten,
-		Ambiguous: embStats.Ambiguous + standStats.Ambiguous,
-		Unmatched: embStats.Unmatched + standStats.Unmatched,
+		Rewritten:     embStats.Rewritten + standStats.Rewritten,
+		Ambiguous:     embStats.Ambiguous + standStats.Ambiguous,
+		Unmatched:     embStats.Unmatched + standStats.Unmatched,
+		FromRewritten: embStats.FromRewritten + standStats.FromRewritten,
+		FromAmbiguous: embStats.FromAmbiguous + standStats.FromAmbiguous,
+		FromUnmatched: embStats.FromUnmatched + standStats.FromUnmatched,
+		ToRewritten:   embStats.ToRewritten + standStats.ToRewritten,
+		ToAmbiguous:   embStats.ToAmbiguous + standStats.ToAmbiguous,
+		ToUnmatched:   embStats.ToUnmatched + standStats.ToUnmatched,
 	}
-	fmt.Fprintf(os.Stderr, "resolver: rewrote=%d ambiguous=%d unmatched=%d\n",
-		totalStats.Rewritten, totalStats.Ambiguous, totalStats.Unmatched)
+	fmt.Fprintf(os.Stderr, "resolver: rewrote=%d ambiguous=%d unmatched=%d (from: rw=%d am=%d um=%d) (to: rw=%d am=%d um=%d)\n",
+		totalStats.Rewritten, totalStats.Ambiguous, totalStats.Unmatched,
+		totalStats.FromRewritten, totalStats.FromAmbiguous, totalStats.FromUnmatched,
+		totalStats.ToRewritten, totalStats.ToAmbiguous, totalStats.ToUnmatched)
 
 	entities := make([]graph.Entity, 0, len(merged))
 	relationships := make([]graph.Relationship, 0)

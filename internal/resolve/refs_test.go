@@ -251,6 +251,162 @@ func TestReferences_KindHintMissingStillAmbiguous(t *testing.T) {
 	}
 }
 
+// PORT-2-FIX-4 (issue #48) — FromID rewrite + kind-aware location index.
+
+func TestReferencesEmbedded_FromIDRewritten(t *testing.T) {
+	// Embedded relationship has a stub FromID. After ReferencesEmbedded,
+	// FromID must be rewritten to the resolved entity ID.
+	records := []types.EntityRecord{
+		{ID: "aaaaaaaaaaaaaaaa", Kind: "Function", Name: "Hello", SourceFile: "a.go"},
+		{
+			ID:         "bbbbbbbbbbbbbbbb",
+			Kind:       "Function",
+			Name:       "Greet",
+			SourceFile: "b.go",
+			Relationships: []types.RelationshipRecord{
+				{FromID: "Function:Hello", ToID: "ffffffffffffffff", Kind: "CALLS"},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	stats := ReferencesEmbedded(records, idx)
+	if got := records[1].Relationships[0].FromID; got != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("FromID not rewritten: %s", got)
+	}
+	if stats.FromRewritten != 1 {
+		t.Fatalf("expected FromRewritten=1, got %+v", stats)
+	}
+}
+
+func TestReferencesEmbedded_BothEndpointsRewritten(t *testing.T) {
+	// Both FromID and ToID stubs; both should be rewritten and counted.
+	records := []types.EntityRecord{
+		{ID: "aaaaaaaaaaaaaaaa", Kind: "Function", Name: "Hello", SourceFile: "a.go"},
+		{ID: "cccccccccccccccc", Kind: "Function", Name: "World", SourceFile: "c.go"},
+		{
+			ID:         "bbbbbbbbbbbbbbbb",
+			Kind:       "Function",
+			Name:       "Greet",
+			SourceFile: "b.go",
+			Relationships: []types.RelationshipRecord{
+				{FromID: "Function:Hello", ToID: "Function:World", Kind: "CALLS"},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	stats := ReferencesEmbedded(records, idx)
+	rel := records[2].Relationships[0]
+	if rel.FromID != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("FromID not rewritten: %s", rel.FromID)
+	}
+	if rel.ToID != "cccccccccccccccc" {
+		t.Fatalf("ToID not rewritten: %s", rel.ToID)
+	}
+	if stats.FromRewritten != 1 || stats.ToRewritten != 1 || stats.Rewritten != 2 {
+		t.Fatalf("expected from=1 to=1 total=2, got %+v", stats)
+	}
+}
+
+func TestReferences_SameFileKindDisambiguation(t *testing.T) {
+	// Two entities at (a.py, "Foo") with different kinds. EXTENDS hint
+	// biases toward Component family → resolves to Component entity.
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "SCOPE.Component", "Foo", "a.py"),
+		entAt("bbbbbbbbbbbbbbbb", "SCOPE.Operation", "Foo", "a.py"),
+	}
+	rels := []types.RelationshipRecord{{
+		FromID: "0000000000000000",
+		ToID:   "Foo",
+		Kind:   "EXTENDS",
+	}}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("kind-disambig EXTENDS: ToID=%s", rels[0].ToID)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("expected ToRewritten=1, got %+v", stats)
+	}
+}
+
+func TestReferences_SameFileKindNoHintStillAmbiguous(t *testing.T) {
+	// Same setup as above, but the relationship Kind doesn't bias toward
+	// any family → stub preserved (ambiguous), preserving existing
+	// behavior when kind hint is absent.
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "SCOPE.Component", "Foo", "a.py"),
+		entAt("bbbbbbbbbbbbbbbb", "SCOPE.Operation", "Foo", "a.py"),
+	}
+	rels := []types.RelationshipRecord{{
+		FromID: "0000000000000000",
+		ToID:   "Foo",
+		Kind:   "USES",
+	}}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "Foo" {
+		t.Fatalf("no-hint: ToID was rewritten to %s", rels[0].ToID)
+	}
+	if stats.ToAmbiguous != 1 {
+		t.Fatalf("expected ToAmbiguous=1, got %+v", stats)
+	}
+}
+
+func TestReferences_StatsTrackingPerEndpoint(t *testing.T) {
+	// Mix of outcomes across both endpoints — verify the per-endpoint
+	// counters tally correctly.
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "Function", "Hello", "a.go"),
+	}
+	rels := []types.RelationshipRecord{
+		// from rewritten, to unmatched
+		{FromID: "Function:Hello", ToID: "Function:Missing", Kind: "CALLS"},
+		// from unmatched, to rewritten
+		{FromID: "Function:Nope", ToID: "Function:Hello", Kind: "CALLS"},
+	}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if stats.FromRewritten != 1 {
+		t.Fatalf("FromRewritten: %+v", stats)
+	}
+	if stats.FromUnmatched != 1 {
+		t.Fatalf("FromUnmatched: %+v", stats)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("ToRewritten: %+v", stats)
+	}
+	if stats.ToUnmatched != 1 {
+		t.Fatalf("ToUnmatched: %+v", stats)
+	}
+	if stats.Rewritten != 2 || stats.Unmatched != 2 {
+		t.Fatalf("aggregates: %+v", stats)
+	}
+}
+
+func TestReferences_StructuralFormatA_KindDisambiguation(t *testing.T) {
+	// PORT-2-FIX-2 emits two entities at the same (file, name) with
+	// different kinds (Component class + Operation method named the same
+	// as the class). Format-A structural ref with scope-kind "component"
+	// should pick the Component entity.
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "SCOPE.Component", "CoreConfig", "core/apps.py"),
+		entAt("bbbbbbbbbbbbbbbb", "SCOPE.Operation", "CoreConfig", "core/apps.py"),
+	}
+	rels := []types.RelationshipRecord{{
+		FromID: "0000000000000000",
+		ToID:   "scope:component:class:python:core/apps.py:CoreConfig",
+		Kind:   "EXTENDS",
+	}}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("structural-A kind-aware: ToID=%s", rels[0].ToID)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("expected ToRewritten=1, got %+v", stats)
+	}
+}
+
 func TestBuildLocationIndex(t *testing.T) {
 	entities := []types.EntityRecord{
 		entAt("aaaaaaaaaaaaaaaa", "Component", "Foo", "a.py"),

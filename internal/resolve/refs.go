@@ -554,44 +554,68 @@ func splitStub(s string) (kind, name string) {
 	return "", s
 }
 
-// References rewrites ToID and FromID values in rels in place. It returns
-// per-endpoint stats — one rel with both endpoints rewritten counts twice in
-// Stats.Rewritten (once per endpoint). The 16-char hex IDs already present
-// (matching the shape of graph.EntityID output) are left untouched.
-func References(rels []types.RelationshipRecord, idx Index) Stats {
+// rewriteOne resolves a single endpoint reference. It returns the (possibly
+// rewritten) ID string and the status code from LookupStatusHint. Hex IDs
+// and empty strings short-circuit with a zero status, signalling "skip".
+func (idx Index) rewriteOne(ref, relKind string) (string, int) {
+	if ref == "" || isHexID(ref) {
+		return ref, 0
+	}
+	id, st := idx.LookupStatusHint(ref, relKind)
+	if st == 1 { // statusRewritten
+		return id, st
+	}
+	return ref, st
+}
+
+// applyEndpointStats records a single endpoint's outcome into the Stats
+// counters, updating both the per-endpoint totals and the aggregate ones.
+func applyEndpointStats(stats *Stats, status int, isFrom bool) {
 	const (
 		statusRewritten = 1
 		statusAmbiguous = 2
 		statusUnmatched = 3
 	)
+	switch status {
+	case statusRewritten:
+		stats.Rewritten++
+		if isFrom {
+			stats.FromRewritten++
+		} else {
+			stats.ToRewritten++
+		}
+	case statusAmbiguous:
+		stats.Ambiguous++
+		if isFrom {
+			stats.FromAmbiguous++
+		} else {
+			stats.ToAmbiguous++
+		}
+	case statusUnmatched:
+		stats.Unmatched++
+		if isFrom {
+			stats.FromUnmatched++
+		} else {
+			stats.ToUnmatched++
+		}
+	}
+}
+
+// References rewrites ToID and FromID values in rels in place. It returns
+// per-endpoint stats — one rel with both endpoints rewritten counts twice in
+// Stats.Rewritten (once per endpoint). The 16-char hex IDs already present
+// (matching the shape of graph.EntityID output) are left untouched.
+func References(rels []types.RelationshipRecord, idx Index) Stats {
 	var stats Stats
 	for k := range rels {
 		r := &rels[k]
-		// FromID
-		if r.FromID != "" && !isHexID(r.FromID) {
-			id, st := idx.LookupStatusHint(r.FromID, r.Kind)
-			switch st {
-			case statusRewritten:
-				r.FromID = id
-				stats.Rewritten++
-			case statusAmbiguous:
-				stats.Ambiguous++
-			case statusUnmatched:
-				stats.Unmatched++
-			}
+		if newID, st := idx.rewriteOne(r.FromID, r.Kind); st != 0 {
+			r.FromID = newID
+			applyEndpointStats(&stats, st, true)
 		}
-		// ToID
-		if r.ToID != "" && !isHexID(r.ToID) {
-			id, st := idx.LookupStatusHint(r.ToID, r.Kind)
-			switch st {
-			case statusRewritten:
-				r.ToID = id
-				stats.Rewritten++
-			case statusAmbiguous:
-				stats.Ambiguous++
-			case statusUnmatched:
-				stats.Unmatched++
-			}
+		if newID, st := idx.rewriteOne(r.ToID, r.Kind); st != 0 {
+			r.ToID = newID
+			applyEndpointStats(&stats, st, false)
 		}
 	}
 	return stats
@@ -602,32 +626,24 @@ func References(rels []types.RelationshipRecord, idx Index) Stats {
 // edges as embedded relationships, so this is where most of the rewriting
 // happens on real codebases.
 //
-// FromID is left alone here — embedded rels conventionally use the parent
-// entity as the source, and the caller (buildDocument) substitutes the
-// parent ID at edge-emission time when FromID is empty.
+// PORT-2-FIX-4 extends this function to rewrite FromID in addition to ToID.
+// Pass 3 cross-language extractors increasingly emit edges where the source
+// endpoint is itself a stub (e.g. structural-ref Format A targeting an
+// entity in another file). When FromID is empty the caller is still
+// expected to substitute the parent entity ID at edge-emission time.
 func ReferencesEmbedded(records []types.EntityRecord, idx Index) Stats {
-	const (
-		statusRewritten = 1
-		statusAmbiguous = 2
-		statusUnmatched = 3
-	)
 	var stats Stats
 	for k := range records {
 		rels := records[k].Relationships
 		for j := range rels {
 			r := &rels[j]
-			if r.ToID == "" || isHexID(r.ToID) {
-				continue
+			if newID, st := idx.rewriteOne(r.FromID, r.Kind); st != 0 {
+				r.FromID = newID
+				applyEndpointStats(&stats, st, true)
 			}
-			id, st := idx.LookupStatusHint(r.ToID, r.Kind)
-			switch st {
-			case statusRewritten:
-				r.ToID = id
-				stats.Rewritten++
-			case statusAmbiguous:
-				stats.Ambiguous++
-			case statusUnmatched:
-				stats.Unmatched++
+			if newID, st := idx.rewriteOne(r.ToID, r.Kind); st != 0 {
+				r.ToID = newID
+				applyEndpointStats(&stats, st, false)
 			}
 		}
 	}
