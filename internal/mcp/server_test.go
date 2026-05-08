@@ -440,7 +440,7 @@ func TestToolNameSurface(t *testing.T) {
 	}
 	wantPresent := []string{
 		"archigraph_search", "archigraph_describe", "archigraph_related", "archigraph_trace",
-		"archigraph_list_clusters", "archigraph_save_finding", "archigraph_get_source",
+		"archigraph_list_clusters", "archigraph_save_finding", "archigraph_list_findings", "archigraph_get_source",
 		"archigraph_whoami", "archigraph_recent_activity", "archigraph_graph_stats", "archigraph_get_telemetry",
 	}
 	for _, n := range wantPresent {
@@ -460,5 +460,102 @@ func TestToolNameSurface(t *testing.T) {
 		if registered[n] {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
+	}
+}
+
+// 14. archigraph_save_finding round-trips through archigraph_list_findings
+// (Refs #59). Findings persist forbidden-term-free content.
+func TestFindingsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "r1")
+	_ = os.MkdirAll(repo, 0o755)
+	writeGraph(t, repo, fixtureDoc("r1"))
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveRes := callTool(t, srv, "archigraph_save_finding", map[string]any{
+		"question": "what does DashboardScreen render",
+		"answer":   "It renders the proposal counts widget at the top of the screen.",
+		"type":     "note",
+		"nodes":    []any{"a1"},
+	})
+	if saveRes.IsError {
+		t.Fatalf("save_finding errored: %s", resultText(saveRes))
+	}
+	listRes := callTool(t, srv, "archigraph_list_findings", nil)
+	txt := resultText(listRes)
+	if !strings.Contains(txt, "DashboardScreen render") {
+		t.Fatalf("expected saved finding in list output, got: %s", txt)
+	}
+	if !strings.Contains(txt, "proposal counts widget") {
+		t.Fatalf("expected answer body in list output, got: %s", txt)
+	}
+	// entity_id filter narrows correctly.
+	filtered := callTool(t, srv, "archigraph_list_findings", map[string]any{
+		"entity_id": "a1",
+	})
+	if !strings.Contains(resultText(filtered), "DashboardScreen render") {
+		t.Fatalf("expected entity_id-filtered finding, got: %s", resultText(filtered))
+	}
+	// entity_id miss returns empty array.
+	miss := callTool(t, srv, "archigraph_list_findings", map[string]any{
+		"entity_id": "zzz-nonexistent",
+	})
+	if mt := strings.TrimSpace(resultText(miss)); mt != "[]" && mt != "null" {
+		t.Fatalf("expected empty findings for unknown entity_id, got: %s", mt)
+	}
+}
+
+// 15. describe attaches saved findings keyed by entity ID (Refs #59 strategy A).
+func TestDescribeAttachesFindings(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "r1")
+	_ = os.MkdirAll(repo, 0o755)
+	writeGraph(t, repo, fixtureDoc("r1"))
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
+	srv, _ := NewServer(Config{RegistryPath: regPath})
+
+	// Save a finding tied to entity a1 (DashboardScreen).
+	callTool(t, srv, "archigraph_save_finding", map[string]any{
+		"question": "purpose of DashboardScreen",
+		"answer":   "Top-level home view.",
+		"nodes":    []any{"a1"},
+	})
+	// Describe should include it under "findings".
+	res := callTool(t, srv, "archigraph_describe", map[string]any{
+		"label_or_id": "DashboardScreen",
+	})
+	txt := resultText(res)
+	if !strings.Contains(txt, `"findings"`) {
+		t.Fatalf("expected findings field in describe output, got: %s", txt)
+	}
+	if !strings.Contains(txt, "Top-level home view") {
+		t.Fatalf("expected saved-finding body in describe output, got: %s", txt)
+	}
+}
+
+// 16. since filter on list_findings drops older entries.
+func TestListFindingsSinceFilter(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "r1")
+	_ = os.MkdirAll(repo, 0o755)
+	writeGraph(t, repo, fixtureDoc("r1"))
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
+	srv, _ := NewServer(Config{RegistryPath: regPath})
+
+	callTool(t, srv, "archigraph_save_finding", map[string]any{
+		"question": "older",
+		"answer":   "older body",
+	})
+	// Since "now+1h" -> nothing.
+	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	res := callTool(t, srv, "archigraph_list_findings", map[string]any{
+		"since": future,
+	})
+	txt := strings.TrimSpace(resultText(res))
+	if txt != "[]" && txt != "null" {
+		t.Fatalf("expected empty list with future since, got: %s", txt)
 	}
 }

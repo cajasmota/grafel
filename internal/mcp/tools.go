@@ -373,17 +373,23 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	g, _, _ := s.resolveAndGroup(req)
+	allFindings := loadFindings(findingsMemDir(g, lg))
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
 			if e, ok := r.LabelIndex.ByID[local]; ok {
-				return jsonResult(serializeEntity(r.Repo, e, len(repos) == 1)), nil
+				out := serializeEntity(r.Repo, e, len(repos) == 1)
+				out["findings"] = findingsToJSON(findingsForEntity(allFindings, e.ID, prefixedID(r.Repo, e.ID)), 0)
+				return jsonResult(out), nil
 			}
 		}
 	}
 	for _, r := range repos {
 		if e := r.LabelIndex.Lookup(key); e != nil {
-			return jsonResult(serializeEntity(r.Repo, e, len(repos) == 1)), nil
+			out := serializeEntity(r.Repo, e, len(repos) == 1)
+			out["findings"] = findingsToJSON(findingsForEntity(allFindings, e.ID, prefixedID(r.Repo, e.ID)), 0)
+			return jsonResult(out), nil
 		}
 	}
 	return mcpapi.NewToolResultError(fmt.Sprintf("not found: %s", key)), nil
@@ -559,6 +565,17 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 			break
 		}
 	}
+	// Attach findings keyed by any entity along the path (Refs #59).
+	g, _, _ := s.resolveAndGroup(req)
+	allFindings := loadFindings(findingsMemDir(g, lg))
+	pathIDs := make([]string, 0, len(path)*2)
+	for _, p := range path {
+		pathIDs = append(pathIDs, p)
+		if _, local := splitPrefixed(p); local != "" {
+			pathIDs = append(pathIDs, local)
+		}
+	}
+	pathFindings := findingsForEntity(allFindings, pathIDs...)
 	return jsonResult(map[string]any{
 		"path":                    path,
 		"edges":                   edges,
@@ -566,6 +583,7 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 		"length":                  len(path) - 1,
 		"crosses_repos":           crosses,
 		"found":                   true,
+		"findings":                findingsToJSON(pathFindings, 0),
 	}), nil
 }
 
@@ -660,6 +678,44 @@ func (s *Server) handleSaveResult(ctx context.Context, req mcpapi.CallToolReques
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
 	return jsonResult(map[string]any{"path": path}), nil
+}
+
+// ---------------------------------------------------------------------------
+// list_findings
+// ---------------------------------------------------------------------------
+
+func (s *Server) handleListFindings(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	g, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	all := loadFindings(findingsMemDir(g, lg))
+	// since filter (RFC3339)
+	if v := argString(req, "since", ""); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			all = findingsSince(all, t)
+		}
+	}
+	// entity_id filter
+	if eid := argString(req, "entity_id", ""); eid != "" {
+		ids := []string{eid}
+		// also try local form if prefixed was given
+		if _, local := splitPrefixed(eid); local != "" {
+			ids = append(ids, local)
+		}
+		// also try resolving labels via index
+		for _, r := range lg.Repos {
+			if r.Doc == nil || r.LabelIndex == nil {
+				continue
+			}
+			if e := r.LabelIndex.Lookup(eid); e != nil {
+				ids = append(ids, e.ID, prefixedID(r.Repo, e.ID))
+			}
+		}
+		all = findingsForEntity(all, ids...)
+	}
+	limit := argInt(req, "limit", 50)
+	return jsonResult(findingsToJSON(all, limit)), nil
 }
 
 // ---------------------------------------------------------------------------

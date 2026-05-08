@@ -16,7 +16,7 @@ for clients (Claude Code, Windsurf, etc.) and tracks the implementation in
 - **Transport:** stdio
 - **Process model:** one server per machine, multiple registered groups, lazy
   mtime-driven reload before every tool call. See ADR-0004.
-- **Tool count:** 16, all prefixed `archigraph_*` to avoid client-side
+- **Tool count:** 17, all prefixed `archigraph_*` to avoid client-side
   collisions when other MCP servers are installed alongside (Refs #62).
 - **State:** in-memory `Document`s loaded from per-repo `.archigraph/graph.json`
   files; no database. See ADR-0006.
@@ -68,6 +68,7 @@ below; per-tool tables omit them unless the semantics differ.
 | [`archigraph_trace`](#archigraph_trace) | Confidence-weighted shortest path between two nodes. |
 | [`archigraph_list_clusters`](#archigraph_list_clusters) | List Louvain communities across the loaded graphs. |
 | [`archigraph_save_finding`](#archigraph_save_finding) | Persist a Q/A pair to the group's memory directory. |
+| [`archigraph_list_findings`](#archigraph_list_findings) | List previously saved findings, optionally filtered by entity or time. |
 | [`archigraph_get_source`](#archigraph_get_source) | Return source-file snippet for a node from disk. |
 | [`archigraph_recent_activity`](#archigraph_recent_activity) | Entities whose source files were modified after a given time. |
 | [`archigraph_list_link_candidates`](#archigraph_list_link_candidates) | List pending cross-repo link candidates. |
@@ -193,6 +194,12 @@ Look up an entity by ID, prefixed cross-repo ID, qualified name, or label.
 If the call resolves to a single repo, `id` is local; otherwise it is prefixed.
 Returns a tool error when no entity matches.
 
+The response also carries a `findings` array — every saved finding (see
+`archigraph_save_finding`) whose `nodes` list references this entity (in either
+local or `<repo>::<localId>` form). Empty array when no findings reference the
+entity. See [`archigraph_list_findings`](#archigraph_list_findings) for explicit
+retrieval. (Refs #59.)
+
 ---
 
 ### `archigraph_related`
@@ -269,6 +276,9 @@ Intra-repo edges are weighted at confidence `0.95`; cross-repo overlay edges
 use the link's recorded confidence (default `0.7` if unset). Returns
 `{"found": false, "path": null}` on no-path.
 
+The response also carries a `findings` array — every saved finding whose
+`nodes` list references any node along the resolved `path`. (Refs #59.)
+
 ---
 
 ### `archigraph_list_clusters`
@@ -324,6 +334,40 @@ durable agent scratchpad.
 
 See [Save_finding semantics](#save_finding-semantics) below for full storage
 layout.
+
+---
+
+### `archigraph_list_findings`
+
+Read previously saved findings back. Counterpart to `archigraph_save_finding`;
+makes the agent scratchpad discoverable across sessions (Refs #59).
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `entity_id` | string | no | — | Filter to findings whose `nodes` reference this entity (accepts ID, prefixed ID, qualified name, or label). |
+| `since` | string | no | — | RFC3339 timestamp; only findings with `saved_at >= since` are returned. |
+| `limit` | number | no | `50` | Max findings to return. |
+| `group`, `cwd` | string | no | — | Common args. |
+
+**Output** — JSON array, newest-first:
+
+```json
+[
+  {
+    "question": "How does authentication flow from mobile to backend?",
+    "answer":   "...",
+    "type":     "note",
+    "nodes":    ["mobile-app::aaaa", "api-backend::bbbb"],
+    "saved_at": "2026-05-09T02:01:31Z",
+    "path":     "/Users/me/.archigraph/groups/example-memory/20260509T020131Z-1a2b3c4d.json"
+  }
+]
+```
+
+Findings are read from the same memory directory `archigraph_save_finding`
+writes to. Files that fail to parse as JSON are silently skipped.
 
 ---
 
@@ -684,9 +728,11 @@ memory directory:
 }
 ```
 
-- **No reading API yet:** there is no `list_findings` / `get_finding` tool.
-  Findings are written for downstream tooling and human review; ingestion
-  back into the graph is out of scope for v1.0.
+- **Reading API:** `archigraph_list_findings` reads them back, optionally
+  filtered by `entity_id` or `since`. `archigraph_describe` and
+  `archigraph_trace` also auto-attach matching findings under a `findings`
+  field of their response (Refs #59). Ingestion back into the graph proper
+  is still out of scope for v1.0.
 - **No deduplication beyond the filename hash:** repeated calls with the
   same Q/A in the same UTC second collapse to one file; otherwise a fresh
   file is written.
