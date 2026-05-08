@@ -28,16 +28,55 @@ CORPORA_DIR="${ARCHIGRAPH_CORPORA_DIR:-$HOME/Documents/Projects/archigraph-corpo
 REPORTS_DIR="$CORPORA_DIR/_reports"
 mkdir -p "$CORPORA_DIR" "$REPORTS_DIR"
 
-# Repo list. Keep entries SHORT, public, and well-known. Each entry is:
-#   <name>|<git-url>|<ref>|<primary-language>
-# Total target: ~5-8 repos, ~10-50k LOC.
+# Repo list. Keep entries public and well-known. Each entry is:
+#   <name>|<git-url>|<ref>|<primary-language>[|<sparse-path>]
+#
+# The optional 5th field selects a single sub-tree via partial clone +
+# git sparse-checkout (cone mode). This is REQUIRED for monorepos where
+# a full clone exceeds ~200 MB at HEAD on the chosen ref — the comment
+# next to each entry records the rough estimate at the time of authoring.
+#
+# Coverage targets the full 32-language extractor matrix + frameworks +
+# ORMs + manifests + tools. Stack-characteristic diversity (Refs #87):
+#   - ORM-heavy             rails (actionpack/activerecord), django
+#   - HTTP routing          gin, chi, express, actix-web, vapor
+#   - microservice / RPC    etcd, kafka
+#   - CLI tool              click
+#   - config-heavy          pandas (mixed), spring-boot autoconfigure
 REPOS=(
-  "requests|https://github.com/psf/requests.git|main|python"
-  "gin|https://github.com/gin-gonic/gin.git|master|go"
-  "express|https://github.com/expressjs/express.git|master|javascript"
-  "flask|https://github.com/pallets/flask.git|main|python"
-  "chi|https://github.com/go-chi/chi.git|master|go"
-  "click|https://github.com/pallets/click.git|main|python"
+  # --- Python ---
+  "requests|https://github.com/psf/requests.git|main|python"                                       # ~6 MB
+  "flask|https://github.com/pallets/flask.git|main|python"                                         # ~6 MB
+  "click|https://github.com/pallets/click.git|main|python"                                         # ~7 MB
+  "django|https://github.com/django/django.git|main|python"                                        # ~80 MB
+  "pandas|https://github.com/pandas-dev/pandas.git|main|python|pandas/core"                        # full ~400 MB; sparse subset
+  # --- Go ---
+  "gin|https://github.com/gin-gonic/gin.git|master|go"                                             # ~3 MB
+  "chi|https://github.com/go-chi/chi.git|master|go"                                                # ~2 MB
+  "etcd|https://github.com/etcd-io/etcd.git|main|go|server/etcdserver"                             # full ~250 MB; sparse subset
+  # --- JavaScript / TypeScript ---
+  "express|https://github.com/expressjs/express.git|master|javascript"                             # ~4 MB
+  "nestjs|https://github.com/nestjs/nest.git|master|typescript|packages/core"                      # ~120 MB full; sparse subset
+  "nextjs|https://github.com/vercel/next.js.git|canary|typescript|packages/next/src/server"        # >1 GB full; sparse subset
+  # --- Java ---
+  "spring-boot|https://github.com/spring-projects/spring-boot.git|main|java|spring-boot-project/spring-boot-actuator-autoconfigure"  # >300 MB full; sparse
+  "kafka|https://github.com/apache/kafka.git|trunk|java|clients/src/main/java/org/apache/kafka/clients"                              # >200 MB full; sparse
+  # --- Kotlin ---
+  "exposed|https://github.com/JetBrains/Exposed.git|main|kotlin"                                   # ~15 MB
+  "ktor|https://github.com/ktorio/ktor.git|main|kotlin|ktor-server/ktor-server-core"               # >200 MB full; sparse
+  # --- Ruby ---
+  "rails-actionpack|https://github.com/rails/rails.git|main|ruby|actionpack"                       # >150 MB full; sparse
+  "sidekiq|https://github.com/sidekiq/sidekiq.git|main|ruby"                                       # ~20 MB
+  # --- PHP ---
+  "laravel-routing|https://github.com/laravel/framework.git|11.x|php|src/Illuminate/Routing"       # >100 MB full; sparse
+  "symfony-routing|https://github.com/symfony/symfony.git|7.2|php|src/Symfony/Component/Routing"   # >300 MB full; sparse
+  # --- Rust ---
+  "tokio|https://github.com/tokio-rs/tokio.git|master|rust|tokio/src"                              # ~60 MB full; sparse
+  "actix-web|https://github.com/actix/actix-web.git|master|rust|actix-web/src"                     # ~30 MB full; sparse
+  # --- Swift ---
+  "vapor|https://github.com/vapor/vapor.git|main|swift|Sources/Vapor"                              # ~10 MB full; sparse to be safe
+  # --- C# ---
+  "aspnetcore-mvc|https://github.com/dotnet/aspnetcore.git|main|csharp|src/Mvc/Mvc.Core"           # >500 MB full; sparse
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
@@ -64,11 +103,22 @@ REPORT="$REPORTS_DIR/$TIMESTAMP.md"
 TMPDIR_AGG="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_AGG"' EXIT
 
+# Optional per-repo wall-clock cap (seconds). Set ARCHIGRAPH_VERIFY2_TIMEOUT=0
+# to disable. Uses gtimeout (coreutils) if available, then timeout, then
+# silently skips capping on systems with neither.
+PER_REPO_TIMEOUT="${ARCHIGRAPH_VERIFY2_TIMEOUT:-600}"
+TIMEOUT_BIN=""
+if command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_BIN="gtimeout"
+elif command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_BIN="timeout"
+fi
+
 # Write the language manifest used by the per-language aggregation step.
 LANG_MANIFEST="$TMPDIR_AGG/_languages.tsv"
 : >"$LANG_MANIFEST"
 for entry in "${REPOS[@]}"; do
-  IFS='|' read -r name url ref lang <<<"$entry"
+  IFS='|' read -r name url ref lang sparse <<<"$entry"
   printf '%s\t%s\n' "$name" "$lang" >>"$LANG_MANIFEST"
 done
 
@@ -87,11 +137,28 @@ done
 } >"$REPORT"
 
 clone_or_update() {
-  local name="$1" url="$2" ref="$3"
+  local name="$1" url="$2" ref="$3" sparse="${4:-}"
   local dest="$CORPORA_DIR/$name"
   if [[ -d "$dest/.git" ]]; then
     echo "==> updating $name" >&2
     ( cd "$dest" && git fetch --depth 1 origin "$ref" >/dev/null 2>&1 && git checkout -q FETCH_HEAD ) || true
+    return 0
+  fi
+  if [[ -n "$sparse" ]]; then
+    echo "==> sparse-cloning $name @ $ref (subset: $sparse)" >&2
+    # Blob-less partial clone + cone-mode sparse checkout. We deliberately
+    # do not pass --depth here because partial clones with --depth+--branch
+    # are flaky on older git versions; the blob filter alone keeps the
+    # working set small.
+    if ! git clone --filter=blob:none --no-checkout --branch "$ref" "$url" "$dest" >/dev/null 2>&1; then
+      git clone --filter=blob:none --no-checkout "$url" "$dest" >/dev/null 2>&1
+    fi
+    ( cd "$dest" \
+      && git sparse-checkout init --cone >/dev/null 2>&1 \
+      && git sparse-checkout set "$sparse" >/dev/null 2>&1 \
+      && git checkout -q "$ref" 2>/dev/null \
+        || git checkout -q FETCH_HEAD 2>/dev/null \
+        || git checkout -q ) || true
   else
     echo "==> cloning $name @ $ref" >&2
     git clone --depth 1 --branch "$ref" "$url" "$dest" >/dev/null 2>&1 || \
@@ -105,8 +172,19 @@ run_one() {
   local out="$TMPDIR_AGG/$name.json"
   local stderr_log="$TMPDIR_AGG/$name.stderr"
   echo "==> indexing $name" >&2
-  if ! "$BIN" index --json-stats "$dest" >"$out" 2>"$stderr_log"; then
-    echo "  ! indexer failed; see $stderr_log" >&2
+  local rc=0
+  if [[ -n "$TIMEOUT_BIN" && "$PER_REPO_TIMEOUT" != "0" ]]; then
+    "$TIMEOUT_BIN" --foreground "${PER_REPO_TIMEOUT}s" \
+      "$BIN" index --json-stats "$dest" >"$out" 2>"$stderr_log" || rc=$?
+  else
+    "$BIN" index --json-stats "$dest" >"$out" 2>"$stderr_log" || rc=$?
+  fi
+  if [[ $rc -ne 0 ]]; then
+    if [[ -n "$TIMEOUT_BIN" && $rc -eq 124 ]]; then
+      echo "  ! indexer timed out after ${PER_REPO_TIMEOUT}s for $name" >&2
+    else
+      echo "  ! indexer failed (rc=$rc); see $stderr_log" >&2
+    fi
     return 1
   fi
   # Extract numbers via a small inline python (jq not assumed present).
@@ -129,8 +207,8 @@ PY
 }
 
 for entry in "${REPOS[@]}"; do
-  IFS='|' read -r name url ref lang <<<"$entry"
-  clone_or_update "$name" "$url" "$ref"
+  IFS='|' read -r name url ref lang sparse <<<"$entry"
+  clone_or_update "$name" "$url" "$ref" "${sparse:-}"
   if ! run_one "$name"; then
     echo "| $name | ERROR | - | - | - | - |" >>"$REPORT"
     continue
