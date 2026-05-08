@@ -29,8 +29,84 @@ frameworks:
     '
 
 file_conventions: []
-source_patterns: []
-relationship_rules: []
+
+# source_patterns: regex patterns that match Spring MVC constructs in source files.
+source_patterns:
+  # @GetMapping("/path") or @GetMapping(value = "/path") or @GetMapping(path = "/path")
+  - pattern: "@GetMapping\\s*\\(\\s*(?:(?:value|path)\\s*=\\s*)?[\"']([^\"'\\n\\r]+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # @PostMapping(...)
+  - pattern: "@PostMapping\\s*\\(\\s*(?:(?:value|path)\\s*=\\s*)?[\"']([^\"'\\n\\r]+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # @PutMapping(...)
+  - pattern: "@PutMapping\\s*\\(\\s*(?:(?:value|path)\\s*=\\s*)?[\"']([^\"'\\n\\r]+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # @DeleteMapping(...)
+  - pattern: "@DeleteMapping\\s*\\(\\s*(?:(?:value|path)\\s*=\\s*)?[\"']([^\"'\\n\\r]+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # @PatchMapping(...)
+  - pattern: "@PatchMapping\\s*\\(\\s*(?:(?:value|path)\\s*=\\s*)?[\"']([^\"'\\n\\r]+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # @RequestMapping("/path") or @RequestMapping(value = "/path", method = ...)
+  - pattern: "@RequestMapping\\s*\\(\\s*(?:(?:value|path)\\s*=\\s*)?[\"']([^\"'\\n\\r]+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+# relationship_rules: produce ROUTES_TO edges from each route to its handler method.
+# The handler method declaration follows the annotation, so we capture both in
+# one match: the URL path on the annotation, then the method name after any
+# annotation arguments + modifiers + return type.
+relationship_rules:
+  # @GetMapping("/path")\n public Foo handler(...) -> ROUTES_TO Controller:handler
+  # Uses [^(]*? after the visibility modifier to consume the return type, then
+  # captures the final word before '(' as the handler method name.
+  - pattern: "@GetMapping\\s*\\([^)]*[\"']([^\"'\\n\\r]+)[\"'][^)]*\\)[^@{};]{0,400}?(?:public|protected|private)\\s[^(){};=]*?(\\w+)\\s*\\("
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+  - pattern: "@PostMapping\\s*\\([^)]*[\"']([^\"'\\n\\r]+)[\"'][^)]*\\)[^@{};]{0,400}?(?:public|protected|private)\\s[^(){};=]*?(\\w+)\\s*\\("
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+  - pattern: "@PutMapping\\s*\\([^)]*[\"']([^\"'\\n\\r]+)[\"'][^)]*\\)[^@{};]{0,400}?(?:public|protected|private)\\s[^(){};=]*?(\\w+)\\s*\\("
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+  - pattern: "@DeleteMapping\\s*\\([^)]*[\"']([^\"'\\n\\r]+)[\"'][^)]*\\)[^@{};]{0,400}?(?:public|protected|private)\\s[^(){};=]*?(\\w+)\\s*\\("
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+  - pattern: "@PatchMapping\\s*\\([^)]*[\"']([^\"'\\n\\r]+)[\"'][^)]*\\)[^@{};]{0,400}?(?:public|protected|private)\\s[^(){};=]*?(\\w+)\\s*\\("
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+  - pattern: "@RequestMapping\\s*\\([^)]*[\"']([^\"'\\n\\r]+)[\"'][^)]*\\)[^@{};]{0,400}?(?:public|protected|private)\\s[^(){};=]*?(\\w+)\\s*\\("
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
 
 custom_extractors:
   - module: "archigraph.engine.rules.languages.java.spring_ecosystem_extractor"
