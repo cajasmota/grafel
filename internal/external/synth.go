@@ -66,8 +66,14 @@ func Synthesize(doc *graph.Document) Stats {
 	}
 
 	// First pass — collect every unique external name we want to
-	// synthesise, and record a stable "first seen" language so the
-	// placeholder carries a useful subtype hint.
+	// synthesise. The placeholder carries a subtype hint
+	// ("package"/"function") but the language field is left empty:
+	// we don't reliably know the source language at this layer (a name
+	// like "json" or "abc" exists in multiple ecosystems), and an
+	// inaccurate language tag is worse than none at all. Language can
+	// be populated by a downstream enrichment pass that has more
+	// context (e.g. inspecting the import statement that produced the
+	// edge).
 	type externalInfo struct {
 		canonical string
 		subtype   string
@@ -357,53 +363,109 @@ func isKnownExternalPackage(s string) bool {
 	return ok
 }
 
-// knownExternalPackages is the v1.0 allowlist. Lowercase keys; lookups
-// are case-folded.
+// knownExternalPackages is the v1.1 allowlist. Lowercase keys; lookups
+// are case-folded. Curated from real codebases — Python web/data
+// stacks, JS/TS frontend + node, Go services, JVM enterprise. False
+// positives synthesise a placeholder for what might have been a local
+// name; bias toward names extremely unlikely to collide.
 var knownExternalPackages = map[string]struct{}{
-	// Python ecosystem
-	"django":         {},
-	"rest_framework": {},
-	"drf":            {},
-	"flask":          {},
-	"fastapi":        {},
-	"sqlalchemy":     {},
-	"pydantic":       {},
-	"celery":         {},
-	"requests":       {},
-	"numpy":          {},
-	"pandas":         {},
-	"pytest":         {},
-	"redis":          {},
-	"boto3":          {},
+	// Python ecosystem (third-party)
+	"django":            {},
+	"rest_framework":    {},
+	"drf":               {},
+	"flask":             {},
+	"fastapi":           {},
+	"sqlalchemy":        {},
+	"alembic":           {},
+	"pydantic":          {},
+	"celery":            {},
+	"requests":          {},
+	"httpx":             {},
+	"numpy":             {},
+	"pandas":            {},
+	"scipy":             {},
+	"pytest":            {},
+	"mypy":              {},
+	"attrs":             {},
+	"click":             {},
+	"redis":             {},
+	"boto3":             {},
+	"awswrangler":       {},
+	"typing_extensions": {},
 	// Python stdlib top-level
-	"os":          {},
-	"sys":         {},
-	"json":        {},
-	"re":          {},
-	"typing":      {},
-	"datetime":    {},
-	"collections": {},
-	"asyncio":     {},
-	"logging":     {},
-	"pathlib":     {},
-	"functools":   {},
-	"itertools":   {},
-	"unittest":    {},
-	"abc":         {},
-	"enum":        {},
-	"uuid":        {},
-	"hashlib":     {},
-	// JS / TS ecosystem
-	"react":      {},
-	"vue":        {},
-	"angular":    {},
-	"lodash":     {},
-	"axios":      {},
-	"express":    {},
-	"next":       {},
-	"jest":       {},
-	"vitest":     {},
-	"typescript": {},
+	"os":              {},
+	"sys":             {},
+	"json":            {},
+	"re":              {},
+	"typing":          {},
+	"datetime":        {},
+	"collections":     {},
+	"asyncio":         {},
+	"concurrent":      {},
+	"multiprocessing": {},
+	"threading":       {},
+	"queue":           {},
+	"weakref":         {},
+	"logging":         {},
+	"pathlib":         {},
+	"functools":       {},
+	"itertools":       {},
+	"operator":        {},
+	"builtins":        {},
+	"unittest":        {},
+	"abc":             {},
+	"enum":            {},
+	"uuid":            {},
+	"hashlib":         {},
+	"dataclasses":     {},
+	"contextlib":      {},
+	"warnings":        {},
+	"copy":            {},
+	"tempfile":        {},
+	"subprocess":      {},
+	"argparse":        {},
+	"socket":          {},
+	"ssl":             {},
+	"urllib":          {},
+	// JS / TS ecosystem (unscoped)
+	"react":        {},
+	"vue":          {},
+	"angular":      {},
+	"lodash":       {},
+	"ramda":        {},
+	"immer":        {},
+	"dayjs":        {},
+	"date-fns":     {},
+	"axios":        {},
+	"ky":           {},
+	"express":      {},
+	"next":         {},
+	"jest":         {},
+	"vitest":       {},
+	"mocha":        {},
+	"chai":         {},
+	"sinon":        {},
+	"supertest":    {},
+	"typescript":   {},
+	"zod":          {},
+	"prisma":       {},
+	"redux":        {},
+	"rxjs":         {},
+	"tanstack":     {},
+	"nodemailer":   {},
+	"bcrypt":       {},
+	"jsonwebtoken": {},
+	"helmet":       {},
+	"multer":       {},
+	// JS / TS scoped packages (kept lowercase per case-folded lookup;
+	// only the leading "@scope" segment is matched).
+	"@radix-ui":        {},
+	"@tanstack":        {},
+	"@reduxjs":         {},
+	"@testing-library": {},
+	"@types":           {},
+	"@nestjs":          {},
+	"@apollo":          {},
 	// Go stdlib top-level
 	"fmt":           {},
 	"strings":       {},
@@ -421,12 +483,29 @@ var knownExternalPackages = map[string]struct{}{
 	"regexp":        {},
 	"testing":       {},
 	"encoding/json": {},
+	// Go third-party (high-volume)
+	"testify": {},
+	"viper":   {},
+	"cobra":   {},
+	"zap":     {},
+	"logrus":  {},
+	"sqlx":    {},
+	"gorm":    {},
+	"gorilla": {},
 	// Java / Kotlin
-	"java":                {},
-	"javax":               {},
-	"kotlin":              {},
-	"kotlinx":             {},
-	"org.springframework": {},
+	"java":                  {},
+	"javax":                 {},
+	"kotlin":                {},
+	"kotlinx":               {},
+	"org.springframework":   {},
+	"com.fasterxml.jackson": {},
+	"com.google.guava":      {},
+	"org.apache.commons":    {},
+	"junit":                 {},
+	"mockito":               {},
+	"slf4j":                 {},
+	"log4j":                 {},
+	"lombok":                {},
 	// Ruby
 	"rails":        {},
 	"activerecord": {},
@@ -437,6 +516,12 @@ var knownExternalPackages = map[string]struct{}{
 // stub should be treated as Kind:Name. The structural-ref shape
 // "scope:..." has multiple ':'s and a long prefix; this filter avoids
 // claiming those.
+//
+// '.' is intentionally allowed in the prefix character class to admit
+// dotted-kind shapes like "a.b.c:Symbol" that some extractors emit
+// (e.g. fully-qualified Python or JVM kind hints). The trade-off is
+// that "java.util.Map:put" looks kind-like and gets treated as a
+// Kind:Name pair — that's what we want for these external lookups.
 func isKindLikePrefix(s string) bool {
 	if len(s) == 0 || len(s) > 24 {
 		return false

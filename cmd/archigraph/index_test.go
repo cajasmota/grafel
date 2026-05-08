@@ -493,6 +493,14 @@ func TestExternalSynthesis_DjangoFixture(t *testing.T) {
 
 // TestExternalSynthesis_VerboseCounter confirms the ext-synthesis log
 // line appears when ARCHIGRAPH_VERBOSE=1. PORT-EXT (issue #32).
+//
+// NOTE: this test mutates the process-global os.Stderr file handle and
+// therefore MUST NOT call t.Parallel(). Running it concurrently with
+// any other test that writes to stderr (or a sibling that also swaps
+// the handle) would interleave bytes into the captured pipe and the
+// assertion would flake. If the test ever needs parallelism, refactor
+// the indexer to accept an io.Writer seam instead of touching the
+// global handle.
 func TestExternalSynthesis_VerboseCounter(t *testing.T) {
 	t.Setenv("ARCHIGRAPH_VERBOSE", "1")
 
