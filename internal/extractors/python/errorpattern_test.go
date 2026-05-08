@@ -205,7 +205,8 @@ func TestErrorPatternPy_PreservesBaseExtraction(t *testing.T) {
 		if r.Kind == "SCOPE.Component" && r.Name == "Worker" {
 			hasClass = true
 		}
-		if r.Kind == "SCOPE.Operation" && r.Name == "run" {
+		// Issue #45: methods are emitted with class-qualified Name.
+		if r.Kind == "SCOPE.Operation" && r.Name == "Worker.run" {
 			hasMethod = true
 		}
 		if r.Kind == "SCOPE.Pattern" && strings.HasPrefix(r.Name, "error_handling:try_catch:") {

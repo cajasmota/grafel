@@ -161,8 +161,14 @@ func walkNode(
 	case "function_definition":
 		rec := buildFunction(node, file, parentClass)
 		if rec.Name != "" {
+			// Self-recursion is identified by the bare function name, not the
+			// class-qualified Name. nameNode is the leaf identifier.
+			selfName := rec.Name
+			if nameNode := node.ChildByFieldName("name"); nameNode != nil {
+				selfName = nodeText(nameNode, file.Content)
+			}
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, selfName)...)
 			*out = append(*out, rec)
 			*funcCount++
 		}
@@ -180,8 +186,12 @@ func walkNode(
 		case "function_definition":
 			rec := buildFunction(inner, file, parentClass)
 			if rec.Name != "" {
+				selfName := rec.Name
+				if nameNode := inner.ChildByFieldName("name"); nameNode != nil {
+					selfName = nodeText(nameNode, file.Content)
+				}
 				rec.Relationships = append(rec.Relationships,
-					extractCallRelationships(inner.ChildByFieldName("body"), file.Content, rec.Name)...)
+					extractCallRelationships(inner.ChildByFieldName("body"), file.Content, selfName)...)
 				*out = append(*out, rec)
 				*funcCount++
 			}
@@ -244,6 +254,12 @@ func buildClass(node *sitter.Node, file extractor.FileInput) types.EntityRecord 
 
 // buildFunction constructs a SCOPE.Operation EntityRecord for a function_definition.
 // parentClass is "" for module-level functions, or the class name for methods.
+//
+// Methods are emitted with Name="<class>.<method>" (issue #45) so two classes
+// declaring a same-named method in the same file produce distinct entity IDs
+// via ComputeID(SourceFile+Kind+Name). The dotted form is the same encoding
+// used by Format B structural references and is indexed natively by
+// resolve.Index.byMember (which splits Name on the first '.').
 func buildFunction(node *sitter.Node, file extractor.FileInput, parentClass string) types.EntityRecord {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
@@ -252,8 +268,10 @@ func buildFunction(node *sitter.Node, file extractor.FileInput, parentClass stri
 	name := nodeText(nameNode, file.Content)
 
 	subtype := "function"
+	emittedName := name
 	if parentClass != "" {
 		subtype = "method"
+		emittedName = parentClass + "." + name
 	}
 
 	params := ""
@@ -269,7 +287,7 @@ func buildFunction(node *sitter.Node, file extractor.FileInput, parentClass stri
 	}
 
 	return types.EntityRecord{
-		Name:               name,
+		Name:               emittedName,
 		Kind:               "SCOPE.Operation",
 		Subtype:            subtype,
 		Language:           "python",
