@@ -571,6 +571,74 @@ func TestExtract_DuplicateMethodsFromFixture(t *testing.T) {
 	}
 }
 
+// TestExtract_ClassSubtypeLabels is the regression test for issue #46.
+// Every declared class_definition must be emitted with Subtype="class".
+// Base-class references in the parentheses (e.g. serializers.ModelSerializer)
+// are NOT declarations — the Python base extractor must not emit entities for
+// them at all, so they cannot end up with subtype="class" via this extractor.
+func TestExtract_ClassSubtypeLabels(t *testing.T) {
+	path := filepath.Join("testdata", "subtype_labels.py.fixture")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	tree := parse(t, src)
+	ext, _ := extractor.Get("python")
+
+	entities, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     path,
+		Content:  src,
+		Language: "python",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	wantClasses := map[string]bool{
+		"UserSerializer": false, // (1) extends external base
+		"Base":           false, // (3) stand-alone
+		"Child":          false, // (2) extends another declared class
+	}
+	// Names that MUST NOT appear as declared-class entities — these are
+	// references to external bases, not declarations.
+	forbiddenAsClass := map[string]bool{
+		"ModelSerializer":             true,
+		"serializers.ModelSerializer": true,
+		"serializers":                 true,
+	}
+
+	for _, e := range entities {
+		if e.Kind != "SCOPE.Component" {
+			continue
+		}
+		// Module-import entities also use Kind=SCOPE.Component but carry
+		// Subtype="module" — skip them here.
+		if e.Subtype == "module" {
+			continue
+		}
+		if _, ok := wantClasses[e.Name]; ok {
+			if e.Subtype != "class" {
+				t.Errorf("declared class %q: expected Subtype=%q, got %q",
+					e.Name, "class", e.Subtype)
+			}
+			wantClasses[e.Name] = true
+			continue
+		}
+		if forbiddenAsClass[e.Name] {
+			t.Errorf("base-class reference %q must not be emitted by the "+
+				"Python base extractor as a declared class (Subtype=%q)",
+				e.Name, e.Subtype)
+		}
+	}
+	for name, seen := range wantClasses {
+		if !seen {
+			t.Errorf("expected declared class %q in entities=%v",
+				name, entityNames(entities))
+		}
+	}
+}
+
 // entityNames returns entity names for test diagnostics.
 func entityNames(entities []types.EntityRecord) []string {
 	names := make([]string, len(entities))

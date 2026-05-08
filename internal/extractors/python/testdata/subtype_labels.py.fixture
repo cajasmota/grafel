@@ -1,0 +1,27 @@
+# Fixture for issue #46: declared classes must carry subtype="class".
+#
+# Three shapes covered:
+#
+#   1. Declared class extending an external base
+#      (the base name appears in source but is NOT defined in this file).
+#   2. Declared class extending another declared class in the same file.
+#   3. Stand-alone declared class with no base.
+#
+# The base-extractor must emit subtype="class" on every declared class.
+
+from rest_framework import serializers
+
+
+# (1) Declared class extending an external base.
+class UserSerializer(serializers.ModelSerializer):
+    pass
+
+
+# (3) Stand-alone declared class.
+class Base:
+    pass
+
+
+# (2) Declared class extending another declared class in the same file.
+class Child(Base):
+    pass
