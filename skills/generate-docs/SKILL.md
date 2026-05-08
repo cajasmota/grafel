@@ -30,7 +30,7 @@ The skill is a strict pipeline. Each pass has a dedicated prompt file under `pro
 | Pass | Prompt | Purpose |
 |------|--------|---------|
 | 0 | `prompts/00-domain-qa.md` | First-run domain interview: what is this group, who owns it, what are the deployment boundaries. |
-| 1 | `prompts/01-inventory.md` | Discover repos and entities via `query_graph` / `graph_stats` / `list_communities`. |
+| 1 | `prompts/01-inventory.md` | Discover repos and entities via `search` / `graph_stats` / `list_clusters`. |
 | 2 | `prompts/02-plan.md` | Produce a per-module documentation plan with token estimates. |
 | 3 | `prompts/03-overview.md` | Repo-level `overview.md` for every repo. |
 | 4 | `prompts/04-cluster.md` | Per-module deep-dive (parallel writer subagents, one per cluster). |
@@ -45,14 +45,14 @@ The skill is a strict pipeline. Each pass has a dedicated prompt file under `pro
 The skill is built around the archigraph MCP server. The agent should call these tools directly (no shell-out to the `archigraph` CLI for read paths):
 
 - `whoami` - resolve the group/repo for the caller.
-- `query_graph` - BM25-ranked query expanded by BFS; primary discovery tool.
-- `get_node` - look up an entity by id/qualified name/label.
-- `get_neighbors` - depth-bounded neighbor expansion.
-- `shortest_path` - confidence-weighted path (cross-repo aware).
-- `list_communities` - Louvain communities, used to seed module clustering in Pass 2.
-- `get_node_source` - retrieve source-file snippet for a node.
+- `search` - BM25-ranked query expanded by BFS; primary discovery tool.
+- `describe` - look up an entity by id/qualified name/label.
+- `related` - depth-bounded neighbor expansion.
+- `trace` - confidence-weighted path (cross-repo aware).
+- `list_clusters` - Louvain communities, used to seed module clustering in Pass 2.
+- `get_source` - retrieve source-file snippet for a node.
 - `recent_activity` - list entities whose source files changed since a timestamp.
-- `save_result` - persist a question/answer pair into the group memory directory.
+- `save_finding` - persist a question/answer pair into the group memory directory.
 - `list_link_candidates` / `resolve_link_candidate` - cross-repo link review (Pass 8).
 - `list_enrichment_candidates` / `submit_enrichment` / `reject_enrichment` - close enrichment loops.
 - `graph_stats` - corpus-level metrics (used in Pass 1 inventory).

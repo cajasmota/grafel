@@ -23,9 +23,9 @@ list_link_candidates(limit=200)
 For each candidate:
 
 ```
-get_node(label_or_id="<from>")
-get_node(label_or_id="<to>")
-shortest_path(source="<from>", target="<to>")
+describe(label_or_id="<from>")
+describe(label_or_id="<to>")
+trace(source="<from>", target="<to>")
 ```
 
 Decide:

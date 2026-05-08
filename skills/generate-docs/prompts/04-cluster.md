@@ -28,7 +28,7 @@ Per module:
 Use the community ids in your plan entry:
 
 ```
-query_graph(
+search(
   question="<module title> architecture",
   repo_filter=["<repo>"],
   depth=3,
@@ -39,7 +39,7 @@ query_graph(
 Then for each of the top-5 entities in the module:
 
 ```
-get_neighbors(node="<entity>", depth=2, repo_filter=["<repo>"])
+related(node="<entity>", depth=2, repo_filter=["<repo>"])
 ```
 
 These neighbors are what you describe in the module README's "Key entities" section.
@@ -49,7 +49,7 @@ These neighbors are what you describe in the module README's "Key entities" sect
 The graph cannot see runtime-only couplings. The convention file lists places where these typically live for the stack (e.g., for `django.md`: signal connections, middleware, async tasks). For each, ask:
 
 ```
-query_graph(
+search(
   question="<dynamic-edge-pattern>",
   repo_filter=["<repo>"],
   depth=2,
@@ -65,7 +65,7 @@ When you find one, name both ends of the connection in a backticked heading insi
 
 ### Step 3 — Pull source where needed
 
-Within your `source_snippets` budget, use `get_node_source(node_id=..., context_lines=20)` for entities whose intent is unclear from name + neighbors alone. Quote at most ~10 lines per snippet in the doc; reference the file path in backticks.
+Within your `source_snippets` budget, use `get_source(node_id=..., context_lines=20)` for entities whose intent is unclear from name + neighbors alone. Quote at most ~10 lines per snippet in the doc; reference the file path in backticks.
 
 ### Step 4 — Render
 
@@ -82,7 +82,7 @@ Run every check in `snippets/verification-checklist.md`. The orchestrator will r
 ### Step 7 — Save
 
 ```
-save_result(
+save_finding(
   question="What does the <module-slug> module do in <repo>?",
   answer="<file: <repo>/docs/modules/<module-slug>/README.md>",
   type="module",

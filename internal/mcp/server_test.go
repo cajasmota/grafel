@@ -177,7 +177,7 @@ func TestBM25RankingPrefersRareTerms(t *testing.T) {
 	}
 }
 
-// 4. get_node uses the LabelIndex (O(1) by name/id).
+// 4. describe uses the LabelIndex (O(1) by name/id).
 func TestGetNodeViaIndex(t *testing.T) {
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "r1")
@@ -185,7 +185,7 @@ func TestGetNodeViaIndex(t *testing.T) {
 	writeGraph(t, repo, fixtureDoc("r1"))
 	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
 	srv, _ := NewServer(Config{RegistryPath: regPath})
-	res := callTool(t, srv, "get_node", map[string]any{"label_or_id": "DashboardScreen"})
+	res := callTool(t, srv, "describe", map[string]any{"label_or_id": "DashboardScreen"})
 	txt := resultText(res)
 	if !strings.Contains(txt, "DashboardScreen") {
 		t.Fatalf("expected DashboardScreen in result, got: %s", txt)
@@ -198,7 +198,7 @@ func TestGetNodeViaIndex(t *testing.T) {
 	}
 }
 
-// 5. shortest_path follows cross-repo overlay edges.
+// 5. trace follows cross-repo overlay edges.
 func TestShortestPathCrossRepo(t *testing.T) {
 	dir := t.TempDir()
 	r1 := filepath.Join(dir, "rA")
@@ -223,7 +223,7 @@ func TestShortestPathCrossRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := callTool(t, srv, "shortest_path", map[string]any{"source": "rA::a1", "target": "rB::a4"})
+	res := callTool(t, srv, "trace", map[string]any{"source": "rA::a1", "target": "rB::a4"})
 	txt := resultText(res)
 	if !strings.Contains(txt, "\"crosses_repos\": true") {
 		t.Fatalf("expected crosses_repos=true, got: %s", txt)
@@ -394,9 +394,9 @@ func TestPerRepoUnavailable(t *testing.T) {
 		t.Errorf("expected 'unavailable' in graph_stats, got: %s", txt)
 	}
 	// good repo still queryable
-	res2 := callTool(t, srv, "get_node", map[string]any{"label_or_id": "DashboardScreen"})
+	res2 := callTool(t, srv, "describe", map[string]any{"label_or_id": "DashboardScreen"})
 	if !strings.Contains(resultText(res2), "DashboardScreen") {
-		t.Errorf("expected good repo to serve get_node, got: %s", resultText(res2))
+		t.Errorf("expected good repo to serve describe, got: %s", resultText(res2))
 	}
 }
 
@@ -408,7 +408,7 @@ func TestQueryGraphRendersCompact(t *testing.T) {
 	writeGraph(t, repo, fixtureDoc("r1"))
 	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
 	srv, _ := NewServer(Config{RegistryPath: regPath})
-	res := callTool(t, srv, "query_graph", map[string]any{
+	res := callTool(t, srv, "search", map[string]any{
 		"question":     "rareUniqueWidget",
 		"depth":        1,
 		"token_budget": 800,
@@ -420,5 +420,41 @@ func TestQueryGraphRendersCompact(t *testing.T) {
 	}
 	if !strings.HasPrefix(txt, "# nodes") {
 		t.Errorf("expected '# nodes' header, got: %s", txt)
+	}
+}
+
+// 13. Tool registration uses the finalized distinct names; old names are gone.
+func TestToolNameSurface(t *testing.T) {
+	dir := t.TempDir()
+	regPath := filepath.Join(dir, "registry.json")
+	if err := os.WriteFile(regPath, []byte(`{"groups":{}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered := map[string]bool{}
+	for _, st := range srv.MCP.ListTools() {
+		registered[st.Tool.Name] = true
+	}
+	wantPresent := []string{
+		"search", "describe", "related", "trace",
+		"list_clusters", "save_finding", "get_source",
+		"whoami", "recent_activity", "graph_stats", "get_telemetry",
+	}
+	for _, n := range wantPresent {
+		if !registered[n] {
+			t.Errorf("expected tool %q to be registered", n)
+		}
+	}
+	wantAbsent := []string{
+		"query_graph", "get_node", "get_neighbors", "shortest_path",
+		"list_communities", "save_result", "get_node_source",
+	}
+	for _, n := range wantAbsent {
+		if registered[n] {
+			t.Errorf("expected old tool %q to NOT be registered", n)
+		}
 	}
 }

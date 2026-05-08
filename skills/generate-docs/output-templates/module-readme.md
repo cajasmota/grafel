@@ -8,7 +8,7 @@
 | ------ | ---- | ---- | ---- |
 | `<entity>` | Component\|Module\|Function\|Class | `<file:line>` | <one line> |
 
-> Pulled from `query_graph` + `get_neighbors`. Sort by centrality. Entity names always backticked.
+> Pulled from `search` + `related`. Sort by centrality. Entity names always backticked.
 
 ## Responsibilities
 

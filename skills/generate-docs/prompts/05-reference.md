@@ -18,9 +18,9 @@ Sections (each is a separate file, each has a template):
 Public API includes: HTTP routes, gRPC services, exported functions/classes (per the convention's "public surface" rules), CLI commands, message-bus producers/consumers.
 
 ```
-query_graph(question="HTTP routes", repo_filter=["<r>"], depth=1, token_budget=900)
-query_graph(question="public exports", repo_filter=["<r>"], depth=1, token_budget=900)
-query_graph(question="CLI commands", repo_filter=["<r>"], depth=1, token_budget=600)
+search(question="HTTP routes", repo_filter=["<r>"], depth=1, token_budget=900)
+search(question="public exports", repo_filter=["<r>"], depth=1, token_budget=900)
+search(question="CLI commands", repo_filter=["<r>"], depth=1, token_budget=600)
 ```
 
 For each route/export, capture: name (in backticks), kind, file path, and a one-line purpose. Group by kind; sort alphabetically within each group.
@@ -28,8 +28,8 @@ For each route/export, capture: name (in backticks), kind, file path, and a one-
 ### `config.md`
 
 ```
-query_graph(question="environment variables", repo_filter=["<r>"], depth=2, token_budget=900)
-query_graph(question="settings constants", repo_filter=["<r>"], depth=2, token_budget=900)
+search(question="environment variables", repo_filter=["<r>"], depth=2, token_budget=900)
+search(question="settings constants", repo_filter=["<r>"], depth=2, token_budget=900)
 list_enrichment_candidates(repo_filter=["<r>"], kind="env-var")
 ```
 
@@ -40,7 +40,7 @@ If `list_enrichment_candidates` returns blocking unknowns, list them in a "Known
 Read the convention's `deployment_signals` section. For Django that means `wsgi.py`/`asgi.py`/Procfile/Dockerfile; for an infra-cdk repo it means stack files and synth output; for `infra-terraform.md` it means modules + backends.
 
 ```
-query_graph(question="deployment", repo_filter=["<r>"], depth=2, token_budget=800)
+search(question="deployment", repo_filter=["<r>"], depth=2, token_budget=800)
 ```
 
 Cross-reference `domain.md` "Deployment" section to make sure you do not contradict it.
@@ -62,7 +62,7 @@ Created only if the convention required it. Most repos won't have one.
 Run `snippets/verification-checklist.md` after each file. After all six are produced, save:
 
 ```
-save_result(
+save_finding(
   question="What is the reference documentation for <repo>?",
   answer="<paths to reference/*.md>",
   type="reference",

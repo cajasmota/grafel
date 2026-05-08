@@ -55,9 +55,9 @@ archigraph index <repo>          # if not already indexed
 Then via MCP, with the repo's CWD active so `whoami` resolves correctly:
 
 - `graph_stats(repo_filter=["<repo>"])` — top entity kinds and edge kinds tell you what the indexer found.
-- `query_graph(question="entry points")` — confirms what runs the app.
-- `query_graph(question="public API surface")` — confirms what's exposed.
-- `list_communities(repo_filter=["<repo>"])` — confirms the natural module boundary.
+- `search(question="entry points")` — confirms what runs the app.
+- `search(question="public API surface")` — confirms what's exposed.
+- `list_clusters(repo_filter=["<repo>"])` — confirms the natural module boundary.
 
 Read at most ~10 source files to confirm structural assumptions. Do not read the whole repo — the question is structural, not behavioral.
 
@@ -69,7 +69,7 @@ You must ask, even if the codebase suggests answers:
 2. **Public surface.** Which of these does the framework consider "public":
    - HTTP routes / RPC services / CLI entries / package exports / event handlers / scheduled tasks / native modules / IaC outputs?
    - Anything else specific to the stack?
-3. **Module shape.** What is the directory layout the framework expects or its community has standardized on? Are there places where `list_communities` will reliably mis-cluster?
+3. **Module shape.** What is the directory layout the framework expects or its community has standardized on? Are there places where `list_clusters` will reliably mis-cluster?
 4. **Entry points.** What file does the framework start at? What declares config? What declares dependencies?
 5. **Dynamic edges.** What runtime couplings does the stack create that static analysis misses? List 2-5 patterns. (Examples to prompt the user with: middleware ordering, signal dispatch, plugin discovery, dependency injection containers, ARN references, label selectors.)
 6. **Deployment signals.** How does this stack typically deploy? Containers, serverless, static hosting, on-prem? What configuration files are involved?

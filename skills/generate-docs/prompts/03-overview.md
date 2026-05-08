@@ -23,9 +23,9 @@ Call `whoami` with `cwd=<repo absolute path>` so subsequent calls scope correctl
 Call:
 
 ```
-query_graph(question="entry points", repo_filter=["<r>"], depth=2, token_budget=600)
-query_graph(question="public API surface", repo_filter=["<r>"], depth=2, token_budget=600)
-query_graph(question="data model", repo_filter=["<r>"], depth=2, token_budget=600)
+search(question="entry points", repo_filter=["<r>"], depth=2, token_budget=600)
+search(question="public API surface", repo_filter=["<r>"], depth=2, token_budget=600)
+search(question="data model", repo_filter=["<r>"], depth=2, token_budget=600)
 ```
 
 Use the convention file's `entry_points` section to know what "entry point" means for this stack. For example, in `django.md` it means URLConf root + `wsgi.py` + management commands; in `react.md` it means the router root + the top-level `App` component.
@@ -55,7 +55,7 @@ Run `snippets/verification-checklist.md`. If any check fails, fix and re-run bef
 Call:
 
 ```
-save_result(
+save_finding(
   question="What is the architectural overview of <repo>?",
   answer="<file: <repo>/docs/overview.md>",
   type="overview",

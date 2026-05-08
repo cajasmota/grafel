@@ -35,7 +35,7 @@ src/
   routes/           # or app/ for Next.js
 ```
 
-A `list_communities` cluster usually maps to one feature folder. When two features share a hook in `shared/hooks/`, that hook shows up as central in both communities — describe it in `shared`'s module page, not in either feature.
+A `list_clusters` cluster usually maps to one feature folder. When two features share a hook in `shared/hooks/`, that hook shows up as central in both communities — describe it in `shared`'s module page, not in either feature.
 
 ## Entry points (Pass 3)
 

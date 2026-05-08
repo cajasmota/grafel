@@ -8,7 +8,7 @@
 //	scoring.go          BM25 + multi-source weighting
 //	traversal.go        BFS/DFS traversal helpers
 //	context_filter.go   edge-context filter resolution
-//	index.go            label inverted index for O(1) get_node
+//	index.go            label inverted index for O(1) describe
 //	routing.go          group inference from CWD + cross-repo prefix logic
 //	render.go           compact output format
 //	telemetry.go        latency / counter telemetry
@@ -298,7 +298,7 @@ func defaultLinksFile(group string) string {
 	return filepath.Join(home, ".archigraph", "groups", group+"-links.json")
 }
 
-// defaultMemoryDir is the conventional path for save_result outputs.
+// defaultMemoryDir is the conventional path for save_finding outputs.
 func defaultMemoryDir(group string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {

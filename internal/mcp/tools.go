@@ -171,7 +171,7 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 }
 
 // ---------------------------------------------------------------------------
-// query_graph
+// search
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -360,7 +360,7 @@ func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
 }
 
 // ---------------------------------------------------------------------------
-// get_node
+// describe
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -420,7 +420,7 @@ func serializeEntity(repo string, e *graph.Entity, scopeIsOne bool) map[string]a
 }
 
 // ---------------------------------------------------------------------------
-// get_neighbors
+// related
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -492,7 +492,7 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 }
 
 // ---------------------------------------------------------------------------
-// shortest_path
+// trace
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -592,7 +592,7 @@ func normalizePrefixed(lg *LoadedGroup, s string) string {
 }
 
 // ---------------------------------------------------------------------------
-// list_communities
+// list_clusters
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleListCommunities(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -620,7 +620,7 @@ func (s *Server) handleListCommunities(ctx context.Context, req mcpapi.CallToolR
 }
 
 // ---------------------------------------------------------------------------
-// save_result
+// save_finding
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleSaveResult(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -663,7 +663,7 @@ func (s *Server) handleSaveResult(ctx context.Context, req mcpapi.CallToolReques
 }
 
 // ---------------------------------------------------------------------------
-// get_node_source
+// get_source
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
