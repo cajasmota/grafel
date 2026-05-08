@@ -17,3 +17,22 @@ type OrderStore struct{}
 func (s *OrderStore) Save(item string) error { return nil }
 
 func (s OrderStore) Load(id int) (string, error) { return "", nil }
+
+// Issue #79: generic structs must collapse type parameter lists in the
+// receiver entity Name. A pointer receiver "*Set[T]" and a value
+// receiver "Cache[K, V]" should yield receiver "Set" and "Cache" — not
+// "Set[T]" / "Cache[K, V]" — so all instantiations share one canonical
+// method entity.
+
+type Set[T comparable] struct{}
+
+func (s *Set[T]) Add(item T) {}
+
+func (s *Set[T]) Has(item T) bool { return false }
+
+type Cache[K comparable, V any] struct{}
+
+func (c Cache[K, V]) Get(k K) (V, bool) {
+	var zero V
+	return zero, false
+}

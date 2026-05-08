@@ -282,8 +282,17 @@ func collectImportStems(root *sitter.Node, src []byte) map[string]bool {
 }
 
 // receiverTypeName extracts the base type name from a receiver parameter list.
-// The receiver AST is: parameter_list → parameter_declaration → [identifier, pointer_type|type_identifier]
-// e.g. "(s *UserStore)" → "UserStore", "(u User)" → "User"
+// The receiver AST is: parameter_list → parameter_declaration → [identifier, pointer_type|type_identifier|generic_type]
+// e.g. "(s *UserStore)" → "UserStore", "(u User)" → "User",
+// "(s *Set[T])" → "Set", "(c Cache[K, V])" → "Cache".
+//
+// Issue #79: generic methods on parameterised types must collapse type
+// parameter lists. Without stripping `[T]` / `[K, V]`, the qualified
+// Name retains the type parameter sub-tree, so `(s *Set[T]) Add(...)`
+// emits Name="Set[T].Add" — and resolve.Index.byMember (which splits on
+// the first '.') treats every instantiation as a distinct receiver.
+// We unwrap generic_type nodes to their first child (the bare type
+// identifier) so all instantiations share one canonical entity.
 func receiverTypeName(recv *sitter.Node, src []byte) string {
 	if recv == nil {
 		return ""
@@ -296,20 +305,50 @@ func receiverTypeName(recv *sitter.Node, src []byte) string {
 			switch child.Type() {
 			case "type_identifier":
 				return nodeText(child, src)
+			case "generic_type":
+				// generic_type's first named child is the bare type
+				// identifier; subsequent children carry type_arguments
+				// like "[T]" — discard them (issue #79).
+				if name := unwrapGenericType(child, src); name != "" {
+					return name
+				}
 			case "pointer_type":
-				// pointer_type child is the type_identifier
+				// pointer_type child is the type_identifier or generic_type.
 				for j := 0; j < int(child.ChildCount()); j++ {
 					gc := child.Child(j)
 					if gc.Type() == "type_identifier" {
 						return nodeText(gc, src)
 					}
+					if gc.Type() == "generic_type" {
+						if name := unwrapGenericType(gc, src); name != "" {
+							return name
+						}
+					}
 				}
-				// fallback: strip leading *
+				// fallback: strip leading * and any trailing type
+				// parameter list "[...]" so generic pointer receivers
+				// like "*Set[T]" still collapse to "Set".
 				t := strings.TrimPrefix(nodeText(child, src), "*")
+				if idx := strings.IndexByte(t, '['); idx >= 0 {
+					t = t[:idx]
+				}
 				return t
 			case "qualified_type":
 				return nodeText(child, src)
 			}
+		}
+	}
+	return ""
+}
+
+// unwrapGenericType returns the bare type identifier of a generic_type
+// AST node, stripping the type parameter list. Returns "" if no
+// type_identifier child is found.
+func unwrapGenericType(node *sitter.Node, src []byte) string {
+	for j := 0; j < int(node.ChildCount()); j++ {
+		gc := node.Child(j)
+		if gc.Type() == "type_identifier" {
+			return nodeText(gc, src)
 		}
 	}
 	return ""
