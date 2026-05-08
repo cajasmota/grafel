@@ -26,6 +26,41 @@ func newLinksCmd() *cobra.Command {
 	return cmd
 }
 
+// RunLinksForGroup is the watcher-facing entry point. It re-runs the
+// three cross-repo link passes for a named group, writing all output
+// to the canonical archigraph home. Returns nil when the group has
+// no per-repo graph.json files yet (links are a no-op until the
+// indexer has run at least once).
+func RunLinksForGroup(group string) error {
+	groups, err := registry.Groups()
+	if err != nil {
+		return err
+	}
+	var ref *registry.GroupRef
+	for i := range groups {
+		if groups[i].Name == group {
+			ref = &groups[i]
+			break
+		}
+	}
+	if ref == nil {
+		return fmt.Errorf("unknown group: %s", group)
+	}
+	cfg, err := registry.LoadGroupConfig(ref.ConfigPath)
+	if err != nil {
+		return err
+	}
+	graphsDir, cleanup, err := stageGraphsDir(cfg)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	if _, err := links.RunAllPasses(group, graphsDir, ""); err != nil {
+		return err
+	}
+	return nil
+}
+
 func newLinksPassCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "pass <group>",

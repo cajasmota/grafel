@@ -143,6 +143,12 @@ func runLabelPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 	}
 	sort.Strings(labels)
 
+	// seenPair tracks (src,tgt) pairs already emitted by this pass run so
+	// that a noisy label set cannot produce duplicate links for the same
+	// repo pair. Keyed by ordered "src|tgt" — keeps the loop O(unique
+	// pairs) instead of O(labels × repo_pairs).
+	seenPair := map[string]bool{}
+
 	for _, label := range labels {
 		repos := byLabel[label]
 		if len(repos) < 2 {
@@ -168,17 +174,27 @@ func runLabelPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 		for i := 0; i < len(repoNames) && emitted < labelEmissionCap; i++ {
 			for j := i + 1; j < len(repoNames) && emitted < labelEmissionCap; j++ {
 				ra, rb := repoNames[i], repoNames[j]
+				if ra == rb {
+					// Belt-and-suspenders self-pair guard.
+					continue
+				}
 				// Pick best entity per repo: prefer non-stoplisted name length.
 				ea := repos[ra][0].node
 				eb := repos[rb][0].node
 				kc := kindCompat(ea.Kind, eb.Kind)
-				conf := idf * kc
-				if conf < labelCandidateThreshold {
+				raw := idf * kc
+				if raw < labelCandidateThreshold {
 					continue
 				}
 				sa := entityKey(ra, ea.ID)
 				sb := entityKey(rb, eb.ID)
 				src, tgt := orderEndpoints(sa, sb)
+				pairKey := src + "|" + tgt
+				if seenPair[pairKey] {
+					continue
+				}
+				seenPair[pairKey] = true
+				conf := ScoreLabel(raw)
 				link := Link{
 					ID:           MakeID(src, tgt, MethodLabelMatch),
 					Source:       src,
@@ -190,7 +206,7 @@ func runLabelPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 					Identifier:   strPtr(label),
 					DiscoveredAt: now,
 				}
-				if conf >= labelLinkThreshold {
+				if raw >= labelLinkThreshold {
 					freshLinks = append(freshLinks, link)
 				} else {
 					link.Reason = "label_match below threshold"
