@@ -340,7 +340,9 @@ type Index struct {
 	// byMember[file_path][scope_name][member_name] = entity_id. Used by
 	// structural-ref Format B resolution. A blank string sentinel marks
 	// (scope, member) collisions inside the same file. Entities are
-	// indexed by splitting their dotted Name on the first '.'.
+	// indexed by splitting their dotted Name on the LAST '.' so multi-
+	// level scopes (e.g. "Outer.Inner.foo" → scope="Outer.Inner",
+	// member="foo") survive — issue #68.
 	byMember map[string]map[string]map[string]string
 }
 
@@ -644,8 +646,11 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			// Member index — Format B references address a member of an
 			// enclosing scope (class/module/etc.) by qualified name. Pass 3
 			// records typically encode this as "<scope>.<member>" in the
-			// Name field, so we split on the first '.'.
-			if dot := strings.IndexByte(e.Name, '.'); dot > 0 {
+			// Name field. We split on the LAST '.' so multi-level dotted
+			// scopes ("Outer.Inner.foo" — issue #68) bind scope="Outer.Inner"
+			// and member="foo". Single-level names ("Foo.bar") still bind
+			// scope="Foo", member="bar" — unchanged from issue #45.
+			if dot := strings.LastIndexByte(e.Name, '.'); dot > 0 {
 				scope, member := e.Name[:dot], e.Name[dot+1:]
 				fileBucket := idx.byMember[e.SourceFile]
 				if fileBucket == nil {
