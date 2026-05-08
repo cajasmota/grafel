@@ -4,7 +4,7 @@
 //   - function_definition  → Kind="SCOPE.Operation", Subtype="function"
 //   - decorated_definition wrapping function_definition → same kind (decorators are
 //     not emitted by the base extractor; framework extractors handle those separately)
-//   - class_definition     → Kind="SCOPE.Component"
+//   - class_definition     → Kind="SCOPE.Component", Subtype="class"
 //   - methods in class     → Kind="SCOPE.Operation", Subtype="method"
 //   - import_statement / import_from_statement → Kind="SCOPE.Component" (module)
 //
@@ -243,6 +243,7 @@ func buildClass(node *sitter.Node, file extractor.FileInput) types.EntityRecord 
 	return types.EntityRecord{
 		Name:               name,
 		Kind:               "SCOPE.Component",
+		Subtype:            "class",
 		Language:           "python",
 		SourceFile:         file.Path,
 		StartLine:          int(node.StartPoint().Row) + 1,
