@@ -258,10 +258,13 @@ func scanRepo(fileRoot string, filesFromGraph []string, cacheDir string) ([]Extr
 	return out, nil
 }
 
-// thresholds for P3.
+// thresholds for P3. The link threshold sits at the boundary between the
+// "ambiguous" Redis/feature-flag categories (≤0.4) and the more specific
+// HTTP/path/AWS categories (≥0.45). Anything in the upper half of the P3
+// band is emitted as a link; the lower half lands as a candidate.
 const (
-	stringLinkThreshold      = 0.6
-	stringCandidateThreshold = 0.3
+	stringLinkThreshold      = 0.45
+	stringCandidateThreshold = 0.30
 	stringEmissionCap        = 6
 )
 
@@ -331,6 +334,12 @@ func runStringPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 	}
 	sort.Strings(keys)
 
+	// seenPair dedupes (src,tgt) across the whole pass so two distinct
+	// matching string values that happen to live in the same pair of
+	// repos don't produce duplicate emissions. Keeps total work
+	// O(matched pairs) rather than O(values × repo_pairs).
+	seenPair := map[string]bool{}
+
 	for _, key := range keys {
 		repoMap := combo[key]
 		if len(repoMap) < 2 {
@@ -351,18 +360,26 @@ func runStringPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 		for i := 0; i < len(repoNames) && emitted < stringEmissionCap; i++ {
 			for j := i + 1; j < len(repoNames) && emitted < stringEmissionCap; j++ {
 				ra, rb := repoNames[i], repoNames[j]
+				if ra == rb {
+					continue
+				}
 				ha := repoMap[ra][0]
 				hb := repoMap[rb][0]
 				if ha.entID == "" || hb.entID == "" {
 					continue
 				}
-				conf := 0.7
+				conf := ScoreString(cat)
 				if conf < stringCandidateThreshold {
 					continue
 				}
 				sa := entityKey(ra, ha.entID)
 				sb := entityKey(rb, hb.entID)
 				src, tgt := orderEndpoints(sa, sb)
+				pairKey := src + "|" + tgt + "|" + string(cat)
+				if seenPair[pairKey] {
+					continue
+				}
+				seenPair[pairKey] = true
 				ch := channelFor(cat)
 				link := Link{
 					ID:           MakeID(src, tgt, MethodString),

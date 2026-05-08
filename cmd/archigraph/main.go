@@ -16,6 +16,7 @@ func main() {
 	cli.Execute(cli.Hooks{
 		RunIndex: runIndex,
 		RunMCP:   runMCP,
+		RunLinks: runLinksHook,
 	})
 }
 
@@ -39,6 +40,12 @@ func runIndex(argv []string) error {
 		skipPasses = []string{*skip}
 	}
 	return Index(repoPath, *out, *repoTag, skipPasses, *pretty)
+}
+
+// runLinksHook is wired into cli.Hooks so the watcher can re-run cross-
+// repo link passes whenever a registered repo's graph.json changes.
+func runLinksHook(group string) error {
+	return cli.RunLinksForGroup(group)
 }
 
 // fail prints an error and exits non-zero. Convenience for callers
