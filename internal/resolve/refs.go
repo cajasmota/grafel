@@ -19,10 +19,119 @@
 package resolve
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// Disposition classifies the outcome the resolver assigned to an individual
+// relationship endpoint. Every endpoint inspected by References() and
+// ReferencesEmbedded() falls into exactly one bucket. The bug-rate metric
+// (issue #44) is computed as (BugExtractor + BugResolver) / total.
+type Disposition int
+
+const (
+	// DispositionResolved — the stub was rewritten to a 16-char entity ID.
+	DispositionResolved Disposition = iota
+	// DispositionExternalKnown — the endpoint points at an "ext:<pkg>"
+	// placeholder AND the package is on the static external-package
+	// allowlist (e.g. django, react, fmt).
+	DispositionExternalKnown
+	// DispositionExternalUnknown — the endpoint points at an "ext:<pkg>"
+	// placeholder but the package is NOT on the allowlist. Likely a real
+	// external dep we haven't catalogued yet.
+	DispositionExternalUnknown
+	// DispositionDynamic — the stub matches a pattern that is intrinsically
+	// static-unresolvable (reflection, dynamic import, env-driven names,
+	// template-built strings). Not a bug; the call cannot be resolved
+	// statically by design.
+	DispositionDynamic
+	// DispositionBugExtractor — stub of form "Kind:Name" where the graph
+	// has 0 entities with that Name. An extractor SHOULD have emitted an
+	// entity but didn't. This is a bug to fix.
+	DispositionBugExtractor
+	// DispositionBugResolver — stub points at a Name that DOES exist in the
+	// graph (potentially under different kinds), but the resolver couldn't
+	// disambiguate it. Resolver bug.
+	DispositionBugResolver
+	// DispositionUnclassified — catch-all. Should be 0 in production runs;
+	// non-zero values warrant investigation.
+	DispositionUnclassified
+)
+
+// String returns a stable, log-friendly label for a Disposition.
+func (d Disposition) String() string {
+	switch d {
+	case DispositionResolved:
+		return "resolved"
+	case DispositionExternalKnown:
+		return "external-known"
+	case DispositionExternalUnknown:
+		return "external-unknown"
+	case DispositionDynamic:
+		return "dynamic"
+	case DispositionBugExtractor:
+		return "bug-extractor"
+	case DispositionBugResolver:
+		return "bug-resolver"
+	case DispositionUnclassified:
+		return "unclassified"
+	}
+	return "unknown"
+}
+
+// AllDispositions enumerates every Disposition value in canonical order.
+// Used by the verbose log emitter so the breakdown is always printed in the
+// same order regardless of map iteration randomness.
+var AllDispositions = []Disposition{
+	DispositionResolved,
+	DispositionExternalKnown,
+	DispositionExternalUnknown,
+	DispositionDynamic,
+	DispositionBugExtractor,
+	DispositionBugResolver,
+	DispositionUnclassified,
+}
+
+// dynamicPatterns is the v1.0 catalog of stub shapes that are
+// intrinsically unresolvable by static analysis. Matches here are tagged
+// DispositionDynamic instead of being classified as resolver/extractor bugs.
+// Kept deliberately small — easier to extend than to retract.
+var dynamicPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`^getattr\(`),        // Python reflection
+	regexp.MustCompile(`^__getattr__$`),     // Python magic
+	regexp.MustCompile(`^importlib\.`),      // dynamic import
+	regexp.MustCompile(`^Reflect\.`),        // JS reflection
+	regexp.MustCompile(`^.*\.bind\(`),       // JS dynamic this
+	regexp.MustCompile(`^process\.env\.`),   // env-driven (JS)
+	regexp.MustCompile(`^os\.environ\[`),    // env-driven (Python)
+	regexp.MustCompile(`^System\.getenv\(`), // env-driven (JVM)
+	regexp.MustCompile(`.*\$\{.*\}.*`),      // template-built strings
+}
+
+// isDynamicPattern reports whether the stub matches any pattern in
+// dynamicPatterns. Empty stubs return false.
+func isDynamicPattern(stub string) bool {
+	if stub == "" {
+		return false
+	}
+	for _, re := range dynamicPatterns {
+		if re.MatchString(stub) {
+			return true
+		}
+	}
+	return false
+}
+
+// ExternalAllowlist is the function signature used by the resolver to
+// decide whether an "ext:<pkg>" endpoint is a known package or not. The
+// caller injects the actual allowlist (typically a wrapper around
+// internal/external) so this package stays free of an upward import.
+//
+// The argument is the canonical package name with the "ext:" prefix already
+// stripped. A nil ExternalAllowlist treats every external as Unknown.
+type ExternalAllowlist func(pkg string) bool
 
 // Index is a kind-aware (kind, name) -> entity_id lookup. The inner map only
 // retains a name when the (kind, name) tuple resolves to exactly one entity;
@@ -97,6 +206,148 @@ type Stats struct {
 	ToRewritten   int
 	ToAmbiguous   int
 	ToUnmatched   int
+
+	// VERIFY-2-PREP — every endpoint is also tagged with a Disposition.
+	// DispositionCounts holds the tallies; DispositionSamples retains up
+	// to 5 distinct representative stubs per disposition so the verbose
+	// log can show concrete examples of each bucket. BugRate is the
+	// (bug_extractor + bug_resolver) / total ratio surfaced as the v1.0
+	// acceptance metric. Total here is the sum of every counter — the
+	// number of endpoints the resolver inspected.
+	DispositionCounts  map[Disposition]int
+	DispositionSamples map[Disposition][]string
+	BugRate            float64
+}
+
+// initDispositions lazily allocates the disposition maps. Cheap to call on
+// every endpoint; we keep it explicit rather than relying on zero values so
+// callers reading Stats.DispositionCounts on an unused endpoint never see a
+// nil map.
+func (s *Stats) initDispositions() {
+	if s.DispositionCounts == nil {
+		s.DispositionCounts = make(map[Disposition]int, len(AllDispositions))
+	}
+	if s.DispositionSamples == nil {
+		s.DispositionSamples = make(map[Disposition][]string, len(AllDispositions))
+	}
+}
+
+// recordDisposition adds one endpoint to the disposition tallies and stores
+// the stub as a sample if fewer than 5 unique samples have been recorded
+// for that disposition.
+func (s *Stats) recordDisposition(d Disposition, stub string) {
+	s.initDispositions()
+	s.DispositionCounts[d]++
+	const maxSamples = 5
+	cur := s.DispositionSamples[d]
+	if len(cur) >= maxSamples {
+		return
+	}
+	for _, existing := range cur {
+		if existing == stub {
+			return
+		}
+	}
+	s.DispositionSamples[d] = append(cur, stub)
+}
+
+// finalizeDispositions computes the BugRate field from the per-disposition
+// counters. Called once at the end of References / ReferencesEmbedded.
+func (s *Stats) finalizeDispositions() {
+	if s.DispositionCounts == nil {
+		return
+	}
+	var total int
+	for _, n := range s.DispositionCounts {
+		total += n
+	}
+	if total == 0 {
+		s.BugRate = 0
+		return
+	}
+	bugs := s.DispositionCounts[DispositionBugExtractor] +
+		s.DispositionCounts[DispositionBugResolver]
+	s.BugRate = float64(bugs) / float64(total)
+}
+
+// ClassifyEndpoints walks the supplied (fromID, toID) pairs and produces a
+// Stats value populated only with disposition counters / samples / BugRate.
+// The aggregate Rewritten/Ambiguous/Unmatched counters are NOT populated
+// because by the time this is called the rewrite has already happened —
+// callers wanting those numbers use Stats from References / ReferencesEmbedded.
+//
+// Endpoint pairs come from doc.Relationships AFTER external synthesis so
+// "ext:" placeholders are already in place. allow is the external-package
+// allowlist (typically external.IsKnownExternalPackage).
+func (idx Index) ClassifyEndpoints(endpoints []EndpointPair, allow ExternalAllowlist) Stats {
+	var stats Stats
+	for _, ep := range endpoints {
+		if ep.FromID != "" {
+			d := idx.classifyDisposition(ep.FromID, ep.FromOriginal, allow)
+			stub := ep.FromOriginal
+			if stub == "" {
+				stub = ep.FromID
+			}
+			stats.recordDisposition(d, stub)
+		}
+		if ep.ToID != "" {
+			d := idx.classifyDisposition(ep.ToID, ep.ToOriginal, allow)
+			stub := ep.ToOriginal
+			if stub == "" {
+				stub = ep.ToID
+			}
+			stats.recordDisposition(d, stub)
+		}
+	}
+	stats.finalizeDispositions()
+	return stats
+}
+
+// EndpointPair carries the post-rewrite IDs and pre-rewrite stubs for one
+// relationship's endpoints. Used by ClassifyEndpoints when the caller has
+// already finished resolving + synthesising and just wants disposition
+// numbers over the final edge state.
+type EndpointPair struct {
+	FromID       string
+	FromOriginal string
+	ToID         string
+	ToOriginal   string
+}
+
+// MergeDispositions sums the per-disposition counts and samples from src
+// into dst. Sample lists are deduplicated and capped at 5 entries per
+// disposition. BugRate is recomputed from the merged totals. Existing
+// counter fields (Rewritten/Ambiguous/Unmatched + per-endpoint variants)
+// are NOT touched — callers merge those explicitly.
+func MergeDispositions(dst, src *Stats) {
+	if dst == nil || src == nil || src.DispositionCounts == nil {
+		if dst != nil {
+			dst.finalizeDispositions()
+		}
+		return
+	}
+	dst.initDispositions()
+	for d, n := range src.DispositionCounts {
+		dst.DispositionCounts[d] += n
+	}
+	const maxSamples = 5
+	for d, samples := range src.DispositionSamples {
+		cur := dst.DispositionSamples[d]
+	sampleLoop:
+		for _, s := range samples {
+			if len(cur) >= maxSamples {
+				break
+			}
+			for _, existing := range cur {
+				if existing == s {
+					continue sampleLoop
+				}
+			}
+			cur = append(cur, s)
+		}
+		dst.DispositionSamples[d] = cur
+	}
+	dst.finalizeDispositions()
 }
 
 // BuildIndex constructs a (kind, name) -> entity_id lookup from a slice of
@@ -568,6 +819,83 @@ func (idx Index) rewriteOne(ref, relKind string) (string, int) {
 	return ref, st
 }
 
+// nameExists reports whether the supplied name appears anywhere in the
+// graph, regardless of kind. Used by the disposition classifier to
+// distinguish bug-extractor (no entity by this name exists) from
+// bug-resolver (entity exists but lookup failed).
+func (idx Index) nameExists(name string) bool {
+	if name == "" {
+		return false
+	}
+	if _, ok := idx.byName[name]; ok {
+		return true
+	}
+	if idx.ambigName[name] {
+		return true
+	}
+	if bucket, ok := idx.nameKinds[name]; ok && len(bucket) > 0 {
+		return true
+	}
+	return false
+}
+
+// classifyDisposition returns the Disposition for an endpoint after the
+// resolver has finished with it. resolvedID is the value the endpoint now
+// carries (post-rewrite); originalStub is the value the endpoint had on
+// entry. allow is the optional external-package allowlist.
+//
+// Order of checks matters:
+//  1. Already a 16-char hex → Resolved.
+//  2. "ext:<pkg>" prefix → ExternalKnown / ExternalUnknown depending on allow.
+//  3. Dynamic-pattern match on the original stub → Dynamic.
+//  4. Stub of form "Kind:Name" or bare "Name" → BugExtractor when the name
+//     has zero entities in the graph; BugResolver when it does.
+//  5. Anything else → Unclassified.
+func (idx Index) classifyDisposition(resolvedID, originalStub string, allow ExternalAllowlist) Disposition {
+	if isHexID(resolvedID) {
+		return DispositionResolved
+	}
+	if strings.HasPrefix(resolvedID, "ext:") {
+		pkg := strings.TrimPrefix(resolvedID, "ext:")
+		// Collapse dotted submodules to root for the allowlist check.
+		root := pkg
+		if dot := strings.IndexByte(pkg, '.'); dot > 0 {
+			root = pkg[:dot]
+		}
+		if allow != nil && (allow(pkg) || allow(root)) {
+			return DispositionExternalKnown
+		}
+		return DispositionExternalUnknown
+	}
+	// Endpoint still carries its original stub (resolver left it alone).
+	if isDynamicPattern(originalStub) {
+		return DispositionDynamic
+	}
+	// Strip a "Kind:" prefix when present so the name-existence check is
+	// kind-agnostic. Structural-ref ("scope:...") stubs pull their name
+	// from the trailing segment after the last ':' or '#'.
+	_, name := splitStub(originalStub)
+	if strings.HasPrefix(originalStub, "scope:") {
+		// scope:<kind>:<subtype>:<lang>:<file>:<tail>
+		parts := strings.SplitN(originalStub, ":", 6)
+		if len(parts) == 6 {
+			tail := parts[5]
+			if hash := strings.IndexByte(tail, '#'); hash >= 0 {
+				name = tail[hash+1:]
+			} else {
+				name = tail
+			}
+		}
+	}
+	if name == "" {
+		return DispositionUnclassified
+	}
+	if idx.nameExists(name) {
+		return DispositionBugResolver
+	}
+	return DispositionBugExtractor
+}
+
 // applyEndpointStats records a single endpoint's outcome into the Stats
 // counters, updating both the per-endpoint totals and the aggregate ones.
 func applyEndpointStats(stats *Stats, status int, isFrom bool) {
@@ -605,19 +933,42 @@ func applyEndpointStats(stats *Stats, status int, isFrom bool) {
 // per-endpoint stats — one rel with both endpoints rewritten counts twice in
 // Stats.Rewritten (once per endpoint). The 16-char hex IDs already present
 // (matching the shape of graph.EntityID output) are left untouched.
+//
+// This wrapper preserves the pre-VERIFY-2-PREP signature; callers that want
+// disposition tagging should use ReferencesWithAllowlist.
 func References(rels []types.RelationshipRecord, idx Index) Stats {
+	return ReferencesWithAllowlist(rels, idx, nil)
+}
+
+// ReferencesWithAllowlist is References with an optional allowlist for
+// classifying "ext:<pkg>" endpoints as ExternalKnown vs ExternalUnknown.
+// A nil allowlist treats every external as Unknown.
+func ReferencesWithAllowlist(rels []types.RelationshipRecord, idx Index, allow ExternalAllowlist) Stats {
 	var stats Stats
 	for k := range rels {
 		r := &rels[k]
-		if newID, st := idx.rewriteOne(r.FromID, r.Kind); st != 0 {
+		if r.FromID != "" && !isHexID(r.FromID) {
+			orig := r.FromID
+			newID, st := idx.rewriteOne(r.FromID, r.Kind)
 			r.FromID = newID
 			applyEndpointStats(&stats, st, true)
+			d := idx.classifyDisposition(r.FromID, orig, allow)
+			stats.recordDisposition(d, orig)
+		} else if isHexID(r.FromID) {
+			stats.recordDisposition(DispositionResolved, r.FromID)
 		}
-		if newID, st := idx.rewriteOne(r.ToID, r.Kind); st != 0 {
+		if r.ToID != "" && !isHexID(r.ToID) {
+			orig := r.ToID
+			newID, st := idx.rewriteOne(r.ToID, r.Kind)
 			r.ToID = newID
 			applyEndpointStats(&stats, st, false)
+			d := idx.classifyDisposition(r.ToID, orig, allow)
+			stats.recordDisposition(d, orig)
+		} else if isHexID(r.ToID) {
+			stats.recordDisposition(DispositionResolved, r.ToID)
 		}
 	}
+	stats.finalizeDispositions()
 	return stats
 }
 
@@ -632,21 +983,40 @@ func References(rels []types.RelationshipRecord, idx Index) Stats {
 // entity in another file). When FromID is empty the caller is still
 // expected to substitute the parent entity ID at edge-emission time.
 func ReferencesEmbedded(records []types.EntityRecord, idx Index) Stats {
+	return ReferencesEmbeddedWithAllowlist(records, idx, nil)
+}
+
+// ReferencesEmbeddedWithAllowlist is ReferencesEmbedded with an optional
+// external-package allowlist for disposition classification.
+func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, allow ExternalAllowlist) Stats {
 	var stats Stats
 	for k := range records {
 		rels := records[k].Relationships
 		for j := range rels {
 			r := &rels[j]
-			if newID, st := idx.rewriteOne(r.FromID, r.Kind); st != 0 {
+			if r.FromID != "" && !isHexID(r.FromID) {
+				orig := r.FromID
+				newID, st := idx.rewriteOne(r.FromID, r.Kind)
 				r.FromID = newID
 				applyEndpointStats(&stats, st, true)
+				d := idx.classifyDisposition(r.FromID, orig, allow)
+				stats.recordDisposition(d, orig)
+			} else if isHexID(r.FromID) {
+				stats.recordDisposition(DispositionResolved, r.FromID)
 			}
-			if newID, st := idx.rewriteOne(r.ToID, r.Kind); st != 0 {
+			if r.ToID != "" && !isHexID(r.ToID) {
+				orig := r.ToID
+				newID, st := idx.rewriteOne(r.ToID, r.Kind)
 				r.ToID = newID
 				applyEndpointStats(&stats, st, false)
+				d := idx.classifyDisposition(r.ToID, orig, allow)
+				stats.recordDisposition(d, orig)
+			} else if isHexID(r.ToID) {
+				stats.recordDisposition(DispositionResolved, r.ToID)
 			}
 		}
 	}
+	stats.finalizeDispositions()
 	return stats
 }
 

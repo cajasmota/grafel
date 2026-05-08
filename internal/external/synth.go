@@ -363,6 +363,15 @@ func isKnownExternalPackage(s string) bool {
 	return ok
 }
 
+// IsKnownExternalPackage is the exported form of the allowlist check.
+// VERIFY-2-PREP / issue #56: the resolver consults this to decide
+// whether an "ext:<pkg>" placeholder should be tagged ExternalKnown
+// (allowlisted, expected) or ExternalUnknown (real external dep we
+// haven't catalogued yet). Comparison is case-folded.
+func IsKnownExternalPackage(s string) bool {
+	return isKnownExternalPackage(s)
+}
+
 // knownExternalPackages is the v1.1 allowlist. Lowercase keys; lookups
 // are case-folded. Curated from real codebases — Python web/data
 // stacks, JS/TS frontend + node, Go services, JVM enterprise. False

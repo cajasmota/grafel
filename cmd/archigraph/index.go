@@ -71,6 +71,14 @@ type Indexer struct {
 
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
+
+	// Resolver state retained between buildDocument and post-synthesis
+	// reclassification. The resolver tags every endpoint with a Disposition
+	// (VERIFY-2-PREP / issue #56); after external.Synthesize rewrites bare
+	// names to "ext:<pkg>" we re-walk the final edge set to reclassify any
+	// stubs that became external placeholders.
+	resolveIdx   *resolve.Index
+	resolveStats resolve.Stats
 }
 
 type indexerStats struct {
@@ -231,6 +239,29 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	i.stats.extSynth = extStats
 
+	// VERIFY-2-PREP / issue #56 — reclassify dispositions over the FINAL
+	// edge state (post-external-synthesis) so "ext:<pkg>" endpoints land in
+	// ExternalKnown / ExternalUnknown rather than the bug buckets they were
+	// initially placed into when they were still bare names. Logged under
+	// ARCHIGRAPH_VERBOSE=1.
+	if i.resolveIdx != nil {
+		allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
+		eps := make([]resolve.EndpointPair, 0, len(doc.Relationships))
+		for k := range doc.Relationships {
+			r := &doc.Relationships[k]
+			eps = append(eps, resolve.EndpointPair{
+				FromID:       r.FromID,
+				FromOriginal: r.FromID,
+				ToID:         r.ToID,
+				ToOriginal:   r.ToID,
+			})
+		}
+		final := i.resolveIdx.ClassifyEndpoints(eps, allow)
+		if verbose() {
+			emitDispositionBreakdown(os.Stderr, final)
+		}
+	}
+
 	// Pass 4 — graph algorithms. Conceptually this runs "between" pass 3 and
 	// pass 5, but it operates on the merged/deduped entity set so we run it
 	// against the assembled Document and attach the per-entity attributes
@@ -269,6 +300,48 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 func verbose() bool {
 	v := strings.TrimSpace(os.Getenv("ARCHIGRAPH_VERBOSE"))
 	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+}
+
+// emitDispositionBreakdown prints the resolver-disposition tally and a few
+// representative samples for the bug buckets. Triggered by ARCHIGRAPH_VERBOSE.
+// Issue #56 — categorised bug-rate reporting.
+func emitDispositionBreakdown(w *os.File, s resolve.Stats) {
+	var total int
+	for _, n := range s.DispositionCounts {
+		total += n
+	}
+	fmt.Fprintln(w, "resolver dispositions:")
+	if total == 0 {
+		fmt.Fprintln(w, "  (no endpoints classified)")
+		return
+	}
+	for _, d := range resolve.AllDispositions {
+		n := s.DispositionCounts[d]
+		pct := 100 * float64(n) / float64(total)
+		marker := ""
+		switch d {
+		case resolve.DispositionBugExtractor, resolve.DispositionBugResolver:
+			if n > 0 {
+				marker = "    <- FIX"
+			}
+		case resolve.DispositionUnclassified:
+			if n > 0 {
+				marker = "    <- INVESTIGATE"
+			}
+		}
+		fmt.Fprintf(w, "  %-17s %d (%.1f%%)%s\n", d.String()+"=", n, pct, marker)
+	}
+	fmt.Fprintf(w, "  bug-rate: %.1f%% (target <=1%%)\n", s.BugRate*100)
+	for _, d := range []resolve.Disposition{resolve.DispositionBugExtractor, resolve.DispositionBugResolver} {
+		samples := s.DispositionSamples[d]
+		if len(samples) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "samples %s:\n", d.String())
+		for _, smp := range samples {
+			fmt.Fprintf(w, "  - %s\n", smp)
+		}
+	}
 }
 
 // printRelBreakdown writes a sorted "label rels by source" table to w.
@@ -638,8 +711,9 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	// against the merged entity index. Stubs that are ambiguous (≥2 matches)
 	// or unmatched are left in place and counted in the log line below.
 	idx := resolve.BuildIndex(merged)
-	embStats := resolve.ReferencesEmbedded(merged, idx)
-	standStats := resolve.References(pass2Rels, idx)
+	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
+	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)
+	standStats := resolve.ReferencesWithAllowlist(pass2Rels, idx, allow)
 	totalStats := resolve.Stats{
 		Rewritten:     embStats.Rewritten + standStats.Rewritten,
 		Ambiguous:     embStats.Ambiguous + standStats.Ambiguous,
@@ -651,6 +725,13 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		ToAmbiguous:   embStats.ToAmbiguous + standStats.ToAmbiguous,
 		ToUnmatched:   embStats.ToUnmatched + standStats.ToUnmatched,
 	}
+	resolve.MergeDispositions(&totalStats, &embStats)
+	resolve.MergeDispositions(&totalStats, &standStats)
+	// Stash the resolver index + pre-synthesis dispositions on the indexer
+	// so the post-synthesis classification step (after external.Synthesize)
+	// can reclassify "ext:*" endpoints with the allowlist.
+	i.resolveIdx = &idx
+	i.resolveStats = totalStats
 	fmt.Fprintf(os.Stderr, "resolver: rewrote=%d ambiguous=%d unmatched=%d (from: rw=%d am=%d um=%d) (to: rw=%d am=%d um=%d)\n",
 		totalStats.Rewritten, totalStats.Ambiguous, totalStats.Unmatched,
 		totalStats.FromRewritten, totalStats.FromAmbiguous, totalStats.FromUnmatched,

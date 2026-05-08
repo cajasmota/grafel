@@ -407,6 +407,128 @@ func TestReferences_StructuralFormatA_KindDisambiguation(t *testing.T) {
 	}
 }
 
+// VERIFY-2-PREP / issue #56 — disposition tagging.
+
+// allowDjango is a tiny test-only ExternalAllowlist that recognises
+// just "django" as a known external package. Keeps the tests free of an
+// import on internal/external.
+func allowDjango(pkg string) bool { return pkg == "django" }
+
+func TestDisposition_Resolved(t *testing.T) {
+	entities := []types.EntityRecord{ent("aaaaaaaaaaaaaaaa", "Function", "Hello")}
+	rels := []types.RelationshipRecord{{FromID: "0000000000000000", ToID: "Function:Hello", Kind: "CALLS"}}
+	idx := BuildIndex(entities)
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+	if got := stats.DispositionCounts[DispositionResolved]; got != 2 {
+		t.Fatalf("expected 2 resolved (from + to), got %+v", stats.DispositionCounts)
+	}
+}
+
+func TestDisposition_ExternalKnown(t *testing.T) {
+	rels := []types.RelationshipRecord{{FromID: "0000000000000000", ToID: "ext:django", Kind: "CALLS"}}
+	idx := BuildIndex(nil)
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+	if got := stats.DispositionCounts[DispositionExternalKnown]; got != 1 {
+		t.Fatalf("expected 1 external-known, got %+v", stats.DispositionCounts)
+	}
+}
+
+func TestDisposition_ExternalUnknown(t *testing.T) {
+	rels := []types.RelationshipRecord{{FromID: "0000000000000000", ToID: "ext:somerandompackage", Kind: "CALLS"}}
+	idx := BuildIndex(nil)
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+	if got := stats.DispositionCounts[DispositionExternalUnknown]; got != 1 {
+		t.Fatalf("expected 1 external-unknown, got %+v", stats.DispositionCounts)
+	}
+}
+
+func TestDisposition_Dynamic(t *testing.T) {
+	rels := []types.RelationshipRecord{{FromID: "0000000000000000", ToID: "getattr(self, name)", Kind: "CALLS"}}
+	idx := BuildIndex(nil)
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+	if got := stats.DispositionCounts[DispositionDynamic]; got != 1 {
+		t.Fatalf("expected 1 dynamic, got %+v", stats.DispositionCounts)
+	}
+}
+
+func TestDisposition_BugExtractor(t *testing.T) {
+	// Graph has 0 entities named "NonexistentClass" → bug-extractor.
+	entities := []types.EntityRecord{ent("aaaaaaaaaaaaaaaa", "View", "RealView")}
+	rels := []types.RelationshipRecord{{FromID: "0000000000000000", ToID: "View:NonexistentClass", Kind: "USES"}}
+	idx := BuildIndex(entities)
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+	if got := stats.DispositionCounts[DispositionBugExtractor]; got != 1 {
+		t.Fatalf("expected 1 bug-extractor, got %+v", stats.DispositionCounts)
+	}
+}
+
+func TestDisposition_BugResolver(t *testing.T) {
+	// Three entities all named "Foo" under different kinds → bare-name
+	// "Foo" with USES (no kind hint) is ambiguous, but the name DOES
+	// exist in the graph → bug-resolver, not bug-extractor.
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "Function", "Foo", "a.py"),
+		entAt("bbbbbbbbbbbbbbbb", "Component", "Foo", "b.py"),
+		entAt("cccccccccccccccc", "View", "Foo", "c.py"),
+	}
+	rels := []types.RelationshipRecord{{FromID: "0000000000000000", ToID: "Foo", Kind: "USES"}}
+	idx := BuildIndex(entities)
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+	if got := stats.DispositionCounts[DispositionBugResolver]; got != 1 {
+		t.Fatalf("expected 1 bug-resolver, got %+v", stats.DispositionCounts)
+	}
+}
+
+func TestDisposition_SampleCap(t *testing.T) {
+	// 10 distinct unmatched stubs in the bug-extractor bucket — only 5
+	// should be retained as samples.
+	rels := make([]types.RelationshipRecord, 0, 10)
+	for i := 0; i < 10; i++ {
+		rels = append(rels, types.RelationshipRecord{
+			FromID: "0000000000000000",
+			ToID:   "View:Missing" + string(rune('A'+i)),
+			Kind:   "USES",
+		})
+	}
+	idx := BuildIndex(nil)
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+	if got := stats.DispositionCounts[DispositionBugExtractor]; got != 10 {
+		t.Fatalf("expected 10 bug-extractor counts, got %d", got)
+	}
+	if got := len(stats.DispositionSamples[DispositionBugExtractor]); got != 5 {
+		t.Fatalf("expected 5 retained samples, got %d", got)
+	}
+}
+
+func TestDisposition_BugRate(t *testing.T) {
+	// 1 resolved (to) + 1 resolved (from hex) → 2 endpoints resolved.
+	// 1 bug-extractor (View:Missing) + 1 bug-resolver (bare "Foo" with
+	// 2 entities under different kinds + USES kind which doesn't bias).
+	entities := []types.EntityRecord{
+		ent("aaaaaaaaaaaaaaaa", "Function", "Hello"),
+		entAt("bbbbbbbbbbbbbbbb", "Function", "Foo", "a.py"),
+		entAt("cccccccccccccccc", "Component", "Foo", "b.py"),
+	}
+	rels := []types.RelationshipRecord{
+		{FromID: "0000000000000000", ToID: "Function:Hello", Kind: "CALLS"},
+		{FromID: "0000000000000000", ToID: "View:Missing", Kind: "USES"},
+		{FromID: "0000000000000000", ToID: "Foo", Kind: "USES"},
+	}
+	idx := BuildIndex(entities)
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+
+	bugs := stats.DispositionCounts[DispositionBugExtractor] +
+		stats.DispositionCounts[DispositionBugResolver]
+	if bugs != 2 {
+		t.Fatalf("expected 2 bug endpoints, got %+v", stats.DispositionCounts)
+	}
+	// 6 endpoints total (3 rels x 2 endpoints).
+	expected := 2.0 / 6.0
+	if stats.BugRate < expected-1e-9 || stats.BugRate > expected+1e-9 {
+		t.Fatalf("bug rate: expected %.4f got %.4f counts=%+v", expected, stats.BugRate, stats.DispositionCounts)
+	}
+}
+
 func TestBuildLocationIndex(t *testing.T) {
 	entities := []types.EntityRecord{
 		entAt("aaaaaaaaaaaaaaaa", "Component", "Foo", "a.py"),
