@@ -1,0 +1,24 @@
+package com.example.api;
+
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api")
+public class ApiController {
+
+    @GetMapping("/orders")
+    public List<Order> listOrders() {
+        return null;
+    }
+
+    @GetMapping("/users")
+    public List<User> listUsers() {
+        return null;
+    }
+
+    @GetMapping("/items")
+    public List<Item> listItems() {
+        return null;
+    }
+}
