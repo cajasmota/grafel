@@ -308,20 +308,6 @@ func TestCrossFileResolutionInOutput(t *testing.T) {
 	}
 }
 
-// isHex16 reports whether s is a 16-char lower-hex string — the shape of
-// graph.EntityID() output. Used by TestCrossFileResolutionInOutput.
-func isHex16(s string) bool {
-	if len(s) != 16 {
-		return false
-	}
-	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			return false
-		}
-	}
-	return true
-}
-
 // TestPythonEmbeddedRelationshipsReachOutput is the orchestrator-level
 // regression for issue #25 (PORT-2-FIX-2). It confirms that the relationships
 // the Python extractor embeds inside EntityRecord.Relationships — CONTAINS,

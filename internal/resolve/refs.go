@@ -1063,6 +1063,56 @@ func (idx Index) lookupLocationKind(filePath, name string, families []string) (s
 	return match, true
 }
 
+// isHeuristicScopeStub reports whether s is a short-form structural-ref
+// emitted by a cross-language extractor whose target is by design not a
+// single graph entity. Such stubs should land in DispositionDynamic, not
+// the bug buckets — see classifyDispositionLang for the categorisation
+// rationale. Issue #89.
+func isHeuristicScopeStub(s string) bool {
+	if !strings.HasPrefix(s, stubPrefixScope) {
+		return false
+	}
+	switch {
+	// testmap pattern entity — test-function → production-function edges
+	// inferred from regex over test bodies.
+	case strings.HasPrefix(s, "scope:operation:"):
+		return true
+	// testmap coverage entity (the wrapper Pattern itself).
+	case strings.HasPrefix(s, "scope:testcoverage:"):
+		return true
+	// dbmap pattern entity — test/data-access scopes inferred from ORM
+	// call shapes.
+	case strings.HasPrefix(s, "scope:dataaccess:"):
+		return true
+	// endpoint pattern entity — HTTP route scopes inferred from
+	// router-decorator shapes.
+	case strings.HasPrefix(s, "scope:endpoint:"):
+		return true
+	// schema pattern entity — react/typescript prop schemas inferred from
+	// component declarations.
+	case strings.HasPrefix(s, "scope:schema:"):
+		return true
+	// imports cross-language extractor — local relative imports the
+	// extractor doesn't resolve to a specific file.
+	case strings.HasPrefix(s, "scope:component:import:local:"):
+		return true
+	// http-client cross-language extractor — http-caller component scope.
+	case strings.HasPrefix(s, "scope:component:http_caller:"):
+		return true
+	// manifest cross-language extractor — project component scope (the
+	// project-level pattern entity, distinct from external_dep which goes
+	// through external synthesis).
+	case strings.HasPrefix(s, "scope:component:project:"):
+		return true
+	// imports cross-language extractor — file component scope. These are
+	// internal "the file is a component" markers; targets aren't real
+	// individual entities.
+	case strings.HasPrefix(s, "scope:component:file:"):
+		return true
+	}
+	return false
+}
+
 // splitStub splits a stub string on the first ':' into (kind, name). If no
 // ':' is present the full string is returned as the name and kind is empty.
 func splitStub(s string) (kind, name string) {
@@ -1157,6 +1207,28 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 		effLang = inferLangFromStub(originalStub)
 	}
 	if isDynamicPatternLang(originalStub, effLang) {
+		return DispositionDynamic
+	}
+	// Issue #89 — short structural-ref stubs emitted by cross-language
+	// extractors that the resolver intentionally leaves untouched (they
+	// don't have the 6-segment scope:<kind>:<subtype>:<lang>:<file>:<tail>
+	// shape, so rewriteOne can't index them). They are NOT extractor bugs:
+	//
+	//   - scope:operation:<file>#<name> (testmap) — test-to-production
+	//     mapping inferred from a regex over test bodies; the production
+	//     symbol may legitimately live in a file the convention guesser
+	//     can't predict (e.g. tests/test_basic.py → src/click/core.py).
+	//   - scope:component:import:local:<module> (imports) — Python relative
+	//     import that the cross-language extractor records without resolving
+	//     to a specific file.
+	//   - scope:testcoverage:..., scope:dataaccess:..., scope:endpoint:...
+	//     same family, all pattern entities pointing at heuristically
+	//     identified production scopes that aren't a single graph entity.
+	//
+	// Tagging them DispositionDynamic is the right bucket: by design these
+	// edges aren't resolvable by static name lookup. They keep the v1.0
+	// bug-rate metric honest while leaving the edges visible in graph.json.
+	if isHeuristicScopeStub(originalStub) {
 		return DispositionDynamic
 	}
 	// Strip a "Kind:" prefix when present so the name-existence check is

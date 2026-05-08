@@ -326,6 +326,21 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		if verbose() {
 			emitDispositionBreakdown(os.Stderr, final)
 		}
+		// Issue #89 — temporary diagnostic instrumentation. Enabled with
+		// ARCHIGRAPH_BUG_EXTRACTOR_SAMPLES=N (writes N samples). Optional
+		// ARCHIGRAPH_BUG_EXTRACTOR_OUT=/path/to/file (defaults to stderr).
+		if n := bugExtractorSampleCount(); n > 0 {
+			out := os.Stderr
+			if p := strings.TrimSpace(os.Getenv("ARCHIGRAPH_BUG_EXTRACTOR_OUT")); p != "" {
+				if f, ferr := os.Create(p); ferr == nil {
+					defer f.Close()
+					out = f
+				} else {
+					fmt.Fprintf(os.Stderr, "bug-extractor-samples: cannot open %q: %v\n", p, ferr)
+				}
+			}
+			dumpBugExtractorSamples(out, doc, *i.resolveIdx, allow, n)
+		}
 	}
 
 	// Pass 4 — graph algorithms. Conceptually this runs "between" pass 3 and
@@ -408,6 +423,223 @@ func emitDispositionBreakdown(w *os.File, s resolve.Stats) {
 			fmt.Fprintf(w, "  - %s\n", smp)
 		}
 	}
+}
+
+// bugExtractorSampleCount parses ARCHIGRAPH_BUG_EXTRACTOR_SAMPLES.
+// Issue #89 — temporary diagnostic instrumentation, not a production knob.
+func bugExtractorSampleCount() int {
+	v := strings.TrimSpace(os.Getenv("ARCHIGRAPH_BUG_EXTRACTOR_SAMPLES"))
+	if v == "" {
+		return 0
+	}
+	var n int
+	if _, err := fmt.Sscanf(v, "%d", &n); err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// categorizeBugStub returns a coarse category for a bug-extractor stub.
+// Categories are diagnostic only — they help us see which fixes will move
+// the bug-rate the most. Issue #89.
+func categorizeBugStub(stub string) string {
+	if stub == "" {
+		return "empty"
+	}
+	if strings.HasPrefix(stub, "scope:") {
+		return "structural-ref"
+	}
+	// "Kind:Name" prefix?
+	name := stub
+	hasKind := false
+	if i := strings.IndexByte(stub, ':'); i > 0 {
+		prefix := stub[:i]
+		if len(prefix) <= 24 && isAlphaDot(prefix) {
+			name = stub[i+1:]
+			hasKind = true
+		}
+	}
+	if name == "" {
+		return "kind-only"
+	}
+	dotted := strings.Contains(name, ".")
+	if dotted {
+		// First segment a known stdlib/third-party root? then this is an
+		// import-shaped call we ought to route through external synthesis.
+		root := name
+		if d := strings.IndexByte(name, '.'); d > 0 {
+			root = name[:d]
+		}
+		if external.IsKnownExternalPackage(root) {
+			return "dotted-known-root"
+		}
+		// Looks-like-receiver.method (lowercase head) — most often a method
+		// call on an imported type whose receiver is unresolved.
+		if isLowerStart(root) {
+			return "dotted-lower-head"
+		}
+		return "dotted-other"
+	}
+	// Bare name.
+	if hasKind {
+		// Kind:BareName
+		if isPythonStdlibBareName(name) || isGoFmtBareName(name) {
+			return "bare-stdlib-known"
+		}
+		return "bare-kind-prefixed"
+	}
+	if isPythonStdlibBareName(name) || isGoFmtBareName(name) {
+		return "bare-stdlib-known"
+	}
+	return "bare-other"
+}
+
+func isAlphaDot(s string) bool {
+	for _, c := range s {
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '.') {
+			return false
+		}
+	}
+	return true
+}
+
+func isLowerStart(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	return c >= 'a' && c <= 'z'
+}
+
+// pythonStdlibBareNames is a small in-cmd set used only by the diagnostic
+// categorizer. Real classification lives in internal/external.
+var pythonStdlibBareNames = map[string]struct{}{
+	"len": {}, "range": {}, "list": {}, "dict": {}, "set": {}, "tuple": {},
+	"print": {}, "open": {}, "isinstance": {}, "type": {}, "str": {}, "int": {},
+	"float": {}, "bool": {}, "enumerate": {}, "zip": {}, "map": {}, "filter": {},
+	"sorted": {}, "reversed": {}, "any": {}, "all": {}, "sum": {}, "max": {},
+	"min": {}, "abs": {}, "iter": {}, "next": {}, "super": {}, "getattr": {},
+	"setattr": {}, "hasattr": {}, "callable": {}, "vars": {}, "id": {}, "hash": {},
+	"chr": {}, "ord": {}, "repr": {}, "round": {}, "format": {}, "object": {},
+	"slice": {}, "frozenset": {}, "property": {},
+}
+
+func isPythonStdlibBareName(s string) bool {
+	_, ok := pythonStdlibBareNames[s]
+	return ok
+}
+
+func isGoFmtBareName(s string) bool {
+	switch s {
+	case "Println", "Printf", "Print", "Sprintf", "Errorf", "Fatal", "Fatalf", "Panic", "Panicf":
+		return true
+	}
+	return false
+}
+
+// dumpBugExtractorSamples writes up to n bug-extractor sample rows + a
+// category histogram. Issue #89 diagnostic instrumentation. Format is
+// tab-separated lines so it can be piped to awk/sort/uniq.
+func dumpBugExtractorSamples(w *os.File, doc *graph.Document, ridx resolve.Index, allow resolve.ExternalAllowlist, n int) {
+	// Build entity-id → (file, name, lang) lookup for quick context.
+	type ent struct{ file, name, lang string }
+	byID := make(map[string]ent, len(doc.Entities))
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		byID[e.ID] = ent{file: e.SourceFile, name: e.Name, lang: e.Language}
+	}
+
+	cats := make(map[string]int)
+	written := 0
+	fmt.Fprintf(w, "#bug-extractor-samples (issue #89): n=%d\n", n)
+	fmt.Fprintf(w, "#cols: kind\tlang\tcategory\tfrom_file\tfrom_name\tto_stub\n")
+	for k := range doc.Relationships {
+		r := &doc.Relationships[k]
+		// Only ToID side — that's where bug-extractor lives in practice
+		// (FromID is almost always a hex from a real entity).
+		stub := r.ToID
+		if stub == "" {
+			continue
+		}
+		// Skip already-resolved hex / external placeholders.
+		if isHex16(stub) || strings.HasPrefix(stub, "ext:") {
+			continue
+		}
+		// Run the same classifier the resolver uses post-synthesis.
+		lang := r.Properties["language"]
+		if lang == "" {
+			lang = r.Properties["lang"]
+		}
+		// We need the language-tagged classifier; replicate via a small
+		// wrapper — pass the stub as both resolved + original since
+		// post-synth no rewrite happened.
+		d := classifyForDiag(ridx, stub, lang, allow)
+		if d != resolve.DispositionBugExtractor {
+			continue
+		}
+		cat := categorizeBugStub(stub)
+		cats[cat]++
+		if written < n {
+			from := byID[r.FromID]
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				r.Kind, lang, cat, from.file, from.name, stub)
+			written++
+		}
+	}
+
+	// Histogram footer.
+	fmt.Fprintln(w, "#category histogram (all bug-extractor edges):")
+	type kv struct {
+		k string
+		v int
+	}
+	pairs := make([]kv, 0, len(cats))
+	total := 0
+	for k, v := range cats {
+		pairs = append(pairs, kv{k, v})
+		total += v
+	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].v > pairs[j].v })
+	for _, p := range pairs {
+		pct := 0.0
+		if total > 0 {
+			pct = 100 * float64(p.v) / float64(total)
+		}
+		fmt.Fprintf(w, "#  %-22s %6d (%5.2f%%)\n", p.k, p.v, pct)
+	}
+	fmt.Fprintf(w, "#  %-22s %6d\n", "TOTAL", total)
+}
+
+// classifyForDiag is a tiny shim around the resolver classifier so we don't
+// expose internals. It mirrors classifyDispositionLang's external/dynamic
+// branches and falls back to name-existence in the index.
+func classifyForDiag(idx resolve.Index, stub, lang string, allow resolve.ExternalAllowlist) resolve.Disposition {
+	// We can use ClassifyEndpoints with a single endpoint; cheaper path
+	// is to call into the package's exported classifier — but it isn't
+	// exported. ClassifyEndpoints is exported and computes the same thing.
+	stats := idx.ClassifyEndpoints([]resolve.EndpointPair{
+		{ToID: stub, ToOriginal: stub},
+	}, allow)
+	for d, n := range stats.DispositionCounts {
+		if n > 0 {
+			return d
+		}
+	}
+	return resolve.DispositionUnclassified
+}
+
+// isHex16 reports whether s is a 16-char lower-hex string — the shape of
+// graph.EntityID() output.
+func isHex16(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 // printRelBreakdown writes a sorted "label rels by source" table to w.

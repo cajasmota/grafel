@@ -172,6 +172,45 @@ func classifyExternal(stub, relKind string) (canonical, subtype string, ok bool)
 		return "", "", false
 	}
 
+	// Issue #89 — manifest extractor emits dependency stubs as
+	// "scope:component:external_dep:<package_manager>:<package>". The
+	// "external_dep" tag is the extractor's explicit signal that this is
+	// an external (third-party) dependency; route it to a placeholder so
+	// the post-synthesis classifier lands it in external-known/external-
+	// unknown rather than bug-extractor.
+	if strings.HasPrefix(stub, "scope:component:external_dep:") {
+		rest := stub[len("scope:component:external_dep:"):]
+		// rest is "<pm>:<package>" — drop the package-manager segment.
+		if i := strings.IndexByte(rest, ':'); i > 0 && i < len(rest)-1 {
+			pkg := strings.TrimSpace(rest[i+1:])
+			if pkg != "" && !strings.ContainsAny(pkg, "/\\") {
+				root := pkg
+				if dot := strings.IndexByte(pkg, '.'); dot > 0 {
+					root = pkg[:dot]
+				}
+				return root, "package", true
+			}
+		}
+	}
+
+	// Issue #89 — httpclient extractor emits external HTTP API references
+	// as "scope:external_api:<url>". The URL is the unresolvable identity
+	// of the external service; canonicalise to the host segment when we
+	// can extract one (everything between "://" and the next "/"), and
+	// fall back to a synthetic "external_api" bucket otherwise. Either
+	// way it leaves bug-extractor.
+	if strings.HasPrefix(stub, "scope:external_api:") {
+		raw := stub[len("scope:external_api:"):]
+		host := externalAPIHost(raw)
+		if host != "" {
+			return host, "external_api", true
+		}
+		// Bare URL fragment / non-URL identifier — bucket under a
+		// stable "external_api" placeholder rather than leaving it as
+		// bug-extractor.
+		return "external_api", "external_api", true
+	}
+
 	// Pass 3 cross-language extractors emit external imports as
 	// "scope:<kind>:import:external:<name>" — short structural-ref
 	// form that the resolver leaves untouched (it expects 6 segments).
@@ -456,6 +495,65 @@ var stdlibBareNames = map[string]struct{}{
 	// JS / browser
 	"console": {},
 	"fetch":   {},
+	// Issue #89 — high-volume Python str/list/dict/set/file methods.
+	// These bare-name calls arrive at the resolver after the extractor
+	// strips the receiver (`s.append(x)` → `append`). Without this list
+	// they all land in bug-extractor; with it they correctly classify as
+	// external-known builtins. Curated to names extremely unlikely to
+	// collide with user-defined entity names: standard collection /
+	// string / IO methods that ship with Python's core types.
+	"append":     {},
+	"extend":     {},
+	"insert":     {},
+	"remove":     {},
+	"clear":      {},
+	"copy":       {},
+	"index":      {},
+	"items":      {},
+	"keys":       {},
+	"values":     {},
+	"setdefault": {},
+	"startswith": {},
+	"endswith":   {},
+	"strip":      {},
+	"lstrip":     {},
+	"rstrip":     {},
+	"split":      {},
+	"rsplit":     {},
+	"splitlines": {},
+	"join":       {},
+	"replace":    {},
+	"lower":      {},
+	"upper":      {},
+	"title":      {},
+	"encode":     {},
+	"decode":     {},
+	"isdigit":    {},
+	"isalpha":    {},
+	"isalnum":    {},
+	"read":       {},
+	"readline":   {},
+	"readlines":  {},
+	"write":      {},
+	"writelines": {},
+	"flush":      {},
+	"close":      {},
+	"seek":       {},
+	"tell":       {},
+	// Python os/path/io stdlib functions seen at high volume in real
+	// codebases — bare-name when accessed without a module qualifier.
+	"getcwd":          {},
+	"listdir":         {},
+	"makedirs":        {},
+	"__import__":      {},
+	"deepcopy":        {},
+	"deque":           {},
+	"defaultdict":     {},
+	"OrderedDict":     {},
+	"Counter":         {},
+	"namedtuple":      {},
+	"RawConfigParser": {},
+	"ConfigParser":    {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist
@@ -738,6 +836,43 @@ func isIdentSegment(s string) bool {
 		}
 	}
 	return true
+}
+
+// externalAPIHost extracts the host segment from a URL-shaped string.
+// Returns "" when raw doesn't look like a URL with a recognisable host.
+// Issue #89.
+func externalAPIHost(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	// "http://example.com/path" → "example.com"
+	if i := strings.Index(raw, "://"); i >= 0 {
+		host := raw[i+3:]
+		if j := strings.IndexAny(host, "/?#"); j >= 0 {
+			host = host[:j]
+		}
+		host = strings.TrimSpace(host)
+		// Strip "user@" if present.
+		if at := strings.IndexByte(host, '@'); at >= 0 && at < len(host)-1 {
+			host = host[at+1:]
+		}
+		// Strip ":port" if present.
+		if c := strings.IndexByte(host, ':'); c > 0 {
+			host = host[:c]
+		}
+		if host == "" {
+			return ""
+		}
+		// Reject obviously malformed hosts (e.g. "%zz").
+		for _, r := range host {
+			if r == '%' {
+				return ""
+			}
+		}
+		return host
+	}
+	return ""
 }
 
 // isHexID mirrors resolve.isHexID — a 16-char lower-hex string is
