@@ -74,7 +74,10 @@ func TestExtract_ContainsClassMethods(t *testing.T) {
 		t.Errorf("expected 3 CONTAINS edges from Foo, got %d (rels=%+v)",
 			c, findEntity(ents, "Foo").Relationships)
 	}
-	for _, m := range []string{"a", "b", "c"} {
+	// Methods are emitted with class-qualified Name "Foo.<method>" (issue #45).
+	// CONTAINS edges carry that same dotted form as ToID since ToID is set
+	// from child.Name in walkNode.
+	for _, m := range []string{"Foo.a", "Foo.b", "Foo.c"} {
 		if !hasRel(ents, "Foo", "CONTAINS", m) {
 			t.Errorf("expected CONTAINS Foo→%s", m)
 		}

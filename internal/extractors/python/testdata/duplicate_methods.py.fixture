@@ -1,0 +1,19 @@
+"""Fixture for issue #45: same-named methods on different classes
+must be emitted as distinct entities (no Python-extractor dedup).
+"""
+
+
+class UserSerializer:
+    def validate(self, value):
+        return value
+
+    def save(self, value):
+        return value
+
+
+class OrderSerializer:
+    def validate(self, value):
+        return value
+
+    def save(self, value):
+        return value

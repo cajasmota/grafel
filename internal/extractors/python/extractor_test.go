@@ -2,6 +2,8 @@ package python_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -155,8 +157,10 @@ func TestExtract_ClassWithMethods(t *testing.T) {
 		t.Errorf("class MyService: expected StartLine=1, got %d", cls.StartLine)
 	}
 
-	// Methods
-	for _, name := range []string{"__init__", "process"} {
+	// Methods — issue #45: emitted with class-qualified Name "<Class>.<method>"
+	// so two classes can declare same-named methods in the same file without
+	// colliding under ComputeID(SourceFile+Kind+Name).
+	for _, name := range []string{"MyService.__init__", "MyService.process"} {
 		found := false
 		for _, e := range entities {
 			if e.Name == name {
@@ -442,6 +446,128 @@ func TestExtract_Language(t *testing.T) {
 	}
 	if ext.Language() != "python" {
 		t.Errorf("Language() = %q, want %q", ext.Language(), "python")
+	}
+}
+
+// TestExtract_DuplicateMethodNamesAcrossClasses is the regression test for
+// issue #45. Two classes in the same file each declare a `validate` and a
+// `save` method. The extractor must emit four DISTINCT method entities with
+// class-qualified Names so ComputeID(SourceFile+Kind+Name) produces four
+// distinct IDs rather than collapsing the same-named methods into two.
+func TestExtract_DuplicateMethodNamesAcrossClasses(t *testing.T) {
+	src := `class UserSerializer:
+    def validate(self, value):
+        return value
+
+    def save(self, value):
+        return value
+
+
+class OrderSerializer:
+    def validate(self, value):
+        return value
+
+    def save(self, value):
+        return value
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	// Expected method-entity Names — class-qualified (issue #45).
+	wantMethods := map[string]bool{
+		"UserSerializer.validate":  false,
+		"UserSerializer.save":      false,
+		"OrderSerializer.validate": false,
+		"OrderSerializer.save":     false,
+	}
+	methodCount := 0
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Operation" && e.Subtype == "method" {
+			methodCount++
+			if _, ok := wantMethods[e.Name]; ok {
+				wantMethods[e.Name] = true
+			}
+		}
+	}
+	if methodCount != 4 {
+		t.Errorf("expected 4 distinct method entities, got %d (names=%v)",
+			methodCount, entityNames(entities))
+	}
+	for name, seen := range wantMethods {
+		if !seen {
+			t.Errorf("expected method entity %q not found in %v",
+				name, entityNames(entities))
+		}
+	}
+
+	// IDs must be distinct under ComputeID(SourceFile+Kind+Name).
+	ids := map[string]string{}
+	for _, e := range entities {
+		if e.Kind != "SCOPE.Operation" || e.Subtype != "method" {
+			continue
+		}
+		id := e.ComputeID()
+		if existing, ok := ids[id]; ok {
+			t.Errorf("method ID collision: %q and %q both compute to %s",
+				existing, e.Name, id)
+		}
+		ids[id] = e.Name
+	}
+
+	// Each class must own a CONTAINS edge per method (4 total: 2 per class).
+	for _, cls := range []string{"UserSerializer", "OrderSerializer"} {
+		count := 0
+		for _, e := range entities {
+			if e.Kind == "SCOPE.Component" && e.Name == cls {
+				for _, r := range e.Relationships {
+					if r.Kind == "CONTAINS" {
+						count++
+					}
+				}
+			}
+		}
+		if count != 2 {
+			t.Errorf("class %s: expected 2 CONTAINS edges, got %d", cls, count)
+		}
+	}
+}
+
+// TestExtract_DuplicateMethodsFromFixture mirrors the inline test above against
+// the committed testdata fixture so the on-disk artifact stays in sync with
+// the regression contract.
+func TestExtract_DuplicateMethodsFromFixture(t *testing.T) {
+	path := filepath.Join("testdata", "duplicate_methods.py.fixture")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	tree := parse(t, src)
+	ext, _ := extractor.Get("python")
+
+	entities, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     path,
+		Content:  src,
+		Language: "python",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	methodCount := 0
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Operation" && e.Subtype == "method" {
+			methodCount++
+		}
+	}
+	if methodCount != 4 {
+		t.Errorf("fixture: expected 4 method entities, got %d (names=%v)",
+			methodCount, entityNames(entities))
 	}
 }
 
