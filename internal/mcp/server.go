@@ -144,6 +144,15 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_save_finding", s.handleSaveResult))
 
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_list_findings",
+		mcpapi.WithDescription("List previously saved findings for the resolved group, newest-first."),
+		mcpapi.WithString("entity_id", mcpapi.Description("Optional entity ID, prefixed ID, qname, or label to filter by.")),
+		mcpapi.WithString("since", mcpapi.Description("Optional RFC3339 timestamp; only findings saved at or after this time are returned.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50), mcpapi.Description("Max findings to return.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_list_findings", s.handleListFindings))
+
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_source",
 		mcpapi.WithDescription("Return source-file snippet for a node from disk."),
 		mcpapi.WithString("node_id", mcpapi.Required()),
