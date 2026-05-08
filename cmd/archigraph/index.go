@@ -444,9 +444,13 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 		fmt.Fprintf(os.Stderr, "archigraph: enrichment candidate write failed: %v\n", err)
 		return
 	}
-	fmt.Fprintf(os.Stderr,
-		"archigraph: emitted %d enrichment candidates to %s\n",
-		len(cands), filepath.Join(archigraphDir, "enrichment-candidates.json"))
+	// Issue #53: keep this log behind the verbose flag. The emit count is
+	// useful for debugging but noisy on every CI run.
+	if verbose() {
+		fmt.Fprintf(os.Stderr,
+			"archigraph: emitted %d enrichment candidates to %s\n",
+			len(cands), filepath.Join(archigraphDir, "enrichment-candidates.json"))
+	}
 }
 
 // runPass1Extract runs the per-file AST extractors in parallel. The classified

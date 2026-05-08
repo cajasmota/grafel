@@ -278,13 +278,26 @@ type candidatesEnvelope struct {
 // WriteCandidates persists candidates atomically. The output is sorted +
 // versioned so subsequent runs produce byte-identical files when nothing
 // has changed.
+//
+// Idempotence (issue #53): emitters populate DiscoveredAt with a wall-clock
+// timestamp, which would otherwise change every run and break byte-stable
+// re-emission. To keep the on-disk file byte-stable for unchanged inputs,
+// we merge with any prior on-disk candidate set and preserve the existing
+// discovered_at for any candidate whose ID already appeared. New
+// candidates keep whatever DiscoveredAt the emitter assigned.
 func WriteCandidates(archigraphDir string, cs []Candidate) error {
 	if err := os.MkdirAll(archigraphDir, 0o755); err != nil {
 		return fmt.Errorf("enrichment: mkdir %s: %w", archigraphDir, err)
 	}
 	path := candidatesPath(archigraphDir)
+
+	// Merge prior discovered_at values so a candidate ID seen on a previous
+	// run keeps its original timestamp. This is what makes consecutive runs
+	// over the same input produce byte-identical output.
+	merged := mergeDiscoveredAt(path, cs)
+
 	tmp := path + ".tmp"
-	env := candidatesEnvelope{Version: CandidatesSchemaVersion, Candidates: cs}
+	env := candidatesEnvelope{Version: CandidatesSchemaVersion, Candidates: merged}
 	data, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
 		return fmt.Errorf("enrichment: marshal candidates: %w", err)
@@ -297,6 +310,48 @@ func WriteCandidates(archigraphDir string, cs []Candidate) error {
 		return fmt.Errorf("enrichment: rename: %w", err)
 	}
 	return nil
+}
+
+// mergeDiscoveredAt returns a copy of cs in which any candidate whose ID
+// matches a record in the prior on-disk file has its DiscoveredAt
+// replaced with the prior value. Order is preserved. Missing or
+// unparseable prior files are tolerated — in that case the input slice is
+// returned unmodified.
+func mergeDiscoveredAt(path string, cs []Candidate) []Candidate {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cs
+	}
+	prior := map[string]string{}
+	// Tolerate either the envelope or the bare-array shape.
+	var env candidatesEnvelope
+	if err := json.Unmarshal(data, &env); err == nil && len(env.Candidates) > 0 {
+		for _, p := range env.Candidates {
+			if p.ID != "" && p.DiscoveredAt != "" {
+				prior[p.ID] = p.DiscoveredAt
+			}
+		}
+	} else {
+		var arr []Candidate
+		if err := json.Unmarshal(data, &arr); err == nil {
+			for _, p := range arr {
+				if p.ID != "" && p.DiscoveredAt != "" {
+					prior[p.ID] = p.DiscoveredAt
+				}
+			}
+		}
+	}
+	if len(prior) == 0 {
+		return cs
+	}
+	out := make([]Candidate, len(cs))
+	copy(out, cs)
+	for i := range out {
+		if t, ok := prior[out[i].ID]; ok {
+			out[i].DiscoveredAt = t
+		}
+	}
+	return out
 }
 
 // ReadResolutions reads enrichment-resolutions.json. Tolerates both the
