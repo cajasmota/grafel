@@ -599,6 +599,7 @@ func TestExtract_ClassSubtypeLabels(t *testing.T) {
 		"UserSerializer": false, // (1) extends external base
 		"Base":           false, // (3) stand-alone
 		"Child":          false, // (2) extends another declared class
+		"EmptyParens":    false, // (4) empty parentheses, no base
 	}
 	// Names that MUST NOT appear as declared-class entities — these are
 	// references to external bases, not declarations.

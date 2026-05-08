@@ -25,3 +25,8 @@ class Base:
 # (2) Declared class extending another declared class in the same file.
 class Child(Base):
     pass
+
+
+# (4) Declared class with empty parentheses (no base).
+class EmptyParens():
+    pass
