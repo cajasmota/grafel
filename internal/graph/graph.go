@@ -116,8 +116,9 @@ type GraphStatsSidecar struct {
 
 // WriteSidecar emits the graph-stats.json sidecar next to the main document.
 // outPath is the same path passed to WriteAtomic; the sidecar is written to
-// the sibling file `graph-stats.json`.
-func WriteSidecar(outPath string, side *GraphStatsSidecar) error {
+// the sibling file `graph-stats.json`. When pretty is true, the JSON is
+// indented for human readability; otherwise it is minified (default).
+func WriteSidecar(outPath string, side *GraphStatsSidecar, pretty bool) error {
 	dir := filepath.Dir(outPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("graph: mkdir %s: %w", dir, err)
@@ -129,7 +130,9 @@ func WriteSidecar(outPath string, side *GraphStatsSidecar) error {
 		return fmt.Errorf("graph: create sidecar tmp: %w", err)
 	}
 	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
+	if pretty {
+		enc.SetIndent("", "  ")
+	}
 	if err := enc.Encode(side); err != nil {
 		f.Close()
 		os.Remove(tmp)
@@ -143,8 +146,10 @@ func WriteSidecar(outPath string, side *GraphStatsSidecar) error {
 }
 
 // WriteAtomic marshals doc to JSON and writes it to outPath atomically by
-// writing to a sibling .tmp file and renaming on success.
-func WriteAtomic(outPath string, doc *Document) error {
+// writing to a sibling .tmp file and renaming on success. When pretty is
+// true, the JSON is indented for human readability; otherwise it is minified
+// (the default — minified output is materially smaller on real repos).
+func WriteAtomic(outPath string, doc *Document, pretty bool) error {
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		return fmt.Errorf("graph: mkdir %s: %w", filepath.Dir(outPath), err)
 	}
@@ -154,7 +159,9 @@ func WriteAtomic(outPath string, doc *Document) error {
 		return fmt.Errorf("graph: create tmp: %w", err)
 	}
 	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
+	if pretty {
+		enc.SetIndent("", "  ")
+	}
 	if err := enc.Encode(doc); err != nil {
 		f.Close()
 		os.Remove(tmp)

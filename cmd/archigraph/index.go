@@ -84,8 +84,10 @@ type indexerStats struct {
 // resulting entity/relationship graph to outPath (or the default
 // <repo>/.archigraph/graph.json). repoTag is stored on every entity; an
 // empty value falls back to filepath.Base(repoPath). skipPasses is the
-// (possibly empty) set of pass names to skip — see allPassNames.
-func Index(repoPath, outPath, repoTag string, skipPasses []string) error {
+// (possibly empty) set of pass names to skip — see allPassNames. When
+// pretty is true, graph.json (and the graph-stats.json sidecar) are
+// indented for human readability; the default is minified JSON.
+func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool) error {
 	absRepo, err := filepath.Abs(repoPath)
 	if err != nil {
 		return fmt.Errorf("resolve repo path: %w", err)
@@ -137,7 +139,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string) error {
 	}
 
 	if !skipSet[PassBuildDocument] {
-		if err := graph.WriteAtomic(outPath, doc); err != nil {
+		if err := graph.WriteAtomic(outPath, doc, pretty); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", outPath)
@@ -156,7 +158,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string) error {
 				ArticulationPoints: doc.AlgorithmStats.NumArticulationPts,
 				RuntimeMS:          doc.AlgorithmStats.RuntimeMS,
 			}
-			if err := graph.WriteSidecar(outPath, side); err != nil {
+			if err := graph.WriteSidecar(outPath, side, pretty); err != nil {
 				fmt.Fprintf(os.Stderr, "archigraph: sidecar write failed: %v\n", err)
 			}
 		}

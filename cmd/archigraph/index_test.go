@@ -222,7 +222,7 @@ func TestDocumentRoundTrip(t *testing.T) {
 	tmp := t.TempDir()
 	doc := runIndexerOn(t, "testdata/crossfile_go", "crossfile_go", nil)
 	out := filepath.Join(tmp, "graph.json")
-	if err := graph.WriteAtomic(out, doc); err != nil {
+	if err := graph.WriteAtomic(out, doc, true); err != nil {
 		t.Fatalf("WriteAtomic: %v", err)
 	}
 	data, err := os.ReadFile(out)
@@ -354,5 +354,68 @@ func TestPass4Algorithms_AttributesPresent(t *testing.T) {
 			t.Errorf("skipped run: entity %s has algo attrs set", e.ID)
 			break
 		}
+	}
+}
+
+// TestWriteAtomic_PrettyVsMinified asserts the --pretty switch produces a
+// strictly larger file than the default minified output and that both files
+// decode to identical JSON content. This is the regression test for issue
+// #23 (minify graph.json by default).
+func TestWriteAtomic_PrettyVsMinified(t *testing.T) {
+	tmp := t.TempDir()
+	doc := runIndexerOn(t, "testdata/crossfile_go", "crossfile_go", nil)
+
+	miniPath := filepath.Join(tmp, "graph.min.json")
+	prettyPath := filepath.Join(tmp, "graph.pretty.json")
+
+	if err := graph.WriteAtomic(miniPath, doc, false); err != nil {
+		t.Fatalf("WriteAtomic minified: %v", err)
+	}
+	if err := graph.WriteAtomic(prettyPath, doc, true); err != nil {
+		t.Fatalf("WriteAtomic pretty: %v", err)
+	}
+
+	miniBytes, err := os.ReadFile(miniPath)
+	if err != nil {
+		t.Fatalf("read minified: %v", err)
+	}
+	prettyBytes, err := os.ReadFile(prettyPath)
+	if err != nil {
+		t.Fatalf("read pretty: %v", err)
+	}
+
+	if len(prettyBytes) <= len(miniBytes) {
+		t.Fatalf("expected pretty output to exceed minified: pretty=%d minified=%d",
+			len(prettyBytes), len(miniBytes))
+	}
+
+	// Minified output should not contain the indent string used by the
+	// pretty encoder. This guards against accidental regressions where the
+	// flag wiring is correct but SetIndent is still called.
+	if strings.Contains(string(miniBytes), "\n  ") {
+		t.Fatalf("minified output appears indented (contains \"\\n  \")")
+	}
+
+	// Both files must decode to identical Go-side content. Compare the
+	// re-encoded canonical form to ignore whitespace/ordering differences
+	// introduced by SetIndent.
+	var miniDoc, prettyDoc graph.Document
+	if err := json.Unmarshal(miniBytes, &miniDoc); err != nil {
+		t.Fatalf("unmarshal minified: %v", err)
+	}
+	if err := json.Unmarshal(prettyBytes, &prettyDoc); err != nil {
+		t.Fatalf("unmarshal pretty: %v", err)
+	}
+
+	miniCanon, err := json.Marshal(&miniDoc)
+	if err != nil {
+		t.Fatalf("re-marshal minified: %v", err)
+	}
+	prettyCanon, err := json.Marshal(&prettyDoc)
+	if err != nil {
+		t.Fatalf("re-marshal pretty: %v", err)
+	}
+	if string(miniCanon) != string(prettyCanon) {
+		t.Fatalf("pretty and minified outputs decode to different content")
 	}
 }
