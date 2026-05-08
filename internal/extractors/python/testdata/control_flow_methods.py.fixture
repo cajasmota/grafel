@@ -1,0 +1,32 @@
+"""Fixture for issue #70: methods declared inside control-flow blocks
+(if / try / with) within a class body must inherit the parent class
+qualifier and be emitted as <Class>.<method>, not bare <method>.
+"""
+
+DEBUG = True
+
+
+class Foo:
+    if DEBUG:
+        def trace(self):
+            return "trace"
+    else:
+        def trace_off(self):
+            return "off"
+
+    try:
+        def maybe(self):
+            return "maybe"
+    except Exception:
+        def fallback(self):
+            return "fallback"
+
+    with open("/dev/null") as _f:
+        def with_method(self):
+            return "with"
+
+
+class Bar:
+    if DEBUG:
+        def only_in_bar(self):
+            return "bar"
