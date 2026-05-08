@@ -5,50 +5,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cajasmota/archigraph/internal/version"
+	"github.com/cajasmota/archigraph/internal/cli"
 )
 
+// main wires the cmd-local index/mcp implementations into the cobra
+// dispatch tree owned by internal/cli, then delegates. Index/MCP live
+// in this package because they reach into a number of internal packages
+// (extractor, classifier, ...) that we don't want to surface from cli.
 func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
-	}
-
-	switch os.Args[1] {
-	case "-v", "--version", "version":
-		fmt.Println(version.String())
-		return
-	case "-h", "--help", "help":
-		usage()
-		return
-	case "index":
-		if err := runIndex(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "archigraph index: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	case "mcp":
-		if err := runMCP(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "archigraph mcp: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-
-	fmt.Fprintf(os.Stderr, "archigraph: unknown command: %s\n\n", os.Args[1])
-	usage()
-	os.Exit(2)
-}
-
-func usage() {
-	fmt.Fprintln(os.Stderr, "archigraph — multi-repo code knowledge graphs for AI agents")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Usage:")
-	fmt.Fprintln(os.Stderr, "  archigraph index <repo>      Walk a repository and write graph.json.")
-	fmt.Fprintln(os.Stderr, "  archigraph mcp serve         Start the MCP server on stdio.")
-	fmt.Fprintln(os.Stderr, "  archigraph version           Print the build version.")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Run 'archigraph <subcommand> --help' for subcommand options.")
+	cli.Execute(cli.Hooks{
+		RunIndex: runIndex,
+		RunMCP:   runMCP,
+	})
 }
 
 // runIndex parses flags for the `index` subcommand and runs the indexer.
@@ -71,4 +39,14 @@ func runIndex(argv []string) error {
 		skipPasses = []string{*skip}
 	}
 	return Index(repoPath, *out, *repoTag, skipPasses, *pretty)
+}
+
+// fail prints an error and exits non-zero. Convenience for callers
+// outside main() that have nowhere else to report.
+func fail(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, format, a...)
+	if len(format) > 0 && format[len(format)-1] != '\n' {
+		fmt.Fprintln(os.Stderr)
+	}
+	os.Exit(1)
 }
