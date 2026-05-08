@@ -1,0 +1,46 @@
+frameworks:
+  name: Re-frame
+  clojars_artifact: re-frame/re-frame
+  category: frontend_state_management
+  github_stars_2025: 5300+
+  detection:
+    config_files:
+    - shadow-cljs.edn
+    - project.clj
+    - deps.edn
+    - package.json
+    lein_deps:
+    - re-frame/re-frame
+    deps_edn_coords:
+    - re-frame/re-frame
+    import_markers:
+    - re-frame.core
+    - (rf/dispatch
+    - (rf/dispatch-sync
+    - (rf/subscribe
+    - (rf/reg-event-db
+    - (rf/reg-event-fx
+    - (rf/reg-sub
+    - (rf/reg-fx
+    - (reg-event-db
+    - (reg-event-fx
+    - (reg-sub
+    - (inject-cofx
+    - (:require [re-frame.
+    file_extensions:
+    - .cljs
+    - .cljc
+    structural_markers:
+    - src/cljs/events.cljs
+    - src/cljs/subs.cljs
+    - src/cljs/views.cljs
+    - src/cljs/db.cljs
+    - src/cljs/effects.cljs
+    - src/cljs/coeffects.cljs
+  notes: 'Re-frame is an event-driven state management framework for ClojureScript
+    built on Reagent. Detected by re-frame dep + (rf/reg-event-db ...) / (rf/reg-sub
+    ...) calls. The canonical file layout (events.cljs, subs.cljs, views.cljs, db.cljs)
+    is a high-confidence structural signal. Re-frame is almost always used alongside
+    Reagent.
+
+    '

@@ -1,0 +1,81 @@
+domain_roots:
+- layout: single_crate_binary
+  description: Single Cargo package producing one binary
+  root_paths:
+  - src/main.rs
+  - src/lib.rs
+  - src/
+  priority_files:
+  - src/main.rs
+  - src/lib.rs
+  notes: 'Most common layout for CLI tools and simple services. src/main.rs is the
+    definitive entry point signal.
+
+    '
+- layout: single_crate_library
+  description: Single Cargo package producing a library crate
+  root_paths:
+  - src/lib.rs
+  - src/
+  priority_files:
+  - src/lib.rs
+  notes: 'src/lib.rs is the crate root. No main.rs. Common for shared utility crates
+    and public API libraries.
+
+    '
+- layout: multi_binary
+  description: Single Cargo package with multiple binary targets
+  root_paths:
+  - src/bin/
+  - src/lib.rs
+  - src/
+  priority_files:
+  - src/bin/*.rs
+  notes: 'src/bin/ directory signals multiple binaries from one package. Each .rs
+    file in src/bin/ is a separate binary entry point. Detected via [[bin]] sections
+    in Cargo.toml or src/bin/ presence.
+
+    '
+- layout: examples
+  description: Example programs demonstrating library usage
+  root_paths:
+  - examples/
+  priority_files:
+  - examples/*.rs
+  notes: 'examples/ at crate root contains runnable examples. Low priority for production
+    code indexing but valuable for understanding public API usage patterns.
+
+    '
+- layout: workspace
+  description: Cargo workspace with multiple member crates
+  root_paths:
+  - Cargo.toml
+  - '*/src/main.rs'
+  - '*/src/lib.rs'
+  priority_files:
+  - Cargo.toml
+  - '*/Cargo.toml'
+  workspace_detection:
+  - '"[workspace]" in root Cargo.toml'
+  - '"members = [" field'
+  notes: 'Workspace root Cargo.toml has [workspace] section. Each member directory
+    has its own Cargo.toml. Index each member as an independent domain root after
+    resolving workspace dependencies.
+
+    '
+- layout: tauri_app
+  description: Tauri desktop/mobile app — Rust backend + frontend
+  root_paths:
+  - src-tauri/src/
+  - src-tauri/src/lib.rs
+  - src-tauri/src/main.rs
+  - src/
+  priority_files:
+  - src-tauri/src/lib.rs
+  - src-tauri/src/main.rs
+  - src-tauri/tauri.conf.json
+  notes: 'src-tauri/ is the Rust domain root. src/ is the frontend domain root (separate
+    indexing pass with JS/TS detector). Treat as polyglot project. gen/apple/ and
+    gen/android/ directories signal mobile targets.
+
+    '

@@ -1,0 +1,79 @@
+build_tools:
+- name: Zig Build System
+  config_files:
+  - build.zig
+  detection:
+    filename_exact:
+    - build.zig
+    code_patterns:
+    - 'pub fn build(b: *std.Build)'
+    - const b = @import("std").Build
+    - b.addExecutable(
+    - b.addStaticLibrary(
+    - b.addSharedLibrary(
+    - b.addObject(
+    - b.addTest(
+    - b.addRunArtifact(
+    - b.installArtifact(
+    - b.step(
+    - b.dependency(
+    - b.path(
+    - b.addModule(
+    - exe.root_source_file
+    - exe.linkLibC()
+    - exe.linkSystemLibrary(
+    - exe.addIncludePath(
+    - exe.addCSourceFiles(
+    - b.standardTargetOptions(
+    - b.standardOptimizeOption(
+    - b.option(
+  notes: 'build.zig is the single mandatory file for the Zig build system. It replaces
+    Makefiles, CMakeLists.txt, and package manifests simultaneously. pub fn build(b:
+    *std.Build) is the canonical entry point. b.step() creates named build steps runnable
+    via `zig build <step>`. b.dependency() pulls in packages declared in build.zig.zon.
+    Zig has no separate package manager binary — `zig build` handles everything.
+
+    '
+- name: build.zig.zon (Package Manifest)
+  config_files:
+  - build.zig.zon
+  detection:
+    filename_exact:
+    - build.zig.zon
+    structural_markers:
+    - .name =
+    - .version =
+    - .dependencies =
+    - .paths =
+    - .url =
+    - .hash =
+    - .lazy =
+  notes: 'build.zig.zon is the Zig Object Notation package manifest introduced in
+    Zig 0.11. It declares the package name, version, external dependencies (with content-addressed
+    hashes), and which paths are included in the package. The .hash field is a SHA-256
+    content hash used for reproducible builds. Presence of build.zig.zon without build.zig
+    is invalid — both must coexist. Dependencies are fetched by `zig build` on first
+    run and cached in the global Zig cache (~/.cache/zig on Linux/macOS).
+
+    '
+- name: zig build (CLI)
+  type: cli
+  detection:
+    config_files:
+    - build.zig
+    conventional_targets:
+    - zig build
+    - zig build test
+    - zig build run
+    - zig build install
+    - zig build -Doptimize=ReleaseFast
+    - zig build -Doptimize=ReleaseSafe
+    - zig build -Doptimize=ReleaseSmall
+    - zig build -Dtarget=x86_64-linux-musl
+  notes: 'The Zig CLI is both the compiler and the build orchestrator. Cross-compilation
+    is first-class: -Dtarget=<triple> targets any supported platform with no external
+    toolchain. Optimization modes: Debug (default), ReleaseSafe (bounds checks), ReleaseFast
+    (no checks), ReleaseSmall (size optimized). These modes are exposed as build options
+    via b.standardOptimizeOption().
+
+    '

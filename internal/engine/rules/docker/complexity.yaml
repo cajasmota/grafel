@@ -1,0 +1,105 @@
+complexity_signals:
+- category: multi_stage_depth
+  description: 'The number of FROM stages in a Dockerfile is a direct proxy for build
+    complexity. Each stage adds its own base image, instructions, and potential failure
+    modes.
+
+    '
+  thresholds:
+    low: 1 stage — single-stage build
+    medium: 2-3 stages — standard builder/runtime or builder/test/runtime
+    high: 4-6 stages — complex parallelism or extensive test/lint stages
+    very_high: '>= 7 stages — monorepo multi-service or heavy CI-in-Dockerfile'
+  patterns:
+  - Count of FROM instructions in the file
+  - Stage name diversity (test + lint + deps + builder + runtime signals high)
+  indexing_note: 'Emit stage_count as a numeric attribute on the Dockerfile entity.
+    Stage depth > 5 is a strong signal to flag for complexity review.
+
+    '
+- category: arg_chain_propagation_depth
+  description: 'The number of stages an ARG value must be manually re-declared to
+    propagate through. Long ARG chains (re-declared in 4+ stages) indicate configuration
+    coupling and are a refactoring target (extract to docker-compose ARG injection
+    or .env file).
+
+    '
+  patterns:
+  - Multiple FROM stages each containing ARG <same_name>
+  - ARG declared before FROM (global scope, then re-declared in stages)
+  - FROM $<ARG_NAME> — parameterised base image
+  indexing_note: 'Count ARG re-declarations per unique arg name. max_arg_propagation_depth
+    = max count across all ARGs. Values >= 3 are worth flagging.
+
+    '
+- category: onbuild_triggers
+  description: 'Any use of ONBUILD is an advanced pattern. ONBUILD instructions in
+    an image that will be used as a base add invisible behaviour to all child images.
+    This is a hidden complexity amplifier.
+
+    '
+  patterns:
+  - ONBUILD instruction presence
+  - Count of ONBUILD instructions per stage
+  indexing_note: 'Flag any Dockerfile with ONBUILD instructions. Emit onbuild_count
+    as a numeric attribute. onbuild_count > 0 is always worth surfacing.
+
+    '
+- category: health_check_complexity
+  description: 'Health check complexity is determined by the check command sophistication
+    and timing parameters. Complex health checks with short intervals and tight timeouts
+    indicate sensitive service dependencies.
+
+    '
+  signals:
+  - Presence of HEALTHCHECK vs absence (absence = less production-ready)
+  - Multi-step health check command (pipe | or && chains)
+  - Very short interval (< 10s) — high-frequency polling
+  - Very short timeout (< 3s) — tight latency requirement
+  - Non-trivial check command (custom binary, not curl/wget)
+  - docker-compose healthcheck with condition: service_healthy dependencies
+  patterns:
+  - HEALTHCHECK --interval=<value>
+  - HEALTHCHECK CMD curl
+  - HEALTHCHECK CMD wget
+  - HEALTHCHECK CMD /custom-check
+  indexing_note: 'Emit healthcheck_present (boolean), healthcheck_interval_seconds
+    (int), healthcheck_retries (int). health checks with interval < 10s or custom
+    binary commands are medium-complexity signals.
+
+    '
+- category: compose_service_graph_depth
+  description: 'The depth of the service dependency graph in a docker-compose file,
+    measured by the longest chain of depends_on relationships.
+
+    '
+  signals:
+  - Service count (total entries under services:)
+  - depends_on chain depth (A depends_on B depends_on C = depth 2)
+  - Circular dependency detection (compose rejects these at runtime)
+  - condition: service_healthy chains — full health-aware startup ordering
+  thresholds:
+    low: 1-3 services, no depends_on
+    medium: 4-6 services, depends_on depth <= 2
+    high: 7-10 services, depends_on depth 3-4
+    very_high: '> 10 services or depends_on depth > 4'
+  indexing_note: 'Emit service_count, max_depends_on_depth, service_graph_edges as
+    attributes on the Compose entity. service_count > 8 is a strong signal of a complex
+    local development topology.
+
+    '
+- category: build_context_size_signals
+  description: 'Signals that the Docker build context may be large or poorly scoped,
+    leading to slow builds and potential secret leakage.
+
+    '
+  patterns:
+  - '"COPY . ." / "COPY . /app" without a .dockerignore present'
+  - ADD with URL (network fetch during build)
+  - ADD with wildcard or glob patterns
+  - Multiple large COPY instructions before RUN
+  indexing_note: 'Flag COPY . without a corresponding .dockerignore as a build hygiene
+    issue. ADD with URL is both a complexity and security signal. Track whether .dockerignore
+    is present in the same directory as the Dockerfile.
+
+    '

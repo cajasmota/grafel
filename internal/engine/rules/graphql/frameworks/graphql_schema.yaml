@@ -1,0 +1,98 @@
+frameworks:
+  name: GraphQL Schema
+  language: graphql
+  category: schema_definition
+  detection:
+    file_extensions:
+      - .graphql
+      - .gql
+    content_patterns:
+      - "type Query"
+      - "type Mutation"
+      - "type Subscription"
+  notes: >-
+    Generic GraphQL schema extraction. Detects type definitions, queries,
+    mutations, subscriptions, enums, inputs, and interfaces from .graphql files.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-526)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "*.graphql"
+    entity_type: Config
+    name_from: filename
+  - glob: "*.gql"
+    entity_type: Config
+    name_from: filename
+  - glob: "**/schema.graphql"
+    entity_type: Config
+    name_from: filename
+
+source_patterns:
+  # type Query { ... }
+  - pattern: "type\\s+(Query)\\b"
+    entity_type: Controller
+    name_group: 1
+    scope: file
+  # type Mutation { ... }
+  - pattern: "type\\s+(Mutation)\\b"
+    entity_type: Controller
+    name_group: 1
+    scope: file
+  # type Subscription { ... }
+  - pattern: "type\\s+(Subscription)\\b"
+    entity_type: Controller
+    name_group: 1
+    scope: file
+  # Custom object type: type User { ... }
+  - pattern: "type\\s+(\\w+)\\s*(?:implements\\s+\\w+\\s*)?\\{"
+    entity_type: Model
+    name_group: 1
+    scope: file
+  # Input type: input CreateUserInput { ... }
+  - pattern: "input\\s+(\\w+)\\s*\\{"
+    entity_type: Model
+    name_group: 1
+    scope: file
+  # Enum: enum Status { ... }
+  - pattern: "enum\\s+(\\w+)\\s*\\{"
+    entity_type: Model
+    name_group: 1
+    scope: file
+  # Interface: interface Node { ... }
+  - pattern: "interface\\s+(\\w+)\\s*\\{"
+    entity_type: Interface
+    name_group: 1
+    scope: file
+  # Union: union SearchResult = User | Post
+  - pattern: "union\\s+(\\w+)\\s*="
+    entity_type: Model
+    name_group: 1
+    scope: file
+  # Directive definition: directive @auth on FIELD_DEFINITION
+  - pattern: "directive\\s+@(\\w+)"
+    entity_type: Decorator
+    name_group: 1
+    scope: file
+  # Query/Mutation field: fieldName(...): ReturnType
+  - pattern: "^\\s+(\\w+)\\s*\\([^)]*\\)\\s*:"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # type implements interface
+  - pattern: "type\\s+(\\w+)\\s+implements\\s+(\\w+)"
+    source_type: Model
+    target_type: Interface
+    relationship: IMPLEMENTS
+    source_group: 1
+    target_group: 2
+  # Field references another type: fieldName: TypeName
+  - pattern: "\\s+(\\w+)\\s*:\\s*\\[?(\\w+)\\]?"
+    source_type: Model
+    target_type: Model
+    relationship: CALLS
+    source_group: 1
+    target_group: 2

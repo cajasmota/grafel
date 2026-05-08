@@ -1,0 +1,36 @@
+template_engines:
+  name: Twig
+  full_name: Twig (PHP)
+  language: php
+  extensions:
+  - .twig
+  - .html.twig
+  composer_packages:
+  - twig/twig
+  - symfony/twig-bundle
+  detection_signals:
+    file_extensions:
+    - .twig
+    - .html.twig
+    composer_deps:
+    - twig/twig
+    - symfony/twig-bundle
+    directory_conventions:
+    - templates/
+    - views/
+    syntax_markers:
+    - '{{ variable }}'
+    - '{% block name %}'
+    - '{% extends ''base.html.twig'' %}'
+    - '{% include ''partial.html.twig'' %}'
+    - '{% for item in items %}'
+    - '{% if condition %}'
+    - '{% macro name(args) %}'
+    - '{% from ''macros.html.twig'' import name %}'
+    - '{# comment #}'
+    - '{% embed ''card.html.twig'' %}'
+  notes: 'Twig is the default template engine for Symfony. .html.twig double extension
+    is the Symfony convention. {% embed %} is a Twig-specific construct combining
+    include + block override.
+
+    '

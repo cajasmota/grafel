@@ -1,0 +1,189 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/groovy/SampleController.groovy",
+  "language": "groovy",
+  "entities": [
+    {
+      "name": "UserController",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 4,
+      "end_line": 38,
+      "language": "groovy",
+      "signature": "class UserController",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "validateEmail",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 35,
+      "end_line": 37,
+      "language": "groovy",
+      "signature": "private def validateEmail(String email)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 29,
+      "end_line": 33,
+      "language": "groovy",
+      "signature": "def delete(int id) def",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 23,
+      "end_line": 27,
+      "language": "groovy",
+      "signature": "def create(String name, String email) def",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "show",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 15,
+      "end_line": 21,
+      "language": "groovy",
+      "signature": "def show(int id) def",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "index",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 11,
+      "end_line": 13,
+      "language": "groovy",
+      "signature": "def index() def",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "handleRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 40,
+      "end_line": 49,
+      "language": "groovy",
+      "signature": "def handleRequest(String method, String path, UserController controller)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 4,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/groovy/SampleController.groovy",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/groovy/SampleController.groovy",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "groovy",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "PascalCase",
+        "dominant_percentage": 22.22222222222222,
+        "sample_count": 9,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/groovy/SampleController.groovy"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:dto",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/groovy/SampleController.groovy:handleRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 40,
+      "end_line": 49,
+      "language": "groovy",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:dto",
+        "category": "enterprise",
+        "pattern": "dto",
+        "entity_name": "handleRequest",
+        "pattern_taxonomy": "enterprise:dto"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

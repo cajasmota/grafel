@@ -1,0 +1,21 @@
+orms:
+  name: JOOQ (Groovy)
+  category: orm_sql_dsl
+  gradle_coordinates:
+  - org.jooq:jooq
+  - org.jooq:jooq-codegen
+  detection:
+    code_patterns:
+    - import org.jooq.
+    - DSL.using(
+    - .select().from(
+    - .insertInto(
+    - .update(
+    - DSLContext
+    - Record
+    - Result<Record
+  notes: 'JOOQ used in Groovy projects follows same patterns as Java JOOQ. Less common
+    than GORM or Hibernate in Groovy ecosystems. Detection via jooq dependency + DSL.using()
+    or DSLContext in Groovy source.
+
+    '

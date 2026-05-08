@@ -1,0 +1,28 @@
+# Property-based test detector (MX-716)
+# Detects property-based testing patterns across 13+ language families:
+#   Python: Hypothesis (@given)
+#   JavaScript/TypeScript: fast-check, jsverify, testcheck
+#   Java: jqwik (@Property), QuickTheories
+#   Kotlin: Kotest (forAll/checkAll/forNone), jqwik
+#   Scala: ScalaCheck (forAll), Hedgehog
+#   Haskell: QuickCheck (prop_, forAll, forAllShrink), Hedgehog
+#   Go: gopter, rapid
+#   Rust: proptest, quickcheck
+#   C#/F#: FsCheck ([Property], Prop.forAll)
+#   Ruby: rantly
+#   Elixir: StreamData (check all)
+#   Erlang: PropEr (?FORALL, proper:quickcheck)
+#   Swift: SwiftCheck, Hypothesis.swift
+#   Dart: Glados
+#
+# File gate is internal to the detector (applies_to checks language field).
+
+name: property_test_detector
+description: >-
+  Detect property-based testing framework usage across 13+ language families
+  (Hypothesis, fast-check, jqwik, Kotest, ScalaCheck, QuickCheck, gopter, rapid,
+  proptest, FsCheck, rantly, StreamData, PropEr, SwiftCheck, Glados).
+  Emits SCOPE.Pattern entities with kind=property_test.
+module: memx_indexer.pattern_detectors.property_test_detector
+function: detect
+applies_to_function: applies_to

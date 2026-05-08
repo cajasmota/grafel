@@ -1,0 +1,111 @@
+build_tools:
+- name: Leiningen
+  config_files:
+  - project.clj
+  detection:
+    primary_signal: project.clj exists at repo root
+    content_markers:
+    - (defproject
+    - :dependencies [
+    - :dev-dependencies [
+    - :plugins [
+    - :profiles {
+    - ':main '
+    - :uberjar-name
+    - :ring {:handler
+    - :aot :all
+    - :min-lein-version
+    binary: lein
+  notes: 'Leiningen is the dominant Clojure build tool (pre-2018). project.clj at
+    the repo root is the authoritative signal. (defproject my-app "1.0.0" ...) is
+    the opening form. :dependencies contains Maven-style coordinates [group/artifact
+    "version"]. :profiles {:dev {:dependencies [...]}} adds dev-only deps. :uberjar-name
+    indicates an application (not a library). lein uberjar, lein run, lein test are
+    the canonical tasks.
+
+    '
+- name: tools.deps / deps.edn
+  config_files:
+  - deps.edn
+  - .clojure/deps.edn
+  detection:
+    primary_signal: deps.edn exists at repo root
+    content_markers:
+    - '{:deps {'
+    - :aliases {
+    - :mvn/version
+    - :git/url
+    - :git/sha
+    - :local/root
+    - :extra-paths [
+    - :extra-deps {
+    - :main-opts [
+    - io.github.
+    - com.github.
+    - :override-deps {
+    - :replace-deps {
+    binary: clojure
+    related_tools:
+    - clj (wrapper script with rlwrap)
+    - neil (neil/neil — project scaffolding)
+    - antq (upgrade checker)
+    - clj-new (project templates)
+    - tools.build (build scripts in build.clj)
+  notes: 'tools.deps is the official Clojure dependency management system introduced
+    in Clojure 1.9 (2018). deps.edn is a plain EDN map. :deps key maps symbols to
+    coordinate maps {:mvn/version "x.y.z"} or {:git/url "..." :git/sha "..."}. :aliases
+    define task variants. build.clj using tools.build (io.github.clojure/tools.build)
+    is the modern build script pattern replacing Leiningen for library publishing.
+    The clj CLI is the entry point.
+
+    '
+- name: Boot
+  config_files:
+  - build.boot
+  - boot.properties
+  detection:
+    primary_signal: build.boot exists at repo root
+    content_markers:
+    - (set-env!
+    - (task-options!
+    - (deftask
+    - :dependencies
+    - (boot
+    - boot.core
+    - boot.util
+    - adzerk/boot-cljs
+    - pandeiro/boot-http
+    binary: boot
+  notes: 'Boot is a task-based build tool for Clojure (largely supplanted by tools.deps
+    but still found in older projects). build.boot is the project file. (set-env!
+    ...) configures classpath and deps. (deftask ...) defines composable pipeline
+    tasks. Rarely seen in new projects (post-2020) but present in legacy codebases.
+
+    '
+- name: shadow-cljs
+  config_files:
+  - shadow-cljs.edn
+  - package.json
+  detection:
+    primary_signal: shadow-cljs.edn exists at repo root
+    content_markers:
+    - '{:builds {'
+    - :target :browser
+    - :target :node-script
+    - :target :node-library
+    - :target :npm-module
+    - :target :react-native
+    - :output-dir
+    - :modules {
+    - :devtools {
+    - :nrepl {
+    - thheller/shadow-cljs
+    binary: shadow-cljs
+    requires: package.json (npm/yarn)
+  notes: 'shadow-cljs is the standard ClojureScript build tool replacing cljsbuild.
+    shadow-cljs.edn defines :builds map with :target (browser, node-script, npm-module,
+    react-native). Requires npm/yarn for JS deps. Integrates with webpack and npm
+    ecosystem. The presence of both shadow-cljs.edn and package.json is a high-confidence
+    ClojureScript project signal.
+
+    '

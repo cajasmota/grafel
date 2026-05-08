@@ -1,0 +1,23 @@
+frameworks:
+  name: elastisch
+  lein_coordinates: clojurewerkz/elastisch
+  detection:
+    project_clj_markers:
+    - clojurewerkz/elastisch
+    import_patterns:
+    - clojurewerkz.elastisch
+    - clojurewerkz/elastisch
+    code_patterns:
+    - esr/connect
+    - es/connect
+    - elastisch/connect
+  notes: |
+    elastisch (clojurewerkz/elastisch) is the primary Clojure Elasticsearch client.
+    Uses (esr/connect "http://...") pattern.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract esr/connect / es/connect connection calls, search queries,
+      aggregations, and ILM patterns for Clojure.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

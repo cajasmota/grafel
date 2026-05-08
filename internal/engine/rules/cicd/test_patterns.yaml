@@ -1,0 +1,7 @@
+test_frameworks:
+  note: 'Test frameworks (pytest, jest, junit) are not CI/CD platforms. Test result
+    reporting (via artifact uploads or test result parsers) is a CI/CD feature, but
+    test frameworks themselves are covered in other research (e.g., python.yaml, javascript_typescript.yaml).
+    This research focuses on CI/CD configuration, not test orchestration.
+
+    '

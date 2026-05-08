@@ -1,0 +1,28 @@
+orms_database:
+  name: mongo-scala-driver / ReactiveMongo
+  maven_coordinates: org.mongodb.scala:mongo-scala-driver_2.13
+  category: nosql_driver
+  detection:
+    sbt_dep_patterns:
+      - mongo-scala-driver
+      - reactivemongo
+    import_markers:
+      - import org.mongodb.scala
+      - import reactivemongo
+    code_patterns:
+      - MongoClient(
+      - MongoClients.create(
+      - ReactiveMongoApi
+      - collection.aggregate(
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

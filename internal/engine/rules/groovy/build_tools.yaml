@@ -1,0 +1,96 @@
+build_tools:
+- name: Gradle (Groovy DSL)
+  config_files:
+  - build.gradle
+  - settings.gradle
+  wrapper_scripts:
+  - gradlew
+  - gradlew.bat
+  - gradle/wrapper/gradle-wrapper.properties
+  detection:
+    primary_signal: build.gradle (Groovy DSL — no .kts extension)
+    secondary_signals:
+    - gradlew wrapper script present
+    - gradle/wrapper/gradle-wrapper.properties
+    - settings.gradle (without .kts)
+    structure_markers:
+    - plugins {
+    - dependencies {
+    - repositories {
+    - 'apply plugin:'
+    - def version =
+    - allprojects {
+    - subprojects {
+    groovy_dsl_markers:
+    - No .kts extension on build.gradle
+    - Single-quoted strings for dependency coords
+    - GString interpolation in build scripts
+    - Closures as configuration blocks
+  multi_module:
+    signal: include ':module-name' in settings.gradle
+    pattern: settings.gradle + per-module build.gradle
+  disambiguation: 'Groovy DSL uses build.gradle (no extension); Kotlin DSL uses build.gradle.kts.
+    settings.gradle (Groovy) vs settings.gradle.kts (Kotlin). Mixed projects can have
+    both — treat primary language as the one used in the majority of build files.
+    Grails projects always use Groovy DSL.
+
+    '
+- name: Gradle (Groovy DSL) — Grails variant
+  config_files:
+  - build.gradle
+  - settings.gradle
+  - gradle.properties
+  detection:
+    primary_signal: build.gradle + grails-app/ directory
+    grails_specific_markers:
+    - id "org.grails.grails-web"
+    - id "org.grails.grails-plugin"
+    - id "asset-pipeline"
+    - grailsVersion =
+    - grails.version
+    - '"grails-bom" (BOM import)'
+  notes: 'Grails projects are always Gradle-built (Grails 3+). Grails 2.x used its
+    own Gant-based build system with BuildConfig.groovy instead of build.gradle. BuildConfig.groovy
+    is a Grails 2.x signal — treat it as a skip pattern unless the file references
+    grails.project.* settings.
+
+    '
+- name: Maven (Groovy via GMavenPlus)
+  config_files:
+  - pom.xml
+  detection:
+    primary_signal: pom.xml with GMavenPlus plugin
+    maven_signals:
+    - org.codehaus.gmavenplus:gmavenplus-plugin in pom.xml
+    - <groupId>org.codehaus.groovy</groupId>
+    - groovy-all artifact in dependencies
+    - <packaging>jar</packaging> with Groovy sources
+    structure_markers:
+    - src/main/groovy/
+    - src/test/groovy/
+  notes: 'Maven is a secondary build tool for Groovy — most Groovy projects use Gradle.
+    GMavenPlus (gmavenplus-plugin) replaces the older GMaven plugin. Detection requires
+    pom.xml with gmavenplus-plugin in the build/plugins section AND src/main/groovy/
+    source directory. Maven + Spock is valid — spock-core in pom.xml testDependencies
+    section.
+
+    '
+- name: Gant (legacy — Grails 2.x)
+  config_files:
+  - BuildConfig.groovy
+  - scripts/*.groovy
+  detection:
+    primary_signal: BuildConfig.groovy at project root
+    signals:
+    - grails.project.work.dir
+    - grails.project.target.level
+    - grails.servlet.version
+    - grails.project.dependency.resolution
+    - inherits 'global'
+  notes: 'Gant is the build system for Grails 2.x projects only. BuildConfig.groovy
+    defines dependencies using a custom Groovy DSL. This is a legacy signal — any
+    project with BuildConfig.groovy and no build.gradle is Grails 2.x. BuildConfig.groovy
+    should be in the SKIP list for Grails 3+ projects where it may appear as a generated
+    file.
+
+    '

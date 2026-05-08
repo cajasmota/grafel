@@ -1,0 +1,71 @@
+build_tools:
+- name: ansible-galaxy
+  vendor: Ansible Community
+  category: dependency_manager
+  detection:
+    cli_invocation_patterns:
+    - ansible-galaxy role install
+    - ansible-galaxy collection install
+    - ansible-galaxy install -r requirements.yml
+    config_files:
+    - requirements.yml
+    - requirements.yaml
+    ci_patterns:
+    - ansible-galaxy role/collection install
+    - ansible-galaxy collection download
+  notes: 'ansible-galaxy is the package/dependency management tool. Installs roles
+    from Galaxy (galaxy.ansible.com) and collections. Requirements.yml declares dependencies.
+    High-value for dependency graph extraction.
+
+    '
+- name: ansible-playbook
+  vendor: Ansible Community / Red Hat
+  category: execution_engine
+  detection:
+    cli_invocation_patterns:
+    - ansible-playbook <playbook.yml>
+    - ansible-playbook -i inventory <playbook.yml>
+    - ansible-playbook --tags <tag>
+    makefile_targets:
+    - deploy
+    - provision
+    - configure
+    - run-playbook
+  notes: 'ansible-playbook is the core execution engine. Runs a playbook against an
+    inventory. Command line often includes -i (inventory), -e (extra vars), --tags
+    (selective execution). Makefile targets commonly invoke ansible-playbook for deployment/provisioning.
+
+    '
+- name: ansible-vault
+  vendor: Ansible Community / Red Hat
+  category: secrets_management
+  detection:
+    cli_invocation_patterns:
+    - ansible-vault encrypt
+    - ansible-vault decrypt
+    - ansible-vault view
+    file_patterns:
+    - '"$ANSIBLE_VAULT;1.1;AES256" header in encrypted files'
+    config_indicators:
+    - '"vault_password_file" in ansible.cfg'
+    - '"--vault-password-file" in command line'
+  notes: 'ansible-vault encrypts sensitive files (group_vars, host_vars, extra vars).
+    Detected via vault file headers or vault_password_file config. Presence indicates
+    secrets management strategy.
+
+    '
+- name: ansible-pull
+  vendor: Ansible Community / Red Hat
+  category: agentless_client
+  detection:
+    cli_invocation_patterns:
+    - ansible-pull
+    - ansible-pull -U <repo_url>
+    use_patterns:
+    - agent nodes pull playbook from repo instead of push
+    - Useful for continuous compliance and distributed updates
+  notes: 'ansible-pull inverts the Ansible model — agent nodes pull playbooks and
+    run them locally instead of a control node pushing. Detected via ansible-pull
+    CLI usage in cron or systemd services. Indicates decentralized execution patterns.
+
+    '

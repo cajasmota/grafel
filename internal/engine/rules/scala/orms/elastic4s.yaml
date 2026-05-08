@@ -1,0 +1,23 @@
+orms_database:
+  name: elastic4s
+  sbt_coordinates: com.sksamuel.elastic4s:elastic4s-core
+  detection:
+    build_sbt_markers:
+    - elastic4s-core
+    - elastic4s-client-esjava
+    import_patterns:
+    - import com.sksamuel.elastic4s
+    code_patterns:
+    - ElasticClient(
+    - JavaClient(
+    - ElasticDsl
+  notes: |
+    elastic4s is the most popular Scala Elasticsearch client (sksamuel/elastic4s).
+    Provides type-safe DSL for Elasticsearch operations.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract ElasticClient connections, search queries, aggregations,
+      ILM policies, and index creation for Scala.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

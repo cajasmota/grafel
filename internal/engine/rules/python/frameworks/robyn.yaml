@@ -1,0 +1,20 @@
+frameworks:
+  name: Robyn
+  pypi_package: robyn
+  category: web_async_api
+  github_stars_2025: 4200+
+  gateway: asgi
+  detection:
+    config_files:
+    - app.py
+    - server.py
+    dependency_names:
+    - robyn
+    import_markers:
+    - from robyn import Robyn
+    - app = Robyn(__file__)
+    structural_markers: []
+  notes: 'Rust-backed Python web framework. Performance-focused. Newer ecosystem —
+    limited enterprise adoption as of 2025.
+
+    '

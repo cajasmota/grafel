@@ -1,0 +1,42 @@
+frameworks:
+  name: Magento
+  package_name: magento/magento2-base
+  category: e_commerce
+  github_stars_2025: 11400+
+  detection:
+    config_files:
+    - composer.json
+    - app/etc/di.xml
+    - app/etc/env.php
+    - app/etc/config.php
+    - bin/magento
+    - pub/index.php
+    - setup/
+    - dev/
+    - generated/
+    composer_deps:
+    - magento/magento2-base
+    - magento/product-community-edition
+    - magento/framework
+    - magento/module-store
+    - magento/module-catalog
+    - magento/module-checkout
+    import_markers:
+    - use Magento\
+    - Magento\Framework\
+    - extends AbstractBlock
+    - extends AbstractModel
+    - extends Action
+    - implements ObserverInterface
+    structural_markers:
+    - app/code/
+    - app/design/
+    - app/etc/di.xml
+    - bin/magento
+    - generated/
+    - pub/
+  notes: 'bin/magento CLI + app/etc/di.xml is high-confidence. Magento 2 uses XML-based
+    dependency injection — di.xml in module registration is mandatory. Custom modules
+    live in app/code/{Vendor}/{Module}/ with required registration.php and module.xml.
+
+    '

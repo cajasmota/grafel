@@ -1,0 +1,32 @@
+orms_database:
+  name: MySQL R Drivers (RMySQL, RMariaDB)
+  category: relational_database
+  cran_package: RMySQL
+  detection:
+    import_patterns:
+    - library(RMySQL)
+    - library(RMariaDB)
+    - require(RMySQL)
+    - require(RMariaDB)
+    code_patterns:
+    - dbConnect(RMySQL::MySQL()
+    - dbConnect(RMariaDB::MariaDB()
+  notes: >
+    RMySQL is the classic CRAN package for MySQL/MariaDB access in R.
+    RMariaDB is its modern replacement using the MariaDB Connector/C library.
+    Both use DBI's dbConnect() interface.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

@@ -1,0 +1,128 @@
+skip_patterns:
+- pattern: build/
+  reason: 'CMake and other build system output directory. Contains object files, compiled
+    binaries, and generated makefiles. Never contains source.
+
+    '
+- pattern: cmake-build-*/
+  reason: 'CLion IDE CMake build directory convention (cmake-build-debug, cmake-build-release,
+    etc.). All generated output.
+
+    '
+- pattern: CMakeFiles/
+  reason: 'CMake internal directory created during cmake configuration. Contains generated
+    dependency files, compiler tests, and CMake cache files.
+
+    '
+- pattern: '*.o'
+  reason: 'Unix object file produced by compiler. Binary artifact, not source.
+
+    '
+- pattern: '*.obj'
+  reason: 'Windows object file produced by MSVC. Binary artifact, not source.
+
+    '
+- pattern: '*.a'
+  reason: 'Static library archive. Compiled artifact.
+
+    '
+- pattern: '*.so'
+  reason: 'Shared object (Unix dynamic library). Compiled artifact.
+
+    '
+- pattern: '*.dll'
+  reason: 'Windows dynamic link library. Compiled artifact.
+
+    '
+- pattern: '*.exe'
+  reason: 'Windows executable. Compiled artifact.
+
+    '
+- pattern: '*.pb.cc'
+  reason: 'Protobuf-generated C++ source file. Auto-generated from .proto definitions.
+    Indexing the .proto file is sufficient.
+
+    '
+- pattern: '*.pb.h'
+  reason: 'Protobuf-generated C++ header. Auto-generated from .proto definitions.
+
+    '
+- pattern: '*.grpc.pb.cc'
+  reason: 'gRPC C++ generated service implementation. Auto-generated from .proto.
+
+    '
+- pattern: '*.grpc.pb.h'
+  reason: 'gRPC C++ generated service header. Auto-generated from .proto.
+
+    '
+- pattern: third_party/
+  reason: 'Vendored third-party libraries bundled in-repo. Indexing vendor code conflates
+    external dependencies with project code.
+
+    '
+- pattern: vendor/
+  reason: 'Alternative vendor directory name. Same rationale as third_party/.
+
+    '
+- pattern: extern/
+  reason: 'External dependency directory convention in some projects (notably LLVM).
+
+    '
+- pattern: external/
+  reason: 'Bazel and CMake subproject external dependency directory.
+
+    '
+- pattern: deps/
+  reason: 'Dependency directory used in some C++ projects.
+
+    '
+- pattern: Pods/
+  reason: 'CocoaPods iOS/macOS dependency directory (appears in mixed Obj-C/C++ projects).
+
+    '
+- pattern: '*.odb.cxx'
+  reason: 'ODB ORM generated C++ source. Auto-generated from annotated header files.
+
+    '
+- pattern: '*.odb.hxx'
+  reason: 'ODB ORM generated C++ header. Auto-generated from annotated header files.
+
+    '
+- pattern: moc_*.cpp
+  reason: 'Qt Meta-Object Compiler generated source. Auto-generated from Q_OBJECT
+    headers.
+
+    '
+- pattern: ui_*.h
+  reason: 'Qt UI compiler generated header from .ui XML files.
+
+    '
+- pattern: qrc_*.cpp
+  reason: 'Qt Resource compiler generated source from .qrc files.
+
+    '
+- pattern: .generated.h
+  reason: 'Common suffix pattern for generated header files.
+
+    '
+- pattern: Intermediate/
+  reason: 'Unreal Engine generated code and compiled artifacts directory.
+
+    '
+- pattern: Binaries/
+  reason: 'Unreal Engine compiled binary output directory.
+
+    '
+- pattern: DerivedDataCache/
+  reason: 'Unreal Engine derived data cache. Large binary cache, not source.
+
+    '
+- pattern: sqlite3.c
+  reason: 'SQLite amalgamation single-file source. Third-party bundled source, not
+    project code.
+
+    '
+- pattern: sqlite3.h
+  reason: 'SQLite amalgamation header. Same rationale as sqlite3.c.
+
+    '

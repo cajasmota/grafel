@@ -1,0 +1,24 @@
+orms_database:
+  name: elasticsearch-ruby
+  gem_name: elasticsearch
+  detection:
+    gemfile_markers:
+    - elasticsearch
+    - elasticsearch-model
+    - elasticsearch-rails
+    import_patterns:
+    - require 'elasticsearch'
+    - require "elasticsearch"
+    code_patterns:
+    - Elasticsearch::Client.new
+    - include Elasticsearch::Model
+  notes: |
+    Official Ruby Elasticsearch client. elasticsearch-model and elasticsearch-rails
+    add ActiveRecord/ActiveModel integration.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract Elasticsearch::Client.new connections, .search() calls,
+      aggregations, ILM policies, and index creation for Ruby.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

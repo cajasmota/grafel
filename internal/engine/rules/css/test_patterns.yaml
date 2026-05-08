@@ -1,0 +1,114 @@
+testing:
+- name: percy
+  full_name: Percy (BrowserStack)
+  category: visual_regression
+  npm_packages:
+  - '@percy/cli'
+  - '@percy/playwright'
+  - '@percy/cypress'
+  - '@percy/storybook'
+  config_files:
+  - .percy.yml
+  - percy.config.js
+  - percy.config.ts
+  - .percy.json
+  detection_signals:
+    package_json_deps:
+    - '@percy/cli'
+    - '@percy/playwright'
+    - '@percy/cypress'
+    config_file_present:
+    - .percy.yml
+    - percy.config.js
+    content_patterns:
+    - percySnapshot(
+    - percy.snapshot(
+    - '@percy/cli'
+  ci_integration: 'PERCY_TOKEN env var in CI. npx percy exec -- <test-command>. Uploads
+    screenshots to Percy dashboard for approval workflow.
+
+    '
+  notes: 'Percy integrates with Playwright, Cypress, and Storybook. Snapshots are
+    approved/rejected in the Percy web UI. The @percy/cli wrapper intercepts test
+    runs and uploads screenshots.
+
+    '
+- name: chromatic
+  full_name: Chromatic (Storybook visual testing)
+  category: visual_regression
+  npm_packages:
+  - chromatic
+  config_files:
+  - chromatic.config.json
+  - chromatic.config.ts
+  - chromatic.config.js
+  detection_signals:
+    package_json_deps:
+    - chromatic
+    - '@storybook/core'
+    config_file_present:
+    - chromatic.config.json
+    content_patterns:
+    - npx chromatic
+    - chromatic --project-token
+    - CHROMATIC_PROJECT_TOKEN
+  ci_integration: 'CHROMATIC_PROJECT_TOKEN env var. Run: npx chromatic --project-token=$TOKEN.
+    Storybook must be buildable. Chromatic captures stories as visual baselines.
+
+    '
+  notes: 'Chromatic is tightly coupled to Storybook. Each story becomes a visual snapshot.
+    Suitable for component library CSS regression testing. Requires storybook to be
+    configured in the project.
+
+    '
+- name: backstopjs
+  full_name: BackstopJS
+  category: visual_regression
+  npm_packages:
+  - backstopjs
+  config_files:
+  - backstop.json
+  - backstop.config.js
+  - backstop.config.ts
+  detection_signals:
+    package_json_deps:
+    - backstopjs
+    config_file_present:
+    - backstop.json
+    - backstop.config.js
+    content_patterns:
+    - backstop reference
+    - backstop test
+    - backstop approve
+    - 'viewports:'
+    - 'scenarios:'
+  ci_integration: 'backstop reference (generate baseline) + backstop test (compare).
+    backstop approve (update baseline). Uses Puppeteer or Playwright under the hood
+    for screenshot capture.
+
+    '
+  notes: 'BackstopJS is self-hosted (no cloud service). backstop.json defines viewports
+    and scenarios (URLs + selectors to screenshot). Suitable for full-page and component-level
+    visual regression.
+
+    '
+- name: playwright_visual
+  full_name: Playwright screenshot assertions
+  category: visual_regression
+  npm_packages:
+  - '@playwright/test'
+  config_files:
+  - playwright.config.ts
+  - playwright.config.js
+  detection_signals:
+    package_json_deps:
+    - '@playwright/test'
+    content_patterns:
+    - toHaveScreenshot(
+    - toMatchSnapshot(
+    - expect(page).toHaveScreenshot
+  notes: 'Playwright has built-in screenshot comparison via toHaveScreenshot(). Visual
+    snapshots are stored in __screenshots__/ or a configured snapshot directory. Simpler
+    than Percy/Chromatic for projects already using Playwright for E2E tests.
+
+    '

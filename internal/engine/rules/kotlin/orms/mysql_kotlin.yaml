@@ -1,0 +1,31 @@
+orms_database:
+  name: MySQL Kotlin Drivers (MySQL Connector/J, Exposed, R2DBC MySQL)
+  category: relational_database
+  maven_coordinates: com.mysql:mysql-connector-j
+  detection:
+    import_patterns:
+    - import com.mysql.cj.jdbc
+    - import io.r2dbc.mysql
+    code_patterns:
+    - DriverManager.getConnection("jdbc:mysql:
+    - Database.connect("jdbc:mysql:
+    - R2dbcDatabase.create(
+  notes: >
+    Kotlin uses MySQL Connector/J via JDBC (DriverManager) or through the
+    Exposed ORM (Database.connect). R2DBC MySQL provides reactive access.
+    All three patterns are detected.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

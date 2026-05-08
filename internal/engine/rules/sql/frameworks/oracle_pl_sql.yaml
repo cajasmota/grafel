@@ -1,0 +1,51 @@
+frameworks_and_dialects:
+  name: Oracle (PL/SQL)
+  category: rdbms_dialect
+  file_extensions:
+  - '*.sql'
+  - '*.pls'
+  - '*.plb'
+  - '*.pks'
+  - '*.pkb'
+  - '*.pck'
+  - '*.fnc'
+  - '*.prc'
+  - '*.trg'
+  syntax_markers:
+  - DBMS_OUTPUT.PUT_LINE
+  - v_
+  - BEGIN
+  - END;
+  - END /
+  - CREATE OR REPLACE PROCEDURE
+  - CREATE OR REPLACE FUNCTION
+  - CREATE OR REPLACE PACKAGE
+  - CREATE OR REPLACE TRIGGER
+  - CURSOR
+  - ROWTYPE
+  - '%TYPE'
+  - '%ROWTYPE'
+  - DUAL
+  - SYSDATE
+  - NVL(
+  - NVL2(
+  - DECODE(
+  - TO_CHAR(
+  - TO_DATE(
+  - TO_NUMBER(
+  - ROWNUM
+  - ROWID
+  - BULK COLLECT
+  - FORALL
+  - EXCEPTION
+  - WHEN OTHERS THEN
+  - RAISE_APPLICATION_ERROR
+  - SYS_GUID()
+  - CONNECT BY
+  - PRIOR
+  notes: 'Oracle PL/SQL uses %TYPE/%ROWTYPE anchored declarations, CURSOR FOR loops,
+    BULK COLLECT/FORALL for set-based DML, CONNECT BY for hierarchical queries, and
+    DUAL dummy table. File extensions .pks (package spec) and .pkb (package body)
+    are Oracle-specific. The v_ convention for variable names is a common Oracle standard.
+
+    '

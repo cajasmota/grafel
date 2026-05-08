@@ -1,0 +1,9 @@
+meta: language.yaml
+frameworks: frameworks/ [css, scss_sass, less, stylus, postcss, tailwind_css, css_modules,
+  styled_components, emotion, vanilla_extract, bootstrap, material_ui_system]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+entity_types: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

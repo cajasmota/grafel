@@ -1,0 +1,205 @@
+# Symfony framework extraction rules (MX-513).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: Symfony
+  package_name: symfony/framework-bundle
+  category: web_full_stack
+  github_stars_2025: 29000+
+  detection:
+    config_files:
+    - composer.json
+    - composer.lock
+    - symfony.lock
+    - config/services.yaml
+    - config/services.yml
+    - config/packages/
+    - config/routes.yaml
+    - config/routes.yml
+    - bin/console
+    - src/Kernel.php
+    - public/index.php
+    composer_deps:
+    - symfony/framework-bundle
+    - symfony/console
+    - symfony/routing
+    - symfony/http-kernel
+    - symfony/dependency-injection
+    - symfony/event-dispatcher
+    - symfony/flex
+    - symfony/maker-bundle
+    - symfony/webpack-encore-bundle
+    import_markers:
+    - "use Symfony\\"
+    - extends AbstractController
+    - extends Controller
+    - "Symfony\\Component\\"
+    - "Symfony\\Bundle\\"
+    - "#[Route("
+    - "@Route("
+    structural_markers:
+    - src/Controller/
+    - src/Entity/
+    - src/Repository/
+    - src/Service/
+    - config/packages/
+    - bin/console
+    - symfony.lock
+  notes: >
+    symfony.lock is a Symfony Flex artifact — high-confidence when present.
+    bin/console + src/Kernel.php is the canonical Symfony 4+ project root.
+    Symfony components can be used standalone; full-stack detection requires
+    symfony/framework-bundle in composer.json.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+# file_conventions: glob -> entity_type mapping from file naming conventions.
+file_conventions:
+  # Controllers: src/Controller/*Controller.php
+  - glob: "src/Controller/*Controller.php"
+    entity_type: Controller
+    name_from: filename
+  # Entities: src/Entity/*.php
+  - glob: "src/Entity/*.php"
+    entity_type: Model
+    name_from: filename
+  # Repositories: src/Repository/*Repository.php
+  - glob: "src/Repository/*Repository.php"
+    entity_type: Service
+    name_from: filename
+  # Services: src/Service/*.php
+  - glob: "src/Service/*.php"
+    entity_type: Service
+    name_from: filename
+  # Forms: src/Form/*Type.php
+  - glob: "src/Form/*Type.php"
+    entity_type: Component
+    name_from: filename
+  # Event subscribers: src/EventSubscriber/*.php
+  - glob: "src/EventSubscriber/*.php"
+    entity_type: Middleware
+    name_from: filename
+  # Kernel / app config
+  - glob: "src/Kernel.php"
+    entity_type: Config
+    name_from: filename
+
+# source_patterns: regex patterns matching Symfony constructs in PHP source.
+source_patterns:
+  # PHP 8 attribute route: #[Route('/path', name: 'route_name')]
+  - pattern: "#\\[Route\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: class
+
+  # Annotation route (Symfony 4/5): @Route("/path", name="route_name")
+  - pattern: "@Route\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: class
+
+  # Class-level controller: class FooController extends AbstractController
+  - pattern: "class\\s+(\\w+Controller)\\s+extends\\s+(?:AbstractController|Controller)"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+  # Class-level controller without explicit extends (attribute-only)
+  - pattern: "class\\s+(\\w+Controller)\\b"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+  # Doctrine entity: #[ORM\Entity] or /** @ORM\Entity */
+  - pattern: "(?:#\\[ORM\\\\Entity|@ORM\\\\Entity)"
+    entity_type: Model
+    name_group: 0
+    scope: class
+
+  # Entity class: class Foo (when preceded by @ORM\Entity or #[ORM\Entity])
+  - pattern: "class\\s+(\\w+)\\s*(?:extends\\s+\\w+\\s*)?(?:implements\\s+[\\w,\\s]+\\s*)?\\{"
+    entity_type: Model
+    name_group: 1
+    scope: class
+
+  # Symfony service class: class FooService
+  - pattern: "class\\s+(\\w+Service)\\b"
+    entity_type: Service
+    name_group: 1
+    scope: class
+
+  # Repository class: class FooRepository extends ServiceEntityRepository
+  - pattern: "class\\s+(\\w+Repository)\\s+extends\\s+(?:ServiceEntityRepository|EntityRepository)"
+    entity_type: Service
+    name_group: 1
+    scope: class
+
+  # Form type class: class FooType extends AbstractType
+  - pattern: "class\\s+(\\w+Type)\\s+extends\\s+AbstractType"
+    entity_type: Component
+    name_group: 1
+    scope: class
+
+  # Event subscriber class: implements EventSubscriberInterface
+  - pattern: "class\\s+(\\w+)\\s+(?:extends\\s+\\w+\\s+)?implements\\s+[\\w,\\s]*EventSubscriberInterface"
+    entity_type: Middleware
+    name_group: 1
+    scope: class
+
+  # Dependency injection via constructor: private FooService $fooService
+  - pattern: "(?:private|protected|readonly)\\s+(?:readonly\\s+)?([A-Z]\\w+)\\s+\\$(\\w+)"
+    entity_type: Dependency
+    name_group: 2
+    scope: function
+
+  # autowired service injection: #[Autowire]
+  - pattern: "#\\[Autowire\\s*\\([^)]*\\)\\]\\s*(?:private|protected|readonly)\\s+(?:readonly\\s+)?([A-Z]\\w+)\\s+\\$(\\w+)"
+    entity_type: Dependency
+    name_group: 2
+    scope: function
+
+# relationship_rules: regex patterns that produce edges between entities.
+relationship_rules:
+  # Controller action routes to path: #[Route('/path')] public function action()
+  - pattern: "#\\[Route\\s*\\(\\s*[\"']([^\"']+)[\"'][^)]*\\)\\][\\s\\S]*?(?:public|protected)\\s+function\\s+(\\w+)"
+    source_type: Controller
+    target_type: Route
+    relationship: ROUTES_TO
+    source_group: 2
+    target_group: 1
+
+  # Controller injects service via constructor typed property
+  - pattern: "(?:private|protected|readonly)\\s+(?:readonly\\s+)?([A-Z]\\w+Service)\\s+\\$(\\w+)"
+    source_type: Controller
+    target_type: Service
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2
+
+  # Repository uses entity: class FooRepository ... FooRepository -> Foo (by naming convention)
+  - pattern: "class\\s+(\\w+)Repository\\s+extends\\s+(?:ServiceEntityRepository|EntityRepository)"
+    source_type: Service
+    target_type: Model
+    relationship: DEFINED_BY
+    source_group: 1
+    target_group: 1
+
+custom_extractors:
+- module: memx_indexer.languages.php.symfony_extractor
+  function: extract
+  description: >
+    Extracts Symfony routes (#[Route] attributes and @Route annotations with full
+    path resolution including class-level prefixes), controller class declarations,
+    Doctrine ORM entities (#[ORM\Entity]/@ORM\Entity) with column annotations and
+    relationship mappings (OneToMany/ManyToOne/ManyToMany/OneToOne),
+    EventSubscriberInterface implementations with getSubscribedEvents() bindings,
+    and #[AsMessageHandler]/MessageHandlerInterface message handler classes.
+    Emits SCOPE.Operation/endpoint, SCOPE.Component, SCOPE.Schema, SCOPE.Pattern,
+    SCOPE.Service.
+    Relationships: CALLS (routes_to), OWNS (entity->column, subscriber->handler),
+    DEPENDS_ON (doctrine_relation, subscribes_to).

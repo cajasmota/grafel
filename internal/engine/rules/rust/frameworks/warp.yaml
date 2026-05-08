@@ -1,0 +1,23 @@
+frameworks:
+  name: Warp
+  crate: warp
+  category: web_micro
+  crates_io_version_2025: 0.3.x
+  github_stars_2025: 9600+
+  detection:
+    cargo_toml_deps:
+    - warp
+    import_markers:
+    - 'use warp::'
+    structural_markers:
+    - warp::serve(
+    - warp::path(
+    - warp::get()
+    - warp::post()
+    - 'warp::filter::'
+    - '.and(warp::'
+    notes: 'Filter-composition model. Deeply functional style — routes built by composing
+      Filter combinators. Less common in new projects (2025) but significant existing
+      codebase footprint.
+
+      '

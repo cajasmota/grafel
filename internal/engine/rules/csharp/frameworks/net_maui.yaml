@@ -1,0 +1,169 @@
+# .NET MAUI framework extraction rules (MX-519)
+# Schema: FrameworkExtractionSchema (MX-494)
+# NuGet: Microsoft.Maui.Controls
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: .NET MAUI
+  category: mobile_cross_platform
+  nuget_package: Microsoft.Maui.Controls
+  sdk_attribute: Microsoft.NET.Sdk
+  mandatory_mobile_signal: true
+  adoption_rank_2025: 5
+  detection:
+    csproj_sdk:
+    - Sdk="Microsoft.NET.Sdk"
+    csproj_properties:
+    - <UseMaui>true</UseMaui>
+    - <OutputType>Exe</OutputType>
+    - <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst;net8.0-windows</TargetFrameworks>
+    - <TargetFramework>net8.0-android</TargetFramework>
+    - <TargetFramework>net8.0-ios</TargetFramework>
+    - <TargetFramework>net8.0-maccatalyst</TargetFramework>
+    - <TargetFramework>net8.0-windows</TargetFramework>
+    csproj_package_references:
+    - Microsoft.Maui.Controls
+    - Microsoft.Maui.Controls.Compatibility
+    - Microsoft.Maui.Essentials
+    config_files:
+    - MauiProgram.cs
+    - MainPage.xaml
+    - MainPage.xaml.cs
+    - AppShell.xaml
+    - AppShell.xaml.cs
+    - App.xaml
+    - App.xaml.cs
+    - Platforms/Android/
+    - Platforms/iOS/
+    - Platforms/MacCatalyst/
+    - Platforms/Windows/
+    code_patterns:
+    - MauiApp.CreateBuilder()
+    - .UseMauiApp<
+    - ContentPage
+    - Shell
+    - ICommand
+    - BindableProperty
+    notes: >
+      <UseMaui>true</UseMaui> in .csproj is the definitive MAUI signal. Multi-platform
+      TargetFrameworks (android+ios+maccatalyst+windows) is highly specific. Platforms/
+      subdirectory with platform-specific code is confirmatory. MauiProgram.cs is
+      the entry point pattern.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Page classes live in Pages/ or Views/ by convention
+  - glob: "*/Pages/*.cs"
+    entity_type: View
+    name_from: class_name
+  - glob: "*/Views/*.cs"
+    entity_type: View
+    name_from: class_name
+  # ViewModel classes live in ViewModels/ by convention
+  - glob: "*/ViewModels/*.cs"
+    entity_type: Controller
+    name_from: class_name
+  # Service layer
+  - glob: "*/Services/*.cs"
+    entity_type: Service
+    name_from: class_name
+  # Model / domain data
+  - glob: "*/Models/*.cs"
+    entity_type: Model
+    name_from: class_name
+
+source_patterns:
+  # ContentPage subclass — a MAUI page (View)
+  # Matches: public class OrdersPage : ContentPage
+  - pattern: "(?:public|internal)\\s+(?:partial\\s+)?class\\s+(\\w+(?:Page|View))\\s*:\\s*(?:ContentPage|TabbedPage|NavigationPage|FlyoutPage|Shell)"
+    entity_type: View
+    name_group: 1
+    scope: class
+
+  # ViewModel class — by naming convention (ObservableObject or INotifyPropertyChanged)
+  # Matches: public partial class OrdersViewModel : ObservableObject
+  - pattern: "(?:public|internal)\\s+(?:partial\\s+)?class\\s+(\\w+ViewModel)\\s*(?::|$)"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+  # [RelayCommand] attribute — generates ICommand from method (CommunityToolkit.Mvvm)
+  # Matches: [RelayCommand] private void LoadOrders(
+  - pattern: "\\[RelayCommand\\][\\s\\S]{0,150}?(?:private|public|protected)\\s+(?:async\\s+)?\\S+\\s+(\\w+)\\s*\\("
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # [ObservableProperty] attribute — generates bindable property (CommunityToolkit.Mvvm)
+  # Matches: [ObservableProperty] private string _orderStatus;
+  - pattern: "\\[ObservableProperty\\][\\s\\S]{0,100}?(?:private|protected)\\s+[\\w<>?]+\\s+(\\w+);"
+    entity_type: Model
+    name_group: 1
+    scope: class
+
+  # Shell route registration — Shell.Current.GoToAsync("//route")
+  # Matches: Shell.Current.GoToAsync("//OrdersPage") or GoToAsync($"//orders")
+  - pattern: "GoToAsync\\s*\\(\\s*[\"$][/]{0,2}([\\w/{}?=&]+)"
+    entity_type: Route
+    name_group: 1
+    scope: function
+
+  # Routing.RegisterRoute — explicit route registration
+  # Matches: Routing.RegisterRoute("orderdetail", typeof(OrderDetailPage));
+  - pattern: "Routing\\.RegisterRoute\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # MauiApp.CreateBuilder() — app entry point
+  - pattern: "MauiApp\\.CreateBuilder\\s*\\("
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # .UseMauiApp<TApp>() — application class registration
+  - pattern: "\\.UseMauiApp\\s*<\\s*(\\w+)\\s*>"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+  # Dependency injection in MauiProgram.cs
+  # Matches: builder.Services.AddSingleton<IOrderService, OrderService>()
+  - pattern: "builder\\.Services\\.Add(?:Singleton|Scoped|Transient)\\s*<\\s*([\\w,\\s<>]+)\\s*>"
+    entity_type: Service
+    name_group: 1
+    scope: file
+
+  # Constructor dependency injection in ViewModel or Page
+  # Captures the injected interface type
+  - pattern: "public\\s+\\w+(?:ViewModel|Page)\\s*\\([^)]*?(I\\w+)\\s+\\w+"
+    entity_type: Dependency
+    name_group: 1
+    scope: class
+
+relationship_rules:
+  # ViewModel ROUTES_TO Page — Shell navigation GoToAsync links ViewModel to Page
+  # Pattern: GoToAsync connects the route string to a registered page
+  - pattern: "Routing\\.RegisterRoute\\s*\\(\\s*\"([^\"]+)\"[^,]*,\\s*typeof\\s*\\(\\s*(\\w+)\\s*\\)"
+    source_type: Route
+    target_type: View
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # Dependency INJECTED_INTO ViewModel — constructor parameter injection
+  # Connects service interface to the ViewModel that depends on it
+  # RE2 note: \1 backreference replaced with explicit \w+ViewModel pattern
+  # (RE2 does not support backreferences; the name-equality guarantee is relaxed
+  # to a naming-convention match, which is equivalent for well-formed C# code)
+  - pattern: "class\\s+(\\w+ViewModel)[^{]*\\{[\\s\\S]{0,600}?public\\s+\\w+ViewModel\\s*\\([^)]*?(I\\w+)\\s+\\w+"
+    source_type: Dependency
+    target_type: Controller
+    relationship: INJECTED_INTO
+    source_group: 2
+    target_group: 1

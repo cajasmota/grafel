@@ -1,0 +1,24 @@
+frameworks:
+  name: Dropwizard
+  category: web_microservices
+  maven_coordinates: io.dropwizard:dropwizard-core
+  gradle_dependency: implementation 'io.dropwizard:dropwizard-core'
+  adoption_rank_2025: 8
+  detection:
+    config_files:
+    - config.yml
+    - '*.yml'
+    pom_xml_markers:
+    - io.dropwizard
+    - dropwizard-core
+    import_patterns:
+    - import io.dropwizard
+    code_patterns:
+    - extends Application<
+    - extends AbstractBundle
+    - Bootstrap<
+    - Environment environment
+  notes: 'Application<T> subclass where T extends Configuration is definitive. config.yml
+    alone is ambiguous.
+
+    '

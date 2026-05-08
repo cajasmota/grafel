@@ -1,0 +1,23 @@
+# Snapshot test detector (MX-715)
+# Detects snapshot / approval test assertions across 9 languages:
+#   JavaScript/TypeScript: Jest, Vitest
+#   Python: pytest-snapshot, snapshottest, syrupy
+#   Ruby: approvals gem
+#   Rust: insta
+#   Go: cupaloy, go-snapshot
+#   Java/Kotlin: ApprovalTests
+#   Swift: pointfree/swift-snapshot-testing
+#   Dart: flutter_test (matchesGoldenFile, goldenFileComparator)
+#   Elixir: Mneme
+#
+# File gate is internal to the detector (applies_to checks language field).
+
+name: snapshot_test_detector
+description: >-
+  Detect snapshot and approval test assertions across 9 languages (Jest/Vitest,
+  pytest-snapshot/snapshottest/syrupy, approvals gem, insta, cupaloy/go-snapshot,
+  ApprovalTests, swift-snapshot-testing, flutter_test, Mneme).
+  Emits SCOPE.Pattern entities with kind=snapshot_test.
+module: memx_indexer.pattern_detectors.snapshot_test_detector
+function: detect
+applies_to_function: applies_to

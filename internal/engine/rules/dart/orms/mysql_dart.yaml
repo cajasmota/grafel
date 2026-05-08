@@ -1,0 +1,30 @@
+orms_database:
+  name: MySQL Dart Driver (mysql_client)
+  category: relational_database
+  pub_package: mysql_client
+  detection:
+    import_patterns:
+    - import 'package:mysql_client/mysql_client.dart'
+    - import "package:mysql_client/mysql_client.dart"
+    code_patterns:
+    - MySQLClient.createConnection(
+    - MySQLClient.connect(
+    - await MySQLClient.
+  notes: >
+    mysql_client is the primary pure-Dart MySQL driver available on pub.dev.
+    It provides async connection creation via MySQLClient.createConnection().
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

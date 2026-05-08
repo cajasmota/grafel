@@ -1,0 +1,22 @@
+database:
+  name: pgmoon
+  luarocks_package: pgmoon
+  category: postgresql_driver
+  github_stars_2025: 600+
+  detection:
+    import_markers:
+    - require "pgmoon"
+    - require("pgmoon")
+    - pgmoon.new
+    - pgmoon.Postgres
+    - pg:connect
+    - pg:query
+    - pg:escape_literal
+    - pgmoon.json
+    - pgmoon.arrays
+    notes: 'pgmoon is the primary Lua PostgreSQL driver, used natively in Lapis applications.
+      Primary signals: require(''pgmoon'') + pgmoon.new({host=..., database=...})
+      constructor. In OpenResty/Lapis context often used with connection pooling via
+      the native ngx socket API.
+
+      '

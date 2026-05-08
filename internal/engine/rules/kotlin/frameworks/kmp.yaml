@@ -1,0 +1,109 @@
+# Kotlin Multiplatform (KMP) extraction rules (MX-508)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Plugin: kotlin("multiplatform")
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: Kotlin Multiplatform (KMP)
+  category: multiplatform
+  gradle_coordinates:
+  - org.jetbrains.kotlin:kotlin-gradle-plugin (multiplatform)
+  detection:
+    config_files:
+    - shared/build.gradle.kts
+    - commonMain/kotlin/
+    - androidMain/kotlin/
+    - iosMain/kotlin/
+    build_signals:
+    - kotlin("multiplatform")
+    - val commonMain by getting
+    - val androidMain by getting
+    - val iosMain by getting
+    import_patterns:
+    - 'expect fun '
+    - 'actual fun '
+    code_patterns:
+    - 'expect class '
+    - 'actual class '
+    - 'expect fun '
+    - 'actual fun '
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "*/commonMain/**/*.kt"
+    entity_type: Interface
+    name_from: filename
+  - glob: "*/androidMain/**/*.kt"
+    entity_type: Implementation
+    name_from: filename
+  - glob: "*/iosMain/**/*.kt"
+    entity_type: Implementation
+    name_from: filename
+  - glob: "*/desktopMain/**/*.kt"
+    entity_type: Implementation
+    name_from: filename
+  - glob: "*/jsMain/**/*.kt"
+    entity_type: Implementation
+    name_from: filename
+
+source_patterns:
+  # expect fun declaration in commonMain — produces Interface entity
+  # Captures function name; modifier=expect, source_set=common inferred from path
+  - pattern: "\\bexpect\\s+fun\\s+(\\w+)\\s*[(<]"
+    entity_type: Interface
+    name_group: 1
+    scope: file
+
+  # expect class declaration in commonMain
+  - pattern: "\\bexpect\\s+(?:abstract\\s+|open\\s+|sealed\\s+)?class\\s+(\\w+)"
+    entity_type: Interface
+    name_group: 1
+    scope: class
+
+  # actual fun declaration — produces Implementation entity
+  # Captures function name; source_set derived from file path
+  - pattern: "\\bactual\\s+fun\\s+(\\w+)\\s*[(<]"
+    entity_type: Implementation
+    name_group: 1
+    scope: file
+
+  # actual class declaration
+  - pattern: "\\bactual\\s+(?:abstract\\s+|open\\s+|sealed\\s+|data\\s+)?class\\s+(\\w+)"
+    entity_type: Implementation
+    name_group: 1
+    scope: class
+
+  # kotlin { sourceSets { ... } } — source set configuration block
+  - pattern: "\\bsourceSets\\s*\\{"
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # val commonMain by getting / val androidMain by getting — source set variable
+  - pattern: "val\\s+(\\w+Main)\\s+by\\s+(?:getting|creating)"
+    entity_type: Module
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # actual fun NAME implements expect fun NAME — same name links them
+  - pattern: "\\bactual\\s+fun\\s+(\\w+)\\s*[(<]"
+    source_type: Implementation
+    target_type: Interface
+    relationship: IMPLEMENTS
+    source_group: 1
+    target_group: 1
+
+  # actual class NAME implements expect class NAME — same name links them
+  - pattern: "\\bactual\\s+(?:abstract\\s+|open\\s+|sealed\\s+|data\\s+)?class\\s+(\\w+)"
+    source_type: Implementation
+    target_type: Interface
+    relationship: IMPLEMENTS
+    source_group: 1
+    target_group: 1

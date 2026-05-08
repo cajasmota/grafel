@@ -1,0 +1,25 @@
+framework:
+  name: Amazonica / cognitect-labs aws-api (DynamoDB)
+  category: nosql_database
+  clojars_package: amazonica
+  detection:
+    import_patterns:
+    - amazonica.aws.dynamodbv2
+    - cognitect.aws.dynamodb
+    code_patterns:
+    - far/create-table
+    - amazonica/create-table
+    - aws/invoke
+  notes: >
+    Amazonica provides a Clojure wrapper around the AWS Java SDK.
+    cognitect-labs/aws-api is the alternative pure-Clojure approach.
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: amazonica/far DynamoDB calls (SCOPE.Service,
+      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
+      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
+      INFERRED_FROM_DYNAMODB_QUERY), single-table design (SCOPE.Pattern,
+      INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

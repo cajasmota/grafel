@@ -1,0 +1,35 @@
+orms_database:
+  name: PostgreSQL PHP Drivers (PDO::pgsql, pg_connect)
+  category: postgres_driver
+  php_extensions:
+    - pdo_pgsql
+    - pgsql
+  detection:
+    import_patterns:
+      - pg_connect(
+      - new PDO('pgsql:
+      - new PDO("pgsql:
+    code_patterns:
+      - pg_connect(
+      - pg_query(
+      - pg_prepare(
+      - new PDO('pgsql:
+  notes: >
+    PHP provides two PostgreSQL interfaces: the pgsql extension (pg_connect,
+    pg_query, etc.) and PDO with the pgsql DSN prefix. PDO is preferred for
+    portability; the pgsql extension gives access to PostgreSQL-specific
+    features like COPY.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: pg_connect/PDO::pgsql connections
+      (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

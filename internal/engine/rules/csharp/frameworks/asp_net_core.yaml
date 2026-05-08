@@ -1,0 +1,173 @@
+# ASP.NET Core Minimal API framework extraction rules (MX-519)
+# Schema: FrameworkExtractionSchema (MX-494)
+# NuGet: Microsoft.AspNetCore.App (built-in to SDK)
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+#
+# Note: Handler shape inference is MEDIUM confidence (shape_inferred_partially).
+# Route path extraction from MapGet/MapPost/etc. is HIGH confidence.
+
+frameworks:
+  name: ASP.NET Core
+  category: web_full_stack
+  nuget_package: Microsoft.AspNetCore.App
+  sdk_attribute: Microsoft.NET.Sdk.Web
+  adoption_rank_2025: 1
+  detection:
+    csproj_sdk:
+    - Sdk="Microsoft.NET.Sdk.Web"
+    csproj_package_references:
+    - Microsoft.AspNetCore.App
+    - Microsoft.AspNetCore.Mvc
+    - Microsoft.AspNetCore.Routing
+    config_files:
+    - appsettings.json
+    - appsettings.Development.json
+    - appsettings.Production.json
+    - launchSettings.json
+    - Program.cs
+    - Startup.cs
+    code_patterns:
+    - WebApplication.CreateBuilder(
+    - app.MapGet(
+    - app.MapPost(
+    - app.UseRouting()
+    - app.UseEndpoints(
+    - builder.Services.AddControllers()
+    - IApplicationBuilder
+    notes: >
+      Sdk="Microsoft.NET.Sdk.Web" in .csproj is the highest-confidence signal.
+      Program.cs with WebApplication.CreateBuilder is Minimal APIs (ASP.NET Core 6+).
+      Startup.cs pattern is pre-6.0 style. appsettings.json alone is insufficient.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Endpoint definition modules in Endpoints/ directory
+  - glob: "*/Endpoints/*.cs"
+    entity_type: Operation
+    name_from: class_name
+  # Service layer files
+  - glob: "*/Services/*.cs"
+    entity_type: Service
+    name_from: class_name
+  # Model/DTO files
+  - glob: "*/Models/*.cs"
+    entity_type: Model
+    name_from: class_name
+  # Middleware files
+  - glob: "*/Middleware/*.cs"
+    entity_type: Middleware
+    name_from: class_name
+
+source_patterns:
+  # Minimal API route registration — app.MapGet/MapPost/MapPut/MapDelete/MapPatch
+  # Matches: app.MapGet("/orders", ...) or app.MapGet("/orders/{id}", ...)
+  # Route path extraction: HIGH confidence
+  - pattern: "app\\.Map(?:Get|Post|Put|Delete|Patch)\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+  # MapGroup("/prefix") — route group prefix
+  # Matches: var group = app.MapGroup("/api/v1")
+  - pattern: "\\.MapGroup\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Inline lambda handler: (Type param) => { ... }
+  # Captures the parameter type as a dependency (MEDIUM confidence — shape_inferred_partially)
+  - pattern: "Map(?:Get|Post|Put|Delete|Patch)\\s*\\([^,]+,\\s*(?:async\\s+)?\\(([^)]+)\\)"
+    entity_type: Dependency
+    name_group: 1
+    scope: file
+
+  # WebApplication.CreateBuilder(...) entry point
+  - pattern: "WebApplication\\.CreateBuilder\\s*\\("
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # builder.Services.AddXxx(...) — DI service registration
+  # Matches: builder.Services.AddSingleton<IOrderService, OrderService>()
+  - pattern: "builder\\.Services\\.Add(?:Singleton|Scoped|Transient)\\s*<\\s*([\\w,\\s<>]+)\\s*>"
+    entity_type: Service
+    name_group: 1
+    scope: file
+
+  # app.UseXxx() — middleware pipeline registration
+  # Matches: app.UseAuthentication() or app.UseAuthorization()
+  - pattern: "app\\.Use(\\w+)\\s*\\("
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+  # IEndpointRouteBuilder extension method MapXxx — for endpoint grouping classes
+  # Matches: public static void MapOrderEndpoints(this IEndpointRouteBuilder app)
+  - pattern: "(?:public|internal)\\s+static\\s+\\S+\\s+(Map\\w+)\\s*\\(\\s*this\\s+IEndpointRouteBuilder"
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Record/class as request/response DTO
+  # Matches: public record CreateOrderRequest(...) or public class OrderResponse
+  - pattern: "(?:public|internal)\\s+(?:record|class)\\s+(\\w+(?:Request|Response|Dto|Command|Query))\\b"
+    entity_type: Model
+    name_group: 1
+    scope: class
+
+relationship_rules:
+  # app.MapGroup("/prefix") contains app.MapGet("/path") — nested routing
+  # Connects route group prefix to individual endpoint registrations
+  - pattern: "\\.MapGroup\\s*\\(\\s*\"([^\"]+)\"[^;]*;[\\s\\S]{0,400}?\\.Map(?:Get|Post|Put|Delete|Patch)\\s*\\(\\s*\"([^\"]+)\""
+    source_type: Route
+    target_type: Operation
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # builder.Services.Add<IService, Impl>() registers service — DI wiring
+  # Connects the implementation to the interface it is registered as
+  - pattern: "builder\\.Services\\.Add(?:Singleton|Scoped|Transient)\\s*<\\s*([\\w]+)\\s*,\\s*([\\w]+)\\s*>"
+    source_type: Service
+    target_type: Service
+    relationship: IMPLEMENTS
+    source_group: 2
+    target_group: 1
+
+custom_extractors:
+  - module: memx_indexer.languages.csharp.aspnet_core_extractor
+    function: extract
+    description: >
+      Extracts ASP.NET Core controller-based attribute routes ([HttpGet]/[HttpPost]/etc.)
+      and Minimal API routes (app.MapGet/MapPost/etc.) as SCOPE.Operation/endpoint,
+      DI registrations (AddScoped/AddTransient/AddSingleton) as SCOPE.Pattern with
+      INFERRED_FROM_ASPNET_DI provenance, middleware pipeline registrations as
+      SCOPE.Pattern with INFERRED_FROM_ASPNET_MIDDLEWARE provenance, SignalR Hub
+      subclasses and MapHub calls as SCOPE.Operation/endpoint, gRPC MapGrpcService
+      mappings as SCOPE.Service, health check endpoints as SCOPE.Operation/endpoint,
+      background services (IHostedService/BackgroundService) as SCOPE.Service, and
+      Entity Framework DbContext/DbSet entities as SCOPE.Schema.
+  - module: memx_indexer.languages.csharp.aspnet_request_response_extractor
+    function: extract
+    description: >
+      Extract ACCEPTS_INPUT and RETURNS relationships from ASP.NET Core controller
+      action methods. Detects [FromBody] parameter annotations and method return
+      types (including ActionResult<T> and Task<ActionResult<T>> async unwrapping).
+      Emits DTO and response entities as SCOPE.Schema(kind=dto/response).
+  - module: memx_indexer.languages._engine.config_prefix_extractor
+    function: extract
+    description: >
+      Extract PathBase / applicationUrl from launchSettings.json and Program.cs
+      as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated
+      on well-known config file basenames.
+  - module: memx_indexer.languages._engine.config_consumer_extractor
+    function: extract
+    description: >
+      Extract Configuration["Key"] and Configuration.GetValue<T>("Key") reads
+      as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read)
+      edges from consuming entities (MX-600).

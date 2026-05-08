@@ -1,0 +1,43 @@
+orms_database:
+  name: Spring Data Cassandra / DataStax Java Driver
+  category: nosql_database
+  maven_coordinates: org.springframework.data:spring-data-cassandra
+  gradle_dependency: implementation 'org.springframework.data:spring-data-cassandra'
+  detection:
+    pom_xml_markers:
+    - spring-data-cassandra
+    - spring-boot-starter-data-cassandra
+    - cassandra-driver-core
+    - datastax-java-driver
+    import_patterns:
+    - import org.springframework.data.cassandra
+    - import com.datastax.oss.driver.api
+    - import com.datastax.driver.core
+    code_patterns:
+    - '@Table'
+    - '@PrimaryKey'
+    - CqlSession
+    - Cluster.builder
+    - CassandraRepository
+    - CassandraTemplate
+  notes: >
+    Covers both the DataStax Java Driver (v3 com.datastax.driver and v4
+    com.datastax.oss.driver) and Spring Data Cassandra annotations.
+    Kotlin shares this extractor via the language gate.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), CQL execution
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), table definitions
+      (SCOPE.Schema/table, INFERRED_FROM_CASSANDRA_TABLE), materialized
+      views (SCOPE.Schema/view, INFERRED_FROM_CASSANDRA_VIEW), UDTs
+      (SCOPE.Schema/udt, INFERRED_FROM_CASSANDRA_UDT), Spring Data repos/
+      templates (SCOPE.Schema, INFERRED_FROM_CASSANDRA_SPRING), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

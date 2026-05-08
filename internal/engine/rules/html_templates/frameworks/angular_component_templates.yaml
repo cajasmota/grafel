@@ -1,0 +1,42 @@
+framework_templates:
+  name: Angular Component Templates
+  framework: Angular
+  extensions:
+  - .component.html
+  - .html
+  npm_packages:
+  - '@angular/core'
+  - '@angular/common'
+  detection_signals:
+    file_name_pattern: '*.component.html'
+    package_json_deps:
+    - '@angular/core'
+    syntax_markers:
+    - '{{expression}}'
+    - '*ngFor="let item of items"'
+    - '*ngIf="condition"'
+    - '*ngSwitch'
+    - '*ngSwitchCase'
+    - '[property]="expression"'
+    - (event)="handler()"
+    - '[(ngModel)]="field"'
+    - '<ng-template #ref>'
+    - <ng-container>
+    - <ng-content>
+    - '<ng-content select="[slot]">  '
+    - '| pipeName'
+    - '@if (condition) { ... }'
+    - '@for (item of items; track item.id) { ... }'
+    - '@switch / @case / @default'
+    - '@defer { ... }'
+    - '@placeholder { ... }'
+  scope_entity_mapping:
+    entity_type: Component
+    name_signal: '*.component.html filename stem (e.g. user-profile.component.html
+      -> UserProfileComponent)'
+    boundary: File = one Component entity. <ng-content> slots map to slot sub-entities.
+  notes: 'Angular enforces one component template per file. The .component.html filename
+    convention is definitive. Angular 17+ control flow syntax (@if/@for/@switch) supersedes
+    *ngIf/*ngFor but both exist in current codebases.
+
+    '

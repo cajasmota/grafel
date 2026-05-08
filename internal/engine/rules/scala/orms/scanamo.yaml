@@ -1,0 +1,31 @@
+orms_database:
+  name: Scanamo (guardian/scanamo)
+  category: nosql_database
+  sbt_dependency: '"org.scanamo" %% "scanamo" % "x.y.z"'
+  detection:
+    import_patterns:
+    - import org.scanamo
+    - import software.amazon.awssdk.services.dynamodb
+    code_patterns:
+    - Scanamo(
+    - ScanamoCats(
+    - ScanamoAlpakka(
+    - Scanamo.exec(
+  notes: >
+    Scanamo is the idiomatic Scala DynamoDB library. ScanamoCats provides
+    cats-effect integration, ScanamoAlpakka for Akka Streams.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: Scanamo(client) connections (SCOPE.Service,
+      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
+      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
+      INFERRED_FROM_DYNAMODB_QUERY), streams (SCOPE.Operation/stream_op,
+      INFERRED_FROM_DYNAMODB_STREAM), single-table design (SCOPE.Pattern,
+      INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

@@ -1,0 +1,26 @@
+frameworks:
+  name: Core Data
+  category: orm_persistence
+  pod_coordinates:
+  - N/A — bundled with Xcode / Apple SDK
+  detection:
+    config_files:
+    - '*.xcdatamodeld/'
+    - '*.xcdatamodel/'
+    import_patterns:
+    - '#import <CoreData/CoreData.h>'
+    - '@import CoreData;'
+    code_patterns:
+    - '@interface * : NSManagedObject'
+    - NSManagedObjectContext *
+    - NSPersistentStoreCoordinator *
+    - NSPersistentContainer *
+    - NSFetchRequest *
+    - NSEntityDescription
+    - '[NSEntityDescription insertNewObjectForEntityForName:'
+  notes: 'Apple''s object-graph persistence framework. The .xcdatamodeld bundle is
+    a definitive detection signal — no other framework uses it. NSPersistentContainer
+    (iOS 10+) is the modern Core Data stack entry point. NSManagedObject subclasses
+    are typically code-generated.
+
+    '

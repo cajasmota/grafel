@@ -1,0 +1,41 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/sample-api/models/database.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "Base",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 16,
+      "end_line": 17,
+      "language": "python",
+      "signature": "class Base",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "init_db",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 20,
+      "end_line": 23,
+      "language": "python",
+      "signature": "def init_db() -> None",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "get_db",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 26,
+      "end_line": 28,
+      "language": "python",
+      "signature": "def get_db() -> AsyncSession",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

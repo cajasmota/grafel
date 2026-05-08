@@ -1,0 +1,15 @@
+orms_and_database:
+  name: supabase-js
+  npm_packages:
+  - '@supabase/supabase-js'
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - '@supabase/supabase-js'
+    import_patterns:
+    - from '@supabase/supabase-js'
+    code_patterns:
+    - createClient(
+    - supabase.from(
+    - supabase.auth.
+  notes: Supabase client library; not a full ORM but acts as PostgreSQL data layer

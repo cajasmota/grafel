@@ -1,0 +1,252 @@
+{
+  "error_count": 0,
+  "extractor_version": "4b6aae1",
+  "fixture_count": 49,
+  "fixtures": [
+    {
+      "file": "clojure/clojure__sample_handler.json",
+      "language": "clojure",
+      "sha256": "721881e7d538b98196ac3cafad4922162d82fd1d5564e4a758d21fbccfea1a5e"
+    },
+    {
+      "file": "csharp/csharp__SampleController.json",
+      "language": "csharp",
+      "sha256": "20a6382719e8e820e419e56371cb043042a47a36d63b29876bfffed39b9f7baa"
+    },
+    {
+      "file": "css/css__sample_styles.json",
+      "language": "css",
+      "sha256": "f22ff2ea433e307fbea5e162807a3d1484121bf9e4e945d05edadf8cbb5c9ca5"
+    },
+    {
+      "file": "dart/dart__sample_service.json",
+      "language": "dart",
+      "sha256": "fe5872050f16ff8461b749831ce2ba25ff7cb7558fe0d5787a07e568046bc682"
+    },
+    {
+      "file": "elixir/elixir__sample_phoenix.json",
+      "language": "elixir",
+      "sha256": "ecd4f46d690df8b9c46e5310b628b02bb7d6b3d78fa7a22c74480b01f1263102"
+    },
+    {
+      "file": "go/go__sample_handler.json",
+      "language": "go",
+      "sha256": "6441312b34cdbfc7d932f49e2cdf7d0f994bfb74bfef05bf10394cfac71c873b"
+    },
+    {
+      "file": "go/indexer-go__handlers.json",
+      "language": "go",
+      "sha256": "326d76387c4924300d4715a9693ef73527aa16bebea4ac04fb489d553daae498"
+    },
+    {
+      "file": "go/indexer-go__main.json",
+      "language": "go",
+      "sha256": "e8ad1106a0ae894af2b15ccfda5a9112fb0284c84abeea97d2ebc8fbcc0c4c0c"
+    },
+    {
+      "file": "graphql/graphql__sample_schema.json",
+      "language": "graphql",
+      "sha256": "381ecf4dc38ccd01e3ce56d1d32f314d792bb2f56839b2a00b336c2ebf28397b"
+    },
+    {
+      "file": "groovy/groovy__SampleController.json",
+      "language": "groovy",
+      "sha256": "5bbbdcbc7bfb89e57b33c5fdeea9d4398b0ac798a2647a8a669b9dcbffa8fe01"
+    },
+    {
+      "file": "java/java__SampleController.json",
+      "language": "java",
+      "sha256": "4b9f16557936adf581cf6b80fd3370102680c93ae0bf04b5ba6321b010430957"
+    },
+    {
+      "file": "javascript/javascript__sample_express.json",
+      "language": "javascript",
+      "sha256": "d6fadd2542958f634ce6125849dfd56f5cd8d63660feb4d699f07dc6c94a1086"
+    },
+    {
+      "file": "kotlin/kotlin__SampleController.json",
+      "language": "kotlin",
+      "sha256": "d3394cfd436de2d2b37371004e6f9fb54353b6775da26f23146f37fd86f6f3af"
+    },
+    {
+      "file": "lua/lua__sample_module.json",
+      "language": "lua",
+      "sha256": "d5c54f58e66e11ff794ae98385538ca1b70e15e62c0d668c115ae2e739cefe66"
+    },
+    {
+      "file": "php/php__sample_controller.json",
+      "language": "php",
+      "sha256": "6451a4598e8cb1f72acfea3e2ea3a975082598f568ceac2fa83893053d8a6a64"
+    },
+    {
+      "file": "protobuf/proto__sample.json",
+      "language": "protobuf",
+      "sha256": "da224ff43f2260bbd6e78ba16744af726b94536497988f11613da4521f96d931"
+    },
+    {
+      "file": "python/indexer-python__src__config.json",
+      "language": "python",
+      "sha256": "d8aed37eb12c3479e2a7a2b2c600f05aa0bc89869ec175d75966856ef7941417"
+    },
+    {
+      "file": "python/indexer-python__src__main.json",
+      "language": "python",
+      "sha256": "9622a7b8418cf4c7aa5fdffe8673a4087a69b576edf9b5f2ab4bd31e23484a5f"
+    },
+    {
+      "file": "python/indexer-python__src__utils.json",
+      "language": "python",
+      "sha256": "50ca3969fe2f78eb065e92ec2d9bb2b0b7812701e9f98fc54a4c8b2043f83892"
+    },
+    {
+      "file": "python/lore-test-repo__src____init__.json",
+      "language": "python",
+      "sha256": "216f0ba9a3d7157c8278a9864c9ba4ed18bb105b6db87d764766bb913a4a4831"
+    },
+    {
+      "file": "python/lore-test-repo__src__auth.json",
+      "language": "python",
+      "sha256": "3d75e253caf36ac57bcdb27250554bb94edde9eec39977637aa394dd23124a89"
+    },
+    {
+      "file": "python/lore-test-repo__src__items.json",
+      "language": "python",
+      "sha256": "3624da1a5e59e52b060d6949eb17319b552f1e4d63278caeee030b704bdd5162"
+    },
+    {
+      "file": "python/lore-test-repo__src__server.json",
+      "language": "python",
+      "sha256": "99b533926aedcd42e31ddb3809ba1ac4c344eae1769b67eda0d78778d400f68e"
+    },
+    {
+      "file": "python/python__sample_api.json",
+      "language": "python",
+      "sha256": "a36e475033b55bafdbef4060019ef10aa749b373bfcef5f31032a9c36f64a00d"
+    },
+    {
+      "file": "python/sample-api__main.json",
+      "language": "python",
+      "sha256": "6c4db5a7931287bdd6222c8e197ce533a989d1f2acbe02b0844209ffb82e83a7"
+    },
+    {
+      "file": "python/sample-api__models____init__.json",
+      "language": "python",
+      "sha256": "39e9609685f3b07c2ecaf7f8eeb5a7cd253dc0fcbf76e9d0fade140b28ea0ca1"
+    },
+    {
+      "file": "python/sample-api__models__database.json",
+      "language": "python",
+      "sha256": "e0ebfc8110214b6c9ee0217bdda0af64569a9ff3b8dcd5e70415ae27ab809f62"
+    },
+    {
+      "file": "python/sample-api__models__item.json",
+      "language": "python",
+      "sha256": "29a31e8083886d051ed9df010b5d48931a872ee39f20872871be6a56d1258fd4"
+    },
+    {
+      "file": "python/sample-api__models__order.json",
+      "language": "python",
+      "sha256": "ecbf269a6802f7286ca3e98bf389dfc4eae395b613357ec8606cc7ab3ca53009"
+    },
+    {
+      "file": "python/sample-api__models__schemas.json",
+      "language": "python",
+      "sha256": "71d005fd467f7dec8e06a6277379bef203ad0f0b2af17433163db85a43354e1e"
+    },
+    {
+      "file": "python/sample-api__models__user.json",
+      "language": "python",
+      "sha256": "35e67bfceedd161116b64ea0dbdf2855944d00d901a454357b84db60149ba19d"
+    },
+    {
+      "file": "python/sample-api__routes____init__.json",
+      "language": "python",
+      "sha256": "f1b5150681d7505f71e33c29cd519475e9718af8e0635082c2615197d74362be"
+    },
+    {
+      "file": "python/sample-api__routes__items.json",
+      "language": "python",
+      "sha256": "67e4c16d4bad34aafb0e1fb6aae3b62ae6d87cbe86a01e6fa74a67c46e0f4ffc"
+    },
+    {
+      "file": "python/sample-api__routes__orders.json",
+      "language": "python",
+      "sha256": "7d8ccfdd17868e7466bb5e1d4381afe888644e1bdc9c931b72f341a3a418480c"
+    },
+    {
+      "file": "python/sample-api__routes__users.json",
+      "language": "python",
+      "sha256": "9aa5d6df67b5b5577e26abb833ec1217dcd507380b2929078fdb3fc92a08db05"
+    },
+    {
+      "file": "python/sample-api__scripts__seed.json",
+      "language": "python",
+      "sha256": "4f1a740a6ee261558f335e320e62551733ede3d7843c9d9d6728580c916e3aa6"
+    },
+    {
+      "file": "python/sample-api__tests____init__.json",
+      "language": "python",
+      "sha256": "3196149be61f5a67ff7a9267e732d5e7f601e5907f9ffb559ba0e85143e7101f"
+    },
+    {
+      "file": "python/sample-api__tests__conftest.json",
+      "language": "python",
+      "sha256": "bf5c9feea84f22ffa81e9d3232ec304ed0b2b6bed133a5b211d2400e90dff5ba"
+    },
+    {
+      "file": "python/sample-api__tests__test_items.json",
+      "language": "python",
+      "sha256": "e935df5fbaf86528fa90c2db7d3f6ba64233c36a5248e6dea498a227476fccca"
+    },
+    {
+      "file": "python/sample-api__tests__test_orders.json",
+      "language": "python",
+      "sha256": "c6fb0a03d173cdd9a0921974c93dcb2f7cd20b482ed1e512f91b0e113691b18b"
+    },
+    {
+      "file": "python/sample-api__tests__test_users.json",
+      "language": "python",
+      "sha256": "33aedb8ce2e53961242ccc486050ba9a5e9cef243ff95a68ce0b399aaab7f8b7"
+    },
+    {
+      "file": "ruby/ruby__sample_rails.json",
+      "language": "ruby",
+      "sha256": "e2fc3ba5838a339a73418167120815d3a0cb700a7a5b25a6463a9bd06e0a1b0f"
+    },
+    {
+      "file": "rust/rust__sample_actix.json",
+      "language": "rust",
+      "sha256": "79a6138d4c51077b757237e96d3c8bf62319e504884ac47e8c40d951b2701ff9"
+    },
+    {
+      "file": "scala/scala__SampleService.json",
+      "language": "scala",
+      "sha256": "c1124a79e4657762a168e1859087e414f783733dd0f47a39a26948a9ad07f206"
+    },
+    {
+      "file": "shell/shell__sample_deploy.json",
+      "language": "shell",
+      "sha256": "a535c118d1d5e3fd666414e6a9b9e3bf1f772016605dad0a80094e0a9d72a932"
+    },
+    {
+      "file": "sql/sql__sample_schema.json",
+      "language": "sql",
+      "sha256": "0fe896961ba0597862afc5a6c59ceeed06ae71ff43c87a6ef19f2dde22cd809a"
+    },
+    {
+      "file": "swift/swift__SampleService.json",
+      "language": "swift",
+      "sha256": "f5a9a8832ba6bbb2aabb333b85b40f9b5dbc55bde631b31f3c7e61ec2f8ba03b"
+    },
+    {
+      "file": "typescript/typescript__sample_express.json",
+      "language": "typescript",
+      "sha256": "491816efe4582e5a4145ad45d16da99267944147ca8859487fe53c0804904a8d"
+    },
+    {
+      "file": "zig/zig__sample_server.json",
+      "language": "zig",
+      "sha256": "4eaed4621f4a0eaa874a46ceaadb21f48dd9cf199b273e9bd8957aaf574de0fc"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+orms_database:
+  name: DBD::Pg (Perl DBI PostgreSQL Driver)
+  category: postgres_driver
+  cpan_module: DBD::Pg
+  detection:
+    import_patterns:
+      - use DBD::Pg
+      - use DBI
+    code_patterns:
+      - DBI->connect("dbi:Pg:
+      - DBD::Pg->connect(
+  notes: >
+    DBD::Pg is the DBI driver for PostgreSQL in Perl. Used with the standard
+    Perl DBI interface for database-independent access. Supports
+    large objects, COPY, and LISTEN/NOTIFY via PostgreSQL-specific methods.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: DBI->connect("dbi:Pg:") connections
+      (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

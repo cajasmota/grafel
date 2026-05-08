@@ -1,0 +1,27 @@
+orms_database:
+  name: datastax/php-driver
+  category: nosql_database
+  composer_package: datastax/php-driver
+  detection:
+    import_patterns:
+    - Cassandra\Cluster
+    - Cassandra\Session
+    code_patterns:
+    - 'Cassandra\Cluster'
+    - ext-cassandra
+  notes: >
+    Official DataStax PHP driver for Cassandra. Requires the ext-cassandra
+    PHP extension.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: Cassandra\Cluster::builder()
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), .execute()
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

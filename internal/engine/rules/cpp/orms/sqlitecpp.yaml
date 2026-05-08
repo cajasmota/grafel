@@ -1,0 +1,36 @@
+orm_db:
+  name: SQLiteCpp
+  category: sqlite_wrapper
+  github_stars_2025: 2400+
+  detection:
+    cmake_find_package:
+    - find_package(SQLiteCpp
+    - add_subdirectory(SQLiteCpp
+    cmake_target_link:
+    - SQLiteCpp
+    vcpkg_packages:
+    - sqlitecpp
+    conan_packages:
+    - sqlitecpp/
+    include_patterns:
+    - '#include <SQLiteCpp/SQLiteCpp.h>'
+    - '#include "SQLiteCpp/SQLiteCpp.h"'
+    structural_markers:
+    - SQLite::Database db(
+    - SQLite::Statement query(
+    - SQLite::Transaction
+    - db.exec(
+  notes: 'C++ wrapper around the SQLite C API. Provides RAII and exception-based error
+    handling. Detected by SQLite:: namespace and SQLiteCpp.h include.
+
+    '
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: SQLite::Database construction
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

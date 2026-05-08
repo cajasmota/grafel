@@ -1,0 +1,43 @@
+frameworks_and_dialects:
+  name: SQL Server (T-SQL)
+  category: rdbms_dialect
+  file_extensions:
+  - '*.sql'
+  - '*.tsql'
+  config_markers:
+  - '*.dacpac'
+  - '*.sqlproj'
+  syntax_markers:
+  - TOP (
+  - NOLOCK
+  - WITH (NOLOCK)
+  - NVARCHAR
+  - NCHAR
+  - UNIQUEIDENTIFIER
+  - GETDATE()
+  - GETUTCDATE()
+  - ISNULL(
+  - COALESCE(
+  - GO
+  - EXEC sp_
+  - sp_executesql
+  - '@@ROWCOUNT'
+  - '@@IDENTITY'
+  - SCOPE_IDENTITY()
+  - MERGE ... WHEN MATCHED
+  - CROSS APPLY
+  - OUTER APPLY
+  - BEGIN TRANSACTION
+  - RAISERROR
+  - THROW
+  - TRY_CAST
+  - DECLARE @
+  - SET @
+  - PRINT
+  - '[bracket_identifiers]'
+  notes: 'T-SQL dialect uses GO batch separator, square bracket identifier quoting,
+    DECLARE @variable syntax, NVARCHAR/NCHAR Unicode types, and system stored procedures
+    (sp_*). The MERGE statement with WHEN MATCHED/WHEN NOT MATCHED is T-SQL native.
+    CROSS/OUTER APPLY are strong T-SQL markers.
+
+    '

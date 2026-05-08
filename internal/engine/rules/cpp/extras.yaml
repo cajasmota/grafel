@@ -1,0 +1,157 @@
+domain_roots:
+- layout: cmake_single_target
+  description: Single executable or library CMake project
+  root_directories:
+  - src/
+  - include/
+  - test/
+  - tests/
+  config_files:
+  - CMakeLists.txt
+  structural_signals:
+  - add_executable( in root CMakeLists.txt
+  - add_library( in root CMakeLists.txt
+  notes: 'Most common layout for standalone libraries and applications. include/ holds
+    public headers, src/ holds implementation files. test/ or tests/ holds test sources.
+
+    '
+- layout: cmake_multi_target
+  description: Multi-component CMake project with subdirectories
+  root_directories:
+  - src/
+  - include/
+  - lib/
+  - apps/
+  - test/
+  - tests/
+  - examples/
+  - cmake/
+  - doc/
+  config_files:
+  - CMakeLists.txt
+  - src/*/CMakeLists.txt
+  - lib/*/CMakeLists.txt
+  structural_signals:
+  - add_subdirectory( in root CMakeLists.txt
+  - Multiple CMakeLists.txt files at depth 2+
+  notes: 'Library with multiple sub-libraries and applications. cmake/ holds custom
+    Find modules and CMake helper scripts. examples/ holds usage demonstrations. lib/
+    may hold prebuilt or bundled libraries.
+
+    '
+- layout: header_only_library
+  description: Header-only C++ library (no compiled sources)
+  root_directories:
+  - include/
+  - single_include/
+  - test/
+  - tests/
+  config_files:
+  - CMakeLists.txt
+  - vcpkg.json
+  - conanfile.py
+  structural_signals:
+  - INTERFACE library in CMakeLists.txt
+  - add_library(... INTERFACE)
+  - All implementation in .hpp or .h files
+  - No .cpp source files in include/
+  notes: 'Common pattern for utility libraries (e.g., nlohmann/json, spdlog in header-only
+    mode, glm). INTERFACE CMake target with no source files. single_include/ indicates
+    a generated amalgamated header distribution.
+
+    '
+- layout: unreal_engine_project
+  description: Unreal Engine game or application project
+  root_directories:
+  - Source/
+  - Content/
+  - Config/
+  - Plugins/
+  config_files:
+  - '*.uproject'
+  - Source/*/Build.cs
+  - '*.Target.cs'
+  structural_signals:
+  - .uproject file in root
+  - Source/ with GameMode/, Character/, PlayerController/ subdirectories
+  - Config/DefaultEngine.ini
+  - Content/ directory with assets
+  notes: 'Unreal Engine project layout enforced by UBT. Source/ contains C++ modules
+    each with a Build.cs file. Content/ holds binary assets (skip). Plugins/ holds
+    both engine plugins and project-specific plugins.
+
+    '
+- layout: qt_application
+  description: Qt-based GUI application
+  root_directories:
+  - src/
+  - include/
+  - resources/
+  - ui/
+  - test/
+  config_files:
+  - CMakeLists.txt
+  - '*.pro'
+  - '*.qrc'
+  - '*.ui'
+  structural_signals:
+  - find_package(Qt6 or Qt5 in CMakeLists.txt
+  - .pro file with SOURCES, HEADERS, FORMS
+  - ui/ directory with .ui XML files
+  - resources/ with .qrc resource files
+  notes: 'Qt projects may use qmake (.pro files) or CMake. .ui files contain Qt Designer
+    XML layouts. .qrc files declare embedded resources. Generated moc_*.cpp, ui_*.h,
+    qrc_*.cpp are skippable build artifacts.
+
+    '
+- layout: embedded_systems
+  description: Embedded or bare-metal C/C++ project
+  root_directories:
+  - src/
+  - include/
+  - drivers/
+  - hal/
+  - bsp/
+  - linker/
+  - startup/
+  config_files:
+  - CMakeLists.txt
+  - Makefile
+  - '*.ld'
+  - '*.lds'
+  - '*.s'
+  structural_signals:
+  - Linker script .ld file in project root
+  - startup/ directory with startup_*.s or startup_*.c
+  - hal/ or drivers/ directory
+  - target_compile_definitions with MCU/board identifiers
+  - arm-none-eabi- or xtensa- toolchain prefix in CMakeLists.txt
+  notes: 'HAL (Hardware Abstraction Layer) and BSP (Board Support Package) directories
+    signal embedded C++ targeting. Linker scripts (.ld) and assembly startup files
+    are definitive embedded markers. ARM Cortex-M and ESP32 (Xtensa) are common targets.
+
+    '
+- layout: game_engine_or_simulation
+  description: Game engine, simulation, or real-time system project
+  root_directories:
+  - src/
+  - engine/
+  - game/
+  - assets/
+  - shaders/
+  - scenes/
+  - scripts/
+  config_files:
+  - CMakeLists.txt
+  - '*.meta'
+  structural_signals:
+  - engine/ or game/ top-level directories
+  - shaders/ directory with .glsl, .hlsl, .metal files
+  - assets/ or resources/ with game asset subdirectories
+  - 'ECS (Entity Component System) patterns: Entity.h, Component.h, System.h'
+  - 'Game loop patterns: Update(), Render(), FixedUpdate()'
+  notes: 'Custom game engine layout. Shader files (.glsl, .hlsl, .metal) are definitive
+    signals for graphics-heavy projects. ECS architecture is common in modern game
+    engines. assets/ contains binary game data (skip).
+
+    '

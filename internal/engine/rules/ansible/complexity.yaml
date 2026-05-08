@@ -1,0 +1,150 @@
+complexity_signals:
+- category: role_dependency_depth
+  description: 'The maximum depth of role dependencies (roles depending on roles).
+    Ansible executes roles in dependency order — deep chains indicate high coupling
+    and potential execution ordering complexity.
+
+    '
+  detection_pattern: 'Scan all roles/ and extract meta/main.yml dependencies: lists.
+    Build a directed dependency graph. Calculate longest path (depth).
+
+    '
+  thresholds:
+    low: 0 — no role dependencies (standalone roles)
+    medium: 1-2 levels — standard role composition
+    high: 3-5 levels — complex role chains
+    very_high: '>= 6 levels — monolithic coupling, refactoring target'
+  indexing_note: 'Emit max_dependency_depth as a numeric attribute on the playbook/role.
+    Dependency depth > 3 is a flag for coupling review.
+
+    '
+- category: playbook_task_count
+  description: 'The number of tasks in a playbook (direct tasks + role tasks). High
+    task counts indicate broad scope and increased operational risk.
+
+    '
+  detection_pattern: 'Count top-level tasks: entries + nested block: entries. Count
+    tasks in all referenced roles (roles: list).
+
+    '
+  thresholds:
+    low: < 10 tasks — focused playbook
+    medium: 10-50 tasks — standard playbook
+    high: 50-100 tasks — complex multi-service playbook
+    very_high: '> 100 tasks — refactoring candidate'
+  indexing_note: 'Emit task_count as a numeric attribute. task_count > 50 is a signal
+    to review scope and consider role decomposition.
+
+    '
+- category: conditional_chain_depth
+  description: 'The depth of nested when: (conditional) chains and register: variable
+    captures. Deep conditionals indicate dynamic branching logic and increased execution
+    path complexity.
+
+    '
+  detection_pattern: 'Parse each task''s when: expression. Count nesting depth (when:
+    inside block inside when, etc.). Count register: captures (variables used in subsequent
+    when: expressions).
+
+    '
+  thresholds:
+    low: 0-1 conditionals — simple branching
+    medium: 2-3 conditionals — standard state checking
+    high: 4-6 conditionals — complex state machines
+    very_high: '> 6 conditionals — difficult to trace'
+  indexing_note: 'Emit conditional_depth and register_count as numeric attributes.
+    conditional_depth > 3 is a readability and maintainability flag.
+
+    '
+- category: include_import_nesting
+  description: 'The nesting depth of include_tasks and import_tasks directives. Includes
+    can reference other includes, creating deep call chains that are difficult to
+    trace statically.
+
+    '
+  detection_pattern: 'Scan tasks for include_tasks: and import_tasks: entries. Recursively
+    resolve referenced task files. Calculate longest chain depth.
+
+    '
+  thresholds:
+    low: 0-1 levels — direct task execution
+    medium: 2-3 levels — standard task reuse
+    high: 4-5 levels — complex task composition
+    very_high: '> 5 levels — difficult static analysis'
+  indexing_note: 'Emit include_depth as a numeric attribute. include_depth > 3 is
+    a signal for call chain complexity review.
+
+    '
+- category: variable_precedence_layers
+  description: 'Ansible has a 22-level variable precedence hierarchy (command-line,
+    environment, inventory group_vars, role defaults, etc.). Projects using multiple
+    precedence layers (facts, groups, role defaults, play vars) indicate complex configuration
+    management.
+
+    '
+  detection_pattern: 'Count unique sources of variables in a playbook: 1) defaults/main.yml,
+    2) role vars/main.yml, 3) playbook vars:, 4) group_vars/, 5) host_vars/, 6) set_fact
+    in tasks, 7) register: captures.
+
+    '
+  thresholds:
+    low: 1-2 layers — simple configuration
+    medium: 3-4 layers — standard variable injection
+    high: 5-6 layers — complex layering
+    very_high: '> 6 layers — difficult to trace variable values'
+  indexing_note: 'Emit variable_layer_count as a numeric attribute. layer_count >
+    4 is a signal to document variable precedence and simplify injection.
+
+    '
+- category: handler_fan_out
+  description: 'The number of handlers triggered by a single task (notify: [handler1,
+    handler2]) or the number of tasks triggering the same handler. High fan-out indicates
+    tightly coupled change notifications.
+
+    '
+  detection_pattern: 'For each task with notify:, count handlers listed. Build a reverse
+    map of handlers ← tasks.
+
+    '
+  thresholds:
+    low: 0-1 handlers per task — focused side-effects
+    medium: 2-3 handlers per task — standard orchestration
+    high: 4-6 handlers per task — coupled operations
+    very_high: '> 6 handlers per task — refactoring target'
+  indexing_note: 'Emit max_handler_fan_out as a numeric attribute. fan_out > 3 is
+    a signal to review notification coupling.
+
+    '
+- category: async_task_patterns
+  description: 'Async tasks (async: timeout, poll: interval) execute in parallel with
+    multiple handler processes. Projects with many async patterns indicate performance-critical
+    or long-running operations.
+
+    '
+  detection_pattern: 'Count tasks with async:, poll:, and wait_for: handlers.
+
+    '
+  thresholds:
+    low: 0 async tasks — synchronous execution
+    medium: 1-5 async tasks — performance-critical sections
+    high: '> 5 async tasks — significant parallelism'
+  indexing_note: 'Emit async_task_count as a numeric attribute. Presence indicates
+    performance-sensitive operations.
+
+    '
+- category: loop_complexity
+  description: 'Ansible provides multiple loop mechanisms: loop, with_items, with_dict,
+    with_nested, with_subelements. Mixing loop styles and nesting loops indicate complexity.
+
+    '
+  detection_pattern: 'Count unique loop construct types. Identify nested loop blocks.
+
+    '
+  thresholds:
+    low: single loop or no loops
+    medium: 2-3 different loop types or 1 nested loop
+    high: mixed loop types + nested loops
+  indexing_note: 'Emit loop_complexity as a categorical attribute. Mixed loop types
+    are a modernization signal (prefer loop over with_*).
+
+    '

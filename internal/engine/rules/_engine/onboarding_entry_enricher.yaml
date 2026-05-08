@@ -1,0 +1,31 @@
+# Onboarding entry enricher (MX-730)
+# Cross-language enricher that identifies entry point entities in a project
+# and ranks them by reading order to answer "where should a new developer start?"
+#
+# Emits SCOPE.Pattern(kind=onboarding_entry) with properties:
+#   entity_id, reading_order, entry_point_type, inbound_dependency_count, source_file
+#
+# At most 10 patterns per call. Explicit language-pattern matches rank above
+# dependency-count-only candidates. If no edges exist and no explicit entry
+# points are found, emits nothing and logs at INFO.
+#
+# Language coverage: Python, JavaScript/TypeScript, Go, Java, Kotlin, Rust,
+# Ruby, C#, Swift, Scala, PHP, Elixir, Dart/Flutter, HCL, Shell, Clojure, Protobuf.
+
+name: onboarding_entry_enricher
+description: >-
+  Identify entry point entities across 17+ languages and rank them by reading
+  order (1 = start here first). Entry-point-matched entities (main(), @SpringBootApplication,
+  Flask app, etc.) always rank above entities ranked only by inbound DEPENDS_ON
+  edge count. Emits at most 10 SCOPE.Pattern(kind=onboarding_entry) patterns per
+  detection run, or at most 5 high_dependency fallback patterns when no
+  language-specific entry points are found.
+module: memx_indexer.pattern_detectors.onboarding_entry_enricher
+function: detect
+applies_to_function: applies_to
+otel_span: indexer.onboarding_enricher
+otel_attributes:
+  - org_id
+  - entry_point_count
+  - top_entity_id
+  - language

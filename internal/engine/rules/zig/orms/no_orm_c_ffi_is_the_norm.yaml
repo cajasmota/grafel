@@ -1,0 +1,10 @@
+orm_database:
+  name: No ORM — C FFI is the norm
+  type: architectural_note
+  notes: 'Zig intentionally has no runtime reflection and no memory-managed strings,
+    which makes traditional ORM patterns non-idiomatic. The Zig community convention
+    is to write explicit SQL queries via C FFI bindings. If a project needs database
+    access, expect to find @cImport("sqlite3.h") or @cImport ("libpq-fe.h") patterns
+    rather than any ORM abstraction.
+
+    '

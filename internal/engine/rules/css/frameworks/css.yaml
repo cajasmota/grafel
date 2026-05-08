@@ -1,0 +1,17 @@
+frameworks:
+  name: css
+  category: stylesheet
+  extensions:
+  - .css
+  detection_signals:
+    file_extensions:
+    - .css
+    content_patterns:
+    - '{'
+    - ':'
+    - ;
+  framework_specific: []
+  notes: 'Plain CSS requires no special detection beyond file extension. All other
+    CSS variants are supersets or transformations of plain CSS.
+
+    '

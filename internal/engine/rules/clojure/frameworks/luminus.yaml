@@ -1,0 +1,55 @@
+frameworks:
+  name: Luminus
+  clojars_artifact: luminus/luminus-transit
+  category: web_full_stack
+  github_stars_2025: 3500+
+  detection:
+    config_files:
+    - project.clj
+    - deps.edn
+    - env/dev/resources/config.edn
+    - env/prod/resources/config.edn
+    - resources/config.edn
+    - resources/migrations/
+    - resources/sql/
+    - resources/templates/
+    lein_deps:
+    - luminus/luminus-transit
+    - luminus-migrations/luminus-migrations
+    - luminus/luminus-undertow
+    - luminus/luminus-jetty
+    - mount/mount
+    - cprop/cprop
+    - conman/conman
+    - metosin/reitit
+    - selmer/selmer
+    import_markers:
+    - luminus.http-server
+    - luminus-migrations
+    - mount.core
+    - (mount/start
+    - (mount/stop
+    - cprop.core
+    - conman.core
+    - reitit.ring
+    - reitit.frontend
+    - selmer.parser
+    - (:require [mount.
+    - (:require [luminus.
+    structural_markers:
+    - env/dev/
+    - env/prod/
+    - resources/migrations/
+    - resources/sql/
+    - resources/templates/
+    - src/clj/
+    - src/cljs/
+    - src/cljc/
+    - test/clj/
+  notes: 'Luminus is a full-stack Clojure web framework scaffold that bundles Reitit
+    routing, Mount lifecycle management, Selmer templating, and Migratus migrations.
+    Detected by the env/dev/ + env/prod/ directory split, resources/migrations/ directory,
+    and mount.core namespace usage. The multi-source layout (src/clj/, src/cljs/,
+    src/cljc/) indicates a Luminus full-stack project.
+
+    '

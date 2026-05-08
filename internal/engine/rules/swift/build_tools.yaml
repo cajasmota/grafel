@@ -1,0 +1,120 @@
+build_tools:
+- name: Swift Package Manager (SPM)
+  category: dependency_manager_build
+  detection_files:
+  - Package.swift
+  - Package.resolved
+  - .build/ (output — skip)
+  config_patterns:
+  - '// swift-tools-version: 5.x or 6.x at top of Package.swift'
+  - let package = Package(
+  - 'dependencies: [.package(url:, from:)]'
+  - 'targets: [.target(...), .testTarget(...)]'
+  - .executableTarget(name:) for CLI tools
+  - .plugin(name:) for build plugins (Swift 5.6+)
+  notes: 'First-party Apple build and dependency manager. Canonical for server-side
+    Swift and Swift 5.3+ Apple framework projects. Package.resolved pins exact versions
+    (commit to source control). .build/ must be in .gitignore.
+
+    '
+- name: CocoaPods
+  category: dependency_manager
+  detection_files:
+  - Podfile
+  - Podfile.lock
+  - '*.podspec'
+  config_patterns:
+  - platform :ios, '13.0'
+  - use_frameworks! (dynamic linking)
+  - use_modular_headers!
+  - target 'AppName' do ... end
+  - pod 'Library', '~> 2.0'
+  - pod install generates *.xcworkspace
+  - post_install hook in Podfile
+  notes: 'Ruby-based dependency manager. Still dominant in enterprise and legacy iOS
+    projects. Podfile.lock must be committed. Pods/ directory must be skipped. Generates
+    *.xcworkspace — open workspace not *.xcodeproj after pod install.
+
+    '
+- name: Carthage
+  category: dependency_manager
+  detection_files:
+  - Cartfile
+  - Cartfile.resolved
+  - Carthage/Build/
+  - Carthage/Checkouts/
+  config_patterns:
+  - github "Owner/Repo" ~> 3.0
+  - github "Owner/Repo" "branch-name"
+  - binary "https://example.com/framework.json"
+  - carthage update --platform iOS
+  - input.xcfilelist / output.xcfilelist in Xcode run script
+  notes: 'Decentralized dependency manager. Builds binary XCFrameworks. Less common
+    in new projects (2024+) but still present in older codebases. Carthage/Build/
+    and Carthage/Checkouts/ must be skipped.
+
+    '
+- name: Xcode Build System
+  category: build_system
+  detection_files:
+  - '*.pbxproj (inside *.xcodeproj/)'
+  - '*.xcconfig'
+  - '*.xcscheme'
+  - '*.xcworkspacedata'
+  config_patterns:
+  - SWIFT_VERSION = 5.9 in *.pbxproj or *.xcconfig
+  - PRODUCT_MODULE_NAME in *.pbxproj
+  - ENABLE_TESTING_SEARCH_PATHS = YES
+  - OTHER_SWIFT_FLAGS in *.pbxproj
+  - SWIFT_ACTIVE_COMPILATION_CONDITIONS (DEBUG/RELEASE)
+  - xcodebuild -scheme * -configuration * build
+  - xcodebuild test -destination 'platform=iOS Simulator'
+  notes: 'Apple''s IDE-coupled build system. *.pbxproj is the project file (binary
+    property list stored as ASCII). xcconfig files override build settings. xcschemes
+    define build/test/archive actions. xcodebuild is the CLI interface used in CI
+    pipelines.
+
+    '
+- name: Fastlane
+  category: ci_automation
+  detection_files:
+  - fastlane/Fastfile
+  - fastlane/Appfile
+  - fastlane/Matchfile
+  - fastlane/Gymfile
+  - fastlane/Snapfile
+  - .env.default
+  config_patterns:
+  - lane :beta do
+  - lane :release do
+  - gym(scheme:) (build)
+  - deliver (App Store upload)
+  - pilot (TestFlight)
+  - match (code signing)
+  - snapshot (UI test screenshots)
+  - scan (run tests)
+  notes: 'Ruby-based iOS/macOS automation tool. Fastfile defines lanes (CI workflows).
+    Co-presence with *.xcodeproj = iOS CI pipeline. match indicates centralized code
+    signing via git/S3.
+
+    '
+- name: Tuist
+  category: project_generation
+  detection_files:
+  - Tuist/
+  - Project.swift
+  - Workspace.swift
+  - .tuist-version
+  - Tuist/Package.swift
+  - Tuist/Config.swift
+  config_patterns:
+  - let project = Project(
+  - .target(name:, destinations:, product:)
+  - tuist generate
+  - tuist build
+  - tuist test
+  notes: 'Xcode project generator using Swift DSL. Eliminates *.pbxproj merge conflicts.
+    Project.swift/Workspace.swift are the source of truth. Generated *.xcodeproj is
+    gitignored when Tuist is present.
+
+    '

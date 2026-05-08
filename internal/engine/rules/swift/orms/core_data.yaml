@@ -1,0 +1,29 @@
+orms:
+  name: Core Data
+  category: orm_object_graph
+  spm_product: N/A — bundled with Apple SDK
+  detection:
+    files:
+    - '*.xcdatamodeld/ (versioned model)'
+    - '*.xcdatamodel/ (single version)'
+    - '*.mom (compiled model — skip)'
+    - '*.momd/ (compiled versioned model — skip)'
+    import_patterns:
+    - import CoreData
+    code_patterns:
+    - NSManagedObject
+    - NSManagedObjectContext
+    - NSPersistentContainer
+    - NSFetchRequest<
+    - '@NSManaged'
+    - NSPersistentStoreCoordinator
+    - NSEntityDescription
+    - NSManagedObjectModel
+    - NSBatchUpdateRequest
+    - NSFetchedResultsController
+  notes: 'Apple''s first-party object-graph ORM. *.xcdatamodeld is the definitive
+    signal — it is the visual schema editor output. NSPersistentContainer is the modern
+    (iOS 10+) setup API. @NSManaged marks Core Data-managed properties. Often present
+    alongside SwiftData during migration.
+
+    '

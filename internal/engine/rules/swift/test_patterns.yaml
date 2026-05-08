@@ -1,0 +1,132 @@
+testing:
+- name: XCTest
+  category: unit_integration_ui
+  spm_product: N/A — bundled with Xcode / Swift SDK
+  detection:
+    import_patterns:
+    - import XCTest
+    code_patterns:
+    - 'class * : XCTestCase {'
+    - func test*() {
+    - XCTAssert(
+    - XCTAssertEqual(
+    - XCTAssertNil(
+    - XCTAssertNotNil(
+    - XCTAssertThrowsError(
+    - XCTFail(
+    - measure {
+    - XCUIApplication()
+    - XCUIElement
+    file_conventions:
+    - '*Tests.swift'
+    - '*UITests.swift'
+    - '*Tests/ target in Package.swift'
+    - '*Tests/ target in *.pbxproj'
+    - '*.xcresult (output)'
+  notes: 'Apple''s first-party test framework. func test*() naming convention is mandatory.
+    XCUIApplication() indicates UI tests. measure{} indicates performance tests. .xcresult
+    bundles are test artifacts — skip.
+
+    '
+- name: Quick / Nimble
+  category: bdd_testing
+  spm_coordinates:
+  - Quick/Quick
+  - Quick/Nimble
+  cocoapods:
+  - pod 'Quick'
+  - pod 'Nimble'
+  detection:
+    import_patterns:
+    - import Quick
+    - import Nimble
+    code_patterns:
+    - 'class * : QuickSpec {'
+    - describe(
+    - context(
+    - it(
+    - beforeEach {
+    - afterEach {
+    - expect(
+    - .to(equal(
+    - .to(beNil())
+    - .toEventually(
+  notes: 'BDD-style testing framework. QuickSpec subclass is the definitive signal.
+    expect().to() is Nimble''s assertion syntax. toEventually() indicates async test
+    assertions. Often used alongside XCTest target.
+
+    '
+- name: swift-testing
+  category: unit_testing_modern
+  spm_coordinates:
+  - N/A — bundled with Swift 6 / Xcode 16+
+  detection:
+    import_patterns:
+    - import Testing
+    code_patterns:
+    - '@Test'
+    - '@Suite'
+    - '#expect('
+    - '#require('
+    - '@Test(.tags(.'
+    - func test*() async throws {
+    - withKnownIssue {
+  notes: 'New Apple test framework introduced in Swift 6 / Xcode 16 (2024). @Test
+    macro (not func test* prefix) is the definitive signal. Co-presence with import
+    Testing = modern codebase (Xcode 16+). May coexist with XCTest during migration.
+
+    '
+- name: ViewInspector
+  category: swiftui_testing
+  spm_coordinates:
+  - nalexn/ViewInspector
+  cocoapods:
+  - pod 'ViewInspector'
+  detection:
+    import_patterns:
+    - import ViewInspector
+    code_patterns:
+    - try view.inspect()
+    - .find(ViewType.
+    - .button().tap()
+    - .text().string()
+    - Inspectable
+  notes: 'SwiftUI view testing library (accesses view hierarchy at runtime). view.inspect()
+    is the definitive signal. Used because XCTest cannot introspect SwiftUI views
+    directly. Indicates SwiftUI-heavy codebase with unit-level view tests.
+
+    '
+- name: OHHTTPStubs / Mocker
+  category: network_mocking
+  spm_coordinates:
+  - AliSoftware/OHHTTPStubs
+  - WeTransfer/Mocker
+  cocoapods:
+  - pod 'OHHTTPStubs/Swift'
+  detection:
+    import_patterns:
+    - import OHHTTPStubs
+    - import OHHTTPStubsSwift
+    - import Mocker
+    code_patterns:
+    - 'stub(condition:'
+    - 'Mock(url:'
+    - Mock.register()
+  notes: 'HTTP stubbing libraries for network tests. OHHTTPStubs is older/widely used;
+    Mocker is SPM-first alternative. Presence indicates integration tests exercising
+    real networking code paths.
+
+    '
+testing_conventions:
+  file_naming:
+  - '*Tests.swift suffix'
+  - '*UITests.swift suffix (UI test bundle)'
+  - '*SnapshotTests.swift suffix (snapshot tests)'
+  target_naming:
+  - AppNameTests target in Package.swift or *.pbxproj
+  - AppNameUITests target
+  - scheme.testAction in *.xcscheme
+  directory_conventions:
+  - Tests/ (SPM layout)
+  - AppNameTests/ (Xcode layout)
+  - AppNameUITests/ (Xcode UI test target)

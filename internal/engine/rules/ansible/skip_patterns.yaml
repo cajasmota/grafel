@@ -1,0 +1,101 @@
+skip_patterns:
+- pattern: '*.dev.yml / *.local.yml'
+  reason: 'Development environment playbooks (playbook.dev.yml, hosts.dev.yml, inventory.dev.yml)
+    are not representative of production topology. Skip unless the user explicitly
+    scopes to development environments.
+
+    '
+  applies_to:
+  - '*.dev.yml'
+  - '*.dev.yaml'
+  - '*.local.yml'
+  - '*.local.yaml'
+  - '*.staging.yml'
+  - '*.staging.yaml'
+- pattern: Dockerfile / docker-compose.yml in roles/*/test
+  reason: 'Test infrastructure files in role test directories (Molecule test drivers,
+    Docker test containers) are testing scaffolding, not production Ansible code.
+    Skip molecule/ test directories entirely.
+
+    '
+  applies_to:
+  - roles/*/molecule/
+  - molecule/
+  - '"tests/" (in general)'
+- pattern: .cache, .ansible/tmp, .pytest_cache, __pycache__
+  reason: 'Runtime cache and temporary files. No code entities. Skip.
+
+    '
+  applies_to:
+  - .cache/
+  - .ansible/tmp/
+  - .pytest_cache/
+  - __pycache__/
+  - '*.pyc'
+  - .molecule/
+  - .vagrant/
+- pattern: '*.retry, *.log, *.out'
+  reason: 'Ansible retry files (generated on failure: hosts.retry contains failed
+    hosts), logs, and output files. No code entities. Skip.
+
+    '
+  applies_to:
+  - '*.retry'
+  - '*.log'
+  - '*.out'
+  - ansible-playbook.log
+  - molecule.log
+- pattern: .ansible/roles/ (Galaxy cache)
+  reason: 'Galaxy-downloaded roles and collections are external dependencies cached
+    locally. Index only if scoping to dependency analysis; otherwise skip. The authoritative
+    source is requirements.yml + galaxy.yml.
+
+    '
+  applies_to:
+  - .ansible/roles/
+  - .ansible/collections/
+  - .ansible/plugins/
+  - ~/.ansible/
+- pattern: vendor roles (from ansible-galaxy)
+  reason: 'Roles installed via ansible-galaxy role install are external dependencies.
+    Index only the requirements.yml declarations, not the installed role files (unless
+    scoping to dependency analysis).
+
+    '
+  index_as: dependency_metadata_only
+- pattern: ansible-vault encrypted files
+  reason: 'Encrypted files are binary/unreadable. Extract metadata (filename, vault
+    ID tag) but do not attempt to parse content. Note: Files prefixed with $ANSIBLE_VAULT
+    are encrypted.
+
+    '
+  applies_to:
+  - group_vars/<group>.yml (encrypted)
+  - host_vars/<host>.yml (encrypted)
+  - files/<encrypted_file>
+- pattern: tests/fixtures/hosts, tests/fixtures/inventory.yml
+  reason: 'Test fixtures and mock inventories are test scaffolding, not production
+    infrastructure declarations. Skip unless scoping to test coverage analysis.
+
+    '
+  applies_to:
+  - tests/fixtures/
+  - tests/inventory*
+  - molecule/*/inventory*
+- pattern: .venv/, venv/, env/
+  reason: 'Python virtual environments. Skip.
+
+    '
+  applies_to:
+  - .venv/
+  - venv/
+  - env/
+  - .tox/
+- pattern: ansible-autodoc output, role documentation
+  reason: 'Generated documentation (ansible-doc -t module output, auto-generated role
+    docs) are derived, not source. Skip.
+
+    '
+  applies_to:
+  - docs/generated/
+  - docs/autodoc/

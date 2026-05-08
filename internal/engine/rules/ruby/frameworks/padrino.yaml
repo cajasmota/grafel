@@ -1,0 +1,27 @@
+frameworks:
+  name: Padrino
+  gem_name: padrino
+  category: web_full_stack
+  github_stars_2025: 3600+
+  detection:
+    config_files:
+    - Gemfile
+    - config/apps.rb
+    - config/boot.rb
+    - app/app.rb
+    gemfile_deps:
+    - padrino
+    - padrino-core
+    - padrino-helpers
+    - padrino-mailer
+    import_markers:
+    - require 'padrino'
+    - Padrino::Application
+    - Padrino.mount
+    structural_markers:
+    - config/apps.rb
+    - class App < Padrino::Application
+  notes: 'Built on Sinatra. config/apps.rb + Padrino.mount are high-confidence. Directory
+    structure resembles Rails but lighter.
+
+    '

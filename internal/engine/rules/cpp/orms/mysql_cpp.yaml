@@ -1,0 +1,33 @@
+orms_database:
+  name: MySQL Connector/C++ (libmysqlclient)
+  category: relational_database
+  detection:
+    import_patterns:
+    - '#include <mysql.h>'
+    - '#include <mysql/mysql.h>'
+    - '#include <cppconn/driver.h>'
+    - '#include <jdbc/mysql_driver.h>'
+    code_patterns:
+    - mysql_real_connect(
+    - get_mysql_driver_instance()
+    - sql::Driver* driver
+    - mysql_init(
+  notes: >
+    MySQL Connector/C++ provides both the legacy C API (libmysqlclient,
+    mysql_real_connect) and a JDBC-style C++ API (sql::Driver,
+    get_mysql_driver_instance). Both are detected.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

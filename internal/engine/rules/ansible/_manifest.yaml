@@ -1,0 +1,13 @@
+meta: language.yaml
+detection: extras.yaml
+entity_types: extras.yaml
+frameworks: frameworks/ [ansible_core, awx_ansible_tower, molecule, ansible_lint,
+  mitogen, ansible_navigator]
+build_tools: build_tools.yaml
+test_frameworks: test_patterns.yaml
+orm_database: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml
+vera_scope_mapping: extras.yaml
+mapping_justification: extras.yaml

@@ -1,0 +1,169 @@
+testing:
+- name: RSpec
+  gem_name: rspec
+  category: bdd_framework
+  detection:
+    gemfile_deps:
+    - rspec
+    - rspec-rails
+    - rspec-core
+    - rspec-expectations
+    - rspec-mocks
+    config_files:
+    - .rspec
+    - spec/spec_helper.rb
+    - spec/rails_helper.rb
+    - spec/**/*_spec.rb
+    test_file_patterns:
+      filename_suffix: _spec.rb
+      directory: spec/
+      example: spec/models/user_spec.rb
+    code_patterns:
+    - describe 'ClassName'
+    - context 'when'
+    - it 'does something'
+    - expect(subject).to
+    - let(:variable)
+    - before { }
+    - subject { }
+    - shared_examples_for
+    - RSpec.describe
+  notes: '_spec.rb suffix and spec/ directory are the primary signals. .rspec config
+    file is high-confidence. rspec-rails integrates with Rails. RSpec is the dominant
+    test framework in the Ruby ecosystem.
+
+    '
+- name: Minitest
+  gem_name: minitest
+  category: unit_framework
+  detection:
+    gemfile_deps:
+    - minitest
+    - minitest-rails
+    - minitest-reporters
+    - minitest-spec-rails
+    config_files:
+    - test/test_helper.rb
+    - test/**/*.rb
+    test_file_patterns:
+      filename_prefix: test_
+      filename_suffix: _test.rb
+      directory: test/
+      example: test/models/user_test.rb
+    code_patterns:
+    - class UserTest < Minitest::Test
+    - class UserTest < ActiveSupport::TestCase
+    - def test_something
+    - assert_equal
+    - assert_raises
+    - refute
+    - require 'minitest/autorun'
+  notes: 'Rails ships with Minitest by default. test/ directory (not spec/) and test_*.rb
+    / *_test.rb file naming conventions. test/test_helper.rb is the standard setup
+    file. ActiveSupport::TestCase wraps Minitest for Rails.
+
+    '
+- name: Cucumber
+  gem_name: cucumber
+  category: bdd_acceptance
+  detection:
+    gemfile_deps:
+    - cucumber
+    - cucumber-rails
+    config_files:
+    - features/
+    - features/**/*.feature
+    - features/step_definitions/
+    - features/support/env.rb
+    test_file_patterns:
+      filename_suffix: .feature
+      directory: features/
+      example: features/user_registration.feature
+    code_patterns:
+    - Given(/pattern/)
+    - When(/pattern/)
+    - Then(/pattern/)
+    - 'Scenario:'
+    - 'Feature:'
+    - 'Background:'
+    - 'Scenario Outline:'
+  notes: 'features/ directory with .feature files is the primary signal. step_definitions/
+    contains Ruby step implementations. features/support/env.rb bootstraps the test
+    environment.
+
+    '
+- name: Capybara
+  gem_name: capybara
+  category: integration_testing
+  detection:
+    gemfile_deps:
+    - capybara
+    - capybara-webkit
+    - selenium-webdriver
+    config_files:
+    - spec/support/capybara.rb
+    - spec/features/
+    - spec/system/
+    code_patterns:
+    - include Capybara::DSL
+    - visit '/
+    - fill_in 'Field'
+    - click_button
+    - click_link
+    - have_content
+    - within '#selector'
+    - Capybara.app
+    - feature 'User'
+  notes: 'Browser-based integration testing. spec/system/ is the Rails 5.1+ convention
+    for system tests using Capybara. spec/features/ is the older Capybara convention.
+    Usually combined with RSpec or Minitest.
+
+    '
+- name: FactoryBot
+  gem_name: factory_bot
+  category: test_fixtures
+  detection:
+    gemfile_deps:
+    - factory_bot
+    - factory_bot_rails
+    config_files:
+    - spec/factories/
+    - test/factories/
+    - spec/factories/**/*.rb
+    - test/factories/**/*.rb
+    code_patterns:
+    - FactoryBot.define
+    - factory :user do
+    - trait :admin do
+    - create(:user)
+    - build(:user)
+    - build_stubbed(:user)
+    - association :company
+    - sequence(:email)
+  notes: 'spec/factories/ (RSpec) or test/factories/ (Minitest) directory. factory
+    :model_name do blocks define test data. Formerly factory_girl.
+
+    '
+- name: VCR
+  gem_name: vcr
+  category: http_mocking
+  detection:
+    gemfile_deps:
+    - vcr
+    - webmock
+    config_files:
+    - spec/cassettes/
+    - test/cassettes/
+    - spec/cassettes/**/*.yml
+    - vcr_setup.rb
+    code_patterns:
+    - VCR.use_cassette
+    - VCR.configure
+    - VCR.record_mode
+    - WebMock.stub_request
+    - stub_request(:get)
+  notes: 'spec/cassettes/ directory contains recorded HTTP interactions (.yml files).
+    VCR is usually combined with WebMock. High-confidence signal when cassettes/ directory
+    exists.
+
+    '

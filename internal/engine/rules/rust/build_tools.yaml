@@ -1,0 +1,89 @@
+build_tools:
+- name: Cargo
+  config_files:
+  - Cargo.toml
+  - Cargo.lock
+  detection:
+    mandatory_marker: Cargo.toml
+    toml_sections:
+    - '[package]'
+    - '[dependencies]'
+    - '[dev-dependencies]'
+    - '[build-dependencies]'
+    - '[features]'
+    - '[workspace]'
+    - '[[bin]]'
+    - '[[lib]]'
+    - '[[example]]'
+    - '[[bench]]'
+    - '[[test]]'
+    structural_signals:
+    - name = "..."
+    - edition = "2021"
+    - edition = "2024"
+  notes: 'Cargo.toml is the definitive Rust project marker. Always present. Cargo.lock
+    presence indicates a binary project (checked in) vs library (gitignored). The
+    [workspace] section signals a multi-crate repo. edition = "2021" or "2024" identifies
+    modern Rust codebases.
+
+    '
+- name: cargo-make
+  config_files:
+  - Makefile.toml
+  crate: cargo-make
+  detection:
+    cargo_toml_deps: []
+    config_markers:
+    - Makefile.toml
+    structural_markers:
+    - '[tasks.'
+    - 'command = '
+    - dependencies = [
+  notes: 'Task runner for Cargo workspaces. Makefile.toml at project root is the definitive
+    signal. Commonly used for build pipelines, CI tasks, and cross-platform scripting
+    in Rust projects.
+
+    '
+- name: cargo-workspace
+  config_files:
+  - Cargo.toml
+  detection:
+    toml_section: '[workspace]'
+    structural_markers:
+    - members = [
+    - 'resolver = '
+    - '[workspace.dependencies]'
+    - '[workspace.package]'
+  notes: 'Cargo''s built-in workspace system. Detected via [workspace] section in
+    root Cargo.toml. workspace.dependencies (Rust 1.64+) signals centralized dependency
+    management. High-signal for monorepo layout.
+
+    '
+- name: just
+  config_files:
+  - justfile
+  - Justfile
+  - .justfile
+  detection:
+    config_markers:
+    - justfile
+    - Justfile
+  notes: 'Command runner (not build tool). Frequently replaces Makefiles in Rust projects
+    for dev-workflow tasks. Complements Cargo. justfile at project root is the signal.
+
+    '
+- name: cross
+  crate: cross
+  config_files:
+  - Cross.toml
+  detection:
+    config_markers:
+    - Cross.toml
+    ci_markers:
+    - cross build
+    - cross test
+  notes: 'Cross-compilation tool for Rust. Cross.toml at project root or cross build/cross
+    test in CI scripts signals multi-target compilation. Common in embedded and IoT
+    Rust projects.
+
+    '

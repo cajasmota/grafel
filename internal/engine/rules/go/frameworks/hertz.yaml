@@ -1,0 +1,19 @@
+frameworks:
+  name: Hertz
+  module_path: github.com/cloudwego/hertz
+  category: web_micro
+  github_stars_2025: 7200+
+  detection:
+    go_mod_require:
+    - github.com/cloudwego/hertz
+    import_markers:
+    - '"github.com/cloudwego/hertz/pkg/app"'
+    - '"github.com/cloudwego/hertz/pkg/app/server"'
+    structural_markers:
+    - server.Default()
+    - server.New(
+    - app.RequestContext
+    notes: 'ByteDance high-performance HTTP framework. Fastest growing in 2025 for
+      microservice deployments. CloudWeGo ecosystem.
+
+      '

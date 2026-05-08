@@ -1,0 +1,41 @@
+mobile:
+  name: Flutter Desktop (macOS / Windows / Linux)
+  category: desktop
+  detection:
+    pubspec_primary_signal:
+    - key: flutter
+      value: 'sdk: flutter'
+      location: dependencies section of pubspec.yaml
+    structural_signals:
+    - path: macos/
+      meaning: macOS platform directory
+      files:
+      - macos/Runner.xcodeproj/
+      - macos/Runner/AppDelegate.swift
+    - path: windows/
+      meaning: Windows platform directory
+      files:
+      - windows/runner/main.cpp
+      - windows/CMakeLists.txt
+    - path: linux/
+      meaning: Linux platform directory
+      files:
+      - linux/CMakeLists.txt
+      - linux/main.cc
+    code_signals:
+    - Platform.isMacOS
+    - Platform.isWindows
+    - Platform.isLinux
+    - import 'dart:io'
+    - window.setTitle(
+    - WindowManager
+    notes: 'Flutter Desktop shares the Flutter SDK. Platform directories are the definitive
+      signals. A Flutter project may include all three desktop platforms plus mobile
+      and web simultaneously.
+
+      '
+
+custom_extractors:
+  - module: "memx_indexer.languages.dart.flutter_extractor"
+    function: "extract"
+    description: "Extract Flutter widgets, BLoC/Cubit/ChangeNotifier state management, Navigator routes, and GoRouter routes"

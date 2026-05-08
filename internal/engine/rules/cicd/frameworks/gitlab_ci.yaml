@@ -1,0 +1,20 @@
+frameworks:
+  name: GitLab CI
+  language: cicd
+  official_docs: https://docs.gitlab.com/ee/ci
+  config_file: .gitlab-ci.yml
+  adopted_by: GitLab repositories (native integration)
+  vera_scope: Service (pipeline as Service, job as Operation)
+  characteristics:
+  - Stage-based execution (sequential stages, parallel jobs within stage)
+  - DAG (Directed Acyclic Graph) via needs: for job-to-job dependencies
+  - Single .gitlab-ci.yml at repo root
+  - Composable via include: (local or remote CI files)
+  - Docker image required per job
+  - Service containers for integration testing
+  - Rules (when:, rules:) for conditional execution
+  complexity_signal_markers:
+  - Stage count > 6
+  - Job count > 15
+  - Parallel: value > 5
+  - needs: chain depth > 4

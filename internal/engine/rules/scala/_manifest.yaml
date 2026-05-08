@@ -1,0 +1,8 @@
+frameworks: frameworks/ [play_framework, akka_http_pekko_http, zio, cats_effect, http4s,
+  finatra, lagom, scalatra]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orm_db: orms/ [slick, doobie, quill, scalikejdbc]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

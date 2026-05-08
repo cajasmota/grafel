@@ -1,0 +1,22 @@
+frameworks:
+  name: Bottle
+  pypi_package: bottle
+  category: web_micro
+  github_stars_2025: 8800+
+  gateway: wsgi
+  detection:
+    config_files:
+    - app.py
+    - bottle.py
+    dependency_names:
+    - bottle
+    import_markers:
+    - from bottle import Bottle
+    - import bottle
+    - '@route('
+    structural_markers:
+    - bottle.py (single-file distribution)
+  notes: 'Single-file framework — entire app often in one .py file. bottle.py in repo
+    root is definitive.
+
+    '

@@ -1,0 +1,38 @@
+orm_database:
+  name: drift (formerly moor)
+  pubspec_dependency: drift
+  category: orm_sqlite
+  pub_dev_url: https://pub.dev/packages/drift
+  detection:
+    pubspec_signals:
+    - 'drift:'
+    - 'drift_flutter:'
+    - 'moor:'
+    pubspec_dev_signals:
+    - 'drift_dev:'
+    - 'build_runner:'
+    code_patterns:
+    - import 'package:drift/drift.dart'
+    - '@DriftDatabase'
+    - extends _$
+    - DriftDatabase
+    - Table
+    - GeneratedDatabase
+    - .watch()
+    - select(table).watch()
+    output_patterns:
+    - '*.g.dart'
+    notes: 'The most popular Dart ORM — type-safe SQLite wrapper with reactive queries
+      and code generation. Renamed from moor to drift. moor: in pubspec signals legacy
+      codebase (pre-2021). drift: is current. Requires build_runner in dev_dependencies.
+
+      '
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: drift LazyDatabase/NativeDatabase connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS).

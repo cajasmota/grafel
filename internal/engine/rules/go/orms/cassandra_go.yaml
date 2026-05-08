@@ -1,0 +1,26 @@
+orms_database:
+  name: gocql (Go Cassandra Driver)
+  category: nosql_database
+  go_module: github.com/gocql/gocql
+  detection:
+    import_patterns:
+    - github.com/gocql/gocql
+    code_patterns:
+    - gocql.NewCluster
+    - gocqlx
+  notes: >
+    gocql is the primary Cassandra driver for Go. gocqlx adds a type-safe
+    query builder on top of gocql.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: gocql.NewCluster
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), .Query()/.Execute()
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), .Prepare()
+      (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

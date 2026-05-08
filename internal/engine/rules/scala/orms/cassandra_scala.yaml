@@ -1,0 +1,31 @@
+orms_database:
+  name: phantom / quill-cassandra (Scala Cassandra Drivers)
+  category: nosql_database
+  sbt_dependency: '"com.outworkers" %% "phantom-dsl" % "2.x.x"'
+  detection:
+    import_patterns:
+    - com.outworkers.phantom
+    - io.getquill
+    - com.datastax.driver.core
+    code_patterns:
+    - extends Table
+    - extends CassandraTable
+    - quill-cassandra
+    - Cluster.builder
+  notes: >
+    Covers phantom (outworkers/phantom) and quill-cassandra (getquill/quill).
+    Both use the DataStax Java Driver underneath.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: Cluster.builder() / ReactiveCassandraSession
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), phantom Table objects
+      (SCOPE.Schema/table, INFERRED_FROM_CASSANDRA_TABLE), CQL execution
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), prepared statements
+      (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

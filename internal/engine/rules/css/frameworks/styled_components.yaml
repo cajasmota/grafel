@@ -1,0 +1,38 @@
+frameworks:
+  name: styled_components
+  full_name: styled-components
+  category: css_in_js
+  extensions:
+  - .js
+  - .jsx
+  - .ts
+  - .tsx
+  npm_packages:
+  - styled-components
+  config_files:
+  - babel.config.js
+  - .babelrc
+  detection_signals:
+    package_json_deps:
+    - styled-components
+    content_patterns:
+    - from 'styled-components'
+    - from "styled-components"
+    - styled.
+    - styled(
+    - createGlobalStyle
+    - css`
+    - keyframes`
+    - ThemeProvider
+  framework_specific:
+  - 'Tagged template literals: styled.div`...`'
+  - 'Component extension: styled(Base)`...`'
+  - createGlobalStyle for global CSS
+  - keyframes helper for animations
+  - ThemeProvider for design token injection
+  - .attrs() chaining for default props
+  notes: 'styled-components is the original CSS-in-JS library. CSS lives in JS template
+    literals — no separate .css files. Server-side rendering requires ServerStyleSheet
+    or babel plugin.
+
+    '

@@ -1,0 +1,546 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs",
+  "language": "rust",
+  "entities": [
+    {
+      "name": "health",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 25,
+      "end_line": 27,
+      "language": "rust",
+      "signature": "fn health() -> impl Responder",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "list_users",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 30,
+      "end_line": 33,
+      "language": "rust",
+      "signature": "fn list_users(data: web::Data<AppState>) -> impl Responder",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "get_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 36,
+      "end_line": 43,
+      "language": "rust",
+      "signature": "fn get_user(path: web::Path<u32>, data: web::Data<AppState>) -> impl Responder",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 4,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 46,
+      "end_line": 60,
+      "language": "rust",
+      "signature": "fn create_user(\n    body: web::Json<CreateUser>,\n    data: web::Data<AppState>,\n) -> impl Responder",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 63,
+      "end_line": 73,
+      "language": "rust",
+      "signature": "fn delete_user(path: web::Path<u32>, data: web::Data<AppState>) -> impl Responder",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 3,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "main",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 76,
+      "end_line": 98,
+      "language": "rust",
+      "signature": "fn main() -> std::io::Result<()>",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 7,
+      "end_line": 11,
+      "language": "rust",
+      "signature": "struct User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "struct",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "CreateUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 14,
+      "end_line": 17,
+      "language": "rust",
+      "signature": "struct CreateUser",
+      "enrichment_required": false,
+      "properties": {
+        "type": "struct",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "AppState",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 19,
+      "end_line": 22,
+      "language": "rust",
+      "signature": "struct AppState",
+      "enrichment_required": false,
+      "properties": {
+        "type": "struct",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "derive@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:6",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:derive:6",
+      "kind": "SCOPE.Pattern",
+      "start_line": 6,
+      "end_line": 6,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "derive",
+        "source_line": 6,
+        "target": "User",
+        "arguments": [
+          "Serialize",
+          "Deserialize",
+          "Clone"
+        ]
+      }
+    },
+    {
+      "name": "derive@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:13",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:derive:13",
+      "kind": "SCOPE.Pattern",
+      "start_line": 13,
+      "end_line": 13,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "derive",
+        "source_line": 13,
+        "target": "CreateUser",
+        "arguments": [
+          "Deserialize"
+        ]
+      }
+    },
+    {
+      "name": "get@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:24",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:get:24",
+      "kind": "SCOPE.Pattern",
+      "start_line": 24,
+      "end_line": 24,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "get",
+        "source_line": 24,
+        "target": "health",
+        "arguments": [
+          "\"/health\""
+        ]
+      }
+    },
+    {
+      "name": "get@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:29",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:get:29",
+      "kind": "SCOPE.Pattern",
+      "start_line": 29,
+      "end_line": 29,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "get",
+        "source_line": 29,
+        "target": "list_users",
+        "arguments": [
+          "\"/users\""
+        ]
+      }
+    },
+    {
+      "name": "get@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:35",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:get:35",
+      "kind": "SCOPE.Pattern",
+      "start_line": 35,
+      "end_line": 35,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "get",
+        "source_line": 35,
+        "target": "get_user",
+        "arguments": [
+          "\"/users/{id}\""
+        ]
+      }
+    },
+    {
+      "name": "post@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:45",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:post:45",
+      "kind": "SCOPE.Pattern",
+      "start_line": 45,
+      "end_line": 45,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "post",
+        "source_line": 45,
+        "target": "create_user",
+        "arguments": [
+          "\"/users\""
+        ]
+      }
+    },
+    {
+      "name": "delete@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:62",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:delete:62",
+      "kind": "SCOPE.Pattern",
+      "start_line": 62,
+      "end_line": 62,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "delete",
+        "source_line": 62,
+        "target": "delete_user",
+        "arguments": [
+          "\"/users/{id}\""
+        ]
+      }
+    },
+    {
+      "name": "actix_web::main@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:75",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:actix_web::main:75",
+      "kind": "SCOPE.Pattern",
+      "start_line": 75,
+      "end_line": 75,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "actix_web::main",
+        "source_line": 75,
+        "target": "main"
+      }
+    },
+    {
+      "name": "error_handling:rust_question_mark:95",
+      "qualified_name": "scope:pattern:error_handling:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs:rust_question_mark:95",
+      "kind": "SCOPE.Pattern",
+      "start_line": 95,
+      "end_line": 95,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ERROR_HANDLING_RUST_QUESTION_MARK",
+        "source": "",
+        "kind": "error_handling",
+        "style": "rust_question_mark",
+        "line_number": 95,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs"
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "snake_case",
+        "dominant_percentage": 29.411764705882355,
+        "sample_count": 17,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs"
+      }
+    },
+    {
+      "name": "actix_web",
+      "qualified_name": "scope:component:import:external:actix_web",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    },
+    {
+      "name": "serde",
+      "qualified_name": "scope:component:import:external:serde",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    },
+    {
+      "name": "std",
+      "qualified_name": "scope:component:import:external:std",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    },
+    {
+      "name": "list_users",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs::Operation::list_users",
+      "kind": "SCOPE.Operation",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "operation",
+        "provenance": "framework_extraction",
+        "source": "framework_extraction"
+      }
+    },
+    {
+      "name": "get_user",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs::Operation::get_user",
+      "kind": "SCOPE.Operation",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "operation",
+        "provenance": "framework_extraction",
+        "source": "framework_extraction"
+      }
+    },
+    {
+      "name": "create_user",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs::Operation::create_user",
+      "kind": "SCOPE.Operation",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "operation",
+        "provenance": "framework_extraction",
+        "source": "framework_extraction"
+      }
+    },
+    {
+      "name": "delete_user",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs::Operation::delete_user",
+      "kind": "SCOPE.Operation",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "operation",
+        "provenance": "framework_extraction",
+        "source": "framework_extraction"
+      }
+    },
+    {
+      "name": "AppState",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs::Dependency::AppState",
+      "kind": "SCOPE.Dependency",
+      "start_line": null,
+      "end_line": null,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "dependency",
+        "provenance": "framework_extraction",
+        "source": "framework_extraction"
+      }
+    },
+    {
+      "name": "main",
+      "qualified_name": "scope:service:actix_main:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/rust/sample_actix.rs",
+      "kind": "SCOPE.Service",
+      "start_line": 75,
+      "end_line": 75,
+      "language": "rust",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ACTIX_SERVER",
+        "source": "framework_extraction",
+        "entry_point": true,
+        "macro": "#[actix_web::main]",
+        "framework": "actix-web"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

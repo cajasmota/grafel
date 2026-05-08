@@ -1,0 +1,39 @@
+frameworks:
+  name: material_ui_system
+  full_name: MUI (Material UI) — sx prop / theme system
+  category: component_framework
+  extensions:
+  - .js
+  - .jsx
+  - .ts
+  - .tsx
+  npm_packages:
+  - '@mui/material'
+  - '@mui/system'
+  - '@emotion/react'
+  - '@emotion/styled'
+  config_files:
+  - theme.ts
+  - theme.js
+  detection_signals:
+    package_json_deps:
+    - '@mui/material'
+    content_patterns:
+    - from '@mui/material'
+    - from "@mui/material"
+    - createTheme(
+    - ThemeProvider
+    - sx={
+    - styled(
+    - useTheme(
+  framework_specific:
+  - sx prop for inline styles with theme access
+  - createTheme() for design token customization
+  - ThemeProvider for theme injection
+  - MUI styled() wrapping Emotion styled
+  - palette, typography, spacing in theme config
+  notes: 'MUI uses Emotion as its CSS-in-JS engine. CSS lives primarily in JSX via
+    the sx prop and theme tokens. No standalone .css files in MUI projects unless
+    global styles are needed.
+
+    '

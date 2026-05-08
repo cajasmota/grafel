@@ -1,0 +1,26 @@
+orms_database:
+  name: Spring Data Elasticsearch
+  maven_coordinates: org.springframework.data:spring-data-elasticsearch
+  gradle_dependency: implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
+  detection:
+    pom_xml_markers:
+    - spring-data-elasticsearch
+    - spring-boot-starter-data-elasticsearch
+    import_patterns:
+    - import org.springframework.data.elasticsearch
+    code_patterns:
+    - '@Document'
+    - ElasticsearchRepository
+    - ElasticsearchOperations
+    - RestHighLevelClient
+  notes: |
+    Spring Data Elasticsearch provides @Document for index mapping and
+    ElasticsearchRepository for CRUD + search operations.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract index mappings (@Document), ElasticsearchRepository interfaces,
+      search queries (QueryBuilders), aggregations (AggregationBuilders), ILM policies,
+      and client connections (RestHighLevelClient / ElasticsearchClient).
+      Emits SCOPE.Schema, SCOPE.Service, SCOPE.Operation, SCOPE.Pattern.

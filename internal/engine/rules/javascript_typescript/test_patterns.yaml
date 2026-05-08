@@ -1,0 +1,178 @@
+testing_frameworks:
+- name: jest
+  npm_packages:
+  - jest
+  - '@jest/core'
+  - jest-cli
+  config_files:
+  - jest.config.js
+  - jest.config.ts
+  - jest.config.mjs
+  - jest.config.cjs
+  config_in_package_json: jest
+  test_file_conventions:
+  - '**/*.test.js'
+  - '**/*.test.ts'
+  - '**/*.test.jsx'
+  - '**/*.test.tsx'
+  - '**/*.spec.js'
+  - '**/*.spec.ts'
+  - '**/__tests__/**'
+  detection_signals:
+    package_json_deps:
+    - jest
+    - '@types/jest'
+  notes: Most popular JS test runner; check jest.config.* or jest key in package.json
+- name: vitest
+  npm_packages:
+  - vitest
+  config_files:
+  - vitest.config.ts
+  - vitest.config.js
+  - vite.config.ts
+  test_file_conventions:
+  - '**/*.test.ts'
+  - '**/*.test.js'
+  - '**/*.spec.ts'
+  - '**/*.spec.js'
+  - '**/__tests__/**'
+  detection_signals:
+    package_json_deps:
+    - vitest
+  notes: Jest-compatible Vite-native test runner; growing fast in Vue/Svelte ecosystems
+- name: mocha
+  npm_packages:
+  - mocha
+  config_files:
+  - .mocharc.js
+  - .mocharc.cjs
+  - .mocharc.yml
+  - .mocharc.yaml
+  - .mocharc.json
+  test_file_conventions:
+  - test/**/*.js
+  - test/**/*.ts
+  - '**/*.spec.js'
+  - '**/*.spec.ts'
+  detection_signals:
+    package_json_deps:
+    - mocha
+  notes: Older but still widely used; often paired with chai for assertions
+- name: cypress
+  npm_packages:
+  - cypress
+  config_files:
+  - cypress.config.ts
+  - cypress.config.js
+  - cypress.config.cjs
+  - cypress.json
+  test_file_conventions:
+  - cypress/e2e/**/*.cy.js
+  - cypress/e2e/**/*.cy.ts
+  - cypress/integration/**
+  detection_signals:
+    package_json_deps:
+    - cypress
+    directory_conventions:
+    - cypress/e2e/
+    - cypress/fixtures/
+    - cypress/support/
+  notes: E2E testing tool; cypress.config.ts is definitive for v10+
+- name: playwright
+  npm_packages:
+  - '@playwright/test'
+  - playwright
+  config_files:
+  - playwright.config.ts
+  - playwright.config.js
+  test_file_conventions:
+  - '**/*.spec.ts'
+  - '**/*.spec.js'
+  - tests/**/*.ts
+  - e2e/**/*.ts
+  detection_signals:
+    package_json_deps:
+    - '@playwright/test'
+  notes: Modern E2E testing; playwright.config.ts is definitive
+- name: testing-library
+  npm_packages:
+  - '@testing-library/react'
+  - '@testing-library/vue'
+  - '@testing-library/angular'
+  - '@testing-library/user-event'
+  config_files: []
+  test_file_conventions:
+  - '**/*.test.tsx'
+  - '**/*.test.jsx'
+  detection_signals:
+    package_json_deps:
+    - '@testing-library/react'
+    - '@testing-library/vue'
+    import_patterns:
+    - from '@testing-library/react'
+    - render, screen, fireEvent
+  notes: DOM-testing companion library; almost always paired with Jest or Vitest
+- name: jasmine
+  npm_packages:
+  - jasmine
+  config_files:
+  - jasmine.json
+  - spec/support/jasmine.json
+  test_file_conventions:
+  - '**/*Spec.js'
+  - '**/*.spec.js'
+  - spec/**/*.js
+  detection_signals:
+    package_json_deps:
+    - jasmine
+  notes: Older BDD framework; still used in Angular projects via Karma
+- name: karma
+  npm_packages:
+  - karma
+  config_files:
+  - karma.conf.js
+  - karma.conf.ts
+  test_file_conventions:
+  - src/**/*.spec.ts
+  detection_signals:
+    package_json_deps:
+    - karma
+  notes: Test runner for Angular (being deprecated in favor of Jest/Vitest in newer
+    Angular)
+- name: ava
+  npm_packages:
+  - ava
+  config_files: []
+  config_in_package_json: ava
+  test_file_conventions:
+  - test.js
+  - test-*.js
+  - '**/*.spec.js'
+  - tests/**/*.js
+  - test/**/*.js
+  detection_signals:
+    package_json_deps:
+    - ava
+  notes: Concurrent test runner; config often in package.json ava key
+- name: storybook
+  npm_packages:
+  - '@storybook/react'
+  - '@storybook/vue3'
+  - '@storybook/angular'
+  - storybook
+  config_files:
+  - .storybook/main.ts
+  - .storybook/main.js
+  - .storybook/preview.ts
+  test_file_conventions:
+  - '**/*.stories.tsx'
+  - '**/*.stories.ts'
+  - '**/*.stories.js'
+  - '**/*.stories.jsx'
+  detection_signals:
+    package_json_deps:
+    - storybook
+    - '@storybook/react'
+    directory_conventions:
+    - .storybook/
+  notes: Component development and visual testing; .storybook/ dir is definitive

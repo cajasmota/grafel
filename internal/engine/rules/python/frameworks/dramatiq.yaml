@@ -1,0 +1,21 @@
+frameworks:
+  name: Dramatiq
+  pypi_package: dramatiq
+  category: task_queue
+  github_stars_2025: 4100+
+  gateway: amqp_redis
+  detection:
+    config_files:
+    - '*/tasks.py'
+    - '*/actors.py'
+    dependency_names:
+    - dramatiq
+    import_markers:
+    - import dramatiq
+    - '@dramatiq.actor'
+    - dramatiq.set_broker
+    structural_markers:
+    - actors.py
+  notes: 'Lighter-weight Celery alternative. actors.py naming convention is common.
+
+    '

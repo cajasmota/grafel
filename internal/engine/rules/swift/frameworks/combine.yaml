@@ -1,0 +1,27 @@
+frameworks:
+  name: Combine
+  category: reactive_programming
+  spm_coordinates:
+  - N/A — bundled with Apple SDK (iOS 13+ / macOS 10.15+)
+  detection:
+    config_files:
+    - Package.swift
+    - '*.xcodeproj/'
+    build_signals:
+    - import Combine (in any .swift file)
+    import_patterns:
+    - import Combine
+    code_patterns:
+    - PassthroughSubject<
+    - CurrentValueSubject<
+    - AnyPublisher<
+    - '@Published'
+    - .sink {
+    - .receive(on:)
+    - '.store(in: &cancellables)'
+    - AnyCancellable
+  notes: 'Apple reactive framework. @Published is the most common signal; often combined
+    with ObservableObject (SwiftUI integration). store(in: &cancellables) is a lifecycle
+    management pattern unique to Combine.
+
+    '

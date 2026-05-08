@@ -1,0 +1,157 @@
+testing:
+- name: ScalaTest
+  sbt_coordinates:
+  - org.scalatest::scalatest
+  - org.scalatest::scalatest-funsuite
+  - org.scalatest::scalatest-flatspec
+  - org.scalatest::scalatest-wordspec
+  file_conventions:
+  - '*Spec.scala'
+  - '*Suite.scala'
+  - '*Test.scala'
+  - src/test/scala/**/*.scala
+  detection:
+    build_signals:
+    - '"org.scalatest" %% "scalatest"'
+    - '% "test"'
+    import_patterns:
+    - import org.scalatest._
+    - import org.scalatest.flatspec.AnyFlatSpec
+    - import org.scalatest.funsuite.AnyFunSuite
+    - import org.scalatest.wordspec.AnyWordSpec
+    - import org.scalatest.matchers.should.Matchers
+    code_patterns:
+    - extends AnyFlatSpec
+    - extends AnyFunSuite
+    - extends AnyWordSpec
+    - extends AnyFunSpec
+    - extends AsyncFlatSpec
+    - extends AsyncFunSuite
+    - '"..." should "..." in {'
+    - 'it should '
+    - '"..." must '
+    - shouldBe
+    - should be
+    - should equal
+  notes: 'Most popular Scala test framework. Multiple style traits: FlatSpec (BDD),
+    FunSuite (xUnit), WordSpec (verbose BDD), FunSpec (rSpec). Matchers mixin provides
+    shouldBe/should be/should equal. AsyncFlatSpec/AsyncFunSuite for Future-returning
+    tests. %"test" scope in build.sbt is required.
+
+    '
+- name: Specs2
+  sbt_coordinates:
+  - org.specs2::specs2-core
+  - org.specs2::specs2-scalacheck
+  - org.specs2::specs2-matcher-extra
+  file_conventions:
+  - '*Spec.scala'
+  - '*Specification.scala'
+  - src/test/scala/**/*.scala
+  detection:
+    build_signals:
+    - '"org.specs2" %% "specs2-core"'
+    import_patterns:
+    - import org.specs2._
+    - import org.specs2.mutable._
+    - import org.specs2.specification.Scope
+    code_patterns:
+    - extends Specification
+    - extends mutable.Specification
+    - extends org.specs2.Specification
+    - is must beEqualTo(
+    - must beRight
+    - must beLeft
+    - must beSome
+    - must beNone
+    - '"..." >> {'
+    - '"..." should {'
+  notes: 'Specs2 is the second most popular Scala test framework. Two styles: immutable
+    Specification (acceptance-style) and mutable.Specification (unit-style). Strong
+    integration with http4s (via http4s-specs2) and ZIO. must matchers are characteristic.
+
+    '
+- name: MUnit
+  sbt_coordinates:
+  - org.scalameta::munit
+  - org.scalameta::munit-scalacheck
+  file_conventions:
+  - '*Suite.scala'
+  - '*Tests.scala'
+  - src/test/scala/**/*.scala
+  detection:
+    build_signals:
+    - '"org.scalameta" %% "munit"'
+    import_patterns:
+    - import munit._
+    - import munit.FunSuite
+    - import munit.CatsEffectSuite
+    code_patterns:
+    - extends FunSuite
+    - extends munit.FunSuite
+    - extends CatsEffectSuite
+    - test("...
+    - assertEquals(
+    - assertNoDiff(
+    - intercept[
+  notes: 'Lightweight, modern test framework from Scalameta. Default choice for Typelevel
+    ecosystem (http4s, Cats Effect). CatsEffectSuite is the integration for IO-returning
+    tests. assertEquals is the primary assertion. Gaining adoption as simpler alternative
+    to ScalaTest.
+
+    '
+- name: ScalaCheck
+  sbt_coordinates:
+  - org.scalacheck::scalacheck
+  file_conventions:
+  - '*Properties.scala'
+  - '*Check.scala'
+  - src/test/scala/**/*.scala
+  detection:
+    build_signals:
+    - '"org.scalacheck" %% "scalacheck"'
+    import_patterns:
+    - import org.scalacheck._
+    - import org.scalacheck.Prop._
+    - import org.scalacheck.Gen
+    - import org.scalacheck.Arbitrary
+    code_patterns:
+    - extends Properties(
+    - property("...
+    - Gen.choose(
+    - Gen.listOf(
+    - Gen.frequency(
+    - Arbitrary.arbitrary[
+    - forAll {
+    - forAll { (
+    - Prop.forAll
+  notes: 'Property-based testing library, the Scala analog of Haskell''s QuickCheck.
+    Often integrated with ScalaTest (via scalatest-scalacheck module) or Specs2. Standalone
+    usage: extends Properties. Gen and Arbitrary are the data generation combinators.
+    forAll is the core property assertion.
+
+    '
+- name: uTest
+  sbt_coordinates:
+  - com.lihaoyi::utest
+  file_conventions:
+  - '*Tests.scala'
+  - src/test/scala/**/*.scala
+  detection:
+    build_signals:
+    - '"com.lihaoyi" %% "utest"'
+    - testFrameworks += new TestFramework("utest.runner.Framework")
+    import_patterns:
+    - import utest._
+    code_patterns:
+    - extends TestSuite
+    - val tests = Tests {
+    - test("...
+    - test -
+    - assert(
+  notes: 'Minimalist test framework by Li Haoyi, often used with Mill. Requires testFrameworks
+    registration in build.sbt. Tests defined in nested object via Tests { } block.
+    Lighter than ScalaTest; common in Li Haoyi''s open-source libraries (Ammonite,
+    PPrint, etc.).
+
+    '

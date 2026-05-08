@@ -1,0 +1,40 @@
+orms_database:
+  name: Neo4j Python Driver / neomodel
+  category: graph_database
+  pip_package: neo4j
+  adoption_rank_2025: 1
+  detection:
+    requirements_markers:
+    - neo4j
+    - neomodel
+    import_patterns:
+    - from neo4j import
+    - import neo4j
+    - from neomodel import
+    - import neomodel
+    code_patterns:
+    - GraphDatabase.driver(
+    - StructuredNode
+    - StructuredRel
+    - RelationshipTo
+  notes: >
+    Official Neo4j Python driver plus neomodel OGM library. Both are gated
+    to this cross-language extractor.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections (SCOPE.Service,
+      INFERRED_FROM_NEO4J_DRIVER), Cypher query strings (SCOPE.Operation/query,
+      INFERRED_FROM_NEO4J_CYPHER) with node labels and relationship types,
+      neomodel StructuredNode/StructuredRel (SCOPE.Schema,
+      INFERRED_FROM_NEO4J_NEOMODEL) with RelationshipTo DEPENDS_ON edges.

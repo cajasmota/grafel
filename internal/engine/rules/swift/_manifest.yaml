@@ -1,0 +1,10 @@
+frameworks: frameworks/ [swiftui, uikit, combine, swiftdata, vapor, hummingbird, perfect,
+  kitura, rxswift, alamofire]
+mobile: extras.yaml
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+testing_conventions: test_patterns.yaml
+orms: orms/ [core_data, swiftdata, grdb, realm, supabase_swift, firebase_ios]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

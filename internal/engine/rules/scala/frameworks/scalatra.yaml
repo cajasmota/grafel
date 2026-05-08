@@ -1,0 +1,29 @@
+frameworks:
+  name: Scalatra
+  category: web_micro
+  sbt_coordinates:
+  - org.scalatra::scalatra
+  - org.scalatra::scalatra-json
+  - org.scalatra::scalatra-scalatest
+  detection:
+    config_files:
+    - src/main/webapp/WEB-INF/web.xml
+    - src/main/scala/ScalatraBootstrap.scala
+    build_signals:
+    - '"org.scalatra" %% "scalatra"'
+    import_patterns:
+    - import org.scalatra._
+    - import org.scalatra.json._
+    - import org.scalatra.scalate.ScalateSupport
+    code_patterns:
+    - extends ScalatraServlet
+    - extends ScalatraFilter
+    - get("/
+    - post("/
+    - halt(
+    - ScalatraBootstrap
+  notes: 'Sinatra-inspired micro web framework for Scala. ScalatraBootstrap.scala
+    is near-definitive. extends ScalatraServlet in any .scala file confirms. WEB-INF/web.xml
+    is a Servlet container signal common to Scalatra/Play older deployments.
+
+    '

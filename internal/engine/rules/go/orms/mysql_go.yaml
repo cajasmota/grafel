@@ -1,0 +1,30 @@
+orms_database:
+  name: MySQL Go Driver (go-sql-driver/mysql)
+  category: relational_database
+  go_module: github.com/go-sql-driver/mysql
+  detection:
+    import_patterns:
+    - github.com/go-sql-driver/mysql
+    - _ "github.com/go-sql-driver/mysql"
+    code_patterns:
+    - sql.Open("mysql",
+    - sql.Open(`mysql`,
+  notes: >
+    go-sql-driver/mysql is the standard MySQL driver for Go's database/sql
+    interface. It is registered as a blank import and used via sql.Open.
+    sqlx and GORM also use this driver underneath.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

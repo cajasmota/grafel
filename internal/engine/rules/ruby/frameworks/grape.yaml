@@ -1,0 +1,27 @@
+frameworks:
+  name: Grape
+  gem_name: grape
+  category: web_api
+  github_stars_2025: 9800+
+  detection:
+    config_files:
+    - Gemfile
+    - config.ru
+    gemfile_deps:
+    - grape
+    - grape-entity
+    - grape-swagger
+    import_markers:
+    - require 'grape'
+    - Grape::API
+    - include Grape::DSL
+    - format :json
+    - version 'v1'
+    structural_markers:
+    - class API < Grape::API
+    - resource :endpoint
+  notes: 'Often mounted in Rails or Sinatra via config.ru. Standalone Grape apps use
+    Grape::API subclass as entry point. grape-entity and grape-swagger are strong
+    secondary signals.
+
+    '

@@ -1,0 +1,80 @@
+frameworks:
+  name: Docker Compose
+  language: docker
+  category: container_orchestration
+  detection:
+    config_files:
+      - docker-compose.yml
+      - docker-compose.yaml
+      - compose.yml
+      - compose.yaml
+    content_patterns:
+      - "services:"
+      - "version:"
+  notes: >-
+    Docker Compose extraction. Detects service definitions, networks, volumes,
+    and inter-service dependencies from compose files.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-526)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "docker-compose.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "docker-compose.yaml"
+    entity_type: Config
+    name_from: filename
+  - glob: "compose.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "compose.yaml"
+    entity_type: Config
+    name_from: filename
+
+source_patterns:
+  # Service definition (top-level key under services:)
+  - pattern: "^\\s{2}(\\w[\\w-]*):\\s*$"
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # image: directive
+  - pattern: "image:\\s+(\\S+)"
+    entity_type: Dependency
+    name_group: 1
+    scope: file
+  # build context
+  - pattern: "build:\\s+(\\S+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # ports mapping
+  - pattern: "ports:\\s*\\n\\s+-\\s+[\"']?(\\d+:\\d+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # depends_on service
+  - pattern: "depends_on:\\s*\\n\\s+-\\s+(\\w[\\w-]*)"
+    entity_type: Dependency
+    name_group: 1
+    scope: file
+  # volumes definition (named volume)
+  - pattern: "^volumes:\\s*\\n\\s{2}(\\w[\\w-]*):"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # networks definition (named network)
+  - pattern: "^networks:\\s*\\n\\s{2}(\\w[\\w-]*):"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # depends_on creates a dependency edge
+  - pattern: "(\\w[\\w-]*):[\\s\\S]*?depends_on:[\\s\\S]*?-\\s+(\\w[\\w-]*)"
+    source_type: Service
+    target_type: Service
+    relationship: CALLS
+    source_group: 1
+    target_group: 2

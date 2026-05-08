@@ -1,0 +1,22 @@
+orms_and_database:
+  name: drizzle
+  npm_packages:
+  - drizzle-orm
+  - drizzle-kit
+  config_files:
+  - drizzle.config.ts
+  - drizzle.config.js
+  - drizzle.config.json
+  detection_signals:
+    package_json_deps:
+    - drizzle-orm
+    import_patterns:
+    - from 'drizzle-orm/pg-core'
+    - from 'drizzle-orm/mysql-core'
+    - from 'drizzle-orm/sqlite-core'
+  code_patterns:
+  - pgTable(
+  - mysqlTable(
+  - sqliteTable(
+  - drizzle(
+  notes: drizzle.config.ts is definitive. Fastest growing ORM in TS ecosystem (2025).

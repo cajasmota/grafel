@@ -1,0 +1,70 @@
+test_frameworks:
+- name: Molecule
+  vendor: Ansible Community
+  category: role_testing
+  detection:
+    config_files:
+    - molecule.yml
+    - molecule/default/molecule.yml
+    - molecule/*/molecule.yml
+    directory_structure: molecule/ with scenario subdirectories
+    cli_invocation_patterns:
+    - molecule test
+    - molecule converge
+    - molecule syntax
+    - molecule lint
+  test_scenarios: 'Molecule runs role tests across multiple driver backends: Docker,
+    Vagrant, cloud providers (EC2, Azure, GCP). Each scenario is a molecule/*/molecule.yml
+    configuration specifying driver, provisioner, verifier, and platform definitions.
+
+    '
+  notes: 'Molecule is the de facto standard for Ansible role testing. Detected via
+    molecule.yml and molecule/ directory. High-value signal of role quality and test-driven
+    development. Presence indicates comprehensive role testing.
+
+    '
+- name: ansible-test
+  vendor: Ansible Community / Red Hat
+  category: collection_testing
+  detection:
+    cli_invocation_patterns:
+    - ansible-test units
+    - ansible-test integration
+    - ansible-test sanity
+    directory_structure: tests/ subdirectory in collection
+    config_files:
+    - tests/ansible.cfg
+    - tests/unit/conftest.py
+    - tests/integration/targets/
+  notes: 'ansible-test is the testing tool for collections and plugins. Runs unit
+    tests, integration tests, and sanity checks. Detected via ansible-test CLI in
+    CI/CD or tests/ directory structure. Presence indicates collection development
+    with test coverage.
+
+    '
+- name: testinfra
+  vendor: testinfra Project
+  category: infrastructure_testing
+  detection:
+    cli_invocation_patterns:
+    - '"pytest tests/ -v" (testinfra plugins)'
+    dependencies: pytest + testinfra (Python package)
+    test_pattern: Python pytest tests checking system state (packages, files, services)
+  notes: 'testinfra is a pytest plugin for verifying infrastructure state (installed
+    packages, running services, file permissions, etc.). Often used as the Molecule
+    verifier backend. Detected via pytest invocation with testinfra assertions or
+    Molecule verifier: configuration.
+
+    '
+- name: Pytest (with Ansible modules)
+  vendor: pytest Project
+  category: unit_testing
+  detection:
+    dependencies: pytest + pytest-ansible plugin
+    test_patterns: pytest tests/ for Ansible module/filter/lookup unit tests
+    cli_invocation_patterns:
+    - pytest tests/unit/ -v
+  notes: 'Pytest can test Ansible modules, filters, and lookups via pytest-ansible
+    plugin. Detected via pytest invocation in role/collection tests/.
+
+    '

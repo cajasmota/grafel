@@ -1,0 +1,24 @@
+frameworks:
+  name: Arrow (Functional Kotlin)
+  category: functional_library
+  gradle_coordinates:
+  - io.arrow-kt:arrow-core
+  - io.arrow-kt:arrow-fx-coroutines
+  detection:
+    config_files: []
+    build_signals:
+    - '"io.arrow-kt:arrow-core"'
+    import_patterns:
+    - import arrow.core.
+    - import arrow.fx.
+    code_patterns:
+    - Either.Right(
+    - Either.Left(
+    - Option.Some(
+    - IO {
+    - raise(
+    - Raise<
+  notes: 'Functional programming library. Either<Error, Value> pattern is high-confidence
+    Arrow signal. Arrow 2.x uses context receivers/Raise DSL.
+
+    '

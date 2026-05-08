@@ -1,0 +1,25 @@
+frameworks:
+  name: dart_frog (server)
+  pubspec_dependency: dart_frog
+  category: server_web
+  pub_dev_url: https://pub.dev/packages/dart_frog
+  github_stars_2025: 1900+
+  detection:
+    pubspec_signals:
+    - 'dart_frog:'
+    - 'dart_frog_gen:'
+    structural_markers:
+    - routes/
+    - routes/_middleware.dart
+    - routes/index.dart
+    - pubspec.yaml (dart_frog_gen in dev_dependencies)
+    code_patterns:
+    - import 'package:dart_frog/dart_frog.dart'
+    - Response onRequest(RequestContext context)
+    - Handler middleware(Handler handler)
+    notes: 'File-system based routing framework (similar to Next.js for Dart). routes/
+      directory with index.dart and _middleware.dart is the definitive structural
+      signal. dart_frog_gen in dev_dependencies generates route handlers. No Flutter
+      SDK dependency — pure Dart server.
+
+      '

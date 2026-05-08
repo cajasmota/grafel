@@ -1,0 +1,47 @@
+frameworks:
+  name: Neovim Plugin
+  category: editor_plugin
+  detection:
+    config_files:
+    - plugin/
+    - lua/
+    - autoload/
+    - doc/
+    - '*.vim'
+    - README.md
+    import_markers:
+    - vim.api
+    - vim.fn
+    - vim.cmd
+    - vim.keymap
+    - vim.diagnostic
+    - vim.lsp
+    - vim.treesitter
+    - vim.ui
+    - vim.notify
+    - vim.opt
+    - vim.g
+    - vim.b
+    - vim.w
+    - require('nvim-
+    - require("nvim-
+    - local M = {}
+    - M.setup = function
+    - M.setup =
+    - return M
+    structural_markers:
+    - lua/
+    - plugin/
+    - doc/
+    - tests/
+    - spec/
+    - ftplugin/
+    - after/
+  notes: 'Neovim plugins use a canonical layout: lua/plugin-name/ for the main module
+    tree, plugin/ for VimL/Lua autoloads on startup, doc/ for :help documentation.
+    Key signals: vim.api.* calls, vim.fn.* calls, the M = {} + M.setup pattern (plugin
+    configuration idiom), and lua/ directory as the module root. Distinguishable from
+    general Lua by presence of vim.* globals. Many plugins use plenary.nvim for testing
+    (require(''plenary'')).
+
+    '

@@ -1,0 +1,84 @@
+build_tools:
+- name: sbt
+  config_files:
+  - build.sbt
+  - project/build.properties
+  - project/plugins.sbt
+  - project/Dependencies.scala
+  - project/Build.scala
+  detection_patterns:
+  - build.sbt present at repo root
+  - project/build.properties contains sbt.version=
+  - '*.sbt files anywhere in project tree'
+  typical_content:
+  - scalaVersion := "
+  - libraryDependencies +=
+  - libraryDependencies ++=
+  - name := "
+  - organization := "
+  - version := "
+  - 'crossScalaVersions := '
+  - 'val ScalaVersion = '
+  notes: 'The canonical Scala build tool. build.sbt at root is high-confidence. project/build.properties
+    with sbt.version= is definitive. Multi-project builds use lazy val root = project.in(file("."))
+    pattern. libraryDependencies uses %% (Scala binary version cross-building) vs
+    % (exact version).
+
+    '
+- name: Mill
+  config_files:
+  - build.sc
+  - build.mill
+  - mill
+  - .mill-version
+  detection_patterns:
+  - build.sc present at repo root
+  - .mill-version file at repo root
+  - mill script or wrapper in repo root
+  typical_content:
+  - import mill._
+  - import mill.scalalib._
+  - object app extends ScalaModule
+  - 'def scalaVersion = '
+  - def ivyDeps = Agg(
+  - ivy"
+  notes: 'Modern Scala/Java build tool by Li Haoyi. build.sc is definitive. ScalaModule
+    or JavaModule objects. ivyDeps uses ivy"org::artifact:version" syntax. Mill uses
+    build.mill in newer versions. Growing adoption in open-source projects.
+
+    '
+- name: Maven (Scala)
+  config_files:
+  - pom.xml
+  detection_patterns:
+  - pom.xml with scala-maven-plugin
+  - net.alchim31.maven groupId in pom.xml
+  typical_content:
+  - <artifactId>scala-maven-plugin</artifactId>
+  - <groupId>net.alchim31.maven</groupId>
+  - <scalaVersion>
+  - <scala.version>
+  notes: 'Maven with scala-maven-plugin for Scala compilation. Less common but present
+    in Java shops adopting Scala incrementally. pom.xml alone is not enough — require
+    scala-maven-plugin or scala.version property.
+
+    '
+- name: Gradle (Scala)
+  config_files:
+  - build.gradle
+  - build.gradle.kts
+  - settings.gradle
+  - settings.gradle.kts
+  detection_patterns:
+  - build.gradle with scala plugin applied
+  - 'apply plugin: ''scala'' or id(''scala'')'
+  typical_content:
+  - 'apply plugin: ''scala'''
+  - id('scala')
+  - id("scala")
+  - implementation 'org.scala-lang:scala-library'
+  notes: 'Gradle with Scala plugin. Uncommon but found in Android-adjacent or mixed
+    Java/Scala projects. Requires scala plugin applied + scala-library dependency.
+    build.gradle alone is not sufficient — check for plugin.
+
+    '

@@ -1,0 +1,14 @@
+# Migration sequence enricher (MX-701)
+# Post-extraction pass that parses migration filenames (Rails, Django, Flyway,
+# golang-migrate, Alembic) to add sequence_number and migration_name metadata
+# to existing migration entities.  Does not create new entities.
+
+name: migration_sequence_enricher
+description: >-
+  Parse migration filenames to annotate existing migration entities with
+  sequence_number (int or str) and migration_name (human-readable string).
+  Supports Rails (YYYYMMDDHHMMSS_name.rb), Django (NNNN_name.py),
+  Flyway (V{major}.{minor}__{desc}.sql), golang-migrate (NNNNNN_name.up/down.sql),
+  and Alembic ({revision_hash}_name.py) filename conventions.
+module: memx_indexer.languages._engine.migration_sequence_enricher
+function: annotate_migration_sequences

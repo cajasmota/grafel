@@ -1,0 +1,56 @@
+# Source: synthetic — representative Justfile based on public examples from
+# https://github.com/casey/just (README) and common OSS projects.
+# License: CC0.
+#
+# Justfile — common developer tasks for a Go service.
+
+# Variables
+export GO_VERSION := "1.24"
+IMAGE := "registry.example.com/myapp"
+TAG   := `git rev-parse --short HEAD`
+PKG   := "./..."
+
+# Default recipe — shown when you run `just` with no arguments.
+default: help
+
+help:
+    @just --list
+
+# Build the binary.
+build:
+    go build -o bin/app ./cmd/app
+
+# Run unit tests.
+test: build
+    go test -race -count=1 {{PKG}}
+
+# Run the full test matrix.
+test-all: test (lint "strict") (vet)
+    @echo "all checks passed"
+
+lint strictness="normal":
+    golangci-lint run --timeout 2m
+
+vet:
+    go vet {{PKG}}
+
+# Build a container image tagged with the current git SHA.
+docker-build: build
+    docker build -t {{IMAGE}}:{{TAG}} .
+
+# Push the image — depends on docker-build.
+docker-push: docker-build
+    docker push {{IMAGE}}:{{TAG}}
+
+# Clean generated artefacts.
+clean:
+    rm -rf bin/ dist/ coverage.out
+
+# Parameterised recipe demonstrating argument syntax.
+deploy env="staging" region="us-east-1":
+    @echo "deploying to {{env}} in {{region}}"
+    ./scripts/deploy.sh {{env}} {{region}}
+
+# Recipe with underscore prefix (by convention: internal helper).
+_prepare:
+    mkdir -p bin dist

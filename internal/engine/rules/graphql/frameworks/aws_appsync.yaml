@@ -1,0 +1,34 @@
+server_frameworks:
+  name: AWS AppSync
+  language: Service (YAML/JSON/VTL config-driven)
+  category: graphql_managed
+  detection:
+    config_files:
+    - serverless.yml
+    - amplify/backend/api/
+    - cdk.json
+    - template.yaml
+    - amplify.yml
+    structural_markers:
+    - aws_appsync_graphqlEndpoint
+    - '"type: AWS_LAMBDA" in resolver mapping templates'
+    - RequestMappingTemplate
+    - ResponseMappingTemplate
+    - '*.vtl'
+    - '#set ($ctx'
+    - '"AppSync" in CDK constructs (GraphqlApi, Resolver)'
+    dependency_signals:
+    - '"@aws-amplify/api" in package.json'
+    - '"aws-appsync" in package.json'
+    - '"aws-cdk-lib/aws-appsync" in package.json or CDK imports'
+  extraction_targets:
+  - Schema SDL from schema.graphql in amplify/backend/api/<name>/
+  - VTL request/response mapping templates
+  - Lambda resolver ARNs and data source configurations
+  - Pipeline resolver function chains
+  - Authorization modes (API_KEY, COGNITO_USER_POOLS, AWS_IAM, OPENID_CONNECT, LAMBDA)
+  notes: 'AppSync uses Velocity Template Language (VTL) for resolver mapping or JavaScript
+    resolvers (APPSYNC_JS runtime). Amplify projects have a predictable layout: amplify/backend/api/<apiname>/schema.graphql.
+    CDK-defined AppSync schemas may be inline strings or file imports.
+
+    '

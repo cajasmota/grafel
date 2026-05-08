@@ -1,0 +1,48 @@
+frameworks:
+  name: Nomad
+  vendor: HashiCorp
+  category: workload_orchestrator
+  current_version_2025: 1.8.x
+  detection:
+    file_extensions:
+    - .nomad
+    - .hcl
+    block_signatures:
+    - job "
+    - group "
+    - task "
+    - constraint {
+    - affinity {
+    - spread {
+    - service {
+    - check {
+    - scaling {
+    content_patterns:
+    - driver = "docker"
+    - driver = "exec"
+    - driver = "java"
+    - driver = "raw_exec"
+    - network {
+    - template {
+    - artifact {
+    - vault {
+    - consul {
+    - lifecycle {
+    - type = "service"
+    - type = "batch"
+    - type = "system"
+    - type = "sysbatch"
+    - reschedule {
+    - restart {
+    - update {
+    config_files:
+    - '*.nomad'
+    - nomad.hcl
+    - nomad-agent.hcl
+  notes: 'Nomad job specs use .nomad extension or plain .hcl with a job {} root block.
+    The job/group/task hierarchy is the canonical detection tree. Nomad agent config
+    files (nomad.hcl) use different top-level blocks: server {}, client {}, telemetry
+    {}. Distinguish job specs from agent config by presence of driver = "..." inside
+    task {}.
+
+    '

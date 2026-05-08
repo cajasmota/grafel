@@ -1,0 +1,62 @@
+frameworks:
+  name: LangChain
+  pypi_package: langchain
+  category: ai_framework
+  github_stars_2025: 100000+
+  gateway: library
+  detection:
+    config_files: []
+    dependency_names:
+    - langchain
+    - langchain-core
+    - langchain-community
+    - langchain-openai
+    - langchain-anthropic
+    import_markers:
+    - from langchain
+    - import langchain
+    - from langchain_core
+    - from langchain_community
+    - from langchain_openai
+    - from langchain_anthropic
+    structural_markers: []
+  notes: >
+    LLM application framework. Detection primarily via imports and dependency
+    names. No config files specific to LangChain.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+
+source_patterns:
+  # LCEL chain: prompt | model | parser
+  - pattern: "\\w+\\s*=\\s*.+\\|.+"
+    entity_type: Operation
+    name_group: 0
+    scope: file
+  # @tool decorator
+  - pattern: "@tool\\b"
+    entity_type: Operation
+    name_group: 0
+    scope: function
+  # Agent factory
+  - pattern: "create_\\w+_agent\\s*\\("
+    entity_type: Service
+    name_group: 0
+    scope: file
+
+relationship_rules: []
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.langchain_extractor
+    function: extract
+    description: >-
+      LangChain Python extractor: LCEL pipe chains, legacy chains, agents
+      (create_*_agent + AgentExecutor), @tool decorators and BaseTool classes,
+      RAG pipelines (RetrievalQA, create_stuff_documents_chain), prompts
+      (ChatPromptTemplate, PromptTemplate), memory (ConversationBufferMemory,
+      RunnableWithMessageHistory). Emits DEPENDS_ON (chain stages), OWNS
+      (agent->tools), CALLS (chain invocations).

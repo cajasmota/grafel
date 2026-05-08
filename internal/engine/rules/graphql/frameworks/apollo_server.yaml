@@ -1,0 +1,35 @@
+server_frameworks:
+  name: Apollo Server
+  language: JavaScript / TypeScript
+  category: graphql_server
+  github_stars_2025: 13800+
+  detection:
+    package_json_deps:
+    - '@apollo/server'
+    - apollo-server
+    - apollo-server-express
+    - apollo-server-fastify
+    - apollo-server-koa
+    - apollo-server-lambda
+    config_files:
+    - codegen.yml
+    - .graphqlrc.yml
+    - .graphqlrc.ts
+    structural_markers:
+    - new ApolloServer
+    - ApolloServer({ typeDefs, resolvers })
+    - startStandaloneServer
+    - expressMiddleware
+    - ApolloServerPluginDrainHttpServer
+  extraction_targets:
+  - typeDefs SDL strings or imported .graphql files
+  - resolver map structure (Query, Mutation, Subscription, type resolvers)
+  - context function signature
+  - plugin configurations
+  - schema federation config (if @apollo/subgraph present)
+  notes: 'Apollo Server v4 (@apollo/server) breaks from v3 (apollo-server*). v4 uses
+    startStandaloneServer or expressMiddleware; v3 uses server.listen() or applyMiddleware().
+    Detect both via package name. Apollo Federation subgraph: detect @apollo/subgraph
+    in deps.
+
+    '

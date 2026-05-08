@@ -1,0 +1,27 @@
+orms_database:
+  name: cassandra-driver (DataStax Ruby Driver)
+  category: nosql_database
+  gem: cassandra-driver
+  detection:
+    import_patterns:
+    - require 'cassandra'
+    - Cassandra.cluster
+    code_patterns:
+    - Cassandra.cluster
+    - Cassandra::Cluster.new
+    - session.execute
+  notes: >
+    Official DataStax Ruby driver for Cassandra.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: Cassandra.cluster
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), .execute()
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

@@ -1,0 +1,20 @@
+# Error handling pattern detector (MX-720)
+# Identifies error handling idioms across Java, JS/TS, Python, Go, Rust, and Elixir.
+#
+# Supported styles:
+#   try_catch           — Java/JS/TS/Python try statement
+#   go_error_return     — Go if err != nil
+#   rust_result         — Rust match with Ok(_) and Err(_) arms
+#   rust_question_mark  — Rust ? operator
+#   elixir_ok_error     — Elixir case with {:ok, _}/{:error, _} arms
+#
+# File gate is internal to the detector (applies_to checks language field).
+
+name: error_handling_detector
+description: >-
+  Detect error handling idioms across Java/JS/TS/Python (try/catch), Go (if err != nil),
+  Rust (match Ok/Err, ? operator), and Elixir ({:ok, _}/{:error, _} case). Emits
+  SCOPE.Pattern entities with kind=error_handling and a style field.
+module: memx_indexer.pattern_detectors.error_handling_detector
+function: detect
+applies_to_function: applies_to

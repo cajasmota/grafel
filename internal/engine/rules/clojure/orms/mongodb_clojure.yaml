@@ -1,0 +1,27 @@
+orms_database:
+  name: Monger / CongoMongo (Clojure MongoDB)
+  lein_dep: com.novemberain/monger
+  category: nosql_driver
+  detection:
+    lein_deps:
+      - com.novemberain/monger
+      - congomongo
+    import_markers:
+      - monger.core
+      - somnium.congomongo
+    code_patterns:
+      - mg/connect
+      - mc/connect
+      - mc/aggregate
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

@@ -1,0 +1,33 @@
+orms:
+  name: Hibernate (Groovy / Grails)
+  category: orm_jpa
+  gradle_coordinates:
+  - org.hibernate:hibernate-core
+  - org.grails.plugins:hibernate5
+  - org.grails.plugins:hibernate4 (legacy)
+  detection:
+    config_files:
+    - grails-app/conf/application.yml (hibernate.* keys)
+    - src/main/resources/hibernate.cfg.xml
+    - src/main/resources/META-INF/persistence.xml
+    code_patterns:
+    - import javax.persistence.
+    - import jakarta.persistence.
+    - '@Entity'
+    - '@Table('
+    - '@Column('
+    - '@Id'
+    - '@GeneratedValue('
+    - '@OneToMany'
+    - '@ManyToOne'
+    - '@ManyToMany'
+    - SessionFactory
+    - HibernateTemplate
+  notes: 'Groovy projects using Hibernate directly (not via GORM) use JPA annotations.
+    In Grails, GORM-Hibernate5 is the plugin wrapping Hibernate — domain classes get
+    JPA annotations at runtime via AST transformation. Standalone Groovy + Hibernate
+    projects use explicit @Entity annotations in Groovy classes. Distinction: GORM
+    domain (no @Entity, lives in grails-app/domain/) vs Hibernate entity (explicit
+    @Entity, lives in src/main/groovy/).
+
+    '

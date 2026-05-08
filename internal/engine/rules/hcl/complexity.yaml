@@ -1,0 +1,142 @@
+complexity_signals:
+- category: dynamic_blocks
+  description: 'Dynamic blocks generate repeated nested blocks programmatically using
+    a for_each expression. They are Terraform''s primary metaprogramming mechanism
+    within resource blocks. High complexity — harder to read and reason about than
+    static blocks.
+
+    '
+  patterns:
+  - dynamic "
+  - content {
+  - iterator =
+  - for_each = var.
+  - for_each = local.
+  - for_each = each.
+  indexing_note: 'A dynamic block inside a resource generates N copies of a sub-block
+    (e.g., ingress rules, lifecycle hooks, policy statements) based on a collection.
+    Deeply nested dynamic blocks (dynamic inside dynamic) signal very high configuration
+    complexity. Extract the dynamic block label (what it generates) and its for_each
+    source for structural analysis.
+
+    '
+- category: for_each_and_count
+  description: 'Meta-arguments that control resource and module multiplicity. for_each
+    creates a map of resource instances; count creates an indexed list. Both produce
+    multiple infrastructure objects from a single block.
+
+    '
+  patterns:
+  - for_each =
+  - count =
+  - each.key
+  - each.value
+  - count.index
+  - toset(
+  - tomap(
+  - zipmap(
+  indexing_note: 'for_each = var.* or for_each = local.* with a map/set signals data-driven
+    resource creation — the number of real resources depends on runtime input. count
+    = 0 is a common conditional resource pattern (create only in prod). for_each on
+    modules signals module composition with multiple instances. These are critical
+    for infrastructure cost estimation and blast-radius analysis.
+
+    '
+- category: module_composition_depth
+  description: 'Module call depth. Root modules calling child modules which call grandchild
+    modules indicate layered abstraction. Each layer of module nesting adds to reasoning
+    complexity.
+
+    '
+  patterns:
+  - module "
+  - source = "./
+  - source = "../
+  - source = "../../
+  - module.<name>.<output>
+  indexing_note: 'Flag configurations with 3+ levels of module nesting (root calling
+    module A which calls module B). Local source paths with ../../ suggest deep relative
+    module trees. module.<name>.<output> references indicate cross-module data flow.
+    Extract module call graph edges for topology analysis.
+
+    '
+- category: provisioners
+  description: 'Provisioners execute scripts or configuration management tools on
+    resources after creation. They are a last-resort mechanism, indicating that the
+    provider API is insufficient for the desired configuration. Presence signals hybrid
+    IaC/scripting patterns.
+
+    '
+  patterns:
+  - provisioner "remote-exec"
+  - provisioner "local-exec"
+  - provisioner "file"
+  - provisioner "chef"
+  - provisioner "puppet"
+  - provisioner "ansible"
+  - connection {
+  - on_failure = continue
+  - on_failure = fail
+  - when = destroy
+  indexing_note: 'remote-exec and local-exec provisioners indicate imperative steps
+    that run outside Terraform''s state model. They are hard to test and often carry
+    side-effects. when = destroy provisioners run on resource destruction. connection
+    { host = ... user = ... } signals SSH-based remote execution. These patterns should
+    be flagged as technical debt candidates and are high-value signals for security
+    review.
+
+    '
+- category: moved_blocks
+  description: 'moved blocks (Terraform 1.1+) declare that a resource has been renamed
+    or moved to a different module path without destroying and recreating it. Presence
+    signals ongoing refactoring or module restructuring.
+
+    '
+  patterns:
+  - moved {
+  - from =
+  - to =
+  indexing_note: 'Each moved block represents a historical resource address change.
+    A file accumulating many moved blocks signals ongoing module reorganisation. Extract
+    from/to pairs as refactoring history metadata.
+
+    '
+- category: complex_locals
+  description: 'Locals blocks using for expressions, function calls, or nested object
+    construction. These transform input variables into complex intermediate data structures
+    that drive multiple resources.
+
+    '
+  patterns:
+  - '{ for '
+  - '[ for '
+  - merge(
+  - flatten(
+  - concat(
+  - lookup(
+  - try(
+  - coalesce(
+  - coalescelist(
+  - setproduct(
+  - transpose(
+  - chunklist(
+  - one(
+  - toset(
+  - tomap(
+  - zipmap(
+  - can(
+  - regex(
+  - regexall(
+  - replace(
+  - templatefile(
+  - jsondecode(
+  - jsonencode(
+  - yamldecode(
+  - file(
+  indexing_note: 'Complex locals are the most common source of cognitive overhead
+    in HCL. A locals block with nested for expressions that feeds into for_each on
+    multiple resources is the hardest pattern to trace. Flag locals that use 3+ distinct
+    function calls or contain nested for expressions as high-complexity. templatefile()
+    signals external template dependencies worth tracking.
+
+    '

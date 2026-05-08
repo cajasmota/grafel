@@ -1,0 +1,33 @@
+frameworks:
+  name: Slim
+  package_name: slim/slim
+  category: web_microframework
+  github_stars_2025: 11900+
+  detection:
+    config_files:
+    - composer.json
+    - public/index.php
+    - src/
+    - config/
+    composer_deps:
+    - slim/slim
+    - slim/psr7
+    - slim/http
+    - php-di/slim-bridge
+    - slim/twig-view
+    import_markers:
+    - use Slim\
+    - Slim\Factory\AppFactory
+    - AppFactory::create()
+    - \Slim\App
+    - use Psr\Http\Message\
+    structural_markers:
+    - public/index.php
+    - src/Middleware/
+    - src/Action/
+    - src/Handler/
+  notes: 'Slim has no CLI or config directory convention — detected primarily via
+    composer.json slim/slim dep + AppFactory::create() or Slim\\App in public/index.php.
+    PSR-7 imports alongside Slim are supportive signals.
+
+    '

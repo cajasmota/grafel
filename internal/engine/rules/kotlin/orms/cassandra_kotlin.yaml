@@ -1,0 +1,32 @@
+orms_database:
+  name: DataStax Java Driver (Kotlin) / Spring Data Cassandra Kotlin
+  category: nosql_database
+  gradle_dependency: implementation 'com.datastax.oss:java-driver-core'
+  detection:
+    import_patterns:
+    - import com.datastax.oss.driver.api
+    - import com.datastax.driver.core
+    - import org.springframework.data.cassandra
+    code_patterns:
+    - CqlSession.builder()
+    - Cluster.builder()
+    - '@Table'
+    - CassandraRepository
+  notes: >
+    Kotlin uses the DataStax Java Driver with optional Kotlin coroutine
+    wrappers. Spring Data Cassandra Kotlin support is also covered.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: CqlSession.builder() / Cluster.builder()
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), CQL execution
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), table annotations
+      (SCOPE.Schema/table, INFERRED_FROM_CASSANDRA_TABLE), Spring Data repos
+      (SCOPE.Schema, INFERRED_FROM_CASSANDRA_SPRING), prepared statements
+      (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

@@ -1,0 +1,20 @@
+# Coupling score enricher (MX-691)
+# Project-level coupling metrics enricher. Computes afferent coupling (Ca),
+# efferent coupling (Ce), and instability (I = Ce / (Ca + Ce)) per
+# SCOPE.Component entity based on DEPENDS_ON and CALLS edge counts.
+#
+# This is a project-scope enricher (not a per-file PatternDetector).
+# Callers pass the full entity list and relationship list for a project.
+
+name: coupling_score_enricher
+description: >-
+  Compute Ca (afferent coupling), Ce (efferent coupling), and instability
+  I=Ce/(Ca+Ce) for every SCOPE.Component entity. Reads DEPENDS_ON and CALLS
+  relationships to count inbound (Ca) and outbound (Ce) dependencies. Sets
+  properties ca, ce, instability, and coupling_computed on each component.
+module: memx_indexer.languages._engine.coupling_score_enricher
+function: compute_coupling
+otel_span: indexer.coupling_score
+otel_attributes:
+  - component_count
+  - total_relationships_scanned

@@ -1,0 +1,17 @@
+# Comment marker extractor (MX-717)
+# Detects TODO, FIXME, HACK, and XXX inline comments across all supported
+# languages and emits SCOPE.Pattern(kind=code_marker) entities.
+#
+# Marker types: TODO | FIXME | HACK | XXX (case-insensitive match)
+#
+# File gate is internal to the detector (applies_to does a quick keyword
+# pre-scan before the full comment-syntax extraction pass).
+
+name: comment_marker_extractor
+description: >-
+  Detect TODO, FIXME, HACK, and XXX comment markers across all languages.
+  Emits SCOPE.Pattern entities with kind=code_marker, marker_type, message,
+  line_number, and source_file.
+module: memx_indexer.pattern_detectors.comment_marker_extractor
+function: detect
+applies_to_function: applies_to

@@ -1,0 +1,24 @@
+# Naming convention detector (MX-722)
+# Analyzes identifier names within a single file to determine the dominant
+# naming convention: camelCase, snake_case, PascalCase, SCREAMING_SNAKE,
+# kebab-case, mixed, or unknown.
+#
+# Fires on all files with non-empty source content.  Language-specific
+# extraction uses targeted regexes for the 22+ supported languages; a
+# generic fallback is used for everything else.
+
+name: naming_convention
+description: >-
+  Detect the dominant naming convention for identifiers in a source file and
+  emit a single SCOPE.Pattern entity with kind=naming_convention. Supported
+  conventions: camelCase, snake_case, PascalCase, SCREAMING_SNAKE, kebab-case,
+  mixed, unknown. Covers all 22+ supported languages: Python, TypeScript,
+  JavaScript, Go, Java, Kotlin, Rust, Ruby, C#, Swift, Scala, Groovy, PHP,
+  Elixir, Clojure, Dart, Shell, Lua, Objective-C, HCL, Protobuf, SQL.
+  SCREAMING_SNAKE names are excluded from dominance computation (constants).
+  Names shorter than 3 characters are ignored. Fewer than 3 qualifying names
+  yields convention=unknown. Two conventions within 5% of each other yield
+  convention=mixed.
+module: memx_indexer.pattern_detectors.naming_convention_detector
+function: detect
+applies_to_function: applies_to

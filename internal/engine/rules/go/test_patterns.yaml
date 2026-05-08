@@ -1,0 +1,148 @@
+testing_frameworks:
+- name: testing (stdlib)
+  module_path: null
+  category: unit
+  detection:
+    file_patterns:
+    - '*_test.go'
+    import_markers:
+    - '"testing"'
+    structural_markers:
+    - func Test
+    - func Benchmark
+    - func Example
+    - t.Run(
+    - t.Error(
+    - t.Fatal(
+  notes: 'Stdlib test framework. *_test.go naming convention is definitive. No external
+    dependency. All Go projects use this as baseline. go test ./... is the universal
+    runner.
+
+    '
+- name: testify
+  module_path: github.com/stretchr/testify
+  category: assertion
+  github_stars_2025: 24000+
+  detection:
+    go_mod_require:
+    - github.com/stretchr/testify
+    import_markers:
+    - '"github.com/stretchr/testify/assert"'
+    - '"github.com/stretchr/testify/require"'
+    - '"github.com/stretchr/testify/suite"'
+    - '"github.com/stretchr/testify/mock"'
+    structural_markers:
+    - assert.Equal(
+    - require.NoError(
+    - suite.Suite
+  notes: 'Most popular Go assertion library. assert (non-fatal) vs require (fatal
+    on failure) are distinct sub-packages. testify/mock signals mock-based testing
+    patterns.
+
+    '
+- name: gomock
+  module_path: go.uber.org/mock
+  module_path_alt: github.com/golang/mock
+  category: mocking
+  github_stars_2025: N/A (uber fork)
+  detection:
+    go_mod_require:
+    - go.uber.org/mock
+    - github.com/golang/mock
+    import_markers:
+    - '"go.uber.org/mock/gomock"'
+    - '"github.com/golang/mock/gomock"'
+    structural_markers:
+    - gomock.NewController(
+    - mock.EXPECT()
+    - //go:generate mockgen
+    - MockController
+  notes: 'Official Google mock framework, now maintained as go.uber.org/mock. Generated
+    mock files (mock_*.go) and //go:generate mockgen directives are strong detection
+    signals. Both module paths must be checked.
+
+    '
+- name: Ginkgo / Gomega
+  module_path_ginkgo: github.com/onsi/ginkgo/v2
+  module_path_gomega: github.com/onsi/gomega
+  category: bdd
+  github_stars_2025: 2300+ / 2200+
+  detection:
+    go_mod_require:
+    - github.com/onsi/ginkgo/v2
+    - github.com/onsi/gomega
+    import_markers:
+    - '"github.com/onsi/ginkgo/v2"'
+    - '"github.com/onsi/gomega"'
+    structural_markers:
+    - Describe(
+    - It(
+    - BeforeEach(
+    - Expect(
+    - RunSpecs(
+  notes: 'BDD-style framework popular in Kubernetes ecosystem. Ginkgo v2 is current.
+    Always co-occurs with Gomega matcher library. Describe/It nesting is a definitive
+    style signal.
+
+    '
+- name: gocheck
+  module_path: gopkg.in/check.v1
+  category: unit
+  detection:
+    go_mod_require:
+    - gopkg.in/check.v1
+    import_markers:
+    - '"gopkg.in/check.v1"'
+    structural_markers:
+    - check.Suite(
+    - check.TestingT(
+    - func (s *Suite)
+  notes: 'Legacy test framework with suite support. gopkg.in path is the detection
+    signal. Less common in new projects but present in older codebases.
+
+    '
+- name: go-cmp
+  module_path: github.com/google/go-cmp
+  category: comparison
+  detection:
+    go_mod_require:
+    - github.com/google/go-cmp
+    import_markers:
+    - '"github.com/google/go-cmp/cmp"'
+    structural_markers:
+    - cmp.Diff(
+    - cmp.Equal(
+    - cmpopts.
+  notes: 'Google''s deep comparison library. Used as testify alternative or complement
+    for struct diffs. cmp.Diff output in test failures is highly readable.
+
+    '
+- name: httptest (stdlib)
+  module_path: null
+  category: http_testing
+  detection:
+    import_markers:
+    - '"net/http/httptest"'
+    structural_markers:
+    - httptest.NewRecorder()
+    - httptest.NewServer(
+    - httptest.NewTLSServer(
+  notes: 'Stdlib HTTP testing utilities. httptest.NewRecorder() for handler unit tests;
+    httptest.NewServer() for integration tests with real HTTP. Stdlib — no go.mod
+    signal.
+
+    '
+- name: gotestsum
+  module_path: gotest.tools/gotestsum
+  category: test_runner
+  detection:
+    go_mod_require:
+    - gotest.tools/gotestsum
+    config_files:
+    - gotestsum.json
+    structural_markers:
+    - gotestsum --format
+  notes: 'Enhanced test runner with better output formatting and JUnit XML export.
+    Presence in go.mod or CI scripts signals structured test reporting requirements.
+
+    '

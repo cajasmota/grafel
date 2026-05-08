@@ -1,0 +1,18 @@
+orms_database:
+  name: SQLModel
+  pypi_package: sqlmodel
+  category: sql_orm
+  detection:
+    dependency_names:
+    - sqlmodel
+    model_file_patterns:
+    - '*/models.py'
+    - '*/schemas.py'
+    import_markers:
+    - from sqlmodel import SQLModel, Field
+    - SQLModel(table=True)
+    - from sqlmodel import Session
+  notes: 'Combines SQLAlchemy + Pydantic. table=True indicates a DB model vs schema-only
+    class. Built by FastAPI author — common in FastAPI projects.
+
+    '

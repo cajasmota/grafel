@@ -1,0 +1,22 @@
+# CONSUMES_API relationship enricher (MX-686)
+# Post-extraction pass that links HTTP client call sites to the target service's
+# endpoint entities within the same org. Runs after http_client_extractor and
+# route_extractor have completed for the org job.
+#
+# Cross-org linking is explicitly forbidden. Callers must pass only endpoints
+# belonging to the same org_id as the calls.
+
+name: consumes_api_enricher
+description: >-
+  Emit CONSUMES_API edges from http_client_extractor results to matching
+  endpoint entities in the same org. URL matching is path-only (scheme + host
+  stripped). Method must match exactly or the endpoint must use the "*" wildcard.
+module: memx_indexer.languages._engine.consumes_api_enricher
+function: enrich
+config:
+  # No configurable flags — matching behaviour is fully spec-defined.
+otel_span: indexer.consumes_api_enricher.enrich
+otel_attributes:
+  - org_id
+  - calls_evaluated
+  - edges_emitted

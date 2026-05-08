@@ -1,0 +1,623 @@
+detection:
+  primary_file_patterns:
+  - pattern: '*.proto'
+    confidence: definitive
+    notes: 'Core Protocol Buffer definition file. Presence of any .proto file is the
+      highest-confidence signal that a project uses protobuf. May appear at any directory
+      depth.
+
+      '
+  - pattern: buf.yaml
+    confidence: definitive
+    notes: 'Buf CLI workspace configuration file. Presence confirms the project uses
+      the Buf toolchain for protobuf management, linting, and breaking-change detection.
+      Usually at repo root or module root.
+
+      '
+  - pattern: buf.gen.yaml
+    confidence: definitive
+    notes: 'Buf code generation configuration. Specifies which plugins generate code
+      and their output directories. Presence confirms active code-generation pipeline
+      from .proto sources.
+
+      '
+  - pattern: buf.lock
+    confidence: high
+    notes: 'Buf dependency lockfile. Records exact versions of Buf Schema Registry
+      (BSR) module dependencies. Confirms BSR usage.
+
+      '
+  - pattern: buf.work.yaml
+    confidence: high
+    notes: 'Buf workspace file listing local module directories. Used in multi-module
+      monorepo layouts.
+
+      '
+  - pattern: protoc-gen-*.sh
+    confidence: medium
+    notes: 'Legacy protoc wrapper scripts. Presence signals older protoc-based workflow
+      rather than Buf. Often found alongside Makefile targets.
+
+      '
+  directory_patterns:
+  - pattern: proto/
+    confidence: high
+    notes: 'Conventional top-level directory for .proto source files. Widely used
+      across Go, Java, Python, and polyglot projects.
+
+      '
+  - pattern: protos/
+    confidence: high
+    notes: 'Plural variant of the proto/ convention. Common in Python-heavy stacks
+      and some microservice platforms.
+
+      '
+  - pattern: api/proto/
+    confidence: high
+    notes: 'API-layer proto layout. Common in Kratos, go-zero, and projects following
+      Google''s API Design Guide directory conventions.
+
+      '
+  - pattern: pb/
+    confidence: medium
+    notes: 'Shorthand directory sometimes used for generated .pb.go files alongside
+      or instead of proto sources.
+
+      '
+  - pattern: grpc/
+    confidence: low
+    notes: 'Occasionally used to house both .proto definitions and generated gRPC
+      stubs. Lower confidence — may contain only client code.
+
+      '
+  config_file_signals:
+  - file: .proto-lint.yaml
+    notes: Standalone protolint configuration file.
+  - file: .protolint.yaml
+    notes: Alternative protolint config filename.
+  - file: protoc.sh
+    notes: 'Legacy protoc invocation script. Signals manually managed code generation
+      without Buf.
+
+      '
+  - file: Makefile
+    grep_pattern: protoc|buf generate|buf build
+    notes: 'Makefile targets invoking protoc or buf. High-confidence signal of active
+      protobuf pipeline when pattern matches.
+
+      '
+extraction_targets:
+  service_blocks:
+    description: 'gRPC service definitions. Each service block declares one or more
+      RPC methods that become server and client stubs in generated code.
+
+      '
+    structural_pattern: service <Name> {
+    extraction:
+    - service_name: identifier after 'service' keyword
+    - rpc_methods:
+        pattern: rpc <MethodName>(<RequestType>) returns (<ResponseType>)
+        variants:
+        - rpc Method(Request) returns (Response);
+        - rpc Method(Request) returns (stream Response);
+        - rpc Method(stream Request) returns (Response);
+        - rpc Method(stream Request) returns (stream Response);
+        capture:
+        - method_name
+        - request_type
+        - response_type
+        - client_streaming: bool — 'stream' keyword on request
+        - server_streaming: bool — 'stream' keyword on response
+    - service_options:
+        pattern: option <key> = <value>;
+        common_options:
+        - (google.api.http)
+        - (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_tag)
+        - (buf.validate.*)
+    notes: 'Services with 0 RPC methods are valid but rare — skip as extraction targets
+      (placeholder or interface-only definitions).
+
+      '
+  message_blocks:
+    description: 'Protobuf message definitions. Map to data transfer objects (DTOs)
+      in generated code.
+
+      '
+    structural_pattern: message <Name> {
+    extraction:
+    - message_name: identifier after 'message' keyword
+    - fields:
+        pattern: <label> <type> <name> = <field_number>;
+        labels:
+        - optional
+        - repeated
+        - map (special syntax)
+        scalar_types:
+        - double
+        - float
+        - int32
+        - int64
+        - uint32
+        - uint64
+        - sint32
+        - sint64
+        - fixed32
+        - fixed64
+        - sfixed32
+        - sfixed64
+        - bool
+        - string
+        - bytes
+        complex_field_types:
+        - message references (qualified or unqualified)
+        - enum references
+        - well-known types (google.protobuf.*)
+        capture:
+        - field_name
+        - field_type
+        - field_number
+        - label (optional/repeated/map)
+        - field_options (e.g., json_name, deprecated, validate rules)
+    - reserved_ranges:
+        pattern: reserved <numbers|names>;
+        notes: Signals versioned schema evolution — extract for compatibility analysis.
+    - nested_messages:
+        notes: 'Messages defined inside other messages. Recursive extraction required.
+          Nesting depth > 3 is a complexity signal.
+
+          '
+    notes: 'Empty messages (zero fields, no reserved blocks) used as void request/response
+      types (e.g., google.protobuf.Empty substitutes) should be extracted but flagged
+      as import_only_equivalent = true.
+
+      '
+  enum_blocks:
+    description: 'Protobuf enum definitions. Map to integer constants in generated
+      code.
+
+      '
+    structural_pattern: enum <Name> {
+    extraction:
+    - enum_name: identifier after 'enum' keyword
+    - values:
+        pattern: <NAME> = <number>;
+        capture:
+        - value_name
+        - value_number
+        - value_options (e.g., deprecated = true)
+    - reserved_ranges:
+        pattern: reserved <numbers|names>;
+    proto3_constraint: 'First enum value MUST be 0 in proto3. Deviation is a lint
+      error. The zero-value name often encodes the ''unspecified'' sentinel (e.g.,
+      STATUS_UNSPECIFIED = 0).
+
+      '
+    notes: 'Enums nested inside messages should be extracted with fully qualified
+      path: MessageName.EnumName.
+
+      '
+  package_declarations:
+    description: 'Protobuf package namespace. Controls symbol scoping and generated
+      code package paths when language-specific options are absent.
+
+      '
+    structural_pattern: package <dotted.name>;
+    extraction:
+    - package_name: full dotted namespace string
+    - version_suffix:
+        pattern: .<v\d+[a-z]?>$
+        notes: 'Package versioning suffix (e.g., .v1, .v1beta1, .v2alpha). Presence
+          signals multi-version API schema management.
+
+          '
+    naming_conventions:
+    - company.product.service.version
+    - org.domain.subdomain
+    - reverse.domain.notation (Java-origin projects)
+    notes: 'Package declarations are present in nearly all .proto files. Missing package
+      is valid in proto3 but uncommon — signals internal/experimental usage.
+
+      '
+  option_statements:
+    description: 'File-level and element-level option declarations. Control code generation
+      output paths and metadata for various language plugins.
+
+      '
+    file_level_options:
+    - name: go_package
+      pattern: option go_package = "<import_path>";
+      extraction: full Go import path string
+      notes: 'Mandatory for generated Go code targeting modules. Format: "github.com/org/repo/gen/go/service/v1;servicev1"
+        Semicolon separates import path from package alias.
+
+        '
+    - name: java_package
+      pattern: option java_package = "<package>";
+      extraction: Java package string
+    - name: java_outer_classname
+      pattern: option java_outer_classname = "<Name>";
+      extraction: class name string
+    - name: java_multiple_files
+      pattern: option java_multiple_files = true;
+      notes: 'When true, each message/service generates a separate .java file. Strong
+        signal of production Java gRPC usage.
+
+        '
+    - name: csharp_namespace
+      pattern: option csharp_namespace = "<Namespace>";
+      extraction: C# namespace string
+    - name: ruby_package
+      pattern: option ruby_package = "<Package>";
+      extraction: Ruby module path string
+    - name: objc_class_prefix
+      pattern: option objc_class_prefix = "<PREFIX>";
+      extraction: prefix string
+    - name: php_namespace
+      pattern: option php_namespace = "<Namespace>";
+      extraction: PHP namespace string
+    - name: swift_prefix
+      pattern: option swift_prefix = "<PREFIX>";
+      extraction: Swift prefix string
+    - name: optimize_for
+      pattern: option optimize_for = SPEED|CODE_SIZE|LITE_RUNTIME;
+      values:
+      - SPEED
+      - CODE_SIZE
+      - LITE_RUNTIME
+      notes: 'LITE_RUNTIME signals mobile or embedded target — reduced runtime with
+        no reflection support.
+
+        '
+    - name: deprecated
+      pattern: option deprecated = true;
+      notes: File-level deprecation signal.
+    - name: (google.api.http)
+      pattern: option (google.api.http) = {
+      notes: 'HTTP/JSON transcoding annotation for gRPC-Gateway. Presence signals
+        dual HTTP+gRPC surface.
+
+        '
+    - name: (buf.validate.*)
+      pattern: option (buf.validate.*) = {
+      notes: 'Buf validation rules (protovalidate). Signals server-side input validation
+        via generated validators.
+
+        '
+toolchains:
+- name: Buf CLI
+  config_files:
+  - buf.yaml
+  - buf.gen.yaml
+  - buf.lock
+  - buf.work.yaml
+  detection:
+    config_file: buf.yaml
+    buf_gen_yaml: buf.gen.yaml
+    buf_lock: buf.lock
+  capabilities:
+  - lint
+  - breaking change detection
+  - code generation
+  - BSR module dependency management
+  - push/pull from Buf Schema Registry
+  plugins_detected_in_buf_gen_yaml:
+  - name: protoc-gen-go
+    output_signal: '*.pb.go files'
+  - name: protoc-gen-go-grpc
+    output_signal: '*_grpc.pb.go files'
+  - name: protoc-gen-grpc-gateway
+    output_signal: '*.pb.gw.go files'
+  - name: protoc-gen-openapiv2
+    output_signal: '*.swagger.json files'
+  - name: protoc-gen-validate
+    output_signal: '*.pb.validate.go files'
+  - name: protoc-gen-connect-go
+    output_signal: '*connect/*.connect.go files'
+  - name: protoc-gen-twirp
+    output_signal: '*.twirp.go files'
+  - name: protoc-gen-js
+    output_signal: '*_pb.js files'
+  - name: protoc-gen-grpc-web
+    output_signal: '*_grpc_web_pb.js files'
+  notes: 'Buf is the modern standard for protobuf toolchain management. buf.yaml at
+    repo root or subdirectory is definitive. The BSR (buf.build) hosts public and
+    private module registries.
+
+    '
+- name: protoc (Protocol Buffer Compiler)
+  config_files:
+  - protoc.sh
+  - Makefile (with protoc targets)
+  detection:
+    grep_patterns:
+    - 'protoc '
+    - --go_out=
+    - --go-grpc_out=
+    - --python_out=
+    - --java_out=
+    - --grpc_out=
+    notes: 'Legacy direct invocation. Often wrapped in Makefile or shell scripts.
+      Signals pre-Buf era or specific plugin requirements not yet supported by Buf
+      plugins.
+
+      '
+  common_flags:
+  - --proto_path / -I
+  - --go_out
+  - --go-grpc_out
+  - --python_out
+  - --grpc_python_out
+  - --java_out
+  - --grpc_java_out
+  - --js_out
+  - --grpc-web_out
+  - --twirp_out
+- name: gRPC Gateway
+  module_path: github.com/grpc-ecosystem/grpc-gateway/v2
+  config_signals:
+  - google.api.http option in .proto
+  - 'buf.gen.yaml entry: protoc-gen-grpc-gateway'
+  - '*.pb.gw.go generated files'
+  detection:
+    go_mod_require:
+    - github.com/grpc-ecosystem/grpc-gateway/v2
+    import_markers:
+    - '"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"'
+    structural_markers:
+    - runtime.NewServeMux()
+    - RegisterXxxHandlerFromEndpoint
+  notes: 'Generates reverse proxy translating HTTP/JSON to gRPC. Requires google.api.http
+    annotations in .proto files. Dual HTTP+gRPC surface is the dominant enterprise
+    deployment pattern.
+
+    '
+- name: connect-go
+  module_path: connectrpc.com/connect
+  buf_plugin: buf.build/connectrpc/go
+  detection:
+    go_mod_require:
+    - connectrpc.com/connect
+    import_markers:
+    - '"connectrpc.com/connect"'
+    structural_markers:
+    - connect.NewClient(
+    - connect.NewHandler(
+    - connect.Request[
+    - connect.Response[
+    buf_gen_yaml_plugin: protoc-gen-connect-go
+  notes: 'Modern gRPC/Connect protocol library from Buf. Supports gRPC, gRPC-Web,
+    and Connect protocols over HTTP/1.1 and HTTP/2. Generated files end in .connect.go
+    and live in a connect/ subdirectory by convention.
+
+    '
+- name: Twirp
+  module_path: github.com/twitchtv/twirp
+  detection:
+    go_mod_require:
+    - github.com/twitchtv/twirp
+    import_markers:
+    - '"github.com/twitchtv/twirp"'
+    structural_markers:
+    - twirp.ServerHTTP
+    - twirp.NewXxxServer(
+    - twirp.NewXxxProtobufClient(
+    - twirp.NewXxxJSONClient(
+    generated_file_pattern: '*.twirp.go'
+  notes: 'Twitch''s HTTP RPC framework. Uses .proto for IDL but generates simpler
+    HTTP/1.1 endpoints instead of full gRPC. Recognizable by *.twirp.go generated
+    files and twirp package import.
+
+    '
+- name: grpc-web
+  npm_package: grpc-web
+  buf_plugin: buf.build/grpc/web
+  detection:
+    npm_dependency: grpc-web
+    generated_file_patterns:
+    - '*_pb.js'
+    - '*_grpc_web_pb.js'
+    - '*_pb.d.ts'
+    structural_markers:
+    - GrpcWebClientBase
+    - grpc.web.GrpcWebClientBase
+    - AbstractClientBase
+  notes: 'Browser-side gRPC over HTTP/1.1. Generated *_grpc_web_pb.js files are the
+    definitive signal. Often paired with Envoy proxy for HTTP/2 translation.
+
+    '
+package_patterns:
+  company_service_version:
+    description: 'Industry-standard naming convention for commercial and open-source
+      APIs following Google API Design Guide principles.
+
+      '
+    pattern: <company>.<product>.<service>.<version>
+    examples:
+    - acme.payments.billing.v1
+    - myco.platform.auth.v2beta1
+    - example.catalog.inventory.v1alpha
+    version_suffixes:
+      stable:
+      - v1
+      - v2
+      - v3
+      preview:
+      - v1alpha
+      - v1beta1
+      - v1beta2
+      - v2alpha
+      - v2beta1
+      notes: 'Alphabetical suffixes (alpha, beta) signal unstable APIs. Stable versions
+        (v1+) have strong backwards-compatibility guarantees. Buf breaking-change
+        detection enforces these.
+
+        '
+  well_known_types:
+    description: 'google.protobuf.* standard library types bundled with protobuf.
+      Import from google/protobuf/*.proto.
+
+      '
+    types:
+    - name: google.protobuf.Timestamp
+      import: google/protobuf/timestamp.proto
+      notes: UTC timestamp as seconds + nanos since Unix epoch.
+    - name: google.protobuf.Duration
+      import: google/protobuf/duration.proto
+      notes: Signed duration in seconds + nanos.
+    - name: google.protobuf.Any
+      import: google/protobuf/any.proto
+      notes: 'Arbitrary serialized message with type URL. Signals dynamic dispatch
+        — high-complexity indicator.
+
+        '
+    - name: google.protobuf.Struct
+      import: google/protobuf/struct.proto
+      notes: Arbitrary JSON-like value. Signals schema-flexible fields.
+    - name: google.protobuf.Value
+      import: google/protobuf/struct.proto
+      notes: Single JSON value (null, bool, number, string, list, struct).
+    - name: google.protobuf.Empty
+      import: google/protobuf/empty.proto
+      notes: 'Void request or response type. Service with many Empty responses suggests
+        event-trigger or fire-and-forget RPC patterns.
+
+        '
+    - name: google.protobuf.FieldMask
+      import: google/protobuf/field_mask.proto
+      notes: 'Partial update mask. Presence signals Patch/partial-update RPCs — common
+        in resource-oriented APIs.
+
+        '
+    - name: google.protobuf.StringValue
+      import: google/protobuf/wrappers.proto
+      notes: Nullable scalar wrapper. Signals proto2-compat or nullable fields.
+    - name: google.protobuf.Int32Value
+      import: google/protobuf/wrappers.proto
+      notes: Nullable int32 wrapper.
+    - name: google.protobuf.BoolValue
+      import: google/protobuf/wrappers.proto
+      notes: Nullable bool wrapper.
+    - name: google.protobuf.BytesValue
+      import: google/protobuf/wrappers.proto
+      notes: Nullable bytes wrapper.
+    - name: google.protobuf.ListValue
+      import: google/protobuf/struct.proto
+      notes: List of google.protobuf.Value.
+    - name: google.protobuf.DoubleValue
+      import: google/protobuf/wrappers.proto
+      notes: Nullable double wrapper.
+  google_api_types:
+    description: 'google.api.* and other googleapis annotations commonly imported
+      alongside .proto definitions.
+
+      '
+    common_imports:
+    - google/api/annotations.proto
+    - google/api/http.proto
+    - google/api/field_behavior.proto
+    - google/api/resource.proto
+    - google/api/client.proto
+    - google/api/error_details.proto
+    notes: 'Presence of google/api/ imports signals REST-transcoding-ready (gRPC-Gateway)
+      or AIP-compliant API design.
+
+      '
+  buf_validate_types:
+    description: 'buf.validate (protovalidate) validation annotations.
+
+      '
+    import: buf/validate/validate.proto
+    common_options:
+    - (buf.validate.field).string.min_len
+    - (buf.validate.field).string.max_len
+    - (buf.validate.field).string.pattern
+    - (buf.validate.field).int32.gte
+    - (buf.validate.field).int32.lte
+    - (buf.validate.field).repeated.min_items
+    - (buf.validate.message).required
+    notes: 'Successor to protoc-gen-validate (PGV). Presence signals server-side validation
+      layer generated from .proto annotations.
+
+      '
+domain_roots:
+- layout: single_module_proto_root
+  description: 'Single Buf module at repo root. buf.yaml lives at repo root, .proto
+    files in proto/ subdirectory or directly at root.
+
+    '
+  indicators:
+  - buf.yaml at repo root
+  - proto/ directory at repo root
+  - buf.gen.yaml at repo root
+  typical_structure: "/\n  buf.yaml\n  buf.gen.yaml\n  buf.lock\n  proto/\n    acme/\n\
+    \      v1/\n        service.proto\n        types.proto\n  gen/\n    go/\n    \
+    \  acme/\n        v1/\n          service.pb.go\n          service_grpc.pb.go\n"
+  notes: 'Most common layout for dedicated protobuf repositories (e.g., <org>/proto
+    or <org>/<service>-proto repos).
+
+    '
+- layout: buf_workspace_monorepo
+  description: 'Multi-module Buf workspace. buf.work.yaml at root lists multiple module
+    directories. Each module has its own buf.yaml.
+
+    '
+  indicators:
+  - buf.work.yaml at repo root
+  - multiple subdirectories each containing buf.yaml
+  typical_structure: "/\n  buf.work.yaml\n  services/\n    auth/\n      buf.yaml\n\
+    \      proto/\n        auth/v1/*.proto\n    payments/\n      buf.yaml\n      proto/\n\
+    \        payments/v1/*.proto\n"
+  notes: 'Enterprise-scale protobuf monorepos. buf.work.yaml is the root entry point.
+    Each service module can have independent versioning and breaking-change policies.
+
+    '
+- layout: proto_alongside_service
+  description: '.proto files colocated with the service implementation. Common in
+    Go and Python microservice repos where the proto definitions and the generated
+    code live in the same repo as the server.
+
+    '
+  indicators:
+  - proto/ or api/proto/ directory inside a service repo
+  - '*.pb.go or *_pb2.py files adjacent to service code'
+  - go.mod or requirements.txt alongside buf.yaml or protoc scripts
+  typical_structure: "/\n  api/\n    proto/\n      service/v1/service.proto\n    gen/\n\
+    \      go/\n        service/v1/service.pb.go\n  cmd/server/main.go\n  internal/handler/handler.go\n"
+  notes: 'Detected when buf.yaml or *.proto appears inside a repo that also has application
+    source code. Indexer should extract both the proto-layer entities and the service-layer
+    entities independently.
+
+    '
+- layout: googleapis_style
+  description: 'API directory layout following Google''s internal API conventions.
+    Used by Kratos, go-zero, and teams following AIP (API Improvement Proposals).
+
+    '
+  indicators:
+  - api/ directory with nested package-versioned subdirectories
+  - google/api/*.proto imports
+  - (google.api.http) option annotations
+  - buf.yaml with google.api lint rules
+  typical_structure: "/\n  api/\n    acme/\n      billing/\n        v1/\n        \
+    \  billing.proto\n        v2alpha/\n          billing.proto\n  buf.yaml\n  third_party/\n\
+    \    google/\n      api/\n        annotations.proto\n        http.proto\n"
+  notes: 'Presence of third_party/google/api/ alongside .proto files is a strong signal
+    of this layout. Import path linting rules often enforce package-directory alignment.
+
+    '
+- layout: protobuf_registry_module
+  description: 'Repository published to the Buf Schema Registry (BSR) as a shareable
+    module. buf.yaml contains a ''name'' field with the BSR module identifier.
+
+    '
+  indicators:
+  - buf.yaml with 'name: buf.build/<owner>/<module>'
+  - No or minimal application code — pure schema repo
+  typical_structure: "/\n  buf.yaml          # name: buf.build/acme/petapis\n  buf.lock\n\
+    \  acme/\n    petapis/\n      v1/\n        pet.proto\n        pet_service.proto\n\
+    \  README.md\n"
+  notes: 'BSR module repos are pure schema repositories. The ''name'' field in buf.yaml
+    with ''buf.build/'' prefix is the definitive signal. These are high-value extraction
+    targets as they define shared API contracts used across many consumers.
+
+    '

@@ -1,0 +1,90 @@
+complexity_signals:
+  deeply_nested_query_types:
+    description: 'Object types whose fields return other Object types which themselves
+      return Object types, creating deep traversal paths. Each level of nesting multiplies
+      resolver execution count.
+
+      '
+    detection:
+    - Field return type chains > 3 levels deep in schema graph
+    - Operation documents selecting fields at depth > 5
+    - Types with > 15 fields of non-scalar type
+    examples:
+    - User.organization.billing.subscription.plan.features
+    - Order.lineItems.product.category.subcategory.attributes
+    indexing_signal: 'Flag as complexity_signal: nested_depth when analyzing schema.
+      Record maximum traversal depth from root Query type.
+
+      '
+  resolver_chains:
+    description: 'Resolver dependencies where a field resolver depends on the parent
+      resolver result, and the parent depends on its parent, creating sequential execution
+      chains. Problematic with N+1 patterns.
+
+      '
+    detection:
+    - Types with field resolvers that accept parent argument
+    - Resolver files with nested callback or async/await chains
+    - Apollo Server: resolver functions with (parent, args, context) where parent
+        is used
+    - Absinthe: resolve fn/3 with source parameter dependencies
+    notes: 'Resolver chains > 4 levels are a complexity signal. Document the chain
+      depth in extraction metadata.
+
+      '
+  n_plus_1_query_patterns:
+    description: 'Pattern where fetching a list of N parent objects triggers N additional
+      database queries for each child field. The canonical GraphQL performance problem.
+
+      '
+    detection:
+    - 'List-returning fields (return type: [Type!]) whose type has relational fields
+      (foreign key equivalents)'
+    - Absence of DataLoader / batch loader patterns in resolvers
+    - Absence of dataloader / graphql-batch / absinthe-dataloader deps
+    structural_signals:
+      javascript:
+      - '"new DataLoader(" absent in resolver files'
+      - '"context.loaders" absent when list fields exist'
+      elixir:
+      - '"dataloader" dep absent in mix.exs'
+      - '"Dataloader.Ecto.new" absent in schema.ex context'
+      go:
+      - '"github.com/graph-gophers/dataloader" absent in go.mod'
+    notes: 'N+1 detection is heuristic — flag as potential_n_plus_1 when list fields
+      exist without observable DataLoader usage. Do not mark as definitive.
+
+      '
+  union_type_sprawl:
+    description: 'Schema anti-pattern where many small, single-use union types are
+      created instead of using interfaces or restructuring the schema. Leads to excessive
+      __typename checks in client code.
+
+      '
+    detection:
+    - More than 10 union types in a schema
+    - Union types with only 1-2 member types (degenerate unions)
+    - Union member types that appear in only one union
+    threshold:
+      warn: '> 5 union types total'
+      flag: '> 10 union types total or any union with 1 member'
+    notes: 'Single-member unions are always a schema design mistake — they provide
+      no polymorphism benefit. Flag definitively.
+
+      '
+  subscription_complexity:
+    description: 'Subscriptions with complex filtering, authorization, or fan-out
+      patterns. Subscriptions are stateful server-side connections that scale differently
+      than queries/mutations.
+
+      '
+    detection:
+    - Subscription fields with > 3 arguments (complex filtering)
+    - Subscriptions returning object types with > 10 fields (large payloads)
+    - Multiple subscription types in a single schema (> 5)
+    - Subscriptions on high-cardinality event streams (e.g., onAnyEvent)
+    notes: 'Flag schemas with > 5 subscription fields as subscription_complexity.
+      Flag individual subscriptions with > 3 filter args or large payload types as
+      high_subscription_fan_out.
+
+      '

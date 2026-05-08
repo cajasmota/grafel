@@ -1,0 +1,49 @@
+# Source: https://github.com/kubernetes/website/blob/main/content/en/examples/application/deployment.yaml | License: Apache-2.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: production
+  labels:
+    app: nginx
+    tier: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      initContainers:
+        - name: init-config
+          image: busybox:latest
+      containers:
+        - name: nginx
+          image: nginx:1.14.2
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+          env:
+            - name: NGINX_PORT
+              value: "80"
+            - name: LOG_LEVEL
+              value: "info"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: config-vol
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: config-vol
+          configMap:
+            name: nginx-config

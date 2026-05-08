@@ -1,0 +1,8 @@
+frameworks: frameworks/ [net_http_stdlib, gin, echo, fiber, chi, gorilla_mux, beego,
+  buffalo, iris, revel, kratos, go_zero, hertz, fasthttp, gomobile, fyne]
+build_tools: build_tools.yaml
+testing_frameworks: test_patterns.yaml
+database_libraries: orms/ [gorm, sqlx, ent, sqlc, bun, pgx, mongo_driver, go_redis]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml

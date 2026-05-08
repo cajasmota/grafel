@@ -1,0 +1,15 @@
+frameworks:
+  name: just
+  category: task_runner
+  detection_signals:
+    config_files:
+    - justfile
+    - Justfile
+    - .justfile
+    shebang_patterns:
+    - '#!/usr/bin/env just'
+    content_patterns:
+    - '@set '
+    - set shell
+    - 'alias '
+  notes: Modern Make replacement. justfile is the definitive signal.

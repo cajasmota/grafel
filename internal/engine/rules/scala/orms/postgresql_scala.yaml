@@ -1,0 +1,34 @@
+orms_database:
+  name: PostgreSQL Scala Drivers (doobie, Slick)
+  category: postgres_driver
+  sbt_dependencies:
+    - '"org.tpolecat" %% "doobie-postgres" % "1.0.0"'
+    - '"com.typesafe.slick" %% "slick-pg" % "0.21.0"'
+  detection:
+    import_patterns:
+      - doobie.postgres
+      - doobie.implicits
+      - slick.jdbc.PostgresProfile
+      - com.github.tminglei.slickpg
+    code_patterns:
+      - Transactor.of.apply(
+      - Transactor.fromDriverManager(
+      - Database.forURL(
+  notes: >
+    doobie is a functional JDBC layer for Scala, with doobie-postgres adding
+    PostgreSQL-specific support. Slick with slick-pg adds PostgreSQL type
+    extensions. Both use Transactor / Database.forURL for connection management.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: doobie Transactor / Slick Database
+      connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

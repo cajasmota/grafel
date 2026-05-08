@@ -1,0 +1,29 @@
+frameworks:
+  name: WinForms
+  category: desktop_windows
+  nuget_package: null
+  sdk_attribute: Microsoft.NET.Sdk.WindowsDesktop
+  adoption_rank_2025: 9
+  detection:
+    csproj_sdk:
+    - Sdk="Microsoft.NET.Sdk.WindowsDesktop"
+    csproj_properties:
+    - <UseWindowsForms>true</UseWindowsForms>
+    - <TargetFramework>net8.0-windows</TargetFramework>
+    config_files:
+    - '*.Designer.cs'
+    - '*.resx'
+    - Program.cs
+    code_patterns:
+    - Application.Run(new
+    - Form
+    - InitializeComponent()
+    - this.Controls.Add(
+    - System.Windows.Forms
+    - Button button1
+    - TextBox textBox1
+    notes: '<UseWindowsForms>true</UseWindowsForms> is the modern SDK signal. *.Designer.cs
+      files are generated WinForms code — skip for indexing. Legacy projects have
+      pre-SDK .csproj with System.Windows.Forms reference.
+
+      '

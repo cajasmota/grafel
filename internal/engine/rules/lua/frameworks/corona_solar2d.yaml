@@ -1,0 +1,48 @@
+frameworks:
+  name: Corona / Solar2D
+  category: game_engine_mobile
+  github_stars_2025: 2100+
+  detection:
+    config_files:
+    - main.lua
+    - build.settings
+    - config.lua
+    - AndroidManifest.xml
+    - '*.mobileprovision'
+    import_markers:
+    - display.newText
+    - display.newRect
+    - display.newImage
+    - display.newImageRect
+    - display.newGroup
+    - display.newCircle
+    - display.contentWidth
+    - display.contentHeight
+    - native.showAlert
+    - native.showPopup
+    - composer.gotoScene
+    - composer.newScene
+    - composer.getScene
+    - physics.start
+    - physics.addBody
+    - Runtime:addEventListener
+    - timer.performWithDelay
+    - transition.to
+    - network.request
+    - system.getInfo
+    - system.pathForFile
+    structural_markers:
+    - main.lua
+    - build.settings
+    - config.lua
+    - scenes/
+    - images/
+    - sounds/
+    - fonts/
+  notes: 'Solar2D (formerly Corona SDK) is a mobile/desktop game engine for Lua. Primary
+    signals: build.settings (platform deployment configuration) + display.* API calls
+    + composer scene management. main.lua is always the entry point. Distinguishable
+    from LOVE2D by build.settings presence and display.* API surface vs love.* API
+    surface.
+
+    '

@@ -1,0 +1,36 @@
+frameworks:
+  name: Reitit
+  clojars_artifact: metosin/reitit
+  category: web_routing
+  github_stars_2025: 1400+
+  detection:
+    config_files:
+    - project.clj
+    - deps.edn
+    lein_deps:
+    - metosin/reitit
+    - metosin/reitit-ring
+    - metosin/reitit-frontend
+    - metosin/reitit-swagger
+    - metosin/malli
+    deps_edn_coords:
+    - metosin/reitit
+    - metosin/reitit-ring
+    import_markers:
+    - reitit.ring
+    - reitit.frontend
+    - reitit.frontend.easy
+    - reitit.coercion.malli
+    - reitit.coercion.spec
+    - (ring/router
+    - (ring/ring-handler
+    - (reitit.ring/router
+    - (:require [reitit.
+    structural_markers:
+    - src/
+  notes: 'Reitit is a fast data-driven router. Detected by metosin/reitit dep + (ring/router
+    [...]) or (reitit.ring/router [...]) call in source. Reitit routes are data structures
+    (vectors), not macros. Often used with Malli for schema coercion. Common in Luminus
+    apps and standalone Clojure APIs.
+
+    '

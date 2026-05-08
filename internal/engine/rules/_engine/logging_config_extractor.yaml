@@ -1,0 +1,19 @@
+# Logging config extractor (MX-709)
+# Cross-language extractor for logging configuration patterns.
+# Registered as a custom extractor that fires on Go (slog, standard log),
+# Python (logging.getLogger, logging.basicConfig), Node.js (winston, pino),
+# .NET (NLog, Serilog), and XML config files (log4j.xml, logback.xml,
+# NLog.config).
+#
+# File gate is internal to the extractor (applies_to checks filename and source
+# signals). This YAML exists to document the extractor's registration entry.
+
+name: logging_config
+description: >-
+  Detect logging configuration patterns and emit SCOPE.Pattern entities with
+  kind=logging_config. Supported frameworks: Go slog / standard log, Python
+  logging module, Node.js winston / pino, .NET NLog / Serilog, log4j.xml /
+  logback.xml config files.
+module: memx_indexer.pattern_detectors.logging_config_extractor
+function: detect
+applies_to_function: applies_to

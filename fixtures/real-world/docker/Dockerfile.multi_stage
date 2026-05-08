@@ -1,0 +1,69 @@
+# Source: https://github.com/docker/getting-started-app (synthetic based on real production multi-stage Dockerfile patterns) | License: Apache-2.0
+
+# ============================================================
+# Stage 1: Go builder
+# ============================================================
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Build arguments for private module access
+ARG GO_MODULES_TOKEN
+RUN git config --global url."https://${GO_MODULES_TOKEN}:x-oauth-basic@github.com/".insteadOf \
+    "https://github.com/"
+
+# Cache dependencies first (Docker layer cache optimization)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the binary
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s \
+        -X 'main.Version=${VERSION}' \
+        -X 'main.Commit=${COMMIT}' \
+        -X 'main.BuildTime=${BUILD_TIME}'" \
+    -o /build/server \
+    ./cmd/server
+
+# ============================================================
+# Stage 2: Test runner (optional — skip in prod with --target)
+# ============================================================
+FROM builder AS tester
+
+RUN go test -race -count=1 ./...
+
+# ============================================================
+# Stage 3: Production image (minimal attack surface)
+# ============================================================
+FROM scratch AS production
+
+# Copy timezone data and CA certs from builder
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy the binary
+COPY --from=builder /build/server /server
+
+# Non-root user (numeric UID for Kubernetes SecurityContext)
+USER 65534:65534
+
+# Expose the gRPC port
+EXPOSE 50051
+EXPOSE 8080
+
+# Health check (requires curl or wget — use distroless if needed)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/server", "-health"]
+
+ENTRYPOINT ["/server"]
+CMD ["--addr", ":8080", "--grpc-addr", ":50051"]

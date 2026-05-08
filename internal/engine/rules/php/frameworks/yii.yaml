@@ -1,0 +1,44 @@
+frameworks:
+  name: Yii
+  package_name: yiisoft/yii2
+  category: web_full_stack
+  github_stars_2025: 14200+
+  detection:
+    config_files:
+    - composer.json
+    - config/web.php
+    - config/console.php
+    - config/db.php
+    - config/params.php
+    - yii
+    - web/index.php
+    - backend/config/
+    - frontend/config/
+    composer_deps:
+    - yiisoft/yii2
+    - yiisoft/yii2-app-basic
+    - yiisoft/yii2-app-advanced
+    - yiisoft/yii2-gii
+    - yiisoft/yii2-debug
+    - yiisoft/yii2-redis
+    - yiisoft/yii2-queue
+    import_markers:
+    - use yii\
+    - extends Controller
+    - extends ActiveRecord
+    - 'Yii::'
+    - '\Yii::'
+    - yii\base\
+    - yii\db\
+    structural_markers:
+    - models/
+    - views/
+    - controllers/
+    - config/web.php
+    - yii
+    - runtime/
+  notes: 'yii CLI file + config/web.php is definitive for Yii2 basic template. Advanced
+    template has backend/ and frontend/ directories with nested config. Yii3 (yiisoft/yii-*)
+    uses different package names — distinct detection path.
+
+    '

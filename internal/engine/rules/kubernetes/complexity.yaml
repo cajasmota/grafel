@@ -1,0 +1,134 @@
+complexity_signals:
+- category: many_resource_manifest
+  description: 'Single YAML files containing 10+ Kubernetes resource documents separated
+    by --- delimiters. Monolithic manifest files are harder to navigate and review
+    than per-resource files.
+
+    '
+  patterns:
+  - ^---$
+  thresholds:
+    high: '>= 10 resource documents in a single file'
+    medium: 5-9 resource documents in a single file
+  indexing_note: 'Flag files with 10+ YAML documents as monolithic manifests. The
+    resource count is a complexity proxy — high counts indicate generated output or
+    poor organization.
+
+    '
+- category: complex_helm_templates
+  description: 'Helm templates with heavy use of control flow, nested helpers, and
+    dynamic evaluation. Indicates charts requiring deep Helm knowledge to understand
+    and modify safely.
+
+    '
+  patterns:
+  - '{{- range'
+  - '{{- if'
+  - '{{ include '
+  - '{{ tpl '
+  - '{{ required '
+  - toYaml
+  - toJson
+  - fromYaml
+  - fromJson
+  - deepCopy
+  - mustMerge
+  thresholds:
+    high: '>= 5 distinct control flow patterns in a single template file'
+    medium: 3-4 distinct control flow patterns
+  indexing_note: 'Count distinct Helm control flow directives per template file. Files
+    using tpl for dynamic evaluation and range with nested conditionals are the hardest
+    to validate.
+
+    '
+- category: deep_kustomize_overlay_chains
+  description: 'Kustomize overlay chains with 3+ levels of composition. Each level
+    of overlay adds rendering complexity and makes it harder to reason about the final
+    rendered manifest.
+
+    '
+  patterns:
+  - 'resources: ["../../base"]'
+  - 'resources: ["../../../base"]'
+  detection_approach: 'Count the depth of relative path references in kustomization.yaml
+    resources: fields. ../../ = 3 levels (overlay → env → base). ../../../ = 4 levels.
+    Also detect by finding kustomization.yaml that references another directory containing
+    its own kustomization.yaml which in turn references another directory.
+
+    '
+  indexing_note: 'Build the full overlay chain graph. Flag chains with 3+ levels as
+    high complexity. Remote base references (github.com/...) add network dependency
+    to rendering — flag separately.
+
+    '
+- category: crd_definitions
+  description: 'Custom Resource Definition (CRD) YAML files. CRDs extend the Kubernetes
+    API with custom resource types. High complexity signal — indicates the project
+    is extending Kubernetes itself (operator pattern).
+
+    '
+  detection:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+  extraction_fields:
+  - spec.group
+  - spec.names.kind
+  - spec.names.plural
+  - spec.scope
+  - spec.versions[].name
+  - spec.versions[].schema.openAPIV3Schema
+  indexing_note: 'CRD presence signals an operator or platform engineering project.
+    Extract the CRD group and kind for cross-referencing with instances of that custom
+    resource type elsewhere in the codebase. The openAPIV3Schema defines the validation
+    contract — index top-level property names as the custom resource''s configuration
+    surface.
+
+    '
+- category: pod_security_contexts
+  description: 'Security context configurations on pods and containers. Presence of
+    privileged: true, hostPID: true, hostNetwork: true, or runAsRoot patterns are
+    security findings. Presence of proper security hardening (runAsNonRoot, readOnlyRootFilesystem,
+    drop ALL capabilities) signals security-mature manifests.
+
+    '
+  security_risk_patterns:
+  - 'privileged: true'
+  - 'hostPID: true'
+  - 'hostNetwork: true'
+  - 'hostIPC: true'
+  - 'allowPrivilegeEscalation: true'
+  - 'capabilities:
+
+    .*add: \["NET_ADMIN"'
+  - 'runAsUser: 0'
+  security_good_patterns:
+  - 'runAsNonRoot: true'
+  - 'readOnlyRootFilesystem: true'
+  - 'allowPrivilegeEscalation: false'
+  - 'capabilities:
+
+    .*drop: \["ALL"'
+  - 'seccompProfile:'
+  indexing_note: 'Flag security risk patterns as findings. Presence of all good patterns
+    signals a security-hardened workload — positive metadata for compliance use cases.
+
+    '
+- category: image_tag_patterns
+  description: 'Container image tag hygiene signals. Pinned digests are the most reproducible.
+    Mutable tags (latest, main, develop) signal deployment reliability risks.
+
+    '
+  risk_patterns:
+  - 'image: <name>:latest'
+  - 'image: <name>:main'
+  - 'image: <name>:develop'
+  - 'image: <name>:master'
+  - 'image: <name>'
+  good_patterns:
+  - 'image: <name>:<semver>'
+  - 'image: <name>@sha256:<hash>'
+  indexing_note: 'Extract image references with tags. Flag mutable tags as deployment
+    risk metadata. SHA256 digest-pinned images are the gold standard — note positively
+    for security and reproducibility assessment.
+
+    '

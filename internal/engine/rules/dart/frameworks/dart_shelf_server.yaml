@@ -1,0 +1,24 @@
+frameworks:
+  name: Dart Shelf (server)
+  pubspec_dependency: shelf
+  category: server_web
+  pub_dev_url: https://pub.dev/packages/shelf
+  github_stars_2025: 850+
+  detection:
+    pubspec_signals:
+    - 'shelf:'
+    - 'shelf_router:'
+    - 'shelf_static:'
+    code_patterns:
+    - import 'package:shelf/shelf.dart'
+    - import 'package:shelf_router/shelf_router.dart'
+    - shelf.Response(
+    - shelf.Request
+    - Handler
+    - Pipeline()
+    - serve(handler,
+    notes: 'Dart''s official server-side HTTP middleware system. No Flutter SDK dependency
+      — presence of shelf: without flutter: sdk: flutter signals a pure Dart server
+      project. shelf_router and shelf_static are common companion packages.
+
+      '

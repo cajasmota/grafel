@@ -1,0 +1,68 @@
+skip_patterns:
+- pattern: '*_test.go'
+  reason: 'Test files handled separately by scope classifier. AST-only extraction,
+    no LLM enrichment per MX-396 spec.
+
+    '
+  scope_tag: test
+  action: scope=test, skip LLM enrichment
+- pattern: '*.pb.go'
+  reason: 'Protobuf generated files. Contains generated structs, methods, and gRPC
+    service stubs. No human-authored logic to index.
+
+    '
+  action: skip entirely
+- pattern: '*.pb.gw.go'
+  reason: 'gRPC-Gateway generated reverse proxy files. Auto-generated from proto definitions
+    with grpc-gateway plugin.
+
+    '
+  action: skip entirely
+- pattern: mock_*.go
+  reason: 'gomock/testify generated mock files. Auto-generated stubs with EXPECT()
+    recorder pattern. No business logic.
+
+    '
+  action: skip entirely
+- pattern: '*_mock.go'
+  reason: 'Alternative mock file naming convention. Same rationale as mock_*.go —
+    generated stubs.
+
+    '
+  action: skip entirely
+- pattern: wire_gen.go
+  reason: 'Google Wire dependency injection generated file. Auto-generated provider
+    initialization code. No authored logic.
+
+    '
+  action: skip entirely
+- pattern: '*_string.go'
+  reason: 'go generate stringer output (golang.org/x/tools/cmd/stringer). Contains
+    auto-generated String() methods for enum types.
+
+    '
+  action: skip entirely
+- pattern: zz_generated*.go
+  reason: 'Controller-gen and other code generators use zz_generated prefix by convention.
+    Common in Kubernetes operator codebases.
+
+    '
+  action: skip entirely
+- pattern: bindata.go
+  reason: 'go-bindata / go-rice embedded asset files. Binary content encoded as Go
+    literals. No indexable logic.
+
+    '
+  action: skip entirely
+- pattern: vendor/**
+  reason: 'Vendored dependencies directory. Third-party code, not the project''s own
+    logic. go mod vendor pattern.
+
+    '
+  action: skip entirely
+- pattern: testdata/**
+  reason: 'Test fixture files directory. Not executable code — sample inputs, golden
+    files, test configs.
+
+    '
+  action: skip entirely

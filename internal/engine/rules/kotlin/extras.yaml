@@ -1,0 +1,69 @@
+domain_root_conventions:
+- layout: gradle_standard_jvm
+  description: Gradle standard layout for JVM/server Kotlin projects
+  source_root: src/main/kotlin/
+  test_root: src/test/kotlin/
+  resource_root: src/main/resources/
+  signals:
+  - src/main/kotlin/ directory exists
+  - build.gradle.kts at project root
+- layout: gradle_android
+  description: Android project layout
+  source_root: app/src/main/kotlin/
+  test_root: app/src/test/kotlin/
+  android_test_root: app/src/androidTest/kotlin/
+  manifest: app/src/main/AndroidManifest.xml
+  signals:
+  - AndroidManifest.xml in app/src/main/
+  - app/ module directory
+  - build.gradle.kts with android { } block
+  disambiguation: 'Android project has app/ module with AndroidManifest.xml. Kotlin
+    JVM/server project has no app/ directory and no AndroidManifest. Both use src/main/kotlin/
+    layout internally.
+
+    '
+- layout: kotlin_multiplatform
+  description: KMP/KMM source set layout
+  source_roots:
+    commonMain: src/commonMain/kotlin/
+    androidMain: src/androidMain/kotlin/
+    iosMain: src/iosMain/kotlin/
+    jvmMain: src/jvmMain/kotlin/
+    jsMain: src/jsMain/kotlin/
+    desktopMain: src/desktopMain/kotlin/
+    nativeMain: src/nativeMain/kotlin/
+  test_roots:
+    commonTest: src/commonTest/kotlin/
+    androidTest: src/androidTest/kotlin/
+    iosTest: src/iosTest/kotlin/
+  signals:
+  - kotlin("multiplatform") plugin in build.gradle.kts
+  - commonMain/kotlin/ directory
+  - expect/actual declarations
+  disambiguation: 'KMP projects have multiple source set dirs at the same level. Presence
+    of commonMain/ + at least one platform dir (androidMain/, iosMain/, etc.) is definitive
+    KMP layout.
+
+    '
+- layout: gradle_multi_module
+  description: Multi-module Gradle project
+  signals:
+  - settings.gradle.kts with include() for multiple modules
+  - Multiple build.gradle.kts at different directory levels
+  - Separate :core, :feature, :app, :shared modules
+  notes: 'Modern Android and KMP projects use multi-module layout. settings.gradle.kts
+    include(":app", ":core", ":shared") is signal. Domain root is the module root,
+    not the repo root.
+
+    '
+- layout: ktor_application
+  description: Ktor server project layout
+  source_root: src/main/kotlin/
+  typical_structure:
+  - Application.kt (entry point)
+  - plugins/ (Ktor plugin configuration)
+  - routes/ (routing handlers)
+  - models/ (data classes)
+  signals:
+  - Application.kt with fun Application.module()
+  - io.ktor:ktor-server-* dependencies

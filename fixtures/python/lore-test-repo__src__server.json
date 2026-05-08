@@ -1,0 +1,41 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/lore-test-repo/src/server.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "lifespan",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 20,
+      "end_line": 24,
+      "language": "python",
+      "signature": "def lifespan(app: FastAPI)",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "health_check",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 37,
+      "end_line": 42,
+      "language": "python",
+      "signature": "def health_check() -> JSONResponse",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "issue_token",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 46,
+      "end_line": 53,
+      "language": "python",
+      "signature": "def issue_token(client_id: str, client_secret: str) -> JSONResponse",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

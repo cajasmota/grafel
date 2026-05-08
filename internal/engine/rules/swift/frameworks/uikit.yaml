@@ -1,0 +1,35 @@
+frameworks:
+  name: UIKit
+  category: mobile_ui_imperative
+  spm_coordinates:
+  - N/A — bundled with Xcode / Apple SDK
+  detection:
+    config_files:
+    - '*.xcodeproj/'
+    - '*.storyboard'
+    - '*.xib'
+    - Main.storyboard
+    - LaunchScreen.storyboard
+    - Info.plist (UIMainStoryboardFile key)
+    build_signals:
+    - import UIKit (in any .swift file)
+    - TARGETED_DEVICE_FAMILY in *.pbxproj
+    - IPHONEOS_DEPLOYMENT_TARGET in *.pbxproj
+    import_patterns:
+    - import UIKit
+    code_patterns:
+    - 'class AppDelegate: UIResponder, UIApplicationDelegate'
+    - 'class SceneDelegate: UIResponder, UIWindowSceneDelegate'
+    - 'class * : UIViewController {'
+    - 'class * : UITableViewController {'
+    - 'class * : UICollectionViewController {'
+    - override func viewDidLoad()
+    - '@IBOutlet'
+    - '@IBAction'
+    - UIApplication.shared
+  notes: 'Apple imperative UI framework. Predominant pre-iOS 13. Co-presence with
+    storyboard/xib files is high-confidence. @IBOutlet/@IBAction are Interface Builder
+    wiring signals unique to UIKit. AppDelegate pattern pre-dates SwiftUI lifecycle.
+    Projects may mix UIKit + SwiftUI via UIHostingController.
+
+    '

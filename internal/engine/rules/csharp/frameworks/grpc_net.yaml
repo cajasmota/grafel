@@ -1,0 +1,29 @@
+frameworks:
+  name: gRPC (.NET)
+  category: rpc_framework
+  nuget_package: Grpc.AspNetCore
+  adoption_rank_2025: 10
+  detection:
+    csproj_package_references:
+    - Grpc.AspNetCore
+    - Grpc.Tools
+    - Google.Protobuf
+    - Grpc.Net.Client
+    - Grpc.Core
+    config_files:
+    - '*.proto'
+    - Protos/*.proto
+    csproj_properties:
+    - <Protobuf Include=
+    code_patterns:
+    - ': {ServiceName}Base'
+    - ServerCallContext
+    - GrpcChannel.ForAddress(
+    - builder.Services.AddGrpc()
+    - app.MapGrpcService<
+    - '[GeneratedCode('
+    notes: 'Grpc.AspNetCore + .proto files is the primary detection pattern. <Protobuf
+      Include="..."> in .csproj registers proto compilation via Grpc.Tools. Service
+      implementation extends generated {ServiceName}Base class.
+
+      '

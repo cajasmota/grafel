@@ -1,0 +1,34 @@
+template_engines:
+  name: HAML
+  full_name: HTML Abstraction Markup Language
+  language: ruby
+  extensions:
+  - .haml
+  - .html.haml
+  ruby_gems:
+  - haml
+  - haml-rails
+  detection_signals:
+    file_extensions:
+    - .haml
+    - .html.haml
+    gemfile_deps:
+    - haml
+    - haml-rails
+    syntax_markers:
+    - '%div.class'
+    - '%div#id'
+    - = expression
+    - '- code'
+    - / comment
+    - -# comment
+    - '= render partial:'
+    - = yield
+    - = yield :name
+    - = content_for
+    - :markdown
+    - :javascript
+  notes: 'Indentation-sensitive; AST/indent-aware parse required. HAML is primarily
+    used in Rails apps alongside or instead of ERB.
+
+    '

@@ -1,0 +1,24 @@
+orms_database:
+  name: NEST / Elasticsearch.Net
+  nuget_package: NEST
+  detection:
+    csproj_markers:
+    - NEST
+    - Elasticsearch.Net
+    import_patterns:
+    - using Nest;
+    - using Elasticsearch.Net;
+    code_patterns:
+    - new ElasticClient(
+    - new ElasticsearchClient(
+    - IElasticClient
+  notes: |
+    NEST is the high-level .NET Elasticsearch client. Elasticsearch.Net is the
+    low-level client. Both are detected by the extractor.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract ElasticClient / ElasticsearchClient connections, search queries,
+      aggregations, ILM policies, and index creation for C#.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

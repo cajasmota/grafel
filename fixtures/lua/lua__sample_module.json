@@ -1,0 +1,148 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/lua/sample_module.lua",
+  "language": "lua",
+  "entities": [
+    {
+      "name": "create_validated",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 44,
+      "end_line": 49,
+      "language": "lua",
+      "signature": "function create_validated(name, email)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "validate_email",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 40,
+      "end_line": 42,
+      "language": "lua",
+      "signature": "function validate_email(email)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 30,
+      "end_line": 38,
+      "language": "lua",
+      "signature": "function delete(id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 23,
+      "end_line": 28,
+      "language": "lua",
+      "signature": "function create(name, email)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "find_by_id",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 14,
+      "end_line": 21,
+      "language": "lua",
+      "signature": "function find_by_id(id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "find_all",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 10,
+      "end_line": 12,
+      "language": "lua",
+      "signature": "function find_all()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/lua/sample_module.lua",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/lua/sample_module.lua",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "lua",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "snake_case",
+        "dominant_percentage": 55.55555555555556,
+        "sample_count": 9,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/lua/sample_module.lua"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

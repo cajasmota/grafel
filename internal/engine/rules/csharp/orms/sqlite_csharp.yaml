@@ -1,0 +1,34 @@
+orms_database:
+  name: C# SQLite Driver (Microsoft.Data.Sqlite / System.Data.SQLite)
+  category: sqlite_driver
+  nuget_packages:
+    - Microsoft.Data.Sqlite
+    - System.Data.SQLite
+    - sqlite-net-pcl
+  detection:
+    import_patterns:
+      - using Microsoft.Data.Sqlite
+      - using System.Data.SQLite
+    code_patterns:
+      - new SqliteConnection(
+      - new SQLiteConnection(
+      - ":memory:"
+  notes: >
+    Microsoft.Data.Sqlite is the modern Microsoft-maintained SQLite driver,
+    commonly used with EF Core UseSqlite(). System.Data.SQLite is the older
+    community driver. sqlite-net-pcl (SQLite-net) provides a lightweight
+    mini-ORM without EF Core.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: Microsoft.Data.Sqlite connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

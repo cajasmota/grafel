@@ -1,0 +1,63 @@
+frameworks:
+  name: Grails
+  category: web_full_stack
+  gradle_coordinates:
+  - org.grails:grails-core
+  - org.grails:grails-web-boot
+  - org.grails:grails-gsp
+  - org.grails:grails-plugin-rest
+  - org.grails:grails-datastore-gorm-hibernate5
+  detection:
+    config_files:
+    - grails-app/conf/application.yml
+    - grails-app/conf/application.groovy
+    - grails-app/conf/logback.groovy
+    - grails-app/conf/BootStrap.groovy
+    - grails-app/conf/DataSource.groovy
+    - grails-app/conf/Config.groovy
+    - grailsw
+    - grailsw.bat
+    - gradle/wrapper/gradle-wrapper.properties
+    build_signals:
+    - id "org.grails.grails-web"
+    - id "org.grails.grails-plugin"
+    - id "org.grails.grails-gsp"
+    - '"org.grails:grails-core"'
+    - 'apply plugin: "org.grails.grails-web"'
+    import_patterns:
+    - import grails.gorm.
+    - import grails.rest.
+    - import grails.plugin.
+    - import grails.web.
+    - grails.app.
+    code_patterns:
+    - class * extends Controller {
+    - def index() {
+    - def save() {
+    - 'static scaffold = '
+    - static mapping = {
+    - static constraints = {
+    - 'render view:'
+    - 'redirect action:'
+    - flash.message =
+    - params.id
+  directory_structure:
+  - grails-app/controllers/
+  - grails-app/domain/
+  - grails-app/services/
+  - grails-app/views/
+  - grails-app/taglib/
+  - grails-app/conf/
+  - grails-app/i18n/
+  - grails-app/init/
+  - src/main/groovy/
+  - src/test/groovy/
+  notes: 'Grails is a full-stack Groovy web framework built on Spring Boot. The definitive
+    signal is the grails-app/ directory tree — no other JVM framework uses this layout.
+    grailsw wrapper + build.gradle with org.grails.grails-web plugin is high-confidence.
+    Domain classes live in grails-app/domain/ and are GORM entities. Config.groovy
+    (Grails 2.x) vs application.yml + application.groovy (Grails 3+) can disambiguate
+    version. DataSource.groovy is Grails 2.x signal; Grails 3+ uses application.yml
+    datasource block.
+
+    '

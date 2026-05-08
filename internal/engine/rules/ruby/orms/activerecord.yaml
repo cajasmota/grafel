@@ -1,0 +1,40 @@
+orms:
+  name: ActiveRecord
+  gem_name: activerecord
+  category: active_record_orm
+  detection:
+    gemfile_deps:
+    - activerecord
+    - rails
+    - pg
+    - mysql2
+    - sqlite3
+    config_files:
+    - config/database.yml
+    - db/schema.rb
+    - db/migrate/*.rb
+    - app/models/application_record.rb
+    model_file_patterns:
+    - app/models/**/*.rb
+    code_patterns:
+    - class User < ApplicationRecord
+    - class User < ActiveRecord::Base
+    - belongs_to :company
+    - has_many :posts
+    - has_one :profile
+    - has_and_belongs_to_many
+    - validates :email
+    - scope :active
+    - before_save
+    - after_create
+    - ActiveRecord::Base.connection
+    - ActiveRecord::Migration
+    - add_column :users
+    - create_table :users
+  notes: 'Rails default ORM. db/schema.rb is auto-generated (skip for indexing). db/migrate/
+    contains migration files (index as infrastructure files, not domain). ApplicationRecord
+    subclass is the model pattern in Rails 5+.
+
+    '
+  framework_aliases:
+  - ruby on rails

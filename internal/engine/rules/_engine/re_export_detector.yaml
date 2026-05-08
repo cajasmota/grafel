@@ -1,0 +1,31 @@
+# Re-export / barrel-file detector (MX-718)
+# Identifies barrel files and re-export patterns across JS/TS, Python, Rust,
+# Kotlin, Ruby, PHP, and Elixir.
+#
+# Supported re_export_style variants:
+#   named_reexport      — JS/TS: export { X } from '...'
+#   wildcard_reexport   — JS/TS: export * from '...'
+#   namespace_reexport  — JS/TS: export * as ns from '...'
+#   dunder_all          — Python: __all__ = [...]
+#   wildcard_import     — Python: from .module import *
+#   pub_use             — Rust: pub use crate::path::Type;
+#   pub_mod             — Rust: pub mod module_name;
+#   typealias           — Kotlin: typealias PublicName = Target
+#   mixin_include       — Ruby: module X; include/extend/prepend Y; end
+#   autoload            — Ruby: autoload :Const, 'path'
+#   namespace_use       — PHP: use Vendor\Namespace\Class;
+#   defdelegate         — Elixir: defdelegate func, to: Module
+#
+# Go has no re-export mechanism — explicitly excluded.
+# File gate is internal to the detector (applies_to checks language field).
+
+name: re_export_detector
+description: >-
+  Detect barrel-file and re-export patterns across JS/TS (named, wildcard,
+  namespace exports), Python (__all__, from .module import *), Rust (pub use,
+  pub mod), Kotlin (typealias), Ruby (include/extend/prepend, autoload), PHP
+  (use statements), and Elixir (defdelegate). Emits SCOPE.Pattern entities
+  with kind=re_export.
+module: memx_indexer.pattern_detectors.re_export_detector
+function: detect
+applies_to_function: applies_to

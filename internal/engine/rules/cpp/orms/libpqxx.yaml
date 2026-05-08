@@ -1,0 +1,30 @@
+orm_db:
+  name: libpqxx
+  category: postgresql_client
+  github_stars_2025: 1100+
+  detection:
+    cmake_find_package:
+    - find_package(libpqxx
+    - find_package(PostgreSQL
+    cmake_target_link:
+    - libpqxx::pqxx
+    - pqxx
+    - ${libpqxx_LIBRARIES}
+    vcpkg_packages:
+    - libpqxx
+    conan_packages:
+    - libpqxx/
+    include_patterns:
+    - '#include <pqxx/pqxx>'
+    - '#include <pqxx/connection>'
+    - '#include <pqxx/transaction>'
+    structural_markers:
+    - pqxx::connection conn(
+    - pqxx::work txn(
+    - pqxx::nontransaction
+    - txn.exec(
+    - pqxx::result
+  notes: 'Official C++ client for PostgreSQL. pqxx:: namespace and pqxx/pqxx include
+    are definitive. pqxx::work is the RAII transaction class.
+
+    '

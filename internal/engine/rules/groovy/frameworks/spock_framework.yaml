@@ -1,0 +1,56 @@
+frameworks:
+  name: Spock Framework
+  category: testing_framework
+  gradle_coordinates:
+  - org.spockframework:spock-core
+  - org.spockframework:spock-spring
+  - org.spockframework:spock-guice
+  - org.spockframework:spock-grails
+  maven_coordinates:
+  - org.spockframework:spock-core
+  - org.spockframework:spock-spring
+  detection:
+    config_files:
+    - src/test/groovy/**/*Spec.groovy
+    - src/test/groovy/**/*Specification.groovy
+    - src/integrationTest/groovy/**/*Spec.groovy
+    build_signals:
+    - '"org.spockframework:spock-core"'
+    - '"org.spockframework:spock-spring"'
+    - testImplementation("org.spockframework:spock-core")
+    - testImplementation "org.spockframework:spock-core"
+    import_patterns:
+    - import spock.lang.
+    - import spock.mock.
+    code_patterns:
+    - class * extends Specification {
+    - class * extends Specification {
+    - 'def "should '
+    - 'def "when '
+    - 'def "given '
+    - 'given:'
+    - 'when:'
+    - 'then:'
+    - 'expect:'
+    - 'where:'
+    - 'and:'
+    - 'setup():'
+    - 'cleanup():'
+    - 'setupSpec():'
+    - '@Unroll'
+    - '@Shared'
+    - '@IgnoreIf('
+    - '@Requires('
+    - 1 * mock.method(
+    - 0 * _
+    - _ >> value
+    - thrown(
+    - notThrown(
+  notes: 'Spock is the primary test framework for Groovy and JVM Groovy projects.
+    Extends spock.lang.Specification — this is the single definitive class. Test method
+    names are quoted strings (def "should do X"). BDD blocks (given/when/then/expect/where)
+    are structural DSL — presence of these literal labels in test methods is high-confidence
+    Spock. @Unroll with parameterized where: tables is idiomatic. Interaction-based
+    testing syntax (1 * mock.method(), _ >> value) distinguishes Spock from Mockito.
+
+    '

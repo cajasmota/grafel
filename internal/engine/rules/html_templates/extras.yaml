@@ -1,0 +1,219 @@
+entity_type_mapping:
+  scope_primary_type: Component
+  description: 'All HTML template engine constructs that define a named, reusable
+    UI unit map to the archigraph SCOPE Component entity type. The following sub-concepts
+    are all captured as Component entities with distinguishing metadata.
+
+    '
+  component_sub_concepts:
+  - concept: component
+    description: A top-level named UI unit — an Angular component, Vue SFC, Svelte
+      file, Astro file, Blade X-component, or ERB partial
+    detection_signals:
+    - '*.component.html (Angular)'
+    - .vue file (Vue SFC)
+    - .svelte file
+    - .astro file
+    - <x-name /> Blade component (Laravel)
+    - EJS include() target
+    - Handlebars {{> partial}} target
+    - Jinja2 {% macro %} definition
+    - Pug mixin definition
+    scope_metadata:
+      entity_type: Component
+      sub_type: component
+  - concept: partial
+    description: A fragment included into a parent template — not standalone but named
+      and reusable
+    detection_signals:
+    - ERB <%= render 'partial_name' %>
+    - Jinja2 {% include 'partial.html' %}
+    - Twig {% include 'partial.html.twig' %}
+    - Nunjucks {% include 'partial.njk' %}
+    - Handlebars {{> partialName}}
+    - Mustache {{> partial}}
+    - Blade @include('partial')
+    - Pug include ./partial
+    - EJS <%- include('partial') %>
+    scope_metadata:
+      entity_type: Component
+      sub_type: partial
+  - concept: template_block
+    description: A named inheritable block inside a layout template (extends/block
+      pattern)
+    detection_signals:
+    - Jinja2 {% block name %}...{% endblock %}
+    - Twig {% block name %}...{% endblock %}
+    - Nunjucks {% block name %}...{% endblock %}
+    - Pug block content
+    - Blade @section('name')...@endsection
+    - ERB content_for :name
+    - HAML = content_for :name
+    - Handlebars {{#block 'name'}}...{{/block}}
+    scope_metadata:
+      entity_type: Component
+      sub_type: template_block
+  - concept: slot
+    description: A named content projection point in a component — Angular <ng-content
+      select>, Vue <slot name>, Svelte <slot name>, Astro <slot name>
+    detection_signals:
+    - Angular <ng-content select="[slotAttr]">
+    - Vue <slot name="slotName" />
+    - Svelte <slot name="slotName" />
+    - Astro <slot name="slotName" />
+    - Blade @slot('name')
+    scope_metadata:
+      entity_type: Component
+      sub_type: slot
+  - concept: custom_element
+    description: Web Component custom element definition — <my-element> tags backed
+      by CustomElementRegistry.define()
+    detection_signals:
+    - customElements.define('tag-name', ...)
+    - <tag-name> with hyphenated name in HTML
+    - LitElement / @lit/reactive-element class extending HTMLElement
+    - Stencil @Component decorator with tag property
+    npm_packages:
+    - lit
+    - '@lit/reactive-element'
+    - '@stencil/core'
+    scope_metadata:
+      entity_type: Component
+      sub_type: custom_element
+  - concept: template_variable_expression
+    description: A named variable or expression used in template interpolation — maps
+      to an Operation entity when it represents a function call or data binding
+    detection_signals:
+    - '{{variable}} / {{ variable }}'
+    - <%= expression %>
+    - '{expression}'
+    - '| pipe'
+    - filter chains
+    scope_metadata:
+      entity_type: Operation
+      sub_type: template_expression
+      notes: Only index if expression is a named function call or pipe; skip simple
+        property access
+domain_root_conventions:
+  description: Standard directory roots where HTML/template files live across project
+    types
+  universal_template_roots:
+  - path: templates/
+    description: Generic template root — used by Python (Flask, Django, Jinja2), Node
+      (nunjucks), PHP
+    frameworks:
+    - flask
+    - django
+    - express+nunjucks
+    - symfony (fallback)
+  - path: views/
+    description: MVC view root — used by Express, Laravel (legacy), Rails-style PHP
+      apps
+    frameworks:
+    - express+ejs/pug
+    - laravel (legacy)
+    - codeigniter
+    - cakephp
+  - path: layouts/
+    description: Layout/base template root — used by Handlebars, Eleventy, Jekyll
+    frameworks:
+    - express-handlebars
+    - eleventy
+    - jekyll
+    - nuxt
+  - path: partials/
+    description: Shared partial fragments — used by Handlebars, Mustache, Jekyll
+    frameworks:
+    - express-handlebars
+    - mustache
+    - jekyll
+  - path: components/
+    description: Reusable component root — framework-agnostic convention
+    frameworks:
+    - vue
+    - svelte
+    - astro
+    - web-components
+  - path: pages/
+    description: Page-level template root — used by Next.js, Nuxt, SvelteKit, Astro,
+      Eleventy
+    frameworks:
+    - next.js
+    - nuxt
+    - sveltekit
+    - astro
+    - eleventy
+  framework_specific_roots:
+  - framework: Rails / ERB / HAML / Slim
+    roots:
+    - app/views/
+    - app/views/layouts/
+    - app/views/shared/
+    - app/views/<controller_name>/
+  - framework: Laravel / Blade
+    roots:
+    - resources/views/
+    - resources/views/layouts/
+    - resources/views/components/
+    - resources/views/partials/
+  - framework: Symfony / Twig
+    roots:
+    - templates/
+    - app/Resources/views/
+    - templates/bundles/
+  - framework: Angular
+    roots:
+    - src/app/
+    - src/app/components/
+    - src/app/pages/
+    - src/app/layouts/
+  - framework: Vue / Nuxt
+    roots:
+    - src/components/
+    - src/pages/
+    - src/layouts/
+    - src/views/
+  - framework: Svelte / SvelteKit
+    roots:
+    - src/lib/components/
+    - src/routes/
+    - src/lib/
+  - framework: Astro
+    roots:
+    - src/components/
+    - src/pages/
+    - src/layouts/
+    - src/content/
+  - framework: Handlebars / Mustache / Nunjucks
+    roots:
+    - views/
+    - views/layouts/
+    - views/partials/
+    - templates/
+  - framework: Pug / EJS (Express)
+    roots:
+    - views/
+    - views/layouts/
+    - views/partials/
+    - views/pages/
+  - framework: Jinja2 / Flask / Django
+    roots:
+    - templates/
+    - <app_name>/templates/
+    - <app_name>/templates/<app_name>/
+  build_output_exclusions:
+    description: Directories containing compiled/generated HTML to always exclude
+    paths:
+    - dist/
+    - build/
+    - public/build/
+    - .next/
+    - .nuxt/
+    - .svelte-kit/
+    - .astro/
+    - out/
+    - _site/
+    - .jekyll-cache/
+    - __pycache__/
+    - storage/framework/views/
+    - var/cache/

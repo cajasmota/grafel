@@ -1,0 +1,23 @@
+orms:
+  name: ROM-rb (as ORM)
+  gem_name: rom
+  category: data_mapper
+  detection:
+    gemfile_deps:
+    - rom
+    - rom-sql
+    - rom-repository
+    config_files:
+    - lib/persistence/
+    - lib/repositories/
+    code_patterns:
+    - ROM::Relation
+    - ROM::Repository
+    - ROM::Changeset
+    - relations :users
+    - schema(:users)
+    - attribute :id, Types::Integer
+  notes: 'See also section 1 (frameworks). When used as pure ORM without framework
+    context. Identified by ROM::Relation and ROM::Repository subclasses.
+
+    '

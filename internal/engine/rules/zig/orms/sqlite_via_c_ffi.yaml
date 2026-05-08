@@ -1,0 +1,28 @@
+orm_database:
+  name: sqlite (via C FFI)
+  type: c_ffi_binding
+  detection:
+    code_patterns:
+    - c.sqlite3_open(
+    - c.sqlite3_exec(
+    - c.sqlite3_prepare_v2(
+    - c.sqlite3_step(
+    - c.sqlite3_finalize(
+    - c.sqlite3_close(
+    - c.sqlite3_column_text(
+    - c.sqlite3_column_int(
+    - c.sqlite3_bind_text(
+    - c.sqlite3_bind_int(
+    - c.sqlite3_errmsg(
+    build_zig_patterns:
+    - exe.linkSystemLibrary("sqlite3")
+    - exe.linkLibC()
+    - '@cImport(@cInclude("sqlite3.h"))'
+    import_markers:
+    - const c = @cImport(@cInclude("sqlite3.h"))
+  notes: 'SQLite is the most common database target in Zig projects. Access is via
+    @cImport/@cInclude of sqlite3.h with linkSystemLibrary("sqlite3"). The c. prefix
+    on all SQLite calls is the canonical detection signal. Some projects bundle SQLite
+    sources directly (exe.addCSourceFiles with sqlite3.c).
+
+    '

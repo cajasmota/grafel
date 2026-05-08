@@ -1,0 +1,37 @@
+# PHP Redis client extraction rules (MX-575).
+#
+# Top-level `orms:` key is consumed by the modular_loader (detection).
+# custom_extractors entries are consumed by CustomExtractorRegistry.
+
+orms:
+  name: phpredis / Predis
+  category: cache_client
+  detection:
+    dependency_names:
+    - predis/predis
+    - ext-redis
+    import_markers:
+    - new Redis()
+    - new \Redis()
+    - new Predis\Client
+    - new \Predis\Client
+    structural_markers:
+    - new Redis()
+    - Predis\Client(
+    - $redis->connect(
+    - $redis->get(
+  notes: >
+    phpredis (ext-redis) is a C extension; Predis is pure PHP. Both are widely
+    used in Laravel/Symfony applications. Detection signals overlap since both
+    expose similar API surfaces.
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: new Redis()/new Predis\Client() connections
+      (SCOPE.Service), cache ops ->get/->set/->hget/->hset/->expire
+      (SCOPE.Operation/cache_op), pub/sub ->publish/->subscribe
+      (SCOPE.Operation/pubsub), streams ->xadd/->xread (SCOPE.Operation/stream_op),
+      Lua ->eval/->evalsha (SCOPE.Operation/lua_script).

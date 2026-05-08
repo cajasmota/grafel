@@ -1,0 +1,26 @@
+orms_database:
+  name: mongo_dart (Dart MongoDB driver)
+  pub_package: mongo_dart
+  category: nosql_driver
+  detection:
+    pubspec_deps:
+      - mongo_dart
+    import_markers:
+      - package:mongo_dart/mongo_dart.dart
+    code_patterns:
+      - Db.create(
+      - new Db(
+      - db.collection(
+      - collection.aggregateToStream(
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

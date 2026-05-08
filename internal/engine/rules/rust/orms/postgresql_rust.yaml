@@ -1,0 +1,37 @@
+orms_database:
+  name: PostgreSQL Rust Drivers (tokio-postgres, deadpool-postgres, sqlx)
+  category: postgres_driver
+  crates:
+    - tokio-postgres
+    - deadpool-postgres
+    - sqlx
+  detection:
+    import_patterns:
+      - tokio_postgres
+      - deadpool_postgres
+      - sqlx::PgPool
+      - sqlx::postgres
+    code_patterns:
+      - tokio_postgres::connect(
+      - PgPool::connect(
+      - PgPoolOptions::new(
+      - deadpool_postgres::Config::new(
+  notes: >
+    tokio-postgres is the async PostgreSQL driver for Rust. deadpool-postgres
+    adds connection pooling on top of tokio-postgres. sqlx provides a
+    compile-time verified query interface with PgPool for connection pooling.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: tokio-postgres/deadpool-postgres/sqlx
+      connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), deadpool/PgPool
+      pool setup (SCOPE.Pattern, INFERRED_FROM_POSTGRES_POOL), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

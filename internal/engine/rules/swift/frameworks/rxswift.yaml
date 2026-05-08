@@ -1,0 +1,31 @@
+frameworks:
+  name: RxSwift
+  category: reactive_programming
+  spm_coordinates:
+  - ReactiveX/RxSwift
+  detection:
+    config_files:
+    - Package.swift
+    - Podfile
+    - Cartfile
+    build_signals:
+    - '.package(url: "https://github.com/ReactiveX/RxSwift.git"'
+    - pod 'RxSwift'
+    - pod 'RxCocoa'
+    - github "ReactiveX/RxSwift"
+    import_patterns:
+    - import RxSwift
+    - import RxCocoa
+    code_patterns:
+    - Observable<
+    - PublishSubject<
+    - BehaviorRelay<
+    - '.subscribe(onNext:'
+    - DisposeBag()
+    - '.bind(to:'
+    - Driver<
+  notes: 'ReactiveX for Swift. Predates Combine; still widely used in UIKit codebases.
+    DisposeBag is the definitive RxSwift lifecycle management signal. RxCocoa import
+    indicates UIKit/AppKit reactive bindings. CocoaPods is most common distribution.
+
+    '

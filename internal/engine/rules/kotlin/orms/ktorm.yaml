@@ -1,0 +1,18 @@
+orms_databases:
+  name: ktorm
+  gradle_coordinates:
+  - org.ktorm:ktorm-core
+  - org.ktorm:ktorm-support-postgresql
+  - org.ktorm:ktorm-support-mysql
+  detection:
+    import_patterns:
+    - import org.ktorm.
+    code_patterns:
+    - 'object * : Table<'
+    - database.from(
+    - database.insert(
+    - database.update(
+  notes: 'Lightweight Kotlin ORM. object declarations extending Table<Entity> are
+    definitive. Fluent query DSL: database.from(table).select(...)
+
+    '

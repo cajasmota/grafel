@@ -1,0 +1,35 @@
+frameworks:
+  name: Lagom
+  category: microservices_reactive
+  sbt_coordinates:
+  - com.lightbend.lagom::lagom-scaladsl-api
+  - com.lightbend.lagom::lagom-scaladsl-server
+  - com.lightbend.lagom::lagom-scaladsl-persistence-cassandra
+  - com.lightbend.lagom::lagom-scaladsl-persistence-jdbc
+  detection:
+    config_files:
+    - project/plugins.sbt
+    build_signals:
+    - '"com.lightbend.lagom" %% "lagom-scaladsl-api"'
+    - addSbtPlugin("com.lightbend.lagom" % "lagom-sbt-plugin")
+    - lagomScalaProject
+    import_patterns:
+    - import com.lightbend.lagom.scaladsl.api._
+    - import com.lightbend.lagom.scaladsl.server._
+    - import com.lightbend.lagom.scaladsl.persistence._
+    code_patterns:
+    - extends Service
+    - extends LagomApplication
+    - extends LagomApplicationLoader
+    - serviceCall[
+    - descriptor.withCalls(
+    - namedCall(
+    - pathCall(
+    - EventProcessor
+    - PersistentEntity
+  notes: 'Reactive microservices framework by Lightbend, built on Akka and Play. lagomScalaProject
+    in build.sbt is definitive. sbt-plugin in plugins.sbt confirms. Service trait
+    + descriptor.withCalls is the API contract DSL. Less common in new projects post-2022
+    (Lightbend license changes) but found in enterprise Scala codebases.
+
+    '

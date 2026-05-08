@@ -1,0 +1,59 @@
+domain_roots:
+  standard_maven_layout:
+    paths:
+    - src/main/scala/
+    - src/test/scala/
+    - src/main/resources/
+    - src/test/resources/
+    notes: 'The Maven/sbt standard layout. Most sbt projects (Play, Akka, http4s,
+      ZIO) use this by default. src/test/scala/ contains all test files.
+
+      '
+  sbt_project_meta:
+    paths:
+    - project/
+    - project/plugins.sbt
+    - project/build.properties
+    - project/Dependencies.scala
+    notes: 'sbt meta-project directory. plugins.sbt declares sbt plugins. Dependencies.scala
+      (or Versions.scala, Libs.scala) is a common pattern for centralizing dependency
+      version management. Index as config, not application source.
+
+      '
+  mill_layout:
+    paths:
+    - build.sc
+    - '{module}/src/'
+    - '{module}/test/src/'
+    - '{module}/resources/'
+    notes: 'Mill uses {module}/src/ rather than src/main/scala/. Module objects in
+      build.sc define the project structure. Cross-platform builds use cross object
+      syntax.
+
+      '
+  play_mvc_layout:
+    paths:
+    - app/controllers/
+    - app/models/
+    - app/views/
+    - app/services/
+    - conf/
+    - conf/routes
+    - conf/application.conf
+    - public/
+    - test/
+    notes: 'Play Framework adds the app/ layout on top of standard sbt. app/views/
+      contains Twirl HTML templates. conf/routes is the URL routing file. public/
+      contains static assets. test/ mirrors app/ structure.
+
+      '
+  scala_cli_scripts:
+    paths:
+    - '*.scala (at repo root — Scala CLI entry points)'
+    - '*.sc (Ammonite or Scala CLI scripts)'
+    - scripts/
+    notes: 'Scala CLI (scala-cli) supports single-file scripts and directories. No
+      build.sbt required. using directives (//> using dep) appear at the top of files.
+      Ammonite scripts use import $ivy syntax.
+
+      '

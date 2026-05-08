@@ -1,0 +1,35 @@
+frameworks_and_dialects:
+  name: PostgreSQL
+  category: rdbms_dialect
+  file_extensions:
+  - '*.sql'
+  - '*.psql'
+  - '*.pgsql'
+  config_markers:
+  - postgresql.conf
+  - pg_hba.conf
+  syntax_markers:
+  - SERIAL
+  - BIGSERIAL
+  - RETURNING
+  - ON CONFLICT
+  - EXCLUDE USING
+  - JSONB
+  - TSVECTOR
+  - TSQUERY
+  - $$
+  - LANGUAGE plpgsql
+  - LANGUAGE sql
+  - ::text
+  - ::integer
+  - ::jsonb
+  - CREATE EXTENSION
+  - COPY ... FROM STDIN
+  - pg_catalog.
+  - information_schema.
+  notes: 'PostgreSQL-specific syntax includes RETURNING clause, ON CONFLICT upsert,
+    JSONB operators, dollar-quoting ($$), SERIAL/BIGSERIAL sequence types, and PL/pgSQL
+    procedural language. Cast syntax (::type) is a reliable dialect marker. Extensions
+    (uuid-ossp, postgis, pg_trgm) are strong ecosystem signals.
+
+    '

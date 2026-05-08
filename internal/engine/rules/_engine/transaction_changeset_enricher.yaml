@@ -1,0 +1,31 @@
+# Transaction Boundary & Ecto Changeset Enricher (MX-729)
+# Cross-language enricher for transaction scope detection and Ecto changeset
+# validation rule extraction.
+#
+# Transaction boundary detection covers 9 language families:
+#   Elixir (Ecto.Multi), Java (Spring @Transactional, JPA EntityManager),
+#   Python (Django transaction.atomic, SQLAlchemy session.begin),
+#   Go (database/sql db.Begin, GORM db.Transaction),
+#   JS/TS (Prisma $transaction, TypeORM queryRunner.startTransaction),
+#   Ruby (ActiveRecord::Base.transaction),
+#   C# (TransactionScope, DbContext.Database.BeginTransaction),
+#   Rust (diesel conn.transaction, sqlx pool.begin),
+#   PHP (DB::transaction Laravel, $conn->beginTransaction Doctrine)
+#
+# Ecto changeset validation detection (Elixir only):
+#   validate_required, validate_format, validate_length, validate_inclusion,
+#   validate_number, unique_constraint, foreign_key_constraint, cast
+#
+# File gate is internal to the enricher (applies_to checks source signals).
+# This YAML exists to document the enricher's registration entry.
+
+name: transaction_changeset_enricher
+description: >-
+  Detect transaction boundaries across 9 language families and emit
+  SCOPE.Pattern(kind=transaction_boundary) entities with tables_in_scope
+  metadata. For Elixir Ecto, also detect changeset validation rules and emit
+  SCOPE.Pattern(kind=changeset_validation) with validation_rules,
+  required_fields, and constraint_names.
+module: memx_indexer.pattern_detectors.transaction_changeset_enricher
+function: detect
+applies_to_function: applies_to

@@ -1,0 +1,21 @@
+frameworks:
+  name: Molecule
+  vendor: Ansible Community
+  category: testing_framework
+  detection:
+    config_files:
+    - molecule.yml
+    - molecule/*/molecule.yml
+    directory_structure: molecule/ subdirectory with test scenarios
+    cli_invocation_patterns:
+    - molecule test
+    - molecule converge
+    - molecule create
+    - molecule destroy
+    dependency_declaration: Molecule test scenarios in roles
+  notes: 'Molecule is the standard role testing framework. Detected via molecule.yml
+    and molecule/ directory structure. Molecule orchestrates role testing across multiple
+    scenarios (Docker, Vagrant, cloud VMs). High-value signal of role quality and
+    test coverage.
+
+    '

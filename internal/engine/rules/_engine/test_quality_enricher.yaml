@@ -1,0 +1,24 @@
+# Test quality enricher (MX-727)
+# Cross-language detector that enriches test entities with real-DB detection
+# and mock-to-real ratio metrics.
+#
+# Detects integration tests using real databases via:
+#   Java: @SpringBootTest, @DataJpaTest, org.testcontainers
+#   Python: testcontainers, pytest database fixtures, Django databases attr
+#   JS/TS: Jest beforeAll with DB connection, supertest
+#   Go: sql.Open in TestMain, testcontainers-go
+#   Ruby: database_cleaner, fixtures :all / ActiveRecord::FixtureSet
+#   C#: [Integration] attribute, TestServer, WebApplicationFactory
+#   Elixir: Ecto.Adapters.SQL.Sandbox
+#
+# Also computes mock_count, real_call_count, mock_ratio per test file and
+# sets dual_coverage on endpoint entities linked to both unit and integration tests.
+
+name: test_quality
+description: >-
+  Enrich test entities with uses_real_db, testcontainers_found, mock_count,
+  real_call_count, and mock_ratio. Set dual_coverage on endpoint entities
+  linked via TESTS edges to both unit and integration test entities.
+module: memx_indexer.pattern_detectors.test_quality_enricher
+function: detect
+applies_to_function: applies_to

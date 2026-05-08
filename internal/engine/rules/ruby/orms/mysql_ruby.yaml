@@ -1,0 +1,30 @@
+orms_database:
+  name: MySQL Ruby Driver (mysql2 gem)
+  category: relational_database
+  gem_name: mysql2
+  detection:
+    import_patterns:
+    - require 'mysql2'
+    - require "mysql2"
+    code_patterns:
+    - Mysql2::Client.new(
+    - Mysql2::Client.new({
+  notes: >
+    The mysql2 gem is the standard MySQL driver for Ruby. It is used directly
+    or as the underlying adapter for ActiveRecord (adapter: mysql2 in
+    database.yml). Supports both synchronous and EventMachine async modes.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

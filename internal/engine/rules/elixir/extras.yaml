@@ -1,0 +1,274 @@
+orms_db:
+- name: Ecto
+  hex_package: ecto
+  category: database_query
+  description: 'Ecto is the primary database interaction library for Elixir. It provides
+    a composable query DSL (Ecto.Query), schema definitions (Ecto.Schema), changeset
+    validation (Ecto.Changeset), and migration tooling (Ecto.Migration).
+
+    '
+  detection:
+    mix_deps:
+    - ecto
+    - ecto_sql
+    import_markers:
+    - use Ecto.Schema
+    - import Ecto.Query
+    - import Ecto.Changeset
+    - use Ecto.Migration
+    - schema "
+    - embedded_schema do
+    - 'field :'
+    - timestamps()
+    - changeset(
+    - cast(
+    - validate_required(
+    - validate_length(
+    - validate_format(
+    - unique_constraint(
+    - foreign_key_constraint(
+    - from u in User
+    - 'where: u.'
+    - 'select: u.'
+    - 'preload: '
+  supported_databases:
+  - PostgreSQL (postgrex)
+  - MySQL (myxql)
+  - SQLite (ecto_sqlite3)
+  - MSSQL (tds_ecto)
+  structural_markers:
+  - lib/app/repo.ex
+  - lib/app/schemas/
+  - priv/repo/migrations/
+  notes: 'Ecto is ubiquitous in Phoenix and non-Phoenix Elixir apps needing DB access.
+    priv/repo/migrations/ with files like 20240101000000_create_users.exs is definitive.
+    use Ecto.Repo in lib/app/repo.ex is the repository module pattern.
+
+    '
+- name: Ecto.Repo
+  hex_package: ecto
+  category: repository_pattern
+  description: 'Ecto.Repo is the interface module that maps to a database connection
+    pool. Every Ecto-using application has at least one Repo module.
+
+    '
+  detection:
+    import_markers:
+    - use Ecto.Repo
+    - 'otp_app: :'
+    - 'adapter: Ecto.Adapters.Postgres'
+    - 'adapter: Ecto.Adapters.MyXQL'
+    - 'adapter: Ecto.Adapters.SQLite3'
+    - Repo.insert(
+    - Repo.insert!(
+    - Repo.get(
+    - Repo.get!(
+    - Repo.get_by(
+    - Repo.all(
+    - Repo.one(
+    - Repo.update(
+    - Repo.delete(
+    - Repo.transaction(
+    - Repo.preload(
+  notes: 'The Repo module wraps all DB operations. Multi-tenant apps may have multiple
+    Repo modules. The adapter key in use Ecto.Repo options identifies the DB type.
+
+    '
+- name: Ecto.Schema
+  hex_package: ecto
+  category: schema_definition
+  description: 'Ecto.Schema defines the mapping between Elixir structs and database
+    tables. Both persistent (schema) and in-memory only (embedded_schema) variants
+    exist.
+
+    '
+  detection:
+    import_markers:
+    - use Ecto.Schema
+    - schema "
+    - embedded_schema do
+    - '@primary_key'
+    - '@foreign_key_type'
+    - '@timestamps_opts'
+    - field :name, :string
+    - field :count, :integer
+    - field :inserted_at, :utc_datetime
+    - 'has_many :'
+    - 'has_one :'
+    - 'belongs_to :'
+    - 'many_to_many :'
+    - 'embeds_one :'
+    - 'embeds_many :'
+  notes: 'Ecto.Schema modules are identified by use Ecto.Schema + schema or embedded_schema
+    block. @primary_key {:id, :binary_id, autogenerate: true} indicates UUID primary
+    keys. Associations (has_many, belongs_to) are schema-level declarations — actual
+    joins happen at query time via Repo.preload/Ecto.Query join.
+
+    '
+- name: Nebulex
+  hex_package: nebulex
+  category: caching
+  detection:
+    mix_deps:
+    - nebulex
+    - nebulex_redis_adapter
+    - nebulex_local_adapter
+    import_markers:
+    - use Nebulex.Cache
+    - Nebulex.Caching
+    - NebulexRedisAdapter
+    - Cache.put(
+    - Cache.get(
+    - Cache.delete(
+    - 'decorators: [Nebulex.Caching.Decorators]'
+    - '@decorate cacheable('
+    - '@decorate cache_put('
+    - '@decorate cache_evict('
+  notes: 'Nebulex is the primary caching library for Elixir. Supports local ETS, Redis,
+    and distributed multi-level caching. @decorate cacheable is the AOP-style cache
+    annotation pattern.
+
+    '
+- name: Redix / Req / Finch (HTTP / external data)
+  hex_package: redix
+  category: data_clients
+  detection:
+    mix_deps:
+    - redix
+    - req
+    - finch
+    - httpoison
+    - tesla
+    - mint
+    import_markers:
+    - Redix.command(
+    - Redix.pipeline(
+    - Req.get(
+    - Req.post(
+    - Finch.build(
+    - Finch.request(
+    - HTTPoison.get(
+    - Tesla.get(
+  notes: 'Redix is the canonical Redis client. Req is the modern HTTP client (built
+    on Finch/Mint). Finch and HTTPoison are common HTTP clients. Detected via mix.exs
+    deps and call-site import markers.
+
+    '
+domain_roots:
+- layout: phoenix_web_app
+  description: Standard Phoenix 1.7+ application with HTML/LiveView
+  roots:
+  - lib/app/
+  - lib/app_web/
+  - config/
+  - priv/
+  - assets/
+  - test/
+  key_paths:
+  - lib/app/application.ex
+  - lib/app/repo.ex
+  - lib/app/schemas/
+  - lib/app/contexts/
+  - lib/app_web/router.ex
+  - lib/app_web/endpoint.ex
+  - lib/app_web/controllers/
+  - lib/app_web/live/
+  - lib/app_web/components/
+  - lib/app_web/templates/ (pre-1.7)
+  - assets/js/app.js
+  - assets/css/app.css
+  - priv/repo/migrations/
+  notes: 'Phoenix follows the context-based architecture where lib/app/ contains domain
+    logic in context modules (Accounts, Catalog, etc.) and lib/app_web/ contains all
+    web-facing code. Contexts are the primary seam for indexing.
+
+    '
+- layout: phoenix_api_only
+  description: Phoenix JSON API without HTML/LiveView (API-only mode)
+  roots:
+  - lib/app/
+  - lib/app_web/
+  - config/
+  - test/
+  key_paths:
+  - lib/app_web/controllers/
+  - lib/app_web/views/ (JSON views)
+  - lib/app_web/fallback_controller.ex
+  - lib/app_web/auth_pipeline.ex
+  notes: 'API-only Phoenix apps omit LiveView, templates, and assets. JSON views render
+    data using Phoenix.View or Phoenix.JSON (1.7+). Guardian or Joken for JWT auth.
+    Detectable by absence of assets/ and lib/app_web/live/.
+
+    '
+- layout: plain_otp_app
+  description: Pure OTP application without Phoenix (services, daemons, pipelines)
+  roots:
+  - lib/
+  - config/
+  - test/
+  key_paths:
+  - lib/app/application.ex
+  - lib/app/supervisor.ex
+  - lib/app/worker.ex
+  - lib/app/server.ex
+  notes: 'Plain OTP apps (e.g., Broadway pipelines, GenServer services, gRPC servers)
+    have no web layer. lib/ contains all application code. application.ex defines
+    the supervision tree. Identified by absence of phoenix dep and presence of use
+    Supervisor / use GenServer.
+
+    '
+- layout: umbrella_app
+  description: Elixir umbrella monorepo containing multiple OTP applications
+  roots:
+  - apps/
+  - config/
+  key_paths:
+  - mix.exs (umbrella root)
+  - apps/app_name/mix.exs
+  - apps/app_name/lib/
+  - apps/app_name/test/
+  - config/config.exs
+  - config/dev.exs
+  notes: 'Umbrella apps are identified by apps/ directory at root + mix.exs without
+    a deps/0 function (or with in_umbrella: true in child apps). Each app under apps/
+    is an independent OTP application. Config is shared from the root config/ directory
+    but can be overridden per-app.
+
+    '
+- layout: hex_library
+  description: Published Hex package / library (not an application)
+  roots:
+  - lib/
+  - test/
+  key_paths:
+  - mix.exs (with package/0 function)
+  - lib/package_name.ex
+  - lib/package_name/
+  - README.md
+  - CHANGELOG.md
+  - .formatter.exs
+  notes: 'Hex packages have a package/0 function in mix.exs defining name, version,
+    licenses, and links. No Repo module, no Phoenix endpoint. lib/package_name.ex
+    is the public API entrypoint. Identified by package/0 in mix.exs + absence of
+    application-level supervision tree.
+
+    '
+- layout: nerves_firmware
+  description: Nerves IoT firmware project for embedded Linux targets
+  roots:
+  - lib/
+  - config/
+  - rootfs_overlay/
+  - nerves/
+  key_paths:
+  - mix.exs (with targets/0 function)
+  - config/target.exs
+  - rootfs_overlay/
+  - nerves/systems/
+  - lib/app/application.ex
+  notes: 'Nerves firmware projects have a targets/0 function in mix.exs listing supported
+    hardware targets (rpi4, bbb, etc.). config/target.exs configures target-specific
+    settings. rootfs_overlay/ contains files merged into the root filesystem. No web
+    assets or HTTP server (unless embedded).
+
+    '

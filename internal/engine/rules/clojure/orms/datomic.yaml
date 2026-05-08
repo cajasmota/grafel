@@ -1,0 +1,44 @@
+database_libraries:
+  name: Datomic
+  clojars_artifact: com.datomic/datomic-free
+  category: database_immutable_graph
+  detection:
+    lein_deps:
+    - com.datomic/datomic-free
+    - com.datomic/datomic-pro
+    - com.datomic/client-pro
+    - com.datomic/peer
+    - com.datomic/datomic-cloud
+    deps_edn_coords:
+    - com.datomic/datomic-free
+    - com.datomic/client-pro
+    - com.datomic/peer
+    import_markers:
+    - datomic.api
+    - datomic.client.api
+    - (:require [datomic.
+    - (d/connect
+    - (d/transact
+    - (d/q '[:find
+    - (d/pull
+    - (d/db
+    - (d/entity
+    - :db/ident
+    - :db/valueType
+    - :db/cardinality
+    - :db.type/string
+    - :db.type/ref
+    - :db.cardinality/many
+    - datalog
+    - '[:find ?e'
+    - (datom?)
+    structural_markers:
+    - resources/datomic/
+    - src/schema/
+  notes: 'Datomic is an immutable database with Datalog query language. High-confidence
+    signals: datomic.api/datomic.client.api namespace imports and Datalog query syntax
+    (d/q ''[:find ?e :where [?e :attr val]]). Schema is defined as Clojure data with
+    :db/ident, :db/valueType, :db/cardinality attributes. Free (local) vs Pro vs Cloud
+    variants use different client APIs.
+
+    '

@@ -1,0 +1,150 @@
+# FastAPI framework extraction rules (MX-500).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: FastAPI
+  pypi_package: fastapi
+  category: web_async_api
+  github_stars_2025: 96600+
+  gateway: asgi
+  detection:
+    config_files:
+    - main.py
+    - app.py
+    - '*/routers/*.py'
+    dependency_names:
+    - fastapi
+    import_markers:
+    - from fastapi import FastAPI
+    - FastAPI()
+    - APIRouter()
+    structural_markers:
+    - routers/ directory
+  notes: >
+    Typically co-detected with uvicorn and pydantic. Routers pattern (APIRouter)
+    is high-confidence for FastAPI vs Starlette.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+# file_conventions: glob -> entity_type mapping from file naming conventions.
+file_conventions:
+  - glob: "*/routers/*.py"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/dependencies/*.py"
+    entity_type: Service
+    name_from: filename
+  - glob: "*/schemas/*.py"
+    entity_type: Model
+    name_from: filename
+  - glob: "*/models/*.py"
+    entity_type: Model
+    name_from: filename
+  - glob: "*/middleware/*.py"
+    entity_type: Middleware
+    name_from: filename
+
+# source_patterns: regex patterns that match framework constructs in source.
+# name_group references the capture group that provides the entity name.
+source_patterns:
+  # Route decorators: @app.get("/path") or @router.get("/path")
+  - pattern: "@(?:app|router)\\.(get|post|put|patch|delete|head|options|trace)\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Route
+    name_group: 2
+    scope: file
+  # APIRouter instantiation: router = APIRouter(prefix="/items")
+  - pattern: "(\\w+)\\s*=\\s*APIRouter\\s*\\("
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # FastAPI app instantiation: app = FastAPI(...)
+  - pattern: "(\\w+)\\s*=\\s*FastAPI\\s*\\("
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # Dependency injection via Depends: def func(dep: SomeType = Depends(...))
+  - pattern: "def\\s+(\\w+)\\s*\\([^)]*Depends\\s*\\("
+    entity_type: Dependency
+    name_group: 1
+    scope: function
+  # Pydantic model definitions used as request/response schemas
+  - pattern: "class\\s+(\\w+)\\s*\\(\\s*(?:BaseModel|pydantic\\.BaseModel)\\s*\\)"
+    entity_type: Model
+    name_group: 1
+    scope: class
+  # Middleware via @app.middleware("http")
+  - pattern: "@(?:app|router)\\.middleware\\s*\\(\\s*[\"'](\\w+)[\"']"
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+# relationship_rules: regex patterns that produce edges between entities.
+# source_group / target_group reference capture groups for entity names.
+relationship_rules:
+  # Route includes dependency injection: route -> service IMPORTS
+  - pattern: "def\\s+(\\w+)\\s*\\([^)]*=\\s*Depends\\(\\s*(\\w+)\\s*\\)"
+    source_type: Route
+    target_type: Service
+    relationship: IMPORTS
+    source_group: 1
+    target_group: 2
+  # Dependency injected into route handler: Dependency INJECTED_INTO Route
+  - pattern: "def\\s+(\\w+)\\s*\\([^)]*=\\s*Depends\\(\\s*(\\w+)\\s*\\)"
+    source_type: Dependency
+    target_type: Route
+    relationship: INJECTED_INTO
+    source_group: 2
+    target_group: 1
+  # Router registered on app: app.include_router(router, ...)
+  - pattern: "(\\w+)\\.include_router\\s*\\(\\s*(\\w+)"
+    source_type: Service
+    target_type: Route
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+  # Handler decorated by route decorator (single-line match)
+  - pattern: "@(?:app|router)\\.(?:get|post|put|patch|delete)\\([^)]*\\)\\s*\\ndef\\s+(\\w+)"
+    source_type: Route
+    target_type: Service
+    relationship: DECORATES
+    source_group: 1
+    target_group: 1
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+# These run after YAML-driven extraction and contribute additional entities +
+# relationships to the pipeline result.
+custom_extractors:
+  - module: memx_indexer.languages.python.fastapi_extractor
+    function: extract
+    description: >-
+      FastAPI-specific extractor: HTTP route decorators (@app.get/post/put/delete/patch),
+      Depends() injection (CALLS edges to dependency functions), Pydantic BaseModel/
+      BaseSettings subclasses (SCOPE.Schema), APIRouter instantiation with prefix/tags
+      (SCOPE.Component), @app.websocket routes (SCOPE.Operation/endpoint),
+      @app.middleware decorators (SCOPE.Pattern), BackgroundTasks.add_task() call
+      sites (SCOPE.Operation/function + CALLS edges), and @app.on_event("startup"/
+      "shutdown") lifecycle hooks (SCOPE.Operation/function).
+  - module: memx_indexer.languages.python.fastapi_request_response_extractor
+    function: extract
+    description: >-
+      FastAPI request/response extractor (MX-596): emits ACCEPTS_INPUT edges
+      from endpoint entities to Pydantic body parameter types, and RETURNS edges
+      from endpoint entities to response_model= decorator types and -> return
+      type annotations. Skips primitives and FastAPI framework response types.
+  - module: memx_indexer.languages._engine.config_prefix_extractor
+    function: extract
+    description: >-
+      Extract root_path / root_path_in_servers from FastAPI main.py as
+      SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated
+      on well-known config file basenames.
+  - module: memx_indexer.languages._engine.config_consumer_extractor
+    function: extract
+    description: >-
+      Extract os.getenv('KEY'), os.environ['KEY'], and os.environ.get('KEY')
+      reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read)
+      edges from consuming entities (MX-600).

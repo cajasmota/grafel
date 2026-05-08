@@ -1,0 +1,62 @@
+frameworks:
+  name: LangChain.js
+  npm_package: langchain
+  category: ai_framework
+  github_stars_2025: 14000+
+  gateway: library
+  detection:
+    config_files: []
+    dependency_names:
+    - langchain
+    - "@langchain/core"
+    - "@langchain/community"
+    - "@langchain/openai"
+    - "@langchain/anthropic"
+    import_markers:
+    - from "langchain
+    - from "@langchain/core
+    - from "@langchain/community
+    - from "@langchain/openai
+    - from "@langchain/anthropic
+    - import { } from "langchain
+    structural_markers: []
+  notes: >
+    LangChain TypeScript/JavaScript SDK. Detection via npm dependencies and
+    import patterns. No framework-specific config files.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+
+source_patterns:
+  # .pipe() chain
+  - pattern: "\\w+\\.pipe\\s*\\("
+    entity_type: Operation
+    name_group: 0
+    scope: file
+  # DynamicTool
+  - pattern: "new\\s+DynamicTool\\s*\\("
+    entity_type: Operation
+    name_group: 0
+    scope: file
+  # Agent factory
+  - pattern: "create\\w+Agent\\s*\\("
+    entity_type: Service
+    name_group: 0
+    scope: file
+
+relationship_rules: []
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.javascript_typescript.langchain_ts_extractor
+    function: extract
+    description: >-
+      LangChain TS/JS extractor: LCEL .pipe() chains, RunnableSequence.from(),
+      agents (createReactAgent + AgentExecutor), DynamicTool/DynamicStructuredTool
+      and tool() factory, RAG pipelines (createRetrievalChain, RetrievalQAChain),
+      prompts (ChatPromptTemplate, PromptTemplate), memory (BufferMemory,
+      ConversationSummaryMemory). Emits DEPENDS_ON (pipe stages), OWNS
+      (agent->tools), CALLS (chain invocations).

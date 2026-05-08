@@ -1,0 +1,91 @@
+domain_root_conventions:
+  standard_layout:
+    description: 'Standard Go project layout (github.com/golang-standards/project-layout).
+      Widely adopted but not enforced by toolchain.
+
+      '
+    directories:
+    - path: cmd/
+      purpose: 'Main applications. Each subdirectory is a separate binary (cmd/server/,
+        cmd/worker/, cmd/cli/). main.go lives here.
+
+        '
+      entry_point: true
+    - path: internal/
+      purpose: 'Private application and library code. Cannot be imported by external
+        packages (enforced by Go toolchain). Contains business logic, data access,
+        domain models.
+
+        '
+      access: private_to_module
+    - path: pkg/
+      purpose: 'Library code safe for use by external applications. Public API surface
+        of the module.
+
+        '
+      access: public
+    - path: api/
+      purpose: 'OpenAPI/Swagger specs, JSON schema files, protocol definition files
+        (.proto). API contract definitions.
+
+        '
+    - path: configs/
+      purpose: 'Configuration file templates and default configs. (config/, conf/
+        are common alternatives)
+
+        '
+    - path: scripts/
+      purpose: 'Scripts for build, install, analysis, and other operations. Called
+        from Makefile targets.
+
+        '
+    - path: deployments/
+      purpose: 'IaaS, PaaS, container orchestration, and system config files (Docker,
+        Kubernetes, docker-compose, Helm charts).
+
+        '
+    - path: test/
+      purpose: 'External test apps and test data. NOT *_test.go files — those live
+        alongside the code they test. Integration/E2E test suites.
+
+        '
+  microservice_layout:
+    description: 'DDD-influenced layout for microservices (Kratos, go-zero pattern).
+
+      '
+    directories:
+    - path: internal/biz/
+      purpose: Business logic layer (use cases, domain entities)
+    - path: internal/data/
+      purpose: Data access layer (repository implementations)
+    - path: internal/service/
+      purpose: gRPC service implementation layer
+    - path: internal/server/
+      purpose: HTTP/gRPC server setup and middleware registration
+  grpc_layout:
+    description: 'Common layout for gRPC-first Go services.
+
+      '
+    directories:
+    - path: proto/ or api/proto/
+      purpose: Protocol buffer definition files
+    - path: gen/ or pkg/pb/
+      purpose: Generated protobuf Go code (*.pb.go, *.pb.gw.go)
+    - path: interceptors/ or middleware/
+      purpose: gRPC interceptor implementations
+  kubernetes_operator_layout:
+    description: 'controller-gen / kubebuilder generated project layout.
+
+      '
+    directories:
+    - path: api/
+      purpose: CRD type definitions (GroupVersionKind structs)
+    - path: controllers/
+      purpose: Reconciler implementations
+    - path: config/
+      purpose: Kustomize manifests, CRD YAML, RBAC policies
+    markers:
+    - zz_generated.deepcopy.go
+    - PROJECT (kubebuilder metadata file)
+    - config/crd/
+    - config/rbac/

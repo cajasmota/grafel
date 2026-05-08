@@ -1,0 +1,23 @@
+frameworks:
+  name: Angel3
+  pubspec_dependency: angel3_framework
+  category: server_web
+  pub_dev_url: https://pub.dev/packages/angel3_framework
+  github_stars_2025: 250+
+  detection:
+    pubspec_signals:
+    - 'angel3_framework:'
+    - 'angel3_route:'
+    - 'angel3_container:'
+    code_patterns:
+    - import 'package:angel3_framework/angel3_framework.dart'
+    - Angel()
+    - app.get(
+    - app.post(
+    - '@Expose('
+    - configureServer
+    notes: 'Community fork of Angel (now Angel3) — full-featured server framework.
+      Older codebases may use angel_framework (without the 3). Detection should cover
+      both angel_framework and angel3_framework pubspec keys.
+
+      '

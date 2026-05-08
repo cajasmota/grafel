@@ -1,0 +1,32 @@
+# Source: https://github.com/kubernetes/examples (synthetic based on real Kubernetes production patterns) | License: Apache-2.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp-api
+  namespace: production
+  labels:
+    app: webapp
+    tier: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      containers:
+        - name: api
+          image: webapp:latest
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+        - name: sidecar
+          image: envoy:latest
+          ports:
+            - name: proxy
+              containerPort: 15001

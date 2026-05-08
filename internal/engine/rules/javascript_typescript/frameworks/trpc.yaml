@@ -1,0 +1,58 @@
+# tRPC framework extraction rules (MX-570)
+# Schema: FrameworkExtractionSchema (MX-494)
+# NPM: @trpc/server
+#
+# Top-level detection metadata is consumed by the modular_loader.
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: trpc
+  category: rpc
+  npm_packages:
+  - '@trpc/server'
+  - '@trpc/client'
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - '@trpc/server'
+    - '@trpc/client'
+    import_patterns:
+    - from '@trpc/server'
+    - require('@trpc/server')
+    code_patterns:
+    - initTRPC
+    - t.router(
+    - createTRPCRouter(
+    - publicProcedure
+    - protectedProcedure
+    - createCallerFactory
+  framework_specific:
+  - initTRPC.context
+  - t.middleware
+  - t.mergeRouters
+  notes: Detect via @trpc/server import; initTRPC.create() call confirms tRPC
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # tRPC routers typically live in server/routers/ or src/server/
+  - glob: "*/routers/*.ts"
+    entity_type: Module
+    name_from: filename
+  - glob: "*/trpc/*.ts"
+    entity_type: Module
+    name_from: filename
+  - glob: "*/server/routers/*.ts"
+    entity_type: Module
+    name_from: filename
+
+source_patterns: []
+
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.trpc_extractor"
+    function: "extract"
+    description: "Extract tRPC routers, query/mutation procedures, middleware chains, input schemas, caller factories, and mergeRouters composition"

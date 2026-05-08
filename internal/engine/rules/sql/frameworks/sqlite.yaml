@@ -1,0 +1,29 @@
+frameworks_and_dialects:
+  name: SQLite
+  category: rdbms_dialect
+  file_extensions:
+  - '*.sql'
+  - '*.sqlite'
+  - '*.db'
+  config_markers:
+  - '*.db'
+  - '*.sqlite3'
+  - '*.sqlite'
+  syntax_markers:
+  - AUTOINCREMENT
+  - PRAGMA
+  - PRAGMA foreign_keys
+  - PRAGMA journal_mode
+  - PRAGMA wal_mode
+  - WITHOUT ROWID
+  - STRICT
+  - sqlite_master
+  - sqlite_sequence
+  - ATTACH DATABASE
+  - INTEGER PRIMARY KEY
+  notes: 'SQLite uses AUTOINCREMENT (different semantics from PostgreSQL SERIAL),
+    PRAGMA statements for configuration, and stores schema in sqlite_master. Lacks
+    many DDL ALTER TABLE operations. Strongly detected by PRAGMA and sqlite_master
+    references.
+
+    '

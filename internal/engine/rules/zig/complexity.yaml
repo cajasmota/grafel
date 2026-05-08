@@ -1,0 +1,190 @@
+complexity_signals:
+- category: comptime
+  description: 'Compile-time execution and metaprogramming. comptime is Zig''s primary
+    abstraction mechanism, replacing generics, macros, and templates from other languages.
+    Heavy comptime usage signals library or framework code with high indexing value.
+
+    '
+  patterns:
+  - comptime {
+  - 'comptime var '
+  - 'comptime const '
+  - fn comptime
+  - comptime @TypeOf(
+  - comptime @typeInfo(
+  - comptime @hasField(
+  - comptime @hasDecl(
+  - comptime @field(
+  - comptime @fieldNames(
+  - comptime @unionInit(
+  - comptime switch (
+  - comptime if (
+  - comptime for (
+  - comptime @sizeOf(
+  - comptime @alignOf(
+  - comptime @offsetOf(
+  - '@Type('
+  - '@typeInfo('
+  - '@typeName('
+  - '@hasField('
+  - '@hasDecl('
+  - '@field('
+  - inline for (
+  - inline while (
+  - 'inline fn '
+  - anytype
+  - 'fn foo(comptime T: type)'
+  indexing_note: 'Comptime blocks and @typeInfo usage signal generic or reflective
+    code that generates types or functions at compile time. These constructs have
+    no runtime equivalent — they are pure compile-time code paths. @Type with @typeInfo
+    signals runtime-type-layout manipulation — highest complexity tier. inline for
+    with anytype signals generic iterator patterns.
+
+    '
+- category: inline_assembly
+  description: 'Inline assembly blocks. Signals hardware-level code, OS kernels, embedded
+    firmware, SIMD intrinsics, or atomic primitives not yet available in std. Extremely
+    high complexity — requires architecture knowledge to index correctly.
+
+    '
+  patterns:
+  - asm volatile (
+  - asm (
+  - '=> '
+  - ': '
+  - '"memory"'
+  - '"cc"'
+  - '@import("std").Target.Cpu.Arch'
+  indexing_note: 'asm volatile is the primary inline asm signal. Projects using inline
+    assembly are typically OS kernels (Hermit, zig-os-dev), embedded firmware (targeting
+    ARM Cortex-M, RISC-V), or cryptographic libraries with SIMD acceleration. These
+    files should be flagged for architecture-specific treatment in the indexer.
+
+    '
+- category: pointer_casting_and_unsafe_memory
+  description: 'Low-level pointer manipulation, bit casting, and unsafe memory operations.
+    These patterns indicate systems programming close to hardware or C interop where
+    Zig''s type system is deliberately escaped.
+
+    '
+  patterns:
+  - '@intToPtr('
+  - '@ptrFromInt('
+  - '@ptrCast('
+  - '@alignCast('
+  - '@bitCast('
+  - '@truncate('
+  - '@intCast('
+  - '@floatCast('
+  - '@floatToInt('
+  - '@intToFloat('
+  - '@as('
+  - '[*]'
+  - '[*c]'
+  - '*anyopaque'
+  - allowzero
+  - '@volatileCast('
+  indexing_note: '@ptrFromInt (formerly @intToPtr) is the canonical signal for MMIO
+    register access in embedded/OS code. [*c] signals C interop. @bitCast is used
+    for low-level serialization and SIMD register aliasing. Files heavy with these
+    patterns likely contain hardware abstraction layer code.
+
+    '
+- category: error_unions_and_error_sets
+  description: 'Zig''s error handling model. Error unions (T!E) and error sets are
+    first-class types. Complex error set manipulation signals robust error taxonomy
+    design worth indexing for API surface understanding.
+
+    '
+  patterns:
+  - error{
+  - error.OutOfMemory
+  - error.InvalidArgument
+  - '!void'
+  - '!usize'
+  - '![]u8'
+  - anyerror
+  - anyerror!void
+  - 'try '
+  - catch |err|
+  - catch {
+  - 'errdefer '
+  - 'error_union || '
+  - std.debug.assert(
+  - unreachable
+  - error.Overflow
+  - error.EndOfStream
+  indexing_note: 'errdefer signals cleanup code on error paths — important for memory
+    safety analysis. anyerror signals functions that can return any error (low specificity).
+    Explicit error sets (error{Foo, Bar}) signal well-typed APIs worth extracting
+    as part of the public interface. unreachable used in release builds is an optimizer
+    hint; used in debug builds it''s a safety trap. Both are worth flagging.
+
+    '
+- category: packed_structs_and_bit_fields
+  description: 'Packed structs, bitfields, and union-based bit manipulation. Signals
+    hardware register layouts, network protocol headers, file format parsing, or ABI-compatible
+    C struct mirroring.
+
+    '
+  patterns:
+  - packed struct {
+  - packed union {
+  - extern struct {
+  - extern union {
+  - '@bitSizeOf('
+  - '@sizeOf('
+  - u1
+  - u2
+  - u3
+  - u4
+  - u7
+  - i1
+  - i2
+  - u128
+  - i128
+  - ': u1,'
+  - ': u2,'
+  - ': u4,'
+  - ': u8,'
+  indexing_note: 'packed struct is the strongest signal for hardware register or protocol
+    header modeling. extern struct signals C ABI compatibility. Arbitrary integer
+    widths (u1, u3, u7) without packed struct context signal protocol or compression
+    code. These constructs have no equivalent in most languages and represent high-value
+    Zig-specific patterns for the indexer.
+
+    '
+- category: allocators_and_memory_management
+  description: 'Explicit allocator usage patterns. Zig has no GC and no implicit heap
+    allocation — every heap allocation requires an explicit allocator. The allocator
+    pattern in use signals the memory management strategy of the project.
+
+    '
+  patterns:
+  - std.heap.GeneralPurposeAllocator(
+  - std.heap.ArenaAllocator(
+  - std.heap.FixedBufferAllocator(
+  - std.heap.StackFallbackAllocator(
+  - std.heap.page_allocator
+  - std.heap.c_allocator
+  - std.testing.allocator
+  - std.mem.Allocator
+  - 'allocator: std.mem.Allocator'
+  - 'alloc: std.mem.Allocator'
+  - .init(allocator)
+  - .deinit()
+  - defer allocator.free(
+  - defer list.deinit()
+  - errdefer allocator.free(
+  - allocator.alloc(
+  - allocator.create(
+  - allocator.free(
+  - allocator.destroy(
+  - allocator.resize(
+  indexing_note: 'ArenaAllocator is used for request-scoped or short-lived allocations
+    — common in web handlers. FixedBufferAllocator signals embedded/no-heap contexts.
+    GeneralPurposeAllocator with leak detection is the canonical development allocator.
+    Passing std.mem.Allocator as a function parameter is idiomatic Zig — it is the
+    primary signal for allocating functions that are safe to test with std.testing.allocator.
+
+    '

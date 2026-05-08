@@ -1,0 +1,39 @@
+frameworks:
+  name: postcss
+  full_name: PostCSS
+  category: preprocessor_transform
+  extensions:
+  - .pcss
+  - .postcss
+  - .css
+  npm_packages:
+  - postcss
+  config_files:
+  - postcss.config.js
+  - postcss.config.ts
+  - postcss.config.cjs
+  - postcss.config.mjs
+  - .postcssrc
+  - .postcssrc.js
+  - .postcssrc.json
+  - .postcssrc.yml
+  detection_signals:
+    package_json_deps:
+    - postcss
+    config_file_present:
+    - postcss.config.js
+    - postcss.config.ts
+    - .postcssrc
+  framework_specific:
+  - PostCSS plugin chain (postcss.config.js plugins array)
+  - autoprefixer (vendor prefix injection)
+  - cssnano (minification)
+  - postcss-preset-env (future CSS features)
+  - postcss-import (file merging)
+  - postcss-nested (Sass-like nesting)
+  notes: 'PostCSS is a transformation tool, not a language. It processes standard
+    CSS (or CSS-like syntax) through a plugin pipeline. Detected primarily by postcss.config.*
+    presence or postcss dep in package.json. Often used alongside Tailwind CSS and
+    autoprefixer.
+
+    '

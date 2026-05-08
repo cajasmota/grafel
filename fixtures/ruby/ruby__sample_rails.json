@@ -1,0 +1,248 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/ruby/sample_rails.rb",
+  "language": "ruby",
+  "entities": [
+    {
+      "name": "full_name",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 61,
+      "end_line": 63,
+      "language": "ruby",
+      "signature": "def full_name()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "authenticate_user!",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 48,
+      "end_line": 50,
+      "language": "ruby",
+      "signature": "def authenticate_user!()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "user_params",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 44,
+      "end_line": 46,
+      "language": "ruby",
+      "signature": "def user_params()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "set_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 40,
+      "end_line": 42,
+      "language": "ruby",
+      "signature": "def set_user()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "destroy",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 33,
+      "end_line": 36,
+      "language": "ruby",
+      "signature": "def destroy()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "update",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 25,
+      "end_line": 31,
+      "language": "ruby",
+      "signature": "def update()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 5,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 16,
+      "end_line": 23,
+      "language": "ruby",
+      "signature": "def create()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 5,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "show",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 12,
+      "end_line": 14,
+      "language": "ruby",
+      "signature": "def show()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "index",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 7,
+      "end_line": 10,
+      "language": "ruby",
+      "signature": "def index()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 53,
+      "end_line": 64,
+      "language": "ruby",
+      "signature": "class User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UsersController",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 3,
+      "end_line": 51,
+      "language": "ruby",
+      "signature": "class UsersController",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/ruby/sample_rails.rb",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/ruby/sample_rails.rb",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "ruby",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "snake_case",
+        "dominant_percentage": 27.27272727272727,
+        "sample_count": 11,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/ruby/sample_rails.rb"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

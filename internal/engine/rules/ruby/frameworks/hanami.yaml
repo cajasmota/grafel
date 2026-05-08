@@ -1,0 +1,32 @@
+frameworks:
+  name: Hanami
+  gem_name: hanami
+  category: web_full_stack
+  github_stars_2025: 6200+
+  detection:
+    config_files:
+    - Gemfile
+    - config/app.rb
+    - config/settings.rb
+    - slices/
+    - app/actions/
+    - app/views/
+    gemfile_deps:
+    - hanami
+    - hanami-router
+    - hanami-controller
+    - hanami-view
+    import_markers:
+    - require 'hanami'
+    - Hanami::Application
+    - Hanami::App
+    - Hanami::Action
+    - Hanami::View
+    structural_markers:
+    - slices/
+    - app/actions/
+    - config/app.rb
+  notes: 'Hanami 2.x uses slices/ directory layout instead of Rails-style app/. config/app.rb
+    is distinct from Rails config/application.rb — high-confidence.
+
+    '

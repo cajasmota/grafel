@@ -1,0 +1,137 @@
+# Micronaut framework extraction rules (MX-504)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Artifact: io.micronaut:micronaut-inject
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: Micronaut
+  category: cloud_native
+  maven_coordinates: io.micronaut:micronaut-inject
+  gradle_dependency: implementation 'io.micronaut:micronaut-inject'
+  bom_artifact: io.micronaut.platform:micronaut-platform
+  adoption_rank_2025: 5
+  detection:
+    config_files:
+    - src/main/resources/application.yml
+    - src/main/resources/application.properties
+    - micronaut-cli.yml
+    pom_xml_markers:
+    - io.micronaut
+    - micronaut-maven-plugin
+    gradle_markers:
+    - io.micronaut.application
+    - io.micronaut.library
+    import_patterns:
+    - import io.micronaut
+    code_patterns:
+    - '@MicronautTest'
+    - '@Controller'
+    - '@Singleton'
+    - '@Inject'
+    - Micronaut.run(
+  notes: >
+    micronaut-cli.yml is a very high-confidence signal. io.micronaut.application
+    Gradle plugin distinguishes from Spring. AOT compile-time DI — no runtime reflection.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Micronaut controllers by convention live in a controller/ package
+  - glob: "*/controllers/*.java"
+    entity_type: Operation
+    name_from: class_name
+  - glob: "*/controller/*.java"
+    entity_type: Operation
+    name_from: class_name
+  # Service beans
+  - glob: "*/services/*.java"
+    entity_type: Service
+    name_from: class_name
+  - glob: "*/service/*.java"
+    entity_type: Service
+    name_from: class_name
+
+source_patterns:
+  # @Controller class-level path: @Controller("/orders")
+  # Captures the base path that prefixes all method routes
+  - pattern: "@Controller\\s*\\(\\s*\"([^\"]+)\"\\s*\\)"
+    entity_type: Operation
+    name_group: 1
+    scope: class
+
+  # @Controller without path value (defaults to class name as path)
+  - pattern: "@Controller[\\s\\S]{0,80}?(?:public\\s+)?class\\s+(\\w+)"
+    entity_type: Operation
+    name_group: 1
+    scope: class
+
+  # Micronaut HTTP method annotations on methods: @Get, @Post, @Put, @Delete, @Patch
+  # Matches the path value (sub-path) from the annotation
+  - pattern: "@(?:Get|Post|Put|Delete|Patch|Head|Options)\\s*\\(\\s*\"([^\"]+)\"\\s*\\)"
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Micronaut HTTP method annotation without value — capture method name as operation name
+  - pattern: "(?:@(?:Get|Post|Put|Delete|Patch|Head|Options))[\\s\\n]+(?:public\\s+)?\\S+\\s+(\\w+)\\s*\\("
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # @Inject field injection — captures injected type name as dependency
+  # Requires the @Inject annotation explicitly (no false positive from plain constructors)
+  # Matches: @Inject private OrderService orderService;
+  - pattern: "@Inject[\\s\\n]+(?:(?:private|protected|public|package)\\s+)?(\\w+)\\s+\\w+"
+    entity_type: Dependency
+    name_group: 1
+    scope: class
+
+  # @Singleton bean declaration — captures class name
+  - pattern: "@Singleton[\\s\\S]{0,80}?(?:public\\s+)?class\\s+(\\w+)"
+    entity_type: Service
+    name_group: 1
+    scope: class
+
+  # @MicronautTest annotation on test class
+  - pattern: "@MicronautTest[\\s\\S]{0,80}?(?:public\\s+)?class\\s+(\\w+)"
+    entity_type: Test
+    name_group: 1
+    scope: class
+
+relationship_rules:
+  # @Inject wires a dependency into a controller/service
+  # source = injected type (Dependency), target = containing class (Operation)
+  - pattern: "@Inject[\\s\\n]+(?:(?:private|protected|public)\\s+)?(\\w+)\\s+(\\w+)"
+    source_type: Dependency
+    target_type: Operation
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2
+
+  # @Inject wires a dependency into a service bean
+  - pattern: "@Inject[\\s\\n]+(?:(?:private|protected|public)\\s+)?(\\w+)\\s+(\\w+)"
+    source_type: Dependency
+    target_type: Service
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2
+
+  # Method-level route is part of the controller class: @Controller path -> method @Get path
+  - pattern: "@Controller\\s*\\(\\s*\"([^\"]+)\"\\s*\\)[\\s\\S]{0,400}?@(?:Get|Post|Put|Delete|Patch)\\s*\\(\\s*\"([^\"]+)\"\\s*\\)"
+    source_type: Operation
+    target_type: Operation
+    relationship: CALLS
+    source_group: 1
+    target_group: 2
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.micronaut_extractor"
+    function: "extract"
+    description: "Extract Micronaut @Controller endpoints (class+method path resolution), @Singleton/@Prototype beans, @Scheduled tasks, @Retryable/@CircuitBreaker AOP patterns, @Client HTTP client interfaces, and @Replaces bean overrides. Emits DEPENDS_ON relationships for DI injection and client/override references."
+  - module: "memx_indexer.languages._engine.config_prefix_extractor"
+    function: "extract"
+    description: "Extract micronaut.server.context-path (YAML) as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."

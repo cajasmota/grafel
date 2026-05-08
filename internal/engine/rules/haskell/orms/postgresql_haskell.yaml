@@ -1,0 +1,35 @@
+orms_database:
+  name: PostgreSQL Haskell Drivers (postgresql-simple, hasql)
+  category: postgres_driver
+  hackage_packages:
+    - postgresql-simple
+    - hasql
+    - persistent-postgresql
+  detection:
+    import_patterns:
+      - Database.PostgreSQL.Simple
+      - Hasql.Connection
+      - Hasql.Session
+    code_patterns:
+      - connect defaultConnectInfo
+      - connectPostgreSQL
+      - acquire
+      - Hasql.Connection.acquire
+  notes: >
+    postgresql-simple provides a mid-level interface to PostgreSQL. hasql is
+    a high-performance abstraction with session-based queries. persistent-postgresql
+    is the Yesod/Persistent backend for PostgreSQL.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: connect/connectPostgreSQL/acquire
+      connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER),
+      LISTEN/NOTIFY (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY),
+      COPY (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

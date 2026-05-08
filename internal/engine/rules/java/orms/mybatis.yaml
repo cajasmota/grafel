@@ -1,0 +1,31 @@
+orms_database:
+  name: MyBatis
+  maven_coordinates: org.mybatis:mybatis
+  gradle_dependency: implementation 'org.mybatis:mybatis'
+  spring_boot_starter: org.mybatis.spring.boot:mybatis-spring-boot-starter
+  detection:
+    config_files:
+    - mybatis-config.xml
+    - '*Mapper.xml'
+    pom_xml_markers:
+    - org.mybatis
+    - mybatis-spring-boot-starter
+    import_patterns:
+    - import org.apache.ibatis
+    - import org.mybatis
+    code_patterns:
+    - '@Mapper'
+    - '@Select'
+    - '@Insert'
+    - '@Update'
+    - '@Delete'
+    - '@Results'
+    - '@Result'
+    - '@Many'
+    - '@One'
+    - SqlSession
+  notes: '@Mapper interface + SQL annotation set is definitive. *Mapper.xml files
+    indicate XML-based SQL mapping (common in large enterprise projects). Popular
+    in Chinese tech ecosystem.
+
+    '

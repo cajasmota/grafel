@@ -1,0 +1,22 @@
+frameworks:
+  name: zig-network
+  category: networking_lib
+  github: MasterQ32/zig-network
+  zig_version_baseline: 0.13.0
+  detection:
+    build_zig_zon_deps:
+    - network
+    - MasterQ32/zig-network
+    import_markers:
+    - '@import("network")'
+    - const network = @import("network")
+    structural_markers:
+    - network.Socket
+    - network.Address
+    - network.EndPoint
+    - network.connectToHost(
+    - network.Socket.create(
+    notes: 'Cross-platform socket library for Zig. Supplements std.net for projects
+      needing higher-level networking abstractions. Detection via build.zig.zon.
+
+      '

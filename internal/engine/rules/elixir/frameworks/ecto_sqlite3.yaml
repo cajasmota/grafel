@@ -1,0 +1,29 @@
+frameworks:
+  name: Ecto SQLite3 / exqlite (Elixir)
+  category: sqlite_driver
+  hex_packages:
+    - ecto_sqlite3
+    - exqlite
+  detection:
+    mix_deps:
+      - ecto_sqlite3
+      - exqlite
+    code_patterns:
+      - Ecto.Adapters.SQLite3
+      - Exqlite.Connection.connect(
+      - Exqlite.Basic.open(
+      - adapter: Ecto.Adapters.SQLite3
+  notes: >
+    ecto_sqlite3 is an Ecto adapter backed by exqlite. Used for lightweight
+    Elixir apps that do not need PostgreSQL. exqlite provides the raw SQLite3
+    NIF bindings. Configured via config :myapp, MyApp.Repo, adapter: Ecto.Adapters.SQLite3.
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: Ecto.Adapters.SQLite3/exqlite connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

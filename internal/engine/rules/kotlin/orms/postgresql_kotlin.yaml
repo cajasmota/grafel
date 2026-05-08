@@ -1,0 +1,33 @@
+orms_database:
+  name: PostgreSQL Kotlin Drivers (Exposed, R2DBC)
+  category: postgres_driver
+  maven_coordinates:
+    - org.jetbrains.exposed:exposed-jdbc
+    - org.jetbrains.exposed:exposed-core
+    - io.r2dbc:r2dbc-postgresql
+  detection:
+    import_patterns:
+      - org.jetbrains.exposed
+      - io.r2dbc.postgresql
+      - Database.connect(
+    code_patterns:
+      - Database.connect(
+      - R2dbcDatabase.create(
+      - TransactionManager.manager
+  notes: >
+    JetBrains Exposed is the idiomatic Kotlin ORM/DSL for PostgreSQL (and
+    other databases). R2DBC provides reactive non-blocking access.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: Exposed Database.connect / R2DBC
+      connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

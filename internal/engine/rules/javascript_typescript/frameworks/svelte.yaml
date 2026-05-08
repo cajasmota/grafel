@@ -1,0 +1,23 @@
+frameworks:
+  name: svelte
+  category: web
+  npm_packages:
+  - svelte
+  config_files:
+  - svelte.config.js
+  - svelte.config.ts
+  - vite.config.ts
+  detection_signals:
+    package_json_deps:
+    - svelte
+    file_extensions:
+    - .svelte
+  framework_specific:
+  - <script lang="ts">
+  - export let
+  - '$:'
+  - on:click
+  notes: .svelte extension is definitive
+  custom_extractors:
+  - module: memx_indexer.languages.javascript_typescript.svelte_extractor
+    function: extract

@@ -1,0 +1,31 @@
+orms_database:
+  name: Cassandra Python Driver (DataStax)
+  category: nosql_database
+  pip_package: cassandra-driver
+  detection:
+    import_patterns:
+    - from cassandra.cluster import Cluster
+    - import cassandra
+    - from cassandra.cqlengine
+    code_patterns:
+    - Cluster()
+    - cluster.connect()
+    - 'models.Model'
+  notes: >
+    DataStax Python Driver (cassandra-driver) including cqlengine ORM.
+    The scylla-driver fork is Cassandra-compatible and uses identical APIs.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), CQL execution
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), table definitions
+      via cqlengine (SCOPE.Schema/table, INFERRED_FROM_CASSANDRA_TABLE),
+      prepared statements (SCOPE.Operation/prepared,
+      INFERRED_FROM_CASSANDRA_PREPARED).

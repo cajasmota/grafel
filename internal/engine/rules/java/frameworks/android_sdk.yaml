@@ -1,0 +1,44 @@
+frameworks:
+  name: Android SDK
+  category: mobile_android
+  maven_coordinates: N/A (provided by Android SDK)
+  gradle_plugin: com.android.application
+  adoption_rank_2025: null
+  detection:
+    config_files:
+    - AndroidManifest.xml
+    - app/build.gradle
+    - app/build.gradle.kts
+    - local.properties
+    - gradle/wrapper/gradle-wrapper.properties
+    gradle_markers:
+    - com.android.application
+    - com.android.library
+    - android {
+    - compileSdk
+    - minSdk
+    - targetSdk
+    - defaultConfig {
+    import_patterns:
+    - import android.
+    - import androidx.
+    code_patterns:
+    - extends Activity
+    - extends AppCompatActivity
+    - extends Fragment
+    - extends Service
+    - extends BroadcastReceiver
+    - extends ContentProvider
+    - R.layout.
+    - R.id.
+    - R.string.
+  notes: 'AndroidManifest.xml at project root or app/ is the highest-confidence signal.
+    com.android.application Gradle plugin is definitive for app modules; com.android.library
+    for library modules. R.java is auto-generated — skip for indexing. Presence of
+    local.properties with sdk.dir distinguishes Android from server-side Java.
+
+    '
+custom_extractors:
+  - module: "memx_indexer.languages.java.android_extractor"
+    function: "extract"
+    description: "Extract Android Manifest components (activity/service/receiver/provider), Intent-based navigation, Fragment transactions, and ViewModel/LiveData dependencies. Emits DEPENDS_ON and OWNS relationships."

@@ -1,0 +1,21 @@
+# Rate limit extractor (MX-681)
+# Cross-language extractor for rate-limiting middleware and decorators.
+# Fires on Node.js (express-rate-limit), Python/Django, Java/Spring,
+# C#/ASP.NET, Go (golang.org/x/time/rate), and Python/Flask-Limiter.
+#
+# File gate is internal to the extractor (applies_to checks source signals).
+# This YAML exists to document the extractor's registration entry.
+
+name: rate_limit
+description: >-
+  Detect rate-limiting middleware and decorators and emit SCOPE.Pattern
+  entities with kind=rate_limit. Supported frameworks: express-rate-limit
+  (Node.js, algorithm=sliding_window), Django throttle_classes
+  (Python, algorithm=fixed_window), Spring @RateLimiter/@Bucket4j
+  (Java/Kotlin, algorithm=token_bucket), ASP.NET UseRateLimiting/AddRateLimiter
+  (C#, algorithm=fixed_window), Go rate.NewLimiter
+  (Go, algorithm=token_bucket), Flask-Limiter decorator and constructor
+  (Python, algorithm=sliding_window).
+module: memx_indexer.pattern_detectors.rate_limit_extractor
+function: detect
+applies_to_function: applies_to

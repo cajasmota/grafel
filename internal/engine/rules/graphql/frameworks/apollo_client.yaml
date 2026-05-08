@@ -1,0 +1,36 @@
+client_tools:
+  name: Apollo Client
+  language: JavaScript / TypeScript
+  category: graphql_client
+  github_stars_2025: 19400+
+  detection:
+    package_json_deps:
+    - '@apollo/client'
+    - apollo-client
+    - apollo-boost
+    structural_markers:
+    - new ApolloClient(
+    - InMemoryCache
+    - ApolloProvider
+    - useQuery
+    - useMutation
+    - useSubscription
+    - useLazyQuery
+    - gql`
+    - makeVar
+    - ReactiveVar
+    - ApolloLink
+    - HttpLink
+    - split
+    - WebSocketLink
+  extraction_targets:
+  - gql` ` tagged template operation documents
+  - useQuery / useMutation / useSubscription hook invocations
+  - ApolloClient configuration (cache policy, link chain)
+  - Type policies in InMemoryCache
+  - Fragment colocation with component files
+  notes: 'Apollo Client v3 is the current version (@apollo/client). v2 used apollo-client
+    + apollo-boost. Detect both. gql` ` tagged templates are the primary operation
+    document source outside of standalone .graphql files.
+
+    '

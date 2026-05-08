@@ -1,0 +1,36 @@
+server_frameworks:
+  name: Hasura
+  language: Service (YAML/SQL config-driven)
+  category: graphql_engine
+  github_stars_2025: 31200+
+  detection:
+    config_files:
+    - hasura/config.yaml
+    - config.yaml
+    - hasura/metadata/databases/
+    - hasura/migrations/
+    - metadata/actions.graphql
+    - metadata/allow_list.yaml
+    - .hasura/config.yaml
+    structural_markers:
+    - '"version: 3" in hasura/config.yaml'
+    - '"endpoint:" in hasura/config.yaml'
+    - metadata/databases/default/tables/
+    - metadata/actions/
+    directory_markers:
+    - hasura/
+    - hasura/metadata/
+    - hasura/migrations/
+    - hasura/seeds/
+  extraction_targets:
+  - Action definitions from metadata/actions.graphql
+  - Remote schema configurations from metadata/remote_schemas.yaml
+  - Permission rules from table YAML files (select/insert/update/delete permissions)
+  - Event trigger definitions
+  - Custom function declarations
+  notes: 'Hasura generates the GraphQL API automatically from Postgres schema. Custom
+    business logic is expressed in Actions (REST/GraphQL delegates) and Event Triggers
+    (async webhooks). The SDL schema is generated, not hand-authored. Extraction focuses
+    on action definitions and permission rules rather than SDL parsing.
+
+    '

@@ -1,0 +1,35 @@
+frameworks:
+  name: dry-rb
+  gem_name: dry-rb
+  category: toolkit
+  github_stars_2025: N/A (org)
+  detection:
+    config_files:
+    - Gemfile
+    gemfile_deps:
+    - dry-container
+    - dry-auto_inject
+    - dry-system
+    - dry-validation
+    - dry-monads
+    - dry-struct
+    - dry-types
+    - dry-transaction
+    - dry-events
+    - dry-core
+    import_markers:
+    - require 'dry'
+    - Dry::Container
+    - Dry::Validation
+    - Dry::Monads
+    - Dry::Struct
+    - Dry::Types
+    - include Dry::Monads[:result]
+    structural_markers:
+    - class << self
+    - include Dry::Monads
+  notes: 'dry-rb is a suite of gems, not a single framework. dry-system and dry-container
+    indicate dependency injection architecture. dry-validation indicates form/contract
+    validation. Often used in Hanami 2.x apps.
+
+    '

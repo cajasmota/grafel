@@ -1,0 +1,32 @@
+database_libraries:
+  name: next.jdbc
+  clojars_artifact: com.github.seancorfield/next.jdbc
+  category: sql_jdbc
+  github_stars_2025: 800+
+  detection:
+    lein_deps:
+    - com.github.seancorfield/next.jdbc
+    - seancorfield/next.jdbc
+    deps_edn_coords:
+    - com.github.seancorfield/next.jdbc
+    import_markers:
+    - next.jdbc
+    - next.jdbc.sql
+    - next.jdbc.result-set
+    - next.jdbc.connection
+    - (:require [next.jdbc
+    - (jdbc/execute!
+    - (jdbc/execute-one!
+    - (jdbc/get-datasource
+    - (jdbc/with-transaction
+    - (sql/insert!
+    - (sql/query
+    - (sql/update!
+    - (sql/delete!
+  notes: 'next.jdbc is the modern Clojure JDBC wrapper (successor to clojure.java.jdbc).
+    Detected by com.github.seancorfield/next.jdbc dep. Core functions are jdbc/execute!,
+    jdbc/execute-one!, and jdbc/get-datasource. (jdbc/with-transaction [tx ds] ...)
+    handles transactions. Always paired with a JDBC driver dep (org.postgresql/postgresql,
+    mysql/mysql-connector-java, etc.).
+
+    '

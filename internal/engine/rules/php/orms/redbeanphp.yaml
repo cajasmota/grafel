@@ -1,0 +1,31 @@
+orms:
+  name: RedBeanPHP
+  package_name: gabordemooij/redbeanphp
+  category: zero_config_orm
+  detection:
+    composer_deps:
+    - gabordemooij/redbeanphp
+    - gabordemooij/redbean
+    import_markers:
+    - use RedBeanPHP\R
+    - require_once 'rb.php'
+    - require 'rb.php'
+    - R::setup(
+    - R::store(
+    - R::load(
+    - R::find(
+    - R::dispense(
+    - R::exec(
+    - R::getAll(
+    code_patterns:
+    - R::dispense(
+    - R::store(
+    - R::trash(
+    - R::related(
+    - R::associate(
+  notes: 'RedBeanPHP is zero-config and can be distributed as a single rb.php file.
+    R:: static facade calls are the definitive detection signal. Often used in small/legacy
+    apps; may not use Composer (single-file distribution). R::setup() call is the
+    initialization pattern.
+
+    '

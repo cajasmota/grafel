@@ -1,0 +1,32 @@
+orms_database:
+  name: MySQL Haskell Drivers (mysql-haskell, mysql-simple)
+  category: relational_database
+  hackage_package: mysql-haskell
+  detection:
+    import_patterns:
+    - import Database.MySQL.Base
+    - import Database.MySQL.Simple
+    - import qualified Database.MySQL
+    code_patterns:
+    - MySQL.connect
+    - connect defaultConnectInfo
+    - MySQL.Simple.connect
+  notes: >
+    mysql-haskell is a pure Haskell MySQL driver. mysql-simple provides a
+    higher-level interface similar to postgresql-simple. Both connect via
+    ConnectInfo or defaultConnectInfo.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

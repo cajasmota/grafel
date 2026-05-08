@@ -1,0 +1,133 @@
+complexity_signals:
+  metaprogramming:
+    description: 'Ruby''s metaprogramming capabilities create implicit coupling that
+      is difficult to trace statically. High-complexity signals for indexer.
+
+      '
+    patterns:
+    - pattern: method_missing
+      description: Dynamic method dispatch fallback
+      example: def method_missing(name, *args)
+      severity: high
+    - pattern: define_method
+      description: Dynamic method definition at runtime
+      example: define_method(:getter) { @value }
+      severity: high
+    - pattern: class_eval / module_eval
+      description: Runtime class/module modification
+      example: User.class_eval { def greet; end }
+      severity: high
+    - pattern: instance_eval
+      description: Context-switching evaluation
+      example: object.instance_eval { @secret }
+      severity: medium
+    - pattern: const_get / const_set
+      description: Dynamic constant resolution
+      example: Object.const_get(class_name)
+      severity: medium
+    - pattern: send / public_send
+      description: Dynamic method invocation
+      example: obj.send(:private_method)
+      severity: medium
+    - pattern: respond_to_missing?
+      description: Companion to method_missing for duck typing
+      example: def respond_to_missing?(name, include_private = false)
+      severity: low
+    - pattern: attr_accessor / attr_reader generated en masse
+      description: Bulk accessor generation via metaprogramming loops
+      example: '[:name, :email].each { |attr| attr_accessor attr }'
+      severity: low
+  concern_module_stacking:
+    description: 'Rails Concerns and module mixins create horizontal composition chains.
+      Many includes increase the method resolution order (MRO) complexity.
+
+      '
+    patterns:
+    - pattern: include Concern
+      example: include Searchable
+      severity: medium
+    - pattern: ActiveSupport::Concern
+      example: module Searchable; extend ActiveSupport::Concern
+      severity: medium
+    - pattern: extend ClassMethods
+      example: included { extend ClassMethods }
+      severity: medium
+    - pattern: deep MRO chains
+      description: More than 4 includes on a single class
+      severity: high
+  middleware_chains:
+    description: 'Rack middleware stacks and Rails middleware insertions create implicit
+      request processing pipelines.
+
+      '
+    patterns:
+    - pattern: config.middleware.use
+      example: config.middleware.use Rack::Attack
+      severity: medium
+    - pattern: use MiddlewareName (in config.ru)
+      example: use Rack::Cors
+      severity: low
+    - pattern: before_action chains
+      example: before_action :authenticate, :authorize, :set_tenant
+      severity: medium
+  background_jobs:
+    description: 'Asynchronous job processing with Sidekiq, Resque, Delayed Job, or
+      ActiveJob decouples execution from request lifecycle.
+
+      '
+    patterns:
+    - pattern: Sidekiq::Worker
+      example: include Sidekiq::Worker; def perform(user_id)
+      gem: sidekiq
+      severity: medium
+    - pattern: Resque.enqueue
+      example: Resque.enqueue(ProcessEmail, user_id)
+      gem: resque
+      severity: medium
+    - pattern: ActiveJob::Base
+      example: class EmailJob < ApplicationJob; def perform
+      severity: medium
+    - pattern: perform_later / perform_now
+      example: EmailJob.perform_later(user)
+      severity: low
+    - pattern: Delayed::Job
+      example: object.delay.send_email
+      gem: delayed_job
+      severity: medium
+  activesupport_callbacks:
+    description: 'ActiveSupport::Callbacks (and by extension ActiveRecord callbacks)
+      create invisible execution hooks that fire on lifecycle events.
+
+      '
+    patterns:
+    - pattern: before_save / after_save
+      example: before_save :normalize_email
+      severity: medium
+    - pattern: before_create / after_create
+      example: after_create :send_welcome_email
+      severity: medium
+    - pattern: around_action
+      example: around_action :measure_time
+      severity: high
+    - pattern: define_callbacks
+      example: define_callbacks :publish
+      severity: high
+    - pattern: set_callback
+      example: set_callback :save, :before, :validate_state
+      severity: high
+  dsl_abuse:
+    description: 'Ruby''s block-based DSL pattern can create deeply nested, hard-to-parse
+      code structures that are semantically opaque to static analysis.
+
+      '
+    patterns:
+    - pattern: deeply nested route blocks
+      example: namespace :api { namespace :v1 { resources :users { member { ... }
+        } } }
+      severity: high
+    - pattern: Proc/lambda chains
+      example: transform = ->(x) { x.map { |i| i * 2 }.select { |i| i > 0 } }
+      severity: low
+    - pattern: Symbol#to_proc heavy use
+      example: users.map(&:name).select(&:admin?).first
+      severity: low

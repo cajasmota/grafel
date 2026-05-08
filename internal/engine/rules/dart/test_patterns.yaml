@@ -1,0 +1,113 @@
+testing:
+- name: flutter_test
+  pubspec_dependency: 'flutter_test (sdk: flutter)'
+  category: unit_widget_integration
+  detection:
+    pubspec_dev_signals:
+    - 'flutter_test: sdk: flutter'
+    test_file_patterns:
+    - '*_test.dart'
+    - test/**/*.dart
+    - widget_test.dart
+    code_patterns:
+    - import 'package:flutter_test/flutter_test.dart'
+    - testWidgets(
+    - WidgetTester
+    - pumpWidget(
+    - pump(
+    - find.byType(
+    - find.text(
+    - find.byKey(
+    - expect(find.
+    - tester.tap(
+    notes: 'flutter_test is the primary widget and unit testing framework for Flutter.
+      It is a virtual SDK package (sdk: flutter) — not a pub.dev package. testWidgets()
+      is the key signal for widget tests vs test() for unit tests.
+
+      '
+- name: test (Dart test package)
+  pubspec_dependency: test
+  category: unit
+  pub_dev_url: https://pub.dev/packages/test
+  detection:
+    pubspec_dev_signals:
+    - 'test:'
+    test_file_patterns:
+    - '*_test.dart'
+    - test/**/*.dart
+    code_patterns:
+    - import 'package:test/test.dart'
+    - group(
+    - test(
+    - expect(
+    - setUp(
+    - tearDown(
+    - setUpAll(
+    - throwsA(
+    notes: 'The standard Dart unit testing library for non-Flutter Dart projects (server-side,
+      CLI, packages). flutter_test wraps this package. Pure Dart projects use test:;
+      Flutter projects use flutter_test:.
+
+      '
+- name: integration_test
+  pubspec_dependency: 'integration_test (sdk: flutter)'
+  category: integration_e2e
+  detection:
+    pubspec_dev_signals:
+    - 'integration_test: sdk: flutter'
+    structural_signals:
+    - integration_test/
+    - integration_test/app_test.dart
+    code_patterns:
+    - import 'package:integration_test/integration_test.dart'
+    - IntegrationTestWidgetsFlutterBinding.ensureInitialized()
+    - testWidgets(
+    notes: 'Flutter''s official integration test package (replaces flutter_driver).
+      Runs on real devices/emulators. integration_test/ directory at project root
+      is the canonical location. Virtual SDK package.
+
+      '
+- name: mockito (Dart)
+  pubspec_dependency: mockito
+  category: mocking
+  pub_dev_url: https://pub.dev/packages/mockito
+  detection:
+    pubspec_dev_signals:
+    - 'mockito:'
+    - 'build_runner:'
+    code_patterns:
+    - import 'package:mockito/mockito.dart'
+    - import 'package:mockito/annotations.dart'
+    - '@GenerateMocks(['
+    - MockClass
+    - .thenReturn(
+    - .thenAnswer(
+    - verify(
+    - when(
+    output_patterns:
+    - '*.mocks.dart'
+    notes: 'Dart port of Mockito. Requires build_runner for code generation (@GenerateMocks
+      annotation). *.mocks.dart generated files must be in skip_patterns. Null-safety
+      aware version requires Dart 2.12+.
+
+      '
+- name: bloc_test
+  pubspec_dependency: bloc_test
+  category: bloc_state_machine_testing
+  pub_dev_url: https://pub.dev/packages/bloc_test
+  detection:
+    pubspec_dev_signals:
+    - 'bloc_test:'
+    - 'bloc:'
+    code_patterns:
+    - import 'package:bloc_test/bloc_test.dart'
+    - blocTest(
+    - 'act: (bloc) =>'
+    - 'expect: () =>'
+    - 'build: () =>'
+    - 'seed: () =>'
+    notes: 'Testing utility for BLoC and Cubit state machines. Presence implies BLoC
+      pattern usage in the project. blocTest() is the primary API — provides structured
+      given/when/then semantics for state streams.
+
+      '

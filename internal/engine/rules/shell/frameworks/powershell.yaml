@@ -1,0 +1,29 @@
+frameworks:
+  name: powershell
+  category: shell
+  detection_signals:
+    shebang_patterns: []
+    file_extensions:
+    - .ps1
+    - .psm1
+    - .psd1
+    config_files:
+    - profile.ps1
+    - Microsoft.PowerShell_profile.ps1
+    content_patterns:
+    - param(
+    - Write-Host
+    - Write-Output
+    - Get-ChildItem
+    - Set-ExecutionPolicy
+    - Import-Module
+    - '[CmdletBinding()]'
+    - Begin {
+    - Process {
+    - End {
+    - $PSScriptRoot
+    - $ErrorActionPreference
+  notes: 'Cross-platform since PowerShell 7 (pwsh). Detected definitively by .ps1/.psm1
+    extensions. Common in Windows CI and Azure DevOps pipelines.
+
+    '

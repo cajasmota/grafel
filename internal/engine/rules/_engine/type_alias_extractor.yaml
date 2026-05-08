@@ -1,0 +1,24 @@
+# Type alias / type definition extractor (MX-719)
+# Identifies type alias declarations, type definitions, and interface declarations
+# across TypeScript, JavaScript (+ Flow), Kotlin, Scala, Rust, Go, Swift, and Dart.
+#
+# Supported declaration_style variants:
+#   type_alias             — TS/JS: type X = ...; Scala: type X = Y; Rust: type X = Y;
+#                            Go: type X = Y
+#   interface_declaration  — TS/JS: interface X { ... } / interface X extends Y
+#   typealias              — Kotlin: typealias X = Y; Swift: typealias X = Y
+#   type_definition        — Go: type X Y (new named type, no = sign)
+#   typedef                — Dart: typedef X = Y; typedef ReturnType X(...)
+#
+# File gate is internal to the detector (applies_to checks language field).
+
+name: type_alias_extractor
+description: >-
+  Detect type alias declarations, type definitions, and interface declarations
+  across TypeScript/JavaScript (type X = ..., interface X extends Y), Kotlin
+  (typealias), Scala (type X = Y), Rust (type X = Y;), Go (type X = Y /
+  type X Y), Swift (typealias), and Dart (typedef). Emits SCOPE.Schema entities
+  with kind=type_alias.
+module: memx_indexer.pattern_detectors.type_alias_extractor
+function: detect
+applies_to_function: applies_to

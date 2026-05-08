@@ -1,0 +1,43 @@
+framework_templates:
+  name: Astro Components
+  framework: Astro
+  extensions:
+  - .astro
+  npm_packages:
+  - astro
+  detection_signals:
+    file_extensions:
+    - .astro
+    package_json_deps:
+    - astro
+    directory_conventions:
+    - src/pages/
+    - src/components/
+    - src/layouts/
+    syntax_markers:
+    - '---'
+    - const { prop } = Astro.props
+    - <slot />
+    - <slot name="name" />
+    - <Fragment>
+    - client:load
+    - client:idle
+    - client:visible
+    - client:only="react"
+    - Astro.url
+    - Astro.request
+    - Astro.cookies
+    - define:vars={{ var }}
+  scope_entity_mapping:
+    entity_type: Component
+    name_signal: Filename stem (e.g. Card.astro -> Card component)
+    boundary: 'File = one Component entity. Pages in src/pages/ are also Components
+      (they render HTML). Layouts in src/layouts/ are Components. Named <slot> entries
+      are slot sub-entities.
+
+      '
+  notes: '.astro extension is definitive. The --- frontmatter fence at the top of
+    the file is a high-confidence signal. Astro can embed React/Vue/Svelte components
+    via client:* hydration directives — those are separate entities.
+
+    '

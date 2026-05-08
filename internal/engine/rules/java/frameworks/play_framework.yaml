@@ -1,0 +1,26 @@
+frameworks:
+  name: Play Framework
+  category: web_full_stack
+  maven_coordinates: com.typesafe.play:play_2.13
+  gradle_dependency: implementation 'com.typesafe.play:play_2.13'
+  adoption_rank_2025: 9
+  detection:
+    config_files:
+    - conf/application.conf
+    - conf/routes
+    - project/plugins.sbt
+    - project/build.properties
+    - build.sbt
+    pom_xml_markers:
+    - com.typesafe.play
+    import_patterns:
+    - import play.mvc
+    - import play.api
+    code_patterns:
+    - extends Controller
+    - extends AbstractController
+    - Result ok(
+  notes: 'conf/routes file is the highest-confidence signal. project/plugins.sbt with
+    play plugin. Primarily Scala but has Java API.
+
+    '

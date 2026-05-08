@@ -1,0 +1,332 @@
+schema_definition_patterns:
+  create_table:
+    description: 'DDL CREATE TABLE statements defining relational schema. The foundational
+      indexable unit in SQL codebases.
+
+      '
+    syntax_markers:
+    - CREATE TABLE
+    - CREATE TABLE IF NOT EXISTS
+    - CREATE TEMPORARY TABLE
+    - CREATE UNLOGGED TABLE
+    - CREATE GLOBAL TEMPORARY TABLE
+    constraint_markers:
+    - PRIMARY KEY
+    - UNIQUE
+    - NOT NULL
+    - DEFAULT
+    - CHECK (
+    - REFERENCES
+    - FOREIGN KEY
+    - ON DELETE CASCADE
+    - ON DELETE SET NULL
+    - ON UPDATE CASCADE
+    - CONSTRAINT {name}
+    - DEFERRABLE
+    - INITIALLY DEFERRED
+    notes: 'CREATE TABLE is the primary schema indexing target. Column definitions,
+      constraints, and FK relationships define the data model. Multi-line CREATE TABLE
+      blocks are the highest-value indexing targets in SQL files.
+
+      '
+  alter_table:
+    description: 'DDL ALTER TABLE statements modifying existing schema. Common in
+      migration files to evolve schema incrementally.
+
+      '
+    syntax_markers:
+    - ALTER TABLE
+    - ADD COLUMN
+    - DROP COLUMN
+    - RENAME COLUMN
+    - ALTER COLUMN
+    - MODIFY COLUMN
+    - ADD CONSTRAINT
+    - DROP CONSTRAINT
+    - RENAME TO
+    - SET DEFAULT
+    - DROP DEFAULT
+    - SET NOT NULL
+    - DROP NOT NULL
+    notes: 'ALTER TABLE in migration context tracks schema evolution over time. Each
+      ALTER represents an incremental schema change with attribution to the migration
+      version.
+
+      '
+  stored_procedures:
+    description: 'Stored procedures encapsulate business logic in the database. Common
+      in Oracle, SQL Server, PostgreSQL codebases.
+
+      '
+    syntax_markers:
+    - CREATE OR REPLACE PROCEDURE
+    - CREATE PROCEDURE
+    - CREATE OR REPLACE FUNCTION
+    - CREATE FUNCTION
+    - ALTER PROCEDURE
+    - EXECUTE PROCEDURE
+    - CALL
+    - IN OUT
+    - INOUT
+    - OUT parameter
+    notes: 'Stored procedures are indexable code entities with named parameters and
+      business logic. PostgreSQL functions (LANGUAGE plpgsql, sql, python) are equivalent.
+      Oracle uses PROCEDURE/FUNCTION/PACKAGE hierarchy.
+
+      '
+  views:
+    description: 'Virtual tables defined by SELECT statements. Named query abstractions
+      for reporting, security, and interface stability.
+
+      '
+    syntax_markers:
+    - CREATE VIEW
+    - CREATE OR REPLACE VIEW
+    - CREATE MATERIALIZED VIEW
+    - CREATE OR REPLACE MATERIALIZED VIEW
+    - REFRESH MATERIALIZED VIEW
+    - CREATE TEMPORARY VIEW
+    notes: 'Views are indexable as named query interfaces. Materialized views (PostgreSQL,
+      Oracle) add refresh semantics and index support. Views abstract underlying table
+      complexity and should be indexed as named entities with their defining query.
+
+      '
+  triggers:
+    description: 'Automatic actions executed in response to DML events (INSERT, UPDATE,
+      DELETE) on tables.
+
+      '
+    syntax_markers:
+    - CREATE TRIGGER
+    - CREATE OR REPLACE TRIGGER
+    - BEFORE INSERT
+    - AFTER INSERT
+    - BEFORE UPDATE
+    - AFTER UPDATE
+    - BEFORE DELETE
+    - AFTER DELETE
+    - INSTEAD OF
+    - FOR EACH ROW
+    - FOR EACH STATEMENT
+    - NEW.
+    - OLD.
+    notes: 'Triggers implement cascading business rules and auditing logic. BEFORE/AFTER
+      and FOR EACH ROW are structural markers. The NEW. and OLD. row references are
+      PostgreSQL/standard trigger signals. Oracle uses :NEW and :OLD with colon prefix.
+
+      '
+  indexes:
+    description: 'Index definitions for query performance optimization.
+
+      '
+    syntax_markers:
+    - CREATE INDEX
+    - CREATE UNIQUE INDEX
+    - CREATE INDEX CONCURRENTLY
+    - CREATE INDEX IF NOT EXISTS
+    - USING btree
+    - USING hash
+    - USING gin
+    - USING gist
+    - USING brin
+    - 'WHERE '
+    - INCLUDE (
+    notes: 'Index definitions reveal query patterns and performance-critical paths.
+      Partial indexes (WHERE clause) expose access patterns. GIN/GiST indexes signal
+      full-text search or JSONB usage in PostgreSQL.
+
+      '
+domain_root_conventions:
+  migrations_first:
+    description: 'Projects where SQL exists primarily as database migrations. Common
+      in web application backends using Flyway, Liquibase, Alembic, dbmate, or sqitch.
+
+      '
+    directories:
+    - path: db/migrations/
+      purpose: 'Primary migration directory. dbmate, custom tools.
+
+        '
+    - path: db/migrate/
+      purpose: 'Rails-convention migration directory. Also used by Go tools.
+
+        '
+    - path: migrations/
+      purpose: 'Generic migration directory. Used by Atlas, custom tools.
+
+        '
+    - path: db/migration/
+      purpose: 'Flyway Spring Boot convention: src/main/resources/db/migration/
+
+        '
+    - path: alembic/versions/
+      purpose: 'Alembic-managed migration scripts directory.
+
+        '
+    - path: db/changelog/
+      purpose: 'Liquibase changelog directory.
+
+        '
+    - path: deploy/ revert/ verify/
+      purpose: 'sqitch change directories (three parallel directories per change).
+
+        '
+    entry_points:
+    - flyway.conf
+    - liquibase.properties
+    - alembic.ini
+    - atlas.hcl
+    - sqitch.conf
+    - sqitch.plan
+  sql_first_backend:
+    description: 'Projects where SQL is the primary application logic layer. No ORM
+      — queries, stored procedures, views authored directly. Common in data warehouses,
+      reporting systems, Oracle/SQL Server shops.
+
+      '
+    directories:
+    - path: sql/
+      purpose: 'Top-level SQL directory. Queries, DDL, procedures.
+
+        '
+    - path: db/
+      purpose: 'Database directory. Schema, migrations, seeds.
+
+        '
+    - path: stored_procedures/
+      purpose: 'Stored procedure files. Each file is one procedure. Common in Oracle
+        and SQL Server projects.
+
+        '
+    - path: views/
+      purpose: 'View definition files. One view per file convention.
+
+        '
+    - path: functions/
+      purpose: 'User-defined function files. One function per file.
+
+        '
+    - path: triggers/
+      purpose: 'Trigger definition files.
+
+        '
+    - path: indexes/
+      purpose: 'Index definition files (less common — indexes often in migration files
+        alongside the CREATE TABLE).
+
+        '
+    - path: types/
+      purpose: 'Custom type definitions (PostgreSQL composite types, Oracle object
+        types, T-SQL user-defined types).
+
+        '
+    entry_points:
+    - '*.sql in root directory'
+    - Makefile with psql / sqlcmd targets
+    - schema.sql
+    - init.sql
+  dbt_project:
+    description: 'dbt project structure. SQL files are Jinja-templated models organized
+      in a layered architecture (staging, intermediate, marts).
+
+      '
+    directories:
+    - path: models/
+      purpose: 'dbt model SQL files. Organized in subdirectories by layer. Each .sql
+        file is a model that compiles to a SELECT statement.
+
+        '
+    - path: models/staging/
+      purpose: 'Raw source data cleaning layer. One model per source table. Naming:
+        stg_{source}__{table}.sql
+
+        '
+    - path: models/intermediate/
+      purpose: 'Business logic transformation layer. Joins and aggregations. Naming:
+        int_{entity}_{verb}.sql
+
+        '
+    - path: models/marts/
+      purpose: 'Final analytics-ready tables consumed by BI tools. Naming: {entity}.sql
+        or dim_{entity}.sql / fct_{entity}.sql
+
+        '
+    - path: macros/
+      purpose: 'Reusable Jinja macros. Shared SQL logic.
+
+        '
+    - path: tests/
+      purpose: 'dbt generic and singular tests. YAML schema tests + SQL tests.
+
+        '
+    - path: snapshots/
+      purpose: 'Slowly changing dimension (SCD Type 2) snapshot models.
+
+        '
+    - path: seeds/
+      purpose: 'CSV files loaded as static reference tables.
+
+        '
+    - path: analyses/
+      purpose: 'Ad-hoc analytical SQL files. Not materialized.
+
+        '
+    entry_points:
+    - dbt_project.yml
+    - profiles.yml
+  embedded_sql_project:
+    description: 'Project where SQL is embedded within another language codebase.
+      SQL files colocated with application code.
+
+      '
+    directories:
+    - path: queries/
+      purpose: 'Named SQL query files. Used with sqlc, yesql, humus patterns.
+
+        '
+    - path: internal/db/queries/
+      purpose: 'Go + sqlc convention. Queries compiled to type-safe Go code.
+
+        '
+    - path: src/main/resources/
+      purpose: 'Java Spring Boot resource directory containing SQL files, Flyway migrations,
+        JPA named queries.
+
+        '
+    - path: resources/sql/
+      purpose: 'Generic SQL resource directory.
+
+        '
+    entry_points:
+    - sqlc.yaml
+    - sqlc.yml
+    - '*.sql alongside *.go / *.java / *.py application files'
+  data_warehouse_project:
+    description: 'Analytics/BI SQL project without dbt. Pure SQL analytical queries,
+      dimensional models, stored procedures for ETL.
+
+      '
+    directories:
+    - path: etl/
+      purpose: 'Extract-Transform-Load SQL procedures and scripts.
+
+        '
+    - path: dwh/
+      purpose: 'Data warehouse DDL: fact tables, dimension tables.
+
+        '
+    - path: reporting/
+      purpose: 'Reporting queries. Often parameterized.
+
+        '
+    - path: cubes/
+      purpose: 'OLAP cube definitions (SQL Server Analysis Services, etc.)
+
+        '
+    - path: procs/
+      purpose: 'Stored procedure directory (common abbreviation in DWH shops).
+
+        '
+    entry_points:
+    - No specific config file — detected by SQL file volume and
+    - presence of fact_*.sql / dim_*.sql / stg_*.sql naming patterns

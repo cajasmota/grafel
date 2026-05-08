@@ -1,0 +1,23 @@
+orms_database:
+  name: Tortoise ORM
+  pypi_package: tortoise-orm
+  category: sql_orm_async
+  detection:
+    dependency_names:
+    - tortoise-orm
+    - tortoise
+    model_file_patterns:
+    - '*/models.py'
+    - '*/db.py'
+    import_markers:
+    - from tortoise import fields, models
+    - from tortoise.models import Model
+    - Tortoise.init()
+    - register_tortoise
+    migration_tool: aerich
+    migration_files:
+    - migrations/*.py
+  notes: 'Async-native ORM inspired by Django ORM. register_tortoise is high-confidence
+    for FastAPI + Tortoise integration.
+
+    '

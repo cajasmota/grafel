@@ -1,0 +1,36 @@
+orms_database:
+  name: Haskell SQLite (direct-sqlite / persistent-sqlite)
+  category: sqlite_driver
+  hackage_packages:
+    - direct-sqlite
+    - persistent-sqlite
+    - sqlite-simple
+  detection:
+    import_patterns:
+      - Database.SQLite3
+      - Database.Persist.Sqlite
+    code_patterns:
+      - open ":memory:"
+      - Database.SQLite3.open
+      - runSqlite
+      - withSqliteConn
+      - withSqlitePool
+  notes: >
+    direct-sqlite provides low-level Haskell bindings to the SQLite C API.
+    persistent-sqlite is part of the Yesod/persistent ecosystem and provides
+    a higher-level type-safe interface. sqlite-simple is a mid-level wrapper
+    similar to postgresql-simple.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: direct-sqlite/persistent-sqlite connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

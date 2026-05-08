@@ -1,0 +1,207 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/swift/SampleService.swift",
+  "language": "swift",
+  "entities": [
+    {
+      "name": "Repository",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 43,
+      "end_line": 51,
+      "language": "swift",
+      "signature": "type Repository",
+      "enrichment_required": false,
+      "properties": {
+        "type": "protocol",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UserService",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 15,
+      "end_line": 41,
+      "language": "swift",
+      "signature": "type UserService",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "CreateUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 10,
+      "end_line": 13,
+      "language": "swift",
+      "signature": "type CreateUserRequest",
+      "enrichment_required": false,
+      "properties": {
+        "type": "struct",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 4,
+      "end_line": 8,
+      "language": "swift",
+      "signature": "type User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "struct",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 36,
+      "end_line": 40,
+      "language": "swift",
+      "signature": "func delete() -> Bool",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 29,
+      "end_line": 34,
+      "language": "swift",
+      "signature": "func create() -> User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findById",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 25,
+      "end_line": 27,
+      "language": "swift",
+      "signature": "func findById() -> User?",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findAll",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 21,
+      "end_line": 23,
+      "language": "swift",
+      "signature": "func findAll() -> [User]",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "example.com@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/swift/SampleService.swift:17",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/swift/SampleService.swift:example.com:17",
+      "kind": "SCOPE.Pattern",
+      "start_line": 17,
+      "end_line": 17,
+      "language": "swift",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "example.com",
+        "source_line": 17,
+        "target": "nextId"
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/swift/SampleService.swift",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/swift/SampleService.swift",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "swift",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "mixed",
+        "dominant_percentage": 25.0,
+        "sample_count": 20,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/swift/SampleService.swift"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

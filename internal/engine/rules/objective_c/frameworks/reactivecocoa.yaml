@@ -1,0 +1,27 @@
+frameworks:
+  name: ReactiveCocoa
+  category: reactive_programming
+  pod_coordinates:
+  - pod 'ReactiveCocoa'
+  - ReactiveObjC
+  detection:
+    config_files:
+    - Podfile (ReactiveCocoa or ReactiveObjC entry)
+    - Podfile.lock
+    import_patterns:
+    - '#import <ReactiveCocoa/ReactiveCocoa.h>'
+    - '#import <ReactiveObjC/ReactiveObjC.h>'
+    - '#import "RACSignal.h"'
+    code_patterns:
+    - RACSignal *
+    - RACCommand *
+    - RACObserve(
+    - RAC(
+    - '[[RACSignal'
+    - 'subscribeNext:'
+    - 'flattenMap:'
+  notes: 'FRP library for Objective-C. The pure Objective-C fork is ReactiveObjC (formerly
+    ReactiveCocoa v2). RACSignal, RACCommand, and the RAC() macro are definitive signals.
+    Heavy use indicates reactive architecture.
+
+    '

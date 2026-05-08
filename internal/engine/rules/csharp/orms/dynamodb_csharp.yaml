@@ -1,0 +1,33 @@
+orms_database:
+  name: AWS DynamoDB .NET SDK (AWSSDK.DynamoDBv2)
+  category: nosql_database
+  nuget_package: AWSSDK.DynamoDBv2
+  detection:
+    import_patterns:
+    - using Amazon.DynamoDBv2
+    - using Amazon.DynamoDBv2.Model
+    - using Amazon.DynamoDBv2.DataModel
+    code_patterns:
+    - AmazonDynamoDBClient
+    - DynamoDBContext
+    - AmazonDynamoDB
+  notes: >
+    AWSSDK.DynamoDBv2 covers both the low-level AmazonDynamoDBClient and the
+    higher-level DynamoDBContext (object persistence model).
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: AmazonDynamoDBClient/DynamoDBContext
+      connections (SCOPE.Service, INFERRED_FROM_DYNAMODB_CLIENT), table
+      definitions (SCOPE.Schema, INFERRED_FROM_DYNAMODB_TABLE), GSI/LSI indexes
+      (SCOPE.Schema, INFERRED_FROM_DYNAMODB_INDEX), query/scan operations
+      (SCOPE.Operation/query, INFERRED_FROM_DYNAMODB_QUERY), streams
+      (SCOPE.Operation/stream_op, INFERRED_FROM_DYNAMODB_STREAM), DAX
+      (SCOPE.Service, INFERRED_FROM_DYNAMODB_DAX), single-table design
+      (SCOPE.Pattern, INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

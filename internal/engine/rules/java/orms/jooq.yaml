@@ -1,0 +1,27 @@
+orms_database:
+  name: JOOQ
+  maven_coordinates: org.jooq:jooq
+  gradle_dependency: implementation 'org.jooq:jooq'
+  detection:
+    config_files:
+    - jooq-codegen.xml
+    - src/generated/jooq/
+    pom_xml_markers:
+    - org.jooq:jooq
+    - jooq-codegen-maven
+    import_patterns:
+    - import org.jooq.DSLContext
+    - import org.jooq.impl.DSL
+    - import org.jooq.Record
+    code_patterns:
+    - DSLContext
+    - create.selectFrom(
+    - DSL.using(
+    - .where(
+    - .fetch()
+    - .fetchOne()
+  notes: 'DSLContext is the primary runtime signal. Generated code in src/generated/jooq/
+    or similar is a structural signal. jooq-codegen-maven plugin in pom.xml indicates
+    schema-first code generation.
+
+    '

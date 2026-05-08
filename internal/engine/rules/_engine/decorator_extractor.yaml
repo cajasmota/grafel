@@ -1,0 +1,20 @@
+# Decorator / annotation extractor (MX-725)
+# Generic cross-language extractor for ALL decorators and annotations, not
+# just framework-specific ones.  Fires on Python, Java, Kotlin,
+# TypeScript, JavaScript, C#, Rust, PHP, and Swift source files.
+#
+# File gate is internal to the extractor (applies_to checks language and
+# trigger pattern).  This YAML documents the extractor's registration entry.
+
+name: decorator
+description: >-
+  Detect all decorators and annotations across languages and emit
+  SCOPE.Pattern entities with kind=decorator. Supported: Python @name,
+  Java/Kotlin @Annotation, TypeScript/JavaScript @decorator, C# [Attribute],
+  Rust #[attribute] and #![inner_attribute], PHP 8+ #[Attribute],
+  Swift @attribute. Go and Ruby are explicitly excluded (no decorator
+  mechanism). Each entity carries decorator_name, optional target, and raw
+  arguments list (max 10).
+module: memx_indexer.pattern_detectors.decorator_extractor
+function: detect
+applies_to_function: applies_to

@@ -1,0 +1,33 @@
+orms_database:
+  name: MongoEngine
+  pypi_package: mongoengine
+  category: document_odm
+  detection:
+    dependency_names:
+    - mongoengine
+    model_file_patterns:
+    - '*/models.py'
+    - '*/documents.py'
+    - '*/schemas.py'
+    import_markers:
+    - from mongoengine import
+    - import mongoengine
+    - mongoengine.Document
+    - EmbeddedDocument
+    - connect(
+  notes: 'Django-inspired ODM for MongoDB. Document and EmbeddedDocument subclassing
+    is the primary pattern.
+
+    '
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

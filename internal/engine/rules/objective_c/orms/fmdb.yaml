@@ -1,0 +1,31 @@
+database:
+  name: FMDB
+  type: sqlite_wrapper
+  pod_coordinates:
+  - pod 'FMDB'
+  - pod 'FMDB/FTS5'
+  detection:
+    config_files:
+    - Podfile (FMDB entry)
+    - Cartfile (ccgus/fmdb entry)
+    import_patterns:
+    - '#import <FMDB/FMDB.h>'
+    - '#import "FMDB.h"'
+    - '#import "FMDatabase.h"'
+    - '#import "FMDatabaseQueue.h"'
+    code_patterns:
+    - FMDatabase *
+    - '[FMDatabase databaseWithPath:'
+    - '[db open]'
+    - '[db executeQuery:'
+    - '[db executeUpdate:'
+    - FMDatabaseQueue *
+    - '[FMDatabaseQueue databaseQueueWithPath:'
+    - '[queue inDatabase:^(FMDatabase *db) {'
+    - FMResultSet *
+  notes: 'Thin SQLite wrapper for Objective-C. FMDatabase wraps a single SQLite connection;
+    FMDatabaseQueue provides thread-safe serial access. FMResultSet iterates query
+    results. FMDB is common in apps needing direct SQL without the Core Data object-graph
+    overhead.
+
+    '

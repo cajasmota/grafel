@@ -1,0 +1,20 @@
+# ---------------------------------------------------------------------------
+# Sidekiq framework extraction schema (MX-564)
+# ---------------------------------------------------------------------------
+# This YAML registers the custom extractor for Sidekiq worker files.
+# Framework key: sidekiq  (matches framework detection in the Ruby detector)
+# ---------------------------------------------------------------------------
+
+# No YAML-driven source_patterns or relationship_rules — all extraction is
+# handled by the custom extractor below, which processes worker class
+# declarations, perform methods, dispatch call sites, sidekiq_options,
+# configure_server/client blocks, and middleware chain operations.
+
+# ---------------------------------------------------------------------------
+# Custom extractors (MX-564)
+# ---------------------------------------------------------------------------
+
+custom_extractors:
+  - module: "memx_indexer.languages.ruby.sidekiq_extractor"
+    function: "extract"
+    description: "Extract Sidekiq worker classes (include Sidekiq::Worker/Job), def perform, perform_async/in/at dispatch sites, sidekiq_options metadata, Sidekiq.configure_server/client blocks, Sidekiq::Middleware chain operations — SCOPE.Service, SCOPE.Operation, SCOPE.Pattern, OWNS and CALLS relationships"

@@ -1,0 +1,33 @@
+frameworks:
+  name: mach-engine
+  category: game_engine
+  github: hexops/mach
+  zig_version_baseline: 0.13.0
+  detection:
+    build_zig_zon_deps:
+    - mach
+    - hexops/mach
+    import_markers:
+    - '@import("mach")'
+    - const mach = @import("mach")
+    structural_markers:
+    - mach.App
+    - mach.Core
+    - mach.Module
+    - mach.schedule
+    - mach.Systems
+    - mach.World
+    - mach.gfx.
+    - mach.math.
+    - mach.sysaudio.
+    - 'pub fn init(app: *App)'
+    - 'pub fn deinit(app: *App)'
+    - 'pub fn tick(app: *App)'
+    notes: 'Mach is the primary Zig game engine / GPU framework. Uses a data-oriented
+      ECS-like module system. Detected definitively via build.zig.zon dependency on
+      hexops/mach and the App/Core/Module imports. tick() function is the canonical
+      game loop entry point. Projects using mach typically have a src/main.zig with
+      a pub fn main calling mach.App.run(). Mach also provides cross-platform audio
+      (sysaudio), math, and GPU abstraction.
+
+      '

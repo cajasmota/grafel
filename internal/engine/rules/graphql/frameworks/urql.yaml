@@ -1,0 +1,32 @@
+client_tools:
+  name: urql
+  language: JavaScript / TypeScript
+  category: graphql_client
+  github_stars_2025: 8800+
+  detection:
+    package_json_deps:
+    - urql
+    - '@urql/core'
+    - '@urql/react'
+    - '@urql/svelte'
+    - '@urql/vue'
+    - '@urql/next'
+    structural_markers:
+    - createClient(
+    - useQuery(
+    - useMutation(
+    - useSubscription(
+    - gql`
+    - cacheExchange
+    - fetchExchange
+    - subscriptionExchange
+    - Client
+  extraction_targets:
+  - gql` ` tagged template operations
+  - Exchange pipeline configuration
+  - useQuery / useMutation / useSubscription invocations
+  notes: 'urql is lightweight and modular. Normalized caching requires the @urql/exchange-graphcache
+    package. Detect framework-specific packages (@urql/react, @urql/svelte, etc.)
+    for environment context.
+
+    '

@@ -1,0 +1,21 @@
+frameworks:
+  name: aiohttp
+  pypi_package: aiohttp
+  category: web_async
+  github_stars_2025: 16400+
+  gateway: custom
+  detection:
+    config_files:
+    - main.py
+    - app.py
+    dependency_names:
+    - aiohttp
+    import_markers:
+    - from aiohttp import web
+    - web.Application()
+    - aiohttp.ClientSession
+    structural_markers: []
+  notes: 'Dual-use: HTTP server AND HTTP client library. ClientSession-only usage
+    means it''s used as a client, not a web framework.
+
+    '

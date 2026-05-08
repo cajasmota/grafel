@@ -1,0 +1,82 @@
+frameworks:
+  name: Dockerfile
+  language: docker
+  category: containerization
+  detection:
+    config_files:
+      - Dockerfile
+      - Dockerfile.*
+      - "*.dockerfile"
+    content_patterns:
+      - "FROM "
+      - "EXPOSE "
+      - "CMD "
+  notes: >-
+    Dockerfile extraction. Detects FROM base images, EXPOSE ports, CMD/ENTRYPOINT
+    directives, and multi-stage build targets.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-526)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "Dockerfile"
+    entity_type: Config
+    name_from: filename
+  - glob: "Dockerfile.*"
+    entity_type: Config
+    name_from: filename
+  - glob: "*.dockerfile"
+    entity_type: Config
+    name_from: filename
+
+source_patterns:
+  # FROM image:tag AS stage
+  - pattern: "FROM\\s+(\\S+)"
+    entity_type: Dependency
+    name_group: 1
+    scope: file
+  # Multi-stage build target: FROM ... AS builder
+  - pattern: "FROM\\s+\\S+\\s+[Aa][Ss]\\s+(\\w+)"
+    entity_type: Component
+    name_group: 1
+    scope: file
+  # EXPOSE port
+  - pattern: "EXPOSE\\s+(\\d+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # CMD ["executable", ...]
+  - pattern: "CMD\\s+(?:\\[\\s*\"([^\"]+)\"|(.+))"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+  # ENTRYPOINT ["executable", ...]
+  - pattern: "ENTRYPOINT\\s+(?:\\[\\s*\"([^\"]+)\"|(.+))"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+  # COPY --from=stage
+  - pattern: "COPY\\s+--from=(\\S+)"
+    entity_type: Dependency
+    name_group: 1
+    scope: file
+  # ENV KEY=value
+  - pattern: "ENV\\s+(\\w+)="
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # LABEL key=value
+  - pattern: "LABEL\\s+(\\S+)="
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # COPY --from=stage references a build stage
+  - pattern: "COPY\\s+--from=(\\w+)\\s+(\\S+)"
+    source_type: Component
+    target_type: Component
+    relationship: CALLS
+    source_group: 2
+    target_group: 1

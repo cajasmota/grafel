@@ -1,0 +1,31 @@
+orms_database:
+  name: Neo4Dart (Neo4j Dart Driver)
+  category: graph_database
+  pub_package: neo4dart
+  adoption_rank_2025: 1
+  detection:
+    pubspec_markers:
+    - neo4dart
+    import_patterns:
+    - import 'package:neo4dart
+    code_patterns:
+    - Neo4Dart(
+  notes: >
+    Community Neo4j Dart driver (Neo4Dart). Uses Neo4Dart() constructor
+    for connection initialization.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections via Neo4Dart
+      (SCOPE.Service, INFERRED_FROM_NEO4J_DRIVER), Cypher queries
+      (SCOPE.Operation/query, INFERRED_FROM_NEO4J_CYPHER).

@@ -1,0 +1,26 @@
+orms:
+  name: Realm
+  category: orm_document
+  spm_coordinates:
+  - realm/realm-swift
+  cocoapods:
+  - pod 'RealmSwift'
+  detection:
+    import_patterns:
+    - import RealmSwift
+    code_patterns:
+    - 'class * : Object {'
+    - 'class * : EmbeddedObject {'
+    - '@Persisted'
+    - let realm = try! Realm()
+    - realm.write {
+    - realm.objects(
+    - Results<
+    - AnyRealmCollection<
+    - ObjectId
+    - realm.add(
+  notes: 'Mobile-first object database. Object subclass + @Persisted are definitive
+    signals (Realm 10+ modern syntax). try! Realm() is common (older code uses force-try).
+    Results<> is Realm''s live query type. Often present in offline-first mobile apps.
+
+    '

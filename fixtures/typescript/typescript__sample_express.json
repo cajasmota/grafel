@@ -1,0 +1,66 @@
+{
+  "input_file": "fixtures/sources/typescript/sample_express.ts",
+  "language": "typescript",
+  "entities": [
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 6,
+      "end_line": 10,
+      "language": "typescript",
+      "signature": "interface User",
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "interface",
+        "vera_type": "SCOPE.Schema"
+      }
+    },
+    {
+      "name": "CreateUserBody",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 12,
+      "end_line": 15,
+      "language": "typescript",
+      "signature": "interface CreateUserBody",
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "interface",
+        "vera_type": "SCOPE.Schema"
+      }
+    },
+    {
+      "name": "authMiddleware",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 22,
+      "end_line": 29,
+      "language": "typescript",
+      "signature": "function authMiddleware",
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "function",
+        "vera_type": "SCOPE.Operation"
+      }
+    },
+    {
+      "name": "express",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 4,
+      "end_line": 4,
+      "language": "typescript",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "is_local": "false",
+        "module": "express",
+        "vera_subtype": "import",
+        "vera_type": "SCOPE.Component"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "go-extractor"
+}

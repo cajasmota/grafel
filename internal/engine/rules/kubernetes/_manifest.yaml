@@ -1,0 +1,9 @@
+meta: language.yaml
+detection: extras.yaml
+k8s_resource_types: extras.yaml
+helm: extras.yaml
+kustomize: extras.yaml
+entity_extraction: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

@@ -1,0 +1,150 @@
+complexity_signals:
+- category: unsafe_blocks
+  description: 'Raw pointer usage, FFI calls, or manual memory management. Signals
+    system-level code, C interop, or performance-critical paths that bypass Rust''s
+    safety guarantees.
+
+    '
+  patterns:
+  - unsafe {
+  - 'unsafe fn '
+  - 'unsafe impl '
+  - 'unsafe trait '
+  - '*mut '
+  - '*const '
+  - std::mem::transmute
+  - std::mem::forget(
+  - 'std::ptr::'
+  - extern "C" {
+  - '#[no_mangle]'
+  - 'std::alloc::'
+  indexing_note: 'unsafe blocks are high-priority indexing targets — they represent
+    the highest-risk code regions. Flag for human review annotation.
+
+    '
+- category: async_await
+  description: 'Asynchronous programming patterns. .await chains, async fn declarations,
+    and async traits signal concurrent I/O-bound code.
+
+    '
+  patterns:
+  - 'async fn '
+  - async move {
+  - .await
+  - tokio::spawn(
+  - tokio::select!(
+  - tokio::join!(
+  - 'futures::future::'
+  - 'futures::stream::'
+  - Pin<Box<dyn Future
+  - BoxFuture<
+  - '#[async_trait]'
+  - 'async_trait::'
+  indexing_note: 'Pin<Box<dyn Future>> signals manual future pinning — high complexity.
+    tokio::select! signals multi-branch async logic requiring careful cancellation
+    handling.
+
+    '
+- category: lifetime_annotations
+  description: 'Explicit lifetime parameters signal complex ownership patterns, self-referential
+    structures, or high-performance zero-copy code.
+
+    '
+  patterns:
+  - '''a '
+  - <'a>
+  - <'a, 'b>
+  - 'where ''a: ''b'
+  - fn <'a>(
+  - '&''a '
+  - '&''static '
+  - PhantomData<
+  indexing_note: 'Multiple lifetime parameters in a single struct/function signature
+    indicate high code complexity. PhantomData signals variance manipulation.
+
+    '
+- category: macro_rules_and_proc_macros
+  description: 'Custom macros expand at compile time and generate code not visible
+    in source. Signals DSL patterns, boilerplate reduction, or code generation strategies.
+
+    '
+  patterns:
+  - 'macro_rules! '
+  - '#[proc_macro]'
+  - '#[proc_macro_derive('
+  - '#[proc_macro_attribute]'
+  - 'proc_macro2::'
+  - quote::quote!
+  - 'syn::'
+  - 'darling::'
+  - extern crate proc_macro
+  indexing_note: 'Proc macro crates (with proc-macro = true in Cargo.toml) require
+    separate indexing treatment — they expand at call sites, not definition.
+
+    '
+- category: trait_objects_and_dynamic_dispatch
+  description: 'Dynamic dispatch via trait objects. Signals extensible plugin architectures,
+    type erasure, or runtime polymorphism.
+
+    '
+  patterns:
+  - dyn Trait
+  - 'Box<dyn '
+  - 'Arc<dyn '
+  - 'Rc<dyn '
+  - impl Trait
+  - dyn Fn(
+  - dyn FnMut(
+  - dyn FnOnce(
+  - dyn std::error::Error
+  - dyn Any
+  indexing_note: 'dyn std::error::Error is ubiquitous error handling; low signal value
+    in isolation. Box<dyn Trait> with custom trait names signals plugin architecture
+    — high indexing priority.
+
+    '
+- category: pin_and_manual_future
+  description: 'Manual Future implementation and Pin usage signal advanced async programming
+    — custom executors, self-referential async structs, or combinator libraries.
+
+    '
+  patterns:
+  - Pin<
+  - std::pin::Pin
+  - 'impl Future for '
+  - fn poll(
+  - Poll::Ready(
+  - Poll::Pending
+  - std::task::Context
+  - std::task::Poll
+  - Unpin
+  - '!Unpin'
+  indexing_note: 'impl Future for X with custom poll() is the highest-complexity async
+    signal — manual future implementation. Rare in application code but common in
+    framework/library code.
+
+    '
+- category: error_handling_patterns
+  description: 'Error propagation and custom error type patterns. Signals robustness
+    investment and error taxonomy design.
+
+    '
+  patterns:
+  - thiserror::Error
+  - '#[derive(thiserror::Error'
+  - '#[derive(Error)'
+  - anyhow::Result
+  - anyhow::Error
+  - anyhow::Context
+  - anyhow::bail!(
+  - anyhow::ensure!(
+  - 'impl std::error::Error for '
+  - From<
+  - '? '
+  - 'eyre::'
+  - 'color_eyre::'
+  indexing_note: 'thiserror signals structured error types (library-style code). anyhow
+    signals application-layer error handling. Both present signals a well-structured
+    error taxonomy worth indexing.
+
+    '

@@ -1,0 +1,145 @@
+# Actix-web framework extraction rules (MX-516)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Crate: actix-web
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: Actix-web
+  category: web_framework
+  crate: actix-web
+  detection:
+    config_files:
+    - Cargo.toml
+    code_patterns:
+    - "actix-web"
+    - "#[actix_web::main]"
+    - HttpServer::new(
+    import_patterns:
+    - "use actix_web::"
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Handler modules grouped in handlers/ or routes/ directories
+  - glob: "*/handlers/*.rs"
+    entity_type: Operation
+    name_from: filename
+  - glob: "*/routes/*.rs"
+    entity_type: Route
+    name_from: filename
+  # Service / application layer modules
+  - glob: "*/services/*.rs"
+    entity_type: Service
+    name_from: filename
+  # Data model / entity modules
+  - glob: "*/models/*.rs"
+    entity_type: Model
+    name_from: filename
+
+source_patterns:
+  # Actix macro-based route registration on async functions:
+  # #[get("/path")]  #[post("/path")]  #[put("/path")]  #[delete("/path")]
+  # #[patch("/path")] #[head("/path")] #[options("/path")] #[route("/path")]
+  - pattern: "#\\[(?:get|post|put|delete|patch|head|options|route)\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # web::resource("/path").route(...) — resource-style registration
+  - pattern: "web::resource\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # web::scope("/prefix") — route grouping
+  - pattern: "web::scope\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Explicit route registration: .route("/path", web::get().to(...))
+  - pattern: "\\.route\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Handler function: async fn name(req: HttpRequest, ...) — captures handler name
+  # Matches async fn with at least one actix extractor type in args
+  - pattern: "async\\s+fn\\s+(\\w+)\\s*\\([^)]*(?:HttpRequest|web::|Data<|Json<|Path<|Query<|Form<)[^)]*\\)"
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Data<T> application state injection in function args — captures T as dependency
+  - pattern: "Data\\s*<\\s*([\\w:]+)\\s*>"
+    entity_type: Dependency
+    name_group: 1
+    scope: function
+
+  # HttpServer::new(...).bind(...) — application entry point
+  - pattern: "HttpServer\\s*::\\s*new\\s*\\("
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # #[actix_web::main] entry point
+  - pattern: "#\\[actix_web\\s*::\\s*main\\s*\\]"
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # App::new() — application builder (middleware config point)
+  - pattern: "App\\s*::\\s*new\\s*\\(\\s*\\)"
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # .wrap(Middleware) — middleware registration
+  # Captures only the struct/type name before any :: or ( to avoid capturing method calls
+  - pattern: "\\.wrap\\s*\\(\\s*(\\w+)"
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+custom_extractors:
+  - module: memx_indexer.languages.rust.actix_web_extractor
+    function: extract
+    description: >
+      Extracts Actix-web macro-annotated route handlers (#[get], #[post], etc.) as
+      SCOPE.Operation/endpoint (INFERRED_FROM_ACTIX_ROUTE), web::scope groupings as
+      SCOPE.Component (INFERRED_FROM_ACTIX_SCOPE), .wrap(Middleware) registrations as
+      SCOPE.Pattern (INFERRED_FROM_ACTIX_MIDDLEWARE), web::Json/Path/Query/Form<T>
+      extractor types as SCOPE.Schema (INFERRED_FROM_ACTIX_EXTRACTOR), HttpServer::new()
+      as SCOPE.Service (INFERRED_FROM_ACTIX_SERVER), web::Data<T> app state as
+      SCOPE.Pattern (INFERRED_FROM_ACTIX_STATE), and WebSocket handler functions as
+      SCOPE.Operation/websocket (INFERRED_FROM_ACTIX_WEBSOCKET).
+
+relationship_rules:
+  # Macro route connects path to the function immediately following it:
+  # #[get("/path")] \n async fn handler_name
+  - pattern: "#\\[(?:get|post|put|delete|patch|head|options|route)\\s*\\(\\s*\"([^\"]+)\"[^)]*\\)\\s*\\][\\s\\S]{0,200}?async\\s+fn\\s+(\\w+)"
+    source_type: Operation
+    target_type: Operation
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # web::scope("/prefix") contains .route("/sub") — nested routing
+  - pattern: "web::scope\\s*\\(\\s*\"([^\"]+)\"[^)]*\\)[\\s\\S]{0,400}?\\.route\\s*\\(\\s*\"([^\"]+)\""
+    source_type: Route
+    target_type: Route
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # Data<T> dependency injected into handler fn
+  - pattern: "Data\\s*<\\s*([\\w:]+)\\s*>[\\s\\S]{0,300}?async\\s+fn\\s+(\\w+)"
+    source_type: Dependency
+    target_type: Operation
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2

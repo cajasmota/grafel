@@ -1,0 +1,31 @@
+frameworks:
+  name: bootstrap
+  full_name: Bootstrap
+  category: component_framework
+  extensions:
+  - .css
+  - .scss
+  npm_packages:
+  - bootstrap
+  config_files:
+  - webpack.config.js
+  - vite.config.ts
+  detection_signals:
+    package_json_deps:
+    - bootstrap
+    content_patterns:
+    - '@import "bootstrap"'
+    - '@import ''bootstrap'''
+    - '@import "bootstrap/scss/'
+    - '@import ''bootstrap/scss/'
+    - bootstrap.min.css
+  framework_specific:
+  - Bootstrap SCSS variable overrides ($primary, $font-size-base, etc.)
+  - Bootstrap utility classes in HTML (d-flex, mt-3, col-md-6)
+  - Bootstrap component imports (@import 'bootstrap/scss/buttons')
+  - Bootstrap grid system (container, row, col-*)
+  notes: 'Bootstrap v5 uses SCSS source with SCSS variables for customization. Detection:
+    bootstrap in package.json deps + @import of bootstrap SCSS partials. HTML class
+    patterns (d-flex, col-md-*) signal Bootstrap usage in template files.
+
+    '

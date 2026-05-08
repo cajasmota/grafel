@@ -1,0 +1,27 @@
+orms_databases:
+  name: Hibernate (Kotlin)
+  gradle_coordinates:
+  - org.hibernate.orm:hibernate-core
+  - org.hibernate:hibernate-validator
+  detection:
+    config_files:
+    - persistence.xml
+    - hibernate.cfg.xml
+    - application.properties (spring.jpa.*)
+    import_patterns:
+    - import jakarta.persistence.
+    - import javax.persistence.
+    code_patterns:
+    - '@Entity'
+    - '@Table('
+    - '@Column('
+    - '@Id'
+    - '@GeneratedValue('
+    - '@ManyToOne'
+    - '@OneToMany'
+  notes: 'JPA/Hibernate in Kotlin requires kotlin-noarg plugin to generate no-arg
+    constructors for @Entity classes. Detect: @Entity + kotlin-noarg plugin or allOpen
+    plugin in build.gradle.kts. persistence.xml absent in Spring Boot (uses application.properties
+    spring.jpa.* instead).
+
+    '

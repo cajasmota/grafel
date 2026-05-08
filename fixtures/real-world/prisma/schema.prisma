@@ -1,0 +1,150 @@
+// Source: https://github.com/prisma/prisma-examples (synthetic based on real Prisma schema patterns) | License: Apache-2.0
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  AUTHOR
+  READER
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+// ============================================================
+// Models
+// ============================================================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  name              String
+  passwordHash      String    @map("password_hash")
+  role              UserRole  @default(READER)
+  tier              SubscriptionTier @default(FREE)
+  avatarUrl         String?   @map("avatar_url")
+  bio               String?
+  isActive          Boolean   @default(true) @map("is_active")
+  emailVerifiedAt   DateTime? @map("email_verified_at")
+  lastLoginAt       DateTime? @map("last_login_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  posts             Post[]    @relation("AuthorPosts")
+  comments          Comment[]
+
+  @@map("users")
+  @@index([email])
+  @@index([role])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  parentId    Int?      @map("parent_id")
+  name        String
+  slug        String    @unique
+  description String?
+  sortOrder   Int       @default(0) @map("sort_order")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  parent      Category?  @relation("CategoryChildren", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryChildren")
+  posts       Post[]
+
+  @@map("categories")
+  @@index([slug])
+  @@index([parentId])
+}
+
+model Post {
+  id          String      @id @default(cuid())
+  authorId    String      @map("author_id")
+  categoryId  Int?        @map("category_id")
+  title       String
+  slug        String      @unique
+  excerpt     String?
+  body        String
+  coverImage  String?     @map("cover_image")
+  status      PostStatus  @default(DRAFT)
+  viewsCount  Int         @default(0) @map("views_count")
+  publishedAt DateTime?   @map("published_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  author      User        @relation("AuthorPosts", fields: [authorId], references: [id], onDelete: Cascade)
+  category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tags        TagsOnPosts[]
+  comments    Comment[]
+
+  @@map("posts")
+  @@index([authorId])
+  @@index([categoryId])
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([slug])
+}
+
+model Tag {
+  id        Int           @id @default(autoincrement())
+  name      String
+  slug      String        @unique
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  posts     TagsOnPosts[]
+
+  @@map("tags")
+}
+
+model TagsOnPosts {
+  postId  String  @map("post_id")
+  tagId   Int     @map("tag_id")
+
+  post    Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@map("post_tags")
+}
+
+model Comment {
+  id          String    @id @default(cuid())
+  postId      String    @map("post_id")
+  authorId    String    @map("author_id")
+  parentId    String?   @map("parent_id")
+  body        String
+  isApproved  Boolean   @default(false) @map("is_approved")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent      Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies     Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+  @@index([postId])
+  @@index([authorId])
+  @@index([parentId])
+}

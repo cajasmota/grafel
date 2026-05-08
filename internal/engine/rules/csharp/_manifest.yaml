@@ -1,0 +1,9 @@
+frameworks: frameworks/ [asp_net_core, asp_net_mvc, blazor_server, blazor_webassembly,
+  net_maui, xamarin, uno_platform, wpf, winforms, entity_framework_core, grpc_net]
+mobile: extras.yaml
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orms: orms/ [entity_framework_core, dapper, nhibernate, linqpad_linq_to_sql]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

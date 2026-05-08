@@ -1,0 +1,25 @@
+template_engines:
+  name: EJS
+  full_name: Embedded JavaScript
+  language: javascript
+  extensions:
+  - .ejs
+  npm_packages:
+  - ejs
+  detection_signals:
+    file_extensions:
+    - .ejs
+    package_json_deps:
+    - ejs
+    syntax_markers:
+    - <%= ... %>
+    - <%- ... %>
+    - <% ... %>
+    - <%# ... %>
+    - <%_ ... _%>
+    - <%- include(
+  notes: 'Commonly used with Express.js. Detection: .ejs extension + package.json
+    ejs dep. include() calls indicate partial composition and are strong Component
+    signals.
+
+    '

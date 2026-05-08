@@ -1,0 +1,36 @@
+orms:
+  name: GRDB
+  category: orm_sqlite
+  spm_coordinates:
+  - groue/GRDB.swift
+  cocoapods:
+  - pod 'GRDB.swift'
+  detection:
+    import_patterns:
+    - import GRDB
+    code_patterns:
+    - DatabaseQueue(
+    - DatabasePool(
+    - 'struct * : FetchableRecord {'
+    - 'struct * : PersistableRecord {'
+    - 'struct * : TableRecord {'
+    - 'try db.execute(sql:'
+    - 'try db.create(table:'
+    - ValueObservation
+    - DatabaseMigrator()
+  notes: 'SQLite toolkit for Swift. FetchableRecord + PersistableRecord are the definitive
+    protocol signals. DatabaseQueue (serialized) vs DatabasePool (concurrent reads)
+    indicates access pattern. Popular for server-side Swift and local-only iOS apps
+    requiring SQL control.
+
+    '
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: GRDB DatabaseQueue/DatabasePool connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

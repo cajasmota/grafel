@@ -1,0 +1,1017 @@
+detection:
+  primary_file_patterns:
+  - pattern: '*.yaml / *.yml with apiVersion: + kind: fields'
+    confidence: definitive
+    notes: 'The canonical Kubernetes manifest detection signal. Any YAML file containing
+      both apiVersion: <group>/<version> (or apiVersion: v1) and kind: <ResourceType>
+      at the document root is a Kubernetes manifest. The pair must appear at the top
+      level of the YAML document, not nested inside another key. This disambiguates
+      K8s manifests from generic YAML configs, GitHub Actions workflows, and other
+      YAML-heavy tooling.
+
+      '
+    examples:
+    - 'apiVersion: apps/v1
+
+      kind: Deployment'
+    - 'apiVersion: v1
+
+      kind: Service'
+    - 'apiVersion: networking.k8s.io/v1
+
+      kind: Ingress'
+    - 'apiVersion: batch/v1
+
+      kind: CronJob'
+    - 'apiVersion: argoproj.io/v1alpha1
+
+      kind: Application'
+  - pattern: Chart.yaml
+    confidence: definitive
+    notes: 'Helm chart descriptor. Presence of Chart.yaml in a directory declares
+      it as the root of a Helm chart. Contains chart name, version, appVersion, description,
+      and dependency declarations. A Helm chart may contain both Chart.yaml and a
+      templates/ subdirectory with Kubernetes manifest templates. Never skip Chart.yaml
+      — it is the highest-value Helm signal.
+
+      '
+    required_fields:
+    - apiVersion
+    - name
+    - version
+    optional_high_value_fields:
+    - appVersion
+    - description
+    - dependencies
+  - pattern: kustomization.yaml / kustomization.yml
+    confidence: definitive
+    notes: 'Kustomize configuration root. Presence of kustomization.yaml signals a
+      Kustomize base or overlay directory. The file lists the resources, patches,
+      transformers, and generators that Kustomize applies. Found in base/, overlays/dev/,
+      overlays/staging/, overlays/prod/ directory patterns. A repository may contain
+      many kustomization.yaml files at different levels of the overlay tree.
+
+      '
+    key_fields:
+    - resources
+    - bases
+    - patches
+    - patchesStrategicMerge
+    - patchesJson6902
+    - transformers
+    - generators
+    - namePrefix / nameSuffix
+    - commonLabels / commonAnnotations
+    - configMapGenerator / secretGenerator
+  - pattern: skaffold.yaml
+    confidence: definitive
+    notes: 'Skaffold CI/CD configuration for Kubernetes development workflows. Presence
+      confirms an active inner-loop Kubernetes development setup using Skaffold for
+      build, push, and deploy automation. Commonly found at the repo root alongside
+      Dockerfile. Skaffold deploys using kubectl, Helm, or Kustomize — detect deployer
+      type from the deploy: block.
+
+      '
+    key_fields:
+    - apiVersion
+    - kind
+    - build.artifacts
+    - deploy.kubectl / deploy.helm / deploy.kustomize
+  - pattern: Tiltfile
+    confidence: definitive
+    notes: 'Tilt development environment configuration (Starlark/Python syntax, no
+      file extension). Presence at repo root confirms a Tilt-based inner-loop development
+      environment. Tilt orchestrates local Kubernetes clusters (kind, minikube, k3d)
+      and manages live-reload for microservices. The Tiltfile uses Python-like Starlark
+      syntax — do not parse as YAML. Key signals: k8s_resource(), docker_build(),
+      helm_resource() calls.
+
+      '
+    key_functions:
+    - k8s_resource()
+    - docker_build()
+    - helm_resource()
+    - k8s_yaml()
+    - local_resource()
+    - k8s_context()
+  directory_patterns:
+  - pattern: k8s/
+    confidence: high
+    notes: 'Conventional top-level directory for Kubernetes manifests. Contains deployment
+      YAML files and optionally environment subdirectories (k8s/dev/, k8s/staging/,
+      k8s/prod/).
+
+      '
+  - pattern: kubernetes/
+    confidence: high
+    notes: 'Full-name variant of k8s/. Same semantics. Common in larger monorepos
+      and enterprise projects.
+
+      '
+  - pattern: deploy/
+    confidence: medium
+    notes: 'Generic deployment directory. Often contains Kubernetes manifests alongside
+      Docker Compose files or other deployment artifacts. Require apiVersion/kind
+      content confirmation before treating as K8s.
+
+      '
+  - pattern: manifests/
+    confidence: high
+    notes: 'Explicit name for Kubernetes manifest collections. High confidence when
+      found alongside Chart.yaml or kustomization.yaml.
+
+      '
+  - pattern: helm/
+    confidence: high
+    notes: 'Top-level Helm chart collection directory. May contain one or multiple
+      chart subdirectories each with their own Chart.yaml.
+
+      '
+  - pattern: charts/
+    confidence: high
+    notes: 'Standard Helm charts directory. When found at repo root, signals a Helm
+      charts repository. When found inside a chart directory, contains vendored sub-chart
+      dependencies — SKIP this nested charts/ directory (see skip_patterns).
+
+      '
+  - pattern: base/
+    confidence: medium
+    notes: 'Kustomize base directory when paired with overlays/ sibling. Require kustomization.yaml
+      presence before treating as Kustomize base.
+
+      '
+  - pattern: overlays/
+    confidence: high
+    notes: 'Kustomize overlays directory. High confidence signal for Kustomize multi-environment
+      overlay pattern. Subdirectories represent environments (overlays/dev/, overlays/staging/,
+      overlays/prod/).
+
+      '
+k8s_resource_types:
+  description: 'Kubernetes resource types identified by the kind: field in manifests.
+    Each entry maps a kind value to its API group, typical use case, and extraction
+    priority. Resource types are grouped by category.
+
+    '
+  workloads:
+  - kind: Deployment
+    api_group: apps/v1
+    description: 'Stateless application workload. Manages a ReplicaSet to maintain
+      desired pod count. The most common K8s workload type.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - metadata.labels
+    - spec.replicas
+    - spec.selector.matchLabels
+    - spec.template.spec.containers[].name
+    - spec.template.spec.containers[].image
+    - spec.template.spec.containers[].ports[].containerPort
+    - spec.template.spec.containers[].env[]
+    - spec.template.spec.containers[].resources.requests / limits
+    - spec.template.spec.volumes[]
+    entity_mapping: Service
+    notes: 'Extract container image references (including tag/digest) as dependency
+      signals. Extract resource requests/limits for cost and capacity analysis. Do
+      not extract env var values — names only.
+
+      '
+  - kind: StatefulSet
+    api_group: apps/v1
+    description: 'Stateful application workload with stable network identities and
+      persistent storage. Used for databases, message brokers, and stateful services.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - spec.serviceName
+    - spec.replicas
+    - spec.volumeClaimTemplates[].metadata.name
+    - spec.volumeClaimTemplates[].spec.storageClassName
+    - spec.template.spec.containers[].name
+    - spec.template.spec.containers[].image
+    entity_mapping: Service
+    notes: 'serviceName links to a headless Service — extract as dependency edge.
+      volumeClaimTemplates signal persistent storage requirements.
+
+      '
+  - kind: DaemonSet
+    api_group: apps/v1
+    description: 'Ensures one pod per node. Used for cluster-wide agents: log collectors
+      (Fluentd, Filebeat), monitoring agents (node-exporter, Datadog agent), network
+      plugins, and storage drivers.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - spec.template.spec.containers[].name
+    - spec.template.spec.containers[].image
+    - spec.template.spec.tolerations
+    - spec.template.spec.nodeSelector
+    entity_mapping: Service
+    notes: 'DaemonSets signal infrastructure-layer concerns (observability, networking,
+      security). Toleration to node-role=control-plane signals privileged cluster-level
+      agent.
+
+      '
+  - kind: CronJob
+    api_group: batch/v1
+    description: 'Scheduled Job execution. Manages periodic batch workloads on a cron
+      schedule. The jobTemplate contains a Job spec.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - spec.schedule
+    - spec.jobTemplate.spec.template.spec.containers[].name
+    - spec.jobTemplate.spec.template.spec.containers[].image
+    - spec.concurrencyPolicy
+    - spec.suspend
+    entity_mapping: Service
+    notes: 'Extract cron schedule as a documentation annotation. concurrencyPolicy
+      signals idempotency requirements.
+
+      '
+  - kind: Job
+    api_group: batch/v1
+    description: 'One-time or finite-completion batch task. Runs pods to completion.
+      Used for database migrations, data processing, and administrative tasks.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - spec.completions
+    - spec.parallelism
+    - spec.template.spec.containers[].name
+    - spec.template.spec.containers[].image
+    entity_mapping: Service
+    notes: 'Jobs that reference init containers running migration scripts are high-value
+      signals for schema change detection.
+
+      '
+  networking:
+  - kind: Service
+    api_group: v1
+    description: 'Network endpoint for a set of pods. Provides stable DNS name and
+      load balancing. Types: ClusterIP (default), NodePort, LoadBalancer, ExternalName.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - spec.type
+    - spec.selector
+    - spec.ports[].port
+    - spec.ports[].targetPort
+    - spec.ports[].protocol
+    - spec.externalName
+    - spec.clusterIP
+    entity_mapping: ExternalAPI
+    notes: 'LoadBalancer type Services signal external traffic entry points. ExternalName
+      Services signal external dependency aliasing (DNS CNAME). ClusterIP with clusterIP:
+      None is a headless service (DNS-based discovery for StatefulSets). Extract selector
+      labels to map Service → workload relationships.
+
+      '
+  - kind: Ingress
+    api_group: networking.k8s.io/v1
+    description: 'HTTP/HTTPS routing rules for external access. Routes external traffic
+      to internal Services based on hostname and path rules. Requires an Ingress controller
+      (nginx, traefik, ALB, GCE, etc.).
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - metadata.annotations
+    - spec.ingressClassName
+    - spec.tls[].hosts
+    - spec.rules[].host
+    - spec.rules[].http.paths[].path
+    - spec.rules[].http.paths[].pathType
+    - spec.rules[].http.paths[].backend.service.name
+    - spec.rules[].http.paths[].backend.service.port.number
+    entity_mapping: ExternalAPI
+    notes: 'Ingress rules define public API surface. Extract hostname + path combinations
+      as ExternalAPI endpoints. TLS hosts signal public-facing domains. Ingress annotations
+      encode ingress-controller-specific config (nginx.ingress.kubernetes.io/*, alb.ingress.kubernetes.io/*).
+
+      '
+  - kind: NetworkPolicy
+    api_group: networking.k8s.io/v1
+    description: 'Pod-level network access control policy. Defines ingress and egress
+      traffic rules for selected pods using label selectors. Critical security signal.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - spec.podSelector
+    - spec.ingress[].from
+    - spec.egress[].to
+    - spec.policyTypes
+    entity_mapping: Schema
+    notes: 'NetworkPolicy presence signals zero-trust networking posture. Default-deny
+      policies (empty podSelector with empty rules) are the highest-signal security
+      patterns.
+
+      '
+  configuration:
+  - kind: ConfigMap
+    api_group: v1
+    description: 'Non-sensitive configuration key-value store. Mounted as environment
+      variables or volume files into pods. High-value for understanding application
+      configuration contracts.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - data
+    - binaryData
+    entity_mapping: Schema
+    notes: 'Extract ConfigMap key names as configuration surface documentation. Do
+      not extract values — they may contain passwords, connection strings, or API
+      endpoints. ConfigMaps mounted as volumes with .conf, .properties, or .yaml files
+      signal complex configuration management.
+
+      '
+  - kind: Secret
+    api_group: v1
+    description: 'Sensitive data store for credentials, tokens, and certificates.
+      Base64-encoded in YAML. Should never contain plaintext values in committed manifests
+      — sealed, SOPS-encrypted, or external-secrets are the safe patterns.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - type
+    - data
+    entity_mapping: Schema
+    notes: 'CRITICAL: Never extract or log Secret values. Extract key names and Secret
+      type only. Presence of plaintext (non-base64) data values in committed manifests
+      is a security finding. External Secrets Operator (kind: ExternalSecret) and
+      Sealed Secrets (kind: SealedSecret) are the safe alternatives — flag their presence
+      positively.
+
+      '
+    security_note: NEVER index Secret data values — key names only.
+  - kind: PersistentVolumeClaim
+    api_group: v1
+    description: 'Request for persistent storage. Bound to a PersistentVolume by the
+      cluster. Key signal for stateful workload storage requirements.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - spec.storageClassName
+    - spec.accessModes
+    - spec.resources.requests.storage
+    entity_mapping: Schema
+    notes: 'Extract storageClassName and requested size as infrastructure capacity
+      signals. ReadWriteMany access mode signals shared storage (NFS, CephFS, EFS)
+      — important architectural constraint.
+
+      '
+  - kind: HorizontalPodAutoscaler
+    api_group: autoscaling/v2
+    description: 'Automatic horizontal scaling policy. Adjusts pod replica count based
+      on CPU, memory, or custom metrics. Signals performance-sensitive workloads.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - spec.scaleTargetRef.name
+    - spec.minReplicas
+    - spec.maxReplicas
+    - spec.metrics[].type
+    - spec.metrics[].resource.name
+    - spec.metrics[].resource.target.averageUtilization
+    entity_mapping: Schema
+    notes: 'scaleTargetRef links HPA to its target workload — extract as dependency
+      edge. min/maxReplicas define the scaling envelope. Custom metric HPAs (External/Object
+      type) signal advanced performance engineering.
+
+      '
+  rbac:
+  - kind: ServiceAccount
+    api_group: v1
+    description: 'Pod identity for Kubernetes API access. Pods use ServiceAccounts
+      to authenticate to the K8s API server. Foundation of RBAC.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - metadata.annotations
+    - automountServiceAccountToken
+    entity_mapping: Schema
+    notes: 'IRSA annotation (eks.amazonaws.com/role-arn) signals AWS IAM role binding
+      for pod-level AWS access — high-value cloud security signal. Workload Identity
+      annotations signal GKE/Azure equivalents.
+
+      '
+  - kind: Role
+    api_group: rbac.authorization.k8s.io/v1
+    description: 'Namespace-scoped RBAC role. Grants API access to specific resources
+      within a namespace.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - rules[].apiGroups
+    - rules[].resources
+    - rules[].verbs
+    entity_mapping: Schema
+    notes: 'Extract rules as permission surface documentation. Wildcard verbs (["*"])
+      or wildcard resources signal overly permissive roles — flag for security review.
+
+      '
+  - kind: ClusterRole
+    api_group: rbac.authorization.k8s.io/v1
+    description: 'Cluster-scoped RBAC role. Grants API access across all namespaces
+      or to cluster-scoped resources (Nodes, PersistentVolumes, etc.).
+
+      '
+    extraction_fields:
+    - metadata.name
+    - rules[].apiGroups
+    - rules[].resources
+    - rules[].verbs
+    - rules[].resourceNames
+    entity_mapping: Schema
+    notes: 'ClusterRoles with wide permissions (apiGroups: ["*"] or resources: ["*"])
+      are high-severity security findings. cluster-admin ClusterRole binding is the
+      highest-privilege pattern.
+
+      '
+  - kind: RoleBinding
+    api_group: rbac.authorization.k8s.io/v1
+    description: 'Binds a Role or ClusterRole to users, groups, or ServiceAccounts
+      within a namespace.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - metadata.namespace
+    - roleRef.kind
+    - roleRef.name
+    - subjects[].kind
+    - subjects[].name
+    - subjects[].namespace
+    entity_mapping: Schema
+  - kind: ClusterRoleBinding
+    api_group: rbac.authorization.k8s.io/v1
+    description: 'Cluster-scoped binding of a ClusterRole to subjects. Grants cluster-wide
+      permissions.
+
+      '
+    extraction_fields:
+    - metadata.name
+    - roleRef.name
+    - subjects[].kind
+    - subjects[].name
+    - subjects[].namespace
+    entity_mapping: Schema
+    notes: 'ClusterRoleBindings granting cluster-admin to ServiceAccounts are critical
+      security findings.
+
+      '
+helm:
+  description: 'Helm is the de-facto Kubernetes package manager. A Helm chart is a
+    directory containing Chart.yaml, a values.yaml file, and a templates/ subdirectory
+    with Kubernetes manifest templates using Go template syntax. Charts can depend
+    on other charts via the dependencies: field in Chart.yaml (Helm 3 / Chart.lock)
+    or the deprecated requirements.yaml (Helm 2).
+
+    '
+  chart_structure:
+  - file: Chart.yaml
+    required: true
+    description: Chart descriptor — name, version, appVersion, dependencies.
+    extraction_fields:
+    - apiVersion
+    - name
+    - version
+    - appVersion
+    - description
+    - type
+    - keywords
+    - home
+    - sources[]
+    - dependencies[].name
+    - dependencies[].version
+    - dependencies[].repository
+    - dependencies[].condition
+    - dependencies[].alias
+    - maintainers[].name
+    - maintainers[].email
+    - annotations
+    notes: 'dependencies[] are the sub-chart declarations for Helm 3. Extract as dependency
+      graph edges (chart A depends on chart B at version X). type: library signals
+      a chart that cannot be deployed standalone — it provides named templates and
+      partials for other charts.
+
+      '
+  - file: values.yaml
+    required: true
+    description: Default configuration values for the chart.
+    extraction_approach: keys only — not values
+    notes: 'values.yaml defines the public configuration interface of the chart. Extract
+      key names (the configuration surface) and their types (string, int, bool, object,
+      list) from the structure. Do not extract leaf values — they may contain defaults
+      that expose internal URLs, credentials, or sensitive defaults. Deeply nested
+      keys signal complex parameterization.
+
+      '
+  - directory: templates/
+    required: true
+    description: 'Kubernetes manifest templates using Go template syntax ({{ }}).
+      Each .yaml or .tpl file is rendered by Helm with values substituted. The rendered
+      output is standard Kubernetes YAML.
+
+      '
+    template_syntax_signals:
+    - '{{ .Values.<path> }}'
+    - '{{ .Release.Name }}'
+    - '{{ .Release.Namespace }}'
+    - '{{ .Chart.Name }}'
+    - '{{ include "<name>" . }}'
+    - '{{ template "<name>" . }}'
+    - '{{- range .Values.<list> }}'
+    - '{{- if .Values.<flag> }}'
+    - '{{- with .Values.<obj> }}'
+    - '{{- toYaml . | nindent <N> }}'
+    - '{{ tpl <template> . }}'
+    - '{{ required "<msg>" .Values.<key> }}'
+  - file: templates/_helpers.tpl
+    required: false
+    common: true
+    description: 'Named template definitions. Contains reusable template fragments
+      (partials) invoked via include or template. The leading underscore convention
+      marks it as a partial — Helm does not render it to a Kubernetes manifest.
+
+      '
+    extraction_approach: 'Extract named template definitions ({{- define "<chart.name>.<suffix>"
+      -}}). Named templates are the shared library for the chart. Common patterns:
+      <chart>.fullname, <chart>.labels, <chart>.selectorLabels, <chart>.serviceAccountName.
+
+      '
+  - file: requirements.yaml
+    required: false
+    helm_version: Helm 2 (legacy)
+    description: 'Helm 2 dependency declarations. Superseded by the dependencies:
+      field in Chart.yaml (Helm 3). Still found in older charts. Extract same fields
+      as Chart.yaml dependencies.
+
+      '
+  - file: Chart.lock
+    required: false
+    description: 'Helm 3 dependency lockfile. Records exact resolved versions and
+      repository digests for all sub-chart dependencies. Machine-generated by helm
+      dependency update. Commit to source control. Do not skip — provides exact resolved
+      versions of chart dependencies.
+
+      '
+    extraction_fields:
+    - dependencies[].name
+    - dependencies[].version
+    - dependencies[].repository
+    - generated
+  - directory: charts/
+    description: 'Vendored sub-chart dependencies directory. Contains downloaded chart
+      tarballs (.tgz) or chart directories for offline use. SKIP the contents of charts/
+      — it is machine-populated by helm dependency update and is not source code.
+      Index Chart.yaml at the parent level only.
+
+      '
+    indexing_rule: SKIP — contents are vendored dependencies, not source
+  template_complexity_signals:
+  - signal: range_iteration
+    pattern: '{{- range .Values.<key> }}'
+    description: 'Iterating over a values list to generate multiple K8s resources.
+      Common for generating multiple Ingress rules, environment variables, or pod
+      affinity rules. Multi-level range nesting is high complexity.
+
+      '
+  - signal: conditional_blocks
+    pattern: '{{- if .Values.<flag> }}'
+    description: 'Conditional template blocks controlled by chart values. Extensive
+      if/else trees signal feature-toggle-heavy charts.
+
+      '
+  - signal: include_depth
+    pattern: '{{ include "<name>" . }}'
+    description: 'Named template calls. Charts that include helpers from _helpers.tpl
+      extensively signal good modularisation, but deep include chains (include calling
+      include) add complexity.
+
+      '
+  - signal: tpl_dynamic_evaluation
+    pattern: '{{ tpl <string> . }}'
+    description: 'Dynamic template evaluation. The tpl function evaluates a value
+      as a Go template at render time. Signals advanced configuration patterns and
+      potential injection risks.
+
+      '
+  - signal: required_assertions
+    pattern: '{{ required "<msg>" .Values.<key> }}'
+    description: 'Mandatory value assertions. Signals the chart has a required configuration
+      interface that must be satisfied at deploy time.
+
+      '
+  - signal: deep_values_nesting
+    description: 'values.yaml with 4+ levels of nested objects signals complex chart
+      parameterization (e.g., .Values.global.database.primary.host).
+
+      '
+kustomize:
+  description: 'Kustomize is a Kubernetes-native configuration management tool built
+    into kubectl (kubectl apply -k). It composes and transforms Kubernetes YAML without
+    templating — instead using patch files, transformers, and generators. Projects
+    use a base/ + overlays/ directory structure where each overlay customises the
+    base for a specific environment.
+
+    '
+  directory_structure:
+  - layout: base_overlays
+    description: 'The canonical Kustomize layout. A base/ directory contains the default
+      Kubernetes manifests and kustomization.yaml. The overlays/ directory contains
+      subdirectories (dev/, staging/, prod/) each with their own kustomization.yaml
+      that reference the base and apply patches.
+
+      '
+    example_paths:
+    - base/kustomization.yaml
+    - base/deployment.yaml
+    - base/service.yaml
+    - overlays/dev/kustomization.yaml
+    - overlays/dev/patch-replicas.yaml
+    - overlays/staging/kustomization.yaml
+    - overlays/prod/kustomization.yaml
+    - overlays/prod/patch-hpa.yaml
+    detection: 'Detect by co-presence of base/ and overlays/ sibling directories,
+      each containing kustomization.yaml. The overlays directory name may vary (environments/,
+      envs/, deploy/).
+
+      '
+  kustomization_fields:
+  - field: resources
+    description: 'List of Kubernetes YAML files, directories, or URLs to include in
+      the output. The primary content source. Replaces deprecated bases: field in
+      Kustomize 4.x.
+
+      '
+    examples:
+    - deployment.yaml
+    - service.yaml
+    - ../base
+    - ../../base
+    - github.com/org/repo/k8s/?ref=v1.0.0
+  - field: patches
+    description: 'List of strategic merge patches or JSON patches. A patch specifies
+      a target resource by kind/name and provides the delta to apply. Kustomize 4.x
+      unified format.
+
+      '
+    types:
+    - strategic_merge_patch: 'YAML file containing partial K8s resource structure.
+        Merged with the base resource using strategic merge semantics (arrays merge
+        by key, not replaced wholesale).
+
+        '
+    - json_patch: 'RFC 6902 JSON Patch operations (add, remove, replace, copy, move,
+        test). More precise but less readable than strategic merge.
+
+        '
+  - field: patchesStrategicMerge
+    description: Deprecated Kustomize 3.x field for strategic merge patches. Still
+      widely used.
+  - field: patchesJson6902
+    description: Deprecated Kustomize 3.x field for JSON 6902 patches. Still widely
+      used.
+  - field: namePrefix / nameSuffix
+    description: 'Prepend/append a string to the metadata.name of all resources. Commonly
+      used in overlays to namespace resources by environment (e.g., namePrefix: prod-
+      transforms deployment ''api'' to ''prod-api'').
+
+      '
+  - field: commonLabels
+    description: 'Inject labels into metadata.labels and selector.matchLabels of all
+      resources. Used to add environment tags (env: prod) and team ownership labels.
+      Note: also modifies selectors — can cause issues with immutable label selectors
+      on Deployments if changed post-deploy.
+
+      '
+  - field: commonAnnotations
+    description: 'Inject annotations into all resources. Safer than commonLabels for
+      operational metadata that should not affect pod scheduling.
+
+      '
+  - field: configMapGenerator
+    description: 'Generate ConfigMap resources from literal values, files, or env
+      files. Generated ConfigMaps include a content hash suffix for automatic rolling
+      updates when content changes.
+
+      '
+    extraction_fields:
+    - name
+    - files[]
+    - literals[]
+    - envs[]
+  - field: secretGenerator
+    description: 'Generate Secret resources from literal values, files, or env files.
+      Same hash suffix mechanism as configMapGenerator.
+
+      '
+    extraction_fields:
+    - name
+    - type
+    - files[]
+    - literals[]
+    - envs[]
+    security_note: NEVER extract secretGenerator literal values.
+  - field: transformers
+    description: 'Custom transformer configurations. Reference external transformer
+      plugins (e.g., helm-based transformer, ArgoCD ApplicationSet generator). High
+      complexity signal — signals non-standard Kustomize extensions.
+
+      '
+  - field: generators
+    description: 'Custom generator configurations. Reference external generator plugins.
+      Similar complexity signal to transformers.
+
+      '
+  - field: components
+    description: 'Kustomize components — reusable Kustomize modules that can be included
+      in multiple bases and overlays. Introduced in Kustomize 4.1. Presence signals
+      modular Kustomize composition beyond simple base/overlay.
+
+      '
+  overlay_chain_signals:
+    description: 'Deep Kustomize overlay chains (base → overlay1 → overlay2 → overlay3)
+      significantly increase rendering complexity and debugging difficulty.
+
+      '
+    detection:
+    - resources field referencing ../.. paths signal 3+ level chains
+    - overlays that contain their own overlays/ subdirectory
+    - kustomization.yaml referencing a URL base (remote base composition)
+entity_extraction:
+  description: 'Maps Kubernetes resource kinds to archigraph entity types. Extraction targets
+    and SCOPE entity type mappings for the indexing pipeline.
+
+    '
+  mappings:
+  - k8s_kinds:
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - CronJob
+    - Job
+    entity_type: Service
+    extraction_rationale: 'Workload resources define running services in the cluster.
+      Each workload manifest represents a logical service boundary. Extract the workload
+      name, namespace, container images, and port declarations as the Service entity.
+      Multiple containers in a pod spec represent sidecar patterns (service mesh proxy,
+      log agent) — the primary container (first in list) is the canonical service
+      identity.
+
+      '
+    high_value_fields:
+    - metadata.name
+    - metadata.namespace
+    - metadata.labels
+    - spec.template.spec.containers[0].image
+    - spec.template.spec.containers[].ports[]
+    - spec.template.spec.initContainers[]
+  - k8s_kinds:
+    - Service
+    - Ingress
+    entity_type: ExternalAPI
+    extraction_rationale: 'Service resources of type LoadBalancer or ExternalName,
+      and all Ingress resources, define the external-facing API surface of the cluster.
+      Extract hostname/path combinations as ExternalAPI endpoints. ClusterIP Services
+      are internal — extract as dependency edges between workloads, not as ExternalAPI
+      entities.
+
+      '
+    mapping_rules:
+    - Service type=LoadBalancer → ExternalAPI (cloud load balancer endpoint)
+    - Service type=ExternalName → ExternalAPI (aliased external dependency)
+    - Service type=ClusterIP → internal dependency edge only (not ExternalAPI)
+    - Service type=NodePort → ExternalAPI if exposed outside cluster
+    - Ingress → ExternalAPI per host+path rule
+    high_value_fields:
+    - spec.rules[].host
+    - spec.rules[].http.paths[].path
+    - spec.externalName
+  - k8s_kinds:
+    - ConfigMap
+    - Secret
+    - PersistentVolumeClaim
+    - HorizontalPodAutoscaler
+    entity_type: Schema
+    extraction_rationale: 'Configuration and infrastructure contract resources. ConfigMaps
+      and Secrets define the configuration surface (key names = public config interface).
+      PVCs define storage contracts. HPAs define scaling policies. Treating these
+      as Schema entities captures their role as structural/constraint definitions
+      rather than running services.
+
+      '
+    notes: 'For Secret resources: extract Secret name, namespace, and type only —
+      never data values. ConfigMap key names (not values) are safe to extract as configuration
+      interface documentation.
+
+      '
+  - k8s_kinds:
+    - Role
+    - ClusterRole
+    - RoleBinding
+    - ClusterRoleBinding
+    - ServiceAccount
+    - NetworkPolicy
+    entity_type: Schema
+    extraction_rationale: 'RBAC and network policy resources define the security posture
+      and access control surface of the cluster. Indexed as Schema entities representing
+      constraints and policies.
+
+      '
+    notes: 'Flag wide-permission patterns: apiGroups: ["*"], resources: ["*"], verbs:
+      ["*"], cluster-admin ClusterRoleBinding. These are security findings worth surfacing
+      in archigraph search results.
+
+      '
+  helm_extraction:
+    description: 'Helm chart extraction targets beyond raw K8s manifests.
+
+      '
+    targets:
+    - chart_name from Chart.yaml → Service entity (the chart is the deployable unit)
+    - chart_dependencies from Chart.yaml → dependency edges to sub-charts
+    - values.yaml top-level keys → Schema entity (configuration surface)
+    - templates/*.yaml rendered resource names → individual Service/ExternalAPI entities
+    notes: 'For Helm charts, the Chart.yaml name is the primary Service identity.
+      Templated manifests are extracted at the template level (before rendering) to
+      capture the static structure. Dynamic names ({{ .Release.Name }}-<suffix>) are
+      normalized to <chart-name>-<suffix> for indexing.
+
+      '
+  kustomize_extraction:
+    description: 'Kustomize extraction approach accounts for the overlay composition
+      model.
+
+      '
+    strategy: 'Index at the base level — extract entities from base/kustomization.yaml
+      and its referenced resources. Overlay patches are indexed as diff metadata on
+      the base entity, not as separate entities. This prevents duplicate entities
+      for the same workload across dev/staging/prod overlays.
+
+      '
+    overlay_metadata:
+    - overlay_name: environment identifier (e.g., dev, staging, prod)
+    - patch_type: strategic_merge / json6902
+    - patched_fields: list of field paths modified by the patch
+domain_roots:
+- layout: plain_kubernetes
+  description: 'Simple flat K8s manifest repository or directory. No Helm or Kustomize.
+    Raw YAML files defining all resources for an application or namespace.
+
+    '
+  root_paths:
+  - k8s/deployment.yaml
+  - k8s/service.yaml
+  - k8s/ingress.yaml
+  - k8s/configmap.yaml
+  - k8s/hpa.yaml
+  priority_files:
+  - k8s/deployment.yaml
+  - k8s/ingress.yaml
+- layout: helm_application_chart
+  description: 'Standard Helm application chart (type: application) for a single deployable
+    service. The canonical Helm chart generated by helm create.
+
+    '
+  root_paths:
+  - Chart.yaml
+  - values.yaml
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/ingress.yaml
+  - templates/hpa.yaml
+  - templates/serviceaccount.yaml
+  - templates/NOTES.txt
+  - templates/_helpers.tpl
+  priority_files:
+  - Chart.yaml
+  - values.yaml
+  - templates/_helpers.tpl
+- layout: helm_library_chart
+  description: 'Helm library chart (type: library). Contains named template definitions
+    shared by multiple application charts. Cannot be deployed standalone.
+
+    '
+  distinguishing_signal: 'type: library in Chart.yaml'
+  root_paths:
+  - Chart.yaml
+  - templates/_helpers.tpl
+  - templates/_*.tpl
+  priority_files:
+  - Chart.yaml
+  - templates/_helpers.tpl
+- layout: helm_umbrella_chart
+  description: 'Umbrella (parent) Helm chart that aggregates multiple sub-charts as
+    dependencies. Used to deploy a full stack (app + database + cache) as a single
+    helm install. Contains charts/ for sub-chart vendoring.
+
+    '
+  distinguishing_signal: '>= 3 dependencies in Chart.yaml'
+  root_paths:
+  - Chart.yaml
+  - values.yaml
+  - charts/
+  - Chart.lock
+  priority_files:
+  - Chart.yaml
+  - Chart.lock
+- layout: helm_charts_repository
+  description: 'A repository containing multiple Helm charts — common in platform
+    engineering teams that maintain a chart library.
+
+    '
+  root_paths:
+  - charts/<chart-a>/Chart.yaml
+  - charts/<chart-b>/Chart.yaml
+  - charts/<chart-c>/Chart.yaml
+  - index.yaml
+  priority_files:
+  - charts/*/Chart.yaml
+  note: index.yaml is machine-generated — skip.
+- layout: kustomize_base_overlays
+  description: 'Canonical Kustomize multi-environment layout. Base contains the default
+    configuration; overlays contain environment-specific patches.
+
+    '
+  root_paths:
+  - base/kustomization.yaml
+  - base/deployment.yaml
+  - base/service.yaml
+  - overlays/dev/kustomization.yaml
+  - overlays/dev/<patch>.yaml
+  - overlays/staging/kustomization.yaml
+  - overlays/prod/kustomization.yaml
+  - overlays/prod/<patch>.yaml
+  priority_files:
+  - base/kustomization.yaml
+  - overlays/prod/kustomization.yaml
+- layout: gitops_argocd
+  description: 'GitOps repository managed by ArgoCD. Contains ArgoCD Application or
+    ApplicationSet custom resources alongside Kubernetes manifests or Helm/Kustomize
+    chart references. ArgoCD watches this repo and syncs cluster state to match.
+
+    '
+  distinguishing_signals:
+  - 'apiVersion: argoproj.io/v1alpha1'
+  - 'kind: Application or kind: ApplicationSet'
+  - spec.source.repoURL field
+  root_paths:
+  - apps/<app-name>/application.yaml
+  - clusters/<cluster>/kustomization.yaml
+  - base/
+  - overlays/
+  priority_files:
+  - apps/*/application.yaml
+- layout: skaffold_development
+  description: 'Skaffold-driven inner-loop development repository. skaffold.yaml at
+    the root orchestrates build, push, and deploy for local Kubernetes development
+    against kind/minikube/k3d.
+
+    '
+  root_paths:
+  - skaffold.yaml
+  - k8s/deployment.yaml
+  - k8s/service.yaml
+  - Dockerfile
+  priority_files:
+  - skaffold.yaml
+- layout: tilt_development
+  description: 'Tilt-driven inner-loop development repository. Tiltfile at the root
+    defines the development environment orchestration using Starlark syntax.
+
+    '
+  root_paths:
+  - Tiltfile
+  - k8s/deployment.yaml
+  - docker-compose.yml
+  priority_files:
+  - Tiltfile

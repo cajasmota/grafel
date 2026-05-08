@@ -1,0 +1,140 @@
+testing:
+- name: ExUnit
+  hex_package: built-in
+  category: unit_integration
+  detection:
+    config_files:
+    - test/test_helper.exs
+    mix_deps: []
+    import_markers:
+    - use ExUnit.Case
+    - 'use ExUnit.Case, async: true'
+    - import ExUnit.Callbacks
+    - ExUnit.start()
+    - describe "
+    - test "
+    - 'assert '
+    - 'refute '
+    - 'assert_raise '
+    - 'assert_receive '
+    - 'assert_received '
+    - capture_log
+    - capture_io
+    structural_markers:
+    - test/
+    - test/test_helper.exs
+    file_conventions:
+    - pattern: '*_test.exs'
+      location: test/
+      notes: Test files use .exs extension, not .ex
+  notes: 'ExUnit is built into Elixir — no external dep required. test/test_helper.exs
+    is mandatory (calls ExUnit.start()). All test files end in _test.exs. async: true
+    enables concurrent test execution within a test module. describe blocks group
+    tests; setup/setup_all callbacks handle fixtures.
+
+    '
+- name: Mox
+  hex_package: mox
+  category: mocking
+  detection:
+    mix_deps:
+    - mox
+    import_markers:
+    - import Mox
+    - Mox.defmock
+    - expect(
+    - stub(
+    - verify_on_exit!
+    - Mox.set_mox_global
+    - Mox.set_mox_private
+  notes: 'Mox provides explicit contracts for mocking via behaviours. Requires the
+    module under test to define a behaviour (@callback). Mox.defmock/2 creates the
+    mock module. verify_on_exit! in setup ensures all expectations are met.
+
+    '
+- name: StreamData
+  hex_package: stream_data
+  category: property_based_testing
+  detection:
+    mix_deps:
+    - stream_data
+    import_markers:
+    - use ExUnitProperties
+    - import StreamData
+    - property "
+    - 'check all '
+    - StreamData.integer()
+    - StreamData.string(
+    - StreamData.list_of(
+    - StreamData.one_of(
+    - StreamData.map(
+    - StreamData.filter(
+    - StreamData.fixed_map(
+    - Gen.string(
+  notes: 'StreamData enables property-based testing integrated into ExUnit via use
+    ExUnitProperties. property \"...\" blocks replace test \"...\" blocks. check all
+    ... binds generated values. Generators compose with map/filter.
+
+    '
+- name: Wallaby
+  hex_package: wallaby
+  category: browser_integration
+  detection:
+    mix_deps:
+    - wallaby
+    - hound
+    import_markers:
+    - use Wallaby.Feature
+    - use Wallaby.DSL
+    - import Wallaby.Query
+    - session
+    - visit(
+    - click(
+    - fill_in(
+    - find(
+    - assert_text(
+    - has_text?
+    structural_markers:
+    - test/features/
+    notes: 'Wallaby provides browser-based feature testing using ChromeDriver or Selenium.
+      test/features/ is the conventional directory. use Wallaby.Feature is the module
+      import for feature tests. Requires Chrome/ChromeDriver configured.
+
+      '
+- name: Bypass
+  hex_package: bypass
+  category: http_mocking
+  detection:
+    mix_deps:
+    - bypass
+    import_markers:
+    - Bypass.open()
+    - Bypass.expect(
+    - Bypass.expect_once(
+    - Bypass.down(
+    - Bypass.up(
+  notes: 'Bypass creates a local HTTP server for mocking external HTTP dependencies
+    in tests. Used with HTTPoison, Finch, Tesla, or Req to intercept outbound calls.
+
+    '
+- name: Faker
+  hex_package: faker
+  category: test_data
+  detection:
+    mix_deps:
+    - faker
+    - ex_machina
+    import_markers:
+    - Faker.Name.name()
+    - Faker.Internet.email()
+    - Faker.UUID.v4()
+    - use ExMachina
+    - use ExMachina.Ecto
+    - factory :user do
+    - insert!
+    - build(
+    - params_for(
+  notes: 'ExMachina is the most common factory library (analogous to FactoryBot).
+    Faker provides random data generation. Both are test-only deps.
+
+    '

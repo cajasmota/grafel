@@ -1,0 +1,59 @@
+meta:
+  name: OpenAPI
+  language: openapi
+  description: >
+    OpenAPI 3.x and Swagger spec files describing REST API endpoints,
+    schemas, and parameters.
+  official_docs: https://spec.openapis.org/oas/v3.1.0
+  vera_scope: Operation (endpoint as Operation, component schema as Schema)
+
+file_conventions:
+  - filename: openapi.yaml
+    entity_type: Operation
+    note: OpenAPI 3.x YAML spec
+  - filename: openapi.yml
+    entity_type: Operation
+    note: OpenAPI 3.x YAML spec (alternate extension)
+  - filename: openapi.json
+    entity_type: Operation
+    note: OpenAPI 3.x JSON spec
+  - filename: swagger.yaml
+    entity_type: Operation
+    note: Swagger/OpenAPI YAML spec
+  - filename: swagger.yml
+    entity_type: Operation
+    note: Swagger/OpenAPI YAML spec (alternate extension)
+  - filename: swagger.json
+    entity_type: Operation
+    note: Swagger/OpenAPI JSON spec
+  - glob: "**/api-docs/**"
+    entity_type: Operation
+    note: Files under api-docs/ directories
+
+extraction_targets:
+  - target: paths.<path>.<method>
+    vera_type: SCOPE.Operation
+    properties: [path, method, operation_id, summary, tags]
+  - target: components.schemas.<name>
+    vera_type: SCOPE.Schema
+    properties: [name, description, properties_count]
+
+relationships:
+  - type: ACCEPTS_INPUT
+    from: SCOPE.Operation
+    to: SCOPE.Schema
+    via: requestBody $ref
+  - type: RETURNS
+    from: SCOPE.Operation
+    to: SCOPE.Schema
+    via: responses $ref
+
+detector:
+  class: OpenApiExtractor
+  module: memx_indexer.pattern_detectors.openapi_extractor
+  category: openapi
+  otel_span: indexer.openapi_extractor.extract
+  otel_attributes:
+    - operations_found
+    - schemas_found
+    - relationships_found

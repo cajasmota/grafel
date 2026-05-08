@@ -1,0 +1,38 @@
+orms_database:
+  name: MySQL JavaScript/TypeScript Drivers (mysql2, mysql, Knex)
+  category: relational_database
+  npm_package: mysql2
+  detection:
+    import_patterns:
+    - require('mysql2')
+    - require("mysql2")
+    - from 'mysql2'
+    - from "mysql2"
+    - require('mysql')
+    - require("mysql")
+    - from 'mysql'
+    - from "mysql"
+    code_patterns:
+    - createConnection(
+    - createPool(
+    - createConnection({host:
+    - createPool({host:
+  notes: >
+    mysql2 is the de facto standard MySQL driver for Node.js, offering both
+    callback and promise APIs. The older mysql package is also detected.
+    Knex.js uses mysql2 as its underlying MySQL transport.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

@@ -1,0 +1,30 @@
+frameworks:
+  name: Oban
+  hex_package: oban
+  category: background_jobs
+  github_stars_2025: 3200+
+  detection:
+    config_files:
+    - mix.exs
+    - lib/app/workers/
+    - priv/repo/migrations/
+    mix_deps:
+    - oban
+    - oban_web
+    - oban_pro
+    import_markers:
+    - use Oban.Worker
+    - Oban.insert
+    - Oban.insert!
+    - perform(%Oban.Job{
+    - Oban.drain_queue
+    - 'queue: :'
+    - 'max_attempts: '
+    structural_markers:
+    - lib/app/workers/
+  notes: 'Oban provides background job processing using PostgreSQL. Detected by oban
+    dep + use Oban.Worker in worker modules. lib/app/workers/ is the conventional
+    location for worker modules. priv/repo/migrations/ will contain Oban migration
+    files.
+
+    '

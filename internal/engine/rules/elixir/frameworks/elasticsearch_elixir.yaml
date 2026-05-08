@@ -1,0 +1,26 @@
+frameworks:
+  name: elasticsearch-elixir
+  hex_package: elasticsearch
+  detection:
+    mix_exs_deps:
+    - elasticsearch
+    - tirexs
+    import_patterns:
+    - use Elasticsearch.Document
+    - alias Elasticsearch
+    - alias Tirexs
+    code_patterns:
+    - Elasticsearch.start_link
+    - Tirexs.Manage.settings
+    - Elasticsearch.get
+    - Elasticsearch.post
+  notes: |
+    Two major Elixir Elasticsearch libraries: elasticsearch-elixir (danielberkompas)
+    and tirexs (way2ex). Both provide connection and query primitives.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract Elasticsearch.start_link / Tirexs connections, search calls,
+      aggregations, and ILM patterns for Elixir.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

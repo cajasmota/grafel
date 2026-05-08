@@ -1,0 +1,24 @@
+frameworks:
+  name: Perfect
+  category: web_server_framework
+  spm_coordinates:
+  - PerfectlySoft/Perfect
+  detection:
+    config_files:
+    - Package.swift
+    build_signals:
+    - '.package(url: "https://github.com/PerfectlySoft/Perfect.git"'
+    - '.product(name: "PerfectHTTPServer", package: "Perfect-HTTPServer")'
+    import_patterns:
+    - import PerfectHTTP
+    - import PerfectHTTPServer
+    code_patterns:
+    - var routes = Routes()
+    - 'routes.add(method: .get'
+    - let server = HTTPServer()
+    - 'server.serverPort = '
+  notes: 'Early server-side Swift framework, largely superseded by Vapor/Hummingbird.
+    Detection via PerfectHTTP/PerfectHTTPServer imports. Low signal in new codebases
+    (2024+); presence indicates legacy project.
+
+    '

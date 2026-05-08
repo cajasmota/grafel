@@ -1,0 +1,30 @@
+orms:
+  name: Firebase (iOS)
+  category: backend_as_a_service_client
+  spm_coordinates:
+  - firebase/firebase-ios-sdk
+  cocoapods:
+  - pod 'Firebase/Core'
+  - pod 'Firebase/Firestore'
+  - pod 'Firebase/Auth'
+  - pod 'Firebase/Analytics'
+  detection:
+    config_files:
+    - GoogleService-Info.plist (definitive)
+    - firebase.json
+    import_patterns:
+    - import FirebaseCore
+    - import FirebaseFirestore
+    - import FirebaseAuth
+    - import FirebaseAnalytics
+    code_patterns:
+    - FirebaseApp.configure()
+    - Firestore.firestore()
+    - Auth.auth()
+    - db.collection(
+    - DocumentSnapshot
+  notes: 'GoogleService-Info.plist is the single most reliable Firebase signal (must
+    be present to connect to Firebase project). FirebaseApp.configure() is always
+    in AppDelegate or @main init. Presence of both = confirmed Firebase.
+
+    '

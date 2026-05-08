@@ -1,0 +1,28 @@
+frameworks:
+  name: Quarkus (Kotlin)
+  category: web_cloud_native
+  gradle_coordinates:
+  - io.quarkus:quarkus-kotlin
+  - io.quarkus:quarkus-resteasy-reactive
+  maven_coordinates:
+  - io.quarkus:quarkus-kotlin
+  detection:
+    config_files:
+    - application.properties
+    - src/main/resources/META-INF/microprofile-config.properties
+    build_signals:
+    - id("io.quarkus")
+    - '"io.quarkus:quarkus-kotlin"'
+    import_patterns:
+    - import io.quarkus.
+    - import jakarta.ws.rs.
+    code_patterns:
+    - '@Path('
+    - '@GET'
+    - '@ApplicationScoped'
+    - '@QuarkusTest'
+  notes: 'Quarkus Kotlin support via quarkus-kotlin extension. Detect via io.quarkus
+    plugin in build.gradle.kts + quarkus-kotlin dependency. application.properties
+    with quarkus.* prefixes is definitive.
+
+    '

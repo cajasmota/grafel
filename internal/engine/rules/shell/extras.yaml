@@ -1,0 +1,180 @@
+data_cli_tools:
+- name: jq
+  purpose: JSON processor — filter, transform, format JSON streams
+  detection_patterns:
+  - jq '
+  - jq "
+  - '| jq'
+  common_usages:
+  - Parse API responses
+  - Extract fields from JSON config
+  - Transform JSON for downstream piping
+  notes: Most common JSON tool in shell scripts. Presence is strong signal of API
+    interaction.
+- name: yq
+  purpose: YAML/JSON/TOML processor — similar to jq but for YAML
+  detection_patterns:
+  - yq '
+  - yq "
+  - '| yq'
+  - yq eval
+  - yq e '
+  common_usages:
+  - Patch Kubernetes YAML in CI
+  - Extract values from Taskfile/docker-compose
+  - Transform Helm chart values
+  notes: 'Two incompatible implementations: mikefarah/yq (Go, most common) and kislyuk/yq
+    (Python wrapper around jq). Detected by invocation pattern.
+
+    '
+- name: curl
+  purpose: HTTP client — transfer data to/from APIs
+  detection_patterns:
+  - 'curl '
+  - curl -
+  - $(curl
+  common_usages:
+  - REST API calls
+  - Health checks
+  - Download artifacts
+  - Webhook triggers
+  notes: Ubiquitous in CI scripts, deploy scripts, and integration tests.
+- name: wget
+  purpose: File download utility — alternative to curl for downloads
+  detection_patterns:
+  - 'wget '
+  - wget -
+  - $(wget
+  notes: Less flexible than curl for API work but common for binary downloads.
+- name: sed
+  purpose: Stream editor — text substitution and transformation
+  detection_patterns:
+  - sed 's/
+  - sed -i
+  - '| sed'
+  - sed -n
+  notes: 'Present in nearly all non-trivial shell scripts. High usage (3+ sed invocations
+    per file) is a complexity signal.
+
+    '
+- name: awk
+  purpose: Text processing language — field extraction, aggregation
+  detection_patterns:
+  - awk '
+  - awk "
+  - '| awk'
+  - 'gawk '
+  notes: 'Inline awk programs are a moderate complexity signal. Long awk blocks (10+
+    lines) suggest the script should use a higher-level language.
+
+    '
+- name: grep
+  purpose: Pattern search — filter lines matching a regex
+  detection_patterns:
+  - 'grep '
+  - grep -
+  - '| grep'
+  - 'egrep '
+  notes: 'Standard in all shell scripts. Excessive use of grep pipelines (5+ chained)
+    is a complexity signal indicating the script may benefit from being rewritten
+    in Python.
+
+    '
+- name: sqlite3
+  purpose: Embedded SQL database via CLI
+  detection_patterns:
+  - 'sqlite3 '
+  - $(sqlite3
+  notes: 'When shell scripts interact with SQLite via CLI, it is the closest analog
+    to ORM usage. Signals persistent state management in scripts.
+
+    '
+domain_roots:
+- root: scripts/
+  purpose: General project automation scripts
+  typical_contents:
+  - build.sh
+  - deploy.sh
+  - setup.sh
+  - lint.sh
+  - test.sh
+  - release.sh
+  - bootstrap.sh
+  confidence: high
+  notes: Most common location for project-maintained shell scripts.
+- root: bin/
+  purpose: Executable scripts and CLI entry points
+  typical_contents:
+  - Executable scripts invoked directly (chmod +x)
+  - CLI wrapper scripts
+  - Development utility scripts
+  confidence: high
+  notes: 'bin/ is typically added to PATH. Scripts here are entry points, not helpers.
+    Often consumed by Makefile or justfile targets.
+
+    '
+- root: .github/workflows/
+  purpose: GitHub Actions CI/CD pipeline definitions
+  typical_contents:
+  - ci.yml
+  - deploy.yml
+  - release.yml
+  - pr-checks.yml
+  - codeql.yml
+  confidence: high
+  notes: 'YAML files containing inline run: shell blocks. Shell complexity here indicates
+    CI logic that may benefit from extraction to scripts/.
+
+    '
+- root: hooks/
+  purpose: Git hooks (authored, not .git/ managed)
+  typical_contents:
+  - pre-commit
+  - commit-msg
+  - pre-push
+  - prepare-commit-msg
+  - post-merge
+  confidence: high
+  notes: 'Distinguish from .git/hooks/ (managed by git, skip). hooks/ at repo root
+    contains the authored, version-controlled versions. Often installed via Makefile
+    target or husky.
+
+    '
+- root: tools/
+  purpose: Internal tooling and utility scripts
+  confidence: medium
+  notes: Less standard than scripts/ or bin/ — check for .sh files before indexing.
+- root: ci/
+  purpose: CI scripts called from pipeline definitions
+  typical_contents:
+  - ci/build.sh
+  - ci/test.sh
+  - ci/deploy.sh
+  confidence: medium
+  notes: Used when teams prefer to keep CI logic in shell files rather than inline
+    YAML.
+- root: .circleci/
+  purpose: CircleCI pipeline definitions
+  confidence: high
+  notes: config.yml may contain inline shell steps.
+- root: deploy/
+  purpose: Deployment scripts and automation
+  typical_contents:
+  - deploy/k8s/*.sh
+  - deploy/aws/*.sh
+  - deploy/rollback.sh
+  confidence: medium
+- root: Makefile
+  purpose: Root-level Makefile — treat recipe bodies as shell code
+  confidence: high
+  notes: 'Makefile recipe lines are sh by default (or SHELL override). Complex recipes
+    with pipe chains and subshells should be indexed as shell complexity.
+
+    '
+- root: justfile
+  purpose: Root-level justfile — recipes are shell by default
+  confidence: high
+  notes: 'just uses sh -cu by default. Shell selection can be overridden per recipe
+    via shebang in multi-line recipes (#!python, etc.).
+
+    '

@@ -1,0 +1,31 @@
+framework_templates:
+  name: React JSX/TSX Templates
+  framework: React / Next.js / Remix
+  extensions:
+  - .jsx
+  - .tsx
+  npm_packages:
+  - react
+  detection_signals:
+    file_extensions:
+    - .jsx
+    - .tsx
+    package_json_deps:
+    - react
+    syntax_markers:
+    - return (<...>)
+    - React.Fragment / <>
+    - '{condition && <Comp />}'
+    - '{condition ? <A /> : <B />}'
+    - '{items.map(item => <Comp />)}'
+    - children prop
+    - useSlot / slot pattern
+  scope_entity_mapping:
+    entity_type: Component
+    name_signal: Function/class name exported from file
+    boundary: Named export = one Component entity per function/class.
+  notes: 'JSX/TSX React components are covered in MX-401 (javascript_typescript.yaml).
+    This entry is included for cross-reference only — do not double-index. HTML-specific
+    detection in this file focuses on non-JSX template engines.
+
+    '

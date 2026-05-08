@@ -1,0 +1,33 @@
+orms_database:
+  name: Spring Data MongoDB
+  maven_coordinates: org.springframework.data:spring-data-mongodb
+  gradle_dependency: implementation 'org.springframework.data:spring-data-mongodb'
+  detection:
+    pom_xml_markers:
+    - spring-data-mongodb
+    - spring-boot-starter-data-mongodb
+    import_patterns:
+    - import org.springframework.data.mongodb
+    - import org.springframework.data.annotation.Id
+    code_patterns:
+    - '@Document'
+    - '@Field'
+    - extends MongoRepository
+    - MongoTemplate
+    - '@MongoId'
+  notes: '@Document annotation on class is the MongoDB entity signal. Distinct from
+    JPA by package (org.springframework.data.mongodb vs jpa).
+
+    '
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

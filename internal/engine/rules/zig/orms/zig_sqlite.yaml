@@ -1,0 +1,23 @@
+orm_database:
+  name: zig-sqlite
+  type: zig_wrapper
+  github: vrischmann/zig-sqlite
+  detection:
+    build_zig_zon_deps:
+    - sqlite
+    - vrischmann/zig-sqlite
+    import_markers:
+    - '@import("sqlite")'
+    - const sqlite = @import("sqlite")
+    code_patterns:
+    - sqlite.Db
+    - sqlite.Statement
+    - db.prepare(
+    - db.exec(
+    - db.one(
+    - db.all(
+    - sqlite.OpenFlags
+  notes: 'Higher-level Zig wrapper over SQLite''s C API. Provides typed statement
+    binding and row mapping. Detection via build.zig.zon and sqlite.Db usage.
+
+    '

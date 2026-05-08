@@ -1,0 +1,36 @@
+orms:
+  name: Propel
+  package_name: propel/propel
+  category: active_record_orm
+  detection:
+    composer_deps:
+    - propel/propel
+    - propel/propelorm
+    - propel/generator
+    config_files:
+    - propel.yml
+    - propel.yaml
+    - propel.json
+    - propel.php
+    - schema.xml
+    - generated-classes/
+    - generated-conf/
+    - generated-sql/
+    import_markers:
+    - use Propel\
+    - extends ActiveRecordInterface
+    - Propel::getConnection(
+    - PropelQuery
+    - extends BaseObject
+    - Propel::init(
+    code_patterns:
+    - ->useXxxQuery()
+    - ->filterByXxx(
+    - ->findOne()
+    - ->findPk(
+  notes: 'Propel uses XML schema definitions (schema.xml) and generates PHP classes
+    into generated-classes/ — the presence of generated-classes/ alongside schema.xml
+    is definitive. Propel 2 targets modern PHP; legacy Propel 1 projects may have
+    capitalized directory names.
+
+    '

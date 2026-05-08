@@ -1,0 +1,19 @@
+# ---------------------------------------------------------------------------
+# RSpec framework extraction schema (MX-562)
+# ---------------------------------------------------------------------------
+# This YAML registers the custom extractor for RSpec test files.
+# Framework key: rspec  (matches framework detection in the Ruby detector)
+# ---------------------------------------------------------------------------
+
+# No YAML-driven source_patterns or relationship_rules — all extraction is
+# handled by the custom extractor below, which processes describe/context
+# blocks, examples, let helpers, hooks, shared examples, and subject blocks.
+
+# ---------------------------------------------------------------------------
+# Custom extractors (MX-562)
+# ---------------------------------------------------------------------------
+
+custom_extractors:
+  - module: "memx_indexer.languages.ruby.rspec_extractor"
+    function: "extract"
+    description: "Extract RSpec describe/context groups, it/specify examples, let/let! helpers, before/after hooks, shared_examples/shared_context declarations, include_examples/it_behaves_like includes, and subject blocks — SCOPE.Component, SCOPE.Operation, SCOPE.Pattern, DEPENDS_ON relationships"

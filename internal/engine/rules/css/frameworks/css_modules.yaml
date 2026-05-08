@@ -1,0 +1,32 @@
+frameworks:
+  name: css_modules
+  full_name: CSS Modules
+  category: scoping_system
+  extensions:
+  - .module.css
+  - .module.scss
+  - .module.less
+  npm_packages: []
+  config_files:
+  - vite.config.ts
+  - webpack.config.js
+  - next.config.js
+  detection_signals:
+    file_extensions:
+    - .module.css
+    - .module.scss
+    - .module.less
+    import_patterns:
+    - import styles from './
+    - import styles from "./
+    - import * as styles from
+  framework_specific:
+  - '*.module.css file naming convention'
+  - 'composes: keyword (CSS Modules composition)'
+  - Scoped class names via :local() and :global()
+  - Value export (@value keyword)
+  notes: 'CSS Modules is a build-tool feature, not a standalone package. Detected
+    by .module.css extension convention and composes: keyword in files. First-class
+    in Next.js, Vite, and webpack (css-loader).
+
+    '

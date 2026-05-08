@@ -1,0 +1,8 @@
+frameworks: frameworks/ [lapis, openresty_nginx_lua, love2d_game_engine, neovim_plugin,
+  corona_solar2d]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+database: orms/ [pgmoon, lua_resty_mysql, lsqlite3, lua_resty_redis]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

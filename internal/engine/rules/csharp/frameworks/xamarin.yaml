@@ -1,0 +1,46 @@
+frameworks:
+  name: Xamarin
+  category: mobile_cross_platform
+  nuget_package: Xamarin.Forms
+  sdk_attribute: Microsoft.NET.Sdk
+  mandatory_mobile_signal: true
+  legacy: true
+  adoption_rank_2025: 6
+  detection:
+    csproj_sdk:
+    - Sdk="Microsoft.NET.Sdk"
+    csproj_package_references:
+    - Xamarin.Forms
+    - Xamarin.Essentials
+    - Xamarin.Android.Support.*
+    - Xamarin.GooglePlayServices.*
+    csproj_properties:
+    - <TargetFramework>xamarin.ios</TargetFramework>
+    - <TargetFramework>monoandroid</TargetFramework>
+    - <TargetFramework>monoandroid10.0</TargetFramework>
+    - <TargetFramework>xamarinmac</TargetFramework>
+    - <ProjectTypeGuids>{EFBA0AD7-5A72-4C68-AF49-83D382785DCF}
+    - <ProjectTypeGuids>{A5A43C5B-DE2A-4C0C-9213-0A381AF9435A}
+    config_files:
+    - App.xaml
+    - App.xaml.cs
+    - MainPage.xaml
+    - MainPage.xaml.cs
+    - AssemblyInfo.cs
+    structural_markers:
+    - '*.Android/'
+    - '*.iOS/'
+    - '*.UWP/'
+    code_patterns:
+    - Xamarin.Forms.Application
+    - ContentPage
+    - NavigationPage
+    - TabbedPage
+    - Application.MainPage
+    - '[assembly: XamlCompilation'
+    notes: 'Xamarin.Forms PackageReference is the primary signal. Xamarin is in maintenance
+      mode — Microsoft recommends migrating to .NET MAUI. monoandroid/xamarin.ios
+      TargetFramework values are legacy Xamarin-style. ProjectTypeGuids in older .csproj
+      formats are also reliable signals.
+
+      '

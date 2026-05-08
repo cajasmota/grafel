@@ -1,0 +1,8 @@
+frameworks: frameworks/ [uikit, appkit, foundation, core_data, afnetworking, reactivecocoa]
+mobile: frameworks/ [platform]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+database: orms/ [core_data, realm_objective_c, fmdb, sqlite3_direct_c_api]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

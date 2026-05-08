@@ -1,0 +1,147 @@
+# Vapor framework extraction rules (MX-523)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Package: vapor/vapor (SPM)
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: Vapor
+  category: web_server_framework
+  spm_coordinates:
+  - vapor/vapor
+  detection:
+    config_files:
+    - Package.swift
+    - Sources/App/routes.swift
+    - Sources/App/configure.swift
+    - Sources/Run/main.swift
+    - Sources/App/Controllers/
+    - Public/
+    - Resources/Views/
+    build_signals:
+    - '.package(url: "https://github.com/vapor/vapor.git"'
+    - '.product(name: "Vapor", package: "vapor")'
+    import_patterns:
+    - import Vapor
+    code_patterns:
+    - 'func routes(_ app: Application)'
+    - app.get(
+    - app.post(
+    - app.grouped(
+    - 'struct * : Content {'
+    - 'func configure(_ app: Application)'
+    - var app = Application(.production)
+  notes: 'Most popular server-side Swift framework. SPM-only (no CocoaPods/Carthage).
+    Sources/App/routes.swift + Sources/App/configure.swift is canonical Vapor project
+    layout. Content protocol conformance = request/response model.
+
+    '
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Controller files in a Controllers directory
+  - glob: "*/Controllers/*Controller.swift"
+    entity_type: Controller
+    name_from: class_name
+  - glob: "*/Controllers/*.swift"
+    entity_type: Controller
+    name_from: filename
+  # Model files — Vapor uses Fluent ORM; models live in Models/
+  - glob: "*/Models/*.swift"
+    entity_type: Model
+    name_from: class_name
+  # Migrations
+  - glob: "*/Migrations/*.swift"
+    entity_type: Migration
+    name_from: class_name
+  # Middleware
+  - glob: "*/Middleware/*.swift"
+    entity_type: Middleware
+    name_from: class_name
+
+source_patterns:
+  # Route registration via app.get/post/put/patch/delete/on:
+  # app.get("path") { req in ... }
+  # app.get("path", "subpath") { ... }
+  - pattern: "app\\.(?:get|post|put|patch|delete|on)\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+  # Route group: app.grouped("prefix") or routes.grouped("prefix")
+  - pattern: "(?:app|routes|router)\\.grouped\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # RouteCollection boot method — the collection itself is a Controller
+  # func boot(routes: RoutesBuilder) in a struct/class
+  - pattern: "(?:struct|class)\\s+(\\w+)\\s*:\\s*RouteCollection"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+  # Fluent Model conformance: final class MyModel: Model
+  - pattern: "(?:final\\s+)?class\\s+(\\w+)\\s*:\\s*(?:Model|Content)"
+    entity_type: Model
+    name_group: 1
+    scope: class
+
+  # Fluent Migration conformance: struct CreateUser: AsyncMigration / Migration
+  - pattern: "struct\\s+(\\w+)\\s*:\\s*(?:Async)?Migration"
+    entity_type: Migration
+    name_group: 1
+    scope: class
+
+  # Service / dependency registration: app.services.register or services.register
+  # Also catches: services.register(MyService.self)
+  - pattern: "services\\.register\\s*\\(\\s*(\\w+)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+
+  # Vapor Middleware conformance
+  - pattern: "struct\\s+(\\w+)\\s*:\\s*(?:Async)?Middleware"
+    entity_type: Middleware
+    name_group: 1
+    scope: class
+
+  # Application entry point: Application(.production) or Application.init
+  - pattern: "Application\\s*\\(\\.\\w+"
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # configure(_ app: Application) function — wires up the app
+  - pattern: "func\\s+configure\\s*\\(\\s*_\\s+app\\s*:\\s*Application\\s*\\)"
+    entity_type: Config
+    name_group: 0
+    scope: function
+
+relationship_rules:
+  # Route group ROUTES_TO child route:
+  # let users = app.grouped("users")  then  users.get("id") { ... }
+  - pattern: "let\\s+(\\w+)\\s*=\\s*(?:app|routes|router)\\.grouped\\s*\\(\\s*\"([^\"]+)\""
+    source_type: Route
+    target_type: Route
+    relationship: ROUTES_TO
+    source_group: 2
+    target_group: 1
+
+  # RouteCollection boot registers routes on the routes builder:
+  # routes.get("path") { ... }  inside boot(routes:)
+  - pattern: "func\\s+boot\\s*\\([^)]*\\)[\\s\\S]{0,500}?routes\\.(?:get|post|put|patch|delete)\\s*\\(\\s*\"([^\"]+)\""
+    source_type: Controller
+    target_type: Operation
+    relationship: ROUTES_TO
+    source_group: 0
+    target_group: 1
+
+custom_extractors:
+  - module: "memx_indexer.languages.swift.vapor_extractor"
+    function: "extract"
+    description: "Extract Vapor routes (grouped path composition), Fluent @Model/@Field, Leaf template renders, and Middleware protocol conformances"

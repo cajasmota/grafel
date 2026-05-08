@@ -1,0 +1,101 @@
+# Ktor framework extraction rules (MX-508)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Module: io.ktor:ktor-server-core
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: Ktor
+  category: web_async_api
+  gradle_coordinates:
+  - io.ktor:ktor-server-core
+  - io.ktor:ktor-server-netty
+  - io.ktor:ktor-server-cio
+  - io.ktor:ktor-client-core
+  detection:
+    config_files:
+    - Application.kt
+    - Routing.kt
+    - application.conf
+    - application.yaml
+    build_signals:
+    - '"io.ktor:ktor-server-core"'
+    - id("io.ktor.plugin")
+    import_patterns:
+    - import io.ktor.server.
+    - import io.ktor.client.
+    code_patterns:
+    - embeddedServer(
+    - routing {
+    - install(
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "*/plugins/*.kt"
+    entity_type: Plugin
+    name_from: filename
+  - glob: "*/routing/*.kt"
+    entity_type: Route
+    name_from: filename
+
+source_patterns:
+  # HTTP method route: get("/path") { ... } or post("/path") { ... }
+  # Ktor 2.x uses the route receiver DSL — method name immediately before "("/path")"
+  - pattern: "\\b(get|post|put|patch|delete|head|options)\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Operation
+    name_group: 2
+    scope: file
+
+  # route("/prefix") { ... } — parent route block
+  - pattern: "\\broute\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # install(PluginName) — plugin installation in Application block
+  - pattern: "\\binstall\\s*\\(\\s*(\\w[\\w.]*)"
+    entity_type: Plugin
+    name_group: 1
+    scope: file
+
+  # embeddedServer(...) — application entry point
+  - pattern: "\\bembeddedServer\\s*\\("
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # fun Application.configureXxx() — Ktor module extension functions
+  - pattern: "fun\\s+Application\\.\\s*(\\w+)\\s*\\("
+    entity_type: Module
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # install(Plugin) INSTALLED_IN application module
+  - pattern: "fun\\s+Application\\.(\\w+)\\s*\\([^)]*\\)[^{]*\\{[\\s\\S]*?\\binstall\\s*\\(\\s*(\\w[\\w.]*)"
+    source_type: Plugin
+    target_type: Module
+    relationship: INSTALLED_IN
+    source_group: 2
+    target_group: 1
+
+  # route("/prefix") { get("/path") } — nested route ROUTES_TO operation
+  - pattern: "\\broute\\s*\\(\\s*\"([^\"]+)\"[^)]*\\)[^{]*\\{[^}]*\\b(?:get|post|put|patch|delete)\\s*\\(\\s*\"([^\"]+)\""
+    source_type: Route
+    target_type: Operation
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+custom_extractors:
+  - module: "memx_indexer.languages.kotlin.ktor_extractor"
+    function: "extract"
+    description: "Extract Ktor routing DSL HTTP method routes (get/post/put/delete/patch), route() scope blocks, install(Plugin) plugin installs, authenticate() blocks, ContentNegotiation serialization formats, call.respond() invocations, and Application module extension functions. Emits OWNS and DEPENDS_ON relationships."
+  - module: "memx_indexer.languages._engine.config_prefix_extractor"
+    function: "extract"
+    description: "Extract ktor.deployment.rootPath from application.conf / application.yml as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."

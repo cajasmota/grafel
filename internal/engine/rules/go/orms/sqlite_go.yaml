@@ -1,0 +1,37 @@
+orms_database:
+  name: Go SQLite Drivers (mattn/go-sqlite3 / modernc.org/sqlite)
+  category: sqlite_driver
+  go_modules:
+    - github.com/mattn/go-sqlite3
+    - modernc.org/sqlite
+    - crawshaw.io/sqlite
+    - zombiezen.com/go/sqlite
+    - github.com/ncruces/go-sqlite3
+  detection:
+    import_patterns:
+      - github.com/mattn/go-sqlite3
+      - modernc.org/sqlite
+      - crawshaw.io/sqlite
+    code_patterns:
+      - sql.Open("sqlite3",
+      - sql.Open("modernc-sqlite",
+      - ":memory:"
+  notes: >
+    mattn/go-sqlite3 uses CGO and embeds SQLite C source. modernc.org/sqlite
+    is a pure-Go port requiring no CGO — preferred for cross-compilation.
+    Both use database/sql standard interface. crawshaw.io/sqlite provides a
+    lower-level API without database/sql.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: go-sqlite3/modernc connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

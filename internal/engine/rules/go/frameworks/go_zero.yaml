@@ -1,0 +1,24 @@
+frameworks:
+  name: Go-zero
+  module_path: github.com/zeromicro/go-zero
+  category: microservice_framework
+  github_stars_2025: 31500+
+  detection:
+    go_mod_require:
+    - github.com/zeromicro/go-zero
+    config_files:
+    - '*.yaml (with Name/Host/Port pattern)'
+    - '*.api'
+    import_markers:
+    - '"github.com/zeromicro/go-zero"'
+    - '"github.com/zeromicro/go-zero/rest"'
+    - '"github.com/zeromicro/go-zero/zrpc"'
+    structural_markers:
+    - rest.NewServer(
+    - zrpc.NewServer(
+    - '*.api files'
+    - handler/routes.go
+    notes: 'Cloud-native microservice framework with built-in concurrency tools. .api
+      descriptor files and handler/routes.go are strong signals.
+
+      '

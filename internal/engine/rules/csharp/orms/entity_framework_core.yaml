@@ -1,0 +1,43 @@
+orms:
+  name: Entity Framework Core
+  nuget_package: Microsoft.EntityFrameworkCore
+  category: full_orm
+  adoption_rank_2025: 1
+  detection:
+    csproj_package_references:
+    - Microsoft.EntityFrameworkCore
+    - Microsoft.EntityFrameworkCore.SqlServer
+    - Microsoft.EntityFrameworkCore.Sqlite
+    - Microsoft.EntityFrameworkCore.InMemory
+    - Microsoft.EntityFrameworkCore.Design
+    - Npgsql.EntityFrameworkCore.PostgreSQL
+    - Pomelo.EntityFrameworkCore.MySql
+    - Microsoft.EntityFrameworkCore.Cosmos
+    structural_markers:
+    - Migrations/*.cs
+    - '*DbContext.cs'
+    - Data/*.cs
+    code_patterns:
+    - ': DbContext'
+    - DbSet<
+    - OnModelCreating(ModelBuilder
+    - '[Key]'
+    - '[Required]'
+    - '[ForeignKey('
+    - '[Table('
+    - '[Column('
+    - modelBuilder.Entity<
+    - .HasOne(
+    - .WithMany(
+    - .HasForeignKey(
+    - .ToTable(
+    - .AsNoTracking()
+    - await context.SaveChangesAsync()
+    - context.Entry(
+    - IEntityTypeConfiguration<
+    notes: 'DbContext subclass with DbSet<T> properties is definitive. Migrations/
+      directory with timestamped files confirms EF Core code-first approach. Provider
+      package reveals target database (SqlServer, Npgsql/PostgreSQL, Pomelo/MySQL,
+      Sqlite, InMemory for tests, Cosmos for Azure Cosmos DB).
+
+      '

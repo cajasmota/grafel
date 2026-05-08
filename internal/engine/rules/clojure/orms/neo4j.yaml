@@ -1,0 +1,33 @@
+orms_database:
+  name: Neocons (Neo4j Clojure Driver)
+  category: graph_database
+  clojars_package: clojurewerkz/neocons
+  adoption_rank_2025: 1
+  detection:
+    project_clj_markers:
+    - clojurewerkz/neocons
+    - neocons
+    import_patterns:
+    - clojurewerkz.neocons.rest
+    code_patterns:
+    - neocons.rest
+    - clojurewerkz.neocons
+  notes: >
+    Community Neo4j Clojure driver (Neocons by ClojureWerkz). Uses
+    clojurewerkz.neocons.rest for REST API access to Neo4j.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections via Neocons
+      (SCOPE.Service, INFERRED_FROM_NEO4J_DRIVER), Cypher queries
+      (SCOPE.Operation/query, INFERRED_FROM_NEO4J_CYPHER).

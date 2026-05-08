@@ -1,0 +1,10 @@
+# Hermetic test fixture for classifier tests (MX-1120).
+# Mirrors the relevant subset of the Python indexer's
+# languages/_data/go/skip_patterns.yaml that exercises the
+# glob-skip code path. Keep minimal — extend only when a
+# new test needs a new pattern.
+skip_patterns:
+  - pattern: "*.pb.go"
+    action: skip_generated
+  - pattern: "wire_gen.go"
+    action: skip_generated

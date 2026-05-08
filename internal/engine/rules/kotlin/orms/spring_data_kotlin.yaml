@@ -1,0 +1,21 @@
+orms_databases:
+  name: Spring Data (Kotlin)
+  gradle_coordinates:
+  - org.springframework.boot:spring-boot-starter-data-jpa
+  - org.springframework.boot:spring-boot-starter-data-r2dbc
+  - org.springframework.boot:spring-boot-starter-data-mongodb
+  detection:
+    import_patterns:
+    - import org.springframework.data.repository.
+    - import org.springframework.data.jpa.repository.
+    - import org.springframework.data.r2dbc.
+    code_patterns:
+    - 'interface * : JpaRepository<'
+    - 'interface * : CrudRepository<'
+    - 'interface * : R2dbcRepository<'
+    - 'interface * : ReactiveMongoRepository<'
+    - '@Repository'
+  notes: 'Spring Data interfaces with Kotlin coroutine extensions via spring-data-r2dbc.
+    R2dbcRepository<Entity, ID> indicates reactive/non-blocking data access.
+
+    '

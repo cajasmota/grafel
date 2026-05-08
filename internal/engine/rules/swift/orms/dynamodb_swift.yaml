@@ -1,0 +1,29 @@
+orms_database:
+  name: Soto DynamoDB (soto-project/soto)
+  category: nosql_database
+  spm_package: soto
+  detection:
+    import_patterns:
+    - import SotoDynamoDB
+    - SotoDynamoDB
+    code_patterns:
+    - DynamoDB(client:
+    - SotoDynamoDB
+  notes: >
+    Soto (formerly AWSSDKSwift) from soto-project/soto is the primary Swift
+    client for AWS services including DynamoDB.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: DynamoDB(client:) connections (SCOPE.Service,
+      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
+      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
+      INFERRED_FROM_DYNAMODB_QUERY), streams (SCOPE.Operation/stream_op,
+      INFERRED_FROM_DYNAMODB_STREAM), single-table design (SCOPE.Pattern,
+      INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

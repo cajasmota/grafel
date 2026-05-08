@@ -1,0 +1,116 @@
+# SQLAlchemy framework extraction rules (MX-553).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: SQLAlchemy
+  pypi_package: SQLAlchemy
+  category: orm
+  github_stars_2025: 10000+
+  gateway: orm
+  detection:
+    config_files:
+    - alembic.ini
+    - '*/alembic/env.py'
+    dependency_names:
+    - SQLAlchemy
+    - sqlalchemy
+    import_markers:
+    - from sqlalchemy
+    - import sqlalchemy
+    - from sqlalchemy.orm import
+    - from sqlalchemy.ext.declarative import declarative_base
+    - DeclarativeBase
+    structural_markers:
+    - alembic/ directory
+    - alembic.ini
+  notes: >
+    declarative_base() or DeclarativeBase subclass is the definitive signal.
+    create_engine() confirms active usage. alembic.ini indicates managed migrations.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "*/models/*.py"
+    entity_type: Model
+    name_from: filename
+  - glob: "*/models.py"
+    entity_type: Model
+    name_from: filename
+  - glob: "*/db/*.py"
+    entity_type: Schema
+    name_from: filename
+  - glob: "alembic/versions/*.py"
+    entity_type: Migration
+    name_from: filename
+
+source_patterns:
+  # declarative_base() assignment: Base = declarative_base()
+  - pattern: "(\\w+)\\s*=\\s*declarative_base\\s*\\("
+    entity_type: Schema
+    name_group: 1
+    scope: file
+  # DeclarativeBase subclass: class Base(DeclarativeBase): pass
+  - pattern: "^class\\s+(\\w+)\\s*\\([^)]*DeclarativeBase[^)]*\\)\\s*:"
+    entity_type: Schema
+    name_group: 1
+    scope: class
+  # Model class: class User(Base):
+  - pattern: "^class\\s+([A-Z]\\w*)\\s*\\(\\w+\\)\\s*:"
+    entity_type: Model
+    name_group: 1
+    scope: class
+  # create_engine: engine = create_engine("...")
+  - pattern: "(\\w+)\\s*=\\s*create_(?:async_)?engine\\s*\\("
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # relationship: items = relationship("Item")
+  - pattern: "=\\s*relationship\\s*\\(\\s*[\"']([A-Za-z_]\\w*)[\"']"
+    entity_type: Relationship
+    name_group: 1
+    scope: file
+  # ForeignKey: ForeignKey("table.id")
+  - pattern: "ForeignKey\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Constraint
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # Model imports another model
+  - pattern: "from\\s+[\\w.]+\\s+import\\s+([A-Z]\\w*)"
+    source_type: Model
+    target_type: Model
+    relationship: DEPENDS_ON
+    source_group: 1
+    target_group: 1
+  # ForeignKey table reference
+  - pattern: "ForeignKey\\s*\\(\\s*[\"']([\\w]+)\\.[\\w]+[\"']"
+    source_type: Model
+    target_type: Model
+    relationship: DEPENDS_ON
+    source_group: 1
+    target_group: 1
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.sqlalchemy_extractor
+    function: extract
+    description: >-
+      SQLAlchemy-specific extractor: declarative model classes (SCOPE.Schema,
+      INFERRED_FROM_SQLALCHEMY_MODEL), Column()/mapped_column() metadata,
+      relationship() → DEPENDS_ON (INFERRED_FROM_SQLALCHEMY_RELATIONSHIP),
+      ForeignKey() → DEPENDS_ON (INFERRED_FROM_SQLALCHEMY_FK),
+      session.query()/session.execute(select()) → SCOPE.Operation
+      (INFERRED_FROM_SQLALCHEMY_QUERY), create_engine() → SCOPE.Service
+      (INFERRED_FROM_SQLALCHEMY_ENGINE), @hybrid_property → SCOPE.Operation
+      (INFERRED_FROM_SQLALCHEMY_HYBRID), event.listen()/@event.listens_for()
+      → SCOPE.Pattern (INFERRED_FROM_SQLALCHEMY_EVENT), association Table()
+      → SCOPE.Schema (INFERRED_FROM_SQLALCHEMY_ASSOCIATION).
+      Supports both SQLAlchemy 1.x and 2.0 Mapped[]/mapped_column() style.
+      Emits OWNS (model→hybrid_property), DEPENDS_ON (model→related model,
+      model→FK table, event→target).

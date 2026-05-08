@@ -1,0 +1,30 @@
+# Validation Confidence Enricher (MX-742)
+# Upgrades endpoint validation_confidence from "inferred" to "proven" when
+# dual evidence exists: a DEPENDS_ON(kind=import) edge to a schema file AND
+# the schema class name appears as a token in the endpoint's function body
+# (raw_content).
+#
+# Validation frameworks covered:
+#   Python:           Pydantic BaseModel, marshmallow Schema, WTForms Form,
+#                     attrs @attrs/@define, Cerberus Validator
+#   JavaScript/TS:    Joi, Zod (z.object), Yup, class-validator decorators,
+#                     io-ts codecs, Ajv schema
+#   Java/Kotlin:      Jakarta Bean Validation (@Valid/@NotNull/@Size),
+#                     Hibernate Validator, @RequestBody with @Valid
+#   Go:               go-playground/validator (validate:"required"), ozzo-validation
+#   C#:               FluentValidation AbstractValidator, DataAnnotations
+#   Ruby:             ActiveModel::Validations, Dry::Validation, json-schema gem
+#   PHP:              Laravel FormRequest, Symfony Validator, Respect\Validation
+#   Rust:             serde validation, validator derive macro
+#   Swift:            Vapor Validatable protocol
+#   Elixir:           Ecto.Changeset cast/validate, Params.defparams
+#   Scala:            play-json Reads/Writes, circe Decoder
+
+name: validation_confidence
+description: >-
+  Upgrade validation_confidence from "inferred" to "proven" on endpoint
+  entities that have both a DEPENDS_ON(kind=import) edge to a validation
+  schema file and the schema class name present in the endpoint's raw_content.
+module: memx_indexer.pattern_detectors.validation_confidence_enricher
+function: detect
+applies_to_function: applies_to

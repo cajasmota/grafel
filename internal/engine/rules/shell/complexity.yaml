@@ -1,0 +1,118 @@
+complexity_signals:
+- signal: nested_subshells
+  description: Command substitution nested 2+ levels deep
+  patterns:
+  - $($(...
+  - $(... $(...
+  - '`...\`...\``'
+  severity: high
+  notes: Exponential complexity increase with each nesting level.
+- signal: pipe_chains
+  description: Long pipelines (4+ piped commands)
+  patterns:
+  - cmd1 | cmd2 | cmd3 | cmd4
+  - '| sort | uniq | grep | awk | sed'
+  severity: medium
+  notes: 'Pipelines are idiomatic in shell but chains of 5+ commands become brittle
+    and hard to debug. Counted per logical line.
+
+    '
+- signal: process_substitution
+  description: Process substitution using <() or >()
+  patterns:
+  - <(
+  - '>('
+  - diff <(
+  - while IFS= read -r ... < <(
+  severity: medium
+  notes: bash/zsh only — not POSIX. Indicates non-trivial data flow.
+- signal: trap_handlers
+  description: Signal and exit trap registration
+  patterns:
+  - 'trap '
+  - trap '
+  - trap "
+  - 'trap - '
+  severity: medium
+  notes: 'trap handlers manage cleanup on EXIT, ERR, INT, TERM. Multiple traps or
+    chained trap logic is a complexity signal.
+
+    '
+- signal: here_documents
+  description: Heredoc blocks (multi-line strings passed to commands)
+  patterns:
+  - <<EOF
+  - <<'EOF'
+  - <<-EOF
+  - <<END
+  - <<HEREDOC
+  severity: low
+  notes: 'Common and often idiomatic (e.g., generating config files). High volume
+    (3+ heredocs per script) may indicate the script is doing templating that belongs
+    in a dedicated tool.
+
+    '
+- signal: eval_usage
+  description: Dynamic code execution via eval
+  patterns:
+  - eval "
+  - eval '
+  - eval $
+  - eval "$
+  severity: high
+  notes: 'eval is a security risk (code injection) and makes static analysis impossible.
+    Any eval usage should be flagged. ShellCheck SC2094 and SC2046 cover common eval
+    misuse patterns.
+
+    '
+- signal: dynamic_variable_names
+  description: Indirect variable references and nameref
+  patterns:
+  - ${!
+  - declare -n
+  - local -n
+  - eval "${
+  severity: high
+  notes: 'Dynamic variable names defeat static analysis and make tracing data flow
+    through a script nearly impossible.
+
+    '
+- signal: background_jobs
+  description: Parallel execution using background processes
+  patterns:
+  - ' &'
+  - '& wait'
+  - wait $!
+  - jobs -p
+  - 'disown '
+  severity: medium
+  notes: 'Background jobs with wait/disown indicate parallelism. Race conditions are
+    easy to introduce. Counts as a complexity signal.
+
+    '
+- signal: recursive_functions
+  description: Shell functions that call themselves
+  patterns:
+  - function_name ... $FUNCNAME
+  severity: high
+  detection_method: 'Requires parsing: find function definitions, then scan body for
+    self-calls. Static pattern matching alone is insufficient.
+
+    '
+- signal: coprocess
+  description: Bash coproc — two-way pipe to background process
+  patterns:
+  - 'coproc '
+  severity: high
+  notes: Rare but indicates advanced IPC in shell. bash 4+ only.
+- signal: arithmetic_with_side_effects
+  description: Arithmetic expressions with assignment inside (( ))
+  patterns:
+  - '(( '
+  - '$(( '
+  - 'let '
+  severity: low
+  notes: 'Arithmetic in shell is error-prone (silent integer overflow, no floats).
+    Heavy use (10+ per file) is a moderate complexity signal.
+
+    '

@@ -1,0 +1,122 @@
+build_tools:
+- name: npm
+  type: package_manager
+  config_files:
+  - package.json
+  - package-lock.json
+  - .npmrc
+  detection_signals:
+  - package-lock.json present
+  - .npmrc present
+  notes: Default Node.js package manager; package.json alone is not sufficient — check
+    for package-lock.json
+- name: yarn
+  type: package_manager
+  config_files:
+  - yarn.lock
+  - .yarnrc
+  - .yarnrc.yml
+  - .yarn/
+  detection_signals:
+  - yarn.lock present
+  - .yarnrc.yml present
+  notes: yarn.lock is definitive; .yarnrc.yml indicates Yarn Berry
+- name: pnpm
+  type: package_manager
+  config_files:
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - .pnpmfile.cjs
+  detection_signals:
+  - pnpm-lock.yaml present
+  - pnpm-workspace.yaml present (monorepo)
+  notes: pnpm-lock.yaml is definitive
+- name: bun
+  type: package_manager_and_runtime
+  config_files:
+  - bun.lockb
+  - bunfig.toml
+  detection_signals:
+  - bun.lockb present
+  - bunfig.toml present
+  notes: bun.lockb is definitive binary lockfile
+- name: vite
+  type: bundler
+  config_files:
+  - vite.config.ts
+  - vite.config.js
+  - vite.config.mjs
+  npm_packages:
+  - vite
+  detection_signals:
+    package_json_deps:
+    - vite
+    config_file: vite.config.ts or vite.config.js
+  notes: Most popular modern bundler; used by Vue, Svelte, React (non-CRA)
+- name: webpack
+  type: bundler
+  config_files:
+  - webpack.config.js
+  - webpack.config.ts
+  - webpack.config.mjs
+  npm_packages:
+  - webpack
+  - webpack-cli
+  detection_signals:
+    package_json_deps:
+    - webpack
+    config_file: webpack.config.js
+  notes: Legacy but still widely used; CRA uses webpack under the hood
+- name: esbuild
+  type: bundler
+  config_files:
+  - esbuild.config.js
+  - esbuild.config.mjs
+  npm_packages:
+  - esbuild
+  detection_signals:
+    package_json_deps:
+    - esbuild
+  notes: Often used as underlying bundler by other tools; also used directly
+- name: turbopack
+  type: bundler
+  config_files: []
+  npm_packages: []
+  detection_signals:
+    package_json_scripts:
+    - next dev --turbopack
+    - next dev --turbo
+  notes: Integrated into Next.js 15; detect via next dev --turbopack script flag
+- name: rollup
+  type: bundler
+  config_files:
+  - rollup.config.js
+  - rollup.config.ts
+  - rollup.config.mjs
+  npm_packages:
+  - rollup
+  detection_signals:
+    package_json_deps:
+    - rollup
+    config_file: rollup.config.*
+  notes: Preferred for libraries; tree-shaking optimized
+- name: tsup
+  type: bundler
+  config_files:
+  - tsup.config.ts
+  - tsup.config.js
+  npm_packages:
+  - tsup
+  detection_signals:
+    package_json_deps:
+    - tsup
+  notes: Popular TypeScript library bundler built on esbuild
+- name: turborepo
+  type: monorepo_build
+  config_files:
+  - turbo.json
+  npm_packages:
+  - turbo
+  detection_signals:
+  - turbo.json present (monorepo root)
+  notes: Monorepo build system; turbo.json is definitive

@@ -1,0 +1,38 @@
+orms:
+  name: Diesel
+  crate: diesel
+  category: orm_sql
+  crates_io_version_2025: 2.x
+  detection:
+    cargo_toml_deps:
+    - diesel
+    - diesel_migrations
+    - diesel_async
+    features_signals:
+    - features = ["postgres"]
+    - features = ["mysql"]
+    - features = ["sqlite"]
+    config_files:
+    - diesel.toml
+    - migrations/
+    import_markers:
+    - 'use diesel::'
+    - use diesel::prelude::*
+    code_patterns:
+    - '#[derive(Queryable'
+    - '#[derive(Insertable'
+    - '#[derive(AsChangeset'
+    - '#[table_name = '
+    - diesel::table!
+    - 'schema::users::dsl::'
+    - diesel::insert_into(
+    - diesel::update(
+    - diesel::delete(
+    - .execute(&conn)
+    - .get_result(&conn)
+    - .load::<
+  notes: 'Compile-time verified ORM. diesel.toml and migrations/ directory are structural
+    signals. Schema derived via diesel print-schema. The #[derive(Queryable)] and
+    related macros are hard code signals.
+
+    '

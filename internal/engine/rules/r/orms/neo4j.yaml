@@ -1,0 +1,32 @@
+orms_database:
+  name: neo4r (Neo4j R Driver)
+  category: graph_database
+  cran_package: neo4r
+  adoption_rank_2025: 1
+  detection:
+    description_markers:
+    - neo4r
+    import_patterns:
+    - library(neo4r)
+    code_patterns:
+    - neo4j_api(
+    - neo4r
+  notes: >
+    Community Neo4j R driver (neo4r). Uses neo4j_api() for connection
+    initialization and supports Cypher query execution.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections via neo4r
+      (SCOPE.Service, INFERRED_FROM_NEO4J_DRIVER), Cypher queries
+      (SCOPE.Operation/query, INFERRED_FROM_NEO4J_CYPHER).

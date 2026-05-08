@@ -1,0 +1,67 @@
+# Chi HTTP router extraction rules (MX-496)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Module: github.com/go-chi/chi/v5
+
+file_conventions: []
+
+source_patterns:
+  # Route registration: r.Get("/path", handlerFunc)  (chi uses Title-case methods)
+  - pattern: '\.\s*(?:Get|Post|Put|Patch|Delete|Head|Options|Connect|Trace)\s*\(\s*"([^"]+)"\s*,\s*(\w+)'
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Sub-router group: r.Route("/prefix", func(r chi.Router) { ... })
+  - pattern: '\.Route\s*\(\s*"([^"]+)"\s*,'
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Mount sub-router: r.Mount("/prefix", handler)
+  - pattern: '\.Mount\s*\(\s*"([^"]+)"\s*,\s*(\w+)'
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Middleware registration: r.Use(middlewareFunc)
+  - pattern: '\.Use\s*\(\s*(\w[\w.]*)\s*\)'
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+  # Handler function: func handlerName(w http.ResponseWriter, r *http.Request)
+  - pattern: 'func\s+(\w+)\s*\(\s*\w+\s+http\.ResponseWriter\s*,\s*\w+\s+\*http\.Request\s*\)'
+    entity_type: Controller
+    name_group: 1
+    scope: file
+
+  # chi.NewRouter() init
+  - pattern: 'chi\.NewRouter\s*\(\s*\)'
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+relationship_rules:
+  # Route CALLS handler: .Get("/path", handlerName) -> handlerName
+  - pattern: '\.\s*(?:Get|Post|Put|Patch|Delete|Head|Options|Connect|Trace)\s*\(\s*"([^"]+)"\s*,\s*(\w+)'
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # Mount CALLS sub-handler: .Mount("/prefix", handlerName) -> handlerName
+  - pattern: '\.Mount\s*\(\s*"([^"]+)"\s*,\s*(\w+)'
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # Middleware USE: .Use(middlewareName) -> middlewareName
+  - pattern: '\.Use\s*\(\s*(\w[\w.]*)\s*(?:,\s*(\w[\w.]*))?\s*\)'
+    source_type: Middleware
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2

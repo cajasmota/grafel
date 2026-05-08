@@ -1,0 +1,21 @@
+database_libraries:
+  name: sqlx
+  module_path: github.com/jmoiron/sqlx
+  category: sql_toolkit
+  github_stars_2025: 16500+
+  detection:
+    go_mod_require:
+    - github.com/jmoiron/sqlx
+    import_markers:
+    - '"github.com/jmoiron/sqlx"'
+    structural_markers:
+    - sqlx.Connect(
+    - sqlx.DB
+    - db.NamedExec(
+    - db.StructScan(
+    - db.Select(
+  notes: 'Extends database/sql with struct scanning and named queries. StructScan
+    and NamedExec are high-confidence usage signals. Often paired with sqlc for type-safe
+    queries.
+
+    '

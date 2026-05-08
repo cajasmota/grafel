@@ -1,0 +1,31 @@
+orms:
+  name: NHibernate
+  nuget_package: NHibernate
+  category: full_orm
+  adoption_rank_2025: 3
+  legacy: true
+  detection:
+    csproj_package_references:
+    - NHibernate
+    - FluentNHibernate
+    - NHibernate.Caches.SysCache
+    config_files:
+    - hibernate.cfg.xml
+    - '*.hbm.xml'
+    - '*.cfg.xml'
+    code_patterns:
+    - using NHibernate
+    - ISessionFactory
+    - ISession
+    - session.Get<
+    - session.Save(
+    - session.Delete(
+    - .CreateCriteria<
+    - .QueryOver<
+    - FluentNHibernate.Cfg
+    - Fluently.Configure()
+    notes: 'NHibernate is the .NET port of Hibernate — common in older enterprise
+      codebases. *.hbm.xml mapping files are a strong signal for XML-mapped NHibernate.
+      FluentNHibernate enables code-based mapping.
+
+      '

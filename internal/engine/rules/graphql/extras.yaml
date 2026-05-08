@@ -1,0 +1,634 @@
+detection:
+  primary_file_patterns:
+  - pattern: '*.graphql'
+    confidence: definitive
+    notes: 'Primary GraphQL Schema Definition Language (SDL) and operation file extension.
+      Contains type definitions, queries, mutations, subscriptions, or fragments.
+      Any presence is a definitive signal.
+
+      '
+  - pattern: '*.gql'
+    confidence: definitive
+    notes: 'Shorthand alias for .graphql files. Equally valid per the GraphQL spec.
+      Common in Apollo Client projects and older tooling. Treat identically to .graphql.
+
+      '
+  - pattern: schema.graphql
+    confidence: definitive
+    notes: 'Conventional filename for the canonical introspected or hand-authored
+      schema. Often emitted by `graphql-codegen` introspect step or committed as the
+      server''s source-of-truth SDL file. Distinguish from schema.json (introspection
+      JSON — skip pattern).
+
+      '
+  - pattern: schema.gql
+    confidence: definitive
+    notes: 'Alternate schema filename using .gql extension. Same semantics as schema.graphql.
+      Less common but valid.
+
+      '
+  - pattern: '*.graphqlrc'
+    confidence: high
+    notes: 'GraphQL Config root configuration file (no extension). Defines schema
+      locations, document globs, and codegen plugin configuration. Presence confirms
+      active GraphQL project tooling setup.
+
+      '
+  - pattern: .graphqlrc.yml
+    confidence: high
+    notes: 'YAML variant of GraphQL Config. Equivalent to .graphqlrc but uses explicit
+      YAML structure. Common in multi-schema workspaces.
+
+      '
+  - pattern: .graphqlrc.yaml
+    confidence: high
+    notes: 'Alternative YAML extension for GraphQL Config. Treat identically to .graphqlrc.yml.
+
+      '
+  - pattern: .graphqlrc.json
+    confidence: high
+    notes: 'JSON variant of GraphQL Config. Functionally identical to .graphqlrc.yml
+      but uses JSON syntax.
+
+      '
+  - pattern: .graphqlrc.js
+    confidence: high
+    notes: 'JavaScript variant of GraphQL Config. Allows dynamic config (e.g., environment-driven
+      schema URLs). Common in complex setups.
+
+      '
+  - pattern: .graphqlrc.ts
+    confidence: high
+    notes: 'TypeScript variant of GraphQL Config. Used in projects with full TypeScript
+      toolchain. Requires ts-node or tsx to parse.
+
+      '
+  - pattern: codegen.yml
+    confidence: high
+    notes: 'GraphQL Code Generator (graphql-codegen) configuration file. Presence
+      confirms a project is generating typed client/server code from a GraphQL schema.
+      Check for `generates:` key to distinguish from other YAML configs using the
+      same filename.
+
+      '
+  - pattern: codegen.ts
+    confidence: high
+    notes: 'TypeScript variant of the graphql-codegen config. Common in TypeScript-first
+      projects. Functionally identical to codegen.yml. Verify `import type { CodegenConfig
+      }` as distinguishing marker.
+
+      '
+  - pattern: codegen.yaml
+    confidence: high
+    notes: 'YAML variant with .yaml extension (vs .yml). Same semantics as codegen.yml.
+      Some tooling generates this form by default.
+
+      '
+  directory_patterns:
+  - pattern: graphql/
+    confidence: high
+    notes: 'Top-level GraphQL directory. Typically contains schema SDL files, resolvers,
+      and operation documents. High-confidence signal.
+
+      '
+  - pattern: schema/
+    confidence: medium
+    notes: 'Generic schema directory. Medium confidence — must be accompanied by .graphql/.gql
+      files or a graphqlrc config to confirm GraphQL.
+
+      '
+  - pattern: resolvers/
+    confidence: medium
+    notes: 'Resolver implementation directory. Common in Apollo Server and similar
+      server frameworks. Presence alongside .graphql files elevates confidence to
+      high.
+
+      '
+  - pattern: types/
+    confidence: low
+    notes: 'May contain generated TypeScript types from graphql-codegen. Low confidence
+      alone — requires accompanying codegen config.
+
+      '
+  - pattern: queries/
+    confidence: medium
+    notes: 'Directory for GraphQL operation documents (query strings). Common in Apollo
+      Client and graphql-request projects. Medium confidence — many non-GraphQL projects
+      use this name.
+
+      '
+  - pattern: mutations/
+    confidence: medium
+    notes: 'Directory for mutation operation documents. Alongside queries/ strongly
+      signals a GraphQL client project.
+
+      '
+  config_file_signals:
+  - file: package.json
+    grep_pattern: '"graphql"'
+    notes: 'npm dependency on the `graphql` package. The canonical reference implementation
+      for JavaScript/TypeScript. Nearly universal in JS GraphQL projects.
+
+      '
+  - file: package.json
+    grep_pattern: '"@apollo/server"|"apollo-server"|"apollo-server-express"'
+    notes: 'Apollo Server dependency variants. v4 uses @apollo/server; v3 and earlier
+      use apollo-server or apollo-server-express.
+
+      '
+  - file: package.json
+    grep_pattern: '"@graphql-codegen/cli"'
+    notes: 'GraphQL Code Generator CLI dependency. Confirms active code generation
+      pipeline.
+
+      '
+  - file: pyproject.toml
+    grep_pattern: strawberry-graphql|graphene
+    notes: 'Python GraphQL server libraries. strawberry-graphql is modern (type annotation-driven);
+      graphene is older decorator-based.
+
+      '
+  - file: requirements.txt
+    grep_pattern: strawberry-graphql|graphene|ariadne
+    notes: 'Python pip dependencies for GraphQL servers. ariadne is a schema-first
+      Python library.
+
+      '
+  - file: go.mod
+    grep_pattern: github.com/99designs/gqlgen|github.com/graph-gophers/graphql-go
+    notes: 'Go GraphQL library dependencies. gqlgen is schema-first and code-generation-driven;
+      graph-gophers/graphql-go is runtime-based.
+
+      '
+  - file: mix.exs
+    grep_pattern: absinthe
+    notes: 'Absinthe is the dominant Elixir GraphQL toolkit. Presence in mix.exs deps
+      is definitive for Elixir GraphQL projects.
+
+      '
+  - file: Gemfile
+    grep_pattern: graphql-ruby|graphql
+    notes: 'graphql-ruby is the standard Ruby GraphQL server library. Used with Rails
+      and Sinatra.
+
+      '
+  - file: pom.xml
+    grep_pattern: graphql-java|com.graphql-java
+    notes: 'GraphQL Java library. Foundation of most JVM GraphQL servers. Also used
+      transitively by Spring Boot GraphQL.
+
+      '
+  - file: build.gradle
+    grep_pattern: graphql-java|graphql-java-kickstart|spring-graphql
+    notes: 'Gradle equivalent of pom.xml signal for Java/Kotlin GraphQL.
+
+      '
+  - file: Cargo.toml
+    grep_pattern: async-graphql|juniper
+    notes: 'Rust GraphQL libraries. async-graphql is dominant (code-first); juniper
+      is older.
+
+      '
+extraction_targets:
+  type_definitions:
+    description: 'Object type definitions. The core building block of a GraphQL schema.
+      Each type maps to a distinct concept in the domain model (User, Product, Order,
+      etc.) and exposes a set of typed fields.
+
+      '
+    structural_pattern: type <Name> { ... }
+    extraction:
+    - type_name: identifier after 'type' keyword
+    - implements_interfaces:
+        pattern: type <Name> implements <Interface> & <Interface>
+        notes: 'Zero or more interfaces. Each interface constraint should be tracked
+          for polymorphism analysis.
+
+          '
+    - fields:
+        pattern: '<fieldName>(<args>): <Type>'
+        capture:
+        - field_name
+        - field_type
+        - is_non_null: bool — trailing ! on return type
+        - is_list: bool — wrapped in []
+        - arguments:
+            pattern: '<argName>: <ArgType> = <default>'
+            capture:
+            - arg_name
+            - arg_type
+            - is_non_null
+            - default_value
+        - directives:
+            pattern: '@<directiveName>(<args>)'
+            common:
+            - '@deprecated(reason: "...")'
+            - '@auth'
+            - '@requires'
+            - '@external'
+            - '@key'
+    - directives_on_type:
+        common:
+        - '@key(fields: "...")'
+        - '@extends'
+        - '@external'
+        - '@shareable'
+        - '@inaccessible'
+        - '@override'
+    notes: 'The Query, Mutation, and Subscription types are technically object types
+      but should be extracted under their own extraction target categories (see below)
+      for clarity.
+
+      '
+  query_operations:
+    description: 'Root Query type fields and operation documents. Queries are read-only
+      operations. As schema fields they live on the special `Query` type; as operation
+      documents they use the `query` keyword.
+
+      '
+    extraction:
+      schema_fields:
+        parent_type: Query
+        capture:
+        - field_name
+        - return_type
+        - arguments
+        - directives
+        - description_comment: '""" ... """ block above field'
+      operation_documents:
+        structural_pattern: query <OperationName>(<variableDefinitions>) { ... }
+        capture:
+        - operation_name
+        - variable_definitions:
+            pattern: '$<varName>: <Type> = <default>'
+        - selection_set: top-level fields selected
+        - directives:
+            common:
+            - '@skip(if: $bool)'
+            - '@include(if: $bool)'
+            - '@defer'
+            - '@stream'
+    notes: 'Anonymous queries (no operation name) are valid but not indexable by name
+      — capture as anonymous_query with source file + line number. Persisted queries
+      (APQ) share the same structural form.
+
+      '
+  mutation_operations:
+    description: 'Root Mutation type fields and operation documents. Mutations cause
+      side effects (creates, updates, deletes). Structurally identical to Query but
+      semantically distinct.
+
+      '
+    extraction:
+      schema_fields:
+        parent_type: Mutation
+        capture:
+        - field_name
+        - return_type
+        - arguments
+        - directives
+        - description_comment
+      operation_documents:
+        structural_pattern: mutation <OperationName>(<variableDefinitions>) { ...
+          }
+        capture:
+        - operation_name
+        - variable_definitions
+        - selection_set
+    notes: 'Mutation fields often accept complex Input types as arguments. Cross-reference
+      input type extraction for full argument shape.
+
+      '
+  subscription_operations:
+    description: 'Root Subscription type fields and operation documents. Subscriptions
+      model real-time event streams. Require server-side WebSocket or SSE transport
+      (e.g., graphql-ws, subscriptions-transport-ws).
+
+      '
+    extraction:
+      schema_fields:
+        parent_type: Subscription
+        capture:
+        - field_name
+        - return_type
+        - arguments
+        - directives
+        - description_comment
+      operation_documents:
+        structural_pattern: subscription <OperationName>(<variableDefinitions>) {
+          ... }
+        capture:
+        - operation_name
+        - variable_definitions
+        - selection_set
+    notes: 'Subscriptions with complex filtering (e.g., onCommentAdded(postId: ID!))
+      signal stateful server-side logic. Extract argument shapes for resolver analysis.
+
+      '
+  input_types:
+    description: 'Input object types used as structured arguments to mutations and
+      queries. Cannot contain fields that return Object types — all fields must be
+      scalars, enums, or other input types.
+
+      '
+    structural_pattern: input <Name> { ... }
+    extraction:
+    - input_name: identifier after 'input' keyword
+    - fields:
+        capture:
+        - field_name
+        - field_type
+        - is_non_null
+        - default_value
+        - directives:
+            common:
+            - '@deprecated'
+    notes: 'Input types named with `Input` suffix (e.g., CreateUserInput, UpdatePostInput)
+      are a common convention — useful for naming pattern analysis. Nested input types
+      signal complex mutation contracts.
+
+      '
+  enum_types:
+    description: 'Enum type definitions. Map to a fixed set of named string constants.
+      Common for status fields, role types, sort directions, and category values.
+
+      '
+    structural_pattern: enum <Name> { ... }
+    extraction:
+    - enum_name: identifier after 'enum' keyword
+    - values:
+        pattern: <VALUE_NAME>
+        capture:
+        - value_name
+        - directives:
+            common:
+            - '@deprecated(reason: "...")'
+    notes: 'Enums are conventionally SCREAMING_SNAKE_CASE per GraphQL spec. Values
+      with @deprecated are candidates for schema evolution analysis.
+
+      '
+  interface_types:
+    description: 'Interface type definitions. Define a contract of fields that multiple
+      Object types must implement. Enable polymorphic queries.
+
+      '
+    structural_pattern: interface <Name> { ... }
+    extraction:
+    - interface_name
+    - fields:
+        capture:
+        - field_name
+        - field_type
+        - is_non_null
+        - arguments
+    notes: 'Object types declaring `implements <Interface>` must include all interface
+      fields. Extract implementing types list for interface usage graph.
+
+      '
+  union_types:
+    description: 'Union type definitions. Allow a field to return one of several named
+      object types. Unlike interfaces, unions define no shared fields. Require `__typename`
+      or inline fragment spread to resolve.
+
+      '
+    structural_pattern: union <Name> = <TypeA> | <TypeB> | ...
+    extraction:
+    - union_name
+    - member_types:
+        pattern: list of types separated by |
+        capture:
+        - each member type name
+    notes: 'Large unions (> 5 member types) are a complexity signal. Union sprawl
+      — many small single-use unions — is an architecture anti-pattern worth flagging.
+
+      '
+  fragment_definitions:
+    description: 'Named reusable selection sets. Defined with the `fragment` keyword
+      and referenced in operation documents via `...FragmentName`.
+
+      '
+    structural_pattern: fragment <Name> on <TypeCondition> { ... }
+    extraction:
+    - fragment_name
+    - type_condition: the type the fragment applies to
+    - selection_set: fields selected by the fragment
+    - directives:
+        common:
+        - '@skip'
+        - '@include'
+    notes: 'Fragments are primarily found in client-side operation documents (.graphql
+      files in queries/ or mutations/ directories), not in server schemas. Relay compiler
+      enforces co-location conventions.
+
+      '
+  directive_definitions:
+    description: 'Custom directive definitions. Extend schema behavior with metadata
+      annotations. Can be applied to schema locations (types, fields, arguments, etc.)
+      and/or execution locations.
+
+      '
+    structural_pattern: directive @<name>(<args>) on <LOCATION> | <LOCATION>
+    extraction:
+    - directive_name: identifier after '@'
+    - arguments:
+        capture:
+        - arg_name
+        - arg_type
+        - default_value
+    - locations:
+        valid_type_system_locations:
+        - SCHEMA
+        - SCALAR
+        - OBJECT
+        - FIELD_DEFINITION
+        - ARGUMENT_DEFINITION
+        - INTERFACE
+        - UNION
+        - ENUM
+        - ENUM_VALUE
+        - INPUT_OBJECT
+        - INPUT_FIELD_DEFINITION
+        valid_execution_locations:
+        - QUERY
+        - MUTATION
+        - SUBSCRIPTION
+        - FIELD
+        - FRAGMENT_DEFINITION
+        - FRAGMENT_SPREAD
+        - INLINE_FRAGMENT
+        - VARIABLE_DEFINITION
+    - is_repeatable: bool — 'repeatable' keyword present
+    notes: 'Federation directives (@key, @external, @requires, @provides, @extends,
+      @shareable, @inaccessible, @override, @link) are defined in the Federation spec,
+      not custom-defined. Detect as built-in federation signals, not user-defined
+      directives.
+
+      '
+  scalar_types:
+    description: 'Custom scalar type definitions. Extend the default scalar set (String,
+      Int, Float, Boolean, ID) with domain-specific primitives.
+
+      '
+    structural_pattern: scalar <Name>
+    extraction:
+    - scalar_name
+    - directives:
+        common:
+        - '@specifiedBy(url: "...")'
+    common_custom_scalars:
+    - Date
+    - DateTime
+    - Time
+    - JSON
+    - JSONObject
+    - UUID
+    - URL
+    - EmailAddress
+    - PhoneNumber
+    - BigInt
+    - Byte
+    - Long
+    - Upload
+    - Void
+    notes: 'Custom scalars implemented via graphql-scalars (JS) or equivalent libraries
+      provide the @specifiedBy URL. Detect scalar name usage in field types even when
+      the scalar definition is in a separate imported schema file.
+
+      '
+domain_roots:
+- layout: graphql_schema_first_server
+  description: 'Server project where SDL schema files are the source of truth. Code
+    (resolvers, generated types) is derived from the schema. Common with Apollo Server,
+    GraphQL Yoga, gqlgen.
+
+    '
+  directory_structure:
+  - '"schema/" or "graphql/"'
+  - schema/types/
+  - schema/queries/
+  - schema/mutations/
+  - schema/subscriptions/
+  - resolvers/
+  - '"generated/" (skip)'
+  config_signals:
+  - codegen.yml or .graphqlrc present at project root
+  - package.json with graphql + @apollo/server or graphql-yoga
+  notes: 'SDL files may be split across multiple files and composed via graphql-codegen
+    merging or Apollo Server''s buildSubgraphSchema.
+
+    '
+- layout: graphql_code_first_server
+  description: 'Server project where schema is defined in code (Python decorators,
+    Elixir macros, TypeScript builders). No hand-authored SDL files. Common with Strawberry,
+    Absinthe, Pothos.
+
+    '
+  directory_structure:
+    python_strawberry:
+    - '"app/schema.py" or "graphql/schema.py"'
+    - '"app/types/" with @strawberry.type classes'
+    - app/resolvers/
+    elixir_absinthe:
+    - lib/app_web/schema.ex
+    - lib/app_web/schema/
+    - lib/app_web/resolvers/
+    typescript_pothos:
+    - src/schema/
+    - src/schema/types/
+    - src/schema/index.ts
+  config_signals:
+  - mix.exs with absinthe dep (Elixir)
+  - pyproject.toml with strawberry-graphql (Python)
+  - package.json with @pothos/core (TypeScript)
+  notes: 'No .graphql files in source — SDL exists only as exported artifact or at
+    runtime. Extraction must use language-specific AST parsing.
+
+    '
+- layout: graphql_client_only
+  description: 'Frontend or client-only project consuming an external GraphQL API.
+    Contains operation documents (.graphql files or gql` ` tags) and generated types.
+    No server schema is maintained in the repo.
+
+    '
+  directory_structure:
+  - '"src/graphql/" or "graphql/"'
+  - src/graphql/queries/
+  - src/graphql/mutations/
+  - src/graphql/fragments/
+  - '"src/generated/" (skip)'
+  - '".graphqlrc.yml" pointing to remote schema URL'
+  config_signals:
+  - .graphqlrc.yml with schema: http://... (remote schema URL)
+  - codegen.yml with schema: pointing to external URL
+  - package.json with @apollo/client or urql or relay-runtime
+  notes: 'Remote schema fetched at codegen time. Local .graphql files are operation
+    documents only. Generated types in src/generated/ — skip.
+
+    '
+- layout: graphql_federation_supergraph
+  description: 'Apollo Federation or GraphQL Federation project consisting of multiple
+    subgraph services composed into a supergraph. Each subgraph owns part of the schema
+    and references types from others.
+
+    '
+  directory_structure:
+    monorepo:
+    - services/<subgraph-name>/schema.graphql
+    - '"gateway/" or "router/"'
+    - '"supergraph.yaml" (Apollo Router config)'
+    - router.yaml
+    per_service:
+    - schema.graphql with @key directives
+    - resolvers with __resolveReference
+  config_signals:
+  - '"@apollo/subgraph" in package.json'
+  - '"@apollo/gateway" in package.json'
+  - '"router.yaml" or "supergraph.yaml" at root'
+  - Federation directives in schema (@key, @external, @requires, @provides)
+  notes: 'Federation supergraph projects are multi-service. Each service repo has
+    @key on its entity types. The gateway/router is a separate service. Detect via
+    @apollo/subgraph dep + @key directive usage.
+
+    '
+- layout: graphql_hasura_project
+  description: 'Hasura-managed GraphQL project. Schema is derived from Postgres tables.
+    Custom logic via Actions and Event Triggers.
+
+    '
+  directory_structure:
+  - hasura/
+  - hasura/config.yaml
+  - hasura/metadata/
+  - hasura/migrations/
+  - hasura/seeds/
+  - metadata/actions.graphql
+  - metadata/remote_schemas.yaml
+  config_signals:
+  - '"hasura/config.yaml" present'
+  - Hasura CLI installed (hasura binary or npx hasura-cli)
+  notes: 'Extraction focuses on Actions (custom mutations/queries), Remote Schemas
+    (federated external APIs), and Event Triggers (async webhooks). The main schema
+    is auto-generated — skip metadata table YAML for standard entity extraction.
+
+    '
+- layout: graphql_appsync_amplify
+  description: 'AWS AppSync project managed via Amplify CLI or CDK. Schema authored
+    in SDL at amplify/backend/api/<name>/schema.graphql.
+
+    '
+  directory_structure:
+  - amplify/
+  - amplify/backend/api/<name>/
+  - amplify/backend/api/<name>/schema.graphql
+  - amplify/backend/api/<name>/resolvers/
+  - '"src/graphql/" (Amplify-generated client operations — skip)'
+  config_signals:
+  - '"amplify/backend/backend-config.json" present'
+  - '"aws-exports.js" or "amplifyconfiguration.json" present'
+  - '"amplify" in package.json dependencies'
+  notes: 'Amplify auto-generates client operations in src/graphql/ — skip those files.
+    The authoritative schema is in the amplify/backend/api/ directory. VTL resolvers
+    in amplify/backend/api/<name>/resolvers/ are custom logic — extract resolver mapping
+    templates.
+
+    '

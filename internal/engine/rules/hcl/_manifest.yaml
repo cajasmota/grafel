@@ -1,0 +1,8 @@
+meta: language.yaml
+frameworks: frameworks/ [terraform, opentofu, packer, vault, nomad, waypoint]
+detection_signals: extras.yaml
+extraction_targets: extras.yaml
+provider_detection: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

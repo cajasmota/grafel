@@ -1,0 +1,19 @@
+orms_database:
+  name: Beanie
+  pypi_package: beanie
+  category: document_odm_async
+  detection:
+    dependency_names:
+    - beanie
+    model_file_patterns:
+    - '*/models.py'
+    - '*/documents.py'
+    import_markers:
+    - from beanie import Document
+    - init_beanie
+    - 'class Settings:'
+    - beanie.PydanticObjectId
+  notes: 'Async MongoDB ODM built on Motor + Pydantic. init_beanie() is definitive.
+    Common in FastAPI + MongoDB stacks.
+
+    '

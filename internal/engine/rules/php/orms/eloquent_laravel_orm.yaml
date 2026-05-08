@@ -1,0 +1,55 @@
+orms:
+  name: Eloquent (Laravel ORM)
+  package_name: illuminate/database
+  category: active_record_orm
+  detection:
+    composer_deps:
+    - laravel/framework
+    - illuminate/database
+    - illuminate/eloquent
+    - calebporzio/sushi
+    config_files:
+    - config/database.php
+    - database/migrations/
+    - database/seeders/
+    - database/factories/
+    import_markers:
+    - use Illuminate\Database\Eloquent\Model
+    - extends Model
+    - use Illuminate\Database\Eloquent\
+    - use HasFactory
+    - use SoftDeletes
+    - use HasTimestamps
+    - $table->timestamps()
+    - Schema::create(
+    - Blueprint $table
+    code_patterns:
+    - protected $fillable
+    - protected $guarded
+    - protected $casts
+    - public function hasMany(
+    - public function belongsTo(
+    - public function belongsToMany(
+    - public function hasOne(
+    - \$this->hasMany(
+    - User::find(
+    - User::where(
+    - User::create(
+  notes: 'Eloquent is tightly coupled to Laravel but can run standalone via illuminate/database.
+    The Model parent class + $fillable/$guarded properties is the canonical signal.
+    Migration files in database/migrations/ contain Blueprint schema calls.
+
+    '
+  custom_extractors:
+  - module: memx_indexer.languages.php.eloquent_extractor
+    function: extract
+    description: >
+      Extracts Eloquent ORM-specific entities: Model class declarations, relationship
+      methods (hasOne/hasMany/belongsTo/belongsToMany/morphTo/morphMany),
+      query scope methods (scopeActive etc.), Observer lifecycle hooks
+      (creating/created/updating/updated/deleting/deleted), accessor/mutator methods
+      (getXAttribute/setXAttribute, Attribute::make), $casts/$fillable/$guarded metadata,
+      $table property, and DB::table() query scopes.
+      Emits SCOPE.Schema (model), SCOPE.Operation (scope/accessor/query), SCOPE.Pattern (observer).
+      Relationships: DEPENDS_ON (model->related, kind=eloquent_relationship),
+      OWNS (model->scope, model->accessor, model->query, observer->hook).

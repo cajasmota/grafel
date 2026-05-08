@@ -1,0 +1,47 @@
+frameworks:
+  name: WordPress
+  package_name: null
+  category: cms
+  github_stars_2025: N/A (SVN primary)
+  detection:
+    config_files:
+    - wp-config.php
+    - wp-config-sample.php
+    - wp-login.php
+    - wp-blog-header.php
+    - wp-load.php
+    - wp-admin/
+    - wp-content/
+    - wp-includes/
+    - wp-content/themes/
+    - wp-content/plugins/
+    - composer.json
+    composer_deps:
+    - johnpbloch/wordpress
+    - roots/wordpress
+    - wp-cli/wp-cli
+    - roots/bedrock-autoloader
+    - wpackagist-plugin/
+    - wpackagist-theme/
+    import_markers:
+    - require_once(ABSPATH
+    - require_once(__DIR__
+    - defined('ABSPATH')
+    - WP_Query
+    - get_template_part(
+    - add_action(
+    - add_filter(
+    - register_post_type(
+    - wp_enqueue_script(
+    structural_markers:
+    - wp-admin/
+    - wp-content/
+    - wp-includes/
+    - wp-config.php
+  notes: 'wp-config.php is the highest-confidence single file. WordPress is often
+    installed outside Composer; johnpbloch/wordpress Bedrock pattern uses Composer
+    but places WP in web/wp/. Check for both standard and Bedrock layouts. Plugin
+    projects contain only wp-content/plugins/{slug}/ without the full WP root — treat
+    as WordPress plugin context, not standalone app.
+
+    '

@@ -1,0 +1,29 @@
+orms_database:
+  name: Spring Data Redis
+  maven_coordinates: org.springframework.data:spring-data-redis
+  gradle_dependency: implementation 'org.springframework.data:spring-data-redis'
+  detection:
+    pom_xml_markers:
+    - spring-data-redis
+    - spring-boot-starter-data-redis
+    import_patterns:
+    - import org.springframework.data.redis
+    code_patterns:
+    - RedisTemplate
+    - StringRedisTemplate
+    - '@RedisHash'
+    - extends CrudRepository
+    - RedisConnectionFactory
+  notes: 'RedisTemplate is the primary signal. @RedisHash for Redis-backed entities.
+
+    '
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: JedisPool/LettuceConnectionFactory/RedisClient.create
+      connections (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), Spring Data
+      Redis patterns @Cacheable/@CachePut/@CacheEvict/RedisTemplate/ReactiveRedisTemplate/
+      @RedisHash (SCOPE.Pattern/INFERRED_FROM_REDIS_SPRING).

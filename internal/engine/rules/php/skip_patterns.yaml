@@ -1,0 +1,71 @@
+skip_patterns:
+- pattern: vendor/
+  reason: 'Composer vendor directory — third-party dependencies. Never index. Contains
+    all installed packages including framework source code.
+
+    '
+  match: directory_prefix
+- pattern: database/migrations/*_create_*.php
+  reason: 'Laravel auto-generated migration files. Schema DDL only — no business logic.
+    Index schema structure but skip for call graph and entity extraction. Exception:
+    custom migration logic warrants indexing.
+
+    '
+  match: glob_pattern
+  exception: files containing complex data transformation logic
+- pattern: _ide_helper*.php
+  reason: 'Laravel IDE helper generated stubs (barryvdh/laravel-ide-helper). Contains
+    PHPDoc type hints for IDE completion, not executable code. Use for type resolution
+    only, do not index as source entities.
+
+    '
+  match: filename_glob
+- pattern: storage/framework/views/*.php
+  reason: 'Laravel compiled Blade templates. Compiled PHP equivalents of resources/views/**/*.blade.php
+    — always regenerated. Index source .blade.php instead.
+
+    '
+  match: directory_prefix
+- pattern: bootstrap/cache/*.php
+  reason: 'Laravel route/config/service cache files. Auto-generated at php artisan
+    optimize. Never index.
+
+    '
+  match: directory_prefix
+- pattern: generated/
+  reason: 'Magento 2 and Propel generated class directories. Interceptors, proxies,
+    and factory classes are auto-generated from source. Index originating source files
+    instead.
+
+    '
+  match: directory_name
+- pattern: var/cache/
+  reason: 'Symfony compiled container, route cache, and template cache. Auto-generated.
+    Never index.
+
+    '
+  match: directory_prefix
+- pattern: public/build/
+  reason: 'Asset build output (Webpack Encore, Vite, Mix). Compiled JS/CSS and manifests.
+    Not PHP source — skip entirely.
+
+    '
+  match: directory_prefix
+- pattern: node_modules/
+  reason: 'NPM packages present in PHP projects using frontend build tools. Never
+    index.
+
+    '
+  match: directory_prefix
+- pattern: '*.blade.php (compiled artifacts)'
+  reason: 'Blade view files contain HTML + PHP — index for template entity detection
+    only, not for call graph. Skip files in storage/framework/views/.
+
+    '
+  match: note
+- pattern: wp-includes/
+  reason: 'WordPress core includes directory — third-party CMS code. Skip when indexing
+    WordPress plugin/theme custom code.
+
+    '
+  match: directory_prefix

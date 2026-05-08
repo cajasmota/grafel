@@ -1,0 +1,67 @@
+# Eclipse MicroProfile framework extraction rules (MX-532)
+# Schema: FrameworkExtractionSchema (MX-494)
+#
+# MicroProfile is a set of specifications implemented by multiple frameworks
+# (Quarkus, Open Liberty, Payara, Helidon, WildFly).  This YAML registers
+# the custom extractor that handles MicroProfile-specific annotations that
+# go beyond what the host framework extractors capture.
+#
+# The custom extractor is activated when the host framework is one of:
+# quarkus, micronaut, open_liberty, payara, helidon.
+# Detection happens via the host framework's detection rules — MicroProfile
+# does not have its own standalone detection.  The YAML below provides the
+# custom_extractors entry consumed by the CustomExtractorRegistry.
+
+frameworks:
+  name: Eclipse MicroProfile
+  category: cloud_native
+  maven_coordinates: org.eclipse.microprofile:microprofile
+  gradle_dependency: implementation 'org.eclipse.microprofile:microprofile'
+  bom_artifact: org.eclipse.microprofile:microprofile-bom
+  adoption_rank_2025: 6
+  detection:
+    pom_xml_markers:
+    - org.eclipse.microprofile
+    - microprofile-bom
+    gradle_markers:
+    - org.eclipse.microprofile
+    import_patterns:
+    - import org.eclipse.microprofile
+    - import org.eclipse.microprofile.faulttolerance
+    - import org.eclipse.microprofile.health
+    - import org.eclipse.microprofile.rest.client
+    - import org.eclipse.microprofile.config
+    - import org.eclipse.microprofile.metrics
+    - import org.eclipse.microprofile.reactive.messaging
+    code_patterns:
+    - '@Retry'
+    - '@CircuitBreaker'
+    - '@Fallback'
+    - '@Liveness'
+    - '@Readiness'
+    - '@RegisterRestClient'
+    - '@Incoming'
+    - '@Outgoing'
+    - '@ConfigProperty'
+    - '@Counted'
+    - '@Timed'
+  notes: >
+    MicroProfile annotations are used within implementing frameworks (Quarkus,
+    Open Liberty, Payara, Helidon).  Detection of MicroProfile usage is via
+    org.eclipse.microprofile imports or the BOM in pom.xml/build.gradle.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-532)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.microprofile_extractor"
+    function: "extract"
+    description: "Extract MicroProfile fault tolerance (@Retry, @CircuitBreaker, @Fallback), health checks (@Liveness, @Readiness), REST clients (@RegisterRestClient, @RestClient @Inject), config (@ConfigProperty), metrics (@Counted, @Timed, @Gauge), reactive messaging (@Incoming, @Outgoing), and JWT auth (@RolesAllowed). Emits DEPENDS_ON relationships for fallback methods, REST client injection, and reactive messaging channel linking."
+  - module: "memx_indexer.languages._engine.config_consumer_extractor"
+    function: "extract"
+    description: "Extract @ConfigProperty(name='key') annotations as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges. Enables blast-radius analysis for MicroProfile config changes (MX-600)."

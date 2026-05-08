@@ -1,0 +1,47 @@
+frameworks:
+  name: Android Jetpack (ViewModel/LiveData/Room/Navigation/Hilt)
+  category: mobile_android_architecture
+  maven_coordinates:
+    viewmodel: androidx.lifecycle:lifecycle-viewmodel
+    livedata: androidx.lifecycle:lifecycle-livedata
+    room: androidx.room:room-runtime
+    navigation: androidx.navigation:navigation-fragment
+    hilt: com.google.dagger:hilt-android
+  adoption_rank_2025: null
+  detection:
+    gradle_markers:
+    - androidx.lifecycle
+    - androidx.room
+    - androidx.navigation
+    - com.google.dagger:hilt-android
+    - dagger.hilt.android.plugin
+    import_patterns:
+    - import androidx.lifecycle.ViewModel
+    - import androidx.lifecycle.LiveData
+    - import androidx.lifecycle.MutableLiveData
+    - import androidx.room.Entity
+    - import androidx.room.Dao
+    - import androidx.navigation
+    - import dagger.hilt.android.AndroidEntryPoint
+    code_patterns:
+    - extends ViewModel
+    - '@Entity'
+    - '@Dao'
+    - '@Database'
+    - '@Insert'
+    - '@Query'
+    - '@AndroidEntryPoint'
+    - '@HiltViewModel'
+    - '@Inject'
+    - NavController
+    - NavHostFragment
+  notes: 'Room @Entity/@Dao/@Database triple is the ORM signal for Android. Hilt @AndroidEntryPoint
+    + @HiltViewModel is the DI signal. ViewModel subclass + LiveData generics indicate
+    MVVM architecture. These signals combined with AndroidManifest.xml confirm Android
+    Jetpack project.
+
+    '
+custom_extractors:
+  - module: "memx_indexer.languages.java.android_extractor"
+    function: "extract"
+    description: "Extract Android Manifest components (activity/service/receiver/provider), Intent-based navigation, Fragment transactions, and ViewModel/LiveData dependencies. Emits DEPENDS_ON and OWNS relationships."

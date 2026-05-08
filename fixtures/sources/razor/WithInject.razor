@@ -1,0 +1,32 @@
+@inject IWeatherService WeatherSvc
+@inject NavigationManager NavManager
+
+<h1>Weather Forecast</h1>
+
+@if (forecasts == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <ul>
+        @foreach (var forecast in forecasts)
+        {
+            <li>@forecast.Date: @forecast.Summary</li>
+        }
+    </ul>
+}
+
+@code {
+    private WeatherForecast[]? forecasts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        forecasts = await WeatherSvc.GetForecastAsync();
+    }
+
+    private void Navigate()
+    {
+        NavManager.NavigateTo("/home");
+    }
+}

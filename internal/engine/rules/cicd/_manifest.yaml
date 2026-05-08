@@ -1,0 +1,11 @@
+meta: language.yaml
+detection: extras.yaml
+frameworks: frameworks/ [github_actions, gitlab_ci, circleci, bitbucket_pipelines,
+  azure_pipelines, travis_ci, buildkite]
+build_tools: build_tools.yaml
+test_frameworks: test_patterns.yaml
+orm_database: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml
+vera_scope_mapping: extras.yaml

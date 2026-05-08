@@ -1,0 +1,45 @@
+frameworks:
+  name: Pedestal
+  clojars_artifact: io.pedestal/pedestal.service
+  category: web_interceptor_chain
+  github_stars_2025: 2700+
+  detection:
+    config_files:
+    - project.clj
+    - deps.edn
+    - config/logback.xml
+    lein_deps:
+    - io.pedestal/pedestal.service
+    - io.pedestal/pedestal.route
+    - io.pedestal/pedestal.jetty
+    - io.pedestal/pedestal.immutant
+    - io.pedestal/pedestal.tomcat
+    deps_edn_coords:
+    - io.pedestal/pedestal.service
+    - io.pedestal/pedestal.route
+    import_markers:
+    - io.pedestal.http
+    - io.pedestal.http.route
+    - io.pedestal.interceptor
+    - io.pedestal.http.body-params
+    - (http/create-server
+    - (http/start
+    - (http/stop
+    - (route/expand-routes
+    - ::http/routes
+    - ::http/type
+    - ::http/port
+    - '{:enter'
+    - '{:leave'
+    - '{:error'
+    - (:require [io.pedestal.
+    structural_markers:
+    - src/
+    - config/logback.xml
+  notes: 'Pedestal uses an interceptor-chain architecture (not middleware). Detected
+    by io.pedestal/* deps in project.clj/deps.edn. The interceptor map pattern {:enter
+    (fn [ctx] ...) :leave (fn [ctx] ...) :error (fn [ctx ex] ...)} is a high-confidence
+    in-source marker. (http/create-server ...) with route tables is the primary setup
+    pattern. Pedestal favors table-based routing over macros.
+
+    '

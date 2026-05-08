@@ -1,0 +1,30 @@
+orms_database:
+  name: MySQL PHP Extensions (PDO::mysql, mysqli)
+  category: relational_database
+  detection:
+    import_patterns: []
+    code_patterns:
+    - new PDO("mysql:
+    - new PDO('mysql:
+    - mysqli_connect(
+    - new mysqli(
+    - PDO::mysql
+  notes: >
+    PHP accesses MySQL via two built-in extensions: PDO with the mysql driver
+    (new PDO("mysql:host=...")) and the mysqli extension (new mysqli() or
+    mysqli_connect()). Both are detected by this extractor.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

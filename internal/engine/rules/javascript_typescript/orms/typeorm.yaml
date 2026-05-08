@@ -1,0 +1,32 @@
+orms_and_database:
+  name: typeorm
+  npm_packages:
+  - typeorm
+  config_files:
+  - ormconfig.json
+  - ormconfig.js
+  - ormconfig.ts
+  - ormconfig.yml
+  - data-source.ts
+  - data-source.js
+  detection_signals:
+    package_json_deps:
+    - typeorm
+    decorator_patterns:
+    - '@Entity'
+    - '@Column'
+    - '@PrimaryGeneratedColumn'
+    - '@OneToMany'
+    - '@ManyToOne'
+    - '@ManyToMany'
+    - '@JoinTable'
+  code_patterns:
+  - DataSource
+  - createConnection
+  notes: data-source.ts is modern convention (TypeORM 0.3+); ormconfig.* is legacy
+custom_extractors:
+  - module: memx_indexer.languages.javascript_typescript.typeorm_extractor
+    callable: extract
+    frameworks:
+      - typeorm
+      - typeorm-legacy

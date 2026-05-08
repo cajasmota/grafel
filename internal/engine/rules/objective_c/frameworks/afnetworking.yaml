@@ -1,0 +1,26 @@
+frameworks:
+  name: AFNetworking
+  category: networking
+  pod_coordinates:
+  - pod 'AFNetworking'
+  - AFNetworking (~> 4.0)
+  detection:
+    config_files:
+    - Podfile (AFNetworking entry)
+    - Podfile.lock (AFNetworking entry)
+    import_patterns:
+    - '#import <AFNetworking/AFNetworking.h>'
+    - '#import "AFNetworking.h"'
+    - '#import <AFNetworking/AFHTTPSessionManager.h>'
+    code_patterns:
+    - AFHTTPSessionManager *
+    - '[AFHTTPSessionManager manager]'
+    - AFJSONResponseSerializer
+    - AFURLSessionManager
+    - AFNetworkReachabilityManager
+  notes: 'Dominant HTTP networking library for Objective-C. Alamofire is its Swift
+    successor. AFHTTPSessionManager is the central class in v3+. AFHTTPRequestOperationManager
+    was the v2 equivalent (legacy signal). Presence in Podfile combined with #import
+    patterns is conclusive.
+
+    '

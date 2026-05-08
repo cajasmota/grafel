@@ -1,0 +1,38 @@
+orms:
+  name: redis (redis-rs)
+  crate: redis
+  category: cache_kv
+  crates_io_version_2025: 0.27.x
+  detection:
+    cargo_toml_deps:
+    - redis
+    - deadpool-redis
+    - bb8-redis
+    features_signals:
+    - features = ["tokio-comp"
+    - features = ["async-std-comp"
+    import_markers:
+    - 'use redis::'
+    code_patterns:
+    - redis::Client::open(
+    - redis::Commands
+    - redis::AsyncCommands
+    - redis::cmd(
+    - .get::<
+    - .set::<
+    - redis::pipe()
+    - redis::transaction(
+  notes: 'De-facto Redis client for Rust. tokio-comp feature required for async. Common
+    in web services alongside Axum/Actix.
+
+    '
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: redis::Client::open/Client::open connections
+      (SCOPE.Service), cache ops con.get/set/hget/hset/expire (SCOPE.Operation/cache_op),
+      pub/sub (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op),
+      Lua con.eval/con.evalsha (SCOPE.Operation/lua_script).

@@ -1,0 +1,228 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/graphql/sample_schema.graphql",
+  "language": "graphql",
+  "entities": [
+    {
+      "name": "UpdateUserInput",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 55,
+      "end_line": 58,
+      "language": "graphql",
+      "signature": "input UpdateUserInput",
+      "enrichment_required": false,
+      "properties": {
+        "type": "input",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "CreateUserInput",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 50,
+      "end_line": 53,
+      "language": "graphql",
+      "signature": "input CreateUserInput",
+      "enrichment_required": false,
+      "properties": {
+        "type": "input",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "HealthStatus",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 45,
+      "end_line": 48,
+      "language": "graphql",
+      "signature": "type HealthStatus",
+      "enrichment_required": false,
+      "properties": {
+        "type": "type",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "PageInfo",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 40,
+      "end_line": 43,
+      "language": "graphql",
+      "signature": "type PageInfo",
+      "enrichment_required": false,
+      "properties": {
+        "type": "type",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UserConnection",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 34,
+      "end_line": 38,
+      "language": "graphql",
+      "signature": "type UserConnection",
+      "enrichment_required": false,
+      "properties": {
+        "type": "type",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "Post",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 27,
+      "end_line": 32,
+      "language": "graphql",
+      "signature": "type Post",
+      "enrichment_required": false,
+      "properties": {
+        "type": "type",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 19,
+      "end_line": 25,
+      "language": "graphql",
+      "signature": "type User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "type",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "Subscription",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 15,
+      "end_line": 17,
+      "language": "graphql",
+      "signature": "type Subscription",
+      "enrichment_required": false,
+      "properties": {
+        "type": "type",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "Mutation",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 9,
+      "end_line": 13,
+      "language": "graphql",
+      "signature": "type Mutation",
+      "enrichment_required": false,
+      "properties": {
+        "type": "type",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "Query",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 3,
+      "end_line": 7,
+      "language": "graphql",
+      "signature": "type Query",
+      "enrichment_required": false,
+      "properties": {
+        "type": "type",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/graphql/sample_schema.graphql",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/graphql/sample_schema.graphql",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "graphql",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "PascalCase",
+        "dominant_percentage": 48.80952380952381,
+        "sample_count": 84,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/graphql/sample_schema.graphql"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

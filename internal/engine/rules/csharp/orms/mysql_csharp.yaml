@@ -1,0 +1,32 @@
+orms_database:
+  name: MySQL .NET Drivers (MySqlConnector, MySql.Data)
+  category: relational_database
+  nuget_package: MySqlConnector
+  detection:
+    import_patterns:
+    - using MySqlConnector
+    - using MySql.Data.MySqlClient
+    - using MySql.Data
+    code_patterns:
+    - new MySqlConnection(
+    - new MySqlDataSource(
+    - MySqlConnection connectionString
+  notes: >
+    MySqlConnector (community) and MySql.Data (Oracle official) are the two
+    primary MySQL drivers for .NET. MySqlConnector is preferred for async
+    workloads. Both expose MySqlConnection as the primary entry point.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

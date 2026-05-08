@@ -1,0 +1,57 @@
+frameworks:
+  name: fastify
+  category: web
+  npm_packages:
+  - fastify
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - fastify
+    import_patterns:
+    - from 'fastify'
+    - require('fastify')
+    code_patterns:
+    - fastify()
+    - Fastify()
+    - fastify.register(
+    - fastify.get(
+    - fastify.post(
+    - fastify.listen(
+  framework_specific:
+  - FastifyPlugin
+  - FastifyRequest
+  - FastifyReply
+  - schema validation
+  notes: No config file; detect via fastify() call + dep
+
+file_conventions:
+  - glob: "*/routes/*.js"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/routes/*.ts"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/plugins/*.js"
+    entity_type: Plugin
+    name_from: filename
+  - glob: "*/plugins/*.ts"
+    entity_type: Plugin
+    name_from: filename
+
+source_patterns:
+  - pattern: "(?:fastify|app|server)\\.(?:get|post|put|patch|delete|options|head|all)\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+  - pattern: "(?:fastify|app|server)\\.register\\s*\\(\\s*(\\w+)"
+    entity_type: Plugin
+    name_group: 1
+    scope: file
+
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.fastify_extractor"
+    function: "extract"
+    description: "Extract Fastify route handlers with schema validation, plugin registration, decorators, lifecycle hooks, prefix routing, and reply patterns"

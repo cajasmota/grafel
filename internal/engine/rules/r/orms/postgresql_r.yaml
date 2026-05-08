@@ -1,0 +1,35 @@
+orms_database:
+  name: RPostgres / RPostgreSQL (R PostgreSQL Drivers)
+  category: postgres_driver
+  cran_packages:
+    - RPostgres
+    - RPostgreSQL
+    - DBI
+  detection:
+    import_patterns:
+      - library(RPostgres)
+      - library(RPostgreSQL)
+      - library(DBI)
+    code_patterns:
+      - dbConnect(RPostgres::Postgres()
+      - dbConnect(RPostgreSQL::PostgreSQL()
+      - DBI::dbConnect(
+  notes: >
+    RPostgres is the modern, native R interface to PostgreSQL (replaces the
+    older RPostgreSQL). Both use the DBI abstraction layer. Used in data
+    science workflows for reading/writing database tables from R.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: dbConnect(RPostgres::Postgres() /
+      RPostgreSQL::PostgreSQL()) connections
+      (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

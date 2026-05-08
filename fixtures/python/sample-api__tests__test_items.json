@@ -1,0 +1,85 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/sample-api/tests/test_items.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "client",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 10,
+      "end_line": 12,
+      "language": "python",
+      "signature": "def client()",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "test_create_item",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 16,
+      "end_line": 26,
+      "language": "python",
+      "signature": "def test_create_item(client)",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "test_create_duplicate_item",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 30,
+      "end_line": 34,
+      "language": "python",
+      "signature": "def test_create_duplicate_item(client)",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "test_list_items",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 38,
+      "end_line": 41,
+      "language": "python",
+      "signature": "def test_list_items(client)",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "test_get_item_not_found",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 45,
+      "end_line": 47,
+      "language": "python",
+      "signature": "def test_get_item_not_found(client)",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "test_update_item",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 51,
+      "end_line": 58,
+      "language": "python",
+      "signature": "def test_update_item(client)",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "test_delete_item",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 62,
+      "end_line": 68,
+      "language": "python",
+      "signature": "def test_delete_item(client)",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

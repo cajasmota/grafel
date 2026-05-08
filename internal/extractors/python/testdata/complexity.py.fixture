@@ -1,0 +1,294 @@
+"""
+Complexity classification for Sample indexer pipeline.
+
+is_complex_method(entity)      — returns True when an entity meets complexity thresholds.
+get_complexity_tier(entity, file_line_count) — returns one of: trivial / simple / complex / heavy.
+has_mongo_pipeline(body)       — returns True when body contains a .aggregate( call.
+
+All public functions record OTel spans via get_tracer from memx_indexer.otel.
+Neither function ever raises; invalid inputs return a safe default.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from typing import Any
+
+from memx_indexer.complexity_signals import detect_signals
+from memx_indexer.otel import get_tracer
+
+_logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_CYCLOMATIC_THRESHOLD: int = 10
+_MAX_CALL_DEPTH_THRESHOLD: int = 2
+_CROSS_SERVICE_THRESHOLD: int = 2
+_HEAVY_FILE_LINE_THRESHOLD: int = 600
+_TRIVIAL_LINE_LIMIT: int = 5
+
+_AUTH_DECORATORS: frozenset[str] = frozenset(
+    {
+        "login_required",
+        "requires_auth",
+        "jwt_required",
+        "auth_required",
+        "require_login",
+        "token_required",
+        "permission_required",
+    }
+)
+
+_ROLLBACK_KEYWORDS: frozenset[str] = frozenset({"rollback", "revert", "undo"})
+
+_MONGO_AGGREGATE_RE: re.Pattern[str] = re.compile(r"\.aggregate\(")
+
+
+# ---------------------------------------------------------------------------
+# has_mongo_pipeline
+# ---------------------------------------------------------------------------
+
+
+def has_mongo_pipeline(body: str) -> bool:
+    """Return True if *body* contains a ``.aggregate(`` call pattern.
+
+    Args:
+        body: Source text of the function/method body.
+
+    Returns:
+        True if ``.aggregate(`` appears anywhere in body, False otherwise.
+
+    Never raises.
+    """
+    if not body:
+        return False
+    return bool(_MONGO_AGGREGATE_RE.search(body))
+
+
+# ---------------------------------------------------------------------------
+# is_complex_method
+# ---------------------------------------------------------------------------
+
+
+def is_complex_method(entity: Any) -> bool:
+    """Return True when *entity* meets at least one complexity criterion.
+
+    Criteria (ANY one is sufficient):
+    1. cyclomatic_complexity > 10
+    2. max_call_depth > 2
+    3. has_mongo is True  (or body contains ``.aggregate(``)
+    4. cross_service_imports >= 2
+    5. Auth decorator present on the entity
+    6. Multi-step transaction with rollback (has_try_except AND rollback/revert/undo in except)
+
+    Args:
+        entity: Any object.  Attribute access is guarded — missing attributes
+                default to safe zero-values so this never raises.
+
+    Returns:
+        True  — entity is complex.
+        False — entity is not complex (or entity is None/invalid).
+
+    Never raises.
+    """
+    tracer = get_tracer("memx_indexer.complexity")
+    with tracer.start_as_current_span("is_complex_method") as span:
+        result, reason, signals_fired = _is_complex_method_inner(entity)
+
+        entity_name = ""
+        try:
+            entity_name = str(entity.name) if entity is not None else ""
+        except Exception:  # noqa: BLE001
+            pass
+
+        span.set_attribute("entity_name", entity_name)
+        span.set_attribute("is_complex", result)
+        span.set_attribute("complexity_reason", reason)
+        span.set_attribute("signals_fired", ",".join(signals_fired) if signals_fired else "")
+        return result
+
+
+def _is_complex_method_inner(entity: Any) -> tuple[bool, str, list[str]]:
+    """Core logic — returns (is_complex, reason_string, signals_fired)."""
+    if entity is None:
+        return False, "null_entity", []
+
+    # ---- helper: safe attribute read ----
+    def _int(attr: str, default: int = 0) -> int:
+        try:
+            val = getattr(entity, attr, default)
+            return int(val) if val is not None else default
+        except Exception:  # noqa: BLE001
+            return default
+
+    def _bool(attr: str) -> bool:
+        try:
+            return bool(getattr(entity, attr, False))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _str(attr: str) -> str:
+        try:
+            val = getattr(entity, attr, "")
+            return str(val) if val is not None else ""
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _list(attr: str) -> list:
+        try:
+            val = getattr(entity, attr, [])
+            return list(val) if val is not None else []
+        except Exception:  # noqa: BLE001
+            return []
+
+    # 1. Cyclomatic complexity
+    if _int("cyclomatic_complexity", 1) > _CYCLOMATIC_THRESHOLD:
+        return True, "cyclomatic_complexity", []
+
+    # 2. Max call depth
+    if _int("max_call_depth") > _MAX_CALL_DEPTH_THRESHOLD:
+        return True, "max_call_depth", []
+
+    # 3. has_mongo flag OR body contains .aggregate(
+    if _bool("has_mongo"):
+        return True, "has_mongo", []
+    body = _str("body")
+    if has_mongo_pipeline(body):
+        return True, "mongo_pipeline", []
+
+    # 4. Cross-service imports
+    if _int("cross_service_imports") >= _CROSS_SERVICE_THRESHOLD:
+        return True, "cross_service_imports", []
+
+    # 5. Auth decorators
+    decorators: list = _list("decorators")
+    for dec in decorators:
+        dec_name = str(dec).strip().lstrip("@").split("(")[0]
+        if dec_name in _AUTH_DECORATORS:
+            return True, f"auth_decorator:{dec_name}", []
+
+    # 6. Multi-step transaction with rollback
+    has_try_except = _bool("has_try_except")
+    if has_try_except:
+        except_body = _str("except_body")
+        # Fall back to scanning full body if except_body not present
+        scan_target = except_body if except_body else body
+        for kw in _ROLLBACK_KEYWORDS:
+            if kw in scan_target.lower():
+                return True, f"transaction_rollback:{kw}", []
+
+    # 7. Signal registry — detect_signals() on body + imports
+    imports = _list("imports")
+    try:
+        fired = detect_signals(body, imports)
+    except Exception:  # noqa: BLE001
+        _logger.warning("detect_signals() raised; falling back to numeric thresholds only")
+        fired = []
+
+    if fired:
+        return True, f"signal:{fired[0]}", fired
+
+    return False, "not_complex", []
+
+
+# ---------------------------------------------------------------------------
+# get_complexity_tier
+# ---------------------------------------------------------------------------
+
+
+def get_complexity_tier(entity: Any, file_line_count: int = 0) -> str:
+    """Return the complexity tier for *entity* in the context of its file.
+
+    Tier resolution order (first match wins):
+    1. "heavy"   — file_line_count > 600
+    2. "complex" — is_complex_method(entity) returns True
+    3. "trivial" — entity has <5 lines, no conditionals, no external calls
+    4. "simple"  — everything else
+
+    Args:
+        entity:          Any object with optional attributes (name, line_range,
+                         has_conditionals, has_external_calls).
+        file_line_count: Total line count of the file containing the entity.
+                         Defaults to 0 (unknown).
+
+    Returns:
+        One of: "trivial", "simple", "complex", "heavy".
+
+    Never raises.
+    """
+    tracer = get_tracer("memx_indexer.complexity")
+    with tracer.start_as_current_span("get_complexity_tier") as span:
+        tier = _get_complexity_tier_inner(entity, file_line_count)
+
+        entity_name = ""
+        try:
+            entity_name = str(entity.name) if entity is not None else ""
+        except Exception:  # noqa: BLE001
+            pass
+
+        span.set_attribute("entity_name", entity_name)
+        span.set_attribute("complexity_tier", tier)
+        span.set_attribute("is_complex", tier == "complex")
+        return tier
+
+
+def _get_complexity_tier_inner(entity: Any, file_line_count: int) -> str:
+    """Core logic — returns tier string."""
+    # 1. Heavy: file exceeds line threshold
+    try:
+        flc = int(file_line_count) if file_line_count is not None else 0
+    except Exception:  # noqa: BLE001
+        flc = 0
+
+    if flc > _HEAVY_FILE_LINE_THRESHOLD:
+        return "heavy"
+
+    # 2. Complex: delegate to is_complex_method
+    if is_complex_method(entity):
+        return "complex"
+
+    # 3. Trivial: <5 lines, no conditionals, no external calls
+    if entity is not None and _entity_is_trivial(entity):
+        return "trivial"
+
+    # 4. Simple: everything else
+    return "simple"
+
+
+def _entity_is_trivial(entity: Any) -> bool:
+    """Return True when entity qualifies as trivial."""
+    # Determine line count from line_range or a lines attribute
+    line_count = 0
+    try:
+        line_range = getattr(entity, "line_range", None)
+        if line_range is not None:
+            start, end = int(line_range[0]), int(line_range[1])
+            line_count = max(0, end - start + 1)
+        else:
+            lines_attr = getattr(entity, "lines", None)
+            if lines_attr is not None:
+                line_count = int(lines_attr)
+    except Exception:  # noqa: BLE001
+        pass
+
+    if line_count >= _TRIVIAL_LINE_LIMIT:
+        return False
+
+    # No conditionals
+    try:
+        if bool(getattr(entity, "has_conditionals", False)):
+            return False
+    except Exception:  # noqa: BLE001
+        pass
+
+    # No external calls
+    try:
+        if bool(getattr(entity, "has_external_calls", False)):
+            return False
+    except Exception:  # noqa: BLE001
+        pass
+
+    return True

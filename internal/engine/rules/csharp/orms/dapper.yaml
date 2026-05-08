@@ -1,0 +1,29 @@
+orms:
+  name: Dapper
+  nuget_package: Dapper
+  category: micro_orm
+  adoption_rank_2025: 2
+  detection:
+    csproj_package_references:
+    - Dapper
+    - Dapper.Contrib
+    - Dapper.FluentMap
+    - ZstackSolutions.Dapper
+    code_patterns:
+    - using Dapper
+    - .Query<
+    - .QueryAsync<
+    - .QueryFirstOrDefault<
+    - .QueryFirstOrDefaultAsync<
+    - .Execute(
+    - .ExecuteAsync(
+    - .QuerySingle<
+    - SqlMapper
+    - DynamicParameters
+    - connection.Query(
+    - connection.QueryAsync(
+    notes: 'Dapper is a micro-ORM — adds extension methods on IDbConnection. Query<T>
+      and Execute are the canonical patterns. Often paired with a connection factory
+      and raw SQL strings as variables or constants.
+
+      '

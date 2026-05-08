@@ -1,0 +1,40 @@
+frameworks:
+  name: Blazor Server
+  category: web_spa_ssr
+  nuget_package: Microsoft.AspNetCore.Components.Server
+  sdk_attribute: Microsoft.NET.Sdk.Web
+  adoption_rank_2025: 3
+  detection:
+    csproj_sdk:
+    - Sdk="Microsoft.NET.Sdk.Web"
+    csproj_package_references:
+    - Microsoft.AspNetCore.Components.Server
+    config_files:
+    - _Imports.razor
+    - App.razor
+    - MainLayout.razor
+    structural_markers:
+    - Pages/*.razor
+    - Shared/*.razor
+    - wwwroot/
+    code_patterns:
+    - '@page'
+    - '@inject'
+    - '@code {'
+    - builder.Services.AddServerSideBlazor()
+    - app.MapBlazorHub()
+    - RenderFragment
+    - EventCallback
+    notes: '.razor files are the primary Blazor signal. AddServerSideBlazor() in Program.cs
+      distinguishes Blazor Server from Blazor WebAssembly.
+
+      '
+custom_extractors:
+  - module: memx_indexer.languages.csharp.blazor_extractor
+    function: extract
+    description: >
+      Extracts Blazor @page route directives as SCOPE.Operation/endpoint,
+      @inject DI declarations as SCOPE.Component with DEPENDS_ON relationships,
+      @code block methods as SCOPE.Operation/function, PascalCase component tags
+      as SCOPE.UIComponent/component with OWNS relationships, [Parameter] and
+      [CascadingParameter] properties, and @layout/@inherits directives.

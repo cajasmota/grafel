@@ -1,0 +1,21 @@
+orms_and_database:
+  name: mikro-orm
+  npm_packages:
+  - '@mikro-orm/core'
+  - '@mikro-orm/postgresql'
+  - '@mikro-orm/mysql'
+  - '@mikro-orm/sqlite'
+  config_files:
+  - mikro-orm.config.ts
+  - mikro-orm.config.js
+  detection_signals:
+    package_json_deps:
+    - '@mikro-orm/core'
+    decorator_patterns:
+    - '@Entity'
+    - '@Property'
+    - '@PrimaryKey'
+    - '@ManyToOne'
+    import_patterns:
+    - from '@mikro-orm/core'
+  notes: DataMapper pattern ORM; mikro-orm.config.ts is definitive

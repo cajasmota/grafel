@@ -1,0 +1,26 @@
+orms:
+  name: rusqlite
+  crate: rusqlite
+  category: embedded_sql
+  crates_io_version_2025: 0.32.x
+  detection:
+    cargo_toml_deps:
+    - rusqlite
+    features_signals:
+    - features = ["bundled"]
+    import_markers:
+    - 'use rusqlite::'
+    code_patterns:
+    - rusqlite::Connection
+    - Connection::open(
+    - Connection::open_in_memory()
+    - .prepare(
+    - .execute(
+    - .query_map(
+    - params![
+    - named_params!{
+  notes: 'SQLite bindings. features = ["bundled"] includes the SQLite C library. Connection::open_in_memory()
+    signals testing use. Common in embedded, CLI tools, and desktop apps (including
+    Tauri). Synchronous API.
+
+    '

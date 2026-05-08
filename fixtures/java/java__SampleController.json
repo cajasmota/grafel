@@ -1,0 +1,676 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java",
+  "language": "java",
+  "entities": [
+    {
+      "name": "SampleController",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 13,
+      "end_line": 77,
+      "language": "java",
+      "signature": "@RestController @RequestMapping class SampleController",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "users",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 17,
+      "end_line": 17,
+      "language": "java",
+      "signature": "List<User> users",
+      "enrichment_required": false,
+      "properties": {
+        "type": "field",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "nextId",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 18,
+      "end_line": 18,
+      "language": "java",
+      "signature": "int nextId",
+      "enrichment_required": false,
+      "properties": {
+        "type": "field",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "health",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 24,
+      "end_line": 27,
+      "language": "java",
+      "signature": "@GetMapping ResponseEntity<String> health()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "getAll",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 29,
+      "end_line": 32,
+      "language": "java",
+      "signature": "@GetMapping ResponseEntity<List<User>> getAll()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "getById",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 34,
+      "end_line": 39,
+      "language": "java",
+      "signature": "@GetMapping ResponseEntity<User> getById(@PathVariable int id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 41,
+      "end_line": 46,
+      "language": "java",
+      "signature": "@PostMapping ResponseEntity<User> create(@RequestBody User user)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 48,
+      "end_line": 55,
+      "language": "java",
+      "signature": "@DeleteMapping ResponseEntity<Void> delete(@PathVariable int id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 57,
+      "end_line": 76,
+      "language": "java",
+      "signature": "class User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "id",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 58,
+      "end_line": 58,
+      "language": "java",
+      "signature": "int id",
+      "enrichment_required": false,
+      "properties": {
+        "type": "field",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "name",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 59,
+      "end_line": 59,
+      "language": "java",
+      "signature": "String name",
+      "enrichment_required": false,
+      "properties": {
+        "type": "field",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "email",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 60,
+      "end_line": 60,
+      "language": "java",
+      "signature": "String email",
+      "enrichment_required": false,
+      "properties": {
+        "type": "field",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "getId",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 70,
+      "end_line": 70,
+      "language": "java",
+      "signature": "int getId()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "setId",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 71,
+      "end_line": 71,
+      "language": "java",
+      "signature": "void setId(int id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "getName",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 72,
+      "end_line": 72,
+      "language": "java",
+      "signature": "String getName()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "setName",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 73,
+      "end_line": 73,
+      "language": "java",
+      "signature": "void setName(String name)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "getEmail",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 74,
+      "end_line": 74,
+      "language": "java",
+      "signature": "String getEmail()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "setEmail",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 75,
+      "end_line": 75,
+      "language": "java",
+      "signature": "void setEmail(String email)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "RestController@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:13",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:RestController:13",
+      "kind": "SCOPE.Pattern",
+      "start_line": 13,
+      "end_line": 13,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "RestController",
+        "source_line": 13,
+        "target": "SampleController"
+      }
+    },
+    {
+      "name": "RequestMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:14",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:RequestMapping:14",
+      "kind": "SCOPE.Pattern",
+      "start_line": 14,
+      "end_line": 14,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "RequestMapping",
+        "source_line": 14,
+        "target": "SampleController",
+        "arguments": [
+          "\"/api/users\""
+        ]
+      }
+    },
+    {
+      "name": "example.com@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:21",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:example.com:21",
+      "kind": "SCOPE.Pattern",
+      "start_line": 21,
+      "end_line": 21,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "example.com",
+        "source_line": 21,
+        "target": "ResponseEntity"
+      }
+    },
+    {
+      "name": "GetMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:24",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:GetMapping:24",
+      "kind": "SCOPE.Pattern",
+      "start_line": 24,
+      "end_line": 24,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "GetMapping",
+        "source_line": 24,
+        "target": "ResponseEntity",
+        "arguments": [
+          "\"/health\""
+        ]
+      }
+    },
+    {
+      "name": "GetMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:29",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:GetMapping:29",
+      "kind": "SCOPE.Pattern",
+      "start_line": 29,
+      "end_line": 29,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "GetMapping",
+        "source_line": 29,
+        "target": "ResponseEntity"
+      }
+    },
+    {
+      "name": "GetMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:34",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:GetMapping:34",
+      "kind": "SCOPE.Pattern",
+      "start_line": 34,
+      "end_line": 34,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "GetMapping",
+        "source_line": 34,
+        "target": "ResponseEntity",
+        "arguments": [
+          "\"/{id}\""
+        ]
+      }
+    },
+    {
+      "name": "PathVariable@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:35",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:PathVariable:35",
+      "kind": "SCOPE.Pattern",
+      "start_line": 35,
+      "end_line": 35,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "PathVariable",
+        "source_line": 35,
+        "target": "ResponseEntity"
+      }
+    },
+    {
+      "name": "PostMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:41",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:PostMapping:41",
+      "kind": "SCOPE.Pattern",
+      "start_line": 41,
+      "end_line": 41,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "PostMapping",
+        "source_line": 41,
+        "target": "ResponseEntity"
+      }
+    },
+    {
+      "name": "RequestBody@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:42",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:RequestBody:42",
+      "kind": "SCOPE.Pattern",
+      "start_line": 42,
+      "end_line": 42,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "RequestBody",
+        "source_line": 42,
+        "target": "ResponseEntity"
+      }
+    },
+    {
+      "name": "DeleteMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:48",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:DeleteMapping:48",
+      "kind": "SCOPE.Pattern",
+      "start_line": 48,
+      "end_line": 48,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "DeleteMapping",
+        "source_line": 48,
+        "target": "ResponseEntity",
+        "arguments": [
+          "\"/{id}\""
+        ]
+      }
+    },
+    {
+      "name": "PathVariable@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:49",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:PathVariable:49",
+      "kind": "SCOPE.Pattern",
+      "start_line": 49,
+      "end_line": 49,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "PathVariable",
+        "source_line": 49,
+        "target": "User"
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "PascalCase",
+        "dominant_percentage": 48.57142857142857,
+        "sample_count": 35,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java"
+      }
+    },
+    {
+      "name": "SampleController",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java::SampleController",
+      "kind": "SCOPE.Service",
+      "start_line": 13,
+      "end_line": 77,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "@RestController",
+        "source": "",
+        "source_type": "class"
+      }
+    },
+    {
+      "name": "org",
+      "qualified_name": "scope:component:import:external:org",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    },
+    {
+      "name": "java",
+      "qualified_name": "scope:component:import:external:java",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": "scope:schema:spring_dto:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/java/SampleController.java:User",
+      "kind": "SCOPE.Schema",
+      "start_line": 34,
+      "end_line": 34,
+      "language": "java",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_SPRING_REQUEST_RESPONSE",
+        "source": "framework_extraction",
+        "kind": "dto",
+        "framework": "spring"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

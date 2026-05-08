@@ -1,0 +1,114 @@
+complexity_signals:
+  complex_relations:
+    description: 'Relations with disambiguation (named relations), multiple relations
+      between the same two models, or deeply nested includes.
+
+      '
+    signals:
+    - name: named_relation
+      pattern: '@relation(name: "<RelationName>", ...)'
+      notes: 'Required when two models have more than one relation between them. Both
+        sides carry the same name string. Strong signal of schema complexity — document
+        both sides and the disambiguation reason.
+
+        '
+    - name: multiple_relations_between_models
+      pattern: Model A has two or more fields of type B
+      notes: 'Common in User-owned content patterns (e.g., User.authoredPosts + User.reviewedPosts
+        both referencing Post). Each must be a named relation.
+
+        '
+    - name: deep_nested_include
+      pattern: 'prisma.model.findMany({ include: { relation: { include: ... } } })'
+      notes: 'Application-level signal. Deep includes cause N+1 if not batched. Not
+        directly detectable in schema — flag if relation chains exceed 3 levels.
+
+        '
+  self_referential_models:
+    description: 'A model that references itself. Used for hierarchical/tree structures
+      (categories, org charts, comment threads, file system trees).
+
+      '
+    signals:
+    - name: self_relation_field
+      pattern: Field whose type is the same model name
+      example: "model Category {\n  id       Int        @id\n  parentId Int?\n  parent\
+        \   Category?  @relation(\"CategoryTree\", fields: [parentId], references:\
+        \ [id])\n  children Category[] @relation(\"CategoryTree\")\n}\n"
+      notes: 'Self-relations always require a named @relation. The named relation
+        connects the two self-referencing fields. Extract as SELF_RELATION with the
+        relation name as a distinct attribute.
+
+        '
+  polymorphic_relations:
+    description: 'Prisma does not natively support polymorphic relations (one table
+      that references multiple other tables via a type discriminator). Workarounds
+      exist but are schema-level complexity signals.
+
+      '
+    workaround_patterns:
+    - name: multiple_nullable_foreign_keys
+      description: 'One target model has optional FK fields to multiple source models.
+        Only one FK is non-null at a time. The non-null FK determines the polymorphic
+        type. Very common workaround.
+
+        '
+      detection: Model with 2+ nullable relation fields of different model types
+    - name: unsupported_polymorphic
+      description: 'Some projects use Unsupported("jsonb") or Json field to store
+        polymorphic references. Flag as complexity requiring manual review.
+
+        '
+    notes: 'Prisma officially recommends the multiple nullable FKs pattern. Flag any
+      model where all relation fields are nullable as a candidate for polymorphic
+      relation review.
+
+      '
+  composite_unique_constraints:
+    description: '@@unique across multiple fields. Signals business rules that combine
+      fields for uniqueness (e.g., user cannot have duplicate entries per resource
+      type, scoped uniqueness within a tenant).
+
+      '
+    signals:
+    - '@@unique([field1, field2])'
+    - '@@unique([field1, field2, field3])'
+    - '@@unique([field1, field2], map: "uq_...")'
+    notes: 'Composite uniques with 3+ fields often indicate complex business invariants.
+      Extract field list and constraint name (if any). High-cardinality composite
+      uniques may indicate a missing dedicated model.
+
+      '
+  full_text_search_indexes:
+    description: '@@fulltext attribute on models. Available for MySQL (5.6+, InnoDB)
+      and MongoDB. Signals native full-text search usage — extraction requires noting
+      provider and indexed fields.
+
+      '
+    syntax: '@@fulltext([field1, field2])'
+    supported_providers:
+    - mysql
+    - mongodb
+    notes: 'Not supported on PostgreSQL (use pg_trgm extension or external search).
+      When @@fulltext is present on a PostgreSQL schema, it is a schema error — flag
+      as invalid configuration.
+
+      '
+  large_schema_complexity:
+    description: 'Schema-wide complexity signals independent of individual models.
+
+      '
+    signals:
+    - name: high_model_count
+      threshold: '>= 50 models'
+      notes: Monorepo or enterprise schema. Consider splitting into domains.
+    - name: circular_relations
+      description: Model A references B, B references C, C references A
+      notes: Circular relations are valid in Prisma but require careful cascade configuration.
+    - name: many_to_many_chains
+      description: Multiple explicit M:N join models linked together
+      notes: Complex graph structures. Flag for documentation.
+    - name: mixed_provider_schemas
+      description: Generator output used with multiple database providers (dev SQLite,
+        prod PostgreSQL)
+      detection: Multiple DATABASE_URL environment variables across .env files

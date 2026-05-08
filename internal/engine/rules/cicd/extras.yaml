@@ -1,0 +1,575 @@
+detection:
+  github_actions:
+    file_location: .github/workflows/
+    file_name_pattern: '*.yml or *.yaml'
+    file_name_examples:
+    - ci.yml
+    - test.yml
+    - deploy.yml
+    - release.yml
+    - build.yml
+    content_anchor: 'A GitHub Actions workflow is confirmed by the presence of a top-level
+      `name:` key and either `on:` (event trigger) or `jobs:` section. The `jobs:`
+      section is required; it contains at least one job definition with a `runs-on:`
+      key specifying the runner type (ubuntu-latest, windows-latest, macos-latest,
+      or self-hosted).
+
+      '
+    required_top_level_keys:
+    - 'on:'
+    - 'jobs:'
+    optional_top_level_keys:
+    - 'name:'
+    - 'concurrency:'
+    - 'env:'
+    - 'permissions:'
+    - 'defaults:'
+    job_structure:
+      required:
+      - 'runs-on:'
+      - 'steps:'
+      optional:
+      - 'name:'
+      - 'needs:'
+      - 'if:'
+      - 'timeout-minutes:'
+      - 'env:'
+      - 'strategy:'
+      - 'concurrency:'
+    step_structure:
+    - 'uses:'
+    - 'run:'
+    - 'name:'
+    - 'if:'
+    - 'env:'
+    - 'with:'
+    environment_reference:
+    - ${{ secrets.NAME }}
+    - ${{ env.NAME }}
+    - ${{ github.event.* }}
+    - ${{ matrix.* }}
+    artifact_definition:
+      action: actions/upload-artifact@v3 or v4
+      keys:
+      - 'name:'
+      - 'path:'
+      - 'retention-days:'
+    cache_definition:
+      action: actions/cache@v3
+      keys:
+      - 'key:'
+      - 'path:'
+    notes: 'GitHub Actions workflows are the most widely-adopted CI/CD platform for
+      GitHub-hosted repositories. Each .yml file in .github/workflows/ is an independent
+      workflow (parallelism). Workflows can be triggered by multiple events (push,
+      pull_request, schedule, workflow_dispatch, etc.). The `on:` section defines
+      triggers. Jobs run in parallel by default; `needs:` creates dependencies. Matrix
+      builds (strategy.matrix) expand a single job into multiple variants. Secrets
+      are injected via ${{ secrets.* }} references and must be defined in repository
+      settings. Self-hosted runners allow custom execution environments. Actions (reusable
+      steps) are sourced from the GitHub Actions marketplace or private repos.
+
+      '
+  gitlab_ci:
+    file_location: root
+    file_name_exact:
+    - .gitlab-ci.yml
+    content_anchor: 'A GitLab CI file is confirmed by the presence of a top-level
+      `stages:` key (optional but recommended) and at least one job definition. A
+      job is any top-level key that is not a reserved keyword (stage, before_script,
+      after_script, variables, include, etc.). Each job must have either a `script:`
+      or `trigger:` key.
+
+      '
+    reserved_keywords:
+    - 'stages:'
+    - 'variables:'
+    - 'before_script:'
+    - 'after_script:'
+    - 'include:'
+    - 'workflow:'
+    - 'default:'
+    - 'services:'
+    job_structure:
+      required:
+      - 'script:'
+      optional:
+      - 'stage:'
+      - 'tags:'
+      - 'image:'
+      - 'services:'
+      - 'variables:'
+      - 'artifacts:'
+      - 'cache:'
+      - 'retry:'
+      - 'timeout:'
+      - 'rules:'
+      - 'needs:'
+      - 'parallel:'
+      - 'allow_failure:'
+      - 'environment:'
+    environment_reference:
+    - $VARIABLE_NAME
+    - $CI_COMMIT_SHA
+    - $CI_PIPELINE_ID
+    - $CI_JOB_ID
+    - secret variables
+    artifact_definition:
+    - 'artifacts.paths:'
+    - 'artifacts.expire_in:'
+    - 'artifacts.reports:'
+    cache_definition:
+    - 'cache.key:'
+    - 'cache.paths:'
+    services_definition: 'Services in GitLab CI define containers run alongside the
+      job container. Common patterns: image: postgres:13 with services: [postgres]
+      for database testing; image: redis:7 for caching.
+
+      '
+    notes: 'GitLab CI uses a single .gitlab-ci.yml file at the repo root. Pipelines
+      execute jobs in stages (defined by job.stage). Jobs within a stage run in parallel;
+      stages execute sequentially. The `needs:` keyword (DAG - Directed Acyclic Graph)
+      allows job-to-job dependencies, bypassing strict stage ordering. Variables are
+      defined at global, group, or job level. `include:` allows composition of multiple
+      CI files (local or remote). Rules (rules: or when:) control conditional execution.
+      Docker images are required for all jobs (default_image can be set per-runner).
+      Services (Docker containers) run as sidecars for database/cache testing.
+
+      '
+  circleci:
+    file_location: .circleci/
+    file_name_exact:
+    - config.yml
+    - config.yaml
+    content_anchor: 'A CircleCI config is confirmed by the presence of the `version:`
+      key (typically "2" or "2.1") and either `jobs:` (for version 2) or `workflows:`
+      section. The `workflows:` section (introduced in v2.1) is required for multi-job
+      pipelines; single-job pipelines use just `jobs:`.
+
+      '
+    required_top_level_keys:
+    - 'version:'
+    - 'jobs:'
+    optional_top_level_keys:
+    - 'workflows:'
+    - 'commands:'
+    - 'executors:'
+    - 'orbs:'
+    job_structure:
+      required:
+      - '"docker:" or "machine:" or "macos:" or "windows:"  # execution environment'
+      - 'steps:'
+      optional:
+      - 'resource_class:'
+      - 'parallelism:'
+      - 'environment:'
+    step_structure:
+    - 'run:'
+    - 'checkout:'
+    - 'save_cache:'
+    - 'restore_cache:'
+    - 'store_artifacts:'
+    - 'store_test_results:'
+    environment_reference:
+    - $VARIABLE_NAME
+    - $CIRCLE_SHA1
+    - $CIRCLE_BUILD_NUM
+    - $CIRCLE_BRANCH
+    workflow_structure: 'Workflows orchestrate multiple jobs. Each job in a workflow
+      maps to a job definition. Jobs can have dependencies (requires:) and filters
+      (branches, tags). Contexts allow sharing environment variables across jobs.
+
+      '
+    orb_reference:
+      format: org/orb-name@version
+      examples:
+      - circleci/node@5.0.0
+      - circleci/python@2.1.0
+      - circleci/go@1.10.0
+    notes: 'CircleCI v2.1 is the current standard. Executors (docker, machine, macos)
+      define the execution environment. Jobs define steps (checkout, run, cache, artifacts).
+      Workflows orchestrate jobs with dependency (requires:) and filtering (branches:,
+      tags:). Orbs are reusable command/job packages (e.g., circleci/node@5.0.0).
+      Parallelism is defined per-job via parallelism: (test splitting). Artifacts
+      are uploaded via store_artifacts:. Test results (JUnit) are uploaded via store_test_results:.
+      Contexts share secrets across jobs.
+
+      '
+  bitbucket_pipelines:
+    file_location: root
+    file_name_exact:
+    - bitbucket-pipelines.yml
+    - bitbucket-pipelines.yaml
+    content_anchor: 'A Bitbucket Pipelines file is confirmed by the presence of the
+      top-level `pipelines:` key, which contains branch, tag, and pull-request definitions.
+      Each pipeline (branch, tag, PR) contains at least one step. The file may also
+      contain `definitions:` (reusable steps and caches).
+
+      '
+    required_top_level_keys:
+    - 'pipelines:'
+    optional_top_level_keys:
+    - 'image:'
+    - 'variables:'
+    - 'definitions:'
+    - 'clone:'
+    pipelines_structure:
+    - 'default:'
+    - 'branches:'
+    - 'tags:'
+    - 'pull-requests:'
+    step_structure:
+    - 'step:'
+    - 'name:'
+    - 'image:'
+    - 'script:'
+    - 'artifacts:'
+    - 'services:'
+    - 'caches:'
+    environment_reference:
+    - $VARIABLE_NAME
+    - $BITBUCKET_*
+    - $BITBUCKET_COMMIT
+    - $BITBUCKET_BRANCH
+    definitions_structure:
+    - 'steps:'
+    - 'caches:'
+    - 'services:'
+    artifact_definition:
+    - 'artifacts.path:'
+    - 'artifacts.paths:'
+    notes: 'Bitbucket Pipelines is integrated into Bitbucket Cloud repositories. pipelines:
+      section defines triggers (branches, tags, PRs). Each branch/tag/PR can have
+      a custom pipeline or use the default. steps: are sequential bash scripts in
+      Docker containers (image: required per step or global default). Services (MySQL,
+      Redis) run as containers alongside steps. Artifacts are uploaded and retained.
+      Caches can be saved and restored. Definitions allow reusable step and service
+      templates. Parallelism is not natively supported (steps are sequential).
+
+      '
+  azure_pipelines:
+    file_location: root
+    file_name_exact:
+    - azure-pipelines.yml
+    - azure-pipelines.yaml
+    alternative_locations:
+    - pipelines/
+    content_anchor: 'An Azure Pipelines file is confirmed by the presence of a top-level
+      `trigger:` (for CI) or `pr:` (for PR) key, or a `jobs:` section. At minimum,
+      either `trigger:` and/or `jobs:` must be present. The `stages:` key indicates
+      a multi-stage pipeline.
+
+      '
+    required_top_level_keys:
+    - '"jobs:" or "stages:"          # job or stage definitions'
+    optional_top_level_keys:
+    - 'trigger:'
+    - 'pr:'
+    - 'variables:'
+    - 'pool:'
+    - 'stages:'
+    stage_structure:
+    - 'stage:'
+    - 'jobs:'
+    - 'displayName:'
+    - 'dependsOn:'
+    - 'condition:'
+    job_structure:
+      required:
+      - '"job:" or "deployment:"     # job name or deployment job'
+      - 'pool:'
+      - 'steps:'
+      optional:
+      - 'displayName:'
+      - 'dependsOn:'
+      - 'condition:'
+      - 'variables:'
+      - 'timeoutInMinutes:'
+    step_structure:
+    - 'script:'
+    - 'task:'
+    - 'displayName:'
+    - 'inputs:'
+    - 'condition:'
+    - 'env:'
+    environment_reference:
+    - $(variable)
+    - $(Agent.*)
+    - $(Build.*)
+    - $(System.*)
+    template_reference:
+      format: template.yml
+      syntax: 'template: <path-to-template.yml>'
+    artifact_definition:
+      task: PublishBuildArtifacts@1
+      inputs:
+      - 'pathToPublish:'
+      - 'artifactName:'
+    notes: 'Azure Pipelines is part of Azure DevOps. Pipelines can be YAML-based or
+      defined via the UI (classic pipelines — excluded here). YAML pipelines support
+      trigger: (CI branches), pr: (PR triggers), and schedule: (cron). Stages are
+      optional; if stages: is present, jobs are nested under stages and execute stage-by-stage.
+      Otherwise, jobs execute in parallel. Each job runs on an agent pool (Microsoft-hosted
+      or self-hosted). Steps are either scripts (bash/PowerShell) or tasks (Azure
+      DevOps actions). Conditions control execution flow (if expressions: condition:
+      eq(variables.build, ''Release'')). Variables can be set at pipeline, stage,
+      or job level. Templates enable reusable step/job/stage definitions.
+
+      '
+  travis_ci:
+    file_location: root
+    file_name_exact:
+    - .travis.yml
+    content_anchor: 'A Travis CI file is confirmed by the presence of language: key
+      and either script: or before_script: key. For matrix builds, matrix: or env:
+      (with multiple values) indicates parallelism.
+
+      '
+    required_top_level_keys:
+    - 'language:'
+    optional_top_level_keys:
+    - 'os:'
+    - 'dist:'
+    - 'arch:'
+    - 'script:'
+    - 'before_script:'
+    - 'after_script:'
+    - 'before_install:'
+    - 'install:'
+    - 'env:'
+    - 'matrix:'
+    - 'stages:'
+    - 'deploy:'
+    language_values:
+    - node_js
+    - python
+    - go
+    - ruby
+    - java
+    - scala
+    - php
+    - cpp
+    - clojure
+    - haskell
+    - perl
+    - r
+    - rust
+    matrix_definition:
+      env:
+      - NODE_VERSION=16
+      - NODE_VERSION=18
+      include:
+      - 'node_js: 16'
+      exclude:
+      - 'node_js: 16'
+      fast_fail: true
+    stage_structure:
+    - 'name:'
+    - 'script:'
+    - 'if:'
+    - 'env:'
+    deployment_target:
+    - 'provider:'
+    - '"key_id:" or "access_key_id:" # credentials'
+    - 'on:'
+    environment_reference:
+    - $VARIABLE_NAME
+    - $TRAVIS_*
+    - $TRAVIS_BRANCH
+    - $TRAVIS_BUILD_NUMBER
+    cache_definition:
+    - 'cache.directories:'
+    - '"cache.pip:" or "cache.npm:"  # language-specific caches'
+    notes: 'Travis CI is a hosted CI service for GitHub repositories (now under new
+      ownership; legacy .travis.yml files may not work on new builds). language: specifies
+      the runtime (node_js, python, go, etc). The lifecycle is: before_install → install
+      → before_script → script → after_script. Matrix builds expand jobs by env: variables
+      or matrix: combinations. Stages (different from GitHub Actions) allow sequential
+      build phases (e.g., test → deploy). Deployments are configured via deploy: section
+      with provider-specific credentials. Caching can be language-specific (cache.pip
+      for Python) or directory-based (cache.directories).
+
+      '
+  buildkite:
+    file_location: .buildkite/
+    file_name_exact:
+    - pipeline.yml
+    - pipeline.yaml
+    content_anchor: 'A Buildkite pipeline is confirmed by the presence of a top-level
+      `steps:` key containing at least one step. Each step can be a command (shell),
+      trigger (wait or block), or group (nested steps).
+
+      '
+    required_top_level_keys:
+    - 'steps:'
+    optional_top_level_keys:
+    - 'env:'
+    - 'notify:'
+    - 'agents:'
+    step_types:
+    - 'command:'
+    - 'trigger:'
+    - 'wait:'
+    - 'block:'
+    - 'input:'
+    - 'group:'
+    command_step_structure:
+    - 'command:'
+    - 'label:'
+    - 'agents:'
+    - 'artifact_paths:'
+    - 'timeout_in_minutes:'
+    - 'env:'
+    - 'if:'
+    - 'notify:'
+    - 'retry:'
+    environment_reference:
+    - $VARIABLE_NAME
+    - $BUILDKITE_*
+    - $BUILDKITE_BUILD_ID
+    - $BUILDKITE_BRANCH
+    - $BUILDKITE_COMMIT
+    agent_tags:
+      description: 'Agents are self-hosted or cloud-hosted workers. Tags select agents
+        for step execution (e.g., agents: { os: linux, arch: arm64 }).
+
+        '
+      example: "agents:\n  os: linux\n  arch: arm64\n"
+    artifact_definition:
+    - 'artifact_paths:'
+    - 'artifact_patterns:'
+    notes: 'Buildkite is an agent-based CI platform with .buildkite/pipeline.yml at
+      root. steps: are sequential shell commands or special step types (trigger, wait,
+      block, input, group). Agents (self-hosted or cloud) run steps based on tags
+      (os, arch, queue). Steps can have dependencies via wait: (blocks until all prior
+      steps complete). Parallel jobs are created using multiple command steps before
+      a wait: step. Artifacts are uploaded via artifact_paths:. Conditional execution
+      uses if: expressions (e.g., if: build.branch == ''main''). Notifications (Slack,
+      email) are configured via notify:. Dynamic pipelines can be generated via trigger:
+      steps (referencing other pipeline.yml files).
+
+      '
+orm_database:
+  note: 'ORM and database systems are not CI/CD platforms. Service containers (MySQL,
+    PostgreSQL, Redis) used in CI/CD pipelines for testing are infrastructure concerns,
+    not CI/CD platforms themselves.
+
+    '
+domain_root_conventions:
+  github_actions:
+    root: .github/workflows/
+    description: 'GitHub Actions workflows live in .github/workflows/ at the repo
+      root. Each .yml/.yaml file is an independent workflow. Workflow files are never
+      nested deeper (no .github/workflows/ci/test.yml pattern).
+
+      '
+    typical_structure: ".github/\n└── workflows/\n    ├── ci.yml\n    ├── test.yml\n\
+      \    ├── deploy.yml\n    ├── release.yml\n    └── scheduled-cleanup.yml\n"
+  gitlab_ci:
+    root: .gitlab-ci.yml
+    description: 'GitLab CI uses a single .gitlab-ci.yml at the repo root. Multiple
+      CI files can be composed via include:, but the entry point is always .gitlab-ci.yml.
+      include: can reference local paths (.gitlab/ci/...) or remote URLs.
+
+      '
+    typical_structure: "repo-root/\n├── .gitlab-ci.yml               # main CI entry\
+      \ point\n└── .gitlab/\n    └── ci/\n        ├── stages.yml           # included\
+      \ via include: local: ...\n        ├── jobs.yml\n        └── deploy.yml\n"
+  circleci:
+    root: .circleci/config.yml
+    description: 'CircleCI uses .circleci/config.yml at repo root (or .circleci/config.yaml).
+      No other CI files are recognised in .circleci/. Configuration is monolithic
+      in a single file (or uses YAML anchors &references for reuse).
+
+      '
+    typical_structure: "repo-root/\n└── .circleci/\n    └── config.yml\n"
+  bitbucket_pipelines:
+    root: bitbucket-pipelines.yml
+    description: 'Bitbucket Pipelines uses bitbucket-pipelines.yml at repo root. The
+      file can include: reusable step definitions, but is a single file by convention.
+      Definitions are typically inline (no separate files).
+
+      '
+    typical_structure: 'repo-root/
+
+      └── bitbucket-pipelines.yml
+
+      '
+  azure_pipelines:
+    root: azure-pipelines.yml
+    description: 'Azure Pipelines can use azure-pipelines.yml at repo root, or a pipelines/
+      directory for multi-file setups. Templates can be stored in pipelines/templates/.
+
+      '
+    typical_structure: "repo-root/\n├── azure-pipelines.yml           # main entry\
+      \ point\n└── pipelines/\n    ├── templates/\n    │   ├── build.yml\n    │  \
+      \ ├── test.yml\n    │   └── deploy.yml\n    └── jobs/\n        └── integration-tests.yml\n"
+  travis_ci:
+    root: .travis.yml
+    description: 'Travis CI uses .travis.yml at repo root (or .travis.yaml, but .yml
+      is standard). No subdirectory structure; configuration is monolithic.
+
+      '
+    typical_structure: 'repo-root/
+
+      └── .travis.yml
+
+      '
+  buildkite:
+    root: .buildkite/pipeline.yml
+    description: 'Buildkite uses .buildkite/pipeline.yml (or .buildkite/pipeline.yaml)
+      at repo root. Dynamic pipelines can trigger other .buildkite/pipeline-*.yml
+      files via trigger: steps. No standard subdirectory pattern.
+
+      '
+    typical_structure: "repo-root/\n└── .buildkite/\n    ├── pipeline.yml\n    ├──\
+      \ pipeline-deploy.yml      # triggered via trigger: step\n    └── pipeline-notification.yml\n"
+vera_scope_mapping:
+  pipeline_to_service:
+    description: 'A CI/CD pipeline (the complete configuration file) maps to archigraph
+      SCOPE.Service. The pipeline is the top-level abstraction: a collection of jobs/stages
+      that perform build, test, and deploy tasks. It is logically equivalent to a
+      service that transforms input (code commit) to output (built artifact, deployed
+      service).
+
+      '
+    examples:
+    - GitHub Actions workflow (.github/workflows/ci.yml) → Service
+    - GitLab .gitlab-ci.yml → Service
+    - CircleCI config.yml → Service
+    - Azure azure-pipelines.yml → Service
+    indexing_rule: 'Extract pipeline entity with SCOPE.Service. Use file path as primary
+      identifier. Attributes: platform (github-actions, gitlab-ci, etc), job_count,
+      stage_count, complexity_score.
+
+      '
+  job_to_operation:
+    description: 'A job (or job-equivalent in each platform) maps to archigraph SCOPE.Operation.
+      A job is the executable unit: it performs a specific task (test, build, deploy).
+      Each job has inputs (code, artifacts) and outputs (artifacts, logs).
+
+      '
+    examples:
+    - GitHub Actions job (jobs.<job_id>) → Operation
+    - GitLab CI job (any top-level key under jobs:) → Operation
+    - CircleCI job (jobs.<job-name> in workflows) → Operation
+    - Azure job (jobs: entry) → Operation
+    - Buildkite step (steps entry) → Operation
+    indexing_rule: 'Extract job/step entity with SCOPE.Operation. Attributes: job_name,
+      duration_estimate, dependencies (needs:, requires:), retry_policy.
+
+      '
+  workflow_to_component:
+    description: 'A workflow (GitHub Actions specific) or orchestration unit maps
+      to archigraph SCOPE.Component. In GitHub Actions, a workflow (.yml file) is the component.
+      In other platforms, a stage or job group is the component.
+
+      '
+    examples:
+    - GitHub Actions workflow (entire .yml file) → Component
+    - GitLab stage (stage: <name>) → Component
+    - CircleCI workflow (workflows.<name>) → Component
+    indexing_rule: 'Extract component entity with SCOPE.Component. Attributes: component_name,
+      member_jobs (list of job names), execution_order (sequential/parallel).
+
+      '

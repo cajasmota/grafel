@@ -1,0 +1,53 @@
+frameworks:
+  name: Akka HTTP / Pekko HTTP
+  category: web_async_api
+  sbt_coordinates:
+  - com.typesafe.akka::akka-http
+  - com.typesafe.akka::akka-stream
+  - com.typesafe.akka::akka-actor-typed
+  - org.apache.pekko::pekko-http
+  - org.apache.pekko::pekko-stream
+  - org.apache.pekko::pekko-actor-typed
+  detection:
+    config_files:
+    - src/main/resources/application.conf
+    - src/main/resources/reference.conf
+    build_signals:
+    - '"com.typesafe.akka" %% "akka-http"'
+    - '"com.typesafe.akka" %% "akka-stream"'
+    - '"com.typesafe.akka" %% "akka-actor-typed"'
+    - '"org.apache.pekko" %% "pekko-http"'
+    - '"org.apache.pekko" %% "pekko-stream"'
+    import_patterns:
+    - import akka.http.scaladsl._
+    - import akka.http.scaladsl.server.Directives._
+    - import akka.actor.typed._
+    - import org.apache.pekko.http.scaladsl._
+    - import org.apache.pekko.actor.typed._
+    code_patterns:
+    - Http().newServerAt(
+    - Route.seal(
+    - path(
+    - get {
+    - post {
+    - complete(
+    - ActorSystem[_]
+    - Behaviors.setup
+  notes: 'Akka HTTP and its Apache fork Pekko are interchangeable detection targets.
+    Pekko emerged after Lightbend changed Akka licensing (2022). Detect both via build.sbt
+    coordinates. application.conf with akka{} block is characteristic. Route DSL (path,
+    get, post, complete) in .scala files confirms usage. Pekko is the open-source
+    continuation; treat as equivalent for detection purposes.
+
+    '
+custom_extractors:
+  - module: memx_indexer.languages.scala.akka_extractor
+    function: extract
+    description: >
+      Extracts Akka/Pekko actor definitions (classic Actor, typed AbstractBehavior,
+      functional Behavior[T]), actor spawn hierarchy (context.spawn, context.actorOf)
+      with parent-child DEPENDS_ON edges, Akka HTTP route DSL with nested directive
+      resolution into full endpoint paths, and sealed trait/case class message protocols.
+      Emits SCOPE.Service (actors), SCOPE.Operation/endpoint (HTTP routes),
+      SCOPE.Pattern (message protocols).
+      Relationships: DEPENDS_ON (actor_spawn, message_protocol), EXTENDS (message variant).

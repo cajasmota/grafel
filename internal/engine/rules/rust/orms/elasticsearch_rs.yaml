@@ -1,0 +1,20 @@
+orms_database:
+  name: elasticsearch-rs
+  crate_name: elasticsearch
+  detection:
+    cargo_toml_markers:
+    - elasticsearch
+    import_patterns:
+    - use elasticsearch::
+    code_patterns:
+    - Elasticsearch::new(
+    - EsClient::new(
+  notes: |
+    Official Rust Elasticsearch client from Elastic.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract Elasticsearch::new connections, .search() calls,
+      aggregations, ILM policies, and index creation for Rust.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

@@ -1,0 +1,34 @@
+orms_database:
+  name: next.jdbc PostgreSQL (Clojure)
+  category: postgres_driver
+  clojars_packages:
+    - seancorfield/next.jdbc
+    - org.postgresql/postgresql
+  detection:
+    import_patterns:
+      - next.jdbc
+      - clojure.java.jdbc
+      - seancorfield/next.jdbc
+    code_patterns:
+      - (jdbc/get-connection
+      - (next.jdbc/get-datasource
+      - (sql/query
+      - (nj/execute!
+  notes: >
+    next.jdbc is the modern Clojure JDBC library by Sean Corfield, replacing
+    the deprecated clojure.java.jdbc. Used with the org.postgresql JDBC driver
+    for PostgreSQL access. HoneySQL is commonly used for query building.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: next.jdbc/clojure.java.jdbc
+      datasource connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER),
+      LISTEN/NOTIFY (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY),
+      COPY (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

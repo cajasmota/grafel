@@ -1,0 +1,27 @@
+frameworks_and_dialects:
+  name: Flyway
+  category: migration_tool
+  config_markers:
+  - flyway.conf
+  - flyway.toml
+  - flyway.properties
+  - flyway.url
+  file_extensions:
+  - '*.sql'
+  structural_markers:
+  - V{number}__{description}.sql naming pattern
+  - R__{description}.sql (repeatable migrations)
+  - U{number}__{description}.sql (undo migrations)
+  directory_markers:
+  - db/migration/
+  - src/main/resources/db/migration/
+  - flyway/
+  notes: 'Flyway uses versioned migration files with prefix V followed by version
+    number then double underscore then description. Repeatable migrations use R prefix.
+    Files are plain SQL with no special syntax markers — detection is purely by filename
+    convention and directory location.
+
+    '
+  custom_extractors:
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract

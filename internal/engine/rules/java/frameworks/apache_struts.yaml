@@ -1,0 +1,25 @@
+frameworks:
+  name: Apache Struts
+  category: web_mvc
+  maven_coordinates: org.apache.struts:struts2-core
+  gradle_dependency: implementation 'org.apache.struts:struts2-core'
+  adoption_rank_2025: 10
+  detection:
+    config_files:
+    - struts.xml
+    - struts.properties
+    - WEB-INF/struts-config.xml
+    pom_xml_markers:
+    - org.apache.struts
+    - struts2-core
+    import_patterns:
+    - import org.apache.struts2
+    - import com.opensymphony.xwork2
+    code_patterns:
+    - '@Action'
+    - '@Result'
+    - extends ActionSupport
+  notes: 'struts.xml in classpath root or WEB-INF is definitive. Legacy but still
+    present in large financial/government systems.
+
+    '

@@ -1,0 +1,251 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"regexp"
+	"sync"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/types"
+)
+
+// compiledSourcePattern is a SourcePattern with its regex pre-compiled.
+type compiledSourcePattern struct {
+	regex      *regexp.Regexp
+	entityType string
+	nameGroup  int
+	scope      string
+	framework  string
+}
+
+// compiledRelationshipRule is a RelationshipRule with its regex pre-compiled.
+type compiledRelationshipRule struct {
+	regex        *regexp.Regexp
+	sourceType   string
+	targetType   string
+	relationship string
+	sourceGroup  int
+	targetGroup  int
+	framework    string
+}
+
+// compiledRuleSet holds all compiled patterns for one framework.
+type compiledRuleSet struct {
+	sourcePatterns    []compiledSourcePattern
+	relationshipRules []compiledRelationshipRule
+}
+
+// Detector applies YAML-driven framework extraction rules to source files.
+// It is safe for concurrent use.
+type Detector struct {
+	rules    map[string][]FrameworkRule
+	compiled map[string][]compiledRuleSet
+	tracer   trace.Tracer
+	once     sync.Once
+}
+
+// New creates a Detector from a set of loaded rules.
+// Regex compilation is deferred to first use (lazy init).
+func New(rules map[string][]FrameworkRule) *Detector {
+	return &Detector{
+		rules:  rules,
+		tracer: otel.Tracer("archigraph/engine"),
+	}
+}
+
+// compile pre-compiles all regex patterns. Called once via sync.Once.
+func (d *Detector) compile() {
+	d.compiled = make(map[string][]compiledRuleSet, len(d.rules))
+
+	for lang, frameworkRules := range d.rules {
+		var sets []compiledRuleSet
+		for _, fr := range frameworkRules {
+			cs := compiledRuleSet{}
+
+			for _, sp := range fr.SourcePatterns {
+				re, err := regexp.Compile(sp.Pattern)
+				if err != nil {
+					log.Printf("engine: invalid source_pattern regex in %s: %q: %v", lang, sp.Pattern, err)
+					continue
+				}
+				cs.sourcePatterns = append(cs.sourcePatterns, compiledSourcePattern{
+					regex:      re,
+					entityType: sp.EntityType,
+					nameGroup:  sp.NameGroup,
+					scope:      sp.Scope,
+					framework:  lang,
+				})
+			}
+
+			for _, rr := range fr.RelationshipRules {
+				re, err := regexp.Compile(rr.Pattern)
+				if err != nil {
+					log.Printf("engine: invalid relationship_rule regex in %s: %q: %v", lang, rr.Pattern, err)
+					continue
+				}
+				cs.relationshipRules = append(cs.relationshipRules, compiledRelationshipRule{
+					regex:        re,
+					sourceType:   rr.SourceType,
+					targetType:   rr.TargetType,
+					relationship: rr.Relationship,
+					sourceGroup:  rr.SourceGroup,
+					targetGroup:  rr.TargetGroup,
+					framework:    lang,
+				})
+			}
+
+			sets = append(sets, cs)
+		}
+		d.compiled[lang] = sets
+	}
+}
+
+// DetectResult holds the entities and relationships extracted by the engine.
+type DetectResult struct {
+	Entities      []types.EntityRecord
+	Relationships []types.RelationshipRecord
+}
+
+// Detect applies all YAML-driven rules for the file's language and returns
+// extracted entities and relationships.
+//
+// Unknown languages return empty results with no error.
+// Invalid regex patterns (caught at compile time) are skipped.
+func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*DetectResult, error) {
+	d.once.Do(d.compile)
+
+	_, span := d.tracer.Start(ctx, "engine.detect",
+		trace.WithAttributes(
+			attribute.String("language", file.Language),
+			attribute.String("file.path", file.Path),
+		),
+	)
+	defer span.End()
+
+	sets, ok := d.compiled[file.Language]
+	if !ok {
+		span.SetAttributes(
+			attribute.Int("entity_count", 0),
+			attribute.Int("relationship_count", 0),
+		)
+		return &DetectResult{}, nil
+	}
+
+	content := string(file.Content)
+	var entities []types.EntityRecord
+	var relationships []types.RelationshipRecord
+
+	// Track seen entities to avoid duplicates from overlapping patterns.
+	seenEntities := make(map[string]bool)
+
+	for _, cs := range sets {
+		// Extract entities from source patterns.
+		for _, sp := range cs.sourcePatterns {
+			matches := sp.regex.FindAllStringSubmatch(content, -1)
+			for _, match := range matches {
+				name := extractGroup(match, sp.nameGroup)
+				if name == "" {
+					continue
+				}
+
+				key := fmt.Sprintf("%s:%s:%s", sp.entityType, name, file.Path)
+				if seenEntities[key] {
+					continue
+				}
+				seenEntities[key] = true
+
+				entity := types.EntityRecord{
+					Name:       name,
+					Kind:       sp.entityType,
+					SourceFile: file.Path,
+					Language:   file.Language,
+					Properties: map[string]string{
+						"framework":    sp.framework,
+						"pattern_type": "yaml_driven",
+					},
+					EnrichmentRequired: isComplexEntity(sp.entityType),
+					EnrichmentStatus:   types.StatusPending,
+					QualityScore:       0.5,
+				}
+				entities = append(entities, entity)
+			}
+		}
+
+		// Extract relationships from relationship rules.
+		for _, rr := range cs.relationshipRules {
+			matches := rr.regex.FindAllStringSubmatch(content, -1)
+			for _, match := range matches {
+				sourceName := extractGroup(match, rr.sourceGroup)
+				targetName := extractGroup(match, rr.targetGroup)
+				if sourceName == "" || targetName == "" {
+					continue
+				}
+
+				rel := types.RelationshipRecord{
+					FromID: fmt.Sprintf("%s:%s", rr.sourceType, sourceName),
+					ToID:   fmt.Sprintf("%s:%s", rr.targetType, targetName),
+					Kind:   rr.relationship,
+					Properties: map[string]string{
+						"framework":    rr.framework,
+						"pattern_type": "yaml_driven",
+					},
+				}
+				relationships = append(relationships, rel)
+			}
+		}
+	}
+
+	span.SetAttributes(
+		attribute.Int("entity_count", len(entities)),
+		attribute.Int("relationship_count", len(relationships)),
+	)
+
+	return &DetectResult{
+		Entities:      entities,
+		Relationships: relationships,
+	}, nil
+}
+
+// extractGroup safely extracts a capture group from a regex match.
+// Returns empty string if the group index is out of range.
+func extractGroup(match []string, group int) string {
+	if group < 0 || group >= len(match) {
+		return ""
+	}
+	return match[group]
+}
+
+// isComplexEntity returns true for entity types that warrant LLM enrichment.
+// Matches Python behavior: Controllers and Middleware are complex, Routes/Config are not.
+func isComplexEntity(entityType string) bool {
+	switch entityType {
+	case "Controller", "Middleware", "Service", "Repository", "Model":
+		return true
+	default:
+		return false
+	}
+}
+
+// Languages returns all language names that have loaded rules.
+func (d *Detector) Languages() []string {
+	langs := make([]string, 0, len(d.rules))
+	for lang := range d.rules {
+		langs = append(langs, lang)
+	}
+	return langs
+}
+
+// RuleCount returns the total number of framework rules loaded across all languages.
+func (d *Detector) RuleCount() int {
+	count := 0
+	for _, rules := range d.rules {
+		count += len(rules)
+	}
+	return count
+}

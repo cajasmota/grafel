@@ -1,0 +1,145 @@
+testing_frameworks:
+- name: pytest
+  pypi_package: pytest
+  detection:
+    config_files:
+    - pytest.ini
+    - pyproject.toml
+    - setup.cfg
+    - conftest.py
+    dependency_names:
+    - pytest
+    - pytest-asyncio
+    - pytest-cov
+    - pytest-mock
+    - pytest-xdist
+    file_conventions:
+    - test_*.py
+    - '*_test.py'
+    directory_conventions:
+    - tests/
+    - test/
+    import_markers:
+    - import pytest
+    - '@pytest.fixture'
+    - '@pytest.mark'
+    - pytest.raises
+  notes: 'De-facto standard. conftest.py is highest-confidence signal — it is pytest-specific.
+    pytest.ini or [tool.pytest.ini_options] in pyproject.toml is also definitive.
+
+    '
+- name: unittest
+  pypi_package: (stdlib)
+  detection:
+    config_files: []
+    dependency_names: []
+    file_conventions:
+    - test_*.py
+    - '*_test.py'
+    directory_conventions:
+    - tests/
+    import_markers:
+    - import unittest
+    - unittest.TestCase
+    - unittest.main()
+    - self.assertEqual
+    - self.assertRaises
+  notes: 'Standard library — no dependency entry. Detected purely via imports. unittest.TestCase
+    subclassing is definitive.
+
+    '
+- name: nose2
+  pypi_package: nose2
+  detection:
+    config_files:
+    - nose2.cfg
+    - unittest.cfg
+    dependency_names:
+    - nose2
+    file_conventions:
+    - test_*.py
+    - '*_test.py'
+    directory_conventions:
+    - tests/
+    import_markers:
+    - import nose2
+    - nose2.main()
+  notes: 'Successor to nose (deprecated). nose2.cfg is the primary signal. Diminishing
+    usage — mostly legacy Django/Flask projects.
+
+    '
+- name: tox
+  pypi_package: tox
+  detection:
+    config_files:
+    - tox.ini
+    - pyproject.toml
+    - setup.cfg
+    dependency_names:
+    - tox
+    file_conventions: []
+    directory_conventions:
+    - .tox/
+    import_markers: []
+  notes: 'Test environment orchestrator, not a test runner itself. tox.ini is definitive.
+    .tox/ directory is runtime artifact (should be gitignored).
+
+    '
+- name: nox
+  pypi_package: nox
+  detection:
+    config_files:
+    - noxfile.py
+    dependency_names:
+    - nox
+    file_conventions:
+    - noxfile.py
+    directory_conventions:
+    - .nox/
+    import_markers:
+    - import nox
+    - '@nox.session'
+  notes: 'Modern tox alternative using Python config (noxfile.py). noxfile.py is definitive.
+    Preferred by Google-maintained projects.
+
+    '
+- name: hypothesis
+  pypi_package: hypothesis
+  detection:
+    config_files:
+    - .hypothesis/
+    dependency_names:
+    - hypothesis
+    file_conventions: []
+    directory_conventions:
+    - .hypothesis/
+    import_markers:
+    - from hypothesis import given
+    - from hypothesis import strategies as st
+    - '@given('
+    - st.text()
+    - st.integers()
+  notes: 'Property-based testing. @given decorator is definitive. .hypothesis/ directory
+    stores example database.
+
+    '
+- name: coverage.py
+  pypi_package: coverage
+  detection:
+    config_files:
+    - .coveragerc
+    - pyproject.toml
+    - setup.cfg
+    dependency_names:
+    - coverage
+    - pytest-cov
+    file_conventions:
+    - .coverage
+    directory_conventions:
+    - htmlcov/
+    import_markers:
+    - import coverage
+  notes: 'Coverage measurement tool. .coveragerc or [tool.coverage] in pyproject.toml.
+    pytest-cov integrates it with pytest.
+
+    '

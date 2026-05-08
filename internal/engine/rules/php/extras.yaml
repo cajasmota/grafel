@@ -1,0 +1,94 @@
+domain_roots:
+- layout: laravel_standard
+  description: Laravel 8+ standard project layout
+  root_directories:
+  - app/
+  - config/
+  - database/
+  - resources/
+  - routes/
+  - storage/
+  - tests/
+  entry_points:
+  - public/index.php
+  - artisan
+  primary_source_root: app/
+  notes: 'app/ is the canonical PHP source root for Laravel. app/Models/, app/Http/Controllers/,
+    app/Http/Middleware/, app/Services/, app/Jobs/, app/Events/, app/Listeners/, app/Policies/
+    are standard subdirectories. All indexing begins from app/.
+
+    '
+- layout: symfony_standard
+  description: Symfony 5+ Flex project layout
+  root_directories:
+  - src/
+  - config/
+  - templates/
+  - migrations/
+  - tests/
+  - public/
+  - assets/
+  entry_points:
+  - public/index.php
+  - bin/console
+  primary_source_root: src/
+  notes: 'src/ is the PHP source root, mapped to App\ namespace via PSR-4. Standard
+    subdirectories: src/Controller/, src/Entity/, src/Repository/, src/Service/, src/Form/,
+    src/EventSubscriber/. config/packages/ holds per-bundle configuration.
+
+    '
+- layout: wordpress_plugin_theme
+  description: WordPress plugin or theme as custom code unit
+  root_directories:
+  - wp-content/plugins/{slug}/
+  - wp-content/themes/{slug}/
+  - includes/
+  - admin/
+  - public/
+  - src/
+  entry_points:
+  - '{slug}.php'
+  - functions.php
+  primary_source_root: wp-content/plugins/{slug}/ or wp-content/themes/{slug}/
+  notes: 'Index only the custom plugin/theme directory, not WP core. The plugin main
+    file ({slug}.php) contains the Plugin Name comment header — use it as the entity
+    root. OOP plugins may have a src/ subdirectory following PSR-4 with a custom namespace.
+
+    '
+- layout: drupal_custom_module
+  description: Drupal 8+ custom module
+  root_directories:
+  - web/modules/custom/{module_name}/
+  - src/
+  - templates/
+  - config/install/
+  - config/optional/
+  - tests/
+  entry_points:
+  - '{module_name}.info.yml'
+  - '{module_name}.module'
+  - '{module_name}.routing.yml'
+  - '{module_name}.services.yml'
+  primary_source_root: web/modules/custom/{module_name}/src/
+  notes: '{module_name}.info.yml is mandatory for all Drupal modules — use it as the
+    entity root anchor. src/ follows PSR-4 Drupal\{ModuleName} namespace convention.
+    Index from src/ for class entities; *.routing.yml and *.services.yml are YAML
+    config entities.
+
+    '
+- layout: generic_php_library
+  description: PHP library or package following PSR-4
+  root_directories:
+  - src/
+  - tests/
+  - examples/
+  entry_points:
+  - composer.json
+  - src/
+  primary_source_root: src/
+  notes: 'Libraries not tied to a specific framework. Identified by absence of framework-specific
+    directories (no artisan, no bin/console, no wp-config.php). composer.json autoload.psr-4
+    defines the namespace → directory mapping. Root namespace derived from autoload.psr-4
+    first key.
+
+    '

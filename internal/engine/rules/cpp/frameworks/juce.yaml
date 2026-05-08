@@ -1,0 +1,39 @@
+frameworks:
+  name: JUCE
+  category: audio_gui_framework
+  github_stars_2025: 6800+
+  detection:
+    cmake_find_package:
+    - find_package(JUCE CONFIG
+    - add_subdirectory(JUCE
+    - add_subdirectory(juce
+    cmake_target_link:
+    - juce::juce_core
+    - juce::juce_gui_basics
+    - juce::juce_audio_basics
+    - juce::juce_audio_processors
+    vcpkg_packages:
+    - juce
+    conan_packages:
+    - juce/
+    include_patterns:
+    - '#include <JuceHeader.h>'
+    - '#include <juce_core/'
+    - '#include <juce_audio_basics/'
+    structural_markers:
+    - juce_add_gui_app(
+    - juce_add_plugin(
+    - juce_add_console_app(
+    - JUCEApplication
+    - AudioProcessor
+    - Component
+    - JucePlugin_
+    - CMakeLists.txt
+    config_files:
+    - CMakeLists.txt
+    - JuceHeader.h
+    notes: 'Audio application and plugin framework (VST, AU, AAX). Often consumed
+      as a Git submodule. juce_add_plugin() is the definitive CMake marker for audio
+      plugin projects. JucePlugin_* macros in AppConfig.h signal plugin configuration.
+
+      '

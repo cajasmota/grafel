@@ -1,0 +1,24 @@
+orms_database:
+  name: elasticsearch-kotlin
+  detection:
+    gradle_markers:
+    - spring-boot-starter-data-elasticsearch
+    - elasticsearch-rest-high-level-client
+    import_patterns:
+    - import org.springframework.data.elasticsearch
+    - import org.elasticsearch.client
+    code_patterns:
+    - RestHighLevelClient
+    - ElasticsearchClient
+    - '@Document'
+    - ElasticsearchRepository
+  notes: |
+    Kotlin uses the Java high-level client via Kotlin extensions.
+    Spring Data Elasticsearch is the most common integration.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract RestHighLevelClient / ElasticsearchClient connections, @Document classes,
+      ElasticsearchRepository interfaces, QueryBuilders, AggregationBuilders, ILM policies.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

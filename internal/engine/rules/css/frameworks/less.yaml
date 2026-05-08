@@ -1,0 +1,37 @@
+frameworks:
+  name: less
+  full_name: LESS (Leaner Style Sheets)
+  category: preprocessor
+  extensions:
+  - .less
+  npm_packages:
+  - less
+  config_files:
+  - .lessrc
+  - .lessrc.json
+  - less.config.js
+  detection_signals:
+    package_json_deps:
+    - less
+    file_extensions:
+    - .less
+    content_patterns:
+    - '@'
+    - .mixin(
+    - '#mixin('
+    - .mixin {
+    - '&:'
+    - when (
+    - each(
+    - mix(
+  framework_specific:
+  - 'LESS variables (@var-name: value)'
+  - Parametric mixins (.mixin(@param))
+  - Lazy evaluation (variables can be used before declaration)
+  - Detached rulesets ({...} as values)
+  - Guard expressions (when (@condition))
+  notes: 'LESS variables use @ prefix — same as CSS at-rules. Disambiguate: LESS variables
+    are @identifier: value at start of line, not @media/@keyframes. Bootstrap v3/v4
+    used LESS; Bootstrap v5 migrated to SCSS.
+
+    '

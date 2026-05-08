@@ -1,0 +1,30 @@
+orms_database:
+  name: postgres (Dart PostgreSQL Driver)
+  category: postgres_driver
+  pub_package: postgres
+  detection:
+    import_patterns:
+      - package:postgres/postgres.dart
+      - import 'package:postgres/
+    code_patterns:
+      - PostgreSQLConnection(
+      - Connection(
+      - await connection.open()
+  notes: >
+    The postgres package (pub.dev) is the primary PostgreSQL driver for Dart.
+    It supports TLS, prepared statements, and connection pooling. Widely used
+    with server-side Dart (shelf, dart_frog) and Flutter backend services.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: PostgreSQLConnection/Connection
+      instantiation (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER),
+      LISTEN/NOTIFY (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY),
+      COPY (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

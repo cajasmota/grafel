@@ -1,0 +1,76 @@
+build_tools:
+- name: Gradle Kotlin DSL
+  file: build.gradle.kts
+  detection:
+    primary_files:
+    - build.gradle.kts
+    - settings.gradle.kts
+    - gradle.properties
+    - gradlew
+    - gradlew.bat
+    - gradle/wrapper/gradle-wrapper.properties
+    build_signals:
+    - build.gradle.kts (Kotlin DSL — not Groovy)
+    - kotlin("jvm")
+    - kotlin("multiplatform")
+    - kotlin("android")
+    - plugins { id("...") }
+    structural_markers:
+    - gradle/wrapper/ directory
+    - .gradle/ cache directory
+  notes: 'Kotlin DSL (build.gradle.kts) is the modern standard for Kotlin projects.
+    Distinguish from Groovy DSL (build.gradle) by .kts extension. gradlew wrapper
+    script indicates Gradle usage regardless of DSL. gradle/wrapper/gradle-wrapper.properties
+    pins Gradle version.
+
+    '
+- name: Gradle Groovy DSL
+  file: build.gradle
+  detection:
+    primary_files:
+    - build.gradle
+    - settings.gradle
+    - gradlew
+    build_signals:
+    - 'apply plugin: ''kotlin'''
+    - 'apply plugin: ''kotlin-android'''
+    - implementation 'org.jetbrains.kotlin:kotlin-stdlib'
+  notes: 'Legacy Groovy DSL — still common in older Android projects. Presence of
+    build.gradle (no .kts) with kotlin plugin is Groovy DSL. New projects should prefer
+    .kts but many existing codebases remain Groovy.
+
+    '
+- name: Maven (Kotlin)
+  file: pom.xml
+  detection:
+    primary_files:
+    - pom.xml
+    - .mvn/wrapper/maven-wrapper.properties
+    - mvnw
+    build_signals:
+    - <artifactId>kotlin-maven-plugin</artifactId>
+    - <groupId>org.jetbrains.kotlin</groupId>
+    - <packaging>jar</packaging>
+  notes: 'Maven used for Kotlin Spring Boot projects and enterprise Kotlin. kotlin-maven-plugin
+    in pom.xml is definitive. Less common than Gradle for pure Kotlin projects but
+    prevalent in mixed Java/Kotlin codebases.
+
+    '
+- name: Bazel
+  file: BUILD.bazel / WORKSPACE
+  detection:
+    primary_files:
+    - BUILD.bazel
+    - BUILD
+    - WORKSPACE
+    - WORKSPACE.bazel
+    - .bazelversion
+    build_signals:
+    - load("@io_bazel_rules_kotlin//kotlin:jvm.bzl"
+    - kt_jvm_library(
+    - kt_android_library(
+  notes: 'Bazel with rules_kotlin — used in large monorepos (e.g., Google, Lyft).
+    rules_kotlin provides kt_jvm_library and kt_android_library targets. WORKSPACE
+    or MODULE.bazel with rules_kotlin dependency is definitive.
+
+    '

@@ -1,0 +1,50 @@
+frameworks:
+  name: scss_sass
+  full_name: SCSS / Sass (Syntactically Awesome Style Sheets)
+  category: preprocessor
+  extensions:
+  - .scss
+  - .sass
+  npm_packages:
+  - sass
+  - node-sass
+  - dart-sass
+  config_files:
+  - .sassrc
+  - .sassrc.js
+  - .sassrc.json
+  - sass.config.js
+  detection_signals:
+    package_json_deps:
+    - sass
+    - node-sass
+    file_extensions:
+    - .scss
+    - .sass
+    content_patterns:
+    - '@mixin '
+    - '@include '
+    - '@extend '
+    - '@import '
+    - '@use '
+    - '@forward '
+    - $
+    - '@each '
+    - '@for '
+    - '@while '
+    - '@if '
+    - '@function '
+    - '@return '
+  framework_specific:
+  - '@mixin'
+  - '@include'
+  - '@extend'
+  - '@use'
+  - '@forward'
+  - SCSS variables ($var-name)
+  - SASS indented syntax (.sass)
+  notes: '.scss uses braces/semicolons like CSS. .sass uses indented syntax (no braces/semicolons).
+    @use/@forward are Dart Sass module system (Dart Sass 1.x+); @import is deprecated.
+    node-sass is legacy (LibSass).
+
+    '

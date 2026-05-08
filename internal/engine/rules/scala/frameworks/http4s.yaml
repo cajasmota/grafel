@@ -1,0 +1,35 @@
+frameworks:
+  name: http4s
+  category: web_functional
+  sbt_coordinates:
+  - org.http4s::http4s-ember-server
+  - org.http4s::http4s-ember-client
+  - org.http4s::http4s-dsl
+  - org.http4s::http4s-circe
+  - org.http4s::http4s-blaze-server
+  detection:
+    build_signals:
+    - '"org.http4s" %% "http4s-ember-server"'
+    - '"org.http4s" %% "http4s-dsl"'
+    - '"org.http4s" %% "http4s-blaze-server"'
+    import_patterns:
+    - import org.http4s._
+    - import org.http4s.dsl.io._
+    - import org.http4s.ember.server._
+    - import org.http4s.implicits._
+    code_patterns:
+    - HttpRoutes.of[IO]
+    - HttpRoutes.of[F]
+    - EmberServerBuilder.default
+    - BlazeServerBuilder
+    - case GET -> Root /
+    - case POST -> Root /
+    - Ok(
+    - NotFound(
+    - .orNotFound
+  notes: 'Pure functional HTTP server/client library built on Cats Effect + fs2. HttpRoutes.of
+    pattern match DSL is unique to http4s. Ember is the modern backend (replacing
+    Blaze). Detection: http4s-ember-server or http4s-dsl in build.sbt + HttpRoutes.of
+    in source = confirmed. Often used with circe (http4s-circe) for JSON.
+
+    '

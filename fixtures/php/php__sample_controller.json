@@ -1,0 +1,188 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/php/sample_controller.php",
+  "language": "php",
+  "entities": [
+    {
+      "name": "handleRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 55,
+      "end_line": 72,
+      "language": "php",
+      "signature": "function handleRequest(string $method, string $path, UserController $controller)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 7,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "validateEmail",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 49,
+      "end_line": 52,
+      "language": "php",
+      "signature": "function validateEmail(string $email)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 38,
+      "end_line": 47,
+      "language": "php",
+      "signature": "function delete(int $id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 3,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 31,
+      "end_line": 36,
+      "language": "php",
+      "signature": "function create(string $name, string $email)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "show",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 21,
+      "end_line": 29,
+      "language": "php",
+      "signature": "function show(int $id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 3,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "index",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 16,
+      "end_line": 19,
+      "language": "php",
+      "signature": "function index()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "__construct",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 11,
+      "end_line": 14,
+      "language": "php",
+      "signature": "function __construct()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UserController",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 6,
+      "end_line": 53,
+      "language": "php",
+      "signature": "class UserController",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/php/sample_controller.php",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/php/sample_controller.php",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "php",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "camelCase",
+        "dominant_percentage": 23.076923076923077,
+        "sample_count": 13,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/php/sample_controller.php"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

@@ -1,0 +1,118 @@
+build_tools:
+- name: Maven
+  config_files:
+  - pom.xml
+  wrapper_scripts:
+  - mvnw
+  - mvnw.cmd
+  - .mvn/wrapper/maven-wrapper.properties
+  detection:
+    primary_signal: pom.xml
+    secondary_signals:
+    - .mvn/ directory
+    - mvnw wrapper script
+    structure_markers:
+    - <groupId>
+    - <artifactId>
+    - <version>
+    - <dependencies>
+    - <build>
+    - <plugins>
+  multi_module:
+    signal: <modules> in parent pom.xml
+    pattern: parent pom.xml + child pom.xml per module
+  notes: 'pom.xml at project root is the primary Maven signal. Multi-module projects
+    have a parent pom.xml with <modules> block. .mvn/wrapper/ confirms Maven wrapper
+    is in use.
+
+    '
+- name: Gradle (Groovy DSL)
+  config_files:
+  - build.gradle
+  - settings.gradle
+  wrapper_scripts:
+  - gradlew
+  - gradlew.bat
+  - gradle/wrapper/gradle-wrapper.properties
+  detection:
+    primary_signal: build.gradle
+    secondary_signals:
+    - gradlew wrapper script
+    - gradle/wrapper/gradle-wrapper.properties
+    structure_markers:
+    - plugins {
+    - dependencies {
+    - repositories {
+    - 'apply plugin:'
+  multi_module:
+    signal: include ':module' in settings.gradle
+    pattern: settings.gradle + per-module build.gradle
+  notes: 'build.gradle (Groovy DSL) vs build.gradle.kts (Kotlin DSL) — distinguish
+    by extension. gradlew presence confirms Gradle Wrapper is configured.
+
+    '
+- name: Gradle (Kotlin DSL)
+  config_files:
+  - build.gradle.kts
+  - settings.gradle.kts
+  wrapper_scripts:
+  - gradlew
+  - gradlew.bat
+  - gradle/wrapper/gradle-wrapper.properties
+  detection:
+    primary_signal: build.gradle.kts
+    secondary_signals:
+    - gradlew wrapper
+    structure_markers:
+    - plugins {
+    - kotlin(
+    - implementation(
+    - testImplementation(
+  multi_module:
+    signal: include(":module") in settings.gradle.kts
+  notes: 'Kotlin DSL is the modern standard for new projects. Strongly typed, IDE-friendly.
+    Detect by .kts extension on build file.
+
+    '
+- name: Ant
+  config_files:
+  - build.xml
+  - ivy.xml
+  wrapper_scripts: []
+  detection:
+    primary_signal: build.xml
+    secondary_signals:
+    - ivy.xml (Ivy dependency management)
+    structure_markers:
+    - <project
+    - <target
+    - <javac
+    - <jar
+  notes: 'Legacy build tool. build.xml with <project> root element is the signal.
+    Often combined with Ivy (ivy.xml) for dependency resolution.
+
+    '
+- name: Bazel
+  config_files:
+  - WORKSPACE
+  - WORKSPACE.bazel
+  - BUILD
+  - BUILD.bazel
+  - .bazelrc
+  - .bazelversion
+  wrapper_scripts:
+  - bazelw
+  detection:
+    primary_signal: WORKSPACE or WORKSPACE.bazel at repo root
+    secondary_signals:
+    - BUILD.bazel files
+    - .bazelrc
+    structure_markers:
+    - java_library(
+    - java_binary(
+    - java_test(
+    - maven_jar(
+  notes: 'WORKSPACE file at repo root is definitive. BUILD files define targets. Used
+    by large monorepos (Google, Uber, Airbnb).
+
+    '

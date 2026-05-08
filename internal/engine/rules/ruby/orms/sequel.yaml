@@ -1,0 +1,27 @@
+orms:
+  name: Sequel
+  gem_name: sequel
+  category: dataset_orm
+  detection:
+    gemfile_deps:
+    - sequel
+    - sequel-rails
+    config_files:
+    - Gemfile
+    - db/migrations/
+    - db/migrations/*.rb
+    code_patterns:
+    - Sequel.connect
+    - Sequel::Model
+    - class User < Sequel::Model
+    - DB[:users]
+    - dataset.where
+    - Sequel.migration do
+    - Sequel::Dataset
+    - plugin :timestamps
+    - plugin :validation_helpers
+  notes: 'Dataset-centric ORM, often used with Roda. Sequel.connect is the entry point.
+    DB[:table] dataset style is distinct from ActiveRecord. db/migrations/ (not db/migrate/)
+    is Sequel''s convention.
+
+    '

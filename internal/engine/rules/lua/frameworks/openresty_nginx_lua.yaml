@@ -1,0 +1,44 @@
+frameworks:
+  name: OpenResty / nginx+Lua
+  category: web_embedded_scripting
+  github_stars_2025: 13000+
+  detection:
+    config_files:
+    - nginx.conf
+    - conf/nginx.conf
+    - nginx/nginx.conf
+    - '*.nginx.conf'
+    - '*.conf'
+    import_markers:
+    - ngx.say
+    - ngx.log
+    - ngx.req
+    - ngx.resp
+    - ngx.var
+    - ngx.ctx
+    - ngx.shared
+    - ngx.timer
+    - content_by_lua_block
+    - access_by_lua_block
+    - rewrite_by_lua_block
+    - init_by_lua_block
+    - init_worker_by_lua_block
+    - content_by_lua_file
+    - lua_package_path
+    - lua_code_cache
+    - require "resty.
+    - require("resty.
+    structural_markers:
+    - lua/
+    - lualib/
+    - nginx/
+    - conf/
+    - logs/
+  notes: 'OpenResty embeds LuaJIT into nginx. Detection requires either (a) nginx.conf
+    with content_by_lua_block / *_by_lua_* directives, or (b) .lua files importing
+    ngx.* globals, or (c) lua_package_path directive in nginx config. lua-resty-*
+    library imports (resty.core, resty.redis, resty.mysql, resty.http) are definitive
+    OpenResty markers. Distinguishable from Lapis by absence of the Lapis framework
+    wrapper.
+
+    '

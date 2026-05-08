@@ -1,0 +1,21 @@
+frameworks:
+  name: Beego
+  module_path: github.com/beego/beego/v2
+  category: web_full_stack
+  github_stars_2025: 32200+
+  detection:
+    go_mod_require:
+    - github.com/beego/beego/v2
+    import_markers:
+    - '"github.com/beego/beego/v2"'
+    - '"github.com/beego/beego/v2/server/web"'
+    structural_markers:
+    - beego.Run()
+    - web.Controller
+    - beego.Router(
+    - controllers/
+    - routers/router.go
+    notes: 'Full-stack MVC framework. Includes ORM, cache, session, logging. routers/router.go
+      and controllers/ are high-confidence structural signals alongside go.mod.
+
+      '

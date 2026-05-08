@@ -1,0 +1,33 @@
+frameworks:
+  name: Packer
+  vendor: HashiCorp
+  category: machine_image_builder
+  current_version_2025: 1.11.x
+  detection:
+    file_extensions:
+    - .pkr.hcl
+    - .pkrvars.hcl
+    block_signatures:
+    - packer {
+    - source "
+    - build {
+    - provisioner "
+    - post-processor "
+    - post-processors {
+    content_patterns:
+    - required_plugins {
+    - source."amazon-ebs"
+    - source."googlecompute"
+    - source."azure-arm"
+    - source."docker"
+    - source."null"
+    - build.sources
+    - provisioner "shell"
+    - provisioner "ansible"
+    - provisioner "file"
+  notes: 'Packer templates use .pkr.hcl extension (HCL2 format). The packer {} block
+    with required_plugins is the canonical detection anchor. Legacy JSON templates
+    (.json) are excluded from this registry. The build {} block with a source reference
+    is the runtime assembly point for image construction.
+
+    '

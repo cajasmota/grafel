@@ -1,0 +1,295 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart",
+  "language": "dart",
+  "entities": [
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 2,
+      "end_line": 10,
+      "language": "dart",
+      "signature": "class User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "CreateUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 12,
+      "end_line": 17,
+      "language": "dart",
+      "signature": "class CreateUserRequest",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UserService",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 19,
+      "end_line": 44,
+      "language": "dart",
+      "signature": "class UserService",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findById",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 25,
+      "end_line": 31,
+      "language": "dart",
+      "signature": "findById(int id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 33,
+      "end_line": 37,
+      "language": "dart",
+      "signature": "create(CreateUserRequest request)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 39,
+      "end_line": 43,
+      "language": "dart",
+      "signature": "delete(int id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "dart",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "PascalCase",
+        "dominant_percentage": 25.0,
+        "sample_count": 16,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart"
+      }
+    },
+    {
+      "name": "onboarding_entry:User:order=1",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart:User",
+      "kind": "SCOPE.Pattern",
+      "start_line": 2,
+      "end_line": 10,
+      "language": "dart",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart::User",
+        "reading_order": 1,
+        "entry_point_type": "high_dependency",
+        "inbound_dependency_count": 3,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart"
+      }
+    },
+    {
+      "name": "onboarding_entry:CreateUserRequest:order=2",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart:CreateUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 12,
+      "end_line": 17,
+      "language": "dart",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart::CreateUserRequest",
+        "reading_order": 2,
+        "entry_point_type": "high_dependency",
+        "inbound_dependency_count": 3,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart"
+      }
+    },
+    {
+      "name": "onboarding_entry:findById:order=3",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart:findById",
+      "kind": "SCOPE.Pattern",
+      "start_line": 25,
+      "end_line": 31,
+      "language": "dart",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart::findById",
+        "reading_order": 3,
+        "entry_point_type": "high_dependency",
+        "inbound_dependency_count": 2,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart"
+      }
+    },
+    {
+      "name": "onboarding_entry:create:order=4",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart:create",
+      "kind": "SCOPE.Pattern",
+      "start_line": 33,
+      "end_line": 37,
+      "language": "dart",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart::create",
+        "reading_order": 4,
+        "entry_point_type": "high_dependency",
+        "inbound_dependency_count": 2,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart"
+      }
+    },
+    {
+      "name": "onboarding_entry:delete:order=5",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart:delete",
+      "kind": "SCOPE.Pattern",
+      "start_line": 39,
+      "end_line": 43,
+      "language": "dart",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart::delete",
+        "reading_order": 5,
+        "entry_point_type": "high_dependency",
+        "inbound_dependency_count": 2,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:dto",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart:CreateUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 12,
+      "end_line": 17,
+      "language": "dart",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:dto",
+        "category": "enterprise",
+        "pattern": "dto",
+        "entity_name": "CreateUserRequest",
+        "pattern_taxonomy": "enterprise:dto"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:service",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/dart/sample_service.dart:UserService",
+      "kind": "SCOPE.Pattern",
+      "start_line": 19,
+      "end_line": 44,
+      "language": "dart",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:service",
+        "category": "enterprise",
+        "pattern": "service",
+        "entity_name": "UserService",
+        "pattern_taxonomy": "enterprise:service"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

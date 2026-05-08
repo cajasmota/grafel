@@ -1,0 +1,34 @@
+frameworks:
+  name: Flutter (Mobile / Cross-platform)
+  pubspec_dependency: flutter
+  category: mobile_cross_platform
+  pub_dev_url: https://flutter.dev
+  github_stars_2025: 165000+
+  detection:
+    pubspec_signals:
+    - 'sdk: flutter'
+    - 'flutter_test:'
+    - 'uses-material-design: true'
+    structural_markers:
+    - android/
+    - ios/
+    - lib/main.dart
+    - pubspec.yaml
+    code_patterns:
+    - runApp(
+    - MaterialApp(
+    - StatelessWidget
+    - StatefulWidget
+    - BuildContext
+    - Widget build(BuildContext context)
+    notes: 'Flutter is THE primary mobile framework for Dart. The sdk: flutter dependency
+      under the flutter: key in pubspec.yaml is the definitive signal — it is a virtual
+      SDK dependency, not a pub.dev package. android/ and ios/ directories confirm
+      mobile (not web/desktop only). lib/main.dart is the canonical entry point.
+
+      '
+
+custom_extractors:
+  - module: "memx_indexer.languages.dart.flutter_extractor"
+    function: "extract"
+    description: "Extract Flutter widgets, BLoC/Cubit/ChangeNotifier state management, Navigator routes, and GoRouter routes"

@@ -1,0 +1,7 @@
+detection: extras.yaml
+extraction_targets: extras.yaml
+toolchains: extras.yaml
+package_patterns: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

@@ -1,0 +1,33 @@
+skip_patterns:
+  skip_directories:
+  - .git/
+  - .github/workflows/archived/
+  - .circleci/old/
+  - .buildkite/old/
+  - node_modules/
+  - vendor/
+  - '".venv/" or "venv/"             # Python virtual environments'
+  - '"dist/" or "build/"             # build artifacts'
+  - '"coverage/" or ".coverage/"     # coverage reports'
+  - .pytest_cache/
+  skip_files:
+  - '*.log'
+  - '*.lock'
+  - '"*.backup" or "*.bak"           # backup files'
+  - '"*~" or "*.swp"                 # editor temp files'
+  - .DS_Store
+  - Thumbs.db
+  - '".env" or ".env.*"              # secrets (git-ignored, should not be indexed)'
+  skip_workflow_files:
+  - .github/workflows/archived-*.yml
+  - .github/workflows/draft-*.yml
+  - .circleci/old-config.yml
+  - .buildkite/deprecated-*.yml
+  - azure-pipelines.old.yml
+  indexing_note: 'Skip workflow files named with "archived", "draft", "old", "deprecated",
+    "test", "example" patterns, as they are not active. Skip hidden cache directories
+    (.pytest_cache, .circleci/.cache, etc). Skip dependency manifests and lock files
+    (they are not configuration). Skip secrets files (.env, .env.local) — never index
+    secrets.
+
+    '

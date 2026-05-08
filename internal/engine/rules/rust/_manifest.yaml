@@ -1,0 +1,9 @@
+frameworks: frameworks/ [actix_web, axum, rocket, warp, hyper, tide, poem, gotham,
+  tauri]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+test_conventions: test_patterns.yaml
+orms: orms/ [diesel, seaorm, sqlx, rusqlite, mongodb_mongodb, redis_redis_rs]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

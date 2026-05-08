@@ -1,0 +1,126 @@
+frameworks:
+  name: Ansible Core
+  vendor: Ansible Community / Red Hat
+  category: orchestration_framework
+  detection:
+    config_files:
+      - ansible.cfg
+    cli_invocation_patterns:
+      - ansible-playbook
+      - ansible
+      - ansible-inventory
+      - ansible-doc
+  version_signal: ansible.version (in playbooks or ansible --version output)
+  notes: >-
+    Ansible Core is the open-source orchestration engine. Detected by ansible.cfg
+    presence or ansible-playbook invocation. Core provides the playbook execution
+    model, module system, and variable expansion.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-526)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "roles/*/tasks/main.yml"
+    entity_type: Task
+    name_from: filename
+  - glob: "roles/*/handlers/main.yml"
+    entity_type: Operation
+    name_from: filename
+  - glob: "roles/*/defaults/main.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "roles/*/vars/main.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "roles/*/templates/*.j2"
+    entity_type: Template
+    name_from: filename
+  - glob: "playbooks/*.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "*.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "inventory/*.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "group_vars/*.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "host_vars/*.yml"
+    entity_type: Config
+    name_from: filename
+
+source_patterns:
+  # Task with name:
+  - pattern: "-\\s+name:\\s+[\"']?([^\"'\\n]+)"
+    entity_type: Task
+    name_group: 1
+    scope: file
+  # Role reference in playbook
+  - pattern: "role:\\s+(\\S+)"
+    entity_type: Component
+    name_group: 1
+    scope: file
+  # Ansible module usage (e.g., ansible.builtin.copy:)
+  - pattern: "\\s+(\\w+\\.\\w+\\.\\w+):\\s*$"
+    entity_type: Module
+    name_group: 1
+    scope: file
+  # Built-in module shorthand (e.g., copy:, template:, service:)
+  - pattern: "^\\s+(apt|yum|dnf|pip|copy|template|file|service|systemd|command|shell|debug|set_fact|include_tasks|include_role|import_tasks|import_role):\\s*$"
+    entity_type: Module
+    name_group: 1
+    scope: file
+  # handlers: section trigger
+  - pattern: "notify:\\s+[\"']?([^\"'\\n]+)"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+  # when: conditional
+  - pattern: "when:\\s+(.+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # register: variable
+  - pattern: "register:\\s+(\\w+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # include_role/import_role name
+  - pattern: "(?:include_role|import_role):\\s*\\n\\s+name:\\s+(\\S+)"
+    entity_type: Component
+    name_group: 1
+    scope: file
+  # include_tasks/import_tasks file
+  - pattern: "(?:include_tasks|import_tasks):\\s+(\\S+)"
+    entity_type: Task
+    name_group: 1
+    scope: file
+  # Play name (top-level)
+  - pattern: "^-\\s+name:\\s+[\"']?([^\"'\\n]+)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # hosts: target
+  - pattern: "hosts:\\s+(\\S+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # notify triggers handler
+  - pattern: "name:\\s+([^\\n]+)[\\s\\S]*?notify:\\s+[\"']?([^\"'\\n]+)"
+    source_type: Task
+    target_type: Operation
+    relationship: CALLS
+    source_group: 1
+    target_group: 2
+  # include_role references a role
+  - pattern: "(\\w+):[\\s\\S]*?(?:include_role|import_role):\\s*\\n\\s+name:\\s+(\\S+)"
+    source_type: Task
+    target_type: Component
+    relationship: CALLS
+    source_group: 1
+    target_group: 2

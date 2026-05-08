@@ -1,0 +1,33 @@
+orm_db:
+  name: Doobie
+  sbt_coordinates:
+  - org.tpolecat::doobie-core
+  - org.tpolecat::doobie-postgres
+  - org.tpolecat::doobie-hikari
+  - org.tpolecat::doobie-h2
+  detection:
+    build_signals:
+    - '"org.tpolecat" %% "doobie-core"'
+    - '"org.tpolecat" %% "doobie-postgres"'
+    import_patterns:
+    - import doobie._
+    - import doobie.implicits._
+    - import doobie.postgres._
+    - import doobie.hikari._
+    code_patterns:
+    - sql"
+    - fr"
+    - .query[
+    - .update
+    - .run
+    - Transactor.fromDriverManager
+    - HikariTransactor.newHikariTransactor
+    - xa.trans
+    - ConnectionIO
+    - Fragment
+  notes: 'Purely functional JDBC layer built on Cats Effect. sql"..." string interpolator
+    is highly characteristic. Transactor wraps the connection pool. query[T] and update
+    are the primary operations. xa.trans converts ConnectionIO to IO. Co-present with
+    Cats Effect in functional codebases.
+
+    '

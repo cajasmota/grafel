@@ -1,0 +1,21 @@
+meta:
+  ecosystem: kubernetes
+  display_name: Kubernetes / Helm / Kustomize
+  primary_file_patterns:
+  - '*.yaml'
+  - '*.yml'
+  disambiguating_signals:
+  - 'apiVersion: field with kind: field in same YAML document'
+  - Chart.yaml at directory root
+  - kustomization.yaml at directory root
+  - skaffold.yaml at directory root
+  - Tiltfile (no extension) at repo root
+  notes: 'Kubernetes manifests are plain YAML files. The definitive detection signal
+    is the co-presence of apiVersion: and kind: fields in a YAML document. Raw YAML
+    files without these fields are not Kubernetes manifests — do not false-positive
+    on generic config files. Helm projects layer template directives ({{ }}) on top
+    of Kubernetes manifests; detect by Chart.yaml. Kustomize overlays are detected
+    by kustomization.yaml. The ecosystem frequently coexists with CI/CD tooling (Skaffold,
+    Tilt) and cloud provider managed Kubernetes (EKS, GKE, AKS) configured via Terraform.
+
+    '

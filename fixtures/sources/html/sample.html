@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sample Template</title>
+  <link rel="stylesheet" href="/styles/main.css">
+  <link rel="stylesheet" href="/styles/theme.css">
+  <script src="/js/vendor/jquery.min.js"></script>
+  <script src="/js/app.js"></script>
+</head>
+<body>
+  <my-component :data="items" @click="handleClick"></my-component>
+  <custom-dialog-box v-if="showDialog" ng-model="dialog"></custom-dialog-box>
+
+  <form action="/api/login" method="post">
+    <input type="text" name="username" placeholder="Username">
+    <input type="password" name="password" placeholder="Password">
+    <button type="submit">Sign In</button>
+  </form>
+
+  <form action="/api/search">
+    <input type="search" name="q">
+    <button>Search</button>
+  </form>
+
+  <form>
+    <textarea name="message"></textarea>
+  </form>
+
+  <div class="container" v-show="visible" @mouseover="hover">
+    <span>{{ user.name }}</span>
+    <p>{{ greeting | uppercase }}</p>
+    <em>{{ simple }}</em>
+    <strong>{{ item.value | format }}</strong>
+  </div>
+
+  <section ng-controller="MainCtrl" ng-class="{ active: isActive }">
+    <ul ng-repeat="item in items">
+      <li>{{ item.label }}</li>
+    </ul>
+  </section>
+
+  <header>
+    <nav>
+      <a href="/">Home</a>
+    </nav>
+  </header>
+</body>
+</html>

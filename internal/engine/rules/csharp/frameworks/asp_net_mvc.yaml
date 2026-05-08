@@ -1,0 +1,145 @@
+# ASP.NET Core MVC framework extraction rules (MX-519)
+# Schema: FrameworkExtractionSchema (MX-494)
+# NuGet: Microsoft.AspNetCore.Mvc
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: ASP.NET MVC
+  category: web_mvc
+  nuget_package: Microsoft.AspNetCore.Mvc
+  sdk_attribute: Microsoft.NET.Sdk.Web
+  adoption_rank_2025: 2
+  detection:
+    csproj_sdk:
+    - Sdk="Microsoft.NET.Sdk.Web"
+    csproj_package_references:
+    - Microsoft.AspNetCore.Mvc
+    - Microsoft.AspNetCore.Mvc.Core
+    structural_markers:
+    - Controllers/
+    - Views/
+    - Models/
+    code_patterns:
+    - '[ApiController]'
+    - '[Route('
+    - ControllerBase
+    - Controller
+    - IActionResult
+    - ActionResult<
+    - ViewResult
+    - '@Html.'
+    - '@Url.'
+    notes: >
+      Presence of Controllers/ + Views/ directories with .cshtml files is a
+      strong MVC signal. ApiController attribute distinguishes API controllers
+      from MVC view controllers.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Controller classes live in Controllers/ by convention
+  - glob: "*/Controllers/*.cs"
+    entity_type: Controller
+    name_from: class_name
+  # Model classes live in Models/ by convention
+  - glob: "*/Models/*.cs"
+    entity_type: Model
+    name_from: class_name
+  # ViewModel classes live in ViewModels/ by convention
+  - glob: "*/ViewModels/*.cs"
+    entity_type: Model
+    name_from: class_name
+  # Service interfaces and implementations
+  - glob: "*/Services/*.cs"
+    entity_type: Service
+    name_from: class_name
+
+source_patterns:
+  # [ApiController] attribute on a class — marks it as an API controller
+  # Matches: [ApiController] ... class OrdersController : ControllerBase
+  - pattern: "\\[ApiController\\][\\s\\S]{0,200}?class\\s+(\\w+Controller)"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+  # Controller class without [ApiController] — traditional MVC controller
+  # Matches: public class HomeController : Controller
+  - pattern: "(?:public|internal)\\s+class\\s+(\\w+Controller)\\s*:\\s*(?:Controller|ControllerBase)"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+  # [Route("prefix")] on a controller class — captures the route template
+  # Matches: [Route("api/[controller]")] or [Route("api/orders")]
+  - pattern: "\\[Route\\s*\\(\\s*\"([^\"]+)\"\\s*\\)\\]"
+    entity_type: Operation
+    name_group: 1
+    scope: class
+
+  # HTTP verb attributes on action methods — [HttpGet], [HttpPost], [HttpPut],
+  # [HttpDelete], [HttpPatch] with optional route template
+  # Matches: [HttpGet("{id}")] ... public IActionResult GetOrder(
+  - pattern: "\\[Http(?:Get|Post|Put|Delete|Patch)\\s*\\(\\s*\"([^\"]+)\"\\s*\\)\\][\\s\\S]{0,200}?(?:public|protected)\\s+(?:[\\w<>\\[\\]]+\\s+)+(\\w+)\\s*\\("
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # HTTP verb attributes WITHOUT route template — method name used as identifier
+  # Matches: [HttpGet] ... public IActionResult List(
+  - pattern: "\\[Http(?:Get|Post|Put|Delete|Patch)\\][\\s\\S]{0,200}?(?:public|protected)\\s+(?:[\\w<>\\[\\]]+\\s+)+(\\w+)\\s*\\("
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Dependency injection via constructor parameter — captures injected type
+  # Matches: public OrdersController(IOrderService orderService, ...)
+  - pattern: "public\\s+\\w+Controller\\s*\\([^)]*?(I\\w+)\\s+\\w+"
+    entity_type: Dependency
+    name_group: 1
+    scope: class
+
+  # [FromServices] attribute injection in action method parameters
+  - pattern: "\\[FromServices\\]\\s+([\\w<>]+)\\s+\\w+"
+    entity_type: Dependency
+    name_group: 1
+    scope: function
+
+  # Middleware registration in Program.cs / Startup.cs
+  # Matches: app.UseAuthentication() or app.UseCustomMiddleware()
+  - pattern: "app\\.Use(\\w+)\\s*\\("
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+  # services.AddXxx(...) in ConfigureServices / Program.cs
+  # Matches: services.AddControllers() or builder.Services.AddSwaggerGen()
+  - pattern: "(?:services|builder\\.Services)\\.Add(\\w+)\\s*\\("
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # [Route("prefix")] on controller ROUTES_TO HTTP verb method
+  # Connects the class-level route template to an action method route
+  - pattern: "\\[Route\\s*\\(\\s*\"([^\"]+)\"\\s*\\)\\][\\s\\S]{0,600}?\\[Http(?:Get|Post|Put|Delete|Patch)\\s*\\(\\s*\"([^\"]+)\"\\s*\\)\\]"
+    source_type: Operation
+    target_type: Operation
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # Constructor-injected dependency INJECTED_INTO the controller
+  # Connects the service interface type to the controller class
+  # RE2 note: \1 backreference replaced with explicit \w+Controller pattern
+  # (RE2 does not support backreferences; the name-equality guarantee is relaxed
+  # to a naming-convention match, which is equivalent for well-formed C# code)
+  - pattern: "class\\s+(\\w+Controller)[^{]*\\{[\\s\\S]{0,400}?public\\s+\\w+Controller\\s*\\([^)]*?(I\\w+)\\s+\\w+"
+    source_type: Dependency
+    target_type: Controller
+    relationship: INJECTED_INTO
+    source_group: 2
+    target_group: 1

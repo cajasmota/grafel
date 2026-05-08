@@ -1,0 +1,34 @@
+frameworks_and_dialects:
+  name: Liquibase
+  category: migration_tool
+  config_markers:
+  - liquibase.properties
+  - liquibase.yml
+  - changelog.xml
+  - db.changelog-master.xml
+  - db.changelog-master.yaml
+  - liquibase.json
+  file_extensions:
+  - '*.sql'
+  - '*.xml'
+  - '*.yaml'
+  - '*.json'
+  structural_markers:
+  - --changeset author:id
+  - --rollback
+  - --preconditions
+  - databaseChangeLog
+  - changeSet
+  - rollback
+  directory_markers:
+  - db/changelog/
+  - liquibase/
+  - src/main/resources/db/changelog/
+  notes: 'Liquibase supports SQL, XML, YAML, and JSON changelog formats. SQL format
+    uses --changeset author:id comment markers. XML format uses databaseChangeLog
+    root element. The --rollback comment in SQL format is a strong Liquibase SQL signal.
+
+    '
+  custom_extractors:
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract

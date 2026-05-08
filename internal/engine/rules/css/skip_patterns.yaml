@@ -1,0 +1,72 @@
+skip_patterns:
+- pattern: '**/*.min.css'
+  reason: Minified CSS — production build artifacts, not authored source
+  examples:
+  - dist/main.min.css
+  - public/vendor/bootstrap.min.css
+  - assets/app.min.css
+- pattern: '**/node_modules/**/*.css'
+  reason: Vendor CSS from npm packages — not authored by the project team
+  examples:
+  - node_modules/bootstrap/dist/css/bootstrap.css
+  - node_modules/@fontsource/inter/index.css
+- pattern: '**/vendor/**/*.css'
+  reason: Manually vendored third-party CSS files
+  examples:
+  - vendor/normalize.css
+  - vendor/reset.css
+  - static/vendor/bootstrap.css
+- pattern: normalize.css
+  reason: 'CSS normalization boilerplate (Nicolas Gallagher''s normalize.css and variants).
+    Standardizes browser defaults — not authored code.
+
+    '
+  also_matches:
+  - reset.css
+  - _reset.scss
+  - _normalize.scss
+  - sanitize.css
+  - modern-normalize.css
+- pattern: '**/dist/**/*.css'
+  reason: Build output CSS — generated from source, not authored directly
+  examples:
+  - dist/styles.css
+  - build/static/css/main.chunk.css
+- pattern: '**/build/**/*.css'
+  reason: Build output directory — same as dist/
+  examples:
+  - build/styles.css
+  - build/css/app.css
+- pattern: '**/.next/**/*.css'
+  reason: Next.js build output — auto-generated CSS chunks
+- pattern: '**/public/css/**'
+  reason: 'Copied/processed CSS in public directory. Index the source (src/styles/)
+    not the output copy (public/css/).
+
+    '
+  notes: 'Some projects author directly in public/. Heuristic: if there is also a
+    src/styles/ or styles/ directory, skip public/css/ as artifact.
+
+    '
+- pattern: '**/_all.scss'
+  reason: 'Barrel import files (barrel sheets) that only contain @import/@use statements
+    — no actual declarations. These are import aggregators, not meaningful styling
+    sources.
+
+    '
+  also_matches:
+  - '**/_index.scss'
+  - '**/index.scss'
+  notes: 'Dart Sass treats _index.scss as the module entry point (equivalent to index.js
+    in Node.js). These files may only contain @forward statements and have no standalone
+    indexable content.
+
+    '
+- pattern: '**/*.css.map'
+  reason: Source map files — debug artifacts, not CSS source
+- pattern: '**/*.scss.map'
+  reason: SCSS source map files — debug artifacts
+- pattern: '**/coverage/**'
+  reason: Test coverage report HTML/CSS — tooling artifacts
+- pattern: '**/storybook-static/**'
+  reason: Built Storybook output — static site artifacts

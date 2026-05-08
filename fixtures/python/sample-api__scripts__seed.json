@@ -1,0 +1,19 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/sample-api/scripts/seed.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "seed",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 9,
+      "end_line": 47,
+      "language": "python",
+      "signature": "def seed()",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

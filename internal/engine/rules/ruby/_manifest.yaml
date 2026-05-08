@@ -1,0 +1,8 @@
+frameworks: frameworks/ [ruby_on_rails, sinatra, hanami, grape, roda, padrino, dry_rb,
+  rom_rb_ruby_object_mapper]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orms: orms/ [activerecord, sequel, rom_rb_as_orm, mongoid, datamapper_hanami_model_legacy]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

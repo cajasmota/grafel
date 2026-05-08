@@ -1,0 +1,196 @@
+testing:
+  test_conventions:
+    naming_patterns:
+    - '*Tests.cs'
+    - '*.Test.cs'
+    - '*Spec.cs'
+    - '*.Spec.cs'
+    - '*Tests.csproj'
+    - '*.Tests.csproj'
+    - '*.Test.csproj'
+    - '*.IntegrationTests.csproj'
+    directory_conventions:
+    - tests/
+    - Tests/
+    - test/
+    - '*.Tests/'
+    - '*.Test/'
+    - '*.IntegrationTests/'
+    - '*.UnitTests/'
+  frameworks:
+  - name: xUnit
+    nuget_package: xunit
+    adoption_rank_2025: 1
+    detection:
+      csproj_package_references:
+      - xunit
+      - xunit.runner.visualstudio
+      - Microsoft.NET.Test.Sdk
+      code_patterns:
+      - '[Fact]'
+      - '[Theory]'
+      - '[InlineData('
+      - '[MemberData('
+      - '[ClassData('
+      - Assert.Equal(
+      - Assert.Throws<
+      - Assert.NotNull(
+      - ITestOutputHelper
+      - IClassFixture<
+      - ICollectionFixture<
+    notes: 'xUnit is the default test framework for ASP.NET Core and .NET projects.
+      [Fact] and [Theory] attributes are the primary code signals. Microsoft.NET.Test.Sdk
+      is required for VSTest integration.
+
+      '
+  - name: NUnit
+    nuget_package: NUnit
+    adoption_rank_2025: 2
+    detection:
+      csproj_package_references:
+      - NUnit
+      - NUnit3TestAdapter
+      - Microsoft.NET.Test.Sdk
+      code_patterns:
+      - '[TestFixture]'
+      - '[Test]'
+      - '[TestCase('
+      - '[TestCaseSource('
+      - '[SetUp]'
+      - '[TearDown]'
+      - '[OneTimeSetUp]'
+      - '[OneTimeTearDown]'
+      - Assert.That(
+      - Assert.AreEqual(
+      - Is.EqualTo(
+      - NUnit.Framework
+    notes: 'NUnit is heavily used in enterprise .NET, especially in older codebases.
+      [TestFixture] on class + [Test] on methods is the canonical pattern. NUnit3TestAdapter
+      required for dotnet test integration.
+
+      '
+  - name: MSTest
+    nuget_package: MSTest
+    adoption_rank_2025: 3
+    detection:
+      csproj_package_references:
+      - MSTest
+      - MSTest.TestAdapter
+      - MSTest.TestFramework
+      - Microsoft.VisualStudio.TestTools.UnitTesting
+      - Microsoft.NET.Test.Sdk
+      code_patterns:
+      - '[TestClass]'
+      - '[TestMethod]'
+      - '[DataTestMethod]'
+      - '[DataRow('
+      - '[TestInitialize]'
+      - '[TestCleanup]'
+      - '[ClassInitialize]'
+      - '[ClassCleanup]'
+      - Assert.AreEqual(
+      - Assert.IsNotNull(
+      - Microsoft.VisualStudio.TestTools.UnitTesting
+    notes: 'MSTest is Microsoft''s original test framework, still common in enterprise
+      and legacy codebases. [TestClass] + [TestMethod] are the primary code signals.
+
+      '
+  - name: Moq
+    nuget_package: Moq
+    adoption_rank_2025: 1
+    category: mocking
+    detection:
+      csproj_package_references:
+      - Moq
+      - Moq.AutoMock
+      code_patterns:
+      - new Mock<
+      - .Setup(
+      - .Returns(
+      - .ReturnsAsync(
+      - .Verify(
+      - .Object
+      - It.IsAny<
+      - It.Is<
+      - Times.Once()
+      - Times.Never()
+      - MockBehavior.
+    notes: 'Moq is the most widely used .NET mocking library. Mock<T> creation and
+      .Setup()/.Returns() chains are the canonical code patterns. NSubstitute is a
+      common alternative.
+
+      '
+  - name: FluentAssertions
+    nuget_package: FluentAssertions
+    adoption_rank_2025: 2
+    category: assertion
+    detection:
+      csproj_package_references:
+      - FluentAssertions
+      code_patterns:
+      - .Should()
+      - .BeEquivalentTo(
+      - .BeTrue()
+      - .BeFalse()
+      - .BeNull()
+      - .NotBeNull()
+      - .Contain(
+      - .HaveCount(
+      - .Throw<
+      - .ThrowAsync<
+      - using FluentAssertions
+    notes: 'FluentAssertions is detected purely by code patterns — the .Should() extension
+      method chain is the primary signal. Pairs with any test runner.
+
+      '
+  - name: SpecFlow
+    nuget_package: SpecFlow
+    adoption_rank_2025: 3
+    category: bdd
+    detection:
+      csproj_package_references:
+      - SpecFlow
+      - SpecFlow.xUnit
+      - SpecFlow.NUnit
+      - SpecFlow.MsTest
+      - Reqnroll
+      - Reqnroll.xUnit
+      config_files:
+      - '*.feature'
+      - specflow.json
+      - '*.specflow'
+      - Features/*.feature
+      code_patterns:
+      - '[Given('
+      - '[When('
+      - '[Then('
+      - '[Binding]'
+      - ScenarioContext
+      - FeatureContext
+    notes: '.feature files (Gherkin) are the primary SpecFlow signal. [Binding] attribute
+      marks step definition classes. Reqnroll is the maintained community fork of
+      SpecFlow.
+
+      '
+  - name: BenchmarkDotNet
+    nuget_package: BenchmarkDotNet
+    adoption_rank_2025: 4
+    category: performance_testing
+    detection:
+      csproj_package_references:
+      - BenchmarkDotNet
+      - BenchmarkDotNet.Diagnostics.Windows
+      code_patterns:
+      - '[Benchmark]'
+      - '[MemoryDiagnoser]'
+      - '[SimpleJob('
+      - '[BenchmarkCategory('
+      - '[Params('
+      - BenchmarkRunner.Run<
+      - ManualConfig
+      - using BenchmarkDotNet
+    notes: '[Benchmark] attribute on methods is the primary code signal. BenchmarkRunner.Run<T>
+      in Program.cs main entry point confirms usage. Benchmark projects typically
+      live in separate *.Benchmarks/ directories.
+
+      '

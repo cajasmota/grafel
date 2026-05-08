@@ -1,0 +1,25 @@
+frameworks:
+  name: http4k
+  category: web_functional
+  gradle_coordinates:
+  - org.http4k:http4k-core
+  - org.http4k:http4k-server-undertow
+  - org.http4k:http4k-server-netty
+  detection:
+    config_files: []
+    build_signals:
+    - '"org.http4k:http4k-core"'
+    import_patterns:
+    - import org.http4k.core.
+    - import org.http4k.routing.
+    - import org.http4k.server.
+    code_patterns:
+    - HttpHandler
+    - routes(
+    - asServer(
+    - Request.of(
+  notes: 'Pure functional HTTP toolkit — no annotations, no reflection. Detection
+    via http4k-core import. HttpHandler type alias + routes() DSL are high-confidence.
+    Often used without config files.
+
+    '

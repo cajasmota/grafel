@@ -1,0 +1,23 @@
+frameworks:
+  name: astro
+  category: web
+  npm_packages:
+  - astro
+  config_files:
+  - astro.config.mjs
+  - astro.config.ts
+  - astro.config.js
+  detection_signals:
+    package_json_deps:
+    - astro
+    file_extensions:
+    - .astro
+    directory_conventions:
+    - src/pages/
+    - src/layouts/
+    - src/components/
+  framework_specific:
+  - '---'
+  - Astro.props
+  - getStaticPaths
+  notes: .astro extension is definitive; astro.config.mjs confirms

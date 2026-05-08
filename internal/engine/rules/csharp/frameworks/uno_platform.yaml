@@ -1,0 +1,39 @@
+frameworks:
+  name: Uno Platform
+  category: mobile_cross_platform
+  nuget_package: Uno.UI
+  sdk_attribute: Uno.Sdk
+  mandatory_mobile_signal: true
+  adoption_rank_2025: 7
+  detection:
+    csproj_sdk:
+    - Sdk="Uno.Sdk"
+    - Sdk="Microsoft.NET.Sdk"
+    csproj_package_references:
+    - Uno.UI
+    - Uno.WinUI
+    - Uno.Extensions.Navigation
+    - Uno.Extensions.Reactive
+    - Uno.Toolkit.WinUI
+    csproj_properties:
+    - <UnoVersion>
+    - <UnoFeatures>
+    config_files:
+    - App.xaml
+    - App.xaml.cs
+    - MainPage.xaml
+    - '*.Skia.Gtk/'
+    - '*.Wasm/'
+    - '*.Mobile/'
+    - '*.Windows/'
+    code_patterns:
+    - Uno.UI
+    - Windows.UI.Xaml
+    - Microsoft.UI.Xaml
+    - Application.Start(
+    - Uno.Foundation.WebAssemblyRuntime
+    notes: 'Sdk="Uno.Sdk" is the definitive Uno Platform signal (Uno.Sdk 5.x+). Older
+      projects use Microsoft.NET.Sdk with Uno.UI PackageReference. Cross-platform
+      via XAML — supports WebAssembly, iOS, Android, macOS, Linux (Skia), and Windows.
+
+      '

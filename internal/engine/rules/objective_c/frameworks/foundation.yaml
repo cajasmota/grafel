@@ -1,0 +1,26 @@
+frameworks:
+  name: Foundation
+  category: core_utilities
+  pod_coordinates:
+  - N/A — bundled with Xcode / Apple SDK
+  detection:
+    import_patterns:
+    - '#import <Foundation/Foundation.h>'
+    - '@import Foundation;'
+    code_patterns:
+    - NSString *
+    - NSArray *
+    - NSDictionary *
+    - NSMutableArray *
+    - NSMutableDictionary *
+    - NSObject
+    - NSLog(
+    - NSURL *
+    - NSURLSession
+    - NSNotificationCenter
+  notes: 'Foundation is the base Objective-C library providing core data types, collections,
+    and OS services. Its presence in virtually every .m file makes it a language-level
+    signal rather than a framework signal. High-value as a confidence booster when
+    combined with .m/.mm file extension detection.
+
+    '

@@ -1,0 +1,37 @@
+orms_database:
+  name: Python SQLite Drivers (sqlite3 / aiosqlite)
+  category: sqlite_driver
+  pypi_packages:
+    - aiosqlite
+  stdlib_modules:
+    - sqlite3
+  detection:
+    import_patterns:
+      - import sqlite3
+      - import aiosqlite
+      - from sqlite3
+      - from aiosqlite
+    code_patterns:
+      - sqlite3.connect(
+      - aiosqlite.connect(
+      - conn.execute(
+      - cursor.execute(
+      - ":memory:"
+  notes: >
+    sqlite3 is part of the Python standard library and requires no separate
+    install. aiosqlite wraps sqlite3 with async/await support for asyncio
+    stacks. In-memory databases are signalled by ":memory:" as the path arg.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: sqlite3/aiosqlite connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

@@ -1,0 +1,36 @@
+# C# StackExchange.Redis extraction rules (MX-575).
+#
+# Top-level `orms:` key is consumed by the modular_loader (detection).
+# custom_extractors entries are consumed by CustomExtractorRegistry.
+
+orms:
+  name: StackExchange.Redis
+  nuget_package: StackExchange.Redis
+  category: cache_client
+  github_stars_2025: 6000+
+  detection:
+    dependency_names:
+    - StackExchange.Redis
+    - ServiceStack.Redis
+    import_markers:
+    - using StackExchange.Redis
+    - using ServiceStack.Redis
+    structural_markers:
+    - ConnectionMultiplexer.Connect(
+    - ConnectionMultiplexer.ConnectAsync(
+    - IDatabase
+    - IConnectionMultiplexer
+  notes: >
+    StackExchange.Redis is the de-facto .NET Redis client, used widely in ASP.NET
+    Core applications. The IDatabase interface is the primary operations interface.
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: ConnectionMultiplexer.Connect/ConnectAsync/
+      IDatabase/IConnectionMultiplexer connections (SCOPE.Service), cache ops
+      .get/.set/.hget/.hset/.expire (SCOPE.Operation/cache_op), pub/sub
+      .publish/.subscribe (SCOPE.Operation/pubsub), streams
+      (SCOPE.Operation/stream_op), Lua .eval/.evalsha (SCOPE.Operation/lua_script).

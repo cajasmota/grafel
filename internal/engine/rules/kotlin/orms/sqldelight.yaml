@@ -1,0 +1,28 @@
+orms_databases:
+  name: SQLDelight
+  gradle_coordinates:
+  - app.cash.sqldelight:android-driver
+  - app.cash.sqldelight:native-driver
+  - app.cash.sqldelight:sqlite-driver
+  - app.cash.sqldelight:gradle-plugin
+  detection:
+    config_files:
+    - '*.sq (SQLDelight schema files)'
+    - '*.sqm (SQLDelight migration files)'
+    - sqldelight/ directory
+    build_signals:
+    - id("app.cash.sqldelight")
+    - '"app.cash.sqldelight:android-driver"'
+    import_patterns:
+    - import app.cash.sqldelight.
+    code_patterns:
+    - .sq file with CREATE TABLE
+    - Database.Schema.create(
+    - .executeAsOneOrNull()
+    - .executeAsList()
+  notes: 'SQLDelight generates type-safe Kotlin APIs from .sq SQL files. .sq file
+    extension is definitive — generated files are in build/ and should be skipped.
+    KMP-friendly: supports Android, iOS, JVM, JS drivers. sqldelight { } block in
+    build.gradle.kts is build-time signal.
+
+    '

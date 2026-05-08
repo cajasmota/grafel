@@ -1,0 +1,44 @@
+frameworks:
+  name: Lapis
+  luarocks_package: lapis
+  category: web_full_stack
+  github_stars_2025: 3200+
+  detection:
+    config_files:
+    - config.lua
+    - config.moon
+    - app.lua
+    - app.moon
+    - models/
+    - views/
+    - flows/
+    rockspec_deps:
+    - lapis
+    - lapis-db
+    import_markers:
+    - require "lapis"
+    - require("lapis")
+    - lapis.Application()
+    - lapis.serve
+    - extends_from = require
+    - Model:extend
+    - lapis.db
+    - before_filter
+    - lapis.flow
+    structural_markers:
+    - app.lua
+    - app.moon
+    - config.lua
+    - config.moon
+    - models/
+    - views/
+    - static/
+    - nginx.conf
+    runtime: OpenResty (nginx + LuaJIT)
+  notes: 'Lapis is a web framework for MoonScript and Lua running on OpenResty (nginx
+    + LuaJIT). Primary detection signals: lapis rockspec dependency + app.lua or app.moon
+    entry point + models/ and views/ directories. nginx.conf with lua_code_cache and
+    content_by_lua_file directives is a strong secondary signal. config.lua with lapis.config
+    blocks confirms Lapis specifically vs raw OpenResty.
+
+    '

@@ -1,0 +1,36 @@
+frameworks:
+  name: Spring WebFlux
+  category: web_reactive
+  maven_coordinates: org.springframework:spring-webflux
+  gradle_dependency: implementation 'org.springframework:spring-webflux'
+  adoption_rank_2025: 3
+  detection:
+    pom_xml_markers:
+    - spring-webflux
+    - spring-boot-starter-webflux
+    import_patterns:
+    - import org.springframework.web.reactive
+    - import reactor.core.publisher.Mono
+    - import reactor.core.publisher.Flux
+    code_patterns:
+    - '@RestController'
+    - Mono<
+    - Flux<
+    - RouterFunction
+    - WebClient
+  notes: 'Detected by reactor types (Mono/Flux). spring-boot-starter-webflux in pom.xml
+    is definitive. Cannot co-exist with spring-boot-starter-web in same module.
+
+    '
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.spring_ecosystem_extractor"
+    function: "extract"
+    description: "Extract Spring Ecosystem advanced patterns: Security, Batch, AMQP, AI, Vault, Data, Cloud, Integration, WebFlux, Kafka."
+  - module: "memx_indexer.languages.java.spring_request_response_extractor"
+    function: "extract"
+    description: "Extract ACCEPTS_INPUT and RETURNS relationships from Spring controller methods. Detects @RequestBody parameter annotations and method return types (including ResponseEntity<T> unwrapping). Emits DTO entities as SCOPE.Schema(kind=dto)."

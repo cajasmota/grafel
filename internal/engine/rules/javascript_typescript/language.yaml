@@ -1,0 +1,17 @@
+meta:
+  language: javascript_typescript
+  extensions:
+  - .js
+  - .jsx
+  - .ts
+  - .tsx
+  - .mjs
+  - .cjs
+  - .mts
+  - .cts
+  primary_dependency_file: package.json
+  lock_files:
+  - package-lock.json
+  - yarn.lock
+  - pnpm-lock.yaml
+  - bun.lockb

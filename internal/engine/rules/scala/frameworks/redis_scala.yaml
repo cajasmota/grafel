@@ -1,0 +1,35 @@
+# Scala Redis client extraction rules (MX-575).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# custom_extractors entries are consumed by CustomExtractorRegistry.
+
+frameworks:
+  name: rediscala / redis4cats
+  category: cache_client
+  detection:
+    dependency_names:
+    - com.github.etaty:rediscala
+    - dev.profunktor:redis4cats-effects
+    - dev.profunktor:redis4cats-streams
+    import_markers:
+    - import redis.RedisClient
+    - import dev.profunktor.redis4cats
+    - import com.redis.RedisClient
+    structural_markers:
+    - RedisClient(
+    - new RedisClient(
+    - RedisCommands.make
+    - Redis.makeClient
+  notes: >
+    rediscala is an Akka-based async client. redis4cats (Typelevel) provides
+    cats-effect integration for functional Scala Redis access.
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: RedisClient/RedisCommands.make connections
+      (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), pub/sub
+      (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op), Lua
+      (SCOPE.Operation/lua_script).

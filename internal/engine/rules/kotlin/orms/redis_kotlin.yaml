@@ -1,0 +1,36 @@
+# Kotlin Redis client extraction rules (MX-575).
+#
+# Top-level `orms:` key is consumed by the modular_loader (detection).
+# custom_extractors entries are consumed by CustomExtractorRegistry.
+
+orms:
+  name: Lettuce / Kreds (Kotlin Redis clients)
+  category: cache_client
+  detection:
+    dependency_names:
+    - io.lettuce:lettuce-core
+    - io.github.crackthecodeabhi:kreds
+    - org.springframework.data:spring-data-redis
+    import_markers:
+    - import io.lettuce.core
+    - import io.github.crackthecodeabhi.kreds
+    - import org.springframework.data.redis
+    structural_markers:
+    - LettuceConnectionFactory(
+    - RedisClient.create(
+    - Kreds(
+  notes: >
+    Kotlin typically uses Lettuce (same JVM library as Java) or Kreds (native Kotlin
+    coroutine-based client). Spring Data Redis integrates seamlessly with both.
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: LettuceConnectionFactory/RedisClient.create/Kreds
+      connections (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), Spring Data
+      Redis @Cacheable/@CachePut/@CacheEvict/RedisTemplate/ReactiveRedisTemplate/
+      @RedisHash (SCOPE.Pattern/INFERRED_FROM_REDIS_SPRING), pub/sub
+      (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op), Lua
+      (SCOPE.Operation/lua_script).

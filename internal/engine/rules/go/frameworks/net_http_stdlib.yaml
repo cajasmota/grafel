@@ -1,0 +1,18 @@
+frameworks:
+  name: net/http (stdlib)
+  module_path: null
+  category: web_stdlib
+  github_stars_2025: N/A (stdlib)
+  detection:
+    go_mod_require: []
+    import_markers:
+    - '"net/http"'
+    structural_markers:
+    - http.HandleFunc
+    - http.ListenAndServe
+    - http.NewServeMux()
+    notes: 'Since Go 1.22, stdlib router supports path wildcards and method matching.
+      Many projects migrating away from third-party routers. No go.mod signal — detected
+      via import markers only.
+
+      '

@@ -1,0 +1,28 @@
+orm_db:
+  name: ScalikeJDBC
+  sbt_coordinates:
+  - org.scalikejdbc::scalikejdbc
+  - org.scalikejdbc::scalikejdbc-config
+  - org.scalikejdbc::scalikejdbc-play-plugin
+  detection:
+    build_signals:
+    - '"org.scalikejdbc" %% "scalikejdbc"'
+    import_patterns:
+    - import scalikejdbc._
+    - import scalikejdbc.config._
+    code_patterns:
+    - DB readOnly { implicit session =>
+    - DB autoCommit { implicit session =>
+    - DB localTx { implicit session =>
+    - sql"
+    - .map(
+    - .toList
+    - .single
+    - withSQL {
+    - QueryDSL
+  notes: 'Imperative-style JDBC wrapper, popular for migration from Java JDBC code.
+    DB { implicit session => } block pattern is characteristic. sql"..." string interpolator
+    (different from Doobie''s). Integrates with Play Framework via play-plugin. Less
+    common in functional-first codebases.
+
+    '

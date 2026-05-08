@@ -1,0 +1,27 @@
+template_engines:
+  name: ERB
+  full_name: Embedded Ruby
+  language: ruby
+  extensions:
+  - .erb
+  - .html.erb
+  - .rhtml
+  primary_dependency: ruby_stdlib
+  detection_signals:
+    file_extensions:
+    - .erb
+    - .html.erb
+    syntax_markers:
+    - <%= ... %>
+    - <% ... %>
+    - <%- ... -%>
+    - <%# ... %>
+    - <%== ... %>
+    gemfile_deps:
+    - erubi
+    - erubis
+  notes: '.html.erb double-extension is the canonical Rails view convention. Pure
+    .erb can be any ERB file (mailer, API response). Presence of <%= yield %> or <%=
+    content_for %> indicates a Rails layout.
+
+    '

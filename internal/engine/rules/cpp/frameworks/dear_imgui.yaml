@@ -1,0 +1,34 @@
+frameworks:
+  name: Dear ImGui
+  category: immediate_mode_gui
+  github_stars_2025: 63000+
+  detection:
+    cmake_find_package:
+    - find_package(imgui
+    - add_subdirectory(imgui
+    cmake_target_link:
+    - imgui
+    - imgui::imgui
+    vcpkg_packages:
+    - imgui
+    conan_packages:
+    - imgui/
+    include_patterns:
+    - '#include "imgui.h"'
+    - '#include <imgui.h>'
+    - '#include "imgui_impl_'
+    structural_markers:
+    - ImGui::Begin(
+    - ImGui::End()
+    - ImGui::Button(
+    - ImGui::InputText(
+    - IMGUI_API
+    - ImGuiIO
+    config_files:
+    - CMakeLists.txt
+    - imgui/
+    notes: 'Widely used immediate-mode GUI for games and tools. Often bundled as source
+      in imgui/ subdirectory. imgui_impl_* backend files (imgui_impl_opengl3.cpp,
+      imgui_impl_glfw.cpp) indicate renderer and windowing integration.
+
+      '

@@ -1,0 +1,20 @@
+frameworks_and_dialects:
+  name: dbmate
+  category: migration_tool
+  detection:
+    config_files:
+    - .dbmate
+    - .env
+    structural_markers:
+    - '-- migrate:up'
+    - '-- migrate:down'
+    directory_markers:
+    - db/migrations/
+  notes: 'dbmate is a language-agnostic database migration tool. Migration SQL files
+    use -- migrate:up and -- migrate:down comment markers to separate the up and down
+    migration scripts. Detection is via these comment markers in .sql files.
+
+    '
+  custom_extractors:
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract

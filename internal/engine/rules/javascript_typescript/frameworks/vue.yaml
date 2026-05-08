@@ -1,0 +1,36 @@
+frameworks:
+  name: vue
+  category: web
+  npm_packages:
+  - vue
+  config_files:
+  - vue.config.js
+  - vue.config.ts
+  - vite.config.ts
+  detection_signals:
+    package_json_deps:
+    - vue
+    file_extensions:
+    - .vue
+    import_patterns:
+    - from 'vue'
+  framework_specific:
+  - defineComponent
+  - ref()
+  - reactive()
+  - computed()
+  - 'Single File Components (SFC): <template>, <script setup>, <style>'
+  notes: .vue extension is definitive signal
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema -- MX-502)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.vue_extractor"
+    function: "extract"
+    description: "Extract Vue SFC components, composables, Pinia stores, Nuxt routes, and OWNS/DEPENDS_ON relationships"

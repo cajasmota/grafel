@@ -1,0 +1,21 @@
+frameworks:
+  name: Litestar
+  pypi_package: litestar
+  category: web_async_api
+  github_stars_2025: 8100+
+  gateway: asgi
+  detection:
+    config_files:
+    - app.py
+    - litestar_app.py
+    dependency_names:
+    - litestar
+    import_markers:
+    - from litestar import Litestar
+    - from litestar.router import Router
+    - litestar.controller
+    structural_markers: []
+  notes: 'Formerly Starlite. Class-based controllers differentiate from FastAPI''s
+    function-based approach.
+
+    '

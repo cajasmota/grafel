@@ -1,0 +1,29 @@
+orms_database:
+  name: AWS DynamoDB Rust SDK (aws-sdk-dynamodb)
+  category: nosql_database
+  crate_name: aws-sdk-dynamodb
+  detection:
+    import_patterns:
+    - use aws_sdk_dynamodb
+    - extern crate aws_sdk_dynamodb
+    code_patterns:
+    - aws_sdk_dynamodb::Client::new
+    - Client::new(
+  notes: >
+    The aws-sdk-dynamodb crate is the official Rust client for DynamoDB,
+    part of the AWS SDK for Rust.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: Client::new connections (SCOPE.Service,
+      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
+      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
+      INFERRED_FROM_DYNAMODB_QUERY), streams (SCOPE.Operation/stream_op,
+      INFERRED_FROM_DYNAMODB_STREAM), DAX (SCOPE.Service, INFERRED_FROM_DYNAMODB_DAX),
+      single-table design (SCOPE.Pattern, INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

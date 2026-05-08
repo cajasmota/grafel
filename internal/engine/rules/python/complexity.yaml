@@ -1,0 +1,150 @@
+complexity_signals:
+- signal: async_await
+  description: Asynchronous coroutine-based concurrency
+  indicators:
+    ast_patterns:
+    - AsyncFunctionDef nodes (async def)
+    - Await nodes (await expr)
+    - AsyncFor / AsyncWith nodes
+    - asyncio.gather() calls
+    - asyncio.TaskGroup context manager (3.11+)
+    import_markers:
+    - import asyncio
+    - from asyncio import
+    - import anyio
+    - import trio
+    threshold_high: 5+ async def in a single module
+  complexity_rationale: 'Async code introduces non-linear execution flow, requires
+    explicit cancellation handling, and creates subtle race conditions around shared
+    mutable state.
+
+    '
+- signal: decorator_stacking
+  description: Multiple decorators applied to a single function or class
+  indicators:
+    ast_patterns:
+    - FunctionDef/AsyncFunctionDef with len(decorator_list) >= 3
+    - Nested decorator factories (decorator returning decorator)
+    - functools.wraps usage (indicates aware chaining)
+    import_markers:
+    - from functools import wraps
+    - import functools
+    threshold_high: 3+ decorators on a single callable
+  complexity_rationale: 'Each decorator adds an execution layer. Without functools.wraps,
+    metadata (name, doc, signature) is lost. Deep chains are hard to trace and debug.
+
+    '
+- signal: metaclasses
+  description: Custom metaclass controlling class creation
+  indicators:
+    ast_patterns:
+    - ClassDef where metaclass keyword argument is present
+    - __new__ defined in a class that inherits from type
+    - __init_subclass__ defined at class level
+    - __class_getitem__ defined at class level
+    import_markers:
+    - ABCMeta
+    - from abc import ABCMeta
+    code_patterns:
+    - class Foo(metaclass=SomeMeta)
+    - 'class Meta(type):'
+  complexity_rationale: 'Metaclass logic runs at import time (class body execution),
+    not at instantiation. Mutations are invisible to static analysis and require runtime
+    introspection to understand.
+
+    '
+- signal: descriptors
+  description: Descriptor protocol for attribute access interception
+  indicators:
+    ast_patterns:
+    - Class defining __get__ and/or __set__ and/or __delete__
+    - __set_name__ defined (data descriptor, Python 3.6+)
+    code_patterns:
+    - def __get__(self, instance, owner)
+    - def __set__(self, instance, value)
+    - def __set_name__(self, owner, name)
+  complexity_rationale: 'Descriptors shift logic from instance to class attribute
+    level, making attribute access non-obvious. Powers properties, methods, classmethods,
+    staticmethods, and ORMs. Difficult to trace without understanding the descriptor
+    protocol.
+
+    '
+- signal: context_managers
+  description: Custom context managers via __enter__/__exit__ or @contextmanager
+  indicators:
+    ast_patterns:
+    - ClassDef with __enter__ and __exit__ methods
+    - FunctionDef decorated with @contextmanager
+    - contextlib.ExitStack usage
+    - contextlib.AsyncExitStack usage
+    import_markers:
+    - from contextlib import contextmanager
+    - from contextlib import asynccontextmanager
+    - from contextlib import ExitStack
+    - contextlib.suppress
+  threshold_high: ExitStack with dynamic context manager list
+  complexity_rationale: 'ExitStack enables dynamic composition of unknown numbers
+    of context managers. Async context managers add cancellation semantics. Exit ordering
+    (LIFO) is non-obvious.
+
+    '
+- signal: generator_chains
+  description: Generator functions and generator-based pipelines
+  indicators:
+    ast_patterns:
+    - FunctionDef containing Yield or YieldFrom nodes
+    - yield from expr (delegation pattern)
+    - generator.send() calls
+    - next() calls on generator objects
+    code_patterns:
+    - yield from
+    - def generate_
+    - def iter_
+  threshold_high: yield from used with send() (bidirectional coroutine)
+  complexity_rationale: 'yield from with send() creates bidirectional communication
+    channels between generators. State is implicit in generator frame. Chains are
+    lazy and can be infinite.
+
+    '
+- signal: multiprocessing
+  description: Multiprocess parallelism with shared state
+  indicators:
+    ast_patterns:
+    - Process() instantiation
+    - Pool() or ProcessPoolExecutor() usage
+    - multiprocessing.Value or multiprocessing.Array
+    - multiprocessing.Manager()
+    - multiprocessing.Queue() (distinct from queue.Queue)
+    import_markers:
+    - from multiprocessing import
+    - import multiprocessing
+    - from concurrent.futures import ProcessPoolExecutor
+    code_patterns:
+    - 'if __name__ == ''__main__'':'
+  threshold_high: Value/Array shared state with Lock
+  complexity_rationale: 'Separate memory spaces require explicit serialization (pickle).
+    Shared state (Value, Array) requires locks. Deadlocks are possible. __name__ ==
+    ''__main__'' guard required for spawn start method (Windows/macOS).
+
+    '
+- signal: celery_task_chains
+  description: 'Celery workflow primitives: chains, groups, chords'
+  indicators:
+    ast_patterns:
+    - chain() / group() / chord() from celery
+    - task.si() / task.s() (signature) calls
+    - canvas-based workflow composition
+    import_markers:
+    - from celery import chain, group, chord
+    - from celery import signature
+    code_patterns:
+    - chain(
+    - group(
+    - chord(
+    - .apply_async(
+    - .delay(
+  complexity_rationale: 'Distributed task graphs with partial failure semantics. Retries,
+    timeouts, and error callbacks are asynchronous. Chord callback does not fire if
+    any task in the group fails.
+
+    '

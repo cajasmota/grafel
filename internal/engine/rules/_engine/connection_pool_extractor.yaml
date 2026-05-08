@@ -1,0 +1,17 @@
+# Connection pool config extractor (MX-707)
+# Cross-language extractor for DB connection pool configuration.
+# Registered as a custom extractor that fires on Java/Kotlin (HikariCP, Druid),
+# INI/conf files (pgbouncer), and Python (SQLAlchemy, Django) source files.
+#
+# File gate is internal to the extractor (applies_to checks language and source
+# signals). This YAML exists to document the extractor's registration entry.
+
+name: connection_pool
+description: >-
+  Detect DB connection pool configuration and emit SCOPE.Pattern entities with
+  kind=connection_pool. Supported frameworks: HikariCP (Spring Boot Java/Kotlin),
+  Apache Druid pool (Java/Kotlin), pgbouncer INI config, SQLAlchemy create_engine
+  kwargs (Python), Django CONN_MAX_AGE (Python).
+module: memx_indexer.pattern_detectors.connection_pool_extractor
+function: detect
+applies_to_function: applies_to

@@ -1,0 +1,44 @@
+orms_database:
+  name: PostgreSQL Python Drivers (psycopg2/psycopg3/asyncpg)
+  category: postgres_driver
+  pypi_packages:
+    - psycopg2-binary
+    - psycopg
+    - asyncpg
+    - aiopg
+    - pg8000
+  detection:
+    import_patterns:
+      - import psycopg2
+      - import psycopg
+      - import asyncpg
+      - import aiopg
+      - from psycopg2
+      - from psycopg
+      - from asyncpg
+    code_patterns:
+      - psycopg2.connect(
+      - psycopg.connect(
+      - asyncpg.connect(
+      - asyncpg.create_pool(
+      - cursor.execute(
+  notes: >
+    psycopg2 is the most widely used sync driver. psycopg3 (psycopg) is the
+    modern replacement with both sync and async support. asyncpg is the
+    high-performance async-only driver used with FastAPI/asyncio stacks.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: psycopg2/psycopg/asyncpg connections
+      (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), connection pools
+      (SCOPE.Pattern, INFERRED_FROM_POSTGRES_POOL), LISTEN/NOTIFY channels
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY operations
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      with table/column extraction (SCOPE.Operation/query,
+      INFERRED_FROM_POSTGRES_QUERY).

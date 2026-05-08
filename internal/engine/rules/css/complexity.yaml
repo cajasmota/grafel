@@ -1,0 +1,123 @@
+complexity_signals:
+- signal: deep_nesting
+  description: Selector nesting 4+ levels deep (SCSS, LESS, Stylus, CSS Nesting)
+  patterns:
+  - .parent { .child { .grandchild { .great-grandchild { ... } } } }
+  - Nesting depth > 3 levels detected by parser
+  severity: high
+  languages:
+  - scss
+  - less
+  - stylus
+  - css
+  notes: 'The Inception Rule: never go more than 4 levels deep. Deep nesting produces
+    highly specific selectors that are hard to override and break encapsulation. Each
+    nesting level multiplies the CSS output specificity.
+
+    '
+- signal: important_overuse
+  description: Excessive !important declarations (more than 5 per file)
+  patterns:
+  - '!important'
+  severity: high
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  notes: '!important bypasses the cascade and breaks specificity reasoning. Legitimate
+    use: utility classes (Tailwind), overriding third-party libraries. More than 5
+    per file in authored code is a smell.
+
+    '
+- signal: specificity_chains
+  description: Long selector chains that accumulate high specificity
+  patterns:
+  - '#id .parent .child .element:pseudo'
+  - Selector specificity (a,b,c) where a>0 or b+c>4
+  severity: medium
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  notes: 'High-specificity selectors (especially with ID selectors) create difficult-to-override
+    cascades. BEM methodology exists to eliminate specificity chains. Detectable by
+    counting selector segments.
+
+    '
+- signal: mixin_recursion
+  description: Mixin that calls itself (recursive mixin)
+  patterns:
+  - '@mixin name { @include name( ... ) }'
+  - .mixin(@n) when (@n > 0) { .mixin(@n - 1); }
+  severity: high
+  languages:
+  - scss
+  - less
+  notes: 'SCSS and LESS support recursive mixins (LESS via guards). Recursive mixins
+    generate complex output and can cause infinite loops if the termination condition
+    is wrong. Rare but high impact.
+
+    '
+- signal: extend_chains
+  description: '@extend used to chain multiple selector relationships'
+  patterns:
+  - '@extend .base;'
+  - '@extend .component;'
+  - Multiple @extend calls in one ruleset
+  severity: medium
+  languages:
+  - scss
+  notes: '@extend generates multiple selector groups in output CSS. Extend chains
+    (A extends B extends C) create large selector outputs. The Sass team recommends
+    preferring @mixin over @extend in most cases. @extend across files requires careful
+    module structure.
+
+    '
+- signal: vendor_prefix_manual
+  description: Manual vendor prefixes instead of autoprefixer
+  patterns:
+  - -webkit-
+  - -moz-
+  - -ms-
+  - -o-
+  severity: low
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  notes: 'Manual vendor prefixes indicate the project is not using autoprefixer (PostCSS
+    plugin) or a preprocessor that handles prefixing. This means the author is managing
+    browser compatibility manually. Low severity unless the codebase has many instances.
+
+    '
+- signal: deep_import_graph
+  description: '@import chain depth > 5 levels (SCSS/LESS partials)'
+  patterns:
+  - main.scss → _base.scss → _variables.scss → _tokens.scss → _colors.scss
+  severity: medium
+  languages:
+  - scss
+  - less
+  notes: 'Deep import chains make it difficult to trace where a variable or mixin
+    is defined. Dart Sass @use system mitigates this with explicit namespacing. Legacy
+    @import chains are harder to reason about.
+
+    '
+- signal: global_scope_pollution
+  description: Large number of global selectors without scoping (no BEM, no CSS Modules,
+    no CSS-in-JS)
+  patterns:
+  - Absence of .block__element--modifier naming
+  - Absence of *.module.css files
+  - Large flat list of class selectors in a single global CSS file
+  severity: medium
+  languages:
+  - css
+  notes: 'Global CSS without a scoping strategy causes unintended cascade effects
+    as the project grows. Signal: all CSS in one or two large global files without
+    naming convention.
+
+    '

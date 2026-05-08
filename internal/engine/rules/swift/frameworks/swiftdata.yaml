@@ -1,0 +1,23 @@
+frameworks:
+  name: SwiftData
+  category: data_persistence_orm
+  spm_coordinates:
+  - N/A — bundled with Apple SDK (iOS 17+ / macOS 14+)
+  detection:
+    config_files:
+    - Package.swift
+    - '*.xcodeproj/'
+    import_patterns:
+    - import SwiftData
+    code_patterns:
+    - '@Model'
+    - ModelContainer(
+    - ModelContext(
+    - '@Query'
+    - '@Relationship'
+    - modelContainer(for:)
+  notes: 'Apple declarative persistence framework (Swift 5.9+, iOS 17+). @Model macro
+    is the definitive signal. Often replaces Core Data in new projects. Co-presence
+    with SwiftUI and @Query = SwiftData integration.
+
+    '

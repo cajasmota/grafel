@@ -1,0 +1,9 @@
+meta: language.yaml
+frameworks: frameworks/ [pulumi]
+resource_to_scope_mapping: extras.yaml
+detection_per_language: extras.yaml
+skip_patterns: skip_patterns.yaml
+structural_patterns: extras.yaml
+complexity_signals: complexity.yaml
+extraction_targets: extras.yaml
+domain_roots: extras.yaml

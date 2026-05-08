@@ -1,0 +1,20 @@
+frameworks:
+  name: Starlette
+  pypi_package: starlette
+  category: web_async_micro
+  github_stars_2025: 12100+
+  gateway: asgi
+  detection:
+    config_files:
+    - app.py
+    dependency_names:
+    - starlette
+    import_markers:
+    - from starlette.applications import Starlette
+    - from starlette.routing import Route
+    - starlette.middleware
+    structural_markers: []
+  notes: 'FastAPI is built on Starlette. Starlette-only usage (without fastapi import)
+    indicates direct Starlette application.
+
+    '

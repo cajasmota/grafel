@@ -1,0 +1,32 @@
+meta:
+  domain: html_templates
+  extensions:
+  - .html
+  - .htm
+  - .erb
+  - .haml
+  - .slim
+  - .hbs
+  - .handlebars
+  - .ejs
+  - .pug
+  - .jade
+  - .jinja
+  - .jinja2
+  - .j2
+  - .twig
+  - .njk
+  - .mustache
+  - .blade.php
+  - .vue
+  - .svelte
+  - .astro
+  - .component.html
+  scope_entity_type: Component
+  scope_entity_notes: 'HTML template files map to the archigraph SCOPE Component entity
+    type. A component is a named, reusable UI unit. Angular components (.component.html),
+    Vue SFCs (.vue), Svelte files (.svelte), Astro components (.astro), and Blade/ERB/Jinja
+    partial files that define a named template block are all Component entities. Static
+    HTML without template logic is not indexed (see skip_patterns section).
+
+    '

@@ -1,0 +1,232 @@
+mobile:
+  mandatory: true
+  note: 'C# has three active cross-platform mobile frameworks. Xamarin is legacy (maintenance
+    mode), .NET MAUI is the successor, Uno Platform is a XAML-based alternative targeting
+    WebAssembly + native platforms.
+
+    '
+  frameworks:
+  - name: Xamarin
+    status: legacy_maintenance
+    detection_signals:
+      csproj_package_references:
+      - Xamarin.Forms
+      - Xamarin.Essentials
+      csproj_target_frameworks:
+      - monoandroid
+      - monoandroid10.0
+      - xamarin.ios
+      - xamarinmac
+      project_type_guids:
+      - '{EFBA0AD7-5A72-4C68-AF49-83D382785DCF}'
+      - '{A5A43C5B-DE2A-4C0C-9213-0A381AF9435A}'
+      directory_structure:
+      - '*.Android/'
+      - '*.iOS/'
+      - '*.UWP/'
+      key_files:
+      - App.xaml
+      - MainPage.xaml
+      - MainActivity.cs
+      - AppDelegate.cs
+      code_patterns:
+      - Xamarin.Forms.Application
+      - FormsAppCompatActivity
+      - '[assembly: XamlCompilation'
+    confidence: high
+    notes: 'Xamarin.Forms PackageReference is highest confidence. monoandroid TargetFramework
+      values are definitive. Xamarin EOL: May 2024.
+
+      '
+  - name: .NET MAUI
+    status: active_current
+    detection_signals:
+      csproj_properties:
+        primary:
+        - <UseMaui>true</UseMaui>
+        secondary:
+        - <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst;net8.0-windows</TargetFrameworks>
+        - <TargetFrameworks>net9.0-android;net9.0-ios;net9.0-maccatalyst;net9.0-windows</TargetFrameworks>
+        - <SingleProject>true</SingleProject>
+      csproj_package_references:
+      - Microsoft.Maui.Controls
+      - Microsoft.Maui.Essentials
+      - CommunityToolkit.Maui
+      - CommunityToolkit.Mvvm
+      key_files:
+      - MauiProgram.cs
+      - AppShell.xaml
+      - MainPage.xaml
+      - Platforms/Android/MainActivity.cs
+      - Platforms/iOS/AppDelegate.cs
+      - Platforms/MacCatalyst/AppDelegate.cs
+      - Platforms/Windows/App.xaml.cs
+      code_patterns:
+      - MauiApp.CreateBuilder()
+      - .UseMauiApp<App>()
+      - ContentPage
+      - Shell
+      - BindableProperty.Create(
+      - ObservableProperty
+      - '[RelayCommand]'
+    confidence: definitive
+    notes: '<UseMaui>true</UseMaui> is the single definitive signal. MAUI uses a single-project
+      model targeting all platforms. Platforms/ folder with platform-specific entry
+      points confirms MAUI. CommunityToolkit.Mvvm is the standard MVVM companion.
+
+      '
+  - name: Uno Platform
+    status: active_current
+    detection_signals:
+      csproj_sdk:
+      - Sdk="Uno.Sdk"
+      csproj_package_references:
+      - Uno.UI
+      - Uno.WinUI
+      - Uno.Extensions.Navigation.WinUI
+      - Uno.Toolkit.WinUI
+      csproj_properties:
+      - <UnoVersion>
+      - <UnoFeatures>
+      directory_structure:
+      - '*.Wasm/'
+      - '*.Skia.Gtk/'
+      - '*.Skia.WPF/'
+      - '*.Mobile/'
+      - '*.Windows/'
+      key_files:
+      - App.xaml
+      - MainPage.xaml
+      - AppHead.xaml.cs
+      code_patterns:
+      - Uno.UI
+      - Application.Start(
+      - Uno.Foundation.WebAssemblyRuntime
+      - DispatcherQueue
+    confidence: high
+    notes: 'Sdk="Uno.Sdk" is the definitive signal for Uno.Sdk 5.x+ projects. Older
+      projects use Microsoft.NET.Sdk with Uno.UI PackageReference. Platform-specific
+      project directories (*.Wasm, *.Mobile) are confirmatory. Uno targets WebAssembly,
+      iOS, Android, macOS, Linux, Windows.
+
+      '
+domain_roots:
+- layout: aspnet_core_mvc
+  description: ASP.NET Core MVC or Web API project
+  root_directories:
+  - Controllers/
+  - Models/
+  - Services/
+  - Views/
+  - wwwroot/
+  - Data/
+  - Repositories/
+  - Middleware/
+  - Filters/
+  - Extensions/
+  key_files:
+  - Program.cs
+  - appsettings.json
+  - '*.csproj'
+  notes: 'Controllers/ + Views/ = MVC. Controllers/ without Views/ = Web API. Services/
+    typically contains business logic interfaces and implementations. Data/ or Repositories/
+    contains DbContext and repository implementations.
+
+    '
+- layout: blazor_server_or_wasm
+  description: Blazor Server or Blazor WebAssembly application
+  root_directories:
+  - Pages/
+  - Components/
+  - Shared/
+  - wwwroot/
+  - Services/
+  - Layout/
+  key_files:
+  - App.razor
+  - _Imports.razor
+  - MainLayout.razor
+  - Program.cs
+  notes: 'Pages/ contains routable components (with @page directive). Components/
+    or Shared/ contains reusable non-routable components. Layout/ contains layout
+    components. wwwroot/ is static assets.
+
+    '
+- layout: maui_mobile
+  description: .NET MAUI cross-platform mobile/desktop application
+  root_directories:
+  - Platforms/
+  - Resources/
+  - Pages/
+  - ViewModels/
+  - Models/
+  - Services/
+  - Controls/
+  - Converters/
+  key_files:
+  - MauiProgram.cs
+  - AppShell.xaml
+  - App.xaml
+  notes: 'Platforms/ contains Android, iOS, MacCatalyst, Windows platform-specific
+    code. MVVM pattern: Views (Pages/) + ViewModels/ + Models/ is the standard structure.
+    Resources/ contains images, fonts, styles, and raw assets.
+
+    '
+- layout: class_library
+  description: Reusable .NET class library or NuGet package
+  root_directories:
+  - src/
+  - lib/
+  - tests/
+  - samples/
+  key_files:
+  - '*.csproj'
+  - '*.sln'
+  - NuGet.Config
+  - '*.nuspec'
+  notes: 'No Controllers/ or Program.cs entry point. Often paired with a tests/ directory.
+    *.nuspec or Directory.Build.props with version/package metadata indicates NuGet
+    package authoring.
+
+    '
+- layout: worker_service
+  description: .NET Worker Service / background service / microservice
+  root_directories:
+  - Workers/
+  - Services/
+  - Consumers/
+  - Handlers/
+  - Infrastructure/
+  key_files:
+  - Program.cs
+  - appsettings.json
+  key_patterns:
+  - ': BackgroundService'
+  - IHostedService
+  - ExecuteAsync(
+  - Host.CreateDefaultBuilder(
+  - services.AddHostedService<
+  notes: 'BackgroundService subclass or IHostedService implementation is the canonical
+    worker service pattern. No HTTP port binding (no AddControllers, no MapGet). Often
+    used for message queue consumers, scheduled tasks.
+
+    '
+- layout: solution_monorepo
+  description: Multi-project .NET solution with multiple concerns
+  root_directories:
+  - src/
+  - tests/
+  - docs/
+  - tools/
+  - build/
+  key_files:
+  - '*.sln'
+  - Directory.Build.props
+  - Directory.Build.targets
+  - Directory.Packages.props
+  - global.json
+  notes: '*.sln file at root with src/ and tests/ subdirectories is the canonical
+    multi-project layout. Directory.Build.props at root applies shared settings. Directory.Packages.props
+    enables Central Package Management across projects.
+
+    '

@@ -1,0 +1,9 @@
+frameworks: frameworks/ [grails, micronaut_groovy, gradle_plugin_development_groovy,
+  spock_framework]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orms: orms/ [gorm_grails_object_relational_mapping, hibernate_groovy_grails, mybatis_groovy,
+  jooq_groovy]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml

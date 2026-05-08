@@ -1,0 +1,39 @@
+orms_database:
+  name: Kotlin SQLite (SQLDelight / Android Room)
+  category: sqlite_driver
+  gradle_dependencies:
+    - app.cash.sqldelight:android-driver
+    - app.cash.sqldelight:native-driver
+    - app.cash.sqldelight:sqlite-driver
+    - androidx.room:room-ktx
+    - androidx.room:room-runtime
+  detection:
+    import_patterns:
+      - import app.cash.sqldelight
+      - import androidx.room
+    code_patterns:
+      - NativeSqliteDriver(
+      - AndroidSqliteDriver(
+      - JdbcSqliteDriver(
+      - Room.databaseBuilder(
+      - ":memory:"
+      - JdbcSqliteDriver.IN_MEMORY
+  notes: >
+    SQLDelight is a multiplatform SQLite library that generates type-safe Kotlin
+    APIs from SQL. AndroidSqliteDriver is used for Android, JdbcSqliteDriver for
+    JVM/desktop. Room is Android's standard ORM backed by SQLite — requires
+    @Database annotation and DAO interfaces.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: SQLDelight drivers / Room.databaseBuilder
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

@@ -1,0 +1,45 @@
+frameworks:
+  name: jest
+  category: testing
+  npm_packages:
+  - jest
+  - '@jest/core'
+  - jest-cli
+  - vitest
+  config_files:
+  - jest.config.js
+  - jest.config.ts
+  - jest.config.mjs
+  - jest.config.cjs
+  - vitest.config.ts
+  - vitest.config.js
+  config_in_package_json: jest
+  detection_signals:
+    package_json_deps:
+    - jest
+    - '@types/jest'
+    - vitest
+    file_conventions:
+    - '**/*.test.js'
+    - '**/*.test.ts'
+    - '**/*.test.jsx'
+    - '**/*.test.tsx'
+    - '**/*.spec.js'
+    - '**/*.spec.ts'
+    - '**/__tests__/**'
+  notes: >
+    Jest is the most popular JS test runner. This extractor also handles
+    Vitest (jest-compatible API) via the vitest framework gate.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema -- MX-559)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.jest_extractor"
+    function: "extract"
+    description: "Extract Jest/Vitest describe suites, test cases, mocks, spies, snapshots, lifecycle hooks"

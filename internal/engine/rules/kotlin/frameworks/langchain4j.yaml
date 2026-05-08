@@ -1,0 +1,42 @@
+frameworks:
+  name: LangChain4J (Kotlin)
+  category: ai_ml
+  gradle_coordinates:
+  - dev.langchain4j:langchain4j
+  - dev.langchain4j:langchain4j-kotlin
+  maven_coordinates:
+  - dev.langchain4j:langchain4j
+  detection:
+    config_files: []
+    build_signals:
+    - '"dev.langchain4j:langchain4j"'
+    - '"dev.langchain4j:langchain4j-kotlin"'
+    import_patterns:
+    - import dev.langchain4j.service.AiService
+    - import dev.langchain4j.agent.tool.Tool
+    - import dev.langchain4j.model.chat.ChatLanguageModel
+    - import dev.langchain4j.rag.content.retriever.ContentRetriever
+    code_patterns:
+    - '@AiService'
+    - '@Tool'
+    - '@SystemMessage'
+    - '@UserMessage'
+    - ChatLanguageModel
+    - EmbeddingStore
+  notes: >
+    LangChain4J used from Kotlin. Same annotations and patterns as Java but
+    Kotlin syntax (fun, val/var, primary constructors). The langchain4j-kotlin
+    module adds Kotlin coroutine support and extension functions.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema -- MX-531)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.kotlin.langchain4j_extractor"
+    function: "extract"
+    description: "Extract LangChain4J AI service interfaces (@AiService), tool methods (@Tool), prompt patterns, ChatLanguageModel fields, RAG components, ChatMemory, and DI wiring for Kotlin syntax. Emits OWNS and DEPENDS_ON relationships."

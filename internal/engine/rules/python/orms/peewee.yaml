@@ -1,0 +1,21 @@
+orms_database:
+  name: Peewee
+  pypi_package: peewee
+  category: sql_orm
+  detection:
+    dependency_names:
+    - peewee
+    model_file_patterns:
+    - '*/models.py'
+    - '*/database.py'
+    import_markers:
+    - from peewee import
+    - import peewee
+    - Model
+    - Proxy()
+    - SqliteDatabase()
+    - PostgresqlDatabase()
+  notes: 'Lightweight ORM. Common in small/medium projects and scripts. Proxy() indicates
+    database configured at runtime.
+
+    '

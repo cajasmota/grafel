@@ -1,0 +1,38 @@
+frameworks:
+  name: Kotlin Multiplatform (KMP/KMM)
+  category: multiplatform
+  gradle_coordinates:
+  - org.jetbrains.kotlin:kotlin-gradle-plugin (multiplatform)
+  detection:
+    config_files:
+    - shared/build.gradle.kts
+    - commonMain/kotlin/
+    - androidMain/kotlin/
+    - iosMain/kotlin/
+    - desktopMain/kotlin/
+    - jsMain/kotlin/
+    build_signals:
+    - kotlin("multiplatform")
+    - kotlin { sourceSets {
+    - val commonMain by getting
+    - val androidMain by getting
+    - val iosMain by getting
+    - ios()
+    - android()
+    import_patterns:
+    - import kotlinx.coroutines.
+    - 'expect fun '
+    - 'actual fun '
+    code_patterns:
+    - 'expect class '
+    - 'actual class '
+    - 'expect fun '
+    - 'actual fun '
+    - CommonMain
+  notes: 'KMP/KMM detection: kotlin("multiplatform") plugin is definitive. expect/actual
+    declarations in source code confirm shared Kotlin code. Source set directories
+    (commonMain/, androidMain/, iosMain/) are structural signals. Shared module typically
+    named "shared/" or "common/". KMM (Kotlin Mobile Multiplatform) is subset of KMP
+    targeting iOS+Android.
+
+    '

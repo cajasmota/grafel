@@ -1,0 +1,61 @@
+frameworks:
+  name: Phoenix
+  hex_package: phoenix
+  category: web_full_stack
+  github_stars_2025: 21000+
+  detection:
+    config_files:
+    - mix.exs
+    - config/config.exs
+    - config/dev.exs
+    - config/prod.exs
+    - config/runtime.exs
+    - lib/app_web/endpoint.ex
+    - lib/app_web/router.ex
+    - lib/app_web.ex
+    mix_deps:
+    - phoenix
+    - phoenix_html
+    - phoenix_live_view
+    - phoenix_ecto
+    - plug_cowboy
+    - plug
+    - telemetry
+    import_markers:
+    - use Phoenix.Controller
+    - use Phoenix.Router
+    - use Phoenix.Endpoint
+    - use Phoenix.Channel
+    - Phoenix.PubSub
+    - Phoenix.Token
+    - plug :fetch_session
+    - plug Phoenix.Router
+    structural_markers:
+    - lib/app_web/controllers/
+    - lib/app_web/views/
+    - lib/app_web/templates/
+    - lib/app_web/channels/
+    - lib/app_web/components/
+    - lib/app_web/router.ex
+    - lib/app_web/endpoint.ex
+    - priv/static/
+    - assets/
+  notes: 'Phoenix is identified by the conjunction of mix.exs phoenix dep + the lib/app_web/
+    directory layout. lib/app_web/router.ex and endpoint.ex are high-confidence markers.
+    assets/ directory containing JS tooling (esbuild, webpack) is present in most
+    Phoenix apps.
+
+    '
+custom_extractors:
+  - module: memx_indexer.languages.elixir.phoenix_extractor
+    function: extract
+    description: >
+      Extracts Phoenix router HTTP routes (get/post/put/patch/delete/options),
+      resources CRUD expansion (8 routes), live routes, pipeline declarations,
+      LiveView/LiveComponent module declarations with mount/handle_event/handle_info
+      callbacks, Phoenix Controller action functions, and HEEx template component
+      calls (<.component> and <Module.function>).
+      Emits SCOPE.Operation/endpoint, SCOPE.Pattern, SCOPE.UIComponent/component,
+      SCOPE.Operation/function.
+      Relationships: CALLS (routes_to), OWNS (module->callbacks/actions),
+      DEPENDS_ON (scope->pipeline, template->component).

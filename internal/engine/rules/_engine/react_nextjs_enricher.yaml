@@ -1,0 +1,17 @@
+# React/Next.js Tier-2 enrichment PatternDetector (MX-149)
+#
+# Secondary enrichment pass for React/Next.js source files.
+# Emits SCOPE.Pattern(kind=react_component_enrichment) with hooks_used,
+# prop_types, is_server_component, is_client_component, and event_handlers.
+#
+# Language gate : typescript | javascript
+# Framework gate: react | nextjs | next | remix | gatsby
+
+name: react_nextjs_enricher
+description: >-
+  Tier-2 enrichment for React/Next.js files. Emits SCOPE.Pattern entities
+  with hooks_used, prop_types, is_server_component, is_client_component,
+  and event_handlers metadata.
+module: memx_indexer.pattern_detectors.react_nextjs_enricher
+function: detect
+applies_to_function: applies_to

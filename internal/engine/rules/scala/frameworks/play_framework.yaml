@@ -1,0 +1,135 @@
+# Play Framework extraction rules (MX-523)
+# Schema: FrameworkExtractionSchema (MX-494)
+# SBT: "com.typesafe.play" %% "play"
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: Play Framework
+  category: web_full_stack
+  sbt_coordinates:
+  - com.typesafe.play::play
+  - com.typesafe.play::play-slick
+  - com.typesafe.play::play-json
+  - com.typesafe.play::play-ws
+  detection:
+    config_files:
+    - conf/application.conf
+    - conf/routes
+    - conf/logback.xml
+    - app/controllers/
+    - app/views/
+    - app/models/
+    - build.sbt
+    - project/plugins.sbt
+    build_signals:
+    - '"com.typesafe.play" %% "play"'
+    - addSbtPlugin("com.typesafe.play" % "sbt-plugin")
+    - PlayScala
+    - enablePlugins(PlayScala)
+    import_patterns:
+    - import play.api.mvc._
+    - import play.api.libs.json._
+    - import play.api._
+    code_patterns:
+    - extends Controller
+    - extends BaseController
+    - Action {
+    - Action.async {
+    - Ok(Json.toJson(
+    - Routes.
+  notes: 'Full-stack MVC framework for Scala (and Java). Detection via conf/routes
+    file is highly reliable — that path is unique to Play. The sbt plugin addSbtPlugin("com.typesafe.play"
+    % "sbt-plugin") in project/plugins.sbt is definitive. conf/application.conf co-present
+    with routes = confirmed Play. enablePlugins(PlayScala) or enablePlugins(PlayJava)
+    in build.sbt is definitive.
+
+    '
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Play convention: controllers in app/controllers/
+  - glob: "*/app/controllers/*.scala"
+    entity_type: Controller
+    name_from: class_name
+  # Play convention: models in app/models/
+  - glob: "*/app/models/*.scala"
+    entity_type: Model
+    name_from: class_name
+  # Play convention: services in app/services/
+  - glob: "*/app/services/*.scala"
+    entity_type: Service
+    name_from: class_name
+  # Play Twirl templates
+  - glob: "*/app/views/*.html"
+    entity_type: View
+    name_from: filename
+
+source_patterns:
+  # Controller class extending AbstractController, BaseController, or InjectedController
+  # class HomeController @Inject()(cc: ControllerComponents) extends AbstractController(cc)
+  # class ApiController extends BaseController {
+  - pattern: "class\\s+(\\w+)[^{]*extends\\s+(?:Abstract|Base|Injected)?Controller\\b"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+  # Action: def actionName = Action { ... } or def actionName = Action.async { ... }
+  # Captures the method name
+  - pattern: "def\\s+(\\w+)\\s*=\\s*Action(?:\\.async)?\\s*[{(\\[]"
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Action with block args: def show(id: Long) = Action { ... }
+  - pattern: "def\\s+(\\w+)\\s*\\([^)]*\\)\\s*=\\s*Action(?:\\.async)?\\s*[{(\\[]"
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Play routes file pattern: GET /path controllers.HomeController.index
+  # Covers GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+  - pattern: "^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(\\S+)\\s+controllers\\.(\\w+\\.\\w+)"
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Guice / @Inject constructor DI
+  # @Inject()(dep: SomeService)  — captures the type name
+  - pattern: "@Inject\\s*\\(\\s*\\)\\s*\\([^)]*?(\\w+Service|\\w+Repository|\\w+Client|\\w+DAO)"
+    entity_type: Dependency
+    name_group: 1
+    scope: class
+
+  # Play module binding: bind[Trait].to[Impl]
+  - pattern: "bind\\s*\\[\\s*(\\w+)\\s*\\]"
+    entity_type: Service
+    name_group: 1
+    scope: file
+
+  # Slick model / case class used as table row
+  - pattern: "case\\s+class\\s+(\\w+)\\s*\\("
+    entity_type: Model
+    name_group: 1
+    scope: class
+
+relationship_rules:
+  # Routes file: HTTP verb + path -> controller action (ROUTES_TO)
+  - pattern: "^(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(\\S+)\\s+controllers\\.(\\w+\\.\\w+)"
+    source_type: Route
+    target_type: Operation
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # DI injection: Dependency injected into a Controller
+  - pattern: "@Inject\\s*\\(\\s*\\)\\s*\\([^)]*?(\\w+Service|\\w+Repository|\\w+Client)[^)]*\\)[^{]*class\\s+(\\w+)"
+    source_type: Dependency
+    target_type: Controller
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2

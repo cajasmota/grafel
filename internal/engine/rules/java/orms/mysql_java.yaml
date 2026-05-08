@@ -1,0 +1,38 @@
+orms_database:
+  name: MySQL Connector/J (Java JDBC Driver)
+  category: relational_database
+  maven_coordinates: com.mysql:mysql-connector-j
+  gradle_dependency: implementation 'com.mysql:mysql-connector-j'
+  detection:
+    pom_xml_markers:
+    - mysql:mysql-connector-java
+    - com.mysql:mysql-connector-j
+    import_patterns:
+    - import com.mysql.jdbc
+    - import com.mysql.cj.jdbc
+    - import java.sql.DriverManager
+    code_patterns:
+    - jdbc:mysql://
+    - DriverManager.getConnection("jdbc:mysql:
+    - new MysqlDataSource()
+    - MysqlConnectionPoolDataSource
+  notes: >
+    MySQL Connector/J 8+ (com.mysql:mysql-connector-j) is the current
+    official JDBC driver. The legacy artifact (mysql:mysql-connector-java)
+    is also detected. Both register via DriverManager with the jdbc:mysql://
+    URL scheme.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

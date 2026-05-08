@@ -1,0 +1,274 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh",
+  "language": "shell",
+  "entities": [
+    {
+      "name": "main",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 53,
+      "end_line": 59,
+      "language": "shell",
+      "signature": "main()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "run_smoke_tests",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 42,
+      "end_line": 51,
+      "language": "shell",
+      "signature": "run_smoke_tests()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "deploy_to_k8s",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 31,
+      "end_line": 40,
+      "language": "shell",
+      "signature": "deploy_to_k8s()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "build_image",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 24,
+      "end_line": 29,
+      "language": "shell",
+      "signature": "build_image()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "check_prerequisites",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 15,
+      "end_line": 22,
+      "language": "shell",
+      "signature": "check_prerequisites()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 3,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "log",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 11,
+      "end_line": 13,
+      "language": "shell",
+      "signature": "log()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "shell",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "snake_case",
+        "dominant_percentage": 50.0,
+        "sample_count": 10,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh"
+      }
+    },
+    {
+      "name": "onboarding_entry:main:order=1",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh:main",
+      "kind": "SCOPE.Pattern",
+      "start_line": 53,
+      "end_line": 59,
+      "language": "shell",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh::main",
+        "reading_order": 1,
+        "entry_point_type": "shell_entrypoint",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh"
+      }
+    },
+    {
+      "name": "onboarding_entry:run_smoke_tests:order=2",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh:run_smoke_tests",
+      "kind": "SCOPE.Pattern",
+      "start_line": 42,
+      "end_line": 51,
+      "language": "shell",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh::run_smoke_tests",
+        "reading_order": 2,
+        "entry_point_type": "shell_entrypoint",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh"
+      }
+    },
+    {
+      "name": "onboarding_entry:deploy_to_k8s:order=3",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh:deploy_to_k8s",
+      "kind": "SCOPE.Pattern",
+      "start_line": 31,
+      "end_line": 40,
+      "language": "shell",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh::deploy_to_k8s",
+        "reading_order": 3,
+        "entry_point_type": "shell_entrypoint",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh"
+      }
+    },
+    {
+      "name": "onboarding_entry:build_image:order=4",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh:build_image",
+      "kind": "SCOPE.Pattern",
+      "start_line": 24,
+      "end_line": 29,
+      "language": "shell",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh::build_image",
+        "reading_order": 4,
+        "entry_point_type": "shell_entrypoint",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh"
+      }
+    },
+    {
+      "name": "onboarding_entry:check_prerequisites:order=5",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh:check_prerequisites",
+      "kind": "SCOPE.Pattern",
+      "start_line": 15,
+      "end_line": 22,
+      "language": "shell",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh::check_prerequisites",
+        "reading_order": 5,
+        "entry_point_type": "shell_entrypoint",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh"
+      }
+    },
+    {
+      "name": "onboarding_entry:log:order=6",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh:log",
+      "kind": "SCOPE.Pattern",
+      "start_line": 11,
+      "end_line": 13,
+      "language": "shell",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh::log",
+        "reading_order": 6,
+        "entry_point_type": "shell_entrypoint",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/shell/sample_deploy.sh"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

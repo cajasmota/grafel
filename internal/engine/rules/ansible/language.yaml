@@ -1,0 +1,39 @@
+meta:
+  language: ansible
+  display_name: Ansible / Infrastructure Automation
+  primary_detection_files:
+  - ansible.cfg
+  - site.yml
+  - playbook.yml
+  - galaxy.yml
+  - hosts
+  - inventory.yml
+  - inventory.ini
+  file_name_patterns:
+  - '*.yml'
+  - '*.yaml'
+  - ansible.cfg
+  - galaxy.yml
+  - requirements.yml
+  - hosts
+  - inventory
+  - inventory.yml
+  - inventory.yaml
+  - inventory.ini
+  - .ansible*
+  - roles/*
+  - collections/*
+  vera_scope_mapping: Service
+  notes: 'Ansible is primarily an imperative, agent-less infrastructure automation
+    platform. Detection requires both file-presence signals (ansible.cfg, galaxy.yml,
+    hosts) and content-based signals (YAML playbooks with top-level hosts:, tasks:,
+    and roles: keys). Unlike Docker or Kubernetes which use declarative YAML with
+    specific field signatures (apiVersion:, kind:), Ansible playbooks are imperative
+    task lists that require content parsing to disambiguate from generic YAML configuration.
+    The canonical signals are: 1) presence of ansible.cfg (definitive), 2) playbook
+    YAML with hosts: + tasks: or roles: at top level, 3) roles/ directory with standard
+    subdirs (tasks/, handlers/, templates/, vars/, defaults/), 4) galaxy.yml (collection
+    root), 5) inventory files in hosts, inventory.yml, or inventory.ini format. All
+    extracted entities should map to archigraph SCOPE.Service.
+
+    '

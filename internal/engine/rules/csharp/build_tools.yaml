@@ -1,0 +1,120 @@
+build_tools:
+- name: MSBuild
+  type: build_system
+  detection:
+    config_files:
+    - '*.csproj'
+    - '*.sln'
+    - '*.vbproj'
+    - '*.fsproj'
+    - '*.props'
+    - '*.targets'
+    - Directory.Build.props
+    - Directory.Build.targets
+    - Directory.Packages.props
+    - global.json
+    config_patterns:
+    - <Project Sdk="
+    - <Project ToolsVersion=
+    - <PropertyGroup>
+    - <ItemGroup>
+    - <Target Name=
+    - <Import Project=
+    - <PackageReference Include=
+    - <ProjectReference Include=
+    notes: 'MSBuild is the underlying build engine for all .NET projects. .csproj
+      (SDK-style or legacy) and .sln are the primary project/solution files. Directory.Build.props
+      applies settings to all projects in a directory tree — a mono-repo signal.
+
+      '
+- name: dotnet CLI
+  type: build_tool_cli
+  detection:
+    config_files:
+    - global.json
+    - dotnet-tools.json
+    - .config/dotnet-tools.json
+    - NuGet.Config
+    - nuget.config
+    config_patterns:
+    - '"sdk": {'
+    - '"version":'
+    - '"rollForward":'
+    - '"dotnet-format"'
+    - '"dotnet-ef"'
+    - '"csharpier"'
+    script_patterns:
+    - dotnet build
+    - dotnet publish
+    - dotnet test
+    - dotnet run
+    - dotnet restore
+    - dotnet ef
+    notes: 'global.json pins the SDK version — important for reproducible builds.
+      dotnet-tools.json lists local tool installs (dotnet-ef, csharpier, etc.). Presence
+      of dotnet commands in CI config files (*.yml/.yaml) confirms usage.
+
+      '
+- name: NuGet
+  type: package_manager
+  detection:
+    config_files:
+    - packages.config
+    - .nuget/packages.config
+    - .nuget/NuGet.Config
+    - NuGet.Config
+    - packages.lock.json
+    - nuget.config
+    - '*.nuspec'
+    - Directory.Packages.props
+    config_patterns:
+    - <packages>
+    - <package id=
+    - <PackageReference Include=
+    - <PackageVersion Include=
+    - <packageSources>
+    notes: 'packages.config is the legacy NuGet format (pre-SDK-style projects). PackageReference
+      in .csproj is the modern format. Directory.Packages.props enables Central Package
+      Management (CPM) — all versions defined centrally. packages.lock.json enables
+      lock-file-based restore.
+
+      '
+- name: Docker + .NET
+  type: containerization
+  detection:
+    config_files:
+    - Dockerfile
+    - .dockerignore
+    - docker-compose.yml
+    - docker-compose.override.yml
+    config_patterns:
+    - FROM mcr.microsoft.com/dotnet/aspnet
+    - FROM mcr.microsoft.com/dotnet/sdk
+    - FROM mcr.microsoft.com/dotnet/runtime
+    - dotnet publish -c Release
+    - COPY *.csproj
+    - RUN dotnet restore
+    notes: 'Microsoft-maintained dotnet Docker images use mcr.microsoft.com/dotnet/*
+      base images. Multi-stage Dockerfiles with sdk image for build and aspnet/runtime
+      for runtime are the standard pattern.
+
+      '
+- name: GitHub Actions / Azure Pipelines
+  type: ci_cd
+  detection:
+    config_files:
+    - .github/workflows/*.yml
+    - azure-pipelines.yml
+    - .azuredevops/pipelines/*.yml
+    config_patterns:
+    - actions/setup-dotnet
+    - 'dotnet-version:'
+    - DotNetCoreCLI@2
+    - DotNetCoreCLI@3
+    - UseDotNet@2
+    - dotnet build
+    - dotnet test
+    notes: 'actions/setup-dotnet in GitHub Actions workflow is a strong .NET signal.
+      DotNetCoreCLI@2 task in azure-pipelines.yml is Azure DevOps''s .NET task.
+
+      '

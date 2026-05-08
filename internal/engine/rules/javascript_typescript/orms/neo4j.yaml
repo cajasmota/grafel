@@ -1,0 +1,36 @@
+orms_database:
+  name: Neo4j JavaScript/TypeScript Driver
+  category: graph_database
+  npm_package: neo4j-driver
+  adoption_rank_2025: 1
+  detection:
+    package_json_markers:
+    - neo4j-driver
+    import_patterns:
+    - from 'neo4j-driver'
+    - require('neo4j-driver')
+    - import neo4j from 'neo4j-driver'
+    code_patterns:
+    - neo4j.driver(
+    - session.run(
+    - tx.run(
+  notes: >
+    Official Neo4j JavaScript/TypeScript driver. Supports both CommonJS and
+    ESM imports.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections (SCOPE.Service,
+      INFERRED_FROM_NEO4J_DRIVER), Cypher query strings (SCOPE.Operation/query,
+      INFERRED_FROM_NEO4J_CYPHER) with node labels and relationship types.
+      Supports template literal .run(`) forms.

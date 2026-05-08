@@ -1,0 +1,39 @@
+frameworks:
+  name: Boost
+  category: utility_library
+  github_stars_2025: 6700+
+  detection:
+    cmake_find_package:
+    - find_package(Boost
+    cmake_target_link:
+    - Boost::system
+    - Boost::filesystem
+    - Boost::thread
+    - Boost::program_options
+    - Boost::asio
+    - ${Boost_LIBRARIES}
+    vcpkg_packages:
+    - boost
+    - boost-system
+    - boost-filesystem
+    - boost-thread
+    - boost-asio
+    conan_packages:
+    - boost/1
+    include_patterns:
+    - '#include <boost/'
+    - '#include "boost/'
+    structural_markers:
+    - boost::asio
+    - boost::filesystem
+    - boost::shared_ptr
+    - boost::optional
+    - BOOST_PP_
+    - BOOST_FOREACH
+    config_files:
+    - CMakeLists.txt
+    notes: 'Largest C++ utility library. Detected definitively by find_package(Boost)
+      and #include <boost/...> headers. boost::asio used for networking. boost::beast
+      for HTTP/WebSocket. Boost.Test is the testing sub-library.
+
+      '

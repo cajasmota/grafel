@@ -1,0 +1,28 @@
+orms_database:
+  name: CassandraCSharpDriver (DataStax C# Driver)
+  category: nosql_database
+  nuget_package: CassandraCSharpDriver
+  detection:
+    import_patterns:
+    - using Cassandra
+    - Cassandra.Cluster
+    code_patterns:
+    - Cluster.Builder()
+    - ISession
+    - ICluster
+  notes: >
+    Official DataStax C# driver for Cassandra. The DSE C# driver is a
+    superset and uses the same APIs.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: Cluster.Builder()
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), .Execute()
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

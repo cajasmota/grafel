@@ -1,0 +1,102 @@
+domain_root_conventions:
+- layout: grails_standard
+  description: Standard Grails 3+ application layout
+  source_roots:
+  - grails-app/controllers/ (HTTP controllers)
+  - grails-app/domain/ (GORM domain classes)
+  - grails-app/services/ (service layer)
+  - grails-app/taglib/ (GSP tag libraries)
+  - grails-app/views/ (GSP views)
+  - grails-app/conf/ (configuration)
+  - grails-app/i18n/ (message bundles)
+  - grails-app/init/ (application initializer)
+  - src/main/groovy/ (non-GORM Groovy classes)
+  - src/main/java/ (optional Java sources)
+  test_roots:
+  - src/test/groovy/ (unit tests)
+  - src/integration-test/groovy/ (integration tests)
+  signals:
+  - grails-app/ top-level directory
+  - build.gradle with org.grails.grails-web plugin
+  - grailsw wrapper script
+  disambiguation: 'The grails-app/ directory is the single definitive Grails signal.
+    No other framework uses this directory layout. Domain root for indexing is the
+    grails-app/ tree. Separate src/main/groovy/ may contain utilities, commands, or
+    non-GORM data structures.
+
+    '
+- layout: grails_plugin
+  description: Grails plugin project layout
+  source_roots:
+  - grails-app/ (plugin-specific artifacts)
+  - src/main/groovy/ (plugin implementation)
+  signals:
+  - id "org.grails.grails-plugin" in build.gradle
+  - src/main/groovy/ with plugin descriptor class
+  - grails-app/conf/ with plugin config
+  notes: 'Grails plugins are separate Gradle projects published to Bintray/Maven Central.
+    Plugin descriptor class (extending GrailsPlugin) in src/main/groovy/ is the signal.
+    Unlike application projects, no grails-app/init/ directory.
+
+    '
+- layout: gradle_standard_jvm
+  description: Standard Gradle JVM project with Groovy sources
+  source_root: src/main/groovy/
+  test_root: src/test/groovy/
+  resource_root: src/main/resources/
+  signals:
+  - src/main/groovy/ exists
+  - build.gradle with 'groovy' plugin applied
+  - No grails-app/ directory
+  disambiguation: 'Non-Grails Groovy projects use src/main/groovy/ layout — same as
+    Java''s src/main/java/ but for Groovy. Absence of grails-app/ distinguishes this
+    from a Grails project. Presence of only build.gradle + src/main/groovy/ is a pure
+    Groovy library or standalone application.
+
+    '
+- layout: gradle_plugin_groovy
+  description: Gradle plugin project written in Groovy
+  source_root: src/main/groovy/
+  test_root: src/test/groovy/
+  functional_test_root: src/functionalTest/groovy/
+  plugin_descriptor: src/main/resources/META-INF/gradle-plugins/
+  signals:
+  - id("java-gradle-plugin") in build.gradle
+  - id("groovy") in build.gradle
+  - META-INF/gradle-plugins/*.properties
+  - Plugin<Project> implementation in src/main/groovy/
+  disambiguation: 'Gradle plugin layout always has META-INF/gradle-plugins/ descriptor
+    and Plugin<Project> implementation. Functional tests use GradleRunner. Distinguishable
+    from standard Groovy lib by java-gradle-plugin plugin presence.
+
+    '
+- layout: micronaut_groovy
+  description: Micronaut application with Groovy source language
+  source_root: src/main/groovy/
+  test_root: src/test/groovy/
+  signals:
+  - 'micronaut-cli.yml with sourceLanguage: groovy'
+  - id("io.micronaut.application") in build.gradle
+  - '"io.micronaut.groovy:micronaut-runtime-groovy" dependency'
+  notes: 'Micronaut-Groovy uses standard JVM src/main/groovy/ layout. The micronaut-cli.yml
+    distinguishes Micronaut from Grails. No grails-app/ directory. Spock is the default
+    test framework.
+
+    '
+- layout: spock_test_only
+  description: Project using Spock as the test framework regardless of main language
+  test_roots:
+  - src/test/groovy/ (*Spec.groovy files)
+  - src/integrationTest/groovy/
+  - src/functionalTest/groovy/
+  signals:
+  - spock-core dependency in testImplementation
+  - '*Spec.groovy files in test directories'
+  - extends Specification in test classes
+  notes: 'Many Java, Kotlin, and Groovy projects use Spock for testing regardless
+    of their main language. If src/test/groovy/ exists with *Spec.groovy files but
+    the main source is src/main/java/ or src/main/kotlin/, this is a Spock-test overlay.
+    Index the Spec files as test scope, classify language as the main source language,
+    note Spock test framework.
+
+    '

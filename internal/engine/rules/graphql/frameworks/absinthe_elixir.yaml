@@ -1,0 +1,40 @@
+server_frameworks:
+  name: Absinthe (Elixir)
+  language: Elixir
+  category: graphql_server
+  github_stars_2025: 4300+
+  detection:
+    mix_exs_deps:
+    - absinthe
+    - absinthe_plug
+    - absinthe_phoenix
+    - absinthe_relay
+    import_markers:
+    - use Absinthe.Schema
+    - use Absinthe.Schema.Notation
+    - use Absinthe.Relay.Schema
+    - import_types Absinthe
+    - query do
+    - mutation do
+    - subscription do
+    - object :type_name do
+    - field :field_name, :type
+    structural_markers:
+    - lib/app_web/schema.ex
+    - lib/app_web/schema/
+    - Absinthe.Plug
+    - Absinthe.Phoenix.Socket
+  extraction_targets:
+  - object/2 macro blocks (type definitions)
+  - query/mutation/subscription root blocks
+  - field/3 declarations within object blocks
+  - resolve/1 references (function captures or anonymous functions)
+  - arg/2 declarations
+  - middleware declarations
+  - import_types/1 declarations (schema composition)
+  notes: 'Absinthe uses a Elixir macro DSL as the schema definition language. There
+    are no .graphql SDL files by default — schema is entirely in .ex files. Parser
+    must recognize Absinthe DSL macros. The schema is typically split across multiple
+    modules with import_types composition.
+
+    '

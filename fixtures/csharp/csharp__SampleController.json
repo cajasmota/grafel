@@ -1,0 +1,307 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs",
+  "language": "csharp",
+  "entities": [
+    {
+      "name": "CreateUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 57,
+      "end_line": 61,
+      "language": "csharp",
+      "signature": "public class CreateUserRequest",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 50,
+      "end_line": 55,
+      "language": "csharp",
+      "signature": "public class User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UsersController",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 8,
+      "end_line": 48,
+      "language": "csharp",
+      "signature": "public class UsersController",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "Create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 32,
+      "end_line": 38,
+      "language": "csharp",
+      "signature": "[HttpPost] public ActionResult<User> Create([FromBody] CreateUserRequest request)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "GetById",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 24,
+      "end_line": 30,
+      "language": "csharp",
+      "signature": "[HttpGet] public ActionResult<User> GetById(int id)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "GetAll",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 21,
+      "end_line": 22,
+      "language": "csharp",
+      "signature": "[HttpGet] public ActionResult<IEnumerable<User>> GetAll()",
+      "enrichment_required": false,
+      "properties": {
+        "type": "method",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "method",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "ApiController@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:8",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:ApiController:8",
+      "kind": "SCOPE.Pattern",
+      "start_line": 8,
+      "end_line": 8,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "ApiController",
+        "source_line": 8,
+        "target": "UsersController"
+      }
+    },
+    {
+      "name": "Route@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:9",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:Route:9",
+      "kind": "SCOPE.Pattern",
+      "start_line": 9,
+      "end_line": 9,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "Route",
+        "source_line": 9,
+        "target": "UsersController",
+        "arguments": [
+          "\"api/[controller]\""
+        ]
+      }
+    },
+    {
+      "name": "HttpGet@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:17",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:HttpGet:17",
+      "kind": "SCOPE.Pattern",
+      "start_line": 17,
+      "end_line": 17,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "HttpGet",
+        "source_line": 17,
+        "target": "Health",
+        "arguments": [
+          "\"health\""
+        ]
+      }
+    },
+    {
+      "name": "HttpGet@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:20",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:HttpGet:20",
+      "kind": "SCOPE.Pattern",
+      "start_line": 20,
+      "end_line": 20,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "HttpGet",
+        "source_line": 20,
+        "target": "GetAll"
+      }
+    },
+    {
+      "name": "HttpGet@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:23",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:HttpGet:23",
+      "kind": "SCOPE.Pattern",
+      "start_line": 23,
+      "end_line": 23,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "HttpGet",
+        "source_line": 23,
+        "target": "GetById",
+        "arguments": [
+          "\"{id}\""
+        ]
+      }
+    },
+    {
+      "name": "HttpPost@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:31",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:HttpPost:31",
+      "kind": "SCOPE.Pattern",
+      "start_line": 31,
+      "end_line": 31,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "HttpPost",
+        "source_line": 31,
+        "target": "Create"
+      }
+    },
+    {
+      "name": "HttpDelete@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:39",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/csharp/SampleController.cs:HttpDelete:39",
+      "kind": "SCOPE.Pattern",
+      "start_line": 39,
+      "end_line": 39,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "HttpDelete",
+        "source_line": 39,
+        "target": "Delete",
+        "arguments": [
+          "\"{id}\""
+        ]
+      }
+    },
+    {
+      "name": "Microsoft",
+      "qualified_name": "scope:component:import:external:Microsoft",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    },
+    {
+      "name": "System",
+      "qualified_name": "scope:component:import:external:System",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "csharp",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

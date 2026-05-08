@@ -1,0 +1,35 @@
+orms_database:
+  name: hasbolt (Neo4j Haskell Driver)
+  category: graph_database
+  hackage_package: hasbolt
+  adoption_rank_2025: 1
+  detection:
+    cabal_markers:
+    - hasbolt
+    stack_markers:
+    - hasbolt
+    import_patterns:
+    - import Database.Bolt
+    code_patterns:
+    - Database.Bolt
+    - BoltCfg
+    - hasbolt
+  notes: >
+    Community Neo4j Haskell driver (hasbolt). Uses Database.Bolt module
+    with BoltCfg for connection configuration.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections via hasbolt
+      (SCOPE.Service, INFERRED_FROM_NEO4J_DRIVER), Cypher queries
+      (SCOPE.Operation/query, INFERRED_FROM_NEO4J_CYPHER).

@@ -1,0 +1,129 @@
+domain_roots:
+- layout: leiningen_standard
+  description: Standard Leiningen project layout (backend service or library)
+  roots:
+  - src/
+  - test/
+  - resources/
+  key_paths:
+  - project.clj
+  - src/my_app/core.clj
+  - src/my_app/handler.clj
+  - test/my_app/core_test.clj
+  - resources/config.edn
+  - resources/public/
+  notes: 'Standard Leiningen layout: src/ contains application namespaces (hyphens
+    in namespace names map to underscores in file paths: my-app.core → src/my_app/core.clj).
+    test/ mirrors src/ with _test.clj suffix convention. resources/ holds configuration,
+    SQL migrations, templates. project.clj at root.
+
+    '
+- layout: tools_deps_standard
+  description: tools.deps project layout (modern Clojure, post-2018)
+  roots:
+  - src/
+  - test/
+  - resources/
+  key_paths:
+  - deps.edn
+  - build.clj
+  - src/my_app/core.clj
+  - test/my_app/core_test.clj
+  - resources/config.edn
+  - .clj-kondo/config.edn
+  - .lsp/config.edn
+  notes: 'tools.deps projects use deps.edn for dependencies and build.clj (using tools.build)
+    for build tasks. Same src/test/resources layout as Leiningen but no project.clj.
+    build.clj at root is a strong signal of tools.deps with tools.build. :aliases
+    in deps.edn define dev, test, and build tasks.
+
+    '
+- layout: luminus_full_stack
+  description: Luminus full-stack project with ClojureScript frontend
+  roots:
+  - src/clj/
+  - src/cljs/
+  - src/cljc/
+  - test/clj/
+  - test/cljs/
+  - resources/
+  - env/dev/
+  - env/prod/
+  key_paths:
+  - project.clj
+  - src/clj/app/core.clj
+  - src/clj/app/handler.clj
+  - src/clj/app/routes/
+  - src/clj/app/db/
+  - src/cljs/app/core.cljs
+  - src/cljc/app/common.cljc
+  - resources/migrations/
+  - resources/sql/
+  - resources/templates/
+  - env/dev/resources/config.edn
+  - env/prod/resources/config.edn
+  notes: 'Luminus splits source into src/clj/ (server), src/cljs/ (browser), and src/cljc/
+    (shared). The env/dev/ and env/prod/ directories contain environment-specific
+    configuration and source overrides. resources/migrations/ holds Migratus SQL migrations.
+    This is the most complex Clojure project layout.
+
+    '
+- layout: clojurescript_spa
+  description: ClojureScript single-page application (no server-side Clojure)
+  roots:
+  - src/
+  - test/
+  - public/
+  - resources/
+  key_paths:
+  - shadow-cljs.edn
+  - package.json
+  - deps.edn
+  - src/app/core.cljs
+  - src/app/events.cljs
+  - src/app/subs.cljs
+  - src/app/views.cljs
+  - src/app/db.cljs
+  - public/index.html
+  notes: 'Pure ClojureScript SPA using shadow-cljs. Source files are .cljs (browser-only)
+    and .cljc (cross-platform). The Re-frame canonical file layout (events.cljs, subs.cljs,
+    views.cljs, db.cljs) is a high-confidence signal. public/index.html is the HTML
+    entry point. No project.clj or server-side Clojure sources.
+
+    '
+- layout: library_or_utility
+  description: Published Clojure/ClojureScript library (Clojars artifact)
+  roots:
+  - src/
+  - test/
+  key_paths:
+  - project.clj
+  - deps.edn
+  - src/my_lib/core.clj
+  - test/my_lib/core_test.clj
+  - CHANGELOG.md
+  - LICENSE
+  notes: 'Clojure libraries have minimal structure. project.clj with :deploy-repositories
+    or deps.edn with pom.xml/build.clj indicates a published library. No resources/
+    or env/ directories. Single top-level namespace in src/. Tests in test/ mirror
+    src/. CHANGELOG.md is standard in well-maintained Clojure libraries.
+
+    '
+- layout: repl_driven_development
+  description: Script-heavy project or REPL notebook (exploratory / data science)
+  roots:
+  - src/
+  - notebooks/
+  - dev/
+  key_paths:
+  - deps.edn
+  - dev/user.clj
+  - notebooks/
+  - portal_data/
+  notes: 'REPL-driven projects emphasize dev/user.clj (development namespace loaded
+    at REPL startup) and may use Clerk or Portal for notebook-style exploration. Detected
+    by dev/user.clj at root + deps.edn :aliases {:dev {:extra-paths ["dev"]}}. notebooks/
+    directory indicates Clerk (nextjournal/clerk) notebook files (.clj with Clerk-specific
+    comment blocks).
+
+    '

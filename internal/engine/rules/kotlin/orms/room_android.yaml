@@ -1,0 +1,31 @@
+orms_databases:
+  name: Room (Android)
+  gradle_coordinates:
+  - androidx.room:room-runtime
+  - androidx.room:room-ktx
+  - androidx.room:room-compiler (kapt/ksp)
+  detection:
+    config_files:
+    - AndroidManifest.xml
+    build_signals:
+    - '"androidx.room:room-runtime"'
+    - '"androidx.room:room-ktx"'
+    - kapt("androidx.room:room-compiler")
+    - ksp("androidx.room:room-compiler")
+    import_patterns:
+    - import androidx.room.
+    code_patterns:
+    - '@Database(entities ='
+    - '@Entity'
+    - '@Dao'
+    - '@Query('
+    - '@Insert'
+    - '@Delete'
+    - RoomDatabase()
+  notes: 'Android-only ORM. @Database + @Entity + @Dao trinity is definitive. room-ktx
+    adds coroutine and Flow support (@Query returns Flow<>). KSP (ksp) preferred over
+    kapt for Room in modern Android projects. Room 3.0 (2025) adds KMP support — androidx.room3:room3-runtime
+    for non-Android targets. Schema export: room { schemaDirectory(...) } block in
+    build.gradle.kts generates .json schema files in build/.
+
+    '

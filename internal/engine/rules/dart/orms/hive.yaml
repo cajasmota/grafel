@@ -1,0 +1,29 @@
+orm_database:
+  name: hive
+  pubspec_dependency: hive
+  category: nosql_embedded_kv
+  pub_dev_url: https://pub.dev/packages/hive
+  detection:
+    pubspec_signals:
+    - 'hive:'
+    - 'hive_flutter:'
+    pubspec_dev_signals:
+    - 'hive_generator:'
+    - 'build_runner:'
+    code_patterns:
+    - import 'package:hive/hive.dart'
+    - import 'package:hive_flutter/hive_flutter.dart'
+    - '@HiveType('
+    - '@HiveField('
+    - Hive.openBox(
+    - Hive.openLazyBox(
+    - box.get(
+    - box.put(
+    - HiveObject
+    output_patterns:
+    - '*.g.dart'
+    notes: 'Lightweight key-value store for Flutter. hive_flutter adds Flutter integration
+      (Hive.initFlutter()). @HiveType and @HiveField annotations are the primary detection
+      signals for typed adapters. Hive 2+ supports null safety.
+
+      '

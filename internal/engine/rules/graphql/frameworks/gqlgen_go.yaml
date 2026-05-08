@@ -1,0 +1,33 @@
+server_frameworks:
+  name: gqlgen (Go)
+  language: Go
+  category: graphql_server
+  github_stars_2025: 10400+
+  detection:
+    go_mod_require:
+    - github.com/99designs/gqlgen
+    config_files:
+    - gqlgen.yml
+    - .gqlgen.yml
+    - gqlgen.yaml
+    structural_markers:
+    - go:generate go run github.com/99designs/gqlgen
+    - graph/generated/
+    - graph/model/
+    - graph/schema.resolvers.go
+    - graph/schema.graphqls
+    directory_markers:
+    - graph/
+    - graph/generated/
+    - graph/model/
+  extraction_targets:
+  - SDL schema from *.graphqls files (note: .graphqls extension common in gqlgen)
+  - Resolver struct implementations in schema.resolvers.go
+  - gqlgen.yml model autobind mappings
+  - Generated models in graph/model/models_gen.go (skip — generated)
+  - Custom resolver implementations (non-generated)
+  notes: 'gqlgen is schema-first with code generation. The canonical layout is graph/schema.graphqls
+    (SDL) + graph/schema.resolvers.go (user-edited resolver implementations) + graph/generated/
+    (generated code to skip). gqlgen.yml controls model-to-Go-struct binding.
+
+    '

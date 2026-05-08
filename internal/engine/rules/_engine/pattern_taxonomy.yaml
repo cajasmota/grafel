@@ -1,0 +1,37 @@
+# Pattern Taxonomy Enricher (MX-687)
+# Cross-language enricher that normalises entity names and file paths to a
+# standard design-pattern taxonomy.
+# Registered as a PatternDetector in memx_indexer/pattern_detectors/__init__.py.
+#
+# This YAML documents the enricher's registration entry.
+# No YAML-driven dispatch -- classification logic is in the Python module.
+
+name: pattern_taxonomy
+description: >-
+  Normalise detected code patterns to a standard taxonomy.
+  GoF patterns (Singleton, Factory, Observer, Strategy, Decorator),
+  Enterprise patterns (Repository, Service, DTO, Middleware), and
+  Architectural patterns (MVC, MVVM) are detected via regex heuristics
+  on class names and file structure.
+  Emits SCOPE.Pattern entities with kind=pattern_taxonomy and taxonomy metadata.
+module: memx_indexer.pattern_detectors.pattern_taxonomy_enricher
+class: PatternTaxonomyEnricher
+registration: memx_indexer/pattern_detectors/__init__.py
+
+taxonomy:
+  gof:
+    - singleton
+    - factory
+    - observer
+    - strategy
+    - decorator
+  enterprise:
+    - repository
+    - service
+    - dto
+    - middleware
+  architectural:
+    - mvc
+    - mvvm
+
+priority: gof > enterprise > architectural

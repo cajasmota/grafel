@@ -1,0 +1,33 @@
+frameworks:
+  name: Poco
+  category: application_framework
+  github_stars_2025: 8500+
+  detection:
+    cmake_find_package:
+    - find_package(Poco
+    cmake_target_link:
+    - Poco::Net
+    - Poco::Foundation
+    - Poco::JSON
+    - Poco::XML
+    - Poco::Data
+    - Poco::Crypto
+    vcpkg_packages:
+    - poco
+    conan_packages:
+    - poco/1
+    include_patterns:
+    - '#include <Poco/'
+    - '#include "Poco/'
+    structural_markers:
+    - Poco::Net::HTTPServer
+    - Poco::Application
+    - Poco::JSON::Object
+    - Poco::Foundation
+    config_files:
+    - CMakeLists.txt
+    notes: 'C++ application framework with networking, JSON, XML, logging. Detected
+      by find_package(Poco) and #include <Poco/...> headers. Often used in embedded
+      and IoT C++ services.
+
+      '

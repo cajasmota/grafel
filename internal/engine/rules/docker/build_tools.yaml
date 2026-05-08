@@ -1,0 +1,198 @@
+build_tools:
+- name: Docker Build (classic)
+  vendor: Docker Inc. / Moby Project
+  category: container_build
+  detection:
+    config_files:
+    - Dockerfile
+    - .dockerignore
+    cli_invocation_patterns:
+    - docker build
+    - docker image build
+    makefile_targets:
+    - docker-build
+    - build-image
+    - image
+  notes: 'The original docker build command sends the entire build context to the
+    Docker daemon, which executes instructions sequentially. Limited caching (layer-by-layer).
+    Dockerfile at the project root or specified via -f flag.
+
+    '
+- name: BuildKit
+  vendor: Moby Project / Docker Inc.
+  category: container_build
+  detection:
+    env_vars:
+    - DOCKER_BUILDKIT=1
+    - BUILDKIT_PROGRESS
+    - BUILDKIT_INLINE_CACHE=1
+    dockerfile_features:
+    - '# syntax=docker/dockerfile:1'
+    - '# syntax=docker/dockerfile:1.4'
+    - RUN --mount=type=cache
+    - RUN --mount=type=secret
+    - RUN --mount=type=ssh
+    - RUN --mount=type=bind
+    - RUN --network=none
+    - RUN --network=host
+    - COPY --link
+    - ARG --format
+    config_files:
+    - buildkitd.toml
+    - .buildkitd.toml
+    cli_invocation_patterns:
+    - docker buildx build
+    - buildctl build
+    - buildkitd
+    ci_patterns:
+    - docker/build-push-action
+    - 'uses: docker/setup-buildx-action'
+    - 'uses: docker/build-push-action'
+  notes: 'BuildKit (enabled by default in Docker Engine 23.0+) provides parallel layer
+    building, advanced caching, and Dockerfile syntax extensions via the `# syntax=`
+    parser directive. Detection priority: parser directive at line 1 is definitive.
+    RUN --mount=type=cache is the most common BuildKit-specific instruction, used
+    for package manager caches. The `docker buildx` subcommand always uses BuildKit
+    and enables multi-platform builds. BuildKit is also the engine used by docker/build-push-action
+    in GitHub Actions.
+
+    '
+- name: docker-compose (Compose V2)
+  vendor: Docker Inc.
+  category: multi_service_orchestration
+  detection:
+    config_files:
+    - docker-compose.yml
+    - docker-compose.yaml
+    - compose.yml
+    - compose.yaml
+    cli_invocation_patterns:
+    - docker compose
+    - docker-compose
+  notes: 'Compose V2 (docker compose) supersedes the standalone docker-compose V1
+    Python tool (EOL). Compose V1 files are still widely present; format is compatible.
+    Detect by config file presence. docker compose is the canonical invocation; docker-compose
+    (hyphen) is the legacy form. Compose files also drive local development stacks
+    with hot-reload volumes and override files.
+
+    '
+- name: Podman
+  vendor: Red Hat / containers.io
+  category: container_build
+  detection:
+    config_files:
+    - Containerfile
+    - Containerfile.*
+    - '*.Containerfile'
+    cli_invocation_patterns:
+    - podman build
+    - podman-compose
+    - podman run
+    - podman play kube
+    config_dirs:
+    - $XDG_CONFIG_HOME/containers/
+    - ~/.config/containers/
+    config_file_paths:
+    - ~/.config/containers/containers.conf
+    - ~/.config/containers/registries.conf
+  notes: 'Podman is a daemonless OCI container runtime. It consumes the same Dockerfile
+    / Containerfile format as Docker. Containerfile is the preferred Podman filename
+    convention but Dockerfile is equally valid. Podman is rootless by default. Detection
+    hint: presence of Containerfile (not Dockerfile) strongly suggests Podman or Buildah
+    usage.
+
+    '
+- name: Kaniko
+  vendor: Google
+  category: container_build
+  detection:
+    dockerfile_usage: standard Dockerfile (no special syntax required)
+    config_files: []
+    ci_patterns:
+    - gcr.io/kaniko-project/executor
+    - executor --context
+    - --destination=
+    - --cache=true
+    - --cache-repo=
+    kubernetes_patterns:
+    - 'image: gcr.io/kaniko-project/executor'
+    - 'args: ["--dockerfile=...", "--context=..."]'
+  notes: 'Kaniko builds container images inside a Kubernetes cluster or any container
+    runtime, without requiring a Docker daemon. Detected primarily in CI pipeline
+    YAML (GitHub Actions, GitLab CI, Tekton, Kubernetes Job specs) by the gcr.io/kaniko-project/executor
+    image reference. Useful in clusters where privileged docker-in-docker is not allowed.
+
+    '
+- name: Cloud Native Buildpacks (pack)
+  vendor: CNCF / Heroku / Pivotal lineage
+  category: container_build
+  detection:
+    config_files:
+    - project.toml
+    - buildpack.toml
+    - package.toml
+    cli_invocation_patterns:
+    - pack build
+    - pack buildpack
+    ci_patterns:
+    - 'uses: buildpacks/github-actions'
+    - paketo-buildpacks
+    - heroku/buildpacks
+    - 'uses: paketo-buildpacks'
+  notes: 'Buildpacks automatically detect the language/runtime and build a compliant
+    OCI image WITHOUT a Dockerfile. project.toml is the primary detection signal.
+    When project.toml is present alongside a Dockerfile, both paths are viable — index
+    both. Cloud Native Buildpacks are the engine behind `heroku container:push`, Railway,
+    and many PaaS platforms.
+
+    '
+- name: ko
+  vendor: Google / ko-build community
+  category: container_build
+  detection:
+    config_files:
+    - .ko.yaml
+    cli_invocation_patterns:
+    - ko build
+    - ko publish
+    - ko apply
+    - ko resolve
+    env_vars:
+    - KO_DOCKER_REPO
+    - KO_DEFAULTBASEIMAGE
+    ci_patterns:
+    - 'uses: ko-build/setup-ko'
+    - imjasonh/setup-ko
+  notes: 'ko is a Go-specific container build tool that builds Go binaries and packages
+    them into OCI images without a Dockerfile. It uses the Go module system as its
+    build graph. Detected by .ko.yaml config or KO_DOCKER_REPO environment variable
+    in CI. Presence of .ko.yaml alongside a Go module (go.mod) is a definitive signal.
+
+    '
+- name: Jib
+  vendor: Google
+  category: container_build
+  detection:
+    build_files:
+    - pom.xml
+    - build.gradle
+    - build.gradle.kts
+    maven_content_patterns:
+    - jib-maven-plugin
+    - com.google.cloud.tools
+    - <groupId>com.google.cloud.tools</groupId>
+    - <artifactId>jib-maven-plugin</artifactId>
+    gradle_content_patterns:
+    - id("com.google.cloud.tools.jib")
+    - id 'com.google.cloud.tools.jib'
+    - jib {
+    - com.google.cloud.tools.jib
+    config_block_patterns:
+    - jib {
+    - <plugin>.*jib.*</plugin>
+  notes: 'Jib builds Java container images from Maven or Gradle without a Dockerfile
+    or Docker daemon. Detected by the Jib plugin declaration in pom.xml or build.gradle/build.gradle.kts.
+    The `jib { ... }` block in Gradle and the `<artifactId>jib-maven-plugin</artifactId>`
+    in Maven are the definitive signals.
+
+    '

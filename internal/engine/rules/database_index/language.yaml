@@ -1,0 +1,67 @@
+meta:
+  name: DatabaseIndex
+  language: database_index
+  description: >
+    Database index definitions extracted from SQL migration files (.sql) and ORM
+    annotations (Hibernate @Index/@Indexed, TypeORM @Index, Prisma @@index/@@unique,
+    Django db_index=True, EF Core HasIndex, Eloquent $table->index).
+  vera_scope: Schema (index as SCOPE.Schema with kind=database_index)
+
+file_conventions:
+  - extension: .sql
+    entity_type: Schema
+    note: SQL migration files containing CREATE INDEX statements
+  - annotation: "@Index"
+    entity_type: Schema
+    note: Hibernate or TypeORM @Index annotation
+  - annotation: "@@index"
+    entity_type: Schema
+    note: Prisma @@index directive
+  - annotation: "@@unique"
+    entity_type: Schema
+    note: Prisma @@unique directive (sets unique=True)
+  - annotation: "db_index"
+    entity_type: Schema
+    note: Django db_index=True field option
+  - annotation: "HasIndex"
+    entity_type: Schema
+    note: EF Core fluent API HasIndex call
+  - annotation: "$table->index"
+    entity_type: Schema
+    note: Eloquent Blueprint index method
+  - annotation: "@Indexed"
+    entity_type: Schema
+    note: Hibernate Search @Indexed class annotation
+
+extraction_targets:
+  - target: "CREATE [UNIQUE] INDEX name ON table (col1, col2)"
+    vera_type: SCOPE.Schema
+    properties: [kind, table_name, columns, unique, index_name]
+  - target: "@Index(name=..., columnList=...)"
+    vera_type: SCOPE.Schema
+    properties: [kind, table_name, columns, unique, index_name]
+  - target: "@Index([col1, col2])"
+    vera_type: SCOPE.Schema
+    properties: [kind, table_name, columns, unique, index_name]
+  - target: "@@index([col1, col2])"
+    vera_type: SCOPE.Schema
+    properties: [kind, table_name, columns, unique, index_name]
+  - target: "db_index=True"
+    vera_type: SCOPE.Schema
+    properties: [kind, table_name, columns, unique, index_name]
+  - target: ".HasIndex(e => e.Col)"
+    vera_type: SCOPE.Schema
+    properties: [kind, table_name, columns, unique, index_name]
+  - target: "$table->index(['col'])"
+    vera_type: SCOPE.Schema
+    properties: [kind, table_name, columns, unique, index_name]
+
+detector:
+  class: DatabaseIndexExtractor
+  module: memx_indexer.pattern_detectors.database_index_extractor
+  category: database_index
+  otel_span: indexer.database_index_extract
+  otel_attributes:
+    - index_count
+    - orm
+    - has_sql_migrations

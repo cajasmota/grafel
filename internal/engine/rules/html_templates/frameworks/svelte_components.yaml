@@ -1,0 +1,43 @@
+framework_templates:
+  name: Svelte Components
+  framework: Svelte / SvelteKit
+  extensions:
+  - .svelte
+  npm_packages:
+  - svelte
+  - '@sveltejs/kit'
+  detection_signals:
+    file_extensions:
+    - .svelte
+    package_json_deps:
+    - svelte
+    syntax_markers:
+    - <script>
+    - <script lang="ts">
+    - <script context="module">
+    - <style>
+    - '{#if condition}'
+    - '{/if}'
+    - '{:else}'
+    - '{:else if condition}'
+    - '{#each items as item}'
+    - '{/each}'
+    - '{#await promise}'
+    - '{/await}'
+    - '{:then value}'
+    - '{:catch error}'
+    - '{#key expression}'
+    - <slot name="name" />
+    - <slot />
+    - bind:value={var}
+    - on:event={handler}
+    - '{expression}'
+  scope_entity_mapping:
+    entity_type: Component
+    name_signal: Filename stem (e.g. Button.svelte -> Button component)
+    boundary: File = one Component entity. Named <slot> entries are slot sub-entities.
+  notes: '.svelte extension is definitive. SvelteKit adds routing conventions (src/routes/
+    with +page.svelte, +layout.svelte, +page.server.ts) — detect via @sveltejs/kit
+    dep + src/routes/ structure.
+
+    '

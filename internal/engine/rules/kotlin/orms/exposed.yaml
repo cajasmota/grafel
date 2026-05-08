@@ -1,0 +1,26 @@
+orms_databases:
+  name: Exposed
+  vendor: JetBrains
+  gradle_coordinates:
+  - org.jetbrains.exposed:exposed-core
+  - org.jetbrains.exposed:exposed-dao
+  - org.jetbrains.exposed:exposed-jdbc
+  - org.jetbrains.exposed:exposed-spring-boot-starter
+  detection:
+    import_patterns:
+    - import org.jetbrains.exposed.sql.
+    - import org.jetbrains.exposed.dao.
+    code_patterns:
+    - 'object * : Table('
+    - 'object * : IntIdTable('
+    - 'object * : LongIdTable('
+    - transaction {
+    - SchemaUtils.create(
+    - SchemaUtils.drop(
+    - select { * }
+    - insertAndGetId {
+  notes: 'JetBrains SQL framework with DSL and DAO layers. transaction {} is high-confidence.
+    Table object declarations define schema inline. DSL layer: functional SQL queries.
+    DAO layer: entity classes extending IntEntity.
+
+    '

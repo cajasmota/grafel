@@ -1,0 +1,37 @@
+orms:
+  name: MongoDB (mongodb)
+  crate: mongodb
+  category: nosql
+  crates_io_version_2025: 3.x
+  detection:
+    cargo_toml_deps:
+    - mongodb
+    - bson
+    import_markers:
+    - 'use mongodb::'
+    - 'use bson::'
+    code_patterns:
+    - mongodb::Client
+    - Client::with_uri_str(
+    - mongodb::bson::doc!
+    - Collection::<
+    - .find_one(
+    - .insert_one(
+    - .update_one(
+    - doc! {
+  notes: 'Official MongoDB Rust driver. bson crate is tightly coupled. doc! macro
+    is a distinctive code pattern.
+
+    '
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

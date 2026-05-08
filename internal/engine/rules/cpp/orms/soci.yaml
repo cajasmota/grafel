@@ -1,0 +1,33 @@
+orm_db:
+  name: SOCI
+  category: sql_abstraction
+  github_stars_2025: 1500+
+  detection:
+    cmake_find_package:
+    - find_package(SOCI
+    - find_package(soci
+    cmake_target_link:
+    - SOCI::core
+    - soci_core
+    - soci_sqlite3
+    - soci_postgresql
+    vcpkg_packages:
+    - soci
+    conan_packages:
+    - soci/
+    include_patterns:
+    - '#include <soci/soci.h>'
+    - '#include <soci/sqlite3/soci-sqlite3.h>'
+    - '#include <soci/postgresql/soci-postgresql.h>'
+    structural_markers:
+    - soci::session sql(
+    - soci::rowset<
+    - sql << "SELECT
+    - soci::use(
+    - soci::into(
+    - soci::backend_factory
+  notes: 'Database access library with stream-operator SQL interface. soci::session
+    and stream-based SQL (sql << "SELECT ...") are definitive markers. Supports SQLite3,
+    PostgreSQL, MySQL, ODBC.
+
+    '

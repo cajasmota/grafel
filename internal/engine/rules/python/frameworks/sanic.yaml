@@ -1,0 +1,20 @@
+frameworks:
+  name: Sanic
+  pypi_package: sanic
+  category: web_async_api
+  github_stars_2025: 18600+
+  gateway: asgi
+  detection:
+    config_files:
+    - server.py
+    - app.py
+    dependency_names:
+    - sanic
+    import_markers:
+    - from sanic import Sanic
+    - Sanic(__name__)
+    - sanic.Blueprint
+    structural_markers: []
+  notes: 'ASGI-native. Blueprint pattern mirrors Flask Blueprints.
+
+    '

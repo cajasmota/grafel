@@ -1,0 +1,180 @@
+# Source: https://github.com/apollographql/apollo-server (synthetic based on real Apollo GraphQL patterns) | License: MIT
+
+"""
+A user account in the system.
+"""
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  role: UserRole!
+  posts: [Post!]!
+  comments: [Comment!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum UserRole {
+  ADMIN
+  AUTHOR
+  READER
+}
+
+"""
+A blog post.
+"""
+type Post {
+  id: ID!
+  title: String!
+  slug: String!
+  excerpt: String
+  body: String!
+  status: PostStatus!
+  author: User!
+  tags: [Tag!]!
+  comments(first: Int, after: String): CommentConnection!
+  viewsCount: Int!
+  publishedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+type Tag {
+  id: ID!
+  name: String!
+  slug: String!
+  posts(first: Int, after: String): PostConnection!
+}
+
+type Comment {
+  id: ID!
+  body: String!
+  author: User!
+  post: Post!
+  parent: Comment
+  replies: [Comment!]!
+  approved: Boolean!
+  createdAt: DateTime!
+}
+
+# Pagination types (Relay spec)
+type PostConnection {
+  edges: [PostEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PostEdge {
+  node: Post!
+  cursor: String!
+}
+
+type CommentConnection {
+  edges: [CommentEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CommentEdge {
+  node: Comment!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# Auth
+type AuthPayload {
+  token: String!
+  user: User!
+}
+
+# Input types
+input CreatePostInput {
+  title: String!
+  body: String!
+  excerpt: String
+  status: PostStatus = DRAFT
+  tagIds: [ID!]
+}
+
+input UpdatePostInput {
+  title: String
+  body: String
+  excerpt: String
+  status: PostStatus
+  tagIds: [ID!]
+}
+
+input CreateCommentInput {
+  postId: ID!
+  body: String!
+  parentId: ID
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+input RegisterInput {
+  name: String!
+  email: String!
+  password: String!
+}
+
+# Root types
+type Query {
+  me: User
+  user(id: ID!): User
+  users(role: UserRole, first: Int, after: String): [User!]!
+
+  post(id: ID, slug: String): Post
+  posts(
+    status: PostStatus
+    authorId: ID
+    tagSlug: String
+    search: String
+    first: Int
+    after: String
+  ): PostConnection!
+
+  tag(slug: String!): Tag
+  tags: [Tag!]!
+}
+
+type Mutation {
+  # Auth
+  login(input: LoginInput!): AuthPayload!
+  register(input: RegisterInput!): AuthPayload!
+  logout: Boolean!
+
+  # Posts
+  createPost(input: CreatePostInput!): Post!
+  updatePost(id: ID!, input: UpdatePostInput!): Post!
+  publishPost(id: ID!): Post!
+  deletePost(id: ID!): Boolean!
+
+  # Comments
+  createComment(input: CreateCommentInput!): Comment!
+  approveComment(id: ID!): Comment!
+  deleteComment(id: ID!): Boolean!
+}
+
+type Subscription {
+  commentAdded(postId: ID!): Comment!
+  postPublished: Post!
+}
+
+scalar DateTime
+scalar Upload

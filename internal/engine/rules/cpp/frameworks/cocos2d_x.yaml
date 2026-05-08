@@ -1,0 +1,36 @@
+frameworks:
+  name: Cocos2d-x
+  category: game_engine_2d
+  github_stars_2025: 18500+
+  detection:
+    cmake_find_package:
+    - add_subdirectory(cocos2d
+    cmake_target_link:
+    - cocos2d
+    - cocos2d_x
+    vcpkg_packages:
+    - cocos2d-x
+    conan_packages:
+    - cocos2d-x/
+    include_patterns:
+    - '#include "cocos2d.h"'
+    - '#include <cocos2d.h>'
+    - '#include "CCDirector.h"'
+    structural_markers:
+    - 'cocos2d::'
+    - CCScene
+    - CCLayer
+    - CCSprite
+    - CCDirector
+    - CREATE_FUNC(
+    - USING_NS_CC
+    - AppDelegate
+    config_files:
+    - CMakeLists.txt
+    - cocos2d/
+    notes: '2D game engine, largely superseded by Cocos Creator but still in use.
+      cocos2d.h include and CREATE_FUNC() macro are definitive markers. USING_NS_CC
+      is the namespace macro. cocos2d/ subdirectory in project root indicates engine
+      source bundled in-repo.
+
+      '

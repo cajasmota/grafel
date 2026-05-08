@@ -1,0 +1,20 @@
+frameworks:
+  name: Kratos
+  module_path: github.com/go-kratos/kratos/v2
+  category: microservice_framework
+  github_stars_2025: 25200+
+  detection:
+    go_mod_require:
+    - github.com/go-kratos/kratos/v2
+    import_markers:
+    - '"github.com/go-kratos/kratos/v2"'
+    structural_markers:
+    - kratos.New()
+    - kratos.Server(
+    - internal/biz/
+    - internal/data/
+    - internal/service/
+    notes: 'B站 (Bilibili) microservice framework. DDD-layered structure with biz/,
+      data/, service/ directories is high-confidence signal.
+
+      '

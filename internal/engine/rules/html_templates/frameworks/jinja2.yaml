@@ -1,0 +1,43 @@
+template_engines:
+  name: Jinja2
+  full_name: Jinja2 (and Jinja)
+  language: python
+  extensions:
+  - .jinja
+  - .jinja2
+  - .j2
+  - .html
+  python_packages:
+  - jinja2
+  - Jinja2
+  - flask
+  - ansible
+  detection_signals:
+    file_extensions:
+    - .jinja
+    - .jinja2
+    - .j2
+    python_deps:
+    - jinja2
+    - Jinja2
+    directory_conventions:
+    - templates/
+    syntax_markers:
+    - '{{ variable }}'
+    - '{% block name %}'
+    - '{% extends ''base.html'' %}'
+    - '{% include ''partial.html'' %}'
+    - '{% for item in items %}'
+    - '{% if condition %}'
+    - '{% macro name(args) %}'
+    - '{% import ''macros.html'' as m %}'
+    - '{# comment #}'
+    - '{% set var = value %}'
+    - '{% with %}'
+    - '{% filter name %}'
+    - '{% call macroname() %}'
+  notes: 'Jinja2 is used by Flask, Django (Jinja loader), FastAPI, and Ansible. {%
+    macro %} and {% block %} definitions are definitive Component signals. Flask standard:
+    templates/ directory adjacent to app.py or app/__init__.py.
+
+    '

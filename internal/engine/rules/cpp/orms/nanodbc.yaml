@@ -1,0 +1,26 @@
+orm_db:
+  name: nanodbc
+  category: odbc_wrapper
+  github_stars_2025: 500+
+  detection:
+    cmake_find_package:
+    - find_package(nanodbc
+    - add_subdirectory(nanodbc
+    cmake_target_link:
+    - nanodbc
+    - nanodbc::nanodbc
+    vcpkg_packages:
+    - nanodbc
+    include_patterns:
+    - '#include <nanodbc/nanodbc.h>'
+    - '#include "nanodbc.h"'
+    structural_markers:
+    - nanodbc::connection conn(
+    - nanodbc::result results
+    - nanodbc::statement
+    - nanodbc::execute(
+    - nanodbc::transaction
+  notes: 'Thin C++ ODBC wrapper. nanodbc::connection and nanodbc::result are definitive
+    markers. Used for SQL Server, Oracle, and other ODBC sources.
+
+    '

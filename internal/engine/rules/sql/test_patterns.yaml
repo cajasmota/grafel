@@ -1,0 +1,234 @@
+migration_tools:
+- name: Flyway
+  description: 'Java-based database migration tool with SQL and Java-based migrations.
+    Convention over configuration — versioned V, repeatable R, undo U.
+
+    '
+  config_files:
+  - flyway.conf
+  - flyway.toml
+  - flyway.properties
+  migration_naming:
+    versioned: V{version}__{description}.sql
+    repeatable: R__{description}.sql
+    undo: U{version}__{description}.sql
+  detection_confidence: high
+  notes: 'Strong detection via naming convention. The double underscore (__) separator
+    between version and description is definitive.
+
+    '
+- name: Liquibase
+  description: 'Database schema change management with multi-format changelog support
+    (SQL, XML, YAML, JSON). Track, version, and deploy database changes.
+
+    '
+  config_files:
+  - liquibase.properties
+  - liquibase.yml
+  - db.changelog-master.xml
+  sql_format_markers:
+  - --changeset {author}:{id}
+  - --rollback
+  - --preconditions onFail=HALT
+  detection_confidence: high
+  notes: 'SQL format changelogs use comment-based markers. XML changelogs are detectable
+    by databaseChangeLog namespace. Often used in Java Spring Boot projects alongside
+    Spring Data JPA.
+
+    '
+- name: Alembic
+  description: 'Python SQLAlchemy''s database migration tool. Auto-generates migration
+    scripts from model diffs or via revision commands.
+
+    '
+  config_files:
+  - alembic.ini
+  - alembic/env.py
+  directory_markers:
+  - alembic/versions/
+  file_markers:
+  - alembic/env.py
+  sql_syntax_markers:
+  - -- Running upgrade
+  - -- Running downgrade
+  python_markers:
+  - from alembic import op
+  - import sqlalchemy as sa
+  - op.create_table(
+  - op.drop_table(
+  - op.add_column(
+  - op.drop_column(
+  notes: 'Alembic migrations are Python files but may produce SQL output via --sql
+    flag. Auto-generated migrations include timestamp-based revision IDs in alembic/versions/.
+    The env.py file configures the migration context.
+
+    '
+- name: Atlas
+  description: 'Modern database schema-as-code tool supporting HCL, SQL, and ORM schemas.
+    Supports drift detection and declarative migrations.
+
+    '
+  config_files:
+  - atlas.hcl
+  - atlas.sum
+  - .atlas/
+  schema_files:
+  - schema.hcl
+  - schema.sql
+  directory_markers:
+  - migrations/
+  file_markers:
+  - atlas.sum
+  hcl_markers:
+  - 'table '
+  - 'column '
+  - primary_key {
+  - foreign_key {
+  - index {
+  - 'schema '
+  notes: 'Atlas uses HCL (HashiCorp Configuration Language) for schema definition
+    in addition to SQL. atlas.sum is a checksum file for migration integrity. Supports
+    multiple database dialects.
+
+    '
+- name: sqitch
+  description: 'Sane database change management with deploy/revert/verify scripts.
+    Not versioned by number — uses dependency-tracked change names.
+
+    '
+  config_files:
+  - sqitch.conf
+  - sqitch.plan
+  directory_markers:
+  - deploy/
+  - revert/
+  - verify/
+  notes: 'sqitch organizes changes in three parallel directories: deploy/, revert/,
+    verify/. sqitch.plan tracks the dependency graph of changes. No version numbering
+    — changes are named and declared dependencies. Each change has a corresponding
+    file in all three directories.
+
+    '
+- name: dbmate
+  description: 'Lightweight database migration tool with support for PostgreSQL, MySQL,
+    SQLite, ClickHouse. Plain SQL migrations.
+
+    '
+  config_files:
+  - .env (DATABASE_URL)
+  directory_markers:
+  - db/migrations/
+  file_naming:
+    pattern: '{timestamp}_{description}.sql'
+  sql_markers:
+  - -- migrate:up
+  - -- migrate:down
+  notes: 'dbmate uses -- migrate:up and -- migrate:down section markers in migration
+    files. Timestamp-based naming. The presence of both marker strings in a .sql file
+    is a definitive signal.
+
+    '
+testing_frameworks:
+- name: pgTAP
+  description: 'Unit testing framework for PostgreSQL. Tests run as SQL functions
+    inside the database. Uses TAP (Test Anything Protocol) output.
+
+    '
+  language: plpgsql_and_sql
+  installation_markers:
+  - CREATE EXTENSION pgtap
+  syntax_markers:
+  - SELECT plan(
+  - SELECT ok(
+  - SELECT is(
+  - SELECT isnt(
+  - SELECT like(
+  - SELECT ulike(
+  - SELECT eq(
+  - SELECT set_eq(
+  - SELECT bag_eq(
+  - SELECT results_eq(
+  - SELECT has_table(
+  - SELECT has_column(
+  - SELECT col_is_pk(
+  - SELECT col_is_fk(
+  - SELECT has_function(
+  - SELECT has_trigger(
+  - SELECT has_index(
+  - SELECT throws_ok(
+  - SELECT lives_ok(
+  - SELECT finish(
+  - runtests(
+  file_patterns:
+  - test_*.sql
+  - '*_test.sql'
+  - tests/*.sql
+  notes: 'pgTAP tests are SQL files that call pgtap functions. The SELECT plan(N)
+    and SELECT finish() bookend pattern is definitive. Tests assert database structure
+    (DDL) and behavior (DML). Requires PostgreSQL only.
+
+    '
+- name: utPLSQL
+  description: 'Unit testing framework for Oracle PL/SQL. Object-oriented test suites
+    using annotated package specifications.
+
+    '
+  language: plsql
+  syntax_markers:
+  - --%suite
+  - --%test
+  - --%beforeall
+  - --%afterall
+  - --%beforeeach
+  - --%aftereach
+  - ut.expect(
+  - .to_equal(
+  - .to_be_null(
+  - .to_be_not_null(
+  - .to_be_true(
+  - .to_be_false(
+  - .to_be_like(
+  - .to_be_greater_than(
+  - .to_be_less_than(
+  - .to_contain(
+  - ut3.
+  - ut3_latest_release.
+  package_markers:
+  - CREATE OR REPLACE PACKAGE ... IS
+  - CREATE OR REPLACE PACKAGE BODY
+  notes: 'utPLSQL uses annotation comments (--%) inside Oracle package specs. The
+    --%suite and --%test annotations are definitive signals. Test logic uses ut.expect()
+    fluent assertion API. v3 (ut3 schema) is current.
+
+    '
+- name: tSQLt
+  description: 'SQL Server T-SQL unit testing framework. Tests are stored procedures
+    grouped into test classes (schemas). Includes fake table support.
+
+    '
+  language: tsql
+  syntax_markers:
+  - EXEC tSQLt.NewTestClass
+  - EXEC tSQLt.Run
+  - EXEC tSQLt.RunAll
+  - EXEC tSQLt.AssertEquals
+  - EXEC tSQLt.AssertNotEquals
+  - EXEC tSQLt.AssertEqualsString
+  - EXEC tSQLt.AssertObjectExists
+  - EXEC tSQLt.AssertObjectDoesNotExist
+  - EXEC tSQLt.AssertLike
+  - EXEC tSQLt.AssertResultSetsHaveSameMetaData
+  - EXEC tSQLt.FakeTable
+  - EXEC tSQLt.SpyProcedure
+  - EXEC tSQLt.ExpectException
+  - EXEC tSQLt.ExpectNoException
+  - tSQLt.Fail
+  schema_convention: 'Test classes are SQL Server schemas. Each test is a stored procedure
+    named test{Name} within that schema.
+
+    '
+  notes: 'tSQLt tests are stored procedures within a test class schema. EXEC tSQLt.FakeTable
+    is a distinctive isolation technique that replaces real tables with empty replicas
+    for unit testing. Deployed as a CLR assembly in SQL Server.
+
+    '

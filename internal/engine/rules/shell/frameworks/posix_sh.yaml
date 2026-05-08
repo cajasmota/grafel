@@ -1,0 +1,20 @@
+frameworks:
+  name: posix_sh
+  category: shell
+  detection_signals:
+    shebang_patterns:
+    - '#!/bin/sh'
+    - '#!/usr/bin/env sh'
+    - '#!/bin/dash'
+    - '#!/usr/bin/env dash'
+    file_extensions:
+    - .sh
+    content_patterns:
+    - command -v
+    - '[ -f '
+    - '[ -z '
+    - '. '
+    notes: '#!/bin/sh can indicate POSIX sh, dash, or bash in sh mode. Distinguish
+      via content: absence of [[ ]] and bash-only builtins suggests strict POSIX compliance.
+
+      '

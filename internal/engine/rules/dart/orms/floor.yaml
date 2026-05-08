@@ -1,0 +1,28 @@
+orm_database:
+  name: floor
+  pubspec_dependency: floor
+  category: orm_sqlite
+  pub_dev_url: https://pub.dev/packages/floor
+  detection:
+    pubspec_signals:
+    - 'floor:'
+    - 'floor_flutter:'
+    pubspec_dev_signals:
+    - 'floor_generator:'
+    - 'build_runner:'
+    code_patterns:
+    - import 'package:floor/floor.dart'
+    - '@Database'
+    - '@Entity'
+    - '@dao'
+    - '@Query('
+    - '@insert'
+    - FloorDatabase
+    - await $FloorAppDatabase
+    output_patterns:
+    - '*.g.dart'
+    notes: 'Room-inspired SQLite abstraction for Flutter. Annotation-driven with code
+      generation. Heavily influenced by Android Room — familiar pattern for Android
+      developers migrating to Flutter.
+
+      '

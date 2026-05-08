@@ -1,0 +1,36 @@
+frameworks:
+  name: Zig Standard Library
+  category: stdlib
+  zig_version_baseline: 0.13.0
+  detection:
+    import_markers:
+    - '@import("std")'
+    - const std = @import("std")
+    structural_markers:
+    - std.debug.print(
+    - std.mem.
+    - std.fs.
+    - std.io.
+    - std.os.
+    - std.net.
+    - std.heap.
+    - std.ArrayList(
+    - std.HashMap(
+    - std.StringHashMap(
+    - std.AutoHashMap(
+    - std.json.
+    - std.fmt.
+    - std.math.
+    - std.sort.
+    - std.crypto.
+    - std.Thread.
+    - std.atomic.
+    - std.process.
+    - std.builtin.
+    notes: 'The Zig standard library is the near-universal dependency. The @import("std")
+      line is present in virtually every Zig source file. It is the primary detection
+      anchor for the language itself. No external package required. std.heap.GeneralPurposeAllocator
+      and std.heap.ArenaAllocator signal explicit memory management — high indexing
+      value. std.net and std.os signal systems programming.
+
+      '

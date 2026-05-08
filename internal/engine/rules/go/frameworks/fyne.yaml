@@ -1,0 +1,23 @@
+frameworks:
+  name: Fyne
+  module_path: fyne.io/fyne/v2
+  category: mobile_gui_crossplatform
+  github_stars_2025: 26000+
+  detection:
+    go_mod_require:
+    - fyne.io/fyne/v2
+    import_markers:
+    - '"fyne.io/fyne/v2"'
+    - '"fyne.io/fyne/v2/app"'
+    - '"fyne.io/fyne/v2/container"'
+    - '"fyne.io/fyne/v2/widget"'
+    structural_markers:
+    - fyne.NewApp(
+    - app.New()
+    - FyneApp.toml
+    - widget.NewLabel(
+    notes: 'Cross-platform GUI toolkit targeting desktop and mobile (Android, iOS,
+      Wayland, macOS, Windows). FyneApp.toml is definitive. v2 module path at custom
+      domain fyne.io/fyne/v2.
+
+      '

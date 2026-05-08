@@ -1,0 +1,33 @@
+orms_database:
+  name: Neo4j .NET Driver
+  category: graph_database
+  nuget_package: Neo4j.Driver
+  adoption_rank_2025: 1
+  detection:
+    csproj_markers:
+    - Neo4j.Driver
+    import_patterns:
+    - using Neo4j.Driver
+    code_patterns:
+    - GraphDatabase.Driver(
+    - IAsyncSession
+    - IDriver
+  notes: >
+    Official Neo4j .NET driver. Uses GraphDatabase.Driver() factory method
+    and IAsyncSession / IDriver interfaces.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections (SCOPE.Service,
+      INFERRED_FROM_NEO4J_DRIVER), Cypher query strings (SCOPE.Operation/query,
+      INFERRED_FROM_NEO4J_CYPHER) with node labels and relationship types.

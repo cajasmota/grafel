@@ -1,0 +1,37 @@
+skip_patterns:
+- path: prisma/migrations/
+  reason: 'Auto-generated SQL migration files created by prisma migrate dev. The SQL
+    content reflects database diffs, not developer intent. Contains migration.sql
+    files and migration_lock.toml. Skip entirely.
+
+    '
+  exceptions: None — do not index any file under prisma/migrations/
+- path: node_modules/.prisma/
+  reason: 'Auto-generated Prisma Client output. Contains generated TypeScript/ JavaScript
+    source, compiled native modules (.node files), and query engine binaries. Fully
+    derived from schema.prisma — never index.
+
+    '
+- path: node_modules/@prisma/
+  reason: 'Prisma npm packages (CLI internals, engine binaries, adapters). Not project
+    code.
+
+    '
+- path: prisma/generated/
+  reason: 'Custom output directory for generated Prisma Client (when output is set
+    in generator block). Content is identical to node_modules/.prisma/client semantically
+    — auto-generated, skip entirely.
+
+    '
+  detection: Check generator block output field for the custom path
+- path: .prisma/
+  reason: Prisma cache directory. Contains query engine binaries and metadata.
+- pattern: migration.sql
+  reason: 'Auto-generated SQL within migration directories. Even if encountered outside
+    prisma/migrations/, migration.sql files are artifacts.
+
+    '
+- pattern: migration_lock.toml
+  reason: Prisma migration lock file. Auto-maintained by Prisma CLI. Not user code.
+- pattern: '*.d.ts (in .prisma/ or generated/)'
+  reason: Generated TypeScript declaration files from Prisma Client generation.

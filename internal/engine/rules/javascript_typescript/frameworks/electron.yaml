@@ -1,0 +1,25 @@
+frameworks:
+  name: electron
+  category: desktop
+  npm_packages:
+  - electron
+  config_files:
+  - electron-builder.yml
+  - electron-builder.json
+  - electron.vite.config.ts
+  - electron.vite.config.js
+  - forge.config.js
+  detection_signals:
+    package_json_deps:
+    - electron
+    code_patterns:
+    - app.on('ready'
+    - BrowserWindow
+    - ipcMain
+    - ipcRenderer
+    - contextBridge
+  framework_specific:
+  - main process
+  - renderer process
+  - preload.ts
+  notes: electron dep + BrowserWindow usage is definitive

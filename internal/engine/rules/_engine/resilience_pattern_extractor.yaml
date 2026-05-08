@@ -1,0 +1,18 @@
+# Resilience pattern extractor (MX-692)
+# Cross-language extractor for resilience framework annotations and policies.
+# Registered as a custom extractor that fires on Java/Kotlin (Resilience4j,
+# Hystrix), C# (Polly), and Go (sony/gobreaker, afex/hystrix-go) source files.
+#
+# File gate is internal to the extractor (applies_to checks language and source
+# signals). This YAML exists to document the extractor's registration entry.
+
+name: resilience_pattern
+description: >-
+  Detect resilience framework annotations and policies and emit SCOPE.Pattern
+  entities with kind=resilience_pattern. Supported frameworks: Resilience4j
+  @Retry/@CircuitBreaker/@Bulkhead/@TimeLimiter (Java/Kotlin), Hystrix
+  @HystrixCommand (Java/Kotlin), Polly fluent API (C#/.NET), sony/gobreaker
+  and afex/hystrix-go (Go).
+module: memx_indexer.pattern_detectors.resilience_pattern_extractor
+function: detect
+applies_to_function: applies_to

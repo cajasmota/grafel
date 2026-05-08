@@ -1,0 +1,8 @@
+frameworks: frameworks/ [qt6, boost, poco, grpc_c, opencv, wxwidgets, juce, unreal_engine,
+  cocos2d_x, dear_imgui]
+build_tools: build_tools.yaml
+testing_frameworks: test_patterns.yaml
+orm_db: orms/ [sqlite_direct_c_api, sqlitecpp, soci, odb, nanodbc, libpqxx]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

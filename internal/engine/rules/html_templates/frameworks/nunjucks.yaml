@@ -1,0 +1,34 @@
+template_engines:
+  name: Nunjucks
+  full_name: Nunjucks (Mozilla)
+  language: javascript
+  extensions:
+  - .njk
+  - .html
+  npm_packages:
+  - nunjucks
+  detection_signals:
+    file_extensions:
+    - .njk
+    package_json_deps:
+    - nunjucks
+    directory_conventions:
+    - templates/
+    - views/
+    syntax_markers:
+    - '{{ variable }}'
+    - '{% block name %}'
+    - '{% extends ''base.njk'' %}'
+    - '{% include ''partial.njk'' %}'
+    - '{% for item in items %}'
+    - '{% if condition %}'
+    - '{% macro name(args) %}'
+    - '{% import ''macros.njk'' as m %}'
+    - '{# comment #}'
+    - '{% set var = value %}'
+    - '{% call macroname() %}'
+  notes: 'Nunjucks syntax is heavily inspired by Jinja2. Commonly used with Eleventy
+    (11ty) static site generator. .njk extension is definitive. Eleventy detection:
+    .eleventy.js or eleventy.config.js at project root.
+
+    '

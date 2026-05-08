@@ -1,0 +1,28 @@
+frameworks:
+  name: Alamofire
+  category: networking
+  spm_coordinates:
+  - Alamofire/Alamofire
+  detection:
+    config_files:
+    - Package.swift
+    - Podfile
+    - Cartfile
+    build_signals:
+    - '.package(url: "https://github.com/Alamofire/Alamofire.git"'
+    - pod 'Alamofire'
+    - github "Alamofire/Alamofire"
+    import_patterns:
+    - import Alamofire
+    code_patterns:
+    - AF.request(
+    - AF.upload(
+    - AF.download(
+    - Session.default
+    - '.responseDecodable(of:'
+    - URLRequestConvertible
+  notes: 'Most popular HTTP networking library for Swift. AF. prefix = Alamofire 5+
+    (modern). Alamofire. prefix = older 4.x. responseDecodable indicates Codable integration.
+    Available via SPM, CocoaPods, and Carthage.
+
+    '

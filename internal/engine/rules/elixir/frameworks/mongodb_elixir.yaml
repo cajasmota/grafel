@@ -1,0 +1,27 @@
+frameworks:
+  name: mongodb_driver (Elixir)
+  hex_package: mongodb_driver
+  category: nosql_driver
+  detection:
+    mix_deps:
+      - mongodb_driver
+      - mongodb_ecto
+    import_markers:
+      - Mongo
+    code_patterns:
+      - Mongo.start_link(
+      - Mongo.find(
+      - Mongo.insert_one(
+      - Mongo.aggregate(
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

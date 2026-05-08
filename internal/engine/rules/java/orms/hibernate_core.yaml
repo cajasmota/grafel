@@ -1,0 +1,31 @@
+orms_database:
+  name: Hibernate (Core)
+  maven_coordinates: org.hibernate.orm:hibernate-core
+  gradle_dependency: implementation 'org.hibernate.orm:hibernate-core'
+  legacy_coordinates: org.hibernate:hibernate-core
+  detection:
+    config_files:
+    - src/main/resources/hibernate.cfg.xml
+    - META-INF/persistence.xml
+    pom_xml_markers:
+    - org.hibernate.orm:hibernate-core
+    - org.hibernate:hibernate-core
+    import_patterns:
+    - import org.hibernate.Session
+    - import org.hibernate.SessionFactory
+    - import org.hibernate.annotations
+    code_patterns:
+    - '@Entity'
+    - '@Table'
+    - '@Column'
+    - '@Id'
+    - '@GeneratedValue'
+    - SessionFactory
+    - Session.beginTransaction()
+    - '@org.hibernate.annotations.Type'
+    - '@DynamicUpdate'
+  notes: 'hibernate.cfg.xml is legacy-style detection. Modern Hibernate uses persistence.xml
+    or Spring Boot auto-configuration. Hibernate-specific annotations (@DynamicUpdate,
+    @Formula) distinguish from plain JPA.
+
+    '

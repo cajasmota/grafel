@@ -1,0 +1,297 @@
+entity_types:
+- entity: selector
+  description: 'A CSS selector rule: element, class, ID, attribute, pseudo-class,
+    pseudo-element, or compound/combinator selector. The fundamental addressable unit
+    in any CSS file.
+
+    '
+  syntax_examples:
+  - .button { ... }
+  - '#header { ... }'
+  - a:hover { ... }
+  - .card::before { ... }
+  - .nav > .nav-item + .active { ... }
+  - '[data-theme="dark"] { ... }'
+  - .parent .child { ... }
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  - postcss
+  notes: 'Selectors are the primary indexable unit. Deeply nested selectors (SCSS/LESS/Stylus
+    allow nesting; CSS nesting spec now supported in modern browsers) are a complexity
+    signal.
+
+    '
+- entity: mixin
+  description: 'A named reusable block of declarations. Can accept parameters. SCSS:
+    @mixin / @include. LESS: .mixin() declarations. Stylus: implicit mixin functions.
+
+    '
+  syntax_examples:
+  - '@mixin flex-center { display: flex; align-items: center; }'
+  - '@mixin responsive($bp) { @media (max-width: $bp) { @content; } }'
+  - '.border-radius(@radius: 5px) { border-radius: @radius; }'
+  - "border-radius(radius = 5px)\n  border-radius: radius"
+  languages:
+  - scss
+  - less
+  - stylus
+  index_name: '@mixin name (SCSS) / .name() (LESS)'
+  notes: 'Mixins with @content (SCSS) are equivalent to higher-order functions. Parametric
+    mixins with multiple overloads (LESS guards) are high complexity. Mixin recursion
+    is a critical complexity signal.
+
+    '
+- entity: variable_custom_property
+  description: 'Stylesheet variables. Two distinct mechanisms: preprocessor variables
+    (compile-time, no runtime access) and CSS custom properties (runtime, accessible
+    via JavaScript, inheritable).
+
+    '
+  variants:
+  - syntax: '$var-name: value'
+    language: scss
+    scope: compile_time
+    notes: Scoped to block or file. Accessed only in SCSS.
+  - syntax: '@var-name: value'
+    language: less
+    scope: compile_time
+    notes: LESS variables. Lazy evaluation — can be used before declaration.
+  - syntax: var-name = value
+    language: stylus
+    scope: compile_time
+    notes: Stylus variables. Optional $ prefix.
+  - syntax: '--var-name: value'
+    language: css
+    scope: runtime
+    notes: 'CSS Custom Properties (CSS variables). Defined in :root or any selector
+      scope. Accessed via var(--var-name). Inheritable and overridable. Full browser
+      support since 2017.
+
+      '
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  notes: 'Distinguish compile-time vs runtime variables. Custom properties (--name)
+    are runtime; preprocessor variables ($, @, bare name) are compile-time. Design
+    token systems (Tailwind, MUI, Token Studio) map to custom properties at runtime.
+
+    '
+- entity: keyframe
+  description: 'CSS @keyframes animation definition. Named animation sequence with
+    percentage or from/to steps, each declaring a set of CSS properties.
+
+    '
+  syntax_examples:
+  - '@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }'
+  - '@keyframes slide-up { 0% { transform: translateY(100%); } 100% { transform: translateY(0);
+    } }'
+  - '@keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1);
+    } }'
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  - postcss
+  index_name: '@keyframes name'
+  notes: 'Keyframes are named entities. styled-components and Emotion expose a keyframes()
+    helper that generates a keyframe name — index these as keyframe entities in the
+    CSS-in-JS context.
+
+    '
+- entity: media_query
+  description: '@media rule defining conditional CSS blocks that apply based on viewport
+    characteristics, device capabilities, or user preferences.
+
+    '
+  syntax_examples:
+  - '@media (max-width: 768px) { ... }'
+  - '@media screen and (min-width: 1024px) { ... }'
+  - '@media (prefers-color-scheme: dark) { ... }'
+  - '@media (prefers-reduced-motion: reduce) { ... }'
+  - '@media (hover: hover) and (pointer: fine) { ... }'
+  - '@container (min-width: 600px) { ... }'
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  - postcss
+  notes: 'Container queries (@container) are the modern replacement for some media
+    query patterns. Count nested @media in SCSS/LESS as complexity signals. Mobile-first
+    (min-width) vs desktop-first (max-width) patterns are detectable from breakpoint
+    ordering.
+
+    '
+- entity: import_chain
+  description: '@import / @use / @forward chains that define stylesheet composition.
+    SCSS @use (Dart Sass module system) replaces @import for SCSS. CSS @import causes
+    sequential HTTP requests (performance concern).
+
+    '
+  syntax_examples:
+  - '@import ''variables'';'
+  - '@use ''sass:math'';'
+  - '@use ''../tokens/colors'' as c;'
+  - '@forward ''components'' hide _private;'
+  - '@import url(''https://fonts.googleapis.com/...'');'
+  - '@import ''./components/button.css'';'
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  - postcss
+  notes: 'Deep @import chains (SCSS/LESS) create dependency graphs relevant to indexing.
+    @use/@forward (Dart Sass) create explicit module relationships. CSS @import without
+    a bundler causes synchronous resource blocking.
+
+    '
+- entity: at_rule_block
+  description: 'Other named @rule blocks beyond @media, @keyframes, and @import. Includes
+    @font-face, @supports, @layer, @container, @page, @charset.
+
+    '
+  syntax_examples:
+  - '@font-face { font-family: ''Inter''; src: url(''/fonts/inter.woff2''); }'
+  - '@supports (display: grid) { ... }'
+  - '@layer base { ... }'
+  - '@layer components { ... }'
+  - '@layer utilities { ... }'
+  - '@charset "UTF-8";'
+  - '@page { margin: 1cm; }'
+  languages:
+  - css
+  - scss
+  - less
+  - stylus
+  - postcss
+  notes: '@layer (CSS Cascade Layers, 2022+) is increasingly common and important
+    for specificity management. @supports for progressive enhancement. @font-face
+    is a named entity (font-family value is the name).
+
+    '
+- entity: function_definition
+  description: 'SCSS @function blocks that return a computed value. Not available
+    in plain CSS. LESS has plugin functions. Stylus has implicit functions.
+
+    '
+  syntax_examples:
+  - '@function rem($px) { @return $px / 16px * 1rem; }'
+  - '@function clamp-size($min, $max) { @return clamp(#{$min}, 5vw, #{$max}); }'
+  languages:
+  - scss
+  - less
+  - stylus
+  notes: 'SCSS functions use @function / @return. Recursive SCSS functions are a complexity
+    signal. Distinguish from JavaScript functions in CSS-in-JS contexts.
+
+    '
+domain_roots:
+- root: styles/
+  purpose: Global styles and design tokens
+  typical_contents:
+  - globals.css
+  - variables.scss
+  - _variables.scss
+  - _tokens.scss
+  - _colors.scss
+  - _typography.scss
+  - _mixins.scss
+  - main.scss
+  - index.scss
+  confidence: high
+  notes: 'Most common location for authored CSS/SCSS. Found at project root, src/styles/,
+    or app/styles/ depending on framework conventions.
+
+    '
+- root: src/styles/
+  purpose: Application-level styles in src-based projects
+  typical_contents:
+  - index.css
+  - globals.css
+  - variables.css
+  - _base.scss
+  - _components.scss
+  confidence: high
+  notes: 'Standard in React (CRA, Vite), Vue, and Angular projects that place all
+    source under src/.
+
+    '
+- root: css/
+  purpose: Plain CSS projects or legacy stylesheet directories
+  typical_contents:
+  - style.css
+  - main.css
+  - layout.css
+  - components.css
+  confidence: medium
+  notes: 'Common in non-Node.js projects, static sites, and legacy web applications.
+    Lower confidence than styles/ as it may contain vendor CSS.
+
+    '
+- root: scss/
+  purpose: SCSS-only projects with preprocessor as primary authoring format
+  typical_contents:
+  - main.scss
+  - _variables.scss
+  - _mixins.scss
+  - _base.scss
+  - components/
+  - layout/
+  - utils/
+  confidence: high
+  notes: 'Projects that use SCSS as primary format. Common in design systems, Bootstrap-based
+    projects, and enterprise front-ends.
+
+    '
+- root: assets/styles/
+  purpose: Assets-organized project structure
+  typical_contents:
+  - main.css
+  - styles.scss
+  - theme.scss
+  confidence: medium
+  notes: 'Rails (app/assets/stylesheets/), Laravel (resources/css/), and older Vue
+    CLI projects use assets-based organization. Check for framework-specific sub-path.
+
+    '
+- root: app/assets/stylesheets/
+  purpose: Ruby on Rails Asset Pipeline stylesheets
+  typical_contents:
+  - application.css
+  - application.scss
+  - _variables.scss
+  confidence: high
+  framework_hint: ruby_on_rails
+  notes: 'Rails Asset Pipeline convention. application.css (Sprockets manifest) or
+    application.scss (Sass). Rails 7+ uses Importmap or jsbundling.
+
+    '
+- root: resources/css/
+  purpose: Laravel stylesheet source directory
+  typical_contents:
+  - app.css
+  confidence: high
+  framework_hint: laravel
+  notes: 'Laravel''s default Vite scaffold places app.css in resources/css/. Tailwind
+    CSS is the default in Laravel 10+.
+
+    '
+- root: src/app/
+  purpose: Angular application styles (component-scoped and global)
+  typical_contents:
+  - styles.css
+  - '*.component.css'
+  - '*.component.scss'
+  confidence: medium
+  framework_hint: angular
+  notes: 'Angular uses component-level *.component.css/scss files alongside a global
+    styles.css. Detection: angular.json points to styles.css as the global entry.
+
+    '

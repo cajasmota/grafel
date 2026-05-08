@@ -1,0 +1,32 @@
+orms_database:
+  name: JPA (Jakarta Persistence API)
+  maven_coordinates: jakarta.persistence:jakarta.persistence-api
+  gradle_dependency: compileOnly 'jakarta.persistence:jakarta.persistence-api'
+  legacy_coordinates: javax.persistence:javax.persistence-api
+  detection:
+    config_files:
+    - META-INF/persistence.xml
+    pom_xml_markers:
+    - jakarta.persistence-api
+    - javax.persistence-api
+    import_patterns:
+    - import jakarta.persistence
+    - import javax.persistence
+    code_patterns:
+    - '@Entity'
+    - '@Table'
+    - '@Id'
+    - '@Column'
+    - '@ManyToOne'
+    - '@OneToMany'
+    - '@ManyToMany'
+    - '@OneToOne'
+    - '@Transient'
+    - '@NamedQuery'
+    - EntityManager
+    - EntityManagerFactory
+  notes: 'JPA is a spec; implementation is Hibernate, EclipseLink, or OpenJPA. @Entity
+    on a class is the clearest signal. jakarta.persistence (EE 9+) vs javax.persistence
+    (EE 8 and earlier).
+
+    '

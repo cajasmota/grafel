@@ -1,0 +1,22 @@
+frameworks:
+  name: Revel
+  module_path: github.com/revel/revel
+  category: web_full_stack
+  github_stars_2025: 13200+
+  detection:
+    go_mod_require:
+    - github.com/revel/revel
+    config_files:
+    - conf/app.conf
+    - conf/routes
+    import_markers:
+    - '"github.com/revel/revel"'
+    structural_markers:
+    - conf/app.conf
+    - conf/routes
+    - app/controllers/
+    - app/views/
+    notes: 'Convention-over-configuration framework. conf/app.conf and conf/routes
+      are definitive structural signals.
+
+      '

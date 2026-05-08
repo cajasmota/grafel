@@ -1,0 +1,47 @@
+frameworks:
+  name: Phoenix LiveView
+  hex_package: phoenix_live_view
+  category: web_realtime_ui
+  github_stars_2025: 6200+
+  detection:
+    config_files:
+    - mix.exs
+    - lib/app_web/live/
+    - lib/app_web.ex
+    mix_deps:
+    - phoenix_live_view
+    - phoenix_live_dashboard
+    - phoenix_live_reload
+    import_markers:
+    - use Phoenix.LiveView
+    - use Phoenix.LiveComponent
+    - use Phoenix.Component
+    - live_render
+    - live "
+    - live_patch
+    - live_redirect
+    - ~H"""
+    - ~L"""
+    - socket.assigns
+    - assign(socket,
+    - handle_event(
+    - handle_info(
+    structural_markers:
+    - lib/app_web/live/
+    - lib/app_web/components/
+  notes: 'LiveView is detected by the presence of lib/app_web/live/ directory + phoenix_live_view
+    dep in mix.exs. The HEEx template sigil ~H"""...""" is a high-confidence in-source
+    marker. LiveComponent modules use use Phoenix.LiveComponent.
+
+    '
+custom_extractors:
+  - module: memx_indexer.languages.elixir.phoenix_extractor
+    function: extract
+    description: >
+      Extracts Phoenix LiveView/LiveComponent module declarations with
+      mount/handle_event/handle_info callbacks, Phoenix router live routes,
+      and HEEx template component calls (<.component> and <Module.function>).
+      Emits SCOPE.UIComponent/component, SCOPE.Operation/function,
+      SCOPE.Operation/endpoint.
+      Relationships: OWNS (module->callbacks), CALLS (routes_to),
+      DEPENDS_ON (template->component).

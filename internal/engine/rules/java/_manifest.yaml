@@ -1,0 +1,11 @@
+frameworks: frameworks/ [spring_boot, spring_mvc, spring_webflux, quarkus, micronaut,
+  jakarta_ee, vert_x, dropwizard, play_framework, apache_struts, vaadin, gwt_google_web_toolkit,
+  android_sdk, android_jetpack_compose, android_jetpack_viewmodel_livedata_room_navigation_hilt,
+  junit5]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orms_database: orms/ [hibernate_core, jpa_jakarta_persistence_api, spring_data_jpa,
+  mybatis, jooq, spring_data_mongodb, spring_data_redis]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml

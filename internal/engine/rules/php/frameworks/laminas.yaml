@@ -1,0 +1,41 @@
+frameworks:
+  name: Laminas
+  package_name: laminas/laminas-mvc
+  category: web_full_stack
+  github_stars_2025: 1900+
+  detection:
+    config_files:
+    - composer.json
+    - config/application.config.php
+    - config/modules.config.php
+    - config/autoload/global.php
+    - config/autoload/local.php.dist
+    - module/Application/
+    - public/index.php
+    composer_deps:
+    - laminas/laminas-mvc
+    - laminas/laminas-servicemanager
+    - laminas/laminas-router
+    - laminas/laminas-db
+    - laminas/laminas-form
+    - laminas/laminas-inputfilter
+    - laminas/laminas-view
+    - mezzio/mezzio
+    - laminas/laminas-component-installer
+    import_markers:
+    - use Laminas\
+    - use Mezzio\
+    - Laminas\Mvc\
+    - Laminas\ServiceManager\
+    - extends AbstractActionController
+    - extends AbstractRestfulController
+    structural_markers:
+    - module/
+    - config/autoload/
+    - config/application.config.php
+    - module/Application/src/
+  notes: 'Laminas is the Zend Framework successor. module/ directory layout with config/application.config.php
+    is the canonical MVC project structure. Mezzio (laminas/mezzio) is the microframework
+    counterpart — detected via mezzio/mezzio dep + pipeline.php or config/pipeline.php.
+
+    '

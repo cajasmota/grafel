@@ -1,0 +1,24 @@
+frameworks:
+  name: Roda
+  gem_name: roda
+  category: web_microframework
+  github_stars_2025: 1900+
+  detection:
+    config_files:
+    - Gemfile
+    - config.ru
+    - app.rb
+    gemfile_deps:
+    - roda
+    import_markers:
+    - require 'roda'
+    - class App < Roda
+    - Roda.plugin
+    - route do |r|
+    structural_markers:
+    - class App < Roda
+    - config.ru
+  notes: 'Routing tree DSL. route block with |r| variable is distinctive. Often combined
+    with Sequel ORM and roda-sequel-stack.
+
+    '

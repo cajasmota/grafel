@@ -1,0 +1,214 @@
+testing:
+- name: PHPUnit
+  package_name: phpunit/phpunit
+  category: unit_testing
+  detection:
+    config_files:
+    - phpunit.xml
+    - phpunit.xml.dist
+    - phpunit.yml
+    - phpunit.yml.dist
+    composer_deps:
+    - phpunit/phpunit
+    test_conventions:
+      file_patterns:
+      - '*Test.php'
+      - '*TestCase.php'
+      directory_patterns:
+      - tests/
+      - test/
+      - Tests/
+      - src/Tests/
+      - tests/Unit/
+      - tests/Feature/
+      - tests/Integration/
+      class_patterns:
+      - extends TestCase
+      - extends PHPUnit\Framework\TestCase
+      - extends WebTestCase
+      - use PHPUnit\Framework\TestCase
+      annotation_patterns:
+      - '@test'
+      - '@dataProvider'
+      - '@depends'
+      - '#[Test]'
+      - '#[DataProvider('
+      - '#[TestDox('
+    script_conventions:
+    - vendor/bin/phpunit
+    - php artisan test
+    - '"scripts": {"test": "phpunit"}'
+  notes: 'phpunit.xml(.dist) is the canonical config. Laravel wraps PHPUnit via php
+    artisan test. Tests/ vs tests/ casing varies by project — normalize to lowercase
+    path for detection. PHPUnit 10+ supports PHP attributes (#[Test]) alongside docblock
+    annotations.
+
+    '
+- name: Pest
+  package_name: pestphp/pest
+  category: unit_testing
+  detection:
+    config_files:
+    - phpunit.xml
+    - phpunit.xml.dist
+    - pest.php
+    composer_deps:
+    - pestphp/pest
+    - pestphp/pest-plugin-laravel
+    - pestphp/pest-plugin-livewire
+    - pestphp/pest-plugin-arch
+    - pestphp/pest-plugin-faker
+    - pestphp/pest-plugin-mutate
+    test_conventions:
+      file_patterns:
+      - '*.php'
+      directory_patterns:
+      - tests/
+      - tests/Unit/
+      - tests/Feature/
+      function_patterns:
+      - it(
+      - test(
+      - describe(
+      - beforeEach(
+      - afterEach(
+      - expect(
+      - arch(
+      - dataset(
+      class_patterns:
+      - uses(TestCase::class)
+      - uses(RefreshDatabase::class)
+    script_conventions:
+    - vendor/bin/pest
+    - php artisan test --pest
+    - pest
+  notes: 'Pest uses functional-style test declarations (it/test functions) rather
+    than class-based. Co-exists with PHPUnit — Pest runs on top of PHPUnit. pest.php
+    config file (newer Pest 3+) or pest key in phpunit.xml. uses() at top of test
+    file is high-confidence Pest signal.
+
+    '
+- name: Codeception
+  package_name: codeception/codeception
+  category: full_stack_testing
+  detection:
+    config_files:
+    - codeception.yml
+    - codeception.yaml
+    - codeception.dist.yml
+    - tests/acceptance.suite.yml
+    - tests/functional.suite.yml
+    - tests/unit.suite.yml
+    - tests/_support/
+    - tests/_output/
+    composer_deps:
+    - codeception/codeception
+    - codeception/module-asserts
+    - codeception/module-laravel
+    - codeception/module-symfony
+    - codeception/module-phpbrowser
+    - codeception/module-webdriver
+    - codeception/module-db
+    test_conventions:
+      file_patterns:
+      - '*Cest.php'
+      - '*Cept.php'
+      - '*Test.php'
+      directory_patterns:
+      - tests/Acceptance/
+      - tests/Functional/
+      - tests/Unit/
+      - tests/_data/
+      - tests/_fixtures/
+      class_patterns:
+      - class {Name}Cest
+      - I->{action}(
+      - \$I->
+      - extends \Codeception\Test\Unit
+    script_conventions:
+    - vendor/bin/codecept run
+    - vendor/bin/codecept build
+    - vendor/bin/codecept generate:cest
+  notes: 'codeception.yml at project root is definitive. Cest suffix is Codeception-specific
+    test class naming. tests/_support/ contains generated Actor classes. Codeception
+    supports unit, functional, and acceptance testing suites within a single config.
+
+    '
+- name: Behat
+  package_name: behat/behat
+  category: bdd_testing
+  detection:
+    config_files:
+    - behat.yml
+    - behat.yaml
+    - behat.yml.dist
+    - features/
+    - features/bootstrap/
+    - features/bootstrap/FeatureContext.php
+    composer_deps:
+    - behat/behat
+    - behat/mink
+    - behat/mink-extension
+    - behat/mink-browserkit-driver
+    - behat/mink-selenium2-driver
+    - friends-of-behat/symfony-extension
+    - dmore/behat-chrome-extension
+    test_conventions:
+      file_patterns:
+      - '*.feature'
+      directory_patterns:
+      - features/
+      - features/bootstrap/
+      class_patterns:
+      - implements Context
+      - extends RawMinkContext
+      - '@Given'
+      - '@When'
+      - '@Then'
+      - '@BeforeScenario'
+      - '@AfterScenario'
+      gherkin_patterns:
+      - 'Feature:'
+      - 'Scenario:'
+      - 'Scenario Outline:'
+      - 'Given '
+      - 'When '
+      - 'Then '
+      - 'And '
+      - 'But '
+    script_conventions:
+    - vendor/bin/behat
+    - vendor/bin/behat --format=progress
+  notes: '.feature files in features/ directory are the primary BDD signal. FeatureContext.php
+    in features/bootstrap/ is the context class entry point. Behat is predominantly
+    used in Symfony and API platform projects.
+
+    '
+- name: Mockery
+  package_name: mockery/mockery
+  category: mocking_library
+  detection:
+    composer_deps:
+    - mockery/mockery
+    test_conventions:
+      class_patterns:
+      - Mockery::mock(
+      - Mockery::spy(
+      - Mockery::namedMock(
+      - \Mockery::mock(
+      - m::mock(
+      - m::spy(
+      - use Mockery as m;
+      - use Mockery;
+      - $this->mock(
+      - Mockery::close()
+      trait_patterns:
+      - use Mockery\Adapter\Phpunit\MockeryTestCaseTrait;
+      - use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
+    script_conventions: []
+  notes: 'Mockery is a standalone mocking library, always a companion to PHPUnit or
+    Pest. It is not standalone — detected via composer.json require-dev entry and
+    Mockery:: usage in test files. Laravel ships MockeryTestCaseTrait integration
+    out of the box.
+
+    '

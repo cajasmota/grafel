@@ -1,0 +1,34 @@
+orms_database:
+  name: AWS DynamoDB Python SDK (boto3)
+  category: nosql_database
+  pypi_package: boto3
+  detection:
+    import_patterns:
+    - import boto3
+    - from boto3
+    - import aiobotocore
+    code_patterns:
+    - boto3.resource('dynamodb')
+    - boto3.client('dynamodb')
+    - .create_table(
+    - TableName=
+  notes: >
+    boto3 is the primary DynamoDB client for Python. aiobotocore provides
+    async support. This extractor gates on dynamodb as the framework identifier.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: boto3.resource/client connections
+      (SCOPE.Service, INFERRED_FROM_DYNAMODB_CLIENT), create_table definitions
+      (SCOPE.Schema, INFERRED_FROM_DYNAMODB_TABLE), IndexName patterns
+      (SCOPE.Schema, INFERRED_FROM_DYNAMODB_INDEX), .query()/.scan() operations
+      (SCOPE.Operation/query, INFERRED_FROM_DYNAMODB_QUERY), streams
+      (SCOPE.Operation/stream_op, INFERRED_FROM_DYNAMODB_STREAM), DAX
+      (SCOPE.Service, INFERRED_FROM_DYNAMODB_DAX), single-table design
+      (SCOPE.Pattern, INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

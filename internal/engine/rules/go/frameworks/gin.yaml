@@ -1,0 +1,61 @@
+# Gin HTTP framework extraction rules (MX-496)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Module: github.com/gin-gonic/gin
+
+file_conventions: []
+
+source_patterns:
+  # Route registration: r.GET("/path", handlerFunc)
+  - pattern: '\.\s*(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Any)\s*\(\s*"([^"]+)"\s*,\s*(\w+)'
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Route group: r.Group("/prefix")
+  - pattern: '\.Group\s*\(\s*"([^"]+)"\s*\)'
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Middleware registration: r.Use(middlewareFunc)
+  - pattern: '\.Use\s*\(\s*(\w[\w.]*)\s*\)'
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+  # Handler function: func handlerName(c *gin.Context)
+  - pattern: 'func\s+(\w+)\s*\(\s*\w+\s+\*gin\.Context\s*\)'
+    entity_type: Controller
+    name_group: 1
+    scope: file
+
+  # gin.Default() or gin.New() engine init
+  - pattern: '(?:gin\.Default|gin\.New)\s*\(\s*\)'
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+relationship_rules:
+  # Route CALLS handler: .GET("/path", handlerName) -> handlerName
+  - pattern: '\.\s*(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Any)\s*\(\s*"([^"]+)"\s*,\s*(\w+)'
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # Middleware USE: .Use(handlerName) -> handlerName
+  - pattern: '\.Use\s*\(\s*(\w[\w.]*)\s*(?:,\s*(\w[\w.]*))?\s*\)'
+    source_type: Middleware
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+custom_extractors:
+  - module: "memx_indexer.languages.go.gin_extractor"
+    function: "extract"
+    description: "Extract Gin routes (r.GET/POST/PUT/DELETE/PATCH), route groups (r.Group) with full path resolution, middleware chains (r.Use), request binding (c.ShouldBindJSON/BindJSON), engine creation (gin.Default/gin.New), custom validators (RegisterValidation), NoRoute/NoMethod error handlers, and static file serving (r.Static/r.StaticFS). Emits OWNS, DEPENDS_ON, CALLS relationships."
+  - module: "memx_indexer.languages._engine.config_consumer_extractor"
+    function: "extract"
+    description: "Extract viper.Get/GetString/GetBool/GetInt etc. reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming entities (MX-600)."

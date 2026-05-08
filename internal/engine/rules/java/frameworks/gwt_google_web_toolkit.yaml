@@ -1,0 +1,24 @@
+frameworks:
+  name: GWT (Google Web Toolkit)
+  category: web_ui
+  maven_coordinates: com.google.gwt:gwt-user
+  gradle_dependency: implementation 'com.google.gwt:gwt-user'
+  adoption_rank_2025: 12
+  detection:
+    config_files:
+    - '*.gwt.xml'
+    - war/WEB-INF/web.xml
+    pom_xml_markers:
+    - com.google.gwt
+    - gwt-maven-plugin
+    import_patterns:
+    - import com.google.gwt.core.client
+    - import com.google.gwt.user.client
+    code_patterns:
+    - extends EntryPoint
+    - GWT.create(
+    - onModuleLoad()
+  notes: '*.gwt.xml module descriptor is definitive. GWT is largely legacy but still
+    found in enterprise codebases.
+
+    '

@@ -1,0 +1,31 @@
+orms_database:
+  name: AWS DynamoDB Go SDK v2
+  category: nosql_database
+  go_module: github.com/aws/aws-sdk-go-v2/service/dynamodb
+  detection:
+    import_patterns:
+    - github.com/aws/aws-sdk-go-v2/service/dynamodb
+    - github.com/aws/aws-sdk-go/service/dynamodb
+    code_patterns:
+    - dynamodb.NewFromConfig(
+    - dynamodb.New(
+    - TableName:
+  notes: >
+    AWS SDK Go v2 (aws-sdk-go-v2) is the recommended client. v1 (aws-sdk-go)
+    is also detected via the same framework gate.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: dynamodb.NewFromConfig connections
+      (SCOPE.Service, INFERRED_FROM_DYNAMODB_CLIENT), TableName struct fields
+      (SCOPE.Schema, INFERRED_FROM_DYNAMODB_TABLE), .query()/.scan() operations
+      (SCOPE.Operation/query, INFERRED_FROM_DYNAMODB_QUERY), streams
+      (SCOPE.Operation/stream_op, INFERRED_FROM_DYNAMODB_STREAM), DAX via
+      dax.New (SCOPE.Service, INFERRED_FROM_DYNAMODB_DAX), single-table design
+      (SCOPE.Pattern, INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

@@ -1,0 +1,20 @@
+frameworks:
+  name: Buildkite
+  language: cicd
+  official_docs: https://buildkite.com/docs
+  config_file: .buildkite/pipeline.yml
+  adopted_by: Teams using self-hosted agents
+  vera_scope: Service (pipeline as Service, step as Operation)
+  characteristics:
+  - Agent-based execution (self-hosted or cloud)
+  - Sequential steps with wait: for synchronization
+  - Block: for manual approval gates
+  - Trigger: for pipeline orchestration
+  - Groups for step organization and collapsing
+  - Dynamic pipeline generation via command steps
+  - Artifacts and artifact retention policies
+  complexity_signal_markers:
+  - Step count > 30
+  - Trigger chains > 3 levels
+  - Block gates > 2
+  - Agent tag complexity > 4 combinations

@@ -1,0 +1,92 @@
+testing:
+- name: busted
+  luarocks_package: busted
+  category: bdd_test_runner
+  github_stars_2025: 1400+
+  detection:
+    config_files:
+    - .busted
+    - busted.yml
+    - busted.lua
+    - spec/
+    - test/
+    - tests/
+    file_patterns:
+    - '*_spec.lua'
+    - '*_test.lua'
+    - spec/*.lua
+    - test/*.lua
+    - tests/*.lua
+    import_markers:
+    - describe(
+    - it(
+    - before_each(
+    - after_each(
+    - setup(
+    - teardown(
+    - pending(
+    - assert.equal
+    - assert.same
+    - assert.truthy
+    - assert.falsy
+    - assert.is_nil
+    - assert.has_error
+    - spy.on
+    - stub
+    - mock
+    - require "busted"
+    - require("busted")
+  notes: 'busted is the dominant BDD testing framework for Lua. The *_spec.lua naming
+    convention is the strongest detection signal — virtually all busted test files
+    end in _spec.lua. The describe()/it() BDD structure is imported from busted''s
+    global environment. .busted config file can override output formatters and pattern
+    matching. Used extensively in Neovim plugin testing (often alongside plenary.nvim''s
+    test harness).
+
+    '
+- name: luaunit
+  luarocks_package: luaunit
+  category: xunit_test_framework
+  github_stars_2025: 500+
+  detection:
+    config_files:
+    - test/
+    - tests/
+    file_patterns:
+    - test*.lua
+    - Test*.lua
+    - '*_test.lua'
+    import_markers:
+    - require "luaunit"
+    - require("luaunit")
+    - luaunit = require
+    - LuaUnit = require
+    - TestCase = {}
+    - TestCase.__index
+    - luaunit.run()
+    - LuaUnit.run()
+    - assertEquals
+    - assertNil
+    - assertNotNil
+    - assertTrue
+    - assertFalse
+    - assertError
+    - assertErrorMsgContains
+  notes: 'luaunit is an xUnit-style framework. Test classes are plain Lua tables with
+    methods prefixed Test. Detection: require(''luaunit'') + table-based test definitions
+    + luaunit.run() / os.exit(luaunit.LuaUnit.run()) at end of file. Less common than
+    busted in modern projects but still found in embedded/IoT Lua (NodeMCU, eLua).
+
+    '
+- name: lua-unit (lua-unit.github.io)
+  luarocks_package: lua-unit
+  category: xunit_test_framework
+  detection:
+    import_markers:
+    - require 'luaunit'
+    - LuaUnit:run()
+  notes: 'Historical predecessor/fork of luaunit. Rarely encountered in new projects.
+    Same detection signals as luaunit but with older method-call syntax LuaUnit:run()
+    (colon method call) vs LuaUnit.run() (dot call).
+
+    '

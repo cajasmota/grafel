@@ -1,0 +1,57 @@
+frameworks:
+  name: Ecto (standalone)
+  hex_package: ecto
+  category: database_layer
+  github_stars_2025: 6000+
+  detection:
+    config_files:
+    - mix.exs
+    - lib/app/repo.ex
+    - priv/repo/migrations/
+    mix_deps:
+    - ecto
+    - ecto_sql
+    - postgrex
+    - myxql
+    - sqlite_ecto2
+    - ecto_sqlite3
+    import_markers:
+    - use Ecto.Repo
+    - use Ecto.Schema
+    - use Ecto.Migration
+    - import Ecto.Query
+    - import Ecto.Changeset
+    - schema "
+    - 'field :'
+    - 'belongs_to :'
+    - 'has_many :'
+    - 'has_one :'
+    - 'many_to_many :'
+    - Repo.insert
+    - Repo.all
+    - Repo.get
+    structural_markers:
+    - lib/app/repo.ex
+    - lib/app/schemas/
+    - priv/repo/migrations/
+  notes: 'Ecto is the canonical Elixir database wrapper and query library. lib/app/repo.ex
+    (use Ecto.Repo) is high-confidence. priv/repo/migrations/ directory with timestamped
+    migration files is definitive. Listed both here and in section 4 (ORMs/DB) as
+    it is the primary DB layer.
+
+    '
+custom_extractors:
+  - module: memx_indexer.languages.elixir.ecto_extractor
+    function: extract
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract
+    description: >
+      Extracts Ecto schema "table_name" declarations, has_one/has_many/belongs_to/many_to_many
+      associations, changeset/2 function definitions (cast/validate_required), Repo.get/all/
+      insert/update/delete calls, from q in Schema Ecto.Query expressions, Ecto.Multi.new()
+      transaction chains with step operations, use Ecto.Repo module declarations, and
+      Migration create table/alter table/create index blocks.
+      Emits SCOPE.Schema, SCOPE.Operation/function, SCOPE.Operation/query,
+      SCOPE.Pattern, SCOPE.Service.
+      Relationships: DEPENDS_ON (ecto_association), OWNS (schema->changesets, repo->queries,
+      multi->steps).

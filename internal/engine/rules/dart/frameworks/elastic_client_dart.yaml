@@ -1,0 +1,20 @@
+frameworks:
+  name: elastic_client
+  pub_package: elastic_client
+  detection:
+    pubspec_markers:
+    - elastic_client
+    import_patterns:
+    - package:elastic_client/
+    code_patterns:
+    - ElasticClient(
+    - client.search(
+  notes: |
+    elastic_client is the primary Dart Elasticsearch client (pub.dev).
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract ElasticClient connections, search queries, aggregations,
+      and ILM patterns for Dart.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

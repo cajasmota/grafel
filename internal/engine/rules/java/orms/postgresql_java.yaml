@@ -1,0 +1,38 @@
+orms_database:
+  name: PostgreSQL Java Drivers (JDBC, HikariCP, PGSimpleDataSource)
+  category: postgres_driver
+  maven_coordinates:
+    - org.postgresql:postgresql
+    - com.zaxxer:HikariCP
+  detection:
+    import_patterns:
+      - org.postgresql.Driver
+      - org.postgresql.ds.PGSimpleDataSource
+      - com.zaxxer.hikari.HikariConfig
+      - com.zaxxer.hikari.HikariDataSource
+      - java.sql.DriverManager
+    code_patterns:
+      - jdbc:postgresql://
+      - new PGSimpleDataSource()
+      - new HikariDataSource(
+      - new HikariConfig(
+      - DriverManager.getConnection(
+  notes: >
+    org.postgresql:postgresql is the standard JDBC driver. HikariCP is the
+    most popular connection pool for Java. PGSimpleDataSource is a direct
+    DataSource implementation from the pgjdbc project.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: JDBC/HikariCP/PGSimpleDataSource
+      connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), HikariCP
+      pool setup (SCOPE.Pattern, INFERRED_FROM_POSTGRES_POOL), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

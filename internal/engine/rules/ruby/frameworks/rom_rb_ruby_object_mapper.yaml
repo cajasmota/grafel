@@ -1,0 +1,31 @@
+frameworks:
+  name: ROM-rb (Ruby Object Mapper)
+  gem_name: rom
+  category: data_mapper
+  github_stars_2025: 2000+
+  detection:
+    config_files:
+    - Gemfile
+    gemfile_deps:
+    - rom
+    - rom-core
+    - rom-sql
+    - rom-repository
+    - rom-changeset
+    - rom-rails
+    import_markers:
+    - require 'rom'
+    - ROM::Repository
+    - ROM::Relation
+    - ROM::Changeset
+    - include ROM::Repository
+    - ROM.container
+    structural_markers:
+    - class << self; def build
+    - lib/persistence/
+    - lib/repositories/
+  notes: 'Data mapper pattern (not ActiveRecord). ROM::Relation defines DB mapping.
+    ROM::Repository provides query interface. lib/persistence/ is a common convention
+    when used standalone.
+
+    '

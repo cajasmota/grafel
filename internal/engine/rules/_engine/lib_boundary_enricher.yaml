@@ -1,0 +1,27 @@
+# Lib boundary enricher (MX-690)
+# Post-extraction enricher. Classifies every DEPENDS_ON edge target as
+# first_party or third_party based on org-configured namespace prefixes.
+# Does NOT create new edges — only annotates existing ones.
+
+name: lib_boundary_enricher
+description: >-
+  Annotate DEPENDS_ON edges with boundary=first_party or boundary=third_party.
+  A package is first_party when its name starts with any prefix in
+  org_config["first_party_namespaces"] (case-sensitive). Everything else is
+  third_party. When first_party_namespaces is empty, all packages default to
+  third_party and a WARNING is logged.
+module: memx_indexer.languages._engine.lib_boundary_enricher
+function: annotate_lib_boundaries
+config:
+  first_party_namespaces:
+    type: list[str]
+    default: []
+    description: >-
+      List of case-sensitive package-name prefixes that identify first-party
+      packages (e.g. ["@mycompany/", "com.mycompany."]).
+otel_span: indexer.lib_boundary_enricher
+otel_attributes:
+  - org_id
+  - edges_evaluated
+  - first_party_count
+  - third_party_count

@@ -1,0 +1,9 @@
+meta:
+  ecosystem: prisma_orm
+  primary_language: prisma_schema_language
+  schema_extension: .prisma
+  primary_schema_file: prisma/schema.prisma
+  toolchain_package: prisma
+  client_package: '@prisma/client'
+  parser_recommendation: tree-sitter-prisma (victorhqc/tree-sitter-prisma, actively
+    maintained)

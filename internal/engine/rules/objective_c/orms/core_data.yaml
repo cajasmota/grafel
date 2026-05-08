@@ -1,0 +1,31 @@
+database:
+  name: Core Data
+  type: object_graph_orm
+  pod_coordinates:
+  - N/A — bundled with Xcode / Apple SDK
+  detection:
+    config_files:
+    - '*.xcdatamodeld/ (bundle directory)'
+    - '*.xcdatamodel/ (inside .xcdatamodeld)'
+    - '*.mom (compiled model, DerivedData)'
+    import_patterns:
+    - '#import <CoreData/CoreData.h>'
+    - '@import CoreData;'
+    code_patterns:
+    - '@interface * : NSManagedObject'
+    - NSManagedObjectContext *
+    - NSPersistentStoreCoordinator *
+    - NSPersistentContainer *
+    - NSFetchRequest *
+    - NSEntityDescription *
+    - NSFetchedResultsController *
+    - '[context save:&error]'
+    - '@NSManaged'
+    - NSManagedObjectContext *_mainContext
+  notes: 'Apple''s object-graph and persistence framework. .xcdatamodeld bundle is
+    the definitive file-level signal. NSManagedObject subclasses are entities; @NSManaged
+    marks synthesised accessor properties. Core Data stacks may use SQLite, XML, or
+    in-memory stores. NSFetchedResultsController drives UITableView/UICollectionView
+    with automatic section/row diffing.
+
+    '

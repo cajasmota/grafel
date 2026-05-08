@@ -1,0 +1,25 @@
+frameworks:
+  name: nativescript
+  category: mobile
+  npm_packages:
+  - '@nativescript/core'
+  - '@nativescript/android'
+  - '@nativescript/ios'
+  config_files:
+  - nativescript.config.ts
+  - nativescript.config.js
+  - nsconfig.json
+  - references.d.ts
+  detection_signals:
+    package_json_deps:
+    - '@nativescript/core'
+    directory_conventions:
+    - platforms/
+    - hooks/
+    - app/
+    - src/
+  framework_specific:
+  - '@nativescript/angular'
+  - '@nativescript/vue'
+  - tns-core-modules
+  notes: nativescript.config.ts or nsconfig.json is definitive

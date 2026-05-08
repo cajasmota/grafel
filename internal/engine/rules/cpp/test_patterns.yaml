@@ -1,0 +1,153 @@
+testing_frameworks:
+- name: Google Test (gtest/gmock)
+  cmake_find_package:
+  - find_package(GTest
+  - find_package(googletest
+  cmake_target_link:
+  - GTest::gtest
+  - GTest::gtest_main
+  - GTest::gmock
+  - GTest::gmock_main
+  - gtest
+  - gmock
+  cmake_functions:
+  - gtest_discover_tests(
+  - gtest_add_tests(
+  vcpkg_packages:
+  - gtest
+  - googletest
+  conan_packages:
+  - gtest/
+  include_patterns:
+  - '#include <gtest/gtest.h>'
+  - '#include <gmock/gmock.h>'
+  - '#include "gtest/gtest.h"'
+  structural_markers:
+  - TEST(
+  - TEST_F(
+  - TEST_P(
+  - EXPECT_EQ(
+  - EXPECT_TRUE(
+  - ASSERT_EQ(
+  - ASSERT_TRUE(
+  - MOCK_METHOD(
+  - MOCK_CONST_METHOD
+  test_file_conventions:
+  - '*_test.cpp'
+  - '*_test.cc'
+  - '*Test.cpp'
+  - '*Tests.cpp'
+  - test_*.cpp
+  - test_*.cc
+  - '*_unittest.cpp'
+  notes: 'Most widely used C++ test framework. gmock provides mock object support.
+    TEST() and TEST_F() macros are definitive. Often bundled via FetchContent or as
+    a Git submodule in third_party/googletest/.
+
+    '
+- name: Catch2
+  cmake_find_package:
+  - find_package(Catch2
+  cmake_target_link:
+  - Catch2::Catch2
+  - Catch2::Catch2WithMain
+  cmake_functions:
+  - catch_discover_tests(
+  vcpkg_packages:
+  - catch2
+  conan_packages:
+  - catch2/
+  include_patterns:
+  - '#include <catch2/catch_test_macros.hpp>'
+  - '#include <catch2/catch_all.hpp>'
+  - '#include "catch.hpp"'
+  - '#include <catch2/catch.hpp>'
+  structural_markers:
+  - TEST_CASE(
+  - SECTION(
+  - REQUIRE(
+  - CHECK(
+  - REQUIRE_THROWS(
+  - CATCH_TEST_CASE(
+  - GIVEN(
+  - WHEN(
+  - THEN(
+  test_file_conventions:
+  - '*_test.cpp'
+  - '*Test.cpp'
+  - '*_tests.cpp'
+  - test_*.cpp
+  notes: 'Header-only in v2, CMake-integrated in v3. v2 uses catch.hpp single-header.
+    v3 uses catch2/ include directory. BDD-style GIVEN/WHEN/THEN also supported. TEST_CASE()
+    macro is the definitive marker.
+
+    '
+- name: doctest
+  cmake_find_package:
+  - find_package(doctest
+  cmake_target_link:
+  - doctest::doctest
+  vcpkg_packages:
+  - doctest
+  conan_packages:
+  - doctest/
+  include_patterns:
+  - '#include <doctest/doctest.h>'
+  - '#include "doctest.h"'
+  - '#include <doctest.h>'
+  structural_markers:
+  - DOCTEST_CONFIG_IMPLEMENT
+  - DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+  - SUBCASE(
+  - CHECK(
+  - REQUIRE(
+  test_file_conventions:
+  - '*_test.cpp'
+  - '*Test.cpp'
+  - test_*.cpp
+  notes: 'Lightweight single-header test framework. Often embedded directly in source
+    files (test code co-located with implementation). Faster compilation than Catch2
+    or gtest. DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN defines the test runner entry point.
+
+    '
+- name: Boost.Test
+  cmake_find_package:
+  - find_package(Boost COMPONENTS unit_test_framework
+  cmake_target_link:
+  - Boost::unit_test_framework
+  include_patterns:
+  - '#include <boost/test/unit_test.hpp>'
+  - '#include <boost/test/included/unit_test.hpp>'
+  - '#include <boost/test/unit_test_suite.hpp>'
+  structural_markers:
+  - BOOST_AUTO_TEST_SUITE(
+  - BOOST_AUTO_TEST_CASE(
+  - BOOST_CHECK(
+  - BOOST_REQUIRE(
+  - BOOST_TEST(
+  - BOOST_FIXTURE_TEST_CASE(
+  test_file_conventions:
+  - '*_test.cpp'
+  - '*Test.cpp'
+  - test_*.cpp
+  notes: 'Part of the Boost library suite. Detected by Boost::unit_test_framework
+    target and BOOST_AUTO_TEST_CASE macro. The included/unit_test.hpp header variant
+    compiles the framework inline (no separate library link needed).
+
+    '
+- name: CTest
+  cmake_functions:
+  - enable_testing()
+  - include(CTest)
+  - add_test(NAME
+  - set_tests_properties(
+  config_files:
+  - CTestTestfile.cmake
+  - CTestCustom.cmake
+  - DartConfiguration.tcl
+  notes: 'CMake''s built-in test orchestrator. enable_testing() in CMakeLists.txt
+    is the detection signal. Not a test authoring framework — acts as a runner that
+    invokes gtest, Catch2, or other executables. CTestTestfile.cmake is generated
+    in the build directory (skippable).
+
+    '

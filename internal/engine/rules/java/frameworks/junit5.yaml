@@ -1,0 +1,51 @@
+frameworks:
+  name: JUnit 5 (Jupiter)
+  category: test_framework
+  maven_coordinates: org.junit.jupiter:junit-jupiter
+  gradle_dependency: testImplementation 'org.junit.jupiter:junit-jupiter'
+  adoption_rank_2025: 1
+  detection:
+    pom_xml_markers:
+    - junit-jupiter
+    - org.junit.jupiter
+    - junit-platform-launcher
+    import_patterns:
+    - import org.junit.jupiter.api.Test
+    - import org.junit.jupiter.api
+    - import org.junit.jupiter.params
+    code_patterns:
+    - '@Test'
+    - '@BeforeEach'
+    - '@AfterEach'
+    - '@BeforeAll'
+    - '@AfterAll'
+    - '@ParameterizedTest'
+    - '@ExtendWith'
+    - '@DisplayName'
+    - '@Nested'
+  notes: >
+    Dominant Java test framework since 2020. @ExtendWith for extensions
+    (MockitoExtension, SpringExtension). Distinguish from JUnit 4 by import
+    package (jupiter vs junit4).
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-561)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.junit5_extractor"
+    function: "extract"
+    description: >
+      Extract JUnit 5 (Jupiter) patterns: @Test/@ParameterizedTest/@RepeatedTest
+      methods (SCOPE.Operation/function, INFERRED_FROM_JUNIT5_TEST) with assertion
+      metadata, parameterized source type, repeat count, @DisplayName, @Disabled,
+      @Tag; @Nested classes (SCOPE.Component, INFERRED_FROM_JUNIT5_NESTED);
+      @BeforeAll/@BeforeEach/@AfterAll/@AfterEach lifecycle methods
+      (SCOPE.Operation/function, INFERRED_FROM_JUNIT5_LIFECYCLE);
+      @ExtendWith extension classes (SCOPE.Pattern, INFERRED_FROM_JUNIT5_EXTENSION).
+      Emits OWNS (class→test, class→lifecycle) and DEPENDS_ON
+      (kind=junit5_extension) relationships.

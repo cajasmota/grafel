@@ -1,0 +1,10 @@
+frameworks: frameworks/ [ktor, spring_boot_kotlin, quarkus_kotlin, micronaut_kotlin,
+  http4k, kotlinx_coroutines, exposed, android_jetpack_compose, kotlin_multiplatform_kmp_kmm,
+  compose_multiplatform, compose_desktop, arrow_functional_kotlin]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orms_databases: orms/ [exposed, ktorm, hibernate_kotlin, room_android, sqldelight,
+  spring_data_kotlin]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml

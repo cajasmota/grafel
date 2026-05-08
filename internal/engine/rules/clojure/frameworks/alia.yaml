@@ -1,0 +1,28 @@
+frameworks:
+  name: alia (Clojure Cassandra Driver)
+  category: nosql_database
+  leiningen_dependency: cc.qbits/alia
+  detection:
+    import_patterns:
+    - qbits.alia
+    - cc.qbits/alia
+    code_patterns:
+    - alia/cluster
+    - alia/execute
+    - alia/prepare
+  notes: >
+    alia (mpenet/alia) is the primary Clojure wrapper around the DataStax
+    Java Driver for Cassandra.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: (alia/cluster ...)
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), (alia/execute ...)
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), (alia/prepare ...)
+      (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

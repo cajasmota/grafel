@@ -1,0 +1,318 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex",
+  "language": "elixir",
+  "entities": [
+    {
+      "name": "SampleApi.User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 41,
+      "end_line": 56,
+      "language": "elixir",
+      "signature": "defmodule SampleApi.User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "module",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "changeset",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 50,
+      "end_line": 55,
+      "language": "elixir",
+      "signature": "def changeset(user, attrs)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "SampleApi.UserController",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 1,
+      "end_line": 39,
+      "language": "elixir",
+      "signature": "defmodule SampleApi.UserController",
+      "enrichment_required": false,
+      "properties": {
+        "type": "module",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 34,
+      "end_line": 38,
+      "language": "elixir",
+      "signature": "def delete(conn, %{\"id\" => id})",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 20,
+      "end_line": 32,
+      "language": "elixir",
+      "signature": "def create(conn, %{\"user\" => user_params})",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 3,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "show",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 15,
+      "end_line": 18,
+      "language": "elixir",
+      "signature": "def show(conn, %{\"id\" => id})",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "index",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 10,
+      "end_line": 13,
+      "language": "elixir",
+      "signature": "def index(conn, _params)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "SampleApi.User",
+      "qualified_name": "scope:schema:column_schema:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex:SampleApi.User",
+      "kind": "SCOPE.Schema",
+      "start_line": null,
+      "end_line": null,
+      "language": "elixir",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_COLUMN_SCHEMA",
+        "source": "",
+        "orm": "ecto",
+        "table_name": "users",
+        "columns": [
+          {
+            "name": "name",
+            "type": "string",
+            "nullable": true,
+            "unique": false,
+            "primary_key": false,
+            "default": null
+          },
+          {
+            "name": "email",
+            "type": "string",
+            "nullable": true,
+            "unique": false,
+            "primary_key": false,
+            "default": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "error_handling:elixir_ok_error:22",
+      "qualified_name": "scope:pattern:error_handling:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex:elixir_ok_error:22",
+      "kind": "SCOPE.Pattern",
+      "start_line": 22,
+      "end_line": 22,
+      "language": "elixir",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ERROR_HANDLING_ELIXIR_OK_ERROR",
+        "source": "",
+        "kind": "error_handling",
+        "style": "elixir_ok_error",
+        "line_number": 22,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex"
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "elixir",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "PascalCase",
+        "dominant_percentage": 28.57142857142857,
+        "sample_count": 7,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex"
+      }
+    },
+    {
+      "name": "users",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex::users",
+      "kind": "SCOPE.Schema",
+      "start_line": 41,
+      "end_line": 56,
+      "language": "elixir",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "ORM_DETECTED:ECTO",
+        "source": "",
+        "orm": "ecto",
+        "model_class": "SampleApi.User"
+      }
+    },
+    {
+      "name": "users",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex::users",
+      "kind": "SCOPE.Schema",
+      "start_line": 1,
+      "end_line": 39,
+      "language": "elixir",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "ORM_DETECTED:ECTO",
+        "source": "",
+        "orm": "ecto",
+        "model_class": "SampleApi.UserController"
+      }
+    },
+    {
+      "name": "changeset-validation@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex:50",
+      "qualified_name": "scope:pattern:changeset:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/elixir/sample_phoenix.ex:1103",
+      "kind": "SCOPE.Pattern",
+      "start_line": 50,
+      "end_line": 50,
+      "language": "elixir",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_CHANGESET_VALIDATION",
+        "source": "",
+        "kind": "changeset_validation",
+        "validation_rules": [
+          "validate_required",
+          "unique_constraint",
+          "cast"
+        ],
+        "required_fields": [
+          "name",
+          "email"
+        ],
+        "constraint_names": [
+          "email"
+        ]
+      }
+    },
+    {
+      "name": "SampleApi",
+      "qualified_name": "scope:component:import:external:SampleApi",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "elixir",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    },
+    {
+      "name": "Ecto",
+      "qualified_name": "scope:component:import:external:Ecto",
+      "kind": "SCOPE.Component",
+      "start_line": null,
+      "end_line": null,
+      "language": "elixir",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
+        "source": "import_extraction",
+        "is_local": false,
+        "external_dependency": true
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

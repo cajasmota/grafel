@@ -1,0 +1,28 @@
+frameworks:
+  name: Serverpod
+  pubspec_dependency: serverpod
+  category: server_fullstack
+  pub_dev_url: https://pub.dev/packages/serverpod
+  github_stars_2025: 2900+
+  detection:
+    pubspec_signals:
+    - 'serverpod:'
+    - 'serverpod_client:'
+    - 'serverpod_flutter:'
+    structural_markers:
+    - lib/src/generated/
+    - config/development.yaml
+    - config/staging.yaml
+    - config/production.yaml
+    - migrations/
+    code_patterns:
+    - import 'package:serverpod/serverpod.dart'
+    - extends Endpoint
+    - var serverpod = Serverpod(
+    - Protocol(
+    notes: 'Full-stack Dart framework with RPC, ORM, and DB migrations. Monorepo structure:
+      {project}_server/, {project}_client/, {project}_flutter/ is the canonical Serverpod
+      project layout. Generated code in lib/src/generated/ is auto-produced — skip
+      for indexing.
+
+      '

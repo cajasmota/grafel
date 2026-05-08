@@ -1,0 +1,33 @@
+orms_and_database:
+  name: prisma-client-js
+  npm_packages:
+  - '@prisma/client'
+  config_files:
+  - prisma/schema.prisma
+  detection_signals:
+    package_json_deps:
+    - '@prisma/client'
+    config_files:
+    - prisma/schema.prisma
+    import_patterns:
+    - from '@prisma/client'
+    - import { PrismaClient }
+    code_patterns:
+    - new PrismaClient(
+    - prisma.$transaction(
+  notes: Runtime-only client (no CLI); always co-occurs with prisma dev dep
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-554)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.prisma_extractor"
+    function: "extract"
+    description: "Extract Prisma schema models, enums, relations, client queries, raw queries, middleware, and PrismaClient instantiation"
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract

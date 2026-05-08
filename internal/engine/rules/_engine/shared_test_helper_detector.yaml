@@ -1,0 +1,27 @@
+# Shared test helper detector (MX-741)
+# Post-extraction enricher. Identifies test entities that are shared test
+# utilities by two mechanisms:
+#   1. High-usage: >= 3 inbound DEPENDS_ON(kind=import) edges from other test files.
+#   2. Convention: idiomatic test helper file naming across 16 supported languages.
+# Enriches entities in-place with is_shared_test_helper, shared_test_helper_type,
+# and import_count_from_tests. Requires ctx.state["relationships"] for high-usage
+# detection. Closes New-Q53.
+
+name: shared_test_helper_detector
+description: >-
+  Detect shared test utility files across all supported languages. Two modes:
+  (1) high-usage: test file imported by 3+ other test files via DEPENDS_ON(kind=import);
+  (2) convention: idiomatic test helper filenames (conftest.py, spec_helper.rb,
+  tests/common/mod.rs, test/support/*.ex, etc.) for 16 languages.
+  Enriches entity properties with is_shared_test_helper, shared_test_helper_type
+  ("convention" | "high_usage" | None), and import_count_from_tests.
+module: memx_indexer.pattern_detectors.shared_test_helper_detector
+function: detect
+applies_to_function: applies_to
+otel_span: indexer.shared_test_helper_detector
+otel_attributes:
+  - org_id
+  - shared_helper_count
+  - convention_helper_count
+  - high_usage_helper_count
+  - language

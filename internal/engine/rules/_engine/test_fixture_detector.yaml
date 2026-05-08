@@ -1,0 +1,19 @@
+# Test fixture / factory detector (MX-708)
+# Cross-language detector for test fixture and factory setup patterns.
+# Registered as a custom extractor that fires on Python (pytest.fixture),
+# Ruby (factory_bot / FactoryGirl), JavaScript/TypeScript (Jest setupFiles,
+# beforeAll/beforeEach), Java/Kotlin (Spring @TestConfiguration,
+# JUnit @BeforeAll/@BeforeEach).
+#
+# File gate is internal to the detector (applies_to checks language and source
+# signals). This YAML exists to document the detector's registration entry.
+
+name: test_fixture
+description: >-
+  Detect test fixture and factory setup patterns and emit SCOPE.Pattern entities
+  with kind=test_fixture. Supported frameworks: pytest (Python), factory_bot /
+  FactoryGirl (Ruby), Jest setupFiles + lifecycle hooks (JS/TS), Spring
+  @TestConfiguration (Java), JUnit @BeforeAll/@BeforeEach (Java/Kotlin).
+module: memx_indexer.pattern_detectors.test_fixture_detector
+function: detect
+applies_to_function: applies_to

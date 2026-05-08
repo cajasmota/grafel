@@ -1,0 +1,41 @@
+frameworks:
+  name: emotion
+  full_name: Emotion
+  category: css_in_js
+  extensions:
+  - .js
+  - .jsx
+  - .ts
+  - .tsx
+  npm_packages:
+  - '@emotion/react'
+  - '@emotion/styled'
+  - '@emotion/css'
+  config_files:
+  - babel.config.js
+  - .babelrc
+  detection_signals:
+    package_json_deps:
+    - '@emotion/react'
+    - '@emotion/styled'
+    - '@emotion/css'
+    content_patterns:
+    - from '@emotion/react'
+    - from "@emotion/react"
+    - from '@emotion/styled'
+    - /** @jsxImportSource @emotion/react */
+    - css`
+    - css({
+    - Global
+    - keyframes
+  framework_specific:
+  - /** @jsxImportSource @emotion/react */ pragma
+  - css prop on JSX elements
+  - '@emotion/styled API (identical to styled-components)'
+  - Object styles via css({...})
+  - Global component for global styles
+  notes: 'Emotion supports both tagged template and object style syntax. The css prop
+    (via @jsxImportSource pragma or Babel transform) is Emotion''s flagship feature
+    vs styled-components.
+
+    '

@@ -1,0 +1,122 @@
+build_tools:
+- name: Xcode Build System
+  type: ide_build_system
+  detection:
+    config_files:
+    - '*.xcodeproj/'
+    - '*.xcodeproj/project.pbxproj'
+    - '*.xcworkspace/'
+    - '*.xcworkspace/contents.xcworkspacedata'
+    - '*.xcscheme'
+    - '*.xcconfig'
+    config_patterns:
+    - IPHONEOS_DEPLOYMENT_TARGET = <version>
+    - MACOSX_DEPLOYMENT_TARGET = <version>
+    - TARGETED_DEVICE_FAMILY = 1,2
+    - PRODUCT_BUNDLE_IDENTIFIER = <bundle_id>
+    - GCC_PREPROCESSOR_DEFINITIONS
+    - OTHER_LDFLAGS
+    - FRAMEWORK_SEARCH_PATHS
+    - HEADER_SEARCH_PATHS
+    - CODE_SIGN_IDENTITY
+    - DEVELOPMENT_TEAM
+  notes: 'project.pbxproj is the Xcode project file (plist format) and the authoritative
+    build configuration source. .xcconfig files are override configuration layers.
+    .xcscheme files define build/test/run actions. Parsing pbxproj reveals target
+    dependencies, linked frameworks, build phases, and source file membership.
+
+    '
+- name: CocoaPods
+  type: dependency_manager
+  detection:
+    config_files:
+    - Podfile
+    - Podfile.lock
+    - Pods/Pods.xcodeproj/
+    - .cocoapods/
+    config_patterns:
+    - platform :ios, '<version>'
+    - platform :osx, '<version>'
+    - target '<TargetName>' do
+    - pod '<Name>'
+    - pod '<Name>', :git => '<url>'
+    - pod '<Name>', :path => '<local_path>'
+    - use_frameworks!
+    - inhibit_all_warnings!
+    cli_invocations:
+    - pod install
+    - pod update
+    - pod outdated
+  notes: 'CocoaPods modifies the Xcode project to add Pods.xcodeproj as a sub-project
+    and generates a workspace. Podfile.lock pins exact versions. The Pods/ directory
+    is typically git-ignored. `pod install` is run after Podfile changes; `pod update`
+    upgrades to latest compatible versions.
+
+    '
+- name: Carthage
+  type: dependency_manager
+  detection:
+    config_files:
+    - Cartfile
+    - Cartfile.resolved
+    - Carthage/Build/
+    - Carthage/Checkouts/
+    config_patterns:
+    - github "<Owner>/<Repo>"
+    - github "<Owner>/<Repo>" ~> <version>
+    - github "<Owner>/<Repo>" == <version>
+    - binary "<url>" ~> <version>
+    - git "<url>"
+    cli_invocations:
+    - carthage update --platform iOS
+    - carthage bootstrap
+    - carthage build --no-skip-current
+  notes: 'Carthage builds dynamic or static frameworks and does not integrate with
+    the Xcode project file. Frameworks are linked manually. Cartfile is the manifest;
+    Cartfile.resolved pins exact commits/versions. Carthage/Build/ contains compiled
+    .framework bundles.
+
+    '
+- name: Swift Package Manager (SPM) — Objective-C hybrid
+  type: dependency_manager
+  detection:
+    config_files:
+    - Package.swift
+    - .build/
+    config_patterns:
+    - 'targets: [.target(name: *, sources: ["*.m"])]'
+    - 'publicHeadersPath:'
+    - 'cSettings: [.headerSearchPath'
+    - 'exclude: ["*.m"] (negative signal)'
+    code_patterns:
+    - '#import <module_name/header.h> (modular import from SPM)'
+  notes: 'SPM can include Objective-C targets via publicHeadersPath and cSettings
+    configuration. Mixed Swift/ObjC packages use module maps. Less common than CocoaPods
+    for pure ObjC codebases but increasingly used in hybrid Swift+ObjC packages. Package.swift
+    with ObjC source inclusion is a medium-confidence Objective-C signal.
+
+    '
+- name: Fastlane
+  type: build_automation
+  detection:
+    config_files:
+    - Fastfile
+    - fastlane/Fastfile
+    - fastlane/Appfile
+    - fastlane/Deliverfile
+    - fastlane/Matchfile
+    - Gemfile (fastlane gem)
+    config_patterns:
+    - lane :<name> do
+    - 'gym(scheme:'
+    - 'match(type:'
+    - 'pilot(ipa:'
+    - deliver(
+    - 'scan(scheme:'
+    - increment_build_number
+  notes: 'Fastlane automates building, testing, and releasing iOS/macOS apps. Fastfile
+    defines lanes. gym builds .ipa, scan runs tests, match manages code signing certificates,
+    pilot uploads to TestFlight, deliver submits to App Store. Common in CI pipelines
+    for ObjC projects.
+
+    '

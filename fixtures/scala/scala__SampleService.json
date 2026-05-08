@@ -1,0 +1,408 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/scala/SampleService.scala",
+  "language": "scala",
+  "entities": [
+    {
+      "name": "InMemoryUserRepository",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 49,
+      "end_line": 56,
+      "language": "scala",
+      "signature": "class InMemoryUserRepository",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UserService",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 10,
+      "end_line": 36,
+      "language": "scala",
+      "signature": "class UserService",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "CreateUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 8,
+      "end_line": 8,
+      "language": "scala",
+      "signature": "case class CreateUserRequest(name: String, email: String)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "case_class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 7,
+      "end_line": 7,
+      "language": "scala",
+      "signature": "case class User(id: Int, name: String, email: String)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "case_class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UserService",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 38,
+      "end_line": 40,
+      "language": "scala",
+      "signature": "object UserService",
+      "enrichment_required": false,
+      "properties": {
+        "type": "object",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "Repository",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 42,
+      "end_line": 47,
+      "language": "scala",
+      "signature": "trait Repository",
+      "enrichment_required": false,
+      "properties": {
+        "type": "trait",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 55,
+      "end_line": 55,
+      "language": "scala",
+      "signature": "def delete(id: Int): Boolean",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "save",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 54,
+      "end_line": 54,
+      "language": "scala",
+      "signature": "def save(entity: User): User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findAll",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 53,
+      "end_line": 53,
+      "language": "scala",
+      "signature": "def findAll(): List[User]",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findById",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 52,
+      "end_line": 52,
+      "language": "scala",
+      "signature": "def findById(id: Int): Option[User]",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 46,
+      "end_line": 46,
+      "language": "scala",
+      "signature": "def delete(id: ID): Boolean",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "save",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 45,
+      "end_line": 45,
+      "language": "scala",
+      "signature": "def save(entity: T): T",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findAll",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 44,
+      "end_line": 44,
+      "language": "scala",
+      "signature": "def findAll(): List[T]",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findById",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 43,
+      "end_line": 43,
+      "language": "scala",
+      "signature": "def findById(id: ID): Option[T]",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "apply",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 39,
+      "end_line": 39,
+      "language": "scala",
+      "signature": "def apply(): UserService",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "delete",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 31,
+      "end_line": 35,
+      "language": "scala",
+      "signature": "def delete(id: Int): Boolean",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "create",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 20,
+      "end_line": 29,
+      "language": "scala",
+      "signature": "def create(request: CreateUserRequest): Try[User]",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findById",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 18,
+      "end_line": 18,
+      "language": "scala",
+      "signature": "def findById(id: Int): Option[User]",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "findAll",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 16,
+      "end_line": 16,
+      "language": "scala",
+      "signature": "def findAll(): List[User]",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/scala/SampleService.scala",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/scala/SampleService.scala",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "scala",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "camelCase",
+        "dominant_percentage": 30.434782608695656,
+        "sample_count": 23,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/scala/SampleService.scala"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

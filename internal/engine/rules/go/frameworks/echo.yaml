@@ -1,0 +1,61 @@
+# Echo HTTP framework extraction rules (MX-496)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Module: github.com/labstack/echo/v4
+
+file_conventions: []
+
+source_patterns:
+  # Route registration: e.GET("/path", handlerFunc)
+  - pattern: '\.\s*(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Any|CONNECT|TRACE)\s*\(\s*"([^"]+)"\s*,\s*(\w+)'
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Route group: e.Group("/prefix")
+  - pattern: '\.Group\s*\(\s*"([^"]+)"\s*\)'
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Middleware registration: e.Use(middlewareFunc)
+  - pattern: '\.Use\s*\(\s*(\w[\w.]*)\s*\)'
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+  # Handler function: func handlerName(c echo.Context) error
+  - pattern: 'func\s+(\w+)\s*\(\s*\w+\s+echo\.Context\s*\)\s*error'
+    entity_type: Controller
+    name_group: 1
+    scope: file
+
+  # echo.New() engine init
+  - pattern: 'echo\.New\s*\(\s*\)'
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+relationship_rules:
+  # Route CALLS handler: .GET("/path", handlerName) -> handlerName
+  - pattern: '\.\s*(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Any|CONNECT|TRACE)\s*\(\s*"([^"]+)"\s*,\s*(\w+)'
+    source_type: Route
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # Middleware USE: .Use(middlewareName) -> middlewareName
+  - pattern: '\.Use\s*\(\s*(\w[\w.]*)\s*(?:,\s*(\w[\w.]*))?\s*\)'
+    source_type: Middleware
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+custom_extractors:
+  - module: "memx_indexer.languages.go.echo_extractor"
+    function: "extract"
+    description: "Extract Echo routes (e.GET/POST/PUT/DELETE/PATCH/etc.), route groups (e.Group) with full path resolution, middleware chains (e.Use), request binding (c.Bind/BindJSON/BindQuery), engine creation (echo.New), WebSocket endpoints (echo.IsWebSocket / upgrader.Upgrade), custom validators (e.Validator assignment and echo.Validator interface implementations), and static file serving (e.Static/e.File). Emits OWNS and CALLS relationships."
+  - module: "memx_indexer.languages._engine.config_consumer_extractor"
+    function: "extract"
+    description: "Extract viper.Get/GetString/GetBool/GetInt etc. reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming entities (MX-600)."

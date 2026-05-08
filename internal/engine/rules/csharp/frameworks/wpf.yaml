@@ -1,0 +1,33 @@
+frameworks:
+  name: WPF
+  category: desktop_windows
+  nuget_package: null
+  sdk_attribute: Microsoft.NET.Sdk.WindowsDesktop
+  adoption_rank_2025: 8
+  detection:
+    csproj_sdk:
+    - Sdk="Microsoft.NET.Sdk.WindowsDesktop"
+    csproj_properties:
+    - <UseWPF>true</UseWPF>
+    - <TargetFramework>net8.0-windows</TargetFramework>
+    - <TargetFramework>net6.0-windows</TargetFramework>
+    - <TargetFramework>net7.0-windows</TargetFramework>
+    config_files:
+    - App.xaml
+    - App.xaml.cs
+    - MainWindow.xaml
+    - MainWindow.xaml.cs
+    code_patterns:
+    - Window
+    - UserControl
+    - DependencyProperty
+    - DependencyObject
+    - INotifyPropertyChanged
+    - RoutedEvent
+    - x:Class=
+    - xmlns:local=
+    notes: '<UseWPF>true</UseWPF> with SDK-style .csproj is definitive for modern
+      WPF. Legacy WPF uses pre-SDK .csproj format with <ProjectTypeGuids>. XAML files
+      with Window or UserControl root elements are strong signals.
+
+      '

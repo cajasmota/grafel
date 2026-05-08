@@ -1,0 +1,38 @@
+{
+  "input_file": "fixtures/sources/javascript/sample_express.js",
+  "language": "javascript",
+  "entities": [
+    {
+      "name": "validateUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 11,
+      "end_line": 16,
+      "language": "javascript",
+      "signature": "function validateUser",
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": "function",
+        "vera_type": "SCOPE.Operation"
+      }
+    },
+    {
+      "name": "express",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 4,
+      "end_line": 4,
+      "language": "javascript",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "is_local": "false",
+        "module": "express",
+        "vera_subtype": "import",
+        "vera_type": "SCOPE.Component"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "go-extractor"
+}

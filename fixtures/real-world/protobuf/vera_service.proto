@@ -1,0 +1,183 @@
+// Source: https://github.com/cajasmota/sample-proto (synthetic based on real archigraph gRPC service definition) | License: Apache-2.0
+
+syntax = "proto3";
+
+package archigraph.v1;
+
+option go_package = "github.com/cajasmota/sample-proto/gen/go/archigraph/v1;verav1";
+option java_multiple_files = true;
+option java_package = "io.archigraph.v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// VeraService exposes vector-graph operations for AI memory.
+service VeraService {
+  // Upsert stores or updates code entities in the graph.
+  rpc Upsert(UpsertRequest) returns (UpsertResponse);
+
+  // Query performs a hybrid vector+graph search.
+  rpc Query(QueryRequest) returns (QueryResponse);
+
+  // Patch updates partial fields on existing entities.
+  rpc Patch(PatchRequest) returns (PatchResponse);
+
+  // Delete removes entities by ID or filter.
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+
+  // GetOrg retrieves org metadata and quota.
+  rpc GetOrg(GetOrgRequest) returns (GetOrgResponse);
+
+  // ProvisionOrg creates a new tenant org.
+  rpc ProvisionOrg(ProvisionOrgRequest) returns (ProvisionOrgResponse);
+}
+
+// ============================================================
+// Common
+// ============================================================
+
+enum EntityKind {
+  ENTITY_KIND_UNSPECIFIED = 0;
+  ENTITY_KIND_FUNCTION    = 1;
+  ENTITY_KIND_CLASS       = 2;
+  ENTITY_KIND_METHOD      = 3;
+  ENTITY_KIND_MODULE      = 4;
+  ENTITY_KIND_INTERFACE   = 5;
+  ENTITY_KIND_STRUCT      = 6;
+  ENTITY_KIND_ENUM        = 7;
+  ENTITY_KIND_VARIABLE    = 8;
+  ENTITY_KIND_CONSTANT    = 9;
+  ENTITY_KIND_TYPE        = 10;
+  ENTITY_KIND_FILE        = 11;
+}
+
+message Entity {
+  string id        = 1;
+  string org_id    = 2;
+  string repo      = 3;
+  string file_path = 4;
+  string name      = 5;
+  EntityKind kind  = 6;
+  string language  = 7;
+  string signature = 8;
+  string doc       = 9;
+  string body      = 10;
+  int32  start_line = 11;
+  int32  end_line   = 12;
+  repeated float embedding = 13;
+  google.protobuf.Struct metadata = 14;
+  google.protobuf.Timestamp indexed_at = 15;
+  google.protobuf.Timestamp updated_at = 16;
+}
+
+// ============================================================
+// Upsert
+// ============================================================
+
+message UpsertRequest {
+  string org_id          = 1;
+  repeated Entity entities = 2;
+}
+
+message UpsertResponse {
+  int32 upserted = 1;
+  int32 updated  = 2;
+  repeated string ids = 3;
+}
+
+// ============================================================
+// Query
+// ============================================================
+
+message QueryRequest {
+  string org_id   = 1;
+  string query    = 2;
+  int32  top_k    = 3;
+  float  min_score = 4;
+  repeated string repos    = 5;
+  repeated string languages = 6;
+  repeated EntityKind kinds = 7;
+  bool   include_body = 8;
+}
+
+message QueryResult {
+  Entity entity = 1;
+  float  score  = 2;
+  repeated string related_ids = 3;
+}
+
+message QueryResponse {
+  repeated QueryResult results = 1;
+  int32 total_hits = 2;
+  int64 latency_ms = 3;
+}
+
+// ============================================================
+// Patch
+// ============================================================
+
+message PatchRequest {
+  string org_id  = 1;
+  string entity_id = 2;
+  map<string, string> fields = 3;
+}
+
+message PatchResponse {
+  bool updated = 1;
+  Entity entity = 2;
+}
+
+// ============================================================
+// Delete
+// ============================================================
+
+message DeleteRequest {
+  string org_id = 1;
+  repeated string ids = 2;
+  string repo = 3;   // delete all entities in repo if set
+}
+
+message DeleteResponse {
+  int32 deleted = 1;
+}
+
+// ============================================================
+// Org
+// ============================================================
+
+enum OrgTier {
+  ORG_TIER_FREE       = 0;
+  ORG_TIER_PRO        = 1;
+  ORG_TIER_ENTERPRISE = 2;
+}
+
+message OrgQuota {
+  int64 monthly_queries   = 1;
+  int64 monthly_upserts   = 2;
+  int64 max_entities      = 3;
+  int64 used_queries      = 4;
+  int64 used_upserts      = 5;
+  int64 current_entities  = 6;
+}
+
+message GetOrgRequest {
+  string org_id = 1;
+}
+
+message GetOrgResponse {
+  string org_id = 1;
+  OrgTier tier  = 2;
+  OrgQuota quota = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message ProvisionOrgRequest {
+  string org_id    = 1;
+  OrgTier tier     = 2;
+  string owner_email = 3;
+}
+
+message ProvisionOrgResponse {
+  string org_id = 1;
+  bool   created = 2;
+}

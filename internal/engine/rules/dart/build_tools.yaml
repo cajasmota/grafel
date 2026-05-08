@@ -1,0 +1,90 @@
+build_tools:
+- name: pub (Dart package manager)
+  config_files:
+  - pubspec.yaml
+  - pubspec.lock
+  - .dart_tool/package_config.json
+  commands:
+  - dart pub get
+  - dart pub upgrade
+  - dart pub publish
+  - dart pub deps
+  detection:
+    primary_signal: pubspec.yaml
+    lockfile_signal: pubspec.lock
+    notes: 'pub is the universal package manager for all Dart and Flutter projects.
+      pubspec.yaml is mandatory — its presence is a reliable Dart project signal.
+      pubspec.lock ensures reproducible builds. .dart_tool/ is generated and must
+      be excluded from indexing.
+
+      '
+- name: flutter CLI
+  config_files:
+  - pubspec.yaml (flutter SDK dependency)
+  - analysis_options.yaml
+  commands:
+  - flutter pub get
+  - flutter build apk
+  - flutter build ios
+  - flutter build web
+  - flutter build macos
+  - flutter build appbundle
+  - flutter run
+  - flutter test
+  - flutter analyze
+  detection:
+    primary_signal: 'sdk: flutter in pubspec.yaml dependencies'
+    config_signals:
+    - 'flutter: section in pubspec.yaml (assets, fonts, plugins)'
+    - flutter.sdk path in flutter config
+    notes: 'Flutter CLI wraps dart CLI for Flutter projects. Detected by Flutter SDK
+      dependency in pubspec.yaml. build.yaml is used when build_runner integration
+      is active.
+
+      '
+- name: dart CLI
+  config_files:
+  - pubspec.yaml
+  - analysis_options.yaml
+  commands:
+  - dart run
+  - dart compile exe
+  - dart compile js
+  - dart analyze
+  - dart format
+  - dart test
+  detection:
+    primary_signal: 'pubspec.yaml without sdk: flutter'
+    config_signals:
+    - 'environment: sdk: ''>=X.X.X <Y.Y.Y'' in pubspec.yaml'
+    - 'executables: section for CLI tools'
+    notes: 'Dart CLI is the baseline tool for pure Dart (non-Flutter) projects. The
+      sdk version constraint in the environment: section specifies minimum Dart SDK
+      version. Dart 3.x requires sound null safety.
+
+      '
+- name: build_runner
+  pubspec_dependency: build_runner
+  config_files:
+  - build.yaml
+  commands:
+  - dart run build_runner build
+  - dart run build_runner watch
+  - dart run build_runner clean
+  - flutter pub run build_runner build
+  detection:
+    pubspec_dev_signals:
+    - 'build_runner:'
+    - 'json_serializable:'
+    - 'freezed:'
+    - 'injectable_generator:'
+    - 'retrofit_generator:'
+    output_patterns:
+    - '*.g.dart'
+    - '*.freezed.dart'
+    - '*.config.dart'
+    notes: 'Code generation tool. Presence in dev_dependencies with *.g.dart or *.freezed.dart
+      output files confirms active use. Generated files must be in skip_patterns for
+      indexing.
+
+      '

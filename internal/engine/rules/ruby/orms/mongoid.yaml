@@ -1,0 +1,36 @@
+orms:
+  name: Mongoid
+  gem_name: mongoid
+  category: document_orm
+  detection:
+    gemfile_deps:
+    - mongoid
+    - mongoid-versioning
+    config_files:
+    - config/mongoid.yml
+    - app/models/**/*.rb
+    code_patterns:
+    - include Mongoid::Document
+    - include Mongoid::Timestamps
+    - 'field :name, type: String'
+    - embedded_in :parent
+    - embeds_many :children
+    - belongs_to :user
+    - 'index({ email: 1 })'
+  notes: 'MongoDB ODM for Ruby/Rails. config/mongoid.yml is high-confidence. Mongoid::Document
+    include replaces ActiveRecord::Base inheritance. embedded_in / embeds_many are
+    Mongoid-specific — not in ActiveRecord.
+
+    '
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

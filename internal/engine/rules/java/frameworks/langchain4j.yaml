@@ -1,0 +1,44 @@
+frameworks:
+  name: LangChain4J
+  category: ai_ml
+  maven_coordinates: dev.langchain4j:langchain4j
+  gradle_dependency: implementation 'dev.langchain4j:langchain4j'
+  adoption_rank_2025: 15
+  detection:
+    config_files: []
+    pom_xml_markers:
+    - dev.langchain4j
+    - langchain4j
+    gradle_markers:
+    - dev.langchain4j
+    - langchain4j
+    import_patterns:
+    - import dev.langchain4j.service.AiService
+    - import dev.langchain4j.agent.tool.Tool
+    - import dev.langchain4j.model.chat.ChatLanguageModel
+    - import dev.langchain4j.rag.content.retriever.ContentRetriever
+    code_patterns:
+    - '@AiService'
+    - '@Tool'
+    - '@SystemMessage'
+    - '@UserMessage'
+    - ChatLanguageModel
+    - EmbeddingStore
+  notes: >
+    LangChain4J is the Java port of LangChain. Key concepts: @AiService for
+    declarative AI service proxies, @Tool for function calling, RAG via
+    EmbeddingStore + ContentRetriever, ChatMemory for conversation state.
+    Integrates with Quarkus and Spring Boot via dedicated extensions.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema -- MX-531)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.langchain4j_extractor"
+    function: "extract"
+    description: "Extract LangChain4J AI service interfaces (@AiService), tool methods (@Tool), prompt patterns (@SystemMessage/@UserMessage), ChatLanguageModel fields, RAG components (EmbeddingStore/ContentRetriever), ChatMemory, and DI wiring. Emits OWNS and DEPENDS_ON relationships."

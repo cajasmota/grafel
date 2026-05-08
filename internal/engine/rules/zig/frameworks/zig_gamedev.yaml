@@ -1,0 +1,38 @@
+frameworks:
+  name: zig-gamedev
+  category: game_engine_toolkit
+  github: michal-z/zig-gamedev
+  zig_version_baseline: 0.13.0
+  detection:
+    build_zig_zon_deps:
+    - zmath
+    - zmesh
+    - zgpu
+    - zphysics
+    - zaudio
+    - znoise
+    - zpix
+    - ztracy
+    - zstbi
+    - zwin32
+    - zbullet
+    import_markers:
+    - '@import("zmath")'
+    - '@import("zgpu")'
+    - '@import("zphysics")'
+    - '@import("zaudio")'
+    - const zmath = @import("zmath")
+    - const zgpu = @import("zgpu")
+    structural_markers:
+    - zmath.Vec
+    - zmath.Mat
+    - zmath.Quat
+    - zgpu.GraphicsContext
+    - zphysics.PhysicsSystem
+    - zaudio.Engine
+    notes: 'Collection of Zig libraries for game development (DirectX/Vulkan GPU via
+      zgpu, math via zmath, physics via zphysics/zbullet, audio via zaudio). Detection
+      via any zmath/zgpu/zphysics dependency in build.zig.zon. Common in Windows-targeted
+      game demos and DirectX12 experiments.
+
+      '

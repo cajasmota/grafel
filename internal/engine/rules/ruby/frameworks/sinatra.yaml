@@ -1,0 +1,139 @@
+# Sinatra framework extraction rules (MX-513).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: Sinatra
+  gem_name: sinatra
+  category: web_microframework
+  github_stars_2025: 12000+
+  detection:
+    config_files:
+    - app.rb
+    - config.ru
+    - Gemfile
+    gemfile_deps:
+    - sinatra
+    - sinatra-contrib
+    - sinatra-base
+    import_markers:
+    - require 'sinatra'
+    - require 'sinatra/base'
+    - require 'sinatra/contrib'
+    - Sinatra::Base
+    - Sinatra::Application
+    structural_markers:
+    - config.ru
+    - class App < Sinatra::Base
+  notes: >
+    config.ru + Gemfile sinatra dep is high-confidence. Classic style uses
+    top-level get/post/put/delete calls; modular style subclasses Sinatra::Base.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+# file_conventions: glob -> entity_type mapping from file naming conventions.
+file_conventions:
+  # Classic-style app entry point
+  - glob: "app.rb"
+    entity_type: Service
+    name_from: filename
+  # Modular app class files
+  - glob: "*/app/*.rb"
+    entity_type: Controller
+    name_from: filename
+  # Helper modules
+  - glob: "*/helpers/*.rb"
+    entity_type: Service
+    name_from: filename
+  # Rack config
+  - glob: "config.ru"
+    entity_type: Config
+    name_from: filename
+
+# source_patterns: regex patterns that match Sinatra constructs in source files.
+source_patterns:
+  # Classic-style HTTP verb routes: get "/path" do ... end
+  # Also matches: post, put, patch, delete, head, options
+  - pattern: "^\\s*(get|post|put|patch|delete|head|options)\\s+[\"']([^\"']+)[\"']\\s+do"
+    entity_type: Route
+    name_group: 2
+    scope: file
+
+  # Modular class definition: class MyApp < Sinatra::Base
+  - pattern: "class\\s+(\\w+)\\s*<\\s*Sinatra::(Base|Application)"
+    entity_type: Controller
+    name_group: 1
+    scope: class
+
+  # Helper block: helpers do ... end
+  - pattern: "^\\s*helpers\\s+do"
+    entity_type: Service
+    name_group: 0
+    scope: file
+
+  # Helper include: helpers HelperModule
+  - pattern: "^\\s*helpers\\s+(\\w+(?:::\\w+)*)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+
+  # Before filter: before "/path" do or before do
+  - pattern: "^\\s*before\\s+(?:[\"']([^\"']+)[\"']\\s+)?do"
+    entity_type: Middleware
+    name_group: 0
+    scope: file
+
+  # After filter: after "/path" do or after do
+  - pattern: "^\\s*after\\s+(?:[\"']([^\"']+)[\"']\\s+)?do"
+    entity_type: Middleware
+    name_group: 0
+    scope: file
+
+  # Configure block: configure :production do
+  - pattern: "^\\s*configure\\s*(?::(\\w+))?\\s*do"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+  # Error handler: error 404 do or error Sinatra::NotFound do
+  - pattern: "^\\s*error\\s+(\\d+|[A-Z]\\w*(?:::\\w+)*)\\s+do"
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+  # Sinatra::Application classic-style app boot
+  - pattern: "Sinatra::Application\\.run!"
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+# relationship_rules: regex patterns that produce edges between entities.
+relationship_rules:
+  # Route calls helper: references a helper method by name in the route block
+  # e.g.  get "/foo" do\n    some_helper\n  end
+  - pattern: "^\\s*(get|post|put|patch|delete)\\s+[\"']([^\"']+)[\"'][^\\n]*\\n(?:[^\\n]*\\n)*?[^\\n]*\\b(\\w+_helper|authenticate!|authorize!)\\b"
+    source_type: Route
+    target_type: Service
+    relationship: CALLS
+    source_group: 2
+    target_group: 3
+
+  # Modular app mounts route via map in config.ru: map "/api" do run MyApp end
+  - pattern: "map\\s+[\"']([^\"']+)[\"']\\s+do[\\s\\S]*?run\\s+(\\w+)"
+    source_type: Config
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # use middleware: use Rack::Session::Cookie
+  - pattern: "^\\s*use\\s+(\\w+(?:::\\w+)*)"
+    source_type: Controller
+    target_type: Middleware
+    relationship: REGISTERED_ON
+    source_group: 1
+    target_group: 1

@@ -1,0 +1,42 @@
+frameworks:
+  name: CakePHP
+  package_name: cakephp/cakephp
+  category: web_full_stack
+  github_stars_2025: 8700+
+  detection:
+    config_files:
+    - composer.json
+    - config/app.php
+    - config/app_local.php
+    - config/routes.php
+    - bin/cake
+    - src/Application.php
+    - webroot/index.php
+    - src/Controller/AppController.php
+    - src/Model/Table/
+    - src/Model/Entity/
+    composer_deps:
+    - cakephp/cakephp
+    - cakephp/authentication
+    - cakephp/authorization
+    - cakephp/bake
+    - cakephp/migrations
+    import_markers:
+    - use Cake\
+    - extends AppController
+    - extends Table
+    - extends Entity
+    - Cake\Controller\
+    - Cake\ORM\
+    structural_markers:
+    - src/Controller/
+    - src/Model/Table/
+    - src/Model/Entity/
+    - src/Template/
+    - templates/
+    - bin/cake
+  notes: 'bin/cake is the CakePHP CLI — high-confidence when present. CakePHP 4+ uses
+    templates/ instead of src/Template/. Table + Entity split in src/Model/ is distinctive
+    vs other frameworks.
+
+    '

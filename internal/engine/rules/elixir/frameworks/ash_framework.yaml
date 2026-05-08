@@ -1,0 +1,47 @@
+frameworks:
+  name: Ash Framework
+  hex_package: ash
+  category: resource_framework
+  github_stars_2025: 4000+
+  detection:
+    config_files:
+    - mix.exs
+    - lib/app/resources/
+    - lib/app/registry.ex
+    - lib/app/domain.ex
+    mix_deps:
+    - ash
+    - ash_postgres
+    - ash_phoenix
+    - ash_graphql
+    - ash_json_api
+    - ash_authentication
+    - ash_admin
+    - picosat_elixir
+    import_markers:
+    - use Ash.Resource
+    - use Ash.Registry
+    - use Ash.Domain
+    - use Ash.Api
+    - Ash.Query
+    - Ash.Changeset
+    - Ash.read!
+    - Ash.create!
+    - Ash.update!
+    - Ash.destroy!
+    - attributes do
+    - actions do
+    - relationships do
+    - calculations do
+    - aggregates do
+    - identities do
+    structural_markers:
+    - lib/app/resources/
+    - lib/app/registry.ex
+    - lib/app/domain.ex
+  notes: 'Ash is identified by ash dep in mix.exs + resource modules using use Ash.Resource.
+    lib/app/resources/ directory is conventional. Ash 3.x replaces the Registry pattern
+    with Ash.Domain (lib/app/domain.ex). ash_postgres + ash_phoenix together indicate
+    a full-stack Ash application.
+
+    '

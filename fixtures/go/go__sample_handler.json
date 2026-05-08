@@ -1,0 +1,87 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/go/sample_handler.go",
+  "language": "go",
+  "entities": [
+    {
+      "name": "main",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 64,
+      "end_line": 73,
+      "language": "go",
+      "signature": "func main()",
+      "enrichment_required": false
+    },
+    {
+      "name": "handleGetUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 46,
+      "end_line": 62,
+      "language": "go",
+      "signature": "func handleGetUser(store *UserStore) http.HandlerFunc",
+      "enrichment_required": false
+    },
+    {
+      "name": "handleHealth",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 40,
+      "end_line": 43,
+      "language": "go",
+      "signature": "func handleHealth(w http.ResponseWriter, r *http.Request)",
+      "enrichment_required": false
+    },
+    {
+      "name": "SaveUser",
+      "qualified_name": "UserStore.SaveUser",
+      "kind": "SCOPE.Operation",
+      "start_line": 35,
+      "end_line": 37,
+      "language": "go",
+      "signature": "func (s *UserStore) SaveUser(u User)",
+      "enrichment_required": false
+    },
+    {
+      "name": "GetUser",
+      "qualified_name": "UserStore.GetUser",
+      "kind": "SCOPE.Operation",
+      "start_line": 29,
+      "end_line": 32,
+      "language": "go",
+      "signature": "func (s *UserStore) GetUser(id int) (User, bool)",
+      "enrichment_required": false
+    },
+    {
+      "name": "NewUserStore",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 24,
+      "end_line": 26,
+      "language": "go",
+      "signature": "func NewUserStore() *UserStore",
+      "enrichment_required": false
+    },
+    {
+      "name": "UserStore",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 19,
+      "end_line": 21,
+      "language": "go",
+      "signature": "type UserStore struct",
+      "enrichment_required": false
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 12,
+      "end_line": 16,
+      "language": "go",
+      "signature": "type User struct // tags: 3",
+      "enrichment_required": false
+    }
+  ],
+  "relationships": []
+}

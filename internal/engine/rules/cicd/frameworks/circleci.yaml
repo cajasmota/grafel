@@ -1,0 +1,20 @@
+frameworks:
+  name: CircleCI
+  language: cicd
+  official_docs: https://circleci.com/docs
+  config_file: .circleci/config.yml
+  adopted_by: GitHub and GitLab repositories via CircleCI app
+  vera_scope: Service (pipeline as Service, job as Operation)
+  characteristics:
+  - v2.1 is current standard (v2.0 legacy)
+  - Workflows orchestrate jobs with dependencies (requires:)
+  - Orbs for reusable command/job packages
+  - Executors (docker, machine, macos, windows) for runtime selection
+  - Parallelism via parallelism: and test splitting
+  - Contexts for shared environment variables
+  - Artifact and test result uploads
+  complexity_signal_markers:
+  - Job count > 12
+  - Orb dependencies > 3
+  - Executor type diversity > 2 (docker + macos)
+  - Workflow dependency chains > 4

@@ -1,0 +1,16 @@
+frameworks:
+  name: Mitogen
+  vendor: David Wilson / Mitogen Project
+  category: performance_plugin
+  detection:
+    config_indicators:
+    - '"strategy_plugins: [...]" in ansible.cfg with mitogen'
+    - '"strategy: mitogen_linear" or "mitogen_free" in playbooks'
+    - strategy_plugins = /path/to/mitogen/ansible_mitogen/plugins/strategy
+    environmental_signals:
+    - ANSIBLE_STRATEGY environment variable set to mitogen_linear/mitogen_free
+  notes: 'Mitogen is a performance enhancement plugin that reduces Ansible SSH overhead
+    via connection multiplexing. Detected via strategy_plugins configuration in ansible.cfg
+    or playbook strategy: directives. Presence indicates performance-critical deployments.
+
+    '

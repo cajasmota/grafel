@@ -1,0 +1,32 @@
+orms_database:
+  name: Java SQLite Driver (sqlite-jdbc / Xerial)
+  category: sqlite_driver
+  maven_coordinates:
+    - org.xerial:sqlite-jdbc
+  detection:
+    import_patterns:
+      - import org.sqlite
+      - import java.sql.DriverManager
+    code_patterns:
+      - DriverManager.getConnection("jdbc:sqlite:
+      - '"jdbc:sqlite:'
+      - ":memory:"
+  notes: >
+    Xerial sqlite-jdbc is the standard Java JDBC driver for SQLite.
+    JDBC URL format: jdbc:sqlite:/path/to/file.db or jdbc:sqlite::memory:
+    for in-memory databases. Commonly used with plain JDBC or as a
+    SQLite backend for Hibernate/JPA test setups.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: sqlite-jdbc JDBC connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

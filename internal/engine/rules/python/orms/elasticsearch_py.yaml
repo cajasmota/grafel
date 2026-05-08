@@ -1,0 +1,25 @@
+orms_database:
+  name: elasticsearch-py
+  package: elasticsearch
+  pypi_name: elasticsearch
+  detection:
+    import_patterns:
+    - from elasticsearch import
+    - import elasticsearch
+    - from elasticsearch_dsl import
+    - import elasticsearch_dsl
+    code_patterns:
+    - Elasticsearch(
+    - AsyncElasticsearch(
+    - Search(using=
+    - Document
+  notes: |
+    Official Python Elasticsearch client. elasticsearch-dsl provides a high-level
+    ORM-like interface (Document, Search, Q). Both are detected here.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract Elasticsearch() client connections, elasticsearch-dsl Document classes,
+      Search() instances, Q() query builders, aggregations A(), ILM policies, and
+      index creation calls. Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

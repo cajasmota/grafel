@@ -1,0 +1,34 @@
+frameworks:
+  name: Spring Boot (Kotlin)
+  category: web_full_stack
+  gradle_coordinates:
+  - org.springframework.boot:spring-boot-starter-web
+  - org.springframework.boot:spring-boot-starter-webflux
+  - org.jetbrains.kotlin:kotlin-reflect
+  maven_coordinates:
+  - org.springframework.boot:spring-boot-starter-web
+  detection:
+    config_files:
+    - application.yml
+    - application.properties
+    - build.gradle.kts
+    - pom.xml
+    build_signals:
+    - id("org.springframework.boot")
+    - '"org.springframework.boot:spring-boot-starter"'
+    - kotlin("plugin.spring")
+    import_patterns:
+    - import org.springframework.boot.autoconfigure.SpringBootApplication
+    - import org.springframework.web.bind.annotation.
+    - import org.springframework.stereotype.
+    code_patterns:
+    - '@SpringBootApplication'
+    - '@RestController'
+    - '@Service'
+    - runApplication<
+  notes: 'Spring Boot in Kotlin requires kotlin-reflect and kotlin("plugin.spring")
+    for open class support. runApplication<MyApp>() is Kotlin-specific entry point.
+    Co-presence of kotlin-reflect + spring-boot-starter = Kotlin Spring. Distinct
+    from Java Spring: no main class in manifest, uses runApplication.
+
+    '

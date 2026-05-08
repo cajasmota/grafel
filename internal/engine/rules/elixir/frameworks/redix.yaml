@@ -1,0 +1,34 @@
+# Elixir Redix extraction rules (MX-575).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# custom_extractors entries are consumed by CustomExtractorRegistry.
+
+frameworks:
+  name: Redix
+  hex_package: redix
+  category: cache_client
+  github_stars_2025: 1100+
+  detection:
+    dependency_names:
+    - redix
+    import_markers:
+    - Redix.start_link
+    - Redix.command
+    - Redix.pipeline
+    - "{:ok, conn} = Redix.start_link"
+    structural_markers:
+    - Redix.start_link(
+    - Redix.command(
+    - Redix.pipeline(
+  notes: >
+    Redix is the most popular Elixir Redis client. It uses GenServer processes as
+    connection holders. Redix.start_link is the primary connection signal.
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: Redix.start_link connections (SCOPE.Service),
+      cache ops (SCOPE.Operation/cache_op), pub/sub (SCOPE.Operation/pubsub),
+      streams (SCOPE.Operation/stream_op), Lua eval (SCOPE.Operation/lua_script).

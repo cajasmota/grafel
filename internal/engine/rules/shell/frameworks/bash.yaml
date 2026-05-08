@@ -1,0 +1,20 @@
+frameworks:
+  name: bash
+  category: shell
+  detection_signals:
+    shebang_patterns:
+    - '#!/bin/bash'
+    - '#!/usr/bin/env bash'
+    - '#!/usr/bin/bash'
+    file_extensions:
+    - .sh
+    - .bash
+    content_patterns:
+    - declare -A
+    - 'local '
+    - $((
+    - '[[ '
+    - 'source '
+    - mapfile
+    - readarray
+  notes: Most common shell in CI, build scripts, and developer tooling

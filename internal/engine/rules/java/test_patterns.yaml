@@ -1,0 +1,188 @@
+testing:
+  file_conventions:
+    test_filename_patterns:
+    - '*Test.java'
+    - '*Tests.java'
+    - '*IT.java'
+    - '*IntegrationTest.java'
+    - '*Spec.java'
+    directory_conventions:
+    - src/test/java/
+    - src/test/resources/
+    - src/integrationTest/java/
+    - src/it/java/
+  frameworks:
+  - name: JUnit 5 (Jupiter)
+    maven_coordinates: org.junit.jupiter:junit-jupiter
+    gradle_dependency: testImplementation 'org.junit.jupiter:junit-jupiter'
+    detection:
+      pom_xml_markers:
+      - junit-jupiter
+      - org.junit.jupiter
+      - junit-platform-launcher
+      import_patterns:
+      - import org.junit.jupiter.api.Test
+      - import org.junit.jupiter.api
+      - import org.junit.jupiter.params
+      code_patterns:
+      - '@Test'
+      - '@BeforeEach'
+      - '@AfterEach'
+      - '@BeforeAll'
+      - '@AfterAll'
+      - '@ParameterizedTest'
+      - '@ExtendWith'
+      - '@DisplayName'
+    notes: 'Dominant test framework since 2020. @ExtendWith for extensions (MockitoExtension,
+      SpringExtension). Distinguish from JUnit 4 by import package (jupiter vs junit4).
+
+      '
+  - name: JUnit 4
+    maven_coordinates: junit:junit
+    gradle_dependency: testImplementation 'junit:junit'
+    detection:
+      pom_xml_markers:
+      - junit:junit
+      import_patterns:
+      - import org.junit.Test
+      - import org.junit.Before
+      - import org.junit.After
+      - import org.junit.runner.RunWith
+      code_patterns:
+      - '@Test'
+      - '@Before'
+      - '@After'
+      - '@RunWith'
+      - '@Rule'
+      - '@ClassRule'
+    notes: 'Legacy but still widely used. @RunWith distinguishes JUnit 4 from JUnit
+      5. Detect by org.junit.Test vs org.junit.jupiter.api.Test import.
+
+      '
+  - name: TestNG
+    maven_coordinates: org.testng:testng
+    gradle_dependency: testImplementation 'org.testng:testng'
+    detection:
+      config_files:
+      - testng.xml
+      - src/test/resources/testng.xml
+      pom_xml_markers:
+      - org.testng:testng
+      import_patterns:
+      - import org.testng.annotations.Test
+      - import org.testng
+      code_patterns:
+      - '@Test'
+      - '@BeforeMethod'
+      - '@AfterMethod'
+      - '@DataProvider'
+      - '@Factory'
+    notes: 'testng.xml suite configuration is high-confidence. @DataProvider for parameterized
+      tests is distinct from JUnit. Common in enterprise and Selenium test suites.
+
+      '
+  - name: Mockito
+    maven_coordinates: org.mockito:mockito-core
+    gradle_dependency: testImplementation 'org.mockito:mockito-core'
+    detection:
+      pom_xml_markers:
+      - org.mockito:mockito-core
+      - mockito-junit-jupiter
+      import_patterns:
+      - import org.mockito.Mockito
+      - import org.mockito.Mock
+      - import org.mockito.InjectMocks
+      - import static org.mockito.Mockito
+      code_patterns:
+      - '@Mock'
+      - '@InjectMocks'
+      - '@Spy'
+      - '@Captor'
+      - Mockito.when(
+      - verify(
+      - mock(
+    notes: 'Most widely used Java mocking library. @Mock + @InjectMocks pair is the
+      dominant pattern. mockito-junit-jupiter for JUnit 5 integration.
+
+      '
+  - name: AssertJ
+    maven_coordinates: org.assertj:assertj-core
+    gradle_dependency: testImplementation 'org.assertj:assertj-core'
+    detection:
+      pom_xml_markers:
+      - org.assertj:assertj-core
+      import_patterns:
+      - import static org.assertj.core.api.Assertions
+      - import org.assertj.core.api
+      code_patterns:
+      - assertThat(
+      - .isEqualTo(
+      - .isNotNull()
+      - .contains(
+      - .hasSize(
+    notes: 'Fluent assertion library. assertThat(...).isEqualTo(...) chains are the
+      signature pattern. Often used alongside JUnit 5 and Mockito.
+
+      '
+  - name: Hamcrest
+    maven_coordinates: org.hamcrest:hamcrest
+    gradle_dependency: testImplementation 'org.hamcrest:hamcrest'
+    detection:
+      pom_xml_markers:
+      - org.hamcrest:hamcrest
+      - hamcrest-all
+      - hamcrest-core
+      import_patterns:
+      - import static org.hamcrest.MatcherAssert.assertThat
+      - import static org.hamcrest.Matchers
+      - import org.hamcrest
+      code_patterns:
+      - assertThat(
+      - is(
+      - hasItem(
+      - equalTo(
+      - not(
+    notes: 'Matcher-based assertion library. Bundled with JUnit 4 (junit:junit includes
+      hamcrest-core). Detect by hamcrest.Matchers import.
+
+      '
+  - name: Spring Test
+    maven_coordinates: org.springframework:spring-test
+    gradle_dependency: testImplementation 'org.springframework:spring-test'
+    detection:
+      pom_xml_markers:
+      - spring-boot-starter-test
+      - org.springframework:spring-test
+      import_patterns:
+      - import org.springframework.test
+      - import org.springframework.boot.test
+      code_patterns:
+      - '@SpringBootTest'
+      - '@WebMvcTest'
+      - '@DataJpaTest'
+      - '@MockBean'
+      - '@Autowired'
+      - MockMvc
+      - WebTestClient
+      - '@ExtendWith(SpringExtension.class)'
+    notes: 'spring-boot-starter-test includes JUnit 5, Mockito, and AssertJ. @SpringBootTest
+      is the full integration test signal. @WebMvcTest for slice tests. MockMvc for
+      HTTP layer testing.
+
+      '
+  - name: Arquillian
+    maven_coordinates: org.jboss.arquillian.junit:arquillian-junit-container
+    gradle_dependency: testImplementation 'org.jboss.arquillian.junit:arquillian-junit-container'
+    detection:
+      pom_xml_markers:
+      - org.jboss.arquillian
+      import_patterns:
+      - import org.jboss.arquillian
+      code_patterns:
+      - '@RunWith(Arquillian.class)'
+      - '@Deployment'
+      - ShrinkWrap.create(
+    notes: 'In-container integration testing for Jakarta EE. @Deployment + ShrinkWrap
+      archive creation is the definitive signal. Primarily in enterprise JEE codebases.
+
+      '

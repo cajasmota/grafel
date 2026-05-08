@@ -1,0 +1,108 @@
+build_tools:
+- name: go modules
+  config_files:
+  - go.mod
+  - go.sum
+  detection:
+    file_patterns:
+    - go.mod
+    - go.sum
+  notes: 'go.mod presence is the definitive signal for any Go project using module-aware
+    mode (Go 1.11+). go.sum locks dependency checksums. Absence of go.mod signals
+    GOPATH-based legacy project (pre-Go 1.11).
+
+    '
+- name: Makefile
+  config_files:
+  - Makefile
+  - GNUmakefile
+  detection:
+    file_patterns:
+    - Makefile
+    - GNUmakefile
+    content_markers:
+    - go build
+    - go test
+    - go run
+    - go generate
+    - .PHONY
+  notes: 'Near-universal in Go projects for build orchestration. Presence of go-specific
+    targets (build, test, lint, generate) confirms it is a Go project Makefile, not
+    incidental.
+
+    '
+- name: GoReleaser
+  config_files:
+  - .goreleaser.yaml
+  - .goreleaser.yml
+  - goreleaser.yaml
+  detection:
+    file_patterns:
+    - .goreleaser.yaml
+    - .goreleaser.yml
+    - goreleaser.yaml
+  notes: 'Automates Go binary release (cross-compilation, GitHub Releases, Docker
+    images, Homebrew formulae). Presence signals production-grade distribution pipeline.
+
+    '
+- name: ko
+  config_files:
+  - .ko.yaml
+  detection:
+    file_patterns:
+    - .ko.yaml
+    content_markers:
+    - ko build
+    - ko publish
+    - KO_DOCKER_REPO
+  notes: 'Google''s container image builder for Go — builds without Dockerfile. .ko.yaml
+    or KO_DOCKER_REPO env reference in CI/Makefile are signals. Popular in Kubernetes/cloud-native
+    Go projects.
+
+    '
+- name: Mage
+  module_path: github.com/magefile/mage
+  config_files:
+  - magefile.go
+  - magefiles/
+  detection:
+    go_mod_require:
+    - github.com/magefile/mage
+    file_patterns:
+    - magefile.go
+    - magefiles/*.go
+    content_markers:
+    - //go:build mage
+    - // +build mage
+  notes: 'Make-like build tool using Go code instead of Makefile DSL. magefile.go
+    with build tag is definitive. magefiles/ directory is the modular layout signal.
+
+    '
+- name: Task (Taskfile)
+  config_files:
+  - Taskfile.yml
+  - Taskfile.yaml
+  - taskfile.yml
+  detection:
+    file_patterns:
+    - Taskfile.yml
+    - Taskfile.yaml
+    - taskfile.yml
+  notes: 'Go-inspired cross-platform task runner. Growing adoption as Makefile replacement.
+    Taskfile.yml presence is the sole detection signal.
+
+    '
+- name: buf
+  config_files:
+  - buf.yaml
+  - buf.gen.yaml
+  - buf.work.yaml
+  detection:
+    file_patterns:
+    - buf.yaml
+    - buf.gen.yaml
+    - buf.work.yaml
+  notes: 'Protobuf toolkit. buf.yaml presence alongside .proto files signals gRPC/protobuf-based
+    Go service. buf.gen.yaml configures code generation plugins.
+
+    '

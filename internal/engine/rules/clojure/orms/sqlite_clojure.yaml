@@ -1,0 +1,36 @@
+orms_database:
+  name: Clojure SQLite (next.jdbc / clojure.java.jdbc with sqlite-jdbc)
+  category: sqlite_driver
+  deps_edn:
+    - com.github.seancorfield/next.jdbc
+    - org.clojure/java.jdbc
+    - org.xerial/sqlite-jdbc
+  detection:
+    import_patterns:
+      - next.jdbc
+      - clojure.java.jdbc
+    code_patterns:
+      - jdbc/get-connection
+      - sql/execute!
+      - jdbc/query
+      - 'subprotocol "sqlite"'
+      - ":memory:"
+  notes: >
+    Clojure uses sqlite-jdbc as the JDBC driver. next.jdbc (seancorfield) is
+    the modern idiomatic choice. clojure.java.jdbc is the legacy library.
+    Both use the same Xerial JDBC driver underneath. DB spec uses
+    {:dbtype "sqlite" :dbname "file.db"} or a JDBC URL string.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: next.jdbc/clojure.java.jdbc connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

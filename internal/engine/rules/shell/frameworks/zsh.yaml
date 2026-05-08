@@ -1,0 +1,23 @@
+frameworks:
+  name: zsh
+  category: shell
+  detection_signals:
+    shebang_patterns:
+    - '#!/bin/zsh'
+    - '#!/usr/bin/env zsh'
+    - '#!/usr/local/bin/zsh'
+    file_extensions:
+    - .zsh
+    config_files:
+    - .zshrc
+    - .zprofile
+    - .zshenv
+    - .zlogin
+    content_patterns:
+    - autoload -Uz
+    - 'setopt '
+    - zparseopts
+    - 'zstyle '
+    - 'compdef '
+    - 'vared '
+  notes: Common for developer dotfiles and Oh-My-Zsh plugin scripts

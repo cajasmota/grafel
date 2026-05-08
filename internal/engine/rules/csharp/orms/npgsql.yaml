@@ -1,0 +1,32 @@
+orms_database:
+  name: Npgsql (.NET PostgreSQL Driver)
+  category: postgres_driver
+  nuget_package: Npgsql
+  detection:
+    import_patterns:
+      - using Npgsql
+      - using Npgsql.EntityFrameworkCore
+    code_patterns:
+      - new NpgsqlConnection(
+      - NpgsqlDataSource.Create(
+      - new NpgsqlCommand(
+      - NpgsqlDataAdapter
+  notes: >
+    Npgsql is the official .NET data provider for PostgreSQL. It supports
+    synchronous and asynchronous operations, binary COPY, LISTEN/NOTIFY,
+    and Npgsql.EntityFrameworkCore.PostgreSQL for EF Core integration.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: NpgsqlConnection/NpgsqlDataSource
+      connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY),
+      BeginBinaryImport/Export COPY operations
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

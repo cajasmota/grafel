@@ -1,0 +1,147 @@
+# Quarkus framework extraction rules (MX-504)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Artifact: io.quarkus:quarkus-core
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: Quarkus
+  category: cloud_native
+  maven_coordinates: io.quarkus:quarkus-core
+  gradle_dependency: implementation 'io.quarkus:quarkus-core'
+  bom_artifact: io.quarkus.platform:quarkus-bom
+  adoption_rank_2025: 4
+  detection:
+    config_files:
+    - src/main/resources/application.properties
+    - src/main/resources/application.yaml
+    pom_xml_markers:
+    - io.quarkus
+    - quarkus-maven-plugin
+    - quarkus-bom
+    gradle_markers:
+    - io.quarkus
+    import_patterns:
+    - import io.quarkus
+    - import javax.enterprise.context
+    - import jakarta.enterprise.context
+    code_patterns:
+    - '@QuarkusApplication'
+    - '@QuarkusTest'
+    - Quarkus.run(
+    - '@ApplicationScoped'
+    - '@RequestScoped'
+  notes: >
+    quarkus-maven-plugin in pom.xml is definitive. Uses CDI annotations shared
+    with Jakarta EE — disambiguate by checking for io.quarkus imports.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # JAX-RS resource classes live in a resources/ or rest/ package by convention
+  - glob: "*/resources/*.java"
+    entity_type: Operation
+    name_from: class_name
+  - glob: "*/rest/*.java"
+    entity_type: Operation
+    name_from: class_name
+  # Panache entity classes by convention live in model/ or entity/ directories
+  - glob: "*/model/*.java"
+    entity_type: Model
+    name_from: class_name
+  - glob: "*/entity/*.java"
+    entity_type: Model
+    name_from: class_name
+
+source_patterns:
+  # JAX-RS class-level @Path: extract path value as the base path for the resource
+  # Matches: @Path("/orders") or @Path("/orders/{id}")
+  - pattern: "@Path\\s*\\(\\s*\"([^\"]+)\"\\s*\\)"
+    entity_type: Operation
+    name_group: 1
+    scope: class
+
+  # JAX-RS HTTP method annotations on methods — combine with class @Path upstream
+  # @GET, @POST, @PUT, @DELETE, @PATCH, @HEAD, @OPTIONS with optional @Path
+  # Matches the method name as the operation name when paired with HTTP verb
+  - pattern: "(?:@GET|@POST|@PUT|@DELETE|@PATCH|@HEAD|@OPTIONS)[\\s\\S]{0,120}?public\\s+\\S+\\s+(\\w+)\\s*\\("
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Method-level @Path paired with HTTP method to extract sub-path
+  # Matches: @Path("/items/{itemId}") on a method
+  - pattern: "@Path\\s*\\(\\s*\"([^\"]+)\"\\s*\\)[\\s\\n]*(?:@(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS))"
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # Panache entity: class extending PanacheEntity or PanacheEntityBase
+  # Matches: public class Order extends PanacheEntity {
+  - pattern: "class\\s+(\\w+)\\s+extends\\s+(?:Panache(?:Entity|EntityBase|Repository(?:Base)?))"
+    entity_type: Model
+    name_group: 1
+    scope: class
+
+  # CDI @ApplicationScoped service bean
+  - pattern: "@ApplicationScoped[\\s\\S]{0,80}?(?:public\\s+)?class\\s+(\\w+)"
+    entity_type: Service
+    name_group: 1
+    scope: class
+
+  # CDI @RequestScoped bean
+  - pattern: "@RequestScoped[\\s\\S]{0,80}?(?:public\\s+)?class\\s+(\\w+)"
+    entity_type: Service
+    name_group: 1
+    scope: class
+
+  # @Inject field injection — captures field type as a dependency reference
+  - pattern: "@Inject[\\s\\n]+(?:(?:private|protected|public|package)\\s+)?(\\w+)\\s+\\w+"
+    entity_type: Dependency
+    name_group: 1
+    scope: class
+
+  # Quarkus REST client @RegisterRestClient
+  - pattern: "@RegisterRestClient[\\s\\S]{0,80}?(?:public\\s+)?(?:interface|class)\\s+(\\w+)"
+    entity_type: Service
+    name_group: 1
+    scope: class
+
+relationship_rules:
+  # JAX-RS @Path resource CALLS method-level @Path sub-resource
+  # Connects class @Path value to method @Path sub-path
+  - pattern: "@Path\\s*\\(\\s*\"([^\"]+)\"\\s*\\)[\\s\\S]{0,300}?@Path\\s*\\(\\s*\"([^\"]+)\"\\s*\\)"
+    source_type: Operation
+    target_type: Operation
+    relationship: CALLS
+    source_group: 1
+    target_group: 2
+
+  # @Inject injects a dependency into a JAX-RS resource class (Operation)
+  # Connects the injected type (Dependency) into the containing resource (Operation)
+  - pattern: "@Inject[\\s\\n]+(?:(?:private|protected|public)\\s+)?(\\w+)\\s+(\\w+)"
+    source_type: Dependency
+    target_type: Operation
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2
+
+  # @Inject injects a dependency into a CDI @ApplicationScoped service bean (Service)
+  # Connects the injected type (Dependency) into the containing service (Service)
+  - pattern: "@Inject[\\s\\n]+(?:(?:private|protected|public)\\s+)?(\\w+)\\s+(\\w+)"
+    source_type: Dependency
+    target_type: Service
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.quarkus_extractor"
+    function: "extract"
+    description: "Extract Quarkus JAX-RS endpoints (class+method @Path resolution), Panache ORM/MongoDB entities and repositories, CDI @Inject dependency graph, REST Data Panache auto CRUD, and @MongoEntity metadata. Emits DEPENDS_ON relationships."
+  - module: "memx_indexer.languages._engine.config_prefix_extractor"
+    function: "extract"
+    description: "Extract quarkus.http.root-path (properties) and quarkus.http.root-path (YAML) as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."

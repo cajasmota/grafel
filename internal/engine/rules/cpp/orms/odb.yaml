@@ -1,0 +1,36 @@
+orm_db:
+  name: ODB
+  category: orm
+  github_stars_2025: 400+
+  detection:
+    cmake_find_package:
+    - find_package(odb
+    - find_package(ODB
+    cmake_target_link:
+    - odb::odb
+    - odb::sqlite
+    - odb::pgsql
+    - libodb
+    - libodb-sqlite
+    vcpkg_packages:
+    - libodb
+    - libodb-sqlite
+    include_patterns:
+    - '#include <odb/core.hxx>'
+    - '#include <odb/database.hxx>'
+    - '#include <odb/transaction.hxx>'
+    - '#pragma db'
+    structural_markers:
+    - '#pragma db object'
+    - '#pragma db value'
+    - '#pragma db member'
+    - odb::database
+    - odb::transaction
+    - db->persist(
+    - db->query<
+    - odb::access
+    notes: 'Full ORM for C++ using pragma-based annotations and code generation. #pragma
+      db object is the definitive class-level ORM marker. Generates *-odb.cxx and
+      *-odb.hxx files (skippable generated artifacts).
+
+      '

@@ -1,0 +1,41 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/indexer-python/src/config.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "get_config",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 15,
+      "end_line": 20,
+      "language": "python",
+      "signature": "def get_config() -> dict",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "_load_config",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 23,
+      "end_line": 33,
+      "language": "python",
+      "signature": "def _load_config() -> dict",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "reset_config",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 36,
+      "end_line": 39,
+      "language": "python",
+      "signature": "def reset_config() -> None",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

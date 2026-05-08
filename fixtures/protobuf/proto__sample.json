@@ -1,0 +1,625 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto",
+  "language": "protobuf",
+  "entities": [
+    {
+      "name": "UserService",
+      "qualified_name": null,
+      "kind": "SCOPE.Service",
+      "start_line": 12,
+      "end_line": 18,
+      "language": "protobuf",
+      "signature": "service UserService",
+      "enrichment_required": false,
+      "properties": {
+        "type": "service",
+        "vera_type": "SCOPE.Service",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 19,
+      "end_line": 25,
+      "language": "protobuf",
+      "signature": "message User",
+      "enrichment_required": false,
+      "properties": {
+        "type": "message",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "GetUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 26,
+      "end_line": 29,
+      "language": "protobuf",
+      "signature": "message GetUserRequest",
+      "enrichment_required": false,
+      "properties": {
+        "type": "message",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "ListUsersRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 30,
+      "end_line": 34,
+      "language": "protobuf",
+      "signature": "message ListUsersRequest",
+      "enrichment_required": false,
+      "properties": {
+        "type": "message",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "ListUsersResponse",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 35,
+      "end_line": 39,
+      "language": "protobuf",
+      "signature": "message ListUsersResponse",
+      "enrichment_required": false,
+      "properties": {
+        "type": "message",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "CreateUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 40,
+      "end_line": 44,
+      "language": "protobuf",
+      "signature": "message CreateUserRequest",
+      "enrichment_required": false,
+      "properties": {
+        "type": "message",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UpdateUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 45,
+      "end_line": 50,
+      "language": "protobuf",
+      "signature": "message UpdateUserRequest",
+      "enrichment_required": false,
+      "properties": {
+        "type": "message",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "DeleteUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Schema",
+      "start_line": 51,
+      "end_line": 54,
+      "language": "protobuf",
+      "signature": "message DeleteUserRequest",
+      "enrichment_required": false,
+      "properties": {
+        "type": "message",
+        "vera_type": "SCOPE.Schema",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "GetUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 13,
+      "end_line": 13,
+      "language": "protobuf",
+      "signature": "rpc GetUser(GetUserRequest) returns (User)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "rpc",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "endpoint",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "ListUsers",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 14,
+      "end_line": 14,
+      "language": "protobuf",
+      "signature": "rpc ListUsers(ListUsersRequest) returns (ListUsersResponse)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "rpc",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "endpoint",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "CreateUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 15,
+      "end_line": 15,
+      "language": "protobuf",
+      "signature": "rpc CreateUser(CreateUserRequest) returns (User)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "rpc",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "endpoint",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UpdateUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 16,
+      "end_line": 16,
+      "language": "protobuf",
+      "signature": "rpc UpdateUser(UpdateUserRequest) returns (User)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "rpc",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "endpoint",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "PascalCase",
+        "dominant_percentage": 92.85714285714286,
+        "sample_count": 14,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:UserService:order=1",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:UserService",
+      "kind": "SCOPE.Pattern",
+      "start_line": 12,
+      "end_line": 18,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::UserService",
+        "reading_order": 1,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:User:order=2",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:User",
+      "kind": "SCOPE.Pattern",
+      "start_line": 19,
+      "end_line": 25,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::User",
+        "reading_order": 2,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:GetUserRequest:order=3",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:GetUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 26,
+      "end_line": 29,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::GetUserRequest",
+        "reading_order": 3,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:ListUsersRequest:order=4",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:ListUsersRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 30,
+      "end_line": 34,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::ListUsersRequest",
+        "reading_order": 4,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:ListUsersResponse:order=5",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:ListUsersResponse",
+      "kind": "SCOPE.Pattern",
+      "start_line": 35,
+      "end_line": 39,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::ListUsersResponse",
+        "reading_order": 5,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:CreateUserRequest:order=6",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:CreateUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 40,
+      "end_line": 44,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::CreateUserRequest",
+        "reading_order": 6,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:UpdateUserRequest:order=7",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:UpdateUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 45,
+      "end_line": 50,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::UpdateUserRequest",
+        "reading_order": 7,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:DeleteUserRequest:order=8",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:DeleteUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 51,
+      "end_line": 54,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::DeleteUserRequest",
+        "reading_order": 8,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:GetUser:order=9",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:GetUser",
+      "kind": "SCOPE.Pattern",
+      "start_line": 13,
+      "end_line": 13,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::GetUser",
+        "reading_order": 9,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "onboarding_entry:ListUsers:order=10",
+      "qualified_name": "scope:pattern:onboarding_entry:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:ListUsers",
+      "kind": "SCOPE.Pattern",
+      "start_line": 14,
+      "end_line": 14,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_ONBOARDING_ENTRY",
+        "source": "",
+        "kind": "onboarding_entry",
+        "entity_id": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto::ListUsers",
+        "reading_order": 10,
+        "entry_point_type": "grpc_service",
+        "inbound_dependency_count": 0,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:service",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:UserService",
+      "kind": "SCOPE.Pattern",
+      "start_line": 12,
+      "end_line": 18,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:service",
+        "category": "enterprise",
+        "pattern": "service",
+        "entity_name": "UserService",
+        "pattern_taxonomy": "enterprise:service"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:dto",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:GetUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 26,
+      "end_line": 29,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:dto",
+        "category": "enterprise",
+        "pattern": "dto",
+        "entity_name": "GetUserRequest",
+        "pattern_taxonomy": "enterprise:dto"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:dto",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:ListUsersRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 30,
+      "end_line": 34,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:dto",
+        "category": "enterprise",
+        "pattern": "dto",
+        "entity_name": "ListUsersRequest",
+        "pattern_taxonomy": "enterprise:dto"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:dto",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:ListUsersResponse",
+      "kind": "SCOPE.Pattern",
+      "start_line": 35,
+      "end_line": 39,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:dto",
+        "category": "enterprise",
+        "pattern": "dto",
+        "entity_name": "ListUsersResponse",
+        "pattern_taxonomy": "enterprise:dto"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:dto",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:CreateUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 40,
+      "end_line": 44,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:dto",
+        "category": "enterprise",
+        "pattern": "dto",
+        "entity_name": "CreateUserRequest",
+        "pattern_taxonomy": "enterprise:dto"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:dto",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:UpdateUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 45,
+      "end_line": 50,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:dto",
+        "category": "enterprise",
+        "pattern": "dto",
+        "entity_name": "UpdateUserRequest",
+        "pattern_taxonomy": "enterprise:dto"
+      }
+    },
+    {
+      "name": "pattern_taxonomy:enterprise:dto",
+      "qualified_name": "scope:pattern:taxonomy:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/proto/sample.proto:DeleteUserRequest",
+      "kind": "SCOPE.Pattern",
+      "start_line": 51,
+      "end_line": 54,
+      "language": "protobuf",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_PATTERN_TAXONOMY",
+        "source": "",
+        "kind": "pattern_taxonomy",
+        "taxonomy": "enterprise:dto",
+        "category": "enterprise",
+        "pattern": "dto",
+        "entity_name": "DeleteUserRequest",
+        "pattern_taxonomy": "enterprise:dto"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

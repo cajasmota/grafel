@@ -1,0 +1,18 @@
+# Framework Version Enricher (MX-728)
+# Extracts framework version from build/manifest files and detects hexagonal
+# architecture from directory structure.
+#
+# File gate is internal to the extractor (applies_to checks basename against
+# known build files and path components for hexagonal signals).
+
+name: framework_version
+description: >-
+  Detect framework versions from build/manifest files (pom.xml, Gemfile,
+  requirements.txt, package.json, go.mod, Cargo.toml, pubspec.yaml, mix.exs,
+  .csproj, build.gradle) and emit SCOPE.Pattern(kind=framework_version) entities.
+  Also detects hexagonal architecture from ports/adapters/domain/infrastructure
+  directory structure and @Port/@Adapter annotations, emitting
+  SCOPE.Pattern(kind=architecture_pattern, architecture_style=hexagonal).
+module: memx_indexer.pattern_detectors.framework_version_enricher
+function: detect
+applies_to_function: applies_to

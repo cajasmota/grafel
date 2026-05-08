@@ -1,0 +1,274 @@
+complexity_signals:
+  nested_subqueries:
+    description: 'Queries that embed SELECT statements inside other SELECT, WHERE,
+      FROM, or HAVING clauses. Each nesting level increases complexity.
+
+      '
+    signals:
+    - pattern: SELECT ... FROM (SELECT
+      description: 'Derived table / inline view. Subquery in FROM clause creates a
+        temporary named result set. Multiple levels of nesting make execution plan
+        analysis difficult.
+
+        '
+      severity: medium
+    - pattern: WHERE ... IN (SELECT
+      description: 'Subquery in IN predicate. Anti-correlated subqueries can cause
+        full table scans. EXISTS is usually more efficient.
+
+        '
+      severity: medium
+    - pattern: WHERE EXISTS (SELECT
+      description: 'Semi-join via EXISTS. Better performance than IN for correlated
+        cases, but still a subquery execution path.
+
+        '
+      severity: low
+    - pattern: (SELECT ... FROM ... WHERE ... = outer.column)
+      description: 'Correlated subquery — re-executes once per outer row. Classic
+        N+1 query pattern embedded in SQL.
+
+        '
+      severity: high
+  ctes:
+    description: 'Common Table Expressions — named temporary result sets defined with
+      WITH clause. Improve readability but can affect performance.
+
+      '
+    signals:
+    - pattern: WITH {name} AS (
+      description: 'Non-recursive CTE. Gives a name to a subquery result. PostgreSQL,
+        SQL Server, Oracle all support.
+
+        '
+      severity: low
+    - pattern: WITH {name} AS (, {name2} AS (
+      description: 'Chained CTEs (multiple WITH definitions). Complex CTE chains with
+        many named steps indicate high query complexity.
+
+        '
+      severity: medium
+    - pattern: WITH RECURSIVE
+      description: 'Recursive CTE for hierarchical or graph traversal. Standard SQL:1999
+        syntax. Requires anchor + recursive term + UNION ALL.
+
+        '
+      severity: high
+  window_functions:
+    description: 'Analytic (window) functions that compute values across related rows
+      without collapsing them to a single output row.
+
+      '
+    signals:
+    - pattern: OVER (
+      description: 'Window function invocation. Presence indicates analytic query
+        patterns (ranking, running totals, moving averages).
+
+        '
+      severity: medium
+    - pattern: PARTITION BY
+      description: 'Window partition — divides rows into groups for per-group computation.
+        Equivalent to a grouped scope.
+
+        '
+      severity: low
+    - pattern: ROW_NUMBER() OVER
+      description: 'Row numbering within partition. Common for deduplication and pagination
+        patterns.
+
+        '
+      severity: low
+    - pattern: RANK() OVER
+      description: 'Rank with gaps. Used for ranking with ties — introduces non-consecutive
+        numbering.
+
+        '
+      severity: low
+    - pattern: DENSE_RANK() OVER
+      description: 'Rank without gaps. Alternative ranking function.
+
+        '
+      severity: low
+    - pattern: LAG( ... ) OVER
+      description: 'Access previous row value. Time-series and change-detection patterns.
+
+        '
+      severity: medium
+    - pattern: LEAD( ... ) OVER
+      description: 'Access next row value. Forward-looking analytic.
+
+        '
+      severity: medium
+    - pattern: FIRST_VALUE( ... ) OVER
+      description: 'First value in window frame. Frame specification required for
+        correct semantics.
+
+        '
+      severity: medium
+    - pattern: LAST_VALUE( ... ) OVER
+      description: 'Last value in window frame. Requires explicit ROWS BETWEEN UNBOUNDED
+        PRECEDING AND UNBOUNDED FOLLOWING for intuitive behavior.
+
+        '
+      severity: medium
+    - pattern: ROWS BETWEEN
+      description: 'Explicit frame specification. Controls which rows contribute to
+        window calculation. High complexity signal.
+
+        '
+      severity: high
+    - pattern: RANGE BETWEEN
+      description: 'Range-based frame specification. Uses value comparison rather
+        than row offset.
+
+        '
+      severity: high
+    - pattern: NTILE(
+      description: 'Bucket distribution function. Divides rows into N roughly equal
+        groups.
+
+        '
+      severity: low
+  recursive_ctes:
+    description: 'Recursive CTEs for hierarchical data traversal (org charts, category
+      trees, graph paths). Complexity is inherently high.
+
+      '
+    signals:
+    - pattern: WITH RECURSIVE
+      description: 'Standard SQL recursive CTE. PostgreSQL, SQLite, SQL Server (recursive)
+        syntax. Requires anchor member + recursive member + UNION ALL.
+
+        '
+      severity: high
+    - pattern: CONNECT BY
+      description: 'Oracle hierarchical query syntax. Older alternative to recursive
+        CTEs. Uses PRIOR keyword for tree traversal.
+
+        '
+      severity: high
+    - pattern: SYS_CONNECT_BY_PATH
+      description: 'Oracle path string construction in hierarchical queries. Strong
+        Oracle-specific complexity signal.
+
+        '
+      severity: high
+    - pattern: LEVEL
+      description: 'Oracle pseudocolumn for depth in CONNECT BY hierarchy.
+
+        '
+      severity: medium
+  dynamic_sql:
+    description: 'SQL constructed and executed at runtime as a string. Highest complexity
+      class — static analysis cannot resolve the query.
+
+      '
+    signals:
+    - pattern: EXECUTE
+      description: 'PL/pgSQL EXECUTE for dynamic SQL. Query is a string variable.
+        Static analysis cannot determine the executed query.
+
+        '
+      severity: high
+    - pattern: EXECUTE IMMEDIATE
+      description: 'Oracle/DB2 dynamic SQL execution. Same analysis limitations.
+
+        '
+      severity: high
+    - pattern: sp_executesql
+      description: 'T-SQL parameterized dynamic execution. Safer than EXEC(@string)
+        but still dynamic.
+
+        '
+      severity: high
+    - pattern: EXEC (@
+      description: 'T-SQL unparameterized dynamic SQL. SQL injection risk if string
+        is user-controlled.
+
+        '
+      severity: high
+    - pattern: PREPARE ... FROM
+      description: 'Standard SQL prepared statement (MySQL, PostgreSQL psql). Dynamic
+        query prepared from string.
+
+        '
+      severity: medium
+  cursor_usage:
+    description: 'Explicit cursors for row-by-row processing. Anti-pattern in most
+      cases — indicates imperative rather than set-based thinking.
+
+      '
+    signals:
+    - pattern: DECLARE ... CURSOR
+      description: 'Explicit cursor declaration. Row-by-row fetching loop. Severe
+        performance penalty vs set-based operations.
+
+        '
+      severity: high
+    - pattern: OPEN {cursor_name}
+      description: 'Cursor open — initiates server-side cursor execution.
+
+        '
+      severity: medium
+    - pattern: FETCH FROM
+      description: 'Row fetch from open cursor. Confirms cursor usage pattern.
+
+        '
+      severity: medium
+    - pattern: FETCH NEXT FROM
+      description: 'T-SQL cursor FETCH NEXT loop pattern.
+
+        '
+      severity: medium
+    - pattern: CLOSE {cursor_name}
+      description: 'Cursor close — resource cleanup. Presence alongside OPEN confirms
+        cursor lifecycle management.
+
+        '
+      severity: low
+  temp_tables:
+    description: 'Temporary table usage for intermediate result sets. Indicates complex
+      multi-step query logic.
+
+      '
+    signals:
+    - pattern: CREATE TEMPORARY TABLE
+      description: 'Standard SQL temporary table. Session-scoped. Used for multi-step
+        data transformation pipelines.
+
+        '
+      severity: medium
+    - pattern: CREATE TEMP TABLE
+      description: 'PostgreSQL short form of CREATE TEMPORARY TABLE.
+
+        '
+      severity: medium
+    - pattern: 'CREATE TABLE #'
+      description: 'T-SQL local temporary table (single # prefix). Scoped to current
+        session.
+
+        '
+      severity: medium
+    - pattern: 'CREATE TABLE ##'
+      description: 'T-SQL global temporary table (double ## prefix). Cross-session
+        scope — higher risk.
+
+        '
+      severity: high
+    - pattern: 'SELECT INTO #'
+      description: 'T-SQL SELECT INTO temp table shorthand. Implicitly creates and
+        populates a temporary table.
+
+        '
+      severity: medium
+    - pattern: 'INSERT INTO #'
+      description: 'Populating T-SQL temp table. Confirms temp table usage.
+
+        '
+      severity: low
+    - pattern: GLOBAL TEMPORARY TABLE
+      description: 'Oracle global temporary table — persists structure across sessions,
+        data scoped to session/transaction.
+
+        '
+      severity: medium

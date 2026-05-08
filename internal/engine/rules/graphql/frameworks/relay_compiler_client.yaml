@@ -1,0 +1,36 @@
+client_tools:
+  name: Relay Compiler (Client)
+  language: JavaScript / TypeScript
+  category: graphql_client_compiler
+  github_stars_2025: 18400+
+  detection:
+    package_json_deps:
+    - relay-runtime
+    - react-relay
+    - relay-compiler
+    config_files:
+    - relay.config.js
+    - relay.config.json
+    structural_markers:
+    - graphql`
+    - useFragment
+    - useLazyLoadQuery
+    - usePreloadedQuery
+    - useMutation
+    - useSubscription
+    - PreloadedQuery
+    - FragmentRef
+    - __generated__/
+    - relay-runtime
+  extraction_targets:
+  - graphql` ` tagged templates (Relay uses graphql not gql)
+  - Fragment definitions co-located with React components
+  - Query preloading patterns (usePreloadedQuery + loadQuery)
+  - Generated types in __generated__/ directories (skip — generated)
+  - relay.config.js schema path
+  notes: 'Relay uses graphql` ` (not gql` `) as the tagged template tag. Relay Compiler
+    statically analyzes and transforms these at build time. All generated files land
+    in __generated__/ subdirectories — skip. Relay enforces strict co-location: fragments
+    must be in the same file as the component that uses them.
+
+    '

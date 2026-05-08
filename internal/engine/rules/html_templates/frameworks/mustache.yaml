@@ -1,0 +1,34 @@
+template_engines:
+  name: Mustache
+  full_name: Mustache
+  language: polyglot
+  extensions:
+  - .mustache
+  - .html
+  npm_packages:
+  - mustache
+  - mustache.js
+  python_packages:
+  - pystache
+  - chevron
+  ruby_gems:
+  - mustache
+  detection_signals:
+    file_extensions:
+    - .mustache
+    package_json_deps:
+    - mustache
+    syntax_markers:
+    - '{{variable}}'
+    - '{{{unescaped}}}'
+    - '{{#section}}'
+    - '{{/section}}'
+    - '{{^section}}'
+    - '{{> partial}}'
+    - '{{! comment }}'
+    - '{{=<% %>=}}'
+  notes: 'Logic-less template engine. {{> partial}} is the Component boundary signal.
+    Mustache is used as a base spec; Handlebars is a superset. If .mustache + {{#helper}}
+    patterns are found, it may be Handlebars — check deps.
+
+    '

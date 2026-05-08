@@ -1,0 +1,30 @@
+orms_database:
+  name: pg Ruby gem (PostgreSQL Ruby Driver)
+  category: postgres_driver
+  gem_name: pg
+  detection:
+    import_patterns:
+      - require 'pg'
+      - require "pg"
+    code_patterns:
+      - PG.connect(
+      - PG::Connection.new(
+      - PG::Connection.open(
+  notes: >
+    The pg gem is the standard PostgreSQL adapter for Ruby. It provides a
+    low-level interface to libpq. Used directly or via ActiveRecord's
+    postgresql adapter.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: PG.connect/PG::Connection.new
+      (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

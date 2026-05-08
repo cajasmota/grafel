@@ -1,0 +1,31 @@
+orms_database:
+  name: MySQL Perl Driver (DBD::mysql / DBI)
+  category: relational_database
+  cpan_module: DBD::mysql
+  detection:
+    import_patterns:
+    - use DBI
+    - use DBD::mysql
+    code_patterns:
+    - DBI->connect("dbi:mysql:
+    - DBI->connect('dbi:mysql:
+    - DBD::mysql
+  notes: >
+    DBD::mysql is the DBI driver for MySQL in Perl. Connections are created
+    via DBI->connect("dbi:mysql:database=name;host=..."). The DBI module
+    provides the standard Perl database interface.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

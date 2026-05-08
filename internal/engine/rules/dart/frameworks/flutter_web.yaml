@@ -1,0 +1,30 @@
+frameworks:
+  name: Flutter Web
+  pubspec_dependency: flutter
+  category: web_frontend
+  detection:
+    pubspec_signals:
+    - 'sdk: flutter'
+    structural_markers:
+    - web/
+    - web/index.html
+    - web/manifest.json
+    build_signals:
+    - flutter build web
+    - flutter run -d chrome
+    code_patterns:
+    - dart:html
+    - dart:js
+    - kIsWeb
+    - defaultTargetPlatform == TargetPlatform.web
+    notes: 'Flutter Web reuses the same Flutter SDK dependency. Disambiguate from
+      Flutter Mobile by presence of web/ directory and absence of android/ and ios/
+      (web-only project). kIsWeb constant usage in code is a strong runtime target
+      signal. web/index.html is mandatory for Flutter Web builds.
+
+      '
+
+custom_extractors:
+  - module: "memx_indexer.languages.dart.flutter_extractor"
+    function: "extract"
+    description: "Extract Flutter widgets, BLoC/Cubit/ChangeNotifier state management, Navigator routes, and GoRouter routes"

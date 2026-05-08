@@ -1,0 +1,137 @@
+# ZIO framework extraction rules (MX-523)
+# Schema: FrameworkExtractionSchema (MX-494)
+# SBT: "dev.zio" %% "zio" + "dev.zio" %% "zio-http"
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: ZIO
+  category: effect_system_web
+  sbt_coordinates:
+  - dev.zio::zio
+  - dev.zio::zio-http
+  - dev.zio::zio-streams
+  - dev.zio::zio-json
+  - dev.zio::zio-kafka
+  detection:
+    config_files:
+    - src/main/resources/application.conf
+    - src/main/resources/application.yaml
+    build_signals:
+    - '"dev.zio" %% "zio"'
+    - '"dev.zio" %% "zio-http"'
+    - '"dev.zio" %% "zio-streams"'
+    import_patterns:
+    - import zio._
+    - import zio.http._
+    - import zio.stream._
+    - import zio.json._
+    code_patterns:
+    - extends ZIOAppDefault
+    - ZIO.attempt(
+    - ZIO.succeed(
+    - ZIO.fail(
+    - for { _ <- ZIO
+    - ZLayer.make[
+    - ZLayer.scoped[
+    - provide(
+    - provideLayer(
+    - Server.serve(
+  notes: 'ZIO is a purely functional effect system and increasingly a full-stack framework
+    via zio-http. ZIOAppDefault as the entry point is definitive. ZLayer dependency
+    injection wiring is unique to ZIO. Co-presence of dev.zio::zio + dev.zio::zio-http
+    = ZIO web service. ZIO 2.x is the current major version; ZIO 1.x used App trait.
+
+    '
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # ZIO HTTP handlers typically in a routes/ or http/ package
+  - glob: "*/routes/*.scala"
+    entity_type: Operation
+    name_from: class_name
+  - glob: "*/http/*.scala"
+    entity_type: Operation
+    name_from: class_name
+  # Services in a services/ package
+  - glob: "*/services/*.scala"
+    entity_type: Service
+    name_from: class_name
+  # Models
+  - glob: "*/models/*.scala"
+    entity_type: Model
+    name_from: class_name
+
+source_patterns:
+  # ZIOAppDefault entry object: object MyApp extends ZIOAppDefault
+  - pattern: "object\\s+(\\w+)\\s+extends\\s+ZIOAppDefault"
+    entity_type: Config
+    name_group: 1
+    scope: class
+
+  # ZIO HTTP route: Method(path) -> handler
+  # Covers: Method.GET / "path" -> handler, Method.POST / "path", etc.
+  - pattern: "Method\\.(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s*/\\s*\"([^\"]+)\""
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+  # ZIO HTTP 2.x Routes DSL: Routes(Method.GET / "path" -> handler)
+  - pattern: "Routes\\s*\\([^)]*Method\\.\\w+\\s*/\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # ZIO HTTP handler function: def handlerName: Handler[...] or val handlerName = Handler
+  - pattern: "(?:def|val)\\s+(\\w+)\\s*(?::[^=]*Handler|=\\s*Handler)"
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # ZLayer service layer: object MyService { val live = ZLayer... }
+  # Captures the object name as the service name
+  - pattern: "object\\s+(\\w+)\\s*\\{[\\s\\S]{0,200}?val\\s+(?:live|layer)\\s*=\\s*ZLayer"
+    entity_type: Service
+    name_group: 1
+    scope: class
+
+  # Server.serve binding: Server.serve(app) — wires routes to server
+  - pattern: "Server\\.serve\\s*\\("
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # ZIO .provide / .provideLayer — dependency injection wiring
+  # Extracts service layer names: .provide(MyService.live, OtherService.live)
+  - pattern: "\\.provide(?:Layer)?\\s*\\(\\s*([\\w.]+)"
+    entity_type: Dependency
+    name_group: 1
+    scope: file
+
+  # Case class data model
+  - pattern: "case\\s+class\\s+(\\w+)\\s*\\("
+    entity_type: Model
+    name_group: 1
+    scope: class
+
+relationship_rules:
+  # ZIO HTTP: route path ROUTES_TO handler function
+  # Method.GET / "path" -> handlerName
+  - pattern: "Method\\.(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s*/\\s*\"([^\"]+)\"\\s*->\\s*(\\w+)"
+    source_type: Operation
+    target_type: Operation
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # .provide wires a ZLayer service into a ZIO effect
+  - pattern: "\\.provide(?:Layer)?\\s*\\(\\s*([\\w.]+)[\\s\\S]{0,200}?object\\s+(\\w+)"
+    source_type: Dependency
+    target_type: Service
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2

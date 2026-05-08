@@ -1,0 +1,76 @@
+frameworks:
+  name: Prisma Schema
+  language: prisma
+  category: orm_schema
+  detection:
+    file_extensions:
+      - .prisma
+    config_files:
+      - prisma/schema.prisma
+    content_patterns:
+      - "datasource db"
+      - "generator client"
+  notes: >-
+    Prisma ORM schema extraction. Detects model, enum, datasource, generator,
+    and type definitions from .prisma schema files.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-526)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "prisma/schema.prisma"
+    entity_type: Config
+    name_from: filename
+  - glob: "prisma/*.prisma"
+    entity_type: Config
+    name_from: filename
+  - glob: "**/*.prisma"
+    entity_type: Config
+    name_from: filename
+
+source_patterns:
+  # model User { ... }
+  - pattern: "model\\s+(\\w+)\\s*\\{"
+    entity_type: Model
+    name_group: 1
+    scope: file
+  # enum Role { ... }
+  - pattern: "enum\\s+(\\w+)\\s*\\{"
+    entity_type: Model
+    name_group: 1
+    scope: file
+  # datasource db { ... }
+  - pattern: "datasource\\s+(\\w+)\\s*\\{"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # generator client { ... }
+  - pattern: "generator\\s+(\\w+)\\s*\\{"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # type CompositeType { ... } (composite types in MongoDB)
+  - pattern: "type\\s+(\\w+)\\s*\\{"
+    entity_type: Model
+    name_group: 1
+    scope: file
+  # @@map("table_name") — table mapping
+  - pattern: "@@map\\s*\\(\\s*\"(\\w+)\"\\s*\\)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # @@index([field1, field2]) — index definition
+  - pattern: "@@index\\s*\\(\\s*\\[([^\\]]+)\\]"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # Relation field: posts Post[] @relation(...)
+  - pattern: "\\s+(\\w+)\\s+(\\w+)\\s*\\[?\\]?\\s*@relation"
+    source_type: Model
+    target_type: Model
+    relationship: CALLS
+    source_group: 1
+    target_group: 2

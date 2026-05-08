@@ -1,0 +1,34 @@
+# Dart Redis client extraction rules (MX-575).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# custom_extractors entries are consumed by CustomExtractorRegistry.
+
+frameworks:
+  name: redis_dart / resp_client
+  pub_package: redis_dart
+  category: cache_client
+  detection:
+    dependency_names:
+    - redis_dart
+    - resp_client
+    import_markers:
+    - package:redis_dart
+    - package:resp_client
+    - RedisConnection
+    - RedisClient
+    structural_markers:
+    - RedisConnection()
+    - RedisClient(
+  notes: >
+    redis_dart and resp_client are the primary Dart Redis packages. Both provide
+    similar APIs. RedisConnection() is the primary connection signal.
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: RedisConnection/RedisClient connections
+      (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), pub/sub
+      (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op), Lua
+      (SCOPE.Operation/lua_script).

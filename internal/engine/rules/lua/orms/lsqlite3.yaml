@@ -1,0 +1,24 @@
+database:
+  name: lsqlite3
+  luarocks_package: lsqlite3
+  category: sqlite_driver
+  detection:
+    import_markers:
+    - require "lsqlite3"
+    - require("lsqlite3")
+    - lsqlite3.open
+    - lsqlite3.open_memory
+    - db:exec
+    - db:nrows
+    - db:rows
+    - db:urows
+    - db:prepare
+    - stmt:step
+    - stmt:bind
+    - stmt:reset
+    notes: 'lsqlite3 is a direct SQLite3 binding for Lua. Used in embedded contexts,
+      LOVE2D games, and command-line tools. Detection: require(''lsqlite3'') + lsqlite3.open()
+      or lsqlite3.open_memory() constructors. A variant lsqlite3complete bundles the
+      SQLite amalgamation for zero external deps.
+
+      '

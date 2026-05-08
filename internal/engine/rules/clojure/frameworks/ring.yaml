@@ -1,0 +1,40 @@
+frameworks:
+  name: Ring
+  clojars_artifact: ring/ring
+  category: web_foundation
+  github_stars_2025: 3700+
+  detection:
+    config_files:
+    - project.clj
+    - deps.edn
+    lein_deps:
+    - ring/ring
+    - ring/ring-core
+    - ring/ring-jetty-adapter
+    - ring/ring-defaults
+    - ring/ring-mock
+    deps_edn_coords:
+    - ring/ring
+    - ring/ring-core
+    - ring/ring-jetty-adapter
+    import_markers:
+    - ring.adapter.jetty
+    - ring.middleware
+    - ring.util.response
+    - ring.util.request
+    - ring.middleware.defaults
+    - ring.middleware.params
+    - ring.middleware.session
+    - ring.mock.request
+    - (run-jetty
+    - (wrap-defaults
+    - (:require [ring.
+    structural_markers:
+    - src/
+    - resources/public/
+    notes: 'Ring is the foundational HTTP abstraction for Clojure web apps — analogous
+      to Rack (Ruby) or WSGI (Python). Detected by ring/* deps in project.clj or deps.edn.
+      Ring handlers are plain functions: (fn [request] {:status 200 ...}). Almost
+      all Clojure web frameworks sit on top of Ring.
+
+      '

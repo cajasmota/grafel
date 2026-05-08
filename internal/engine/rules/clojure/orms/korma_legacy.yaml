@@ -1,0 +1,23 @@
+database_libraries:
+  name: Korma (legacy)
+  clojars_artifact: korma/korma
+  category: sql_orm_legacy
+  detection:
+    lein_deps:
+    - korma/korma
+    import_markers:
+    - korma.core
+    - korma.db
+    - (defentity
+    - (select
+    - (insert
+    - (update
+    - (delete
+    - (where {
+    - (belongs-to
+    - (has-many
+  notes: 'Korma is a legacy Clojure SQL ORM (largely abandoned, last release 2015).
+    Detected by korma dep and (defentity ...) macro with (select)/(insert)/ (update)/(delete)
+    query DSL. Flag as legacy when detected.
+
+    '

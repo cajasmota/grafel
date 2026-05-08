@@ -1,0 +1,36 @@
+frameworks:
+  name: wxWidgets
+  category: gui_application
+  github_stars_2025: 6300+
+  detection:
+    cmake_find_package:
+    - find_package(wxWidgets
+    cmake_target_link:
+    - ${wxWidgets_LIBRARIES}
+    - wx::core
+    - wx::base
+    vcpkg_packages:
+    - wxwidgets
+    conan_packages:
+    - wxwidgets/3
+    include_patterns:
+    - '#include <wx/'
+    - '#include "wx/'
+    - '#include <wx/wx.h>'
+    - '#include <wx/wxprec.h>'
+    structural_markers:
+    - wxApp
+    - wxFrame
+    - wxPanel
+    - wxButton
+    - IMPLEMENT_APP(
+    - wxBEGIN_EVENT_TABLE
+    - wxEND_EVENT_TABLE
+    - include(${wxWidgets_USE_FILE})
+    config_files:
+    - CMakeLists.txt
+    notes: 'Cross-platform native GUI toolkit. IMPLEMENT_APP() macro is a definitive
+      entry point marker. wxBEGIN_EVENT_TABLE / wxEND_EVENT_TABLE macros identify
+      event handler registrations.
+
+      '

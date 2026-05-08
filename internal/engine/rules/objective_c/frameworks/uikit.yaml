@@ -1,0 +1,37 @@
+frameworks:
+  name: UIKit
+  category: mobile_ui_imperative
+  pod_coordinates:
+  - N/A — bundled with Xcode / Apple SDK
+  detection:
+    file_extensions:
+    - '*.m'
+    - '*.mm'
+    - '*.h'
+    config_files:
+    - '*.xcodeproj/'
+    - '*.xcworkspace/'
+    - Info.plist
+    - '*.storyboard'
+    - '*.xib'
+    import_patterns:
+    - '#import <UIKit/UIKit.h>'
+    - '#import "UIKit/UIKit.h"'
+    - '@import UIKit;'
+    code_patterns:
+    - '@interface AppDelegate : UIResponder <UIApplicationDelegate>'
+    - '@interface * : UIViewController'
+    - '@interface * : UITableViewController'
+    - '@interface * : UICollectionViewController'
+    - '- (void)viewDidLoad'
+    - '- (void)viewWillAppear:'
+    - IBOutlet
+    - IBAction
+    - UIApplication.sharedApplication
+    - '[UIApplication sharedApplication]'
+  notes: 'Apple imperative UI framework for iOS and tvOS. Dominant pattern in all
+    pre-SwiftUI iOS codebases. AppDelegate.m is the canonical entry point. IBOutlet/IBAction
+    declarations are Interface Builder wiring signals unique to UIKit Objective-C
+    projects. Co-presence with .storyboard or .xib files is high-confidence.
+
+    '

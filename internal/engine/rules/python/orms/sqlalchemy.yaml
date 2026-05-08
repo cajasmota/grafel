@@ -1,0 +1,38 @@
+orms_database:
+  name: SQLAlchemy
+  pypi_package: sqlalchemy
+  category: sql_orm
+  detection:
+    dependency_names:
+    - sqlalchemy
+    - SQLAlchemy
+    model_file_patterns:
+    - '*/models.py'
+    - '*/models/*.py'
+    - '*/db/base.py'
+    - '*/schema.py'
+    - '*/database.py'
+    import_markers:
+    - from sqlalchemy import
+    - from sqlalchemy.orm import
+    - DeclarativeBase
+    - declarative_base()
+    - mapped_column
+    - Mapped[
+    - __tablename__
+    migration_tool: alembic
+    migration_files:
+    - alembic.ini
+    - alembic/env.py
+    - alembic/versions/*.py
+  notes: 'Most popular Python SQL ORM. SQLAlchemy 2.0+ uses Mapped[] and mapped_column
+    (new style). Legacy style uses Column() and declarative_base(). Both patterns
+    still common in 2025.
+
+    '
+  model_class_patterns:
+  - DeclarativeBase
+  - declarative_base()
+  - mapped_column
+  - Mapped[
+  - __tablename__

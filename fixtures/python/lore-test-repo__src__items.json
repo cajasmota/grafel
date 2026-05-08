@@ -1,0 +1,63 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/lore-test-repo/src/items.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "ItemCreate",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 22,
+      "end_line": 26,
+      "language": "python",
+      "signature": "class ItemCreate",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "Item",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 29,
+      "end_line": 35,
+      "language": "python",
+      "signature": "class Item",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "list_items",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 39,
+      "end_line": 58,
+      "language": "python",
+      "signature": "def list_items(limit: int = 20, offset: int = 0) -> dict",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "create_item",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 62,
+      "end_line": 85,
+      "language": "python",
+      "signature": "def create_item(body: ItemCreate) -> Item",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "delete_item",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 89,
+      "end_line": 104,
+      "language": "python",
+      "signature": "def delete_item(item_id: str) -> None",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

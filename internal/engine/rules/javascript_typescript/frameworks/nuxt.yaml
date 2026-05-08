@@ -1,0 +1,26 @@
+frameworks:
+  name: nuxt
+  category: web
+  npm_packages:
+  - nuxt
+  - nuxt3
+  config_files:
+  - nuxt.config.ts
+  - nuxt.config.js
+  detection_signals:
+    package_json_deps:
+    - nuxt
+    directory_conventions:
+    - pages/
+    - layouts/
+    - composables/
+    - server/api/
+  framework_specific:
+  - useNuxtApp
+  - useFetch
+  - useRoute
+  - definePageMeta
+  notes: nuxt.config.ts is definitive; also check pages/ + composables/ dirs
+  custom_extractors:
+  - module: memx_indexer.languages.javascript_typescript.nuxt_extractor
+    function: extract

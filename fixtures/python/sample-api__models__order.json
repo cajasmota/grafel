@@ -1,0 +1,41 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/sample-api/models/order.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "OrderStatus",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 12,
+      "end_line": 17,
+      "language": "python",
+      "signature": "class OrderStatus",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "Order",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 20,
+      "end_line": 40,
+      "language": "python",
+      "signature": "class Order",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "OrderLineItem",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 43,
+      "end_line": 52,
+      "language": "python",
+      "signature": "class OrderLineItem",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

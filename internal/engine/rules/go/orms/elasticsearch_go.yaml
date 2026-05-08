@@ -1,0 +1,25 @@
+orms_database:
+  name: go-elasticsearch
+  module_path: github.com/elastic/go-elasticsearch/v8
+  detection:
+    go_mod_require:
+    - github.com/elastic/go-elasticsearch
+    - github.com/olivere/elastic
+    import_markers:
+    - '"github.com/elastic/go-elasticsearch'
+    - '"github.com/olivere/elastic'
+    code_patterns:
+    - elasticsearch.NewDefaultClient(
+    - elastic.NewClient(
+    - esv7.NewDefaultClient(
+    - esv8.NewDefaultClient(
+  notes: |
+    Two major Go Elasticsearch clients: official go-elasticsearch and olivere/elastic.
+    Both are handled by the extractor.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract client connections (NewDefaultClient/NewClient), Search() calls,
+      aggregations (NewTermsAggregation etc.), ILM policies, and index creation.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

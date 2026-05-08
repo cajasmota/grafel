@@ -1,0 +1,25 @@
+orms_database:
+  name: cql-io (Haskell Cassandra Driver)
+  category: nosql_database
+  hackage_package: cql-io
+  detection:
+    import_patterns:
+    - Database.CQL.IO
+    - import Cassandra
+    code_patterns:
+    - runCas
+    - CAS.connect
+  notes: >
+    cql-io (twittner/cql-io) is the primary Haskell Cassandra CQL driver.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: runCas / CAS.connect
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), runCas execute
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL).

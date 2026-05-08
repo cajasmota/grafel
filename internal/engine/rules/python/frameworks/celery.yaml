@@ -1,0 +1,124 @@
+# Celery task queue extraction rules (MX-500).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: Celery
+  pypi_package: celery
+  category: task_queue
+  github_stars_2025: 25000+
+  gateway: amqp_redis
+  detection:
+    config_files:
+    - celery.py
+    - celeryconfig.py
+    - '*/tasks.py'
+    - '*/tasks/*.py'
+    dependency_names:
+    - celery
+    import_markers:
+    - from celery import Celery
+    - app = Celery
+    - '@app.task'
+    - '@shared_task'
+    structural_markers:
+    - tasks.py
+    - celeryconfig.py
+  notes: >
+    Often co-deployed with Django or Flask. tasks.py with @app.task or @shared_task
+    is definitive. Beat scheduler uses beat_schedule.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+# file_conventions: glob -> entity_type mapping from file naming conventions.
+file_conventions:
+  - glob: "*/tasks.py"
+    entity_type: Service
+    name_from: filename
+  - glob: "*/tasks/*.py"
+    entity_type: Service
+    name_from: filename
+  - glob: "celery.py"
+    entity_type: Config
+    name_from: filename
+  - glob: "celeryconfig.py"
+    entity_type: Config
+    name_from: filename
+
+# source_patterns: regex patterns that match Celery constructs in source files.
+source_patterns:
+  # @app.task decorator (with optional args): most common task definition
+  - pattern: "@(\\w+)\\.task(?:\\s*\\([^)]*\\))?\\s*\\ndef\\s+(\\w+)"
+    entity_type: Task
+    name_group: 2
+    scope: file
+  # @app.task with explicit queue kwarg: @app.task(queue='name')
+  - pattern: "@(?:\\w+)\\.task\\s*\\([^)]*queue\\s*=\\s*[\"'](\\w+)[\"'][^)]*\\)\\s*\\ndef\\s+(\\w+)"
+    entity_type: Task
+    name_group: 2
+    scope: file
+  # @shared_task decorator (Django integration — no app reference needed)
+  - pattern: "@shared_task(?:\\s*\\([^)]*\\))?\\s*\\ndef\\s+(\\w+)"
+    entity_type: Task
+    name_group: 1
+    scope: file
+  # Celery app instantiation: app = Celery("name", broker="...")
+  - pattern: "(\\w+)\\s*=\\s*Celery\\s*\\(\\s*[\"'](\\w+)[\"']"
+    entity_type: Config
+    name_group: 2
+    scope: file
+  # Celery beat periodic task via beat_schedule dict
+  - pattern: "[\"'](\\w[\\w.]+)[\"']:\\s*\\{[^}]*task[\"']:\\s*[\"']([^\"']+)[\"']"
+    entity_type: Task
+    name_group: 1
+    scope: file
+  # Task base class: class MyTask(Task): or class MyTask(celery.Task):
+  - pattern: "class\\s+(\\w+)\\s*\\(\\s*(?:celery\\.)?Task\\s*\\)"
+    entity_type: Task
+    name_group: 1
+    scope: class
+  # Celery config class (Django-style): class CeleryConfig:
+  - pattern: "class\\s+(\\w+Config)\\s*(?:\\(\\s*\\))?\\s*:"
+    entity_type: Config
+    name_group: 1
+    scope: class
+
+# relationship_rules: regex patterns that produce edges between entities.
+relationship_rules:
+  # Task calls another task via .delay() or .apply_async()
+  - pattern: "(\\w+)\\.(?:delay|apply_async)\\s*\\("
+    source_type: Task
+    target_type: Task
+    relationship: CALLS
+    source_group: 1
+    target_group: 1
+  # App config loaded via app.config_from_object
+  - pattern: "(\\w+)\\.config_from_object\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    source_type: Config
+    target_type: Task
+    relationship: CONFIGURES
+    source_group: 2
+    target_group: 1
+  # Chord/chain task composition: chain(task1.s() | task2.s())
+  - pattern: "chain\\s*\\(\\s*(\\w+)\\.s\\s*\\([^)]*\\)\\s*\\|\\s*(\\w+)\\.s\\s*\\("
+    source_type: Task
+    target_type: Task
+    relationship: CALLS
+    source_group: 1
+    target_group: 2
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.celery_extractor
+    function: extract
+    description: >-
+      Celery-specific extractor: @shared_task/@app.task (SCOPE.Service/task) with
+      queue/bind/max_retries metadata; chain/group/chord canvas primitives
+      (SCOPE.Pattern/canvas) + DEPENDS_ON edges between tasks; beat_schedule entries
+      (SCOPE.Pattern/beat_entry) + DEPENDS_ON task; class-based Task lifecycle hooks
+      on_failure/on_success/on_retry/on_revoke (SCOPE.Operation/function) + OWNS from
+      task class; retry metadata captured from function body.

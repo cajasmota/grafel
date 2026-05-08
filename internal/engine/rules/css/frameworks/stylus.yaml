@@ -1,0 +1,35 @@
+frameworks:
+  name: stylus
+  full_name: Stylus
+  category: preprocessor
+  extensions:
+  - .styl
+  - .stylus
+  npm_packages:
+  - stylus
+  config_files:
+  - .stylusrc
+  - stylus.config.js
+  detection_signals:
+    package_json_deps:
+    - stylus
+    file_extensions:
+    - .styl
+    - .stylus
+    content_patterns:
+    - '='
+    - mixin(
+    - for ... in
+    - 'if '
+    - 'return '
+    - p()
+  framework_specific:
+  - Optional braces and semicolons (indented or CSS-like syntax)
+  - Implicit return in functions
+  - Property lookup (prefix @)
+  - Powerful built-in functions (darken, lighten, rgba)
+  notes: 'Stylus is largely superseded by SCSS in modern projects. Still found in
+    Vue 2 ecosystems and older Node.js projects. Detection is lower confidence due
+    to syntax ambiguity — rely on file extension + npm dep.
+
+    '

@@ -1,0 +1,93 @@
+domain_roots:
+- layout: ios_mvc_cocoapods
+  description: Traditional iOS MVC app with CocoaPods dependencies
+  signals:
+  - Podfile at project root
+  - '*.xcworkspace/ at project root (CocoaPods generated)'
+  - AppDelegate.m + AppDelegate.h at project root or <AppName>/
+  - main.m at project root or <AppName>/
+  - Info.plist at <AppName>/ or Supporting Files/
+  directory_structure:
+  - <AppName>/
+  - <AppName>/AppDelegate.m
+  - <AppName>/AppDelegate.h
+  - <AppName>/main.m
+  - <AppName>/Supporting Files/Info.plist
+  - <AppName>/Classes/  (or Models/, Views/, Controllers/)
+  - <AppName>/Resources/
+  - <AppName>Tests/
+  - Pods/
+  - Podfile
+  - Podfile.lock
+  - '*.xcworkspace/'
+  - '*.xcodeproj/'
+- layout: ios_mvc_carthage
+  description: iOS MVC app with Carthage dependency management
+  signals:
+  - Cartfile at project root
+  - Carthage/Build/ at project root
+  - '*.xcodeproj/ (no workspace — Carthage does not generate one)'
+  directory_structure:
+  - <AppName>/
+  - <AppName>/AppDelegate.m
+  - <AppName>/main.m
+  - Cartfile
+  - Cartfile.resolved
+  - Carthage/Build/iOS/
+  - Carthage/Checkouts/
+  - '*.xcodeproj/'
+- layout: macos_cocoa_app
+  description: macOS desktop Cocoa application
+  signals:
+  - '#import <Cocoa/Cocoa.h> in AppDelegate.m'
+  - MACOSX_DEPLOYMENT_TARGET in *.pbxproj
+  - MainMenu.xib or MainMenu.storyboard
+  - NSApplicationMain in main.m
+  directory_structure:
+  - <AppName>/
+  - <AppName>/AppDelegate.m
+  - <AppName>/AppDelegate.h
+  - <AppName>/main.m
+  - <AppName>/Base.lproj/MainMenu.xib
+  - <AppName>/Assets.xcassets/
+  - '*.xcodeproj/'
+- layout: mvc_classic_directory_split
+  description: MVC layout with explicit top-level directory separation
+  signals:
+  - Classes/, Models/, Views/, Controllers/ at source root
+  - Resources/ or Supporting Files/ for assets and plists
+  directory_structure:
+  - Classes/
+  - Classes/Models/
+  - Classes/Views/
+  - Classes/Controllers/
+  - Resources/
+  - Supporting Files/
+  - Supporting Files/Info.plist
+- layout: framework_static_library
+  description: Reusable Objective-C static library or framework
+  signals:
+  - No AppDelegate.m (no application entry point)
+  - '*.podspec at project root (CocoaPods library spec)'
+  - No Info.plist UIMainStoryboardFile key
+  - Public headers in include/ or <LibraryName>/ subdirectory
+  directory_structure:
+  - <LibraryName>/
+  - <LibraryName>/<LibraryName>.h  (umbrella header)
+  - <LibraryName>/Classes/
+  - Example/
+  - Example/AppDelegate.m  (demo app)
+  - <LibraryName>.podspec
+  - LICENSE
+  - '*.xcodeproj/'
+- layout: cocoapods_pod_source_root
+  description: CocoaPods dependency source root (Pods/ sub-tree)
+  signals:
+  - Located inside Pods/ directory
+  - '*.podspec present'
+  - LICENSE at root
+  notes: 'This layout appears inside Pods/ when CocoaPods includes source. Treat as
+    third-party; skip indexing unless explicitly requested. The pod''s own .podspec
+    declares its source files and public headers.
+
+    '

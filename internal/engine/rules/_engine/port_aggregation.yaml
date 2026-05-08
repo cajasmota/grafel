@@ -1,0 +1,17 @@
+# Port aggregation extractor (MX-688)
+# Cross-format extractor for infrastructure and framework config files.
+# Registered as a custom extractor that fires on Dockerfile, docker-compose,
+# Spring application.properties/yml, Express .env, and Go source files.
+#
+# File gate is internal to the extractor (applies_to checks file_path and
+# language). This YAML exists to document the extractor's registration entry.
+
+name: port_aggregation
+description: >-
+  Extract listening ports from Dockerfile EXPOSE directives, docker-compose
+  ports mappings, Spring server.port config, Express/Node app.listen and
+  process.env.PORT, and Go :NNNN address string literals.
+  Emits SCOPE.Pattern entities with kind=listening_port.
+module: memx_indexer.pattern_detectors.port_aggregation_extractor
+function: detect
+applies_to_function: applies_to

@@ -1,0 +1,197 @@
+complexity_signals:
+- category: ast_transforms
+  description: Compile-time AST transformations — Groovy-specific metaprogramming
+  signals:
+  - pattern: '@CompileStatic'
+    meaning: static compilation — bypasses dynamic dispatch, changes semantics
+    note: Files with @CompileStatic behave closer to Java. May break dynamic features.
+  - pattern: '@TypeChecked'
+    meaning: type checking without full static compilation
+  - pattern: '@Canonical'
+    meaning: AST transform generating equals/hashCode/toString/constructor
+  - pattern: '@Immutable'
+    meaning: immutable POGO generation via AST
+  - pattern: '@ToString'
+    meaning: AST-generated toString with includeSuperProperties
+  - pattern: '@EqualsAndHashCode'
+    meaning: AST-generated equals/hashCode
+  - pattern: '@TupleConstructor'
+    meaning: AST-generated positional constructor
+  - pattern: '@Slf4j'
+    meaning: AST-injected logger field (Groovy Transform, not Lombok)
+  - pattern: '@Log'
+    meaning: AST-injected java.util.logging logger
+  - pattern: '@Sortable'
+    meaning: AST-generated Comparable implementation
+  - pattern: '@Delegate'
+    meaning: AST delegation — wraps a field and exposes its methods
+  - pattern: '@Mixin (deprecated)'
+    meaning: legacy category-style mixin (replaced by @Delegate + traits)
+  - pattern: import groovy.transform.
+    meaning: use of groovy.transform package = multiple AST transforms
+  - pattern: '@groovy.transform.CompileStatic'
+    meaning: fully qualified static compilation annotation
+  - pattern: '@PackageScope'
+    meaning: package-private visibility via AST
+  - pattern: '@InheritConstructors'
+    meaning: AST-generated constructor forwarding to super
+  - pattern: '@AutoClone'
+    meaning: AST-generated clone() implementation
+  - pattern: '@AutoExternalize'
+    meaning: AST-generated Externalizable implementation
+  - pattern: class * implements * {
+    meaning: trait/interface mix — Groovy traits are high-complexity
+  notes: 'AST transforms are a core Groovy feature with no Java equivalent. Files
+    heavy with groovy.transform.* annotations require understanding of the generated
+    code. @CompileStatic fundamentally changes the Groovy semantics of a file — dynamic
+    features like methodMissing, propertyMissing, and category methods are disabled.
+
+    '
+- category: metaprogramming
+  description: Dynamic Groovy runtime metaprogramming patterns
+  signals:
+  - pattern: metaClass.
+    meaning: MetaClass manipulation — adds methods/properties at runtime
+  - pattern: .metaClass.myMethod = {
+    meaning: per-instance or per-class method injection
+  - pattern: ExpandoMetaClass
+    meaning: explicit ExpandoMetaClass usage
+  - pattern: def methodMissing(String name, args)
+    meaning: intercepts unknown method calls — ghost methods
+  - pattern: def propertyMissing(String name)
+    meaning: intercepts unknown property access
+  - pattern: def propertyMissing(String name, value)
+    meaning: intercepts unknown property assignment
+  - pattern: use(SomeCategory) {
+    meaning: Category class injection — temporary method augmentation
+  - pattern: class * { static { ... } }
+    meaning: static initializer used for MetaClass manipulation
+  - pattern: invokeMethod(String name, Object args)
+    meaning: override all method dispatch
+  - pattern: '@Category('
+    meaning: marks a class as a Category for method injection
+  - pattern: Expando
+    meaning: dynamic object with no fixed class — high-complexity
+  - pattern: new Expando()
+    meaning: runtime-defined object structure
+  - pattern: .respondsTo(
+    meaning: runtime method existence check
+  - pattern: .hasProperty(
+    meaning: runtime property existence check
+  notes: 'Groovy metaprogramming at runtime makes static analysis difficult. methodMissing
+    and propertyMissing are ghost-method patterns — the method exists at runtime but
+    is not in the source. GORM dynamic finders (findByName, countByAge) are implemented
+    via methodMissing in the GORM MetaClass. MetaClass mutation is a high-complexity
+    signal: it changes behavior of instances at runtime.
+
+    '
+- category: closures
+  description: Groovy closure patterns and complexity indicators
+  signals:
+  - pattern: def myClosure = {
+    meaning: closure literal assignment
+  - pattern: '{ it. }'
+    meaning: implicit 'it' parameter usage
+  - pattern: '{ -> }'
+    meaning: zero-argument closure
+  - pattern: '{ a, b -> }'
+    meaning: multi-argument closure
+  - pattern: .each {
+    meaning: closure-based iteration
+  - pattern: .collect {
+    meaning: closure-based map/transform
+  - pattern: .findAll {
+    meaning: closure-based filter
+  - pattern: .inject(
+    meaning: closure-based fold/reduce
+  - pattern: .with {
+    meaning: with() builder closure — sets delegate
+  - pattern: .tap {
+    meaning: tap() side-effect closure
+  - pattern: Closure cl = {
+    meaning: explicitly typed closure
+  - pattern: '@Closure.memoize()'
+    meaning: memoized closure
+  - pattern: cl.delegate =
+    meaning: closure delegate assignment — changes method resolution
+  - pattern: cl.resolveStrategy =
+    meaning: closure resolve strategy — controls delegation order
+  - pattern: cl.call(
+    meaning: explicit closure invocation
+  - pattern: cl.curry(
+    meaning: partial application / currying
+  - pattern: cl.rcurry(
+    meaning: right-side partial application
+  - pattern: cl.compose(
+    meaning: closure composition
+  - pattern: cl.trampoline(
+    meaning: trampoline for stack-safe recursion
+  - pattern: cl << otherCl
+    meaning: closure composition operator
+  notes: 'Closures in Groovy are first-class objects (groovy.lang.Closure). Delegate-based
+    closures are the backbone of every Groovy DSL — the closure''s delegate is set
+    to a builder object, allowing method calls inside the closure to resolve against
+    the builder. High-complexity patterns: cl.resolveStrategy = Closure.DELEGATE_FIRST
+    combined with deeply nested closures (Gradle build scripts, Grails config, etc.).
+
+    '
+- category: dsl_builders
+  description: Groovy internal DSL construction patterns
+  signals:
+  - pattern: class * extends BuilderSupport {
+    meaning: custom BuilderSupport DSL
+  - pattern: class * extends AbstractFactory {
+    meaning: FactoryBuilderSupport-based DSL
+  - pattern: FactoryBuilderSupport
+    meaning: hierarchical DSL builder
+  - pattern: def builder = new NodeBuilder()
+    meaning: NodeBuilder XML/document DSL
+  - pattern: def builder = new MarkupBuilder(writer)
+    meaning: MarkupBuilder HTML/XML generation DSL
+  - pattern: def slurper = new XmlSlurper()
+    meaning: XmlSlurper — lazy XML parsing DSL
+  - pattern: def parser = new XmlParser()
+    meaning: XmlParser — eager XML parsing DSL
+  - pattern: JsonOutput.toJson(
+    meaning: JsonOutput DSL for JSON generation
+  - pattern: new JsonBuilder {
+    meaning: JsonBuilder — closure-based JSON DSL
+  - pattern: groovy.xml.MarkupBuilder
+    meaning: MarkupBuilder import
+  - pattern: SwingBuilder
+    meaning: Swing UI DSL
+  - pattern: RestBuilder
+    meaning: Grails REST client DSL
+  - pattern: HtmlBuilder
+    meaning: HTML generation DSL
+  - pattern: def * = { ... } (used as DSL method)
+    meaning: closure stored as property creates DSL entry point
+  notes: 'Groovy DSLs use closure delegation as the core mechanism. BuilderSupport
+    and FactoryBuilderSupport are the two main builder superclasses. Gradle''s own
+    build script is a Groovy DSL built on this pattern. Detection of DSL patterns
+    signals code that requires understanding of the specific DSL contract — not just
+    Groovy syntax.
+
+    '
+- category: groovy_traits
+  description: Groovy trait usage — stateful multiple inheritance
+  signals:
+  - pattern: trait * {
+    meaning: Groovy trait definition — stateful mixin
+  - pattern: implements *Trait
+    meaning: trait implementation on a class
+  - pattern: interface * extends *Trait
+    meaning: trait composition in interfaces
+  - pattern: '@SelfType('
+    meaning: restricts trait to specific class hierarchy
+  - pattern: this as *Trait
+    meaning: explicit trait cast
+  - pattern: super.*Trait.method(
+    meaning: explicit super-trait method call
+  notes: 'Groovy traits (Groovy 2.3+) are stateful interfaces with default method
+    implementations and instance fields. Unlike Java default interface methods, traits
+    support instance state. @SelfType restricts which classes can implement a trait.
+    Multiple trait composition creates diamond inheritance — complexity signal when
+    more than 2 traits on one class.
+
+    '

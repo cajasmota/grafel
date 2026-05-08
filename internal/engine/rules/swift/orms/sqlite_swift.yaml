@@ -1,0 +1,31 @@
+orms:
+  name: SQLite.swift
+  category: sqlite_driver
+  spm_coordinates:
+    - stephencelis/SQLite.swift
+  cocoapods:
+    - pod 'SQLite.swift'
+  detection:
+    import_patterns:
+      - import SQLite
+    code_patterns:
+      - Connection(
+      - try Connection(
+      - Table(
+      - Expression<
+      - db.run(
+  notes: >
+    SQLite.swift provides a type-safe, Swift-idiomatic API for SQLite.
+    The Connection type is the primary database handle. Detected by
+    import SQLite and Connection(...) construction. Commonly used in
+    iOS/macOS apps that want SQL control without an ORM.
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: SQLite.swift Connection()
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

@@ -1,0 +1,26 @@
+framework:
+  name: ex_aws_dynamo (ExAws.Dynamo)
+  category: nosql_database
+  hex_package: ex_aws_dynamo
+  detection:
+    import_patterns:
+    - ExAws.DynamoDB
+    - ExAws.Dynamo
+    - ex_aws_dynamo
+    code_patterns:
+    - ExAws.DynamoDB.
+    - ExAws.Dynamo.
+  notes: >
+    ExAws.Dynamo (ex_aws_dynamo) is the standard Elixir DynamoDB client,
+    part of the ExAws ecosystem.
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: ExAws.Dynamo connections (SCOPE.Service,
+      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
+      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
+      INFERRED_FROM_DYNAMODB_QUERY), streams (SCOPE.Operation/stream_op,
+      INFERRED_FROM_DYNAMODB_STREAM), single-table design (SCOPE.Pattern,
+      INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

@@ -1,0 +1,64 @@
+build_tools:
+- name: Bundler
+  detection:
+    config_files:
+    - Gemfile
+    - Gemfile.lock
+    - .bundle/config
+    binary: bundle
+    structural_markers:
+    - Gemfile with "source 'https://rubygems.org'"
+    - Gemfile with gem declarations
+    - Gemfile.lock with BUNDLED WITH section
+    code_patterns:
+    - require 'bundler/setup'
+    - Bundler.require
+    - Bundler.setup
+  notes: 'Presence of Gemfile is the universal Ruby project signal. Gemfile.lock pins
+    exact dependency versions. .bundle/config holds local bundle config.
+
+    '
+- name: RubyGems
+  detection:
+    config_files:
+    - '*.gemspec'
+    - lib/gemname/version.rb
+    - lib/gemname.rb
+    binary: gem
+    structural_markers:
+    - '*.gemspec with Gem::Specification'
+    - lib/ with version.rb
+    - Gemspec#add_runtime_dependency
+    - Gemspec#add_development_dependency
+    code_patterns:
+    - Gem::Specification.new
+    - spec.add_dependency
+    - require_relative 'lib/gemname/version'
+  notes: 'Presence of *.gemspec indicates the project is a gem library. version.rb
+    with VERSION constant is conventional. Rakefile + gemspec indicates gem publishing
+    workflow.
+
+    '
+- name: Rake
+  detection:
+    config_files:
+    - Rakefile
+    - lib/tasks/*.rake
+    - rakelib/
+    binary: rake
+    structural_markers:
+    - Rakefile
+    - '*.rake files'
+    code_patterns:
+    - task :default
+    - desc 'description'
+    - namespace :ns do
+    - Rake::TestTask.new
+    - Rake::PackageTask.new
+    - require 'rake'
+    - require 'rake/testtask'
+  notes: 'Rakefile is near-universal in Ruby projects. Rails uses Rake for db:migrate,
+    assets:precompile, etc. lib/tasks/*.rake is Rails convention for custom tasks.
+    Standalone Ruby projects use Rakefile for build/test orchestration.
+
+    '

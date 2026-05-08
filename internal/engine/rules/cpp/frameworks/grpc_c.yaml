@@ -1,0 +1,45 @@
+frameworks:
+  name: gRPC C++
+  category: rpc_framework
+  github_stars_2025: 42000+
+  detection:
+    cmake_find_package:
+    - find_package(gRPC CONFIG
+    - find_package(grpc
+    - find_package(Protobuf
+    - find_package(protobuf CONFIG
+    cmake_target_link:
+    - gRPC::grpc++
+    - gRPC::grpc++_reflection
+    - protobuf::libprotobuf
+    vcpkg_packages:
+    - grpc
+    - protobuf
+    conan_packages:
+    - grpc/1
+    - protobuf/3
+    include_patterns:
+    - '#include <grpcpp/'
+    - '#include <grpc/'
+    - '#include <google/protobuf/'
+    structural_markers:
+    - grpc::ServerBuilder
+    - grpc::Channel
+    - grpc::ClientContext
+    - grpc::Status
+    - ::Service
+    - ::Stub
+    - protoc
+    - '*.proto'
+    - '*.pb.cc'
+    - '*.pb.h'
+    - '*.grpc.pb.cc'
+    - '*.grpc.pb.h'
+    config_files:
+    - CMakeLists.txt
+    - '*.proto'
+    notes: 'gRPC C++ always paired with Protobuf. Detected via find_package(gRPC)
+      and generated .pb.h/.grpc.pb.h files. Proto files are definitive signal. Generated
+      .pb.cc and .grpc.pb.cc are skip candidates.
+
+      '

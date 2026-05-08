@@ -1,0 +1,17 @@
+frameworks:
+  name: ansible-navigator
+  vendor: Ansible Community / Red Hat
+  category: execution_tool
+  detection:
+    cli_invocation_patterns:
+    - ansible-navigator
+    config_files:
+    - ansible-navigator.yml
+    - ansible-navigator.yaml
+    container_image_references: execution-environment image URIs
+  notes: 'ansible-navigator is a new CLI providing a modern Ansible experience with
+    introspection and execution environment (EE) support. Detected via ansible-navigator
+    CLI or ansible-navigator.yml config. EE containers encapsulate Ansible Core +
+    custom collections + dependencies.
+
+    '

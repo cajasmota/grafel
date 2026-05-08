@@ -1,0 +1,18 @@
+frameworks:
+  name: Bitbucket Pipelines
+  language: cicd
+  official_docs: https://support.atlassian.com/bitbucket-cloud/docs/get-started-with-bitbucket-pipelines
+  config_file: bitbucket-pipelines.yml
+  adopted_by: Bitbucket Cloud repositories (native integration)
+  vera_scope: Service (pipeline as Service, step as Operation)
+  characteristics:
+  - Branch, tag, and PR-specific pipelines
+  - Sequential steps (no native parallelism)
+  - Docker image per step (or global default)
+  - Service containers for integration testing
+  - Definitions for reusable steps
+  - Artifacts and caching
+  complexity_signal_markers:
+  - Step count > 20 (high sequential overhead)
+  - Branch-specific pipelines > 5
+  - Service container count > 3

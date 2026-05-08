@@ -1,0 +1,17 @@
+# Mongo-query enricher (MX-150)
+# LLM-powered enricher that triggers on SCOPE.Operation/aggregation entities
+# (from MX-577 mongodb_extractor) and emits SCOPE.Pattern(type=mongo-query)
+# with stage analysis, index hints, and performance notes.
+#
+# File gate is internal to the detector (applies_to checks language and
+# entity scan). This YAML documents the extractor's registration entry.
+
+name: mongo_query
+description: >-
+  LLM-powered enricher for MongoDB aggregation pipeline entities. Triggers on
+  SCOPE.Operation/aggregation entities and emits SCOPE.Pattern(type=mongo-query)
+  with collection name, stage analysis, index recommendations, and performance
+  notes. Uses model_heavy for LLM calls. Max 5 calls per invocation.
+module: memx_indexer.pattern_detectors.mongo_query_enricher
+function: detect
+applies_to_function: applies_to

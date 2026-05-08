@@ -1,0 +1,132 @@
+complexity_signals:
+- category: async_await_chains
+  description: 'Pervasive async/await usage, especially deeply nested chains, is a
+    complexity indicator in C# services. ConfigureAwait(false) indicates library code.
+    Mixing sync and async (Task.Result, .Wait()) signals potential deadlock risk.
+
+    '
+  patterns:
+  - async Task
+  - async Task<
+  - async ValueTask
+  - async ValueTask<
+  - 'await '
+  - ConfigureAwait(false)
+  - Task.WhenAll(
+  - Task.WhenAny(
+  - CancellationToken
+  - IAsyncEnumerable<
+  - await foreach (
+  - Task.Result
+  - .GetAwaiter().GetResult()
+  - SemaphoreSlim
+  - Channel<
+  - System.Threading.Channels
+- category: linq_complex_queries
+  description: 'Complex LINQ queries combining multiple operators, joins, projections,
+    and aggregations indicate high-complexity data transformation logic. Expression
+    trees indicate dynamic query building.
+
+    '
+  patterns:
+  - .SelectMany(
+  - .GroupJoin(
+  - .Aggregate(
+  - .Zip(
+  - Expression<Func<
+  - Expression.Lambda<
+  - IQueryable<
+  - .AsQueryable()
+  - .Compile()
+  - PredicateBuilder
+  - LambdaExpression
+  - .GroupBy(.*.Select(
+- category: reflection
+  description: 'Runtime reflection via typeof/GetType indicates dynamic code paths,
+    plugin architectures, or serialization logic. Assembly scanning suggests auto-registration
+    patterns.
+
+    '
+  patterns:
+  - typeof(
+  - .GetType()
+  - Type.GetType(
+  - .GetMethod(
+  - .GetProperty(
+  - .GetField(
+  - .GetProperties()
+  - .GetMethods()
+  - .MakeGenericType(
+  - Activator.CreateInstance(
+  - Assembly.Load(
+  - Assembly.GetExecutingAssembly()
+  - .GetCustomAttribute<
+  - .GetCustomAttributes(
+  - BindingFlags.
+  - MethodInfo
+  - PropertyInfo
+- category: di_container_registrations
+  description: 'Dependency injection registration patterns in Program.cs or Startup.cs
+    indicate service architecture complexity. Scrutor scanning and conditional registrations
+    add complexity.
+
+    '
+  patterns:
+  - services.AddSingleton<
+  - services.AddTransient<
+  - services.AddScoped<
+  - services.AddSingleton(
+  - services.AddTransient(
+  - services.AddScoped(
+  - builder.Services.Add
+  - services.Scan(
+  - services.AddOptions<
+  - services.Configure<
+  - services.TryAddSingleton<
+  - IServiceCollection
+  - IServiceProvider
+  - ActivatorUtilities
+  - ServiceDescriptor
+- category: middleware_pipeline
+  description: 'Custom middleware in ASP.NET Core request pipelines indicates HTTP-level
+    cross-cutting concerns. Complex pipeline composition increases debugging difficulty.
+
+    '
+  patterns:
+  - app.Use(
+  - app.UseMiddleware<
+  - IMiddleware
+  - RequestDelegate
+  - HttpContext
+  - next.Invoke(
+  - await next(
+  - IApplicationBuilder
+  - app.UseWhen(
+  - app.MapWhen(
+  - app.UseExceptionHandler(
+  - app.UseCors(
+  - app.UseAuthentication()
+  - app.UseAuthorization()
+  - IHttpContextAccessor
+- category: generic_constraints
+  description: 'Complex generic constraints, co/contravariance, and generic method
+    patterns indicate high-abstraction library or framework code.
+
+    '
+  patterns:
+  - 'where T : class'
+  - 'where T : struct'
+  - 'where T : new()'
+  - 'where T : IDisposable'
+  - 'where T : unmanaged'
+  - 'where T : notnull'
+  - 'where T : Enum'
+  - 'where T : Delegate'
+  - IEnumerable<T>
+  - IReadOnlyList<T>
+  - Func<T, TResult>
+  - Action<T>
+  - out T
+  - in T
+  - static abstract
+  - static virtual

@@ -1,0 +1,18 @@
+frameworks:
+  name: gorilla/mux
+  module_path: github.com/gorilla/mux
+  category: web_router
+  github_stars_2025: 21200+
+  detection:
+    go_mod_require:
+    - github.com/gorilla/mux
+    import_markers:
+    - '"github.com/gorilla/mux"'
+    structural_markers:
+    - mux.NewRouter()
+    - r.HandleFunc(
+    - mux.Vars(r)
+    notes: 'Archived but widely used in legacy codebases. No version suffix in module
+      path. Presence is a strong signal of older codebase.
+
+      '

@@ -1,0 +1,28 @@
+frameworks:
+  name: ionic
+  category: mobile
+  npm_packages:
+  - '@ionic/react'
+  - '@ionic/angular'
+  - '@ionic/vue'
+  - '@ionic/core'
+  config_files:
+  - ionic.config.json
+  - capacitor.config.ts
+  - capacitor.config.js
+  - capacitor.config.json
+  detection_signals:
+    package_json_deps:
+    - '@ionic/react'
+    - '@ionic/angular'
+    - '@ionic/vue'
+    - '@ionic/core'
+    - '@capacitor/core'
+    directory_conventions:
+    - www/
+    - src/theme/
+  framework_specific:
+  - IonApp, IonContent, IonPage
+  - IonRouterOutlet
+  - src/theme/variables.css
+  notes: 'ionic.config.json is definitive. Capacitor bridge: capacitor.config.ts'

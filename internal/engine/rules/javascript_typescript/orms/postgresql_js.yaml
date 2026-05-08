@@ -1,0 +1,43 @@
+orms_database:
+  name: PostgreSQL JavaScript/TypeScript Drivers (pg/node-postgres, postgres.js)
+  category: postgres_driver
+  npm_packages:
+    - pg
+    - "@types/pg"
+    - postgres
+    - "@vercel/postgres"
+    - slonik
+  detection:
+    import_patterns:
+      - "from 'pg'"
+      - "from \"pg\""
+      - require('pg')
+      - require("pg")
+      - "from 'postgres'"
+      - "from \"postgres\""
+      - "@vercel/postgres"
+    code_patterns:
+      - new Pool({
+      - new Client({
+      - postgres({
+      - sql`
+  notes: >
+    pg (node-postgres) is the canonical Node.js PostgreSQL driver. postgres.js
+    is a modern alternative with tagged template literal queries. @vercel/postgres
+    wraps pg for serverless environments.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: pg Pool/Client connections and
+      postgres.js driver instantiation (SCOPE.Service,
+      INFERRED_FROM_POSTGRES_DRIVER), connection pool setup
+      (SCOPE.Pattern, INFERRED_FROM_POSTGRES_POOL), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

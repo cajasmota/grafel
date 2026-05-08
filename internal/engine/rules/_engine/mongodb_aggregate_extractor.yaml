@@ -1,0 +1,17 @@
+# MongoDB Aggregate Pipeline Extractor (MX-740)
+# Detects .aggregate([...]) calls across 12 MongoDB driver languages and emits
+# SCOPE.Operation(kind=aggregate_pipeline) with ordered stage operator names.
+#
+# Supported languages: javascript, typescript, python, java, kotlin, go, csharp,
+#                      ruby, php, rust, scala, elixir
+#
+# File gate is internal to the detector (applies_to checks language field).
+
+name: mongodb_aggregate_extractor
+description: >-
+  Detect MongoDB .aggregate([...]) pipeline calls across 12 languages and emit
+  SCOPE.Operation entities with kind=aggregate_pipeline, stages list, stage_count,
+  collection_name, and is_dynamic_pipeline flag.
+module: memx_indexer.pattern_detectors.mongodb_aggregate_extractor
+function: detect
+applies_to_function: applies_to

@@ -1,0 +1,38 @@
+meta:
+  language: cicd
+  display_name: CI/CD Pipeline Ecosystem
+  primary_detection_files:
+  - .github/workflows/*.yml
+  - .github/workflows/*.yaml
+  - .gitlab-ci.yml
+  - .circleci/config.yml
+  - bitbucket-pipelines.yml
+  - azure-pipelines.yml
+  - azure-pipelines.yaml
+  - .travis.yml
+  - .buildkite/pipeline.yml
+  file_name_patterns:
+  - .github/workflows/*.yml
+  - .github/workflows/*.yaml
+  - .gitlab-ci.yml
+  - .circleci/config.yml
+  - bitbucket-pipelines.yml
+  - bitbucket-pipelines.yaml
+  - azure-pipelines.yml
+  - azure-pipelines.yaml
+  - .travis.yml
+  - .buildkite/pipeline.yml
+  vera_scope_mapping:
+    pipeline: Service
+    job: Operation
+    workflow: Component
+  notes: 'CI/CD pipeline configuration is detected by the presence of platform-specific
+    config files in standardised locations. Each platform has distinct YAML or declarative
+    syntax. GitHub Actions uses workflow files in .github/workflows/; GitLab CI uses
+    a single .gitlab-ci.yml at repo root; CircleCI uses .circleci/config.yml; Bitbucket
+    uses bitbucket-pipelines.yml; Azure uses azure-pipelines.yml; Travis uses .travis.yml;
+    Buildkite uses .buildkite/pipeline.yml. Entities extracted from these files map
+    to archigraph SCOPE: Pipeline → Service, Job → Operation, Workflow → Component. Jenkinsfile
+    (Groovy) is covered under MX-428 (excluded from this research).
+
+    '

@@ -1,0 +1,30 @@
+template_engines:
+  name: Slim
+  full_name: Slim (Ruby)
+  language: ruby
+  extensions:
+  - .slim
+  - .html.slim
+  ruby_gems:
+  - slim
+  - slim-rails
+  detection_signals:
+    file_extensions:
+    - .slim
+    - .html.slim
+    gemfile_deps:
+    - slim
+    - slim-rails
+    syntax_markers:
+    - = ruby_expression
+    - '- ruby_statement'
+    - / comment
+    - / comment
+    - tag.class
+    - tag#id
+    - = yield
+    - '= render partial:'
+  notes: 'Slim is more terse than HAML. Both are indentation-sensitive. Slim is less
+    common; check Gemfile for slim or slim-rails dep.
+
+    '

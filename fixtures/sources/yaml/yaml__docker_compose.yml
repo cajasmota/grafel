@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  api:
+    image: myapp:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://user:pass@db:5432/mydb
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  worker:
+    image: myapp:latest
+    command: ["./worker"]
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,129 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/sample-api/models/schemas.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "ItemBase",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 11,
+      "end_line": 17,
+      "language": "python",
+      "signature": "class ItemBase",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "ItemCreate",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 20,
+      "end_line": 21,
+      "language": "python",
+      "signature": "class ItemCreate",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "ItemUpdate",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 24,
+      "end_line": 29,
+      "language": "python",
+      "signature": "class ItemUpdate",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "ItemRead",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 32,
+      "end_line": 37,
+      "language": "python",
+      "signature": "class ItemRead",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "UserBase",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 42,
+      "end_line": 44,
+      "language": "python",
+      "signature": "class UserBase",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "UserCreate",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 47,
+      "end_line": 48,
+      "language": "python",
+      "signature": "class UserCreate",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "UserRead",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 51,
+      "end_line": 56,
+      "language": "python",
+      "signature": "class UserRead",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "OrderLineItemCreate",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 61,
+      "end_line": 63,
+      "language": "python",
+      "signature": "class OrderLineItemCreate",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "OrderCreate",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 66,
+      "end_line": 68,
+      "language": "python",
+      "signature": "class OrderCreate",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "OrderLineItemRead",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 71,
+      "end_line": 77,
+      "language": "python",
+      "signature": "class OrderLineItemRead",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "OrderRead",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 80,
+      "end_line": 89,
+      "language": "python",
+      "signature": "class OrderRead",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

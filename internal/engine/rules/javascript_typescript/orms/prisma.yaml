@@ -1,0 +1,27 @@
+orms_and_database:
+  name: prisma
+  npm_packages:
+  - prisma
+  - '@prisma/client'
+  config_files:
+  - schema.prisma
+  - prisma/schema.prisma
+  detection_signals:
+    package_json_deps:
+    - '@prisma/client'
+    - prisma
+    file_patterns:
+    - schema.prisma
+    - prisma/schema.prisma
+  code_patterns:
+  - PrismaClient
+  - import { PrismaClient } from '@prisma/client'
+  schema_keywords:
+  - datasource db
+  - generator client
+  - 'model '
+  notes: schema.prisma is definitive. victorhqc tree-sitter-prisma grammar for AST
+    parsing.
+  custom_extractors:
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract

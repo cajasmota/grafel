@@ -1,0 +1,77 @@
+skip_patterns:
+- pattern: docker-compose.override.yml
+  reason: 'docker-compose.override.yml is automatically merged by Compose when running
+    `docker compose up` without explicit -f flags. It is used exclusively for local
+    development overrides (bind-mount source code, expose debug ports, enable hot-reload).
+    It should not be indexed as a production topology — index only the base docker-compose.yml.
+
+    '
+  applies_to:
+  - docker-compose.override.yml
+  - docker-compose.override.yaml
+- pattern: docker-compose.dev.yml / docker-compose.local.yml
+  reason: 'Explicit development-environment Compose files. Not representative of production
+    topology. Skip unless the user explicitly scopes to development environments.
+
+    '
+  applies_to:
+  - docker-compose.dev.yml
+  - docker-compose.dev.yaml
+  - docker-compose.local.yml
+  - docker-compose.local.yaml
+  - compose.dev.yml
+  - compose.dev.yaml
+  - compose.local.yml
+  - compose.local.yaml
+- pattern: .dockerignore
+  reason: '.dockerignore is a build-context exclusion file with no code entities.
+    Do not extract Service entities from .dockerignore. Use it as a skip-list reference
+    to identify files/directories the author considers build artifacts, secrets, or
+    non-essential — these are candidates for the indexer''s own skip list.
+
+    '
+  index_as: metadata_only
+- pattern: Dockerfile.dev / Dockerfile.test / Dockerfile.ci
+  reason: 'Variant Dockerfiles for development, testing, or CI environments contain
+    development dependencies, debug tools, and test frameworks not present in production
+    images. They do not represent production service topology. Index with reduced
+    priority and tag with `scope=dev` or `scope=test`.
+
+    '
+  applies_to:
+  - Dockerfile.dev
+  - Dockerfile.test
+  - Dockerfile.ci
+  - Dockerfile.debug
+  - Dockerfile.local
+  - '*.dev.Dockerfile'
+  - '*.test.Dockerfile'
+  - '*.ci.Dockerfile'
+  recommendation: 'Index but tag with scope=dev or scope=test. Do not include in production
+    topology analysis. This mirrors the archigraph test file handling policy (AST-only,
+    no LLM enrichment for test-scoped files).
+
+    '
+- pattern: compose_volume_bind_mounts
+  reason: 'docker-compose volume entries that bind-mount source code into containers
+    (e.g., `- ./src:/app/src`) are development hot-reload signals, not production
+    data dependencies. Skip bind-mount declarations when classifying volumes. Index
+    named volume declarations (e.g., `db-data:`) as stateful storage signals.
+
+    '
+  detection:
+    bind_mount_pattern: '- ./<local_path>:<container_path>'
+    named_volume_pattern: '- <volume_name>:<container_path>'
+  applies_to: volumes entries in docker-compose services
+- pattern: build output and cache directories
+  reason: 'These directories contain generated artifacts, not source. Never index
+    them.
+
+    '
+  paths:
+  - .docker/
+  - docker-data/
+  - '**/.buildx/'
+  - '**/buildkit-cache/'
+  - '**/kaniko-cache/'
+  - '**/layers/'

@@ -1,0 +1,22 @@
+framework:
+  name: aws_dynamodb_api (pub.dev)
+  category: nosql_database
+  pub_package: aws_dynamodb_api
+  detection:
+    import_patterns:
+    - package:aws_dynamodb_api
+    - aws_dynamodb_api
+    code_patterns:
+    - DynamoDB(
+  notes: >
+    aws_dynamodb_api on pub.dev is the Dart/Flutter client for DynamoDB.
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: DynamoDB() connections (SCOPE.Service,
+      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
+      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
+      INFERRED_FROM_DYNAMODB_QUERY), single-table design (SCOPE.Pattern,
+      INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

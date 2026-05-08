@@ -1,0 +1,128 @@
+# Axum framework extraction rules (MX-516)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Crate: axum
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: Axum
+  category: web_framework
+  crate: axum
+  detection:
+    config_files:
+    - Cargo.toml
+    code_patterns:
+    - Router::new()
+    - "axum::routing::"
+    - "axum::extract::"
+    import_patterns:
+    - "use axum::"
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Handler modules grouped in handlers/ or routes/ directories
+  - glob: "*/handlers/*.rs"
+    entity_type: Operation
+    name_from: filename
+  - glob: "*/routes/*.rs"
+    entity_type: Route
+    name_from: filename
+  # Service / application layer modules
+  - glob: "*/services/*.rs"
+    entity_type: Service
+    name_from: filename
+  # Data model / entity modules
+  - glob: "*/models/*.rs"
+    entity_type: Model
+    name_from: filename
+
+source_patterns:
+  # Route registration on a Router:
+  # .route("/path", get(handler))
+  # .route("/path", post(handler).get(other_handler))
+  - pattern: "\\.route\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # Routing method functions: axum::routing::get(handler) / routing::post(handler)
+  # Captures the handler function name
+  - pattern: "\\b(?:axum::routing::|routing::)?(?:get|post|put|delete|patch|head|options)\\s*\\(\\s*(\\w+)"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+  # Async handler function: async fn handler_name(...)
+  # Axum handlers are plain async fns using type-system extractors — detect by
+  # presence of common Axum extractor types in the argument list.
+  # Uses [\s\S]*? to handle destructured args like State(db): State<T> which
+  # contain inner parens that would break [^)]* matching.
+  - pattern: "async\\s+fn\\s+(\\w+)\\s*\\([\\s\\S]*?(?:State<|Extension<|Json<|Path<|Query<|Form<|TypedHeader<|ConnectInfo<|MatchedPath)[\\s\\S]*?\\)\\s*(?:->|\\{)"
+    entity_type: Operation
+    name_group: 1
+    scope: function
+
+  # State<T> — shared application state extractor, captures T as dependency
+  - pattern: "State\\s*<\\s*([\\w:]+)\\s*>"
+    entity_type: Dependency
+    name_group: 1
+    scope: function
+
+  # Extension<T> — tower extension data extractor, captures T as dependency
+  - pattern: "Extension\\s*<\\s*([\\w:]+)\\s*>"
+    entity_type: Dependency
+    name_group: 1
+    scope: function
+
+  # Router::new() — application / sub-router entry point
+  - pattern: "Router\\s*::\\s*new\\s*\\(\\s*\\)"
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # .nest("/prefix", sub_router) — sub-router nesting
+  - pattern: "\\.nest\\s*\\(\\s*\"([^\"]+)\""
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # .layer(middleware) — tower middleware layer registration
+  # Captures only the struct/type name before any :: or ( to avoid capturing method calls
+  - pattern: "\\.layer\\s*\\(\\s*(\\w+)"
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # .route("/path", get(handler)) — path ROUTES_TO handler function
+  - pattern: "\\.route\\s*\\(\\s*\"([^\"]+)\"[^,]*,\\s*(?:get|post|put|delete|patch|head|options)\\s*\\(\\s*(\\w+)"
+    source_type: Route
+    target_type: Operation
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # .nest("/prefix", router) — parent route ROUTES_TO nested sub-router
+  - pattern: "\\.nest\\s*\\(\\s*\"([^\"]+)\"[^,]*,\\s*(\\w+)"
+    source_type: Route
+    target_type: Route
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # State<T> dependency injected into handler fn
+  - pattern: "State\\s*<\\s*([\\w:]+)\\s*>[\\s\\S]{0,300}?async\\s+fn\\s+(\\w+)"
+    source_type: Dependency
+    target_type: Operation
+    relationship: INJECTED_INTO
+    source_group: 1
+    target_group: 2
+
+custom_extractors:
+  - module: "memx_indexer.languages.rust.axum_extractor"
+    function: "extract"
+    description: "Extract Axum Router routes (.route with get/post/put/delete/patch/head/options), nested routers (.nest), tower middleware layers (.layer, ServiceBuilder), State<T>/Extension<T> dependency injection patterns, Json<T>/Path<T>/Query<T>/Form<T> request extractors, axum::serve()/Server::bind() server entry points, and WebSocketUpgrade handlers. Emits OWNS (nest OWNS route), CALLS (server CALLS layer), DEPENDS_ON (handler DEPENDS_ON state) relationships."

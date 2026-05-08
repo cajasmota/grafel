@@ -1,0 +1,9 @@
+frameworks: frameworks/ [django, fastapi, flask, tornado, sanic, aiohttp, starlette,
+  pyramid, bottle, celery, dramatiq, litestar, robyn, strawberry_graphql]
+build_package_tools: build_tools.yaml
+testing_frameworks: test_patterns.yaml
+orms_database: orms/ [sqlalchemy, sqlmodel, django_orm, tortoise_orm, peewee, pony_orm,
+  mongoengine, beanie, alembic, neo4j]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml

@@ -1,0 +1,41 @@
+frameworks:
+  name: Android Jetpack Compose
+  category: mobile_ui
+  gradle_coordinates:
+  - androidx.compose.ui:ui
+  - androidx.compose.material3:material3
+  - androidx.compose.runtime:runtime
+  - androidx.activity:activity-compose
+  detection:
+    config_files:
+    - AndroidManifest.xml
+    - build.gradle.kts (app module)
+    build_signals:
+    - implementation("androidx.compose.ui:ui")
+    - implementation("androidx.compose.material3:material3")
+    - implementation("androidx.activity:activity-compose")
+    - buildFeatures { compose = true }
+    - composeOptions { kotlinCompilerExtensionVersion
+    import_patterns:
+    - import androidx.compose.runtime.
+    - import androidx.compose.ui.
+    - import androidx.compose.material3.
+    code_patterns:
+    - '@Composable'
+    - setContent {
+    - rememberSaveable(
+    - LaunchedEffect(
+    - remember {
+    - Scaffold(
+    - Column {
+    - Row {
+  notes: 'Android Compose detection: AndroidManifest.xml + buildFeatures.compose=true
+    + @Composable annotation. composeOptions block in build.gradle.kts is definitive.
+    setContent {} in Activity is entry point signal. Distinguish from Compose Multiplatform
+    by absence of commonMain/ dirs.
+
+    '
+custom_extractors:
+  - module: "memx_indexer.languages.kotlin.compose_extractor"
+    function: "extract"
+    description: "Extract @Composable function tree, NavHost navigation graph routes, and ViewModel dependencies"

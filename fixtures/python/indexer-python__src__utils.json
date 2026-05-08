@@ -1,0 +1,107 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/indexer-python/src/utils.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "format_currency",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 6,
+      "end_line": 10,
+      "language": "python",
+      "signature": "def format_currency(amount: float, currency: str = \"USD\") -> str",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "slugify",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 13,
+      "end_line": 15,
+      "language": "python",
+      "signature": "def slugify(text: str) -> str",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "__init__",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 23,
+      "end_line": 25,
+      "language": "python",
+      "signature": "def __init__(self, config: dict) -> None",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "is_valid",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 27,
+      "end_line": 35,
+      "language": "python",
+      "signature": "def is_valid(self, order: dict) -> bool",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "_has_required_fields",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 37,
+      "end_line": 38,
+      "language": "python",
+      "signature": "def _has_required_fields(self, order: dict) -> bool",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "_amount_in_range",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 40,
+      "end_line": 42,
+      "language": "python",
+      "signature": "def _amount_in_range(self, order: dict) -> bool",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "_items_non_empty",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 44,
+      "end_line": 45,
+      "language": "python",
+      "signature": "def _items_non_empty(self, order: dict) -> bool",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "error_summary",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 47,
+      "end_line": 59,
+      "language": "python",
+      "signature": "def error_summary(self, order: dict) -> list[str]",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "OrderValidator",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 18,
+      "end_line": 59,
+      "language": "python",
+      "signature": "class OrderValidator",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

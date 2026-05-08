@@ -1,0 +1,31 @@
+template_engines:
+  name: Pug
+  full_name: Pug (formerly Jade)
+  language: javascript
+  extensions:
+  - .pug
+  - .jade
+  npm_packages:
+  - pug
+  - jade
+  detection_signals:
+    file_extensions:
+    - .pug
+    - .jade
+    package_json_deps:
+    - pug
+    - jade
+    syntax_markers:
+    - extends layout
+    - block content
+    - include ./partial
+    - mixin name(args)
+    - +mixinName()
+    - each item in items
+    - if condition
+    - '- var x ='
+  notes: '.jade is the legacy extension (deprecated). mixin definitions and block/extends
+    pairs are strong Component signals. Indentation-sensitive syntax — AST parse required
+    for reliable detection.
+
+    '

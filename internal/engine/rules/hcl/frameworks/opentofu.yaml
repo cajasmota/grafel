@@ -1,0 +1,30 @@
+frameworks:
+  name: OpenTofu
+  vendor: OpenTofu (Linux Foundation)
+  category: infrastructure_as_code
+  current_version_2025: 1.8.x
+  registry: registry.opentofu.org
+  detection:
+    file_extensions:
+    - .tf
+    - .tfvars
+    block_signatures:
+    - terraform {
+    - required_providers {
+    content_patterns:
+    - source  = "opentofu/
+    - source = "opentofu/
+    config_files:
+    - .opentofu/
+    - opentofu.tfstate
+  differentiator_from_terraform: 'OpenTofu syntax is a strict superset of Terraform
+    1.5. Differentiate by presence of .opentofu/ directory, tofu CLI wrapper, or provider
+    sources pointing to registry.opentofu.org. Most .tf files are ambiguous between
+    Terraform and OpenTofu — treat as HCL-IaC generically unless disambiguated.
+
+    '
+  notes: 'OpenTofu is an OSS fork of Terraform (post-BSL change). The file format
+    is identical to Terraform. Detection of OpenTofu-specific usage relies on the
+    .opentofu/ state directory or explicit tofu {} block extensions.
+
+    '

@@ -1,0 +1,22 @@
+database_libraries:
+  name: clojure.java.jdbc (legacy)
+  clojars_artifact: org.clojure/java.jdbc
+  category: sql_jdbc_legacy
+  detection:
+    lein_deps:
+    - org.clojure/java.jdbc
+    import_markers:
+    - clojure.java.jdbc
+    - (:require [clojure.java.jdbc :as jdbc])
+    - (jdbc/query
+    - (jdbc/insert!
+    - (jdbc/update!
+    - (jdbc/delete!
+    - (jdbc/execute!
+    - (jdbc/with-db-connection
+    - (jdbc/with-db-transaction
+  notes: 'Legacy JDBC wrapper superseded by next.jdbc. Still present in older Clojure
+    codebases. Detected by org.clojure/java.jdbc dep and clojure.java.jdbc namespace.
+    Flag as legacy when detected — recommend migration to next.jdbc.
+
+    '

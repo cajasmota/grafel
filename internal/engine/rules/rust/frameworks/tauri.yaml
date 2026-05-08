@@ -1,0 +1,39 @@
+frameworks:
+  name: Tauri
+  crate: tauri
+  category: desktop_mobile
+  crates_io_version_2025: 2.x
+  github_stars_2025: 90000+
+  detection:
+    cargo_toml_deps:
+    - tauri
+    - tauri-build
+    - tauri-plugin-shell
+    - tauri-plugin-fs
+    - tauri-plugin-http
+    config_files:
+    - tauri.conf.json
+    - tauri.conf.json5
+    - src-tauri/tauri.conf.json
+    - src-tauri/Cargo.toml
+    structural_markers:
+    - tauri::Builder::default()
+    - '#[tauri::command]'
+    - tauri::generate_context!()
+    - tauri::generate_handler![
+    - .invoke_handler(
+    - tauri::AppHandle
+    - tauri::State<
+    - tauri::Window
+    - tauri::Manager
+    import_markers:
+    - 'use tauri::'
+    - use tauri_plugin_
+    notes: 'Cross-platform desktop AND mobile framework (v2 adds iOS/Android). src-tauri/
+      directory with Cargo.toml is a strong structural signal. tauri.conf.json at
+      project root or src-tauri/ is definitive. #[tauri::command] on functions marks
+      IPC handlers — key indexing target. Often paired with a frontend (React, Vue,
+      Svelte) in the parent dir. Mobile: v2 targets iOS (src-tauri/gen/apple/) and
+      Android (src-tauri/gen/android/) — presence of these dirs confirms mobile target.
+
+      '

@@ -1,0 +1,90 @@
+# Pytest framework extraction rules (MX-560).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: pytest
+  pypi_package: pytest
+  category: testing
+  github_stars_2025: 12000+
+  detection:
+    config_files:
+    - pytest.ini
+    - conftest.py
+    - pyproject.toml
+    - setup.cfg
+    dependency_names:
+    - pytest
+    - pytest-asyncio
+    - pytest-cov
+    - pytest-mock
+    - pytest-xdist
+    import_markers:
+    - import pytest
+    - '@pytest.fixture'
+    - '@pytest.mark'
+    - pytest.raises
+    - from pytest import
+  notes: >
+    De-facto Python testing standard. conftest.py is the highest-confidence
+    signal — it is pytest-specific. pytest.ini or [tool.pytest.ini_options]
+    in pyproject.toml is also definitive.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+# file_conventions: glob -> entity_type mapping from file naming conventions.
+file_conventions:
+  - glob: "test_*.py"
+    entity_type: Test
+    name_from: filename
+  - glob: "*_test.py"
+    entity_type: Test
+    name_from: filename
+  - glob: "conftest.py"
+    entity_type: TestConfig
+    name_from: filename
+
+# source_patterns: regex patterns that match pytest constructs in source files.
+source_patterns:
+  # Test function: def test_something(...)
+  - pattern: "^def\\s+(test_\\w+)\\s*\\("
+    entity_type: Test
+    name_group: 1
+    scope: file
+  # Test class: class TestSomething
+  - pattern: "^class\\s+(Test\\w+)\\s*"
+    entity_type: TestClass
+    name_group: 1
+    scope: file
+  # Fixture decorator
+  - pattern: "@pytest\\.fixture(?:\\s*\\([^)]*\\))?\\s*\\ndef\\s+(\\w+)\\s*\\("
+    entity_type: Fixture
+    name_group: 1
+    scope: file
+
+# relationship_rules: regex patterns that produce edges between entities.
+relationship_rules:
+  # parametrize decorator ties test to parameter set
+  - pattern: "@pytest\\.mark\\.parametrize\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    source_type: Test
+    target_type: Parameter
+    relationship: CONFIGURES
+    source_group: 1
+    target_group: 1
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.pytest_extractor
+    function: extract
+    description: >-
+      Pytest-specific extractor: def test_xxx / class TestXxx (SCOPE.Operation),
+      @pytest.fixture (SCOPE.Pattern), @pytest.mark.parametrize metadata,
+      conftest.py fixtures (SCOPE.Pattern), @pytest.mark.skip/xfail/slow metadata,
+      class TestXxx (SCOPE.Component) + OWNS test methods,
+      @pytest.mark.usefixtures DEPENDS_ON fixture,
+      monkeypatch/capsys/tmp_path DEPENDS_ON built-in fixture.
+      Emits OWNS (class→test), DEPENDS_ON (test/class→fixture).

@@ -1,0 +1,132 @@
+build_package_tools:
+- name: pip + requirements.txt
+  detection:
+    config_files:
+    - requirements.txt
+    - requirements-dev.txt
+    - requirements-test.txt
+    - requirements/*.txt
+    - constraints.txt
+    lock_files: []
+    distinguishing_markers:
+    - requirements.txt at repo root (legacy baseline)
+    - pip-compile output (# via pip-compile comment)
+  notes: 'Universal fallback — present in virtually every Python project. requirements.txt
+    alone does not distinguish pip from poetry/uv (poetry can export requirements.txt).
+    Check for poetry.lock or uv.lock first; requirements.txt is secondary evidence
+    only.
+
+    '
+- name: Poetry
+  detection:
+    config_files:
+    - pyproject.toml
+    lock_files:
+    - poetry.lock
+    distinguishing_markers:
+    - '[tool.poetry] section in pyproject.toml'
+    - poetry.lock (highest confidence)
+  notes: 'poetry.lock is the unambiguous signal. pyproject.toml alone is insufficient
+    — also used by uv, hatch, pdm.
+
+    '
+- name: uv
+  detection:
+    config_files:
+    - pyproject.toml
+    lock_files:
+    - uv.lock
+    distinguishing_markers:
+    - uv.lock (highest confidence)
+    - .python-version (uv manages Python versions)
+    - '[tool.uv] section in pyproject.toml'
+  notes: 'Rust-backed. Industry shift toward uv in 2025 as all-in-one pip + pyenv
+    + poetry replacement. uv.lock is definitive.
+
+    '
+- name: setuptools
+  detection:
+    config_files:
+    - setup.py
+    - setup.cfg
+    - pyproject.toml
+    lock_files: []
+    distinguishing_markers:
+    - setup.py (legacy, still common in libraries)
+    - setup.cfg
+    - build-backend = setuptools.build_meta in pyproject.toml
+  notes: 'Legacy standard for library distribution. setup.py alone is definitive.
+    Often combined with pip for end-user installs.
+
+    '
+- name: conda
+  detection:
+    config_files:
+    - environment.yml
+    - environment.yaml
+    lock_files:
+    - conda-lock.yml
+    distinguishing_markers:
+    - environment.yml with 'channels:' and 'dependencies:'
+    - conda-lock.yml
+    - .conda/ directory
+  notes: 'Data science / ML / GPU workloads. environment.yml with channels (conda-forge,
+    defaults) is definitive. Presence alongside pyproject.toml indicates hybrid project.
+
+    '
+- name: PDM
+  detection:
+    config_files:
+    - pyproject.toml
+    lock_files:
+    - pdm.lock
+    distinguishing_markers:
+    - pdm.lock
+    - .pdm-python
+    - '[tool.pdm] section in pyproject.toml'
+    - build-backend = pdm.backend in pyproject.toml
+  notes: 'PEP 582 compliant. pdm.lock or .pdm-python are high-confidence.
+
+    '
+- name: Hatch
+  detection:
+    config_files:
+    - pyproject.toml
+    - hatch.toml
+    lock_files: []
+    distinguishing_markers:
+    - hatch.toml
+    - '[tool.hatch] section in pyproject.toml'
+    - build-backend = hatchling.build in pyproject.toml
+  notes: 'No native lock file by default. hatch.toml or hatchling build-backend is
+    definitive. Gaining traction for library maintainers.
+
+    '
+- name: Pipenv
+  detection:
+    config_files:
+    - Pipfile
+    lock_files:
+    - Pipfile.lock
+    distinguishing_markers:
+    - Pipfile (root level)
+    - Pipfile.lock
+  notes: 'Declining usage in 2025 but still found in enterprise codebases. Pipfile
+    is unambiguous.
+
+    '
+- name: Pixi
+  detection:
+    config_files:
+    - pixi.toml
+    - pyproject.toml
+    lock_files:
+    - pixi.lock
+    distinguishing_markers:
+    - pixi.toml
+    - pixi.lock
+    - '[tool.pixi] section in pyproject.toml'
+  notes: 'Conda-ecosystem replacement built in Rust. Emerging in ML/HPC projects.
+    pixi.toml is definitive.
+
+    '

@@ -1,0 +1,35 @@
+frameworks:
+  name: AppKit
+  category: desktop_ui_imperative
+  pod_coordinates:
+  - N/A — bundled with Xcode / Apple SDK
+  detection:
+    file_extensions:
+    - '*.m'
+    - '*.mm'
+    - '*.h'
+    config_files:
+    - '*.xcodeproj/'
+    - '*.xcworkspace/'
+    - Info.plist
+    - '*.xib'
+    - MainMenu.xib
+    import_patterns:
+    - '#import <AppKit/AppKit.h>'
+    - '#import <Cocoa/Cocoa.h>'
+    - '@import AppKit;'
+    - '@import Cocoa;'
+    code_patterns:
+    - '@interface AppDelegate : NSObject <NSApplicationDelegate>'
+    - '@interface * : NSViewController'
+    - '@interface * : NSWindowController'
+    - '@interface * : NSView'
+    - '- (void)applicationDidFinishLaunching:'
+    - '[NSApplication sharedApplication]'
+    - NSApp
+  notes: 'Apple imperative UI framework for macOS desktop applications. #import <Cocoa/Cocoa.h>
+    is the umbrella import that includes AppKit. NSApplicationDelegate in AppDelegate.m
+    is the canonical entry point. MainMenu.xib is the default Interface Builder nib
+    for macOS apps.
+
+    '

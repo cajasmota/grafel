@@ -1,0 +1,32 @@
+orms_database:
+  name: Ruby SQLite Driver (sqlite3 gem)
+  category: sqlite_driver
+  rubygems_packages:
+    - sqlite3
+  detection:
+    import_patterns:
+      - require 'sqlite3'
+      - require "sqlite3"
+    code_patterns:
+      - SQLite3::Database.new(
+      - db.execute(
+      - ":memory:"
+  notes: >
+    The sqlite3 gem is the standard Ruby binding for SQLite. Provides a
+    direct C extension wrapping the SQLite C API. Commonly used with
+    ActiveRecord (adapter: sqlite3 in database.yml) for development/test,
+    or directly for CLI tools and lightweight apps.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: sqlite3 gem connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

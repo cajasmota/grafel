@@ -1,0 +1,19 @@
+meta:
+  language: shell
+  extensions:
+  - .sh
+  - .bash
+  - .zsh
+  - .fish
+  - .ps1
+  - .bat
+  - .cmd
+  - .bats
+  primary_dependency_file: null
+  lock_files: []
+  notes: 'Shell scripts are detected primarily via shebang lines, file extensions,
+    and the presence of automation config files (Makefile, justfile, Taskfile.yml).
+    Unlike compiled languages, there is no central dependency manifest — detection
+    relies on structural signals within files and directory conventions.
+
+    '

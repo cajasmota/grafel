@@ -1,0 +1,8 @@
+frameworks: frameworks/ [phoenix, phoenix_liveview, nerves, absinthe, ash_framework,
+  oban, ecto_standalone]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orms_db: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

@@ -1,0 +1,17 @@
+# Source: https://github.com/kubernetes/examples (synthetic based on real Kubernetes production patterns) | License: Apache-2.0
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-api-svc
+  namespace: production
+spec:
+  type: ClusterIP
+  selector:
+    app: webapp
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: metrics
+      port: 9090
+      targetPort: metrics

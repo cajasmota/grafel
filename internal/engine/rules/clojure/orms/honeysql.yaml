@@ -1,0 +1,34 @@
+database_libraries:
+  name: HoneySQL
+  clojars_artifact: com.github.seancorfield/honeysql
+  category: sql_dsl
+  github_stars_2025: 1500+
+  detection:
+    lein_deps:
+    - com.github.seancorfield/honeysql
+    - honeysql/honeysql
+    deps_edn_coords:
+    - com.github.seancorfield/honeysql
+    import_markers:
+    - honey.sql
+    - honeysql.core
+    - honeysql.helpers
+    - (:require [honey.sql
+    - (:require [honeysql.
+    - (sql/format
+    - (h/select
+    - (h/from
+    - (h/where
+    - (h/join
+    - '{:select ['
+    - '{:from ['
+    - '{:where ['
+    - '{:insert-into'
+    - '{:update '
+    - '{:delete-from'
+  notes: 'HoneySQL translates Clojure data structures to SQL strings. HoneySQL v2
+    (honey.sql) differs from v1 (honeysql.core). Detected by honeysql dep + {:select
+    [...] :from [...] :where [...]} map literals or (sql/format ...) calls. Commonly
+    paired with next.jdbc: (jdbc/execute! ds (sql/format query)).
+
+    '

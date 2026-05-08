@@ -1,0 +1,38 @@
+frameworks:
+  name: angular
+  category: web
+  npm_packages:
+  - '@angular/core'
+  - '@angular/common'
+  config_files:
+  - angular.json
+  - .angular-cli.json
+  - tsconfig.app.json
+  detection_signals:
+    package_json_deps:
+    - '@angular/core'
+    decorator_patterns:
+    - '@NgModule'
+    - '@Component'
+    - '@Injectable'
+    - '@Directive'
+    - '@Pipe'
+  framework_specific:
+  - NgModule
+  - RouterModule
+  - HttpClientModule
+  - '@angular/router'
+  notes: angular.json is definitive; @NgModule decorator confirms Angular
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-501)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.angular_extractor"
+    function: "extract"
+    description: "Extract Angular NgModule DI graph, components, directives, services, pipes, and router routes"

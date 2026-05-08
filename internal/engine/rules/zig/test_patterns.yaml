@@ -1,0 +1,48 @@
+testing:
+- name: Zig Builtin Test Blocks
+  type: builtin
+  detection:
+    code_patterns:
+    - test "
+    - test {
+    - std.testing.expect(
+    - std.testing.expectEqual(
+    - std.testing.expectEqualSlices(
+    - std.testing.expectEqualStrings(
+    - std.testing.expectError(
+    - std.testing.expectApproxEqAbs(
+    - std.testing.expectApproxEqRel(
+    - std.testing.allocator
+    - try std.testing.expect(
+    - try std.testing.expectEqual(
+    - try std.testing.expectEqualStrings(
+    - try std.testing.expectError(
+    import_markers:
+    - const testing = std.testing
+    - '@import("std").testing'
+  cli_command: zig test <file>.zig
+  build_integration: zig build test
+  notes: 'Zig''s test runner is builtin — no external test framework is needed or
+    typically used. Test blocks (test "description" { ... }) are first-class language
+    constructs. They are compiled and run with `zig test` or `zig build test`. std.testing.allocator
+    provides a leak-detecting allocator for use in tests. All test assertions use
+    try — a failing assertion returns an error union that propagates as a test failure.
+    Tests in any source file are discovered automatically when the file is passed
+    to `zig test`.
+
+    '
+- name: Test-scoped allocator pattern
+  type: convention
+  detection:
+    code_patterns:
+    - var gpa = std.heap.GeneralPurposeAllocator(.{}){}
+    - defer std.debug.assert(gpa.deinit() == .ok)
+    - const allocator = gpa.allocator()
+    - std.testing.allocator
+    - defer gpa.deinit()
+  notes: 'Canonical Zig test pattern: use std.testing.allocator (which is a GeneralPurposeAllocator
+    with leak detection) inside tests, or construct a GPA and assert no leaks on deinit.
+    This pattern is the de-facto standard for memory-safe testing in Zig. High indexing
+    signal for test quality.
+
+    '

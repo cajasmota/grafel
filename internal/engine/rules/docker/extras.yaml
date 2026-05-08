@@ -1,0 +1,621 @@
+detection:
+  dockerfile:
+    file_name_exact:
+    - Dockerfile
+    - Containerfile
+    file_name_glob:
+    - Dockerfile.*
+    - '*.Dockerfile'
+    - Containerfile.*
+    - '*.Containerfile'
+    content_anchor: 'A Dockerfile is confirmed by the presence of at least one recognised
+      instruction keyword at the start of a non-comment line (case-insensitive per
+      spec). The FROM instruction is the most reliable anchor; every Dockerfile must
+      contain at least one FROM (except scratch-only edge cases which also use FROM
+      scratch).
+
+      '
+    required_instruction: FROM
+    instruction_keywords:
+    - FROM
+    - RUN
+    - CMD
+    - LABEL
+    - EXPOSE
+    - ENV
+    - ADD
+    - COPY
+    - ENTRYPOINT
+    - VOLUME
+    - USER
+    - WORKDIR
+    - ARG
+    - ONBUILD
+    - STOPSIGNAL
+    - HEALTHCHECK
+    - SHELL
+    notes: 'Dockerfile and Containerfile have no file extension. Detection relies
+      on exact filename match OR a glob pattern, followed by content verification
+      (presence of FROM). Variant suffixes (Dockerfile.prod, Dockerfile.test) signal
+      environment-specific build targets — index all variants but tag each with its
+      detected suffix for scope filtering. Files named Dockerfile.dev or Dockerfile.test
+      are dev-only variants (see skip_patterns for indexing guidance).
+
+      '
+  compose:
+    file_name_exact:
+    - docker-compose.yml
+    - docker-compose.yaml
+    - compose.yml
+    - compose.yaml
+    file_name_glob:
+    - docker-compose*.yml
+    - docker-compose*.yaml
+    - compose*.yml
+    - compose*.yaml
+    content_anchor: 'A Compose file is confirmed by the presence of a top-level `services:`
+      key. The `version:` key (deprecated in Compose Spec but still common) can be
+      a secondary signal. A file named docker-compose.yml containing only volumes:
+      or networks: without services: is infrastructure-only — index but do not extract
+      service entities from it.
+
+      '
+    required_top_level_key: 'services:'
+    optional_top_level_keys:
+    - 'version:'
+    - 'volumes:'
+    - 'networks:'
+    - 'configs:'
+    - 'secrets:'
+    notes: 'The Compose Specification (compose-spec.io) supersedes the legacy docker-compose
+      v2/v3 schema. The `version:` key is now optional and ignored by current compose
+      implementations. Detection should not require `version:` — its absence does
+      not disqualify a file. docker-compose.override.yml is always a dev-only override
+      (see skip_patterns). compose.yml / compose.yaml are the canonical names per
+      the Compose Spec; docker-compose.yml is the legacy name, both are equally valid.
+
+      '
+  dockerignore:
+    file_name_exact:
+    - .dockerignore
+    content_type: gitignore_syntax
+    notes: '.dockerignore uses the same pattern syntax as .gitignore and controls
+      what the build context sends to the daemon. Index for skip-pattern discovery
+      (files excluded from the image are candidates for the indexer''s own skip list).
+      Do not extract entities from .dockerignore.
+
+      '
+  procfile:
+    file_name_exact:
+    - Procfile
+    content_pattern: 'Each non-empty, non-comment line is of the form `<process_type>:
+      <command>`. The `web:` process type is the canonical HTTP listener. Other common
+      types: worker, release, clock, console, celery.
+
+      '
+    line_format: '^[a-zA-Z0-9_-]+: .+'
+    notes: 'Procfile defines named process types for PaaS-based container deployments.
+      Each process type is a archigraph Service entity. The `web:` type maps to the primary
+      HTTP entrypoint. `worker:` and `celery:` signal background job processors. `release:`
+      signals a migration / pre-deploy hook. Procfile detection should be combined
+      with presence of requirements.txt, Gemfile, package.json, or similar to confirm
+      the language context.
+
+      '
+entity_types:
+- entity: base_image
+  vera_scope: Service
+  source: Dockerfile / Containerfile
+  instruction: FROM
+  extraction_targets:
+  - image_reference:
+      description: 'The image name and tag (or digest) from the FROM instruction.
+        Format: [registry/][namespace/]name[:tag|@digest]
+
+        '
+      examples:
+      - ubuntu:22.04
+      - golang:1.22-alpine
+      - gcr.io/distroless/static-debian12
+      - scratch
+  - stage_name:
+      description: 'The AS alias assigned to a build stage. Present only in multi-stage
+        builds. Used as the target of --from= in subsequent COPY instructions and
+        as the --target= value in docker build commands.
+
+        '
+      examples:
+      - builder
+      - runtime
+      - test
+      - deps
+      - prod
+  - platform:
+      description: 'The --platform flag value on FROM. Signals cross-platform builds.
+
+        '
+      examples:
+      - linux/amd64
+      - linux/arm64
+      - linux/arm/v7
+  pattern_examples:
+  - FROM ubuntu:22.04
+  - FROM golang:1.22-alpine AS builder
+  - FROM scratch AS runtime
+  - FROM --platform=linux/amd64 node:20-alpine AS deps
+  notes: 'Each FROM instruction defines a build stage. In single-stage Dockerfiles
+    there is exactly one FROM. Multi-stage Dockerfiles have 2+ FROM instructions,
+    each with an optional AS name. Extract each stage as a distinct Service entity
+    with edges to its base image. The final unnamed stage (or the stage with the highest
+    line number) is the runtime/output stage. scratch is a valid base image signal
+    for binary-only or distroless builds.
+
+    '
+- entity: exposed_port
+  vera_scope: Service
+  source: Dockerfile / Containerfile
+  instruction: EXPOSE
+  extraction_targets:
+  - port_number: integer or integer/protocol pair
+  - protocol: tcp (default) or udp
+  pattern_examples:
+  - EXPOSE 8080
+  - EXPOSE 443/tcp
+  - EXPOSE 5353/udp
+  - EXPOSE 3000 4000 5000
+  notes: 'EXPOSE is documentation-only — it does not publish ports to the host. However
+    it is a reliable signal for the service''s primary listening ports. Common values:
+    80/443 (HTTP/S), 3000/8080/8000 (dev servers), 5432/3306/27017 (databases), 6379
+    (Redis), 9090 (Prometheus). Extract each port as a distinct attribute of the Service
+    entity.
+
+    '
+- entity: entry_point
+  vera_scope: Service
+  source: Dockerfile / Containerfile
+  instructions:
+  - CMD
+  - ENTRYPOINT
+  forms:
+  - name: exec_form
+    description: JSON array — the preferred form. No shell variable expansion.
+    pattern: ENTRYPOINT ["executable", "param1"]
+    examples:
+    - ENTRYPOINT ["/usr/bin/myapp"]
+    - CMD ["--config", "/etc/app/config.yaml"]
+    - ENTRYPOINT ["docker-entrypoint.sh"]
+  - name: shell_form
+    description: Plain string — executed by /bin/sh -c. Allows shell expansion.
+    pattern: CMD executable param1 param2
+    examples:
+    - CMD node server.js
+    - ENTRYPOINT exec java -jar app.jar
+  interaction_rules: 'ENTRYPOINT sets the fixed executable; CMD provides default arguments.
+    When both are present, CMD arguments are passed to the ENTRYPOINT. Shell-form
+    ENTRYPOINT wraps the command in /bin/sh -c, preventing signal forwarding (PID
+    1 issue). Exec-form is preferred for production.
+
+    '
+  notes: 'Extract the primary executable name and any static arguments as the Service
+    entity''s entry_point attribute. exec-form is more reliably parseable (JSON array).
+    Shell-form requires splitting on whitespace after stripping the leading instruction
+    token.
+
+    '
+- entity: source_mapping
+  vera_scope: Service
+  source: Dockerfile / Containerfile
+  instructions:
+  - COPY
+  - ADD
+  extraction_targets:
+  - source_path: path in build context or --from= stage reference
+  - destination_path: path inside the image
+  - from_stage: stage name or index (COPY --from=builder)
+  - chown: optional user:group override (COPY --chown=user:group)
+  - chmod: optional permission bits (COPY --chmod=755, added in BuildKit)
+  pattern_examples:
+  - COPY . /app
+  - COPY --chown=node:node package*.json ./
+  - COPY --from=builder /app/dist /app/dist
+  - ADD https://example.com/archive.tar.gz /opt/
+  add_vs_copy: 'ADD has two special behaviours COPY lacks: automatic URL fetching
+    and automatic tar extraction. The Docker team recommends COPY for local files
+    and ADD only for URL/tar use cases. ADD with a URL is a network dependency signal
+    worth extracting.
+
+    '
+  notes: 'COPY --from=<stage> is the primary data transfer mechanism in multi-stage
+    builds. Extract the (from_stage, destination_path) pair as an edge between build
+    stage entities. COPY . /app signals a full-context copy (likely combined with
+    .dockerignore). ADD with an https:// source signals a runtime dependency on an
+    external URL — flag for security review.
+
+    '
+- entity: env_var
+  vera_scope: Service
+  source: Dockerfile / Containerfile
+  instruction: ENV
+  forms:
+  - name: key_value_pair
+    pattern: ENV KEY=value
+    examples:
+    - ENV NODE_ENV=production
+    - ENV PORT=8080 DEBUG=false
+  - name: legacy_space_form
+    pattern: ENV KEY value
+    examples:
+    - ENV NODE_ENV production
+  notes: 'ENV variables are baked into every image layer and are visible in `docker
+    inspect`. They are commonly used for configuration injection. Extract key names
+    (not values — values may contain secrets). Common patterns: PORT, HOST, NODE_ENV,
+    RAILS_ENV, DATABASE_URL, REDIS_URL, APP_HOME, PATH (augmented). ENV PATH augmentation
+    is a standard binary-path signal. Never index raw ENV values as they may contain
+    credentials; index only key names and presence metadata.
+
+    '
+- entity: build_arg
+  vera_scope: Service
+  source: Dockerfile / Containerfile
+  instruction: ARG
+  extraction_targets:
+  - arg_name: variable name
+  - default_value: optional default (may be absent)
+  pattern_examples:
+  - ARG VERSION
+  - ARG BASE_IMAGE=golang:1.22-alpine
+  - ARG BUILD_DATE
+  notes: 'ARG values are available only during the build, not in the running container
+    (unlike ENV). They are commonly used for version pinning, base image parameterisation,
+    and conditional build logic. ARG before the first FROM is a global build arg (pre-FROM
+    scope); ARG after FROM has stage scope. ARG chaining (FROM $BASE_IMAGE where BASE_IMAGE
+    is an ARG) is a complexity signal.
+
+    '
+- entity: health_check
+  vera_scope: Service
+  source: Dockerfile / Containerfile
+  instruction: HEALTHCHECK
+  forms:
+  - name: cmd_form
+    pattern: HEALTHCHECK [OPTIONS] CMD command
+    examples:
+    - HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD curl
+      -f http://localhost:8080/health || exit 1
+    - HEALTHCHECK CMD wget -q -O- http://localhost/ || exit 1
+  - name: none_form
+    description: Disables any inherited HEALTHCHECK from the base image.
+    pattern: HEALTHCHECK NONE
+  options:
+  - --interval=<duration>
+  - --timeout=<duration>
+  - --start-period=<duration>
+  - --retries=<n>
+  notes: 'HEALTHCHECK declares how the Docker daemon tests whether the container is
+    healthy. Presence signals production-readiness awareness. The health check command
+    is often a curl or wget probe against an HTTP endpoint — extract the URL path
+    as a secondary signal (reveals the health endpoint convention). HEALTHCHECK NONE
+    signals deliberate suppression of a base-image health check.
+
+    '
+- entity: volume_mount
+  vera_scope: Service
+  source: Dockerfile / Containerfile
+  instruction: VOLUME
+  forms:
+  - name: json_array
+    pattern: VOLUME ["/data", "/config"]
+  - name: space_separated
+    pattern: VOLUME /data /config
+  - name: single
+    pattern: VOLUME /var/lib/postgresql/data
+  notes: 'VOLUME declares mount points that should be externally managed (host bind
+    mounts or named volumes). Common paths: /data, /var/lib/*/data (databases), /etc/<app>,
+    /logs, /tmp. VOLUME declarations are important for stateful service detection
+    — a service with VOLUME /var/lib/ postgresql/data is a database. Extract volume
+    paths as storage_path attributes of the Service entity.
+
+    '
+- entity: compose_service
+  vera_scope: Service
+  source: docker-compose.yml / compose.yml
+  extraction_targets:
+  - service_name: key under `services:`
+  - image: image reference (if `image:` is specified, not `build:`)
+  - build_context:
+      description: build context path or build config block (if `build:` is present)
+      variants:
+      - 'build: .'
+      - 'build: ./subdir'
+      - "build:              # long-form with dockerfile and args\n  context: ./api\n\
+        \  dockerfile: Dockerfile.prod\n  args:\n    - VERSION=1.0\n"
+  - depends_on: list of service names this service depends on (startup ordering)
+  - ports: list of host:container port mappings
+  - volumes: list of volume mount definitions
+  - networks: list of network memberships
+  - environment: list of environment variable keys (not values)
+  - healthcheck: inline health check configuration
+  - restart: restart policy (no, always, on-failure, unless-stopped)
+  - deploy: Swarm deploy configuration (replicas, resources, placement)
+  - profiles: list of profiles that activate this service
+  depends_on_forms:
+  - simple: 'depends_on: [db, redis]'
+  - condition_form: "depends_on:\n  db:\n    condition: service_healthy\n  redis:\n\
+      \    condition: service_started\n"
+  notes: 'Each entry under `services:` is a distinct archigraph Service entity. Extract
+    edges for depends_on relationships — these form the service dependency graph.
+    Port mappings reveal the external interface surface. Volume declarations with
+    named volumes (db-data:) signal stateful services. Networks membership signals
+    which services can communicate directly. The condition: service_healthy variant
+    of depends_on signals that the dependency service must pass its HEALTHCHECK before
+    this service starts — a strong signal of production-grade orchestration.
+
+    '
+multi_stage_build_patterns:
+- pattern: builder_to_runtime
+  description: 'The most common multi-stage pattern: a heavy `builder` stage compiles
+    or builds the application, and a lean `runtime` (or `final`) stage copies only
+    the produced artifacts. The runtime stage has a minimal base image (distroless,
+    alpine, scratch).
+
+    '
+  detection:
+    from_count: '>= 2'
+    stage_name_signals:
+    - builder
+    - build
+    - compile
+    - dev
+    - development
+    - test
+    - deps
+    - dependencies
+    - install
+    runtime_stage_signals:
+    - runtime
+    - final
+    - production
+    - prod
+    - release
+    - app
+    base_image_patterns:
+      builder_stages:
+      - golang:*
+      - node:*
+      - maven:*
+      - gradle:*
+      - rust:*
+      - python:*
+      runtime_stages:
+      - scratch
+      - gcr.io/distroless/*
+      - alpine:*
+      - debian:*-slim
+      - ubuntu:*
+      - node:*-alpine
+    copy_from_signal: COPY --from=<stage_name>
+  example: 'FROM golang:1.22-alpine AS builder
+
+    WORKDIR /app
+
+    COPY . .
+
+    RUN go build -o /app/server ./cmd/server
+
+
+    FROM gcr.io/distroless/static-debian12 AS runtime
+
+    COPY --from=builder /app/server /server
+
+    ENTRYPOINT ["/server"]
+
+    '
+  indexing_note: 'Extract: (1) stage count, (2) each stage''s name + base image, (3)
+    COPY --from= edges as stage-to-stage data transfer, (4) whether the final stage
+    uses a minimal/distroless base (security posture signal). A builder using golang:*
+    + runtime using scratch or distroless is the canonical Go microservice pattern.
+
+    '
+- pattern: stage_naming_conventions
+  description: 'Common stage naming conventions observed across open-source Dockerfiles.
+    Naming is free-form but certain names carry strong semantic meaning.
+
+    '
+  stage_name_semantics:
+  - name: builder
+    semantic: compilation stage — produces binaries or build artifacts
+  - name: deps
+    semantic: dependency installation stage — caches package installs separately
+  - name: test
+    semantic: test execution stage — runs tests inside the build; output discarded
+  - name: lint
+    semantic: linting stage — runs linters; output discarded
+  - name: dev
+    semantic: development stage — includes dev tools, debuggers, hot-reload
+  - name: base
+    semantic: shared base stage — provides common setup for multiple derived stages
+  - name: runtime / final / prod / release / app
+    semantic: the output stage — lean, production image
+  notes: 'Multi-stage Dockerfiles with `test` or `lint` stages signal CI-in-Dockerfile
+    patterns where tests run during the image build. These stages are not deployed
+    — they are execution stages that produce no output artifact. The `base` stage
+    shared across multiple derived stages indicates DRY-principle multi-stage designs.
+
+    '
+- pattern: copy_from_references
+  description: 'COPY --from=<source> instructions transfer files between build stages
+    or from external images. They define the data flow graph of the multi-stage build.
+
+    '
+  variants:
+  - name: from_named_stage
+    syntax: COPY --from=builder /app/dist /dist
+    description: Copies from a named stage defined earlier in the same Dockerfile.
+  - name: from_stage_index
+    syntax: COPY --from=0 /app/dist /dist
+    description: 'Copies from a stage by numeric index (0-based). Fragile — any FROM
+      insertion above invalidates indices. Flag as a complexity smell.
+
+      '
+  - name: from_external_image
+    syntax: COPY --from=nginx:latest /etc/nginx/nginx.conf /etc/nginx/nginx.conf
+    description: 'Copies from an external image not defined in the Dockerfile. Creates
+      an implicit runtime dependency on that image. Extract the external image reference
+      as a dependency edge.
+
+      '
+  indexing_note: 'Build a directed graph: stage A → stage B if B contains COPY --from=A.
+    from_stage_index references are a maintenance risk signal. from_external_image
+    references are external dependency signals worth tracking separately.
+
+    '
+- pattern: arg_chain_propagation
+  description: 'ARG values are scoped to the stage in which they are declared. To
+    use a build arg across multiple stages, the ARG instruction must be repeated in
+    each stage (even without a default). Propagating ARG values across stages is a
+    source of subtle bugs and complexity.
+
+    '
+  detection:
+  - ARG declared before FROM (global scope)
+  - Same ARG name repeated in multiple stage headers
+  - FROM $BASE_IMAGE (base image parameterised by ARG)
+  example: 'ARG VERSION=1.0           # global scope
+
+    FROM golang:1.22 AS builder
+
+    ARG VERSION               # must redeclare to inherit global value
+
+    RUN echo $VERSION > /version.txt
+
+
+    FROM alpine AS runtime
+
+    ARG VERSION               # must redeclare again
+
+    COPY --from=builder /version.txt /version.txt
+
+    '
+  indexing_note: 'Detect ARG name re-declarations across stage boundaries. Count the
+    number of cross-stage ARG propagations as a complexity metric. FROM $ARG_NAME
+    patterns (parameterised base images) are high-complexity signals.
+
+    '
+- pattern: onbuild_triggers
+  description: 'ONBUILD instructions register a deferred trigger that executes when
+    the image is used as a base in a child Dockerfile. They are an advanced feature
+    used by language-specific base images (e.g., node:onbuild, python:onbuild) to
+    automate COPY + RUN sequences.
+
+    '
+  detection:
+    instruction: ONBUILD
+    child_detection: 'A Dockerfile that uses FROM <image-with-onbuild> implicitly
+      executes the parent''s ONBUILD instructions. This cannot be detected purely
+      from the child Dockerfile without inspecting the parent image manifest.
+
+      '
+  pattern_examples:
+  - ONBUILD COPY . /app
+  - ONBUILD RUN npm install
+  - ONBUILD ADD . /usr/src/app
+  notes: 'ONBUILD is rarely used in modern Dockerfiles — it was popular with the deprecated
+    *:onbuild official images (removed from Docker Hub ~2020). Detection: flag any
+    ONBUILD instruction as a legacy/advanced pattern. ONBUILD instructions are invisible
+    from the child Dockerfile, making them a source of hidden complexity. Extract
+    and surface all ONBUILD instructions when present.
+
+    '
+domain_roots:
+- layout: dockerfile_at_repo_root
+  description: 'Single Dockerfile at the repository root. The entire repo represents
+    one service. Most common pattern for microservices and standalone applications.
+
+    '
+  signals:
+  - Dockerfile at root (./Dockerfile)
+  - Optional docker-compose.yml at root for local orchestration
+  - Optional .dockerignore at root
+  service_count: 1
+  vera_topology: single_service
+- layout: compose_multi_service
+  description: 'docker-compose.yml at the root defining multiple services. The repo
+    represents a complete application stack (e.g., API + database + cache + worker).
+    Common in full-stack development repos and local-dev setups.
+
+    '
+  signals:
+  - docker-compose.yml with services: count >= 2
+  - Individual service Dockerfiles at ./services/<name>/Dockerfile or ./<name>/Dockerfile
+  - Named volumes declared at the top level
+  service_count: '2-N (from services: count)'
+  vera_topology: multi_service_monorepo
+- layout: docker_subdirectory
+  description: 'Docker-related files are collected in a dedicated subdirectory, keeping
+    them separate from application source code.
+
+    '
+  signals:
+  - docker/ directory at root containing Dockerfile(s)
+  - .docker/ directory (less common — also used by Docker CLI config, be careful)
+  - deploy/docker/ or infra/docker/ containing compose and Dockerfile variants
+  typical_paths:
+  - docker/Dockerfile
+  - docker/docker-compose.yml
+  - .docker/Dockerfile
+  - deploy/Dockerfile
+  - infra/docker/docker-compose.yml
+- layout: monorepo_per_service
+  description: 'Monorepo with one Dockerfile per service, each in its own service
+    subdirectory. A root-level docker-compose.yml may wire them together.
+
+    '
+  signals:
+  - Multiple Dockerfile files under services/, packages/, apps/, or src/
+  - Each subdirectory has its own Dockerfile
+  - Optional root docker-compose.yml referencing build: ./services/<name>
+  typical_paths:
+  - services/api/Dockerfile
+  - services/worker/Dockerfile
+  - services/frontend/Dockerfile
+  - apps/web/Dockerfile
+  - packages/backend/Dockerfile
+  service_count: N (one per Dockerfile)
+  vera_topology: monorepo_multi_service
+- layout: deploy_or_infra_directory
+  description: 'Deployment and infrastructure files are isolated in deploy/, infra/,
+    or k8s/ directories. Dockerfiles and compose files live there rather than in the
+    service source directories.
+
+    '
+  signals:
+  - deploy/Dockerfile or deploy/docker-compose.yml
+  - infra/Dockerfile or infra/docker-compose.yml
+  - k8s/ directory (Kubernetes manifests — not Docker, but related deployment domain)
+  typical_paths:
+  - deploy/Dockerfile
+  - deploy/docker-compose.prod.yml
+  - infra/docker/
+  - .deploy/Dockerfile
+- layout: procfile_only
+  description: 'PaaS-style deployment using only a Procfile (no Dockerfile). The platform
+    builds the container using Buildpacks. Common for Heroku, Railway, Render, and
+    Dokku deployments.
+
+    '
+  signals:
+  - Procfile at root
+  - No Dockerfile present
+  - Presence of runtime manifest (requirements.txt, Gemfile, package.json, go.mod)
+  service_count: N (one per Procfile process type)
+  vera_topology: paas_process_model
+- layout: buildpack_project
+  description: 'Cloud Native Buildpacks project with project.toml. No Dockerfile.
+    The buildpack autodetects language and builds the OCI image.
+
+    '
+  signals:
+  - project.toml at root
+  - buildpack.toml (if this is a buildpack author repo)
+  - No Dockerfile
+  vera_topology: buildpack_managed

@@ -1,0 +1,39 @@
+frameworks:
+  name: Vault
+  vendor: HashiCorp
+  category: secrets_management
+  current_version_2025: 1.17.x
+  detection:
+    file_extensions:
+    - .hcl
+    block_signatures:
+    - storage "
+    - listener "
+    - seal "
+    - telemetry {
+    - ha_storage "
+    - replication {
+    content_patterns:
+    - storage "raft"
+    - storage "consul"
+    - storage "file"
+    - listener "tcp"
+    - tls_cert_file
+    - tls_key_file
+    - api_addr
+    - cluster_addr
+    - vault_addr
+    - path "secret/
+    - path "auth/
+    - capabilities = [
+    config_files:
+    - vault.hcl
+    - vault.json
+    - config.hcl
+    - policies/
+  notes: 'Vault server config and policy HCL share the .hcl extension. Disambiguate
+    from Terraform by the presence of storage, listener, and seal blocks. Policy files
+    use path "..." { capabilities = [...] } blocks. Agent config uses auto_auth and
+    cache blocks. Vault config HCL never has resource or data blocks.
+
+    '

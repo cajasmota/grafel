@@ -1,0 +1,198 @@
+complexity_signals:
+  widget_tree_depth:
+    description: 'Deep widget tree nesting increases rendering complexity and makes
+      state management harder. Measured by maximum nesting depth in build() methods.
+
+      '
+    signals:
+    - pattern: 'return Column(children: [Row(children: [Container(child:'
+      notes: Inline multi-level nesting without extraction — complexity indicator
+    - pattern: build() methods exceeding 100 lines
+      notes: 'Long build() methods indicate missing widget extraction. Hard to test
+        and maintain.
+
+        '
+    - pattern: 'Builder(builder: (context) => Builder(builder:'
+      notes: Nested Builder widgets indicate context propagation issues
+    threshold: Nesting depth > 5 levels without extraction is high complexity
+  state_management_patterns:
+    description: 'State management library choice signals architecture maturity and
+      complexity tier. Ordered from simple to complex.
+
+      '
+    signals:
+    - pattern: InheritedWidget
+      complexity: high
+      notes: 'Manual InheritedWidget implementation — low-level, verbose. Signals
+        either library authorship or legacy codebase.
+
+        '
+    - pattern: Provider.of<
+      complexity: medium
+      package: provider
+      notes: Provider package — simple DI/state wrapper over InheritedWidget
+    - pattern: context.read<
+      complexity: medium
+      package: provider or riverpod
+      notes: Provider or Riverpod consumer pattern
+    - pattern: context.watch<
+      complexity: medium
+      package: provider
+    - pattern: ConsumerWidget
+      complexity: medium
+      package: flutter_riverpod
+      notes: Riverpod consumer widget
+    - pattern: ref.watch(
+      complexity: medium
+      package: riverpod
+      notes: Riverpod ref access — hooks or ConsumerWidget
+    - pattern: StateNotifierProvider
+      complexity: high
+      package: riverpod
+    - pattern: FutureProvider
+      complexity: medium
+      package: riverpod
+    - pattern: StreamProvider
+      complexity: medium
+      package: riverpod
+    - pattern: BlocProvider
+      complexity: high
+      package: flutter_bloc
+      notes: BLoC pattern — event/state separation
+    - pattern: BlocBuilder
+      complexity: high
+      package: flutter_bloc
+    - pattern: BlocListener
+      complexity: high
+      package: flutter_bloc
+    - pattern: extends Bloc<
+      complexity: high
+      package: bloc
+      notes: Custom Bloc implementation — full event/state machine
+    - pattern: extends Cubit<
+      complexity: medium
+      package: bloc
+      notes: Cubit — simplified BLoC without explicit events
+    - pattern: GetBuilder<
+      complexity: medium
+      package: get
+      notes: GetX state management — reactive controller pattern
+    - pattern: Obx(
+      complexity: medium
+      package: get
+      notes: GetX observable widget wrapper
+  stream_chains:
+    description: 'Complex stream transformations and composition increase concurrency
+      complexity. Multi-step stream chains are hard to debug.
+
+      '
+    signals:
+    - pattern: .stream.listen(
+      notes: Stream subscription — basic usage
+    - pattern: .transform(
+      notes: Stream transformer — medium complexity
+    - pattern: StreamController
+      notes: Manual stream control — requires careful lifecycle management
+    - pattern: StreamController.broadcast()
+      notes: Broadcast stream — multiple listener complexity
+    - pattern: .asyncExpand(
+      notes: Async stream flattening — high complexity
+    - pattern: .switchMap(
+      notes: RxDart switchMap — cancellation semantics, high complexity
+      package: rxdart
+    - pattern: BehaviorSubject
+      notes: RxDart BehaviorSubject — stateful broadcast stream
+      package: rxdart
+    - pattern: PublishSubject
+      notes: RxDart PublishSubject
+      package: rxdart
+    - pattern: CombineLatestStream
+      notes: Multiple stream combination
+      package: rxdart
+  isolate_usage:
+    description: 'Dart Isolates enable true parallelism but add communication overhead
+      and complexity. compute() is the simplified API.
+
+      '
+    signals:
+    - pattern: compute(
+      complexity: medium
+      notes: 'Flutter''s compute() function — runs a function in a separate isolate.
+        Simpler than raw Isolate API but still adds complexity.
+
+        '
+    - pattern: Isolate.spawn(
+      complexity: high
+      notes: Raw Isolate spawn — requires message passing via SendPort/ReceivePort
+    - pattern: Isolate.run(
+      complexity: medium
+      notes: Dart 2.19+ simplified isolate API
+    - pattern: ReceivePort
+      complexity: high
+      notes: Inter-isolate communication — manual message channel setup
+    - pattern: SendPort
+      complexity: high
+      notes: Sending messages to another isolate
+    - pattern: IsolateNameServer
+      complexity: high
+      notes: Named isolate registration — multi-isolate coordination
+    - pattern: FlutterIsolate
+      complexity: high
+      package: flutter_isolate
+      notes: Flutter plugin access from background isolate
+  code_generation_usage:
+    description: 'Extensive code generation signals dependency on build toolchain
+      and increases maintenance complexity (regeneration required after model changes).
+
+      '
+    signals:
+    - pattern: '*.g.dart file count > 10'
+      notes: Heavy code generation dependency
+    - pattern: '@JsonSerializable'
+      package: json_annotation
+      notes: JSON serialization codegen
+    - pattern: '@freezed'
+      package: freezed_annotation
+      notes: 'Immutable value types, union types, and copyWith codegen. Freezed is
+        one of the most widely used Dart code generators.
+
+        '
+    - pattern: '@injectable'
+      package: injectable
+      notes: Dependency injection codegen (get_it integration)
+    - pattern: '@RestApi('
+      package: retrofit
+      notes: REST client codegen from annotations
+    - pattern: part '*.g.dart'
+      notes: 'part directive for generated file — confirms code generation. Each occurrence
+        is a generated file dependency.
+
+        '
+    - pattern: part '*.freezed.dart'
+      notes: Freezed-specific generated part file
+  navigation_complexity:
+    description: 'Complex navigation patterns (nested navigators, deep-link routing,
+      declarative routing) increase state and configuration complexity.
+
+      '
+    signals:
+    - pattern: Navigator.of(context).push(
+      complexity: low
+      notes: Imperative navigation — simple stack push
+    - pattern: Navigator.pushNamed(
+      complexity: low
+      notes: Named route navigation
+    - pattern: GoRouter(
+      complexity: medium
+      package: go_router
+      notes: Declarative routing with URL sync — Flutter's recommended router
+    - pattern: AutoRouter
+      complexity: high
+      package: auto_route
+      notes: Code-generated type-safe routing with nested navigators
+    - pattern: 'Navigator(pages:'
+      complexity: high
+      notes: Navigator 2.0 declarative API — full page stack management
+    - pattern: RouterDelegate
+      complexity: high
+      notes: Custom Navigator 2.0 implementation — maximum complexity

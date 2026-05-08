@@ -1,0 +1,43 @@
+frameworks:
+  name: nestjs
+  category: web
+  npm_packages:
+  - '@nestjs/core'
+  - '@nestjs/common'
+  config_files:
+  - nest-cli.json
+  - tsconfig.json
+  detection_signals:
+    package_json_deps:
+    - '@nestjs/core'
+    - '@nestjs/common'
+    decorator_patterns:
+    - '@Module'
+    - '@Controller'
+    - '@Injectable'
+    - '@Get'
+    - '@Post'
+    - '@Put'
+    - '@Delete'
+  framework_specific:
+  - NestFactory.create
+  - '@nestjs/testing'
+  - NestApplication
+  - Guards, Interceptors, Pipes
+  notes: nest-cli.json is definitive; @Module decorator confirms NestJS
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-505)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.nestjs_extractor"
+    function: "extract"
+    description: "Extract NestJS Module DI graph, controllers, route handlers, guards, interceptors, and services"
+  - module: "memx_indexer.languages._engine.config_consumer_extractor"
+    function: "extract"
+    description: "Extract process.env.KEY and process.env['KEY'] reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming entities (MX-600)."

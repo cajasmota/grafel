@@ -1,0 +1,33 @@
+database_libraries:
+  name: Datascript
+  clojars_artifact: datascript/datascript
+  category: database_in_memory_datalog
+  github_stars_2025: 5200+
+  detection:
+    lein_deps:
+    - datascript/datascript
+    deps_edn_coords:
+    - datascript/datascript
+    import_markers:
+    - datascript.core
+    - (:require [datascript.core :as d])
+    - (:require [datascript.
+    - (d/create-conn
+    - (d/transact!
+    - (d/q '[:find
+    - (d/pull
+    - (d/entity
+    - (d/listen!
+    - '(datoms '
+    file_extensions:
+    - .cljs
+    - .cljc
+    - .clj
+  notes: 'Datascript is an in-memory immutable database for ClojureScript (and Clojure)
+    sharing Datomic''s Datalog API. The API is intentionally compatible with Datomic.
+    Detected by datascript dep and (d/create-conn schema) + (d/transact! conn ...)
+    pattern. Heavy use in ClojureScript SPAs (often with Re-frame integration via
+    posh or re-posh). Shared .cljc files may use Datascript for cross-platform data
+    management.
+
+    '

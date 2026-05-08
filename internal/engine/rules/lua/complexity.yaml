@@ -1,0 +1,155 @@
+complexity_signals:
+- category: metatable_index_chains
+  description: 'Lua object-oriented programming is built on metatables. __index metamethod
+    chains implement inheritance. Deep chains (A.__index = B, B.__index = C) or self-referential
+    __index = table make resolution non-trivial. Detecting multi-level __index chains
+    indicates OOP patterns that require semantic understanding beyond simple function
+    extraction.
+
+    '
+  patterns:
+  - __index
+  - __newindex
+  - __tostring
+  - __eq
+  - __lt
+  - __le
+  - __add
+  - __sub
+  - __mul
+  - __div
+  - __mod
+  - __pow
+  - __unm
+  - __concat
+  - __len
+  - __call
+  - setmetatable(
+  - getmetatable(
+  - rawget(
+  - rawset(
+  complexity_indicators:
+  - pattern: setmetatable.*setmetatable
+    signal: nested_setmetatable
+    description: Nested setmetatable calls — likely multi-level inheritance chain
+  - pattern: __index = \w+\.__index
+    signal: inherited_index_delegation
+    description: Index delegation to parent class — prototype inheritance
+  - pattern: rawget(getmetatable
+    signal: metatable_introspection
+    description: Code inspecting its own metatable at runtime
+- category: coroutines
+  description: 'Lua coroutines are first-class asymmetric coroutines (not threads).
+    They enable cooperative multitasking, iterators, and producer/consumer patterns.
+    Coroutine-heavy code requires understanding yield/resume semantics. In OpenResty,
+    cosocket APIs are implemented via coroutines transparently.
+
+    '
+  patterns:
+  - coroutine.create
+  - coroutine.resume
+  - coroutine.yield
+  - coroutine.wrap
+  - coroutine.status
+  - coroutine.isyieldable
+  - coroutine.running
+  complexity_indicators:
+  - pattern: coroutine.wrap
+    signal: coroutine_iterator
+    description: Coroutine used as a generator/iterator pattern
+  - pattern: coroutine.create.*coroutine.resume
+    signal: manual_coroutine_lifecycle
+    description: Manual coroutine lifecycle management — explicit state machine
+- category: c_ffi
+  description: 'LuaJIT''s FFI library allows calling C functions and using C data
+    structures directly without writing C bindings. FFI code mixes Lua and C declaration
+    syntax. Indexing requires recognising ffi.cdef blocks as C declarations, not Lua
+    code.
+
+    '
+  patterns:
+  - require "ffi"
+  - require("ffi")
+  - ffi.cdef
+  - ffi.load
+  - ffi.new
+  - ffi.cast
+  - ffi.typeof
+  - ffi.gc
+  - ffi.copy
+  - ffi.fill
+  - ffi.string
+  - ffi.sizeof
+  - ffi.alignof
+  - ffi.offsetof
+  - ffi.istype
+  - ffi.C.
+  complexity_indicators:
+  - pattern: ffi.cdef
+    signal: c_declaration_block
+    description: 'ffi.cdef[[ ... ]] block contains C syntax (struct, typedef, function
+      declarations) embedded as a string literal. Parser must treat block content
+      as C, not Lua.
+
+      '
+  - pattern: ffi.load
+    signal: shared_library_binding
+    description: Dynamic shared library (.so/.dll/.dylib) loaded at runtime via FFI
+- category: closures_as_objects
+  description: 'Lua closures capture upvalues, enabling encapsulation without metatables.
+    The closure-as-object pattern returns a table of functions sharing upvalue state.
+    This produces correct OOP semantics but makes the "class" invisible to naive pattern
+    matching — there is no class or struct keyword.
+
+    '
+  patterns:
+  - local function
+  - return {
+  - upvalue
+  complexity_indicators:
+  - pattern: local \w+ = \(function\(\)
+    signal: iife_module
+    description: 'Immediately-invoked function expression as module pattern. All state
+      is captured in closure upvalues; only the returned table surface is public.
+
+      '
+  - pattern: local \w+\s*=\s*\{[^}]*function
+    signal: table_of_closures
+    description: 'Table containing closures sharing upvalue state — the Lua-idiomatic
+      object without metatables.
+
+      '
+- category: complex_module_patterns
+  description: 'Lua has no built-in module system. Several module idioms are in use:
+    the classic module() function (Lua 5.1, deprecated), the table-return pattern,
+    require-based lazy loading, package.preload injection, and monkey-patching via
+    package.loaded. These patterns affect how require() resolution should be traced.
+
+    '
+  patterns:
+  - module(
+  - package.loaded
+  - package.preload
+  - package.path
+  - package.cpath
+  - require(
+  complexity_indicators:
+  - pattern: module\(\.\.\., package\.seeall\)
+    signal: lua51_module_pattern
+    description: 'Lua 5.1 deprecated module() pattern with package.seeall. Pulls all
+      globals into module scope. Requires understanding of the implicit environment
+      manipulation.
+
+      '
+  - pattern: package.loaded\[\w+\]
+    signal: manual_require_cache_manipulation
+    description: 'Direct manipulation of the require cache. Used for singleton patterns,
+      hot-reloading, and mock injection in tests.
+
+      '
+  - pattern: package.preload\[\w+\]
+    signal: lazy_require_registration
+    description: 'Module registered as a preload function — executes only on first
+      require(), enabling lazy initialisation.
+
+      '

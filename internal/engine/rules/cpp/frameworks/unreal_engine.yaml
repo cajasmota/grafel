@@ -1,0 +1,40 @@
+frameworks:
+  name: Unreal Engine
+  category: game_engine
+  github_stars_2025: N/A (Epic Games proprietary)
+  detection:
+    cmake_find_package: []
+    build_system: UnrealBuildTool
+    config_files:
+    - '*.uproject'
+    - '*.uplugin'
+    - Source/*/Build.cs
+    - '*.Build.cs'
+    - '*.Target.cs'
+    include_patterns:
+    - '#include "CoreMinimal.h"'
+    - '#include "GameFramework/'
+    - '#include "Engine.h"'
+    - '#include "UObject/Object.h"'
+    structural_markers:
+    - UCLASS(
+    - UPROPERTY(
+    - UFUNCTION(
+    - USTRUCT(
+    - UENUM(
+    - GENERATED_BODY()
+    - PublicDependencyModuleNames.AddRange
+    - PrivateDependencyModuleNames.AddRange
+    - AGameMode
+    - AActor
+    - UObject
+    - TSubclassOf<
+    - TArray<
+    - FString
+    - FVector
+    notes: 'Uses UnrealBuildTool (UBT) not CMake. Detection via .uproject file (project
+      root), .Build.cs files (module dependency declarations), UCLASS/UPROPERTY/UFUNCTION
+      reflection macros. CoreMinimal.h include is a definitive signal. Generated code
+      in Intermediate/ is skippable.
+
+      '

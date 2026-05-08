@@ -1,0 +1,23 @@
+frameworks:
+  name: gatsby
+  category: web
+  npm_packages:
+  - gatsby
+  config_files:
+  - gatsby-config.js
+  - gatsby-config.ts
+  - gatsby-node.js
+  - gatsby-browser.js
+  - gatsby-ssr.js
+  detection_signals:
+    package_json_deps:
+    - gatsby
+    directory_conventions:
+    - src/pages/
+    - src/templates/
+  framework_specific:
+  - createPages
+  - graphql
+  - useStaticQuery
+  - StaticImage
+  notes: gatsby-config.js is definitive

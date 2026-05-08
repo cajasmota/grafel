@@ -1,0 +1,30 @@
+orms_database:
+  name: MySQL Scala Drivers (MySQL Connector/J via JDBC, Slick MySQL profile)
+  category: relational_database
+  maven_coordinates: com.mysql:mysql-connector-j
+  detection:
+    import_patterns:
+    - com.mysql.cj.jdbc
+    - slick.jdbc.MySQLProfile
+    code_patterns:
+    - Database.forURL("jdbc:mysql:
+    - DriverManager.getConnection("jdbc:mysql:
+    - MySQLProfile.api
+  notes: >
+    Scala MySQL access uses MySQL Connector/J via JDBC (Database.forURL with
+    jdbc:mysql://) or through Slick's MySQLProfile. Both are detected.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

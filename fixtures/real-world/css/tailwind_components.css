@@ -1,0 +1,203 @@
+/* Source: https://github.com/tailwindlabs/tailwindcss (synthetic based on real Tailwind CSS component patterns) | License: MIT */
+
+/* ============================================================
+   Base layer overrides
+   ============================================================ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 79 70 229;      /* indigo-600 */
+    --color-primary-dark: 67 56 202; /* indigo-700 */
+    --color-secondary: 16 185 129;   /* emerald-500 */
+    --color-danger: 239 68 68;       /* red-500 */
+    --color-warning: 245 158 11;     /* amber-500 */
+    --color-bg: 249 250 251;         /* gray-50 */
+    --color-surface: 255 255 255;
+    --color-text: 17 24 39;          /* gray-900 */
+    --color-muted: 107 114 128;      /* gray-500 */
+    --color-border: 229 231 235;     /* gray-200 */
+    --radius: 0.5rem;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+
+  [data-theme="dark"] {
+    --color-bg: 17 24 39;
+    --color-surface: 31 41 55;
+    --color-text: 243 244 246;
+    --color-muted: 156 163 175;
+    --color-border: 55 65 81;
+  }
+
+  html {
+    @apply scroll-smooth antialiased;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  }
+
+  body {
+    @apply bg-[rgb(var(--color-bg))] text-[rgb(var(--color-text))];
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  *,
+  *::before,
+  *::after {
+    @apply border-[rgb(var(--color-border))];
+  }
+
+  h1 { @apply text-4xl font-bold tracking-tight; }
+  h2 { @apply text-3xl font-semibold; }
+  h3 { @apply text-2xl font-semibold; }
+  h4 { @apply text-xl font-medium; }
+
+  a {
+    @apply text-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary-dark))] transition-colors duration-150;
+  }
+
+  code {
+    @apply bg-gray-100 dark:bg-gray-800 rounded px-1 py-0.5 text-sm font-mono;
+  }
+}
+
+/* ============================================================
+   Component layer
+   ============================================================ */
+@layer components {
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium
+           transition-all duration-150 ease-in-out focus:outline-none focus:ring-2
+           focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed
+           px-4 py-2;
+  }
+
+  .btn-primary {
+    @apply btn bg-[rgb(var(--color-primary))] text-white hover:bg-[rgb(var(--color-primary-dark))]
+           focus:ring-[rgb(var(--color-primary))] shadow-sm;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50
+           focus:ring-[rgb(var(--color-primary))];
+  }
+
+  .btn-danger {
+    @apply btn bg-[rgb(var(--color-danger))] text-white hover:bg-red-600 focus:ring-red-500;
+  }
+
+  .btn-ghost {
+    @apply btn text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:ring-[rgb(var(--color-primary))];
+  }
+
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
+  .btn-lg { @apply px-6 py-3 text-base; }
+
+  /* Form inputs */
+  .input {
+    @apply block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm
+           placeholder-gray-400 shadow-sm
+           focus:border-[rgb(var(--color-primary))] focus:outline-none focus:ring-1
+           focus:ring-[rgb(var(--color-primary))]
+           disabled:bg-gray-50 disabled:text-gray-500
+           dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100;
+  }
+
+  .input-error {
+    @apply border-red-500 focus:border-red-500 focus:ring-red-500;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1;
+  }
+
+  .form-group {
+    @apply space-y-1;
+  }
+
+  .error-message {
+    @apply text-xs text-red-600 mt-1;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-[rgb(var(--color-surface))] rounded-xl shadow-sm border overflow-hidden;
+  }
+
+  .card-header {
+    @apply px-6 py-4 border-b font-semibold text-gray-900 dark:text-gray-100;
+  }
+
+  .card-body {
+    @apply px-6 py-4;
+  }
+
+  .card-footer {
+    @apply px-6 py-4 border-t bg-gray-50 dark:bg-gray-800/50;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-primary   { @apply badge bg-indigo-100 text-indigo-700; }
+  .badge-success   { @apply badge bg-green-100 text-green-700; }
+  .badge-warning   { @apply badge bg-amber-100 text-amber-700; }
+  .badge-danger    { @apply badge bg-red-100 text-red-700; }
+  .badge-neutral   { @apply badge bg-gray-100 text-gray-700; }
+
+  /* Alerts */
+  .alert {
+    @apply flex items-start gap-3 rounded-lg p-4 text-sm;
+  }
+
+  .alert-success { @apply alert bg-green-50 text-green-800 border border-green-200; }
+  .alert-error   { @apply alert bg-red-50 text-red-800 border border-red-200; }
+  .alert-warning { @apply alert bg-amber-50 text-amber-800 border border-amber-200; }
+  .alert-info    { @apply alert bg-blue-50 text-blue-800 border border-blue-200; }
+
+  /* Navigation */
+  .nav-link {
+    @apply flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-gray-700
+           hover:bg-gray-100 hover:text-gray-900 transition-colors duration-150
+           dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100;
+  }
+
+  .nav-link-active {
+    @apply bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800
+           dark:bg-indigo-900/20 dark:text-indigo-400;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    @apply inline-block h-5 w-5 animate-spin rounded-full border-2
+           border-current border-t-transparent;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply animate-pulse bg-gray-200 dark:bg-gray-700 rounded;
+  }
+}
+
+/* ============================================================
+   Utility layer
+   ============================================================ */
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--color-primary))] focus-visible:ring-offset-2;
+  }
+}

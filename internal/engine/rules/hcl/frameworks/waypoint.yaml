@@ -1,0 +1,33 @@
+frameworks:
+  name: Waypoint
+  vendor: HashiCorp
+  category: application_deployment
+  current_version_2025: 0.11.x (maintenance mode)
+  detection:
+    file_extensions:
+    - .hcl
+    block_signatures:
+    - project =
+    - app "
+    - labels {
+    - build {
+    - deploy {
+    - release {
+    content_patterns:
+    - use "docker"
+    - use "kubernetes"
+    - use "nomad"
+    - use "aws-ecs"
+    - use "heroku"
+    - use "pack"
+    - registry {
+    - workspace {
+    - config {
+    config_files:
+    - waypoint.hcl
+  notes: 'Waypoint uses a single waypoint.hcl file at the repo root. Detection anchor
+    is the project = "..." and app "..." { build/deploy/release } structure. Waypoint
+    was placed in maintenance mode by HashiCorp in 2023; codebases may contain waypoint.hcl
+    as a frozen artefact. Still index — the deployment topology is valuable signal.
+
+    '

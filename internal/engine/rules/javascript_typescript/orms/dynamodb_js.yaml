@@ -1,0 +1,35 @@
+orms_database:
+  name: AWS DynamoDB JavaScript/TypeScript SDK v3
+  category: nosql_database
+  npm_package: "@aws-sdk/client-dynamodb"
+  detection:
+    import_patterns:
+    - from '@aws-sdk/client-dynamodb'
+    - from "@aws-sdk/client-dynamodb"
+    - from '@aws-sdk/lib-dynamodb'
+    - require('aws-sdk')
+    code_patterns:
+    - new DynamoDBClient(
+    - new DynamoDB(
+    - DynamoDB.DocumentClient
+    - DynamoDBDocumentClient
+    - TableName:
+  notes: >
+    AWS SDK v3 (@aws-sdk/client-dynamodb, @aws-sdk/lib-dynamodb) and v2
+    (aws-sdk) are both detected. TypeScript and JavaScript share this extractor.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: DynamoDBClient/DynamoDB.DocumentClient
+      connections (SCOPE.Service, INFERRED_FROM_DYNAMODB_CLIENT), TableName
+      params (SCOPE.Schema, INFERRED_FROM_DYNAMODB_TABLE), .query()/.scan()
+      (SCOPE.Operation/query, INFERRED_FROM_DYNAMODB_QUERY), streams
+      (SCOPE.Operation/stream_op, INFERRED_FROM_DYNAMODB_STREAM), DAX
+      (SCOPE.Service, INFERRED_FROM_DYNAMODB_DAX), single-table design
+      (SCOPE.Pattern, INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

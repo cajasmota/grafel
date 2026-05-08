@@ -1,0 +1,40 @@
+frameworks:
+  name: Terraform
+  vendor: HashiCorp
+  category: infrastructure_as_code
+  current_version_2025: 1.9.x / 1.10.x
+  registry: registry.terraform.io
+  detection:
+    file_extensions:
+    - .tf
+    - .tfvars
+    block_signatures:
+    - terraform {
+    - required_providers {
+    - required_version
+    - backend "
+    - cloud {
+    content_patterns:
+    - resource "
+    - data "
+    - module "
+    - variable "
+    - output "
+    - locals {
+    - provider "
+    - moved {
+    config_files:
+    - main.tf
+    - versions.tf
+    - variables.tf
+    - outputs.tf
+    - providers.tf
+    - terraform.tfvars
+    - '*.auto.tfvars'
+  notes: 'Terraform is detected definitively by the terraform {} block with required_providers,
+    or by the .tf extension combined with resource/data/ module blocks. versions.tf
+    is the canonical location for the terraform {} block in well-structured projects.
+    terraform.tfvars and *.auto.tfvars supply variable values — index for variable
+    name discovery but not for code extraction (values may contain secrets).
+
+    '

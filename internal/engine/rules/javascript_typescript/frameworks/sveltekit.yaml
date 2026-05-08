@@ -1,0 +1,23 @@
+frameworks:
+  name: sveltekit
+  category: web
+  npm_packages:
+  - '@sveltejs/kit'
+  config_files:
+  - svelte.config.js
+  - vite.config.ts
+  detection_signals:
+    package_json_deps:
+    - '@sveltejs/kit'
+    directory_conventions:
+    - src/routes/
+    - src/lib/
+  framework_specific:
+  - load()
+  - +page.svelte
+  - +layout.svelte
+  - +server.ts
+  notes: src/routes/ directory with + file prefixes is definitive
+  custom_extractors:
+    - module: memx_indexer.languages.javascript_typescript.svelte_extractor
+      function: extract

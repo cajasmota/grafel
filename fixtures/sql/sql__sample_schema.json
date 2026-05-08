@@ -1,0 +1,172 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/sql/sample_schema.sql",
+  "language": "sql",
+  "entities": [
+    {
+      "name": "users",
+      "qualified_name": null,
+      "kind": "SCOPE.Datastore",
+      "start_line": 2,
+      "end_line": 9,
+      "language": "sql",
+      "signature": "CREATE TABLE users",
+      "enrichment_required": false,
+      "properties": {
+        "type": "table",
+        "vera_type": "SCOPE.Datastore",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "posts",
+      "qualified_name": null,
+      "kind": "SCOPE.Datastore",
+      "start_line": 10,
+      "end_line": 17,
+      "language": "sql",
+      "signature": "CREATE TABLE posts",
+      "enrichment_required": false,
+      "properties": {
+        "type": "table",
+        "vera_type": "SCOPE.Datastore",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "active_users",
+      "qualified_name": null,
+      "kind": "SCOPE.Datastore",
+      "start_line": 33,
+      "end_line": 38,
+      "language": "sql",
+      "signature": "CREATE VIEW active_users",
+      "enrichment_required": false,
+      "properties": {
+        "type": "view",
+        "vera_type": "SCOPE.Datastore",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "idx_posts_user_id",
+      "qualified_name": null,
+      "kind": "SCOPE.Datastore",
+      "start_line": 18,
+      "end_line": 19,
+      "language": "sql",
+      "signature": "CREATE INDEX idx_posts_user_id ON posts",
+      "enrichment_required": false,
+      "properties": {
+        "type": "index",
+        "vera_type": "SCOPE.Datastore",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "idx_users_email",
+      "qualified_name": null,
+      "kind": "SCOPE.Datastore",
+      "start_line": 20,
+      "end_line": 20,
+      "language": "sql",
+      "signature": "CREATE INDEX idx_users_email ON users",
+      "enrichment_required": false,
+      "properties": {
+        "type": "index",
+        "vera_type": "SCOPE.Datastore",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "idx_posts_user_id",
+      "qualified_name": "scope:schema:database_index:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/sql/sample_schema.sql:posts:user_id",
+      "kind": "SCOPE.Schema",
+      "start_line": null,
+      "end_line": null,
+      "language": "sql",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DATABASE_INDEX",
+        "source": "",
+        "kind": "database_index",
+        "table_name": "posts",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false,
+        "index_name": "idx_posts_user_id"
+      }
+    },
+    {
+      "name": "idx_users_email",
+      "qualified_name": "scope:schema:database_index:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/sql/sample_schema.sql:users:email",
+      "kind": "SCOPE.Schema",
+      "start_line": null,
+      "end_line": null,
+      "language": "sql",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DATABASE_INDEX",
+        "source": "",
+        "kind": "database_index",
+        "table_name": "users",
+        "columns": [
+          "email"
+        ],
+        "unique": false,
+        "index_name": "idx_users_email"
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/sql/sample_schema.sql",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/sql/sample_schema.sql",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "sql",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "snake_case",
+        "dominant_percentage": 56.25,
+        "sample_count": 16,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/sql/sample_schema.sql"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

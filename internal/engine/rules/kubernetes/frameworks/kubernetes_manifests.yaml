@@ -1,0 +1,119 @@
+frameworks:
+  name: Kubernetes Manifests
+  language: kubernetes
+  category: container_orchestration
+  detection:
+    file_extensions:
+      - .yaml
+      - .yml
+    content_patterns:
+      - "apiVersion:"
+      - "kind: Deployment"
+      - "kind: Service"
+      - "kind: ConfigMap"
+  notes: >-
+    Kubernetes manifest extraction. Detects Deployment, Service, ConfigMap,
+    Secret, Ingress, StatefulSet, DaemonSet, Job, CronJob, and other resource
+    kinds from K8s YAML manifests.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-526)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: "k8s/*.yaml"
+    entity_type: Config
+    name_from: filename
+  - glob: "k8s/*.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: "kubernetes/*.yaml"
+    entity_type: Config
+    name_from: filename
+  - glob: "manifests/*.yaml"
+    entity_type: Config
+    name_from: filename
+  - glob: "deploy/*.yaml"
+    entity_type: Config
+    name_from: filename
+
+source_patterns:
+  # kind: Deployment
+  - pattern: "kind:\\s+(Deployment)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # kind: StatefulSet
+  - pattern: "kind:\\s+(StatefulSet)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # kind: DaemonSet
+  - pattern: "kind:\\s+(DaemonSet)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # kind: Service
+  - pattern: "kind:\\s+(Service)\\b"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # kind: ConfigMap
+  - pattern: "kind:\\s+(ConfigMap)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # kind: Secret
+  - pattern: "kind:\\s+(Secret)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # kind: Ingress
+  - pattern: "kind:\\s+(Ingress)"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # kind: Job
+  - pattern: "kind:\\s+(Job)\\b"
+    entity_type: Task
+    name_group: 1
+    scope: file
+  # kind: CronJob
+  - pattern: "kind:\\s+(CronJob)"
+    entity_type: Task
+    name_group: 1
+    scope: file
+  # kind: Namespace
+  - pattern: "kind:\\s+(Namespace)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # kind: ServiceAccount
+  - pattern: "kind:\\s+(ServiceAccount)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # metadata.name: resource-name
+  - pattern: "metadata:\\s*\\n\\s+name:\\s+(\\S+)"
+    entity_type: Component
+    name_group: 1
+    scope: file
+  # container image
+  - pattern: "image:\\s+(\\S+)"
+    entity_type: Dependency
+    name_group: 1
+    scope: file
+  # containerPort
+  - pattern: "containerPort:\\s+(\\d+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # Service selector matches Deployment labels
+  - pattern: "selector:\\s*\\n\\s+(?:matchLabels:\\s*\\n\\s+)?app:\\s+(\\S+)"
+    source_type: Config
+    target_type: Service
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 1

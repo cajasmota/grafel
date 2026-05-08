@@ -1,0 +1,35 @@
+template_engines:
+  name: Blade
+  full_name: Blade (Laravel)
+  language: php
+  extensions:
+  - .blade.php
+  composer_packages:
+  - laravel/framework
+  detection_signals:
+    file_extensions:
+    - .blade.php
+    directory_conventions:
+    - resources/views/
+    syntax_markers:
+    - '{{ $variable }}'
+    - '{!! $variable !!}'
+    - '@extends(''layout'')'
+    - '@section(''name'')'
+    - '@yield(''name'')'
+    - '@include(''partial'')'
+    - '@component(''name'')'
+    - <x-component-name />
+    - '@slot(''name'')'
+    - '@props([''prop''])'
+    - '@foreach ($items as $item)'
+    - '@if (condition)'
+    - '@unless (condition)'
+    - '@auth / @guest'
+    - '@livewire(''component'')'
+  notes: '.blade.php double extension is definitive. resources/views/ directory is
+    the canonical Laravel view root. <x-*> component syntax (Laravel 7+) is the primary
+    Component entity signal. @livewire() embeds are a strong signal of Livewire component
+    architecture.
+
+    '

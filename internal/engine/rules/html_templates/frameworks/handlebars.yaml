@@ -1,0 +1,37 @@
+template_engines:
+  name: Handlebars
+  full_name: Handlebars.js
+  language: javascript
+  extensions:
+  - .hbs
+  - .handlebars
+  - .html
+  npm_packages:
+  - handlebars
+  - hbs
+  - express-handlebars
+  - '@ember/template-compiler'
+  detection_signals:
+    file_extensions:
+    - .hbs
+    - .handlebars
+    package_json_deps:
+    - handlebars
+    - hbs
+    - express-handlebars
+    syntax_markers:
+    - '{{expression}}'
+    - '{{{unescaped}}}'
+    - '{{#if ...}}'
+    - '{{#unless ...}}'
+    - '{{#each ...}}'
+    - '{{#with ...}}'
+    - '{{> partialName}}'
+    - '{{#> layoutName}}'
+    - '{{#block ''name''}}'
+    - '{{log ...}}'
+  notes: '{{> partialName}} is a definitive Component boundary signal. Ember.js uses
+    .hbs for all component templates — detect via ember-cli-build.js or @ember/template-compiler
+    dep.
+
+    '

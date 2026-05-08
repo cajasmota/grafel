@@ -1,0 +1,24 @@
+frameworks:
+  name: Pyramid
+  pypi_package: pyramid
+  category: web_full_stack
+  github_stars_2025: 3900+
+  gateway: wsgi
+  detection:
+    config_files:
+    - development.ini
+    - production.ini
+    - '*.ini'
+    dependency_names:
+    - pyramid
+    import_markers:
+    - from pyramid.config import Configurator
+    - config.make_wsgi_app()
+    - pyramid.view
+    structural_markers:
+    - development.ini
+    - production.ini
+  notes: 'INI config files are high-confidence. Used in enterprise Python applications
+    with declarative routing.
+
+    '

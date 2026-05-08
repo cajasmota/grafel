@@ -1,0 +1,33 @@
+orms_database:
+  name: Scala SQLite (slick-sqlite / sqlite-jdbc via JDBC)
+  category: sqlite_driver
+  sbt_dependencies:
+    - org.xerial:sqlite-jdbc
+    - com.typesafe.slick:slick-hikaricp
+  detection:
+    import_patterns:
+      - import slick.jdbc.SQLiteProfile
+      - import org.sqlite
+    code_patterns:
+      - Database.forURL("jdbc:sqlite:
+      - Database.forDriver(
+      - '"jdbc:sqlite:'
+      - ":memory:"
+  notes: >
+    Scala uses sqlite-jdbc (Xerial) as the JDBC driver. Slick uses
+    SQLiteProfile for type-safe queries. Doobie can also target SQLite via
+    JDBC. In tests, in-memory databases (:memory:) are standard.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: Slick/JDBC SQLite connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

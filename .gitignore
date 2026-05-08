@@ -30,3 +30,7 @@ SCRATCH.md
 
 # Go module cache
 /vendor/
+
+# archigraph index output
+.archigraph/
+graph.json

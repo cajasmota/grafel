@@ -1,0 +1,17 @@
+# Deployment topology extractor (MX-587)
+# Cross-format extractor for infrastructure config files.
+# Registered as a custom extractor on all framework YAMLs that may
+# co-exist with infrastructure configs in the same repository.
+#
+# File gate is internal to the extractor (applies_to checks basename).
+# This YAML exists to document the extractor's registration entry.
+
+name: deployment_topology
+description: >-
+  Parse reverse proxy (nginx, Caddy), container (Docker Compose),
+  orchestrator (K8s Ingress/Service), and API gateway (Traefik, Kong,
+  AWS Serverless) configs. Emits SCOPE.Pattern and SCOPE.Service entities
+  with DEPENDS_ON edges forming a request-flow graph.
+module: memx_indexer.languages._engine.deployment_topology_extractor
+function: extract
+applies_to_function: applies_to

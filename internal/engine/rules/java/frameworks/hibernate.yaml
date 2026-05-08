@@ -1,0 +1,55 @@
+frameworks:
+  name: Hibernate / JPA
+  category: orm
+  maven_coordinates: org.hibernate:hibernate-core
+  gradle_dependency: implementation 'org.hibernate:hibernate-core'
+  adoption_rank_2025: 1
+  detection:
+    pom_xml_markers:
+    - org.hibernate
+    - hibernate-core
+    - hibernate-entitymanager
+    - javax.persistence
+    - jakarta.persistence
+    gradle_markers:
+    - org.hibernate
+    - hibernate-core
+    import_patterns:
+    - import org.hibernate
+    - import javax.persistence
+    - import jakarta.persistence
+    code_patterns:
+    - '@Entity'
+    - '@Table'
+    - '@OneToMany'
+    - '@ManyToOne'
+    - 'EntityManagerFactory'
+    - 'SessionFactory'
+  notes: >
+    Hibernate is detected primarily by @Entity and ORM import patterns.
+    spring_data_jpa is also gated to this extractor since Spring Data JPA
+    wraps Hibernate under the hood.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-552)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.hibernate_extractor"
+    function: "extract"
+    description: >
+      Extract Hibernate/JPA deep patterns: @Entity classes (SCOPE.Schema),
+      @OneToMany/@ManyToOne/@OneToOne/@ManyToMany associations (DEPENDS_ON),
+      @NamedQuery HQL strings (SCOPE.Operation/function, INFERRED_FROM_HIBERNATE_HQL),
+      CriteriaBuilder/CriteriaQuery usage (SCOPE.Operation/function,
+      INFERRED_FROM_HIBERNATE_CRITERIA), @EntityListeners (SCOPE.Pattern,
+      INFERRED_FROM_HIBERNATE_LISTENER), @Cacheable/@Cache L2 caching metadata,
+      @NamedEntityGraph (SCOPE.Pattern, INFERRED_FROM_HIBERNATE_ENTITY_GRAPH),
+      @Converter / AttributeConverter (SCOPE.Component,
+      INFERRED_FROM_HIBERNATE_CONVERTER), EntityManagerFactory / EntityManager
+      (SCOPE.Service, INFERRED_FROM_HIBERNATE_EM). Emits OWNS and DEPENDS_ON
+      relationships.

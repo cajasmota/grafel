@@ -1,0 +1,35 @@
+frameworks:
+  name: zap
+  category: web_http
+  github: zigzap/zap
+  zig_version_baseline: 0.13.0
+  detection:
+    build_zig_zon_deps:
+    - zap
+    - zigzap/zap
+    import_markers:
+    - '@import("zap")'
+    - const zap = @import("zap")
+    structural_markers:
+    - zap.HttpServer
+    - zap.HttpRequest
+    - zap.SimpleHttpServer
+    - zap.SimpleHttpListener
+    - zap.SimpleEndpoint
+    - zap.Router
+    - .listen(
+    - request.setContentType(
+    - request.sendBody(
+    - request.sendJson(
+    - request.getHeader(
+    - request.getPath()
+    - request.getQuery()
+    - request.parseQuery()
+    - request.parseBody()
+    notes: 'Zap is the most widely used HTTP framework for Zig, built on top of the
+      facil.io C library. Detection is definitive via build.zig.zon dependency on
+      zigzap/zap and zap.HttpServer usage. SimpleEndpoint pattern is used for REST-style
+      route handlers. Middleware is implemented as endpoint chains. No macro system
+      — all routing is explicit struct-based dispatch.
+
+      '

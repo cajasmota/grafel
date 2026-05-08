@@ -1,0 +1,38 @@
+frameworks:
+  name: Rocket
+  crate: rocket
+  category: web_full
+  crates_io_version_2025: 0.5.x
+  github_stars_2025: 24500+
+  detection:
+    cargo_toml_deps:
+    - rocket
+    import_markers:
+    - 'use rocket::'
+    - '#[macro_use] extern crate rocket'
+    structural_markers:
+    - '#[launch]'
+    - '#[rocket::main]'
+    - '#[get('
+    - '#[post('
+    - '#[put('
+    - '#[delete('
+    - rocket::build()
+    - rocket::ignite()
+    notes: 'Macro-heavy ergonomic framework. Route macros are strong detection signals.
+      v0.5 moved to async. Requires nightly for some features in older versions.
+
+      '
+
+custom_extractors:
+  - module: memx_indexer.languages.rust.rocket_extractor
+    function: extract
+    description: >
+      Extracts Rocket macro-annotated route handlers (#[get], #[post], etc.) as
+      SCOPE.Operation/endpoint (INFERRED_FROM_ROCKET_ROUTE), #[catch(N)] error catchers
+      as SCOPE.Pattern (INFERRED_FROM_ROCKET_CATCHER), impl FromRequest guards as
+      SCOPE.Pattern (INFERRED_FROM_ROCKET_GUARD), impl Fairing types as SCOPE.Pattern
+      (INFERRED_FROM_ROCKET_FAIRING), Json<T>/Form<T>/Data<T>/MsgPack<T> data guards as
+      SCOPE.Schema (INFERRED_FROM_ROCKET_DATA_GUARD), rocket::build()/rocket::ignite()
+      as SCOPE.Service (INFERRED_FROM_ROCKET_LAUNCH), and State<T> managed state as
+      SCOPE.Pattern (INFERRED_FROM_ROCKET_STATE).

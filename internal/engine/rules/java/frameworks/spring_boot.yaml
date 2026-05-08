@@ -1,0 +1,56 @@
+frameworks:
+  name: Spring Boot
+  category: web_full_stack
+  maven_coordinates: org.springframework.boot:spring-boot-starter
+  gradle_dependency: implementation 'org.springframework.boot:spring-boot-starter'
+  bom_artifact: org.springframework.boot:spring-boot-dependencies
+  adoption_rank_2025: 1
+  detection:
+    config_files:
+    - application.properties
+    - application.yml
+    - application-*.properties
+    - application-*.yml
+    - src/main/resources/application.properties
+    - src/main/resources/application.yml
+    pom_xml_markers:
+    - org.springframework.boot
+    - spring-boot-starter-parent
+    gradle_markers:
+    - org.springframework.boot
+    - spring-boot-gradle-plugin
+    import_patterns:
+    - import org.springframework.boot.SpringApplication
+    - import org.springframework.boot.autoconfigure.SpringBootApplication
+    code_patterns:
+    - '@SpringBootApplication'
+    - SpringApplication.run(
+  notes: 'spring-boot-starter-parent as parent POM is high-confidence. @SpringBootApplication
+    on main class is definitive. application.yml alone is not sufficient.
+
+    '
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-497)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.spring_boot_extractor"
+    function: "extract"
+    description: "Extract Spring Boot DI graph (@Autowired, constructor injection), request mappings (@RequestMapping, @GetMapping etc.), and @Configuration beans. Emits DEPENDS_ON and OWNS relationships."
+  - module: "memx_indexer.languages.java.spring_ecosystem_extractor"
+    function: "extract"
+    description: "Extract Spring Ecosystem advanced patterns: Security (FilterChain, @PreAuthorize, @Secured), Batch (Job/Step/Reader/Writer chains), AMQP (@RabbitListener, queue beans), AI (ChatClient, @Description tools, VectorStore), Vault (@VaultPropertySource), Data (Mongo/Redis repos, @Document, @Query), Cloud (@FeignClient, @CircuitBreaker, @StreamListener), Integration (@ServiceActivator, IntegrationFlow), WebFlux (RouterFunction, HandlerFunction, WebClient), Kafka (@KafkaListener, @KafkaHandler)."
+  - module: "memx_indexer.languages.java.spring_request_response_extractor"
+    function: "extract"
+    description: "Extract ACCEPTS_INPUT and RETURNS relationships from Spring controller methods. Detects @RequestBody parameter annotations and method return types (including ResponseEntity<T> unwrapping). Emits DTO entities as SCOPE.Schema(kind=dto)."
+  - module: "memx_indexer.languages._engine.config_prefix_extractor"
+    function: "extract"
+    description: "Extract server.servlet.context-path (properties) and server.servlet.context-path / spring.application.name (YAML) as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."
+  - module: "memx_indexer.languages._engine.config_consumer_extractor"
+    function: "extract"
+    description: "Extract @Value(\"${key}\") annotations as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming classes/methods to config key entities. Enables blast-radius analysis for Spring config changes (MX-600)."

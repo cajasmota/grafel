@@ -1,0 +1,148 @@
+complexity_signals:
+- category: template_metaprogramming
+  description: Heavy compile-time computation via C++ templates
+  signals:
+  - pattern: template<typename.*template<typename
+    description: Nested template parameters indicating template-of-template patterns
+  - pattern: std::enable_if
+    description: SFINAE-based conditional compilation (pre-C++20)
+  - pattern: std::enable_if_t
+    description: Alias template form of enable_if (C++14+)
+  - pattern: std::conditional_t
+    description: Compile-time type selection
+  - pattern: std::void_t
+    description: Detection idiom for type traits
+  - pattern: if constexpr
+    description: Compile-time branch selection (C++17)
+  - pattern: 'requires '
+    description: C++20 concepts constraint clause
+  - pattern: 'concept '
+    description: C++20 named concept definition
+  - pattern: 'consteval '
+    description: Immediate function (compile-time only, C++20)
+  - pattern: constexpr
+    description: Compile-time evaluation; heavy use increases build complexity
+  - pattern: std::tuple
+    description: Heterogeneous type lists; complex with get<N> patterns
+  - pattern: std::variant
+    description: Type-safe union; combined with std::visit indicates visitor pattern
+  - pattern: std::apply
+    description: Tuple unpacking; indicates TMP pattern
+  - pattern: template<auto
+    description: Non-type template parameter (C++17+)
+- category: sfinae_and_concepts
+  description: Type-based dispatch and constraint mechanisms
+  signals:
+  - pattern: std::is_same_v
+    description: Type identity check in templates
+  - pattern: std::is_base_of_v
+    description: Inheritance check in templates
+  - pattern: std::declval
+    description: SFINAE expression evaluation without construction
+  - pattern: decltype(
+    description: Type deduction expression; frequency indicates TMP depth
+  - pattern: auto.*->.*decltype
+    description: Trailing return type with decltype (pre-C++14 style)
+  - pattern: template<class = void>
+    description: Default template parameter for SFINAE
+  - pattern: requires requires
+    description: Ad-hoc constraint in requires clause (C++20)
+  - pattern: static_assert(
+    description: Compile-time assertion; common in constrained templates
+- category: macro_abuse
+  description: Excessive preprocessor macro usage obscuring code structure
+  signals:
+  - pattern: '#define.*\\'
+    description: Multi-line macro definition (line continuations)
+  - pattern: '#define.*\(.*\).*\('
+    description: Function-like macro with nested calls
+  - pattern: BOOST_PP_
+    description: Boost.Preprocessor meta-macros for code generation
+  - pattern: '#if.*defined'
+    description: Conditional compilation with defined() checks
+  - pattern: '#ifdef.*#ifdef'
+    description: Nested preprocessor conditionals
+  - pattern: '#if.*#elif.*#elif'
+    description: Long elif chains in preprocessor
+  - pattern: '##'
+    description: Token pasting operator in macros
+  - pattern: __VA_ARGS__
+    description: Variadic macro arguments
+  - count_threshold: 20
+    pattern: '#define'
+    description: High macro count per file (>20 defines) signals macro-heavy design
+- category: memory_management_patterns
+  description: Indicators of manual vs. managed memory strategy and ownership complexity
+  signals:
+  - pattern: new \w
+    description: Raw heap allocation without RAII wrapper
+  - pattern: delete \w
+    description: Manual heap deallocation
+  - pattern: delete\[\]
+    description: Array deallocation
+  - pattern: malloc(
+    description: C-style allocation; mixed C/C++ codebase indicator
+  - pattern: free(
+    description: C-style deallocation
+  - pattern: std::unique_ptr
+    description: Single-owner RAII (safe)
+  - pattern: std::shared_ptr
+    description: Reference-counted ownership (overhead + cycle risk)
+  - pattern: std::weak_ptr
+    description: Non-owning observer; presence with shared_ptr indicates cycle prevention
+  - pattern: reinterpret_cast
+    description: Unsafe type punning; high complexity signal
+  - pattern: static_cast.*void\*
+    description: Void pointer cast; C-style memory interface
+  - pattern: placement new
+    description: Manual object construction in pre-allocated memory
+  - pattern: __attribute__((packed))
+    description: Packed struct; low-level memory layout control
+  - pattern: alignas(
+    description: Explicit alignment requirements (C++11+)
+- category: virtual_inheritance_and_polymorphism
+  description: OOP depth and virtual dispatch complexity
+  signals:
+  - pattern: virtual .*override
+    description: Virtual method with override specifier; measures polymorphism depth
+  - pattern: virtual.*= 0
+    description: Pure virtual method; abstract interface definition
+  - pattern: ': virtual public'
+    description: Virtual base class; diamond inheritance resolution
+  - pattern: ': virtual private'
+    description: Virtual private base; unusual inheritance pattern
+  - pattern: dynamic_cast
+    description: RTTI-dependent downcast; indicates polymorphism without compile-time
+      type knowledge
+  - pattern: typeid(
+    description: Runtime type identification; RTTI dependency
+  - pattern: std::any
+    description: Type-erased value (C++17); high abstraction
+  - pattern: std::function
+    description: Type-erased callable; function pointer abstraction
+  - count_threshold: 3
+    pattern: ': public.*: public.*: public'
+    description: Multiple inheritance (3+ bases) signals complex OOP hierarchy
+- category: preprocessor_conditional_nesting
+  description: Deep platform/configuration branching via preprocessor
+  signals:
+  - pattern: '#if.*\n.*#if'
+    description: Nested
+  - pattern: _WIN32
+    description: Windows platform guard
+  - pattern: __linux__
+    description: Linux platform guard
+  - pattern: __APPLE__
+    description: macOS/iOS platform guard
+  - pattern: __ANDROID__
+    description: Android platform guard
+  - pattern: NDEBUG
+    description: Debug vs release conditional (common but notable in quantity)
+  - pattern: __cplusplus >= 20
+    description: C++ standard version guard (C++20+)
+  - pattern: __cplusplus >= 17
+    description: C++ standard version guard (C++17+)
+  - count_threshold: 10
+    pattern: '#if\|#ifdef\|#ifndef'
+    description: High preprocessor conditional count per file (>10) signals complex
+      portability layer

@@ -1,0 +1,22 @@
+orms:
+  name: SwiftData
+  category: orm_declarative
+  spm_product: N/A — bundled with Apple SDK (iOS 17+)
+  detection:
+    import_patterns:
+    - import SwiftData
+    code_patterns:
+    - '@Model'
+    - '@Query'
+    - '@Relationship'
+    - '@Attribute(.unique)'
+    - ModelContainer(
+    - ModelContext(
+    - .modelContainer(for:)
+    - FetchDescriptor<
+    - SortDescriptor(
+  notes: 'Apple macro-based ORM (2023). @Model is the definitive signal. Replaces
+    NSManagedObject subclasses with plain Swift structs/classes. Requires iOS 17+
+    / macOS 14+. Can interoperate with Core Data under the hood.
+
+    '

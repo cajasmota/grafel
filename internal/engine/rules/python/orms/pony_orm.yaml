@@ -1,0 +1,22 @@
+orms_database:
+  name: Pony ORM
+  pypi_package: pony
+  category: sql_orm
+  detection:
+    dependency_names:
+    - pony
+    model_file_patterns:
+    - '*/models.py'
+    - '*/entities.py'
+    import_markers:
+    - from pony.orm import
+    - import pony
+    - Database()
+    - db.Entity
+    - Required(
+    - Optional(
+    - '@db_session'
+  notes: 'entities.py naming convention is distinctive. @db_session decorator is unique
+    to Pony ORM.
+
+    '

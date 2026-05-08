@@ -1,0 +1,23 @@
+frameworks:
+  name: gomobile
+  module_path: golang.org/x/mobile
+  category: mobile
+  github_stars_2025: N/A (golang.org/x)
+  detection:
+    go_mod_require:
+    - golang.org/x/mobile
+    config_files:
+    - gomobile.go
+    import_markers:
+    - '"golang.org/x/mobile/app"'
+    - '"golang.org/x/mobile/gl"'
+    - '"golang.org/x/mobile/event"'
+    structural_markers:
+    - app.Main(
+    - gomobile bind
+    - gomobile build
+    notes: 'Official Go mobile SDK. Supports Android and iOS via gomobile bind (library)
+      and gomobile build (app). gl package usage is a strong signal for OpenGL-based
+      mobile apps.
+
+      '

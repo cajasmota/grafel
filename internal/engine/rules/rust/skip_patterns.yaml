@@ -1,0 +1,65 @@
+skip_patterns:
+- pattern: target/
+  reason: 'Cargo build output directory. Contains compiled artifacts, incremental
+    build cache, test binaries, and generated code. Never index.
+
+    '
+  match_type: directory_prefix
+  examples:
+  - target/debug/
+  - target/release/
+  - target/x86_64-unknown-linux-gnu/
+- pattern: '*.generated.rs'
+  reason: 'Explicitly generated Rust files. Not human-authored source code.
+
+    '
+  match_type: filename_glob
+- pattern: build.rs output (OUT_DIR)
+  reason: 'Code emitted by build scripts into OUT_DIR (typically target/build/). Generated
+    C bindings, version constants, and include files.
+
+    '
+  match_type: directory_prefix
+  examples:
+  - target/build/*/out/
+  structural_marker: println!("cargo:rerun-if-changed=
+- pattern: '*_pb.rs'
+  reason: 'Protobuf-generated Rust files (prost, protoc-gen-rust). Machine-generated
+    struct and enum definitions from .proto files.
+
+    '
+  match_type: filename_glob
+  examples:
+  - src/proto/user_pb.rs
+  - src/generated/api_pb.rs
+- pattern: '*.pb.rs'
+  reason: 'Alternative naming convention for prost-generated protobuf files.
+
+    '
+  match_type: filename_glob
+  examples:
+  - src/proto/user.pb.rs
+- pattern: build.rs
+  reason: 'Cargo build script. Runs at compile time to configure the build. Not application
+    logic. Contains cargo:rerun-if-changed directives and link flags. Index separately
+    as build metadata, not source.
+
+    '
+  match_type: exact_filename
+  exception: 'May be indexed as a low-priority metadata file to detect generated code
+    paths and FFI linkage.
+
+    '
+- pattern: src/generated/
+  reason: 'Convention directory for generated source files (bindgen output, schema-derived
+    types). Skip unless explicitly configured.
+
+    '
+  match_type: directory_prefix
+- pattern: benches/
+  reason: 'Benchmark files (criterion, divan). Not production logic. Index only when
+    benchmarks are in scope for performance analysis.
+
+    '
+  match_type: directory_prefix
+  exception: May index for performance-annotated code analysis.

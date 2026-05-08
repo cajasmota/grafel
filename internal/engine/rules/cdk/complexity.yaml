@@ -1,0 +1,102 @@
+complexity_signals:
+- signal_name: Stack Count
+  description: 'Number of Stack subclasses in the application. Single stack = low
+    complexity. Multiple stacks indicate modular design or multi-tier architecture.
+
+    '
+  patterns:
+  - export class Database extends Stack { ... }
+  - export class Networking extends Stack { ... }
+  - export class Compute extends Stack { ... }
+  indexing_note: 'Count Stack subclass definitions. 1 stack = simple. 2-3 = moderate.
+    4+ = complex multi-tier architecture. Each stack can have separate deployment
+    schedule and role-based access control.
+
+    '
+- signal_name: Construct Nesting Depth
+  description: 'Depth of construct tree. Example: App > MyStack > VPC > Subnet > SecurityGroup
+    > Instance. Deep nesting can indicate complex infrastructure topology or over-modularization.
+
+    '
+  patterns:
+  - this.vpc = new ec2.Vpc(this, ...);
+  - this.subnet = new ec2.Subnet(this.vpc, ...);
+  - this.sg = new ec2.SecurityGroup(this.subnet, ...);
+  indexing_note: 'Analyze the construct parent-child relationships. Nesting depth
+    > 5 signals either complex topology (valid) or unnecessary abstraction (refactor
+    candidate).
+
+    '
+- signal_name: Cross-Stack References
+  description: 'Communication between Stack instances via cross-stack outputs. Example:
+    NetworkingStack exports VPC ID, ComputeStack imports it. Signals modular design
+    and dependency coupling.
+
+    '
+  patterns:
+  - 'CfnOutput(this, ''VpcId'', { value: this.vpc.vpcId })'
+  - 'const vpc = Vpc.fromLookup(this, ''VPC'', { vpcId: props.vpcId })'
+  - Stack.of(construct).importValue('VPC-ID')
+  indexing_note: 'Count CfnOutput and cross-stack lookup patterns. Each reference
+    represents a runtime dependency. High cross-stack coupling can complicate deployment
+    order.
+
+    '
+- signal_name: L1 vs L2 vs L3 Usage Ratio
+  description: 'Ratio of Cfn* (L1), opinionated (L2), and Pattern (L3) constructs
+    in the codebase. Indicator of maturity and best-practice adherence.
+
+    '
+  patterns:
+  - new s3.CfnBucket(...)
+  - new s3.Bucket(...)
+  - new patterns.WebServiceStack(...)
+  scoring:
+  - 100% L2 = ideal (best practices, maintainable)
+  - '>10% L1 = investigate (escape hatches, may be necessary)'
+  - L3-heavy = accelerated delivery, hidden coupling (document)
+  indexing_note: 'Classify each construct instantiation by level. Report the ratio
+    as a complexity metric. L1 usage should be justified by comments.
+
+    '
+- signal_name: Dynamic Resource Creation (for_each, count)
+  description: 'CDK equivalents of Terraform for_each/count. Using dynamic for_each
+    loops or count in property bags indicates data-driven infrastructure. Example:
+    creating multiple Lambda functions from a configuration list.
+
+    '
+  patterns:
+  - for (const fn of lambdaConfigs) { new lambda.Function(...) }
+  - 'for fn_config in lambda_configs: lambda.Function(...)'
+  - this.queues = props.queueNames.map((name) => new sqs.Queue(...))
+  indexing_note: 'Flag explicit loops that instantiate constructs. These are high-value
+    signals for cost estimation and blast-radius analysis. Count the loop iterations
+    (if static) or flag as data-driven (if dynamic).
+
+    '
+- signal_name: Aspect Usage
+  description: 'CDK Aspects are reusable validation/transformation plugins applied
+    to the construct tree. Used for policy enforcement (e.g., all buckets must have
+    encryption), tagging, security scanning. High complexity — aspects can be hard
+    to debug.
+
+    '
+  patterns:
+  - Aspects.of(this).add(new EnforceBucketEncryption())
+  - cdk.Aspects.of(this).add(...)
+  indexing_note: 'Count Aspect instantiations. Aspects are powerful but add implicit
+    behavior — document what each aspect enforces.
+
+    '
+- signal_name: Custom Construct Libraries
+  description: 'Organizations often publish private CDK construct libraries (npm packages,
+    PyPI packages). Usage indicates abstraction, reuse, and possible inter-team coupling.
+
+    '
+  patterns:
+  - import { MyCompanyVpc } from "@mycompany/cdk-constructs";
+  - from mycompany.cdk_constructs import MyCompanyVpc
+  indexing_note: 'Detect imports from private/internal packages. These represent architectural
+    standards and reuse patterns. Extract package names and versions.
+
+    '

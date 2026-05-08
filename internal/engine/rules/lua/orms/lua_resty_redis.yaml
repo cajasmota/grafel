@@ -1,0 +1,19 @@
+database:
+  name: lua-resty-redis
+  category: redis_client_openresty
+  detection:
+    import_markers:
+    - require "resty.redis"
+    - require("resty.redis")
+    - resty.redis
+    - red:connect
+    - red:set
+    - red:get
+    - red:hset
+    - red:expire
+    - red:close
+    notes: 'lua-resty-redis is the OpenResty-native Redis client using cosocket API.
+      Exclusively an OpenResty dependency. Detection: require(''resty.redis'') + red:connect({...})
+      pattern.
+
+      '

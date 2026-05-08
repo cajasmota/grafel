@@ -1,0 +1,20 @@
+frameworks:
+  name: ansible-lint
+  vendor: Ansible Community
+  category: linting_framework
+  detection:
+    config_files:
+    - .ansible-lint
+    - .ansible-lint.yml
+    - .ansible-lint.yaml
+    cli_invocation_patterns:
+    - ansible-lint
+    ci_patterns:
+    - ansible-lint .
+    - .ansible-lint configuration
+  notes: 'ansible-lint performs static analysis on playbooks and roles. Detected via
+    .ansible-lint config file or ansible-lint CLI invocation in CI/CD. Common rules:
+    syntax, variable naming, deprecated modules, unsafe task patterns. Presence indicates
+    code quality standards enforcement.
+
+    '

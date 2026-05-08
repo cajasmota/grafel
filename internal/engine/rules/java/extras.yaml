@@ -1,0 +1,105 @@
+domain_root_conventions:
+- name: maven_standard_layout
+  description: Maven standard directory layout (most common Java project structure)
+  structure:
+    source_main: src/main/java/
+    source_test: src/test/java/
+    resources_main: src/main/resources/
+    resources_test: src/test/resources/
+    build_output: target/
+    pom: pom.xml
+  domain_root: src/main/java/
+  notes: 'src/main/java/ is the canonical Java source root. Package structure mirrors
+    directory hierarchy below this root. All entity extraction should resolve import
+    paths relative to this root.
+
+    '
+- name: gradle_standard_layout
+  description: Gradle standard layout (same as Maven, different build files)
+  structure:
+    source_main: src/main/java/
+    source_test: src/test/java/
+    resources_main: src/main/resources/
+    resources_test: src/test/resources/
+    build_output: build/
+    build_file: build.gradle or build.gradle.kts
+    settings_file: settings.gradle or settings.gradle.kts
+  domain_root: src/main/java/
+  notes: 'Gradle uses the same src/main/java layout by default. Domain root is identical
+    to Maven. build/ vs target/ is the distinguishing output dir.
+
+    '
+- name: maven_multi_module
+  description: Maven multi-module project with parent POM
+  structure:
+    parent_pom: pom.xml (contains <modules>)
+    modules:
+    - module-a/pom.xml
+    - module-a/src/main/java/
+    - module-b/pom.xml
+    - module-b/src/main/java/
+  domain_root: each module's src/main/java/
+  notes: 'Each module has its own src/main/java/. Index each module independently.
+    Parent pom.xml provides shared dependency management but no source.
+
+    '
+- name: gradle_multi_module
+  description: Gradle multi-module project
+  structure:
+    settings: settings.gradle (include ':module-a', ':module-b')
+    root_build: build.gradle (shared config)
+    modules:
+    - module-a/build.gradle
+    - module-a/src/main/java/
+    - module-b/build.gradle
+    - module-b/src/main/java/
+  domain_root: each module's src/main/java/
+  notes: 'settings.gradle include() directives enumerate all modules. Each module
+    is an independent indexing unit with its own src/main/java/ root.
+
+    '
+- name: android_project_layout
+  description: Android Gradle project layout
+  structure:
+    manifest: app/src/main/AndroidManifest.xml
+    source_main: app/src/main/java/
+    source_test: app/src/test/java/
+    source_android_test: app/src/androidTest/java/
+    resources: app/src/main/res/
+    build_file: app/build.gradle or app/build.gradle.kts
+    root_build: build.gradle (project-level)
+    settings: settings.gradle
+  domain_root: app/src/main/java/
+  android_vs_server_signals:
+    android:
+    - app/ directory with build.gradle containing android {} block
+    - AndroidManifest.xml present
+    - com.android.application or com.android.library plugin
+    - local.properties with sdk.dir
+    - res/ directory with drawable/, layout/, values/ subdirs
+    server_side:
+    - src/main/java/ at root (no app/ wrapper)
+    - No AndroidManifest.xml
+    - No android {} block in build.gradle
+    - No local.properties with sdk.dir
+  notes: 'Android projects wrap source in app/ module by default. androidTest/ is
+    for instrumentation tests (on-device). Domain root is app/src/main/java/. Distinguish
+    from server-side Java by android {} block + AndroidManifest.xml.
+
+    '
+- name: spring_boot_typical_layout
+  description: Spring Boot opinionated project structure
+  structure:
+    main_class: src/main/java/com/example/app/Application.java
+    controllers: src/main/java/com/example/app/controller/
+    services: src/main/java/com/example/app/service/
+    repositories: src/main/java/com/example/app/repository/
+    entities: src/main/java/com/example/app/entity/ or model/
+    config: src/main/java/com/example/app/config/
+    resources: src/main/resources/application.yml
+  domain_root: src/main/java/
+  notes: 'Layered architecture convention. controller/service/repository/entity package
+    structure is idiomatic Spring Boot. @SpringBootApplication class in root package
+    is the entry point.
+
+    '

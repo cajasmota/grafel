@@ -1,0 +1,52 @@
+# Redis Cache Key Extractor (MX-695)
+# Cross-language PatternDetector that extracts Redis cache key patterns from
+# Python (redis-py), Node.js (ioredis), Java (Jedis), and Go (go-redis) source.
+# Registered as a PatternDetector in memx_indexer/pattern_detectors/__init__.py.
+#
+# No YAML-driven dispatch -- extraction logic is in the Python module.
+
+name: redis_key_extractor
+description: >-
+  Extracts Redis cache key patterns from application code.
+  Emits SCOPE.Pattern entities with kind=cache_key, key_pattern, operation,
+  and client_library properties.
+module: memx_indexer.pattern_detectors.redis_key_extractor
+class: RedisKeyExtractor
+category: cache_key
+registration: memx_indexer/pattern_detectors/__init__.py
+otel_span: indexer.redis_key_extract
+otel_attributes:
+  - key_count
+  - client_library
+  - language
+
+supported_clients:
+  - name: redis-py
+    language: python
+    detection_signals:
+      - "import redis"
+      - "from redis"
+    operations: [get, set, delete, expire, setex]
+
+  - name: ioredis
+    language: javascript
+    detection_signals:
+      - "require('ioredis')"
+      - 'require("ioredis")'
+    operations: [get, set, del, expire]
+
+  - name: jedis
+    language: java
+    detection_signals:
+      - "import redis.clients.jedis"
+    operations: [get, set, del, expire]
+
+  - name: go-redis
+    language: go
+    detection_signals:
+      - '"github.com/redis/go-redis'
+    operations: [Get, Set, Del, Expire]
+
+deduplication: one entity per (key_pattern, operation) pair per file
+out_of_scope: >-
+  Redis Streams (XADD/XREAD), Pub/Sub channel extraction, Redis cluster topology.

@@ -1,0 +1,65 @@
+skip_patterns:
+- pattern: .luarocks/
+  reason: 'LuaRocks local package installation directory (per-project or per-user).
+    Contains third-party rock source trees and compiled C extensions (.so/.dll). Not
+    project code. Equivalent to node_modules/.
+
+    '
+- pattern: luarocks_cache/
+  reason: 'LuaRocks download cache. Contains source tarballs and rock archives for
+    installed packages. Binary/archive content, never Lua source.
+
+    '
+- pattern: .luacheckrc
+  reason: 'luacheck static analysis configuration file. Defines globals, ignore rules,
+    and file exclusions for the linter. Not project logic — purely tooling config.
+
+    '
+  note: 'Parse for globals declarations if needed to resolve undefined-global false
+    positives in static analysis, but do not index as source.
+
+    '
+- pattern: init.lua (boilerplate)
+  reason: 'Neovim user config init.lua and plugin manager bootstrap files (e.g., lazy.nvim
+    bootstrap block, packer.nvim bootstrap block) are boilerplate. Identify and skip:
+    files consisting primarily of package manager installation guards, vim.fn.stdpath
+    calls, and pcall-wrapped requires with no project-specific logic.
+
+    '
+  detection_heuristic: 'File is init.lua at repository root AND contains vim.fn.stdpath
+    AND total non-comment lines < 50 AND no custom function definitions. These are
+    user Neovim configs, not plugin source code.
+
+    '
+- pattern: '*.luac'
+  reason: 'Compiled Lua bytecode files (luac output). Binary format, not source. Never
+    index.
+
+    '
+- pattern: lua_modules/
+  reason: 'LuaRocks project-local installation directory (used with --tree=lua_modules).
+    Contains installed rock source trees. Not project code.
+
+    '
+- pattern: vendor/
+  reason: 'Vendored third-party Lua libraries copied directly into the project tree.
+    Common in projects avoiding LuaRocks (e.g., LOVE2D games bundling middleclass
+    or hump). Index only if the file is clearly modified from upstream; otherwise
+    skip as third-party.
+
+    '
+- pattern: deps/ (OpenResty)
+  reason: 'Some OpenResty projects (e.g., Kong, API7) use a deps/ directory for bundled
+    LuaRocks dependencies. Not project code.
+
+    '
+- pattern: doc/ (LuaDoc generated)
+  reason: 'LuaDoc, ldoc, or lua-doc generated HTML documentation directories. Auto-generated
+    from source docstrings. Index source .lua files instead.
+
+    '
+- pattern: '*.so / *.dll (C extensions)'
+  reason: 'Compiled C extension modules loaded via require(). Binary, not Lua source.
+    Never index.
+
+    '

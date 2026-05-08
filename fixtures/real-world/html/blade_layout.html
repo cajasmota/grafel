@@ -1,0 +1,137 @@
+{{-- Source: https://github.com/laravel/laravel (synthetic based on real Laravel Blade template patterns) | License: MIT --}}
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{{ config('app.name', 'Laravel') }} - @yield('title', 'Home')</title>
+
+    {{-- Styles --}}
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @stack('styles')
+</head>
+<body class="font-sans antialiased bg-gray-100">
+    <div class="min-h-screen">
+
+        {{-- Navigation --}}
+        @include('layouts.navigation')
+
+        {{-- Flash Messages --}}
+        @if (session('success'))
+            <div class="max-w-7xl mx-auto px-4 py-3">
+                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded" role="alert">
+                    {{ session('success') }}
+                </div>
+            </div>
+        @endif
+
+        @if (session('error'))
+            <div class="max-w-7xl mx-auto px-4 py-3">
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded" role="alert">
+                    {{ session('error') }}
+                </div>
+            </div>
+        @endif
+
+        {{-- Page Heading --}}
+        @hasSection('heading')
+            <header class="bg-white shadow">
+                <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                    <h1 class="text-3xl font-bold text-gray-900">@yield('heading')</h1>
+                </div>
+            </header>
+        @endif
+
+        {{-- Main Content --}}
+        <main class="py-12">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                @yield('content')
+            </div>
+        </main>
+
+        {{-- Sidebar (optional) --}}
+        @hasSection('sidebar')
+            <aside class="fixed right-0 top-16 w-64 h-full bg-white shadow-lg p-4">
+                @yield('sidebar')
+            </aside>
+        @endif
+
+    </div>
+
+    @auth
+        <div id="user-data"
+             data-user-id="{{ auth()->id() }}"
+             data-user-role="{{ auth()->user()->role }}"
+             class="hidden">
+        </div>
+    @endauth
+
+    @stack('scripts')
+</body>
+</html>
+
+{{-- resources/views/posts/index.blade.php --}}
+@extends('layouts.app')
+
+@section('title', 'Blog Posts')
+@section('heading', 'Latest Posts')
+
+@section('content')
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        @forelse($posts as $post)
+            <article class="bg-white overflow-hidden shadow rounded-lg">
+                @if($post->cover_image)
+                    <img src="{{ asset('storage/' . $post->cover_image) }}"
+                         alt="{{ $post->title }}"
+                         class="w-full h-48 object-cover">
+                @endif
+                <div class="p-6">
+                    <div class="flex items-center text-sm text-gray-500 mb-2">
+                        <span>{{ $post->author->name }}</span>
+                        <span class="mx-2">&bull;</span>
+                        <time datetime="{{ $post->published_at->toIso8601String() }}">
+                            {{ $post->published_at->diffForHumans() }}
+                        </time>
+                    </div>
+                    <h2 class="text-xl font-semibold text-gray-900 mb-2">
+                        <a href="{{ route('posts.show', $post->slug) }}"
+                           class="hover:text-indigo-600">
+                            {{ $post->title }}
+                        </a>
+                    </h2>
+                    @if($post->excerpt)
+                        <p class="text-gray-600 line-clamp-3">{{ $post->excerpt }}</p>
+                    @endif
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        @foreach($post->tags as $tag)
+                            <a href="{{ route('tags.show', $tag->slug) }}"
+                               class="inline-block bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full hover:bg-indigo-100">
+                                {{ $tag->name }}
+                            </a>
+                        @endforeach
+                    </div>
+                </div>
+            </article>
+        @empty
+            <div class="col-span-3 text-center py-12 text-gray-500">
+                No posts yet. <a href="{{ route('posts.create') }}" class="text-indigo-600">Create the first one!</a>
+            </div>
+        @endforelse
+    </div>
+
+    {{-- Pagination --}}
+    <div class="mt-8">
+        {{ $posts->links() }}
+    </div>
+@endsection
+
+@section('sidebar')
+    <h3 class="font-semibold text-gray-700 mb-3">Categories</h3>
+    @foreach($categories as $category)
+        <a href="{{ route('categories.show', $category->slug) }}"
+           class="block py-1 text-sm text-gray-600 hover:text-indigo-600">
+            {{ $category->name }}
+        </a>
+    @endforeach
+@endsection

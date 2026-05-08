@@ -1,0 +1,132 @@
+# Source: https://github.com/ansible/ansible-examples (synthetic based on real Ansible production patterns) | License: GPL-3.0
+
+---
+- name: Deploy application stack
+  hosts: app_servers
+  become: true
+  gather_facts: true
+  vars:
+    app_name: sample-server
+    app_user: appuser
+    app_dir: /opt/{{ app_name }}
+    docker_compose_version: "2.24.0"
+    deploy_env: "{{ lookup('env', 'DEPLOY_ENV') | default('production') }}"
+
+  pre_tasks:
+    - name: Verify target host
+      ansible.builtin.debug:
+        msg: "Deploying {{ app_name }} to {{ inventory_hostname }} ({{ deploy_env }})"
+
+    - name: Check OS compatibility
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution in ['Ubuntu', 'Debian']
+          - ansible_distribution_major_version | int >= 22
+        fail_msg: "This playbook requires Ubuntu 22+ or Debian 12+"
+
+  roles:
+    - role: common
+    - role: docker
+    - role: app_deploy
+
+  post_tasks:
+    - name: Run smoke test
+      ansible.builtin.uri:
+        url: "http://localhost:8080/health"
+        return_content: true
+        status_code: 200
+      register: health_check
+      retries: 5
+      delay: 10
+
+    - name: Report deployment status
+      ansible.builtin.debug:
+        msg: "Deployment complete. Health: {{ health_check.json.status }}"
+
+---
+- name: Configure system baseline (common role tasks/main.yml)
+  hosts: all
+  become: true
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install system packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - wget
+          - git
+          - htop
+          - vim
+          - ufw
+          - fail2ban
+          - unattended-upgrades
+        state: present
+
+    - name: Create application user
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        system: true
+        shell: /bin/bash
+        home: "{{ app_dir }}"
+        create_home: true
+
+    - name: Configure UFW firewall
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"
+        - "80"
+        - "443"
+        - "8080"
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    - name: Configure sysctl for high-performance networking
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop:
+        - { key: net.core.somaxconn, value: "65535" }
+        - { key: net.ipv4.tcp_max_syn_backlog, value: "65535" }
+        - { key: vm.swappiness, value: "10" }
+
+    - name: Deploy application config
+      ansible.builtin.template:
+        src: templates/app.env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: "0600"
+      notify: restart app
+
+    - name: Pull latest Docker image
+      community.docker.docker_image:
+        name: "{{ docker_registry }}/{{ app_name }}"
+        tag: "{{ image_tag }}"
+        source: pull
+
+    - name: Start application with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        state: present
+        pull: always
+
+  handlers:
+    - name: restart app
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        services:
+          - "{{ app_name }}"
+        state: restarted

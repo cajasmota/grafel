@@ -1,0 +1,30 @@
+frameworks_and_dialects:
+  name: MySQL / MariaDB
+  category: rdbms_dialect
+  file_extensions:
+  - '*.sql'
+  - '*.mysql'
+  config_markers:
+  - my.cnf
+  - my.ini
+  - .my.cnf
+  syntax_markers:
+  - ENGINE=InnoDB
+  - ENGINE=MyISAM
+  - AUTO_INCREMENT
+  - UNSIGNED
+  - TINYINT(1)
+  - ENUM(
+  - SET(
+  - '`backtick_identifiers`'
+  - LIMIT ?, ?
+  - ON DUPLICATE KEY UPDATE
+  - INSERT IGNORE
+  - SHOW TABLES
+  - SHOW COLUMNS
+  - INFORMATION_SCHEMA.COLUMNS
+  notes: 'MySQL dialect uses backtick identifier quoting, ENGINE= storage engine declarations,
+    AUTO_INCREMENT (vs SERIAL), and ON DUPLICATE KEY UPDATE for upsert. MariaDB is
+    largely compatible but adds SEQUENCE objects and ROW_NUMBER() earlier than MySQL.
+
+    '

@@ -1,0 +1,22 @@
+meta:
+  language: hcl
+  display_name: HCL (HashiCorp Configuration Language)
+  extensions:
+  - .tf
+  - .hcl
+  - .tfvars
+  - .pkr.hcl
+  - .pkrvars.hcl
+  - .nomad
+  primary_dependency_file: versions.tf
+  lock_files:
+  - .terraform.lock.hcl
+  notes: 'HCL is a configuration language used across the HashiCorp toolchain. Terraform
+    and OpenTofu are the dominant consumers (infrastructure as code), but Packer (.pkr.hcl),
+    Vault (vault.hcl), Nomad (.nomad job specs), and Waypoint (waypoint.hcl) all share
+    the same syntax. Detection relies on file extensions, block signatures, and the
+    required_providers stanza rather than a package manifest. The .terraform/ directory
+    and .terraform.lock.hcl are initialisation artefacts, not source — never index
+    them.
+
+    '

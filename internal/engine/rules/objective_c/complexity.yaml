@@ -1,0 +1,141 @@
+complexity_signals:
+- name: Category Method Swizzling
+  severity: high
+  description: 'Runtime method replacement using method_exchangeImplementations or
+    class_replaceMethod from the Objective-C runtime. Swizzling is invisible at the
+    call site and breaks static analysis. Categories extending system classes with
+    new methods can cause name collisions with SDK updates.
+
+    '
+  detection_patterns:
+  - '#import <objc/runtime.h>'
+  - method_exchangeImplementations(
+  - class_replaceMethod(
+  - class_getInstanceMethod(
+  - class_addMethod(
+  - '@implementation NSObject (*)'
+  - '@implementation UIViewController (*)'
+  - '@implementation NSString (*)'
+  - load {
+  - + (void)load {
+  notes: '+ (void)load is the canonical swizzle hook — runs before main(). Swizzling
+    in +initialize is less common but equivalent in impact. High cognitive load: understanding
+    a swizzled method requires tracing the runtime call graph, not the source call
+    graph.
+
+    '
+- name: KVO / KVC Chains
+  severity: medium
+  description: 'Key-Value Observing and Key-Value Coding create implicit data flow
+    via string-based keypaths. Observer registration/deregistration mismatches cause
+    crashes. Deeply nested keypaths amplify fragility.
+
+    '
+  detection_patterns:
+  - 'addObserver:forKeyPath:'
+  - 'removeObserver:forKeyPath:'
+  - 'observeValueForKeyPath:ofObject:change:context:'
+  - 'valueForKeyPath:'
+  - 'setValue:forKeyPath:'
+  - 'valueForKey:'
+  - 'setValue:forKey:'
+  - NSKeyValueObservingOptionNew
+  - NSKeyValueObservingOptionOld
+  - 'willChangeValueForKey:'
+  - 'didChangeValueForKey:'
+  notes: 'String-based keypaths are not compiler-checked. keyPath(@"user.address.city")
+    chains increase fragility. Deregistration must match registration context pointer
+    exactly — mismatch is a runtime crash. Large numbers of KVO observers indicate
+    high implicit coupling.
+
+    '
+- name: Block Nesting / Callback Pyramids
+  severity: high
+  description: 'Deeply nested completion block callbacks (callback hell). Common in
+    pre-async/await Objective-C networking and animation code. Increases cyclomatic
+    complexity and makes error path tracing difficult.
+
+    '
+  detection_patterns:
+  - ^{ ... ^{ ... ^{ (3+ levels of block nesting)
+  - completionHandler:^(* *) {
+  - success:^(* *, * *) { failure:^(
+  - animateWithDuration:animations:^{ completion:^{
+  - dispatch_async(dispatch_get_main_queue(), ^{
+  - dispatch_after(dispatch_time(DISPATCH_TIME_NOW
+  threshold:
+    block_nesting_depth: 3
+    callback_chains: 4
+  notes: 'Count maximum block nesting depth per function. Depth >= 3 is a complexity
+    signal. Callback pyramid anti-pattern: each async operation nests its continuation
+    inside the previous completion block. Mitigated by promise/reactive patterns (ReactiveCocoa)
+    or refactoring to named methods.
+
+    '
+- name: Protocol Conformance Depth
+  severity: medium
+  description: 'Classes conforming to many protocols simultaneously, especially datasource
+    + delegate protocols for UITableView or UICollectionView. Fat view controllers
+    with 10+ protocol conformances indicate missing separation of concerns.
+
+    '
+  detection_patterns:
+  - '@interface * : UIViewController <UITableViewDelegate, UITableViewDataSource,
+    UIScrollViewDelegate, UITextFieldDelegate'
+  - '@interface * : NSObject <Protocol1, Protocol2, Protocol3, Protocol4'
+  - conformsToProtocol:@protocol(
+  - '@protocol * <Protocol1, Protocol2, Protocol3>'
+  threshold:
+    conformance_count: 4
+  notes: 'Count the number of protocols listed in the @interface declaration. 4+ protocols
+    on a single class is a complexity signal. Combined with large method count (50+),
+    this indicates a Massive View Controller.
+
+    '
+- name: Runtime Messaging and Dynamic Dispatch
+  severity: medium
+  description: 'Dynamic method invocation bypassing the static call graph via performSelector:,
+    NSInvocation, or objc_msgSend. Breaks ARC analysis, suppresses compiler warnings,
+    and makes dead code detection unreliable.
+
+    '
+  detection_patterns:
+  - 'performSelector:'
+  - 'performSelector:withObject:'
+  - 'performSelector:withObject:withObject:'
+  - 'performSelector:onThread:'
+  - 'performSelectorInBackground:'
+  - NSInvocation *
+  - '[NSInvocation invocationWithMethodSignature:'
+  - objc_msgSend(
+  - NSSelectorFromString(
+  - 'respondsToSelector:'
+  notes: 'NSSelectorFromString() with a string constant is a high-severity signal
+    — the selector is not checked at compile time. performSelector: with dynamic selector
+    construction is equally opaque. NSInvocation is the lowest-level dynamic dispatch
+    mechanism.
+
+    '
+- name: Macro-Driven Code Generation
+  severity: low
+  description: 'Heavy use of preprocessor macros for code generation or conditional
+    compilation. Macros expand before parsing, making the effective code invisible
+    to static analysis tools operating on the pre-expanded source.
+
+    '
+  detection_patterns:
+  - '#define * (args) \'
+  - SYNTHESIZE_SINGLETON_FOR_CLASS(
+  - RACObserve(
+  - RAC(
+  - '#ifdef TARGET_OS_IPHONE'
+  - '#if __IPHONE_OS_VERSION_MAX_ALLOWED'
+  - NS_ASSUME_NONNULL_BEGIN / END
+  - CF_RETURNS_RETAINED
+  - NS_DESIGNATED_INITIALIZER
+  notes: 'Multi-line macros with backslash continuation are the highest-severity variant.
+    Conditional compilation blocks (#if / #ifdef) that branch on platform or SDK version
+    create multiple effective code paths from a single file. NS_ASSUME_NONNULL_BEGIN/END
+    is a low-severity annotation macro (auditing nullability).
+
+    '

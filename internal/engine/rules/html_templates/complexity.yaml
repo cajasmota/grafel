@@ -1,0 +1,103 @@
+complexity_signals:
+  nested_template_logic:
+    description: Deeply nested conditional or looping logic within a single template
+      file
+    signals:
+    - name: deep_conditional_nesting
+      description: if/else blocks nested 3+ levels deep within a template
+      threshold: 3
+      patterns:
+      - '{% if %}...{% if %}...{% if %}... (Jinja2/Twig/Nunjucks)'
+      - '*ngIf inside *ngIf (Angular)'
+      - '{#if}...{#if}...{#if} (Svelte)'
+      - v-if on parent + v-if on child (Vue)
+      - '@if inside @if (Angular 17+)'
+    - name: deep_loop_nesting
+      description: Loop constructs nested 2+ levels (list-within-list rendering)
+      threshold: 2
+      patterns:
+      - '{% for %}...{% for %} (Jinja2/Twig/Nunjucks)'
+      - '*ngFor inside *ngFor (Angular)'
+      - '{#each}...{#each} (Svelte)'
+      - v-for inside v-for (Vue)
+    - name: loop_with_conditional
+      description: Loop containing a multi-branch conditional — common source of rendering
+        bugs
+      patterns:
+      - '*ngFor + *ngIf on same or child elements'
+      - '{#each} containing {#if}...{:else}'
+      - v-for containing v-if at nested level
+  deep_component_composition:
+    description: Highly nested component hierarchies that are difficult to reason
+      about statically
+    signals:
+    - name: provider_nesting
+      description: 3+ wrapper/provider components stacked at the root of a template
+      threshold: 3
+      patterns:
+      - 'Angular: <AppProvider><ThemeProvider><AuthProvider>...'
+      - 'Vue: <provide-wrapper><theme><auth>...'
+      - 'Astro: layout wrapping layout wrapping layout'
+    - name: dynamic_component
+      description: Component resolved at runtime via dynamic reference — harder to
+        trace statically
+      patterns:
+      - Angular <ng-container *ngComponentOutlet="comp">
+      - Vue <component :is="dynamicComp">
+      - Svelte <svelte:component this={comp}>
+      - 'React: const Comp = getComponent(); return <Comp />'
+    - name: recursive_component
+      description: Component that renders itself — infinite recursion risk if guard
+        absent
+      patterns:
+      - 'Vue: component calling itself by name within template'
+      - 'Svelte: <svelte:self> usage'
+      - 'Angular: component selector used within its own template'
+  conditional_rendering_chains:
+    description: Long chains of mutually exclusive render conditions — maintenance
+      complexity
+    signals:
+    - name: long_if_else_chain
+      description: 4+ mutually exclusive branches in a single template decision point
+      threshold: 4
+      patterns:
+      - 'Angular: *ngIf / else chains using multiple <ng-template>'
+      - 'Vue: v-if / v-else-if / v-else with >3 branches'
+      - 'Svelte: {#if}{:else if}{:else if}... with >3 branches'
+      - 'Jinja2/Twig: {% elif %} chain >3 branches'
+    - name: ternary_chain
+      description: Nested ternary expressions 3+ deep inside interpolation
+      threshold: 3
+      patterns:
+      - '{{ a ? b : (c ? d : e) }} (Jinja2/Twig/Nunjucks/Handlebars)'
+      - '{a ? b : c ? d : e} (Svelte/JSX)'
+      - '<%= a ? b : c ? d : e %> (ERB/EJS)'
+  slot_named_slot_nesting:
+    description: Complex slot/content projection patterns — high cognitive load for
+      template consumers
+    signals:
+    - name: many_named_slots
+      description: Component defining >5 named slots — likely a layout anti-pattern
+      threshold: 5
+      patterns:
+      - 'Angular: >5 distinct <ng-content select="..."> in one component'
+      - 'Vue: >5 named <slot name="..."> in one SFC'
+      - 'Svelte: >5 named <slot name="..."> in one .svelte file'
+      - 'Astro: >5 named <slot name="..."> in one .astro file'
+    - name: slot_in_slot
+      description: Slot inside a slot — content projection composed across multiple
+        levels
+      patterns:
+      - Component A uses <slot>, rendered inside Component B which also uses <slot>
+      - 'Angular transclusion chains: <ng-content> inside a component passed as <ng-content>
+        to outer'
+  large_template_files:
+    description: Monolithic template files that should be broken into components
+    signals:
+    - name: high_line_count
+      description: Single template file exceeding 300 lines — strong signal of missing
+        component decomposition
+      threshold: 300
+    - name: many_top_level_conditionals
+      description: '>5 top-level if/unless blocks in one template file'
+      threshold: 5

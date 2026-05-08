@@ -1,0 +1,34 @@
+orms_database:
+  name: MySQL Rust Drivers (mysql_async, sqlx mysql feature)
+  category: relational_database
+  crate_name: mysql_async
+  detection:
+    import_patterns:
+    - use mysql_async
+    - use mysql::
+    - use sqlx::mysql
+    - use sqlx::MySqlPool
+    code_patterns:
+    - mysql_async::Pool::new(
+    - mysql::Pool::new(
+    - MySqlPool::connect(
+    - sqlx::MySqlPool::connect(
+  notes: >
+    mysql_async provides a fully async MySQL driver for Tokio. The synchronous
+    mysql crate is also detected. sqlx supports MySQL via the mysql feature
+    flag and exposes MySqlPool as the primary pool type.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

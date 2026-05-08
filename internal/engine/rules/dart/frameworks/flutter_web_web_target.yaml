@@ -1,0 +1,32 @@
+mobile:
+  name: Flutter Web (web target)
+  category: mobile_web
+  detection:
+    pubspec_primary_signal:
+    - key: flutter
+      value: 'sdk: flutter'
+      location: dependencies section of pubspec.yaml
+    structural_signals:
+    - path: web/
+      meaning: Web platform directory — required for web target
+    - path: web/index.html
+      meaning: Web entry HTML — mandatory for Flutter Web
+    - path: web/manifest.json
+      meaning: PWA manifest
+    - path: web/favicon.png
+      meaning: Standard Flutter Web generated asset
+    code_signals:
+    - kIsWeb
+    - dart:html
+    - import 'dart:js'
+    - dart:js_interop
+    notes: 'Flutter Web shares the Flutter SDK. Disambiguate from mobile by presence
+      of web/ and absence of android/ + ios/ (web-only project). Mixed projects (web
+      + mobile) will have both web/ and android/ or ios/.
+
+      '
+
+custom_extractors:
+  - module: "memx_indexer.languages.dart.flutter_extractor"
+    function: "extract"
+    description: "Extract Flutter widgets, BLoC/Cubit/ChangeNotifier state management, Navigator routes, and GoRouter routes"

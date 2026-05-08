@@ -1,0 +1,23 @@
+orms_and_database:
+  name: knex
+  npm_packages:
+  - knex
+  config_files:
+  - knexfile.js
+  - knexfile.ts
+  - knexfile.cjs
+  detection_signals:
+    package_json_deps:
+    - knex
+    import_patterns:
+    - from 'knex'
+    - require('knex')
+  code_patterns:
+  - 'knex({ client:'
+  - db('table_name')
+  - .where(
+  - .select(
+  notes: Query builder (not full ORM); often used with Objection.js on top
+  custom_extractors:
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract

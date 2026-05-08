@@ -1,0 +1,20 @@
+orms:
+  name: Supabase Swift
+  category: backend_as_a_service_client
+  spm_coordinates:
+  - supabase/supabase-swift
+  detection:
+    import_patterns:
+    - import Supabase
+    - import SupabaseClient
+    code_patterns:
+    - 'SupabaseClient(supabaseURL:'
+    - supabase.from(
+    - supabase.auth.signIn
+    - supabase.storage
+    - supabase.realtime
+  notes: 'Official Supabase Swift client. SupabaseClient initialization with URL +
+    anon key is the definitive signal. Co-presence with .env or Config.plist containing
+    SUPABASE_URL = BaaS pattern.
+
+    '

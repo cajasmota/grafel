@@ -1,0 +1,32 @@
+meta:
+  language: docker
+  display_name: Docker / Container Ecosystem
+  primary_detection_files:
+  - Dockerfile
+  - Containerfile
+  - docker-compose.yml
+  - docker-compose.yaml
+  - compose.yml
+  - compose.yaml
+  file_name_patterns:
+  - Dockerfile
+  - Dockerfile.*
+  - '*.Dockerfile'
+  - Containerfile
+  - Containerfile.*
+  - docker-compose*.yml
+  - docker-compose*.yaml
+  - compose*.yml
+  - compose*.yaml
+  - .dockerignore
+  - Procfile
+  vera_scope_mapping: Service
+  notes: 'Docker is detected primarily by the presence of a Dockerfile or docker-compose
+    file rather than a package manifest. Dockerfile and Containerfile are functionally
+    identical formats — OCI-compliant runtimes (Podman, Buildah, kaniko) consume both.
+    The docker-compose / Compose Specification files define multi-service topologies.
+    Procfile is included because it defines the process model for containerised PaaS
+    deployments (Heroku, Railway, Render, Dokku) and maps naturally to archigraph Service
+    entities. All entities extracted from these files should use archigraph SCOPE.Service.
+
+    '

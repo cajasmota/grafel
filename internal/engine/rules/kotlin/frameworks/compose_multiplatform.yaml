@@ -1,0 +1,29 @@
+frameworks:
+  name: Compose Multiplatform
+  category: multiplatform_ui
+  gradle_coordinates:
+  - org.jetbrains.compose:compose-gradle-plugin
+  - org.jetbrains.compose.runtime:runtime
+  detection:
+    config_files:
+    - commonMain/kotlin/
+    - desktopMain/kotlin/
+    build_signals:
+    - id("org.jetbrains.compose")
+    - '"org.jetbrains.compose.runtime:runtime"'
+    - '"org.jetbrains.compose.ui:ui"'
+    - compose.desktop.currentOs
+    import_patterns:
+    - import androidx.compose.runtime.
+    - import org.jetbrains.compose.
+    code_patterns:
+    - '@Composable'
+    - application {
+    - Window(
+    - singleWindowApplication {
+  notes: 'Compose Multiplatform: org.jetbrains.compose plugin + commonMain dir is
+    definitive. application {} + Window() are desktop-specific signals. Desktop entry
+    point uses singleWindowApplication() or application {}. Co-presence with kotlin("multiplatform")
+    confirms CMP vs vanilla Compose.
+
+    '

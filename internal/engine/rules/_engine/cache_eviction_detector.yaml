@@ -1,0 +1,21 @@
+# Cache eviction strategy detector (MX-726)
+# Cross-language detector for cache eviction policies and TTL/LRU/LFU/maxSize configurations.
+# Registered as a pattern detector that fires on Java/Kotlin (Spring @Cacheable/@CacheEvict,
+# Caffeine, Guava CacheBuilder, EhCache), Redis CONFIG/EXPIRE, JavaScript/TypeScript
+# (node-cache, lru-cache, ioredis), Python (cachetools TTLCache/LRUCache/LFUCache, Django
+# CACHES, Flask-Caching), Go (groupcache, bigcache, ristretto), C# (MemoryCache,
+# IDistributedCache), and Ruby (Rails.cache, Dalli).
+#
+# File gate is internal to the detector (applies_to checks language and source signals).
+
+name: cache_eviction
+description: >-
+  Detect cache eviction strategies and emit SCOPE.Config entities with
+  kind=cache_policy. Supported frameworks: Spring (@Cacheable, @CacheEvict,
+  @CacheConfig), Caffeine, Guava CacheBuilder, EhCache, Redis (maxmemory-policy,
+  EXPIRE), node-cache, lru-cache, ioredis, cachetools (TTLCache/LRUCache/LFUCache),
+  Django CACHES TIMEOUT, Flask-Caching, groupcache, bigcache, ristretto,
+  .NET MemoryCache/IDistributedCache, Rails.cache, Dalli.
+module: memx_indexer.pattern_detectors.cache_eviction_detector
+function: detect
+applies_to_function: applies_to

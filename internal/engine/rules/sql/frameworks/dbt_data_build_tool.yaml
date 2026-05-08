@@ -1,0 +1,39 @@
+frameworks_and_dialects:
+  name: dbt (data build tool)
+  category: sql_transformation
+  config_markers:
+  - dbt_project.yml
+  - profiles.yml
+  - packages.yml
+  - dbt_packages/
+  - models/
+  - macros/
+  - tests/
+  - snapshots/
+  - seeds/
+  - analyses/
+  file_extensions:
+  - '*.sql'
+  syntax_markers:
+  - '{{ ref('
+  - '{{ source('
+  - '{{ config('
+  - '{{ var('
+  - '{{ env_var('
+  - '{% macro'
+  - '{% materialization'
+  - '{{ this }}'
+  - '{{ target.'
+  - '{{ execute }}'
+  - '{{ log('
+  - '{{ run_query('
+  - '{{ adapter.'
+  - materialized=
+  - unique_key=
+  - incremental_strategy=
+  notes: 'dbt uses Jinja2 templating embedded in SQL. The {{ ref() }} and {{ source()
+    }} macros are the definitive detection signal. dbt SQL files are .sql but contain
+    Jinja templates. dbt_project.yml is the root config. Models are organized in models/
+    directory with subdirectory conventions (staging/, marts/, intermediate/).
+
+    '

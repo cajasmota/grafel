@@ -1,0 +1,124 @@
+testing:
+- name: JUnit 5 (Jupiter)
+  gradle_coordinates:
+  - org.junit.jupiter:junit-jupiter-api
+  - org.junit.jupiter:junit-jupiter-engine
+  detection:
+    file_patterns:
+    - '*Test.kt'
+    - '*Tests.kt'
+    - '*Spec.kt'
+    directory_patterns:
+    - src/test/kotlin/
+    - src/test/
+    import_patterns:
+    - import org.junit.jupiter.api.
+    - import org.junit.jupiter.params.
+    code_patterns:
+    - '@Test'
+    - '@BeforeEach'
+    - '@AfterEach'
+    - '@ExtendWith('
+    - '@ParameterizedTest'
+  notes: 'Standard JVM test framework. @ExtendWith(MockKExtension::class) is common
+    signal for JUnit 5 + MockK combo.
+
+    '
+- name: Kotest
+  gradle_coordinates:
+  - io.kotest:kotest-runner-junit5
+  - io.kotest:kotest-assertions-core
+  detection:
+    file_patterns:
+    - '*Spec.kt'
+    - '*Test.kt'
+    import_patterns:
+    - import io.kotest.
+    code_patterns:
+    - 'class * : FunSpec({'
+    - 'class * : BehaviorSpec({'
+    - 'class * : DescribeSpec({'
+    - 'class * : StringSpec({'
+    - 'class * : ShouldSpec({'
+    - 'shouldBe '
+    - shouldThrow<
+    - forAll {
+  notes: 'Kotlin-native test framework with multiple spec styles (FunSpec, BehaviorSpec,
+    DescribeSpec). The spec superclass pattern (class MyTest : FunSpec({ ... })) is
+    definitive. shouldBe infix assertion is high-confidence. Supports property-based
+    testing via kotest-property.
+
+    '
+- name: MockK
+  gradle_coordinates:
+  - io.mockk:mockk
+  - io.mockk:mockk-android
+  detection:
+    import_patterns:
+    - import io.mockk.
+    code_patterns:
+    - mockk<
+    - every {
+    - verify {
+    - coEvery {
+    - coVerify {
+    - justRun {
+    - spyk(
+    - relaxed = true
+  notes: 'Kotlin-first mocking library. coEvery/coVerify are coroutine-specific MockK
+    signals. every { mock.method() } returns value is classic MockK DSL. @MockK annotation
+    + MockKAnnotations.init(this) is field injection pattern.
+
+    '
+- name: kotlin.test
+  gradle_coordinates:
+  - org.jetbrains.kotlin:kotlin-test
+  - org.jetbrains.kotlin:kotlin-test-junit5
+  detection:
+    import_patterns:
+    - import kotlin.test.
+    code_patterns:
+    - assertEquals(
+    - assertNotNull(
+    - assertTrue(
+    - assertFails {
+    - assertFailsWith<
+    - '@Test (from kotlin.test)'
+  notes: 'KMP-compatible test library — required for testing shared code in Kotlin
+    Multiplatform projects. kotlin.test maps to JUnit/XCTest/ JS test frameworks per
+    platform. Presence in commonMain indicates KMP.
+
+    '
+- name: Turbine
+  gradle_coordinates:
+  - app.cash.turbine:turbine
+  detection:
+    import_patterns:
+    - import app.cash.turbine.
+    code_patterns:
+    - flow.test {
+    - awaitItem()
+    - awaitComplete()
+    - awaitError()
+    - cancelAndConsumeRemainingEvents()
+  notes: 'Testing library for Kotlin Flows. turbine provides a test {} collector extension.
+    awaitItem() / awaitComplete() sequence is definitive signal. High-confidence indicator
+    of reactive/Flow-based architecture under test.
+
+    '
+- name: Spring Boot Test (Kotlin)
+  gradle_coordinates:
+  - org.springframework.boot:spring-boot-starter-test
+  detection:
+    import_patterns:
+    - import org.springframework.boot.test.
+    code_patterns:
+    - '@SpringBootTest'
+    - '@WebMvcTest('
+    - '@DataJpaTest'
+    - '@MockBean'
+    - mockMvc.get(
+  notes: 'Spring Boot integration testing. @SpringBootTest loads full context. Co-presence
+    with MockK (not Mockito) indicates Kotlin-centric Spring test.
+
+    '

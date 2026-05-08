@@ -1,0 +1,157 @@
+testing:
+- name: Built-in test harness (#[test])
+  crate: null
+  category: unit
+  detection:
+    code_patterns:
+    - '#[test]'
+    - '#[cfg(test)]'
+    - mod tests {
+    - assert_eq!(
+    - assert_ne!(
+    - assert!(
+    - panic!(
+    - should_panic
+    - '#[should_panic]'
+    run_command: cargo test
+  notes: 'Zero-dependency. Every Rust project can use this. #[cfg(test)] mod is the
+    canonical inline test module pattern. Tests in tests/ directory are integration
+    tests (separate compilation unit, no #[cfg(test)] needed).
+
+    '
+- name: cargo test (integration tests)
+  crate: null
+  category: integration
+  detection:
+    structural_markers:
+    - tests/
+    - tests/*.rs
+    code_patterns:
+    - 'use my_crate::'
+  notes: 'tests/ directory at crate root contains integration tests compiled as separate
+    binaries. Files directly import the crate under test (no #[cfg(test)] needed).
+    Distinct from inline unit tests.
+
+    '
+- name: mockall
+  crate: mockall
+  category: mocking
+  crates_io_version_2025: 0.13.x
+  detection:
+    cargo_toml_deps:
+    - mockall
+    dev_dependency: true
+    import_markers:
+    - 'use mockall::'
+    - 'use mockall::predicate::'
+    code_patterns:
+    - '#[automock]'
+    - '#[cfg_attr(test, automock)]'
+    - mock! {
+    - .expect_
+    - .returning(
+    - .times(
+  notes: 'De-facto mock library for Rust. #[automock] on a trait is the primary detection
+    signal. Generates mock structs at compile time. Should be in [dev-dependencies]
+    only.
+
+    '
+- name: proptest
+  crate: proptest
+  category: property_based
+  crates_io_version_2025: 1.x
+  detection:
+    cargo_toml_deps:
+    - proptest
+    dev_dependency: true
+    import_markers:
+    - 'use proptest::'
+    code_patterns:
+    - proptest! {
+    - '#[proptest]'
+    - prop_assert_eq!(
+    - prop_assert!(
+    - any::<
+    - 'prop::collection::'
+    - Strategy
+  notes: 'Property-based testing (Hypothesis-style). proptest! macro block is the
+    definitive signal. Tests generate random inputs to find edge cases.
+
+    '
+- name: criterion
+  crate: criterion
+  category: benchmarking
+  crates_io_version_2025: 0.5.x
+  detection:
+    cargo_toml_deps:
+    - criterion
+    dev_dependency: true
+    config_markers:
+    - '[[bench]]'
+    structural_markers:
+    - benches/
+    import_markers:
+    - 'use criterion::'
+    code_patterns:
+    - criterion_group!(
+    - criterion_main!(
+    - Criterion
+    - c.bench_function(
+    - black_box(
+  notes: 'Statistical benchmarking library. benches/ directory and [[bench]] section
+    in Cargo.toml are structural signals. criterion_group! and criterion_main! macros
+    are hard code signals.
+
+    '
+- name: rstest
+  crate: rstest
+  category: parametrized
+  crates_io_version_2025: 0.23.x
+  detection:
+    cargo_toml_deps:
+    - rstest
+    dev_dependency: true
+    import_markers:
+    - 'use rstest::'
+    code_patterns:
+    - '#[rstest]'
+    - '#[case('
+    - '#[fixture]'
+    - '#[values('
+  notes: 'Parameterized and fixture-based testing. #[rstest] attribute is the detection
+    signal. #[case(...)] enables test tables similar to Go''s table-driven tests.
+
+    '
+- name: tokio::test
+  crate: tokio
+  category: async_testing
+  detection:
+    cargo_toml_deps:
+    - tokio
+    code_patterns:
+    - '#[tokio::test]'
+    - '#[tokio::test(flavor = '
+  notes: 'Async test runner macro from Tokio. #[tokio::test] is the definitive signal
+    for async unit tests. Extremely common in async Rust codebases. Does not require
+    a separate test crate beyond tokio itself.
+
+    '
+test_conventions:
+  inline_unit_tests:
+    pattern: '#[cfg(test)] mod tests { ... }'
+    location: same file as source
+    signal: '#[cfg(test)]'
+  integration_tests:
+    location: tests/ directory at crate root
+    naming: any .rs file in tests/
+    signal: tests/ directory
+  benchmark_files:
+    location: benches/ directory
+    naming: '*.rs in benches/'
+    signal: '[[bench]] in Cargo.toml'
+  test_file_suffixes: []
+  notes: 'Rust convention: unit tests live inline via #[cfg(test)] mod. Integration
+    tests live in tests/. No _test.rs filename convention (unlike Go). Test modules
+    named "tests" are idiomatic but not required.
+
+    '

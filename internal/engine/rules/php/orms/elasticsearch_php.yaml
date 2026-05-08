@@ -1,0 +1,22 @@
+orms_database:
+  name: elasticsearch/elasticsearch
+  composer_package: elasticsearch/elasticsearch
+  detection:
+    composer_json_markers:
+    - elasticsearch/elasticsearch
+    import_patterns:
+    - use Elasticsearch\
+    - use Elastic\Elasticsearch\
+    code_patterns:
+    - ClientBuilder::create()
+    - ClientBuilder::fromConfig(
+  notes: |
+    Official PHP Elasticsearch client. v7 uses Elasticsearch\ClientBuilder,
+    v8 uses Elastic\Elasticsearch\ClientBuilder.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract ClientBuilder connections, search() calls, aggregations,
+      ILM policies, and index creation for PHP.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

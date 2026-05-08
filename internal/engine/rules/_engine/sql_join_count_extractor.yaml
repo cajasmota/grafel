@@ -1,0 +1,15 @@
+# SQL JOIN count extractor (MX-735)
+# Cross-language extractor that counts JOIN keyword occurrences per SQL string
+# literal and stores join_count / has_complex_joins on the emitted entity.
+#
+# Language gate: ALL languages with embedded SQL strings (identical gate to
+# sql_query_extractor MX-584).
+
+name: sql_join_count
+description: >-
+  Count JOIN keyword occurrences per SQL string literal found in source and
+  emit SCOPE.Operation entities with join_count and has_complex_joins properties.
+  Supports complex JOIN detection for memory_search queries (closes New-Q68).
+module: memx_indexer.pattern_detectors.sql_join_count_extractor
+function: detect
+applies_to_function: applies_to

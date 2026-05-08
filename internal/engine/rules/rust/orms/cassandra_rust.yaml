@@ -1,0 +1,28 @@
+orms_database:
+  name: scylla (Rust Driver — Cassandra-compatible)
+  category: nosql_database
+  crate: scylla
+  detection:
+    import_patterns:
+    - use scylla
+    - scylla::Session
+    code_patterns:
+    - SessionBuilder::new()
+    - scylla::SessionBuilder
+    - Session::connect
+  notes: >
+    The scylla Rust crate provides Cassandra-compatible CQL access.
+    It supports the same CQL protocol as Apache Cassandra.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cassandra.cassandra_extractor"
+    function: "extract"
+    description: >
+      Cross-language Cassandra extractor: SessionBuilder::new()
+      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), .query()
+      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), .prepare()
+      (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

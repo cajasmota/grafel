@@ -1,0 +1,38 @@
+# Bull/BullMQ queue extraction rules (MX-565)
+# Covers: bull (v3/v4), bullmq (v1+), bull-board (producer detection only)
+# NPM: bull, bullmq
+
+queues:
+  name: bullmq
+  category: job_queue
+  npm_packages:
+    - bull
+    - bullmq
+  config_files: []
+  detection_signals:
+    package_json_deps:
+      - bull
+      - bullmq
+    import_patterns:
+      - "from 'bull'"
+      - "from 'bullmq'"
+      - "require('bull')"
+      - "require('bullmq')"
+    code_patterns:
+      - "new Queue("
+      - "new Worker("
+      - "new QueueScheduler("
+      - ".add("
+      - ".process("
+  notes: >
+    Bull v3 uses queue.process() for consumer registration.
+    BullMQ uses new Worker() for consumer registration.
+    QueueScheduler is BullMQ-only (handles delayed/repeatable jobs).
+
+custom_extractors:
+  - module: memx_indexer.languages.javascript_typescript.bull_extractor
+    callable: extract
+    frameworks:
+      - bull
+      - bullmq
+      - bull-board

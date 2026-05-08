@@ -1,0 +1,45 @@
+frameworks:
+  name: Nerves
+  hex_package: nerves
+  category: iot_embedded
+  github_stars_2025: 2500+
+  detection:
+    config_files:
+    - mix.exs
+    - config/target.exs
+    - rootfs_overlay/
+    - rel/vm.args
+    - nerves/systems/
+    mix_deps:
+    - nerves
+    - nerves_runtime
+    - nerves_network
+    - nerves_init_gadget
+    - nerves_hub_link
+    - vintage_net
+    - circuits_gpio
+    - circuits_i2c
+    - circuits_spi
+    - circuits_uart
+    import_markers:
+    - use Nerves.Pack
+    - NervesHub
+    - Nerves.Runtime
+    - VintageNet
+    - Circuits.GPIO
+    - Circuits.I2C
+    - Circuits.SPI
+    - Circuits.UART
+    - '@target'
+    - mix nerves
+    structural_markers:
+    - rootfs_overlay/
+    - nerves/systems/
+    - config/target.exs
+    env_targets:
+    - NERVES_TARGET
+    notes: 'Nerves is identified by nerves dep in mix.exs + NERVES_TARGET env usage
+      or config/target.exs. rootfs_overlay/ directory strongly indicates a Nerves
+      firmware project. Circuits.* namespaces indicate hardware peripheral access.
+
+      '

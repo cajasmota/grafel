@@ -1,0 +1,29 @@
+frameworks:
+  name: remix
+  category: web
+  npm_packages:
+  - '@remix-run/node'
+  - '@remix-run/react'
+  - '@remix-run/serve'
+  config_files:
+  - remix.config.js
+  - remix.config.ts
+  - vite.config.ts
+  detection_signals:
+    package_json_deps:
+    - '@remix-run/react'
+    - '@remix-run/node'
+    directory_conventions:
+    - app/routes/
+    - app/root.tsx
+  framework_specific:
+  - loader()
+  - action()
+  - useLoaderData
+  - useActionData
+  - Form
+  custom_extractors:
+  - module: memx_indexer.languages.javascript_typescript.remix_extractor
+    function: extract
+    description: "Remix file-based routes, loader/action, nested layouts, and boundary detection"
+  notes: remix.config.js or @remix-run/react dep is definitive

@@ -1,0 +1,24 @@
+frameworks:
+  name: Vaadin
+  category: web_ui
+  maven_coordinates: com.vaadin:vaadin-core
+  gradle_dependency: implementation 'com.vaadin:vaadin-core'
+  adoption_rank_2025: 11
+  detection:
+    pom_xml_markers:
+    - com.vaadin
+    - vaadin-core
+    - vaadin-maven-plugin
+    import_patterns:
+    - import com.vaadin.flow.component
+    - import com.vaadin.flow.router
+    code_patterns:
+    - '@Route'
+    - extends VerticalLayout
+    - extends HorizontalLayout
+    - '@PWA'
+    - UI.getCurrent()
+  notes: '@Route annotation + extending Vaadin layout components is definitive. vaadin-maven-plugin
+    in pom.xml is a strong signal.
+
+    '

@@ -1,0 +1,37 @@
+orms_database:
+  name: MySQL Python Drivers (mysql-connector-python, PyMySQL, aiomysql)
+  category: relational_database
+  pypi_package: mysql-connector-python
+  detection:
+    import_patterns:
+    - import mysql.connector
+    - from mysql.connector
+    - import pymysql
+    - from pymysql
+    - import aiomysql
+    - from aiomysql
+    - import MySQLdb
+    code_patterns:
+    - mysql.connector.connect(
+    - pymysql.connect(
+    - aiomysql.connect(
+    - MySQLConnectionPool(
+  notes: >
+    mysql-connector-python is Oracle's official Python driver. PyMySQL is a
+    pure-Python alternative. aiomysql provides asyncio support. All three
+    share the same connection interface pattern.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

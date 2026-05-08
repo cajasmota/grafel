@@ -1,0 +1,21 @@
+# Dead module detector (MX-732)
+# Post-extraction enricher. Flags first-party SCOPE.Component entities with
+# zero inbound DEPENDS_ON edges as is_unused=True and emits
+# SCOPE.Pattern(kind=dead_module) for each unused module.
+# Requires lib_boundary_enricher to have run first.
+
+name: dead_module_detector
+description: >-
+  Detect first-party modules (SCOPE.Component entities where is_first_party=True)
+  that have zero inbound DEPENDS_ON edges (excluding self-references).
+  Flags them with is_unused=True and emits SCOPE.Pattern(kind=dead_module).
+  Closes New-Q44 (which first-party modules are unused?).
+module: memx_indexer.pattern_detectors.dead_module_detector
+function: detect
+applies_to_function: applies_to
+otel_span: indexer.dead_module_detector
+otel_attributes:
+  - org_id
+  - first_party_module_count
+  - dead_module_count
+  - language

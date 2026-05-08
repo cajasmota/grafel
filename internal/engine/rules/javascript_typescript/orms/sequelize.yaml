@@ -1,0 +1,26 @@
+orms_and_database:
+  name: sequelize
+  npm_packages:
+  - sequelize
+  config_files:
+  - .sequelizerc
+  - config/config.json
+  - config/config.js
+  detection_signals:
+    package_json_deps:
+    - sequelize
+    import_patterns:
+    - from 'sequelize'
+    - require('sequelize')
+  code_patterns:
+  - new Sequelize(
+  - sequelize.define(
+  - Model.init(
+  - DataTypes.
+  notes: Mature ORM; .sequelizerc file points to config location
+custom_extractors:
+  - module: memx_indexer.languages.javascript_typescript.sequelize_extractor
+    callable: extract
+    frameworks:
+      - sequelize
+      - sequelize-typescript

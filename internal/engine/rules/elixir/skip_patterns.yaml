@@ -1,0 +1,74 @@
+skip_patterns:
+- pattern: _build/
+  reason: 'Elixir/Mix build output directory. Contains compiled BEAM bytecode (.beam),
+    consolidated protocols, and release artifacts. Never index.
+
+    '
+- pattern: deps/
+  reason: 'All Hex dependencies are fetched here by `mix deps.get`. Contains third-party
+    source code. Never index as project code — only reference for detection signals.
+
+    '
+- pattern: .elixir_ls/
+  reason: 'ElixirLS language server cache directory. Contains diagnostics, build artifacts,
+    and analysis data for the editor plugin. Not project code.
+
+    '
+- pattern: .lexical/
+  reason: 'Lexical language server cache directory (alternative to ElixirLS). Not
+    project code.
+
+    '
+- pattern: priv/static/
+  reason: 'Compiled frontend assets served by Phoenix (CSS, JS, images, fonts). Generated
+    by esbuild/webpack from assets/. Do not index compiled JS/CSS; index assets/ source
+    instead if needed.
+
+    '
+- pattern: priv/gettext/
+  reason: 'Auto-generated gettext translation files (.po, .pot). Machine-generated
+    localization data. Not meaningful for code analysis.
+
+    '
+- pattern: priv/repo/migrations/
+  reason: 'Auto-generated Ecto migration files with timestamp prefixes (e.g., 20240101000000_create_users.exs).
+    Index for schema detection but skip for complexity analysis — migrations are DDL,
+    not logic.
+
+    '
+  index_for: schema_detection
+  skip_for: complexity_analysis
+- pattern: '*.beam'
+  reason: 'Compiled BEAM bytecode files. Binary, not source code. Never index.
+
+    '
+- pattern: cover/
+  reason: 'ExCoveralls/mix test --cover output directory. Contains HTML coverage reports.
+    Not project code.
+
+    '
+- pattern: doc/
+  reason: 'ExDoc generated HTML documentation. Auto-generated from source docstrings.
+    Do not index generated docs; index source .ex files instead.
+
+    '
+- pattern: '*.ez'
+  reason: 'Erlang/Elixir release archive format (.ez files). Compiled release artifacts.
+    Not source code.
+
+    '
+- pattern: rel/
+  reason: 'Mix release output directory. Contains compiled release with embedded ERTS.
+    Not source code (except rel/vm.args which is config).
+
+    '
+  exception: rel/vm.args is a config file and may be indexed
+- pattern: node_modules/
+  reason: 'NPM dependencies for Phoenix assets pipeline (esbuild, PostCSS, etc.).
+    Not Elixir code. Present in assets/ subdirectory.
+
+    '
+- pattern: assets/node_modules/
+  reason: 'Same as above — Phoenix apps keep node_modules under assets/. Never index.
+
+    '

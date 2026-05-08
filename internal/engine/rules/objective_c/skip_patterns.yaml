@@ -1,0 +1,62 @@
+skip_patterns:
+- pattern: '*.xib'
+  reason: 'Interface Builder XML layout files. Binary or XML format; contain no executable
+    Objective-C logic. Layout connections (@IBOutlet/@IBAction) are reflected in the
+    corresponding .h/.m files. Do not parse.
+
+    '
+- pattern: '*.storyboard'
+  reason: 'Interface Builder XML storyboard files. Encodes view hierarchy and segue
+    transitions in XML. No Objective-C logic. Skip and extract ViewController class
+    references from the corresponding .h/.m files.
+
+    '
+- pattern: '*.strings'
+  reason: 'Localization key-value files (NSLocalizedString keys). Pure data, no executable
+    code. One file per language per bundle. Example: en.lproj/Localizable.strings.
+
+    '
+- pattern: '*.xcassets/'
+  reason: 'Asset catalogs containing images, colors, and icons in a directory bundle.
+    JSON metadata + PNG/PDF assets. No code. Skip entirely.
+
+    '
+- pattern: DerivedData/
+  reason: 'Xcode build output directory. Contains compiled .o files, .d dependency
+    files, .mom compiled Core Data models, generated code, and intermediate build
+    products. Never in source control; always skip.
+
+    '
+- pattern: Pods/
+  reason: 'CocoaPods vendored dependency directory. Contains third-party source code
+    installed by `pod install`. Equivalent to node_modules/. Skip to avoid indexing
+    dependencies as project code.
+
+    '
+- pattern: Carthage/Build/
+  reason: 'Compiled Carthage framework output. Contains prebuilt .framework bundles
+    for each dependency. Binary artifacts, not source. Skip.
+
+    '
+- pattern: Carthage/Checkouts/
+  reason: 'Carthage source checkouts of dependencies (when --use-ssh or --use-submodules
+    is used). Third-party source; skip to avoid indexing dependency code as project
+    code.
+
+    '
+- pattern: '*.xcarchive/'
+  reason: 'Xcode archive bundles created during the archive build phase (for App Store
+    submission). Contains compiled binary, dSYM, and metadata. Never in active source
+    trees; skip.
+
+    '
+- pattern: '*.dSYM/'
+  reason: 'Debug Symbol bundles. Used for crash symbolication. Binary format; no source
+    code. Skip.
+
+    '
+- pattern: build/
+  reason: 'Generic build output directory (used with xcodebuild -derivedDataPath build/
+    or Fastlane gym output). Skip.
+
+    '

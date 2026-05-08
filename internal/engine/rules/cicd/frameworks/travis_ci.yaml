@@ -1,0 +1,19 @@
+frameworks:
+  name: Travis CI
+  language: cicd
+  official_docs: https://docs.travis-ci.com
+  config_file: .travis.yml
+  adopted_by: GitHub repositories (legacy and new builds)
+  vera_scope: Service (build as Service, job as Operation)
+  characteristics:
+  - Language-based build setup (node_js, python, go, etc)
+  - 'Matrix builds via env: or matrix: combinations'
+  - Build stages for sequential phases (test, deploy)
+  - Deployment targets via deploy: section
+  - Caching (language-specific or directory-based)
+  - Now under new ownership; legacy .travis.yml may not work
+  complexity_signal_markers:
+  - Matrix dimension count > 4
+  - Stage count > 5
+  - Deploy target count > 3
+  - Conditional rules > 3

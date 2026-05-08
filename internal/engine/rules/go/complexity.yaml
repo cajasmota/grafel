@@ -1,0 +1,232 @@
+complexity_signals:
+  goroutine_patterns:
+    description: 'Goroutine spawning patterns that increase concurrency complexity
+      and make static analysis of execution flow harder.
+
+      '
+    signals:
+    - pattern: go func(
+      description: 'Anonymous goroutine — callee is a closure, complicating caller-callee
+        graph edges. Pre-Go 1.22 loop variable capture is a race condition risk.
+
+        '
+      severity: medium
+    - pattern: go func() {
+      description: 'Immediately invoked goroutine. Lifecycle management (when it terminates,
+        whether it leaks) is opaque without WaitGroup.
+
+        '
+      severity: medium
+    - pattern: sync.WaitGroup
+      description: 'WaitGroup presence signals structured goroutine lifecycle management.
+        High complexity if combined with dynamic Add().
+
+        '
+      severity: low
+    - pattern: errgroup.Go(
+      description: 'golang.org/x/sync/errgroup — structured concurrency with error
+        propagation. Signals goroutine fan-out pattern.
+
+        '
+      severity: low
+  channel_operations:
+    description: 'Channel patterns that obscure data flow in the dependency graph.
+
+      '
+    signals:
+    - pattern: 'make(chan '
+      description: 'Channel creation. Directional channels (<-chan, chan<-) and buffered
+        channels (make(chan T, N)) indicate pipeline design.
+
+        '
+      severity: medium
+    - pattern: <-chan <-chan
+      description: 'Channel-of-channels pattern (bridge pattern). Extremely high complexity
+        for static analysis.
+
+        '
+      severity: high
+    - pattern: close(
+      description: 'Channel close — "who closes" ownership is implicit and a common
+        source of panics. Tools cannot verify statically.
+
+        '
+      severity: medium
+    - pattern: range ch
+      description: 'Range over channel — signals producer-consumer pipeline. Termination
+        depends on channel close semantics.
+
+        '
+      severity: low
+  select_statements:
+    description: 'Select statement patterns indicating non-deterministic branching.
+
+      '
+    signals:
+    - pattern: select {
+      description: 'Multi-case select with channel operations creates non-deterministic
+        execution paths.
+
+        '
+      severity: medium
+    - pattern: case <-time.After(
+      description: 'Timeout select — signals timeout-sensitive logic. Creates time-dependent
+        code paths.
+
+        '
+      severity: medium
+    - pattern: 'default:'
+      description: 'Non-blocking select with default case. Behavior is CPU-scheduling-dependent,
+        hard to test exhaustively.
+
+        '
+      severity: high
+  context_propagation:
+    description: 'Context usage patterns that hide dependencies from signature analysis.
+
+      '
+    signals:
+    - pattern: context.WithValue(
+      description: 'Value stored in context — invisible to function signature analysis.
+        Hidden dependency injection.
+
+        '
+      severity: high
+    - pattern: ctx.Value(
+      description: 'Context value extraction. Combined with type assertion creates
+        dynamic dependency that tools cannot trace.
+
+        '
+      severity: high
+    - pattern: context.WithCancel(
+      description: 'Cancellation propagation — signals complex lifecycle management
+        across goroutine boundaries.
+
+        '
+      severity: medium
+    - pattern: context.WithTimeout(
+      description: 'Timeout context — signals time-bounded operations.
+
+        '
+      severity: low
+  middleware_chains:
+    description: 'Middleware and interceptor patterns where execution order is defined
+      at runtime, not in individual handler files.
+
+      '
+    signals:
+    - pattern: func(next http.Handler) http.Handler
+      description: 'Standard stdlib middleware signature. Chain execution order visible
+        only in main.go or router setup.
+
+        '
+      severity: medium
+    - pattern: func(c *gin.Context)
+      description: 'Gin middleware handler. c.Next() call is required to continue
+        chain; absence means chain is short-circuited.
+
+        '
+      severity: medium
+    - pattern: grpc.UnaryInterceptor(
+      description: 'gRPC unary interceptor. Server-side middleware for all RPCs. Auth,
+        logging, rate-limiting implemented here.
+
+        '
+      severity: medium
+    - pattern: grpc.StreamInterceptor(
+      description: 'gRPC streaming interceptor. More complex than unary due to stream
+        lifecycle management.
+
+        '
+      severity: high
+    - pattern: grpc_middleware.ChainUnaryServer(
+      description: 'go-grpc-middleware chain — multiple interceptors composed. Execution
+        order is array order, defined at server init.
+
+        '
+      severity: medium
+  cgo_calls:
+    description: 'CGo patterns that create opacity boundaries for Go static analysis.
+
+      '
+    signals:
+    - pattern: import "C"
+      description: 'CGo import — definitive signal. All C.* calls are opaque to Go
+        linters and code intelligence tools.
+
+        '
+      severity: high
+    - pattern: C.CBytes(
+      description: 'Manual memory allocation crossing Go/C boundary. Requires explicit
+        C.free() for no leak — unverifiable by Go tools.
+
+        '
+      severity: high
+    - pattern: unsafe.Pointer
+      description: 'Unsafe pointer — bypasses Go type system. Often co-occurs with
+        CGo but also used in pure-Go performance code.
+
+        '
+      severity: high
+  sync_primitives:
+    description: 'Advanced synchronization patterns indicating complex state management.
+
+      '
+    signals:
+    - pattern: sync.Mutex
+      description: 'Standard mutex. Low individual complexity but Lock/Unlock pairing
+        is a deadlock risk in nested calls.
+
+        '
+      severity: low
+    - pattern: sync.RWMutex
+      description: 'Read-write mutex. Mixed RLock/Lock usage requires careful ordering
+        to avoid deadlock.
+
+        '
+      severity: medium
+    - pattern: sync.Cond
+      description: 'Condition variable — high complexity. Broadcast vs Signal semantics
+        and spurious wakeup handling are non-obvious.
+
+        '
+      severity: high
+    - pattern: atomic.CompareAndSwap
+      description: 'CAS operation — spinlock-like patterns. Undecidable progress guarantee
+        for static tools.
+
+        '
+      severity: high
+    - pattern: sync/atomic
+      description: 'Atomic operations package — signals lock-free data structures.
+
+        '
+      severity: medium
+  reflection_usage:
+    description: 'Reflection patterns that break standard code intelligence features.
+
+      '
+    signals:
+    - pattern: reflect.ValueOf(
+      description: 'Reflection entry point — dynamic struct inspection. Breaks rename
+        refactoring and find-references tools.
+
+        '
+      severity: high
+    - pattern: reflect.TypeOf(
+      description: 'Runtime type inspection. Dynamic dispatch based on type strings
+        is opaque to static analysis.
+
+        '
+      severity: high
+    - pattern: interface{}
+      description: 'Empty interface (pre-Go 1.18 style). Signals dynamic typing pattern.
+        any is the Go 1.18+ equivalent.
+
+        '
+      severity: low
+    - pattern: any
+      description: 'any type alias for interface{} (Go 1.18+). Dynamic typing.
+
+        '
+      severity: low

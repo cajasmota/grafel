@@ -1,0 +1,44 @@
+frameworks:
+  name: Drupal
+  package_name: drupal/core
+  category: cms
+  github_stars_2025: N/A (Drupal.org primary)
+  detection:
+    config_files:
+    - composer.json
+    - composer.lock
+    - web/sites/default/settings.php
+    - sites/default/settings.php
+    - core/includes/bootstrap.inc
+    - core/lib/Drupal.php
+    - drush.yml
+    - .drush/
+    - web/core/
+    composer_deps:
+    - drupal/core
+    - drupal/core-recommended
+    - drupal/core-composer-scaffold
+    - drush/drush
+    - drupal/admin_toolbar
+    - drupal/pathauto
+    import_markers:
+    - use Drupal\
+    - Drupal::service(
+    - Drupal::database()
+    - \Drupal\Core\
+    - extends ControllerBase
+    - extends BlockBase
+    - implements ContainerFactoryPluginInterface
+    structural_markers:
+    - web/modules/custom/
+    - web/themes/custom/
+    - web/sites/
+    - modules/custom/
+    - themes/custom/
+    - core/lib/Drupal/
+  notes: 'drupal/core in composer.json + web/sites/default/settings.php is definitive.
+    Drupal 8+ follows a PSR-4 namespace convention (Drupal\ModuleName). drush.yml
+    indicates Drush CLI presence. Custom module detection: {module_name}.info.yml
+    + {module_name}.module in a custom module directory.
+
+    '

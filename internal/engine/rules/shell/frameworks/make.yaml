@@ -1,0 +1,16 @@
+frameworks:
+  name: make
+  category: task_runner
+  detection_signals:
+    config_files:
+    - Makefile
+    - makefile
+    - GNUmakefile
+    content_patterns:
+    - '.PHONY:'
+    - $(MAKE)
+    - '@echo'
+    - ifeq (
+    - 'ifdef '
+    - '$(shell '
+  notes: Ubiquitous in C/C++, Go, Python, and general project automation

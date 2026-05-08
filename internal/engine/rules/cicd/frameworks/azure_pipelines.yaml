@@ -1,0 +1,20 @@
+frameworks:
+  name: Azure Pipelines
+  language: cicd
+  official_docs: https://learn.microsoft.com/en-us/azure/devops/pipelines
+  config_file: azure-pipelines.yml
+  adopted_by: GitHub and Azure Repos (via Azure DevOps)
+  vera_scope: Service (pipeline as Service, job as Operation)
+  characteristics:
+  - YAML-based (ycml or UI classic pipelines)
+  - Multi-stage pipelines with stage-level dependencies
+  - Jobs nested under stages (or flat job model)
+  - Microsoft-hosted and self-hosted agent pools
+  - Task library for Azure DevOps actions
+  - Conditions for conditional execution
+  - Templates for reusable components (steps, jobs, stages)
+  complexity_signal_markers:
+  - Stage count > 8
+  - Job count > 15
+  - Template nesting depth > 3
+  - Condition complexity (multiple AND/OR chains)

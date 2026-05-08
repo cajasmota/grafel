@@ -1,0 +1,17 @@
+frameworks:
+  name: fasthttp
+  module_path: github.com/valyala/fasthttp
+  category: web_low_level
+  github_stars_2025: 23400+
+  detection:
+    go_mod_require:
+    - github.com/valyala/fasthttp
+    import_markers:
+    - '"github.com/valyala/fasthttp"'
+    structural_markers:
+    - fasthttp.ListenAndServe
+    - '*fasthttp.RequestCtx'
+    notes: 'Low-level HTTP library, not a framework. Fiber is built on top of it.
+      Direct usage signals performance-critical HTTP servers.
+
+      '

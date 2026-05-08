@@ -1,0 +1,82 @@
+build_tools:
+- name: Mix
+  config_files:
+  - mix.exs
+  - mix.lock
+  - .mix/
+  description: 'Mix is the official Elixir build tool, task runner, and project manager.
+    Every Elixir project has a mix.exs defining the project/0, application/0, and
+    deps/0 functions. mix.lock is the lockfile for reproducible dependency resolution.
+
+    '
+  detection:
+    required_files:
+    - mix.exs
+    optional_files:
+    - mix.lock
+    - .mix/
+    - config/config.exs
+    key_functions_in_mix_exs:
+    - def project do
+    - def application do
+    - defp deps do
+    - defp aliases do
+    - defp releases do
+  common_tasks:
+  - mix deps.get
+  - mix compile
+  - mix test
+  - mix release
+  - mix ecto.migrate
+  - mix phx.server
+  - mix format
+  - mix credo
+  - mix dialyzer
+  notes: 'mix.exs presence is the definitive marker that a project is an Elixir project.
+    A missing mix.exs means it is not an Elixir project. mix.lock should be committed
+    to source control for reproducible builds.
+
+    '
+- name: Hex
+  config_files:
+  - mix.exs
+  - mix.lock
+  - hex_metadata.config
+  - .hex/
+  description: 'Hex is the package manager for the Erlang/Elixir ecosystem, analogous
+    to npm or crates.io. Dependencies are declared in the deps/0 function in mix.exs
+    and resolved by `mix deps.get`. hex_metadata.config appears in published Hex packages
+    inside the package tarball.
+
+    '
+  detection:
+    required_files:
+    - mix.exs
+    optional_files:
+    - hex_metadata.config
+    - .hex/
+    mix_exs_markers:
+    - '{:hex_package_name, "~> version"}'
+    - 'hex: true'
+    - 'organization:'
+  notes: 'Hex is implicit for any Elixir project using external deps. hex_metadata.config
+    only appears in published Hex package tarballs, not in application projects. Private
+    packages use Hex organizations (organization: \"org_name\").
+
+    '
+- name: Rebar3 (Erlang interop)
+  config_files:
+  - rebar.config
+  - rebar.lock
+  description: 'Rebar3 is the Erlang build tool. Present in Elixir projects that include
+    Erlang dependencies or umbrella apps containing Erlang sub-applications. Not common
+    in pure Elixir projects.
+
+    '
+  detection:
+    required_files:
+    - rebar.config
+    notes: 'rebar.config presence alongside mix.exs indicates Erlang interop or an
+      embedded Erlang dependency that ships its own build config.
+
+      '

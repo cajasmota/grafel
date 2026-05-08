@@ -1,0 +1,29 @@
+frameworks:
+  name: expo
+  category: mobile
+  npm_packages:
+  - expo
+  config_files:
+  - app.json
+  - app.config.js
+  - app.config.ts
+  - eas.json
+  - babel.config.js
+  detection_signals:
+    package_json_deps:
+    - expo
+    directory_conventions:
+    - .expo/
+    - app/
+    - assets/
+    file_patterns:
+    - expo-env.d.ts
+    code_patterns:
+    - babel-preset-expo
+  framework_specific:
+  - expo-router
+  - expo start
+  - EAS Build
+  - Expo SDK modules
+  notes: 'expo dep + app.json/app.config.js is definitive. Expo Router: app/ dir with
+    _layout.tsx'

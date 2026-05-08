@@ -1,0 +1,55 @@
+// SCSS variables and mixins fixture for MX-1054
+
+// Color palette variables
+$primary-color: #3498db;
+$secondary-color: #2ecc71;
+$accent-color: #e74c3c;
+
+// Typography variables
+$font-size-base: 16px;
+$font-family-sans: "Helvetica Neue", Arial, sans-serif;
+
+// Spacing variables
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 32px;
+
+// Mixin: flexible button style
+@mixin button-style($bg: $primary-color, $color: #fff) {
+  background-color: $bg;
+  color: $color;
+  padding: $spacing-sm $spacing-md;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: darken($bg, 10%);
+  }
+}
+
+// Mixin: responsive breakpoint helper
+@mixin respond-to($breakpoint) {
+  @if $breakpoint == "sm" {
+    @media (max-width: 576px) { @content; }
+  } @else if $breakpoint == "md" {
+    @media (max-width: 768px) { @content; }
+  }
+}
+
+// Function: calculate rem from px
+@function rem($px, $base: 16) {
+  @return #{$px / $base}rem;
+}
+
+// Usage example (selectors — plain CSS, not extracted as variables/mixins)
+.btn-primary {
+  @include button-style($primary-color);
+  font-size: $font-size-base;
+}
+
+@include respond-to("sm") {
+  .container {
+    padding: $spacing-sm;
+  }
+}

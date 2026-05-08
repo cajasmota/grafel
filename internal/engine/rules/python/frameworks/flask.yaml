@@ -1,0 +1,139 @@
+# Flask framework extraction rules (MX-500).
+#
+# Top-level `frameworks:` key is consumed by the modular_loader (detection).
+# Top-level extraction keys (file_conventions, source_patterns,
+# relationship_rules) are consumed by FrameworkExtractionSchema (MX-494).
+#
+frameworks:
+  name: Flask
+  pypi_package: Flask
+  category: web_micro
+  github_stars_2025: 71400+
+  gateway: wsgi
+  detection:
+    config_files:
+    - app.py
+    - .flaskenv
+    - '*/wsgi.py'
+    - instance/config.py
+    dependency_names:
+    - Flask
+    - flask
+    import_markers:
+    - from flask import Flask
+    - Flask(__name__)
+    structural_markers:
+    - .flaskenv
+    - templates/ directory
+    - static/ directory
+  notes: >
+    .flaskenv is the highest-confidence signal. Single-file apps are common
+    — app.py with Flask(__name__) is sufficient.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+# file_conventions: glob -> entity_type mapping from file naming conventions.
+file_conventions:
+  - glob: "app/routes/*.py"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/blueprints/*.py"
+    entity_type: Controller
+    name_from: filename
+  - glob: "*/models/*.py"
+    entity_type: Model
+    name_from: filename
+  - glob: "*/views/*.py"
+    entity_type: View
+    name_from: filename
+  - glob: "templates/**/*.html"
+    entity_type: Template
+    name_from: filename
+  - glob: "*/middleware/*.py"
+    entity_type: Middleware
+    name_from: filename
+
+# source_patterns: regex patterns that match Flask constructs in source files.
+source_patterns:
+  # Route decorators: @app.route("/path") or @bp.route("/path")
+  - pattern: "@(\\w+)\\.route\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Route
+    name_group: 2
+    scope: file
+  # HTTP method decorators: @app.get("/path"), @app.post("/path"), etc.
+  - pattern: "@(\\w+)\\.(get|post|put|patch|delete)\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Route
+    name_group: 3
+    scope: file
+  # Blueprint instantiation: bp = Blueprint("name", __name__)
+  - pattern: "(\\w+)\\s*=\\s*Blueprint\\s*\\(\\s*[\"'](\\w+)[\"']"
+    entity_type: Controller
+    name_group: 2
+    scope: file
+  # Flask app instantiation: app = Flask(__name__)
+  - pattern: "(\\w+)\\s*=\\s*Flask\\s*\\(\\s*__name__\\s*\\)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # Error handler decorator: @app.errorhandler(404)
+  - pattern: "@(\\w+)\\.errorhandler\\s*\\(\\s*(\\d+)\\s*\\)"
+    entity_type: Middleware
+    name_group: 2
+    scope: file
+  # Before/after request hooks: @app.before_request
+  - pattern: "@(\\w+)\\.(before_request|after_request|teardown_request)\\s*\\ndef\\s+(\\w+)"
+    entity_type: Middleware
+    name_group: 3
+    scope: file
+  # SQLAlchemy model base class
+  - pattern: "class\\s+(\\w+)\\s*\\(\\s*(?:db\\.Model|Model)\\s*\\)"
+    entity_type: Model
+    name_group: 1
+    scope: class
+
+# relationship_rules: regex patterns that produce edges between entities.
+relationship_rules:
+  # Blueprint registered on app: app.register_blueprint(bp, ...)
+  - pattern: "(\\w+)\\.register_blueprint\\s*\\(\\s*(\\w+)"
+    source_type: Module
+    target_type: Service
+    relationship: REGISTERED_ON
+    source_group: 2
+    target_group: 1
+  # Route imports ORM model: from models import User
+  - pattern: "from\\s+[\\w.]+models\\s+import\\s+(\\w+)"
+    source_type: Route
+    target_type: Model
+    relationship: IMPORTS
+    source_group: 1
+    target_group: 1
+  # Blueprint url_prefix ties route to controller
+  - pattern: "(\\w+)\\s*=\\s*Blueprint\\s*\\(\\s*[\"'](\\w+)[\"'].*prefix\\s*=\\s*[\"']([^\"']+)[\"']"
+    source_type: Controller
+    target_type: Route
+    relationship: CONFIGURES
+    source_group: 2
+    target_group: 3
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+# These run after YAML-driven extraction and contribute additional entities +
+# relationships to the pipeline result.
+custom_extractors:
+  - module: memx_indexer.languages.python.flask_extractor
+    function: extract
+    description: >-
+      Flask-specific extractor: route decorators (@app.route, @app.get/post etc.),
+      Blueprint composition with url_prefix, before/after_request hooks,
+      @app.errorhandler, Flask-SQLAlchemy db.Model (SCOPE.Schema),
+      Flask-Login @login_required, Flask-WTF FlaskForm (SCOPE.Schema),
+      Flask-RESTful Resource + api.add_resource(), Flask-SocketIO @socketio.on,
+      app.config patterns, and @app.cli.command CLI commands.
+      Emits OWNS (blueprint→route, app→blueprint), DEPENDS_ON (endpoint→resource).
+  - module: memx_indexer.languages.python.flask_request_response_extractor
+    function: extract
+    description: >-
+      Flask request/response extractor (MX-607): marshmallow schema.load() references
+      → ACCEPTS_INPUT, return type annotations → RETURNS.
+      Out of scope: Flask-RESTX/Flask-Smorest.

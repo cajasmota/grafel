@@ -1,0 +1,88 @@
+testing:
+- name: Spock Framework
+  file_patterns:
+  - '*Spec.groovy'
+  - '*Specification.groovy'
+  - '*IT.groovy (integration test convention)'
+  - '*IntegrationSpec.groovy'
+  - '*FunctionalSpec.groovy'
+  directory_patterns:
+  - src/test/groovy/
+  - src/integrationTest/groovy/
+  - src/functionalTest/groovy/
+  - test/unit/ (Grails 2.x)
+  - test/integration/ (Grails 2.x)
+  - test/functional/ (Grails 2.x)
+  - grails-app/test/ (rare)
+  key_markers:
+  - extends Specification
+  - 'given: / when: / then: block labels'
+  - '@Unroll'
+  - '@Shared'
+  - 'where: table syntax'
+  - Mock() / Stub() / Spy()
+  notes: 'Spock tests end in Spec.groovy or Specification.groovy by convention. Both
+    unit and integration specs extend spock.lang.Specification. Grails 2.x had test/unit/,
+    test/integration/, test/functional/ directories. Grails 3+ uses src/test/groovy/
+    and src/integration-test/groovy/.
+
+    '
+- name: JUnit (Groovy)
+  file_patterns:
+  - '*Test.groovy'
+  - '*Tests.groovy'
+  directory_patterns:
+  - src/test/groovy/
+  key_markers:
+  - import org.junit.Test
+  - import org.junit.jupiter.api.Test
+  - '@Test annotation'
+  - import groovy.test.GroovyTestCase
+  - extends GroovyTestCase
+  notes: 'JUnit-style tests in Groovy use *Test.groovy naming. GroovyTestCase extends
+    JUnit 3 TestCase — legacy signal. Modern Groovy JUnit tests use JUnit 5 annotations
+    directly. Coexistence of *Spec.groovy (Spock) and *Test.groovy (JUnit) is common
+    in mixed-test projects.
+
+    '
+- name: GEB (Groovy browser automation)
+  gradle_coordinates:
+  - org.gebish:geb-spock
+  - org.gebish:geb-core
+  file_patterns:
+  - '*GebSpec.groovy'
+  - '*FunctionalSpec.groovy'
+  key_markers:
+  - extends GebSpec
+  - import geb.spock.GebSpec
+  - import geb.Page
+  - class * extends Page {
+  - to HomePage
+  - at HomePage
+  - browser.go(
+  notes: 'GEB is a Groovy browser automation library built on Selenium, designed for
+    use with Spock. GebSpec extends GebReportingSpec which extends Specification.
+    Page Object pattern: classes extending geb.Page with url and content { } closure.
+    Detection via geb-spock dependency + GebSpec extension.
+
+    '
+- name: Grails Test Support
+  gradle_coordinates:
+  - org.grails:grails-test-mixins
+  - org.grails:grails-gorm-testing-support
+  - org.grails:grails-web-testing-support
+  key_markers:
+  - '@TestFor(SomeController)'
+  - '@Mock([Domain1, Domain2])'
+  - import grails.test.mixin.
+  - import grails.testing.web.controllers.
+  - import grails.testing.gorm.
+  - extends Specification
+  - '@Integration'
+  - '@Rollback'
+  notes: 'Grails-specific test annotations and mixins. @TestFor + @Mock are Grails
+    unit test idiom. @Integration marks integration tests that boot the full Grails
+    app. @Rollback wraps test in a transaction that rolls back. grails-gorm-testing-support
+    provides DataTest trait for unit testing GORM domain classes.
+
+    '

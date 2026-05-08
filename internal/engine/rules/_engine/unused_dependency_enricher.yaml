@@ -1,0 +1,29 @@
+# Unused dependency enricher (MX-683)
+# Project-level cross-reference enricher. Compares SCOPE.Component entities
+# emitted by import_statement_extractor against those emitted by
+# manifest_extractor. Flags manifest entries with no matching import as
+# unused=True.
+#
+# This is a project-scope enricher (not a per-file PatternDetector).
+# Callers pass the full import + manifest entity lists for a project.
+
+name: unused_dependency_enricher
+description: >-
+  Cross-reference imported packages against manifest entries. Flags
+  SCOPE.Component entities from manifest_extractor with unused=True when no
+  matching SCOPE.Component from import_statement_extractor exists for the
+  same project.
+module: memx_indexer.languages._engine.unused_dependency_enricher
+function: enrich_unused_dependencies
+config:
+  skip_dev_deps:
+    type: bool
+    default: false
+    description: >-
+      When true, manifest entries with is_dev=True are excluded from the
+      unused check.
+otel_span: indexer.unused_dependency_enricher.enrich
+otel_attributes:
+  - deps_checked
+  - unused_found
+  - skip_dev_deps

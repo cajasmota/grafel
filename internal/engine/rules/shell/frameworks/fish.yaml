@@ -1,0 +1,22 @@
+frameworks:
+  name: fish
+  category: shell
+  detection_signals:
+    shebang_patterns:
+    - '#!/usr/bin/env fish'
+    - '#!/usr/bin/fish'
+    file_extensions:
+    - .fish
+    config_files:
+    - config.fish
+    - fish_prompt.fish
+    content_patterns:
+    - 'function '
+    - end
+    - 'set -l '
+    - 'set -g '
+    - 'set -x '
+    - begin
+    - string match
+  notes: Distinct syntax — no POSIX compatibility. Detected by .fish extension or
+    shebang

@@ -1,0 +1,9 @@
+meta: language.yaml
+template_engines: frameworks/ [erb, ejs, handlebars, pug, jinja2, twig, nunjucks,
+  mustache, blade, haml, slim]
+framework_templates: frameworks/ [angular_component_templates, vue_single_file_components,
+  svelte_components, astro_components, react_jsx_tsx_templates]
+entity_type_mapping: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml

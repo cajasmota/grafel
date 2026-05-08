@@ -1,0 +1,23 @@
+frameworks:
+  name: Buffalo
+  module_path: github.com/gobuffalo/buffalo
+  category: web_full_stack
+  github_stars_2025: 8400+
+  detection:
+    go_mod_require:
+    - github.com/gobuffalo/buffalo
+    config_files:
+    - buffalo.go
+    - database.yml
+    - Gopkg.toml
+    import_markers:
+    - '"github.com/gobuffalo/buffalo"'
+    structural_markers:
+    - buffalo.App
+    - actions/app.go
+    - actions/
+    - database.yml
+    notes: 'Rails-inspired full-stack framework. actions/ directory and database.yml
+      are strong structural signals alongside go.mod.
+
+      '

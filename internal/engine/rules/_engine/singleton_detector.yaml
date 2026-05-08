@@ -1,0 +1,21 @@
+# Singleton and shared state detector (MX-699)
+# Identifies singleton patterns across Java, Python, Go, C#, and Ruby.
+#
+# Supported pattern variants:
+#   annotation      — Java/Jakarta @Singleton class
+#   static_factory  — Java public static getInstance() returning same type
+#   module_state    — Python module-level mutable variable (non-ALL_CAPS)
+#   sync_once       — Go sync.Once with Do(func() {...})
+#   static_class    — C# static class with no instance constructors
+#   class_variable  — Ruby class variable (@@name)
+#
+# File gate is internal to the detector (applies_to checks language field).
+
+name: singleton_detector
+description: >-
+  Detect singleton and shared-state patterns across Java (@Singleton, getInstance()),
+  Python (module-level mutable state), Go (sync.Once), C# (static class), and Ruby
+  (class variables). Emits SCOPE.Pattern entities with kind=singleton.
+module: memx_indexer.pattern_detectors.singleton_detector
+function: detect
+applies_to_function: applies_to

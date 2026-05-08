@@ -1,0 +1,21 @@
+database_libraries:
+  name: ent
+  module_path: entgo.io/ent
+  category: orm_code_gen
+  github_stars_2025: 15000+
+  detection:
+    go_mod_require:
+    - entgo.io/ent
+    import_markers:
+    - '"entgo.io/ent"'
+    - '"<project>/ent"'
+    structural_markers:
+    - ent/schema/
+    - ent/generate.go
+    - //go:generate go run -mod=mod entgo.io/ent/cmd/ent
+    - ent.Client
+  notes: 'Facebook/Meta entity framework with code generation. ent/schema/ directory
+    with typed schema definitions is definitive. Generated ent/ package at project
+    root is secondary signal.
+
+    '

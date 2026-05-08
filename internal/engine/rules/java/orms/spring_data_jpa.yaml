@@ -1,0 +1,25 @@
+orms_database:
+  name: Spring Data JPA
+  maven_coordinates: org.springframework.data:spring-data-jpa
+  gradle_dependency: implementation 'org.springframework.data:spring-data-jpa'
+  detection:
+    pom_xml_markers:
+    - spring-data-jpa
+    - spring-boot-starter-data-jpa
+    import_patterns:
+    - import org.springframework.data.jpa.repository
+    - import org.springframework.stereotype.Repository
+    code_patterns:
+    - extends JpaRepository
+    - extends CrudRepository
+    - extends PagingAndSortingRepository
+    - '@Repository'
+    - '@Query'
+    - '@Modifying'
+    - '@Transactional'
+    - '@Param'
+  notes: 'JpaRepository<T, ID> interface extension is the dominant signal. @Query
+    for JPQL/native queries. spring-boot-starter-data-jpa in pom.xml is sufficient
+    for detection.
+
+    '

@@ -1,0 +1,22 @@
+frameworks:
+  name: Vert.x
+  category: reactive
+  maven_coordinates: io.vertx:vertx-core
+  gradle_dependency: implementation 'io.vertx:vertx-core'
+  adoption_rank_2025: 7
+  detection:
+    pom_xml_markers:
+    - io.vertx
+    - vertx-core
+    import_patterns:
+    - import io.vertx.core
+    - import io.vertx.ext
+    code_patterns:
+    - extends AbstractVerticle
+    - Vertx.vertx()
+    - vertx.createHttpServer()
+    - Router.router(vertx)
+  notes: 'AbstractVerticle subclass is the primary signal. Event bus usage (vertx.eventBus())
+    is secondary. vertx-web artifact for HTTP routing.
+
+    '

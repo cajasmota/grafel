@@ -1,0 +1,21 @@
+frameworks:
+  name: batch_cmd
+  category: shell
+  detection_signals:
+    shebang_patterns: []
+    file_extensions:
+    - .bat
+    - .cmd
+    content_patterns:
+    - '@echo off'
+    - '@ECHO OFF'
+    - setlocal
+    - SETLOCAL
+    - 'goto '
+    - 'GOTO '
+    - 'call '
+    - 'CALL '
+    - '%~dp0'
+    - errorlevel
+  notes: Windows legacy batch scripts. Distinct from PowerShell. Detected by extension
+    alone.

@@ -1,0 +1,45 @@
+frameworks:
+  name: tailwind_css
+  full_name: Tailwind CSS
+  category: utility_framework
+  extensions:
+  - .css
+  - .html
+  - .jsx
+  - .tsx
+  - .vue
+  - .svelte
+  npm_packages:
+  - tailwindcss
+  config_files:
+  - tailwind.config.js
+  - tailwind.config.ts
+  - tailwind.config.cjs
+  - tailwind.config.mjs
+  detection_signals:
+    package_json_deps:
+    - tailwindcss
+    config_file_present:
+    - tailwind.config.js
+    - tailwind.config.ts
+    content_patterns:
+    - '@tailwind base;'
+    - '@tailwind components;'
+    - '@tailwind utilities;'
+    - '@layer base'
+    - '@layer components'
+    - '@layer utilities'
+    - '@apply '
+    - theme(
+  framework_specific:
+  - '@tailwind directives in entry CSS'
+  - '@apply for composing utility classes'
+  - '@layer for custom component/utility layers'
+  - theme() function for design token access
+  - content array in tailwind.config.js (purge targets)
+  - JIT mode (default in Tailwind v3)
+  notes: 'Tailwind v3 uses JIT by default. Class names live in HTML/JSX/Vue/Svelte
+    templates — the entry CSS file is minimal (just @tailwind directives). tailwind.config.js
+    is the canonical detection signal.
+
+    '

@@ -1,0 +1,8 @@
+frameworks: frameworks/ [zig_standard_library, mach_engine, zap, zig_network, zig_gamedev,
+  libxev]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orm_database: orms/ [sqlite_via_c_ffi, zig_sqlite, libpq_postgresql_c_ffi, no_orm_c_ffi_is_the_norm]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

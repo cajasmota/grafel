@@ -1,0 +1,498 @@
+detection_signals:
+  file_extensions:
+  - extension: .tf
+    primary_tool: terraform_opentofu
+    notes: Primary Terraform/OpenTofu source extension. Always index.
+  - extension: .hcl
+    primary_tool: ambiguous
+    notes: 'Used by Terraform (providers.tf, backend.hcl), Packer (pre-HCL2), Vault
+      (vault.hcl, policies/), Nomad (agent config), and Waypoint (waypoint.hcl). Disambiguate
+      by root block signature.
+
+      '
+  - extension: .tfvars
+    primary_tool: terraform_opentofu
+    notes: 'Variable value assignment files. Index for variable name discovery. Treat
+      as potentially sensitive — values may include secrets. Do not extract values,
+      only variable names (keys).
+
+      '
+  - extension: .pkr.hcl
+    primary_tool: packer
+    notes: Packer HCL2 template. Hard disambiguation — index as Packer.
+  - extension: .pkrvars.hcl
+    primary_tool: packer
+    notes: Packer variable file. Same sensitivity treatment as .tfvars.
+  - extension: .nomad
+    primary_tool: nomad
+    notes: Nomad job spec. Hard disambiguation — index as Nomad.
+  block_level_detection:
+    description: 'When the file extension is .hcl (ambiguous), use the first-level
+      block keyword to disambiguate the tool.
+
+      '
+    mapping:
+    - block: terraform {
+      tool: terraform_opentofu
+    - block: packer {
+      tool: packer
+    - block: job "
+      tool: nomad
+    - block: project =
+      tool: waypoint
+    - block: storage "
+      tool: vault
+    - block: listener "
+      tool: vault
+    - block: app "
+      tool: waypoint
+  content_patterns:
+    high_confidence:
+    - pattern: terraform {
+      notes: Terraform/OpenTofu configuration block
+    - pattern: required_providers {
+      notes: Provider dependency declaration
+    - pattern: required_version
+      notes: Terraform version constraint
+    - pattern: source = "hashicorp/
+      notes: HashiCorp official provider reference
+    - pattern: source = "registry.terraform.io/
+      notes: Explicit Terraform registry reference
+    medium_confidence:
+    - pattern: resource "
+      notes: Infrastructure resource declaration
+    - pattern: data "
+      notes: Data source query
+    - pattern: module "
+      notes: Module invocation
+    - pattern: variable "
+      notes: Variable declaration
+    - pattern: output "
+      notes: Output value declaration
+    - pattern: locals {
+      notes: Local values block
+extraction_targets:
+- block_type: resource
+  hcl_syntax: resource "<provider>_<type>" "<name>" { ... }
+  extraction_fields:
+  - resource_type
+  - resource_name
+  - provider_prefix
+  - key_arguments:
+    - count
+    - for_each
+    - depends_on
+    - lifecycle
+  examples:
+  - resource "aws_lambda_function" "indexer" { ... }
+  - resource "google_compute_instance" "web" { ... }
+  - resource "azurerm_resource_group" "rg" { ... }
+  notes: 'Resource blocks are the primary indexing target. Extract the resource type
+    (provider + resource kind) and local name. The combination forms a unique resource
+    address: <type>.<name> (e.g. aws_lambda_function.indexer). count and for_each
+    signal dynamic resource creation — important for complexity scoring. lifecycle
+    { prevent_destroy = true } signals production-critical resources.
+
+    '
+- block_type: data
+  hcl_syntax: data "<provider>_<type>" "<name>" { ... }
+  extraction_fields:
+  - data_source_type
+  - data_source_name
+  - provider_prefix
+  examples:
+  - data "aws_ami" "ubuntu" { ... }
+  - data "terraform_remote_state" "vpc" { ... }
+  - data "vault_generic_secret" "db_creds" { ... }
+  notes: 'Data blocks query existing infrastructure or external systems. Extract type
+    and name for cross-reference resolution (data sources can be referenced from resource
+    arguments). terraform_remote_state data sources signal cross-stack dependencies
+    — high structural value.
+
+    '
+- block_type: module
+  hcl_syntax: module "<name>" { source = "..." ... }
+  extraction_fields:
+  - module_name
+  - source_url
+  - version
+  - key_inputs:
+    - all variable assignments passed to the module
+  source_url_types:
+  - type: registry
+    pattern: '"<namespace>/<module>/<provider>"'
+    example: '"terraform-aws-modules/vpc/aws"'
+  - type: git
+    pattern: '"git::https://github.com/..."'
+    example: '"git::https://github.com/org/repo.git//modules/vpc?ref=v2.0"'
+  - type: local
+    pattern: '"./path/to/module"'
+    example: '"../../modules/networking"'
+  - type: github_shorthand
+    pattern: '"github.com/<org>/<repo>"'
+    example: '"github.com/hashicorp/example"'
+  notes: 'Module source URL is the highest-value extraction from a module block. Registry
+    modules (namespace/module/provider) indicate community or internal module reuse.
+    Git-sourced modules signal pinned external dependencies — extract ref/tag for
+    versioning. Local modules map the composition structure within the monorepo. Module
+    depth (modules calling modules) contributes to complexity scoring.
+
+    '
+- block_type: variable
+  hcl_syntax: variable "<name>" { type = ... default = ... ... }
+  extraction_fields:
+  - variable_name
+  - type_constraint
+  - default_value
+  - description
+  - sensitive
+  - validation_rules
+  notes: 'Variable blocks define the public interface of a module or root module.
+    type constraints define the expected shape — extract for API surface documentation.
+    If sensitive = true, extract the name only, never the value. Validation blocks
+    signal input contracts worth indexing.
+
+    '
+- block_type: output
+  hcl_syntax: output "<name>" { value = ... ... }
+  extraction_fields:
+  - output_name
+  - description
+  - sensitive
+  - depends_on
+  notes: 'Output blocks publish values from a module to its callers or to the state
+    for cross-stack use (via terraform_remote_state). Outputs define the contract
+    a module exposes. Sensitive outputs signal credentials or secrets being passed
+    between modules — flag for security review.
+
+    '
+- block_type: provider
+  hcl_syntax: provider "<name>" { ... }
+  extraction_fields:
+  - provider_name
+  - alias
+  - region
+  - version
+  notes: 'Provider configuration blocks define authentication and regional scope.
+    Multiple provider blocks with alias indicate multi-account or multi-region deployments
+    — important structural signal. Extract provider name for provider detection (see
+    section 4). Do not extract credential arguments (access_key, secret_key, token)
+    — treat as sensitive.
+
+    '
+- block_type: locals
+  hcl_syntax: locals { <name> = <expression> ... }
+  extraction_fields:
+  - local_names
+  - complex_expressions: 'flag locals that use for expressions, conditional ternary,
+      function calls (merge, flatten, concat, lookup, try), or multi-line object/map
+      constructions
+
+      '
+  notes: 'Locals blocks define intermediate computed values. Simple locals (string
+    concatenation, variable references) are low-value. Complex locals using for expressions,
+    dynamic merges, or try() signal sophisticated data transformations worth extracting
+    for comprehension. Nested object locals that compose provider configurations are
+    high-value structural signals.
+
+    '
+provider_detection:
+  description: 'Detect active cloud/platform providers by inspecting the required_providers
+    block inside terraform {}. This block is the canonical authority for which providers
+    a configuration uses. Fall back to provider block names and resource type prefixes
+    if required_providers is absent (older configs).
+
+    '
+  detection_mechanism:
+    primary: required_providers block inside terraform {}
+    fallback_1: provider "<name>" { } block
+    fallback_2: resource "<prefix>_*" prefix extraction
+  providers:
+  - name: AWS
+    canonical_source: hashicorp/aws
+    required_providers_pattern: source = "hashicorp/aws"
+    provider_block: provider "aws"
+    resource_prefix: aws_
+    data_source_prefix: aws_
+    key_resources:
+    - aws_lambda_function
+    - aws_s3_bucket
+    - aws_sqs_queue
+    - aws_iam_role
+    - aws_iam_policy
+    - aws_vpc
+    - aws_subnet
+    - aws_security_group
+    - aws_db_instance
+    - aws_elasticache_cluster
+    - aws_cloudwatch_log_group
+    - aws_api_gateway_rest_api
+    - aws_cloudfront_distribution
+    - aws_route53_record
+    - aws_acm_certificate
+    - aws_secretsmanager_secret
+    - aws_dynamodb_table
+    - aws_ecr_repository
+    - aws_ecs_cluster
+    - aws_ecs_task_definition
+    notes: 'The most widely used Terraform provider. AWS provider version 5.x (2023+)
+      introduced framework-based resources. Detect multi-region AWS deployments by
+      multiple provider "aws" blocks with distinct alias values and region arguments.
+
+      '
+  - name: GCP (Google Cloud)
+    canonical_source: hashicorp/google
+    required_providers_pattern: source = "hashicorp/google"
+    provider_block: provider "google"
+    resource_prefix: google_
+    data_source_prefix: google_
+    beta_provider: hashicorp/google-beta
+    key_resources:
+    - google_compute_instance
+    - google_compute_network
+    - google_container_cluster
+    - google_storage_bucket
+    - google_bigquery_dataset
+    - google_bigquery_table
+    - google_pubsub_topic
+    - google_pubsub_subscription
+    - google_cloudfunctions_function
+    - google_cloud_run_service
+    - google_sql_database_instance
+    - google_project_iam_binding
+    - google_service_account
+    - google_dns_managed_zone
+    notes: 'GCP provider (hashicorp/google). Beta resources use the google-beta provider
+      alias. Detect by resource prefix google_ or explicit provider "google" block
+      with project and region arguments.
+
+      '
+  - name: Azure
+    canonical_source: hashicorp/azurerm
+    required_providers_pattern: source = "hashicorp/azurerm"
+    provider_block: provider "azurerm"
+    resource_prefix: azurerm_
+    data_source_prefix: azurerm_
+    key_resources:
+    - azurerm_resource_group
+    - azurerm_virtual_network
+    - azurerm_subnet
+    - azurerm_linux_virtual_machine
+    - azurerm_windows_virtual_machine
+    - azurerm_storage_account
+    - azurerm_storage_container
+    - azurerm_app_service
+    - azurerm_app_service_plan
+    - azurerm_function_app
+    - azurerm_kubernetes_cluster
+    - azurerm_sql_server
+    - azurerm_sql_database
+    - azurerm_key_vault
+    - azurerm_key_vault_secret
+    - azurerm_log_analytics_workspace
+    - azurerm_monitor_action_group
+    notes: 'Azure provider (hashicorp/azurerm). Requires features {} block inside
+      provider "azurerm" — this is a hard detection signal specific to Azure. Provider
+      version 3.x and 4.x (2024) are current.
+
+      '
+  - name: Cloudflare
+    canonical_source: cloudflare/cloudflare
+    required_providers_pattern: source = "cloudflare/cloudflare"
+    provider_block: provider "cloudflare"
+    resource_prefix: cloudflare_
+    data_source_prefix: cloudflare_
+    key_resources:
+    - cloudflare_zone
+    - cloudflare_record
+    - cloudflare_page_rule
+    - cloudflare_worker_script
+    - cloudflare_worker_route
+    - cloudflare_tunnel
+    - cloudflare_tunnel_config
+    - cloudflare_access_application
+    - cloudflare_access_policy
+    - cloudflare_firewall_rule
+    - cloudflare_rate_limit
+    - cloudflare_ruleset
+    notes: 'Cloudflare provider (cloudflare/cloudflare). Common in projects that manage
+      DNS, CDN, Workers, and Zero Trust (Access/Tunnel) via Terraform. cloudflare_tunnel
+      + cloudflare_tunnel_config signals Cloudflare Tunnel (formerly Argo Tunnel)
+      usage.
+
+      '
+  - name: Kubernetes
+    canonical_source: hashicorp/kubernetes
+    required_providers_pattern: source = "hashicorp/kubernetes"
+    provider_block: provider "kubernetes"
+    resource_prefix: kubernetes_
+    data_source_prefix: kubernetes_
+    helm_provider_source: hashicorp/helm
+    key_resources:
+    - kubernetes_deployment
+    - kubernetes_stateful_set
+    - kubernetes_daemon_set
+    - kubernetes_service
+    - kubernetes_ingress
+    - kubernetes_ingress_v1
+    - kubernetes_config_map
+    - kubernetes_config_map_v1
+    - kubernetes_secret
+    - kubernetes_secret_v1
+    - kubernetes_namespace
+    - kubernetes_namespace_v1
+    - kubernetes_service_account
+    - kubernetes_cluster_role
+    - kubernetes_cluster_role_binding
+    - kubernetes_persistent_volume_claim
+    - kubernetes_horizontal_pod_autoscaler
+    companion_providers:
+    - name: Helm
+      source: hashicorp/helm
+      resource_prefix: helm_
+      key_resources:
+      - helm_release
+    - name: kubectl
+      source: gavinbunney/kubectl
+      resource_prefix: kubectl_
+      key_resources:
+      - kubectl_manifest
+    notes: 'Kubernetes provider manages K8s resources declaratively. Often combined
+      with the Helm provider (helm_release for chart deployments) and kubectl provider
+      (kubectl_manifest for raw YAML application). Detect k8s-centric stacks by kubernetes_
+      + helm_ resource co-presence.
+
+      '
+domain_roots:
+- layout: standard_root_module
+  description: 'Flat single-directory root module — the most common Terraform project
+    shape for small to medium infrastructure stacks.
+
+    '
+  root_paths:
+  - main.tf
+  - variables.tf
+  - outputs.tf
+  - versions.tf
+  - providers.tf
+  - terraform.tfvars
+  priority_files:
+  - versions.tf
+  - main.tf
+  - variables.tf
+  - outputs.tf
+  detection_signals:
+  - terraform {
+  - required_providers {
+  notes: 'The canonical well-structured root module separates concerns across versions.tf,
+    main.tf, variables.tf, and outputs.tf. Many real-world projects use only main.tf
+    with everything in one file. Detect by presence of .tf files in the root with
+    a terraform {} block.
+
+    '
+- layout: modular_with_modules_directory
+  description: 'Root module that extracts reusable components into a modules/ directory.
+    Each subdirectory under modules/ is a child module with its own main.tf, variables.tf,
+    and outputs.tf.
+
+    '
+  root_paths:
+  - main.tf
+  - variables.tf
+  - outputs.tf
+  - versions.tf
+  - modules/
+  - modules/<name>/main.tf
+  - modules/<name>/variables.tf
+  - modules/<name>/outputs.tf
+  priority_files:
+  - versions.tf
+  - main.tf
+  - modules/
+  detection_signals:
+  - source = "./modules/
+  - source = "../modules/
+  notes: 'modules/ directory is the canonical location for local modules. Each subdirectory
+    is a self-contained module. When indexing, build the call graph from root module
+    → child module source paths. The modules/ layout is the first step toward a reusable
+    module structure.
+
+    '
+- layout: environments_directory
+  description: 'Multiple environment configs (dev, staging, prod) separated into subdirectories,
+    each with its own .tf files or .tfvars overrides. Common in large organisation
+    setups.
+
+    '
+  root_paths:
+  - environments/dev/
+  - environments/staging/
+  - environments/prod/
+  - environments/dev/main.tf
+  - environments/prod/terraform.tfvars
+  - modules/
+  priority_files:
+  - environments/prod/versions.tf
+  - environments/prod/main.tf
+  detection_signals:
+  - environments/
+  - source = "../../modules/
+  notes: 'Each environments/<env>/ directory is a separate Terraform workspace root.
+    The same modules/ are shared across environments with different variable values.
+    Index each environment directory as a separate configuration root. Extract environment-specific
+    variable overrides as configuration variants.
+
+    '
+- layout: terragrunt_overlay
+  description: 'Projects using Terragrunt as a DRY wrapper over Terraform. Identified
+    by terragrunt.hcl files and the Terragrunt CLI. Module source is declared in terragrunt.hcl
+    rather than module blocks in .tf files.
+
+    '
+  root_paths:
+  - terragrunt.hcl
+  - <service>/terragrunt.hcl
+  - <env>/<service>/terragrunt.hcl
+  - modules/
+  priority_files:
+  - terragrunt.hcl
+  detection_signals:
+  - terragrunt.hcl
+  - generate "provider"
+  - inputs = {
+  - terraform {
+  - include "root"
+  - find_in_parent_folders(
+  - dependency "
+  - dependencies {
+  notes: 'Terragrunt adds remote_state, dependency, and generate blocks on top of
+    standard HCL. The generate block produces provider.tf and versions.tf at plan
+    time. Detect Terragrunt by terragrunt.hcl presence and find_in_parent_folders()
+    calls. Index as HCL but annotate as Terragrunt-managed — some .tf files in these
+    repos are generated, not hand-authored.
+
+    '
+- layout: packer_image_repo
+  description: 'Repository containing Packer templates for building machine images
+    (AMIs, GCP images, Docker images).
+
+    '
+  root_paths:
+  - '*.pkr.hcl'
+  - '*.pkrvars.hcl'
+  - scripts/
+  - ansible/
+  - http/
+  priority_files:
+  - '*.pkr.hcl'
+  detection_signals:
+  - packer {
+  - source "
+  - build {
+  notes: 'Packer repos are identified by .pkr.hcl files with a packer {} block. The
+    build { sources = [...] } block declares which source images are built. provisioner
+    blocks invoke shell scripts from the scripts/ directory or Ansible playbooks.
+    Extract source type (amazon-ebs, googlecompute, docker) as the target platform
+    signal.
+
+    '

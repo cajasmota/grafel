@@ -1,0 +1,127 @@
+complexity_signals:
+  async_complexity:
+    description: Patterns indicating async logic complexity
+    signals:
+    - name: deep_await_nesting
+      description: AwaitExpression nodes nested >2 levels deep within a single async
+        function scope
+      ast_node: AwaitExpression
+      threshold: 2
+    - name: promise_combinator
+      description: Promise.all / Promise.race / Promise.allSettled / Promise.any with
+        non-trivial array arguments
+      ast_pattern: CallExpression[callee=Promise.all|Promise.race|Promise.allSettled|Promise.any]
+    - name: async_iife
+      description: 'Immediately-invoked async function expression: (async () => {
+        ... })()'
+      ast_pattern: CallExpression[callee.type=ArrowFunctionExpression,callee.async=true]
+    - name: unhandled_rejection_risk
+      description: async function body without top-level try/catch
+      ast_pattern: AsyncFunction without TryStatement at top level
+  state_management:
+    description: State management complexity patterns
+    signals:
+    - name: redux_reducer
+      description: Large SwitchStatement inside function with spread operator updates
+        (reducer pattern)
+      ast_pattern: FunctionDeclaration > SwitchStatement with SpreadElement in ObjectExpression
+      packages:
+      - redux
+      - '@reduxjs/toolkit'
+      - react-redux
+    - name: redux_toolkit_slice
+      description: createSlice call with reducers object containing multiple case
+        reducers
+      ast_pattern: CallExpression[callee.name=createSlice]
+      packages:
+      - '@reduxjs/toolkit'
+    - name: zustand_store
+      description: create() call with complex state object and multiple action methods
+      ast_pattern: CallExpression[callee.name=create] from 'zustand'
+      packages:
+      - zustand
+    - name: recoil_atom_selector
+      description: Multiple atom() and selector() definitions with cross-dependencies
+      packages:
+      - recoil
+    - name: jotai_atom
+      description: atom() definitions from jotai
+      packages:
+      - jotai
+    - name: context_api_deep
+      description: createContext + useContext with deeply nested providers
+      ast_pattern: CallExpression[callee.name=createContext] combined with Provider
+        nesting
+  react_patterns:
+    description: React-specific complexity patterns
+    signals:
+    - name: hoc_composition
+      description: ExportDefaultDeclaration with nested CallExpression wrappers (withRouter(connect(...)(...)))
+      ast_pattern: ExportDefaultDeclaration > nested CallExpression depth >= 3
+    - name: render_prop
+      description: JSX attribute (children or render) containing ArrowFunctionExpression
+        returning JSXElement
+      ast_pattern: JSXAttribute[name=children|render] > ArrowFunctionExpression >
+        JSXElement
+    - name: deep_jsx
+      description: JSXElement nesting depth > 10 within a single component
+      threshold: 10
+    - name: conditional_rendering_chain
+      description: Nested ConditionalExpression (ternaries) inside JSXExpressionContainer
+        depth >= 3
+      ast_pattern: JSXExpressionContainer > ConditionalExpression > ConditionalExpression
+    - name: hook_dependency_array_complexity
+      description: useEffect/useCallback/useMemo with >5 items in dependency array
+      threshold: 5
+      ast_pattern: CallExpression[callee.name=useEffect|useCallback|useMemo] with
+        ArrayExpression length > 5
+  middleware_chains:
+    description: Backend middleware complexity patterns
+    signals:
+    - name: express_chain_length
+      description: app.use/get/post/put/delete call with >5 middleware function arguments
+      ast_pattern: CallExpression[callee.property.name=use|get|post|put|delete] with
+        >5 FunctionExpression args
+      threshold: 5
+    - name: nestjs_interceptor_guard_pipe
+      description: Controller method with multiple @UseGuards, @UseInterceptors, @UsePipes
+        decorators
+      decorator_patterns:
+      - '@UseGuards'
+      - '@UseInterceptors'
+      - '@UsePipes'
+    - name: koa_compose
+      description: koa-compose or koa-router with multiple layered middleware
+      packages:
+      - koa
+      - koa-compose
+      - koa-router
+  websocket_streaming:
+    description: WebSocket and streaming complexity patterns
+    signals:
+    - name: nested_event_handlers
+      description: socket.on() or .addEventListener() callback containing another
+        .on() call
+      ast_pattern: CallExpression[callee.property.name=on] > BlockStatement > CallExpression[callee.property.name=on]
+      packages:
+      - socket.io
+      - ws
+      - socket.io-client
+    - name: stream_pipe_chain
+      description: 3+ chained .pipe() calls on a stream
+      ast_pattern: CallExpression[callee.property.name=pipe] depth >= 3
+      threshold: 3
+    - name: server_sent_events
+      description: res.write() with 'data:' prefix pattern (SSE)
+      code_pattern: 'res.write(''data: '''
+  general:
+    description: General JS/TS complexity patterns
+    signals:
+    - name: complex_destructuring
+      description: Destructuring pattern with nested objects/arrays and defaults 3+
+        levels deep
+    - name: type_assertion_chain
+      description: Multiple TypeScript type assertions (as Type) chained or nested
+    - name: generic_constraint_depth
+      description: TypeScript generic type with >3 nested type parameters
+      threshold: 3

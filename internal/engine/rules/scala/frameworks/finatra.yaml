@@ -1,0 +1,29 @@
+frameworks:
+  name: Finatra
+  category: web_full_stack
+  sbt_coordinates:
+  - com.twitter::finatra-http-server
+  - com.twitter::finatra-thrift
+  - com.twitter::inject-server
+  detection:
+    build_signals:
+    - '"com.twitter" %% "finatra-http-server"'
+    - '"com.twitter" %% "finatra-http"'
+    - '"com.twitter" %% "inject-server"'
+    import_patterns:
+    - import com.twitter.finatra.http._
+    - import com.twitter.finatra.http.routing.HttpRouter
+    - import com.twitter.inject.server.TwitterServer
+    code_patterns:
+    - extends HttpServer
+    - extends TwitterServer
+    - 'override def configureHttp(router: HttpRouter)'
+    - router.add[
+    - '@Get('
+    - '@Post('
+    - '@Put('
+  notes: 'Twitter''s HTTP framework built on Finagle and Guice. Less common in new
+    projects but present in Twitter-influenced orgs. extends HttpServer with configureHttp
+    is the canonical entry point. @Get/@Post route annotations are Finatra-specific.
+
+    '

@@ -1,0 +1,36 @@
+database_libraries:
+  name: mongo-driver
+  module_path: go.mongodb.org/mongo-driver/v2
+  module_path_v1: go.mongodb.org/mongo-driver
+  category: nosql_driver
+  github_stars_2025: 8200+
+  detection:
+    go_mod_require:
+    - go.mongodb.org/mongo-driver/v2
+    - go.mongodb.org/mongo-driver
+    import_markers:
+    - '"go.mongodb.org/mongo-driver/v2/mongo"'
+    - '"go.mongodb.org/mongo-driver/mongo"'
+    - '"go.mongodb.org/mongo-driver/bson"'
+    structural_markers:
+    - mongo.Connect(
+    - mongo.NewClient(
+    - bson.D{
+    - bson.M{
+  notes: 'Official MongoDB Go driver. v2 recently released (requires /v2 suffix).
+    v1 still widely deployed. bson.D and bson.M document types are distinctive usage
+    signals. Detect both paths.
+
+    '
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

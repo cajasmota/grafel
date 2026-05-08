@@ -1,0 +1,38 @@
+orms_database:
+  name: Neo4j Ruby Driver / ActiveGraph
+  category: graph_database
+  gem_name: neo4j-ruby-driver
+  adoption_rank_2025: 1
+  detection:
+    gemfile_markers:
+    - neo4j-ruby-driver
+    - activegraph
+    - neo4j
+    import_patterns:
+    - require 'neo4j-ruby-driver'
+    - require 'activegraph'
+    code_patterns:
+    - Neo4j::Driver.new(
+    - include Neo4j::ActiveNode
+    - has_many
+  notes: >
+    Official Neo4j Ruby driver plus ActiveGraph (formerly Neo4j.rb) OGM.
+    ActiveGraph nodes include Neo4j::ActiveNode.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections (SCOPE.Service,
+      INFERRED_FROM_NEO4J_DRIVER), Cypher query strings (SCOPE.Operation/query,
+      INFERRED_FROM_NEO4J_CYPHER), ActiveGraph include Neo4j::ActiveNode
+      (SCOPE.Schema, INFERRED_FROM_NEO4J_ACTIVEGRAPH) with has_many/has_one
+      DEPENDS_ON edges.

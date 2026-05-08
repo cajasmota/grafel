@@ -1,0 +1,26 @@
+# Column schema extractor (MX-693)
+# Cross-ORM extractor that enriches SCOPE.Schema entities with column-level
+# metadata (name, type, nullable, unique, primary_key, default).
+#
+# Registered as a PatternDetector in:
+#   memx_indexer/pattern_detectors/__init__.py  (DETECTORS list)
+#
+# Supported ORMs:
+#   hibernate   : @Column(...) on Java fields
+#   sqlalchemy  : Column() / mapped_column() on Python model classes
+#   prisma      : field declarations inside model {} blocks
+#   typeorm     : @Column({...}) on TypeScript/JavaScript entity properties
+#   efcore      : fluent API HasColumnName() / IsRequired() / HasMaxLength()
+#   eloquent    : $fillable + $casts array literals on PHP Eloquent models
+#   ecto        : field :name, :type macro inside Elixir schema blocks
+#
+# OTel span: indexer.column_schema_extract
+# Span attributes: orm, table_name, column_count
+
+name: column_schema_extractor
+description: >-
+  Detects column-level ORM annotations/declarations and emits SCOPE.Schema
+  entities with properties["columns"] containing name, type, nullable, unique,
+  primary_key, and default per column. Covers 7 ORM frameworks.
+module: memx_indexer.pattern_detectors.column_schema_extractor
+class: ColumnSchemaExtractor

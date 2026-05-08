@@ -1,0 +1,44 @@
+framework_templates:
+  name: Vue Single File Components
+  framework: Vue
+  extensions:
+  - .vue
+  npm_packages:
+  - vue
+  - '@vue/compiler-sfc'
+  detection_signals:
+    file_extensions:
+    - .vue
+    package_json_deps:
+    - vue
+    syntax_markers:
+    - <template>
+    - <script>
+    - <script setup>
+    - <style>
+    - <style scoped>
+    - <style module>
+    - v-for="item in items"
+    - v-if="condition"
+    - v-else
+    - v-else-if
+    - v-show="condition"
+    - v-model="field"
+    - v-bind:prop / :prop
+    - v-on:event / @event
+    - <slot name="name" />
+    - <slot />
+    - '{{ expression }}'
+    - '<component :is="dynamicComp">  '
+    - <Teleport to="#portal">
+    - <Suspense>
+  scope_entity_mapping:
+    entity_type: Component
+    name_signal: Filename stem (e.g. UserCard.vue -> UserCard component)
+    boundary: File = one Component entity. Named <slot> entries are slot sub-entities.
+  notes: '.vue extension is the definitive signal. The SFC structure (<template>,
+    <script>, <style>) must all appear in a single file. <script setup> is the Vue
+    3 Composition API standard. Nuxt adds auto-import conventions (pages/, layouts/,
+    composables/) but the SFC format is identical.
+
+    '

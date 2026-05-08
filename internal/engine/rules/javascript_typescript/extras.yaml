@@ -1,0 +1,105 @@
+domain_root_conventions:
+  description: Standard directory structure conventions for JS/TS projects
+  universal:
+  - path: src/
+    description: Primary source directory — most non-framework-specific projects
+    frameworks:
+    - react (vite)
+    - express
+    - nestjs
+    - fastify
+    - electron
+  - path: node_modules/
+    description: Always exclude from indexing
+    action: skip
+  - path: dist/
+    description: Build output — exclude
+    action: skip
+  - path: build/
+    description: Build output (CRA) — exclude
+    action: skip
+  - path: .next/
+    description: Next.js build cache — exclude
+    action: skip
+  - path: .expo/
+    description: Expo dev state — exclude
+    action: skip
+  web_frontend:
+  - path: src/components/
+    description: Reusable UI components
+  - path: src/pages/
+    description: Page-level components (React non-Next.js)
+  - path: src/hooks/
+    description: Custom React hooks
+  - path: src/context/
+    description: React Context providers
+  - path: src/store/
+    description: State management (Redux, Zustand, etc.)
+  - path: src/lib/
+    description: Third-party library wrappers and utilities
+  - path: src/utils/
+    description: Pure utility functions
+  - path: src/types/
+    description: TypeScript type definitions
+  - path: src/styles/
+    description: Global and shared styles
+  - path: public/
+    description: Static assets served directly
+  nextjs_specific:
+  - path: pages/
+    description: Pages Router — each file is a route
+  - path: pages/api/
+    description: Pages Router API routes
+  - path: app/
+    description: App Router — layouts, pages, server components
+  - path: app/api/
+    description: App Router API routes (Route Handlers)
+  - path: components/
+    description: Shared components at root level
+  - path: lib/
+    description: Utility functions and library wrappers
+  backend_nodejs:
+  - path: src/routes/
+    description: Route handlers (Express, Fastify)
+  - path: src/controllers/
+    description: Controller layer (NestJS, MVC pattern)
+  - path: src/services/
+    description: Business logic layer
+  - path: src/middleware/
+    description: Express/Koa/Fastify middleware
+  - path: src/models/
+    description: Data models (Mongoose, Sequelize)
+  - path: src/repositories/
+    description: Data access layer
+  - path: src/dto/
+    description: Data Transfer Objects (NestJS)
+  - path: src/guards/
+    description: Auth/authorization guards (NestJS)
+  - path: src/interceptors/
+    description: NestJS interceptors
+  - path: api/
+    description: API layer at root (some Next.js and Remix patterns)
+  mobile_react_native:
+  - path: src/screens/
+    description: Screen-level components (React Navigation convention)
+  - path: src/navigation/
+    description: Navigation stacks and routes
+  - path: src/components/
+    description: Reusable components
+  - path: ios/
+    description: iOS native project — skip JS indexing
+  - path: android/
+    description: Android native project — skip JS indexing
+  - path: app/
+    description: Expo Router file-based routes
+  monorepo:
+  - path: packages/
+    description: Individual packages in a monorepo (npm workspaces, pnpm, Turborepo)
+  - path: apps/
+    description: Applications in a monorepo
+  - path: libs/
+    description: Shared libraries in an Nx monorepo
+  - path: turbo.json
+    description: Turborepo config — indicates monorepo
+  - path: pnpm-workspace.yaml
+    description: pnpm workspace config — indicates monorepo

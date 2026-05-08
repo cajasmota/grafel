@@ -1,0 +1,114 @@
+testing_frameworks:
+- name: clojure.test
+  type: unit_testing
+  bundled_with: clojure_core
+  detection:
+    import_markers:
+    - clojure.test
+    - (:require [clojure.test :refer
+    - (:use clojure.test)
+    - '(deftest '
+    - (testing "
+    - '(is (= '
+    - '(is (thrown? '
+    - (are [
+    - (use-fixtures
+    - (run-tests
+    - (run-all-tests
+    structural_markers:
+    - test/
+    - test/clj/
+  notes: 'clojure.test is the built-in testing framework — no external dep required.
+    (deftest test-name ...) defines tests. (testing "description" ...) groups assertions.
+    (is expr) is the core assertion macro. (are [args] template data) provides parameterized
+    testing. Present in virtually every Clojure project. Test files mirror src/ layout:
+    src/my/ns.clj → test/my/ns_test.clj.
+
+    '
+- name: Midje
+  clojars_artifact: midje/midje
+  type: bdd_testing
+  github_stars_2025: 1700+
+  detection:
+    lein_deps:
+    - midje/midje
+    lein_plugins:
+    - lein-midje
+    import_markers:
+    - midje.sweet
+    - (:require [midje.sweet :refer :all])
+    - (fact "
+    - (facts "
+    - (fact-group
+    - (background
+    - (provided
+    - '=> '
+    - (against-background
+    - (tabular
+    - '(contains '
+    - (just [
+    - '(roughly '
+    - (:use midje.sweet)
+    structural_markers:
+    - test/
+  notes: 'Midje provides BDD-style Clojure testing with => arrow assertions. (fact
+    "description" (+ 1 1) => 2) is the core pattern. (provided ...) sets up mocking.
+    (tabular ...) provides data-driven tests. Detected by midje/midje dep in project.clj
+    and midje.sweet namespace in test files. lein midje is the task to run Midje tests
+    with Leiningen.
+
+    '
+- name: kaocha
+  clojars_artifact: lambdaisland/kaocha
+  type: test_runner
+  github_stars_2025: 800+
+  detection:
+    lein_deps:
+    - lambdaisland/kaocha
+    deps_edn_coords:
+    - lambdaisland/kaocha
+    config_files:
+    - tests.edn
+    - bin/kaocha
+    import_markers:
+    - kaocha.repl
+    - lambdaisland.kaocha
+    - (k/run
+    - (kaocha.repl/run
+    - (:require [kaocha.
+    - '#kaocha/v1'
+    structural_markers:
+    - tests.edn
+    - bin/kaocha
+  notes: 'kaocha is a modern Clojure test runner supporting multiple test suites,
+    plugins, and reporters. tests.edn configures test suites using the #kaocha/v1
+    tagged literal. Works with clojure.test and Midje. The tests.edn file at repo
+    root is the primary detection signal. bin/kaocha is the standard launcher script.
+    Plugins include kaocha-junit-xml, kaocha-cloverage, kaocha-notifier.
+
+    '
+- name: test.check
+  clojars_artifact: org.clojure/test.check
+  type: property_based_testing
+  github_stars_2025: 1100+
+  detection:
+    lein_deps:
+    - org.clojure/test.check
+    deps_edn_coords:
+    - org.clojure/test.check
+    import_markers:
+    - clojure.test.check
+    - clojure.test.check.generators
+    - clojure.test.check.properties
+    - clojure.test.check.clojure-test
+    - (:require [clojure.test.check
+    - (prop/for-all
+    - (gen/sample
+    - (gen/generate
+    - (tc/quick-check
+    notes: 'test.check is Clojure''s QuickCheck port for property-based testing. Detected
+      by org.clojure/test.check dep and clojure.test.check.* namespace imports. (prop/for-all
+      [x gen/int] (= x x)) is the core pattern. Often used alongside clojure.test
+      via defspec.
+
+      '

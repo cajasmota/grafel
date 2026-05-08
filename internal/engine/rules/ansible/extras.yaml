@@ -1,0 +1,600 @@
+detection:
+  ansible_cfg:
+    file_name_exact:
+    - ansible.cfg
+    file_locations:
+    - project_root
+    - ~/.ansible.cfg
+    - /etc/ansible/ansible.cfg
+    content_anchor: 'ansible.cfg is the INI-format configuration file for Ansible.
+      Definitive signals are the presence of [defaults], [ssh_connection], [privilege_escalation],
+      or other standard section headers. The file structure is INI-like with key=value
+      pairs grouped under [section] headers. Any file named ansible.cfg with an [defaults]
+      section is conclusively an Ansible configuration.
+
+      '
+    required_section: '[defaults]'
+    common_sections:
+    - '[defaults]'
+    - '[ssh_connection]'
+    - '[paramiko_connection]'
+    - '[privilege_escalation]'
+    - '[inventory]'
+    - '[persistent_connection]'
+    - '[conntrack]'
+    common_keys:
+    - host_key_checking
+    - inventory
+    - roles_path
+    - collections_paths
+    - module_utils
+    - fact_caching
+    - become_method
+    - callback_plugins
+    - action_plugins
+    - lookup_plugins
+    - filter_plugins
+    - vars_plugins
+    - library
+    notes: 'ansible.cfg presence in a repo root is a definitive Ansible signal. Do
+      not require content parsing — file name alone is sufficient. Extract inventory
+      path, roles_path, collections_paths, and library paths as project structure
+      metadata. Extract callback_plugins, action_plugins, and filter_plugins paths
+      as custom extension registrations.
+
+      '
+  playbook:
+    file_name_patterns:
+    - '*.yml'
+    - '*.yaml'
+    - site.yml
+    - site.yaml
+    - playbook.yml
+    - playbook.yaml
+    - main.yml
+    - main.yaml
+    - '*-playbook.yml'
+    - '*-playbook.yaml'
+    content_anchor: 'A playbook is a YAML file with a top-level list or dictionary
+      containing "hosts:" and one or both of "tasks:" or "roles:" keys. The definitive
+      pattern is the presence of these three fields at the top level of a YAML document.
+      Playbooks may also contain "vars:", "handlers:", "pre_tasks:", "post_tasks:",
+      "block:", "include:", "import_playbook:", etc. Not every YAML file is an Ansible
+      playbook — files without this structure should not be false-positived as playbooks.
+      The hosts: field is mandatory and specifies the target inventory group or pattern.
+
+      '
+    required_fields:
+    - hosts
+    optional_high_value_fields:
+    - name
+    - tasks
+    - roles
+    - handlers
+    - vars
+    - defaults
+    - pre_tasks
+    - post_tasks
+    - block
+    pattern_examples:
+    - "hosts: all\n  tasks:\n    - name: Example"
+    - "hosts: webservers\n  roles:\n    - common\n    - nginx"
+    - "hosts: localhost\n  connection: local\n  gather_facts: no\n  tasks:"
+    - "hosts: all\n  pre_tasks:\n    - name: Validate\n  roles:\n    - deploy"
+    notes: 'Playbooks are the primary execution unit in Ansible. Extract the play
+      name (if present), hosts target pattern, task names, role references, and handler
+      names. Task names are the operational documentation. Role references signal
+      role dependencies (intra-project or from Galaxy). Handler names are notification
+      targets triggered by task notify: directives. Plays may use handlers to trigger
+      services restarts, config reloads, etc. Block/rescue/always is error handling
+      syntax — flag for error recovery signal extraction.
+
+      '
+  role_directory:
+    directory_structure:
+      base_directory: roles/<role_name>
+      required_or_convention_subdirs:
+      - tasks/main.yml
+      - handlers/main.yml
+      - templates/
+      - vars/main.yml
+      - defaults/main.yml
+      - files/
+      - meta/main.yml
+      - tests/
+      - library/
+      - plugins/
+    content_anchor: 'A role is a standardized directory under roles/ containing at
+      least a tasks/main.yml file. The presence of tasks/main.yml + the role_name/
+      directory structure is a definitive Ansible role signal. Roles encapsulate reusable
+      automation patterns. meta/main.yml declares role dependencies (dependencies:
+      list) — these are critical for understanding role coupling.
+
+      '
+    meta_main_fields:
+    - galaxy_info
+    - dependencies
+    - argument_specs
+    notes: 'Roles are the unit of reusability in Ansible. Extract role name, task
+      names from tasks/main.yml, handler names from handlers/main.yml, role dependencies
+      from meta/main.yml (dependencies: list), and variable names from vars/main.yml
+      and defaults/main.yml. Role templates (templates/) signal configuration file
+      generation (Jinja2 templating). Role tests directory signals Molecule test coverage.
+      Roles may be embedded in a project (roles/ subdir) or installed from Galaxy
+      (ansible-galaxy role). Any role with dependencies is a coupling signal.
+
+      '
+  inventory_hosts:
+    file_name_exact:
+    - hosts
+    - inventory
+    file_name_patterns:
+    - hosts*
+    - inventory*
+    - inventory.yml
+    - inventory.yaml
+    - inventory.ini
+    content_format:
+      ini_format: 'Traditional INI format. Group names in [brackets]. Hosts listed
+        under groups. Host vars appended with key=value pairs on same line.
+
+        '
+      yaml_format: 'Modern YAML format. all: root group. ungrouped: hosts not in any
+        group. Groups declared as keys. Hosts under all: > hosts: or children:.
+
+        '
+    content_examples:
+      ini_example: '[webservers]
+
+        web1.example.com ansible_user=deploy
+
+        web2.example.com ansible_user=deploy
+
+
+        [databases]
+
+        db1.example.com ansible_user=dbadmin
+
+        '
+      yaml_example: "all:\n  children:\n    webservers:\n      hosts:\n        web1.example.com:\n\
+        \          ansible_user: deploy\n    databases:\n      hosts:\n        db1.example.com:\n"
+    extraction_fields:
+    - group_names
+    - host_names
+    - host_vars
+    - group_vars
+    high_value_var_patterns:
+    - ansible_user
+    - ansible_password
+    - ansible_ssh_private_key_file
+    - ansible_become_user
+    - ansible_become_method
+    - ansible_python_interpreter
+    - ansible_port
+    - ansible_host
+    notes: 'Inventory defines the target infrastructure. Extract group names and host
+      names/patterns as the infrastructure topology. Extract ansible_user, ansible_become_user,
+      ansible_become_method for privilege escalation signals. ansible_python_interpreter
+      signals runtime configuration. Variables in group_vars/ and host_vars/ directories
+      (if present) are group/host-level configuration. Dynamic inventory scripts (inventory.py,
+      inventory.sh) are custom integration points — flag for external dependency signals.
+
+      '
+  galaxy_yml:
+    file_name_exact:
+    - galaxy.yml
+    - galaxy.yaml
+    file_locations:
+    - project_root
+    - collections/<collection_name>/galaxy.yml
+    - roles/<role_name>/galaxy.yml
+    content_anchor: 'galaxy.yml is the collection manifest. Definitive signals: presence
+      of name:, namespace:, version:, and license: fields at top level. Collections
+      are Ansible packaging units — similar to Python packages. galaxy.yml declares
+      collection metadata, dependencies, and build artifacts.
+
+      '
+    required_fields:
+    - namespace
+    - name
+    - version
+    - license
+    optional_high_value_fields:
+    - description
+    - authors
+    - dependencies
+    - repository
+    - documentation
+    - repository_url
+    - build_ignore
+    notes: 'galaxy.yml is the collection packaging manifest. Extract namespace, collection
+      name, version, and dependency collection names. Dependencies declare collection
+      coupling (e.g., community.general, ansible.posix, amazon.aws). High-value: extract
+      declared dependencies as external collection integrations.
+
+      '
+  requirements_yml:
+    file_name_patterns:
+    - requirements.yml
+    - requirements.yaml
+    - requirements-*.yml
+    - requirements-*.yaml
+    content_anchor: 'requirements.yml is a dependency manifest listing roles and collections
+      to install via ansible-galaxy. Two formats: 1) role list with source/version,
+      2) collections list with source/version. Presence of a top-level list with name:
+      and version: fields (for roles) or namespace.collection: entries (for collections)
+      is the definitive signal.
+
+      '
+    content_format_role_list: "- name: geerlingguy.java\n  src: git+https://github.com/geerlingguy/ansible-role-java.git\n\
+      \  version: master\n- name: geerlingguy.nginx\n  src: geerlingguy.nginx\n  version:\
+      \ 2.8.0\n"
+    content_format_collection_list: "collections:\n  - name: community.general\n \
+      \   version: \">=1.0.0\"\n  - name: ansible.posix\n    version: 1.5.0\n  - name:\
+      \ amazon.aws\n"
+    extraction_fields:
+    - role_names
+    - collection_names
+    - source_urls
+    - version_pins
+    notes: 'requirements.yml is an externalized dependency list. Extract role names,
+      collection names, and their version pins. Git-based role sources signal internal
+      or forked role integrations. Collection version pins signal version constraints
+      (>=1.0.0, ==2.5.0, etc.). High-value for dependency graph extraction.
+
+      '
+entity_types:
+- entity: playbook
+  vera_scope: Service
+  source: '*.yml / *.yaml file with hosts: + tasks: or roles:'
+  required_fields:
+  - play_name
+  - hosts_pattern
+  optional_high_value_fields:
+  - task_names
+  - role_references
+  - handler_names
+  - vars
+  - pre_task_names
+  - post_task_names
+  - block_names
+  - tags
+  extraction_rules: 'For each playbook YAML, extract the play name (if present), hosts
+    target pattern, and all task/role/handler names. Task names are the operational
+    documentation — essential for understanding what the playbook does. Role references
+    (roles: list) signal role dependencies. Tags enable selective execution — extract
+    for coverage analysis.
+
+    '
+  complexity_signals:
+  - task_count
+  - role_count
+  - handler_count
+  - block_depth
+  - conditional_chains
+  - include_import_depth
+  notes: 'Playbooks are the primary execution units. Extract play name, hosts pattern,
+    and all operation names (task, role, handler). Handlers are notification targets
+    — essential for understanding service restart and reload patterns. Conditional
+    chains (when: + register:) indicate dynamic logic branching. Block/rescue/always
+    indicates error handling and retry logic.
+
+    '
+- entity: role
+  vera_scope: Component
+  source: roles/<role_name>/ directory with tasks/main.yml
+  required_fields:
+  - role_name
+  - task_names
+  optional_high_value_fields:
+  - handler_names
+  - dependencies
+  - default_vars
+  - vars
+  - templates
+  - files
+  extraction_rules: 'For each role directory, extract role name, all task names from
+    tasks/main.yml, handler names from handlers/main.yml, and declared dependencies
+    from meta/main.yml (dependencies: list). Dependencies are critical — they indicate
+    role coupling and execution ordering. Templates signal configuration file generation.
+    Files signal static artifact deployment.
+
+    '
+  dependency_signals:
+  - meta_dependencies
+  - include_import
+  - role_references
+  notes: 'Roles are reusable automation units. Extract role name, all task names (operational
+    documentation), handler names (service restart targets), and dependencies. Dependencies
+    determine execution order and coupling. High-value for understanding role interaction
+    graphs. Roles may be sourced locally (roles/ subdir) or from Galaxy (community.general,
+    etc.).
+
+    '
+- entity: operation
+  vera_scope: Operation
+  source: task entry in playbook or role tasks/main.yml
+  required_fields:
+  - task_name
+  - module
+  optional_high_value_fields:
+  - module_args
+  - notify
+  - when
+  - register
+  - loop
+  - tags
+  - async_timeout
+  - handlers_triggered
+  module_categories:
+  - package
+  - template
+  - service
+  - shell
+  - command
+  - file
+  - lineinfile
+  - copy
+  - git
+  - docker_container
+  - kubernetes.core.k8s
+  - debug
+  extraction_rules: 'Extract task name (name: field), module name, notify targets
+    (handler names), and conditional expressions (when:). Conditional chains (when:
+    with register: variables) are dynamic branching signals. Notify targets indicate
+    handler coupling. Async timeouts indicate long-running task patterns.
+
+    '
+  complexity_signals:
+  - when_complexity
+  - notify_count
+  - register_count
+  - loop_patterns
+  - async_patterns
+  notes: 'Tasks are the operational leaf units. Extract task name (documentation),
+    module name (the action being performed), handlers triggered (notify:), and conditionals
+    (when:). Handlers are critical — they are the service restart/reload targets.
+    Register patterns signal state capture and conditional branching. High-value for
+    understanding operational flow.
+
+    '
+- entity: handler
+  vera_scope: Operation
+  source: handler entry in handlers/main.yml or playbook
+  required_fields:
+  - handler_name
+  - handler_module
+  optional_high_value_fields:
+  - module_args
+  - listen
+  - tags
+  - notify
+  handler_module_patterns:
+  - service
+  - systemd
+  - shell
+  - debug
+  - uri
+  extraction_rules: 'Extract handler name and the module/action being performed. Handlers
+    are triggered by tasks via notify: directives. Handler names are the service restart/reload
+    targets. Handlers can chain (notify: another handler) — extract these chains.
+
+    '
+  notes: 'Handlers are notification targets triggered by tasks. The handler name is
+    the restart/reload action being performed. Extract handler names and their target
+    modules (service restart, systemd reload, etc.). Handlers can chain (handler →
+    handler notifications) — extract for coupling analysis. High-value for understanding
+    operational side-effects.
+
+    '
+- entity: variable
+  vera_scope: Schema
+  source: 'vars: / defaults: in playbooks and roles'
+  required_fields:
+  - variable_name
+  optional_high_value_fields:
+  - default_value
+  - variable_scope
+  - variable_type
+  extraction_rules: 'Extract variable names from: 1) playbook vars: section, 2) role
+    defaults/main.yml, 3) role vars/main.yml, 4) inventory host_vars and group_vars,
+    5) inline variable definitions in tasks (set_fact, register). Do not extract values
+    (may contain secrets) — only variable names and metadata (type, scope).
+
+    '
+  variable_patterns:
+  - app_name
+  - environment
+  - version
+  - ports
+  - usernames
+  - file_paths
+  notes: 'Variables are the configuration/state holders. Extract variable names only
+    (not values — values may contain secrets or passwords). Variable scope signals
+    configuration layering (role defaults < role vars < playbook vars < host vars
+    < command-line vars). High-value for understanding configuration contracts.
+
+    '
+- entity: inventory_group
+  vera_scope: Schema
+  source: hosts file, inventory.yml, or inventory.ini
+  required_fields:
+  - group_name
+  - member_hosts
+  optional_high_value_fields:
+  - group_vars
+  - children
+  - host_pattern
+  extraction_rules: 'Extract inventory group names and their member hosts. Group names
+    are the infrastructure topology labels (webservers, databases, loadbalancers,
+    etc.). Group variables (ansible_user, ansible_port, etc.) signal connection parameters.
+    Child groups signal hierarchical organization.
+
+    '
+  topology_signals:
+  - group_hierarchy
+  - group_count
+  - host_count
+  - connection_vars
+  notes: 'Inventory groups are the infrastructure topology nodes. Extract group names
+    and member hosts. Group organization signals infrastructure segmentation (webservers,
+    databases, cache, etc.). Group variables indicate authentication and connection
+    patterns. High-value for understanding infrastructure organization.
+
+    '
+- entity: collection
+  vera_scope: Service
+  source: galaxy.yml in collection root or requirements.yml
+  required_fields:
+  - collection_name
+  - namespace
+  - version
+  optional_high_value_fields:
+  - dependencies
+  - plugins
+  - roles
+  extraction_rules: 'Extract collection namespace.name and version. Collections are
+    packaging units containing modules, plugins, and roles. Extract dependency collections
+    (declared in galaxy.yml or requirements.yml) as collection coupling signals.
+
+    '
+  well_known_collections:
+  - community.general
+  - community.network
+  - ansible.posix
+  - ansible.netcommon
+  - amazon.aws
+  - google.cloud
+  - microsoft.azure
+  - kubernetes.core
+  notes: 'Collections are Ansible''s packaging mechanism (similar to Python packages).
+    Extract collection name, version, and dependencies. Collections from cloud providers
+    (amazon.aws, google.cloud, microsoft.azure) indicate cloud infrastructure targeting.
+    High-value for understanding platform and service integration scope.
+
+    '
+orm_database:
+  note: 'Ansible is an infrastructure automation tool, not an ORM/database framework.
+    No applicable ORM or database abstraction layer. Ansible manages systems, services,
+    files, and infrastructure — not application data models. Skip this section for
+    Ansible projects.
+
+    '
+domain_roots:
+- convention_name: monorepo_playbook_structure
+  description: 'Single repository with playbooks at the root and roles/ subdirectory.
+    Canonical layout for small-to-medium projects.
+
+    '
+  structure:
+    root_level:
+    - site.yml
+    - ansible.cfg
+    - '"hosts" or "inventory.yml"  # inventory'
+    - requirements.yml
+    subdirectories:
+    - roles/<role_name>/
+    - group_vars/<group_name>/
+    - host_vars/<hostname>/
+    - '"library/" (optional custom modules)'
+    - '"plugins/" (optional custom plugins)'
+  notes: 'Most common Ansible project layout. Single repo, multiple roles, shared
+    inventory. Playbooks at root.
+
+    '
+- convention_name: collection_project_structure
+  description: 'Collection-based project layout (Ansible 2.10+). Collections as Python
+    packages with modules, plugins, and roles.
+
+    '
+  structure:
+    root_level:
+    - galaxy.yml
+    - README.md
+    subdirectories:
+    - plugins/modules/
+    - plugins/filters/
+    - plugins/lookup/
+    - roles/<role_name>/
+    - tests/unit/
+    - tests/integration/
+  notes: 'Modern Ansible 2.10+ structure. Collections encapsulate modules, plugins,
+    and roles. Used for shared library distributions via Galaxy.
+
+    '
+- convention_name: playbook_per_service_structure
+  description: 'Separate playbooks for each service/subsystem. Common in large infrastructure
+    repos.
+
+    '
+  structure:
+    root_level:
+    - '"site.yml" (master playbook importing others)'
+    - '"web.yml" (web servers)'
+    - '"db.yml" (databases)'
+    - '"cache.yml" (cache layer)'
+    - loadbalancer.yml
+    shared_directories:
+    - roles/
+    - group_vars/
+    - inventory/
+  notes: 'Service-per-playbook organization. site.yml (or top.yml) imports service-specific
+    playbooks. Reduces merge conflicts and enables independent service updates.
+
+    '
+- convention_name: environment_overlay_structure
+  description: 'Environment-specific directory overlays (base + env-specific). Common
+    pattern for multi-environment deployments (dev, staging, prod).
+
+    '
+  structure:
+    root_level:
+    - ansible.cfg
+    subdirectories:
+    - '"base/" (base roles, shared playbooks)'
+    - '"inventories/dev/" (dev inventory + vars)'
+    - '"inventories/staging/" (staging inventory + vars)'
+    - '"inventories/prod/" (prod inventory + vars)'
+    - '"playbooks/" (shared playbooks invoked with -i inventories/ENV)'
+  notes: 'Multi-environment structure. ansible-playbook -i inventories/prod/ site.yml.
+    Base roles + environment-specific inventory/group_vars. Common in CI/CD pipelines
+    (separate runs per environment).
+
+    '
+- convention_name: tower_awx_project_structure
+  description: 'Project structure optimized for Ansible Tower / AWX execution. Includes
+    Tower-specific metadata and credential references.
+
+    '
+  structure:
+    root_level:
+    - '"site.yml" (main playbook)'
+    - ansible.cfg
+    - '".tower.yml" or "tower.yml" (Tower-specific config)'
+    special_directories:
+    - '"group_vars/" (Tower synced group variables)'
+    - '"host_vars/" (Tower synced host variables)'
+    - roles/
+    tower_specific:
+    - Tower credential store references
+    - Tower survey variables
+    - Tower workflow templates
+  notes: 'AWX/Tower projects include Tower API integration, credential vaults, and
+    workflow orchestration. Detected via Tower-specific configuration files or API
+    references.
+
+    '
+vera_scope_mapping:
+  playbook: Service
+  role: Component
+  task/operation: Operation
+  handler: Operation
+  inventory_group: Schema
+  variable: Schema
+  collection: Service
+mapping_justification: 'Playbooks are the top-level execution units (Service). Roles
+  are reusable components (Component). Tasks and handlers are leaf operations (Operation).
+  Inventory groups define infrastructure topology constraints (Schema). Variables
+  define configuration schemas (Schema). Collections are service packaging units (Service).
+
+  '

@@ -1,0 +1,27 @@
+orms_database:
+  name: golang-migrate
+  go_module: github.com/golang-migrate/migrate/v4
+  category: migration_tool
+  adoption_rank_2025: 1
+  detection:
+    dependency_names:
+    - github.com/golang-migrate/migrate
+    - github.com/golang-migrate/migrate/v4
+    migration_file_patterns:
+    - '*.up.sql'
+    - '*.down.sql'
+    - '[0-9]*_*.up.sql'
+    - '[0-9]*_*.down.sql'
+    directory_markers:
+    - migrations/
+    - db/migrations/
+    - internal/migrations/
+  notes: 'golang-migrate is the most widely used database migration tool for Go.
+    Migration files follow the pattern {seq}_{description}.{up|down}.sql where seq
+    is zero-padded (e.g. 000001). Detects via file naming convention only — no special
+    SQL syntax required.
+
+    '
+  custom_extractors:
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract

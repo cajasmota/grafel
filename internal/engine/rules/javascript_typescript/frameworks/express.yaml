@@ -1,0 +1,129 @@
+# Express framework extraction rules (MX-523)
+# Schema: FrameworkExtractionSchema (MX-494)
+# NPM: express
+#
+# Top-level detection metadata is consumed by the modular_loader.
+# Top-level extraction keys are consumed by FrameworkExtractionSchema.
+
+frameworks:
+  name: express
+  category: web
+  npm_packages:
+  - express
+  config_files: []
+  detection_signals:
+    package_json_deps:
+    - express
+    import_patterns:
+    - require('express')
+    - from 'express'
+    code_patterns:
+    - express()
+    - app.use(
+    - app.get(
+    - app.post(
+    - app.listen(
+    - Router()
+  framework_specific:
+  - req, res, next
+  - express.Router()
+  notes: No config file; detect via express() call in entry file
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  # Route handlers in routes/ or controllers/
+  - glob: "*/routes/*.js"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/routes/*.ts"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/controllers/*.js"
+    entity_type: Controller
+    name_from: filename
+  - glob: "*/controllers/*.ts"
+    entity_type: Controller
+    name_from: filename
+  # Middleware in middleware/
+  - glob: "*/middleware/*.js"
+    entity_type: Middleware
+    name_from: filename
+  - glob: "*/middleware/*.ts"
+    entity_type: Middleware
+    name_from: filename
+
+source_patterns:
+  # Route registration: app.get("/path", handler) or router.get("/path", handler)
+  # Covers app.get/post/put/patch/delete/all + router.get/post/put/patch/delete/all
+  - pattern: "(?:app|router)\\.(?:get|post|put|patch|delete|all)\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+
+  # Express Router instantiation: const router = Router() or express.Router()
+  - pattern: "(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:express\\.)?Router\\s*\\("
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # app.use("/prefix", router) — mounts a sub-router
+  - pattern: "(?:app|router)\\.use\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]"
+    entity_type: Route
+    name_group: 1
+    scope: file
+
+  # app.use(middleware) — middleware registration (no path prefix)
+  - pattern: "(?:app|router)\\.use\\s*\\(\\s*(\\w[\\w.]*)"
+    entity_type: Middleware
+    name_group: 1
+    scope: file
+
+  # Middleware function: (req, res, next) => { ... } or function name(req, res, next)
+  # Captures function name where defined as named function
+  - pattern: "(?:function\\s+(\\w+)|(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:async\\s+)?(?:function)?\\s*\\()\\s*\\([^)]*req[^)]*res[^)]*next"
+    entity_type: Middleware
+    name_group: 1
+    scope: function
+
+  # express() app creation: const app = express()
+  - pattern: "(?:const|let|var)\\s+(\\w+)\\s*=\\s*express\\s*\\(\\s*\\)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+  # app.listen(port) — server startup
+  - pattern: "\\.listen\\s*\\(\\s*(\\d+|\\w+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # app.use("/prefix", router) — mounts router at path prefix
+  - pattern: "(?:app|router)\\.use\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]\\s*,\\s*(\\w+)"
+    source_type: Route
+    target_type: Route
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+  # Route handler: app.get("/path", handlerFn) -> handlerFn ROUTES_TO path
+  - pattern: "(?:app|router)\\.(?:get|post|put|patch|delete|all)\\s*\\(\\s*['\"`]([^'\"` ]+)['\"`]\\s*,\\s*(\\w+)"
+    source_type: Operation
+    target_type: Controller
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.express_extractor"
+    function: "extract"
+    description: "Extract Express.js route handlers, Router composition, middleware chains, error handling, static, config, Passport strategies, Socket.io, and param middleware"
+  - module: "memx_indexer.languages._engine.config_prefix_extractor"
+    function: "extract"
+    description: "Extract app.use() mount path prefix from app.js as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."
+  - module: "memx_indexer.languages._engine.config_consumer_extractor"
+    function: "extract"
+    description: "Extract process.env.KEY and process.env['KEY'] reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming entities (MX-600)."

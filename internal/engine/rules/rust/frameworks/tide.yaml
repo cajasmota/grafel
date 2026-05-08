@@ -1,0 +1,21 @@
+frameworks:
+  name: Tide
+  crate: tide
+  category: web_micro
+  crates_io_version_2025: 0.16.x
+  github_stars_2025: 5100+
+  detection:
+    cargo_toml_deps:
+    - tide
+    import_markers:
+    - 'use tide::'
+    structural_markers:
+    - tide::new()
+    - tide::Server
+    - tide::Request
+    - tide::Response
+    - app.at(
+    notes: 'Minimal async framework from the async-std ecosystem. Lower adoption than
+      Axum/Actix in 2025 but still in active use. Signals async-std runtime preference.
+
+      '

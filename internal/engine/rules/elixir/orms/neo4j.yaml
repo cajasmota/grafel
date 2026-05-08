@@ -1,0 +1,33 @@
+orms_database:
+  name: bolt_sips (Neo4j Elixir Driver)
+  category: graph_database
+  hex_package: bolt_sips
+  adoption_rank_2025: 1
+  detection:
+    mix_exs_markers:
+    - bolt_sips
+    import_patterns:
+    - use Bolt.Sips
+    code_patterns:
+    - Bolt.Sips.start_link(
+    - Bolt.Sips.query(
+    - Bolt.Sips.conn(
+  notes: >
+    Community Neo4j Elixir driver (bolt_sips). Uses Bolt.Sips.start_link/1
+    for connection configuration and Bolt.Sips.query/2 for Cypher execution.
+
+# ---------------------------------------------------------------------------
+# Extraction schema (MX-574)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.neo4j.neo4j_extractor"
+    function: "extract"
+    description: >
+      Cross-language Neo4j extractor: driver connections via Bolt.Sips
+      (SCOPE.Service, INFERRED_FROM_NEO4J_DRIVER), Cypher queries
+      (SCOPE.Operation/query, INFERRED_FROM_NEO4J_CYPHER).

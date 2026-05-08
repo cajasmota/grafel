@@ -1,0 +1,31 @@
+orms:
+  name: SeaORM
+  crate: sea-orm
+  category: orm_async
+  crates_io_version_2025: 1.x
+  detection:
+    cargo_toml_deps:
+    - sea-orm
+    - sea-orm-migration
+    - sea-query
+    import_markers:
+    - 'use sea_orm::'
+    - use sea_orm::entity::*
+    code_patterns:
+    - '#[derive(Clone, Debug, PartialEq, DeriveEntityModel'
+    - '#[sea_orm(table_name = '
+    - DeriveRelation
+    - DeriveActiveModel
+    - ActiveModelBehavior
+    - EntityTrait
+    - ColumnTrait
+    - RelationTrait
+    - .find()
+    - .find_by_id(
+    - .insert(
+    - .update(
+    - .delete(
+  notes: 'Async ORM built on SQLx. Entity model macros are distinctive. sea-orm-migration
+    for schema migrations. Strong adoption growth in 2025.
+
+    '

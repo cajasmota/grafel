@@ -1,0 +1,7 @@
+build_tools:
+  note: 'CI/CD platforms are themselves the "build tools" in this research context.
+    Individual platforms (GitHub Actions, GitLab CI, etc) ARE the build tools. No
+    separate build tools section is needed — see frameworks section above. Build orchestration
+    (make, gradle, bazel) is a separate research topic.
+
+    '

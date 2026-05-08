@@ -1,0 +1,63 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/indexer-python/src/main.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "process_order",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 9,
+      "end_line": 26,
+      "language": "python",
+      "signature": "def process_order(order: dict) -> dict",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "_expedite_order",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 29,
+      "end_line": 38,
+      "language": "python",
+      "signature": "def _expedite_order(order: dict) -> dict",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "_queue_order",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 41,
+      "end_line": 50,
+      "language": "python",
+      "signature": "def _queue_order(order: dict) -> dict",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "_standard_order",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 53,
+      "end_line": 62,
+      "language": "python",
+      "signature": "def _standard_order(order: dict) -> dict",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "calculate_discount",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 65,
+      "end_line": 89,
+      "language": "python",
+      "signature": "def calculate_discount(amount: float, customer_tier: str, coupon: str | None) -> float",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

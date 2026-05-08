@@ -1,0 +1,94 @@
+complexity_signals:
+- name: annotation_stacking
+  description: 'Multiple Spring annotations stacked on a single method or class, indicating
+    cross-cutting concerns applied simultaneously.
+
+    '
+  patterns:
+  - '@Transactional + @Cacheable (transaction + cache)'
+  - '@Transactional + @Async (transactional async — problematic pattern)'
+  - '@Cacheable + @Async'
+  - '@PreAuthorize + @Transactional + @Cacheable (security + tx + cache)'
+  - '@Retry + @CircuitBreaker (resilience4j stacking)'
+  detection:
+    code_patterns:
+    - '@Transactional'
+    - '@Cacheable'
+    - '@Async'
+    - '@PreAuthorize'
+    - '@PostAuthorize'
+    - '@Retry'
+    - '@CircuitBreaker'
+  heuristic: 3+ spring annotations on same method = high complexity
+- name: reflection_usage
+  description: 'Runtime reflection — Class.forName, Method.invoke, Field.setAccessible
+    — indicates dynamic dispatch, plugin systems, or proxy patterns.
+
+    '
+  patterns:
+  - Class.forName(
+  - method.invoke(
+  - field.setAccessible(true)
+  - Constructor.newInstance(
+  - getDeclaredMethods()
+  - getDeclaredFields()
+  heuristic: reflection in non-test code = complexity signal
+- name: proxy_and_aop
+  description: 'Spring AOP aspects, CGLIB/JDK proxies, and dynamic proxy creation
+    indicate cross-cutting concern injection.
+
+    '
+  patterns:
+  - '@Aspect'
+  - '@Around'
+  - '@Before'
+  - '@After'
+  - '@Pointcut'
+  - ProceedingJoinPoint
+  - Proxy.newProxyInstance(
+  - ProxyFactory
+  heuristic: '@Aspect + @Around = AOP proxy complexity'
+- name: async_and_reactive_chains
+  description: 'CompletableFuture chains, reactive streams, and parallel stream pipelines
+    with error handling indicate async complexity.
+
+    '
+  patterns:
+  - CompletableFuture.supplyAsync(
+  - .thenCompose(
+  - .thenCombine(
+  - .exceptionally(
+  - .handle(
+  - Flux.fromIterable(
+  - .flatMap(
+  - .switchIfEmpty(
+  - .onErrorResume(
+  - ExecutorService
+  - ForkJoinPool
+  heuristic: CompletableFuture chain > 3 stages = complexity signal
+- name: complex_stream_pipelines
+  description: 'Java Stream API pipelines with multiple intermediate operations, collectors,
+    and nested lambdas.
+
+    '
+  patterns:
+  - .stream().filter(..).map(..).flatMap(..).collect(
+  - Collectors.groupingBy(
+  - Collectors.toMap(
+  - Collectors.partitioningBy(
+  - .reduce(
+  - Stream.of(..).parallel()
+  heuristic: Stream pipeline > 4 chained operations = complexity signal
+- name: generics_and_type_erasure
+  description: 'Wildcard generics, bounded type parameters, and TypeToken patterns
+    indicate complex type systems.
+
+    '
+  patterns:
+  - <? extends
+  - <? super
+  - TypeReference<
+  - new TypeToken<
+  - ParameterizedType
+  - GenericArrayType
+  heuristic: nested wildcard generics = type complexity signal

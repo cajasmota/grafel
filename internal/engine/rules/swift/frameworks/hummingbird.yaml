@@ -1,0 +1,26 @@
+frameworks:
+  name: Hummingbird
+  category: web_server_framework
+  spm_coordinates:
+  - hummingbird-project/hummingbird
+  detection:
+    config_files:
+    - Package.swift
+    - Sources/App/
+    build_signals:
+    - '.package(url: "https://github.com/hummingbird-project/hummingbird.git"'
+    - '.product(name: "Hummingbird", package: "hummingbird")'
+    import_patterns:
+    - import Hummingbird
+    code_patterns:
+    - let router = Router()
+    - router.get(
+    - router.post(
+    - let app = Application(router:)
+    - HBApplication(
+    - HBRouter(
+  notes: 'Lightweight Swift HTTP framework. Uses structured concurrency (Swift 5.9+).
+    HB prefix (HBApplication, HBRouter) = Hummingbird 1.x; plain Application/Router
+    = Hummingbird 2.x. SPM-only.
+
+    '

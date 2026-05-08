@@ -1,0 +1,64 @@
+build_tools:
+- name: make
+  config_files:
+  - Makefile
+  - makefile
+  - GNUmakefile
+  usage: 'Traditional build and task automation. Used across nearly all languages.
+    Common targets: all, clean, test, build, lint, deploy.
+
+    '
+  detection_notes: 'Presence of Makefile is high-confidence signal. .PHONY declaration
+    distinguishes task-runner usage from build usage.
+
+    '
+- name: just
+  config_files:
+  - justfile
+  - Justfile
+  - .justfile
+  usage: 'Rust-native command runner. No dependency tracking (unlike Make). Recipes
+    support shell selection (bash, python, etc.) and parameterization.
+
+    '
+  detection_notes: justfile presence is definitive.
+- name: task
+  config_files:
+  - Taskfile.yml
+  - Taskfile.yaml
+  - Taskfile.dist.yml
+  usage: 'YAML-defined task runner. Supports parallel tasks, watching, includes, and
+    cross-platform compatibility (Windows + Unix). Popular in Go and polyglot monorepos.
+
+    '
+  detection_notes: Taskfile.yml with 'tasks:' key is definitive.
+- name: npm_scripts
+  config_files:
+  - package.json
+  usage: 'Shell commands invoked via `npm run <script>`. Common pattern for projects
+    with a Node.js toolchain even when the primary language is not JS/TS. Scripts
+    section in package.json can contain arbitrary shell.
+
+    '
+  detection_notes: '`\"scripts\":` key in package.json. Shell scripts in scripts/
+    or bin/ directories may be called by npm run targets.
+
+    '
+- name: ci_scripts
+  config_files:
+  - .github/workflows/*.yml
+  - .github/workflows/*.yaml
+  - .gitlab-ci.yml
+  - .circleci/config.yml
+  - Jenkinsfile
+  - .travis.yml
+  - azure-pipelines.yml
+  - .drone.yml
+  usage: 'CI/CD pipeline definitions containing inline shell steps. Shell complexity
+    in CI is a strong signal of the project''s operational complexity.
+
+    '
+  detection_notes: 'run: blocks in GitHub Actions YAML contain inline bash/sh. Multi-line
+    run blocks with pipe chains indicate high shell complexity.
+
+    '

@@ -1,0 +1,20 @@
+frameworks:
+  name: AWX / Ansible Tower
+  vendor: Red Hat
+  category: orchestration_platform
+  detection:
+    config_indicators:
+    - AWX database connection strings in code
+    - Ansible Tower API calls (tower-cli, REST API)
+    - Tower inventory sync configuration
+    - Tower credential store references
+    cli_invocation_patterns:
+    - awx-manage
+    - tower-cli
+    - ansible-runner
+  notes: 'AWX (open-source) and Ansible Tower (commercial) are web UI / API / database
+    orchestration platforms built on Ansible Core. Tower adds multi-tenancy, RBAC,
+    workflow templates, and credential vaults. Detected via Tower-specific API calls,
+    credential references, or awx-manage CLI usage.
+
+    '

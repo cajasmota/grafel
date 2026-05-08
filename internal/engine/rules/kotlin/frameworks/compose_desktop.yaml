@@ -1,0 +1,26 @@
+frameworks:
+  name: Compose Desktop
+  category: desktop_ui
+  gradle_coordinates:
+  - org.jetbrains.compose:compose-gradle-plugin
+  - org.jetbrains.compose.desktop:desktop
+  detection:
+    config_files:
+    - desktopMain/kotlin/
+    build_signals:
+    - id("org.jetbrains.compose")
+    - compose.desktop {
+    - compose.desktop.currentOs
+    import_patterns:
+    - import androidx.compose.ui.window.
+    code_patterns:
+    - application {
+    - Window(
+    - singleWindowApplication {
+    - MenuBar {
+    - Tray(
+  notes: 'Compose Desktop targets JVM desktop (macOS, Windows, Linux). compose.desktop
+    block in build.gradle.kts is definitive. Distinct from CMP: no iosMain/androidMain
+    source sets.
+
+    '

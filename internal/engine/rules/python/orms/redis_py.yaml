@@ -1,0 +1,44 @@
+# Python Redis client extraction rules (MX-575).
+#
+# Top-level `orms_database:` key is consumed by the modular_loader (detection).
+# custom_extractors entries are consumed by CustomExtractorRegistry.
+
+orms_database:
+  name: redis-py
+  pypi_package: redis
+  category: cache_client
+  github_stars_2025: 13000+
+  detection:
+    dependency_names:
+    - redis
+    - aioredis
+    - upstash-redis
+    import_markers:
+    - import redis
+    - from redis import Redis
+    - from redis import StrictRedis
+    - import aioredis
+    - from upstash_redis import Redis
+    structural_markers:
+    - redis.Redis(
+    - redis.StrictRedis(
+    - Redis.from_url(
+    - aioredis.from_url(
+    - aioredis.create_redis_pool(
+  notes: >
+    redis-py is the official Python Redis client. aioredis provides async support
+    (merged into redis-py 4.2+). Upstash provides a REST-based Redis client for
+    serverless environments.
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.redis_extractor
+    function: extract
+    description: >-
+      Redis cross-language extractor: redis.Redis/StrictRedis/from_url/aioredis
+      connections (SCOPE.Service), cache ops get/set/hget/hset/expire/del
+      (SCOPE.Operation/cache_op), pub/sub publish/subscribe/psubscribe with channel
+      extraction (SCOPE.Operation/pubsub), streams xadd/xread/xreadgroup/xack with
+      stream name (SCOPE.Operation/stream_op), Lua eval/evalsha/SCRIPT LOAD
+      (SCOPE.Operation/lua_script), INCR+EXPIRE and sliding-window rate limiting
+      (SCOPE.Pattern/rate_limit).

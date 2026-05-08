@@ -1,0 +1,30 @@
+frameworks:
+  name: kotlinx.coroutines
+  category: concurrency_library
+  gradle_coordinates:
+  - org.jetbrains.kotlinx:kotlinx-coroutines-core
+  - org.jetbrains.kotlinx:kotlinx-coroutines-android
+  detection:
+    config_files: []
+    build_signals:
+    - '"org.jetbrains.kotlinx:kotlinx-coroutines-core"'
+    - '"org.jetbrains.kotlinx:kotlinx-coroutines-android"'
+    import_patterns:
+    - import kotlinx.coroutines.
+    code_patterns:
+    - launch {
+    - async {
+    - suspend fun
+    - withContext(
+    - CoroutineScope(
+    - GlobalScope.
+    - flow {
+    - collectLatest {
+    - StateFlow
+    - SharedFlow
+  notes: 'Coroutines are not a framework but a foundational library — nearly all modern
+    Kotlin projects include them. Presence of suspend fun + kotlinx-coroutines-core
+    is universal Kotlin signal. flow {} + collect* indicates reactive/cold streams
+    usage.
+
+    '

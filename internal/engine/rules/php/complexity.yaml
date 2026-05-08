@@ -1,0 +1,140 @@
+complexity_signals:
+- category: magic_methods
+  description: 'PHP magic methods enable dynamic behaviour that cannot be statically
+    analyzed without runtime context. Each adds indexing complexity.
+
+    '
+  patterns:
+  - __call($name, $args)
+  - __callStatic($name, $args)
+  - __get($name)
+  - __set($name, $value)
+  - __isset($name)
+  - __unset($name)
+  - __invoke()
+  - __toString()
+  - __clone()
+  - __serialize()
+  - __unserialize($data)
+  - __debugInfo()
+  indexing_note: '__call/__callStatic create implicit method dispatch — callers may
+    invoke methods that do not exist as named functions in the class definition. __get/__set
+    create implicit property access. Flag these for dynamic dispatch annotation during
+    indexing.
+
+    '
+- category: trait_stacking
+  description: 'Multiple trait compositions on a single class create horizontal inheritance
+    chains that are difficult to resolve statically.
+
+    '
+  patterns:
+  - use TraitA, TraitB, TraitC;
+  - use SoftDeletes;
+  - use HasFactory;
+  - use HasTimestamps;
+  - use Notifiable;
+  - use HasUuids;
+  - use LogsActivity;
+  - use Searchable;
+  - use HasApiTokens;
+  - insteadof
+  - as
+  indexing_note: 'Trait conflict resolution using insteadof and as renames adds ambiguity.
+    When 5+ traits are stacked, method resolution requires full MRO traversal. Mark
+    trait stacking depth as complexity metric.
+
+    '
+- category: service_containers
+  description: 'Dependency injection containers resolve bindings at runtime — the
+    concrete class behind an interface is unknown at static analysis time.
+
+    '
+  patterns:
+  - app()->make(
+  - App::make(
+  - resolve(
+  - app(
+  - $container->get(
+  - $container->make(
+  - $this->app->bind(
+  - $this->app->singleton(
+  - $this->app->scoped(
+  - ContainerInterface
+  - ServiceLocatorInterface
+  - di.xml
+  - services.yaml bindings
+  indexing_note: 'Container bindings in ServiceProvider::register() or services.yaml
+    must be traced to determine the resolved type. Abstract bindings (interface →
+    concrete) require cross-file resolution. Flag container usage and record the binding
+    map where discoverable.
+
+    '
+- category: middleware_chains
+  description: 'HTTP middleware wraps request/response processing in layers. Complex
+    pipelines make call graph analysis difficult.
+
+    '
+  patterns:
+  - app/Http/Kernel.php $middleware
+  - app/Http/Kernel.php $middlewareGroups
+  - app/Http/Kernel.php $routeMiddleware
+  - ->middleware(
+  - ->withMiddleware(
+  - config/packages/security.yaml firewalls
+  - Middleware\Authenticate
+  - Middleware\VerifyCsrfToken
+  - MiddlewareInterface
+  - $app->add(
+  - ->pipe(
+  indexing_note: 'Laravel''s Kernel $middleware/$middlewareGroups defines the global
+    stack. Symfony firewalls in security.yaml define auth middleware. Middleware order
+    affects request context — flag middleware chains with 5+ entries as high-complexity.
+
+    '
+- category: macro_and_mixin_registration
+  description: 'Laravel Macros and PHP mixins inject methods onto existing classes
+    at runtime. These methods are invisible to static analysis.
+
+    '
+  patterns:
+  - 'Macro::'
+  - ::macro(
+  - Response::macro(
+  - Collection::macro(
+  - Builder::macro(
+  - Carbon::macro(
+  - Str::macro(
+  - Arr::macro(
+  - '@mixin'
+  - mixin(class)
+  - trait Macroable
+  indexing_note: 'Macros registered in ServiceProvider::boot() extend classes with
+    runtime-only methods. IDE helpers (e.g., barryvdh/laravel-ide-helper) generate
+    stubs for these — if _ide_helper.php is present, parse it to resolve macro targets.
+    Otherwise flag as dynamic extension.
+
+    '
+- category: dynamic_facades_and_proxies
+  description: 'Laravel Facades, Symfony service aliases, and similar proxy patterns
+    expose services via static syntax backed by container resolution.
+
+    '
+  patterns:
+  - extends Facade
+  - getFacadeAccessor()
+  - 'Facade::'
+  - 'Cache::'
+  - 'Auth::'
+  - 'Event::'
+  - 'Log::'
+  - 'DB::'
+  - 'Queue::'
+  - use Illuminate\Support\Facades\
+  - Proxy class
+  indexing_note: 'Facade calls (Cache::get(), DB::table()) resolve to container-bound
+    instances — the actual class is not the Facade itself. Map getFacadeAccessor()
+    return value through container bindings to determine the resolved class. Laravel
+    IDE helper generates Facade docblocks — use if present.
+
+    '

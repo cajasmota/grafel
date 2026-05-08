@@ -1,0 +1,160 @@
+complexity_signals:
+- category: OTP_concurrency
+  description: GenServer, Agent, Supervisor, Task, and GenStage process trees
+  signals:
+  - use GenServer
+  - use Agent
+  - use Supervisor
+  - use Task
+  - use GenStage
+  - use Broadway
+  - use Flow
+  - def handle_call(
+  - def handle_cast(
+  - def handle_info(
+  - def handle_continue(
+  - def handle_demand(
+  - def handle_events(
+  - Supervisor.child_spec(
+  - DynamicSupervisor
+  - PartitionSupervisor
+  - Task.Supervisor
+  - Task.async_stream(
+  - :gen_statem
+  - GenStateMachine
+  notes: 'Deep OTP supervision trees indicate production-grade concurrency design.
+    DynamicSupervisor + Registry patterns indicate dynamic process management. Broadway/GenStage
+    indicate data pipeline / message processing architecture.
+
+    '
+- category: pipe_operator_chains
+  description: Long pipe chains using |> operator
+  signals:
+  - pattern: '|>'
+    threshold: 5
+    notes: 'Five or more pipe operators in a single expression indicate complex data
+      transformation chains. Common in Ecto query composition and Phoenix plug pipelines.
+
+      '
+  - plug :fetch_session
+  - plug :fetch_flash
+  - plug :protect_from_forgery
+  - '|> Ecto.Query.where('
+  - '|> Ecto.Query.order_by('
+  - '|> Ecto.Query.limit('
+  - '|> Ecto.Query.preload('
+  - '|> Repo.all()'
+- category: with_blocks
+  description: Complex multi-clause with expressions for error propagation
+  signals:
+  - 'with {:ok, '
+  - with %{
+  - with true <-
+  - pattern: with .+ <- .+,\n.+ <- .+,
+    multiline: true
+    notes: 'with blocks with 3+ clauses indicate complex multi-step business logic
+      with structured error handling. Common in Phoenix controllers and Ash actions.
+
+      '
+  notes: 'with is the idiomatic Elixir pattern for railway-oriented programming. Deep
+    with chains (5+ clauses) indicate complex business workflows. May signal a candidate
+    for Ash Framework or dedicated workflow modules.
+
+    '
+- category: macro_definitions
+  description: Custom macro and DSL authoring using defmacro and quote/unquote
+  signals:
+  - 'defmacro '
+  - 'defmacrop '
+  - quote do
+  - unquote(
+  - unquote_splicing(
+  - __using__(
+  - __before_compile__
+  - __after_compile__
+  - Module.put_attribute
+  - Module.get_attribute
+  - '@'
+  - use __MODULE__
+  - Kernel.defoverridable
+  notes: 'Macro definitions indicate framework-level code or advanced DSL authoring.
+    __using__/1 is the entry point for use MyModule patterns. quote/unquote is AST
+    manipulation. Heavy macro use increases compile-time complexity and complicates
+    tooling analysis.
+
+    '
+- category: protocol_implementations
+  description: Elixir protocols providing polymorphism across data types
+  signals:
+  - 'defprotocol '
+  - 'defimpl '
+  - defimpl Jason.Encoder
+  - defimpl String.Chars
+  - defimpl Inspect
+  - defimpl Enumerable
+  - defimpl Collectable
+  - defimpl Phoenix.HTML.Safe
+  - '@protocol'
+  - '@impl true'
+  notes: 'Protocol implementations provide open polymorphism. Many defimpl blocks
+    for the same protocol across a codebase indicate a rich type hierarchy. Jason.Encoder
+    and String.Chars implementations are very common for custom struct serialization.
+
+    '
+- category: umbrella_app_complexity
+  description: Monorepo-style Elixir umbrella applications
+  signals:
+  - apps/
+  - 'build_path: "../../_build"'
+  - 'config_path: "../../config/config.exs"'
+  - 'deps_path: "../../deps"'
+  - 'lockfile: "../../mix.lock"'
+  - 'in_umbrella: true'
+  structural_markers:
+  - apps/app_one/mix.exs
+  - apps/app_two/mix.exs
+  - config/config.exs
+  notes: 'Umbrella apps contain multiple OTP applications under a single mix.lock.
+    apps/ directory at root with per-app mix.exs files is the definitive marker. in_umbrella:
+    true in a child app''s mix.exs is high-confidence. Cross-app dependencies are
+    declared in deps/0 with in_umbrella: true.
+
+    '
+- category: behaviour_definitions
+  description: Elixir behaviours defining explicit interface contracts
+  signals:
+  - '@behaviour '
+  - '@callback '
+  - '@macrocallback '
+  - '@optional_callbacks'
+  - 'defcallback '
+  - '@impl true'
+  - '@impl ModuleName'
+  notes: 'Behaviours are Elixir''s interface mechanism, required by Mox for mocking.
+    @callback declarations in a module define the interface contract. @impl true on
+    function heads indicates a behaviour implementation. High behaviour usage indicates
+    a well-structured, testable codebase.
+
+    '
+- category: metaprogramming_and_compile_time
+  description: Heavy compile-time code generation and module attribute accumulation
+  signals:
+  - '@derive '
+  - 'defstruct '
+  - Module.register_attribute
+  - Module.eval_quoted
+  - '@before_compile'
+  - '@on_definition'
+  - '@on_load'
+  - use Ecto.Schema
+  - use Phoenix.Router
+  - use Plug.Builder
+  - Macro.escape(
+  - Code.eval_string(
+  - Code.compile_string(
+  notes: 'Elixir''s compile-time model means some complexity only appears at compile
+    time. defstruct with many fields, @derive [Jason.Encoder, Inspect], and heavy
+    use of module attributes for accumulating route/action definitions indicate high
+    compile-time work that may slow large codebases.
+
+    '

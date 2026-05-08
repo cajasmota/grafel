@@ -1,0 +1,8 @@
+meta: language.yaml
+detection: extras.yaml
+entity_types: extras.yaml
+build_tools: build_tools.yaml
+multi_stage_build_patterns: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_roots: extras.yaml

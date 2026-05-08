@@ -1,0 +1,26 @@
+frameworks:
+  name: libxev
+  category: async_io
+  github: mitchellh/libxev
+  zig_version_baseline: 0.13.0
+  detection:
+    build_zig_zon_deps:
+    - xev
+    - mitchellh/libxev
+    import_markers:
+    - '@import("xev")'
+    - const xev = @import("xev")
+    structural_markers:
+    - xev.Loop
+    - xev.TCP
+    - xev.UDP
+    - xev.Timer
+    - xev.Async
+    - loop.run(
+    - .completion = .{}
+    - xev.Completion
+    notes: 'Cross-platform async I/O event loop library (io_uring on Linux, kqueue
+      on macOS, IOCP on Windows). The primary choice for async networking in Zig before
+      std async is stabilized. xev.Loop is the central detection signal.
+
+      '

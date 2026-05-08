@@ -1,0 +1,43 @@
+frameworks:
+  name: LOVE2D (game engine)
+  category: game_engine
+  github_stars_2025: 4600+
+  detection:
+    config_files:
+    - main.lua
+    - conf.lua
+    - '*.love'
+    - love.run
+    import_markers:
+    - function love.load
+    - function love.update
+    - function love.draw
+    - function love.keypressed
+    - function love.keyreleased
+    - function love.mousepressed
+    - function love.mousereleased
+    - function love.quit
+    - love.graphics
+    - love.audio
+    - love.physics
+    - love.window
+    - love.event
+    - love.filesystem
+    - love.timer
+    - love.joystick
+    - love.conf
+    - t.window
+    - t.modules
+    structural_markers:
+    - main.lua
+    - conf.lua
+    - assets/
+    - sounds/
+    - images/
+    - '*.love'
+  notes: 'LOVE2D projects always have main.lua as entry point with love.load/update/draw
+    callbacks. conf.lua is the optional configuration file. The .love archive format
+    (ZIP containing main.lua) is a definitive signal. Projects rarely use LuaRocks;
+    game logic is self-contained with bundled dependencies.
+
+    '

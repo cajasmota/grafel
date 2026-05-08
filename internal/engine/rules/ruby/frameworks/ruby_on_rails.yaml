@@ -1,0 +1,59 @@
+frameworks:
+  name: Ruby on Rails
+  gem_name: rails
+  category: web_full_stack
+  github_stars_2025: 56000+
+  detection:
+    config_files:
+    - Gemfile
+    - config/application.rb
+    - config/environment.rb
+    - config/environments/development.rb
+    - config/environments/production.rb
+    - config/routes.rb
+    - config/database.yml
+    - config/boot.rb
+    - db/schema.rb
+    - bin/rails
+    - app/controllers/application_controller.rb
+    - app/models/application_record.rb
+    gemfile_deps:
+    - rails
+    - railties
+    - actionpack
+    - actionview
+    - activerecord
+    - activesupport
+    import_markers:
+    - require 'rails'
+    - require 'rails/all'
+    - Rails.application
+    - Rails.env
+    - Rails.root
+    structural_markers:
+    - app/controllers/
+    - app/models/
+    - app/views/
+    - app/helpers/
+    - app/mailers/
+    - db/migrate/
+    - config/routes.rb
+  notes: 'Rails is identified by the conjunction of Gemfile rails dep + Rails directory
+    layout (app/{controllers,models,views}). config/routes.rb alone is not sufficient.
+    bin/rails is high-confidence when present.
+
+    '
+
+# ---------------------------------------------------------------------------
+# Custom extractors (MX-499)
+# ---------------------------------------------------------------------------
+
+custom_extractors:
+  - module: "memx_indexer.languages.ruby.rails_extractor"
+    function: "extract"
+    description: "Extract Rails routes (resources, member/collection), concerns, ActiveRecord callbacks and associations, controller filters — CALLS, OWNS, DEPENDS_ON relationships"
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract
+  - module: memx_indexer.languages._engine.config_prefix_extractor
+    function: extract
+    description: "Extract scope prefix from config/routes.rb as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."

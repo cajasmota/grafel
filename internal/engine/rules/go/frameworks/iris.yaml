@@ -1,0 +1,18 @@
+frameworks:
+  name: Iris
+  module_path: github.com/kataras/iris/v12
+  category: web_micro
+  github_stars_2025: 25800+
+  detection:
+    go_mod_require:
+    - github.com/kataras/iris/v12
+    import_markers:
+    - '"github.com/kataras/iris/v12"'
+    structural_markers:
+    - iris.New()
+    - iris.Default()
+    - iris.Context
+    notes: 'Feature-rich framework. v12 is current. Module path includes /v12 suffix.
+      Comprehensive MVC support.
+
+      '

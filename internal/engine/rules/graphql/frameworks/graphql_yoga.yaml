@@ -1,0 +1,28 @@
+server_frameworks:
+  name: GraphQL Yoga
+  language: JavaScript / TypeScript
+  category: graphql_server
+  github_stars_2025: 8200+
+  detection:
+    package_json_deps:
+    - graphql-yoga
+    - '@graphql-yoga/node'
+    structural_markers:
+    - createYoga(
+    - createSchema(
+    - createServer({ schema
+    - useDisableIntrospection
+    - YogaSchemaDefinition
+    import_markers:
+    - from 'graphql-yoga'
+    - from '@graphql-yoga/node'
+  extraction_targets:
+  - Schema passed to createYoga or createSchema
+  - typeDefs + resolvers structure
+  - Yoga plugin list (useCSRF, useRateLimiter, useDepthLimit, etc.)
+  - Context factory function
+  notes: 'GraphQL Yoga v3+ is a spec-compliant server with first-class support for
+    subscriptions via SSE and WebSocket. Often used with Pothos (code-first schema
+    builder). Detect Pothos separately: `@pothos/core` in package.json.
+
+    '

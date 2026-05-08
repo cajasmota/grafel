@@ -1,0 +1,42 @@
+frameworks:
+  name: react
+  category: web
+  npm_packages:
+  - react
+  - react-dom
+  config_files:
+  - vite.config.ts
+  - vite.config.js
+  - craco.config.js
+  - .babelrc
+  detection_signals:
+    package_json_deps:
+    - react
+    - react-dom
+    file_extensions:
+    - .jsx
+    - .tsx
+    import_patterns:
+    - from 'react'
+    - from "react"
+  framework_specific:
+  - useState
+  - useEffect
+  - useContext
+  - useRef
+  - React.FC
+  - React.Component
+  notes: Presence of .tsx/.jsx files + react dep is high-confidence signal
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema -- MX-491)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.javascript_typescript.react_extractor"
+    function: "extract"
+    description: "Extract React components, hooks, context relationships, OWNS and DEPENDS_ON edges"

@@ -1,0 +1,85 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/python/sample_api.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "UserCreate",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 9,
+      "end_line": 11,
+      "language": "python",
+      "signature": "class UserCreate",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "UserResponse",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 14,
+      "end_line": 17,
+      "language": "python",
+      "signature": "class UserResponse",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "get_db",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 20,
+      "end_line": 24,
+      "language": "python",
+      "signature": "def get_db()",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "health_check",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 28,
+      "end_line": 30,
+      "language": "python",
+      "signature": "def health_check()",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "get_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 34,
+      "end_line": 38,
+      "language": "python",
+      "signature": "def get_user(user_id: int, db=Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "create_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 42,
+      "end_line": 44,
+      "language": "python",
+      "signature": "def create_user(user: UserCreate, db=Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "delete_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 48,
+      "end_line": 51,
+      "language": "python",
+      "signature": "def delete_user(user_id: int, db=Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

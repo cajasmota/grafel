@@ -1,0 +1,560 @@
+resource_to_scope_mapping:
+  description: 'Maps Pulumi resources to archigraph extraction scope categories. Each cloud
+    provider maps to archigraph scope types (Service, Datastore, ExternalAPI, Queue, Event,
+    etc.). Resources are namespaced by provider package (@pulumi/aws, @pulumi/gcp,
+    etc.).
+
+    '
+  aws:
+  - resource: aws.s3.Bucket
+    scope: Datastore
+    notes: S3 object storage — primary cloud datastore.
+  - resource: aws.lambda.Function
+    scope: Service
+    notes: Lambda function — compute service endpoint.
+  - resource: aws.apigateway.RestApi
+    scope: ExternalAPI
+    notes: API Gateway REST API — external API endpoint.
+  - resource: aws.dynamodb.Table
+    scope: Datastore
+    notes: DynamoDB table — NoSQL datastore.
+  - resource: aws.sqs.Queue
+    scope: Queue
+    notes: SQS queue — async message queue.
+  - resource: aws.sns.Topic
+    scope: Event
+    notes: SNS topic — event notification channel.
+  - resource: aws.ec2.Vpc
+    scope: infrastructure
+    notes: VPC — foundational network infrastructure.
+  - resource: aws.ecs.FargateService
+    scope: Service
+    notes: ECS Fargate service — containerized compute.
+  - resource: aws.rds.Instance
+    scope: Datastore
+    notes: RDS relational database instance.
+  - resource: aws.iam.Role
+    scope: infrastructure
+    notes: IAM role — access control entity.
+  - resource: aws.elasticache.Cluster
+    scope: Datastore
+    notes: ElastiCache cluster — in-memory datastore.
+  - resource: aws.secretsmanager.Secret
+    scope: infrastructure
+    notes: Secrets Manager — credential storage.
+  gcp:
+  - resource: gcp.storage.Bucket
+    scope: Datastore
+    notes: GCS bucket — object storage equivalent to S3.
+  - resource: gcp.cloudfunctions.Function
+    scope: Service
+    notes: Cloud Functions — serverless function service.
+  - resource: gcp.compute.Instance
+    scope: infrastructure
+    notes: Compute Engine VM — IaaS compute.
+  - resource: gcp.container.Cluster
+    scope: infrastructure
+    notes: GKE cluster — Kubernetes orchestration.
+  - resource: gcp.sql.DatabaseInstance
+    scope: Datastore
+    notes: Cloud SQL instance — managed relational database.
+  - resource: gcp.pubsub.Topic
+    scope: Event
+    notes: Pub/Sub topic — event messaging service.
+  - resource: gcp.cloudrun.Service
+    scope: Service
+    notes: Cloud Run service — containerized serverless.
+  azure:
+  - resource: azure.storage.Account
+    scope: Datastore
+    notes: Azure Storage account — blob and table storage.
+  - resource: azure.appservice.AppService
+    scope: Service
+    notes: App Service — web and API hosting.
+  - resource: azure.cosmosdb.Account
+    scope: Datastore
+    notes: Cosmos DB — distributed NoSQL database.
+  - resource: azure.compute.VirtualMachine
+    scope: infrastructure
+    notes: Virtual Machine — IaaS compute.
+  - resource: azure.keyvault.Vault
+    scope: infrastructure
+    notes: Key Vault — secrets and key management.
+  - resource: azure.sql.Server
+    scope: Datastore
+    notes: SQL Server — relational database.
+  kubernetes:
+  - resource: kubernetes.apps.v1.Deployment
+    scope: Service
+    notes: Kubernetes Deployment — workload controller.
+  - resource: kubernetes.core.v1.Service
+    scope: ExternalAPI
+    notes: Kubernetes Service — network service endpoint.
+  - resource: kubernetes.networking.v1.Ingress
+    scope: ExternalAPI
+    notes: Kubernetes Ingress — external HTTP(S) routing.
+  - resource: kubernetes.core.v1.ConfigMap
+    scope: infrastructure
+    notes: ConfigMap — application configuration storage.
+  - resource: kubernetes.core.v1.Secret
+    scope: infrastructure
+    notes: Kubernetes Secret — sensitive data storage.
+  - resource: kubernetes.core.v1.PersistentVolumeClaim
+    scope: Datastore
+    notes: PVC — persistent storage claim.
+  docker:
+  - resource: docker.Image
+    scope: infrastructure
+    notes: Docker Image — container image definition.
+  - resource: docker.Container
+    scope: Service
+    notes: Docker Container — running container instance.
+  github:
+  - resource: github.Repository
+    scope: infrastructure
+    notes: GitHub repository — VCS integration.
+  - resource: github.ActionsSecret
+    scope: infrastructure
+    notes: GitHub Actions secret — CI/CD credential.
+detection_per_language:
+  typescript:
+    dependency_markers:
+    - '@pulumi/pulumi'
+    - '@pulumi/aws'
+    - '@pulumi/gcp'
+    - '@pulumi/azure'
+    - '@pulumi/kubernetes'
+    - '@pulumi/docker'
+    - '@pulumi/github'
+    - '@pulumi/awsx'
+    - '@pulumi/eks'
+    - '@pulumi/azure-native'
+    detection_files:
+    - package.json
+    - package-lock.json
+    - yarn.lock
+    - pnpm-lock.yaml
+    content_patterns:
+    - import * as pulumi from "@pulumi/pulumi"
+    - import * as aws from "@pulumi/aws"
+    - new aws.s3.Bucket
+    - export const
+    - pulumi.export
+    primary_marker: 'Pulumi.yaml with runtime: nodejs'
+    notes: 'TypeScript is the most common Pulumi language. Detected by @pulumi/* packages
+      in package.json and TypeScript/JavaScript source files. Pulumi.yaml declares
+      runtime: nodejs with optional description of entry point (index.ts, etc.).
+
+      '
+  python:
+    dependency_markers:
+    - pulumi
+    - pulumi_aws
+    - pulumi_gcp
+    - pulumi_azure
+    - pulumi_kubernetes
+    - pulumi_docker
+    - pulumi_github
+    - pulumi_awsx
+    - pulumi_eks
+    - pulumi_azure_native
+    detection_files:
+    - requirements.txt
+    - pyproject.toml
+    - setup.py
+    - Pipfile
+    content_patterns:
+    - import pulumi
+    - from pulumi import *
+    - from pulumi_aws import
+    - pulumi.export
+    - pulumi.Output
+    primary_marker: 'Pulumi.yaml with runtime: python'
+    notes: 'Python Pulumi programs declare dependencies on pulumi (core) and provider
+      packages (pulumi_aws, etc.). Pulumi.yaml runtime is python with venv optional.
+      Detected by import pulumi statements and provider package presence.
+
+      '
+  go:
+    dependency_markers:
+    - '"github.com/pulumi/pulumi/sdk/v3"'
+    - '"github.com/pulumi/pulumi-aws/sdk/v5"'
+    - '"github.com/pulumi/pulumi-gcp/sdk/v5"'
+    - '"github.com/pulumi/pulumi-azure/sdk/v5"'
+    - '"github.com/pulumi/pulumi-kubernetes/sdk/v3"'
+    - '"github.com/pulumi/pulumi-docker/sdk/v3"'
+    - '"github.com/pulumi/pulumi-github/sdk/v5"'
+    - '"github.com/pulumi/pulumi-awsx/sdk/go"'
+    detection_files:
+    - go.mod
+    - go.sum
+    - main.go
+    content_patterns:
+    - import (
+    - '"github.com/pulumi/pulumi'
+    - func main()
+    - ctx := context.Background()
+    - pulumi.Run(func
+    primary_marker: 'Pulumi.yaml with runtime: go'
+    notes: 'Go Pulumi programs use go.mod with github.com/pulumi/pulumi/sdk/v3 and
+      provider SDK imports. Pulumi.yaml runtime is go. Detected by import statements
+      and go.mod dependency declarations. Go entry point is typically main.go with
+      pulumi.Run callback.
+
+      '
+  csharp:
+    dependency_markers:
+    - Pulumi.*
+    - '"Pulumi"'
+    - '"Pulumi.Aws"'
+    - '"Pulumi.Gcp"'
+    - '"Pulumi.Azure"'
+    - '"Pulumi.Kubernetes"'
+    - '"Pulumi.Docker"'
+    - '"Pulumi.GitHub"'
+    detection_files:
+    - '*.csproj'
+    - '*.fsproj'
+    - packages.config
+    content_patterns:
+    - using Pulumi;
+    - using Pulumi.Aws;
+    - using Pulumi.Gcp;
+    - class Program
+    - static Task Main
+    primary_marker: 'Pulumi.yaml with runtime: dotnet'
+    notes: 'C# Pulumi programs use .csproj with Pulumi.* NuGet packages. Pulumi.yaml
+      runtime is dotnet. Detected by using Pulumi; statements and .csproj PackageReference
+      entries. Entry point is Program.cs with Main async method.
+
+      '
+  java:
+    dependency_markers:
+    - '"com.pulumi:pulumi"'
+    - '"com.pulumi:pulumi-aws"'
+    - '"com.pulumi:pulumi-gcp"'
+    - '"com.pulumi:pulumi-azure"'
+    - '"com.pulumi:pulumi-kubernetes"'
+    - '"com.pulumi:pulumi-docker"'
+    - '"com.pulumi:pulumi-github"'
+    detection_files:
+    - pom.xml
+    - build.gradle
+    - build.gradle.kts
+    content_patterns:
+    - import com.pulumi
+    - public static void main
+    - Pulumi.run
+    - Context context
+    primary_marker: 'Pulumi.yaml with runtime: java'
+    notes: 'Java Pulumi programs use Maven (pom.xml) or Gradle with com.pulumi:* dependencies.
+      Pulumi.yaml runtime is java. Detected by import com.pulumi statements and Maven/Gradle
+      build file entries. Entry point is a main class with Pulumi.run callback accepting
+      a Context parameter.
+
+      '
+structural_patterns:
+  component_resource:
+    description: 'Custom resource component — a Pulumi abstraction that wraps multiple
+      resources into a reusable class. ComponentResource subclasses represent high-level
+      infrastructure building blocks.
+
+      '
+    detection:
+    - pattern: 'class CustomComponent(ComponentResource):'
+    - pattern: 'class CustomComponent : ComponentResource'
+    - pattern: type CustomComponent struct
+    - pattern: class CustomComponent extends ComponentResource
+    - pattern: class CustomComponent extends ComponentResource
+    indexing_note: 'ComponentResource subclasses are high-value for understanding
+      abstraction layers. Extract class name, base class, and methods that create
+      child resources. Component nesting (component calling component) signals architectural
+      layering.
+
+      '
+  stack_export:
+    description: 'Stack exports publish output values to be queried or consumed by
+      other stacks. StackReference consumers can import these values.
+
+      '
+    detection:
+    - pattern: pulumi.export(
+    - pattern: ctx.Export(
+    - pattern: Output[name] = ...
+    indexing_note: 'Exports form the stack''s public interface. Extract exported names
+      and types. StackReference lookups in other stacks create cross-stack dependencies.
+
+      '
+  stack_reference:
+    description: 'StackReference allows one stack to import exported values from another
+      stack. Signals inter-stack data flow and cross-stack dependencies.
+
+      '
+    detection:
+    - pattern: StackReference
+    - pattern: get_stack(
+    - pattern: GetStack(
+    indexing_note: 'Each StackReference creates a dependency edge to a remote stack.
+      Extract the referenced stack name/org for dependency graph building.
+
+      '
+  output_type:
+    description: 'Output<T> and Input<T> are Pulumi''s asynchronous value containers.
+      Output chains signal complex data transformations and dependencies.
+
+      '
+    detection:
+    - pattern: Output<
+    - pattern: Input<
+    - pattern: pulumi.Output.concat
+    - pattern: Output.All
+    - pattern: output.apply
+    indexing_note: 'Output<T> expressions that chain multiple .apply() calls or use
+      Output.All() are complexity signals. Extract the transformation logic for data
+      flow analysis.
+
+      '
+  config_secret:
+    description: 'Pulumi.Config and pulumi.Config.requireSecret() retrieve encrypted
+      configuration. Secrets are encrypted at rest in stack config files.
+
+      '
+    detection:
+    - pattern: pulumi.Config()
+    - pattern: Config.require(
+    - pattern: Config.requireSecret(
+    - pattern: Config.getBoolean
+    indexing_note: 'Extract all config keys and secret keys as infrastructure parameter
+      surface. Flag requireSecret usage as sensitive credential retrieval.
+
+      '
+extraction_targets:
+- target: resource_instantiation
+  language_examples:
+    python: bucket = aws.s3.Bucket("my-bucket", acl="private")
+    typescript: 'const bucket = new aws.s3.Bucket("my-bucket", {acl: "private"})'
+    go: bucket, err := s3.NewBucket(ctx, "my-bucket", &s3.BucketArgs{...})
+    csharp: var bucket = new Aws.S3.Bucket("my-bucket", new Aws.S3.BucketArgs{...})
+    java: var bucket = new Bucket("my-bucket", BucketArgs.builder()...)
+  extraction_fields:
+  - resource_type
+  - logical_name
+  - provider_module
+  - configuration_arguments
+  indexing_note: 'Each resource instantiation is an entity. Extract type and name
+    for resource inventory. Configuration arguments (ACL, zone, etc.) are secondary
+    signals for capability mapping.
+
+    '
+- target: component_resource_definition
+  language_examples:
+    python: "class MyComponent(pulumi.ComponentResource):\n  def __init__(self, name,\
+      \ args, ...):\n    super().__init__(\"custom:pkg:MyComponent\", name, ...)\n\
+      \    self.resource = aws.s3.Bucket(...)\n"
+    typescript: "class MyComponent extends pulumi.ComponentResource {\n  constructor(name,\
+      \ args, ...) {\n    super(\"custom:pkg:MyComponent\", name, opts);\n    this.resource\
+      \ = new aws.s3.Bucket(...);\n  }\n}\n"
+  extraction_fields:
+  - component_type_fqn
+  - component_name
+  - child_resources
+  - exported_outputs
+  indexing_note: 'ComponentResource subclasses are high-level abstractions. Extract
+    the custom type FQN (format: custom:namespace:TypeName), list of child resources,
+    and exported outputs. Component hierarchies are key to understanding infrastructure
+    composition.
+
+    '
+- target: stack_export
+  language_examples:
+    python: pulumi.export('endpoint_url', load_balancer.endpoint)
+    typescript: export const endpointUrl = loadBalancer.endpoint;
+    go: ctx.Export("endpointUrl", loadBalancer.Endpoint)
+    csharp: this.EndpointUrl = loadBalancer.Endpoint;
+    java: ctx.export("endpointUrl", loadBalancer.endpoint);
+  extraction_fields:
+  - export_name
+  - export_type
+  - source_resource
+  indexing_note: 'Stack exports define the public interface. Extract all export names
+    and types. Cross-reference with StackReference calls in other stacks to build
+    dependency graph.
+
+    '
+- target: stack_reference
+  language_examples:
+    python: other_stack = pulumi.StackReference(f"org/project/{env}")
+    typescript: const otherStack = new pulumi.StackReference(`org/project/${env}`);
+    go: otherStack, err := auto.SelectStack(ctx, "org/project/prod", ...)
+    csharp: var otherStack = new StackReference($"org/project/{env}");
+    java: var otherStack = new StackReference("org/project/prod");
+  extraction_fields:
+  - referenced_org
+  - referenced_project
+  - referenced_stack
+  - imported_values
+  indexing_note: 'Each StackReference creates a cross-stack dependency. Extract the
+    full org/project/stack name. If specific exports are imported (via get_output()),
+    extract those names as value dependencies.
+
+    '
+- target: config_access
+  language_examples:
+    python: db_password = config.require_secret("dbPassword")
+    typescript: const dbPassword = config.requireSecret("dbPassword");
+    go: dbPassword, err := cfg.RequireSecret("dbPassword")
+    csharp: string dbPassword = config.RequireSecret("dbPassword");
+    java: String dbPassword = config.requireSecret("dbPassword");
+  extraction_fields:
+  - config_key
+  - required_or_optional
+  - is_secret
+  - default_value
+  indexing_note: 'Configuration keys define the stack''s parameter surface. Extract
+    required keys as mandatory inputs, optional keys as optional customization. Secret
+    keys are sensitive — flag for audit.
+
+    '
+- target: automation_api_stack_creation
+  language_examples:
+    python: "stack = auto.create_or_select_stack(\n  stack_name=\"prod\",\n  project_name=\"\
+      my-project\",\n  program=pulumi_program\n)\n"
+    typescript: "const stack = await auto.createOrSelectStack({\n  stackName: \"prod\"\
+      ,\n  projectName: \"my-project\",\n  program: pulumiProgram\n});\n"
+    go: "stack, err := auto.CreateOrSelectStack(ctx, auto.StackReference{\n  Workspace:\
+      \ w,\n  StackName: \"prod\",\n  ProjectName: \"my-project\",\n})\n"
+  extraction_fields:
+  - stack_name
+  - project_name
+  - program_reference
+  - workspace_config
+  indexing_note: 'Automation API usage signals orchestration infrastructure. Extract
+    stack and project names, and the program being executed (if inline, extract that
+    program''s resources). This creates a meta-infrastructure dependency.
+
+    '
+domain_roots:
+- layout: single_stack_project
+  description: 'Single Pulumi stack in one programming language, with a flat structure.
+    No component abstractions, all resources in the main program.
+
+    '
+  root_paths:
+  - Pulumi.yaml
+  - '"main.py" OR "index.ts" OR "main.go" OR "Program.cs" OR main Java class'
+  - Pulumi.dev.yaml
+  - Pulumi.prod.yaml
+  - dependency files (requirements.txt, package.json, go.mod, *.csproj, pom.xml)
+  priority_files:
+  - Pulumi.yaml
+  - language-specific entry point (main.py, index.ts, etc.)
+  detection_signals:
+  - Pulumi.yaml
+  - language-specific SDK imports
+  - resource instantiations in entry point
+  notes: 'The simplest Pulumi project shape. All infrastructure defined in one file
+    or simple module. Detected by presence of Pulumi.yaml and a single entry point
+    in the chosen language. Stack overrides in Pulumi.*.yaml are optional.
+
+    '
+- layout: modular_project
+  description: 'Pulumi project with custom ComponentResource classes or modules. Code
+    organized into packages/modules with shared abstractions.
+
+    '
+  root_paths:
+  - Pulumi.yaml
+  - components/
+  - '"components/vpc.py" OR "components/Vpc.ts" OR "components/VPC.go"'
+  - '"main.py" OR "index.ts" OR main language entry point'
+  - '"config.py" OR "Config.ts" — shared config and constants'
+  - stack configs (Pulumi.*.yaml)
+  priority_files:
+  - Pulumi.yaml
+  - components/
+  - language entry point
+  detection_signals:
+  - Pulumi.yaml
+  - '"components/" directory'
+  - ComponentResource subclass definitions
+  notes: 'Multi-module Pulumi projects with reusable custom components. Each component
+    in components/ is a high-level abstraction. Index component directory structure
+    and component interdependencies.
+
+    '
+- layout: stack_per_environment
+  description: 'Multiple stacks representing different environments (dev, staging,
+    prod), with shared components and language-specific code structure.
+
+    '
+  root_paths:
+  - Pulumi.yaml
+  - Pulumi.dev.yaml
+  - Pulumi.staging.yaml
+  - Pulumi.prod.yaml
+  - '"components/" or "lib/"    # shared component definitions'
+  - '"main.py" or "index.ts"    # main program (same for all stacks)'
+  priority_files:
+  - Pulumi.yaml
+  - Pulumi.prod.yaml
+  - components/
+  detection_signals:
+  - Multiple Pulumi.*.yaml files
+  - Stack naming convention (dev, staging, prod, etc.)
+  - Shared component/lib directory
+  notes: 'Common pattern: one program, multiple stack configs. Each stack config (Pulumi.prod.yaml)
+    overrides values from Pulumi.yaml. Index each stack config file as a separate
+    deployment variant.
+
+    '
+- layout: multi_language_monorepo
+  description: 'Monorepo with multiple Pulumi projects, each in a different language
+    or targeting different infrastructure domains.
+
+    '
+  root_paths:
+  - infrastructure/pulumi-aws/
+  - infrastructure/pulumi-aws/Pulumi.yaml
+  - infrastructure/pulumi-aws/main.py
+  - infrastructure/pulumi-k8s/
+  - infrastructure/pulumi-k8s/Pulumi.yaml
+  - infrastructure/pulumi-k8s/main.go
+  - infrastructure/shared/
+  priority_files:
+  - infrastructure/pulumi-*/Pulumi.yaml
+  - language-specific entry points within each subdirectory
+  detection_signals:
+  - Multiple Pulumi.yaml files in different directories
+  - Language-specific entry points per subdirectory
+  notes: 'Multi-project monorepo pattern. Each subdirectory under infrastructure/
+    is an independent Pulumi project. Index each Pulumi.yaml and its corresponding
+    stack separately. Cross-references between projects (via Automation API or StackReference)
+    signal orchestration.
+
+    '
+- layout: automation_api_orchestrator
+  description: 'Pulumi Automation API program that manages multiple stacks programmatically.
+    The program itself is not defining infrastructure but orchestrating infrastructure
+    stacks.
+
+    '
+  root_paths:
+  - Pulumi.yaml
+  - '"orchestrator.py" OR "Orchestrator.ts" OR "main.go"'
+  - '"stacks/" or "programs/"   # definitions of stacks being managed'
+  - '"stacks/vpc.py" — program for VPC stack'
+  - '"stacks/app.py" — program for app stack'
+  priority_files:
+  - Pulumi.yaml
+  - orchestrator entry point
+  - '"stacks/" or "programs/"'
+  detection_signals:
+  - Automation API imports (import pulumi.automation, using Pulumi.Automation, etc.)
+  - create_or_select_stack() calls
+  - multi-stack up/destroy orchestration
+  notes: 'Orchestrator programs use Automation API to manage stacks as first-class
+    objects. Extract stack definitions and the orchestration logic. These programs
+    are meta-infrastructure: they manage infrastructure stacks. Index both the orchestrator
+    program and the stacks it manages.
+
+    '

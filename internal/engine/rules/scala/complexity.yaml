@@ -1,0 +1,137 @@
+complexity_signals:
+  implicits_and_givens:
+    description: 'Scala''s implicit system (Scala 2) and given/using (Scala 3) are
+      the primary source of non-obvious behavior. High implicit count signals deep
+      typeclass usage and increased cognitive overhead.
+
+      '
+    patterns:
+    - 'implicit val '
+    - 'implicit def '
+    - 'implicit class '
+    - 'implicit object '
+    - implicitly[
+    - 'given '
+    - 'using '
+    - summon[
+    thresholds:
+      high: '> 10 implicits/givens per file'
+      very_high: '> 5 implicit conversions (implicit def returning different type)'
+    notes: 'Implicit conversions (implicit def A => B) are higher risk than implicit
+      parameters. Implicit classes (extension methods) are moderate. given/using in
+      Scala 3 is more explicit but still adds complexity.
+
+      '
+  type_level_programming:
+    description: 'Type-level computation using shapeless, Refined, type projections,
+      dependent types, path-dependent types.
+
+      '
+    patterns:
+    - import shapeless._
+    - import shapeless.HList
+    - HNil
+    - HList
+    - '::'
+    - Generic[
+    - LabelledGeneric[
+    - import eu.timepit.refined._
+    - import eu.timepit.refined.api._
+    - Refined
+    - type _0 = Witness.`0`.T
+    - type-level operations
+    sbt_coordinates:
+    - com.chuusai::shapeless
+    - eu.timepit::refined
+    notes: 'Shapeless usage (HList, Generic, LabelledGeneric) indicates significant
+      type-level complexity. Refined types (Refined[Int, Positive]) add compile-time
+      validation. Both require deep Scala type system knowledge to maintain.
+
+      '
+  for_comprehension_chains:
+    description: 'Long for-comprehension chains over monadic types (IO, Future, Option,
+      Either, ZIO, etc.) indicate complex sequential effect composition.
+
+      '
+    patterns:
+    - for {
+    - <-
+    - '} yield'
+    thresholds:
+      high: '> 5 generators in a single for-comprehension'
+      complex: nested for-comprehensions or for-comprehension over custom monad
+    notes: 'For-comprehensions are syntactic sugar for flatMap/map chains. Deeply
+      nested or long chains indicate complex asynchronous or effectful logic. Mixed
+      monadic types (e.g., EitherT wrapping IO) in for-comprehensions add additional
+      complexity.
+
+      '
+  macro_annotations:
+    description: 'Macro annotations (Scala 2) and inline macros (Scala 3) that generate
+      code at compile time, making the codebase harder to navigate.
+
+      '
+    patterns:
+    - '@JsonCodec'
+    - '@ConfiguredJsonCodec'
+    - '@newtype'
+    - '@Lenses'
+    - '@optics'
+    - import io.circe.generic.auto._
+    - import io.circe.generic.semiauto._
+    - deriveEncoder[
+    - deriveDecoder[
+    - import io.circe.generic.JsonCodec
+    - '@derive('
+    - inline given
+    notes: 'Circe semiauto derivation (deriveEncoder/deriveDecoder) is moderate complexity.
+      Full auto derivation (import io.circe.generic.auto._) hides implicit resolution.
+      @newtype and @Lenses from monocle generate boilerplate invisibly. Compile time
+      can balloon with heavy macro usage.
+
+      '
+  higher_kinded_types:
+    description: 'Type constructors and higher-kinded type parameters (F[_], G[_])
+      indicate tagless final / MTL style programming.
+
+      '
+    patterns:
+    - F[_]
+    - G[_]
+    - '[F[_]: '
+    - Functor[F]
+    - Monad[F]
+    - Async[F]
+    - Concurrent[F]
+    - MonadError[F, Throwable]
+    - ApplicativeError[F, E]
+    - trait Algebra[F[_]]
+    - 'class Service[F[_]:'
+    notes: 'Tagless final pattern uses F[_] type parameter constrained by typeclasses
+      (Monad[F], Async[F]). Highly abstract and testable but requires understanding
+      of Cats typeclasses. Common in http4s, Doobie, and Cats Effect codebases.
+
+      '
+  shapeless_usage:
+    description: 'Explicit shapeless library usage for generic programming, type-level
+      lists, and automatic typeclass derivation.
+
+      '
+    patterns:
+    - import shapeless._
+    - import shapeless.record._
+    - import shapeless.ops._
+    - ':: HNil'
+    - Generic.Aux
+    - Witness.`
+    - Poly1
+    - Poly2
+    - everything(
+    sbt_coordinates:
+    - com.chuusai::shapeless
+    notes: 'Shapeless is a library for generic programming over type structures. Used
+      in circe auto-derivation, spray-json-shapeless, and custom derivation. Poly1/Poly2
+      (polymorphic function values) and HList operations are advanced usage. Shapeless
+      3 for Scala 3 is simpler but still complex.
+
+      '

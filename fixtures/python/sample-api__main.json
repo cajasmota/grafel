@@ -1,0 +1,30 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/sample-api/main.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "lifespan",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 18,
+      "end_line": 20,
+      "language": "python",
+      "signature": "def lifespan(app: FastAPI)",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "health",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 44,
+      "end_line": 45,
+      "language": "python",
+      "signature": "def health()",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

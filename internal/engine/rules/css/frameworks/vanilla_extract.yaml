@@ -1,0 +1,37 @@
+frameworks:
+  name: vanilla_extract
+  full_name: vanilla-extract
+  category: css_in_js
+  extensions:
+  - .css.ts
+  - .css.js
+  npm_packages:
+  - '@vanilla-extract/css'
+  config_files:
+  - vite.config.ts
+  - webpack.config.js
+  - next.config.js
+  detection_signals:
+    package_json_deps:
+    - '@vanilla-extract/css'
+    file_extensions:
+    - .css.ts
+    - .css.js
+    content_patterns:
+    - from '@vanilla-extract/css'
+    - style({
+    - globalStyle(
+    - createTheme(
+    - createVar(
+    - recipe(
+  framework_specific:
+  - '*.css.ts file naming convention (zero-runtime)'
+  - style() for scoped class generation
+  - globalStyle() for global selectors
+  - createTheme() for type-safe design tokens
+  - recipe() for component variants (via @vanilla-extract/recipes)
+  - sprinkles() for atomic CSS (via @vanilla-extract/sprinkles)
+  notes: 'vanilla-extract generates static CSS at build time from TypeScript. Zero
+    runtime overhead. *.css.ts extension is the definitive signal.
+
+    '

@@ -1,0 +1,25 @@
+orm_database:
+  name: libpq (PostgreSQL C FFI)
+  type: c_ffi_binding
+  detection:
+    code_patterns:
+    - c.PQconnectdb(
+    - c.PQexec(
+    - c.PQprepare(
+    - c.PQexecPrepared(
+    - c.PQgetvalue(
+    - c.PQclear(
+    - c.PQfinish(
+    - c.PQntuples(
+    - c.PQnfields(
+    - c.PQresultStatus(
+    - c.CONNECTION_OK
+    - c.PGRES_COMMAND_OK
+    build_zig_patterns:
+    - exe.linkSystemLibrary("pq")
+    - '@cInclude("libpq-fe.h")'
+  notes: 'Direct PostgreSQL client via libpq C FFI. Rare in pure Zig codebases but
+    present in systems tools that need PostgreSQL. Detection via PQconnectdb and linkSystemLibrary("pq")
+    in build.zig.
+
+    '

@@ -1,0 +1,31 @@
+frameworks:
+  name: next.js
+  category: web
+  npm_packages:
+  - next
+  config_files:
+  - next.config.js
+  - next.config.ts
+  - next.config.mjs
+  detection_signals:
+    package_json_deps:
+    - next
+    directory_conventions:
+    - pages/
+    - app/
+    - public/
+  framework_specific:
+  - next/router
+  - next/navigation
+  - next/image
+  - next/link
+  - server actions
+  - route segments
+  notes: Detect App Router via presence of app/layout.tsx or app/page.tsx
+  custom_extractors:
+  - module: memx_indexer.languages.javascript_typescript.nextjs_extractor
+    function: extract
+    description: "Next.js App Router, Pages Router, API routes, and server action extraction"
+  - module: memx_indexer.languages._engine.config_consumer_extractor
+    function: extract
+    description: "Extract process.env.KEY and process.env['KEY'] reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming entities (MX-600)."

@@ -1,0 +1,19 @@
+orms_database:
+  name: Alembic
+  pypi_package: alembic
+  category: migration_tool
+  detection:
+    dependency_names:
+    - alembic
+    config_files:
+    - alembic.ini
+    - alembic/env.py
+    migration_file_patterns:
+    - alembic/versions/*.py
+  notes: 'Database migration tool for SQLAlchemy. alembic.ini is definitive. Versioned
+    migration files contain upgrade() and downgrade() functions.
+
+    '
+  custom_extractors:
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract

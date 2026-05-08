@@ -1,0 +1,76 @@
+domain_root_conventions:
+- convention: src_layout
+  description: src/ layout — package under src/package_name/
+  path_pattern: src/{package_name}/
+  detection:
+  - src/ directory at repo root
+  - pyproject.toml with packages = [{include = 'pkg', from = 'src'}]
+  - 'setup.cfg with package_dir = {'''': ''src''}'
+  notes: 'Recommended layout for installable packages. Prevents accidental imports
+    of the development directory. Common in libraries published to PyPI.
+
+    '
+- convention: flat_layout
+  description: Flat layout — package at repo root
+  path_pattern: '{package_name}/'
+  detection:
+  - Python package directory at repo root (contains __init__.py)
+  - No src/ directory
+  notes: 'Common in applications and smaller projects. Django projects and many web
+    apps use this convention.
+
+    '
+- convention: tests_directory
+  description: Test files under tests/ at repo root
+  path_pattern: tests/
+  detection:
+  - tests/ directory at repo root
+  - test_*.py files inside tests/
+  - conftest.py inside tests/
+  notes: 'De-facto convention for pytest. Can also appear as test/ (singular). Some
+    projects co-locate tests with source (tests/ inside package directory).
+
+    '
+- convention: docs_directory
+  description: Documentation source under docs/
+  path_pattern: docs/
+  detection:
+  - docs/ directory at repo root
+  - docs/conf.py (Sphinx)
+  - docs/index.rst or docs/index.md (MkDocs)
+  - mkdocs.yml at repo root
+  notes: 'Sphinx (conf.py) and MkDocs (mkdocs.yml + docs/) are the two dominant documentation
+    systems.
+
+    '
+- convention: scripts_directory
+  description: Utility scripts under scripts/
+  path_pattern: scripts/
+  detection:
+  - scripts/ directory at repo root
+  - Shell scripts (.sh) or Python scripts (.py) inside
+  notes: 'Development utilities, deployment scripts, data processing one-offs. Not
+    part of the importable package.
+
+    '
+- convention: migrations_directory
+  description: Database migrations under migrations/ or alembic/
+  path_pattern: migrations/ | alembic/
+  detection:
+  - migrations/ directory (Django ORM, Aerich)
+  - alembic/ directory with versions/ subdirectory (SQLAlchemy)
+  - alembic.ini at repo root
+  notes: 'Auto-generated files inside. The alembic/ directory contains env.py (project-specific),
+    script.py.mako (template), and versions/ (generated migrations).
+
+    '
+- convention: docker_compose_present
+  description: Docker Compose file signals containerized development setup
+  path_pattern: docker-compose.yml | docker-compose.yaml | compose.yml
+  detection:
+  - docker-compose.yml at repo root
+  notes: 'Presence indicates multi-service development environment. Common in projects
+    with separate DB, cache, and app containers. Not a Python-specific convention
+    but relevant for environment detection.
+
+    '

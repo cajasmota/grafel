@@ -1,0 +1,35 @@
+frameworks:
+  name: Cats Effect
+  category: effect_system
+  sbt_coordinates:
+  - org.typelevel::cats-effect
+  - org.typelevel::cats-core
+  - org.typelevel::cats-free
+  - org.http4s::http4s-ember-server
+  detection:
+    build_signals:
+    - '"org.typelevel" %% "cats-effect"'
+    - '"org.typelevel" %% "cats-core"'
+    import_patterns:
+    - import cats.effect._
+    - import cats.effect.IO
+    - import cats.implicits._
+    - import cats.syntax.all._
+    - import cats._
+    code_patterns:
+    - extends IOApp
+    - extends IOApp.Simple
+    - IO {
+    - IO.delay(
+    - IO.blocking(
+    - Resource.make(
+    - for { _ <- IO
+    - flatMap { _ =>
+    - Async[F]
+    - Concurrent[F]
+  notes: 'Cats Effect is the runtime underpinning http4s, fs2, and much of the Typelevel
+    ecosystem. IOApp or IOApp.Simple as entry point is definitive. Polymorphic effect
+    type F[_] with Async[F] or Concurrent[F] constraints indicates advanced Cats Effect
+    usage. Often co-present with http4s.
+
+    '

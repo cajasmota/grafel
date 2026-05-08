@@ -1,0 +1,118 @@
+domain_roots:
+- layout: single_executable
+  description: Single Zig binary — the most common project shape
+  root_paths:
+  - src/main.zig
+  - src/
+  - build.zig
+  - build.zig.zon
+  priority_files:
+  - src/main.zig
+  - build.zig
+  detection_signals:
+  - 'b.addExecutable(.{ .name = '
+  - 'pub fn main() '
+  - pub fn main() !void
+  - pub fn main() anyerror!void
+  notes: 'The dominant project layout for Zig executables. src/main.zig is the canonical
+    entry point. All other source files are @import''d from there. build.zig wires
+    up the executable via b.addExecutable().
+
+    '
+- layout: library_package
+  description: Zig library — published as a package consumed via build.zig.zon
+  root_paths:
+  - src/root.zig
+  - src/lib.zig
+  - src/
+  - build.zig
+  - build.zig.zon
+  priority_files:
+  - src/root.zig
+  - src/lib.zig
+  - build.zig
+  detection_signals:
+  - b.addModule(
+  - b.addStaticLibrary(
+  - pub fn init(
+  - pub fn deinit(
+  notes: 'Libraries intended for use as build.zig.zon dependencies use src/root.zig
+    (Zig 0.12+ convention) or src/lib.zig (older convention) as their root. b.addModule()
+    exposes the library to dependents. b.addStaticLibrary() is used for libraries
+    that also expose a C API.
+
+    '
+- layout: c_library_with_zig_build
+  description: 'C library project that uses Zig as a cross-platform build system without
+    any Zig source code. Build-only usage of Zig.
+
+    '
+  root_paths:
+  - build.zig
+  - src/
+  - include/
+  priority_files:
+  - build.zig
+  detection_signals:
+  - exe.addCSourceFiles(
+  - exe.addCSourceFile(
+  - lib.addCSourceFiles(
+  - exe.linkLibC()
+  - exe.addIncludePath(
+  - .c_std = .c11
+  - .c_std = .c99
+  notes: 'An increasing pattern: projects using Zig''s build system purely to compile
+    C code for cross-compilation. No .zig source files in src/ beyond build.zig. Treat
+    as a C project for indexing; index build.zig as build metadata.
+
+    '
+- layout: embedded_firmware
+  description: Bare-metal embedded firmware — no OS, no libc
+  root_paths:
+  - src/main.zig
+  - src/
+  - build.zig
+  - linker.ld
+  - openocd.cfg
+  priority_files:
+  - src/main.zig
+  - build.zig
+  detection_signals:
+  - -Dtarget=arm-freestanding-eabi
+  - -Dtarget=thumb-freestanding-eabi
+  - -Dtarget=riscv32-freestanding
+  - b.addExecutable(.{ .target = .{ .cpu_arch = .thumb
+  - b.addExecutable(.{ .target = .{ .cpu_arch = .arm
+  - '@panic('
+  - export fn _start(
+  - export fn Reset_Handler(
+  - comptime { @export(Reset_Handler, .{ .name = "Reset_Handler" }); }
+  - volatile @ptrFromInt(
+  - asm volatile (
+  notes: 'Zig is a growing choice for embedded firmware due to first-class cross-compilation
+    and freestanding target support. Key signals: freestanding target in build.zig,
+    absence of std.heap and std.os imports, presence of linker scripts, MMIO patterns
+    with @ptrFromInt and volatile. Projects like microzig provide HAL abstractions
+    on top of Zig''s freestanding target.
+
+    '
+- layout: build_only_monorepo_component
+  description: 'Component in a monorepo where Zig is one language among several. Build.zig
+    delegates to the monorepo build system or provides a sub-build for a single Zig
+    module.
+
+    '
+  root_paths:
+  - build.zig
+  - src/
+  priority_files:
+  - build.zig
+  - src/main.zig
+  detection_signals:
+  - // part of monorepo
+  - b.dependency(
+  notes: 'Detect by presence of build.zig in a subdirectory of a larger repo where
+    the root contains non-Zig build files (Makefile, Cargo.toml, go.mod, package.json).
+    Index only the Zig subtree.
+
+    '

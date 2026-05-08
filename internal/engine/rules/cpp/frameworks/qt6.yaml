@@ -1,0 +1,60 @@
+frameworks:
+  name: Qt6
+  category: gui_application
+  github_stars_2025: N/A (commercial/open-source)
+  detection:
+    cmake_find_package:
+    - find_package(Qt6
+    - find_package(Qt5
+    cmake_target_link:
+    - Qt6::Core
+    - Qt6::Widgets
+    - Qt6::Network
+    - Qt6::Gui
+    - Qt5::Core
+    - Qt5::Widgets
+    vcpkg_packages:
+    - qtbase
+    - qt6-base
+    - qt5-base
+    conan_packages:
+    - qt/6
+    - qt/5
+    include_patterns:
+    - '#include <QApplication>'
+    - '#include <QWidget>'
+    - '#include <QMainWindow>'
+    - '#include <QtCore/'
+    - '#include <QtWidgets/'
+    structural_markers:
+    - QApplication app(
+    - Q_OBJECT
+    - 'signals:'
+    - 'slots:'
+    - SIGNAL(
+    - SLOT(
+    - qmake
+    - .pro
+    - .pri
+    config_files:
+    - '*.pro'
+    - '*.pri'
+    - CMakeLists.txt
+    notes: 'Qt5 and Qt6 both active. Qt6 is the current major. Detected via find_package
+      Qt5/Qt6, Q_OBJECT macro, .pro qmake project files, and Qt:: target prefixes.
+      Signal/slot macros are definitive markers.
+
+      '
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema -- MX-525)
+# ---------------------------------------------------------------------------
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.cpp.qt_extractor"
+    function: "extract"
+    description: "Extract Qt signal/slot graph (connect() old and new syntax), QObject subclass hierarchy, .ui XML widget tree, and Q_PROPERTY metadata. Emits DEPENDS_ON (signal/slot wiring) and OWNS (widget hierarchy) relationships."

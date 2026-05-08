@@ -1,0 +1,42 @@
+server_frameworks:
+  name: Strawberry (Python)
+  language: Python
+  category: graphql_server
+  github_stars_2025: 4000+
+  detection:
+    pyproject_toml_deps:
+    - strawberry-graphql
+    - strawberry-graphql[fastapi]
+    - strawberry-graphql[django]
+    - strawberry-graphql[flask]
+    - strawberry-graphql[litestar]
+    requirements_txt_patterns:
+    - strawberry-graphql
+    import_markers:
+    - import strawberry
+    - from strawberry import
+    - '@strawberry.type'
+    - '@strawberry.mutation'
+    - '@strawberry.query'
+    structural_markers:
+    - '@strawberry.type'
+    - '@strawberry.input'
+    - '@strawberry.enum'
+    - '@strawberry.interface'
+    - '@strawberry.federation.type'
+    - strawberry.Schema(
+    - '"GraphQLRouter" (FastAPI integration)'
+    - '"GraphqlView" (Django integration)'
+  extraction_targets:
+  - Python classes decorated with @strawberry.type (map to Object types)
+  - Methods decorated with @strawberry.field or in @strawberry.type
+  - '@strawberry.input classes (Input types)'
+  - '@strawberry.enum enumerations'
+  - '@strawberry.interface classes'
+  - strawberry.Schema(query=, mutation=, subscription=) root definition
+  - strawberry.federation.type / @key annotation usage
+  notes: 'Strawberry is code-first: Python class definitions ARE the schema. No SDL
+    file unless explicitly exported. Use Python AST parsing to extract type structure.
+    @strawberry.type on a class + field type annotations define the GraphQL contract.
+
+    '

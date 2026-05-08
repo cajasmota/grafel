@@ -1,0 +1,23 @@
+frameworks:
+  name: Kitura
+  category: web_server_framework
+  spm_coordinates:
+  - Kitura/Kitura
+  detection:
+    config_files:
+    - Package.swift
+    build_signals:
+    - '.package(url: "https://github.com/Kitura/Kitura.git"'
+    - '.product(name: "Kitura", package: "Kitura")'
+    import_patterns:
+    - import Kitura
+    code_patterns:
+    - let router = Router()
+    - router.get(
+    - Kitura.addHTTPServer(
+    - Kitura.run()
+  notes: 'IBM-developed server-side Swift framework (archived/unmaintained as of 2022).
+    Presence strongly indicates legacy project. SPM + CocoaPods support existed. Distinguish
+    from Hummingbird Router by Kitura.run() call.
+
+    '

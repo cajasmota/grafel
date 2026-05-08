@@ -1,0 +1,49 @@
+mobile:
+  name: Flutter Mobile (iOS + Android)
+  category: mobile_cross_platform
+  detection:
+    pubspec_primary_signal:
+    - key: flutter
+      value: 'sdk: flutter'
+      location: dependencies section of pubspec.yaml
+      notes: 'This is a virtual SDK dependency, not a pub.dev package. It is the single
+        most reliable Flutter detection signal.
+
+        '
+    pubspec_dev_signal:
+    - 'flutter_test: sdk: flutter'
+    structural_signals:
+    - path: android/
+      meaning: Android platform scaffolding directory
+      required_for: Android target confirmation
+    - path: android/app/src/main/AndroidManifest.xml
+      meaning: Android manifest — confirms Android target
+      required_for: Android target confirmation
+    - path: ios/
+      meaning: iOS platform scaffolding directory
+      required_for: iOS target confirmation
+    - path: ios/Runner.xcodeproj/
+      meaning: Xcode project — confirms iOS target
+      required_for: iOS target confirmation
+    - path: lib/main.dart
+      meaning: Dart application entry point (canonical name)
+      required_for: Flutter app entry point
+    code_signals:
+    - runApp(
+    - WidgetsFlutterBinding.ensureInitialized()
+    - MaterialApp(
+    - CupertinoApp(
+    - StatefulWidget
+    - StatelessWidget
+    - BuildContext
+    notes: 'Flutter is THE cross-platform mobile framework for Dart. Detection confidence:
+      HIGH when pubspec has sdk: flutter + android/ + ios/ present. MEDIUM when only
+      sdk: flutter present (could be web or desktop only). Projects may target all
+      platforms simultaneously.
+
+      '
+
+custom_extractors:
+  - module: "memx_indexer.languages.dart.flutter_extractor"
+    function: "extract"
+    description: "Extract Flutter widgets, BLoC/Cubit/ChangeNotifier state management, Navigator routes, and GoRouter routes"

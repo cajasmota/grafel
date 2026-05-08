@@ -1,0 +1,31 @@
+server_frameworks:
+  name: Relay (Server)
+  language: JavaScript / TypeScript
+  category: graphql_server_convention
+  github_stars_2025: 18400+
+  detection:
+    package_json_deps:
+    - graphql-relay
+    structural_markers:
+    - nodeInterface
+    - connectionFromArray
+    - fromGlobalId
+    - toGlobalId
+    - mutationWithClientMutationId
+    - Node interface
+    - Relay connection spec
+    schema_signals:
+    - type PageInfo { hasPreviousPage hasNextPage startCursor endCursor }
+    - 'interface Node { id: ID! }'
+    - '"connection" and "edge" type naming conventions'
+  extraction_targets:
+  - Node interface implementation
+  - Connection type patterns (<TypeName>Connection, <TypeName>Edge)
+  - pageInfo field presence
+  - clientMutationId in mutation input/output types
+  notes: 'Relay Server Specification defines structural conventions: Node interface,
+    Cursor-based Pagination connections, and Mutations with input/payload types. Detection
+    is pattern-based (type naming + field presence) rather than package-based. graphql-relay
+    is the JS helper library.
+
+    '

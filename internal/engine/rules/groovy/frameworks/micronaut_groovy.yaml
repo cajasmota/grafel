@@ -1,0 +1,37 @@
+frameworks:
+  name: Micronaut (Groovy)
+  category: web_cloud_native
+  gradle_coordinates:
+  - io.micronaut:micronaut-http-server-netty
+  - io.micronaut.groovy:micronaut-runtime-groovy
+  - io.micronaut.groovy:micronaut-function-groovy
+  detection:
+    config_files:
+    - application.yml
+    - micronaut-cli.yml
+    - src/main/groovy/
+    build_signals:
+    - id("io.micronaut.application")
+    - id("io.micronaut.library")
+    - '"io.micronaut.groovy:micronaut-runtime-groovy"'
+    - '"io.micronaut:micronaut-http-server-netty"'
+    import_patterns:
+    - import io.micronaut.http.annotation.
+    - import io.micronaut.http.
+    - import io.micronaut.runtime.
+    - import jakarta.inject.
+    code_patterns:
+    - '@Controller'
+    - '@Get('
+    - '@Post('
+    - '@Singleton'
+    - '@Inject'
+    - Micronaut.run(
+    - '@MicronautTest'
+  notes: 'Micronaut supports Groovy natively via micronaut-runtime-groovy. Detection
+    requires co-presence of io.micronaut plugin AND src/main/groovy/ source tree (not
+    src/main/java/ or src/main/kotlin/). micronaut-cli.yml with profile: base and
+    sourceLanguage: groovy is definitive. Spock is the idiomatic test framework in
+    Micronaut-Groovy projects.
+
+    '

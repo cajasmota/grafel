@@ -1,0 +1,148 @@
+complexity_signals:
+- name: streaming_rpcs
+  description: 'Server-streaming, client-streaming, or bidirectional-streaming RPC
+    methods. Significantly increases implementation complexity vs. unary RPCs.
+
+    '
+  patterns:
+  - rpc Method(stream Request) returns (Response);
+  - rpc Method(Request) returns (stream Response);
+  - rpc Method(stream Request) returns (stream Response);
+  variants:
+    server_streaming: one input, multiple output messages
+    client_streaming: multiple input messages, one output
+    bidirectional_streaming: multiple input and output messages
+  complexity_weight: high
+  notes: 'Streaming RPCs require goroutine/thread lifecycle management, flow control,
+    and error propagation discipline. Bidi streaming is highest complexity.
+
+    '
+- name: nested_messages
+  description: 'Message types defined inside other message types. Increases generated
+    type nesting and naming verbosity.
+
+    '
+  pattern: message Outer { message Inner { ... } }
+  depth_thresholds:
+    low: 1
+    medium: 2
+    high: 3+
+  complexity_weight: medium
+  notes: 'Nesting depth > 3 is a strong complexity signal. Generated code references
+    inner types via qualified names (Outer_Inner in Go, Outer.Inner in Java).
+
+    '
+- name: oneof_fields
+  description: 'Mutually exclusive field groups. Signals discriminated union patterns.
+    All implementations must handle all variants.
+
+    '
+  pattern: oneof <name> { <field>; <field>; ... }
+  complexity_weight: medium
+  notes: 'oneof generates wrapper types or switch-required patterns in most languages.
+    Multiple oneof blocks per message amplifies handler complexity. Common in event/command
+    schemas.
+
+    '
+- name: map_fields
+  description: 'Map field type (proto3 only). Generates language-native map types
+    but adds serialization and ordering considerations.
+
+    '
+  pattern: map<<key_type>, <value_type>> <name> = <field_number>;
+  key_type_constraints:
+    allowed:
+    - int32
+    - int64
+    - uint32
+    - uint64
+    - sint32
+    - sint64
+    - fixed32
+    - fixed64
+    - sfixed32
+    - sfixed64
+    - bool
+    - string
+    not_allowed:
+    - float
+    - double
+    - bytes
+    - message
+    - enum
+  complexity_weight: low
+  notes: 'Map fields do not preserve insertion order in serialization. Large value
+    types (message values) amplify complexity.
+
+    '
+- name: extensions_and_custom_options
+  description: 'Custom options applied to messages, fields, services, or RPCs. Typically
+    used for validation, documentation generation, or framework-specific annotations.
+
+    '
+  patterns:
+  - extend google.protobuf.MessageOptions {
+  - extend google.protobuf.FieldOptions {
+  - extend google.protobuf.ServiceOptions {
+  - extend google.protobuf.MethodOptions {
+  - option (<custom.option>) = {
+  complexity_weight: high
+  notes: 'Custom options require the defining .proto to be imported. They are invisible
+    at runtime without reflection or descriptor pool access. Signals framework-layer
+    coupling (gRPC-Gateway, PGV, protovalidate, etc.).
+
+    '
+- name: proto2_syntax
+  description: 'Protocol Buffers version 2 syntax. Distinguishable from proto3 by
+    explicit required/optional labels and extension blocks.
+
+    '
+  patterns:
+  - syntax = "proto2";
+  - required <type> <name> = <number>;
+  - extend <MessageName> {
+  - extensions <from> to <max>;
+  complexity_weight: medium
+  notes: 'Proto2 files coexist with proto3 in many legacy codebases. required fields
+    cannot be removed without breaking changes. Extension blocks (not to be confused
+    with proto3 custom options) are proto2-only.
+
+    '
+- name: google_protobuf_any_usage
+  description: 'Use of google.protobuf.Any for dynamic message typing. Requires type
+    registration and reflection at runtime.
+
+    '
+  pattern: google.protobuf.Any
+  complexity_weight: high
+  notes: 'Any fields defer type safety to runtime. They require type URL registry
+    and Marshal/Unmarshal round-trips. Signals plugin architecture, event envelopes,
+    or polymorphic RPC payloads.
+
+    '
+- name: large_schema_count
+  description: 'Repositories with high .proto file counts, indicating mature or monolithic
+    API surface.
+
+    '
+  thresholds:
+    low: 1-5 .proto files
+    medium: 6-20 .proto files
+    high: 21-100 .proto files
+    very_high: 100+ .proto files
+  complexity_weight: medium_to_high
+  notes: 'Very high file counts often correlate with BSR usage, Buf workspaces, and
+    multi-version package management requirements.
+
+    '
+- name: import_cycles
+  description: 'Cross-package imports forming dependency cycles. Not allowed in protobuf
+    (import is always acyclic) but detection of near-cycle structures (A->B->C->A
+    avoided via intermediate types) signals complex schema architecture.
+
+    '
+  notes: 'While protobuf itself prevents cycles, large import fan-in (many files importing
+    a common types.proto) signals tight coupling. Track import_depth as a secondary
+    complexity metric.
+
+    '

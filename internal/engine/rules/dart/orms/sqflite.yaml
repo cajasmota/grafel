@@ -1,0 +1,34 @@
+orm_database:
+  name: sqflite
+  pubspec_dependency: sqflite
+  category: sqlite_raw
+  pub_dev_url: https://pub.dev/packages/sqflite
+  detection:
+    pubspec_signals:
+    - 'sqflite:'
+    - 'sqflite_common_ffi:'
+    code_patterns:
+    - import 'package:sqflite/sqflite.dart'
+    - openDatabase(
+    - getDatabasesPath()
+    - database.query(
+    - database.insert(
+    - database.update(
+    - database.delete(
+    - database.execute(
+    - database.rawQuery(
+    notes: 'Direct SQLite plugin for Flutter — no ORM, raw SQL. Common in projects
+      that need full SQL control without code generation. sqflite_common_ffi is the
+      desktop/FFI variant for Linux, Windows, macOS and Dart VM tests.
+
+      '
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: sqflite/drift openDatabase connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

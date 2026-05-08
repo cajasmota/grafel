@@ -1,0 +1,20 @@
+orms:
+  name: MyBatis (Groovy)
+  category: orm_sql_mapper
+  gradle_coordinates:
+  - org.mybatis:mybatis
+  - org.mybatis:mybatis-spring
+  detection:
+    code_patterns:
+    - import org.apache.ibatis.
+    - '@Mapper'
+    - '@Select('
+    - '@Insert('
+    - '@Update('
+    - '@Delete('
+    - SqlSession
+    - MapperFactory
+  notes: 'Less common in Groovy but used in Spring Boot + Groovy projects. Same detection
+    as Java MyBatis — annotations or XML mapper files. Distinct from GORM.
+
+    '

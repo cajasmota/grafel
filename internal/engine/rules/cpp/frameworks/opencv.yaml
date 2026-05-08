@@ -1,0 +1,38 @@
+frameworks:
+  name: OpenCV
+  category: computer_vision
+  github_stars_2025: 81000+
+  detection:
+    cmake_find_package:
+    - find_package(OpenCV
+    cmake_target_link:
+    - ${OpenCV_LIBS}
+    - opencv_core
+    - opencv_imgproc
+    - opencv_highgui
+    - opencv_ml
+    - opencv_dnn
+    vcpkg_packages:
+    - opencv
+    - opencv4
+    conan_packages:
+    - opencv/4
+    include_patterns:
+    - '#include <opencv2/'
+    - '#include "opencv2/'
+    structural_markers:
+    - cv::Mat
+    - cv::imread
+    - cv::VideoCapture
+    - cv::GaussianBlur
+    - cv::imshow
+    - cv::waitKey
+    - CvSize
+    - IplImage
+    config_files:
+    - CMakeLists.txt
+    notes: 'Computer vision and ML library. IplImage/CvSize are legacy (OpenCV 1.x).
+      cv:: namespace and opencv2/ includes are modern (OpenCV 2+). find_package(OpenCV)
+      is the canonical CMake detection.
+
+      '

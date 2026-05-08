@@ -1,0 +1,690 @@
+detection:
+  schema_files:
+  - path: prisma/schema.prisma
+    confidence: high
+    notes: 'Canonical single-file schema location. Present in virtually all Prisma
+      projects. The prisma/ directory at project root with schema.prisma is the strongest
+      detection signal.
+
+      '
+  - path: prisma/schema/*.prisma
+    confidence: high
+    notes: 'Multi-file schema layout introduced in Prisma 5.15 (prismaSchemaFolder
+      preview feature, GA in Prisma 6). Multiple .prisma files in prisma/schema/ replace
+      the single schema.prisma. Check for previewFeatures = ["prismaSchemaFolder"]
+      in generator block or prisma.schema pointing to a directory.
+
+      '
+  - pattern: '**/*.prisma'
+    confidence: medium
+    notes: 'Any .prisma file in the project. Lower confidence than prisma/ convention
+      since custom schema locations are possible via prisma.schema in package.json
+      or --schema CLI flag.
+
+      '
+  directory_markers:
+  - path: prisma/
+    confidence: high
+    notes: 'Standard Prisma project directory. Contains schema.prisma, migrations/
+      subdirectory, seed.ts/seed.js, and optionally generated/ output directory.
+
+      '
+  - path: prisma/migrations/
+    confidence: high
+    notes: 'Created by prisma migrate dev. Presence confirms active use of Prisma
+      Migrate. Contains timestamped subdirectories with migration.sql files and a
+      _prisma_migrations table in the DB.
+
+      '
+  package_json_fields:
+    prisma_field:
+      key: prisma
+      notes: 'Top-level "prisma" object in package.json configures Prisma CLI behavior.
+        Common sub-keys: schema (custom schema path), seed (seed script command),
+        errorFormat. Presence is a definitive Prisma signal.
+
+        '
+      example_values:
+      - '{ "schema": "db/schema.prisma" }'
+      - '{ "seed": "ts-node prisma/seed.ts" }'
+      - '{ "schema": "prisma/schema" }'
+    dependencies:
+    - '@prisma/client'
+    - prisma
+    - '@prisma/adapter-pg'
+    - '@prisma/adapter-planetscale'
+    - '@prisma/adapter-neon'
+    - '@prisma/adapter-libsql'
+    - '@prisma/adapter-d1'
+    - '@prisma/extension-accelerate'
+    - '@prisma/extension-pulse'
+  file_extension:
+    extension: .prisma
+    notes: 'The .prisma extension is exclusive to Prisma Schema Language files. No
+      other widely-used tool uses this extension. Any .prisma file confirms Prisma
+      usage at high confidence regardless of location.
+
+      '
+  import_patterns:
+  - pattern: from '@prisma/client'
+    language: typescript_javascript
+    confidence: high
+  - pattern: from "@prisma/client"
+    language: typescript_javascript
+    confidence: high
+  - pattern: require('@prisma/client')
+    language: typescript_javascript
+    confidence: high
+  - pattern: PrismaClient
+    language: typescript_javascript
+    confidence: medium
+    notes: Common variable name; combine with package.json signal for high confidence
+extraction_targets:
+  model_definitions:
+    description: 'Core entity type in PSL. Each model maps to a database table (or
+      collection in MongoDB). Models contain field definitions, block attributes,
+      and relation annotations.
+
+      '
+    syntax_marker: model <Name> {
+    extract:
+    - name: model_name
+      type: identifier
+      notes: PascalCase by Prisma convention; maps to table name via @@map or snake_case
+        default
+    - name: fields
+      type: list
+      notes: 'Each field has: name, type (scalar or relation), optional modifier (?
+        for nullable, [] for array/list), and zero or more field attributes. Field
+        types: String, Int, BigInt, Float, Decimal, Boolean, DateTime, Json, Bytes,
+        Unsupported("..."), or another model/enum name.
+
+        '
+    - name: field_attributes
+      type: annotations
+      examples:
+      - '@id'
+      - '@default(value)'
+      - '@unique'
+      - '@updatedAt'
+      - '@map("col_name")'
+      - '@db.VarChar(255)'
+      - '@db.Text'
+      - '@db.Timestamptz(6)'
+      - '@ignore'
+    - name: block_attributes
+      type: annotations
+      examples:
+      - '@@id([field1, field2])'
+      - '@@unique([field1, field2])'
+      - '@@index([field1, field2])'
+      - '@@index([field], type: BTree)'
+      - '@@index([field], map: "idx_name")'
+      - '@@map("table_name")'
+      - '@@ignore'
+      - '@@fulltext([field1, field2])'
+      - '@@schema("schema_name")'
+    vera_scope: MODEL_DEF
+    vera_memory_type: orm-schema
+  enum_definitions:
+    description: 'Enumerated type definitions in PSL. Enums map to native database
+      enum types (PostgreSQL, MySQL) or string columns with validation in other providers.
+
+      '
+    syntax_marker: enum <Name> {
+    extract:
+    - name: enum_name
+      type: identifier
+    - name: values
+      type: list
+      notes: Each value is an identifier. Optionally has @map("db_value") attribute.
+    - name: block_attributes
+      examples:
+      - '@@map("enum_name")'
+      - '@@schema("schema")'
+    vera_scope: ENUM_DEF
+    vera_memory_type: orm-schema
+  relation_definitions:
+    description: 'Relations between models expressed via @relation field attribute
+      and corresponding relation scalar fields. Three cardinalities supported.
+
+      '
+    cardinalities:
+      one_to_one:
+        description: Exactly one record on each side. One side holds the foreign key.
+        syntax: 'Model A has a field of type B (optional or required). Model B has
+          a field of type A (optional). Foreign key side carries @relation(fields:
+          [...], references: [...]).
+
+          '
+        example: "model User {\n  id      Int      @id @default(autoincrement())\n\
+          \  profile Profile?\n}\nmodel Profile {\n  id     Int  @id @default(autoincrement())\n\
+          \  userId Int  @unique\n  user   User @relation(fields: [userId], references:\
+          \ [id])\n}\n"
+      one_to_many:
+        description: One record on parent side, many records on child side.
+        syntax: 'Parent model has a list field (Model[]). Child holds foreign key
+          with @relation(fields: [...], references: [...]).
+
+          '
+        example: "model Post {\n  id       Int       @id\n  authorId Int\n  author\
+          \   User      @relation(fields: [authorId], references: [id])\n}\nmodel\
+          \ User {\n  id    Int    @id\n  posts Post[]\n}\n"
+      many_to_many:
+        description: 'Implicit M:N: Prisma creates a hidden join table automatically.
+          Explicit M:N: Developer defines the join model for extra fields.
+
+          '
+        implicit_syntax: Both sides hold a list of the other type. No @relation needed.
+        explicit_syntax: 'Intermediate model with two @relation fields pointing to
+          each side. Use explicit M:N when the join table needs extra columns.
+
+          '
+    relation_attributes:
+    - '@relation(fields: [...], references: [...])'
+    - '@relation(name: "RelationName", fields: [...], references: [...])'
+    - '@relation(onDelete: Cascade)'
+    - '@relation(onDelete: SetNull)'
+    - '@relation(onDelete: Restrict)'
+    - '@relation(onDelete: NoAction)'
+    - '@relation(onUpdate: Cascade)'
+    notes: 'Named relations (name: parameter) required when two models have multiple
+      relations between them (disambiguates which @relation fields connect to which).
+      Both sides of a named relation must use the same name string.
+
+      '
+    vera_scope: RELATION_DEF
+    vera_memory_type: orm-schema
+  generator_blocks:
+    description: 'Configures Prisma Client code generation. At least one generator
+      block required in every schema. Multiple generators produce different output
+      artifacts.
+
+      '
+    syntax_marker: generator <name> {
+    extract:
+    - name: generator_name
+      type: identifier
+      common_values:
+      - client
+      - typegraphql
+      - nexus
+      - pothos
+    - name: provider
+      type: string_value
+      notes: 'Specifies the generator package. Built-in: "prisma-client-js". Community:
+        "prisma-client-ts" (experimental native TS), "typegraphql-prisma", "nexus-prisma",
+        "pothos-prisma".
+
+        '
+    - name: output
+      type: string_value
+      notes: 'Custom output directory for generated client. Default: node_modules/.prisma/client'
+    - name: previewFeatures
+      type: string_array
+      notes: 'Opt-in to preview features. Common values: "prismaSchemaFolder", "driverAdapters",
+        "tracing", "metrics", "relationJoins", "nativeDistinct", "omitApi", "strictUndefinedChecks".
+
+        '
+    - name: engineType
+      type: string_value
+      values:
+      - library
+      - binary
+      - dataproxy
+      notes: '''library'' is the default (native module). ''dataproxy'' used with
+        Prisma Accelerate.'
+    - name: binaryTargets
+      type: string_array
+      notes: Required for deployment targets different from dev machine (e.g., linux-musl-openssl-3.0.x
+        for Alpine Docker)
+    vera_scope: GENERATOR_BLOCK
+    vera_memory_type: orm-schema
+  datasource_blocks:
+    description: 'Exactly one datasource block per schema (or per file in multi-file
+      schemas, but only one active). Defines database connection and provider.
+
+      '
+    syntax_marker: datasource db {
+    extract:
+    - name: block_name
+      type: identifier
+      common_values:
+      - db
+      notes: Almost always 'db' by convention but any identifier is valid
+    - name: provider
+      type: string_value
+      values:
+      - postgresql
+      - mysql
+      - sqlite
+      - sqlserver
+      - mongodb
+      - cockroachdb
+    - name: url
+      type: env_var_or_string
+      notes: 'Almost always env("DATABASE_URL"). Direct URL string is valid but discouraged.
+        Prisma reads from environment at runtime.
+
+        '
+    - name: directUrl
+      type: env_var_or_string
+      notes: 'Optional. Used with Prisma Accelerate: directUrl bypasses the connection
+        pooler for migrations. env("DIRECT_URL") convention.
+
+        '
+    - name: shadowDatabaseUrl
+      type: env_var_or_string
+      notes: Required for some providers when using prisma migrate dev in CI
+    - name: relationMode
+      type: string_value
+      values:
+      - foreignKeys
+      - prisma
+      notes: '"prisma" required for databases that do not support foreign keys natively
+        (PlanetScale, some MongoDB configs). Enforces relations at the Prisma Client
+        level instead.
+
+        '
+    - name: schemas
+      type: string_array
+      notes: 'Multi-schema: list of database schema names to expose. Requires multiSchema
+        preview feature.'
+    - name: extensions
+      type: list
+      notes: PostgreSQL extensions declared in schema (e.g., postgis, pg_trgm, uuid-ossp).
+        Requires postgresqlExtensions preview feature.
+    vera_scope: DATASOURCE_BLOCK
+    vera_memory_type: orm-schema
+  composite_types:
+    description: 'MongoDB-only. Composite types map to embedded documents (nested
+      objects within a MongoDB document). Not available for relational databases.
+
+      '
+    syntax_marker: type <Name> {
+    extract:
+    - name: type_name
+      type: identifier
+    - name: fields
+      type: list
+      notes: Same field syntax as models. No @id, @unique, or @@index allowed.
+    vera_scope: COMPOSITE_TYPE
+    vera_memory_type: orm-schema
+    notes: 'Only generated for schemas with provider = "mongodb". Treat as a distinct
+      entity type from model definitions to avoid confusion.
+
+      '
+  index_and_constraint_annotations:
+    description: 'Block-level attributes that define database indexes, unique constraints,
+      and full-text search indexes. Extracted alongside their parent model.
+
+      '
+    types:
+      composite_index:
+        syntax: '@@index([field1, field2])'
+        variants:
+        - '@@index([field1, field2(sort: Desc)])'
+        - '@@index([field1, field2], name: "idx_custom_name")'
+        - '@@index([field1, field2], map: "idx_custom_name")'
+        - '@@index([field1, field2], type: BTree)'
+        - '@@index([field1, field2], type: Hash)'
+        - '@@index([field1, field2], type: Gist)'
+        - '@@index([field1, field2], type: Gin)'
+        - '@@index([field1, field2], type: SpGist)'
+        - '@@index([field1, field2], type: Brin)'
+      composite_unique:
+        syntax: '@@unique([field1, field2])'
+        variants:
+        - '@@unique([field1, field2], name: "uq_custom_name")'
+        - '@@unique([field1, field2], map: "uq_custom_name")'
+      fulltext_index:
+        syntax: '@@fulltext([field1, field2])'
+        notes: MySQL and MongoDB only. Enables native full-text search.
+      composite_id:
+        syntax: '@@id([field1, field2])'
+        notes: Composite primary key. Cannot be used with @id on a single field.
+      map_annotation:
+        syntax: '@@map("db_table_name")'
+        notes: Overrides the inferred table/collection name. Extract as alias mapping.
+      schema_annotation:
+        syntax: '@@schema("schema_name")'
+        notes: Multi-schema feature. Assigns model to a named PostgreSQL schema.
+    vera_scope: INDEX_DEF
+    vera_memory_type: orm-schema
+prisma_ecosystem:
+  prisma_client:
+    name: Prisma Client JS/TS
+    package: '@prisma/client'
+    description: 'Auto-generated type-safe query builder. Generated from the schema
+      by running prisma generate. Output defaults to node_modules/.prisma/client.
+      The PrismaClient class is the primary application interface.
+
+      '
+    detection_signals:
+      package_json_deps:
+      - '@prisma/client'
+      import_patterns:
+      - from '@prisma/client'
+      - from "@prisma/client"
+      - PrismaClient
+      code_patterns:
+      - new PrismaClient()
+      - 'new PrismaClient({ log:'
+      - prisma.$connect()
+      - prisma.$disconnect()
+      - prisma.$transaction(
+      - prisma.$queryRaw
+      - prisma.$executeRaw
+      - prisma.$extends(
+      - Prisma.PrismaClientKnownRequestError
+    notes: 'Generated client exports model-specific type objects (e.g., Prisma.UserCreateInput),
+      all enum values, and utility types. The generated code in node_modules/.prisma/client
+      is an artifact — do NOT index it.
+
+      '
+  prisma_migrate:
+    name: Prisma Migrate
+    description: 'Declarative migration system. prisma migrate dev generates SQL migration
+      files from schema diffs. prisma migrate deploy applies migrations in production.
+      Migrations live in prisma/migrations/ as timestamped directories.
+
+      '
+    cli_commands:
+    - prisma migrate dev
+    - prisma migrate dev --name
+    - prisma migrate deploy
+    - prisma migrate reset
+    - prisma migrate status
+    - prisma migrate resolve
+    - prisma migrate diff
+    migration_directory_structure: 'prisma/migrations/{timestamp}_{migration_name}/migration.sql
+      prisma/migrations/migration_lock.toml (lock file, do not edit)
+
+      '
+    notes: 'migration.sql files are auto-generated artifacts. Do NOT index the SQL
+      content as Prisma code — skip prisma/migrations/ entirely. The migration_lock.toml
+      records the active provider.
+
+      '
+  prisma_db_commands:
+    name: prisma db push / pull
+    commands:
+      db_push:
+        command: prisma db push
+        description: 'Pushes schema changes directly to the database without creating
+          migration files. Used for prototyping and schema-first workflows (e.g.,
+          PlanetScale, MongoDB). Does not create migration history.
+
+          '
+      db_pull:
+        command: prisma db pull
+        description: 'Introspects an existing database and updates schema.prisma to
+          reflect the current database state. Inverse of db push. Produces an "introspected"
+          schema — often needs cleanup.
+
+          '
+      db_seed:
+        command: prisma db seed
+        description: 'Runs the seed script configured in package.json prisma.seed
+          field. Typically ts-node prisma/seed.ts or node prisma/seed.js.
+
+          '
+  prisma_studio:
+    name: Prisma Studio
+    command: prisma studio
+    description: 'Visual database browser. Opens a local web UI to inspect and edit
+      database records. Development tool only — not relevant for indexing.
+
+      '
+    detection_signals: []
+    notes: No code artifacts to index. Detect presence via 'prisma studio' in npm
+      scripts.
+  seeding_conventions:
+    description: 'Prisma projects conventionally seed the database with a script at
+      prisma/seed.ts (TypeScript) or prisma/seed.js (JavaScript). Configured via prisma.seed
+      in package.json.
+
+      '
+    files:
+    - prisma/seed.ts
+    - prisma/seed.js
+    - prisma/seed/index.ts
+    - prisma/seed/index.js
+    package_json_config:
+      key: prisma.seed
+      examples:
+      - '"ts-node prisma/seed.ts"'
+      - '"ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"'
+      - '"node -r ts-node/register prisma/seed.ts"'
+      - '"node prisma/seed.js"'
+      - '"tsx prisma/seed.ts"'
+    notes: 'Seed files contain regular TypeScript/JavaScript using PrismaClient. They
+      are indexed as application code (not schema), with scope=SCRIPT. Do NOT skip
+      prisma/seed.ts — it is handwritten application code.
+
+      '
+  driver_adapters:
+    name: Prisma Driver Adapters
+    description: 'Prisma 5.4+ feature (GA in Prisma 6) allowing Prisma to use edge-compatible
+      database drivers instead of Rust query engine binaries. Required for Cloudflare
+      Workers, Vercel Edge, and serverless environments that cannot run native binaries.
+
+      '
+    packages:
+    - '@prisma/adapter-pg'
+    - '@prisma/adapter-neon'
+    - '@prisma/adapter-planetscale'
+    - '@prisma/adapter-libsql'
+    - '@prisma/adapter-d1'
+    detection: 'previewFeatures = ["driverAdapters"] in generator block, or @prisma/adapter-*
+      in package.json dependencies.
+
+      '
+schema_patterns:
+  single_file_schema:
+    description: 'Default Prisma schema layout. One schema.prisma file at prisma/schema.prisma.
+      Contains all datasource, generator, model, enum, and type blocks.
+
+      '
+    layout:
+    - path: prisma/schema.prisma
+      purpose: Complete schema definition
+    notes: All Prisma versions support this. Majority of projects use this layout.
+  multi_file_schema:
+    description: 'Prisma 5.15+ (previewFeatures = ["prismaSchemaFolder"], GA in Prisma
+      6). Schema split across multiple .prisma files in prisma/schema/ directory.
+      Prisma CLI merges all files during generation and migration.
+
+      '
+    layout:
+    - path: prisma/schema/
+      purpose: Directory containing all .prisma schema files
+    - path: prisma/schema/base.prisma
+      purpose: Typically contains datasource and generator blocks
+    - path: prisma/schema/user.prisma
+      purpose: User and auth-related models
+    - path: prisma/schema/product.prisma
+      purpose: Domain-specific model files (names vary)
+    detection:
+    - prisma/schema/ directory present
+    - previewFeatures = ["prismaSchemaFolder"] in generator block
+    - '"schema": "prisma/schema" in package.json prisma field'
+    notes: 'When multi-file schema is detected, index ALL .prisma files in the schema/
+      directory. Treat each file as a partial schema fragment — cross-file relations
+      are valid and must be resolved across files.
+
+      '
+  custom_schema_location:
+    description: 'Schema file at a non-standard location. Configured via --schema
+      CLI flag or "prisma.schema" in package.json.
+
+      '
+    detection:
+    - '"schema": "<custom_path>" in package.json prisma field'
+    - '"--schema=<path>" in npm scripts'
+    - '"-schema <path>" in prisma CLI invocations'
+    examples:
+    - '"schema": "db/schema.prisma"'
+    - '"schema": "src/prisma/schema.prisma"'
+    notes: 'When a custom schema path is found, use it as the primary schema file.
+      Fall back to prisma/schema.prisma if not configured.
+
+      '
+  multi_schema_setup:
+    description: 'Multi-schema PostgreSQL setup: multiple PostgreSQL schemas (namespaces)
+      within one database. Not to be confused with multi-file schemas. Requires multiSchema
+      preview feature.
+
+      '
+    detection:
+    - previewFeatures = ["multiSchema"] in generator block
+    - schemas = ["schema1", "schema2"] in datasource block
+    - '@@schema("schema_name") block attribute on models'
+    extract:
+    - datasource.schemas array — list of PostgreSQL schema names
+    - '@@schema() attribute on each model — assigns to named schema'
+    notes: 'Enabled via previewFeatures = ["multiSchema"]. The schemas array in datasource
+      declares all accessible schemas. Models are assigned to schemas via @@schema().
+      Critical for monorepo databases with isolated tenant schemas or feature schemas.
+
+      '
+  prisma_folder_conventions:
+    description: 'Standard contents of the prisma/ directory in a mature project.
+
+      '
+    directories:
+    - path: prisma/
+      purpose: Root Prisma directory
+    - path: prisma/schema.prisma
+      purpose: Schema definition (single-file layout)
+    - path: prisma/schema/
+      purpose: Schema directory (multi-file layout)
+    - path: prisma/migrations/
+      purpose: 'Auto-generated migration history. Created by prisma migrate dev. Contains
+        timestamped subdirectories. Skip for indexing.
+
+        '
+    - path: prisma/seed.ts
+      purpose: Database seed script (handwritten — index as application code)
+    - path: prisma/seed.js
+      purpose: Database seed script (JS variant)
+    - path: prisma/seed/
+      purpose: Modular seed directory (index subdirectory contents)
+    - path: prisma/generated/
+      purpose: 'Custom output directory for generated Prisma Client when configured
+        via output in generator block. Auto-generated — skip entirely.
+
+        '
+    - path: prisma/client/
+      purpose: Alternative custom output directory name. Skip if auto-generated.
+domain_roots:
+  standard_prisma_project:
+    description: 'A Node.js/TypeScript project using Prisma as its ORM. Standard layout
+      with single schema file. The prisma/ directory is at the project root alongside
+      package.json.
+
+      '
+    entry_points:
+    - prisma/schema.prisma
+    - package.json
+    directories:
+    - path: prisma/
+      purpose: Schema, migrations, seed script
+    - path: prisma/migrations/
+      purpose: Auto-generated migrations (skip)
+    - path: prisma/seed.ts
+      purpose: Database seed script (index)
+    - path: src/
+      purpose: Application code using PrismaClient
+    notes: Most common layout. prisma/ at project root is the canonical signal.
+  monorepo_prisma:
+    description: 'Prisma schema(s) within a monorepo. The schema may be co-located
+      with a specific package or shared across packages.
+
+      '
+    layouts:
+    - name: per_package_schema
+      description: Each backend package has its own prisma/ directory
+      paths:
+      - packages/api/prisma/schema.prisma
+      - packages/auth/prisma/schema.prisma
+      notes: Treat each prisma/ directory as an independent schema root
+    - name: shared_schema_package
+      description: Dedicated @repo/database or @repo/prisma package
+      paths:
+      - packages/database/prisma/schema.prisma
+      - packages/db/prisma/schema.prisma
+      notes: The database package is the single source of truth for all schemas
+    detection: 'Look for prisma/ directories more than one level deep in the repo.
+      Each is an independent schema root. Process separately.
+
+      '
+  next_js_with_prisma:
+    description: 'Next.js project (App Router or Pages Router) with Prisma in the
+      same repository. Extremely common pattern for full-stack Next.js apps.
+
+      '
+    entry_points:
+    - prisma/schema.prisma
+    - next.config.js / next.config.ts
+    - package.json
+    directories:
+    - path: prisma/
+      purpose: Prisma schema, migrations, seed
+    - path: src/lib/prisma.ts
+      purpose: PrismaClient singleton (common convention)
+    - path: lib/prisma.ts
+      purpose: Alternative PrismaClient singleton location
+    - path: src/server/db.ts
+      purpose: T3 Stack convention for PrismaClient
+    notes: 'T3 Stack projects (create-t3-app) place PrismaClient at src/server/db.ts.
+      Next.js requires a singleton PrismaClient pattern to avoid connection pool exhaustion
+      in development hot reload.
+
+      '
+  t3_stack:
+    description: 'create-t3-app generated project. Uses Next.js + Prisma + tRPC +
+      Tailwind + NextAuth. Highly recognizable by directory structure.
+
+      '
+    detection_signals:
+    - src/server/db.ts (PrismaClient singleton)
+    - src/server/api/trpc.ts
+    - src/env.js or src/env.ts (T3 env validation)
+    - '@t3-oss/env-nextjs in package.json'
+    schema_location: prisma/schema.prisma
+  prisma_migrations_root:
+    description: 'The prisma/migrations/ directory structure for reference (skip for
+      indexing).
+
+      '
+    layout:
+    - path: prisma/migrations/
+      purpose: Root migrations directory
+    - path: prisma/migrations/{timestamp}_{name}/
+      purpose: 'Individual migration directory. Timestamp: YYYYMMDDHHMMSS'
+    - path: prisma/migrations/{timestamp}_{name}/migration.sql
+      purpose: Auto-generated SQL diff. SKIP.
+    - path: prisma/migrations/migration_lock.toml
+      purpose: Provider lock file. SKIP.
+    notes: Included for completeness. All paths under prisma/migrations/ are skipped.
+  prisma_seed_conventions:
+    description: 'Seed script locations and import patterns.
+
+      '
+    paths:
+    - path: prisma/seed.ts
+      purpose: TypeScript seed (most common)
+    - path: prisma/seed.js
+      purpose: JavaScript seed
+    - path: prisma/seed/index.ts
+      purpose: Modular seed with multiple files
+    - path: prisma/seed/users.ts
+      purpose: Domain-specific seed module
+    - path: prisma/seed/products.ts
+      purpose: Domain-specific seed module
+    notes: 'Seed scripts use PrismaClient and contain application-meaningful data.
+      Index as scope=SCRIPT. The seed data itself (literal values) is not extracted
+      as schema entities.
+
+      '

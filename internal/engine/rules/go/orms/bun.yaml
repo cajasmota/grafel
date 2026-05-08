@@ -1,0 +1,22 @@
+database_libraries:
+  name: bun
+  module_path: github.com/uptrace/bun
+  category: orm
+  github_stars_2025: 3900+
+  detection:
+    go_mod_require:
+    - github.com/uptrace/bun
+    import_markers:
+    - '"github.com/uptrace/bun"'
+    - '"github.com/uptrace/bun/dialect/pgdialect"'
+    - '"github.com/uptrace/bun/dialect/mysqldialect"'
+    structural_markers:
+    - bun.DB
+    - bun.NewDB(
+    - db.NewSelect()
+    - db.NewInsert()
+  notes: 'Lightweight ORM supporting PostgreSQL, MySQL, SQLite, MSSQL. Dialect sub-packages
+    (pgdialect, mysqldialect) are co-detection signals. Growing adoption as GORM v2
+    alternative.
+
+    '

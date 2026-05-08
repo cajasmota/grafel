@@ -1,0 +1,43 @@
+@page "/counter"
+
+<PageTitle>Counter</PageTitle>
+
+<h1>Counter</h1>
+
+<p role="status">Current count: @currentCount</p>
+
+<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+<button class="btn btn-secondary" @onclick="ResetCount">Reset</button>
+
+@code {
+    [Parameter]
+    public int InitialValue { get; set; } = 0;
+
+    [Parameter]
+    public int Step { get; set; } = 1;
+
+    [Parameter]
+    public string Title { get; set; } = "Counter";
+
+    private int currentCount = 0;
+
+    protected override void OnInitialized()
+    {
+        currentCount = InitialValue;
+    }
+
+    private void IncrementCount()
+    {
+        currentCount += Step;
+    }
+
+    private void ResetCount()
+    {
+        currentCount = InitialValue;
+    }
+
+    private async Task HandleLoad()
+    {
+        await Task.Delay(10);
+    }
+}

@@ -1,0 +1,42 @@
+orms:
+  name: Doctrine ORM
+  package_name: doctrine/orm
+  category: data_mapper_orm
+  detection:
+    composer_deps:
+    - doctrine/orm
+    - doctrine/dbal
+    - doctrine/migrations
+    - doctrine/data-fixtures
+    - symfony/doctrine-bridge
+    - doctrine/doctrine-bundle
+    - doctrine/doctrine-migrations-bundle
+    config_files:
+    - config/packages/doctrine.yaml
+    - config/packages/doctrine_migrations.yaml
+    - src/Entity/
+    - migrations/
+    import_markers:
+    - use Doctrine\ORM\
+    - use Doctrine\DBAL\
+    - use App\Entity\
+    - '#[ORM\Entity]'
+    - '#[ORM\Column('
+    - '#[ORM\ManyToOne('
+    - '@ORM\Entity'
+    - '@ORM\Column'
+    - '@ORM\ManyToOne'
+    - extends ServiceEntityRepository
+    code_patterns:
+    - private EntityManagerInterface
+    - $em->persist(
+    - $em->flush()
+    - $em->find(
+    - $em->getRepository(
+    - getEntityManager()
+  notes: 'Doctrine is the primary ORM for Symfony. src/Entity/ directory with #[ORM\\Entity]
+    attribute or @ORM docblock annotation is definitive. Doctrine uses Data Mapper
+    pattern vs Eloquent''s Active Record. doctrine/migrations handles schema migrations
+    independently.
+
+    '

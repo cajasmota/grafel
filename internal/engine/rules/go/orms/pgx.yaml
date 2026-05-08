@@ -1,0 +1,37 @@
+database_libraries:
+  name: pgx
+  module_path: github.com/jackc/pgx/v5
+  category: postgres_driver
+  github_stars_2025: 11500+
+  detection:
+    go_mod_require:
+    - github.com/jackc/pgx/v5
+    - github.com/jackc/pgx/v4
+    import_markers:
+    - '"github.com/jackc/pgx/v5"'
+    - '"github.com/jackc/pgx/v5/pgxpool"'
+    - '"github.com/jackc/pgx/v5/stdlib"'
+    structural_markers:
+    - pgx.Connect(
+    - pgxpool.New(
+    - pgconn.PgError
+  notes: 'High-performance PostgreSQL driver. v5 is current (requires /v5 suffix).
+    pgxpool for connection pooling. Often used directly for PostgreSQL-specific features
+    not available via database/sql.
+
+    '
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: pgx.Connect/pgxpool.New connections
+      (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), pgxpool setup
+      (SCOPE.Pattern, INFERRED_FROM_POSTGRES_POOL), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), CopyFrom/CopyTo
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

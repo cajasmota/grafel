@@ -1,0 +1,20 @@
+# File upload endpoint detector (MX-721)
+# Cross-language detector for file upload handling patterns.
+# Fires on JS/TS (multer, formidable, busboy, NestJS @UploadedFile),
+# Python (FastAPI UploadFile, Flask request.files, Django request.FILES /
+# FileUploadHandler), Java/Kotlin (Spring @RequestPart/@MultipartConfig,
+# Apache Commons FileUpload), Go (r.FormFile, multipart.NewReader),
+# C#/.NET (IFormFile, [FromForm], MultipartFormDataContent),
+# Ruby (Active Storage, CarrierWave, Shrine),
+# PHP ($_FILES, Symfony UploadedFile),
+# Rust (actix-multipart, axum Multipart),
+# Elixir/Phoenix (Plug.Upload).
+
+name: file_upload
+description: >-
+  Detect file upload handling patterns and emit SCOPE.Pattern entities with
+  kind=file_upload. Covers 15+ frameworks across JavaScript/TypeScript, Python,
+  Java, Kotlin, Go, C#, Ruby, PHP, Rust, and Elixir.
+module: memx_indexer.pattern_detectors.file_upload_detector
+function: detect
+applies_to_function: applies_to

@@ -1,0 +1,29 @@
+orm_db:
+  name: Quill
+  sbt_coordinates:
+  - io.getquill::quill-jdbc
+  - io.getquill::quill-jdbc-zio
+  - io.getquill::quill-doobie
+  - io.getquill::quill-cassandra
+  detection:
+    build_signals:
+    - '"io.getquill" %% "quill-jdbc"'
+    - '"io.getquill" %% "quill-jdbc-zio"'
+    import_patterns:
+    - import io.getquill._
+    - import io.getquill.context._
+    code_patterns:
+    - new PostgresJdbcContext(
+    - new MysqlJdbcContext(
+    - ctx.run(
+    - quote {
+    - query[_]
+    - insert(
+    - update(
+    - delete(
+  notes: 'Compile-time query generation via macros. quote { } blocks generate SQL
+    at compile time. ctx.run() executes quoted queries. Integrates with JDBC, ZIO,
+    and Doobie. Quill 4.x supports Scala 3 with inline macros. Zero runtime query
+    construction overhead.
+
+    '

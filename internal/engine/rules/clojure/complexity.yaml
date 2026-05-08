@@ -1,0 +1,200 @@
+complexity_signals:
+- category: macro_heavy_code
+  description: 'Heavy use of defmacro, syntax-quote, and macro-generating macros creates
+    code that is impossible to understand without macro expansion. LLM enrichment
+    required — tree-sitter alone cannot expand macros.
+
+    '
+  indicators:
+  - '(defmacro '
+  - '`('
+  - ~@
+  - '~'
+  - gensym
+  - (macroexpand
+  - (macroexpand-1
+  - (macro?
+  - (emit-form
+  - (clojure.walk/macroexpand-all
+  - syntax-quote
+  - (with-gensyms
+  - (once-only
+  confidence_impact: 'HIGH — when defmacro count exceeds 3 per namespace, force LLM
+    enrichment regardless of other confidence metrics.
+
+    '
+- category: threading_macros
+  description: 'Thread-first (->) and thread-last (->>) macros create deeply nested
+    transformation pipelines that read as linear steps but represent nested function
+    composition. (as->) allows mixed threading. some->, some->>, cond->, and cond->>
+    add conditional branching.
+
+    '
+  indicators:
+  - (->
+  - (->>
+  - (as->
+  - (some->
+  - (some->>
+  - (cond->
+  - (cond->>
+  - (doto
+  confidence_impact: 'MEDIUM — threading macros are readable but require tracking
+    the implicit subject through each step. Chains longer than 10 steps warrant LLM
+    enrichment.
+
+    '
+- category: core_async
+  description: 'core.async implements CSP (Communicating Sequential Processes) with
+    channels, go blocks, and parking operations. Code using go blocks has implicit
+    state machines (compiled by the go macro). Requires understanding of async data
+    flow.
+
+    '
+  indicators:
+  - clojure.core.async
+  - cljs.core.async
+  - (:require [clojure.core.async
+  - '(go '
+  - (go-loop
+  - (chan
+  - (>!
+  - (<!
+  - (>!!
+  - (<!!)
+  - (put!
+  - (take!
+  - (close!
+  - (alts!
+  - (alts!!
+  - (pipeline
+  - (pipeline-async
+  - (pipeline-blocking
+  - (mult
+  - (tap
+  - (pub
+  - (sub
+  - (mix
+  - async/>!
+  - async/<!
+  confidence_impact: 'HIGH — go block bodies are transformed by a macro into state
+    machines. LLM enrichment required for any namespace with >5 go blocks to understand
+    the async data flow.
+
+    '
+- category: transducers
+  description: 'Transducers are composable algorithmic transformations decoupled from
+    their input source. xf, rf (reducing function), and (comp xf1 xf2) patterns indicate
+    transducer usage. Complex transducer stacks are hard to analyze statically.
+
+    '
+  indicators:
+  - (transduce
+  - (eduction
+  - (sequence
+  - (into [] (comp
+  - (map (fn
+  - (filter (fn
+  - '(take '
+  - '(drop '
+  - '(mapcat '
+  - (partition-all
+  - (partition-by
+  - '(keep '
+  - (distinct)
+  - (dedupe)
+  - (cat)
+  - (completing
+  - (volatile!
+  - (vswap!
+  - xf
+  - (comp xf
+  confidence_impact: 'MEDIUM — transducer composition is functional but the interaction
+    between transducers and reducing functions can be subtle. Chains of >5 transducers
+    warrant LLM enrichment.
+
+    '
+- category: multimethods_and_protocols
+  description: 'defmulti/defmethod implement open dispatch — behavior is spread across
+    multiple files and namespaces. defprotocol/defrecord/deftype create polymorphic
+    abstractions. Full dispatch behavior cannot be determined without scanning all
+    defmethod implementations.
+
+    '
+  indicators:
+  - '(defmulti '
+  - '(defmethod '
+  - '(defprotocol '
+  - '(defrecord '
+  - '(deftype '
+  - (extend-protocol
+  - (extend-type
+  - '(extend '
+  - (satisfies?
+  - (instance?
+  - (isa?
+  - (derive
+  - (make-hierarchy
+  - (dispatch-val
+  confidence_impact: 'HIGH — defmulti dispatch hierarchy is a global open system.
+    defmethod implementations may be in any namespace. LLM enrichment required when
+    defmulti dispatch function references custom hierarchies or complex predicate
+    dispatch.
+
+    '
+- category: spec_and_schema
+  description: 'clojure.spec.alpha and malli define runtime data specifications used
+    for validation, generative testing, and documentation. Heavy spec usage creates
+    invisible contracts between components.
+
+    '
+  indicators:
+  - clojure.spec.alpha
+  - clojure.spec.gen.alpha
+  - malli.core
+  - malli.registry
+  - metosin/malli
+  - (:require [clojure.spec.alpha :as s])
+  - '(s/def ::'
+  - '(s/fdef '
+  - (s/conform
+  - (s/valid?
+  - (s/explain
+  - (s/keys :req
+  - (s/coll-of
+  - '(s/cat '
+  - '(s/alt '
+  - '(s/& '
+  - (m/validate
+  - (m/explain
+  - (m/decode
+  - (m/schema
+  confidence_impact: 'MEDIUM — spec/malli definitions are documentation signals. (s/fdef
+    ...) with :args/:ret/:fn specs provides function contracts parseable without LLM.
+
+    '
+- category: namespace_requiring_and_aliasing
+  description: 'Clojure''s ns form with complex :require/:use/:import/:refer-all creates
+    aliasing that makes symbol resolution non-trivial. Circular namespace dependencies
+    and dynamic var binding (binding, with-redefs) add complexity.
+
+    '
+  indicators:
+  - (:refer-clojure :exclude
+  - '(:use '
+  - :refer :all
+  - (binding [
+  - (with-redefs
+  - '(set! '
+  - '(intern '
+  - (ns-resolve
+  - (find-ns
+  - (require '
+  - (use '
+  - (import '
+  - (ns-aliases
+  - (all-ns)
+  confidence_impact: 'MEDIUM — :refer :all and (use ...) make symbol origins ambiguous.
+    (binding [...]) creates dynamic scope invisible to static analysis.
+
+    '

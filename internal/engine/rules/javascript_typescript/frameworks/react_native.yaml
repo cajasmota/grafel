@@ -1,0 +1,30 @@
+frameworks:
+  name: react-native
+  category: mobile
+  npm_packages:
+  - react-native
+  config_files:
+  - metro.config.js
+  - metro.config.ts
+  - react-native.config.js
+  - babel.config.js
+  detection_signals:
+    package_json_deps:
+    - react-native
+    directory_conventions:
+    - ios/
+    - android/
+    entry_points:
+    - index.js
+    import_patterns:
+    - from 'react-native'
+    code_patterns:
+    - AppRegistry.registerComponent
+    - StyleSheet.create
+  framework_specific:
+  - View, Text, TouchableOpacity
+  - Platform.OS
+  - NativeModules
+  - SafeAreaView
+  notes: ios/ + android/ dirs + react-native dep is definitive. Hermes bytecode out
+    of scope; source-only indexing.

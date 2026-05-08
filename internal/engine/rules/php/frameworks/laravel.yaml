@@ -1,0 +1,70 @@
+frameworks:
+  name: Laravel
+  package_name: laravel/framework
+  category: web_full_stack
+  github_stars_2025: 79000+
+  detection:
+    config_files:
+    - composer.json
+    - composer.lock
+    - artisan
+    - bootstrap/app.php
+    - config/app.php
+    - config/database.php
+    - config/cache.php
+    - config/queue.php
+    - routes/web.php
+    - routes/api.php
+    - app/Http/Kernel.php
+    - app/Providers/AppServiceProvider.php
+    - database/migrations/
+    - resources/views/
+    - storage/framework/
+    - .env.example
+    composer_deps:
+    - laravel/framework
+    - laravel/sanctum
+    - laravel/passport
+    - laravel/horizon
+    - laravel/telescope
+    - laravel/jetstream
+    - laravel/breeze
+    - laravel/octane
+    - laravel/pennant
+    - laravel/reverb
+    import_markers:
+    - use Illuminate\
+    - use App\
+    - extends Controller
+    - extends Model
+    - Illuminate\Support\ServiceProvider
+    - Illuminate\Foundation\Application
+    structural_markers:
+    - app/Http/Controllers/
+    - app/Models/
+    - app/Providers/
+    - database/migrations/
+    - resources/views/
+    - routes/web.php
+    - artisan
+  notes: 'artisan file at project root is the highest-confidence single signal. Conjunction
+    of artisan + composer.json laravel/framework dep is definitive. routes/web.php
+    alone is insufficient — always check artisan + app/Http/.
+
+    '
+  custom_extractors:
+  - module: memx_indexer.languages.php.laravel_extractor
+    function: extract
+    description: >
+      Extracts Laravel routes (HTTP verb routes and Route::resource expansions),
+      service container bindings (bind/singleton/scoped/instance),
+      Blade component class declarations, and Blade x-component tag usage.
+      Emits SCOPE.Operation/endpoint, SCOPE.Pattern, SCOPE.UIComponent/component.
+      Relationships: CALLS (routes_to), DEPENDS_ON (binding->concrete, template->component),
+      OWNS (provider->binding).
+  - module: memx_indexer.languages._engine.config_prefix_extractor
+    function: extract
+    description: >
+      Extract APP_URL prefix from RouteServiceProvider.php as
+      SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated
+      on well-known config file basenames.

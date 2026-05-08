@@ -1,0 +1,31 @@
+orms_database:
+  name: amazonka-dynamodb (brendanhay/amazonka)
+  category: nosql_database
+  hackage_package: amazonka-dynamodb
+  detection:
+    import_patterns:
+    - Amazonka.DynamoDB
+    - Network.AWS.DynamoDB
+    code_patterns:
+    - runDynamoDB
+    - newEnv Discover
+    - runAWS
+    - send
+  notes: >
+    amazonka-dynamodb is the Haskell client for DynamoDB, part of the
+    brendanhay/amazonka library collection.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: runDynamoDB/newEnv connections (SCOPE.Service,
+      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
+      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
+      INFERRED_FROM_DYNAMODB_QUERY), streams (SCOPE.Operation/stream_op,
+      INFERRED_FROM_DYNAMODB_STREAM), single-table design (SCOPE.Pattern,
+      INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

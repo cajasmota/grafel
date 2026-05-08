@@ -1,0 +1,45 @@
+frameworks:
+  name: Gradle Plugin Development (Groovy)
+  category: build_tooling_plugin
+  gradle_coordinates:
+  - gradleApi()
+  - gradleTestKit()
+  - localGroovy()
+  detection:
+    config_files:
+    - src/main/groovy/
+    - src/main/resources/META-INF/gradle-plugins/*.properties
+    build_signals:
+    - id("groovy")
+    - id("java-gradle-plugin")
+    - '"gradleApi()"'
+    - '"localGroovy()"'
+    - gradlePlugin {
+    import_patterns:
+    - import org.gradle.api.Plugin
+    - import org.gradle.api.Project
+    - import org.gradle.api.Task
+    - import org.gradle.api.tasks.
+    - import org.gradle.testkit.runner.
+    code_patterns:
+    - class * implements Plugin<Project> {
+    - void apply(Project project) {
+    - project.tasks.register(
+    - project.extensions.create(
+    - project.configurations.create(
+    - project.dependencies {
+    - '@TaskAction'
+    - class * extends DefaultTask {
+  directory_structure:
+  - src/main/groovy/
+  - src/main/resources/META-INF/gradle-plugins/
+  - src/test/groovy/
+  - src/functionalTest/groovy/
+  notes: 'Gradle plugins written in Groovy are a dominant use case. Definitive signal:
+    java-gradle-plugin + groovy plugin applied together + Plugin<Project> implementation
+    in src/main/groovy/. META-INF/gradle-plugins/*.properties file naming the implementation
+    class is the plugin descriptor. localGroovy() dependency means using the Groovy
+    bundled with Gradle (no external groovy-all needed). GradleRunner-based functional
+    tests in src/functionalTest/groovy/ are idiomatic.
+
+    '

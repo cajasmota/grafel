@@ -1,0 +1,424 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt",
+  "language": "kotlin",
+  "entities": [
+    {
+      "name": "deleteUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 38,
+      "end_line": 43,
+      "language": "kotlin",
+      "signature": "fun deleteUser(@PathVariable id: Int): ResponseEntity<Void>",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": true,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 2,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "createUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 31,
+      "end_line": 36,
+      "language": "kotlin",
+      "signature": "fun createUser(@RequestBody request: CreateUserRequest): ResponseEntity<User>",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "getUser",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 24,
+      "end_line": 29,
+      "language": "kotlin",
+      "signature": "fun getUser(@PathVariable id: Int): ResponseEntity<User>",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "listUsers",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 21,
+      "end_line": 22,
+      "language": "kotlin",
+      "signature": "fun listUsers(): List<User>",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "health",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 18,
+      "end_line": 19,
+      "language": "kotlin",
+      "signature": "fun health(): Map<String, String>",
+      "enrichment_required": false,
+      "properties": {
+        "type": "function",
+        "vera_type": "SCOPE.Operation",
+        "vera_subtype": "function",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": true,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "UserController",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 11,
+      "end_line": 44,
+      "language": "kotlin",
+      "signature": "class UserController",
+      "enrichment_required": false,
+      "properties": {
+        "type": "class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "CreateUserRequest",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 9,
+      "end_line": 9,
+      "language": "kotlin",
+      "signature": "data class CreateUserRequest(val name: String, val email: String)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "data_class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "User",
+      "qualified_name": null,
+      "kind": "SCOPE.Component",
+      "start_line": 8,
+      "end_line": 8,
+      "language": "kotlin",
+      "signature": "data class User(val id: Int, val name: String, val email: String)",
+      "enrichment_required": false,
+      "properties": {
+        "type": "data_class",
+        "vera_type": "SCOPE.Component",
+        "vera_subtype": null,
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "RestController@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:11",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:RestController:11",
+      "kind": "SCOPE.Pattern",
+      "start_line": 11,
+      "end_line": 11,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "RestController",
+        "source_line": 11,
+        "target": "UserController"
+      }
+    },
+    {
+      "name": "RequestMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:12",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:RequestMapping:12",
+      "kind": "SCOPE.Pattern",
+      "start_line": 12,
+      "end_line": 12,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "RequestMapping",
+        "source_line": 12,
+        "target": "UserController",
+        "arguments": [
+          "\"/api/users\""
+        ]
+      }
+    },
+    {
+      "name": "example.com@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:15",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:example.com:15",
+      "kind": "SCOPE.Pattern",
+      "start_line": 15,
+      "end_line": 15,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "example.com",
+        "source_line": 15,
+        "target": "health"
+      }
+    },
+    {
+      "name": "GetMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:18",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:GetMapping:18",
+      "kind": "SCOPE.Pattern",
+      "start_line": 18,
+      "end_line": 18,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "GetMapping",
+        "source_line": 18,
+        "target": "health",
+        "arguments": [
+          "\"/health\""
+        ]
+      }
+    },
+    {
+      "name": "GetMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:21",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:GetMapping:21",
+      "kind": "SCOPE.Pattern",
+      "start_line": 21,
+      "end_line": 21,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "GetMapping",
+        "source_line": 21,
+        "target": "listUsers"
+      }
+    },
+    {
+      "name": "GetMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:24",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:GetMapping:24",
+      "kind": "SCOPE.Pattern",
+      "start_line": 24,
+      "end_line": 24,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "GetMapping",
+        "source_line": 24,
+        "target": "getUser",
+        "arguments": [
+          "\"/{id}\""
+        ]
+      }
+    },
+    {
+      "name": "PathVariable@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:25",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:PathVariable:25",
+      "kind": "SCOPE.Pattern",
+      "start_line": 25,
+      "end_line": 25,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "PathVariable",
+        "source_line": 25,
+        "target": "createUser"
+      }
+    },
+    {
+      "name": "PostMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:31",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:PostMapping:31",
+      "kind": "SCOPE.Pattern",
+      "start_line": 31,
+      "end_line": 31,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "PostMapping",
+        "source_line": 31,
+        "target": "createUser"
+      }
+    },
+    {
+      "name": "RequestBody@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:32",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:RequestBody:32",
+      "kind": "SCOPE.Pattern",
+      "start_line": 32,
+      "end_line": 32,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "RequestBody",
+        "source_line": 32,
+        "target": "deleteUser"
+      }
+    },
+    {
+      "name": "DeleteMapping@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:38",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:DeleteMapping:38",
+      "kind": "SCOPE.Pattern",
+      "start_line": 38,
+      "end_line": 38,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "DeleteMapping",
+        "source_line": 38,
+        "target": "deleteUser",
+        "arguments": [
+          "\"/{id}\""
+        ]
+      }
+    },
+    {
+      "name": "PathVariable@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:39",
+      "qualified_name": "scope:pattern:decorator:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt:PathVariable:39",
+      "kind": "SCOPE.Pattern",
+      "start_line": 39,
+      "end_line": 39,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_DECORATOR",
+        "source": "",
+        "kind": "decorator",
+        "decorator_name": "PathVariable",
+        "source_line": 39
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "mixed",
+        "dominant_percentage": 29.411764705882355,
+        "sample_count": 17,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt"
+      }
+    },
+    {
+      "name": "UserController",
+      "qualified_name": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/kotlin/SampleController.kt::UserController",
+      "kind": "SCOPE.Service",
+      "start_line": 11,
+      "end_line": 44,
+      "language": "kotlin",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "@RestController",
+        "source": "",
+        "source_type": "class"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

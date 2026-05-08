@@ -1,0 +1,18 @@
+database:
+  name: lua-resty-mysql
+  category: mysql_driver_openresty
+  detection:
+    import_markers:
+    - require "resty.mysql"
+    - require("resty.mysql")
+    - resty.mysql
+    - db:connect
+    - db:query
+    - db:close
+    - mysql:new()
+    notes: 'lua-resty-mysql is the OpenResty-native MySQL client using cosocket API.
+      Exclusively used within OpenResty/nginx context — the ngx.socket API (cosocket)
+      is required and not available outside nginx worker processes. Detection: require(''resty.mysql'')
+      + db:connect({host=...}) pattern.
+
+      '

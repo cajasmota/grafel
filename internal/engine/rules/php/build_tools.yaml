@@ -1,0 +1,131 @@
+build_tools:
+- name: Composer
+  category: dependency_manager
+  detection:
+    config_files:
+    - composer.json
+    - composer.lock
+    - vendor/
+    - vendor/autoload.php
+    binary_markers:
+    - composer
+    - composer.phar
+    config_patterns:
+      composer_json_fields:
+      - require
+      - require-dev
+      - autoload
+      - autoload-dev
+      - scripts
+      - repositories
+      - extra
+      lock_presence: composer.lock indicates reproducible builds
+    script_conventions:
+    - composer install
+    - composer update
+    - composer require
+    - composer dump-autoload
+    - composer run-script
+    - '"scripts": {"test": ...}'
+    - '"scripts": {"cs-fix": ...}'
+  notes: 'composer.json is present in virtually all modern PHP projects. The lock
+    file signals reproducible dependency management. vendor/autoload.php is the PSR-4
+    autoloader entry point — its presence confirms Composer ran. composer.phar in
+    project root indicates bundled deployment pattern.
+
+    '
+- name: Artisan (Laravel CLI)
+  category: framework_cli
+  detection:
+    config_files:
+    - artisan
+    binary_markers:
+    - php artisan
+    config_patterns:
+      artisan_commands:
+      - php artisan make:controller
+      - php artisan make:model
+      - php artisan make:migration
+      - php artisan migrate
+      - php artisan db:seed
+      - php artisan queue:work
+      - php artisan schedule:run
+      - php artisan tinker
+      - php artisan optimize
+      - php artisan config:cache
+      - php artisan route:cache
+      - php artisan event:generate
+      - php artisan horizon
+      - php artisan octane:start
+    makefile_targets:
+    - artisan
+  notes: 'artisan is a PHP script at the project root — exclusive to Laravel. Detection:
+    file named exactly artisan (no extension) containing Laravel bootstrap code. Presence
+    implies laravel/framework in composer.json.
+
+    '
+- name: Symfony Console
+  category: framework_cli
+  detection:
+    config_files:
+    - bin/console
+    - bin/phpunit
+    binary_markers:
+    - php bin/console
+    - symfony console
+    - symfony
+    config_patterns:
+      console_commands:
+      - php bin/console debug:router
+      - php bin/console debug:container
+      - php bin/console doctrine:migrations:migrate
+      - php bin/console doctrine:fixtures:load
+      - php bin/console make:entity
+      - php bin/console make:controller
+      - php bin/console cache:clear
+      - php bin/console messenger:consume
+    symfony_binary:
+    - symfony serve
+    - symfony new
+    - symfony check:requirements
+  notes: 'bin/console is Symfony''s CLI entry point — presence is high-confidence
+    for Symfony framework projects. The symfony binary (Symfony CLI) is optional dev
+    tooling for local server and certificate management. symfony/console standalone
+    is a dependency many non-Symfony frameworks use — always verify symfony/framework-bundle
+    presence.
+
+    '
+- name: PHP-CS-Fixer / PHP_CodeSniffer
+  category: code_quality_linter
+  detection:
+    config_files:
+    - .php-cs-fixer.php
+    - .php-cs-fixer.dist.php
+    - phpcs.xml
+    - phpcs.xml.dist
+    - .phpcs.xml
+    - phpstan.neon
+    - phpstan.neon.dist
+    - psalm.xml
+    - psalm.xml.dist
+    - rector.php
+    composer_deps:
+    - friendsofphp/php-cs-fixer
+    - squizlabs/php_codesniffer
+    - phpstan/phpstan
+    - vimeo/psalm
+    - rector/rector
+    - phpmd/phpmd
+    script_conventions:
+    - composer cs-fix
+    - composer cs-check
+    - composer stan
+    - composer analyse
+    - vendor/bin/php-cs-fixer fix
+    - vendor/bin/phpcs
+    - vendor/bin/phpstan analyse
+  notes: 'Code quality tooling is detected via config files + composer.json require-dev
+    entries. phpstan.neon is PHPStan; psalm.xml is Psalm; rector.php is Rector (automated
+    refactoring). Multiple tools often co-exist in the same project.
+
+    '

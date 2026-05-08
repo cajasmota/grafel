@@ -1,0 +1,18 @@
+frameworks:
+  name: task
+  category: task_runner
+  detection_signals:
+    config_files:
+    - Taskfile.yml
+    - Taskfile.yaml
+    - taskfile.yml
+    - taskfile.yaml
+    - Taskfile.dist.yml
+    content_patterns:
+    - 'version: ''3'''
+    - 'tasks:'
+    - 'cmds:'
+    - 'deps:'
+    - 'sources:'
+  notes: Go-task (taskfile.dev). Detected by Taskfile.yml. Cross-platform CI alternative
+    to Make.

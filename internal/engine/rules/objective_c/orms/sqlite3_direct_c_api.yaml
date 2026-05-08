@@ -1,0 +1,27 @@
+database:
+  name: SQLite3 (direct C API)
+  type: sqlite_direct
+  pod_coordinates:
+  - N/A — bundled with iOS/macOS SDK
+  - libsqlite3.tbd (linked via Xcode)
+  detection:
+    config_files:
+    - '*.xcodeproj (libsqlite3.tbd in Other Linker Flags)'
+    import_patterns:
+    - '#import <sqlite3.h>'
+    - '#include <sqlite3.h>'
+    code_patterns:
+    - sqlite3 *
+    - sqlite3_open(
+    - sqlite3_exec(
+    - sqlite3_prepare_v2(
+    - sqlite3_step(
+    - sqlite3_finalize(
+    - SQLITE_OK
+    - SQLITE_ROW
+  notes: 'Direct use of the C SQLite3 API. Indicates low-level database access without
+    an ORM wrapper. Linked via libsqlite3.tbd in the Xcode build settings. Often seen
+    in performance-critical sections or very old codebases predating FMDB/Core Data
+    adoption.
+
+    '

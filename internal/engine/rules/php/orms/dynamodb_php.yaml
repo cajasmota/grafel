@@ -1,0 +1,29 @@
+orms_database:
+  name: AWS DynamoDB PHP SDK (aws/aws-sdk-php)
+  category: nosql_database
+  composer_package: aws/aws-sdk-php
+  detection:
+    import_patterns:
+    - use Aws\DynamoDb\DynamoDbClient
+    - use Aws\\DynamoDb\\DynamoDbClient
+    code_patterns:
+    - DynamoDbClient
+    - 'DynamoDbClient::factory'
+  notes: >
+    The aws/aws-sdk-php package provides Aws\DynamoDb\DynamoDbClient as the
+    primary entry point for DynamoDB operations in PHP.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.dynamodb.dynamodb_extractor"
+    function: "extract"
+    description: >
+      Cross-language DynamoDB extractor: DynamoDbClient connections (SCOPE.Service,
+      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
+      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
+      INFERRED_FROM_DYNAMODB_QUERY), streams (SCOPE.Operation/stream_op,
+      INFERRED_FROM_DYNAMODB_STREAM), DAX (SCOPE.Service, INFERRED_FROM_DYNAMODB_DAX),
+      single-table design (SCOPE.Pattern, INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

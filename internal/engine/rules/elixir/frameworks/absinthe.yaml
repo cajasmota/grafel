@@ -1,0 +1,40 @@
+frameworks:
+  name: Absinthe
+  hex_package: absinthe
+  category: graphql
+  github_stars_2025: 4200+
+  detection:
+    config_files:
+    - mix.exs
+    - lib/app_web/schema.ex
+    - lib/app_web/schema/
+    mix_deps:
+    - absinthe
+    - absinthe_plug
+    - absinthe_phoenix
+    - absinthe_relay
+    - dataloader
+    import_markers:
+    - use Absinthe.Schema
+    - use Absinthe.Schema.Notation
+    - use Absinthe.Relay.Schema
+    - use Absinthe.Relay.Mutation
+    - import Absinthe.Resolution.Helpers
+    - query do
+    - mutation do
+    - subscription do
+    - 'object :'
+    - 'field :'
+    - resolve &
+    - Absinthe.run
+    - Absinthe.Plug
+    structural_markers:
+    - lib/app_web/schema.ex
+    - lib/app_web/schema/
+    - lib/app_web/resolvers/
+  notes: 'Absinthe is identified by absinthe dep in mix.exs + a schema module using
+    use Absinthe.Schema. lib/app_web/schema.ex is a conventional single-file layout;
+    lib/app_web/schema/ indicates multi-type schema split. Resolvers often live in
+    lib/app_web/resolvers/ or lib/app/graphql/.
+
+    '

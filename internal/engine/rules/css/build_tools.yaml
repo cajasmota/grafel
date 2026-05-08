@@ -1,0 +1,156 @@
+build_tools:
+- name: postcss_compiler
+  full_name: PostCSS (build tool role)
+  config_files:
+  - postcss.config.js
+  - postcss.config.ts
+  - postcss.config.cjs
+  - postcss.config.mjs
+  - .postcssrc
+  - .postcssrc.js
+  - .postcssrc.json
+  - .postcssrc.yml
+  npm_packages:
+  - postcss
+  - postcss-cli
+  scripts_patterns:
+  - postcss
+  - postcss-cli
+  usage: 'PostCSS is both a CSS framework/preprocessor and a build transformation
+    tool. In build tool role, it runs as a pipeline via postcss-cli or as a Vite/webpack/Next.js
+    plugin. Core plugins: autoprefixer (vendor prefixes), cssnano (minification),
+    postcss-preset-env (future CSS).
+
+    '
+  detection_notes: 'postcss.config.* or .postcssrc is definitive. Also check package.json
+    scripts for "postcss " invocations.
+
+    '
+- name: sass_compiler
+  full_name: Sass / Dart Sass Compiler
+  config_files:
+  - .sassrc
+  - .sassrc.js
+  - .sassrc.json
+  npm_packages:
+  - sass
+  - node-sass
+  scripts_patterns:
+  - 'sass '
+  - 'node-sass '
+  usage: 'Compiles .scss/.sass files to CSS. dart-sass (npm package: sass) is the
+    canonical modern implementation. node-sass (LibSass-based) is deprecated as of
+    2022. Common as a standalone CLI or Vite/webpack plugin (sass-loader).
+
+    '
+  detection_notes: 'sass or node-sass in package.json devDependencies. Scripts section
+    may contain "sass src/ dist/" invocations. webpack: sass-loader in module.rules.
+    Vite: built-in support when sass is installed.
+
+    '
+- name: less_compiler
+  full_name: LESS Compiler
+  config_files:
+  - .lessrc
+  - .lessrc.json
+  - less.config.js
+  npm_packages:
+  - less
+  scripts_patterns:
+  - 'lessc '
+  usage: 'Compiles .less files to CSS via lessc CLI or webpack less-loader. LESS is
+    largely superseded by SCSS in new projects but common in legacy codebases and
+    Bootstrap v3/v4 projects.
+
+    '
+  detection_notes: 'less in package.json devDependencies. lessc in scripts. webpack:
+    less-loader in module.rules.
+
+    '
+- name: stylelint
+  full_name: stylelint
+  config_files:
+  - .stylelintrc
+  - .stylelintrc.js
+  - .stylelintrc.ts
+  - .stylelintrc.json
+  - .stylelintrc.yaml
+  - .stylelintrc.yml
+  - stylelint.config.js
+  - stylelint.config.ts
+  - stylelint.config.cjs
+  - stylelint.config.mjs
+  npm_packages:
+  - stylelint
+  scripts_patterns:
+  - 'stylelint '
+  usage: 'CSS/SCSS linter. Enforces code style, catches errors, and validates conventions.
+    Supports CSS, SCSS, Less, and CSS-in-JS (via dedicated parsers). stylelint-config-standard
+    and stylelint-config-recommended are common preset packages.
+
+    '
+  detection_notes: '.stylelintrc or stylelint.config.* presence is definitive. Also
+    check package.json devDependencies for stylelint.
+
+    '
+- name: tailwind_cli
+  full_name: Tailwind CSS CLI
+  config_files:
+  - tailwind.config.js
+  - tailwind.config.ts
+  - tailwind.config.cjs
+  - tailwind.config.mjs
+  npm_packages:
+  - tailwindcss
+  scripts_patterns:
+  - 'tailwindcss '
+  - npx tailwindcss
+  - 'tailwind '
+  usage: 'The Tailwind CLI (tailwindcss binary) processes the entry CSS file (containing
+    @tailwind directives) and generates the output CSS. Also run as a PostCSS plugin
+    (most common in Vite/Next.js). The CLI is used for standalone setups without a
+    JavaScript bundler.
+
+    '
+  detection_notes: 'tailwind.config.js/ts is definitive. Scripts may contain "tailwindcss
+    -i ./src/input.css -o ./dist/output.css --watch".
+
+    '
+- name: vite_css
+  full_name: Vite (CSS processing)
+  config_files:
+  - vite.config.ts
+  - vite.config.js
+  - vite.config.mjs
+  - vite.config.cjs
+  npm_packages:
+  - vite
+  usage: 'Vite has built-in CSS processing: imports CSS in JS modules, handles CSS
+    Modules (*.module.css), supports SCSS/Less/Stylus when peer deps are installed,
+    and integrates PostCSS via postcss.config.*. Vite is the primary CSS build pipeline
+    in React, Vue, and Svelte projects.
+
+    '
+  detection_notes: 'vite.config.* with css.preprocessorOptions or css.modules section
+    confirms Vite CSS configuration. Presence of *.module.css imports in JS/TS source
+    alongside vite.config.* is a strong signal.
+
+    '
+- name: webpack_css
+  full_name: webpack (CSS loaders)
+  config_files:
+  - webpack.config.js
+  - webpack.config.ts
+  npm_packages:
+  - css-loader
+  - style-loader
+  - mini-css-extract-plugin
+  usage: 'webpack processes CSS via loaders: css-loader resolves imports and url(),
+    style-loader injects CSS into DOM, MiniCssExtractPlugin extracts CSS to separate
+    files. SCSS requires sass-loader.
+
+    '
+  detection_notes: 'webpack.config.* with module.rules entries for /\.css$/, /\.scss$/,
+    /\.less$/ using css-loader or sass-loader.
+
+    '

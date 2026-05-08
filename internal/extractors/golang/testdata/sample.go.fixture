@@ -1,0 +1,998 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	verav1 "github.com/cajasmota/sample-proto/gen/go/sample/v1"
+	veradriver "github.com/cajasmota/sample-server/internal/driver"
+	"github.com/cajasmota/sample-server/internal/embedding"
+	"github.com/cajasmota/sample-server/internal/interceptor"
+	"github.com/google/uuid"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+const (
+	praxisTracerName = "sample-server/sample"
+
+	// praxisEmbeddingModel is the embedding model used for SAMPLE entities.
+	// voyage-3.5 is prose-optimized (1024 dimensions).
+	praxisEmbeddingModel = "voyage-3.5"
+)
+
+// Package-level configurable defaults. Override via environment variables:
+//
+//	PRAXIS_INITIAL_CONFIDENCE     (default 0.5)
+//	PRAXIS_DEDUP_COSINE_THRESHOLD (default 0.90)
+//	PRAXIS_DEFAULT_SEARCH_LIMIT   (default 10)
+//	PRAXIS_MAX_SEARCH_LIMIT       (default 100)
+var (
+	// InitialConfidence is the default confidence assigned to newly stored rules.
+	InitialConfidence = getEnvFloat("PRAXIS_INITIAL_CONFIDENCE", 0.5)
+
+	// DedupCosineThreshold is the minimum cosine similarity for error deduplication.
+	DedupCosineThreshold = getEnvFloat("PRAXIS_DEDUP_COSINE_THRESHOLD", 0.90)
+
+	// DefaultSearchLimit is the default number of results for search RPCs.
+	DefaultSearchLimit = getEnvInt("PRAXIS_DEFAULT_SEARCH_LIMIT", 10)
+
+	// MaxSearchLimit is the maximum number of results for search RPCs.
+	MaxSearchLimit = getEnvInt("PRAXIS_MAX_SEARCH_LIMIT", 100)
+)
+
+// getEnvFloat reads a float64 from an environment variable, returning def if unset or unparseable.
+func getEnvFloat(key string, def float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return def
+	}
+	return f
+}
+
+// getEnvInt reads an int from an environment variable, returning def if unset or unparseable.
+func getEnvInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	i, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return i
+}
+
+// B6: Static Cypher strings for SearchRules — no fmt.Sprintf with caller values.
+const searchRulesCypherBase = `
+CALL db.index.vector.queryNodes('praxis_vectors', $candidate_count, $embedding)
+YIELD node, score
+WHERE node.org_id = $org_id AND node.confidence >= $min_confidence
+RETURN node.id AS id,
+       node.org_id AS org_id,
+       node.rule_text AS rule_text,
+       node.rule_type AS rule_type,
+       node.confidence AS confidence,
+       node.severity AS severity,
+       node.context_scope AS context_scope,
+       node.created_at AS created_at,
+       node.updated_at AS updated_at,
+       score
+ORDER BY score DESC
+LIMIT $limit`
+
+const searchRulesCypherWithTypeFilter = `
+CALL db.index.vector.queryNodes('praxis_vectors', $candidate_count, $embedding)
+YIELD node, score
+WHERE node.org_id = $org_id AND node.confidence >= $min_confidence AND node.rule_type = $rule_type_filter
+RETURN node.id AS id,
+       node.org_id AS org_id,
+       node.rule_text AS rule_text,
+       node.rule_type AS rule_type,
+       node.confidence AS confidence,
+       node.severity AS severity,
+       node.context_scope AS context_scope,
+       node.created_at AS created_at,
+       node.updated_at AS updated_at,
+       score
+ORDER BY score DESC
+LIMIT $limit`
+
+// ---------------------------------------------------------------------------
+// PraxisStore — data-layer interface (testable)
+// ---------------------------------------------------------------------------
+
+// PraxisStore abstracts all Neo4j data operations for SAMPLE RPCs.
+// Production uses neo4jPraxisStore; tests inject a stub.
+type PraxisStore interface {
+	// CreateRule persists a PRAXIS_BehaviorRule node and returns nil on success.
+	CreateRule(ctx context.Context, params map[string]any) error
+
+	// StoreErrorDedup performs the dedup search + conditional create/update in one
+	// logical transaction. Returns (deduplicated, pattern_record_fields, error).
+	StoreErrorDedup(ctx context.Context, embeddingVec []float64, orgID string,
+		threshold float64, newNodeParams map[string]any) (bool, map[string]any, error)
+
+	// SearchRules runs the vector search query with the given Cypher and params,
+	// returning raw record maps.
+	SearchRules(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error)
+
+	// SearchErrors runs the vector search query for error patterns.
+	SearchErrors(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error)
+}
+
+// ---------------------------------------------------------------------------
+// neo4jPraxisStore — production implementation
+// ---------------------------------------------------------------------------
+
+// Neo4jDriver is the narrow interface over neo4j.DriverWithContext used by
+// neo4jPraxisStore. Production passes the real driver.
+type Neo4jDriver interface {
+	NewSession(ctx context.Context, config neo4j.SessionConfig) neo4j.SessionWithContext
+}
+
+// neo4jPraxisStore is the production PraxisStore.
+//
+// VR-200: routed per org_id — when router is non-nil it is used to resolve
+// the per-tenant driver from params["org_id"], otherwise the legacy
+// single-driver field is used.
+type neo4jPraxisStore struct {
+	driver Neo4jDriver
+	router veradriver.DriverRouter
+}
+
+// NewNeo4jPraxisStore creates a production PraxisStore backed by Neo4j.
+//
+// Deprecated: prefer NewNeo4jPraxisStoreRouted for production wiring so
+// the VR-200 routing layer scopes Neo4j sessions per org_id.
+func NewNeo4jPraxisStore(driver Neo4jDriver) PraxisStore {
+	return &neo4jPraxisStore{driver: driver}
+}
+
+// NewNeo4jPraxisStoreRouted constructs a PraxisStore that resolves the
+// per-tenant Neo4j driver via the VR-200 router.
+func NewNeo4jPraxisStoreRouted(router veradriver.DriverRouter) PraxisStore {
+	return &neo4jPraxisStore{router: router}
+}
+
+// openSession returns a Neo4j session for the org_id encoded in params.
+// VR-200: routed per org_id — when router is set, every session is routed
+// via the registry; otherwise the legacy shared driver is used.
+func (s *neo4jPraxisStore) openSession(
+	ctx context.Context,
+	params map[string]any,
+	cfg neo4j.SessionConfig,
+) (neo4j.SessionWithContext, error) {
+	if s.router != nil {
+		orgID, _ := params["org_id"].(string)
+		return veradriver.OpenSession(ctx, s.router, orgID, cfg)
+	}
+	return s.driver.NewSession(ctx, cfg), nil
+}
+
+// openSessionForOrg returns a Neo4j session for the given orgID directly.
+// Used by methods that receive orgID as an explicit argument rather than via
+// a params map (e.g., StoreErrorDedup). VR-200: routed per org_id.
+func (s *neo4jPraxisStore) openSessionForOrg(
+	ctx context.Context,
+	orgID string,
+	cfg neo4j.SessionConfig,
+) (neo4j.SessionWithContext, error) {
+	if s.router != nil {
+		return veradriver.OpenSession(ctx, s.router, orgID, cfg)
+	}
+	return s.driver.NewSession(ctx, cfg), nil
+}
+
+func (s *neo4jPraxisStore) CreateRule(ctx context.Context, params map[string]any) error {
+	session, err := s.openSession(ctx, params, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	if err != nil {
+		return err
+	}
+	defer session.Close(ctx) //nolint:errcheck
+
+	_, err = session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		cypher := `
+CREATE (n:PRAXIS_BehaviorRule {
+  id: $id,
+  org_id: $org_id,
+  rule_text: $rule_text,
+  rule_type: $rule_type,
+  confidence: $confidence,
+  severity: $severity,
+  context_scope: $context_scope,
+  created_at: $created_at,
+  updated_at: $updated_at
+})
+WITH n
+CALL db.create.setNodeVectorProperty(n, 'embedding', $embedding)
+RETURN n`
+		_, err := tx.Run(ctx, cypher, params)
+		return nil, err
+	})
+	return err
+}
+
+func (s *neo4jPraxisStore) StoreErrorDedup(
+	ctx context.Context,
+	embeddingVec []float64,
+	orgID string,
+	threshold float64,
+	newNodeParams map[string]any,
+) (bool, map[string]any, error) {
+	// VR-200: routed per org_id — orgID is the explicit argument here.
+	session, err := s.openSessionForOrg(ctx, orgID, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	if err != nil {
+		return false, nil, err
+	}
+	defer session.Close(ctx) //nolint:errcheck
+
+	type dedupResult struct {
+		deduplicated bool
+		fields       map[string]any
+	}
+
+	result, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		// Step 1: vector similarity search.
+		searchCypher := `
+CALL db.index.vector.queryNodes('praxis_error_vectors', 1, $embedding)
+YIELD node, score
+WHERE node.org_id = $org_id AND score >= $threshold
+RETURN node.id AS id,
+       node.org_id AS org_id,
+       node.what_broke AS what_broke,
+       node.root_cause AS root_cause,
+       node.fix AS fix,
+       node.severity AS severity,
+       node.times_seen AS times_seen,
+       node.affected_files AS affected_files,
+       node.tags AS tags,
+       node.created_at AS created_at,
+       score
+LIMIT 1`
+
+		searchResult, err := tx.Run(ctx, searchCypher, map[string]any{
+			"embedding": embeddingVec,
+			"org_id":    orgID,
+			"threshold": threshold,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("dedup search: %w", err)
+		}
+
+		records, err := searchResult.Collect(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("collect dedup results: %w", err)
+		}
+
+		// Step 2: match found -> increment times_seen.
+		if len(records) > 0 {
+			rec := records[0]
+			existingID, _ := rec.Get("id")
+			existingIDStr, _ := existingID.(string)
+
+			now := newNodeParams["updated_at"].(string)
+
+			updateCypher := `
+MATCH (n:PRAXIS_ErrorPattern {id: $id, org_id: $org_id})
+SET n.times_seen = n.times_seen + 1,
+    n.updated_at = $updated_at
+RETURN n.times_seen AS times_seen`
+
+			updateResult, err := tx.Run(ctx, updateCypher, map[string]any{
+				"id":         existingIDStr,
+				"org_id":     orgID,
+				"updated_at": now,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("increment times_seen: %w", err)
+			}
+
+			updateRecs, err := updateResult.Collect(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("collect update result: %w", err)
+			}
+
+			var timesSeen int64 = 1
+			if len(updateRecs) > 0 {
+				if ts, ok := updateRecs[0].Get("times_seen"); ok {
+					if tsInt, ok := ts.(int64); ok {
+						timesSeen = tsInt
+					}
+				}
+			}
+
+			fields := recordToMap(rec)
+			fields["id"] = existingIDStr
+			fields["times_seen"] = timesSeen
+
+			return &dedupResult{deduplicated: true, fields: fields}, nil
+		}
+
+		// Step 3: no match -> create new node.
+		createCypher := `
+CREATE (n:PRAXIS_ErrorPattern {
+  id: $id,
+  org_id: $org_id,
+  what_broke: $what_broke,
+  root_cause: $root_cause,
+  fix: $fix,
+  severity: $severity,
+  times_seen: 1,
+  affected_files: $affected_files,
+  tags: $tags,
+  created_at: $created_at,
+  updated_at: $updated_at
+})
+WITH n
+CALL db.create.setNodeVectorProperty(n, 'embedding', $embedding)
+RETURN n`
+
+		_, err = tx.Run(ctx, createCypher, newNodeParams)
+		if err != nil {
+			return nil, fmt.Errorf("create error pattern: %w", err)
+		}
+
+		return &dedupResult{deduplicated: false, fields: newNodeParams}, nil
+	})
+	if err != nil {
+		return false, nil, err
+	}
+
+	dr := result.(*dedupResult)
+	return dr.deduplicated, dr.fields, nil
+}
+
+func (s *neo4jPraxisStore) SearchRules(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error) {
+	session, err := s.openSession(ctx, params, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close(ctx) //nolint:errcheck
+
+	records, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		res, err := tx.Run(ctx, cypher, params)
+		if err != nil {
+			return nil, err
+		}
+		return res.Collect(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	recs, _ := records.([]*neo4j.Record)
+	results := make([]map[string]any, 0, len(recs))
+	for _, rec := range recs {
+		results = append(results, recordToMap(rec))
+	}
+	return results, nil
+}
+
+func (s *neo4jPraxisStore) SearchErrors(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error) {
+	return s.SearchRules(ctx, cypher, params) // same logic, different cypher
+}
+
+// recordToMap converts a neo4j.Record to a map[string]any.
+func recordToMap(rec *neo4j.Record) map[string]any {
+	m := make(map[string]any, len(rec.Keys))
+	for i, key := range rec.Keys {
+		if i < len(rec.Values) {
+			m[key] = rec.Values[i]
+		}
+	}
+	return m
+}
+
+// ---------------------------------------------------------------------------
+// PraxisServer — gRPC handler
+// ---------------------------------------------------------------------------
+
+// PraxisServer implements verav1.PraxisServiceServer.
+// All RPCs require org_id from the auth context (injected by AuthInterceptor).
+type PraxisServer struct {
+	verav1.UnimplementedPraxisServiceServer
+
+	store    PraxisStore
+	embedder embedding.Client
+}
+
+// NewPraxisServer constructs a PraxisServer with the given dependencies.
+// driver is used to build a neo4jPraxisStore. For tests, use NewPraxisServerWithStore.
+//
+// Deprecated: prefer NewPraxisServerRouted for production wiring so the
+// VR-200 routing layer scopes Neo4j sessions per org_id.
+func NewPraxisServer(driver Neo4jDriver, embedder embedding.Client) *PraxisServer {
+	return &PraxisServer{
+		store:    NewNeo4jPraxisStore(driver),
+		embedder: embedder,
+	}
+}
+
+// NewPraxisServerRouted constructs a PraxisServer wired through the VR-200
+// driver router. Production wiring must use this constructor.
+func NewPraxisServerRouted(router veradriver.DriverRouter, embedder embedding.Client) *PraxisServer {
+	return &PraxisServer{
+		store:    NewNeo4jPraxisStoreRouted(router),
+		embedder: embedder,
+	}
+}
+
+// NewPraxisServerWithStore constructs a PraxisServer with an injected store.
+// Used in tests to provide a stub PraxisStore.
+func NewPraxisServerWithStore(store PraxisStore, embedder embedding.Client) *PraxisServer {
+	return &PraxisServer{
+		store:    store,
+		embedder: embedder,
+	}
+}
+
+// StoreRule implements PraxisService.StoreRule.
+//
+// Security: org_id from auth context. All Cypher parameterised. No string interpolation.
+// Behaviour: generate UUID, set confidence=InitialConfidence, embed rule_text via voyage-3.5,
+// create PRAXIS_BehaviorRule node in Neo4j with embedding vector.
+func (s *PraxisServer) StoreRule(
+	ctx context.Context,
+	req *verav1.StoreRuleRequest,
+) (*verav1.StoreRuleResponse, error) {
+	tracer := otel.GetTracerProvider().Tracer(praxisTracerName)
+	ctx, span := tracer.Start(ctx, "sample.StoreRule")
+	defer span.End()
+
+	// Validate org_id from auth context.
+	orgID := interceptor.OrgIDFromContext(ctx)
+	if orgID == "" {
+		return nil, status.Error(codes.InvalidArgument, "org_id is required")
+	}
+	span.SetAttributes(attribute.String("org_id", orgID))
+
+	// Validate rule_text.
+	ruleText := strings.TrimSpace(req.GetRuleText())
+	if ruleText == "" {
+		return nil, status.Error(codes.InvalidArgument, "rule_text is required")
+	}
+
+	ruleType := req.GetRuleType()
+	span.SetAttributes(attribute.String("rule_type", ruleType.String()))
+
+	// Generate UUID.
+	id := uuid.New().String()
+
+	// Generate embedding for rule_text.
+	embeddingVec, err := s.embedder.Embed(ctx, ruleText, praxisEmbeddingModel)
+	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
+		return nil, status.Error(codes.Internal, "failed to generate embedding")
+	}
+
+	now := time.Now().UTC()
+
+	err = s.store.CreateRule(ctx, map[string]any{
+		"id":            id,
+		"org_id":        orgID,
+		"rule_text":     ruleText,
+		"rule_type":     ruleTypeToString(ruleType),
+		"confidence":    InitialConfidence,
+		"severity":      severityToString(req.GetSeverity()),
+		"context_scope": req.GetContextScope(),
+		"created_at":    now.Format(time.RFC3339),
+		"updated_at":    now.Format(time.RFC3339),
+		"embedding":     embeddingVec,
+	})
+	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
+		return nil, status.Errorf(codes.Internal, "neo4j write failed: %v", err)
+	}
+
+	return &verav1.StoreRuleResponse{
+		Rule: &verav1.BehaviorRule{
+			Id:           id,
+			OrgId:        orgID,
+			RuleText:     ruleText,
+			RuleType:     ruleType,
+			Confidence:   float32(InitialConfidence),
+			Severity:     req.GetSeverity(),
+			ContextScope: req.GetContextScope(),
+			CreatedAt:    timestamppb.New(now),
+			UpdatedAt:    timestamppb.New(now),
+		},
+	}, nil
+}
+
+// StoreError implements PraxisService.StoreError.
+//
+// Security: org_id from auth context. All Cypher parameterised.
+// Behaviour: generate embedding for "what_broke + root_cause", run semantic
+// dedup via vector search (cosine >= DedupCosineThreshold). If match: increment
+// times_seen, return deduplicated=true. Else: create new node, return deduplicated=false.
+func (s *PraxisServer) StoreError(
+	ctx context.Context,
+	req *verav1.StoreErrorRequest,
+) (*verav1.StoreErrorResponse, error) {
+	tracer := otel.GetTracerProvider().Tracer(praxisTracerName)
+	ctx, span := tracer.Start(ctx, "sample.StoreError")
+	defer span.End()
+
+	// Validate org_id from auth context.
+	orgID := interceptor.OrgIDFromContext(ctx)
+	if orgID == "" {
+		return nil, status.Error(codes.InvalidArgument, "org_id is required")
+	}
+	span.SetAttributes(attribute.String("org_id", orgID))
+
+	// Validate what_broke.
+	whatBroke := strings.TrimSpace(req.GetWhatBroke())
+	if whatBroke == "" {
+		return nil, status.Error(codes.InvalidArgument, "what_broke is required")
+	}
+
+	// Build embedding text: "what_broke + root_cause"
+	rootCause := strings.TrimSpace(req.GetRootCause())
+	embeddingText := whatBroke
+	if rootCause != "" {
+		embeddingText = whatBroke + " " + rootCause
+	}
+
+	// Generate embedding.
+	embeddingVec, err := s.embedder.Embed(ctx, embeddingText, praxisEmbeddingModel)
+	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
+		return nil, status.Error(codes.Internal, "failed to generate embedding")
+	}
+
+	now := time.Now().UTC()
+	id := uuid.New().String()
+
+	newNodeParams := map[string]any{
+		"id":             id,
+		"org_id":         orgID,
+		"what_broke":     whatBroke,
+		"root_cause":     rootCause,
+		"fix":            req.GetFix(),
+		"severity":       severityToString(req.GetSeverity()),
+		"times_seen":     int64(1),
+		"affected_files": req.GetAffectedFiles(),
+		"tags":           req.GetTags(),
+		"created_at":     now.Format(time.RFC3339),
+		"updated_at":     now.Format(time.RFC3339),
+		"embedding":      embeddingVec,
+	}
+
+	deduplicated, fields, err := s.store.StoreErrorDedup(ctx, embeddingVec, orgID, DedupCosineThreshold, newNodeParams)
+	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
+		return nil, status.Errorf(codes.Internal, "neo4j write failed: %v", err)
+	}
+
+	span.SetAttributes(attribute.Bool("deduplicated", deduplicated))
+
+	pattern := buildErrorPatternFromFields(fields, req.GetSeverity(), deduplicated, now)
+
+	return &verav1.StoreErrorResponse{
+		ErrorPattern: pattern,
+		Deduplicated: deduplicated,
+	}, nil
+}
+
+// buildErrorPatternFromFields constructs an ErrorPattern proto from field map.
+func buildErrorPatternFromFields(fields map[string]any, reqSeverity verav1.Severity, deduplicated bool, now time.Time) *verav1.ErrorPattern {
+	pattern := &verav1.ErrorPattern{}
+
+	if v, ok := fields["id"].(string); ok {
+		pattern.Id = v
+	}
+	if v, ok := fields["org_id"].(string); ok {
+		pattern.OrgId = v
+	}
+	if v, ok := fields["what_broke"].(string); ok {
+		pattern.WhatBroke = v
+	}
+	if v, ok := fields["root_cause"].(string); ok {
+		pattern.RootCause = v
+	}
+	if v, ok := fields["fix"].(string); ok {
+		pattern.Fix = v
+	}
+
+	// Severity: from fields if dedup (string from Neo4j), else from request.
+	if deduplicated {
+		if v, ok := fields["severity"].(string); ok {
+			pattern.Severity = stringToSeverity(v)
+		}
+	} else {
+		pattern.Severity = reqSeverity
+	}
+
+	// times_seen
+	switch ts := fields["times_seen"].(type) {
+	case int64:
+		pattern.TimesSeen = int32(ts)
+	case int32:
+		pattern.TimesSeen = ts
+	}
+
+	// affected_files
+	if arr, ok := fields["affected_files"].([]any); ok {
+		for _, item := range arr {
+			if s, ok := item.(string); ok {
+				pattern.AffectedFiles = append(pattern.AffectedFiles, s)
+			}
+		}
+	}
+	if arr, ok := fields["affected_files"].([]string); ok {
+		pattern.AffectedFiles = arr
+	}
+
+	// tags
+	if arr, ok := fields["tags"].([]any); ok {
+		for _, item := range arr {
+			if s, ok := item.(string); ok {
+				pattern.Tags = append(pattern.Tags, s)
+			}
+		}
+	}
+	if arr, ok := fields["tags"].([]string); ok {
+		pattern.Tags = arr
+	}
+
+	// timestamps
+	if v, ok := fields["created_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			pattern.CreatedAt = timestamppb.New(t)
+		}
+	}
+	if pattern.CreatedAt == nil {
+		pattern.CreatedAt = timestamppb.New(now)
+	}
+	pattern.UpdatedAt = timestamppb.New(now)
+
+	return pattern
+}
+
+// SearchRules implements PraxisService.SearchRules.
+//
+// Security: org_id from auth context. All Cypher parameterised.
+// Behaviour: embed query_text, vector search praxis_vectors, filter by org_id
+// (mandatory), rule_type_filter (optional), min_confidence (optional, default 0.0).
+func (s *PraxisServer) SearchRules(
+	ctx context.Context,
+	req *verav1.SearchRulesRequest,
+) (*verav1.SearchRulesResponse, error) {
+	tracer := otel.GetTracerProvider().Tracer(praxisTracerName)
+	ctx, span := tracer.Start(ctx, "sample.SearchRules")
+	defer span.End()
+
+	// Validate org_id from auth context.
+	orgID := interceptor.OrgIDFromContext(ctx)
+	if orgID == "" {
+		return nil, status.Error(codes.InvalidArgument, "org_id is required")
+	}
+	span.SetAttributes(attribute.String("org_id", orgID))
+
+	// Validate query_text.
+	queryText := strings.TrimSpace(req.GetQueryText())
+	if queryText == "" {
+		return nil, status.Error(codes.InvalidArgument, "query_text is required")
+	}
+
+	// Resolve limit.
+	limit := int(req.GetLimit())
+	if limit <= 0 {
+		limit = DefaultSearchLimit
+	}
+	if limit > MaxSearchLimit {
+		limit = MaxSearchLimit
+	}
+
+	// Min confidence defaults to 0.0.
+	minConfidence := float64(req.GetMinConfidence())
+
+	// Generate embedding for query_text.
+	embeddingVec, err := s.embedder.Embed(ctx, queryText, praxisEmbeddingModel)
+	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
+		return nil, status.Error(codes.Internal, "failed to generate embedding")
+	}
+
+	// Build Cypher with parameterised filters.
+	candidateCount := limit * 3
+	if candidateCount < 30 {
+		candidateCount = 30
+	}
+
+	params := map[string]any{
+		"embedding":       embeddingVec,
+		"org_id":          orgID,
+		"min_confidence":  minConfidence,
+		"candidate_count": candidateCount,
+		"limit":           limit,
+	}
+
+	// B6: Two static Cypher strings — no fmt.Sprintf with caller-supplied values.
+	var cypher string
+	if req.GetRuleTypeFilter() != verav1.RuleType_RULE_TYPE_UNSPECIFIED {
+		params["rule_type_filter"] = ruleTypeToString(req.GetRuleTypeFilter())
+		cypher = searchRulesCypherWithTypeFilter
+	} else {
+		cypher = searchRulesCypherBase
+	}
+
+	recordMaps, err := s.store.SearchRules(ctx, cypher, params)
+	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
+		return nil, status.Errorf(codes.Internal, "search rules failed: %v", err)
+	}
+
+	rules := make([]*verav1.BehaviorRule, 0, len(recordMaps))
+	for _, m := range recordMaps {
+		rules = append(rules, behaviorRuleFromMap(m))
+	}
+
+	span.SetAttributes(attribute.Int("result_count", len(rules)))
+
+	return &verav1.SearchRulesResponse{
+		Rules: rules,
+	}, nil
+}
+
+// SearchErrors implements PraxisService.SearchErrors.
+//
+// Security: org_id from auth context. All Cypher parameterised.
+// Behaviour: embed query_text, vector search praxis_error_vectors, filter by org_id.
+func (s *PraxisServer) SearchErrors(
+	ctx context.Context,
+	req *verav1.SearchErrorsRequest,
+) (*verav1.SearchErrorsResponse, error) {
+	tracer := otel.GetTracerProvider().Tracer(praxisTracerName)
+	ctx, span := tracer.Start(ctx, "sample.SearchErrors")
+	defer span.End()
+
+	// Validate org_id from auth context.
+	orgID := interceptor.OrgIDFromContext(ctx)
+	if orgID == "" {
+		return nil, status.Error(codes.InvalidArgument, "org_id is required")
+	}
+	span.SetAttributes(attribute.String("org_id", orgID))
+
+	// Validate query_text.
+	queryText := strings.TrimSpace(req.GetQueryText())
+	if queryText == "" {
+		return nil, status.Error(codes.InvalidArgument, "query_text is required")
+	}
+
+	// Resolve limit.
+	limit := int(req.GetLimit())
+	if limit <= 0 {
+		limit = DefaultSearchLimit
+	}
+	if limit > MaxSearchLimit {
+		limit = MaxSearchLimit
+	}
+
+	// Generate embedding for query_text.
+	embeddingVec, err := s.embedder.Embed(ctx, queryText, praxisEmbeddingModel)
+	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
+		return nil, status.Error(codes.Internal, "failed to generate embedding")
+	}
+
+	candidateCount := limit * 3
+	if candidateCount < 30 {
+		candidateCount = 30
+	}
+
+	cypher := `
+CALL db.index.vector.queryNodes('praxis_error_vectors', $candidate_count, $embedding)
+YIELD node, score
+WHERE node.org_id = $org_id
+RETURN node.id AS id,
+       node.org_id AS org_id,
+       node.what_broke AS what_broke,
+       node.root_cause AS root_cause,
+       node.fix AS fix,
+       node.severity AS severity,
+       node.times_seen AS times_seen,
+       node.affected_files AS affected_files,
+       node.tags AS tags,
+       node.created_at AS created_at,
+       node.updated_at AS updated_at,
+       score
+ORDER BY score DESC
+LIMIT $limit`
+
+	params := map[string]any{
+		"embedding":       embeddingVec,
+		"org_id":          orgID,
+		"candidate_count": candidateCount,
+		"limit":           limit,
+	}
+
+	recordMaps, err := s.store.SearchErrors(ctx, cypher, params)
+	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
+		return nil, status.Errorf(codes.Internal, "search errors failed: %v", err)
+	}
+
+	patterns := make([]*verav1.ErrorPattern, 0, len(recordMaps))
+	for _, m := range recordMaps {
+		patterns = append(patterns, errorPatternFromMap(m))
+	}
+
+	span.SetAttributes(attribute.Int("result_count", len(patterns)))
+
+	return &verav1.SearchErrorsResponse{
+		ErrorPatterns: patterns,
+	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Helper functions — enum conversion and map-based record mapping
+// ---------------------------------------------------------------------------
+
+// ruleTypeToString converts a proto RuleType enum to the lowercase string stored in Neo4j.
+func ruleTypeToString(rt verav1.RuleType) string {
+	switch rt {
+	case verav1.RuleType_RULE_TYPE_DO:
+		return "do"
+	case verav1.RuleType_RULE_TYPE_DONT:
+		return "dont"
+	case verav1.RuleType_RULE_TYPE_CONTEXT_DEPENDENT:
+		return "context_dependent"
+	default:
+		return ""
+	}
+}
+
+// stringToRuleType converts a Neo4j-stored lowercase rule_type string to proto enum.
+func stringToRuleType(s string) verav1.RuleType {
+	switch s {
+	case "do":
+		return verav1.RuleType_RULE_TYPE_DO
+	case "dont":
+		return verav1.RuleType_RULE_TYPE_DONT
+	case "context_dependent":
+		return verav1.RuleType_RULE_TYPE_CONTEXT_DEPENDENT
+	default:
+		return verav1.RuleType_RULE_TYPE_UNSPECIFIED
+	}
+}
+
+// severityToString converts a proto Severity enum to the lowercase string stored in Neo4j.
+func severityToString(sev verav1.Severity) string {
+	switch sev {
+	case verav1.Severity_SEVERITY_LOW:
+		return "low"
+	case verav1.Severity_SEVERITY_MEDIUM:
+		return "medium"
+	case verav1.Severity_SEVERITY_HIGH:
+		return "high"
+	case verav1.Severity_SEVERITY_CRITICAL:
+		return "critical"
+	default:
+		return ""
+	}
+}
+
+// stringToSeverity converts a Neo4j-stored lowercase severity string to proto enum.
+func stringToSeverity(s string) verav1.Severity {
+	switch s {
+	case "low":
+		return verav1.Severity_SEVERITY_LOW
+	case "medium":
+		return verav1.Severity_SEVERITY_MEDIUM
+	case "high":
+		return verav1.Severity_SEVERITY_HIGH
+	case "critical":
+		return verav1.Severity_SEVERITY_CRITICAL
+	default:
+		return verav1.Severity_SEVERITY_UNSPECIFIED
+	}
+}
+
+// behaviorRuleFromMap maps a record-like map to a proto BehaviorRule.
+func behaviorRuleFromMap(m map[string]any) *verav1.BehaviorRule {
+	rule := &verav1.BehaviorRule{}
+	if s, ok := m["id"].(string); ok {
+		rule.Id = s
+	}
+	if s, ok := m["org_id"].(string); ok {
+		rule.OrgId = s
+	}
+	if s, ok := m["rule_text"].(string); ok {
+		rule.RuleText = s
+	}
+	if s, ok := m["rule_type"].(string); ok {
+		rule.RuleType = stringToRuleType(s)
+	}
+	switch f := m["confidence"].(type) {
+	case float64:
+		rule.Confidence = float32(f)
+	case int64:
+		rule.Confidence = float32(f)
+	}
+	if s, ok := m["severity"].(string); ok {
+		rule.Severity = stringToSeverity(s)
+	}
+	if s, ok := m["context_scope"].(string); ok {
+		rule.ContextScope = s
+	}
+	if s, ok := m["created_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			rule.CreatedAt = timestamppb.New(t)
+		}
+	}
+	if s, ok := m["updated_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			rule.UpdatedAt = timestamppb.New(t)
+		}
+	}
+	return rule
+}
+
+// errorPatternFromMap maps a record-like map to a proto ErrorPattern.
+func errorPatternFromMap(m map[string]any) *verav1.ErrorPattern {
+	pattern := &verav1.ErrorPattern{}
+	if s, ok := m["id"].(string); ok {
+		pattern.Id = s
+	}
+	if s, ok := m["org_id"].(string); ok {
+		pattern.OrgId = s
+	}
+	if s, ok := m["what_broke"].(string); ok {
+		pattern.WhatBroke = s
+	}
+	if s, ok := m["root_cause"].(string); ok {
+		pattern.RootCause = s
+	}
+	if s, ok := m["fix"].(string); ok {
+		pattern.Fix = s
+	}
+	if s, ok := m["severity"].(string); ok {
+		pattern.Severity = stringToSeverity(s)
+	}
+	switch ts := m["times_seen"].(type) {
+	case int64:
+		pattern.TimesSeen = int32(ts)
+	case int32:
+		pattern.TimesSeen = ts
+	}
+	if arr, ok := m["affected_files"].([]any); ok {
+		for _, item := range arr {
+			if s, ok := item.(string); ok {
+				pattern.AffectedFiles = append(pattern.AffectedFiles, s)
+			}
+		}
+	}
+	if arr, ok := m["tags"].([]any); ok {
+		for _, item := range arr {
+			if s, ok := item.(string); ok {
+				pattern.Tags = append(pattern.Tags, s)
+			}
+		}
+	}
+	if s, ok := m["created_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			pattern.CreatedAt = timestamppb.New(t)
+		}
+	}
+	if s, ok := m["updated_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			pattern.UpdatedAt = timestamppb.New(t)
+		}
+	}
+	return pattern
+}

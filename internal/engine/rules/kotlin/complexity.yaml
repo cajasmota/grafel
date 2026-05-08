@@ -1,0 +1,87 @@
+complexity_signals:
+- category: coroutine_patterns
+  description: Structured concurrency and reactive stream usage
+  signals:
+  - pattern: launch {
+    meaning: fire-and-forget coroutine
+  - pattern: async {
+    meaning: concurrent deferred computation
+  - pattern: flow {
+    meaning: cold stream / reactive data source
+  - pattern: StateFlow / MutableStateFlow
+    meaning: hot observable state container (MVVM)
+  - pattern: SharedFlow / MutableSharedFlow
+    meaning: hot event bus
+  - pattern: Channel<
+    meaning: coroutine communication primitive
+  - pattern: withContext(Dispatchers.
+    meaning: context switching (IO/Main/Default)
+  - pattern: supervisorScope {
+    meaning: fault-isolation scope
+  - pattern: coroutineScope {
+    meaning: structured concurrency scope
+- category: sealed_class_hierarchies
+  description: Algebraic data type (ADT) patterns for state/result modeling
+  signals:
+  - pattern: sealed class Result<
+    meaning: typed error handling (Success/Failure)
+  - pattern: sealed class UiState
+    meaning: UI state machine (Loading/Success/Error)
+  - pattern: sealed interface
+    meaning: interface-based sealed hierarchy (Kotlin 1.5+)
+  - pattern: when (result) { is Success ->
+    meaning: exhaustive when on sealed type
+- category: dsl_builders
+  description: Kotlin DSL construction patterns
+  signals:
+  - pattern: 'fun * (block: *.() -> Unit)'
+    meaning: DSL builder with lambda receiver
+  - pattern: '@DslMarker'
+    meaning: DSL scope control annotation
+  - pattern: buildString {
+    meaning: standard library DSL builder
+  - pattern: buildList {
+    meaning: immutable list DSL builder
+  - pattern: apply { ... }
+    meaning: object initialization DSL
+  - pattern: also { ... }
+    meaning: side-effect chaining
+- category: delegation_patterns
+  description: Kotlin property and interface delegation
+  signals:
+  - pattern: by lazy {
+    meaning: lazy initialization delegate
+  - pattern: by viewModels()
+    meaning: Android ViewModel delegate
+  - pattern: by remember {
+    meaning: Compose state delegate
+  - pattern: by mutableStateOf(
+    meaning: Compose observable state
+  - pattern: 'class * : * by '
+    meaning: interface delegation (decorator pattern)
+  - pattern: operator fun getValue
+    meaning: custom property delegate
+- category: inline_reified_generics
+  description: Kotlin-specific generics patterns
+  signals:
+  - pattern: inline fun <reified T>
+    meaning: reified type parameter (runtime type access)
+  - pattern: typeOf<
+    meaning: KType reflection
+  - pattern: T::class
+    meaning: KClass reference
+  - pattern: inline class
+    meaning: value class (pre-Kotlin 1.5 syntax)
+  - pattern: value class
+    meaning: JVM value class (Kotlin 1.5+)
+- category: context_receivers_and_extensions
+  description: Kotlin extension and context patterns
+  signals:
+  - pattern: fun String.
+    meaning: extension function on standard type
+  - pattern: context(
+    meaning: context receivers (Kotlin 1.6+ experimental)
+  - pattern: Raise<
+    meaning: Arrow context receiver error handling
+  - pattern: fun <T> T.
+    meaning: generic extension function

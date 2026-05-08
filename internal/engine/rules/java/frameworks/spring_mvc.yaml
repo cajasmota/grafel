@@ -1,0 +1,41 @@
+frameworks:
+  name: Spring MVC
+  category: web_mvc
+  maven_coordinates: org.springframework:spring-webmvc
+  gradle_dependency: implementation 'org.springframework:spring-webmvc'
+  adoption_rank_2025: 2
+  detection:
+    config_files:
+    - WEB-INF/web.xml
+    - WEB-INF/dispatcher-servlet.xml
+    - '*-servlet.xml'
+    pom_xml_markers:
+    - spring-webmvc
+    - spring-web
+    import_patterns:
+    - import org.springframework.web.bind.annotation
+    - import org.springframework.stereotype.Controller
+    - import org.springframework.web.servlet
+    code_patterns:
+    - '@Controller'
+    - '@RequestMapping'
+    - '@GetMapping'
+    - '@PostMapping'
+    - '@RestController'
+    - DispatcherServlet
+  notes: 'Often used within Spring Boot. @RestController + @RequestMapping is the
+    dominant signal. WEB-INF/web.xml indicates legacy non-Boot Spring MVC.
+
+    '
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.java.spring_ecosystem_extractor"
+    function: "extract"
+    description: "Extract Spring Ecosystem advanced patterns: Security, Batch, AMQP, AI, Vault, Data, Cloud, Integration, WebFlux, Kafka."
+  - module: "memx_indexer.languages.java.spring_request_response_extractor"
+    function: "extract"
+    description: "Extract ACCEPTS_INPUT and RETURNS relationships from Spring controller methods. Detects @RequestBody parameter annotations and method return types (including ResponseEntity<T> unwrapping). Emits DTO entities as SCOPE.Schema(kind=dto)."

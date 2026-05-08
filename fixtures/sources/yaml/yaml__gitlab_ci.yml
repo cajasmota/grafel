@@ -1,0 +1,28 @@
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  IMAGE_TAG: $CI_COMMIT_SHA
+
+build-job:
+  stage: build
+  script:
+    - docker build -t myapp:$IMAGE_TAG .
+    - docker push myapp:$IMAGE_TAG
+
+test-job:
+  stage: test
+  script:
+    - go test ./...
+    - go vet ./...
+
+deploy-staging:
+  stage: deploy
+  script:
+    - kubectl apply -f k8s/staging/
+  environment:
+    name: staging
+  only:
+    - develop

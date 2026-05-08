@@ -1,0 +1,121 @@
+domain_roots:
+  rails_application:
+    description: Standard Rails app domain root layout
+    roots:
+    - path: app/controllers/
+      content: 'ActionController::Base subclasses. Route handlers. Before/after action
+        filters. Strong parameters. Skip ApplicationController if empty.
+
+        '
+    - path: app/models/
+      content: 'ActiveRecord::Base or ApplicationRecord subclasses. Domain entities.
+        Business logic via service objects, concerns. Skip ApplicationRecord stub.
+
+        '
+    - path: app/views/
+      content: 'ERB/Haml/Slim templates. Partials (prefixed with _). Mailer templates.
+        Generally low value for code indexing — skip unless logic is embedded.
+
+        '
+    - path: app/helpers/
+      content: 'View helper modules. Mixed with ActionView::Helpers. Usually index
+        lightly.
+
+        '
+    - path: app/mailers/
+      content: 'ActionMailer::Base subclasses. Email delivery logic.
+
+        '
+    - path: app/jobs/
+      content: 'ActiveJob::Base subclasses. Background job definitions.
+
+        '
+    - path: app/services/
+      content: 'Plain Ruby service objects (POROs). High-value domain logic. Not Rails-generated
+        — indicates explicit service layer architecture.
+
+        '
+    - path: app/serializers/
+      content: 'ActiveModel::Serializer or custom serializer classes. Response shaping.
+
+        '
+    - path: lib/
+      content: 'Non-Rails Ruby code. Utility classes, custom middleware, rake tasks,
+        domain modules not tied to Rails conventions. High-value for indexing.
+
+        '
+    - path: spec/
+      content: 'RSpec test files. Mirror app/ structure. scope=test.
+
+        '
+    - path: test/
+      content: 'Minitest test files. Mirror app/ structure. scope=test.
+
+        '
+  rails_api_only:
+    description: Rails API-only app (--api flag) — no views
+    roots:
+    - app/controllers/ (inherits ApplicationController < ActionController::API)
+    - app/models/
+    - app/serializers/ (or app/blueprints/ for blueprinter gem)
+    - lib/
+    - spec/
+  sinatra_application:
+    description: Sinatra app structure (classic or modular)
+    roots:
+    - path: app.rb
+      content: Route definitions and application logic (classic style)
+    - path: lib/
+      content: Ruby classes and modules
+    - path: routes/
+      content: Route files when using modular style with multiple route files
+    - path: models/
+      content: Database models or plain Ruby domain objects
+    - path: spec/
+      content: RSpec tests
+  non_rails_ruby:
+    description: Gem libraries and non-web Ruby projects
+    roots:
+    - path: lib/
+      content: 'Primary source tree. lib/gemname.rb is the entry point. lib/gemname/*.rb
+        contains submodules. This is the highest-value path.
+
+        '
+    - path: bin/
+      content: 'Executable scripts. bin/gemname is the CLI entry point for gems. Custom
+        scripts (not binstubs) are domain code.
+
+        '
+    - path: spec/
+      content: RSpec tests (scope=test)
+    - path: test/
+      content: Minitest tests (scope=test)
+    - path: exe/
+      content: 'Modern gem CLI convention (bundler gem --exe). exe/gemname replaces
+        bin/gemname in newer gems.
+
+        '
+  hanami_application:
+    description: Hanami 2.x slice-based layout
+    roots:
+    - path: app/
+      content: 'Core application: app/actions/ (HTTP handlers), app/views/, app/entities/,
+        app/repos/. First-party slices live here.
+
+        '
+    - path: slices/
+      content: 'Feature slices. Each slice is a self-contained sub-application with
+        its own actions/, views/, entities/. High-value.
+
+        '
+    - path: lib/
+      content: 'Shared utilities and domain code not tied to a slice.
+
+        '
+    - path: config/
+      content: 'Application configuration. config/app.rb is the entry point. Not domain
+        code — skip.
+
+        '
+    - path: spec/
+      content: RSpec tests (scope=test)

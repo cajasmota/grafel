@@ -1,0 +1,33 @@
+orms:
+  name: SQLx
+  crate: sqlx
+  category: async_sql_toolkit
+  crates_io_version_2025: 0.8.x
+  detection:
+    cargo_toml_deps:
+    - sqlx
+    features_signals:
+    - features = ["postgres"
+    - features = ["mysql"
+    - features = ["sqlite"
+    - features = ["runtime-tokio
+    - '"macros"'
+    import_markers:
+    - 'use sqlx::'
+    code_patterns:
+    - sqlx::query!(
+    - sqlx::query_as!(
+    - sqlx::FromRow
+    - '#[derive(sqlx::FromRow'
+    - PgPool
+    - SqlitePool
+    - MySqlPool
+    - Pool::<Postgres>
+    - .fetch_one(
+    - .fetch_all(
+    - .execute(
+  notes: 'Compile-time verified SQL queries (not a full ORM). sqlx::query! macro is
+    the definitive code signal. Very common in async Rust services. Often used with
+    Axum. DATABASE_URL env var required at compile time for query! macro.
+
+    '

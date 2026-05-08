@@ -1,0 +1,39 @@
+orms_database:
+  name: Rust SQLite Drivers (rusqlite / sqlx sqlite)
+  category: sqlite_driver
+  crates:
+    - rusqlite
+    - sqlx
+  detection:
+    cargo_toml_deps:
+      - rusqlite
+      - 'sqlx = { features = ["sqlite"'
+    import_markers:
+      - 'use rusqlite::'
+      - 'use sqlx::SqlitePool'
+      - 'use sqlx::sqlite'
+    code_patterns:
+      - Connection::open(
+      - Connection::open_in_memory()
+      - SqlitePool::connect(
+      - SqlitePoolOptions::new(
+      - ":memory:"
+  notes: >
+    rusqlite is the primary synchronous SQLite binding. sqlx supports SQLite
+    through the sqlite feature flag and provides async support with compile-time
+    query verification. Connection::open_in_memory() is the canonical in-memory
+    pattern.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: rusqlite/sqlx connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

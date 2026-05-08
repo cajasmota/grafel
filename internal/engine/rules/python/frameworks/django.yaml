@@ -1,0 +1,144 @@
+frameworks:
+  name: Django
+  pypi_package: Django
+  category: web_full_stack
+  github_stars_2025: 82000+
+  gateway: wsgi
+  detection:
+    config_files:
+    - manage.py
+    - '*/settings.py'
+    - '*/wsgi.py'
+    - '*/asgi.py'
+    - '*/urls.py'
+    dependency_names:
+    - Django
+    - django
+    import_markers:
+    - from django
+    - import django
+    - django.setup()
+    structural_markers:
+    - manage.py
+    - apps.py (AppConfig subclass)
+  notes: 'Monolithic framework. apps.py and manage.py are high-confidence signals.
+    urls.py alone is not sufficient (Flask also uses it via flask-restful). settings.py
+    with INSTALLED_APPS is definitive.
+
+    '
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-494)
+# ---------------------------------------------------------------------------
+
+# file_conventions: glob -> entity_type mapping from file naming conventions.
+file_conventions:
+  - glob: "*/models.py"
+    entity_type: Model
+    name_from: class_name
+  - glob: "*/models/*.py"
+    entity_type: Model
+    name_from: class_name
+  - glob: "*/views.py"
+    entity_type: View
+    name_from: class_name
+  - glob: "*/views/*.py"
+    entity_type: View
+    name_from: class_name
+  - glob: "*/urls.py"
+    entity_type: Route
+    name_from: filename
+  - glob: "*/serializers.py"
+    entity_type: Model
+    name_from: class_name
+  - glob: "*/forms.py"
+    entity_type: Model
+    name_from: class_name
+  - glob: "*/admin.py"
+    entity_type: Controller
+    name_from: filename
+  - glob: "*/middleware.py"
+    entity_type: Middleware
+    name_from: class_name
+  - glob: "*/middleware/*.py"
+    entity_type: Middleware
+    name_from: class_name
+  - glob: "*/migrations/0*.py"
+    entity_type: Migration
+    name_from: filename
+
+# source_patterns: regex patterns that match framework constructs in source.
+source_patterns:
+  # Django model: class MyModel(models.Model)
+  - pattern: "class\\s+(\\w+)\\s*\\(\\s*models\\.Model\\s*\\)"
+    entity_type: Model
+    name_group: 1
+    scope: class
+  # Class-based view: class MyView(View) / (ListView) / (DetailView) etc.
+  - pattern: "class\\s+(\\w+)\\s*\\([^)]*(?:View|ListView|DetailView|CreateView|UpdateView|DeleteView|TemplateView|FormView|APIView)\\s*[,)\\n]"
+    entity_type: View
+    name_group: 1
+    scope: class
+  # URL pattern: path("...", view, name="...")
+  - pattern: "path\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # AppConfig subclass: class MyAppConfig(AppConfig)
+  - pattern: "class\\s+(\\w+)\\s*\\(\\s*AppConfig\\s*\\)"
+    entity_type: Config
+    name_group: 1
+    scope: class
+  # Admin registration: admin.site.register(MyModel)
+  - pattern: "admin\\.site\\.register\\s*\\(\\s*(\\w+)"
+    entity_type: Controller
+    name_group: 1
+    scope: file
+  # Signal handler: @receiver(post_save, sender=...)
+  - pattern: "@receiver\\s*\\([^)]*sender\\s*=\\s*(\\w+)"
+    entity_type: Service
+    name_group: 1
+    scope: function
+
+# relationship_rules: regex patterns that produce edges between entities.
+relationship_rules:
+  # Model used in view: from app.models import MyModel
+  - pattern: "from\\s+\\S+\\.models\\s+import\\s+(\\w+)"
+    source_type: View
+    target_type: Model
+    relationship: IMPORTS
+    source_group: 1
+    target_group: 1
+  # Blueprint registration: include("app.urls")
+  - pattern: "include\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    source_type: Route
+    target_type: Route
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 1
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+# These run after YAML-driven extraction and contribute additional entities +
+# relationships to the pipeline result.
+custom_extractors:
+  - module: memx_indexer.languages.python.django_extractor
+    function: extract
+    description: >-
+      Django-specific extractor: URL resolver patterns (path/re_path),
+      class-based view HTTP method handlers (OWNS edges), signal receivers
+      with sender model CALLS edges, admin.site.register and @admin.register
+      CALLS edges to registered models.
+  - module: memx_indexer.languages.migration.migration_extractor
+    function: extract
+  - module: memx_indexer.languages._engine.config_prefix_extractor
+    function: extract
+    description: >-
+      Extract FORCE_SCRIPT_NAME / SCRIPT_NAME from Django settings.py as
+      SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated
+      on well-known config file basenames.
+  - module: memx_indexer.languages._engine.config_consumer_extractor
+    function: extract
+    description: >-
+      Extract os.getenv('KEY'), os.environ['KEY'], and os.environ.get('KEY')
+      reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read)
+      edges from consuming entities (MX-600).

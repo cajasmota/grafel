@@ -1,0 +1,22 @@
+orms_database:
+  name: "@elastic/elasticsearch"
+  npm_package: "@elastic/elasticsearch"
+  detection:
+    import_patterns:
+    - "@elastic/elasticsearch"
+    - from '@elastic/elasticsearch'
+    - require('@elastic/elasticsearch')
+    code_patterns:
+    - new Client(
+    - client.search(
+    - client.index(
+    - client.indices.create(
+  notes: |
+    Official JavaScript/TypeScript Elasticsearch client from Elastic.
+  custom_extractors:
+  - module: "memx_indexer.languages.elasticsearch.elasticsearch_extractor"
+    function: "extract"
+    description: >
+      Extract Client connections, client.search() calls, aggregations, ILM policies,
+      and index creation calls for JavaScript and TypeScript.
+      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

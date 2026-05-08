@@ -1,0 +1,25 @@
+frameworks:
+  name: Strawberry GraphQL
+  pypi_package: strawberry-graphql
+  category: graphql
+  github_stars_2025: 4000+
+  gateway: asgi
+  detection:
+    config_files:
+    - schema.py
+    - '*/graphql/*.py'
+    dependency_names:
+    - strawberry-graphql
+    - strawberry
+    import_markers:
+    - import strawberry
+    - '@strawberry.type'
+    - '@strawberry.mutation'
+    - strawberry.Schema
+    structural_markers:
+    - graphql/ directory
+    - schema.py
+  notes: 'Code-first GraphQL. schema.py with @strawberry.type decorators is definitive.
+    Often paired with FastAPI or Litestar.
+
+    '

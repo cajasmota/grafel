@@ -1,0 +1,46 @@
+frameworks:
+  name: ClojureScript + Reagent
+  clojars_artifact: reagent/reagent
+  category: frontend_reactive_ui
+  github_stars_2025: 4700+
+  detection:
+    config_files:
+    - shadow-cljs.edn
+    - project.clj
+    - deps.edn
+    - package.json
+    lein_deps:
+    - reagent/reagent
+    - thheller/shadow-cljs
+    - cljsbuild/lein-cljsbuild
+    deps_edn_coords:
+    - reagent/reagent
+    - thheller/shadow-cljs
+    import_markers:
+    - reagent.core
+    - reagent.dom
+    - reagent.ratom
+    - (r/atom
+    - (r/render
+    - (reagent.dom/render
+    - (defn component-name
+    - '[:div '
+    - '[:h1 '
+    - '[:span '
+    - (into [:ul
+    - '@ratom'
+    - (:require [reagent.
+    file_extensions:
+    - .cljs
+    - .cljc
+    structural_markers:
+    - src/cljs/
+    - src/cljc/
+    - shadow-cljs.edn
+  notes: 'Reagent is a React wrapper for ClojureScript using Hiccup syntax for UI.
+    Detected by reagent dep + .cljs source files with Hiccup vector literals ([:div
+    ...], [:h1 ...]) and (r/atom ...) for state. The shadow-cljs.edn build config
+    is a high-confidence Reagent/ClojureScript project signal. cljsbuild in project.clj
+    is the legacy equivalent.
+
+    '

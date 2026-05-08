@@ -1,0 +1,35 @@
+frameworks:
+  name: Compojure
+  clojars_artifact: compojure/compojure
+  category: web_routing
+  github_stars_2025: 4000+
+  detection:
+    config_files:
+    - project.clj
+    - deps.edn
+    lein_deps:
+    - compojure/compojure
+    deps_edn_coords:
+    - compojure/compojure
+    import_markers:
+    - compojure.core
+    - compojure.route
+    - compojure.handler
+    - (defroutes
+    - (GET "
+    - (POST "
+    - (PUT "
+    - (DELETE "
+    - (PATCH "
+    - (ANY "
+    - (context "
+    - (:require [compojure.
+    structural_markers:
+    - src/
+    - src/routes/
+    notes: 'Compojure adds routing macros on top of Ring. Detected by compojure dep
+      + (defroutes ...) macro in source files. Routes are defined using GET/POST/PUT/
+      DELETE/PATCH macros. Often paired with Ring middleware and Hiccup/Selmer for
+      templating. The (defroutes app [...]) pattern is the primary signal.
+
+      '

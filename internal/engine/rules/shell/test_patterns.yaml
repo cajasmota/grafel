@@ -1,0 +1,104 @@
+testing:
+- name: bats
+  full_name: Bash Automated Testing System
+  package: bats-core/bats-core
+  file_extensions:
+  - .bats
+  config_files:
+  - .bats
+  test_conventions:
+  - test/*.bats
+  - tests/*.bats
+  - spec/*.bats
+  detection_signals:
+    shebang_patterns:
+    - '#!/usr/bin/env bats'
+    content_patterns:
+    - '@test "'
+    - 'run '
+    - assert_output
+    - assert_success
+    - assert_failure
+    - load 'test_helper'
+    - setup()
+    - teardown()
+  notes: 'De facto standard for bash unit testing. bats-support and bats-assert libraries
+    extend the assertion vocabulary. Detected by .bats extension and #!/usr/bin/env
+    bats shebang.
+
+    '
+- name: shunit2
+  full_name: shunit2
+  package: kward/shunit2
+  file_extensions:
+  - .sh
+  test_conventions:
+  - test/*_test.sh
+  - '*_test.sh'
+  detection_signals:
+    content_patterns:
+    - . shunit2
+    - source shunit2
+    - setUp()
+    - tearDown()
+    - assertNull
+    - assertEquals
+    - assertTrue
+    - suite()
+  notes: 'xUnit-style testing for POSIX sh and bash. The file must source shunit2
+    as its last line — that pattern is the definitive detection signal.
+
+    '
+- name: shellspec
+  full_name: ShellSpec
+  package: shellspec/shellspec
+  file_extensions:
+  - .sh
+  config_files:
+  - .shellspec
+  - .shellspec-local
+  test_conventions:
+  - spec/*_spec.sh
+  - spec/spec_helper.sh
+  detection_signals:
+    config_files:
+    - .shellspec
+    content_patterns:
+    - 'Describe '
+    - 'It '
+    - When call
+    - The output
+    - The status
+    - BeforeAll
+    - AfterAll
+    - 'Include '
+  notes: 'BDD-style testing inspired by RSpec. Supports POSIX sh, bash, zsh, dash,
+    ksh. .shellspec config file or spec/*_spec.sh convention are strong signals.
+
+    '
+- name: shellcheck
+  full_name: ShellCheck
+  type: linter
+  config_files:
+  - .shellcheckrc
+  detection_signals:
+    config_files:
+    - .shellcheckrc
+    ci_usage_patterns:
+    - 'shellcheck '
+    - 'uses: ludeeus/action-shellcheck'
+  notes: 'Static analysis tool, not a test runner. Its presence (via .shellcheckrc
+    or CI step) indicates shell code quality practices. Surfaced as a linting signal
+    rather than a test coverage signal.
+
+    '
+- name: kcov
+  full_name: kcov (shell coverage)
+  type: coverage
+  detection_signals:
+    content_patterns:
+    - 'kcov '
+  notes: 'Coverage reporting tool for bash/bats. Used with bats or shunit2 to generate
+    HTML coverage reports. Detected by kcov invocation in CI or Makefile.
+
+    '

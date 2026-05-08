@@ -1,0 +1,146 @@
+testing:
+- name: XCTest
+  type: unit_integration_test
+  pod_coordinates:
+  - N/A — bundled with Xcode
+  detection:
+    file_conventions:
+    - '*Tests.m — unit test file suffix'
+    - '*Test.m — alternative suffix'
+    - '*Tests/ directory'
+    - <TargetName>Tests/ directory
+    import_patterns:
+    - '#import <XCTest/XCTest.h>'
+    - '@import XCTest;'
+    code_patterns:
+    - '@interface * : XCTestCase'
+    - '- (void)setUp'
+    - '- (void)tearDown'
+    - '- (void)test*'
+    - XCTAssertTrue(
+    - XCTAssertEqual(
+    - XCTAssertNil(
+    - XCTAssertNotNil(
+    - XCTAssertEqualObjects(
+    - XCTFail(
+    - XCTestExpectation *
+    - '[self expectationWithDescription:'
+    - '[self waitForExpectationsWithTimeout:'
+  notes: 'Apple''s native test framework integrated with Xcode. All test targets in
+    Xcode are XCTestCase subclasses. Async tests use XCTestExpectation. Performance
+    tests use measureBlock:. Xcode runs tests via xcodebuild -test or the Xcode Test
+    Navigator. UI tests use XCUIApplication and live in a separate *UITests target.
+
+    '
+- name: OCMock
+  type: mocking
+  pod_coordinates:
+  - pod 'OCMock'
+  - OCMock (~> 3.9)
+  detection:
+    config_files:
+    - Podfile (OCMock entry)
+    - Cartfile (OCMock entry)
+    import_patterns:
+    - '#import <OCMock/OCMock.h>'
+    - '#import "OCMock.h"'
+    code_patterns:
+    - OCMockObject *
+    - OCMClassMock(
+    - OCMStub(
+    - OCMExpect(
+    - OCMVerify(
+    - OCMVerifyAll(
+    - OCMPartialMock(
+    - '[OCMArg any]'
+  notes: 'Dominant mocking library for Objective-C unit tests. OCMClassMock creates
+    class mocks; OCMPartialMock creates partial mocks of real objects. Used with XCTest.
+    OCMStub sets return values; OCMExpect sets expectations; OCMVerify checks calls.
+
+    '
+- name: Kiwi
+  type: bdd_test_framework
+  pod_coordinates:
+  - pod 'Kiwi'
+  - pod 'Kiwi', :configurations => ['Test']
+  detection:
+    config_files:
+    - Podfile (Kiwi entry)
+    file_conventions:
+    - '*Spec.m — Kiwi test file suffix'
+    - '*Spec/ directory'
+    import_patterns:
+    - '#import "Kiwi.h"'
+    - '#import <Kiwi/Kiwi.h>'
+    code_patterns:
+    - SPEC_BEGIN(
+    - SPEC_END
+    - describe(@"
+    - context(@"
+    - it(@"
+    - beforeEach(^{
+    - afterEach(^{
+    - '[[subject should] receive:@selector('
+    - '[[value should] equal:'
+  notes: 'BDD test framework for Objective-C inspired by RSpec. Test files use *Spec.m
+    suffix. SPEC_BEGIN/SPEC_END delimit spec blocks. Kiwi has built-in mocking via
+    KWMock and KWMessagePattern. Less common than XCTest but still found in pre-2015
+    codebases.
+
+    '
+- name: Specta + Expecta
+  type: bdd_test_framework
+  pod_coordinates:
+  - pod 'Specta'
+  - pod 'Expecta'
+  - pod 'Expecta+Snapshots'
+  detection:
+    config_files:
+    - Podfile (Specta and/or Expecta entries)
+    file_conventions:
+    - '*Spec.m — test file suffix'
+    import_patterns:
+    - '#import <Specta/Specta.h>'
+    - '#import <Expecta/Expecta.h>'
+    - '#import "Specta.h"'
+    - '#import "Expecta.h"'
+    code_patterns:
+    - SpecBegin(
+    - SpecEnd
+    - describe(@"
+    - context(@"
+    - it(@"
+    - beforeEach(^{
+    - afterEach(^{
+    - expect(
+    - .to.equal(
+    - .to.beNil()
+    - .to.beTruthy()
+    - .to.beKindOf(
+  notes: 'Specta provides the BDD describe/context/it DSL; Expecta provides the fluent
+    matcher API. Commonly used together. Separates test structure (Specta) from assertions
+    (Expecta). Often combined with OCMock for mocking. SpecBegin/SpecEnd wrap the
+    spec block.
+
+    '
+- name: Cedar
+  type: bdd_test_framework
+  pod_coordinates:
+  - pod 'Cedar'
+  detection:
+    config_files:
+    - Podfile (Cedar entry)
+    import_patterns:
+    - '#import "Cedar.h"'
+    - '#import <Cedar/Cedar.h>'
+    code_patterns:
+    - SPEC_BEGIN(
+    - describe(@"
+    - it(@"
+    - beforeEach(^{
+    - expect(
+  notes: 'BDD test framework from Pivotal Labs for Objective-C. Less common than Kiwi
+    or Specta/Expecta. SPEC_BEGIN/SpecEnd macros shared with Kiwi indicate disambiguation
+    by import path.
+
+    '

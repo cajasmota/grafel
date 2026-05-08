@@ -1,0 +1,15 @@
+# SQL injection heuristic detector (MX-723)
+# Language-agnostic detector that flags SQL strings built with f-string
+# interpolation, .format(), %-formatting, or string concatenation.
+# Parameterized cursor.execute(sql, params) calls are suppressed.
+# File gate is internal to the detector (applies_to checks source signals).
+
+name: sql_injection_risk
+description: >-
+  Detect SQL query strings built with dynamic construction (f-strings,
+  .format(), %-formatting, string concatenation) and emit SCOPE.Pattern
+  entities with kind=sql_injection_risk and risk_level=high or medium.
+  Parameterized queries using the tuple form are not flagged.
+module: memx_indexer.pattern_detectors.sql_injection_detector
+function: detect
+applies_to_function: applies_to

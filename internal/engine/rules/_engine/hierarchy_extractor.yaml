@@ -1,0 +1,18 @@
+# Class hierarchy extractor with is_abstract flag (MX-602, MX-714)
+# Detects class inheritance (EXTENDS), interface implementation (IMPLEMENTS),
+# and emits is_abstract=True/False on every class entity.
+#
+# Supported languages: java, typescript, javascript, csharp, kotlin, scala,
+#   dart, php, python, ruby, go, rust, elixir, swift
+#
+# File gate is internal to the detector (applies_to checks language field).
+
+name: hierarchy_extractor
+description: >-
+  Detect class inheritance and interface implementation across 14 language
+  families. Emits EXTENDS and IMPLEMENTS relationships. Every class entity
+  carries is_abstract=True when the abstract modifier keyword is present
+  (or when the entity is a Swift protocol).
+module: memx_indexer.extractors.hierarchy_extractor
+function: detect
+applies_to_function: applies_to

@@ -1,0 +1,388 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/css/sample_styles.css",
+  "language": "css",
+  "entities": [
+    {
+      "name": ".container",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 62,
+      "end_line": 64,
+      "language": "css",
+      "signature": ".container",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": ".card",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 54,
+      "end_line": 59,
+      "language": "css",
+      "signature": ".card",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": ".btn-primary:hover",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 50,
+      "end_line": 52,
+      "language": "css",
+      "signature": ".btn-primary:hover",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": ".btn-primary",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 45,
+      "end_line": 48,
+      "language": "css",
+      "signature": ".btn-primary",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": ".btn",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 33,
+      "end_line": 43,
+      "language": "css",
+      "signature": ".btn",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": ".container",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 27,
+      "end_line": 31,
+      "language": "css",
+      "signature": ".container",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "body",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 20,
+      "end_line": 25,
+      "language": "css",
+      "signature": "body",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "*",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 14,
+      "end_line": 18,
+      "language": "css",
+      "signature": "*",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": ":root",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 3,
+      "end_line": 12,
+      "language": "css",
+      "signature": ":root",
+      "enrichment_required": false,
+      "properties": {
+        "type": "selector",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "selector",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "fadeIn",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 67,
+      "end_line": 70,
+      "language": "css",
+      "signature": "@keyframes fadeIn",
+      "enrichment_required": false,
+      "properties": {
+        "type": "keyframe",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "keyframe",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "--spacing-lg",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 11,
+      "end_line": 11,
+      "language": "css",
+      "signature": "--spacing-lg",
+      "enrichment_required": false,
+      "properties": {
+        "type": "variable",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "variable",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "--spacing-md",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 10,
+      "end_line": 10,
+      "language": "css",
+      "signature": "--spacing-md",
+      "enrichment_required": false,
+      "properties": {
+        "type": "variable",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "variable",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "--spacing-sm",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 9,
+      "end_line": 9,
+      "language": "css",
+      "signature": "--spacing-sm",
+      "enrichment_required": false,
+      "properties": {
+        "type": "variable",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "variable",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "--border-radius",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 8,
+      "end_line": 8,
+      "language": "css",
+      "signature": "--border-radius",
+      "enrichment_required": false,
+      "properties": {
+        "type": "variable",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "variable",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "--text-color",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 7,
+      "end_line": 7,
+      "language": "css",
+      "signature": "--text-color",
+      "enrichment_required": false,
+      "properties": {
+        "type": "variable",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "variable",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "--bg-color",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 6,
+      "end_line": 6,
+      "language": "css",
+      "signature": "--bg-color",
+      "enrichment_required": false,
+      "properties": {
+        "type": "variable",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "variable",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "--secondary-color",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 5,
+      "end_line": 5,
+      "language": "css",
+      "signature": "--secondary-color",
+      "enrichment_required": false,
+      "properties": {
+        "type": "variable",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "variable",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "--primary-color",
+      "qualified_name": null,
+      "kind": "SCOPE.Stylesheet",
+      "start_line": 4,
+      "end_line": 4,
+      "language": "css",
+      "signature": "--primary-color",
+      "enrichment_required": false,
+      "properties": {
+        "type": "variable",
+        "vera_type": "SCOPE.Stylesheet",
+        "vera_subtype": "variable",
+        "provenance": null,
+        "has_conditionals": false,
+        "has_external_calls": false,
+        "cyclomatic_complexity": 1,
+        "quality_score": 1.0
+      }
+    },
+    {
+      "name": "naming_convention@/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/css/sample_styles.css",
+      "qualified_name": "scope:pattern:naming_convention:/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/css/sample_styles.css",
+      "kind": "SCOPE.Pattern",
+      "start_line": null,
+      "end_line": null,
+      "language": "css",
+      "signature": null,
+      "enrichment_required": false,
+      "properties": {
+        "vera_subtype": null,
+        "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
+        "source": "",
+        "kind": "naming_convention",
+        "convention": "kebab-case",
+        "dominant_percentage": 41.66666666666667,
+        "sample_count": 96,
+        "source_file": "/Users/jorgecajas/Documents/Projects/archigraph/fixtures/sources/css/sample_styles.css"
+      }
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "4b6aae1"
+}

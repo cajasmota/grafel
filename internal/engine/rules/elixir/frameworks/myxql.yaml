@@ -1,0 +1,30 @@
+frameworks:
+  name: MyXQL (MySQL Adapter for Elixir / Ecto)
+  category: relational_database
+  hex_package: myxql
+  detection:
+    import_patterns:
+    - MyXQL
+    - Ecto.Adapters.MyXQL
+    code_patterns:
+    - MyXQL.start_link(
+    - adapter: MyXQL
+    - Ecto.Adapters.MyXQL
+  notes: >
+    MyXQL is the official MySQL adapter for Elixir's Ecto ORM. It implements
+    the Ecto.Adapters.SQL behaviour and connects to MySQL/MariaDB servers.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.mysql.mysql_extractor"
+    function: "extract"
+    description: >
+      Cross-language MySQL extractor: driver connections
+      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
+      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
+      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
+      embedded SQL table extraction
+      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

@@ -1,0 +1,26 @@
+# CSRF vulnerability heuristic detector (MX-737)
+# Detects CSRF protection presence or absence for state-changing endpoints
+# across 12 language/framework combinations:
+#   Java: Spring Security (.csrf().disable() detection)
+#   JS/TS: Express (csurf middleware), NestJS (CsrfGuard)
+#   Python: Django (CSRF_COOKIE_SECURE, @csrf_exempt, CsrfViewMiddleware)
+#           FastAPI/Flask (not-applicable-api-framework)
+#   Ruby: Rails (protect_from_forgery / skip_before_action)
+#   PHP: Laravel (VerifyCsrfToken / $except), Symfony (csrf_protection)
+#   Go: Gin/Echo/Chi/Fiber (gorilla/csrf, nosurf)
+#   C#: ASP.NET Core ([ValidateAntiForgeryToken] / [IgnoreAntiforgeryToken])
+#   Kotlin: Ktor (not-applicable-api-framework)
+#   Elixir: Phoenix (protect_from_forgery plug)
+#
+# Emits SCOPE.Config(kind=csrf_policy) for POST/PUT/DELETE/PATCH endpoints only.
+# File gate is internal to the detector (applies_to checks entity HTTP methods).
+
+name: csrf_heuristic_detector
+description: >-
+  Detect CSRF protection presence/absence across 12 language/framework
+  combinations. Emits SCOPE.Config entities with kind=csrf_policy,
+  is_protected bool, and csrf_mechanism string for each state-changing
+  endpoint (POST/PUT/DELETE/PATCH).
+module: memx_indexer.pattern_detectors.csrf_heuristic_detector
+function: detect
+applies_to_function: applies_to

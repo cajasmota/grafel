@@ -1,0 +1,38 @@
+frameworks:
+  name: CodeIgniter
+  package_name: codeigniter4/framework
+  category: web_full_stack
+  github_stars_2025: 5400+
+  detection:
+    config_files:
+    - composer.json
+    - app/Config/App.php
+    - app/Config/Database.php
+    - app/Config/Routes.php
+    - app/Controllers/BaseController.php
+    - spark
+    - env
+    - public/index.php
+    - writable/
+    composer_deps:
+    - codeigniter4/framework
+    - codeigniter4/shield
+    - codeigniter4/settings
+    import_markers:
+    - use CodeIgniter\
+    - extends BaseController
+    - extends Controller
+    - CodeIgniter\Model
+    - CodeIgniter\Database\
+    structural_markers:
+    - app/Controllers/
+    - app/Models/
+    - app/Views/
+    - app/Config/
+    - spark
+    - writable/
+  notes: 'spark CLI file at root is CodeIgniter 4''s equivalent of Laravel''s artisan.
+    CI3 projects use system/ and application/ directories — distinct from CI4. app/Config/Routes.php
+    is high-confidence for CI4.
+
+    '

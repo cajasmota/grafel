@@ -1,0 +1,156 @@
+complexity_signals:
+  protocol_oriented_composition:
+    description: 'Protocol-oriented programming (POP) — Swift''s preferred composition
+      model over class inheritance.
+
+      '
+    patterns:
+    - protocol * {
+    - 'extension * : * {'
+    - associatedtype
+    - some Protocol (opaque return type)
+    - any Protocol (existential — Swift 5.7+)
+    - 'protocol * : AnyObject {'
+    - 'where Self : '
+    - default extension implementations
+    complexity_indicator: 'Deep protocol hierarchies with associated types indicate
+      advanced generic programming. some/any distinction = Swift 5.7+ type system
+      awareness.
+
+      '
+  generics_with_associated_types:
+    description: 'Generic functions/types with associated type constraints indicate
+      complex type-level programming.
+
+      '
+    patterns:
+    - 'func *<T: *>(*) -> *'
+    - 'struct *<T> where T : *'
+    - 'class *<T, U> where T : *, U : *'
+    - associatedtype Element
+    - 'associatedtype Iterator : IteratorProtocol'
+    - 'typealias * = '
+    - primary associated types (Swift 5.7+)
+    - '@_specialize'
+    complexity_indicator: 'Primary associated types (Collection<Int>) and conditional
+      conformances indicate advanced generics. @_specialize is a performance optimization
+      attribute.
+
+      '
+  property_wrappers:
+    description: 'Property wrappers are a first-class language feature used extensively
+      in SwiftUI and data binding patterns.
+
+      '
+    patterns:
+    - '@State'
+    - '@Binding'
+    - '@StateObject'
+    - '@ObservedObject'
+    - '@EnvironmentObject'
+    - '@Environment(\.'
+    - '@AppStorage'
+    - '@SceneStorage'
+    - '@FetchRequest'
+    - '@Published'
+    - '@propertyWrapper (custom definition)'
+    - wrappedValue
+    - projectedValue
+    complexity_indicator: 'Custom @propertyWrapper definitions indicate advanced abstraction.
+      Nested property wrapper usage (e.g. @Binding on @State projected value) = complex
+      data flow. @FetchRequest = Core Data + SwiftUI integration.
+
+      '
+  structured_concurrency:
+    description: 'Swift 5.5+ async/await, actors, and Sendable for safe concurrent
+      programming.
+
+      '
+    patterns:
+    - async func
+    - 'await '
+    - async let
+    - Task {
+    - Task.detached {
+    - TaskGroup
+    - 'withTaskGroup(of:'
+    - 'withThrowingTaskGroup(of:'
+    - 'actor '
+    - '@MainActor'
+    - '@globalActor'
+    - nonisolated
+    - Sendable
+    - AsyncSequence
+    - AsyncStream<
+    - for await * in
+    - continuation.resume(
+    - withCheckedContinuation {
+    - withCheckedThrowingContinuation {
+    complexity_indicator: 'Actor definitions = custom isolated domains. withCheckedContinuation
+      = bridging callback APIs to async. @globalActor = custom global actor. AsyncSequence
+      conformance = streaming data pipeline.
+
+      '
+  combine_publishers:
+    description: 'Combine reactive pipeline composition — chains of operators indicate
+      complex async data flow.
+
+      '
+    patterns:
+    - AnyPublisher<
+    - .map {
+    - .flatMap {
+    - .combineLatest(
+    - '.merge(with:'
+    - .zip(
+    - '.debounce(for:'
+    - '.throttle(for:'
+    - .retry(
+    - .catch {
+    - .switchToLatest()
+    - .share()
+    - .multicast(
+    - Deferred {
+    - Future {
+    complexity_indicator: 'Long operator chains (5+ operators) = complex reactive
+      pipeline. Future + Deferred = lazy async wrapping. switchToLatest = search/
+      cancellation pattern. share()/multicast = multicasting (advanced).
+
+      '
+  result_builders:
+    description: '@resultBuilder custom DSLs — used by SwiftUI, RegexBuilder, and
+      custom DSL authors.
+
+      '
+    patterns:
+    - '@resultBuilder (custom definition)'
+    - '@ViewBuilder'
+    - '@SceneBuilder'
+    - '@CommandsBuilder'
+    - '@WidgetBundleBuilder'
+    - buildBlock(
+    - buildOptional(
+    - 'buildEither(first:'
+    complexity_indicator: 'Custom @resultBuilder definitions = project-level DSL authoring.
+      Multiple buildBlock/buildEither implementations = branching DSL support.
+
+      '
+  macro_usage:
+    description: 'Swift 5.9+ macros expand code at compile time — high complexity
+      signal.
+
+      '
+    patterns:
+    - '@Model (SwiftData macro)'
+    - '#Preview (SwiftUI preview macro)'
+    - '#expect (swift-testing)'
+    - '#require (swift-testing)'
+    - 'macro * = #externalMacro('
+    - '@freestanding(expression)'
+    - '@attached(member)'
+    - '@attached(extension)'
+    complexity_indicator: 'Custom macro definitions (macro * = #externalMacro) = advanced
+      metaprogramming requiring separate compiler plugin target. Co-presence of macro
+      definition + plugin target in Package.swift is high complexity.
+
+      '

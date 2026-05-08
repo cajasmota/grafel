@@ -1,0 +1,30 @@
+database:
+  name: Realm (Objective-C)
+  type: mobile_database
+  pod_coordinates:
+  - pod 'Realm'
+  - pod 'RealmSwift' (Swift; ObjC uses 'Realm')
+  detection:
+    config_files:
+    - Podfile (Realm entry)
+    - Cartfile (realm/realm-swift entry)
+    - '*.realm (database file, runtime artifact)'
+    import_patterns:
+    - '#import <Realm/Realm.h>'
+    - '#import "Realm.h"'
+    code_patterns:
+    - '@interface * : RLMObject'
+    - RLMRealm *
+    - '[RLMRealm defaultRealm]'
+    - RLMResults *
+    - RLMArray *
+    - '[realm write:^{'
+    - '[realm addObject:'
+    - '[realm deleteObject:'
+    - RLMNotificationBlock
+  notes: 'Realm is a mobile-first database with its own object store (not SQLite by
+    default). ObjC model classes extend RLMObject. RLMRealm is the primary access
+    point. Write operations are wrapped in transactions. .realm files are the runtime
+    database artifacts (not source).
+
+    '

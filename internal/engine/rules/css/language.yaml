@@ -1,0 +1,25 @@
+meta:
+  language: css
+  extensions:
+  - .css
+  - .scss
+  - .sass
+  - .less
+  - .styl
+  - .stylus
+  - .pcss
+  - .postcss
+  primary_dependency_file: package.json
+  lock_files:
+  - package-lock.json
+  - yarn.lock
+  - pnpm-lock.yaml
+  - bun.lockb
+  vera_scope_type: Stylesheet
+  notes: 'CSS and its preprocessors/frameworks are indexed as Stylesheet entities
+    in archigraph. Entity types are structural: selectors, mixins, variables/custom properties,
+    keyframes, media queries, and @import chains. There is no ORM analog for CSS —
+    this section is replaced by entity_types which describes the indexable constructs
+    within stylesheet files.
+
+    '

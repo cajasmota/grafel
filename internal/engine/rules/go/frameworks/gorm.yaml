@@ -1,0 +1,43 @@
+# GORM ORM extraction rules (MX-548)
+# Schema: FrameworkExtractionSchema (MX-494)
+# Module: gorm.io/gorm
+
+file_conventions: []
+
+source_patterns:
+  # Model struct with embedded gorm.Model
+  - pattern: 'type\s+(\w+)\s+struct\s*\{[^}]*\bgorm\.Model\b'
+    entity_type: Schema
+    name_group: 1
+    scope: file
+
+  # DB connection: gorm.Open(...)
+  - pattern: 'gorm\.Open\s*\('
+    entity_type: Config
+    name_group: 0
+    scope: file
+
+  # AutoMigrate: db.AutoMigrate(&User{})
+  - pattern: '\.AutoMigrate\s*\('
+    entity_type: Schema
+    name_group: 0
+    scope: file
+
+  # Lifecycle hook: func (u *User) BeforeCreate(tx *gorm.DB)
+  - pattern: 'func\s*\(\s*\w+\s+\*?\w+\s*\)\s*(BeforeCreate|AfterCreate|BeforeUpdate|AfterUpdate|BeforeDelete|AfterDelete|BeforeSave|AfterSave|AfterFind)\s*\('
+    entity_type: Controller
+    name_group: 1
+    scope: file
+
+  # Scope function returning *gorm.DB
+  - pattern: 'func\s+(\w+)\s*\([^)]*\)\s*(?:func\s*\(\s*\w*\s*\*gorm\.DB\s*\)\s*\*gorm\.DB|\*gorm\.DB)'
+    entity_type: Controller
+    name_group: 1
+    scope: file
+
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.go.gorm_extractor"
+    function: "extract"
+    description: "Extract GORM models (gorm.Model embedded structs and gorm-tagged structs -> SCOPE.Schema), associations (HasOne/HasMany/BelongsTo/Many2Many struct tags and slice/pointer fields -> DEPENDS_ON), lifecycle hooks (BeforeCreate/AfterCreate/etc. -> SCOPE.Operation/function), scope functions (func(db *gorm.DB) *gorm.DB -> SCOPE.Operation/function), migrations (AutoMigrate/Migrator -> SCOPE.Pattern), DB operations (db.Create/Find/First/Where/Preload/etc. -> SCOPE.Operation/function), custom table names (TableName() method -> schema metadata), and DB connections (gorm.Open() -> SCOPE.Service)."

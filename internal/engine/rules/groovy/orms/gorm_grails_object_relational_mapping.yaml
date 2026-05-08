@@ -1,0 +1,45 @@
+orms:
+  name: GORM (Grails Object Relational Mapping)
+  category: orm_active_record
+  gradle_coordinates:
+  - org.grails:grails-datastore-gorm-hibernate5
+  - org.grails:grails-datastore-gorm
+  - org.grails:grails-datastore-gorm-mongodb
+  - org.grails:grails-datastore-gorm-neo4j
+  - org.grails:grails-datastore-gorm-redis
+  detection:
+    config_files:
+    - grails-app/domain/**/*.groovy
+    - grails-app/conf/DataSource.groovy (Grails 2.x)
+    - grails-app/conf/application.yml (datasource section)
+    code_patterns:
+    - class * {
+    - static mapping = {
+    - static constraints = {
+    - static hasMany = [
+    - static belongsTo = [
+    - static hasOne = [
+    - static fetchMode = [
+    - def save()
+    - def get(id)
+    - def list()
+    - def findBy*()
+    - def findAllBy*()
+    - def countBy*()
+    - withTransaction {
+    - withCriteria {
+    - createCriteria().list {
+    - where { ... } (DetachedCriteria)
+    - namedQueries {
+    import_patterns:
+    - import grails.gorm.transactions.
+    - import grails.gorm.DetachedCriteria
+    - import org.grails.datastore.gorm.
+  notes: 'GORM is Grails'' data access layer. Domain classes in grails-app/domain/
+    are GORM entities — no @Entity annotation required (convention over configuration).
+    Static mapping closure defines column names, cascade, etc. Static constraints
+    closure defines validation. Dynamic finders (findByNameAndAge()) are GORM-generated
+    at runtime — presence of these patterns in service/controller code is high-confidence
+    GORM. GORM also supports MongoDB, Neo4j, Redis via separate plugins.
+
+    '

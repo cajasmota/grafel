@@ -1,0 +1,30 @@
+orms_database:
+  name: Postgrex (Elixir PostgreSQL Driver)
+  category: postgres_driver
+  hex_package: postgrex
+  detection:
+    import_patterns:
+      - Postgrex
+      - Ecto.Adapters.Postgres
+    code_patterns:
+      - Postgrex.start_link(
+      - Repo.start_link(
+      - adapter: Ecto.Adapters.Postgres
+  notes: >
+    Postgrex is the PostgreSQL driver for Elixir. Ecto uses Postgrex under
+    the hood via Ecto.Adapters.Postgres. Postgrex supports LISTEN/NOTIFY
+    natively via Postgrex.Notifications.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: Postgrex.start_link/Repo.start_link
+      connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), LISTEN/NOTIFY
+      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
+      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

@@ -1,0 +1,99 @@
+complexity_signals:
+- category: resource_count
+  description: 'Total number of resources declared in the program. Higher count signals
+    larger infrastructure scope and potential for subtle interactions.
+
+    '
+  patterns:
+  - aws.s3.Bucket(
+  - aws.lambda.Function(
+  - kubernetes.core.v1.Pod(
+  indexing_note: 'Count distinct resource instantiations. A program with 50+ resources
+    or deeply nested resource creation (resources created in loops or within ComponentResource
+    factories) is high-complexity.
+
+    '
+- category: component_resource_nesting
+  description: 'Depth of ComponentResource nesting — custom components calling other
+    custom components. Each level of nesting increases abstraction overhead.
+
+    '
+  patterns:
+  - 'class NestedComponent(ComponentResource):'
+  - child = CustomComponent(self, ...)
+  - ComponentResource subclass containing ComponentResource instances
+  indexing_note: 'Flag components that instantiate other custom components (depth
+    > 2). This indicates sophisticated abstraction but is also a cognitive complexity
+    driver. Extract component hierarchy as structural metadata.
+
+    '
+- category: cross_stack_references
+  description: 'StackReference usage indicates dependencies on other stacks. Multiple
+    cross-stack references create orchestration complexity.
+
+    '
+  patterns:
+  - StackReference(
+  - automation.select_stack(
+  indexing_note: 'Each StackReference creates a runtime dependency. Extract referenced
+    stack organization and name. Multiple cross-stack references signal tightly coupled
+    stack architecture.
+
+    '
+- category: output_apply_chains
+  description: 'Output<T>.apply() chains transform asynchronous values. Long chains
+    (3+ apply calls) are hard to trace and reason about.
+
+    '
+  patterns:
+  - '.apply(lambda x:'
+  - .apply(x =>
+  - .Apply(x =>
+  - .Apply(x =>
+  indexing_note: 'Count apply() depth for complexity scoring. Output.All() with 5+
+    arguments is also a signal (combining multiple outputs). Extract the transformation
+    logic for documentation.
+
+    '
+- category: config_secret_count
+  description: 'Number of configuration keys and especially secret keys. High secret
+    count signals complex credential and environment management.
+
+    '
+  patterns:
+  - Config.require(
+  - Config.requireSecret(
+  - Config.getBoolean(
+  - Config.getSecretObject(
+  indexing_note: 'Count required keys vs. optional keys and secret count separately.
+    More than 10 secrets signal complex multi-service authentication setup.
+
+    '
+- category: automation_api_usage
+  description: 'Pulumi Automation API enables programmatic stack management. Presence
+    indicates meta-infrastructure orchestration (stacks managing stacks).
+
+    '
+  patterns:
+  - import pulumi.automation as auto
+  - using Pulumi.Automation;
+  - '"github.com/pulumi/pulumi/sdk/v3/auto"'
+  - '@pulumi/pulumi/automation'
+  indexing_note: 'Flag programs using Automation API as orchestration infrastructure.
+    Extract stack management logic (create_or_select_stack, up/destroy operations).
+
+    '
+- category: conditional_resource_creation
+  description: 'Resources created conditionally based on config, environment, or input
+    variables. Signals variable infrastructure topology.
+
+    '
+  patterns:
+  - if config.get_boolean(
+  - if cfg.GetBoolean(
+  - if config.RequireBoolean(
+  - 'when:'
+  indexing_note: 'Flag infrastructure conditionals for complexity. Variable topology
+    makes static analysis harder and increases blast-radius unpredictability.
+
+    '

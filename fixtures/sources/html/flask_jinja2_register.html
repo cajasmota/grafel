@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+{% include "partials/flash_messages.html" %}
+{% macro render_field(field) %}
+  <div class="field">{{ field.label }}{{ field() }}</div>
+{% endmacro %}
+<form action="/register" method="post">
+  <input type="text" name="username" id="username">
+  <input type="email" name="email" id="email">
+  <input type="password" name="password" id="password">
+  <select name="role" id="role"><option value="user">User</option></select>
+  <textarea name="bio" id="bio"></textarea>
+  <button type="submit" name="submit">Register</button>
+</form>
+{% endblock %}

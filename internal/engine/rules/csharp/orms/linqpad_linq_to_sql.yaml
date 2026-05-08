@@ -1,0 +1,30 @@
+orms:
+  name: LINQPad / LINQ-to-SQL
+  nuget_package: null
+  category: query_language_orm
+  adoption_rank_2025: 4
+  detection:
+    code_patterns:
+    - from x in
+    - select x
+    - where x.
+    - .Where(
+    - .Select(
+    - .OrderBy(
+    - .GroupBy(
+    - .Join(
+    - .Include(
+    - .ThenInclude(
+    - DataContext
+    - Table<
+    - EntityRef<
+    - .dbml
+    config_files:
+    - '*.dbml'
+    - '*.linq'
+    notes: 'LINQ itself is a C# language feature — not an ORM. LINQ-to-SQL uses DataContext
+      and .dbml mapping files (legacy, SQL Server only). LINQPad .linq files indicate
+      LINQPad scripts. LINQ query expressions are pervasive across all ORMs in the
+      .NET ecosystem.
+
+      '

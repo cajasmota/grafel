@@ -1,0 +1,42 @@
+orms_database:
+  name: JavaScript/TypeScript SQLite Drivers (better-sqlite3 / sql.js / libsql)
+  category: sqlite_driver
+  npm_packages:
+    - better-sqlite3
+    - sql.js
+    - "@libsql/client"
+    - bun:sqlite
+  detection:
+    import_patterns:
+      - require('better-sqlite3')
+      - require("better-sqlite3")
+      - from 'better-sqlite3'
+      - from "better-sqlite3"
+      - from 'sql.js'
+      - from "@libsql/client"
+      - import initSqlJs
+    code_patterns:
+      - new Database(
+      - initSqlJs(
+      - SQL.Database(
+      - createClient(
+      - ":memory:"
+  notes: >
+    better-sqlite3 is the dominant synchronous SQLite driver for Node.js.
+    sql.js compiles SQLite to WebAssembly for browser use. @libsql/client
+    targets libSQL (Turso fork of SQLite). bun:sqlite is Bun's built-in
+    SQLite binding.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: better-sqlite3/sql.js/libsql connections
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

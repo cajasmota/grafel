@@ -1,0 +1,9 @@
+frameworks: frameworks/ [flutter_mobile_cross_platform, flutter_web, flutter_desktop,
+  dart_shelf_server, dart_frog_server, serverpod, angel3]
+mobile: frameworks/ [flutter_mobile_ios_android, flutter_web_web_target, flutter_desktop_macos_windows_linux]
+build_tools: build_tools.yaml
+testing: test_patterns.yaml
+orm_database: orms/ [drift_formerly_moor, floor, isar, hive, sqflite]
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml

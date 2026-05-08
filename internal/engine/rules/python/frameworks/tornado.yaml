@@ -1,0 +1,22 @@
+frameworks:
+  name: Tornado
+  pypi_package: tornado
+  category: web_async
+  github_stars_2025: 21800+
+  gateway: custom
+  detection:
+    config_files:
+    - server.py
+    - app.py
+    dependency_names:
+    - tornado
+    import_markers:
+    - import tornado.web
+    - tornado.ioloop.IOLoop
+    - RequestHandler
+    structural_markers:
+    - handlers/ directory
+  notes: 'Long-polling and WebSocket-heavy applications. Less common in new greenfield
+    projects (superseded by asyncio-native frameworks).
+
+    '

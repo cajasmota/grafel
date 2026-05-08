@@ -1,0 +1,29 @@
+orms_database:
+  name: KMongo (Kotlin MongoDB driver)
+  maven_coordinates: org.litote.kmongo:kmongo
+  category: nosql_driver
+  detection:
+    gradle_dep_patterns:
+      - kmongo
+      - kmongo-coroutine
+      - kmongo-async
+    import_markers:
+      - import org.litote.kmongo
+      - import com.mongodb.kotlin.client
+    code_patterns:
+      - KMongo.createClient(
+      - KMongoCoroutineClient
+      - collection.aggregate(
+      - client.startSession(
+
+# custom_extractors: Python callables for patterns YAML rules cannot capture.
+custom_extractors:
+  - module: memx_indexer.languages.python.mongodb_extractor
+    function: extract
+    description: >-
+      MongoDB cross-language extractor: driver connections (SCOPE.Service),
+      aggregation pipelines (SCOPE.Operation/aggregation), change streams
+      (SCOPE.Operation/change_stream), transactions (SCOPE.Pattern),
+      index definitions (SCOPE.Schema/index), schema validation
+      (SCOPE.Schema/validation), GridFS (SCOPE.Operation/gridfs),
+      Atlas Search (SCOPE.Operation/atlas_search).

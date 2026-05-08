@@ -1,0 +1,41 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/sample-api/routes/orders.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "create_order",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 17,
+      "end_line": 46,
+      "language": "python",
+      "signature": "def create_order(order_in: OrderCreate, db: AsyncSession = Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "get_order",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 50,
+      "end_line": 56,
+      "language": "python",
+      "signature": "def get_order(order_id: int, db: AsyncSession = Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "cancel_order",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 60,
+      "end_line": 79,
+      "language": "python",
+      "signature": "def cancel_order(order_id: int, db: AsyncSession = Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

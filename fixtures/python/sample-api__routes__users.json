@@ -1,0 +1,52 @@
+{
+  "input_file": "/Users/jorgecajas/Documents/Projects/archigraph-trials/fixtures/sample-api/routes/users.py",
+  "language": "python",
+  "entities": [
+    {
+      "name": "_hash_password",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 16,
+      "end_line": 18,
+      "language": "python",
+      "signature": "def _hash_password(password: str) -> str",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "create_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 22,
+      "end_line": 35,
+      "language": "python",
+      "signature": "def create_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "get_user",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 39,
+      "end_line": 45,
+      "language": "python",
+      "signature": "def get_user(user_id: int, db: AsyncSession = Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    },
+    {
+      "name": "list_users",
+      "qualified_name": null,
+      "kind": "SCOPE.Operation",
+      "start_line": 49,
+      "end_line": 52,
+      "language": "python",
+      "signature": "def list_users(skip: int = 0, limit: int = 20, db: AsyncSession = Depends(get_db))",
+      "enrichment_required": false,
+      "properties": {}
+    }
+  ],
+  "relationships": [],
+  "extractor_version": "base-python-parser"
+}

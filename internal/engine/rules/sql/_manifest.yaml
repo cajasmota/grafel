@@ -1,0 +1,8 @@
+frameworks_and_dialects: frameworks/ [postgresql, mysql_mariadb, sqlite, sql_server_t_sql,
+  oracle_pl_sql, dbt_data_build_tool, flyway, liquibase]
+migration_tools: test_patterns.yaml
+testing_frameworks: test_patterns.yaml
+schema_definition_patterns: extras.yaml
+complexity_signals: complexity.yaml
+skip_patterns: skip_patterns.yaml
+domain_root_conventions: extras.yaml

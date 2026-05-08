@@ -1,0 +1,32 @@
+orms_database:
+  name: PostgresNIO / postgres-kit (Swift PostgreSQL Drivers)
+  category: postgres_driver
+  spm_packages:
+    - vapor/postgres-nio
+    - vapor/postgres-kit
+  detection:
+    import_patterns:
+      - import PostgresNIO
+      - import PostgresKit
+    code_patterns:
+      - PostgresConnection.connect(
+      - PostgresClient(
+      - PostgresNIO.connect(
+  notes: >
+    PostgresNIO is a non-blocking Swift PostgreSQL client built on NIO.
+    postgres-kit is the Vapor abstraction layer on top of PostgresNIO.
+    Used for server-side Swift applications with the Vapor framework.
+
+file_conventions: []
+source_patterns: []
+relationship_rules: []
+
+custom_extractors:
+  - module: "memx_indexer.languages.postgresql.postgresql_extractor"
+    function: "extract"
+    description: >
+      Cross-language PostgreSQL extractor: PostgresConnection.connect /
+      PostgresClient connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER),
+      LISTEN/NOTIFY (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY),
+      COPY (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
+      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

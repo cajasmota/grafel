@@ -1,0 +1,24 @@
+client_tools:
+  name: graphql-request
+  language: JavaScript / TypeScript
+  category: graphql_client
+  github_stars_2025: 6200+
+  detection:
+    package_json_deps:
+    - graphql-request
+    structural_markers:
+    - request(
+    - GraphQLClient
+    - gql`
+    - new GraphQLClient(
+    - import { request } from 'graphql-request'
+    - import { gql } from 'graphql-request'
+  extraction_targets:
+  - request() call sites with query strings
+  - GraphQLClient instances and endpoint URLs
+  - gql` ` tagged template operations
+  notes: 'Minimal GraphQL client — no caching, no reactive bindings. Common in server-side
+    Node.js code, scripts, and CLI tools fetching from a GraphQL API. Often used with
+    TypeScript codegen for typed queries.
+
+    '

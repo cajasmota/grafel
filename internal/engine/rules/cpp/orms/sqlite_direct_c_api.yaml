@@ -1,0 +1,42 @@
+orm_db:
+  name: SQLite (direct C API)
+  category: embedded_db
+  detection:
+    cmake_find_package:
+    - find_package(SQLite3
+    - find_package(sqlite3
+    cmake_target_link:
+    - SQLite::SQLite3
+    - sqlite3
+    - ${SQLite3_LIBRARIES}
+    vcpkg_packages:
+    - sqlite3
+    conan_packages:
+    - sqlite3/
+    include_patterns:
+    - '#include <sqlite3.h>'
+    - '#include "sqlite3.h"'
+    structural_markers:
+    - sqlite3_open(
+    - sqlite3_exec(
+    - sqlite3_prepare_v2(
+    - sqlite3_step(
+    - sqlite3_column_
+    - SQLITE_OK
+    - sqlite3 *db
+    - sqlite3_stmt
+  notes: 'Most common embedded DB in C++. Direct C API usage (sqlite3_open, sqlite3_exec)
+    indicates no ORM abstraction. Often bundled as sqlite3.c amalgamation source file
+    (skippable generated file).
+
+    '
+
+custom_extractors:
+  - module: "memx_indexer.languages.sqlite.sqlite_extractor"
+    function: "extract"
+    description: >
+      Cross-language SQLite extractor: sqlite3_open/sqlite3_open_v2 calls
+      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
+      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
+      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
+      flagged with is_in_memory=true.

@@ -1,0 +1,29 @@
+orm_database:
+  name: isar
+  pubspec_dependency: isar
+  category: nosql_embedded
+  pub_dev_url: https://pub.dev/packages/isar
+  detection:
+    pubspec_signals:
+    - 'isar:'
+    - 'isar_flutter_libs:'
+    pubspec_dev_signals:
+    - 'isar_generator:'
+    - 'build_runner:'
+    code_patterns:
+    - import 'package:isar/isar.dart'
+    - '@collection'
+    - '@Collection()'
+    - '@Id()'
+    - '@Index('
+    - IsarCollection
+    - isar.writeTxn(
+    - isar.txn(
+    - .filter().
+    output_patterns:
+    - '*.g.dart'
+    notes: 'High-performance NoSQL embedded database for Flutter/Dart. Stores Dart
+      objects natively (no SQL). @collection and @Id() annotations are the primary
+      code-level signals. Requires build_runner codegen.
+
+      '

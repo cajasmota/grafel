@@ -1,0 +1,25 @@
+orms:
+  name: DataMapper / Hanami::Model (legacy)
+  gem_name: data_mapper
+  category: data_mapper_legacy
+  detection:
+    gemfile_deps:
+    - data_mapper
+    - dm-core
+    - dm-migrations
+    - dm-sqlite-adapter
+    - dm-postgres-adapter
+    - hanami-model
+    config_files:
+    - Gemfile
+    code_patterns:
+    - include DataMapper::Resource
+    - property :name, String
+    - DataMapper.setup
+    - DataMapper.finalize
+    - DataMapper.auto_migrate!
+  notes: 'DataMapper is unmaintained (last release 2012). Only present in legacy codebases.
+    hanami-model was Hanami 1.x''s DataMapper-based ORM, replaced in Hanami 2.x by
+    ROM-rb. Flag as legacy when detected.
+
+    '

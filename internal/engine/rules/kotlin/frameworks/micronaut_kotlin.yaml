@@ -1,0 +1,26 @@
+frameworks:
+  name: Micronaut (Kotlin)
+  category: web_cloud_native
+  gradle_coordinates:
+  - io.micronaut:micronaut-http-server-netty
+  - io.micronaut.kotlin:micronaut-kotlin-runtime
+  detection:
+    config_files:
+    - application.yml
+    - micronaut-cli.yml
+    build_signals:
+    - id("io.micronaut.application")
+    - '"io.micronaut:micronaut-http-server-netty"'
+    - '"io.micronaut.kotlin:micronaut-kotlin-runtime"'
+    import_patterns:
+    - import io.micronaut.
+    - import jakarta.inject.
+    code_patterns:
+    - '@Controller('
+    - '@Singleton'
+    - '@Inject'
+    - '@Get('
+  notes: 'Micronaut Kotlin: micronaut-cli.yml is unique to Micronaut projects. io.micronaut.application
+    plugin in build.gradle.kts is definitive. AOT compilation — no reflection at runtime.
+
+    '

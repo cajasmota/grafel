@@ -1,0 +1,97 @@
+frameworks:
+  name: GitHub Actions
+  language: cicd
+  official_docs: https://docs.github.com/en/actions
+  config_file: .github/workflows/*.yml
+  adopted_by: GitHub repositories (native integration)
+  vera_scope: Service (pipeline as Service, job as Operation)
+  characteristics:
+    - Event-driven (push, pull_request, schedule, workflow_dispatch)
+    - Multi-job parallelism by default
+    - Native secret management via GitHub secrets
+    - Extensive marketplace of reusable actions
+    - Matrix builds for parameterised job expansion
+    - Self-hosted and GitHub-hosted runners
+  complexity_signal_markers:
+    - Job count > 10
+    - Workflow count > 5
+    - Matrix dimensions > 3
+    - Conditional job chains > 4 levels deep
+
+# ---------------------------------------------------------------------------
+# Extraction schema (FrameworkExtractionSchema — MX-526)
+# ---------------------------------------------------------------------------
+
+file_conventions:
+  - glob: ".github/workflows/*.yml"
+    entity_type: Config
+    name_from: filename
+  - glob: ".github/workflows/*.yaml"
+    entity_type: Config
+    name_from: filename
+  - glob: ".github/actions/*/action.yml"
+    entity_type: Component
+    name_from: filename
+
+source_patterns:
+  # Workflow name
+  - pattern: "^name:\\s+[\"']?([^\"'\\n]+)"
+    entity_type: Service
+    name_group: 1
+    scope: file
+  # Job definition
+  - pattern: "^\\s{2}(\\w[\\w-]*):\\s*\\n\\s+(?:runs-on|uses):"
+    entity_type: Operation
+    name_group: 1
+    scope: file
+  # Step with uses: (reusable action)
+  - pattern: "uses:\\s+(\\S+)"
+    entity_type: Dependency
+    name_group: 1
+    scope: file
+  # Step with name:
+  - pattern: "^\\s+-\\s+name:\\s+[\"']?([^\"'\\n]+)"
+    entity_type: Task
+    name_group: 1
+    scope: file
+  # on: trigger events
+  - pattern: "^on:\\s*\\n\\s+(\\w+):"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # on: single event
+  - pattern: "^on:\\s+(\\w+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # env: at workflow level
+  - pattern: "^env:\\s*\\n\\s+(\\w+):"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # secrets reference
+  - pattern: "secrets\\.(\\w+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+  # runs-on: runner
+  - pattern: "runs-on:\\s+(\\S+)"
+    entity_type: Config
+    name_group: 1
+    scope: file
+
+relationship_rules:
+  # Job needs another job
+  - pattern: "needs:\\s+\\[?([\\w-]+)"
+    source_type: Operation
+    target_type: Operation
+    relationship: CALLS
+    source_group: 1
+    target_group: 1
+  # uses: reusable action
+  - pattern: "(\\w[\\w-]*):[\\s\\S]*?uses:\\s+(\\S+)"
+    source_type: Operation
+    target_type: Dependency
+    relationship: CALLS
+    source_group: 1
+    target_group: 2

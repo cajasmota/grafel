@@ -1,0 +1,32 @@
+orm_db:
+  name: Slick
+  sbt_coordinates:
+  - com.typesafe.slick::slick
+  - com.typesafe.slick::slick-hikaricp
+  - com.typesafe.play::play-slick
+  detection:
+    build_signals:
+    - '"com.typesafe.slick" %% "slick"'
+    - '"com.typesafe.slick" %% "slick-hikaricp"'
+    import_patterns:
+    - import slick.jdbc._
+    - import slick.jdbc.PostgresProfile.api._
+    - import slick.jdbc.MySQLProfile.api._
+    - import slick.lifted.ProvenShape
+    code_patterns:
+    - class TableQuery
+    - TableQuery[
+    - 'class * = '
+    - 'def * = '
+    - db.run(
+    - DBIO.seq(
+    - profile.api._
+    - Table[_]
+    - extends Table[
+    - extends TableQuery
+  notes: 'The canonical Scala ORM/query library. Profile-based design: import the
+    profile (PostgresProfile, MySQLProfile) and its api._. Table definition via class
+    extends Table[CaseClass] with def * projection is definitive. db.run() executes
+    DBIOAction. Used heavily with Play Framework.
+
+    '
