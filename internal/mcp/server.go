@@ -221,6 +221,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("Corpus-level metrics for the resolved group."),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 	), s.wrap("archigraph_graph_stats", s.handleGraphStats))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_telemetry",

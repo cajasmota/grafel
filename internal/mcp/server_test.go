@@ -561,3 +561,75 @@ func TestListFindingsSinceFilter(t *testing.T) {
 		t.Fatalf("expected empty list with future since, got: %s", txt)
 	}
 }
+
+// TestGraphStatsRepoFilter verifies repo_filter narrows graph_stats to the
+// named repos and aggregates totals only over that subset.
+func TestGraphStatsRepoFilter(t *testing.T) {
+	dir := t.TempDir()
+	r1 := filepath.Join(dir, "alpha")
+	r2 := filepath.Join(dir, "beta")
+	_ = os.MkdirAll(r1, 0o755)
+	_ = os.MkdirAll(r2, 0o755)
+	writeGraph(t, r1, fixtureDoc("alpha"))
+	writeGraph(t, r2, fixtureDoc("beta"))
+	regPath := makeRegistry(t, dir, map[string]map[string]string{
+		"g": {"alpha": r1, "beta": r2},
+	})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Baseline: no filter -> both repos in totals.
+	resAll := callTool(t, srv, "archigraph_graph_stats", nil)
+	var allOut struct {
+		Entities      int              `json:"entities"`
+		Relationships int              `json:"relationships"`
+		Repos         []map[string]any `json:"repos"`
+	}
+	if err := json.Unmarshal([]byte(resultText(resAll)), &allOut); err != nil {
+		t.Fatalf("unmarshal all: %v: %s", err, resultText(resAll))
+	}
+	if len(allOut.Repos) != 2 {
+		t.Fatalf("expected 2 repos with no filter, got %d: %s", len(allOut.Repos), resultText(resAll))
+	}
+	if allOut.Entities != 8 || allOut.Relationships != 6 {
+		t.Fatalf("expected 8 entities / 6 relationships across both repos, got %d/%d", allOut.Entities, allOut.Relationships)
+	}
+
+	// Filtered: only alpha -> totals halved, single repo entry.
+	resFiltered := callTool(t, srv, "archigraph_graph_stats", map[string]any{
+		"repo_filter": []any{"alpha"},
+	})
+	var filtOut struct {
+		Entities      int              `json:"entities"`
+		Relationships int              `json:"relationships"`
+		Repos         []map[string]any `json:"repos"`
+	}
+	if err := json.Unmarshal([]byte(resultText(resFiltered)), &filtOut); err != nil {
+		t.Fatalf("unmarshal filtered: %v: %s", err, resultText(resFiltered))
+	}
+	if len(filtOut.Repos) != 1 {
+		t.Fatalf("expected 1 repo when filtered to alpha, got %d: %s", len(filtOut.Repos), resultText(resFiltered))
+	}
+	if name, _ := filtOut.Repos[0]["repo"].(string); name != "alpha" {
+		t.Fatalf("expected sole repo to be alpha, got %q", name)
+	}
+	if filtOut.Entities != 4 || filtOut.Relationships != 3 {
+		t.Fatalf("expected 4 entities / 3 relationships for alpha alone, got %d/%d", filtOut.Entities, filtOut.Relationships)
+	}
+
+	// Star: ["*"] equals no filter.
+	resStar := callTool(t, srv, "archigraph_graph_stats", map[string]any{
+		"repo_filter": []any{"*"},
+	})
+	var starOut struct {
+		Repos []map[string]any `json:"repos"`
+	}
+	if err := json.Unmarshal([]byte(resultText(resStar)), &starOut); err != nil {
+		t.Fatalf("unmarshal star: %v", err)
+	}
+	if len(starOut.Repos) != 2 {
+		t.Fatalf("expected 2 repos with [\"*\"], got %d", len(starOut.Repos))
+	}
+}
