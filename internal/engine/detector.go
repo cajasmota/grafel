@@ -201,6 +201,15 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		}
 	}
 
+	// Spring MVC AST pass: compose class-level @RequestMapping prefix with
+	// method-level verb annotations into a single Route. The YAML rules
+	// above can't see lexical scope, so they emit orphan Route:/api +
+	// Route:/orders pairs; this pass replaces them with Route:/api/orders.
+	// No-op for non-Java files. Refs #67.
+	entities, relationships = applySpringRouteComposition(
+		ctx, file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("relationship_count", len(relationships)),

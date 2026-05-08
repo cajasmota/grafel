@@ -50,10 +50,13 @@ public class OrderController {
 }
 `
 
-// TestDetect_SpringRoutes verifies that the spring_mvc.yaml rules emit Route
-// entities for @GetMapping / @PostMapping / @PutMapping / @DeleteMapping /
-// @PatchMapping / @RequestMapping annotations and ROUTES_TO relationships
-// pointing to the handler methods.
+// TestDetect_SpringRoutes verifies that Spring MVC route composition
+// produces fully-qualified paths by combining the class-level
+// @RequestMapping prefix with each method-level verb annotation.
+//
+// Issue #67: previously the YAML regex rules emitted orphan flat Routes
+// (`Route:/api` + `Route:/orders`); the AST pass now composes them into
+// `Route:/api/orders` and drops the orphans.
 func TestDetect_SpringRoutes(t *testing.T) {
 	rules, err := LoadAllRules()
 	if err != nil {
@@ -70,12 +73,19 @@ func TestDetect_SpringRoutes(t *testing.T) {
 		t.Fatalf("Detect failed: %v", err)
 	}
 
-	// Expected route paths from the six annotated handlers.
+	// Expected composed route paths. The class is annotated with
+	// @RequestMapping("/api") so every handler path is prefixed.
 	expectedPaths := map[string]bool{
-		"/orders":      false, // @GetMapping + @PostMapping (deduped to one Route entity)
-		"/orders/{id}": false, // @PutMapping + @DeleteMapping + @PatchMapping (deduped)
-		"/legacy":      false, // @RequestMapping
-		"/api":         false, // class-level @RequestMapping
+		"/api/orders":      false, // @GetMapping + @PostMapping
+		"/api/orders/{id}": false, // @PutMapping + @DeleteMapping + @PatchMapping
+		"/api/legacy":      false, // @RequestMapping(value = "/legacy", ...)
+	}
+	// Forbidden orphan routes — must be replaced by composed versions.
+	forbidden := map[string]bool{
+		"/api":         true,
+		"/orders":      true,
+		"/orders/{id}": true,
+		"/legacy":      true,
 	}
 	for _, e := range result.Entities {
 		if e.Kind != "Route" {
@@ -84,22 +94,25 @@ func TestDetect_SpringRoutes(t *testing.T) {
 		if _, ok := expectedPaths[e.Name]; ok {
 			expectedPaths[e.Name] = true
 		}
+		if forbidden[e.Name] {
+			t.Errorf("orphan Route %q should have been replaced by composed form", e.Name)
+		}
 	}
 	for path, seen := range expectedPaths {
 		if !seen {
-			t.Errorf("expected Route entity with name %q, not found", path)
+			t.Errorf("expected composed Route %q, not found", path)
 		}
 	}
 
-	// Expected ROUTES_TO relationships: one per @*Mapping handler annotation.
+	// Expected ROUTES_TO relationships: one per @*Mapping handler.
 	type rel struct{ from, to string }
 	expectedRels := map[rel]bool{
-		{"Route:/orders", "Controller:listOrders"}:       false,
-		{"Route:/orders", "Controller:createOrder"}:      false,
-		{"Route:/orders/{id}", "Controller:updateOrder"}: false,
-		{"Route:/orders/{id}", "Controller:deleteOrder"}: false,
-		{"Route:/orders/{id}", "Controller:patchOrder"}:  false,
-		{"Route:/legacy", "Controller:legacy"}:           false,
+		{"Route:/api/orders", "Controller:listOrders"}:       false,
+		{"Route:/api/orders", "Controller:createOrder"}:      false,
+		{"Route:/api/orders/{id}", "Controller:updateOrder"}: false,
+		{"Route:/api/orders/{id}", "Controller:deleteOrder"}: false,
+		{"Route:/api/orders/{id}", "Controller:patchOrder"}:  false,
+		{"Route:/api/legacy", "Controller:legacy"}:           false,
 	}
 	for _, r := range result.Relationships {
 		if r.Kind != "ROUTES_TO" {
@@ -116,19 +129,19 @@ func TestDetect_SpringRoutes(t *testing.T) {
 		}
 	}
 
-	// Sanity: at least one ROUTES_TO carries the yaml_driven pattern_type.
-	var found bool
+	// Sanity: every ROUTES_TO emitted for this file should be ast_driven
+	// (the AST pass replaced the YAML edges).
 	for _, r := range result.Relationships {
-		if r.Kind == "ROUTES_TO" && r.Properties["pattern_type"] == "yaml_driven" {
-			found = true
-			break
+		if r.Kind != "ROUTES_TO" {
+			continue
+		}
+		if r.Properties["pattern_type"] != "ast_driven" {
+			t.Errorf("ROUTES_TO %s -> %s: pattern_type = %q, want ast_driven",
+				r.FromID, r.ToID, r.Properties["pattern_type"])
 		}
 	}
-	if !found {
-		t.Error("expected at least one yaml_driven ROUTES_TO relationship")
-	}
 
-	// Property checks on Route entities.
+	// Property checks on composed Route entities.
 	for _, e := range result.Entities {
 		if e.Kind != "Route" {
 			continue
@@ -136,9 +149,8 @@ func TestDetect_SpringRoutes(t *testing.T) {
 		if e.Language != "java" {
 			t.Errorf("route %q: Language = %q, want java", e.Name, e.Language)
 		}
-		if e.Properties["pattern_type"] != "yaml_driven" {
-			t.Errorf("route %q: pattern_type = %q, want yaml_driven", e.Name, e.Properties["pattern_type"])
+		if e.Properties["pattern_type"] != "ast_driven" {
+			t.Errorf("route %q: pattern_type = %q, want ast_driven", e.Name, e.Properties["pattern_type"])
 		}
 	}
-
 }
