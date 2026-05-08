@@ -2,11 +2,17 @@
 //
 // Extracted entities:
 //   - CREATE TABLE  → Kind="SCOPE.Datastore", Subtype="table"
+//   - column        → Kind="SCOPE.Schema",    Subtype="column" (one per column inside a CREATE TABLE)
 //   - CREATE VIEW   → Kind="SCOPE.Datastore", Subtype="view"
 //   - CREATE INDEX  → Kind="SCOPE.Datastore", Subtype="index"
 //   - dbt {{ ref('model') }}    → Kind="SCOPE.Component",  Subtype="dbt_ref"
 //   - dbt {{ source('s','t') }} → Kind="SCOPE.Datastore",  Subtype="dbt_source"
 //   - dbt {{ config(...) }}     → Kind="SCOPE.Component",  Subtype="dbt_config"
+//
+// Relationships emitted:
+//   - Table  → Column        : CONTAINS
+//   - Column → ReferencedTable : REFERENCES (foreign key)
+//   - Index  → Table         : INDEXES
 //
 // dbt model files are SQL files containing Jinja templating. They are classified
 // as "sql" by the file classifier and receive enhanced entity extraction here.
@@ -104,6 +110,28 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 		seen[key] = true
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		endLine := findBlockEnd(src, m[1]-1)
+
+		// Body of the CREATE TABLE — between the opening "(" and matching ")".
+		bodyStart := m[1] - 1
+		bodyEnd := findBlockEndOffset(src, bodyStart)
+		body := ""
+		if bodyEnd > bodyStart && bodyEnd <= len(src) {
+			body = src[bodyStart+1 : bodyEnd]
+		}
+		columns, fks := parseTableBody(body, name, filePath, startLine)
+
+		var rels []types.RelationshipRecord
+		for _, col := range columns {
+			rels = append(rels, types.RelationshipRecord{
+				FromID: name,
+				ToID:   col.Name,
+				Kind:   "CONTAINS",
+				Properties: map[string]string{
+					"contained_kind": "column",
+				},
+			})
+		}
+
 		entities = append(entities, types.EntityRecord{
 			Name:               name,
 			Kind:               "SCOPE.Datastore",
@@ -114,7 +142,31 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 			EndLine:            endLine,
 			Signature:          fmt.Sprintf("CREATE TABLE %s", name),
 			EnrichmentRequired: false,
+			Relationships:      rels,
 		})
+
+		// Column entities, each carrying FOREIGN_KEY REFERENCES edges if any.
+		for _, col := range columns {
+			var colRels []types.RelationshipRecord
+			for _, fk := range fks {
+				if fk.FromColumn != col.Name {
+					continue
+				}
+				colRels = append(colRels, types.RelationshipRecord{
+					FromID: col.Name,
+					ToID:   fk.ToTable,
+					Kind:   "REFERENCES",
+					Properties: map[string]string{
+						"reference_kind": "foreign_key",
+						"to_column":      fk.ToColumn,
+						"from_table":     name,
+					},
+				})
+			}
+			ent := col
+			ent.Relationships = colRels
+			entities = append(entities, ent)
+		}
 	}
 
 	// Views.
@@ -161,6 +213,16 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 			EndLine:            endLine,
 			Signature:          fmt.Sprintf("CREATE INDEX %s ON %s", indexName, tableName),
 			EnrichmentRequired: false,
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID: indexName,
+					ToID:   tableName,
+					Kind:   "INDEXES",
+					Properties: map[string]string{
+						"reference_kind": "index_on",
+					},
+				},
+			},
 		})
 	}
 
@@ -299,6 +361,213 @@ func findBlockEnd(src string, openPos int) int {
 		}
 	}
 	return strings.Count(src, "\n") + 1
+}
+
+// findBlockEndOffset returns the byte offset of the matching ')' for the '(' at openPos.
+// Returns -1 if no match is found.
+func findBlockEndOffset(src string, openPos int) int {
+	if openPos < 0 || openPos >= len(src) || src[openPos] != '(' {
+		return -1
+	}
+	depth := 0
+	for i := openPos; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// columnEntry is a parsed column definition from a CREATE TABLE body.
+// It is converted into a SCOPE.Schema column entity by the caller.
+type columnEntry = types.EntityRecord
+
+// fkEntry is a parsed foreign-key declaration (either inline column-level
+// REFERENCES or table-level FOREIGN KEY (col) REFERENCES other(col)).
+type fkEntry struct {
+	FromColumn string
+	ToTable    string
+	ToColumn   string
+}
+
+var (
+	// Inline column-level FK: "user_id INTEGER REFERENCES users(id)"
+	colInlineFkRE = regexp.MustCompile(`(?i)REFERENCES\s+(?:\w+\.)?(\w+)\s*\(\s*(\w+)\s*\)`)
+
+	// Table-level FK constraint:
+	//   "FOREIGN KEY (user_id) REFERENCES users(id)"
+	//   "CONSTRAINT fk_a FOREIGN KEY (a, b) REFERENCES other(x, y)"
+	tableLevelFkRE = regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(\s*([^)]+?)\s*\)\s+REFERENCES\s+(?:\w+\.)?(\w+)\s*\(\s*([^)]+?)\s*\)`)
+
+	// Identifier-then-rest: column lines start with an identifier (or quoted ident)
+	// at the top level — used to filter constraint clauses.
+	columnIdentRE = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)\b`)
+)
+
+// parseTableBody parses a CREATE TABLE body (text between '(' and ')') into
+// column entities and a list of foreign-key relationships. Columns named
+// "PRIMARY", "FOREIGN", "CONSTRAINT", "UNIQUE", "CHECK", "INDEX", "KEY" are
+// treated as table-level constraints, not columns.
+func parseTableBody(body, tableName, filePath string, tableStartLine int) ([]columnEntry, []fkEntry) {
+	var cols []columnEntry
+	var fks []fkEntry
+
+	// Split top-level by commas (depth-aware: don't split inside parens).
+	entries := splitTopLevelCommas(body)
+	lineCursor := tableStartLine
+	consumed := 0
+
+	for _, raw := range entries {
+		// Track approximate line of this entry.
+		entryStartLine := lineCursor + strings.Count(body[:consumed], "\n")
+		consumed += len(raw) + 1 // +1 for the comma we removed (best-effort)
+
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+
+		upper := strings.ToUpper(entry)
+
+		// Table-level FK constraint
+		if strings.HasPrefix(upper, "FOREIGN KEY") || strings.Contains(upper, "FOREIGN KEY") && strings.HasPrefix(upper, "CONSTRAINT") {
+			if m := tableLevelFkRE.FindStringSubmatch(entry); m != nil {
+				fromCols := splitAndTrim(m[1], ",")
+				toTable := m[2]
+				toCols := splitAndTrim(m[3], ",")
+				for i, fc := range fromCols {
+					tc := ""
+					if i < len(toCols) {
+						tc = toCols[i]
+					}
+					fks = append(fks, fkEntry{FromColumn: fc, ToTable: toTable, ToColumn: tc})
+				}
+			}
+			continue
+		}
+
+		// Skip pure constraint clauses
+		if isConstraintClause(upper) {
+			continue
+		}
+
+		// Pull the column identifier
+		idMatch := columnIdentRE.FindStringSubmatch(entry)
+		if idMatch == nil {
+			continue
+		}
+		colName := idMatch[1]
+
+		// Skip when the leading identifier is a SQL constraint keyword.
+		if isReservedColumnKeyword(strings.ToUpper(colName)) {
+			continue
+		}
+
+		// Inline FK on this column
+		if m := colInlineFkRE.FindStringSubmatch(entry); m != nil {
+			fks = append(fks, fkEntry{
+				FromColumn: colName,
+				ToTable:    m[1],
+				ToColumn:   m[2],
+			})
+		}
+
+		colEntity := types.EntityRecord{
+			Name:               colName,
+			Kind:               "SCOPE.Schema",
+			Subtype:            "column",
+			SourceFile:         filePath,
+			Language:           "sql",
+			StartLine:          entryStartLine,
+			EndLine:            entryStartLine,
+			QualifiedName:      tableName + "." + colName,
+			Signature:          strings.TrimSpace(entry),
+			EnrichmentRequired: false,
+			Properties: map[string]string{
+				"table": tableName,
+			},
+		}
+		cols = append(cols, colEntity)
+	}
+
+	return cols, fks
+}
+
+// splitTopLevelCommas splits s on commas that are not inside a parenthesized
+// group. This is the safe way to split CREATE TABLE column definitions.
+func splitTopLevelCommas(s string) []string {
+	var out []string
+	depth := 0
+	start := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				out = append(out, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	if start < len(s) {
+		out = append(out, s[start:])
+	}
+	return out
+}
+
+// splitAndTrim splits s on sep and trims whitespace from each part.
+func splitAndTrim(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// isConstraintClause returns true when an entry (uppercased) is a top-level
+// constraint clause rather than a column definition.
+func isConstraintClause(upper string) bool {
+	prefixes := []string{
+		"PRIMARY KEY",
+		"UNIQUE",
+		"CHECK",
+		"CONSTRAINT",
+		"INDEX",
+		"KEY ",
+		"EXCLUDE",
+		"LIKE ",
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(upper, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// isReservedColumnKeyword returns true when an identifier we parsed as a
+// column name is actually a SQL constraint keyword.
+func isReservedColumnKeyword(upper string) bool {
+	switch upper {
+	case "PRIMARY", "FOREIGN", "CONSTRAINT", "UNIQUE", "CHECK", "INDEX", "KEY", "EXCLUDE", "LIKE":
+		return true
+	}
+	return false
 }
 
 // findStmtEnd returns the line number of the next semicolon after startPos.
