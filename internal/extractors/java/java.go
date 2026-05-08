@@ -113,8 +113,18 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 			for i := range body.ChildCount() {
 				// Members of this type are qualified by rec.Name (the
 				// immediate enclosing type), regardless of any outer
-				// type we may currently be nested under.
-				walk(body.Child(int(i)), file, rec.Name, out)
+				// type we may currently be nested under. Enum bodies wrap
+				// methods/constructors in an extra `enum_body_declarations`
+				// node — descend through it so those members still receive
+				// the enclosing-enum qualification.
+				child := body.Child(int(i))
+				if child != nil && child.Type() == "enum_body_declarations" {
+					for j := range child.ChildCount() {
+						walk(child.Child(int(j)), file, rec.Name, out)
+					}
+					continue
+				}
+				walk(child, file, rec.Name, out)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
