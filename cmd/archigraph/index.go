@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -77,8 +78,9 @@ type Indexer struct {
 	// (VERIFY-2-PREP / issue #56); after external.Synthesize rewrites bare
 	// names to "ext:<pkg>" we re-walk the final edge set to reclassify any
 	// stubs that became external placeholders.
-	resolveIdx   *resolve.Index
-	resolveStats resolve.Stats
+	resolveIdx        *resolve.Index
+	resolveStats      resolve.Stats
+	finalDispositions resolve.Stats
 }
 
 type indexerStats struct {
@@ -108,7 +110,7 @@ type indexerStats struct {
 // (possibly empty) set of pass names to skip — see allPassNames. When
 // pretty is true, graph.json (and the graph-stats.json sidecar) are
 // indented for human readability; the default is minified JSON.
-func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool) error {
+func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, jsonStats bool) error {
 	absRepo, err := filepath.Abs(repoPath)
 	if err != nil {
 		return fmt.Errorf("resolve repo path: %w", err)
@@ -188,7 +190,70 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool) 
 			}
 		}
 	}
+
+	if jsonStats {
+		if err := emitJSONStats(os.Stdout, idx, doc); err != nil {
+			return fmt.Errorf("emit json stats: %w", err)
+		}
+	}
 	return nil
+}
+
+// JSONStats is the machine-readable per-run summary emitted by the
+// indexer when `--json-stats` is set. The shape is intentionally flat so
+// downstream harnesses (scripts/verify2/run.sh) can aggregate without
+// needing to understand the inner Disposition enum.
+type JSONStats struct {
+	Repo                  string         `json:"repo"`
+	Files                 int            `json:"files"`
+	Entities              int            `json:"entities"`
+	Relationships         int            `json:"relationships"`
+	Pass1Rels             int            `json:"pass1_rels"`
+	Pass2Rels             int            `json:"pass2_rels"`
+	Pass3Rels             int            `json:"pass3_rels"`
+	DispositionCounts     map[string]int `json:"disposition_counts"`
+	BugRate               float64        `json:"bug_rate"`
+	ResolutionRate        float64        `json:"resolution_rate"`
+	ExternalSynthesized   int            `json:"external_synthesized"`
+	ExternalUniqueCount   int            `json:"external_unique_count"`
+	ExternalRelsResolved  int            `json:"external_rels_resolved"`
+}
+
+// emitJSONStats writes a JSONStats record (one line, no trailing whitespace)
+// to w. Used by `archigraph index --json-stats`.
+func emitJSONStats(w *os.File, idx *Indexer, doc *graph.Document) error {
+	counts := make(map[string]int, len(resolve.AllDispositions))
+	var total, resolved int
+	for _, d := range resolve.AllDispositions {
+		n := idx.finalDispositions.DispositionCounts[d]
+		counts[d.String()] = n
+		total += n
+		if d == resolve.DispositionResolved {
+			resolved = n
+		}
+	}
+	resRate := 0.0
+	if total > 0 {
+		resRate = float64(resolved) / float64(total)
+	}
+	js := JSONStats{
+		Repo:                 idx.repoTag,
+		Files:                idx.stats.files,
+		Entities:             doc.Stats.Entities,
+		Relationships:        doc.Stats.Relationships,
+		Pass1Rels:            idx.stats.pass1Rels,
+		Pass2Rels:            idx.stats.pass2Rels,
+		Pass3Rels:            idx.stats.pass3Rels,
+		DispositionCounts:    counts,
+		BugRate:              idx.finalDispositions.BugRate,
+		ResolutionRate:       resRate,
+		ExternalSynthesized:  idx.stats.extSynth.Synthesized,
+		ExternalUniqueCount:  idx.stats.extSynth.UniqueExternals,
+		ExternalRelsResolved: idx.stats.extSynth.RelationshipsResolved,
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(js)
 }
 
 // Run executes the orchestrated pipeline. Each pass is a named method so
@@ -257,6 +322,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			})
 		}
 		final := i.resolveIdx.ClassifyEndpoints(eps, allow)
+		i.finalDispositions = final
 		if verbose() {
 			emitDispositionBreakdown(os.Stderr, final)
 		}
