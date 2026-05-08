@@ -53,7 +53,7 @@ variable "enable_tracing" {
 locals {
   prefix         = "archigraph"
   function_name  = "${local.prefix}-extract-${var.env}"
-  ecr_image_uri  = "${aws_ecr_repository.memx_extract.repository_url}:latest"
+  ecr_image_uri  = "${aws_ecr_repository.data_extract.repository_url}:latest"
   common_tags = {
     Project = "archigraph"
     Env     = var.env
@@ -116,7 +116,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 
 # ---- ECR ----
 
-resource "aws_ecr_repository" "memx_extract" {
+resource "aws_ecr_repository" "data_extract" {
   name                 = "${local.prefix}-extract-${var.env}"
   image_tag_mutability = "MUTABLE"
 
@@ -146,7 +146,7 @@ resource "aws_sqs_queue" "extract_queue" {
 
 # ---- Lambda ----
 
-resource "aws_lambda_function" "memx_extract" {
+resource "aws_lambda_function" "data_extract" {
   function_name = local.function_name
   package_type  = "Image"
   image_uri     = local.ecr_image_uri
@@ -167,18 +167,18 @@ resource "aws_lambda_function" "memx_extract" {
 
   depends_on = [
     aws_iam_role.lambda_role,
-    aws_ecr_repository.memx_extract,
+    aws_ecr_repository.data_extract,
   ]
 }
 
 resource "aws_lambda_event_source_mapping" "extract_sqs" {
   event_source_arn = aws_sqs_queue.extract_queue.arn
-  function_name    = aws_lambda_function.memx_extract.arn
+  function_name    = aws_lambda_function.data_extract.arn
   batch_size       = 1
   enabled          = true
 
   depends_on = [
-    aws_lambda_function.memx_extract,
+    aws_lambda_function.data_extract,
     aws_sqs_queue.extract_queue,
   ]
 }
@@ -229,12 +229,12 @@ module "alb" {
 
 output "lambda_arn" {
   description = "ARN of the archigraph Extract Lambda function"
-  value       = aws_lambda_function.memx_extract.arn
+  value       = aws_lambda_function.data_extract.arn
 }
 
 output "lambda_function_name" {
   description = "Name of the archigraph Extract Lambda function"
-  value       = aws_lambda_function.memx_extract.function_name
+  value       = aws_lambda_function.data_extract.function_name
 }
 
 output "sqs_queue_url" {
@@ -244,7 +244,7 @@ output "sqs_queue_url" {
 
 output "ecr_repository_url" {
   description = "ECR repository URL for archigraph extract image"
-  value       = aws_ecr_repository.memx_extract.repository_url
+  value       = aws_ecr_repository.data_extract.repository_url
 }
 
 output "vpc_id" {

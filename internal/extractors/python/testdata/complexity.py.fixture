@@ -5,7 +5,7 @@ is_complex_method(entity)      — returns True when an entity meets complexity 
 get_complexity_tier(entity, file_line_count) — returns one of: trivial / simple / complex / heavy.
 has_mongo_pipeline(body)       — returns True when body contains a .aggregate( call.
 
-All public functions record OTel spans via get_tracer from memx_indexer.otel.
+All public functions record OTel spans via get_tracer from service_indexer.otel.
 Neither function ever raises; invalid inputs return a safe default.
 """
 
@@ -15,8 +15,8 @@ import logging
 import re
 from typing import Any
 
-from memx_indexer.complexity_signals import detect_signals
-from memx_indexer.otel import get_tracer
+from service_indexer.complexity_signals import detect_signals
+from service_indexer.otel import get_tracer
 
 _logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ def is_complex_method(entity: Any) -> bool:
 
     Never raises.
     """
-    tracer = get_tracer("memx_indexer.complexity")
+    tracer = get_tracer("service_indexer.complexity")
     with tracer.start_as_current_span("is_complex_method") as span:
         result, reason, signals_fired = _is_complex_method_inner(entity)
 
@@ -219,7 +219,7 @@ def get_complexity_tier(entity: Any, file_line_count: int = 0) -> str:
 
     Never raises.
     """
-    tracer = get_tracer("memx_indexer.complexity")
+    tracer = get_tracer("service_indexer.complexity")
     with tracer.start_as_current_span("get_complexity_tier") as span:
         tier = _get_complexity_tier_inner(entity, file_line_count)
 

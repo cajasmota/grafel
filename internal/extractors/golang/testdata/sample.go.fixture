@@ -23,31 +23,31 @@ import (
 )
 
 const (
-	praxisTracerName = "sample-server/sample"
+	serviceTracerName = "sample-server/sample"
 
-	// praxisEmbeddingModel is the embedding model used for SAMPLE entities.
+	// serviceEmbeddingModel is the embedding model used for SAMPLE entities.
 	// voyage-3.5 is prose-optimized (1024 dimensions).
-	praxisEmbeddingModel = "voyage-3.5"
+	serviceEmbeddingModel = "voyage-3.5"
 )
 
 // Package-level configurable defaults. Override via environment variables:
 //
-//	PRAXIS_INITIAL_CONFIDENCE     (default 0.5)
-//	PRAXIS_DEDUP_COSINE_THRESHOLD (default 0.90)
-//	PRAXIS_DEFAULT_SEARCH_LIMIT   (default 10)
-//	PRAXIS_MAX_SEARCH_LIMIT       (default 100)
+//	SERVICE_INITIAL_CONFIDENCE     (default 0.5)
+//	SERVICE_DEDUP_COSINE_THRESHOLD (default 0.90)
+//	SERVICE_DEFAULT_SEARCH_LIMIT   (default 10)
+//	SERVICE_MAX_SEARCH_LIMIT       (default 100)
 var (
 	// InitialConfidence is the default confidence assigned to newly stored rules.
-	InitialConfidence = getEnvFloat("PRAXIS_INITIAL_CONFIDENCE", 0.5)
+	InitialConfidence = getEnvFloat("SERVICE_INITIAL_CONFIDENCE", 0.5)
 
 	// DedupCosineThreshold is the minimum cosine similarity for error deduplication.
-	DedupCosineThreshold = getEnvFloat("PRAXIS_DEDUP_COSINE_THRESHOLD", 0.90)
+	DedupCosineThreshold = getEnvFloat("SERVICE_DEDUP_COSINE_THRESHOLD", 0.90)
 
 	// DefaultSearchLimit is the default number of results for search RPCs.
-	DefaultSearchLimit = getEnvInt("PRAXIS_DEFAULT_SEARCH_LIMIT", 10)
+	DefaultSearchLimit = getEnvInt("SERVICE_DEFAULT_SEARCH_LIMIT", 10)
 
 	// MaxSearchLimit is the maximum number of results for search RPCs.
-	MaxSearchLimit = getEnvInt("PRAXIS_MAX_SEARCH_LIMIT", 100)
+	MaxSearchLimit = getEnvInt("SERVICE_MAX_SEARCH_LIMIT", 100)
 )
 
 // getEnvFloat reads a float64 from an environment variable, returning def if unset or unparseable.
@@ -78,7 +78,7 @@ func getEnvInt(key string, def int) int {
 
 // B6: Static Cypher strings for SearchRules — no fmt.Sprintf with caller values.
 const searchRulesCypherBase = `
-CALL db.index.vector.queryNodes('praxis_vectors', $candidate_count, $embedding)
+CALL db.index.vector.queryNodes('service_vectors', $candidate_count, $embedding)
 YIELD node, score
 WHERE node.org_id = $org_id AND node.confidence >= $min_confidence
 RETURN node.id AS id,
@@ -95,7 +95,7 @@ ORDER BY score DESC
 LIMIT $limit`
 
 const searchRulesCypherWithTypeFilter = `
-CALL db.index.vector.queryNodes('praxis_vectors', $candidate_count, $embedding)
+CALL db.index.vector.queryNodes('service_vectors', $candidate_count, $embedding)
 YIELD node, score
 WHERE node.org_id = $org_id AND node.confidence >= $min_confidence AND node.rule_type = $rule_type_filter
 RETURN node.id AS id,
@@ -112,13 +112,13 @@ ORDER BY score DESC
 LIMIT $limit`
 
 // ---------------------------------------------------------------------------
-// PraxisStore — data-layer interface (testable)
+// ServiceStore — data-layer interface (testable)
 // ---------------------------------------------------------------------------
 
-// PraxisStore abstracts all Neo4j data operations for SAMPLE RPCs.
-// Production uses neo4jPraxisStore; tests inject a stub.
-type PraxisStore interface {
-	// CreateRule persists a PRAXIS_BehaviorRule node and returns nil on success.
+// ServiceStore abstracts all Neo4j data operations for SAMPLE RPCs.
+// Production uses neo4jServiceStore; tests inject a stub.
+type ServiceStore interface {
+	// CreateRule persists a SERVICE_BehaviorRule node and returns nil on success.
 	CreateRule(ctx context.Context, params map[string]any) error
 
 	// StoreErrorDedup performs the dedup search + conditional create/update in one
@@ -135,43 +135,43 @@ type PraxisStore interface {
 }
 
 // ---------------------------------------------------------------------------
-// neo4jPraxisStore — production implementation
+// neo4jServiceStore — production implementation
 // ---------------------------------------------------------------------------
 
 // Neo4jDriver is the narrow interface over neo4j.DriverWithContext used by
-// neo4jPraxisStore. Production passes the real driver.
+// neo4jServiceStore. Production passes the real driver.
 type Neo4jDriver interface {
 	NewSession(ctx context.Context, config neo4j.SessionConfig) neo4j.SessionWithContext
 }
 
-// neo4jPraxisStore is the production PraxisStore.
+// neo4jServiceStore is the production ServiceStore.
 //
 // routed per org_id — when router is non-nil it is used to resolve
 // the per-tenant driver from params["org_id"], otherwise the legacy
 // single-driver field is used.
-type neo4jPraxisStore struct {
+type neo4jServiceStore struct {
 	driver Neo4jDriver
 	router veradriver.DriverRouter
 }
 
-// NewNeo4jPraxisStore creates a production PraxisStore backed by Neo4j.
+// NewNeo4jServiceStore creates a production ServiceStore backed by Neo4j.
 //
-// Deprecated: prefer NewNeo4jPraxisStoreRouted for production wiring so
+// Deprecated: prefer NewNeo4jServiceStoreRouted for production wiring so
 // the routing layer scopes Neo4j sessions per org_id.
-func NewNeo4jPraxisStore(driver Neo4jDriver) PraxisStore {
-	return &neo4jPraxisStore{driver: driver}
+func NewNeo4jServiceStore(driver Neo4jDriver) ServiceStore {
+	return &neo4jServiceStore{driver: driver}
 }
 
-// NewNeo4jPraxisStoreRouted constructs a PraxisStore that resolves the
+// NewNeo4jServiceStoreRouted constructs a ServiceStore that resolves the
 // per-tenant Neo4j driver via the router.
-func NewNeo4jPraxisStoreRouted(router veradriver.DriverRouter) PraxisStore {
-	return &neo4jPraxisStore{router: router}
+func NewNeo4jServiceStoreRouted(router veradriver.DriverRouter) ServiceStore {
+	return &neo4jServiceStore{router: router}
 }
 
 // openSession returns a Neo4j session for the org_id encoded in params.
 // routed per org_id — when router is set, every session is routed
 // via the registry; otherwise the legacy shared driver is used.
-func (s *neo4jPraxisStore) openSession(
+func (s *neo4jServiceStore) openSession(
 	ctx context.Context,
 	params map[string]any,
 	cfg neo4j.SessionConfig,
@@ -186,7 +186,7 @@ func (s *neo4jPraxisStore) openSession(
 // openSessionForOrg returns a Neo4j session for the given orgID directly.
 // Used by methods that receive orgID as an explicit argument rather than via
 // a params map (e.g., StoreErrorDedup). : routed per org_id.
-func (s *neo4jPraxisStore) openSessionForOrg(
+func (s *neo4jServiceStore) openSessionForOrg(
 	ctx context.Context,
 	orgID string,
 	cfg neo4j.SessionConfig,
@@ -197,7 +197,7 @@ func (s *neo4jPraxisStore) openSessionForOrg(
 	return s.driver.NewSession(ctx, cfg), nil
 }
 
-func (s *neo4jPraxisStore) CreateRule(ctx context.Context, params map[string]any) error {
+func (s *neo4jServiceStore) CreateRule(ctx context.Context, params map[string]any) error {
 	session, err := s.openSession(ctx, params, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	if err != nil {
 		return err
@@ -206,7 +206,7 @@ func (s *neo4jPraxisStore) CreateRule(ctx context.Context, params map[string]any
 
 	_, err = session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 		cypher := `
-CREATE (n:PRAXIS_BehaviorRule {
+CREATE (n:SERVICE_BehaviorRule {
   id: $id,
   org_id: $org_id,
   rule_text: $rule_text,
@@ -226,7 +226,7 @@ RETURN n`
 	return err
 }
 
-func (s *neo4jPraxisStore) StoreErrorDedup(
+func (s *neo4jServiceStore) StoreErrorDedup(
 	ctx context.Context,
 	embeddingVec []float64,
 	orgID string,
@@ -248,7 +248,7 @@ func (s *neo4jPraxisStore) StoreErrorDedup(
 	result, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 		// Step 1: vector similarity search.
 		searchCypher := `
-CALL db.index.vector.queryNodes('praxis_error_vectors', 1, $embedding)
+CALL db.index.vector.queryNodes('service_error_vectors', 1, $embedding)
 YIELD node, score
 WHERE node.org_id = $org_id AND score >= $threshold
 RETURN node.id AS id,
@@ -287,7 +287,7 @@ LIMIT 1`
 			now := newNodeParams["updated_at"].(string)
 
 			updateCypher := `
-MATCH (n:PRAXIS_ErrorPattern {id: $id, org_id: $org_id})
+MATCH (n:SERVICE_ErrorPattern {id: $id, org_id: $org_id})
 SET n.times_seen = n.times_seen + 1,
     n.updated_at = $updated_at
 RETURN n.times_seen AS times_seen`
@@ -324,7 +324,7 @@ RETURN n.times_seen AS times_seen`
 
 		// Step 3: no match -> create new node.
 		createCypher := `
-CREATE (n:PRAXIS_ErrorPattern {
+CREATE (n:SERVICE_ErrorPattern {
   id: $id,
   org_id: $org_id,
   what_broke: $what_broke,
@@ -356,7 +356,7 @@ RETURN n`
 	return dr.deduplicated, dr.fields, nil
 }
 
-func (s *neo4jPraxisStore) SearchRules(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error) {
+func (s *neo4jServiceStore) SearchRules(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error) {
 	session, err := s.openSession(ctx, params, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	if err != nil {
 		return nil, err
@@ -382,7 +382,7 @@ func (s *neo4jPraxisStore) SearchRules(ctx context.Context, cypher string, param
 	return results, nil
 }
 
-func (s *neo4jPraxisStore) SearchErrors(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error) {
+func (s *neo4jServiceStore) SearchErrors(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error) {
 	return s.SearchRules(ctx, cypher, params) // same logic, different cypher
 }
 
@@ -398,58 +398,58 @@ func recordToMap(rec *neo4j.Record) map[string]any {
 }
 
 // ---------------------------------------------------------------------------
-// PraxisServer — gRPC handler
+// ServiceServer — gRPC handler
 // ---------------------------------------------------------------------------
 
-// PraxisServer implements verav1.PraxisServiceServer.
+// ServiceServer implements verav1.RuleServiceServer.
 // All RPCs require org_id from the auth context (injected by AuthInterceptor).
-type PraxisServer struct {
-	verav1.UnimplementedPraxisServiceServer
+type ServiceServer struct {
+	verav1.UnimplementedRuleServiceServer
 
-	store    PraxisStore
+	store    ServiceStore
 	embedder embedding.Client
 }
 
-// NewPraxisServer constructs a PraxisServer with the given dependencies.
-// driver is used to build a neo4jPraxisStore. For tests, use NewPraxisServerWithStore.
+// NewServiceServer constructs a ServiceServer with the given dependencies.
+// driver is used to build a neo4jServiceStore. For tests, use NewServiceServerWithStore.
 //
-// Deprecated: prefer NewPraxisServerRouted for production wiring so the
+// Deprecated: prefer NewServiceServerRouted for production wiring so the
 // routing layer scopes Neo4j sessions per org_id.
-func NewPraxisServer(driver Neo4jDriver, embedder embedding.Client) *PraxisServer {
-	return &PraxisServer{
-		store:    NewNeo4jPraxisStore(driver),
+func NewServiceServer(driver Neo4jDriver, embedder embedding.Client) *ServiceServer {
+	return &ServiceServer{
+		store:    NewNeo4jServiceStore(driver),
 		embedder: embedder,
 	}
 }
 
-// NewPraxisServerRouted constructs a PraxisServer wired through the
+// NewServiceServerRouted constructs a ServiceServer wired through the
 // driver router. Production wiring must use this constructor.
-func NewPraxisServerRouted(router veradriver.DriverRouter, embedder embedding.Client) *PraxisServer {
-	return &PraxisServer{
-		store:    NewNeo4jPraxisStoreRouted(router),
+func NewServiceServerRouted(router veradriver.DriverRouter, embedder embedding.Client) *ServiceServer {
+	return &ServiceServer{
+		store:    NewNeo4jServiceStoreRouted(router),
 		embedder: embedder,
 	}
 }
 
-// NewPraxisServerWithStore constructs a PraxisServer with an injected store.
-// Used in tests to provide a stub PraxisStore.
-func NewPraxisServerWithStore(store PraxisStore, embedder embedding.Client) *PraxisServer {
-	return &PraxisServer{
+// NewServiceServerWithStore constructs a ServiceServer with an injected store.
+// Used in tests to provide a stub ServiceStore.
+func NewServiceServerWithStore(store ServiceStore, embedder embedding.Client) *ServiceServer {
+	return &ServiceServer{
 		store:    store,
 		embedder: embedder,
 	}
 }
 
-// StoreRule implements PraxisService.StoreRule.
+// StoreRule implements RuleService.StoreRule.
 //
 // Security: org_id from auth context. All Cypher parameterised. No string interpolation.
 // Behaviour: generate UUID, set confidence=InitialConfidence, embed rule_text via voyage-3.5,
-// create PRAXIS_BehaviorRule node in Neo4j with embedding vector.
-func (s *PraxisServer) StoreRule(
+// create SERVICE_BehaviorRule node in Neo4j with embedding vector.
+func (s *ServiceServer) StoreRule(
 	ctx context.Context,
 	req *verav1.StoreRuleRequest,
 ) (*verav1.StoreRuleResponse, error) {
-	tracer := otel.GetTracerProvider().Tracer(praxisTracerName)
+	tracer := otel.GetTracerProvider().Tracer(serviceTracerName)
 	ctx, span := tracer.Start(ctx, "sample.StoreRule")
 	defer span.End()
 
@@ -473,7 +473,7 @@ func (s *PraxisServer) StoreRule(
 	id := uuid.New().String()
 
 	// Generate embedding for rule_text.
-	embeddingVec, err := s.embedder.Embed(ctx, ruleText, praxisEmbeddingModel)
+	embeddingVec, err := s.embedder.Embed(ctx, ruleText, serviceEmbeddingModel)
 	if err != nil {
 		span.SetStatus(otelcodes.Error, err.Error())
 		return nil, status.Error(codes.Internal, "failed to generate embedding")
@@ -513,17 +513,17 @@ func (s *PraxisServer) StoreRule(
 	}, nil
 }
 
-// StoreError implements PraxisService.StoreError.
+// StoreError implements RuleService.StoreError.
 //
 // Security: org_id from auth context. All Cypher parameterised.
 // Behaviour: generate embedding for "what_broke + root_cause", run semantic
 // dedup via vector search (cosine >= DedupCosineThreshold). If match: increment
 // times_seen, return deduplicated=true. Else: create new node, return deduplicated=false.
-func (s *PraxisServer) StoreError(
+func (s *ServiceServer) StoreError(
 	ctx context.Context,
 	req *verav1.StoreErrorRequest,
 ) (*verav1.StoreErrorResponse, error) {
-	tracer := otel.GetTracerProvider().Tracer(praxisTracerName)
+	tracer := otel.GetTracerProvider().Tracer(serviceTracerName)
 	ctx, span := tracer.Start(ctx, "sample.StoreError")
 	defer span.End()
 
@@ -548,7 +548,7 @@ func (s *PraxisServer) StoreError(
 	}
 
 	// Generate embedding.
-	embeddingVec, err := s.embedder.Embed(ctx, embeddingText, praxisEmbeddingModel)
+	embeddingVec, err := s.embedder.Embed(ctx, embeddingText, serviceEmbeddingModel)
 	if err != nil {
 		span.SetStatus(otelcodes.Error, err.Error())
 		return nil, status.Error(codes.Internal, "failed to generate embedding")
@@ -663,16 +663,16 @@ func buildErrorPatternFromFields(fields map[string]any, reqSeverity verav1.Sever
 	return pattern
 }
 
-// SearchRules implements PraxisService.SearchRules.
+// SearchRules implements RuleService.SearchRules.
 //
 // Security: org_id from auth context. All Cypher parameterised.
-// Behaviour: embed query_text, vector search praxis_vectors, filter by org_id
+// Behaviour: embed query_text, vector search service_vectors, filter by org_id
 // (mandatory), rule_type_filter (optional), min_confidence (optional, default 0.0).
-func (s *PraxisServer) SearchRules(
+func (s *ServiceServer) SearchRules(
 	ctx context.Context,
 	req *verav1.SearchRulesRequest,
 ) (*verav1.SearchRulesResponse, error) {
-	tracer := otel.GetTracerProvider().Tracer(praxisTracerName)
+	tracer := otel.GetTracerProvider().Tracer(serviceTracerName)
 	ctx, span := tracer.Start(ctx, "sample.SearchRules")
 	defer span.End()
 
@@ -702,7 +702,7 @@ func (s *PraxisServer) SearchRules(
 	minConfidence := float64(req.GetMinConfidence())
 
 	// Generate embedding for query_text.
-	embeddingVec, err := s.embedder.Embed(ctx, queryText, praxisEmbeddingModel)
+	embeddingVec, err := s.embedder.Embed(ctx, queryText, serviceEmbeddingModel)
 	if err != nil {
 		span.SetStatus(otelcodes.Error, err.Error())
 		return nil, status.Error(codes.Internal, "failed to generate embedding")
@@ -749,15 +749,15 @@ func (s *PraxisServer) SearchRules(
 	}, nil
 }
 
-// SearchErrors implements PraxisService.SearchErrors.
+// SearchErrors implements RuleService.SearchErrors.
 //
 // Security: org_id from auth context. All Cypher parameterised.
-// Behaviour: embed query_text, vector search praxis_error_vectors, filter by org_id.
-func (s *PraxisServer) SearchErrors(
+// Behaviour: embed query_text, vector search service_error_vectors, filter by org_id.
+func (s *ServiceServer) SearchErrors(
 	ctx context.Context,
 	req *verav1.SearchErrorsRequest,
 ) (*verav1.SearchErrorsResponse, error) {
-	tracer := otel.GetTracerProvider().Tracer(praxisTracerName)
+	tracer := otel.GetTracerProvider().Tracer(serviceTracerName)
 	ctx, span := tracer.Start(ctx, "sample.SearchErrors")
 	defer span.End()
 
@@ -784,7 +784,7 @@ func (s *PraxisServer) SearchErrors(
 	}
 
 	// Generate embedding for query_text.
-	embeddingVec, err := s.embedder.Embed(ctx, queryText, praxisEmbeddingModel)
+	embeddingVec, err := s.embedder.Embed(ctx, queryText, serviceEmbeddingModel)
 	if err != nil {
 		span.SetStatus(otelcodes.Error, err.Error())
 		return nil, status.Error(codes.Internal, "failed to generate embedding")
@@ -796,7 +796,7 @@ func (s *PraxisServer) SearchErrors(
 	}
 
 	cypher := `
-CALL db.index.vector.queryNodes('praxis_error_vectors', $candidate_count, $embedding)
+CALL db.index.vector.queryNodes('service_error_vectors', $candidate_count, $embedding)
 YIELD node, score
 WHERE node.org_id = $org_id
 RETURN node.id AS id,
