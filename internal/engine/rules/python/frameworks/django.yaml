@@ -75,12 +75,22 @@ source_patterns:
     name_group: 1
     scope: class
   # Class-based view: class MyView(View) / (ListView) / (DetailView) etc.
-  - pattern: "class\\s+(\\w+)\\s*\\([^)]*(?:View|ListView|DetailView|CreateView|UpdateView|DeleteView|TemplateView|FormView|APIView)\\s*[,)\\n]"
+  # Also recognises DRF ViewSet base classes (ViewSet, ModelViewSet,
+  # ReadOnlyModelViewSet, GenericViewSet).
+  - pattern: "class\\s+(\\w+)\\s*\\([^)]*(?:View|ListView|DetailView|CreateView|UpdateView|DeleteView|TemplateView|FormView|APIView|ViewSet|ModelViewSet|ReadOnlyModelViewSet|GenericViewSet)\\s*[,)\\n]"
     entity_type: View
     name_group: 1
     scope: class
   # URL pattern: path("...", view, name="...")
   - pattern: "path\\s*\\(\\s*[\"']([^\"']+)[\"']"
+    entity_type: Route
+    name_group: 1
+    scope: file
+  # DRF router registration: router.register(r"users", UserViewSet, ...).
+  # Captures the URL prefix as the Route name. Receiver may be any router
+  # variable (router, api_router, v1_router); raw-string `r"..."` and plain
+  # `"..."` / `'...'` quoting both supported.
+  - pattern: "\\w+\\.register\\s*\\(\\s*r?[\"']([^\"']+)[\"']\\s*,\\s*\\w+"
     entity_type: Route
     name_group: 1
     scope: file
@@ -116,6 +126,16 @@ relationship_rules:
     relationship: ROUTES_TO
     source_group: 1
     target_group: 1
+  # DRF router registration: router.register(r"users", UserViewSet, ...).
+  # Emits ROUTES_TO from the URL prefix Route to the ViewSet (View entity).
+  # Receiver name is unconstrained (router, api_router, v1_router, etc.) and
+  # both raw-string `r"..."` and plain quoted forms are supported.
+  - pattern: "\\w+\\.register\\s*\\(\\s*r?[\"']([^\"']+)[\"']\\s*,\\s*(\\w+)"
+    source_type: Route
+    target_type: View
+    relationship: ROUTES_TO
+    source_group: 1
+    target_group: 2
 
 # custom_extractors: Python callables for patterns YAML rules cannot capture.
 # These run after YAML-driven extraction and contribute additional entities +
