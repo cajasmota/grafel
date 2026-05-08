@@ -1,6 +1,6 @@
 # Pass 1 — Inventory
 
-Discover what is actually in each repo by querying archigraph. Do not read source files directly. The graph is the source of truth for what entities exist; the writer passes will read source via `get_node_source` when they need verbatim snippets.
+Discover what is actually in each repo by querying archigraph. Do not read source files directly. The graph is the source of truth for what entities exist; the writer passes will read source via `get_source` when they need verbatim snippets.
 
 ## Inputs
 
@@ -28,7 +28,7 @@ Record: total nodes, total edges, top entity kinds, top edge kinds, communities 
 For each repo:
 
 ```
-list_communities(repo_filter=["<r>"])
+list_clusters(repo_filter=["<r>"])
 ```
 
 A community is a candidate "module" for Pass 2 to plan around. Capture community id, size, and the top-5 entities (by centrality) in each. This is your raw module list before grouping.

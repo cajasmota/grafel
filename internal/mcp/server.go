@@ -87,7 +87,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group", mcpapi.Description("Optional explicit group override.")),
 	), s.wrap("whoami", s.handleWhoami))
 
-	s.MCP.AddTool(mcpapi.NewTool("query_graph",
+	s.MCP.AddTool(mcpapi.NewTool("search",
 		mcpapi.WithDescription("BM25-ranked graph query, optionally expanded by BFS to a depth."),
 		mcpapi.WithString("question", mcpapi.Required(), mcpapi.Description("Natural-language query.")),
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs"), mcpapi.Description("Traversal mode: bfs|dfs|none.")),
@@ -98,42 +98,42 @@ func (s *Server) registerTools() {
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false), mcpapi.Description("Return raw JSON instead of compact text.")),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("query_graph", s.handleQueryGraph))
+	), s.wrap("search", s.handleQueryGraph))
 
-	s.MCP.AddTool(mcpapi.NewTool("get_node",
+	s.MCP.AddTool(mcpapi.NewTool("describe",
 		mcpapi.WithDescription("Look up an entity by id, qualified name, or label."),
 		mcpapi.WithString("label_or_id", mcpapi.Required()),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("get_node", s.handleGetNode))
+	), s.wrap("describe", s.handleGetNode))
 
-	s.MCP.AddTool(mcpapi.NewTool("get_neighbors",
+	s.MCP.AddTool(mcpapi.NewTool("related",
 		mcpapi.WithDescription("Return neighbors of a node out to a given depth."),
 		mcpapi.WithString("node", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("get_neighbors", s.handleGetNeighbors))
+	), s.wrap("related", s.handleGetNeighbors))
 
-	s.MCP.AddTool(mcpapi.NewTool("shortest_path",
+	s.MCP.AddTool(mcpapi.NewTool("trace",
 		mcpapi.WithDescription("Confidence-weighted shortest path between two nodes (cross-repo aware)."),
 		mcpapi.WithString("source", mcpapi.Required()),
 		mcpapi.WithString("target", mcpapi.Required()),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("shortest_path", s.handleShortestPath))
+	), s.wrap("trace", s.handleShortestPath))
 
-	s.MCP.AddTool(mcpapi.NewTool("list_communities",
+	s.MCP.AddTool(mcpapi.NewTool("list_clusters",
 		mcpapi.WithDescription("List Louvain communities across the loaded graphs."),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("list_communities", s.handleListCommunities))
+	), s.wrap("list_clusters", s.handleListCommunities))
 
-	s.MCP.AddTool(mcpapi.NewTool("save_result",
+	s.MCP.AddTool(mcpapi.NewTool("save_finding",
 		mcpapi.WithDescription("Persist a question/answer pair to the group's memory directory."),
 		mcpapi.WithString("question", mcpapi.Required()),
 		mcpapi.WithString("answer", mcpapi.Required()),
@@ -142,15 +142,15 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("save_result", s.handleSaveResult))
+	), s.wrap("save_finding", s.handleSaveResult))
 
-	s.MCP.AddTool(mcpapi.NewTool("get_node_source",
+	s.MCP.AddTool(mcpapi.NewTool("get_source",
 		mcpapi.WithDescription("Return source-file snippet for a node from disk."),
 		mcpapi.WithString("node_id", mcpapi.Required()),
 		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(20)),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("get_node_source", s.handleGetNodeSource))
+	), s.wrap("get_source", s.handleGetNodeSource))
 
 	s.MCP.AddTool(mcpapi.NewTool("recent_activity",
 		mcpapi.WithDescription("Return entities whose source files were modified after a given time."),

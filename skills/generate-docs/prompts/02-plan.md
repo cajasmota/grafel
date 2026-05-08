@@ -11,7 +11,7 @@ Convert the raw community list from Pass 1 into a documentation plan. The plan i
 
 ### Step 1 — Group communities into modules
 
-A Louvain community from `list_communities` is a graph cluster, not necessarily a "module" a human would want documented. Merge or split as needed:
+A Louvain community from `list_clusters` is a graph cluster, not necessarily a "module" a human would want documented. Merge or split as needed:
 
 - Merge two communities if they share more than 30% of their bridge-doc nodes or if their top-entity names share a clear prefix (e.g., `users.views`, `users.serializers` -> module `users`).
 - Split a community if it contains entities from two unrelated layers (e.g., HTTP handlers + DB migrations); rare, but the convention file for the stack tells you when to expect it.
@@ -25,7 +25,7 @@ Each module gets a kebab-case slug used as a directory name under `docs/modules/
 For each module, estimate:
 
 - **Token budget** for the writer subagent's context: count of in-module entities + count of in-module edges, multiplied by a small constant per entity (start at 40 tokens). Cap at 8000 per module; if larger, split.
-- **Source-snippet budget**: how many `get_node_source` calls the writer is allowed. Default 10; raise for modules with many small functions.
+- **Source-snippet budget**: how many `get_source` calls the writer is allowed. Default 10; raise for modules with many small functions.
 
 ### Step 4 — Produce the plan file
 
