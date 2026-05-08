@@ -231,15 +231,15 @@ func buildFrom(node *sitter.Node, file extractor.FileInput, currentStage *string
 	}
 
 	return types.EntityRecord{
-		Name:       imageName,
-		Kind:       "SCOPE.Component",
-		Subtype:    "stage",
-		SourceFile: file.Path,
-		Language:   "dockerfile",
-		StartLine:  int(node.StartPoint().Row) + 1,
-		EndLine:    int(node.EndPoint().Row) + 1,
-		Signature:  "FROM " + imageName,
-		Properties: props,
+		Name:         imageName,
+		Kind:         "SCOPE.Component",
+		Subtype:      "stage",
+		SourceFile:   file.Path,
+		Language:     "dockerfile",
+		StartLine:    int(node.StartPoint().Row) + 1,
+		EndLine:      int(node.EndPoint().Row) + 1,
+		Signature:    "FROM " + imageName,
+		Properties:   props,
 		QualityScore: 0.8,
 	}, true
 }
@@ -268,15 +268,15 @@ func buildRun(node *sitter.Node, file extractor.FileInput, stage string) (types.
 
 	props := stageProps(stage)
 	return types.EntityRecord{
-		Name:       name,
-		Kind:       "SCOPE.Operation",
-		Subtype:    "run",
-		SourceFile: file.Path,
-		Language:   "dockerfile",
-		StartLine:  int(node.StartPoint().Row) + 1,
-		EndLine:    int(node.EndPoint().Row) + 1,
-		Signature:  strings.TrimSpace(nodeText(node, file.Content)),
-		Properties: props,
+		Name:         name,
+		Kind:         "SCOPE.Operation",
+		Subtype:      "run",
+		SourceFile:   file.Path,
+		Language:     "dockerfile",
+		StartLine:    int(node.StartPoint().Row) + 1,
+		EndLine:      int(node.EndPoint().Row) + 1,
+		Signature:    strings.TrimSpace(nodeText(node, file.Content)),
+		Properties:   props,
 		QualityScore: 0.7,
 	}, true
 }
@@ -307,15 +307,15 @@ func buildCopyLike(node *sitter.Node, file extractor.FileInput, stage, instructi
 	}
 
 	return types.EntityRecord{
-		Name:       instruction,
-		Kind:       "SCOPE.Operation",
-		Subtype:    "copy",
-		SourceFile: file.Path,
-		Language:   "dockerfile",
-		StartLine:  int(node.StartPoint().Row) + 1,
-		EndLine:    int(node.EndPoint().Row) + 1,
-		Signature:  strings.TrimSpace(nodeText(node, file.Content)),
-		Properties: props,
+		Name:         instruction,
+		Kind:         "SCOPE.Operation",
+		Subtype:      "copy",
+		SourceFile:   file.Path,
+		Language:     "dockerfile",
+		StartLine:    int(node.StartPoint().Row) + 1,
+		EndLine:      int(node.EndPoint().Row) + 1,
+		Signature:    strings.TrimSpace(nodeText(node, file.Content)),
+		Properties:   props,
 		QualityScore: 0.7,
 	}, true
 }
@@ -333,15 +333,15 @@ func buildExpose(node *sitter.Node, file extractor.FileInput, stage string) (typ
 
 	props := stageProps(stage)
 	return types.EntityRecord{
-		Name:       port,
-		Kind:       "SCOPE.Pattern",
-		Subtype:    "port",
-		SourceFile: file.Path,
-		Language:   "dockerfile",
-		StartLine:  int(node.StartPoint().Row) + 1,
-		EndLine:    int(node.EndPoint().Row) + 1,
-		Signature:  "EXPOSE " + port,
-		Properties: props,
+		Name:         port,
+		Kind:         "SCOPE.Pattern",
+		Subtype:      "port",
+		SourceFile:   file.Path,
+		Language:     "dockerfile",
+		StartLine:    int(node.StartPoint().Row) + 1,
+		EndLine:      int(node.EndPoint().Row) + 1,
+		Signature:    "EXPOSE " + port,
+		Properties:   props,
 		QualityScore: 0.75,
 	}, true
 }
@@ -364,15 +364,15 @@ func buildEnv(node *sitter.Node, file extractor.FileInput, stage string) []types
 		}
 		props := stageProps(stage)
 		recs = append(recs, types.EntityRecord{
-			Name:       key,
-			Kind:       "SCOPE.Schema",
-			Subtype:    "variable",
-			SourceFile: file.Path,
-			Language:   "dockerfile",
-			StartLine:  int(node.StartPoint().Row) + 1,
-			EndLine:    int(node.EndPoint().Row) + 1,
-			Signature:  "ENV " + key,
-			Properties: props,
+			Name:         key,
+			Kind:         "SCOPE.Schema",
+			Subtype:      "variable",
+			SourceFile:   file.Path,
+			Language:     "dockerfile",
+			StartLine:    int(node.StartPoint().Row) + 1,
+			EndLine:      int(node.EndPoint().Row) + 1,
+			Signature:    "ENV " + key,
+			Properties:   props,
 			QualityScore: 0.65,
 		})
 	}
@@ -392,15 +392,15 @@ func buildArg(node *sitter.Node, file extractor.FileInput, stage string) (types.
 
 	props := stageProps(stage)
 	return types.EntityRecord{
-		Name:       name,
-		Kind:       "SCOPE.Schema",
-		Subtype:    "build_arg",
-		SourceFile: file.Path,
-		Language:   "dockerfile",
-		StartLine:  int(node.StartPoint().Row) + 1,
-		EndLine:    int(node.EndPoint().Row) + 1,
-		Signature:  "ARG " + name,
-		Properties: props,
+		Name:         name,
+		Kind:         "SCOPE.Schema",
+		Subtype:      "build_arg",
+		SourceFile:   file.Path,
+		Language:     "dockerfile",
+		StartLine:    int(node.StartPoint().Row) + 1,
+		EndLine:      int(node.EndPoint().Row) + 1,
+		Signature:    "ARG " + name,
+		Properties:   props,
 		QualityScore: 0.65,
 	}, true
 }
@@ -409,15 +409,15 @@ func buildArg(node *sitter.Node, file extractor.FileInput, stage string) (types.
 func buildEntrypointOrCmd(node *sitter.Node, file extractor.FileInput, stage, instruction string) (types.EntityRecord, bool) {
 	props := stageProps(stage)
 	return types.EntityRecord{
-		Name:       instruction,
-		Kind:       "SCOPE.Operation",
-		Subtype:    "entrypoint",
-		SourceFile: file.Path,
-		Language:   "dockerfile",
-		StartLine:  int(node.StartPoint().Row) + 1,
-		EndLine:    int(node.EndPoint().Row) + 1,
-		Signature:  strings.TrimSpace(nodeText(node, file.Content)),
-		Properties: props,
+		Name:         instruction,
+		Kind:         "SCOPE.Operation",
+		Subtype:      "entrypoint",
+		SourceFile:   file.Path,
+		Language:     "dockerfile",
+		StartLine:    int(node.StartPoint().Row) + 1,
+		EndLine:      int(node.EndPoint().Row) + 1,
+		Signature:    strings.TrimSpace(nodeText(node, file.Content)),
+		Properties:   props,
 		QualityScore: 0.8,
 	}, true
 }

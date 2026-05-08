@@ -39,7 +39,7 @@ var (
 	reSvelteHTTPHandler = regexp.MustCompile(
 		`export\s+(?:async\s+)?function\s+(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(`,
 	)
-	reSvelteDynParam = regexp.MustCompile(`\[([^\]]+)\]`)
+	reSvelteDynParam  = regexp.MustCompile(`\[([^\]]+)\]`)
 	reSvelteGroupPath = regexp.MustCompile(`\([^)]+\)`)
 )
 

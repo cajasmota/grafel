@@ -19,13 +19,13 @@ const SchemaVersion = 1
 
 // Document is the top-level structure written to <repo>/.archigraph/graph.json.
 type Document struct {
-	Version         int               `json:"version"`
-	GeneratedAt     time.Time         `json:"generated_at"`
-	Repo            string            `json:"repo"`
-	IndexerVersion  string            `json:"indexer_version"`
-	Stats           Stats             `json:"stats"`
-	Entities        []Entity          `json:"entities"`
-	Relationships   []Relationship    `json:"relationships"`
+	Version        int            `json:"version"`
+	GeneratedAt    time.Time      `json:"generated_at"`
+	Repo           string         `json:"repo"`
+	IndexerVersion string         `json:"indexer_version"`
+	Stats          Stats          `json:"stats"`
+	Entities       []Entity       `json:"entities"`
+	Relationships  []Relationship `json:"relationships"`
 }
 
 // Stats summarises a Document.

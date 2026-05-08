@@ -33,7 +33,8 @@ import (
 var lessVarRE = regexp.MustCompile(`^\s*@([a-zA-Z_-][a-zA-Z0-9_-]*)\s*:\s*(.+?)\s*;`)
 
 // lessMixinRE matches Less class-style mixin definitions:
-//   .name() { or .name(@param) { or .name(@p1; @p2) {
+//
+//	.name() { or .name(@param) { or .name(@p1; @p2) {
 //
 // Captures: 1=name, 2=params string (may be empty).
 var lessMixinRE = regexp.MustCompile(`^\s*\.([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\(([^)]*)\)\s*\{`)
@@ -62,16 +63,16 @@ func ExtractLess(ctx context.Context, file extractor.FileInput, out *[]types.Ent
 	// but are NOT variables. We skip lines whose @name matches any of these.
 	// (e.g. @media, @import, @charset, @keyframes, @font-face, @mixin-like)
 	lessAtRuleKeywords := map[string]bool{
-		"media":      true,
-		"import":     true,
-		"charset":    true,
-		"keyframes":  true,
-		"font-face":  true,
-		"namespace":  true,
-		"supports":   true,
-		"page":       true,
-		"document":   true,
-		"viewport":   true,
+		"media":         true,
+		"import":        true,
+		"charset":       true,
+		"keyframes":     true,
+		"font-face":     true,
+		"namespace":     true,
+		"supports":      true,
+		"page":          true,
+		"document":      true,
+		"viewport":      true,
 		"counter-style": true,
 	}
 

@@ -12,9 +12,9 @@ import (
 type reactNextJSEnricher struct{}
 
 var (
-	rnUseClientRE    = regexp.MustCompile(`(?m)^['"]use client['"]`)
-	rnUseServerRE    = regexp.MustCompile(`(?m)['"]use server['"]`)
-	rnHookRE         = regexp.MustCompile(`\b(use[A-Z]\w*)\s*\(`)
+	rnUseClientRE      = regexp.MustCompile(`(?m)^['"]use client['"]`)
+	rnUseServerRE      = regexp.MustCompile(`(?m)['"]use server['"]`)
+	rnHookRE           = regexp.MustCompile(`\b(use[A-Z]\w*)\s*\(`)
 	rnJSXHandlerRE     = regexp.MustCompile(`on[A-Z]\w+\s*=\s*\{`)
 	rnNextPageRE       = regexp.MustCompile(`export\s+(?:default\s+)?function\s+(?:Page|Home|Index|App|\w+Page)\s*\(`)
 	rnGetServerPropsRE = regexp.MustCompile(`export\s+(?:async\s+)?function\s+getServerSideProps\s*\(`)

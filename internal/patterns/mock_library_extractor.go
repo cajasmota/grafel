@@ -18,15 +18,15 @@ var mockImportTokens = []string{
 }
 
 var (
-	mockMockitoMockRE    = regexp.MustCompile(`\bMockito\.mock\s*\(\s*(\w+)\.class\s*\)`)
-	mockMockitoAnnotRE   = regexp.MustCompile(`@Mock\s+(\w+)\b`)
-	mockPatchStrRE       = regexp.MustCompile(`@patch\s*\(\s*["']([^"']+)["']`)
-	mockPatchObjectRE    = regexp.MustCompile(`@patch\.object\s*\(\s*(\w+)\s*,`)
-	mockMockSpecRE       = regexp.MustCompile(`\b(?:Mock|MagicMock)\s*\(\s*spec\s*=\s*(\w+)`)
-	mockRSpecDoubleRE    = regexp.MustCompile(`\bdouble\s*\(\s*["'](\w+)["']`)
-mockJestSpyOnRE      = regexp.MustCompile(`\bjest\.spyOn\s*\(\s*(\w+)\s*,\s*["'](\w+)["']`)
-	mockJestMockRE       = regexp.MustCompile(`\bjest\.mock\s*\(\s*["']([^"']+)["']`)
-	mockGoMockControlRE  = regexp.MustCompile(`gomock\.NewController\s*\(`)
+	mockMockitoMockRE   = regexp.MustCompile(`\bMockito\.mock\s*\(\s*(\w+)\.class\s*\)`)
+	mockMockitoAnnotRE  = regexp.MustCompile(`@Mock\s+(\w+)\b`)
+	mockPatchStrRE      = regexp.MustCompile(`@patch\s*\(\s*["']([^"']+)["']`)
+	mockPatchObjectRE   = regexp.MustCompile(`@patch\.object\s*\(\s*(\w+)\s*,`)
+	mockMockSpecRE      = regexp.MustCompile(`\b(?:Mock|MagicMock)\s*\(\s*spec\s*=\s*(\w+)`)
+	mockRSpecDoubleRE   = regexp.MustCompile(`\bdouble\s*\(\s*["'](\w+)["']`)
+	mockJestSpyOnRE     = regexp.MustCompile(`\bjest\.spyOn\s*\(\s*(\w+)\s*,\s*["'](\w+)["']`)
+	mockJestMockRE      = regexp.MustCompile(`\bjest\.mock\s*\(\s*["']([^"']+)["']`)
+	mockGoMockControlRE = regexp.MustCompile(`gomock\.NewController\s*\(`)
 )
 
 func (m *mockLibraryExtractor) Category() string { return "mock_library" }

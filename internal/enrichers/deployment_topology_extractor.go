@@ -19,15 +19,15 @@ type DeploymentTopologyEntry struct {
 }
 
 var (
-	nginxLocationRe    = regexp.MustCompile(`(?m)location\s+(?:=\s+|~\*?\s+|)([^\s{]+)\s*\{`)
-	nginxProxyPassRe   = regexp.MustCompile(`(?m)proxy_pass\s+https?://([a-zA-Z0-9_.:-]+)`)
-	caddyRevProxyRe    = regexp.MustCompile(`(?m)reverse_proxy\s+(/\S+)\s+(\S+)`)
-	caddyRevSimpleRe   = regexp.MustCompile(`(?m)reverse_proxy\s+([a-zA-Z0-9_.:-]+:\d+)`)
-	composeServiceRe   = regexp.MustCompile(`(?m)^\s{2}([a-zA-Z0-9_-]+)\s*:`)
-	k8sIngressPathRe   = regexp.MustCompile(`(?m)path:\s*([^\s]+)`)
-	kongRouteRe        = regexp.MustCompile(`(?m)paths:\s*\n\s*-\s*([^\s]+)`)
-	serverlessFnRe     = regexp.MustCompile(`(?m)^\s{2}([a-zA-Z0-9_-]+)\s*:\s*$`)
-	serverlessPathRe   = regexp.MustCompile(`path:\s*([^\s]+)`)
+	nginxLocationRe  = regexp.MustCompile(`(?m)location\s+(?:=\s+|~\*?\s+|)([^\s{]+)\s*\{`)
+	nginxProxyPassRe = regexp.MustCompile(`(?m)proxy_pass\s+https?://([a-zA-Z0-9_.:-]+)`)
+	caddyRevProxyRe  = regexp.MustCompile(`(?m)reverse_proxy\s+(/\S+)\s+(\S+)`)
+	caddyRevSimpleRe = regexp.MustCompile(`(?m)reverse_proxy\s+([a-zA-Z0-9_.:-]+:\d+)`)
+	composeServiceRe = regexp.MustCompile(`(?m)^\s{2}([a-zA-Z0-9_-]+)\s*:`)
+	k8sIngressPathRe = regexp.MustCompile(`(?m)path:\s*([^\s]+)`)
+	kongRouteRe      = regexp.MustCompile(`(?m)paths:\s*\n\s*-\s*([^\s]+)`)
+	serverlessFnRe   = regexp.MustCompile(`(?m)^\s{2}([a-zA-Z0-9_-]+)\s*:\s*$`)
+	serverlessPathRe = regexp.MustCompile(`path:\s*([^\s]+)`)
 )
 
 var gatedTopoBasenames = map[string]bool{

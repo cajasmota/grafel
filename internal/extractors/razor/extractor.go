@@ -114,14 +114,14 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 
 	// --- 1. Component entity -------------------------------------------------
 	componentEntity := types.EntityRecord{
-		Name:             componentName,
-		QualifiedName:    componentName,
-		Kind:             "SCOPE.UIComponent",
-		Subtype:          "component",
-		SourceFile:       file.Path,
-		Language:         "razor",
-		QualityScore:     0.9,
-		EnrichmentStatus: types.StatusPending,
+		Name:               componentName,
+		QualifiedName:      componentName,
+		Kind:               "SCOPE.UIComponent",
+		Subtype:            "component",
+		SourceFile:         file.Path,
+		Language:           "razor",
+		QualityScore:       0.9,
+		EnrichmentStatus:   types.StatusPending,
 		EnrichmentRequired: false,
 	}
 	entities = append(entities, componentEntity)

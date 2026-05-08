@@ -75,11 +75,11 @@ func projectRef(filePath string) string {
 
 // exactManifestNames lists supported manifest basenames (case-sensitive).
 var exactManifestNames = map[string]bool{
-	"package.json":    true,
-	"go.mod":          true,
-	"Cargo.toml":      true,
-	"pyproject.toml":  true,
-	"pom.xml":         true,
+	"package.json":   true,
+	"go.mod":         true,
+	"Cargo.toml":     true,
+	"pyproject.toml": true,
+	"pom.xml":        true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.

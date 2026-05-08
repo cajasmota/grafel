@@ -11,17 +11,17 @@ import (
 type frameworkVersionEnricher struct{}
 
 var (
-	fvSpringParentRE    = regexp.MustCompile(`<parent>[\s\S]*?<artifactId>\s*spring-boot-starter-parent\s*</artifactId>[\s\S]*?</parent>`)
-	fvXMLVersionRE      = regexp.MustCompile(`<version>\s*([^<\s]+)\s*</version>`)
-	fvGradleSpringRE    = regexp.MustCompile(`org\.springframework\.boot['"]\s+version\s+["']([^"']+)["']`)
-	fvDjangoRE          = regexp.MustCompile(`Django==([0-9][^"'\s]+)`)
-	fvFastAPIRE         = regexp.MustCompile(`fastapi==([0-9][^"'\s]+)`)
-	fvRailsRE           = regexp.MustCompile(`gem ['"]rails['"],\s*['"]([^'"]+)['"]`)
-	fvExpressRE         = regexp.MustCompile(`"express":\s*["']([^"']+)["']`)
-	fvASPNetTFRE        = regexp.MustCompile(`<TargetFramework>\s*([^<\s]+)\s*</TargetFramework>`)
-	fvGoModRE           = regexp.MustCompile(`(?m)^go\s+(\d+\.\d+(?:\.\d+)?)`)
-	fvNestJSRE          = regexp.MustCompile(`"@nestjs/core":\s*["']([^"']+)["']`)
-	fvNextJSRE          = regexp.MustCompile(`"next":\s*["']([^"']+)["']`)
+	fvSpringParentRE = regexp.MustCompile(`<parent>[\s\S]*?<artifactId>\s*spring-boot-starter-parent\s*</artifactId>[\s\S]*?</parent>`)
+	fvXMLVersionRE   = regexp.MustCompile(`<version>\s*([^<\s]+)\s*</version>`)
+	fvGradleSpringRE = regexp.MustCompile(`org\.springframework\.boot['"]\s+version\s+["']([^"']+)["']`)
+	fvDjangoRE       = regexp.MustCompile(`Django==([0-9][^"'\s]+)`)
+	fvFastAPIRE      = regexp.MustCompile(`fastapi==([0-9][^"'\s]+)`)
+	fvRailsRE        = regexp.MustCompile(`gem ['"]rails['"],\s*['"]([^'"]+)['"]`)
+	fvExpressRE      = regexp.MustCompile(`"express":\s*["']([^"']+)["']`)
+	fvASPNetTFRE     = regexp.MustCompile(`<TargetFramework>\s*([^<\s]+)\s*</TargetFramework>`)
+	fvGoModRE        = regexp.MustCompile(`(?m)^go\s+(\d+\.\d+(?:\.\d+)?)`)
+	fvNestJSRE       = regexp.MustCompile(`"@nestjs/core":\s*["']([^"']+)["']`)
+	fvNextJSRE       = regexp.MustCompile(`"next":\s*["']([^"']+)["']`)
 )
 
 func (f *frameworkVersionEnricher) Category() string { return "framework_version" }

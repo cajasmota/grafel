@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cajasmota/archigraph/internal/extractor"
 	_ "github.com/cajasmota/archigraph/internal/custom/python"
+	"github.com/cajasmota/archigraph/internal/extractor"
 )
 
 // extract returns extracted entities with fields for assertion.
@@ -48,7 +48,6 @@ func extract(t *testing.T, key, content string) []struct {
 	}
 	return result
 }
-
 
 // ============================================================================
 // Django tests

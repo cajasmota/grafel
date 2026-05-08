@@ -29,16 +29,16 @@ var (
 			`\(\s*(?:r)?["']([^"']*)["'][^)]*\)\s*\n` +
 			`(?:\s*(?:#[^\n]*)?\n)*` +
 			`\s*(?:async\s+)?def\s+(\w+)\s*\(`)
-	faDependsParamRe = regexp.MustCompile(`=\s*Depends\s*\(\s*(\w+)\s*\)`)
+	faDependsParamRe  = regexp.MustCompile(`=\s*Depends\s*\(\s*(\w+)\s*\)`)
 	faPydanticClassRe = regexp.MustCompile(
 		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*` +
 			`(?:(?:pydantic\.)?(?:BaseModel|BaseSettings|RootModel|GenericModel|` +
 			`ConstrainedStr|ConstrainedInt|ConstrainedFloat|ConstrainedBytes|` +
 			`ConstrainedDate|ConstrainedDecimal))[^)]*\)\s*:`)
-	faAPIRouterRe     = regexp.MustCompile(`(?m)(\w+)\s*=\s*APIRouter\s*\(([^)]*)\)`)
-	faRouterPrefixRe  = regexp.MustCompile(`prefix\s*=\s*["']([^"']*)["']`)
-	faRouterTagsRe    = regexp.MustCompile(`tags\s*=\s*\[\s*["']([^"']*)["']`)
-	faWebSocketRe     = regexp.MustCompile(
+	faAPIRouterRe    = regexp.MustCompile(`(?m)(\w+)\s*=\s*APIRouter\s*\(([^)]*)\)`)
+	faRouterPrefixRe = regexp.MustCompile(`prefix\s*=\s*["']([^"']*)["']`)
+	faRouterTagsRe   = regexp.MustCompile(`tags\s*=\s*\[\s*["']([^"']*)["']`)
+	faWebSocketRe    = regexp.MustCompile(
 		`(?m)@(\w+)\.websocket\s*\(\s*["']([^"']*)["'][^)]*\)\s*\n` +
 			`(?:\s*(?:#[^\n]*)?\n)*` +
 			`\s*(?:async\s+)?def\s+(\w+)\s*\(`)

@@ -12,7 +12,7 @@ import (
 type sharedTestHelperDetector struct{}
 
 var (
-sthJSMocksDirRE      = regexp.MustCompile(`(?:^|/)__mocks__/[^/]+\.(?:ts|js)$`)
+	sthJSMocksDirRE      = regexp.MustCompile(`(?:^|/)__mocks__/[^/]+\.(?:ts|js)$`)
 	sthGoTestingGoRE     = regexp.MustCompile(`(?:^|/)[^/]*_test[^/]*/testing\.go$`)
 	sthJavaHelperSuffRE  = regexp.MustCompile(`(?:TestHelper|TestUtils|TestFixture)\.java$`)
 	sthJavaSupportPathRE = regexp.MustCompile(`src/test/java/.*?/support/[^/]+\.java$`)

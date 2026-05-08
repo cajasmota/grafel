@@ -12,18 +12,18 @@ import (
 type authEndpointLinker struct{}
 
 var (
-	authExpressUseMiddlewareRE  = regexp.MustCompile(`(?:app|router)\s*\.\s*use\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\)`)
+	authExpressUseMiddlewareRE   = regexp.MustCompile(`(?:app|router)\s*\.\s*use\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\)`)
 	authExpressRouteMiddlewareRE = regexp.MustCompile(`(?:app|router)\s*\.\s*(?:get|post|put|patch|delete|all)\s*\(\s*["'][^"']*["']\s*,\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*,`)
-	authExpressPassportRE       = regexp.MustCompile(`passport\s*\.\s*authenticate\s*\(\s*["']([^"']+)["']`)
-	authExpressVerifyTokenRE    = regexp.MustCompile(`\bverifyToken\b`)
-	authSpringPreAuthorizeRE    = regexp.MustCompile(`@PreAuthorize\s*\(\s*(?:"([^"]*)"|'([^']*)')\s*\)`)
-	authSpringSecuredRE         = regexp.MustCompile(`@Secured\s*\(\s*\{?(?:"([^"]*)"|'([^']*)')`)
-	authSpringRolesAllowedRE    = regexp.MustCompile(`@RolesAllowed\s*\(\s*(?:"([^"]*)"|'([^']*)')`)
-	authNestJSUseGuardsRE       = regexp.MustCompile(`@UseGuards\s*\(\s*([A-Za-z_$][A-Za-z0-9_$,\s]*)\s*\)`)
-	authFastAPIDependsRE        = regexp.MustCompile(`Depends\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)`)
-	authASPNetAuthorizeBareRE   = regexp.MustCompile(`\[Authorize\]`)
-	authASPNetAuthorizeRolesRE  = regexp.MustCompile(`\[Authorize\s*\(\s*Roles\s*=\s*["']([^"']+)["']\s*\)\]`)
-	authASPNetAuthorizePolicyRE = regexp.MustCompile(`\[Authorize\s*\(\s*Policy\s*=\s*["']([^"']+)["']\s*\)\]`)
+	authExpressPassportRE        = regexp.MustCompile(`passport\s*\.\s*authenticate\s*\(\s*["']([^"']+)["']`)
+	authExpressVerifyTokenRE     = regexp.MustCompile(`\bverifyToken\b`)
+	authSpringPreAuthorizeRE     = regexp.MustCompile(`@PreAuthorize\s*\(\s*(?:"([^"]*)"|'([^']*)')\s*\)`)
+	authSpringSecuredRE          = regexp.MustCompile(`@Secured\s*\(\s*\{?(?:"([^"]*)"|'([^']*)')`)
+	authSpringRolesAllowedRE     = regexp.MustCompile(`@RolesAllowed\s*\(\s*(?:"([^"]*)"|'([^']*)')`)
+	authNestJSUseGuardsRE        = regexp.MustCompile(`@UseGuards\s*\(\s*([A-Za-z_$][A-Za-z0-9_$,\s]*)\s*\)`)
+	authFastAPIDependsRE         = regexp.MustCompile(`Depends\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)`)
+	authASPNetAuthorizeBareRE    = regexp.MustCompile(`\[Authorize\]`)
+	authASPNetAuthorizeRolesRE   = regexp.MustCompile(`\[Authorize\s*\(\s*Roles\s*=\s*["']([^"']+)["']\s*\)\]`)
+	authASPNetAuthorizePolicyRE  = regexp.MustCompile(`\[Authorize\s*\(\s*Policy\s*=\s*["']([^"']+)["']\s*\)\]`)
 )
 
 var authExpressNonAuthTokens = map[string]bool{

@@ -90,9 +90,9 @@ func (q *queueDetector) Detect(filePath, language, src string) []types.EntityRec
 				"SCOPE.Queue", sig.relType, language,
 				lineOf(src, m[0]),
 				map[string]string{
-					"kind":          "event_queue",
-					"relationship":  sig.relType,
-					"sdk":           sig.sdk,
+					"kind":           "event_queue",
+					"relationship":   sig.relType,
+					"sdk":            sig.sdk,
 					"topic_or_queue": topic,
 				}))
 		}

@@ -21,14 +21,14 @@ var httpClientImportTokens = []string{
 }
 
 var (
-	hcURLRE        = regexp.MustCompile(`["'](https?://([^/"'\s]+)[^"']*)["']`)
-	hcPyRequestsRE = regexp.MustCompile(`\brequests\s*\.\s*(get|post|put|patch|delete|request)\s*\(`)
-	hcTSFetchRE    = regexp.MustCompile(`\bfetch\s*\(`)
-	hcTSAxiosRE    = regexp.MustCompile(`\baxios\s*\.\s*(?:get|post|put|patch|delete|request)\s*\(`)
-	hcGoHTTPRE     = regexp.MustCompile(`\bhttp\s*\.\s*(?:Get|Post|PostForm|NewRequest|Do)\s*\(`)
-	hcJavaHTTPRE   = regexp.MustCompile(`\b(?:OkHttpClient|HttpClient|RestTemplate|WebClient|Retrofit)\b`)
-hcBoto3ClientRE = regexp.MustCompile(`boto3\s*\.\s*(?:client|resource)\s*\(\s*["']([^"']+)["']`)
-	hcGRPCStubRE   = regexp.MustCompile(`\b\w+Stub\s*\(\s*\w+Channel\s*\)`)
+	hcURLRE         = regexp.MustCompile(`["'](https?://([^/"'\s]+)[^"']*)["']`)
+	hcPyRequestsRE  = regexp.MustCompile(`\brequests\s*\.\s*(get|post|put|patch|delete|request)\s*\(`)
+	hcTSFetchRE     = regexp.MustCompile(`\bfetch\s*\(`)
+	hcTSAxiosRE     = regexp.MustCompile(`\baxios\s*\.\s*(?:get|post|put|patch|delete|request)\s*\(`)
+	hcGoHTTPRE      = regexp.MustCompile(`\bhttp\s*\.\s*(?:Get|Post|PostForm|NewRequest|Do)\s*\(`)
+	hcJavaHTTPRE    = regexp.MustCompile(`\b(?:OkHttpClient|HttpClient|RestTemplate|WebClient|Retrofit)\b`)
+	hcBoto3ClientRE = regexp.MustCompile(`boto3\s*\.\s*(?:client|resource)\s*\(\s*["']([^"']+)["']`)
+	hcGRPCStubRE    = regexp.MustCompile(`\b\w+Stub\s*\(\s*\w+Channel\s*\)`)
 )
 
 func (h *httpClientDetector) Category() string { return "http_client" }
@@ -55,9 +55,9 @@ func (h *httpClientDetector) Detect(filePath, language, src string) []types.Enti
 		results = append(results, makeEntity(filePath,
 			name, "SCOPE.Operation", "http_client", language, line,
 			map[string]string{
-				"kind":          "http_client",
+				"kind":           "http_client",
 				"client_library": client,
-				"url":           url,
+				"url":            url,
 			}))
 	}
 

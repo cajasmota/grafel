@@ -14,7 +14,7 @@ type transactionChangesetEnricher struct{}
 var (
 	tcEctoChangesetRE     = regexp.MustCompile(`(?m)^[ \t]*def\s+changeset\b`)
 	tcEctoMultiTriggerRE  = regexp.MustCompile(`\bEcto\.Multi\b`)
-tcJavaTransactionalRE = regexp.MustCompile(`@Transactional\b`)
+	tcJavaTransactionalRE = regexp.MustCompile(`@Transactional\b`)
 	tcJavaEMTxRE          = regexp.MustCompile(`entityManager\.(?:getTransaction|begin|commit|rollback)\s*\(`)
 	tcPyDjangoTxRE        = regexp.MustCompile(`(?:transaction\.atomic|@transaction\.atomic)\b`)
 	tcPySQLAlchemyTxRE    = regexp.MustCompile(`(?:session\.begin|with\s+session\.begin)`)

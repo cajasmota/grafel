@@ -43,7 +43,7 @@ var (
 )
 
 var (
-	nuxtServerDirs = map[string]bool{"server/api": true, "server/routes": true}
+	nuxtServerDirs   = map[string]bool{"server/api": true, "server/routes": true}
 	nuxtSpecialFiles = map[string]bool{"index": true, "default": true}
 )
 

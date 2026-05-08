@@ -5,8 +5,8 @@ import (
 	"regexp"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/types"
@@ -24,7 +24,7 @@ var (
 	reComposableFun = regexp.MustCompile(
 		`@Composable\s+(?:(?:private|internal|public)\s+)?fun\s+([A-Z][A-Za-z0-9_]*)\s*\(`,
 	)
-	reNavHostStart = regexp.MustCompile(`(?m)\bNavHost\s*\(`)
+	reNavHostStart  = regexp.MustCompile(`(?m)\bNavHost\s*\(`)
 	reNavComposable = regexp.MustCompile(
 		`composable\s*\(\s*(?:route\s*=\s*)?["']([^"']+)["']\s*(?:,|\))`,
 	)

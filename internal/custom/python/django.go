@@ -27,13 +27,13 @@ func (e *DjangoExtractor) Language() string { return "python_django" }
 var (
 	djangoPathCallRe = regexp.MustCompile(
 		`(?:re_)?path\s*\(\s*(?:r)?["']([^"']*)["']\s*,\s*([\w.]+)`)
-	djangoPathNameRe   = regexp.MustCompile(`name\s*=\s*["']([^"']+)["']`)
-	djangoIncludeRe    = regexp.MustCompile(`include\s*\(\s*["']([^"']+)["']`)
-	djangoCBVClassRe   = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\(([^)]*(?:View|Mixin|APIView|ViewSet)[^)]*)\)\s*:`)
-	djangoCBVMethodRe  = regexp.MustCompile(`(?m)^\s{4,}def\s+(get|post|put|patch|delete|head|options|trace)\s*\(\s*self`)
-	djangoReceiverRe   = regexp.MustCompile(`(?m)@receiver\s*\(\s*([\w.]+)(?:\s*,\s*sender\s*=\s*(\w+))?[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
-	djangoAdminRegRe   = regexp.MustCompile(`(?m)admin\.site\.register\s*\(\s*(\w+)(?:\s*,\s*(\w+))?\s*\)`)
-	djangoAdminDecorRe = regexp.MustCompile(`(?m)@admin\.register\s*\(\s*(\w+)\s*\)\s*\n\s*class\s+(\w+)\s*\(`)
+	djangoPathNameRe      = regexp.MustCompile(`name\s*=\s*["']([^"']+)["']`)
+	djangoIncludeRe       = regexp.MustCompile(`include\s*\(\s*["']([^"']+)["']`)
+	djangoCBVClassRe      = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\(([^)]*(?:View|Mixin|APIView|ViewSet)[^)]*)\)\s*:`)
+	djangoCBVMethodRe     = regexp.MustCompile(`(?m)^\s{4,}def\s+(get|post|put|patch|delete|head|options|trace)\s*\(\s*self`)
+	djangoReceiverRe      = regexp.MustCompile(`(?m)@receiver\s*\(\s*([\w.]+)(?:\s*,\s*sender\s*=\s*(\w+))?[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	djangoAdminRegRe      = regexp.MustCompile(`(?m)admin\.site\.register\s*\(\s*(\w+)(?:\s*,\s*(\w+))?\s*\)`)
+	djangoAdminDecorRe    = regexp.MustCompile(`(?m)@admin\.register\s*\(\s*(\w+)\s*\)\s*\n\s*class\s+(\w+)\s*\(`)
 	djangoDRFSerializerRe = regexp.MustCompile(
 		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*(?:serializers\.)?(?:ModelSerializer|HyperlinkedModelSerializer|Serializer|ListSerializer)[^)]*\)\s*:`)
 	djangoDRFViewsetRe = regexp.MustCompile(
@@ -47,16 +47,16 @@ var (
 	djangoMiddlewareClassRe  = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*Middleware)\s*(?:\([^)]*\))?\s*:`)
 	djangoMiddlewareMethodRe = regexp.MustCompile(
 		`(?m)^\s{4,}def\s+(process_(?:request|response|view|exception|template_response))\s*\(`)
-	djangoTemplateFilterRe      = regexp.MustCompile(`(?m)@register\.filter\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
-	djangoTemplateTagRe         = regexp.MustCompile(`(?m)@register\.tag\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
-	djangoTemplateInclusionRe   = regexp.MustCompile(`(?m)@register\.inclusion_tag\s*\([^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
-	djangoTemplateSimpleTagRe   = regexp.MustCompile(`(?m)@register\.simple_tag\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
-	djangoMgmtCommandRe         = regexp.MustCompile(`(?m)^class\s+Command\s*\([^)]*BaseCommand[^)]*\)\s*:`)
-	djangoMgmtHandleRe          = regexp.MustCompile(`(?m)^\s{4,}def\s+handle\s*\(\s*self`)
-	djangoManagerClassRe        = regexp.MustCompile(
+	djangoTemplateFilterRe    = regexp.MustCompile(`(?m)@register\.filter\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	djangoTemplateTagRe       = regexp.MustCompile(`(?m)@register\.tag\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	djangoTemplateInclusionRe = regexp.MustCompile(`(?m)@register\.inclusion_tag\s*\([^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	djangoTemplateSimpleTagRe = regexp.MustCompile(`(?m)@register\.simple_tag\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	djangoMgmtCommandRe       = regexp.MustCompile(`(?m)^class\s+Command\s*\([^)]*BaseCommand[^)]*\)\s*:`)
+	djangoMgmtHandleRe        = regexp.MustCompile(`(?m)^\s{4,}def\s+handle\s*\(\s*self`)
+	djangoManagerClassRe      = regexp.MustCompile(
 		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*(?:(?:models\.)?(?:Manager|QuerySet)|BaseManager)[^)]*\)\s*:`)
-	djangoLoginRequiredRe     = regexp.MustCompile(`(?m)@login_required\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
-	djangoPermRequiredRe      = regexp.MustCompile(`(?m)@permission_required\s*\(\s*["']?([^)"']+)["']?[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	djangoLoginRequiredRe = regexp.MustCompile(`(?m)@login_required\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	djangoPermRequiredRe  = regexp.MustCompile(`(?m)@permission_required\s*\(\s*["']?([^)"']+)["']?[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 )
 
 func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {

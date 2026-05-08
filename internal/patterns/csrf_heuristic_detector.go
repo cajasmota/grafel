@@ -12,15 +12,14 @@ import (
 type csrfHeuristicDetector struct{}
 
 var (
-	csrfSpringDisabledRE    = regexp.MustCompile(`\.csrf\s*\(\s*\)\s*\.\s*disable\s*\(\s*\)`)
-	csrfNestJSRE            = regexp.MustCompile(`csurf\s*\(`)
-	csrfDjangoExemptRE      = regexp.MustCompile(`@csrf_exempt`)
-csrfDjangoCookieSecRE   = regexp.MustCompile(`CSRF_COOKIE_SECURE\s*=\s*True`)
-	csrfRailsProtectRE      = regexp.MustCompile(`protect_from_forgery`)
-	csrfRailsSkipRE         = regexp.MustCompile(`skip_before_action\s*:verify_authenticity_token`)
-	csrfLaravelVerifyRE     = regexp.MustCompile(`VerifyCsrfToken`)
+	csrfSpringDisabledRE  = regexp.MustCompile(`\.csrf\s*\(\s*\)\s*\.\s*disable\s*\(\s*\)`)
+	csrfNestJSRE          = regexp.MustCompile(`csurf\s*\(`)
+	csrfDjangoExemptRE    = regexp.MustCompile(`@csrf_exempt`)
+	csrfDjangoCookieSecRE = regexp.MustCompile(`CSRF_COOKIE_SECURE\s*=\s*True`)
+	csrfRailsProtectRE    = regexp.MustCompile(`protect_from_forgery`)
+	csrfRailsSkipRE       = regexp.MustCompile(`skip_before_action\s*:verify_authenticity_token`)
+	csrfLaravelVerifyRE   = regexp.MustCompile(`VerifyCsrfToken`)
 )
-
 
 func (c *csrfHeuristicDetector) Category() string { return "csrf_policy" }
 

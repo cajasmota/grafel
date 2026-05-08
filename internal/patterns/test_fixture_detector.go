@@ -13,13 +13,13 @@ type testFixtureDetector struct{}
 var (
 	tfPytestFixtureTrigRE = regexp.MustCompile(`@pytest\.fixture\b`)
 	tfPytestFixtureRE     = regexp.MustCompile(`@pytest\.fixture\s*(?:\([^)]*\))?\s*\ndef\s+(\w+)`)
-	tfFactoryDefineRE  = regexp.MustCompile(`factory_boy|Factory\.define|FactoryGirl\.define|FactoryBot\.define`)
-	tfJestSetupFilesRE = regexp.MustCompile(`(?:beforeAll|beforeEach|afterAll|afterEach)\s*\(`)
-	tfSpringTestCfgRE  = regexp.MustCompile(`@(?:TestConfiguration|SpringBootTest|DataJpaTest)\b`)
-	tfJUnitBeforeRE    = regexp.MustCompile(`@(?:BeforeEach|BeforeAll|Before|BeforeClass)\b`)
-	tfGoTestMainRE     = regexp.MustCompile(`(?m)^func\s+TestMain\s*\(`)
-	tfGoSetupRE        = regexp.MustCompile(`func\s+setup\s*\(\s*\)|func\s+teardown\s*\(\s*\)`)
-	tfRubyRSpecRE      = regexp.MustCompile(`(?:before\s*(?:\(:each\)|\(:all\)|\(:suite\))|let!\?\s*\()`)
+	tfFactoryDefineRE     = regexp.MustCompile(`factory_boy|Factory\.define|FactoryGirl\.define|FactoryBot\.define`)
+	tfJestSetupFilesRE    = regexp.MustCompile(`(?:beforeAll|beforeEach|afterAll|afterEach)\s*\(`)
+	tfSpringTestCfgRE     = regexp.MustCompile(`@(?:TestConfiguration|SpringBootTest|DataJpaTest)\b`)
+	tfJUnitBeforeRE       = regexp.MustCompile(`@(?:BeforeEach|BeforeAll|Before|BeforeClass)\b`)
+	tfGoTestMainRE        = regexp.MustCompile(`(?m)^func\s+TestMain\s*\(`)
+	tfGoSetupRE           = regexp.MustCompile(`func\s+setup\s*\(\s*\)|func\s+teardown\s*\(\s*\)`)
+	tfRubyRSpecRE         = regexp.MustCompile(`(?:before\s*(?:\(:each\)|\(:all\)|\(:suite\))|let!\?\s*\()`)
 )
 
 func (t *testFixtureDetector) Category() string { return "test_fixture" }

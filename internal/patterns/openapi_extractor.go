@@ -13,9 +13,9 @@ import (
 type openAPIExtractor struct{}
 
 var (
-	oaPathRE        = regexp.MustCompile(`(?m)^  (/[^\s:]+)\s*:`)
-	oaOperationRE   = regexp.MustCompile(`(?m)^    (get|post|put|patch|delete|head|options)\s*:`)
-	oaInfoTitleRE   = regexp.MustCompile(`(?m)^title\s*:\s*(.+)`)
+	oaPathRE       = regexp.MustCompile(`(?m)^  (/[^\s:]+)\s*:`)
+	oaOperationRE  = regexp.MustCompile(`(?m)^    (get|post|put|patch|delete|head|options)\s*:`)
+	oaInfoTitleRE  = regexp.MustCompile(`(?m)^title\s*:\s*(.+)`)
 	oaOpenAPIVerRE = regexp.MustCompile(`(?m)^openapi\s*:\s*(.+)`)
 	oaSwaggerVerRE = regexp.MustCompile(`(?m)^swagger\s*:\s*(.+)`)
 )

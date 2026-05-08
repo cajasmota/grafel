@@ -13,8 +13,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "function",
-        "vera_type": "SCOPE.Operation",
-        "vera_subtype": "function",
+        "kind": "SCOPE.Operation",
+        "subtype": "function",
         "provenance": null,
         "has_conditionals": false,
         "has_external_calls": true,
@@ -33,8 +33,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "function",
-        "vera_type": "SCOPE.Operation",
-        "vera_subtype": "function",
+        "kind": "SCOPE.Operation",
+        "subtype": "function",
         "provenance": null,
         "has_conditionals": false,
         "has_external_calls": true,
@@ -53,8 +53,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "function",
-        "vera_type": "SCOPE.Operation",
-        "vera_subtype": "function",
+        "kind": "SCOPE.Operation",
+        "subtype": "function",
         "provenance": null,
         "has_conditionals": true,
         "has_external_calls": true,
@@ -73,8 +73,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "function",
-        "vera_type": "SCOPE.Operation",
-        "vera_subtype": "function",
+        "kind": "SCOPE.Operation",
+        "subtype": "function",
         "provenance": null,
         "has_conditionals": false,
         "has_external_calls": true,
@@ -93,8 +93,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "function",
-        "vera_type": "SCOPE.Operation",
-        "vera_subtype": "function",
+        "kind": "SCOPE.Operation",
+        "subtype": "function",
         "provenance": null,
         "has_conditionals": true,
         "has_external_calls": true,
@@ -113,8 +113,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "function",
-        "vera_type": "SCOPE.Operation",
-        "vera_subtype": "function",
+        "kind": "SCOPE.Operation",
+        "subtype": "function",
         "provenance": null,
         "has_conditionals": false,
         "has_external_calls": true,
@@ -133,8 +133,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "struct",
-        "vera_type": "SCOPE.Component",
-        "vera_subtype": null,
+        "kind": "SCOPE.Component",
+        "subtype": null,
         "provenance": null,
         "has_conditionals": false,
         "has_external_calls": false,
@@ -153,8 +153,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "struct",
-        "vera_type": "SCOPE.Component",
-        "vera_subtype": null,
+        "kind": "SCOPE.Component",
+        "subtype": null,
         "provenance": null,
         "has_conditionals": false,
         "has_external_calls": false,
@@ -173,8 +173,8 @@
       "enrichment_required": false,
       "properties": {
         "type": "struct",
-        "vera_type": "SCOPE.Component",
-        "vera_subtype": null,
+        "kind": "SCOPE.Component",
+        "subtype": null,
         "provenance": null,
         "has_conditionals": false,
         "has_external_calls": false,
@@ -192,7 +192,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_DECORATOR",
         "source": "",
         "kind": "decorator",
@@ -216,7 +216,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_DECORATOR",
         "source": "",
         "kind": "decorator",
@@ -238,7 +238,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_DECORATOR",
         "source": "",
         "kind": "decorator",
@@ -260,7 +260,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_DECORATOR",
         "source": "",
         "kind": "decorator",
@@ -282,7 +282,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_DECORATOR",
         "source": "",
         "kind": "decorator",
@@ -304,7 +304,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_DECORATOR",
         "source": "",
         "kind": "decorator",
@@ -326,7 +326,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_DECORATOR",
         "source": "",
         "kind": "decorator",
@@ -348,7 +348,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_DECORATOR",
         "source": "",
         "kind": "decorator",
@@ -367,7 +367,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_ERROR_HANDLING_RUST_QUESTION_MARK",
         "source": "",
         "kind": "error_handling",
@@ -386,7 +386,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_NAMING_ANALYSIS",
         "source": "",
         "kind": "naming_convention",
@@ -406,7 +406,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
         "source": "import_extraction",
         "is_local": false,
@@ -423,7 +423,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
         "source": "import_extraction",
         "is_local": false,
@@ -440,7 +440,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_IMPORT_STATEMENT",
         "source": "import_extraction",
         "is_local": false,
@@ -457,7 +457,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "operation",
+        "subtype": "operation",
         "provenance": "framework_extraction",
         "source": "framework_extraction"
       }
@@ -472,7 +472,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "operation",
+        "subtype": "operation",
         "provenance": "framework_extraction",
         "source": "framework_extraction"
       }
@@ -487,7 +487,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "operation",
+        "subtype": "operation",
         "provenance": "framework_extraction",
         "source": "framework_extraction"
       }
@@ -502,7 +502,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "operation",
+        "subtype": "operation",
         "provenance": "framework_extraction",
         "source": "framework_extraction"
       }
@@ -517,7 +517,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "dependency",
+        "subtype": "dependency",
         "provenance": "framework_extraction",
         "source": "framework_extraction"
       }
@@ -532,7 +532,7 @@
       "signature": null,
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": null,
+        "subtype": null,
         "provenance": "INFERRED_FROM_ACTIX_SERVER",
         "source": "framework_extraction",
         "entry_point": true,

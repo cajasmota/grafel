@@ -12,13 +12,13 @@ import (
 type propertyTestDetector struct{}
 
 var (
-	ptdPyHypothesisRE   = regexp.MustCompile(`@(?:hypothesis\.)?(?:given|settings|example)\s*\(`)
-	ptdJSFastCheckRE    = regexp.MustCompile(`(?:fc\.|fastcheck\.)(?:property|assert|check)\s*\(`)
-	ptdJavaJqwikRE      = regexp.MustCompile(`@(?:Property|ForAll|net\.jqwik)\b`)
-	ptdKotlinKotestRE   = regexp.MustCompile(`(?:checkAll|forAll|Arb\.)\s*\{`)
-	ptdScalaCheckRE     = regexp.MustCompile(`forAll\s*\{|Gen\.\w+`)
-	ptdRustProptest     = regexp.MustCompile(`proptest!\s*\{`)
-	ptdGoQuickCheckRE   = regexp.MustCompile(`quick\.Check\s*\(`)
+	ptdPyHypothesisRE = regexp.MustCompile(`@(?:hypothesis\.)?(?:given|settings|example)\s*\(`)
+	ptdJSFastCheckRE  = regexp.MustCompile(`(?:fc\.|fastcheck\.)(?:property|assert|check)\s*\(`)
+	ptdJavaJqwikRE    = regexp.MustCompile(`@(?:Property|ForAll|net\.jqwik)\b`)
+	ptdKotlinKotestRE = regexp.MustCompile(`(?:checkAll|forAll|Arb\.)\s*\{`)
+	ptdScalaCheckRE   = regexp.MustCompile(`forAll\s*\{|Gen\.\w+`)
+	ptdRustProptest   = regexp.MustCompile(`proptest!\s*\{`)
+	ptdGoQuickCheckRE = regexp.MustCompile(`quick\.Check\s*\(`)
 )
 
 func (p *propertyTestDetector) Category() string { return "property_test" }

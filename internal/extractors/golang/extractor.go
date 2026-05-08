@@ -201,14 +201,14 @@ func findAll(root *sitter.Node, types ...string) []*sitter.Node {
 
 // countDecisions counts cyclomatic complexity branch points in a subtree.
 var decisionTypes = map[string]bool{
-	"if_statement":               true,
-	"else_clause":                true,
-	"for_statement":              true,
-	"type_switch_statement":      true,
+	"if_statement":                true,
+	"else_clause":                 true,
+	"for_statement":               true,
+	"type_switch_statement":       true,
 	"expression_switch_statement": true,
-	"select_statement":           true,
-	"comm_clause":                true,
-	"case":                       true,
+	"select_statement":            true,
+	"comm_clause":                 true,
+	"case":                        true,
 }
 
 func countDecisions(body *sitter.Node, src []byte) int {

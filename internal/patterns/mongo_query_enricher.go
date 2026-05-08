@@ -44,8 +44,8 @@ func (m *mongoQueryEnricher) Detect(filePath, language, src string) []types.Enti
 	seen := map[string]bool{}
 
 	ops := []struct {
-		re  *regexp.Regexp
-		op  string
+		re *regexp.Regexp
+		op string
 	}{
 		{mqFindRE, "find"},
 		{mqInsertRE, "insert"},

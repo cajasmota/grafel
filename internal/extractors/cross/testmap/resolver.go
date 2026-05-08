@@ -63,7 +63,7 @@ var stopwords = map[string]bool{
 	"t.fatal": true, "t.log": true, "t.logf": true, "t.helper": true,
 	"t.parallel": true, "t.skip": true, "t.skipf": true, "t.cleanup": true,
 	"t.name": true, "t.tempdir": true, "t.failed": true,
-	"testing.short": true,
+	"testing.short":   true,
 	"require.noerror": true, "require.equal": true, "require.nil": true,
 	"require.notnil": true, "require.true": true, "require.false": true,
 	"assert.equal": true, "assert.nil": true, "assert.notnil": true,

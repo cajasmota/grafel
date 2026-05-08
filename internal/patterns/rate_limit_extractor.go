@@ -12,16 +12,16 @@ import (
 type rateLimitExtractor struct{}
 
 var (
-	rateLimitExpressTriggerRE     = regexp.MustCompile(`(?:rateLimit\s*\(|['"]express-rate-limit['"])`)
-	rateLimitDjangoTriggerRE      = regexp.MustCompile(`(?:throttle_classes\s*=|@throttle_classes\s*\(|from\s+rest_framework\.throttling\s+import)`)
-	rateLimitSpringTriggerRE      = regexp.MustCompile(`@(?:RateLimiter|Bucket4j)\s*[(@]`)
-	rateLimitASPNetTriggerRE      = regexp.MustCompile(`(?:app\.UseRateLimiting|services\.AddRateLimiter|builder\.Services\.AddRateLimiter)`)
-	rateLimitGoRateTriggerRE      = regexp.MustCompile(`(?:"golang\.org/x/time/rate"|rate\.NewLimiter)`)
+	rateLimitExpressTriggerRE      = regexp.MustCompile(`(?:rateLimit\s*\(|['"]express-rate-limit['"])`)
+	rateLimitDjangoTriggerRE       = regexp.MustCompile(`(?:throttle_classes\s*=|@throttle_classes\s*\(|from\s+rest_framework\.throttling\s+import)`)
+	rateLimitSpringTriggerRE       = regexp.MustCompile(`@(?:RateLimiter|Bucket4j)\s*[(@]`)
+	rateLimitASPNetTriggerRE       = regexp.MustCompile(`(?:app\.UseRateLimiting|services\.AddRateLimiter|builder\.Services\.AddRateLimiter)`)
+	rateLimitGoRateTriggerRE       = regexp.MustCompile(`(?:"golang\.org/x/time/rate"|rate\.NewLimiter)`)
 	rateLimitFlaskLimiterTriggerRE = regexp.MustCompile(`(?:@limiter\.limit\s*\(|Limiter\s*\()`)
-	rateLimitExpressRE            = regexp.MustCompile(`rateLimit\s*\(\s*\{[^}]*\}`)
-	rateLimitDjangoThrottleRE     = regexp.MustCompile(`throttle_classes\s*=\s*\[([^\]]*)\]`)
-	rateLimitSpringAnnotRE        = regexp.MustCompile(`@RateLimiter\s*\(\s*name\s*=\s*["']([^"']+)["']`)
-	rateLimitFlaskLimitRE         = regexp.MustCompile(`@limiter\.limit\s*\(\s*["']([^"']+)["']`)
+	rateLimitExpressRE             = regexp.MustCompile(`rateLimit\s*\(\s*\{[^}]*\}`)
+	rateLimitDjangoThrottleRE      = regexp.MustCompile(`throttle_classes\s*=\s*\[([^\]]*)\]`)
+	rateLimitSpringAnnotRE         = regexp.MustCompile(`@RateLimiter\s*\(\s*name\s*=\s*["']([^"']+)["']`)
+	rateLimitFlaskLimitRE          = regexp.MustCompile(`@limiter\.limit\s*\(\s*["']([^"']+)["']`)
 )
 
 func (r *rateLimitExtractor) Category() string { return "rate_limit" }

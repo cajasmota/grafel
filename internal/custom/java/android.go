@@ -10,7 +10,7 @@ import (
 
 var androidFrameworks = map[string]bool{
 	"android_sdk": true, "android": true, "android_jetpack": true,
-	"android_jetpack_compose": true,
+	"android_jetpack_compose":                                   true,
 	"android_jetpack_(viewmodel/livedata/room/navigation/hilt)": true,
 }
 
@@ -80,7 +80,7 @@ func ExtractAndroid(ctx PatternContext) PatternResult {
 	if isManifest {
 		for _, pair := range []struct {
 			re       *regexp.Regexp
-			veraType string
+			entityKind string
 			prov     string
 			kind     string
 			refFn    func(string) string
@@ -107,11 +107,11 @@ func ExtractAndroid(ctx PatternContext) PatternResult {
 					pair.known[shortName] = ref
 				}
 				subtype := ""
-				if pair.veraType == "SCOPE.UIComponent" {
+				if pair.entityKind == "SCOPE.UIComponent" {
 					subtype = "component"
 				}
 				result.Entities = append(result.Entities, SecondaryEntity{
-					Name: shortName, Kind: pair.veraType, Subtype: subtype,
+					Name: shortName, Kind: pair.entityKind, Subtype: subtype,
 					SourceFile: fp,
 					LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
 					Provenance: pair.prov, Ref: ref,
@@ -125,7 +125,7 @@ func ExtractAndroid(ctx PatternContext) PatternResult {
 	}
 
 	// Java class declarations
-	emitClass := func(re *regexp.Regexp, veraType, subtype, prov, kind string,
+	emitClass := func(re *regexp.Regexp, entityKind, subtype, prov, kind string,
 		refFn func(string) string, known map[string]string) {
 		for _, m := range re.FindAllStringSubmatchIndex(source, -1) {
 			clsName := source[m[2]:m[3]]
@@ -138,7 +138,7 @@ func ExtractAndroid(ctx PatternContext) PatternResult {
 				known[clsName] = ref
 			}
 			result.Entities = append(result.Entities, SecondaryEntity{
-				Name: clsName, Kind: veraType, Subtype: subtype,
+				Name: clsName, Kind: entityKind, Subtype: subtype,
 				SourceFile: fp,
 				LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
 				Provenance: prov, Ref: ref,

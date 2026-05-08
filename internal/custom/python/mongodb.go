@@ -27,22 +27,22 @@ func (e *MongoDBExtractor) Language() string { return "python_mongodb" }
 var (
 	mgPyDriverRe = regexp.MustCompile(
 		`(?:pymongo\.MongoClient|motor\.motor_asyncio\.AsyncIOMotorClient|motor\.motor_tornado\.MotorClient|MongoClient)\s*\(`)
-	mgAggregateRe    = regexp.MustCompile(`(?:(?:\.|->)aggregate(?:ToStream)?(?:\s*<[^>]*>)?\s*\(|\baggregate\s+["\w])`)
+	mgAggregateRe     = regexp.MustCompile(`(?:(?:\.|->)aggregate(?:ToStream)?(?:\s*<[^>]*>)?\s*\(|\baggregate\s+["\w])`)
 	mgPipelineStageRe = regexp.MustCompile(
 		`\$(?P<stage>match|group|sort|project|limit|skip|unwind|lookup|addFields|replaceRoot|count|bucket|bucketAuto|facet|graphLookup|merge|out|sortByCount|sample|geoNear|indexStats|collStats|planCacheStats|redact|set|unset)\b`)
-	mgWatchRe          = regexp.MustCompile(`(?:\.|->)watch\s*\(`)
-	mgWithTxRe         = regexp.MustCompile(`\.withTransaction\s*[(\{]`)
-	mgStartSessionRe   = regexp.MustCompile(`\.startSession\s*\(`)
-	mgCreateIndexRe    = regexp.MustCompile(`\.createIndex(?:es)?\s*\(`)
-	mgIndexTypeRe      = regexp.MustCompile(`(?i)["']?\$?(?P<idx_type>text|2dsphere|2d|hashed|compound|sparse|unique|ttl)\b["']?`)
-	mgJSONSchemaRe     = regexp.MustCompile(`\$jsonSchema\b`)
-	mgValidatorRe      = regexp.MustCompile(`["']?validator["']?\s*[:=]\s*\{`)
-	mgGridFSBucketRe   = regexp.MustCompile(`\bGridFSBucket\b`)
-	mgGridFSOpRe       = regexp.MustCompile(
+	mgWatchRe        = regexp.MustCompile(`(?:\.|->)watch\s*\(`)
+	mgWithTxRe       = regexp.MustCompile(`\.withTransaction\s*[(\{]`)
+	mgStartSessionRe = regexp.MustCompile(`\.startSession\s*\(`)
+	mgCreateIndexRe  = regexp.MustCompile(`\.createIndex(?:es)?\s*\(`)
+	mgIndexTypeRe    = regexp.MustCompile(`(?i)["']?\$?(?P<idx_type>text|2dsphere|2d|hashed|compound|sparse|unique|ttl)\b["']?`)
+	mgJSONSchemaRe   = regexp.MustCompile(`\$jsonSchema\b`)
+	mgValidatorRe    = regexp.MustCompile(`["']?validator["']?\s*[:=]\s*\{`)
+	mgGridFSBucketRe = regexp.MustCompile(`\bGridFSBucket\b`)
+	mgGridFSOpRe     = regexp.MustCompile(
 		`\.(?:open_upload_stream|upload_from_stream|open_download_stream|download_to_stream|uploadFromStream|downloadToStream|openUploadStream|openDownloadStream)\s*\(`)
-	mgPyGridFSRe       = regexp.MustCompile(`\bgridfs\.(?:GridIn|GridOut|GridFS|open_upload_stream|open_download_stream)\b`)
-	mgAtlasSearchRe    = regexp.MustCompile(`\$search\b`)
-	mgSearchIndexRe    = regexp.MustCompile(`\.(?:createSearchIndex|updateSearchIndex|listSearchIndexes|dropSearchIndex)\s*\(`)
+	mgPyGridFSRe    = regexp.MustCompile(`\bgridfs\.(?:GridIn|GridOut|GridFS|open_upload_stream|open_download_stream)\b`)
+	mgAtlasSearchRe = regexp.MustCompile(`\$search\b`)
+	mgSearchIndexRe = regexp.MustCompile(`\.(?:createSearchIndex|updateSearchIndex|listSearchIndexes|dropSearchIndex)\s*\(`)
 )
 
 func (e *MongoDBExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {

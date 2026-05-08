@@ -12,26 +12,26 @@ import (
 type ormDetector struct{}
 
 var ormDetectionMap = map[string][]string{
-	"sqlalchemy":  {"from sqlalchemy", "import sqlalchemy", "db.Model", "Base = declarative_base"},
-	"django_orm":  {"from django.db import models", "models.Model", "models.CharField"},
-	"peewee":      {"from peewee import", "peewee.Model"},
-	"tortoise":    {"from tortoise", "tortoise.models"},
-	"hibernate":   {"@Entity", "@MappedSuperclass", "javax.persistence", "jakarta.persistence"},
-	"jpa":         {"EntityManager", "@PersistenceContext", "TypedQuery"},
-	"typeorm":     {"@Entity()", "Repository<", "getRepository(", "@Column("},
-	"sequelize":   {"Sequelize.", "DataTypes.", "sequelize.define("},
-	"prisma":      {"from '@prisma/client'", "PrismaClient()", "$connect()"},
-	"gorm":        {"gorm.DB", "gorm.Open(", `"gorm.io/gorm"`},
-	"ecto":        {"Ecto.Schema", "use Ecto.Schema", "schema do", "Repo."},
+	"sqlalchemy":    {"from sqlalchemy", "import sqlalchemy", "db.Model", "Base = declarative_base"},
+	"django_orm":    {"from django.db import models", "models.Model", "models.CharField"},
+	"peewee":        {"from peewee import", "peewee.Model"},
+	"tortoise":      {"from tortoise", "tortoise.models"},
+	"hibernate":     {"@Entity", "@MappedSuperclass", "javax.persistence", "jakarta.persistence"},
+	"jpa":           {"EntityManager", "@PersistenceContext", "TypedQuery"},
+	"typeorm":       {"@Entity()", "Repository<", "getRepository(", "@Column("},
+	"sequelize":     {"Sequelize.", "DataTypes.", "sequelize.define("},
+	"prisma":        {"from '@prisma/client'", "PrismaClient()", "$connect()"},
+	"gorm":          {"gorm.DB", "gorm.Open(", `"gorm.io/gorm"`},
+	"ecto":          {"Ecto.Schema", "use Ecto.Schema", "schema do", "Repo."},
 	"active_record": {"ActiveRecord::Base", "has_many :", "belongs_to :"},
-	"eloquent":    {"extends Model", "Eloquent", "$table =", "protected $fillable"},
+	"eloquent":      {"extends Model", "Eloquent", "$table =", "protected $fillable"},
 }
 
 var ormQueryREs = map[string]*regexp.Regexp{
-	"sqlalchemy":  regexp.MustCompile(`(?:session|db)\s*\.\s*(?:query|execute|add|commit|delete)\s*\(`),
-	"gorm":        regexp.MustCompile(`db\s*\.\s*(?:Find|First|Create|Save|Delete|Where)\s*\(`),
-	"typeorm":     regexp.MustCompile(`repository\s*\.\s*(?:find|findOne|save|delete|create)\s*\(`),
-	"sequelize":   regexp.MustCompile(`\w+\s*\.\s*(?:findAll|findOne|create|update|destroy)\s*\(`),
+	"sqlalchemy": regexp.MustCompile(`(?:session|db)\s*\.\s*(?:query|execute|add|commit|delete)\s*\(`),
+	"gorm":       regexp.MustCompile(`db\s*\.\s*(?:Find|First|Create|Save|Delete|Where)\s*\(`),
+	"typeorm":    regexp.MustCompile(`repository\s*\.\s*(?:find|findOne|save|delete|create)\s*\(`),
+	"sequelize":  regexp.MustCompile(`\w+\s*\.\s*(?:findAll|findOne|create|update|destroy)\s*\(`),
 }
 
 func detectORMFramework(src string) string {

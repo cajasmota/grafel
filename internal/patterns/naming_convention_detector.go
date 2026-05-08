@@ -14,11 +14,11 @@ import (
 type namingConventionDetector struct{}
 
 var (
-	ncSnakeRE    = regexp.MustCompile(`^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$`)
+	ncSnakeRE     = regexp.MustCompile(`^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$`)
 	ncScreamingRE = regexp.MustCompile(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$`)
-	ncPascalRE   = regexp.MustCompile(`^[A-Z][a-zA-Z0-9]+$`)
-	ncCamelRE    = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$`)
-	ncKebabRE    = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$`)
+	ncPascalRE    = regexp.MustCompile(`^[A-Z][a-zA-Z0-9]+$`)
+	ncCamelRE     = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$`)
+	ncKebabRE     = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$`)
 
 	// Extract identifiers from various languages
 	ncPyDefRE      = regexp.MustCompile(`(?m)^\s*(?:async\s+)?def\s+(\w+)`)
@@ -33,15 +33,15 @@ var (
 	ncJavaMethodRE = regexp.MustCompile(`(?m)\b(?:void|int|String|boolean|long|float|double|Object|[\w<>\[\]]+)\s+(\w+)\s*\(`)
 	ncGenericRE    = regexp.MustCompile(`(?m)(?:def|func|fn|fun|function)\s+(\w+)`)
 	// Shell: matches both "function name {" and POSIX "name() {" forms.
-	ncShellFuncRE  = regexp.MustCompile(`(?m)(?:^|\n)(?:function\s+)?(\w+)\s*\(\s*\)\s*\{`)
+	ncShellFuncRE = regexp.MustCompile(`(?m)(?:^|\n)(?:function\s+)?(\w+)\s*\(\s*\)\s*\{`)
 	// Proto: matches message, service, enum, and rpc names.
-	ncProtoNameRE  = regexp.MustCompile(`(?m)^\s*(?:message|service|enum|rpc)\s+(\w+)`)
+	ncProtoNameRE = regexp.MustCompile(`(?m)^\s*(?:message|service|enum|rpc)\s+(\w+)`)
 	// Dart: matches class, mixin, extension, and method/function names.
 	ncDartClassRE  = regexp.MustCompile(`(?m)^\s*(?:abstract\s+)?(?:class|mixin|extension)\s+(\w+)`)
 	ncDartMethodRE = regexp.MustCompile(`(?m)^\s*(?:(?:static|async|override|final|const)\s+)*(?:[\w<>\[\]?]+\s+)?(\w+)\s*\([^)]*\)\s*(?:async\s*)?\{`)
 	// CSS: matches class selectors (.name), id selectors (#name), and custom properties (--name).
-	ncCSSClassRE    = regexp.MustCompile(`(?m)(?:^|[,\s{])\.([a-zA-Z_][\w-]*)`)
-	ncCSSVarRE      = regexp.MustCompile(`(?m)--([a-zA-Z_][\w-]*)`)
+	ncCSSClassRE = regexp.MustCompile(`(?m)(?:^|[,\s{])\.([a-zA-Z_][\w-]*)`)
+	ncCSSVarRE   = regexp.MustCompile(`(?m)--([a-zA-Z_][\w-]*)`)
 	// GraphQL: matches type, input, enum, interface, union, scalar, and field names.
 	ncGraphQLTypeRE  = regexp.MustCompile(`(?m)^\s*(?:type|input|enum|interface|union|scalar)\s+(\w+)`)
 	ncGraphQLFieldRE = regexp.MustCompile(`(?m)^\s+(\w+)\s*[\(:]`)

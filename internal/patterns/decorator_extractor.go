@@ -12,17 +12,17 @@ import (
 type decoratorExtractor struct{}
 
 var (
-	decPyDecoratorRE = regexp.MustCompile(`(?m)^\s*@(\w[\w.]*)\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)`)
-	decPyTriggerRE   = regexp.MustCompile(`(?m)^\s*@\w`)
-	decJavaDecRE     = regexp.MustCompile(`@(\w[\w.]*)(?:\s*\([^)]*\))?`)
-	decJavaTriggerRE = regexp.MustCompile(`@[A-Z]\w*`)
-	decTSDecRE       = regexp.MustCompile(`@(\w[\w.]*)\s*(?:\([^)]*\))?\s*(?:class|async|function|get|set|\w+)\s+(\w+)`)
-	decTSTriggerRE   = regexp.MustCompile(`@\w`)
-	decCSDecRE       = regexp.MustCompile(`(?m)^\s*\[([A-Z]\w*(?:\.\w+)*)\s*(?:\([^)]*\))?\s*\]`)
-	decRustOuterRE   = regexp.MustCompile(`#\[(\w[\w:]*)\s*(?:\([^)]*\))?\]`)
-	decRustInnerRE   = regexp.MustCompile(`#!\[(\w[\w:]*)\s*(?:\([^)]*\))?\]`)
-	decRustTriggerRE = regexp.MustCompile(`#\[|#!\[`)
-	decSwiftDecRE    = regexp.MustCompile(`@(\w[\w.]*)(?:\s*\([^)]*\))?`)
+	decPyDecoratorRE  = regexp.MustCompile(`(?m)^\s*@(\w[\w.]*)\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)`)
+	decPyTriggerRE    = regexp.MustCompile(`(?m)^\s*@\w`)
+	decJavaDecRE      = regexp.MustCompile(`@(\w[\w.]*)(?:\s*\([^)]*\))?`)
+	decJavaTriggerRE  = regexp.MustCompile(`@[A-Z]\w*`)
+	decTSDecRE        = regexp.MustCompile(`@(\w[\w.]*)\s*(?:\([^)]*\))?\s*(?:class|async|function|get|set|\w+)\s+(\w+)`)
+	decTSTriggerRE    = regexp.MustCompile(`@\w`)
+	decCSDecRE        = regexp.MustCompile(`(?m)^\s*\[([A-Z]\w*(?:\.\w+)*)\s*(?:\([^)]*\))?\s*\]`)
+	decRustOuterRE    = regexp.MustCompile(`#\[(\w[\w:]*)\s*(?:\([^)]*\))?\]`)
+	decRustInnerRE    = regexp.MustCompile(`#!\[(\w[\w:]*)\s*(?:\([^)]*\))?\]`)
+	decRustTriggerRE  = regexp.MustCompile(`#\[|#!\[`)
+	decSwiftDecRE     = regexp.MustCompile(`@(\w[\w.]*)(?:\s*\([^)]*\))?`)
 	decSwiftTriggerRE = regexp.MustCompile(`@\w`)
 )
 

@@ -20,34 +20,34 @@ const (
 // EntityRecord is the central data contract shared by all five Lambda handlers
 // and all extractors. Fields match the Python indexer EntityRecord schema.
 type EntityRecord struct {
-	ID               string            `json:"id"`
-	OrgID            string            `json:"org_id"`
-	ProjectID        string            `json:"project_id"`
-	ProjectSlug      string            `json:"project_slug"`
+	ID          string `json:"id"`
+	OrgID       string `json:"org_id"`
+	ProjectID   string `json:"project_id"`
+	ProjectSlug string `json:"project_slug"`
 	// RepoID is the GitHub repository full name (e.g. "cajasmota/archigraph").
 	// Sourced from the ExtractTriggerMessage.RepoURL in the Extract Lambda (MX-1095).
 	// Required by the Typesense entity_embeddings schema for tenant isolation (MX-1076).
-	RepoID           string            `json:"repo_id,omitempty"`
-	Name             string            `json:"name"`
-	QualifiedName    string            `json:"qualified_name"`
-	Kind             string            `json:"kind"`
-	SourceFile       string            `json:"source_file"`
-	StartLine        int               `json:"start_line"`
-	EndLine          int               `json:"end_line"`
-	Language         string            `json:"language"`
-	Content          string            `json:"content"`
-	Description      string            `json:"description"`
-	Domain           string            `json:"domain"`
-	Subtype          string            `json:"subtype"`
-	Signature        string            `json:"signature"`
-	Tags             []string          `json:"tags,omitempty"`
-	QualityScore     float64           `json:"quality_score"`
-	EnrichmentStatus EnrichmentStatus  `json:"enrichment_status"`
+	RepoID           string           `json:"repo_id,omitempty"`
+	Name             string           `json:"name"`
+	QualifiedName    string           `json:"qualified_name"`
+	Kind             string           `json:"kind"`
+	SourceFile       string           `json:"source_file"`
+	StartLine        int              `json:"start_line"`
+	EndLine          int              `json:"end_line"`
+	Language         string           `json:"language"`
+	Content          string           `json:"content"`
+	Description      string           `json:"description"`
+	Domain           string           `json:"domain"`
+	Subtype          string           `json:"subtype"`
+	Signature        string           `json:"signature"`
+	Tags             []string         `json:"tags,omitempty"`
+	QualityScore     float64          `json:"quality_score"`
+	EnrichmentStatus EnrichmentStatus `json:"enrichment_status"`
 	// EnrichmentRequired is the Extract-stage decision: does this entity need LLM enrichment?
-	EnrichmentRequired bool `json:"enrichment_required"`
+	EnrichmentRequired bool                   `json:"enrichment_required"`
 	Metadata           map[string]interface{} `json:"metadata,omitempty"`
 	// Properties holds framework-specific attributes.
-	Properties    map[string]string  `json:"properties,omitempty"`
+	Properties    map[string]string    `json:"properties,omitempty"`
 	Relationships []RelationshipRecord `json:"relationships,omitempty"`
 }
 

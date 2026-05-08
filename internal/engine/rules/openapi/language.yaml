@@ -32,10 +32,10 @@ file_conventions:
 
 extraction_targets:
   - target: paths.<path>.<method>
-    vera_type: SCOPE.Operation
+    kind: SCOPE.Operation
     properties: [path, method, operation_id, summary, tags]
   - target: components.schemas.<name>
-    vera_type: SCOPE.Schema
+    kind: SCOPE.Schema
     properties: [name, description, properties_count]
 
 relationships:

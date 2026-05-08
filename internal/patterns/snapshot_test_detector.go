@@ -11,14 +11,14 @@ import (
 type snapshotTestDetector struct{}
 
 var (
-	stJSSnapshotRE      = regexp.MustCompile(`(?:expect\s*\(.*\)\s*\.\s*toMatchSnapshot\s*\(|\.toMatchInlineSnapshot\s*\()`)
-	stPyPytestSnapRE    = regexp.MustCompile(`(?:snapshot\.assert_match|assert_match_snapshot)`)
-	stPySnapshotTestRE  = regexp.MustCompile(`self\.assertMatchSnapshot\b`)
-	stRubyApprovalsRE   = regexp.MustCompile(`(?:Approvals\.verify|ApprovalTests)`)
-	stRustInstaRE       = regexp.MustCompile(`(?:insta::assert_snapshot|assert_snapshot!|assert_yaml_snapshot!)`)
-	stGoCupaloyRE       = regexp.MustCompile(`cupaloy\.SnapshotT\s*\(`)
-stJavaApprovalsRE   = regexp.MustCompile(`Approvals\.verify\s*\(`)
-	stSwiftSnapshotRE   = regexp.MustCompile(`assertSnapshot\s*\(`)
+	stJSSnapshotRE     = regexp.MustCompile(`(?:expect\s*\(.*\)\s*\.\s*toMatchSnapshot\s*\(|\.toMatchInlineSnapshot\s*\()`)
+	stPyPytestSnapRE   = regexp.MustCompile(`(?:snapshot\.assert_match|assert_match_snapshot)`)
+	stPySnapshotTestRE = regexp.MustCompile(`self\.assertMatchSnapshot\b`)
+	stRubyApprovalsRE  = regexp.MustCompile(`(?:Approvals\.verify|ApprovalTests)`)
+	stRustInstaRE      = regexp.MustCompile(`(?:insta::assert_snapshot|assert_snapshot!|assert_yaml_snapshot!)`)
+	stGoCupaloyRE      = regexp.MustCompile(`cupaloy\.SnapshotT\s*\(`)
+	stJavaApprovalsRE  = regexp.MustCompile(`Approvals\.verify\s*\(`)
+	stSwiftSnapshotRE  = regexp.MustCompile(`assertSnapshot\s*\(`)
 )
 
 func (s *snapshotTestDetector) Category() string { return "snapshot_test" }

@@ -300,7 +300,7 @@ func TestExtract_LargeFile(t *testing.T) {
 			sb.WriteRune(ch)
 		}
 		sb.WriteString("_")
-		sb.WriteString(string(rune('a'+i%26)))
+		sb.WriteString(string(rune('a' + i%26)))
 		sb.WriteString("(x, y, z):\n")
 		sb.WriteString("    \"\"\"Function docstring for testing.\"\"\"\n")
 		sb.WriteString("    result = x + y + z\n")

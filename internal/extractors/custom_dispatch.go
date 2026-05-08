@@ -198,4 +198,3 @@ func MergeWithCustom(baseEntities, customEntities []types.EntityRecord) []types.
 	}
 	return merged
 }
-

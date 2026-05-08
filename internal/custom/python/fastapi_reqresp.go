@@ -149,8 +149,8 @@ func paramIsInjected(paramName, paramsBlock string) bool {
 }
 
 var (
-	unwrapGenericRe    = regexp.MustCompile(`^(?:List|Optional|Set|Tuple|Sequence|Union)\[(.+)\]$`)
-	unwrapPipeOptRe    = regexp.MustCompile(`^(\w+)\s*\|\s*None$`)
+	unwrapGenericRe = regexp.MustCompile(`^(?:List|Optional|Set|Tuple|Sequence|Union)\[(.+)\]$`)
+	unwrapPipeOptRe = regexp.MustCompile(`^(\w+)\s*\|\s*None$`)
 )
 
 func unwrapType(raw string) string {

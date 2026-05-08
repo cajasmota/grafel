@@ -29,8 +29,8 @@ func LombokInfer(className string, annotations []string, filePath string, startL
 	make := func(methodName, signature string) SecondaryEntity {
 		return SecondaryEntity{
 			Name:       methodName,
-			Kind:   "SCOPE.Operation",
-			Subtype: "method",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "method",
 			SourceFile: filePath,
 			LineStart:  startLine,
 			LineEnd:    startLine,

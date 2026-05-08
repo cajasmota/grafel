@@ -140,7 +140,7 @@ func buildTestFS(lang, framework, content string) *fstest.MapFS {
 
 func buildMultiFS() *fstest.MapFS {
 	return &fstest.MapFS{
-		"rules/go/frameworks/gin.yaml":       &fstest.MapFile{Data: []byte(ginYAML)},
+		"rules/go/frameworks/gin.yaml":        &fstest.MapFile{Data: []byte(ginYAML)},
 		"rules/python/frameworks/django.yaml": &fstest.MapFile{Data: []byte(djangoYAML)},
 	}
 }

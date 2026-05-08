@@ -187,16 +187,16 @@ func extractResourceBlock(n *sitter.Node, src []byte, path, lang string, start, 
 	}
 
 	rec := types.EntityRecord{
-		Name:         resourceName,
-		Kind:         "SCOPE.Component",
-		Subtype:      "resource",
-		SourceFile:   path,
-		StartLine:    start,
-		EndLine:      end,
-		Language:     lang,
-		QualityScore: 0.9,
+		Name:          resourceName,
+		Kind:          "SCOPE.Component",
+		Subtype:       "resource",
+		SourceFile:    path,
+		StartLine:     start,
+		EndLine:       end,
+		Language:      lang,
+		QualityScore:  0.9,
 		QualifiedName: "resource." + resourceType + "." + resourceName,
-		Metadata:     map[string]interface{}{"subtype": "resource", "resource_type": resourceType},
+		Metadata:      map[string]interface{}{"subtype": "resource", "resource_type": resourceType},
 	}
 
 	// Extract depends_on relationships.

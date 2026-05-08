@@ -364,7 +364,7 @@ func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool) {
 			child := n.Child(i)
 			if child.Type() == "string" {
 				raw := x.nodeText(child)
-				module := strings.Trim(raw, `"'` + "`")
+				module := strings.Trim(raw, `"'`+"`")
 				if module != "" && !seen[module] {
 					seen[module] = true
 					x.emitImport(module, n)
@@ -384,7 +384,7 @@ func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool) {
 					arg := argsNode.Child(i)
 					if arg.Type() == "string" {
 						raw := x.nodeText(arg)
-						module := strings.Trim(raw, `"'` + "`")
+						module := strings.Trim(raw, `"'`+"`")
 						if module != "" && !seen[module] {
 							seen[module] = true
 							x.emitImport(module, n)
@@ -415,10 +415,10 @@ func (x *extractor) emitImport(module string, n *sitter.Node) {
 		Language:   x.language,
 		Subtype:    "import",
 		Properties: map[string]string{
-			"kind":    "SCOPE.Component",
-			"subtype": "import",
-			"module":       module,
-			"is_local":     boolStr(strings.HasPrefix(module, ".")),
+			"kind":     "SCOPE.Component",
+			"subtype":  "import",
+			"module":   module,
+			"is_local": boolStr(strings.HasPrefix(module, ".")),
 		},
 		EnrichmentStatus: types.StatusPending,
 		QualityScore:     1.0,

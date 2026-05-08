@@ -18,11 +18,11 @@ var mcSourceTokens = []string{
 }
 
 var (
-	mcExpressRouteRE        = regexp.MustCompile(`(?:app|router)\s*\.\s*(get|post|put|patch|delete|all)\s*\(\s*["']([^"']+)["']`)
-	mcExpressAppUseRE       = regexp.MustCompile(`app\s*\.\s*use\s*\(([^)]+)\)`)
+	mcExpressRouteRE      = regexp.MustCompile(`(?:app|router)\s*\.\s*(get|post|put|patch|delete|all)\s*\(\s*["']([^"']+)["']`)
+	mcExpressAppUseRE     = regexp.MustCompile(`app\s*\.\s*use\s*\(([^)]+)\)`)
 	mcNestInterceptorsRE  = regexp.MustCompile(`@UseInterceptors\s*\(\s*([^)]+)\)`)
-	mcASPNetUseRE           = regexp.MustCompile(`app\.Use(\w+)\s*\(`)
-	mcFastAPIMiddlewareRE   = regexp.MustCompile(`add_middleware\s*\(\s*(\w+)`)
+	mcASPNetUseRE         = regexp.MustCompile(`app\.Use(\w+)\s*\(`)
+	mcFastAPIMiddlewareRE = regexp.MustCompile(`add_middleware\s*\(\s*(\w+)`)
 )
 
 func (m *middlewareChainExtractor) Category() string { return "middleware_chain" }

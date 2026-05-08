@@ -210,16 +210,16 @@ func extractDbt(src, filePath string) []types.EntityRecord {
 		seen[key] = true
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		entities = append(entities, types.EntityRecord{
-			Name:         modelName,
-			Kind:         "SCOPE.Component",
-			Subtype:      "dbt_ref",
+			Name:          modelName,
+			Kind:          "SCOPE.Component",
+			Subtype:       "dbt_ref",
 			QualifiedName: "dbt/ref/" + modelName,
-			SourceFile:   filePath,
-			Language:     "sql",
-			StartLine:    startLine,
-			EndLine:      startLine,
-			Signature:    fmt.Sprintf("ref('%s')", modelName),
-			QualityScore: 0.75,
+			SourceFile:    filePath,
+			Language:      "sql",
+			StartLine:     startLine,
+			EndLine:       startLine,
+			Signature:     fmt.Sprintf("ref('%s')", modelName),
+			QualityScore:  0.75,
 		})
 	}
 
@@ -235,16 +235,16 @@ func extractDbt(src, filePath string) []types.EntityRecord {
 		seen[key] = true
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		entities = append(entities, types.EntityRecord{
-			Name:         qualName,
-			Kind:         "SCOPE.Datastore",
-			Subtype:      "dbt_source",
+			Name:          qualName,
+			Kind:          "SCOPE.Datastore",
+			Subtype:       "dbt_source",
 			QualifiedName: "dbt/source/" + qualName,
-			SourceFile:   filePath,
-			Language:     "sql",
-			StartLine:    startLine,
-			EndLine:      startLine,
-			Signature:    fmt.Sprintf("source('%s', '%s')", sourceName, tableName),
-			QualityScore: 0.75,
+			SourceFile:    filePath,
+			Language:      "sql",
+			StartLine:     startLine,
+			EndLine:       startLine,
+			Signature:     fmt.Sprintf("source('%s', '%s')", sourceName, tableName),
+			QualityScore:  0.75,
 		})
 	}
 
@@ -267,16 +267,16 @@ func extractDbt(src, filePath string) []types.EntityRecord {
 			}
 			seen[globalKey] = true
 			entities = append(entities, types.EntityRecord{
-				Name:         keyName,
-				Kind:         "SCOPE.Component",
-				Subtype:      "dbt_config",
+				Name:          keyName,
+				Kind:          "SCOPE.Component",
+				Subtype:       "dbt_config",
 				QualifiedName: "dbt/config/" + keyName,
-				SourceFile:   filePath,
-				Language:     "sql",
-				StartLine:    startLine,
-				EndLine:      startLine,
-				Signature:    fmt.Sprintf("config(%s=...)", keyName),
-				QualityScore: 0.65,
+				SourceFile:    filePath,
+				Language:      "sql",
+				StartLine:     startLine,
+				EndLine:       startLine,
+				Signature:     fmt.Sprintf("config(%s=...)", keyName),
+				QualityScore:  0.65,
 			})
 		}
 	}

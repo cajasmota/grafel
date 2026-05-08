@@ -12,12 +12,12 @@ import (
 type entityVersionTracker struct{}
 
 var (
-	evtURLVersionRE      = regexp.MustCompile(`/(?:api/)?v(\d+)/`)
-	evtHeaderVersionRE   = regexp.MustCompile(`(?i)Accept(?:-Version)?:\s*v?(\d+(?:\.\d+)*)`)
-	evtGoModVersionRE    = regexp.MustCompile(`module\s+\S+/v(\d+)`)
-	evtPackageVersionRE  = regexp.MustCompile(`(?:"version":|version\s*=\s*)["'](\d+\.\d+\.\d+)["']`)
-	evtSemverCommentRE   = regexp.MustCompile(`@version\s+(\d+\.\d+\.\d+)`)
-	evtAnnotationVerRE   = regexp.MustCompile(`@ApiVersion\s*\(\s*["']?(\d+)["']?\s*\)`)
+	evtURLVersionRE     = regexp.MustCompile(`/(?:api/)?v(\d+)/`)
+	evtHeaderVersionRE  = regexp.MustCompile(`(?i)Accept(?:-Version)?:\s*v?(\d+(?:\.\d+)*)`)
+	evtGoModVersionRE   = regexp.MustCompile(`module\s+\S+/v(\d+)`)
+	evtPackageVersionRE = regexp.MustCompile(`(?:"version":|version\s*=\s*)["'](\d+\.\d+\.\d+)["']`)
+	evtSemverCommentRE  = regexp.MustCompile(`@version\s+(\d+\.\d+\.\d+)`)
+	evtAnnotationVerRE  = regexp.MustCompile(`@ApiVersion\s*\(\s*["']?(\d+)["']?\s*\)`)
 )
 
 func (e *entityVersionTracker) Category() string { return "entity_version_tracker" }

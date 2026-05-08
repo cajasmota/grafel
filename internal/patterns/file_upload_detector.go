@@ -11,14 +11,14 @@ import (
 type fileUploadDetector struct{}
 
 var (
-	fuMulterInitRE        = regexp.MustCompile(`\bmulter\s*\(`)
+	fuMulterInitRE       = regexp.MustCompile(`\bmulter\s*\(`)
 	fuFormidableRE       = regexp.MustCompile(`(?:new\s+Formidable\s*\(|formidable\s*\()`)
 	fuBusboyRE           = regexp.MustCompile(`\bbusboy\s*\(`)
 	fuNestUploadedFileRE = regexp.MustCompile(`@UploadedFile\s*\(`)
-	fuPyFlaskUploadRE     = regexp.MustCompile(`request\.files\[`)
-	fuPyFastAPIUploadRE   = regexp.MustCompile(`UploadFile\b`)
-	fuGoMultipartRE       = regexp.MustCompile(`(?:ParseMultipartForm|FormFile)\s*\(`)
-	fuSpringMultipartRE   = regexp.MustCompile(`@RequestPart\b|MultipartFile\b`)
+	fuPyFlaskUploadRE    = regexp.MustCompile(`request\.files\[`)
+	fuPyFastAPIUploadRE  = regexp.MustCompile(`UploadFile\b`)
+	fuGoMultipartRE      = regexp.MustCompile(`(?:ParseMultipartForm|FormFile)\s*\(`)
+	fuSpringMultipartRE  = regexp.MustCompile(`@RequestPart\b|MultipartFile\b`)
 )
 
 func (f *fileUploadDetector) Category() string { return "file_upload" }

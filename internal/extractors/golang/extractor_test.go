@@ -747,12 +747,12 @@ func main() {}
 	}
 	// Per-entry import_type correctness.
 	cases := map[string]string{
-		"fmt":      "standard",
-		"os/exec":  "standard",
+		"fmt":                             "standard",
+		"os/exec":                         "standard",
 		"github.com/example.com/proto/v1": "standard",
-		"github.com/neo4j/neo4j-go-driver/v5/neo4j":      "aliased",
-		"github.com/lib/pq":                              "blank",
-		"errors":                                         "dot",
+		"github.com/neo4j/neo4j-go-driver/v5/neo4j": "aliased",
+		"github.com/lib/pq":                         "blank",
+		"errors":                                    "dot",
 	}
 	for name, wantType := range cases {
 		imp := importByName(imports, name)

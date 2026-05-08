@@ -35,25 +35,25 @@ file_conventions:
 
 extraction_targets:
   - target: "CREATE [UNIQUE] INDEX name ON table (col1, col2)"
-    vera_type: SCOPE.Schema
+    kind: SCOPE.Schema
     properties: [kind, table_name, columns, unique, index_name]
   - target: "@Index(name=..., columnList=...)"
-    vera_type: SCOPE.Schema
+    kind: SCOPE.Schema
     properties: [kind, table_name, columns, unique, index_name]
   - target: "@Index([col1, col2])"
-    vera_type: SCOPE.Schema
+    kind: SCOPE.Schema
     properties: [kind, table_name, columns, unique, index_name]
   - target: "@@index([col1, col2])"
-    vera_type: SCOPE.Schema
+    kind: SCOPE.Schema
     properties: [kind, table_name, columns, unique, index_name]
   - target: "db_index=True"
-    vera_type: SCOPE.Schema
+    kind: SCOPE.Schema
     properties: [kind, table_name, columns, unique, index_name]
   - target: ".HasIndex(e => e.Col)"
-    vera_type: SCOPE.Schema
+    kind: SCOPE.Schema
     properties: [kind, table_name, columns, unique, index_name]
   - target: "$table->index(['col'])"
-    vera_type: SCOPE.Schema
+    kind: SCOPE.Schema
     properties: [kind, table_name, columns, unique, index_name]
 
 detector:

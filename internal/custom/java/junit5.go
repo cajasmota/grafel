@@ -38,7 +38,7 @@ var (
 	j5ValueSourceRE  = regexp.MustCompile(`@ValueSource\s*\([^)]*\)`)
 	j5CsvSourceRE    = regexp.MustCompile(`@CsvSource\s*\([^)]*\)`)
 	j5MethodSourceRE = regexp.MustCompile(`@MethodSource\s*\(\s*\"([^\"]*)\"\s*\)`)
-	j5ClassExtRE = regexp.MustCompile(`(\w+)\.class`)
+	j5ClassExtRE     = regexp.MustCompile(`(\w+)\.class`)
 )
 
 // ExtractJUnit5 runs the JUnit 5 extractor.
@@ -256,7 +256,7 @@ func ExtractJUnit5(ctx PatternContext) PatternResult {
 					addRel(&result, seenRels, Relationship{
 						SourceRef: outerClassRef, TargetRef: ref,
 						RelationshipType: "DEPENDS_ON",
-						Properties: map[string]string{"kind": "junit5_extension"},
+						Properties:       map[string]string{"kind": "junit5_extension"},
 					})
 				}
 			}

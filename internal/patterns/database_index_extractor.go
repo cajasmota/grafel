@@ -23,7 +23,7 @@ var (
 	dbHibernateIndexRE  = regexp.MustCompile(`@Index\s*\([^)]*\)`)
 	dbHibernateNameRE   = regexp.MustCompile(`name\s*=\s*["']([^"']+)["']`)
 	dbHibernateColsRE   = regexp.MustCompile(`columnList\s*=\s*["']([^"']+)["']`)
-dbSQLAlchemyIndexRE = regexp.MustCompile(`(?:schema\.)?Index\s*\(\s*["']([^"']+)["']`)
+	dbSQLAlchemyIndexRE = regexp.MustCompile(`(?:schema\.)?Index\s*\(\s*["']([^"']+)["']`)
 )
 
 func (d *databaseIndexExtractor) Category() string { return "database_index" }
@@ -57,12 +57,12 @@ func (d *databaseIndexExtractor) Detect(filePath, language, src string) []types.
 			"SCOPE.Component", "database_index", language,
 			lineOf(src, m[0]),
 			map[string]string{
-				"kind":        "database_index",
-				"index_name":  idxName,
-				"table_name":  table,
-				"columns":     cols,
-				"source":      "sql",
-				"index":       fmt.Sprintf("%d", idx),
+				"kind":       "database_index",
+				"index_name": idxName,
+				"table_name": table,
+				"columns":    cols,
+				"source":     "sql",
+				"index":      fmt.Sprintf("%d", idx),
 			}))
 	}
 

@@ -17,7 +17,7 @@ var (
 	tmVersionRE      = regexp.MustCompile(`version\s*=\s*["']([^"']+)["']`)
 	tmOwnerCommentRE = regexp.MustCompile(`#\s*(?:owner|team|owned-by)\s*:\s*(\S+)`)
 	tmProviderRE     = regexp.MustCompile(`(?m)^provider\s+"([^"]+)"\s*\{`)
-tmVariableRE     = regexp.MustCompile(`(?m)^variable\s+"([^"]+)"\s*\{`)
+	tmVariableRE     = regexp.MustCompile(`(?m)^variable\s+"([^"]+)"\s*\{`)
 )
 
 func (t *terraformModuleEnricher) Category() string { return "terraform_module_ownership" }

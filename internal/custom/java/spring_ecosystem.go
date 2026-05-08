@@ -23,8 +23,8 @@ var (
 			`(?:static\s+)?(?:<[^>]*>\s*)?(?:\w+(?:\s*<[^>]*>)?\s+)(\w+)\s*\(`)
 
 	// Batch
-	seBatchJobRE  = regexp.MustCompile(`(?s)@Bean\b[^;{]*?\s+Job\s+(\w+)\s*\(`)
-	seBatchStepRE = regexp.MustCompile(`(?s)@Bean\b[^;{]*?\s+Step\s+(\w+)\s*\(`)
+	seBatchJobRE   = regexp.MustCompile(`(?s)@Bean\b[^;{]*?\s+Job\s+(\w+)\s*\(`)
+	seBatchStepRE  = regexp.MustCompile(`(?s)@Bean\b[^;{]*?\s+Step\s+(\w+)\s*\(`)
 	seItemReaderRE = regexp.MustCompile(
 		`(?s)(?:public\s+)?class\s+(\w+)\s+(?:extends|implements)\s+[^{]*\bItemReader\b`)
 	seItemProcessorRE = regexp.MustCompile(

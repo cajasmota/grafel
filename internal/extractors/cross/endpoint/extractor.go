@@ -185,18 +185,18 @@ func buildEntity(
 ) types.EntityRecord {
 	entityID := endpointEntityID(filePath, m.method, canonicalPath)
 	props := map[string]string{
-		"method":       m.method,
-		"path":         canonicalPath,
-		"framework":    framework,
-		"style":        style,
-		"handler_ref":  m.handlerQName,
-		"raw_path":     m.rawPath,
-		"params_csv":   strings.Join(params, ","),
-		"param_count":  fmt.Sprintf("%d", len(params)),
-		"request_type": "",  // reserved: populated by future AST-based pass
+		"method":        m.method,
+		"path":          canonicalPath,
+		"framework":     framework,
+		"style":         style,
+		"handler_ref":   m.handlerQName,
+		"raw_path":      m.rawPath,
+		"params_csv":    strings.Join(params, ","),
+		"param_count":   fmt.Sprintf("%d", len(params)),
+		"request_type":  "", // reserved: populated by future AST-based pass
 		"response_type": "", // reserved: populated by future AST-based pass
-		"ref":          entityID,
-		"provenance":   "INFERRED_FROM_FRAMEWORK_ROUTER",
+		"ref":           entityID,
+		"provenance":    "INFERRED_FROM_FRAMEWORK_ROUTER",
 	}
 
 	rec := types.EntityRecord{

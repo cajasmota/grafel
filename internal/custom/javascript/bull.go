@@ -44,7 +44,7 @@ var (
 	reBullQueueOn = regexp.MustCompile(
 		"([A-Za-z_][A-Za-z0-9_.]*)\\s*\\.\\s*on\\s*\\(\\s*['\"`](completed|failed|progress|stalled|error|drained|paused|resumed|cleaned|removed|waiting|active|delayed)['\"`]",
 	)
-	reBullRepeatKey = regexp.MustCompile(`\brepeat\s*:`)
+	reBullRepeatKey    = regexp.MustCompile(`\brepeat\s*:`)
 	reBullFlowProducer = regexp.MustCompile(
 		`new\s+FlowProducer\s*\(`,
 	)

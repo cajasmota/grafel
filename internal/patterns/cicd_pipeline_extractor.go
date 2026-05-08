@@ -13,14 +13,14 @@ import (
 type cicdPipelineExtractor struct{}
 
 var (
-	cicdGHAPathRE      = regexp.MustCompile(`(?i)\.github/workflows/[^/]+\.ya?ml`)
-	cicdCircleCIPathRE = regexp.MustCompile(`(?i)\.circleci/config\.ya?ml`)
-	cicdGHAJobsSectionRE = regexp.MustCompile(`(?m)^jobs\s*:`)
-	cicdGHAJobIDRE      = regexp.MustCompile(`(?m)^  ([A-Za-z0-9_\-][A-Za-z0-9_\-]*)\s*:`)
-	cicdGHAOnRE         = regexp.MustCompile(`(?m)^on\s*:\s*(.+)`)
-	cicdGHARunsOnRE     = regexp.MustCompile(`(?m)^\s{4}runs-on\s*:\s*(.+)`)
-	cicdJenkinsTriggerRE = regexp.MustCompile(`(?:pipeline\s*\{|node\s*\{|stage\s*\()`)
-	cicdGitLabTriggerRE  = regexp.MustCompile(`(?m)^(?:stages\s*:|\.gitlab-ci)`)
+	cicdGHAPathRE         = regexp.MustCompile(`(?i)\.github/workflows/[^/]+\.ya?ml`)
+	cicdCircleCIPathRE    = regexp.MustCompile(`(?i)\.circleci/config\.ya?ml`)
+	cicdGHAJobsSectionRE  = regexp.MustCompile(`(?m)^jobs\s*:`)
+	cicdGHAJobIDRE        = regexp.MustCompile(`(?m)^  ([A-Za-z0-9_\-][A-Za-z0-9_\-]*)\s*:`)
+	cicdGHAOnRE           = regexp.MustCompile(`(?m)^on\s*:\s*(.+)`)
+	cicdGHARunsOnRE       = regexp.MustCompile(`(?m)^\s{4}runs-on\s*:\s*(.+)`)
+	cicdJenkinsTriggerRE  = regexp.MustCompile(`(?:pipeline\s*\{|node\s*\{|stage\s*\()`)
+	cicdGitLabTriggerRE   = regexp.MustCompile(`(?m)^(?:stages\s*:|\.gitlab-ci)`)
 	cicdCircleCITriggerRE = regexp.MustCompile(`(?m)^(?:version|orbs|workflows)\s*:`)
 )
 

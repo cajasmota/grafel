@@ -37,10 +37,10 @@ type MigrationEntity struct {
 }
 
 var (
-	railsMigrationRe  = regexp.MustCompile(`^(\d{14})_([^.]+)\.rb$`)
-	djangoMigrationRe = regexp.MustCompile(`^(\d{4})_([^.]+)\.py$`)
-	flywayMigrationRe = regexp.MustCompile(`^V(\d+\.\d+)__([^.]+)\.sql$`)
-	golangMigrateRe   = regexp.MustCompile(`^(\d{1,13})_([^.]+)\.(up|down)\.sql$`)
+	railsMigrationRe   = regexp.MustCompile(`^(\d{14})_([^.]+)\.rb$`)
+	djangoMigrationRe  = regexp.MustCompile(`^(\d{4})_([^.]+)\.py$`)
+	flywayMigrationRe  = regexp.MustCompile(`^V(\d+\.\d+)__([^.]+)\.sql$`)
+	golangMigrateRe    = regexp.MustCompile(`^(\d{1,13})_([^.]+)\.(up|down)\.sql$`)
 	alembicMigrationRe = regexp.MustCompile(`^([A-Za-z0-9]{12})_([^.]+)\.py$`)
 )
 

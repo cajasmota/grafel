@@ -13,8 +13,8 @@ import (
 type sqlJoinCountExtractor struct{}
 
 var (
-	sqjSQLStringRE  = regexp.MustCompile(`(?i)["'\x60]([^"'\x60]*(?:SELECT|INSERT|UPDATE|DELETE)[^"'\x60]*)["'\x60]`)
-	sqjJoinRE       = regexp.MustCompile(`(?i)\bJOIN\b`)
+	sqjSQLStringRE = regexp.MustCompile(`(?i)["'\x60]([^"'\x60]*(?:SELECT|INSERT|UPDATE|DELETE)[^"'\x60]*)["'\x60]`)
+	sqjJoinRE      = regexp.MustCompile(`(?i)\bJOIN\b`)
 )
 
 func (s *sqlJoinCountExtractor) Category() string { return "sql_join_count" }
@@ -58,10 +58,10 @@ func (s *sqlJoinCountExtractor) Detect(filePath, language, src string) []types.E
 			"SCOPE.Pattern", "sql_join_count", language,
 			lineOf(src, m[0]),
 			map[string]string{
-				"kind":           "sql_join_count",
-				"join_count":     fmt.Sprintf("%d", joinCount),
-				"complexity":     complexity,
-				"query_snippet":  snippet,
+				"kind":          "sql_join_count",
+				"join_count":    fmt.Sprintf("%d", joinCount),
+				"complexity":    complexity,
+				"query_snippet": snippet,
 			}))
 	}
 

@@ -401,4 +401,3 @@ func DeletionHandlingMetaNamespaceKeyFunc(obj interface{}) (string, error) {
 	}
 	return MetaNamespaceKeyFunc(obj)
 }
-

@@ -12,10 +12,10 @@ import (
 type deadModuleDetector struct{}
 
 var (
-	deadJSExportRE         = regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?(?:function|class|const|let|var|interface|type)\s+(\w+)`)
-	deadJSImportRE         = regexp.MustCompile(`import\s+(?:\{[^}]+\}|[\w*]+)\s+from\s+["']([^"']+)["']`)
-	deadPyDefRE            = regexp.MustCompile(`(?m)^def\s+(\w+)\s*\(`)
-	deadGoFuncRE           = regexp.MustCompile(`(?m)^func\s+([A-Za-z_]\w*)\s*\(`)
+	deadJSExportRE = regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?(?:function|class|const|let|var|interface|type)\s+(\w+)`)
+	deadJSImportRE = regexp.MustCompile(`import\s+(?:\{[^}]+\}|[\w*]+)\s+from\s+["']([^"']+)["']`)
+	deadPyDefRE    = regexp.MustCompile(`(?m)^def\s+(\w+)\s*\(`)
+	deadGoFuncRE   = regexp.MustCompile(`(?m)^func\s+([A-Za-z_]\w*)\s*\(`)
 )
 
 func (d *deadModuleDetector) Category() string { return "dead_module" }

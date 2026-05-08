@@ -176,11 +176,11 @@ func extractRNRoutes(src, filePath, language string, emit func(types.EntityRecor
 		line := lineOf(src, m[0])
 		ent := makeEntity(entityName, "SCOPE.Operation", "route", filePath, language, line)
 		ent.Metadata = map[string]interface{}{
-			"route_type":  strings.ToLower(navigatorKind),
-			"route_name":  routeName,
-			"component":   componentName,
-			"framework":   "react-native",
-			"provenance":  "INFERRED_FROM_RN_NAVIGATION_SCREEN",
+			"route_type": strings.ToLower(navigatorKind),
+			"route_name": routeName,
+			"component":  componentName,
+			"framework":  "react-native",
+			"provenance": "INFERRED_FROM_RN_NAVIGATION_SCREEN",
 		}
 		setProps(&ent, "framework", "react-native",
 			"provenance", "INFERRED_FROM_RN_NAVIGATION_SCREEN",

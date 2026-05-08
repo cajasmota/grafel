@@ -16,8 +16,8 @@ var (
 	uiReactRouteRE     = regexp.MustCompile(`<Route\s+(?:[^>]*\s+)?path\s*=\s*["']([^"']+)["']`)
 	uiReactComponentRE = regexp.MustCompile(`(?:component|element)\s*=\s*\{?\s*<?([A-Z][A-Za-z0-9_]*)`)
 	uiVueRouteRE       = regexp.MustCompile(`path\s*:\s*["']([^"']+)["']`)
-uiAngularRouteRE   = regexp.MustCompile(`path\s*:\s*['"]([^'"]+)['"]`)
-uiNextPageRE       = regexp.MustCompile(`(?:^|/)pages/([^/]+(?:/[^/]+)*)\.(?:tsx?|jsx?)$`)
+	uiAngularRouteRE   = regexp.MustCompile(`path\s*:\s*['"]([^'"]+)['"]`)
+	uiNextPageRE       = regexp.MustCompile(`(?:^|/)pages/([^/]+(?:/[^/]+)*)\.(?:tsx?|jsx?)$`)
 	uiNextAppRouterRE  = regexp.MustCompile(`(?:^|/)app/([^/]+(?:/[^/]+)*)/page\.(?:tsx?|jsx?)$`)
 )
 

@@ -12,12 +12,12 @@ import (
 type reExportDetector struct{}
 
 var (
-	reJSNamedReexportRE    = regexp.MustCompile(`export\s*\{[^}]+\}\s*from\s*["']([^"']+)["']`)
-	reJSWildcardReexportRE = regexp.MustCompile(`export\s*\*\s*from\s*["']([^"']+)["']`)
+	reJSNamedReexportRE     = regexp.MustCompile(`export\s*\{[^}]+\}\s*from\s*["']([^"']+)["']`)
+	reJSWildcardReexportRE  = regexp.MustCompile(`export\s*\*\s*from\s*["']([^"']+)["']`)
 	reJSNamespaceReexportRE = regexp.MustCompile(`export\s*\*\s+as\s+(\w+)\s+from\s*["']([^"']+)["']`)
-	rePyAllAssignRE        = regexp.MustCompile(`__all__\s*=\s*\[([^\]]+)\]`)
-	rePyWildcardImportRE   = regexp.MustCompile(`from\s+(\S+)\s+import\s+\*`)
-	reRustPubUseRE         = regexp.MustCompile(`pub\s+use\s+([^;]+);`)
+	rePyAllAssignRE         = regexp.MustCompile(`__all__\s*=\s*\[([^\]]+)\]`)
+	rePyWildcardImportRE    = regexp.MustCompile(`from\s+(\S+)\s+import\s+\*`)
+	reRustPubUseRE          = regexp.MustCompile(`pub\s+use\s+([^;]+);`)
 )
 
 func (r *reExportDetector) Category() string { return "re_export" }

@@ -632,12 +632,12 @@ func TestMatchesAnyImport_Substring(t *testing.T) {
 
 func TestForceFrameworkFromExt(t *testing.T) {
 	cases := map[string]string{
-		"a.proto":        "grpc",
-		"b.graphql":      "graphql",
-		"c.gql":          "graphql",
-		"d.graphqls":     "graphql",
-		"e.go":           "",
-		"f.py":           "",
+		"a.proto":          "grpc",
+		"b.graphql":        "graphql",
+		"c.gql":            "graphql",
+		"d.graphqls":       "graphql",
+		"e.go":             "",
+		"f.py":             "",
 		"PATH/UPPER.PROTO": "grpc",
 	}
 	for in, want := range cases {

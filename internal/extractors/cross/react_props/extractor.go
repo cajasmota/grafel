@@ -12,8 +12,8 @@
 // Companion entity kind:
 //
 //   - "SCOPE.Schema"     — PropsInterface (same kind the JS/TS extractor uses
-//                          for interface/type declarations, so downstream
-//                          merge on deterministic ID stays consistent).
+//     for interface/type declarations, so downstream
+//     merge on deterministic ID stays consistent).
 //
 // The extractor ALSO emits a lightweight SCOPE.Operation record for each
 // detected component, carrying the `props` property (comma-separated prop
@@ -34,7 +34,8 @@
 //
 // OTel span:   indexer.react_props_extract
 // Attributes:  language, file_path, component_count, has_props_count,
-//              renders_count, uses_hook_count
+//
+//	renders_count, uses_hook_count
 //
 // Registration key: "_cross_react_props"
 //
@@ -696,9 +697,9 @@ func findHooks(body string) []string {
 // reactBuiltins lists React intrinsics that should NOT be emitted as RENDERS
 // edges. They are not components defined in user code.
 var reactBuiltins = map[string]bool{
-	"Fragment":  true,
-	"Suspense":  true,
-	"Profiler":  true,
+	"Fragment":   true,
+	"Suspense":   true,
+	"Profiler":   true,
 	"StrictMode": true,
 }
 

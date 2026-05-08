@@ -18,12 +18,12 @@ var ffImportTokens = []string{
 }
 
 var (
-	ffSourcePatternRE    = regexp.MustCompile(`(?:featureFlags\.isEnabled|isFeatureEnabled|getFlag)\s*\(`)
-	ffLDVariationRE      = regexp.MustCompile(`\bldClient\s*\.\s*\w*[Vv]ariation\s*\(\s*["']([^"']+)["']`)
-	ffLDUseFlagsRE       = regexp.MustCompile(`\buseFlags\s*\(\s*\)\s*\[\s*["']([^"']+)["']\s*\]`)
-	ffUnleashEnabledRE   = regexp.MustCompile(`isEnabled\s*\(\s*["']([^"']+)["']`)
-	ffCustomIsEnabledRE  = regexp.MustCompile(`isFeatureEnabled\s*\(\s*["']([^"']+)["']`)
-	ffCustomGetFlagRE    = regexp.MustCompile(`getFlag\s*\(\s*["']([^"']+)["']`)
+	ffSourcePatternRE   = regexp.MustCompile(`(?:featureFlags\.isEnabled|isFeatureEnabled|getFlag)\s*\(`)
+	ffLDVariationRE     = regexp.MustCompile(`\bldClient\s*\.\s*\w*[Vv]ariation\s*\(\s*["']([^"']+)["']`)
+	ffLDUseFlagsRE      = regexp.MustCompile(`\buseFlags\s*\(\s*\)\s*\[\s*["']([^"']+)["']\s*\]`)
+	ffUnleashEnabledRE  = regexp.MustCompile(`isEnabled\s*\(\s*["']([^"']+)["']`)
+	ffCustomIsEnabledRE = regexp.MustCompile(`isFeatureEnabled\s*\(\s*["']([^"']+)["']`)
+	ffCustomGetFlagRE   = regexp.MustCompile(`getFlag\s*\(\s*["']([^"']+)["']`)
 )
 
 func (f *featureFlagExtractor) Category() string { return "feature_flag" }

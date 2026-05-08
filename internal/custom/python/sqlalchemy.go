@@ -29,15 +29,15 @@ var (
 	saMappedAnnotationRe = regexp.MustCompile(`:\s*Mapped\s*\[`)
 	saRelationshipRe     = regexp.MustCompile(
 		`(?m)^\s+(\w+)\s*(?::\s*Mapped\[[^\]]*\])?\s*=\s*relationship\s*\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']([^)]*)\)`)
-	saForeignKeyRe       = regexp.MustCompile(`ForeignKey\s*\(\s*["']([^"']+)["']`)
-	saAssocTableRe       = regexp.MustCompile(`(?m)^(\w+)\s*=\s*Table\s*\(\s*["']([^"']+)["']`)
-	saCreateEngineRe     = regexp.MustCompile(`(?m)(\w+)\s*=\s*create_(?:async_)?engine\s*\(\s*["']([^"']*)["']`)
-	saSessionQueryRe     = regexp.MustCompile(`(\w+)\.query\s*\(\s*([A-Z][A-Za-z0-9_]*)\s*\)`)
-	saSessionExecuteRe   = regexp.MustCompile(`(\w+)\.execute\s*\(\s*select\s*\(\s*([A-Z][A-Za-z0-9_]*)\s*\)`)
-	saSelectCallRe       = regexp.MustCompile(`(?:^|[^\w])select\s*\(\s*([A-Z][A-Za-z0-9_]*)\s*\)`)
-	saHybridPropertyRe   = regexp.MustCompile(`(?m)@hybrid_property\s*\n\s*def\s+(\w+)\s*\(`)
-	saEventListenRe      = regexp.MustCompile(`(?m)event\.listen\s*\(\s*(\w+)\s*,\s*["'](\w+)["']`)
-	saEventListensForRe  = regexp.MustCompile(`(?m)@event\.listens_for\s*\(\s*(\w+)\s*,\s*["'](\w+)["']\s*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+	saForeignKeyRe      = regexp.MustCompile(`ForeignKey\s*\(\s*["']([^"']+)["']`)
+	saAssocTableRe      = regexp.MustCompile(`(?m)^(\w+)\s*=\s*Table\s*\(\s*["']([^"']+)["']`)
+	saCreateEngineRe    = regexp.MustCompile(`(?m)(\w+)\s*=\s*create_(?:async_)?engine\s*\(\s*["']([^"']*)["']`)
+	saSessionQueryRe    = regexp.MustCompile(`(\w+)\.query\s*\(\s*([A-Z][A-Za-z0-9_]*)\s*\)`)
+	saSessionExecuteRe  = regexp.MustCompile(`(\w+)\.execute\s*\(\s*select\s*\(\s*([A-Z][A-Za-z0-9_]*)\s*\)`)
+	saSelectCallRe      = regexp.MustCompile(`(?:^|[^\w])select\s*\(\s*([A-Z][A-Za-z0-9_]*)\s*\)`)
+	saHybridPropertyRe  = regexp.MustCompile(`(?m)@hybrid_property\s*\n\s*def\s+(\w+)\s*\(`)
+	saEventListenRe     = regexp.MustCompile(`(?m)event\.listen\s*\(\s*(\w+)\s*,\s*["'](\w+)["']`)
+	saEventListensForRe = regexp.MustCompile(`(?m)@event\.listens_for\s*\(\s*(\w+)\s*,\s*["'](\w+)["']\s*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 )
 
 // saBaseIndicators are common base classes for SQLAlchemy declarative models.
@@ -135,8 +135,8 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 
 	// 4. Session queries
 	queryPatterns := []struct {
-		re      *regexp.Regexp
-		qtype   string
+		re    *regexp.Regexp
+		qtype string
 	}{
 		{saSessionQueryRe, "session_query"},
 		{saSessionExecuteRe, "session_execute"},

@@ -480,14 +480,14 @@ func TestSanitisePatternTruncates(t *testing.T) {
 
 func TestSQLOperationOf(t *testing.T) {
 	cases := map[string]string{
-		"SELECT * FROM x":           OpSelect,
-		"WITH cte AS (SELECT 1)":    OpSelect,
-		"INSERT INTO x VALUES (1)":  OpInsert,
-		"UPDATE x SET a = 1":        OpUpdate,
-		"DELETE FROM x":             OpDelete,
-		"TRUNCATE TABLE x":          OpTruncate,
-		"UPSERT INTO x VALUES (1)":  OpUpsert,
-		"EXPLAIN SELECT * FROM x":   "",
+		"SELECT * FROM x":          OpSelect,
+		"WITH cte AS (SELECT 1)":   OpSelect,
+		"INSERT INTO x VALUES (1)": OpInsert,
+		"UPDATE x SET a = 1":       OpUpdate,
+		"DELETE FROM x":            OpDelete,
+		"TRUNCATE TABLE x":         OpTruncate,
+		"UPSERT INTO x VALUES (1)": OpUpsert,
+		"EXPLAIN SELECT * FROM x":  "",
 	}
 	for in, want := range cases {
 		if got := sqlOperationOf(in); got != want {

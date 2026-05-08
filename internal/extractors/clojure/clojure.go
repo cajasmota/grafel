@@ -3,7 +3,7 @@
 // Extracted entities:
 //   - defn / defn-      → Kind="SCOPE.Operation", Subtype="function"
 //   - defrecord / defprotocol / deftype / defmulti / definterface
-//                       → Kind="SCOPE.Component", Subtype="class"
+//     → Kind="SCOPE.Component", Subtype="class"
 //
 // No tree-sitter grammar for Clojure is bundled in smacker/go-tree-sitter.
 // Registers itself via init() and is imported by registry_gen.go.

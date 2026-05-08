@@ -12,8 +12,8 @@
       "signature": "interface User",
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "interface",
-        "vera_type": "SCOPE.Schema"
+        "subtype": "interface",
+        "kind": "SCOPE.Schema"
       }
     },
     {
@@ -26,8 +26,8 @@
       "signature": "interface CreateUserBody",
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "interface",
-        "vera_type": "SCOPE.Schema"
+        "subtype": "interface",
+        "kind": "SCOPE.Schema"
       }
     },
     {
@@ -40,8 +40,8 @@
       "signature": "function authMiddleware",
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "function",
-        "vera_type": "SCOPE.Operation"
+        "subtype": "function",
+        "kind": "SCOPE.Operation"
       }
     },
     {
@@ -56,8 +56,8 @@
       "properties": {
         "is_local": "false",
         "module": "express",
-        "vera_subtype": "import",
-        "vera_type": "SCOPE.Component"
+        "subtype": "import",
+        "kind": "SCOPE.Component"
       }
     }
   ],

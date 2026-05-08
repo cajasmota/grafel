@@ -166,7 +166,7 @@ func buildRPC(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, 
 		Signature:          sig,
 		EnrichmentRequired: false,
 		// Set type=rpc explicitly so buildOutputDoc doesn't override with "endpoint".
-		// Python golden uses type=rpc, vera_subtype=endpoint for RPC entities.
+		// Python golden uses type=rpc, subtype=endpoint for RPC entities.
 		Properties: map[string]string{"type": "rpc"},
 		Relationships: []types.RelationshipRecord{
 			{FromID: file.Path, ToID: reqType, Kind: "IMPORTS"},

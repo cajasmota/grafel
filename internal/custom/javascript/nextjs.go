@@ -41,8 +41,8 @@ var (
 )
 
 var (
-	nextjsPageFiles    = map[string]bool{"page": true, "layout": true, "loading": true, "error": true, "not-found": true, "template": true, "default": true}
-	nextjsStructural   = map[string]bool{"layout": true, "loading": true, "error": true, "not-found": true, "template": true, "default": true}
+	nextjsPageFiles           = map[string]bool{"page": true, "layout": true, "loading": true, "error": true, "not-found": true, "template": true, "default": true}
+	nextjsStructural          = map[string]bool{"layout": true, "loading": true, "error": true, "not-found": true, "template": true, "default": true}
 	nextjsPagesRouterNonRoute = map[string]bool{"_app": true, "_document": true, "_error": true}
 )
 

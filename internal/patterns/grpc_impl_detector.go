@@ -12,10 +12,10 @@ import (
 type grpcImplDetector struct{}
 
 var (
-	grpcGoUnimplementedRE  = regexp.MustCompile(`\bUnimplemented([A-Z][A-Za-z0-9_]*)Server\b`)
-	grpcJavaAnnotationRE   = regexp.MustCompile(`@GrpcService\b`)
-	grpcJavaImplBaseRE     = regexp.MustCompile(`\b([A-Z][A-Za-z0-9_]*)Grpc\.[A-Z][A-Za-z0-9_]*ImplBase\b`)
-	grpcPythonServicerRE   = regexp.MustCompile(`\b([A-Z][A-Za-z0-9_]*)Servicer\b`)
+	grpcGoUnimplementedRE = regexp.MustCompile(`\bUnimplemented([A-Z][A-Za-z0-9_]*)Server\b`)
+	grpcJavaAnnotationRE  = regexp.MustCompile(`@GrpcService\b`)
+	grpcJavaImplBaseRE    = regexp.MustCompile(`\b([A-Z][A-Za-z0-9_]*)Grpc\.[A-Z][A-Za-z0-9_]*ImplBase\b`)
+	grpcPythonServicerRE  = regexp.MustCompile(`\b([A-Z][A-Za-z0-9_]*)Servicer\b`)
 )
 
 var grpcProtoImportTokens = []string{

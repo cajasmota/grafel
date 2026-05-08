@@ -15,15 +15,15 @@ import "regexp"
 // a custom extractor. These are emitted alongside the primary tree-sitter
 // entities and carry framework-specific provenance.
 type SecondaryEntity struct {
-	Name       string            `json:"name"`
-	Kind   string            `json:"kind"`
-	Subtype string           `json:"vera_subtype,omitempty"`
-	SourceFile string            `json:"source_file"`
-	LineStart  int               `json:"line_start"`
-	LineEnd    int               `json:"line_end"`
-	Provenance string            `json:"provenance"`
-	Ref        string            `json:"ref"`
-	Properties map[string]any    `json:"properties,omitempty"`
+	Name       string         `json:"name"`
+	Kind       string         `json:"kind"`
+	Subtype    string         `json:"subtype,omitempty"`
+	SourceFile string         `json:"source_file"`
+	LineStart  int            `json:"line_start"`
+	LineEnd    int            `json:"line_end"`
+	Provenance string         `json:"provenance"`
+	Ref        string         `json:"ref"`
+	Properties map[string]any `json:"properties,omitempty"`
 }
 
 // Relationship represents a directed edge between two entities identified
@@ -38,9 +38,9 @@ type Relationship struct {
 // PatternContext is the input contract for all custom extractors.
 type PatternContext struct {
 	Source    string
-	Language string
+	Language  string
 	Framework string
-	FilePath string
+	FilePath  string
 }
 
 // PatternResult holds the output of a custom extractor.

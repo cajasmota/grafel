@@ -27,21 +27,21 @@ var (
 	oeSpringBootRE    = regexp.MustCompile(`@SpringBootApplication\b`)
 	oeRustMainRE      = regexp.MustCompile(`(?m)^fn\s+main\s*\(\s*\)`)
 	// Shell: matches POSIX "name() {" form and "function name {" form.
-	oeShellFuncRE     = regexp.MustCompile(`(?m)^(?:function\s+)?(\w+)\s*\(\s*\)\s*\{`)
+	oeShellFuncRE = regexp.MustCompile(`(?m)^(?:function\s+)?(\w+)\s*\(\s*\)\s*\{`)
 	// Shell trigger: any shell function definition present.
-	oeShellTriggerRE  = regexp.MustCompile(`(?m)^\w+\s*\(\s*\)\s*\{`)
+	oeShellTriggerRE = regexp.MustCompile(`(?m)^\w+\s*\(\s*\)\s*\{`)
 	// Clojure: matches (defn name [...])
-	oeClojureDefnRE   = regexp.MustCompile(`(?m)^\s*\(defn\s+([\w?!<>*+-]+)`)
+	oeClojureDefnRE = regexp.MustCompile(`(?m)^\s*\(defn\s+([\w?!<>*+-]+)`)
 	// Dart: matches class and method definitions
-	oeDartClassRE     = regexp.MustCompile(`(?m)^\s*(?:abstract\s+)?class\s+(\w+)`)
-	oeDartMethodRE    = regexp.MustCompile(`(?m)^\s+(?:[\w<>\[\]?]+\s+)?(\w+)\s*\([^)]*\)\s*(?:async\s*)?\{`)
+	oeDartClassRE  = regexp.MustCompile(`(?m)^\s*(?:abstract\s+)?class\s+(\w+)`)
+	oeDartMethodRE = regexp.MustCompile(`(?m)^\s+(?:[\w<>\[\]?]+\s+)?(\w+)\s*\([^)]*\)\s*(?:async\s*)?\{`)
 	// Zig: matches top-level const struct definitions and fn declarations
-	oeZigStructRE     = regexp.MustCompile(`(?m)^(?:pub\s+)?const\s+(\w+)\s*=\s*struct`)
-	oeZigFnRE         = regexp.MustCompile(`(?m)^(?:pub\s+)?fn\s+(\w+)\s*\(`)
+	oeZigStructRE = regexp.MustCompile(`(?m)^(?:pub\s+)?const\s+(\w+)\s*=\s*struct`)
+	oeZigFnRE     = regexp.MustCompile(`(?m)^(?:pub\s+)?fn\s+(\w+)\s*\(`)
 	// Proto: matches service, message, and rpc definitions
-	oeProtoServiceRE  = regexp.MustCompile(`(?m)^\s*service\s+(\w+)`)
-	oeProtoMessageRE  = regexp.MustCompile(`(?m)^\s*message\s+(\w+)`)
-	oeProtoRPCRE      = regexp.MustCompile(`(?m)^\s*rpc\s+(\w+)`)
+	oeProtoServiceRE = regexp.MustCompile(`(?m)^\s*service\s+(\w+)`)
+	oeProtoMessageRE = regexp.MustCompile(`(?m)^\s*message\s+(\w+)`)
+	oeProtoRPCRE     = regexp.MustCompile(`(?m)^\s*rpc\s+(\w+)`)
 )
 
 func (o *onboardingEntryEnricher) Category() string { return "onboarding_entry" }
@@ -195,8 +195,8 @@ func emitOnboardingByDependency(filePath, language, src string, re *regexp.Regex
 	// Count inbound references using word-boundary matching
 	// (avoids substring false positives like "User" matching "UserService").
 	type ranked struct {
-		def      oeDefItem
-		inbound  int
+		def     oeDefItem
+		inbound int
 	}
 	var items []ranked
 	for _, d := range defs {

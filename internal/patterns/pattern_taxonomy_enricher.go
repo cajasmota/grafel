@@ -22,10 +22,10 @@ var (
 	ptHandlerRE        = regexp.MustCompile(`(?i)/handlers?/`)
 	ptUseCaseRE        = regexp.MustCompile(`(?i)/use_?cases?/`)
 	// Source-level patterns
-	ptObserverRE       = regexp.MustCompile(`(?:addEventListener|on\s*\(["']|subscribe\s*\(|EventEmitter)`)
-	ptFactoryRE        = regexp.MustCompile(`\b(?:Factory|createInstance|getInstance|newInstance)\s*\(`)
-	ptSingletonRE      = regexp.MustCompile(`\b(?:getInstance|_instance|__instance)\b`)
-	ptBuilderRE        = regexp.MustCompile(`\b(?:\.build\s*\(\s*\)|Builder\s*\(|WithOptions)\b`)
+	ptObserverRE  = regexp.MustCompile(`(?:addEventListener|on\s*\(["']|subscribe\s*\(|EventEmitter)`)
+	ptFactoryRE   = regexp.MustCompile(`\b(?:Factory|createInstance|getInstance|newInstance)\s*\(`)
+	ptSingletonRE = regexp.MustCompile(`\b(?:getInstance|_instance|__instance)\b`)
+	ptBuilderRE   = regexp.MustCompile(`\b(?:\.build\s*\(\s*\)|Builder\s*\(|WithOptions)\b`)
 
 	// Name-suffix taxonomy rules (case-insensitive suffix matching on entity names).
 	// Matches Python pattern_taxonomy_enricher.py _NAME_RULES.

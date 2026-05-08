@@ -87,9 +87,9 @@ var elixirDeprecatedRE = regexp.MustCompile(`@deprecated\s+"([^"]{0,300})"`)
 
 // langAliases maps caller-supplied language names to canonical internal tags.
 var langAliases = map[string]string{
-	"typescript":           "javascript",
+	"typescript":            "javascript",
 	"javascript_typescript": "javascript",
-	"kotlin":               "java",
+	"kotlin":                "java",
 }
 
 func normaliseLanguage(language string) string {
@@ -136,13 +136,13 @@ func extractJava(source, filePath string) []types.EntityRecord {
 			Properties: map[string]string{
 				// MX-1094: pattern_kind preserves the original DeprecationAnnotation
 				// semantic after we collapsed Kind into the SCOPE.Pattern bucket.
-				"pattern_kind":         "deprecation_annotation",
-				"deprecated":           "true",
-				"deprecation_message":  "",
-				"language":             "java",
-				"annotation":           "@Deprecated",
-				"provenance":           "INFERRED_FROM_DEPRECATION_ANNOTATION",
-				"ref":                  deprecationRef(filePath, line),
+				"pattern_kind":        "deprecation_annotation",
+				"deprecated":          "true",
+				"deprecation_message": "",
+				"language":            "java",
+				"annotation":          "@Deprecated",
+				"provenance":          "INFERRED_FROM_DEPRECATION_ANNOTATION",
+				"ref":                 deprecationRef(filePath, line),
 			},
 			QualityScore: 0.9,
 		})
@@ -169,13 +169,13 @@ func extractJSTS(source, filePath, langTag string) []types.EntityRecord {
 			Properties: map[string]string{
 				// MX-1094: pattern_kind preserves the original DeprecationAnnotation
 				// semantic after we collapsed Kind into the SCOPE.Pattern bucket.
-				"pattern_kind":         "deprecation_annotation",
-				"deprecated":           "true",
-				"deprecation_message":  msg,
-				"language":             langTag,
-				"annotation":           "@deprecated",
-				"provenance":           "INFERRED_FROM_DEPRECATION_ANNOTATION",
-				"ref":                  deprecationRef(filePath, line),
+				"pattern_kind":        "deprecation_annotation",
+				"deprecated":          "true",
+				"deprecation_message": msg,
+				"language":            langTag,
+				"annotation":          "@deprecated",
+				"provenance":          "INFERRED_FROM_DEPRECATION_ANNOTATION",
+				"ref":                 deprecationRef(filePath, line),
 			},
 			QualityScore: 0.9,
 		})
@@ -207,13 +207,13 @@ func extractRust(source, filePath string) []types.EntityRecord {
 			Properties: map[string]string{
 				// MX-1094: pattern_kind preserves the original DeprecationAnnotation
 				// semantic after we collapsed Kind into the SCOPE.Pattern bucket.
-				"pattern_kind":         "deprecation_annotation",
-				"deprecated":           "true",
-				"deprecation_message":  msg,
-				"language":             "rust",
-				"annotation":           annotation,
-				"provenance":           "INFERRED_FROM_DEPRECATION_ANNOTATION",
-				"ref":                  deprecationRef(filePath, line),
+				"pattern_kind":        "deprecation_annotation",
+				"deprecated":          "true",
+				"deprecation_message": msg,
+				"language":            "rust",
+				"annotation":          annotation,
+				"provenance":          "INFERRED_FROM_DEPRECATION_ANNOTATION",
+				"ref":                 deprecationRef(filePath, line),
 			},
 			QualityScore: 0.9,
 		})
@@ -240,13 +240,13 @@ func extractCSharp(source, filePath string) []types.EntityRecord {
 			Properties: map[string]string{
 				// MX-1094: pattern_kind preserves the original DeprecationAnnotation
 				// semantic after we collapsed Kind into the SCOPE.Pattern bucket.
-				"pattern_kind":         "deprecation_annotation",
-				"deprecated":           "true",
-				"deprecation_message":  msg,
-				"language":             "csharp",
-				"annotation":           "[Obsolete]",
-				"provenance":           "INFERRED_FROM_DEPRECATION_ANNOTATION",
-				"ref":                  deprecationRef(filePath, line),
+				"pattern_kind":        "deprecation_annotation",
+				"deprecated":          "true",
+				"deprecation_message": msg,
+				"language":            "csharp",
+				"annotation":          "[Obsolete]",
+				"provenance":          "INFERRED_FROM_DEPRECATION_ANNOTATION",
+				"ref":                 deprecationRef(filePath, line),
 			},
 			QualityScore: 0.9,
 		})
@@ -292,13 +292,13 @@ func extractPython(source, filePath string) []types.EntityRecord {
 			Properties: map[string]string{
 				// MX-1094: pattern_kind preserves the original DeprecationAnnotation
 				// semantic after we collapsed Kind into the SCOPE.Pattern bucket.
-				"pattern_kind":         "deprecation_annotation",
-				"deprecated":           "true",
-				"deprecation_message":  me.msg,
-				"language":             "python",
-				"annotation":           "warnings.warn",
-				"provenance":           "INFERRED_FROM_DEPRECATION_ANNOTATION",
-				"ref":                  deprecationRef(filePath, line),
+				"pattern_kind":        "deprecation_annotation",
+				"deprecated":          "true",
+				"deprecation_message": me.msg,
+				"language":            "python",
+				"annotation":          "warnings.warn",
+				"provenance":          "INFERRED_FROM_DEPRECATION_ANNOTATION",
+				"ref":                 deprecationRef(filePath, line),
 			},
 			QualityScore: 0.9,
 		})
@@ -325,13 +325,13 @@ func extractElixir(source, filePath string) []types.EntityRecord {
 			Properties: map[string]string{
 				// MX-1094: pattern_kind preserves the original DeprecationAnnotation
 				// semantic after we collapsed Kind into the SCOPE.Pattern bucket.
-				"pattern_kind":         "deprecation_annotation",
-				"deprecated":           "true",
-				"deprecation_message":  msg,
-				"language":             "elixir",
-				"annotation":           "@deprecated",
-				"provenance":           "INFERRED_FROM_DEPRECATION_ANNOTATION",
-				"ref":                  deprecationRef(filePath, line),
+				"pattern_kind":        "deprecation_annotation",
+				"deprecated":          "true",
+				"deprecation_message": msg,
+				"language":            "elixir",
+				"annotation":          "@deprecated",
+				"provenance":          "INFERRED_FROM_DEPRECATION_ANNOTATION",
+				"ref":                 deprecationRef(filePath, line),
 			},
 			QualityScore: 0.9,
 		})

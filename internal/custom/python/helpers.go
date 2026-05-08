@@ -27,7 +27,7 @@ func entity(name, kind, subtype, sourceFile string, startLine int, props map[str
 		Subtype:            subtype,
 		SourceFile:         sourceFile,
 		StartLine:          startLine,
-		Language:            "python",
+		Language:           "python",
 		Properties:         props,
 		EnrichmentRequired: true,
 	}

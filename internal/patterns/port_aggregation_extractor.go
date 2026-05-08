@@ -13,12 +13,12 @@ import (
 type portAggregationExtractor struct{}
 
 var (
-	paDockerExposeRE       = regexp.MustCompile(`(?im)^\s*EXPOSE\s+(\d+)(?:/(tcp|udp))?`)
-	paComposePortRE        = regexp.MustCompile(`(?m)^\s+-\s+"?(\d+):(\d+)"?`)
-	paSpringPropertiesRE   = regexp.MustCompile(`server\.port\s*=\s*(\d+)`)
-paExpressEnvPortRE     = regexp.MustCompile(`process\.env\.PORT\s*\|\|\s*(\d+)`)
-	paAppListenRE          = regexp.MustCompile(`\.listen\s*\(\s*(\d+)`)
-	paGoAddrRE             = regexp.MustCompile(`["'` + "`" + `]\s*:(\d{4,5})`)
+	paDockerExposeRE     = regexp.MustCompile(`(?im)^\s*EXPOSE\s+(\d+)(?:/(tcp|udp))?`)
+	paComposePortRE      = regexp.MustCompile(`(?m)^\s+-\s+"?(\d+):(\d+)"?`)
+	paSpringPropertiesRE = regexp.MustCompile(`server\.port\s*=\s*(\d+)`)
+	paExpressEnvPortRE   = regexp.MustCompile(`process\.env\.PORT\s*\|\|\s*(\d+)`)
+	paAppListenRE        = regexp.MustCompile(`\.listen\s*\(\s*(\d+)`)
+	paGoAddrRE           = regexp.MustCompile(`["'` + "`" + `]\s*:(\d{4,5})`)
 )
 
 func (p *portAggregationExtractor) Category() string { return "port_aggregation" }

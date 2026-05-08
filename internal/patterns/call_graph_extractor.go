@@ -13,13 +13,13 @@ import (
 type callGraphExtractor struct{}
 
 var (
-	cgGoDottedCallRE    = regexp.MustCompile(`\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(`)
-cgJVMDottedCallRE   = regexp.MustCompile(`\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(`)
-	cgJSCallRE          = regexp.MustCompile(`\b([A-Za-z_$][A-Za-z0-9_$]*)\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\(`)
-	cgPyCallRE          = regexp.MustCompile(`\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(`)
-	cgRubyDottedCallRE  = regexp.MustCompile(`\b([A-Za-z_]\w*)\.([a-z_][a-zA-Z0-9_?!]*)\s*\(`)
-	cgRustPathCallRE    = regexp.MustCompile(`\b([A-Za-z_]\w*)::([A-Za-z_]\w*)\s*\(`)
-	cgSQLCallProcRE     = regexp.MustCompile(`(?i)\bCALL\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*\(`)
+	cgGoDottedCallRE   = regexp.MustCompile(`\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(`)
+	cgJVMDottedCallRE  = regexp.MustCompile(`\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(`)
+	cgJSCallRE         = regexp.MustCompile(`\b([A-Za-z_$][A-Za-z0-9_$]*)\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\(`)
+	cgPyCallRE         = regexp.MustCompile(`\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\(`)
+	cgRubyDottedCallRE = regexp.MustCompile(`\b([A-Za-z_]\w*)\.([a-z_][a-zA-Z0-9_?!]*)\s*\(`)
+	cgRustPathCallRE   = regexp.MustCompile(`\b([A-Za-z_]\w*)::([A-Za-z_]\w*)\s*\(`)
+	cgSQLCallProcRE    = regexp.MustCompile(`(?i)\bCALL\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*\(`)
 )
 
 var cgJSKeywords = map[string]bool{

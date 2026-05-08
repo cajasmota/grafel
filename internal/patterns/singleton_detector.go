@@ -11,12 +11,12 @@ import (
 type singletonDetector struct{}
 
 var (
-	sdJavaAnnotRE       = regexp.MustCompile(`@(?:Singleton|ApplicationScoped)\b`)
-	sdGetInstanceRE     = regexp.MustCompile(`\bgetInstance\s*\(\s*\)`)
-	sdPyModuleAssignRE  = regexp.MustCompile(`(?m)^[A-Z][A-Z0-9_]*\s*=\s*\w+\s*\(`)
-	sdGoSyncOnceRE      = regexp.MustCompile(`\bsync\.Once\b`)
-	sdGoOnceDo          = regexp.MustCompile(`\.Do\s*\(`)
-sdCSharpInstanceRE  = regexp.MustCompile(`private\s+static\s+\w+\s+_?[Ii]nstance`)
+	sdJavaAnnotRE      = regexp.MustCompile(`@(?:Singleton|ApplicationScoped)\b`)
+	sdGetInstanceRE    = regexp.MustCompile(`\bgetInstance\s*\(\s*\)`)
+	sdPyModuleAssignRE = regexp.MustCompile(`(?m)^[A-Z][A-Z0-9_]*\s*=\s*\w+\s*\(`)
+	sdGoSyncOnceRE     = regexp.MustCompile(`\bsync\.Once\b`)
+	sdGoOnceDo         = regexp.MustCompile(`\.Do\s*\(`)
+	sdCSharpInstanceRE = regexp.MustCompile(`private\s+static\s+\w+\s+_?[Ii]nstance`)
 )
 
 func (s *singletonDetector) Category() string { return "singleton" }

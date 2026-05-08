@@ -13,11 +13,11 @@ import (
 type iacDetector struct{}
 
 var (
-	iacTFResourceRE   = regexp.MustCompile(`(?m)^resource\s+"([^"]+)"\s+"([^"]+)"\s*\{`)
-	iacTFModuleRE = regexp.MustCompile(`(?m)^module\s+"([^"]+)"\s*\{`)
-	iacPulumiRE   = regexp.MustCompile(`new\s+(?:aws|azure|gcp|k8s)\.\w+\.(\w+)\s*\(`)
-	iacCDKRE      = regexp.MustCompile(`new\s+(?:cdk\.|aws_cdk\.)(?:\w+\.)*(\w+)\s*\(`)
-	iacK8sKindRE  = regexp.MustCompile(`(?m)^kind:\s+(\w+)`)
+	iacTFResourceRE = regexp.MustCompile(`(?m)^resource\s+"([^"]+)"\s+"([^"]+)"\s*\{`)
+	iacTFModuleRE   = regexp.MustCompile(`(?m)^module\s+"([^"]+)"\s*\{`)
+	iacPulumiRE     = regexp.MustCompile(`new\s+(?:aws|azure|gcp|k8s)\.\w+\.(\w+)\s*\(`)
+	iacCDKRE        = regexp.MustCompile(`new\s+(?:cdk\.|aws_cdk\.)(?:\w+\.)*(\w+)\s*\(`)
+	iacK8sKindRE    = regexp.MustCompile(`(?m)^kind:\s+(\w+)`)
 )
 
 func iacResourceKind(resourceType string) string {

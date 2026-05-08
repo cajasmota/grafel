@@ -109,11 +109,11 @@ func ifaceRef(name, language string) string {
 // ---------------------------------------------------------------------------
 
 type result struct {
-	entities       []types.EntityRecord
-	classesFound   int
-	extendsFound   int
+	entities        []types.EntityRecord
+	classesFound    int
+	extendsFound    int
 	implementsFound int
-	abstractFound  int
+	abstractFound   int
 }
 
 func (r *result) addEntity(e types.EntityRecord) {

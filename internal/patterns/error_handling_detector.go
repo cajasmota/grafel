@@ -12,17 +12,17 @@ import (
 type errorHandlingDetector struct{}
 
 var (
-	ehTryStatementRE    = regexp.MustCompile(`\btry\s*\{`)
-	ehPyTryStatementRE  = regexp.MustCompile(`(?m)^\s*try\s*:`)
-	ehGoErrNilRE        = regexp.MustCompile(`if\s+err\s*!=\s*nil`)
-	ehRustMatchRE       = regexp.MustCompile(`\bmatch\b`)
-	ehRustOkArmRE       = regexp.MustCompile(`\bOk\s*\(`)
-	ehRustErrArmRE      = regexp.MustCompile(`\bErr\s*\(`)
+	ehTryStatementRE     = regexp.MustCompile(`\btry\s*\{`)
+	ehPyTryStatementRE   = regexp.MustCompile(`(?m)^\s*try\s*:`)
+	ehGoErrNilRE         = regexp.MustCompile(`if\s+err\s*!=\s*nil`)
+	ehRustMatchRE        = regexp.MustCompile(`\bmatch\b`)
+	ehRustOkArmRE        = regexp.MustCompile(`\bOk\s*\(`)
+	ehRustErrArmRE       = regexp.MustCompile(`\bErr\s*\(`)
 	ehRustQuestionMarkRE = regexp.MustCompile(`\?\s*;?\s*\n`)
-	ehElixirCaseRE      = regexp.MustCompile(`\bcase\b`)
-	ehElixirOkArmRE     = regexp.MustCompile(`\{:ok\s*,`)
-	ehElixirErrorArmRE  = regexp.MustCompile(`\{:error\s*,`)
-	ehPanicRecoverRE    = regexp.MustCompile(`\brecover\b|\bpanic\s*\(`)
+	ehElixirCaseRE       = regexp.MustCompile(`\bcase\b`)
+	ehElixirOkArmRE      = regexp.MustCompile(`\{:ok\s*,`)
+	ehElixirErrorArmRE   = regexp.MustCompile(`\{:error\s*,`)
+	ehPanicRecoverRE     = regexp.MustCompile(`\brecover\b|\bpanic\s*\(`)
 )
 
 func (e *errorHandlingDetector) Category() string { return "error_handling" }

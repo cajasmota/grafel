@@ -43,11 +43,11 @@ var (
 
 	lcRAGClassNames = []string{"RetrievalQA", "RetrievalQAWithSourcesChain", "ConversationalRetrievalChain"}
 
-	lcRetrieverRe   = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*(?:(\w+)\.as_retriever\s*\(|VectorStoreRetriever\s*\()`)
-	lcRAGFactoryRe  = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*(create_(?:stuff_documents|retrieval|map_reduce_documents)_chain)\s*\(`)
-	lcChatPromptRe  = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*ChatPromptTemplate\.from_(?:messages|template)\s*\(`)
-	lcPromptTmplRe  = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*PromptTemplate(?:\.from_template)?\s*\(`)
-	lcFewShotRe     = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*FewShotPromptTemplate\s*\(`)
+	lcRetrieverRe    = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*(?:(\w+)\.as_retriever\s*\(|VectorStoreRetriever\s*\()`)
+	lcRAGFactoryRe   = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*(create_(?:stuff_documents|retrieval|map_reduce_documents)_chain)\s*\(`)
+	lcChatPromptRe   = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*ChatPromptTemplate\.from_(?:messages|template)\s*\(`)
+	lcPromptTmplRe   = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*PromptTemplate(?:\.from_template)?\s*\(`)
+	lcFewShotRe      = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*FewShotPromptTemplate\s*\(`)
 	lcRunnableHistRe = regexp.MustCompile(`(?m)([a-zA-Z_]\w*)\s*=\s*RunnableWithMessageHistory\s*\(`)
 
 	lcMemoryClassNames = []string{
@@ -83,9 +83,9 @@ func buildMemoryInstanceRe() *regexp.Regexp {
 }
 
 var (
-	lcLegacyChainRe  = buildLegacyChainRe()
-	lcRAGInstanceRe  = buildRAGInstanceRe()
-	lcMemoryInstRe   = buildMemoryInstanceRe()
+	lcLegacyChainRe = buildLegacyChainRe()
+	lcRAGInstanceRe = buildRAGInstanceRe()
+	lcMemoryInstRe  = buildMemoryInstanceRe()
 )
 
 func (e *LangChainExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {

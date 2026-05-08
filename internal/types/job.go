@@ -8,8 +8,8 @@ type IndexJob struct {
 	ProjectID       string `json:"project_id"`
 	RepoURL         string `json:"repo_url"`
 	Branch          string `json:"branch"`
-	Status          string `json:"status"`           // pending/running/completed/failed
-	Stage           string `json:"stage"`            // extract/transform/load/synthesize/qa
+	Status          string `json:"status"` // pending/running/completed/failed
+	Stage           string `json:"stage"`  // extract/transform/load/synthesize/qa
 	FilesDiscovered int    `json:"files_discovered"`
 	FilesQueued     int    `json:"files_queued"`
 	FilesProcessed  int    `json:"files_processed"`

@@ -11,13 +11,13 @@ import (
 type connectionPoolExtractor struct{}
 
 var (
-	cpHikariTriggerRE     = regexp.MustCompile(`(?:HikariConfig|HikariDataSource|HikariCP|hikari\.)`)
-	cpDruidTriggerRE      = regexp.MustCompile(`(?:DruidDataSource|DruidPooledConnection|com\.alibaba\.druid)`)
-	cpPgbouncerTriggerRE  = regexp.MustCompile(`(?:pgbouncer|pool_mode|max_client_conn)`)
-	cpSQLAlchemyTriggerRE = regexp.MustCompile(`(?:create_engine\s*\(|pool_size|pool_timeout|NullPool|QueuePool)`)
-	cpDjangoTriggerRE     = regexp.MustCompile(`(?:CONN_MAX_AGE|django_db_geventpool|django-db-geventpool)`)
-	cpHikariMaxPoolRE     = regexp.MustCompile(`(?:maximumPoolSize|setMaximumPoolSize)\s*[=(]\s*(\d+)`)
-	cpHikariMinIdleRE     = regexp.MustCompile(`(?:minimumIdle|setMinimumIdle)\s*[=(]\s*(\d+)`)
+	cpHikariTriggerRE      = regexp.MustCompile(`(?:HikariConfig|HikariDataSource|HikariCP|hikari\.)`)
+	cpDruidTriggerRE       = regexp.MustCompile(`(?:DruidDataSource|DruidPooledConnection|com\.alibaba\.druid)`)
+	cpPgbouncerTriggerRE   = regexp.MustCompile(`(?:pgbouncer|pool_mode|max_client_conn)`)
+	cpSQLAlchemyTriggerRE  = regexp.MustCompile(`(?:create_engine\s*\(|pool_size|pool_timeout|NullPool|QueuePool)`)
+	cpDjangoTriggerRE      = regexp.MustCompile(`(?:CONN_MAX_AGE|django_db_geventpool|django-db-geventpool)`)
+	cpHikariMaxPoolRE      = regexp.MustCompile(`(?:maximumPoolSize|setMaximumPoolSize)\s*[=(]\s*(\d+)`)
+	cpHikariMinIdleRE      = regexp.MustCompile(`(?:minimumIdle|setMinimumIdle)\s*[=(]\s*(\d+)`)
 	cpSQLAlchemyPoolSizeRE = regexp.MustCompile(`pool_size\s*=\s*(\d+)`)
 	cpSQLAlchemyTimeoutRE  = regexp.MustCompile(`pool_timeout\s*=\s*(\d+)`)
 )

@@ -13,8 +13,8 @@ import (
 type mongodbAggregateExtractor struct{}
 
 var (
-	mbaGenericAggRE    = regexp.MustCompile(`\.aggregate\s*\(`)
-	mbaStageKeyQuotedRE = regexp.MustCompile(`["'](\$\w+)["']`)
+	mbaGenericAggRE       = regexp.MustCompile(`\.aggregate\s*\(`)
+	mbaStageKeyQuotedRE   = regexp.MustCompile(`["'](\$\w+)["']`)
 	mbaStageKeyUnquotedRE = regexp.MustCompile(`\{?\s*(\$\w+)\s*:`)
 )
 

@@ -266,7 +266,7 @@ func ExtractSpringBoot(ctx PatternContext) PatternResult {
 		addRel(&result, seenRels, Relationship{
 			SourceRef: ownerRef, TargetRef: targetRef,
 			RelationshipType: "DEPENDS_ON",
-			Properties: map[string]string{"injected_type": injectedType, "injection_kind": "field"},
+			Properties:       map[string]string{"injected_type": injectedType, "injection_kind": "field"},
 		})
 	}
 
@@ -284,7 +284,7 @@ func ExtractSpringBoot(ctx PatternContext) PatternResult {
 		addRel(&result, seenRels, Relationship{
 			SourceRef: ownerRef, TargetRef: targetRef,
 			RelationshipType: "DEPENDS_ON",
-			Properties: map[string]string{"injected_type": injectedType, "injection_kind": "setter"},
+			Properties:       map[string]string{"injected_type": injectedType, "injection_kind": "setter"},
 		})
 	}
 
@@ -315,7 +315,7 @@ func ExtractSpringBoot(ctx PatternContext) PatternResult {
 			addRel(&result, seenRels, Relationship{
 				SourceRef: ownerRef, TargetRef: targetRef,
 				RelationshipType: "DEPENDS_ON",
-				Properties: map[string]string{"injected_type": injectedType, "injection_kind": "constructor"},
+				Properties:       map[string]string{"injected_type": injectedType, "injection_kind": "constructor"},
 			})
 		}
 	}

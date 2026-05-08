@@ -11,16 +11,16 @@ import (
 type testQualityEnricher struct{}
 
 var (
-	tqJavaSpringBootTestRE  = regexp.MustCompile(`@SpringBootTest\b`)
-	tqJavaDataJpaTestRE     = regexp.MustCompile(`@DataJpaTest\b`)
-	tqJavaTestcontainersRE  = regexp.MustCompile(`\borg\.testcontainers\b`)
-	tqPyTestcontainersRE    = regexp.MustCompile(`\btestcontainers\b`)
-	tqPyDBFixtureRE         = regexp.MustCompile(`(?:db_session|db_engine|database_url)\s*=`)
-	tqJSBeforeAllRE         = regexp.MustCompile(`\bbeforeAll\s*\(`)
-	tqJSDBConnectRE         = regexp.MustCompile(`(?:pg\.Pool|mysql\.createConnection|mongoose\.connect)\s*\(`)
-	tqJSSupertestRE         = regexp.MustCompile(`\bsupertest\b`)
-	tqGoSQLOpenTestMainRE   = regexp.MustCompile(`(?s)func\s+TestMain\s*\(.*?\bsql\.Open\b`)
-	tqGoIntegrationTagRE    = regexp.MustCompile(`(?m)^//go:build\s+integration`)
+	tqJavaSpringBootTestRE = regexp.MustCompile(`@SpringBootTest\b`)
+	tqJavaDataJpaTestRE    = regexp.MustCompile(`@DataJpaTest\b`)
+	tqJavaTestcontainersRE = regexp.MustCompile(`\borg\.testcontainers\b`)
+	tqPyTestcontainersRE   = regexp.MustCompile(`\btestcontainers\b`)
+	tqPyDBFixtureRE        = regexp.MustCompile(`(?:db_session|db_engine|database_url)\s*=`)
+	tqJSBeforeAllRE        = regexp.MustCompile(`\bbeforeAll\s*\(`)
+	tqJSDBConnectRE        = regexp.MustCompile(`(?:pg\.Pool|mysql\.createConnection|mongoose\.connect)\s*\(`)
+	tqJSSupertestRE        = regexp.MustCompile(`\bsupertest\b`)
+	tqGoSQLOpenTestMainRE  = regexp.MustCompile(`(?s)func\s+TestMain\s*\(.*?\bsql\.Open\b`)
+	tqGoIntegrationTagRE   = regexp.MustCompile(`(?m)^//go:build\s+integration`)
 )
 
 func (t *testQualityEnricher) Category() string { return "test_quality" }

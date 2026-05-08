@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
-	"github.com/cajasmota/archigraph/internal/types"
 	_ "github.com/cajasmota/archigraph/internal/extractors/sql"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // repoRootSQL walks parent directories to find the go.mod root.

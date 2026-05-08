@@ -31,19 +31,19 @@ var gatedConfigBasenames = map[string]bool{
 }
 
 var (
-	propertiesKVRe       = regexp.MustCompile(`(?m)^([a-z][a-z0-9._-]{0,127})\s*=\s*(.{1,256})\s*$`)
-	yamlContextPathRe    = regexp.MustCompile(`(?m)^\s*context-path\s*:\s*(.{1,256})\s*$`)
-	yamlRootPathRe       = regexp.MustCompile(`(?m)^\s*root-path\s*:\s*(.{1,256})\s*$`)
-	yamlKtorRootPathRe   = regexp.MustCompile(`(?m)^\s*rootPath\s*:\s*(.{1,256})\s*$`)
-	djangoScriptNameRe   = regexp.MustCompile(`(?m)^\s*FORCE_SCRIPT_NAME\s*=\s*['"]([^'"]{1,256})['"]\s*$`)
-	laravelPrefixRe      = regexp.MustCompile(`['"]prefix['"]\s*=>\s*['"]([^'"]{1,256})['"]`)
-	aspnetAppURLRe       = regexp.MustCompile(`"applicationUrl"\s*:\s*"([^"]{1,256})"`)
-	aspnetUsePathBaseRe  = regexp.MustCompile(`app\.UsePathBase\s*\(\s*['"]([^'"]{1,256})['"]\s*\)`)
-	railsScopeRe         = regexp.MustCompile(`scope\s+['"]([^'"]{1,256})['"]\s+do\b`)
-	fastapiRootPathRe    = regexp.MustCompile(`FastAPI\s*\([^)]{0,256}root_path\s*=\s*['"]([^'"]{1,256})['"]`)
-	fastapiRouterPfxRe   = regexp.MustCompile(`APIRouter\s*\([^)]{0,256}prefix\s*=\s*['"]([^'"]{1,256})['"]`)
-	expressUseRe         = regexp.MustCompile(`app\.use\s*\(\s*['"]([^'"]{1,256})['"]\s*,`)
-	ktorConfRootPathRe   = regexp.MustCompile(`(?s)deployment\s*\{[^}]*rootPath\s*=\s*['"]?([^\s'"}\n]+)['"]?`)
+	propertiesKVRe      = regexp.MustCompile(`(?m)^([a-z][a-z0-9._-]{0,127})\s*=\s*(.{1,256})\s*$`)
+	yamlContextPathRe   = regexp.MustCompile(`(?m)^\s*context-path\s*:\s*(.{1,256})\s*$`)
+	yamlRootPathRe      = regexp.MustCompile(`(?m)^\s*root-path\s*:\s*(.{1,256})\s*$`)
+	yamlKtorRootPathRe  = regexp.MustCompile(`(?m)^\s*rootPath\s*:\s*(.{1,256})\s*$`)
+	djangoScriptNameRe  = regexp.MustCompile(`(?m)^\s*FORCE_SCRIPT_NAME\s*=\s*['"]([^'"]{1,256})['"]\s*$`)
+	laravelPrefixRe     = regexp.MustCompile(`['"]prefix['"]\s*=>\s*['"]([^'"]{1,256})['"]`)
+	aspnetAppURLRe      = regexp.MustCompile(`"applicationUrl"\s*:\s*"([^"]{1,256})"`)
+	aspnetUsePathBaseRe = regexp.MustCompile(`app\.UsePathBase\s*\(\s*['"]([^'"]{1,256})['"]\s*\)`)
+	railsScopeRe        = regexp.MustCompile(`scope\s+['"]([^'"]{1,256})['"]\s+do\b`)
+	fastapiRootPathRe   = regexp.MustCompile(`FastAPI\s*\([^)]{0,256}root_path\s*=\s*['"]([^'"]{1,256})['"]`)
+	fastapiRouterPfxRe  = regexp.MustCompile(`APIRouter\s*\([^)]{0,256}prefix\s*=\s*['"]([^'"]{1,256})['"]`)
+	expressUseRe        = regexp.MustCompile(`app\.use\s*\(\s*['"]([^'"]{1,256})['"]\s*,`)
+	ktorConfRootPathRe  = regexp.MustCompile(`(?s)deployment\s*\{[^}]*rootPath\s*=\s*['"]?([^\s'"}\n]+)['"]?`)
 )
 
 // ConfigPrefixAppliesToFile returns true when the file should be processed.

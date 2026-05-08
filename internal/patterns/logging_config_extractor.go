@@ -12,11 +12,11 @@ import (
 type loggingConfigExtractor struct{}
 
 var (
-	lcGoSlogTriggerRE   = regexp.MustCompile(`"log/slog"`)
-	lcGoLogTriggerRE    = regexp.MustCompile(`"(?:go\.uber\.org/zap|github\.com/sirupsen/logrus|log)"`)
-	lcGoSlogLevelRE     = regexp.MustCompile(`slog\.(?:New|SetDefault).*Level\s*:\s*slog\.(\w+Level)`)
-	lcPyLoggingTrigger  = regexp.MustCompile(`import\s+logging`)
-	lcPyLevelRE         = regexp.MustCompile(`logging\.(?:basicConfig|setLevel)\s*\([^)]*level\s*=\s*logging\.(\w+)`)
+	lcGoSlogTriggerRE    = regexp.MustCompile(`"log/slog"`)
+	lcGoLogTriggerRE     = regexp.MustCompile(`"(?:go\.uber\.org/zap|github\.com/sirupsen/logrus|log)"`)
+	lcGoSlogLevelRE      = regexp.MustCompile(`slog\.(?:New|SetDefault).*Level\s*:\s*slog\.(\w+Level)`)
+	lcPyLoggingTrigger   = regexp.MustCompile(`import\s+logging`)
+	lcPyLevelRE          = regexp.MustCompile(`logging\.(?:basicConfig|setLevel)\s*\([^)]*level\s*=\s*logging\.(\w+)`)
 	lcNodeWinstonTrigger = regexp.MustCompile(`require\s*\(\s*['"]winston['"]`)
 	lcNodePinoTrigger    = regexp.MustCompile(`require\s*\(\s*['"]pino['"]`)
 	lcNodeLevelRE        = regexp.MustCompile(`level\s*:\s*['"](\w+)['"]`)

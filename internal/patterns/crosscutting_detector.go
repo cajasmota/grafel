@@ -22,11 +22,11 @@ var mwImportPrefixes = []string{
 }
 
 var (
-	ccGoMiddlewareRE     = regexp.MustCompile(`func\s+\w*\s*\([^)]*http\.Handler[^)]*\)\s*http\.Handler`)
-	ccNestGuardRE        = regexp.MustCompile(`@UseGuards\s*\(`)
-	ccNestInterceptorRE  = regexp.MustCompile(`@UseInterceptors\s*\(`)
-	ccTransactionalRE    = regexp.MustCompile(`@Transactional\b`)
-	ccCacheableRE        = regexp.MustCompile(`@(?:Cacheable|CacheEvict|CachePut)\b`)
+	ccGoMiddlewareRE    = regexp.MustCompile(`func\s+\w*\s*\([^)]*http\.Handler[^)]*\)\s*http\.Handler`)
+	ccNestGuardRE       = regexp.MustCompile(`@UseGuards\s*\(`)
+	ccNestInterceptorRE = regexp.MustCompile(`@UseInterceptors\s*\(`)
+	ccTransactionalRE   = regexp.MustCompile(`@Transactional\b`)
+	ccCacheableRE       = regexp.MustCompile(`@(?:Cacheable|CacheEvict|CachePut)\b`)
 )
 
 func (c *crosscuttingDetector) Category() string { return "cross_cutting" }

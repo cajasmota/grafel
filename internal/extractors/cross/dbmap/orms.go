@@ -660,16 +660,16 @@ func detectEcto(source string) []access {
 	}
 
 	opOf := map[string]string{
-		"all":         OpSelect,
-		"one":         OpSelect,
-		"get":         OpSelect,
-		"get_by":      OpSelect,
-		"insert":      OpInsert,
-		"insert_all":  OpInsert,
-		"update":      OpUpdate,
-		"update_all":  OpUpdate,
-		"delete":      OpDelete,
-		"delete_all":  OpDelete,
+		"all":        OpSelect,
+		"one":        OpSelect,
+		"get":        OpSelect,
+		"get_by":     OpSelect,
+		"insert":     OpInsert,
+		"insert_all": OpInsert,
+		"update":     OpUpdate,
+		"update_all": OpUpdate,
+		"delete":     OpDelete,
+		"delete_all": OpDelete,
 	}
 
 	var out []access
@@ -706,18 +706,18 @@ var prismaCallRE = regexp.MustCompile(
 
 func detectPrisma(source string) []access {
 	opOf := map[string]string{
-		"findMany":           OpSelect,
-		"findUnique":         OpSelect,
-		"findFirst":          OpSelect,
-		"findFirstOrThrow":   OpSelect,
-		"count":              OpSelect,
-		"create":             OpInsert,
-		"createMany":         OpInsert,
-		"update":             OpUpdate,
-		"updateMany":         OpUpdate,
-		"upsert":             OpUpsert,
-		"delete":             OpDelete,
-		"deleteMany":         OpDelete,
+		"findMany":         OpSelect,
+		"findUnique":       OpSelect,
+		"findFirst":        OpSelect,
+		"findFirstOrThrow": OpSelect,
+		"count":            OpSelect,
+		"create":           OpInsert,
+		"createMany":       OpInsert,
+		"update":           OpUpdate,
+		"updateMany":       OpUpdate,
+		"upsert":           OpUpsert,
+		"delete":           OpDelete,
+		"deleteMany":       OpDelete,
 	}
 	var out []access
 	for _, m := range prismaCallRE.FindAllStringSubmatchIndex(source, -1) {
@@ -772,15 +772,15 @@ func detectTypeORM(source string) []access {
 	}
 
 	opOf := map[string]string{
-		"find":       OpSelect,
-		"findOne":    OpSelect,
-		"findOneBy":  OpSelect,
-		"findBy":     OpSelect,
-		"save":       OpUpsert,
-		"insert":     OpInsert,
-		"update":     OpUpdate,
-		"delete":     OpDelete,
-		"remove":     OpDelete,
+		"find":      OpSelect,
+		"findOne":   OpSelect,
+		"findOneBy": OpSelect,
+		"findBy":    OpSelect,
+		"save":      OpUpsert,
+		"insert":    OpInsert,
+		"update":    OpUpdate,
+		"delete":    OpDelete,
+		"remove":    OpDelete,
 	}
 
 	var out []access
@@ -839,16 +839,16 @@ func detectSequelize(source string) []access {
 	}
 
 	opOf := map[string]string{
-		"findAll":          OpSelect,
-		"findOne":          OpSelect,
-		"findByPk":         OpSelect,
-		"findAndCountAll":  OpSelect,
-		"count":            OpSelect,
-		"create":           OpInsert,
-		"bulkCreate":       OpInsert,
-		"update":           OpUpdate,
-		"destroy":          OpDelete,
-		"upsert":           OpUpsert,
+		"findAll":         OpSelect,
+		"findOne":         OpSelect,
+		"findByPk":        OpSelect,
+		"findAndCountAll": OpSelect,
+		"count":           OpSelect,
+		"create":          OpInsert,
+		"bulkCreate":      OpInsert,
+		"update":          OpUpdate,
+		"destroy":         OpDelete,
+		"upsert":          OpUpsert,
 	}
 
 	var out []access
@@ -905,13 +905,13 @@ func detectDiesel(source string) []access {
 	}
 
 	opOf := map[string]string{
-		"load":         OpSelect,
-		"first":        OpSelect,
-		"get_result":   OpSelect,
-		"execute":      OpUpdate, // best-effort default
-		"insert_into":  OpInsert,
-		"update":       OpUpdate,
-		"delete":       OpDelete,
+		"load":        OpSelect,
+		"first":       OpSelect,
+		"get_result":  OpSelect,
+		"execute":     OpUpdate, // best-effort default
+		"insert_into": OpInsert,
+		"update":      OpUpdate,
+		"delete":      OpDelete,
 	}
 
 	var out []access

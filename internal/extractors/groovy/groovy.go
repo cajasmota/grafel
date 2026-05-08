@@ -364,8 +364,8 @@ func buildGradleTaskDeclaration(node *sitter.Node, file extractor.FileInput, imp
 		Signature:          "task " + name,
 		EnrichmentRequired: false,
 		Properties: map[string]string{
-			"imports":      strings.Join(imports, ","),
-			"gradle_dsl":   "task",
+			"imports":    strings.Join(imports, ","),
+			"gradle_dsl": "task",
 		},
 	}, true
 }

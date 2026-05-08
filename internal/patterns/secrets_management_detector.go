@@ -24,14 +24,14 @@ var secretsSourceTokens = []string{
 }
 
 var (
-	secretsPyHvacRE      = regexp.MustCompile(`\bhvac\s*\.\s*(?:Client|AsyncClient)\s*\(`)
-	secretsPyBoto3SMRE   = regexp.MustCompile(`boto3\s*\.\s*(?:client|resource)\s*\(\s*["']secretsmanager["']`)
-	secretsPyAzureKVRE   = regexp.MustCompile(`(?:SecretClient|azure\.keyvault\.secrets\.SecretClient)\s*\(`)
-	secretsGoVaultRE     = regexp.MustCompile(`\bvault\s*\.\s*NewClient\s*\(`)
-	secretsGoAWSRE       = regexp.MustCompile(`secretsmanager\.New(?:FromConfig)?\s*\(`)
-	secretsNodeVaultRE   = regexp.MustCompile(`(?:require|import).*['"]node-vault['"]`)
-	secretsNodeAWSSDKRE  = regexp.MustCompile(`SecretsManager\s*\(`)
-	secretsJavaVaultRE   = regexp.MustCompile(`(?:VaultTemplate|SpringVaultConfiguration|VaultEndpoint)`)
+	secretsPyHvacRE     = regexp.MustCompile(`\bhvac\s*\.\s*(?:Client|AsyncClient)\s*\(`)
+	secretsPyBoto3SMRE  = regexp.MustCompile(`boto3\s*\.\s*(?:client|resource)\s*\(\s*["']secretsmanager["']`)
+	secretsPyAzureKVRE  = regexp.MustCompile(`(?:SecretClient|azure\.keyvault\.secrets\.SecretClient)\s*\(`)
+	secretsGoVaultRE    = regexp.MustCompile(`\bvault\s*\.\s*NewClient\s*\(`)
+	secretsGoAWSRE      = regexp.MustCompile(`secretsmanager\.New(?:FromConfig)?\s*\(`)
+	secretsNodeVaultRE  = regexp.MustCompile(`(?:require|import).*['"]node-vault['"]`)
+	secretsNodeAWSSDKRE = regexp.MustCompile(`SecretsManager\s*\(`)
+	secretsJavaVaultRE  = regexp.MustCompile(`(?:VaultTemplate|SpringVaultConfiguration|VaultEndpoint)`)
 )
 
 func (s *secretsManagementDetector) Category() string { return "secrets_management" }

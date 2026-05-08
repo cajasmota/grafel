@@ -11,15 +11,15 @@ import (
 type resiliencePatternExtractor struct{}
 
 var (
-	rpR4JTriggerRE      = regexp.MustCompile(`(?:io\.github\.resilience4j|@CircuitBreaker|@Retry|@Bulkhead|@RateLimiter)`)
-	rpPollyTriggerRE    = regexp.MustCompile(`(?:Polly\.|Policy\.Handle|WaitAndRetry|CircuitBreaker)`)
+	rpR4JTriggerRE       = regexp.MustCompile(`(?:io\.github\.resilience4j|@CircuitBreaker|@Retry|@Bulkhead|@RateLimiter)`)
+	rpPollyTriggerRE     = regexp.MustCompile(`(?:Polly\.|Policy\.Handle|WaitAndRetry|CircuitBreaker)`)
 	rpGoGobreakerTrigger = regexp.MustCompile(`gobreaker\.`)
-	rpGoHystrixTrigger  = regexp.MustCompile(`hystrix-go`)
-	rpR4JAnnotRE        = regexp.MustCompile(`@(CircuitBreaker|Retry|Bulkhead|RateLimiter|TimeLimiter)\s*\(\s*name\s*=\s*["']([^"']+)["']`)
-	rpHystrixCmdRE      = regexp.MustCompile(`hystrix\.HystrixCommand\b`)
-	rpPollyCallRE       = regexp.MustCompile(`Policy\.(Handle|WrapAsync|Wrap)\s*\(`)
-	rpGobreakerRE       = regexp.MustCompile(`gobreaker\.NewCircuitBreaker\s*\(`)
-	rpHystrixGoRE       = regexp.MustCompile(`hystrix\.Command\s*\{`)
+	rpGoHystrixTrigger   = regexp.MustCompile(`hystrix-go`)
+	rpR4JAnnotRE         = regexp.MustCompile(`@(CircuitBreaker|Retry|Bulkhead|RateLimiter|TimeLimiter)\s*\(\s*name\s*=\s*["']([^"']+)["']`)
+	rpHystrixCmdRE       = regexp.MustCompile(`hystrix\.HystrixCommand\b`)
+	rpPollyCallRE        = regexp.MustCompile(`Policy\.(Handle|WrapAsync|Wrap)\s*\(`)
+	rpGobreakerRE        = regexp.MustCompile(`gobreaker\.NewCircuitBreaker\s*\(`)
+	rpHystrixGoRE        = regexp.MustCompile(`hystrix\.Command\s*\{`)
 )
 
 func (r *resiliencePatternExtractor) Category() string { return "resilience_pattern" }

@@ -43,17 +43,17 @@ var eloquentModelBaseClasses = map[string]struct{}{
 	// Authenticatable is the standard User-model base in Laravel, which
 	// inherits from Model. Treating it as a model keeps the User entity
 	// correctly framework-tagged.
-	"Authenticatable":                                    {},
-	"Illuminate\\Foundation\\Auth\\User":                 {},
-	"Illuminate\\Database\\Eloquent\\Relations\\Pivot":   {},
+	"Authenticatable":                                  {},
+	"Illuminate\\Foundation\\Auth\\User":               {},
+	"Illuminate\\Database\\Eloquent\\Relations\\Pivot": {},
 }
 
 // laravelControllerBaseClasses lists the superclass names that identify
 // a Laravel controller.
 var laravelControllerBaseClasses = map[string]struct{}{
-	"Controller":                      {},
+	"Controller":                         {},
 	"App\\Http\\Controllers\\Controller": {},
-	"Illuminate\\Routing\\Controller": {},
+	"Illuminate\\Routing\\Controller":    {},
 }
 
 // classExtends extracts the superclass name from a PHP class_declaration

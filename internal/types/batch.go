@@ -3,11 +3,11 @@ package types
 // BatchRecord holds a set of extracted entities for a single indexing batch.
 // Written to S3 by IndexerTransform and read by IndexerLoad.
 type BatchRecord struct {
-	JobID       string         `json:"job_id"`
-	OrgID       string         `json:"org_id"`
-	ProjectID   string         `json:"project_id"`
-	BatchID     string         `json:"batch_id"`
-	Entities    []EntityRecord `json:"entities"`
+	JobID     string         `json:"job_id"`
+	OrgID     string         `json:"org_id"`
+	ProjectID string         `json:"project_id"`
+	BatchID   string         `json:"batch_id"`
+	Entities  []EntityRecord `json:"entities"`
 }
 
 // FileBatch is the SQS message payload dispatched by IndexerExtract.

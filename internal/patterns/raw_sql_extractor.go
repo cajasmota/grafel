@@ -18,10 +18,10 @@ var rawSQLTriggerTokens = []string{
 }
 
 var (
-	rawSelectRE     = regexp.MustCompile(`(?i)\bSELECT\b.*?\bFROM\b\s+(\w+)`)
-	rawInsertRE     = regexp.MustCompile(`(?i)\bINSERT\s+INTO\s+(\w+)`)
-	rawUpdateRE     = regexp.MustCompile(`(?i)\bUPDATE\s+(\w+)\s+SET\b`)
-	rawDeleteRE     = regexp.MustCompile(`(?i)\bDELETE\s+FROM\s+(\w+)`)
+	rawSelectRE = regexp.MustCompile(`(?i)\bSELECT\b.*?\bFROM\b\s+(\w+)`)
+	rawInsertRE = regexp.MustCompile(`(?i)\bINSERT\s+INTO\s+(\w+)`)
+	rawUpdateRE = regexp.MustCompile(`(?i)\bUPDATE\s+(\w+)\s+SET\b`)
+	rawDeleteRE = regexp.MustCompile(`(?i)\bDELETE\s+FROM\s+(\w+)`)
 )
 
 func (r *rawSQLExtractor) Category() string { return "raw_sql" }
@@ -41,8 +41,8 @@ func (r *rawSQLExtractor) Detect(filePath, language, src string) []types.EntityR
 	seen := map[string]bool{}
 
 	ops := []struct {
-		re  *regexp.Regexp
-		op  string
+		re *regexp.Regexp
+		op string
 	}{
 		{rawSelectRE, "SELECT"},
 		{rawInsertRE, "INSERT"},

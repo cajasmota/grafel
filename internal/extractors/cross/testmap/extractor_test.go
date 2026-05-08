@@ -527,13 +527,13 @@ class FooSpec extends AnyFunSuite {
 
 func TestInferTestType(t *testing.T) {
 	cases := map[string]string{
-		"tests/unit/foo_test.go":                "unit",
-		"tests/integration/foo_test.go":         "integration",
-		"tests/e2e/foo_test.go":                 "e2e",
-		"src/widget.e2e.test.ts":                "e2e",
-		"src/widget.integration.test.ts":        "integration",
-		"src/widget.test.ts":                    "unit",
-		"a/b/c.go":                              "unit",
+		"tests/unit/foo_test.go":         "unit",
+		"tests/integration/foo_test.go":  "integration",
+		"tests/e2e/foo_test.go":          "e2e",
+		"src/widget.e2e.test.ts":         "e2e",
+		"src/widget.integration.test.ts": "integration",
+		"src/widget.test.ts":             "unit",
+		"a/b/c.go":                       "unit",
 	}
 	for path, want := range cases {
 		if got := inferTestType(path); got != want {
@@ -616,10 +616,10 @@ func TestIsStopword(t *testing.T) {
 
 func TestTailIdent(t *testing.T) {
 	cases := map[string]string{
-		"Foo":         "Foo",
-		"pkg.Foo":     "Foo",
-		"a.b.c.Name":  "Name",
-		"":            "",
+		"Foo":        "Foo",
+		"pkg.Foo":    "Foo",
+		"a.b.c.Name": "Name",
+		"":           "",
 	}
 	for in, want := range cases {
 		if got := tailIdent(in); got != want {
@@ -630,12 +630,12 @@ func TestTailIdent(t *testing.T) {
 
 func TestStripTestPrefix(t *testing.T) {
 	cases := map[string]string{
-		"TestGetUser":  "GetUser",
+		"TestGetUser":   "GetUser",
 		"test_get_user": "get_user",
-		"it_should_do": "should_do",
-		"xyz":          "",
-		"Test":         "",
-		"test_":        "",
+		"it_should_do":  "should_do",
+		"xyz":           "",
+		"Test":          "",
+		"test_":         "",
 	}
 	for in, want := range cases {
 		if got := stripTestPrefix(in); got != want {
@@ -781,11 +781,11 @@ func TestMatchesAnyImport(t *testing.T) {
 
 func TestJestCaseQNameScrubbing(t *testing.T) {
 	cases := map[string]string{
-		"returns a user":     "it_returns_a_user",
-		"returns-a-user":     "it_returns_a_user",
-		"has 99 problems!":   "it_has_99_problems",
-		"":                   "anonymous_test",
-		"!!!":                "anonymous_test",
+		"returns a user":   "it_returns_a_user",
+		"returns-a-user":   "it_returns_a_user",
+		"has 99 problems!": "it_has_99_problems",
+		"":                 "anonymous_test",
+		"!!!":              "anonymous_test",
 	}
 	for in, want := range cases {
 		if got := jestCaseQName(in); got != want {

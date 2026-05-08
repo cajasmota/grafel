@@ -13,17 +13,17 @@ import (
 type columnSchemaExtractor struct{}
 
 var columnOrmTokenSets = map[string][]string{
-	"hibernate":   {"@Column", "@Entity", "@Table", "@Id", "@GeneratedValue"},
-	"sqlalchemy":  {"Column(", "db.Column(", "mapped_column(", "relationship("},
-	"prisma":      {"model ", "@@map", "@default", "@unique", "@relation"},
-	"typeorm":     {"@Column(", "@Entity(", "@PrimaryColumn(", "@ManyToOne(", "@OneToMany("},
-	"efcore":      {"HasColumn(", "Property(", "HasKey(", "HasIndex("},
-	"eloquent":    {"$fillable", "$casts", "$table", "protected $"},
-	"ecto":        {"field :", "belongs_to :", "has_many :", "cast("},
+	"hibernate":  {"@Column", "@Entity", "@Table", "@Id", "@GeneratedValue"},
+	"sqlalchemy": {"Column(", "db.Column(", "mapped_column(", "relationship("},
+	"prisma":     {"model ", "@@map", "@default", "@unique", "@relation"},
+	"typeorm":    {"@Column(", "@Entity(", "@PrimaryColumn(", "@ManyToOne(", "@OneToMany("},
+	"efcore":     {"HasColumn(", "Property(", "HasKey(", "HasIndex("},
+	"eloquent":   {"$fillable", "$casts", "$table", "protected $"},
+	"ecto":       {"field :", "belongs_to :", "has_many :", "cast("},
 }
 
-var columnHibernateRE   = regexp.MustCompile(`@Column\s*\(\s*(?:name\s*=\s*["']([^"']+)["'])?`)
-var columnSQLAlchemyRE  = regexp.MustCompile(`(\w+)\s*=\s*(?:db\.)?Column\s*\(([^)]+)\)`)
+var columnHibernateRE = regexp.MustCompile(`@Column\s*\(\s*(?:name\s*=\s*["']([^"']+)["'])?`)
+var columnSQLAlchemyRE = regexp.MustCompile(`(\w+)\s*=\s*(?:db\.)?Column\s*\(([^)]+)\)`)
 var columnPrismaFieldRE = regexp.MustCompile(`(?m)^\s+(\w+)\s+(\w+)(?:\?|!)?(?:\s+@\w+.*)?$`)
 
 func detectColumnORM(src string) string {

@@ -12,8 +12,8 @@
       "signature": "function validateUser",
       "enrichment_required": false,
       "properties": {
-        "vera_subtype": "function",
-        "vera_type": "SCOPE.Operation"
+        "subtype": "function",
+        "kind": "SCOPE.Operation"
       }
     },
     {
@@ -28,8 +28,8 @@
       "properties": {
         "is_local": "false",
         "module": "express",
-        "vera_subtype": "import",
-        "vera_type": "SCOPE.Component"
+        "subtype": "import",
+        "kind": "SCOPE.Component"
       }
     }
   ],
