@@ -1932,16 +1932,23 @@ func TestGoTestifyBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 // TestGoTestifyBareNames_RejectedCollisions confirms that names
 // rejected as too-likely-to-collide-with-user-methods stay
 // fall-through even with lang="go" + a `_test.go` path. Per the
-// issue #115 hard rules: Run/New/Add/Set are EXCLUDED.
+// issue #115 hard rules: New/Add/Set are EXCLUDED. (Note: `Run` is
+// excluded from the testify map but classifies via the testing.T map
+// added in issue #130 — the testing.T `t.Run("sub", ...)` subtest
+// dispatcher dominates in `_test.go` context.)
 func TestGoTestifyBareNames_RejectedCollisions(t *testing.T) {
-	excluded := []string{"Run", "New", "Add", "Set"}
+	excluded := []string{"New", "Add", "Set"}
 	for _, name := range excluded {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			if _, ok := goTestifyBareNames[name]; ok {
 				t.Fatalf("goTestifyBareNames[%q] present; must be rejected per issue #115 "+
-					"(collision-prone with user-defined Run/New/Add/Set methods)", name)
+					"(collision-prone with user-defined New/Add/Set methods)", name)
+			}
+			if _, ok := goTestingTBareNames[name]; ok {
+				t.Fatalf("goTestingTBareNames[%q] present; must be rejected per issue #115/#130 "+
+					"(collision-prone with user-defined New/Add/Set methods)", name)
 			}
 			if _, ok := stdlibFunction(name, "go", "foo_test.go", nil); ok {
 				t.Fatalf("stdlibFunction(%q, \"go\", _test.go, nil) classified; want fall-through "+
@@ -1959,6 +1966,159 @@ func TestGoTestifyBareNames_TestifyPackageAllowlisted(t *testing.T) {
 	if !IsKnownExternalPackage("github.com/stretchr/testify") {
 		t.Fatal("IsKnownExternalPackage(\"github.com/stretchr/testify\") = false; " +
 			"want true (Issue #115/#117)")
+	}
+}
+
+// TestGoTestingTBareNames_ClassifiedInTestFiles locks in issue #130:
+// `*testing.T` helper-method bare names (Helper/Cleanup/Setenv/Logf/
+// Fatal/Run/...) that arrive at the resolver after the Go extractor
+// strips the receiver (`t.Helper()` → `Helper`) must classify as stdlib
+// bare-names — but only when (a) the source entity's language is "go"
+// AND (b) the source file path ends with `_test.go`. The dual gate
+// keeps these collision-prone names from shadowing user methods in
+// non-test code (e.g. `Server.Run`, `Worker.Cleanup`).
+func TestGoTestingTBareNames_ClassifiedInTestFiles(t *testing.T) {
+	names := []string{
+		"Helper", "Cleanup", "Setenv", "Parallel", "TempDir", "Deadline",
+		"Skip", "Skipf", "SkipNow",
+		"Fail", "FailNow", "Fatal", "Fatalf",
+		"Errorf",
+		"Log", "Logf",
+		"Run",
+		"Name", "Context",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "go", "internal/foo/foo_test.go", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"go\", _test.go, nil) = (_, false); want classified", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"go\", _test.go, nil) subtype=%q, want %q",
+					name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:         "go-test-src",
+					Name:       "TestFoo",
+					Kind:       "function",
+					Language:   "go",
+					SourceFile: "internal/foo/foo_test.go",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "go-test-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestGoTestingTBareNames_NotClassifiedInNonTestGoFiles locks in the
+// file-path gate for issue #130: testing.T helper names must NOT
+// classify when the Go source file is a regular `.go` file (not
+// `_test.go`). Without the gate, a user-defined `Run` method on a
+// `Server` or `Worker` type would be shadowed by a synthesised
+// testing.T placeholder.
+func TestGoTestingTBareNames_NotClassifiedInNonTestGoFiles(t *testing.T) {
+	// Note: `Fatal`/`Fatalf`/`Errorf` are NOT in this list — they
+	// classify globally via stdlibBareNames (the lang-agnostic map),
+	// independent of the `_test.go` gate. Only names whose ONLY entry
+	// point is goTestingTBareNames belong here.
+	names := []string{"Helper", "Cleanup", "Setenv", "Run", "Logf", "Parallel"}
+	nonTestPaths := []string{
+		"internal/foo/foo.go",
+		"cmd/main.go",
+		// Adversarial: contains "test" but not as a `_test.go` suffix.
+		"internal/test/helpers.go",
+		"internal/testutil/util.go",
+		"",
+	}
+	for _, name := range names {
+		for _, path := range nonTestPaths {
+			name, path := name, path
+			t.Run(name+"|"+path, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, "go", path, nil); ok {
+					t.Fatalf("stdlibFunction(%q, \"go\", %q, nil) classified; want fall-through "+
+						"(file is not a _test.go file)", name, path)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:         "go-src",
+						Name:       "Foo",
+						Kind:       "function",
+						Language:   "go",
+						SourceFile: path,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "go-src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, file=%q): synthesized=%d, want 0",
+						name, path, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten outside _test.go)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestGoTestingTBareNames_NotClassifiedForOtherLanguages confirms the
+// language gate for issue #130: even with a `_test.go` path, the
+// testing.T names must not classify when the source language isn't "go".
+func TestGoTestingTBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	names := []string{"Helper", "Cleanup", "Setenv", "Run", "Logf"}
+	otherLangs := []string{"python", "javascript", "rust", "java", "ruby", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "foo_test.go", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, _test.go, nil) classified; want fall-through "+
+						"(testing.T map is gated to lang=\"go\")", name, lang)
+				}
+			})
+		}
+	}
+}
+
+// TestGoTestingTBareNames_NoDuplicatesWithGoBareNames confirms the
+// stop-list maps don't duplicate names across stdlibBareNames /
+// goBareNames / goTestifyBareNames / goTestingTBareNames. Duplicate
+// entries would not break behaviour but signal a categorisation
+// mistake — stdlibBareNames matches BEFORE the lang=="go" switch, so a
+// name in both maps is dead code in goTestingTBareNames.
+func TestGoTestingTBareNames_NoDuplicatesWithGoBareNames(t *testing.T) {
+	for name := range goTestingTBareNames {
+		if _, dup := stdlibBareNames[name]; dup {
+			t.Errorf("name %q present in both stdlibBareNames and goTestingTBareNames; "+
+				"remove from goTestingTBareNames (already classified language-wide "+
+				"before the lang==\"go\" switch — entry is dead code)", name)
+		}
+		if _, dup := goBareNames[name]; dup {
+			t.Errorf("name %q present in both goBareNames and goTestingTBareNames; "+
+				"remove from goTestingTBareNames (already classified language-wide)", name)
+		}
+		if _, dup := goTestifyBareNames[name]; dup {
+			t.Errorf("name %q present in both goTestifyBareNames and goTestingTBareNames; "+
+				"remove from goTestingTBareNames (already classified by testify map)", name)
+		}
 	}
 }
 
