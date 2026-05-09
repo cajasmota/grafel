@@ -1778,3 +1778,20 @@ func TestPrismaScopedKnownExternalPackage(t *testing.T) {
 		t.Fatal("IsKnownExternalPackage(\"prisma\") = false; want true (Issue #104)")
 	}
 }
+
+// TestSynthesize_FakerAllowlist locks in the issue #127 addition of
+// "@faker-js" (covers @faker-js/faker and any future @faker-js/*
+// subpackages) plus the legacy unscoped "faker" bare name so faker
+// references in JS/TS fixtures classify as ExternalKnown rather than
+// ExternalUnknown.
+func TestSynthesize_FakerAllowlist(t *testing.T) {
+	if !IsKnownExternalPackage("@faker-js/faker") {
+		t.Fatal("IsKnownExternalPackage(\"@faker-js/faker\") = false; want true (Issue #127)")
+	}
+	if !IsKnownExternalPackage("@FAKER-JS/FAKER") {
+		t.Fatal("IsKnownExternalPackage(\"@FAKER-JS/FAKER\") = false; want case-folded match")
+	}
+	if !IsKnownExternalPackage("faker") {
+		t.Fatal("IsKnownExternalPackage(\"faker\") = false; want true (Issue #127)")
+	}
+}
