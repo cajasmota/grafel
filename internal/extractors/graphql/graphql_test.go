@@ -50,10 +50,13 @@ scalar DateTime
 
 	subtypes := make(map[string]string)
 	for _, e := range entities {
-		subtypes[e.Name] = e.Subtype
+		// Only schema-definition entities are checked here; the extractor
+		// also emits SCOPE.Component file/field/import stubs that carry
+		// CONTAINS/IMPORTS relationships (Issue #385).
 		if e.Kind != "SCOPE.Schema" {
-			t.Errorf("entity %q: expected Kind=SCOPE.Schema, got %q", e.Name, e.Kind)
+			continue
 		}
+		subtypes[e.Name] = e.Subtype
 	}
 
 	expected := map[string]string{
