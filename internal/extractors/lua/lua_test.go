@@ -61,13 +61,19 @@ return M
 	luaEntities := 0
 	names := make(map[string]bool)
 	for _, e := range entities {
-		if e.Language == "lua" {
-			luaEntities++
-			names[e.Name] = true
-			if e.Kind != "SCOPE.Operation" {
-				t.Errorf("entity %q: expected Kind=SCOPE.Operation, got %q", e.Name, e.Kind)
-			}
+		if e.Language != "lua" {
+			continue
 		}
+		// Issue #375 — the lua extractor now also emits SCOPE.Component
+		// entities for module tables (`local M = {}`) and IMPORTS so the
+		// resolver can wire CONTAINS/IMPORTS edges. Only count and shape-
+		// check Operation entities here; the relationship-aware tests in
+		// relationships_test.go cover the rest.
+		if e.Kind != "SCOPE.Operation" {
+			continue
+		}
+		luaEntities++
+		names[e.Name] = true
 	}
 	if luaEntities < 3 {
 		t.Fatalf("expected at least 3 lua entities, got %d", luaEntities)
