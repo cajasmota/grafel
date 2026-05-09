@@ -102,6 +102,12 @@ REPOS=(
   "tide|https://github.com/IlanCosman/tide.git|main|fish"                                        # Pure-fish prompt theme: 117 .fish files (functions, completions, conf.d)
   # --- Just ---
   "just|https://github.com/casey/just.git|master|just"                                           # Just build runner: dogfooded top-level justfile + tests/ parser fixtures
+  # --- Proto ---
+  "grpc-go-examples|https://github.com/grpc/grpc-go.git|master|proto|examples"                   # gRPC-Go examples/ subtree: dozens of .proto service/message definitions
+  # --- GraphQL ---
+  "apollo-server|https://github.com/apollographql/apollo-server.git|main|graphql"                # Apollo Server: GraphQL schema SDL + resolvers across packages
+  # --- HCL ---
+  "terraform-aws-vpc|https://github.com/terraform-aws-modules/terraform-aws-vpc.git|master|hcl"  # Terraform AWS VPC module: canonical HCL resource/variable/output definitions
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
