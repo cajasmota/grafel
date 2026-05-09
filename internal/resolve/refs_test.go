@@ -921,4 +921,48 @@ func TestDiagnoseBugResolver(t *testing.T) {
 			t.Fatalf("category for empty stub: got %q want unknown", got.Category)
 		}
 	})
+
+	t.Run("ambig-qualified", func(t *testing.T) {
+		// Two entities sharing the same QualifiedName cause BuildIndex to
+		// blank the byQualifiedName entry. A stub equal to that QualifiedName
+		// is then diagnosed as ambig-qualified — the diagnoser short-circuits
+		// before kind/name splitting.
+		entities := []types.EntityRecord{
+			{ID: "1111111111111111", Kind: "SCOPE.Heading", Name: "Foo",
+				QualifiedName: "doc.md::foo", SourceFile: "doc.md"},
+			{ID: "2222222222222222", Kind: "SCOPE.Heading", Name: "Foo",
+				QualifiedName: "doc.md::foo", SourceFile: "doc.md"},
+		}
+		idx := BuildIndex(entities)
+		got := idx.DiagnoseBugResolver("doc.md::foo", "CONTAINS")
+		if got.Category != "ambig-qualified" {
+			t.Fatalf("category: got %q, want ambig-qualified (diag=%+v)", got.Category, got)
+		}
+		if got.Name != "doc.md::foo" {
+			t.Fatalf("name: got %q want doc.md::foo", got.Name)
+		}
+	})
+
+	t.Run("kindsPresent-fallback", func(t *testing.T) {
+		// Bare-name stub for a name that appears in nameKinds but is NOT in
+		// ambigName and has no Kind: prefix. A single entity registers its
+		// name under nameKinds while leaving ambigName false, so the
+		// diagnoser falls through the kind-prefix and ambig-bare branches
+		// and lands on the kindsPresent-fallback case (returns ambig-kind
+		// per the histogram bucketing comment in DiagnoseBugResolver).
+		entities := []types.EntityRecord{
+			ent("aaaaaaaaaaaaaaaa", "Function", "loneFn"),
+		}
+		idx := BuildIndex(entities)
+		got := idx.DiagnoseBugResolver("loneFn", "")
+		if got.Category != "ambig-kind" {
+			t.Fatalf("category: got %q, want ambig-kind via kindsPresent fallback (diag=%+v)", got.Category, got)
+		}
+		if len(got.KindsPresent) == 0 {
+			t.Fatalf("KindsPresent should be populated from nameKinds bucket; diag=%+v", got)
+		}
+		if got.StubKind != "" {
+			t.Fatalf("StubKind should be empty for bare-name stub; got %q", got.StubKind)
+		}
+	})
 }
