@@ -507,6 +507,11 @@ func stdlibFunction(name, lang string) (string, bool) {
 			return "function", true
 		}
 	}
+	if lang == "rust" {
+		if _, ok := rustBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -716,6 +721,116 @@ var goBareNames = map[string]struct{}{
 	// issue #103 hard rules: Get/Post/Put/Delete/Use are EXCLUDED.
 	"MethodFunc":      {},
 	"AbortWithStatus": {},
+}
+
+// rustBareNames is the Rust-language-gated bare-name stop-list (issue
+// #108). Rust's prelude implicitly imports a fixed set of identifiers
+// (Ok, Err, Some, None, Box, Vec, Result, Option, ...) into every
+// source file; the extractor sees them as bare PascalCase / snake_case
+// calls without an import edge, and the resolver lands them in
+// bug-extractor. They cannot live in the language-agnostic
+// stdlibBareNames map because names like `Ok`, `Err`, `clone`, `vec`,
+// `map`, `filter` are common user identifiers in Go/JS/Python (#94
+// lesson — bias to misses over false-positive synthesis). Gating to
+// lang="rust" keeps the resolution scoped to Rust source entities.
+//
+// Three categories are included: prelude PascalCase types & traits,
+// prelude lowercase methods (post-receiver-strip from x.clone() →
+// clone), and prelude macros (vec!, println!, format!).
+//
+// Names already covered by the language-agnostic stdlibBareNames map
+// (filter, format, iter, len, map, print, zip, insert) are
+// deliberately omitted here — they classify globally without needing
+// the Rust gate.
+var rustBareNames = map[string]struct{}{
+	// Prelude PascalCase — types, enums, variants, and traits.
+	"Ok":           {},
+	"Err":          {},
+	"Some":         {},
+	"None":         {},
+	"Box":          {},
+	"Vec":          {},
+	"Result":       {},
+	"Option":       {},
+	"String":       {},
+	"Default":      {},
+	"From":         {},
+	"Into":         {},
+	"TryFrom":      {},
+	"TryInto":      {},
+	"Iterator":     {},
+	"IntoIterator": {},
+	"ToString":     {},
+	"ToOwned":      {},
+	"Clone":        {},
+	"Copy":         {},
+	"Debug":        {},
+	"Display":      {},
+	"Send":         {},
+	"Sync":         {},
+	"Sized":        {},
+	"Drop":         {},
+	"Fn":           {},
+	"FnMut":        {},
+	"FnOnce":       {},
+
+	// Prelude lowercase methods — post-receiver-strip (`opt.unwrap()` →
+	// `unwrap`, `s.to_string()` → `to_string`). Risky names like
+	// `clone`/`get`/`push`/`pop`/`count` are common user-method
+	// identifiers in other languages, but the lang="rust" gate scopes
+	// the rewrite to Rust source entities only.
+	"clone":             {},
+	"unwrap":            {},
+	"unwrap_or":         {},
+	"unwrap_or_default": {},
+	"unwrap_or_else":    {},
+	"expect":            {},
+	"into":              {},
+	"as_ref":            {},
+	"as_mut":            {},
+	"as_str":            {},
+	"to_string":         {},
+	"to_owned":          {},
+	"into_iter":         {},
+	"collect":           {},
+	"fold":              {},
+	"chain":             {},
+	"count":             {},
+	"is_empty":          {},
+	"push":              {},
+	"pop":               {},
+	"remove":            {},
+	"get":               {},
+	"contains":          {},
+	"is_some":           {},
+	"is_none":           {},
+	"is_ok":             {},
+	"is_err":            {},
+	"ok":                {},
+	"err":               {},
+	"take":              {},
+	"replace":           {},
+	"swap":              {},
+	"drop":              {},
+	"default":           {},
+
+	// Prelude macros (post-`!` strip). `format`/`print` are already in
+	// the language-agnostic stdlibBareNames; the rest are Rust-only
+	// idioms or common-enough across languages to warrant gating.
+	"vec":           {},
+	"println":       {},
+	"eprintln":      {},
+	"eprint":        {},
+	"write":         {},
+	"writeln":       {},
+	"panic":         {},
+	"todo":          {},
+	"unimplemented": {},
+	"unreachable":   {},
+	"dbg":           {},
+	"assert":        {},
+	"debug_assert":  {},
+	"matches":       {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist
