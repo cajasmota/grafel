@@ -55,6 +55,10 @@ var (
 	// @inject ServiceType Name
 	reInject = regexp.MustCompile(`(?m)^@inject\s+(\S+)\s+(\S+)`)
 
+	// @using Foo.Bar(.Baz)*
+	// Captures: dotted module path (the imported namespace).
+	reUsing = regexp.MustCompile(`(?m)^@using\s+([\w\.]+)`)
+
 	// @code followed by optional whitespace then {
 	reCodeBlock = regexp.MustCompile(`@code\s*\{`)
 
@@ -68,7 +72,28 @@ var (
 	// event handler: void or async / Task returning method that looks like an event handler
 	// Captures: return_type, method_name
 	reEventHandler = regexp.MustCompile(`(?:private|public|protected|internal)?\s*(?:async\s+)?(?:void|Task)\s+(\w+)\s*\(`)
+
+	// Method/function call head: identifier followed by `(`. Captures the
+	// identifier. Used to harvest CALLS edges from method bodies.
+	reCallHead = regexp.MustCompile(`\b([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
 )
+
+// csKeywords are C# / Razor reserved words that appear before "(" but are NOT
+// method calls (control flow, declarations, etc.). Filtered out of CALLS.
+var csKeywords = map[string]bool{
+	"if": true, "else": true, "while": true, "for": true, "foreach": true,
+	"switch": true, "case": true, "return": true, "throw": true, "try": true,
+	"catch": true, "finally": true, "using": true, "lock": true, "do": true,
+	"new": true, "typeof": true, "sizeof": true, "nameof": true, "default": true,
+	"checked": true, "unchecked": true, "in": true, "out": true, "ref": true,
+	"is": true, "as": true, "void": true, "Task": true, "var": true,
+	"true": true, "false": true, "null": true, "this": true, "base": true,
+	"await": true, "async": true, "yield": true, "break": true, "continue": true,
+	"goto": true, "fixed": true, "stackalloc": true, "delegate": true,
+	"public": true, "private": true, "protected": true, "internal": true,
+	"static": true, "readonly": true, "const": true, "virtual": true,
+	"override": true, "abstract": true, "sealed": true, "partial": true,
+}
 
 // Extract processes a .razor file and returns entity records.
 func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (entities []types.EntityRecord, retErr error) {
@@ -124,6 +149,8 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 		EnrichmentStatus:   types.StatusPending,
 		EnrichmentRequired: false,
 	}
+	// Component entity is the first record; we mutate index 0 below to attach
+	// CONTAINS edges to event-handler operations (Issue #378).
 	entities = append(entities, componentEntity)
 
 	// --- 2. @inject directives -----------------------------------------------
@@ -154,6 +181,13 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 	// Re-scan inject positions individually for accurate line numbers.
 	entities = rebuildInjectEntities(entities, src, file.Path, componentName)
 
+	// --- 3a. @using directives → IMPORTS edges -------------------------------
+	// Each @using emits a SCOPE.Component import-stub entity carrying a single
+	// IMPORTS edge from the source file → the imported namespace. Mirrors the
+	// contract used by the Clojure (#118) and Java (#120) extractors. Inserted
+	// after rebuildInjectEntities, which retains only entities[:1].
+	entities = append(entities, buildImportEntities(file.Path, src)...)
+
 	// --- 4. @code block ------------------------------------------------------
 	codeSrc, codeOffset, ok := extractCodeBlock(src)
 	if !ok {
@@ -169,7 +203,141 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) (enti
 	}
 	entities = append(entities, codeEntities...)
 
+	// --- 6. CONTAINS edges: component → each event_handler (Format A
+	// structural-ref keyed on file path so the resolver disambiguates
+	// across components that share method names).
+	for i := range entities {
+		if entities[i].Subtype != "event_handler" {
+			continue
+		}
+		toID := extractor.BuildOperationStructuralRef("razor", file.Path, entities[i].Name)
+		entities[0].Relationships = append(entities[0].Relationships, types.RelationshipRecord{
+			ToID: toID,
+			Kind: "CONTAINS",
+		})
+	}
+
 	return entities, nil
+}
+
+// buildImportEntities scans @using directives and emits one SCOPE.Component
+// stub per unique namespace, each carrying a single IMPORTS edge from the
+// source file → namespace. Matches the contract used by Clojure / Java
+// extractors (Issue #378).
+func buildImportEntities(filePath, src string) []types.EntityRecord {
+	matches := reUsing.FindAllStringSubmatchIndex(src, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(matches))
+	out := make([]types.EntityRecord, 0, len(matches))
+	for _, m := range matches {
+		if len(m) < 4 {
+			continue
+		}
+		ns := src[m[2]:m[3]]
+		if ns == "" || seen[ns] {
+			continue
+		}
+		seen[ns] = true
+		lineNum := lineOf(src, m[0])
+		out = append(out, types.EntityRecord{
+			Name:             topSegment(ns),
+			QualifiedName:    ns,
+			Kind:             "SCOPE.Component",
+			Subtype:          "import",
+			SourceFile:       filePath,
+			Language:         "razor",
+			StartLine:        lineNum,
+			EndLine:          lineNum,
+			QualityScore:     0.85,
+			EnrichmentStatus: types.StatusPending,
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID: filePath,
+					ToID:   ns,
+					Kind:   "IMPORTS",
+					Properties: map[string]string{
+						"source_module": parentNamespace(ns),
+					},
+				},
+			},
+		})
+	}
+	return out
+}
+
+// parentNamespace returns the dotted-parent of a namespace ("A.B.C" → "A.B").
+func parentNamespace(dotted string) string {
+	if dot := strings.LastIndexByte(dotted, '.'); dot > 0 {
+		return dotted[:dot]
+	}
+	return dotted
+}
+
+// topSegment returns the first dotted segment ("A.B.C" → "A").
+func topSegment(dotted string) string {
+	if dot := strings.IndexByte(dotted, '.'); dot > 0 {
+		return dotted[:dot]
+	}
+	return dotted
+}
+
+// collectCalls scans body for identifier-followed-by-paren patterns and
+// returns deduped CALLS edges, dropping C# reserved words and the caller's
+// own name (self-recursion).
+func collectCalls(body, callerName string) []types.RelationshipRecord {
+	if body == "" {
+		return nil
+	}
+	matches := reCallHead.FindAllStringSubmatch(body, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(matches))
+	out := make([]types.RelationshipRecord, 0, len(matches))
+	for _, m := range matches {
+		head := m[1]
+		if head == "" || csKeywords[head] {
+			continue
+		}
+		if head == callerName {
+			continue
+		}
+		if seen[head] {
+			continue
+		}
+		seen[head] = true
+		out = append(out, types.RelationshipRecord{
+			ToID: head,
+			Kind: "CALLS",
+		})
+	}
+	return out
+}
+
+// extractMethodBody returns the substring inside the matching {} that follows
+// the method signature beginning at sigStart (offset within codeSrc). Returns
+// "" if no balanced body is found.
+func extractMethodBody(codeSrc string, sigStart int) string {
+	openIdx := strings.IndexByte(codeSrc[sigStart:], '{')
+	if openIdx < 0 {
+		return ""
+	}
+	abs := sigStart + openIdx
+	depth := 0
+	for i := abs; i < len(codeSrc); i++ {
+		switch codeSrc[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return codeSrc[abs+1 : i]
+			}
+		}
+	}
+	return ""
 }
 
 // componentNameFromPath derives the PascalCase component name from the file path.
@@ -269,6 +437,17 @@ func extractFromCodeBlock(codeSrc string, codeOffset int, fullSrc, filePath, com
 			if m != nil {
 				methodName := m[1]
 				lineNum := lineOf(fullSrc, codeOffset) + i
+
+				// Locate this signature within codeSrc to capture the body
+				// for CALLS scanning. We compute the byte offset of `line`
+				// within codeSrc by re-walking lines (cheap; codeSrc is small).
+				var lineByteOffset int
+				for k := 0; k < i; k++ {
+					lineByteOffset += len(lines[k]) + 1 // +1 for the \n consumed by Split
+				}
+				body := extractMethodBody(codeSrc, lineByteOffset)
+				calls := collectCalls(body, methodName)
+
 				entities = append(entities, types.EntityRecord{
 					Name:             methodName,
 					QualifiedName:    fmt.Sprintf("%s.%s", componentName, methodName),
@@ -284,6 +463,7 @@ func extractFromCodeBlock(codeSrc string, codeOffset int, fullSrc, filePath, com
 						"method_name": methodName,
 						"component":   componentName,
 					},
+					Relationships: calls,
 				})
 			}
 		}
