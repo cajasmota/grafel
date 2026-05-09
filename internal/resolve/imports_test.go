@@ -786,6 +786,195 @@ func TestResolveImports_PHPExternalNamespaceLeftAlone(t *testing.T) {
 	}
 }
 
+// TestResolveImports_PHPFQNMethodTarget covers issue #422 — Symfony
+// YAML routing strings of the form `App\Controller\BlogController::list`
+// arrive on CALLS/IMPORTS edges and must rewrite to the entity ID of
+// the `list` method declared in `src/Controller/BlogController.php`.
+//
+// The fix mirrors the dotted-import handling for #113 and #142: split
+// the FQN-method shape on `::`, normalise the namespace (backslash →
+// dot), resolve the class via the per-module reverse index, then bind
+// the trailing method name to a method entity that lives in the class's
+// SourceFile.
+func TestResolveImports_PHPFQNMethodTarget(t *testing.T) {
+	records := []types.EntityRecord{
+		// YAML route entity (cross-extractor) carrying a CALLS edge to
+		// the FQN-method shape Symfony's _controller field uses.
+		{
+			Name:       "blog_list",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "route",
+			SourceFile: "config/routes.yaml",
+			Language:   "yaml",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "config/routes.yaml",
+				ToID:   "App\\Controller\\BlogController::list",
+				Kind:   "CALLS",
+			}},
+		},
+		// Class BlogController declared in src/Controller/BlogController.php.
+		{
+			ID:         "aaaa1111aaaa1111",
+			Name:       "BlogController",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Controller/BlogController.php",
+			Language:   "php",
+		},
+		// Method `list` declared in the same file.
+		{
+			ID:         "bbbb2222bbbb2222",
+			Name:       "list",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "method",
+			SourceFile: "src/Controller/BlogController.php",
+			Language:   "php",
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.PHPFQNMethodRewritten != 1 {
+		t.Fatalf("expected 1 PHP FQN-method rewrite, got %d (considered=%d)",
+			stats.PHPFQNMethodRewritten, stats.PHPFQNMethodConsidered)
+	}
+	if got := records[0].Relationships[0].ToID; got != "bbbb2222bbbb2222" {
+		t.Fatalf("expected target bbbb2222bbbb2222, got %q", got)
+	}
+}
+
+// TestResolveImports_PHPFQNMethodAlreadyDotted covers the same shape
+// expressed with dot separators — `App.Controller.BlogController::list`
+// — which the YAML cross-extractor may emit if it normalises FQNs
+// before stamping ToID.
+func TestResolveImports_PHPFQNMethodAlreadyDotted(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			Name:       "blog_list",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "route",
+			SourceFile: "config/routes.yaml",
+			Language:   "yaml",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "config/routes.yaml",
+				ToID:   "App.Controller.BlogController::list",
+				Kind:   "CALLS",
+			}},
+		},
+		{
+			ID:         "aaaa1111aaaa1111",
+			Name:       "BlogController",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Controller/BlogController.php",
+			Language:   "php",
+		},
+		{
+			ID:         "bbbb2222bbbb2222",
+			Name:       "list",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "method",
+			SourceFile: "src/Controller/BlogController.php",
+			Language:   "php",
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.PHPFQNMethodRewritten != 1 {
+		t.Fatalf("expected 1 PHP FQN-method rewrite (dotted), got %d", stats.PHPFQNMethodRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "bbbb2222bbbb2222" {
+		t.Fatalf("expected target bbbb2222bbbb2222, got %q", got)
+	}
+}
+
+// TestResolveImports_PHPFQNMethodExternalClassLeftAlone confirms that an
+// FQN-method whose class lives in an external namespace (Symfony,
+// Doctrine, …) misses the per-module index and is left for the
+// external-synthesis pass.
+func TestResolveImports_PHPFQNMethodExternalClassLeftAlone(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			Name:       "evt",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "route",
+			SourceFile: "config/services.yaml",
+			Language:   "yaml",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "config/services.yaml",
+				ToID:   "Symfony\\Component\\HttpKernel\\HttpKernel::handle",
+				Kind:   "CALLS",
+			}},
+		},
+		// A coincidentally-named project method — must NOT bind.
+		{
+			ID:         "deaddeaddeaddead",
+			Name:       "handle",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "method",
+			SourceFile: "src/Other/Thing.php",
+			Language:   "php",
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.PHPFQNMethodRewritten != 0 {
+		t.Fatalf("expected 0 rewrites for external class, got %d", stats.PHPFQNMethodRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "Symfony\\Component\\HttpKernel\\HttpKernel::handle" {
+		t.Fatalf("expected ToID preserved, got %q", got)
+	}
+}
+
+// TestResolveImports_PHPFQNMethodAmbiguousMethodLeftAlone covers the
+// case where the resolved class file contains two methods with the same
+// name (overloaded? unlikely in PHP but defensively handled). Conservative
+// policy: drop the binding rather than guess.
+func TestResolveImports_PHPFQNMethodAmbiguousMethodLeftAlone(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			Name:       "blog_list",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "route",
+			SourceFile: "config/routes.yaml",
+			Language:   "yaml",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "config/routes.yaml",
+				ToID:   "App\\Controller\\BlogController::list",
+				Kind:   "CALLS",
+			}},
+		},
+		{
+			ID:         "aaaa1111aaaa1111",
+			Name:       "BlogController",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Controller/BlogController.php",
+			Language:   "php",
+		},
+		{
+			ID:         "bbbb2222bbbb2222",
+			Name:       "list",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "method",
+			SourceFile: "src/Controller/BlogController.php",
+			Language:   "php",
+		},
+		{
+			ID:         "cccc3333cccc3333",
+			Name:       "list",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "method",
+			SourceFile: "src/Controller/BlogController.php",
+			Language:   "php",
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.PHPFQNMethodRewritten != 0 {
+		t.Fatalf("expected 0 rewrites for ambiguous method, got %d", stats.PHPFQNMethodRewritten)
+	}
+}
+
 // TestResolveImports_FileLocalCollisionDropsBinding covers the case
 // where the same file imports two different symbols under the same
 // local name (e.g. shadowing). The conservative behaviour is to drop
