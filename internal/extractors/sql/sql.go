@@ -10,9 +10,12 @@
 //   - dbt {{ config(...) }}     → Kind="SCOPE.Component",  Subtype="dbt_config"
 //
 // Relationships emitted:
-//   - Table  → Column        : CONTAINS
-//   - Column → ReferencedTable : REFERENCES (foreign key)
-//   - Index  → Table         : INDEXES
+//   - Table    → Column          : CONTAINS
+//   - Column   → ReferencedTable  : REFERENCES (foreign key)
+//   - Index    → Table            : INDEXES
+//   - View     → Table            : READS_FROM   (Issue #389)
+//   - Function → Table            : READS_FROM   (Issue #389; SELECT in body)
+//   - Function → Table            : WRITES_TO    (Issue #389; INSERT/UPDATE/DELETE in body)
 //
 // dbt model files are SQL files containing Jinja templating. They are classified
 // as "sql" by the file classifier and receive enhanced entity extraction here.
@@ -277,6 +280,38 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 		seen[key] = true
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		endLine := findStmtEnd(src, m[0])
+
+		// Issue #389: capture the view body (text from end of header up to
+		// the next ';') and emit READS_FROM edges to every table referenced
+		// in FROM / JOIN clauses. Writes are not expected in a CREATE VIEW
+		// body but we run the full detector for symmetry — INSERT/UPDATE/
+		// DELETE inside a view body would still surface a real dependency.
+		body := sliceStmtBody(src, m[1])
+		reads, writes := extractDMLTargets(body)
+		var rels []types.RelationshipRecord
+		for _, t := range reads {
+			if t == name {
+				continue
+			}
+			rels = append(rels, types.RelationshipRecord{
+				FromID:     name,
+				ToID:       t,
+				Kind:       "READS_FROM",
+				Properties: map[string]string{"dml": "select"},
+			})
+		}
+		for _, t := range writes {
+			if t == name {
+				continue
+			}
+			rels = append(rels, types.RelationshipRecord{
+				FromID:     name,
+				ToID:       t,
+				Kind:       "WRITES_TO",
+				Properties: map[string]string{"dml": "write"},
+			})
+		}
+
 		entities = append(entities, types.EntityRecord{
 			Name:               name,
 			Kind:               "SCOPE.Datastore",
@@ -287,6 +322,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 			EndLine:            endLine,
 			Signature:          fmt.Sprintf("CREATE VIEW %s", name),
 			EnrichmentRequired: false,
+			Relationships:      rels,
 		})
 	}
 
@@ -334,6 +370,45 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 		seen[key] = true
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		endLine := findBlockEnd(src, m[1]-1)
+
+		// Issue #389: scan the function/procedure body for DML targets.
+		// PostgreSQL functions are dollar-quoted ($$ ... $$); other dialects
+		// (MySQL, MSSQL) use BEGIN ... END or just a SELECT after AS. We
+		// scan from the open-paren of the function header down to the end
+		// of the statement, which is permissive enough for all three.
+		body := sliceFuncBody(src, m[1])
+		reads, writes := extractDMLTargets(body)
+		var rels []types.RelationshipRecord
+		dmlKindFor := func(table string, isWrite bool) string {
+			if isWrite {
+				return "write"
+			}
+			_ = table
+			return "select"
+		}
+		for _, t := range reads {
+			if t == name {
+				continue
+			}
+			rels = append(rels, types.RelationshipRecord{
+				FromID:     name,
+				ToID:       t,
+				Kind:       "READS_FROM",
+				Properties: map[string]string{"dml": dmlKindFor(t, false)},
+			})
+		}
+		for _, t := range writes {
+			if t == name {
+				continue
+			}
+			rels = append(rels, types.RelationshipRecord{
+				FromID:     name,
+				ToID:       t,
+				Kind:       "WRITES_TO",
+				Properties: map[string]string{"dml": dmlKindFor(t, true)},
+			})
+		}
+
 		entities = append(entities, types.EntityRecord{
 			Name:               name,
 			Kind:               "SCOPE.Datastore",
@@ -344,6 +419,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 			EndLine:            endLine,
 			Signature:          fmt.Sprintf("CREATE FUNCTION %s", name),
 			EnrichmentRequired: false,
+			Relationships:      rels,
 		})
 	}
 
@@ -512,7 +588,66 @@ var (
 	// Identifier-then-rest: column lines start with an identifier (or quoted ident)
 	// at the top level — used to filter constraint clauses.
 	columnIdentRE = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)\b`)
+
+	// Issue #389 (PORT-RELS-SQL): DML target detection inside view / function
+	// bodies. We attach READS_FROM / WRITES_TO edges from the surrounding
+	// scope entity (view or function) to each referenced table.
+	//
+	// Patterns are intentionally permissive — schema-qualified names are
+	// allowed; quoted identifiers fall through (rare in views/functions and
+	// covered by sibling extractors).
+	dmlFromRE   = regexp.MustCompile(`(?is)\b(?:FROM|JOIN)\s+(?:\w+\.)?(\w+)`)
+	dmlInsertRE = regexp.MustCompile(`(?is)\bINSERT\s+INTO\s+(?:\w+\.)?(\w+)`)
+	dmlUpdateRE = regexp.MustCompile(`(?is)\bUPDATE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)`)
+	dmlDeleteRE = regexp.MustCompile(`(?is)\bDELETE\s+FROM\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)`)
 )
+
+// dmlReservedWord matches identifiers that the FROM/JOIN regex can pick up
+// when SQL syntax follows the keyword with another keyword instead of a
+// table name (e.g. "DELETE FROM ONLY table"). Filter these out.
+var dmlReservedWords = map[string]bool{
+	"ONLY":   true,
+	"SELECT": true,
+	"WHERE":  true,
+	"WITH":   true,
+	"AS":     true,
+}
+
+// extractDMLTargets scans a SQL body (view body or function body) for table
+// references and returns deduplicated read and write target lists. Each
+// returned slice preserves first-seen order so emitted edges are stable.
+func extractDMLTargets(body string) (reads, writes []string) {
+	seenR := map[string]bool{}
+	seenW := map[string]bool{}
+	add := func(target string, m map[string]bool, out *[]string) {
+		t := strings.TrimSpace(target)
+		if t == "" {
+			return
+		}
+		upper := strings.ToUpper(t)
+		if dmlReservedWords[upper] {
+			return
+		}
+		if m[t] {
+			return
+		}
+		m[t] = true
+		*out = append(*out, t)
+	}
+	for _, m := range dmlFromRE.FindAllStringSubmatch(body, -1) {
+		add(m[1], seenR, &reads)
+	}
+	for _, m := range dmlInsertRE.FindAllStringSubmatch(body, -1) {
+		add(m[1], seenW, &writes)
+	}
+	for _, m := range dmlUpdateRE.FindAllStringSubmatch(body, -1) {
+		add(m[1], seenW, &writes)
+	}
+	for _, m := range dmlDeleteRE.FindAllStringSubmatch(body, -1) {
+		add(m[1], seenW, &writes)
+	}
+	return reads, writes
+}
 
 // parseTableBody parses a CREATE TABLE body (text between '(' and ')') into
 // column entities and a list of foreign-key relationships. Columns named
@@ -682,6 +817,47 @@ func isReservedColumnKeyword(upper string) bool {
 		return true
 	}
 	return false
+}
+
+// sliceStmtBody returns the substring of src from headerEnd up to the next
+// top-level ';' (or end of file). Used by the VIEW emitter to capture the
+// SELECT body that follows "CREATE VIEW name AS".
+func sliceStmtBody(src string, headerEnd int) string {
+	if headerEnd < 0 || headerEnd >= len(src) {
+		return ""
+	}
+	idx := strings.Index(src[headerEnd:], ";")
+	if idx < 0 {
+		return src[headerEnd:]
+	}
+	return src[headerEnd : headerEnd+idx]
+}
+
+// sliceFuncBody returns the body of a function/procedure declaration. The
+// body region runs from the parameter list onward to the end of the next
+// trailing-statement terminator. For dollar-quoted bodies ($$ ... $$) we
+// take the content between the two $$ markers; otherwise we fall back to
+// sliceStmtBody.
+func sliceFuncBody(src string, headerEnd int) string {
+	if headerEnd < 0 || headerEnd >= len(src) {
+		return ""
+	}
+	// Skip past the parameter list of the function header so DML scanning
+	// does not pick up "FROM" inside e.g. parameter defaults or column types.
+	paramEnd := findBlockEndOffset(src, headerEnd-1)
+	scanFrom := headerEnd
+	if paramEnd > 0 && paramEnd < len(src) {
+		scanFrom = paramEnd + 1
+	}
+	rest := src[scanFrom:]
+	// Dollar-quoted body: content between the first two "$$" markers.
+	if i := strings.Index(rest, "$$"); i >= 0 {
+		j := strings.Index(rest[i+2:], "$$")
+		if j >= 0 {
+			return rest[i+2 : i+2+j]
+		}
+	}
+	return sliceStmtBody(src, scanFrom)
 }
 
 // findStmtEnd returns the line number of the next semicolon after startPos.
