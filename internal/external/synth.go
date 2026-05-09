@@ -1769,6 +1769,87 @@ var rustBareNames = map[string]struct{}{
 	"assert":        {},
 	"debug_assert":  {},
 	"matches":       {},
+
+	// Actix-web framework DSL (issue #440). The Rust extractor strips
+	// the receiver from a builder-chain call (`App::new().service(s)` →
+	// `service`, `HttpResponse::Ok().json(x)` → `json`, `web::Path::<T>`
+	// → `Path`), and the resolver can't bind the bare leaf to a local
+	// entity — it lands in bug-extractor. Mirrors the Kotlin Ktor DSL
+	// (#435) and Swift Vapor DSL (#436) precedents: the language gate
+	// (lang == "rust") is what makes generic verbs like `service`,
+	// `route`, `scope`, `body`, `json`, `start` safe — they cannot
+	// shadow user methods in Go/JS/Python/Ruby/Kotlin/Swift codebases.
+	//
+	// Conservative selection (lesson from #94): `web` excluded — too
+	// generic, collides with user variables/modules. HTTP method verbs
+	// `get`/`post`/`put`/`delete`/`patch`/`head`/`options` are
+	// route-builder DSL on `App`/`Resource`/`Scope` — `get` is already
+	// listed above as an Option/Vec accessor; the rest are added here.
+	//
+	// Categories:
+	//   - Actix `App`/`Resource`/`Scope` builder DSL.
+	//   - `HttpResponse` factory methods and response builder verbs.
+	//   - `web::Path`/`Query`/`Json`/`Form`/`Data`/`Header` extractors.
+	//   - Actix actor system (`Actor`/`Handler`/`Message`/`Context`/
+	//     lifecycle hooks).
+	//   - HTTP method route-builder verbs (`post`, `put`, `delete`,
+	//     `patch`, `head`, `options`).
+	"App":               {},
+	"service":           {},
+	"route":             {},
+	"scope":             {},
+	"wrap":              {},
+	"wrap_fn":           {},
+	"app_data":          {},
+	"default_service":   {},
+	"external_resource": {},
+	"configure":         {},
+	"register":          {},
+	// HTTP response factories and builder verbs. `Ok` and `NotFound`
+	// are already covered (`Ok` in rustBareNames prelude, `NotFound`
+	// in language-agnostic stdlibBareNames).
+	"HttpResponse":        {},
+	"BadRequest":          {},
+	"InternalServerError": {},
+	"Unauthorized":        {},
+	"Forbidden":           {},
+	"NoContent":           {},
+	"Created":             {},
+	"Accepted":            {},
+	"body":                {},
+	"json":                {},
+	"finish":              {},
+	"streaming":           {},
+	// Web extractors. `web` deliberately omitted — too generic.
+	"Path":   {},
+	"Query":  {},
+	"Json":   {},
+	"Form":   {},
+	"Data":   {},
+	"Header": {},
+	// Actix actor system.
+	"Actor":     {},
+	"Handler":   {},
+	"Message":   {},
+	"Context":   {},
+	"Recipient": {},
+	"Addr":      {},
+	"Arbiter":   {},
+	"System":    {},
+	"start":     {},
+	"started":   {},
+	"stopping":  {},
+	"stopped":   {},
+	// HTTP method route-builder verbs (`get` already in prelude list).
+	"post":    {},
+	"put":     {},
+	"delete":  {},
+	"patch":   {},
+	"head":    {},
+	"options": {},
+	// `data` — Actix `App::data(...)` shared-state injector. Listed
+	// after the actor lifecycle hooks to keep grouping legible.
+	"data": {},
 }
 
 // javaBareNames is the Java-language-gated bare-name stop-list (issue
