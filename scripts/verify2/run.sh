@@ -391,6 +391,23 @@ REPOS=(
   "pytest|https://github.com/pytest-dev/pytest.git|main|python"                                               # pytest fixtures, parametrize, conftest, plugins (#312) SHA b10612810dc6 paths src/ testing/
   "karate|https://github.com/karatelabs/karate.git|main|java"                                                 # Karate .feature files, API/UI test DSL (#312) SHA 38db45133982 paths karate-core/ examples/
   "cucumber-js|https://github.com/cucumber/cucumber-js.git|main|typescript"                                   # Cucumber.js step defs, Gherkin .feature parsing (#312) SHA 1c9e7022eae1 paths src/ features/
+  # --- Realtime/WebSocket/messaging (chunk BB, umbrella #323) ---
+  # Consumer apps and libraries showcasing realtime/messaging protocols so the
+  # harness exercises socket-handler detection and event-driven patterns. Each
+  # entry pinned to the SHA recorded in the umbrella body and verified via
+  # git ls-remote --symref. Sparse paths from the umbrella are documented in
+  # trailing comments; entries use a full clone or a single canonical sparse
+  # subtree because cone-mode sparse-checkout supports a single path. The
+  # mdn/dom-examples substitution (no canonical SSE-only repo exists) is
+  # scoped to its WebSocket subtree as the dominant realtime surface; the
+  # /server-sent-events sibling is exercised via separate JS/HTML extractors
+  # when the WS/SSE patterns coincide in scope.
+  "socket.io|https://github.com/socketio/socket.io.git|main|typescript|packages/socket.io"                    # Socket.IO server/client emit/on, namespaces (#323) SHA 439a8f669c67 paths packages/socket.io/ examples/
+  "pusher-js|https://github.com/pusher/pusher-js.git|master|typescript|src"                                    # Pusher channel subscribe/bind, presence channels (#323) SHA e58a5d22e063 paths src/ spec/
+  "ably-js|https://github.com/ably/ably-js.git|main|typescript|src"                                            # Ably Realtime channels, message envelopes (#323) SHA 498d26dfb16b paths src/ test/
+  "MQTT.js|https://github.com/mqttjs/MQTT.js.git|main|typescript|src"                                          # MQTT publish/subscribe, topic filters, QoS (#323) SHA a4e9a92c8710 paths src/ test/
+  "pion-webrtc|https://github.com/pion/webrtc.git|main|go"                                                     # WebRTC peer connection, data channels in Go (#323) SHA 9654161f9b69 paths /. examples/
+  "mdn-dom-examples|https://github.com/mdn/dom-examples.git|main|javascript|web-sockets"                       # Native WebSocket usage examples (#323) SHA f8aa45c93985 paths server-sent-events/ web-sockets/
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
