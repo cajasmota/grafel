@@ -252,6 +252,53 @@ var (
 		// dispatch via dict/list subscript: handlers[key](...), funcs["x"](...).
 		// Anchored "<ident>[...](...)" so we don't bite plain attribute access.
 		regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]*\[[^\]]+\]\(`),
+
+		// Flask app-factory + decorator DSL (issue #420). Flask exposes
+		// its routing / lifecycle / CLI surface as decorator and method
+		// calls on `app = Flask(__name__)`, blueprints (`bp = Blueprint(...)`),
+		// and `bp.cli` AppGroup instances. The Python extractor strips
+		// the receiver and the resolver sees only the bare leaf
+		// identifier (e.g. `@app.route("/")` → ToID="route"). Without a
+		// per-language anchor those land in bug-extractor and drove
+		// flask + flask-realworld bug-rate to 43.93% / 43.63%. The
+		// per-language gate (Python only) keeps these names from
+		// shadowing user methods in other ecosystems — `route`, `errorhandler`,
+		// `before_request` etc. would collide trivially in Go / JS / Ruby.
+		//
+		// Mirrors the Rails ActionController DSL approach from #107.
+		regexp.MustCompile(`^route$`),                    // @app.route(...) / @bp.route(...)
+		regexp.MustCompile(`^add_url_rule$`),             // app.add_url_rule(...)
+		regexp.MustCompile(`^register_blueprint$`),       // app.register_blueprint(bp)
+		regexp.MustCompile(`^before_request$`),           // @app.before_request
+		regexp.MustCompile(`^before_first_request$`),     // @app.before_first_request (legacy)
+		regexp.MustCompile(`^after_request$`),            // @app.after_request
+		regexp.MustCompile(`^teardown_request$`),         // @app.teardown_request
+		regexp.MustCompile(`^teardown_appcontext$`),      // @app.teardown_appcontext
+		regexp.MustCompile(`^errorhandler$`),             // @app.errorhandler(404)
+		regexp.MustCompile(`^register_error_handler$`),   // app.register_error_handler(...)
+		regexp.MustCompile(`^shell_context_processor$`),  // @app.shell_context_processor
+		regexp.MustCompile(`^context_processor$`),        // @app.context_processor
+		regexp.MustCompile(`^template_filter$`),          // @app.template_filter(...)
+		regexp.MustCompile(`^template_test$`),            // @app.template_test(...)
+		regexp.MustCompile(`^template_global$`),          // @app.template_global(...)
+		regexp.MustCompile(`^url_value_preprocessor$`),   // @app.url_value_preprocessor
+		regexp.MustCompile(`^url_defaults$`),             // @app.url_defaults
+		regexp.MustCompile(`^before_app_request$`),       // blueprint scoped variants
+		regexp.MustCompile(`^before_app_first_request$`),
+		regexp.MustCompile(`^after_app_request$`),
+		regexp.MustCompile(`^teardown_app_request$`),
+		regexp.MustCompile(`^app_errorhandler$`),
+		regexp.MustCompile(`^app_context_processor$`),
+		regexp.MustCompile(`^app_template_filter$`),
+		regexp.MustCompile(`^app_template_test$`),
+		regexp.MustCompile(`^app_template_global$`),
+		regexp.MustCompile(`^app_url_value_preprocessor$`),
+		regexp.MustCompile(`^app_url_defaults$`),
+		regexp.MustCompile(`^record$`),       // @bp.record (blueprint setup-state hook)
+		regexp.MustCompile(`^record_once$`),  // @bp.record_once
+		// Flask CLI / click AppGroup decorator: `@bp.cli.command(...)` and
+		// `@app.cli.command(...)`. Extractor leaf is "command".
+		regexp.MustCompile(`^command$`),
 	}
 
 	goDynamicPatterns = []*regexp.Regexp{

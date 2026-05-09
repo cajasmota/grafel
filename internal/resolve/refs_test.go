@@ -885,6 +885,75 @@ func TestRubyRailsDSL_RejectedGenericCollectionOps(t *testing.T) {
 	}
 }
 
+// TestPythonFlaskDSL_RecognisedAsDynamic locks in issue #420: Flask
+// app-factory + decorator DSL bindings (`@app.route(...)`,
+// `@bp.route(...)`, `@bp.cli.command(...)`, lifecycle hooks, error
+// handlers, template filters, URL preprocessors). Pre-fix these
+// landed in bug-extractor and drove flask + flask-realworld bug-rate
+// to 43.93% / 43.63%. The Python extractor strips the receiver and
+// emits only the leaf callee identifier, so the resolver needs a
+// per-language bare-name anchor to classify them as Dynamic.
+func TestPythonFlaskDSL_RecognisedAsDynamic(t *testing.T) {
+	t.Parallel()
+	dynamic := []string{
+		// Routing
+		"route", "add_url_rule", "register_blueprint",
+		// Lifecycle
+		"before_request", "before_first_request", "after_request",
+		"teardown_request", "teardown_appcontext",
+		// Error handling
+		"errorhandler", "register_error_handler",
+		// Context / templates
+		"shell_context_processor", "context_processor",
+		"template_filter", "template_test", "template_global",
+		"url_value_preprocessor", "url_defaults",
+		// Blueprint app-scoped variants
+		"before_app_request", "before_app_first_request",
+		"after_app_request", "teardown_app_request",
+		"app_errorhandler", "app_context_processor",
+		"app_template_filter", "app_template_test", "app_template_global",
+		"app_url_value_preprocessor", "app_url_defaults",
+		"record", "record_once",
+		// Flask CLI / click AppGroup decorator
+		"command",
+	}
+	for _, stub := range dynamic {
+		stub := stub
+		t.Run("python/"+stub, func(t *testing.T) {
+			t.Parallel()
+			if !isDynamicPatternLang(stub, "python") {
+				t.Fatalf("Flask DSL stub %q not recognised as Dynamic for lang=python", stub)
+			}
+		})
+	}
+}
+
+// TestPythonFlaskDSL_GatedToPython confirms the Flask DSL bare-name
+// patterns only match when lang="python" — otherwise generic names
+// like `route`, `command`, `record`, `before_request` would shadow
+// user methods in other ecosystems.
+func TestPythonFlaskDSL_GatedToPython(t *testing.T) {
+	t.Parallel()
+	stubs := []string{
+		"route", "command", "record", "errorhandler",
+		"before_request", "after_request", "register_blueprint",
+		"template_filter", "url_defaults",
+	}
+	otherLangs := []string{"go", "ruby", "javascript", "typescript", "java", "kotlin"}
+	for _, stub := range stubs {
+		for _, lang := range otherLangs {
+			stub, lang := stub, lang
+			t.Run(stub+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if isDynamicPatternLang(stub, lang) {
+					t.Fatalf("stub %q matched dynamic for lang=%q; "+
+						"must be gated to python only (issue #420)", stub, lang)
+				}
+			})
+		}
+	}
+}
+
 // TestDiagnoseBugResolver — issue #92 diagnostic helper. Each subtest
 // constructs a graph that traps a bug-resolver stub at one well-defined
 // shape and asserts the category the diagnoser returns.
