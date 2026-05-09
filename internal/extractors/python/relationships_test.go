@@ -74,12 +74,15 @@ func TestExtract_ContainsClassMethods(t *testing.T) {
 		t.Errorf("expected 3 CONTAINS edges from Foo, got %d (rels=%+v)",
 			c, findEntity(ents, "Foo").Relationships)
 	}
-	// Methods are emitted with class-qualified Name "Foo.<method>" (issue #45).
-	// CONTAINS edges carry that same dotted form as ToID since ToID is set
-	// from child.Name in walkNode.
+	// Issue #144 — CONTAINS targets are structural-ref stubs (Format A:
+	// scope:operation:method:python:<file>:<name>) so the resolver can
+	// disambiguate same-named methods across files. Methods carry the
+	// class-qualified Name "Foo.<method>" (issue #45), which appears as
+	// the trailing :<name> segment of the structural-ref.
 	for _, m := range []string{"Foo.a", "Foo.b", "Foo.c"} {
-		if !hasRel(ents, "Foo", "CONTAINS", m) {
-			t.Errorf("expected CONTAINS Foo→%s", m)
+		want := "scope:operation:method:python:test.py:" + m
+		if !hasRel(ents, "Foo", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Foo→%s", want)
 		}
 	}
 }

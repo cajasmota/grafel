@@ -111,9 +111,12 @@ func TestExtract_ContainsClassMethods(t *testing.T) {
 	if c := countRelByKind(ents, "Foo", "CONTAINS"); c != 3 {
 		t.Errorf("expected 3 CONTAINS edges, got %d", c)
 	}
+	// Issue #144 — CONTAINS targets are structural-ref stubs (Format A)
+	// keyed on the source file so the resolver disambiguates by location.
 	for _, m := range []string{"a", "b", "c"} {
-		if !hasRelEdge(ents, "Foo", "CONTAINS", m) {
-			t.Errorf("expected CONTAINS Foo→%s", m)
+		want := "scope:operation:method:javascript:test.js:" + m
+		if !hasRelEdge(ents, "Foo", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Foo→%s", want)
 		}
 	}
 }
@@ -192,6 +195,14 @@ function helper() {}
 
 	if c := countRelByKind(ents, "A", "CONTAINS"); c != 2 {
 		t.Errorf("expected 2 CONTAINS from A, got %d", c)
+	}
+	// Issue #144 — TS goes through the same JS extractor; CONTAINS targets
+	// must be structural-ref stubs prefixed with the "typescript" segment.
+	for _, m := range []string{"foo", "bar"} {
+		want := "scope:operation:method:typescript:test.ts:" + m
+		if !hasRelEdge(ents, "A", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS A→%s", want)
+		}
 	}
 	if !hasRelEdge(ents, "foo", "CALLS", "bar") {
 		t.Errorf("expected CALLS foo→bar")
