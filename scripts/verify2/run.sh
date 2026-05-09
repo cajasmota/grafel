@@ -295,6 +295,19 @@ REPOS=(
   "json-schema-spec|https://github.com/json-schema-org/json-schema-spec.git|main|json-schema"                   # JSON Schema draft definitions (#325) SHA 5794814cca9e
   "raml-spec|https://github.com/raml-org/raml-spec.git|master|raml"                                             # RAML 1.0 API definitions (#325) SHA 3ba244ade44c
   "api-blueprint|https://github.com/apiaryio/api-blueprint.git|master|api-blueprint"                            # API Blueprint markdown specs (#325) SHA 86fc3a128a93
+  # --- Auth/security/observability (chunk S, umbrella #322) ---
+  # Auth (OAuth2/OIDC/JWT/Keycloak/Auth0), security (Vault), and observability
+  # (OpenTelemetry, Prometheus, Sentry, Datadog) client-library consumer apps.
+  # Each entry pinned to the SHA recorded in the umbrella body.
+  "node-openid-client|https://github.com/panva/node-openid-client.git|main|typescript|lib"                       # OAuth2/OIDC client flows, discovery (#322) SHA d3721c2cab93
+  "node-jsonwebtoken|https://github.com/auth0/node-jsonwebtoken.git|master|javascript"                           # JWT sign/verify consumer patterns (#322) SHA 02688b982132
+  "keycloak|https://github.com/keycloak/keycloak.git|main|java|core"                                             # Keycloak Java SDK adapters (#322) SHA 8938558fa5c7
+  "auth0-spa-js|https://github.com/auth0/auth0-spa-js.git|main|typescript|src"                                   # Auth0 SPA SDK login/logout/token (#322) SHA c66e8b7400f2
+  "vault|https://github.com/hashicorp/vault.git|main|go|api"                                                     # HashiCorp Vault Go client (#322) SHA 54a22347c3fa
+  "opentelemetry-js|https://github.com/open-telemetry/opentelemetry-js.git|main|typescript|packages"             # OpenTelemetry tracing/metrics SDK (#322) SHA 95e48e7afcc4
+  "prometheus-client-golang|https://github.com/prometheus/client_golang.git|main|go|prometheus"                  # Prometheus Go client metrics (#322) SHA 0ac87e14c303
+  "sentry-javascript|https://github.com/getsentry/sentry-javascript.git|develop|typescript|packages"             # Sentry SDK init + capture (#322) SHA 298807727c81
+  "dd-trace-js|https://github.com/DataDog/dd-trace-js.git|master|javascript|packages"                            # Datadog APM tracer instrumentations (#322) SHA 807fceb14d1a
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
