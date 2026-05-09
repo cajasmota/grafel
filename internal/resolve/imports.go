@@ -274,8 +274,8 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 // modulesForFile returns the dotted-module forms of a file path. A path
 // like "requests/api.py" satisfies module "requests.api". A path ending
 // in "/__init__.py" also satisfies the parent directory's dotted form
-// ("requests/__init__.py" → "requests"). Paths outside .py files return
-// an empty slice; non-Python languages don't currently use this index.
+// ("requests/__init__.py" → "requests"). Paths outside known languages
+// return an empty slice.
 func modulesForFile(p string) []string {
 	if p == "" {
 		return nil
@@ -287,9 +287,66 @@ func modulesForFile(p string) []string {
 		return modulesForJavaFile(p)
 	case strings.HasSuffix(p, ".php"):
 		return modulesForPHPFile(p)
+	case strings.HasSuffix(p, ".ts"),
+		strings.HasSuffix(p, ".tsx"),
+		strings.HasSuffix(p, ".js"),
+		strings.HasSuffix(p, ".jsx"),
+		strings.HasSuffix(p, ".mjs"),
+		strings.HasSuffix(p, ".cjs"):
+		return modulesForJSFile(p)
 	}
 	return nil
 }
+
+// modulesForJSFile derives the dotted-module forms of a JavaScript /
+// TypeScript source file (issue #421). Unlike Python's package-dotted
+// form or Java's package declaration, JS/TS has no language-level
+// package concept — modules are FILE-RELATIVE. The dotted form mirrors
+// the canonical path emitted by the JS extractor's
+// dottedModuleFromPath: strip a recognised JS/TS extension and replace
+// forward slashes with dots.
+//
+// `src/services/user.service.ts` → "src.services.user.service"
+//
+// Source-root strip: the canonical TypeScript layouts use a leading
+// `src/` (Nest, Angular, generic), `app/` (Next.js app-router), or
+// `lib/` (npm packages). Strip ONE leading segment to keep parity with
+// the Python/PHP single-strip policy. The pre-strip form is preserved
+// in the returned slice so a corpus indexed under the repo root still
+// resolves an import whose source_module was emitted from a sibling
+// file using the post-strip form.
+//
+// Files at the repo root with no parent directory return only their
+// dotted leaf — e.g. `index.ts` → ["index"]. The resolver's nil-guards
+// treat empty modules as no-ops.
+func modulesForJSFile(p string) []string {
+	if p == "" {
+		return nil
+	}
+	// Strip the canonical JS/TS extension once.
+	stripped := p
+	for _, ext := range jsExtensions {
+		if strings.HasSuffix(stripped, ext) {
+			stripped = strings.TrimSuffix(stripped, ext)
+			break
+		}
+	}
+	dotted := strings.ReplaceAll(stripped, "/", ".")
+	out := []string{dotted}
+	for _, prefix := range sourceRootPrefixes {
+		if strings.HasPrefix(out[0], prefix) {
+			out = append(out, strings.TrimPrefix(out[0], prefix))
+			break
+		}
+	}
+	return out
+}
+
+// jsExtensions enumerates the canonical JavaScript/TypeScript source
+// extensions modulesForJSFile recognises. Order matches the resolver's
+// extractor-side resolveRelativeImport so module derivation and import
+// resolution agree on which extension to strip.
+var jsExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
 
 // modulesForPythonFile is the original Python-specific dotted-module
 // derivation (issue #93). Extracted from modulesForFile so the
