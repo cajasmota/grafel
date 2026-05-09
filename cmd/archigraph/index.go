@@ -1164,6 +1164,14 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d dotted IMPORTS targets\n",
 			importStats.ImportsRewritten, importStats.ImportsConsidered)
 	}
+	// Issue #422 — PHP FQN-method CALLS targets
+	// (`App\Controller\BlogController::list`) emitted by the Symfony
+	// YAML cross-extractor. Surfaced separately so the verify2 harness
+	// can attribute the bug-resolver delta on php-symfony-* corpora.
+	if importStats.PHPFQNMethodConsidered > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d PHP FQN-method CALLS targets\n",
+			importStats.PHPFQNMethodRewritten, importStats.PHPFQNMethodConsidered)
+	}
 
 	idx := resolve.BuildIndex(merged)
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)

@@ -107,6 +107,14 @@ type ImportTable struct {
 	// entity. Ambiguous tuples are tracked in ambigModuleName.
 	entitiesByModuleName map[string]map[string]string
 	ambigModuleName      map[string]map[string]bool
+	// methodsByFileName[source_file][method_name] = entity_id, populated
+	// only for PHP method entities and only when the (file, name) tuple
+	// resolves to exactly one entity. Ambiguous tuples are tracked in
+	// ambigMethodFileName. Used by ResolvePHPFQNMethodTarget (issue #422)
+	// to bind an FQN-method like `App\Controller\BlogController::list` to
+	// the method declared in the class's source file.
+	methodsByFileName   map[string]map[string]string
+	ambigMethodFileName map[string]map[string]bool
 }
 
 // BuildImportTable scans every embedded IMPORTS relationship in records
@@ -125,6 +133,8 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		modulesByName:        make(map[string]map[string]bool),
 		entitiesByModuleName: make(map[string]map[string]string),
 		ambigModuleName:      make(map[string]map[string]bool),
+		methodsByFileName:    make(map[string]map[string]string),
+		ambigMethodFileName:  make(map[string]map[string]bool),
 	}
 
 	// Pass 1 — per-file import bindings.
@@ -199,6 +209,36 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		if e.Kind == "SCOPE.Component" && e.Subtype == "module" {
 			continue
 		}
+		// PHP method index for FQN-method resolution (issue #422). Index
+		// every PHP SCOPE.Operation by (file, name). Methods declared
+		// inside a class (the dominant case) have Name == method name —
+		// the extractor doesn't pre-qualify with the class. We reuse the
+		// SourceFile <-> class file 1:1 mapping (PSR-4 convention) at
+		// lookup time: resolve the class FQN to its file, then probe
+		// (file, method_name) here.
+		if e.Language == "php" && e.Kind == "SCOPE.Operation" {
+			file := normalizePath(e.SourceFile)
+			if file != "" && e.Name != "" {
+				if tbl.ambigMethodFileName[file] == nil ||
+					!tbl.ambigMethodFileName[file][e.Name] {
+					bucket := tbl.methodsByFileName[file]
+					if bucket == nil {
+						bucket = make(map[string]string)
+						tbl.methodsByFileName[file] = bucket
+					}
+					if existing, ok := bucket[e.Name]; ok && existing != e.ID {
+						delete(bucket, e.Name)
+						if tbl.ambigMethodFileName[file] == nil {
+							tbl.ambigMethodFileName[file] = make(map[string]bool)
+						}
+						tbl.ambigMethodFileName[file][e.Name] = true
+					} else {
+						bucket[e.Name] = e.ID
+					}
+				}
+			}
+		}
+
 		modules := modulesForFile(normalizePath(e.SourceFile))
 		for _, mod := range modules {
 			files := tbl.modulesByName[mod]
@@ -521,6 +561,14 @@ type ImportResolveStats struct {
 	// ImportsRewritten counts the subset of ImportsConsidered that
 	// resolved to a 16-char entity ID via the per-module reverse index.
 	ImportsRewritten int
+	// PHPFQNMethodConsidered counts every embedded CALLS edge whose
+	// ToID matched the PHP FQN-method shape `<namespace>::<method>`
+	// (issue #422 — Symfony YAML routes emit these via _controller).
+	PHPFQNMethodConsidered int
+	// PHPFQNMethodRewritten counts the subset of PHPFQNMethodConsidered
+	// that resolved to a 16-char entity ID via the class-file method
+	// lookup.
+	PHPFQNMethodRewritten int
 }
 
 // ResolveDottedImportTarget looks up a project-internal IMPORTS ToID of
@@ -552,6 +600,126 @@ func (t ImportTable) ResolveDottedImportTarget(dotted string) (string, bool) {
 	return t.lookupModuleEntity(module, leaf)
 }
 
+// isPHPFQNMethodShape reports whether s looks like a PHP FQN-method
+// reference (`App\Controller\BlogController::list` or its dotted
+// equivalent). The shape is: a `::` infix with non-empty halves, where
+// the left half contains either a backslash or a dot (i.e. a real
+// namespace, not a single identifier — `Foo::bar` is the receiver-typed
+// form already handled by the base resolver via byMember).
+func isPHPFQNMethodShape(s string) bool {
+	sep := strings.Index(s, "::")
+	if sep <= 0 || sep+2 >= len(s) {
+		return false
+	}
+	left := s[:sep]
+	right := s[sep+2:]
+	if right == "" {
+		return false
+	}
+	// Reject CONTAINS-style file references (`doc.md::heading`) — the
+	// left half there is a path with a slash. Issue #100 owns those.
+	if strings.ContainsRune(left, '/') {
+		return false
+	}
+	return strings.ContainsAny(left, "\\.")
+}
+
+// ResolvePHPFQNMethodTarget binds a PHP FQN-method ToID of the form
+// `App\Controller\BlogController::list` (or its dotted equivalent
+// `App.Controller.BlogController::list`) to the entity ID of the
+// method declared in the resolved class's source file.
+//
+// Issue #422 — Symfony YAML routes carry `_controller: <FQN>::<method>`
+// strings that the YAML cross-extractor stamps verbatim onto CALLS /
+// IMPORTS edges. Pre-fix these flowed through the base resolver as
+// opaque names, missed every (kind, name, qualified) index, and landed
+// on bug-resolver. The resolution is two-step:
+//
+//  1. Split the input on `::`. The left side is a class FQN; normalise
+//     backslashes to dots, then split on the LAST dot to obtain
+//     (module, class). Pass to lookupModuleEntity to find the class
+//     entity ID.
+//  2. From the class ID, recover the class entity's SourceFile (via the
+//     methodsByFileName index built at BuildImportTable time we already
+//     have a file → method-name → method-id map; we use the class file
+//     directly via the same modulesByName mapping).
+//
+// Returns ("", false) for: malformed shapes (no `::`, empty halves),
+// classes that resolve into external namespaces (Symfony, Doctrine, …),
+// ambiguous (file, method) tuples, and methods not present in the
+// class's file.
+func (t ImportTable) ResolvePHPFQNMethodTarget(toID string) (string, bool) {
+	if toID == "" {
+		return "", false
+	}
+	sep := strings.Index(toID, "::")
+	if sep <= 0 || sep+2 >= len(toID) {
+		return "", false
+	}
+	classFQN := toID[:sep]
+	method := toID[sep+2:]
+	if method == "" {
+		return "", false
+	}
+	// Normalise backslash to dot (PHP namespace separator). Either form
+	// flows through the same dotted lookup.
+	if strings.ContainsRune(classFQN, '\\') {
+		classFQN = strings.ReplaceAll(classFQN, "\\", ".")
+	}
+	dot := strings.LastIndexByte(classFQN, '.')
+	if dot <= 0 || dot == len(classFQN)-1 {
+		return "", false
+	}
+	module, className := classFQN[:dot], classFQN[dot+1:]
+	// Resolve the class entity. lookupModuleEntity returns the unique
+	// entity ID for (module, name); ambiguous or unknown → ("", false).
+	classID, ok := t.lookupModuleEntity(module, className)
+	if !ok {
+		return "", false
+	}
+	// Recover the class's SourceFile via modulesByName: the file that
+	// satisfies `module` and contains the class. PHP PSR-4 maps a
+	// namespace to exactly one file, so the (module, file) intersection
+	// converges. We pick the file whose method index contains `method`.
+	files := t.modulesByName[module]
+	if len(files) == 0 {
+		return "", false
+	}
+	_ = classID // class ID is not needed for the method lookup; presence
+	// in the per-module reverse index is the project-internal gate. The
+	// method is bound by (class_file, method_name). When two project
+	// files declare the same module (rare but possible — duplicate
+	// namespace fragments split across roots), we accept the first
+	// unambiguous (file, method) hit.
+	var (
+		hitID string
+		hits  int
+	)
+	for file := range files {
+		if t.ambigMethodFileName[file] != nil && t.ambigMethodFileName[file][method] {
+			continue
+		}
+		bucket := t.methodsByFileName[file]
+		if bucket == nil {
+			continue
+		}
+		id, ok := bucket[method]
+		if !ok {
+			continue
+		}
+		if hits == 0 {
+			hitID = id
+			hits = 1
+		} else if id != hitID {
+			hits++
+		}
+	}
+	if hits != 1 {
+		return "", false
+	}
+	return hitID, true
+}
+
 // ResolveImports rewrites embedded CALLS edges in records using the
 // supplied import table. Returns counters describing the rewrite. Edges
 // whose ToID is empty, already a hex ID, or contains a "." (already
@@ -574,6 +742,22 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 			}
 			switch rel.Kind {
 			case "CALLS":
+				// Issue #422 — PHP FQN-method shape `<NS>::<method>`
+				// (Symfony YAML _controller). Detect before the generic
+				// `ContainsAny(":.#")` skip below, which would otherwise
+				// drop these on the floor. The shape is unambiguous: a
+				// `::` infix with non-empty halves and either backslash
+				// or dot separators in the namespace.
+				if strings.Contains(to, "::") {
+					if isPHPFQNMethodShape(to) {
+						stats.PHPFQNMethodConsidered++
+						if id, ok := tbl.ResolvePHPFQNMethodTarget(to); ok {
+							rel.ToID = id
+							stats.PHPFQNMethodRewritten++
+						}
+					}
+					continue
+				}
 				// Skip stubs that already encode a kind ("Kind:Name") or
 				// a receiver-typed dotted target ("Class.method"). The
 				// base resolver handles those via byKind / byMember.
