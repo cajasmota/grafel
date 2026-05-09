@@ -37,10 +37,12 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-// ImportRelKind is the relationship kind emitted by the Python (and any
+// importRelKind is the relationship kind emitted by the Python (and any
 // future) extractor for import statements. ImportTable consumes only
-// relationships whose Kind matches this constant.
-const ImportRelKind = "IMPORTS"
+// relationships whose Kind matches this constant. Unexported because no
+// caller outside this package needs it; the in-package tests reference it
+// directly.
+const importRelKind = "IMPORTS"
 
 // Property keys read off an IMPORTS relationship. See
 // internal/extractors/python/extractor.go:extractImports for the producer
@@ -130,7 +132,7 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		r := &records[k]
 		for j := range r.Relationships {
 			rel := &r.Relationships[j]
-			if rel.Kind != ImportRelKind || rel.Properties == nil {
+			if rel.Kind != importRelKind || rel.Properties == nil {
 				continue
 			}
 			file := normalizePath(rel.FromID)
@@ -253,21 +255,26 @@ func modulesForFile(p string) []string {
 	// A repo-relative path such as "src/requests/api.py" should also
 	// satisfy "requests.api" so a CALLS site that imports `requests`
 	// resolves regardless of whether the corpus checks the package out
-	// at the repo root or under a `src/` prefix. We strip any leading
-	// path segment that is itself NOT a Python package marker.
-	if dot := strings.IndexByte(out[0], '.'); dot > 0 {
-		// Add suffixes: "a.b.c" → also expose "b.c" and "c". This is a
-		// best-effort heuristic; it can only ADD a hit (the entity's
-		// presence under the precise dotted form already wins above),
-		// and the (module, name) collision guard demotes any tuple
-		// that becomes ambiguous as a result.
-		segs := strings.Split(out[0], ".")
-		for i := 1; i < len(segs); i++ {
-			out = append(out, strings.Join(segs[i:], "."))
+	// at the repo root or under a `src/` prefix. We only strip ONE
+	// leading segment, and only if it is one of the well-known source
+	// roots below. This avoids the prior suffix-explosion behaviour
+	// that exposed every tail of a dotted path ("a.b.c" → "b.c", "c")
+	// and could collide with unrelated top-level packages in a
+	// monorepo (e.g. a tools/ helper named the same as a real lib).
+	for _, prefix := range sourceRootPrefixes {
+		if strings.HasPrefix(out[0], prefix) {
+			out = append(out, strings.TrimPrefix(out[0], prefix))
+			break
 		}
 	}
 	return out
 }
+
+// sourceRootPrefixes is the small allowlist of leading dotted-path
+// segments that modulesForFile may strip once when computing alias
+// dotted forms for an entity's source file. Anything else is left
+// alone — broader stripping caused false positives in monorepos.
+var sourceRootPrefixes = []string{"src.", "lib.", "app."}
 
 // ResolveBareCallTarget looks up a bare-name CALLS target N in the import
 // table for callerFile. Returns (entity_id, true) when an unambiguous
@@ -297,6 +304,15 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, boo
 	}
 	// Module-attribute access: any plain `import x` in this file means
 	// `x.foo()` extracted as bare "foo" should resolve to module x's foo.
+	// We collect ALL candidate IDs across plain imports first; if exactly
+	// one plain import yields a hit, use it; if two or more yield hits
+	// (and disagree), the lookup is ambiguous and we drop — same
+	// conservative policy as a (module, name) collision. Iterating the
+	// map and short-circuiting on first hit would be non-deterministic.
+	var (
+		plainCandidate string
+		plainHits      int
+	)
 	for _, b := range bucket {
 		// "Plain" module imports are detected by source_module ==
 		// imported_name (the extractor sets imported_name to the full
@@ -306,8 +322,19 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, boo
 			continue
 		}
 		if id, ok := t.lookupModuleEntity(b.SourceModule, name); ok {
-			return id, true
+			if plainHits == 0 {
+				plainCandidate = id
+				plainHits = 1
+			} else if id != plainCandidate {
+				plainHits++
+			}
 		}
+	}
+	if plainHits == 1 {
+		return plainCandidate, true
+	}
+	if plainHits > 1 {
+		return "", false
 	}
 	for _, mod := range t.wildcardModules[callerFile] {
 		if id, ok := t.lookupModuleEntity(mod, name); ok {

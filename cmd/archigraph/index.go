@@ -204,20 +204,20 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 // downstream harnesses (scripts/verify2/run.sh) can aggregate without
 // needing to understand the inner Disposition enum.
 type JSONStats struct {
-	Repo                  string              `json:"repo"`
-	Files                 int                 `json:"files"`
-	Entities              int                 `json:"entities"`
-	Relationships         int                 `json:"relationships"`
-	Pass1Rels             int                 `json:"pass1_rels"`
-	Pass2Rels             int                 `json:"pass2_rels"`
-	Pass3Rels             int                 `json:"pass3_rels"`
-	DispositionCounts     map[string]int      `json:"disposition_counts"`
-	DispositionSamples    map[string][]string `json:"disposition_samples,omitempty"`
-	BugRate               float64             `json:"bug_rate"`
-	ResolutionRate        float64             `json:"resolution_rate"`
-	ExternalSynthesized   int                 `json:"external_synthesized"`
-	ExternalUniqueCount   int                 `json:"external_unique_count"`
-	ExternalRelsResolved  int                 `json:"external_rels_resolved"`
+	Repo                 string              `json:"repo"`
+	Files                int                 `json:"files"`
+	Entities             int                 `json:"entities"`
+	Relationships        int                 `json:"relationships"`
+	Pass1Rels            int                 `json:"pass1_rels"`
+	Pass2Rels            int                 `json:"pass2_rels"`
+	Pass3Rels            int                 `json:"pass3_rels"`
+	DispositionCounts    map[string]int      `json:"disposition_counts"`
+	DispositionSamples   map[string][]string `json:"disposition_samples,omitempty"`
+	BugRate              float64             `json:"bug_rate"`
+	ResolutionRate       float64             `json:"resolution_rate"`
+	ExternalSynthesized  int                 `json:"external_synthesized"`
+	ExternalUniqueCount  int                 `json:"external_unique_count"`
+	ExternalRelsResolved int                 `json:"external_rels_resolved"`
 }
 
 // emitJSONStats writes a JSONStats record (one line, no trailing whitespace)
@@ -1039,9 +1039,17 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	// disposition classifier sees the rewritten ID as already-resolved.
 	importTbl := resolve.BuildImportTable(merged)
 	importStats := resolve.ResolveImports(merged, importTbl)
+	// Always emit the stats line when the pass had work to do, so a
+	// silent-failure regression (considered>0 but rewritten=0 — e.g. the
+	// import table failed to build) surfaces in stderr instead of
+	// disappearing.
 	if importStats.CallsConsidered > 0 {
-		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d bare-name CALLS targets\n",
-			importStats.CallsRewritten, importStats.CallsConsidered)
+		note := ""
+		if importStats.CallsRewritten == 0 {
+			note = " (no candidates resolved — check IMPORTS edges)"
+		}
+		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d bare-name CALLS targets%s\n",
+			importStats.CallsRewritten, importStats.CallsConsidered, note)
 	}
 
 	idx := resolve.BuildIndex(merged)
