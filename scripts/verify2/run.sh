@@ -454,6 +454,28 @@ REPOS=(
   "polars|https://github.com/pola-rs/polars.git|main|python|py-polars/tests/unit"                             # Polars lazy frames, pl.col expressions, chained transforms (#292) SHA a84168f0a4f1
   "spark|https://github.com/apache/spark.git|master|scala|examples/src/main/scala"                            # Spark Scala RDD/Dataset, implicit conversions, object entry points (#292) SHA 6650e3f911f4
   "jaffle_shop|https://github.com/dbt-labs/jaffle_shop.git|main|sql_dbt|models"                               # dbt models {{ ref() }}/{{ source() }}, schema.yml (#292) SHA fd7bfacae4f4
+  # --- Frontend SPA frameworks (chunk K, umbrella #303) ---
+  # Sample applications across the major frontend SPA / meta-framework stacks,
+  # per Refs #96 corpus policy. Each entry pinned to the SHA recorded in its
+  # child issue and verified via git ls-remote --symref on 2026-05-10. Gatsby
+  # is intentionally NOT in chunk W (#298) — it is owned by chunk K via #279.
+  "angular-realworld|https://github.com/gothinkster/angular-realworld-example-app.git|main|typescript"             # Angular sample app (#224) SHA f39866e52414
+  "react-redux-realworld|https://github.com/gothinkster/react-redux-realworld-example-app.git|master|javascript"   # React (CRA) sample app (#227) SHA ee72eba40563
+  "vite|https://github.com/vitejs/vite.git|main|typescript"                                                        # Vite (React+TS bundler) (#229) SHA cf0ff4154b26
+  "vue-realworld|https://github.com/gothinkster/vue-realworld-example-app.git|master|javascript"                   # Vue sample app (#231) SHA 3df3773b6be7
+  "svelte-realworld|https://github.com/sveltejs/realworld.git|master|javascript"                                   # Svelte sample app (#233) SHA e80873cac4e6
+  "sveltekit|https://github.com/sveltejs/kit.git|main|typescript"                                                  # SvelteKit framework (#235) SHA 785cdd3fe958
+  "solid-templates|https://github.com/solidjs/templates.git|main|typescript"                                       # SolidJS templates (#238) SHA a48da0c79ecf
+  "preact-cli|https://github.com/developit/preact-cli.git|master|javascript"                                       # Preact CLI scaffold (#239) SHA e826f7caab0d
+  "ember-super-rentals|https://github.com/ember-learn/super-rentals.git|main|javascript"                           # Ember sample app (#243) SHA 5d11a767bdc1
+  "astro|https://github.com/withastro/astro.git|main|typescript"                                                   # Astro framework (#247) SHA d365c975ba2d
+  "remix-indie-stack|https://github.com/remix-run/indie-stack.git|main|typescript"                                 # Remix indie-stack sample (#252) SHA 56abb93bf81f
+  "nuxt-starter|https://github.com/nuxt/starter.git|templates|typescript"                                          # Nuxt starter templates (#256) SHA cc96964ee7a1
+  "lit-element-starter|https://github.com/lit/lit-element-starter-ts.git|main|typescript"                          # Lit / Web Components starter (#261) SHA 6bf882733abd
+  "htmx|https://github.com/bigskysoftware/htmx.git|master|javascript"                                              # HTMX library (#266) SHA dbf77dd5207d
+  "alpine|https://github.com/alpinejs/alpine.git|main|javascript"                                                  # Alpine.js library (#271) SHA 3b125f96058a
+  "qwik|https://github.com/QwikDev/qwik.git|main|typescript"                                                       # Qwik framework (#276) SHA 38620076e10e
+  "gatsby-starter-blog|https://github.com/gatsbyjs/gatsby-starter-blog.git|master|javascript"                      # Gatsby starter blog (#279) SHA 04ec3e642112
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
