@@ -376,6 +376,41 @@ type ImportResolveStats struct {
 	// CallsRewritten counts the subset of CallsConsidered that resolved
 	// to a 16-char entity ID via the import table.
 	CallsRewritten int
+	// ImportsConsidered counts every embedded IMPORTS edge whose ToID
+	// was a non-empty, non-hex dotted module path (issue #142).
+	ImportsConsidered int
+	// ImportsRewritten counts the subset of ImportsConsidered that
+	// resolved to a 16-char entity ID via the per-module reverse index.
+	ImportsRewritten int
+}
+
+// ResolveDottedImportTarget looks up a project-internal IMPORTS ToID of
+// the form "<module>.<leaf>" against the per-module reverse index built
+// in BuildImportTable. The dotted path is split on the LAST dot; the
+// left segment is the module path, the right segment is the leaf
+// symbol. Returns (id, true) when (module, leaf) maps to exactly one
+// entity; ("", false) otherwise (external package, plain module import
+// with no leaf, ambiguous tuple, or unknown module).
+//
+// Issue #142 — flask-realworld emits IMPORTS edges with ToIDs like
+// "conduit.database.db". Pre-fix these flowed through the Index
+// resolver as bare-name stubs, missed every (kind, name, qualified)
+// index, and landed on bug-resolver. The dotted-path → entity mapping
+// is the same data BuildImportTable already builds for CALLS rewrite;
+// this function simply exposes it for the IMPORTS-edge code path.
+func (t ImportTable) ResolveDottedImportTarget(dotted string) (string, bool) {
+	if dotted == "" {
+		return "", false
+	}
+	dot := strings.LastIndexByte(dotted, '.')
+	if dot <= 0 || dot == len(dotted)-1 {
+		// No leaf separator — this is a plain module import like
+		// `import conduit.database`. There is no per-symbol entity to
+		// bind to; leave the edge alone.
+		return "", false
+	}
+	module, leaf := dotted[:dot], dotted[dot+1:]
+	return t.lookupModuleEntity(module, leaf)
 }
 
 // ResolveImports rewrites embedded CALLS edges in records using the
@@ -394,26 +429,45 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 		}
 		for j := range e.Relationships {
 			rel := &e.Relationships[j]
-			if rel.Kind != "CALLS" {
-				continue
-			}
 			to := rel.ToID
 			if to == "" || isHexID(to) {
 				continue
 			}
-			// Skip stubs that already encode a kind ("Kind:Name") or a
-			// receiver-typed dotted target ("Class.method"). The base
-			// resolver handles those via byKind / byMember.
-			if strings.ContainsAny(to, ":.#") {
-				continue
+			switch rel.Kind {
+			case "CALLS":
+				// Skip stubs that already encode a kind ("Kind:Name") or
+				// a receiver-typed dotted target ("Class.method"). The
+				// base resolver handles those via byKind / byMember.
+				if strings.ContainsAny(to, ":.#") {
+					continue
+				}
+				stats.CallsConsidered++
+				id, ok := tbl.ResolveBareCallTarget(callerFile, to)
+				if !ok {
+					continue
+				}
+				rel.ToID = id
+				stats.CallsRewritten++
+			case importRelKind:
+				// IMPORTS ToID is a dotted module path like
+				// "conduit.database.db" (issue #142). Project-internal
+				// targets resolve via the per-module reverse index;
+				// external packages ("marshmallow.Schema") miss the
+				// lookup and are left for the external-synthesis pass.
+				if !strings.ContainsRune(to, '.') {
+					continue
+				}
+				if strings.ContainsAny(to, ":#") {
+					continue
+				}
+				stats.ImportsConsidered++
+				id, ok := tbl.ResolveDottedImportTarget(to)
+				if !ok {
+					continue
+				}
+				rel.ToID = id
+				stats.ImportsRewritten++
 			}
-			stats.CallsConsidered++
-			id, ok := tbl.ResolveBareCallTarget(callerFile, to)
-			if !ok {
-				continue
-			}
-			rel.ToID = id
-			stats.CallsRewritten++
 		}
 	}
 	return stats

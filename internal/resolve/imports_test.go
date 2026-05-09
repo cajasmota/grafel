@@ -364,6 +364,112 @@ func TestResolveImports_PlainImportAmbiguous(t *testing.T) {
 	}
 }
 
+// TestResolveImports_DottedImportEdgeRewrite (issue #142) covers the
+// dominant python-flask-realworld bug-resolver pattern: a project-internal
+// IMPORTS edge whose ToID is the full dotted module path
+// (`conduit.database.db`). The Python extractor emits ToID as the full
+// dotted path, but the entity for `db` lives at conduit/database.py with
+// QualifiedName="" (Python entities don't carry QualifiedName), so the
+// downstream Index resolver misses byQualifiedName / byName / byKind and
+// the edge ends up classified as bug-resolver.
+//
+// ResolveImports must rewrite the IMPORTS ToID to the underlying entity
+// ID by splitting the dotted path tail-first into (module, leaf) and
+// probing the per-module reverse index built in BuildImportTable.
+func TestResolveImports_DottedImportEdgeRewrite(t *testing.T) {
+	records := []types.EntityRecord{
+		// Importing file: `from conduit.database import db`. The Python
+		// extractor emits ToID = "conduit.database.db" (modPath + "." + name).
+		importerRecord("app/views.py", "conduit.database.db", map[string]string{
+			"local_name":    "db",
+			"source_module": "conduit.database",
+			"imported_name": "db",
+		}),
+		// Real entity for `db` lives at conduit/database.py with name "db".
+		targetRecord("db", "conduit/database.py", "8888888888888888"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 IMPORTS rewrite, got %d (considered=%d)", stats.ImportsRewritten, stats.ImportsConsidered)
+	}
+	// The IMPORTS edge on the importer marker entity should now point at
+	// the real entity ID, not the dotted-path stub.
+	if got := records[0].Relationships[0].ToID; got != "8888888888888888" {
+		t.Fatalf("expected IMPORTS ToID rewritten to 8888888888888888, got %q", got)
+	}
+}
+
+// TestResolveImports_DottedImportEdgePackageInit covers `from conduit.models
+// import db` where `db` is exported from conduit/models/__init__.py.
+// modulesForFile already maps __init__.py to the parent package's dotted
+// form, so the (conduit.models, db) tuple resolves.
+func TestResolveImports_DottedImportEdgePackageInit(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("app/views.py", "conduit.models.db", map[string]string{
+			"local_name":    "db",
+			"source_module": "conduit.models",
+			"imported_name": "db",
+		}),
+		targetRecord("db", "conduit/models/__init__.py", "9999999999999999"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 IMPORTS rewrite, got %d (considered=%d)", stats.ImportsRewritten, stats.ImportsConsidered)
+	}
+	if got := records[0].Relationships[0].ToID; got != "9999999999999999" {
+		t.Fatalf("expected IMPORTS ToID rewritten to 9999999999999999, got %q", got)
+	}
+}
+
+// TestResolveImports_DottedImportEdgeExternalLeftAlone covers
+// `from marshmallow import Schema` where marshmallow is NOT in the
+// corpus. The dotted ToID "marshmallow.Schema" must be left alone so
+// the external-synthesis pass can route it to ext:marshmallow.
+func TestResolveImports_DottedImportEdgeExternalLeftAlone(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("app/views.py", "marshmallow.Schema", map[string]string{
+			"local_name":    "Schema",
+			"source_module": "marshmallow",
+			"imported_name": "Schema",
+		}),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 0 {
+		t.Fatalf("expected 0 IMPORTS rewrites for external package, got %d", stats.ImportsRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "marshmallow.Schema" {
+		t.Fatalf("expected IMPORTS ToID unchanged, got %q", got)
+	}
+}
+
+// TestResolveImports_DottedImportPlainModule covers `import conduit.database`
+// — the IMPORTS ToID is just the module path "conduit.database", with NO
+// leaf symbol. The resolver should not attempt to rewrite the edge in
+// this shape (there is no project-internal entity that uniquely is
+// "the module" for a plain import — the marker entity itself is what
+// the IMPORTS edge points at by convention).
+func TestResolveImports_DottedImportPlainModule(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("app/views.py", "conduit.database", map[string]string{
+			"local_name":    "conduit",
+			"source_module": "conduit.database",
+			"imported_name": "conduit.database",
+		}),
+		targetRecord("db", "conduit/database.py", "aaaa1111aaaa1111"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 0 {
+		t.Fatalf("expected 0 IMPORTS rewrites for plain module import, got %d", stats.ImportsRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "conduit.database" {
+		t.Fatalf("expected IMPORTS ToID unchanged for plain module, got %q", got)
+	}
+}
+
 // TestResolveImports_FileLocalCollisionDropsBinding covers the case
 // where the same file imports two different symbols under the same
 // local name (e.g. shadowing). The conservative behaviour is to drop
