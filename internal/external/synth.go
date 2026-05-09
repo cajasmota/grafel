@@ -72,9 +72,18 @@ func Synthesize(doc *graph.Document) Stats {
 	// the language-agnostic stop-list — matching pre-#103 behaviour for
 	// every relationship whose FromID isn't a known entity.
 	entityLang := make(map[string]string, len(doc.Entities))
+	// entityFile maps every entity ID to its declared SourceFile so the
+	// classifier can apply file-path-gated bare-name allowlists (issue
+	// #115 — Go testify helpers like Equal/NoError that are receiver-
+	// stripped by the extractor and would collide trivially with user
+	// methods if classified globally). Only test-file callers (paths
+	// ending in `_test.go`) are eligible. Lookups against non-existent
+	// IDs return "" — matching pre-#115 behaviour.
+	entityFile := make(map[string]string, len(doc.Entities))
 	for k := range doc.Entities {
 		known[doc.Entities[k].ID] = true
 		entityLang[doc.Entities[k].ID] = doc.Entities[k].Language
+		entityFile[doc.Entities[k].ID] = doc.Entities[k].SourceFile
 	}
 
 	// First pass — collect every unique external name we want to
@@ -99,7 +108,7 @@ func Synthesize(doc *graph.Document) Stats {
 		if rel.ToID == "" || isHexID(rel.ToID) || strings.HasPrefix(rel.ToID, ExtIDPrefix) {
 			continue
 		}
-		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, entityLang[rel.FromID])
+		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, entityLang[rel.FromID], entityFile[rel.FromID])
 		if !ok {
 			continue
 		}
@@ -177,7 +186,7 @@ func Synthesize(doc *graph.Document) Stats {
 // Returns ("", "", false) when the stub doesn't look external — those
 // are left untouched and continue to count as "unmatched" in the
 // resolver stats.
-func classifyExternal(stub, relKind, lang string) (canonical, subtype string, ok bool) {
+func classifyExternal(stub, relKind, lang, fromFile string) (canonical, subtype string, ok bool) {
 	if stub == "" {
 		return "", "", false
 	}
@@ -401,7 +410,7 @@ func classifyExternal(stub, relKind, lang string) (canonical, subtype string, ok
 	}
 
 	// Stdlib function stop-list — bare names like "Println", "print".
-	if subtype, ok := stdlibFunction(name, lang); ok {
+	if subtype, ok := stdlibFunction(name, lang, fromFile); ok {
 		return name, subtype, true
 	}
 
@@ -493,7 +502,7 @@ func isNpmSegment(s string) bool {
 // the small per-language stop-list. Kept deliberately small — v1.0
 // catches the highest-volume bare-name calls without ballooning into
 // a full stdlib catalogue.
-func stdlibFunction(name, lang string) (string, bool) {
+func stdlibFunction(name, lang, fromFile string) (string, bool) {
 	if _, ok := stdlibBareNames[name]; ok {
 		return "function", true
 	}
@@ -505,6 +514,22 @@ func stdlibFunction(name, lang string) (string, bool) {
 	if lang == "go" {
 		if _, ok := goBareNames[name]; ok {
 			return "function", true
+		}
+		// Issue #115 — testify helpers (Equal/NoError/Contains/Empty/...)
+		// are receiver-stripped by the Go extractor (`assert.Equal(t, ...)`
+		// → `Equal`) and collide trivially with user-defined methods on
+		// any domain type. Gate the testify allowlist on BOTH lang=="go"
+		// AND a `_test.go` file-path suffix on the caller — the suffix
+		// rule is precise (not just "contains test"), and Go's build tool
+		// already enforces that testify usage outside `_test.go` is rare
+		// or wrong. A non-test caller named `Equal` falls through to the
+		// generic allowlist and is left unresolved (the safer bias from
+		// lesson #94 — a missed external is strictly better than a
+		// synthesised placeholder shadowing a real user method).
+		if strings.HasSuffix(fromFile, "_test.go") {
+			if _, ok := goTestifyBareNames[name]; ok {
+				return "function", true
+			}
 		}
 	}
 	if lang == "rust" {
@@ -741,6 +766,90 @@ var goBareNames = map[string]struct{}{
 	// issue #103 hard rules: Get/Post/Put/Delete/Use are EXCLUDED.
 	"MethodFunc":      {},
 	"AbortWithStatus": {},
+}
+
+// goTestifyBareNames is the Go testify-helper bare-name stop-list (issue
+// #115). The testify package (`github.com/stretchr/testify/assert` and
+// `.../require`) exposes assertion helpers that are invoked through a
+// receiver (`assert.Equal(t, ...)`, `require.NoError(t, err)`); the Go
+// extractor strips that receiver, leaving the resolver with bare Pascal-
+// case names like `Equal`, `NoError`, `Contains`. Many of these names
+// (Equal in particular) collide trivially with user-defined methods on
+// domain types in non-test code, so a language-only gate is not enough.
+//
+// Gating: lookups in this map are reached ONLY when (a) the source
+// entity's language is "go" AND (b) the source entity's file path ends
+// in `_test.go`. Both conditions are precise: the build tool restricts
+// testify usage to `*_test.go` files in practice, and the suffix check
+// (strings.HasSuffix, NOT strings.Contains) avoids false hits on paths
+// like `internal/test/foo.go`.
+//
+// Conservative selection rule, mirroring the goBareNames spec: include
+// only assertion helpers whose name is a strong testify idiom. EXCLUDED
+// per the issue's hard rules: `Run` (subtest helper, but `t.Run` is the
+// standard testing API and aliases trivially to user code), `New`,
+// `Add`, `Set` (constructor / mutator names that collide with anything).
+// `Contains` is included despite being slightly collision-prone because
+// in `_test.go` context the testify identity dominates by orders of
+// magnitude in real corpora.
+var goTestifyBareNames = map[string]struct{}{
+	// Equality and identity assertions.
+	"Equal":       {},
+	"NotEqual":    {},
+	"EqualValues": {},
+	"Same":        {},
+	"NotSame":     {},
+
+	// Error / nil assertions.
+	"NoError": {},
+	"Error":   {},
+	"Nil":     {},
+	"NotNil":  {},
+
+	// Boolean assertions.
+	"True":  {},
+	"False": {},
+
+	// Container assertions.
+	"Empty":         {},
+	"NotEmpty":      {},
+	"Contains":      {},
+	"NotContains":   {},
+	"Len":           {},
+	"Subset":        {},
+	"ElementsMatch": {},
+
+	// Ordering assertions.
+	"Greater":        {},
+	"Less":           {},
+	"GreaterOrEqual": {},
+	"LessOrEqual":    {},
+
+	// Panic assertions.
+	"Panics":          {},
+	"NotPanics":       {},
+	"PanicsWithError": {},
+
+	// Type / interface assertions.
+	"Implements": {},
+	"IsType":     {},
+
+	// Eventual / temporal assertions.
+	"Eventually":     {},
+	"Never":          {},
+	"WithinDuration": {},
+
+	// Encoding assertions.
+	"JSONEq": {},
+	"YAMLEq": {},
+
+	// Filesystem assertions.
+	"FileExists": {},
+	"DirExists":  {},
+
+	// httptest helper commonly imported alongside testify in `_test.go`.
+	// Multi-word PascalCase, no plausible user-method collision.
+	"NewRecorder": {},
 }
 
 // rustBareNames is the Rust-language-gated bare-name stop-list (issue
