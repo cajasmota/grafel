@@ -343,6 +343,60 @@ func TestRustExtractor_UnregisteredLanguage(t *testing.T) {
 	}
 }
 
+// Issue #101: pub-modifier and intra-crate prefixes must not produce
+// IMPORTS edges that would later become bug-extractor entries.
+func TestRustExtractor_ImportPrefixes(t *testing.T) {
+	src := `
+use tokio::net::TcpListener;
+pub use serde::Deserialize;
+pub(crate) use anyhow::Result;
+use crate::module::LocalThing;
+use self::sibling::Helper;
+use super::parent::Other;
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("rust")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "imports.rs",
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	importTops := map[string]bool{}
+	for _, e := range got {
+		for _, r := range e.Relationships {
+			if r.Kind == "IMPORTS" {
+				importTops[r.ToID] = true
+			}
+		}
+	}
+	// External crates must be emitted with their canonical "<crate>::..."
+	// shape (no leading "pub " modifier).
+	want := []string{
+		"tokio::net::TcpListener",
+		"serde::Deserialize",
+		"anyhow::Result",
+	}
+	for _, w := range want {
+		if !importTops[w] {
+			t.Errorf("missing IMPORTS ToID %q; got: %v", w, importTops)
+		}
+	}
+	// Intra-crate paths must NOT produce IMPORTS edges.
+	for tid := range importTops {
+		if tid == "crate::module::LocalThing" ||
+			tid == "self::sibling::Helper" ||
+			tid == "super::parent::Other" {
+			t.Errorf("unexpected intra-crate IMPORTS edge: %q", tid)
+		}
+	}
+}
+
 func TestRustExtractor_LineNumbers(t *testing.T) {
 	src := `struct Alpha {
     id: u32,

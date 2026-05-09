@@ -350,12 +350,36 @@ func buildOperation(node *sitter.Node, file extractor.FileInput) (types.EntityRe
 }
 
 // buildImport creates a Component entity for use declarations.
+//
+// Issue #101: pub-modifier and intra-crate prefixes are stripped here so
+// the synthesised stub reaches the resolver in the canonical
+// "<crate>::<path>" shape that synth.go's `::` branch matches against
+// the external-crate allowlist. Without this:
+//   - `pub use client::Foo` left the literal "pub" prefix on the stub
+//     and never matched anything.
+//   - `crate::module::Item` / `self::sibling` / `super::parent` are
+//     intra-crate references; emitting them as IMPORTS guarantees a
+//     bug-extractor since they cannot be on any external allowlist.
+//     We drop them entirely.
 func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	raw := strings.TrimSpace(string(file.Content[node.StartByte():node.EndByte()]))
+	// Visibility modifiers — `pub use ...`, `pub(crate) use ...`,
+	// `pub(super) use ...`. Strip the modifier before the `use` token.
+	raw = stripRustVisibility(raw)
 	raw = strings.TrimPrefix(raw, "use ")
 	raw = strings.TrimSuffix(raw, ";")
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
+		return types.EntityRecord{}, false
+	}
+
+	// Intra-crate paths are not external imports; emitting them as
+	// IMPORTS would force a bug-extractor classification. The resolver
+	// has no machinery to bind `crate::Foo` to a specific entity in
+	// the same crate from this layer (Issue #101).
+	if strings.HasPrefix(raw, "crate::") || raw == "crate" ||
+		strings.HasPrefix(raw, "self::") || raw == "self" ||
+		strings.HasPrefix(raw, "super::") || raw == "super" {
 		return types.EntityRecord{}, false
 	}
 
@@ -377,6 +401,32 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 			},
 		},
 	}, true
+}
+
+// stripRustVisibility removes a leading Rust visibility modifier from a
+// declaration's source text. Handles `pub `, `pub(crate) `,
+// `pub(super) `, `pub(in path::to::mod) `. Anything else is returned
+// unchanged. Issue #101.
+func stripRustVisibility(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "pub") {
+		return s
+	}
+	rest := s[3:]
+	if rest == "" {
+		return s
+	}
+	// Plain `pub <decl>`.
+	if rest[0] == ' ' || rest[0] == '\t' {
+		return strings.TrimSpace(rest)
+	}
+	// Restricted vis: `pub(...) <decl>`.
+	if rest[0] == '(' {
+		if close := strings.IndexByte(rest, ')'); close >= 0 {
+			return strings.TrimSpace(rest[close+1:])
+		}
+	}
+	return s
 }
 
 // childFieldText extracts the text of a named child field.
