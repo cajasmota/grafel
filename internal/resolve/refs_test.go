@@ -596,6 +596,102 @@ func TestDisposition_Unclassified(t *testing.T) {
 	}
 }
 
+// TestDisposition_ReflectionBuiltinsBeatExternal is the regression test for
+// issue #95. The external synthesiser used to add Python reflection
+// builtins (getattr / setattr / hasattr / delattr / eval / exec / compile /
+// __import__) and the JS Function constructor to its stdlib stop-list,
+// which caused unresolved CALLS pointing at them to be rewritten to
+// "ext:builtins" / "ext:globalThis" and then classified as
+// ExternalUnknown — burying the dynamic-dispatch signal under
+// external-import noise. After the fix, classifyDispositionLang runs the
+// per-language dynamic-pattern catalog BEFORE the "ext:" prefix check, so
+// the original reflection-builtin stub wins regardless of how synthesis
+// rewrote the resolved ID.
+func TestDisposition_ReflectionBuiltinsBeatExternal(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name         string
+		lang         string
+		originalStub string
+		// resolvedID simulates the post-synthesis state where the
+		// synthesiser would (incorrectly) have stamped these builtins
+		// with an "ext:<pkg>" prefix.
+		resolvedID string
+	}{
+		{"py_getattr", "python", "getattr", "ext:builtins"},
+		{"py_setattr", "python", "setattr", "ext:builtins"},
+		{"py_hasattr", "python", "hasattr", "ext:builtins"},
+		{"py_delattr", "python", "delattr", "ext:builtins"},
+		{"py_eval", "python", "eval", "ext:builtins"},
+		{"py_exec", "python", "exec", "ext:builtins"},
+		{"py_compile", "python", "compile", "ext:builtins"},
+		{"py_dunder_import", "python", "__import__", "ext:builtins"},
+		{"py_getattr_call", "python", "getattr(self, name)", "ext:builtins"},
+		{"py_eval_call", "python", "eval(src)", "ext:builtins"},
+		{"js_eval", "javascript", "eval", "ext:globalThis"},
+		{"js_function_ctor", "javascript", "Function", "ext:globalThis"},
+		{"js_new_function", "javascript", "new Function(src)", "ext:globalThis"},
+	}
+	idx := BuildIndex(nil)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			endpoints := []EndpointPair{{
+				FromID:     "0000000000000000",
+				ToID:       tc.resolvedID,
+				ToOriginal: tc.originalStub,
+				Language:   tc.lang,
+			}}
+			stats := idx.ClassifyEndpoints(endpoints, allowDjango)
+			if got := stats.DispositionCounts[DispositionDynamic]; got != 1 {
+				t.Fatalf("%s: expected 1 dynamic, got counts=%+v",
+					tc.originalStub, stats.DispositionCounts)
+			}
+			if got := stats.DispositionCounts[DispositionExternalUnknown]; got != 0 {
+				t.Fatalf("%s: leaked into external-unknown (counts=%+v)",
+					tc.originalStub, stats.DispositionCounts)
+			}
+		})
+	}
+}
+
+// TestReflectionBuiltins_RecognisedAsDynamic asserts the resolver-side
+// invariant for issue #95: every reflection builtin we care about is
+// recognised as a dynamic pattern by isDynamicPatternLang for its
+// language. The companion synthesiser-side guard
+// (TestSynthesize_ReflectionBuiltinsLeftAlone in internal/external)
+// covers the stdlibBareNames stop-list directly; this test does not
+// inspect that map (it lives in another package and is unexported) —
+// it only checks the per-language dynamic catalog (Refs #95).
+func TestReflectionBuiltins_RecognisedAsDynamic(t *testing.T) {
+	t.Parallel()
+	// We import nothing from the external package here — that's a
+	// separate test in internal/external. This test verifies the
+	// resolver-side invariant that the per-language catalog catches
+	// every reflection builtin on its own.
+	reflectionBuiltins := []struct {
+		stub string
+		lang string
+	}{
+		{"getattr", "python"},
+		{"setattr", "python"},
+		{"hasattr", "python"},
+		{"delattr", "python"},
+		{"eval", "python"},
+		{"exec", "python"},
+		{"compile", "python"},
+		{"__import__", "python"},
+		{"eval", "javascript"},
+		{"Function", "javascript"},
+	}
+	for _, b := range reflectionBuiltins {
+		if !isDynamicPatternLang(b.stub, b.lang) {
+			t.Fatalf("reflection builtin %q (%s) not recognised as dynamic", b.stub, b.lang)
+		}
+	}
+}
+
 func TestBuildLocationIndex(t *testing.T) {
 	entities := []types.EntityRecord{
 		entAt("aaaaaaaaaaaaaaaa", "Component", "Foo", "a.py"),
