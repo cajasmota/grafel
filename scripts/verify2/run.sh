@@ -67,6 +67,12 @@ REPOS=(
   # --- Kotlin ---
   "exposed|https://github.com/JetBrains/Exposed.git|main|kotlin"                                   # ORM source; small
   "ktor-samples|https://github.com/ktorio/ktor-samples.git|main|kotlin"                            # Ktor sample apps
+  # --- Scala ---
+  "play-scala-starter|https://github.com/playframework/play-scala-starter-example.git|2.7.x|scala" # Play Framework sample app
+  # --- Groovy ---
+  "ratpack-example-books|https://github.com/ratpack/example-books.git|master|groovy"               # Ratpack sample app
+  # --- Clojure ---
+  "usermanager-example|https://github.com/seancorfield/usermanager-example.git|develop|clojure"    # Ring/Compojure sample app
   # --- Ruby ---
   "rails-realworld|https://github.com/gothinkster/rails-realworld-example-app.git|master|ruby"     # Rails sample app
   "sidekiq|https://github.com/sidekiq/sidekiq.git|main|ruby"                                       # library; small
