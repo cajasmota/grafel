@@ -187,12 +187,15 @@ public class Svc
 
 	var found bool
 	for _, e := range got {
-		if e.Name == "GetName" && e.Kind == "SCOPE.Operation" && e.Subtype == "method" {
+		// Issue #368 parity: methods declared inside a class/interface/struct
+		// emit Name="<EnclosingType>.<member>" so sibling-type same-named
+		// members produce distinct ComputeID values (#65 parity with Java).
+		if e.Name == "Svc.GetName" && e.Kind == "SCOPE.Operation" && e.Subtype == "method" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected entity GetName with Kind=SCOPE.Operation Subtype=method")
+		t.Error("expected entity Svc.GetName with Kind=SCOPE.Operation Subtype=method")
 	}
 }
 

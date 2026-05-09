@@ -5,7 +5,30 @@
 //   - constructor_declaration → Kind="SCOPE.Operation", Subtype="constructor"
 //   - class_declaration       → Kind="SCOPE.Component", Subtype="class"
 //   - interface_declaration   → Kind="SCOPE.Component", Subtype="interface"
+//   - struct_declaration      → Kind="SCOPE.Component", Subtype="struct"
 //   - using_directive         → IMPORTS relationship
+//
+// Issue #368 — relationship parity. The extractor emits:
+//
+//   - IMPORTS edges with the property contract Python/Java emit
+//     (local_name, source_module, imported_name, wildcard) so the
+//     cross-file resolver can build a per-file binding table for C#.
+//
+//   - CALLS edges for invocation_expression / object_creation_expression
+//     descendants of every method/constructor body. When the receiver of
+//     a member-access invocation is a known field, parameter, or local
+//     declared with a typed leaf, the edge target is the dotted form
+//     "<ReceiverType>.<method>" (mirroring Java #120). PascalCase bare
+//     receivers (`Math.Max`, `String.Format`) are kept dotted as a
+//     static-call shape so the resolver's byKind/byName can rebind
+//     cross-file. Bare-name calls fall back to the leaf method name.
+//
+//   - CONTAINS edges from a class/interface/struct to each of its
+//     methods/constructors via BuildOperationStructuralRef (Format A).
+//
+// Issue #65 parity: methods declared inside a class/interface/struct body
+// are emitted with Name="<EnclosingType>.<member>" so two sibling types
+// declaring same-named methods produce distinct ComputeID values.
 //
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
@@ -38,51 +61,131 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 
 	var entities []types.EntityRecord
-	walk(file.Tree.RootNode(), file, &entities)
+	root := file.Tree.RootNode()
+	imports := collectImportNames(root, file.Content)
+	walk(root, file, "", nil, imports, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "csharp")
 	return entities, nil
 }
 
+// classCtx carries the resolution context for cross-file receiver
+// binding. fields maps a declared field/property name to its declared
+// leaf-type identifier. Per-class only; nested classes rebuild the map.
+type classCtx struct {
+	fields map[string]string
+}
+
 // walk performs a depth-first traversal of the CST, collecting entities.
-func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walk(
+	node *sitter.Node,
+	file extractor.FileInput,
+	parentType string,
+	cc *classCtx,
+	imports map[string]bool,
+	out *[]types.EntityRecord,
+) {
 	if node == nil {
 		return
 	}
 
 	switch node.Type() {
-	case "class_declaration":
-		if rec, ok := buildComponent(node, file, "class"); ok {
-			*out = append(*out, rec)
+	case "class_declaration", "interface_declaration", "struct_declaration":
+		subtype := "class"
+		switch node.Type() {
+		case "interface_declaration":
+			subtype = "interface"
+		case "struct_declaration":
+			subtype = "struct"
 		}
-
-	case "interface_declaration":
-		if rec, ok := buildComponent(node, file, "interface"); ok {
-			*out = append(*out, rec)
+		rec, ok := buildComponent(node, file, subtype)
+		if !ok {
+			for i := range node.ChildCount() {
+				walk(node.Child(int(i)), file, parentType, cc, imports, out)
+			}
+			return
 		}
+		classIdx := len(*out)
+		*out = append(*out, rec)
+		body := findTypeBody(node)
+		if body != nil {
+			localCtx := &classCtx{fields: collectFieldTypes(body, file.Content)}
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, rec.Name, localCtx, imports, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				toID := extractor.BuildOperationStructuralRef("csharp", file.Path, child.Name)
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: toID,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
 
 	case "method_declaration":
-		if rec, ok := buildOperation(node, file, "method"); ok {
+		if rec, ok := buildOperation(node, file, "method", parentType); ok {
+			selfName := rec.Name
+			if nameNode := node.ChildByFieldName("name"); nameNode != nil {
+				selfName = nodeText(nameNode, file.Content)
+			}
+			paramTypes := collectParamTypes(node, file.Content)
+			body := node.ChildByFieldName("body")
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(body, file.Content, selfName, cc, paramTypes, imports)...)
 			*out = append(*out, rec)
 		}
+		return
 
 	case "constructor_declaration":
-		if rec, ok := buildOperation(node, file, "constructor"); ok {
+		if rec, ok := buildOperation(node, file, "constructor", parentType); ok {
+			selfName := rec.Name
+			if nameNode := node.ChildByFieldName("name"); nameNode != nil {
+				selfName = nodeText(nameNode, file.Content)
+			}
+			paramTypes := collectParamTypes(node, file.Content)
+			body := node.ChildByFieldName("body")
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(body, file.Content, selfName, cc, paramTypes, imports)...)
 			*out = append(*out, rec)
 		}
+		return
 
 	case "using_directive":
 		if rec, ok := buildImport(node, file); ok {
 			*out = append(*out, rec)
 		}
+		return
 	}
 
+	// Default recursion. parentType / cc do NOT propagate through
+	// unrelated nodes (e.g. method bodies) — methods nested inside a
+	// method body are emitted bare.
 	for i := range node.ChildCount() {
-		walk(node.Child(int(i)), file, out)
+		walk(node.Child(int(i)), file, "", nil, imports, out)
 	}
 }
 
-// buildComponent creates a SCOPE.Component entity for class/interface declarations.
+// findTypeBody returns the declaration_list child of a class/interface/
+// struct declaration, or nil when the type has no body.
+func findTypeBody(node *sitter.Node) *sitter.Node {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch != nil && ch.Type() == "declaration_list" {
+			return ch
+		}
+	}
+	return nil
+}
+
+// buildComponent creates a SCOPE.Component entity for class/interface/struct declarations.
 func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
@@ -103,14 +206,22 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 }
 
 // buildOperation creates a SCOPE.Operation entity for method/constructor declarations.
-func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+//
+// Issue #65 parity: when parentType is non-empty, Name is emitted as
+// "<parentType>.<member>".
+func buildOperation(node *sitter.Node, file extractor.FileInput, subtype, parentType string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
 	}
 
+	emittedName := name
+	if parentType != "" {
+		emittedName = parentType + "." + name
+	}
+
 	return types.EntityRecord{
-		Name:               name,
+		Name:               emittedName,
 		Kind:               "SCOPE.Operation",
 		Subtype:            subtype,
 		SourceFile:         file.Path,
@@ -123,8 +234,23 @@ func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string)
 }
 
 // buildImport creates a SCOPE.Component entity with an IMPORTS relationship.
+//
+// Issue #368 — IMPORTS edges carry the same Properties contract Python/Java
+// emit (local_name / source_module / imported_name / wildcard).
+//
+// `using System.Collections.Generic;` →
+//
+//	local_name="Generic", source_module="System.Collections", imported_name="Generic"
+//
+// `using static System.Math;` →
+//
+//	local_name="Math", source_module="System", imported_name="Math"
+//
+// `using A = System.Console;` (alias) →
+//
+//	local_name="A", source_module="System", imported_name="Console"
 func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
-	raw := extractUsingTarget(node, file.Content)
+	raw, alias := extractUsingTargetWithAlias(node, file.Content)
 	if raw == "" {
 		return types.EntityRecord{}, false
 	}
@@ -135,6 +261,21 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 		top = raw[:idx]
 	}
 
+	props := map[string]string{}
+	leaf := raw
+	mod := raw
+	if dot := strings.LastIndexByte(raw, '.'); dot > 0 {
+		leaf = raw[dot+1:]
+		mod = raw[:dot]
+	}
+	props["source_module"] = mod
+	props["imported_name"] = leaf
+	if alias != "" {
+		props["local_name"] = alias
+	} else {
+		props["local_name"] = leaf
+	}
+
 	return types.EntityRecord{
 		Name:       top,
 		Kind:       "SCOPE.Component",
@@ -142,32 +283,523 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 		Language:   "csharp",
 		Relationships: []types.RelationshipRecord{
 			{
-				FromID: file.Path,
-				ToID:   raw,
-				Kind:   "IMPORTS",
+				FromID:     file.Path,
+				ToID:       raw,
+				Kind:       "IMPORTS",
+				Properties: props,
 			},
 		},
 	}, true
 }
 
-// extractUsingTarget returns the namespace path from a using_directive node.
-func extractUsingTarget(node *sitter.Node, src []byte) string {
+// extractUsingTargetWithAlias returns (target, alias) from a using_directive.
+// `using X.Y;` → ("X.Y", ""). `using A = X.Y;` → ("X.Y", "A").
+// `using static X.Y;` → ("X.Y", "").
+//
+// tree-sitter-c-sharp shape (observed): the directive has an optional
+// "name" field carrying the alias identifier in the aliased form
+// `using A = X.Y;`. The path itself appears as a sibling
+// qualified_name / identifier / member_access_expression child without
+// a field name.
+func extractUsingTargetWithAlias(node *sitter.Node, src []byte) (string, string) {
+	var alias string
+	// Detect alias via the "name" field (only present in `using A = X.Y;`).
+	if n := node.ChildByFieldName("name"); n != nil && n.Type() == "identifier" {
+		alias = string(src[n.StartByte():n.EndByte()])
+	}
+
+	// Pick the path: the first qualified_name / member_access_expression
+	// child, falling back to the first identifier that isn't the alias.
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
+		if ch == nil {
+			continue
+		}
 		t := ch.Type()
 		if t == "qualified_name" || t == "member_access_expression" {
-			return string(src[ch.StartByte():ch.EndByte()])
-		}
-		if t == "identifier" {
-			return string(src[ch.StartByte():ch.EndByte()])
+			return string(src[ch.StartByte():ch.EndByte()]), alias
 		}
 	}
-	// Fallback: strip "using " and ";"
+	for i := range node.ChildCount() {
+		ch := node.Child(int(i))
+		if ch == nil || ch.Type() != "identifier" {
+			continue
+		}
+		text := string(src[ch.StartByte():ch.EndByte()])
+		// Skip the alias-side identifier (carried by field "name").
+		if text == alias {
+			continue
+		}
+		return text, alias
+	}
+	// Fallback: strip "using ", "static ", "<alias> = ", ";"
 	full := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
 	full = strings.TrimSuffix(full, ";")
 	full = strings.TrimPrefix(full, "using ")
 	full = strings.TrimPrefix(full, "static ")
-	return strings.TrimSpace(full)
+	if eq := strings.Index(full, "="); eq >= 0 {
+		full = strings.TrimSpace(full[eq+1:])
+	}
+	return strings.TrimSpace(full), alias
+}
+
+// collectImportNames scans the file for top-level using_directive nodes
+// and returns a set of locally-bound simple names. Used by the receiver
+// binder as a confirming signal for PascalCase static-call shapes.
+func collectImportNames(root *sitter.Node, src []byte) map[string]bool {
+	if root == nil {
+		return nil
+	}
+	out := make(map[string]bool)
+	for _, n := range findAllNodes(root, "using_directive") {
+		raw, alias := extractUsingTargetWithAlias(n, src)
+		if raw == "" {
+			continue
+		}
+		leaf := raw
+		if dot := strings.LastIndexByte(raw, '.'); dot > 0 {
+			leaf = raw[dot+1:]
+		}
+		if alias != "" {
+			out[alias] = true
+		} else {
+			out[leaf] = true
+		}
+	}
+	return out
+}
+
+// extractCallRelationships emits CALLS edges for invocation_expression and
+// object_creation_expression descendants of body. Receiver-aware target
+// resolution mirrors Java #120: receivers typed via fields, parameters,
+// or locals produce dotted "<Type>.<method>" targets; PascalCase bare
+// receivers stay dotted; everything else falls back to the bare leaf.
+func extractCallRelationships(
+	body *sitter.Node,
+	src []byte,
+	callerName string,
+	cc *classCtx,
+	paramTypes map[string]string,
+	imports map[string]bool,
+) []types.RelationshipRecord {
+	if body == nil || callerName == "" {
+		return nil
+	}
+	locals := collectLocalVarTypes(body, src)
+	merged := paramTypes
+	if len(locals) > 0 {
+		merged = make(map[string]string, len(paramTypes)+len(locals))
+		for k, v := range locals {
+			merged[k] = v
+		}
+		for k, v := range paramTypes {
+			merged[k] = v // params win over locals
+		}
+	}
+	calls := findAllNodes(body, "invocation_expression", "object_creation_expression")
+	if len(calls) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(calls))
+	rels := make([]types.RelationshipRecord, 0, len(calls))
+	for _, call := range calls {
+		target := csharpCallTarget(call, src, cc, merged, imports)
+		if target == "" {
+			continue
+		}
+		// Self-recursion check on bare leaf.
+		leaf := target
+		if dot := strings.LastIndexByte(target, '.'); dot >= 0 {
+			leaf = target[dot+1:]
+		}
+		if leaf == callerName {
+			continue
+		}
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: target,
+			Kind: "CALLS",
+		})
+	}
+	return rels
+}
+
+// csharpCallTarget resolves the callee target from an invocation_expression
+// or object_creation_expression node.
+func csharpCallTarget(
+	call *sitter.Node,
+	src []byte,
+	cc *classCtx,
+	paramTypes map[string]string,
+	imports map[string]bool,
+) string {
+	switch call.Type() {
+	case "invocation_expression":
+		fn := call.ChildByFieldName("function")
+		if fn == nil {
+			return ""
+		}
+		switch fn.Type() {
+		case "identifier":
+			return string(src[fn.StartByte():fn.EndByte()])
+		case "member_access_expression":
+			nameNode := fn.ChildByFieldName("name")
+			if nameNode == nil {
+				return ""
+			}
+			method := string(src[nameNode.StartByte():nameNode.EndByte()])
+			obj := fn.ChildByFieldName("expression")
+			if obj == nil {
+				return method
+			}
+			recv := receiverTypeName(obj, src, cc, paramTypes, imports)
+			if recv == "" {
+				return method
+			}
+			return recv + "." + method
+		case "generic_name":
+			// `Method<T>(...)` — leaf is the leading identifier.
+			for i := 0; i < int(fn.ChildCount()); i++ {
+				ch := fn.Child(i)
+				if ch != nil && ch.Type() == "identifier" {
+					return string(src[ch.StartByte():ch.EndByte()])
+				}
+			}
+		}
+	case "object_creation_expression":
+		// `new Foo(...)` — type field carries the type expression.
+		typ := call.ChildByFieldName("type")
+		if typ == nil {
+			return ""
+		}
+		return leafTypeName(typ, src)
+	}
+	return ""
+}
+
+// receiverTypeName returns the declared type of a member-access receiver
+// when statically determinable, or "" otherwise.
+func receiverTypeName(
+	obj *sitter.Node,
+	src []byte,
+	cc *classCtx,
+	paramTypes map[string]string,
+	imports map[string]bool,
+) string {
+	if obj == nil {
+		return ""
+	}
+	switch obj.Type() {
+	case "identifier":
+		ident := string(src[obj.StartByte():obj.EndByte()])
+		if cc != nil {
+			if t, ok := cc.fields[ident]; ok && t != "" {
+				return t
+			}
+		}
+		if t, ok := paramTypes[ident]; ok && t != "" {
+			return t
+		}
+		// PascalCase static-call shape.
+		if isPascalCase(ident) {
+			return ident
+		}
+		_ = imports
+		return ""
+	case "member_access_expression":
+		// `this.<field>` and the implicit-this shape `<field>` (where
+		// tree-sitter-c-sharp elides the `this` so the inner
+		// member_access_expression has no expression field, only a
+		// name field). Both bind to the enclosing class's fields.
+		nameChild := obj.ChildByFieldName("name")
+		if nameChild == nil {
+			return ""
+		}
+		exprChild := obj.ChildByFieldName("expression")
+		if exprChild != nil && exprChild.Type() != "this_expression" && exprChild.Type() != "this" {
+			// Other shapes (`a.b.c.method`) — deeper chains we don't
+			// currently type. Drop through to "".
+			return ""
+		}
+		ident := string(src[nameChild.StartByte():nameChild.EndByte()])
+		if cc != nil {
+			if t, ok := cc.fields[ident]; ok && t != "" {
+				return t
+			}
+		}
+		return ""
+	}
+	return ""
+}
+
+// isPascalCase reports whether s starts with an uppercase ASCII letter
+// followed by at least one more character. C# identifiers, like Java,
+// are overwhelmingly ASCII PascalCase for types.
+func isPascalCase(s string) bool {
+	if len(s) < 2 {
+		return false
+	}
+	c := s[0]
+	return c >= 'A' && c <= 'Z'
+}
+
+// collectFieldTypes walks the immediate children of a declaration_list
+// and returns a map of field/property-name → declared-leaf-type for
+// every field_declaration and property_declaration.
+//
+// Multi-declarator fields (`int x, y;`) bind every variable to the
+// declared type. Fields without a parseable type are dropped.
+func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := make(map[string]string)
+	for i := 0; i < int(body.ChildCount()); i++ {
+		ch := body.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "field_declaration":
+			// field_declaration wraps a variable_declaration{type, declarator+}.
+			vd := findChildByType(ch, "variable_declaration")
+			if vd == nil {
+				continue
+			}
+			typ := leafTypeName(vd.ChildByFieldName("type"), src)
+			if typ == "" {
+				continue
+			}
+			for j := 0; j < int(vd.ChildCount()); j++ {
+				d := vd.Child(j)
+				if d == nil || d.Type() != "variable_declarator" {
+					continue
+				}
+				name := childFieldText(d, "name", src)
+				if name == "" {
+					// fall back to first identifier child.
+					for k := 0; k < int(d.ChildCount()); k++ {
+						cc := d.Child(k)
+						if cc != nil && cc.Type() == "identifier" {
+							name = string(src[cc.StartByte():cc.EndByte()])
+							break
+						}
+					}
+				}
+				if name == "" {
+					continue
+				}
+				if _, ok := out[name]; !ok {
+					out[name] = typ
+				}
+			}
+		case "property_declaration":
+			typ := leafTypeName(ch.ChildByFieldName("type"), src)
+			if typ == "" {
+				continue
+			}
+			name := childFieldText(ch, "name", src)
+			if name == "" {
+				continue
+			}
+			if _, ok := out[name]; !ok {
+				out[name] = typ
+			}
+		}
+	}
+	return out
+}
+
+// collectParamTypes returns parameter-name → leaf-type for every formal
+// parameter on a method/constructor declaration.
+func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
+	if node == nil {
+		return nil
+	}
+	params := node.ChildByFieldName("parameters")
+	if params == nil {
+		return nil
+	}
+	out := make(map[string]string)
+	for i := 0; i < int(params.ChildCount()); i++ {
+		p := params.Child(i)
+		if p == nil || p.Type() != "parameter" {
+			continue
+		}
+		typ := leafTypeName(p.ChildByFieldName("type"), src)
+		if typ == "" {
+			continue
+		}
+		name := childFieldText(p, "name", src)
+		if name == "" {
+			continue
+		}
+		out[name] = typ
+	}
+	return out
+}
+
+// collectLocalVarTypes walks descendants of body and returns
+// local-name → declared leaf type for local_declaration_statement
+// nodes. Implicitly-typed `var` declarations are not bound.
+func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, decl := range findAllNodes(body, "local_declaration_statement") {
+		vd := findChildByType(decl, "variable_declaration")
+		if vd == nil {
+			continue
+		}
+		typ := leafTypeName(vd.ChildByFieldName("type"), src)
+		if typ == "" {
+			continue
+		}
+		for i := 0; i < int(vd.ChildCount()); i++ {
+			ch := vd.Child(i)
+			if ch == nil || ch.Type() != "variable_declarator" {
+				continue
+			}
+			name := childFieldText(ch, "name", src)
+			if name == "" {
+				for k := 0; k < int(ch.ChildCount()); k++ {
+					cc := ch.Child(k)
+					if cc != nil && cc.Type() == "identifier" {
+						name = string(src[cc.StartByte():cc.EndByte()])
+						break
+					}
+				}
+			}
+			if name == "" {
+				continue
+			}
+			out[name] = typ
+		}
+	}
+	// `foreach (T x in xs)` — bind loop variable.
+	for _, fr := range findAllNodes(body, "for_each_statement") {
+		typ := leafTypeName(fr.ChildByFieldName("type"), src)
+		if typ == "" {
+			continue
+		}
+		name := ""
+		// tree-sitter-c-sharp uses the field "left" or a direct identifier.
+		if l := fr.ChildByFieldName("left"); l != nil && l.Type() == "identifier" {
+			name = string(src[l.StartByte():l.EndByte()])
+		}
+		if name == "" {
+			// Fallback: first identifier child after the type.
+			for j := 0; j < int(fr.ChildCount()); j++ {
+				ch := fr.Child(j)
+				if ch != nil && ch.Type() == "identifier" {
+					name = string(src[ch.StartByte():ch.EndByte()])
+					break
+				}
+			}
+		}
+		if name != "" {
+			out[name] = typ
+		}
+	}
+	return out
+}
+
+// leafTypeName returns the leaf type identifier of a C# type node,
+// stripping generic parameters, nullable markers, and array suffixes.
+// Returns "" for type nodes the function can't characterise.
+func leafTypeName(typ *sitter.Node, src []byte) string {
+	if typ == nil {
+		return ""
+	}
+	switch typ.Type() {
+	case "identifier", "predefined_type":
+		return strings.TrimSpace(string(src[typ.StartByte():typ.EndByte()]))
+	case "generic_name":
+		// First child is the underlying identifier.
+		for i := 0; i < int(typ.ChildCount()); i++ {
+			ch := typ.Child(i)
+			if ch != nil && ch.Type() == "identifier" {
+				return string(src[ch.StartByte():ch.EndByte()])
+			}
+		}
+	case "nullable_type":
+		if first := typ.NamedChild(0); first != nil {
+			return leafTypeName(first, src)
+		}
+	case "array_type":
+		if elem := typ.ChildByFieldName("type"); elem != nil {
+			return leafTypeName(elem, src)
+		}
+		if first := typ.NamedChild(0); first != nil {
+			return leafTypeName(first, src)
+		}
+	case "qualified_name":
+		// `System.String` — leaf is the rightmost identifier.
+		ids := findAllNodes(typ, "identifier")
+		if len(ids) > 0 {
+			n := ids[len(ids)-1]
+			return strings.TrimSpace(string(src[n.StartByte():n.EndByte()]))
+		}
+	}
+	// Last resort — use the raw text if it looks like a single identifier.
+	raw := strings.TrimSpace(string(src[typ.StartByte():typ.EndByte()]))
+	if raw == "" || strings.ContainsAny(raw, " <>[]?,") {
+		return ""
+	}
+	return raw
+}
+
+// findAllNodes returns every descendant of root whose Type() is in kinds.
+func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []*sitter.Node
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n == nil {
+			continue
+		}
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
+}
+
+// findChildByType returns the first direct child of node with type t.
+func findChildByType(node *sitter.Node, t string) *sitter.Node {
+	if node == nil {
+		return nil
+	}
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch != nil && ch.Type() == t {
+			return ch
+		}
+	}
+	return nil
+}
+
+// nodeText returns the source text covered by node.
+func nodeText(node *sitter.Node, src []byte) string {
+	if node == nil {
+		return ""
+	}
+	return string(src[node.StartByte():node.EndByte()])
 }
 
 // childFieldText extracts the text of a named child field (e.g. "name").
