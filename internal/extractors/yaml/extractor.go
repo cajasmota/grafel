@@ -827,6 +827,38 @@ func extractDockerCompose(root *sitter.Node, file extractor.FileInput) []types.E
 					svcEnt.Relationships = append(svcEnt.Relationships,
 						importsRel(svcRef, targetRef, "compose_depends_on"))
 				}
+
+				// IMPORTS: service → docker image (issue #424). The image ref is
+				// an external dependency by definition — its source lives in a
+				// container registry, not the indexed corpus. Emit a stub the
+				// external-synth pass can route to ext:docker:<image> (lands in
+				// ExternalKnown via the docker: allowlist branch).
+				if imgVal := findPairValueText(svcPairs, "image", src); imgVal != "" {
+					stub := "docker_image:" + imgVal
+					svcEnt.Relationships = append(svcEnt.Relationships,
+						importsRel(svcRef, stub, "compose_image"))
+				}
+
+				// IMPORTS: service → host filesystem mount (issue #424). Compose
+				// volume entries can take three shapes:
+				//   - "<src>:<dst>[:<mode>]"      (string short syntax)
+				//   - "<named-volume>:<dst>"      (string short syntax, src is a key)
+				//   - { source: ..., target: ... } (long syntax)
+				// We only route source paths that look like a host filesystem
+				// reference (./..., ../..., /abs, ~, ${VAR}, $VAR). Named-volume
+				// sources and target-only entries already resolve via the
+				// top-level volumes block — skip them.
+				volNode := findValueNodeForKey(svcPairs, "volumes", src)
+				for _, vol := range getSequenceItems(volNode, src) {
+					srcPath := composeVolumeSource(vol)
+					if !looksLikeHostPath(srcPath) {
+						continue
+					}
+					stub := "host_path:" + srcPath
+					svcEnt.Relationships = append(svcEnt.Relationships,
+						importsRel(svcRef, stub, "compose_volume_mount"))
+				}
+
 				entities = append(entities, svcEnt)
 
 				portsNode := findValueNodeForKey(svcPairs, "ports", src)
@@ -1020,6 +1052,11 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				icEnt.Relationships = append(icEnt.Relationships,
 					containsRel(resourceRef, icRef))
 			}
+			// IMPORTS: init_container → docker image (issue #424).
+			if imgVal := findPairValueText(icPairs, "image", src); imgVal != "" {
+				icEnt.Relationships = append(icEnt.Relationships,
+					importsRel(icRef, "docker_image:"+imgVal, "k8s_image"))
+			}
 			entities = append(entities, icEnt)
 		}
 
@@ -1041,6 +1078,15 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				cEnt.Relationships = append(cEnt.Relationships,
 					containsRel(resourceRef, cRef))
 			}
+
+			// IMPORTS: container → docker image (issue #424). Same routing as
+			// compose `image:` — the registry is outside the indexed corpus,
+			// so external-synth lifts it to ext:docker:<image>.
+			if imgVal := findPairValueText(cPairs, "image", src); imgVal != "" {
+				cEnt.Relationships = append(cEnt.Relationships,
+					importsRel(cRef, "docker_image:"+imgVal, "k8s_image"))
+			}
+
 			entities = append(entities, cEnt)
 
 			// containerPort values
