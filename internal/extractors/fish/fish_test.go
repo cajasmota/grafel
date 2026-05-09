@@ -8,6 +8,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/extractor"
 	_ "github.com/cajasmota/archigraph/internal/extractors/fish"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 func TestFishExtractor_Registered(t *testing.T) {
@@ -176,9 +177,17 @@ end
 	if len(entities) < 1 {
 		t.Fatal("expected at least one entity")
 	}
-	e := entities[0]
-	if e.Name != "outer" {
-		t.Fatalf("expected outer, got %q", e.Name)
+	// Locate the function entity (the file-stub entity is also emitted as
+	// the CONTAINS container — skip it).
+	var e *types.EntityRecord
+	for i := range entities {
+		if entities[i].Subtype == "function" && entities[i].Name == "outer" {
+			e = &entities[i]
+			break
+		}
+	}
+	if e == nil {
+		t.Fatalf("expected outer function, got %+v", entities)
 	}
 	// The function spans lines 1..7; the matching `end` is line 7.
 	if e.EndLine != 7 {
@@ -243,11 +252,20 @@ func TestFishExtractor_MalformedInput_NoPanic(t *testing.T) {
 		t.Fatalf("unexpected error on malformed input: %v", err)
 	}
 	// We still extract the function name; EndLine falls back to StartLine.
-	if len(entities) != 1 {
-		t.Fatalf("expected 1 entity on malformed input, got %d", len(entities))
+	// (The file-stub container entity is also emitted, so we look up the
+	// function entity explicitly rather than asserting on the slice length.)
+	var fn *types.EntityRecord
+	for i := range entities {
+		if entities[i].Subtype == "function" {
+			fn = &entities[i]
+			break
+		}
 	}
-	if entities[0].EndLine < entities[0].StartLine {
-		t.Errorf("EndLine %d < StartLine %d", entities[0].EndLine, entities[0].StartLine)
+	if fn == nil {
+		t.Fatalf("expected function entity on malformed input, got %+v", entities)
+	}
+	if fn.EndLine < fn.StartLine {
+		t.Errorf("EndLine %d < StartLine %d", fn.EndLine, fn.StartLine)
 	}
 }
 
