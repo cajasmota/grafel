@@ -231,6 +231,19 @@ REPOS=(
   "goose|https://github.com/pressly/goose.git|main|go"                                                         # Goose -- +goose Up/Down SQL annotations + Go migrations (#317) SHA e3235f7041e1
   "migrate-mongo|https://github.com/seppevs/migrate-mongo.git|master|javascript"                               # MongoDB migration scripts up/down handler (#317) SHA 1f5e5f953491
   "sequel|https://github.com/jeremyevans/sequel.git|master|ruby"                                               # Sequel.migration { up/down } blocks (#317) SHA 694ea7798374
+  # --- CI/CD pipelines (chunk Q, umbrella #318) ---
+  # Canonical fixtures for CI/CD pipeline formats not yet exercised by the
+  # corpus, per Refs #87. Each entry pinned to the SHA recorded in umbrella
+  # #318. Sparse-paths keep working trees small for the larger monorepos
+  # (gitlab-runner, jenkins, tektoncd/pipeline, skaffold, tilt).
+  "gitlab-runner|https://gitlab.com/gitlab-org/gitlab-runner.git|main|yaml|ci"                                  # GitLab CI pipeline (#318) SHA d098a819531c
+  "circleci-demo-python-django|https://github.com/CircleCI-Public/circleci-demo-python-django.git|master|yaml|.circleci" # CircleCI orbs/workflows (#318) SHA 2bbf84b270e6
+  "jenkins|https://github.com/jenkinsci/jenkins.git|master|groovy"                                              # Jenkins declarative + scripted Groovy (#318) SHA 8fef7afff3e6
+  "tektoncd-pipeline|https://github.com/tektoncd/pipeline.git|main|yaml|examples"                               # Tekton Task/Pipeline/PipelineRun CRDs (#318) SHA bdd46842b047
+  "drone|https://github.com/drone/drone.git|main|yaml"                                                          # Drone pipeline steps + plugins (#318) SHA 9f37938bc913
+  "buildkite-agent|https://github.com/buildkite/agent.git|main|yaml|.buildkite"                                 # Buildkite pipeline.yml + plugins (#318) SHA 561444c7fc59
+  "skaffold|https://github.com/GoogleContainerTools/skaffold.git|main|yaml|examples"                            # Skaffold build/deploy/test profiles (#318) SHA 95531aa9b308
+  "tilt|https://github.com/tilt-dev/tilt.git|master|starlark|integration"                                       # Tilt Starlark Tiltfile resources (#318) SHA 98108ca6664b
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
