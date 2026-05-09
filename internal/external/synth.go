@@ -2125,6 +2125,55 @@ var kotlinBareNames = map[string]struct{}{
 	"lazy":           {},
 	"lazyOf":         {},
 	"TODO":           {},
+
+	// Issue #435: Ktor builder DSL methods + kotlinx.coroutines
+	// builders. The Kotlin extractor receiver-strips DSL calls
+	// (`call.respond(x)` → `respond`, `routing { get(...) }` → `get`
+	// already handled elsewhere; the routing block name itself lands
+	// as `routing`), so the resolver sees only the bare leaf and the
+	// call falls into bug-extractor. Gating to lang="kotlin" keeps a
+	// JS user variable named `request` or a Go `launch` symbol from
+	// being shadowed. Generic accessor verbs (`get`, `set`, `add`,
+	// `remove`, `size`, `isEmpty`) remain in the rejected list per
+	// #106 — only Ktor- / coroutine-specific names are added here.
+	//
+	// Ktor route builder DSL.
+	"routing":   {},
+	"route":     {},
+	"install":   {},
+	"intercept": {},
+	// Ktor ApplicationCall responders / accessors.
+	"respond":         {},
+	"respondText":     {},
+	"respondHtml":     {},
+	"respondRedirect": {},
+	"respondFile":     {},
+	"parameters":      {},
+	"headers":         {},
+	"principal":       {},
+	"authentication":  {},
+	"application":     {},
+	"environment":     {},
+	"request":         {},
+	"pipeline":        {},
+	"attributes":      {},
+	// kotlinx.coroutines builders. `launch` and `async` carry some
+	// collision risk even Kotlin-gated, but the leaf coroutine
+	// builders are the dominant residual in ktor-samples /
+	// ktor-source bug-extractor; the language gate is the safety net.
+	"runBlocking":    {},
+	"withContext":    {},
+	"coroutineScope": {},
+	"launch":         {},
+	"async":          {},
+	"delay":          {},
+	"flow":           {},
+	// Ktor server entry / static content / WebSocket DSL.
+	"embeddedServer":   {},
+	"staticFiles":      {},
+	"static":           {},
+	"webSocket":        {},
+	"webSocketSession": {},
 }
 
 // rubyBareNames is the Ruby-language-gated bare-name stop-list (issue

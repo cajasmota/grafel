@@ -1581,6 +1581,107 @@ func TestKotlinBareNames_RejectedNamesNotClassified(t *testing.T) {
 	}
 }
 
+// TestKotlinKtorDSLBareNames_ClassifiedWhenLangIsKotlin covers issue
+// #435: Ktor builder DSL methods (`routing { get(...); post(...) }`,
+// `install(plugin)`, `intercept(phase)`, `call.respond(...)`, etc.) and
+// kotlinx.coroutines builders (`runBlocking`, `withContext`, `launch`,
+// `async`, `delay`, `flow`) get receiver-stripped by the Kotlin
+// extractor and land in bug-extractor. These names must classify as
+// stdlib bare-names — but only when the source entity's language is
+// "kotlin".
+func TestKotlinKtorDSLBareNames_ClassifiedWhenLangIsKotlin(t *testing.T) {
+	names := []string{
+		// Ktor route builder DSL.
+		"routing", "route", "install", "intercept",
+		// Ktor ApplicationCall responders / accessors.
+		"respond", "respondText", "respondHtml", "respondRedirect",
+		"respondFile", "parameters", "headers", "principal",
+		"authentication", "application", "environment", "request",
+		"pipeline", "attributes",
+		// kotlinx.coroutines builders.
+		"runBlocking", "withContext", "coroutineScope", "launch",
+		"async", "delay", "flow",
+		// Ktor server entry / static / WebSocket.
+		"embeddedServer", "staticFiles", "static", "webSocket",
+		"webSocketSession",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "kotlin", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"kotlin\", nil) = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"kotlin\", nil) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "kt-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "kotlin",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "kt-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestKotlinKtorDSLBareNames_NotClassifiedForOtherLanguages confirms
+// the Kotlin language gate holds for the issue #435 additions: Ktor
+// DSL / coroutine builder names must NOT be rewritten when the source
+// entity's language is anything other than "kotlin". A JS user method
+// named `request` or a Go `launch` symbol must not be shadowed.
+func TestKotlinKtorDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Pick names with the highest cross-language collision potential.
+	names := []string{"request", "respond", "route", "install", "launch", "async", "static", "headers", "parameters"}
+	otherLangs := []string{"go", "python", "javascript", "rust", "java", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"kotlin\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Kotlin)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
 // TestKotlinBareNames_UnknownKotlinMethodFallsThrough confirms that a
 // Kotlin-source bare-name call that ISN'T in the kotlinBareNames
 // allowlist still falls through normally, so genuine missing-
@@ -1679,14 +1780,15 @@ func TestRubyBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	names := []string{
 		"new", "tap", "then", "dup", "freeze", "to_s", "to_h", "is_a?", "respond_to?",
 		// ActiveRecord persistence names (issue #124) must not leak to
-		// other languages. `save`/`errors`/`all` are intentionally
-		// EXCLUDED from this negative list — they are independently
-		// classified by other-language allowlists (Spring Data `save`
-		// in Java, Go `errors` package, Python `all` builtin) and the
-		// non-leak guarantee for Ruby-only AR names is asserted by the
-		// remaining names below.
+		// other languages. `save`/`errors`/`all`/`attributes` are
+		// intentionally EXCLUDED from this negative list — they are
+		// independently classified by other-language allowlists
+		// (Spring Data `save` in Java, Go `errors` package, Python
+		// `all` builtin, Ktor `attributes` accessor in Kotlin per
+		// #435) and the non-leak guarantee for Ruby-only AR names is
+		// asserted by the remaining names below.
 		"update", "destroy", "valid?", "create", "build", "first", "last",
-		"reload", "attributes", "exists?", "persisted?", "new_record?",
+		"reload", "exists?", "persisted?", "new_record?",
 		"find_or_create_by", "valid_password?",
 	}
 	otherLangs := []string{"go", "python", "javascript", "rust", "java", "kotlin", ""}
