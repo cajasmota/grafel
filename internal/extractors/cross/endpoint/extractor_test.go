@@ -221,6 +221,48 @@ app.post('/api/users', createUser);`
 	}
 }
 
+// TestExpress_MiddlewareNotHandler — issue #126.
+//
+// `router.METHOD(path, middleware..., handler)` must NOT capture middleware
+// (`auth.required`, `auth.optional`) or the inline-arrow keyword (`async`)
+// as the handler. Pre-fix the express regex took the first identifier after
+// the path string, producing SERVES targets like
+// `scope:operation:src/.../auth.controller.ts#auth.required` /
+// `...#async` that no extractor ever emits — they dominated the
+// express-realworld bug-extractor disposition.
+func TestExpress_MiddlewareNotHandler(t *testing.T) {
+	src := `import express from 'express';
+import { auth } from './auth';
+const router = express.Router();
+router.get('/user', auth.required, async (req, res) => { res.json({}); });
+router.post('/user', auth.required, auth.audit, function (req, res) { res.json({}); });
+router.put('/x', wrap(handler));
+router.delete('/y', namedHandler);
+`
+	recs := endpointRecords(runExtract(t, "auth.controller.ts", "typescript", src))
+	if len(recs) != 4 {
+		t.Fatalf("expected 4 endpoints, got %d", len(recs))
+	}
+	for _, ep := range recs {
+		h := ep.Properties["handler_ref"]
+		switch ep.Properties["method"] {
+		case "GET", "POST":
+			if h != "" {
+				t.Errorf("%s %s: handler_ref=%q want empty (inline arrow / fn after middleware)",
+					ep.Properties["method"], ep.Properties["path"], h)
+			}
+		case "PUT":
+			if h != "" {
+				t.Errorf("PUT: handler_ref=%q want empty (call expression)", h)
+			}
+		case "DELETE":
+			if h != "namedHandler" {
+				t.Errorf("DELETE: handler_ref=%q want namedHandler", h)
+			}
+		}
+	}
+}
+
 func TestExpress_All_NormalisesToANY(t *testing.T) {
 	src := `import express from 'express';
 const router = express.Router();
