@@ -28,11 +28,18 @@ import (
 )
 
 // CommunityResult summarises one Louvain community for the on-disk output.
+//
+// AutoName is the deterministic Layer-1 label produced by AssignCommunityNames
+// (TF-IDF over member entity names). It is always populated when communities
+// are computed; consumers that previously fell back to "community_<id>" can
+// now display AutoName directly. A future Layer-2 agent-resolved label will
+// take precedence over AutoName when present.
 type CommunityResult struct {
 	ID          int      `json:"id"`
 	Size        int      `json:"size"`
 	Modularity  float64  `json:"modularity"`
 	TopEntities []string `json:"top_entities"`
+	AutoName    string   `json:"auto_name,omitempty"`
 }
 
 // SurpriseEdge is a cross-community edge whose pair frequency is rare.
@@ -572,6 +579,9 @@ func RunAlgorithms(entities []Entity, rels []Relationship) *AlgorithmResults {
 	}
 
 	commResults, commOf, overallQ := ComputeCommunities(g, idx, names)
+	// Layer-1 deterministic naming (TF-IDF over member entity names +
+	// qualified names + source-file basenames). Mutates commResults in place.
+	AssignCommunityNames(commResults, entities, commOf)
 	betw, pr := ComputeCentrality(g, idx)
 	gods := IdentifyGodNodes(betw, pr)
 	arts := IdentifyArticulationPoints(g, idx)
