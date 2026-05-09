@@ -90,9 +90,17 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				if child.Kind != "SCOPE.Operation" {
 					continue
 				}
+				// Issue #140 — bare-name CONTAINS targets are 100%
+				// ambiguous in Rails apps where dozens of controllers
+				// share the same `create`/`destroy`/`index` methods.
+				// Emit a structural-ref (Format A) keyed on the source
+				// file so the resolver disambiguates by location;
+				// each Rails class is its own file by convention so
+				// the file-local method name is unique.
+				toID := "scope:operation:method:ruby:" + file.Path + ":" + child.Name
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
-						ToID: child.Name,
+						ToID: toID,
 						Kind: "CONTAINS",
 					})
 			}

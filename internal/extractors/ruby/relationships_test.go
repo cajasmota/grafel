@@ -69,9 +69,13 @@ end
 	if contains != 3 {
 		t.Errorf("expected 3 CONTAINS edges, got %d (rels=%+v)", contains, foo.Relationships)
 	}
+	// Issue #140 — CONTAINS edges target structural-ref stubs so the
+	// resolver can disambiguate same-name methods across different
+	// Rails controllers (Format A: scope:operation:method:ruby:<file>:<name>).
 	for _, m := range []string{"a", "b", "c"} {
-		if !rbHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", m) {
-			t.Errorf("expected CONTAINS Foo→%s", m)
+		want := "scope:operation:method:ruby:test.rb:" + m
+		if !rbHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Foo→%s", want)
 		}
 	}
 }
