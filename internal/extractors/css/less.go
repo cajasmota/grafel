@@ -32,6 +32,16 @@ import (
 // Captures: 1=name, 2=value.
 var lessVarRE = regexp.MustCompile(`^\s*@([a-zA-Z_-][a-zA-Z0-9_-]*)\s*:\s*(.+?)\s*;`)
 
+// lessImportLineRE matches Less @import directives, optionally with a
+// parenthesised options list (e.g. `@import (reference) "foo.less";`).
+// Captures: 1=tail (everything after `@import` up to the optional ;).
+var lessImportLineRE = regexp.MustCompile(`^\s*@import\b\s*(.+?)\s*;?\s*$`)
+
+// lessImportModuleRE captures the quoted module ref inside a Less @import
+// directive. The optional url(...) wrapper is allowed for parity with CSS.
+// Captures: 1=double-quoted body, 2=single-quoted body.
+var lessImportModuleRE = regexp.MustCompile(`(?:url\(\s*)?(?:"([^"]*)"|'([^']*)')`)
+
 // lessMixinRE matches Less class-style mixin definitions:
 //
 //	.name() { or .name(@param) { or .name(@p1; @p2) {
@@ -41,7 +51,7 @@ var lessMixinRE = regexp.MustCompile(`^\s*\.([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\(([^)]
 
 // ExtractLess extracts Less entities from raw source and appends them to out.
 // It is exported (uppercase) so tests in the same package can call it directly.
-func ExtractLess(ctx context.Context, file extractor.FileInput, out *[]types.EntityRecord) (varCount, mixinCount int) {
+func ExtractLess(ctx context.Context, file extractor.FileInput, out *[]types.EntityRecord) (varCount, mixinCount, importCount int) {
 	tracer := otel.Tracer("extractor.less")
 
 	var span trace.Span
@@ -55,6 +65,7 @@ func ExtractLess(ctx context.Context, file extractor.FileInput, out *[]types.Ent
 		span.SetAttributes(
 			attribute.Int("less_variable_count", varCount),
 			attribute.Int("less_mixin_count", mixinCount),
+			attribute.Int("less_import_count", importCount),
 		)
 		span.End()
 	}()
@@ -86,6 +97,39 @@ func ExtractLess(ctx context.Context, file extractor.FileInput, out *[]types.Ent
 		// Skip comment lines.
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") {
+			continue
+		}
+
+		// Less @import (handled before lessVarRE because @import would
+		// otherwise look like a variable to lessVarRE — though the
+		// at-rule-keywords map already filters it, keep the explicit
+		// branch so we can also emit the IMPORTS entity).
+		if m := lessImportLineRE.FindStringSubmatch(line); m != nil {
+			matches := lessImportModuleRE.FindAllStringSubmatch(m[1], -1)
+			for _, mm := range matches {
+				module := mm[1]
+				if module == "" {
+					module = mm[2]
+				}
+				if module == "" {
+					continue
+				}
+				*out = append(*out, types.EntityRecord{
+					Name:       module,
+					Kind:       "SCOPE.Component",
+					Subtype:    "import",
+					SourceFile: file.Path,
+					Language:   "less",
+					StartLine:  lineNum,
+					EndLine:    lineNum,
+					Signature:  "@import " + module,
+					Relationships: []types.RelationshipRecord{
+						buildImportRel(file.Path, module),
+					},
+					EnrichmentRequired: false,
+				})
+				importCount++
+			}
 			continue
 		}
 
@@ -140,7 +184,7 @@ func ExtractLess(ctx context.Context, file extractor.FileInput, out *[]types.Ent
 		}
 	}
 
-	return varCount, mixinCount
+	return varCount, mixinCount, importCount
 }
 
 // parseLessParams splits a raw Less params string (e.g. "@bg: red; @color: #fff")

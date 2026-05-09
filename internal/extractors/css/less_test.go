@@ -106,7 +106,7 @@ func TestExtractLess_AllEntityCounts(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	varCount, mixinCount := css.ExtractLess(context.Background(), file, &ents)
+	varCount, mixinCount, _ := css.ExtractLess(context.Background(), file, &ents)
 
 	if varCount < 5 {
 		t.Errorf("expected >= 5 variables, got %d", varCount)
@@ -192,7 +192,7 @@ func TestExtractLess_SkipsComments(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	varCount, _ := css.ExtractLess(context.Background(), file, &ents)
+	varCount, _, _ := css.ExtractLess(context.Background(), file, &ents)
 
 	if varCount != 1 {
 		t.Errorf("expected 1 variable (skipping commented), got %d", varCount)
@@ -211,14 +211,23 @@ func TestExtractLess_SkipsAtRuleKeywords(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	varCount, _ := css.ExtractLess(context.Background(), file, &ents)
+	varCount, _, _ := css.ExtractLess(context.Background(), file, &ents)
 
-	// Only @primary-color should be extracted, not @import
+	// Only @primary-color should be extracted as a variable, not @import.
+	// @import is now emitted as a separate "import" entity (issue #383),
+	// so we check varCount and find the variable entity by Subtype.
 	if varCount != 1 {
 		t.Errorf("expected 1 variable (skipping @import), got %d", varCount)
 	}
-	if len(ents) > 0 && ents[0].Name != "@primary-color" {
-		t.Errorf("expected @primary-color, got %q", ents[0].Name)
+	var got string
+	for _, e := range ents {
+		if e.Subtype == "variable" {
+			got = e.Name
+			break
+		}
+	}
+	if got != "@primary-color" {
+		t.Errorf("expected @primary-color variable, got %q", got)
 	}
 }
 
@@ -229,7 +238,7 @@ func TestExtractLess_EmptyContent(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	varCount, mixinCount := css.ExtractLess(context.Background(), file, &ents)
+	varCount, mixinCount, _ := css.ExtractLess(context.Background(), file, &ents)
 
 	if varCount != 0 || mixinCount != 0 {
 		t.Errorf("expected all counts=0 for empty content, got %d/%d", varCount, mixinCount)
@@ -265,7 +274,7 @@ func TestExtractLess_NoParamsMixin(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	_, mixinCount := css.ExtractLess(context.Background(), file, &ents)
+	_, mixinCount, _ := css.ExtractLess(context.Background(), file, &ents)
 
 	if mixinCount != 1 {
 		t.Errorf("expected 1 mixin, got %d", mixinCount)
@@ -287,7 +296,7 @@ func TestExtractLess_FixtureFile(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	varCount, mixinCount := css.ExtractLess(context.Background(), file, &ents)
+	varCount, mixinCount, _ := css.ExtractLess(context.Background(), file, &ents)
 
 	if varCount < 5 {
 		t.Errorf("expected >= 5 variables from fixture, got %d", varCount)
