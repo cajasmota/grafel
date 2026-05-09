@@ -23,7 +23,6 @@ package python
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -165,7 +164,7 @@ func walkNode(
 					// location when two classes in different files declare
 					// methods with the same Name. FromID empty → buildDocument
 					// substitutes the parent (class) entity ID at emit time.
-					toID := "scope:operation:method:python:" + filepath.ToSlash(file.Path) + ":" + child.Name
+					toID := extractor.BuildOperationStructuralRef("python", file.Path, child.Name)
 					(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 						types.RelationshipRecord{
 							ToID: toID,
@@ -238,7 +237,7 @@ func walkNode(
 						// Issue #144 — structural-ref (Format A) keyed on
 						// file path; same rationale as the bare class
 						// branch above.
-						toID := "scope:operation:method:python:" + filepath.ToSlash(file.Path) + ":" + child.Name
+						toID := extractor.BuildOperationStructuralRef("python", file.Path, child.Name)
 						(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 							types.RelationshipRecord{
 								ToID: toID,

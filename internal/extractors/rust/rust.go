@@ -14,7 +14,6 @@ package rust
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -92,7 +91,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				}
 				// Issue #144 — structural-ref (Format A) keyed on file path
 				// so trait→method CONTAINS edges disambiguate by location.
-				toID := "scope:operation:method:rust:" + filepath.ToSlash(file.Path) + ":" + child.Name
+				toID := extractor.BuildOperationStructuralRef("rust", file.Path, child.Name)
 				(*out)[traitIdx].Relationships = append((*out)[traitIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: toID,
@@ -127,7 +126,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				// Issue #144 — structural-ref (Format A) keyed on file path
 				// so impl→method CONTAINS edges disambiguate when two files
 				// each define an `impl Foo { fn new() }` shape.
-				toID := "scope:operation:method:rust:" + filepath.ToSlash(file.Path) + ":" + child.Name
+				toID := extractor.BuildOperationStructuralRef("rust", file.Path, child.Name)
 				(*out)[implIdx].Relationships = append((*out)[implIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: toID,

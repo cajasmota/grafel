@@ -13,7 +13,6 @@ package java
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -140,7 +139,7 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 				// the source file. child.Name is dotted "Outer.method" for
 				// nested types (issue #65); the same string is the entity
 				// Name indexed by byLocation, so the resolver matches.
-				toID := "scope:operation:method:java:" + filepath.ToSlash(file.Path) + ":" + child.Name
+				toID := extractor.BuildOperationStructuralRef("java", file.Path, child.Name)
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: toID,
