@@ -287,6 +287,27 @@ func classifyExternal(stub, relKind string) (canonical, subtype string, ok bool)
 		}
 	}
 
+	// Issue #102 — PHP `use Foo\Bar\Baz` style FQNs use `\` as the
+	// namespace separator. Without this branch the path-separator
+	// rejection below drops every `Symfony\Component\HttpFoundation\
+	// Response`, `Doctrine\ORM\EntityManager`, etc. into bug-extractor.
+	//
+	// Detect `\` early: take the first segment as the root namespace,
+	// gate it on the PHP-namespace ident shape (PascalCase ASCII), and
+	// look up against the allowlist. Project-internal roots like
+	// `App\*` are not on the allowlist and correctly fall through to
+	// remain unresolved (project-aware resolution is out of scope).
+	if idx := strings.IndexByte(stub, '\\'); idx > 0 {
+		root := stub[:idx]
+		if isPhpNamespaceIdent(root) && isKnownExternalPackage(root) {
+			// Canonicalise to lowercase — the placeholder convention is
+			// "ext:<lowercase>" across ecosystems (django, tokio, ...);
+			// PHP namespace roots are the only ones that arrive
+			// PascalCase, so we fold here rather than at the lookup site.
+			return strings.ToLower(root), "package", true
+		}
+	}
+
 	// Strip a leading "Kind:" prefix if present — e.g. "Module:django"
 	// or "Function:Println". The remainder is what we classify.
 	name := stub
@@ -851,12 +872,19 @@ var knownExternalPackages = map[string]struct{}{
 	"tokio_stream":         {},
 	"tokio_util":           {},
 	"derive_more":          {},
-	// NOTE (Issue #91): PHP namespace roots (Symfony\, Doctrine\, App\)
-	// and Rust `::`-delimited use statements (tokio::net::TcpListener)
-	// are NOT catalogued here because the synth segment-extractor only
-	// splits on '.' and rejects '\'. Filed as follow-up to add separator
-	// support. Adding lowercase keys without resolver support would do
-	// nothing — and risks future false positives once support lands.
+	// PHP ecosystem (Issue #102 — symfony-demo bug-rate reduction).
+	// PHP namespace roots reach this allowlist via the `\`-separator
+	// branch in classifyExternal, gated on isPhpNamespaceIdent. Keys
+	// are lowercase here because isKnownExternalPackage case-folds the
+	// lookup; the on-disk root is "Symfony", "Doctrine", etc. App\* is
+	// intentionally absent — it's the project-local convention in
+	// Symfony/Laravel layouts and must not be promoted to a placeholder.
+	"symfony":    {},
+	"doctrine":   {},
+	"twig":       {},
+	"laravel":    {},
+	"illuminate": {},
+	"psr":        {},
 }
 
 // isKindLikePrefix reports whether s is a short, alphabetic kind name
@@ -937,6 +965,34 @@ func isRustCrateIdent(s string) bool {
 			if i == 0 {
 				return false
 			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// isPhpNamespaceIdent reports whether s has the shape of a PHP
+// top-level namespace segment — ASCII letters, digits, and '_',
+// non-empty, not starting with a digit, and starting with an
+// uppercase letter (PHP convention for vendor/namespace roots:
+// Symfony, Doctrine, Twig, Psr, App, ...). Issue #102: gates the
+// `\` separator branch so we only trust the leading segment of a
+// use-statement when it looks like a namespace root, not a stray
+// fragment with backslashes that slipped in from elsewhere.
+func isPhpNamespaceIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	if c := s[0]; !(c >= 'A' && c <= 'Z') {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c == '_':
+		case c >= '0' && c <= '9':
 		default:
 			return false
 		}

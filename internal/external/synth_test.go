@@ -617,3 +617,80 @@ func TestSynthesize_ExpandedAllowlist(t *testing.T) {
 		}
 	}
 }
+
+// TestSynthesize_PhpBackslashNamespace covers issue #102: PHP `use
+// Foo\Bar\Baz` FQNs use `\` as the namespace separator. Without the
+// dedicated branch in classifyExternal these stubs hit the
+// path-separator rejection and land in bug-extractor.
+func TestSynthesize_PhpBackslashNamespace(t *testing.T) {
+	cases := []struct {
+		stub string
+		want string
+	}{
+		// Symfony — top import root in symfony-demo.
+		{"Symfony\\Component\\HttpFoundation\\Response", "ext:symfony"},
+		{"Symfony\\Component\\HttpKernel\\Exception\\NotFoundHttpException", "ext:symfony"},
+		{"Symfony\\Bundle\\FrameworkBundle\\Controller\\AbstractController", "ext:symfony"},
+		// Doctrine ORM/DBAL.
+		{"Doctrine\\ORM\\EntityManager", "ext:doctrine"},
+		{"Doctrine\\DBAL\\Connection", "ext:doctrine"},
+		// Twig templating.
+		{"Twig\\Environment", "ext:twig"},
+		{"Twig\\Extension\\AbstractExtension", "ext:twig"},
+		// PSR interfaces (logger, container, http-message).
+		{"Psr\\Log\\LoggerInterface", "ext:psr"},
+		{"Psr\\Container\\ContainerInterface", "ext:psr"},
+		// Laravel / Illuminate roots.
+		{"Illuminate\\Support\\Facades\\DB", "ext:illuminate"},
+		{"Laravel\\Sanctum\\HasApiTokens", "ext:laravel"},
+	}
+	doc := &graph.Document{}
+	for _, c := range cases {
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:     "rel-" + c.stub,
+			FromID: "src",
+			ToID:   c.stub,
+			Kind:   "IMPORTS",
+		})
+	}
+	stats := Synthesize(doc)
+	if stats.RelationshipsResolved != len(cases) {
+		t.Fatalf("resolved=%d, want %d", stats.RelationshipsResolved, len(cases))
+	}
+	for k, c := range cases {
+		if doc.Relationships[k].ToID != c.want {
+			t.Fatalf("case %q: ToID=%q, want %q", c.stub, doc.Relationships[k].ToID, c.want)
+		}
+	}
+}
+
+// TestSynthesize_PhpAppNamespaceLeftAlone confirms that the PHP
+// project-local convention `App\*` (used in Symfony / Laravel) is
+// NOT promoted to an ext: placeholder. App is project-internal and
+// proper resolution is out of scope for #102 — the placeholder
+// pathway must skip it cleanly.
+func TestSynthesize_PhpAppNamespaceLeftAlone(t *testing.T) {
+	stubs := []string{
+		"App\\Entity\\User",
+		"App\\Controller\\BlogController",
+		"App\\Repository\\PostRepository",
+	}
+	doc := &graph.Document{}
+	for _, s := range stubs {
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:     "rel-" + s,
+			FromID: "src",
+			ToID:   s,
+			Kind:   "IMPORTS",
+		})
+	}
+	stats := Synthesize(doc)
+	if stats.RelationshipsResolved != 0 {
+		t.Fatalf("resolved=%d, want 0 (App\\* is project-local)", stats.RelationshipsResolved)
+	}
+	for k, s := range stubs {
+		if doc.Relationships[k].ToID != s {
+			t.Fatalf("case %q: ToID was rewritten to %q, expected unchanged", s, doc.Relationships[k].ToID)
+		}
+	}
+}
