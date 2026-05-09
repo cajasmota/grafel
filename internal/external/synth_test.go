@@ -583,6 +583,19 @@ func TestSynthesize_ExpandedAllowlist(t *testing.T) {
 		{"futures", "ext:futures"},
 		{"async_trait", "ext:async_trait"},
 		{"opentelemetry", "ext:opentelemetry"},
+		// Issue #101: Rust `use foo::bar` paths use `::` separator, not `.`.
+		// These must classify as ExternalKnown (root crate on allowlist),
+		// not bug-extractor.
+		{"tokio::net::TcpListener", "ext:tokio"},
+		{"actix_web::App", "ext:actix_web"},
+		{"actix_web::HttpResponse", "ext:actix_web"},
+		{"serde::Deserialize", "ext:serde"},
+		{"serde_json::Value", "ext:serde_json"},
+		{"tracing_subscriber::fmt::Subscriber", "ext:tracing_subscriber"},
+		// Brace-group `use foo::{A, B}` — the root crate is still
+		// extractable; we collapse to the package placeholder.
+		{"actix_web::{App, HttpResponse}", "ext:actix_web"},
+		{"tokio::{net::TcpListener, sync::Mutex}", "ext:tokio"},
 	}
 	doc := &graph.Document{}
 	for i, c := range cases {
