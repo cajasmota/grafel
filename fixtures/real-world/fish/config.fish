@@ -8,6 +8,10 @@ set -gx EDITOR nvim
 set -gx PAGER less
 set -gx PATH $HOME/.local/bin $PATH
 
+# Source helper modules — exercises IMPORTS edges (#371).
+source $HOME/.config/fish/conf.d/aliases.fish
+. $HOME/.config/fish/conf.d/path.fish
+
 # ---------------------------------------------------------------------------
 # Prompt
 # ---------------------------------------------------------------------------
