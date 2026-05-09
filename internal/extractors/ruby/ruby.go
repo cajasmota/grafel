@@ -12,6 +12,7 @@ package ruby
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -97,7 +98,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				// file so the resolver disambiguates by location;
 				// each Rails class is its own file by convention so
 				// the file-local method name is unique.
-				toID := "scope:operation:method:ruby:" + file.Path + ":" + child.Name
+				toID := "scope:operation:method:ruby:" + filepath.ToSlash(file.Path) + ":" + child.Name
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: toID,

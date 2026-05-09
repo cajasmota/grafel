@@ -2,6 +2,7 @@ package ruby_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -77,6 +78,37 @@ end
 		if !rbHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", want) {
 			t.Errorf("expected CONTAINS Foo→%s", want)
 		}
+	}
+}
+
+// TestRuby_ContainsClassMethods_OSNativePath (#140): structural-ref ToID
+// must be normalized via filepath.ToSlash so OS-native separators (e.g.
+// Windows backslashes) produce forward-slash refs that match the
+// resolver's convention (internal/resolve/refs.go:93,785). On POSIX the
+// separator is already "/" so this test exercises the no-op branch;
+// constructing the input via filepath.FromSlash makes the assertion
+// meaningful on every host (backslashes on Windows, slashes elsewhere).
+func TestRuby_ContainsClassMethods_OSNativePath(t *testing.T) {
+	src := `class Foo
+  def a; end
+end
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("ruby")
+	nativePath := filepath.FromSlash("app/controllers/foo.rb")
+	ents, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     nativePath,
+		Content:  []byte(src),
+		Language: "ruby",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	want := "scope:operation:method:ruby:app/controllers/foo.rb:a"
+	if !rbHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", want) {
+		foo := rbFind(ents, "Foo", "SCOPE.Component")
+		t.Errorf("expected CONTAINS Foo→%s; got rels=%+v", want, foo.Relationships)
 	}
 }
 
