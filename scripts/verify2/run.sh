@@ -125,6 +125,13 @@ REPOS=(
   "sequelize-express-example|https://github.com/sequelize/express-example.git|master|javascript"   # Sequelize sample app (#177)
   "golang-gin-realworld|https://github.com/gothinkster/golang-gin-realworld-example-app.git|main|go" # GORM sample app (#179)
   "actix-diesel-realworld|https://github.com/snamiki1212/realworld-v1-rust-actix-web-diesel.git|main|rust" # Diesel sample app (#180)
+  # --- Build tools (chunk H, umbrella #309) ---
+  # Manifest fixtures: each repo's root Cargo.toml / pom.xml / package.json /
+  # tsconfig is the canonical artifact for the cross/manifest extractor.
+  "tokio|https://github.com/tokio-rs/tokio.git|master|rust"                                          # Cargo.toml workspace manifest (#168)
+  "maven|https://github.com/apache/maven.git|master|java"                                            # pom.xml multi-module manifest (#170)
+  "pnpm|https://github.com/pnpm/pnpm.git|main|javascript"                                            # package.json workspace manifest (#172)
+  "nx|https://github.com/nrwl/nx.git|master|typescript"                                              # tsconfig + nx.json manifests (#173)
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
