@@ -152,6 +152,19 @@ REPOS=(
   "react-native|https://github.com/facebook/react-native.git|main|javascript|template"                 # React Native: template/ subtree per umbrella body (#212)
   "ionic-conference-app|https://github.com/ionic-team/ionic-conference-app.git|main|typescript"        # Ionic / Capacitor sample app (#215)
   "maui-samples|https://github.com/dotnet/maui-samples.git|main|csharp"                                # .NET MAUI sample apps (#217)
+  # --- Declarative IaC (chunk N, umbrella #308) ---
+  # Sample/canonical fixtures for declarative IaC + container orchestration
+  # languages, per Refs #96 corpus policy. Each entry pinned to the SHA
+  # recorded in its child issue. ArgoCD (#211) is intentionally NOT re-listed
+  # here: argocd-example-apps is already present above under K8s YAML
+  # (chunk F) and #211 closes via that single fixture.
+  "aws-cloudformation-samples|https://github.com/aws-cloudformation/aws-cloudformation-samples.git|main|yaml"  # CloudFormation sample templates (#185)
+  "kustomize|https://github.com/kubernetes-sigs/kustomize.git|master|yaml|examples"                            # Kustomize examples/ subtree (#189)
+  "ansible-for-devops|https://github.com/geerlingguy/ansible-for-devops.git|master|yaml"                       # Ansible playbooks/roles sample (#192)
+  "chef-runit|https://github.com/chef-cookbooks/runit.git|main|ruby"                                           # Chef cookbook (Ruby DSL) (#195)
+  "puppet-control-repo|https://github.com/puppetlabs/control-repo.git|production|ruby"                         # Puppet control repo (Ruby DSL) (#199)
+  "awesome-compose|https://github.com/docker/awesome-compose.git|master|yaml"                                  # Docker Compose canonical samples (#204)
+  "nomad-pack|https://github.com/hashicorp/nomad-pack.git|main|hcl|registry"                                   # Nomad Pack registry/ subtree (#208)
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
