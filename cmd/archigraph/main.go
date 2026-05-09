@@ -14,9 +14,10 @@ import (
 // (extractor, classifier, ...) that we don't want to surface from cli.
 func main() {
 	cli.Execute(cli.Hooks{
-		RunIndex: runIndex,
-		RunMCP:   runMCP,
-		RunLinks: runLinksHook,
+		RunIndex:     runIndex,
+		RunMCP:       runMCP,
+		RunLinks:     runLinksHook,
+		RunDashboard: runDashboard,
 	})
 }
 

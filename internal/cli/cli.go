@@ -15,8 +15,9 @@ import (
 // must live in cmd/archigraph (because they pull in heavy internal
 // packages that should not be visible from the CLI surface).
 type Hooks struct {
-	RunIndex func(argv []string) error
-	RunMCP   func(argv []string) error
+	RunIndex     func(argv []string) error
+	RunMCP       func(argv []string) error
+	RunDashboard func(argv []string) error
 	// RunLinks runs the cross-repo link passes for a group. Wired up
 	// from cmd/archigraph so the watcher loop in watch.go can re-trigger
 	// link passes whenever a registered repo's graph.json changes.
