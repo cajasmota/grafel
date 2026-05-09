@@ -527,6 +527,11 @@ func stdlibFunction(name, lang string) (string, bool) {
 			return "function", true
 		}
 	}
+	if lang == "javascript" || lang == "typescript" {
+		if _, ok := jsBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -1085,6 +1090,73 @@ var rubyBareNames = map[string]struct{}{
 	"instance_of?": {},
 }
 
+// jsBareNames is the JS/TS-language-gated bare-name stop-list (issue
+// #104). Two families covered:
+//
+//  1. Prisma ORM client method names. The JS extractor strips the
+//     receiver (`prisma.user.findMany(...)` → bare `findMany`), so
+//     the resolver only sees the leaf identifier. These collide with
+//     user methods in OTHER ecosystems (Ruby/Java/Go all have classes
+//     with their own `update`/`delete`/`create` methods) so the
+//     language gate is required.
+//  2. JS/TS array & util builtins (`some`, `every`, `push`, `trim`,
+//     `isArray`) that bare-call after receiver-strip and reach the
+//     resolver as leaf identifiers.
+//
+// Conservative selection rule (lessons from #94 / #105 / #106 / #107):
+// generic collection ops (`map`, `filter`, `forEach`, `reduce`,
+// `find`, `length`, `size`) are deliberately EXCLUDED. They are
+// user-method names on any class in any language and the language
+// gate alone is not strong enough to keep them safe — JS/TS share
+// the `map`/`filter`/`forEach` namespace with hand-rolled domain
+// methods on user classes too readily.
+var jsBareNames = map[string]struct{}{
+	// Prisma ORM client surface (https://www.prisma.io/docs/orm/reference/prisma-client-reference)
+	"findUnique":        {},
+	"findUniqueOrThrow": {},
+	"findFirst":         {},
+	"findFirstOrThrow":  {},
+	"findMany":          {},
+	"createMany":        {},
+	"updateMany":        {},
+	"deleteMany":        {},
+	"upsert":            {},
+	"aggregate":         {},
+	"groupBy":           {},
+	"executeRaw":        {},
+	"executeRawUnsafe":  {},
+	"queryRaw":          {},
+	"queryRawUnsafe":    {},
+	// Prisma `$`-prefixed top-level client methods. `$` is rare in
+	// user-defined identifier names so these are unambiguous.
+	"$connect":     {},
+	"$disconnect":  {},
+	"$transaction": {},
+	"$queryRaw":    {},
+	"$executeRaw":  {},
+	"$on":          {},
+	"$use":         {},
+	// `create`, `update`, `delete`, `count` are intentionally OMITTED.
+	// They overlap heavily with non-Prisma user methods (controllers,
+	// services, factories) and the per-language gate isn't enough.
+	// They land in bug-extractor instead — acceptable trade-off vs
+	// false positives that hide real local entities.
+
+	// JS/TS array & util builtins. Names that bare-call after
+	// receiver-strip (`xs.some(p)` → `some`).
+	"some":    {},
+	"every":   {},
+	"push":    {},
+	"trim":    {},
+	"isArray": {},
+	// `pop` / `shift` / `unshift` / `splice` / `slice` / `concat` /
+	// `join` / `includes` / `indexOf` / `lastIndexOf` / `flat` /
+	// `flatMap` are deliberately OMITTED for this iteration: each is
+	// either too collision-prone (`includes`, `indexOf`) or
+	// insufficiently observed in #104's bug-extractor sample to
+	// justify carrying the false-positive risk.
+}
+
 // isKnownExternalPackage reports whether s matches our small allowlist
 // of well-known third-party packages and stdlib top-level modules. The
 // allowlist is intentionally narrow for v1.0 — false positives turn a
@@ -1220,6 +1292,7 @@ var knownExternalPackages = map[string]struct{}{
 	"@testing-library": {},
 	"@types":           {},
 	"@nestjs":          {},
+	"@prisma":          {},
 	"@apollo":          {},
 	"@mui":             {},
 	"@emotion":         {},
