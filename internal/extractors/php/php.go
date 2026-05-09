@@ -8,12 +8,19 @@
 //   - namespace_definition       → IMPORTS relationship (file → own namespace)
 //   - namespace_use_declaration  → IMPORTS relationship (file → imported FQN)
 //
+// Method/function bodies emit CALLS relationships (#376) for:
+//   - function_call_expression  bareFunc()
+//   - member_call_expression    $obj->method()
+//   - scoped_call_expression    Foo::m() / self::m() / parent::m()
+//   - object_creation_expression  new Foo()  (CALLS Foo, constructor edge)
+//
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
 package php
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -116,14 +123,27 @@ func walk(node *sitter.Node, file extractor.FileInput, parentClass string, out *
 
 	case "method_declaration":
 		if rec, ok := buildOperation(node, file, "method"); ok {
+			bareName := rec.Name
 			if parentClass != "" {
-				rec.Name = parentClass + "." + rec.Name
+				rec.Name = parentClass + "." + bareName
 			}
+			body := node.ChildByFieldName("body")
+			if body == nil {
+				body = findFirstChildOfType(node, "compound_statement")
+			}
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(body, file.Content, bareName, parentClass)...)
 			*out = append(*out, rec)
 		}
 
 	case "function_definition":
 		if rec, ok := buildOperation(node, file, "function"); ok {
+			body := node.ChildByFieldName("body")
+			if body == nil {
+				body = findFirstChildOfType(node, "compound_statement")
+			}
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(body, file.Content, rec.Name, "")...)
 			*out = append(*out, rec)
 		}
 
@@ -446,4 +466,307 @@ func buildClassSignature(node *sitter.Node, src []byte, name string) string {
 		return strings.TrimSpace(raw[:idx])
 	}
 	return name
+}
+
+// findFirstChildOfType returns the first direct child whose Type() == kind.
+// Used as a fallback when ChildByFieldName("body") fails on older grammar
+// revisions that didn't label the body field.
+func findFirstChildOfType(n *sitter.Node, kind string) *sitter.Node {
+	if n == nil {
+		return nil
+	}
+	for i := range int(n.ChildCount()) {
+		ch := n.Child(i)
+		if ch.Type() == kind {
+			return ch
+		}
+	}
+	return nil
+}
+
+// findAllNodes returns every descendant of root whose Type() is in kinds.
+func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []*sitter.Node
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
+}
+
+// extractCallRelationships returns one CALLS RelationshipRecord per unique
+// callable invocation descendant of body. Issue #376.
+//
+// Tree-sitter PHP exposes four invocation node types:
+//
+//	function_call_expression    bareFunc()              — `function` field is the leaf name
+//	member_call_expression      $obj->method()          — `object` + `name` fields
+//	scoped_call_expression      Foo::m() / self::m()    — `scope` + `name` fields
+//	object_creation_expression  new Foo()               — constructor edge
+//
+// Receiver-type inference (stamped as Properties["receiver_type"] when known
+// and used by the resolver to bind same-name methods to the right class):
+//
+//	$this->m()                       → "<parentClass>.m"
+//	self::m() / static::m()          → "<parentClass>.m"
+//	Foo::m()                         → "Foo.m" (scope is a `name` node)
+//	$x->m() with `$x = new Foo()`    → "Foo.m"
+//	$x->m() preceded by /** @var Foo $x */
+//	                                 → "Foo.m"
+//	$x->m() otherwise                → bare leaf "m"
+//	bareFunc()                       → bare leaf "bareFunc"
+//	new Foo()                        → "Foo" (constructor)
+//
+// FromID is left empty so buildDocument substitutes the caller's entity ID
+// at emit time. Self-recursion (target leaf == callerName, dotted match
+// against parentClass + "." + callerName included) is dropped.
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, parentClass string) []types.RelationshipRecord {
+	if body == nil || callerName == "" {
+		return nil
+	}
+	locals := collectLocalVarTypes(body, src)
+	selfQualified := callerName
+	if parentClass != "" {
+		selfQualified = parentClass + "." + callerName
+	}
+	calls := findAllNodes(body,
+		"function_call_expression",
+		"member_call_expression",
+		"scoped_call_expression",
+		"object_creation_expression",
+	)
+	if len(calls) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(calls))
+	rels := make([]types.RelationshipRecord, 0, len(calls))
+	for _, call := range calls {
+		target, recvType := phpCallTarget(call, src, parentClass, locals)
+		if target == "" {
+			continue
+		}
+		// Self-recursion check on the bare leaf.
+		leaf := target
+		if dot := strings.LastIndexByte(target, '.'); dot >= 0 {
+			leaf = target[dot+1:]
+		}
+		if leaf == callerName && (target == callerName || target == selfQualified) {
+			continue
+		}
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		r := types.RelationshipRecord{
+			ToID: target,
+			Kind: "CALLS",
+		}
+		if recvType != "" {
+			r.Properties = map[string]string{"receiver_type": recvType}
+		}
+		rels = append(rels, r)
+	}
+	return rels
+}
+
+// phpCallTarget resolves the callee target from one of the four PHP
+// invocation nodes. Returns (target, receiverType). receiverType is "" when
+// no static type for the receiver is determinable. Issue #376.
+func phpCallTarget(call *sitter.Node, src []byte, parentClass string, locals map[string]string) (string, string) {
+	switch call.Type() {
+	case "function_call_expression":
+		fn := call.ChildByFieldName("function")
+		if fn == nil {
+			return "", ""
+		}
+		// Only emit for plain `name` callees. Variable-function calls
+		// (`$callable($x)`) and chained call results are too dynamic
+		// for static binding; the resolver would just route them to
+		// bug-resolver, so skip.
+		if fn.Type() != "name" {
+			return "", ""
+		}
+		return string(src[fn.StartByte():fn.EndByte()]), ""
+
+	case "member_call_expression":
+		nameNode := call.ChildByFieldName("name")
+		if nameNode == nil || nameNode.Type() != "name" {
+			return "", ""
+		}
+		method := string(src[nameNode.StartByte():nameNode.EndByte()])
+		obj := call.ChildByFieldName("object")
+		if obj == nil {
+			return method, ""
+		}
+		// $this->m() — receiver is the enclosing class.
+		if obj.Type() == "variable_name" {
+			vname := string(src[obj.StartByte():obj.EndByte()])
+			if vname == "$this" && parentClass != "" {
+				return parentClass + "." + method, parentClass
+			}
+			if t, ok := locals[vname]; ok && t != "" {
+				return t + "." + method, t
+			}
+		}
+		return method, ""
+
+	case "scoped_call_expression":
+		nameNode := call.ChildByFieldName("name")
+		if nameNode == nil || nameNode.Type() != "name" {
+			return "", ""
+		}
+		method := string(src[nameNode.StartByte():nameNode.EndByte()])
+		scope := call.ChildByFieldName("scope")
+		if scope == nil {
+			return method, ""
+		}
+		switch scope.Type() {
+		case "name":
+			// Foo::m() — explicit type name.
+			t := string(src[scope.StartByte():scope.EndByte()])
+			return t + "." + method, t
+		case "qualified_name":
+			// \Foo\Bar::m() — leaf segment is the bound type.
+			raw := strings.TrimSpace(string(src[scope.StartByte():scope.EndByte()]))
+			leaf := raw
+			if i := strings.LastIndex(raw, "\\"); i >= 0 {
+				leaf = raw[i+1:]
+			}
+			if leaf == "" {
+				return method, ""
+			}
+			return leaf + "." + method, leaf
+		case "relative_scope":
+			// self::m() / static::m() / parent::m() — bind to enclosing
+			// class when known. parent:: would ideally bind to the
+			// declared parent class, but the extractor doesn't track
+			// `extends` here; binding to parentClass is a best-effort
+			// shape that keeps the receiver_type stamp accurate for the
+			// caller-side and lets the resolver fall back to the bare
+			// leaf when needed.
+			if parentClass == "" {
+				return method, ""
+			}
+			return parentClass + "." + method, parentClass
+		}
+		return method, ""
+
+	case "object_creation_expression":
+		// new Foo() — emit a CALLS edge to "Foo". The resolver treats
+		// this as a constructor reference so framework classes
+		// (Symfony Request, Doctrine EntityManager, …) appear as
+		// outgoing edges from the calling method.
+		var typeNode *sitter.Node
+		// `type`/`name` fields are not consistently set across grammar
+		// revisions; the type is the first `name` or `qualified_name`
+		// child after the `new` keyword.
+		for i := range int(call.ChildCount()) {
+			ch := call.Child(i)
+			if ch.Type() == "name" || ch.Type() == "qualified_name" {
+				typeNode = ch
+				break
+			}
+		}
+		if typeNode == nil {
+			return "", ""
+		}
+		raw := strings.TrimSpace(string(src[typeNode.StartByte():typeNode.EndByte()]))
+		// Take the leaf segment of a qualified name.
+		if i := strings.LastIndex(raw, "\\"); i >= 0 {
+			raw = raw[i+1:]
+		}
+		if raw == "" {
+			return "", ""
+		}
+		return raw, ""
+	}
+	return "", ""
+}
+
+// docblockVarRE matches `@var Type $name` inside a /** ... */ docblock.
+// PHPDoc allows `@var Foo\Bar $x`, `@var ?Foo $x`, `@var Foo|null $x` —
+// we capture the first type token (up to whitespace, `|`, or `&`) and
+// strip a leading `?` nullable marker. Union/intersection types after the
+// first segment are dropped — receiver-type stamping needs a single class
+// name to bind, and downstream synth handles unions via the resolver.
+var docblockVarRE = regexp.MustCompile(`@var\s+\??([A-Za-z_\\][A-Za-z0-9_\\]*)\s+\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+// collectLocalVarTypes scans the method/function body for two binding
+// patterns and returns a map from `$varname` to bare type leaf.
+//
+//  1. Assignment with constructor:   $x = new Foo();           → x → Foo
+//  2. PHPDoc `@var` immediately before a use:  /** @var Foo $x */
+//
+// Returned keys carry the leading `$` so callers can match them directly
+// against `variable_name` token text.
+func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := map[string]string{}
+	// Pattern 1: assignment_expression where rhs is object_creation_expression.
+	for _, n := range findAllNodes(body, "assignment_expression") {
+		left := n.ChildByFieldName("left")
+		right := n.ChildByFieldName("right")
+		if left == nil || right == nil {
+			continue
+		}
+		if left.Type() != "variable_name" {
+			continue
+		}
+		if right.Type() != "object_creation_expression" {
+			continue
+		}
+		// Type leaf — first name/qualified_name child of the new-expr.
+		var typeNode *sitter.Node
+		for i := range int(right.ChildCount()) {
+			ch := right.Child(i)
+			if ch.Type() == "name" || ch.Type() == "qualified_name" {
+				typeNode = ch
+				break
+			}
+		}
+		if typeNode == nil {
+			continue
+		}
+		raw := strings.TrimSpace(string(src[typeNode.StartByte():typeNode.EndByte()]))
+		if i := strings.LastIndex(raw, "\\"); i >= 0 {
+			raw = raw[i+1:]
+		}
+		if raw == "" {
+			continue
+		}
+		vname := string(src[left.StartByte():left.EndByte()])
+		out[vname] = raw
+	}
+	// Pattern 2: PHPDoc `@var Type $name` comments. tree-sitter exposes
+	// docblocks as `comment` nodes — scan all and apply the regex.
+	for _, c := range findAllNodes(body, "comment") {
+		text := string(src[c.StartByte():c.EndByte()])
+		if !strings.HasPrefix(text, "/**") {
+			continue
+		}
+		for _, m := range docblockVarRE.FindAllStringSubmatch(text, -1) {
+			typ := m[1]
+			if i := strings.LastIndex(typ, "\\"); i >= 0 {
+				typ = typ[i+1:]
+			}
+			out["$"+m[2]] = typ
+		}
+	}
+	return out
 }
