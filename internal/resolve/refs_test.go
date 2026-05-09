@@ -788,6 +788,14 @@ func TestRubyRailsDSL_RecognisedAsDynamic(t *testing.T) {
 		"has_and_belongs_to_many", "validates", "validate",
 		"before_save", "after_save", "before_create", "after_create",
 		"before_destroy", "after_destroy",
+		// ActiveRecord migration DSL (issue #124)
+		"create_table", "drop_table", "change_table", "rename_table",
+		"add_column", "remove_column", "rename_column", "change_column",
+		"add_index", "remove_index", "add_reference", "remove_reference",
+		"add_foreign_key", "remove_foreign_key",
+		"references", "timestamps",
+		"string", "integer", "boolean", "text", "datetime", "date",
+		"float", "decimal", "binary", "execute",
 	}
 	for _, stub := range dynamic {
 		stub := stub
@@ -809,6 +817,11 @@ func TestRubyRailsDSL_GatedToRuby(t *testing.T) {
 	stubs := []string{
 		"where", "order", "params", "request", "response", "limit",
 		"group", "render", "validates",
+		// Migration DSL gating (issue #124) — collision-prone for
+		// other languages (`string`, `integer`, `boolean`, `text`,
+		// `references`, `execute`, `add_column`...).
+		"string", "integer", "boolean", "text", "references",
+		"execute", "create_table", "add_index", "timestamps",
 	}
 	otherLangs := []string{"go", "python", "javascript", "rust", "java", "kotlin"}
 	for _, stub := range stubs {

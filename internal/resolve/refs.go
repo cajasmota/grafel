@@ -350,6 +350,43 @@ var (
 		regexp.MustCompile(`^after_create$`),
 		regexp.MustCompile(`^before_destroy$`),
 		regexp.MustCompile(`^after_destroy$`),
+
+		// ActiveRecord migration DSL (issue #124). Rails migrations are
+		// method_missing-driven schema DSL — `t.string :name`,
+		// `create_table :users do |t|`, `add_index :users, :email`,
+		// `references :user`. The Ruby extractor strips the receiver and
+		// the resolver sees only the bare leaf identifier. These names
+		// are the dominant residue in rails-realworld bug-extractor
+		// after #143. Per-language gate (Ruby) keeps the column-type
+		// names (`string`, `integer`, `boolean`, `text`) safely scoped
+		// — they would collide trivially with user-method names in any
+		// other ecosystem.
+		regexp.MustCompile(`^create_table$`),
+		regexp.MustCompile(`^drop_table$`),
+		regexp.MustCompile(`^change_table$`),
+		regexp.MustCompile(`^rename_table$`),
+		regexp.MustCompile(`^add_column$`),
+		regexp.MustCompile(`^remove_column$`),
+		regexp.MustCompile(`^rename_column$`),
+		regexp.MustCompile(`^change_column$`),
+		regexp.MustCompile(`^add_index$`),
+		regexp.MustCompile(`^remove_index$`),
+		regexp.MustCompile(`^add_reference$`),
+		regexp.MustCompile(`^remove_reference$`),
+		regexp.MustCompile(`^add_foreign_key$`),
+		regexp.MustCompile(`^remove_foreign_key$`),
+		regexp.MustCompile(`^references$`),
+		regexp.MustCompile(`^timestamps$`),
+		regexp.MustCompile(`^string$`),
+		regexp.MustCompile(`^integer$`),
+		regexp.MustCompile(`^boolean$`),
+		regexp.MustCompile(`^text$`),
+		regexp.MustCompile(`^datetime$`),
+		regexp.MustCompile(`^date$`),
+		regexp.MustCompile(`^float$`),
+		regexp.MustCompile(`^decimal$`),
+		regexp.MustCompile(`^binary$`),
+		regexp.MustCompile(`^execute$`),
 	}
 
 	jvmDynamicPatterns = []*regexp.Regexp{
