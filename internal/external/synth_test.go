@@ -1709,6 +1709,169 @@ func TestKotlinBareNames_UnknownKotlinMethodFallsThrough(t *testing.T) {
 	}
 }
 
+// TestSwiftVaporDSLBareNames_ClassifiedWhenLangIsSwift covers issue
+// #436: Vapor route builder DSL methods (`app.get(...)`, `routes.post`,
+// `route.group`, `req.respond`), Fluent ORM query builders
+// (`Model.query(on:)`, `.filter`, `.sort`, `.first`, `.all`), and HTTP
+// context accessors (`req.parameters`, `req.headers`, `req.body`) get
+// receiver-stripped by the Swift extractor and land in bug-extractor.
+// These names must classify as stdlib bare-names — but only when the
+// source entity's language is "swift". Mirrors the Kotlin Ktor DSL
+// precedent (#435).
+func TestSwiftVaporDSLBareNames_ClassifiedWhenLangIsSwift(t *testing.T) {
+	names := []string{
+		// Vapor route builder DSL.
+		"get", "post", "put", "patch", "delete", "on", "group",
+		"grouped", "route", "register", "boot", "run", "start",
+		"shutdown", "respond", "redirect", "view", "render",
+		// Vapor middleware DSL.
+		"middleware", "use", "authenticate", "authorize", "protect",
+		// Fluent ORM builders.
+		"save", "create", "update", "find", "query", "sort",
+		"limit", "offset", "with", "count", "first", "last",
+		"paginate", "transform", "flatMap",
+		// HTTP context accessors.
+		"parameters", "headers", "body", "request", "response",
+		"auth", "session", "cookies",
+		// Swift Concurrency.
+		"async", "await", "Task", "withCheckedContinuation",
+		// SwiftNIO EventLoopFuture / Promise / LockedValueBox.
+		"makeSucceededFuture", "makeFailedFuture", "makePromise",
+		"makeFutureWithTask", "completeWithTask",
+		"whenComplete", "whenSuccess", "whenFailure",
+		"flatSubmit", "withLockedValue",
+		// Swift stdlib types and Sequence/Collection idioms.
+		"String", "Int", "Array", "Date", "ObjectIdentifier",
+		"forEach", "joined", "dropFirst", "prefix",
+		"numericCast", "singleValueContainer",
+		"preconditionFailure", "preconditionInEventLoop",
+		"syncShutdownGracefully",
+		// swift-log Logger API.
+		"debug", "info", "trace", "notice", "warning", "critical",
+		// More Swift stdlib / Foundation / NIO Future idioms.
+		"hasSuffix", "hasPrefix", "lowercased", "uppercased",
+		"replacingOccurrences", "dropLast", "addingTimeInterval",
+		"merging", "flatMapThrowing", "makeCompletedFuture",
+		"precondition", "fatalError",
+		"TimeZone", "Locale", "DateFormatter",
+		"Int64", "UInt8", "UInt16", "UInt32", "UInt64",
+		"Int8", "Int16", "Int32",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "swift", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"swift\", nil) = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"swift\", nil) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "swift-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "swift",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "swift-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestSwiftVaporDSLBareNames_NotClassifiedForOtherLanguages confirms the
+// Swift language gate holds for the issue #436 additions: Vapor / Fluent
+// DSL names must NOT be rewritten when the source entity's language is
+// anything other than "swift". A JS user method named `request`, a Go
+// method named `save`, a Ruby `find`, a Kotlin `respond`, etc. must not
+// be shadowed by the Swift gate.
+func TestSwiftVaporDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Pick names with the highest cross-language collision potential —
+	// generic verbs/accessors that exist as user methods in every
+	// ecosystem. Selection rule: each name MUST be unique to
+	// swiftBareNames (i.e. not in stdlibBareNames or any other
+	// language map), otherwise the cross-language gate test would
+	// trip on a different language's allowlist firing first.
+	names := []string{
+		"query", "body", "auth", "session", "cookies",
+		"register", "boot", "shutdown", "grouped", "redirect",
+		"render", "middleware", "authorize", "protect",
+		"paginate", "transform", "flatMap", "offset",
+	}
+	otherLangs := []string{"go", "python", "javascript", "ruby", "rust", "java", "kotlin", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"swift\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Swift)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestSwiftBareNames_UnknownSwiftMethodFallsThrough confirms that a
+// Swift-source bare-name call that ISN'T in the swiftBareNames allowlist
+// still falls through normally, so genuine missing-resolution bugs
+// continue to surface in bug-extractor.
+func TestSwiftBareNames_UnknownSwiftMethodFallsThrough(t *testing.T) {
+	name := "myCustomBusinessMethod" // Not Vapor/Fluent; user-defined.
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "swift-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "swift",
+		}},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "swift-src", ToID: name, Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("Synthesize(%q): synthesized=%d, want 0 (unknown user fn)", name, stats.Synthesized)
+	}
+	if doc.Relationships[0].ToID != name {
+		t.Fatalf("ToID=%q, want %q (unknown name must not be rewritten)",
+			doc.Relationships[0].ToID, name)
+	}
+}
+
 // TestRubyBareNames_ClassifiedWhenLangIsRuby covers issue #107: Ruby
 // Object/Kernel instance methods (post-receiver-strip) classify as
 // stdlib bare-names — but only when the source entity's language is
@@ -2580,16 +2743,16 @@ func TestSynthesize_HostPathMount(t *testing.T) {
 // docker image references.
 func TestDockerImageRepo(t *testing.T) {
 	cases := map[string]string{
-		"":                                 "",
-		"nginx":                            "nginx",
-		"nginx:1.21":                       "nginx",
-		"redis:alpine":                     "redis",
-		"library/postgres:14":              "library/postgres",
-		"ghcr.io/owner/svc:v1.2.3":         "ghcr.io/owner/svc",
-		"myregistry.io:5000/team/api:dev":  "myregistry.io:5000/team/api",
-		"myregistry.io:5000/team/api":      "myregistry.io:5000/team/api",
-		"alpine@sha256:abcdef":             "alpine",
-		"ubuntu:22.04@sha256:abcdef":       "ubuntu",
+		"":                                "",
+		"nginx":                           "nginx",
+		"nginx:1.21":                      "nginx",
+		"redis:alpine":                    "redis",
+		"library/postgres:14":             "library/postgres",
+		"ghcr.io/owner/svc:v1.2.3":        "ghcr.io/owner/svc",
+		"myregistry.io:5000/team/api:dev": "myregistry.io:5000/team/api",
+		"myregistry.io:5000/team/api":     "myregistry.io:5000/team/api",
+		"alpine@sha256:abcdef":            "alpine",
+		"ubuntu:22.04@sha256:abcdef":      "ubuntu",
 	}
 	for in, want := range cases {
 		if got := dockerImageRepo(in); got != want {
