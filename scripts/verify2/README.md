@@ -69,21 +69,28 @@ scripts/verify2/compare.sh \
 The output shows per-repo entity/relationship deltas plus the change in
 `bug_rate` and `resolution_rate` (both as percentage-point deltas).
 
-## Corpus coverage (Refs #87)
+## Corpus coverage (Refs #87, #96)
 
 The corpus targets the full extractor matrix — 32 languages plus
 representative frameworks, ORMs, manifests, and tools. To make
 regressions diagnosable, the corpus is also diversified across stack
-characteristics:
+characteristics.
+
+**Policy (Refs #96):** the corpus prefers *sample applications that USE
+a framework* over the framework's own source tree. We measure how the
+indexer handles framework-using user code, not how it handles framework
+internals. Library-source entries are kept only when they are small
+enough to also stand in as canonical user code (e.g. `requests`,
+`click`, `sidekiq`, `gin`, `chi`, `exposed`).
 
 | characteristic | repos in corpus |
 | --- | --- |
-| ORM-heavy | `django`, `rails-actionpack` |
-| HTTP routing | `gin`, `chi`, `express`, `actix-web`, `vapor`, `laravel-routing`, `symfony-routing` |
-| microservice / RPC / messaging | `etcd`, `kafka` |
+| ORM-heavy | `django-realworld`, `rails-realworld` |
+| HTTP routing | `gin`, `chi`, `express-realworld`, `actix-examples`, `vapor`, `laravel-quickstart`, `symfony-demo` |
+| microservice / RPC / messaging | `etcd`, `kafka-streams-examples` |
 | CLI tool | `click` |
-| config-heavy / framework | `spring-boot` (autoconfigure), `pandas` (core), `nestjs`, `nextjs` (server), `aspnetcore-mvc` |
-| async runtime / concurrency | `tokio`, `ktor` |
+| config-heavy / framework | `spring-petclinic`, `pandas` (core), `nestjs-starter`, `nextjs-commerce`, `aspnetcore-mvc` |
+| async runtime / concurrency | `mini-redis`, `ktor-samples` |
 
 Add new repos to grow the matrix — coverage gaps surface immediately as
 empty per-language rows in the aggregate report.

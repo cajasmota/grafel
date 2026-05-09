@@ -37,42 +37,45 @@ mkdir -p "$CORPORA_DIR" "$REPORTS_DIR"
 # next to each entry records the rough estimate at the time of authoring.
 #
 # Coverage targets the full 32-language extractor matrix + frameworks +
-# ORMs + manifests + tools. Stack-characteristic diversity (Refs #87):
-#   - ORM-heavy             rails (actionpack/activerecord), django
-#   - HTTP routing          gin, chi, express, actix-web, vapor
-#   - microservice / RPC    etcd, kafka
+# ORMs + manifests + tools. Stack-characteristic diversity (Refs #87, #96):
+#   - ORM-heavy             rails-realworld, django-realworld
+#   - HTTP routing          gin, chi, express-realworld, actix-examples, vapor
+#   - microservice / RPC    etcd, kafka-streams-examples
 #   - CLI tool              click
-#   - config-heavy          pandas (mixed), spring-boot autoconfigure
+#   - config-heavy          pandas (mixed), spring-petclinic, nestjs-starter
 REPOS=(
+  # Corpus policy (Refs #96): prefer SAMPLE APPLICATIONS that USE a framework
+  # over the framework's own source tree. We measure how the indexer handles
+  # framework-using user code, not how it handles framework internals.
   # --- Python ---
-  "requests|https://github.com/psf/requests.git|main|python"                                       # ~6 MB
-  "flask|https://github.com/pallets/flask.git|main|python"                                         # ~6 MB
-  "click|https://github.com/pallets/click.git|main|python"                                         # ~7 MB
-  "django|https://github.com/django/django.git|main|python"                                        # ~80 MB
+  "requests|https://github.com/psf/requests.git|main|python"                                       # library; small enough to keep
+  "flask-realworld|https://github.com/gothinkster/flask-realworld-example-app.git|master|python"   # Flask sample app
+  "click|https://github.com/pallets/click.git|main|python"                                         # CLI tool source; small
+  "django-realworld|https://github.com/gothinkster/django-realworld-example-app.git|master|python" # Django sample app
   "pandas|https://github.com/pandas-dev/pandas.git|main|python|pandas/core"                        # full ~400 MB; sparse subset
   # --- Go ---
-  "gin|https://github.com/gin-gonic/gin.git|master|go"                                             # ~3 MB
-  "chi|https://github.com/go-chi/chi.git|master|go"                                                # ~2 MB
+  "gin|https://github.com/gin-gonic/gin.git|master|go"                                             # framework src; small
+  "chi|https://github.com/go-chi/chi.git|master|go"                                                # framework src; small
   "etcd|https://github.com/etcd-io/etcd.git|main|go|server/etcdserver"                             # full ~250 MB; sparse subset
   # --- JavaScript / TypeScript ---
-  "express|https://github.com/expressjs/express.git|master|javascript"                             # ~4 MB
-  "nestjs|https://github.com/nestjs/nest.git|master|typescript|packages/core"                      # ~120 MB full; sparse subset
-  "nextjs|https://github.com/vercel/next.js.git|canary|typescript|packages/next/src"                # >1 GB full; full src dir for representative TS
+  "express-realworld|https://github.com/gothinkster/node-express-realworld-example-app.git|master|javascript" # Express sample app
+  "nestjs-starter|https://github.com/nestjs/typescript-starter.git|master|typescript"              # NestJS sample app
+  "nextjs-commerce|https://github.com/vercel/commerce.git|main|typescript"                         # Next.js sample app
   # --- Java ---
-  "spring-petclinic|https://github.com/spring-projects/spring-petclinic.git|main|java"              # ~30 Java files; canonical Spring Boot sample with @RestController/@Service/@Repository
-  "kafka|https://github.com/apache/kafka.git|trunk|java|clients/src/main/java/org/apache/kafka/clients"                              # >200 MB full; sparse Java client
+  "spring-petclinic|https://github.com/spring-projects/spring-petclinic.git|main|java"             # Spring Boot sample app
+  "kafka-streams-examples|https://github.com/confluentinc/kafka-streams-examples.git|master|java"  # Kafka sample app
   # --- Kotlin ---
-  "exposed|https://github.com/JetBrains/Exposed.git|main|kotlin"                                   # ~15 MB
-  "ktor|https://github.com/ktorio/ktor.git|main|kotlin|ktor-server/ktor-server-core"               # >200 MB full; sparse
+  "exposed|https://github.com/JetBrains/Exposed.git|main|kotlin"                                   # ORM source; small
+  "ktor-samples|https://github.com/ktorio/ktor-samples.git|main|kotlin"                            # Ktor sample apps
   # --- Ruby ---
-  "rails-actionpack|https://github.com/rails/rails.git|main|ruby|actionpack"                       # >150 MB full; sparse
-  "sidekiq|https://github.com/sidekiq/sidekiq.git|main|ruby"                                       # ~20 MB
+  "rails-realworld|https://github.com/gothinkster/rails-realworld-example-app.git|master|ruby"     # Rails sample app
+  "sidekiq|https://github.com/sidekiq/sidekiq.git|main|ruby"                                       # library; small
   # --- PHP ---
-  "laravel-routing|https://github.com/laravel/framework.git|11.x|php|src/Illuminate/Routing"       # >100 MB full; sparse
-  "symfony-routing|https://github.com/symfony/symfony.git|7.2|php|src/Symfony/Component/Routing"   # >300 MB full; sparse
+  "laravel-quickstart|https://github.com/laravel/quickstart-basic.git|master|php"                  # Laravel sample app
+  "symfony-demo|https://github.com/symfony/demo.git|main|php"                                      # Symfony sample app
   # --- Rust ---
-  "tokio|https://github.com/tokio-rs/tokio.git|master|rust|tokio/src"                              # ~60 MB full; sparse
-  "actix-web|https://github.com/actix/actix-web.git|master|rust|actix-web/src"                     # ~30 MB full; sparse
+  "mini-redis|https://github.com/tokio-rs/mini-redis.git|master|rust"                              # Tokio sample app
+  "actix-examples|https://github.com/actix/examples.git|main|rust"                                 # Actix sample apps
   # --- Swift ---
   "vapor|https://github.com/vapor/vapor.git|main|swift|Sources/Vapor"                              # ~10 MB full; sparse to be safe
   # --- C# ---
