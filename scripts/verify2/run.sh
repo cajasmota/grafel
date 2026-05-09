@@ -90,6 +90,12 @@ REPOS=(
   "spdlog|https://github.com/gabime/spdlog.git|v1.x|cpp"                                          # header-only logging library; small
   # --- Zig ---
   "http.zig|https://github.com/karlseguin/http.zig.git|master|zig"                                # Zig HTTP server library; small
+  # --- Dart ---
+  "dart-samples|https://github.com/dart-lang/samples.git|main|dart"                               # Dart sample apps
+  # --- Lua ---
+  "kickstart.nvim|https://github.com/nvim-lua/kickstart.nvim.git|master|lua"                      # Neovim config sample
+  # --- Elixir ---
+  "phoenix-todo-list|https://github.com/dwyl/phoenix-todo-list-tutorial.git|main|elixir"          # Phoenix sample app
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
