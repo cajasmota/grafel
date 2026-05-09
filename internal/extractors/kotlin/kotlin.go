@@ -97,9 +97,14 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				if child.Kind != "SCOPE.Operation" {
 					continue
 				}
+				// Issue #144 — emit a structural-ref (Format A) keyed on
+				// the source file so the resolver disambiguates by location
+				// when two Kotlin classes/objects in different files declare
+				// same-named functions.
+				toID := extractor.BuildOperationStructuralRef("kotlin", file.Path, child.Name)
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
-						ToID: child.Name,
+						ToID: toID,
 						Kind: "CONTAINS",
 					})
 			}
@@ -128,9 +133,14 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				if child.Kind != "SCOPE.Operation" {
 					continue
 				}
+				// Issue #144 — emit a structural-ref (Format A) keyed on
+				// the source file so the resolver disambiguates by location
+				// when two Kotlin classes/objects in different files declare
+				// same-named functions.
+				toID := extractor.BuildOperationStructuralRef("kotlin", file.Path, child.Name)
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
-						ToID: child.Name,
+						ToID: toID,
 						Kind: "CONTAINS",
 					})
 			}

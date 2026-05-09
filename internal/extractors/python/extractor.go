@@ -159,11 +159,15 @@ func walkNode(
 					if child.Kind != "SCOPE.Operation" {
 						continue
 					}
+					// Issue #144 — emit a structural-ref (Format A) keyed on
+					// the source file so the resolver disambiguates by
+					// location when two classes in different files declare
+					// methods with the same Name. FromID empty → buildDocument
+					// substitutes the parent (class) entity ID at emit time.
+					toID := extractor.BuildOperationStructuralRef("python", file.Path, child.Name)
 					(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 						types.RelationshipRecord{
-							// FromID empty → buildDocument substitutes the
-							// parent (class) entity ID at emit time.
-							ToID: child.Name,
+							ToID: toID,
 							Kind: "CONTAINS",
 						})
 				}
@@ -230,9 +234,13 @@ func walkNode(
 						if child.Kind != "SCOPE.Operation" {
 							continue
 						}
+						// Issue #144 — structural-ref (Format A) keyed on
+						// file path; same rationale as the bare class
+						// branch above.
+						toID := extractor.BuildOperationStructuralRef("python", file.Path, child.Name)
 						(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 							types.RelationshipRecord{
-								ToID: child.Name,
+								ToID: toID,
 								Kind: "CONTAINS",
 							})
 					}

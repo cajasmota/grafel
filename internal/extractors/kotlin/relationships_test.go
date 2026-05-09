@@ -69,9 +69,12 @@ func TestKotlin_ContainsClassMethods(t *testing.T) {
 	if contains != 3 {
 		t.Errorf("expected 3 CONTAINS edges, got %d (rels=%+v)", contains, foo.Relationships)
 	}
+	// Issue #144 — CONTAINS targets are structural-ref stubs (Format A)
+	// keyed on the source file.
 	for _, m := range []string{"a", "b", "c"} {
-		if !ktHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", m) {
-			t.Errorf("expected CONTAINS Foo→%s", m)
+		want := "scope:operation:method:kotlin:Test.kt:" + m
+		if !ktHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Foo→%s", want)
 		}
 	}
 }

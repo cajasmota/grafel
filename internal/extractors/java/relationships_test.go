@@ -70,9 +70,13 @@ class Foo {
 	if contains != 3 {
 		t.Errorf("expected 3 CONTAINS edges from Foo, got %d (rels=%+v)", contains, foo.Relationships)
 	}
+	// Issue #144 — CONTAINS targets are structural-ref stubs (Format A)
+	// keyed on the source file. The trailing :<name> segment carries the
+	// dotted "Outer.member" form (issue #65).
 	for _, m := range []string{"Foo.a", "Foo.b", "Foo.c"} {
-		if !javaHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", m) {
-			t.Errorf("expected CONTAINS Foo→%s", m)
+		want := "scope:operation:method:java:Test.java:" + m
+		if !javaHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Foo→%s", want)
 		}
 	}
 }

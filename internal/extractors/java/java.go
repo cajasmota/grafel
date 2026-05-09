@@ -135,11 +135,14 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 				if child.Kind != "SCOPE.Operation" {
 					continue
 				}
+				// Issue #144 — emit a structural-ref (Format A) keyed on
+				// the source file. child.Name is dotted "Outer.method" for
+				// nested types (issue #65); the same string is the entity
+				// Name indexed by byLocation, so the resolver matches.
+				toID := extractor.BuildOperationStructuralRef("java", file.Path, child.Name)
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
-						// ToID matches the dotted Name emitted by
-						// buildOperation when parentType is non-empty.
-						ToID: child.Name,
+						ToID: toID,
 						Kind: "CONTAINS",
 					})
 			}

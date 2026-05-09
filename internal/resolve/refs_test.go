@@ -1005,3 +1005,74 @@ func TestReferences_RubyClassContainsStructuralRef(t *testing.T) {
 		t.Fatalf("expected 2 rewrites, got %+v", stats)
 	}
 }
+
+// Issue #144 — Java class CONTAINS edges use the same Format-A structural
+// ref pattern as Ruby. Two Java files each define a class with a same-named
+// method (`save`); the CONTAINS edges must rewrite to the file-local method.
+func TestReferences_JavaClassContainsStructuralRef(t *testing.T) {
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "SCOPE.Component", "UserRepository", "src/main/java/UserRepository.java"),
+		entAt("bbbbbbbbbbbbbbbb", "SCOPE.Operation", "save", "src/main/java/UserRepository.java"),
+		entAt("cccccccccccccccc", "SCOPE.Component", "PostRepository", "src/main/java/PostRepository.java"),
+		entAt("dddddddddddddddd", "SCOPE.Operation", "save", "src/main/java/PostRepository.java"),
+	}
+	rels := []types.RelationshipRecord{
+		{
+			FromID: "aaaaaaaaaaaaaaaa",
+			ToID:   "scope:operation:method:java:src/main/java/UserRepository.java:save",
+			Kind:   "CONTAINS",
+		},
+		{
+			FromID: "cccccccccccccccc",
+			ToID:   "scope:operation:method:java:src/main/java/PostRepository.java:save",
+			Kind:   "CONTAINS",
+		},
+	}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("UserRepository#save: ToID=%s, want bbbbbbbbbbbbbbbb", rels[0].ToID)
+	}
+	if rels[1].ToID != "dddddddddddddddd" {
+		t.Fatalf("PostRepository#save: ToID=%s, want dddddddddddddddd", rels[1].ToID)
+	}
+	if stats.Rewritten != 2 {
+		t.Fatalf("expected 2 rewrites, got %+v", stats)
+	}
+}
+
+// Issue #144 — Python class CONTAINS edges use Format-A structural refs.
+// Python emits methods with class-qualified Name "Foo.<method>" (issue #45),
+// so the structural-ref tail carries the dotted form. Two files each define
+// `Foo.save` — edges must rewrite to the file-local method.
+func TestReferences_PythonClassContainsStructuralRef(t *testing.T) {
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "SCOPE.Component", "UserStore", "app/users.py"),
+		entAt("bbbbbbbbbbbbbbbb", "SCOPE.Operation", "UserStore.save", "app/users.py"),
+		entAt("cccccccccccccccc", "SCOPE.Component", "PostStore", "app/posts.py"),
+		entAt("dddddddddddddddd", "SCOPE.Operation", "PostStore.save", "app/posts.py"),
+	}
+	rels := []types.RelationshipRecord{
+		{
+			FromID: "aaaaaaaaaaaaaaaa",
+			ToID:   "scope:operation:method:python:app/users.py:UserStore.save",
+			Kind:   "CONTAINS",
+		},
+		{
+			FromID: "cccccccccccccccc",
+			ToID:   "scope:operation:method:python:app/posts.py:PostStore.save",
+			Kind:   "CONTAINS",
+		},
+	}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("UserStore.save: ToID=%s, want bbbbbbbbbbbbbbbb", rels[0].ToID)
+	}
+	if rels[1].ToID != "dddddddddddddddd" {
+		t.Fatalf("PostStore.save: ToID=%s, want dddddddddddddddd", rels[1].ToID)
+	}
+	if stats.Rewritten != 2 {
+		t.Fatalf("expected 2 rewrites, got %+v", stats)
+	}
+}

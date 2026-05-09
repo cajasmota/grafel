@@ -89,9 +89,12 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				if child.Kind != "SCOPE.Operation" {
 					continue
 				}
+				// Issue #144 — structural-ref (Format A) keyed on file path
+				// so trait→method CONTAINS edges disambiguate by location.
+				toID := extractor.BuildOperationStructuralRef("rust", file.Path, child.Name)
 				(*out)[traitIdx].Relationships = append((*out)[traitIdx].Relationships,
 					types.RelationshipRecord{
-						ToID: child.Name,
+						ToID: toID,
 						Kind: "CONTAINS",
 					})
 			}
@@ -120,9 +123,13 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				if child.Kind != "SCOPE.Operation" {
 					continue
 				}
+				// Issue #144 — structural-ref (Format A) keyed on file path
+				// so impl→method CONTAINS edges disambiguate when two files
+				// each define an `impl Foo { fn new() }` shape.
+				toID := extractor.BuildOperationStructuralRef("rust", file.Path, child.Name)
 				(*out)[implIdx].Relationships = append((*out)[implIdx].Relationships,
 					types.RelationshipRecord{
-						ToID: child.Name,
+						ToID: toID,
 						Kind: "CONTAINS",
 					})
 			}

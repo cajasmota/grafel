@@ -291,9 +291,14 @@ func (x *extractor) handleClassDeclaration(n *sitter.Node) {
 			if child.Kind != "SCOPE.Operation" {
 				continue
 			}
+			// Issue #144 — emit a structural-ref (Format A) keyed on the
+			// source file so the resolver disambiguates by location when
+			// two classes in different files declare same-named methods
+			// (a common shape in Express/Nest/React-component apps).
+			toID := extreg.BuildOperationStructuralRef(x.language, x.filePath, child.Name)
 			x.entities[classIdx].Relationships = append(x.entities[classIdx].Relationships,
 				types.RelationshipRecord{
-					ToID: child.Name,
+					ToID: toID,
 					Kind: "CONTAINS",
 				})
 		}
