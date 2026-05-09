@@ -1534,6 +1534,20 @@ func TestRubyBareNames_ClassifiedWhenLangIsRuby(t *testing.T) {
 		"to_s", "to_str", "to_i", "to_f", "to_a", "to_h", "to_sym",
 		// Inspection / type checks
 		"inspect", "is_a?", "kind_of?", "instance_of?",
+		// ActiveRecord persistence and validation (issue #124)
+		"save", "save!", "update", "update!", "destroy", "destroy!",
+		"valid?", "valid_password?", "errors", "persisted?",
+		"new_record?", "attributes", "reload", "create", "create!",
+		"find_or_create_by", "build", "exists?", "first", "last", "all",
+		"find_by", "find_each", "find_in_batches",
+		"destroy_all", "delete_all", "update_all",
+		"update_attribute", "update_attributes", "update_attributes!",
+		"toggle", "toggle!", "increment", "increment!",
+		"decrement", "decrement!", "touch",
+		"reset_counters", "reset_column_information",
+		// ActiveSupport Numeric/Time helpers
+		"days", "hours", "minutes", "seconds", "weeks", "months",
+		"years", "ago", "from_now",
 	}
 	for _, name := range names {
 		name := name
@@ -1574,7 +1588,19 @@ func TestRubyBareNames_ClassifiedWhenLangIsRuby(t *testing.T) {
 // `clone`, etc. must NOT be rewritten when source lang != "ruby".
 func TestRubyBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	// Names that are NOT in the language-agnostic stdlibBareNames map.
-	names := []string{"new", "tap", "then", "dup", "freeze", "to_s", "to_h", "is_a?", "respond_to?"}
+	names := []string{
+		"new", "tap", "then", "dup", "freeze", "to_s", "to_h", "is_a?", "respond_to?",
+		// ActiveRecord persistence names (issue #124) must not leak to
+		// other languages. `save`/`errors`/`all` are intentionally
+		// EXCLUDED from this negative list — they are independently
+		// classified by other-language allowlists (Spring Data `save`
+		// in Java, Go `errors` package, Python `all` builtin) and the
+		// non-leak guarantee for Ruby-only AR names is asserted by the
+		// remaining names below.
+		"update", "destroy", "valid?", "create", "build", "first", "last",
+		"reload", "attributes", "exists?", "persisted?", "new_record?",
+		"find_or_create_by", "valid_password?",
+	}
 	otherLangs := []string{"go", "python", "javascript", "rust", "java", "kotlin", ""}
 	for _, name := range names {
 		for _, lang := range otherLangs {

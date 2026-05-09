@@ -1398,6 +1398,72 @@ var rubyBareNames = map[string]struct{}{
 	"is_a?":        {},
 	"kind_of?":     {},
 	"instance_of?": {},
+	// ActiveRecord persistence and validation methods (issue #124).
+	// After #107 + #143, residual rails-realworld bug-extractor was
+	// dominated by AR persistence calls (`record.save`, `user.update!`,
+	// `model.valid_password?`). These names ARE generated/inherited from
+	// ActiveRecord::Base, not user-defined — extractor strips the
+	// receiver and the resolver sees only the bare leaf. The Ruby
+	// language gate keeps them from polluting other ecosystems. Generic
+	// collection ops (`find`, `count`) remain EXCLUDED per #107 lock-in.
+	// `new` and `where` are intentionally omitted: `new` is already
+	// covered above; `where` is classified by the resolver-side
+	// rubyDynamicPatterns catalog as Dynamic.
+	"save":               {},
+	"save!":              {},
+	"update":             {},
+	"update!":            {},
+	"destroy":            {},
+	"destroy!":           {},
+	"valid?":             {},
+	"valid_password?":    {},
+	"errors":             {},
+	"persisted?":         {},
+	"new_record?":        {},
+	"attributes":         {},
+	"reload":             {},
+	"create":             {},
+	"create!":            {},
+	"find_or_create_by":  {},
+	"build":              {},
+	"exists?":            {},
+	"first":              {},
+	"last":               {},
+	"all":                {},
+	// Additional AR persistence/query methods observed in
+	// rails-realworld bug-extractor after the initial #124 batch. All
+	// are stable AR::Base / AR::Relation methods (not method_missing).
+	"find_by":         {},
+	"find_each":       {},
+	"find_in_batches": {},
+	"destroy_all":     {},
+	"delete_all":      {},
+	"update_all":      {},
+	"update_attribute":      {},
+	"update_attributes":     {},
+	"update_attributes!":    {},
+	"toggle":          {},
+	"toggle!":         {},
+	"increment":       {},
+	"increment!":      {},
+	"decrement":       {},
+	"decrement!":      {},
+	"touch":           {},
+	"reset_counters":  {},
+	"reset_column_information": {},
+	// Numeric / time helpers added by ActiveSupport to Numeric
+	// (`3.days`, `1.hour.ago`, `5.minutes.from_now`). Ruby-only by
+	// virtue of ActiveSupport's monkey-patches; the language gate
+	// keeps them from polluting non-Ruby ecosystems.
+	"days":     {},
+	"hours":    {},
+	"minutes":  {},
+	"seconds":  {},
+	"weeks":    {},
+	"months":   {},
+	"years":    {},
+	"ago":      {},
+	"from_now": {},
 }
 
 // jsBareNames is the JS/TS-language-gated bare-name stop-list (issue
