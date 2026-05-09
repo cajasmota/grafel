@@ -21,6 +21,7 @@ package resolve
 import (
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/types"
@@ -1318,6 +1319,119 @@ func (idx Index) nameExists(name string) bool {
 		return true
 	}
 	return false
+}
+
+// BugResolverDiag is a diagnostic record describing why a stub flagged as
+// bug-resolver failed to bind. Returned by DiagnoseBugResolver. Fields are
+// stable for the lifetime of issue #92; callers should not depend on
+// values being non-empty across releases.
+type BugResolverDiag struct {
+	// Category is a short token suitable for histogram bucketing. One of:
+	//   "kind-mismatch"          — stub had Kind:Name; that kind exists but
+	//                              not for this name; bare-name is also
+	//                              ambiguous or missing.
+	//   "ambig-kind"             — Kind:Name where (kind, name) is ambiguous.
+	//   "ambig-bare-no-hint"     — bare-name lookup ambiguous and no relKind
+	//                              hint was supplied or the hint had no
+	//                              registered family.
+	//   "ambig-bare-hint-fail"   — relKind hint family didn't disambiguate
+	//                              (zero or >=2 candidates in the family).
+	//   "ambig-qualified"        — stub matched a QualifiedName but it
+	//                              collided with another entity.
+	//   "unknown"                — none of the above matched; should be rare.
+	Category string
+	// Name is the bare leaf name probed against byName / nameKinds.
+	Name string
+	// StubKind is the Kind: prefix segment when present (else "").
+	StubKind string
+	// KindsPresent is the sorted list of entity kinds the graph holds for
+	// this Name. A value with multiple entries plus a missing StubKind
+	// match is the "kind-mismatch" pattern; a single entry is an
+	// "ambig-bare-*" pattern (multiple entities share that name+kind).
+	KindsPresent []string
+	// RelKindHint is the relationship-kind hint that was tried (e.g.
+	// CALLS, EXTENDS). Empty when the caller didn't supply one.
+	RelKindHint string
+	// HintFamily lists the entity-kind families the hint biases toward.
+	// Empty when relKind has no registered hint or no hint was passed.
+	HintFamily []string
+}
+
+// DiagnoseBugResolver returns a BugResolverDiag describing the failure
+// mode for a stub that classifyDispositionLang labelled
+// DispositionBugResolver. The classifier's own decision is NOT re-checked
+// here; callers feed only stubs they have already classified as
+// bug-resolver. Issue #92 — diagnostic instrumentation, not a hot path.
+func (idx Index) DiagnoseBugResolver(originalStub, relKind string) BugResolverDiag {
+	diag := BugResolverDiag{Category: "unknown", RelKindHint: relKind}
+	if originalStub == "" {
+		return diag
+	}
+
+	// Direct QualifiedName collision sentinel — byQualifiedName carries a
+	// blank string when two entities share the same QualifiedName.
+	if qid, ok := idx.byQualifiedName[originalStub]; ok && qid == "" {
+		diag.Category = "ambig-qualified"
+		diag.Name = originalStub
+		return diag
+	}
+
+	kind, name := splitStub(originalStub)
+	if strings.HasPrefix(originalStub, stubPrefixScope) {
+		parts := strings.SplitN(originalStub, stubDelim, stubScopeSegments)
+		if len(parts) == stubScopeSegments {
+			tail := parts[stubScopeTailIndex]
+			if hash := strings.IndexByte(tail, stubMemberDelim); hash >= 0 {
+				name = tail[hash+1:]
+			} else {
+				name = tail
+			}
+			kind = ""
+		}
+	}
+	diag.Name = name
+	diag.StubKind = kind
+
+	if bucket, ok := idx.nameKinds[name]; ok {
+		kinds := make([]string, 0, len(bucket))
+		for k := range bucket {
+			kinds = append(kinds, k)
+		}
+		sort.Strings(kinds)
+		diag.KindsPresent = kinds
+	}
+
+	families := hintKinds(relKind)
+	diag.HintFamily = families
+
+	switch {
+	case kind != "":
+		// Kind: prefix path. Kind-bucket missed for this name. Two
+		// shapes: either the (kind, name) tuple is itself ambiguous, or
+		// the name lives under DIFFERENT kinds entirely.
+		if idx.ambigKind[kind] != nil && idx.ambigKind[kind][name] {
+			diag.Category = "ambig-kind"
+			return diag
+		}
+		diag.Category = "kind-mismatch"
+		return diag
+	case idx.ambigName[name]:
+		// Bare-name ambiguous globally.
+		if len(families) == 0 {
+			diag.Category = "ambig-bare-no-hint"
+			return diag
+		}
+		diag.Category = "ambig-bare-hint-fail"
+		return diag
+	case len(diag.KindsPresent) > 0:
+		// nameKinds carries this name (so nameExists returned true) but
+		// neither byName nor ambigName tracks it — a same-(name,kind)
+		// duplicate registered as a blank-string sentinel inside a
+		// nameKinds bucket. Treat as ambig-kind for histogram purposes.
+		diag.Category = "ambig-kind"
+		return diag
+	}
+	return diag
 }
 
 // classifyDisposition returns the Disposition for an endpoint after the
