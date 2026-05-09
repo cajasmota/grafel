@@ -263,6 +263,30 @@ func classifyExternal(stub, relKind string) (canonical, subtype string, ok bool)
 		}
 	}
 
+	// Issue #101 — Rust `use foo::bar` style paths use `::` as the
+	// segment separator. The Rust extractor (internal/extractors/rust)
+	// emits IMPORTS edges with ToID set to the raw use-path, e.g.
+	// "tokio::net::TcpListener" or brace-group forms like
+	// "actix_web::{App, HttpResponse}". Without this branch the leading
+	// "tokio" / "actix_web" gets misread as a "Kind:" prefix below, and
+	// the residue ":net::TcpListener" never matches the allowlist —
+	// every Rust use-statement lands in bug-extractor.
+	//
+	// Detect `::` early: take the first segment as the root crate, look
+	// it up against the same allowlist used for dotted paths, and
+	// collapse to a single placeholder per crate (matching the dotted-
+	// path "package" subtype convention).
+	if idx := strings.Index(stub, "::"); idx > 0 {
+		root := stub[:idx]
+		// Reject if the root contains anything that isn't a Rust ident
+		// char. Path separators here mean a structural-ref or local
+		// path slipped through; '@' / '.' are not legal in a Rust crate
+		// name and indicate a different ecosystem.
+		if isRustCrateIdent(root) && isKnownExternalPackage(root) {
+			return root, "package", true
+		}
+	}
+
 	// Strip a leading "Kind:" prefix if present — e.g. "Module:django"
 	// or "Function:Println". The remainder is what we classify.
 	name := stub
@@ -777,6 +801,56 @@ var knownExternalPackages = map[string]struct{}{
 	"futures":            {},
 	"async_trait":        {},
 	"opentelemetry":      {},
+	// Rust stdlib + extended ecosystem (Issue #101 — bug-rate
+	// reduction targets for mini-redis / actix-examples). `std` is
+	// the Rust standard library; every `use std::...` path leaks
+	// without it. The actix_* / async_* ecosystem and Diesel ORM
+	// are the highest-volume third-party leak roots in the
+	// actix-examples corpus.
+	"std":                  {},
+	"core":                 {}, // libcore (rare in user code but legit)
+	"alloc":                {}, // liballoc
+	"actix_files":          {},
+	"actix_identity":       {},
+	"actix_session":        {},
+	"actix_cors":           {},
+	"actix_multipart":      {},
+	"actix_rt":             {},
+	"actix_service":        {},
+	"actix_codec":          {},
+	"actix_http":           {},
+	"actix_router":         {},
+	"actix_test":           {},
+	"actix_web_actors":     {},
+	"actix_protobuf":       {},
+	"awc":                  {}, // actix web client
+	"diesel":               {},
+	"diesel_migrations":    {},
+	"sea_orm":              {},
+	"casbin":               {},
+	"chrono":               {},
+	"regex":                {},
+	"rand":                 {},
+	"hyper":                {},
+	"tower":                {},
+	"tower_http":           {},
+	"axum":                 {},
+	"rocket":               {},
+	"warp":                 {},
+	"once_cell":            {},
+	"lazy_static":          {},
+	"parking_lot":          {},
+	"crossbeam":            {},
+	"rayon":                {},
+	"log":                  {},
+	"env_logger":           {},
+	"opentelemetry_aws":    {},
+	"opentelemetry_otlp":   {},
+	"opentelemetry_jaeger": {},
+	"async_stream":         {},
+	"tokio_stream":         {},
+	"tokio_util":           {},
+	"derive_more":          {},
 	// NOTE (Issue #91): PHP namespace roots (Symfony\, Doctrine\, App\)
 	// and Rust `::`-delimited use statements (tokio::net::TcpListener)
 	// are NOT catalogued here because the synth segment-extractor only
@@ -841,6 +915,31 @@ func looksLikeExternalImport(s string) bool {
 	c := last[0]
 	if !(c >= 'A' && c <= 'Z') {
 		return false
+	}
+	return true
+}
+
+// isRustCrateIdent reports whether s has the shape of a Rust crate
+// name — ASCII letters, digits, and '_', non-empty, not starting with
+// a digit. Issue #101: gates the `::` separator branch so we only
+// trust the leading segment of a use-path when it looks like a crate
+// name (and not, e.g., a bracketed/spaced fragment that slipped in).
+func isRustCrateIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c == '_':
+		case c >= '0' && c <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
 	}
 	return true
 }
