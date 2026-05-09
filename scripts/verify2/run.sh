@@ -440,6 +440,20 @@ REPOS=(
   "prefect|https://github.com/PrefectHQ/prefect.git|main|python"                                               # Prefect @flow/@task decorators, deployment specs (#293) SHA fe44ad330730 paths src/prefect/flows.py examples/
   "camunda-bpm-examples|https://github.com/camunda/camunda-bpm-examples.git|master|java_bpmn|servicetask"      # Camunda .bpmn XML processes + Java JavaDelegate (#293) SHA 8b86bcf8c329
   "dagster|https://github.com/dagster-io/dagster.git|master|python|examples/quickstart_etl"                    # Dagster @asset/@op/@job decorators, IO managers (#293) SHA 50915f9cab16
+
+  # --- Data/ML/notebook (chunk DD, umbrella #292) ---
+  # Data, ML, and notebook ecosystems exercising scikit-learn / PyTorch / Keras
+  # / Transformers consumer idioms, the .ipynb extractor, Polars/Spark big-data
+  # APIs, and dbt SQL+Jinja models. Each entry pinned to the SHA recorded in
+  # umbrella #292 and verified via git ls-remote --symref on 2026-05-09.
+  "scikit-learn|https://github.com/scikit-learn/scikit-learn.git|main|python|examples"                        # scikit-learn Pipeline/fit/transform consumer idioms (#292) SHA a421648c9d5b
+  "pytorch-examples|https://github.com/pytorch/examples.git|main|python|mnist"                                # PyTorch nn.Module/forward/DataLoader patterns (#292) SHA acc295dc7b90
+  "keras-io|https://github.com/keras-team/keras-io.git|master|python|examples"                                # TF/Keras functional API, Model.fit, custom layers (#292) SHA 524c0d7ae593
+  "transformers|https://github.com/huggingface/transformers.git|main|python|examples/pytorch"                 # HF Transformers AutoModel/tokenizer/Trainer (#292) SHA c9de1097eed9
+  "jupyter-notebook|https://github.com/jupyter/notebook.git|main|notebook|docs/source"                        # .ipynb extractor: JSON cells, code+md, output stripping (#292) SHA 685709e0f199
+  "polars|https://github.com/pola-rs/polars.git|main|python|py-polars/tests/unit"                             # Polars lazy frames, pl.col expressions, chained transforms (#292) SHA a84168f0a4f1
+  "spark|https://github.com/apache/spark.git|master|scala|examples/src/main/scala"                            # Spark Scala RDD/Dataset, implicit conversions, object entry points (#292) SHA 6650e3f911f4
+  "jaffle_shop|https://github.com/dbt-labs/jaffle_shop.git|main|sql_dbt|models"                               # dbt models {{ ref() }}/{{ source() }}, schema.yml (#292) SHA fd7bfacae4f4
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
