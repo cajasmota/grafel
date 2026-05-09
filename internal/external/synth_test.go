@@ -2920,3 +2920,188 @@ func TestDockerImageRepo(t *testing.T) {
 		}
 	}
 }
+
+// TestPHPLaravelSymfonyDSLBareNames_ClassifiedWhenLangIsPHP covers
+// issue #439: Laravel facade DSL leaves (`Route::get(...)` →
+// `routes`/`middleware`/`prefix`), Eloquent ORM persistence and query
+// builder calls (`$user->save()`, `User::find($id)`,
+// `Post::where(...)->paginate(...)`), Symfony AbstractController
+// helpers (`$this->render(...)`, `$this->redirectToRoute(...)`), and
+// Laravel global helpers (`config(...)`, `auth()`, `view(...)`) get
+// receiver-stripped (or arrive bare) and land in bug-extractor. These
+// names must classify as stdlib bare-names — but only when the source
+// entity's language is "php". Mirrors the Kotlin Ktor (#435) and Swift
+// Vapor (#436) precedents.
+func TestPHPLaravelSymfonyDSLBareNames_ClassifiedWhenLangIsPHP(t *testing.T) {
+	names := []string{
+		// Eloquent ORM persistence + lifecycle.
+		"find", "findOrFail", "findMany", "firstOrFail", "firstOrCreate",
+		"save", "update", "delete", "forceDelete", "restore",
+		"create", "make", "fill", "refresh", "fresh", "replicate",
+		"is", "isNot",
+		"belongsTo", "belongsToMany", "hasMany", "hasOne",
+		"morphTo", "morphMany", "morphOne",
+		// Eloquent / query builder.
+		"where", "whereIn", "whereNotIn", "whereHas",
+		"whereNull", "whereNotNull", "whereBetween", "whereDate",
+		"with", "without", "orderBy", "groupBy", "having",
+		"limit", "take", "skip", "first", "latest", "oldest",
+		"paginate", "count", "avg", "pluck", "chunk", "each",
+		"select", "selectRaw", "union", "unionAll", "joinSub",
+		"crossJoin", "leftJoin", "rightJoin", "joins",
+		// Symfony controller helpers.
+		"render", "redirectToRoute", "redirect",
+		"createForm", "createFormBuilder",
+		"addFlash", "denyAccessUnlessGranted",
+		"getUser", "isGranted", "generateUrl",
+		"json", "file", "forward",
+		"getDoctrine", "getParameter", "dispatchEvent",
+		// Laravel facade DSL leaves.
+		"routes", "middleware", "controller", "domain", "prefix",
+		// Laravel global helpers.
+		"config", "env", "route", "url", "asset", "auth", "request",
+		"session", "cookie", "view", "response", "back", "old",
+		"csrf_token", "csrf_field", "dd", "dump", "now", "today",
+		"app", "resolve", "event", "dispatch", "validator", "optional",
+		"tap",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "php", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"php\", nil) = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"php\", nil) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "php-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "php",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "php-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestPHPLaravelSymfonyDSLBareNames_NotClassifiedForOtherLanguages
+// confirms the PHP language gate holds for the issue #439 additions:
+// Laravel / Symfony / Eloquent DSL names must NOT be rewritten when
+// the source entity's language is anything other than "php". A JS user
+// method named `request`, a Go method named `paginate`, a Ruby
+// `redirectToRoute`, etc. must not be shadowed by the PHP gate.
+func TestPHPLaravelSymfonyDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Selection rule: each name MUST be unique to phpBareNames (i.e. not
+	// in stdlibBareNames or any other language map), otherwise the
+	// cross-language gate test would trip on a different language's
+	// allowlist firing first. Picks span Eloquent verbs, Symfony
+	// helpers, Laravel facade leaves, and Laravel global helpers.
+	names := []string{
+		// Eloquent verbs unique to PHP.
+		"findOrFail", "firstOrFail", "firstOrCreate",
+		"forceDelete", "belongsToMany", "morphTo", "morphMany",
+		"whereHas", "whereNotIn", "selectRaw", "joinSub",
+		// Symfony helpers unique to PHP.
+		"redirectToRoute", "createForm", "createFormBuilder",
+		"denyAccessUnlessGranted", "isGranted", "generateUrl",
+		"getDoctrine", "getParameter", "dispatchEvent", "addFlash",
+		// Laravel facade leaves / globals unique to PHP.
+		"csrf_token", "csrf_field", "validator",
+	}
+	otherLangs := []string{"go", "python", "javascript", "ruby", "rust", "java", "kotlin", "swift", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"php\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-PHP)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestPHPBareNames_HTTPVerbsRejected confirms the issue #439 spec
+// "REJECT" rule: HTTP verb bare names `get` / `post` / `put` /
+// `delete` from `Route::get(...)` must NOT be in phpBareNames, because
+// they collide trivially with Eloquent attribute-accessor patterns
+// (`$model->get('name')`) and PSR-7 ServerRequest accessors. The #94 /
+// #106 safer-bias rule applies. NOTE: `delete` IS in phpBareNames as
+// the Eloquent destructor (`$model->delete()`), per the spec — only
+// `get`/`post`/`put` are rejected on collision grounds.
+func TestPHPBareNames_HTTPVerbsRejected(t *testing.T) {
+	rejected := []string{"get", "post", "put"}
+	for _, name := range rejected {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, ok := phpBareNames[name]; ok {
+				t.Fatalf("phpBareNames[%q] present; must be rejected per issue #439 (HTTP verb collides with PHP property accessors)", name)
+			}
+		})
+	}
+}
+
+// TestPHPBareNames_UnknownPHPMethodFallsThrough confirms that a
+// PHP-source bare-name call that ISN'T in the phpBareNames allowlist
+// still falls through normally, so genuine missing-resolution bugs
+// continue to surface in bug-extractor.
+func TestPHPBareNames_UnknownPHPMethodFallsThrough(t *testing.T) {
+	name := "myCustomBusinessMethod" // Not Laravel/Symfony/Eloquent; user-defined.
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "php-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "php",
+		}},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "php-src", ToID: name, Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("Synthesize(%q): synthesized=%d, want 0 (unknown user fn)", name, stats.Synthesized)
+	}
+	if doc.Relationships[0].ToID != name {
+		t.Fatalf("ToID=%q, want %q (unknown name must not be rewritten)",
+			doc.Relationships[0].ToID, name)
+	}
+}
