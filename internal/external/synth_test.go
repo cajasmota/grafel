@@ -443,6 +443,11 @@ func TestStdlibBareNames_NoCollisionNames(t *testing.T) {
 		"write", "read", "close", "index", "copy", "replace",
 		"items", "keys", "values", "update", "pop", "clear",
 		"extend", "append", "remove",
+		// Issue #91: Rust prelude variants/results MUST NOT be in the
+		// stdlib-bare-name allowlist — `Ok`, `Err`, `Some`, `None` are
+		// commonly used as user-defined identifiers in Go/JS code and
+		// would shadow real bug-extractor cases. See synth.go comment.
+		"Ok", "Err", "Some", "None",
 	}
 	for _, name := range collisions {
 		name := name
@@ -467,6 +472,41 @@ func TestStdlibBareNames_NoCollisionNames(t *testing.T) {
 			if doc.Relationships[0].ToID != name {
 				t.Fatalf("ToID=%q, want %q (must not be rewritten)",
 					doc.Relationships[0].ToID, name)
+			}
+		})
+	}
+}
+
+// TestStdlibBareNames_RustAssertMacros locks in the Issue #91 addition of
+// Rust's `assert_eq!` / `assert_ne!` macros to the stdlib bare-name stop-
+// list. These have no plausible collision with user identifiers in any
+// supported language, so they MUST be classified as stdlib functions and
+// rewritten to `ext:<name>` placeholders.
+func TestStdlibBareNames_RustAssertMacros(t *testing.T) {
+	macros := []string{"assert_eq", "assert_ne"}
+	for _, name := range macros {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q) = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "src.rs", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
 			}
 		})
 	}
@@ -516,6 +556,33 @@ func TestSynthesize_ExpandedAllowlist(t *testing.T) {
 		{"httpx.AsyncClient", "ext:httpx"},
 		{"testify.Suite", "ext:testify"},
 		{"junit", "ext:junit"},
+		// Issue #91: C# / .NET roots — `System.*`, `Microsoft.*` are the
+		// dominant import roots in ASP.NET / EF Core codebases.
+		{"system", "ext:system"},
+		{"system.text.json", "ext:system"},
+		{"system.collections.generic", "ext:system"},
+		{"microsoft", "ext:microsoft"},
+		{"microsoft.entityframeworkcore", "ext:microsoft"},
+		{"microsoft.aspnetcore.mvc", "ext:microsoft"},
+		// Issue #91: Java EE / Jakarta — Spring/JPA imports.
+		{"jakarta", "ext:jakarta"},
+		{"jakarta.persistence", "ext:jakarta"},
+		{"jakarta.validation", "ext:jakarta"},
+		// Issue #91: Rust crates — top import-bug roots.
+		{"tokio", "ext:tokio"},
+		{"actix_web", "ext:actix_web"},
+		{"actix", "ext:actix"},
+		{"serde", "ext:serde"},
+		{"serde_json", "ext:serde_json"},
+		{"anyhow", "ext:anyhow"},
+		{"thiserror", "ext:thiserror"},
+		{"tracing", "ext:tracing"},
+		{"tracing_subscriber", "ext:tracing_subscriber"},
+		{"clap", "ext:clap"},
+		{"reqwest", "ext:reqwest"},
+		{"futures", "ext:futures"},
+		{"async_trait", "ext:async_trait"},
+		{"opentelemetry", "ext:opentelemetry"},
 	}
 	doc := &graph.Document{}
 	for i, c := range cases {
