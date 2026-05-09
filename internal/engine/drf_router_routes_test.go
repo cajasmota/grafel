@@ -61,11 +61,11 @@ func TestDetect_DRFRouterRoutes(t *testing.T) {
 
 	type rel struct{ from, to string }
 	expected := map[rel]bool{
-		{"Route:/api/users", "View:UserViewSet"}:           false,
-		{"Route:/api/orders", "View:OrderViewSet"}:         false,
-		{"Route:/api/products", "View:ProductViewSet"}:     false,
-		{"Route:/api/categories", "View:CategoryViewSet"}:  false,
-		{"Route:/api/v2/reviews", "View:ReviewViewSet"}:    false,
+		{"Route:/api/users", "View:UserViewSet"}:          false,
+		{"Route:/api/orders", "View:OrderViewSet"}:        false,
+		{"Route:/api/products", "View:ProductViewSet"}:    false,
+		{"Route:/api/categories", "View:CategoryViewSet"}: false,
+		{"Route:/api/v2/reviews", "View:ReviewViewSet"}:   false,
 	}
 
 	var routesToCount int
