@@ -243,20 +243,25 @@ func extractByFlavor(flavor string, root *sitter.Node, file extractor.FileInput)
 		}
 	}()
 
+	var entities []types.EntityRecord
 	switch flavor {
 	case flavorGitHubActions:
-		return extractGitHubActions(root, file)
+		entities = extractGitHubActions(root, file)
 	case flavorGitLabCI:
-		return extractGitLabCI(root, file)
+		entities = extractGitLabCI(root, file)
 	case flavorDockerCompose:
-		return extractDockerCompose(root, file)
+		entities = extractDockerCompose(root, file)
 	case flavorKubernetes:
-		return extractKubernetes(root, file)
+		entities = extractKubernetes(root, file)
 	case flavorAnsible:
-		return extractAnsible(root, file)
+		entities = extractAnsible(root, file)
 	default:
-		return extractGeneric(root, file)
+		entities = extractGeneric(root, file)
 	}
+	// Issue #386 / #90: stamp Properties["language"]="yaml" on every embedded
+	// relationship so the resolver dispatches the YAML dynamic-pattern catalog.
+	extractor.TagRelationshipsLanguage(entities, "yaml")
+	return entities
 }
 
 // ---------------------------------------------------------------------------
@@ -540,6 +545,22 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 	pairs := topLevelMappings(root)
 	var entities []types.EntityRecord
 
+	// Resolve the workflow ref once (top-level `name:`); fall back to file.Path
+	// when no name is present.
+	workflowRef := ""
+	for _, p := range pairs {
+		if pairKeyText(p, src) == "name" {
+			if v := getPairValueText(p, src); v != "" {
+				workflowRef = "github_actions/workflow/" + v
+			}
+			break
+		}
+	}
+
+	// Track unique `uses:` references so we emit one IMPORTS edge per action
+	// from the workflow file.
+	seenUses := map[string]bool{}
+
 	for _, p := range pairs {
 		key := pairKeyText(p, src)
 		startLine := int(p.StartPoint().Row) + 1
@@ -565,11 +586,20 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 				}
 				jStart := int(jp.StartPoint().Row) + 1
 				jEnd := int(jp.EndPoint().Row) + 1
-				entities = append(entities, entity(
+				jobRef := "github_actions/job/" + jobName
+				jobEnt := entity(
 					"SCOPE.Operation", jobName, "job",
-					"github_actions/job/"+jobName,
+					jobRef,
 					file.Path, "yaml", jStart, jEnd,
-				))
+				)
+				// CONTAINS: workflow (or file) → job.
+				parentRef := workflowRef
+				if parentRef == "" {
+					parentRef = file.Path
+				}
+				jobEnt.Relationships = append(jobEnt.Relationships,
+					containsRel(parentRef, jobRef))
+				entities = append(entities, jobEnt)
 
 				// Extract steps from this job
 				jobValNode := pairValueNode(jp)
@@ -591,21 +621,46 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 					stepName := findPairValueText(stepPairs, "name", src)
 					if stepName != "" {
 						sStart, sEnd := pairsLineRange(stepPairs)
-						entities = append(entities, entity(
+						stepRef := "github_actions/step/" + stepName
+						stepEnt := entity(
 							"SCOPE.Operation", stepName, "step",
-							"github_actions/step/"+stepName,
+							stepRef,
 							file.Path, "yaml", sStart, sEnd,
-						))
+						)
+						stepEnt.Relationships = append(stepEnt.Relationships,
+							containsRel(jobRef, stepRef))
+						entities = append(entities, stepEnt)
 					}
 					// uses action
 					usesVal := findPairValueText(stepPairs, "uses", src)
 					if usesVal != "" {
 						sStart, sEnd := pairsLineRange(stepPairs)
-						entities = append(entities, entity(
+						actionRef := "github_actions/action/" + usesVal
+						actionEnt := entity(
 							"SCOPE.Component", usesVal, "action",
-							"github_actions/action/"+usesVal,
+							actionRef,
 							file.Path, "yaml", sStart, sEnd,
-						))
+						)
+						// CONTAINS: job → action.
+						actionEnt.Relationships = append(actionEnt.Relationships,
+							containsRel(jobRef, actionRef))
+						// IMPORTS: workflow file → unique action reference
+						// (e.g. "actions/checkout@v4"). Attach to the workflow
+						// entity if we have one, otherwise to this entity.
+						if !seenUses[usesVal] {
+							seenUses[usesVal] = true
+							importRel := importsRel(file.Path, usesVal, "github_actions_uses")
+							if workflowRef != "" {
+								if wfIdx := findEntityIndex(entities, workflowRef); wfIdx >= 0 {
+									entities[wfIdx].Relationships = append(entities[wfIdx].Relationships, importRel)
+								} else {
+									actionEnt.Relationships = append(actionEnt.Relationships, importRel)
+								}
+							} else {
+								actionEnt.Relationships = append(actionEnt.Relationships, importRel)
+							}
+						}
+						entities = append(entities, actionEnt)
 					}
 				}
 			}
@@ -672,12 +727,16 @@ func extractGitLabCI(root *sitter.Node, file extractor.FileInput) []types.Entity
 			if gitlabReservedKeys[key] || key == "" {
 				continue
 			}
-			// Treat as a job definition
-			entities = append(entities, entity(
+			// Treat as a job definition. CONTAINS edge: file → job.
+			jobRef := "gitlab_ci/job/" + key
+			jobEnt := entity(
 				"SCOPE.Operation", key, "job",
-				"gitlab_ci/job/"+key,
+				jobRef,
 				file.Path, "yaml", startLine, endLine,
-			))
+			)
+			jobEnt.Relationships = append(jobEnt.Relationships,
+				containsRel(file.Path, jobRef))
+			entities = append(entities, jobEnt)
 
 			// Extract script entries
 			jobVal := pairValueNode(p)
@@ -731,16 +790,21 @@ func extractDockerCompose(root *sitter.Node, file extractor.FileInput) []types.E
 				}
 				sStart := int(sp.StartPoint().Row) + 1
 				sEnd := int(sp.EndPoint().Row) + 1
-				entities = append(entities, entity(
+				svcRef := "docker_compose/service/" + svcName
+				svcEnt := entity(
 					"SCOPE.Component", svcName, "service",
-					"docker_compose/service/"+svcName,
+					svcRef,
 					file.Path, "yaml", sStart, sEnd,
-				))
+				)
+				// CONTAINS: file → service.
+				svcEnt.Relationships = append(svcEnt.Relationships,
+					containsRel(file.Path, svcRef))
 
 				// Ports
 				svcVal := pairValueNode(sp)
 				svcBM := getBlockMapping(svcVal)
 				if svcBM == nil {
+					entities = append(entities, svcEnt)
 					continue
 				}
 				var svcPairs []*sitter.Node
@@ -750,14 +814,34 @@ func extractDockerCompose(root *sitter.Node, file extractor.FileInput) []types.E
 						svcPairs = append(svcPairs, child)
 					}
 				}
+
+				// IMPORTS: depends_on → service. Compose dependency chains
+				// look exactly like an import graph for purposes of resolution
+				// (see issue #386).
+				dependsNode := findValueNodeForKey(svcPairs, "depends_on", src)
+				for _, dep := range getSequenceItems(dependsNode, src) {
+					if dep == "" {
+						continue
+					}
+					targetRef := "docker_compose/service/" + dep
+					svcEnt.Relationships = append(svcEnt.Relationships,
+						importsRel(svcRef, targetRef, "compose_depends_on"))
+				}
+				entities = append(entities, svcEnt)
+
 				portsNode := findValueNodeForKey(svcPairs, "ports", src)
 				ports := getSequenceItems(portsNode, src)
 				for _, port := range ports {
-					entities = append(entities, entity(
+					portRef := "docker_compose/port/" + svcName + "/" + port
+					portEnt := entity(
 						"SCOPE.Pattern", port, "port",
-						"docker_compose/port/"+svcName+"/"+port,
+						portRef,
 						file.Path, "yaml", sStart, sEnd,
-					))
+					)
+					// CONTAINS: service → port.
+					portEnt.Relationships = append(portEnt.Relationships,
+						containsRel(svcRef, portRef))
+					entities = append(entities, portEnt)
 				}
 			}
 
@@ -770,11 +854,16 @@ func extractDockerCompose(root *sitter.Node, file extractor.FileInput) []types.E
 				}
 				vStart := int(vp.StartPoint().Row) + 1
 				vEnd := int(vp.EndPoint().Row) + 1
-				entities = append(entities, entity(
+				volRef := "docker_compose/volume/" + volName
+				volEnt := entity(
 					"SCOPE.Schema", volName, "volume",
-					"docker_compose/volume/"+volName,
+					volRef,
 					file.Path, "yaml", vStart, vEnd,
-				))
+				)
+				// CONTAINS: file → volume.
+				volEnt.Relationships = append(volEnt.Relationships,
+					containsRel(file.Path, volRef))
+				entities = append(entities, volEnt)
 			}
 
 		default:
@@ -839,17 +928,23 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 		endLine = int(doc.EndPoint().Row) + 1
 	}
 
+	resourceRef := ""
 	if metadataName != "" {
 		// Deployment/Service/StatefulSet/DaemonSet → SCOPE.Service; others → SCOPE.Component.
 		topKind := "SCOPE.Component"
 		if kindVal == "Service" || kindVal == "Deployment" || kindVal == "StatefulSet" || kindVal == "DaemonSet" {
 			topKind = "SCOPE.Service"
 		}
-		entities = append(entities, entity(
+		resourceRef = "k8s/resource/" + metadataName
+		resEnt := entity(
 			topKind, metadataName, "k8s_resource",
 			kindVal,
 			file.Path, "yaml", startLine, endLine,
-		))
+		)
+		// CONTAINS: file → resource.
+		resEnt.Relationships = append(resEnt.Relationships,
+			containsRel(file.Path, resourceRef))
+		entities = append(entities, resEnt)
 	}
 
 	specPairs := getMappingPairsForKey(pairs, "spec", src)
@@ -915,11 +1010,17 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				continue
 			}
 			icStart, icEnd := pairsLineRange(icPairs)
-			entities = append(entities, entity(
+			icRef := "k8s/init-container/" + name
+			icEnt := entity(
 				"SCOPE.Component", name, "init_container",
-				"k8s/init-container/"+name,
+				icRef,
 				file.Path, "yaml", icStart, icEnd,
-			))
+			)
+			if resourceRef != "" {
+				icEnt.Relationships = append(icEnt.Relationships,
+					containsRel(resourceRef, icRef))
+			}
+			entities = append(entities, icEnt)
 		}
 
 		// Main containers
@@ -930,11 +1031,17 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				continue
 			}
 			cStart, cEnd := pairsLineRange(cPairs)
-			entities = append(entities, entity(
+			cRef := "k8s/container/" + name
+			cEnt := entity(
 				"SCOPE.Component", name, "container",
-				"k8s/container/"+name,
+				cRef,
 				file.Path, "yaml", cStart, cEnd,
-			))
+			)
+			if resourceRef != "" {
+				cEnt.Relationships = append(cEnt.Relationships,
+					containsRel(resourceRef, cRef))
+			}
+			entities = append(entities, cEnt)
 
 			// containerPort values
 			portsNode := findValueNodeForKey(cPairs, "ports", src)
@@ -1147,9 +1254,10 @@ func extractAnsible(root *sitter.Node, file extractor.FileInput) []types.EntityR
 		if isDocSequence(doc) {
 			entities = append(entities, extractAnsiblePlaybookDoc(doc, file)...)
 		} else {
-			// Flat format: top-level tasks/handlers/roles keys.
+			// Flat format: top-level tasks/handlers/roles keys. No enclosing
+			// play, so CONTAINS edges (when emitted) are rooted at the file.
 			for _, p := range documentMappings(doc) {
-				entities = append(entities, extractAnsibleSectionPairs(p, file, src)...)
+				entities = append(entities, extractAnsibleSectionPairs(p, file, src, "")...)
 			}
 		}
 	}
@@ -1211,13 +1319,19 @@ func extractAnsiblePlaybookDoc(doc *sitter.Node, file extractor.FileInput) []typ
 
 			// Emit play name (- name: ...) as SCOPE.Service
 			playName := findPairValueText(playPairs, "name", src)
+			playRef := ""
 			if playName != "" {
 				pStart, pEnd := pairsLineRange(playPairs)
-				entities = append(entities, entity(
+				playRef = "ansible/play/" + playName
+				playEnt := entity(
 					"SCOPE.Service", playName, "play",
-					"ansible/play/"+playName,
+					playRef,
 					file.Path, "yaml", pStart, pEnd,
-				))
+				)
+				// CONTAINS: file → play.
+				playEnt.Relationships = append(playEnt.Relationships,
+					containsRel(file.Path, playRef))
+				entities = append(entities, playEnt)
 			}
 
 			// Emit hosts target as SCOPE.Component
@@ -1231,9 +1345,10 @@ func extractAnsiblePlaybookDoc(doc *sitter.Node, file extractor.FileInput) []typ
 				))
 			}
 
-			// Extract tasks, pre_tasks, post_tasks, handlers, roles
+			// Extract tasks, pre_tasks, post_tasks, handlers, roles. The play
+			// is the enclosing parent for the CONTAINS edges these emit.
 			for _, pp := range playPairs {
-				entities = append(entities, extractAnsibleSectionPairs(pp, file, src)...)
+				entities = append(entities, extractAnsibleSectionPairs(pp, file, src, playRef)...)
 			}
 		}
 	}
@@ -1243,10 +1358,21 @@ func extractAnsiblePlaybookDoc(doc *sitter.Node, file extractor.FileInput) []typ
 
 // extractAnsibleSectionPairs extracts entities from a single block_mapping_pair
 // that represents a section (tasks, pre_tasks, post_tasks, handlers, roles).
-func extractAnsibleSectionPairs(p *sitter.Node, file extractor.FileInput, src []byte) []types.EntityRecord {
+// parentRef is the canonical ref of the enclosing play (e.g. "ansible/play/X")
+// or "" when there's no enclosing play (flat task file). When non-empty, every
+// emitted child carries a CONTAINS edge from parentRef.
+func extractAnsibleSectionPairs(p *sitter.Node, file extractor.FileInput, src []byte, parentRef string) []types.EntityRecord {
 	key := pairKeyText(p, src)
 	valNode := pairValueNode(p)
 	var entities []types.EntityRecord
+
+	addContains := func(ent *types.EntityRecord, childRef string) {
+		if parentRef == "" {
+			return
+		}
+		ent.Relationships = append(ent.Relationships,
+			containsRel(parentRef, childRef))
+	}
 
 	switch key {
 	case "tasks", "pre_tasks", "post_tasks":
@@ -1257,11 +1383,14 @@ func extractAnsibleSectionPairs(p *sitter.Node, file extractor.FileInput, src []
 				continue
 			}
 			tStart, tEnd := pairsLineRange(taskPairs)
-			entities = append(entities, entity(
+			ref := "ansible/task/" + name
+			ent := entity(
 				"SCOPE.Operation", name, "task",
-				"ansible/task/"+name,
+				ref,
 				file.Path, "yaml", tStart, tEnd,
-			))
+			)
+			addContains(&ent, ref)
+			entities = append(entities, ent)
 		}
 
 	case "handlers":
@@ -1272,11 +1401,14 @@ func extractAnsibleSectionPairs(p *sitter.Node, file extractor.FileInput, src []
 				continue
 			}
 			hStart, hEnd := pairsLineRange(hPairs)
-			entities = append(entities, entity(
+			ref := "ansible/handler/" + name
+			ent := entity(
 				"SCOPE.Operation", name, "handler",
-				"ansible/handler/"+name,
+				ref,
 				file.Path, "yaml", hStart, hEnd,
-			))
+			)
+			addContains(&ent, ref)
+			entities = append(entities, ent)
 		}
 
 	case "roles":
@@ -1296,11 +1428,14 @@ func extractAnsibleSectionPairs(p *sitter.Node, file extractor.FileInput, src []
 			if roleName == "" {
 				continue
 			}
-			entities = append(entities, entity(
+			ref := "ansible/role/" + roleName
+			ent := entity(
 				"SCOPE.Component", roleName, "role",
-				"ansible/role/"+roleName,
+				ref,
 				file.Path, "yaml", startLine, endLine,
-			))
+			)
+			addContains(&ent, ref)
+			entities = append(entities, ent)
 		}
 
 		// Also handle roles as mappings with role: key.
@@ -1311,11 +1446,14 @@ func extractAnsibleSectionPairs(p *sitter.Node, file extractor.FileInput, src []
 				continue
 			}
 			rStart, rEnd := pairsLineRange(rPairs)
-			entities = append(entities, entity(
+			ref := "ansible/role/" + roleName
+			ent := entity(
 				"SCOPE.Component", roleName, "role",
-				"ansible/role/"+roleName,
+				ref,
 				file.Path, "yaml", rStart, rEnd,
-			))
+			)
+			addContains(&ent, ref)
+			entities = append(entities, ent)
 		}
 	}
 
