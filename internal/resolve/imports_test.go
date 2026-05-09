@@ -19,7 +19,7 @@ func importerRecord(file, modulePath string, props map[string]string) types.Enti
 		Relationships: []types.RelationshipRecord{{
 			FromID:     file,
 			ToID:       modulePath,
-			Kind:       ImportRelKind,
+			Kind:       importRelKind,
 			Properties: props,
 		}},
 	}
@@ -256,6 +256,111 @@ func TestResolveImports_AmbiguousModuleEntity(t *testing.T) {
 	// ambiguous condition.
 	if stats.CallsRewritten != 0 {
 		t.Fatalf("expected 0 rewrites under ambiguity, got %d", stats.CallsRewritten)
+	}
+}
+
+// TestResolveImports_MonorepoTopLevelCollision asserts the suffix-strip
+// in modulesForFile does NOT explode "tools.shared.helpers" into
+// "shared.helpers" / "helpers" — a monorepo could have an unrelated
+// top-level package "helpers" that would otherwise collide and either
+// resolve to the wrong entity or be demoted to ambiguous.
+//
+// Setup:
+//   - client/app.py does `from helpers import compute; compute()`
+//   - tools/shared/helpers.py defines a function compute (NOT the
+//     `helpers` package the caller meant to import)
+//   - The caller imports module "helpers" which is not in the corpus,
+//     so the rewrite should NOT happen.
+//
+// Pre-fix: modulesForFile("tools/shared/helpers.py") emitted
+// ["tools.shared.helpers", "shared.helpers", "helpers"], so the
+// (helpers, compute) tuple resolved to the unrelated tools entity.
+// Post-fix: only the precise dotted form (and a single allowlisted
+// source-root strip) is emitted, so no rewrite happens.
+func TestResolveImports_MonorepoTopLevelCollision(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "helpers.compute", map[string]string{
+			"local_name":    "compute",
+			"source_module": "helpers",
+			"imported_name": "compute",
+		}),
+		// Unrelated entity buried under a deeper path. Only its precise
+		// dotted form ("tools.shared.helpers") should be indexed.
+		targetRecord("compute", "tools/shared/helpers.py", "4444444444444444"),
+		callerRecord("run", "client/app.py", "compute"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 0 {
+		t.Fatalf("expected 0 rewrites (unrelated monorepo entity must not collide), got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "compute" {
+		t.Fatalf("expected target unchanged, got %q", got)
+	}
+}
+
+// TestResolveImports_SrcPrefixStripped covers the conservative
+// allowlisted-prefix strip kept in modulesForFile: a file at
+// "src/requests/api.py" should still resolve when imported as
+// "requests.api".
+func TestResolveImports_SrcPrefixStripped(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "requests.api.get", map[string]string{
+			"local_name":    "get",
+			"source_module": "requests.api",
+			"imported_name": "get",
+		}),
+		targetRecord("get", "src/requests/api.py", "5555555555555555"),
+		callerRecord("run", "client/app.py", "get"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 rewrite via src/ prefix strip, got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "5555555555555555" {
+		t.Fatalf("expected target 5555555555555555, got %q", got)
+	}
+}
+
+// TestResolveImports_PlainImportAmbiguous asserts deterministic
+// non-resolution when two plain `import` statements both expose the
+// same bare name. The pre-fix code iterated the file bucket map and
+// short-circuited on the first hit — a non-deterministic pick across
+// runs. The post-fix collects all candidates and drops on >1.
+func TestResolveImports_PlainImportAmbiguous(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "alpha", map[string]string{
+			"local_name":    "alpha",
+			"source_module": "alpha",
+			"imported_name": "alpha",
+		}),
+		importerRecord("client/app.py", "beta", map[string]string{
+			"local_name":    "beta",
+			"source_module": "beta",
+			"imported_name": "beta",
+		}),
+		// Both alpha and beta export a function named `tick`.
+		targetRecord("tick", "alpha/__init__.py", "6666666666666666"),
+		targetRecord("tick", "beta/__init__.py", "7777777777777777"),
+		callerRecord("run", "client/app.py", "tick"),
+	}
+	// Run repeatedly — pre-fix this would flap between the two IDs
+	// depending on Go's randomised map iteration order. Post-fix it
+	// must always drop (rewritten==0).
+	for i := 0; i < 16; i++ {
+		// Reset the caller's CALLS edge each iteration so any rewrite
+		// from a previous iteration doesn't mask flakiness.
+		records[4].Relationships[0].ToID = "tick"
+		tbl := BuildImportTable(records)
+		stats := ResolveImports(records, tbl)
+		if stats.CallsRewritten != 0 {
+			t.Fatalf("iter %d: expected 0 rewrites under plain-import ambiguity, got %d (target=%q)",
+				i, stats.CallsRewritten, records[4].Relationships[0].ToID)
+		}
+		if got := records[4].Relationships[0].ToID; got != "tick" {
+			t.Fatalf("iter %d: expected target unchanged, got %q", i, got)
+		}
 	}
 }
 
