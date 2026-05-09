@@ -295,6 +295,34 @@ func collectImportStems(root *sitter.Node, src []byte) map[string]bool {
 	return stems
 }
 
+// receiverParamName extracts the bound parameter name from a method's receiver
+// list. For `(mx *Mux) Foo()` it returns "mx"; for `(*Mux) Foo()` (anonymous
+// receiver — legal in Go but rare) it returns "". Used by issue #148's same-
+// package method-dispatch resolver path: when a call expression's operand
+// matches this name, the call is resolvable via `<package>.<receiver_type>.<method>`.
+func receiverParamName(recv *sitter.Node, src []byte) string {
+	if recv == nil {
+		return ""
+	}
+	for _, paramDecl := range findAll(recv, "parameter_declaration") {
+		count := int(paramDecl.ChildCount())
+		// The parameter name is the first identifier child appearing
+		// BEFORE the type node (pointer_type / type_identifier / generic_type).
+		for i := 0; i < count; i++ {
+			child := paramDecl.Child(i)
+			if child.Type() == "identifier" {
+				return nodeText(child, src)
+			}
+			// Hit the type before any identifier → anonymous receiver.
+			switch child.Type() {
+			case "pointer_type", "type_identifier", "generic_type", "qualified_type":
+				return ""
+			}
+		}
+	}
+	return ""
+}
+
 // receiverTypeName extracts the base type name from a receiver parameter list.
 // The receiver AST is: parameter_list → parameter_declaration → [identifier, pointer_type|type_identifier|generic_type]
 // e.g. "(s *UserStore)" → "UserStore", "(u User)" → "User",
@@ -411,10 +439,12 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 			resultText = " " + nodeText(resultNode, src)
 		}
 
+		recvVarName := ""
 		if n.Type() == "method_declaration" {
 			entitySubtype = "method"
 			recvNode := n.ChildByFieldName("receiver")
 			receiverType = receiverTypeName(recvNode, src)
+			recvVarName = receiverParamName(recvNode, src)
 			recvText := ""
 			if recvNode != nil {
 				recvText = nodeText(recvNode, src)
@@ -475,7 +505,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 		// (issue #66): a method `(s *Foo) bar()` calling `bar()` should
 		// still suppress the self-edge even though the entity Name is now
 		// "Foo.bar".
-		relationships := extractCallRelationships(bodyOrNode, src, nameText)
+		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType)
 		// Rewrite FromID on each CALLS edge to the qualified Name so the
 		// edge source matches the entity ID downstream.
 		for i := range relationships {
@@ -529,7 +559,17 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 //
 // rule #6: unknown/external callees are emitted with the bare name
 // rather than being dropped.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+//
+// Issue #148: when callerName belongs to a method, recvVarName is the
+// receiver parameter's bound identifier (e.g. "mx" for `(mx *Mux) Foo()`)
+// and recvType is the receiver type (e.g. "Mux"). For each call expression
+// shaped like `<recvVarName>.<method>(...)`, the resulting CALLS edge is
+// stamped with Properties["receiver_type"]=recvType so the resolver can
+// bind the bare-name target to the same-package `<recvType>.<method>`
+// entity. Calls on other selector operands (e.g. `other.foo()`, package-
+// qualified calls) are NOT stamped — the heuristic is intentionally
+// conservative to avoid false same-package binds (Refs #94 lesson).
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -543,7 +583,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 
 	for _, call := range calls {
-		target := callExpressionTarget(call, src)
+		target, isSelfReceiver := callExpressionTargetWithReceiver(call, src, recvVarName)
 		if target == "" {
 			continue
 		}
@@ -556,11 +596,15 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 			continue
 		}
 		seen[target] = true
-		rels = append(rels, types.RelationshipRecord{
+		rec := types.RelationshipRecord{
 			FromID: callerName,
 			ToID:   target,
 			Kind:   "CALLS",
-		})
+		}
+		if isSelfReceiver && recvType != "" {
+			rec.Properties = map[string]string{"receiver_type": recvType}
+		}
+		rels = append(rels, rec)
 	}
 	return rels
 }
@@ -570,33 +614,54 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 // prefix. Returns "" if the call node has no resolvable function child
 // (e.g., higher-order call on a literal expression like `f()()`).
 func callExpressionTarget(call *sitter.Node, src []byte) string {
+	target, _ := callExpressionTargetWithReceiver(call, src, "")
+	return target
+}
+
+// callExpressionTargetWithReceiver is callExpressionTarget plus a same-receiver
+// flag (issue #148). When recvVarName is non-empty and the call is a
+// selector_expression whose operand is the identifier recvVarName, the second
+// return is true — signalling the call dispatches to a method on the
+// enclosing method's own receiver. Used by extractCallRelationships to stamp
+// `receiver_type` on the CALLS edge.
+func callExpressionTargetWithReceiver(call *sitter.Node, src []byte, recvVarName string) (string, bool) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
-		return ""
+		return "", false
 	}
 	switch fn.Type() {
 	case "identifier":
-		return nodeText(fn, src)
+		return nodeText(fn, src), false
 	case "selector_expression":
 		field := fn.ChildByFieldName("field")
-		if field != nil {
-			return nodeText(field, src)
+		if field == nil {
+			return "", false
 		}
+		name := nodeText(field, src)
+		isSelf := false
+		if recvVarName != "" {
+			if op := fn.ChildByFieldName("operand"); op != nil && op.Type() == "identifier" {
+				if nodeText(op, src) == recvVarName {
+					isSelf = true
+				}
+			}
+		}
+		return name, isSelf
 	case "parenthesized_expression":
 		// Rare: ((some.Expr))() — drill in one level.
 		for i := 0; i < int(fn.ChildCount()); i++ {
 			ch := fn.Child(i)
 			if ch.Type() == "identifier" {
-				return nodeText(ch, src)
+				return nodeText(ch, src), false
 			}
 			if ch.Type() == "selector_expression" {
 				if f := ch.ChildByFieldName("field"); f != nil {
-					return nodeText(f, src)
+					return nodeText(f, src), false
 				}
 			}
 		}
 	}
-	return ""
+	return "", false
 }
 
 // typeIndex captures the set of schema entities and their method sets

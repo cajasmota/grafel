@@ -1089,3 +1089,79 @@ func TestReferences_PythonClassContainsStructuralRef(t *testing.T) {
 		t.Fatalf("expected 2 rewrites, got %+v", stats)
 	}
 }
+
+// Issue #148 — Go same-package method dispatch.
+//
+// Inside chi's own files, `(mx *Mux) Mount` calls `mx.handle(...)` which the
+// Go extractor emits as CALLS edge ToID="handle" with
+// Properties["receiver_type"]="Mux". Without same-package method dispatch
+// this bare-name call collides with same-named methods on unrelated types
+// and lands in bug-resolver. The resolver must use the receiver_type stamp
+// plus the source file's package directory to pin the call to
+// `<package>/Mux.handle`.
+func TestReferencesEmbedded_GoSamePackageMethodDispatch(t *testing.T) {
+	records := []types.EntityRecord{
+		// Method receiver type lives in mux.go; methods Mount + handle in tree.go
+		// — same package directory ("chi"). The receiver_type+pkg lookup must
+		// span sibling files in the same directory, not just the caller file.
+		{ID: "aaaaaaaaaaaaaaaa", Kind: "Schema", Name: "Mux", SourceFile: "chi/mux.go", Language: "go"},
+		{ID: "bbbbbbbbbbbbbbbb", Kind: "SCOPE.Operation", Name: "Mux.handle", SourceFile: "chi/tree.go", Language: "go"},
+		{
+			ID:         "cccccccccccccccc",
+			Kind:       "SCOPE.Operation",
+			Name:       "Mux.Mount",
+			SourceFile: "chi/tree.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID:     "cccccccccccccccc",
+					ToID:       "handle",
+					Kind:       "CALLS",
+					Properties: map[string]string{"language": "go", "receiver_type": "Mux"},
+				},
+			},
+		},
+		// Decoy: an unrelated type with a same-named method in a DIFFERENT
+		// package directory. Without the package-scoped index a global
+		// bare-name lookup would either pick this entity or flag ambiguity.
+		{ID: "dddddddddddddddd", Kind: "SCOPE.Operation", Name: "OtherType.handle", SourceFile: "other/store.go", Language: "go"},
+	}
+	idx := BuildIndex(records)
+	stats := ReferencesEmbedded(records, idx)
+	got := records[2].Relationships[0].ToID
+	if got != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("issue #148: same-package Mux.handle not resolved; ToID=%s, want bbbbbbbbbbbbbbbb", got)
+	}
+	if stats.Rewritten < 1 {
+		t.Fatalf("expected >=1 rewrite, got %+v", stats)
+	}
+}
+
+// Issue #148 negative case — receiver_type stamp without a same-package
+// match must NOT resolve to a foreign-package method of the same name.
+func TestReferencesEmbedded_GoSamePackageMethodDispatch_NoFalseBind(t *testing.T) {
+	records := []types.EntityRecord{
+		{ID: "aaaaaaaaaaaaaaaa", Kind: "SCOPE.Operation", Name: "OtherType.handle", SourceFile: "other/store.go", Language: "go"},
+		{
+			ID:         "cccccccccccccccc",
+			Kind:       "SCOPE.Operation",
+			Name:       "Mux.Mount",
+			SourceFile: "chi/tree.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID:     "cccccccccccccccc",
+					ToID:       "handle",
+					Kind:       "CALLS",
+					Properties: map[string]string{"language": "go", "receiver_type": "Mux"},
+				},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	_ = ReferencesEmbedded(records, idx)
+	got := records[1].Relationships[0].ToID
+	if got == "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("issue #148: foreign-package OtherType.handle wrongly bound to Mux.handle call")
+	}
+}

@@ -105,6 +105,25 @@ func normalizePath(p string) string {
 	return filepath.ToSlash(p)
 }
 
+// pkgDirOf returns the directory portion of an already-slash-normalised
+// source file path, used as the package key for issue #148's same-package
+// method-dispatch index. A path with no separator (file in repo root)
+// returns "." so a caller in the root package still hits a non-empty
+// bucket; an empty input returns "". The result is in slash form to match
+// the rest of the resolver's identifiers.
+func pkgDirOf(p string) string {
+	if p == "" {
+		return ""
+	}
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		if i == 0 {
+			return "/"
+		}
+		return p[:i]
+	}
+	return "."
+}
+
 // Disposition classifies the outcome the resolver assigned to an individual
 // relationship endpoint. Every endpoint inspected by References() and
 // ReferencesEmbedded() falls into exactly one bucket. The bug-rate metric
@@ -592,6 +611,17 @@ type Index struct {
 	// level scopes (e.g. "Outer.Inner.foo" → scope="Outer.Inner",
 	// member="foo") survive — issue #68.
 	byMember map[string]map[string]map[string]string
+
+	// byPackageMember[pkg_dir][scope_name][member_name] = entity_id. Used
+	// by issue #148's Go same-package method-dispatch path. Go's compilation
+	// unit is the directory, so a method declared in `chi/mux.go` is in the
+	// same package as a call site in `chi/tree.go`. byMember alone (file-
+	// scoped) misses this; byPackageMember spans sibling files in one dir.
+	// Indexed only when an entity carries dotted Name "<scope>.<member>"
+	// AND a non-empty SourceFile. A blank-string sentinel marks (pkg, scope,
+	// member) collisions so the resolver leaves the stub alone instead of
+	// silently picking a wrong overload.
+	byPackageMember map[string]map[string]map[string]string
 }
 
 // LocationIndex maps file_path -> name -> entity_id, retaining only entries
@@ -791,6 +821,7 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		ambigLocation:   make(map[string]map[string]bool),
 		byLocationKind:  make(LocationKindIndex),
 		byMember:        make(map[string]map[string]map[string]string),
+		byPackageMember: make(map[string]map[string]map[string]string),
 		byQualifiedName: make(map[string]string),
 	}
 	for k := range entities {
@@ -938,6 +969,35 @@ func BuildIndex(entities []types.EntityRecord) Index {
 					scopeBucket[member] = "" // blank sentinel → ambiguous
 				} else {
 					scopeBucket[member] = e.ID
+				}
+
+				// Package-scoped member index (issue #148). Go's compilation
+				// unit is the directory, so methods on the same receiver
+				// type spread across sibling files share a package. Index
+				// under the dir of sourceFile so a CALLS edge from
+				// chi/tree.go can find Mux.handle declared in chi/mux.go.
+				// Only Go entities benefit from this (other languages
+				// resolve same-class methods via byMember already), but we
+				// index unconditionally — a (pkg_dir, scope, member) tuple
+				// from another language won't be probed because the
+				// receiver_type stamp is Go-extractor-only.
+				pkgDir := pkgDirOf(sourceFile)
+				if pkgDir != "" {
+					pkgBucket := idx.byPackageMember[pkgDir]
+					if pkgBucket == nil {
+						pkgBucket = make(map[string]map[string]string)
+						idx.byPackageMember[pkgDir] = pkgBucket
+					}
+					pkgScopeBucket := pkgBucket[scope]
+					if pkgScopeBucket == nil {
+						pkgScopeBucket = make(map[string]string)
+						pkgBucket[scope] = pkgScopeBucket
+					}
+					if existing, ok := pkgScopeBucket[member]; ok && existing != e.ID {
+						pkgScopeBucket[member] = "" // ambiguous within (pkg, scope, member)
+					} else {
+						pkgScopeBucket[member] = e.ID
+					}
 				}
 			}
 		}
@@ -1324,6 +1384,37 @@ func splitStub(s string) (kind, name string) {
 	return "", s
 }
 
+// lookupPackageMember probes the byPackageMember index (issue #148). When
+// pkgDir + receiverType + member resolves to a single entity ID, returns
+// (id, true). Returns ("", false) for missing entries; returns ("", true)
+// for the blank-sentinel ambiguous case so the caller can leave the stub
+// alone instead of falling back to global bare-name lookup (which would
+// risk binding to a foreign-package method of the same name).
+func (idx Index) lookupPackageMember(pkgDir, receiverType, member string) (string, bool) {
+	if pkgDir == "" || receiverType == "" || member == "" {
+		return "", false
+	}
+	pkgBucket := idx.byPackageMember[pkgDir]
+	if pkgBucket == nil {
+		return "", false
+	}
+	scopeBucket := pkgBucket[receiverType]
+	if scopeBucket == nil {
+		return "", false
+	}
+	id, ok := scopeBucket[member]
+	if !ok {
+		return "", false
+	}
+	// Blank sentinel = ambiguous; treat as "handled but not rewritten" so
+	// the caller does NOT fall through to a global bare-name lookup that
+	// might silently pick a foreign-package overload.
+	if id == "" {
+		return "", true
+	}
+	return id, true
+}
+
 // rewriteOne resolves a single endpoint reference. It returns the (possibly
 // rewritten) ID string and the status code from LookupStatusHint. Hex IDs
 // and empty strings short-circuit with a zero status, signalling "skip".
@@ -1697,6 +1788,10 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 		// without a language property because their parent entity already
 		// pins it.
 		parentLang := records[k].Language
+		// Issue #148 — same-package method-dispatch lookup needs the caller's
+		// package directory. Embedded edges are anchored on records[k] so the
+		// parent's SourceFile is the caller file.
+		parentPkgDir := pkgDirOf(normalizePath(records[k].SourceFile))
 		for j := range rels {
 			r := &rels[j]
 			lang := relLanguage(r)
@@ -1715,6 +1810,25 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 			}
 			if r.ToID != "" && !isHexID(r.ToID) {
 				orig := r.ToID
+				// Issue #148 — Go same-package method dispatch. When the
+				// extractor stamped Properties["receiver_type"] on a CALLS
+				// edge (a method calling another method on its own receiver),
+				// probe the package-scoped member index FIRST so a bare-name
+				// target like "handle" binds to the local "<pkg>/Mux.handle"
+				// rather than colliding with same-named methods elsewhere.
+				if recvType := r.Properties["receiver_type"]; recvType != "" && parentPkgDir != "" {
+					if id, ok := idx.lookupPackageMember(parentPkgDir, recvType, r.ToID); ok {
+						if id != "" {
+							r.ToID = id
+							applyEndpointStats(&stats, statusRewritten, false)
+							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
+							stats.recordDisposition(d, orig)
+							continue
+						}
+						// Ambiguous within (pkg, recv, member) — fall through
+						// to record as unmatched (preserve the stub).
+					}
+				}
 				newID, st := idx.rewriteOne(r.ToID, r.Kind)
 				r.ToID = newID
 				applyEndpointStats(&stats, st, false)
