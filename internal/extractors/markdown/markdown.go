@@ -5,6 +5,8 @@
 //   - SCOPE.Document   — one per file
 //   - SCOPE.Heading    — one per ATX heading (#, ##, ..., ######)
 //   - SCOPE.CodeBlock  — one per fenced code block (``` or ~~~)
+//   - SCOPE.Component  — one stub per unique relative-path link target
+//     (carries the IMPORTS edge below)
 //
 // And the following relationships:
 //
@@ -14,6 +16,10 @@
 //   - Heading  --REFERENCES--> <code-slug>  (one per backtick literal in heading text;
 //     ToID is a bare slug — a later cross-file
 //     pass can resolve it to a real entity ID)
+//   - file.Path --IMPORTS--> <relative-target> (one per unique [text](path) link
+//     whose target is a relative file path — i.e. not http/https/mailto/ftp,
+//     not a bare in-page #fragment. The target is resolved against the file's
+//     directory and any trailing #fragment is stripped.)
 //
 // v1 deliberately ignores: setext headings (=== / ---), inline code, links,
 // lists, tables, images, blockquotes, HTML blocks. Only ATX headings and
@@ -41,6 +47,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -87,7 +95,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		return nil, fmt.Errorf("markdown extractor: %w", err)
 	}
 
-	headings, codeBlocks := scan(lines)
+	headings, codeBlocks, links := scan(lines)
 
 	totalLines := len(lines)
 	docName := basename(file.Path)
@@ -242,15 +250,21 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		}
 	}
 
-	out := make([]types.EntityRecord, 0, 1+len(headingEntities)+len(codeEntities))
+	// Build IMPORTS stub entities — one SCOPE.Component per unique relative-path
+	// link target. Edge: file.Path --IMPORTS--> resolved target.
+	importEntities := buildImportEntities(file.Path, links)
+
+	out := make([]types.EntityRecord, 0, 1+len(headingEntities)+len(codeEntities)+len(importEntities))
 	out = append(out, doc)
 	out = append(out, headingEntities...)
 	out = append(out, codeEntities...)
+	out = append(out, importEntities...)
 
 	span.SetAttributes(
 		attribute.Int("entity_count", len(out)),
 		attribute.Int("heading_count", len(headingEntities)),
 		attribute.Int("codeblock_count", len(codeEntities)),
+		attribute.Int("import_count", len(importEntities)),
 	)
 	return out, nil
 }
@@ -273,15 +287,16 @@ type codeBlock struct {
 	byteCount int
 }
 
-// scan walks lines once and emits headings + code blocks.
+// scan walks lines once and emits headings + code blocks + link references.
 //
-// While inside a fenced block, ATX heading lines are NOT recognised.
-// A code-fence opener determines the closing fence token (``` or ~~~) and
-// the minimum length (>=3, must be matched by a closer of equal-or-greater length
-// using the same character).
-func scan(lines []string) ([]heading, []codeBlock) {
+// While inside a fenced block, ATX heading lines and inline links are NOT
+// recognised. A code-fence opener determines the closing fence token (``` or
+// ~~~) and the minimum length (>=3, must be matched by a closer of
+// equal-or-greater length using the same character).
+func scan(lines []string) ([]heading, []codeBlock, []linkRef) {
 	var headings []heading
 	var codeBlocks []codeBlock
+	var links []linkRef
 
 	inFence := false
 	var fenceChar byte
@@ -325,6 +340,13 @@ func scan(lines []string) ([]heading, []codeBlock) {
 		if h, ok := parseATXHeading(line, lineNo); ok {
 			headings = append(headings, h)
 		}
+
+		// Collect inline link targets on every non-fence line. Heading lines
+		// are intentionally included — a `## See [foo](./foo.md)` heading
+		// should still emit IMPORTS.
+		for _, t := range extractLinkTargets(line) {
+			links = append(links, linkRef{line: lineNo, target: t})
+		}
 	}
 
 	// Unclosed fence: terminate at EOF.
@@ -337,7 +359,140 @@ func scan(lines []string) ([]heading, []codeBlock) {
 		})
 	}
 
-	return headings, codeBlocks
+	return headings, codeBlocks, links
+}
+
+// linkRef is one inline-link target captured on a non-fence line.
+type linkRef struct {
+	line   int
+	target string // raw target text from `[text](target)` — pre-resolution
+}
+
+// linkRE matches an inline markdown link [text](target). The target capture
+// is intentionally lazy and forbids whitespace/parens so the regex stays
+// well-defined for nested-paren-free targets (sufficient for v1).
+var linkRE = regexp.MustCompile(`\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
+
+// extractLinkTargets returns the raw target text of every inline `[text](target)`
+// link on a single line. Targets are returned in source order. No URL/path
+// classification happens here — that's done at IMPORTS-emission time.
+func extractLinkTargets(line string) []string {
+	if !strings.Contains(line, "](") {
+		return nil
+	}
+	ms := linkRE.FindAllStringSubmatch(line, -1)
+	if len(ms) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		if len(m) >= 2 && m[1] != "" {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
+// buildImportEntities turns each unique relative-path link target into a
+// SCOPE.Component import-stub entity carrying a single IMPORTS edge from
+// file.Path → resolved target. Targets that are absolute URLs (http:, https:,
+// mailto:, ftp:, etc.), bare in-page fragments (#section), or empty after
+// fragment-stripping are skipped. Trailing `#fragment` and `?query` parts are
+// stripped before resolution.
+//
+// Path resolution is forward-slash only and uses path.Clean against the
+// markdown file's directory. Absolute targets ("/foo.md") are kept verbatim
+// (without the leading slash) — they're treated as repo-root-relative.
+func buildImportEntities(filePath string, links []linkRef) []types.EntityRecord {
+	if len(links) == 0 {
+		return nil
+	}
+	dir := path.Dir(filePath)
+	if dir == "." {
+		dir = ""
+	}
+	seen := make(map[string]bool, len(links))
+	out := make([]types.EntityRecord, 0, len(links))
+	for _, lr := range links {
+		resolved, ok := resolveImportTarget(dir, lr.target)
+		if !ok {
+			continue
+		}
+		if seen[resolved] {
+			continue
+		}
+		seen[resolved] = true
+
+		out = append(out, types.EntityRecord{
+			Name:       path.Base(resolved),
+			Kind:       "SCOPE.Component",
+			Subtype:    "import",
+			SourceFile: filePath,
+			Language:   langName,
+			StartLine:  lr.line,
+			EndLine:    lr.line,
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID: filePath,
+					ToID:   resolved,
+					Kind:   "IMPORTS",
+					Properties: map[string]string{
+						"source_module": resolved,
+						"imported_name": path.Base(resolved),
+						"import_kind":   "link",
+					},
+				},
+			},
+		})
+	}
+	return out
+}
+
+// urlSchemeRE matches a leading URL scheme like "http:", "https:", "mailto:",
+// "ftp:", "tel:", "ssh:", "git:", "irc:", "file:" — i.e. any RFC 3986 scheme.
+// We use this to reject external links from the IMPORTS set.
+var urlSchemeRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.\-]*:`)
+
+// resolveImportTarget classifies a raw link target and (if it's a relative
+// file path) resolves it against dir. Returns ("", false) for targets that
+// must not produce an IMPORTS edge.
+func resolveImportTarget(dir, raw string) (string, bool) {
+	t := strings.TrimSpace(raw)
+	if t == "" {
+		return "", false
+	}
+	// Bare in-page fragment.
+	if strings.HasPrefix(t, "#") {
+		return "", false
+	}
+	// Strip trailing #fragment and ?query.
+	if i := strings.IndexByte(t, '#'); i >= 0 {
+		t = t[:i]
+	}
+	if i := strings.IndexByte(t, '?'); i >= 0 {
+		t = t[:i]
+	}
+	if t == "" {
+		return "", false
+	}
+	// Protocol-relative URL.
+	if strings.HasPrefix(t, "//") {
+		return "", false
+	}
+	// Any URL with a scheme (http:, https:, mailto:, etc.).
+	if urlSchemeRE.MatchString(t) {
+		return "", false
+	}
+	// Repo-root-absolute: drop leading slash.
+	if strings.HasPrefix(t, "/") {
+		t = strings.TrimLeft(t, "/")
+		return path.Clean(t), t != ""
+	}
+	// Relative to file's directory.
+	if dir == "" {
+		return path.Clean(t), true
+	}
+	return path.Clean(dir + "/" + t), true
 }
 
 // parseATXHeading recognises lines like "# text", "## text", up to "######".
