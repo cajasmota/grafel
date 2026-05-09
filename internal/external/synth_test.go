@@ -121,6 +121,38 @@ func TestSynthesize_StdlibBareName(t *testing.T) {
 	}
 }
 
+// TestSynthesize_ReflectionBuiltinsLeftAlone is the issue #95 regression
+// guard at the synthesiser layer. Python reflection builtins (getattr /
+// setattr / hasattr / delattr / eval / exec / compile / __import__) used
+// to live in stdlibBareNames and got rewritten to "ext:builtins" before
+// the resolver's dynamic-pattern catalog could see them. The fix removes
+// them from the stop-list — the synthesiser must now leave the stub
+// untouched so the resolver classifies it as DispositionDynamic.
+func TestSynthesize_ReflectionBuiltinsLeftAlone(t *testing.T) {
+	reflectionBuiltins := []string{
+		"getattr", "setattr", "hasattr", "delattr",
+		"eval", "exec", "compile", "__import__",
+	}
+	for _, name := range reflectionBuiltins {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			doc := &graph.Document{
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "app.py", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 0 {
+				t.Fatalf("%s: synthesized=%d, want 0", name, stats.Synthesized)
+			}
+			if doc.Relationships[0].ToID != name {
+				t.Fatalf("%s: ToID rewritten to %q (want %q preserved)",
+					name, doc.Relationships[0].ToID, name)
+			}
+		})
+	}
+}
+
 // TestSynthesize_UnknownLeftAlone confirms truly-unknown stubs are
 // neither rewritten nor synthesised — they continue to count as
 // "unmatched" upstream.

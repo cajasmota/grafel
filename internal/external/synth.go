@@ -426,20 +426,23 @@ var stdlibBareNames = map[string]struct{}{
 	"Panicf":  {},
 	// Python builtins (PEP 3102 / builtins module). Keep
 	// alphabetical for review.
-	"abs":        {},
-	"all":        {},
-	"any":        {},
-	"bool":       {},
-	"callable":   {},
-	"chr":        {},
-	"dict":       {},
-	"enumerate":  {},
-	"filter":     {},
-	"float":      {},
-	"format":     {},
-	"frozenset":  {},
-	"getattr":    {},
-	"hasattr":    {},
+	"abs":       {},
+	"all":       {},
+	"any":       {},
+	"bool":      {},
+	"callable":  {},
+	"chr":       {},
+	"dict":      {},
+	"enumerate": {},
+	"filter":    {},
+	"float":     {},
+	"format":    {},
+	"frozenset": {},
+	// Reflection builtins (getattr/setattr/hasattr/delattr/eval/exec/
+	// compile/__import__) deliberately excluded — they are dynamic-
+	// dispatch primitives, not external imports. The resolver classifier
+	// matches them against the per-language dynamic-pattern catalog and
+	// tags them DispositionDynamic (Refs #95).
 	"hash":       {},
 	"id":         {},
 	"int":        {},
@@ -462,7 +465,6 @@ var stdlibBareNames = map[string]struct{}{
 	"reversed":   {},
 	"round":      {},
 	"set":        {},
-	"setattr":    {},
 	"slice":      {},
 	"sorted":     {},
 	"str":        {},
@@ -539,7 +541,6 @@ var stdlibBareNames = map[string]struct{}{
 	"getcwd":          {},
 	"listdir":         {},
 	"makedirs":        {},
-	"__import__":      {},
 	"deepcopy":        {},
 	"deque":           {},
 	"defaultdict":     {},
