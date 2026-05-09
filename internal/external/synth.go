@@ -763,20 +763,20 @@ var knownExternalPackages = map[string]struct{}{
 	// Java EE / Jakarta (Issue #91 — Spring/JPA imports)
 	"jakarta": {}, // jakarta.persistence, jakarta.validation
 	// Rust crates (Issue #91 — top Rust import-bug roots)
-	"tokio":               {},
-	"actix_web":           {},
-	"actix":               {},
-	"serde":               {},
-	"serde_json":          {},
-	"anyhow":              {},
-	"thiserror":           {},
-	"tracing":             {},
-	"tracing_subscriber":  {},
-	"clap":                {},
-	"reqwest":             {},
-	"futures":             {},
-	"async_trait":         {},
-	"opentelemetry":       {},
+	"tokio":              {},
+	"actix_web":          {},
+	"actix":              {},
+	"serde":              {},
+	"serde_json":         {},
+	"anyhow":             {},
+	"thiserror":          {},
+	"tracing":            {},
+	"tracing_subscriber": {},
+	"clap":               {},
+	"reqwest":            {},
+	"futures":            {},
+	"async_trait":        {},
+	"opentelemetry":      {},
 	// NOTE (Issue #91): PHP namespace roots (Symfony\, Doctrine\, App\)
 	// and Rust `::`-delimited use statements (tokio::net::TcpListener)
 	// are NOT catalogued here because the synth segment-extractor only
