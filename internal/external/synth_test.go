@@ -1068,3 +1068,137 @@ func TestGoBareNames_UnknownGoMethodFallsThrough(t *testing.T) {
 			doc.Relationships[0].ToID, name)
 	}
 }
+
+// TestRustBareNames_ClassifiedWhenLangIsRust covers issue #108: Rust
+// prelude items (Ok/Err/Some/None, Box/Vec, Result/Option, ...) and
+// post-receiver-strip prelude methods (clone/unwrap/to_string, ...)
+// and prelude macros (vec/println/format) must classify as stdlib
+// bare-names — but only when the source entity's language is "rust".
+// One representative name per category is exercised; the full list is
+// asserted via the map-membership unit test below.
+func TestRustBareNames_ClassifiedWhenLangIsRust(t *testing.T) {
+	names := []string{
+		// PascalCase prelude (types & traits)
+		"Ok", "Err", "Some", "None", "Box", "Vec", "Result", "Option",
+		"String", "Default", "From", "Into", "TryFrom", "TryInto",
+		"Iterator", "IntoIterator", "ToString", "ToOwned", "Clone",
+		"Copy", "Debug", "Display", "Send", "Sync", "Sized", "Drop",
+		"Fn", "FnMut", "FnOnce",
+		// Lowercase prelude methods (post-receiver-strip)
+		"clone", "unwrap", "unwrap_or", "unwrap_or_default",
+		"unwrap_or_else", "expect", "into", "as_ref", "as_mut", "as_str",
+		"to_string", "to_owned", "into_iter", "collect", "fold", "chain",
+		"count", "is_empty", "push", "pop", "remove", "get", "contains",
+		"is_some", "is_none", "is_ok", "is_err", "ok", "err", "take",
+		"replace", "swap", "drop", "default",
+		// Macros (post-`!` strip)
+		"vec", "println", "eprintln", "eprint", "write", "writeln",
+		"panic", "todo", "unimplemented", "unreachable", "dbg", "assert",
+		"debug_assert", "matches",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "rust")
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"rust\") = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"rust\") subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "rust-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "rust",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "rust-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestRustBareNames_NotClassifiedForOtherLanguages confirms the
+// language gate: Rust-only prelude names (especially the risky
+// lowercase methods like `clone`, `get`, `push`) must NOT be rewritten
+// when the source entity's language is anything other than "rust".
+// Without the gate, a user-defined `clone()` method on a Go type or a
+// JS `push` array call could be shadowed by a synthesised placeholder
+// (#94 lesson — bias toward misses).
+func TestRustBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Names that DON'T also appear in language-agnostic stdlibBareNames.
+	// (`vec`/`println`/`Ok`/`clone` etc. — none of these are global.)
+	names := []string{"Ok", "Err", "Some", "None", "Vec", "clone", "unwrap", "vec", "println", "to_string"}
+	otherLangs := []string{"go", "python", "javascript", "java", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang); ok {
+					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+						"(name is gated to lang=\"rust\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Rust)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestRustBareNames_UnknownRustMethodFallsThrough confirms that a
+// Rust-source bare-name call that ISN'T in the rustBareNames allowlist
+// still falls through normally, so genuine missing-resolution bugs
+// continue to surface in bug-extractor.
+func TestRustBareNames_UnknownRustMethodFallsThrough(t *testing.T) {
+	name := "MyCustomFn" // Not prelude; user-defined.
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "rust-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "rust",
+		}},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "rust-src", ToID: name, Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("Synthesize(%q): synthesized=%d, want 0 (unknown user fn)", name, stats.Synthesized)
+	}
+	if doc.Relationships[0].ToID != name {
+		t.Fatalf("ToID=%q, want %q (unknown name must not be rewritten)",
+			doc.Relationships[0].ToID, name)
+	}
+}
