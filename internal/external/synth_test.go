@@ -1637,3 +1637,144 @@ func TestIoKtorKnownExternalPackage(t *testing.T) {
 		t.Fatal("IsKnownExternalPackage(\"IO.KTOR\") = false; want case-folded match")
 	}
 }
+
+// TestJSBareNames_ClassifiedWhenLangIsJSOrTS covers issue #104:
+// Prisma ORM client method names and JS/TS array/util builtins
+// (post-receiver-strip) classify as stdlib bare-names — but only
+// when the source entity's language is "javascript" or "typescript".
+func TestJSBareNames_ClassifiedWhenLangIsJSOrTS(t *testing.T) {
+	names := []string{
+		// Prisma ORM client method surface
+		"findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow",
+		"findMany", "createMany", "updateMany", "deleteMany", "upsert",
+		"aggregate", "groupBy", "executeRaw", "executeRawUnsafe",
+		"queryRaw", "queryRawUnsafe",
+		// `$`-prefixed Prisma client methods
+		"$connect", "$disconnect", "$transaction", "$queryRaw",
+		"$executeRaw", "$on", "$use",
+		// Array / util builtins
+		"some", "every", "push", "trim", "isArray",
+	}
+	for _, name := range names {
+		for _, lang := range []string{"javascript", "typescript"} {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				subtype, ok := stdlibFunction(name, lang)
+				if !ok {
+					t.Fatalf("stdlibFunction(%q, %q) = (_, false); want classified", name, lang)
+				}
+				if subtype != "function" {
+					t.Fatalf("stdlibFunction(%q, %q) subtype=%q, want %q", name, lang, subtype, "function")
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "js-src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "js-src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 1 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 1", name, lang, stats.Synthesized)
+				}
+				want := "ext:" + name
+				if doc.Relationships[0].ToID != want {
+					t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+				}
+			})
+		}
+	}
+}
+
+// TestJSBareNames_NotClassifiedForOtherLanguages confirms the JS/TS
+// language gate: a Ruby user-method named `push`, a Go method named
+// `trim`, etc. must NOT be rewritten when source lang is neither
+// javascript nor typescript.
+func TestJSBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Names that are NOT in language-agnostic stdlibBareNames.
+	names := []string{"findUnique", "findMany", "upsert", "$transaction", "some", "every", "push", "trim", "isArray"}
+	otherLangs := []string{"go", "python", "ruby", "rust", "java", "kotlin", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			// `push` is on the language-specific allowlist for Rust
+			// (rustBareNames covers Vec/String#push). Skip the
+			// Rust-cross-check for that name; the JS/TS gate is what
+			// this test cares about.
+			if name == "push" && lang == "rust" {
+				continue
+			}
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang); ok {
+					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+						"(name is gated to JS/TS only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-JS/TS)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestJSBareNames_RejectedNamesNotClassified locks in the explicit
+// rejection list from issue #104: generic collection ops and overly
+// generic Prisma names collide with user methods on any class and
+// MUST NOT be in the JS/TS allowlist.
+func TestJSBareNames_RejectedNamesNotClassified(t *testing.T) {
+	rejected := []string{
+		// Generic collection ops shared with user methods
+		"map", "filter", "forEach", "reduce", "find", "length", "size",
+		// Generic Prisma names that overlap with non-Prisma domain
+		// methods (services, controllers, factories).
+		"create", "update", "delete", "count",
+	}
+	for _, name := range rejected {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, ok := jsBareNames[name]; ok {
+				t.Fatalf("jsBareNames[%q] present; must be rejected per issue #104 (collision-prone)", name)
+			}
+		})
+	}
+}
+
+// TestPrismaScopedKnownExternalPackage locks in the issue #104
+// addition of "@prisma" (covers @prisma/client, @prisma/extension-*,
+// etc.) to the external-package allowlist so @prisma/* references
+// classify as ExternalKnown rather than ExternalUnknown.
+func TestPrismaScopedKnownExternalPackage(t *testing.T) {
+	if !IsKnownExternalPackage("@prisma/client") {
+		t.Fatal("IsKnownExternalPackage(\"@prisma/client\") = false; want true (Issue #104)")
+	}
+	if !IsKnownExternalPackage("@PRISMA/CLIENT") {
+		t.Fatal("IsKnownExternalPackage(\"@PRISMA/CLIENT\") = false; want case-folded match")
+	}
+	if !IsKnownExternalPackage("prisma") {
+		t.Fatal("IsKnownExternalPackage(\"prisma\") = false; want true (Issue #104)")
+	}
+}
