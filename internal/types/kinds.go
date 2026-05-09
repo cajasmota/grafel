@@ -118,6 +118,10 @@ const (
 	// Documented-but-previously-undocumented relationship kinds (Issue #77):
 	RelationshipKindRenders RelationshipKind = "RENDERS"
 	RelationshipKindReturns RelationshipKind = "RETURNS"
+	// Issue #86: surfaced by the producer-boundary validator scan. Emitted
+	// by the OpenAPI pattern extractor to associate operations with their
+	// tag entities.
+	RelationshipKindTaggedAs RelationshipKind = "TAGGED_AS"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -143,6 +147,7 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindWritesTo,
 		RelationshipKindRenders,
 		RelationshipKindReturns,
+		RelationshipKindTaggedAs,
 	}
 }
 
