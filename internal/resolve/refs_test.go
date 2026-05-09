@@ -966,3 +966,42 @@ func TestDiagnoseBugResolver(t *testing.T) {
 		}
 	})
 }
+
+// Issue #140 — Ruby class CONTAINS edges must use a structural-ref so that
+// same-named methods (e.g. Rails `create` in many controllers) resolve to
+// the file-local method rather than landing in the bug-resolver bucket.
+//
+// Two Ruby files each define a `create` method inside a class. The CONTAINS
+// edges from each class must rewrite to the matching file-local method ID,
+// not to the other file's `create`.
+func TestReferences_RubyClassContainsStructuralRef(t *testing.T) {
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "SCOPE.Component", "UsersController", "app/controllers/users_controller.rb"),
+		entAt("bbbbbbbbbbbbbbbb", "SCOPE.Operation", "create", "app/controllers/users_controller.rb"),
+		entAt("cccccccccccccccc", "SCOPE.Component", "PostsController", "app/controllers/posts_controller.rb"),
+		entAt("dddddddddddddddd", "SCOPE.Operation", "create", "app/controllers/posts_controller.rb"),
+	}
+	rels := []types.RelationshipRecord{
+		{
+			FromID: "aaaaaaaaaaaaaaaa",
+			ToID:   "scope:operation:method:ruby:app/controllers/users_controller.rb:create",
+			Kind:   "CONTAINS",
+		},
+		{
+			FromID: "cccccccccccccccc",
+			ToID:   "scope:operation:method:ruby:app/controllers/posts_controller.rb:create",
+			Kind:   "CONTAINS",
+		},
+	}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("users#create: ToID=%s, want bbbbbbbbbbbbbbbb", rels[0].ToID)
+	}
+	if rels[1].ToID != "dddddddddddddddd" {
+		t.Fatalf("posts#create: ToID=%s, want dddddddddddddddd", rels[1].ToID)
+	}
+	if stats.Rewritten != 2 {
+		t.Fatalf("expected 2 rewrites, got %+v", stats)
+	}
+}
