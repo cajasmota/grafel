@@ -758,6 +758,11 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 			return "function", true
 		}
 	}
+	if lang == "php" {
+		if _, ok := phpBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -2724,6 +2729,163 @@ var csharpBareNames = map[string]struct{}{
 	"GetService":           {},
 	"GetServices":          {},
 	"BuildServiceProvider": {},
+}
+
+// phpBareNames is the PHP-language-gated bare-name stop-list (issue
+// #439). The PHP extractor receiver-strips Laravel / Symfony DSL calls
+// (`$user->save()` → `save`, `User::find($id)` → `find`,
+// `Route::get('/x', ...)` → `get`/`post`/etc., `$this->render(...)` →
+// `render`, `Cache::remember(...)` → `remember`) and the resolver
+// can't bind the bare leaf to a local entity, so it lands in
+// bug-extractor.
+//
+// Mirrors the Kotlin Ktor (#435) and Swift Vapor (#436) precedents:
+// the language gate (lang == "php") is the safety net that keeps
+// generic verbs like `find`/`save`/`update`/`render` from shadowing
+// user-defined methods in Go/JS/Python/Ruby/Kotlin/Swift codebases.
+//
+// Conservative selection (lessons from #94 / #105 / #106): names
+// already classified by the language-agnostic stdlibBareNames map
+// (`filter`, `map`, `set`, `range`, `join`, `Response`) are NOT
+// duplicated here — they classify globally before the php gate fires.
+//
+// Deliberately OMITTED (issue #439 spec, "REJECT" list):
+//   - HTTP verb bare names `get` / `post` / `put` / `delete`. Although
+//     these are emitted by Laravel `Route::get(...)`, in PHP source
+//     they collide trivially with Eloquent attribute-accessor patterns
+//     (`$model->get('name')`) and PSR-7 ServerRequest accessors. The
+//     #94 / #106 safer-bias rule applies: a missed Route classification
+//     is strictly better than shadowing a real `->get()`/`->delete()`
+//     user method.
+//
+// Categories:
+//   - Eloquent ORM persistence + query builder (`find`/`save`/`where`/
+//     `with`/`paginate`/`pluck`/...).
+//   - Symfony Controller helpers (`render`/`redirectToRoute`/
+//     `createForm`/`generateUrl`/...).
+//   - Laravel facade DSL leaves (`routes`/`middleware`/`controller`/
+//     `domain`/`prefix`).
+//   - Laravel global helpers (`config`/`env`/`route`/`auth`/`request`/
+//     `view`/`response`/`back`/`old`/...).
+var phpBareNames = map[string]struct{}{
+	// Eloquent ORM — persistence and lifecycle.
+	"find":          {},
+	"findOrFail":    {},
+	"findMany":      {},
+	"firstOrFail":   {},
+	"firstOrCreate": {},
+	"save":          {},
+	"update":        {},
+	"delete":        {}, // Eloquent model destructor; receiver-stripped from `$model->delete()`.
+	"forceDelete":   {},
+	"restore":       {},
+	"create":        {},
+	"make":          {},
+	"fill":          {},
+	"refresh":       {},
+	"fresh":         {},
+	"replicate":     {},
+	"is":            {},
+	"isNot":         {},
+	"belongsTo":     {},
+	"belongsToMany": {},
+	"hasMany":       {},
+	"hasOne":        {},
+	"morphTo":       {},
+	"morphMany":     {},
+	"morphOne":      {},
+
+	// Eloquent / query builder — selection and filtering.
+	"where":        {},
+	"whereIn":      {},
+	"whereNotIn":   {},
+	"whereHas":     {},
+	"whereNull":    {},
+	"whereNotNull": {},
+	"whereBetween": {},
+	"whereDate":    {},
+	"with":         {},
+	"without":      {},
+	"orderBy":      {},
+	"groupBy":      {},
+	"having":       {},
+	"limit":        {},
+	"take":         {},
+	"skip":         {},
+	"first":        {},
+	"latest":       {},
+	"oldest":       {},
+	"paginate":     {},
+	"count":        {},
+	"avg":          {},
+	"pluck":        {},
+	"chunk":        {},
+	"each":         {},
+	"select":       {},
+	"selectRaw":    {},
+	"union":        {},
+	"unionAll":     {},
+	"joinSub":      {},
+	"crossJoin":    {},
+	"leftJoin":     {},
+	"rightJoin":    {},
+	"joins":        {},
+
+	// Symfony AbstractController helpers (post-receiver-strip from
+	// `$this->render(...)` / `$this->redirectToRoute(...)`).
+	"render":                  {},
+	"redirectToRoute":         {},
+	"redirect":                {},
+	"createForm":              {},
+	"createFormBuilder":       {},
+	"addFlash":                {},
+	"denyAccessUnlessGranted": {},
+	"getUser":                 {},
+	"isGranted":               {},
+	"generateUrl":             {},
+	"json":                    {},
+	"file":                    {},
+	"forward":                 {},
+	"getDoctrine":             {},
+	"getParameter":            {},
+	"dispatchEvent":           {},
+
+	// Laravel facade DSL leaves — receiver is `Route::`, `Cache::`,
+	// `Storage::`, etc.; the leaf bare-name lands at the resolver.
+	"routes":     {},
+	"middleware": {},
+	"controller": {},
+	"domain":     {},
+	"prefix":     {},
+
+	// Laravel global helpers (functions in the Illuminate\Support
+	// namespace, autoloaded as bare callables in framework code).
+	"config":     {},
+	"env":        {},
+	"route":      {},
+	"url":        {},
+	"asset":      {},
+	"auth":       {},
+	"request":    {},
+	"session":    {},
+	"cookie":     {},
+	"view":       {},
+	"response":   {},
+	"back":       {},
+	"old":        {},
+	"csrf_token": {},
+	"csrf_field": {},
+	"dd":         {},
+	"dump":       {},
+	"now":        {},
+	"today":      {},
+	"app":        {},
+	"resolve":    {},
+	"event":      {},
+	"dispatch":   {},
+	"validator":  {},
+	"optional":   {},
+	"tap":        {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist
