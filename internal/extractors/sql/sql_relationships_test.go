@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -50,30 +51,43 @@ func findEntity(entities []types.EntityRecord, kind, name string) *types.EntityR
 }
 
 // TestSQLExtractor_ColumnEntitiesEmitted verifies columns are extracted.
+//
+// Issue #141: column entities are emitted with Name="<table>.<column>" so
+// EntityRecord.ComputeID is unique per (file, table, column). The short
+// column identifier is preserved in Properties["column"].
 func TestSQLExtractor_ColumnEntitiesEmitted(t *testing.T) {
 	src := loadFixture(t, "migration_001_init.sql")
 	entities := extractSQLBytes(t, src, "migrations/001_init.sql")
 
-	colNames := map[string]bool{}
+	shortNames := map[string]bool{}
 	for _, e := range entities {
 		if e.Subtype == "column" {
-			colNames[e.Name] = true
+			shortNames[e.Properties["column"]] = true
 			if e.Kind != "SCOPE.Schema" {
 				t.Errorf("column %q expected Kind=SCOPE.Schema, got %q", e.Name, e.Kind)
+			}
+			// Name must be qualified "<table>.<column>".
+			if got, want := e.Name, e.Properties["table"]+"."+e.Properties["column"]; got != want {
+				t.Errorf("column entity Name=%q, want %q (issue #141)", got, want)
 			}
 		}
 	}
 	for _, want := range []string{"id", "email", "account_id", "token", "event_kind"} {
-		if !colNames[want] {
+		if !shortNames[want] {
 			t.Errorf("expected column %q to be extracted", want)
 		}
 	}
 }
 
 // TestSQLExtractor_TableContainsColumns verifies CONTAINS edges.
+//
+// Issue #141: CONTAINS ToIDs are now Format B structural-refs of the form
+// "scope:schema:column:sql:<file>:<table>#<column>" so column-name targets
+// can no longer collide cross-language with operations of the same bare name.
 func TestSQLExtractor_TableContainsColumns(t *testing.T) {
 	src := loadFixture(t, "migration_001_init.sql")
-	entities := extractSQLBytes(t, src, "migrations/001_init.sql")
+	filePath := "migrations/001_init.sql"
+	entities := extractSQLBytes(t, src, filePath)
 
 	accounts := findEntity(entities, "SCOPE.Datastore", "accounts")
 	if accounts == nil {
@@ -81,15 +95,23 @@ func TestSQLExtractor_TableContainsColumns(t *testing.T) {
 	}
 	wantCols := map[string]bool{"id": false, "email": false, "created_at": false}
 	for _, r := range accounts.Relationships {
-		if r.Kind == "CONTAINS" {
-			if _, ok := wantCols[r.ToID]; ok {
-				wantCols[r.ToID] = true
-			}
+		if r.Kind != "CONTAINS" {
+			continue
+		}
+		// Validate structural-ref shape.
+		wantPrefix := "scope:schema:column:sql:" + filePath + ":accounts#"
+		if !strings.HasPrefix(r.ToID, wantPrefix) {
+			t.Errorf("CONTAINS ToID=%q, expected prefix %q (issue #141)", r.ToID, wantPrefix)
+			continue
+		}
+		col := strings.TrimPrefix(r.ToID, wantPrefix)
+		if _, ok := wantCols[col]; ok {
+			wantCols[col] = true
 		}
 	}
 	for col, found := range wantCols {
 		if !found {
-			t.Errorf("expected accounts CONTAINS %q", col)
+			t.Errorf("expected accounts CONTAINS column %q", col)
 		}
 	}
 }
@@ -103,7 +125,7 @@ func TestSQLExtractor_InlineForeignKey(t *testing.T) {
 	// on audit_log; pick the one whose Properties.table=sessions.
 	var found bool
 	for _, e := range entities {
-		if e.Subtype != "column" || e.Name != "account_id" {
+		if e.Subtype != "column" || e.Properties["column"] != "account_id" {
 			continue
 		}
 		if e.Properties["table"] != "sessions" {
@@ -114,6 +136,11 @@ func TestSQLExtractor_InlineForeignKey(t *testing.T) {
 				found = true
 				if r.Properties["reference_kind"] != "foreign_key" {
 					t.Errorf("expected reference_kind=foreign_key, got %q", r.Properties["reference_kind"])
+				}
+				// Issue #141: FromID must be a Format B structural-ref.
+				wantFrom := "scope:schema:column:sql:migrations/001_init.sql:sessions#account_id"
+				if r.FromID != wantFrom {
+					t.Errorf("REFERENCES FromID=%q, want %q", r.FromID, wantFrom)
 				}
 			}
 		}
@@ -135,7 +162,7 @@ func TestSQLExtractor_TableLevelForeignKey(t *testing.T) {
 	for col, expectTo := range wantPairs {
 		found := false
 		for _, e := range entities {
-			if e.Subtype != "column" || e.Name != col || e.Properties["table"] != "audit_log" {
+			if e.Subtype != "column" || e.Properties["column"] != col || e.Properties["table"] != "audit_log" {
 				continue
 			}
 			for _, r := range e.Relationships {
@@ -183,8 +210,8 @@ func TestSQLExtractor_NoStrayConstraintColumns(t *testing.T) {
 		if e.Subtype != "column" {
 			continue
 		}
-		if bad[e.Name] {
-			t.Errorf("column entity has keyword name %q", e.Name)
+		if bad[e.Properties["column"]] {
+			t.Errorf("column entity has keyword name %q", e.Properties["column"])
 		}
 	}
 }

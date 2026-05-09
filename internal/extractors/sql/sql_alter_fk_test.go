@@ -7,10 +7,11 @@ import (
 )
 
 // hasFK returns true when there is a column entity (table, col) with a
-// REFERENCES edge to (toTable, toCol).
+// REFERENCES edge to (toTable, toCol). Issue #141: column entity Name is
+// "<table>.<column>" so we match on Properties["column"] (short name).
 func hasFK(entities []types.EntityRecord, table, col, toTable, toCol string) bool {
 	for _, e := range entities {
-		if e.Subtype != "column" || e.Name != col {
+		if e.Subtype != "column" || e.Properties["column"] != col {
 			continue
 		}
 		if e.Properties == nil || e.Properties["table"] != table {
@@ -91,7 +92,7 @@ func TestSQLExtractor_AlterTableAddFK_AttachesToExistingColumn(t *testing.T) {
 
 	count := 0
 	for _, e := range entities {
-		if e.Subtype != "column" || e.Name != "user_id" {
+		if e.Subtype != "column" || e.Properties["column"] != "user_id" {
 			continue
 		}
 		if e.Properties != nil && e.Properties["table"] == "orders" {

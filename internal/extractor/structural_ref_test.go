@@ -53,3 +53,38 @@ func TestBuildOperationStructuralRef(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildSchemaColumnStructuralRef(t *testing.T) {
+	tests := []struct {
+		name     string
+		filePath string
+		table    string
+		column   string
+		want     string
+	}{
+		{
+			name:     "posix path",
+			filePath: "migrations/001_init.sql",
+			table:    "Pet",
+			column:   "name",
+			want:     "scope:schema:column:sql:migrations/001_init.sql:Pet#name",
+		},
+		{
+			name:     "windows path is normalized to forward slashes",
+			filePath: filepath.FromSlash("db/migrations/002.sql"),
+			table:    "owners",
+			column:   "id",
+			want:     "scope:schema:column:sql:db/migrations/002.sql:owners#id",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := BuildSchemaColumnStructuralRef(tc.filePath, tc.table, tc.column)
+			if got != tc.want {
+				t.Fatalf("BuildSchemaColumnStructuralRef(%q, %q, %q) = %q, want %q",
+					tc.filePath, tc.table, tc.column, got, tc.want)
+			}
+		})
+	}
+}

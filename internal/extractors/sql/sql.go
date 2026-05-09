@@ -120,11 +120,18 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 		}
 		columns, fks := parseTableBody(body, name, filePath, startLine)
 
+		// Issue #141: emit a structural-ref ToID (Format B) qualified by
+		// file + table so column-name CONTAINS edges no longer collide with
+		// same-named operations in other languages (e.g. Java methods named
+		// "name"). Resolved through Index.byMember[file][table][column];
+		// columns are emitted with Name="<table>.<column>" so the dotted-
+		// name split during BuildIndex populates that bucket.
 		var rels []types.RelationshipRecord
 		for _, col := range columns {
+			shortName := col.Properties["column"]
 			rels = append(rels, types.RelationshipRecord{
 				FromID: name,
-				ToID:   col.Name,
+				ToID:   extractor.BuildSchemaColumnStructuralRef(filePath, name, shortName),
 				Kind:   "CONTAINS",
 				Properties: map[string]string{
 					"contained_kind": "column",
@@ -146,14 +153,21 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 		})
 
 		// Column entities, each carrying FOREIGN_KEY REFERENCES edges if any.
+		// Issue #141: FromID uses the same Format B structural-ref as the
+		// table→column CONTAINS edge so the column collision class is
+		// removed from REFERENCES too. fk.FromColumn is the bare column
+		// identifier parsed from the FK declaration; match it against
+		// Properties["column"] (the short name) since col.Name is now the
+		// qualified "<table>.<column>".
 		for _, col := range columns {
 			var colRels []types.RelationshipRecord
+			shortName := col.Properties["column"]
 			for _, fk := range fks {
-				if fk.FromColumn != col.Name {
+				if fk.FromColumn != shortName {
 					continue
 				}
 				colRels = append(colRels, types.RelationshipRecord{
-					FromID: col.Name,
+					FromID: extractor.BuildSchemaColumnStructuralRef(filePath, name, shortName),
 					ToID:   fk.ToTable,
 					Kind:   "REFERENCES",
 					Properties: map[string]string{
@@ -192,8 +206,11 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 			if i < len(toCols) {
 				tc = toCols[i]
 			}
+			// Issue #141: FromID is a Format B structural-ref so the
+			// column-name collision class disappears for ALTER-TABLE FK
+			// emissions too.
 			rel := types.RelationshipRecord{
-				FromID: fc,
+				FromID: extractor.BuildSchemaColumnStructuralRef(filePath, fromTable, fc),
 				ToID:   toTable,
 				Kind:   "REFERENCES",
 				Properties: map[string]string{
@@ -205,13 +222,15 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 
 			// Attach to an existing column entity if one was emitted for this
 			// (table, column) pair. Otherwise emit a synthetic column entity.
+			// Match on Properties["column"] (short name) since e.Name is now
+			// the qualified "<table>.<column>".
 			attached := false
 			for j := range entities {
 				e := &entities[j]
-				if e.Subtype != "column" || e.Name != fc {
+				if e.Subtype != "column" {
 					continue
 				}
-				if e.Properties == nil || e.Properties["table"] != fromTable {
+				if e.Properties == nil || e.Properties["table"] != fromTable || e.Properties["column"] != fc {
 					continue
 				}
 				e.Relationships = append(e.Relationships, rel)
@@ -227,19 +246,21 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				continue
 			}
 			seen[altKey] = true
+			qualName := fromTable + "." + fc
 			entities = append(entities, types.EntityRecord{
-				Name:               fc,
+				Name:               qualName,
 				Kind:               "SCOPE.Schema",
 				Subtype:            "column",
 				SourceFile:         filePath,
 				Language:           "sql",
 				StartLine:          startLine,
 				EndLine:            startLine,
-				QualifiedName:      fromTable + "." + fc,
+				QualifiedName:      qualName,
 				Signature:          fmt.Sprintf("ALTER TABLE %s ADD FOREIGN KEY (%s) REFERENCES %s(%s)", fromTable, fc, toTable, tc),
 				EnrichmentRequired: false,
 				Properties: map[string]string{
-					"table": fromTable,
+					"table":  fromTable,
+					"column": fc,
 				},
 				Relationships: []types.RelationshipRecord{rel},
 			})
@@ -561,19 +582,29 @@ func parseTableBody(body, tableName, filePath string, tableStartLine int) ([]col
 			})
 		}
 
+		// Issue #141: column entity Name is qualified as "<table>.<column>"
+		// so EntityRecord.ComputeID (which hashes file+kind+name) produces
+		// distinct IDs for same-named columns on sibling tables in a single
+		// SQL file. The dotted Name also drives Index.byMember population
+		// (last-dot split → scope=table, member=column), enabling Format B
+		// structural-ref resolution for CONTAINS / REFERENCES edges. The
+		// short column name is preserved in Properties["column"] for
+		// downstream consumers that need it without re-parsing.
+		qualName := tableName + "." + colName
 		colEntity := types.EntityRecord{
-			Name:               colName,
+			Name:               qualName,
 			Kind:               "SCOPE.Schema",
 			Subtype:            "column",
 			SourceFile:         filePath,
 			Language:           "sql",
 			StartLine:          entryStartLine,
 			EndLine:            entryStartLine,
-			QualifiedName:      tableName + "." + colName,
+			QualifiedName:      qualName,
 			Signature:          strings.TrimSpace(entry),
 			EnrichmentRequired: false,
 			Properties: map[string]string{
-				"table": tableName,
+				"table":  tableName,
+				"column": colName,
 			},
 		}
 		cols = append(cols, colEntity)
