@@ -555,6 +555,17 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 			if _, ok := goTestifyBareNames[name]; ok {
 				return "function", true
 			}
+			// Issue #130 — testing.T helper methods (Helper/Cleanup/Setenv/
+			// Logf/Fatal/Fatalf/Errorf/Run/...) are receiver-stripped by the
+			// Go extractor (`t.Helper()` → `Helper`, `t.Run("sub", ...)` →
+			// `Run`) and collide with user-defined methods. Gate on the same
+			// `_test.go` suffix as testify: testing.T values exist outside
+			// `_test.go` only in rare framework code, and the suffix check
+			// keeps these names from shadowing user methods in production
+			// `.go` files. Same safer-bias rule as #94.
+			if _, ok := goTestingTBareNames[name]; ok {
+				return "function", true
+			}
 		}
 		// Issue #131 — go-chi router methods (Get/Post/Put/Delete/Mount/
 		// Group/Route/Use/...) are receiver-stripped by the Go extractor
@@ -891,6 +902,73 @@ var goTestifyBareNames = map[string]struct{}{
 	// httptest helper commonly imported alongside testify in `_test.go`.
 	// Multi-word PascalCase, no plausible user-method collision.
 	"NewRecorder": {},
+}
+
+// goTestingTBareNames is the Go stdlib `testing.T` helper-method bare-name
+// stop-list (issue #130). The Go testing API exposes test-lifecycle helpers
+// invoked through a *testing.T receiver (`t.Helper()`, `t.Cleanup(fn)`,
+// `t.Setenv("K", "V")`, `t.Run("sub", subFn)`); the Go extractor strips
+// the receiver and the resolver sees a bare PascalCase name (`Helper`,
+// `Cleanup`, `Setenv`, `Run`, ...). Without an allowlist these names
+// land in bug-extractor as unresolved CALLS edges in every Go test file.
+//
+// Gating: lookups in this map are reached ONLY when (a) the source
+// entity's language is "go" AND (b) the source file path ends in
+// `_test.go`. Both conditions are precise: `*testing.T` only exists in
+// `_test.go` files in idiomatic Go, and the suffix check
+// (strings.HasSuffix, NOT strings.Contains) avoids false hits on paths
+// like `internal/test/foo.go` or `internal/testutil/util.go`.
+//
+// Conservative selection rule, mirroring goBareNames / goTestifyBareNames:
+// include only names that are unambiguous testing.T method identifiers
+// in test-file context. `Errorf`, `Fatal`, `Fatalf` are intentionally
+// NOT duplicated here — stdlibBareNames classifies them globally before
+// the lang=="go" switch. `Error` likewise classifies via
+// goTestifyBareNames above. `Run` is
+// collision-prone in general (`Server.Run`, `Worker.Run`) but the dual
+// `_test.go` + `*testing.T`-context gate narrows the risk to the point
+// where the testing.T identity dominates in real corpora.
+var goTestingTBareNames = map[string]struct{}{
+	// Test-lifecycle helpers — uniquely tied to the testing.TB / *testing.T
+	// API. Multi-word or testing-idiom-only names with no plausible
+	// collision against domain types.
+	"Helper":   {},
+	"Cleanup":  {},
+	"Setenv":   {},
+	"Parallel": {},
+	"TempDir":  {},
+	"Deadline": {},
+
+	// Test-skipping helpers — testing-only verbs.
+	"Skip":    {},
+	"Skipf":   {},
+	"SkipNow": {},
+
+	// Test-failure helpers — `Fail` / `FailNow` are testing-only.
+	// `Fatal` / `Fatalf` / `Errorf` are intentionally NOT duplicated
+	// here — they already classify globally via stdlibBareNames (a
+	// language-agnostic match that fires before the lang=="go" switch),
+	// so adding them to this map would be dead code. Plain `Error` is
+	// likewise omitted — already classified via goTestifyBareNames.
+	"Fail":    {},
+	"FailNow": {},
+
+	// Logf is testing-only. Plain `Log` is collision-prone (logger.Log,
+	// audit.Log) so it is INCLUDED only because the `_test.go` suffix
+	// gate is strict — production loggers do not run in `_test.go` paths
+	// in the dominant idiom. Same safer-bias trade-off as `Contains` in
+	// goTestifyBareNames.
+	"Log":  {},
+	"Logf": {},
+
+	// Subtest dispatcher. Collision-prone in general (Server.Run,
+	// Command.Run) but `_test.go` + receiver-stripped from `*testing.T`
+	// dominates in real corpora.
+	"Run": {},
+
+	// Misc context accessors on *testing.T.
+	"Name":    {},
+	"Context": {},
 }
 
 // goChiRouterNames is the go-chi router-method bare-name stop-list
