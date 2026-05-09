@@ -1872,6 +1872,166 @@ func TestSwiftBareNames_UnknownSwiftMethodFallsThrough(t *testing.T) {
 	}
 }
 
+// TestCSharpAspNetCoreDSLBareNames_ClassifiedWhenLangIsCSharp covers
+// issue #441: ASP.NET Core MVC ControllerBase action helpers
+// (`return Ok(model)`, `BadRequest()`, `RedirectToAction(...)`), EF Core
+// LINQ query builders (`db.Users.Where(...).FirstOrDefaultAsync()`,
+// `Include(...)`, `ThenInclude(...)`), HttpContext / auth accessors
+// (`User`, `IsAuthenticated`, `HasClaim`), and DI helpers
+// (`GetRequiredService`) get receiver-stripped by the C# extractor and
+// land in bug-extractor. These names must classify as stdlib bare-names
+// — but only when the source entity's language is "csharp". Mirrors the
+// Swift Vapor DSL precedent (#436).
+func TestCSharpAspNetCoreDSLBareNames_ClassifiedWhenLangIsCSharp(t *testing.T) {
+	names := []string{
+		// ASP.NET Core MVC ControllerBase action helpers.
+		"Ok", "BadRequest", "Unauthorized", "Forbid", "Conflict",
+		"UnprocessableEntity", "RedirectToAction", "RedirectToRoute",
+		"RedirectToPage", "Redirect", "View", "PartialView", "Json",
+		"Content", "File", "PhysicalFile", "Created", "CreatedAtAction",
+		"CreatedAtRoute", "Accepted", "NoContent", "StatusCode",
+		"Problem", "ValidationProblem",
+		// EF Core / LINQ-to-Entities query and persistence builders.
+		"FirstOrDefault", "FirstOrDefaultAsync", "SingleOrDefault",
+		"SingleOrDefaultAsync", "First", "FirstAsync", "Single",
+		"SingleAsync", "ToList", "ToListAsync", "ToArray", "ToArrayAsync",
+		"Include", "ThenInclude", "Where", "Select", "SelectMany",
+		"OrderBy", "OrderByDescending", "ThenBy", "GroupBy", "Skip",
+		"Take", "Count", "CountAsync", "Sum", "SumAsync", "Average",
+		"Max", "Min", "Any", "All", "Find", "FindAsync", "AsNoTracking",
+		"AsQueryable", "SaveChanges", "SaveChangesAsync", "Add",
+		"AddAsync", "AddRange", "Update", "Remove", "RemoveRange",
+		"Attach", "Entry",
+		// HttpContext / IActionResult accessors.
+		"User", "Request", "Session", "Items", "Headers", "Cookies",
+		"Form", "Query",
+		// ASP.NET Core authentication helpers.
+		"SignIn", "SignOut", "Authenticate", "Challenge",
+		"IsAuthenticated", "HasClaim",
+		// Microsoft.Extensions.DependencyInjection helpers.
+		"GetRequiredService", "GetService", "GetServices",
+		"BuildServiceProvider",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "csharp", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"csharp\", nil) = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"csharp\", nil) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "csharp-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "csharp",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "csharp-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestCSharpAspNetCoreDSLBareNames_NotClassifiedForOtherLanguages
+// confirms the C# language gate holds for the issue #441 additions:
+// ASP.NET Core / EF Core DSL names must NOT be rewritten when the source
+// entity's language is anything other than "csharp". A JS user method
+// named `Where`, a Go method named `Add`, a Ruby `Find`, a Kotlin
+// `Update`, etc. must not be shadowed by the csharp gate.
+func TestCSharpAspNetCoreDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Pick names with the highest cross-language collision potential —
+	// generic verbs/accessors that exist as user methods in every
+	// ecosystem. Selection rule: each name MUST be unique to
+	// csharpBareNames (i.e. not in stdlibBareNames or any other
+	// language map), otherwise the cross-language gate test would
+	// trip on a different language's allowlist firing first.
+	names := []string{
+		"BadRequest", "Unauthorized", "Forbid", "Conflict",
+		"UnprocessableEntity", "RedirectToAction", "RedirectToRoute",
+		"RedirectToPage", "PartialView", "PhysicalFile",
+		"CreatedAtAction", "CreatedAtRoute", "ValidationProblem",
+		"FirstOrDefaultAsync", "SingleOrDefaultAsync", "ToListAsync",
+		"ToArrayAsync", "ThenInclude", "AsNoTracking", "AsQueryable",
+		"SaveChangesAsync", "AddRange", "RemoveRange", "FindAsync",
+		"GetRequiredService", "BuildServiceProvider", "HasClaim",
+		"IsAuthenticated",
+	}
+	otherLangs := []string{"go", "python", "javascript", "ruby", "rust", "java", "kotlin", "swift", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"csharp\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-C#)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestCSharpBareNames_UnknownCSharpMethodFallsThrough confirms that a
+// C#-source bare-name call that ISN'T in the csharpBareNames allowlist
+// still falls through normally, so genuine missing-resolution bugs
+// continue to surface in bug-extractor.
+func TestCSharpBareNames_UnknownCSharpMethodFallsThrough(t *testing.T) {
+	name := "MyCustomBusinessMethod" // Not ASP.NET/EF Core; user-defined.
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "csharp-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "csharp",
+		}},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "csharp-src", ToID: name, Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("Synthesize(%q): synthesized=%d, want 0 (unknown user fn)", name, stats.Synthesized)
+	}
+	if doc.Relationships[0].ToID != name {
+		t.Fatalf("ToID=%q, want %q (unknown name must not be rewritten)",
+			doc.Relationships[0].ToID, name)
+	}
+}
+
 // TestRubyBareNames_ClassifiedWhenLangIsRuby covers issue #107: Ruby
 // Object/Kernel instance methods (post-receiver-strip) classify as
 // stdlib bare-names — but only when the source entity's language is

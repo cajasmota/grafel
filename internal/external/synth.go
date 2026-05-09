@@ -753,6 +753,11 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 			return "function", true
 		}
 	}
+	if lang == "csharp" {
+		if _, ok := csharpBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -2559,6 +2564,166 @@ var swiftBareNames = map[string]struct{}{
 	"Int8":                 {},
 	"Int16":                {},
 	"Int32":                {},
+}
+
+// csharpBareNames is the C#-language-gated bare-name stop-list (issue
+// #441). The C# extractor strips the receiver from an ASP.NET Core MVC
+// or EF Core call (`return Ok(model)` from a Controller base class →
+// `Ok`, `db.Users.Where(...).FirstOrDefaultAsync()` → `Where` /
+// `FirstOrDefaultAsync`, `HttpContext.User.IsAuthenticated` → `User` /
+// `IsAuthenticated`), and the resolver can't bind the bare leaf to a
+// local entity, so it lands in bug-extractor.
+//
+// Mirrors the Swift Vapor / Kotlin Ktor DSL precedents (issues #436 /
+// #435): the language gate (lang == "csharp") is the safety net that
+// prevents generic verbs like `Add`/`Update`/`Remove`/`Find`/`Where`/
+// `Select`/`First` from shadowing user-defined methods in Go/JS/Java/
+// Kotlin codebases. ASP.NET Core MVC and EF Core method names dominate
+// the residual bug-extractor in real ASP.NET sample apps.
+//
+// Conservative selection (lessons from #94 / #105 / #106): names already
+// classified by the language-agnostic stdlibBareNames map (`Response`,
+// `NotFound`) are NOT duplicated here — they classify globally before
+// the csharp gate fires.
+//
+// Categories:
+//   - ASP.NET Core MVC ControllerBase action helpers (`Ok`, `BadRequest`,
+//     `Unauthorized`, `Forbid`, `Conflict`, `UnprocessableEntity`,
+//     `RedirectToAction`, `RedirectToRoute`, `RedirectToPage`,
+//     `Redirect`, `View`, `PartialView`, `Json`, `Content`, `File`,
+//     `PhysicalFile`, `Created`, `CreatedAtAction`, `CreatedAtRoute`,
+//     `Accepted`, `NoContent`, `StatusCode`, `Problem`,
+//     `ValidationProblem`).
+//   - EF Core / LINQ-to-Entities query and persistence builders
+//     (`FirstOrDefault`, `FirstOrDefaultAsync`, `SingleOrDefault`,
+//     `SingleOrDefaultAsync`, `First`, `FirstAsync`, `Single`,
+//     `SingleAsync`, `ToList`, `ToListAsync`, `ToArray`, `ToArrayAsync`,
+//     `Include`, `ThenInclude`, `Where`, `Select`, `SelectMany`,
+//     `OrderBy`, `OrderByDescending`, `ThenBy`, `GroupBy`, `Skip`,
+//     `Take`, `Count`, `CountAsync`, `Sum`, `SumAsync`, `Average`,
+//     `Max`, `Min`, `Any`, `All`, `Find`, `FindAsync`, `AsNoTracking`,
+//     `AsQueryable`, `SaveChanges`, `SaveChangesAsync`, `Add`,
+//     `AddAsync`, `AddRange`, `Update`, `Remove`, `RemoveRange`,
+//     `Attach`, `Entry`).
+//   - HttpContext / IActionResult accessors (`User`, `Request`,
+//     `Response`, `Session`, `Items`, `Headers`, `Cookies`, `Form`,
+//     `Query`).
+//   - ASP.NET Core authentication helpers (`SignIn`, `SignOut`,
+//     `Authenticate`, `Challenge`, `IsAuthenticated`, `HasClaim`).
+//   - Microsoft.Extensions.DependencyInjection helpers
+//     (`GetRequiredService`, `GetService`, `GetServices`,
+//     `BuildServiceProvider`).
+//
+// Generic accessors `Get`/`Set` are deliberately NOT included — the
+// #94 / #106 conservative-selection rule treats them as collision-prone
+// even within a single ecosystem. EF Core's canonical `Add`, `Update`,
+// `Remove`, `Find` ARE included because the lang=="csharp" gate scopes
+// them to C# sources, and they dominate EF Core call-sites.
+var csharpBareNames = map[string]struct{}{
+	// ASP.NET Core MVC ControllerBase action helpers. `Response` and
+	// `NotFound` are intentionally omitted — they're already in
+	// stdlibBareNames and classify globally.
+	"Ok":                  {},
+	"BadRequest":          {},
+	"Unauthorized":        {},
+	"Forbid":              {},
+	"Conflict":            {},
+	"UnprocessableEntity": {},
+	"RedirectToAction":    {},
+	"RedirectToRoute":     {},
+	"RedirectToPage":      {},
+	"Redirect":            {},
+	"View":                {},
+	"PartialView":         {},
+	"Json":                {},
+	"Content":             {},
+	"File":                {},
+	"PhysicalFile":        {},
+	"Created":             {},
+	"CreatedAtAction":     {},
+	"CreatedAtRoute":      {},
+	"Accepted":            {},
+	"NoContent":           {},
+	"StatusCode":          {},
+	"Problem":             {},
+	"ValidationProblem":   {},
+
+	// EF Core / LINQ-to-Entities query and persistence builders.
+	// Names like `Where`, `Select`, `First`, `Add`, `Update`, `Remove`,
+	// `Find` collide with generic ORM/collection verbs in any language;
+	// safe only because of the csharp gate.
+	"FirstOrDefault":       {},
+	"FirstOrDefaultAsync":  {},
+	"SingleOrDefault":      {},
+	"SingleOrDefaultAsync": {},
+	"First":                {},
+	"FirstAsync":           {},
+	"Single":               {},
+	"SingleAsync":          {},
+	"ToList":               {},
+	"ToListAsync":          {},
+	"ToArray":              {},
+	"ToArrayAsync":         {},
+	"Include":              {},
+	"ThenInclude":          {},
+	"Where":                {},
+	"Select":               {},
+	"SelectMany":           {},
+	"OrderBy":              {},
+	"OrderByDescending":    {},
+	"ThenBy":               {},
+	"GroupBy":              {},
+	"Skip":                 {},
+	"Take":                 {},
+	"Count":                {},
+	"CountAsync":           {},
+	"Sum":                  {},
+	"SumAsync":             {},
+	"Average":              {},
+	"Max":                  {},
+	"Min":                  {},
+	"Any":                  {},
+	"All":                  {},
+	"Find":                 {},
+	"FindAsync":            {},
+	"AsNoTracking":         {},
+	"AsQueryable":          {},
+	"SaveChanges":          {},
+	"SaveChangesAsync":     {},
+	"Add":                  {},
+	"AddAsync":             {},
+	"AddRange":             {},
+	"Update":               {},
+	"Remove":               {},
+	"RemoveRange":          {},
+	"Attach":               {},
+	"Entry":                {},
+
+	// HttpContext / IActionResult accessors. `Response` already
+	// classifies globally via stdlibBareNames and is intentionally
+	// omitted here.
+	"User":    {},
+	"Request": {},
+	"Session": {},
+	"Items":   {},
+	"Headers": {},
+	"Cookies": {},
+	"Form":    {},
+	"Query":   {},
+
+	// ASP.NET Core authentication helpers.
+	"SignIn":          {},
+	"SignOut":         {},
+	"Authenticate":    {},
+	"Challenge":       {},
+	"IsAuthenticated": {},
+	"HasClaim":        {},
+
+	// Microsoft.Extensions.DependencyInjection helpers.
+	"GetRequiredService":   {},
+	"GetService":           {},
+	"GetServices":          {},
+	"BuildServiceProvider": {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist
