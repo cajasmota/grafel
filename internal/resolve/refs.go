@@ -352,15 +352,43 @@ var (
 	}
 
 	jvmDynamicPatterns = []*regexp.Regexp{
-		// Bare-identifier forms: extractors emit just the leaf method
-		// name. `forName` (Class.forName) is reflection-unique enough to
-		// be safe as a bare anchor; `newInstance` and `invoke` are NOT
-		// (collide with domain methods) so we leave those parens-anchored
-		// only (issue #90).
-		regexp.MustCompile(`^forName$`),
+		// Bare-identifier forms: Java/Kotlin extractors emit only the
+		// leaf callee identifier (e.g. `m.invoke(target, args)` →
+		// ToID="invoke"). Real reflection in the wild stores the
+		// reflective handle in a local var (`Method m = clazz.getMethod(name); m.invoke(...)`),
+		// so the receiver-typed pattern `Method.invoke(` never sees the
+		// type and the call lands in BugExtractor instead of Dynamic
+		// (issue #72). The bare-name anchors below promote those leaf
+		// callees into the Dynamic disposition.
+		//
+		// Collisions with non-reflective user methods (`cli.invoke(...)`,
+		// `factory.newInstance()`) are accepted: Dynamic is the
+		// appropriate "we know it's dispatch we can't statically resolve"
+		// bucket — these stubs are equally unresolvable either way, and
+		// classifying them as Dynamic keeps them out of bug-extractor.
+		// The per-language gate (Java/Kotlin/Scala/JVM only) keeps these
+		// names from polluting other languages.
+		regexp.MustCompile(`^forName$`),                 // Class.forName
+		regexp.MustCompile(`^invoke$`),                  // Method.invoke / Constructor handle
+		regexp.MustCompile(`^newInstance$`),             // Class.newInstance / Constructor.newInstance
+		regexp.MustCompile(`^getClass$`),                // Object.getClass — reflection entry point
+		regexp.MustCompile(`^getMethod$`),               // Class.getMethod
+		regexp.MustCompile(`^getMethods$`),              // Class.getMethods
+		regexp.MustCompile(`^getDeclaredMethod$`),       // Class.getDeclaredMethod
+		regexp.MustCompile(`^getDeclaredMethods$`),      // Class.getDeclaredMethods
+		regexp.MustCompile(`^getField$`),                // Class.getField
+		regexp.MustCompile(`^getFields$`),               // Class.getFields
+		regexp.MustCompile(`^getDeclaredField$`),        // Class.getDeclaredField
+		regexp.MustCompile(`^getDeclaredFields$`),       // Class.getDeclaredFields
+		regexp.MustCompile(`^getConstructor$`),          // Class.getConstructor
+		regexp.MustCompile(`^getConstructors$`),         // Class.getConstructors
+		regexp.MustCompile(`^getDeclaredConstructor$`),  // Class.getDeclaredConstructor
+		regexp.MustCompile(`^getDeclaredConstructors$`), // Class.getDeclaredConstructors
 		// JVM reflection invoke is `Method.invoke(...)` or
-		// `Constructor.invoke(...)`. Anchored to those receivers so a
-		// user-defined `cli.invoke(...)` / `cmd.invoke(...)` does NOT match.
+		// `Constructor.invoke(...)`. Anchored to those receivers when
+		// the full call expression is present (extractor pre-strip
+		// stubs) so a user-defined `cli.invoke(...)` / `cmd.invoke(...)`
+		// does NOT match.
 		regexp.MustCompile(`\b(?:Method|Constructor)\.invoke\(`),
 		regexp.MustCompile(`^Class\.forName\(`), // Class.forName("...")
 		// Anchored to the reflective `Class.forName(...).newInstance()` /

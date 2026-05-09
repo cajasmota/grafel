@@ -109,6 +109,33 @@ func TestDynamicPatterns_Catalog(t *testing.T) {
 		{"rb_bare_instance_eval_id", "ruby", `instance_eval`, true},
 		{"rb_bare_class_eval_id", "ruby", `class_eval`, true},
 		{"jvm_bare_forName", "java", `forName`, true},
+		// Issue #72 — Java/Kotlin extractors emit only the leaf callee
+		// identifier, so `m.invoke(target, args)` arrives as bare
+		// `invoke`. The receiver-typed `Method.invoke(` regex never
+		// fires on those stubs. The bare-name anchors below promote
+		// the real-world reflection shape (`Method m = clazz.getMethod(name); m.invoke(...)`)
+		// into Dynamic instead of bug-extractor.
+		{"jvm_bare_invoke_java", "java", `invoke`, true},
+		{"jvm_bare_invoke_kotlin", "kotlin", `invoke`, true},
+		{"jvm_bare_newInstance", "java", `newInstance`, true},
+		{"jvm_bare_getClass", "java", `getClass`, true},
+		{"jvm_bare_getMethod", "java", `getMethod`, true},
+		{"jvm_bare_getMethods", "java", `getMethods`, true},
+		{"jvm_bare_getDeclaredMethod", "java", `getDeclaredMethod`, true},
+		{"jvm_bare_getDeclaredMethods", "java", `getDeclaredMethods`, true},
+		{"jvm_bare_getField", "java", `getField`, true},
+		{"jvm_bare_getFields", "java", `getFields`, true},
+		{"jvm_bare_getDeclaredField", "java", `getDeclaredField`, true},
+		{"jvm_bare_getDeclaredFields", "java", `getDeclaredFields`, true},
+		{"jvm_bare_getConstructor", "java", `getConstructor`, true},
+		{"jvm_bare_getConstructors", "java", `getConstructors`, true},
+		{"jvm_bare_getDeclaredConstructor", "java", `getDeclaredConstructor`, true},
+		{"jvm_bare_getDeclaredConstructors", "java", `getDeclaredConstructors`, true},
+		// Per-language gate: bare `invoke` from a JS file MUST NOT
+		// classify as JVM dynamic — those names are JVM-only.
+		{"jvm_bare_invoke_js_negative", "javascript", `invoke`, false},
+		{"jvm_bare_getMethod_python_negative", "python", `getMethod`, false},
+		{"jvm_bare_newInstance_go_negative", "go", `newInstance`, false},
 
 		// ---- Negative cases (must NOT be dynamic) ------------------
 		{"plain_kindname", "", `Function:Hello`, false},
