@@ -1370,3 +1370,164 @@ func TestJavaBareNames_UnknownJavaMethodFallsThrough(t *testing.T) {
 			doc.Relationships[0].ToID, name)
 	}
 }
+
+// TestKotlinBareNames_ClassifiedWhenLangIsKotlin covers issue #106 fix
+// (B): kotlinx.coroutines / io.ktor stdlib types, kotlin.collections
+// builtins, scope functions, and contract / lazy helpers must
+// classify as stdlib bare-names — but only when the source entity's
+// language is "kotlin".
+func TestKotlinBareNames_ClassifiedWhenLangIsKotlin(t *testing.T) {
+	names := []string{
+		// kotlinx.coroutines / io.ktor types
+		"Frame", "CloseReason", "CopyOnWriteArrayList",
+		"ConcurrentHashMap", "AtomicInteger", "AtomicLong",
+		"AtomicBoolean", "AtomicReference", "Job", "Deferred",
+		"Channel", "CoroutineScope", "MutableStateFlow", "StateFlow",
+		"MutableSharedFlow", "SharedFlow", "Flow", "ApplicationCall",
+		"Application", "Route", "Routing", "WebSocketSession",
+		// kotlin.collections / builtins
+		"listOf", "mapOf", "setOf", "mutableListOf", "mutableMapOf",
+		"mutableSetOf", "arrayOf", "arrayListOf", "hashMapOf",
+		"hashSetOf", "linkedSetOf", "sortedSetOf", "emptyList",
+		"emptyMap", "emptySet", "listOfNotNull", "mapNotNull",
+		// scope functions
+		"let", "also", "apply", "run", "with",
+		// contracts / lazy helpers
+		"requireNotNull", "checkNotNull", "require", "check", "error",
+		"lazy", "lazyOf", "TODO",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "kotlin")
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"kotlin\") = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"kotlin\") subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "kt-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "kotlin",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "kt-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestKotlinBareNames_NotClassifiedForOtherLanguages confirms the
+// language gate: Kotlin-only names (`let`, `apply`, `Frame`, `Job`,
+// ...) must NOT be rewritten when the source entity's language is
+// anything other than "kotlin". Without the gate, a JS user variable
+// named `let` or a Go `Job` struct would be shadowed by a synthesised
+// placeholder.
+func TestKotlinBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Names that DON'T also appear in language-agnostic stdlibBareNames.
+	names := []string{"let", "apply", "Frame", "Job", "Channel", "listOf", "lazy", "TODO", "Flow", "checkNotNull"}
+	otherLangs := []string{"go", "python", "javascript", "rust", "java", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang); ok {
+					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+						"(name is gated to lang=\"kotlin\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Kotlin)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestKotlinBareNames_RejectedNamesNotClassified locks in the explicit
+// rejection list from issue #106: generic accessors / collection ops
+// MUST NOT be in the Kotlin allowlist. These names have a high
+// collision rate with user-defined methods on any class.
+func TestKotlinBareNames_RejectedNamesNotClassified(t *testing.T) {
+	rejected := []string{
+		"get", "set", "add", "remove", "size", "isEmpty",
+	}
+	for _, name := range rejected {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, ok := kotlinBareNames[name]; ok {
+				t.Fatalf("kotlinBareNames[%q] present; must be rejected per issue #106 (collision-prone)", name)
+			}
+		})
+	}
+}
+
+// TestKotlinBareNames_UnknownKotlinMethodFallsThrough confirms that a
+// Kotlin-source bare-name call that ISN'T in the kotlinBareNames
+// allowlist still falls through normally, so genuine missing-
+// resolution bugs continue to surface in bug-extractor.
+func TestKotlinBareNames_UnknownKotlinMethodFallsThrough(t *testing.T) {
+	name := "myCustomBusinessMethod" // Not stdlib/kotlinx; user-defined.
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "kt-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "kotlin",
+		}},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "kt-src", ToID: name, Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("Synthesize(%q): synthesized=%d, want 0 (unknown user fn)", name, stats.Synthesized)
+	}
+	if doc.Relationships[0].ToID != name {
+		t.Fatalf("ToID=%q, want %q (unknown name must not be rewritten)",
+			doc.Relationships[0].ToID, name)
+	}
+}
+
+// TestIoKtorKnownExternalPackage locks in the issue #106 addition of
+// "io.ktor" to the external-package allowlist so io.ktor.* references
+// classify as ExternalKnown rather than ExternalUnknown.
+func TestIoKtorKnownExternalPackage(t *testing.T) {
+	if !IsKnownExternalPackage("io.ktor") {
+		t.Fatal("IsKnownExternalPackage(\"io.ktor\") = false; want true (Issue #106)")
+	}
+	if !IsKnownExternalPackage("IO.KTOR") {
+		t.Fatal("IsKnownExternalPackage(\"IO.KTOR\") = false; want case-folded match")
+	}
+}

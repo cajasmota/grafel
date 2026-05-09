@@ -517,6 +517,11 @@ func stdlibFunction(name, lang string) (string, bool) {
 			return "function", true
 		}
 	}
+	if lang == "kotlin" {
+		if _, ok := kotlinBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -933,6 +938,94 @@ var javaBareNames = map[string]struct{}{
 	"hasPrevious":      {},
 }
 
+// kotlinBareNames is the Kotlin-language-gated bare-name stop-list
+// (issue #106). The Kotlin extractor strips the receiver from a call
+// (`flow.collect { ... }` → `collect`, `Channel(capacity)` →
+// `Channel`), and the resolver can't bind the bare name to a local
+// entity, so it lands in bug-extractor. The names below are
+// kotlinx.coroutines / io.ktor stdlib types, kotlin.collections /
+// kotlin builtins, scope functions, and contract / lazy helpers that
+// have a low collision rate with user-defined identifiers in real
+// Kotlin codebases.
+//
+// Conservative selection rule (lessons from #94 / #105): generic
+// getters/setters/collection ops (`get`, `set`, `add`, `remove`,
+// `size`, `isEmpty`) are deliberately EXCLUDED — every Kotlin
+// codebase has user methods with those names and the language gate
+// alone is not strong enough to prevent shadowing real
+// missing-resolution bugs.
+//
+// Categories (curated, not exhaustive):
+//   - kotlinx.coroutines / io.ktor common Pascal-case stdlib types.
+//   - kotlin.collections / kotlin builtins (factory functions).
+//   - scope functions (`let`, `also`, `apply`, `run`, `with`) — KEPT
+//     Kotlin-gated because `let` could plausibly shadow a JS
+//     user-variable name.
+//   - kotlin.contract / lazy / require helpers.
+var kotlinBareNames = map[string]struct{}{
+	// kotlinx.coroutines / io.ktor stdlib types (Pascal).
+	"Frame":                {},
+	"CloseReason":          {},
+	"CopyOnWriteArrayList": {},
+	"ConcurrentHashMap":    {},
+	"AtomicInteger":        {},
+	"AtomicLong":           {},
+	"AtomicBoolean":        {},
+	"AtomicReference":      {},
+	"Job":                  {},
+	"Deferred":             {},
+	"Channel":              {},
+	"CoroutineScope":       {},
+	"MutableStateFlow":     {},
+	"StateFlow":            {},
+	"MutableSharedFlow":    {},
+	"SharedFlow":           {},
+	"Flow":                 {},
+	"ApplicationCall":      {},
+	"Application":          {},
+	"Route":                {},
+	"Routing":              {},
+	"WebSocketSession":     {},
+
+	// kotlin.collections / kotlin builtins (factory functions).
+	"listOf":        {},
+	"mapOf":         {},
+	"setOf":         {},
+	"mutableListOf": {},
+	"mutableMapOf":  {},
+	"mutableSetOf":  {},
+	"arrayOf":       {},
+	"arrayListOf":   {},
+	"hashMapOf":     {},
+	"hashSetOf":     {},
+	"linkedSetOf":   {},
+	"sortedSetOf":   {},
+	"emptyList":     {},
+	"emptyMap":      {},
+	"emptySet":      {},
+	"listOfNotNull": {},
+	"mapNotNull":    {},
+
+	// Scope functions — Kotlin-gated. `let` in particular would
+	// shadow JS user-variable names if added to the language-agnostic
+	// list.
+	"let":   {},
+	"also":  {},
+	"apply": {},
+	"run":   {},
+	"with":  {},
+
+	// Contracts / lazy / require helpers.
+	"requireNotNull": {},
+	"checkNotNull":   {},
+	"require":        {},
+	"check":          {},
+	"error":          {},
+	"lazy":           {},
+	"lazyOf":         {},
+	"TODO":           {},
+}
+
 // isKnownExternalPackage reports whether s matches our small allowlist
 // of well-known third-party packages and stdlib top-level modules. The
 // allowlist is intentionally narrow for v1.0 — false positives turn a
@@ -1190,6 +1283,7 @@ var knownExternalPackages = map[string]struct{}{
 	"javax":                 {},
 	"kotlin":                {},
 	"kotlinx":               {},
+	"io.ktor":               {}, // io.ktor.* server / client / websockets (Issue #106)
 	"org.springframework":   {},
 	"com.fasterxml.jackson": {},
 	"com.google.guava":      {},

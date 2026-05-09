@@ -103,6 +103,37 @@ func TestKotlin_CallsBareName(t *testing.T) {
 	}
 }
 
+// TestKotlin_CallsKeywordsFiltered (#106): Kotlin keywords / special
+// identifiers (`synchronized`, `it`, `this`, `super`, `lateinit`,
+// `by`, `where`) must NOT be emitted as CALLS targets — they are not
+// real call sites and the resolver can't bind them to an entity.
+func TestKotlin_CallsKeywordsFiltered(t *testing.T) {
+	src := `class A {
+    fun caller() {
+        synchronized(lock) { work() }
+        list.forEach { println(it) }
+        this.helper()
+        super.toString()
+    }
+    fun helper() {}
+}
+`
+	ents := runKotlin(t, src)
+	caller := ktFind(ents, "caller", "SCOPE.Operation")
+	if caller == nil {
+		t.Fatal("expected caller operation")
+	}
+	for _, r := range caller.Relationships {
+		if r.Kind != "CALLS" {
+			continue
+		}
+		switch r.ToID {
+		case "synchronized", "it", "this", "super", "lateinit", "by", "where":
+			t.Errorf("kotlin keyword %q must not be emitted as CALLS target", r.ToID)
+		}
+	}
+}
+
 // TestKotlin_NoImports (#41): kotlin extractor intentionally does
 // NOT emit IMPORTS edges (Python parity). Guard against future regressions
 // that re-introduce ghost "org" / "com" / "java" entities.
