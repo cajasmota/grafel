@@ -1332,6 +1332,55 @@ func (idx Index) lookupLocationKind(filePath, name string, families []string) (s
 	return match, true
 }
 
+// looksLikeSourceFilePath reports whether s has the shape of a source
+// code file path — a forward-slashed path ending in one of the
+// well-known per-language extensions. Used by classifyDispositionLang
+// to route IMPORTS-edge FromIDs (which every language extractor sets
+// to the importing file's path) into DispositionDynamic rather than
+// DispositionBugExtractor.
+//
+// Conservative checks: must contain at least one '/', must NOT contain
+// ':' (would be a structural-ref), must NOT start with '/' (absolute
+// system paths are not extractor-emitted, and disqualifying them keeps
+// us from accepting accidental Unix paths that escaped a higher
+// layer), and must end with one of the catalogued source extensions.
+//
+// The extension list is intentionally narrow — only extensions actively
+// used by the per-language extractors that emit IMPORTS edges with a
+// raw file-path FromID.
+func looksLikeSourceFilePath(s string) bool {
+	if s == "" || s[0] == '/' {
+		return false
+	}
+	if strings.ContainsAny(s, ": \\") {
+		return false
+	}
+	if !strings.ContainsRune(s, '/') {
+		return false
+	}
+	// Compare against the small allowlist of source-file extensions
+	// the IMPORTS-emitting extractors actually use. Adding new
+	// languages here is a one-line change in lockstep with the
+	// extractor that introduces the new extension.
+	for _, ext := range sourceFileExtensions {
+		if strings.HasSuffix(s, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// sourceFileExtensions is the allowlist of file-path suffixes the
+// looksLikeSourceFilePath heuristic accepts. Curated from the set of
+// extractors that emit raw file-path FromIDs on IMPORTS edges.
+var sourceFileExtensions = []string{
+	".py", ".java", ".kt", ".kts", ".scala", ".groovy",
+	".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+	".go", ".rs", ".rb", ".php", ".cs", ".cpp", ".cc", ".c", ".h", ".hpp",
+	".swift", ".dart", ".lua", ".ex", ".exs", ".clj", ".cljs", ".cljc",
+	".zig", ".sql",
+}
+
 // isHeuristicScopeStub reports whether s is a short-form structural-ref
 // emitted by a cross-language extractor whose target is by design not a
 // single graph entity. Such stubs should land in DispositionDynamic, not
@@ -1647,6 +1696,19 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// edges aren't resolvable by static name lookup. They keep the v1.0
 	// bug-rate metric honest while leaving the edges visible in graph.json.
 	if isHeuristicScopeStub(originalStub) {
+		return DispositionDynamic
+	}
+	// Issue #120 — IMPORTS edges across every language extractor
+	// emit FromID = the importing file's source path (the file the
+	// import statement lives in). The path itself is not a missing
+	// entity — it's a structural identifier the extractor uses to
+	// link the import to its origin file. Without this branch every
+	// IMPORTS edge contributes one bug-extractor count for the
+	// FromID endpoint, regardless of whether the target resolved.
+	// Treat raw source-file paths as DispositionDynamic for the same
+	// reason `scope:component:file:<path>` is — both are
+	// extractor-internal structural markers, not extractor bugs.
+	if looksLikeSourceFilePath(originalStub) {
 		return DispositionDynamic
 	}
 	// Strip a "Kind:" prefix when present so the name-existence check is
