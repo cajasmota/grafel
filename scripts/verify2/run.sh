@@ -80,6 +80,10 @@ REPOS=(
   "vapor-api-template|https://github.com/vapor/api-template.git|master|swift"                      # Vapor sample app (Controllers/Routes/Migrations)
   # --- C# ---
   "aspnetcore-realworld|https://github.com/gothinkster/aspnetcore-realworld-example-app.git|master|csharp" # ASP.NET Core MVC sample app
+  # --- C++ ---
+  "spdlog|https://github.com/gabime/spdlog.git|v1.x|cpp"                                          # header-only logging library; small
+  # --- Zig ---
+  "http.zig|https://github.com/karlseguin/http.zig.git|master|zig"                                # Zig HTTP server library; small
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
