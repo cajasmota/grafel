@@ -267,6 +267,18 @@ REPOS=(
   "turborepo|https://github.com/vercel/turborepo.git|main|typescript"                                          # Turborepo pipeline config (#320) SHA c1f923a4abe5
   # NOTE: pnpm-workspace coverage is satisfied by the existing pnpm entry under
   # chunk H above (same repo @ same branch).
+  # --- Reverse-proxy/gateway (chunk V, umbrella #326) ---
+  # Canonical fixtures for reverse-proxy and API-gateway configuration formats
+  # not yet exercised by the corpus, per Refs #87. Each entry pinned to the SHA
+  # recorded in umbrella #326. Sparse-paths keep working trees small for the
+  # larger monorepos (nginx, httpd, envoy, kong, traefik).
+  "nginx|https://github.com/nginx/nginx.git|master|nginx-conf|conf"                                            # Nginx server/location/upstream blocks (#326) SHA 631bfa194d5a
+  "apache-httpd|https://github.com/apache/httpd.git|trunk|apache-httpd-conf|docs/conf"                         # Apache HTTPD VirtualHost/Directory directives (#326) SHA c11a7f9994f6
+  "caddy|https://github.com/caddyserver/caddy.git|master|caddyfile|caddyconfig"                                # Caddyfile + JSON config (#326) SHA 9c78b97f9e79
+  "traefik|https://github.com/traefik/traefik.git|master|traefik-dynamic|integration/fixtures"                 # Traefik static + dynamic YAML config (#326) SHA edd7d2eb333c
+  "kong|https://github.com/Kong/kong.git|master|kong-declarative|spec/fixtures"                                # Kong declarative config services/routes/plugins (#326) SHA 58f2daa56b90
+  "envoy|https://github.com/envoyproxy/envoy.git|main|envoy-yaml|configs"                                      # Envoy listener/cluster/route YAML (#326) SHA 3ddecad194fc
+  "haproxy|https://github.com/haproxy/haproxy.git|master|haproxy-cfg|examples"                                 # HAProxy frontend/backend/acl config (#326) SHA efb36c0dafd5
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
