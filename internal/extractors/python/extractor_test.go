@@ -772,11 +772,11 @@ func TestExtract_NestedClassesFromFixture(t *testing.T) {
 	}
 
 	wantMethods := map[string]bool{
-		"Outer.Inner.foo":         false,
-		"Outer.Inner.Deep.bar":    false,
-		"Outer.Sibling.foo":       false,
-		"Outer.Sibling.Deep.bar":  false,
-		"Standalone.foo":          false,
+		"Outer.Inner.foo":        false,
+		"Outer.Inner.Deep.bar":   false,
+		"Outer.Sibling.foo":      false,
+		"Outer.Sibling.Deep.bar": false,
+		"Standalone.foo":         false,
 	}
 	for _, e := range entities {
 		if e.Kind != "SCOPE.Operation" || e.Subtype != "method" {

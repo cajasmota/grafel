@@ -240,7 +240,7 @@ func TestCompactFormatStripsScope(t *testing.T) {
 		Nodes: []nodeWithRepo{{
 			Repo: "x", Score: 1, Entity: &graph.Entity{Name: "Foo", Kind: "SCOPE.Component", SourceFile: "f.go", StartLine: 1},
 		}},
-		Edges:   []renderEdge{{From: "Foo", To: "Bar", Kind: "SCOPE.IMPORTS"}, {From: "A", To: "B", Kind: "calls"}},
+		Edges: []renderEdge{{From: "Foo", To: "Bar", Kind: "SCOPE.IMPORTS"}, {From: "A", To: "B", Kind: "calls"}},
 		// Note: "SCOPE.IMPORTS" left intact as input to verify the renderer
 		// still strips the historical-bug prefix form (Issue #77 reconciliation).
 		OneRepo: true,
