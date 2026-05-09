@@ -844,3 +844,81 @@ func TestRubyRailsDSL_RejectedGenericCollectionOps(t *testing.T) {
 		})
 	}
 }
+
+// TestDiagnoseBugResolver — issue #92 diagnostic helper. Each subtest
+// constructs a graph that traps a bug-resolver stub at one well-defined
+// shape and asserts the category the diagnoser returns.
+func TestDiagnoseBugResolver(t *testing.T) {
+	t.Run("ambig-bare-no-hint", func(t *testing.T) {
+		// Two Functions named "create" → bare "create" call with relKind=CONTAINS
+		// (no hint family registered) is ambig-bare-no-hint.
+		entities := []types.EntityRecord{
+			ent("aaaaaaaaaaaaaaaa", "Function", "create"),
+			ent("bbbbbbbbbbbbbbbb", "Function", "create"),
+		}
+		idx := BuildIndex(entities)
+		got := idx.DiagnoseBugResolver("create", "CONTAINS")
+		if got.Category != "ambig-bare-no-hint" {
+			t.Fatalf("category: got %q, want ambig-bare-no-hint (diag=%+v)", got.Category, got)
+		}
+		if got.Name != "create" {
+			t.Fatalf("name: got %q want create", got.Name)
+		}
+	})
+
+	t.Run("ambig-bare-hint-fail", func(t *testing.T) {
+		// Two Operations named "validate" → bare call with relKind=CALLS:
+		// hint family is operation, but multiple Operation matches → fail.
+		entities := []types.EntityRecord{
+			ent("aaaaaaaaaaaaaaaa", "Operation", "validate"),
+			ent("bbbbbbbbbbbbbbbb", "Operation", "validate"),
+		}
+		idx := BuildIndex(entities)
+		got := idx.DiagnoseBugResolver("validate", "CALLS")
+		if got.Category != "ambig-bare-hint-fail" {
+			t.Fatalf("category: got %q, want ambig-bare-hint-fail (diag=%+v)", got.Category, got)
+		}
+		if len(got.HintFamily) == 0 {
+			t.Fatalf("HintFamily empty for CALLS")
+		}
+	})
+
+	t.Run("kind-mismatch", func(t *testing.T) {
+		// Stub is "Operation:foo" but graph has Schema:foo only. Kind
+		// bucket misses, kind-bucket has no entity, name lives under a
+		// different kind family entirely.
+		entities := []types.EntityRecord{
+			ent("aaaaaaaaaaaaaaaa", "Schema", "foo"),
+		}
+		idx := BuildIndex(entities)
+		got := idx.DiagnoseBugResolver("Operation:foo", "CALLS")
+		if got.Category != "kind-mismatch" {
+			t.Fatalf("category: got %q, want kind-mismatch (diag=%+v)", got.Category, got)
+		}
+		if got.StubKind != "Operation" {
+			t.Fatalf("StubKind: got %q want Operation", got.StubKind)
+		}
+	})
+
+	t.Run("ambig-kind", func(t *testing.T) {
+		// Two Functions named "Bar" → "Function:Bar" stub is ambiguous
+		// within its kind.
+		entities := []types.EntityRecord{
+			ent("aaaaaaaaaaaaaaaa", "Function", "Bar"),
+			ent("bbbbbbbbbbbbbbbb", "Function", "Bar"),
+		}
+		idx := BuildIndex(entities)
+		got := idx.DiagnoseBugResolver("Function:Bar", "CALLS")
+		if got.Category != "ambig-kind" {
+			t.Fatalf("category: got %q, want ambig-kind (diag=%+v)", got.Category, got)
+		}
+	})
+
+	t.Run("empty-stub", func(t *testing.T) {
+		idx := BuildIndex(nil)
+		got := idx.DiagnoseBugResolver("", "CALLS")
+		if got.Category != "unknown" {
+			t.Fatalf("category for empty stub: got %q want unknown", got.Category)
+		}
+	})
+}

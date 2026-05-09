@@ -362,6 +362,21 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			}
 			dumpBugExtractorSamples(out, doc, *i.resolveIdx, allow, n)
 		}
+		// Issue #92 — temporary bug-resolver diagnostic instrumentation.
+		// Enabled with ARCHIGRAPH_BUG_RESOLVER_SAMPLES=N. Optional
+		// ARCHIGRAPH_BUG_RESOLVER_OUT=/path overrides stderr.
+		if n := bugResolverSampleCount(); n > 0 {
+			out := os.Stderr
+			if p := strings.TrimSpace(os.Getenv("ARCHIGRAPH_BUG_RESOLVER_OUT")); p != "" {
+				if f, ferr := os.Create(p); ferr == nil {
+					defer f.Close()
+					out = f
+				} else {
+					fmt.Fprintf(os.Stderr, "bug-resolver-samples: cannot open %q: %v\n", p, ferr)
+				}
+			}
+			dumpBugResolverSamples(out, doc, *i.resolveIdx, allow, n)
+		}
 	}
 
 	// Pass 4 — graph algorithms. Conceptually this runs "between" pass 3 and
@@ -610,6 +625,96 @@ func dumpBugExtractorSamples(w *os.File, doc *graph.Document, ridx resolve.Index
 
 	// Histogram footer.
 	fmt.Fprintln(w, "#category histogram (all bug-extractor edges):")
+	type kv struct {
+		k string
+		v int
+	}
+	pairs := make([]kv, 0, len(cats))
+	total := 0
+	for k, v := range cats {
+		pairs = append(pairs, kv{k, v})
+		total += v
+	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].v > pairs[j].v })
+	for _, p := range pairs {
+		pct := 0.0
+		if total > 0 {
+			pct = 100 * float64(p.v) / float64(total)
+		}
+		fmt.Fprintf(w, "#  %-22s %6d (%5.2f%%)\n", p.k, p.v, pct)
+	}
+	fmt.Fprintf(w, "#  %-22s %6d\n", "TOTAL", total)
+}
+
+// bugResolverSampleCount parses ARCHIGRAPH_BUG_RESOLVER_SAMPLES.
+// Issue #92 — temporary diagnostic instrumentation, not a production knob.
+func bugResolverSampleCount() int {
+	v := strings.TrimSpace(os.Getenv("ARCHIGRAPH_BUG_RESOLVER_SAMPLES"))
+	if v == "" {
+		return 0
+	}
+	var n int
+	if _, err := fmt.Sscanf(v, "%d", &n); err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// dumpBugResolverSamples writes up to n bug-resolver sample rows + a
+// category histogram. Issue #92 diagnostic instrumentation. Format is
+// tab-separated lines so it can be piped to awk/sort/uniq.
+//
+// Categories come from resolve.DiagnoseBugResolver — see BugResolverDiag
+// for the canonical list.
+func dumpBugResolverSamples(w *os.File, doc *graph.Document, ridx resolve.Index, allow resolve.ExternalAllowlist, n int) {
+	type ent struct{ file, name, lang string }
+	byID := make(map[string]ent, len(doc.Entities))
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		byID[e.ID] = ent{file: e.SourceFile, name: e.Name, lang: e.Language}
+	}
+
+	cats := make(map[string]int)
+	written := 0
+	fmt.Fprintf(w, "#bug-resolver-samples (issue #92): n=%d\n", n)
+	fmt.Fprintf(w, "#cols: rel_kind\tlang\tcategory\tstub_kind\tname\tkinds_present\trel_hint\tfrom_file\tfrom_name\tto_stub\n")
+	for k := range doc.Relationships {
+		r := &doc.Relationships[k]
+		stub := r.ToID
+		if stub == "" {
+			continue
+		}
+		if isHex16(stub) || strings.HasPrefix(stub, "ext:") {
+			continue
+		}
+		lang := r.Properties["language"]
+		if lang == "" {
+			lang = r.Properties["lang"]
+		}
+		d := classifyForDiag(ridx, stub, lang, allow)
+		if d != resolve.DispositionBugResolver {
+			continue
+		}
+		diag := ridx.DiagnoseBugResolver(stub, r.Kind)
+		cats[diag.Category]++
+		if written < n {
+			from := byID[r.FromID]
+			kinds := strings.Join(diag.KindsPresent, ",")
+			if kinds == "" {
+				kinds = "-"
+			}
+			hint := strings.Join(diag.HintFamily, ",")
+			if hint == "" {
+				hint = "-"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				r.Kind, lang, diag.Category, diag.StubKind, diag.Name,
+				kinds, hint, from.file, from.name, stub)
+			written++
+		}
+	}
+
+	fmt.Fprintln(w, "#category histogram (all bug-resolver edges):")
 	type kv struct {
 		k string
 		v int
