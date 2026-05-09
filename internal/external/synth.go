@@ -948,8 +948,10 @@ var goChiRouterNames = map[string]struct{}{
 
 // goChiImportPaths is the set of canonical import paths that signal a
 // source file is using go-chi. The v5 path is the current default; the
-// unversioned + v1/v2/v3/v4 paths cover legacy codebases. Used by
-// hasGoChiImport to gate goChiRouterNames lookups (issue #131).
+// unversioned (chi v1/v2) + v3/v4/v5 paths cover legacy codebases. Note
+// that chi v1.x and v2.x did not use module-path versioning, so they are
+// covered transitively by the unversioned "github.com/go-chi/chi" path.
+// Used by hasGoChiImport to gate goChiRouterNames lookups (issue #131).
 var goChiImportPaths = map[string]bool{
 	"github.com/go-chi/chi":    true,
 	"github.com/go-chi/chi/v3": true,
