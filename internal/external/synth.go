@@ -748,6 +748,11 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 			return "function", true
 		}
 	}
+	if lang == "swift" {
+		if _, ok := swiftBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -2361,6 +2366,199 @@ var jsBareNames = map[string]struct{}{
 	// either too collision-prone (`includes`, `indexOf`) or
 	// insufficiently observed in #104's bug-extractor sample to
 	// justify carrying the false-positive risk.
+}
+
+// swiftBareNames is the Swift-language-gated bare-name stop-list (issue
+// #436). The Swift extractor strips the receiver from a Vapor / Fluent
+// DSL call (`app.get("/x") { req in ... }` → `get`,
+// `User.query(on: db).filter(...).all()` → `query`/`filter`/`all`,
+// `req.parameters.get("id")` → `parameters`), and the resolver can't
+// bind the bare leaf to a local entity, so it lands in bug-extractor.
+//
+// Mirrors the Kotlin Ktor DSL precedent (issue #435 / kotlinBareNames):
+// the language gate (lang == "swift") is the safety net that prevents
+// generic verbs like `get`/`post`/`save`/`update`/`delete`/`map`/`first`
+// from shadowing user-defined methods in Go/JS/Python/Ruby/Kotlin
+// codebases. Vapor- and Fluent-specific names dominate the residual
+// bug-extractor in vapor (27.41%) and vapor-api-template (30.85%).
+//
+// Conservative selection (lessons from #94 / #105 / #106): names already
+// classified by the language-agnostic stdlibBareNames map (`all`,
+// `filter`, `map`, `set`, `range`, `join`, `Response`) are NOT
+// duplicated here — they classify globally before the swift gate fires.
+//
+// Categories:
+//   - Vapor route builder DSL (`get`, `post`, `put`, `patch`, `delete`,
+//     `on`, `group`, `grouped`, `route`, `register`, `boot`, `run`,
+//     `start`, `shutdown`, `respond`, `redirect`, `view`, `render`).
+//   - Vapor middleware DSL (`middleware`, `use`, `authenticate`,
+//     `authorize`, `protect`).
+//   - Fluent ORM builders (`save`, `delete`, `create`, `update`, `find`,
+//     `query`, `sort`, `limit`, `offset`, `with`, `count`, `first`,
+//     `last`, `paginate`, `transform`, `flatMap`).
+//   - HTTP context accessors (`parameters`, `query` — same name reused,
+//     `headers`, `body`, `request`, `response`, `auth`, `session`,
+//     `cookies`).
+//   - Swift Concurrency primitives (`async`, `await`, `Task`,
+//     `withCheckedContinuation`).
+var swiftBareNames = map[string]struct{}{
+	// Vapor route builder DSL.
+	"get":      {},
+	"post":     {},
+	"put":      {},
+	"patch":    {},
+	"delete":   {},
+	"on":       {},
+	"group":    {},
+	"grouped":  {},
+	"route":    {},
+	"register": {},
+	"boot":     {},
+	"run":      {},
+	"start":    {},
+	"shutdown": {},
+	"respond":  {},
+	"redirect": {},
+	"view":     {},
+	"render":   {},
+
+	// Vapor middleware DSL. `use` is a known cross-language collision
+	// (Rust prelude, JS Express); the lang=="swift" gate is the safety
+	// net per the Ktor precedent.
+	"middleware":   {},
+	"use":          {},
+	"authenticate": {},
+	"authorize":    {},
+	"protect":      {},
+
+	// Fluent ORM query / persistence builders. Names like `save`,
+	// `update`, `delete`, `find`, `first`, `last`, `count` collide with
+	// generic ORM verbs in any language — safe only because of the
+	// swift gate.
+	"save":      {},
+	"create":    {},
+	"update":    {},
+	"find":      {},
+	"query":     {},
+	"sort":      {},
+	"limit":     {},
+	"offset":    {},
+	"with":      {},
+	"count":     {},
+	"first":     {},
+	"last":      {},
+	"paginate":  {},
+	"transform": {},
+	"flatMap":   {},
+
+	// HTTP context accessors (Request / Response / ApplicationCall-
+	// equivalent). `parameters`/`headers`/`request` mirror the Ktor
+	// (#435) additions for the Kotlin gate; the swift gate keeps them
+	// from leaking across languages.
+	"parameters": {},
+	"headers":    {},
+	"body":       {},
+	"request":    {},
+	"response":   {},
+	"auth":       {},
+	"session":    {},
+	"cookies":    {},
+
+	// Swift Concurrency. `Task` is a Swift stdlib type; `async`/`await`
+	// are language keywords but show up as bare-name calls when the
+	// extractor receiver-strips a coroutine-style API.
+	"async":                   {},
+	"await":                   {},
+	"Task":                    {},
+	"withCheckedContinuation": {},
+
+	// SwiftNIO EventLoopFuture / EventLoopPromise / NIOLockedValueBox
+	// API. Vapor is built on SwiftNIO, and the dominant residual
+	// bug-extractor in the vapor framework source after the Vapor /
+	// Fluent additions above is the NIO Future API
+	// (`eventLoop.makePromise()`, `future.whenComplete { ... }`,
+	// `box.withLockedValue { ... }`). These names are Swift-only
+	// camelCase idioms with no plausible collision in other ecosystems,
+	// gated by lang=="swift" as defence-in-depth. Generic verbs
+	// (`succeed`, `fail`, `wait`) are deliberately OMITTED — they
+	// collide with user methods even within Swift codebases.
+	"makeSucceededFuture": {},
+	"makeFailedFuture":    {},
+	"makePromise":         {},
+	"makeFutureWithTask":  {},
+	"completeWithTask":    {},
+	"whenComplete":        {},
+	"whenSuccess":         {},
+	"whenFailure":         {},
+	"flatSubmit":          {},
+	"withLockedValue":     {},
+
+	// Swift stdlib types and Sequence/Collection protocol methods.
+	// The Swift extractor receiver-strips collection idioms
+	// (`names.forEach { ... }` → `forEach`, `parts.joined(separator:)` →
+	// `joined`, `bytes.dropFirst(2)` → `dropFirst`) and `init(...)`
+	// constructor calls. These are language-builtin operations with no
+	// plausible collision in non-Swift codebases; the swift gate adds
+	// defence-in-depth. Generic accessors (`get`/`set`/`add`/`remove`/
+	// `count`) are kept out of this group — `count` is already in
+	// swiftBareNames above as a Fluent ORM verb, and the rest are
+	// excluded per the #94 / #106 conservative-selection rule.
+	"String":                  {},
+	"Int":                     {},
+	"Array":                   {},
+	"Date":                    {},
+	"ObjectIdentifier":        {},
+	"forEach":                 {},
+	"joined":                  {},
+	"dropFirst":               {},
+	"prefix":                  {},
+	"numericCast":             {},
+	"singleValueContainer":    {},
+	"preconditionFailure":     {},
+	"preconditionInEventLoop": {},
+	"syncShutdownGracefully":  {},
+
+	// swift-log Logger API. Vapor / SwiftNIO log via swift-log's
+	// `Logger` type, and the extractor receiver-strips
+	// (`req.logger.debug("...")` → `debug`, `logger.notice(...)` →
+	// `notice`). Generic names like `error` would shadow user methods
+	// in other ecosystems, but the swift gate keeps these scoped. Within
+	// Swift codebases these names are dominantly Logger calls.
+	"debug":    {},
+	"info":     {},
+	"trace":    {},
+	"notice":   {},
+	"warning":  {},
+	"critical": {},
+
+	// More Swift stdlib / Foundation idioms (Sequence, String,
+	// Date/Calendar, integer types) and SwiftNIO Future helpers seen at
+	// volume in the vapor framework source. Each is a Swift-specific
+	// camelCase or PascalCase name; the swift gate prevents bleed into
+	// other ecosystems.
+	"hasSuffix":            {},
+	"hasPrefix":            {},
+	"lowercased":           {},
+	"uppercased":           {},
+	"replacingOccurrences": {},
+	"dropLast":             {},
+	"addingTimeInterval":   {},
+	"merging":              {},
+	"flatMapThrowing":      {},
+	"makeCompletedFuture":  {},
+	"precondition":         {},
+	"fatalError":           {},
+	"TimeZone":             {},
+	"Locale":               {},
+	"DateFormatter":        {},
+	"Int64":                {},
+	"UInt8":                {},
+	"UInt16":               {},
+	"UInt32":               {},
+	"UInt64":               {},
+	"Int8":                 {},
+	"Int16":                {},
+	"Int32":                {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist
