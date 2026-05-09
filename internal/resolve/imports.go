@@ -245,6 +245,8 @@ func modulesForFile(p string) []string {
 		return modulesForPythonFile(p)
 	case strings.HasSuffix(p, ".java"):
 		return modulesForJavaFile(p)
+	case strings.HasSuffix(p, ".php"):
+		return modulesForPHPFile(p)
 	}
 	return nil
 }
@@ -323,6 +325,75 @@ func modulesForJavaFile(p string) []string {
 		}
 	}
 	return out
+}
+
+// modulesForPHPFile derives the dotted-namespace forms of a PHP source
+// file (issue #113). PHP uses PSR-4 to map a top-level namespace to a
+// source root directory; Symfony's `composer.json` ships the canonical
+// `App\` → `src/` map, and Laravel ships `App\` → `app/`. Every
+// project-internal class lives in a file whose path-after-the-source-root
+// equals its sub-namespace (e.g. `src/Entity/Post.php` ↔
+// `App\Entity\Post`).
+//
+// The returned slice always contains the dotted form derived from the
+// raw path (slash → dot, `.php` stripped, parent directory only).
+// When the path begins with one of the well-known PSR-4 source roots
+// the function additionally emits the canonical `App.` form so an
+// IMPORTS edge whose ToID was emitted as `App\Entity\Post`
+// (source_module = `App.Entity`) binds against the file's
+// `src/Entity/Post.php` location regardless of whether the corpus was
+// indexed under the PSR-4 root or as a generic repo.
+//
+// Files at the repo root (no parent directory) return nil — the caller's
+// nil-guards treat that as "no module".
+func modulesForPHPFile(p string) []string {
+	stripped := strings.TrimSuffix(p, ".php")
+	dir := stripped
+	if slash := strings.LastIndexByte(stripped, '/'); slash >= 0 {
+		dir = stripped[:slash]
+	} else {
+		// File at repo root — no namespace.
+		return nil
+	}
+	dotted := strings.ReplaceAll(dir, "/", ".")
+	out := []string{dotted}
+	// PSR-4: src/Foo/Bar.php → App\Foo\Bar (Symfony default);
+	//        app/Foo/Bar.php → App\Foo\Bar (Laravel default).
+	// Strip the leading source root once and re-prefix with the
+	// canonical "App" segment so an import whose source_module is
+	// "App.Foo" binds regardless of whether the corpus was rooted at
+	// the package root or the repo root.
+	for _, prefix := range phpPSR4SourceRootPrefixes {
+		if strings.HasPrefix(dotted, prefix) {
+			tail := strings.TrimPrefix(dotted, prefix)
+			if tail == "" {
+				out = append(out, "App")
+			} else {
+				out = append(out, "App."+tail)
+			}
+			break
+		}
+	}
+	// Also try the generic source-root strip (src./lib./app.) so a
+	// non-PSR-4 layout still resolves under its repo-relative dotted
+	// form. Same conservative single-strip policy as Python/Java.
+	for _, prefix := range sourceRootPrefixes {
+		if strings.HasPrefix(out[0], prefix) {
+			out = append(out, strings.TrimPrefix(out[0], prefix))
+			break
+		}
+	}
+	return out
+}
+
+// phpPSR4SourceRootPrefixes lists the canonical PSR-4 source-root
+// directories that map to the conventional `App\` top-level namespace.
+// Matched against the dotted form of the parent directory (slashes
+// already replaced with dots), so entries end with a dot. "src." covers
+// Symfony's composer.json default; "app." covers Laravel's.
+var phpPSR4SourceRootPrefixes = []string{
+	"src.",
+	"app.",
 }
 
 // javaSourceRootPrefixes lists the canonical Maven/Gradle layout
@@ -518,18 +589,26 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				stats.CallsRewritten++
 			case importRelKind:
 				// IMPORTS ToID is a dotted module path like
-				// "conduit.database.db" (issue #142). Project-internal
-				// targets resolve via the per-module reverse index;
-				// external packages ("marshmallow.Schema") miss the
-				// lookup and are left for the external-synthesis pass.
-				if !strings.ContainsRune(to, '.') {
+				// "conduit.database.db" (issue #142) or — for PHP
+				// (issue #113) — a backslash-separated FQN like
+				// `App\Entity\Post`. Both shapes are normalized to
+				// dotted form here and then looked up against the
+				// per-module reverse index. External packages
+				// ("marshmallow.Schema", "Symfony\\...") miss the
+				// lookup and are left for the external-synthesis
+				// pass.
+				normalized := to
+				if strings.ContainsRune(normalized, '\\') {
+					normalized = strings.ReplaceAll(normalized, "\\", ".")
+				}
+				if !strings.ContainsRune(normalized, '.') {
 					continue
 				}
-				if strings.ContainsAny(to, ":#") {
+				if strings.ContainsAny(normalized, ":#") {
 					continue
 				}
 				stats.ImportsConsidered++
-				id, ok := tbl.ResolveDottedImportTarget(to)
+				id, ok := tbl.ResolveDottedImportTarget(normalized)
 				if !ok {
 					continue
 				}
