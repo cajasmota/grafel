@@ -352,6 +352,26 @@ REPOS=(
   "recoil|https://github.com/facebookexperimental/Recoil.git|main|typescript|packages/recoil"                 # Recoil atoms/selectors (#321) SHA c1b97f3a0117
   "xstate|https://github.com/statelyai/xstate.git|main|typescript|packages/core"                              # XState `createMachine`, statecharts (#321) SHA f79ea13febe4
   "effector|https://github.com/effector/effector.git|master|typescript|src"                                   # Effector stores/events/effects (#321) SHA 29553bb13dc3
+  # --- Static-site generators (chunk W, umbrella #298) ---
+  # Static-site generator fixtures across the major SSG ecosystems
+  # (Hugo, Jekyll, Hexo, MkDocs, Sphinx, VitePress, Docusaurus, Nextra,
+  # Eleventy), per Refs #87 corpus policy. Each entry pinned to the SHA
+  # recorded in umbrella #298. Where the umbrella listed multiple sparse
+  # subtrees, one canonical content/template subtree per repo is selected
+  # (cone-mode sparse-checkout supports a single path); the harness language
+  # tag is the dominant code-extractor for the repo, with Markdown / front-
+  # matter / template-engine extractors exercised via the sparse subtree.
+  # Dedup notes: Gatsby is intentionally excluded here per the umbrella body
+  # (already covered by chunk K, per the master plan).
+  "hugoDocs|https://github.com/gohugoio/hugoDocs.git|master|go|content"                                       # Hugo templates, shortcodes, TOML/YAML front-matter (#298) SHA e6abf5644f3f
+  "jekyll|https://github.com/jekyll/jekyll.git|master|ruby|lib"                                               # Liquid templating, Jekyll plugin model (#298) SHA 202df571314b
+  "hexo-site|https://github.com/hexojs/site.git|master|javascript|source"                                     # Hexo theming + Markdown content tree (#298) SHA fcf644467039
+  "mkdocs|https://github.com/mkdocs/mkdocs.git|master|python|mkdocs"                                          # MkDocs plugin/theme system, mkdocs.yml config (#298) SHA 2862536793b3
+  "sphinx|https://github.com/sphinx-doc/sphinx.git|master|python|sphinx"                                      # RST extractor, Sphinx directives, conf.py (#298) SHA cc7c6f435ad3
+  "vitepress|https://github.com/vuejs/vitepress.git|main|typescript|src"                                      # VitePress theme, Vue SFC + Markdown blend (#298) SHA 6ee01bf30534
+  "docusaurus|https://github.com/facebook/docusaurus.git|main|typescript|packages/docusaurus"                 # MDX extractor, Docusaurus plugin packages (#298) SHA 5f60ae9c872d
+  "nextra|https://github.com/shuding/nextra.git|main|typescript|packages/nextra"                              # Nextra theme + MDX content trees (#298) SHA e604c7fe937e
+  "eleventy|https://github.com/11ty/eleventy.git|main|javascript|src"                                         # Eleventy template engines, .eleventy.js config (#298) SHA 4a6b85f64eef
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
