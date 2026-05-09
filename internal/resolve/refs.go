@@ -451,6 +451,13 @@ type Index struct {
 	// A blank string sentinel marks (file, name, kind) collisions.
 	byLocationKind LocationKindIndex
 
+	// byQualifiedName[qualified_name] = entity_id. Direct lookup for
+	// stubs whose ToID is an entity QualifiedName verbatim (e.g. markdown
+	// CONTAINS edges where ToID = "<file>::<heading-slug>"). Issue #100.
+	// First writer wins; a blank-string sentinel marks collisions so we
+	// never resolve an ambiguous QualifiedName.
+	byQualifiedName map[string]string
+
 	// byMember[file_path][scope_name][member_name] = entity_id. Used by
 	// structural-ref Format B resolution. A blank string sentinel marks
 	// (scope, member) collisions inside the same file. Entities are
@@ -648,21 +655,37 @@ func MergeDispositions(dst, src *Stats) {
 //     so a stub like "View:User" matches an entity of kind "SCOPE.View".
 func BuildIndex(entities []types.EntityRecord) Index {
 	idx := Index{
-		byKind:         make(map[string]map[string]string),
-		ambigKind:      make(map[string]map[string]bool),
-		byName:         make(map[string]string),
-		ambigName:      make(map[string]bool),
-		nameKinds:      make(map[string]map[string]string),
-		byLocation:     make(LocationIndex),
-		ambigLocation:  make(map[string]map[string]bool),
-		byLocationKind: make(LocationKindIndex),
-		byMember:       make(map[string]map[string]map[string]string),
+		byKind:          make(map[string]map[string]string),
+		ambigKind:       make(map[string]map[string]bool),
+		byName:          make(map[string]string),
+		ambigName:       make(map[string]bool),
+		nameKinds:       make(map[string]map[string]string),
+		byLocation:      make(LocationIndex),
+		ambigLocation:   make(map[string]map[string]bool),
+		byLocationKind:  make(LocationKindIndex),
+		byMember:        make(map[string]map[string]map[string]string),
+		byQualifiedName: make(map[string]string),
 	}
 	for k := range entities {
 		e := &entities[k]
 		if e.ID == "" || e.Name == "" {
 			continue
 		}
+		// QualifiedName index — direct lookup for stubs that arrive as a
+		// verbatim QualifiedName (issue #100). The markdown extractor
+		// emits CONTAINS edges with ToID="<file>::<heading-slug>" which
+		// matches the heading entity's QualifiedName exactly, but neither
+		// the byKind nor byName paths see it (splitStub on the first ':'
+		// produces a non-existent "kind" segment). First writer wins;
+		// collisions blank the entry so the resolver leaves the stub.
+		if e.QualifiedName != "" {
+			if existing, ok := idx.byQualifiedName[e.QualifiedName]; ok && existing != e.ID {
+				idx.byQualifiedName[e.QualifiedName] = ""
+			} else {
+				idx.byQualifiedName[e.QualifiedName] = e.ID
+			}
+		}
+
 		// Index under both the plain kind and the trimmed kind ("SCOPE.View"
 		// → "View"), so stubs can match either form.
 		kinds := []string{e.Kind}
@@ -854,6 +877,14 @@ func (idx Index) Lookup(stub string) (string, bool) {
 	if stub == "" {
 		return "", false
 	}
+	// Direct QualifiedName hit short-circuits the kind/name paths
+	// (issue #100). Blank-string sentinel = ambiguous → treat as miss.
+	if qid, ok := idx.byQualifiedName[stub]; ok {
+		if qid == "" {
+			return "", false
+		}
+		return qid, true
+	}
 	kind, name := splitStub(stub)
 	if kind != "" {
 		if bucket, ok := idx.byKind[kind]; ok {
@@ -894,6 +925,19 @@ func (idx Index) LookupStatus(stub string) (id string, status int) {
 func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) {
 	if stub == "" {
 		return "", statusUnmatched
+	}
+
+	// Direct QualifiedName match (issue #100). Some extractors — markdown
+	// CONTAINS edges, code-block-relative references — emit ToIDs that are
+	// the target entity's QualifiedName verbatim. Probing the QualifiedName
+	// index first short-circuits the structural / kind / name paths for
+	// these unambiguous exact hits. A blank-string sentinel means the
+	// QualifiedName collided across entities; treat as ambiguous.
+	if qid, ok := idx.byQualifiedName[stub]; ok {
+		if qid == "" {
+			return "", statusAmbiguous
+		}
+		return qid, statusRewritten
 	}
 
 	// Structural-ref forms (Format A / B). Recognised by the "scope:"

@@ -692,6 +692,56 @@ func TestReflectionBuiltins_RecognisedAsDynamic(t *testing.T) {
 	}
 }
 
+// TestReferences_QualifiedNameMatch covers issue #100: a stub equal to an
+// entity's QualifiedName (verbatim) must resolve directly. The markdown
+// extractor emits Document --CONTAINS--> "<file>::<heading-slug>" edges
+// where the ToID is exactly the heading entity's QualifiedName; before the
+// fix splitStub split on the first ':' and the lookup landed in the
+// bug-extractor bucket.
+func TestReferences_QualifiedNameMatch(t *testing.T) {
+	heading := types.EntityRecord{
+		ID:            "abcdef0123456789",
+		Kind:          "SCOPE.Heading",
+		Name:          "Installation",
+		QualifiedName: "README.md::installation",
+		SourceFile:    "README.md",
+	}
+	rels := []types.RelationshipRecord{
+		{FromID: "0000000000000000", ToID: "README.md::installation", Kind: "CONTAINS"},
+	}
+	idx := BuildIndex([]types.EntityRecord{heading})
+	stats := References(rels, idx)
+	if rels[0].ToID != "abcdef0123456789" {
+		t.Fatalf("QName resolution: ToID=%q, want abcdef0123456789", rels[0].ToID)
+	}
+	if stats.Rewritten != 1 {
+		t.Fatalf("expected 1 rewrite, got %d", stats.Rewritten)
+	}
+}
+
+// TestReferences_QualifiedNameAmbiguous: two entities sharing a
+// QualifiedName should leave the stub unresolved (ambiguous), never silently
+// pick one.
+func TestReferences_QualifiedNameAmbiguous(t *testing.T) {
+	entities := []types.EntityRecord{
+		{ID: "1111111111111111", Kind: "SCOPE.Heading", Name: "Foo",
+			QualifiedName: "doc.md::foo", SourceFile: "doc.md"},
+		{ID: "2222222222222222", Kind: "SCOPE.Heading", Name: "Foo",
+			QualifiedName: "doc.md::foo", SourceFile: "doc.md"},
+	}
+	rels := []types.RelationshipRecord{
+		{FromID: "0000000000000000", ToID: "doc.md::foo", Kind: "CONTAINS"},
+	}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "doc.md::foo" {
+		t.Fatalf("ambiguous QName should preserve stub, got %q", rels[0].ToID)
+	}
+	if stats.Ambiguous != 1 {
+		t.Fatalf("expected 1 ambiguous, got %d", stats.Ambiguous)
+	}
+}
+
 func TestBuildLocationIndex(t *testing.T) {
 	entities := []types.EntityRecord{
 		entAt("aaaaaaaaaaaaaaaa", "Component", "Foo", "a.py"),
