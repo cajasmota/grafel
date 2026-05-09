@@ -108,6 +108,14 @@ REPOS=(
   "apollo-server|https://github.com/apollographql/apollo-server.git|main|graphql"                # Apollo Server: GraphQL schema SDL + resolvers across packages
   # --- HCL ---
   "terraform-aws-vpc|https://github.com/terraform-aws-modules/terraform-aws-vpc.git|master|hcl"  # Terraform AWS VPC module: canonical HCL resource/variable/output definitions
+  # --- K8s YAML ---
+  "argocd-example-apps|https://github.com/argoproj/argocd-example-apps.git|master|yaml"          # Argo CD example apps: canonical Deployment/Service/Ingress/ConfigMap manifests
+  # --- Helm ---
+  "prometheus-helm|https://github.com/prometheus-community/helm-charts.git|main|yaml|charts/prometheus" # Prometheus Helm chart: templates/, values.yaml, Chart.yaml — sparse subtree
+  # --- GHA ---
+  "starter-workflows|https://github.com/actions/starter-workflows.git|main|yaml"                 # Official GitHub Actions starter workflows: ci/, deployments/, automation/, code-scanning/, pages/
+  # --- OpenAPI ---
+  "openapi-stripe|https://github.com/APIs-guru/openapi-directory.git|main|yaml|APIs/stripe.com"  # OpenAPI directory — Stripe API spec subtree (yaml extractor handles OpenAPI documents)
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
