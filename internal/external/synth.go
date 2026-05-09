@@ -280,6 +280,34 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		return "external_api", "external_api", true
 	}
 
+	// Issue #424 — YAML extractor (Docker Compose, Kubernetes) emits image
+	// refs as "docker_image:<image-ref>". The image lives in a container
+	// registry, not the indexed corpus, so it is external by definition.
+	// Canonicalise to "docker:<repo>" (drop the tag/digest) and route the
+	// edge to a single placeholder per repository — matches the package-
+	// per-import collapse used elsewhere. The "docker:" prefix is on the
+	// allowlist so all real image refs land in ExternalKnown.
+	if strings.HasPrefix(stub, "docker_image:") {
+		ref := strings.TrimSpace(stub[len("docker_image:"):])
+		if repo := dockerImageRepo(ref); repo != "" {
+			return "docker:" + repo, "docker_image", true
+		}
+	}
+
+	// Issue #424 — YAML extractor emits Compose host-filesystem mounts as
+	// "host_path:<path>". By definition these reference files outside the
+	// indexed corpus (relative `./src`, absolute `/etc/foo`, env-driven
+	// `${PWD}/data`). Bucket every distinct source path under a single
+	// "external_filesystem" placeholder — the path itself is rarely useful
+	// for graph navigation, and one placeholder keeps the entity count
+	// flat across large compose stacks. Lands in ExternalUnknown.
+	if strings.HasPrefix(stub, "host_path:") {
+		path := strings.TrimSpace(stub[len("host_path:"):])
+		if path != "" {
+			return "external_filesystem", "file_mount", true
+		}
+	}
+
 	// Pass 3 cross-language extractors emit external imports as
 	// "scope:<kind>:import:external:<name>" — short structural-ref
 	// form that the resolver leaves untouched (it expects 6 segments).
@@ -2292,6 +2320,13 @@ var jsBareNames = map[string]struct{}{
 // local name into a placeholder, which is worse than missing one.
 func isKnownExternalPackage(s string) bool {
 	lower := strings.ToLower(s)
+	// Issue #424 — every "docker:<repo>" placeholder corresponds to a real
+	// image in a container registry. Treat the entire docker namespace as
+	// allowlisted; ExternalKnown is the right disposition for image refs
+	// regardless of whether the repo is on the static package allowlist.
+	if strings.HasPrefix(lower, "docker:") {
+		return true
+	}
 	if _, ok := knownExternalPackages[lower]; ok {
 		return true
 	}
@@ -2929,6 +2964,49 @@ func goHostCanonical(segs []string) string {
 		return host + "/" + segs[1] + "/" + segs[2]
 	}
 	return ""
+}
+
+// dockerImageRepo extracts the canonical repository segment from a Docker
+// image reference, dropping the tag (`:<tag>`) or digest (`@sha256:...`).
+// Returns "" for malformed inputs.
+//
+// Examples (Issue #424):
+//
+//	"nginx:1.21"                      → "nginx"
+//	"redis:alpine"                    → "redis"
+//	"library/postgres:14"             → "library/postgres"
+//	"ghcr.io/owner/svc:v1.2.3"        → "ghcr.io/owner/svc"
+//	"myregistry.io:5000/team/api:dev" → "myregistry.io:5000/team/api"
+//	"alpine@sha256:abc..."            → "alpine"
+//	""                                → ""
+func dockerImageRepo(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
+	}
+	// Strip the digest first — it always uses `@` and never contains `:`
+	// inside the digest body for our purposes (the algorithm prefix uses `:`
+	// but lives strictly to the right of the `@`).
+	if at := strings.IndexByte(ref, '@'); at >= 0 {
+		ref = ref[:at]
+	}
+	// Find the last `:` and decide whether it's a tag separator or part of a
+	// registry-port specifier. A tag separator never appears after a `/` of
+	// a path; a registry port is always followed by `/`.
+	lastColon := strings.LastIndexByte(ref, ':')
+	if lastColon < 0 {
+		return ref
+	}
+	// If there's a `/` to the right of the colon, the colon belongs to a
+	// registry-port (e.g. "myregistry.io:5000/team/api") — keep it.
+	if strings.IndexByte(ref[lastColon:], '/') >= 0 {
+		return ref
+	}
+	repo := ref[:lastColon]
+	if repo == "" {
+		return ""
+	}
+	return repo
 }
 
 // isHexID mirrors resolve.isHexID — a 16-char lower-hex string is

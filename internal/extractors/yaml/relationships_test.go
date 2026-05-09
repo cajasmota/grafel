@@ -283,3 +283,109 @@ func TestYAML_Ansible_Contains(t *testing.T) {
 		t.Errorf("missing CONTAINS play→task(start nginx); got %+v", contains)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #424 — manifest IMPORTS for image refs and host-path volume mounts.
+// ---------------------------------------------------------------------------
+
+func TestYAML_Compose_ImageImports(t *testing.T) {
+	src := []byte(`version: "3.9"
+services:
+  api:
+    image: myapp:latest
+  db:
+    image: postgres:15
+  cache:
+    image: redis:alpine
+`)
+	entities, err := extractYAML(src, "docker-compose.yml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	imports := findRels(entities, "IMPORTS")
+
+	cases := map[string]string{
+		"api":   "docker_image:myapp:latest",
+		"db":    "docker_image:postgres:15",
+		"cache": "docker_image:redis:alpine",
+	}
+	for svc, want := range cases {
+		from := "docker_compose/service/" + svc
+		if !relExists(imports, from, want) {
+			t.Errorf("missing IMPORTS %s→%s; got %+v", from, want, imports)
+		}
+	}
+}
+
+func TestYAML_Compose_HostPathMountImports(t *testing.T) {
+	src := []byte(`version: "3.9"
+services:
+  api:
+    image: myapp:latest
+    volumes:
+      - ./src:/app/src
+      - ../shared:/app/shared
+      - /etc/myapp:/etc/myapp:ro
+      - ${PWD}/data:/data
+      - data_volume:/var/lib/data
+volumes:
+  data_volume:
+`)
+	entities, err := extractYAML(src, "docker-compose.yml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	imports := findRels(entities, "IMPORTS")
+	from := "docker_compose/service/api"
+	for _, want := range []string{
+		"host_path:./src",
+		"host_path:../shared",
+		"host_path:/etc/myapp",
+		"host_path:${PWD}/data",
+	} {
+		if !relExists(imports, from, want) {
+			t.Errorf("missing IMPORTS %s→%s; got %+v", from, want, imports)
+		}
+	}
+	// Named-volume sources MUST NOT be classified as host paths.
+	for _, r := range imports {
+		if r.FromID == from && r.ToID == "host_path:data_volume" {
+			t.Errorf("named-volume source emitted as host_path: %+v", r)
+		}
+	}
+}
+
+func TestYAML_K8s_ContainerImageImports(t *testing.T) {
+	src := []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: migrate
+          image: migrate:latest
+      containers:
+        - name: app
+          image: nginx:1.21
+        - name: sidecar
+          image: envoy:v1.29.0
+`)
+	entities, err := extractYAML(src, "deploy.yml")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	imports := findRels(entities, "IMPORTS")
+
+	cases := map[string]string{
+		"k8s/container/app":          "docker_image:nginx:1.21",
+		"k8s/container/sidecar":      "docker_image:envoy:v1.29.0",
+		"k8s/init-container/migrate": "docker_image:migrate:latest",
+	}
+	for from, want := range cases {
+		if !relExists(imports, from, want) {
+			t.Errorf("missing IMPORTS %s→%s; got %+v", from, want, imports)
+		}
+	}
+}
