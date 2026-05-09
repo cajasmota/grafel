@@ -522,6 +522,11 @@ func stdlibFunction(name, lang string) (string, bool) {
 			return "function", true
 		}
 	}
+	if lang == "ruby" {
+		if _, ok := rubyBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -1024,6 +1029,60 @@ var kotlinBareNames = map[string]struct{}{
 	"lazy":           {},
 	"lazyOf":         {},
 	"TODO":           {},
+}
+
+// rubyBareNames is the Ruby-language-gated bare-name stop-list (issue
+// #107). Object/Kernel instance methods that the Ruby extractor strips
+// down to the bare leaf identifier (`x.nil?` → `nil?`, `obj.to_s` →
+// `to_s`) — these can't bind to a local entity and land in
+// bug-extractor. Gating to lang="ruby" keeps the resolution scoped so
+// JS/Python/etc. user methods named `dup`, `clone`, `freeze`,
+// `respond_to?` aren't shadowed.
+//
+// Conservative selection rule (lessons from #94 / #105 / #106):
+// generic collection ops (`each`, `map`, `select`, `find`, `count`,
+// `length`, `size`) are deliberately EXCLUDED. They are user-method
+// names on any class in any language and the language gate alone is
+// not strong enough to keep them safe.
+//
+// Rails ActionController DSL (`render`/`params`/`before_action`/...)
+// and ActiveRecord query builders (`where`/`order`/`has_many`/...) are
+// classified by the resolver-side rubyDynamicPatterns catalog (Refs
+// refs.go) as Dispositional Dynamic instead of synthesised externals,
+// because those names ARE method_missing-generated rather than stable
+// stdlib functions.
+var rubyBareNames = map[string]struct{}{
+	// Object / BasicObject lifecycle and identity.
+	"new":         {},
+	"nil?":        {},
+	"present?":    {},
+	"blank?":      {},
+	"respond_to?": {},
+	"class":       {},
+	// `send` is intentionally OMITTED — it's classified as Dynamic by
+	// the resolver-side rubyDynamicPatterns catalog (reflective
+	// dispatch), which is a stronger signal than ExternalKnown.
+	"tap":        {},
+	"then":       {},
+	"yield_self": {},
+	"dup":        {},
+	"clone":      {},
+	"freeze":     {},
+	"frozen?":    {},
+	"object_id":  {},
+	// Type coercion (Object#to_*).
+	"to_s":   {},
+	"to_str": {},
+	"to_i":   {},
+	"to_f":   {},
+	"to_a":   {},
+	"to_h":   {},
+	"to_sym": {},
+	// Inspection / type checks.
+	"inspect":      {},
+	"is_a?":        {},
+	"kind_of?":     {},
+	"instance_of?": {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist

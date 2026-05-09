@@ -1520,6 +1520,112 @@ func TestKotlinBareNames_UnknownKotlinMethodFallsThrough(t *testing.T) {
 	}
 }
 
+// TestRubyBareNames_ClassifiedWhenLangIsRuby covers issue #107: Ruby
+// Object/Kernel instance methods (post-receiver-strip) classify as
+// stdlib bare-names — but only when the source entity's language is
+// "ruby".
+func TestRubyBareNames_ClassifiedWhenLangIsRuby(t *testing.T) {
+	names := []string{
+		// Object lifecycle / identity
+		"new", "nil?", "present?", "blank?", "respond_to?",
+		"class", "tap", "then", "yield_self", "dup", "clone",
+		"freeze", "frozen?", "object_id",
+		// Type coercion
+		"to_s", "to_str", "to_i", "to_f", "to_a", "to_h", "to_sym",
+		// Inspection / type checks
+		"inspect", "is_a?", "kind_of?", "instance_of?",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "ruby")
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"ruby\") = (_, false); want classified", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"ruby\") subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "rb-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "ruby",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "rb-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestRubyBareNames_NotClassifiedForOtherLanguages confirms the Ruby
+// language gate: a JS user-method named `tap`, a Go method named
+// `clone`, etc. must NOT be rewritten when source lang != "ruby".
+func TestRubyBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Names that are NOT in the language-agnostic stdlibBareNames map.
+	names := []string{"new", "tap", "then", "dup", "freeze", "to_s", "to_h", "is_a?", "respond_to?"}
+	otherLangs := []string{"go", "python", "javascript", "rust", "java", "kotlin", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang); ok {
+					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+						"(name is gated to lang=\"ruby\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Ruby)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestRubyBareNames_RejectedNamesNotClassified locks in the explicit
+// rejection list from issue #107: generic collection ops collide with
+// user methods on any class and MUST NOT be in the Ruby allowlist.
+func TestRubyBareNames_RejectedNamesNotClassified(t *testing.T) {
+	rejected := []string{"each", "map", "select", "find", "count", "length", "size"}
+	for _, name := range rejected {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, ok := rubyBareNames[name]; ok {
+				t.Fatalf("rubyBareNames[%q] present; must be rejected per issue #107 (collision-prone)", name)
+			}
+		})
+	}
+}
+
 // TestIoKtorKnownExternalPackage locks in the issue #106 addition of
 // "io.ktor" to the external-package allowlist so io.ktor.* references
 // classify as ExternalKnown rather than ExternalUnknown.
