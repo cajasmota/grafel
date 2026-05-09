@@ -165,6 +165,21 @@ REPOS=(
   "puppet-control-repo|https://github.com/puppetlabs/control-repo.git|production|ruby"                         # Puppet control repo (Ruby DSL) (#199)
   "awesome-compose|https://github.com/docker/awesome-compose.git|master|yaml"                                  # Docker Compose canonical samples (#204)
   "nomad-pack|https://github.com/hashicorp/nomad-pack.git|main|hcl|registry"                                   # Nomad Pack registry/ subtree (#208)
+  # --- Relational ORMs missing (chunk O, umbrella #315) ---
+  # Sample apps that USE each relational ORM / query builder, per Refs #96
+  # corpus policy. Each entry pinned to the SHA recorded in its child issue.
+  "spring-framework-petclinic|https://github.com/spring-petclinic/spring-framework-petclinic.git|main|java"            # Hibernate-only sample app (#251)
+  "joal|https://github.com/anthonyraymond/joal.git|master|java"                                                        # jOOQ sample app (#257)
+  "jpetstore-6|https://github.com/mybatis/jpetstore-6.git|master|java"                                                 # MyBatis sample app (#259)
+  "nestjs-realworld-typeorm|https://github.com/lujakob/nestjs-realworld-example-app.git|master|typescript"             # TypeORM sample app (#264)
+  "express-bookshelf-realworld|https://github.com/tanem/express-bookshelf-realworld-example-app.git|master|javascript" # Knex sample app (#269)
+  "nestjs-realworld-mikroorm|https://github.com/mikro-orm/nestjs-realworld-example-app.git|master|typescript"          # MikroORM sample app (#274)
+  "ent|https://github.com/ent/ent.git|master|go|entc/integration/ent"                                                  # Ent sample (entc/integration/ent subtree) (#280)
+  "sqlc-examples|https://github.com/sqlc-dev/sqlc.git|main|go|examples"                                                # sqlc examples/ subtree (#284)
+  "fabric-ca|https://github.com/hyperledger/fabric-ca.git|main|go"                                                     # sqlx (Go) sample app (#287)
+  "lean|https://github.com/jenssegers/lean.git|master|php"                                                             # Eloquent (standalone) sample app (#288)
+  "sea-orm-examples|https://github.com/SeaQL/sea-orm.git|master|rust|examples"                                         # SeaORM examples/ subtree (#289)
+  "netcore-boilerplate|https://github.com/lkurzyniec/netcore-boilerplate.git|master|csharp"                            # Dapper sample app (#290)
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
