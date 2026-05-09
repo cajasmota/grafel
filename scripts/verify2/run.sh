@@ -141,6 +141,17 @@ REPOS=(
   "dropwizard-example|https://github.com/dropwizard/dropwizard.git|release/5.0.x|java|dropwizard-example" # Dropwizard sample app subtree (#193)
   "play-java-starter|https://github.com/playframework/play-java-starter-example.git|2.7.x|java"       # Play Framework Java sample app (#197)
   "spark-examples|https://github.com/perwendel/spark.git|master|java|examples"                        # Spark Java examples subtree (#203)
+  # --- Mobile native (chunk L, umbrella #313) ---
+  # Sample applications across the major mobile native stacks, per Refs #96
+  # corpus policy. Each entry pinned to the SHA recorded in its child issue.
+  "ios-oss|https://github.com/kickstarter/ios-oss.git|main|swift"                                      # iOS UIKit sample app (#198)
+  "sample-food-truck|https://github.com/apple/sample-food-truck.git|main|swift"                        # iOS SwiftUI sample app (#201)
+  "android-architecture|https://github.com/googlesamples/android-architecture.git|main|java"           # Android Java sample app (#205)
+  "compose-samples|https://github.com/android/compose-samples.git|main|kotlin"                         # Android Kotlin Compose sample apps (#207)
+  "flutter-samples|https://github.com/flutter/samples.git|main|dart"                                   # Flutter (Dart) sample apps (#209)
+  "react-native|https://github.com/facebook/react-native.git|main|javascript|template"                 # React Native: template/ subtree per umbrella body (#212)
+  "ionic-conference-app|https://github.com/ionic-team/ionic-conference-app.git|main|typescript"        # Ionic / Capacitor sample app (#215)
+  "maui-samples|https://github.com/dotnet/maui-samples.git|main|csharp"                                # .NET MAUI sample apps (#217)
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
