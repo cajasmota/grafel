@@ -131,24 +131,223 @@ func detectGin(source string) []frameworkMatch {
 // REST — Express (JS/TS)
 // ---------------------------------------------------------------------------
 
-// app.get('/path', handler) — method is lowercase; captures string and identifier.
+// app.get('/path', [middleware...,] handler) — method is lowercase; captures
+// the verb and the route path. Middlewares and the trailing handler position
+// are parsed by expressHandlerFromArgs below; capturing them inside this
+// regex misclassifies middleware as the handler (issue #126).
 var expressRE = regexp.MustCompile(
-	`(?m)\b(?:app|router)\.(get|post|put|delete|patch|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\s]{1,500})['"` + "`" + `]\s*,\s*([\w.]+)`,
+	`(?m)\b(?:app|router)\.(get|post|put|delete|patch|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\s]{1,500})['"` + "`" + `]`,
 )
 
 func detectExpress(source string) []frameworkMatch {
 	var out []frameworkMatch
-	for _, m := range expressRE.FindAllStringSubmatch(source, -1) {
-		method := strings.ToUpper(m[1])
+	for _, m := range expressRE.FindAllStringSubmatchIndex(source, -1) {
+		method := strings.ToUpper(source[m[2]:m[3]])
 		if method == "ALL" {
 			method = "ANY"
 		}
+		path := source[m[4]:m[5]]
+		// Scan from the end of the path-string match through the matching
+		// `)` and recover the LAST argument identifier — that is the handler.
+		// Inline arrow functions (`async (req, res) => {}`) and
+		// member-expressions used as middleware (`auth.required`) are skipped
+		// so they don't pollute SERVES edges with non-entity stubs.
+		handler := expressHandlerFromArgs(source, m[1])
 		out = append(out, frameworkMatch{
 			method:       method,
-			rawPath:      m[2],
-			handlerQName: m[3],
+			rawPath:      path,
+			handlerQName: handler,
 		})
 	}
+	return out
+}
+
+// expressHandlerFromArgs starts at offset `start` (just past the route path
+// string in `router.METHOD("/p", ...`) and walks the remaining arguments up
+// to the matching `)`. It returns the trailing argument's bare identifier
+// when that argument is a single identifier (`handler`) and the empty
+// string when the trailing argument is anything else: an inline arrow / fn
+// (`async (req,res)=>{...}`, `function(req,res){...}`), a member expression
+// (`auth.required`), or a call expression (`wrap(handler)`).
+//
+// We deliberately treat member expressions as "no handler" rather than
+// emitting `auth.required` as a SERVES target because:
+//   - middleware-shaped names are not real entities (the resolver classified
+//     them bug-extractor in the express-realworld corpus, issue #126);
+//   - the TRUE handler in those call sites is almost always an inline arrow
+//     after the middleware, which has no resolvable qname anyway.
+//
+// Returning "" lets buildEntity skip the SERVES edge entirely.
+func expressHandlerFromArgs(source string, start int) string {
+	// Locate the closing `)` of the call by tracking paren depth, ignoring
+	// parens inside strings, template literals, and line/block comments.
+	end := matchCloseParen(source, start)
+	if end < 0 || end <= start {
+		return ""
+	}
+	args := source[start:end]
+	// Split on top-level commas to get individual arguments.
+	parts := splitTopLevelCommas(args)
+	if len(parts) == 0 {
+		return ""
+	}
+	// First "arg" is the route path (already consumed by the regex but the
+	// substring we have starts AFTER its closing quote at `,`); drop the
+	// leading empty / whitespace fragment.
+	last := strings.TrimSpace(parts[len(parts)-1])
+	if last == "" {
+		return ""
+	}
+	// Inline arrow / function expression — no extractable name.
+	if strings.HasPrefix(last, "async") || strings.HasPrefix(last, "(") ||
+		strings.HasPrefix(last, "function") {
+		return ""
+	}
+	// Reject member expressions and call expressions — they yield
+	// non-entity stubs that pollute the bug-extractor bucket.
+	if strings.ContainsAny(last, ".([{") {
+		return ""
+	}
+	// Strip trailing closing paren / whitespace if any leaked in.
+	last = strings.TrimRight(last, ") \t\n\r")
+	// Must be a plain identifier (\w+).
+	for i := 0; i < len(last); i++ {
+		c := last[i]
+		if !(c == '_' || c == '$' ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9' && i > 0)) {
+			return ""
+		}
+	}
+	return last
+}
+
+// matchCloseParen returns the index of the `)` that closes the implicit
+// `(` opened before `start` in the source. Tracks paren / brace / bracket
+// depth and skips over string and template-literal contents. Returns -1
+// when no balanced close is found within a reasonable lookahead window.
+func matchCloseParen(source string, start int) int {
+	// 4096-byte lookahead cap: bounds worst-case scan cost on pathological
+	// or unterminated input (e.g. a missing `)` would otherwise walk the whole
+	// file). The cap is conservative — real express route registrations fit
+	// in well under 1 KB of arguments — and any call site that exceeds it
+	// degrades safely to "no handler" rather than producing a wrong SERVES edge.
+	const maxLook = 4096
+	depth := 1 // we are already inside the call's argument list
+	i := start
+	limit := start + maxLook
+	if limit > len(source) {
+		limit = len(source)
+	}
+	for i < limit {
+		c := source[i]
+		switch c {
+		case '(', '{', '[':
+			depth++
+		case ')', '}', ']':
+			depth--
+			if depth == 0 && c == ')' {
+				return i
+			}
+		case '"', '\'', '`':
+			i = skipString(source, i, c, limit)
+			continue
+		case '/':
+			// NOTE: JS regex literals (`/foo/`) are not distinguished from the
+			// division operator here — disambiguating requires full lexer state
+			// (preceding token kind). When a regex literal appears in handler
+			// position we degrade safely: paren tracking may end early and
+			// expressHandlerFromArgs returns "" (no SERVES edge), which is the
+			// correct outcome for an unresolvable handler shape.
+			if i+1 < limit && source[i+1] == '/' {
+				// line comment
+				for i < limit && source[i] != '\n' {
+					i++
+				}
+				continue
+			}
+			if i+1 < limit && source[i+1] == '*' {
+				i += 2
+				for i+1 < limit && !(source[i] == '*' && source[i+1] == '/') {
+					i++
+				}
+				i += 2
+				continue
+			}
+		}
+		i++
+	}
+	return -1
+}
+
+// skipString advances past a quoted string literal starting at `i` whose
+// quote char is `q`. Handles backslash escapes; for backtick strings it
+// also descends into `${ ... }` interpolations as plain code (paren / brace
+// tracking falls back to the caller's loop). Returns the index of the
+// character AFTER the closing quote, or `limit` if unterminated.
+func skipString(source string, i int, q byte, limit int) int {
+	i++ // past opening quote
+	for i < limit {
+		c := source[i]
+		if c == '\\' && i+1 < limit {
+			i += 2
+			continue
+		}
+		if c == q {
+			return i + 1
+		}
+		// For template literals, `${` opens a new code region — we let the
+		// caller resume normal scanning by returning here. Approximate:
+		// treat ${...} as part of the string by scanning past the matching
+		// `}` so we don't miscount braces in arg parsing.
+		// Template-literal `${...}` interpolations are treated as opaque text
+		// inside the surrounding template string: we scan past the matching `}`
+		// without re-entering full code parsing. This is sufficient for
+		// handler-shape detection — interpolated route paths/handlers are not
+		// statically resolvable anyway, so the precision loss is irrelevant.
+		if q == '`' && c == '$' && i+1 < limit && source[i+1] == '{' {
+			depth := 1
+			i += 2
+			for i < limit && depth > 0 {
+				switch source[i] {
+				case '{':
+					depth++
+				case '}':
+					depth--
+				}
+				i++
+			}
+			continue
+		}
+		i++
+	}
+	return limit
+}
+
+// splitTopLevelCommas splits s on commas that are at paren / brace / bracket
+// depth zero, ignoring commas inside strings and template literals.
+func splitTopLevelCommas(s string) []string {
+	var out []string
+	depth := 0
+	start := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '(', '{', '[':
+			depth++
+		case ')', '}', ']':
+			depth--
+		case '"', '\'', '`':
+			i = skipString(s, i, c, len(s)) - 1 // -1 because for-loop will i++
+		case ',':
+			if depth == 0 {
+				out = append(out, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	out = append(out, s[start:])
 	return out
 }
 
