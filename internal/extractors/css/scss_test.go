@@ -143,7 +143,7 @@ $spacing-sm: 8px;
 	}
 
 	var ents []types.EntityRecord
-	varCount, mixinCount, fnCount := css.ExtractSCSS(context.Background(), file, &ents)
+	varCount, mixinCount, fnCount, _ := css.ExtractSCSS(context.Background(), file, &ents)
 
 	if varCount < 5 {
 		t.Errorf("expected >= 5 variables, got %d", varCount)
@@ -232,7 +232,7 @@ func TestExtractSCSS_SkipsComments(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	varCount, _, _ := css.ExtractSCSS(context.Background(), file, &ents)
+	varCount, _, _, _ := css.ExtractSCSS(context.Background(), file, &ents)
 
 	if varCount != 1 {
 		t.Errorf("expected 1 variable (skipping commented), got %d", varCount)
@@ -249,7 +249,7 @@ func TestExtractSCSS_EmptyContent(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	varCount, mixinCount, fnCount := css.ExtractSCSS(context.Background(), file, &ents)
+	varCount, mixinCount, fnCount, _ := css.ExtractSCSS(context.Background(), file, &ents)
 
 	if varCount != 0 || mixinCount != 0 || fnCount != 0 {
 		t.Errorf("expected all counts=0 for empty content, got %d/%d/%d", varCount, mixinCount, fnCount)
@@ -285,7 +285,7 @@ func TestExtractSCSS_NoParamsMixin(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	_, mixinCount, _ := css.ExtractSCSS(context.Background(), file, &ents)
+	_, mixinCount, _, _ := css.ExtractSCSS(context.Background(), file, &ents)
 
 	if mixinCount != 1 {
 		t.Errorf("expected 1 mixin, got %d", mixinCount)
@@ -307,7 +307,7 @@ func TestExtractSCSS_FixtureFile(t *testing.T) {
 	}
 
 	var ents []types.EntityRecord
-	varCount, mixinCount, fnCount := css.ExtractSCSS(context.Background(), file, &ents)
+	varCount, mixinCount, fnCount, _ := css.ExtractSCSS(context.Background(), file, &ents)
 
 	if varCount < 5 {
 		t.Errorf("expected >= 5 variables from fixture, got %d", varCount)

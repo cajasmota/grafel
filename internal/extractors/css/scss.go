@@ -39,9 +39,19 @@ var scssMixinRE = regexp.MustCompile(`^\s*@mixin\s+([a-zA-Z_-][a-zA-Z0-9_-]*)(?:
 // Captures: 1=name, 2=params string (may be empty).
 var scssFunctionRE = regexp.MustCompile(`^\s*@function\s+([a-zA-Z_-][a-zA-Z0-9_-]*)(?:\s*\(([^)]*)\))?`)
 
+// scssImportLineRE matches the start of an SCSS-flavour @import / @use /
+// @forward directive. Captures: 1=keyword (import|use|forward), 2=tail
+// (everything after the keyword up to ; or EOL — parsed for module refs).
+var scssImportLineRE = regexp.MustCompile(`^\s*@(import|use|forward)\s+(.+?)\s*;?\s*$`)
+
+// scssImportModuleRE matches a single quoted module ref inside an @import /
+// @use / @forward tail, including url("...") wrappers. Captures: 1=double-
+// quoted body, 2=single-quoted body (one will be empty per match).
+var scssImportModuleRE = regexp.MustCompile(`(?:url\(\s*)?(?:"([^"]*)"|'([^']*)')`)
+
 // ExtractSCSS extracts SCSS entities from raw source and appends them to out.
 // It is exported (uppercase) so tests in the same package can call it directly.
-func ExtractSCSS(ctx context.Context, file extractor.FileInput, out *[]types.EntityRecord) (varCount, mixinCount, fnCount int) {
+func ExtractSCSS(ctx context.Context, file extractor.FileInput, out *[]types.EntityRecord) (varCount, mixinCount, fnCount, importCount int) {
 	tracer := otel.Tracer("extractor.scss")
 
 	var span trace.Span
@@ -56,6 +66,7 @@ func ExtractSCSS(ctx context.Context, file extractor.FileInput, out *[]types.Ent
 			attribute.Int("scss_variable_count", varCount),
 			attribute.Int("scss_mixin_count", mixinCount),
 			attribute.Int("scss_function_count", fnCount),
+			attribute.Int("scss_import_count", importCount),
 		)
 		span.End()
 	}()
@@ -70,6 +81,40 @@ func ExtractSCSS(ctx context.Context, file extractor.FileInput, out *[]types.Ent
 		// Skip comment lines.
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") {
+			continue
+		}
+
+		// SCSS @import / @use / @forward — module refs are quoted strings,
+		// possibly comma-separated (`@import "a", "b";`). Each ref becomes
+		// its own SCOPE.Component "import" entity with an embedded IMPORTS
+		// edge. @use / @forward use the same dependency-resolution model as
+		// @import in modern SCSS, so we treat them identically here.
+		if m := scssImportLineRE.FindStringSubmatch(line); m != nil {
+			matches := scssImportModuleRE.FindAllStringSubmatch(m[2], -1)
+			for _, mm := range matches {
+				module := mm[1]
+				if module == "" {
+					module = mm[2]
+				}
+				if module == "" {
+					continue
+				}
+				*out = append(*out, types.EntityRecord{
+					Name:       module,
+					Kind:       "SCOPE.Component",
+					Subtype:    "import",
+					SourceFile: file.Path,
+					Language:   "scss",
+					StartLine:  lineNum,
+					EndLine:    lineNum,
+					Signature:  "@" + m[1] + " " + module,
+					Relationships: []types.RelationshipRecord{
+						buildImportRel(file.Path, module),
+					},
+					EnrichmentRequired: false,
+				})
+				importCount++
+			}
 			continue
 		}
 
@@ -143,7 +188,7 @@ func ExtractSCSS(ctx context.Context, file extractor.FileInput, out *[]types.Ent
 		}
 	}
 
-	return varCount, mixinCount, fnCount
+	return varCount, mixinCount, fnCount, importCount
 }
 
 // parseParams splits a raw params string (e.g. "$bg: red, $color: #fff") into

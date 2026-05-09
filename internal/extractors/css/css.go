@@ -4,14 +4,22 @@
 //   - rule_set (selectors)     → Kind="SCOPE.Stylesheet", Subtype="selector"
 //   - keyframes_statement      → Kind="SCOPE.Stylesheet", Subtype="keyframe"
 //   - at_rule (@mixin/@function) → Kind="SCOPE.Stylesheet", Subtype="mixin"
+//   - import_statement (@import) → Kind="SCOPE.Component",  Subtype="import"
 //   - CSS custom properties (--var) → Kind="SCOPE.Stylesheet", Subtype="variable"
 //
 // Extracted entities (SCSS/Less via regex —):
 //   - SCSS $variable: value    → Kind="SCOPE.Component", Subtype="variable"
 //   - SCSS @mixin name(params) → Kind="SCOPE.Component", Subtype="mixin"
 //   - SCSS @function name      → Kind="SCOPE.Component", Subtype="function"
+//   - SCSS/Less @import "x"    → Kind="SCOPE.Component", Subtype="import"
 //   - Less @variable: value    → Kind="SCOPE.Component", Subtype="variable"
 //   - Less .mixin(params) {    → Kind="SCOPE.Component", Subtype="mixin"
+//
+// Emitted relationships (per issue #383 PORT-RELS-CSS):
+//
+//	IMPORTS  — one edge per @import directive (plain CSS, SCSS, Less),
+//	           attached to the @import entity. CALLS and CONTAINS are not
+//	           applicable to the CSS family and are pinned out by tests.
 //
 // Uses the css grammar from smacker/go-tree-sitter for plain CSS.
 // SCSS/Less use regex because go-tree-sitter has no dedicated SCSS/Less grammar.
@@ -63,10 +71,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	case ".scss", ".sass":
 		var entities []types.EntityRecord
 		ExtractSCSS(ctx, file, &entities)
+		lang := "scss"
+		if ext == ".sass" {
+			lang = "sass"
+		}
+		extractor.TagRelationshipsLanguage(entities, lang)
 		return entities, nil
 	case ".less":
 		var entities []types.EntityRecord
 		ExtractLess(ctx, file, &entities)
+		extractor.TagRelationshipsLanguage(entities, "less")
 		return entities, nil
 	default:
 		// Plain CSS: tree-sitter parse required.
@@ -76,6 +90,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		var entities []types.EntityRecord
 		root := file.Tree.RootNode()
 		extractCSS(root, file, &entities)
+		extractor.TagRelationshipsLanguage(entities, "css")
 		return entities, nil
 	}
 }
@@ -107,6 +122,10 @@ func walkCSS(node *sitter.Node, file extractor.FileInput, seenVars map[string]bo
 		}
 	case "declaration":
 		if rec, ok := buildVariable(node, file, seenVars); ok {
+			*out = append(*out, rec)
+		}
+	case "import_statement":
+		if rec, ok := buildImport(node, file); ok {
 			*out = append(*out, rec)
 		}
 	}
@@ -207,6 +226,77 @@ func buildAtRule(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 		Signature:          kw + " " + name,
 		EnrichmentRequired: false,
 	}, true
+}
+
+// buildImport handles tree-sitter import_statement nodes for plain CSS.
+// Both forms are supported:
+//
+//	@import "foo.css";        — module ref is the string_value child
+//	@import url("foo.css");   — module ref is the string_value inside the
+//	                            call_expression's arguments
+//
+// Media queries trailing the directive (e.g. `screen`, `print`) are
+// ignored — they don't change the import target.
+func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	module := importModuleRef(node, file.Content)
+	if module == "" {
+		return types.EntityRecord{}, false
+	}
+	startLine := int(node.StartPoint().Row) + 1
+	endLine := int(node.EndPoint().Row) + 1
+	return types.EntityRecord{
+		Name:       module,
+		Kind:       "SCOPE.Component",
+		Subtype:    "import",
+		SourceFile: file.Path,
+		Language:   "css",
+		StartLine:  startLine,
+		EndLine:    endLine,
+		Signature:  "@import " + module,
+		Relationships: []types.RelationshipRecord{
+			buildImportRel(file.Path, module),
+		},
+		EnrichmentRequired: false,
+	}, true
+}
+
+// importModuleRef extracts the imported module path from an import_statement
+// node, handling both bare-string and url(...) forms. Returns "" if no
+// module ref can be located.
+func importModuleRef(node *sitter.Node, src []byte) string {
+	for i := range node.ChildCount() {
+		ch := node.Child(int(i))
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "string_value":
+			return unquoteStringValue(ch, src)
+		case "call_expression":
+			args := childByType(ch, "arguments")
+			if args == nil {
+				continue
+			}
+			if str := childByType(args, "string_value"); str != nil {
+				return unquoteStringValue(str, src)
+			}
+		}
+	}
+	return ""
+}
+
+// unquoteStringValue strips the surrounding "" or '' quote tokens from a
+// tree-sitter string_value node and returns the inner text.
+func unquoteStringValue(node *sitter.Node, src []byte) string {
+	raw := nodeText(node, src)
+	raw = strings.TrimSpace(raw)
+	if len(raw) >= 2 {
+		first, last := raw[0], raw[len(raw)-1]
+		if (first == '"' || first == '\'') && first == last {
+			return raw[1 : len(raw)-1]
+		}
+	}
+	return raw
 }
 
 func buildVariable(node *sitter.Node, file extractor.FileInput, seen map[string]bool) (types.EntityRecord, bool) {
