@@ -99,6 +99,13 @@ func (e *HCLExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 	var records []types.EntityRecord
 	walkBody(root, file.Content, file.Path, lang, &records)
 
+	// Issue #387 — emit file-level SCOPE.Component carrying CONTAINS edges
+	// to every top-level block plus IMPORTS edges for module sources and
+	// providers. Returns nil when the file has no top-level blocks.
+	if fc := emitFileLevelRelationships(root, file.Content, file.Path, lang); fc != nil {
+		records = append(records, *fc)
+	}
+
 	span.SetAttributes(
 		attribute.String("language", lang),
 		attribute.Int("file_line_count", lineCount),
@@ -204,6 +211,10 @@ func extractResourceBlock(n *sitter.Node, src []byte, path, lang string, start, 
 	if body != nil {
 		deps := extractDependsOn(body, src, path)
 		rec.Relationships = append(rec.Relationships, deps...)
+		// Issue #387 — interpolation cross-references → CALLS edges.
+		selfRef := resourceType + "." + resourceName
+		calls := extractCalls(body, src, selfRef, selfRef)
+		rec.Relationships = append(rec.Relationships, calls...)
 	}
 
 	return []types.EntityRecord{rec}, true
@@ -238,6 +249,10 @@ func extractDataBlock(n *sitter.Node, src []byte, path, lang string, start, end 
 	if body != nil {
 		deps := extractDependsOn(body, src, path)
 		rec.Relationships = append(rec.Relationships, deps...)
+		// Issue #387 — interpolation cross-references → CALLS edges.
+		selfRef := "data." + dataType + "." + dataName
+		calls := extractCalls(body, src, selfRef, selfRef)
+		rec.Relationships = append(rec.Relationships, calls...)
 	}
 
 	return []types.EntityRecord{rec}, true
@@ -275,6 +290,10 @@ func extractModuleBlock(n *sitter.Node, src []byte, path, lang string, start, en
 		}
 		deps := extractDependsOn(body, src, path)
 		rec.Relationships = append(rec.Relationships, deps...)
+		// Issue #387 — interpolation cross-references → CALLS edges.
+		selfRef := "module." + moduleName
+		calls := extractCalls(body, src, selfRef, selfRef)
+		rec.Relationships = append(rec.Relationships, calls...)
 	}
 
 	return []types.EntityRecord{rec}, true
