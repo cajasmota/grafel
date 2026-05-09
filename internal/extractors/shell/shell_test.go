@@ -65,10 +65,12 @@ build_image() {
 
 	names := make(map[string]bool)
 	for _, e := range entities {
-		names[e.Name] = true
 		if e.Kind != "SCOPE.Operation" {
-			t.Errorf("entity %q: expected Kind=SCOPE.Operation, got %q", e.Name, e.Kind)
+			// Issue #380 also emits SCOPE.Component (script + import stubs);
+			// this test only validates Operation entities.
+			continue
 		}
+		names[e.Name] = true
 		if e.Language != "shell" {
 			t.Errorf("entity %q: expected Language=shell, got %q", e.Name, e.Language)
 		}
@@ -114,7 +116,13 @@ func TestShellExtractor_Signatures(t *testing.T) {
 	if len(entities) == 0 {
 		t.Fatal("expected at least 1 entity")
 	}
-	e := entities[0]
+	var e = entities[0]
+	for _, ent := range entities {
+		if ent.Kind == "SCOPE.Operation" {
+			e = ent
+			break
+		}
+	}
 	if e.Name != "deploy" {
 		t.Errorf("expected name=deploy, got %q", e.Name)
 	}
