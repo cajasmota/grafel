@@ -39,23 +39,75 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 
 	var entities []types.EntityRecord
-	walk(file.Tree.RootNode(), file, &entities)
+	walk(file.Tree.RootNode(), file, "", &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	return entities, nil
 }
 
 // walk performs a depth-first traversal of the CST, collecting entities.
-func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+// parentClass is the bare name of the immediately-enclosing class (or "" at
+// file scope) — methods declared inside a class body are emitted with
+// Name="<Class>.<method>" so two classes in the same file declaring a
+// same-named method produce distinct entity IDs (issue #145).
+func walk(node *sitter.Node, file extractor.FileInput, parentClass string, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
 
 	switch node.Type() {
 	case "class_declaration":
-		if rec, ok := buildComponent(node, file, "class"); ok {
-			*out = append(*out, rec)
+		// Issue #145: emit class CONTAINS edges to every method declared
+		// inside the class body. Snapshot the entity slice length before
+		// recursing so we can attribute every operation appended during
+		// the recursion to this class. Method Names are dotted
+		// "<Class>.<method>" — same convention as Java/Go — so two
+		// classes with same-named methods have distinct IDs.
+		rec, ok := buildComponent(node, file, "class")
+		if !ok {
+			break
 		}
+		classIdx := len(*out)
+		className := rec.Name
+		*out = append(*out, rec)
+		body := node.ChildByFieldName("body")
+		if body == nil {
+			// Tree-sitter PHP exposes the class body as the
+			// `declaration_list` child; the `body` field name was
+			// added in newer grammar revisions. Fall back to scanning
+			// children so the code is robust to grammar differences.
+			for i := range node.ChildCount() {
+				ch := node.Child(int(i))
+				if ch.Type() == "declaration_list" {
+					body = ch
+					break
+				}
+			}
+		}
+		if body != nil {
+			before := len(*out)
+			for i := range body.ChildCount() {
+				walk(body.Child(int(i)), file, className, out)
+			}
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				// Format-A structural-ref keyed on the source file
+				// (issue #144 / #145) so the resolver disambiguates
+				// by location when two classes in different files
+				// declare same-named methods.
+				toID := extractor.BuildOperationStructuralRef("php", file.Path, child.Name)
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: toID,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+		return
 
 	case "interface_declaration":
 		if rec, ok := buildComponent(node, file, "interface"); ok {
@@ -64,6 +116,9 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 
 	case "method_declaration":
 		if rec, ok := buildOperation(node, file, "method"); ok {
+			if parentClass != "" {
+				rec.Name = parentClass + "." + rec.Name
+			}
 			*out = append(*out, rec)
 		}
 
@@ -90,7 +145,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	}
 
 	for i := range node.ChildCount() {
-		walk(node.Child(int(i)), file, out)
+		walk(node.Child(int(i)), file, parentClass, out)
 	}
 }
 
