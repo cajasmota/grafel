@@ -512,6 +512,11 @@ func stdlibFunction(name, lang string) (string, bool) {
 			return "function", true
 		}
 	}
+	if lang == "java" {
+		if _, ok := javaBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -831,6 +836,101 @@ var rustBareNames = map[string]struct{}{
 	"assert":        {},
 	"debug_assert":  {},
 	"matches":       {},
+}
+
+// javaBareNames is the Java-language-gated bare-name stop-list (issue
+// #105). After the Java extractor strips the receiver from a method
+// call (`repo.findById(id)` → `findById`, `optional.orElseThrow()` →
+// `orElseThrow`), the resolver sees a bare name that can't be matched
+// to a local entity and lands in bug-extractor. The names below are
+// JDK exception classes plus the most distinctive Spring Data /
+// Spring MVC / Spring binding helper methods.
+//
+// Conservative selection rule (lesson from #94): include only names
+// whose plausible-user-method-collision rate is low. Generic
+// getters/setters (`getId`, `getName`, `getValue`, `setName`,
+// `setValue`) and ubiquitous functional verbs (`map`, `filter`,
+// `forEach`, `collect`, `stream`) are deliberately EXCLUDED — the
+// proper resolution for those is cross-class receiver binding (the
+// (A) follow-up to issue #105). When doubt exists, omit; a missed
+// external is strictly better than a synthesised placeholder
+// shadowing a real missing-resolution bug.
+//
+// Categories (curated, not exhaustive):
+//   - JDK stdlib exception class names (constructed bare or referenced
+//     bare in `throws`/`catch` clauses post-receiver-strip).
+//   - JDK Optional helpers — only the four where collision risk is
+//     low. `map`/`flatMap` excluded because every user collection
+//     method named `map` would be shadowed.
+//   - Spring Data JPA repository methods with distinctive shapes
+//     (`findById`, `saveAndFlush`, etc.). Verbs like `delete` /
+//     `find` alone are excluded; the JpaRepository names listed
+//     here have a low natural-method-collision rate.
+//   - Spring `BindingResult` validation helpers.
+//   - Spring `Model` / `RedirectAttributes` flash-attribute helpers.
+//   - Spring Data `Pageable` / `Page` accessors.
+var javaBareNames = map[string]struct{}{
+	// JDK stdlib exception classes — constructor and reference forms.
+	"IllegalArgumentException":      {},
+	"NullPointerException":          {},
+	"IllegalStateException":         {},
+	"UnsupportedOperationException": {},
+	"RuntimeException":              {},
+	"IndexOutOfBoundsException":     {},
+	"ClassCastException":            {},
+	"NumberFormatException":         {},
+	"ArithmeticException":           {},
+	"IOException":                   {},
+	"FileNotFoundException":         {},
+	"InterruptedException":          {},
+	"Error":                         {},
+	"Throwable":                     {},
+	// `Exception` is already covered by the language-agnostic
+	// stdlibBareNames map (it's also a Python builtin), so it does
+	// NOT need to live here.
+
+	// JDK java.util.Optional helpers — the four with low collision
+	// risk. `map`/`flatMap`/`filter` are deliberately excluded:
+	// every Java codebase that does anything with collections has
+	// at least one user method named `map` or `filter`, and the
+	// language gate alone is not strong enough.
+	"orElseThrow": {},
+	"orElse":      {},
+	"ifPresent":   {},
+	"isPresent":   {},
+
+	// Spring Data JPA repository methods. Distinctive shapes only —
+	// generic verbs (`find`, `delete`, `update`) are excluded.
+	"findById":     {},
+	"findAll":      {},
+	"findAllById":  {},
+	"save":         {},
+	"saveAll":      {},
+	"saveAndFlush": {},
+	"deleteById":   {},
+	"deleteAll":    {},
+	"existsById":   {},
+	"count":        {},
+
+	// Spring BindingResult validation helpers.
+	"hasErrors":     {},
+	"rejectValue":   {},
+	"getFieldError": {},
+
+	// Spring Model / RedirectAttributes flash-attribute helpers.
+	// `addAttribute` is generic enough to cover some user code
+	// collisions but the lang="java" gate keeps the rewrite scoped
+	// to Java sources only.
+	"addFlashAttribute": {},
+	"addAttribute":      {},
+
+	// Spring Data Pageable / Page accessors.
+	"getTotalElements": {},
+	"getTotalPages":    {},
+	"getNumber":        {},
+	"getSize":          {},
+	"hasNext":          {},
+	"hasPrevious":      {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist

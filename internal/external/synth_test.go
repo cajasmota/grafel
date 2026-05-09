@@ -1202,3 +1202,171 @@ func TestRustBareNames_UnknownRustMethodFallsThrough(t *testing.T) {
 			doc.Relationships[0].ToID, name)
 	}
 }
+
+// TestJavaBareNames_ClassifiedWhenLangIsJava covers issue #105 fix
+// (B): JDK stdlib exception classes plus high-frequency Spring/JPA
+// repository, BindingResult, Model, and Pageable helper bare-names
+// must classify as stdlib bare-names — but only when the source
+// entity's language is "java". One representative name per category
+// is exercised; the full list is asserted via the per-name test
+// below.
+func TestJavaBareNames_ClassifiedWhenLangIsJava(t *testing.T) {
+	names := []string{
+		// JDK exceptions
+		"IllegalArgumentException", "NullPointerException",
+		"IllegalStateException", "UnsupportedOperationException",
+		"RuntimeException", "IndexOutOfBoundsException",
+		"ClassCastException", "NumberFormatException",
+		"ArithmeticException", "IOException", "FileNotFoundException",
+		"InterruptedException", "Error", "Throwable",
+		// JDK Optional helpers
+		"orElseThrow", "orElse", "ifPresent", "isPresent",
+		// Spring Data JPA repository methods
+		"findById", "findAll", "findAllById", "save", "saveAll",
+		"saveAndFlush", "deleteById", "deleteAll", "existsById", "count",
+		// Spring BindingResult helpers
+		"hasErrors", "rejectValue", "getFieldError",
+		// Spring Model / RedirectAttributes
+		"addFlashAttribute", "addAttribute",
+		// Spring Pageable / Page accessors
+		"getTotalElements", "getTotalPages", "getNumber", "getSize",
+		"hasNext", "hasPrevious",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "java")
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"java\") = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"java\") subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "java-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "java",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "java-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestJavaBareNames_NotClassifiedForOtherLanguages confirms the
+// language gate: Java-only Spring/JPA names (the high-collision-risk
+// ones like `save`, `count`, `orElse`, `hasNext`) must NOT be
+// rewritten when the source entity's language is anything other
+// than "java". Without the gate, a user-defined `save()` method on
+// a Go service or a JS array `count()` would be shadowed by a
+// synthesised placeholder.
+func TestJavaBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Names that DON'T also appear in language-agnostic
+	// stdlibBareNames. (`Exception` is global and intentionally
+	// omitted from this gate-check.)
+	// `count` deliberately omitted: it's also in rustBareNames so
+	// it classifies under lang="rust"; the gate verified here is
+	// the *Java* gate, not absence-from-all-other-language-gates.
+	names := []string{"save", "orElse", "hasNext", "findById", "findAll", "hasErrors", "IllegalArgumentException"}
+	otherLangs := []string{"go", "python", "javascript", "rust", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang); ok {
+					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+						"(name is gated to lang=\"java\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Java)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestJavaBareNames_RejectedNamesNotClassified locks in the explicit
+// rejection list from issue #105: generic getters/setters and
+// ubiquitous functional verbs MUST NOT be in the Java allowlist.
+// Resolution for those names is the responsibility of the (A)
+// follow-up — cross-file receiver binding. Adding them here would
+// shadow any user-defined `getId()` / `getName()` / `map()` /
+// `filter()` method on a Java type and turn a real missing-resolution
+// bug into a silent placeholder.
+func TestJavaBareNames_RejectedNamesNotClassified(t *testing.T) {
+	rejected := []string{
+		// Generic getters/setters — every entity has them.
+		"getId", "getName", "getValue", "setName", "setValue",
+		// Ubiquitous functional verbs.
+		"map", "filter", "forEach", "stream",
+		// `collect` is global-collision; gated out of the Java map.
+		"collect",
+	}
+	for _, name := range rejected {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, ok := javaBareNames[name]; ok {
+				t.Fatalf("javaBareNames[%q] present; must be rejected per issue #105 (A) deferral", name)
+			}
+		})
+	}
+}
+
+// TestJavaBareNames_UnknownJavaMethodFallsThrough confirms that a
+// Java-source bare-name call that ISN'T in the javaBareNames
+// allowlist still falls through normally, so genuine missing-
+// resolution bugs continue to surface in bug-extractor.
+func TestJavaBareNames_UnknownJavaMethodFallsThrough(t *testing.T) {
+	name := "myCustomBusinessMethod" // Not stdlib/Spring; user-defined.
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "java-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "java",
+		}},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "java-src", ToID: name, Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("Synthesize(%q): synthesized=%d, want 0 (unknown user fn)", name, stats.Synthesized)
+	}
+	if doc.Relationships[0].ToID != name {
+		t.Fatalf("ToID=%q, want %q (unknown name must not be rewritten)",
+			doc.Relationships[0].ToID, name)
+	}
+}
