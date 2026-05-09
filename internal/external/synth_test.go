@@ -1291,6 +1291,122 @@ func TestRustBareNames_UnknownRustMethodFallsThrough(t *testing.T) {
 	}
 }
 
+// TestRustActixDSLBareNames_ClassifiedWhenLangIsRust covers issue
+// #440: Actix-web framework DSL methods (App/Resource/Scope builder,
+// HttpResponse factories, web extractors, actor system, HTTP method
+// route-builder verbs) get receiver-stripped by the Rust extractor and
+// land in bug-extractor. These names must classify as stdlib
+// bare-names — but only when the source entity's language is "rust".
+// Mirrors the Kotlin Ktor (#435) and Swift Vapor (#436) precedents.
+func TestRustActixDSLBareNames_ClassifiedWhenLangIsRust(t *testing.T) {
+	names := []string{
+		// Actix App/Resource/Scope builder DSL.
+		"App", "service", "route", "scope", "wrap", "wrap_fn",
+		"app_data", "default_service", "external_resource",
+		"configure", "register", "data",
+		// HTTP response factories and builder verbs.
+		"HttpResponse", "BadRequest", "InternalServerError",
+		"Unauthorized", "Forbidden", "NoContent", "Created",
+		"Accepted", "body", "json", "finish", "streaming",
+		// Web extractors.
+		"Path", "Query", "Json", "Form", "Data", "Header",
+		// Actix actor system.
+		"Actor", "Handler", "Message", "Context", "Recipient",
+		"Addr", "Arbiter", "System",
+		"start", "started", "stopping", "stopped",
+		// HTTP method route-builder verbs (`get` covered by prelude).
+		"post", "put", "delete", "patch", "head", "options",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "rust", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"rust\", nil) = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"rust\", nil) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "rust-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "rust",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "rust-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestRustActixDSLBareNames_NotClassifiedForOtherLanguages confirms
+// the Rust language gate holds for the issue #440 additions: Actix
+// DSL names must NOT be rewritten when the source entity's language
+// is anything other than "rust". A JS user method named `service`,
+// a Go method named `start`, a Ruby `register`, a Python `body`,
+// etc. must not be shadowed by the Rust gate.
+func TestRustActixDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Names with the highest cross-language collision potential —
+	// generic verbs/accessors that exist as user methods in many
+	// ecosystems. Selection rule: each name MUST be unique to
+	// rustBareNames (i.e. not in stdlibBareNames or any other
+	// language map), otherwise a different gate would fire first.
+	// `Path`/`Query`/`Json`/`Form`/`Data`/`Header` deliberately
+	// excluded — they may live in goBareNames/javaBareNames or
+	// future PRs and are not the cleanest gate-holding signal.
+	names := []string{
+		"service", "scope", "wrap", "wrap_fn", "app_data",
+		"default_service", "external_resource", "configure",
+		"streaming", "stopping", "started",
+		"Recipient", "Arbiter",
+	}
+	otherLangs := []string{"go", "python", "javascript", "ruby", "java", "kotlin", "swift", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"rust\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Rust)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
 // TestJavaBareNames_ClassifiedWhenLangIsJava covers issue #105 fix
 // (B): JDK stdlib exception classes plus high-frequency Spring/JPA
 // repository, BindingResult, Model, and Pageable helper bare-names
@@ -1646,7 +1762,8 @@ func TestKotlinKtorDSLBareNames_ClassifiedWhenLangIsKotlin(t *testing.T) {
 // named `request` or a Go `launch` symbol must not be shadowed.
 func TestKotlinKtorDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	// Pick names with the highest cross-language collision potential.
-	names := []string{"request", "respond", "route", "install", "launch", "async", "static", "headers", "parameters"}
+	// `route` removed — now also classified by rustBareNames (#440).
+	names := []string{"request", "respond", "install", "launch", "async", "static", "headers", "parameters"}
 	otherLangs := []string{"go", "python", "javascript", "rust", "java", ""}
 	for _, name := range names {
 		for _, lang := range otherLangs {
@@ -1804,9 +1921,11 @@ func TestSwiftVaporDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	// swiftBareNames (i.e. not in stdlibBareNames or any other
 	// language map), otherwise the cross-language gate test would
 	// trip on a different language's allowlist firing first.
+	// `body` and `register` removed — now also classified by
+	// rustBareNames (Actix-web DSL, #440).
 	names := []string{
-		"query", "body", "auth", "session", "cookies",
-		"register", "boot", "shutdown", "grouped", "redirect",
+		"query", "auth", "session", "cookies",
+		"boot", "shutdown", "grouped", "redirect",
 		"render", "middleware", "authorize", "protect",
 		"paginate", "transform", "flatMap", "offset",
 	}
@@ -1960,7 +2079,7 @@ func TestCSharpAspNetCoreDSLBareNames_NotClassifiedForOtherLanguages(t *testing.
 	// language map), otherwise the cross-language gate test would
 	// trip on a different language's allowlist firing first.
 	names := []string{
-		"BadRequest", "Unauthorized", "Forbid", "Conflict",
+		"Forbid", "Conflict",
 		"UnprocessableEntity", "RedirectToAction", "RedirectToRoute",
 		"RedirectToPage", "PartialView", "PhysicalFile",
 		"CreatedAtAction", "CreatedAtRoute", "ValidationProblem",
