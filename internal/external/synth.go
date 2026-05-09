@@ -461,7 +461,77 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		return root, "package", true
 	}
 
+	// Issue #120 — receiver-typed Java/Kotlin call where the leading
+	// segment is the simple name of an imported external class.
+	// `MockMvc.perform`, `RedirectAttributes.addFlashAttribute` etc.
+	// resolve to a class name that the extractor's receiver binder
+	// produced from a field/parameter type. When the from-file's
+	// IMPORTS edges include a full path whose leaf is that class name
+	// AND the path's allowlist-matching prefix is known external,
+	// fold the call into that external package. Limited to lang=="java"
+	// and lang=="kotlin" — both share the dotted import shape and the
+	// "PascalCase leaf identifier == class" convention. Other ecosystems
+	// fall through.
+	if (lang == "java" || lang == "kotlin") && fromImports != nil {
+		if dot := strings.IndexByte(name, '.'); dot > 0 {
+			recv := name[:dot]
+			for imp := range fromImports {
+				// Match either a fully-qualified import ending in
+				// ".<recv>" or a bare-name import == recv.
+				if imp == recv || strings.HasSuffix(imp, "."+recv) {
+					if longest := longestKnownDottedPrefix(imp); longest != "" {
+						return longest, "package", true
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// Issue #120 — multi-segment Java / Kotlin / .NET package prefixes.
+	// JVM and CLR dotted paths use a multi-word root convention
+	// (`org.springframework.boot`, `com.fasterxml.jackson.databind`,
+	// `org.apache.commons.lang3`) that doesn't fit the
+	// single-first-segment heuristic above. Walk the dot-separated
+	// prefixes from longest to shortest; the first match against the
+	// allowlist canonicalises to that prefix. Bias toward longer
+	// matches keeps `org` (an unrelated short name) from synthesising a
+	// placeholder for `org.springframework.boot.SpringApplication`
+	// while still folding every Spring submodule into a single
+	// `ext:org.springframework` entity.
+	if longest := longestKnownDottedPrefix(name); longest != "" {
+		return longest, "package", true
+	}
+
 	return "", "", false
+}
+
+// longestKnownDottedPrefix walks the dot-separated prefixes of name
+// from longest to shortest and returns the first one that
+// isKnownExternalPackage recognises. Returns "" when no prefix is on
+// the allowlist. Used by classifyExternal to match multi-word JVM /
+// .NET roots (`org.springframework`, `com.fasterxml.jackson`) without
+// requiring an exact-equals match against the full dotted path.
+//
+// The walk skips the full path itself when it has no dots (single
+// identifier) — that case is already handled by the bare-name and
+// stop-list branches in classifyExternal.
+func longestKnownDottedPrefix(name string) string {
+	if name == "" || !strings.ContainsRune(name, '.') {
+		return ""
+	}
+	// Build prefixes longest-first by trimming the trailing segment.
+	prefix := name
+	for {
+		if isKnownExternalPackage(prefix) {
+			return prefix
+		}
+		dot := strings.LastIndexByte(prefix, '.')
+		if dot <= 0 {
+			return ""
+		}
+		prefix = prefix[:dot]
+	}
 }
 
 // scopedNpmRoot recognises the npm scoped-package shape "@scope/pkg"
@@ -592,6 +662,22 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 	if lang == "java" {
 		if _, ok := javaBareNames[name]; ok {
 			return "function", true
+		}
+		// Issue #120 — JUnit/MockMvc/AssertJ/Mockito helpers that are
+		// receiver-stripped by the Java extractor when the receiver
+		// is the return value of a fluent-API call (e.g.
+		// `mockMvc.perform(...).andExpect(status().isOk())` → bare
+		// `andExpect`, `status`, `isOk`). The receiver type chain
+		// can't be statically derived, so the extractor falls back to
+		// the leaf method name. Gate the allowlist on a Java test-file
+		// suffix (`Test.java` / `Tests.java` / `IT.java`) plus the
+		// canonical Maven test source root so a same-named user
+		// helper in production code does not get shadowed. Same
+		// safer-bias rule the Go testify gate uses (issue #115).
+		if isJavaTestFile(fromFile) {
+			if _, ok := javaTestBareNames[name]; ok {
+				return "function", true
+			}
 		}
 	}
 	if lang == "kotlin" {
@@ -1258,6 +1344,194 @@ var javaBareNames = map[string]struct{}{
 	"hasPrevious":      {},
 }
 
+// javaTestBareNames is the Java test-file-gated bare-name stop-list
+// (issue #120). MockMvc, JUnit Jupiter, AssertJ, Mockito, and
+// Hamcrest all expose fluent-API entry points that the Java extractor
+// strips to a bare leaf identifier when the receiver is the return
+// value of an upstream fluent call:
+//
+//	mockMvc.perform(get("/x"))
+//	    .andExpect(status().isOk())
+//	    .andExpect(view().name("ok"));
+//
+// Static-typing the receiver chain is out of scope; instead we
+// allow-list the leaf names and gate them on a Java test-file path so
+// production code with same-named user methods isn't shadowed.
+//
+// Bias toward names whose plausible-user-method-collision rate inside
+// `*Tests.java` / `*IT.java` files is low — generic getters/setters
+// are kept out, and only the canonical fluent-test verbs are listed.
+var javaTestBareNames = map[string]struct{}{
+	// MockMvc fluent API (org.springframework.test.web.servlet).
+	"perform":                    {},
+	"andExpect":                  {},
+	"andDo":                      {},
+	"andReturn":                  {},
+	"status":                     {},
+	"view":                       {},
+	"model":                      {},
+	"content":                    {},
+	"header":                     {},
+	"redirectedUrl":              {},
+	"redirectedUrlPattern":       {},
+	"forwardedUrl":               {},
+	"flash":                      {},
+	"jsonPath":                   {},
+	"xpath":                      {},
+	"cookie":                     {},
+	"isOk":                       {},
+	"isCreated":                  {},
+	"isNoContent":                {},
+	"isBadRequest":               {},
+	"isUnauthorized":             {},
+	"isForbidden":                {},
+	"isNotFound":                 {},
+	"isMethodNotAllowed":         {},
+	"is3xxRedirection":           {},
+	"is4xxClientError":           {},
+	"is5xxServerError":           {},
+	"isInternalServerError":      {},
+	"attributeExists":            {},
+	"attributeHasErrors":         {},
+	"attributeHasFieldErrors":    {},
+	"attributeHasFieldErrorCode": {},
+	"attributeHasNoErrors":       {},
+	"hasErrors":                  {},
+	"hasNoErrors":                {},
+
+	// MockMvcRequestBuilders / MockMvcResultMatchers shortcuts.
+	"param":       {},
+	"params":      {},
+	"queryParam":  {},
+	"flashAttr":   {},
+	"sessionAttr": {},
+
+	// JUnit Jupiter assertion façade (org.junit.jupiter.api.Assertions).
+	"assertEquals":              {},
+	"assertNotEquals":           {},
+	"assertNull":                {},
+	"assertNotNull":             {},
+	"assertTrue":                {},
+	"assertFalse":               {},
+	"assertThrows":              {},
+	"assertDoesNotThrow":        {},
+	"assertSame":                {},
+	"assertNotSame":             {},
+	"assertArrayEquals":         {},
+	"assertIterableEquals":      {},
+	"assertLinesMatch":          {},
+	"assertTimeout":             {},
+	"assertTimeoutPreemptively": {},
+	"assertAll":                 {},
+	"fail":                      {},
+	"assumeTrue":                {},
+	"assumeFalse":               {},
+	"assumingThat":              {},
+
+	// AssertJ entry points.
+	"assertThat":                         {},
+	"assertThatThrownBy":                 {},
+	"assertThatExceptionOfType":          {},
+	"assertThatNullPointerException":     {},
+	"assertThatIllegalArgumentException": {},
+	"assertThatIllegalStateException":    {},
+	"isEqualTo":                          {},
+	"isNotEqualTo":                       {},
+	"isSameAs":                           {},
+	"isNotSameAs":                        {},
+	"isInstanceOf":                       {},
+	"isNotInstanceOf":                    {},
+	"hasSize":                            {},
+	"hasSizeGreaterThan":                 {},
+	"hasSizeLessThan":                    {},
+	"isNotEmpty":                         {},
+	"containsExactly":                    {},
+	"containsExactlyInAnyOrder":          {},
+	"containsExactlyElementsOf":          {},
+	"containsOnly":                       {},
+	"doesNotContain":                     {},
+	"startsWith":                         {},
+	"endsWith":                           {},
+	"matches":                            {},
+	"isPresent":                          {},
+	"isNotPresent":                       {},
+	"hasValue":                           {},
+	"hasMessage":                         {},
+	"hasMessageContaining":               {},
+	"hasRootCauseInstanceOf":             {},
+	"extracting":                         {},
+
+	// Mockito façades (org.mockito.Mockito / BDDMockito).
+	"mock":                     {},
+	"spy":                      {},
+	"when":                     {},
+	"thenReturn":               {},
+	"thenThrow":                {},
+	"thenAnswer":               {},
+	"verify":                   {},
+	"verifyNoInteractions":     {},
+	"verifyNoMoreInteractions": {},
+	"given":                    {},
+	"willReturn":               {},
+	"willThrow":                {},
+	"willAnswer":               {},
+	"willDoNothing":            {},
+	"reset":                    {},
+	"any":                      {},
+	"anyString":                {},
+	"anyInt":                   {},
+	"anyLong":                  {},
+	"anyBoolean":               {},
+	"anyList":                  {},
+	"anyMap":                   {},
+	"anySet":                   {},
+	"eq":                       {},
+	"argThat":                  {},
+
+	// MockMvc HTTP method shortcuts (collide with HTTP verbs but only
+	// inside test files where they invariably mean MockMvc).
+	"get":     {},
+	"post":    {},
+	"put":     {},
+	"delete":  {},
+	"patch":   {},
+	"head":    {},
+	"options": {},
+
+	// Hamcrest matcher shortcuts.
+	"is":           {},
+	"equalTo":      {},
+	"notNullValue": {},
+	"nullValue":    {},
+	"hasItem":      {},
+	"hasItems":     {},
+	"hasProperty":  {},
+}
+
+// isJavaTestFile reports whether p is a Java test source file by
+// path convention. The Java/Maven/Gradle ecosystem uses three shapes:
+//
+//   - `src/test/java/...` (canonical Maven/Gradle test source root).
+//   - `*Test.java` / `*Tests.java` (the JUnit naming convention).
+//   - `*IT.java` (the Failsafe integration-test naming convention).
+//
+// Any one of these on its own is a strong signal — the canonical
+// source-root rule is precise enough that a shared util living
+// inside `src/main/java/` keeps its bare-name CALLS unresolved
+// rather than picking up a test-only allowlist entry.
+func isJavaTestFile(p string) bool {
+	if p == "" {
+		return false
+	}
+	if strings.Contains(p, "/src/test/java/") || strings.HasPrefix(p, "src/test/java/") {
+		return true
+	}
+	if strings.HasSuffix(p, "Tests.java") || strings.HasSuffix(p, "Test.java") || strings.HasSuffix(p, "IT.java") {
+		return true
+	}
+	return false
+}
+
 // kotlinBareNames is the Kotlin-language-gated bare-name stop-list
 // (issue #106). The Kotlin extractor strips the receiver from a call
 // (`flow.collect { ... }` → `collect`, `Channel(capacity)` →
@@ -1409,47 +1683,47 @@ var rubyBareNames = map[string]struct{}{
 	// `new` and `where` are intentionally omitted: `new` is already
 	// covered above; `where` is classified by the resolver-side
 	// rubyDynamicPatterns catalog as Dynamic.
-	"save":               {},
-	"save!":              {},
-	"update":             {},
-	"update!":            {},
-	"destroy":            {},
-	"destroy!":           {},
-	"valid?":             {},
-	"valid_password?":    {},
-	"errors":             {},
-	"persisted?":         {},
-	"new_record?":        {},
-	"attributes":         {},
-	"reload":             {},
-	"create":             {},
-	"create!":            {},
-	"find_or_create_by":  {},
-	"build":              {},
-	"exists?":            {},
-	"first":              {},
-	"last":               {},
-	"all":                {},
+	"save":              {},
+	"save!":             {},
+	"update":            {},
+	"update!":           {},
+	"destroy":           {},
+	"destroy!":          {},
+	"valid?":            {},
+	"valid_password?":   {},
+	"errors":            {},
+	"persisted?":        {},
+	"new_record?":       {},
+	"attributes":        {},
+	"reload":            {},
+	"create":            {},
+	"create!":           {},
+	"find_or_create_by": {},
+	"build":             {},
+	"exists?":           {},
+	"first":             {},
+	"last":              {},
+	"all":               {},
 	// Additional AR persistence/query methods observed in
 	// rails-realworld bug-extractor after the initial #124 batch. All
 	// are stable AR::Base / AR::Relation methods (not method_missing).
-	"find_by":         {},
-	"find_each":       {},
-	"find_in_batches": {},
-	"destroy_all":     {},
-	"delete_all":      {},
-	"update_all":      {},
-	"update_attribute":      {},
-	"update_attributes":     {},
-	"update_attributes!":    {},
-	"toggle":          {},
-	"toggle!":         {},
-	"increment":       {},
-	"increment!":      {},
-	"decrement":       {},
-	"decrement!":      {},
-	"touch":           {},
-	"reset_counters":  {},
+	"find_by":                  {},
+	"find_each":                {},
+	"find_in_batches":          {},
+	"destroy_all":              {},
+	"delete_all":               {},
+	"update_all":               {},
+	"update_attribute":         {},
+	"update_attributes":        {},
+	"update_attributes!":       {},
+	"toggle":                   {},
+	"toggle!":                  {},
+	"increment":                {},
+	"increment!":               {},
+	"decrement":                {},
+	"decrement!":               {},
+	"touch":                    {},
+	"reset_counters":           {},
 	"reset_column_information": {},
 	// Numeric / time helpers added by ActiveSupport to Numeric
 	// (`3.days`, `1.hour.ago`, `5.minutes.from_now`). Ruby-only by
@@ -1803,6 +2077,16 @@ var knownExternalPackages = map[string]struct{}{
 	"slf4j":                 {},
 	"log4j":                 {},
 	"lombok":                {},
+	// Java test stack (Issue #120 — spring-petclinic test imports).
+	// Multi-segment keys keep the longest-prefix matcher precise so an
+	// unrelated `org.junit` user-namespace would not collide.
+	"org.junit":          {}, // covers org.junit / org.junit.jupiter.* / org.junit.platform.*
+	"org.mockito":        {},
+	"org.assertj":        {},
+	"org.hamcrest":       {},
+	"org.testcontainers": {},
+	"io.micrometer":      {}, // metrics/observability used by Spring Boot
+	"ch.qos.logback":     {}, // default Spring Boot logger
 	// Ruby
 	"rails":        {},
 	"activerecord": {},

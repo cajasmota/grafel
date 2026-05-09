@@ -133,3 +133,132 @@ class A {}
 		}
 	}
 }
+
+// TestJava_ImportsCarryProperties (#120): IMPORTS edges must carry the
+// metadata the cross-file resolver consumes (mirroring Python #93):
+// local_name, source_module, imported_name. For `import com.foo.Bar;`
+// local_name="Bar", source_module="com.foo", imported_name="Bar".
+func TestJava_ImportsCarryProperties(t *testing.T) {
+	src := `
+package x;
+import com.foo.Bar;
+import com.foo.Baz;
+import static com.util.Helpers.staticMethod;
+import com.wild.*;
+class A {}
+`
+	ents := runJava(t, src)
+	want := map[string]map[string]string{
+		"com.foo.Bar": {
+			"local_name":    "Bar",
+			"source_module": "com.foo",
+			"imported_name": "Bar",
+		},
+		"com.foo.Baz": {
+			"local_name":    "Baz",
+			"source_module": "com.foo",
+			"imported_name": "Baz",
+		},
+		"com.util.Helpers.staticMethod": {
+			"local_name":    "staticMethod",
+			"source_module": "com.util.Helpers",
+			"imported_name": "staticMethod",
+		},
+		"com.wild": {
+			"source_module": "com.wild",
+			"wildcard":      "1",
+		},
+	}
+	got := map[string]map[string]string{}
+	for _, e := range ents {
+		for _, r := range e.Relationships {
+			if r.Kind != "IMPORTS" {
+				continue
+			}
+			got[r.ToID] = r.Properties
+		}
+	}
+	for to, wantProps := range want {
+		gotProps, ok := got[to]
+		if !ok {
+			t.Errorf("expected IMPORTS edge to=%q, got=%v", to, got)
+			continue
+		}
+		for k, v := range wantProps {
+			if gotProps[k] != v {
+				t.Errorf("IMPORTS to=%q prop %q: got=%q want=%q (all=%v)",
+					to, k, gotProps[k], v, gotProps)
+			}
+		}
+	}
+}
+
+// TestJava_CallsFieldReceiverDottedTarget (#120): a method invocation
+// on a field whose declared type is known emits a CALLS edge with
+// target "<FieldType>.<method>" — the dotted form the resolver
+// indexes via byKind / byName for cross-file binding.
+//
+// Example pattern (Spring DI):
+//
+//	class OwnerController {
+//	  @Autowired private OwnerRepository owners;
+//	  void show(int id) { owners.findById(id); }
+//	}
+//
+// Should emit CALLS show -> "OwnerRepository.findById".
+func TestJava_CallsFieldReceiverDottedTarget(t *testing.T) {
+	src := `
+package x;
+class OwnerRepository { Owner findById(int id) { return null; } }
+class OwnerController {
+  private OwnerRepository owners;
+  void show(int id) { owners.findById(id); }
+  void show2(int id) { this.owners.findById(id); }
+}
+`
+	ents := runJava(t, src)
+	if !javaHasRel(ents, "OwnerController.show", "SCOPE.Operation", "CALLS", "OwnerRepository.findById") {
+		t.Errorf("expected CALLS show -> OwnerRepository.findById; got rels=%+v",
+			javaFind(ents, "OwnerController.show", "SCOPE.Operation").Relationships)
+	}
+	if !javaHasRel(ents, "OwnerController.show2", "SCOPE.Operation", "CALLS", "OwnerRepository.findById") {
+		t.Errorf("expected CALLS show2 -> OwnerRepository.findById (this.owners); got rels=%+v",
+			javaFind(ents, "OwnerController.show2", "SCOPE.Operation").Relationships)
+	}
+}
+
+// TestJava_CallsParameterReceiverDottedTarget (#120): a method
+// invocation on a method parameter whose declared type is known emits
+// CALLS with target "<ParamType>.<method>".
+func TestJava_CallsParameterReceiverDottedTarget(t *testing.T) {
+	src := `
+package x;
+class A {
+  void run(OwnerRepository repo) { repo.findById(1); }
+}
+`
+	ents := runJava(t, src)
+	if !javaHasRel(ents, "A.run", "SCOPE.Operation", "CALLS", "OwnerRepository.findById") {
+		t.Errorf("expected CALLS run -> OwnerRepository.findById from parameter receiver")
+	}
+}
+
+// TestJava_CallsStaticReceiverDottedTarget (#120): when the receiver
+// is a PascalCase identifier matched against the file's imports
+// (e.g. `import com.foo.Helpers; Helpers.run()`), emit CALLS as
+// "Helpers.run". Even without a direct match, a PascalCase receiver
+// is a strong static-call signal and should be retained dotted so
+// the resolver's byKind/byName can bind it.
+func TestJava_CallsStaticReceiverDottedTarget(t *testing.T) {
+	src := `
+package x;
+import com.foo.Helpers;
+class A {
+  void run() { Helpers.compute(); }
+}
+`
+	ents := runJava(t, src)
+	if !javaHasRel(ents, "A.run", "SCOPE.Operation", "CALLS", "Helpers.compute") {
+		t.Errorf("expected CALLS run -> Helpers.compute (static receiver)")
+	}
+}

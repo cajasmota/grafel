@@ -240,9 +240,19 @@ func modulesForFile(p string) []string {
 	if p == "" {
 		return nil
 	}
-	if !strings.HasSuffix(p, ".py") {
-		return nil
+	switch {
+	case strings.HasSuffix(p, ".py"):
+		return modulesForPythonFile(p)
+	case strings.HasSuffix(p, ".java"):
+		return modulesForJavaFile(p)
 	}
+	return nil
+}
+
+// modulesForPythonFile is the original Python-specific dotted-module
+// derivation (issue #93). Extracted from modulesForFile so the
+// language dispatch reads cleanly.
+func modulesForPythonFile(p string) []string {
 	stripped := strings.TrimSuffix(p, ".py")
 	out := []string{strings.ReplaceAll(stripped, "/", ".")}
 	// __init__ rolls up to its parent directory's dotted name.
@@ -268,6 +278,64 @@ func modulesForFile(p string) []string {
 		}
 	}
 	return out
+}
+
+// modulesForJavaFile derives the dotted package path of a Java source
+// file (issue #120). Java files map their PARENT directory to the
+// Java package: `src/main/java/com/foo/Bar.java` belongs to package
+// "com.foo" and the entity name is "Bar". The leading source-root
+// (`src/main/java/`, `src/test/java/`, plus the same well-known
+// repo-relative prefixes Python uses) is stripped so the dotted form
+// matches the literal `import com.foo.Bar;` path the resolver is
+// asked to bind.
+//
+// Returned slice always has at least one entry (the package path) and
+// optionally a second when a non-canonical leading prefix is present.
+// Files at the repo root with no parent directory return a single
+// empty string; the caller's nil-guards handle that gracefully.
+func modulesForJavaFile(p string) []string {
+	stripped := strings.TrimSuffix(p, ".java")
+	dir := stripped
+	if slash := strings.LastIndexByte(stripped, '/'); slash >= 0 {
+		dir = stripped[:slash]
+	} else {
+		// File at repo root — no package. Caller treats empty
+		// returns as a no-op.
+		return nil
+	}
+	dotted := strings.ReplaceAll(dir, "/", ".")
+	out := []string{dotted}
+	// Strip well-known Java source-root prefixes once. Keep the
+	// pre-strip form too so an in-corpus class indexed under its
+	// repo-relative dotted form continues to resolve. The strip is
+	// conservative — only the canonical Maven/Gradle layouts, plus
+	// the same generic prefixes used by Python.
+	for _, prefix := range javaSourceRootPrefixes {
+		if strings.HasPrefix(dotted, prefix) {
+			out = append(out, strings.TrimPrefix(dotted, prefix))
+			break
+		}
+	}
+	for _, prefix := range sourceRootPrefixes {
+		if strings.HasPrefix(out[0], prefix) {
+			out = append(out, strings.TrimPrefix(out[0], prefix))
+			break
+		}
+	}
+	return out
+}
+
+// javaSourceRootPrefixes lists the canonical Maven/Gradle layout
+// prefixes modulesForJavaFile may strip once when deriving the
+// dotted-package form of a `.java` source file. The prefixes are
+// matched against the dotted form of the path's parent directory
+// (slashes already replaced with dots), so the entries themselves end
+// in a dot.
+var javaSourceRootPrefixes = []string{
+	"src.main.java.",
+	"src.test.java.",
+	"src.main.kotlin.", // Kotlin-in-Java repo blends; harmless when absent
+	"src.test.kotlin.",
 }
 
 // sourceRootPrefixes is the small allowlist of leading dotted-path
