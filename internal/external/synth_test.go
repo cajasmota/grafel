@@ -453,8 +453,8 @@ func TestStdlibBareNames_NoCollisionNames(t *testing.T) {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, ok := stdlibFunction(name, "", ""); ok {
-				t.Fatalf("stdlibFunction(%q) classified as stdlib bare-name; "+
+			if _, ok := stdlibFunction(name, "", "", nil); ok {
+				t.Fatalf("stdlibFunction(%q, nil) classified as stdlib bare-name; "+
 					"this name commonly collides with user-defined methods "+
 					"and must not synthesise a placeholder", name)
 			}
@@ -488,12 +488,12 @@ func TestStdlibBareNames_RustAssertMacros(t *testing.T) {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			subtype, ok := stdlibFunction(name, "", "")
+			subtype, ok := stdlibFunction(name, "", "", nil)
 			if !ok {
-				t.Fatalf("stdlibFunction(%q) = (_, false); want classified as stdlib bare-name", name)
+				t.Fatalf("stdlibFunction(%q, nil) = (_, false); want classified as stdlib bare-name", name)
 			}
 			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q) subtype=%q, want %q", name, subtype, "function")
+				t.Fatalf("stdlibFunction(%q, nil) subtype=%q, want %q", name, subtype, "function")
 			}
 			doc := &graph.Document{
 				Relationships: []graph.Relationship{
@@ -722,12 +722,12 @@ func TestGoBareNames_ClassifiedWhenLangIsGo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			// Direct stdlibFunction probe with lang="go" must classify.
-			subtype, ok := stdlibFunction(name, "go", "")
+			subtype, ok := stdlibFunction(name, "go", "", nil)
 			if !ok {
-				t.Fatalf("stdlibFunction(%q, \"go\") = (_, false); want classified as stdlib bare-name", name)
+				t.Fatalf("stdlibFunction(%q, \"go\", nil) = (_, false); want classified as stdlib bare-name", name)
 			}
 			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q, \"go\") subtype=%q, want %q", name, subtype, "function")
+				t.Fatalf("stdlibFunction(%q, \"go\", nil) subtype=%q, want %q", name, subtype, "function")
 			}
 			// End-to-end: Synthesize on a document whose FromID entity
 			// is tagged language="go" rewrites the edge to ext:<name>.
@@ -767,8 +767,8 @@ func TestGoBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 			name, lang := name, lang
 			t.Run(name+"/"+lang, func(t *testing.T) {
 				t.Parallel()
-				if _, ok := stdlibFunction(name, lang, ""); ok {
-					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
 						"(name is gated to lang=\"go\" only)", name, lang)
 				}
 				doc := &graph.Document{
@@ -814,8 +814,8 @@ func TestGoBareNames_UserMethodCollisionExclusions(t *testing.T) {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, ok := stdlibFunction(name, "go", ""); ok {
-				t.Fatalf("stdlibFunction(%q, \"go\") classified; want fall-through "+
+			if _, ok := stdlibFunction(name, "go", "", nil); ok {
+				t.Fatalf("stdlibFunction(%q, \"go\", nil) classified; want fall-through "+
 					"(name is too-likely to be a user-defined method)", name)
 			}
 			doc := &graph.Document{
@@ -1100,12 +1100,12 @@ func TestRustBareNames_ClassifiedWhenLangIsRust(t *testing.T) {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			subtype, ok := stdlibFunction(name, "rust", "")
+			subtype, ok := stdlibFunction(name, "rust", "", nil)
 			if !ok {
-				t.Fatalf("stdlibFunction(%q, \"rust\") = (_, false); want classified as stdlib bare-name", name)
+				t.Fatalf("stdlibFunction(%q, \"rust\", nil) = (_, false); want classified as stdlib bare-name", name)
 			}
 			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q, \"rust\") subtype=%q, want %q", name, subtype, "function")
+				t.Fatalf("stdlibFunction(%q, \"rust\", nil) subtype=%q, want %q", name, subtype, "function")
 			}
 			doc := &graph.Document{
 				Entities: []graph.Entity{{
@@ -1147,8 +1147,8 @@ func TestRustBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 			name, lang := name, lang
 			t.Run(name+"/"+lang, func(t *testing.T) {
 				t.Parallel()
-				if _, ok := stdlibFunction(name, lang, ""); ok {
-					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
 						"(name is gated to lang=\"rust\" only)", name, lang)
 				}
 				doc := &graph.Document{
@@ -1236,12 +1236,12 @@ func TestJavaBareNames_ClassifiedWhenLangIsJava(t *testing.T) {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			subtype, ok := stdlibFunction(name, "java", "")
+			subtype, ok := stdlibFunction(name, "java", "", nil)
 			if !ok {
-				t.Fatalf("stdlibFunction(%q, \"java\") = (_, false); want classified as stdlib bare-name", name)
+				t.Fatalf("stdlibFunction(%q, \"java\", nil) = (_, false); want classified as stdlib bare-name", name)
 			}
 			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q, \"java\") subtype=%q, want %q", name, subtype, "function")
+				t.Fatalf("stdlibFunction(%q, \"java\", nil) subtype=%q, want %q", name, subtype, "function")
 			}
 			doc := &graph.Document{
 				Entities: []graph.Entity{{
@@ -1287,8 +1287,8 @@ func TestJavaBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 			name, lang := name, lang
 			t.Run(name+"/"+lang, func(t *testing.T) {
 				t.Parallel()
-				if _, ok := stdlibFunction(name, lang, ""); ok {
-					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
 						"(name is gated to lang=\"java\" only)", name, lang)
 				}
 				doc := &graph.Document{
@@ -1400,12 +1400,12 @@ func TestKotlinBareNames_ClassifiedWhenLangIsKotlin(t *testing.T) {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			subtype, ok := stdlibFunction(name, "kotlin", "")
+			subtype, ok := stdlibFunction(name, "kotlin", "", nil)
 			if !ok {
-				t.Fatalf("stdlibFunction(%q, \"kotlin\") = (_, false); want classified as stdlib bare-name", name)
+				t.Fatalf("stdlibFunction(%q, \"kotlin\", nil) = (_, false); want classified as stdlib bare-name", name)
 			}
 			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q, \"kotlin\") subtype=%q, want %q", name, subtype, "function")
+				t.Fatalf("stdlibFunction(%q, \"kotlin\", nil) subtype=%q, want %q", name, subtype, "function")
 			}
 			doc := &graph.Document{
 				Entities: []graph.Entity{{
@@ -1445,8 +1445,8 @@ func TestKotlinBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 			name, lang := name, lang
 			t.Run(name+"/"+lang, func(t *testing.T) {
 				t.Parallel()
-				if _, ok := stdlibFunction(name, lang, ""); ok {
-					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
 						"(name is gated to lang=\"kotlin\" only)", name, lang)
 				}
 				doc := &graph.Document{
@@ -1539,12 +1539,12 @@ func TestRubyBareNames_ClassifiedWhenLangIsRuby(t *testing.T) {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			subtype, ok := stdlibFunction(name, "ruby", "")
+			subtype, ok := stdlibFunction(name, "ruby", "", nil)
 			if !ok {
-				t.Fatalf("stdlibFunction(%q, \"ruby\") = (_, false); want classified", name)
+				t.Fatalf("stdlibFunction(%q, \"ruby\", nil) = (_, false); want classified", name)
 			}
 			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q, \"ruby\") subtype=%q, want %q", name, subtype, "function")
+				t.Fatalf("stdlibFunction(%q, \"ruby\", nil) subtype=%q, want %q", name, subtype, "function")
 			}
 			doc := &graph.Document{
 				Entities: []graph.Entity{{
@@ -1581,8 +1581,8 @@ func TestRubyBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 			name, lang := name, lang
 			t.Run(name+"/"+lang, func(t *testing.T) {
 				t.Parallel()
-				if _, ok := stdlibFunction(name, lang, ""); ok {
-					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
 						"(name is gated to lang=\"ruby\" only)", name, lang)
 				}
 				doc := &graph.Document{
@@ -1660,12 +1660,12 @@ func TestJSBareNames_ClassifiedWhenLangIsJSOrTS(t *testing.T) {
 			name, lang := name, lang
 			t.Run(name+"/"+lang, func(t *testing.T) {
 				t.Parallel()
-				subtype, ok := stdlibFunction(name, lang, "")
+				subtype, ok := stdlibFunction(name, lang, "", nil)
 				if !ok {
-					t.Fatalf("stdlibFunction(%q, %q) = (_, false); want classified", name, lang)
+					t.Fatalf("stdlibFunction(%q, %q, nil) = (_, false); want classified", name, lang)
 				}
 				if subtype != "function" {
-					t.Fatalf("stdlibFunction(%q, %q) subtype=%q, want %q", name, lang, subtype, "function")
+					t.Fatalf("stdlibFunction(%q, %q, nil) subtype=%q, want %q", name, lang, subtype, "function")
 				}
 				doc := &graph.Document{
 					Entities: []graph.Entity{{
@@ -1711,8 +1711,8 @@ func TestJSBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 			name, lang := name, lang
 			t.Run(name+"/"+lang, func(t *testing.T) {
 				t.Parallel()
-				if _, ok := stdlibFunction(name, lang, ""); ok {
-					t.Fatalf("stdlibFunction(%q, %q) classified; want fall-through "+
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
 						"(name is gated to JS/TS only)", name, lang)
 				}
 				doc := &graph.Document{
@@ -1824,12 +1824,12 @@ func TestGoTestifyBareNames_ClassifiedInTestFiles(t *testing.T) {
 			t.Parallel()
 			// Direct stdlibFunction probe with lang="go" + _test.go path
 			// must classify.
-			subtype, ok := stdlibFunction(name, "go", "internal/foo/foo_test.go")
+			subtype, ok := stdlibFunction(name, "go", "internal/foo/foo_test.go", nil)
 			if !ok {
-				t.Fatalf("stdlibFunction(%q, \"go\", _test.go) = (_, false); want classified", name)
+				t.Fatalf("stdlibFunction(%q, \"go\", _test.go, nil) = (_, false); want classified", name)
 			}
 			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q, \"go\", _test.go) subtype=%q, want %q", name, subtype, "function")
+				t.Fatalf("stdlibFunction(%q, \"go\", _test.go, nil) subtype=%q, want %q", name, subtype, "function")
 			}
 			// End-to-end: Synthesize on a doc whose source entity is a Go
 			// _test.go file rewrites the edge to ext:<name>.
@@ -1877,8 +1877,8 @@ func TestGoTestifyBareNames_NotClassifiedInNonTestGoFiles(t *testing.T) {
 			name, path := name, path
 			t.Run(name+"|"+path, func(t *testing.T) {
 				t.Parallel()
-				if _, ok := stdlibFunction(name, "go", path); ok {
-					t.Fatalf("stdlibFunction(%q, \"go\", %q) classified; want fall-through "+
+				if _, ok := stdlibFunction(name, "go", path, nil); ok {
+					t.Fatalf("stdlibFunction(%q, \"go\", %q, nil) classified; want fall-through "+
 						"(file is not a _test.go file)", name, path)
 				}
 				doc := &graph.Document{
@@ -1920,8 +1920,8 @@ func TestGoTestifyBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 			name, lang := name, lang
 			t.Run(name+"/"+lang, func(t *testing.T) {
 				t.Parallel()
-				if _, ok := stdlibFunction(name, lang, "foo_test.go"); ok {
-					t.Fatalf("stdlibFunction(%q, %q, _test.go) classified; want fall-through "+
+				if _, ok := stdlibFunction(name, lang, "foo_test.go", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, _test.go, nil) classified; want fall-through "+
 						"(testify map is gated to lang=\"go\")", name, lang)
 				}
 			})
@@ -1943,8 +1943,8 @@ func TestGoTestifyBareNames_RejectedCollisions(t *testing.T) {
 				t.Fatalf("goTestifyBareNames[%q] present; must be rejected per issue #115 "+
 					"(collision-prone with user-defined Run/New/Add/Set methods)", name)
 			}
-			if _, ok := stdlibFunction(name, "go", "foo_test.go"); ok {
-				t.Fatalf("stdlibFunction(%q, \"go\", _test.go) classified; want fall-through "+
+			if _, ok := stdlibFunction(name, "go", "foo_test.go", nil); ok {
+				t.Fatalf("stdlibFunction(%q, \"go\", _test.go, nil) classified; want fall-through "+
 					"(name is too-likely to be a user-defined method)", name)
 			}
 		})
@@ -1960,4 +1960,158 @@ func TestGoTestifyBareNames_TestifyPackageAllowlisted(t *testing.T) {
 		t.Fatal("IsKnownExternalPackage(\"github.com/stretchr/testify\") = false; " +
 			"want true (Issue #115/#117)")
 	}
+}
+
+// TestGoChiRouterNames_ClassifiedWithChiImport locks in issue #131:
+// go-chi router-method bare names (Get/Post/Put/Delete/Mount/Group/...)
+// that arrive at the resolver after the Go extractor strips the
+// receiver (`r.Get("/x", h)` → `Get`) must classify as stdlib bare-names
+// — but only when (a) the source entity's language is "go" AND (b) the
+// source file's IMPORTS edges include any canonical go-chi import path.
+// The dual gate keeps these collision-prone names from shadowing user
+// methods like `Repository.Get` in non-chi code.
+func TestGoChiRouterNames_ClassifiedWithChiImport(t *testing.T) {
+	names := []string{
+		"Get", "Post", "Put", "Delete", "Patch",
+		"Head", "Options", "Connect", "Trace",
+		"Mount", "Group", "Route", "Use", "With",
+		"HandleFunc", "Handle", "NotFound", "MethodNotAllowed",
+	}
+	chiPaths := []string{
+		"github.com/go-chi/chi",
+		"github.com/go-chi/chi/v5",
+		"github.com/go-chi/chi/v4",
+		"github.com/go-chi/chi/v3",
+	}
+	for _, name := range names {
+		for _, chiPath := range chiPaths {
+			name, chiPath := name, chiPath
+			t.Run(name+"|"+chiPath, func(t *testing.T) {
+				t.Parallel()
+				// Direct stdlibFunction probe with lang="go" + chi import
+				// in the imports set must classify.
+				imports := map[string]bool{chiPath: true}
+				subtype, ok := stdlibFunction(name, "go", "internal/api/router.go", imports)
+				if !ok {
+					t.Fatalf("stdlibFunction(%q, \"go\", chi=%q) = (_, false); want classified",
+						name, chiPath)
+				}
+				if subtype != "function" {
+					t.Fatalf("stdlibFunction(%q, \"go\", chi=%q) subtype=%q, want %q",
+						name, chiPath, subtype, "function")
+				}
+				// End-to-end: a Go entity in a file that emits an IMPORTS
+				// edge to the chi package must rewrite a CALLS edge with a
+				// chi-router method name to ext:<name>.
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:         "go-chi-src",
+						Name:       "RegisterRoutes",
+						Kind:       "function",
+						Language:   "go",
+						SourceFile: "internal/api/router.go",
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-import", FromID: "internal/api/router.go", ToID: chiPath, Kind: "IMPORTS"},
+						{ID: "rel-call", FromID: "go-chi-src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				Synthesize(doc)
+				want := "ext:" + name
+				// Find the CALLS edge and check it was rewritten.
+				var got string
+				for _, r := range doc.Relationships {
+					if r.ID == "rel-call" {
+						got = r.ToID
+						break
+					}
+				}
+				if got != want {
+					t.Fatalf("CALLS edge ToID=%q, want %q "+
+						"(name=%q, chi import=%q)", got, want, name, chiPath)
+				}
+			})
+		}
+	}
+}
+
+// TestGoChiRouterNames_NotClassifiedWithoutChiImport locks in the
+// import-set gate: the same chi-router names must NOT classify when the
+// source file's IMPORTS edges don't include any go-chi path. Without
+// this gate, a user-defined `Repository.Get` would be shadowed by a
+// synthesised chi placeholder.
+func TestGoChiRouterNames_NotClassifiedWithoutChiImport(t *testing.T) {
+	names := []string{"Get", "Post", "Put", "Delete", "Mount", "Group", "Use"}
+	importSets := []map[string]bool{
+		nil,
+		{},
+		// Adversarial: imports unrelated packages, but no chi.
+		{"github.com/gin-gonic/gin": true},
+		{"github.com/labstack/echo": true},
+		{"net/http": true, "encoding/json": true},
+		// Adversarial: a non-chi path that contains "chi" as a substring.
+		{"github.com/example/chi-fork": true},
+		{"github.com/anything/notchi": true},
+	}
+	for _, name := range names {
+		for i, imports := range importSets {
+			name, imports, i := name, imports, i
+			t.Run(name+"/case"+itoa(i), func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, "go", "internal/foo/foo.go", imports); ok {
+					t.Fatalf("stdlibFunction(%q, \"go\", imports=%v) classified; "+
+						"want fall-through (no chi import in set)", name, imports)
+				}
+			})
+		}
+	}
+}
+
+// TestGoChiRouterNames_NotClassifiedForOtherLanguages confirms the
+// language gate: even with a chi import path in the set, the chi names
+// must not classify when the source language isn't "go". Defensive in
+// depth.
+func TestGoChiRouterNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	names := []string{"Get", "Post", "Mount"}
+	imports := map[string]bool{"github.com/go-chi/chi/v5": true}
+	otherLangs := []string{"python", "javascript", "rust", "java", "ruby", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "foo.go", imports); ok {
+					t.Fatalf("stdlibFunction(%q, %q, chi imports) classified; "+
+						"want fall-through (chi map is gated to lang=\"go\")", name, lang)
+				}
+			})
+		}
+	}
+}
+
+// TestGoChiRouterNames_ChiPackageAllowlisted confirms #131 relies on
+// the existing #117 host-prefixed known-external entry for the chi
+// package — synthesised chi router CALLS edges should resolve to a chi
+// package node when the full import path arrives at the resolver.
+func TestGoChiRouterNames_ChiPackageAllowlisted(t *testing.T) {
+	if !IsKnownExternalPackage("github.com/go-chi/chi") {
+		t.Fatal("IsKnownExternalPackage(\"github.com/go-chi/chi\") = false; " +
+			"want true (Issue #117/#131)")
+	}
+}
+
+// itoa formats a small non-negative int as decimal. Local helper to
+// keep test sub-names deterministic without pulling in strconv.
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	var buf [8]byte
+	pos := len(buf)
+	for i > 0 {
+		pos--
+		buf[pos] = byte('0' + i%10)
+		i /= 10
+	}
+	return string(buf[pos:])
 }

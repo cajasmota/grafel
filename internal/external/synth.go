@@ -86,6 +86,31 @@ func Synthesize(doc *graph.Document) Stats {
 		entityFile[doc.Entities[k].ID] = doc.Entities[k].SourceFile
 	}
 
+	// fileImports maps every source file path to the set of import paths
+	// that file declares, walking IMPORTS edges (FromID = filePath, ToID
+	// = imported package). Used by the classifier to file-path-gate
+	// import-aware bare-name allowlists (issue #131 — chi router methods
+	// like Get/Post/Put/Delete that collide with HTTP-verb generic getter
+	// names and must only classify when the source file actually imports
+	// `github.com/go-chi/chi`). Lookups against non-existent paths return
+	// nil — matching pre-#131 behaviour for files that import nothing.
+	fileImports := make(map[string]map[string]bool)
+	for k := range doc.Relationships {
+		rel := &doc.Relationships[k]
+		if rel.Kind != string(types.RelationshipKindImports) {
+			continue
+		}
+		if rel.FromID == "" || rel.ToID == "" {
+			continue
+		}
+		set, ok := fileImports[rel.FromID]
+		if !ok {
+			set = make(map[string]bool)
+			fileImports[rel.FromID] = set
+		}
+		set[rel.ToID] = true
+	}
+
 	// First pass — collect every unique external name we want to
 	// synthesise. The placeholder carries a subtype hint
 	// ("package"/"function") but the language field is left empty:
@@ -108,7 +133,7 @@ func Synthesize(doc *graph.Document) Stats {
 		if rel.ToID == "" || isHexID(rel.ToID) || strings.HasPrefix(rel.ToID, ExtIDPrefix) {
 			continue
 		}
-		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, entityLang[rel.FromID], entityFile[rel.FromID])
+		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, entityLang[rel.FromID], entityFile[rel.FromID], fileImports[entityFile[rel.FromID]])
 		if !ok {
 			continue
 		}
@@ -186,7 +211,7 @@ func Synthesize(doc *graph.Document) Stats {
 // Returns ("", "", false) when the stub doesn't look external — those
 // are left untouched and continue to count as "unmatched" in the
 // resolver stats.
-func classifyExternal(stub, relKind, lang, fromFile string) (canonical, subtype string, ok bool) {
+func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[string]bool) (canonical, subtype string, ok bool) {
 	if stub == "" {
 		return "", "", false
 	}
@@ -410,7 +435,7 @@ func classifyExternal(stub, relKind, lang, fromFile string) (canonical, subtype 
 	}
 
 	// Stdlib function stop-list — bare names like "Println", "print".
-	if subtype, ok := stdlibFunction(name, lang, fromFile); ok {
+	if subtype, ok := stdlibFunction(name, lang, fromFile, fromImports); ok {
 		return name, subtype, true
 	}
 
@@ -502,7 +527,7 @@ func isNpmSegment(s string) bool {
 // the small per-language stop-list. Kept deliberately small — v1.0
 // catches the highest-volume bare-name calls without ballooning into
 // a full stdlib catalogue.
-func stdlibFunction(name, lang, fromFile string) (string, bool) {
+func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (string, bool) {
 	if _, ok := stdlibBareNames[name]; ok {
 		return "function", true
 	}
@@ -528,6 +553,22 @@ func stdlibFunction(name, lang, fromFile string) (string, bool) {
 		// synthesised placeholder shadowing a real user method).
 		if strings.HasSuffix(fromFile, "_test.go") {
 			if _, ok := goTestifyBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		// Issue #131 — go-chi router methods (Get/Post/Put/Delete/Mount/
+		// Group/Route/Use/...) are receiver-stripped by the Go extractor
+		// (`r.Get("/x", h)` → `Get`) and collide trivially with HTTP-verb
+		// generic getters (`Repository.Get`, `Cache.Get`) that exist in
+		// virtually every Go web codebase. Gate the chi-router allowlist
+		// on BOTH lang=="go" AND a chi-package import edge from the source
+		// file — the import gate is precise (the router type can only come
+		// from the chi package) and falls through to the generic allowlist
+		// for non-chi callers, matching the safer-bias rule from #94 (a
+		// missed external is strictly better than a synthesised placeholder
+		// shadowing a real user method).
+		if hasGoChiImport(fromImports) {
+			if _, ok := goChiRouterNames[name]; ok {
 				return "function", true
 			}
 		}
@@ -850,6 +891,86 @@ var goTestifyBareNames = map[string]struct{}{
 	// httptest helper commonly imported alongside testify in `_test.go`.
 	// Multi-word PascalCase, no plausible user-method collision.
 	"NewRecorder": {},
+}
+
+// goChiRouterNames is the go-chi router-method bare-name stop-list
+// (issue #131). The chi router (`*chi.Mux` / `chi.Router`) exposes
+// HTTP-verb registration methods (Get/Post/Put/Delete/...) plus
+// router-composition methods (Mount/Group/Route/Use/With) that arrive
+// at the resolver as bare names after the Go extractor strips the
+// receiver (`r.Get("/x", h)` → `Get`). These names collide trivially
+// with user-defined methods on domain types (Repository.Get,
+// Service.Use, Cache.Delete) so a language-only gate is not enough.
+//
+// Gating: lookups in this map are reached ONLY when (a) the source
+// entity's language is "go" AND (b) the source file imports the chi
+// package (any of the four canonical import paths emitted by
+// `hasGoChiImport`). Both conditions are precise: chi router values
+// can only originate from a chi package import, and the post-#117
+// allowlist already canonicalises chi imports to a known package node.
+//
+// The list mirrors chi's `Router` interface plus the small set of
+// `Mux`-only methods (HandleFunc/Handle/NotFound/MethodNotAllowed)
+// commonly invoked in routing setup. Excluded: `Method` and `MethodFunc`
+// — `MethodFunc` is already covered by goBareNames as a multi-word
+// PascalCase stdlib idiom (net/http via mux.HandleFunc family) and we
+// don't want to widen the chi gate beyond chi-distinctive names.
+var goChiRouterNames = map[string]struct{}{
+	// HTTP verb registration on chi.Router. Single-word PascalCase that
+	// shadows generic getters/setters in non-chi code — gated by import.
+	"Get":     {},
+	"Post":    {},
+	"Put":     {},
+	"Delete":  {},
+	"Patch":   {},
+	"Head":    {},
+	"Options": {},
+	"Connect": {},
+	"Trace":   {},
+
+	// Router composition / middleware. `Use` is especially collision-prone
+	// (any plugin / middleware framework names this) so the import gate
+	// is essential.
+	"Mount": {},
+	"Group": {},
+	"Route": {},
+	"Use":   {},
+	"With":  {},
+
+	// chi.Mux-specific dispatch helpers. These are less collision-prone
+	// (HandleFunc is also in goBareNames as a net/http idiom) but kept
+	// here so the chi gate covers the full Router-interface surface.
+	"HandleFunc":       {},
+	"Handle":           {},
+	"NotFound":         {},
+	"MethodNotAllowed": {},
+}
+
+// goChiImportPaths is the set of canonical import paths that signal a
+// source file is using go-chi. The v5 path is the current default; the
+// unversioned + v1/v2/v3/v4 paths cover legacy codebases. Used by
+// hasGoChiImport to gate goChiRouterNames lookups (issue #131).
+var goChiImportPaths = map[string]bool{
+	"github.com/go-chi/chi":    true,
+	"github.com/go-chi/chi/v3": true,
+	"github.com/go-chi/chi/v4": true,
+	"github.com/go-chi/chi/v5": true,
+}
+
+// hasGoChiImport reports whether the source file's import set contains
+// any of the canonical go-chi import paths. Returns false for a nil or
+// empty set — falling through to the generic allowlist, which matches
+// pre-#131 behaviour for files that don't use chi.
+func hasGoChiImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range goChiImportPaths {
+		if imports[p] {
+			return true
+		}
+	}
+	return false
 }
 
 // rustBareNames is the Rust-language-gated bare-name stop-list (issue
