@@ -333,6 +333,27 @@ func useClauseFQN(clause *sitter.Node, src []byte) string {
 // namespace segment (Symfony, Doctrine, App, ...) — same convention as
 // buildNamespace — so emitting the same `use` from multiple files
 // idempotently merges to one Component per top-level namespace.
+//
+// Issue #113 — IMPORTS edges carry the same Properties contract as
+// Python (#93) and Java (#120) so the cross-file resolver can build a
+// per-file binding table:
+//
+//	Properties["local_name"]    — bare leaf identifier introduced into
+//	                              the importing file. For `use Foo\Bar`
+//	                              this is "Bar"; aliases are intentionally
+//	                              dropped at FQN-extraction time so the
+//	                              alias is not visible here.
+//	Properties["source_module"] — dotted-namespace path with the leaf
+//	                              stripped, slashes normalized to dots
+//	                              ("Foo\\Bar" → source_module="Foo").
+//	                              This matches the form modulesForPHPFile
+//	                              produces in the resolver.
+//	Properties["imported_name"] — equal to local_name. The shape `use
+//	                              function Foo\helper;` and `use const
+//	                              Foo\PI;` are treated identically — the
+//	                              leaf identifier is the importable
+//	                              symbol name regardless of the
+//	                              function/const sub-form.
 func useImportRecord(fqn, srcPath string) types.EntityRecord {
 	// Strip leading '\' (PHP allows fully-qualified `use \Foo\Bar`).
 	fqn = strings.TrimPrefix(fqn, "\\")
@@ -340,6 +361,25 @@ func useImportRecord(fqn, srcPath string) types.EntityRecord {
 	if idx := strings.Index(fqn, "\\"); idx >= 0 {
 		top = fqn[:idx]
 	}
+
+	// Derive (source_module, local_name) pair. local_name is the leaf
+	// (last backslash-separated segment); source_module is the prefix
+	// with slashes converted to dots so it matches the resolver's
+	// modulesByName index. A FQN without a backslash separator (rare
+	// — `use Foo;`) sets source_module = the FQN itself and leaf =
+	// the FQN; the resolver will skip it (no leaf separator).
+	leaf := fqn
+	mod := fqn
+	if idx := strings.LastIndex(fqn, "\\"); idx >= 0 {
+		leaf = fqn[idx+1:]
+		mod = strings.ReplaceAll(fqn[:idx], "\\", ".")
+	}
+	props := map[string]string{
+		"local_name":    leaf,
+		"source_module": mod,
+		"imported_name": leaf,
+	}
+
 	return types.EntityRecord{
 		Name:       top,
 		Kind:       "SCOPE.Component",
@@ -347,9 +387,10 @@ func useImportRecord(fqn, srcPath string) types.EntityRecord {
 		Language:   "php",
 		Relationships: []types.RelationshipRecord{
 			{
-				FromID: srcPath,
-				ToID:   fqn,
-				Kind:   "IMPORTS",
+				FromID:     srcPath,
+				ToID:       fqn,
+				Kind:       "IMPORTS",
+				Properties: props,
 			},
 		},
 	}

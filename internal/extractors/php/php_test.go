@@ -351,6 +351,83 @@ class PostType extends AbstractType {}
 	}
 }
 
+// TestPHPExtractor_UseImportsCarryProperties (#113): PHP IMPORTS edges
+// must carry the same Properties contract Python (#93) and Java (#120)
+// emit so the cross-file resolver's per-file binding table can be
+// built. For `use App\Entity\Post;` local_name="Post",
+// source_module="App.Entity" (slashes normalized to dots),
+// imported_name="Post". Aliased forms drop the alias at FQN extraction;
+// the leaf identifier of the canonical FQN is still what local_name
+// records.
+func TestPHPExtractor_UseImportsCarryProperties(t *testing.T) {
+	src := `<?php
+
+namespace App\Form;
+
+use App\Entity\Post;
+use Symfony\Component\Form\AbstractType;
+use Symfony\Component\HttpFoundation\{Request, Response};
+
+class PostType extends AbstractType {}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("php")
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "src/Form/PostType.php",
+		Content:  []byte(src),
+		Language: "php",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := map[string]map[string]string{
+		"App\\Entity\\Post": {
+			"local_name":    "Post",
+			"source_module": "App.Entity",
+			"imported_name": "Post",
+		},
+		"Symfony\\Component\\Form\\AbstractType": {
+			"local_name":    "AbstractType",
+			"source_module": "Symfony.Component.Form",
+			"imported_name": "AbstractType",
+		},
+		"Symfony\\Component\\HttpFoundation\\Request": {
+			"local_name":    "Request",
+			"source_module": "Symfony.Component.HttpFoundation",
+			"imported_name": "Request",
+		},
+		"Symfony\\Component\\HttpFoundation\\Response": {
+			"local_name":    "Response",
+			"source_module": "Symfony.Component.HttpFoundation",
+			"imported_name": "Response",
+		},
+	}
+	gotProps := map[string]map[string]string{}
+	for _, e := range got {
+		for _, r := range e.Relationships {
+			if r.Kind != "IMPORTS" {
+				continue
+			}
+			gotProps[r.ToID] = r.Properties
+		}
+	}
+	for to, wantP := range want {
+		gp, ok := gotProps[to]
+		if !ok {
+			t.Errorf("expected IMPORTS edge to=%q, got=%v", to, gotProps)
+			continue
+		}
+		for k, v := range wantP {
+			if gp[k] != v {
+				t.Errorf("IMPORTS to=%q prop %q: got=%q want=%q (all=%v)",
+					to, k, gp[k], v, gp)
+			}
+		}
+	}
+}
+
 func TestPHPExtractor_LineNumbers(t *testing.T) {
 	src := `<?php
 class Alpha {

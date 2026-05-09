@@ -609,6 +609,183 @@ func TestResolveImports_JavaSrcMainJavaStripped(t *testing.T) {
 	}
 }
 
+// TestModulesForFile_PHP covers the PHP dispatch added in #113 —
+// `src/Entity/Post.php` is the canonical Symfony PSR-4 layout for a
+// class living at the namespace `App\Entity\Post`. The module-derivation
+// must yield `App.Entity` (PSR-4 strip + `App` re-prefix) so an IMPORTS
+// edge whose ToID is `App\Entity\Post` (normalized to `App.Entity.Post`)
+// resolves via the per-module reverse index. The pre-strip
+// `src.Entity` form is also retained so a corpus indexed without PSR-4
+// awareness still binds.
+func TestModulesForFile_PHP(t *testing.T) {
+	got := modulesForFile("src/Entity/Post.php")
+	want := "App.Entity"
+	found := false
+	for _, m := range got {
+		if m == want {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("modulesForFile PHP: expected %q in %v", want, got)
+	}
+	// Laravel default: app/ → App
+	got = modulesForFile("app/Models/User.php")
+	wantLaravel := "App.Models"
+	found = false
+	for _, m := range got {
+		if m == wantLaravel {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("modulesForFile PHP Laravel: expected %q in %v", wantLaravel, got)
+	}
+	// File at repo root should return nil.
+	if got := modulesForFile("Index.php"); got != nil {
+		t.Fatalf("modulesForFile root-level php: expected nil, got %v", got)
+	}
+}
+
+// TestResolveImports_PHPProjectLocalNamespace covers the PHP analogue
+// of #93/#142 (issue #113). An IMPORTS edge whose ToID is
+// `App\Entity\Post` should rewrite to the entity ID of class Post
+// declared in `src/Entity/Post.php`. The backslash separator is
+// normalized to dotted form before the per-module lookup.
+func TestResolveImports_PHPProjectLocalNamespace(t *testing.T) {
+	records := []types.EntityRecord{
+		// PHP `use App\Entity\Post;` in a Form file.
+		{
+			Name:       "App",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/Form/PostType.php",
+			Language:   "php",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/Form/PostType.php",
+				ToID:   "App\\Entity\\Post",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "Post",
+					"source_module": "App.Entity",
+					"imported_name": "Post",
+				},
+			}},
+		},
+		// Class Post declared in src/Entity/Post.php.
+		{
+			ID:         "aaaa1111aaaa1111",
+			Name:       "Post",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Entity/Post.php",
+			Language:   "php",
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 PHP IMPORTS rewrite, got %d (considered=%d)",
+			stats.ImportsRewritten, stats.ImportsConsidered)
+	}
+	if got := records[0].Relationships[0].ToID; got != "aaaa1111aaaa1111" {
+		t.Fatalf("expected target aaaa1111aaaa1111, got %q", got)
+	}
+}
+
+// TestResolveImports_PHPSameLeafTwoNamespaces covers the disambiguation
+// case: two classes both named `User` live in different project-internal
+// namespaces (`App\Entity\User` vs `App\Security\User`). An importer of
+// `App\Entity\User` must resolve to the Entity, not Security, version.
+func TestResolveImports_PHPSameLeafTwoNamespaces(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			Name:       "App",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/Controller/UserController.php",
+			Language:   "php",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/Controller/UserController.php",
+				ToID:   "App\\Entity\\User",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "User",
+					"source_module": "App.Entity",
+					"imported_name": "User",
+				},
+			}},
+		},
+		{
+			ID:         "1111aaaa1111aaaa",
+			Name:       "User",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Entity/User.php",
+			Language:   "php",
+		},
+		{
+			ID:         "2222bbbb2222bbbb",
+			Name:       "User",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Security/User.php",
+			Language:   "php",
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 PHP rewrite, got %d", stats.ImportsRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "1111aaaa1111aaaa" {
+		t.Fatalf("expected Entity\\User (1111aaaa1111aaaa), got %q", got)
+	}
+}
+
+// TestResolveImports_PHPExternalNamespaceLeftAlone confirms that an
+// IMPORTS edge to a non-project namespace (`Symfony\Component\...`)
+// misses the per-module index and is left for the external-synthesis
+// pass — the resolver must not fabricate a binding to a coincidentally
+// same-named project entity.
+func TestResolveImports_PHPExternalNamespaceLeftAlone(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			Name:       "Symfony",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/Form/PostType.php",
+			Language:   "php",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/Form/PostType.php",
+				ToID:   "Symfony\\Component\\Form\\AbstractType",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "AbstractType",
+					"source_module": "Symfony.Component.Form",
+					"imported_name": "AbstractType",
+				},
+			}},
+		},
+		// A coincidentally-named project class — must NOT bind.
+		{
+			ID:         "ccccddddccccdddd",
+			Name:       "AbstractType",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Form/AbstractType.php",
+			Language:   "php",
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 0 {
+		t.Fatalf("expected 0 rewrites for external namespace, got %d", stats.ImportsRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "Symfony\\Component\\Form\\AbstractType" {
+		t.Fatalf("expected ToID preserved, got %q", got)
+	}
+}
+
 // TestResolveImports_FileLocalCollisionDropsBinding covers the case
 // where the same file imports two different symbols under the same
 // local name (e.g. shadowing). The conservative behaviour is to drop
