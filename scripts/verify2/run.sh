@@ -244,6 +244,29 @@ REPOS=(
   "buildkite-agent|https://github.com/buildkite/agent.git|main|yaml|.buildkite"                                 # Buildkite pipeline.yml + plugins (#318) SHA 561444c7fc59
   "skaffold|https://github.com/GoogleContainerTools/skaffold.git|main|yaml|examples"                            # Skaffold build/deploy/test profiles (#318) SHA 95531aa9b308
   "tilt|https://github.com/tilt-dev/tilt.git|master|starlark|integration"                                       # Tilt Starlark Tiltfile resources (#318) SHA 98108ca6664b
+  # --- Build tools missing (chunk R, umbrella #320) ---
+  # Build-tool manifest fixtures not yet exercised: Gradle, Bazel, Make, CMake,
+  # Poetry, Composer, Bundler, Mix, sbt, Leiningen, Lerna (npm workspaces),
+  # Turborepo. Each entry pinned to the SHA recorded in the umbrella body.
+  # Dedup notes: pnpm/pnpm is already present above under chunk H (#172) — the
+  # same clone exercises both package.json and pnpm-workspace.yaml extractors,
+  # so we do NOT re-list it here. Gradle/spring-petclinic overlap is partial:
+  # spring-petclinic is a Gradle-using sample, gradle/gradle is the canonical
+  # multi-project Groovy + Kotlin DSL build source — kept as separate fixture.
+  "gradle|https://github.com/gradle/gradle.git|master|java|subprojects"                                        # Gradle multi-project Groovy + Kotlin DSL (#320) SHA 62000451ad7b
+  "bazel|https://github.com/bazelbuild/bazel.git|master|java"                                                  # Bazel BUILD/Starlark targets, deps (#320) SHA bca007ec74f2
+  "gnu-make|https://git.savannah.gnu.org/git/make.git|master|c"                                                # GNU Make rules, vars, includes (#320) SHA b3802782de3e
+  "cmake|https://github.com/Kitware/CMake.git|master|cpp"                                                      # CMake list files, modules, find-packages (#320) SHA 7e1b633a8978
+  "poetry|https://github.com/python-poetry/poetry.git|main|python"                                             # Poetry pyproject + lock semantics (#320) SHA 811a12dae0fe
+  "composer|https://github.com/composer/composer.git|main|php"                                                 # PHP Composer manifest + lock (#320) SHA 37825e985129
+  "bundler|https://github.com/rubygems/bundler.git|master|ruby"                                                # Ruby Bundler Gemfile + gemspec (#320) SHA 35be6d9a6030
+  "elixir|https://github.com/elixir-lang/elixir.git|main|elixir"                                               # Elixir Mix project + deps (#320) SHA b8723fea1ec5
+  "sbt|https://github.com/sbt/sbt.git|develop|scala"                                                           # Scala sbt build definition (#320) SHA 76992ed3f62f
+  "leiningen|https://github.com/technomancy/leiningen.git|main|clojure"                                        # Clojure Leiningen project.clj (#320) SHA 40227328d4a9
+  "lerna|https://github.com/lerna/lerna.git|main|javascript"                                                   # npm/yarn workspaces canonical (#320) SHA f4387d673bfd
+  "turborepo|https://github.com/vercel/turborepo.git|main|typescript"                                          # Turborepo pipeline config (#320) SHA c1f923a4abe5
+  # NOTE: pnpm-workspace coverage is satisfied by the existing pnpm entry under
+  # chunk H above (same repo @ same branch).
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
