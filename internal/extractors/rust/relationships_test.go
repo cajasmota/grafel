@@ -78,6 +78,21 @@ impl Foo {
 	if contains != 3 {
 		t.Errorf("expected 3 CONTAINS edges, got %d (rels=%+v)", contains, impl.Relationships)
 	}
+	// Issue #144 — CONTAINS targets are structural-ref stubs (Format A)
+	// keyed on the source file so impl→method edges disambiguate by location.
+	for _, m := range []string{"a", "b", "c"} {
+		want := "scope:operation:method:rust:test.rs:" + m
+		found := false
+		for _, r := range impl.Relationships {
+			if r.Kind == "CONTAINS" && r.ToID == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected CONTAINS Foo→%s", want)
+		}
+	}
 }
 
 // TestRust_ContainsTraitMethods (#41): trait with N method signatures → N CONTAINS.
@@ -100,6 +115,13 @@ func TestRust_ContainsTraitMethods(t *testing.T) {
 	}
 	if contains != 2 {
 		t.Errorf("expected 2 CONTAINS edges, got %d", contains)
+	}
+	// Issue #144 — trait→method CONTAINS edges also use structural-ref stubs.
+	for _, m := range []string{"a", "b"} {
+		want := "scope:operation:method:rust:test.rs:" + m
+		if !rsHasRel(ents, "Foo", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Foo→%s", want)
+		}
 	}
 }
 
