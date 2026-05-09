@@ -96,6 +96,12 @@ REPOS=(
   "kickstart.nvim|https://github.com/nvim-lua/kickstart.nvim.git|master|lua"                      # Neovim config sample
   # --- Elixir ---
   "phoenix-todo-list|https://github.com/dwyl/phoenix-todo-list-tutorial.git|main|elixir"          # Phoenix sample app
+  # --- Razor ---
+  "aspnetcore-docs-samples|https://github.com/dotnet/AspNetCore.Docs.Samples.git|main|razor"     # ASP.NET Core docs companion: 737 .cshtml/.razor view templates
+  # --- Fish ---
+  "tide|https://github.com/IlanCosman/tide.git|main|fish"                                        # Pure-fish prompt theme: 117 .fish files (functions, completions, conf.d)
+  # --- Just ---
+  "just|https://github.com/casey/just.git|master|just"                                           # Just build runner: dogfooded top-level justfile + tests/ parser fixtures
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
