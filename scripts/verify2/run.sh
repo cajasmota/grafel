@@ -199,6 +199,26 @@ REPOS=(
   "rabbitmq-tutorials|https://github.com/rabbitmq/rabbitmq-tutorials.git|main|python"                         # RabbitMQ amqp client tutorials (#234)
   "nats.go|https://github.com/nats-io/nats.go.git|main|go"                                                    # NATS Go client (#236)
   "aws-sdk-js-v3|https://github.com/aws/aws-sdk-js-v3.git|main|typescript"                                    # AWS SQS / AWS JS SDK v3 (#237)
+  # --- Programmatic IaC (chunk M, umbrella #314) ---
+  # Programmatic IaC samples across CDK / Pulumi / Bicep / SAM / Serverless
+  # Framework / Crossplane, per Refs #96 corpus policy. Each entry pinned to
+  # the SHA recorded in its child issue. Multi-flavor monorepos
+  # (aws-cdk-examples, pulumi/examples) get one entry per language flavor with
+  # a unique name and a flavor-scoped sparse-path so cone-mode sparse-checkout
+  # keeps each working tree small.
+  "aws-cdk-examples-typescript|https://github.com/aws-samples/aws-cdk-examples.git|main|typescript|typescript" # AWS CDK TypeScript (#182) SHA f4143ebe9746
+  "aws-cdk-examples-python|https://github.com/aws-samples/aws-cdk-examples.git|main|python|python"             # AWS CDK Python (#184) SHA f4143ebe9746
+  "aws-cdk-examples-java|https://github.com/aws-samples/aws-cdk-examples.git|main|java|java"                   # AWS CDK Java (#187) SHA f4143ebe9746
+  "aws-cdk-examples-csharp|https://github.com/aws-samples/aws-cdk-examples.git|main|csharp|csharp"             # AWS CDK .NET (#188) SHA f4143ebe9746
+  "aws-cdk-examples-go|https://github.com/aws-samples/aws-cdk-examples.git|main|go|go"                         # AWS CDK Go (#191) SHA f4143ebe9746
+  "pulumi-examples-typescript|https://github.com/pulumi/examples.git|master|typescript|aws-ts-webserver"       # Pulumi TypeScript (#194) SHA d9173c2ed496
+  "pulumi-examples-python|https://github.com/pulumi/examples.git|master|python|aws-py-webserver"               # Pulumi Python (#196) SHA d9173c2ed496
+  "pulumi-examples-go|https://github.com/pulumi/examples.git|master|go|aws-go-webserver"                       # Pulumi Go (#200) SHA d9173c2ed496
+  "pulumi-examples-csharp|https://github.com/pulumi/examples.git|master|csharp|aws-cs-webserver"               # Pulumi .NET (#202) SHA d9173c2ed496
+  "azure-quickstart-templates|https://github.com/Azure/azure-quickstart-templates.git|master|bicep|quickstarts/microsoft.storage" # Azure Bicep (#206) SHA d4267860bf57
+  "aws-sam-cli-app-templates|https://github.com/aws/aws-sam-cli-app-templates.git|master|yaml|python3.12"      # AWS SAM (#210) SHA c7285973a74a
+  "serverless-examples|https://github.com/serverless/examples.git|v4|yaml|aws-node-http-api"                   # Serverless Framework (#214) SHA 631c0739a793
+  "crossplane|https://github.com/crossplane/crossplane.git|main|yaml|cluster/meta"                             # Crossplane (#218) SHA 2ddc36457725
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
