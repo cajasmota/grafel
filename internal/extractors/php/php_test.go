@@ -292,6 +292,62 @@ func TestPHPExtractor_UnregisteredLanguage(t *testing.T) {
 	}
 }
 
+// TestPHPExtractor_UseStatementImports covers issue #102: every PHP
+// `use` statement should emit an IMPORTS edge whose ToID is the FQN
+// of the imported symbol. Without this the synth allowlist never sees
+// the Symfony / Doctrine roots and they all land in bug-extractor.
+func TestPHPExtractor_UseStatementImports(t *testing.T) {
+	src := `<?php
+
+namespace App\Form;
+
+use App\Entity\Post;
+use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\FormBuilderInterface as FBI;
+use function Symfony\Component\String\u;
+use const Symfony\Component\HttpFoundation\Cookie\SAMESITE_LAX;
+use Symfony\Component\HttpFoundation\{Request, Response};
+
+class PostType extends AbstractType {}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("php")
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "src/Form/PostType.php",
+		Content:  []byte(src),
+		Language: "php",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantImports := map[string]bool{
+		"App\\Entity\\Post":                                        false,
+		"Symfony\\Component\\Form\\AbstractType":                   false,
+		"Symfony\\Component\\Form\\FormBuilderInterface":           false,
+		"Symfony\\Component\\String\\u":                            false,
+		"Symfony\\Component\\HttpFoundation\\Cookie\\SAMESITE_LAX": false,
+		"Symfony\\Component\\HttpFoundation\\Request":              false,
+		"Symfony\\Component\\HttpFoundation\\Response":             false,
+	}
+	for _, e := range got {
+		for _, r := range e.Relationships {
+			if r.Kind != "IMPORTS" {
+				continue
+			}
+			if _, ok := wantImports[r.ToID]; ok {
+				wantImports[r.ToID] = true
+			}
+		}
+	}
+	for fqn, seen := range wantImports {
+		if !seen {
+			t.Errorf("expected IMPORTS edge to %q, not found", fqn)
+		}
+	}
+}
+
 func TestPHPExtractor_LineNumbers(t *testing.T) {
 	src := `<?php
 class Alpha {

@@ -5,7 +5,8 @@
 //   - interface_declaration → Kind="SCOPE.Component", Subtype="interface"
 //   - method_declaration    → Kind="SCOPE.Operation", Subtype="method"
 //   - function_definition   → Kind="SCOPE.Operation", Subtype="function"
-//   - namespace_definition  → IMPORTS relationship
+//   - namespace_definition       → IMPORTS relationship (file → own namespace)
+//   - namespace_use_declaration  → IMPORTS relationship (file → imported FQN)
 //
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
@@ -73,6 +74,17 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 
 	case "namespace_definition":
 		if rec, ok := buildNamespace(node, file); ok {
+			*out = append(*out, rec)
+		}
+
+	case "namespace_use_declaration":
+		// Issue #102: emit one IMPORTS edge per `use` statement so the
+		// synth allowlist (Symfony\, Doctrine\, Twig\, Psr\, ...) can
+		// classify the FQN as ExternalKnown via the `\`-separator
+		// branch in classifyExternal. Without this every `use Foo\Bar;`
+		// would be invisible to the resolver and the bug-rate stays
+		// pinned to whatever extractor emitted before #102.
+		for _, rec := range buildUseImports(node, file) {
 			*out = append(*out, rec)
 		}
 	}
@@ -161,6 +173,131 @@ func buildNamespace(node *sitter.Node, file extractor.FileInput) (types.EntityRe
 			},
 		},
 	}, true
+}
+
+// buildUseImports emits one IMPORTS edge per imported symbol on a
+// `namespace_use_declaration` node. Issue #102.
+//
+// PHP `use` shapes handled:
+//   - simple:    use Foo\Bar;                 → IMPORTS Foo\Bar
+//   - aliased:   use Foo\Bar as B;            → IMPORTS Foo\Bar (alias dropped)
+//   - function:  use function Foo\helper;     → IMPORTS Foo\helper
+//   - const:     use const Foo\PI;            → IMPORTS Foo\PI
+//   - grouped:   use Foo\Bar\{A, B as C};     → IMPORTS Foo\Bar\A, Foo\Bar\B
+//
+// Aliases are intentionally stripped: the synth allowlist matches on the
+// root namespace segment (Symfony, Doctrine, Twig, ...), so emitting the
+// canonical FQN gives the synth `\`-branch a clean root to classify.
+func buildUseImports(node *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+	if node == nil {
+		return nil
+	}
+
+	// Detect grouped use: a child of type "namespace_use_group" preceded
+	// by a `namespace_name` prefix. Tree-sitter PHP exposes the prefix
+	// directly as a sibling child of the declaration node.
+	var prefix string
+	for i := range int(node.ChildCount()) {
+		ch := node.Child(i)
+		switch ch.Type() {
+		case "namespace_name":
+			prefix = strings.TrimSpace(string(file.Content[ch.StartByte():ch.EndByte()]))
+		case "namespace_use_group":
+			return buildUseGroup(ch, file, prefix)
+		}
+	}
+
+	// Simple/aliased/function/const forms — one or more
+	// `namespace_use_clause` children. (PHP allows comma-separated
+	// clauses like `use Foo, Bar;` though it's rare.)
+	var out []types.EntityRecord
+	for i := range int(node.ChildCount()) {
+		ch := node.Child(i)
+		if ch.Type() != "namespace_use_clause" {
+			continue
+		}
+		fqn := useClauseFQN(ch, file.Content)
+		if fqn == "" {
+			continue
+		}
+		out = append(out, useImportRecord(fqn, file.Path))
+	}
+	return out
+}
+
+// buildUseGroup expands a `namespace_use_group` node by joining each
+// clause's name onto the shared prefix. Issue #102.
+func buildUseGroup(group *sitter.Node, file extractor.FileInput, prefix string) []types.EntityRecord {
+	if group == nil || prefix == "" {
+		return nil
+	}
+	var out []types.EntityRecord
+	for i := range int(group.ChildCount()) {
+		ch := group.Child(i)
+		// Tree-sitter PHP uses `namespace_use_group_clause` for grouped
+		// imports and `namespace_use_clause` for non-grouped — accept
+		// both so the code is robust to grammar revisions.
+		if ch.Type() != "namespace_use_group_clause" && ch.Type() != "namespace_use_clause" {
+			continue
+		}
+		tail := useClauseFQN(ch, file.Content)
+		if tail == "" {
+			continue
+		}
+		fqn := prefix + "\\" + strings.TrimPrefix(tail, "\\")
+		out = append(out, useImportRecord(fqn, file.Path))
+	}
+	return out
+}
+
+// useClauseFQN returns the qualified-name text of a namespace_use_clause,
+// stripping any trailing `as Alias` segment. Returns "" when the clause
+// has no qualified_name child (defensive — malformed input).
+func useClauseFQN(clause *sitter.Node, src []byte) string {
+	for i := range int(clause.ChildCount()) {
+		ch := clause.Child(i)
+		// `qualified_name` / `name` cover plain `use` clauses;
+		// `namespace_name` covers `namespace_use_group_clause` children
+		// (group imports), which wrap the trailing segment in a
+		// namespace_name even when it's a single name.
+		switch ch.Type() {
+		case "qualified_name", "name", "namespace_name":
+			return strings.TrimSpace(string(src[ch.StartByte():ch.EndByte()]))
+		}
+	}
+	// Fallback: take clause text up to " as ".
+	raw := strings.TrimSpace(string(src[clause.StartByte():clause.EndByte()]))
+	if idx := strings.Index(raw, " as "); idx > 0 {
+		raw = raw[:idx]
+	}
+	return strings.TrimSpace(raw)
+}
+
+// useImportRecord builds a SCOPE.Component placeholder + IMPORTS edge
+// for a single PHP use-statement target. The component Name is the top
+// namespace segment (Symfony, Doctrine, App, ...) — same convention as
+// buildNamespace — so emitting the same `use` from multiple files
+// idempotently merges to one Component per top-level namespace.
+func useImportRecord(fqn, srcPath string) types.EntityRecord {
+	// Strip leading '\' (PHP allows fully-qualified `use \Foo\Bar`).
+	fqn = strings.TrimPrefix(fqn, "\\")
+	top := fqn
+	if idx := strings.Index(fqn, "\\"); idx >= 0 {
+		top = fqn[:idx]
+	}
+	return types.EntityRecord{
+		Name:       top,
+		Kind:       "SCOPE.Component",
+		SourceFile: srcPath,
+		Language:   "php",
+		Relationships: []types.RelationshipRecord{
+			{
+				FromID: srcPath,
+				ToID:   fqn,
+				Kind:   "IMPORTS",
+			},
+		},
+	}
 }
 
 // childFieldText extracts the text of a named child field.
