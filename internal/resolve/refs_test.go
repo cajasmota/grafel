@@ -761,3 +761,86 @@ func TestBuildLocationIndex(t *testing.T) {
 		t.Fatalf("b.py/Foo: %s", loc["b.py"]["Foo"])
 	}
 }
+
+// TestRubyRailsDSL_RecognisedAsDynamic locks in issue #107: Rails
+// ActionController DSL methods, ActiveRecord query builders, and
+// ActiveRecord dynamic finders must be recognised as Dynamic by
+// isDynamicPatternLang for lang="ruby". Pre-fix these landed in
+// bug-extractor and drove rails-realworld bug-rate to 38.93% and
+// sidekiq to 29.83%.
+func TestRubyRailsDSL_RecognisedAsDynamic(t *testing.T) {
+	t.Parallel()
+	// Dynamic catalog (Rails DSL + ActiveRecord query builders +
+	// dynamic finders). These all classify Dynamic for ruby source.
+	dynamic := []string{
+		// ActionController DSL
+		"render", "permit", "require", "redirect_to", "respond_to",
+		"before_action", "skip_before_action", "after_action",
+		"around_action", "helper_method", "params", "session", "flash",
+		"cookies", "request", "response",
+		// Dynamic finders
+		"find_by_email", "find_by_id", "find_by_name!",
+		"find_or_create_by_slug", "find_or_create_by_email!",
+		// ActiveRecord query DSL
+		"order", "where", "joins", "includes", "eager_load", "preload",
+		"pluck", "distinct", "group", "having", "limit", "offset",
+		"scope", "belongs_to", "has_many", "has_one",
+		"has_and_belongs_to_many", "validates", "validate",
+		"before_save", "after_save", "before_create", "after_create",
+		"before_destroy", "after_destroy",
+	}
+	for _, stub := range dynamic {
+		stub := stub
+		t.Run("ruby/"+stub, func(t *testing.T) {
+			t.Parallel()
+			if !isDynamicPatternLang(stub, "ruby") {
+				t.Fatalf("Rails DSL stub %q not recognised as Dynamic for lang=ruby", stub)
+			}
+		})
+	}
+}
+
+// TestRubyRailsDSL_GatedToRuby confirms the Rails DSL bare-name patterns
+// only match when lang="ruby" — otherwise generic names like `where`,
+// `order`, `params`, `request` would shadow user methods in JS / Go /
+// Python codebases (lesson from #94 / #105).
+func TestRubyRailsDSL_GatedToRuby(t *testing.T) {
+	t.Parallel()
+	stubs := []string{
+		"where", "order", "params", "request", "response", "limit",
+		"group", "render", "validates",
+	}
+	otherLangs := []string{"go", "python", "javascript", "rust", "java", "kotlin"}
+	for _, stub := range stubs {
+		for _, lang := range otherLangs {
+			stub, lang := stub, lang
+			t.Run(stub+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if isDynamicPatternLang(stub, lang) {
+					t.Fatalf("stub %q matched dynamic for lang=%q; "+
+						"must be gated to ruby only", stub, lang)
+				}
+			})
+		}
+	}
+}
+
+// TestRubyRailsDSL_RejectedGenericCollectionOps locks in the explicit
+// rejection list from issue #107: generic collection ops (each / map /
+// select / find / count / length / size) MUST NOT be classified
+// Dynamic — they're plain Enumerable methods, used everywhere, and
+// hiding them would mask real missing-resolution bugs.
+func TestRubyRailsDSL_RejectedGenericCollectionOps(t *testing.T) {
+	t.Parallel()
+	rejected := []string{"each", "map", "select", "find", "count", "length", "size"}
+	for _, stub := range rejected {
+		stub := stub
+		t.Run("ruby/"+stub, func(t *testing.T) {
+			t.Parallel()
+			if isDynamicPatternLang(stub, "ruby") {
+				t.Fatalf("generic collection op %q matched dynamic for ruby; "+
+					"must NOT be in catalog (issue #107 rejection list)", stub)
+			}
+		})
+	}
+}
