@@ -323,6 +323,392 @@ func receiverParamName(recv *sitter.Node, src []byte) string {
 	return ""
 }
 
+// collectParamTypes returns a (paramName -> typeLiteral) map built from a
+// function/method `parameters` parameter_list AST node. The type literal is
+// canonicalised by stripping a single leading `*` so `*http.Request`
+// becomes `http.Request` — pointer-vs-value distinctions don't change the
+// stdlib-interface methods exposed and folding here lets the synth lookup
+// table use a single key per package type. Returns nil for a nil node or a
+// node that contains no named parameters (variadic/anonymous-only signatures).
+//
+// Issue #364: feeds extractCallRelationships so calls like `w.Write(...)` on
+// a parameter `w http.ResponseWriter` get a `receiver_type` stamp that the
+// synth pass can route to ext:net/http.
+func collectParamTypes(params *sitter.Node, src []byte) map[string]string {
+	if params == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, paramDecl := range findAll(params, "parameter_declaration") {
+		// Walk children: collect leading identifier(s), then the first
+		// non-identifier child is the type. Tree-sitter Go grammar emits
+		// parameter_declaration as: identifier (',' identifier)* type.
+		count := int(paramDecl.ChildCount())
+		var names []string
+		typeText := ""
+		for i := 0; i < count; i++ {
+			child := paramDecl.Child(i)
+			t := child.Type()
+			if t == "identifier" {
+				names = append(names, nodeText(child, src))
+				continue
+			}
+			if t == "," {
+				continue
+			}
+			// First non-identifier, non-comma child is the type node.
+			typeText = strings.TrimSpace(nodeText(child, src))
+			break
+		}
+		if typeText == "" || len(names) == 0 {
+			continue
+		}
+		canonical := strings.TrimPrefix(typeText, "*")
+		// Strip type-parameter list ("[T]") so generic types collapse.
+		if idx := strings.IndexByte(canonical, '['); idx >= 0 {
+			canonical = canonical[:idx]
+		}
+		canonical = strings.TrimSpace(canonical)
+		if canonical == "" {
+			continue
+		}
+		for _, n := range names {
+			if n == "" || n == "_" {
+				continue
+			}
+			out[n] = canonical
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// mergeVarTypes folds a body-derived (varName -> type) map into a param-
+// derived map, preferring the outer (param) declaration on a name conflict
+// — Go's lexical scoping rule says outer params shadow body short-var
+// decls of the same name only inside their own scope; reverse holds in
+// the body. The extractor doesn't model scopes, so on a collision it
+// MUST drop the binding rather than emit a wrong receiver_type stamp.
+// Returns nil only when both inputs are nil/empty.
+func mergeVarTypes(outer, inner map[string]string) map[string]string {
+	if len(outer) == 0 && len(inner) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(outer)+len(inner))
+	for k, v := range outer {
+		out[k] = v
+	}
+	for k, v := range inner {
+		if existing, ok := out[k]; ok && existing != v {
+			// Same identifier declared with different types in two scopes
+			// (closure shadow, nested block, etc.). Drop the binding so
+			// neither call site gets a false stamp.
+			delete(out, k)
+			continue
+		}
+		// Only keep inner bindings that don't conflict with an outer one
+		// of a different type. Identical-type duplicates are harmless.
+		if _, ok := out[k]; !ok {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// collectBodyVarTypes walks a function/method body and returns a
+// (varName -> typeLiteral) map for short_var_declaration and
+// var_declaration nodes whose RHS has a recognisable static type. Names
+// declared more than once with different types are dropped (ambiguous).
+//
+// Recognised RHS shapes (issue #364):
+//
+//	x := T{...}              composite_literal whose type child is a
+//	                         type_identifier or qualified_type
+//	x := &T{...}             unary_expression (`&`) wrapping the above
+//	var x T                  var_declaration / var_spec with explicit type
+//	var x = T{...}           var_declaration with composite_literal RHS
+//	x := pkg.Func()          call_expression where the function is a
+//	                         qualified_type-style selector recognised as
+//	                         a known stdlib/framework constructor (small
+//	                         allowlist: chi.NewRouter, bytes.NewBuffer,
+//	                         strings.NewReader, ...)
+//
+// Pointer types are stripped (`*Mux` → `Mux`) and generic type parameter
+// lists (`[T]`) are dropped so the synth lookup table can use a single
+// key per package type.
+func collectBodyVarTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := map[string]string{}
+	ambiguous := map[string]bool{}
+	record := func(name, typ string) {
+		if name == "" || name == "_" || typ == "" {
+			return
+		}
+		canonical := canonicalTypeLiteral(typ)
+		if canonical == "" {
+			return
+		}
+		if ambiguous[name] {
+			return
+		}
+		if existing, ok := out[name]; ok && existing != canonical {
+			delete(out, name)
+			ambiguous[name] = true
+			return
+		}
+		out[name] = canonical
+	}
+
+	// Closure-param tracking lives in extractCallRelationships' scoped
+	// walker (issue #364) — collecting them here would conflate scopes
+	// and force a drop on common shadowing patterns (e.g. an outer
+	// `r := chi.NewRouter()` shadowed by a closure `r *http.Request`).
+
+	// short_var_declaration: `x := <expr>` (single LHS, single RHS only;
+	// multi-LHS forms like `a, b := f()` are skipped because pairing each
+	// name with the right RHS requires knowing the call's return tuple).
+	for _, decl := range findAll(body, "short_var_declaration") {
+		left := decl.ChildByFieldName("left")
+		right := decl.ChildByFieldName("right")
+		if left == nil || right == nil {
+			continue
+		}
+		// Only handle the "one-name = one-expr" case.
+		if !singleChildOfType(left, "identifier") || !singleNamedChild(right) {
+			continue
+		}
+		name := nodeText(firstChildOfType(left, "identifier"), src)
+		expr := firstNamedChild(right)
+		if typ := typeOfExpression(expr, src); typ != "" {
+			record(name, typ)
+		}
+	}
+
+	// var_declaration: `var x T` or `var x = <expr>` or `var x T = <expr>`.
+	for _, decl := range findAll(body, "var_declaration") {
+		for _, spec := range findAll(decl, "var_spec") {
+			// var_spec has a `name` field (identifier_list) and either a
+			// `type` field (declared type) or a `value` field (init expr).
+			nameNode := spec.ChildByFieldName("name")
+			typeNode := spec.ChildByFieldName("type")
+			valueNode := spec.ChildByFieldName("value")
+			var names []string
+			if nameNode != nil {
+				if nameNode.Type() == "identifier" {
+					names = []string{nodeText(nameNode, src)}
+				} else {
+					for i := 0; i < int(nameNode.ChildCount()); i++ {
+						ch := nameNode.Child(i)
+						if ch.Type() == "identifier" {
+							names = append(names, nodeText(ch, src))
+						}
+					}
+				}
+			}
+			if len(names) != 1 {
+				continue
+			}
+			typ := ""
+			if typeNode != nil {
+				typ = nodeText(typeNode, src)
+			} else if valueNode != nil {
+				typ = typeOfExpression(valueNode, src)
+			}
+			if typ != "" {
+				record(names[0], typ)
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// typeOfExpression returns a textual type representation for an expression
+// AST node when it's recognisable as a static type, or "" otherwise. Used
+// by collectBodyVarTypes to type short/var declarations.
+func typeOfExpression(expr *sitter.Node, src []byte) string {
+	if expr == nil {
+		return ""
+	}
+	switch expr.Type() {
+	case "composite_literal":
+		// composite_literal has a `type` field — type_identifier (`Foo{}`),
+		// qualified_type (`pkg.Foo{}`), or pointer_type / array_type / etc.
+		if t := expr.ChildByFieldName("type"); t != nil {
+			return nodeText(t, src)
+		}
+	case "unary_expression":
+		// `&Foo{}` or `&pkg.Foo{}` — drill into the operand.
+		if op := expr.ChildByFieldName("operand"); op != nil {
+			return typeOfExpression(op, src)
+		}
+	case "type_assertion_expression":
+		if t := expr.ChildByFieldName("type"); t != nil {
+			return nodeText(t, src)
+		}
+	case "call_expression":
+		// Recognise a small set of stdlib / well-known-framework constructors
+		// that return a value of a predictable type. Two shapes are matched:
+		//
+		//   `<pkg>.<Func>(...)`  — selector_expression: keyed on the dotted
+		//                          form (e.g. `chi.NewRouter` → `chi.Mux`).
+		//   `<Func>(...)`        — identifier: a same-package call that
+		//                          returns the package's primary type. The
+		//                          extractor doesn't know the package name
+		//                          so the bare-name table maps to a bare
+		//                          receiver type (e.g. `NewRouter` → `Mux`),
+		//                          which the resolver's same-package member
+		//                          lookup picks up directly.
+		fn := expr.ChildByFieldName("function")
+		if fn != nil {
+			switch fn.Type() {
+			case "selector_expression":
+				operand := fn.ChildByFieldName("operand")
+				field := fn.ChildByFieldName("field")
+				if operand != nil && operand.Type() == "identifier" && field != nil {
+					key := nodeText(operand, src) + "." + nodeText(field, src)
+					if t, ok := goConstructorReturnTypes[key]; ok {
+						return t
+					}
+				}
+			case "identifier":
+				if t, ok := goSamePackageConstructorReturnTypes[nodeText(fn, src)]; ok {
+					return t
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// goSamePackageConstructorReturnTypes maps bare-name constructor calls to
+// the receiver type they return when the call is unqualified. Unqualified
+// calls are in-package (`m := NewRouter()` inside the chi package, where
+// `NewRouter` resolves to `chi.NewRouter`). The receiver type is stored
+// as a bare type name (no package prefix) so the resolver's same-package
+// member lookup picks it up directly without the qualifier-strip retry.
+//
+// Issue #364: chi internal tests (mux_test.go) drive 30+ unresolved Get
+// calls of this shape; without same-package constructor tracking the
+// receiver_type stamp is missing and the resolver can't bind the call.
+//
+// Conservative selection rule (lesson #94): include only constructor names
+// extremely unlikely to be redefined as a non-constructor user function.
+// `NewRouter`/`NewMux`/`NewServer` are PascalCase factories that return a
+// well-known type in their primary package; any user package redefining
+// them with a different return type is a vanishingly rare false positive.
+var goSamePackageConstructorReturnTypes = map[string]string{
+	"NewRouter": "Mux",
+	"NewMux":    "Mux",
+}
+
+// goConstructorReturnTypes maps `<pkg>.<Func>` calls to the type their
+// return value carries when used as the RHS of a short-var declaration.
+// Values use the canonical receiver_type form (no leading `*`, generic
+// parameter lists dropped) so the synth lookup can match without further
+// normalisation. Issue #364: covers the highest-volume Go patterns where
+// a short-var-declared identifier is later used as a method-dispatch
+// operand (`r := chi.NewRouter(); r.Get(...)` etc.).
+var goConstructorReturnTypes = map[string]string{
+	// chi router
+	"chi.NewRouter": "chi.Mux",
+	"chi.NewMux":    "chi.Mux",
+	// gin
+	"gin.Default": "gin.Engine",
+	"gin.New":     "gin.Engine",
+	// echo
+	"echo.New": "echo.Echo",
+	// net/http
+	"http.NewRequest":            "http.Request",
+	"http.NewRequestWithContext": "http.Request",
+	"http.NewServeMux":           "http.ServeMux",
+	// bytes / strings / bufio
+	"bytes.NewBuffer":     "bytes.Buffer",
+	"bytes.NewReader":     "bytes.Reader",
+	"strings.NewReader":   "strings.Reader",
+	"strings.NewReplacer": "strings.Replacer",
+	"bufio.NewReader":     "bufio.Reader",
+	"bufio.NewWriter":     "bufio.Writer",
+	"bufio.NewScanner":    "bufio.Scanner",
+	// context
+	"context.Background": "context.Context",
+	"context.TODO":       "context.Context",
+	// sync (rarely literal-constructed; included for completeness)
+	"sync.NewCond": "sync.Cond",
+	// errors
+	"errors.New": "error",
+	"fmt.Errorf": "error",
+}
+
+// singleChildOfType reports whether n has exactly one named child, which
+// is of the requested type. Helper for collectBodyVarTypes.
+func singleChildOfType(n *sitter.Node, typ string) bool {
+	if n == nil {
+		return false
+	}
+	if n.NamedChildCount() != 1 {
+		return false
+	}
+	c := n.NamedChild(0)
+	return c != nil && c.Type() == typ
+}
+
+// singleNamedChild reports whether n has exactly one named child.
+func singleNamedChild(n *sitter.Node) bool {
+	if n == nil {
+		return false
+	}
+	return n.NamedChildCount() == 1
+}
+
+// firstChildOfType returns the first child of n with the given type, or
+// nil. Helper for collectBodyVarTypes.
+func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+	if n == nil {
+		return nil
+	}
+	count := int(n.ChildCount())
+	for i := 0; i < count; i++ {
+		c := n.Child(i)
+		if c.Type() == typ {
+			return c
+		}
+	}
+	return nil
+}
+
+// firstNamedChild returns the first named child of n, or nil.
+func firstNamedChild(n *sitter.Node) *sitter.Node {
+	if n == nil || n.NamedChildCount() == 0 {
+		return nil
+	}
+	return n.NamedChild(0)
+}
+
+// canonicalTypeLiteral reduces a type literal to the form used as a key
+// in goStdlibInterfaceMethods: leading `*` stripped, generic type
+// parameter lists dropped. Returns "" for empty input.
+func canonicalTypeLiteral(t string) string {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return ""
+	}
+	t = strings.TrimPrefix(t, "*")
+	if i := strings.IndexByte(t, '['); i >= 0 {
+		t = t[:i]
+	}
+	return strings.TrimSpace(t)
+}
+
 // receiverTypeName extracts the base type name from a receiver parameter list.
 // The receiver AST is: parameter_list → parameter_declaration → [identifier, pointer_type|type_identifier|generic_type]
 // e.g. "(s *UserStore)" → "UserStore", "(u User)" → "User",
@@ -505,7 +891,22 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 		// (issue #66): a method `(s *Foo) bar()` calling `bar()` should
 		// still suppress the self-edge even though the entity Name is now
 		// "Foo.bar".
-		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType)
+		// Issue #364 — build a (varName -> typeLiteral) map covering both
+		// the outer function/method parameter list AND short/var declarations
+		// inside the body (`r := chi.NewRouter()` / `var b bytes.Buffer`).
+		// Calls of the form `<varName>.<method>(...)` can then be stamped
+		// with the var's static type (e.g. `*http.Request`,
+		// `http.ResponseWriter`, `*chi.Mux`). The resolver + synth pass use
+		// this stamp to route stdlib-interface dispatch like `w.Write(...)`
+		// to ext:net/http rather than leaving it as bug-extractor. Names
+		// declared in shadowing scopes (closures, nested blocks) are tracked
+		// as "ambiguous" — collectVarTypes drops them rather than emitting a
+		// guess, preserving the safer-bias rule from #94.
+		paramTypes := collectParamTypes(paramsNode, src)
+		// Body-derived var types do NOT include closure-param shadowing — the
+		// per-call walker below maintains its own scope stack to disambiguate.
+		paramTypes = mergeVarTypes(paramTypes, collectBodyVarTypes(bodyOrNode, src))
+		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes)
 		// Rewrite FromID on each CALLS edge to the qualified Name so the
 		// edge source matches the entity ID downstream.
 		for i := range relationships {
@@ -569,43 +970,86 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 // entity. Calls on other selector operands (e.g. `other.foo()`, package-
 // qualified calls) are NOT stamped — the heuristic is intentionally
 // conservative to avoid false same-package binds (Refs #94 lesson).
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string) []types.RelationshipRecord {
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
 
-	calls := findAll(body, "call_expression")
-	if len(calls) == 0 {
-		return nil
+	seen := make(map[string]bool)
+	var rels []types.RelationshipRecord
+
+	// Recursive walker (issue #364): maintains a scope stack of (varName ->
+	// type) maps so a closure parameter `r *http.Request` inside an outer
+	// scope where `r := chi.NewRouter()` shadows correctly. The closest
+	// enclosing scope wins per Go's lexical rules. The stack is allocated
+	// once and pushed/popped on entry/exit of func_literal nodes; non-
+	// closure block scopes are not pushed because Go doesn't permit
+	// re-declaring parameters at block scope without `:=`, and short-var
+	// re-declarations at block scope are a rare edge case the linter
+	// catches independently.
+	scopes := []map[string]string{paramTypes}
+	lookup := func(name string) string {
+		if name == "" {
+			return ""
+		}
+		// Walk inner-most scope first.
+		for i := len(scopes) - 1; i >= 0; i-- {
+			if v, ok := scopes[i][name]; ok {
+				return v
+			}
+		}
+		return ""
 	}
 
-	seen := make(map[string]bool, len(calls))
-	rels := make([]types.RelationshipRecord, 0, len(calls))
-
-	for _, call := range calls {
-		target, isSelfReceiver := callExpressionTargetWithReceiver(call, src, recvVarName)
-		if target == "" {
-			continue
+	var visit func(n *sitter.Node)
+	visit = func(n *sitter.Node) {
+		if n == nil {
+			return
 		}
-		if target == callerName {
-			// Skip self-recursion — matches Python parser dedup behaviour
-			// and avoids polluting the graph with trivial loops.
-			continue
+		t := n.Type()
+		// Closure boundary — push the closure's own param map. Body-derived
+		// short-var decls inside the closure are NOT collected here for
+		// performance (they would require another scoped pass); the highest-
+		// volume win is closure params shadowing outer short-var decls.
+		pushed := false
+		if t == "func_literal" {
+			params := n.ChildByFieldName("parameters")
+			closureParams := collectParamTypes(params, src)
+			if closureParams != nil {
+				scopes = append(scopes, closureParams)
+				pushed = true
+			}
 		}
-		if seen[target] {
-			continue
+		if t == "call_expression" {
+			target, isSelfReceiver, operand := callExpressionTargetWithOperand(n, src, recvVarName)
+			if target != "" && target != callerName && !seen[target] {
+				seen[target] = true
+				rec := types.RelationshipRecord{
+					FromID: callerName,
+					ToID:   target,
+					Kind:   "CALLS",
+				}
+				switch {
+				case isSelfReceiver && recvType != "":
+					rec.Properties = map[string]string{"receiver_type": recvType}
+				case operand != "":
+					if ty := lookup(operand); ty != "" {
+						rec.Properties = map[string]string{"receiver_type": ty}
+					}
+				}
+				rels = append(rels, rec)
+			}
 		}
-		seen[target] = true
-		rec := types.RelationshipRecord{
-			FromID: callerName,
-			ToID:   target,
-			Kind:   "CALLS",
+		// Recurse into all named children.
+		count := int(n.NamedChildCount())
+		for i := 0; i < count; i++ {
+			visit(n.NamedChild(i))
 		}
-		if isSelfReceiver && recvType != "" {
-			rec.Properties = map[string]string{"receiver_type": recvType}
+		if pushed {
+			scopes = scopes[:len(scopes)-1]
 		}
-		rels = append(rels, rec)
 	}
+	visit(body)
 	return rels
 }
 
@@ -614,54 +1058,60 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 // prefix. Returns "" if the call node has no resolvable function child
 // (e.g., higher-order call on a literal expression like `f()()`).
 func callExpressionTarget(call *sitter.Node, src []byte) string {
-	target, _ := callExpressionTargetWithReceiver(call, src, "")
+	target, _, _ := callExpressionTargetWithOperand(call, src, "")
 	return target
 }
 
-// callExpressionTargetWithReceiver is callExpressionTarget plus a same-receiver
-// flag (issue #148). When recvVarName is non-empty and the call is a
-// selector_expression whose operand is the identifier recvVarName, the second
-// return is true — signalling the call dispatches to a method on the
-// enclosing method's own receiver. Used by extractCallRelationships to stamp
-// `receiver_type` on the CALLS edge.
-func callExpressionTargetWithReceiver(call *sitter.Node, src []byte, recvVarName string) (string, bool) {
+// callExpressionTargetWithOperand is callExpressionTarget plus a same-receiver
+// flag (issue #148) and the operand identifier text (issue #364). When
+// recvVarName is non-empty and the call is a selector_expression whose operand
+// is the identifier recvVarName, the second return is true — signalling the
+// call dispatches to a method on the enclosing method's own receiver.
+//
+// The third return is the operand identifier text when the call is a
+// selector_expression whose operand is a bare identifier (e.g. `w` in
+// `w.Write(...)` or `r` in `r.Method`); empty otherwise. Used by
+// extractCallRelationships to look up the operand's static type in the
+// caller's parameter map and stamp `receiver_type` for stdlib-interface
+// dispatch.
+func callExpressionTargetWithOperand(call *sitter.Node, src []byte, recvVarName string) (string, bool, string) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
-		return "", false
+		return "", false, ""
 	}
 	switch fn.Type() {
 	case "identifier":
-		return nodeText(fn, src), false
+		return nodeText(fn, src), false, ""
 	case "selector_expression":
 		field := fn.ChildByFieldName("field")
 		if field == nil {
-			return "", false
+			return "", false, ""
 		}
 		name := nodeText(field, src)
 		isSelf := false
-		if recvVarName != "" {
-			if op := fn.ChildByFieldName("operand"); op != nil && op.Type() == "identifier" {
-				if nodeText(op, src) == recvVarName {
-					isSelf = true
-				}
+		operand := ""
+		if op := fn.ChildByFieldName("operand"); op != nil && op.Type() == "identifier" {
+			operand = nodeText(op, src)
+			if recvVarName != "" && operand == recvVarName {
+				isSelf = true
 			}
 		}
-		return name, isSelf
+		return name, isSelf, operand
 	case "parenthesized_expression":
 		// Rare: ((some.Expr))() — drill in one level.
 		for i := 0; i < int(fn.ChildCount()); i++ {
 			ch := fn.Child(i)
 			if ch.Type() == "identifier" {
-				return nodeText(ch, src), false
+				return nodeText(ch, src), false, ""
 			}
 			if ch.Type() == "selector_expression" {
 				if f := ch.ChildByFieldName("field"); f != nil {
-					return nodeText(f, src), false
+					return nodeText(f, src), false, ""
 				}
 			}
 		}
 	}
-	return "", false
+	return "", false, ""
 }
 
 // typeIndex captures the set of schema entities and their method sets

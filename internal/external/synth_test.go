@@ -171,6 +171,94 @@ func TestSynthesize_UnknownLeftAlone(t *testing.T) {
 	}
 }
 
+// TestSynthesize_GoStdlibInterfaceDispatch (issue #364) confirms a CALLS
+// edge whose `Properties["receiver_type"]` matches a Go-stdlib interface
+// type AND whose ToID matches a method on that type is rewritten to the
+// canonical ext:<package> placeholder. Covers the dominant residual
+// go-chi bug-rate post-#148: calls like `w.Write(...)` on
+// `http.ResponseWriter`, `r.Cookie(...)` on `*http.Request`,
+// `h.ServeHTTP(...)` on `http.Handler`.
+func TestSynthesize_GoStdlibInterfaceDispatch(t *testing.T) {
+	cases := []struct {
+		name      string
+		recvType  string
+		toID      string
+		wantExtID string
+	}{
+		{"http.ResponseWriter.Write", "http.ResponseWriter", "Write", "ext:net/http"},
+		{"http.ResponseWriter.WriteHeader", "http.ResponseWriter", "WriteHeader", "ext:net/http"},
+		{"http.Request.Cookie", "http.Request", "Cookie", "ext:net/http"},
+		{"http.Request.Context", "http.Request", "Context", "ext:net/http"},
+		{"http.Handler.ServeHTTP", "http.Handler", "ServeHTTP", "ext:net/http"},
+		{"http.Server.ListenAndServe", "http.Server", "ListenAndServe", "ext:net/http"},
+		{"io.Reader.Read", "io.Reader", "Read", "ext:io"},
+		{"io.Closer.Close", "io.Closer", "Close", "ext:io"},
+		{"context.Context.Done", "context.Context", "Done", "ext:context"},
+		{"sync.Mutex.Lock", "sync.Mutex", "Lock", "ext:sync"},
+		{"bytes.Buffer.WriteString", "bytes.Buffer", "WriteString", "ext:bytes"},
+		{"strings.Builder.String", "strings.Builder", "String", "ext:strings"},
+		{"sql.Rows.Scan", "sql.Rows", "Scan", "ext:database/sql"},
+		{"error.Error", "error", "Error", "ext:errors"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{ID: "fn-1", SourceFile: "handlers/http.go", Language: "go"},
+				},
+				Relationships: []graph.Relationship{
+					{
+						ID:     "rel-1",
+						FromID: "fn-1",
+						ToID:   tc.toID,
+						Kind:   "CALLS",
+						Properties: map[string]string{
+							"receiver_type": tc.recvType,
+						},
+					},
+				},
+			}
+			Synthesize(doc)
+			if got := doc.Relationships[0].ToID; got != tc.wantExtID {
+				t.Fatalf("ToID=%q, want %q", got, tc.wantExtID)
+			}
+		})
+	}
+}
+
+// TestSynthesize_GoStdlibInterfaceDispatch_NoFalsePositive verifies that:
+// (a) a CALLS edge with no receiver_type stamp does NOT get routed to a
+// stdlib package even when the bare name happens to match an interface
+// method (Lock/Close/Read/Write are all common user-method names);
+// (b) a CALLS edge with a receiver_type stamp pointing at a USER-defined
+// type (not in the stdlib catalogue) is left alone.
+func TestSynthesize_GoStdlibInterfaceDispatch_NoFalsePositive(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "fn-1", SourceFile: "domain/cache.go", Language: "go"},
+		},
+		Relationships: []graph.Relationship{
+			// (a) No receiver_type — bare "Lock" (a sync.Mutex method name) must
+			// stay unresolved. A user type with a Lock method is far more likely
+			// here than a misclassified call.
+			{ID: "r1", FromID: "fn-1", ToID: "Lock", Kind: "CALLS"},
+			// (b) receiver_type points at a user-defined type. Not on the
+			// catalogue → no rewrite.
+			{
+				ID: "r2", FromID: "fn-1", ToID: "Acquire", Kind: "CALLS",
+				Properties: map[string]string{"receiver_type": "myapp.SemSlot"},
+			},
+		},
+	}
+	Synthesize(doc)
+	if doc.Relationships[0].ToID != "Lock" {
+		t.Fatalf("bare Lock without receiver_type was rewritten to %q", doc.Relationships[0].ToID)
+	}
+	if doc.Relationships[1].ToID != "Acquire" {
+		t.Fatalf("user-typed receiver Acquire was rewritten to %q", doc.Relationships[1].ToID)
+	}
+}
+
 // TestSynthesize_NilDoc confirms calling on a nil document is a no-op.
 func TestSynthesize_NilDoc(t *testing.T) {
 	stats := Synthesize(nil)

@@ -1048,12 +1048,18 @@ func (mx *Mux) Mount(pattern string) {
 	}
 }
 
-// TestCallsRelationship_ReceiverTypeNotStampedOnForeignSelector ensures the
-// receiver_type stamp is conservative: a selector_expression whose operand is
-// NOT the enclosing method's receiver parameter must NOT acquire the stamp,
-// otherwise an unrelated `obj.Get(...)` call would falsely advertise a
-// same-package method dispatch.
-func TestCallsRelationship_ReceiverTypeNotStampedOnForeignSelector(t *testing.T) {
+// TestCallsRelationship_ReceiverTypeStampedFromParamType (issue #364)
+// asserts that a selector_expression whose operand is a function parameter
+// with a known static type acquires a `receiver_type` stamp set to that
+// type's canonical name. Pointer types are stripped (`*Mux` → `Mux`) so the
+// stamp matches the resolver's same-package member index keys, allowing the
+// resolver to bind `other.handle` to the local `Mux.handle` entity.
+//
+// This supersedes the pre-#364 conservative-stamp test, which asserted the
+// stamp was absent on foreign selectors. With param-type tracking the stamp
+// is now both safe and correct: the operand's type IS a same-package type,
+// so the resolver should bind to it.
+func TestCallsRelationship_ReceiverTypeStampedFromParamType(t *testing.T) {
 	src := `package chi
 
 type Mux struct{}
@@ -1069,12 +1075,140 @@ func (mx *Mux) handle(pattern string) {}
 	if mount == nil {
 		t.Fatal("Mux.Mount method not found")
 	}
-	for _, r := range mount.Relationships {
-		if r.Kind != "CALLS" || r.ToID != "handle" {
+	var hit *types.RelationshipRecord
+	for i := range mount.Relationships {
+		r := &mount.Relationships[i]
+		if r.Kind == "CALLS" && r.ToID == "handle" {
+			hit = r
+			break
+		}
+	}
+	if hit == nil {
+		t.Fatal("expected CALLS edge to handle on Mux.Mount")
+	}
+	if hit.Properties == nil || hit.Properties["receiver_type"] != "Mux" {
+		t.Errorf("expected receiver_type=Mux from param-type stamp, got %+v", hit.Properties)
+	}
+}
+
+// TestCallsRelationship_StdlibInterfaceParamType (issue #364) verifies that
+// calls dispatched on a parameter whose static type is a Go-stdlib package-
+// qualified type (`*http.Request`, `http.ResponseWriter`) acquire a
+// receiver_type stamp set to the package-qualified type name (with leading
+// `*` stripped). The synth pass uses this stamp to route stdlib-interface
+// methods like `Write` and `Method` to the correct ext:net/http placeholder.
+func TestCallsRelationship_StdlibInterfaceParamType(t *testing.T) {
+	src := `package handlers
+
+import "net/http"
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	_, _ = r.Cookie("session")
+	w.Write([]byte("ok"))
+	w.WriteHeader(200)
+}
+
+var _ = http.HandlerFunc(handler)
+`
+	records := extractRecords(t, src, "handlers.go")
+	h := findEntity(records, "handler")
+	if h == nil {
+		t.Fatal("handler function not found")
+	}
+	want := map[string]string{
+		"Cookie":      "http.Request",
+		"Write":       "http.ResponseWriter",
+		"WriteHeader": "http.ResponseWriter",
+	}
+	got := map[string]string{}
+	for _, r := range h.Relationships {
+		if r.Kind != "CALLS" || r.Properties == nil {
 			continue
 		}
-		if r.Properties != nil && r.Properties["receiver_type"] != "" {
-			t.Errorf("did not expect receiver_type stamp on `other.handle` call; got %+v", r.Properties)
+		if rt := r.Properties["receiver_type"]; rt != "" {
+			got[r.ToID] = rt
+		}
+	}
+	for tgt, ty := range want {
+		if got[tgt] != ty {
+			t.Errorf("CALLS %s: receiver_type=%q want %q (full got=%v)", tgt, got[tgt], ty, got)
+		}
+	}
+}
+
+// TestCallsRelationship_StampShortVarDecl (issue #364) verifies that a
+// short-var declaration whose RHS is a composite literal of a recognisable
+// type stamps the resulting variable's static type onto downstream calls.
+// `x := &Foo{}` followed by `x.Bar()` produces a CALLS edge with
+// receiver_type=Foo. Routing decisions (stdlib vs user type) happen later
+// in synth.go and this test only asserts the stamp shape.
+func TestCallsRelationship_StampShortVarDecl(t *testing.T) {
+	src := `package main
+
+type Foo struct{}
+
+func (f *Foo) Bar() {}
+
+func driver() {
+	x := &Foo{}
+	x.Bar()
+}
+`
+	records := extractRecords(t, src, "main.go")
+	d := findEntity(records, "driver")
+	if d == nil {
+		t.Fatal("driver function not found")
+	}
+	var hit *types.RelationshipRecord
+	for i := range d.Relationships {
+		r := &d.Relationships[i]
+		if r.Kind == "CALLS" && r.ToID == "Bar" {
+			hit = r
+			break
+		}
+	}
+	if hit == nil {
+		t.Fatal("expected CALLS edge to Bar on driver")
+	}
+	if hit.Properties == nil || hit.Properties["receiver_type"] != "Foo" {
+		t.Errorf("expected receiver_type=Foo from short-var-decl, got %+v", hit.Properties)
+	}
+}
+
+// TestCallsRelationship_StampChiNewRouter (issue #364) verifies the
+// goConstructorReturnTypes table fires for `r := chi.NewRouter()` so the
+// downstream `r.Get("/", h)` call acquires receiver_type=chi.Mux. Synth
+// then routes this to ext:github.com/go-chi/chi.
+func TestCallsRelationship_StampChiNewRouter(t *testing.T) {
+	src := `package main
+
+import "github.com/go-chi/chi"
+
+func setup() {
+	r := chi.NewRouter()
+	r.Get("/", nil)
+	r.Use(nil)
+}
+`
+	records := extractRecords(t, src, "main.go")
+	s := findEntity(records, "setup")
+	if s == nil {
+		t.Fatal("setup function not found")
+	}
+	for _, want := range []string{"Get", "Use"} {
+		var hit *types.RelationshipRecord
+		for i := range s.Relationships {
+			r := &s.Relationships[i]
+			if r.Kind == "CALLS" && r.ToID == want {
+				hit = r
+				break
+			}
+		}
+		if hit == nil {
+			t.Fatalf("expected CALLS edge to %s on setup", want)
+		}
+		if hit.Properties == nil || hit.Properties["receiver_type"] != "chi.Mux" {
+			t.Errorf("CALLS %s: expected receiver_type=chi.Mux, got %+v", want, hit.Properties)
 		}
 	}
 }

@@ -1879,16 +1879,38 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 				// target like "handle" binds to the local "<pkg>/Mux.handle"
 				// rather than colliding with same-named methods elsewhere.
 				if recvType := r.Properties["receiver_type"]; recvType != "" && parentPkgDir != "" {
-					if id, ok := idx.lookupPackageMember(parentPkgDir, recvType, r.ToID); ok {
-						if id != "" {
-							r.ToID = id
-							applyEndpointStats(&stats, statusRewritten, false)
-							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
-							stats.recordDisposition(d, orig)
-							continue
+					// Issue #148 baseline: try the stamped type as-is.
+					// Issue #364 follow-up: when the stamp is package-
+					// qualified (e.g. `chi.Mux` from `chi.NewRouter()` /
+					// `*chi.Mux` parameter), strip the package segment and
+					// retry — entities are emitted under their bare receiver
+					// name (`Mux.handle`), so the qualified form would never
+					// match a same-package member. We try the as-is form
+					// FIRST so an unambiguous user package named e.g.
+					// `chi.Mux` (struct of type Mux in pkg chi, or any
+					// package whose dir name happens to match) still wins.
+					resolved := false
+					tryTypes := []string{recvType}
+					if dot := strings.LastIndexByte(recvType, '.'); dot >= 0 && dot < len(recvType)-1 {
+						tryTypes = append(tryTypes, recvType[dot+1:])
+					}
+					for _, t := range tryTypes {
+						if id, ok := idx.lookupPackageMember(parentPkgDir, t, r.ToID); ok {
+							if id != "" {
+								r.ToID = id
+								applyEndpointStats(&stats, statusRewritten, false)
+								d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
+								stats.recordDisposition(d, orig)
+								resolved = true
+								break
+							}
+							// Ambiguous within (pkg, recv, member) — fall through
+							// to record as unmatched (preserve the stub).
+							break
 						}
-						// Ambiguous within (pkg, recv, member) — fall through
-						// to record as unmatched (preserve the stub).
+					}
+					if resolved {
+						continue
 					}
 				}
 				newID, st := idx.rewriteOne(r.ToID, r.Kind)

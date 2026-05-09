@@ -133,7 +133,16 @@ func Synthesize(doc *graph.Document) Stats {
 		if rel.ToID == "" || isHexID(rel.ToID) || strings.HasPrefix(rel.ToID, ExtIDPrefix) {
 			continue
 		}
-		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, entityLang[rel.FromID], entityFile[rel.FromID], fileImports[entityFile[rel.FromID]])
+		// Issue #364 — fall back to the relationship's stamped language
+		// when the FromID isn't a known entity (e.g. unresolved bare-name
+		// caller, ambiguous-name caller). Without this, Go-only branches
+		// in classifyExternal (receiver_type stdlib dispatch) miss every
+		// edge whose source isn't a 1:1-resolvable entity.
+		lang := entityLang[rel.FromID]
+		if lang == "" && rel.Properties != nil {
+			lang = rel.Properties["language"]
+		}
+		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, lang, entityFile[rel.FromID], fileImports[entityFile[rel.FromID]], rel.Properties)
 		if !ok {
 			continue
 		}
@@ -211,9 +220,25 @@ func Synthesize(doc *graph.Document) Stats {
 // Returns ("", "", false) when the stub doesn't look external — those
 // are left untouched and continue to count as "unmatched" in the
 // resolver stats.
-func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[string]bool) (canonical, subtype string, ok bool) {
+func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[string]bool, relProps map[string]string) (canonical, subtype string, ok bool) {
 	if stub == "" {
 		return "", "", false
+	}
+
+	// Issue #364 — Go stdlib interface dispatch. The Go extractor stamps
+	// `Properties["receiver_type"]` on CALLS edges whose operand is a
+	// function parameter with a known static type (e.g. `*http.Request`,
+	// `http.ResponseWriter`, `io.Writer`). When the bare-name target is a
+	// method on the stdlib interface for that type, route the edge to the
+	// owning ext:<package> placeholder. The stamp is canonicalised by the
+	// extractor (leading `*` stripped, generic type params dropped) so the
+	// lookup table can use a single key per package type. Lang-gated to go.
+	if lang == "go" && relKind == string(types.RelationshipKindCalls) && relProps != nil {
+		if recvType := relProps["receiver_type"]; recvType != "" {
+			if pkg, ok := goStdlibInterfaceMethod(recvType, stub); ok {
+				return pkg, "package", true
+			}
+		}
 	}
 
 	// Issue #89 — manifest extractor emits dependency stubs as
@@ -878,7 +903,22 @@ var goBareNames = map[string]struct{}{
 	"ServeHTTP":      {},
 	"ListenAndServe": {},
 	"HandleFunc":     {},
-	"WriteHeader":    {},
+	// Issue #364: HandlerFunc is the `http.HandlerFunc(fn)` type
+	// constructor, distinct from the `HandleFunc` method on a
+	// ServeMux/Router. Single high-volume net/http idiom.
+	"HandlerFunc": {},
+	"WriteHeader": {},
+
+	// Issue #364: net/http + net/http/httptest factory functions that
+	// arrive at the resolver as bare names after the receiver-strip
+	// (`http.NewRequest(...)` → `NewRequest`, `httptest.NewServer(...)`
+	// → `NewServer`, `httptest.NewRecorder()` → `NewRecorder`,
+	// `httptest.NewRequest(...)` is also `NewRequest`). Multi-word
+	// PascalCase tied to net/http test patterns; user-method collision
+	// risk is low.
+	"NewRequest":  {},
+	"NewServer":   {},
+	"NewRecorder": {},
 	// "Write" / "Header" / "Handle" deliberately omitted: they are
 	// frequent user-method names (io.Writer.Write user-implementations,
 	// custom Header() accessors, generic Handle handlers) and gating by
@@ -904,6 +944,45 @@ var goBareNames = map[string]struct{}{
 	// issue #103 hard rules: Get/Post/Put/Delete/Use are EXCLUDED.
 	"MethodFunc":      {},
 	"AbortWithStatus": {},
+
+	// Issue #364 — strings package PascalCase helpers. Multi-word names
+	// (`HasPrefix`, `HasSuffix`, `TrimSpace`, `EqualFold`, `Replace`,
+	// `Contains`-prefix-suffix, `IndexByte`, etc.) are tied to the
+	// strings package and rarely user-defined. Single-word names like
+	// `Split`, `Join`, `Trim` are EXCLUDED — they collide trivially with
+	// user methods and the safer-bias rule from #94 applies.
+	"HasPrefix":     {},
+	"HasSuffix":     {},
+	"TrimSpace":     {},
+	"TrimPrefix":    {},
+	"TrimSuffix":    {},
+	"EqualFold":     {},
+	"ToUpper":       {},
+	"ToLower":       {},
+	"ContainsRune":  {},
+	"ContainsAny":   {},
+	"IndexByte":     {},
+	"IndexAny":      {},
+	"LastIndexByte": {},
+	"SplitN":        {},
+	"ReplaceAll":    {},
+	"FieldsFunc":    {},
+
+	// time package PascalCase helpers. Multi-word names with idiomatic
+	// time-domain semantics; collision risk is low.
+	"Sleep":         {},
+	"NewTicker":     {},
+	"NewTimer":      {},
+	"Since":         {},
+	"Until":         {},
+	"AfterFunc":     {},
+	"ParseDuration": {},
+
+	// io package + io/ioutil package helpers (Go 1.16+ moved many to io).
+	"ReadAll":   {},
+	"WriteAll":  {},
+	"Copy":      {},
+	"NopCloser": {},
 }
 
 // goTestifyBareNames is the Go testify-helper bare-name stop-list (issue
@@ -1137,6 +1216,406 @@ func hasGoChiImport(imports map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// goStdlibInterfaceMethods maps a canonicalised Go-stdlib type (with
+// leading `*` stripped) to the set of methods defined on that type or its
+// embedding interfaces, paired with the canonical import-path of the
+// declaring stdlib package. Used by classifyExternal (issue #364) to route
+// CALLS edges whose extractor-stamped `receiver_type` matches one of these
+// types to the corresponding `ext:<package>` placeholder.
+//
+// Only stdlib types are catalogued — user-defined types and third-party
+// types fall through and continue to count as unmatched. Per-method false
+// positives are extremely rare because both gates (the type name AND the
+// method name) must align with a stdlib signature; a user type happening to
+// share a name (e.g. local `Request` struct) will not have a stdlib package
+// path stamp upstream and is filtered out here.
+//
+// Selection rule: the catalogue mirrors the `net/http`, `io`, `fmt`, `os`,
+// `bytes`, `strings`, `sync`, `context`, `bufio`, and `database/sql`
+// surfaces that dominate residual go-chi bug-rate post-#148. Each entry's
+// methods list is the union of (a) methods declared on the type itself and
+// (b) methods inherited from embedded stdlib interfaces. Adding a new entry
+// requires the package and the method name to both be unambiguous in the
+// stdlib — see comments in this map for borderline names that were
+// excluded.
+var goStdlibInterfaceMethods = map[string]struct {
+	pkg     string
+	methods map[string]struct{}
+}{
+	// net/http core types. *http.Request methods include those from
+	// io.Reader (via Body) but Body itself is a field; only the request's
+	// own methods are listed.
+	"http.Request": {
+		pkg: "net/http",
+		methods: map[string]struct{}{
+			"Cookie": {}, "Cookies": {}, "AddCookie": {}, "FormFile": {},
+			"FormValue": {}, "PostFormValue": {}, "ParseForm": {},
+			"ParseMultipartForm": {}, "Referer": {}, "UserAgent": {},
+			"BasicAuth": {}, "SetBasicAuth": {}, "Clone": {}, "Context": {},
+			"WithContext": {}, "MultipartReader": {}, "ProtoAtLeast": {},
+			"PathValue": {}, "SetPathValue": {},
+		},
+	},
+	"http.ResponseWriter": {
+		pkg: "net/http",
+		methods: map[string]struct{}{
+			// Header is intentionally listed — collision with user types is
+			// gated by the `receiver_type=http.ResponseWriter` stamp.
+			"Header": {}, "Write": {}, "WriteHeader": {}, "Flush": {},
+		},
+	},
+	"http.Handler": {
+		pkg: "net/http",
+		methods: map[string]struct{}{
+			"ServeHTTP": {},
+		},
+	},
+	"http.HandlerFunc": {
+		pkg: "net/http",
+		methods: map[string]struct{}{
+			"ServeHTTP": {},
+		},
+	},
+	"http.Server": {
+		pkg: "net/http",
+		methods: map[string]struct{}{
+			"ListenAndServe": {}, "ListenAndServeTLS": {}, "Serve": {},
+			"ServeTLS": {}, "Shutdown": {}, "Close": {}, "RegisterOnShutdown": {},
+			"SetKeepAlivesEnabled": {},
+		},
+	},
+	"http.Client": {
+		pkg: "net/http",
+		methods: map[string]struct{}{
+			"Do": {}, "Get": {}, "Head": {}, "Post": {}, "PostForm": {},
+			"CloseIdleConnections": {},
+		},
+	},
+	"http.Response": {
+		pkg: "net/http",
+		methods: map[string]struct{}{
+			// Cookies is on *http.Response too; Write encodes the response
+			// to a Writer (rare but valid stdlib method).
+			"Cookies": {}, "Location": {}, "ProtoAtLeast": {},
+		},
+	},
+	"http.Header": {
+		pkg: "net/http",
+		methods: map[string]struct{}{
+			"Add": {}, "Set": {}, "Get": {}, "Values": {}, "Del": {},
+			"Clone": {}, "Write": {}, "WriteSubset": {},
+		},
+	},
+
+	// io interfaces. Method sets are tiny and well-known; collision risk
+	// with user types is handled by the receiver_type stamp.
+	"io.Reader": {
+		pkg: "io",
+		methods: map[string]struct{}{
+			"Read": {},
+		},
+	},
+	"io.Writer": {
+		pkg: "io",
+		methods: map[string]struct{}{
+			"Write": {},
+		},
+	},
+	"io.Closer": {
+		pkg: "io",
+		methods: map[string]struct{}{
+			"Close": {},
+		},
+	},
+	"io.ReadCloser": {
+		pkg: "io",
+		methods: map[string]struct{}{
+			"Read": {}, "Close": {},
+		},
+	},
+	"io.WriteCloser": {
+		pkg: "io",
+		methods: map[string]struct{}{
+			"Write": {}, "Close": {},
+		},
+	},
+	"io.ReadWriter": {
+		pkg: "io",
+		methods: map[string]struct{}{
+			"Read": {}, "Write": {},
+		},
+	},
+	"io.ReadWriteCloser": {
+		pkg: "io",
+		methods: map[string]struct{}{
+			"Read": {}, "Write": {}, "Close": {},
+		},
+	},
+
+	// fmt.Stringer + error are universally implemented; the receiver_type
+	// stamp guarantees we only synthesise when the parameter is declared
+	// with the interface type explicitly.
+	"fmt.Stringer": {
+		pkg:     "fmt",
+		methods: map[string]struct{}{"String": {}},
+	},
+	// `error` is a Go builtin interface, but the placeholder convention
+	// uses package import paths. Routing it to `errors` keeps the
+	// downstream allowlist gate (which already lists "errors") stable;
+	// `Error()` calls land in ext:errors rather than synthesising a new
+	// "builtin" bucket.
+	"error": {
+		pkg:     "errors",
+		methods: map[string]struct{}{"Error": {}},
+	},
+
+	// context.Context — appears as a parameter in nearly every Go service.
+	"context.Context": {
+		pkg: "context",
+		methods: map[string]struct{}{
+			"Deadline": {}, "Done": {}, "Err": {}, "Value": {},
+		},
+	},
+
+	// sync types frequently passed by pointer.
+	"sync.Mutex": {
+		pkg: "sync",
+		methods: map[string]struct{}{
+			"Lock": {}, "Unlock": {}, "TryLock": {},
+		},
+	},
+	"sync.RWMutex": {
+		pkg: "sync",
+		methods: map[string]struct{}{
+			"Lock": {}, "Unlock": {}, "RLock": {}, "RUnlock": {},
+			"TryLock": {}, "TryRLock": {}, "RLocker": {},
+		},
+	},
+	"sync.WaitGroup": {
+		pkg: "sync",
+		methods: map[string]struct{}{
+			"Add": {}, "Done": {}, "Wait": {},
+		},
+	},
+
+	// bytes / strings buffers — methods include the io.Reader / io.Writer
+	// surface plus Buffer-specific helpers.
+	"bytes.Buffer": {
+		pkg: "bytes",
+		methods: map[string]struct{}{
+			"Bytes": {}, "String": {}, "Len": {}, "Cap": {}, "Truncate": {},
+			"Reset": {}, "Grow": {}, "Write": {}, "WriteString": {},
+			"WriteByte": {}, "WriteRune": {}, "Read": {}, "ReadByte": {},
+			"ReadRune": {}, "ReadBytes": {}, "ReadString": {}, "Next": {},
+			"UnreadByte": {}, "UnreadRune": {},
+		},
+	},
+	"strings.Builder": {
+		pkg: "strings",
+		methods: map[string]struct{}{
+			"String": {}, "Len": {}, "Reset": {}, "Grow": {},
+			"Write": {}, "WriteString": {}, "WriteByte": {}, "WriteRune": {},
+		},
+	},
+
+	// bufio Reader/Writer — common stdlib I/O wrappers.
+	"bufio.Reader": {
+		pkg: "bufio",
+		methods: map[string]struct{}{
+			"Read": {}, "ReadByte": {}, "ReadRune": {}, "ReadString": {},
+			"ReadBytes": {}, "ReadLine": {}, "ReadSlice": {}, "Peek": {},
+			"Discard": {}, "Buffered": {}, "Reset": {},
+			"UnreadByte": {}, "UnreadRune": {},
+		},
+	},
+	"bufio.Writer": {
+		pkg: "bufio",
+		methods: map[string]struct{}{
+			"Write": {}, "WriteString": {}, "WriteByte": {}, "WriteRune": {},
+			"Flush": {}, "Available": {}, "Buffered": {}, "Reset": {},
+		},
+	},
+
+	// database/sql common pointer types.
+	"sql.DB": {
+		pkg: "database/sql",
+		methods: map[string]struct{}{
+			"Query": {}, "QueryRow": {}, "Exec": {}, "QueryContext": {},
+			"QueryRowContext": {}, "ExecContext": {}, "Begin": {},
+			"BeginTx": {}, "Prepare": {}, "PrepareContext": {}, "Ping": {},
+			"PingContext": {}, "Close": {}, "Conn": {}, "Driver": {},
+			"SetMaxOpenConns": {}, "SetMaxIdleConns": {},
+			"SetConnMaxLifetime": {}, "SetConnMaxIdleTime": {}, "Stats": {},
+		},
+	},
+	"sql.Tx": {
+		pkg: "database/sql",
+		methods: map[string]struct{}{
+			"Commit": {}, "Rollback": {}, "Query": {}, "QueryRow": {},
+			"Exec": {}, "QueryContext": {}, "QueryRowContext": {},
+			"ExecContext": {}, "Prepare": {}, "PrepareContext": {}, "Stmt": {},
+			"StmtContext": {},
+		},
+	},
+	"sql.Rows": {
+		pkg: "database/sql",
+		methods: map[string]struct{}{
+			"Next": {}, "NextResultSet": {}, "Scan": {}, "Close": {},
+			"Err": {}, "Columns": {}, "ColumnTypes": {},
+		},
+	},
+	"sql.Row": {
+		pkg: "database/sql",
+		methods: map[string]struct{}{
+			"Scan": {}, "Err": {},
+		},
+	},
+	"sql.Stmt": {
+		pkg: "database/sql",
+		methods: map[string]struct{}{
+			"Query": {}, "QueryRow": {}, "Exec": {}, "QueryContext": {},
+			"QueryRowContext": {}, "ExecContext": {}, "Close": {},
+		},
+	},
+
+	// os.File — the bare *File pointer is omnipresent in Go I/O code.
+	"os.File": {
+		pkg: "os",
+		methods: map[string]struct{}{
+			"Read": {}, "ReadAt": {}, "Write": {}, "WriteAt": {},
+			"WriteString": {}, "Close": {}, "Name": {}, "Stat": {},
+			"Sync": {}, "Truncate": {}, "Seek": {}, "Chdir": {},
+			"Chmod": {}, "Chown": {}, "Fd": {}, "ReadDir": {},
+			"Readdir": {}, "Readdirnames": {}, "SetDeadline": {},
+			"SetReadDeadline": {}, "SetWriteDeadline": {},
+		},
+	},
+
+	// chi router types — third-party but indistinguishable from stdlib
+	// dispatch shape and dominate residual go-chi bug-rate (issue #103
+	// target). Methods mirror chi.Router + chi.Mux; routing yields the
+	// host-canonical "github.com/go-chi/chi" placeholder which is on the
+	// allowlist (so the disposition is ExternalKnown).
+	"chi.Mux": {
+		pkg: "github.com/go-chi/chi",
+		methods: map[string]struct{}{
+			"Get": {}, "Post": {}, "Put": {}, "Delete": {}, "Patch": {},
+			"Head": {}, "Options": {}, "Connect": {}, "Trace": {},
+			"Method": {}, "MethodFunc": {}, "Handle": {}, "HandleFunc": {},
+			"Mount": {}, "Group": {}, "Route": {}, "Use": {}, "With": {},
+			"NotFound": {}, "MethodNotAllowed": {}, "ServeHTTP": {},
+			"Find": {}, "Match": {}, "Routes": {}, "Middlewares": {},
+		},
+	},
+	"chi.Router": {
+		pkg: "github.com/go-chi/chi",
+		methods: map[string]struct{}{
+			"Get": {}, "Post": {}, "Put": {}, "Delete": {}, "Patch": {},
+			"Head": {}, "Options": {}, "Connect": {}, "Trace": {},
+			"Method": {}, "MethodFunc": {}, "Handle": {}, "HandleFunc": {},
+			"Mount": {}, "Group": {}, "Route": {}, "Use": {}, "With": {},
+			"NotFound": {}, "MethodNotAllowed": {}, "ServeHTTP": {},
+			"Find": {}, "Routes": {}, "Middlewares": {}, "Match": {},
+		},
+	},
+
+	// gin engine + context — same rationale as chi.
+	"gin.Engine": {
+		pkg: "github.com/gin-gonic/gin",
+		methods: map[string]struct{}{
+			"GET": {}, "POST": {}, "PUT": {}, "DELETE": {}, "PATCH": {},
+			"HEAD": {}, "OPTIONS": {}, "Any": {}, "Handle": {},
+			"Group": {}, "Use": {}, "Run": {}, "RunTLS": {},
+			"NoRoute": {}, "NoMethod": {}, "ServeHTTP": {},
+			"Static": {}, "StaticFS": {}, "StaticFile": {},
+			"LoadHTMLFiles": {}, "LoadHTMLGlob": {},
+			"SetTrustedProxies": {},
+		},
+	},
+	"gin.Context": {
+		pkg: "github.com/gin-gonic/gin",
+		methods: map[string]struct{}{
+			"Param": {}, "Query": {}, "DefaultQuery": {}, "PostForm": {},
+			"DefaultPostForm": {}, "Bind": {}, "BindJSON": {},
+			"ShouldBind": {}, "ShouldBindJSON": {}, "ShouldBindQuery": {},
+			"JSON": {}, "String": {}, "HTML": {}, "XML": {}, "YAML": {},
+			"Data": {}, "File": {}, "Status": {}, "Header": {},
+			"AbortWithStatus": {}, "AbortWithStatusJSON": {}, "Abort": {},
+			"Next": {}, "Set": {}, "Get": {}, "MustGet": {},
+			"GetString": {}, "GetInt": {}, "GetBool": {},
+			"Cookie": {}, "SetCookie": {}, "Redirect": {},
+			"ClientIP": {}, "ContentType": {}, "FullPath": {},
+			"GetHeader": {}, "Request": {}, "Writer": {},
+		},
+	},
+	"gin.RouterGroup": {
+		pkg: "github.com/gin-gonic/gin",
+		methods: map[string]struct{}{
+			"GET": {}, "POST": {}, "PUT": {}, "DELETE": {}, "PATCH": {},
+			"HEAD": {}, "OPTIONS": {}, "Any": {}, "Handle": {},
+			"Group": {}, "Use": {}, "Static": {}, "StaticFS": {},
+			"StaticFile": {},
+		},
+	},
+
+	// echo (labstack)
+	"echo.Echo": {
+		pkg: "github.com/labstack/echo",
+		methods: map[string]struct{}{
+			"GET": {}, "POST": {}, "PUT": {}, "DELETE": {}, "PATCH": {},
+			"HEAD": {}, "OPTIONS": {}, "Any": {}, "Add": {},
+			"Group": {}, "Use": {}, "Pre": {}, "Match": {},
+			"Start": {}, "StartTLS": {}, "Logger": {}, "Static": {},
+			"File": {}, "ServeHTTP": {}, "Routes": {},
+		},
+	},
+
+	// testing.T / testing.B — primarily covered by goTestingTBareNames
+	// for bare-name lookups in `_test.go` files, but also routed here when
+	// the receiver_type is stamped (some test helpers take `*testing.T`
+	// as a parameter explicitly).
+	"testing.T": {
+		pkg: "testing",
+		methods: map[string]struct{}{
+			"Helper": {}, "Cleanup": {}, "Setenv": {}, "TempDir": {},
+			"Log": {}, "Logf": {}, "Error": {}, "Errorf": {}, "Fatal": {},
+			"Fatalf": {}, "Skip": {}, "Skipf": {}, "SkipNow": {},
+			"Skipped": {}, "Failed": {}, "Fail": {}, "FailNow": {},
+			"Name": {}, "Run": {}, "Parallel": {}, "Deadline": {},
+		},
+	},
+	"testing.B": {
+		pkg: "testing",
+		methods: map[string]struct{}{
+			"Helper": {}, "Cleanup": {}, "Setenv": {}, "TempDir": {},
+			"Log": {}, "Logf": {}, "Error": {}, "Errorf": {}, "Fatal": {},
+			"Fatalf": {}, "Skip": {}, "Skipf": {}, "SkipNow": {},
+			"Skipped": {}, "Failed": {}, "Fail": {}, "FailNow": {},
+			"Name": {}, "Run": {}, "RunParallel": {}, "ResetTimer": {},
+			"StopTimer": {}, "StartTimer": {}, "ReportAllocs": {},
+			"ReportMetric": {}, "SetBytes": {}, "SetParallelism": {},
+		},
+	},
+}
+
+// goStdlibInterfaceMethod looks up (recvType, method) against the
+// goStdlibInterfaceMethods catalogue and returns the canonical stdlib
+// package import-path and true on a hit. recvType is expected to be the
+// extractor's canonicalised form (leading `*` stripped, generic type
+// parameters dropped) — `*http.Request` arrives here as `http.Request`.
+// Returns ("", false) on a miss; the caller falls through to the existing
+// classification heuristics.
+func goStdlibInterfaceMethod(recvType, method string) (string, bool) {
+	entry, ok := goStdlibInterfaceMethods[recvType]
+	if !ok {
+		return "", false
+	}
+	if _, ok := entry.methods[method]; !ok {
+		return "", false
+	}
+	return entry.pkg, true
 }
 
 // rustBareNames is the Rust-language-gated bare-name stop-list (issue
@@ -2016,6 +2495,17 @@ var knownExternalPackages = map[string]struct{}{
 	// accept Go's `os`/`sort`/etc. as well. "io"/"net"/"sort"/"sync"/
 	// "time"/"path"/"errors"/"strings"/"strconv"/"context"/"bytes"/
 	// "regexp"/"testing"/"hash" likewise serve both ecosystems.
+
+	// Issue #364 — Go stdlib multi-segment paths used as canonical names
+	// for ext:<path> placeholders synthesised from receiver_type stdlib
+	// interface dispatch. Single-segment stdlib roots (`io`, `os`, `fmt`,
+	// `bufio`, `bytes`, `strings`, `sync`, `context`, `testing`, `http`,
+	// `net`, `sql`) already exist above, but the goStdlibInterfaceMethods
+	// catalogue uses the canonical import path (`net/http`,
+	// `database/sql`) so the disposition allowlist must match the slash
+	// form too.
+	"net/http":     {},
+	"database/sql": {},
 
 	// Issue #116: Go third-party host-prefixed roots (3-segment
 	// "<host>/<owner>/<repo>" canonical form). These are matched by
