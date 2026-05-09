@@ -340,6 +340,18 @@ REPOS=(
   "netlify-functions|https://github.com/netlify/functions.git|main|typescript|src"                                     # Netlify Functions handler types, netlify.toml (#319) SHA c3f47247079e
   "cloudflare-workers-sdk|https://github.com/cloudflare/workers-sdk.git|main|typescript|packages/wrangler"             # Cloudflare Workers fetch handler, wrangler.toml (#319) SHA dba84c225f41
   "functions-framework-nodejs|https://github.com/GoogleCloudPlatform/functions-framework-nodejs.git|main|typescript|src"  # GCF Functions Framework HTTP/CloudEvent handlers (#319) SHA 243202d5e133
+  # --- State management (chunk AA, umbrella #321) ---
+  # Frontend state-management libraries exercising store/atom/machine detection
+  # across Redux, MobX, Zustand, Pinia, NgRx, Recoil, XState, Effector per
+  # Refs #87. Each entry pinned to the SHA recorded in the umbrella body.
+  "redux|https://github.com/reduxjs/redux.git|master|typescript|packages/toolkit"                              # Redux reducers/actions, Toolkit slices (#321) SHA 38faff513dc2
+  "mobx|https://github.com/mobxjs/mobx.git|main|typescript|packages/mobx"                                     # MobX observables, computed, reactions (#321) SHA 03f420ac4a29
+  "zustand|https://github.com/pmndrs/zustand.git|main|typescript|src"                                         # Zustand `create` stores, middleware (#321) SHA 3fca84617984
+  "pinia|https://github.com/vuejs/pinia.git|v4|typescript|packages/pinia"                                     # Pinia `defineStore`, Vue 3 stores (#321) SHA e329b3805486 (Vue SFC + TS dual extraction)
+  "ngrx-platform|https://github.com/ngrx/platform.git|main|typescript|modules/store"                          # NgRx actions/reducers/effects (#321) SHA a469cbf01562
+  "recoil|https://github.com/facebookexperimental/Recoil.git|main|typescript|packages/recoil"                 # Recoil atoms/selectors (#321) SHA c1b97f3a0117
+  "xstate|https://github.com/statelyai/xstate.git|main|typescript|packages/core"                              # XState `createMachine`, statecharts (#321) SHA f79ea13febe4
+  "effector|https://github.com/effector/effector.git|master|typescript|src"                                   # Effector stores/events/effects (#321) SHA 29553bb13dc3
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
