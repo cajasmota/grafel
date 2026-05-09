@@ -389,13 +389,21 @@ func TestDockerfileExtractor_FromScratch(t *testing.T) {
 	tree := parseForTest(t, src)
 	entities := extractEntities(t, "Dockerfile", src, tree)
 
-	if len(entities) != 1 {
-		t.Fatalf("expected 1 entity, got %d", len(entities))
+	// Issue #384: in addition to the FROM stage entity, the extractor emits a
+	// file-level SCOPE.Component carrying CONTAINS edges. Filter to the stage.
+	var stages []types.EntityRecord
+	for _, e := range entities {
+		if e.Subtype == "stage" {
+			stages = append(stages, e)
+		}
 	}
-	if entities[0].Name != "scratch" {
-		t.Errorf("expected Name='scratch', got %q", entities[0].Name)
+	if len(stages) != 1 {
+		t.Fatalf("expected 1 stage entity, got %d (all=%d)", len(stages), len(entities))
 	}
-	if entities[0].Subtype != "stage" {
-		t.Errorf("expected Subtype='stage', got %q", entities[0].Subtype)
+	if stages[0].Name != "scratch" {
+		t.Errorf("expected Name='scratch', got %q", stages[0].Name)
+	}
+	if stages[0].Subtype != "stage" {
+		t.Errorf("expected Subtype='stage', got %q", stages[0].Subtype)
 	}
 }
