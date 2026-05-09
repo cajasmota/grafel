@@ -279,6 +279,109 @@ func TestEmptyContent(t *testing.T) {
 	}
 }
 
+// hasImports checks whether ents contains a SCOPE.Component import-stub
+// entity carrying an IMPORTS edge from filePath → toID.
+func hasImports(ents []types.EntityRecord, filePath, toID string) bool {
+	for _, e := range ents {
+		if e.Kind != "SCOPE.Component" || e.Subtype != "import" {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind == "IMPORTS" && r.FromID == filePath && r.ToID == toID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func countImports(ents []types.EntityRecord) int {
+	n := 0
+	for _, e := range ents {
+		for _, r := range e.Relationships {
+			if r.Kind == "IMPORTS" {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+func TestImports_RelativeLinksEmitImports(t *testing.T) {
+	ents := extract(t, "links.md")
+
+	// Expected: sibling.md, ../parent.md, root.md, after.md
+	// Link in fenced code block should be skipped.
+	// External (https), mailto, and in-page (#) links should NOT emit IMPORTS.
+	wantTargets := []string{"sibling.md", "../parent.md", "root.md", "after.md"}
+	for _, tgt := range wantTargets {
+		if !hasImports(ents, "links.md", tgt) {
+			t.Errorf("missing IMPORTS edge to %q", tgt)
+		}
+	}
+
+	// Negative: links inside fenced code blocks must not emit.
+	if hasImports(ents, "links.md", "should-be-ignored.md") {
+		t.Errorf("link inside fenced code block must not emit IMPORTS")
+	}
+
+	// Negative: external / mailto / in-page must not emit.
+	for _, bad := range []string{"https://example.com", "mailto:foo@bar.com", "#links-doc", "links.md"} {
+		if hasImports(ents, "links.md", bad) {
+			t.Errorf("unexpected IMPORTS edge to %q", bad)
+		}
+	}
+
+	// Dedup: duplicate `./sibling.md` only counted once. Total = 4.
+	if got := countImports(ents); got != 4 {
+		t.Errorf("IMPORTS count = %d, want 4", got)
+	}
+}
+
+func TestImports_ResolveTargetClassification(t *testing.T) {
+	cases := []struct {
+		name    string
+		dir     string
+		raw     string
+		wantOK  bool
+		wantOut string
+	}{
+		{"relative dot-slash", "docs", "./foo.md", true, "docs/foo.md"},
+		{"relative bare", "docs", "foo.md", true, "docs/foo.md"},
+		{"relative parent", "docs", "../README.md", true, "README.md"},
+		{"absolute path", "docs", "/root.md", true, "root.md"},
+		{"strip fragment", "docs", "./foo.md#sec", true, "docs/foo.md"},
+		{"strip query", "docs", "./foo.md?x=1", true, "docs/foo.md"},
+		{"empty dir bare", "", "foo.md", true, "foo.md"},
+		{"http", "docs", "https://example.com", false, ""},
+		{"http no slashes", "docs", "http://example.com", false, ""},
+		{"mailto", "docs", "mailto:a@b.com", false, ""},
+		{"in-page anchor", "docs", "#section", false, ""},
+		{"protocol-relative", "docs", "//cdn/x.js", false, ""},
+		{"empty", "docs", "", false, ""},
+		{"only fragment after strip", "docs", "#", false, ""},
+	}
+	for _, tc := range cases {
+		got, ok := resolveImportTarget(tc.dir, tc.raw)
+		if ok != tc.wantOK {
+			t.Errorf("%s: ok = %v, want %v", tc.name, ok, tc.wantOK)
+			continue
+		}
+		if ok && got != tc.wantOut {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.wantOut)
+		}
+	}
+}
+
+func TestImports_NoLinksProducesNoStubs(t *testing.T) {
+	ents := extract(t, "simple.md")
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "import" {
+			t.Errorf("simple.md should produce no import stubs; got %+v", e)
+		}
+	}
+}
+
 func TestRegistration(t *testing.T) {
 	if e, ok := extractor.Get("markdown"); !ok {
 		t.Errorf("markdown extractor not registered")
