@@ -219,6 +219,18 @@ REPOS=(
   "aws-sam-cli-app-templates|https://github.com/aws/aws-sam-cli-app-templates.git|master|yaml|python3.12"      # AWS SAM (#210) SHA c7285973a74a
   "serverless-examples|https://github.com/serverless/examples.git|v4|yaml|aws-node-http-api"                   # Serverless Framework (#214) SHA 631c0739a793
   "crossplane|https://github.com/crossplane/crossplane.git|main|yaml|cluster/meta"                             # Crossplane (#218) SHA 2ddc36457725
+  # --- DB migration tools (chunk Y, umbrella #317) ---
+  # Versioned-SQL migration tooling across major ecosystems, per Refs #87
+  # corpus policy. Each entry pinned to the SHA recorded in the umbrella body.
+  # Sparse-paths are applied to the two large monorepos (flyway, liquibase);
+  # the remaining repos are small enough to clone in full.
+  "flyway|https://github.com/flyway/flyway.git|main|java|flyway-core"                                          # Flyway versioned/repeatable SQL migrations (#317) SHA ce65ee118f01
+  "liquibase|https://github.com/liquibase/liquibase.git|main|java|liquibase-standard"                          # Liquibase changelog formats + changesets (#317) SHA e9c06031abc8
+  "alembic|https://github.com/sqlalchemy/alembic.git|main|python"                                              # Alembic env.py + revision graph + op.* DSL (#317) SHA 4d1e38cac108
+  "knex|https://github.com/knex/knex.git|master|javascript"                                                    # Knex schema-builder migrations + query builder (#317) SHA af57d1ec662a
+  "goose|https://github.com/pressly/goose.git|main|go"                                                         # Goose -- +goose Up/Down SQL annotations + Go migrations (#317) SHA e3235f7041e1
+  "migrate-mongo|https://github.com/seppevs/migrate-mongo.git|master|javascript"                               # MongoDB migration scripts up/down handler (#317) SHA 1f5e5f953491
+  "sequel|https://github.com/jeremyevans/sequel.git|master|ruby"                                               # Sequel.migration { up/down } blocks (#317) SHA 694ea7798374
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
