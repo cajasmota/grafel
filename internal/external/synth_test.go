@@ -2389,3 +2389,109 @@ func itoa(i int) string {
 	}
 	return string(buf[pos:])
 }
+
+// ---------------------------------------------------------------------------
+// Issue #424 — Docker image refs and host-path mounts route through synth.
+// ---------------------------------------------------------------------------
+
+// TestSynthesize_DockerImage_Compose covers a Compose-style image stub
+// "docker_image:nginx:1.21". Synth must rewrite the edge to ext:docker:nginx
+// (tag dropped, single placeholder per repository) and place the image on
+// the allowlist so the resolver classifies it as ExternalKnown.
+func TestSynthesize_DockerImage_Compose(t *testing.T) {
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "docker_compose/service/api", ToID: "docker_image:nginx:1.21", Kind: "IMPORTS"},
+			{ID: "r2", FromID: "docker_compose/service/db", ToID: "docker_image:postgres:14", Kind: "IMPORTS"},
+			{ID: "r3", FromID: "docker_compose/service/cache", ToID: "docker_image:redis:alpine", Kind: "IMPORTS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.RelationshipsResolved != 3 {
+		t.Fatalf("resolved=%d, want 3", stats.RelationshipsResolved)
+	}
+	want := map[int]string{
+		0: "ext:docker:nginx",
+		1: "ext:docker:postgres",
+		2: "ext:docker:redis",
+	}
+	for i, w := range want {
+		if got := doc.Relationships[i].ToID; got != w {
+			t.Errorf("rel[%d].ToID=%q, want %q", i, got, w)
+		}
+	}
+	for _, w := range want {
+		if !IsKnownExternalPackage(w[len("ext:"):]) {
+			t.Errorf("IsKnownExternalPackage(%q)=false, want true (ExternalKnown gate)", w)
+		}
+	}
+}
+
+// TestSynthesize_DockerImage_Registry covers a registry-prefixed image with
+// a port (`myregistry.io:5000/team/api:dev`). The leading colon belongs to
+// the port and must NOT be treated as a tag separator.
+func TestSynthesize_DockerImage_Registry(t *testing.T) {
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "k8s/container/app", ToID: "docker_image:ghcr.io/owner/svc:v1.2.3", Kind: "IMPORTS"},
+			{ID: "r2", FromID: "k8s/container/api", ToID: "docker_image:myregistry.io:5000/team/api:dev", Kind: "IMPORTS"},
+			{ID: "r3", FromID: "k8s/container/raw", ToID: "docker_image:alpine@sha256:abc", Kind: "IMPORTS"},
+		},
+	}
+	Synthesize(doc)
+	want := []string{
+		"ext:docker:ghcr.io/owner/svc",
+		"ext:docker:myregistry.io:5000/team/api",
+		"ext:docker:alpine",
+	}
+	for i, w := range want {
+		if got := doc.Relationships[i].ToID; got != w {
+			t.Errorf("rel[%d].ToID=%q, want %q", i, got, w)
+		}
+	}
+}
+
+// TestSynthesize_HostPathMount covers Compose host-filesystem volume mounts.
+// Every distinct path collapses to a single ext:external_filesystem
+// placeholder; the package is NOT on the allowlist, so the resolver lands
+// these in ExternalUnknown.
+func TestSynthesize_HostPathMount(t *testing.T) {
+	doc := &graph.Document{
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "docker_compose/service/api", ToID: "host_path:./src", Kind: "IMPORTS"},
+			{ID: "r2", FromID: "docker_compose/service/api", ToID: "host_path:/etc/myapp", Kind: "IMPORTS"},
+			{ID: "r3", FromID: "docker_compose/service/api", ToID: "host_path:${PWD}/data", Kind: "IMPORTS"},
+		},
+	}
+	Synthesize(doc)
+	for i, r := range doc.Relationships {
+		if r.ToID != "ext:external_filesystem" {
+			t.Errorf("rel[%d].ToID=%q, want ext:external_filesystem", i, r.ToID)
+		}
+	}
+	if IsKnownExternalPackage("external_filesystem") {
+		t.Error("external_filesystem unexpectedly on allowlist; want ExternalUnknown disposition")
+	}
+}
+
+// TestDockerImageRepo unit-tests the repo-extraction helper for canonical
+// docker image references.
+func TestDockerImageRepo(t *testing.T) {
+	cases := map[string]string{
+		"":                                 "",
+		"nginx":                            "nginx",
+		"nginx:1.21":                       "nginx",
+		"redis:alpine":                     "redis",
+		"library/postgres:14":              "library/postgres",
+		"ghcr.io/owner/svc:v1.2.3":         "ghcr.io/owner/svc",
+		"myregistry.io:5000/team/api:dev":  "myregistry.io:5000/team/api",
+		"myregistry.io:5000/team/api":      "myregistry.io:5000/team/api",
+		"alpine@sha256:abcdef":             "alpine",
+		"ubuntu:22.04@sha256:abcdef":       "ubuntu",
+	}
+	for in, want := range cases {
+		if got := dockerImageRepo(in); got != want {
+			t.Errorf("dockerImageRepo(%q)=%q, want %q", in, got, want)
+		}
+	}
+}
