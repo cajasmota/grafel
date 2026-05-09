@@ -1033,6 +1033,17 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	//   - standalone Pass 2.5 RelationshipRecords (engine output)
 	// against the merged entity index. Stubs that are ambiguous (≥2 matches)
 	// or unmatched are left in place and counted in the log line below.
+	// Issue #93 — import-aware cross-file resolution. Builds a per-file
+	// import table from IMPORTS edges and rewrites bare-name CALLS targets
+	// to the entity they actually point at. Runs BEFORE BuildIndex so the
+	// disposition classifier sees the rewritten ID as already-resolved.
+	importTbl := resolve.BuildImportTable(merged)
+	importStats := resolve.ResolveImports(merged, importTbl)
+	if importStats.CallsConsidered > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d bare-name CALLS targets\n",
+			importStats.CallsRewritten, importStats.CallsConsidered)
+	}
+
 	idx := resolve.BuildIndex(merged)
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)

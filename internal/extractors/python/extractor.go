@@ -509,6 +509,22 @@ func receiverClass(recv *sitter.Node, src []byte, parentClass string) string {
 // `from x import a` creates one entity per imported name with module path
 // "x.a", matching the symbol-level granularity Python uses for cross-module
 // resolution.
+//
+// Issue #93 — every IMPORTS relationship now carries the metadata the
+// cross-file resolver needs to bind a bare CALLS target back to its real
+// entity:
+//
+//	Properties["local_name"]    — the identifier as referenced inside the
+//	                              importing file (alias when present, else
+//	                              the imported leaf name; for `import a.b`
+//	                              this is the top-level package "a").
+//	Properties["source_module"] — the dotted module path the symbol was
+//	                              imported from. For `import x.y` this is
+//	                              "x.y"; for `from x import y` this is "x".
+//	Properties["imported_name"] — the original (pre-alias) leaf identifier
+//	                              inside the source module. Equal to
+//	                              local_name when no alias is present.
+//	Properties["wildcard"]      — "1" when the import is `from x import *`.
 func extractImports(root *sitter.Node, file extractor.FileInput) []types.EntityRecord {
 	if root == nil {
 		return nil
@@ -517,11 +533,24 @@ func extractImports(root *sitter.Node, file extractor.FileInput) []types.EntityR
 	for _, n := range findAll(root, "import_statement") {
 		for i := 0; i < int(n.NamedChildCount()); i++ {
 			ch := n.NamedChild(i)
-			path := dottedNamePath(ch, file.Content)
+			path, alias := dottedNameAndAlias(ch, file.Content)
 			if path == "" {
 				continue
 			}
-			out = append(out, importRecord(path, file))
+			localName := alias
+			if localName == "" {
+				if dot := strings.IndexByte(path, '.'); dot > 0 {
+					localName = path[:dot]
+				} else {
+					localName = path
+				}
+			}
+			props := map[string]string{
+				"local_name":    localName,
+				"source_module": path,
+				"imported_name": path,
+			}
+			out = append(out, importRecord(path, file, props))
 		}
 	}
 	for _, n := range findAll(root, "import_from_statement") {
@@ -539,18 +568,61 @@ func extractImports(root *sitter.Node, file extractor.FileInput) []types.EntityR
 			if ch == modNode {
 				continue
 			}
-			name := dottedNamePath(ch, file.Content)
-			if name == "" || name == "*" {
+			name, alias := dottedNameAndAlias(ch, file.Content)
+			if name == "" {
 				continue
 			}
-			out = append(out, importRecord(modPath+"."+name, file))
+			if name == "*" {
+				out = append(out, importRecord(modPath, file, map[string]string{
+					"source_module": modPath,
+					"wildcard":      "1",
+				}))
+				emittedAny = true
+				continue
+			}
+			localName := alias
+			if localName == "" {
+				localName = name
+			}
+			props := map[string]string{
+				"local_name":    localName,
+				"source_module": modPath,
+				"imported_name": name,
+			}
+			out = append(out, importRecord(modPath+"."+name, file, props))
 			emittedAny = true
 		}
 		if !emittedAny {
-			out = append(out, importRecord(modPath, file))
+			out = append(out, importRecord(modPath, file, map[string]string{
+				"source_module": modPath,
+			}))
 		}
 	}
 	return out
+}
+
+// dottedNameAndAlias returns (path, alias) for an import-list child node.
+// path is the dotted import path stripped of any "as <alias>" suffix; alias
+// is the binding identifier introduced by `as` (or "" when not present).
+// Wildcards return ("*", ""). Unrecognised shapes return ("", "").
+func dottedNameAndAlias(node *sitter.Node, src []byte) (string, string) {
+	if node == nil {
+		return "", ""
+	}
+	if node.Type() != "aliased_import" {
+		return dottedNamePath(node, src), ""
+	}
+	var path, alias string
+	if name := node.ChildByFieldName("name"); name != nil {
+		path = dottedNamePath(name, src)
+	}
+	if a := node.ChildByFieldName("alias"); a != nil {
+		alias = strings.TrimSpace(nodeText(a, src))
+	}
+	if path == "" && node.NamedChildCount() > 0 {
+		path = dottedNamePath(node.NamedChild(0), src)
+	}
+	return path, alias
 }
 
 // dottedNamePath flattens a dotted_name / identifier / aliased_import node into
@@ -580,8 +652,10 @@ func dottedNamePath(node *sitter.Node, src []byte) string {
 }
 
 // importRecord builds a single SCOPE.Component entity for the given module
-// path with one embedded IMPORTS relationship.
-func importRecord(modulePath string, file extractor.FileInput) types.EntityRecord {
+// path with one embedded IMPORTS relationship. Properties on the IMPORTS
+// edge carry the import-binding metadata the cross-file resolver consumes
+// (issue #93): local_name, source_module, imported_name, and wildcard.
+func importRecord(modulePath string, file extractor.FileInput, props map[string]string) types.EntityRecord {
 	return types.EntityRecord{
 		Name:       modulePath,
 		Kind:       "SCOPE.Component",
@@ -590,9 +664,10 @@ func importRecord(modulePath string, file extractor.FileInput) types.EntityRecor
 		Language:   "python",
 		Relationships: []types.RelationshipRecord{
 			{
-				FromID: file.Path,
-				ToID:   modulePath,
-				Kind:   "IMPORTS",
+				FromID:     file.Path,
+				ToID:       modulePath,
+				Kind:       "IMPORTS",
+				Properties: props,
 			},
 		},
 	}
