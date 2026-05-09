@@ -63,7 +63,7 @@ func TestSQL_MySQL_AutoIncrementColumns(t *testing.T) {
 	// id columns from both tables exist (each tagged with its table via Properties).
 	idColsByTable := map[string]bool{}
 	for _, e := range entities {
-		if e.Subtype != "column" || e.Name != "id" {
+		if e.Subtype != "column" || e.Properties["column"] != "id" {
 			continue
 		}
 		if tbl, ok := e.Properties["table"]; ok {
@@ -90,7 +90,7 @@ func TestSQL_MySQL_EnumColumnTypes(t *testing.T) {
 	for col, table := range wantEnumColumns {
 		found := false
 		for _, e := range entities {
-			if e.Subtype == "column" && e.Name == col && e.Properties["table"] == table {
+			if e.Subtype == "column" && e.Properties["column"] == col && e.Properties["table"] == table {
 				found = true
 				break
 			}
@@ -108,7 +108,7 @@ func TestSQL_MySQL_ForeignKeyExtracted(t *testing.T) {
 
 	hasFK := false
 	for _, e := range entities {
-		if e.Subtype != "column" || e.Name != "product_id" {
+		if e.Subtype != "column" || e.Properties["column"] != "product_id" {
 			continue
 		}
 		if e.Properties["table"] != "order_items" {
