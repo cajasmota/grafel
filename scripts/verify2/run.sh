@@ -116,6 +116,15 @@ REPOS=(
   "starter-workflows|https://github.com/actions/starter-workflows.git|main|yaml"                 # Official GitHub Actions starter workflows: ci/, deployments/, automation/, code-scanning/, pages/
   # --- OpenAPI ---
   "openapi-stripe|https://github.com/APIs-guru/openapi-directory.git|main|yaml|APIs/stripe.com"  # OpenAPI directory — Stripe API spec subtree (yaml extractor handles OpenAPI documents)
+  # --- ORMs/Frameworks (chunk G, umbrella #301) ---
+  # Sample apps that USE each ORM/framework, per Refs #96 corpus policy.
+  # django-realworld (#176) and node-express-realworld (#178/Prisma) are already
+  # listed above under Python and JavaScript respectively — not duplicated here.
+  "microblog|https://github.com/miguelgrinberg/microblog.git|main|python"                          # SQLAlchemy sample app (#174)
+  "fastapi-realworld|https://github.com/nsidnev/fastapi-realworld-example-app.git|master|python"   # FastAPI sample app (#175)
+  "sequelize-express-example|https://github.com/sequelize/express-example.git|master|javascript"   # Sequelize sample app (#177)
+  "golang-gin-realworld|https://github.com/gothinkster/golang-gin-realworld-example-app.git|main|go" # GORM sample app (#179)
+  "actix-diesel-realworld|https://github.com/snamiki1212/realworld-v1-rust-actix-web-diesel.git|main|rust" # Diesel sample app (#180)
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
