@@ -179,6 +179,22 @@ func findFunctionBody(node *sitter.Node) *sitter.Node {
 	return nil
 }
 
+// kotlinKeywordStop lists Kotlin keywords and special identifiers that
+// tree-sitter surfaces inside call_expression nodes but are NOT real
+// call targets. Emitting CALLS edges for them sends meaningless
+// bare-name stubs to the resolver, where they land in bug-extractor
+// because no entity matches. Mirrors the Python extractor's
+// `self`/`cls` drop. Issue #106.
+var kotlinKeywordStop = map[string]bool{
+	"synchronized": true,
+	"it":           true,
+	"this":         true,
+	"super":        true,
+	"lateinit":     true,
+	"by":           true,
+	"where":        true,
+}
+
 // extractCallRelationships returns one CALLS RelationshipRecord per unique
 // call_expression descendant of body. The target name is the trailing
 // simple_identifier of the call's expression. FromID is left empty so
@@ -197,6 +213,13 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 	for _, call := range calls {
 		target := kotlinCallTarget(call, src)
 		if target == "" || target == callerName {
+			continue
+		}
+		if kotlinKeywordStop[target] {
+			// Kotlin keywords / special identifiers that the parser
+			// surfaces as call_expression heads but are not real call
+			// targets. Mirrors how the Python extractor drops `self` /
+			// `cls`. Issue #106.
 			continue
 		}
 		if seen[target] {
