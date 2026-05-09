@@ -52,6 +52,7 @@ func newRoot() *cobra.Command {
 		newWatchCmd(),
 		newIndexCmd(),
 		newMCPCmd(),
+		newDashboardCmd(),
 		newLinksCmd(),
 		newHelpCmd(),
 	)
@@ -119,4 +120,7 @@ Indexing:
 
 MCP:
   mcp serve                       Start the MCP server on stdio
+
+Dashboard:
+  dashboard serve                 Run the local dashboard HTTP server
 `
