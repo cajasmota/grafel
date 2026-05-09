@@ -841,6 +841,207 @@ func TestGoBareNames_UserMethodCollisionExclusions(t *testing.T) {
 	}
 }
 
+// TestSynthesize_GoImportPath_Stdlib covers issue #116: Go full-import-
+// path stubs use `/` as the segment separator. Without the dedicated
+// branch in classifyExternal these stubs hit the path-separator
+// rejection and land in bug-extractor. Stdlib roots resolve to the
+// first segment.
+func TestSynthesize_GoImportPath_Stdlib(t *testing.T) {
+	cases := []struct {
+		stub string
+		want string
+	}{
+		{"net/http", "ext:net"},
+		{"net/http/httptest", "ext:net"},
+		{"net/url", "ext:net"},
+		{"encoding/json", "ext:encoding"},
+		{"encoding/base64", "ext:encoding"},
+		{"crypto/tls", "ext:crypto"},
+		{"crypto/sha256", "ext:crypto"},
+		{"database/sql", "ext:database"},
+		{"compress/gzip", "ext:compress"},
+		{"archive/tar", "ext:archive"},
+		{"image/png", "ext:image"},
+		{"text/template", "ext:text"},
+		{"html/template", "ext:html"},
+		{"mime/multipart", "ext:mime"},
+		{"hash/crc32", "ext:hash"},
+		{"path/filepath", "ext:path"},
+	}
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "go-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "go",
+		}},
+	}
+	for _, c := range cases {
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:     "rel-" + c.stub,
+			FromID: "go-src",
+			ToID:   c.stub,
+			Kind:   "IMPORTS",
+		})
+	}
+	stats := Synthesize(doc)
+	for k, c := range cases {
+		if doc.Relationships[k].ToID != c.want {
+			t.Errorf("case %q: ToID=%q, want %q", c.stub, doc.Relationships[k].ToID, c.want)
+		}
+	}
+	if stats.RelationshipsResolved != len(cases) {
+		t.Fatalf("resolved=%d, want %d", stats.RelationshipsResolved, len(cases))
+	}
+}
+
+// TestSynthesize_GoImportPath_HostPrefixed covers issue #116: Go
+// host-prefixed import paths (github.com/<owner>/<repo>/...,
+// golang.org/x/<repo>/..., gopkg.in/<pkg>) resolve to the canonical
+// 3-segment (or 2-segment for gopkg.in) module identifier.
+func TestSynthesize_GoImportPath_HostPrefixed(t *testing.T) {
+	cases := []struct {
+		stub string
+		want string
+	}{
+		// Curated allowlist matches → ExternalKnown via canonical key.
+		{"github.com/stretchr/testify/assert", "ext:github.com/stretchr/testify"},
+		{"github.com/stretchr/testify/require", "ext:github.com/stretchr/testify"},
+		{"github.com/stretchr/testify/mock", "ext:github.com/stretchr/testify"},
+		{"github.com/gin-gonic/gin", "ext:github.com/gin-gonic/gin"},
+		{"github.com/gin-gonic/gin/binding", "ext:github.com/gin-gonic/gin"},
+		{"github.com/go-chi/chi/v5", "ext:github.com/go-chi/chi"},
+		{"github.com/labstack/echo/v4", "ext:github.com/labstack/echo"},
+		{"github.com/sirupsen/logrus", "ext:github.com/sirupsen/logrus"},
+		{"github.com/spf13/cobra", "ext:github.com/spf13/cobra"},
+		{"github.com/spf13/viper", "ext:github.com/spf13/viper"},
+		{"github.com/google/uuid", "ext:github.com/google/uuid"},
+		{"github.com/gorilla/mux", "ext:github.com/gorilla/mux"},
+		{"golang.org/x/sync/errgroup", "ext:golang.org/x/sync"},
+		{"golang.org/x/crypto/bcrypt", "ext:golang.org/x/crypto"},
+		{"golang.org/x/net/context", "ext:golang.org/x/net"},
+		{"google.golang.org/grpc/codes", "ext:google.golang.org/grpc"},
+		{"google.golang.org/protobuf/proto", "ext:google.golang.org/protobuf"},
+		{"gopkg.in/yaml.v3", "ext:gopkg.in/yaml.v3"},
+		{"gopkg.in/yaml.v2", "ext:gopkg.in/yaml.v2"},
+	}
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "go-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "go",
+		}},
+	}
+	for _, c := range cases {
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:     "rel-" + c.stub,
+			FromID: "go-src",
+			ToID:   c.stub,
+			Kind:   "IMPORTS",
+		})
+	}
+	stats := Synthesize(doc)
+	if stats.RelationshipsResolved != len(cases) {
+		t.Fatalf("resolved=%d, want %d", stats.RelationshipsResolved, len(cases))
+	}
+	for k, c := range cases {
+		if doc.Relationships[k].ToID != c.want {
+			t.Fatalf("case %q: ToID=%q, want %q", c.stub, doc.Relationships[k].ToID, c.want)
+		}
+	}
+}
+
+// TestSynthesize_GoImportPath_UnknownHostPrefixedClassified confirms
+// that a host-prefixed Go import path that ISN'T on the curated
+// allowlist still gets a placeholder (ExternalUnknown via the
+// resolver's IsKnownExternalPackage gate). Issue #116 — moves these
+// out of bug-extractor regardless of allowlist status.
+func TestSynthesize_GoImportPath_UnknownHostPrefixedClassified(t *testing.T) {
+	stub := "github.com/some-random-org/some-random-pkg/internal/sub"
+	wantCanonical := "ext:github.com/some-random-org/some-random-pkg"
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "go-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "go",
+		}},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "go-src", ToID: stub, Kind: "IMPORTS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.RelationshipsResolved != 1 {
+		t.Fatalf("resolved=%d, want 1 (unknown host-prefixed must still be synthesised)", stats.RelationshipsResolved)
+	}
+	if doc.Relationships[0].ToID != wantCanonical {
+		t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, wantCanonical)
+	}
+	// Allowlist gate must report false — resolver will tag it
+	// ExternalUnknown.
+	if IsKnownExternalPackage("github.com/some-random-org/some-random-pkg") {
+		t.Fatalf("unknown host-prefixed canonical must NOT be on the allowlist")
+	}
+}
+
+// TestSynthesize_GoImportPath_RejectsUnixFilePath confirms that a
+// Unix-style absolute file path (`/etc/foo`) and other non-Go-shaped
+// stubs containing `/` are still rejected — they must not be promoted
+// to placeholders.
+func TestSynthesize_GoImportPath_RejectsUnixFilePath(t *testing.T) {
+	stubs := []string{
+		"/etc/foo",
+		"/usr/local/bin/something",
+		"./relative/path",
+		"../parent/path",
+	}
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "go-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "go",
+		}},
+	}
+	for _, s := range stubs {
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:     "rel-" + s,
+			FromID: "go-src",
+			ToID:   s,
+			Kind:   "IMPORTS",
+		})
+	}
+	stats := Synthesize(doc)
+	if stats.RelationshipsResolved != 0 {
+		t.Fatalf("resolved=%d, want 0 (file paths must not classify as Go imports)", stats.RelationshipsResolved)
+	}
+}
+
+// TestSynthesize_GoImportPath_NoLangSourceStillClassifies confirms
+// the Go-import-path branch fires regardless of FromID's language —
+// in real corpora the FromID is often a file-scope structural-ref
+// that isn't in the entity map, so entityLang lookup returns "". The
+// shape predicate (lowercase first segment, no `:`/`\`/space/leading
+// `/`) is restrictive enough on its own to keep non-Go file paths
+// out. Issue #116.
+func TestSynthesize_GoImportPath_NoLangSourceStillClassifies(t *testing.T) {
+	stub := "net/http"
+	doc := &graph.Document{
+		// No entity for FromID — entityLang lookup returns "".
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "scope:component:file:auth.go", ToID: stub, Kind: "IMPORTS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.RelationshipsResolved != 1 {
+		t.Fatalf("resolved=%d, want 1 (file-scope FromID must still trigger Go-import branch)", stats.RelationshipsResolved)
+	}
+	if doc.Relationships[0].ToID != "ext:net" {
+		t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, "ext:net")
+	}
+}
+
 // TestGoBareNames_UnknownGoMethodFallsThrough confirms that a
 // PascalCase Go-source method name that ISN'T in the goBareNames
 // allowlist still falls through normally, so genuine missing-

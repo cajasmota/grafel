@@ -296,6 +296,47 @@ func classifyExternal(stub, relKind, lang string) (canonical, subtype string, ok
 		}
 	}
 
+	// Issue #116 — Go full-import-path stubs (`net/http`,
+	// `encoding/json`, `github.com/stretchr/testify/assert`,
+	// `golang.org/x/sync/errgroup`, `gopkg.in/yaml.v3`) use `/` as the
+	// path separator. Without this branch the path-separator rejection
+	// below drops every `use`-shaped Go import into bug-extractor.
+	//
+	// Detect Go-shaped import paths early: split on `/`, and for stdlib
+	// packages canonicalise to the root segment (allowlist match yields
+	// ExternalKnown); for host-prefixed paths canonicalise to the
+	// `<host>/<owner>/<repo>` triple (or `<host>/<repo>` for gopkg.in)
+	// — allowlist-matched yields ExternalKnown, unknown still moves out
+	// of bug-extractor as ExternalUnknown via the resolver's
+	// IsKnownExternalPackage gate.
+	//
+	// Not lang-gated: in real corpora the relationship's FromID often
+	// points at a file-scope structural-ref ("scope:component:file:
+	// auth.go") that isn't in the entity map, so entityLang lookup
+	// returns "" and a Go-only gate would skip every edge from a file-
+	// scope source. The shape predicate is restrictive enough on its
+	// own — leading char must be a-z and the path must contain `/`
+	// without `:`, `\`, whitespace, or a leading `/`, which rules out
+	// Unix file paths, structural-refs, and URL fragments. Mirrors the
+	// Rust `::` and PHP `\` branches, which also classify on shape
+	// alone (issues #101, #102).
+	if isGoImportPath(stub) {
+		segs := strings.Split(stub, "/")
+		first := segs[0]
+		// Host-prefixed: github.com/<owner>/<repo>/..., golang.org/x/<repo>/...,
+		// gopkg.in/<pkg>.<vN>/...
+		if isGoImportHost(first) {
+			canonical := goHostCanonical(segs)
+			if canonical != "" {
+				return canonical, "package", true
+			}
+		}
+		// Stdlib: root segment matched against allowlist.
+		if isKnownExternalPackage(first) {
+			return first, "package", true
+		}
+	}
+
 	// Issue #102 — PHP `use Foo\Bar\Baz` style FQNs use `\` as the
 	// namespace separator. Without this branch the path-separator
 	// rejection below drops every `Symfony\Component\HttpFoundation\
@@ -848,7 +889,79 @@ var knownExternalPackages = map[string]struct{}{
 	"regexp":        {},
 	"testing":       {},
 	"encoding/json": {},
-	// Go third-party (high-volume)
+	// Issue #116: Go stdlib root segments — populated so full-import-
+	// path stubs (`net/http`, `encoding/json`, `crypto/tls`) can be
+	// classified by their root segment after the `/`-split branch in
+	// classifyExternal. Each root is the top-level directory in the
+	// Go stdlib tree.
+	"encoding":  {},
+	"crypto":    {},
+	"bufio":     {},
+	"database":  {},
+	"compress":  {},
+	"archive":   {},
+	"image":     {},
+	"text":      {},
+	"html":      {},
+	"mime":      {},
+	"hash":      {},
+	"math":      {},
+	"runtime":   {},
+	"reflect":   {},
+	"unicode":   {},
+	"flag":      {},
+	"container": {},
+	"plugin":    {},
+	"embed":     {},
+	"expvar":    {},
+	"syscall":   {},
+	"unsafe":    {},
+	// "log" / "hash" already present (Rust crates / Python builtins
+	// blocks) and serve double-duty for Go stdlib roots via case-
+	// folded lookup.
+	// "os" / "sys" / "json" / "queue" / "abc" / "enum" are already in
+	// the Python stdlib block above — case-folded lookup makes them
+	// accept Go's `os`/`sort`/etc. as well. "io"/"net"/"sort"/"sync"/
+	// "time"/"path"/"errors"/"strings"/"strconv"/"context"/"bytes"/
+	// "regexp"/"testing"/"hash" likewise serve both ecosystems.
+
+	// Issue #116: Go third-party host-prefixed roots (3-segment
+	// "<host>/<owner>/<repo>" canonical form). These are matched by
+	// goHostCanonical after the slash-split branch in classifyExternal.
+	"github.com/stretchr/testify":         {},
+	"github.com/gin-gonic/gin":            {},
+	"github.com/go-chi/chi":               {},
+	"github.com/labstack/echo":            {},
+	"github.com/sirupsen/logrus":          {},
+	"github.com/spf13/cobra":              {},
+	"github.com/spf13/viper":              {},
+	"github.com/spf13/pflag":              {},
+	"github.com/pkg/errors":               {},
+	"github.com/google/uuid":              {},
+	"github.com/golang/protobuf":          {},
+	"github.com/golang/mock":              {},
+	"github.com/jmoiron/sqlx":             {},
+	"github.com/jinzhu/gorm":              {},
+	"github.com/gorilla/mux":              {},
+	"github.com/gorilla/websocket":        {},
+	"github.com/prometheus/client_golang": {},
+	"github.com/uber-go/zap":              {},
+	"github.com/davecgh/go-spew":          {},
+	"github.com/stretchr/objx":            {},
+	"golang.org/x/sync":                   {},
+	"golang.org/x/crypto":                 {},
+	"golang.org/x/net":                    {},
+	"golang.org/x/text":                   {},
+	"golang.org/x/sys":                    {},
+	"golang.org/x/oauth2":                 {},
+	"golang.org/x/exp":                    {},
+	"golang.org/x/tools":                  {},
+	"google.golang.org/grpc":              {},
+	"google.golang.org/protobuf":          {},
+	"gopkg.in/yaml.v3":                    {},
+	"gopkg.in/yaml.v2":                    {},
+	// Go third-party (legacy single-segment keys; left in place so any
+	// pre-#116 caller hitting the Pascal/dotted branch still resolves).
 	"testify": {},
 	"viper":   {},
 	"cobra":   {},
@@ -1130,6 +1243,99 @@ func externalAPIHost(raw string) string {
 		}
 	}
 	return host
+}
+
+// isGoImportPath reports whether s has the shape of a Go import path
+// — slash-separated, no backslashes, no colons (rules out URLs and
+// "Kind:Name" forms), no whitespace, and the first segment is a
+// lowercase ASCII identifier (Go package names are conventionally
+// lowercase; host prefixes like "github.com" are also lowercase).
+// Issue #116: gates the `/` separator branch in classifyExternal so
+// only Go-shaped paths trigger split-and-lookup, not Unix file paths.
+func isGoImportPath(s string) bool {
+	if s == "" {
+		return false
+	}
+	if !strings.Contains(s, "/") {
+		return false
+	}
+	if strings.ContainsAny(s, ":\\ \t") {
+		return false
+	}
+	// Reject leading slash — that's a Unix absolute path, not a Go
+	// import path.
+	if s[0] == '/' {
+		return false
+	}
+	// First segment must be a lowercase identifier (letters, digits,
+	// '_', '-', '.'). Go stdlib packages are single-word lowercase;
+	// host prefixes like "github.com" / "golang.org" / "gopkg.in" are
+	// also lowercase ASCII with dots.
+	slash := strings.IndexByte(s, '/')
+	first := s[:slash]
+	if first == "" {
+		return false
+	}
+	if c := first[0]; !(c >= 'a' && c <= 'z') {
+		return false
+	}
+	for _, c := range first {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '_' || c == '-' || c == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// isGoImportHost reports whether s looks like a host prefix in a Go
+// import path — contains a '.' (e.g. "github.com", "golang.org",
+// "gopkg.in", "google.golang.org"). Stdlib package roots like "net"
+// or "encoding" never contain a dot.
+func isGoImportHost(s string) bool {
+	return strings.IndexByte(s, '.') > 0
+}
+
+// goHostCanonical returns the canonical "<host>/<owner>/<repo>" (or
+// "<host>/<pkg>" for gopkg.in's two-segment shape, or "<host>/x/<repo>"
+// for golang.org/x). Returns "" when the segment count is too short
+// to identify a package.
+func goHostCanonical(segs []string) string {
+	if len(segs) < 2 {
+		return ""
+	}
+	host := segs[0]
+	// gopkg.in uses a two-segment shape: gopkg.in/<pkg>.<vN> (the
+	// version is encoded in the package segment, not as a separate
+	// directory). Collapse to "<host>/<pkg>" — full key on the
+	// allowlist, no trailing import path.
+	if host == "gopkg.in" {
+		return host + "/" + segs[1]
+	}
+	// golang.org/x/<repo>/<subpath>... → "<host>/x/<repo>". The "x"
+	// owner segment is universal for the golang.org/x staging-grounds
+	// modules.
+	if host == "golang.org" {
+		if len(segs) >= 3 {
+			return host + "/" + segs[1] + "/" + segs[2]
+		}
+		return ""
+	}
+	// google.golang.org/<module>/<subpath>... → "<host>/<module>"
+	// (two-segment shape — modules like grpc, protobuf, api).
+	if host == "google.golang.org" {
+		return host + "/" + segs[1]
+	}
+	// Default host shape: "<host>/<owner>/<repo>" (github.com,
+	// gitlab.com, bitbucket.org, ...). Subpaths are dropped so a
+	// single placeholder represents the module.
+	if len(segs) >= 3 {
+		return host + "/" + segs[1] + "/" + segs[2]
+	}
+	return ""
 }
 
 // isHexID mirrors resolve.isHexID — a 16-char lower-hex string is
