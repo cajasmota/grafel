@@ -287,18 +287,18 @@ func TestProducerKindLiterals_AreValid(t *testing.T) {
 		b.WriteString(strconv.Quote(k.value))
 		b.WriteString("\n")
 		// Show up to 3 sample call sites so failures stay actionable.
-		max := len(positions)
-		if max > 3 {
-			max = 3
+		maxSamples := len(positions)
+		if maxSamples > 3 {
+			maxSamples = 3
 		}
-		for i := 0; i < max; i++ {
+		for i := 0; i < maxSamples; i++ {
 			b.WriteString("    at ")
 			b.WriteString(positions[i].String())
 			b.WriteString("\n")
 		}
-		if len(positions) > max {
+		if len(positions) > maxSamples {
 			b.WriteString("    ... and ")
-			b.WriteString(strconv.Itoa(len(positions) - max))
+			b.WriteString(strconv.Itoa(len(positions) - maxSamples))
 			b.WriteString(" more\n")
 		}
 	}
