@@ -180,6 +180,25 @@ REPOS=(
   "lean|https://github.com/jenssegers/lean.git|master|php"                                                             # Eloquent (standalone) sample app (#288)
   "sea-orm-examples|https://github.com/SeaQL/sea-orm.git|master|rust|examples"                                         # SeaORM examples/ subtree (#289)
   "netcore-boilerplate|https://github.com/lkurzyniec/netcore-boilerplate.git|master|csharp"                            # Dapper sample app (#290)
+  # --- NoSQL/cache/streaming (chunk P, umbrella #316) ---
+  # Canonical client/driver fixtures for the major NoSQL, cache, and streaming
+  # ecosystems, per Refs #96 corpus policy. Each entry pinned to the SHA
+  # recorded in its child issue.
+  "mongoose|https://github.com/Automattic/mongoose.git|master|javascript"                                     # MongoDB Node.js ODM (#213)
+  "pymongo|https://github.com/mongodb/mongo-python-driver.git|master|python"                                  # MongoDB Python driver (#216)
+  "motor|https://github.com/mongodb/motor.git|master|python"                                                  # MongoDB async Python driver (#219)
+  "mongo-go-driver|https://github.com/mongodb/mongo-go-driver.git|master|go"                                  # MongoDB Go driver (#220)
+  "mongo-java-driver|https://github.com/mongodb/mongo-java-driver.git|main|java"                              # MongoDB Java driver (#221)
+  "redis-py|https://github.com/redis/redis-py.git|master|python"                                              # Redis Python client (#222)
+  "ioredis|https://github.com/redis/ioredis.git|main|typescript"                                              # Redis Node.js TypeScript client (#223)
+  "go-redis|https://github.com/redis/go-redis.git|master|go"                                                  # Redis Go client (#225)
+  "lettuce|https://github.com/redis/lettuce.git|main|java"                                                    # Redis Java client (#226)
+  "cassandra-java-driver|https://github.com/datastax/java-driver.git|4.x|java"                                # Cassandra DataStax Java driver (#228)
+  "aws-sdk-go-v2|https://github.com/aws/aws-sdk-go-v2.git|main|go"                                            # DynamoDB / AWS Go SDK v2 (#230)
+  "couchbase-gocb|https://github.com/couchbase/gocb.git|master|go"                                            # Couchbase Go SDK (#232)
+  "rabbitmq-tutorials|https://github.com/rabbitmq/rabbitmq-tutorials.git|main|python"                         # RabbitMQ amqp client tutorials (#234)
+  "nats.go|https://github.com/nats-io/nats.go.git|main|go"                                                    # NATS Go client (#236)
+  "aws-sdk-js-v3|https://github.com/aws/aws-sdk-js-v3.git|main|typescript"                                    # AWS SQS / AWS JS SDK v3 (#237)
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
