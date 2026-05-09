@@ -1156,6 +1156,14 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d bare-name CALLS targets%s\n",
 			importStats.CallsRewritten, importStats.CallsConsidered, note)
 	}
+	// Issue #142 — IMPORTS edges with dotted-path ToIDs
+	// (`conduit.database.db`) are rewritten via the same per-module
+	// reverse index. Surfaced separately so the verify2 harness can
+	// attribute the bug-resolver delta on python-flask-realworld.
+	if importStats.ImportsConsidered > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d dotted IMPORTS targets\n",
+			importStats.ImportsRewritten, importStats.ImportsConsidered)
+	}
 
 	idx := resolve.BuildIndex(merged)
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
