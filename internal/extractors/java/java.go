@@ -7,6 +7,25 @@
 //   - constructor_declaration → Kind="SCOPE.Operation", Subtype="constructor"
 //   - import_declaration      → IMPORTS relationship
 //
+// Issue #120 — cross-file receiver binding. method_invocation nodes
+// whose receiver (object) is a field/parameter of a known type emit
+// CALLS edges with target "<ReceiverType>.<method>" instead of the
+// bare leaf name. The receiver-type lookup walks:
+//
+//  1. Field declarations on the enclosing class (covers the dominant
+//     Spring DI shape: `@Autowired private OwnerRepository owners;`
+//     followed by `owners.findById(...)`).
+//  2. Method parameters of the enclosing operation.
+//  3. PascalCase static-call shape: `Helpers.compute()` → keep dotted
+//     even without a direct binding so the resolver's byKind/byName
+//     index can pick it up cross-file (issue #65 emits methods as
+//     "<EnclosingType>.<member>", so the dotted target binds).
+//
+// IMPORTS edges now carry the same Properties contract Python emits
+// (issue #93) — local_name / source_module / imported_name / wildcard
+// — so the cross-file resolver pre-pass (internal/resolve/imports.go)
+// can build a per-file binding table for Java just like Python.
+//
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
 package java
@@ -53,7 +72,8 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 
 	var entities []types.EntityRecord
 	root := file.Tree.RootNode()
-	walk(root, file, "", &entities)
+	imports := collectImportNames(root, file.Content)
+	walk(root, file, "", nil, imports, &entities)
 
 	// Secondary pass: error-handling patterns.
 	errorPatterns := extractErrorHandlingPatterns(root, file.Path)
@@ -85,7 +105,23 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 // name) stay bare. Nested types carry only their immediate parent — the
 // nested class/interface/enum itself stays bare, but its members are
 // qualified by it (multi-dot fully-qualified IDs are out of scope here).
-func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[]types.EntityRecord) {
+// classCtx carries the resolution context for cross-file receiver
+// binding (issue #120). fields maps a declared field name to its
+// declared type identifier (the leaf type, not generic parameters).
+// For nested classes the outer class's fields are NOT inherited — the
+// walker rebuilds the map at every class entry.
+type classCtx struct {
+	fields map[string]string
+}
+
+func walk(
+	node *sitter.Node,
+	file extractor.FileInput,
+	parentType string,
+	cc *classCtx,
+	imports map[string]bool,
+	out *[]types.EntityRecord,
+) {
 	if node == nil {
 		return
 	}
@@ -104,7 +140,7 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 			// Still recurse so nested types/imports below this node are
 			// captured even when the class itself is malformed.
 			for i := range node.ChildCount() {
-				walk(node.Child(int(i)), file, parentType, out)
+				walk(node.Child(int(i)), file, parentType, cc, imports, out)
 			}
 			return
 		}
@@ -112,6 +148,13 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 		*out = append(*out, rec)
 		body := node.ChildByFieldName("body")
 		if body != nil {
+			// Issue #120 — pre-pass: collect this class's field types so
+			// method invocations like `owners.findById(...)` can be
+			// rewritten to `OwnerRepository.findById` at emit time. Field
+			// scope is per-class only; we do NOT inherit from an outer
+			// class because Java field resolution at a call site uses the
+			// member-type rules, not lexical scope.
+			localCtx := &classCtx{fields: collectFieldTypes(body, file.Content)}
 			before := len(*out)
 			for i := range body.ChildCount() {
 				// Members of this type are qualified by rec.Name (the
@@ -123,11 +166,11 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 				child := body.Child(int(i))
 				if child != nil && child.Type() == "enum_body_declarations" {
 					for j := range child.ChildCount() {
-						walk(child.Child(int(j)), file, rec.Name, out)
+						walk(child.Child(int(j)), file, rec.Name, localCtx, imports, out)
 					}
 					continue
 				}
-				walk(child, file, rec.Name, out)
+				walk(child, file, rec.Name, localCtx, imports, out)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
@@ -157,8 +200,12 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 			if nameNode := node.ChildByFieldName("name"); nameNode != nil {
 				selfName = nodeText(nameNode, file.Content)
 			}
+			paramTypes := collectParamTypes(node, file.Content)
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(node.ChildByFieldName("body"), file.Content, selfName)...)
+				extractCallRelationships(
+					node.ChildByFieldName("body"),
+					file.Content, selfName, cc, paramTypes, imports,
+				)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -169,8 +216,12 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 			if nameNode := node.ChildByFieldName("name"); nameNode != nil {
 				selfName = nodeText(nameNode, file.Content)
 			}
+			paramTypes := collectParamTypes(node, file.Content)
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(node.ChildByFieldName("body"), file.Content, selfName)...)
+				extractCallRelationships(
+					node.ChildByFieldName("body"),
+					file.Content, selfName, cc, paramTypes, imports,
+				)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -186,23 +237,68 @@ func walk(node *sitter.Node, file extractor.FileInput, parentType string, out *[
 		}
 	}
 
-	// Default recursion. parentType does NOT propagate through unrelated
+	// Default recursion. parentType / cc do NOT propagate through unrelated
 	// nodes (e.g. method bodies, anonymous-class bodies) — methods nested
 	// inside a method body or anonymous class are emitted bare because
-	// they have no stable enclosing-type identifier.
+	// they have no stable enclosing-type identifier, and their receiver
+	// resolution starts from a fresh scope.
 	for i := range node.ChildCount() {
-		walk(node.Child(int(i)), file, "", out)
+		walk(node.Child(int(i)), file, "", nil, imports, out)
 	}
 }
 
 // extractCallRelationships returns one CALLS RelationshipRecord per unique
-// method_invocation / object_creation_expression descendant of body. Target
-// resolves to the bare callee name (last identifier of a selector chain).
-// FromID is left empty so buildDocument substitutes the caller's entity ID
-// at emit time. Self-recursion is skipped.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+// method_invocation / object_creation_expression descendant of body.
+//
+// Issue #120 — receiver-aware target resolution. For a method_invocation
+// `<obj>.<m>(...)` we attempt to type the receiver before falling back
+// to the bare leaf name:
+//
+//   - `<obj>` is a field of the enclosing class with declared type T
+//     → emit "T.m"
+//   - `this.<obj>` where <obj> is such a field → "T.m"
+//   - `<obj>` is a parameter of the enclosing method with type T → "T.m"
+//   - `<obj>` is a PascalCase identifier (likely a Type) — including
+//     when the file has imported a class by that simple name → "obj.m"
+//     (static-call shape; the resolver's byKind/byName picks it up
+//     because Java methods are emitted with Name="<EnclosingType>.m")
+//
+// All other shapes fall through to the bare leaf name.
+//
+// FromID is left empty so buildDocument substitutes the caller's entity
+// ID at emit time. Self-recursion is skipped (compared against the
+// caller's bare name regardless of the callee's dotted form).
+func extractCallRelationships(
+	body *sitter.Node,
+	src []byte,
+	callerName string,
+	cc *classCtx,
+	paramTypes map[string]string,
+	imports map[string]bool,
+) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
+	}
+	// Issue #120 — local variables typed via explicit declarations
+	// (`Owner owner = new Owner()`, `LocalDate today = LocalDate.now()`)
+	// are bound to their declared leaf type so a follow-up
+	// `owner.setName(...)` resolves to "Owner.setName". Locals are
+	// merged with paramTypes — declared params are visible in the same
+	// lookup scope as locals — but param types take precedence so a
+	// loop-local that shadows a parameter doesn't change the param's
+	// type for the rest of the method (Java forbids name-shadowing of
+	// parameters in the top-level method scope, so this only matters
+	// for nested blocks; conservative bias, no harm).
+	locals := collectLocalVarTypes(body, src)
+	merged := paramTypes
+	if len(locals) > 0 {
+		merged = make(map[string]string, len(paramTypes)+len(locals))
+		for k, v := range locals {
+			merged[k] = v
+		}
+		for k, v := range paramTypes {
+			merged[k] = v // params win over locals
+		}
 	}
 	calls := findAllNodes(body, "method_invocation", "object_creation_expression")
 	if len(calls) == 0 {
@@ -211,8 +307,19 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
-		target := javaCallTarget(call, src)
-		if target == "" || target == callerName {
+		target := javaCallTarget(call, src, cc, merged, imports)
+		if target == "" {
+			continue
+		}
+		// Self-recursion check on the bare leaf name. Dotted targets
+		// with a leaf equal to callerName still skip — they can't be
+		// the caller because the caller is a method, not a static call
+		// on a same-named identifier.
+		leaf := target
+		if dot := strings.LastIndexByte(target, '.'); dot >= 0 {
+			leaf = target[dot+1:]
+		}
+		if leaf == callerName {
 			continue
 		}
 		if seen[target] {
@@ -227,16 +334,37 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 	return rels
 }
 
-// javaCallTarget resolves the callee name from a method_invocation or
-// object_creation_expression node. For method_invocation it uses the "name"
-// field; for object_creation_expression it uses the "type" field's trailing
-// identifier (e.g. `new com.foo.Bar()` → "Bar").
-func javaCallTarget(call *sitter.Node, src []byte) string {
+// javaCallTarget resolves the callee target from a method_invocation or
+// object_creation_expression node. Issue #120 — for method_invocation
+// the receiver (object field) is consulted to produce a dotted
+// "<Type>.<method>" target whenever the receiver's type is statically
+// determinable from field declarations, parameter types, or PascalCase
+// shape. Falls back to the bare leaf name when no receiver type is
+// known.
+func javaCallTarget(
+	call *sitter.Node,
+	src []byte,
+	cc *classCtx,
+	paramTypes map[string]string,
+	imports map[string]bool,
+) string {
 	switch call.Type() {
 	case "method_invocation":
-		if name := call.ChildByFieldName("name"); name != nil {
-			return string(src[name.StartByte():name.EndByte()])
+		nameNode := call.ChildByFieldName("name")
+		if nameNode == nil {
+			return ""
 		}
+		method := string(src[nameNode.StartByte():nameNode.EndByte()])
+		obj := call.ChildByFieldName("object")
+		if obj == nil {
+			// No receiver — bare-name call (helper(); foo();).
+			return method
+		}
+		recv := receiverTypeName(obj, src, cc, paramTypes, imports)
+		if recv == "" {
+			return method
+		}
+		return recv + "." + method
 	case "object_creation_expression":
 		typ := call.ChildByFieldName("type")
 		if typ == nil {
@@ -251,6 +379,305 @@ func javaCallTarget(call *sitter.Node, src []byte) string {
 		return string(src[typ.StartByte():typ.EndByte()])
 	}
 	return ""
+}
+
+// receiverTypeName returns the declared type of a method_invocation's
+// `object` field when statically determinable, or "" otherwise.
+//
+// Resolution order:
+//
+//  1. Receiver is `this.<id>` field_access → look up <id> in cc.fields.
+//  2. Receiver is a bare identifier matching a known field → field type.
+//  3. Receiver is a bare identifier matching a known parameter → param type.
+//  4. Receiver is a bare identifier whose first rune is uppercase
+//     (PascalCase) — treat as a Type identifier (static-call shape) and
+//     return it verbatim. Imports[<id>] presence is a stronger signal
+//     but not required: most Java conventions use PascalCase for type
+//     names and lowerCamelCase for fields/locals, so the case
+//     heuristic alone is reliable enough to catch JDK constants like
+//     `Math.max`, `Integer.parseInt`, `String.format` etc.
+//  5. Anything else — return "" so the caller falls back to the bare
+//     method name.
+func receiverTypeName(
+	obj *sitter.Node,
+	src []byte,
+	cc *classCtx,
+	paramTypes map[string]string,
+	imports map[string]bool,
+) string {
+	if obj == nil {
+		return ""
+	}
+	switch obj.Type() {
+	case "identifier":
+		ident := string(src[obj.StartByte():obj.EndByte()])
+		if cc != nil {
+			if t, ok := cc.fields[ident]; ok && t != "" {
+				return t
+			}
+		}
+		if t, ok := paramTypes[ident]; ok && t != "" {
+			return t
+		}
+		// PascalCase static-call shape. Java identifiers that begin
+		// with an uppercase letter are types by overwhelming
+		// convention; using the identifier verbatim preserves the
+		// "<Type>.<method>" form the resolver's byKind index needs to
+		// rebind cross-file.
+		if isPascalCase(ident) {
+			return ident
+		}
+		_ = imports // imports presence reserved for future tightening
+		return ""
+	case "field_access":
+		// `this.<field>` shape — field is the rightmost identifier.
+		// Other field_access forms (`a.b.c.method`) are deeper
+		// chains we don't currently type.
+		objChild := obj.ChildByFieldName("object")
+		fieldChild := obj.ChildByFieldName("field")
+		if objChild == nil || fieldChild == nil {
+			return ""
+		}
+		if objChild.Type() != "this" {
+			return ""
+		}
+		ident := string(src[fieldChild.StartByte():fieldChild.EndByte()])
+		if cc != nil {
+			if t, ok := cc.fields[ident]; ok && t != "" {
+				return t
+			}
+		}
+		return ""
+	}
+	return ""
+}
+
+// isPascalCase reports whether s starts with an uppercase ASCII letter
+// followed by at least one more character. Conservative — we don't
+// fold Unicode case classes here because Java type identifiers are
+// almost universally ASCII PascalCase, and a wider definition risks
+// false positives on locale-specific lower-case identifiers.
+func isPascalCase(s string) bool {
+	if len(s) < 2 {
+		return false
+	}
+	c := s[0]
+	return c >= 'A' && c <= 'Z'
+}
+
+// collectFieldTypes walks the immediate children of a class/interface/
+// enum body and returns a map of field-name → declared-type-leaf for
+// every `field_declaration`. Generic parameters and array suffixes are
+// stripped — the leaf type identifier is what the resolver indexes
+// against (`List<Owner>` → "List", `Owner[]` → "Owner").
+//
+// Multi-declarator fields (`int x, y, z;`) bind every variable to the
+// same declared type. Fields without a parseable type are dropped.
+func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := make(map[string]string)
+	for i := 0; i < int(body.ChildCount()); i++ {
+		ch := body.Child(i)
+		if ch == nil || ch.Type() != "field_declaration" {
+			continue
+		}
+		typ := leafTypeName(ch.ChildByFieldName("type"), src)
+		if typ == "" {
+			continue
+		}
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			d := ch.Child(j)
+			if d == nil || d.Type() != "variable_declarator" {
+				continue
+			}
+			name := childFieldText(d, "name", src)
+			if name == "" {
+				continue
+			}
+			// First declaration wins — Java disallows shadowing a
+			// field within the same class anyway, so this is
+			// effectively a no-collision insert.
+			if _, ok := out[name]; !ok {
+				out[name] = typ
+			}
+		}
+	}
+	return out
+}
+
+// collectParamTypes returns a map of parameter-name → leaf-type for
+// every formal_parameter on a method_declaration / constructor_
+// declaration node. Variadic parameters ("Type... args") strip the
+// "..." and bind args to the leaf type.
+func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
+	if node == nil {
+		return nil
+	}
+	params := node.ChildByFieldName("parameters")
+	if params == nil {
+		return nil
+	}
+	out := make(map[string]string)
+	for i := 0; i < int(params.ChildCount()); i++ {
+		p := params.Child(i)
+		if p == nil {
+			continue
+		}
+		switch p.Type() {
+		case "formal_parameter", "spread_parameter":
+			typ := leafTypeName(p.ChildByFieldName("type"), src)
+			if typ == "" {
+				continue
+			}
+			name := childFieldText(p, "name", src)
+			if name == "" {
+				// spread_parameter shape (`Type... args`) wraps a
+				// variable_declarator; pick its name field.
+				for j := 0; j < int(p.ChildCount()); j++ {
+					ch := p.Child(j)
+					if ch != nil && ch.Type() == "variable_declarator" {
+						name = childFieldText(ch, "name", src)
+						break
+					}
+				}
+			}
+			if name == "" {
+				continue
+			}
+			out[name] = typ
+		}
+	}
+	return out
+}
+
+// collectLocalVarTypes walks the descendants of a method/constructor
+// body and returns a map of local-variable-name → declared leaf type
+// for every local_variable_declaration node. Used by the receiver
+// binder so calls like `Owner owner = new Owner(); owner.setId(...)`
+// resolve to "Owner.setId".
+//
+// Variable declarations using `var` (Java 10+) are not typed here —
+// inferring the type would require chasing the initialiser expression,
+// which is out of scope. Multi-declarator declarations bind every
+// variable to the declared type. Re-declarations within nested blocks
+// produce a last-writer-wins shape; Java forbids re-declaring a name
+// already in the enclosing block, so the only collisions in practice
+// are loop-local rebinds in different sibling blocks — both bind to
+// the same type in idiomatic code, and the conservative pick still
+// matches.
+func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, decl := range findAllNodes(body, "local_variable_declaration") {
+		typ := leafTypeName(decl.ChildByFieldName("type"), src)
+		if typ == "" {
+			continue
+		}
+		for i := 0; i < int(decl.ChildCount()); i++ {
+			ch := decl.Child(i)
+			if ch == nil || ch.Type() != "variable_declarator" {
+				continue
+			}
+			name := childFieldText(ch, "name", src)
+			if name == "" {
+				continue
+			}
+			out[name] = typ
+		}
+	}
+	// `enhanced_for_statement` (`for (Owner o : owners) { ... }`) — bind
+	// the loop variable to its declared type so calls inside the body
+	// can be receiver-typed.
+	for _, fr := range findAllNodes(body, "enhanced_for_statement") {
+		typ := leafTypeName(fr.ChildByFieldName("type"), src)
+		if typ == "" {
+			continue
+		}
+		name := childFieldText(fr, "name", src)
+		if name != "" {
+			out[name] = typ
+		}
+	}
+	return out
+}
+
+// leafTypeName returns the leaf type identifier of a Java type node,
+// stripping generic parameters and array suffixes. `List<Owner>`
+// yields "List"; `Map<String, Owner>` yields "Map"; `Owner[]` yields
+// "Owner"; `int` yields "int". Returns "" for type nodes the function
+// can't characterise.
+func leafTypeName(typ *sitter.Node, src []byte) string {
+	if typ == nil {
+		return ""
+	}
+	switch typ.Type() {
+	case "type_identifier", "void_type", "integral_type",
+		"floating_point_type", "boolean_type":
+		return strings.TrimSpace(string(src[typ.StartByte():typ.EndByte()]))
+	case "generic_type":
+		// First child is the underlying type_identifier or scoped type.
+		if first := typ.NamedChild(0); first != nil {
+			return leafTypeName(first, src)
+		}
+	case "array_type":
+		if elem := typ.ChildByFieldName("element"); elem != nil {
+			return leafTypeName(elem, src)
+		}
+		// Some grammars expose the element as the first named child.
+		if first := typ.NamedChild(0); first != nil {
+			return leafTypeName(first, src)
+		}
+	case "scoped_type_identifier":
+		// `com.foo.Bar` — leaf is the rightmost type_identifier.
+		ids := findAllNodes(typ, "type_identifier")
+		if len(ids) > 0 {
+			n := ids[len(ids)-1]
+			return strings.TrimSpace(string(src[n.StartByte():n.EndByte()]))
+		}
+	}
+	return ""
+}
+
+// collectImportNames scans the file for top-level import_declaration
+// nodes and returns a set of locally-bound simple names introduced by
+// non-wildcard, non-static imports. `import com.foo.Bar;` adds "Bar".
+// Wildcard imports (`import com.foo.*;`) and static imports of static
+// fields/methods are not included; the receiver-binder uses this set
+// only to confirm a PascalCase identifier was imported (a future
+// tightening — for now the case heuristic alone gates emission).
+func collectImportNames(root *sitter.Node, src []byte) map[string]bool {
+	if root == nil {
+		return nil
+	}
+	out := make(map[string]bool)
+	for _, n := range findAllNodes(root, "import_declaration") {
+		raw := strings.TrimSpace(string(src[n.StartByte():n.EndByte()]))
+		raw = strings.TrimPrefix(raw, "import ")
+		isStatic := strings.HasPrefix(raw, "static ")
+		raw = strings.TrimPrefix(raw, "static ")
+		raw = strings.TrimSuffix(raw, ";")
+		raw = strings.TrimSpace(raw)
+		if raw == "" || strings.HasSuffix(raw, ".*") {
+			continue
+		}
+		leaf := raw
+		if dot := strings.LastIndexByte(raw, '.'); dot > 0 {
+			leaf = raw[dot+1:]
+		}
+		if isStatic {
+			// `import static X.Y.Z;` introduces Z at top level — not a
+			// type binding, but we record it anyway so a future
+			// improvement can disambiguate.
+			out[leaf] = true
+			continue
+		}
+		out[leaf] = true
+	}
+	return out
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
@@ -375,10 +802,33 @@ func buildFieldSignature(node *sitter.Node, src []byte, name string) string {
 	return strings.TrimSpace(raw)
 }
 
-// buildImport creates a Component entity representing an imported package.
+// buildImport creates a Component entity representing an imported
+// package. Issue #120 — IMPORTS edges now carry the same Properties
+// contract Python emits (issue #93) so the cross-file resolver can
+// build a per-file binding table:
+//
+//	Properties["local_name"]    — the simple identifier introduced by
+//	                              the import (e.g. "Bar" for
+//	                              `import com.foo.Bar;`). For wildcard
+//	                              imports this property is omitted.
+//	Properties["source_module"] — the dotted package path. For
+//	                              `import com.foo.Bar;` this is
+//	                              "com.foo"; for `import com.foo.*;`
+//	                              it is "com.foo".
+//	Properties["imported_name"] — equal to local_name for non-static,
+//	                              non-wildcard imports. For static
+//	                              imports of a member it is the member
+//	                              name.
+//	Properties["wildcard"]      — "1" when the import ends with `.*`.
+//
+// The ToID is preserved as the full dotted path (including the leaf
+// name for non-wildcards, or the source module for wildcards) so the
+// existing external-synthesis pass continues to recognise well-known
+// JDK / framework prefixes.
 func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	raw := strings.TrimSpace(string(file.Content[node.StartByte():node.EndByte()]))
 	raw = strings.TrimPrefix(raw, "import ")
+	isStatic := strings.HasPrefix(raw, "static ")
 	raw = strings.TrimPrefix(raw, "static ")
 	raw = strings.TrimSuffix(raw, ";")
 	raw = strings.TrimSpace(raw)
@@ -392,6 +842,36 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 		top = raw[:idx]
 	}
 
+	props := map[string]string{}
+	toID := raw
+	switch {
+	case strings.HasSuffix(raw, ".*"):
+		// Wildcard: source_module is the path with the trailing ".*"
+		// stripped. ToID drops the wildcard so the resolver and
+		// synth pass don't see "*" as a leaf identifier.
+		mod := strings.TrimSuffix(raw, ".*")
+		props["source_module"] = mod
+		props["wildcard"] = "1"
+		toID = mod
+	default:
+		// Non-wildcard. local_name = leaf (last dotted segment),
+		// source_module = path with the leaf stripped (or full path
+		// when there are no dots, which is rare but legal for
+		// default-package imports).
+		leaf := raw
+		mod := raw
+		if dot := strings.LastIndexByte(raw, '.'); dot > 0 {
+			leaf = raw[dot+1:]
+			mod = raw[:dot]
+		}
+		props["local_name"] = leaf
+		props["source_module"] = mod
+		props["imported_name"] = leaf
+		_ = isStatic // recorded indirectly: static imports bind the
+		// trailing member name as local_name, matching the Java
+		// spec — `import static X.Y.Z;` introduces Z at top level.
+	}
+
 	return types.EntityRecord{
 		Name:       top,
 		Kind:       "SCOPE.Component",
@@ -399,9 +879,10 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 		Language:   "java",
 		Relationships: []types.RelationshipRecord{
 			{
-				FromID: file.Path,
-				ToID:   raw,
-				Kind:   "IMPORTS",
+				FromID:     file.Path,
+				ToID:       toID,
+				Kind:       "IMPORTS",
+				Properties: props,
 			},
 		},
 	}, true

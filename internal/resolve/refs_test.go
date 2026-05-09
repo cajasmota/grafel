@@ -456,6 +456,33 @@ func TestDisposition_Dynamic(t *testing.T) {
 	}
 }
 
+// TestDisposition_SourceFilePathFromIDIsDynamic (#120) — IMPORTS edges
+// across every language extractor emit FromID = the importing file's
+// source path. Without the file-path heuristic the FromID endpoint
+// lands in bug-extractor for every IMPORTS edge in the graph; with it
+// the endpoint is correctly tagged Dynamic (a structural identifier,
+// not a missing entity).
+func TestDisposition_SourceFilePathFromIDIsDynamic(t *testing.T) {
+	rels := []types.RelationshipRecord{{
+		FromID:     "src/main/java/com/foo/App.java",
+		ToID:       "ext:org.springframework",
+		Kind:       "IMPORTS",
+		Properties: map[string]string{"language": "java"},
+	}}
+	idx := BuildIndex(nil)
+	stats := ReferencesWithAllowlist(rels, idx, nil)
+	// FromID (java path) → Dynamic; ToID (ext:...) → ExternalUnknown
+	// because no allowlist supplied.
+	if got := stats.DispositionCounts[DispositionDynamic]; got != 1 {
+		t.Fatalf("expected 1 dynamic for source-file-path FromID, got %+v",
+			stats.DispositionCounts)
+	}
+	if got := stats.DispositionCounts[DispositionBugExtractor]; got != 0 {
+		t.Fatalf("expected 0 bug-extractor for source-file-path FromID, got %+v",
+			stats.DispositionCounts)
+	}
+}
+
 func TestDisposition_BugExtractor(t *testing.T) {
 	// Graph has 0 entities named "NonexistentClass" → bug-extractor.
 	entities := []types.EntityRecord{ent("aaaaaaaaaaaaaaaa", "View", "RealView")}

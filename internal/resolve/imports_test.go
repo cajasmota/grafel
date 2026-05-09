@@ -470,6 +470,145 @@ func TestResolveImports_DottedImportPlainModule(t *testing.T) {
 	}
 }
 
+// TestModulesForFile_Java covers the Java dispatch added in #120 —
+// `src/main/java/com/foo/Bar.java` is the canonical Maven layout for
+// Java package `com.foo` containing class `Bar`. The module-derivation
+// must yield "com.foo" (the canonical Maven-stripped form) and may
+// also yield the pre-strip "src.main.java.com.foo" alias to keep
+// backward-compatible indexing.
+func TestModulesForFile_Java(t *testing.T) {
+	got := modulesForFile("src/main/java/com/foo/Bar.java")
+	want := "com.foo"
+	found := false
+	for _, m := range got {
+		if m == want {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("modulesForFile Java: expected %q in %v", want, got)
+	}
+	// File at repo root should return nil — caller treats that as
+	// "no module".
+	if got := modulesForFile("Test.java"); got != nil {
+		t.Fatalf("modulesForFile root-level java: expected nil, got %v", got)
+	}
+}
+
+// TestResolveImports_JavaFromImport covers Java cross-file class
+// binding (issue #120). `import com.foo.Bar;` introduces local name
+// "Bar" into the importing file. A bare-name CALLS target equal to
+// "Bar" should rewrite to the entity ID of class Bar declared in
+// src/main/java/com/foo/Bar.java.
+func TestResolveImports_JavaFromImport(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			Name:       "com.foo.Bar",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/main/java/x/App.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/main/java/x/App.java",
+				ToID:   "com.foo.Bar",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "Bar",
+					"source_module": "com.foo",
+					"imported_name": "Bar",
+				},
+			}},
+		},
+		// Class Bar declared in com/foo/Bar.java.
+		{
+			ID:         "9999999999999999",
+			Name:       "Bar",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/main/java/com/foo/Bar.java",
+			Language:   "java",
+		},
+		// Caller in App.java with a bare CALLS target "Bar"
+		// (e.g. `new Bar()` would normally produce the same bare
+		// target post-extraction).
+		{
+			ID:         "1234567890abcdef",
+			Name:       "App.run",
+			Kind:       "SCOPE.Operation",
+			SourceFile: "src/main/java/x/App.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				ToID: "Bar",
+				Kind: "CALLS",
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 java rewrite, got %d (considered=%d)",
+			stats.CallsRewritten, stats.CallsConsidered)
+	}
+	if got := records[2].Relationships[0].ToID; got != "9999999999999999" {
+		t.Fatalf("expected target rewritten to 9999999999999999, got %q", got)
+	}
+}
+
+// TestResolveImports_JavaSrcMainJavaStripped confirms the canonical
+// Maven layout (`src/main/java/...`) is treated equivalently to a
+// repo-relative dotted path. Without the strip, an import of
+// `com.foo.Bar` would not bind to `src/main/java/com/foo/Bar.java`
+// because the file's dotted form would be
+// `src.main.java.com.foo` and the import's source_module is plain
+// `com.foo`.
+func TestResolveImports_JavaSrcMainJavaStripped(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			Name:       "com.foo.Bar",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/main/java/x/App.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/main/java/x/App.java",
+				ToID:   "com.foo.Bar",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "Bar",
+					"source_module": "com.foo",
+					"imported_name": "Bar",
+				},
+			}},
+		},
+		{
+			ID:         "abcdef0123456789",
+			Name:       "Bar",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/main/java/com/foo/Bar.java",
+			Language:   "java",
+		},
+		{
+			ID:         "1111111122222222",
+			Name:       "App.run",
+			Kind:       "SCOPE.Operation",
+			SourceFile: "src/main/java/x/App.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				ToID: "Bar",
+				Kind: "CALLS",
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 rewrite via src/main/java strip, got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "abcdef0123456789" {
+		t.Fatalf("expected target abcdef0123456789, got %q", got)
+	}
+}
+
 // TestResolveImports_FileLocalCollisionDropsBinding covers the case
 // where the same file imports two different symbols under the same
 // local name (e.g. shadowing). The conservative behaviour is to drop
