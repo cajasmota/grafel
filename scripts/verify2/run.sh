@@ -476,6 +476,47 @@ REPOS=(
   "alpine|https://github.com/alpinejs/alpine.git|main|javascript"                                                  # Alpine.js library (#271) SHA 3b125f96058a
   "qwik|https://github.com/QwikDev/qwik.git|main|typescript"                                                       # Qwik framework (#276) SHA 38620076e10e
   "gatsby-starter-blog|https://github.com/gatsbyjs/gatsby-starter-blog.git|master|javascript"                      # Gatsby starter blog (#279) SHA 04ec3e642112
+
+  # --- Web framework alts (chunk J, umbrella #311) ---
+  # Alternate web framework sample apps spanning Go (Echo/Fiber/Beego),
+  # Node (Fastify/Koa/Hapi/Sails/AdonisJS), Python (Tornado/Starlette/
+  # Pyramid/Bottle), PHP (Slim/CodeIgniter/Yii), Ruby (Sinatra/Hanami/
+  # Grape), Rust (Axum/Rocket/Warp/Tide), Scala (Akka HTTP/http4s),
+  # Clojure (Compojure/Pedestal), Elixir (Plug/Phoenix LiveView), and
+  # Kotlin (Javalin/http4k). Each entry pinned to the SHA recorded in
+  # the umbrella body and verified via git ls-remote --symref on
+  # 2026-05-10. Sparse paths are not used for these entries — the
+  # repos are sample apps or single-framework sources at HEAD size.
+  "echox|https://github.com/labstack/echox.git|master|go"                                                     # Echo v4 sample app: e.Group, middleware, route handlers (#240) SHA f938a8c5e04e
+  "gofiber-recipes|https://github.com/gofiber/recipes.git|master|go"                                          # Fiber app.Get/Post, middleware chains, sub-routers (#241) SHA 041c1976144d
+  "beego-example|https://github.com/beego/beego-example.git|master|go"                                        # Beego controllers, web.Router, ORM models (#242) SHA 7b8dfaf49040
+  "fastify-demo|https://github.com/fastify/demo.git|main|javascript"                                          # Fastify fastify.register, schema-validated routes (#244) SHA 5fa922df34d0
+  "koa-examples|https://github.com/koajs/examples.git|master|javascript"                                      # Koa app.use middleware, ctx.body, koa-router (#245) SHA 40c77dbecec6
+  "hapi|https://github.com/hapijs/hapi.git|master|javascript"                                                 # Hapi server.route, Joi validation, plugins (#246) SHA d4f93d80e6ac
+  "sails-examples|https://github.com/balderdashy/sails-examples.git|master|javascript"                        # Sails MVC controllers, blueprints, Waterline models (#248) SHA c8e7c8c41640
+  "adonis-blog-demo|https://github.com/adonisjs-community/adonis-blog-demo.git|master|javascript"             # AdonisJS Route.get, Controllers, Lucid ORM (#249) SHA 2262706c39a6
+  "tornado|https://github.com/tornadoweb/tornado.git|master|python"                                           # Tornado RequestHandler subclasses, async get/post (#250) SHA 87508512caab
+  "starlette|https://github.com/encode/starlette.git|main|python"                                             # Starlette Route()/Mount(), ASGI middleware (#253) SHA 7793b925a88e
+  "pyramid-shootout|https://github.com/Pylons/shootout.git|master|python"                                     # Pyramid config.add_route, view_config decorators (#254) SHA e5691d6f5ac0
+  "bottle|https://github.com/bottlepy/bottle.git|master|python"                                               # Bottle @route/@get/@post decorators, Bottle() apps (#255) SHA 2a743a302a71
+  "slim-skeleton|https://github.com/slimphp/Slim-Skeleton.git|main|php"                                       # Slim 4 $app->get/post, PSR-15 middleware, DI container (#258) SHA 0ef01549870b
+  "codeigniter-shield|https://github.com/codeigniter4/shield.git|develop|php"                                 # CodeIgniter 4 Controllers, $routes->group, filters (#260) SHA 34be62ba858d
+  "yii2-app-basic|https://github.com/yiisoft/yii2-app-basic.git|master|php"                                   # Yii2 Controllers, ActiveRecord models, URL rules (#262) SHA 660f9bd23cba
+  "sinatra-recipes|https://github.com/sinatra/sinatra-recipes.git|main|ruby"                                  # Sinatra get/post DSL, modular Sinatra::Base apps (#263) SHA 5430c1a5b613
+  "hanami|https://github.com/hanami/hanami.git|main|ruby"                                                     # Hanami actions, Hanami::Router, slice architecture (#265) SHA 116847bfdf9f
+  "grape-on-rack|https://github.com/ruby-grape/grape-on-rack.git|master|ruby"                                 # Grape API DSL: resource/get/post, params validation (#267) SHA 27b711871229
+  "axum|https://github.com/tokio-rs/axum.git|main|rust"                                                       # Axum Router::new().route, extractors, tower middleware (#268) SHA c853e44ffce7
+  "rocket|https://github.com/rwf2/Rocket.git|master|rust"                                                     # Rocket #[get]/#[post] attribute macros, Form/Json (#270) SHA 3a54d079aef0
+  "warp|https://github.com/seanmonstar/warp.git|master|rust"                                                  # Warp Filter combinators: warp::path, .and(), .map() (#272) SHA 707866ca367d
+  "tide|https://github.com/http-rs/tide.git|main|rust"                                                        # Tide app.at()/get()/post(), async middleware (#273) SHA b32f680d5bd1
+  "akka-http|https://github.com/akka/akka-http.git|main|scala"                                                # Akka HTTP Route DSL: path/get/post directives (#275) SHA d3ef24b4d0a3
+  "http4s|https://github.com/http4s/http4s.git|series/0.23|scala"                                             # http4s HttpRoutes.of partial functions, cats-effect (#277) SHA 134ca10c55c3
+  "compojure|https://github.com/weavejester/compojure.git|master|clojure"                                     # Compojure defroutes, GET/POST macros, ring middleware (#278) SHA 8a4758d28e8f
+  "pedestal|https://github.com/pedestal/pedestal.git|master|clojure"                                          # Pedestal interceptor chains, table-routes, service map (#281) SHA 4bda462b501c
+  "elixir-plug|https://github.com/elixir-plug/plug.git|main|elixir"                                           # Plug.Router, plug pipelines, Plug.Conn transformations (#282) SHA a447199b337d
+  "phoenix-live-view|https://github.com/phoenixframework/phoenix_live_view.git|main|elixir"                   # Phoenix LiveView mount/handle_event/render callbacks (#283) SHA 1b7b26e7d1e4
+  "javalin-samples|https://github.com/javalin/javalin-samples.git|main|kotlin"                                # Javalin app.get/post lambdas, route handlers, Jackson DTOs (#285) SHA 3064bf479c58
+  "http4k|https://github.com/http4k/http4k.git|master|kotlin"                                                 # http4k HttpHandler functions, routes() composition, filters (#286) SHA 9638dc45d7af
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
