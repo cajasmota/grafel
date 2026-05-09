@@ -1573,3 +1573,80 @@ func keysOf(m map[string]*types.EntityRecord) []string {
 	}
 	return out
 }
+
+// TestExtractClassContains_TwoStructsSameMethod verifies issue #145:
+// two structs in the same file each declaring a method with the same
+// bare name produce distinct method entities AND each struct carries
+// a CONTAINS edge whose ToID is a Format-A structural-ref keyed on
+// the source file + the dotted Receiver.method Name.
+func TestExtractClassContains_TwoStructsSameMethod(t *testing.T) {
+	src := `package main
+
+type UserStore struct{}
+type OrderStore struct{}
+
+func (s *UserStore) Get(id string) string  { return "" }
+func (s *OrderStore) Get(id string) string { return "" }
+`
+	results, err := extractFromPath(src, "stores.go")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	// Distinct method entity IDs (issue #66 dotted Name +
+	// SourceFile/Kind/Name → ComputeID hash).
+	methodIDs := map[string]string{}
+	for _, r := range results {
+		e := r.(types.EntityRecord)
+		if e.Kind != "SCOPE.Operation" {
+			continue
+		}
+		if sub, _ := e.Metadata["subtype"].(string); sub != "method" {
+			continue
+		}
+		id := e.ComputeID()
+		if existing, dup := methodIDs[id]; dup {
+			t.Errorf("method ID collision: %q and %q both compute to %s",
+				existing, e.Name, id)
+		}
+		methodIDs[id] = e.Name
+	}
+	if len(methodIDs) != 2 {
+		t.Fatalf("expected 2 distinct method entities, got %d (%v)",
+			len(methodIDs), methodIDs)
+	}
+
+	// Each struct must own a CONTAINS edge whose ToID is the
+	// Format-A structural-ref for its receiver method.
+	wantContains := map[string]string{
+		"UserStore":  extractor.BuildOperationStructuralRef("go", "stores.go", "UserStore.Get"),
+		"OrderStore": extractor.BuildOperationStructuralRef("go", "stores.go", "OrderStore.Get"),
+	}
+	for _, r := range results {
+		e := r.(types.EntityRecord)
+		if e.Kind != "SCOPE.Component" {
+			continue
+		}
+		want, expected := wantContains[e.Name]
+		if !expected {
+			continue
+		}
+		var got []string
+		for _, rel := range e.Relationships {
+			if rel.Kind == "CONTAINS" {
+				got = append(got, rel.ToID)
+			}
+		}
+		if len(got) != 1 {
+			t.Errorf("struct %s: expected 1 CONTAINS edge, got %d (%v)", e.Name, len(got), got)
+			continue
+		}
+		if got[0] != want {
+			t.Errorf("struct %s: CONTAINS ToID = %q, want %q", e.Name, got[0], want)
+		}
+		delete(wantContains, e.Name)
+	}
+	for name := range wantContains {
+		t.Errorf("struct %s: not found in extracted entities", name)
+	}
+}
