@@ -855,7 +855,7 @@ func BuildIndex(entities []types.EntityRecord) Index {
 				}
 				if existing, ok := nameKindBucketLoc[kind]; ok && existing != e.ID {
 					nameKindBucketLoc[kind] = "" // ambiguous within (file, name, kind)
-				} else if !ok || existing == e.ID {
+				} else {
 					nameKindBucketLoc[kind] = e.ID
 				}
 			}
@@ -981,10 +981,8 @@ func (idx Index) Lookup(stub string) (string, bool) {
 				return id, true
 			}
 		}
-		if idx.ambigKind[kind] != nil && idx.ambigKind[kind][name] {
-			// Ambiguous within this kind; fall through to kind-agnostic
-			// only if the kind-agnostic name is itself unique.
-		}
+		// Ambiguous within this kind: fall through to the kind-agnostic
+		// path; it succeeds only if the bare name is itself unique.
 	}
 	// Kind-agnostic fallback: bare name (no prefix) OR missed kind lookup.
 	lookupName := name
