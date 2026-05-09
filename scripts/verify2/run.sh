@@ -372,6 +372,25 @@ REPOS=(
   "docusaurus|https://github.com/facebook/docusaurus.git|main|typescript|packages/docusaurus"                 # MDX extractor, Docusaurus plugin packages (#298) SHA 5f60ae9c872d
   "nextra|https://github.com/shuding/nextra.git|main|typescript|packages/nextra"                              # Nextra theme + MDX content trees (#298) SHA e604c7fe937e
   "eleventy|https://github.com/11ty/eleventy.git|main|javascript|src"                                         # Eleventy template engines, .eleventy.js config (#298) SHA 4a6b85f64eef
+  # --- Testing frameworks (chunk X, umbrella #312) ---
+  # Testing-framework-dominated repos so the harness exercises test-file
+  # detection, fixture parsing, and framework-specific patterns (Jest, Mocha,
+  # Cypress, Playwright, Selenium, JUnit 5, RSpec, pytest, Karate, Cucumber).
+  # Each entry pinned to the SHA recorded in the umbrella body and verified
+  # via git ls-remote --symref. Sparse paths from the umbrella are documented
+  # in trailing comments; entries use a full clone where the umbrella lists
+  # multiple sparse paths because the parser supports a single sparse path
+  # only. seleniumhq.github.io uses its single /examples sparse-path.
+  "jest|https://github.com/jestjs/jest.git|main|typescript"                                                   # Jest config, snapshot tests, mock factories (#312) SHA 746b14333fbd paths packages/ e2e/
+  "mocha|https://github.com/mochajs/mocha.git|main|javascript"                                                # Mocha BDD/TDD interfaces, hooks, reporters (#312) SHA 441c32aa076f paths lib/ test/
+  "cypress-realworld-app|https://github.com/cypress-io/cypress-realworld-app.git|develop|typescript"          # Cypress E2E specs, custom commands, fixtures (#312) SHA 84008795de05 paths cypress/ src/
+  "playwright|https://github.com/microsoft/playwright.git|main|typescript"                                    # Playwright test runner, fixtures, projects (#312) SHA c17e0b45c12f paths packages/playwright/ tests/
+  "seleniumhq-examples|https://github.com/SeleniumHQ/seleniumhq.github.io.git|trunk|multi|examples"           # Selenium WebDriver examples across languages (#312) SHA 203cffca2951
+  "junit5-samples|https://github.com/junit-team/junit5-samples.git|main|java"                                 # JUnit 5 Jupiter API, parameterized tests (#312) SHA c8828652e601 paths junit5-jupiter-starter-gradle/ junit5-jupiter-starter-maven/
+  "rspec-rails|https://github.com/rspec/rspec-rails.git|main|ruby"                                            # RSpec describe/it/expect, Rails matchers (#312) SHA 810f2a48950c paths lib/ spec/
+  "pytest|https://github.com/pytest-dev/pytest.git|main|python"                                               # pytest fixtures, parametrize, conftest, plugins (#312) SHA b10612810dc6 paths src/ testing/
+  "karate|https://github.com/karatelabs/karate.git|main|java"                                                 # Karate .feature files, API/UI test DSL (#312) SHA 38db45133982 paths karate-core/ examples/
+  "cucumber-js|https://github.com/cucumber/cucumber-js.git|main|typescript"                                   # Cucumber.js step defs, Gherkin .feature parsing (#312) SHA 1c9e7022eae1 paths src/ features/
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
