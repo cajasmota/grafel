@@ -178,12 +178,15 @@ class Svc {
 
 	var found bool
 	for _, e := range got {
-		if e.Name == "getName" && e.Kind == "SCOPE.Operation" && e.Subtype == "method" {
+		// Issue #145: methods declared inside a class body are emitted
+		// with Name="<Class>.<method>" so two classes with same-named
+		// methods produce distinct entity IDs.
+		if e.Name == "Svc.getName" && e.Kind == "SCOPE.Operation" && e.Subtype == "method" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected entity getName with Kind=SCOPE.Operation Subtype=method")
+		t.Error("expected entity Svc.getName with Kind=SCOPE.Operation Subtype=method")
 	}
 }
 
@@ -376,5 +379,87 @@ class Alpha {
 				t.Errorf("expected EndLine >= StartLine, got start=%d end=%d", e.StartLine, e.EndLine)
 			}
 		}
+	}
+}
+
+// TestPHPExtractor_ClassContains_TwoClassesSameMethod verifies issue
+// #145: two PHP classes in the same file each declaring a method with
+// the same bare name produce distinct method entities AND each class
+// carries a CONTAINS edge whose ToID is a Format-A structural-ref
+// keyed on the source file + the dotted Class.method Name.
+func TestPHPExtractor_ClassContains_TwoClassesSameMethod(t *testing.T) {
+	src := `<?php
+class UserRepo {
+    public function find(int $id): string { return ""; }
+}
+class OrderRepo {
+    public function find(int $id): string { return ""; }
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("php")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "repos.php",
+		Content:  []byte(src),
+		Language: "php",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Distinct method entity IDs (dotted Name + SourceFile/Kind/Name
+	// → ComputeID hash).
+	methodIDs := map[string]string{}
+	for _, e := range got {
+		if e.Kind != "SCOPE.Operation" || e.Subtype != "method" {
+			continue
+		}
+		id := e.ComputeID()
+		if existing, dup := methodIDs[id]; dup {
+			t.Errorf("method ID collision: %q and %q both compute to %s",
+				existing, e.Name, id)
+		}
+		methodIDs[id] = e.Name
+	}
+	if len(methodIDs) != 2 {
+		t.Fatalf("expected 2 distinct method entities, got %d (%v)",
+			len(methodIDs), methodIDs)
+	}
+
+	// Each class must own a CONTAINS edge with the canonical
+	// structural-ref ToID for its method.
+	wantContains := map[string]string{
+		"UserRepo":  extractor.BuildOperationStructuralRef("php", "repos.php", "UserRepo.find"),
+		"OrderRepo": extractor.BuildOperationStructuralRef("php", "repos.php", "OrderRepo.find"),
+	}
+	for _, e := range got {
+		if e.Kind != "SCOPE.Component" || e.Subtype != "class" {
+			continue
+		}
+		want, expected := wantContains[e.Name]
+		if !expected {
+			continue
+		}
+		var gotEdges []string
+		for _, rel := range e.Relationships {
+			if rel.Kind == "CONTAINS" {
+				gotEdges = append(gotEdges, rel.ToID)
+			}
+		}
+		if len(gotEdges) != 1 {
+			t.Errorf("class %s: expected 1 CONTAINS edge, got %d (%v)",
+				e.Name, len(gotEdges), gotEdges)
+			continue
+		}
+		if gotEdges[0] != want {
+			t.Errorf("class %s: CONTAINS ToID = %q, want %q",
+				e.Name, gotEdges[0], want)
+		}
+		delete(wantContains, e.Name)
+	}
+	for name := range wantContains {
+		t.Errorf("class %s: not found in extracted entities", name)
 	}
 }
