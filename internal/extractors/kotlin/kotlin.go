@@ -245,10 +245,27 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 }
 
 // kotlinCallTarget resolves the callee name from a call_expression node.
-// Tree-sitter-kotlin shapes a call as `<expression> <call_suffix>`. When the
-// expression is a simple_identifier or navigation_expression we pull the
-// rightmost simple_identifier; otherwise we return "".
+//
+// Tree-sitter-kotlin shapes a call as `<expression> <call_suffix>` where
+// `<call_suffix>` carries the parenthesized argument list (or trailing
+// lambda) that distinguishes a real method invocation from a plain
+// property/field reference. We require a `call_suffix` sibling before
+// emitting any CALLS edge — without it, the node is not a true call
+// site and the resolver cannot bind it. Issue #122.
+//
+// When the receiver expression is a `simple_identifier` (`foo()`) we
+// return that identifier. When it is a `navigation_expression`
+// (`a.b.c()`) the actual callee name is the rightmost `simple_identifier`
+// of the trailing `navigation_suffix`, NOT the leftmost descendant — the
+// previous implementation walked descendants via the stack-based
+// findAllNodes (LIFO) which returned the receiver's root identifier
+// (e.g. `chat` for `chat.lastMessages.add()`), producing the
+// false-positive same-class field-access CALLS that dominated the
+// ktor-samples bug-extractor rate. Issue #122.
 func kotlinCallTarget(call *sitter.Node, src []byte) string {
+	if !hasCallSuffix(call) {
+		return ""
+	}
 	if call.ChildCount() == 0 {
 		return ""
 	}
@@ -257,14 +274,39 @@ func kotlinCallTarget(call *sitter.Node, src []byte) string {
 	case "simple_identifier":
 		return string(src[first.StartByte():first.EndByte()])
 	case "navigation_expression":
-		// Walk to the last simple_identifier descendant.
-		ids := findAllNodes(first, "simple_identifier")
-		if len(ids) > 0 {
-			n := ids[len(ids)-1]
-			return string(src[n.StartByte():n.EndByte()])
+		// The callee name is the last `simple_identifier` of the
+		// trailing navigation_suffix (`.method`).
+		var lastSuffix *sitter.Node
+		for i := 0; i < int(first.ChildCount()); i++ {
+			ch := first.Child(i)
+			if ch.Type() == "navigation_suffix" {
+				lastSuffix = ch
+			}
+		}
+		if lastSuffix == nil {
+			return ""
+		}
+		for i := int(lastSuffix.ChildCount()) - 1; i >= 0; i-- {
+			ch := lastSuffix.Child(i)
+			if ch.Type() == "simple_identifier" {
+				return string(src[ch.StartByte():ch.EndByte()])
+			}
 		}
 	}
 	return ""
+}
+
+// hasCallSuffix reports whether a call_expression node has a `call_suffix`
+// child. Tree-sitter-kotlin requires this child for a real invocation —
+// its presence (parentheses or trailing lambda) is what distinguishes a
+// method call from a bare identifier or property reference. Issue #122.
+func hasCallSuffix(call *sitter.Node) bool {
+	for i := 0; i < int(call.ChildCount()); i++ {
+		if call.Child(i).Type() == "call_suffix" {
+			return true
+		}
+	}
+	return false
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.

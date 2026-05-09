@@ -137,6 +137,99 @@ func TestKotlin_CallsKeywordsFiltered(t *testing.T) {
 	}
 }
 
+// TestKotlin_NoCallsForBareFieldAccess (#122): tree-sitter-kotlin shapes
+// `chat.lastMessages` as a `navigation_expression`, NOT a `call_expression`
+// — there's no parenthesized call_suffix. The extractor must not emit any
+// CALLS edge for these bare property references; doing so creates
+// resolver-unbindable stubs that land in bug-extractor and dominate the
+// ktor-samples error rate.
+func TestKotlin_NoCallsForBareFieldAccess(t *testing.T) {
+	src := `class ChatService {
+    val members = mutableListOf<String>()
+    val lastMessages = mutableListOf<String>()
+    fun caller() {
+        members
+        lastMessages
+        chat.lastMessages
+        chat.members.size
+        helper()
+    }
+    fun helper() {}
+}
+`
+	ents := runKotlin(t, src)
+	caller := ktFind(ents, "caller", "SCOPE.Operation")
+	if caller == nil {
+		t.Fatal("expected caller operation")
+	}
+	forbidden := map[string]bool{
+		"members":      true,
+		"lastMessages": true,
+		"chat":         true,
+	}
+	for _, r := range caller.Relationships {
+		if r.Kind != "CALLS" {
+			continue
+		}
+		if forbidden[r.ToID] {
+			t.Errorf("bare field/property reference %q must not be emitted as CALLS target", r.ToID)
+		}
+	}
+	if !ktHasRel(ents, "caller", "SCOPE.Operation", "CALLS", "helper") {
+		t.Error("real method call helper() must still produce CALLS caller→helper")
+	}
+}
+
+// TestKotlin_NavigationCallTrailingIdentifier (#122): for a navigation
+// call like `usersCounter.incrementAndGet()` the CALLS target must be
+// the trailing method identifier, not the receiver. The previous
+// implementation walked descendants via stack-based DFS (LIFO) which
+// returned the leftmost simple_identifier of the receiver chain (e.g.
+// `usersCounter`, `chat`, `members`), producing same-class field-access
+// false positives.
+func TestKotlin_NavigationCallTrailingIdentifier(t *testing.T) {
+	src := `class S {
+    val usersCounter = AtomicInteger()
+    fun caller() {
+        usersCounter.incrementAndGet()
+        chat.lastMessages.add("x")
+        a.b.c.d()
+    }
+}
+`
+	ents := runKotlin(t, src)
+	caller := ktFind(ents, "caller", "SCOPE.Operation")
+	if caller == nil {
+		t.Fatal("expected caller operation")
+	}
+	want := map[string]bool{
+		"incrementAndGet": false,
+		"add":             false,
+		"d":               false,
+	}
+	forbidden := map[string]bool{
+		"usersCounter": true,
+		"chat":         true,
+		"a":            true,
+	}
+	for _, r := range caller.Relationships {
+		if r.Kind != "CALLS" {
+			continue
+		}
+		if forbidden[r.ToID] {
+			t.Errorf("receiver root %q must not be emitted as CALLS target", r.ToID)
+		}
+		if _, ok := want[r.ToID]; ok {
+			want[r.ToID] = true
+		}
+	}
+	for k, v := range want {
+		if !v {
+			t.Errorf("expected CALLS caller→%s", k)
+		}
+	}
+}
+
 // TestKotlin_NoImports (#41): kotlin extractor intentionally does
 // NOT emit IMPORTS edges (Python parity). Guard against future regressions
 // that re-introduce ghost "org" / "com" / "java" entities.
