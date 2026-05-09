@@ -132,6 +132,15 @@ REPOS=(
   "maven|https://github.com/apache/maven.git|master|java"                                            # pom.xml multi-module manifest (#170)
   "pnpm|https://github.com/pnpm/pnpm.git|main|javascript"                                            # package.json workspace manifest (#172)
   "nx|https://github.com/nrwl/nx.git|master|typescript"                                              # tsconfig + nx.json manifests (#173)
+  # --- Java enterprise (chunk I, umbrella #302) ---
+  # Sample apps that USE each Java enterprise framework, per Refs #96 corpus policy.
+  "quarkus-quickstarts|https://github.com/quarkusio/quarkus-quickstarts.git|main|java"                # Quarkus sample apps (#181)
+  "micronaut-examples|https://github.com/micronaut-projects/micronaut-examples.git|master|java"       # Micronaut sample apps (#183)
+  "helidon-examples|https://github.com/helidon-io/helidon-examples.git|helidon-4.x|java"              # Helidon sample apps (#186)
+  "vertx-examples|https://github.com/vert-x3/vertx-examples.git|5.x|java"                             # Vert.x sample apps (#190)
+  "dropwizard-example|https://github.com/dropwizard/dropwizard.git|release/5.0.x|java|dropwizard-example" # Dropwizard sample app subtree (#193)
+  "play-java-starter|https://github.com/playframework/play-java-starter-example.git|2.7.x|java"       # Play Framework Java sample app (#197)
+  "spark-examples|https://github.com/perwendel/spark.git|master|java|examples"                        # Spark Java examples subtree (#203)
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
