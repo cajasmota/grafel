@@ -201,22 +201,28 @@ var (
 		// requiring patterns below ever match real stubs (issue #90).
 		regexp.MustCompile(`^getattr$`),
 		regexp.MustCompile(`^setattr$`),
+		regexp.MustCompile(`^hasattr$`),
+		regexp.MustCompile(`^delattr$`),
 		regexp.MustCompile(`^eval$`),
 		regexp.MustCompile(`^exec$`),
+		regexp.MustCompile(`^compile$`),
 		regexp.MustCompile(`^__import__$`),
-		regexp.MustCompile(`^getattr\(`),                  // getattr(obj, name)(...)
-		regexp.MustCompile(`^__getattr__$`),               // __getattr__ magic name
-		regexp.MustCompile(`^.*\.__getattr__\(`),          // obj.__getattr__("name")
-		regexp.MustCompile(`^.*\.__getattribute__\(`),     // obj.__getattribute__(...)
-		regexp.MustCompile(`^setattr\(`),                  // setattr-driven dispatch
-		regexp.MustCompile(`^globals\(\)\[`),              // globals()[name](...)
-		regexp.MustCompile(`^locals\(\)\[`),               // locals()[name](...)
-		regexp.MustCompile(`^vars\(\)\[`),                 // vars()[name](...)
-		regexp.MustCompile(`^eval\(`),                     // eval(...)
-		regexp.MustCompile(`^exec\(`),                     // exec(...)
-		regexp.MustCompile(`^__import__\(`),               // __import__("modname")
-		regexp.MustCompile(`^importlib\.`),                // importlib.import_module / etc
-		regexp.MustCompile(`^functools\.partial\(`),       // functools.partial(...)
+		regexp.MustCompile(`^hasattr\(`),              // hasattr(obj, name)
+		regexp.MustCompile(`^delattr\(`),              // delattr(obj, name)
+		regexp.MustCompile(`^compile\(`),              // compile(src, ...)
+		regexp.MustCompile(`^getattr\(`),              // getattr(obj, name)(...)
+		regexp.MustCompile(`^__getattr__$`),           // __getattr__ magic name
+		regexp.MustCompile(`^.*\.__getattr__\(`),      // obj.__getattr__("name")
+		regexp.MustCompile(`^.*\.__getattribute__\(`), // obj.__getattribute__(...)
+		regexp.MustCompile(`^setattr\(`),              // setattr-driven dispatch
+		regexp.MustCompile(`^globals\(\)\[`),          // globals()[name](...)
+		regexp.MustCompile(`^locals\(\)\[`),           // locals()[name](...)
+		regexp.MustCompile(`^vars\(\)\[`),             // vars()[name](...)
+		regexp.MustCompile(`^eval\(`),                 // eval(...)
+		regexp.MustCompile(`^exec\(`),                 // exec(...)
+		regexp.MustCompile(`^__import__\(`),           // __import__("modname")
+		regexp.MustCompile(`^importlib\.`),            // importlib.import_module / etc
+		regexp.MustCompile(`^functools\.partial\(`),   // functools.partial(...)
 		regexp.MustCompile(`^functools\.partialmethod\(`),
 		regexp.MustCompile(`^functools\.reduce\(`),
 		regexp.MustCompile(`^operator\.methodcaller\(`), // operator.methodcaller("name")
@@ -240,8 +246,11 @@ var (
 	}
 
 	jsDynamicPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`^Reflect\.`),     // Reflect.apply / Reflect.construct / Reflect.get
-		regexp.MustCompile(`^Function\(`),    // Function(src)
+		regexp.MustCompile(`^Reflect\.`),      // Reflect.apply / Reflect.construct / Reflect.get
+		regexp.MustCompile(`^eval$`),          // bare eval (issue #95)
+		regexp.MustCompile(`^eval\(`),         // eval(src)
+		regexp.MustCompile(`^Function$`),      // bare Function constructor reference
+		regexp.MustCompile(`^Function\(`),     // Function(src)
 		regexp.MustCompile(`^new Function\(`), // new Function(src)
 		// Dynamic import / require: must NOT be a literal-string first arg —
 		// `require("fs")` and `import("./mod")` are statically resolvable.
@@ -272,10 +281,10 @@ var (
 		regexp.MustCompile(`^send\(`),            // bare send(:name)
 		regexp.MustCompile(`^.*\.public_send\(`), // obj.public_send(:name)
 		regexp.MustCompile(`^public_send\(`),
-		regexp.MustCompile(`^.*\.__send__\(`),    // obj.__send__(:name)
-		regexp.MustCompile(`^method_missing$`),   // ruby method_missing hook
+		regexp.MustCompile(`^.*\.__send__\(`),  // obj.__send__(:name)
+		regexp.MustCompile(`^method_missing$`), // ruby method_missing hook
 		regexp.MustCompile(`^.*\.method_missing\(`),
-		regexp.MustCompile(`^define_method\(`),   // metaprogramming
+		regexp.MustCompile(`^define_method\(`), // metaprogramming
 		regexp.MustCompile(`^.*\.define_method\(`),
 		regexp.MustCompile(`^.*\.instance_eval\(`),
 		regexp.MustCompile(`^.*\.class_eval\(`),
@@ -1199,14 +1208,33 @@ func (idx Index) classifyDisposition(resolvedID, originalStub string, allow Exte
 //
 // Order of checks matters:
 //  1. Already a 16-char hex → Resolved.
-//  2. "ext:<pkg>" prefix → ExternalKnown / ExternalUnknown depending on allow.
-//  3. Dynamic-pattern match on the original stub (gated by language) → Dynamic.
+//  2. Dynamic-pattern match on the ORIGINAL stub (gated by language) →
+//     Dynamic. Runs BEFORE the external-prefix check so reflection
+//     builtins that the external synthesiser also tags as `ext:<pkg>`
+//     (Python `getattr` / `setattr` / `eval` / `exec`, JS `Function`,
+//     etc.) land in the dynamic bucket — they are intrinsically
+//     reflective dispatch, not real external imports (Refs #95).
+//  3. "ext:<pkg>" prefix → ExternalKnown / ExternalUnknown depending on allow.
 //  4. Stub of form "Kind:Name" or bare "Name" → BugExtractor when the name
 //     has zero entities in the graph; BugResolver when it does.
 //  5. Anything else → Unclassified.
 func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, allow ExternalAllowlist) Disposition {
 	if isHexID(resolvedID) {
 		return DispositionResolved
+	}
+	// Dynamic-pattern check runs BEFORE the external-prefix check (Refs
+	// #95). The external synthesiser stamps reflection builtins like
+	// `getattr` / `setattr` / `eval` with an `ext:` prefix because they
+	// happen to live in the stdlib stop-list, but they are dynamic
+	// dispatch by nature — not real external imports. Matching the
+	// original (pre-synth) stub against the per-language dynamic catalog
+	// here promotes them out of `external-unknown` and into `dynamic`.
+	effLang := lang
+	if effLang == "" {
+		effLang = inferLangFromStub(originalStub)
+	}
+	if isDynamicPatternLang(originalStub, effLang) {
+		return DispositionDynamic
 	}
 	if strings.HasPrefix(resolvedID, stubPrefixExternal) {
 		pkg := strings.TrimPrefix(resolvedID, stubPrefixExternal)
@@ -1226,13 +1254,6 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// then structural-ref `<lang>:` segment as fallback. Non-structural
 	// stubs without a caller-supplied language run only the cross-language
 	// catalog — see isDynamicPatternLang.
-	effLang := lang
-	if effLang == "" {
-		effLang = inferLangFromStub(originalStub)
-	}
-	if isDynamicPatternLang(originalStub, effLang) {
-		return DispositionDynamic
-	}
 	// Issue #89 — short structural-ref stubs emitted by cross-language
 	// extractors that the resolver intentionally leaves untouched (they
 	// don't have the 6-segment scope:<kind>:<subtype>:<lang>:<file>:<tail>
