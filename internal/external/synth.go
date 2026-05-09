@@ -1284,6 +1284,7 @@ var knownExternalPackages = map[string]struct{}{
 	"jsonwebtoken": {},
 	"helmet":       {},
 	"multer":       {},
+	"faker":        {},
 	// JS / TS scoped packages (kept lowercase per case-folded lookup;
 	// only the leading "@scope" segment is matched).
 	"@radix-ui":        {},
@@ -1293,6 +1294,7 @@ var knownExternalPackages = map[string]struct{}{
 	"@types":           {},
 	"@nestjs":          {},
 	"@prisma":          {},
+	"@faker-js":        {},
 	"@apollo":          {},
 	"@mui":             {},
 	"@emotion":         {},
