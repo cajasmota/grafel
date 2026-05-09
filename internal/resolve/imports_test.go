@@ -1,0 +1,392 @@
+package resolve
+
+import (
+	"testing"
+
+	"github.com/cajasmota/archigraph/internal/types"
+)
+
+// importerRecord builds an EntityRecord for the IMPORTING file's marker
+// entity carrying a single IMPORTS relationship. Mirrors what
+// internal/extractors/python/extractor.go:importRecord emits.
+func importerRecord(file, modulePath string, props map[string]string) types.EntityRecord {
+	return types.EntityRecord{
+		Name:       modulePath,
+		Kind:       "SCOPE.Component",
+		Subtype:    "module",
+		SourceFile: file,
+		Language:   "python",
+		Relationships: []types.RelationshipRecord{{
+			FromID:     file,
+			ToID:       modulePath,
+			Kind:       importRelKind,
+			Properties: props,
+		}},
+	}
+}
+
+// targetRecord builds the entity that a CALLS edge should bind to after
+// the import-aware resolver runs (e.g. the real `get` defined in
+// requests/api.py). The ID field is what ResolveImports rewrites the
+// CALLS target to; we set it to a synthetic 16-char hex value so the
+// downstream isHexID check accepts it.
+func targetRecord(name, file, id string) types.EntityRecord {
+	return types.EntityRecord{
+		ID:         id,
+		Name:       name,
+		Kind:       "SCOPE.Operation",
+		Subtype:    "function",
+		SourceFile: file,
+		Language:   "python",
+	}
+}
+
+// callerRecord builds an EntityRecord representing a function that
+// makes a single bare-name CALL. The CALLS edge's FromID is left empty
+// (matching the Pass 1 emission convention); SourceFile pins the
+// caller's file so ResolveImports can find the import table entry.
+func callerRecord(name, file, target string) types.EntityRecord {
+	return types.EntityRecord{
+		ID:         "0123456789abcdef",
+		Name:       name,
+		Kind:       "SCOPE.Operation",
+		Subtype:    "function",
+		SourceFile: file,
+		Language:   "python",
+		Relationships: []types.RelationshipRecord{{
+			ToID: target,
+			Kind: "CALLS",
+		}},
+	}
+}
+
+// TestResolveImports_PlainImport covers `import x; x.foo()` — the
+// extractor emits ToID="foo" and a binding with local_name="x",
+// source_module="x", imported_name="x". The resolver should rewrite
+// "foo" to the entity id of the `foo` defined in module x.
+func TestResolveImports_PlainImport(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "remote", map[string]string{
+			"local_name":    "remote",
+			"source_module": "remote",
+			"imported_name": "remote",
+		}),
+		targetRecord("dispatch", "remote/__init__.py", "aaaaaaaaaaaaaaaa"),
+		callerRecord("run", "client/app.py", "dispatch"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 rewrite, got %d (considered=%d)", stats.CallsRewritten, stats.CallsConsidered)
+	}
+	caller := records[2]
+	if got := caller.Relationships[0].ToID; got != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("expected CALLS target rewritten to aaaaaaaaaaaaaaaa, got %q", got)
+	}
+}
+
+// TestResolveImports_FromImport covers `from foo import bar; bar()`.
+func TestResolveImports_FromImport(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "foo.bar", map[string]string{
+			"local_name":    "bar",
+			"source_module": "foo",
+			"imported_name": "bar",
+		}),
+		targetRecord("bar", "foo/__init__.py", "bbbbbbbbbbbbbbbb"),
+		callerRecord("run", "client/app.py", "bar"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 rewrite, got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("expected target bbbbbbbbbbbbbbbb, got %q", got)
+	}
+}
+
+// TestResolveImports_FromImportAlias covers
+// `from foo import bar as baz; baz()` — the local name "baz" must
+// rewrite to the entity for `bar` defined in module foo.
+func TestResolveImports_FromImportAlias(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "foo.bar", map[string]string{
+			"local_name":    "baz",
+			"source_module": "foo",
+			"imported_name": "bar",
+		}),
+		targetRecord("bar", "foo/__init__.py", "cccccccccccccccc"),
+		callerRecord("run", "client/app.py", "baz"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 rewrite, got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "cccccccccccccccc" {
+		t.Fatalf("expected target cccccccccccccccc, got %q", got)
+	}
+}
+
+// TestResolveImports_BareNameNotImported leaves a bare CALLS target
+// alone when no import binding matches.
+func TestResolveImports_BareNameNotImported(t *testing.T) {
+	records := []types.EntityRecord{
+		callerRecord("run", "client/app.py", "mystery"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 0 {
+		t.Fatalf("expected 0 rewrites, got %d", stats.CallsRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "mystery" {
+		t.Fatalf("expected target unchanged, got %q", got)
+	}
+}
+
+// TestResolveImports_ExternalImportNoEntity covers
+// `import os; os.getcwd()` — when `os` is not part of the corpus the
+// import-aware pass leaves the CALLS target alone (the downstream
+// classifier will tag it ExternalKnown via the allowlist).
+func TestResolveImports_ExternalImportNoEntity(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "os", map[string]string{
+			"local_name":    "os",
+			"source_module": "os",
+			"imported_name": "os",
+		}),
+		callerRecord("run", "client/app.py", "getcwd"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 0 {
+		t.Fatalf("expected 0 rewrites (os not in corpus), got %d", stats.CallsRewritten)
+	}
+	if got := records[1].Relationships[0].ToID; got != "getcwd" {
+		t.Fatalf("expected target unchanged for external symbol, got %q", got)
+	}
+}
+
+// TestResolveImports_DottedTargetSkipped — receiver-typed dotted
+// targets ("Class.method") are handled by the base resolver via
+// byMember and must not be touched here.
+func TestResolveImports_DottedTargetSkipped(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "foo.bar", map[string]string{
+			"local_name":    "bar",
+			"source_module": "foo",
+			"imported_name": "bar",
+		}),
+		targetRecord("bar", "foo/__init__.py", "dddddddddddddddd"),
+		{
+			ID:         "1234567890abcdef",
+			Name:       "Driver.run",
+			Kind:       "SCOPE.Operation",
+			SourceFile: "client/app.py",
+			Language:   "python",
+			Relationships: []types.RelationshipRecord{{
+				ToID: "Helper.run",
+				Kind: "CALLS",
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsConsidered != 0 {
+		t.Fatalf("expected dotted target to be skipped, considered=%d", stats.CallsConsidered)
+	}
+	if got := records[2].Relationships[0].ToID; got != "Helper.run" {
+		t.Fatalf("expected dotted target unchanged, got %q", got)
+	}
+}
+
+// TestResolveImports_Wildcard covers `from foo import *; bar()`.
+// Best-effort: when foo exports a single entity named `bar`, the
+// CALLS target is rewritten.
+func TestResolveImports_Wildcard(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "foo", map[string]string{
+			"source_module": "foo",
+			"wildcard":      "1",
+		}),
+		targetRecord("bar", "foo/__init__.py", "eeeeeeeeeeeeeeee"),
+		callerRecord("run", "client/app.py", "bar"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 wildcard rewrite, got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "eeeeeeeeeeeeeeee" {
+		t.Fatalf("expected wildcard target eeeeeeeeeeeeeeee, got %q", got)
+	}
+}
+
+// TestResolveImports_AmbiguousModuleEntity covers the case where a
+// (module, name) tuple resolves to two distinct entities. The
+// resolver must leave the CALLS target alone rather than guess.
+func TestResolveImports_AmbiguousModuleEntity(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "foo.bar", map[string]string{
+			"local_name":    "bar",
+			"source_module": "foo",
+			"imported_name": "bar",
+		}),
+		// Two entities with name "bar" both in foo/__init__.py — the
+		// (foo, bar) tuple is ambiguous, so the resolver must skip.
+		targetRecord("bar", "foo/__init__.py", "ffffffffffffffff"),
+		{
+			ID:         "1111111111111111",
+			Name:       "bar",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "function",
+			SourceFile: "foo/__init__.py",
+			Language:   "python",
+		},
+		callerRecord("run", "client/app.py", "bar"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	// Module "foo" has two `bar` entities — the lookup is ambiguous
+	// for the (foo, bar) tuple. The (foo.bar, bar) tuple is unique
+	// (only foo/__init__.py serves it under "foo.bar"); the actual
+	// extractor emits source_module="foo" so the lookup hits the
+	// ambiguous tuple and skips. We assert no rewrite under the
+	// ambiguous condition.
+	if stats.CallsRewritten != 0 {
+		t.Fatalf("expected 0 rewrites under ambiguity, got %d", stats.CallsRewritten)
+	}
+}
+
+// TestResolveImports_MonorepoTopLevelCollision asserts the suffix-strip
+// in modulesForFile does NOT explode "tools.shared.helpers" into
+// "shared.helpers" / "helpers" — a monorepo could have an unrelated
+// top-level package "helpers" that would otherwise collide and either
+// resolve to the wrong entity or be demoted to ambiguous.
+//
+// Setup:
+//   - client/app.py does `from helpers import compute; compute()`
+//   - tools/shared/helpers.py defines a function compute (NOT the
+//     `helpers` package the caller meant to import)
+//   - The caller imports module "helpers" which is not in the corpus,
+//     so the rewrite should NOT happen.
+//
+// Pre-fix: modulesForFile("tools/shared/helpers.py") emitted
+// ["tools.shared.helpers", "shared.helpers", "helpers"], so the
+// (helpers, compute) tuple resolved to the unrelated tools entity.
+// Post-fix: only the precise dotted form (and a single allowlisted
+// source-root strip) is emitted, so no rewrite happens.
+func TestResolveImports_MonorepoTopLevelCollision(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "helpers.compute", map[string]string{
+			"local_name":    "compute",
+			"source_module": "helpers",
+			"imported_name": "compute",
+		}),
+		// Unrelated entity buried under a deeper path. Only its precise
+		// dotted form ("tools.shared.helpers") should be indexed.
+		targetRecord("compute", "tools/shared/helpers.py", "4444444444444444"),
+		callerRecord("run", "client/app.py", "compute"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 0 {
+		t.Fatalf("expected 0 rewrites (unrelated monorepo entity must not collide), got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "compute" {
+		t.Fatalf("expected target unchanged, got %q", got)
+	}
+}
+
+// TestResolveImports_SrcPrefixStripped covers the conservative
+// allowlisted-prefix strip kept in modulesForFile: a file at
+// "src/requests/api.py" should still resolve when imported as
+// "requests.api".
+func TestResolveImports_SrcPrefixStripped(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "requests.api.get", map[string]string{
+			"local_name":    "get",
+			"source_module": "requests.api",
+			"imported_name": "get",
+		}),
+		targetRecord("get", "src/requests/api.py", "5555555555555555"),
+		callerRecord("run", "client/app.py", "get"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 rewrite via src/ prefix strip, got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "5555555555555555" {
+		t.Fatalf("expected target 5555555555555555, got %q", got)
+	}
+}
+
+// TestResolveImports_PlainImportAmbiguous asserts deterministic
+// non-resolution when two plain `import` statements both expose the
+// same bare name. The pre-fix code iterated the file bucket map and
+// short-circuited on the first hit — a non-deterministic pick across
+// runs. The post-fix collects all candidates and drops on >1.
+func TestResolveImports_PlainImportAmbiguous(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "alpha", map[string]string{
+			"local_name":    "alpha",
+			"source_module": "alpha",
+			"imported_name": "alpha",
+		}),
+		importerRecord("client/app.py", "beta", map[string]string{
+			"local_name":    "beta",
+			"source_module": "beta",
+			"imported_name": "beta",
+		}),
+		// Both alpha and beta export a function named `tick`.
+		targetRecord("tick", "alpha/__init__.py", "6666666666666666"),
+		targetRecord("tick", "beta/__init__.py", "7777777777777777"),
+		callerRecord("run", "client/app.py", "tick"),
+	}
+	// Run repeatedly — pre-fix this would flap between the two IDs
+	// depending on Go's randomised map iteration order. Post-fix it
+	// must always drop (rewritten==0).
+	for i := 0; i < 16; i++ {
+		// Reset the caller's CALLS edge each iteration so any rewrite
+		// from a previous iteration doesn't mask flakiness.
+		records[4].Relationships[0].ToID = "tick"
+		tbl := BuildImportTable(records)
+		stats := ResolveImports(records, tbl)
+		if stats.CallsRewritten != 0 {
+			t.Fatalf("iter %d: expected 0 rewrites under plain-import ambiguity, got %d (target=%q)",
+				i, stats.CallsRewritten, records[4].Relationships[0].ToID)
+		}
+		if got := records[4].Relationships[0].ToID; got != "tick" {
+			t.Fatalf("iter %d: expected target unchanged, got %q", i, got)
+		}
+	}
+}
+
+// TestResolveImports_FileLocalCollisionDropsBinding covers the case
+// where the same file imports two different symbols under the same
+// local name (e.g. shadowing). The conservative behaviour is to drop
+// both bindings and leave the CALLS stub alone.
+func TestResolveImports_FileLocalCollisionDropsBinding(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("client/app.py", "foo.bar", map[string]string{
+			"local_name":    "bar",
+			"source_module": "foo",
+			"imported_name": "bar",
+		}),
+		importerRecord("client/app.py", "qux.bar", map[string]string{
+			"local_name":    "bar",
+			"source_module": "qux",
+			"imported_name": "bar",
+		}),
+		targetRecord("bar", "foo/__init__.py", "2222222222222222"),
+		targetRecord("bar", "qux/__init__.py", "3333333333333333"),
+		callerRecord("run", "client/app.py", "bar"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 0 {
+		t.Fatalf("expected 0 rewrites under local-name collision, got %d", stats.CallsRewritten)
+	}
+}
