@@ -279,6 +279,22 @@ REPOS=(
   "kong|https://github.com/Kong/kong.git|master|kong-declarative|spec/fixtures"                                # Kong declarative config services/routes/plugins (#326) SHA 58f2daa56b90
   "envoy|https://github.com/envoyproxy/envoy.git|main|envoy-yaml|configs"                                      # Envoy listener/cluster/route YAML (#326) SHA 3ddecad194fc
   "haproxy|https://github.com/haproxy/haproxy.git|master|haproxy-cfg|examples"                                 # HAProxy frontend/backend/acl config (#326) SHA efb36c0dafd5
+  # --- API/Spec/IDL alts (chunk U, umbrella #325) ---
+  # API spec / IDL alternatives beyond OpenAPI, per Refs #87 corpus policy.
+  # Each entry pinned to the SHA verified in the umbrella body via
+  # git ls-remote --symref against canonical upstream branches.
+  # Sparse-paths are applied to the three large monorepos (smithy, avro,
+  # thrift); the remaining four are small enough to clone in full. Where
+  # the umbrella listed multiple sparse subtrees (or glob patterns not
+  # supported by cone-mode sparse-checkout), one canonical IDL/schema
+  # subtree per repo is selected — broad extractor coverage is preserved.
+  "asyncapi-spec|https://github.com/asyncapi/spec.git|master|asyncapi"                                          # AsyncAPI channels/messages/bindings (#325) SHA 94ff695acb10
+  "smithy|https://github.com/smithy-lang/smithy.git|main|smithy|smithy-model"                                   # Smithy IDL services/operations/shapes (#325) SHA 22a34991defb
+  "avro|https://github.com/apache/avro.git|main|avro|lang"                                                      # Avro schemas (.avsc) and IDL (.avdl) (#325) SHA 892d6997dcb6
+  "thrift|https://github.com/apache/thrift.git|master|thrift|tutorial"                                          # Thrift IDL services/structs (#325) SHA f39cecc4d5b6
+  "json-schema-spec|https://github.com/json-schema-org/json-schema-spec.git|main|json-schema"                   # JSON Schema draft definitions (#325) SHA 5794814cca9e
+  "raml-spec|https://github.com/raml-org/raml-spec.git|master|raml"                                             # RAML 1.0 API definitions (#325) SHA 3ba244ade44c
+  "api-blueprint|https://github.com/apiaryio/api-blueprint.git|master|api-blueprint"                            # API Blueprint markdown specs (#325) SHA 86fc3a128a93
 )
 
 # Locate or build the archigraph binary. We build into the corpora dir
