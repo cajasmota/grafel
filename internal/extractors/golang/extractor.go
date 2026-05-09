@@ -125,6 +125,16 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	records = attachImplementsRelationships(records, typeIdx)
 
 	// ----------------------------------------------------------------
+	// 4b. Class CONTAINS — issue #145. For every struct/interface
+	//     Component, append a CONTAINS edge per method whose receiver
+	//     matches the Component name (struct), or per method declared
+	//     in the interface body (interface). Target uses Format-A
+	//     structural-ref so the resolver can disambiguate same-named
+	//     methods declared on different receivers across files.
+	// ----------------------------------------------------------------
+	records = attachClassContains(records, file.Path)
+
+	// ----------------------------------------------------------------
 	// 5. Error-handling patterns — secondary pass.
 	//    Emits one SCOPE.Pattern entity per `if err != nil { ... }`
 	//    occurrence. Runs after the base extraction so a detection
@@ -952,6 +962,38 @@ func isMethodSetSuperset(parent, child map[string]bool) bool {
 		}
 	}
 	return true
+}
+
+// attachClassContains emits class CONTAINS edges from each struct
+// SCOPE.Component to every receiver method whose Metadata["receiver"]
+// matches the struct name. Issue #145.
+//
+// The CONTAINS target is a Format-A structural-ref keyed on the source
+// file (scope:operation:method:go:<file>:<Receiver.method>). Using the
+// dotted method Name (issue #66) keeps the ToID unique per receiver
+// even when two structs in the same file declare a same-named method
+// (`(Foo) Get` vs `(Bar) Get`).
+//
+// Edges are deduplicated by (from, to, kind) via appendRelationshipTo.
+func attachClassContains(records []types.EntityRecord, filePath string) []types.EntityRecord {
+	for _, r := range records {
+		if r.Kind != "SCOPE.Operation" {
+			continue
+		}
+		if sub, _ := r.Metadata["subtype"].(string); sub != "method" {
+			continue
+		}
+		recv, _ := r.Metadata["receiver"].(string)
+		if recv == "" {
+			continue
+		}
+		toID := extractor.BuildOperationStructuralRef("go", filePath, r.Name)
+		records = appendRelationshipTo(records, recv, types.RelationshipRecord{
+			ToID: toID,
+			Kind: "CONTAINS",
+		})
+	}
+	return records
 }
 
 // appendRelationshipTo appends rel to the Relationships slice of the first
