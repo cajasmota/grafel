@@ -9,6 +9,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/extractor"
 	_ "github.com/cajasmota/archigraph/internal/extractors/just"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 func TestJustExtractor_Registered(t *testing.T) {
@@ -117,9 +118,18 @@ func TestJustExtractor_DependenciesWithArguments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(entities) != 1 {
-		t.Fatalf("expected 1 entity, got %d", len(entities))
+	// Filter to recipe entities — the extractor also emits a file-level
+	// SCOPE.Component container that carries CONTAINS edges (issue #374).
+	var recipes []types.EntityRecord
+	for _, e := range entities {
+		if e.Subtype == "recipe" {
+			recipes = append(recipes, e)
+		}
 	}
+	if len(recipes) != 1 {
+		t.Fatalf("expected 1 recipe entity, got %d", len(recipes))
+	}
+	entities = recipes
 	deps := entities[0].Properties["dependencies"]
 	if deps != "test" {
 		t.Errorf("expected deps='test' (args stripped), got %q", deps)
@@ -139,9 +149,18 @@ func TestJustExtractor_MultipleDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(entities) != 1 {
-		t.Fatalf("expected 1 entity, got %d", len(entities))
+	// Filter to recipe entities — the extractor also emits a file-level
+	// SCOPE.Component container that carries CONTAINS edges (issue #374).
+	var recipes []types.EntityRecord
+	for _, e := range entities {
+		if e.Subtype == "recipe" {
+			recipes = append(recipes, e)
+		}
 	}
+	if len(recipes) != 1 {
+		t.Fatalf("expected 1 recipe entity, got %d", len(recipes))
+	}
+	entities = recipes
 	deps := entities[0].Properties["dependencies"]
 	if deps != "build,test,lint,vet" {
 		t.Errorf("expected deps=build,test,lint,vet got %q", deps)
@@ -161,9 +180,18 @@ func TestJustExtractor_RecipeParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(entities) != 1 {
-		t.Fatalf("expected 1 entity, got %d", len(entities))
+	// Filter to recipe entities — the extractor also emits a file-level
+	// SCOPE.Component container that carries CONTAINS edges (issue #374).
+	var recipes []types.EntityRecord
+	for _, e := range entities {
+		if e.Subtype == "recipe" {
+			recipes = append(recipes, e)
+		}
 	}
+	if len(recipes) != 1 {
+		t.Fatalf("expected 1 recipe entity, got %d", len(recipes))
+	}
+	entities = recipes
 	e := entities[0]
 	if e.Name != "deploy" {
 		t.Errorf("expected name=deploy, got %q", e.Name)
@@ -187,8 +215,14 @@ func TestJustExtractor_UnderscoreRecipe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(entities) != 1 || entities[0].Name != "_internal" {
-		t.Errorf("expected _internal recipe, got %+v", entities)
+	var recipes []types.EntityRecord
+	for _, e := range entities {
+		if e.Subtype == "recipe" {
+			recipes = append(recipes, e)
+		}
+	}
+	if len(recipes) != 1 || recipes[0].Name != "_internal" {
+		t.Errorf("expected _internal recipe, got %+v", recipes)
 	}
 }
 

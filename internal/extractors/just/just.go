@@ -8,6 +8,10 @@
 // Extracted entities:
 //   - recipe_name [deps...]:          → Kind="SCOPE.Operation", Subtype="recipe"
 //   - variable := value                → Kind="SCOPE.Schema",   Subtype="variable"
+//   - import "<path>"                  → Kind="SCOPE.Component", Subtype="import"
+//                                        (carries one IMPORTS edge)
+//   - file-level container            → Kind="SCOPE.Component", Subtype="file"
+//                                        (carries CONTAINS edges)
 //
 // (SCOPE.Schema matches the convention used by the Dockerfile extractor for
 // ENV/ARG — both are configuration-style name/value pairs bound at build
@@ -16,6 +20,23 @@
 // Recipe dependencies (the tokens after the colon on a recipe line) are
 // recorded in the recipe entity's Properties["dependencies"] —
 // they are relationship metadata, not standalone entities.
+//
+// Issue #374 (PORT-RELS-JUST) — emits the same three relationship kinds the
+// other ported extractors emit:
+//
+//   - IMPORTS: every `import "<path>"` directive (including `import?` for
+//     optional imports) becomes a SCOPE.Component import-stub entity carrying
+//     a single IMPORTS edge from the justfile → the imported path. Mirrors
+//     the contract used by the fish / lua extractors.
+//
+//   - CALLS: every recipe dependency token (the names following the
+//     recipe-separating `:`) emits one CALLS edge per unique callee, attached
+//     to the recipe entity. `release: (lint "strict") (vet)` therefore emits
+//     CALLS edges to `lint` and `vet`. Self-recursion is dropped.
+//
+//   - CONTAINS: a file-level SCOPE.Component (subtype="file") emits one
+//     CONTAINS edge per declared recipe via BuildOperationStructuralRef
+//     (Format A, #144).
 //
 // Registers itself via init() and is imported by registry_gen.go.
 package just
@@ -76,6 +97,12 @@ var (
 	variableRE = regexp.MustCompile(
 		`(?m)^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^\n#]*)`,
 	)
+	// importRE captures: `import "path"`, `import 'path'`, `import? "path"`.
+	// Just's `import` directive must appear at column 0; the path may be
+	// double- or single-quoted.
+	importRE = regexp.MustCompile(
+		`(?m)^import\??\s+(?:"([^"\n]+)"|'([^'\n]+)')`,
+	)
 )
 
 // Extract processes the Justfile source and returns entity records.
@@ -84,10 +111,62 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 		return nil, nil
 	}
 	src := string(file.Content)
+	// Strip line comments so commented-out import/recipe lines don't match.
+	stripped := stripLineComments(src)
 
 	var entities []types.EntityRecord
 	seenRecipe := make(map[string]bool)
 	seenVar := make(map[string]bool)
+
+	// File-level container entity (CONTAINS edges appended below).
+	fileEntity := types.EntityRecord{
+		Name:       file.Path,
+		Kind:       "SCOPE.Component",
+		Subtype:    "file",
+		SourceFile: file.Path,
+		Language:   "just",
+	}
+	entities = append(entities, fileEntity)
+	const fileIdx = 0
+
+	// IMPORTS — `import "path"` / `import? "path"` directives become
+	// SCOPE.Component import-stub entities, one per unique imported path.
+	seenImport := make(map[string]bool)
+	for _, m := range importRE.FindAllStringSubmatchIndex(stripped, -1) {
+		var path string
+		// Two alternation groups: double-quoted (g1) and single-quoted (g2).
+		if m[2] >= 0 && m[3] > m[2] {
+			path = stripped[m[2]:m[3]]
+		} else if m[4] >= 0 && m[5] > m[4] {
+			path = stripped[m[4]:m[5]]
+		}
+		if path == "" || seenImport[path] {
+			continue
+		}
+		seenImport[path] = true
+		startLine := strings.Count(stripped[:m[0]], "\n") + 1
+		entities = append(entities, types.EntityRecord{
+			Name:       path,
+			Kind:       "SCOPE.Component",
+			Subtype:    "import",
+			SourceFile: file.Path,
+			Language:   "just",
+			StartLine:  startLine,
+			EndLine:    startLine,
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID: file.Path,
+					ToID:   path,
+					Kind:   "IMPORTS",
+					Properties: map[string]string{
+						"source_module": path,
+						"imported_name": path,
+						"import_kind":   "import",
+					},
+				},
+			},
+		})
+	}
 
 	// Variables first — they don't conflict with recipe names because the
 	// regexes require different terminators (`:=` vs `:`).
@@ -161,12 +240,31 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 		}
 
 		props := map[string]string{}
+		normDeps := ""
 		if deps != "" {
 			// Dependency list is extracted as relationship metadata per JIRA.
-			props["dependencies"] = normalizeDeps(deps)
+			normDeps = normalizeDeps(deps)
+			props["dependencies"] = normDeps
 		}
 		if params != "" {
 			props["parameters"] = params
+		}
+
+		// CALLS edges — one per unique dependency name (filter self-recursion).
+		var callRels []types.RelationshipRecord
+		if normDeps != "" {
+			seenCall := make(map[string]bool)
+			for _, dep := range strings.Split(normDeps, ",") {
+				dep = strings.TrimSpace(dep)
+				if dep == "" || dep == name || seenCall[dep] {
+					continue
+				}
+				seenCall[dep] = true
+				callRels = append(callRels, types.RelationshipRecord{
+					ToID: dep,
+					Kind: "CALLS",
+				})
+			}
 		}
 
 		entities = append(entities, types.EntityRecord{
@@ -180,10 +278,45 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 			Signature:          sig,
 			EnrichmentRequired: false,
 			Properties:         props,
+			Relationships:      callRels,
+		})
+
+		// CONTAINS edge: file → recipe (Format A structural-ref).
+		toID := extractor.BuildOperationStructuralRef("just", file.Path, name)
+		entities[fileIdx].Relationships = append(entities[fileIdx].Relationships, types.RelationshipRecord{
+			ToID: toID,
+			Kind: "CONTAINS",
 		})
 	}
 
+	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
+	extractor.TagRelationshipsLanguage(entities, "just")
 	return entities, nil
+}
+
+// stripLineComments removes the portion of each line starting at `#` to
+// end-of-line. Justfile comments are line-terminated; quote handling is
+// minimal but adequate for structural extraction.
+func stripLineComments(src string) string {
+	var b strings.Builder
+	b.Grow(len(src))
+	for _, line := range strings.SplitAfter(src, "\n") {
+		if strings.HasPrefix(line, "#!") {
+			b.WriteString(line)
+			continue
+		}
+		if idx := strings.Index(line, "#"); idx >= 0 {
+			nl := ""
+			if strings.HasSuffix(line, "\n") {
+				nl = "\n"
+			}
+			b.WriteString(line[:idx])
+			b.WriteString(nl)
+			continue
+		}
+		b.WriteString(line)
+	}
+	return b.String()
 }
 
 // findRecipeEnd returns the line number of the last line in a recipe body.
