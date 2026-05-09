@@ -5,12 +5,21 @@
 //	form element         → Kind="SCOPE.Operation",   Subtype="form"         (action attr or "form")
 //	script src include   → Kind="SCOPE.Component",   Subtype="script_include"
 //	link stylesheet      → Kind="SCOPE.Component",   Subtype="style_include"
+//	img src include      → Kind="SCOPE.Component",   Subtype="image_include"
 //	mustache expression  → Kind="SCOPE.Pattern",     Subtype="template_expr"  (dot/filter only)
 //	custom element       → Kind="SCOPE.Component",   Subtype="component"
 //	Vue directive (@/v-) → Kind="SCOPE.Pattern",     Subtype="directive"
 //	Angular ng- attr     → Kind="SCOPE.Pattern",     Subtype="directive"
 //	Jinja2 directive     → Kind="SCOPE.Component",   Subtype="jinja_directive" (block/extends/include/macro/for/if)
 //	form field child     → Kind="SCOPE.UIComponent", Subtype="form_field"   (input/select/textarea/button)
+//
+// Emitted relationships (per issue #373 PORT-RELS-HTML):
+//
+//	IMPORTS  — asset references via <script src>, <link href>, <img src>.
+//	          Edge FromID = file path, ToID = href/src value. Properties:
+//	          local_name (filename basename), source_module (raw href/src),
+//	          imported_name (""). CALLS and CONTAINS are not applicable to
+//	          HTML templates (no functions/classes/methods to model).
 //
 // Registers itself via init() and is imported by registry_gen.go.
 package html
@@ -141,6 +150,12 @@ func walkDocument(root *sitter.Node, file extractor.FileInput) []types.EntityRec
 				entities = append(entities, rec)
 			}
 
+		case "self_closing_tag":
+			// e.g. <img src="..." /> in XHTML-style documents.
+			if rec, ok := visitSelfClosingTag(node, file); ok {
+				entities = append(entities, rec)
+			}
+
 		case "text":
 			recs := visitTextNode(node, file)
 			entities = append(entities, recs...)
@@ -232,8 +247,30 @@ func visitElement(node *sitter.Node, file extractor.FileInput) []types.EntityRec
 					EndLine:      endLine,
 					Signature:    "link rel=stylesheet href=" + href,
 					QualityScore: 0.7,
+					Relationships: []types.RelationshipRecord{
+						buildAssetImportRel(file.Path, href),
+					},
 				})
 			}
+		}
+
+	case "img":
+		src := attrValue(startTag, "src", file.Content)
+		if src != "" {
+			recs = append(recs, types.EntityRecord{
+				Name:         src,
+				Kind:         "SCOPE.Component",
+				Subtype:      "image_include",
+				SourceFile:   file.Path,
+				Language:     "html",
+				StartLine:    startLine,
+				EndLine:      endLine,
+				Signature:    "img src=" + src,
+				QualityScore: 0.65,
+				Relationships: []types.RelationshipRecord{
+					buildAssetImportRel(file.Path, src),
+				},
+			})
 		}
 	}
 
@@ -431,7 +468,133 @@ func visitScriptElement(node *sitter.Node, file extractor.FileInput) (types.Enti
 		EndLine:      endLine,
 		Signature:    "script src=" + src,
 		QualityScore: 0.7,
+		Relationships: []types.RelationshipRecord{
+			buildAssetImportRel(file.Path, src),
+		},
 	}, true
+}
+
+// visitSelfClosingTag handles XHTML-style void elements like
+// <img src="..." />, <link href="..." />, <script src="..." />.
+// The HTML grammar parses these as self_closing_tag nodes rather than as
+// element/script_element wrappers, so we cover them separately here to
+// keep IMPORTS coverage symmetric with the start_tag form.
+func visitSelfClosingTag(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	tagNameNode := childByType(node, "tag_name")
+	if tagNameNode == nil {
+		return types.EntityRecord{}, false
+	}
+	tagName := strings.ToLower(nodeText(tagNameNode, file.Content))
+
+	startLine := int(node.StartPoint().Row) + 1
+	endLine := int(node.EndPoint().Row) + 1
+
+	switch tagName {
+	case "img":
+		src := attrValue(node, "src", file.Content)
+		if src == "" {
+			return types.EntityRecord{}, false
+		}
+		return types.EntityRecord{
+			Name:         src,
+			Kind:         "SCOPE.Component",
+			Subtype:      "image_include",
+			SourceFile:   file.Path,
+			Language:     "html",
+			StartLine:    startLine,
+			EndLine:      endLine,
+			Signature:    "img src=" + src,
+			QualityScore: 0.65,
+			Relationships: []types.RelationshipRecord{
+				buildAssetImportRel(file.Path, src),
+			},
+		}, true
+
+	case "script":
+		src := attrValue(node, "src", file.Content)
+		if src == "" {
+			return types.EntityRecord{}, false
+		}
+		return types.EntityRecord{
+			Name:         src,
+			Kind:         "SCOPE.Component",
+			Subtype:      "script_include",
+			SourceFile:   file.Path,
+			Language:     "html",
+			StartLine:    startLine,
+			EndLine:      endLine,
+			Signature:    "script src=" + src,
+			QualityScore: 0.7,
+			Relationships: []types.RelationshipRecord{
+				buildAssetImportRel(file.Path, src),
+			},
+		}, true
+
+	case "link":
+		rel := attrValue(node, "rel", file.Content)
+		if strings.ToLower(rel) != "stylesheet" {
+			return types.EntityRecord{}, false
+		}
+		href := attrValue(node, "href", file.Content)
+		if href == "" {
+			return types.EntityRecord{}, false
+		}
+		return types.EntityRecord{
+			Name:         href,
+			Kind:         "SCOPE.Component",
+			Subtype:      "style_include",
+			SourceFile:   file.Path,
+			Language:     "html",
+			StartLine:    startLine,
+			EndLine:      endLine,
+			Signature:    "link rel=stylesheet href=" + href,
+			QualityScore: 0.7,
+			Relationships: []types.RelationshipRecord{
+				buildAssetImportRel(file.Path, href),
+			},
+		}, true
+	}
+	return types.EntityRecord{}, false
+}
+
+// buildAssetImportRel constructs the IMPORTS relationship contract used by
+// HTML asset references (issue #373). The cross-file resolver consumes:
+//
+//	local_name    — the filename basename of the asset (e.g. "app.js" from
+//	                "/static/app.js"). Best-effort identifier for the
+//	                imported binding inside this file.
+//	source_module — the raw href/src value as written in source.
+//	imported_name — empty: HTML asset includes do not introduce named
+//	                bindings the way `import { x } from "y"` does.
+func buildAssetImportRel(fromPath, ref string) types.RelationshipRecord {
+	return types.RelationshipRecord{
+		FromID: fromPath,
+		ToID:   ref,
+		Kind:   "IMPORTS",
+		Properties: map[string]string{
+			"local_name":    assetBasename(ref),
+			"source_module": ref,
+			"imported_name": "",
+		},
+	}
+}
+
+// assetBasename returns the trailing path segment of a URL or file ref,
+// stripped of any query string or fragment. Used for the local_name
+// property on HTML IMPORTS edges. Falls back to the full ref if no
+// path segment can be extracted.
+func assetBasename(ref string) string {
+	s := ref
+	if i := strings.IndexAny(s, "?#"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	if s == "" {
+		return ref
+	}
+	return s
 }
 
 // visitTextNode scans text content for {{ }} mustache template expressions.
