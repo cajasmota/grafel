@@ -1009,6 +1009,76 @@ type Shape interface {
 	}
 }
 
+// TestCallsRelationship_ReceiverTypeStampedOnSelfMethodCall covers the same-
+// package method-dispatch fix for issue #148. When a method body calls another
+// method on its OWN receiver (e.g. `mx.handle(...)` inside `(mx *Mux) Mount`),
+// the resulting CALLS edge must carry a `receiver_type` property so the
+// resolver can bind it to the local `Mux.handle` entity. Without this stamp
+// the resolver falls back to bare-name lookup and ambiguity drops the edge
+// into the bug-resolver bucket — which is the residual go-chi failure mode.
+func TestCallsRelationship_ReceiverTypeStampedOnSelfMethodCall(t *testing.T) {
+	src := `package chi
+
+type Mux struct{}
+
+func (mx *Mux) handle(pattern string) {}
+
+func (mx *Mux) Mount(pattern string) {
+	mx.handle(pattern)
+}
+`
+	records := extractRecords(t, src, "mux.go")
+	mount := findEntity(records, "Mux.Mount")
+	if mount == nil {
+		t.Fatal("Mux.Mount method not found")
+	}
+	var hit *types.RelationshipRecord
+	for i := range mount.Relationships {
+		r := &mount.Relationships[i]
+		if r.Kind == "CALLS" && r.ToID == "handle" {
+			hit = r
+			break
+		}
+	}
+	if hit == nil {
+		t.Fatalf("expected CALLS → handle on Mux.Mount, got %+v", mount.Relationships)
+	}
+	if hit.Properties == nil || hit.Properties["receiver_type"] != "Mux" {
+		t.Errorf("expected Properties[receiver_type]=Mux on self-method CALLS edge, got %+v", hit.Properties)
+	}
+}
+
+// TestCallsRelationship_ReceiverTypeNotStampedOnForeignSelector ensures the
+// receiver_type stamp is conservative: a selector_expression whose operand is
+// NOT the enclosing method's receiver parameter must NOT acquire the stamp,
+// otherwise an unrelated `obj.Get(...)` call would falsely advertise a
+// same-package method dispatch.
+func TestCallsRelationship_ReceiverTypeNotStampedOnForeignSelector(t *testing.T) {
+	src := `package chi
+
+type Mux struct{}
+
+func (mx *Mux) Mount(other *Mux, pattern string) {
+	other.handle(pattern)
+}
+
+func (mx *Mux) handle(pattern string) {}
+`
+	records := extractRecords(t, src, "mux.go")
+	mount := findEntity(records, "Mux.Mount")
+	if mount == nil {
+		t.Fatal("Mux.Mount method not found")
+	}
+	for _, r := range mount.Relationships {
+		if r.Kind != "CALLS" || r.ToID != "handle" {
+			continue
+		}
+		if r.Properties != nil && r.Properties["receiver_type"] != "" {
+			t.Errorf("did not expect receiver_type stamp on `other.handle` call; got %+v", r.Properties)
+		}
+	}
+}
+
 // ---- IMPORTS ----------------------------------------------------------------
 
 func TestImportsRelationship_KindIsIMPORTS(t *testing.T) {
