@@ -549,6 +549,15 @@ var stdlibBareNames = map[string]struct{}{
 	"namedtuple":      {},
 	"RawConfigParser": {},
 	"ConfigParser":    {},
+	// Rust core builtins (Issue #91 — top Rust bare-name bug-extractors).
+	// Conservative selection: only the assert_eq/assert_ne macros which
+	// have no plausible collision with user identifiers in any language.
+	// `Ok`/`Err`/`Some`/`None` deliberately NOT added: bare-name lookup
+	// is global, and those identifiers commonly appear as user-defined
+	// constants/variants in Go/JS codebases (#94 lesson — bias to misses).
+	// Per-language Rust prelude allowlist filed as follow-up.
+	"assert_eq": {},
+	"assert_ne": {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist
@@ -748,6 +757,32 @@ var knownExternalPackages = map[string]struct{}{
 	// Ruby
 	"rails":        {},
 	"activerecord": {},
+	// C# / .NET (Issue #91 — top non-Python language by import-bug)
+	"system":    {}, // System.*, System.Text.*, System.Collections.*
+	"microsoft": {}, // Microsoft.EntityFrameworkCore, Microsoft.AspNetCore.*
+	// Java EE / Jakarta (Issue #91 — Spring/JPA imports)
+	"jakarta": {}, // jakarta.persistence, jakarta.validation
+	// Rust crates (Issue #91 — top Rust import-bug roots)
+	"tokio":               {},
+	"actix_web":           {},
+	"actix":               {},
+	"serde":               {},
+	"serde_json":          {},
+	"anyhow":              {},
+	"thiserror":           {},
+	"tracing":             {},
+	"tracing_subscriber":  {},
+	"clap":                {},
+	"reqwest":             {},
+	"futures":             {},
+	"async_trait":         {},
+	"opentelemetry":       {},
+	// NOTE (Issue #91): PHP namespace roots (Symfony\, Doctrine\, App\)
+	// and Rust `::`-delimited use statements (tokio::net::TcpListener)
+	// are NOT catalogued here because the synth segment-extractor only
+	// splits on '.' and rejects '\'. Filed as follow-up to add separator
+	// support. Adding lowercase keys without resolver support would do
+	// nothing — and risks future false positives once support lands.
 }
 
 // isKindLikePrefix reports whether s is a short, alphabetic kind name
