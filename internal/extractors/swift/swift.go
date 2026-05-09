@@ -2,10 +2,30 @@
 //
 // Extracted entities:
 //   - function_declaration  → Kind="SCOPE.Operation", Subtype="function"
-//   - class_declaration     → Kind="SCOPE.Component", Subtype="class"
+//   - class_declaration     → Kind="SCOPE.Component", Subtype="class"|"struct"|"enum"
 //   - struct_declaration    → Kind="SCOPE.Component", Subtype="struct"
 //   - protocol_declaration  → Kind="SCOPE.Component", Subtype="protocol"
 //   - import_declaration    → IMPORTS relationship
+//
+// Issue #381 (PORT-RELS-SWIFT) — emits the same three relationship kinds the
+// other ported extractors emit:
+//
+//   - IMPORTS: every `import Module` carries Properties{local_name,
+//     source_module, imported_name} matching the Java contract (#120) and
+//     the Python schema (#93). For `import Module.Submodule.Symbol` the
+//     leaf becomes local_name/imported_name and the prefix is source_module.
+//   - CALLS: every `call_expression` inside a function body emits one CALLS
+//     edge per unique target. Bare `foo()` → ToID="foo". Navigation
+//     `obj.method()` → ToID="method"; when the receiver is a known
+//     same-class field with a declared type T the edge carries
+//     Properties["receiver_type"]=T (mirrors Java's "T.method" goal in
+//     property form). Self-recursion is dropped, keywords (`self`, `super`,
+//     `Self`) are filtered.
+//   - CONTAINS: class/struct/enum declarations attach one CONTAINS edge per
+//     function declared in the body, with the structural-ref shape
+//     `scope:operation:method:swift:<file>:<name>` (Format A, #144) so the
+//     resolver can disambiguate same-named methods declared in different
+//     files.
 //
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
@@ -44,7 +64,12 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	return entities, nil
 }
 
-// walkNode performs a depth-first traversal.
+// walkNode performs a depth-first traversal of the CST.
+//
+// Issue #381: class/struct/enum declarations attach a CONTAINS edge per
+// function declared inside the body, and every function body is scanned for
+// call_expression nodes that yield CALLS edges. import_declaration emits
+// IMPORTS with the property contract.
 func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
@@ -53,39 +78,349 @@ func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRe
 	switch node.Type() {
 	case "class_declaration":
 		// In smacker/go-tree-sitter/swift the node type "class_declaration"
-		// is used for both class and struct declarations. Distinguish by the
-		// first keyword child: "class" → class, "struct" → struct.
+		// is used for class, struct and enum declarations. Distinguish by
+		// the first keyword child.
 		subtype := "class"
 		if node.ChildCount() > 0 {
 			kw := node.Child(0)
-			if kw != nil && string(file.Content[kw.StartByte():kw.EndByte()]) == "struct" {
-				subtype = "struct"
+			if kw != nil {
+				switch string(file.Content[kw.StartByte():kw.EndByte()]) {
+				case "struct":
+					subtype = "struct"
+				case "enum":
+					subtype = "enum"
+				}
 			}
 		}
-		if rec, ok := buildComponent(node, file, subtype); ok {
-			*out = append(*out, rec)
+		rec, ok := buildComponent(node, file, subtype)
+		if !ok {
+			for i := range node.ChildCount() {
+				walkNode(node.Child(int(i)), file, out)
+			}
+			return
 		}
-	case "struct_declaration":
-		if rec, ok := buildComponent(node, file, "struct"); ok {
-			*out = append(*out, rec)
+		classIdx := len(*out)
+		*out = append(*out, rec)
+		// CONTAINS: every function declared in the class body.
+		body := findClassBody(node)
+		fieldTypes := collectFieldTypes(body, file.Content)
+		if body != nil {
+			before := len(*out)
+			// Walk children of body collecting nested entities. Pass field
+			// types through walkBody so call extraction inside same-class
+			// functions can resolve receivers to declared types.
+			walkBody(body, file, fieldTypes, rec.Name, out)
+			after := len(*out)
+			for k := before; k < after; k++ {
+				child := &(*out)[k]
+				if child.Kind != "SCOPE.Operation" {
+					continue
+				}
+				toID := extractor.BuildOperationStructuralRef("swift", file.Path, child.Name)
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: toID,
+						Kind: "CONTAINS",
+					})
+			}
 		}
+		return
+
 	case "protocol_declaration":
 		if rec, ok := buildComponent(node, file, "protocol"); ok {
 			*out = append(*out, rec)
 		}
+		// Protocols may declare functions; recurse so they appear as
+		// SCOPE.Operation entities (no CONTAINS by parity choice — they
+		// are abstract requirements without bodies).
+		for i := range node.ChildCount() {
+			walkNode(node.Child(int(i)), file, out)
+		}
+		return
+
 	case "function_declaration":
+		// Top-level (file-scoped) function with no enclosing class context.
 		if rec, ok := buildOperation(node, file, "function"); ok {
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(findFunctionBody(node), file.Content, rec.Name, nil)...)
 			*out = append(*out, rec)
 		}
+		return
+
 	case "import_declaration":
 		if rec, ok := buildImport(node, file); ok {
 			*out = append(*out, rec)
 		}
+		return
 	}
 
 	for i := range node.ChildCount() {
 		walkNode(node.Child(int(i)), file, out)
 	}
+}
+
+// walkBody recurses into a class/struct/enum body, emitting Operation
+// entities for each function and propagating field types so CALLS edges
+// inside method bodies can carry a receiver_type property.
+func walkBody(node *sitter.Node, file extractor.FileInput, fieldTypes map[string]string, _ string, out *[]types.EntityRecord) {
+	if node == nil {
+		return
+	}
+	if node.Type() == "function_declaration" {
+		if rec, ok := buildOperation(node, file, "function"); ok {
+			rec.Relationships = append(rec.Relationships,
+				extractCallRelationships(findFunctionBody(node), file.Content, rec.Name, fieldTypes)...)
+			*out = append(*out, rec)
+		}
+		return
+	}
+	for i := range node.ChildCount() {
+		walkBody(node.Child(int(i)), file, fieldTypes, "", out)
+	}
+}
+
+// findClassBody returns the body child of a class/struct/enum declaration.
+func findClassBody(node *sitter.Node) *sitter.Node {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		t := ch.Type()
+		if t == "class_body" || t == "enum_class_body" || t == "protocol_body" {
+			return ch
+		}
+	}
+	return nil
+}
+
+// findFunctionBody returns the function_body child of a function_declaration.
+func findFunctionBody(node *sitter.Node) *sitter.Node {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch.Type() == "function_body" {
+			return ch
+		}
+	}
+	return nil
+}
+
+// collectFieldTypes scans a class body's property_declaration children and
+// returns a map of property name → declared type name. Only single-pattern
+// properties with an explicit type_annotation participate. Used to attach
+// receiver_type to CALLS edges where the receiver is a known same-class
+// field.
+func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for i := 0; i < int(body.ChildCount()); i++ {
+		ch := body.Child(i)
+		if ch.Type() != "property_declaration" {
+			continue
+		}
+		var name, typ string
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			c := ch.Child(j)
+			switch c.Type() {
+			case "pattern":
+				// First simple_identifier under the pattern is the name.
+				for k := 0; k < int(c.ChildCount()); k++ {
+					if c.Child(k).Type() == "simple_identifier" {
+						name = string(src[c.Child(k).StartByte():c.Child(k).EndByte()])
+						break
+					}
+				}
+			case "type_annotation":
+				// Walk descendants for the first type_identifier.
+				typ = firstDescendantText(c, src, "type_identifier")
+			}
+		}
+		if name != "" && typ != "" {
+			out[name] = typ
+		}
+	}
+	return out
+}
+
+// firstDescendantText returns the source text of the first descendant of
+// node whose type is `kind`, or "" when none exists.
+func firstDescendantText(node *sitter.Node, src []byte, kind string) string {
+	if node == nil {
+		return ""
+	}
+	if node.Type() == kind {
+		return string(src[node.StartByte():node.EndByte()])
+	}
+	for i := 0; i < int(node.ChildCount()); i++ {
+		if t := firstDescendantText(node.Child(i), src, kind); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+// swiftCallStop lists Swift keywords / self-references that the parser
+// surfaces as call_expression heads but are NOT real call targets. Mirrors
+// the Kotlin extractor's keyword filter (#106).
+var swiftCallStop = map[string]bool{
+	"self":  true,
+	"Self":  true,
+	"super": true,
+}
+
+// extractCallRelationships returns one CALLS RelationshipRecord per unique
+// call_expression descendant of body. The target name is the trailing
+// simple_identifier of the call's expression. FromID is left empty so
+// buildDocument substitutes the caller's entity ID at emit time.
+//
+// When the receiver is a known same-class field, the edge carries
+// Properties["receiver_type"]=<DeclaredType>. Self-recursion is dropped to
+// match Python/Go extractor dedup semantics.
+func extractCallRelationships(body *sitter.Node, src []byte, callerName string, fieldTypes map[string]string) []types.RelationshipRecord {
+	if body == nil || callerName == "" {
+		return nil
+	}
+	calls := findAllNodes(body, "call_expression")
+	if len(calls) == 0 {
+		return nil
+	}
+	type key struct {
+		target, recv string
+	}
+	seen := make(map[key]bool, len(calls))
+	rels := make([]types.RelationshipRecord, 0, len(calls))
+	for _, call := range calls {
+		target, recvRoot := swiftCallTarget(call, src)
+		if target == "" || target == callerName {
+			continue
+		}
+		if swiftCallStop[target] {
+			continue
+		}
+		recvType := ""
+		if recvRoot != "" && fieldTypes != nil {
+			recvType = fieldTypes[recvRoot]
+		}
+		k := key{target, recvType}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		rel := types.RelationshipRecord{
+			ToID: target,
+			Kind: "CALLS",
+		}
+		if recvType != "" {
+			rel.Properties = map[string]string{"receiver_type": recvType}
+		}
+		rels = append(rels, rel)
+	}
+	return rels
+}
+
+// swiftCallTarget resolves the callee name from a call_expression node and
+// returns the receiver root identifier (or "" when the call is bare).
+//
+// Tree-sitter-swift shapes a call as `<expression> <call_suffix>` where
+// `<call_suffix>` carries the parenthesized argument list / trailing
+// closure that distinguishes a real method invocation from a plain
+// property reference. We require a `call_suffix` sibling before emitting
+// any CALLS edge.
+//
+// For a `simple_identifier` head (`foo()`) we return that identifier.
+// For a `navigation_expression` head (`a.b.c()`) the callee is the
+// rightmost `simple_identifier` of the trailing `navigation_suffix`, NOT
+// the leftmost descendant. The receiver root is the leftmost
+// simple_identifier of the chain — used to look up a declared field type.
+func swiftCallTarget(call *sitter.Node, src []byte) (target, receiverRoot string) {
+	if !hasCallSuffix(call) {
+		return "", ""
+	}
+	if call.ChildCount() == 0 {
+		return "", ""
+	}
+	first := call.Child(0)
+	switch first.Type() {
+	case "simple_identifier":
+		return string(src[first.StartByte():first.EndByte()]), ""
+	case "navigation_expression":
+		// Trailing navigation_suffix gives the method name.
+		var lastSuffix *sitter.Node
+		for i := 0; i < int(first.ChildCount()); i++ {
+			ch := first.Child(i)
+			if ch.Type() == "navigation_suffix" {
+				lastSuffix = ch
+			}
+		}
+		if lastSuffix == nil {
+			return "", ""
+		}
+		var method string
+		for i := int(lastSuffix.ChildCount()) - 1; i >= 0; i-- {
+			ch := lastSuffix.Child(i)
+			if ch.Type() == "simple_identifier" {
+				method = string(src[ch.StartByte():ch.EndByte()])
+				break
+			}
+		}
+		if method == "" {
+			return "", ""
+		}
+		// Receiver root: descend through nested navigation_expression
+		// children until we hit the leftmost simple_identifier.
+		root := first
+		for {
+			if root.ChildCount() == 0 {
+				break
+			}
+			c := root.Child(0)
+			if c.Type() == "navigation_expression" {
+				root = c
+				continue
+			}
+			if c.Type() == "simple_identifier" {
+				return method, string(src[c.StartByte():c.EndByte()])
+			}
+			break
+		}
+		return method, ""
+	}
+	return "", ""
+}
+
+// hasCallSuffix reports whether a call_expression node has a `call_suffix`
+// child — its presence (parentheses or trailing closure) is what makes the
+// node a real invocation rather than a bare property reference.
+func hasCallSuffix(call *sitter.Node) bool {
+	for i := 0; i < int(call.ChildCount()); i++ {
+		if call.Child(i).Type() == "call_suffix" {
+			return true
+		}
+	}
+	return false
+}
+
+// findAllNodes returns every descendant of root whose Type() is in kinds.
+func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+	if root == nil {
+		return nil
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, k := range kinds {
+		set[k] = true
+	}
+	var out []*sitter.Node
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if set[n.Type()] {
+			out = append(out, n)
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	return out
 }
 
 // buildComponent creates a SCOPE.Component entity.
@@ -95,13 +430,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 		return types.EntityRecord{}, false
 	}
 	// Python signature format: "type Name" (keyword + name only)
-	keyword := subtype
-	if keyword == "struct" {
-		keyword = "type"
-	} else {
-		keyword = "type"
-	}
-	sig := keyword + " " + name
+	sig := "type " + name
 	return types.EntityRecord{
 		Name:               name,
 		Kind:               "SCOPE.Component",
@@ -121,7 +450,6 @@ func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string)
 	if name == "" {
 		return types.EntityRecord{}, false
 	}
-	// Python signature format: "func name() -> ReturnType" (no body)
 	sig := methodSignature(file.Content, node)
 	return types.EntityRecord{
 		Name:               name,
@@ -143,12 +471,10 @@ func methodSignature(src []byte, node *sitter.Node) string {
 	if name == "" {
 		return ""
 	}
-	// Find return type by looking for "->" in the first line
 	raw := firstLine(src, node)
 	returnType := ""
 	if idx := strings.Index(raw, "->"); idx >= 0 {
 		rt := strings.TrimSpace(raw[idx+2:])
-		// Remove trailing brace
 		if braceIdx := strings.Index(rt, "{"); braceIdx >= 0 {
 			rt = strings.TrimSpace(rt[:braceIdx])
 		}
@@ -157,39 +483,89 @@ func methodSignature(src []byte, node *sitter.Node) string {
 	return "func " + name + "()" + returnType
 }
 
-// buildImport creates a SCOPE.Component entity with an IMPORTS relationship.
+// buildImport creates a SCOPE.Component entity carrying an IMPORTS
+// relationship. Issue #381 — the IMPORTS edge follows the same Properties
+// contract Java emits (#120) and the Python schema (#93):
+//
+//	Properties["local_name"]    — the leaf identifier introduced by the
+//	                              import. For `import Foundation` this is
+//	                              "Foundation"; for `import os.log.Logger`
+//	                              this is "Logger".
+//	Properties["source_module"] — the dotted prefix. For `import
+//	                              Foundation` this is "Foundation"; for
+//	                              `import os.log.Logger` this is "os.log".
+//	Properties["imported_name"] — equal to local_name.
 func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	raw := extractImportPath(node, file.Content)
 	if raw == "" {
 		return types.EntityRecord{}, false
 	}
 
+	leaf := raw
+	mod := raw
+	if dot := strings.LastIndexByte(raw, '.'); dot > 0 {
+		leaf = raw[dot+1:]
+		mod = raw[:dot]
+	}
+	props := map[string]string{
+		"local_name":    leaf,
+		"source_module": mod,
+		"imported_name": leaf,
+	}
+
+	// Top-level package is the first segment.
+	top := raw
+	if idx := strings.Index(raw, "."); idx >= 0 {
+		top = raw[:idx]
+	}
+
 	return types.EntityRecord{
-		Name:       raw,
+		Name:       top,
 		Kind:       "SCOPE.Component",
 		SourceFile: file.Path,
 		Language:   "swift",
 		Relationships: []types.RelationshipRecord{
 			{
-				FromID: file.Path,
-				ToID:   raw,
-				Kind:   "IMPORTS",
+				FromID:     file.Path,
+				ToID:       raw,
+				Kind:       "IMPORTS",
+				Properties: props,
 			},
 		},
 	}, true
 }
 
-// extractImportPath extracts the module name from an import_declaration.
+// extractImportPath extracts the module path from an import_declaration. The
+// path may be a single identifier (`Foundation`) or a dotted chain
+// (`os.log.Logger`). Submodule access is rare in Swift but supported.
 func extractImportPath(node *sitter.Node, src []byte) string {
-	for i := range node.ChildCount() {
-		ch := node.Child(int(i))
-		t := ch.Type()
-		if t == "identifier" || t == "path_component" || t == "qualified_name" ||
-			t == "simple_identifier" || t == "type_identifier" {
-			return string(src[ch.StartByte():ch.EndByte()])
+	// Collect all identifier-like child segments and join with '.'.
+	var parts []string
+	var collect func(n *sitter.Node)
+	collect = func(n *sitter.Node) {
+		if n == nil {
+			return
+		}
+		t := n.Type()
+		if t == "simple_identifier" || t == "type_identifier" {
+			parts = append(parts, string(src[n.StartByte():n.EndByte()]))
+			return
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			collect(n.Child(i))
 		}
 	}
-	// Fallback
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch.Type() == "import" {
+			continue
+		}
+		collect(ch)
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, ".")
+	}
+	// Fallback.
 	full := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
 	return strings.TrimPrefix(full, "import ")
 }
@@ -199,11 +575,10 @@ func extractName(node *sitter.Node, src []byte) string {
 	if child := node.ChildByFieldName("name"); child != nil {
 		return string(src[child.StartByte():child.EndByte()])
 	}
-	// Fallback: first type_identifier or simple_identifier that isn't a keyword.
 	keywords := map[string]bool{
 		"class": true, "struct": true, "protocol": true, "func": true,
 		"import": true, "open": true, "public": true, "internal": true,
-		"private": true, "final": true, "override": true,
+		"private": true, "final": true, "override": true, "enum": true,
 	}
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
