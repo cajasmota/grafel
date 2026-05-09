@@ -183,16 +183,15 @@ var AllDispositions = []Disposition{
 //
 // The fix groups patterns by the language that owns the runtime-dispatch
 // idiom. Patterns that are intrinsically reflective regardless of language
-// (template-built names) live in crossLangDynamicPatterns. Receiver-anchored
-// reflection APIs that have a unique fully-qualified shape (Go's
-// `plugin.Lookup`, JVM `Method.invoke` / `Class.forName().newInstance()`)
-// stay tight enough to be safe even when language is unknown — they go in
-// the per-language slice plus a small "safe-anchored" cross-language slice.
+// (template-built names like `${x}`) live in crossLangDynamicPatterns.
+// Receiver-anchored reflection APIs that have a unique fully-qualified
+// shape (Go's `plugin.Lookup`, JVM `Method.invoke` /
+// `Class.forName().newInstance()`) stay in their per-language slice.
 //
 // Language identifiers follow the structural-ref `<lang>:` segment
 // convention: "python", "go", "javascript" (also "typescript"), "ruby",
 // "java" (also "kotlin", "scala", "jvm"). Unknown / empty languages fall
-// back to crossLangDynamicPatterns + safeAnchoredDynamicPatterns only.
+// back to crossLangDynamicPatterns only.
 var (
 	pythonDynamicPatterns = []*regexp.Regexp{
 		// Bare-identifier forms: per-language extractors emit only the
