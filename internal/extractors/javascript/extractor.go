@@ -88,6 +88,26 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		language: file.Language,
 	}
 
+	// Issue #421 — collect import bindings BEFORE walking the body so
+	// receiver-typed CALLS edges materialised inside class methods can
+	// look up the imported source file at emission time. Bindings is
+	// indexed by the local name introduced into the file scope; the
+	// receiver binder consults it when the receiver's declared type
+	// matches a binding.
+	x.imports = x.collectFileImports(root)
+	x.importByLocal = make(map[string]*importBinding, len(x.imports))
+	for i := range x.imports {
+		b := &x.imports[i]
+		if _, dup := x.importByLocal[b.localName]; dup {
+			// Last-writer-wins is unsafe; drop both. The receiver
+			// binder leaves the bare method name in place when the
+			// type lookup misses, which is the conservative bias.
+			delete(x.importByLocal, b.localName)
+			continue
+		}
+		x.importByLocal[b.localName] = b
+	}
+
 	var extractErr error
 	func() {
 		defer func() {
@@ -95,7 +115,7 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 				extractErr = fmt.Errorf("javascript extractor panicked: %v", r)
 			}
 		}()
-		x.walk(root, "")
+		x.walk(root, "", nil)
 		x.collectImports(root)
 	}()
 
@@ -134,6 +154,36 @@ type extractor struct {
 	language      string
 	entities      []types.EntityRecord
 	relationships []types.RelationshipRecord
+
+	// imports / importByLocal — issue #421. Populated once per file
+	// before walk() runs. Receiver-typed CALLS emission consults
+	// importByLocal[<typeName>] to resolve a typed receiver to the
+	// source file declaring the type. importByLocal is nil-safe;
+	// callers must check the lookup result.
+	imports       []importBinding
+	importByLocal map[string]*importBinding
+}
+
+// classBindings tracks receiver-typed identifiers visible inside a
+// class body — typed property declarations and constructor parameters
+// (TypeScript's "parameter property" shape). Map key is the field /
+// parameter name; value is the declared leaf type identifier.
+//
+// Issue #421 — NestJS @Inject() style:
+//
+//	class UsersController {
+//	  constructor(private readonly userService: UserService) {}
+//	  list() { return this.userService.findAll(); }
+//	}
+//
+// `userService` is BOTH a constructor parameter and an implicit class
+// field; the binder treats them identically.
+type classBindings struct {
+	// fields maps field/parameter name → declared type identifier (leaf).
+	fields map[string]string
+	// className is the enclosing class's name. Empty when we're not
+	// inside a class body.
+	className string
 }
 
 // nodeText returns the UTF-8 text of a tree-sitter node.
@@ -194,14 +244,18 @@ func (x *extractor) emitWithRels(name, kind string, n *sitter.Node, subtype stri
 
 // walk performs a depth-first traversal of the CST, dispatching on node type.
 // parentClass is non-empty when inside a class body (used to tag methods).
-func (x *extractor) walk(n *sitter.Node, parentClass string) {
+// cb carries the field-type bindings for the enclosing class so receiver-
+// typed CALLS edges can resolve `this.<field>.<method>` and `<field>.<method>`
+// shapes to the import-declared type (issue #421). cb is nil outside a
+// class body.
+func (x *extractor) walk(n *sitter.Node, parentClass string, cb *classBindings) {
 	if n == nil {
 		return
 	}
 
 	switch n.Type() {
 	case "function_declaration":
-		x.handleFunctionDeclaration(n, parentClass)
+		x.handleFunctionDeclaration(n, parentClass, cb)
 		return // do not recurse into function body for name extraction
 
 	case "class_declaration":
@@ -209,7 +263,7 @@ func (x *extractor) walk(n *sitter.Node, parentClass string) {
 		return // recurse is handled inside
 
 	case "method_definition":
-		x.handleMethodDefinition(n, parentClass)
+		x.handleMethodDefinition(n, parentClass, cb)
 		return
 
 	case "interface_declaration":
@@ -222,28 +276,28 @@ func (x *extractor) walk(n *sitter.Node, parentClass string) {
 
 	case "lexical_declaration", "variable_declaration":
 		// const/let foo = () => {} or = function() {}
-		x.handleVariableDeclaration(n, parentClass)
+		x.handleVariableDeclaration(n, parentClass, cb)
 		// still recurse for nested structures at statement level
 		return
 
 	case "export_statement":
 		// Recurse into the declaration inside the export.
-		x.walkChildren(n, parentClass)
+		x.walkChildren(n, parentClass, cb)
 		return
 	}
 
-	x.walkChildren(n, parentClass)
+	x.walkChildren(n, parentClass, cb)
 }
 
-func (x *extractor) walkChildren(n *sitter.Node, parentClass string) {
+func (x *extractor) walkChildren(n *sitter.Node, parentClass string, cb *classBindings) {
 	count := int(n.ChildCount())
 	for i := 0; i < count; i++ {
-		x.walk(n.Child(i), parentClass)
+		x.walk(n.Child(i), parentClass, cb)
 	}
 }
 
 // handleFunctionDeclaration handles: function foo(...) { ... }
-func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string) {
+func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string, cb *classBindings) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" {
@@ -255,12 +309,18 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 	}
 	sig := fmt.Sprintf("function %s", name)
 	body := n.ChildByFieldName("body")
-	rels := x.extractCallRelationships(body, name)
+	// Issue #421 — top-level functions can still take typed parameters
+	// the receiver binder needs to consult (e.g. `function callIt(svc:
+	// UserService) { svc.findOne(); }`). Build a function-scope binding
+	// frame from the params node and pass it as the cb override.
+	params := n.ChildByFieldName("parameters")
+	frame := x.functionParamFrame(params, cb)
+	rels := x.extractCallRelationships(body, name, frame)
 	x.emitWithRels(name, "SCOPE.Operation", n, subtype, sig, rels)
 
 	// Recurse into the body for nested declarations.
 	if body != nil {
-		x.walkChildren(body, parentClass)
+		x.walkChildren(body, parentClass, cb)
 	}
 }
 
@@ -282,9 +342,16 @@ func (x *extractor) handleClassDeclaration(n *sitter.Node) {
 	x.emit(className, "SCOPE.Component", n, "class", fmt.Sprintf("class %s", className))
 
 	body := n.ChildByFieldName("body")
+	// Issue #421 — collect the class's typed property declarations and
+	// constructor parameter properties so receiver-typed CALLS inside
+	// any method body can resolve `this.<field>` to the declared type.
+	cb := &classBindings{className: className, fields: map[string]string{}}
+	if body != nil {
+		x.collectClassFields(body, cb.fields)
+	}
 	if body != nil {
 		before := len(x.entities)
-		x.walkChildren(body, className)
+		x.walkChildren(body, className, cb)
 		after := len(x.entities)
 		for k := before; k < after; k++ {
 			child := &x.entities[k]
@@ -306,14 +373,19 @@ func (x *extractor) handleClassDeclaration(n *sitter.Node) {
 }
 
 // handleMethodDefinition handles method definitions inside class bodies.
-func (x *extractor) handleMethodDefinition(n *sitter.Node, _ string) {
+func (x *extractor) handleMethodDefinition(n *sitter.Node, _ string, cb *classBindings) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" || name == "constructor" {
 		return
 	}
 	body := n.ChildByFieldName("body")
-	rels := x.extractCallRelationships(body, name)
+	// Issue #421 — merge the class's field bindings with the method's
+	// own typed parameters so a method param can shadow / extend the
+	// receiver-type lookup scope (parameters win on conflict).
+	params := n.ChildByFieldName("parameters")
+	frame := x.functionParamFrame(params, cb)
+	rels := x.extractCallRelationships(body, name, frame)
 	x.emitWithRels(name, "SCOPE.Operation", n, "method", fmt.Sprintf("method %s", name), rels)
 }
 
@@ -338,18 +410,18 @@ func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
 }
 
 // handleVariableDeclaration handles: const/let foo = (...) => {...} or = function(...) {...}
-func (x *extractor) handleVariableDeclaration(n *sitter.Node, parentClass string) {
+func (x *extractor) handleVariableDeclaration(n *sitter.Node, parentClass string, cb *classBindings) {
 	count := int(n.ChildCount())
 	for i := 0; i < count; i++ {
 		child := n.Child(i)
 		if child.Type() == "variable_declarator" {
-			x.handleVariableDeclarator(child, parentClass)
+			x.handleVariableDeclarator(child, parentClass, cb)
 		}
 	}
 }
 
 // handleVariableDeclarator processes a single variable_declarator node.
-func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string) {
+func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string, cb *classBindings) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" {
@@ -368,10 +440,12 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string)
 			subtype = "method"
 		}
 		body := valueNode.ChildByFieldName("body")
-		rels := x.extractCallRelationships(body, name)
+		params := valueNode.ChildByFieldName("parameters")
+		frame := x.functionParamFrame(params, cb)
+		rels := x.extractCallRelationships(body, name, frame)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = (...) =>", name), rels)
 		if body != nil {
-			x.walkChildren(body, parentClass)
+			x.walkChildren(body, parentClass, cb)
 		}
 
 	case "function", "function_expression":
@@ -380,10 +454,12 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string)
 			subtype = "method"
 		}
 		body := valueNode.ChildByFieldName("body")
-		rels := x.extractCallRelationships(body, name)
+		params := valueNode.ChildByFieldName("parameters")
+		frame := x.functionParamFrame(params, cb)
+		rels := x.extractCallRelationships(body, name, frame)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = function", name), rels)
 		if body != nil {
-			x.walkChildren(body, parentClass)
+			x.walkChildren(body, parentClass, cb)
 		}
 	}
 }
@@ -393,15 +469,24 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string)
 // computed from the function child of the call:
 //
 //	identifier               → bare name      (e.g. "foo")
-//	member_expression a.b.c  → trailing prop  (e.g. "c")
+//	member_expression a.b.c  → trailing prop  (e.g. "c"), or — when the
+//	                           receiver chain types via class fields /
+//	                           function parameters AND the type was
+//	                           imported from a relative path — a Format A
+//	                           structural-ref keyed on the imported file
+//	                           (issue #421).
 //	parenthesized_expression → inner target   (best-effort)
 //
 // FromID is left empty so buildDocument substitutes the caller's entity ID
-// at emit time. ToID is the bare callee name; the resolver rewrites
-// cross-file references in pass 5. Self-recursion is dropped to match the
-// Python and Go extractor dedup semantics. The require() call form is
-// excluded so it does not double-count as both a call and an import.
-func (x *extractor) extractCallRelationships(body *sitter.Node, callerName string) []types.RelationshipRecord {
+// at emit time. ToID is either a bare callee name OR a structural-ref
+// stub. Self-recursion is dropped on the BARE form only — a structural-
+// ref to the same name in another file is a legitimate cross-file CALLS
+// edge and must survive.
+//
+// frame carries the receiver-type bindings visible in the caller's scope:
+// merged class fields (from the enclosing class body) + the caller's own
+// typed parameters. nil means "no typed receiver lookup possible".
+func (x *extractor) extractCallRelationships(body *sitter.Node, callerName string, frame *classBindings) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -412,8 +497,15 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
-		target := x.callTarget(call)
-		if target == "" || target == callerName || target == "require" {
+		target := x.callTarget(call, frame)
+		if target == "" || target == "require" {
+			continue
+		}
+		// Self-recursion drop applies to the bare leaf only. A
+		// structural-ref dotted target whose leaf matches callerName
+		// would still be a legitimate cross-file binding (the leaf
+		// happens to share a name across files), so we keep it.
+		if !strings.Contains(target, ":") && target == callerName {
 			continue
 		}
 		if seen[target] {
@@ -432,7 +524,14 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 // Returns the trailing identifier of the function expression, or "" when the
 // callee is an unsupported expression form (numeric literal, complex
 // destructuring, etc.).
-func (x *extractor) callTarget(call *sitter.Node) string {
+//
+// Issue #421 — when the function child is a member_expression of the form
+// `<receiver>.<method>` AND the receiver types via the supplied frame to
+// a relatively-imported class, callTarget returns a Format A structural-
+// ref ("scope:operation:method:<lang>:<resolved_file>:<method>") instead
+// of the bare trailing identifier. This lets the resolver bind the call
+// to the imported class's method without going through bare-name lookup.
+func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		// new_expression uses "constructor" field.
@@ -446,9 +545,19 @@ func (x *extractor) callTarget(call *sitter.Node) string {
 		return x.nodeText(fn)
 	case "member_expression":
 		prop := fn.ChildByFieldName("property")
-		if prop != nil {
-			return x.nodeText(prop)
+		if prop == nil {
+			return ""
 		}
+		method := x.nodeText(prop)
+		// Issue #421 — try receiver typing first. The lookup walks
+		// `<recv>.<method>` and `this.<recv>.<method>` shapes; on a
+		// hit it returns the structural-ref keyed on the imported
+		// source file. On a miss we fall through to the bare method
+		// name (current behaviour).
+		if id := x.receiverTypedTarget(fn, method, frame); id != "" {
+			return id
+		}
+		return method
 	case "parenthesized_expression":
 		for i := 0; i < int(fn.ChildCount()); i++ {
 			ch := fn.Child(i)
@@ -492,12 +601,33 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 
 // collectImports scans the tree for ES6 import statements and CommonJS
 // require() calls, emitting a SCOPE.Component entity per unique module.
+//
+// Issue #421 — IMPORTS edges now carry the per-binding property
+// contract Python (#93) and Java (#120) emit so the cross-file
+// resolver pre-pass can build a per-file binding table:
+//
+//	Properties["local_name"]    — identifier introduced into the file
+//	Properties["source_module"] — canonical dotted module path
+//	Properties["imported_name"] — original symbol name (pre-alias)
+//	Properties["wildcard"]      — "1" for `import * as ns from "..."`
+//
+// One IMPORTS edge per BINDING is emitted (so `import { A, B } from
+// "mod"` produces two edges); the parent SCOPE.Component entity is
+// shared across bindings of the same module so the existing dedup
+// shape is preserved.
 func (x *extractor) collectImports(root *sitter.Node) {
 	seen := make(map[string]bool)
-	x.collectImportsNode(root, seen)
+	// Group import bindings by module spec so we can attach all
+	// bindings as separate IMPORTS edges on a single import entity.
+	bindingsByModule := map[string][]*importBinding{}
+	for i := range x.imports {
+		b := &x.imports[i]
+		bindingsByModule[b.importPath] = append(bindingsByModule[b.importPath], b)
+	}
+	x.collectImportsNode(root, seen, bindingsByModule)
 }
 
-func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool) {
+func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool, bindingsByModule map[string][]*importBinding) {
 	if n == nil {
 		return
 	}
@@ -513,7 +643,7 @@ func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool) {
 				module := strings.Trim(raw, `"'`+"`")
 				if module != "" && !seen[module] {
 					seen[module] = true
-					x.emitImport(module, n)
+					x.emitImport(module, n, bindingsByModule[module])
 				}
 			}
 		}
@@ -533,7 +663,7 @@ func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool) {
 						module := strings.Trim(raw, `"'`+"`")
 						if module != "" && !seen[module] {
 							seen[module] = true
-							x.emitImport(module, n)
+							x.emitImport(module, n, nil)
 						}
 						break
 					}
@@ -544,14 +674,52 @@ func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool) {
 
 	count := int(n.ChildCount())
 	for i := 0; i < count; i++ {
-		x.collectImportsNode(n.Child(i), seen)
+		x.collectImportsNode(n.Child(i), seen, bindingsByModule)
 	}
 }
 
 // emitImport emits a SCOPE.Component entity for an imported module.
-func (x *extractor) emitImport(module string, n *sitter.Node) {
+//
+// Issue #421 — when the module's import_statement introduced one or
+// more named/default/namespace bindings, every binding becomes its own
+// IMPORTS RelationshipRecord on the entity, carrying the property
+// contract the cross-file resolver pre-pass consumes. Side-effect-only
+// imports (`import "./polyfills";`) and CommonJS require() calls
+// without destructuring fall back to a single IMPORTS edge with no
+// per-binding properties so existing downstream consumers still see
+// at least one edge per module.
+func (x *extractor) emitImport(module string, n *sitter.Node, bindings []*importBinding) {
 	// Use the full module path as the entity name for parity with Python indexer.
 	start, end := lines(n)
+	rels := make([]types.RelationshipRecord, 0, max1(len(bindings)))
+	if len(bindings) == 0 {
+		rels = append(rels, types.RelationshipRecord{
+			FromID: x.filePath,
+			ToID:   module,
+			Kind:   "IMPORTS",
+		})
+	} else {
+		for _, b := range bindings {
+			props := map[string]string{
+				"local_name":    b.localName,
+				"source_module": b.sourceModule,
+				"imported_name": b.importedName,
+				"import_path":   b.importPath,
+			}
+			if b.wildcard {
+				props["wildcard"] = "1"
+			}
+			if b.resolvedFile != "" {
+				props["resolved_file"] = b.resolvedFile
+			}
+			rels = append(rels, types.RelationshipRecord{
+				FromID:     x.filePath,
+				ToID:       module,
+				Kind:       "IMPORTS",
+				Properties: props,
+			})
+		}
+	}
 	e := types.EntityRecord{
 		Name:       module,
 		Kind:       "SCOPE.Component",
@@ -568,16 +736,19 @@ func (x *extractor) emitImport(module string, n *sitter.Node) {
 		},
 		EnrichmentStatus: types.StatusPending,
 		QualityScore:     1.0,
-		Relationships: []types.RelationshipRecord{
-			{
-				FromID: x.filePath,
-				ToID:   module,
-				Kind:   "IMPORTS",
-			},
-		},
+		Relationships:    rels,
 	}
 	e.ID = e.ComputeID()
 	x.entities = append(x.entities, e)
+}
+
+// max1 returns the larger of n and 1. Used to pre-size relationship
+// slices without ever zero-allocating when n is 0.
+func max1(n int) int {
+	if n < 1 {
+		return 1
+	}
+	return n
 }
 
 // boolStr returns "true" or "false" as a string.

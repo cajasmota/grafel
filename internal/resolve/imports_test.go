@@ -812,3 +812,109 @@ func TestResolveImports_FileLocalCollisionDropsBinding(t *testing.T) {
 		t.Fatalf("expected 0 rewrites under local-name collision, got %d", stats.CallsRewritten)
 	}
 }
+
+// TestModulesForFile_JSTS covers the JS/TS dispatch added in issue
+// #421. JavaScript and TypeScript do not have a language-level package
+// concept; modules are file-relative. The module-derivation strips the
+// recognised extension and replaces forward slashes with dots, plus a
+// conservative single-strip of the well-known `src.` source root used
+// by Nest, Angular, and most npm packages.
+func TestModulesForFile_JSTS(t *testing.T) {
+	cases := []struct {
+		path string
+		want string // canonical post-strip form
+	}{
+		{"src/services/user.service.ts", "services.user.service"},
+		{"src/users/users.controller.ts", "users.users.controller"},
+		{"app/models/user.ts", "models.user"},
+		{"lib/util/format.js", "util.format"},
+		// .tsx / .jsx and CommonJS variants.
+		{"src/components/Button.tsx", "components.Button"},
+		{"src/index.mjs", "index"},
+	}
+	for _, tc := range cases {
+		got := modulesForFile(tc.path)
+		found := false
+		for _, m := range got {
+			if m == tc.want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("modulesForFile(%q): expected %q in %v", tc.path, tc.want, got)
+		}
+	}
+	// File at repo root with no source-root strip — single dotted form.
+	got := modulesForFile("index.ts")
+	if len(got) == 0 || got[0] != "index" {
+		t.Errorf("modulesForFile(index.ts): expected [index ...], got %v", got)
+	}
+	// Unknown extension returns nil.
+	if got := modulesForFile("README.md"); got != nil {
+		t.Errorf("modulesForFile(README.md): expected nil, got %v", got)
+	}
+}
+
+// TestResolveImports_TypeScriptCrossFileNamedImport (issue #421) —
+// a TypeScript named import `{ UserService } from "./services/user.service"`
+// emits an IMPORTS edge carrying local_name=UserService,
+// source_module=src.users.services.user.service (canonical post-strip
+// form). A bare-name CALLS target "UserService" in the same file
+// rewrites to the entity ID of the UserService class declared in
+// src/users/services/user.service.ts. This is the resolver-side
+// fallback path complementing the extractor-side structural-ref
+// emission for the dominant `<recv>.<method>` shape.
+func TestResolveImports_TypeScriptCrossFileNamedImport(t *testing.T) {
+	records := []types.EntityRecord{
+		// Import entity in users.controller.ts.
+		{
+			Name:       "./services/user.service",
+			Kind:       "SCOPE.Component",
+			Subtype:    "import",
+			SourceFile: "src/users/users.controller.ts",
+			Language:   "typescript",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/users/users.controller.ts",
+				ToID:   "./services/user.service",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "UserService",
+					"source_module": "src.users.services.user.service",
+					"imported_name": "UserService",
+				},
+			}},
+		},
+		// Class UserService in the imported file.
+		{
+			ID:         "deadbeefcafef00d",
+			Name:       "UserService",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/users/services/user.service.ts",
+			Language:   "typescript",
+		},
+		// Caller method in the controller — bare CALLS target
+		// "UserService" (e.g. emitted by `new UserService()` shape).
+		{
+			ID:         "1111222233334444",
+			Name:       "constructor",
+			Kind:       "SCOPE.Operation",
+			SourceFile: "src/users/users.controller.ts",
+			Language:   "typescript",
+			Relationships: []types.RelationshipRecord{{
+				ToID: "UserService",
+				Kind: "CALLS",
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 TS rewrite, got %d (considered=%d)",
+			stats.CallsRewritten, stats.CallsConsidered)
+	}
+	if got := records[2].Relationships[0].ToID; got != "deadbeefcafef00d" {
+		t.Fatalf("expected target rewritten to deadbeefcafef00d, got %q", got)
+	}
+}
