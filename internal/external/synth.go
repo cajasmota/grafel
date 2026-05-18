@@ -828,7 +828,156 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		}
 	}
 
+	// Issue #485 PHP wave-3 — Laravel facade dotted receivers. The PHP
+	// extractor converts `Schema::create('users', ...)` into a CALLS
+	// stub `Schema.create`; `Auth::guard('web')` → `Auth.guard`;
+	// `Validator::make(...)` → `Validator.make`. The receiver is the
+	// short alias of a Laravel facade (Illuminate\Support\Facades\...)
+	// imported into the file. The `use` import edge can't pre-bind the
+	// dotted call (the resolver only rewrites bare-name CALLS), so
+	// these previously landed in dotted-other. Fold to ext:illuminate
+	// (the Laravel/Illuminate ecosystem placeholder already on the
+	// allowlist). Lang-gated to PHP so the facade short names — `Auth`,
+	// `Cache`, `DB`, `Mail`, `Log`, `Hash`, etc. — don't shadow user
+	// types in C#, Java, Kotlin, Swift, Python, or Go.
+	if lang == "php" {
+		if dot := strings.IndexByte(name, '.'); dot > 0 {
+			recv := name[:dot]
+			if _, ok := phpFacadeReceivers[recv]; ok {
+				return "illuminate", "package", true
+			}
+			// Doctrine / Symfony dotted receivers — receiver is a
+			// well-known type (EntityManager, Stopwatch, CommandTester,
+			// Application, ...). Fold to ext:symfony / ext:doctrine via
+			// the receiver→namespace map. Conservative: list members
+			// are all PHP-specific framework types.
+			if pkg, ok := phpDottedReceivers[recv]; ok {
+				return pkg, "package", true
+			}
+			// Leaf-driven fallback (issue #485 PHP wave-3): the receiver
+			// is a project class (controller / test case) extending a
+			// framework base, and the leaf is a Laravel/Symfony framework
+			// method already enumerated in phpBareNames (`render`,
+			// `redirectToRoute`, `createForm`, `addFlash`, `assertSame`,
+			// `createClient`, `getContainer`, `assertResponseIsSuccessful`,
+			// ...). These calls dispatch to a framework parent class at
+			// runtime; classify them as external rather than leaving them
+			// as `dotted-other` bug-extractor. Fold to ext:symfony as the
+			// dominant ecosystem origin for these inherited helpers; the
+			// PHP gate keeps the leaf-set scoped.
+			leaf := name[dot+1:]
+			if _, ok := phpBareNames[leaf]; ok {
+				return "symfony", "package", true
+			}
+			// Doctrine magic-finder fallback (issue #485 PHP wave-3):
+			// a Doctrine\Persistence\ObjectRepository (or
+			// EntityRepository subclass) exposes runtime-generated
+			// finder methods of the shape `findBy<Field>`,
+			// `findOneBy<Field>`, `countBy<Field>`. The receiver is
+			// almost always a project class with the conventional
+			// `*Repository` suffix. Fold to ext:doctrine when both
+			// shape predicates match.
+			if strings.HasSuffix(recv, "Repository") &&
+				(strings.HasPrefix(leaf, "findBy") ||
+					strings.HasPrefix(leaf, "findOneBy") ||
+					strings.HasPrefix(leaf, "countBy")) {
+				return "doctrine", "package", true
+			}
+		}
+	}
+
 	return "", "", false
+}
+
+// phpFacadeReceivers lists Laravel facade short names that appear as
+// the receiver of a dotted CALLS edge after the PHP extractor strips
+// `::method` from `Facade::method(...)`. Fold every match to
+// `ext:illuminate` (the Illuminate/Laravel ecosystem placeholder).
+// Issue #485 PHP wave-3.
+var phpFacadeReceivers = map[string]struct{}{
+	"Schema":         {},
+	"Auth":           {},
+	"Validator":      {},
+	"DB":             {},
+	"Cache":          {},
+	"Config":         {},
+	"Route":          {},
+	"Storage":        {},
+	"Mail":           {},
+	"Notification":   {},
+	"Log":            {},
+	"Hash":           {},
+	"Crypt":          {},
+	"Cookie":         {},
+	"Session":        {},
+	"Request":        {},
+	"Response":       {},
+	"Redirect":       {},
+	"URL":            {},
+	"View":           {},
+	"Lang":           {},
+	"App":            {},
+	"Artisan":        {},
+	"Broadcast":      {},
+	"Bus":            {},
+	"Event":          {},
+	"File":           {},
+	"Gate":           {},
+	"Password":       {},
+	"Queue":          {},
+	"Redis":          {},
+	"Schedule":       {},
+	"Blade":          {},
+	"Date":           {},
+	"Hashing":        {},
+	"JWTAuth":        {}, // tymon/jwt-auth (extremely common)
+	"Socialite":      {}, // laravel/socialite
+	"Inspiring":      {}, // Inspiring::quote() — used by laravel-quickstart Inspire command
+}
+
+// phpDottedReceivers lists non-facade dotted receivers whose receiver
+// short name is a well-known Symfony / Doctrine / PHPUnit class. The
+// value is the ecosystem package the receiver belongs to ("symfony",
+// "doctrine", "phpunit"), used as the canonical placeholder.
+// Issue #485 PHP wave-3.
+var phpDottedReceivers = map[string]string{
+	// Symfony Console / DependencyInjection / Stopwatch / HttpFoundation
+	"Stopwatch":       "symfony",
+	"CommandTester":   "symfony",
+	"Application":     "symfony",
+	"SymfonyStyle":    "symfony",
+	"InputArgument":   "symfony",
+	"InputOption":     "symfony",
+	"Request":         "symfony",
+	"Response":        "symfony",
+	"JsonResponse":    "symfony",
+	"RedirectResponse": "symfony",
+	"FormBuilder":     "symfony",
+	"FormFactory":     "symfony",
+	"Form":            "symfony",
+	"Locales":         "symfony", // Symfony Intl Locales
+	"Countries":       "symfony",
+	"Languages":       "symfony",
+	"Currencies":      "symfony",
+
+	// Doctrine ORM / DBAL receivers
+	"EntityManager":   "doctrine",
+	"EntityManagerInterface": "doctrine",
+	"QueryBuilder":    "doctrine",
+	"Query":           "doctrine",
+	"ArrayCollection": "doctrine",
+	"Collection":      "doctrine",
+	"Criteria":        "doctrine",
+	"Connection":      "doctrine",
+	"Schema":          "doctrine", // Doctrine\DBAL\Schema (also Laravel facade — facade map fires first)
+
+	// Twig
+	"Environment":     "twig",
+	"TwigFunction":    "twig",
+	"TwigFilter":      "twig",
+
+	// PSR
+	"LoggerInterface": "psr",
 }
 
 // csharpDottedReceivers is the C#-language-gated allowlist of well-known
@@ -6547,6 +6696,500 @@ var phpBareNames = map[string]struct{}{
 	"validator":  {},
 	"optional":   {},
 	"tap":        {},
+
+	// Laravel Schema Builder / Blueprint column types and modifiers
+	// (issue #485 PHP wave-3). Migration closures receive a `$table`
+	// Blueprint and call column-type methods like `$table->string('name')`
+	// or `$table->timestamps()`; the PHP extractor receiver-strips to the
+	// bare leaf. These are unambiguous DDL column declarators that
+	// don't collide with user-defined methods in non-PHP languages
+	// (`increments`, `rememberToken`, `tinyInteger`, etc. are PHP-Laravel
+	// specific) but stay PHP-gated for safety.
+	"increments":      {},
+	"bigIncrements":   {},
+	"tinyIncrements":  {},
+	"smallIncrements": {},
+	"mediumIncrements": {},
+	"bigInteger":      {},
+	"smallInteger":    {},
+	"tinyInteger":     {},
+	"mediumInteger":   {},
+	"unsignedInteger": {},
+	"unsignedBigInteger": {},
+	"unsignedSmallInteger": {},
+	"unsignedTinyInteger": {},
+	"unsignedMediumInteger": {},
+	"string":          {},
+	"char":            {},
+	"text":            {},
+	"mediumText":      {},
+	"longText":        {},
+	"binary":          {},
+	"timestamp":       {},
+	"timestamps":      {},
+	"timestampsTz":    {},
+	"nullableTimestamps": {},
+	"softDeletes":     {},
+	"softDeletesTz":   {},
+	"rememberToken":   {},
+	"morphs":          {},
+	"nullableMorphs":  {},
+	"uuidMorphs":      {},
+	"nullableUuidMorphs": {},
+	"uuid":            {},
+	"ipAddress":       {},
+	"macAddress":      {},
+	"year":            {},
+	"time":            {},
+	"timeTz":          {},
+	"dateTime":        {},
+	"dateTimeTz":      {},
+	"unique":          {},
+	"primary":         {},
+	"foreign":         {},
+	"references":      {},
+	"on":              {},
+	"onDelete":        {},
+	"onUpdate":        {},
+	"cascadeOnDelete": {},
+	"nullOnDelete":    {},
+	"restrictOnDelete": {},
+	"cascadeOnUpdate": {},
+	"nullable":        {},
+	"default":         {},
+	"useCurrent":      {},
+	"useCurrentOnUpdate": {},
+	"unsigned":        {},
+	"autoIncrement":   {},
+	"after":           {},
+	"comment":         {},
+	"change":          {},
+	"dropColumn":      {},
+	"dropIfExists":    {},
+	"dropForeign":     {},
+	"dropUnique":      {},
+	"dropPrimary":     {},
+	"dropIndex":       {},
+	"renameColumn":    {},
+	"rename":          {},
+	"enum":            {},
+
+	// Laravel testing DSL — receiver-stripped Browser / HTTP test helpers
+	// emitted by `$this->visit('/')->see('foo')->press('Submit')` chains
+	// in TestCase classes. PHP-only — `see` / `press` / `factory` do not
+	// collide with user verbs in cross-language work because the gate
+	// fires only on lang=="php".
+	"see":           {},
+	"dontSee":       {},
+	"press":         {},
+	"click":         {},
+	"visit":         {},
+	"type":          {},
+	"submitForm":    {},
+	"submit":        {},
+	"assertResponseOk": {},
+	"assertResponseStatus": {},
+	"assertViewHas": {},
+	"assertSessionHas": {},
+	"assertRedirectedTo": {},
+	"factory":       {},
+	"str_random":    {},
+	"str_slug":      {},
+	"snake_case":    {},
+	"studly_case":   {},
+	"camel_case":    {},
+	"kebab_case":    {},
+
+	// Laravel Auth / Request / Session helpers — receiver-stripped from
+	// `Auth::check()`, `$request->wantsJson()`, `$request->ajax()`,
+	// `Auth::guest()`, etc.
+	"check":      {},
+	"guest":      {},
+	"wantsJson":  {},
+	"ajax":       {},
+	"pjax":       {},
+	"secure":     {},
+	"fullUrl":    {},
+	"path":       {},
+	"input":      {},
+	"all":        {},
+	"only":       {},
+	"except":     {},
+	"has":        {},
+	"filled":     {},
+	"missing":    {},
+	"boolean":    {},
+	"date":       {},
+	"flash":      {},
+	"forget":     {},
+	"keep":       {},
+	"reflash":    {},
+	"pull":       {},
+	"push":       {},
+
+	// Laravel global path helpers (`app_path`, `base_path`, `config_path`,
+	// `storage_path`, etc. are autoloaded as bare callables in framework
+	// code). Mirrors the `config` / `env` / `route` entries above.
+	"app_path":        {},
+	"base_path":       {},
+	"config_path":     {},
+	"storage_path":    {},
+	"public_path":     {},
+	"database_path":   {},
+	"resource_path":   {},
+	"mix":             {},
+	"abort":           {},
+	"abort_if":        {},
+	"abort_unless":    {},
+	"action":          {},
+	"bcrypt":          {},
+	"broadcast":       {},
+	"cache":           {},
+	"collect":         {},
+	"decrypt":         {},
+	"encrypt":         {},
+	"info":            {},
+	"logger":          {},
+	"method_field":    {},
+	"policy":          {},
+	"report":          {},
+	"rescue":          {},
+	"trans":           {},
+	"trans_choice":    {},
+	"__":              {},
+
+	// Laravel Route DSL — additional facade method leaves from
+	// `Route::group(...)` / `Route::middleware(...)` / `Route::resource()`
+	// receiver-strip.
+	"group":     {},
+	"namespace": {},
+	"resource":  {},
+	"resources": {},
+	"name":      {},
+	"as":        {},
+	"any":       {},
+	"match":     {},
+	"redirect_": {}, // sentinel; method name is `redirect` (handled above)
+
+	// Doctrine ORM EntityManager / Repository / QueryBuilder / Collection
+	// methods (issue #485 PHP wave-3). Receiver-stripped from
+	// `$em->persist($e)`, `$qb->setParameter(...)`, etc. These are
+	// canonical Doctrine API verbs; conservatively PHP-gated.
+	"persist":         {},
+	"flush":           {},
+	"removeElement":   {},
+	"contains":        {},
+	"isEmpty":         {},
+	"add":             {},
+	"clear":           {},
+	"detach":          {},
+	"merge":           {},
+	"setMaxResults":   {},
+	"setFirstResult":  {},
+	"setParameter":    {},
+	"setParameters":   {},
+	"getQuery":        {},
+	"getResult":       {},
+	"getArrayResult":  {},
+	"getScalarResult": {},
+	"getOneOrNullResult": {},
+	"getSingleResult": {},
+	"getSingleScalarResult": {},
+	"findOneBy":       {},
+	"findBy":          {},
+	"findAll":         {},
+	"andWhere":        {},
+	"orWhere":         {},
+	"innerJoin":       {},
+	"matching":        {},
+	"andHaving":       {},
+	"orHaving":        {},
+	"expr":            {},
+	"createQueryBuilder": {},
+	"createQuery":     {},
+	"createNamedQuery": {},
+	"getRepository":   {},
+	"getEntityManager": {},
+
+	// Symfony Form / Validator / OptionsResolver / Console helpers
+	// (issue #485 PHP wave-3). Receiver-stripped from
+	// `$form->isValid()`, `$resolver->setDefaults(...)`,
+	// `$io->success(...)`, `$io->ask(...)`.
+	"isValid":     {},
+	"isSubmitted": {},
+	"handleRequest": {},
+	"setDefaults":  {},
+	"setAllowedTypes": {},
+	"setAllowedValues": {},
+	"setRequired":  {},
+	"setDefined":   {},
+	"setNormalizer": {},
+	"success":      {},
+	"warning":      {},
+	"error":        {},
+	"caution":      {},
+	"note":         {},
+	"ask":          {},
+	"askHidden":    {},
+	"askQuestion":  {},
+	"confirm":      {},
+	"choice":       {},
+	"progressStart": {},
+	"progressAdvance": {},
+	"progressFinish": {},
+	"section":      {},
+	"title":        {},
+	"listing":      {},
+	"table":        {},
+	"writeln":      {},
+	"write":        {},
+	"setArgument":  {},
+	"getArgument":  {},
+	"setOption":    {},
+	"getOption":    {},
+	"setApplication": {},
+
+	// Symfony Console Command lifecycle (`$this->initialize`, etc.)
+	"initialize": {},
+	"interact":   {},
+	"configure":  {},
+
+	// Symfony WebTestCase / KernelTestCase / BrowserKit assertions
+	// (issue #485 PHP wave-3). Receiver-stripped from
+	// `$client->loginUser($u)`, `$this->createClient()`, etc.
+	"createClient":              {},
+	"loginUser":                 {},
+	"getContainer":              {},
+	"bootKernel":                {},
+	"ensureKernelShutdown":      {},
+	"shutdown":                  {},
+	"assertResponseIsSuccessful": {},
+	"assertResponseRedirects":   {},
+	"assertResponseStatusCodeSame": {},
+	"assertResponseHasHeader":   {},
+	"assertSelectorExists":      {},
+	"assertSelectorTextContains": {},
+	"assertSelectorTextSame":    {},
+	"assertSelectorNotExists":   {},
+	"assertPageTitleContains":   {},
+	"assertPageTitleSame":       {},
+	"assertEmailCount":          {},
+	"assertEmailHtmlBodyContains": {},
+	"assertEmailTextBodyContains": {},
+	"assertEmailAddressContains": {},
+	"selectButton":              {},
+	"selectLink":                {},
+	"clickLink":                 {},
+	"setController":             {},
+
+	// PHPUnit Assert API surface — used directly via static or
+	// `$this->assert*` in TestCase descendants. Receiver-stripped to
+	// the bare assertion verb. The PHP gate keeps these from
+	// shadowing user methods in non-PHP code.
+	"assertSame":           {},
+	"assertNotSame":        {},
+	"assertEquals":         {},
+	"assertNotEquals":      {},
+	"assertTrue":           {},
+	"assertFalse":          {},
+	"assertNull":           {},
+	"assertNotNull":        {},
+	"assertEmpty":          {},
+	"assertNotEmpty":       {},
+	"assertContains":       {},
+	"assertNotContains":    {},
+	"assertCount":          {},
+	"assertGreaterThan":    {},
+	"assertLessThan":       {},
+	"assertInstanceOf":     {},
+	"assertNotInstanceOf":  {},
+	"assertMatchesRegularExpression": {},
+	"assertStringContainsString": {},
+	"assertStringStartsWith": {},
+	"assertStringEndsWith":   {},
+	"assertArrayHasKey":     {},
+	"assertArrayNotHasKey":  {},
+	"assertObjectHasAttribute": {},
+	"expectException":       {},
+	"expectExceptionMessage": {},
+	"expectExceptionMessageMatches": {},
+	"markTestSkipped":       {},
+	"markTestIncomplete":    {},
+	"setThrowable":          {},
+	"setHint":               {},
+	"setPost":               {},
+
+	// PHP built-in functions called as bare names (issue #485 PHP
+	// wave-3). PHP autoloads the global function namespace, so every
+	// `array_map`, `implode`, `random_int`, `mb_strlen` call shows up
+	// as a bare CALLS target after the extractor. These are stdlib
+	// functions with `_` separators (PHP's snake_case stdlib
+	// convention) — high-volume in framework code, near-zero collision
+	// risk against PascalCase / camelCase user identifiers in other
+	// languages but PHP-gated anyway for safety. The names already in
+	// stdlibBareNames (`filter`, `map`, `range`, `len`, ...) are NOT
+	// duplicated here.
+	"array_map":        {},
+	"array_filter":     {},
+	"array_reduce":     {},
+	"array_unique":     {},
+	"array_merge":      {},
+	"array_values":     {},
+	"array_keys":       {},
+	"array_combine":    {},
+	"array_flip":       {},
+	"array_search":     {},
+	"array_slice":      {},
+	"array_splice":     {},
+	"array_diff":       {},
+	"array_intersect":  {},
+	"array_walk":       {},
+	"array_key_exists": {},
+	"array_key_first":  {},
+	"array_key_last":   {},
+	"array_fill":       {},
+	"array_sum":        {},
+	"array_product":    {},
+	"in_array":         {},
+	"is_array":         {},
+	"is_string":        {},
+	"is_int":           {},
+	"is_numeric":       {},
+	"is_null":          {},
+	"is_bool":          {},
+	"is_callable":      {},
+	"is_object":        {},
+	"is_a":             {},
+	"is_subclass_of":   {},
+	"is_dir":           {},
+	"is_file":          {},
+	"implode":          {},
+	"explode":          {},
+	"trim":             {},
+	"ltrim":            {},
+	"rtrim":            {},
+	"strlen":           {},
+	"strpos":           {},
+	"strrpos":          {},
+	"substr":           {},
+	"sprintf":          {},
+	"printf":           {},
+	"str_replace":      {},
+	"str_repeat":       {},
+	"str_split":        {},
+	"str_contains":     {},
+	"str_starts_with":  {},
+	"str_ends_with":    {},
+	"str_pad":          {},
+	"str_shuffle":      {},
+	"str_word_count":   {},
+	"strtolower":       {},
+	"strtoupper":       {},
+	"ucfirst":          {},
+	"lcfirst":          {},
+	"ucwords":          {},
+	"preg_match":       {},
+	"preg_match_all":   {},
+	"preg_replace":     {},
+	"preg_split":       {},
+	"preg_quote":       {},
+	"random_int":       {},
+	"random_bytes":     {},
+	"mt_rand":          {},
+	"rand":             {},
+	"min":              {},
+	"max":              {},
+	"abs":              {},
+	"floor":            {},
+	"ceil":             {},
+	"round":            {},
+	"intval":           {},
+	"floatval":         {},
+	"strval":           {},
+	"boolval":          {},
+	"settype":          {},
+	"gettype":          {},
+	"mb_strlen":        {},
+	"mb_substr":        {},
+	"mb_strtolower":    {},
+	"mb_strtoupper":    {},
+	"mb_convert_encoding": {},
+	"json_encode":      {},
+	"json_decode":      {},
+	"serialize":        {},
+	"unserialize":      {},
+	"base64_encode":    {},
+	"base64_decode":    {},
+	"hash":             {},
+	"md5":              {},
+	"sha1":             {},
+	"crc32":            {},
+	"password_hash":    {},
+	"password_verify":  {},
+	"shuffle":          {},
+	"sort":             {},
+	"rsort":            {},
+	"usort":            {},
+	"uksort":           {},
+	"uasort":           {},
+	"asort":            {},
+	"ksort":            {},
+	"empty":            {},
+	"isset":            {},
+	"compact":          {},
+	"extract":          {},
+	"func_get_args":    {},
+	"func_num_args":    {},
+	"call_user_func":   {},
+	"call_user_func_array": {},
+	"get_class":        {},
+	"get_object_vars":  {},
+	"property_exists":  {},
+	"method_exists":    {},
+	"class_exists":     {},
+	"interface_exists": {},
+	"function_exists":  {},
+	"defined":          {},
+	"file_exists":      {},
+	"file_get_contents": {},
+	"file_put_contents": {},
+	"unlink":           {},
+	"rmdir":            {},
+	"scandir":          {},
+	"glob":             {},
+	"pathinfo":         {},
+	// `mkdir`, `realpath`, `basename`, `dirname` intentionally OMITTED:
+	// they are claimed by pythonBareNames as Python-only stdlib helpers
+	// (issue #447) and the cross-language gate test
+	// TestPythonDjangoDRFDSLBareNames_NotClassifiedForOtherLanguages
+	// asserts they do not classify under other languages.
+	"microtime":        {},
+	"mktime":           {},
+	"strtotime":        {},
+	"date_create":      {},
+	"date_format":      {},
+
+	// Common PHP / Symfony class constructor bare-name receivers
+	// (the `new Foo()` pattern's class identifier surfaces as a bare
+	// CALLS target after the extractor strips the `new` keyword).
+	// Conservative selection — limited to PHP-specific framework
+	// classes whose identifier would not collide with user types in
+	// non-PHP languages.
+	"DateTimeImmutable": {},
+	"DateTime":          {},
+	"RuntimeException":  {},
+	"LogicException":    {},
+	"InvalidArgumentException": {},
+	"OutOfBoundsException":     {},
+	"UnexpectedValueException": {},
+	"Email":             {},
+	"ArrayCollection":   {},
+	"Stopwatch":         {},
+	"SymfonyStyle":      {},
+	"Application":       {},
+	"CommandTester":     {},
+	"InputArgument":     {},
+	"InputOption":       {},
 }
 
 // pythonBareNames is the Python-language-gated bare-name stop-list
@@ -8122,6 +8765,34 @@ var knownExternalPackages = map[string]struct{}{
 	"laravel":    {},
 	"illuminate": {},
 	"psr":        {},
+	// PHP testing / common third-party roots (issue #485 PHP wave-3).
+	// PHPUnit lives at `PHPUnit\...`; Pest (modern Laravel testing)
+	// installs assertions under `Pest\...`. Monolog, Carbon (Nesbot),
+	// Guzzle, Faker, and Composer's autoloader are top-N transitive
+	// imports across symfony-demo and laravel-quickstart `use`
+	// statements that previously fell into bug-extractor.
+	"phpunit":   {},
+	"pest":      {},
+	"pestphp":   {},
+	"monolog":   {},
+	"nesbot":    {},
+	"carbon":    {},
+	"guzzle":    {},
+	"guzzlehttp": {},
+	"fakerphp":  {},
+	"composer":  {},
+	"phpstan":   {},
+	"prophecy":  {},
+	"mockery":   {},
+	"webmozart": {},
+	"ramsey":    {},
+	"sebastian": {},
+	"phpoption": {},
+	"swiftmailer": {},
+	"league":    {},
+	"intervention": {},
+	"spatie":    {},
+	"barryvdh":  {},
 	// C / C++ ecosystem (Issue #44 — spdlog bug-rate reduction). Header-
 	// only libraries (spdlog, fmt, gtest, gmock, Catch2) and common
 	// system / third-party C++ roots. The `std` allowlist key already
