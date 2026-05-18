@@ -1304,6 +1304,27 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 				return "function", true
 			}
 		}
+		// Ktor server DSL HTTP-verb routing — `get("/x") { ... }`,
+		// `post(...)`, `put(...)`, `delete(...)`, `patch(...)`,
+		// `head(...)`, `options(...)` are extension functions on
+		// `Route` / `Routing` declared in `io.ktor.server.routing.*`.
+		// The Kotlin extractor receiver-strips them and the lowercase
+		// HTTP-verb names collide trivially with generic property
+		// accessors / Java-style getters (`Repository.get`,
+		// `Cache.put`), so #106's safer-bias rule rejected them from
+		// kotlinBareNames. We gate them on the source file having a
+		// genuine `io.ktor.server.*` import — same precision model as
+		// the Go chi-router gate (#131): the routing-DSL extension
+		// functions can only originate from a Ktor server import, and
+		// files that don't import Ktor keep the safer-bias miss.
+		//
+		// In the ktor-samples corpus these verbs are the single largest
+		// bug-resolver cohort (~310 of 647 unresolved CALLS).
+		if hasKtorServerImport(fromImports) {
+			if _, ok := kotlinKtorRoutingVerbs[name]; ok {
+				return "function", true
+			}
+		}
 	}
 	if lang == "scala" {
 		if _, ok := scalaBareNames[name]; ok {
@@ -1964,6 +1985,54 @@ func hasGoChiImport(imports map[string]bool) bool {
 	}
 	for p := range goChiImportPaths {
 		if imports[p] {
+			return true
+		}
+	}
+	return false
+}
+
+// kotlinKtorRoutingVerbs is the Kotlin-language-gated + Ktor-server-import-
+// gated bare-name allowlist for the HTTP-verb routing-DSL functions.
+// Ktor exposes them as extension functions on `io.ktor.server.routing.Route`
+// (and through the `routing { ... }` builder on `Application`); the
+// kotlin extractor receiver-strips them (`get("/x") { ... }` → bare
+// `get`), and the lowercase verb names collide trivially with generic
+// property accessors / Java-style getters (`Repository.get`, `Cache.put`),
+// so #106's safer-bias rule rejected them from kotlinBareNames.
+//
+// Used by stdlibFunction (kotlin branch) gated on BOTH lang=="kotlin"
+// AND hasKtorServerImport(fromImports). On the ktor-samples corpus
+// these verbs are the single largest bug-resolver cohort (~310 of 647
+// unresolved CALLS at the PR #471 baseline).
+//
+// Refs #44 #435 #456.
+var kotlinKtorRoutingVerbs = map[string]struct{}{
+	"get":     {},
+	"post":    {},
+	"put":     {},
+	"delete":  {},
+	"patch":   {},
+	"head":    {},
+	"options": {},
+}
+
+// hasKtorServerImport reports whether the source file's import set
+// contains any `io.ktor.server.*` path — the precise signal that the
+// file is using the Ktor server DSL. Same precision model as the Go
+// chi-router gate (#131): the routing-DSL extension functions
+// (`get`/`post`/`put`/`delete`/`patch`/`head`/`options` on `Route`)
+// can only originate from a Ktor server import, and a file that doesn't
+// import Ktor keeps the safer-bias miss.
+//
+// The Kotlin extractor stamps IMPORTS edges with the full dotted
+// module path (`io.ktor.server.routing`, `io.ktor.server.application`,
+// `io.ktor.server.netty`, ...), so a simple prefix match is precise.
+func hasKtorServerImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		if p == "io.ktor.server" || strings.HasPrefix(p, "io.ktor.server.") {
 			return true
 		}
 	}
