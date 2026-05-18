@@ -38,6 +38,7 @@ package lua
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -74,9 +75,18 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// CONTAINS edges from M to its `function M.x` / `function M:x` methods.
 	moduleTables := collectModuleTables(root, file)
 	moduleTableIdx := make(map[string]int, len(moduleTables))
-	for name, rec := range moduleTables {
+	// Issue #481 — map iteration is randomised, which previously produced a
+	// different module-table append order on every run and made graph.json
+	// byte-divergent. Sort the names so the emitted entity slice (and the
+	// indices wired into CONTAINS edges) is reproducible.
+	names := make([]string, 0, len(moduleTables))
+	for name := range moduleTables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		moduleTableIdx[name] = len(entities)
-		entities = append(entities, rec)
+		entities = append(entities, moduleTables[name])
 	}
 
 	// Pass 3: walk the tree, emitting Operation entities for each
