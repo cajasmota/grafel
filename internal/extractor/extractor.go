@@ -26,6 +26,12 @@ type FileInput struct {
 	Language string
 	// Tree is the tree-sitter parse tree. May be nil if parsing was skipped.
 	Tree *sitter.Tree
+	// RepoRoot is the absolute filesystem path of the repository root.
+	// Optional — extractors that need to read project-level configuration
+	// (e.g. JS/TS path-alias maps in tsconfig.json / vite.config / metro
+	// / babel.config — issue #505) consult this. Empty string is
+	// permitted; alias-aware extractors fall back to a no-op map.
+	RepoRoot string
 }
 
 // Extractor is the interface all language extractors must implement.

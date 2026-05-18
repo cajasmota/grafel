@@ -180,6 +180,19 @@ folded into an aggregate baseline doc.)
 | phoenix-live-view | elixir | — | — | — | — | unmeasured | clone + index |
 | http4k | kotlin | — | — | — | — | unmeasured | clone + index |
 
+## User-test repos (out-of-corpus snapshots — not part of tier-1)
+
+These are real production codebases the user supplied as private snapshots
+under `~/Documents/Projects/upvate-snapshot-2026-05-19/`. They are not in
+the verify2 corpus list and are NOT counted in the status roll-up below.
+Recorded here so #505 acceptance numbers (and any future
+private-codebase chain-fix) have a stable measurement-history anchor.
+
+| Repo | Stack | Files (~) | Latest bug-rate | Last fix PR | Residual root cause | Status | Blocker / next fix |
+|---|---|---:|---:|---|---|---|---|
+| upvate-snapshot/core-mobile | typescript (RN/Expo + Metro + tsconfig paths) | ~538 | 20.28% (2026-05-19, post-#505 path-aliases) — was 22.37% pre-fix | #505 | (a) JS extractor doesn't emit entities for `export const X = expr` declarations whose RHS is not an arrow/function/class — alias-resolved IMPORTS edges to `<dotted-module>.<const-name>` land on bug-extractor because the named entity simply isn't in the graph. (b) Bug-resolver floor of ~778 is dominated by `@gluestack-ui/core/...` and `@expo/html-elements` deep-paths that aren't currently in the JS external-known allowlist — needs a wave-3 npm allowlist refresh for the Gluestack / Expo / TanStack scope ecosystem. | addressable | chain-fix: (1) JS extractor `lexical_declaration`→`SCOPE.Component` for top-level `export const X = expr` non-function values; (2) JS external-known wave-3 allowlist refresh (Gluestack + Expo deep paths). |
+| upvate-snapshot/upvate_core_frontend | javascript (Vite + React) | ~659 | 21.61% (2026-05-19, post-#505 — unchanged from baseline) | — | Project uses ZERO path aliases (verified: no tsconfig.json, vite.config.js declares only `define`/`test`/`plugins`, no `resolve.alias`). #505 is a no-op here. The 21.61% is dominated by the same chain-fix as core-mobile: every `export const X = <non-function>` (`useAppSelector`, `queryClient`, every reducer, every helper) is missed by the JS extractor, so the file-level dotted-form ToIDs the IMPORTS resolver would emit have no entity to bind to. Pre-#505 these landed in bug-resolver under their raw `../../../foo` paths; post-#505 they stay there (the relative-import ToID emission is unchanged in this PR). | addressable | same chain-fix as core-mobile row (1) above. |
+
 ## Status roll-up (v3 refresh 2026-05-19)
 
 | Status | Count |
