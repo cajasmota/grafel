@@ -2,9 +2,16 @@ package links
 
 import (
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+// lineNumberSuffix matches labels ending in `:<digits>` (e.g.
+// `error_handling:try_catch:110`). Line numbers are pure positional
+// coincidence across repos and produce noise-only matches in the
+// cross-repo label channel — see issue #511.
+var lineNumberSuffix = regexp.MustCompile(`:\d+$`)
 
 // labelStopList is the set of generic names that should never produce
 // a shared-label match — they are too common across codebases to carry
@@ -42,6 +49,13 @@ const (
 func normalizeLabel(name string) string {
 	s := strings.TrimSpace(name)
 	if s == "" {
+		return ""
+	}
+	// Drop line-number-keyed labels (see #511). Any label whose final
+	// segment is a bare integer (`foo:bar:110`, `route:42`) is a
+	// positional artefact, not a structural identifier, and cross-repo
+	// matches on it are pure coincidence.
+	if lineNumberSuffix.MatchString(s) {
 		return ""
 	}
 	// Strip suffixes (case-sensitive for the CamelCase variants;
