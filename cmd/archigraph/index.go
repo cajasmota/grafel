@@ -967,6 +967,7 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 					Path:     t.relPath,
 					Content:  content,
 					Language: cr.Language,
+					RepoRoot: absRepo,
 				}
 
 				if pr, perr := i.parser.Parse(ctx, content, cr.Language); perr == nil && pr != nil {

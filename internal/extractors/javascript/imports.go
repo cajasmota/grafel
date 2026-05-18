@@ -21,11 +21,35 @@
 package javascript
 
 import (
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 )
+
+// osStatRegular reports whether absPath stats as a regular file. Used
+// by the alias-existence check (issue #505) — never panics, never
+// follows non-regular shapes (sockets, symlinks to dirs).
+func osStatRegular(absPath string) bool {
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
+}
+
+// filepathJoin joins a POSIX repo-relative path under an absolute repo
+// root using the host filesystem separator. Forward slashes in the
+// repo-relative tail are translated so the resulting path stats on
+// both Unix and Windows hosts.
+func filepathJoin(root, repoRel string) string {
+	if root == "" {
+		return repoRel
+	}
+	return filepath.Join(root, filepath.FromSlash(repoRel))
+}
 
 // importBinding captures everything the receiver binder needs to know
 // about a single name introduced into a file by an import statement.
@@ -42,6 +66,13 @@ type importBinding struct {
 	importPath   string // raw spec ("./services/user.service" or "express")
 	resolvedFile string // resolved repo-relative path with extension or ""
 	wildcard     bool   // true for `import * as X from "..."`
+	// aliasResolved — issue #505. True when the spec was rewritten
+	// through the per-repo alias map (tsconfig/vite/metro/babel). The
+	// IMPORTS-edge emitter uses this flag to switch to dotted-module
+	// ToIDs; plain relative imports keep the legacy raw-spec ToID to
+	// preserve the pre-#505 disposition shape on the express, nestjs
+	// and similar corpora that have no alias map.
+	aliasResolved bool
 }
 
 // jsImportExtensions enumerates the canonical extensions the resolver
@@ -86,6 +117,30 @@ func resolveRelativeImport(importerFile, spec string) string {
 	// index either has the file or it doesn't, and bare-name fallback
 	// handles the miss.
 	return joined + ".ts"
+}
+
+// appendDefaultJSExtension stamps a `.ts` extension onto p when p does
+// not already carry one of jsImportExtensions. Mirrors the trailing
+// branch of resolveRelativeImport so an alias-substituted bare path
+// like `src/store/app/useAppStore` and a relative path like
+// `./useAppStore` reach dottedModuleFromPath in the same shape.
+//
+// Note: a missing extension is the common case for alias-substituted
+// paths because tsconfig/vite/metro/babel alias values do not include
+// extensions. The `.ts` choice mirrors the resolver convention; the
+// downstream module-derivation step in modulesForJSFile strips ALL
+// canonical extensions, so the actual on-disk extension doesn't affect
+// the dotted-module form that lands on the IMPORTS edge ToID.
+func appendDefaultJSExtension(p string) string {
+	if p == "" {
+		return ""
+	}
+	for _, ext := range jsImportExtensions {
+		if strings.HasSuffix(p, ext) {
+			return p
+		}
+	}
+	return p + ".ts"
 }
 
 // dottedModuleFromPath returns the canonical dotted-module form of a
@@ -159,6 +214,23 @@ func (x *extractor) collectFromImportStatement(n *sitter.Node, out *[]importBind
 		return
 	}
 	resolved := resolveRelativeImport(x.filePath, source)
+	// Issue #505 — when the spec doesn't resolve as a relative path,
+	// try the project's path-alias map (tsconfig paths, vite
+	// resolve.alias, metro resolver.alias, babel module-resolver).
+	// tsconfig declarations may list multiple candidate directories per
+	// alias (e.g. `@/*: ["./*", "./src/*"]`). For each candidate we
+	// emit a separate set of bindings — the resolver's per-module
+	// reverse index binds whichever target actually contains the
+	// imported symbol; the wrong candidates miss without inflating
+	// disposition counts because at most one candidate maps to a real
+	// project entity.
+	aliasResolved := false
+	if resolved == "" {
+		if substituted := x.aliases.ResolveAll(source); len(substituted) > 0 {
+			aliasResolved = true
+			resolved = pickExistingAliasTarget(x.repoRoot, substituted)
+		}
+	}
 	dotted := source // default: npm spec verbatim (slashes become dots below)
 	if resolved != "" {
 		dotted = dottedModuleFromPath(resolved)
@@ -177,9 +249,63 @@ func (x *extractor) collectFromImportStatement(n *sitter.Node, out *[]importBind
 		}
 		switch child.Type() {
 		case "import_clause":
-			x.parseImportClause(child, source, dotted, resolved, out)
+			x.parseImportClause(child, source, dotted, resolved, aliasResolved, out)
 		}
 	}
+}
+
+// pickExistingAliasTarget filesystem-checks each candidate substituted
+// path against the repo root and returns the first one whose resolved
+// file (after extension fallback) actually exists on disk. When NO
+// candidate exists — or repoRoot is empty so we can't stat — the first
+// candidate is returned anyway so the IMPORTS edge still carries a
+// reasonable dotted form (the resolver will simply miss the lookup and
+// the edge flows to bug-extractor, which is the safer-bias bucket per
+// #94/#105/#106 for unverifiable substitutions).
+//
+// Candidates arrive without an extension; we try every jsImportExtension
+// plus an `/index.<ext>` lookup for directory imports. The first hit
+// wins.
+func pickExistingAliasTarget(repoRoot string, candidates []string) string {
+	if len(candidates) == 0 {
+		return ""
+	}
+	if repoRoot == "" {
+		return appendDefaultJSExtension(candidates[0])
+	}
+	for _, c := range candidates {
+		if found := firstExistingJSPath(repoRoot, c); found != "" {
+			return found
+		}
+	}
+	return appendDefaultJSExtension(candidates[0])
+}
+
+// firstExistingJSPath tries `<candidate><.ext>` and
+// `<candidate>/index<.ext>` against the repo root for every recognised
+// JS/TS extension. Returns the first repo-relative POSIX path that
+// stats as a regular file, or "" when nothing matches.
+func firstExistingJSPath(repoRoot, candidate string) string {
+	if candidate == "" {
+		return ""
+	}
+	// Verbatim — already has an extension, or is itself a file.
+	if osStatRegular(filepathJoin(repoRoot, candidate)) {
+		return candidate
+	}
+	for _, ext := range jsImportExtensions {
+		try := candidate + ext
+		if osStatRegular(filepathJoin(repoRoot, try)) {
+			return try
+		}
+	}
+	for _, ext := range jsImportExtensions {
+		try := candidate + "/index" + ext
+		if osStatRegular(filepathJoin(repoRoot, try)) {
+			return try
+		}
+	}
+	return ""
 }
 
 // parseImportClause walks an import_clause node and appends bindings.
@@ -188,7 +314,7 @@ func (x *extractor) collectFromImportStatement(n *sitter.Node, out *[]importBind
 //	identifier                 → default import (`express` in `import express from`)
 //	namespace_import           → `* as ns`
 //	named_imports              → `{ Foo, Bar as Baz }`
-func (x *extractor) parseImportClause(clause *sitter.Node, importPath, dotted, resolved string, out *[]importBinding) {
+func (x *extractor) parseImportClause(clause *sitter.Node, importPath, dotted, resolved string, aliasResolved bool, out *[]importBinding) {
 	count := int(clause.ChildCount())
 	for i := 0; i < count; i++ {
 		ch := clause.Child(i)
@@ -203,11 +329,12 @@ func (x *extractor) parseImportClause(clause *sitter.Node, importPath, dotted, r
 				continue
 			}
 			*out = append(*out, importBinding{
-				localName:    name,
-				importedName: "default",
-				sourceModule: dotted,
-				importPath:   importPath,
-				resolvedFile: resolved,
+				localName:     name,
+				importedName:  "default",
+				sourceModule:  dotted,
+				importPath:    importPath,
+				resolvedFile:  resolved,
+				aliasResolved: aliasResolved,
 			})
 		case "namespace_import":
 			// `* as ns` — the name is the identifier child.
@@ -216,22 +343,23 @@ func (x *extractor) parseImportClause(clause *sitter.Node, importPath, dotted, r
 				continue
 			}
 			*out = append(*out, importBinding{
-				localName:    name,
-				importedName: name,
-				sourceModule: dotted,
-				importPath:   importPath,
-				resolvedFile: resolved,
-				wildcard:     true,
+				localName:     name,
+				importedName:  name,
+				sourceModule:  dotted,
+				importPath:    importPath,
+				resolvedFile:  resolved,
+				wildcard:      true,
+				aliasResolved: aliasResolved,
 			})
 		case "named_imports":
-			x.parseNamedImports(ch, importPath, dotted, resolved, out)
+			x.parseNamedImports(ch, importPath, dotted, resolved, aliasResolved, out)
 		}
 	}
 }
 
 // parseNamedImports walks a named_imports node (`{ Foo, Bar as Baz }`)
 // and appends one binding per import_specifier descendant.
-func (x *extractor) parseNamedImports(named *sitter.Node, importPath, dotted, resolved string, out *[]importBinding) {
+func (x *extractor) parseNamedImports(named *sitter.Node, importPath, dotted, resolved string, aliasResolved bool, out *[]importBinding) {
 	count := int(named.ChildCount())
 	for i := 0; i < count; i++ {
 		ch := named.Child(i)
@@ -253,11 +381,12 @@ func (x *extractor) parseNamedImports(named *sitter.Node, importPath, dotted, re
 			local = name
 		}
 		*out = append(*out, importBinding{
-			localName:    local,
-			importedName: name,
-			sourceModule: dotted,
-			importPath:   importPath,
-			resolvedFile: resolved,
+			localName:     local,
+			importedName:  name,
+			sourceModule:  dotted,
+			importPath:    importPath,
+			resolvedFile:  resolved,
+			aliasResolved: aliasResolved,
 		})
 	}
 }

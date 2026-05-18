@@ -86,6 +86,8 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		source:   file.Content,
 		filePath: file.Path,
 		language: file.Language,
+		aliases:  AliasMapFor(file.RepoRoot),
+		repoRoot: file.RepoRoot,
 	}
 
 	// Issue #421 — collect import bindings BEFORE walking the body so
@@ -98,7 +100,20 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	x.importByLocal = make(map[string]*importBinding, len(x.imports))
 	for i := range x.imports {
 		b := &x.imports[i]
-		if _, dup := x.importByLocal[b.localName]; dup {
+		if existing, dup := x.importByLocal[b.localName]; dup {
+			// Issue #505 — when multiple bindings share localName,
+			// they MAY be alias-resolved variants of the same import
+			// statement (one binding per candidate target). Detect
+			// that shape (same importPath + same importedName +
+			// aliasResolved on both) and prefer the first
+			// registration silently. Genuine duplicates (different
+			// importPath or importedName) still hit the safer-bias
+			// "drop both" path.
+			if existing.importPath == b.importPath &&
+				existing.importedName == b.importedName &&
+				existing.aliasResolved && b.aliasResolved {
+				continue
+			}
 			// Last-writer-wins is unsafe; drop both. The receiver
 			// binder leaves the bare method name in place when the
 			// type lookup misses, which is the conservative bias.
@@ -162,6 +177,42 @@ type extractor struct {
 	// callers must check the lookup result.
 	imports       []importBinding
 	importByLocal map[string]*importBinding
+
+	// aliases — issue #505. The merged per-repo path-alias map loaded
+	// from tsconfig.json / vite.config / metro.config / babel.config.
+	// Empty for projects without alias declarations; the resolver
+	// gracefully no-ops on every lookup in that case.
+	aliases AliasMap
+	// repoRoot is the absolute path of the repository root, used to
+	// filesystem-check alias candidate paths so multi-target aliases
+	// (`@/*: ["./*", "./src/*"]`) pick the candidate that actually
+	// exists on disk rather than emitting an IMPORTS edge per candidate
+	// (which would inflate bug-extractor counts for the wrong ones).
+	repoRoot string
+}
+
+// applyAlias attempts to substitute a path-alias prefix in spec using
+// the extractor's per-repo alias map. Returns the repo-relative
+// POSIX path the alias resolves to (without an extension; the caller
+// runs the same `.ts → .tsx → .js …` candidate-extension loop a
+// relative import would), or "" when no alias matches.
+//
+// Specs that are already relative (`./` / `../`) or absolute (`/`) are
+// bypassed unconditionally — alias substitution is a NON-relative-spec
+// concern. Bare npm specs (`react`, `@tanstack/react-query`) fall
+// through to the alias lookup, which is correct: `@tanstack/...` is
+// also the shape an alias map could use, but in practice the alias
+// table's prefix-vs-package-name disambiguation is left to the alias
+// declaration itself (a project that aliases `@tanstack` shadows the
+// npm package by definition).
+func (x *extractor) applyAlias(spec string) string {
+	if spec == "" {
+		return ""
+	}
+	if strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../") || strings.HasPrefix(spec, "/") {
+		return ""
+	}
+	return x.aliases.Resolve(spec)
 }
 
 // classBindings tracks receiver-typed identifiers visible inside a
@@ -730,9 +781,24 @@ func (x *extractor) emitImport(module string, n *sitter.Node, bindings []*import
 			if b.resolvedFile != "" {
 				props["resolved_file"] = b.resolvedFile
 			}
+			// Issue #505 — for ALIAS-resolved imports, switch the
+			// IMPORTS ToID from the raw alias spec (`@/src/store/foo`,
+			// which the resolver can't bind because it lacks the
+			// dotted-module shape ResolveDottedImportTarget requires)
+			// to the dotted-module + leaf form
+			// (`src.store.foo.<importedName>`). The resolver splits on
+			// the last dot and looks up (module, leaf) against the
+			// per-module reverse index. Plain relative imports keep the
+			// legacy raw-spec ToID so pre-#505 disposition shapes on
+			// the existing TS/JS corpora (express, nestjs, etc.) are
+			// preserved bit-for-bit.
+			toID := module
+			if b.aliasResolved && b.sourceModule != "" && b.importedName != "" {
+				toID = b.sourceModule + "." + b.importedName
+			}
 			rels = append(rels, types.RelationshipRecord{
 				FromID:     x.filePath,
-				ToID:       module,
+				ToID:       toID,
 				Kind:       "IMPORTS",
 				Properties: props,
 			})
