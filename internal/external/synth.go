@@ -493,6 +493,81 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		return "", "", false
 	}
 
+	// Issue #44 — C/C++ STL header includes. The cpp extractor emits
+	// IMPORTS edges for `#include <iostream>` style directives with the
+	// header token as the ToID (no path separator, no dot for STL,
+	// `foo.h` form for C headers). Collapse every STL/libc header to a
+	// single `ext:std` placeholder so spdlog-style header-only libraries
+	// don't bleed dozens of unresolved bare-name imports into
+	// bug-resolver. Lang-gated to cpp / c. Must run before the
+	// path-separator rejection below so `sys/types.h` headers route
+	// correctly.
+	if (lang == "cpp" || lang == "c") && relKind == string(types.RelationshipKindImports) {
+		if _, ok := cppStlHeaders[name]; ok {
+			return "std", "package", true
+		}
+	}
+
+	// Issue #44 — spdlog UPPER_SNAKE_CASE preprocessor macros
+	// (SPDLOG_LOGGER_DEBUG, SPDLOG_TRACE, SPDLOG_THROW, SPDLOG_LOGGER_
+	// CATCH, ...) survive the cpp extractor as bare CALLS edges because
+	// the call-graph walker can't see through macro expansion. Route any
+	// SPDLOG_-prefixed UPPER_SNAKE_CASE identifier to a single `ext:
+	// spdlog` placeholder — these are unambiguously library macros and
+	// the package is already on the allowlist (catalogued via header
+	// includes). Lang-gated to cpp / c.
+	if (lang == "cpp" || lang == "c") && relKind == string(types.RelationshipKindCalls) {
+		if isSpdlogMacroIdent(name) {
+			return "spdlog", "macro", true
+		}
+		// Issue #44 — fmt library UPPER_SNAKE_CASE macros (FMT_ASSERT,
+		// FMT_THROW, FMT_ENABLE_IF, FMT_STRING, FMT_CONSTEXPR,
+		// FMT_INLINE, ...). The fmt library is bundled inside spdlog
+		// at include/spdlog/fmt/bundled and uses the FMT_ prefix
+		// convention. Route to ext:fmt — `fmt` is already on the
+		// allowlist.
+		if isFmtMacroIdent(name) {
+			return "fmt", "macro", true
+		}
+		// Issue #44 — calls FROM a bundled fmt source file (path
+		// contains "/fmt/bundled/" or "fmt/bundled/") to a bare
+		// identifier are fmt-library internal helpers (vformat_to,
+		// to_unsigned, format_localized, report_error, ...). The fmt
+		// library is bundled inside header-only loggers like spdlog;
+		// these names are unresolved local entities but for graph
+		// purposes routing them to ext:fmt is structurally honest
+		// (they ARE fmt symbols, even when mirrored locally).
+		if isFmtBundledFile(fromFile) {
+			return "fmt", "function", true
+		}
+		// Issue #44 — Catch2 test macros (REQUIRE, CHECK, SECTION,
+		// TEST_CASE, INFO, FAIL, WARN, SCENARIO, GIVEN, WHEN, THEN,
+		// ...). Heavy in tests/ folders of cpp libraries. Route to
+		// ext:catch2 — already on the allowlist.
+		if _, ok := catch2BareNames[name]; ok {
+			return "catch2", "macro", true
+		}
+		// Issue #44 — spdlog public factory names follow a strict
+		// `<sink>_mt` / `<sink>_st` shape (basic_logger_mt,
+		// daily_logger_st, rotating_logger_mt, stdout_color_mt,
+		// syslog_logger_st, udp_logger_mt, callback_logger_mt,
+		// android_logger_mt, ...). The suffix is the spdlog
+		// thread-safety convention (`_mt` = multi-threaded sink,
+		// `_st` = single-threaded sink) — overwhelmingly distinctive,
+		// almost never appears on user-defined methods. Route to
+		// ext:spdlog. Gated to cpp/c.
+		if isSpdlogFactoryName(name) {
+			return "spdlog", "function", true
+		}
+		// Issue #44 — Google Benchmark public API (UpperCamelCase).
+		// The benchmark library surface is small and distinctive; the
+		// names below are the high-volume call sites in spdlog/bench
+		// and across micro-benchmark suites generally.
+		if _, ok := googleBenchmarkBareNames[name]; ok {
+			return "benchmark", "function", true
+		}
+	}
+
 	// Reject obviously non-external shapes: anything containing a path
 	// separator was either a structural-ref or a local file path, both
 	// already handled upstream.
@@ -778,6 +853,11 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 	}
 	if lang == "python" {
 		if _, ok := pythonBareNames[name]; ok {
+			return "function", true
+		}
+	}
+	if lang == "cpp" || lang == "c" {
+		if _, ok := cppBareNames[name]; ok {
 			return "function", true
 		}
 	}
@@ -3519,6 +3599,676 @@ var pythonBareNames = map[string]struct{}{
 	"query":      {},
 }
 
+// cppBareNames is the C/C++-language-gated bare-name stop-list (issue
+// #44 — spdlog bug-rate reduction). After the C/C++ extractor strips
+// the receiver from method calls (`logger->set_level(...)` →
+// `set_level`, `std::make_shared<T>(...)` → `make_shared`,
+// `v.emplace_back(x)` → `emplace_back`) the resolver sees a bare
+// identifier and lands in bug-extractor. These are STL container /
+// memory / chrono / algorithm / stream / locale / numeric helpers that
+// are unambiguously std:: idioms — receiver-stripped from real spdlog,
+// fmt, and Google Benchmark call sites.
+//
+// Conservative selection rule, mirroring goBareNames / rustBareNames:
+// include a name only when it is (a) high-frequency in real C/C++
+// codebases AND (b) overwhelmingly an STL/std symbol rather than a
+// plausible user-defined method on a domain type. Generic English
+// verbs (`add`, `remove`, `update`, `notify`) are intentionally
+// omitted — too collision-prone with user methods on domain types
+// (#94 safer-bias rule).
+//
+// Gated to lang=="cpp" || lang=="c" so the allowlist does not shadow
+// same-named methods in Go / Rust / JS / etc.
+var cppBareNames = map[string]struct{}{
+	// <memory> — smart-pointer factories and casts.
+	"make_shared":          {},
+	"make_unique":          {},
+	"allocate_shared":      {},
+	"dynamic_pointer_cast": {},
+	"static_pointer_cast":  {},
+	"const_pointer_cast":   {},
+	"reinterpret_pointer_cast": {},
+	"shared_from_this":     {},
+
+	// <utility> — move / forward / pair helpers.
+	"move":      {},
+	"forward":   {},
+	"make_pair": {},
+	"make_tuple": {},
+	"tie":       {},
+
+	// <algorithm> — algorithms that are overwhelmingly std::algo idioms.
+	// Generic single-word verbs (`find`, `count`, `copy`, `sort`) are
+	// intentionally omitted — collision-prone with user methods on
+	// containers and domain types. Multi-word / suffixed forms below
+	// are far more distinctive.
+	"transform":     {},
+	"accumulate":    {},
+	"find_if":       {},
+	"find_if_not":   {},
+	"count_if":      {},
+	"copy_if":       {},
+	"copy_n":        {},
+	"remove_if":     {},
+	"replace_if":    {},
+	"for_each":      {},
+	"all_of":        {},
+	"any_of":        {},
+	"none_of":       {},
+	"min_element":   {},
+	"max_element":   {},
+	"lower_bound":   {},
+	"upper_bound":   {},
+	"binary_search": {},
+	"equal_range":   {},
+	"lexicographical_compare": {},
+
+	// <iterator> — distinctive STL iterator helpers.
+	"distance":         {},
+	"advance":          {},
+	"back_inserter":    {},
+	"front_inserter":   {},
+	"inserter":         {},
+	"make_move_iterator": {},
+	"make_reverse_iterator": {},
+
+	// <chrono> — duration / time-point helpers (heavy in spdlog benches).
+	"duration_cast":        {},
+	"time_point_cast":      {},
+	"system_clock":         {},
+	"steady_clock":         {},
+	"high_resolution_clock": {},
+	"nanoseconds":          {},
+	"microseconds":         {},
+	"milliseconds":         {},
+	"seconds":              {},
+	"minutes":              {},
+	"hours":                {},
+
+	// <thread> / <this_thread> / <mutex> / <condition_variable> —
+	// distinctive concurrency primitives. Generic `lock` / `unlock` /
+	// `wait` are intentionally omitted (collide with user lockables).
+	"sleep_for":   {},
+	"sleep_until": {},
+	"lock_guard":  {},
+	"unique_lock": {},
+	"scoped_lock": {},
+	"shared_lock": {},
+	"notify_all_at_thread_exit": {},
+
+	// <string> — multi-word search helpers that are unambiguously
+	// std::string idioms. `find`, `size`, `empty`, `clear`, `compare`
+	// are intentionally omitted (too collision-prone).
+	"c_str":               {},
+	"find_first_of":       {},
+	"find_first_not_of":   {},
+	"find_last_of":        {},
+	"find_last_not_of":    {},
+	"npos":                {},
+	"to_string":           {},
+	"to_wstring":          {},
+	"stoi":                {},
+	"stol":                {},
+	"stoll":               {},
+	"stoul":               {},
+	"stoull":              {},
+	"stof":                {},
+	"stod":                {},
+	"stold":               {},
+
+	// <vector> / <deque> / <list> / <map> / <set> container methods.
+	// Aggressively included for cpp/c — these are overwhelmingly STL
+	// container idioms in C++ codebases. The lang-gate (cpp || c) is
+	// strict enough that same-named user methods in Go / Rust / JS
+	// remain unshadowed. Within C++ a user container that defines
+	// `push_back` / `begin` / `end` is almost always intentionally
+	// modelling the STL container interface, so even a "shadowing"
+	// classification is structurally honest.
+	"push_back":     {},
+	"pop_back":      {},
+	"push_front":    {},
+	"pop_front":     {},
+	"emplace_back":  {},
+	"emplace_front": {},
+	"emplace_hint":  {},
+	"shrink_to_fit": {},
+	"begin":         {},
+	"end":           {},
+	"cbegin":        {},
+	"cend":          {},
+	"rbegin":        {},
+	"rend":          {},
+	"crbegin":       {},
+	"crend":         {},
+	"size":          {},
+	"length":        {},
+	"empty":         {},
+	"clear":         {},
+	"front":         {},
+	"back":          {},
+	"data":          {},
+	"reserve":       {},
+	"resize":        {},
+	"capacity":      {},
+	"at":            {},
+	"swap":          {},
+	"erase":         {},
+	"insert":        {},
+	"assign":        {},
+	"find":          {},
+	"count":         {},
+	"contains":      {},
+	"rfind":         {},
+	"substr":        {},
+	"append":        {},
+	"compare":       {},
+	"max_size":      {},
+
+	// Smart-pointer / pointer-like methods (std::unique_ptr,
+	// std::shared_ptr, std::weak_ptr). Methods like `get` / `reset`
+	// / `release` / `lock` are extremely high-volume in modern C++
+	// and almost always come from a smart-pointer receiver. Within
+	// the cpp/c gate these are safe to claim.
+	"get":     {},
+	"reset":   {},
+	"release": {},
+	"lock":    {},
+	"unlock":  {},
+	"try_lock": {},
+	"owns_lock": {},
+
+	// <atomic> — atomic store/load helpers (heavy in spdlog async).
+	"store":           {},
+	"load":            {},
+	"exchange":        {},
+	"compare_exchange_strong": {},
+	"compare_exchange_weak":   {},
+	"fetch_add":       {},
+	"fetch_sub":       {},
+	"fetch_and":       {},
+	"fetch_or":        {},
+	"fetch_xor":       {},
+
+	// <condition_variable> — wait/notify helpers.
+	"wait":         {},
+	"wait_for":     {},
+	"wait_until":   {},
+	"notify_one":   {},
+	"notify_all":   {},
+
+	// <thread> instance methods.
+	"join":     {},
+	"detach":   {},
+	"joinable": {},
+	"get_id":   {},
+
+	// <chrono> instance methods. (`count` already declared above as
+	// std::count algorithm.)
+	"now":              {},
+	"time_since_epoch": {},
+	"to_time_t":        {},
+	"from_time_t":      {},
+
+	// <fstream> / <iostream> instance methods (high-volume in C++).
+	"flush":   {},
+	"close":   {},
+	"open":    {},
+	"is_open": {},
+	"good":    {},
+	"bad":     {},
+	"eof":     {},
+	"fail":    {},
+	"peek":    {},
+	"tellg":   {},
+	"tellp":   {},
+	"seekg":   {},
+	"seekp":   {},
+	"read":    {},
+	"write":   {},
+	"put":     {},
+	"sync":    {},
+	"rdbuf":   {},
+	"str":     {},
+
+	// <type_traits> / <utility> common helpers.
+	"declval":    {},
+	"value_type": {},
+
+	// std::function-like.
+	"target":      {},
+	"target_type": {},
+
+	// <iostream> / <iomanip> / <fstream> — stream manipulators and
+	// helpers that are unambiguously std stream idioms.
+	"getline":      {},
+	"setprecision": {},
+	"setfill":      {},
+	"setw":         {},
+	"setbase":      {},
+	"hex":          {},
+	"oct":          {},
+	"dec":          {},
+	"fixed":        {},
+	"scientific":   {},
+	"boolalpha":    {},
+	"noboolalpha":  {},
+	"showbase":     {},
+	"noshowbase":   {},
+	"endl":         {},
+	"ends":         {},
+	"imbue":        {},
+
+	// <exception> / <stdexcept> — standard exception constructors.
+	"runtime_error":   {},
+	"logic_error":     {},
+	"invalid_argument": {},
+	"out_of_range":    {},
+	"length_error":    {},
+	"domain_error":    {},
+	"overflow_error":  {},
+	"underflow_error": {},
+	"system_error":    {},
+	"bad_alloc":       {},
+	"bad_cast":        {},
+	"current_exception": {},
+	"rethrow_exception": {},
+
+	// <system_error> / errno helpers.
+	"generic_category": {},
+	"system_category":  {},
+	"error_code":       {},
+	"error_condition":  {},
+
+	// C stdlib (gated to lang=="c" || lang=="cpp"). High-volume libc
+	// names that are unambiguously stdio / stdlib / unistd symbols.
+	"printf":  {},
+	"fprintf": {},
+	"snprintf": {},
+	"sprintf": {},
+	"vprintf": {},
+	"vfprintf": {},
+	"vsnprintf": {},
+	"vsprintf": {},
+	"fputs":   {},
+	"fputc":   {},
+	"fgets":   {},
+	"fgetc":   {},
+	"getc":    {},
+	"putc":    {},
+	"puts":    {},
+	"fopen":   {},
+	"fclose":  {},
+	"fflush":  {},
+	"fread":   {},
+	"fwrite":  {},
+	"fseek":   {},
+	"ftell":   {},
+	"feof":    {},
+	"ferror":  {},
+	"perror":  {},
+	"strerror": {},
+	"strtol":  {},
+	"strtoul": {},
+	"strtod":  {},
+	"atoi":    {},
+	"atol":    {},
+	"atoll":   {},
+	"atof":    {},
+	"malloc":  {},
+	"calloc":  {},
+	"realloc": {},
+	// `free` intentionally omitted — too collision-prone with user
+	// resource-release methods.
+	"memcpy":  {},
+	"memmove": {},
+	"memset":  {},
+	"memcmp":  {},
+	"strcmp":  {},
+	"strncmp": {},
+	"strcpy":  {},
+	"strncpy": {},
+	"strcat":  {},
+	"strncat": {},
+	"strlen":  {},
+	"strchr":  {},
+	"strrchr": {},
+	"strstr":  {},
+	"strtok":  {},
+	"isdigit": {},
+	"isalpha": {},
+	"isalnum": {},
+	"isspace": {},
+	"isupper": {},
+	"islower": {},
+	"tolower": {},
+	"toupper": {},
+
+	// std::string_view and to_string_view conversion (heavy in fmt /
+	// spdlog formatters).
+	"string_view":       {},
+	"to_string_view":    {},
+	"basic_string_view": {},
+
+	// `decltype` — C++ specifier that tree-sitter sometimes parses
+	// into a call-like node. Gated via cpp/c so it never leaks
+	// elsewhere. Routing it out of bug-extractor is preferable to
+	// inventing a phantom placeholder for a keyword.
+	"decltype": {},
+
+	// POSIX socket / system-call surface (spdlog/sinks/tcp_sink,
+	// udp_sink, syslog_sink). Distinctive POSIX names virtually never
+	// user-defined.
+	"setsockopt":       {},
+	"getsockopt":       {},
+	"sendto":           {},
+	"recvfrom":         {},
+	"bind":             {},
+	"listen":           {},
+	"accept":           {},
+	"connect":          {},
+	"send":             {},
+	"recv":             {},
+	"socket":           {},
+	"poll":             {},
+	"htons":            {},
+	"htonl":            {},
+	"ntohs":            {},
+	"ntohl":            {},
+	"inet_addr":        {},
+	"inet_pton":        {},
+	"inet_ntop":        {},
+	"getaddrinfo":      {},
+	"freeaddrinfo":     {},
+	"gethostbyname":    {},
+	"gethostname":      {},
+	"closesocket":      {},
+	"WSAStartup":       {},
+	"WSACleanup":       {},
+	"WSAGetLastError":  {},
+	// `shutdown` / `select` already declared elsewhere or omitted
+	// (`shutdown` is added below in the spdlog section; `select` is
+	// too collision-prone with user methods to add unconditionally).
+
+	// spdlog public API (issue #44). Distinctive spdlog top-level
+	// free functions and Logger methods receiver-stripped from
+	// `spdlog::xxx()` / `logger->xxx()`. Gated to cpp/c.
+	"set_pattern":                {},
+	"set_level":                  {},
+	"set_default_logger":         {},
+	"default_logger":             {},
+	"default_logger_raw":         {},
+	"enable_backtrace":           {},
+	"disable_backtrace":          {},
+	"dump_backtrace":             {},
+	"flush_every":                {},
+	"flush_on":                   {},
+	"apply_all":                  {},
+	"register_logger":            {},
+	"initialize_logger":          {},
+	"get_logger":                 {},
+	"set_error_handler":          {},
+	"set_automatic_registration": {},
+	"set_formatter":              {},
+	"load_env_levels":            {},
+	"load_argv_levels":           {},
+	"set_levels":                 {},
+	"to_hex":                     {},
+	"sleep_for_millis":           {},
+	"backend_sink_it_":           {},
+	"backend_flush_":             {},
+	"should_flush_":              {},
+	"post_log":                   {},
+	"post_flush":                 {},
+	"shutdown":                   {},
+	// spdlog details / sinks internals — high-volume helpers in
+	// include/spdlog/details and include/spdlog/sinks. Distinctive
+	// names with the spdlog snake_case convention.
+	"path_exists":         {},
+	"append_string_view":  {},
+	"split_by_extension":  {},
+	"fwrite_bytes":        {},
+	"filename_to_str":     {},
+	"wstr_to_utf8buf":     {},
+	"utf8_to_wstrbuf":     {},
+	"throw_winsock_error_": {},
+	"throw_spdlog_ex":     {},
+	"win32_error":         {},
+	"is_connected":        {},
+	"reopen":              {},
+	"truncate_":           {},
+	"flush_":              {},
+	"tp_mutex":            {},
+	"tp_lock":             {},
+	"get_tp":              {},
+	"set_tp":              {},
+	"init_thread_pool":    {},
+	"create_async":        {},
+	"create_async_nb":     {},
+	"source_loc":          {},
+	"log_msg":             {},
+	"backtracer":          {},
+	"periodic_worker":     {},
+	"file_helper":         {},
+	"pattern_formatter":   {},
+	"circular_q":          {},
+	"mpmc_blocking_q":     {},
+	"null_atomic_int":     {},
+	"udp_client":          {},
+	"tcp_client":          {},
+	"connect_socket_with_timeout": {},
+	"init_winsock_":       {},
+	"cleanup_":            {},
+	"fopen_s":             {},
+	"filesize":            {},
+	"fsync":               {},
+	"dir_name":            {},
+	"before_open":         {},
+	"after_open":          {},
+	"before_close":        {},
+	"after_close":         {},
+	"filename_t":          {},
+	"iequals":             {},
+	"to_lower_":           {},
+	"trim_":               {},
+	"extract_kv_":         {},
+	"from_str":            {},
+	"token_stream":        {},
+	"load_levels":         {},
+	"copy_moveable":       {},
+	"reset_overrun_counter": {},
+	"overrun_counter":     {},
+	"max_items_":          {},
+	"max_files_":          {},
+	"event_handlers_":     {},
+	"worker_loop_":        {},
+	"logger_name":         {},
+	"callback_fun":        {},
+	"get_thread":          {},
+	"get_flusher":         {},
+	"flush_all":           {},
+	"sleep_for_millis_":   {},
+	"requeue_log_msg":     {},
+
+
+	// libc time / locale (POSIX). Distinctive names virtually never
+	// user-defined.
+	"localtime":   {},
+	"localtime_r": {},
+	"localtime_s": {},
+	"gmtime":      {},
+	"gmtime_r":    {},
+	"gmtime_s":    {},
+	"mktime":      {},
+	"strftime":    {},
+	"strptime":    {},
+	"asctime":     {},
+	"ctime":       {},
+	"clock":       {},
+	"difftime":    {},
+	"tzset":       {},
+	"timegm":      {},
+
+	// Win32 API surface (heavy in spdlog/sinks/wincolor_sink,
+	// windows_sink, msvc_sink). Distinctive names with Win32
+	// PascalCase / UPPER_SNAKE_CASE conventions.
+	"GetLastError":         {},
+	"SetLastError":         {},
+	"FormatMessageA":       {},
+	"FormatMessageW":       {},
+	"MAKELANGID":           {},
+	"GetStdHandle":         {},
+	"SetConsoleTextAttribute": {},
+	"GetConsoleScreenBufferInfo": {},
+	"WriteFile":            {},
+	"ReadFile":             {},
+	"CreateFileA":          {},
+	"CreateFileW":          {},
+	"CloseHandle":          {},
+	"OutputDebugStringA":   {},
+	"OutputDebugStringW":   {},
+	"GetCurrentProcessId":  {},
+	"GetCurrentThreadId":   {},
+	"GetCurrentProcess":    {},
+	"GetCurrentThread":     {},
+	"MultiByteToWideChar":  {},
+	"WideCharToMultiByte":  {},
+	"LocalFree":            {},
+	"FD_SET":               {},
+	"FD_ZERO":              {},
+	"FD_ISSET":             {},
+	"FD_CLR":               {},
+
+	// fmt-library typedefs / aliases used as bare names in
+	// instantiations.
+	"string_view_t":  {},
+	"wstring_view_t": {},
+
+	// Smart-pointer type constructors invoked as bare names (e.g.
+	// `unique_ptr<T>{ ... }`).
+	"unique_ptr":  {},
+	"shared_ptr":  {},
+	"weak_ptr":    {},
+	"auto_ptr":    {},
+}
+
+// cppStlHeaders is the set of C++ standard-library header names that
+// appear as bare-name IMPORTS edges after the cpp extractor parses
+// `#include <iostream>` style directives. These collapse to a single
+// `ext:std` placeholder — every STL header is part of the std namespace
+// and one placeholder per std lib matches the package-per-import
+// collapse used elsewhere. Lang-gated to cpp / c via the call site.
+var cppStlHeaders = map[string]struct{}{
+	// C++ stdlib (selected, high-volume in real corpora).
+	"iostream":      {},
+	"iomanip":       {},
+	"fstream":       {},
+	"sstream":       {},
+	"ostream":       {},
+	"istream":       {},
+	"streambuf":     {},
+	"ios":           {},
+	"iosfwd":        {},
+	"string":        {},
+	"string_view":   {},
+	"vector":        {},
+	"array":         {},
+	"deque":         {},
+	"list":          {},
+	"forward_list":  {},
+	"map":           {},
+	"set":           {},
+	"unordered_map": {},
+	"unordered_set": {},
+	"queue":         {},
+	"stack":         {},
+	"bitset":        {},
+	"memory":        {},
+	"memory_resource": {},
+	"new":           {},
+	"utility":       {},
+	"tuple":         {},
+	"functional":    {},
+	"algorithm":     {},
+	"numeric":       {},
+	"iterator":      {},
+	"chrono":        {},
+	"thread":        {},
+	"mutex":         {},
+	"shared_mutex":  {},
+	"condition_variable": {},
+	"future":        {},
+	"atomic":        {},
+	"exception":     {},
+	"stdexcept":     {},
+	"system_error": {},
+	"typeinfo":      {},
+	"type_traits":   {},
+	"limits":        {},
+	"locale":        {},
+	"codecvt":       {},
+	"random":        {},
+	"ratio":         {},
+	"complex":       {},
+	"valarray":      {},
+	"variant":       {},
+	"optional":      {},
+	"any":           {},
+	"filesystem":    {},
+	"regex":         {},
+	"cassert":       {},
+	"cctype":        {},
+	"cerrno":        {},
+	"cfloat":        {},
+	"climits":       {},
+	"cmath":         {},
+	"csignal":       {},
+	"cstdarg":       {},
+	"cstddef":       {},
+	"cstdint":       {},
+	"cstdio":        {},
+	"cstdlib":       {},
+	"cstring":       {},
+	"ctime":         {},
+	"cwchar":        {},
+	"cwctype":       {},
+	"concepts":      {},
+	"ranges":        {},
+	"span":          {},
+	"charconv":      {},
+	"bit":           {},
+	"compare":       {},
+	"coroutine":     {},
+	"source_location": {},
+	"version":       {},
+	// C stdlib headers (POSIX + libc), used by C extractor.
+	"stdio.h":   {},
+	"stdlib.h":  {},
+	"string.h":  {},
+	"strings.h": {},
+	"ctype.h":   {},
+	"errno.h":   {},
+	"math.h":    {},
+	"time.h":    {},
+	"unistd.h":  {},
+	"fcntl.h":   {},
+	"signal.h":  {},
+	"stdarg.h":  {},
+	"stddef.h":  {},
+	"stdint.h":  {},
+	"stdbool.h": {},
+	"assert.h":  {},
+	"limits.h":  {},
+	"float.h":   {},
+	"locale.h":  {},
+	"setjmp.h":  {},
+	"inttypes.h": {},
+	"pthread.h": {},
+	"sys/types.h": {},
+	"sys/stat.h":  {},
+	"sys/time.h":  {},
+	"sys/socket.h": {},
+}
+
 // isKnownExternalPackage reports whether s matches our small allowlist
 // of well-known third-party packages and stdlib top-level modules. The
 // allowlist is intentionally narrow for v1.0 — false positives turn a
@@ -3909,6 +4659,200 @@ var knownExternalPackages = map[string]struct{}{
 	"laravel":    {},
 	"illuminate": {},
 	"psr":        {},
+	// C / C++ ecosystem (Issue #44 — spdlog bug-rate reduction). Header-
+	// only libraries (spdlog, fmt, gtest, gmock, Catch2) and common
+	// system / third-party C++ roots. The `std` allowlist key already
+	// exists above (added for Rust) and is reused for STL-header
+	// imports collapsed in classifyExternal.
+	"spdlog":    {},
+	"benchmark": {}, // Google Benchmark — used heavily in spdlog/bench
+	"gtest":     {},
+	"gmock":     {},
+	"catch2":    {},
+	"boost":     {},
+	"eigen":     {},
+	"qt":        {},
+	"abseil":    {},
+	"absl":      {},
+	"folly":     {},
+	"protobuf":  {},
+	"grpc":      {},
+	"openssl":   {},
+	"zlib":      {},
+	"curl":      {},
+}
+
+// googleBenchmarkBareNames is the cpp-gated Google Benchmark public-
+// API stop-list (issue #44 — spdlog/bench bug-rate). UpperCamelCase
+// surface from <benchmark/benchmark.h>. Receiver-stripped from
+// `benchmark::DoNotOptimize(...)`, `benchmark::Initialize(...)` etc.
+// Conservative — only the highest-volume, most-distinctive names.
+var googleBenchmarkBareNames = map[string]struct{}{
+	"DoNotOptimize":          {},
+	"ClobberMemory":          {},
+	"RegisterBenchmark":      {},
+	"RunSpecifiedBenchmarks": {},
+	"Initialize":             {},
+	"Shutdown":               {},
+	"UseRealTime":            {},
+	"UseManualTime":          {},
+	"MeasureProcessCPUTime":  {},
+	"Iterations":             {},
+	"Threads":                {},
+	"ThreadRange":            {},
+	"Range":                  {},
+	"RangeMultiplier":        {},
+	"Unit":                   {},
+	"MinTime":                {},
+	"Repetitions":            {},
+	"ReportAggregatesOnly":   {},
+	"DisplayAggregatesOnly":  {},
+	"Args":                   {},
+	"ArgsProduct":            {},
+	"DenseRange":             {},
+	"SkipWithError":          {},
+	"ResumeTiming":           {},
+	"PauseTiming":            {},
+	"SetLabel":               {},
+	"SetComplexityN":         {},
+	"SetBytesProcessed":      {},
+	"SetItemsProcessed":      {},
+}
+
+// isSpdlogFactoryName reports whether s matches the spdlog public
+// factory-function shape — snake_case lowercase identifier ending in
+// `_mt` (multi-threaded) or `_st` (single-threaded). Examples:
+// basic_logger_mt, daily_logger_st, rotating_logger_mt,
+// stdout_color_mt, stderr_color_st, syslog_logger_mt, udp_logger_st,
+// callback_logger_mt, android_logger_mt. Used by classifyExternal
+// (issue #44) to route these to the ext:spdlog placeholder. The
+// `_mt`/`_st` suffix is the spdlog naming convention and is
+// extremely unlikely to appear on user-defined methods unrelated to
+// spdlog. Conservative shape check: at least 5 chars, prefix is
+// snake_case lowercase letters/digits/underscores, ends in `_mt` /
+// `_st`, prefix is non-empty after suffix strip.
+func isSpdlogFactoryName(s string) bool {
+	if len(s) < 5 {
+		return false
+	}
+	if !(strings.HasSuffix(s, "_mt") || strings.HasSuffix(s, "_st")) {
+		return false
+	}
+	prefix := s[:len(s)-3]
+	if prefix == "" || prefix[len(prefix)-1] == '_' {
+		return false
+	}
+	// Must contain at least one '_' in the prefix so we're matching
+	// snake_case identifiers, not short ambiguous names like `cm_mt`.
+	if !strings.ContainsRune(prefix, '_') {
+		return false
+	}
+	for _, c := range prefix {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// isFmtBundledFile reports whether the from-file path lives inside a
+// bundled fmt library tree (typical layout: `include/<lib>/fmt/bundled
+// /...`). Used by classifyExternal (issue #44) to route bare CALLS
+// originating from these vendored sources to ext:fmt.
+func isFmtBundledFile(p string) bool {
+	if p == "" {
+		return false
+	}
+	return strings.Contains(p, "/fmt/bundled/") || strings.HasPrefix(p, "fmt/bundled/")
+}
+
+// isFmtMacroIdent reports whether s is an UPPER_SNAKE_CASE identifier
+// with the FMT_ prefix — used by classifyExternal (issue #44) to route
+// fmt-library preprocessor macros (FMT_ASSERT, FMT_THROW, FMT_ENABLE_
+// IF, FMT_STRING, ...) to the ext:fmt placeholder.
+func isFmtMacroIdent(s string) bool {
+	const prefix = "FMT_"
+	if !strings.HasPrefix(s, prefix) || len(s) <= len(prefix) {
+		return false
+	}
+	for _, c := range s[len(prefix):] {
+		switch {
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// catch2BareNames is the cpp-gated Catch2 test-macro stop-list
+// (issue #44). Catch2 uses UpperCamelCase / UPPER_SNAKE_CASE macros
+// that survive the cpp extractor as bare CALLS edges. Routed to
+// ext:catch2.
+var catch2BareNames = map[string]struct{}{
+	"REQUIRE":             {},
+	"REQUIRE_FALSE":       {},
+	"REQUIRE_NOTHROW":     {},
+	"REQUIRE_THROWS":      {},
+	"REQUIRE_THROWS_AS":   {},
+	"REQUIRE_THROWS_WITH": {},
+	"REQUIRE_THAT":        {},
+	"CHECK":               {},
+	"CHECK_FALSE":         {},
+	"CHECK_NOTHROW":       {},
+	"CHECK_THROWS":        {},
+	"CHECK_THROWS_AS":     {},
+	"CHECK_THAT":          {},
+	"SECTION":             {},
+	"TEST_CASE":           {},
+	"TEST_CASE_METHOD":    {},
+	"SCENARIO":            {},
+	"GIVEN":               {},
+	"WHEN":                {},
+	"THEN":                {},
+	"AND_WHEN":            {},
+	"AND_THEN":            {},
+	"INFO":                {},
+	"FAIL":                {},
+	"WARN":                {},
+	"CAPTURE":             {},
+	"SUCCEED":             {},
+	"DYNAMIC_SECTION":     {},
+	"GENERATE":            {},
+	"BENCHMARK":           {},
+	"DOCTEST_TEST_CASE":   {},
+	"DOCTEST_CHECK":       {},
+}
+
+// isSpdlogMacroIdent reports whether s is an UPPER_SNAKE_CASE
+// identifier with the SPDLOG_ prefix — used by classifyExternal to
+// route spdlog preprocessor macros (SPDLOG_LOGGER_DEBUG, SPDLOG_TRACE,
+// SPDLOG_LOGGER_CATCH, SPDLOG_THROW, ...) to the ext:spdlog placeholder
+// (issue #44). Strict shape: starts with "SPDLOG_", remaining chars are
+// all upper-case ASCII letters, digits, or underscores. No leading
+// double underscore (reserved). Conservative — a leading underscore in
+// the suffix would reject, so plain `SPDLOG_` alone is rejected.
+func isSpdlogMacroIdent(s string) bool {
+	const prefix = "SPDLOG_"
+	if !strings.HasPrefix(s, prefix) || len(s) <= len(prefix) {
+		return false
+	}
+	for _, c := range s[len(prefix):] {
+		switch {
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // isKindLikePrefix reports whether s is a short, alphabetic kind name
