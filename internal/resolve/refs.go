@@ -2347,6 +2347,65 @@ func isHeuristicScopeStub(s string) bool {
 	return false
 }
 
+// dataAccessSQLOrms is the set of SQL driver / ORM tags the
+// internal/extractors/cross/dbmap extractor emits in the
+// scope:dataaccess:<file>#<orm>:<op>:<table> stub form. Used by
+// isDataAccessSQLStub to route unresolved references to ExternalKnown
+// (issue #507) instead of letting them inflate the bug-extractor bucket.
+//
+// Keep in sync with internal/extractors/cross/dbmap/orms.go. A short list
+// of names is enough — the stub-format prefix check makes this an
+// unambiguous classification gate.
+var dataAccessSQLOrms = map[string]struct{}{
+	"psycopg2":         {},
+	"sqlalchemy":       {},
+	"asyncpg":          {},
+	"aiopg":            {},
+	"mysql-connector":  {},
+	"pymysql":          {},
+	"pymongo":          {},
+	"mongoengine":      {},
+	"gorm":             {},
+	"sqlx":             {},
+	"database/sql":     {},
+	"sequelize":        {},
+	"typeorm":          {},
+	"prisma":           {},
+	"knex":             {},
+	"activerecord":     {},
+	"hibernate":        {},
+	"jdbc":             {},
+	"jdbi":             {},
+	"mybatis":          {},
+}
+
+// isDataAccessSQLStub reports whether s is a SCOPE.DataAccess structural
+// ref emitted by the cross-language dbmap extractor in the form
+//   scope:dataaccess:<file>#<orm>:<op>:<table>
+// (where <orm> is one of dataAccessSQLOrms). These refs are intentional
+// — they identify SQL surface area — and should resolve to a real
+// SCOPE.DataAccess entity when one exists (extractor sets QualifiedName).
+// When resolution fails the classifier routes them to ExternalKnown via
+// classifyDispositionLang (issue #507).
+func isDataAccessSQLStub(s string) bool {
+	const prefix = "scope:dataaccess:"
+	if !strings.HasPrefix(s, prefix) {
+		return false
+	}
+	hash := strings.IndexByte(s, stubMemberDelim)
+	if hash < 0 || hash >= len(s)-1 {
+		return false
+	}
+	rest := s[hash+1:]
+	colon := strings.IndexByte(rest, ':')
+	if colon <= 0 {
+		return false
+	}
+	orm := rest[:colon]
+	_, ok := dataAccessSQLOrms[orm]
+	return ok
+}
+
 // splitStub splits a stub string on the first ':' into (kind, name). If no
 // ':' is present the full string is returned as the name and kind is empty.
 func splitStub(s string) (kind, name string) {
@@ -2658,6 +2717,22 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// bug-rate metric honest while leaving the edges visible in graph.json.
 	if isHeuristicScopeStub(originalStub) {
 		return DispositionDynamic
+	}
+	// Issue #507 — Python SQL-driver dataaccess refs of the form
+	//   scope:dataaccess:<file>#<orm>:<op>:<table>
+	// are emitted by internal/extractors/cross/dbmap for psycopg2 /
+	// sqlalchemy / asyncpg / aiopg / mysql-connector etc. The matching
+	// SCOPE.DataAccess entity normally resolves via byQualifiedName
+	// (extractor populates QualifiedName=entityID, issue #507). Anything
+	// that slips past that — UNKNOWN-table fallbacks, off-by-one extractor
+	// edge cases, dedup misses across re-emitted edges — represents an
+	// external SQL surface area (the table is a real schema object, just
+	// not modelled as a graph entity yet). Routing to ExternalKnown stops
+	// these from polluting bug-extractor on Django/Flask/FastAPI repos
+	// (client-fixture-a 13.70% pre-fix). The new external-sql disposition
+	// bucket is tracked as a chain-fix.
+	if isDataAccessSQLStub(originalStub) {
+		return DispositionExternalKnown
 	}
 	// Issue #120 — IMPORTS edges across every language extractor
 	// emit FromID = the importing file's source path (the file the
