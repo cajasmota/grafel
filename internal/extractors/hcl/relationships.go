@@ -156,6 +156,12 @@ func emitFileLevelRelationships(root *sitter.Node, src []byte, path, lang string
 							"import_kind":   "module",
 							"source_module": source,
 							"imported_name": source,
+							// Issue #44 — tag language so the resolver's
+							// dynamic-pattern catalog (hclDynamicPatterns)
+							// matches relative-path module sources like
+							// `../../` even on the non-embedded
+							// classification path and in diagnostic dumps.
+							"language": lang,
 						},
 					})
 				}
@@ -170,6 +176,8 @@ func emitFileLevelRelationships(root *sitter.Node, src []byte, path, lang string
 						"import_kind":   "provider",
 						"source_module": labels[0],
 						"imported_name": labels[0],
+						// Issue #44 — see module branch above.
+						"language": lang,
 					},
 				})
 			}
@@ -200,7 +208,13 @@ func emitFileLevelRelationships(root *sitter.Node, src []byte, path, lang string
 
 // extractCalls walks a block body and returns CALLS relationships for every
 // interpolation reference. selfRef (if non-empty) suppresses self-edges.
-func extractCalls(body *sitter.Node, src []byte, fromRef, selfRef string) []types.RelationshipRecord {
+//
+// Issue #44 (HCL) — ToID is emitted as a Format A structural-ref tied to
+// the current file path so the resolver can bind via byLocation. Same-file
+// refs (the dominant case inside `examples/<x>/main.tf`) resolve cleanly;
+// cross-file refs in a multi-file module fall back to the dynamic-pattern
+// catalog in internal/resolve/refs.go (hclDynamicPatterns).
+func extractCalls(body *sitter.Node, src []byte, path, lang, fromRef, selfRef string) []types.RelationshipRecord {
 	if body == nil {
 		return nil
 	}
@@ -218,8 +232,13 @@ func extractCalls(body *sitter.Node, src []byte, fromRef, selfRef string) []type
 					if _, dup := seen[ref]; !dup {
 						seen[ref] = struct{}{}
 						rels = append(rels, types.RelationshipRecord{
-							FromID: fromRef,
-							ToID:   ref,
+							// FromID is a structural-ref to the parent block in
+							// the current file so the resolver binds via
+							// byLocation (the parent entity's Name is the same
+							// canonical ref). Empty FromID would otherwise be
+							// kept bare and split byName ambiguously.
+							FromID: extractor.BuildOperationStructuralRef(lang, path, fromRef),
+							ToID:   extractor.BuildOperationStructuralRef(lang, path, ref),
 							Kind:   "CALLS",
 						})
 					}

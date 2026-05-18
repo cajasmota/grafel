@@ -193,8 +193,13 @@ func extractResourceBlock(n *sitter.Node, src []byte, path, lang string, start, 
 		return nil, false
 	}
 
+	// Issue #44 (HCL) — entity Name uses the canonical reference form so
+	// CONTAINS / CALLS structural-refs whose tail is the same canonical
+	// form (built by blockReferenceName) bind through byLocation. Tests
+	// that need the bare label can still pull it from Metadata.
+	selfRef := resourceType + "." + resourceName
 	rec := types.EntityRecord{
-		Name:          resourceName,
+		Name:          selfRef,
 		Kind:          "SCOPE.Component",
 		Subtype:       "resource",
 		SourceFile:    path,
@@ -203,17 +208,16 @@ func extractResourceBlock(n *sitter.Node, src []byte, path, lang string, start, 
 		Language:      lang,
 		QualityScore:  0.9,
 		QualifiedName: "resource." + resourceType + "." + resourceName,
-		Metadata:      map[string]interface{}{"subtype": "resource", "resource_type": resourceType},
+		Metadata:      map[string]interface{}{"subtype": "resource", "resource_type": resourceType, "label": resourceName},
 	}
 
 	// Extract depends_on relationships.
 	body := blockBody(n)
 	if body != nil {
-		deps := extractDependsOn(body, src, path)
+		deps := extractDependsOn(body, src, path, lang)
 		rec.Relationships = append(rec.Relationships, deps...)
 		// Issue #387 — interpolation cross-references → CALLS edges.
-		selfRef := resourceType + "." + resourceName
-		calls := extractCalls(body, src, selfRef, selfRef)
+		calls := extractCalls(body, src, path, lang, selfRef, selfRef)
 		rec.Relationships = append(rec.Relationships, calls...)
 	}
 
@@ -232,8 +236,9 @@ func extractDataBlock(n *sitter.Node, src []byte, path, lang string, start, end 
 		return nil, false
 	}
 
+	selfRef := "data." + dataType + "." + dataName
 	rec := types.EntityRecord{
-		Name:          dataName,
+		Name:          selfRef,
 		Kind:          "SCOPE.Component",
 		Subtype:       "data_source",
 		SourceFile:    path,
@@ -242,16 +247,15 @@ func extractDataBlock(n *sitter.Node, src []byte, path, lang string, start, end 
 		Language:      lang,
 		QualityScore:  0.9,
 		QualifiedName: "data." + dataType + "." + dataName,
-		Metadata:      map[string]interface{}{"subtype": "data_source", "data_type": dataType},
+		Metadata:      map[string]interface{}{"subtype": "data_source", "data_type": dataType, "label": dataName},
 	}
 
 	body := blockBody(n)
 	if body != nil {
-		deps := extractDependsOn(body, src, path)
+		deps := extractDependsOn(body, src, path, lang)
 		rec.Relationships = append(rec.Relationships, deps...)
 		// Issue #387 — interpolation cross-references → CALLS edges.
-		selfRef := "data." + dataType + "." + dataName
-		calls := extractCalls(body, src, selfRef, selfRef)
+		calls := extractCalls(body, src, path, lang, selfRef, selfRef)
 		rec.Relationships = append(rec.Relationships, calls...)
 	}
 
@@ -269,8 +273,9 @@ func extractModuleBlock(n *sitter.Node, src []byte, path, lang string, start, en
 		return nil, false
 	}
 
+	selfRef := "module." + moduleName
 	rec := types.EntityRecord{
-		Name:         moduleName,
+		Name:         selfRef,
 		Kind:         "SCOPE.Component",
 		Subtype:      "module",
 		SourceFile:   path,
@@ -278,7 +283,7 @@ func extractModuleBlock(n *sitter.Node, src []byte, path, lang string, start, en
 		EndLine:      end,
 		Language:     lang,
 		QualityScore: 0.9,
-		Metadata:     map[string]interface{}{"subtype": "module"},
+		Metadata:     map[string]interface{}{"subtype": "module", "label": moduleName},
 	}
 
 	// Extract source attribute into QualifiedName.
@@ -288,11 +293,10 @@ func extractModuleBlock(n *sitter.Node, src []byte, path, lang string, start, en
 			rec.QualifiedName = src_
 			rec.Metadata["source"] = src_
 		}
-		deps := extractDependsOn(body, src, path)
+		deps := extractDependsOn(body, src, path, lang)
 		rec.Relationships = append(rec.Relationships, deps...)
 		// Issue #387 — interpolation cross-references → CALLS edges.
-		selfRef := "module." + moduleName
-		calls := extractCalls(body, src, selfRef, selfRef)
+		calls := extractCalls(body, src, path, lang, selfRef, selfRef)
 		rec.Relationships = append(rec.Relationships, calls...)
 	}
 
@@ -311,7 +315,7 @@ func extractVariableBlock(n *sitter.Node, src []byte, path, lang string, start, 
 	}
 
 	rec := types.EntityRecord{
-		Name:         varName,
+		Name:         "var." + varName,
 		Kind:         "SCOPE.Schema",
 		Subtype:      "variable",
 		SourceFile:   path,
@@ -319,7 +323,7 @@ func extractVariableBlock(n *sitter.Node, src []byte, path, lang string, start, 
 		EndLine:      end,
 		Language:     lang,
 		QualityScore: 0.8,
-		Metadata:     map[string]interface{}{"subtype": "variable"},
+		Metadata:     map[string]interface{}{"subtype": "variable", "label": varName},
 	}
 	return []types.EntityRecord{rec}, true
 }
@@ -336,7 +340,7 @@ func extractOutputBlock(n *sitter.Node, src []byte, path, lang string, start, en
 	}
 
 	rec := types.EntityRecord{
-		Name:         outName,
+		Name:         "output." + outName,
 		Kind:         "SCOPE.Schema",
 		Subtype:      "output",
 		SourceFile:   path,
@@ -344,7 +348,7 @@ func extractOutputBlock(n *sitter.Node, src []byte, path, lang string, start, en
 		EndLine:      end,
 		Language:     lang,
 		QualityScore: 0.8,
-		Metadata:     map[string]interface{}{"subtype": "output"},
+		Metadata:     map[string]interface{}{"subtype": "output", "label": outName},
 	}
 	return []types.EntityRecord{rec}, true
 }
@@ -361,7 +365,7 @@ func extractProviderBlock(n *sitter.Node, src []byte, path, lang string, start, 
 	}
 
 	rec := types.EntityRecord{
-		Name:         providerName,
+		Name:         "provider." + providerName,
 		Kind:         "SCOPE.Component",
 		Subtype:      "provider",
 		SourceFile:   path,
@@ -369,7 +373,7 @@ func extractProviderBlock(n *sitter.Node, src []byte, path, lang string, start, 
 		EndLine:      end,
 		Language:     lang,
 		QualityScore: 0.9,
-		Metadata:     map[string]interface{}{"subtype": "provider"},
+		Metadata:     map[string]interface{}{"subtype": "provider", "label": providerName},
 	}
 	return []types.EntityRecord{rec}, true
 }
@@ -398,7 +402,7 @@ func extractLocalsBlock(n *sitter.Node, src []byte, path, lang string) ([]types.
 		}
 		attrStart, attrEnd := nodeLines(attr)
 		records = append(records, types.EntityRecord{
-			Name:         key,
+			Name:         "local." + key,
 			Kind:         "SCOPE.Schema",
 			Subtype:      "local",
 			SourceFile:   path,
@@ -406,7 +410,7 @@ func extractLocalsBlock(n *sitter.Node, src []byte, path, lang string) ([]types.
 			EndLine:      attrEnd,
 			Language:     lang,
 			QualityScore: 0.8,
-			Metadata:     map[string]interface{}{"subtype": "local"},
+			Metadata:     map[string]interface{}{"subtype": "local", "label": key},
 		})
 	}
 
@@ -425,7 +429,7 @@ func extractLocalsBlock(n *sitter.Node, src []byte, path, lang string) ([]types.
 //
 // depends_on = [resource.type.name, module.name]
 // The AST: attribute → identifier("depends_on") / expression → collection_value → tuple → expression → ...
-func extractDependsOn(body *sitter.Node, src []byte, fromPath string) []types.RelationshipRecord {
+func extractDependsOn(body *sitter.Node, src []byte, fromPath, lang string) []types.RelationshipRecord {
 	if body == nil {
 		return nil
 	}
@@ -440,7 +444,7 @@ func extractDependsOn(body *sitter.Node, src []byte, fromPath string) []types.Re
 			continue
 		}
 		// Found depends_on attribute — extract tuple elements.
-		return parseDependsOnTuple(attr, src, fromPath)
+		return parseDependsOnTuple(attr, src, fromPath, lang)
 	}
 	return nil
 }
@@ -451,7 +455,7 @@ func extractDependsOn(body *sitter.Node, src []byte, fromPath string) []types.Re
 // The AST path is: attribute → expression → collection_value → tuple →
 // expression* (one per element). Each element expression contains variable_expr
 // and get_attr siblings that form the dotted reference.
-func parseDependsOnTuple(attr *sitter.Node, src []byte, fromPath string) []types.RelationshipRecord {
+func parseDependsOnTuple(attr *sitter.Node, src []byte, fromPath, lang string) []types.RelationshipRecord {
 	if attr == nil {
 		return nil
 	}
@@ -473,9 +477,13 @@ func parseDependsOnTuple(attr *sitter.Node, src []byte, fromPath string) []types
 				if child != nil && child.Type() == "expression" {
 					ref := resolveReference(child, src)
 					if ref != "" {
+						// Issue #44 (HCL) — emit ToID as a Format A
+						// structural-ref tied to the current file so the
+						// resolver binds via byLocation; sibling-file refs
+						// fall back to hclDynamicPatterns in resolve/refs.go.
 						rels = append(rels, types.RelationshipRecord{
 							FromID: fromPath,
-							ToID:   ref,
+							ToID:   extractor.BuildOperationStructuralRef(lang, fromPath, ref),
 							Kind:   "DEPENDS_ON",
 						})
 					}
