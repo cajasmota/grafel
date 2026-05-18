@@ -1385,6 +1385,11 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 			return "function", true
 		}
 	}
+	if lang == "zig" {
+		if _, ok := zigBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -8148,4 +8153,468 @@ func isHexID(s string) bool {
 		}
 	}
 	return true
+}
+
+// zigBareNames is the Zig-language-gated bare-name stop-list (issue
+// #382 follow-up — wave-3 http.zig fix). The Zig extractor takes the
+// rightmost segment of a dotted call (`std.debug.assert(...)` →
+// `assert`, `std.mem.Allocator.alignedAlloc(...)` → `alignedAlloc`,
+// `std.ArrayList(u8).init(...)` → `init` (filtered out as risky),
+// `std.StringHashMap(...)` → `StringHashMap`), so high-volume zig
+// stdlib calls land in bug-extractor as unresolved bare CALLS.
+//
+// Mirrors the Swift / Kotlin Ktor precedent (#435 / #436): the
+// language gate (lang == "zig") is the safety net that prevents
+// names like `assert`, `dupe`, `allocPrint` from shadowing user-
+// defined methods in Go / JS / Python / Ruby / Kotlin codebases.
+//
+// Conservative selection (lessons from #94 / #105 / #106): generic
+// verbs that are routinely user-defined on a Zig struct
+// (`init`, `deinit`, `free`, `close`, `get`, `parse`, `write`,
+// `read`, `add`, `remove`, `create`, `destroy`, `run`, `stop`,
+// `accept`, `listen`, `send`, `recv`, `set`, `put`, `delete`,
+// `clear`, `reset`, `start`, `update`, `flush`, `commit`) are
+// deliberately EXCLUDED — the bug-resolver `ambig-bare-hint-fail`
+// histogram on http.zig shows these names with 2+ user-defined
+// candidates in the local graph. Including them would synthesise
+// `ext:init` placeholders for real user methods, breaking #94's
+// safer-bias rule.
+//
+// Categories:
+//   - std.debug helpers (`assert`, `print` (already global),
+//     `panic`, `warn`).
+//   - std.mem / Allocator helpers (`alloc`, `free` excluded as
+//     risky; `dupe`, `alignedAlloc`, `allocPrint`, `toBytes`,
+//     `asBytes`, `eql`, `align`, `copy`, `zeroes`,
+//     `lessThan`, `indexOf`, `indexOfScalar`, `lastIndexOf`,
+//     `startsWith`, `endsWith`, `trim`, `trimLeft`, `trimRight`,
+//     `splitScalar`, `splitSequence`, `tokenize`, `tokenizeAny`,
+//     `concat`, `join` (already global), `replaceScalar`).
+//   - std container constructors (`ArrayList`, `ArrayListUnmanaged`,
+//     `StringHashMap`, `StringHashMapUnmanaged`, `AutoHashMap`,
+//     `AutoHashMapUnmanaged`, `MemoryPool`, `BufSet`, `BufMap`,
+//     `DoublyLinkedList`, `SinglyLinkedList`, `PriorityQueue`,
+//     `PriorityDequeue`).
+//   - std.fmt helpers (`allocPrint`, `bufPrint`, `comptimePrint`,
+//     `parseInt`, `parseFloat`, `parseUnsigned`, `formatType`,
+//     `formatFloat`, `formatInt`, `formatBuf`).
+//   - std.json helpers (`parseFromSlice`, `parseFromSliceLeaky`,
+//     `parseFromTokenSource`, `stringify`, `stringifyAlloc`).
+//   - std.testing helpers (`expect`, `expectEqual`,
+//     `expectEqualStrings`, `expectEqualSlices`, `expectError`,
+//     `expectApproxEqAbs`, `expectApproxEqRel`,
+//     `expectStringStartsWith`, `expectStringEndsWith`,
+//     `expectFmt`, `expectString`, `expectGzip`, `expectAnyCall`).
+//   - std.time helpers (`now`, `untilNow`, `nanoTimestamp`,
+//     `milliTimestamp`, `microTimestamp`, `timestamp`, `sleep`).
+//   - std.os / std.posix helpers (`exit`, `getenv`, `setenv`,
+//     `getenvZ`, `getcwd`, `unexpectedWSAError`).
+//   - std.heap helpers (`GeneralPurposeAllocator`,
+//     `ArenaAllocator`, `page_allocator`, `c_allocator`,
+//     `fromByteUnits`).
+//   - std.atomic / std.Thread helpers (`lockUncancelable`,
+//     `waitUncancelable`, `tryAcquire`, `release` excluded as
+//     risky).
+//   - Metrics / hash helpers commonly bare-called via dotted
+//     chains (`incr`, `incrBy`, `hashFn`, `hasFn`).
+var zigBareNames = map[string]struct{}{
+	// std.debug
+	"assert": {},
+	"panic":  {},
+	"warn":   {},
+
+	// std.mem / Allocator helpers (exclude generic `alloc`/`free`).
+	"dupe":           {},
+	"dupeZ":          {},
+	"alignedAlloc":   {},
+	"toBytes":        {},
+	"asBytes":        {},
+	"bytesAsSlice":   {},
+	"sliceAsBytes":   {},
+	"eql":            {},
+	"order":          {},
+	"lessThan":       {},
+	"indexOf":        {},
+	"indexOfScalar":  {},
+	"indexOfAny":     {},
+	"lastIndexOf":    {},
+	"startsWith":     {},
+	"endsWith":       {},
+	"trim":           {},
+	"trimLeft":       {},
+	"trimRight":      {},
+	"splitScalar":    {},
+	"splitSequence":  {},
+	"splitAny":       {},
+	"split":          {}, // std.mem.split — zig-gated, distinct from JS split
+	"tokenize":       {},
+	"tokenizeAny":    {},
+	"tokenizeScalar": {},
+	"concat":         {},
+	"replaceScalar":  {},
+	"copyForwards":   {},
+	"copyBackwards":  {},
+	"swap":           {},
+	"zeroes":         {},
+	"alignForward":   {},
+	"alignBackward":  {},
+	"isAligned":      {},
+	"align":          {},
+
+	// std container generic types (called with a type parameter:
+	// `std.ArrayList(u8)`). The Zig extractor sees them as bare
+	// constructor-shaped calls.
+	"ArrayList":              {},
+	"ArrayListUnmanaged":     {},
+	"BoundedArray":           {},
+	"StringHashMap":          {},
+	"StringHashMapUnmanaged": {},
+	"AutoHashMap":            {},
+	"AutoHashMapUnmanaged":   {},
+	"HashMap":                {},
+	"HashMapUnmanaged":       {},
+	"MemoryPool":             {},
+	"BufSet":                 {},
+	"BufMap":                 {},
+	"DoublyLinkedList":       {},
+	"SinglyLinkedList":       {},
+	"PriorityQueue":          {},
+	"PriorityDequeue":        {},
+	"MultiArrayList":         {},
+	"SegmentedList":          {},
+
+	// std.fmt helpers.
+	"allocPrint":     {},
+	"allocPrintZ":    {},
+	"bufPrint":       {},
+	"bufPrintZ":      {},
+	"comptimePrint":  {},
+	"parseInt":       {},
+	"parseFloat":     {},
+	"parseUnsigned":  {},
+	"formatType":     {},
+	"formatFloat":    {},
+	"formatInt":      {},
+	"formatBuf":      {},
+	"formatText":     {},
+	"formatIntValue": {},
+
+	// std.json helpers.
+	"parseFromSlice":       {},
+	"parseFromSliceLeaky":  {},
+	"parseFromTokenSource": {},
+	"stringify":            {},
+	"stringifyAlloc":       {},
+
+	// std.testing helpers. The zig test runner uses these as bare
+	// top-level calls inside `test "name" { ... }` blocks. Names like
+	// `expect`/`expectEqual` are distinctive and unlikely to collide
+	// with a user-defined struct method.
+	"expect":                 {},
+	"expectEqual":            {},
+	"expectEqualStrings":     {},
+	"expectEqualSlices":      {},
+	"expectEqualSentinel":    {},
+	"expectEqualDeep":        {},
+	"expectError":            {},
+	"expectApproxEqAbs":      {},
+	"expectApproxEqRel":      {},
+	"expectStringStartsWith": {},
+	"expectStringEndsWith":   {},
+	"expectFmt":              {},
+	"expectString":           {},
+	"expectGzip":             {},
+
+	// std.time helpers.
+	"now":            {},
+	"untilNow":       {},
+	"nanoTimestamp":  {},
+	"milliTimestamp": {},
+	"microTimestamp": {},
+	"timestamp":      {},
+
+	// std.os / std.posix helpers. `exit`/`getenv` are distinctive
+	// enough at the zig gate to be safe; user-defined `exit` on a
+	// Zig struct is extremely rare.
+	"unexpectedWSAError": {},
+	"getenvZ":            {},
+	"getcwdAlloc":        {},
+
+	// std.heap helpers.
+	"GeneralPurposeAllocator": {},
+	"ArenaAllocator":          {},
+	"FixedBufferAllocator":    {},
+	"StackFallbackAllocator":  {},
+	"page_allocator":          {},
+	"c_allocator":             {},
+	"raw_c_allocator":          {},
+	"smp_allocator":           {},
+	"fromByteUnits":           {},
+
+	// std.Thread / std.atomic primitives that the extractor
+	// receiver-strips when the lock/wait is on a struct field.
+	"lockUncancelable":   {},
+	"waitUncancelable":   {},
+	"timedWaitFor":       {},
+
+	// std.hash / std.crypto helpers that show up bare as dotted
+	// leaves (`std.hash.Wyhash.hash` → `hashFn` / `hash`). Keep
+	// only the distinctive-suffix names.
+	"hashFn": {},
+	"hasFn":  {},
+	"incr":   {},
+	"incrBy": {},
+
+	// std.mem.Allocator method calls (`allocator.create(T)`,
+	// `allocator.destroy(ptr)`, `allocator.resize(slice, n)`).
+	// These are the canonical Zig manual-memory idioms and are
+	// safe under the zig gate even though `create` / `destroy`
+	// look generic — user-defined struct methods named `create` /
+	// `destroy` are rare in idiomatic Zig (the convention is
+	// `init` / `deinit`), and the zig gate keeps the names from
+	// shadowing user methods in other ecosystems.
+	"create":   {},
+	"destroy":  {},
+	"resize":   {},
+	"realloc":  {},
+	"rawAlloc": {},
+	"rawResize": {},
+	"rawFree":  {},
+
+	// std.ArrayList / ArrayListUnmanaged method surface.
+	"appendSlice":            {},
+	"appendNTimes":           {},
+	"appendAssumeCapacity":   {},
+	"appendSliceAssumeCapacity": {},
+	"ensureTotalCapacity":    {},
+	"ensureUnusedCapacity":   {},
+	"ensureTotalCapacityPrecise": {},
+	"clearRetainingCapacity": {},
+	"clearAndFree":           {},
+	"toOwnedSlice":           {},
+	"toOwnedSliceSentinel":   {},
+	"prepend":                {},
+	"insertSlice":            {},
+	"swapRemove":             {},
+	"orderedRemove":          {},
+	"popOrNull":              {},
+	"getPtr":                 {},
+	"writableSliceGreedy":    {},
+
+	// std.HashMap method surface.
+	"getOrPut":              {},
+	"getOrPutValue":         {},
+	"getOrPutAssumeCapacity": {},
+	"putAssumeCapacity":     {},
+	"putNoClobber":          {},
+	"fetchPut":              {},
+	"fetchRemove":           {},
+	"containsKey":           {},
+	"removeByPtr":           {},
+	"valueIterator":         {},
+	"keyIterator":           {},
+
+	// std.mem extras / std.ascii.
+	"indexOfScalarPos": {},
+	"indexOfAnyPos":    {},
+	"indexOfPos":       {},
+	"lastIndexOfScalar": {},
+	"eqlIgnoreCase":    {},
+	"sliceTo":          {},
+	"span":             {},
+	"trimStart":        {},
+	"trimEnd":          {},
+	"trimLeadingSpace": {},
+	"trimLeadingSpaceCount": {},
+	"toLower":          {},
+	"toUpper":          {},
+	"toInt":            {},
+	"toSeconds":        {},
+	"toMicroseconds":   {},
+
+	// std.fmt extras.
+	"printInt":   {},
+	"formatBuffer": {},
+
+	// std.fs.
+	"openFile":       {},
+	"createFile":     {},
+	"openDir":        {},
+	"makePath":       {},
+	"readFileAlloc":  {},
+	"writeFile":      {},
+
+	// std.os / std.posix syscalls and helpers.
+	"sleep":       {},
+	"closesocket": {},
+	"socketpair":  {},
+	"sigaction":   {},
+	"sigemptyset": {},
+	"sigfillset":  {},
+	"sigaddset":   {},
+	"getpid":      {},
+	"kill":        {},
+	"setupConnection": {},
+
+	// std.math helpers.
+	"maxInt":         {},
+	"minInt":         {},
+	"shlExact":       {},
+	"shrExact":       {},
+	"uintAtMost":     {},
+	"intRangeAtMost": {},
+	"intRangeLessThan": {},
+	"divCeil":        {},
+	"divFloor":       {},
+	"divTrunc":       {},
+	"divExact":       {},
+	"mulWide":        {},
+	"absCast":        {},
+	"cast":           {},
+	"lossyCast":      {},
+
+	// std.mem byte-order helpers.
+	"nativeToBig":    {},
+	"nativeToLittle": {},
+	"bigToNative":    {},
+	"littleToNative": {},
+	"readIntNative":  {},
+	"readIntBig":     {},
+	"readIntLittle":  {},
+	"writeIntBig":    {},
+	"writeIntLittle": {},
+	"writeIntNative": {},
+	"readInt":        {},
+	"writeInt":       {},
+
+	// std.io / buffered reader/writer.
+	"bufferedReader":   {},
+	"bufferedWriter":   {},
+	"buffered":         {},
+	"readSliceShort":   {},
+	"readVec":          {},
+
+	// std.builtin / std.Build.
+	"standardTargetOptions":   {},
+	"standardOptimizeOption":  {},
+	"ArgsTuple":               {},
+	"suggestVectorLength":     {},
+	"isDarwin":                {},
+	"isWindows":               {},
+	"isLinux":                 {},
+	"isBSD":                   {},
+
+	// std.json extras.
+	"parseFree": {},
+
+	// Random / std.rand.
+	"DefaultPrng":          {},
+	"intRangeAtMostBiased": {},
+
+	// std.Build (`build.zig`) DSL — bare receiver-stripped methods on
+	// the `*std.Build` and `*std.Build.Step.Compile` chains. Names
+	// like `installArtifact` / `addExecutable` / `dependency` are
+	// distinctive enough to be safe at the zig gate.
+	"installArtifact":    {},
+	"dependency":         {},
+	"dependOn":           {},
+	"createModule":       {},
+	"addModule":          {},
+	"addExecutable":      {},
+	"addStaticLibrary":   {},
+	"addSharedLibrary":   {},
+	"addTest":            {},
+	"addOptions":         {},
+	"addCSourceFile":     {},
+	"addCSourceFiles":    {},
+	"addIncludePath":     {},
+	"addLibraryPath":     {},
+	"linkLibrary":        {},
+	"linkSystemLibrary":  {},
+	"linkLibC":           {},
+	"linkLibCpp":         {},
+	"installHeader":      {},
+	"installFile":        {},
+	"installDirectory":   {},
+
+	// std.log / std.debug additions.
+	"info":                  {},
+	"dumpErrorReturnTrace":  {},
+	"defaultPanic":          {},
+	"detectError":           {},
+	"frameText":             {},
+
+	// std.ascii / unicode additions.
+	"lowerString":   {},
+	"upperString":   {},
+	"isHex":         {},
+	"isDigit":       {},
+	"isAlpha":       {},
+	"isAlphabetic":  {},
+	"isWhitespace":  {},
+	"isPrint":       {},
+	"isUpper":       {},
+	"isLower":       {},
+
+	// std.net additions.
+	"parseIp":     {},
+	"parseIp4":    {},
+	"parseIp6":    {},
+	"resolveIp":   {},
+	"getsockname": {},
+	"getsockopt":  {},
+	"setsockopt":  {},
+	"ioctlsocket": {},
+
+	// std.compress / std.crypto additions.
+	"decompress":     {},
+	"decodeHex":      {},
+	"parseExtension": {},
+
+	// std.io extras (fixed-buffer stream + reader/writer adaptors).
+	"fixedBufferStream": {},
+
+	// std.PriorityQueue / SegmentedList method surface.
+	"popMin":  {},
+	"peekMin": {},
+
+	// std.time extras.
+	"durationTo": {},
+
+	// std.mem long-tail not yet covered.
+	"indexOfNonePos": {},
+	"consumeAll":     {},
+
+	// std.log severity helpers — receiver-stripped from
+	// `log.err(...)`, `log.info(...)`, `log.debug(...)`,
+	// `log.warn(...)`. `err` and `debug` are common identifier names
+	// so the zig gate is the safety net.
+	"err":   {},
+	"debug": {},
+
+	// std.Build extras (`addRunArtifact`, `addArgs`, `addImport`,
+	// `addOption`).
+	"addRunArtifact": {},
+	"addArgs":        {},
+	"addImport":      {},
+	"addOption":      {},
+
+	// std.fs.Dir / std.fs absolute helpers.
+	"deleteFileAbsolute": {},
+	"deleteTreeAbsolute": {},
+
+	// std.os.windows constants/syscalls (Win32 surface that the zig
+	// extractor receiver-strips from `windows.WSASocketW(...)`).
+	"WSASocketW":  {},
+	"ReadFile":    {},
+	"WriteFile":   {},
+	"CloseHandle": {},
+
+	// std.os.linux long-tail.
+	"accept4": {},
+
+	// std.Build.Step extras / generic helpers that show up bare.
+	"advance":   {},
+	"broadcast": {},
+	"detach":    {},
 }
