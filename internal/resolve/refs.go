@@ -236,6 +236,13 @@ var (
 		regexp.MustCompile(`^setattr$`),
 		regexp.MustCompile(`^hasattr$`),
 		regexp.MustCompile(`^delattr$`),
+		// Wave-4 (Python) — `super().<method>(...)` chains. The Python
+		// extractor strips the `super()` receiver to a literal `super`
+		// segment, yielding stubs like `super.render`, `super.__init__`,
+		// `super.to_info_dict`. The dispatch target is the MRO-resolved
+		// parent method which depends on the (often-external) base
+		// class — overwhelmingly Dynamic-by-design, not an extractor bug.
+		regexp.MustCompile(`^super\.[A-Za-z_][A-Za-z0-9_]*`),
 		regexp.MustCompile(`^eval$`),
 		regexp.MustCompile(`^exec$`),
 		regexp.MustCompile(`^compile$`),
@@ -2708,10 +2715,135 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if (lang == "typescript" || lang == "javascript") && isTSBuiltinType(name) {
 		return DispositionExternalKnown
 	}
+	// Wave-4 (Python) — Django / DRF / Flask / SQLAlchemy framework
+	// base classes routinely appear as the trailing segment of
+	// structural-ref EXTENDS / IMPLEMENTS stubs (`scope:component:class:
+	// python:foo.py:Model`, `:APIView`, `:RetrieveAPIView`, `:AppConfig`,
+	// `:JSONRenderer`, `:BaseUserManager`, `:AbstractBaseUser`,
+	// `:SQLAlchemyModelFactory`, etc.) because the parent class is
+	// imported from a third-party package and has no in-tree entity.
+	// They are framework parent types, not extractor bugs. Gated to
+	// lang=="python" so a same-named user class in another language is
+	// not shadowed (#94 safer-bias rule).
+	if lang == "python" && isPythonExternalBaseType(name) {
+		return DispositionExternalKnown
+	}
+	// Wave-4 (Python) — same allowlist also fires when language is
+	// unknown but the stub carries a `Kind:Name` prefix (bare-kind-
+	// prefixed category in the diagnostic dump). These edges originate
+	// from the cross-language IMPORTS / EXTENDS / DEPENDS_ON synthesiser
+	// which doesn't always propagate the source-file language onto the
+	// edge properties; nevertheless framework class names like
+	// `RetrieveUpdateAPIView`, `AppConfig`, `JSONRenderer`, `Blueprint`
+	// are unambiguously framework parents and the lookup is exact-match
+	// against a curated allowlist, so the safer-bias rule (#94) is
+	// preserved.
+	if lang == "" && strings.Contains(originalStub, stubDelim) &&
+		!strings.HasPrefix(originalStub, stubPrefixScope) &&
+		!strings.HasPrefix(originalStub, stubPrefixExternal) &&
+		isPythonExternalBaseType(name) {
+		return DispositionExternalKnown
+	}
 	if idx.nameExists(name) {
 		return DispositionBugResolver
 	}
 	return DispositionBugExtractor
+}
+
+// isPythonExternalBaseType reports whether s is a well-known Django /
+// Django REST Framework / Flask / SQLAlchemy framework base class name
+// commonly used as a parent in `class Foo(Model)` / `class Bar(APIView)`-
+// style declarations. Used by classifyDispositionLang to route
+// EXTENDS / IMPLEMENTS structural-ref stubs whose trailing segment is a
+// framework parent into ExternalKnown rather than BugExtractor. Curated
+// from real django-realworld / flask-realworld bug-extractor samples;
+// the lang=="python" gate at the call site keeps the safer-bias rule
+// (#94) intact for other languages.
+func isPythonExternalBaseType(s string) bool {
+	_, ok := pythonExternalBaseTypes[s]
+	return ok
+}
+
+var pythonExternalBaseTypes = map[string]struct{}{
+	// Django auth / contrib base classes.
+	"AbstractBaseUser": {},
+	"AbstractUser":     {},
+	"BaseUserManager":  {},
+	"PermissionsMixin": {},
+	"AppConfig":        {},
+	// Django REST Framework view + viewset + renderer + permission base
+	// classes (when used as a parent — `class Foo(APIView)`).
+	"APIView":                      {},
+	"GenericAPIView":               {},
+	"ListAPIView":                  {},
+	"RetrieveAPIView":              {},
+	"CreateAPIView":                {},
+	"UpdateAPIView":                {},
+	"DestroyAPIView":               {},
+	"ListCreateAPIView":            {},
+	"RetrieveUpdateAPIView":        {},
+	"RetrieveDestroyAPIView":       {},
+	"RetrieveUpdateDestroyAPIView": {},
+	"ViewSet":                      {},
+	"GenericViewSet":               {},
+	"ModelViewSet":                 {},
+	"ReadOnlyModelViewSet":         {},
+	"Serializer":                   {},
+	"ModelSerializer":              {},
+	"HyperlinkedModelSerializer":   {},
+	"JSONRenderer":                 {},
+	"BrowsableAPIRenderer":         {},
+	"APIException":                 {},
+	"AuthenticationFailed":         {},
+	"NotAuthenticated":             {},
+	"PermissionDenied":             {},
+	"NotFound":                     {},
+	"ValidationError":              {},
+	"DefaultRouter":                {},
+	"SimpleRouter":                 {},
+	"BaseAuthentication":           {},
+	"BasePermission":               {},
+	"BasePagination":               {},
+	"PageNumberPagination":         {},
+	"LimitOffsetPagination":        {},
+	"CursorPagination":             {},
+	// Django ORM / Forms / Admin base classes.
+	"Model":         {},
+	"ModelForm":     {},
+	"ModelAdmin":    {},
+	"TabularInline": {},
+	"StackedInline": {},
+	"Manager":       {},
+	"QuerySet":      {},
+	// Flask / Werkzeug / Flask-RESTful / Flask-SQLAlchemy base classes.
+	"Flask":            {},
+	"Blueprint":        {},
+	"Resource":         {},
+	"Api":              {},
+	"MethodView":       {},
+	"Schema":           {},
+	"Cache":            {},
+	"Migrate":          {},
+	"JWTManager":       {},
+	"LoginManager":     {},
+	"SQLAlchemy":       {},
+	"IntegrityError":   {},
+	"MethodNotAllowed": {},
+	// Marshmallow / factory_boy / pytest-factoryboy base classes.
+	"SQLAlchemyModelFactory":   {},
+	"DjangoModelFactory":       {},
+	"Factory":                  {},
+	"PostGenerationMethodCall": {},
+	"SubFactory":               {},
+	"LazyAttribute":            {},
+	// SQLAlchemy column / mapper primitives.
+	"Column":   {},
+	"Table":    {},
+	"Index":    {},
+	"Sequence": {},
+	// `object` surfaces as bare-kind-prefixed (`Model:object`) from
+	// Python `class Config(object):` declarations.
+	"object": {},
 }
 
 // isTSBuiltinType reports whether s is a TypeScript / JavaScript
