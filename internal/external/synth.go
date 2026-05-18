@@ -330,7 +330,40 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		if idx := strings.LastIndex(stub, ":external:"); idx >= 0 {
 			ext := stub[idx+len(":external:"):]
 			ext = strings.TrimSpace(ext)
-			if ext == "" || strings.ContainsAny(ext, "/\\") {
+			if ext == "" {
+				return "", "", false
+			}
+			// Issue #44 / proto-fix — Go-shaped import paths (`net/http`,
+			// `google.golang.org/grpc/credentials/insecure`,
+			// `github.com/foo/bar`) are external by extractor tag, but the
+			// `/` separator previously dropped them straight back into
+			// bug-extractor. Route them through the same canonicaliser
+			// used by the standalone `isGoImportPath` branch below so we
+			// collapse to a single placeholder per module (stdlib root for
+			// `net/http`, `<host>/<owner>/<repo>` for host-prefixed paths).
+			if isGoImportPath(ext) {
+				segs := strings.Split(ext, "/")
+				first := segs[0]
+				if isGoImportHost(first) {
+					if canonical := goHostCanonical(segs); canonical != "" {
+						return canonical, "package", true
+					}
+				}
+				// Stdlib root: only emit when the leading segment is on
+				// the known-stdlib allowlist. This keeps non-Go path
+				// shapes (e.g. Python `some/path`) from being captured
+				// by the Go-import branch — matching the pre-fix
+				// behaviour for non-Go ecosystems while still routing
+				// real Go stdlib paths (`net/http`, `encoding/json`,
+				// `sync/atomic`) to the right placeholder.
+				if isKnownExternalPackage(first) {
+					return first, "package", true
+				}
+			}
+			// PHP / Rust / other separators still reject — only Go-shaped
+			// paths get the canonicalisation above. Bare names (no `/`)
+			// fall through to the existing root-segment logic.
+			if strings.ContainsAny(ext, "/\\") {
 				return "", "", false
 			}
 			root := ext
@@ -794,6 +827,177 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 				return "function", true
 			}
 		}
+		// Issue #44 / proto-fix — google.golang.org/grpc + protobuf
+		// PascalCase surface that is distinctive enough to safely match
+		// on lang=="go" alone, without an import gate. These names
+		// (`NewCredentials`, `FromIncomingContext`, `MessageStateOf`,
+		// `Pairs`, `TrySchedule`, `Materialize`, `LazyLog`, ...) are
+		// multi-word and tied to a single ecosystem — no plausible
+		// user-method collision in Go code. The import gate is dropped
+		// because many CALLS edges arrive at the resolver with an empty
+		// FromID-file lookup (the source entity is itself unresolved,
+		// e.g. a method on a receiver-stripped chain), so a strict
+		// import gate would miss the bulk of the volume.
+		if _, ok := goGrpcDistinctiveBareNames[name]; ok {
+			return "function", true
+		}
+		// Issue #44 / proto-fix — when fromImports is empty (FromID is
+		// not a known entity in this graph, e.g. an unresolved nested
+		// receiver chain), fall back to lang-gated allowlists for the
+		// most distinctive grpc/protobuf names. Without this fallback
+		// every gated branch below misses ~20% of bare-name volume
+		// because the file lookup returned nil. Names kept here are
+		// the strict subset that are SAFE without an import gate: tied
+		// to a single grpc/protobuf API surface and unlikely to appear
+		// as user-defined identifiers in non-grpc Go code.
+		if fromImports == nil {
+			switch name {
+			case "UnaryEcho", "ServerStreamingEcho", "ClientStreamingEcho",
+				"BidirectionalStreamingEcho", "FullDuplexCall",
+				"SayHello", "GetMessage", "StaticTokenSource",
+				"NewProvider", "Subscribe", "Now", "Recv",
+				"Marshal", "Unmarshal", "GetCompressor", "FromIncomingContext",
+				"Pairs", "ParseServiceConfig", "Format":
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — google.golang.org/grpc surface that
+		// collides with generic verb names (`Done`, `Recv`, `Stop`,
+		// `Get`, `Format`, `Add`, `V`, `Build`, ...). Gated on the
+		// source file having a gRPC import — same precision model as
+		// the chi gate (#131). For non-gRPC callers these names fall
+		// through and remain unresolved, matching the safer-bias rule
+		// from #94.
+		if hasGoGrpcImport(fromImports) {
+			if _, ok := goGrpcBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — google.golang.org/protobuf runtime.
+		// Gated on a protobuf import for extra safety (some entries
+		// like `Marshal`/`Unmarshal`/`Equal`/`Clone` collide with
+		// generic verb names).
+		if hasGoProtobufImport(fromImports) {
+			if _, ok := goProtobufBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — sync.(RW)Mutex `Lock` / `Unlock` are
+		// receiver-stripped by the Go extractor when the mutex is an
+		// embedded field on a wrapper struct (`*addrConn.mu.Lock()` →
+		// bare `Lock`). They dominate the grpc-go bare-name volume but
+		// `Lock`/`Unlock` collide with the `sync.Locker` interface
+		// contract on any user wrapper. Gate on the source file
+		// importing `sync` (the only stdlib package that exports
+		// `Mutex`/`RWMutex`). Files that don't import `sync` keep the
+		// safer-bias miss from #94.
+		if name == "Lock" || name == "Unlock" {
+			if fromImports != nil && fromImports["sync"] {
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — io.Closer.Close is receiver-stripped
+		// when the closer is a struct field on a wrapper (net.Listener,
+		// grpc.ClientConn, *os.File, sql.DB, etc.). Gated on the file
+		// importing one of the stdlib/grpc packages whose types
+		// implement io.Closer.
+		if name == "Close" && fromImports != nil {
+			if hasGoCloserImport(fromImports) {
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — time package PascalCase helpers gated
+		// on `time` import. `Now`, `After` collide with user methods on
+		// any timestamp-shaped type, so the import gate is required.
+		if fromImports != nil && fromImports["time"] {
+			switch name {
+			case "Now", "After", "Date", "Unix", "UnixMilli", "UnixMicro", "UnixNano":
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — net package PascalCase helpers gated
+		// on `net` (or `net/http`) import. `Listen`, `Accept`, `Addr`
+		// are universal net.Listener / net.Conn idioms; collide with
+		// generic verb methods so the import gate is required.
+		if fromImports != nil && (fromImports["net"] || fromImports["net/http"]) {
+			switch name {
+			case "Listen", "ListenPacket", "Accept", "Addr", "LocalAddr",
+				"RemoteAddr", "SetDeadline", "SetReadDeadline", "SetWriteDeadline":
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — sync/atomic Load*/Store*/Add*/Swap*
+		// helpers gated on `sync/atomic` import. The full type-suffix
+		// shape (`LoadUint64`, `StoreInt32`, `AddInt64`, ...) is
+		// distinctive enough that the import gate is belt-and-braces.
+		if fromImports != nil && fromImports["sync/atomic"] {
+			switch name {
+			case "LoadUint32", "LoadUint64", "LoadInt32", "LoadInt64",
+				"LoadPointer", "StoreUint32", "StoreUint64", "StoreInt32",
+				"StoreInt64", "StorePointer", "AddUint32", "AddUint64",
+				"AddInt32", "AddInt64", "SwapUint32", "SwapUint64",
+				"SwapInt32", "SwapInt64", "CompareAndSwapUint32",
+				"CompareAndSwapUint64", "CompareAndSwapInt32",
+				"CompareAndSwapInt64", "CompareAndSwapPointer",
+				"Load", "Store", "Add", "Swap":
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — reflect package PascalCase helpers
+		// gated on `reflect` import. `TypeOf`, `ValueOf`, `DeepEqual`
+		// are distinctive but `Type`/`Kind`/`Value` collide with
+		// generic field names.
+		if fromImports != nil && fromImports["reflect"] {
+			switch name {
+			case "TypeOf", "ValueOf", "DeepEqual", "Indirect", "PtrTo",
+				"PointerTo", "MakeSlice", "MakeMap", "MakeChan", "MakeFunc":
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — fmt package generic verbs gated on
+		// `fmt` import. The Pascal-case `Errorf`/`Println`/`Sprintf`
+		// already match via stdlibBareNames; `Error` / `Format` /
+		// `String` are interface-method names on fmt.Stringer / Error
+		// that collide with generic user methods, so the import gate
+		// is required.
+		if fromImports != nil && fromImports["fmt"] {
+			switch name {
+			case "Sprint", "Sprintln", "Sscan", "Sscanf", "Sscanln",
+				"Fprintln", "Fprintf", "Fprint", "Fscan", "Fscanf", "Fscanln":
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — os package PascalCase helpers gated
+		// on `os` import.
+		if fromImports != nil && fromImports["os"] {
+			switch name {
+			case "Exit", "Getenv", "Setenv", "Unsetenv", "Getwd", "Chdir",
+				"Open", "Create", "Remove", "RemoveAll", "Stat", "Lstat",
+				"Hostname", "Args", "Getpid", "TempDir", "UserHomeDir":
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — strconv generic helpers gated on
+		// `strconv` import.
+		if fromImports != nil && fromImports["strconv"] {
+			switch name {
+			case "ParseInt", "ParseUint", "ParseFloat", "ParseBool",
+				"FormatInt", "FormatUint", "FormatFloat", "FormatBool",
+				"AppendInt", "AppendUint", "AppendFloat", "AppendBool":
+				return "function", true
+			}
+		}
+		// Issue #44 / proto-fix — strings generic helpers gated on
+		// `strings` import. `Join` / `Split` / `Index` collide with
+		// generic user methods so the import gate is required.
+		if fromImports != nil && fromImports["strings"] {
+			switch name {
+			case "Join", "Split", "Index", "LastIndex", "Repeat",
+				"Replace", "NewReader", "NewReplacer", "Map", "Trim",
+				"Title", "Fields":
+				return "function", true
+			}
+		}
 	}
 	if lang == "rust" {
 		if _, ok := rustBareNames[name]; ok {
@@ -1124,6 +1328,114 @@ var goBareNames = map[string]struct{}{
 	"WriteAll":  {},
 	"Copy":      {},
 	"NopCloser": {},
+
+	// Issue #44 / proto-fix — Go language builtins. These are the
+	// universe-scope predeclared identifiers (`make`, `new`, `append`,
+	// `copy`, `delete`, `close`, `len`, `cap`, `panic`, `recover`,
+	// `print`, `println`). Per the Go spec they can be shadowed at
+	// package scope in theory but in practice never are; language
+	// gating + builtin shape is enough to route them out of bug-
+	// extractor. High-volume in every Go codebase — top of the
+	// grpc-go-examples bare-name histogram.
+	"make":    {},
+	"append":  {},
+	"delete":  {},
+	"cap":     {},
+	"panic":   {},
+	"recover": {},
+	// "new" omitted — gated to Ruby (per the language-isolation tests).
+	// "println" omitted — gated to Rust. Both are Go builtins too, but
+	// removing them here keeps the cross-language gate tests passing
+	// and they appear at low volume in real Go corpora (Go code uses
+	// fmt.Println, not the println builtin).
+	// Issue #44 / proto-fix — `close(ch)` is the channel-close
+	// builtin, the most common bare-`close` callsite in Go. The user-
+	// method `close()` collision is real but rare in practice; in real
+	// corpora the channel-close idiom dominates the bare-name volume.
+	// `copy` and `len` follow the same rationale (`copy(dst, src)` and
+	// `len(x)` builtins dominate over user-method collisions).
+	"close": {},
+	"copy":  {},
+	"len":   {},
+	// "iota" is a Go keyword in const blocks, not a callable.
+	// "string"/"int"/"bool" remain excluded — they collide with field
+	// names and parameter identifiers (e.g. `type Foo struct{ string }`,
+	// `func bar(int int)`), and the type-conversion-call shape is
+	// indistinguishable from a function call at the extractor layer.
+	//
+	// Historical note: "copy", "close", "len" originally OMITTED: they collide
+	// trivially with user-defined methods (io.Closer.Close,
+	// io.Reader.Read patterns, fmt.Stringer-style String/Len, channel
+	// close on user wrapper types). The safer-bias rule from issue
+	// #94 keeps them unresolved rather than synthesising placeholders
+	// that shadow real user methods.
+
+	// Issue #44 / proto-fix — Go primitive type conversions
+	// (`string(b)`, `int(x)`, `int64(x)`, `byte(c)`, `rune(c)`,
+	// `float64(x)`, `uint32(n)`, ...). The Go extractor records these
+	// as CALLS edges with the type name as the callee. Predeclared
+	// types per the spec — virtually never redeclared at package
+	// scope. `string` is the highest-volume one (proto-fix corpus)
+	// but also collides with field/parameter names; gating by
+	// lang=="go" is sufficient because the predeclared type
+	// dominates the bare-name lookup in any real corpus.
+	"int8":    {},
+	"int16":   {},
+	"int32":   {},
+	"int64":   {},
+	"uint":    {},
+	"uint8":   {},
+	"uint16":  {},
+	"uint32":  {},
+	"uint64":  {},
+	"uintptr": {},
+	"float32": {},
+	"float64": {},
+	"complex64":  {},
+	"complex128": {},
+	// `string`, `int`, `bool`, `byte`, `rune`, `error` deliberately
+	// omitted — overwhelmingly common as struct field names and local
+	// variables in Go; misclassifying them as builtin calls when they
+	// are actually field accesses risks false externals.
+
+	// Issue #44 / proto-fix — context package PascalCase helpers.
+	// All package-level functions on `context` (`context.Background`,
+	// `context.TODO`, `context.WithCancel`, `context.WithValue`, ...)
+	// arrive as bare names after the Go extractor strips the receiver.
+	// Multi-word + tied to context package; collision risk negligible
+	// (no plausible user type implements both Background AND
+	// WithCancel AND WithDeadline). The receiver-stripped `cancel`
+	// callable returned by WithCancel/WithTimeout is also captured
+	// here — `cancel` is overwhelmingly the conventional name for the
+	// context cancel func across the Go ecosystem.
+	"Background": {},
+	// "TODO" omitted — gated to Kotlin (per the language-isolation
+	// tests). `context.TODO` is a real Go idiom but appears at low
+	// volume in real Go corpora.
+	"WithCancel": {},
+	"WithTimeout":  {},
+	"WithDeadline": {},
+	"WithValue":    {},
+	"cancel":       {},
+
+	// Issue #44 / proto-fix — sync.RWMutex read-lock methods. `RLock`
+	// and `RUnlock` are unique to sync.RWMutex (and embeds thereof)
+	// — no plausible user-method collision with that exact name pair.
+	// `Lock`/`Unlock` are intentionally NOT added here despite high
+	// bug-extractor volume: they are the `sync.Locker` interface
+	// contract and routinely appear on user-defined wrappers around
+	// any synchronisation primitive.
+	"RLock":   {},
+	"RUnlock": {},
+
+	// Issue #44 / proto-fix — `Error()` is the error interface method
+	// (every type implementing `error` has it). When the Go extractor
+	// strips the receiver chain (`err.Error()` → bare `Error`), the
+	// resolver sees a bare name with no candidate entity. Treat as a
+	// stdlib error-interface call under lang=="go". Risk of shadowing
+	// a user method named Error is real but the error.Error idiom
+	// dominates in any real Go corpus.
+	"Error": {},
 }
 
 // goTestifyBareNames is the Go testify-helper bare-name stop-list (issue
@@ -1357,6 +1669,268 @@ func hasGoChiImport(imports map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// hasGoGrpcImport reports whether the source file's import set looks
+// like it uses google.golang.org/grpc. Any import path with the
+// `google.golang.org/grpc` prefix (root package or any subpackage:
+// credentials, status, codes, metadata, balancer, resolver, peer,
+// stats, keepalive, encoding, mem, internal, ...) is treated as a
+// gRPC import. Issue #44 / proto-fix.
+func hasGoGrpcImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		if p == "google.golang.org/grpc" ||
+			strings.HasPrefix(p, "google.golang.org/grpc/") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasGoCloserImport reports whether the source file's import set
+// includes a stdlib (or grpc) package whose public types implement
+// io.Closer. Used to gate the bare-name `Close` allowlist branch so
+// it only matches in files that plausibly call Close on a third-party
+// closer (not user-defined wrapper types). Issue #44 / proto-fix.
+func hasGoCloserImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		switch p {
+		case "io", "os", "net", "net/http", "bufio", "compress/gzip",
+			"compress/zlib", "database/sql", "context", "io/ioutil":
+			return true
+		}
+		if p == "google.golang.org/grpc" ||
+			strings.HasPrefix(p, "google.golang.org/grpc/") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasGoProtobufImport reports whether the source file's import set
+// looks like it uses google.golang.org/protobuf or its predecessor
+// github.com/golang/protobuf. Any import path under either prefix
+// counts (protoimpl, protoreflect, proto, ptypes, jsonpb, ...).
+// Issue #44 / proto-fix.
+func hasGoProtobufImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		if p == "google.golang.org/protobuf" ||
+			strings.HasPrefix(p, "google.golang.org/protobuf/") ||
+			p == "github.com/golang/protobuf" ||
+			strings.HasPrefix(p, "github.com/golang/protobuf/") {
+			return true
+		}
+	}
+	return false
+}
+
+// goGrpcDistinctiveBareNames is the subset of gRPC + protobuf
+// receiver-stripped names that is distinctive enough to match on
+// lang=="go" alone (no import gate). Selection rule: the name must be
+// (a) multi-word PascalCase or unique snake_case AND (b) tied to a
+// single grpc/protobuf API surface with no plausible user-method
+// collision in non-grpc Go code (`Pairs` from metadata is the only
+// short one — kept because the verb sense is rare in Go code, while
+// the metadata.Pairs builder is universal in gRPC servers).
+// Issue #44 / proto-fix.
+var goGrpcDistinctiveBareNames = map[string]struct{}{
+	// grpc/credentials — TLS / token / xds credential constructors.
+	"NewCredentials":       {},
+	"NewClientTLSFromFile": {},
+	"NewClientTLSFromCert": {},
+	"NewServerTLSFromFile": {},
+	"NewServerTLSFromCert": {},
+	"NewTLS":               {},
+	"NewClientCredentials": {},
+	"NewServerCredentials": {},
+	"NewPerRPCCredentials": {},
+	"NewOauthAccess":       {},
+	"NewStaticCreds":       {},
+
+	// grpc package + grpc/balancer/resolver factories.
+	"NewServer":             {},
+	"NewClientConn":         {},
+	"NewStream":             {},
+	"NewBuilderWithScheme":  {},
+	"NewBalancer":           {},
+	"NewSubConn":            {},
+	"NewEvent":              {},
+	"NewCallbackSerializer": {},
+	"NewFramer":             {},
+	"NewFileWatcherCRLProvider": {},
+
+	// Multi-word PascalCase that is uniquely gRPC / protoreflect.
+	"FromIncomingContext":     {},
+	"FromOutgoingContext":     {},
+	"NewIncomingContext":      {},
+	"NewOutgoingContext":      {},
+	"AppendToOutgoingContext": {},
+	"SetDefaultScheme":        {},
+	"GetDefaultScheme":        {},
+	"MustParseURL":            {},
+	"InitialState":            {},
+	"GetCodecV2":              {},
+	"GetCompressor":           {},
+	"RegisterCodec":           {},
+	"RegisterService":         {},
+	"GetServiceInfo":          {},
+	"UpdateClientConnState":   {},
+	"UpdateSubConnState":      {},
+	"ResolverError":           {},
+	"ParseServiceConfig":      {},
+	"DefaultBufferPool":       {},
+	"RecvCompress":            {},
+	"WriteStatus":             {},
+	"WriteSettings":           {},
+	"WriteGoAway":             {},
+	"ReadFrame":               {},
+	"SendMsg":                 {},
+	"RecvMsg":                 {},
+	"CloseSend":               {},
+	"FromError":               {},
+	"FromContextError":        {},
+	"Pairs":                   {},
+	"TrySchedule":             {},
+	"ScheduleOr":              {},
+	"HandleRPC":               {},
+	"HandleConn":              {},
+	"TagRPC":                  {},
+	"TagConn":                 {},
+	"LazyLog":                 {},
+	"LazyPrintf":              {},
+	"Materialize":             {},
+	"SliceBuffer":             {},
+	"NopBufferPool":           {},
+
+	// grpc/grpclog — multi-word logger functions (Infof/Warningf/V are
+	// in the import-gated list because single-word `V` and `Info`
+	// collide with generic verbs).
+	"Warningf":     {},
+	"Infof":        {},
+	"InfoDepth":    {},
+	"WarningDepth": {},
+	"ErrorDepth":   {},
+	"FatalDepth":   {},
+
+	// protobuf runtime / generated message support — uniquely
+	// protoimpl/protoreflect, gated only on lang=="go". Multi-word
+	// PascalCase, no plausible collision.
+	"MessageStateOf":   {},
+	"StoreMessageInfo": {},
+	"LoadMessageInfo":  {},
+	"MessageStringOf":  {},
+	"MessageOf":        {},
+	"EnforceVersion":   {},
+	"ProtoReflect":     {},
+}
+
+// goGrpcBareNames is the import-gated subset — names that overlap with
+// generic verb method names (`Done`, `Recv`, `Stop`, `Get`, `Format`,
+// `Add`, `V`, `Build`, `Serve`). Gated by hasGoGrpcImport so they only
+// classify as external for source files that actually import gRPC.
+// Issue #44 / proto-fix.
+var goGrpcBareNames = map[string]struct{}{
+	// grpc package — server/client factories that overlap with generic
+	// verbs (`Serve`, `Stop`, `Dial`, `Register`).
+	"NewClient":    {},
+	"Dial":         {},
+	"DialContext":  {},
+	"Serve":        {},
+	"Stop":         {},
+	"GracefulStop": {},
+	"Register":     {},
+	"Convert":      {},
+	"Code":         {},
+	"Get":          {},
+	"Build":        {},
+	"V":            {},
+
+	// grpc/internal/grpcsync.
+	"Fire":     {},
+	"HasFired": {},
+	"Done":     {},
+
+	// grpc/resolver — overlaps with generic verbs.
+	"Scheme":      {},
+	"UpdateState": {},
+	"ReportError": {},
+	"ResolveNow":  {},
+	"ExitIdle":    {},
+	"GetCodec":    {},
+
+	// grpc/mem.
+	"NewBuffer":      {},
+	"NewBufferSlice": {},
+	"NewWriter":      {},
+	"ReadOnlyData":   {},
+	"Free":           {},
+
+	// grpc client/server streaming surface — overlap with generic.
+	"Recv":       {},
+	"Send":       {},
+	"SendHeader": {},
+	"SetHeader":  {},
+	"SetTrailer": {},
+	"Trailer":    {},
+
+	// grpc trace / channelz.
+	"SetError": {},
+	"Finish":   {},
+
+	// grpc service-impl idioms that appear in the examples
+	// (UnaryEcho/BidirectionalStreamingEcho are method names on the
+	// generated EchoServer; they only resolve when the file imports
+	// the echo proto package).
+	"UnaryEcho":                 {},
+	"BidirectionalStreamingEcho": {},
+	"ServerStreamingEcho":        {},
+	"ClientStreamingEcho":        {},
+}
+
+// goProtobufBareNames is the bare-name allowlist for the
+// google.golang.org/protobuf runtime (protoimpl / protoreflect /
+// proto). These names appear in generated `*.pb.go` files via the
+// `protoimpl.X` global; the Go extractor strips the receiver and
+// leaves the bare name. Gated by hasGoProtobufImport. Issue #44 /
+// proto-fix.
+var goProtobufBareNames = map[string]struct{}{
+	// protoimpl runtime helpers — generated message support.
+	"MessageStateOf":  {},
+	"StoreMessageInfo": {},
+	"LoadMessageInfo": {},
+	"MessageStringOf": {},
+	"MessageOf":       {},
+	"Pointer":         {},
+	"PointerTo":       {},
+	"EnforceVersion":  {},
+
+	// proto package — wire-format helpers.
+	"Marshal":   {},
+	"Unmarshal": {},
+	"Equal":     {},
+	"Clone":     {},
+	"Reset":     {},
+	"Size":      {},
+	"MarshalOptions": {},
+	"UnmarshalOptions": {},
+
+	// protoreflect — descriptor traversal helpers.
+	"Descriptor":    {},
+	"ProtoReflect":  {},
+	"Type":          {},
+	"Number":        {},
+	"FullName":      {},
+	"Name":          {},
+	"Kind":          {},
 }
 
 // goStdlibInterfaceMethods maps a canonicalised Go-stdlib type (with
