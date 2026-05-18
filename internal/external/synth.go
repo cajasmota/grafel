@@ -510,6 +510,44 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		return "", "", false
 	}
 
+	// Wave 4 — Swift attribute-prefixed import shapes (vapor framework
+	// source). The Swift extractor's `extractImportPath` walks every
+	// identifier-shaped child of an `import_declaration` node, which
+	// includes the leading attributes used by Vapor / SwiftNIO sources:
+	//
+	//   @_documentation(visibility: internal) @_exported import NIOCore
+	//     → ToID: "_documentation.visibility.internal._exported.NIOCore"
+	//   @preconcurrency import Dispatch
+	//     → ToID: "preconcurrency.Dispatch"
+	//
+	// Both shapes survive the resolver unmatched and land in
+	// bug-extractor — there is no real module named
+	// `_documentation.visibility.internal._exported.NIOCore`. Strip the
+	// well-known Swift attribute prefixes and continue classification
+	// against the trailing module path. Lang-gated to swift; the chain-
+	// fix in the extractor (skip `modifiers`/attribute children in
+	// `extractImportPath`) is tracked separately so this synth-side
+	// patch can be removed once the extractor lands a corrected
+	// import-path.
+	if lang == "swift" {
+		for {
+			stripped := false
+			for _, prefix := range swiftImportAttributePrefixes {
+				if strings.HasPrefix(name, prefix) {
+					name = name[len(prefix):]
+					stripped = true
+					break
+				}
+			}
+			if !stripped {
+				break
+			}
+		}
+		if name == "" {
+			return "", "", false
+		}
+	}
+
 	// Scoped npm packages — "@scope/pkg" or "@scope/pkg/subpath" — are
 	// the only legitimate external shape that contains a '/'. Detect
 	// them BEFORE the path-separator rejection below so they reach the
@@ -5747,6 +5785,96 @@ var swiftBareNames = map[string]struct{}{
 	"XCTAssertGreaterThan": {},
 	"XCTAssertLessThan":    {},
 	"XCTFail":              {},
+
+	// Wave 4 — vapor framework source residual (14.27% bug-rate).
+	// SwiftNIO Channel / ChannelHandler / ByteBuffer API surface, plus
+	// Foundation Codable / Date / String idioms that show up at volume
+	// in the Vapor framework source. Each is a Swift-specific
+	// (PascalCase NIO type or NIO-/Foundation-style camelCase method)
+	// name with no plausible collision in non-Swift codebases. The
+	// swift gate prevents cross-language leakage; generic verbs
+	// (`read`, `write`, `wait`, `succeed`, `fail`, `defer`, `init`,
+	// `closure`, `error`, `data`, `current`, `callback`, `parse`,
+	// `merge`, `mapping`, `key`, `cache`, `sessions`, `validate`,
+	// `custom`, `serialize`, `unlock`, `cancel`) are deliberately
+	// OMITTED per the #94 / #105 / #106 safer-bias rule — they shadow
+	// user methods even within Swift codebases.
+	//
+	// PascalCase NIO / Foundation types — receiver-stripped from
+	// `let bound = NIOLoopBound(value, eventLoop: ...)` or used as
+	// type-checker references at call sites.
+	"NIOLoopBound":                {},
+	"NIOFileHandle":               {},
+	"NIOSSL":                      {},
+	"NIOHTTPRequestDecompressor":  {},
+	"NIOCloseOnErrorHandler":      {},
+	"JSONDecoder":                 {},
+	"JSONEncoder":                 {},
+	"ISO8601DateFormatter":        {},
+	"TimeInterval":                {},
+	"CancellationError":           {},
+
+	// SwiftNIO Channel / ChannelHandler camelCase API verbs —
+	// `context.fireChannelRead(wrappedData)`, `channel.writeAndFlush(...)`,
+	// `pipeline.addHandler(...)`, `context.fireUserInboundEventTriggered(...)`,
+	// `self.unwrapInboundIn(data)`. Receiver-stripped by the extractor
+	// and unbindable to a local entity. Names are SwiftNIO-distinctive
+	// (camelCase ending in `Out`/`In`/`Handler`/`Bytes`/`Index`/
+	// `Active`) — extremely unlikely to collide with user methods.
+	"fireChannelRead":              {},
+	"fireUserInboundEventTriggered": {},
+	"wrapOutboundOut":              {},
+	"unwrapInboundIn":              {},
+	"unwrapOutboundIn":             {},
+	"writeAndFlush":                {},
+	"addHandler":                   {},
+	"addHandlers":                  {},
+	"shutdownGracefully":           {},
+	"initiateShutdown":             {},
+	"runIfActive":                  {},
+	"flatMapErrorThrowing":         {},
+	"moveReaderIndex":              {},
+	"withFileHandle":               {},
+	"readToEnd":                    {},
+	"openFile":                     {},
+	"withContiguousStorageIfAvailable": {},
+	"withUnsafeBytes":              {},
+	"reserveCapacity":              {},
+	"trimmingCharacters":           {},
+
+	// More NIO / SwiftCrypto / Foundation PascalCase types found in
+	// vapor framework source (wave 4 second-pass diagnostic).
+	"NIOAny":                       {},
+	"NIOThreadPool":                {},
+	"NIOSSLContext":                {},
+	"NIOLoopBoundBox":              {},
+	"NIOWebSocketServerUpgrader":   {},
+	"NonBlockingFileIO":            {},
+	"ServerBootstrap":              {},
+	"ServerQuiescingHelper":        {},
+	"MultiThreadedEventLoopGroup":  {},
+	"SHA1":                         {},
+	"SHA256":                       {},
+	"SHA512":                       {},
+	"SocketOptionLevel":            {},
+	"SocketOptionValue":            {},
+	"BreakLoopError":               {},
+	"_CodingKey":                   {},
+	"SendableBox":                  {},
+	// Foundation Codable container protocol types (`encoder.container(
+	// keyedBy: CodingKeys.self)` → `KeyedContainer`; the synthesizer
+	// sees `UnkeyedContainer`/`SingleValueContainer` after the receiver
+	// is stripped). Swift stdlib types — defence-in-depth via swift gate.
+	"UnkeyedContainer":             {},
+	"SingleValueContainer":         {},
+	// NIO HTTP/2 + HTTP/1 codec / handler types.
+	"HTTPServerPipelineHandler":    {},
+	"HTTPResponseEncoder":          {},
+	"HTTPResponseCompressor":       {},
+	"HTTPRequestHead":              {},
+	"HTTPRequestDecoder":           {},
+	"HTTP2FramePayloadToHTTP1ServerCodec": {},
+	"HighLowWatermark":             {},
 }
 
 // csharpBareNames is the C#-language-gated bare-name stop-list (issue
@@ -8178,6 +8306,88 @@ var knownExternalPackages = map[string]struct{}{
 	"jwt":                {},
 	"leaf":               {},
 	// `redis` already on the allowlist via the Python ecosystem block.
+	//
+	// Wave 4 — vapor framework source residual (14.27% bug-rate).
+	// The SwiftNIO sister modules (`NIOPosix`, `NIOConcurrencyHelpers`,
+	// `NIOSSL`, `NIOExtras`, `NIOWebSocket`, `NIOTransportServices`,
+	// `_NIOFileSystem`), Apple SSWG packages (`Logging`, `Crypto`,
+	// `_CryptoExtras`, `AsyncKit`, `AsyncHTTPClient`, `ServiceLifecycle`,
+	// `Metrics`, `Tracing`, `Atomics`, `Collections`, `Algorithms`,
+	// `SystemPackage`, `ArgumentParser`), Vapor sister kits (`RoutingKit`,
+	// `ConsoleKit`, `ConsoleKitTerminal`, `ConsoleKitCommands`,
+	// `MultipartKit`, `WebSocketKit`, `CVaporBcrypt`), and platform
+	// shims (`Glibc`, `Musl`, `Android`, `Darwin`, `Dispatch`) are the
+	// dominant unresolved IMPORTS in the Vapor framework source. Each
+	// is a real SwiftPM-published module that lives outside any indexed
+	// corpus and should land in ExternalKnown rather than bug-extractor.
+	"nioposix":              {},
+	"nioconcurrencyhelpers": {},
+	"niossl":                {},
+	"nioextras":             {},
+	"niowebsocket":          {},
+	"niotransportservices":  {},
+	"_niofilesystem":        {},
+	"niofilesystem":         {},
+	"nioembedded":           {},
+	"niohttpcompression":    {},
+	"niohttptypes":          {},
+	"niohttptypeshttp1":     {},
+	"niotls":                {},
+	"niohpack":              {},
+	"winsdk":                {},
+	"_niofilesystemfoundationcompat": {},
+	"niofilesystemfoundationcompat":  {},
+	"servicecontextmodule":  {},
+	"swiftasn1":             {},
+	"cniolinux":             {},
+	"cniodarwin":            {},
+	"cniowindows":           {},
+	"cnioposix":             {},
+	"cnioatomics":           {},
+	"x509":                  {},
+	"basicauth":             {},
+	// `logging`, `crypto`, `tracing`, `collections` already present
+	// elsewhere in the allowlist.
+	"_cryptoextras":         {},
+	"cryptoextras":          {},
+	"asynckit":              {},
+	"asynchttpclient":       {},
+	"servicelifecycle":      {},
+	"metrics":               {},
+	"atomics":               {},
+	"algorithms":            {},
+	"systempackage":         {},
+	"argumentparser":        {},
+	"routingkit":            {},
+	"consolekit":            {},
+	"consolekitterminal":    {},
+	"consolekitcommands":    {},
+	"multipartkit":          {},
+	"websocketkit":          {},
+	"cvaporbcrypt":          {},
+	"glibc":                 {},
+	"musl":                  {},
+	"android":               {},
+	"darwin":                {},
+	"dispatch":              {},
+}
+
+// swiftImportAttributePrefixes is the lang=="swift"-gated strip-list
+// for Swift import attribute syntax that the extractor currently folds
+// into the import path. Each entry is matched as a literal prefix of
+// the synth-time `name` token; on match the prefix is removed and the
+// remainder is re-classified. Order is longest-first so that nested
+// combinations (`_documentation(visibility:internal)` followed by
+// `_exported`) collapse in a single pass. Chain-fix tracked separately.
+var swiftImportAttributePrefixes = []string{
+	"_documentation.visibility.internal._exported.",
+	"_documentation.visibility.public._exported.",
+	"_documentation.visibility.internal.",
+	"_documentation.visibility.public.",
+	"_exported.",
+	"preconcurrency.",
+	"_implementationOnly.",
+	"testable.",
 }
 
 // googleBenchmarkBareNames is the cpp-gated Google Benchmark public-
