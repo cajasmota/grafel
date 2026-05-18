@@ -577,6 +577,12 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 
 	// Stdlib function stop-list — bare names like "Println", "print".
 	if subtype, ok := stdlibFunction(name, lang, fromFile, fromImports); ok {
+		// Issue #441 — jQuery gate signals via "jquery_function" so the
+		// caller folds to the canonical "jquery" placeholder rather
+		// than synthesising ext:<bare-leaf> per call site.
+		if subtype == "jquery_function" {
+			return "jquery", "function", true
+		}
 		return name, subtype, true
 	}
 
@@ -644,7 +650,263 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		return longest, "package", true
 	}
 
+	// Issue #441 (extended for aspnetcore-docs-samples bug-rate fix).
+	// C# receiver-typed dotted calls where the leading segment is the
+	// simple name of a well-known ASP.NET Core / EF Core / .NET runtime
+	// interface or type — `IConfiguration.GetSection`, `IServiceCollection.
+	// AddScoped<T>`, `IEndpointRouteBuilder.MapGet`, `IApplicationBuilder.
+	// UseStaticFiles`, `Host.CreateDefaultBuilder`, `WebHost.
+	// CreateDefaultBuilder`, `ILogger.LogInformation`, `IHostingEnvironment.
+	// IsDevelopment`. The C# extractor leaves the receiver as the static
+	// type's simple name when it can't bind to a richer FQN; collapse to
+	// `ext:microsoft` (the canonical .NET ecosystem placeholder, already
+	// on the allowlist via `microsoft` key). Lang-gated to csharp so the
+	// list of generic interface names (`IHost`, `IServiceProvider`, ...)
+	// does not shadow same-named user types in other ecosystems.
+	if lang == "csharp" {
+		if dot := strings.IndexByte(name, '.'); dot > 0 {
+			recv := name[:dot]
+			if _, ok := csharpDottedReceivers[recv]; ok {
+				return "microsoft", "package", true
+			}
+			// If the leaf method matches the csharpBareNames stop-list,
+			// the receiver is statically untypable (e.g. a user-declared
+			// DbContext subclass `ModelStateError.SaveChangesAsync`); the
+			// leaf is an EF Core / MVC verb. Reclassify as a bare-name
+			// match and fold to `ext:microsoft`.
+			leaf := name[dot+1:]
+			// Strip any generic-arg suffix on the leaf
+			// (`AddScoped<IFoo, Foo>` → `AddScoped`).
+			if lt := strings.IndexByte(leaf, '<'); lt > 0 {
+				leaf = leaf[:lt]
+			}
+			if _, ok := csharpBareNames[leaf]; ok {
+				return "microsoft", "package", true
+			}
+		}
+		// Bare-name with a generic-arg suffix (`Get<TvShow>`,
+		// `UseStartup<Startup>`, `Configure<PositionOptions>`) — strip
+		// the generic and re-check the csharp bare-name list. The
+		// extractor's csharpCallTarget keeps the `<T>` when emitting
+		// generic invocations, which masks otherwise-allowlisted
+		// receiver-stripped leaves.
+		if lt := strings.IndexByte(name, '<'); lt > 0 {
+			head := name[:lt]
+			if _, ok := csharpBareNames[head]; ok {
+				return "microsoft", "package", true
+			}
+			// `Get<T>` is the canonical IConfiguration / IOptions
+			// `.Get<MyType>()` shape — when the leading head is `Get`
+			// AND a generic arg is present, the receiver is statically
+			// untypable but the shape is overwhelmingly the IConfiguration/
+			// IOptions accessor. Fold to ext:microsoft. Bare-name `Get`
+			// (no generic) is intentionally NOT classified — it collides
+			// with user-defined getters in too many C# codebases.
+			if head == "Get" {
+				return "microsoft", "package", true
+			}
+		}
+	}
+
+	// Issue #441 (razor) — Razor `.razor` / Blazor files. The razor
+	// extractor emits CALLS edges for event-handler bodies; the surface
+	// is mostly Razor / Blazor framework helpers (`StateHasChanged`,
+	// `InvokeAsync`, `OnInitialized`, `OnAfterRender`, lifecycle methods)
+	// plus the same ASP.NET Core / EF Core verbs the csharp gate covers.
+	// Lang-gated to razor; folds to `ext:microsoft`.
+	if lang == "razor" {
+		if _, ok := razorBareNames[name]; ok {
+			return "microsoft", "package", true
+		}
+		if _, ok := csharpBareNames[name]; ok {
+			return "microsoft", "package", true
+		}
+	}
+
 	return "", "", false
+}
+
+// csharpDottedReceivers is the C#-language-gated allowlist of well-known
+// ASP.NET Core / EF Core / .NET runtime interface and type simple names
+// that the C# extractor leaves as the receiver of a dotted CALLS edge
+// when no richer FQN binding exists. Pre-#441 these landed in the
+// `dotted-other` bug-extractor bucket (e.g. `IConfiguration.GetSection`,
+// `IEndpointRouteBuilder.MapGet`, `Host.CreateDefaultBuilder`). The
+// language gate is required because some names (`Host`, `Request`,
+// `Configure`) collide with generic types in other ecosystems.
+//
+// Conservative selection (lessons #94 / #106 / #441): every entry is
+// either an `I*` interface from Microsoft.Extensions / Microsoft.
+// AspNetCore (which the .NET naming convention reserves for interfaces),
+// or a small set of canonical static-factory hosts (`Host`, `WebHost`).
+var csharpDottedReceivers = map[string]struct{}{
+	// Microsoft.Extensions.Configuration
+	"IConfiguration":        {},
+	"IConfigurationBuilder": {},
+	"IConfigurationRoot":    {},
+	"IConfigurationSection": {},
+
+	// Microsoft.Extensions.DependencyInjection
+	"IServiceCollection":    {},
+	"IServiceProvider":      {},
+	"IServiceScope":         {},
+	"IServiceScopeFactory":  {},
+
+	// Microsoft.AspNetCore.Builder / Routing
+	"IApplicationBuilder":     {},
+	"IEndpointRouteBuilder":   {},
+	"IEndpointConventionBuilder": {},
+	"IRouteBuilder":           {},
+
+	// Microsoft.AspNetCore.Hosting / Microsoft.Extensions.Hosting
+	"IHostBuilder":          {},
+	"IHost":                 {},
+	"IWebHostBuilder":       {},
+	"IWebHost":              {},
+	"IHostingEnvironment":   {},
+	"IWebHostEnvironment":   {},
+	"IHostEnvironment":      {},
+	"IHostApplicationLifetime": {},
+	"IApplicationLifetime":  {},
+	"Host":                  {}, // Host.CreateDefaultBuilder
+	"WebHost":               {}, // WebHost.CreateDefaultBuilder
+
+	// Microsoft.Extensions.Logging
+	"ILogger":         {},
+	"ILoggerFactory":  {},
+	"ILoggingBuilder": {},
+
+	// Microsoft.AspNetCore.Http
+	"HttpContext":          {},
+	"IHttpContextAccessor": {},
+	"IFormCollection":      {},
+	"IHeaderDictionary":    {},
+
+	// Microsoft.AspNetCore.Mvc.ModelBinding (ModelState.AddModelError,
+	// ModelState.IsValid, ModelState.Clear are the high-frequency calls).
+	"ModelState":            {},
+	"ModelStateDictionary":  {},
+
+	// EF Core DbContextOptionsBuilder / ModelBuilder receivers used in
+	// OnConfiguring / OnModelCreating overrides.
+	"DbContextOptionsBuilder": {},
+	"ModelBuilder":            {},
+	"DatabaseFacade":          {},
+
+	// Microsoft.AspNetCore.Identity / Authentication
+	"AuthenticationBuilder": {},
+	"IdentityBuilder":       {},
+
+	// MVC RoutingBuilder / Filter context types
+	"FilterCollection": {},
+	"MvcOptions":       {},
+	"RouteOptions":     {},
+
+	// Microsoft.Extensions.Options
+	"IOptions":             {},
+	"IOptionsMonitor":      {},
+	"IOptionsSnapshot":     {},
+	"IOptionsFactory":      {},
+	"OptionsBuilder":       {},
+	"ValidateOptionsResult": {},
+	"ServiceDescriptor":    {},
+
+	// System / .NET core static-call receivers heavy in samples
+	// (`Console.WriteLine`, `Console.Out`, `Console.ReadLine`,
+	// `Environment.GetEnvironmentVariable`).
+	"Console":     {},
+	"Environment": {},
+	"Convert":     {},
+	"Encoding":    {},
+	"Path":        {},
+	"File":        {},
+	"Directory":   {},
+	"Math":        {},
+	"Guid":        {},
+	"DateTime":    {},
+	"DateTimeOffset": {},
+	"TimeSpan":    {},
+	"Activator":   {},
+	"Type":        {},
+	"Task":        {},
+}
+
+// razorBareNames is the Razor (.razor / Blazor) language-gated bare-name
+// stop-list (issue #441 razor-fix). Blazor lifecycle methods
+// (`OnInitialized`, `OnInitializedAsync`, `OnParametersSet`,
+// `OnAfterRender`, `OnAfterRenderAsync`, `ShouldRender`,
+// `StateHasChanged`, `InvokeAsync`, `DisposeAsync`) and ComponentBase /
+// renderer helpers are receiver-stripped by the razor extractor when
+// emitting CALLS edges from event-handler bodies. Lang gate keeps these
+// from shadowing user methods in other ecosystems. Folds to
+// `ext:microsoft`.
+var razorBareNames = map[string]struct{}{
+	// ComponentBase lifecycle (Blazor)
+	"OnInitialized":        {},
+	"OnInitializedAsync":   {},
+	"OnParametersSet":      {},
+	"OnParametersSetAsync": {},
+	"OnAfterRender":        {},
+	"OnAfterRenderAsync":   {},
+	"ShouldRender":         {},
+	"StateHasChanged":      {},
+	"InvokeAsync":          {},
+	"SetParametersAsync":   {},
+
+	// IDisposable / IAsyncDisposable on components
+	"Dispose":      {},
+	"DisposeAsync": {},
+
+	// JSRuntime / IJSRuntime — `JS.InvokeAsync<T>(...)`, `JS.InvokeVoidAsync`.
+	"InvokeVoidAsync": {},
+
+	// NavigationManager — `Navigation.NavigateTo("/x")`, `Navigation.
+	// ToAbsoluteUri`, `Navigation.ToBaseRelativePath`.
+	"NavigateTo":           {},
+	"ToAbsoluteUri":        {},
+	"ToBaseRelativePath":   {},
+	"LocationChanged":      {},
+
+	// EventCallback invocations — `OnClick.InvokeAsync(value)`.
+	"HasDelegate": {},
+
+	// Razor Pages / Razor view helpers exposed on the page base
+	// (these dominate .cshtml.cs files when classified as razor).
+	"OnGet":            {},
+	"OnGetAsync":       {},
+	"OnPost":           {},
+	"OnPostAsync":      {},
+	"OnPut":            {},
+	"OnPutAsync":       {},
+	"OnDelete":         {},
+	"OnDeleteAsync":    {},
+	"OnGetHandler":     {},
+	"OnPostHandler":    {},
+
+	// Common Razor view helpers (when the razor extractor evolves to
+	// parse @Html / @Url / @ViewBag — the leaf names land here).
+	"Raw":              {},
+	"ActionLink":       {},
+	"AntiForgeryToken": {},
+	"BeginForm":        {},
+	"DisplayFor":       {},
+	"EditorFor":        {},
+	"HiddenFor":        {},
+	"LabelFor":         {},
+	"TextBoxFor":       {},
+	"PasswordFor":      {},
+	"CheckBoxFor":      {},
+	"DropDownListFor":  {},
+	"ValidationSummary": {},
+	"ValidationMessageFor": {},
+	"Partial":          {},
+	"PartialAsync":     {},
+	"RenderPartial":    {},
+	"RenderPartialAsync": {},
+	"RenderAction":     {},
+	"RenderBody":       {},
+	"RenderSection":    {},
+	"RenderSectionAsync": {},
 }
 
 // longestKnownDottedPrefix walks the dot-separated prefixes of name
@@ -834,6 +1096,25 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 	if lang == "javascript" || lang == "typescript" {
 		if _, ok := jsBareNames[name]; ok {
 			return "function", true
+		}
+		// Issue #441 (jQuery / vendored-library gate). The jQuery
+		// validation / jQuery / jQuery-unobtrusive bundles shipped with
+		// ASP.NET Core templates (`wwwroot/lib/jquery*/`) are vendored
+		// minified library code; the receiver-stripped call sites inside
+		// the implementation hit jQuery's `addClass`, `removeClass`,
+		// `appendTo`, `parseJSON`, `isFunction`, etc. These leak into
+		// bug-extractor with high volume. Gate on BOTH lang=="javascript"
+		// AND a file-path / filename signal that the caller is a jQuery
+		// or jquery-validation source (`/wwwroot/lib/jquery`, basename
+		// starts with `jquery.`); same safer-bias rule as the Go testify
+		// gate (#115).
+		if isJQueryBundledFile(fromFile) {
+			if _, ok := jqueryBareNames[name]; ok {
+				// Signal via a sentinel subtype so the caller folds to
+				// the canonical "jquery" placeholder rather than the
+				// bare name (would have produced ext:addClass etc.).
+				return "jquery_function", true
+			}
 		}
 	}
 	if lang == "swift" {
@@ -3274,6 +3555,489 @@ var csharpBareNames = map[string]struct{}{
 	"GetService":           {},
 	"GetServices":          {},
 	"BuildServiceProvider": {},
+
+	// Issue #441 (extended for aspnetcore-docs-samples bug-rate fix).
+	// ASP.NET Core Generic Host / WebHost builder DSL — `Host.
+	// CreateDefaultBuilder(args).ConfigureWebHostDefaults(b => b.UseStartup
+	// <Startup>()).Build().Run()` is the entry-point pattern for every
+	// ASP.NET Core app pre-`Program.cs` minimal-host. The receiver chain
+	// is fluent (each method returns an IHostBuilder / IWebHostBuilder),
+	// so the extractor receiver-strips every leaf. Names are
+	// distinctive enough (camel/PascalCase domain verbs that don't appear
+	// on generic Go/JS/Python collection or stdlib surfaces) to remain
+	// behind the lang=="csharp" gate.
+	"CreateDefaultBuilder":      {},
+	"CreateBuilder":             {},
+	"ConfigureWebHostDefaults":  {},
+	"ConfigureWebHost":          {},
+	"ConfigureAppConfiguration": {},
+	"ConfigureServices":         {},
+	"ConfigureLogging":          {},
+	"ConfigureKestrel":          {},
+	"UseStartup":                {},
+	"UseKestrel":                {},
+	"UseIIS":                    {},
+	"UseIISIntegration":         {},
+	"UseUrls":                   {},
+	"UseEnvironment":            {},
+	"UseContentRoot":            {},
+	"UseWebRoot":                {},
+	"UseDefaultServiceProvider": {},
+	"UseSerilog":                {},
+	"Build":                     {},
+	"Run":                       {},
+	"RunAsync":                  {},
+	"Start":                     {},
+	"StartAsync":                {},
+	"StopAsync":                 {},
+
+	// IConfigurationBuilder / IConfiguration DSL. `AddJsonFile`,
+	// `AddXmlFile`, `AddIniFile`, `AddInMemoryCollection`,
+	// `AddEnvironmentVariables`, `AddCommandLine`, `AddUserSecrets`,
+	// `AddAzureKeyVault`, `Bind`, `Get<T>`, `GetSection`, `GetChildren`,
+	// `GetValue<T>`, `AsEnumerable`, `Exists`. Configuration
+	// bootstrap surface in every ASP.NET sample; canonical EF / DI
+	// receiver-strip pattern.
+	"AddJsonFile":             {},
+	"AddXmlFile":              {},
+	"AddIniFile":              {},
+	"AddInMemoryCollection":   {},
+	"AddEnvironmentVariables": {},
+	"AddCommandLine":          {},
+	"AddUserSecrets":          {},
+	"AddAzureKeyVault":        {},
+	"AddKeyPerFile":           {},
+	"Bind":                    {},
+	"GetSection":              {},
+	"GetChildren":             {},
+	"GetValue":                {},
+	"AsEnumerable":            {},
+	"Exists":                  {},
+	"GetConnectionString":     {},
+
+	// IApplicationBuilder / IEndpointRouteBuilder middleware DSL —
+	// `app.UseStaticFiles()`, `app.UseRouting()`, `app.UseEndpoints(...)`,
+	// `endpoints.MapGet/MapPost/MapControllers/MapRazorPages`.
+	"UseStaticFiles":             {},
+	"UseRouting":                 {},
+	"UseEndpoints":               {},
+	"UseAuthentication":          {},
+	"UseAuthorization":           {},
+	"UseCors":                    {},
+	"UseHsts":                    {},
+	"UseHttpsRedirection":        {},
+	"UseDeveloperExceptionPage":  {},
+	"UseExceptionHandler":        {},
+	"UseStatusCodePages":         {},
+	"UseSession":                 {},
+	"UseMvc":                     {},
+	"UseMvcWithDefaultRoute":     {},
+	"UseSwagger":                 {},
+	"UseSwaggerUI":               {},
+	"UseSpa":                     {},
+	"UseDefaultFiles":            {},
+	"UseDatabaseErrorPage":       {},
+	"UseRequestLocalization":     {},
+	"UseResponseCaching":         {},
+	"UseResponseCompression":     {},
+	"MapGet":                     {},
+	"MapPost":                    {},
+	"MapPut":                     {},
+	"MapDelete":                  {},
+	"MapPatch":                   {},
+	"MapControllers":             {},
+	"MapControllerRoute":         {},
+	"MapDefaultControllerRoute":  {},
+	"MapAreaControllerRoute":     {},
+	"MapRazorPages":              {},
+	"MapHub":                     {},
+	"MapHealthChecks":            {},
+	"MapFallbackToFile":          {},
+	"MapFallbackToPage":          {},
+	"MapWhen":                    {},
+
+	// IServiceCollection registration helpers — `AddScoped<I, T>()`,
+	// `AddSingleton<T>()`, `AddTransient<T>()`, `AddMvc()`, `AddDbContext
+	// <TContext>(...)`, etc. The receiver is always an IServiceCollection
+	// passed to ConfigureServices; the leaf method is the strip target.
+	"AddScoped":             {},
+	"AddSingleton":          {},
+	"AddTransient":          {},
+	"AddHostedService":      {},
+	"AddMvc":                {},
+	"AddMvcCore":            {},
+	"AddControllers":        {},
+	"AddControllersWithViews": {},
+	"AddRazorPages":         {},
+	"AddRouting":            {},
+	"AddDbContext":          {},
+	"AddDbContextPool":      {},
+	"AddDbContextFactory":   {},
+	"AddIdentity":           {},
+	"AddDefaultIdentity":    {},
+	"AddAuthentication":     {},
+	"AddAuthorization":      {},
+	"AddCors":               {},
+	"AddSession":            {},
+	"AddSignalR":            {},
+	"AddSwaggerGen":         {},
+	"AddSpaStaticFiles":     {},
+	"AddHealthChecks":       {},
+	"AddHttpClient":         {},
+	"AddHttpContextAccessor": {},
+	"AddLogging":            {},
+	"AddOptions":            {},
+	"AddMemoryCache":        {},
+	"AddDistributedMemoryCache": {},
+	"AddResponseCaching":    {},
+	"AddResponseCompression": {},
+	"AddLocalization":       {},
+	"AddDataProtection":     {},
+	"AddAntiforgery":        {},
+	"Configure":             {},
+	"PostConfigure":         {},
+	"TryAddScoped":          {},
+	"TryAddSingleton":       {},
+	"TryAddTransient":       {},
+	"SetCompatibilityVersion": {},
+
+	// EF Core DbContextOptionsBuilder — `UseSqlServer`, `UseSqlite`,
+	// `UseInMemoryDatabase`, `UseNpgsql`, `UseMySql`, `UseCosmos`, plus
+	// migrations / database-creation helpers (`Migrate`, `EnsureCreated`,
+	// `EnsureDeleted`).
+	"UseSqlServer":           {},
+	"UseSqlite":              {},
+	"UseInMemoryDatabase":    {},
+	"UseNpgsql":              {},
+	"UseMySql":               {},
+	"UseMySQL":               {},
+	"UseCosmos":              {},
+	"UseOracle":              {},
+	"UseLazyLoadingProxies":  {},
+	"UseChangeTrackingProxies": {},
+	"Migrate":                {},
+	"MigrateAsync":           {},
+	"EnsureCreated":          {},
+	"EnsureCreatedAsync":     {},
+	"EnsureDeleted":          {},
+	"EnsureDeletedAsync":     {},
+
+	// ILogger<T> structured-logging surface — `LogInformation`,
+	// `LogWarning`, `LogError`, `LogDebug`, `LogTrace`, `LogCritical`,
+	// `BeginScope`, `IsEnabled`. Receiver is always an injected
+	// `ILogger<TCategory>`; the call is `_logger.LogInformation("msg")`.
+	"LogInformation": {},
+	"LogWarning":     {},
+	"LogError":       {},
+	"LogDebug":       {},
+	"LogTrace":       {},
+	"LogCritical":    {},
+	"BeginScope":     {},
+
+	// Razor Pages / Controller action-result helpers.
+	// `Page()` is the Razor Pages PageBase result method (every
+	// `return Page();` in OnGet/OnPost); `PageResult` / `LocalRedirect`
+	// / `LocalRedirectPermanent` are sibling action-result factories.
+	"Page":                       {},
+	"PageResult":                 {},
+	"LocalRedirect":              {},
+	"LocalRedirectPermanent":     {},
+	"RedirectPermanent":          {},
+	"RedirectToActionPermanent":  {},
+	"RedirectToPagePermanent":    {},
+	"RedirectToRoutePermanent":   {},
+
+	// ModelState / TempData / ViewData helpers — `ModelState.AddModelError`,
+	// `ModelState.IsValid`, `ModelState.Clear`. Receiver-stripped.
+	"AddModelError":       {},
+	"TryUpdateModelAsync": {},
+	"TryValidateModel":    {},
+	"IsValid":             {},
+
+	// EF Core change-tracking surface beyond the v1 list — `Attach`,
+	// `AddAsync`, `AttachRange`, `FromSqlRaw`, `FromSqlInterpolated`,
+	// `ExecuteSqlRaw`, `ExecuteSqlInterpolated`, `Reload`.
+	"AttachRange":             {},
+	"FromSqlRaw":              {},
+	"FromSqlInterpolated":     {},
+	"ExecuteSqlRaw":           {},
+	"ExecuteSqlInterpolated":  {},
+	"ExecuteSqlRawAsync":      {},
+	"ExecuteSqlInterpolatedAsync": {},
+	"Reload":                  {},
+	"ReloadAsync":             {},
+
+	// System.* / Object.* method surface that the C# extractor strips
+	// from `obj.ToString()`, `string.IsNullOrEmpty(s)`,
+	// `Dictionary<K,V>` constructors, `ArgumentNullException.ThrowIf...`.
+	// These are .NET BCL primitives — universal across every csharp file
+	// and very common after receiver-strip. Gated by lang=="csharp".
+	"ToString":              {},
+	"GetHashCode":           {},
+	"Equals":                {},
+	"GetType":               {},
+	"MemberwiseClone":       {},
+	"ReferenceEquals":       {},
+	"CompareTo":             {},
+	"IsNullOrEmpty":         {},
+	"IsNullOrWhiteSpace":    {},
+	"StartsWith":            {},
+	"EndsWith":              {},
+	"Contains":              {},
+	"Replace":               {},
+	"Split":                 {},
+	"Substring":             {},
+	"Trim":                  {},
+	"TrimStart":             {},
+	"TrimEnd":               {},
+	"PadLeft":               {},
+	"PadRight":              {},
+	"ToLower":               {},
+	"ToUpper":               {},
+	"ToLowerInvariant":      {},
+	"ToUpperInvariant":      {},
+	"Format":                {},
+	"Concat":                {},
+	"Join":                  {},
+	"Parse":                 {},
+	"TryParse":              {},
+	"Compare":               {},
+	"IndexOf":               {},
+	"LastIndexOf":           {},
+	"GetEnumerator":         {},
+	"MoveNext":              {},
+	"Dispose":               {},
+	"DisposeAsync":          {},
+	"Clear":                 {},
+	"Clone":                 {},
+	"CopyTo":                {},
+	"ConvertAll":            {},
+	"ContainsKey":           {},
+	"ContainsValue":         {},
+	"TryGetValue":           {},
+	"GetValueOrDefault":     {},
+	"ToDictionary":          {},
+	"ToHashSet":             {},
+	"ToLookup":              {},
+	"Distinct":              {},
+	"Cast":                  {},
+	"OfType":                {},
+	"Zip":                   {},
+	"Concat_":               {}, // guarded variant — keep below `Concat`
+	"Aggregate":             {},
+	"Reverse":               {},
+	"Sort":                  {},
+	"Range":                 {},
+	"Repeat":                {},
+	"Empty":                 {},
+	"AsSpan":                {},
+	"AsMemory":              {},
+	"GetAwaiter":            {},
+	"GetResult":             {},
+	"ConfigureAwait":        {},
+	"WhenAll":               {},
+	"WhenAny":               {},
+	"Delay":                 {},
+	"FromResult":            {},
+	"CompletedTask":         {},
+	"AddDays":               {},
+	"AddHours":              {},
+	"AddMinutes":            {},
+	"AddSeconds":            {},
+	"AddMonths":             {},
+	"AddYears":              {},
+	"AddMilliseconds":       {},
+	"AddTicks":              {},
+	"ToShortDateString":     {},
+	"ToLongDateString":      {},
+	"ToShortTimeString":     {},
+	"ToLongTimeString":      {},
+
+	// `nameof` and `typeof` look like method calls in the tree-sitter
+	// CST (`nameof(x)`, `typeof(Foo)`) — but they're C# language
+	// keywords. Emitted as bare CALLS by the extractor; classify them
+	// as csharp-language builtins.
+	"nameof":          {},
+	"typeof":          {},
+	"sizeof":          {},
+	"default":         {},
+
+	// Exception throw helpers — `throw new ArgumentNullException(...)`
+	// → `ArgumentNullException` as a constructor bare name, plus
+	// `ArgumentException.ThrowIfNullOrEmpty(...)` static helpers.
+	"ArgumentNullException":   {},
+	"ArgumentException":       {},
+	"ArgumentOutOfRangeException": {},
+	"InvalidOperationException":   {},
+	"NotSupportedException":   {},
+	"NotImplementedException": {},
+	"ObjectDisposedException": {},
+	"FormatException":         {},
+	"OperationCanceledException": {},
+	"TaskCanceledException":   {},
+	"ThrowIfNull":             {},
+	"ThrowIfNullOrEmpty":      {},
+	"ThrowIfNullOrWhiteSpace": {},
+	"ThrowIfLessThan":         {},
+	"ThrowIfGreaterThan":      {},
+
+	// Common generic collection / container constructor names. These
+	// appear as bare `new Dictionary<...>()` → `Dictionary` (the
+	// generic-arg suffix gets stripped). All on System.Collections.Generic.
+	"Dictionary":      {},
+	"List":            {},
+	"HashSet":         {},
+	"SortedDictionary": {},
+	"SortedSet":       {},
+	"SortedList":      {},
+	"Queue":           {},
+	"Stack":           {},
+	"LinkedList":      {},
+	"ConcurrentDictionary": {},
+	"ConcurrentBag":   {},
+	"ConcurrentQueue": {},
+	"ConcurrentStack": {},
+	"KeyValuePair":    {},
+	"Tuple":           {},
+	"ValueTuple":      {},
+	"Lazy":            {},
+	"Nullable":        {},
+
+	// Authentication / Cookie / SignIn fluent helpers added with
+	// AddCookie / AddJwtBearer / AddOpenIdConnect.
+	"AddCookie":         {},
+	"AddJwtBearer":      {},
+	"AddOpenIdConnect":  {},
+	"AddOAuth":          {},
+	"AddGoogle":         {},
+	"AddFacebook":       {},
+	"AddMicrosoftAccount": {},
+	"AddTwitter":        {},
+
+	// EF Core ModelBuilder fluent surface — used inside
+	// `OnModelCreating(ModelBuilder builder)` overrides:
+	//   builder.Entity<Foo>().HasKey(x => x.Id)
+	//          .Property(x => x.Name).IsRequired().HasMaxLength(64)
+	//          .HasOne(x => x.Bar).WithMany(b => b.Foos)
+	//          .HasForeignKey(x => x.BarId).OnDelete(DeleteBehavior.Cascade);
+	"Entity":             {},
+	"HasKey":             {},
+	"HasIndex":           {},
+	"HasOne":             {},
+	"HasMany":            {},
+	"WithOne":            {},
+	"WithMany":           {},
+	"HasForeignKey":      {},
+	"HasPrincipalKey":    {},
+	"OnDelete":           {},
+	"HasMaxLength":       {},
+	"HasName":            {},
+	"HasColumnName":      {},
+	"HasColumnType":      {},
+	"HasConstraintName":  {},
+	"HasDefaultValue":    {},
+	"HasDefaultValueSql": {},
+	"HasComputedColumnSql": {},
+	"HasConversion":      {},
+	"HasData":            {},
+	"HasDiscriminator":   {},
+	"HasQueryFilter":     {},
+	"IsRequired":         {},
+	"IsUnique":           {},
+	"IsConcurrencyToken": {},
+	"IsRowVersion":       {},
+	"IsFixedLength":      {},
+	"IsUnicode":          {},
+	"ValueGeneratedOnAdd": {},
+	"ValueGeneratedOnAddOrUpdate": {},
+	"ValueGeneratedOnUpdate": {},
+	"ValueGeneratedNever": {},
+	"ToTable":            {},
+	"ToView":             {},
+	"ToSqlQuery":         {},
+	"ToFunction":         {},
+	"Property":           {},
+	"OwnsOne":            {},
+	"OwnsMany":           {},
+	"Ignore":             {},
+	"UsePropertyAccessMode": {},
+	"UseSerialColumn":    {},
+	"UseIdentityColumn":  {},
+	"UseHiLo":            {},
+
+	// Microsoft.Extensions.Logging ILoggingBuilder fluent surface —
+	// `loggingBuilder.AddConsole().AddDebug().SetMinimumLevel(LogLevel.
+	// Information).AddFilter<DebugLoggerProvider>(...).ClearProviders()`.
+	"AddConsole":              {},
+	"AddDebug":                {},
+	"AddEventSourceLogger":    {},
+	"AddEventLog":             {},
+	"AddTraceSource":          {},
+	"AddAzureWebAppDiagnostics": {},
+	"AddApplicationInsights":  {},
+	"AddOpenTelemetry":        {},
+	"SetMinimumLevel":         {},
+	"AddFilter":               {},
+	"ClearProviders":          {},
+
+	// Moq testing surface (heavily receiver-stripped on fluent setup
+	// chains): `var mock = new Mock<IFoo>(); mock.Setup(x => x.Bar()).
+	// Returns(42); mock.Verify(...)`. Lang gate keeps `Setup`/`Verify`/
+	// `Returns` scoped to csharp — collides with too many user methods
+	// otherwise. `Mock` as bare appears when the extractor strips the
+	// generic `Mock<IFoo>` constructor.
+	"Mock":              {},
+	"Setup":             {},
+	"SetupGet":          {},
+	"SetupSet":          {},
+	"SetupSequence":     {},
+	"Verify":            {},
+	"VerifyGet":         {},
+	"VerifySet":         {},
+	"VerifyAll":         {},
+	"VerifyNoOtherCalls": {},
+	"Returns":           {},
+	"ReturnsAsync":      {},
+	"Throws":            {},
+	"ThrowsAsync":       {},
+	"Callback":          {},
+	"Raises":            {},
+	"Object":            {}, // mock.Object accessor (lang-gated)
+
+	// Misc action-results / IActionResult constructor bare names.
+	"ObjectResult":     {},
+	"NoContentResult":  {},
+	"OkObjectResult":   {},
+	"BadRequestObjectResult": {},
+	"NotFoundObjectResult":   {},
+	"JsonResult":       {},
+	"FileResult":       {},
+	"RedirectResult":   {},
+	"ContentResult":    {},
+	"ViewResult":       {},
+	"EmptyResult":      {},
+	"PageResult_":      {}, // sentinel — kept distinct from PageResult above
+
+	// Newtonsoft.Json / System.Text.Json common receiver-stripped names.
+	"DeserializeObject": {},
+	"SerializeObject":   {},
+	"Deserialize":       {},
+	"Serialize":         {},
+	"FromJsonAsync":     {},
+	"WriteAsJsonAsync":  {},
+	"ReadFromJsonAsync": {},
+	"ReadAsAsync":       {},
+	"ReadAsStringAsync": {},
+	"ReadAsByteArrayAsync": {},
+	"ReadAsStreamAsync": {},
+	"PostAsync":         {},
+	"PutAsync":          {},
+	"DeleteAsync":       {},
+	"GetAsync":          {},
+	"GetStringAsync":    {},
+	"GetByteArrayAsync": {},
+	"GetStreamAsync":    {},
+	"SendAsync":         {},
 }
 
 // phpBareNames is the PHP-language-gated bare-name stop-list (issue
@@ -4547,6 +5311,8 @@ var knownExternalPackages = map[string]struct{}{
 	"react":        {},
 	"vue":          {},
 	"angular":      {},
+	"jquery":       {},
+	"bootstrap":    {},
 	"lodash":       {},
 	"ramda":        {},
 	"immer":        {},
@@ -5050,6 +5816,199 @@ func isFmtBundledFile(p string) bool {
 		return false
 	}
 	return strings.Contains(p, "/fmt/bundled/") || strings.HasPrefix(p, "fmt/bundled/")
+}
+
+// isJQueryBundledFile reports whether p is a JavaScript file shipped as
+// part of a vendored jQuery / jquery-validation / jquery-unobtrusive
+// bundle — the canonical ASP.NET Core project-template layout puts these
+// under `wwwroot/lib/jquery*/`, and the filenames themselves start with
+// `jquery.` (e.g. `jquery.validate.unobtrusive.js`). Used by the jQuery
+// bare-name gate (issue #441) to scope the jqueryBareNames stop-list to
+// vendored library code without polluting hand-written JS in other
+// codebases.
+func isJQueryBundledFile(p string) bool {
+	if p == "" {
+		return false
+	}
+	if strings.Contains(p, "/wwwroot/lib/jquery") || strings.Contains(p, "/lib/jquery") {
+		return true
+	}
+	// basename-shape check: `jquery.<...>.js` / `jquery-<...>.js` / `jquery.js`.
+	slash := strings.LastIndexByte(p, '/')
+	base := p
+	if slash >= 0 {
+		base = p[slash+1:]
+	}
+	if strings.HasPrefix(base, "jquery.") || strings.HasPrefix(base, "jquery-") || base == "jquery.js" {
+		return true
+	}
+	return false
+}
+
+// jqueryBareNames is the jQuery-bundled-file-gated bare-name stop-list
+// (issue #441). The vendored jquery / jquery-validation / jquery-
+// unobtrusive sources call receiver-stripped jQuery surface methods
+// (`$(...).addClass(...)` → `addClass`, `$.extend(...)` → `extend`)
+// inside their own implementation; the resolver can't bind these to
+// local entities, so they land in bug-extractor.
+//
+// Gated on isJQueryBundledFile(fromFile) so the same generic verbs
+// (`hide`/`show`/`find`/`empty`) don't shadow hand-written user methods
+// in non-jQuery JS codebases. Same safer-bias rule as the Go testify
+// gate (#115). Folds to `ext:jquery` (added to knownExternalPackages
+// below) so the stubs get ExternalKnown disposition.
+var jqueryBareNames = map[string]struct{}{
+	// jQuery CSS class manipulation
+	"addClass":    {},
+	"removeClass": {},
+	"toggleClass": {},
+	"hasClass":    {},
+	// jQuery DOM traversal / manipulation
+	"appendTo":   {},
+	"prependTo":  {},
+	"insertAfter": {},
+	"insertBefore": {},
+	"replaceWith": {},
+	"wrap":       {},
+	"unwrap":     {},
+	"clone":      {},
+	"detach":     {},
+	"empty":      {},
+	"remove":     {},
+	"html":       {},
+	"text":       {},
+	"val":        {},
+	"attr":       {},
+	"removeAttr": {},
+	"prop":       {},
+	"removeProp": {},
+	"css":        {},
+	"data":       {},
+	"removeData": {},
+	// jQuery effects
+	"show":     {},
+	"hide":     {},
+	"toggle":   {},
+	"fadeIn":   {},
+	"fadeOut":  {},
+	"fadeTo":   {},
+	"slideUp":  {},
+	"slideDown": {},
+	"slideToggle": {},
+	// jQuery events
+	"on":         {},
+	"off":        {},
+	"one":        {},
+	"trigger":    {},
+	"triggerHandler": {},
+	"bind":       {},
+	"unbind":     {},
+	"delegate":   {},
+	"undelegate": {},
+	// jQuery utility / static helpers (`$.extend`, `$.each`, `$.isFunction`,
+	// `$.parseJSON`, `$.proxy`, `$.ajax`, etc.).
+	"extend":     {},
+	"each":       {},
+	"isFunction": {},
+	"isArray":    {},
+	"isPlainObject": {},
+	"isEmptyObject": {},
+	"isNumeric":  {},
+	"isWindow":   {},
+	"parseJSON":  {},
+	"parseHTML":  {},
+	"parseXML":   {},
+	"proxy":      {},
+	"ajax":       {},
+	"get":        {},
+	"post":       {},
+	"getJSON":    {},
+	"getScript":  {},
+	"makeArray":  {},
+	"inArray":    {},
+	"grep":       {},
+	"merge":      {},
+	"noop":       {},
+	"now":        {},
+	"trim":       {},
+	"type":       {},
+	"contains":   {},
+	"globalEval": {},
+	// jQuery selector traversal
+	"find":     {},
+	"filter":   {},
+	"closest":  {},
+	"parent":   {},
+	"parents":  {},
+	"children": {},
+	"siblings": {},
+	"next":     {},
+	"prev":     {},
+	"nextAll":  {},
+	"prevAll":  {},
+	"first":    {},
+	"last":     {},
+	"eq":       {},
+	"index":    {},
+	"slice":    {},
+	"add":      {},
+	"andSelf":  {},
+	"end":      {},
+	"is":       {},
+	"not":      {},
+	"has":      {},
+	"each_":    {}, // sentinel — guarded variant
+	// jQuery form-related helpers used by jquery-validation /
+	// jquery-validation-unobtrusive.
+	"serialize":      {},
+	"serializeArray": {},
+	"submit":         {},
+	"focus":          {},
+	"blur":           {},
+	"click":          {},
+	"change":         {},
+	"keydown":        {},
+	"keyup":          {},
+	"keypress":       {},
+	"mouseenter":     {},
+	"mouseleave":     {},
+	"mouseover":      {},
+	"mouseout":       {},
+	"hover":          {},
+	"select":         {},
+	"ready":          {},
+	// jquery-validation plugin surface
+	"validate":       {},
+	"valid":          {},
+	"resetForm":      {},
+	"rules":          {},
+	"unobtrusive":    {},
+	"validator":      {},
+	"showErrors":     {},
+	"numberOfInvalids": {},
+	// jQuery internal/private surface that leaks via receiver-strip
+	// inside the validation bundles.
+	"apply":          {},
+	"call":           {},
+	"replace":        {}, // String.prototype.replace + jQuery internal
+	"split":          {},
+	"substr":         {},
+	"substring":      {},
+	"charAt":         {},
+	"charCodeAt":     {},
+	"indexOf":        {},
+	"lastIndexOf":    {},
+	"concat":         {},
+	"join":           {},
+	"reverse":        {},
+	"sort":           {},
+	"shift":          {},
+	"unshift":        {},
+	"pop":            {},
+	"splice":         {},
+	// `$` itself appears as a bare CALLS target when the extractor
+	// can't bind the jQuery global.
+	"$": {},
 }
 
 // isFmtMacroIdent reports whether s is an UPPER_SNAKE_CASE identifier
