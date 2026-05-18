@@ -2729,7 +2729,7 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// external SQL surface area (the table is a real schema object, just
 	// not modelled as a graph entity yet). Routing to ExternalKnown stops
 	// these from polluting bug-extractor on Django/Flask/FastAPI repos
-	// (client-fixture-a 13.70% pre-fix). The new external-sql disposition
+	// (client-fixture-a, Django backend pre-fix). The new external-sql disposition
 	// bucket is tracked as a chain-fix.
 	if isDataAccessSQLStub(originalStub) {
 		return DispositionExternalKnown

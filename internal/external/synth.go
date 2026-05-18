@@ -6023,7 +6023,7 @@ var jsBareNames = map[string]struct{}{
 
 	// Wave-4 (RN/Expo, #508) — bare-name hooks + receiver-stripped APIs
 	// observed as the dominant bug-extractor residual on the client-fixture-c
-	// (Client-fixture-c (RN+Expo)) fixture after pass-1 (knownExternalPackages
+	// (RN+Expo) fixture after pass-1 (knownExternalPackages
 	// allowlist). All names are distinctive ecosystem APIs gated by
 	// lang=="javascript"||lang=="typescript" in stdlibFunction. Each
 	// follows the React convention (`use*` is reserved by rules-of-hooks
@@ -9473,7 +9473,7 @@ var knownExternalPackages = map[string]struct{}{
 	"less":             {},
 	"stylelint":        {},
 	// Wave-4 (RN/Expo, #508) — React Native + Expo SDK runtime allowlist.
-	// The client-fixture-c (Client-fixture-c (RN+Expo)) fixture has 538 files and 16.10% bug-rate
+	// The client-fixture-c (RN+Expo) fixture has 538 files and 16.10% bug-rate
 	// dominated by IMPORTS to react-native-* / @react-navigation / expo-*
 	// packages. Every name is a real npm package shipped by Meta/Expo or a
 	// well-known RN community lib; collision risk with hand-rolled local

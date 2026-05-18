@@ -16,7 +16,7 @@ import "strings"
 // cross-repo linking.
 //
 // Issue #509: bare-name ext:* matches produced 100% false-positive
-// cross-repo links on the client-private group (1,114 of 1,114). Filtering
+// cross-repo links on the client-fixture group (1,114 of 1,114). Filtering
 // these out is the precision fix.
 func isBareNameExt(id string) bool {
 	const prefix = "ext:"

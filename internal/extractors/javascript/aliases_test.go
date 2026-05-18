@@ -59,7 +59,7 @@ func TestAliasMap_Resolve_LongestWins(t *testing.T) {
 	}
 }
 
-// TestParseTsconfigPathsBytes covers the client-fixture-c shape: `@/*`
+// TestParseTsconfigPathsBytes covers the RN+Expo shape: `@/*`
 // resolving to multiple candidates, plus an exact-match
 // `tailwind.config` entry. Also verifies that the more-specific
 // `./src/*` target is preferred over `./*`.
@@ -155,7 +155,7 @@ func TestExtractAliasBlock_Metro(t *testing.T) {
 	}
 }
 
-// TestExtractBabelModuleResolverAliases covers the client-fixture-c shape:
+// TestExtractBabelModuleResolverAliases covers the RN+Expo shape:
 // a module-resolver plugin entry inside a function-returning config
 // (babel.config.js function form).
 func TestExtractBabelModuleResolverAliases(t *testing.T) {

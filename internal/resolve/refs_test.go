@@ -1614,8 +1614,8 @@ func TestIsDataAccessSQLStub(t *testing.T) {
 		want bool
 	}{
 		// Recognised SQL driver / ORM stub forms.
-		{"scope:dataaccess:core/views/sync_viewset.py#psycopg2:SELECT:checklists", true},
-		{"scope:dataaccess:core/views/sync_viewset.py#psycopg2:SELECT:UNKNOWN", true},
+		{"scope:dataaccess:app/views/sync_viewset.py#psycopg2:SELECT:items", true},
+		{"scope:dataaccess:app/views/sync_viewset.py#psycopg2:SELECT:UNKNOWN", true},
 		{"scope:dataaccess:app/models/user.py#sqlalchemy:INSERT:users", true},
 		{"scope:dataaccess:src/db.py#asyncpg:UPDATE:devices", true},
 		{"scope:dataaccess:src/db.py#aiopg:DELETE:sessions", true},
@@ -1648,8 +1648,8 @@ func TestIsDataAccessSQLStub(t *testing.T) {
 func TestDisposition_DataAccessSQLRoutesToExternalKnown(t *testing.T) {
 	t.Parallel()
 	stubs := []string{
-		"scope:dataaccess:core/views/sync_viewset.py#psycopg2:SELECT:UNKNOWN",
-		"scope:dataaccess:core/views/sync_viewset.py#psycopg2:TRUNCATE:users",
+		"scope:dataaccess:app/views/sync_viewset.py#psycopg2:SELECT:UNKNOWN",
+		"scope:dataaccess:app/views/sync_viewset.py#psycopg2:TRUNCATE:users",
 		"scope:dataaccess:app/models/user.py#sqlalchemy:INSERT:users",
 		"scope:dataaccess:src/db.py#asyncpg:UPDATE:devices",
 	}
@@ -1682,14 +1682,14 @@ func TestDisposition_DataAccessSQLRoutesToExternalKnown(t *testing.T) {
 // hex ID and the disposition must be Resolved — NOT ExternalKnown.
 func TestDisposition_DataAccessSQLResolvedWhenEntityPresent(t *testing.T) {
 	t.Parallel()
-	stub := "scope:dataaccess:core/views/sync_viewset.py#psycopg2:SELECT:checklists"
+	stub := "scope:dataaccess:app/views/sync_viewset.py#psycopg2:SELECT:items"
 	hexID := "0123456789abcdef"
 	entities := []types.EntityRecord{{
 		ID:            hexID,
-		Name:          "SELECT checklists",
+		Name:          "SELECT items",
 		Kind:          "SCOPE.DataAccess",
 		QualifiedName: stub,
-		SourceFile:    "core/views/sync_viewset.py",
+		SourceFile:    "app/views/sync_viewset.py",
 		Language:      "python",
 		Subtype:       "psycopg2",
 	}}

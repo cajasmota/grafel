@@ -882,7 +882,7 @@ func TestHTMLExtractor_FlaskJinja2Register_AllKindsAllowlistCompliant(t *testing
 
 func TestHTMLExtractor_SkipsEmailTemplateFiles(t *testing.T) {
 	src := `<!DOCTYPE html><html><body>
-<img src="https://controller.client-private.com/img/controller-logo-400px.png">
+<img src="https://example.com/img/controller-logo-400px.png">
 <a href="https://example.com/reset">Click here</a>
 </body></html>`
 
@@ -945,7 +945,7 @@ func TestHTMLExtractor_SkipsExternalURLsInImgScriptLink(t *testing.T) {
   <script src="//cdn.example.com/proto.js"></script>
 </head>
 <body>
-  <img src="https://controller.client-private.com/img/logo.png">
+  <img src="https://example.com/img/logo.png">
   <img src="data:image/png;base64,AAAA">
 </body>
 </html>`
