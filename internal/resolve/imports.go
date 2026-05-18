@@ -107,6 +107,14 @@ type ImportTable struct {
 	// entity. Ambiguous tuples are tracked in ambigModuleName.
 	entitiesByModuleName map[string]map[string]string
 	ambigModuleName      map[string]map[string]bool
+	// entityFile / entityKind track the SourceFile and Kind for every
+	// entity recorded into entitiesByModuleName. Used by the same-file
+	// collision dedup in BuildImportTable so two projections of the same
+	// physical class (e.g. PHP SCOPE.Component + framework Model) don't
+	// flip the (module, name) tuple into ambigModuleName and tank PHP
+	// IMPORTS resolution (issue #485 PHP wave-3 follow-up).
+	entityFile map[string]string
+	entityKind map[string]string
 	// methodsByFileName[source_file][method_name] = entity_id, populated
 	// only for PHP method entities and only when the (file, name) tuple
 	// resolves to exactly one entity. Ambiguous tuples are tracked in
@@ -156,6 +164,8 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		modulesByName:        make(map[string]map[string]bool),
 		entitiesByModuleName: make(map[string]map[string]string),
 		ambigModuleName:      make(map[string]map[string]bool),
+		entityFile:           make(map[string]string),
+		entityKind:           make(map[string]string),
 		methodsByFileName:    make(map[string]map[string]string),
 		ambigMethodFileName:  make(map[string]map[string]bool),
 		docByFilePath:        make(map[string]string),
@@ -283,6 +293,43 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 				tbl.entitiesByModuleName[mod] = bucket
 			}
 			if existing, ok := bucket[e.Name]; ok && existing != e.ID {
+				// Same-file framework-projection dedup (issue #485 PHP
+				// wave-3 follow-up). PHP / Laravel / Symfony index emits
+				// duplicate entities for the same physical class file:
+				// the PHP extractor produces a SCOPE.Component, while
+				// yaml-driven framework synth produces a Model /
+				// Controller entity with the same Name and SourceFile.
+				// Both describe the same class. PSR-4 guarantees one
+				// class per FQN per file, so when (module, name) collides
+				// on a single SourceFile AND the two entities have
+				// DIFFERENT kinds AND at least one side is a SCOPE.*
+				// canonical entity, we are NOT ambiguous — we just have
+				// parallel projections of the same class. Prefer the
+				// SCOPE.* projection so IMPORTS targets like
+				// `App\Http\Controllers\Controller` and `App\Entity\User`
+				// bind to their declaring class entity instead of landing
+				// in bug-extractor.
+				//
+				// Guardrails (preserve existing ambiguity semantics):
+				//   - require existingFile == incomingFile (same file)
+				//   - require existing.Kind != incoming.Kind (true
+				//     projection, not a real duplicate)
+				//   - require at least one side to be SCOPE.Component or
+				//     SCOPE.Operation (otherwise it's two framework
+				//     projections, still genuinely ambiguous).
+				existingFile := tbl.entityFile[existing]
+				existingKind := tbl.entityKind[existing]
+				incomingFile := normalizePath(e.SourceFile)
+				if existingFile != "" && existingFile == incomingFile &&
+					existingKind != e.Kind &&
+					(isScopeKind(existingKind) || isScopeKind(e.Kind)) {
+					if preferEntityKind(e.Kind, existingKind) {
+						bucket[e.Name] = e.ID
+						tbl.entityFile[e.ID] = incomingFile
+						tbl.entityKind[e.ID] = e.Kind
+					}
+					continue
+				}
 				delete(bucket, e.Name)
 				if tbl.ambigModuleName[mod] == nil {
 					tbl.ambigModuleName[mod] = make(map[string]bool)
@@ -291,6 +338,8 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 				continue
 			}
 			bucket[e.Name] = e.ID
+			tbl.entityFile[e.ID] = normalizePath(e.SourceFile)
+			tbl.entityKind[e.ID] = e.Kind
 		}
 	}
 
@@ -556,6 +605,14 @@ func modulesForPHPFile(p string) []string {
 	// canonical "App" segment so an import whose source_module is
 	// "App.Foo" binds regardless of whether the corpus was rooted at
 	// the package root or the repo root.
+	//
+	// Also handle the bare source-root case (`app/User.php` →
+	// dir="app" → dotted="app", which matches no `prefix+"."` form).
+	// PSR-4 maps this file to the top-level `App` namespace, so emit
+	// "App" without a tail. Issue #485 PHP wave-3 follow-up:
+	// pre-fix, `use App\User;` for `app/User.php` failed to bind
+	// because module="App" had no entries, causing every top-level
+	// App\X import in Laravel-style layouts to land in bug-extractor.
 	for _, prefix := range phpPSR4SourceRootPrefixes {
 		if strings.HasPrefix(dotted, prefix) {
 			tail := strings.TrimPrefix(dotted, prefix)
@@ -564,6 +621,32 @@ func modulesForPHPFile(p string) []string {
 			} else {
 				out = append(out, "App."+tail)
 			}
+			break
+		}
+		// Bare source root match: dotted is exactly the prefix without
+		// the trailing dot (e.g. "app" matches phpPSR4SourceRootPrefixes
+		// entry "app."). Emit the canonical "App" top-level namespace.
+		if dotted+"." == prefix {
+			out = append(out, "App")
+			break
+		}
+	}
+	// PSR-4 test-root strip (`tests/Command/X.php` →
+	// `App\Tests\Command\X`). Symfony's `autoload-dev` ships
+	// `App\Tests\` → `tests/`, so test files satisfy the
+	// `App.Tests.<subpath>` dotted module form. Issue #485 PHP wave-3.
+	for _, prefix := range phpPSR4TestRootPrefixes {
+		if strings.HasPrefix(dotted, prefix) {
+			tail := strings.TrimPrefix(dotted, prefix)
+			if tail == "" {
+				out = append(out, "App.Tests")
+			} else {
+				out = append(out, "App.Tests."+tail)
+			}
+			break
+		}
+		if dotted+"." == prefix {
+			out = append(out, "App.Tests")
 			break
 		}
 	}
@@ -579,6 +662,45 @@ func modulesForPHPFile(p string) []string {
 	return out
 }
 
+// preferEntityKind reports whether an incoming entity Kind should replace
+// an existing same-file (module, name) entry in entitiesByModuleName.
+// Returns true when incoming has a strictly more canonical kind than
+// existing. Used by the BuildImportTable same-file dedup (issue #485
+// PHP wave-3 follow-up) to keep PHP IMPORTS resolvable when the PHP
+// extractor's SCOPE.Component collides with a framework Model entity
+// produced from the same source file. Lower rank = more canonical.
+//
+// Ranking:
+//   - SCOPE.Component (PHP/JS/Py class entity)              → 0
+//   - SCOPE.Operation                                       → 1
+//   - everything else (Model, Controller, framework synth)  → 2
+//
+// The ranking is deliberately conservative: only SCOPE.* kinds get
+// preference because IMPORTS edges in the per-language extractors
+// always emit the canonical SCOPE.Component as their binding target.
+// isScopeKind reports whether k is one of the canonical SCOPE.* entity
+// kinds (SCOPE.Component, SCOPE.Operation, SCOPE.Document, SCOPE.Module).
+// Used by the BuildImportTable same-file dedup to gate the framework-
+// projection preference so non-SCOPE duplicates (two Models, two
+// Controllers) still trip the existing ambiguity tracking.
+func isScopeKind(k string) bool {
+	return strings.HasPrefix(k, "SCOPE.")
+}
+
+func preferEntityKind(incoming, existing string) bool {
+	rank := func(k string) int {
+		switch k {
+		case "SCOPE.Component":
+			return 0
+		case "SCOPE.Operation":
+			return 1
+		default:
+			return 2
+		}
+	}
+	return rank(incoming) < rank(existing)
+}
+
 // phpPSR4SourceRootPrefixes lists the canonical PSR-4 source-root
 // directories that map to the conventional `App\` top-level namespace.
 // Matched against the dotted form of the parent directory (slashes
@@ -587,6 +709,19 @@ func modulesForPHPFile(p string) []string {
 var phpPSR4SourceRootPrefixes = []string{
 	"src.",
 	"app.",
+}
+
+// phpPSR4TestRootPrefixes lists the canonical PSR-4 test-root directories
+// that map to the `App\Tests\` sub-namespace under composer's autoload-dev
+// section. Symfony's default `composer.json` ships
+// `"App\\Tests\\": "tests/"`, so `tests/Command/X.php` satisfies
+// `App\Tests\Command\X`. Issue #485 PHP wave-3 — without this, every
+// PHPUnit test class import lands in bug-extractor. Matched the same
+// way as phpPSR4SourceRootPrefixes (dotted parent dir, trailing dot).
+var phpPSR4TestRootPrefixes = []string{
+	"tests.",
+	"test.",
+	"Tests.",
 }
 
 // javaSourceRootPrefixes lists the canonical Maven/Gradle layout
@@ -760,6 +895,57 @@ func (t ImportTable) ResolveDottedImportTarget(dotted string) (string, bool) {
 	}
 	module, leaf := dotted[:dot], dotted[dot+1:]
 	return t.lookupModuleEntity(module, leaf)
+}
+
+// ResolveDottedImportTargetForPHP performs the same (module, leaf)
+// lookup as ResolveDottedImportTarget, plus a PHP-specific namespace-
+// prefix fallback for IMPORTS edges whose ToID names a sub-namespace
+// (directory) rather than a specific class. PHP projects routinely
+// `use App\Http\Middleware;` or `use App\Console;` to bring a
+// sub-namespace into scope without naming a particular symbol. The
+// standard (module, leaf) split misses — `App.Http` has no entity
+// named `Middleware` — but the FULL dotted form does name a real
+// project directory with indexed entities. Bind to a representative
+// entity from that namespace so the edge classifies as resolved rather
+// than bug-extractor.
+//
+// Caller MUST gate this on lang == "php"; other languages (Python's
+// `import x.y` shape covered by TestResolveImports_DottedImportPlainModule)
+// rely on the strict ResolveDottedImportTarget semantics where plain
+// module imports without a leaf binding stay unresolved. Issue #485
+// PHP wave-3.
+func (t ImportTable) ResolveDottedImportTargetForPHP(dotted string) (string, bool) {
+	if id, ok := t.ResolveDottedImportTarget(dotted); ok {
+		return id, true
+	}
+	return t.resolveNamespaceTarget(dotted)
+}
+
+// resolveNamespaceTarget binds a dotted IMPORTS target that names a
+// project-internal namespace (directory) to a stable representative
+// entity from that namespace. Used as a fallback when the standard
+// (module, leaf) lookup misses — typical of PHP `use App\Sub\Namespace;`
+// statements that import a sub-namespace prefix rather than a specific
+// class. The representative entity ID is deterministic: the
+// lexicographically lowest entity ID in entitiesByModuleName[dotted],
+// preferring SCOPE.Component over other kinds via the same ordering
+// applied at insert time (preferEntityKind). Returns ("", false) when
+// no entity in that namespace is indexed.
+func (t ImportTable) resolveNamespaceTarget(dotted string) (string, bool) {
+	bucket, ok := t.entitiesByModuleName[dotted]
+	if !ok || len(bucket) == 0 {
+		return "", false
+	}
+	var picked string
+	for _, id := range bucket {
+		if picked == "" || id < picked {
+			picked = id
+		}
+	}
+	if picked == "" {
+		return "", false
+	}
+	return picked, true
 }
 
 // isPHPFQNMethodShape reports whether s looks like a PHP FQN-method
@@ -1017,8 +1203,15 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				// lookup and are left for the external-synthesis
 				// pass.
 				normalized := to
+				isPHP := false
 				if strings.ContainsRune(normalized, '\\') {
 					normalized = strings.ReplaceAll(normalized, "\\", ".")
+					// A backslash in the ToID is a strong PHP signal: only
+					// the PHP extractor emits `\`-separated namespaces on
+					// IMPORTS edges. Enable the namespace-prefix fallback
+					// (issue #485 PHP wave-3) below so `use App\Sub\Namespace;`
+					// resolves to a representative entity in that namespace.
+					isPHP = true
 				}
 				if !strings.ContainsRune(normalized, '.') {
 					continue
@@ -1027,7 +1220,15 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					continue
 				}
 				stats.ImportsConsidered++
-				id, ok := tbl.ResolveDottedImportTarget(normalized)
+				var (
+					id string
+					ok bool
+				)
+				if isPHP {
+					id, ok = tbl.ResolveDottedImportTargetForPHP(normalized)
+				} else {
+					id, ok = tbl.ResolveDottedImportTarget(normalized)
+				}
 				if !ok {
 					continue
 				}
