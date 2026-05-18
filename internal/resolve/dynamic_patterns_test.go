@@ -172,6 +172,67 @@ func TestDynamicPatterns_Catalog(t *testing.T) {
 		{"jvm_bare_getMethod_python_negative", "python", `getMethod`, false},
 		{"jvm_bare_newInstance_go_negative", "go", `newInstance`, false},
 
+		// ---- Rails ActionPack / ActionDispatch / ActiveSupport
+		// internals (issue #448). Rails framework DSL exposed to
+		// controllers/routes/initializers — method_missing-generated
+		// or class-macro driven, so the Ruby extractor strips the
+		// receiver and the resolver sees only the bare leaf. Per-
+		// language gate (lang == "ruby") keeps generic verbs like
+		// `get`/`post`/`mount`/`namespace`/`resources` from polluting
+		// other ecosystems.
+		// Routing DSL (ActionDispatch::Routing::Mapper).
+		{"rb_rails_resources", "ruby", `resources`, true},
+		{"rb_rails_resource", "ruby", `resource`, true},
+		{"rb_rails_namespace", "ruby", `namespace`, true},
+		{"rb_rails_constraints", "ruby", `constraints`, true},
+		{"rb_rails_concern", "ruby", `concern`, true},
+		{"rb_rails_concerns", "ruby", `concerns`, true},
+		{"rb_rails_mount", "ruby", `mount`, true},
+		{"rb_rails_get", "ruby", `get`, true},
+		{"rb_rails_post", "ruby", `post`, true},
+		{"rb_rails_put", "ruby", `put`, true},
+		{"rb_rails_patch", "ruby", `patch`, true},
+		{"rb_rails_delete", "ruby", `delete`, true},
+		{"rb_rails_root", "ruby", `root`, true},
+		{"rb_rails_direct", "ruby", `direct`, true},
+		{"rb_rails_resolve", "ruby", `resolve`, true},
+		{"rb_rails_controller", "ruby", `controller`, true},
+		// ActionController DSL macros.
+		{"rb_rails_helper", "ruby", `helper`, true},
+		{"rb_rails_layout", "ruby", `layout`, true},
+		{"rb_rails_protect_from_forgery", "ruby", `protect_from_forgery`, true},
+		{"rb_rails_skip_authorization_check", "ruby", `skip_authorization_check`, true},
+		{"rb_rails_verify_authenticity_token", "ruby", `verify_authenticity_token`, true},
+		{"rb_rails_respond_with", "ruby", `respond_with`, true},
+		{"rb_rails_headers", "ruby", `headers`, true},
+		// ActiveSupport class-macros / callbacks.
+		{"rb_rails_prepended", "ruby", `prepended`, true},
+		{"rb_rails_class_attribute", "ruby", `class_attribute`, true},
+		{"rb_rails_mattr_accessor", "ruby", `mattr_accessor`, true},
+		{"rb_rails_mattr_reader", "ruby", `mattr_reader`, true},
+		{"rb_rails_mattr_writer", "ruby", `mattr_writer`, true},
+		{"rb_rails_cattr_accessor", "ruby", `cattr_accessor`, true},
+		{"rb_rails_define_callbacks", "ruby", `define_callbacks`, true},
+		{"rb_rails_set_callback", "ruby", `set_callback`, true},
+		{"rb_rails_skip_callback", "ruby", `skip_callback`, true},
+		// ActionDispatch middleware stack DSL.
+		{"rb_rails_add_middleware", "ruby", `add_middleware`, true},
+		{"rb_rails_delete_middleware", "ruby", `delete_middleware`, true},
+		{"rb_rails_insert_before", "ruby", `insert_before`, true},
+		{"rb_rails_insert_after", "ruby", `insert_after`, true},
+		// Per-language gate: Rails internals from non-Ruby files MUST
+		// NOT classify as Ruby dynamic — these names are Ruby/Rails
+		// scoped here and would collide trivially with user methods
+		// in other ecosystems (`get`/`post`/`mount`/`namespace`/
+		// `resources`/`controller`/`headers`).
+		{"rb_rails_get_js_negative", "javascript", `resources`, false},
+		{"rb_rails_namespace_go_negative", "go", `namespace`, false},
+		{"rb_rails_mount_python_negative", "python", `mount`, false},
+		{"rb_rails_controller_java_negative", "java", `controller`, false},
+		{"rb_rails_headers_kotlin_negative", "kotlin", `headers`, false},
+		{"rb_rails_layout_swift_negative", "swift", `layout`, false},
+		{"rb_rails_set_callback_rust_negative", "rust", `set_callback`, false},
+
 		// ---- Negative cases (must NOT be dynamic) ------------------
 		{"plain_kindname", "", `Function:Hello`, false},
 		{"plain_bare_name", "", `Foo`, false},
