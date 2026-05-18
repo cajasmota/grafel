@@ -134,13 +134,20 @@ func buildEntity(filePath, language string, a access) types.EntityRecord {
 	}
 
 	rec := types.EntityRecord{
-		Name:         a.operation + " " + a.table,
-		Kind:         KindDataAccess,
-		SourceFile:   filePath,
-		Language:     language,
-		Subtype:      a.orm,
-		Properties:   props,
-		QualityScore: 0.8,
+		Name: a.operation + " " + a.table,
+		Kind: KindDataAccess,
+		// Issue #507 — expose the stub form as QualifiedName so the resolver's
+		// byQualifiedName index resolves the matching ACCESSES_TABLE edge
+		// toID (which is emitted in this same stub form) to this entity's
+		// hex ID. Without this the edge was leaking into bug-extractor even
+		// though the entity existed (the stub's segment count doesn't fit
+		// the 6-segment Format A/B that lookupStructural understands).
+		QualifiedName: entityID,
+		SourceFile:    filePath,
+		Language:      language,
+		Subtype:       a.orm,
+		Properties:    props,
+		QualityScore:  0.8,
 	}
 
 	fromRef := functionRef(filePath, a.functionQName)

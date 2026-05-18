@@ -263,6 +263,33 @@ def fetch():
 	}
 }
 
+// TestDataAccess_QualifiedNameMatchesStub guards issue #507. The
+// SCOPE.DataAccess entity must set QualifiedName = the stub form so the
+// resolver's byQualifiedName index can rewrite the ACCESSES_TABLE edge
+// toID (which is the same stub) to this entity's hex ID. Without this
+// the edge falls through to bug-extractor even though the entity exists.
+func TestDataAccess_QualifiedNameMatchesStub(t *testing.T) {
+	src := `import psycopg2
+def fetch():
+    conn = psycopg2.connect("")
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM metrics WHERE ts > %s", (t,))`
+	recs := runExtract(t, "m.py", "python", src)
+	r := findByOpTable(t, recs, OpSelect, "metrics")
+	wantStub := dataAccessEntityID("m.py", "psycopg2", OpSelect, "metrics")
+	if r.QualifiedName != wantStub {
+		t.Errorf("QualifiedName=%q, want %q (entity must match its ACCESSES_TABLE edge stub so byQualifiedName resolves it — issue #507)", r.QualifiedName, wantStub)
+	}
+	// Sanity: the relationship the extractor emits MUST point at the
+	// same stub the entity now indexes under.
+	if len(r.Relationships) != 1 {
+		t.Fatalf("expected 1 ACCESSES_TABLE rel, got %d", len(r.Relationships))
+	}
+	if r.Relationships[0].ToID != wantStub {
+		t.Errorf("ACCESSES_TABLE ToID=%q, want %q", r.Relationships[0].ToID, wantStub)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Hibernate / JPA
 // ---------------------------------------------------------------------------
