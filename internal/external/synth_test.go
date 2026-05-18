@@ -1802,6 +1802,165 @@ func TestKotlinKtorDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	}
 }
 
+// TestKotlinKtorRoutingVerbs_ClassifiedWithKtorImport covers the
+// Ktor-verb fix: HTTP-verb routing-DSL functions (`get("/x") { ... }`,
+// `post(...)`, `put(...)`, `delete(...)`, `patch(...)`, `head(...)`,
+// `options(...)`) on `io.ktor.server.routing.Route` get receiver-
+// stripped by the Kotlin extractor. The lowercase verb names collide
+// trivially with generic property accessors (`Repository.get`,
+// `Cache.put`), so #106's safer-bias rule rejected them from
+// kotlinBareNames. They must classify as stdlib bare-names ONLY when
+// the source file imports `io.ktor.server.*` — same precision model as
+// the Go chi-router gate (#131).
+//
+// Refs #44 #435 #456.
+func TestKotlinKtorRoutingVerbs_ClassifiedWithKtorImport(t *testing.T) {
+	verbs := []string{"get", "post", "put", "delete", "patch", "head", "options"}
+	importSets := []map[string]bool{
+		{"io.ktor.server.routing": true},
+		{"io.ktor.server.application": true, "io.ktor.server.netty": true},
+		{"io.ktor.server.routing.get": true}, // non-wildcard leaf still matches the prefix.
+		{"io.ktor.server": true},
+	}
+	for _, name := range verbs {
+		for i, imps := range importSets {
+			name, imps := name, imps
+			t.Run(name+"/set"+itoaTest(i), func(t *testing.T) {
+				t.Parallel()
+				subtype, ok := stdlibFunction(name, "kotlin", "Routes.kt", imps)
+				if !ok {
+					t.Fatalf("stdlibFunction(%q, \"kotlin\", Ktor imports) not classified; want stdlib bare-name", name)
+				}
+				if subtype != "function" {
+					t.Fatalf("subtype=%q, want \"function\"", subtype)
+				}
+			})
+		}
+	}
+}
+
+// TestKotlinKtorRoutingVerbs_NotClassifiedWithoutKtorImport locks the
+// import-gate precision: without a `io.ktor.server.*` import the
+// HTTP-verb names must NOT be rewritten. A Kotlin `Repository.get` /
+// `Cache.put` user method that lands at the resolver as a bare leaf
+// (the resolver couldn't bind the receiver, common with field chains)
+// must stay unresolved rather than synthesise an `ext:get` placeholder.
+//
+// `head` and `options` are EXCLUDED from this assertion: `head` is in
+// the unconditional kotlinBareNames allowlist as a kotlinx.html DSL
+// leaf builder (#470 — `<head>` HTML element block), and `options`
+// would otherwise be added by an HTML-DSL cohort; both classify
+// regardless of the Ktor-import gate. This test covers the verbs whose
+// CLASSIFICATION depends on the Ktor gate.
+//
+// Refs #44 #435 #456.
+func TestKotlinKtorRoutingVerbs_NotClassifiedWithoutKtorImport(t *testing.T) {
+	verbs := []string{"get", "post", "put", "delete", "patch"}
+	importSets := []map[string]bool{
+		nil,
+		{},
+		{"kotlin.io.println": true},
+		{"org.springframework.web.bind.annotation.RestController": true},
+		{"io.ktor.client.HttpClient": true}, // client-side, not server DSL
+	}
+	for _, name := range verbs {
+		for i, imps := range importSets {
+			name, imps := name, imps
+			t.Run(name+"/set"+itoaTest(i), func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, "kotlin", "App.kt", imps); ok {
+					t.Fatalf("stdlibFunction(%q, \"kotlin\", non-Ktor imports=%v) classified; "+
+						"must require io.ktor.server.* import", name, imps)
+				}
+			})
+		}
+	}
+}
+
+// TestKotlinKtorRoutingVerbs_NotClassifiedForOtherLanguages confirms
+// the Kotlin language gate holds for the Ktor-verb addition: with a
+// non-kotlin language, the Kotlin Ktor-import branch must be skipped
+// even when the (synthetic) import set contains `io.ktor.server.*`.
+//
+// Test strategy: compare each verb/lang pair WITH and WITHOUT the
+// Ktor imports. If the result is the same, the Kotlin Ktor branch is
+// correctly NOT firing for the non-kotlin language (other-lang
+// allowlists may classify the verb on their own — that is orthogonal
+// to this gate and intentional). If a verb classifies only when Ktor
+// imports are present for a non-kotlin language, the gate is broken.
+//
+// Refs #44 #435 #456.
+func TestKotlinKtorRoutingVerbs_NotClassifiedForOtherLanguages(t *testing.T) {
+	verbs := []string{"get", "post", "put", "delete", "patch", "head", "options"}
+	otherLangs := []string{"go", "python", "javascript", "rust", "java", "csharp", ""}
+	ktorImps := map[string]bool{"io.ktor.server.routing": true}
+	for _, name := range verbs {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				_, okWithout := stdlibFunction(name, lang, "Routes.kt", nil)
+				_, okWith := stdlibFunction(name, lang, "Routes.kt", ktorImps)
+				if okWith != okWithout {
+					t.Fatalf("stdlibFunction(%q, %q): classify diverges based on Ktor imports "+
+						"(with=%v, without=%v); Kotlin Ktor branch must not fire for non-kotlin",
+						name, lang, okWith, okWithout)
+				}
+			})
+		}
+	}
+}
+
+// TestHasKtorServerImport covers the import-gate helper directly:
+// matches any `io.ktor.server` or `io.ktor.server.*` path, rejects
+// empty / nil sets and non-Ktor / Ktor-client imports.
+//
+// Refs #44 #435 #456.
+func TestHasKtorServerImport(t *testing.T) {
+	cases := []struct {
+		name    string
+		imports map[string]bool
+		want    bool
+	}{
+		{"nil", nil, false},
+		{"empty", map[string]bool{}, false},
+		{"root", map[string]bool{"io.ktor.server": true}, true},
+		{"routing", map[string]bool{"io.ktor.server.routing": true}, true},
+		{"application", map[string]bool{"io.ktor.server.application": true}, true},
+		{"netty", map[string]bool{"io.ktor.server.netty": true}, true},
+		{"leaf import", map[string]bool{"io.ktor.server.routing.get": true}, true},
+		{"client only", map[string]bool{"io.ktor.client.HttpClient": true}, false},
+		{"unrelated", map[string]bool{"kotlin.io.println": true, "java.util.UUID": true}, false},
+		{"io.ktor (no server)", map[string]bool{"io.ktor.http.HttpStatusCode": true}, false},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := hasKtorServerImport(c.imports); got != c.want {
+				t.Errorf("hasKtorServerImport(%v) = %v, want %v", c.imports, got, c.want)
+			}
+		})
+	}
+}
+
+// itoaTest is a tiny int-to-string helper to keep test subtest names
+// deterministic without pulling in strconv (already used elsewhere in
+// the file via helper functions, but this avoids touching imports).
+func itoaTest(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	var buf [16]byte
+	pos := len(buf)
+	for i > 0 {
+		pos--
+		buf[pos] = byte('0' + i%10)
+		i /= 10
+	}
+	return string(buf[pos:])
+}
+
 // TestKotlinResidualBareNames_ClassifiedWhenLangIsKotlin covers issue
 // #456: residual ktor-samples bug-extractor cohorts after #122 + #106 +
 // #435. The Kotlin extractor receiver-strips kotlinx.serialization
