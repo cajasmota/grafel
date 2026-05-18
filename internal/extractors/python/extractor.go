@@ -151,8 +151,21 @@ func walkNode(
 				for i := range int(body.ChildCount()) {
 					walkNode(body.Child(i), file, childParent, out, funcCount, classCount)
 				}
+				// Issue #526 — class-attribute assignments (DRF ViewSet
+				// `serializer_class = ...`, Django Model `title =
+				// models.CharField(...)`, SQLAlchemy `id = Column(...)`)
+				// are emitted as SCOPE.Schema/field entities whose Name is
+				// "<dottedClass>.<attr>" so the resolver's byMember index
+				// binds `self.<attr>` references back to them.
+				extractClassFields(body, file, childParent, out)
 				// Emit CONTAINS edges from the class to every operation entity
 				// the walker just appended (methods inside this class).
+				// Field entities (#526) are intentionally not given a
+				// CONTAINS edge — they exist solely to populate the
+				// resolver's byMember index for `self.<attr>` lookups,
+				// and an entity-ID-keyed CONTAINS would require the
+				// field's ComputeID up front (it's filled in later by
+				// buildDocument).
 				after := len(*out)
 				for k := before; k < after; k++ {
 					child := &(*out)[k]
@@ -228,6 +241,8 @@ func walkNode(
 					for i := range int(body.ChildCount()) {
 						walkNode(body.Child(i), file, childParent, out, funcCount, classCount)
 					}
+					// Issue #526 — see the bare class_definition branch.
+					extractClassFields(body, file, childParent, out)
 					after := len(*out)
 					for k := before; k < after; k++ {
 						child := &(*out)[k]
@@ -679,6 +694,154 @@ func importRecord(modulePath string, file extractor.FileInput, props map[string]
 			},
 		},
 	}
+}
+
+// extractClassFields walks the immediate children of a class body and emits
+// one SCOPE.Schema/field entity per class-attribute assignment. Issue #526.
+//
+// Recognised shapes (all at class body scope, NOT inside a def):
+//
+//	serializer_class = ArticleSerializer          # DRF ViewSet
+//	queryset         = Article.objects.all()      # DRF
+//	model            = User                       # Django ModelForm
+//	fields           = ['title', 'body']          # DRF Serializer.Meta
+//	permission_classes = [IsAuthenticated]        # DRF
+//	id = Column(Integer, primary_key=True)        # SQLAlchemy declarative
+//	title = models.CharField(max_length=200)      # Django models
+//
+// Also handles annotated assignments (PEP 526):
+//
+//	serializer_class: type[Serializer] = ArticleSerializer
+//	count: int = 0
+//
+// Multi-target assignments (`a = b = expr`, `a, b = (1, 2)`) emit one entity
+// per left-hand `identifier`. Tuple/list/subscript/attribute targets that
+// aren't a bare class-scope name are skipped — those don't correspond to a
+// new attribute declaration on the class.
+//
+// Dunder names (`__slots__`, `__qualname__`, etc.) and underscore-only names
+// are skipped: they don't appear as `self.<name>` references in user code.
+//
+// The Name field is emitted as "<dottedClass>.<attr>" so the resolver's
+// byMember[<file>][<class>][<attr>] index picks the entity up directly,
+// binding CALLS edges like `self.serializer_class(...)` → this field.
+//
+// Field declarations are only emitted at the immediate class-body scope.
+// Walker recursion into method bodies, nested classes, and conditional
+// blocks (`if X: y = ...`) is intentionally skipped — those are not
+// stable class attributes a resolver can rely on, and emitting them would
+// risk over-eager binding.
+func extractClassFields(
+	body *sitter.Node,
+	file extractor.FileInput,
+	parentClass string,
+	out *[]types.EntityRecord,
+) {
+	if body == nil || parentClass == "" {
+		return
+	}
+	seen := make(map[string]bool)
+	for i := 0; i < int(body.ChildCount()); i++ {
+		stmt := body.Child(i)
+		if stmt == nil {
+			continue
+		}
+		if stmt.Type() != "expression_statement" {
+			continue
+		}
+		// expression_statement → first named child is the assignment.
+		for j := 0; j < int(stmt.NamedChildCount()); j++ {
+			expr := stmt.NamedChild(j)
+			if expr == nil {
+				continue
+			}
+			var lhs *sitter.Node
+			switch expr.Type() {
+			case "assignment":
+				lhs = expr.ChildByFieldName("left")
+			case "augmented_assignment":
+				// `count += 1` at class scope doesn't introduce a new
+				// attribute — skip.
+				continue
+			default:
+				continue
+			}
+			for _, name := range classAttrLHSNames(lhs, file.Content) {
+				if name == "" || seen[name] {
+					continue
+				}
+				if skipClassAttrName(name) {
+					continue
+				}
+				seen[name] = true
+				*out = append(*out, types.EntityRecord{
+					Name:       parentClass + "." + name,
+					Kind:       "SCOPE.Schema",
+					Subtype:    "field",
+					Language:   "python",
+					SourceFile: file.Path,
+					StartLine:  int(stmt.StartPoint().Row) + 1,
+					EndLine:    int(stmt.EndPoint().Row) + 1,
+					Signature:  name,
+				})
+			}
+		}
+	}
+}
+
+// classAttrLHSNames extracts the set of bare-identifier targets on the
+// left-hand side of a class-scope assignment. Recognised shapes:
+//
+//	x              → ["x"]                          (simple)
+//	x: int         → ["x"]                          (PEP 526 annotated; LHS is
+//	                                                 typed_default_parameter or
+//	                                                 "identifier" depending on
+//	                                                 grammar version — both
+//	                                                 reduce to the leaf name)
+//	a = b = expr   → ["a"] then resolver recurses   (chained assignments at
+//	                                                 the tree-sitter grammar
+//	                                                 level appear as nested
+//	                                                 `assignment` nodes inside
+//	                                                 the right field; handled
+//	                                                 by the caller's
+//	                                                 ChildByFieldName loop on
+//	                                                 the outer assignment)
+//	a, b           → ["a", "b"]                     (tuple/list pattern)
+//	self.x         → []                             (attribute LHS — not a
+//	                                                 class attribute)
+//	x[0]           → []                             (subscript LHS)
+func classAttrLHSNames(lhs *sitter.Node, src []byte) []string {
+	if lhs == nil {
+		return nil
+	}
+	switch lhs.Type() {
+	case "identifier":
+		return []string{nodeText(lhs, src)}
+	case "pattern_list", "tuple_pattern", "list_pattern":
+		var names []string
+		for i := 0; i < int(lhs.NamedChildCount()); i++ {
+			ch := lhs.NamedChild(i)
+			if ch != nil && ch.Type() == "identifier" {
+				names = append(names, nodeText(ch, src))
+			}
+		}
+		return names
+	}
+	return nil
+}
+
+// skipClassAttrName filters dunder / private-by-convention names that should
+// not be emitted as class-attribute entities. These either have special
+// runtime semantics (`__slots__`, `__qualname__`, `__doc__`) or are pure
+// implementation noise (`_`, `__`) that no resolver should bind to.
+func skipClassAttrName(name string) bool {
+	if name == "" || name == "_" || name == "__" {
+		return true
+	}
+	if strings.HasPrefix(name, "__") && strings.HasSuffix(name, "__") {
+		return true
+	}
+	return false
 }
 
 // findAll returns every descendant of root whose Type() matches kind.
