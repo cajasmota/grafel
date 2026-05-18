@@ -542,7 +542,16 @@ func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
 	}
 	switch fn.Type() {
 	case "identifier", "type_identifier", "property_identifier":
-		return x.nodeText(fn)
+		name := x.nodeText(fn)
+		// Refs #44 — bare named-import shape: `import { join } from
+		// "path"` then `join(...)`. The leaf identifier binds to a
+		// Node.js stdlib import; route the call to the matching
+		// `ext:node:<module>` placeholder via the cross-language
+		// `:external:` synth path. Miss falls through to bare name.
+		if id := x.classifyBareNodeStdlibCall(name); id != "" {
+			return id
+		}
+		return name
 	case "member_expression":
 		prop := fn.ChildByFieldName("property")
 		if prop == nil {
@@ -555,6 +564,15 @@ func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
 		// source file. On a miss we fall through to the bare method
 		// name (current behaviour).
 		if id := x.receiverTypedTarget(fn, method, frame); id != "" {
+			return id
+		}
+		// Refs #44 — Node.js stdlib namespace shape: `import * as
+		// path from "path"` (or `import fs from "node:fs"`) followed
+		// by `path.join(...)` / `fs.readFileSync(...)`. The receiver
+		// binds to a Node stdlib import spec; route the call to the
+		// matching `ext:node:<module>` placeholder. Miss falls through
+		// to the bare method name (existing behaviour preserved).
+		if id := x.receiverNodeStdlibTarget(fn, method); id != "" {
 			return id
 		}
 		return method

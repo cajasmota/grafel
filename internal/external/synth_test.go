@@ -3856,3 +3856,50 @@ func TestPythonBareNames_UnknownPythonMethodFallsThrough(t *testing.T) {
 			doc.Relationships[0].ToID, name)
 	}
 }
+
+// TestSynthesize_NodeStdlibExternalRef (Refs #44) — the JS/TS extractor
+// emits `scope:operation:method:<lang>:external:node:<module>` stubs for
+// Node.js stdlib method calls. The cross-language `:external:` branch
+// must canonicalise those to a single `ext:node:<module>` placeholder
+// per module, regardless of how many distinct methods called into the
+// module.
+func TestSynthesize_NodeStdlibExternalRef(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "ts-caller", Name: "f", Kind: "SCOPE.Operation", SourceFile: "src/x.ts", Language: "typescript"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "ts-caller", ToID: "scope:operation:method:typescript:external:node:path", Kind: "CALLS"},
+			{ID: "rel-2", FromID: "ts-caller", ToID: "scope:operation:method:typescript:external:node:fs", Kind: "CALLS"},
+			// Same module, different leaf method — must collapse to the
+			// existing ext:node:path placeholder.
+			{ID: "rel-3", FromID: "ts-caller", ToID: "scope:operation:method:typescript:external:node:path", Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 2 {
+		t.Fatalf("synthesized=%d, want 2 (ext:node:path + ext:node:fs)", stats.Synthesized)
+	}
+	if stats.RelationshipsResolved != 3 {
+		t.Fatalf("resolved=%d, want 3", stats.RelationshipsResolved)
+	}
+	wantIDs := map[string]bool{"ext:node:path": false, "ext:node:fs": false}
+	for _, e := range doc.Entities {
+		if _, ok := wantIDs[e.ID]; ok {
+			wantIDs[e.ID] = true
+			if e.Kind != KindExternal {
+				t.Fatalf("%s kind=%q, want %q", e.ID, e.Kind, KindExternal)
+			}
+		}
+	}
+	for id, seen := range wantIDs {
+		if !seen {
+			t.Fatalf("missing placeholder %s; entities=%+v", id, doc.Entities)
+		}
+	}
+	for _, r := range doc.Relationships {
+		if r.ToID != "ext:node:path" && r.ToID != "ext:node:fs" {
+			t.Fatalf("rel ToID=%q not rewritten to ext:node:*", r.ToID)
+		}
+	}
+}
