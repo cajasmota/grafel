@@ -1602,3 +1602,116 @@ func TestLooksLikeSourceFilePath_BasenameOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestIsDataAccessSQLStub guards the helper used by classifyDispositionLang
+// (issue #507) to recognise SCOPE.DataAccess structural-refs emitted by
+// internal/extractors/cross/dbmap. The stub form is
+//   scope:dataaccess:<file>#<orm>:<op>:<table>
+// and the <orm> segment must match one of dataAccessSQLOrms.
+func TestIsDataAccessSQLStub(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		// Recognised SQL driver / ORM stub forms.
+		{"scope:dataaccess:core/views/sync_viewset.py#psycopg2:SELECT:checklists", true},
+		{"scope:dataaccess:core/views/sync_viewset.py#psycopg2:SELECT:UNKNOWN", true},
+		{"scope:dataaccess:app/models/user.py#sqlalchemy:INSERT:users", true},
+		{"scope:dataaccess:src/db.py#asyncpg:UPDATE:devices", true},
+		{"scope:dataaccess:src/db.py#aiopg:DELETE:sessions", true},
+		// Unknown ORM tag — must NOT be routed (so a real extractor bug
+		// isn't masked by an over-broad recognizer).
+		{"scope:dataaccess:src/db.py#magicorm:SELECT:foo", false},
+		// Non-dataaccess scope prefixes are out of scope.
+		{"scope:operation:src/foo.py#bar", false},
+		{"scope:component:class:python:src/foo.py:Bar", false},
+		// Defensive: missing # or trailing pieces.
+		{"scope:dataaccess:src/db.py", false},
+		{"scope:dataaccess:src/db.py#", false},
+		{"scope:dataaccess:src/db.py#psycopg2", false},
+		// Empty / random.
+		{"", false},
+		{"random:thing", false},
+	}
+	for _, tc := range cases {
+		if got := isDataAccessSQLStub(tc.in); got != tc.want {
+			t.Errorf("isDataAccessSQLStub(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestDisposition_DataAccessSQLRoutesToExternalKnown is the issue #507
+// regression test. When a SCOPE.DataAccess structural-ref doesn't resolve
+// to a concrete entity (e.g. UNKNOWN table, edge survives dedup miss) it
+// must land in ExternalKnown — not bug-extractor — so backend SQL surface
+// area stops polluting the bug-rate on Django / Flask / FastAPI repos.
+func TestDisposition_DataAccessSQLRoutesToExternalKnown(t *testing.T) {
+	t.Parallel()
+	stubs := []string{
+		"scope:dataaccess:core/views/sync_viewset.py#psycopg2:SELECT:UNKNOWN",
+		"scope:dataaccess:core/views/sync_viewset.py#psycopg2:TRUNCATE:users",
+		"scope:dataaccess:app/models/user.py#sqlalchemy:INSERT:users",
+		"scope:dataaccess:src/db.py#asyncpg:UPDATE:devices",
+	}
+	endpoints := make([]EndpointPair, 0, len(stubs))
+	for _, s := range stubs {
+		endpoints = append(endpoints, EndpointPair{
+			FromID:     "0000000000000000",
+			ToID:       s, // unresolved — still the stub form
+			ToOriginal: s,
+			Language:   "python",
+		})
+	}
+	idx := BuildIndex(nil)
+	stats := idx.ClassifyEndpoints(endpoints, allowDjango)
+	if got := stats.DispositionCounts[DispositionExternalKnown]; got != len(stubs) {
+		t.Fatalf("expected %d external-known, got counts=%+v", len(stubs), stats.DispositionCounts)
+	}
+	if got := stats.DispositionCounts[DispositionBugExtractor]; got != 0 {
+		t.Fatalf("unexpected bug-extractor count %d (should be zero post #507)", got)
+	}
+	if got := stats.DispositionCounts[DispositionBugResolver]; got != 0 {
+		t.Fatalf("unexpected bug-resolver count %d", got)
+	}
+}
+
+// TestDisposition_DataAccessSQLResolvedWhenEntityPresent guards the
+// happy path for issue #507. When the SCOPE.DataAccess entity exists
+// with QualifiedName = the stub form (extractor populates this), the
+// resolver's byQualifiedName index must rewrite the stub to the entity's
+// hex ID and the disposition must be Resolved — NOT ExternalKnown.
+func TestDisposition_DataAccessSQLResolvedWhenEntityPresent(t *testing.T) {
+	t.Parallel()
+	stub := "scope:dataaccess:core/views/sync_viewset.py#psycopg2:SELECT:checklists"
+	hexID := "0123456789abcdef"
+	entities := []types.EntityRecord{{
+		ID:            hexID,
+		Name:          "SELECT checklists",
+		Kind:          "SCOPE.DataAccess",
+		QualifiedName: stub,
+		SourceFile:    "core/views/sync_viewset.py",
+		Language:      "python",
+		Subtype:       "psycopg2",
+	}}
+	idx := BuildIndex(entities)
+	// Use the full resolver path (ReferencesWithAllowlist) so we exercise
+	// rewriteOne → LookupStatusHint → byQualifiedName, not just the
+	// post-rewrite classifier.
+	rels := []types.RelationshipRecord{{
+		FromID:     "fedcba9876543210",
+		ToID:       stub,
+		Kind:       "ACCESSES_TABLE",
+		Properties: map[string]string{"language": "python"},
+	}}
+	stats := ReferencesWithAllowlist(rels, idx, allowDjango)
+	// Both endpoints (FromID hex + rewritten ToID hex) count as Resolved.
+	if got := stats.DispositionCounts[DispositionResolved]; got != 2 {
+		t.Fatalf("expected both endpoints Resolved (FromID hex + ToID via byQualifiedName), got counts=%+v", stats.DispositionCounts)
+	}
+	if got := stats.DispositionCounts[DispositionExternalKnown]; got != 0 {
+		t.Fatalf("unexpected external-known count %d (entity exists so must resolve)", got)
+	}
+	if rels[0].ToID != hexID {
+		t.Fatalf("expected ToID rewritten to %q, got %q", hexID, rels[0].ToID)
+	}
+}
