@@ -1024,8 +1024,12 @@ func TestPythonFlaskExtensionsDSL_GatedToPython(t *testing.T) {
 	// per-language assertion against ruby would fail. The Python
 	// gate still applies to `session` for non-ruby languages, but
 	// asserting only the non-overlap cases keeps the test honest.
+	// `delete` is also excluded — the Rails ActionPack additions
+	// (#448) claim it as a routing-DSL verb in rubyDynamicPatterns,
+	// so the dynamic-pattern check fires for ruby and the negative
+	// assertion would trip.
 	stubs := []string{
-		"add", "delete", "commit", "query",
+		"add", "commit", "query",
 		"dump", "load", "fields", "Schema", "Column",
 		"String", "Integer", "current_user", "login_required",
 		"jsonify", "abort",
