@@ -3940,6 +3940,34 @@ func TestPythonDjangoDRFDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T
 		"lookup_default", "get_default",
 		// SQLAlchemy — `query` excluded (swift collision).
 		"filter_by", "create_all", "drop_all",
+		// Wave-6 — PyMongo Collection / Database method surface.
+		// All distinctive `_one` / `_many` / `_index*` / `_documents`
+		// suffixes; no cross-language collisions.
+		"get_collection", "get_database",
+		"insert_one", "insert_many",
+		"update_one", "update_many",
+		"delete_one", "delete_many",
+		"find_one", "find_one_and_update", "find_one_and_delete",
+		"find_one_and_replace", "replace_one",
+		"bulk_write", "count_documents", "estimated_document_count",
+		"distinct",
+		"create_index", "create_indexes", "drop_index", "drop_indexes",
+		"list_indexes", "index_information",
+		// Wave-6 — bson value types.
+		"Decimal128",
+		// Wave-6 — datetime / dateutil / uuid / requests / Django
+		// extras / DB-API.  Excluded from this cross-language test:
+		// `strptime` (cpp/libc collision), `now` and `today` (php
+		// Laravel + JS/Swift collisions) — gated to lang=="python"
+		// only, behaviourally safe but cross-lang test would trip
+		// on the OTHER language's map firing for non-python sources.
+		"fromisoformat", "fromtimestamp", "utcnow", "utcfromtimestamp",
+		"timedelta", "relativedelta",
+		"randint", "randrange",
+		"uuid4", "uuid1",
+		"raise_for_status",
+		"order_by", "getlist",
+		"fetchall", "fetchone", "fetchmany",
 	}
 	otherLangs := []string{"go", "php", "javascript", "ruby", "rust", "java", "kotlin", "swift", "csharp", ""}
 	for _, name := range names {
