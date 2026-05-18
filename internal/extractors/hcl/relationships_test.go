@@ -207,7 +207,7 @@ resource "aws_lambda_function" "fn" {
 	calls := collectRels(records, "CALLS")
 	found := false
 	for _, rel := range calls {
-		if rel.ToID == "aws_iam_role.lambda_role" {
+		if rel.ToID == "scope:operation:method:hcl:main.tf:aws_iam_role.lambda_role" {
 			found = true
 		}
 	}
@@ -230,7 +230,7 @@ resource "aws_lambda_function" "fn" {
 	calls := collectRels(records, "CALLS")
 	found := false
 	for _, rel := range calls {
-		if rel.ToID == "var.fn_name" {
+		if rel.ToID == "scope:operation:method:hcl:main.tf:var.fn_name" {
 			found = true
 		}
 	}
@@ -253,7 +253,7 @@ resource "aws_s3_bucket" "b" {
 	calls := collectRels(records, "CALLS")
 	found := false
 	for _, rel := range calls {
-		if rel.ToID == "local.bucket_name" {
+		if rel.ToID == "scope:operation:method:hcl:main.tf:local.bucket_name" {
 			found = true
 		}
 	}
@@ -278,7 +278,7 @@ resource "aws_lambda_function" "fn" {
 	calls := collectRels(records, "CALLS")
 	found := false
 	for _, rel := range calls {
-		if rel.ToID == "module.vpc" {
+		if rel.ToID == "scope:operation:method:hcl:main.tf:module.vpc" {
 			found = true
 		}
 	}

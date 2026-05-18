@@ -58,9 +58,21 @@ func extractTerraform(src, path string) ([]types.EntityRecord, error) {
 }
 
 func findBySubtypeAndName(records []types.EntityRecord, subtype, name string) *types.EntityRecord {
+	// Issue #44 (HCL) — entity Name is now the canonical reference form
+	// (e.g. "local.foo", "module.vpc", "aws_vpc.this"). Tests pass the
+	// bare label (e.g. "foo", "vpc", "this"); match that via the
+	// preserved Metadata["label"] when Name doesn't match directly.
 	for i := range records {
-		if records[i].Subtype == subtype && records[i].Name == name {
+		if records[i].Subtype != subtype {
+			continue
+		}
+		if records[i].Name == name {
 			return &records[i]
+		}
+		if records[i].Metadata != nil {
+			if lbl, _ := records[i].Metadata["label"].(string); lbl == name {
+				return &records[i]
+			}
 		}
 	}
 	return nil
@@ -479,8 +491,8 @@ resource "aws_iam_role_policy" "pol" {
 	if rel.Kind != "DEPENDS_ON" {
 		t.Errorf("expected Kind=DEPENDS_ON, got %s", rel.Kind)
 	}
-	if rel.ToID != "aws_iam_role.my_role" {
-		t.Errorf("expected ToID=aws_iam_role.my_role, got %s", rel.ToID)
+	if rel.ToID != "scope:operation:method:hcl:main.tf:aws_iam_role.my_role" {
+		t.Errorf("expected ToID=scope:operation:method:hcl:main.tf:aws_iam_role.my_role, got %s", rel.ToID)
 	}
 }
 
