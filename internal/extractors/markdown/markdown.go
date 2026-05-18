@@ -149,6 +149,13 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 				Properties: map[string]string{
 					"reference_text": lit,
 					"resolution":     "bare_slug",
+					// Issue #44 / GraphQL-fix — the final-pass disposition
+					// classifier reads the language off rel.Properties; when
+					// absent it falls through to cross-language only and a
+					// markdown bare slug like `theme` lands in BugExtractor.
+					// Tagging the language here lets classifyDispositionLang's
+					// markdown gate fire and route these to Dynamic.
+					"language": langName,
 				},
 			})
 		}
@@ -440,6 +447,11 @@ func buildImportEntities(filePath string, links []linkRef) []types.EntityRecord 
 						"source_module": resolved,
 						"imported_name": path.Base(resolved),
 						"import_kind":   "link",
+						// Issue #44 / GraphQL-fix — see REFERENCES emission
+						// above; tag language so the final-pass classifier's
+						// markdown gate routes these doc-link IMPORTS to
+						// Dynamic instead of BugExtractor.
+						"language": langName,
 					},
 				},
 			},

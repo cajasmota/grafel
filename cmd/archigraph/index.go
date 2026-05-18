@@ -744,7 +744,7 @@ func classifyForDiag(idx resolve.Index, stub, lang string, allow resolve.Externa
 	// is to call into the package's exported classifier — but it isn't
 	// exported. ClassifyEndpoints is exported and computes the same thing.
 	stats := idx.ClassifyEndpoints([]resolve.EndpointPair{
-		{ToID: stub, ToOriginal: stub},
+		{ToID: stub, ToOriginal: stub, Language: lang},
 	}, allow)
 	for d, n := range stats.DispositionCounts {
 		if n > 0 {
