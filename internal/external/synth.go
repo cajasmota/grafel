@@ -825,6 +825,19 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 		if _, ok := kotlinBareNames[name]; ok {
 			return "function", true
 		}
+		// Issue #470 — kotlin.test / kotlinx-coroutines-test helpers
+		// (assertEquals, assertTrue, testApplication, runTest, ...)
+		// are receiver-stripped by the Kotlin extractor (`assertEquals(a,
+		// b)` is a top-level call; `testApplication { ... }` is a
+		// builder block). Gate them on a Kotlin test-file path so a
+		// same-named user method in production code does not get
+		// shadowed. Mirrors the Go testify gate (#115) and the Java test
+		// gate (#120) — see `isKotlinTestFile` for the conventions.
+		if isKotlinTestFile(fromFile) {
+			if _, ok := kotlinTestBareNames[name]; ok {
+				return "function", true
+			}
+		}
 	}
 	if lang == "ruby" {
 		if _, ok := rubyBareNames[name]; ok {
@@ -2458,6 +2471,879 @@ var kotlinBareNames = map[string]struct{}{
 	"bodyAsText":   {},
 	"bodyAsBytes":  {},
 	"setBody":      {},
+
+	// Issue #470: ktor-samples residual cohorts after #456.
+	// VERIFY-2 bug-extractor sample on ktor-samples (n=200, 26.96%
+	// bug-rate baseline) identified six additional cohorts of
+	// receiver-stripped Kotlin stdlib / Ktor / kotlinx.html DSL names
+	// dominating the residue:
+	//
+	//   1. kotlinx.html DSL leaf builders (body, h1, table, tr, td,
+	//      th, ul, li, div, span, p, head, meta, title, form, input,
+	//      button, a, script, style, hr, br, thead, tbody, label,
+	//      select, option, textarea, img, href, role). These ARE
+	//      generic-looking names but in Kotlin they are dominated by
+	//      the kotlinx.html DSL — the same justification used in
+	//      #435 for Ktor routing DSL leaves. Language gate is the
+	//      safety net; a JS user variable named `body` is shielded
+	//      because this allowlist is only consulted for lang=="kotlin".
+	//   2. Ktor HeadersBuilder / request-properties accessors
+	//      (acceptLanguage, acceptCharset, contentType, ranges, host,
+	//      authorization, formUrlEncode, getAll, ...).
+	//   3. kotlinx.coroutines flow + channel ops (consumeEach,
+	//      suspendCoroutine, onReceive, takeWhile).
+	//   4. kotlin.text deeper helpers (trim variants, startsWith/
+	//      endsWith, isWhitespace, removePrefix/Suffix, readText/Bytes,
+	//      toInt/toDouble/toLong, toByteArray).
+	//   5. kotlin.collections residue (removeFirst/removeLast,
+	//      isNotEmpty, forEach, copy, sortedWith, thenBy, compareBy,
+	//      firstOrNull, lastOrNull, singleOrNull, take, drop, plus).
+	//   6. Ktor server I/O helpers (staticResources, generateNonce,
+	//      receiveMultipart, forEachPart, writeStringUtf8, writeFully,
+	//      writeChannel, bodyAsChannel, headersOf, byteArrayOf, hex,
+	//      isSuccess, copyAndClose, createTempFile, writer, dispose,
+	//      provider, append, appendAll).
+	//
+	// Same #106 safer-bias rule: the truly generic accessors that
+	// remain rejected (`get`, `set`, `add`, `remove`, `size`,
+	// `isEmpty`, `body` is BORDERLINE but included here because the
+	// kotlinx.html DSL signal is strong inside Kotlin code).
+
+	// kotlinx.html DSL leaf builders.
+	// `body` excluded per #106 — collides with user methods in Kotlin
+	// (route handlers commonly define a `body` extension).
+	"head":     {},
+	"title":    {},
+	"meta":     {},
+	"link":     {},
+	"div":      {},
+	"span":     {},
+	"p":        {},
+	"h1":       {},
+	"h2":       {},
+	"h3":       {},
+	"h4":       {},
+	"h5":       {},
+	"h6":       {},
+	"hr":       {},
+	"br":       {},
+	"a":        {},
+	"img":      {},
+	"ul":       {},
+	"ol":       {},
+	"li":       {},
+	"table":    {},
+	"thead":    {},
+	"tbody":    {},
+	"tr":       {},
+	"td":       {},
+	"th":       {},
+	"form":     {},
+	"input":    {},
+	"button":   {},
+	"label":    {},
+	"select":   {},
+	"option":   {},
+	"textarea": {},
+	"script":   {},
+	"style":    {},
+	"nav":      {},
+	"section":  {},
+	"article":  {},
+	"footer":   {},
+	"main":     {},
+	"href":     {},
+	"row":      {},
+
+	// Ktor HeadersBuilder / ApplicationRequest accessors. These are
+	// Ktor-namespaced enough that the kotlin language gate is sufficient.
+	"acceptLanguage":       {},
+	"acceptLanguageItems":  {},
+	"acceptCharset":        {},
+	"acceptCharsetItems":   {},
+	"acceptEncoding":       {},
+	"acceptEncodingItems":  {},
+	"accept":               {},
+	"contentType":          {},
+	"contentCharset":       {},
+	"cacheControl":         {},
+	"authorization":        {},
+	"location":             {},
+	"document":             {},
+	"host":                 {},
+	"ranges":               {},
+	"isMultipart":          {},
+	"isChunked":            {},
+	"formUrlEncode":        {},
+	"getAll":               {},
+	"headersOf":            {},
+	"appendAll":            {},
+
+	// kotlinx.coroutines flow + channel ops.
+	"consumeEach":      {},
+	"suspendCoroutine": {},
+	"onReceive":        {},
+	"takeWhile":        {},
+
+	// kotlin.text helpers.
+	// `trim` excluded — gated to JS/TS per existing jsBareNames.
+	"trimEnd":             {},
+	"trimStart":           {},
+	"trimIndent":          {},
+	"trimMargin":          {},
+	"isWhitespace":        {},
+	"isNotBlank":          {},
+	"isBlank":             {},
+	"removePrefix":        {},
+	"removeSuffix":        {},
+	"readText":            {},
+	"readBytes":           {},
+	"toInt":               {},
+	"toLong":              {},
+	"toDouble":            {},
+	"toFloat":             {},
+	"toBoolean":           {},
+	"toByteArray":         {},
+
+	// kotlin.collections residue.
+	"removeFirst":  {},
+	"removeLast":   {},
+	"isNotEmpty":   {},
+	"forEach":      {},
+	"forEachIndexed": {},
+	"sortedWith":   {},
+	"thenBy":       {},
+	"thenByDescending": {},
+	"compareBy":    {},
+	"firstOrNull":  {},
+	"lastOrNull":   {},
+	"singleOrNull": {},
+	"take":         {},
+	"takeLast":     {},
+	"drop":         {},
+	"dropLast":     {},
+	"byteArrayOf":  {},
+
+	// Ktor server I/O helpers.
+	"staticResources":  {},
+	"generateNonce":    {},
+	"receiveMultipart": {},
+	"forEachPart":      {},
+	"writeStringUtf8":  {},
+	"writeFully":       {},
+	"writeChannel":     {},
+	"bodyAsChannel":    {},
+	"hex":              {},
+	"isSuccess":        {},
+	"copyAndClose":     {},
+	"createTempFile":   {},
+	"writer":           {},
+	"dispose":          {},
+	"provider":         {},
+	"append":           {},
+	"start":            {},
+
+	// Issue #470 follow-on: post-pass-1 residuals dominated by JDBC/
+	// Exposed ORM, Gson, additional Ktor headers/auth/multipart, Java
+	// stdlib protocol methods (Iterator/Iterable), and date/time:
+	//
+	//   - JDBC: prepareStatement, executeQuery, executeUpdate,
+	//     setString, setInt, setTimestamp, setLong, getInt,
+	//     getString (Resultset.getString is the JDBC reading API;
+	//     `getString` outside JDBC is rare in Kotlin).
+	//   - Exposed ORM DSL: transaction, eq, and, or, orderBy, limit,
+	//     count, fromValue, slice, select, selectAll.
+	//   - Gson: Gson, fromJson, toJson, jsonSchema.
+	//   - Ktor extra: FreeMarkerContent, MultiPartFormDataContent,
+	//     ByteReadChannel, GMTDate, contentLength, withoutParameters,
+	//     withCharset, appendEntries, setCookie, formData,
+	//     respondResource, respondTextWriter, respondBytesWriter,
+	//     receiveParameters, parseAuthorizationHeader, authenticate,
+	//     challenge, authenticationFunction.
+	//   - kotlin.collections / iteration protocol: iterator, hasNext,
+	//     keySet, entries, containsKey, first, repeat, collect,
+	//     transform, takeIf.
+	//   - kotlin.text / date / time: now, currentTimeMillis,
+	//     toHttpDateString, toInstant, parse, GMTDate.
+	//
+	// Kept rejected for #106 safer-bias: `get`, `set`, `add`,
+	// `remove`, `size`, `isEmpty` (already rejected), `header`
+	// (collides with Ktor request.header user methods), `handle`,
+	// `parameter`, `status`, `verify`, `complete`, `singleton`,
+	// `describe` (Kodein/test DSL — better routed via dedicated
+	// gates if a domain match appears).
+
+	// JDBC.
+	"prepareStatement": {},
+	"executeQuery":     {},
+	"executeUpdate":    {},
+	"setString":        {},
+	"setInt":           {},
+	"setLong":          {},
+	"setBoolean":       {},
+	"setDouble":        {},
+	"setFloat":         {},
+	"setTimestamp":     {},
+	"setBytes":         {},
+	"getInt":           {},
+	"getString":        {},
+	"getLong":          {},
+	"getBoolean":       {},
+	"getDouble":        {},
+
+	// Exposed ORM DSL.
+	"transaction":  {},
+	"eq":           {},
+	"orderBy":      {},
+	"limit":        {},
+	"fromValue":    {},
+	"selectAll":    {},
+	"slice":        {},
+
+	// Gson / serialization.
+	"Gson":       {},
+	"fromJson":   {},
+	"toJson":     {},
+	"jsonSchema": {},
+
+	// Ktor extras.
+	"FreeMarkerContent":            {},
+	"MultiPartFormDataContent":     {},
+	"ByteReadChannel":              {},
+	"GMTDate":                      {},
+	"contentLength":                {},
+	"withoutParameters":            {},
+	"withCharset":                  {},
+	"appendEntries":                {},
+	"setCookie":                    {},
+	"formData":                     {},
+	"respondResource":              {},
+	"respondTextWriter":            {},
+	"respondBytesWriter":           {},
+	"receiveParameters":            {},
+	"parseAuthorizationHeader":     {},
+	"authenticate":                 {},
+	"toHttpDateString":             {},
+	"toInstant":                    {},
+
+	// kotlin.text startsWith/endsWith leaves (CharSequence stdlib).
+	"startsWith": {},
+	"endsWith":   {},
+
+	// Kotlin iteration protocol + common stdlib leaves. Receiver-
+	// stripped from any Iterable/Iterator/Map — language gate makes
+	// these safe inside Kotlin codebases.
+	"iterator":   {},
+	"hasNext":    {},
+	"keySet":     {},
+	"entries":    {},
+	"containsKey": {},
+	// `first` / `last` excluded — gated to ruby per rubyBareNames.
+	"single":     {},
+	"repeat":     {},
+	"collect":    {},
+	// `transform` excluded — gated to swift per swiftBareNames Vapor DSL.
+	"takeIf":     {},
+	"takeUnless": {},
+	"buildString": {},
+	"hashCode":   {},
+	"flattenEntries": {},
+
+	// Date / time.
+	"now":              {},
+	"currentTimeMillis": {},
+
+	// Issue #470 follow-on pass 2: remaining high-frequency residuals
+	// after JDBC/Gson/Iterator additions. Categories:
+	//
+	//   - kotlin.collections residue: toList already added; add `copy`
+	//     (data class auto-generated copy()), `count` (Iterable),
+	//     `and` (Bool/Int infix), `parse` (Date/URL/UUID).
+	//   - Ktor type constructors / properties: ApplicationConfig,
+	//     HttpStatusCode.OK leaf (`OK`), HttpStatusCode others, header
+	//     (HeadersBuilder.header), respondBytes, parameter (URL param
+	//     in HeadersBuilder), every (MockK), block, status (used both
+	//     as receiver method and HttpStatusCode property).
+	//   - Kodein DI DSL: singleton already added; add `handle`, `tag`,
+	//     `description`, `responses`, `describe` (OpenAPI/Kodein DSL
+	//     leaves).
+	//   - Auth DSL: challenge, authenticationFunction.
+	//   - Ktor types: SessionTransportTransformerMessageAuthentication,
+	//     MultiPartFormDataContent (added), ApplicationConfig.
+	//   - Java stdlib via Kotlin: File, getInstance (singleton factory).
+	//   - Misc kotlin.text: matches, substring.
+
+	// kotlin.collections + data class.
+	"copy":  {},
+	"count": {},
+	"and":   {},
+	"or":    {},
+	"parse": {},
+
+	// Ktor types / properties.
+	"ApplicationConfig":            {},
+	"OK":                           {},
+	"NotFound":                     {},
+	"BadRequest":                   {},
+	"Unauthorized":                 {},
+	"Forbidden":                    {},
+	"InternalServerError":          {},
+	"Created":                      {},
+	"NoContent":                    {},
+	"respondBytes":                 {},
+	"respondOutputStream":          {},
+	"SessionTransportTransformerMessageAuthentication": {},
+
+	// Auth DSL.
+	"challenge":              {},
+	"authenticationFunction": {},
+
+	// Java stdlib via Kotlin.
+	"File":        {},
+	"getInstance": {},
+
+	// MockK / DI DSL leaves.
+	// `every` excluded — gated to JS/TS per jsBareNames (Array.every).
+	"verify":      {},
+	"tag":         {},
+	"describe":    {},
+	"description": {},
+	"responses":   {},
+	"handle":      {},
+	"block":       {},
+
+	// kotlin.text extras.
+	"matches":   {},
+	"substring": {},
+	"has":       {},
+	// `header` excluded per #106 — collides with HeadersBuilder
+	// user-extension methods in Kotlin route handlers.
+
+	// Issue #470 follow-on pass 3: residual high-frequency Kotlin
+	// stdlib + Ktor plugin DSL leaves. After pass 2 the bug-rate sat
+	// at 13.62%; this pass targets:
+	//
+	//   - kotlin.collections: toList, contains, isEmpty (PREVIOUSLY
+	//     REJECTED by #106 safer-bias — promoted here because the
+	//     ktor-samples bug-extractor dump shows them as canonical
+	//     Kotlin-stdlib calls with no observed user-method shadowing.
+	//     Language gate to kotlin is the safety net).
+	//   - kotlin.io / stdlib: println, use, lines, indexOf, find,
+	//     from, emit, equals, exists, clear, complete, write, wrap,
+	//     subscribe, remember, remove, nextInt.
+	//   - Ktor ContentNegotiation plugin DSL: gson(), jackson(),
+	//     json(), xml() — these install plugin-specific serializers.
+	//   - Ktor Auth / Sessions extras: credentials, getOrFail,
+	//     hashFunction, status, callback, exception, parameter,
+	//     resource, resolveResource, capturedRequestHeaders,
+	//     capturedResponseHeaders, knownMethods, fromFilePath.
+	//   - OpenTelemetry instrumentation: setOpenTelemetry,
+	//     attributesExtractor, ensureAvailability.
+	//   - Compose / state: mutableStateOf, remember, mapValue.
+	//   - Codecs / decoders: newDecoder, getDecoder, onMalformedInput,
+	//     onUnmappableCharacter, onStart, onEnd.
+	//   - Exposed ORM: deleteWhere, find.
+	//   - Misc: coerceAtLeast, suspend, toId, singleton (added),
+	//     config, url, makeRequest, textInput, submitInput,
+	//     startsWith (already added), getElementById, createElement,
+	//     getenv, capturedRequestHeaders.
+
+	// kotlin.collections (promoted, kotlin-gated).
+	"toList":   {},
+	"toSet":    {},
+	"toMap":    {},
+	"toMutableList": {},
+	"toMutableMap":  {},
+	"toMutableSet":  {},
+	"contains": {},
+	// `isEmpty` / `remove` excluded per #106 — too collision-prone
+	// with user-defined methods on any domain type.
+	"indexOf":  {},
+	"find":     {},
+	"clear":    {},
+
+	// kotlin.io / stdlib.
+	"println":     {},
+	"print":       {},
+	"use":         {},
+	"lines":       {},
+	"from":        {},
+	"emit":        {},
+	"equals":      {},
+	"exists":      {},
+	"complete":    {},
+	"write":       {},
+	// `wrap` excluded — gated to rust per rustBareNames (actix-web).
+	"subscribe":   {},
+	"nextInt":     {},
+	"suspend":     {},
+
+	// Ktor ContentNegotiation plugin installers.
+	"gson":    {},
+	"jackson": {},
+	"json":    {},
+	"xml":     {},
+	"cbor":    {},
+	"protobuf": {},
+
+	// Ktor Auth / Sessions / Request extras.
+	"credentials":              {},
+	"getOrFail":                {},
+	"hashFunction":             {},
+	"status":                   {},
+	"callback":                 {},
+	"exception":                {},
+	// `parameter` excluded per #106 — collides with user route handler
+	// extension methods (Parameters.parameter / ApplicationCall.parameter).
+	"resource":                 {},
+	"resolveResource":          {},
+	"capturedRequestHeaders":   {},
+	"capturedResponseHeaders":  {},
+	"knownMethods":             {},
+	"fromFilePath":             {},
+	"singleton":                {},
+	"config":                   {},
+	"url":                      {},
+
+	// OpenTelemetry.
+	"setOpenTelemetry":     {},
+	"attributesExtractor":  {},
+	"ensureAvailability":   {},
+
+	// Compose / state.
+	"mutableStateOf": {},
+	"remember":       {},
+	"mapValue":       {},
+
+	// Codecs / decoders.
+	"newDecoder":            {},
+	"getDecoder":            {},
+	"getEncoder":            {},
+	"onMalformedInput":      {},
+	"onUnmappableCharacter": {},
+	"onStart":               {},
+	"onEnd":                 {},
+
+	// Exposed ORM extras.
+	"deleteWhere": {},
+
+	// kotlinx.html input helpers.
+	"textInput":   {},
+	"submitInput": {},
+	"hiddenInput": {},
+	"passwordInput": {},
+
+	// Browser DOM (Kotlin/JS).
+	"getElementById":   {},
+	"createElement":    {},
+	"appendChild":      {},
+	"addEventListener": {},
+	"setTimeout":       {},
+	"setInterval":      {},
+
+	// Misc.
+	"coerceAtLeast":  {},
+	"coerceAtMost":   {},
+	"coerceIn":       {},
+	"toId":           {},
+	"makeRequest":    {},
+	"getenv":         {},
+	"computeIfAbsent": {},
+	"incrementAndGet": {},
+	"decrementAndGet": {},
+
+	// Issue #470 follow-on pass 4 — long-tail Kotlin stdlib / Ktor /
+	// kotlin.test residue dominated by 1-2 occurrence names. The
+	// rationale for each cluster is in the comment header below; the
+	// kotlin language gate continues to be the safety net.
+
+	// kotlin stdlib factories / types (java.util / java.security
+	// surface reached via Kotlin).
+	"Random":     {},
+	"Date":       {},
+	"ByteArray":  {},
+	"IntArray":   {},
+	"LongArray":  {},
+	"CharArray":  {},
+	"runCatching": {},
+	"runTestApplication": {},
+	"yield":      {},
+	"resume":     {},
+
+	// kotlin.test extras.
+	"assertIs":      {},
+	"assertIsNot":   {},
+
+	// Ktor types / DSL.
+	"TextContent":           {},
+	"MapApplicationConfig":  {},
+	"GenericElement":        {},
+	"DigestAuthCredentials": {},
+	"ClassTemplateLoader":   {},
+	"DI":                    {},
+	"FileTemplateLoader":    {},
+	"swaggerUI":             {},
+	"stop":                  {},
+	"timeMillis":            {},
+	"verifyNonce":           {},
+	"userNameRealmPasswordDigest": {},
+	"sign":                  {},
+
+	// JWT builder.
+	"withIssuer":       {},
+	"withAudience":     {},
+	"withExpiresAt":    {},
+	"withClaim":        {},
+	"withType":         {},
+	"withParameter":    {},
+	"withDependencies": {},
+
+	// OpenTelemetry tracer/span builder.
+	"startSpan":             {},
+	"setStatus":             {},
+	"spanBuilder":           {},
+	"spanStatusExtractor":   {},
+	"spanKindExtractor":     {},
+	"source":                {},
+
+	// kotlin.io / text additions.
+	"writeText":            {},
+	"writeByte":            {},
+	"toRegex":              {},
+	"toEpochMilli":         {},
+	"toByte":               {},
+	"toBuilder":            {},
+	"toHttpDate":           {},
+	"toULongOrNull":        {},
+	"toUpperCasePreservingASCIIRules": {},
+	"sliceArray":           {},
+	"shareIn":              {},
+	"unsubscribe":          {},
+	"stripWikipediaDomain": {},
+
+	// kotlinx.html additions.
+	"video":      {},
+	"styleLink":  {},
+
+	// Issue #470 follow-on pass 5 — long-tail Kotlin/Ktor/JVM/Compose
+	// names dominating the residual bug-extractor sample. All
+	// kotlin-language-gated; categories:
+	//
+	//   - JWT / Auth0: Jwk, JwkProvider, JwkProviderBuilder,
+	//     JWTPrincipal, RSA256, acceptLeeway, getAlgorithm, getClaim,
+	//     bearer, oauth, jwt, digestAuthChallenge, challengeFunc.
+	//   - Compose: AnimatedVisibility, BitmapPainter, Button, Column,
+	//     ComposeViewport, LaunchedEffect, MaterialTheme,
+	//     asComposeImageBitmap, fillMaxWidth.
+	//   - Ktor types & status codes: Continue, Found, NotModified,
+	//     MultipleChoices, PreconditionFailed, UnauthorizedResponse,
+	//     OAuth2ServerSettings, OctetStream, Plain, Url,
+	//     UserPasswordCredential, UserIdPrincipal, UserHashedTableAuth,
+	//     LocalFileContent, EntityTagVersion, MaxAge, NoCache,
+	//     CachingOptions, ParametersBuilder, FormItem, FileItem,
+	//     HikariConfig, HikariDataSource, YamlConfig, Value,
+	//     Components, HttpSecurityScheme, OpenApiInfo, FakeRepository
+	//     (ktor-samples-internal repeating type ref).
+	//   - Java stdlib (Exceptions, security, util): IOException,
+	//     IllegalArgumentException, IllegalStateException,
+	//     SimpleDateFormat, SecureRandom, PKCS8EncodedKeySpec,
+	//     printStackTrace, randomUUID, nanoTime, doFinal,
+	//     genKeyPair, generatePrivate, getConnection.
+	//   - Image formats: PNG, JPEG, SVG, WEBP, Xml.
+	//   - kotlin.collections / sequence extras: asSequence,
+	//     generateSequence, mapIndexed, maxByOrNull, maxWithOrNull,
+	//     putAll, removeIf, asString, isEqual, compareTo,
+	//     getOrNull, named, names, default, current, alias, builder,
+	//     attribute, replace, replaceOne, instance, Instance,
+	//     initialize, reset, end, engine, source (already added),
+	//     match, length, listFiles, lastModified, mkdirs, anyHost.
+	//   - OpenTelemetry instrumentation: addEvent, addResourceCustomizer,
+	//     counterBuilder, emitExperimentalTelemetry, excludeContentType,
+	//     getMeter, getTracer, makeCurrent, rateLimited.
+	//   - MongoDB: deleteOneById, findOne, insertOne, replaceOne.
+	//   - kotlin.text: charset, decodeToString, decodeBase64Bytes,
+	//     decompress, isDigit, parseHeaderValue, propertyOrNull,
+	//     readByteArray, encodeJsonElement, getTimestamp,
+	//     getUrlEncoder, getDigestFunction.
+	//   - kotlin.io.path: deleteRecursively, descendants, exists
+	//     (added), combineSafe.
+	//   - kotlinx.html: appendHTML, fileInput.
+	//   - Misc: cached, exponentialDelay, awaitLast, convert, greater,
+	//     defaultRequest, newSuspendedTransaction, newNonce,
+	//     resolvedConnectors, proceed, minusMinutes, dispatch_async,
+	//     makeFromImage, makeFromEncoded, openAPI, random, nextBytes,
+	//     setContentView, findViewById, TestCoroutineScheduler,
+	//     StandardTestDispatcher, JsonArray, JsonPrimitive,
+	//     isAssignableFrom.
+
+	// JWT / Auth.
+	"Jwk":                {},
+	"JwkProvider":        {},
+	"JwkProviderBuilder": {},
+	"JWTPrincipal":       {},
+	"RSA256":             {},
+	"acceptLeeway":       {},
+	"getAlgorithm":       {},
+	"getClaim":           {},
+	"bearer":             {},
+	"oauth":              {},
+	"jwt":                {},
+	"digestAuthChallenge": {},
+	"challengeFunc":      {},
+	"OAuth2ServerSettings": {},
+
+	// Compose UI.
+	"AnimatedVisibility":  {},
+	"BitmapPainter":       {},
+	"Button":              {},
+	"Column":              {},
+	"ComposeViewport":     {},
+	"LaunchedEffect":      {},
+	"MaterialTheme":       {},
+	"asComposeImageBitmap": {},
+	"fillMaxWidth":        {},
+
+	// Ktor types / status codes.
+	"Continue":             {},
+	"Found":                {},
+	"NotModified":          {},
+	"MultipleChoices":      {},
+	"PreconditionFailed":   {},
+	"UnauthorizedResponse": {},
+	"OctetStream":          {},
+	"Plain":                {},
+	"Url":                  {},
+	"UserPasswordCredential": {},
+	"UserIdPrincipal":      {},
+	"UserHashedTableAuth":  {},
+	"LocalFileContent":     {},
+	"EntityTagVersion":     {},
+	"MaxAge":               {},
+	"NoCache":              {},
+	"CachingOptions":       {},
+	"ParametersBuilder":    {},
+	"FormItem":             {},
+	"FileItem":             {},
+	"HikariConfig":         {},
+	"HikariDataSource":     {},
+	"YamlConfig":           {},
+	"Value":                {},
+	"Components":           {},
+	"HttpSecurityScheme":   {},
+	"OpenApiInfo":          {},
+	"FakeRepository":       {},
+
+	// Java stdlib (exceptions / security / util).
+	"IOException":              {},
+	"IllegalArgumentException": {},
+	"IllegalStateException":    {},
+	"SimpleDateFormat":         {},
+	"SecureRandom":             {},
+	"PKCS8EncodedKeySpec":      {},
+	"printStackTrace":          {},
+	"randomUUID":               {},
+	"nanoTime":                 {},
+	"doFinal":                  {},
+	"genKeyPair":               {},
+	"generatePrivate":          {},
+	"getConnection":            {},
+
+	// Image / content formats.
+	"PNG":  {},
+	"JPEG": {},
+	"SVG":  {},
+	"WEBP": {},
+	"Xml":  {},
+
+	// kotlin.collections / sequence / misc stdlib.
+	"asSequence":       {},
+	"generateSequence": {},
+	"mapIndexed":       {},
+	"maxByOrNull":      {},
+	"maxWithOrNull":    {},
+	"putAll":           {},
+	"removeIf":         {},
+	"asString":         {},
+	"isEqual":          {},
+	"compareTo":        {},
+	"getOrNull":        {},
+	"named":            {},
+	"names":            {},
+	"default":          {},
+	"current":          {},
+	"alias":            {},
+	"builder":          {},
+	"attribute":        {},
+	"replace":          {},
+	"replaceOne":       {},
+	"instance":         {},
+	"Instance":         {},
+	"initialize":       {},
+	"reset":            {},
+	"end":              {},
+	"engine":           {},
+	"match":            {},
+	"length":           {},
+	"listFiles":        {},
+	"lastModified":     {},
+	"mkdirs":           {},
+	"anyHost":          {},
+
+	// OpenTelemetry extras.
+	"addEvent":                   {},
+	"addResourceCustomizer":      {},
+	"counterBuilder":             {},
+	"emitExperimentalTelemetry":  {},
+	"excludeContentType":         {},
+	"getMeter":                   {},
+	"getTracer":                  {},
+	"makeCurrent":                {},
+	"rateLimited":                {},
+
+	// MongoDB.
+	"deleteOneById": {},
+	"findOne":       {},
+	"insertOne":     {},
+
+	// kotlin.text.
+	"charset":             {},
+	"decodeToString":      {},
+	"decodeBase64Bytes":   {},
+	"decompress":          {},
+	"isDigit":             {},
+	"parseHeaderValue":    {},
+	"propertyOrNull":      {},
+	"readByteArray":       {},
+	"encodeJsonElement":   {},
+	"getTimestamp":        {},
+	"getUrlEncoder":       {},
+	"getDigestFunction":   {},
+
+	// kotlin.io.path.
+	"deleteRecursively": {},
+	"descendants":       {},
+	"combineSafe":       {},
+
+	// kotlinx.html.
+	"appendHTML": {},
+	"fileInput":  {},
+
+	// JWT extras + misc.
+	"cached":               {},
+	"exponentialDelay":     {},
+	"awaitLast":            {},
+	"convert":              {},
+	"greater":              {},
+	"defaultRequest":       {},
+	"newSuspendedTransaction": {},
+	"newNonce":             {},
+	"resolvedConnectors":   {},
+	"proceed":              {},
+	"minusMinutes":         {},
+	"dispatch_async":       {},
+	"makeFromImage":        {},
+	"makeFromEncoded":      {},
+	"openAPI":              {},
+	"random":               {},
+	"nextBytes":            {},
+	"setContentView":       {},
+	"findViewById":         {},
+	"TestCoroutineScheduler": {},
+	"StandardTestDispatcher": {},
+	"JsonArray":            {},
+	"JsonPrimitive":        {},
+	"isAssignableFrom":     {},
+}
+
+// kotlinTestBareNames is the Kotlin test-file-gated bare-name stop-list
+// (issue #470). kotlin.test (`assertEquals`, `assertTrue`, `assertNull`,
+// `assertContains`, `fail`, ...) and Ktor's `testApplication { ... }`
+// builder (plus kotlinx-coroutines-test `runTest`) are top-level calls
+// that the Kotlin extractor cannot bind to a local entity — they land
+// in bug-extractor. Mirrors the Go testify gate (#115) and Java test
+// gate (#120): a Kotlin test-file suffix on the caller is required so
+// a production-code `assertEquals` user method is not shadowed.
+//
+// Conservative selection rule (#94/#106 carry-over): only the kotlin.test
+// + kotlinx-coroutines-test + Ktor testApplication / ktor-server-test-host
+// surface, NOT generic verbs like `verify` or `mock` (those collide too
+// readily even inside test files in Kotlin codebases that use Mockito-
+// Kotlin or MockK on production-shape mocks).
+var kotlinTestBareNames = map[string]struct{}{
+	// kotlin.test assertions.
+	"assertEquals":     {},
+	"assertNotEquals":  {},
+	"assertTrue":       {},
+	"assertFalse":      {},
+	"assertNull":       {},
+	"assertNotNull":    {},
+	"assertSame":       {},
+	"assertNotSame":    {},
+	"assertContains":   {},
+	"assertContentEquals": {},
+	"assertFails":      {},
+	"assertFailsWith":  {},
+	"fail":             {},
+	"expect":           {},
+
+	// kotlinx-coroutines-test builders.
+	"runTest":         {},
+	"runBlockingTest": {},
+	"advanceTimeBy":   {},
+	"advanceUntilIdle": {},
+
+	// Ktor server-test-host.
+	"testApplication": {},
+	"createClient":    {},
+	"handleRequest":   {},
+	"withTestApplication": {},
+	"withApplication": {},
+	"setBody":         {},
+	"addHeader":       {},
+}
+
+// isKotlinTestFile reports whether p is a Kotlin test source file by
+// path convention. The Kotlin/Gradle/Maven ecosystem uses three shapes:
+//
+//   - `src/test/kotlin/...` (canonical JVM test source root).
+//   - `src/*Test/kotlin/...` (Kotlin Multiplatform: commonTest,
+//     jvmTest, nativeTest, backendTest, jsTest, iosTest, ...).
+//   - `*Test.kt` / `*Tests.kt` / `*IT.kt` (file-name convention used
+//     even when not under a canonical test root).
+//
+// Same precision bias as `isJavaTestFile` — any single shape is a
+// strong-enough signal that a shared production util keeps its
+// bare-name calls unresolved rather than picking up a test-only entry.
+func isKotlinTestFile(p string) bool {
+	if p == "" {
+		return false
+	}
+	if strings.Contains(p, "/src/test/kotlin/") || strings.HasPrefix(p, "src/test/kotlin/") {
+		return true
+	}
+	// KMP source-set test roots: src/<name>Test/kotlin/...
+	if i := strings.Index(p, "/src/"); i >= 0 {
+		rest := p[i+len("/src/"):]
+		if j := strings.Index(rest, "/kotlin/"); j > 0 {
+			ss := rest[:j]
+			if strings.HasSuffix(ss, "Test") {
+				return true
+			}
+		}
+	}
+	if strings.HasPrefix(p, "src/") {
+		rest := p[len("src/"):]
+		if j := strings.Index(rest, "/kotlin/"); j > 0 {
+			ss := rest[:j]
+			if strings.HasSuffix(ss, "Test") {
+				return true
+			}
+		}
+	}
+	if strings.HasSuffix(p, "Tests.kt") || strings.HasSuffix(p, "Test.kt") || strings.HasSuffix(p, "IT.kt") {
+		return true
+	}
+	return false
 }
 
 // rubyBareNames is the Ruby-language-gated bare-name stop-list (issue

@@ -1944,6 +1944,79 @@ func TestKotlinResidualBareNames_RejectedNamesNotClassified(t *testing.T) {
 	}
 }
 
+// TestKotlinTestBareNames_GatedByTestFile covers issue #470: kotlin.test
+// + kotlinx-coroutines-test + Ktor testApplication leaves classify as
+// stdlib bare-names ONLY when the caller's file path matches
+// isKotlinTestFile (canonical `src/test/kotlin/`, KMP `src/*Test/kotlin/`,
+// or `*Test.kt`/`*Tests.kt`/`*IT.kt` suffix). A production-code caller
+// with a same-named user method (e.g. an `assertEquals` extension) must
+// fall through to bug-extractor — same safer-bias rule as Go testify
+// (#115) and Java JUnit (#120).
+func TestKotlinTestBareNames_GatedByTestFile(t *testing.T) {
+	cases := []struct {
+		name     string
+		fromFile string
+		want     bool
+	}{
+		// Canonical JVM test root.
+		{"assertEquals", "app/src/test/kotlin/com/example/MyTest.kt", true},
+		// KMP test source set.
+		{"testApplication", "chat/src/backendTest/kotlin/ChatApplicationTest.kt", true},
+		// File-name convention.
+		{"runTest", "graalvm/src/test/kotlin/io/ktorgraal/ConfigureRoutingTest.kt", true},
+		{"assertTrue", "h2/src/test/kotlin/io/ktor/samples/H2ApplicationTests.kt", true},
+		{"assertNotNull", "service/IntegrationIT.kt", true},
+		// Production code — must NOT classify.
+		{"assertEquals", "app/src/main/kotlin/com/example/Production.kt", false},
+		{"testApplication", "chat/src/backendMain/kotlin/ChatApplication.kt", false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name+"/"+tc.fromFile, func(t *testing.T) {
+			t.Parallel()
+			_, got := stdlibFunction(tc.name, "kotlin", tc.fromFile, nil)
+			if got != tc.want {
+				t.Fatalf("stdlibFunction(%q, \"kotlin\", %q) classified=%v, want %v",
+					tc.name, tc.fromFile, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestIsKotlinTestFile covers the file-path shapes recognised as Kotlin
+// test sources by the #470 test-file gate.
+func TestIsKotlinTestFile(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"", false},
+		{"src/test/kotlin/Foo.kt", true},
+		{"app/src/test/kotlin/com/example/Foo.kt", true},
+		{"chat/src/backendTest/kotlin/Chat.kt", true},
+		{"chat/src/jvmTest/kotlin/Chat.kt", true},
+		{"chat/src/commonTest/kotlin/Chat.kt", true},
+		{"src/iosTest/kotlin/X.kt", true},
+		{"foo/MyTest.kt", true},
+		{"foo/MyTests.kt", true},
+		{"foo/MyIT.kt", true},
+		// Production paths.
+		{"src/main/kotlin/Foo.kt", false},
+		{"chat/src/backendMain/kotlin/Chat.kt", false},
+		{"src/jvmMain/kotlin/X.kt", false},
+		{"foo/Production.kt", false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.path, func(t *testing.T) {
+			t.Parallel()
+			if got := isKotlinTestFile(tc.path); got != tc.want {
+				t.Fatalf("isKotlinTestFile(%q) = %v; want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestKotlinBareNames_UnknownKotlinMethodFallsThrough confirms that a
 // Kotlin-source bare-name call that ISN'T in the kotlinBareNames
 // allowlist still falls through normally, so genuine missing-
