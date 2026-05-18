@@ -1107,3 +1107,130 @@ func TestResolveImports_TypeScriptCrossFileNamedImport(t *testing.T) {
 		t.Fatalf("expected target rewritten to deadbeefcafef00d, got %q", got)
 	}
 }
+
+// markdownDocRecord builds a SCOPE.Document EntityRecord for a markdown
+// file, optionally carrying an IMPORTS edge to another file's path.
+// Mirrors what internal/extractors/markdown emits.
+func markdownDocRecord(file, importTarget, importerID string) types.EntityRecord {
+	rec := types.EntityRecord{
+		ID:            importerID,
+		Name:          file,
+		QualifiedName: file,
+		Kind:          "SCOPE.Document",
+		Subtype:       "markdown",
+		Language:      "markdown",
+		SourceFile:    file,
+	}
+	if importTarget != "" {
+		rec.Relationships = []types.RelationshipRecord{{
+			FromID: file,
+			ToID:   importTarget,
+			Kind:   "IMPORTS",
+			Properties: map[string]string{
+				"source_module": importTarget,
+				"imported_name": importTarget,
+				"import_kind":   "link",
+				"language":      "markdown",
+			},
+		}}
+	}
+	return rec
+}
+
+// TestResolveImports_MarkdownFilePathTarget — issue #44 follow-up. A
+// markdown link like `[list](./applicationset/list.yaml)` emits an
+// IMPORTS edge whose ToID is the resolved file path
+// "applicationset/list.yaml". The target file has a real entity in the
+// graph (e.g. a SCOPE.Component emitted by the YAML extractor), and the
+// resolver should bind the edge to that entity.
+func TestResolveImports_MarkdownFilePathTarget(t *testing.T) {
+	records := []types.EntityRecord{
+		// YAML entity that the link should bind to.
+		{
+			ID:         "1111111111111111",
+			Name:       "list",
+			Kind:       "SCOPE.Component",
+			SourceFile: "applicationset/list.yaml",
+			Language:   "yaml",
+		},
+		// Markdown doc that links to the YAML.
+		markdownDocRecord("applicationset/README.md", "applicationset/list.yaml", "2222222222222222"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.MarkdownFilePathRewritten != 1 {
+		t.Fatalf("expected 1 markdown file-path rewrite, got %d (considered=%d)",
+			stats.MarkdownFilePathRewritten, stats.MarkdownFilePathConsidered)
+	}
+	if got := records[1].Relationships[0].ToID; got != "1111111111111111" {
+		t.Fatalf("expected ToID rewritten to 1111111111111111, got %q", got)
+	}
+}
+
+// TestResolveImports_MarkdownDirTarget — issue #44 follow-up. A
+// markdown link like `[kasane](./plugins/kasane)` to a bare directory
+// should bind to that directory's README.md SCOPE.Document.
+func TestResolveImports_MarkdownDirTarget(t *testing.T) {
+	records := []types.EntityRecord{
+		// The README.md Document inside the linked dir.
+		markdownDocRecord("plugins/kasane/README.md", "", "3333333333333333"),
+		// Top-level README.md linking to plugins/kasane.
+		markdownDocRecord("README.md", "plugins/kasane", "4444444444444444"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.MarkdownFilePathRewritten != 1 {
+		t.Fatalf("expected 1 markdown dir rewrite, got %d (considered=%d)",
+			stats.MarkdownFilePathRewritten, stats.MarkdownFilePathConsidered)
+	}
+	if got := records[1].Relationships[0].ToID; got != "3333333333333333" {
+		t.Fatalf("expected dir link bound to plugins/kasane/README.md, got %q", got)
+	}
+}
+
+// TestResolveImports_MarkdownDocPreferredOverOther — when both a
+// SCOPE.Document and another entity share a file, the Document is the
+// preferred binding target (rank 1 beats rank 2).
+func TestResolveImports_MarkdownDocPreferredOverOther(t *testing.T) {
+	records := []types.EntityRecord{
+		// Non-document entity emitted FIRST so we exercise the rank
+		// override path (Document arrives later but still wins).
+		{
+			ID:         "5555555555555555",
+			Name:       "Heading",
+			Kind:       "SCOPE.Heading",
+			SourceFile: "docs/guide.md",
+			Language:   "markdown",
+		},
+		markdownDocRecord("docs/guide.md", "", "6666666666666666"),
+		markdownDocRecord("README.md", "docs/guide.md", "7777777777777777"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.MarkdownFilePathRewritten != 1 {
+		t.Fatalf("expected 1 rewrite, got %d", stats.MarkdownFilePathRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "6666666666666666" {
+		t.Fatalf("expected Document (6666...) preferred over Heading (5555...), got %q", got)
+	}
+}
+
+// TestResolveImports_MarkdownFilePathMiss — links to files that aren't
+// in the indexed graph (external repo, missing file) should NOT be
+// rewritten. Counted in Considered but not Rewritten.
+func TestResolveImports_MarkdownFilePathMiss(t *testing.T) {
+	records := []types.EntityRecord{
+		markdownDocRecord("README.md", "../sibling-repo/file.md", "8888888888888888"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.MarkdownFilePathRewritten != 0 {
+		t.Fatalf("expected 0 rewrites for missing file, got %d", stats.MarkdownFilePathRewritten)
+	}
+	if stats.MarkdownFilePathConsidered != 1 {
+		t.Fatalf("expected 1 considered, got %d", stats.MarkdownFilePathConsidered)
+	}
+	if got := records[0].Relationships[0].ToID; got != "../sibling-repo/file.md" {
+		t.Fatalf("expected ToID untouched, got %q", got)
+	}
+}

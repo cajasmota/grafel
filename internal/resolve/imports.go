@@ -115,6 +115,29 @@ type ImportTable struct {
 	// the method declared in the class's source file.
 	methodsByFileName   map[string]map[string]string
 	ambigMethodFileName map[string]map[string]bool
+	// docByFilePath maps a normalised file path → the entity ID that
+	// "represents" that file for cross-file binding purposes. Used by the
+	// markdown extractor's IMPORTS path (issue #44 follow-up): a link
+	// `[x](./plugins/foo/README.md)` emits ToID="plugins/foo/README.md",
+	// and a link `[x](applicationset/list.yaml)` emits ToID="applicationset/list.yaml".
+	// Neither shape carries a dot-separator that ResolveDottedImportTarget
+	// can split on, so previously these landed in bug-extractor despite
+	// the target file having entities in the graph.
+	//
+	// Preference rules (first match wins, evaluated at insert time):
+	//   1. A SCOPE.Document entity for the file (markdown's primary entity)
+	//   2. The lexicographically lowest entity ID for the file (stable
+	//      tie-break — any entity proves the file exists in the graph)
+	// Lower-preference candidates never overwrite a higher-preference hit.
+	docByFilePath map[string]string
+	// docByFilePathRank tracks the preference rank of the entry stored
+	// in docByFilePath so a later, higher-priority candidate can win.
+	// Lower is better. 0 = unset, 1 = Document, 2 = first.
+	docByFilePathRank map[string]int
+	// docByDir maps a normalised directory path → the Document entity ID
+	// for `<dir>/README.md` (any case). Markdown links to bare directories
+	// (`[plugins](./plugins)`) resolve to the directory's README.
+	docByDir map[string]string
 }
 
 // BuildImportTable scans every embedded IMPORTS relationship in records
@@ -135,6 +158,9 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		ambigModuleName:      make(map[string]map[string]bool),
 		methodsByFileName:    make(map[string]map[string]string),
 		ambigMethodFileName:  make(map[string]map[string]bool),
+		docByFilePath:        make(map[string]string),
+		docByFilePathRank:    make(map[string]int),
+		docByDir:             make(map[string]string),
 	}
 
 	// Pass 1 — per-file import bindings.
@@ -265,6 +291,76 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 				continue
 			}
 			bucket[e.Name] = e.ID
+		}
+	}
+
+	// Pass 3 — file-path → entity index for markdown cross-file IMPORTS
+	// (issue #44 follow-up). Markdown emits `[text](path)` IMPORTS edges
+	// whose ToID is the resolved file path (slash-separated, with file
+	// extension). The dotted-import resolver above can't bind these
+	// because the separator semantics differ. We pick the most
+	// representative entity per file (preferring SCOPE.Document, which is
+	// what the markdown extractor emits for every .md file).
+	for k := range records {
+		e := &records[k]
+		if e.ID == "" {
+			continue
+		}
+		file := normalizePath(e.SourceFile)
+		if file == "" {
+			continue
+		}
+		rank := 0
+		switch e.Kind {
+		case "SCOPE.Document":
+			rank = 1
+		default:
+			rank = 2
+		}
+		existingRank := tbl.docByFilePathRank[file]
+		if existingRank == 0 || rank < existingRank {
+			tbl.docByFilePath[file] = e.ID
+			tbl.docByFilePathRank[file] = rank
+		} else if rank == existingRank {
+			// Stable tie-break: keep the lexicographically lower entity
+			// ID so the result is deterministic across map-iteration
+			// orders. Documents are unique per file in practice, so this
+			// only matters for rank=2 ties.
+			if e.ID < tbl.docByFilePath[file] {
+				tbl.docByFilePath[file] = e.ID
+			}
+		}
+	}
+	// Build docByDir from SCOPE.Document entities whose file's basename
+	// is README.md (case-insensitive). A link to `./plugins/foo` should
+	// bind to `plugins/foo/README.md`'s Document. First README per dir
+	// wins; collisions are vanishingly rare (one README per dir is the
+	// convention).
+	for k := range records {
+		e := &records[k]
+		if e.ID == "" || e.Kind != "SCOPE.Document" {
+			continue
+		}
+		file := normalizePath(e.SourceFile)
+		if file == "" {
+			continue
+		}
+		base := file
+		if slash := strings.LastIndexByte(file, '/'); slash >= 0 {
+			base = file[slash+1:]
+		}
+		if !strings.EqualFold(base, "README.md") {
+			continue
+		}
+		dir := ""
+		if slash := strings.LastIndexByte(file, '/'); slash >= 0 {
+			dir = file[:slash]
+		}
+		if dir == "" {
+			continue
+		}
+		if _, exists := tbl.docByDir[dir]; !exists {
+			tbl.docByDir[dir] = e.ID
 		}
 	}
 
@@ -626,6 +722,15 @@ type ImportResolveStats struct {
 	// that resolved to a 16-char entity ID via the class-file method
 	// lookup.
 	PHPFQNMethodRewritten int
+	// MarkdownFilePathConsidered counts every embedded IMPORTS edge
+	// whose ToID matched the markdown cross-file file-path shape (slash
+	// in the path or a known file extension; no `::`, no `\`, not a
+	// dotted module). Issue #44 follow-up.
+	MarkdownFilePathConsidered int
+	// MarkdownFilePathRewritten counts the subset of
+	// MarkdownFilePathConsidered that resolved to a 16-char entity ID
+	// via the docByFilePath / docByDir indices.
+	MarkdownFilePathRewritten int
 }
 
 // ResolveDottedImportTarget looks up a project-internal IMPORTS ToID of
@@ -777,6 +882,59 @@ func (t ImportTable) ResolvePHPFQNMethodTarget(toID string) (string, bool) {
 	return hitID, true
 }
 
+// ResolveMarkdownFilePathTarget binds a markdown cross-file IMPORTS
+// ToID to an entity ID. Two shapes are accepted:
+//
+//  1. Exact file-path match — ToID is a slash-separated path that
+//     equals the SourceFile of one or more indexed entities. Returns
+//     the file's preferred representative entity (SCOPE.Document if
+//     present, otherwise a stable pick).
+//  2. Directory match — ToID has no file extension and equals the
+//     parent dir of a `<dir>/README.md` SCOPE.Document. Returns that
+//     Document's ID.
+//
+// Returns ("", false) for: empty input, no matching file/dir, or input
+// that doesn't look like a path (no slash and no recognised extension).
+//
+// Issue #44 follow-up — markdown extractor's `[text](path)` emits these
+// shapes; before this resolver they landed in bug-extractor despite the
+// target file existing in the graph.
+func (t ImportTable) ResolveMarkdownFilePathTarget(toID string) (string, bool) {
+	if toID == "" {
+		return "", false
+	}
+	p := normalizePath(toID)
+	if p == "" {
+		return "", false
+	}
+	// Direct file-path hit (preferred path — covers
+	// `applicationset/list.yaml`, `plugins/foo/README.md`, etc.).
+	if id, ok := t.docByFilePath[p]; ok && id != "" {
+		return id, true
+	}
+	// Directory match (bare-dir links like `[plugins/foo](plugins/foo)`
+	// resolve to plugins/foo/README.md). Only try when the path has no
+	// file extension — a path like `foo.yaml` that wasn't a direct hit
+	// is a missing file, not a directory.
+	if !hasFileExtension(p) {
+		if id, ok := t.docByDir[p]; ok && id != "" {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+// hasFileExtension reports whether the basename of p contains a `.`
+// after the last slash. Used by ResolveMarkdownFilePathTarget to avoid
+// treating misspelled files like `foo.yaml` as directory references.
+func hasFileExtension(p string) bool {
+	base := p
+	if slash := strings.LastIndexByte(p, '/'); slash >= 0 {
+		base = p[slash+1:]
+	}
+	return strings.ContainsRune(base, '.')
+}
+
 // ResolveImports rewrites embedded CALLS edges in records using the
 // supplied import table. Returns counters describing the rewrite. Edges
 // whose ToID is empty, already a hex ID, or contains a "." (already
@@ -829,6 +987,26 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				rel.ToID = id
 				stats.CallsRewritten++
 			case importRelKind:
+				// Markdown cross-file file-path shape (issue #44 follow-up):
+				// `[text](path)` emits ToID="<resolved-path>", which is a
+				// slash-separated repo-relative path with no dotted-module
+				// semantics. Try this BEFORE the dotted-import lookup so a
+				// path like `applicationset/list.yaml` (whose last dot lies
+				// inside `.yaml`, not a module separator) doesn't get
+				// nonsensically split into module="applicationset/list",
+				// leaf="yaml". Markdown-emitted paths never contain `\` or
+				// `::`, so we gate on `/` presence plus the absence of those
+				// non-path delimiters.
+				if strings.ContainsRune(to, '/') &&
+					!strings.ContainsRune(to, '\\') &&
+					!strings.Contains(to, "::") {
+					stats.MarkdownFilePathConsidered++
+					if id, ok := tbl.ResolveMarkdownFilePathTarget(to); ok {
+						rel.ToID = id
+						stats.MarkdownFilePathRewritten++
+						continue
+					}
+				}
 				// IMPORTS ToID is a dotted module path like
 				// "conduit.database.db" (issue #142) or — for PHP
 				// (issue #113) — a backslash-separated FQN like
