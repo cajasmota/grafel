@@ -2903,6 +2903,25 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if lang == "python" && isPythonExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
+	// Wave-7 — Python CALLS where the stub leaf is `<Class>.<method>`
+	// and the method is a well-known framework-inherited method (DRF
+	// GenericAPIView / GenericViewSet pagination + serializer + lookup
+	// methods). These show up when the Python extractor records the
+	// call site as `self.get_paginated_response(...)` and the resolver
+	// retains the enclosing-class qualifier (`AocHarvestViewSet.get_
+	// paginated_response`). The method is provided by the third-party
+	// parent (`rest_framework.generics.GenericAPIView`), not by user
+	// code in the subclass body, so route to ExternalKnown instead of
+	// BugExtractor. Gated to lang=="python" to preserve safer-bias
+	// rule (#94) for other languages.
+	if lang == "python" {
+		if dot := strings.LastIndexByte(name, '.'); dot > 0 && dot < len(name)-1 {
+			method := name[dot+1:]
+			if isPythonExternalInheritedMethod(method) {
+				return DispositionExternalKnown
+			}
+		}
+	}
 	// Wave-4 (Python) — same allowlist also fires when language is
 	// unknown but the stub carries a `Kind:Name` prefix (bare-kind-
 	// prefixed category in the diagnostic dump). These edges originate
@@ -2937,6 +2956,66 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 func isPythonExternalBaseType(s string) bool {
 	_, ok := pythonExternalBaseTypes[s]
 	return ok
+}
+
+// isPythonExternalInheritedMethod reports whether s is the leaf of a
+// `<UserClass>.<method>` stub where the method is provided by a
+// well-known framework parent (DRF GenericAPIView / GenericViewSet,
+// django.test.TestCase, channels.consumer.AsyncConsumer). Used by
+// classifyDispositionLang (Python-gated) so an extractor stub like
+// `AocHarvestViewSet.get_paginated_response` — where the user
+// subclass body does NOT define `get_paginated_response` because the
+// method comes from `GenericAPIView` — routes to ExternalKnown
+// instead of BugExtractor. Wave-7 client-fixture-a addition.
+func isPythonExternalInheritedMethod(s string) bool {
+	_, ok := pythonExternalInheritedMethods[s]
+	return ok
+}
+
+var pythonExternalInheritedMethods = map[string]struct{}{
+	// DRF GenericAPIView / GenericViewSet pagination + lookup +
+	// serializer hooks. Each is provided by the parent class and
+	// commonly invoked via `self.<method>(...)` from user view-set
+	// bodies — but never re-implemented locally.
+	"get_paginated_response": {},
+	"paginate_queryset":      {},
+	"get_serializer":         {},
+	"get_serializer_class":   {},
+	"get_serializer_context": {},
+	"get_object":             {},
+	"get_queryset":           {},
+	"get_paginator":          {},
+	"perform_create":         {},
+	"perform_update":         {},
+	"perform_destroy":        {},
+	"check_permissions":      {},
+	"check_object_permissions": {},
+	"get_permissions":        {},
+	"get_authenticators":     {},
+	"get_throttles":          {},
+	"get_renderers":          {},
+	"get_parsers":            {},
+	"get_content_negotiator": {},
+	"get_exception_handler":  {},
+	"get_view_name":          {},
+	"get_view_description":   {},
+	"initial":                {},
+	"initialize_request":     {},
+	"finalize_response":      {},
+	"handle_exception":       {},
+	"permission_denied":      {},
+	// channels AsyncConsumer dispatch lifecycle.
+	"channel_receive":   {},
+	"send":              {},
+	"close":             {},
+	"accept":            {},
+	"group_add":         {},
+	"group_discard":     {},
+	"group_send":        {},
+	// Django management BaseCommand lifecycle.
+	"execute":           {},
+	"create_parser":     {},
+	"print_help":        {},
 }
 
 var pythonExternalBaseTypes = map[string]struct{}{
@@ -3019,6 +3098,50 @@ var pythonExternalBaseTypes = map[string]struct{}{
 	// `object` surfaces as bare-kind-prefixed (`Model:object`) from
 	// Python `class Config(object):` declarations.
 	"object": {},
+	// Wave-7 — Django test framework base classes. Used as parents in
+	// `class Foo(TestCase):` / `class Bar(APITestCase):` declarations
+	// across django.test, rest_framework.test, and channels.testing.
+	"TestCase":                {},
+	"LiveServerTestCase":      {},
+	"TransactionTestCase":     {},
+	"SimpleTestCase":          {},
+	"ChannelsLiveServerTestCase": {},
+	"APITestCase":             {},
+	"APISimpleTestCase":       {},
+	"APITransactionTestCase":  {},
+	"APILiveServerTestCase":   {},
+	"Client":                  {},
+	"RequestFactory":          {},
+	// Wave-7 — Django management command base class (subclassed by
+	// every `core/management/commands/*.py` module's `Command` class).
+	"BaseCommand": {},
+	"Command":     {},
+	// Wave-7 — DRF Simple JWT view base classes (subclassed in
+	// `urls.py` / `viewsets.py` to customise serializers).
+	"TokenObtainPairView":  {},
+	"TokenRefreshView":     {},
+	"TokenBlacklistView":   {},
+	"TokenVerifyView":      {},
+	// Wave-7 — Django Channels consumer base classes.
+	"AsyncConsumer":             {},
+	"SyncConsumer":              {},
+	"WebsocketConsumer":         {},
+	"AsyncWebsocketConsumer":    {},
+	"JsonWebsocketConsumer":     {},
+	"AsyncJsonWebsocketConsumer": {},
+	// Wave-7 pass-2 — Django utils + DRF mixin + parser parents.
+	// Pulled from client-fixture-a residual after pass-1.
+	"MiddlewareMixin": {}, // django.utils.deprecation.MiddlewareMixin
+	"FormParser":      {}, // rest_framework.parsers.FormParser
+	"MultiPartParser": {},
+	"JSONParser":      {},
+	"FileUploadParser": {},
+	// DRF generic view mixins (subclassed in custom view-set hierarchies).
+	"ListModelMixin":     {},
+	"CreateModelMixin":   {},
+	"RetrieveModelMixin": {},
+	"UpdateModelMixin":   {},
+	"DestroyModelMixin":  {},
 }
 
 // isTSBuiltinType reports whether s is a TypeScript / JavaScript
