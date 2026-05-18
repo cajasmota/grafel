@@ -1276,6 +1276,24 @@ type Index struct {
 	// sentinel marks (pkg, name) collisions so the resolver leaves the
 	// stub alone instead of silently binding to the wrong overload.
 	byPackageOperation map[string]map[string]string
+
+	// byPackageComponent[pkg_dir][name] = entity_id. Used by the Refs #44
+	// Go DEPENDS_ON / bare-receiver-type path: the Go extractor emits
+	// DEPENDS_ON edges from each method to its receiver type with
+	// ToID set to the bare type name (e.g. "Server"), and CALLS / field-
+	// type edges similarly carry bare struct names that the global byName
+	// lookup can't disambiguate when the same struct name (`Server`,
+	// `Client`, `Config`) appears in multiple packages of the same repo
+	// (grpc-go-examples is the canonical offender — 144 residual edges
+	// after #480 / #148, all DEPENDS_ON to bare struct names spread across
+	// sibling files inside one package). Mirror of byPackageOperation but
+	// for SCOPE.Component entities (struct / interface / view / model).
+	// Indexed only when an entity has a non-empty SourceFile AND a non-
+	// dotted Name AND a Component-family Kind. A blank-string sentinel
+	// marks (pkg, name) collisions so the resolver leaves the stub alone
+	// instead of binding to an arbitrary same-named component in the same
+	// package (extremely rare in practice).
+	byPackageComponent map[string]map[string]string
 }
 
 // LocationIndex maps file_path -> name -> entity_id, retaining only entries
@@ -1477,6 +1495,7 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byMember:        make(map[string]map[string]map[string]string),
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
+		byPackageComponent: make(map[string]map[string]string),
 		byQualifiedName: make(map[string]string),
 	}
 	for k := range entities {
@@ -1682,6 +1701,38 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			}
 		}
 
+		// Package-scoped component index (Refs #44, sibling of #148/#480
+		// for component-shaped entities). The Go extractor emits a
+		// DEPENDS_ON edge from each method to its receiver type with
+		// ToID set to the bare type name; cross-file same-package binds
+		// fail under byName when the same struct name (`Server`,
+		// `Client`, `Config`, …) appears in multiple packages. The
+		// resolver's ToID fast-path in ReferencesEmbeddedWithAllowlist
+		// probes this index using the caller's package directory before
+		// falling through to the global bare-name lookup, mirroring how
+		// byPackageOperation handles bare CALLS targets. Indexed only
+		// when SourceFile is non-empty and Name carries no dot
+		// (top-level component declaration). A blank-string sentinel
+		// marks (pkg, name) collisions so the resolver leaves the stub
+		// alone instead of binding to an arbitrary same-named
+		// component.
+		if sourceFile != "" && strings.IndexByte(e.Name, dottedNameSep) < 0 &&
+			isComponentKind(e.Kind) {
+			pkgDir := pkgDirOf(sourceFile)
+			if pkgDir != "" {
+				pkgBucket := idx.byPackageComponent[pkgDir]
+				if pkgBucket == nil {
+					pkgBucket = make(map[string]string)
+					idx.byPackageComponent[pkgDir] = pkgBucket
+				}
+				if existing, ok := pkgBucket[e.Name]; ok && existing != e.ID {
+					pkgBucket[e.Name] = "" // blank sentinel → ambiguous
+				} else if _, taken := pkgBucket[e.Name]; !taken {
+					pkgBucket[e.Name] = e.ID
+				}
+			}
+		}
+
 		// Kind-agnostic name index. Two different entities sharing a name
 		// (even across kinds) flips the name to ambiguous.
 		if idx.ambigName[e.Name] {
@@ -1702,6 +1753,19 @@ func BuildIndex(entities []types.EntityRecord) Index {
 // byPackageOperation.
 func isOperationKind(k string) bool {
 	return k == "SCOPE.Operation" || k == "Operation"
+}
+
+// isComponentKind reports whether the kind string is one of the Component
+// family kinds (SCOPE.Component, etc.) that should be indexed in
+// byPackageComponent. Mirrors componentKindFamily but kept as a fast
+// switch for the BuildIndex hot path.
+func isComponentKind(k string) bool {
+	switch k {
+	case "SCOPE.Component", "Component", "Class", "View", "Model",
+		"SCOPE.View", "SCOPE.Model":
+		return true
+	}
+	return false
 }
 
 // BuildLocationIndex returns a (file_path, name) -> entity_id map built from
@@ -2278,6 +2342,44 @@ func (idx Index) lookupPackageMember(pkgDir, receiverType, member string) (strin
 	return id, true
 }
 
+// isComponentTargetKind reports whether the relationship-kind's natural
+// ToID shape is a Component. Used to gate the byPackageComponent fast-
+// path so call-shaped edges (CALLS) don't accidentally bind to a same-
+// named component when they actually want an operation (a struct named
+// `Process` shouldn't catch a call to `Process(x)`).
+func isComponentTargetKind(relKind string) bool {
+	switch strings.ToUpper(relKind) {
+	case "DEPENDS_ON", "EXTENDS", "IMPLEMENTS":
+		return true
+	}
+	return false
+}
+
+// lookupPackageComponent probes the byPackageComponent index. When
+// pkgDir + name resolves to a single entity ID, returns (id, true).
+// Returns ("", false) for missing entries; returns ("", true) for the
+// blank-sentinel ambiguous case so the caller can leave the stub alone
+// instead of falling back to global bare-name lookup (which would risk
+// binding to a foreign-package component of the same name). Mirrors
+// lookupPackageMember (issue #148) for the component-family.
+func (idx Index) lookupPackageComponent(pkgDir, name string) (string, bool) {
+	if pkgDir == "" || name == "" {
+		return "", false
+	}
+	pkgBucket := idx.byPackageComponent[pkgDir]
+	if pkgBucket == nil {
+		return "", false
+	}
+	id, ok := pkgBucket[name]
+	if !ok {
+		return "", false
+	}
+	if id == "" {
+		return "", true
+	}
+	return id, true
+}
+
 // rewriteOne resolves a single endpoint reference. It returns the (possibly
 // rewritten) ID string and the status code from LookupStatusHint. Hex IDs
 // and empty strings short-circuit with a zero status, signalling "skip".
@@ -2787,6 +2889,36 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 					}
 					if resolved {
 						continue
+					}
+				}
+				// Refs #44 — Go cross-file same-package bare-component
+				// fallback. The Go extractor emits DEPENDS_ON edges from
+				// each method to its receiver type with ToID set to the
+				// bare type name (e.g. "Server"). Sibling files in the
+				// same package directory frequently host these structs;
+				// the global byName lookup either misses (multi-file
+				// package) or flags ambiguous (same struct name in
+				// multiple packages — the dominant grpc-go-examples
+				// residual). Probe byPackageComponent[parentPkgDir]
+				// before falling through to rewriteOne, gated to Go to
+				// avoid disturbing the resolution of other languages
+				// whose bare-name conventions differ. We restrict to
+				// edge kinds where a Component ToID is the natural
+				// shape — DEPENDS_ON (method → receiver type, struct
+				// field type) and EXTENDS / IMPLEMENTS (interface
+				// embedding) — matching the hintKinds() bias.
+				if lang == "go" && parentPkgDir != "" && isComponentTargetKind(r.Kind) {
+					if id, ok := idx.lookupPackageComponent(parentPkgDir, r.ToID); ok {
+						if id != "" {
+							r.ToID = id
+							applyEndpointStats(&stats, statusRewritten, false)
+							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
+							stats.recordDisposition(d, orig)
+							continue
+						}
+						// Ambiguous within (pkg, name) — fall through to
+						// rewriteOne which will record as unmatched /
+						// ambiguous against the global byName index.
 					}
 				}
 				newID, st := idx.rewriteOne(r.ToID, r.Kind)

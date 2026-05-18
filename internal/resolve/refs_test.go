@@ -1357,6 +1357,127 @@ func TestReferencesEmbedded_GoSamePackageMethodDispatch_NoFalseBind(t *testing.T
 	}
 }
 
+// Refs #44 — Go cross-file same-package DEPENDS_ON to bare struct type.
+//
+// The Go extractor emits a DEPENDS_ON edge from each method to its receiver
+// type with ToID set to the bare type name (e.g. "Server"). When the struct
+// is defined in a sibling file inside the same package directory, the global
+// byName lookup either misses or flips to ambiguous because the same struct
+// name appears in multiple packages (the dominant grpc-go-examples residual).
+// The resolver must use the caller's package directory plus the bare ToID to
+// pin the binding to the same-package Component entity.
+func TestReferencesEmbedded_GoSamePackageComponentDispatch(t *testing.T) {
+	records := []types.EntityRecord{
+		// Struct `Server` defined in server.go, method `Serve` in serve.go —
+		// both inside the `grpc/examples/helloworld` package directory.
+		{ID: "aaaaaaaaaaaaaaaa", Kind: "SCOPE.Component", Subtype: "struct",
+			Name: "Server", SourceFile: "grpc/examples/helloworld/server.go", Language: "go"},
+		{
+			ID:         "cccccccccccccccc",
+			Kind:       "SCOPE.Operation",
+			Name:       "Server.Serve",
+			SourceFile: "grpc/examples/helloworld/serve.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID:     "cccccccccccccccc",
+					ToID:       "Server",
+					Kind:       "DEPENDS_ON",
+					Properties: map[string]string{"language": "go"},
+				},
+			},
+		},
+		// Decoy: a different `Server` struct in a foreign package directory.
+		// Without package scoping, byName flips to ambiguous and the
+		// DEPENDS_ON edge is left as a bug-resolver stub.
+		{ID: "dddddddddddddddd", Kind: "SCOPE.Component", Subtype: "struct",
+			Name: "Server", SourceFile: "grpc/examples/route_guide/server.go", Language: "go"},
+	}
+	idx := BuildIndex(records)
+	_ = ReferencesEmbedded(records, idx)
+	got := records[1].Relationships[0].ToID
+	if got != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("Refs #44 byPackageComponent: same-package Server not resolved; ToID=%s, want aaaaaaaaaaaaaaaa", got)
+	}
+}
+
+// Refs #44 negative — when no same-package component matches, the resolver
+// must NOT bind to a foreign-package component of the same name; the edge
+// stays unmatched / ambiguous so it can be diagnosed instead of silently
+// pointing at the wrong struct.
+func TestReferencesEmbedded_GoSamePackageComponentDispatch_NoFalseBind(t *testing.T) {
+	records := []types.EntityRecord{
+		// Only definition of `Server` lives in a DIFFERENT package directory
+		// from the caller. The byPackageComponent[caller_pkg] bucket will
+		// miss, the fallback rewriteOne hits byName which sees a single
+		// candidate — but THAT outcome is acceptable when it's the only
+		// candidate. Here we add a second decoy so byName flips ambiguous,
+		// guaranteeing that the foreign-package entity is NOT silently
+		// chosen by the package fast-path.
+		{ID: "dddddddddddddddd", Kind: "SCOPE.Component", Subtype: "struct",
+			Name: "Server", SourceFile: "foreign/pkg_a/server.go", Language: "go"},
+		{ID: "eeeeeeeeeeeeeeee", Kind: "SCOPE.Component", Subtype: "struct",
+			Name: "Server", SourceFile: "foreign/pkg_b/server.go", Language: "go"},
+		{
+			ID:         "cccccccccccccccc",
+			Kind:       "SCOPE.Operation",
+			Name:       "Caller.Serve",
+			SourceFile: "grpc/examples/helloworld/serve.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID:     "cccccccccccccccc",
+					ToID:       "Server",
+					Kind:       "DEPENDS_ON",
+					Properties: map[string]string{"language": "go"},
+				},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	_ = ReferencesEmbedded(records, idx)
+	got := records[2].Relationships[0].ToID
+	if got == "dddddddddddddddd" || got == "eeeeeeeeeeeeeeee" {
+		t.Fatalf("Refs #44 byPackageComponent: foreign-package Server wrongly bound: ToID=%s", got)
+	}
+}
+
+// Refs #44 ambiguity sentinel — two same-named structs inside the SAME
+// package directory must trip the blank-string sentinel and leave the stub
+// alone rather than picking an arbitrary overload.
+func TestReferencesEmbedded_GoSamePackageComponentDispatch_AmbiguousInPkg(t *testing.T) {
+	records := []types.EntityRecord{
+		{ID: "aaaaaaaaaaaaaaaa", Kind: "SCOPE.Component", Subtype: "struct",
+			Name: "Server", SourceFile: "pkg/a.go", Language: "go"},
+		{ID: "bbbbbbbbbbbbbbbb", Kind: "SCOPE.Component", Subtype: "struct",
+			Name: "Server", SourceFile: "pkg/b.go", Language: "go"},
+		{
+			ID:         "cccccccccccccccc",
+			Kind:       "SCOPE.Operation",
+			Name:       "Caller.Use",
+			SourceFile: "pkg/c.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID:     "cccccccccccccccc",
+					ToID:       "Server",
+					Kind:       "DEPENDS_ON",
+					Properties: map[string]string{"language": "go"},
+				},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	_ = ReferencesEmbedded(records, idx)
+	got := records[2].Relationships[0].ToID
+	if got == "aaaaaaaaaaaaaaaa" || got == "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("Refs #44 byPackageComponent: ambiguous in-pkg sentinel ignored; ToID=%s", got)
+	}
+	if got != "Server" {
+		t.Fatalf("Refs #44 byPackageComponent: expected unresolved stub 'Server', got %s", got)
+	}
+}
+
 // Issue #432 — testmap unknown-prod-file marker (`scope:operation:?#<qname>`).
 // The cross-language test→production extractor emits this shape when it
 // cannot infer the production file for a call inside a test body. With no
