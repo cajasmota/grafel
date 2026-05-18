@@ -509,6 +509,80 @@ var (
 		regexp.MustCompile(`^decimal$`),
 		regexp.MustCompile(`^binary$`),
 		regexp.MustCompile(`^execute$`),
+
+		// Rails ActionPack / ActionDispatch / ActiveSupport internals
+		// (issue #448). Rails framework DSL exposed to controllers,
+		// routes and initializers — method_missing-generated or
+		// class-macro driven. The Ruby extractor strips the receiver
+		// and the resolver sees only the bare leaf identifier
+		// (`Rails.application.routes.draw { resources :users }` →
+		// `resources`/`draw`, `class_attribute :foo` → `class_attribute`,
+		// `Rails.application.config.middleware.insert_before(...)` →
+		// `insert_before`). Classify as Dynamic so they don't pollute
+		// bug-extractor (rails-actionpack 20.02% pre-fix).
+		//
+		// Conservative selection (lessons from #94 / #107):
+		// generic English verbs/accessors that exist as user-method
+		// names on any class in any language (`to`, `as`, `via`,
+		// `format`, `defaults`, `action`, `match`, `member`,
+		// `collection`, `nested`, `included`, `extended`, `inherited`,
+		// `concern` outside the routing-DSL position, `swap`) are
+		// deliberately EXCLUDED — the per-language Ruby gate alone is
+		// not strong enough to keep them safe. The names below are
+		// Rails-idiomatic enough that the Ruby gate is sufficient
+		// protection against shadowing user methods in other
+		// ecosystems (Go HTTP `get`/`post`, JS `get`/`post`, etc.).
+		//
+		// Categories:
+		//   - Routing DSL (ActionDispatch::Routing::Mapper).
+		//   - ActionController DSL macros (helper / layout / CSRF).
+		//   - ActiveSupport class macros and callbacks.
+		//   - ActionDispatch middleware-stack DSL.
+		// Already covered above by the issue #107 batch: `scope`,
+		// `helper_method`, `params`, `session`, `flash`, `cookies`,
+		// `request`, `response`, `respond_to`, `render`, `redirect_to`,
+		// `before_action`/`after_action`/`around_action`/
+		// `skip_before_action`.
+		// Routing DSL.
+		regexp.MustCompile(`^resources$`),
+		regexp.MustCompile(`^resource$`),
+		regexp.MustCompile(`^namespace$`),
+		regexp.MustCompile(`^constraints$`),
+		regexp.MustCompile(`^concern$`),
+		regexp.MustCompile(`^concerns$`),
+		regexp.MustCompile(`^mount$`),
+		regexp.MustCompile(`^get$`),
+		regexp.MustCompile(`^post$`),
+		regexp.MustCompile(`^put$`),
+		regexp.MustCompile(`^patch$`),
+		regexp.MustCompile(`^delete$`),
+		regexp.MustCompile(`^root$`),
+		regexp.MustCompile(`^direct$`),
+		regexp.MustCompile(`^resolve$`),
+		regexp.MustCompile(`^controller$`),
+		// ActionController DSL macros.
+		regexp.MustCompile(`^helper$`),
+		regexp.MustCompile(`^layout$`),
+		regexp.MustCompile(`^protect_from_forgery$`),
+		regexp.MustCompile(`^skip_authorization_check$`),
+		regexp.MustCompile(`^verify_authenticity_token$`),
+		regexp.MustCompile(`^respond_with$`),
+		regexp.MustCompile(`^headers$`),
+		// ActiveSupport class macros and callbacks.
+		regexp.MustCompile(`^prepended$`),
+		regexp.MustCompile(`^class_attribute$`),
+		regexp.MustCompile(`^mattr_accessor$`),
+		regexp.MustCompile(`^mattr_reader$`),
+		regexp.MustCompile(`^mattr_writer$`),
+		regexp.MustCompile(`^cattr_accessor$`),
+		regexp.MustCompile(`^define_callbacks$`),
+		regexp.MustCompile(`^set_callback$`),
+		regexp.MustCompile(`^skip_callback$`),
+		// ActionDispatch middleware-stack DSL.
+		regexp.MustCompile(`^add_middleware$`),
+		regexp.MustCompile(`^delete_middleware$`),
+		regexp.MustCompile(`^insert_before$`),
+		regexp.MustCompile(`^insert_after$`),
 	}
 
 	jvmDynamicPatterns = []*regexp.Regexp{
