@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://archigraph.dev/schemas/enrichment-candidates-v2.json",
+  "title": "enrichment-candidates.json (v2)",
+  "description": "On-disk format for <repo>/.archigraph/enrichment-candidates.json. Extends v1 (internal/enrichment/candidates.go) with the repair_edge kind required by ADR-0015. v1 readers may safely skip-by-kind on unknown kinds.",
+  "type": "object",
+  "required": ["schema_version", "candidates"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Bumped from 1 -> 2 by ADR-0015. The constant matches CandidatesSchemaVersion in internal/enrichment/candidates.go."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 UTC timestamp of the index run that produced this file."
+    },
+    "repo_id": {
+      "type": "string",
+      "description": "Stable repo identifier used by the indexer (e.g. cross-repo namespace from ADR-0009)."
+    },
+    "candidates": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Candidate" }
+    }
+  },
+  "definitions": {
+    "Candidate": {
+      "type": "object",
+      "required": ["id", "kind", "subject_id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ec:[0-9a-f]{16}$",
+          "description": "Deterministic candidate ID. For repair_edge candidates the ID is derived from edge_id; see context.edge_id."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "describe_entity",
+            "classify_domain",
+            "infer_xlang_call",
+            "summarize_api",
+            "flag_dead_code",
+            "describe_role",
+            "repair_edge"
+          ]
+        },
+        "subject_id": {
+          "type": "string",
+          "description": "Local entity id (NOT prefixed with repo). For repair_edge candidates this is the from_entity id."
+        },
+        "context": {
+          "type": "object",
+          "description": "Kind-specific payload. For kind=repair_edge see RepairEdgeContext.",
+          "additionalProperties": true
+        },
+        "prompt_template": { "type": "string" },
+        "confidence_floor": { "type": "number", "minimum": 0, "maximum": 1 },
+        "discovered_at": { "type": "string", "format": "date-time" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "repair_edge" } } },
+          "then": {
+            "properties": {
+              "context": { "$ref": "#/definitions/RepairEdgeContext" }
+            },
+            "required": ["context"]
+          }
+        }
+      ]
+    },
+    "RepairEdgeContext": {
+      "type": "object",
+      "required": [
+        "edge_id",
+        "from_entity",
+        "relation",
+        "original_stub",
+        "disposition_reason"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "edge_id": {
+          "type": "string",
+          "pattern": "^er:[0-9a-f]{16}$",
+          "description": "sha256(from_id || relation || original_stub)[:16] prefixed with 'er:'. Stable across runs while the source line stays put; mutates when from_entity's content hash changes (this is the staleness signal)."
+        },
+        "from_entity": {
+          "type": "object",
+          "required": ["id", "kind", "name", "file"],
+          "properties": {
+            "id": { "type": "string" },
+            "kind": { "type": "string", "description": "SCOPE entity kind per ADR-0003." },
+            "name": { "type": "string" },
+            "file": { "type": "string", "description": "Repo-relative POSIX path." },
+            "line": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "relation": {
+          "type": "string",
+          "enum": ["CALLS", "EXTENDS", "IMPLEMENTS", "IMPORTS", "READS", "WRITES", "REFERENCES"]
+        },
+        "original_stub": {
+          "type": "string",
+          "description": "The unbound target string the resolver produced (e.g. 'Kind:Name', 'pkg.func', bare name)."
+        },
+        "disposition_reason": {
+          "type": "string",
+          "description": "Stable enum tag indicating *why* the resolver couldn't bind. Values produced by internal/resolve/refs.go classification.",
+          "examples": [
+            "ambig-bare-hint-fail",
+            "ambig-bare-no-hint",
+            "dotted-other",
+            "bare-other",
+            "receiver-type-unknown",
+            "dynamic-url-other"
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "description": "Plausible local binding targets the agent can choose from. Present for bug-resolver dispositions, empty for bug-extractor.",
+          "items": {
+            "type": "object",
+            "required": ["entity_id", "hint"],
+            "properties": {
+              "entity_id": { "type": "string" },
+              "hint": { "type": "string", "description": "One-line label: kind + qualified name + file:line." },
+              "score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Heuristic match strength produced by the resolver." }
+            }
+          }
+        },
+        "context_window": {
+          "type": "object",
+          "description": "Source excerpt for agent reasoning. Window is centered on from_entity.line.",
+          "required": ["before", "line", "after"],
+          "properties": {
+            "before": { "type": "array", "items": { "type": "string" }, "description": "Lines preceding the call site (default: 25)." },
+            "line":   { "type": "string", "description": "The call-site line itself." },
+            "after":  { "type": "array", "items": { "type": "string" }, "description": "Lines following the call site (default: 25)." }
+          }
+        },
+        "extracted_metadata": {
+          "type": "object",
+          "description": "Resolver-extracted context the agent should consider.",
+          "additionalProperties": true,
+          "properties": {
+            "receiver_type": { "type": ["string", "null"] },
+            "file_imports": { "type": "array", "items": { "type": "string" } },
+            "surrounding_scope": { "type": ["string", "null"] },
+            "language": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

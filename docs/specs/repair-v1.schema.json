@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://archigraph.dev/schemas/repair-v1.json",
+  "title": "repair.json (v1)",
+  "description": "On-disk format for <repo>/.archigraph/repair.json. Written by an LLM-equipped agent via the MCP submit_repair tool (or hand-edited). Loaded by the indexer before disposition classification per ADR-0015. Sibling file to enrichment-resolutions.json.",
+  "type": "object",
+  "required": ["schema_version", "repairs"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last write timestamp. Atomically updated by submit_repair."
+    },
+    "repairs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Repair" }
+    }
+  },
+  "definitions": {
+    "Repair": {
+      "type": "object",
+      "required": ["edge_id", "resolution", "confidence", "reasoning", "source", "resolved_at"],
+      "additionalProperties": false,
+      "properties": {
+        "edge_id": {
+          "type": "string",
+          "pattern": "^er:[0-9a-f]{16}$",
+          "description": "Must match the edge_id from the corresponding repair_edge candidate. If the underlying source changes, edge_id changes, and this repair becomes stale (see repair_stats.json)."
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "bind_to_entity",
+            "reclassify_as_external",
+            "reclassify_as_dynamic",
+            "reclassify_as_resolved",
+            "abandon"
+          ],
+          "description": "Allowlisted resolution kinds per ADR-0015. New kinds require an ADR amendment."
+        },
+        "target_entity_id": {
+          "type": "string",
+          "description": "Required iff resolution == bind_to_entity. Must exist in the current graph document; otherwise the repair is rejected."
+        },
+        "module": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_\\-./]*$",
+          "description": "Required iff resolution == reclassify_as_external. Becomes the 'ext:<module>' endpoint suffix. No path traversal characters."
+        },
+        "new_target": {
+          "type": "string",
+          "description": "Required iff resolution == reclassify_as_resolved. The agent-supplied authoritative target string; the indexer treats it as already-resolved and skips re-resolution for this edge."
+        },
+        "dynamic_reason": {
+          "type": "string",
+          "description": "Required iff resolution == reclassify_as_dynamic. Short tag (e.g. 'env-var-route', 'celery-task-name')."
+        },
+        "abandon_reason": {
+          "type": "string",
+          "description": "Required iff resolution == abandon. Short tag for why no useful binding exists."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reasoning": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "One-sentence explanation. Stored verbatim on the resulting edge as the 'repair_reasoning' property."
+        },
+        "source": {
+          "type": "string",
+          "const": "agent-repair",
+          "description": "Always 'agent-repair' in v1. Future sources (manual-yaml, ci-rule) would land in v2 with their own ADR."
+        },
+        "resolved_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "resolution": { "const": "bind_to_entity" } } },
+          "then": { "required": ["target_entity_id"] }
+        },
+        {
+          "if": { "properties": { "resolution": { "const": "reclassify_as_external" } } },
+          "then": { "required": ["module"] }
+        },
+        {
+          "if": { "properties": { "resolution": { "const": "reclassify_as_resolved" } } },
+          "then": { "required": ["new_target"] }
+        },
+        {
+          "if": { "properties": { "resolution": { "const": "reclassify_as_dynamic" } } },
+          "then": { "required": ["dynamic_reason"] }
+        },
+        {
+          "if": { "properties": { "resolution": { "const": "abandon" } } },
+          "then": { "required": ["abandon_reason"] }
+        }
+      ]
+    }
+  }
+}
