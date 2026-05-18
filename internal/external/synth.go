@@ -826,6 +826,11 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 			return "function", true
 		}
 	}
+	if lang == "scala" {
+		if _, ok := scalaBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	if lang == "ruby" {
 		if _, ok := rubyBareNames[name]; ok {
 			return "function", true
@@ -2458,6 +2463,137 @@ var kotlinBareNames = map[string]struct{}{
 	"bodyAsText":   {},
 	"bodyAsBytes":  {},
 	"setBody":      {},
+}
+
+// scalaBareNames is the Scala-language-gated bare-name stop-list
+// (play-scala-starter bug-rate reduction). The Scala extractor strips
+// the receiver from a call (`Action { ... }` → `Action`,
+// `Future.successful(x)` → `successful`), and the resolver can't bind
+// the bare name to a local entity, so it lands in bug-extractor. The
+// names below are Play Framework controller/action DSL, Akka actor /
+// HTTP / Streams stdlib types, scala.concurrent / scala.util factory
+// constructors, and Guice DSL helpers that have a low collision rate
+// with user-defined identifiers in real Scala codebases.
+//
+// Conservative selection rule (lessons from #94 / #105 / #106):
+// generic Scala collection ops (`map`, `flatMap`, `filter`, `fold`,
+// `foreach`, `head`, `tail`, `get`, `getOrElse`, `size`, `isEmpty`)
+// are deliberately EXCLUDED — every Scala codebase has user methods
+// with those names and the language gate alone is not strong enough
+// to prevent shadowing real missing-resolution bugs. Likewise
+// `apply` is excluded — every Scala companion object defines one.
+var scalaBareNames = map[string]struct{}{
+	// Play Framework controller / action DSL (play.api.mvc.*). Receiver-
+	// stripped from `Action { ... }`, `Ok(...)`, `Redirect(...)`,
+	// `BadRequest(...)` etc. — the Play `Results` trait surface.
+	"Action":             {},
+	"Ok":                 {},
+	"BadRequest":         {},
+	"NotFound":           {},
+	"InternalServerError": {},
+	"Unauthorized":       {},
+	"Forbidden":          {},
+	"NoContent":          {},
+	"Created":            {},
+	"Accepted":           {},
+	"Redirect":           {},
+	"TemporaryRedirect":  {},
+	"MovedPermanently":   {},
+	"EssentialAction":    {},
+	"EssentialFilter":    {},
+	"Filter":             {},
+	"Request":            {},
+	"RequestHeader":      {},
+	"AnyContent":         {},
+	"AnyContentAsJson":   {},
+	"WrappedRequest":     {},
+	// Play form / routing helpers (play.api.data.*, play.api.routing.*).
+	"Forms":     {},
+	"mapping":   {},
+	"nonEmptyText": {},
+	"longNumber":  {},
+	"number":      {},
+	"optional":    {},
+
+	// Akka actor / stream / HTTP stdlib (akka.actor.*, akka.stream.*,
+	// akka.http.*). Distinctive Pascal-case types and a few high-volume
+	// builder constructors. Generic combinators (`map`, `via`,
+	// `runWith`) excluded — they collide with user code.
+	"ActorSystem":     {},
+	"ActorRef":        {},
+	"ActorContext":    {},
+	"Props":           {},
+	"Materializer":    {},
+	"ActorMaterializer": {},
+	"Source":          {},
+	"Sink":            {},
+	"Flow":            {},
+	"FlowShape":       {},
+	"SourceQueue":     {},
+	"BroadcastHub":    {},
+	"MergeHub":        {},
+	"Behaviors":       {},
+	"HttpRequest":     {},
+	"HttpResponse":    {},
+	"StatusCodes":     {},
+	"HttpEntity":      {},
+	"ContentTypes":    {},
+
+	// scala.concurrent / scala.util factory + companion-object methods
+	// commonly receiver-stripped (`Future(...)`, `Promise(...)`,
+	// `Future.successful(x)`, `Try(...)`). The bare type names are kept
+	// — companion-object call shape is the dominant Scala idiom.
+	"Future":          {},
+	"Promise":         {},
+	"Await":           {},
+	"ExecutionContext": {},
+	"Try":             {},
+	"Success":         {},
+	"Failure":         {},
+	"Some":            {},
+	"None":            {},
+	"Right":           {},
+	"Left":            {},
+	"Either":          {},
+	"successful":      {}, // Future.successful(_) → bare `successful`
+	"failed":          {}, // Future.failed(_)
+	// Note: `Option` is intentionally excluded — collides with user
+	// "option" types in many codebases. `Some`/`None` keep enough
+	// coverage for the common case.
+
+	// Guice DI DSL surface (com.google.inject.AbstractModule).
+	// `bind` and friends are receiver-stripped from `bind(classOf[X])`
+	// chains inside `configure()` overrides.
+	"bind":      {},
+	"toInstance": {},
+	"asEagerSingleton": {},
+	"in":        {}, // .in(classOf[Singleton])
+
+	// java.util.concurrent surface frequently used from Scala
+	// (Counter pattern in play-scala-starter uses `AtomicInteger
+	// .getAndIncrement()`).
+	"getAndIncrement": {},
+	"getAndDecrement": {},
+	"incrementAndGet": {},
+	"decrementAndGet": {},
+	"AtomicInteger":   {},
+	"AtomicLong":      {},
+	"AtomicReference": {},
+
+	// Play request/response builders.
+	"withHeaders":  {},
+	"withSession":  {},
+	"withCookies":  {},
+	"withBody":     {},
+	"as":           {}, // .as("application/json") on Result
+
+	// scalatest / scalatestplus matcher and lifecycle surface — gated
+	// to scala lang only. Names are distinctive enough (`PlaySpec`,
+	// `GuiceOneAppPerSuite`) to avoid user-method collisions.
+	"PlaySpec":              {},
+	"GuiceOneAppPerSuite":   {},
+	"GuiceOneServerPerTest": {},
+	"FakeRequest":           {},
 }
 
 // rubyBareNames is the Ruby-language-gated bare-name stop-list (issue
@@ -4855,6 +4991,31 @@ var knownExternalPackages = map[string]struct{}{
 	"org.testcontainers": {},
 	"io.micrometer":      {}, // metrics/observability used by Spring Boot
 	"ch.qos.logback":     {}, // default Spring Boot logger
+	// Scala ecosystem (play-scala-starter, Akka, scalatest, sbt, etc.).
+	// Both the language-namespace `scala` root and JVM-style dotted
+	// `org.*` / `com.*` roots are present so every `import` shape in a
+	// real Scala project routes to ExternalKnown via the dotted-path
+	// branch in classifyExternal. Multi-segment keys are preferred for
+	// `org.*` roots so they match the longest-prefix walk precisely.
+	"scala":                {}, // scala.concurrent.*, scala.util.*, scala.collection.*
+	"akka":                 {}, // akka.actor.*, akka.http.*, akka.stream.*
+	"play":                 {}, // play.api.* (Play Framework)
+	"sbt":                  {},
+	"cats":                 {}, // cats / cats-effect
+	"monix":                {},
+	"zio":                  {},
+	"shapeless":            {},
+	"slick":                {},
+	"doobie":               {},
+	"http4s":               {},
+	"finagle":              {},
+	"spray":                {},
+	"org.scalatest":        {},
+	"org.scalatestplus":    {},
+	"org.scalacheck":       {},
+	"org.scalamock":        {},
+	"org.specs2":           {},
+	"com.google.inject":    {}, // Guice — Play uses it for DI
 	// Ruby
 	"rails":        {},
 	"activerecord": {},
