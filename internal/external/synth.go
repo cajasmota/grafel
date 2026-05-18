@@ -8308,6 +8308,130 @@ var pythonBareNames = map[string]struct{}{
 	"BlockPlacement":             {},
 	"get_loc":                    {},
 	"get_indexer":                {},
+
+	// Wave-5 (private Django + MongoDB + Postgres + Celery + AWS stack
+	// corpus). Pulled from real bug-extractor / bug-resolver samples on
+	// the snapshot (~12.5% pre-wave bug rate). All names below
+	// arrive at the resolver as bare identifiers after the Python
+	// extractor strips the receiver from attribute calls
+	// (`collection.find_one(...)` → `find_one`,
+	// `s3.get_object(...)` → `get_object`,
+	// `task.apply_async(...)` → `apply_async`,
+	// `async_to_sync(view)(...)` → `async_to_sync`). Gated to
+	// lang=="python" so user methods in other languages are not shadowed
+	// (#94 safer-bias rule).
+	//
+	// Conservative selection rule (mirroring waves 3/4): include a name
+	// only when it is (a) high-frequency in real Python codebases AND
+	// (b) overwhelmingly an stdlib/library idiom rather than a plausible
+	// user-method on a domain type. Generic verbs deliberately EXCLUDED:
+	// `find`, `update`, `delete`, `insert`, `count`, `get`, `set`,
+	// `query`, `filter`, `save`, `commit`, `rollback`, `close`,
+	// `connect`, `flush`, `refresh`, `execute`. Cross-lang collisions
+	// EXCLUDED: `delay` (kotlin), `merge` (php), `render` (swift, php),
+	// `reverse` (js), `aggregate` (java, js — already in pythonBareNames
+	// above), `ObjectId` (already in stdlibBareNames).
+
+	// MongoDB collection ops (pymongo / motor / mongoengine). Receiver-
+	// stripped from `collection.find_one(...)` / `db.users.insert_many(...)`.
+	"find_one":               {},
+	"find_one_and_update":    {},
+	"find_one_and_delete":    {},
+	"find_one_and_replace":   {},
+	"update_one":             {},
+	"update_many":            {},
+	"delete_one":             {},
+	"delete_many":            {},
+	"insert_one":             {},
+	"insert_many":            {},
+	"bulk_write":             {},
+	"count_documents":        {},
+	"Decimal128":             {},
+
+	// Celery task primitives. Receiver-stripped from
+	// `task.apply_async(...)`, `chord(...)`, etc. `delay` excluded
+	// (kotlin collision). `s` (signature shortcut) excluded as a
+	// single-letter generic. `chain` already present above.
+	"apply_async": {},
+	"si":          {},
+	"chord":       {},
+	"chunks":      {},
+	"revoke":      {},
+
+	// Boto3 / botocore client method names. Receiver-stripped from
+	// `s3.get_object(...)`, `sqs.send_message(...)`. These are the AWS
+	// API verbs and are not plausible user-method names on domain types.
+	"get_object":                {},
+	"put_object":                {},
+	"list_objects":              {},
+	"list_objects_v2":           {},
+	"delete_object":             {},
+	"head_object":               {},
+	"copy_object":               {},
+	"generate_presigned_url":    {},
+	"send_message":              {},
+	"receive_message":           {},
+	"delete_message":            {},
+	"change_message_visibility": {},
+	"create_bucket":             {},
+	"download_file":             {},
+	"upload_file":               {},
+	"download_fileobj":          {},
+	"upload_fileobj":            {},
+
+	// SQLAlchemy ORM bulk + eager-load helpers. Receiver-stripped from
+	// `session.add_all(...)`, `query.options(joinedload(...))`. Generic
+	// `flush` / `refresh` / `execute` deliberately excluded.
+	"add_all":               {},
+	"bulk_save_objects":     {},
+	"scalar":                {},
+	"scalars":               {},
+	"expunge":               {},
+	"bulk_insert_mappings":  {},
+	"bulk_update_mappings":  {},
+	"joinedload":            {},
+	"selectinload":          {},
+	"subqueryload":          {},
+	"contains_eager":        {},
+	"aliased":               {},
+
+	// asgiref sync/async bridge — heavy in Django Channels / DRF async
+	// codebases. Receiver-stripped from `asgiref.sync.async_to_sync(...)`.
+	"async_to_sync":          {},
+	"sync_to_async":          {},
+	"iscoroutinefunction":    {},
+	"markcoroutinefunction":  {},
+
+	// Django auth / permissions helpers. Receiver-stripped from
+	// `user.has_perm(...)`, `User.objects.make_random_password()`.
+	"make_random_password":   {},
+	"set_unusable_password":  {},
+	"has_perm":               {},
+	"has_perms":              {},
+	"get_all_permissions":    {},
+	"get_user_permissions":   {},
+	"get_group_permissions":  {},
+
+	// DRF / Django view + shortcut helpers. `get_object_or_404` was the
+	// #2 most-frequent bug-extractor sample on the wave-5 baseline.
+	// `redirect` already present (Flask DSL section above).
+	"get_context":             {},
+	"get_serializer":          {},
+	"get_serializer_class":    {},
+	"get_serializer_context":  {},
+	"get_object_or_404":       {},
+	"get_list_or_404":         {},
+	"reverse_lazy":            {},
+
+	// Wave-5 pass-3 residuals from the private-corpus bug-extractor sample.
+	// `order_by` is a Django QuerySet verb missed in wave-3 (alongside
+	// `filter` / `exclude` / `select_related`); receiver-stripped from
+	// `qs.order_by("-created")`. `permission` / `replace` deliberately
+	// excluded — `replace` collides with rust/js/swift maps, `permission`
+	// is too generic; domain-specific names are likewise excluded as
+	// they are not stdlib/library symbols. (`timedelta` is already
+	// claimed earlier in this map via #553.)
+	"order_by": {},
 }
 
 // cppBareNames is the C/C++-language-gated bare-name stop-list (issue
@@ -9147,6 +9271,58 @@ var knownExternalPackages = map[string]struct{}{
 	"langchain":              {},
 	"openai":                 {},
 	"anthropic":              {},
+	// Wave-5 (private Django + Mongo + Postgres + Celery + AWS real-world
+	// corpus). Python drivers and frameworks the resolver currently tags
+	// external-unknown on the wave-5 snapshot (~12.5% pre-wave bug
+	// rate). All names below are TOP-LEVEL Python package roots; dotted
+	// sub-paths (`celery.app`, `botocore.exceptions`, `asgiref.sync`)
+	// fold to their root via the resolver's first-segment canonicalisation
+	// (see line 408 above) and so do not need separate entries.
+	"mongoengine":              {}, // alt MongoDB ODM
+	"beanie":                   {}, // async MongoDB ODM (Pydantic v2)
+	"aiopg":                    {}, // async Postgres driver
+	"kombu":                    {}, // Celery message-transport lib
+	"billiard":                 {}, // Celery process pool fork
+	"amqp":                     {}, // AMQP protocol lib (Celery dep)
+	"aioredis":                 {}, // async Redis client
+	"botocore":                 {}, // AWS SDK low-level (boto3 dep)
+	"aiobotocore":              {}, // async botocore
+	"aioboto3":                 {}, // async boto3
+	"urllib3":                  {}, // HTTP lib (requests dep)
+	"requests_oauthlib":        {}, // OAuth for requests
+	"html5lib":                 {}, // HTML5 parser
+	// `markdown` deliberately OMITTED — collides with the local
+	// `examples/markdown` module in the express corpus and triggers
+	// a +0.61pp JS regression. The Python `markdown` renderer is not
+	// load-bearing in the wave-5 baseline either.
+	"asgiref":                  {}, // Django ASGI bridge (sync/async)
+	"daphne":                   {}, // ASGI server (Django Channels)
+	"channels":                 {}, // Django Channels (websockets/ASGI)
+	"authlib":                  {}, // OAuth/OIDC client+server lib
+	"social_auth_app_django":   {}, // python-social-auth Django backend
+	"django_allauth":           {}, // django-allauth (3rd-party auth)
+	"django_oauth_toolkit":     {}, // OAuth2 provider for Django
+	"rest_framework_simplejwt": {}, // DRF SimpleJWT
+	"drf_spectacular":          {}, // OpenAPI 3 for DRF
+	"drf_yasg":                 {}, // Swagger/OpenAPI for DRF
+	"django_filters":           {}, // django-filter (DRF filter backend)
+	"corsheaders":              {}, // django-cors-headers
+	"python_dateutil":          {}, // dateutil (PyPI dist name)
+	"pytz":                     {}, // tz database
+	// `factory` deliberately OMITTED — too generic across ecosystems
+	// (likely to shadow local `factory.js` / `factory.go` modules in
+	// other corpora). `factory_boy` (full name) is already on the
+	// allowlist above for the Python use-case.
+	// Wave-5 pass-3 residuals from the private-corpus bug-resolver sample
+	// (`csv`, `decimal`, `contextvars` are Python stdlib MODULES the
+	// resolver was tagging external-unknown because the allowlist had
+	// no top-level row for them; `django_celery_beat` is a real
+	// third-party Django app for periodic-task schedules).
+	"csv":                      {},
+	"decimal":                  {},
+	"contextvars":              {},
+	"django_celery_beat":       {},
+	"docx":                     {}, // python-docx (Word document gen)
 	// Python stdlib top-level
 	"os":              {},
 	"sys":             {},
