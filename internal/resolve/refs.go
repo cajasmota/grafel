@@ -462,6 +462,38 @@ var (
 		regexp.MustCompile("^require\\([^\"'`)]"),
 		regexp.MustCompile("^import\\([^\"'`)]"),
 		regexp.MustCompile(`^process\.env\.`), // env-driven (JS)
+		// Wave-4 (TS framework) — relative-import paths. The JS/TS
+		// extractor emits IMPORTS edges with the literal module string
+		// as ToID (e.g. `./cart-context`, `../fragments/cart`, `.`,
+		// `..`, `../..`). Every importing file produces its own
+		// SCOPE.Component import entity for the same module string, so
+		// bare-name lookup is ambiguous and the edge drives to
+		// bug-resolver despite the placeholder being bookkeeping rather
+		// than the imported symbol's source. Mirrors the Python relative-
+		// import pattern above (#432) and the
+		// `scope:component:import:local:` heuristic-scope-stub branch
+		// (which the cross-language imports extractor emits for the same
+		// shape). Pattern matches `.`, `..`, and any leading-`./`/`../`
+		// path; anchored to avoid biting bare identifiers.
+		regexp.MustCompile(`^\.{1,3}$`),
+		regexp.MustCompile(`^\.{1,2}/`),
+		// TS path-mapped local imports — tsconfig.json `baseUrl` /
+		// `paths` lets imports look like `components/grid` or
+		// `lib/shopify/types`. These are intra-repo (no leading dot, no
+		// leading `@scope`, no `node:` prefix, no package dot-domain
+		// like `next.js`) and the extractor emits one SCOPE.Component
+		// per importing file, producing the same ambig-bare-no-hint
+		// disposition as relative paths. Restrict to multi-segment
+		// paths whose first segment is a common TS-monorepo source root
+		// (`src`, `app`, `lib`, `components`, `pages`, `hooks`,
+		// `utils`, `helpers`, `services`, `store`, `styles`, `types`,
+		// `config`, `constants`, `features`, `modules`, `domain`,
+		// `data`, `api`, `server`, `client`, `shared`, `core`,
+		// `common`, `models`, `views`, `controllers`, `middleware`,
+		// `tests`, `test`, `__tests__`, `__mocks__`, `routes`). The
+		// per-language gate (js/ts only) keeps these names from
+		// shadowing real go/python/etc. modules with the same prefix.
+		regexp.MustCompile(`^(src|app|lib|components|pages|hooks|utils|helpers|services|store|styles|types|config|constants|features|modules|domain|data|api|server|client|shared|core|common|models|views|controllers|middleware|tests|test|__tests__|__mocks__|routes)/`),
 		// JS reflective `Function.prototype.{bind,apply,call}` is real, but
 		// the bare `.bind(` / `.apply(` / `.call(` patterns collide with too
 		// many domain methods (DB driver `bind`, `discount.apply(order)`,
