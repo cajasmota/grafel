@@ -1,5 +1,35 @@
 package links
 
+import "strings"
+
+// isBareNameExt reports whether id is a bare-name external placeholder
+// of the form "ext:<name>" with no module qualifier (no second ":" after
+// the prefix). These placeholders are emitted when the extractor sees an
+// unresolved bare identifier (e.g. `[].filter()`, `array.split(...)`) and
+// the external synthesiser has no module path to attach. Two repos that
+// each independently call `[].filter()` therefore both end up pointing
+// edges at the same `ext:filter` placeholder, which is NOT a real
+// cross-repo reference — it is each repo's own use of a built-in.
+//
+// Qualified placeholders of the form "ext:<module>:<name>" carry real
+// module identity (e.g. `ext:react:useState`) and remain eligible for
+// cross-repo linking.
+//
+// Issue #509: bare-name ext:* matches produced 100% false-positive
+// cross-repo links on the client-private group (1,114 of 1,114). Filtering
+// these out is the precision fix.
+func isBareNameExt(id string) bool {
+	const prefix = "ext:"
+	if !strings.HasPrefix(id, prefix) {
+		return false
+	}
+	rest := id[len(prefix):]
+	if rest == "" {
+		return true // pathological "ext:" — also bare/empty.
+	}
+	return !strings.Contains(rest, ":")
+}
+
 // runImportPass implements P1: structural cross-repo imports/calls edges.
 //
 // Idempotent overwrite: every link previously emitted with method=import is
@@ -42,6 +72,15 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 			}
 			if fromRepo == toRepo {
 				// Self-pair: not a cross-repo edge.
+				continue
+			}
+			// Issue #509: bare-name ext:* placeholders (e.g. "ext:filter",
+			// "ext:split") are each repo's own unresolved use of a built-in
+			// or stdlib bare identifier. Two repos pointing at the same
+			// placeholder ID does NOT mean they share a real symbol — only
+			// qualified "ext:<module>:<name>" forms carry that guarantee.
+			// Skip either side being a bare-name ext: placeholder.
+			if isBareNameExt(edge.FromID) || isBareNameExt(edge.ToID) {
 				continue
 			}
 			source := entityKey(fromRepo, edge.FromID)
