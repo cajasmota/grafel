@@ -2186,17 +2186,19 @@ func (idx Index) lookupLocationKind(filePath, name string, families []string) (s
 }
 
 // looksLikeSourceFilePath reports whether s has the shape of a source
-// code file path — a forward-slashed path ending in one of the
+// code file path — a path (possibly basename-only) ending in one of the
 // well-known per-language extensions. Used by classifyDispositionLang
 // to route IMPORTS-edge FromIDs (which every language extractor sets
 // to the importing file's path) into DispositionDynamic rather than
 // DispositionBugExtractor.
 //
-// Conservative checks: must contain at least one '/', must NOT contain
-// ':' (would be a structural-ref), must NOT start with '/' (absolute
-// system paths are not extractor-emitted, and disqualifying them keeps
-// us from accepting accidental Unix paths that escaped a higher
-// layer), and must end with one of the catalogued source extensions.
+// Conservative checks: must NOT contain ':' (would be a structural-ref),
+// must NOT start with '/' (absolute system paths are not extractor-emitted,
+// and disqualifying them keeps us from accepting accidental Unix paths
+// that escaped a higher layer), and must end with one of the catalogued
+// source extensions. Basename-only paths are accepted so root-level
+// files (e.g. Package.swift, root main.go, root index.ts) do not get
+// misclassified as bug-extractor noise — issue #491.
 //
 // The extension list is intentionally narrow — only extensions actively
 // used by the per-language extractors that emit IMPORTS edges with a
@@ -2208,13 +2210,12 @@ func looksLikeSourceFilePath(s string) bool {
 	if strings.ContainsAny(s, ": \\") {
 		return false
 	}
-	if !strings.ContainsRune(s, '/') {
-		return false
-	}
 	// Compare against the small allowlist of source-file extensions
 	// the IMPORTS-emitting extractors actually use. Adding new
 	// languages here is a one-line change in lockstep with the
-	// extractor that introduces the new extension.
+	// extractor that introduces the new extension. Basename-only
+	// inputs (no '/') are accepted — root-level files are real source
+	// files and must not be classified as bug-extractor output.
 	for _, ext := range sourceFileExtensions {
 		if strings.HasSuffix(s, ext) {
 			return true
