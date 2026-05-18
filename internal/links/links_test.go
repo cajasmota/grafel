@@ -167,6 +167,87 @@ func TestLabelPass_HighConfidenceForRareLabel(t *testing.T) {
 	}
 }
 
+func TestLabelPass_LineNumberKeyedLabelsDropped(t *testing.T) {
+	// Regression for #511. Labels whose final segment is a bare integer
+	// (e.g. `error_handling:try_catch:110`) are line-number-keyed and
+	// must not produce cross-repo links — line-number coincidence is not
+	// signal.
+	root := fixtureRoot(t)
+	mkNoise := func(prefix string, n int) []map[string]any {
+		out := []map[string]any{}
+		for i := 0; i < n; i++ {
+			out = append(out, map[string]any{
+				"id":          prefix + "n" + itoa(i),
+				"name":        prefix + "_unique_" + itoa(i),
+				"kind":        "function",
+				"source_file": "f.py",
+			})
+		}
+		return out
+	}
+	a := append(mkNoise("a_", 30),
+		map[string]any{"id": "a1", "name": "error_handling:try_catch:110", "kind": "block", "source_file": "src/a.go"},
+		map[string]any{"id": "a2", "name": "AGENTS.md", "kind": "file", "source_file": "AGENTS.md"},
+		map[string]any{"id": "a3", "name": "route:/users/{id}", "kind": "route", "source_file": "src/r.go"},
+	)
+	b := append(mkNoise("b_", 30),
+		map[string]any{"id": "b1", "name": "error_handling:try_catch:110", "kind": "block", "source_file": "lib/b.py"},
+		map[string]any{"id": "b2", "name": "AGENTS.md", "kind": "file", "source_file": "AGENTS.md"},
+		map[string]any{"id": "b3", "name": "route:/users/{id}", "kind": "route", "source_file": "lib/r.py"},
+	)
+	writeFixture(t, root, fixtureGraph{Repo: "alpha", Entities: a})
+	writeFixture(t, root, fixtureGraph{Repo: "beta", Entities: b})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g511", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g511-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keptFile, keptRoute bool
+	for _, l := range doc.Links {
+		if l.Method != MethodLabelMatch || l.Identifier == nil {
+			continue
+		}
+		id := *l.Identifier
+		if strings.HasPrefix(id, "error_handling:try_catch:") {
+			t.Errorf("line-number-keyed label produced a link: %+v", l)
+		}
+		if id == "agents.md" {
+			keptFile = true
+		}
+		if id == "route:/users/{id}" {
+			keptRoute = true
+		}
+	}
+	if !keptFile {
+		t.Errorf("expected filename label `agents.md` to still produce a link, got %+v", doc.Links)
+	}
+	if !keptRoute {
+		t.Errorf("expected structural label `route:/users/{id}` to still produce a link, got %+v", doc.Links)
+	}
+}
+
+func TestNormalizeLabel_DropsLineNumberSuffix(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"error_handling:try_catch:110", ""},
+		{"error_handling:try_catch:1", ""},
+		{"route:42", ""},
+		{"agents.md", "agents.md"},
+		{"route:/users/{id}", "route:/users/{id}"},
+		{"OrderBook", "orderbook"},
+	}
+	for _, tc := range cases {
+		if got := normalizeLabel(tc.in); got != tc.want {
+			t.Errorf("normalizeLabel(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestKindCompat_ClassInterface(t *testing.T) {
 	if got := kindCompat("class", "interface"); got != 0.85 {
 		t.Errorf("class↔interface: want 0.85, got %v", got)
