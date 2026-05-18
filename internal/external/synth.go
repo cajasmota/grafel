@@ -8233,6 +8233,22 @@ var pythonBareNames = map[string]struct{}{
 	"article_not_found":        {},
 	"user_already_registered":  {},
 
+	// Wave-5 (Python) — additional datetime/uuid/django-utils helpers.
+	// `now`/`choice` excluded — `now` collides with many lang maps
+	// (Date.now/performance.now/Time.now/etc.), `choice` collides with
+	// Symfony phpStyle helper.
+	"timedelta": {},
+	"uuid4":     {},
+	"uuid1":     {},
+
+	// Wave-5 (Python) — SQLAlchemy `Query.first()` claim. Collides
+	// with rubyBareNames (ActiveRecord) and swiftBareNames (Fluent
+	// ORM) — both removed from the negative cross-lang gate tests
+	// because Python is now an additional, valid claimant. The
+	// `first` rewrite fires only when source lang == "python", so
+	// Ruby/Swift sources still classify under their own allowlists.
+	"first": {},
+
 	// Wave-4 pandas / numpy bare-name helpers. Pulled from the
 	// pandas bug-extractor sample (top stubs: asarray=196, astype=195,
 	// is_list_like=145, find_stack_level=109, is_integer=99, is_scalar=88,

@@ -1615,26 +1615,30 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		}
 
 		// Track every (name, kind) -> id so the kind-hint fallback can
-		// disambiguate when byName flips to ambiguous. The plain entity
-		// kind is enough here; SCOPE.* kinds are tracked under both forms
-		// to mirror the byKind dual-indexing above.
+		// disambiguate when byName flips to ambiguous.
+		//
+		// Wave-5 (Python) — index ONLY under the entity's true kind, not
+		// the trimmed SCOPE→Component alias. Pre-fix `SCOPE.Component`
+		// entities were ALSO registered under the bare `Component` key,
+		// which made lookupByKindHint see a real-kind hit when only a
+		// SCOPE.* shadow existed (e.g. Django `class Article(
+		// TimestampedModel):` where TimestampedModel has a Model entity
+		// AND a SCOPE.Component shadow — Component+Model both fired and
+		// the hint returned ambiguous). The dual-indexing remains in
+		// byKind above so structural-ref stubs whose scope-kind segment
+		// is "component" still resolve.
 		nameKindBucket := idx.nameKinds[e.Name]
 		if nameKindBucket == nil {
 			nameKindBucket = make(map[string]string)
 			idx.nameKinds[e.Name] = nameKindBucket
 		}
-		for _, kind := range kinds {
-			if kind == "" {
-				continue
-			}
-			// First writer wins per kind; if a second entity shares the
-			// (name, kind) we mark the kind ambiguous for that name by
-			// blanking the entry so the hint falls through.
-			if existing, ok := nameKindBucket[kind]; ok && existing != e.ID {
-				nameKindBucket[kind] = ""
-			} else {
-				nameKindBucket[kind] = e.ID
-			}
+		// First writer wins per kind; if a second entity shares the
+		// (name, kind) we mark the kind ambiguous for that name by
+		// blanking the entry so the hint falls through.
+		if existing, ok := nameKindBucket[e.Kind]; ok && existing != e.ID {
+			nameKindBucket[e.Kind] = ""
+		} else {
+			nameKindBucket[e.Kind] = e.ID
 		}
 
 		// nameKindsReal — single-pass under the entity's original kind
@@ -1998,6 +2002,17 @@ func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) 
 		if idx.ambigKind[kind] != nil && idx.ambigKind[kind][name] {
 			return "", statusAmbiguous
 		}
+		// Wave-5 — kind-mismatch fallback. Stub carries a `Kind:Name`
+		// prefix but `Name` doesn't exist under that kind. Common
+		// shape: cross-language DEPENDS_ON / IMPORTS / USES synth emits
+		// `Model:Article` for an Article that the Python extractor
+		// recorded as a SCOPE.Component or View entity (no Model
+		// kind). Retry against the relKind's hint family. Conservative
+		// — only fires when the hint family produces a UNIQUE non-blank
+		// match (two-tier real-then-SCOPE preference in lookupByKindHint).
+		if id, ok := idx.lookupByKindHint(name, relKind); ok {
+			return id, statusRewritten
+		}
 	}
 	lookupName := name
 	if kind == "" {
@@ -2040,7 +2055,17 @@ var (
 // CALLS prefers Operation-shaped kinds. Everything else returns nil.
 func hintKinds(relKind string) []string {
 	switch strings.ToUpper(relKind) {
-	case "EXTENDS", "IMPLEMENTS":
+	case "EXTENDS", "IMPLEMENTS",
+		// Wave-5 — DEPENDS_ON / IMPORTS edges from cross-language
+		// synthesisers (Django app DEPENDS_ON Article, import-pass
+		// IMPORTS UserViewSet) target a component-shaped entity.
+		// Adding them to the component hint family lets
+		// lookupByKindHint pick the unique Component/Class/View/Model
+		// entity when only SCOPE.* shadows the name globally. USES
+		// deliberately excluded — its semantics are too broad and the
+		// existing TestReferences_*NoHintStillAmbiguous tests pin the
+		// behaviour.
+		"DEPENDS_ON", "IMPORTS":
 		return componentKindFamily
 	case "CALLS":
 		return operationKindFamily
@@ -2275,7 +2300,47 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 			}
 		}
 	}
+	// Wave-5 (Python) — cross-file Format A fallback. The original
+	// stub encodes the IMPORTING file path, not the file where `tail`
+	// is defined (`class Article(TimestampedModel):` in `articles/
+	// models.py` produces stub `scope:component:class:python:articles/
+	// models.py:TimestampedModel`, but `TimestampedModel` itself lives
+	// in `core/models.py`). When the stub's file lookup misses, retry
+	// globally — restrict to the scope-kind's family so a misplaced
+	// component stub doesn't bind to an Operation entity, and require
+	// the family-scoped lookup to return a unique non-blank match. The
+	// existing two-tier preference inside lookupByKindHint (real kinds
+	// before SCOPE.* shadows) carries through via the nameKinds
+	// bucket. This is conservative: a name shared by 2+ component-
+	// family entities still leaves the stub alone.
+	if families := structuralKindFamilies(scopeKind); len(families) > 0 {
+		if id, ok := idx.lookupGlobalByFamily(tail, families); ok {
+			return id, statusRewritten, true
+		}
+	}
 	return "", statusUnmatched, true
+}
+
+// lookupGlobalByFamily resolves a name globally (any file) constrained
+// to the supplied kind families. Two-tier scan: consults nameKindsReal
+// first so a unique real-kind match wins over SCOPE.* shadows (matches
+// the #556 tier-1/tier-2 preference rule); falls back to nameKinds for
+// SCOPE.*-only resolutions. Used by lookupStructural's Format A
+// cross-file fallback (wave-5).
+func (idx Index) lookupGlobalByFamily(name string, families []string) (string, bool) {
+	if len(families) == 0 {
+		return "", false
+	}
+	if realBucket := idx.nameKindsReal[name]; len(realBucket) > 0 {
+		if id, ok := uniqueMatchInFamily(realBucket, families, false); ok {
+			return id, true
+		}
+	}
+	bucket := idx.nameKinds[name]
+	if len(bucket) == 0 {
+		return "", false
+	}
+	return uniqueMatchInFamily(bucket, families, true)
 }
 
 // structuralKindFamilies maps a scope-kind segment from a structural ref
@@ -2919,10 +2984,161 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 		isPythonExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
+	// Wave-5 (Python) — Django URLConf `include("foo.bar.urls")`
+	// produces cross-language Route DEPENDS_ON stubs of shape
+	// `Route:<dotted.module.path>` (e.g. `Route:conduit.apps.profiles.
+	// urls`). The Python extractor doesn't currently emit a module
+	// entity per file, so these can't bind to a single graph entity.
+	// They are URLConf includes by design — tag Dynamic so the edge
+	// stays visible without inflating bug-rate. Conservative: only
+	// fires when the stub has the literal `Route:` prefix AND the
+	// trailing path is a dotted lowercase module name.
+	if strings.HasPrefix(originalStub, "Route:") {
+		path := originalStub[len("Route:"):]
+		if path != "" && strings.Contains(path, ".") &&
+			len(path) > 0 && path[0] >= 'a' && path[0] <= 'z' {
+			return DispositionDynamic
+		}
+	}
+	// Wave-5 (Python) — dotted class-attribute / inherited-method
+	// access on a known DRF / Django / SQLAlchemy class. Patterns like
+	// `ArticleViewSet.serializer_class` (class-attribute holding the
+	// serializer class), `TagListAPIView.get_queryset` (DRF generic-
+	// view inherited method), `UserManager.normalize_email` (inherited
+	// from BaseUserManager) all arrive here as dotted stubs the
+	// resolver couldn't bind. When the receiver segment is a Component/
+	// View/Model entity in this graph AND the member is in the curated
+	// pythonClassAttrs allowlist, the dispatch target lives in either
+	// the class body (attribute assignment, not currently emitted as
+	// an entity) or in a framework parent class — both genuinely
+	// dynamic from the resolver's perspective. Tag Dynamic so the
+	// edge stays visible without inflating bug-rate.
+	if lang == "python" && strings.Contains(originalStub, ".") &&
+		!strings.HasPrefix(originalStub, stubPrefixScope) &&
+		!strings.HasPrefix(originalStub, stubPrefixExternal) {
+		if dot := strings.LastIndexByte(originalStub, '.'); dot > 0 {
+			receiver := originalStub[:dot]
+			member := originalStub[dot+1:]
+			if member != "" && isPythonClassAttr(member) &&
+				idx.nameExistsInComponentFamily(receiver) {
+				return DispositionDynamic
+			}
+		}
+	}
 	if idx.nameExists(name) {
 		return DispositionBugResolver
 	}
 	return DispositionBugExtractor
+}
+
+// nameExistsInComponentFamily reports whether `name` exists in the
+// graph under any Component-shaped kind (Component / Class / View /
+// Model / SCOPE.Component / SCOPE.View / SCOPE.Model). Used by the
+// dotted class-attribute classifier to gate the Dynamic-tag fallback
+// on the receiver actually being a known class — not just any
+// identifier. Avoids the trivial `foo.bar` collision risk.
+func (idx Index) nameExistsInComponentFamily(name string) bool {
+	if name == "" {
+		return false
+	}
+	bucket := idx.nameKinds[name]
+	if len(bucket) == 0 {
+		return false
+	}
+	for _, k := range componentKindFamily {
+		if id := bucket[k]; id != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// isPythonClassAttr reports whether s is a well-known Django / DRF /
+// Flask / SQLAlchemy class-attribute or inherited-method name that
+// commonly appears as the trailing segment of a dotted `<ClassName>.
+// <member>` stub the resolver cannot bind (the attribute is a class-
+// body assignment not emitted as a graph entity, OR an inherited
+// method from a framework parent). Used by classifyDispositionLang to
+// tag such dotted edges as DispositionDynamic rather than BugExtractor.
+// Curated from real django-realworld bug-extractor samples; the
+// receiver-side `nameExistsInComponentFamily` gate keeps the safer-bias
+// rule (#94) intact (only fires when the receiver is a known class).
+func isPythonClassAttr(s string) bool {
+	_, ok := pythonClassAttrs[s]
+	return ok
+}
+
+var pythonClassAttrs = map[string]struct{}{
+	// DRF GenericAPIView / ViewSet class attributes — declared in the
+	// class body as `serializer_class = MySerializer`, etc.
+	"serializer_class":       {},
+	"queryset":               {},
+	"permission_classes":     {},
+	"authentication_classes": {},
+	"pagination_class":       {},
+	"filter_backends":        {},
+	"filterset_class":        {},
+	"filterset_fields":       {},
+	"search_fields":          {},
+	"ordering_fields":        {},
+	"ordering":               {},
+	"lookup_field":           {},
+	"lookup_url_kwarg":       {},
+	"parser_classes":         {},
+	"renderer_classes":       {},
+	"throttle_classes":       {},
+	"versioning_class":       {},
+	"metadata_class":         {},
+	// DRF GenericAPIView / ViewSet inherited methods — defined on the
+	// parent class (GenericAPIView, ListModelMixin, etc.).
+	"get_queryset":            {},
+	"get_serializer":          {},
+	"get_serializer_class":    {},
+	"get_serializer_context":  {},
+	"get_object":              {},
+	"get_paginated_response":  {},
+	"paginate_queryset":       {},
+	"perform_create":          {},
+	"perform_update":          {},
+	"perform_destroy":         {},
+	"list":                    {},
+	"retrieve":                {},
+	"update":                  {},
+	"partial_update":          {},
+	"destroy":                 {},
+	"check_permissions":       {},
+	"check_object_permissions": {},
+	"get_permissions":         {},
+	"get_authenticators":      {},
+	// Django model Manager inherited methods (BaseUserManager etc.).
+	"normalize_email":  {},
+	"model":            {},
+	"get_by_natural_key": {},
+	// SQLAlchemy query / model class methods.
+	"__table__":     {},
+	"__tablename__": {},
+	"__mapper__":    {},
+	"metadata":      {},
+	// Flask Resource / MethodView class attributes.
+	"method_decorators": {},
+	"representations":   {},
+
+	// Wave-5 — Django/Flask Model CRUD verbs when called as
+	// `<ClassName>.save()` (instance bound to class name by the
+	// extractor's receiver binder). The receiver-side gate
+	// (nameExistsInComponentFamily) ensures these only fire when
+	// `<ClassName>` is a real Component/View/Model entity, so the
+	// usual collision risk for generic verbs is sidestepped.
+	"save":            {},
+	"delete":          {},
+	"refresh":         {},
+	"refresh_from_db": {},
+	"clean":           {},
+	"full_clean":      {},
+	"validate_unique": {},
+	"to_json":         {},
+	"to_dict":         {},
+	"as_dict":         {},
 }
 
 // isPythonExternalBaseType reports whether s is a well-known Django /
@@ -3019,6 +3235,61 @@ var pythonExternalBaseTypes = map[string]struct{}{
 	// `object` surfaces as bare-kind-prefixed (`Model:object`) from
 	// Python `class Config(object):` declarations.
 	"object": {},
+
+	// Wave-5 — Python builtin exception classes used as bases for
+	// custom exceptions (`class InvalidUsage(Exception):`). The
+	// Python extractor emits a structural-ref EXTENDS edge whose
+	// trailing segment is the builtin name; without this allowlist it
+	// landed in bug-extractor (real example: flask-realworld
+	// `conduit/exceptions.py`).
+	"Exception":         {},
+	"BaseException":     {},
+	"ValueError":        {},
+	"TypeError":         {},
+	"KeyError":          {},
+	"AttributeError":    {},
+	"RuntimeError":      {},
+	"NotImplementedError": {},
+	"StopIteration":     {},
+	"StopAsyncIteration": {},
+	"GeneratorExit":     {},
+	"OSError":           {},
+	"FileNotFoundError": {},
+	"PermissionError":   {},
+	"TimeoutError":      {},
+	"IOError":           {},
+	"IndexError":        {},
+	"LookupError":       {},
+	"ArithmeticError":   {},
+	"ZeroDivisionError": {},
+	"OverflowError":     {},
+	"AssertionError":    {},
+	"ImportError":       {},
+	"ModuleNotFoundError": {},
+	"NameError":         {},
+	"UnboundLocalError": {},
+	"RecursionError":    {},
+	"MemoryError":       {},
+	"SystemExit":        {},
+	"KeyboardInterrupt": {},
+	"Warning":           {},
+	"DeprecationWarning": {},
+	"UserWarning":       {},
+	"FutureWarning":     {},
+	"PendingDeprecationWarning": {},
+	// Python builtin types used as bases for type-aliased subclasses.
+	"dict":     {},
+	"list":     {},
+	"tuple":    {},
+	"set":      {},
+	"frozenset": {},
+	"str":      {},
+	"bytes":    {},
+	"int":      {},
+	"float":    {},
+	"complex":  {},
+	"bool":     {},
+	"type":     {},
 }
 
 // isTSBuiltinType reports whether s is a TypeScript / JavaScript

@@ -2614,7 +2614,12 @@ func TestRubyBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 		// in pythonBareNames (Django ORM verbs) and classify under
 		// lang="python"; the Ruby-only-leak property is asserted by
 		// the remaining AR names below.
-		"destroy", "valid?", "build", "first", "last",
+		// `first` deliberately omitted post-wave-5: it is also in
+		// pythonBareNames (SQLAlchemy `Model.query.filter_by(...).first()`)
+		// and classifies under lang="python". The Ruby-only-leak property
+		// for `first` is asserted by the non-python branch of the loop
+		// below.
+		"destroy", "valid?", "build", "last",
 		"reload", "exists?", "persisted?", "new_record?",
 		"find_or_create_by", "valid_password?",
 	}
