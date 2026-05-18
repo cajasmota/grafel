@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/bash"
@@ -153,11 +154,24 @@ type ParseResult struct {
 }
 
 // ParserFactory creates tree-sitter parsers for supported languages.
-// Each Parse call allocates a fresh *sitter.Parser so the factory is
-// safe to use concurrently from multiple goroutines.
+//
+// Issue #481 — empirically, concurrent Parse() calls produced
+// non-deterministic output even though every goroutine uses its own
+// *sitter.Parser and *sitter.Tree (per-file ents counts on the SAME source
+// jumped between 0, 4, 5, etc. across runs on kickstart.nvim). The likely
+// culprit is shared state inside the bundled smacker/go-tree-sitter
+// grammar objects (the *sitter.Language pointers in languageRegistry are
+// shared across all parsers). Until that race is fixed upstream we
+// serialise the parse + node-walk via parseMu; correctness wins over the
+// per-file parallelism we lose, and the impact on real-world repos
+// dominated by I/O+extractor work is marginal.
 type ParserFactory struct {
 	tracer trace.Tracer
 }
+
+// parseMu serialises tree-sitter parse calls across goroutines. See the
+// ParserFactory godoc for the rationale.
+var parseMu sync.Mutex
 
 // NewParserFactory constructs a ParserFactory.
 // If tracer is nil, the global OTel tracer provider is used.
@@ -205,10 +219,14 @@ func (f *ParserFactory) Parse(ctx context.Context, source []byte, language strin
 		}, nil
 	}
 
+	// Issue #481 — serialise parse calls across goroutines (see
+	// ParserFactory godoc for the rationale).
+	parseMu.Lock()
 	p := sitter.NewParser()
 	p.SetLanguage(lang)
 
 	tree, err := p.ParseCtx(ctx, nil, source)
+	parseMu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("treesitter: parse failed for language %s: %w", language, err)
 	}

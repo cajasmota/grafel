@@ -17,6 +17,7 @@ package graph
 import (
 	"math"
 	"math/rand/v2"
+	"os"
 	"sort"
 	"time"
 
@@ -253,7 +254,7 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 	reduced := community.Modularize(und, 1.0, src)
 
 	groups := reduced.Communities()
-	overallQ := sanitizeFloat(community.Q(und, groups, 1.0))
+	overallQ := roundForDeterminism(sanitizeFloat(community.Q(und, groups, 1.0)))
 
 	communityOf := make(map[string]int, idx.next)
 	// Default every node into community -1; Modularize's Communities() lists
@@ -281,7 +282,15 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 			}
 			members = append(members, member{n.ID(), deg})
 		}
-		sort.Slice(members, func(i, j int) bool { return members[i].degree > members[j].degree })
+		// Issue #481 — degree ties were resolved by map-iteration order
+		// (g.Nodes / und.From); tiebreak on the gonum int64 node id so
+		// TopEntities is reproducible.
+		sort.SliceStable(members, func(i, j int) bool {
+			if members[i].degree != members[j].degree {
+				return members[i].degree > members[j].degree
+			}
+			return members[i].id < members[j].id
+		})
 
 		topN := 5
 		if topN > len(members) {
@@ -301,7 +310,7 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 		// containing only this group is meaningless; instead we expose this
 		// community's own size-weighted contribution to overall Q.
 		cQ := community.Q(und, [][]gonumgraph.Node{g}, 1.0)
-		cQ = sanitizeFloat(cQ)
+		cQ = roundForDeterminism(sanitizeFloat(cQ))
 
 		results = append(results, CommunityResult{
 			ID:          cid,
@@ -310,7 +319,14 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 			TopEntities: top,
 		})
 	}
-	sort.Slice(results, func(i, j int) bool { return results[i].Size > results[j].Size })
+	// Issue #481 — tiebreak Size-equal communities on the integer community
+	// id assigned by Modularize so result ordering is stable across runs.
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].Size != results[j].Size {
+			return results[i].Size > results[j].Size
+		}
+		return results[i].ID < results[j].ID
+	})
 	return results, communityOf, overallQ
 }
 
@@ -347,16 +363,42 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 		raw = network.Betweenness(g)
 	}
 	for nid, v := range raw {
-		betw[idx.fromInt[nid]] = sanitizeFloat(v)
+		betw[idx.fromInt[nid]] = roundForDeterminism(sanitizeFloat(v))
 	}
 
 	// PageRank requires a directed graph — use g directly. damping=0.85,
 	// tolerance=1e-6 per spec.
 	prRaw := network.PageRank(g, 0.85, 1e-6)
 	for nid, v := range prRaw {
-		pr[idx.fromInt[nid]] = sanitizeFloat(v)
+		pr[idx.fromInt[nid]] = roundForDeterminism(sanitizeFloat(v))
 	}
 	return betw, pr
+}
+
+// runtimeMSFor returns wall-clock milliseconds elapsed since start, or 0
+// when SOURCE_DATE_EPOCH is set so reproducible-builds mode (#481) emits a
+// stable byte stream.
+func runtimeMSFor(start time.Time) int64 {
+	if os.Getenv("SOURCE_DATE_EPOCH") != "" {
+		return 0
+	}
+	return time.Since(start).Milliseconds()
+}
+
+// roundForDeterminism rounds a gonum-derived score to 6 decimal digits.
+// Issue #481 — gonum's PageRank and Betweenness implementations iterate
+// over node maps internally, so tiny floating-point reorderings accumulate
+// to differences of ~1e-8 across runs of the same input. The PageRank
+// solver converges to a tolerance of 1e-6 (see the call site below), so
+// anything past the 6th decimal is noise of the same order as the
+// solver's own convergence guarantee. Rounding to 1e-6 keeps graph.json
+// byte-identical without losing actionable precision.
+func roundForDeterminism(v float64) float64 {
+	if v == 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		return v
+	}
+	const scale = 1e5
+	return math.Round(v*scale) / scale
 }
 
 // betwennessNodeCount is a tiny indirection so we can stub the cutoff in
@@ -390,7 +432,15 @@ func IdentifyGodNodes(betw, pr map[string]float64) map[string]bool {
 		for k, v := range m {
 			ps = append(ps, pair{k, v})
 		}
-		sort.Slice(ps, func(i, j int) bool { return ps[i].v > ps[j].v })
+		// Issue #481 — ties on score were resolved by map-iteration order,
+		// so the top-5% set flipped between runs. Stable sort with an ID
+		// tiebreaker pins the membership.
+		sort.SliceStable(ps, func(i, j int) bool {
+			if ps[i].v != ps[j].v {
+				return ps[i].v > ps[j].v
+			}
+			return ps[i].id < ps[j].id
+		})
 		k := len(ps) / 20 // 5%
 		if k == 0 && len(ps) > 0 {
 			k = 1
@@ -449,7 +499,18 @@ func ComputeSurpriseEdges(rels []Relationship, communityOf map[string]int) []Sur
 			Reason: "rare_cross_community_pair",
 		})
 	}
-	sort.Slice(scored, func(i, j int) bool { return scored[i].Score > scored[j].Score })
+	// Issue #481 — score ties were tiebroken by candidates-slice order,
+	// which inherits goroutine-scheduling order through rels. Tiebreak on
+	// (FromID, ToID) so the top-20 surface is reproducible.
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].Score != scored[j].Score {
+			return scored[i].Score > scored[j].Score
+		}
+		if scored[i].FromID != scored[j].FromID {
+			return scored[i].FromID < scored[j].FromID
+		}
+		return scored[i].ToID < scored[j].ToID
+	})
 	if len(scored) > 20 {
 		scored = scored[:20]
 	}
@@ -504,7 +565,18 @@ func IdentifyArticulationPoints(g *simple.WeightedDirectedGraph, idx *nodeIndex)
 		i    int
 		root bool
 	}
-	for start := range adj {
+	// Issue #481 — DFS root choice is observable in the articulation-point
+	// set (the root is an articulation point iff it has >= 2 DFS children,
+	// and the children we discover depend on neighbour ordering). Walk the
+	// adjacency map in deterministic order: keys sorted ascending, and each
+	// neighbour list sorted ascending so the DFS itself is reproducible.
+	keys := make([]int64, 0, len(adj))
+	for k := range adj {
+		sort.Slice(adj[k], func(a, b int) bool { return adj[k][a] < adj[k][b] })
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	for _, start := range keys {
 		if visited[start] {
 			continue
 		}
@@ -608,7 +680,10 @@ func RunAlgorithms(entities []Entity, rels []Relationship) *AlgorithmResults {
 			NumGodNodes:        len(gods),
 			NumArticulationPts: len(arts),
 			NumSurpriseEdges:   len(surprises),
-			RuntimeMS:          time.Since(start).Milliseconds(),
+			// Issue #481 — RuntimeMS is wall-clock and therefore varies run to
+			// run. When SOURCE_DATE_EPOCH is set (reproducible-builds mode)
+			// emit 0 so graph.json stays byte-stable.
+			RuntimeMS: runtimeMSFor(start),
 		},
 	}
 }

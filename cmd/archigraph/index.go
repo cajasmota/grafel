@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -166,6 +167,11 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	}
 
 	if !skipSet[PassBuildDocument] {
+		// Issue #481 — belt-and-braces final sort. Even with every fan-in
+		// already sorted, external.Synthesize appends placeholders and Pass 4
+		// attaches per-entity attributes via map lookups; resort by canonical
+		// IDs so the on-disk bytes are stable across runs of the SAME repo.
+		sortDocumentForEmission(doc)
 		if err := graph.WriteAtomic(outPath, doc, pretty); err != nil {
 			return err
 		}
@@ -176,7 +182,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		if doc.AlgorithmStats != nil {
 			side := &graph.GraphStatsSidecar{
 				Version:            1,
-				ComputedAt:         time.Now().UTC(),
+				ComputedAt:         deterministicGeneratedAt(),
 				TotalEntities:      doc.Stats.Entities,
 				TotalRelationships: doc.Stats.Relationships,
 				Communities:        doc.AlgorithmStats.NumCommunities,
@@ -384,6 +390,21 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// against the assembled Document and attach the per-entity attributes
 	// in-place. The pass is intentionally skippable for cheap CI smoke runs.
 	if !i.skipPasses[PassGraphAlgo] {
+		// Issue #481 — gonum's BuildGraph assigns int64 node ids in slice
+		// order, so sort entities/relationships on canonical ids before the
+		// pass. Louvain, betweenness, articulation points, and surprise
+		// edges all consume that mapping.
+		sort.SliceStable(doc.Entities, func(a, b int) bool { return doc.Entities[a].ID < doc.Entities[b].ID })
+		sort.SliceStable(doc.Relationships, func(a, b int) bool {
+			ra, rb := &doc.Relationships[a], &doc.Relationships[b]
+			if ra.FromID != rb.FromID {
+				return ra.FromID < rb.FromID
+			}
+			if ra.ToID != rb.ToID {
+				return ra.ToID < rb.ToID
+			}
+			return ra.Kind < rb.Kind
+		})
 		i.runPass4Algorithms(doc)
 	}
 
@@ -969,7 +990,18 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 				mu.Lock()
 				i.stats.processed++
 				if err != nil {
-					i.stats.failed++
+					// Issue #481 — distinguish "no extractor for this
+					// language" (a structural skip, e.g. .toml / .lock files
+					// classified but not yet supported) from real extractor
+					// failures. The former is consistent across runs but
+					// previously bumped the flaky `failed` counter; surface
+					// it under `skipped` so failed truly means a broken
+					// extraction.
+					if errors.Is(err, extractors.ErrNoExtractorForLanguage) {
+						i.stats.skipped++
+					} else {
+						i.stats.failed++
+					}
 				} else {
 					i.stats.extracted++
 					allRecords = append(allRecords, ents...)
@@ -983,6 +1015,12 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 		}()
 	}
 	wg.Wait()
+	// Issue #481 — worker-pool outputs accumulate in goroutine-scheduling
+	// order. Sort by canonical fields so downstream passes (BuildIndex
+	// first-writer-wins, dedup) see a stable slice and graph.json is
+	// byte-identical across runs.
+	sortClassifiedFiles(classified)
+	sortEntityRecords(allRecords)
 	return classified, allRecords
 }
 
@@ -1031,6 +1069,9 @@ func (i *Indexer) runPass25FrameworkRules(ctx context.Context, classified []clas
 		}()
 	}
 	wg.Wait()
+	// Issue #481 — deterministic ordering across runs.
+	sortEntityRecords(entities)
+	sortRelationshipRecords(rels)
 	return entities, rels, nil
 }
 
@@ -1097,6 +1138,8 @@ func (i *Indexer) runPass3CrossLang(ctx context.Context, classified []classified
 		}()
 	}
 	wg.Wait()
+	// Issue #481 — deterministic ordering across runs.
+	sortEntityRecords(out)
 
 	// After collecting raw cross-extractor output, resolve bare-name
 	// to_id references against the union of Pass 1 + Pass 2.5 + Pass 3
@@ -1128,6 +1171,11 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	merged = append(merged, pass1...)
 	merged = append(merged, pass2...)
 	merged = append(merged, pass3...)
+
+	// Issue #481 — the merged slice drives BuildIndex's first-writer-wins
+	// disambiguation. Sort by canonical fields so identically-named entities
+	// resolve to the same winner across runs of the SAME corpus.
+	sortEntityRecords(merged)
 
 	// Stamp deterministic entity IDs onto every record so the resolver can
 	// look them up by (kind, name).
@@ -1274,7 +1322,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 
 	return &graph.Document{
 		Version:        graph.SchemaVersion,
-		GeneratedAt:    time.Now().UTC(),
+		GeneratedAt:    deterministicGeneratedAt(),
 		Repo:           i.repoTag,
 		IndexerVersion: version.String(),
 		Stats: graph.Stats{
