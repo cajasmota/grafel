@@ -480,10 +480,12 @@ func TestExtract_Kubernetes_Component(t *testing.T) {
 	if !hasEntityWithName(svcs, "myapp-api") {
 		t.Error("expected SCOPE.Service named 'myapp-api'")
 	}
-	// Check QualifiedName contains the kind
+	// QualifiedName must be the file-scoped resource ref so CONTAINS
+	// edges from peers resolve via byQualifiedName (Refs #44).
+	wantQN := "k8s/k8s/deployment.yml#resource/Deployment/myapp-api"
 	for _, s := range svcs {
-		if s.Name == "myapp-api" && s.QualifiedName != "Deployment" {
-			t.Errorf("QualifiedName = %q, want %q", s.QualifiedName, "Deployment")
+		if s.Name == "myapp-api" && s.QualifiedName != wantQN {
+			t.Errorf("QualifiedName = %q, want %q", s.QualifiedName, wantQN)
 		}
 	}
 }
@@ -685,17 +687,20 @@ func TestFixture_Kubernetes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
-	// AC2: Deployment metadata.name → SCOPE.Service with QualifiedName="Deployment"
+	// AC2: Deployment metadata.name → SCOPE.Service. QualifiedName carries
+	// the file-scoped resource ref (Refs #44 — was kind name before; that
+	// broke CONTAINS edge resolution in argocd-style multi-manifest repos).
 	svcs := findEntitiesByKind(entities, "SCOPE.Service")
 	found := false
+	wantQN := "k8s/k8s/deployment.yml#resource/Deployment/myapp-api"
 	for _, s := range svcs {
-		if s.Name == "myapp-api" && s.QualifiedName == "Deployment" {
+		if s.Name == "myapp-api" && s.QualifiedName == wantQN {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Error("AC2: expected SCOPE.Service with Name='myapp-api' and QualifiedName='Deployment'")
+		t.Errorf("AC2: expected SCOPE.Service with Name='myapp-api' and QualifiedName=%q", wantQN)
 	}
 	// Containers → SCOPE.Component
 	containers := findEntitiesBySubtype(entities, "container")

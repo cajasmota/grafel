@@ -70,32 +70,35 @@ jobs:
 	contains := findRels(entities, "CONTAINS")
 	imports := findRels(entities, "IMPORTS")
 
-	// File → workflow CONTAINS the two jobs.
-	if !relExists(contains, "github_actions/workflow/CI", "github_actions/job/build") {
+	// File → workflow CONTAINS the two jobs. Refs are file-scoped to avoid
+	// QualifiedName collisions across workflows (Refs #44).
+	pfx := "github_actions/.github/workflows/ci.yml#"
+	if !relExists(contains, pfx+"workflow/CI", pfx+"job/build") {
 		t.Errorf("missing CONTAINS workflow→job(build); got %+v", contains)
 	}
-	if !relExists(contains, "github_actions/workflow/CI", "github_actions/job/lint") {
+	if !relExists(contains, pfx+"workflow/CI", pfx+"job/lint") {
 		t.Errorf("missing CONTAINS workflow→job(lint); got %+v", contains)
 	}
 
-	// job → step
-	if !relExists(contains, "github_actions/job/build", "github_actions/step/Checkout") {
+	// job → step (step ref includes job + position).
+	if !relExists(contains, pfx+"job/build", pfx+"step/build/0/Checkout") {
 		t.Errorf("missing CONTAINS job(build)→step(Checkout); got %+v", contains)
 	}
 
-	// job → action (uses)
-	if !relExists(contains, "github_actions/job/build", "github_actions/action/actions/checkout@v4") {
+	// job → action (uses; action ref includes job + position).
+	if !relExists(contains, pfx+"job/build", pfx+"action/build/0/actions/checkout@v4") {
 		t.Errorf("missing CONTAINS job(build)→action; got %+v", contains)
 	}
 
-	// IMPORTS: workflow file imports each unique action.
-	if !relExists(imports, ".github/workflows/ci.yml", "actions/checkout@v4") {
+	// IMPORTS: workflow file imports each unique action. ToID carries the
+	// "gha_action:" prefix consumed by external.synth (Refs #44).
+	if !relExists(imports, ".github/workflows/ci.yml", "gha_action:actions/checkout@v4") {
 		t.Errorf("missing IMPORTS file→actions/checkout@v4; got %+v", imports)
 	}
-	if !relExists(imports, ".github/workflows/ci.yml", "actions/setup-go@v5") {
+	if !relExists(imports, ".github/workflows/ci.yml", "gha_action:actions/setup-go@v5") {
 		t.Errorf("missing IMPORTS file→actions/setup-go@v5; got %+v", imports)
 	}
-	if !relExists(imports, ".github/workflows/ci.yml", "golangci/golangci-lint-action@v4") {
+	if !relExists(imports, ".github/workflows/ci.yml", "gha_action:golangci/golangci-lint-action@v4") {
 		t.Errorf("missing IMPORTS file→golangci-lint-action; got %+v", imports)
 	}
 
@@ -207,16 +210,18 @@ spec:
 
 	contains := findRels(entities, "CONTAINS")
 
-	// File → resource.
-	if !relExists(contains, "deploy.yml", "k8s/resource/web") {
+	// K8s refs are file-scoped (Refs #44).
+	kpfx := "k8s/deploy.yml#"
+	resWeb := kpfx + "resource/Deployment/web"
+	if !relExists(contains, "deploy.yml", resWeb) {
 		t.Errorf("missing CONTAINS file→resource(web); got %+v", contains)
 	}
 
 	// resource → containers.
-	if !relExists(contains, "k8s/resource/web", "k8s/container/app") {
+	if !relExists(contains, resWeb, kpfx+"container/app") {
 		t.Errorf("missing CONTAINS web→container(app); got %+v", contains)
 	}
-	if !relExists(contains, "k8s/resource/web", "k8s/container/sidecar") {
+	if !relExists(contains, resWeb, kpfx+"container/sidecar") {
 		t.Errorf("missing CONTAINS web→container(sidecar); got %+v", contains)
 	}
 }
@@ -378,10 +383,11 @@ spec:
 	}
 	imports := findRels(entities, "IMPORTS")
 
+	kpfx := "k8s/deploy.yml#"
 	cases := map[string]string{
-		"k8s/container/app":          "docker_image:nginx:1.21",
-		"k8s/container/sidecar":      "docker_image:envoy:v1.29.0",
-		"k8s/init-container/migrate": "docker_image:migrate:latest",
+		kpfx + "container/app":          "docker_image:nginx:1.21",
+		kpfx + "container/sidecar":      "docker_image:envoy:v1.29.0",
+		kpfx + "init-container/migrate": "docker_image:migrate:latest",
 	}
 	for from, want := range cases {
 		if !relExists(imports, from, want) {

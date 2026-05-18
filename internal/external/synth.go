@@ -294,6 +294,19 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		}
 	}
 
+	// Refs #44 — YAML extractor (GitHub Actions) emits step `uses:` refs as
+	// "gha_action:<org>/<repo>[/<subpath>]@<ref>". These live in the GitHub
+	// Actions marketplace, never in the indexed corpus, so route them to a
+	// single placeholder per action-repo (drop the version suffix). The
+	// "gha:" prefix is on the allowlist so all real action refs land in
+	// ExternalKnown.
+	if strings.HasPrefix(stub, "gha_action:") {
+		ref := strings.TrimSpace(stub[len("gha_action:"):])
+		if repo := ghaActionRepo(ref); repo != "" {
+			return "gha:" + repo, "gha_action", true
+		}
+	}
+
 	// Issue #424 — YAML extractor emits Compose host-filesystem mounts as
 	// "host_path:<path>". By definition these reference files outside the
 	// indexed corpus (relative `./src`, absolute `/etc/foo`, env-driven
@@ -3519,6 +3532,12 @@ func isKnownExternalPackage(s string) bool {
 	if strings.HasPrefix(lower, "docker:") {
 		return true
 	}
+	// Refs #44 — every "gha:<org>/<repo>" placeholder corresponds to a real
+	// GitHub Actions marketplace entry. Treat the entire gha namespace as
+	// allowlisted; ExternalKnown is the right disposition for action refs.
+	if strings.HasPrefix(lower, "gha:") {
+		return true
+	}
 	if _, ok := knownExternalPackages[lower]; ok {
 		return true
 	}
@@ -4199,6 +4218,47 @@ func dockerImageRepo(ref string) string {
 		return ""
 	}
 	return repo
+}
+
+// ghaActionRepo strips the @version/sha suffix from a GitHub Actions
+// `uses:` reference, returning the canonical action repo identity.
+//
+//	"actions/checkout@v4"                            → "actions/checkout"
+//	"docker/build-push-action@0565240e2d4ab88bba..." → "docker/build-push-action"
+//	"github/codeql-action/upload-sarif@v3"           → "github/codeql-action"
+//	"./.github/actions/local-action"                 → "" (local, not external)
+//
+// Local action paths (starting with `./` or `../`) live inside the corpus
+// and should NOT be lifted to external; returning "" makes the caller fall
+// through and the resolver treats them as in-corpus refs.
+//
+// Refs #44.
+func ghaActionRepo(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
+	}
+	// Local actions are in-corpus — skip.
+	if strings.HasPrefix(ref, "./") || strings.HasPrefix(ref, "../") {
+		return ""
+	}
+	// Docker actions are written `docker://image:tag` — already handled by
+	// the docker_image branch; defer to that path.
+	if strings.HasPrefix(ref, "docker://") {
+		return ""
+	}
+	// Strip the version pin (@v4, @sha, @branch).
+	if at := strings.IndexByte(ref, '@'); at >= 0 {
+		ref = ref[:at]
+	}
+	// Canonicalise to "<org>/<repo>"; collapse any subpath (e.g.
+	// "github/codeql-action/upload-sarif" → "github/codeql-action") so all
+	// uses of the same action repo land on one placeholder.
+	parts := strings.SplitN(ref, "/", 3)
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	return parts[0] + "/" + parts[1]
 }
 
 // isHexID mirrors resolve.isHexID — a 16-char lower-hex string is
