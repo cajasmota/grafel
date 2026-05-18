@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/cajasmota/archigraph/internal/external"
 )
 
 // lineNumberSuffix matches labels ending in `:<digits>` (e.g.
@@ -12,6 +14,223 @@ import (
 // coincidence across repos and produce noise-only matches in the
 // cross-repo label channel — see issue #511.
 var lineNumberSuffix = regexp.MustCompile(`:\d+$`)
+
+// destructuredTupleRE matches React useState destructure patterns of
+// the form `[varname, setvarname]` (already lowercased by the time we
+// see them). These are structural noise — universal React patterns,
+// not architectural concepts. See #565.
+var destructuredTupleRE = regexp.MustCompile(`^\[[a-z][a-z0-9_]*,\s*set[a-z][a-z0-9_]*\]$`)
+
+// destructuredObjectRE matches inline JS object destructure patterns
+// like `{ data }`, `{ id }`, `{ url, fields }`. These are pseudo-names
+// produced by extractors when an argument is an object literal
+// destructure — they describe the call shape, not an entity. #565.
+var destructuredObjectRE = regexp.MustCompile(`^\{\s*[a-z_][a-z0-9_, ]*\s*\}$`)
+
+// destructuredArrayRE matches inline JS array destructure patterns
+// like `[year, month, day]` (non-setX form). These are call-shape
+// pseudo-names, not architectural identifiers. #565.
+var destructuredArrayRE = regexp.MustCompile(`^\[\s*[a-z_][a-z0-9_, ]*\s*\]$`)
+
+// Note: a blanket prefix filter (e.g. drop everything starting with
+// `is`, `on`, `handle`, `use`, `get`, `set`) would over-filter — real
+// architectural cross-stack identifiers like `createInspectionDeficiency`
+// (backend DRF action ↔ frontend RTK Query hook) carry actual signal.
+// Instead, the universal-pattern names below are listed literally.
+
+// leadingNonAlpha matches any leading non-alphabetic characters used for
+// the length-after-strip filter (#565).
+var leadingNonAlpha = regexp.MustCompile(`^[^a-zA-Z]+`)
+
+// builtinLabelStopList covers stdlib idioms, JS array/object/string
+// methods, DOM/timer/React hook names, and Python builtins. Cross-repo
+// matches on these are pure coincidence — every codebase has them. See
+// issue #565.
+var builtinLabelStopList = map[string]struct{}{
+	// JS Array methods
+	"filter": {}, "map": {}, "reduce": {}, "foreach": {}, "some": {}, "every": {},
+	"sort": {}, "join": {}, "split": {}, "slice": {}, "splice": {}, "push": {},
+	"pop": {}, "shift": {}, "unshift": {}, "concat": {}, "includes": {},
+	"indexof": {}, "find": {}, "findindex": {}, "flat": {}, "flatmap": {},
+	"fill": {}, "copywithin": {},
+	// JS Object methods
+	"keys": {}, "values": {}, "entries": {}, "assign": {}, "freeze": {},
+	"create": {}, "fromentries": {},
+	// JS String methods
+	"replace": {}, "trim": {}, "padstart": {}, "padend": {}, "tolowercase": {},
+	"touppercase": {}, "charat": {}, "charcodeat": {}, "codepointat": {},
+	"startswith": {}, "endswith": {},
+	// JS Promise
+	"then": {}, "catch": {}, "finally": {}, "resolve": {}, "reject": {},
+	"all": {}, "race": {}, "allsettled": {}, "any": {},
+	// JS Math / Number
+	"min": {}, "max": {}, "round": {}, "floor": {}, "ceil": {}, "abs": {},
+	"pow": {}, "sqrt": {}, "log": {}, "sign": {},
+	// DOM events
+	"addeventlistener": {}, "removeeventlistener": {}, "dispatchevent": {},
+	"queryselector": {}, "queryselectorall": {}, "getelementbyid": {},
+	"createelement": {}, "appendchild": {}, "removechild": {},
+	// Timer
+	"cleartimeout": {}, "settimeout": {}, "setinterval": {}, "clearinterval": {},
+	"requestanimationframe": {}, "cancelanimationframe": {},
+	// React hooks
+	"usestate": {}, "useeffect": {}, "usecallback": {}, "usememo": {},
+	"useref": {}, "usecontext": {}, "usereducer": {}, "uselayouteffect": {},
+	// Python builtins
+	"len": {}, "str": {}, "int": {}, "float": {}, "bool": {}, "dict": {},
+	"tuple": {}, "frozenset": {}, "range": {}, "enumerate": {}, "zip": {},
+	"sorted": {}, "reversed": {}, "open": {}, "print": {}, "isinstance": {},
+	"hasattr": {}, "getattr": {}, "setattr": {}, "delattr": {}, "repr": {},
+	"vars": {}, "dir": {}, "callable": {},
+	// Common stdlib idioms
+	"encode": {}, "decode": {}, "parse": {}, "stringify": {}, "format": {},
+	"tostring": {}, "valueof": {}, "hashcode": {},
+	// Date/Number/JSON methods universally on every project.
+	"getdate": {}, "getmonth": {}, "getfullyear": {}, "gettime": {},
+	"getday": {}, "gethours": {}, "getminutes": {}, "getseconds": {},
+	"tofixed": {}, "toisostring": {}, "tolocaledatestring": {},
+	"tolocalestring": {}, "tolocaletimestring": {}, "tojson": {},
+	"parseint": {}, "parsefloat": {}, "isnan": {}, "isarray": {},
+	"isfinite": {}, "isinteger": {}, "isnull": {}, "isundefined": {},
+	"localecompare": {}, "lastindexof": {}, "preventdefault": {},
+	"stoppropagation": {}, "randomuuid": {}, "tojson_string": {},
+	"reverse": {}, "match": {}, "matches": {}, "test": {}, "warn": {},
+	"info": {}, "debug": {}, "trace": {}, "assert": {},
+	// React/RTK Query/React-Query universal hook & lifecycle names.
+	"usemutation": {}, "usequery": {}, "usequeryclient": {},
+	"useinfinitequery": {}, "useprevious": {}, "useeffectdebugger": {},
+	"createcontext": {}, "memo": {}, "forwardref": {}, "fragment": {},
+	"mutate": {}, "mutateasync": {}, "invalidate": {}, "refetch": {},
+	"setquerydata": {}, "getquerydata": {},
+	// Event handler universal names.
+	"oncreate": {}, "onerror": {}, "onprogress": {}, "onscroll": {},
+	"onsettled": {}, "onsuccess": {}, "onclose": {}, "onopen": {},
+	"onchange": {}, "onclick": {}, "onsubmit": {}, "onblur": {},
+	"onfocus": {}, "onkeydown": {}, "onkeyup": {}, "onkeypress": {},
+	"onmousedown": {}, "onmouseup": {}, "onmouseover": {}, "onmouseout": {},
+	"onload": {}, "onunload": {}, "ondrop": {}, "ondrag": {},
+	"handleblur": {}, "handlesubmit": {}, "handlechange": {},
+	"handleclick": {}, "handleclose": {}, "handleopen": {},
+	"handleerror": {}, "handlesuccess": {},
+	// Single-letter
+	"a": {}, "b": {}, "c": {}, "d": {}, "e": {}, "f": {}, "g": {}, "h": {},
+	"i": {}, "j": {}, "k": {}, "l": {}, "m": {}, "n": {}, "o": {}, "p": {},
+	"q": {}, "r": {}, "s": {}, "t": {}, "u": {}, "v": {}, "w": {}, "x": {},
+	"y": {}, "z": {},
+}
+
+// genericFieldStopList covers universal field/var names that are
+// reflexively reused in every codebase and carry no architectural
+// signal in the cross-repo label channel. See #565.
+//
+// Borderline note: `auth` is intentionally KEPT (kept out of this list)
+// because it is the architectural concept users care about. `role` is
+// dropped because it is overloaded as a UI/permission field name in
+// the user's corpus.
+var genericFieldStopList = map[string]struct{}{
+	"body": {}, "content": {}, "count": {}, "current": {}, "data": {},
+	"date": {}, "day": {}, "description": {}, "email": {}, "enabled": {},
+	"error": {}, "errors": {}, "field": {}, "fields": {}, "file": {},
+	"files": {}, "form": {}, "formdata": {}, "header": {}, "headers": {},
+	"height": {}, "html": {}, "id": {}, "image": {}, "images": {},
+	"index": {}, "info": {}, "item": {}, "items": {}, "key": {}, "keys": {},
+	"label": {}, "labels": {}, "length": {}, "level": {}, "line": {},
+	"lines": {}, "list": {}, "loading": {}, "message": {}, "messages": {},
+	"meta": {}, "mode": {}, "name": {}, "names": {}, "node": {}, "nodes": {},
+	"options": {}, "page": {}, "pages": {}, "params": {}, "parent": {},
+	"password": {}, "path": {}, "payload": {}, "position": {}, "query": {},
+	"range": {}, "ref": {}, "refs": {}, "request": {}, "result": {},
+	"results": {}, "role": {}, "root": {}, "route": {}, "routes": {},
+	"row": {}, "rows": {}, "schema": {}, "schemas": {}, "score": {},
+	"search": {}, "section": {}, "size": {}, "source": {}, "state": {},
+	"states": {}, "status": {}, "step": {}, "style": {}, "styles": {},
+	"success": {}, "tag": {}, "tags": {}, "target": {}, "text": {},
+	"time": {}, "title": {}, "today": {}, "total": {}, "type": {},
+	"types": {}, "url": {}, "urls": {}, "user": {}, "users": {},
+	"value": {}, "values": {}, "version": {}, "view": {}, "views": {},
+	"width": {},
+	// Additional universal boolean/state vars + react conventions.
+	"isactive": {}, "isdirty": {}, "isloading": {}, "isselected": {},
+	"isvalid": {}, "isopen": {}, "isvisible": {}, "isdisabled": {},
+	"isempty": {}, "isdark": {}, "isnyc": {}, "iscat5": {},
+	"empty": {}, "emptymessage": {}, "allempty": {}, "available": {},
+	"selected": {}, "existing": {}, "remaining": {}, "filtered": {},
+	"normalized": {}, "found": {}, "saved": {}, "resolved": {},
+	"mapped": {}, "mapping": {}, "merged": {}, "grouped": {}, "groupby": {},
+	"actions": {}, "permission": {}, "permissions": {}, "navigation": {},
+	"detail": {}, "extension": {}, "filename": {}, "from": {}, "store": {},
+	"start": {}, "end": {}, "last": {}, "newid": {}, "initial": {},
+	"theme": {}, "variant": {}, "color": {}, "palette": {}, "reason": {},
+	"note": {}, "memo": {},
+	// Additional pure-UI / non-architectural names.
+	"badgestyle": {}, "buttonstyle": {}, "spinnerstyle": {}, "iconcolor": {},
+	"tabs": {}, "tabitems": {}, "year": {}, "readonly": {}, "remove": {},
+	"decodeuricomponent": {}, "encodeuricomponent": {}, "getstate": {},
+	"createmutation": {}, "updatemutation": {}, "deletemutation": {},
+	"changeddeps": {}, "previousdeps": {}, "initializedref": {},
+	"keyname": {}, "rawname": {}, "lastsegment": {}, "typekey": {},
+	"datelabel": {}, "datestr": {}, "dayofweek": {}, "formatted": {},
+	"formatteddate": {}, "formatdate": {}, "formattime": {},
+	"resultlabel": {}, "statuslabel": {}, "contextvalue": {},
+	"activekey": {}, "destination": {}, "displayname": {}, "fullname": {},
+	"enddate": {}, "startdate": {}, "totalcount": {}, "storage_key": {},
+	"uploadedfiles": {}, "uploaddata": {}, "uploadresponse": {},
+	// Universal can*/has*/should* booleans without architectural anchor.
+	"caninteract": {}, "cansave": {}, "canedit": {}, "candelete": {},
+	"canview": {}, "canread": {}, "canwrite": {}, "canupdate": {},
+	"updateprogress": {}, "filteredgroups": {},
+}
+
+// isHardenedNoise centralises the #565 noise filters that run AFTER the
+// existing #511 normalisation. Returns true if the (already-normalised)
+// label should be suppressed.
+func isHardenedNoise(label string) bool {
+	if label == "" {
+		return true
+	}
+	// 1. Stdlib / builtin / single-letter universal stop-list.
+	if _, ok := builtinLabelStopList[label]; ok {
+		return true
+	}
+	// 2. React useState destructure tuples: [name, setname] + generic
+	// inline object/array destructure pseudo-names: `{ data }`,
+	// `[year, month, day]`.
+	if destructuredTupleRE.MatchString(label) {
+		return true
+	}
+	if destructuredObjectRE.MatchString(label) {
+		return true
+	}
+	if destructuredArrayRE.MatchString(label) {
+		return true
+	}
+	// 3. Generic universal field/var name stop-list.
+	if _, ok := genericFieldStopList[label]; ok {
+		return true
+	}
+	// 4. Length-after-strip filter: <4 alpha chars carry no signal.
+	stripped := leadingNonAlpha.ReplaceAllString(label, "")
+	if len(stripped) < 4 {
+		return true
+	}
+	// 5. Known npm/pip/maven package roots: redundant with the import
+	// channel (#566) — both halves of a scoped path get checked.
+	if external.IsKnownExternalPackage(label) {
+		return true
+	}
+	if idx := strings.Index(label, "/"); idx > 0 {
+		// Scoped: @scope/name — check both halves.
+		head := strings.TrimPrefix(label[:idx], "@")
+		tail := label[idx+1:]
+		if head != "" && external.IsKnownExternalPackage(head) {
+			return true
+		}
+		if tail != "" && external.IsKnownExternalPackage(tail) {
+			return true
+		}
+	}
+	return false
+}
 
 // labelStopList is the set of generic names that should never produce
 // a shared-label match — they are too common across codebases to carry
@@ -80,6 +299,11 @@ func normalizeLabel(name string) string {
 		return ""
 	}
 	if labelStopList[s] {
+		return ""
+	}
+	// #565: hardened stop-lists (stdlib/builtin, destructured tuples,
+	// generic fields, short labels, npm packages).
+	if isHardenedNoise(s) {
 		return ""
 	}
 	return s

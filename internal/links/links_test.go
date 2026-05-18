@@ -229,6 +229,71 @@ func TestLabelPass_LineNumberKeyedLabelsDropped(t *testing.T) {
 	}
 }
 
+func TestNormalizeLabel_HardenedNoiseFilters_565(t *testing.T) {
+	// Each entry: input label, expected normalized output ("" = filtered).
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		// 1. Stdlib / builtins / single letters.
+		{"js_array_filter", "filter", ""},
+		{"js_array_map", "map", ""},
+		{"js_promise_then", "then", ""},
+		{"dom_addeventlistener", "addEventListener", ""},
+		{"timer_cleartimeout", "clearTimeout", ""},
+		{"react_useState", "useState", ""},
+		{"py_isinstance", "isinstance", ""},
+		{"single_letter_i", "i", ""},
+		{"single_letter_k", "k", ""},
+		// 2. Destructured React tuples.
+		{"tuple_error", "[error, seterror]", ""},
+		{"tuple_isLoading", "[isLoading, setIsLoading]", ""},
+		{"tuple_open", "[open, setopen]", ""},
+		{"obj_destructure_data", "{ data }", ""},
+		{"obj_destructure_id", "{ id }", ""},
+		{"obj_destructure_multi", "{ url, fields }", ""},
+		{"arr_destructure_date", "[year, month, day]", ""},
+		// Date/Number/JSON method names.
+		{"date_getfullyear", "getFullYear", ""},
+		{"date_toisostring", "toISOString", ""},
+		{"num_parseint", "parseInt", ""},
+		{"num_isnan", "isNaN", ""},
+		// React-Query/RTK hook names.
+		{"hook_usemutation", "useMutation", ""},
+		{"hook_usequery", "useQuery", ""},
+		// Event handler conventions.
+		{"evt_onerror", "onError", ""},
+		{"evt_handlesubmit", "handleSubmit", ""},
+		// Boolean state conventions.
+		{"bool_isactive", "isActive", ""},
+		{"bool_isloading", "isLoading", ""},
+		// 3. Generic field/var names.
+		{"field_body", "body", ""},
+		{"field_id", "id", ""},
+		{"field_status", "status", ""},
+		{"field_url", "url", ""},
+		{"field_role", "role", ""},
+		// 4. Length-after-strip < 4.
+		{"too_short_abc", "abc", ""},
+		{"too_short_alpha", "_a_", ""},
+		// 5. NPM package roots.
+		{"npm_axios", "axios", ""},
+		// Positive cases — architectural concepts MUST survive.
+		{"arch_auth", "auth", "auth"},
+		{"arch_contact", "contact", "contact"},
+		{"arch_viewset_word", "checklist", "checklist"},
+		{"file_agentsmd", "AGENTS.md", "agents.md"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeLabel(tc.in); got != tc.want {
+				t.Errorf("normalizeLabel(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeLabel_DropsLineNumberSuffix(t *testing.T) {
 	cases := []struct {
 		in   string

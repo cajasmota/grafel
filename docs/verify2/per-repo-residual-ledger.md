@@ -235,6 +235,35 @@ private-codebase chain-fix) have a stable measurement-history anchor.
 | nestjs-starter | typescript | 16 | **1.75% (2026-05-19; unchanged by ts-w7)** | ts-framework-w4 | Wave-7 did not move the needle (residual is `bootstrap.listen` not React/frontend). | at-bar | `ts-nest-receiver-binding` follow-up. |
 | express | javascript | 145 | **3.28% (2026-05-19; unchanged by ts-w7)** | ts-framework-w4 | Wave-7 did not move the needle (residual is express HTTP DSL, not React/frontend). | at-bar | `js-express-dsl-allowlist` follow-up. |
 
+## Cross-repo `client-fixture` group link state (2026-05-19, post-#565)
+
+The `client-fixture` group spans the three user-test repos above
+(client-fixture-a, -b, -c). Cross-repo link totals reflect the label
+channel only (import + string channels are 0 / 0 for this group at
+this snapshot — #566 in flight on import).
+
+| Snapshot | Total cross-repo links | label_match | Strict precision (estimate) | Notes |
+|---|---:|---:|---:|---|
+| 2026-05-19, post-#511 baseline | 367 | 367 | ~14% | line-number suffix filter only; bulk noise = stdlib/builtin + destructured tuples + generic field names + npm package roots |
+| 2026-05-19, post-#565 | 73 | 73 | ~85% | hardened stop-lists landed: JS/Python builtins, React hooks, date/number proto methods, destructured tuples (`[var, setvar]`), destructured objects (`{ data }`), destructured arrays (`[year, month, day]`), generic field-name stop-list (~120 entries), length-<4 filter, npm-package-root filter via `external.IsKnownExternalPackage` |
+
+Residual root cause (#565 post-fix): the surviving 73 are bona-fide
+cross-stack pairings — backend DRF actions ↔ frontend RTK Query
+mutation hooks (`createInspectionDeficiency`, `listChecklistCatalogs`,
+`partialUpdateInspectionGroup`, `retrieveInspectionGroup`, ...), domain
+nouns (`auth`, `contact`, `checklist`, `jurisdiction`, `inspections`,
+`deficiencies`, `equipment_use_type_options`), and truthful filenames
+(`agents.md`, `claude.md`, `readme.md`, `bitbucket-pipelines.yml`). A
+small borderline tail (~7: `selecteddevice`, `addnoteattachments`,
+`rescheduleModal`, ...) is contextually meaningful enough that
+filtering it risks dropping real signal.
+
+Status: post-#565 at ~73 with ~85% strict precision (target was ≤50 /
+≥60%). Further compression on this corpus requires either
+(a) subtype-pair filtering (require ≥1 backend-route/view ↔ frontend
+const_call pair to emit), or (b) a per-group archetypes catalogue.
+Both deferred to a follow-up.
+
 ## Status roll-up (v3 refresh 2026-05-19)
 
 | Status | Count |
