@@ -613,3 +613,140 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
 	assertKind(t, entities, "authMiddleware", "SCOPE.Operation")
 	assertKind(t, entities, "express", "SCOPE.Component")
 }
+
+// --------------------------------------------------------------------------
+// Issue #522 — extract entities for `export const X = <non-function-value>`
+//
+// Pre-fix: JS/TS extractor only emitted entities for arrow / function
+// expressions assigned through `const X = ...`. Every other const-export
+// shape (object literal, configured instance, React wrapper call, hook
+// alias, …) produced ZERO entities, so alias-resolved imports targeting
+// those consts landed in bug-extractor. The fix emits an entity per
+// const-declarator regardless of value type, classifying wrapper-call
+// shapes as SCOPE.Operation and everything else as SCOPE.Component.
+// --------------------------------------------------------------------------
+
+const constExportObjectSrc = `
+export const ROUTES = {
+  home: "/",
+  login: "/login",
+};
+
+export const COLORS = { primary: "#000", secondary: "#fff" };
+`
+
+func TestConstExportObjectLiteral(t *testing.T) {
+	src := []byte(constExportObjectSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "ROUTES", "SCOPE.Component")
+	assertKind(t, entities, "COLORS", "SCOPE.Component")
+}
+
+const constExportInstanceSrc = `
+import axios from "axios";
+import { QueryClient } from "@tanstack/react-query";
+
+export const api = axios.create({ baseURL: "/api" });
+export const queryClient = new QueryClient();
+`
+
+func TestConstExportInstance(t *testing.T) {
+	src := []byte(constExportInstanceSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "api", "SCOPE.Component")
+	assertKind(t, entities, "queryClient", "SCOPE.Component")
+}
+
+const constExportReactWrappersSrc = `
+import React, { forwardRef, memo } from "react";
+import { observer } from "mobx-react";
+import { connect } from "react-redux";
+
+export const Button = forwardRef((props, ref) => <button ref={ref} />);
+export const Card = memo((props) => <div />);
+export const Header = observer((props) => <header />);
+export const Connected = connect(mapState)(Component);
+`
+
+func TestConstExportReactWrappers(t *testing.T) {
+	src := []byte(constExportReactWrappersSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "Button", "SCOPE.Operation")
+	assertKind(t, entities, "Card", "SCOPE.Operation")
+	assertKind(t, entities, "Header", "SCOPE.Operation")
+	assertKind(t, entities, "Connected", "SCOPE.Operation")
+}
+
+const constExportHookAliasSrc = `
+import { useSelector, useDispatch } from "react-redux";
+
+export const useAppSelector = useSelector;
+export const useAppDispatch = useDispatch;
+`
+
+func TestConstExportHookAlias(t *testing.T) {
+	src := []byte(constExportHookAliasSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	// Plain identifier alias is a value re-export → Component.
+	assertKind(t, entities, "useAppSelector", "SCOPE.Component")
+	assertKind(t, entities, "useAppDispatch", "SCOPE.Component")
+}
+
+const constExportReducerSrc = `
+import { createSlice } from "@reduxjs/toolkit";
+
+const slice = createSlice({ name: "cart", initialState: {}, reducers: {} });
+
+export const cartReducer = slice.reducer;
+export const cartActions = slice.actions;
+`
+
+func TestConstExportReducer(t *testing.T) {
+	src := []byte(constExportReducerSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "cartReducer", "SCOPE.Component")
+	assertKind(t, entities, "cartActions", "SCOPE.Component")
+}
+
+const tsConstExportTypedSrc = `
+import { z } from "zod";
+
+type UserSchemaT = { id: string };
+
+export const userSchema: UserSchemaT = z.object({ id: z.string() });
+
+export const MAX_RETRIES: number = 5;
+`
+
+func TestTSConstExportTyped(t *testing.T) {
+	src := []byte(tsConstExportTypedSrc)
+	tree := parseTS(t, src)
+	entities := extract(t, src, "typescript", tree)
+
+	assertKind(t, entities, "userSchema", "SCOPE.Component")
+	assertKind(t, entities, "MAX_RETRIES", "SCOPE.Component")
+}
+
+const constExportArrowStillWorksSrc = `
+export const useAuth = () => useContext(AuthCtx);
+`
+
+// Regression guard: arrow-function const exports must still classify as
+// SCOPE.Operation after the #522 extension.
+func TestConstExportArrowFunctionRegression(t *testing.T) {
+	src := []byte(constExportArrowStillWorksSrc)
+	tree := parseJS(t, src)
+	entities := extract(t, src, "javascript", tree)
+
+	assertKind(t, entities, "useAuth", "SCOPE.Operation")
+}
