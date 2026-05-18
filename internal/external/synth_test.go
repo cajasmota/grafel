@@ -1802,6 +1802,148 @@ func TestKotlinKtorDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	}
 }
 
+// TestKotlinResidualBareNames_ClassifiedWhenLangIsKotlin covers issue
+// #456: residual ktor-samples bug-extractor cohorts after #122 + #106 +
+// #435. The Kotlin extractor receiver-strips kotlinx.serialization
+// (`Json.encodeToString(x)` → `encodeToString`), additional
+// kotlinx.coroutines builders (`Dispatchers.IO` → `Dispatchers`,
+// `withTimeout(ms) { ... }` → `withTimeout`), kotlin.collections /
+// kotlin.text higher-order helpers (`list.mapNotNull { ... }` → already
+// covered; `list.filterNotNull()` → `filterNotNull`, `s.toIntOrNull()` →
+// `toIntOrNull`), and Ktor HttpClient surface names
+// (`HttpClient(engine) { ... }`, `response.bodyAsText()` → `bodyAsText`).
+// All must classify as stdlib bare-names ONLY when lang=="kotlin".
+func TestKotlinResidualBareNames_ClassifiedWhenLangIsKotlin(t *testing.T) {
+	names := []string{
+		// kotlinx.serialization.
+		"Serializable", "encodeToString", "decodeFromString",
+		"encodeToJsonElement", "decodeFromJsonElement",
+		// kotlinx.coroutines additional.
+		"GlobalScope", "Dispatchers", "withTimeout", "withTimeoutOrNull",
+		"joinAll", "awaitAll", "supervisorScope",
+		// kotlin.collections / sequences higher-order.
+		"filterNotNull", "sortedBy", "sortedByDescending", "distinctBy",
+		"groupBy", "partition", "zip", "windowed", "chunked",
+		"joinToString", "associate", "associateBy", "associateWith",
+		"fold", "reduce", "flatten",
+		// kotlin.text parsing / padding / slicing.
+		"toIntOrNull", "toLongOrNull", "toDoubleOrNull", "toFloatOrNull",
+		"padStart", "padEnd", "substringBefore", "substringAfter",
+		"substringBeforeLast", "substringAfterLast",
+		// Ktor HttpClient surface.
+		"HttpClient", "createClient", "bodyAsText", "bodyAsBytes",
+		"setBody",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "kotlin", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"kotlin\", nil) = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"kotlin\", nil) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "kt-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "kotlin",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "kt-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestKotlinResidualBareNames_NotClassifiedForOtherLanguages confirms
+// the Kotlin language gate holds for the issue #456 additions. Names
+// with the highest cross-language collision potential
+// (`Dispatchers`, `groupBy`, `partition`, `zip`, `fold`, `reduce`,
+// `flatMap`, `HttpClient`, `setBody`, `Serializable`) must NOT be
+// rewritten when the source entity's language is anything other than
+// "kotlin".
+func TestKotlinResidualBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Names excluded from this gate test because they ARE classified
+	// by other language gates / stdlibBareNames:
+	//   - `zip`: in stdlibBareNames (Python builtin) — language-agnostic.
+	//   - `fold`: in rustBareNames — classified for lang="rust".
+	//   - `flatMap`/`groupBy`: appear in other language allowlists.
+	names := []string{
+		"Dispatchers", "partition", "HttpClient", "setBody",
+		"Serializable", "encodeToString", "withTimeout", "bodyAsText",
+		"distinctBy", "withTimeoutOrNull", "decodeFromJsonElement",
+	}
+	otherLangs := []string{"go", "python", "javascript", "java", "ruby", "swift", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"kotlin\" only per #456)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Kotlin)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestKotlinResidualBareNames_RejectedNamesNotClassified locks in the
+// #456 explicit rejection rule: generic accessors that the #106 stop-
+// list rejected as collision-prone must remain rejected even though
+// they appear as receiver-stripped Ktor client builders in the
+// ktor-samples sample dump. The Kotlin language gate alone is not
+// strong enough to prevent shadowing real user-defined methods named
+// `body`/`header`/`parameter`/`cookie`/`format`.
+func TestKotlinResidualBareNames_RejectedNamesNotClassified(t *testing.T) {
+	rejected := []string{
+		"body", "header", "parameter", "cookie", "format",
+		"get", "set", "add", "remove", "size", "isEmpty",
+	}
+	for _, name := range rejected {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, ok := kotlinBareNames[name]; ok {
+				t.Fatalf("kotlinBareNames[%q] present; must be rejected per #106/#456 (collision-prone)", name)
+			}
+		})
+	}
+}
+
 // TestKotlinBareNames_UnknownKotlinMethodFallsThrough confirms that a
 // Kotlin-source bare-name call that ISN'T in the kotlinBareNames
 // allowlist still falls through normally, so genuine missing-

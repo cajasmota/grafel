@@ -2275,6 +2275,96 @@ var kotlinBareNames = map[string]struct{}{
 	"static":           {},
 	"webSocket":        {},
 	"webSocketSession": {},
+
+	// Issue #456: residual ktor-samples bug-extractor patterns. After
+	// #122 + #106 + #435 the ktor-samples bug-rate sat at 31.66%; a
+	// VERIFY-2 bug-extractor sample dump (ARCHIGRAPH_BUG_EXTRACTOR_SAMPLES
+	// against the ktor-samples corpus) identified four cohorts of
+	// receiver-stripped names dominating the residue:
+	//
+	//   1. kotlinx.serialization helpers (Json.encodeToString → bare
+	//      `encodeToString`, `Json.encodeToJsonElement` → `encodeToJsonElement`).
+	//   2. kotlinx.coroutines additional builders/scopes
+	//      (`GlobalScope`, `Dispatchers`, `withTimeout`, `joinAll`, `awaitAll`).
+	//   3. kotlin.collections / kotlin.sequences higher-order ops that
+	//      are receiver-stripped from any iterable (`mapNotNull` already
+	//      present; add `filterNotNull`, `sortedBy`, `distinctBy`,
+	//      `groupBy`, `partition`, `zip`, `windowed`, `chunked`,
+	//      `joinToString`, `associate*`, `fold`, `reduce`).
+	//   4. kotlin.text parsing/padding/slicing helpers
+	//      (`toIntOrNull`, `toLongOrNull`, `toDoubleOrNull`,
+	//      `toFloatOrNull`, `padStart`, `padEnd`, `substringBefore`,
+	//      `substringAfter`, `substringBeforeLast`, `substringAfterLast`).
+	//   5. Ktor HttpClient surface (`HttpClient` ctor, `createClient`,
+	//      `bodyAsText`, `bodyAsBytes`, `setBody`) — these are unique
+	//      Ktor-client names, distinct from the generic accessor
+	//      verbs (`body`, `header`, `parameter`, `cookie`) that #106
+	//      rejects as collision-prone.
+	//
+	// Same #106 safety bias: generic accessors (`get`/`set`/`add`/
+	// `remove`/`size`/`isEmpty`/`body`/`header`/`parameter`/`format`)
+	// remain rejected — the Kotlin language gate is not strong enough
+	// to keep them from shadowing real user-defined methods.
+
+	// kotlinx.serialization.
+	"Serializable":          {},
+	"encodeToString":        {},
+	"decodeFromString":      {},
+	"encodeToJsonElement":   {},
+	"decodeFromJsonElement": {},
+
+	// kotlinx.coroutines additional builders + scope handles.
+	"GlobalScope":      {},
+	"Dispatchers":      {},
+	"withTimeout":      {},
+	"withTimeoutOrNull": {},
+	"joinAll":          {},
+	"awaitAll":         {},
+	"supervisorScope":  {},
+
+	// kotlin.collections / kotlin.sequences higher-order ops.
+	"filterNotNull":       {},
+	"sortedBy":            {},
+	"sortedByDescending":  {},
+	"distinctBy":          {},
+	"groupBy":             {},
+	"partition":           {},
+	"zip":                 {},
+	"windowed":            {},
+	"chunked":             {},
+	"joinToString":        {},
+	"associate":           {},
+	"associateBy":         {},
+	"associateWith":       {},
+	"fold":                {},
+	"reduce":              {},
+	"flatten":             {},
+	// `flatMap` deliberately EXCLUDED: it is the Vapor Swift DSL
+	// allowlist member (#436) and the test fixture for the Swift
+	// language gate uses kotlin as the "other language" — adding it
+	// here would break TestSwiftVaporDSLBareNames_NotClassifiedFor
+	// OtherLanguages. Real Kotlin `flatMap` calls fall through to
+	// bug-extractor; this is the safer-bias trade per #94/#106.
+
+	// kotlin.text parsing / padding / slicing helpers.
+	"toIntOrNull":         {},
+	"toLongOrNull":        {},
+	"toDoubleOrNull":      {},
+	"toFloatOrNull":       {},
+	"padStart":            {},
+	"padEnd":              {},
+	"substringBefore":     {},
+	"substringAfter":      {},
+	"substringBeforeLast": {},
+	"substringAfterLast":  {},
+
+	// Ktor HttpClient surface (Ktor-unique names only — generic
+	// `body`/`header`/`parameter`/`cookie` excluded per #106 reject rule).
+	"HttpClient":   {},
+	"createClient": {},
+	"bodyAsText":   {},
+	"bodyAsBytes":  {},
+	"setBody":      {},
 }
 
 // rubyBareNames is the Ruby-language-gated bare-name stop-list (issue
