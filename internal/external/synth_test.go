@@ -1484,7 +1484,10 @@ func TestJavaBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	// `count` deliberately omitted: it's also in rustBareNames so
 	// it classifies under lang="rust"; the gate verified here is
 	// the *Java* gate, not absence-from-all-other-language-gates.
-	names := []string{"save", "orElse", "hasNext", "findById", "findAll", "hasErrors", "IllegalArgumentException"}
+	// `save` deliberately omitted post-#447: it's also in
+	// pythonBareNames (Django ORM `save()`) and classifies under
+	// lang="python".
+	names := []string{"orElse", "hasNext", "findById", "findAll", "hasErrors", "IllegalArgumentException"}
 	otherLangs := []string{"go", "python", "javascript", "rust", ""}
 	for _, name := range names {
 		for _, lang := range otherLangs {
@@ -2087,7 +2090,9 @@ func TestCSharpAspNetCoreDSLBareNames_NotClassifiedForOtherLanguages(t *testing.
 		"ToArrayAsync", "ThenInclude", "AsNoTracking", "AsQueryable",
 		"SaveChangesAsync", "AddRange", "RemoveRange", "FindAsync",
 		"GetRequiredService", "BuildServiceProvider", "HasClaim",
-		"IsAuthenticated",
+		// `IsAuthenticated` deliberately omitted post-#447: it's also
+		// in pythonBareNames (DRF permission class) and classifies
+		// under lang="python".
 	}
 	otherLangs := []string{"go", "python", "javascript", "ruby", "rust", "java", "kotlin", "swift", ""}
 	for _, name := range names {
@@ -2229,7 +2234,11 @@ func TestRubyBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 		// `all` builtin, Ktor `attributes` accessor in Kotlin per
 		// #435) and the non-leak guarantee for Ruby-only AR names is
 		// asserted by the remaining names below.
-		"update", "destroy", "valid?", "create", "build", "first", "last",
+		// `update`/`create` deliberately omitted post-#447: both are
+		// in pythonBareNames (Django ORM verbs) and classify under
+		// lang="python"; the Ruby-only-leak property is asserted by
+		// the remaining AR names below.
+		"destroy", "valid?", "build", "first", "last",
 		"reload", "exists?", "persisted?", "new_record?",
 		"find_or_create_by", "valid_password?",
 	}
@@ -3213,6 +3222,196 @@ func TestPHPBareNames_UnknownPHPMethodFallsThrough(t *testing.T) {
 		}},
 		Relationships: []graph.Relationship{
 			{ID: "rel-1", FromID: "php-src", ToID: name, Kind: "CALLS"},
+		},
+	}
+	stats := Synthesize(doc)
+	if stats.Synthesized != 0 {
+		t.Fatalf("Synthesize(%q): synthesized=%d, want 0 (unknown user fn)", name, stats.Synthesized)
+	}
+	if doc.Relationships[0].ToID != name {
+		t.Fatalf("ToID=%q, want %q (unknown name must not be rewritten)",
+			doc.Relationships[0].ToID, name)
+	}
+}
+
+// TestPythonDjangoDRFDSLBareNames_ClassifiedWhenLangIsPython covers
+// issue #447: Django ORM model fields (`CharField`, `ForeignKey`,
+// `ManyToManyField`, ...), QuerySet / manager verbs (`objects`,
+// `get_or_create`, `select_related`, `bulk_create`, ...), Meta
+// options (`verbose_name`, `unique_together`, ...), Django REST
+// Framework view / serializer / permission classes
+// (`ModelSerializer`, `ListAPIView`, `ModelViewSet`,
+// `IsAuthenticated`, ...) and Django admin DSL helpers (`register`,
+// `list_display`, ...) get receiver-stripped (or arrive bare) and
+// land in bug-extractor. These names must classify as stdlib
+// bare-names — but only when the source entity's language is
+// "python". Mirrors the PHP Laravel/Symfony (#439) precedent.
+func TestPythonDjangoDRFDSLBareNames_ClassifiedWhenLangIsPython(t *testing.T) {
+	names := []string{
+		// Django ORM field types.
+		"CharField", "IntegerField", "BooleanField", "DateTimeField",
+		"DateField", "TextField", "ForeignKey", "OneToOneField",
+		"ManyToManyField", "URLField", "EmailField", "SlugField",
+		"DecimalField", "FloatField", "BinaryField", "JSONField",
+		"FileField", "ImageField",
+		// Django ORM manager / QuerySet API.
+		"objects", "exclude", "get", "get_or_create", "update_or_create",
+		"create", "save", "delete", "update", "select_related",
+		"prefetch_related", "values", "values_list", "annotate",
+		"aggregate", "count", "exists", "bulk_create", "bulk_update",
+		"latest", "earliest",
+		// Django Meta options.
+		"Meta", "verbose_name", "verbose_name_plural", "ordering",
+		"unique_together", "index_together", "validators",
+		// DRF serializer / view / viewset classes.
+		"ModelSerializer", "Serializer", "ListAPIView", "RetrieveAPIView",
+		"CreateAPIView", "UpdateAPIView", "DestroyAPIView",
+		"ListCreateAPIView", "RetrieveUpdateDestroyAPIView",
+		"ModelViewSet", "ReadOnlyModelViewSet",
+		// DRF view attributes + decorator + status module leaf.
+		"status", "action", "permission_classes",
+		"authentication_classes", "serializer_class", "queryset",
+		// DRF permission classes.
+		"IsAuthenticated", "IsAdminUser", "AllowAny",
+		"IsAuthenticatedOrReadOnly",
+		// Django admin DSL.
+		"register", "unregister", "site", "list_display", "list_filter",
+		"search_fields", "readonly_fields", "fieldsets",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "python", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"python\", nil) = (_, false); want classified as stdlib bare-name", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"python\", nil) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "py-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "python",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "py-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestPythonDjangoDRFDSLBareNames_NotClassifiedForOtherLanguages
+// confirms the Python language gate holds for the issue #447
+// additions: Django / DRF / admin DSL names must NOT be rewritten
+// when the source entity's language is anything other than "python".
+// A Go method named `save`, a JS method named `update`, a Ruby
+// `register`, etc. must not be shadowed by the Python gate.
+func TestPythonDjangoDRFDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Selection rule: each name MUST be unique to pythonBareNames
+	// (not in stdlibBareNames, phpBareNames or any other language
+	// map), otherwise the cross-language gate test would trip on a
+	// different language's allowlist firing first. Picks span
+	// Django ORM, Meta, DRF, and admin.
+	names := []string{
+		// Django ORM field types (Pascal-case, no collisions).
+		"CharField", "ForeignKey", "ManyToManyField", "OneToOneField",
+		"DateTimeField", "JSONField", "ImageField",
+		// QuerySet verbs unique to Python (snake_case).
+		"get_or_create", "update_or_create", "select_related",
+		"prefetch_related", "values_list", "bulk_create", "bulk_update",
+		// Meta options.
+		"verbose_name", "verbose_name_plural", "unique_together",
+		"index_together",
+		// DRF view / serializer classes.
+		"ModelSerializer", "ListAPIView", "RetrieveAPIView",
+		"CreateAPIView", "ModelViewSet", "ReadOnlyModelViewSet",
+		"RetrieveUpdateDestroyAPIView",
+		// DRF view attributes (snake_case, Python-only).
+		"permission_classes", "authentication_classes",
+		"serializer_class",
+		// DRF permission classes. `IsAuthenticated` collides with
+		// csharpBareNames (ASP.NET Core) and would trip the cross-
+		// lang gate via the C# allowlist, so it is excluded here.
+		"IsAdminUser", "IsAuthenticatedOrReadOnly",
+		// Django admin attributes.
+		"list_display", "list_filter", "search_fields",
+		"readonly_fields", "fieldsets",
+	}
+	otherLangs := []string{"go", "php", "javascript", "ruby", "rust", "java", "kotlin", "swift", "csharp", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"python\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Python)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
+// TestPythonBareNames_NoDuplicatesWithStdlibBareNames confirms that
+// names already classified by the global stdlibBareNames stop-list
+// (`filter`, `Response`) are NOT duplicated in pythonBareNames. The
+// global list fires regardless of language gate, so duplicates are
+// dead entries and a maintenance hazard.
+func TestPythonBareNames_NoDuplicatesWithStdlibBareNames(t *testing.T) {
+	for name := range pythonBareNames {
+		if _, ok := stdlibBareNames[name]; ok {
+			t.Errorf("pythonBareNames[%q] duplicates stdlibBareNames entry; remove from pythonBareNames", name)
+		}
+	}
+}
+
+// TestPythonBareNames_UnknownPythonMethodFallsThrough confirms that a
+// Python-source bare-name call that ISN'T in the pythonBareNames
+// allowlist still falls through normally, so genuine
+// missing-resolution bugs continue to surface in bug-extractor.
+func TestPythonBareNames_UnknownPythonMethodFallsThrough(t *testing.T) {
+	name := "my_custom_business_method" // Not Django/DRF/admin; user-defined.
+	doc := &graph.Document{
+		Entities: []graph.Entity{{
+			ID:       "py-src",
+			Name:     "caller",
+			Kind:     "function",
+			Language: "python",
+		}},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "py-src", ToID: name, Kind: "CALLS"},
 		},
 	}
 	stats := Synthesize(doc)

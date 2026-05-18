@@ -763,6 +763,11 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 			return "function", true
 		}
 	}
+	if lang == "python" {
+		if _, ok := pythonBareNames[name]; ok {
+			return "function", true
+		}
+	}
 	return "", false
 }
 
@@ -2967,6 +2972,130 @@ var phpBareNames = map[string]struct{}{
 	"validator":  {},
 	"optional":   {},
 	"tap":        {},
+}
+
+// pythonBareNames is the Python-language-gated bare-name stop-list
+// (issue #447). After the Python extractor strips the receiver from
+// attribute calls (`User.objects.filter(...)` → `filter`,
+// `self.save()` → `save`, `serializer.is_valid()` → `is_valid`), the
+// resolver sees a bare identifier that can't be matched to a local
+// entity and lands in bug-extractor. These names are Django ORM /
+// QuerySet / Meta verbs, Django REST Framework view / serializer /
+// permission class names, and Django admin DSL helpers — high-volume
+// in django-realworld-style codebases (and django/DRF web apps
+// generally) and gated to lang=="python" so a same-named user method
+// in JS / Go / Ruby / etc. is not shadowed (#94 safer-bias rule).
+//
+// Names that already classify via stdlibBareNames (`filter`,
+// `Response`) are NOT duplicated here — the global stop-list fires
+// first regardless of language gate.
+var pythonBareNames = map[string]struct{}{
+	// Django ORM model field types (class names used in `models.Model`
+	// subclass bodies; receiver-stripped from `models.CharField(...)`).
+	"CharField":       {},
+	"IntegerField":    {},
+	"BooleanField":    {},
+	"DateTimeField":   {},
+	"DateField":       {},
+	"TextField":       {},
+	"ForeignKey":      {},
+	"OneToOneField":   {},
+	"ManyToManyField": {},
+	"URLField":        {},
+	"EmailField":      {},
+	"SlugField":       {},
+	"DecimalField":    {},
+	"FloatField":      {},
+	"BinaryField":     {},
+	"JSONField":       {},
+	"FileField":       {},
+	"ImageField":      {},
+
+	// Django ORM manager / QuerySet API. `objects` arrives bare from
+	// `User.objects.filter(...)` after the receiver-strip; the verb
+	// chain (`filter`, `exclude`, `get`, `annotate`, ...) likewise.
+	// `filter` is already in stdlibBareNames (global) and is not
+	// duplicated here.
+	"objects":          {},
+	"exclude":          {},
+	"get":              {},
+	"get_or_create":    {},
+	"update_or_create": {},
+	"create":           {},
+	"save":             {},
+	"delete":           {},
+	"update":           {},
+	"select_related":   {},
+	"prefetch_related": {},
+	"values":           {},
+	"values_list":      {},
+	"annotate":         {},
+	"aggregate":        {},
+	"count":            {},
+	"exists":           {},
+	"bulk_create":      {},
+	"bulk_update":      {},
+	"latest":           {},
+	"earliest":         {},
+
+	// Django Meta options — inner-class attribute names. They land at
+	// the resolver as bare names when assignment-style declarations
+	// `verbose_name = "..."` are reified by the extractor as USES
+	// edges, and when `class Meta:` is referenced as a bare class.
+	"Meta":                {},
+	"verbose_name":        {},
+	"verbose_name_plural": {},
+	"ordering":            {},
+	"unique_together":     {},
+	"index_together":      {},
+	"validators":          {},
+
+	// Django REST Framework — serializer base classes and generic
+	// view / viewset classes. `Response` is in stdlibBareNames
+	// (global) and is not duplicated here.
+	"ModelSerializer":              {},
+	"Serializer":                   {},
+	"ListAPIView":                  {},
+	"RetrieveAPIView":              {},
+	"CreateAPIView":                {},
+	"UpdateAPIView":                {},
+	"DestroyAPIView":               {},
+	"ListCreateAPIView":            {},
+	"RetrieveUpdateDestroyAPIView": {},
+	"ModelViewSet":                 {},
+	"ReadOnlyModelViewSet":         {},
+
+	// DRF view / viewset attribute names + decorator + status module
+	// leaf. `status` is the `rest_framework.status` module reference
+	// (receiver-stripped from `status.HTTP_200_OK`) and `action` is
+	// the `@action` decorator imported from `rest_framework.decorators`.
+	"status":                 {},
+	"action":                 {},
+	"permission_classes":     {},
+	"authentication_classes": {},
+	"serializer_class":       {},
+	"queryset":               {},
+
+	// DRF permission classes (used as bare class refs in
+	// `permission_classes = [IsAuthenticated, ...]`).
+	"IsAuthenticated":           {},
+	"IsAdminUser":               {},
+	"AllowAny":                  {},
+	"IsAuthenticatedOrReadOnly": {},
+
+	// Django admin DSL. `register` / `unregister` are the
+	// `admin.site.register(Model, Admin)` helpers receiver-stripped
+	// to bare names; `site` is the bare `admin.site` reference.
+	// The remaining names are `ModelAdmin` subclass attribute
+	// declarations (`list_display = (...)`).
+	"register":        {},
+	"unregister":      {},
+	"site":            {},
+	"list_display":    {},
+	"list_filter":     {},
+	"search_fields":   {},
+	"readonly_fields": {},
+	"fieldsets":       {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist
