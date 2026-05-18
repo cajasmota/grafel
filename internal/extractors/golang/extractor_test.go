@@ -900,8 +900,12 @@ func main() {
 	if main == nil {
 		t.Fatal("main function not found")
 	}
-	if !hasRelationship(main, "CALLS", "helper") {
-		t.Errorf("expected CALLS → helper on main, got %+v", main.Relationships)
+	// Refs #44 follow-up: identifier-form CALLS edges (no selector) emit a
+	// Format A structural-ref ToID so bare names like `helper` don't collide
+	// across packages in multi-binary repos. Same-file callees resolve via
+	// byLocation in the resolver.
+	if !hasRelationship(main, "CALLS", "scope:operation:method:go:main.go:helper") {
+		t.Errorf("expected CALLS → structural-ref(helper) on main, got %+v", main.Relationships)
 	}
 }
 
@@ -972,8 +976,10 @@ func fact(n int) int {
 }
 
 func TestCallsRelationship_UnknownExternalCall(t *testing.T) {
-	// rule #6: unknown/external callees are emitted with the bare
-	// function name rather than being dropped.
+	// rule #6: unknown/external callees are emitted rather than being
+	// dropped. Refs #44 follow-up — identifier-form (bare) calls get a
+	// Format A structural-ref ToID so unresolved targets land in
+	// Dynamic via isHeuristicScopeStub rather than bug-resolver.
 	src := `package main
 
 func caller() {
@@ -985,8 +991,8 @@ func caller() {
 	if caller == nil {
 		t.Fatal("caller function not found")
 	}
-	if !hasRelationship(caller, "CALLS", "mystery") {
-		t.Errorf("expected CALLS → mystery (unknown target), got %+v", caller.Relationships)
+	if !hasRelationship(caller, "CALLS", "scope:operation:method:go:main.go:mystery") {
+		t.Errorf("expected CALLS → structural-ref(mystery), got %+v", caller.Relationships)
 	}
 }
 
@@ -2073,4 +2079,135 @@ func (s *S) Save() {
 		return
 	}
 	t.Fatalf("S.Save entity not found")
+}
+
+// TestBareCallToIDEmitsStructuralRef verifies Refs #44 / Refs #476 follow-up:
+// CALLS edges whose target is a bare identifier (a same-file/same-package
+// function call like `valid(md)` or `callUnaryEcho(rgc, "x")`) emit a Format A
+// structural-ref ToID that pins the edge to the caller's file. Without this
+// the bare name collides with same-named functions in sibling packages
+// (e.g. 14 `func callUnaryEcho` across grpc-go-examples/examples/*) and
+// every such CALLS edge lands in the bug-resolver bucket. The structural-ref
+// resolves via byLocation[<file>][<name>] when the callee lives in the same
+// file (the dominant case), and falls through to Dynamic via
+// isHeuristicScopeStub otherwise — never to bug-resolver.
+func TestBareCallToIDEmitsStructuralRef(t *testing.T) {
+	src := `package main
+
+func valid(s string) bool { return s != "" }
+
+func ensureValidToken(s string) bool {
+	if !valid(s) {
+		return false
+	}
+	return true
+}
+`
+	results, err := extractFromPath(src, "examples/features/authentication/server/main.go")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	wantTo := "scope:operation:method:go:examples/features/authentication/server/main.go:valid"
+	for _, r := range results {
+		e := r.(types.EntityRecord)
+		if e.Kind != "SCOPE.Operation" || e.Name != "ensureValidToken" {
+			continue
+		}
+		for _, rel := range e.Relationships {
+			if rel.Kind != "CALLS" {
+				continue
+			}
+			if rel.ToID == wantTo {
+				return
+			}
+		}
+		t.Fatalf("ensureValidToken: no CALLS edge with ToID=%q; got rels=%+v", wantTo, e.Relationships)
+	}
+	t.Fatalf("ensureValidToken entity not found")
+}
+
+// TestBareCallToIDsDistinctAcrossFiles verifies that two files in distinct
+// packages declaring `callUnaryEcho` and calling it from `main` no longer
+// emit colliding bare-name ToIDs. Each file's CALLS edge points at its own
+// structural-ref so the resolver binds to the file-local function via
+// byLocation rather than tripping the bare-name ambiguity guard.
+func TestBareCallToIDsDistinctAcrossFiles(t *testing.T) {
+	src := `package main
+
+func callUnaryEcho() {}
+
+func main() {
+	callUnaryEcho()
+}
+`
+	a, err := extractFromPath(src, "examples/features/authentication/client/main.go")
+	if err != nil {
+		t.Fatalf("extract a: %v", err)
+	}
+	b, err := extractFromPath(src, "examples/features/encryption/TLS/client/main.go")
+	if err != nil {
+		t.Fatalf("extract b: %v", err)
+	}
+	pick := func(rs []interface{}) string {
+		for _, r := range rs {
+			e := r.(types.EntityRecord)
+			if e.Kind != "SCOPE.Operation" || e.Name != "main" {
+				continue
+			}
+			for _, rel := range e.Relationships {
+				if rel.Kind == "CALLS" && rel.ToID != "" {
+					return rel.ToID
+				}
+			}
+		}
+		return ""
+	}
+	ta, tb := pick(a), pick(b)
+	if ta == "" || tb == "" {
+		t.Fatalf("missing ToID: a=%q b=%q", ta, tb)
+	}
+	if ta == tb {
+		t.Errorf("bare ToIDs collided across files: %q", ta)
+	}
+	const wantPrefix = "scope:operation:method:go:"
+	if !strings.HasPrefix(ta, wantPrefix) || !strings.HasPrefix(tb, wantPrefix) {
+		t.Errorf("expected structural-ref ToIDs; got a=%q b=%q", ta, tb)
+	}
+}
+
+// TestQualifiedCallToIDStaysBare verifies that selector-form calls (e.g.
+// `pkg.Func()` or `recv.Method()`) keep their bare member-name ToID. Only
+// the identifier-form (no selector) needs the structural-ref rewrite —
+// selector-form calls already resolve via byMember / package-member /
+// external-package lookups.
+func TestQualifiedCallToIDStaysBare(t *testing.T) {
+	src := `package widgets
+
+import "fmt"
+
+func Run() {
+	fmt.Println("ok")
+}
+`
+	results, err := extractFromPath(src, "widgets/run.go")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	for _, r := range results {
+		e := r.(types.EntityRecord)
+		if e.Kind != "SCOPE.Operation" || e.Name != "Run" {
+			continue
+		}
+		for _, rel := range e.Relationships {
+			if rel.Kind != "CALLS" {
+				continue
+			}
+			// Selector-form Println keeps its bare ToID for the external/byName path.
+			if rel.ToID != "Println" {
+				t.Errorf("fmt.Println CALLS ToID = %q, want bare %q", rel.ToID, "Println")
+			}
+		}
+		return
+	}
+	t.Fatalf("Run entity not found")
 }
