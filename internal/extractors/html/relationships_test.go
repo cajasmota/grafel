@@ -115,6 +115,9 @@ func TestRelationships_Imports_ImgSrc(t *testing.T) {
 // ---- IMPORTS — multiple mixed asset references -----------------------------
 
 func TestRelationships_Imports_Multiple(t *testing.T) {
+	// Issue #506: external URLs (https://cdn..., //cdn...) are intentionally
+	// dropped at extract time — they are not graph entities and previously
+	// landed as bug-extractor `to_id` noise. Only local refs are emitted.
 	src := `<html>
 <head>
   <link rel="stylesheet" href="/css/main.css">
@@ -128,15 +131,19 @@ func TestRelationships_Imports_Multiple(t *testing.T) {
 </html>`
 	entities := extractRels(t, "page.html", src)
 	rels := relsByKind(entities, "IMPORTS")
-	if len(rels) != 5 {
-		t.Fatalf("IMPORTS count = %d, want 5", len(rels))
+	if len(rels) != 4 {
+		t.Fatalf("IMPORTS count = %d, want 4 (external CDN URL skipped per #506)", len(rels))
 	}
 	wantTargets := map[string]bool{
-		"/css/main.css":                    false,
-		"https://cdn.example.com/lib.css":  false,
-		"/js/app.js":                       false,
-		"/img/a.png":                       false,
-		"b.svg":                            false,
+		"/css/main.css": false,
+		"/js/app.js":    false,
+		"/img/a.png":    false,
+		"b.svg":         false,
+	}
+	for _, r := range rels {
+		if r.ToID == "https://cdn.example.com/lib.css" {
+			t.Errorf("external CDN URL leaked into IMPORTS: %q (issue #506)", r.ToID)
+		}
 	}
 	for _, r := range rels {
 		if _, ok := wantTargets[r.ToID]; ok {
