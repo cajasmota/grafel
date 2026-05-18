@@ -906,7 +906,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 		// Body-derived var types do NOT include closure-param shadowing — the
 		// per-call walker below maintains its own scope stack to disambiguate.
 		paramTypes = mergeVarTypes(paramTypes, collectBodyVarTypes(bodyOrNode, src))
-		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes)
+		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes, filePath)
 		// Rewrite FromID on each CALLS edge to the qualified Name so the
 		// edge source matches the entity ID downstream.
 		//
@@ -992,7 +992,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 // entity. Calls on other selector operands (e.g. `other.foo()`, package-
 // qualified calls) are NOT stamped — the heuristic is intentionally
 // conservative to avoid false same-package binds (Refs #94 lesson).
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string) []types.RelationshipRecord {
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -1058,6 +1058,26 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 					if ty := lookup(operand); ty != "" {
 						rec.Properties = map[string]string{"receiver_type": ty}
 					}
+				}
+				// Refs #44 (Refs #476 follow-up) — identifier-form CALLS edges
+				// (bare `foo(...)` with no selector operand) collide on the
+				// ToID side just like top-level `main`/`init` collide on the
+				// FromID side: any multi-binary repo (grpc-go-examples with
+				// 14 `func callUnaryEcho` across examples/*/client/main.go)
+				// folds the bare-name byName entry to "ambiguous" and forces
+				// every such edge into bug-resolver. Rewriting the ToID to a
+				// Format A structural-ref keyed on the CALLER's file pins
+				// same-file callees (the dominant pattern: a function calling
+				// a sibling helper declared in the same .go file) to a unique
+				// byLocation entry. Cross-file/cross-package bare-name calls
+				// that don't resolve still avoid bug-resolver because
+				// isHeuristicScopeStub routes unresolved `scope:operation:`
+				// stubs to Dynamic. Selector-form calls (`pkg.X` /
+				// `recv.method`) keep their bare ToID — they resolve through
+				// byMember / external-package / receiver_type paths that the
+				// structural-ref shape doesn't help with.
+				if operand == "" && !isSelfReceiver && filePath != "" {
+					rec.ToID = extractor.BuildOperationStructuralRef("go", filePath, target)
 				}
 				rels = append(rels, rec)
 			}

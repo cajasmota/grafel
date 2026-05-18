@@ -1262,6 +1262,20 @@ type Index struct {
 	// member) collisions so the resolver leaves the stub alone instead of
 	// silently picking a wrong overload.
 	byPackageMember map[string]map[string]map[string]string
+
+	// byPackageOperation[pkg_dir][name] = entity_id. Used by the
+	// Refs #44 Go bare-call structural-ref path: the extractor rewrites
+	// identifier-form CALLS edges (e.g. `helper()` from `main`) to
+	// `scope:operation:method:go:<file>:<name>` so the resolver binds the
+	// callee via byLocation when the callee lives in the SAME file. The
+	// dominant Go pattern, however, is cross-file same-package: `Greet` in
+	// `b.go` calling `Hello` defined in `a.go`. byLocation[b.go][Hello]
+	// misses but byPackageOperation[pkgDirOf(b.go)][Hello] hits. Indexed
+	// only when an entity has no dot in its Name (top-level function /
+	// non-method operation) AND a non-empty SourceFile. A blank-string
+	// sentinel marks (pkg, name) collisions so the resolver leaves the
+	// stub alone instead of silently binding to the wrong overload.
+	byPackageOperation map[string]map[string]string
 }
 
 // LocationIndex maps file_path -> name -> entity_id, retaining only entries
@@ -1461,7 +1475,8 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		ambigLocation:   make(map[string]map[string]bool),
 		byLocationKind:  make(LocationKindIndex),
 		byMember:        make(map[string]map[string]map[string]string),
-		byPackageMember: make(map[string]map[string]map[string]string),
+		byPackageMember:    make(map[string]map[string]map[string]string),
+		byPackageOperation: make(map[string]map[string]string),
 		byQualifiedName: make(map[string]string),
 	}
 	for k := range entities {
@@ -1642,6 +1657,31 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			}
 		}
 
+		// Package-scoped top-level-operation index (Refs #44). Mirrors
+		// byPackageMember but for operations whose Name has no dot — i.e.
+		// non-method functions. The Go extractor rewrites identifier-form
+		// CALLS edges to `scope:operation:method:go:<file>:<name>` so a
+		// same-file callee binds via byLocation. Cross-file same-package
+		// callees (the dominant Go pattern) fall back to this index in
+		// lookupStructural. Indexed only when SourceFile is non-empty
+		// and Name carries no dot (top-level Operation).
+		if sourceFile != "" && strings.IndexByte(e.Name, dottedNameSep) < 0 &&
+			isOperationKind(e.Kind) {
+			pkgDir := pkgDirOf(sourceFile)
+			if pkgDir != "" {
+				pkgBucket := idx.byPackageOperation[pkgDir]
+				if pkgBucket == nil {
+					pkgBucket = make(map[string]string)
+					idx.byPackageOperation[pkgDir] = pkgBucket
+				}
+				if existing, ok := pkgBucket[e.Name]; ok && existing != e.ID {
+					pkgBucket[e.Name] = "" // blank sentinel → ambiguous
+				} else if _, taken := pkgBucket[e.Name]; !taken {
+					pkgBucket[e.Name] = e.ID
+				}
+			}
+		}
+
 		// Kind-agnostic name index. Two different entities sharing a name
 		// (even across kinds) flips the name to ambiguous.
 		if idx.ambigName[e.Name] {
@@ -1655,6 +1695,13 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		idx.byName[e.Name] = e.ID
 	}
 	return idx
+}
+
+// isOperationKind reports whether the kind string is one of the Operation
+// family kinds (SCOPE.Operation, etc.) that should be indexed in
+// byPackageOperation.
+func isOperationKind(k string) bool {
+	return k == "SCOPE.Operation" || k == "Operation"
 }
 
 // BuildLocationIndex returns a (file_path, name) -> entity_id map built from
@@ -2002,6 +2049,28 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 	if bucket, ok := idx.byLocation[filePath]; ok {
 		if id, ok := bucket[tail]; ok {
 			return id, statusRewritten, true
+		}
+	}
+	// Refs #44 — Go cross-file same-package fallback. The Go extractor
+	// rewrites bare CALLS targets to scope:operation:method:go:<file>:<name>
+	// using the CALLER's file path; same-file callees bind via byLocation
+	// above. Cross-file same-package callees (`Greet` in b.go calling
+	// `Hello` defined in a.go) hit here: probe byPackageOperation under
+	// pkgDirOf(filePath). A blank-sentinel hit means ambiguous within the
+	// package — leave the stub alone rather than picking an arbitrary
+	// overload, matching the byPackageMember (issue #148) policy. Only
+	// fires for the "operation" scope-kind so other Format A scopes
+	// (component, schema) aren't affected.
+	if strings.EqualFold(scopeKind, "operation") {
+		if pkgDir := pkgDirOf(filePath); pkgDir != "" {
+			if pkgBucket, ok := idx.byPackageOperation[pkgDir]; ok {
+				if id, ok := pkgBucket[tail]; ok {
+					if id == "" {
+						return "", statusAmbiguous, true
+					}
+					return id, statusRewritten, true
+				}
+			}
 		}
 	}
 	return "", statusUnmatched, true
