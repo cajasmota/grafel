@@ -355,6 +355,89 @@ var (
 		regexp.MustCompile(`^launch$`),
 		regexp.MustCompile(`^edit$`),
 		regexp.MustCompile(`^get_app_dir$`),
+
+		// Flask extensions + Marshmallow + Flask-SQLAlchemy DSL (issue
+		// #446). Residual after #420 was Flask-SQLAlchemy column / type
+		// / relationship constructors on `db = SQLAlchemy()`, Flask-Login
+		// proxies (`current_user`, `@login_required`), Flask-WTF form
+		// methods (`form.validate_on_submit()`), Marshmallow schema field
+		// constructors (`fields.Str`, `fields.Nested`) and (de)serialization
+		// hooks (`@pre_load`, `Schema.dump`, `Schema.load`), and Flask's
+		// common response helpers (`jsonify`, `abort`, `send_file`). The
+		// Python extractor strips receivers like `db.`, `fields.`,
+		// `Schema.`, `form.`, `app.` and only the bare leaf identifier
+		// arrives at the resolver. Pre-fix this drove flask 41.32% and
+		// flask-realworld 43.47%. Per-language gate (Python only) keeps
+		// generic leaves (`add`, `delete`, `commit`, `session`, `query`,
+		// `dump`, `load`, `fields`, `String`, `Integer`) from shadowing
+		// user methods/types in other ecosystems. Within Python the
+		// collision trade is accepted: same precedent as Rails
+		// `render`/`session`/`params` (#107) and Flask `route`/`command`
+		// (#420) — Dynamic is the appropriate bucket for framework
+		// dispatch the resolver can't statically bind.
+		// Flask-SQLAlchemy
+		regexp.MustCompile(`^Column$`),
+		regexp.MustCompile(`^ForeignKey$`),
+		regexp.MustCompile(`^relationship$`),
+		regexp.MustCompile(`^backref$`),
+		regexp.MustCompile(`^Integer$`),
+		regexp.MustCompile(`^String$`),
+		regexp.MustCompile(`^Text$`),
+		regexp.MustCompile(`^Boolean$`),
+		regexp.MustCompile(`^DateTime$`),
+		regexp.MustCompile(`^Date$`),
+		regexp.MustCompile(`^Float$`),
+		regexp.MustCompile(`^Numeric$`),
+		regexp.MustCompile(`^init_app$`),
+		regexp.MustCompile(`^query$`),
+		regexp.MustCompile(`^query_property$`),
+		regexp.MustCompile(`^create_all$`),
+		regexp.MustCompile(`^drop_all$`),
+		regexp.MustCompile(`^session$`),
+		regexp.MustCompile(`^commit$`),
+		regexp.MustCompile(`^rollback$`),
+		regexp.MustCompile(`^flush$`),
+		regexp.MustCompile(`^add$`),
+		regexp.MustCompile(`^delete$`),
+		regexp.MustCompile(`^merge$`),
+		regexp.MustCompile(`^refresh$`),
+		// Flask-Login
+		regexp.MustCompile(`^current_user$`),
+		regexp.MustCompile(`^login_required$`),
+		regexp.MustCompile(`^login_user$`),
+		regexp.MustCompile(`^logout_user$`),
+		regexp.MustCompile(`^confirm_login$`),
+		// Flask-WTF
+		regexp.MustCompile(`^validate_on_submit$`),
+		regexp.MustCompile(`^populate_obj$`),
+		regexp.MustCompile(`^render_kw$`),
+		// Marshmallow — `Boolean` and `DateTime` overlap with the
+		// SQLAlchemy types above and are already covered.
+		regexp.MustCompile(`^fields$`),
+		regexp.MustCompile(`^Schema$`),
+		regexp.MustCompile(`^Str$`),
+		regexp.MustCompile(`^Int$`),
+		regexp.MustCompile(`^List$`),
+		regexp.MustCompile(`^Nested$`),
+		regexp.MustCompile(`^Method$`),
+		regexp.MustCompile(`^Function$`),
+		regexp.MustCompile(`^pre_load$`),
+		regexp.MustCompile(`^post_load$`),
+		regexp.MustCompile(`^pre_dump$`),
+		regexp.MustCompile(`^post_dump$`),
+		regexp.MustCompile(`^validates$`),
+		regexp.MustCompile(`^validates_schema$`),
+		regexp.MustCompile(`^dump$`),
+		regexp.MustCompile(`^load$`),
+		regexp.MustCompile(`^dumps$`),
+		regexp.MustCompile(`^loads$`),
+		// Flask common response helpers
+		regexp.MustCompile(`^jsonify$`),
+		regexp.MustCompile(`^make_response$`),
+		regexp.MustCompile(`^abort$`),
+		regexp.MustCompile(`^send_file$`),
+		regexp.MustCompile(`^send_from_directory$`),
+		regexp.MustCompile(`^stream_with_context$`),
 	}
 
 	goDynamicPatterns = []*regexp.Regexp{

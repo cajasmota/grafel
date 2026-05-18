@@ -843,12 +843,16 @@ func TestRubyRailsDSL_GatedToRuby(t *testing.T) {
 	t.Parallel()
 	stubs := []string{
 		"where", "order", "params", "request", "response", "limit",
-		"render", "validates",
+		"render",
 		// NOTE: `group` was removed from this gate list (issue #423) —
 		// click's `@click.group()` decorator legitimately makes `group`
 		// a Python DSL bare-name too, so it is intentionally NOT
 		// ruby-only any more. Per-language scoping still holds for the
 		// remaining names.
+		// NOTE: `validates` was removed from this gate list (issue
+		// #446) — Marshmallow's `@validates(...)` decorator
+		// legitimately makes `validates` a Python DSL bare-name too,
+		// so it is intentionally NOT ruby-only any more.
 		// Migration DSL gating (issue #124) — collision-prone for
 		// other languages (`string`, `integer`, `boolean`, `text`,
 		// `references`, `execute`, `add_column`...).
@@ -953,6 +957,88 @@ func TestPythonFlaskDSL_GatedToPython(t *testing.T) {
 				if isDynamicPatternLang(stub, lang) {
 					t.Fatalf("stub %q matched dynamic for lang=%q; "+
 						"must be gated to python only (issue #420)", stub, lang)
+				}
+			})
+		}
+	}
+}
+
+// TestPythonFlaskExtensionsDSL_RecognisedAsDynamic locks in issue #446:
+// Flask extension + Marshmallow + Flask-SQLAlchemy DSL bindings. Pre-fix
+// the residual on python/flask (41.32%) and python/flask-realworld
+// (43.47%) was dominated by these bare-name leaves emitted after the
+// Python extractor strips receivers like `db.`, `current_user.`,
+// `fields.`, `Schema.`, `form.`, `app.`. Mirrors the Flask (#420) and
+// click (#423) DSL precedent. Per-language gate (Python only) keeps
+// generic names like `add`, `delete`, `commit`, `dump`, `load` from
+// shadowing user methods in other ecosystems — within Python the
+// trade is accepted (same precedent as Rails `render`/`session` etc.
+// in #107) because Dynamic is the appropriate bucket for framework
+// dispatch we can't statically resolve.
+func TestPythonFlaskExtensionsDSL_RecognisedAsDynamic(t *testing.T) {
+	t.Parallel()
+	dynamic := []string{
+		// Flask-SQLAlchemy: column / type / relationship constructors and
+		// session/query methods on `db` (SQLAlchemy()) instances.
+		"Column", "ForeignKey", "relationship", "backref",
+		"Integer", "String", "Text", "Boolean", "DateTime",
+		"Date", "Float", "Numeric",
+		"init_app", "query", "query_property", "create_all", "drop_all",
+		"session", "commit", "rollback", "flush",
+		"add", "delete", "merge", "refresh",
+		// Flask-Login
+		"current_user", "login_required", "login_user", "logout_user", "confirm_login",
+		// Flask-WTF
+		"validate_on_submit", "populate_obj", "render_kw",
+		// Marshmallow — schema field constructors and (de)serialization hooks.
+		// `Boolean`/`DateTime` are deliberately not re-listed (already above).
+		"fields", "Schema", "Str", "Int", "List", "Nested", "Method", "Function",
+		"pre_load", "post_load", "pre_dump", "post_dump",
+		"validates", "validates_schema",
+		"dump", "load", "dumps", "loads",
+		// Flask common response helpers
+		"jsonify", "make_response", "abort", "send_file",
+		"send_from_directory", "stream_with_context",
+	}
+	for _, stub := range dynamic {
+		stub := stub
+		t.Run("python/"+stub, func(t *testing.T) {
+			t.Parallel()
+			if !isDynamicPatternLang(stub, "python") {
+				t.Fatalf("Flask extension DSL stub %q not recognised as Dynamic for lang=python", stub)
+			}
+		})
+	}
+}
+
+// TestPythonFlaskExtensionsDSL_GatedToPython confirms the Flask
+// extension / Marshmallow / Flask-SQLAlchemy bare-name patterns only
+// match when lang="python" — otherwise generic names like `add`,
+// `delete`, `commit`, `session`, `query`, `dump`, `load`, `fields`,
+// `String`, `Integer` would shadow user methods/types in other
+// ecosystems trivially.
+func TestPythonFlaskExtensionsDSL_GatedToPython(t *testing.T) {
+	t.Parallel()
+	// NOTE: `session` is intentionally NOT in this list — the Ruby
+	// DSL block (#107) also claims `session` for Rails, so the
+	// per-language assertion against ruby would fail. The Python
+	// gate still applies to `session` for non-ruby languages, but
+	// asserting only the non-overlap cases keeps the test honest.
+	stubs := []string{
+		"add", "delete", "commit", "query",
+		"dump", "load", "fields", "Schema", "Column",
+		"String", "Integer", "current_user", "login_required",
+		"jsonify", "abort",
+	}
+	otherLangs := []string{"go", "ruby", "javascript", "typescript", "java", "kotlin"}
+	for _, stub := range stubs {
+		for _, lang := range otherLangs {
+			stub, lang := stub, lang
+			t.Run(stub+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if isDynamicPatternLang(stub, lang) {
+					t.Fatalf("stub %q matched dynamic for lang=%q; "+
+						"must be gated to python only (issue #446)", stub, lang)
 				}
 			})
 		}
