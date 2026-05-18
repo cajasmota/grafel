@@ -294,21 +294,26 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 			}
 			if existing, ok := bucket[e.Name]; ok && existing != e.ID {
 				// Same-file framework-projection dedup (issue #485 PHP
-				// wave-3 follow-up). PHP / Laravel / Symfony index emits
-				// duplicate entities for the same physical class file:
-				// the PHP extractor produces a SCOPE.Component, while
-				// yaml-driven framework synth produces a Model /
-				// Controller entity with the same Name and SourceFile.
-				// Both describe the same class. PSR-4 guarantees one
-				// class per FQN per file, so when (module, name) collides
-				// on a single SourceFile AND the two entities have
-				// DIFFERENT kinds AND at least one side is a SCOPE.*
+				// wave-3 follow-up, extended to Scala in #498 follow-up).
+				// PHP / Laravel / Symfony index emits duplicate entities
+				// for the same physical class file: the PHP extractor
+				// produces a SCOPE.Component, while yaml-driven framework
+				// synth produces a Model / Controller entity with the
+				// same Name and SourceFile. Play / Scala behaves the
+				// same way — a class `AsyncController` is emitted as
+				// SCOPE.Component by the Scala extractor and as
+				// `Controller` by the Play YAML rules.
+				//
+				// Both describe the same class. PSR-4 / scalac guarantee
+				// one class per FQN per file, so when (module, name)
+				// collides on a single SourceFile AND the two entities
+				// have DIFFERENT kinds AND at least one side is a SCOPE.*
 				// canonical entity, we are NOT ambiguous — we just have
 				// parallel projections of the same class. Prefer the
 				// SCOPE.* projection so IMPORTS targets like
-				// `App\Http\Controllers\Controller` and `App\Entity\User`
-				// bind to their declaring class entity instead of landing
-				// in bug-extractor.
+				// `controllers.AsyncController` and
+				// `App\Entity\User` bind to their declaring class entity
+				// instead of landing in bug-extractor.
 				//
 				// Guardrails (preserve existing ambiguity semantics):
 				//   - require existingFile == incomingFile (same file)
@@ -430,6 +435,8 @@ func modulesForFile(p string) []string {
 		return modulesForPythonFile(p)
 	case strings.HasSuffix(p, ".java"):
 		return modulesForJavaFile(p)
+	case strings.HasSuffix(p, ".scala"):
+		return modulesForScalaFile(p)
 	case strings.HasSuffix(p, ".php"):
 		return modulesForPHPFile(p)
 	case strings.HasSuffix(p, ".ts"),
@@ -567,6 +574,69 @@ func modulesForJavaFile(p string) []string {
 		}
 	}
 	return out
+}
+
+// modulesForScalaFile derives the dotted-package forms of a Scala source
+// file. Scala uses the same package-by-parent-directory convention as
+// Java, but the canonical project layouts differ:
+//
+//   - sbt / Mill: `src/main/scala/<pkg>/Foo.scala`
+//   - Play Framework: `app/<pkg>/Foo.scala` (no `src/main/scala` prefix)
+//   - test sources: `src/test/scala/<pkg>/FooSpec.scala`
+//
+// The function mirrors modulesForJavaFile: the parent directory's
+// slash-to-dot form is the primary module path, and any leading
+// well-known source-root is stripped once to produce an alias. The
+// generic `app.` / `src.` / `lib.` prefixes from sourceRootPrefixes
+// cover Play (and most monorepo layouts) — a Play file
+// `app/controllers/AsyncController.scala` resolves to dotted module
+// "app.controllers" plus the post-strip alias "controllers", which is
+// the literal form the in-repo `import controllers.AsyncController`
+// edge carries.
+//
+// Files at the repo root with no parent directory return nil; the
+// caller's nil-guards treat that as "no module".
+func modulesForScalaFile(p string) []string {
+	stripped := strings.TrimSuffix(p, ".scala")
+	dir := stripped
+	if slash := strings.LastIndexByte(stripped, '/'); slash >= 0 {
+		dir = stripped[:slash]
+	} else {
+		return nil
+	}
+	dotted := strings.ReplaceAll(dir, "/", ".")
+	out := []string{dotted}
+	// Strip canonical sbt/Mill Scala source roots once, mirroring the
+	// Java prefix list. The post-strip form is the dotted package path
+	// the in-repo `import` statement was written against.
+	for _, prefix := range scalaSourceRootPrefixes {
+		if strings.HasPrefix(dotted, prefix) {
+			out = append(out, strings.TrimPrefix(dotted, prefix))
+			break
+		}
+	}
+	// Generic top-level source roots (src./lib./app.) cover Play's
+	// `app/` layout and any monorepo layout that nests Scala under one
+	// of these conventional roots. Same single-strip policy as Python/
+	// Java/PHP to avoid suffix-explosion collisions in monorepos.
+	for _, prefix := range sourceRootPrefixes {
+		if strings.HasPrefix(out[0], prefix) {
+			out = append(out, strings.TrimPrefix(out[0], prefix))
+			break
+		}
+	}
+	return out
+}
+
+// scalaSourceRootPrefixes lists the canonical sbt / Mill Scala layout
+// prefixes modulesForScalaFile may strip once when deriving the
+// dotted-package form of a `.scala` source file. Matched against the
+// dotted form of the path's parent directory (slashes already replaced
+// with dots), so entries end in a dot. Mirrors javaSourceRootPrefixes
+// for consistency.
+var scalaSourceRootPrefixes = []string{
+	"src.main.scala.",
+	"src.test.scala.",
 }
 
 // modulesForPHPFile derives the dotted-namespace forms of a PHP source

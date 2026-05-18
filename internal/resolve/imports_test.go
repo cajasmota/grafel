@@ -1234,3 +1234,153 @@ func TestResolveImports_MarkdownFilePathMiss(t *testing.T) {
 		t.Fatalf("expected ToID untouched, got %q", got)
 	}
 }
+
+// scalaImporterRecord mirrors importerRecord but tags Language="scala"
+// so the language-conditional dedup helpers run the scala branch.
+func scalaImporterRecord(file, modulePath string, props map[string]string) types.EntityRecord {
+	return types.EntityRecord{
+		Name:       modulePath,
+		Kind:       "SCOPE.Component",
+		SourceFile: file,
+		Language:   "scala",
+		Relationships: []types.RelationshipRecord{{
+			FromID:     file,
+			ToID:       modulePath,
+			Kind:       importRelKind,
+			Properties: props,
+		}},
+	}
+}
+
+// scalaScopeTarget builds a Scala SCOPE.Component entity (the canonical
+// projection emitted by the Scala extractor's class_definition path).
+func scalaScopeTarget(name, file, id string) types.EntityRecord {
+	return types.EntityRecord{
+		ID:         id,
+		Name:       name,
+		Kind:       "SCOPE.Component",
+		Subtype:    "class",
+		SourceFile: file,
+		Language:   "scala",
+	}
+}
+
+// scalaFrameworkTarget builds a Pass 2.5-style framework-alias entity
+// (Play YAML rules produce a Controller kind for the same class file).
+func scalaFrameworkTarget(name, file, id string) types.EntityRecord {
+	return types.EntityRecord{
+		ID:         id,
+		Name:       name,
+		Kind:       "Controller",
+		SourceFile: file,
+		Language:   "scala",
+	}
+}
+
+// TestModulesForScalaFile_PlayLayout exercises the Play `app/<pkg>` source
+// root strip. `app/controllers/AsyncController.scala` should expose both
+// the raw dotted form (`app.controllers`) and the post-strip alias
+// (`controllers`) so a project-local `import controllers.AsyncController`
+// binds to the file.
+func TestModulesForScalaFile_PlayLayout(t *testing.T) {
+	got := modulesForScalaFile("app/controllers/AsyncController.scala")
+	want := map[string]bool{"app.controllers": true, "controllers": true}
+	if len(got) == 0 {
+		t.Fatalf("expected non-empty module list, got nil")
+	}
+	for _, m := range got {
+		if !want[m] {
+			t.Fatalf("unexpected module %q in %v", m, got)
+		}
+		delete(want, m)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing modules: %v (got %v)", want, got)
+	}
+}
+
+// TestModulesForScalaFile_SbtLayout exercises the canonical sbt /
+// `src/main/scala/<pkg>` strip used by every non-Play Scala project.
+// Both the raw dotted form and the post-strip alias must be returned.
+func TestModulesForScalaFile_SbtLayout(t *testing.T) {
+	got := modulesForScalaFile("src/main/scala/com/example/Foo.scala")
+	// At minimum the raw dotted form and the canonical sbt-strip alias
+	// must be present. The generic "src." top-level strip may add a
+	// further `main.scala.com.example` alias — that is harmless and
+	// only matters when an entity is actually indexed at the matching
+	// dotted path, which is vanishingly rare in real projects.
+	required := map[string]bool{
+		"src.main.scala.com.example": true,
+		"com.example":                true,
+	}
+	for _, m := range got {
+		delete(required, m)
+	}
+	if len(required) != 0 {
+		t.Fatalf("missing required modules: %v (got %v)", required, got)
+	}
+}
+
+// TestModulesForScalaFile_RepoRootBail covers a `.scala` file directly at
+// the repo root — there is no parent directory and therefore no package
+// path. modulesForScalaFile must return nil so the caller's nil-guards
+// treat the entity as unrouted.
+func TestModulesForScalaFile_RepoRootBail(t *testing.T) {
+	if got := modulesForScalaFile("Top.scala"); got != nil {
+		t.Fatalf("expected nil for repo-root .scala, got %v", got)
+	}
+}
+
+// TestResolveImports_ScalaPlayProjectLocal is the end-to-end shape that
+// drove play-scala-starter from 7.75 percent bug-rate to <=3 percent.
+// A test file outside `app/` imports a project-local Play controller via
+// its bare package path. Pre-fix this landed in bug-extractor because
+// modulesForFile had no scala arm. Post-fix the import-aware resolver
+// rewrites the IMPORTS ToID to the SCOPE.Component entity ID.
+func TestResolveImports_ScalaPlayProjectLocal(t *testing.T) {
+	records := []types.EntityRecord{
+		scalaImporterRecord("test/UnitSpec.scala", "controllers.AsyncController", map[string]string{
+			"local_name":    "AsyncController",
+			"source_module": "controllers",
+			"imported_name": "AsyncController",
+		}),
+		scalaScopeTarget("AsyncController", "app/controllers/AsyncController.scala", "aaaabbbbccccdddd"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 IMPORTS rewrite (project-local scala import), got %d", stats.ImportsRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "aaaabbbbccccdddd" {
+		t.Fatalf("expected ToID rewritten to scope target, got %q", got)
+	}
+}
+
+// TestResolveImports_ScalaPlayFrameworkProjectionNotAmbiguous covers the
+// secondary play-scala-starter symptom: the Scala extractor emits a
+// SCOPE.Component for AsyncController and the Play framework YAML rules
+// emit a separate Controller-kind alias for the SAME file. Pre-fix the
+// per-module reverse index marked (controllers, AsyncController)
+// ambiguous and the IMPORTS edge from test/UnitSpec.scala fell to
+// bug-extractor. Post-fix the same-file framework-projection dedup
+// (shared with PHP, issue #485 follow-up) keeps the SCOPE.Component as
+// the binding target.
+func TestResolveImports_ScalaPlayFrameworkProjectionNotAmbiguous(t *testing.T) {
+	records := []types.EntityRecord{
+		scalaImporterRecord("test/UnitSpec.scala", "controllers.AsyncController", map[string]string{
+			"local_name":    "AsyncController",
+			"source_module": "controllers",
+			"imported_name": "AsyncController",
+		}),
+		scalaScopeTarget("AsyncController", "app/controllers/AsyncController.scala", "1111222233334444"),
+		scalaFrameworkTarget("AsyncController", "app/controllers/AsyncController.scala", "5555666677778888"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 IMPORTS rewrite despite framework projection, got %d", stats.ImportsRewritten)
+	}
+	if got := records[0].Relationships[0].ToID; got != "1111222233334444" {
+		t.Fatalf("expected SCOPE.Component (1111...) preferred over framework alias (5555...), got %q", got)
+	}
+}
