@@ -3298,6 +3298,212 @@ var pythonBareNames = map[string]struct{}{
 	"search_fields":   {},
 	"readonly_fields": {},
 	"fieldsets":       {},
+
+	// Issue #455 — Python stdlib + typing + framework DSL extension.
+	// Pulled from real bug-extractor samples on click / flask /
+	// flask-realworld (residuals after #420 / #423 / #446 / #447 were
+	// 10–17%). All names below arrive at the resolver as bare
+	// identifiers after the Python extractor strips the receiver from
+	// attribute calls (`typing.cast(...)` → `cast`, `Path(...)` from
+	// `from pathlib import Path` → `Path`, `pytest.raises(...)` →
+	// `raises`, `app.route(...)` → `route`). Gated to lang=="python"
+	// so a same-named user method in JS / Go / Ruby / etc. is not
+	// shadowed (safer-bias rule #94). Names that already classify via
+	// the global stdlibBareNames stop-list are NOT duplicated.
+	//
+	// Conservative selection rule: include names that are clearly
+	// stdlib / well-known-package helpers in Python idiom. Excluded
+	// even though present in samples: `write`, `read`, `close`,
+	// `append`, `pop`, `keys`, `items`, `update`, `extend`, `remove`,
+	// `replace`, `split`, `format`, `match`, `search`, `info`,
+	// `debug`, `warning`, `error`, `warn`, `first`, `commit`, `run`,
+	// `send`, `connect`, `execute`, `cls`, `func`, `f` — they collide
+	// trivially with user-method identifiers, and the safer-bias rule
+	// from #94 makes a missed external strictly better than a
+	// synthesised placeholder shadowing a real user method. Reflection
+	// builtins (`getattr` / `setattr` / `hasattr` / `delattr`) are
+	// likewise excluded — they are dynamic-dispatch primitives, not
+	// external imports, and are tagged DispositionDynamic upstream.
+
+	// typing module — generic / annotation primitives. `Iterator` and
+	// `Any` collide with rustBareNames and goChiRouterNames (which is
+	// fine — the cross-language gate test below excludes them) and
+	// are still included here so Python sources classify correctly.
+	"cast":       {},
+	"Optional":   {},
+	"Union":      {},
+	"Callable":   {},
+	"Iterable":   {},
+	"Iterator":   {},
+	"Generator":  {},
+	"TypeVar":    {},
+	"Generic":    {},
+	"Protocol":   {},
+	"Awaitable":  {},
+	"Sequence":   {},
+	"Mapping":    {},
+	"Annotated":  {},
+	"Literal":    {},
+	"Final":      {},
+	"ClassVar":   {},
+	"NewType":    {},
+	"NamedTuple": {},
+	"TypedDict":  {},
+	"overload":   {},
+	// `List`, `Dict`, `Tuple`, `Type`, `Set` are intentionally NOT
+	// added — they are also the Python builtins (already classified
+	// via stdlibBareNames as `list`/`dict`/`tuple`/`type`/`set`) and
+	// adding the PascalCase typing aliases would conflict with the
+	// `NoDuplicatesWithStdlibBareNames` invariant only if we cased
+	// them identically; we omit them to keep the list narrow.
+
+	// functools / itertools — closure + iteration helpers. `chain`
+	// collides with rustBareNames; cross-lang gate excludes it.
+	"update_wrapper":  {},
+	"partial":         {},
+	"wraps":           {},
+	"lru_cache":       {},
+	"cache":           {},
+	"cached_property": {},
+	"reduce":          {},
+	"chain":           {},
+	"islice":          {},
+	"cycle":           {},
+	"tee":             {},
+	"starmap":         {},
+	"takewhile":       {},
+	"dropwhile":       {},
+	"groupby":         {},
+	"product":         {},
+	"permutations":    {},
+	"combinations":    {},
+
+	// inspect / textwrap — introspection + doc helpers.
+	"cleandoc":   {},
+	"getsource":  {},
+	"signature":  {},
+	"isfunction": {},
+	"isclass":    {},
+	"ismethod":   {},
+	"getmembers": {},
+	"dedent":     {},
+	"indent":     {},
+
+	// pytest test-DSL — `raises`, `fixture`, `mark`, `parametrize`,
+	// `monkeypatch`, `xfail` are Python testing idioms; receiver-
+	// stripped from `pytest.raises(...)` / `@pytest.mark.parametrize`
+	// / `monkeypatch.setattr(...)`. High volume in flask + click test
+	// suites; safer than `skip` (too generic) so `skip` is excluded.
+	"raises":       {},
+	"fixture":      {},
+	"mark":         {},
+	"parametrize":  {},
+	"monkeypatch":  {},
+	"xfail":        {},
+
+	// dataclasses — `dataclass` decorator + accessor helpers.
+	// `replace` excluded as too collision-prone (str.replace,
+	// list.replace, user replace methods).
+	"dataclass":    {},
+	"field":        {},
+	"fields":       {},
+	"asdict":       {},
+	"astuple":      {},
+	"is_dataclass": {},
+
+	// pathlib — `Path` collides with rustBareNames; cross-lang gate
+	// excludes it.
+	"Path":            {},
+	"PurePath":        {},
+	"PurePosixPath":   {},
+	"PureWindowsPath": {},
+
+	// os / os.path / io stdlib helpers. `getcwd` / `listdir` /
+	// `makedirs` already classify via stdlibBareNames and are NOT
+	// duplicated. `path` excluded as too generic.
+	"dirname":               {},
+	"basename":              {},
+	"abspath":               {},
+	"realpath":              {},
+	"expanduser":            {},
+	"expandvars":            {},
+	"splitext":              {},
+	"fspath":                {},
+	"fileno":                {},
+	"mkdir":                 {},
+	"getfilesystemencoding": {},
+
+	// io / pytest capture helpers — `getvalue` is StringIO/BytesIO,
+	// `readouterr` is pytest capsys. Both unambiguous Python idioms.
+	"getvalue":   {},
+	"readouterr": {},
+
+	// logging — conservative pair only. `getLogger` + `basicConfig`
+	// are unambiguous logging-module helpers; `info` / `debug` /
+	// `warning` / `error` / `warn` are deliberately EXCLUDED because
+	// they collide trivially with user field/method names.
+	"getLogger":   {},
+	"basicConfig": {},
+
+	// Flask routing / app / request-context DSL. Receiver-stripped
+	// from `app.route(...)` / `app.register_blueprint(...)` /
+	// `current_app._get_current_object()`. `route` / `redirect` /
+	// `flash` collide with other language maps (rust/swift/php/java/
+	// kotlin); cross-lang gate excludes them. `query` collides with
+	// swiftBareNames; cross-lang gate excludes it (kept for SQLA).
+	"route":                        {},
+	"register_blueprint":           {},
+	"add_url_rule":                 {},
+	"errorhandler":                 {},
+	"as_view":                      {},
+	"app_context":                  {},
+	"test_request_context":         {},
+	"test_client":                  {},
+	"test_cli_runner":              {},
+	"url_for":                      {},
+	"jsonify":                      {},
+	"init_app":                     {},
+	"Markup":                       {},
+	"_get_current_object":          {},
+	"app_template_filter":          {},
+	"app_template_test":            {},
+	"add_template_filter":          {},
+	"add_template_test":            {},
+	"template_global":              {},
+	"template_filter":              {},
+	"template_test":                {},
+	"make_response":                {},
+	"redirect":                     {},
+	"send_file":                    {},
+	"send_from_directory":          {},
+	"abort":                        {},
+	"flash":                        {},
+	"stream_with_context":          {},
+	"copy_current_request_context": {},
+
+	// Click CLI test-runner + DSL. `invoke` dominates the click
+	// bug-extractor sample (~300 hits) from `runner.invoke(cli, ...)`
+	// in click's own test suite. Gating to lang=="python" + the
+	// Python idiom dominance keeps the collision risk acceptable
+	// (the safer-bias trade-off from #94).
+	"invoke":               {},
+	"isolated_filesystem":  {},
+	"get_help_record":      {},
+	"get_help_extra":       {},
+	"make_context":         {},
+	"get_parameter_source": {},
+	"call_on_close":        {},
+	"lookup_default":       {},
+	"get_default":          {},
+
+	// SQLAlchemy ORM — `filter_by` / `create_all` / `drop_all` /
+	// `query` are unambiguous SQLAlchemy idioms receiver-stripped
+	// from `Model.query.filter_by(...)` / `db.create_all()`. `first`
+	// / `commit` / `rollback` / `add` excluded as too generic.
+	"filter_by":  {},
+	"create_all": {},
+	"drop_all":   {},
+	"query":      {},
 }
 
 // isKnownExternalPackage reports whether s matches our small allowlist

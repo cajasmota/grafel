@@ -2068,9 +2068,11 @@ func TestSwiftVaporDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	// trip on a different language's allowlist firing first.
 	// `body` and `register` removed — now also classified by
 	// rustBareNames (Actix-web DSL, #440).
+	// `query` and `redirect` removed — now also classified by
+	// pythonBareNames (SQLAlchemy / Flask DSL, #455).
 	names := []string{
-		"query", "auth", "session", "cookies",
-		"boot", "shutdown", "grouped", "redirect",
+		"auth", "session", "cookies",
+		"boot", "shutdown", "grouped",
 		"render", "middleware", "authorize", "protect",
 		"paginate", "transform", "flatMap", "offset",
 	}
@@ -3546,6 +3548,49 @@ func TestPythonDjangoDRFDSLBareNames_ClassifiedWhenLangIsPython(t *testing.T) {
 		// Django admin DSL.
 		"register", "unregister", "site", "list_display", "list_filter",
 		"search_fields", "readonly_fields", "fieldsets",
+		// Issue #455 additions — typing.
+		"cast", "Optional", "Union", "Callable", "Iterable", "Iterator",
+		"Generator", "TypeVar", "Generic", "Protocol", "Awaitable",
+		"Sequence", "Mapping", "Annotated", "Literal", "Final",
+		"ClassVar", "NewType", "NamedTuple", "TypedDict", "overload",
+		// functools / itertools.
+		"update_wrapper", "partial", "wraps", "lru_cache", "cache",
+		"cached_property", "reduce", "chain", "islice", "cycle", "tee",
+		"starmap", "takewhile", "dropwhile", "groupby", "product",
+		"permutations", "combinations",
+		// inspect / textwrap.
+		"cleandoc", "getsource", "signature", "isfunction", "isclass",
+		"ismethod", "getmembers", "dedent", "indent",
+		// pytest.
+		"raises", "fixture", "mark", "parametrize", "monkeypatch",
+		"xfail",
+		// dataclasses.
+		"dataclass", "field", "fields", "asdict", "astuple",
+		"is_dataclass",
+		// pathlib.
+		"Path", "PurePath", "PurePosixPath", "PureWindowsPath",
+		// os / os.path / io.
+		"dirname", "basename", "abspath", "realpath", "expanduser",
+		"expandvars", "splitext", "fspath", "fileno", "mkdir",
+		"getfilesystemencoding",
+		"getvalue", "readouterr",
+		// logging.
+		"getLogger", "basicConfig",
+		// Flask DSL.
+		"route", "register_blueprint", "add_url_rule", "errorhandler",
+		"as_view", "app_context", "test_request_context", "test_client",
+		"test_cli_runner", "url_for", "jsonify", "init_app", "Markup",
+		"_get_current_object", "app_template_filter", "app_template_test",
+		"add_template_filter", "add_template_test", "template_global",
+		"template_filter", "template_test", "make_response", "redirect",
+		"send_file", "send_from_directory", "abort", "flash",
+		"stream_with_context", "copy_current_request_context",
+		// Click DSL.
+		"invoke", "isolated_filesystem", "get_help_record",
+		"get_help_extra", "make_context", "get_parameter_source",
+		"call_on_close", "lookup_default", "get_default",
+		// SQLAlchemy.
+		"filter_by", "create_all", "drop_all", "query",
 	}
 	for _, name := range names {
 		name := name
@@ -3617,6 +3662,52 @@ func TestPythonDjangoDRFDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T
 		// Django admin attributes.
 		"list_display", "list_filter", "search_fields",
 		"readonly_fields", "fieldsets",
+		// Issue #455 — Python-only typing primitives (collision-free
+		// across other-language maps). `Iterator`, `Any` are in
+		// pythonBareNames but ALSO in rustBareNames /
+		// goChiRouterNames respectively and are intentionally
+		// excluded from this cross-lang gate (they classify under the
+		// other language's allowlist, which is correct for that
+		// language's source).
+		"Optional", "Union", "Callable", "Iterable", "Generator",
+		"TypeVar", "Awaitable", "Sequence", "Mapping", "Annotated",
+		"Literal", "ClassVar", "NewType", "NamedTuple", "TypedDict",
+		"overload",
+		// functools / itertools — `chain` excluded (rust collision).
+		"update_wrapper", "wraps", "lru_cache", "cached_property",
+		"islice", "starmap", "takewhile", "dropwhile", "groupby",
+		"permutations", "combinations",
+		// inspect / textwrap.
+		"cleandoc", "getsource", "isfunction", "isclass", "ismethod",
+		"getmembers", "dedent",
+		// pytest.
+		"raises", "parametrize", "monkeypatch", "xfail",
+		// dataclasses.
+		"dataclass", "asdict", "astuple", "is_dataclass",
+		// pathlib — `Path` excluded (rust collision).
+		"PurePath", "PurePosixPath", "PureWindowsPath",
+		// os / os.path / io.
+		"dirname", "basename", "abspath", "realpath", "expanduser",
+		"expandvars", "splitext", "fspath", "fileno", "mkdir",
+		"getfilesystemencoding", "getvalue", "readouterr",
+		// logging.
+		"getLogger", "basicConfig",
+		// Flask DSL — `route`, `redirect`, `flash` excluded
+		// (rust/swift/php/java/kotlin collisions).
+		"register_blueprint", "add_url_rule", "errorhandler", "as_view",
+		"app_context", "test_request_context", "test_client",
+		"test_cli_runner", "url_for", "jsonify", "init_app", "Markup",
+		"_get_current_object", "app_template_filter", "app_template_test",
+		"add_template_filter", "add_template_test", "template_global",
+		"template_filter", "template_test", "make_response", "send_file",
+		"send_from_directory", "stream_with_context",
+		"copy_current_request_context",
+		// Click DSL.
+		"isolated_filesystem", "get_help_record", "get_help_extra",
+		"make_context", "get_parameter_source", "call_on_close",
+		"lookup_default", "get_default",
+		// SQLAlchemy — `query` excluded (swift collision).
+		"filter_by", "create_all", "drop_all",
 	}
 	otherLangs := []string{"go", "php", "javascript", "ruby", "rust", "java", "kotlin", "swift", "csharp", ""}
 	for _, name := range names {
