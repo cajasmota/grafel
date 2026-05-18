@@ -2751,6 +2751,170 @@ var jsBareNames = map[string]struct{}{
 	"push":    {},
 	"trim":    {},
 	"isArray": {},
+	// Issue #44 / GraphQL-fix — apollo-server bug-extractor residue
+	// dominated by JS test-framework + JS built-in receiver-strip:
+	// `expect(x).toBe(y)`, `JSON.stringify(...)`, `Promise.resolve(...)`,
+	// `xs.forEach(...)`, `errs.catch(...)`. These are all language-level
+	// builtins that the JS/TS extractor receiver-strips to leaf names.
+	// Conservative: limited to names where collision with a hand-rolled
+	// user method in JS/TS code is unlikely. Jest globals are gated by
+	// jsBareNames + lang=="javascript"/"typescript" already.
+	"expect":    {}, // jest assertion entry point
+	"toBe":      {}, // jest matcher
+	"toEqual":   {},
+	"toBeTruthy": {},
+	"toBeFalsy":  {},
+	"toBeNull":   {},
+	"toBeUndefined": {},
+	"toBeDefined":   {},
+	"toBeInstanceOf": {},
+	"toContain":     {},
+	"toContainEqual": {},
+	"toHaveBeenCalled": {},
+	"toHaveBeenCalledWith": {},
+	"toHaveBeenCalledTimes": {},
+	"toHaveLength": {},
+	"toHaveProperty": {},
+	"toMatch":      {},
+	"toMatchObject": {},
+	"toMatchSnapshot": {},
+	"toMatchInlineSnapshot": {},
+	"toThrow":      {},
+	"toThrowError": {},
+	"toStrictEqual": {},
+	"resolves":     {},
+	"rejects":      {},
+	"toBeGreaterThan":          {},
+	"toBeGreaterThanOrEqual":   {},
+	"toBeLessThan":             {},
+	"toBeLessThanOrEqual":      {},
+	"toBeCloseTo":              {},
+	// JSON / Math / Promise / Array static methods (receiver-stripped).
+	"stringify": {},
+	"parse":     {},
+	"resolve":   {}, // Promise.resolve / require.resolve
+	"reject":    {}, // Promise.reject
+	"all":       {},
+	"allSettled": {},
+	"race":      {},
+	"any":       {},
+	// Array / iterable callbacks (already had `some`, `every`, `push`).
+	// `forEach` intentionally OMITTED — collision-prone per issue #104
+	// rejection list (TestJSBareNames_RejectedNamesNotClassified).
+	"toString": {},
+	"valueOf":  {},
+	"hasOwnProperty": {},
+	"isPrototypeOf":  {},
+	"propertyIsEnumerable": {},
+	// Common console/logger methods (receiver-stripped from `logger.warn`,
+	// `console.log`, `log.error`). High volume in apollo-server.
+	"warn":  {},
+	"error": {},
+	"info":  {},
+	"debug": {},
+	// JS try/catch keyword leaks through some TS extractor paths as a
+	// bare-name CALL target (`promise.catch(handler)` AND syntactic
+	// `try {} catch {}`). Either form has no entity target; classify
+	// as external builtin.
+	"catch":   {},
+	"finally": {},
+	// `then` is already in rubyBareNames (ruby gate). Don't duplicate
+	// here — it would fire for both gates and the cross-language
+	// invariant tests reject that.
+	// Node.js / browser globals (receiver-stripped or top-level).
+	"encodeURIComponent": {},
+	"decodeURIComponent": {},
+	"encodeURI":          {},
+	"decodeURI":          {},
+	"setTimeout":         {},
+	"setImmediate":       {},
+	"setInterval":        {},
+	"clearTimeout":       {},
+	"clearImmediate":     {},
+	"clearInterval":      {},
+	"queueMicrotask":     {},
+	"structuredClone":    {},
+	// Node crypto receiver-strip (`crypto.createHash(...).update(d).digest('hex')`).
+	"createHash":   {},
+	"createHmac":   {},
+	"createCipher": {},
+	"createDecipher": {},
+	"digest":       {},
+	"randomUUID":   {},
+	"randomBytes":  {},
+	"pbkdf2":       {},
+	"pbkdf2Sync":   {},
+	// String / Array transforms (receiver-strip).
+	"toLowerCase":  {},
+	"toUpperCase":  {},
+	"toJSON":       {},
+	"shift":        {},
+	"unshift":      {},
+	"reverse":      {},
+	"sort":         {},
+	"fill":         {},
+	"flat":         {},
+	// `flatMap` already in swiftBareNames; cross-lang invariant test
+	// rejects duplication.
+	"keys":         {},
+	"values":       {},
+	"entries":      {},
+	"fromEntries":  {},
+	"assign":       {},
+	// `freeze`/`isFrozen` — `freeze` is in rubyBareNames; skip duplication.
+	// Buffer / Array.from
+	"from":         {},
+	"of":           {},
+	"isBuffer":     {},
+	"alloc":        {},
+	"allocUnsafe":  {},
+	// graphql-tag / graphql-tools shorthand (often called bare after
+	// `import { gql } from 'graphql-tag'`).
+	"gql":                  {},
+	"makeExecutableSchema": {},
+	"buildSubgraphSchema":  {},
+	"buildSchema":          {},
+	"printSchema":          {},
+	"validateSchema":       {},
+	"execute":              {},
+	"subscribe":            {},
+	"graphql":              {},
+	"graphqlSync":          {},
+	"parseValue":           {},
+	"valueFromAST":         {},
+	"astFromValue":         {},
+	// LRU-cache / make-fetch-happen / negotiator named exports.
+	"LRUCache":             {},
+	// Math / Date / Number static methods.
+	"floor": {}, "ceil": {}, "round": {}, "abs": {}, "min": {}, "max": {},
+	"pow": {}, "sqrt": {}, "log": {}, "log2": {}, "log10": {}, "exp": {},
+	"sin": {}, "cos": {}, "tan": {}, "atan": {}, "atan2": {}, "asin": {}, "acos": {},
+	"random": {},
+	"now":    {}, // Date.now / performance.now
+	"hrtime": {}, // process.hrtime
+	// Buffer.byteLength etc.
+	"byteLength": {},
+	"isInteger":  {},
+	"isFinite":   {},
+	"isNaN":      {},
+	"parseInt":   {},
+	"parseFloat": {},
+	// Jest top-level globals (already have @jest/globals on allowlist, but
+	// `describe`/`it`/`test`/`beforeEach`/`afterEach` are imported as bare
+	// names too and receiver-strip to bug-extractor when extractor can't
+	// bind them to the package).
+	"describe":   {},
+	"it":         {},
+	"test":       {},
+	"beforeEach": {},
+	"afterEach":  {},
+	"beforeAll":  {},
+	"afterAll":   {},
+	"fn":         {}, // jest.fn — receiver-stripped
+	"spyOn":      {},
+	"mock":       {},
+	"unmock":     {},
+	"jest":       {}, // bare `jest.X` reference
 	// `pop` / `shift` / `unshift` / `splice` / `slice` / `concat` /
 	// `join` / `includes` / `indexOf` / `lastIndexOf` / `flat` /
 	// `flatMap` are deliberately OMITTED for this iteration: each is
@@ -4410,6 +4574,117 @@ var knownExternalPackages = map[string]struct{}{
 	"helmet":       {},
 	"multer":       {},
 	"faker":        {},
+	// Issue #44 / GraphQL-fix — apollo-server bug-rate residue. JS/TS
+	// GraphQL ecosystem deps and Node.js stdlib modules that appear as
+	// bare-name IMPORTS targets across the apollo-server monorepo. These
+	// are real external packages with no in-tree entity; the resolver
+	// was tagging them BugExtractor instead of ExternalKnown.
+	"graphql":            {}, // graphql-js reference impl
+	"graphql-tag":        {}, // gql`` template literal helper
+	"graphql-subscriptions": {},
+	"loglevel":           {},
+	"nock":               {}, // HTTP mocking lib
+	"whatwg-mimetype":    {},
+	"async-listener":     {},
+	"cls-hooked":         {},
+	"long":               {},
+	"make-fetch-happen":  {},
+	"lru-cache":          {},
+	"negotiator":         {},
+	"async-retry":        {},
+	"jest-serializer-html": {},
+	"jest-mock":          {},
+	"jest-environment-node": {},
+	"jest-environment-jsdom": {},
+	"prettier":           {},
+	"eslint":             {},
+	"webpack":            {},
+	"rollup":             {},
+	"vite":               {},
+	"ts-node":            {},
+	"esbuild":            {},
+	"chalk":              {},
+	"commander":          {},
+	"yargs":              {},
+	"glob":               {},
+	"semver":             {},
+	"ws":                 {},
+	"cors":               {},
+	"body-parser":        {},
+	"cookie":             {},
+	"cookie-parser":      {},
+	"morgan":             {},
+	"debug":              {},
+	"dotenv":             {},
+	"node-fetch":         {},
+	"undici":             {},
+	"form-data":          {},
+	"qs":                 {},
+	"mime-types":         {},
+	"compression":        {},
+	"connect":            {},
+	"on-finished":        {},
+	"send":               {},
+	"raw-body":           {},
+	"http-errors":        {},
+	"accepts":            {},
+	"type-is":            {},
+	"content-type":       {},
+	"content-disposition": {},
+	"fast-json-stable-stringify": {},
+	"json-stable-stringify": {},
+	"deep-equal":         {},
+	"fast-deep-equal":    {},
+	// Node.js stdlib modules (additional to existing console/readline/
+	// assert/domain/url/net). Real node imports that node:<mod>-shaped
+	// or bare-shaped — both forms case-fold to the same allowlist key.
+	// `zlib` lives in the C/C++ third-party block below (shared key).
+	"stream":            {},
+	"buffer":            {},
+	"events":            {},
+	"util":              {},
+	"querystring":       {},
+	"child_process":     {},
+	"cluster":           {},
+	"dgram":             {},
+	"dns":               {},
+	"fs":                {},
+	"http2":             {},
+	"https":             {},
+	"module":            {},
+	"perf_hooks":        {},
+	"process":           {},
+	"punycode":          {},
+	"repl":              {},
+	"string_decoder":    {},
+	"timers":            {},
+	"tls":               {},
+	"tty":               {},
+	"v8":                {},
+	"vm":                {},
+	"worker_threads":    {},
+	"inspector":         {},
+	"trace_events":      {},
+	"node:fs":           {},
+	"node:path":         {},
+	"node:url":          {},
+	"node:util":         {},
+	"node:stream":       {},
+	"node:zlib":         {},
+	"node:crypto":       {},
+	"node:assert":       {},
+	"node:buffer":       {},
+	"node:events":       {},
+	"node:http":         {},
+	"node:https":        {},
+	"node:net":          {},
+	"node:os":           {},
+	"node:process":      {},
+	"node:child_process": {},
+	"node:querystring":  {},
+	"node:tls":          {},
+	"node:dns":          {},
+	"node:dgram":        {},
 	// JS / TS scoped packages (kept lowercase per case-folded lookup;
 	// only the leading "@scope" segment is matched).
 	"@radix-ui":        {},
@@ -4437,6 +4712,13 @@ var knownExternalPackages = map[string]struct{}{
 	"@azure":           {},
 	"@google-cloud":    {},
 	"@graphql-tools":   {},
+	"@graphql-codegen": {},
+	"@jest":            {}, // @jest/globals etc.
+	"@rollup":          {},
+	"@apollo-server":   {},
+	"@apollographql":   {},
+	"@typescript-eslint": {},
+	"@eslint":          {},
 	"@vue":             {},
 	"@angular":         {},
 	// Go stdlib top-level

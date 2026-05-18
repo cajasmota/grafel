@@ -2068,6 +2068,17 @@ func isHeuristicScopeStub(s string) bool {
 	// minority of these stubs whose qname matches a unique entity.
 	case strings.HasPrefix(s, "scope:operation:?#"):
 		return true
+	// Issue #44 / GraphQL-fix — `scope:operation:<file>#it_*` testmap
+	// stubs that the resolver could NOT bind to a concrete entity.
+	// In docs-heavy / monorepo JS-TS projects (apollo-server) the
+	// testmap extractor emits many Pattern entities whose
+	// qualified_name is unset, so rewriteOne fails to find them.
+	// We reach this branch only AFTER rewriteOne returned without
+	// rewriting, so accepting all file-keyed `scope:operation:` stubs
+	// here only affects unresolved ones — concrete resolutions still
+	// short-circuit at the hex-ID check above.
+	case strings.HasPrefix(s, "scope:operation:"):
+		return true
 	}
 	return false
 }
@@ -2359,6 +2370,21 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if looksLikeSourceFilePath(originalStub) {
 		return DispositionDynamic
 	}
+	// Issue #44 / GraphQL-fix — markdown extractor emits one REFERENCES
+	// edge per backtick-quoted literal in a heading (e.g. `theme`,
+	// `headers`, `defaultMaxAge` in apollo-server's MDX docs) and one
+	// IMPORTS edge per cross-doc `[text](path)` link. These are
+	// inherently documentation pointers, NOT extractor bugs: the slug
+	// (`theme`) is a reference to an option name, prop, or section that
+	// may or may not have a matching code entity, and the link target
+	// (`docs/source/data/errors`) is a sibling doc-only path. In a
+	// docs-heavy repo like apollo-server they dominate the bug-extractor
+	// bucket and obscure real extractor regressions. Tag them
+	// DispositionDynamic so they stay visible in graph.json but don't
+	// inflate the bug-rate metric.
+	if lang == "markdown" {
+		return DispositionDynamic
+	}
 	// Strip a "Kind:" prefix when present so the name-existence check is
 	// kind-agnostic. Structural-ref ("scope:...") stubs pull their name
 	// from the trailing segment after the last ':' or '#'.
@@ -2378,10 +2404,57 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if name == "" {
 		return DispositionUnclassified
 	}
+	// Issue #44 / GraphQL-fix — TypeScript built-in utility types
+	// (`Required`, `Partial`, `Readonly`, etc.) and stdlib globals
+	// (`Promise`, `Map`, `Set`, `Array`, etc.) routinely appear as the
+	// trailing segment of structural-ref IMPLEMENTS / EXTENDS stubs
+	// (`scope:component:interface:typescript:Required`). They are
+	// language-level builtins, not extractor bugs.
+	if (lang == "typescript" || lang == "javascript") && isTSBuiltinType(name) {
+		return DispositionExternalKnown
+	}
 	if idx.nameExists(name) {
 		return DispositionBugResolver
 	}
 	return DispositionBugExtractor
+}
+
+// isTSBuiltinType reports whether s is a TypeScript / JavaScript
+// language built-in type or utility-type name. Used by
+// classifyDispositionLang to route IMPLEMENTS / EXTENDS edges whose
+// target is a language builtin into ExternalKnown rather than
+// BugExtractor (issue #44).
+func isTSBuiltinType(s string) bool {
+	_, ok := tsBuiltinTypes[s]
+	return ok
+}
+
+var tsBuiltinTypes = map[string]struct{}{
+	// TypeScript utility types (https://www.typescriptlang.org/docs/handbook/utility-types.html)
+	"Partial": {}, "Required": {}, "Readonly": {}, "Pick": {}, "Omit": {},
+	"Record": {}, "Exclude": {}, "Extract": {}, "NonNullable": {},
+	"Parameters": {}, "ConstructorParameters": {}, "ReturnType": {},
+	"InstanceType": {}, "ThisParameterType": {}, "OmitThisParameter": {},
+	"ThisType": {}, "Uppercase": {}, "Lowercase": {}, "Capitalize": {},
+	"Uncapitalize": {}, "Awaited": {},
+	// JS / TS global types
+	"Promise": {}, "Map": {}, "Set": {}, "WeakMap": {}, "WeakSet": {},
+	"Array": {}, "ReadonlyArray": {}, "Object": {}, "Function": {},
+	"Date": {}, "RegExp": {}, "Error": {}, "TypeError": {}, "RangeError": {},
+	"SyntaxError": {}, "ReferenceError": {}, "EvalError": {}, "URIError": {},
+	"Number": {}, "String": {}, "Boolean": {}, "BigInt": {}, "Symbol": {},
+	"Iterable": {}, "Iterator": {}, "IterableIterator": {}, "Generator": {},
+	"AsyncIterable": {}, "AsyncIterator": {}, "AsyncIterableIterator": {},
+	"AsyncGenerator": {}, "Proxy": {}, "Reflect": {}, "JSON": {}, "Math": {},
+	"ArrayBuffer": {}, "SharedArrayBuffer": {}, "DataView": {},
+	"Int8Array": {}, "Uint8Array": {}, "Uint8ClampedArray": {},
+	"Int16Array": {}, "Uint16Array": {}, "Int32Array": {}, "Uint32Array": {},
+	"Float32Array": {}, "Float64Array": {}, "BigInt64Array": {}, "BigUint64Array": {},
+	// DOM / browser globals frequently appearing in TS code
+	"Element": {}, "HTMLElement": {}, "Node": {}, "Document": {}, "Window": {},
+	"Event": {}, "EventTarget": {}, "Headers": {}, "Request": {}, "Response": {},
+	"URL": {}, "URLSearchParams": {}, "FormData": {}, "Blob": {}, "File": {},
+	"AbortController": {}, "AbortSignal": {},
 }
 
 // applyEndpointStats records a single endpoint's outcome into the Stats
