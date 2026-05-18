@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -631,6 +632,12 @@ func TestExtract_Generic_TopLevelKeys(t *testing.T) {
 		t.Error("expected entity 'server'")
 	}
 	for _, e := range entities {
+		// Issue #474 chain-fix — the per-file SCOPE.Document anchor entity
+		// is emitted alongside the flavor-specific entities and is not a
+		// generic top-level key.
+		if e.Kind == "SCOPE.Document" {
+			continue
+		}
 		if e.Kind != "SCOPE.Schema" {
 			t.Errorf("generic entity %q kind = %q, want SCOPE.Schema", e.Name, e.Kind)
 		}
@@ -643,6 +650,9 @@ func TestExtract_Generic_Subtype(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	for _, e := range entities {
+		if e.Kind == "SCOPE.Document" {
+			continue
+		}
 		if e.Subtype != "key" {
 			t.Errorf("generic entity %q subtype = %q, want key", e.Name, e.Subtype)
 		}
@@ -791,6 +801,9 @@ baz: qux
 		t.Error("expected entities from generic YAML fallback")
 	}
 	for _, e := range entities {
+		if e.Kind == "SCOPE.Document" {
+			continue
+		}
 		if e.Kind != "SCOPE.Schema" {
 			t.Errorf("fallback entity %q kind=%q, want SCOPE.Schema", e.Name, e.Kind)
 		}
@@ -816,6 +829,11 @@ var allowedKinds = map[string]bool{
 	"SCOPE.Stylesheet":    true,
 	"SCOPE.UIComponent":   true,
 	"SCOPE.InfraResource": true,
+	// Issue #474 chain-fix — per-file SCOPE.Document anchor entity so
+	// file-rooted CONTAINS edges (FromID=file.Path) resolve via the
+	// resolver's byQualifiedName index instead of landing in
+	// bug-extractor.
+	"SCOPE.Document": true,
 }
 
 func TestExtract_AllKindsAreAllowlisted(t *testing.T) {
@@ -1585,5 +1603,80 @@ func TestMX1104_AllNewEntitiesAreAllowlisted(t *testing.T) {
 				t.Errorf("entity %q has non-allowlisted kind %q (file: %s)", e.Name, e.Kind, f.path)
 			}
 		}
+	}
+}
+
+// TestIssue474_ContainsFromIDResolvesToDocumentEntity asserts the chain-fix
+// invariant from issue #474: every file-rooted CONTAINS edge emitted by the
+// YAML extractor (i.e. every FromID that looks like a raw file path rather
+// than a structural ref) must correspond to a SCOPE.Document entity whose
+// QualifiedName equals that FromID. Pre-fix the Document entity was missing
+// and every such FromID landed in the resolver's bug-extractor bucket — 57
+// on argocd-example-apps alone, 538 on starter-workflows.
+func TestIssue474_ContainsFromIDResolvesToDocumentEntity(t *testing.T) {
+	fixtures := []struct {
+		src  []byte
+		path string
+		name string
+	}{
+		{githubActionsFixture, ".github/workflows/ci.yml", "github_actions"},
+		{dockerComposeFixture, "docker-compose.yml", "docker_compose"},
+		{k8sDeploymentFixture, "k8s/deployment.yml", "kubernetes"},
+		{ansibleFixture, "playbook.yml", "ansible"},
+		{gitlabCIFixture, ".gitlab-ci.yml", "gitlab_ci"},
+	}
+	for _, f := range fixtures {
+		t.Run(f.name, func(t *testing.T) {
+			entities, err := extractYAML(f.src, f.path)
+			if err != nil {
+				t.Fatalf("extract %s: %v", f.path, err)
+			}
+
+			var doc *types.EntityRecord
+			for i := range entities {
+				if entities[i].Kind == "SCOPE.Document" {
+					doc = &entities[i]
+					break
+				}
+			}
+			if doc == nil {
+				t.Fatalf("%s: expected one SCOPE.Document entity, found none", f.path)
+			}
+			if doc.QualifiedName != f.path {
+				t.Errorf("%s: SCOPE.Document QualifiedName=%q, want %q (must equal file.Path so file-rooted CONTAINS FromIDs resolve via byQualifiedName)",
+					f.path, doc.QualifiedName, f.path)
+			}
+			if doc.Language != "yaml" {
+				t.Errorf("%s: SCOPE.Document Language=%q, want yaml", f.path, doc.Language)
+			}
+
+			var fileRooted int
+			for _, e := range entities {
+				for _, r := range e.Relationships {
+					if r.Kind != "CONTAINS" {
+						continue
+					}
+					from := r.FromID
+					if strings.ContainsAny(from, ":#") {
+						continue
+					}
+					if !strings.HasSuffix(from, ".yml") && !strings.HasSuffix(from, ".yaml") {
+						continue
+					}
+					fileRooted++
+					if from != doc.QualifiedName {
+						t.Errorf("%s: file-rooted CONTAINS FromID=%q does not equal Document QualifiedName=%q",
+							f.path, from, doc.QualifiedName)
+					}
+				}
+			}
+			// Docker Compose and Kubernetes always emit file-rooted
+			// CONTAINS (file → service / file → resource). GHA only roots
+			// at file.Path when the workflow has no top-level `name:` —
+			// the fixture has one, so it produces no file-rooted edges.
+			if fileRooted == 0 && (f.name == "docker_compose" || f.name == "kubernetes") {
+				t.Errorf("%s: expected at least one file-rooted CONTAINS edge, found none", f.path)
+			}
+		})
 	}
 }

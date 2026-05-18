@@ -259,10 +259,55 @@ func extractByFlavor(flavor string, root *sitter.Node, file extractor.FileInput)
 	default:
 		entities = extractGeneric(root, file)
 	}
+	// Issue #474 chain-fix — file-rooted CONTAINS edges across every YAML
+	// flavor use `file.Path` as FromID (see relationships.go). Pre-fix the
+	// file had no corresponding entity, so the resolver could not bind the
+	// FromID and every such edge landed in bug-extractor (57 on
+	// argocd-example-apps alone). Mirror the markdown extractor and emit
+	// one SCOPE.Document per YAML file with QualifiedName=file.Path so
+	// the byQualifiedName index resolves file.Path → the Document entity
+	// ID. The Document is the canonical parent entity for the file, per
+	// ADR-0009.
+	if len(entities) > 0 {
+		docEntity := buildYAMLDocument(flavor, root, file)
+		// Prepend so the Document appears first in the file's entity list
+		// (matches the markdown extractor's ordering convention).
+		entities = append([]types.EntityRecord{docEntity}, entities...)
+	}
 	// Issue #386 / #90: stamp Properties["language"]="yaml" on every embedded
 	// relationship so the resolver dispatches the YAML dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "yaml")
 	return entities
+}
+
+// buildYAMLDocument constructs the SCOPE.Document entity for a YAML file.
+// QualifiedName equals file.Path so that file-rooted CONTAINS edges (whose
+// FromID is set to file.Path by the flavor extractors) resolve via the
+// resolver's byQualifiedName index. The Subtype carries the detected YAML
+// flavor so downstream tooling can distinguish e.g. a Kubernetes manifest
+// Document from an Ansible playbook Document.
+//
+// Issue #474 chain-fix.
+func buildYAMLDocument(flavor string, root *sitter.Node, file extractor.FileInput) types.EntityRecord {
+	endLine := bytes.Count(file.Content, []byte("\n")) + 1
+	if root != nil {
+		endLine = int(root.EndPoint().Row) + 1
+	}
+	name := file.Path
+	if idx := strings.LastIndexByte(name, '/'); idx >= 0 {
+		name = name[idx+1:]
+	}
+	return types.EntityRecord{
+		Kind:          "SCOPE.Document",
+		Name:          name,
+		Subtype:       flavor,
+		QualifiedName: file.Path,
+		SourceFile:    file.Path,
+		Language:      "yaml",
+		StartLine:     1,
+		EndLine:       endLine,
+		QualityScore:  0.7,
+	}
 }
 
 // ---------------------------------------------------------------------------
