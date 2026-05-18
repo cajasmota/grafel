@@ -608,6 +608,35 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		return "", "", false
 	}
 
+	// Issue kafka-fix-w3 — Java/Kotlin import-leaf bare-name folding.
+	// The Java extractor emits bare-name CALLS for constructor and static
+	// invocations whose leaf identifier matches the leaf of an imported
+	// FQN (e.g. `import org.apache.kafka.streams.StreamsBuilder` →
+	// `new StreamsBuilder()` shows up as bare `StreamsBuilder`;
+	// `import org.apache.kafka.common.serialization.Serdes` →
+	// `Serdes.String()` after receiver-strip becomes bare `Serdes`).
+	// When such a bare name matches the leaf of a known-external FQN
+	// import, fold to the import's known-external prefix. This is the
+	// inverse of the dotted "(lang=='java')" branch below (which folds
+	// `Recv.method` when `Recv` matches an import leaf) and shares the
+	// same precision: the import edge is the gate, no enumeration
+	// required, and the longestKnownDottedPrefix check prevents folding
+	// to an unknown user-namespace import.
+	if (lang == "java" || lang == "kotlin") && fromImports != nil && !strings.ContainsRune(name, '.') {
+		for imp := range fromImports {
+			leaf := imp
+			if d := strings.LastIndexByte(imp, '.'); d >= 0 {
+				leaf = imp[d+1:]
+			}
+			if leaf != name {
+				continue
+			}
+			if longest := longestKnownDottedPrefix(imp); longest != "" {
+				return longest, "package", true
+			}
+		}
+	}
+
 	// Stdlib function stop-list — bare names like "Println", "print".
 	if subtype, ok := stdlibFunction(name, lang, fromFile, fromImports); ok {
 		// Issue #441 — jQuery gate signals via "jquery_function" so the
@@ -664,6 +693,49 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 					}
 					break
 				}
+			}
+			// Issue kafka-fix-w3 — wildcard-import fallback. Java
+			// supports `import org.apache.commons.cli.*;` which the
+			// extractor records as ToID `org.apache.commons.cli` (the
+			// trailing `.*` is stripped, see internal/extractors/java).
+			// When the exact-leaf match above misses AND the receiver
+			// is PascalCase (Java class-name convention), look for any
+			// imported package whose longest-known-dotted-prefix is
+			// allowlisted and whose final segment looks like a package
+			// (lowercase) rather than a class — that's the wildcard
+			// shape — and fold the call to that prefix. The PascalCase
+			// guard prevents folding `instance.someMethod` style calls.
+			if isPascalStart(recv) {
+				for imp := range fromImports {
+					last := imp
+					if d := strings.LastIndexByte(imp, '.'); d >= 0 {
+						last = imp[d+1:]
+					}
+					if last == "" || !isLowerStart(last) {
+						continue
+					}
+					if longest := longestKnownDottedPrefix(imp); longest != "" {
+						return longest, "package", true
+					}
+				}
+			}
+		}
+	}
+
+	// Issue kafka-fix-w3 — java.lang.* receiver-typed calls (Thread.sleep,
+	// String.format, Integer.parseInt, Object.getClass, List.get,
+	// StringBuilder.append, Properties.put, ...). java.lang is
+	// auto-imported in every Java file so it never appears in fileImports;
+	// gate purely on lang=="java" + the PascalCase receiver being on the
+	// curated java.lang/java.util common-types list. Folds to ext:java
+	// (already on the allowlist). Conservative: only the Pascal-case
+	// names already enumerated in javaBareNames are accepted as
+	// receivers, which keeps the list maintained in one place.
+	if lang == "java" {
+		if dot := strings.IndexByte(name, '.'); dot > 0 {
+			recv := name[:dot]
+			if _, ok := javaLangReceivers[recv]; ok {
+				return "java", "package", true
 			}
 		}
 	}
@@ -940,6 +1012,142 @@ var razorBareNames = map[string]struct{}{
 	"RenderBody":       {},
 	"RenderSection":    {},
 	"RenderSectionAsync": {},
+}
+
+// isPascalStart reports whether s begins with an uppercase ASCII
+// letter — the Java/Kotlin class-name convention. Used by the
+// kafka-fix-w3 wildcard-import fallback to gate which dotted-receiver
+// shapes can fold to a wildcard-imported package.
+func isPascalStart(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	return c >= 'A' && c <= 'Z'
+}
+
+// isLowerStart reports whether s begins with a lowercase ASCII letter
+// (Java/Kotlin package-segment convention). Local to this file; mirrors
+// the helper in cmd/archigraph but kept here so synth.go has no
+// cross-package dependency for the wildcard-import fallback.
+func isLowerStart(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	return c >= 'a' && c <= 'z'
+}
+
+// javaLangReceivers is the curated allowlist of Pascal-case receiver
+// simple names that correspond to auto-imported java.lang.* / java.util.*
+// / java.io.* JDK classes. The Java compiler auto-imports java.lang.*
+// (Thread, String, Integer, Object, Class, Math, System, ...) so no
+// IMPORTS edge exists for those receivers — without an explicit gate
+// they land in the `dotted-other` bug-extractor bucket. Listing them
+// here lets `Recv.method` calls fold to ext:java when Recv matches.
+//
+// Conservative selection rule (per #105 lessons): only Pascal-case
+// JDK identifiers extremely unlikely to collide with user-defined class
+// simple names in Java sources. The lang=="java" gate keeps the list
+// from shadowing identical simple-names in other ecosystems.
+var javaLangReceivers = map[string]struct{}{
+	// java.lang core
+	"Thread":            {},
+	"String":            {},
+	"Integer":           {},
+	"Long":              {},
+	"Double":            {},
+	"Float":             {},
+	"Boolean":           {},
+	"Short":             {},
+	"Byte":              {},
+	"Character":         {},
+	"Object":            {},
+	"Class":             {},
+	"Math":              {},
+	"System":            {},
+	"Throwable":         {},
+	"Exception":         {},
+	"RuntimeException":  {},
+	"Error":             {},
+	"StringBuilder":     {},
+	"StringBuffer":      {},
+	"Number":            {},
+	"Enum":              {},
+	"Iterable":          {},
+	"Runnable":          {},
+	// java.util commons
+	"Arrays":            {},
+	"Collections":       {},
+	"Objects":           {},
+	// `Optional` deliberately omitted (cross-lang gate test in
+	// TestPythonDjangoDRFDSLBareNames_NotClassifiedForOtherLanguages
+	// requires `Optional` to not classify for non-Python langs; the
+	// import-leaf bare-name fold above will still handle Java
+	// java.util.Optional when the file imports it explicitly).
+	"Properties":        {},
+	"List":              {},
+	"Map":               {},
+	"Set":               {},
+	"Collection":        {},
+	"Iterator":          {},
+	"HashMap":           {},
+	"LinkedHashMap":     {},
+	"TreeMap":           {},
+	"ArrayList":         {},
+	"LinkedList":        {},
+	"HashSet":           {},
+	"TreeSet":           {},
+	"LinkedHashSet":     {},
+	"Comparator":        {},
+	// java.util.concurrent
+	"CompletableFuture": {},
+	"Future":            {},
+	"Executors":         {},
+	"TimeUnit":          {},
+	"CountDownLatch":    {},
+	"Semaphore":         {},
+	"ConcurrentHashMap": {},
+	// java.util.concurrent.atomic
+	"AtomicInteger":     {},
+	"AtomicLong":        {},
+	"AtomicBoolean":     {},
+	"AtomicReference":   {},
+	// java.io
+	"File":              {},
+	"InputStream":       {},
+	"OutputStream":      {},
+	"Reader":            {},
+	"Writer":            {},
+	"BufferedReader":    {},
+	"BufferedWriter":    {},
+	"PrintStream":       {},
+	"PrintWriter":       {},
+	// java.nio
+	"Paths":             {},
+	"Files":             {},
+	"Path":              {},
+	"ByteBuffer":        {},
+	"Charset":           {},
+	// java.time
+	"Duration":          {},
+	"Instant":           {},
+	"LocalDate":         {},
+	"LocalTime":         {},
+	"LocalDateTime":     {},
+	"ZonedDateTime":     {},
+	"ZoneId":            {},
+	// java.util.stream / regex
+	"Stream":            {},
+	"IntStream":         {},
+	"LongStream":        {},
+	"Collectors":        {},
+	"Pattern":           {},
+	"Matcher":           {},
+	// java.util.logging / util misc
+	"Logger":            {}, // also covers org.slf4j.Logger receiver-strip when slf4j prefix isn't reached
+	"UUID":              {},
+	"Base64":            {},
 }
 
 // longestKnownDottedPrefix walks the dot-separated prefixes of name
@@ -1283,6 +1491,36 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 		// safer-bias rule the Go testify gate uses (issue #115).
 		if isJavaTestFile(fromFile) {
 			if _, ok := javaTestBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		// Issue kafka-fix-w3 — Kafka Streams DSL verbs that are
+		// receiver-stripped (`stream.to(...)`, `builder.build()`,
+		// `record.value()`, `consumer.poll(...)`, `producer.send(...)`).
+		// These names collide with generic user-method verbs (`to`,
+		// `build`, `parse`, `start`, `close`, `put`, `get`, `poll`,
+		// `collect`, `reduce`, `forEach`, ...) so the language gate
+		// alone is not strong enough. Gate on the source file actually
+		// importing an `org.apache.kafka.*` package — same precision
+		// model as the Go chi (#131) / gRPC gates. Files that don't
+		// import Kafka keep the safer-bias miss.
+		if hasKafkaImport(fromImports) {
+			if _, ok := kafkaStreamsDSLVerbs[name]; ok {
+				return "function", true
+			}
+		}
+		// Issue kafka-fix-w3 — commons-cli builder DSL verbs gated
+		// on org.apache.commons.cli import.
+		if hasCommonsCliImport(fromImports) {
+			if _, ok := commonsCliDSLVerbs[name]; ok {
+				return "function", true
+			}
+		}
+		// Issue kafka-fix-w3 — JAX-RS Client API fluent verbs gated on
+		// jakarta.ws.rs.* / javax.ws.rs.* imports. `client.target(uri).
+		// request().get(MyType.class)` strips each call to its leaf.
+		if hasJaxRsImport(fromImports) {
+			if _, ok := jaxRsDSLVerbs[name]; ok {
 				return "function", true
 			}
 		}
@@ -2042,6 +2280,219 @@ func hasKtorServerImport(imports map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// hasKafkaImport reports whether the source file's import set declares
+// any `org.apache.kafka.*` (Kafka clients / streams / common) or
+// `io.confluent.*` package. Used by the Kafka Streams DSL bare-name
+// allowlist gate (kafka-fix-w3). Same precision model as
+// hasKtorServerImport / hasGoChiImport: presence of the canonical
+// ecosystem import on the source file activates the receiver-stripped
+// bare-name surface, files without it keep the safer-bias miss.
+func hasKafkaImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		if p == "org.apache.kafka" || strings.HasPrefix(p, "org.apache.kafka.") {
+			return true
+		}
+		if p == "io.confluent" || strings.HasPrefix(p, "io.confluent.") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCommonsCliImport reports whether the source file imports
+// org.apache.commons.cli (root or any subpackage). Gates the commons-cli
+// builder-DSL bare-name allowlist.
+func hasCommonsCliImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		if p == "org.apache.commons.cli" || strings.HasPrefix(p, "org.apache.commons.cli.") {
+			return true
+		}
+	}
+	return false
+}
+
+// kafkaStreamsDSLVerbs is the Kafka-Streams/Kafka-clients bare-name
+// allowlist. Names are receiver-stripped fluent calls on KStream /
+// KTable / KGroupedStream / StreamsBuilder / KafkaProducer /
+// KafkaConsumer / TopologyTestDriver / TestInputTopic / TestOutputTopic
+// / Serdes / Properties / IntegrationTestUtils. Gated by
+// hasKafkaImport so user-method collisions in non-Kafka code are
+// preserved as missing-resolution bugs (per the #105 safer-bias rule).
+var kafkaStreamsDSLVerbs = map[string]struct{}{
+	// StreamsBuilder / Topology
+	"build":  {},
+	"stream": {},
+	"table":  {},
+	// KStream/KTable terminal + transform verbs that survived
+	// receiver-strip without a matching import-leaf fold.
+	"to":             {},
+	"through":        {},
+	"branch":         {},
+	"peek":           {},
+	"foreach":        {},
+	"forEach":        {},
+	"transform":      {},
+	"transformValues":{},
+	"process":        {},
+	"selectKey":      {},
+	"mapValues":      {},
+	"flatMapValues":  {},
+	"flatMap":        {},
+	"groupByKey":     {},
+	"groupBy":        {},
+	"aggregate":      {},
+	"reduce":         {},
+	"windowedBy":     {},
+	"suppress":       {},
+	"merge":          {},
+	"toStream":       {},
+	"leftJoin":       {},
+	"outerJoin":      {},
+	// KafkaStreams lifecycle.
+	"start":     {},
+	"close":     {},
+	"cleanUp":   {},
+	"setStateListener": {},
+	"setUncaughtExceptionHandler": {},
+	"setGlobalStateRestoreListener": {},
+	"store":     {},
+	"state":     {},
+	"metrics":   {},
+	"localThreadsMetadata": {},
+	"allMetadata":          {},
+	"allMetadataForStore":  {},
+	// Producer / Consumer.
+	"send":       {},
+	"poll":       {},
+	"flush":      {},
+	"subscribe":  {},
+	"assign":     {},
+	"commitSync": {},
+	"commitAsync":{},
+	"seek":       {},
+	"seekToBeginning": {},
+	"seekToEnd":  {},
+	"position":   {},
+	"partitionsFor": {},
+	// ProducerRecord / ConsumerRecord accessors.
+	"key":       {},
+	"value":     {},
+	"timestamp": {},
+	"partition": {},
+	"topic":     {},
+	"offset":    {},
+	"headers":   {},
+	// Serdes / Materialized / TopologyTestDriver.
+	"serializer":   {},
+	"deserializer": {},
+	"serialize":    {},
+	"deserialize":  {},
+	"createInputTopic":  {},
+	"createOutputTopic": {},
+	"pipeInput":         {},
+	"pipeKeyValueList":  {},
+	"pipeValueList":     {},
+	"readValuesToList":  {},
+	"readKeyValuesToList":{},
+	"readValue":         {},
+	"readKeyValue":      {},
+	// Materialized / Stores.
+	"withKeySerde":   {},
+	"withValueSerde": {},
+	"as":             {},
+	"persistentKeyValueStore":  {},
+	"persistentWindowStore":    {},
+	"persistentSessionStore":   {},
+	"inMemoryKeyValueStore":    {},
+	"keyValueStoreBuilder":     {},
+	"windowStoreBuilder":       {},
+	"sessionStoreBuilder":      {},
+	// Properties helpers commonly chained.
+	"put":      {},
+	"putAll":   {},
+	"getProperty": {},
+	"setProperty": {},
+	"load":     {},
+}
+
+// hasJaxRsImport reports whether the source file declares any
+// jakarta.ws.rs.* or javax.ws.rs.* import (JAX-RS Client / Server API).
+func hasJaxRsImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		if p == "jakarta.ws.rs" || strings.HasPrefix(p, "jakarta.ws.rs.") {
+			return true
+		}
+		if p == "javax.ws.rs" || strings.HasPrefix(p, "javax.ws.rs.") {
+			return true
+		}
+	}
+	return false
+}
+
+// jaxRsDSLVerbs covers JAX-RS Client / Response / WebTarget /
+// Invocation.Builder fluent verbs receiver-stripped by the Java
+// extractor.
+var jaxRsDSLVerbs = map[string]struct{}{
+	"target":         {},
+	"request":        {},
+	"path":           {},
+	"queryParam":     {},
+	"pathParam":      {},
+	"resolveTemplate":{},
+	"accept":         {},
+	"acceptLanguage": {},
+	"acceptEncoding": {},
+	"buildGet":       {},
+	"buildPost":      {},
+	"buildPut":       {},
+	"buildDelete":    {},
+	"invoke":         {},
+	"readEntity":     {},
+	"hasEntity":      {},
+	"getEntity":      {},
+	"getStatus":      {},
+	"getStatusInfo":  {},
+	"getHeaders":     {},
+	"getMediaType":   {},
+	"getLocation":    {},
+	"register":       {},
+	"property":       {},
+}
+
+// commonsCliDSLVerbs covers the commons-cli builder pattern verbs
+// receiver-stripped from `Option.builder("foo").longOpt(...).hasArg().
+// desc(...).build()` and `Options.addOption(...)` /
+// `HelpFormatter.printHelp(...)` / `CommandLine.hasOption(...)` chains.
+// Gated by hasCommonsCliImport.
+var commonsCliDSLVerbs = map[string]struct{}{
+	"addOption":      {},
+	"addOptionGroup": {},
+	"hasOption":      {},
+	"getOptionValue": {},
+	"getOptionValues":{},
+	"printHelp":      {},
+	"longOpt":        {},
+	"shortOpt":       {},
+	"hasArg":         {},
+	"hasArgs":        {},
+	"desc":           {},
+	"required":       {},
+	"numberOfArgs":   {},
+	"argName":        {},
+	"valueSeparator": {},
+	"type":           {},
+	"parse":          {},
 }
 
 // hasGoGrpcImport reports whether the source file's import set looks
@@ -2990,6 +3441,185 @@ var javaBareNames = map[string]struct{}{
 	"getSize":          {},
 	"hasNext":          {},
 	"hasPrevious":      {},
+
+	// Issue kafka-fix-w3 — JDK java.lang.* / java.util.* / java.io.*
+	// types that are imported implicitly (java.lang) or commonly bare-
+	// referenced after receiver-strip. Constructor calls land as bare
+	// names: `new Properties()` → `Properties`, `new HashMap<>()` →
+	// `HashMap`. These are JDK-only Pascal-case identifiers — the
+	// language gate to "java" prevents collision with same-named user
+	// classes in JS/Go/C# etc.
+	"Properties":     {},
+	"HashMap":        {},
+	"LinkedHashMap":  {},
+	"TreeMap":        {},
+	"ArrayList":      {},
+	"LinkedList":     {},
+	"HashSet":        {},
+	"TreeSet":        {},
+	"LinkedHashSet":  {},
+	"Thread":         {},
+	"CountDownLatch": {},
+	"Semaphore":      {},
+	"AtomicInteger":  {},
+	"AtomicLong":     {},
+	"AtomicBoolean":  {},
+	"AtomicReference":{},
+	"StringBuilder":  {},
+	"StringBuffer":   {},
+	// `Optional` deliberately omitted — pythonBareNames has it gated
+	// to Python; cross-lang gate test forbids overlap.
+	"Collections":    {},
+	"Arrays":         {},
+	"Objects":        {},
+	"System":         {}, // System.out / System.err receiver-strip
+	"Math":           {},
+	"Integer":        {}, // boxed numerics — Integer.parseInt etc.
+	"Long":           {},
+	"Double":         {},
+	"Float":          {},
+	"Boolean":        {},
+	"Short":          {},
+	"Byte":           {},
+	"Character":      {},
+	"String":         {}, // String.format / String.valueOf
+	"Class":          {},
+	"Object":         {},
+
+	// Common JDK bare-method calls after receiver-strip (java.lang.Object
+	// + java.io.PrintStream): `obj.toString()`, `obj.equals(x)`,
+	// `obj.hashCode()`, `e.printStackTrace()`, `System.out.println(...)`.
+	// Distinctive enough that the language gate alone is sufficient.
+	"toString":        {},
+	"hashCode":        {},
+	"equals":          {},
+	"getClass":        {},
+	"printStackTrace": {},
+	// `println` deliberately omitted — test TestRustBareNames_
+	// NotClassifiedForOtherLanguages locks this to lang="rust" only.
+	"getMessage":      {},
+	"getCause":        {},
+	// `getName` deliberately omitted — issue #105 rejects generic
+	// getters because they collide with user entity classes. The
+	// resolver's cross-class receiver binding is the right channel.
+	"getPath":         {},
+	"getAbsolutePath": {},
+	"addShutdownHook": {},
+	"addShutdownHookAndBlock": {},
+	"currentThread":   {},
+	"getResourceAsStream": {},
+	"getClassLoader":  {},
+	"getSimpleName":   {},
+	"getCanonicalName":{},
+	"toLowerCase":     {},
+	"toUpperCase":     {},
+	"toInstant":       {},
+	"interrupt":       {},
+	"isInterrupted":   {},
+	"parseInt":        {}, // Integer.parseInt receiver-stripped (also covered by java.lang receiver fold, this catches double-strip)
+	"parseLong":       {},
+	"parseDouble":     {},
+	"parseBoolean":    {},
+	"valueOf":         {},
+	"printf":          {}, // System.out.printf after double-strip
+
+	// Issue kafka-fix-w3 — Apache Kafka / Kafka Streams DSL types and
+	// verbs that the Java extractor emits bare after receiver-strip.
+	// Constructor calls (`new KafkaStreams(topology, props)` →
+	// `KafkaStreams`), static accessors (`Serdes.String()` strips to
+	// `Serdes`), and DSL fluent verbs on builder/stream/table receivers
+	// (`builder.stream(...).groupByKey().windowedBy(...)` strips each
+	// chained call to its leaf). All Pascal-case types are Kafka-specific
+	// enough that the lang="java" gate prevents collision; the lowercase
+	// DSL verbs are gated by appearing in the kafka import set already
+	// (the new import-leaf bare-name folding above handles the type
+	// cases, this list catches the verbs whose receivers are inferred).
+	"StreamsBuilder":     {},
+	"KafkaStreams":       {},
+	"KafkaProducer":      {},
+	"KafkaConsumer":      {},
+	"ProducerRecord":     {},
+	"ConsumerRecord":     {},
+	"ConsumerRecords":    {},
+	"TopologyTestDriver": {},
+	"TestInputTopic":     {},
+	"TestOutputTopic":    {},
+	"TestUtils":          {},
+	"KeyValue":           {},
+	"Stores":             {},
+	"Materialized":       {},
+	"Produced":           {},
+	"Consumed":           {},
+	"Serialized":         {},
+	"Grouped":            {},
+	"Joined":             {},
+	"Suppressed":         {},
+	"JoinWindows":        {},
+	"TimeWindows":        {},
+	"SessionWindows":     {},
+	"SlidingWindows":     {},
+	"Windowed":           {},
+	"QueryableStoreTypes":{},
+	"StoreQueryParameters":{},
+	"StreamsConfig":      {},
+	"ConsumerConfig":     {},
+	"ProducerConfig":     {},
+	"AdminClient":        {},
+	"NewTopic":           {},
+	"TopicPartition":     {},
+	"Topology":           {},
+	"Bytes":              {},
+
+	// Kafka Streams DSL verbs (receiver-stripped from KStream/KTable/
+	// KGroupedStream/KGroupedTable). All distinctive enough that the
+	// java gate is sufficient.
+	"groupByKey":   {},
+	"windowedBy":   {},
+	"selectKey":    {},
+	"mapValues":    {},
+	"flatMapValues":{},
+	"toStream":     {},
+	"branch":       {},
+	"foreach":      {},
+	"aggregate":    {},
+	// `to`, `through`, `merge`, `peek`, `transform`, `transformValues`,
+	// `process`, `filter`, `filterNot`, `flatMap`, `groupBy`, `reduce`,
+	// `join`, `leftJoin`, `outerJoin`, `count`, `suppress` deliberately
+	// EXCLUDED — they collide with generic user-method names; the
+	// import-leaf bare-name fold above is the right precision channel
+	// when the receiver is a Kafka-streams type, but we don't have
+	// receiver-type info at this layer, so safer-bias rejects.
+
+	// Apache commons-cli — receiver-stripped builder pattern.
+	// `Option.builder("...").longOpt("x").hasArg().desc("...").build()`
+	// strips each chained call to its leaf identifier. These names are
+	// distinctive (commons-cli specific) but `build` collides with too
+	// many builder patterns; included anyway because the lang gate keeps
+	// it scoped to Java sources, and `StreamsBuilder.build()` /
+	// `Topology.build()` also benefit (both fold to ext:org.apache.kafka
+	// via the import-leaf path when receivers are present, but bare
+	// `build` after a chain catches the residual).
+	"Options":       {},
+	"Option":        {},
+	"CommandLine":   {},
+	"CommandLineParser":{},
+	"DefaultParser": {},
+	"HelpFormatter": {},
+	"longOpt":       {},
+	"hasArg":        {},
+	"desc":          {},
+	"isRequired":    {},
+	"hasOption":     {},
+	"getOptionValue":{},
+	"printHelp":     {},
+
+	// Time API
+	"Duration":      {},
+	"Instant":       {},
+	"toMillis":      {},
+	"ofMillis":      {},
+	"ofSeconds":     {},
+	"ofMinutes":     {},
 }
 
 // javaTestBareNames is the Java test-file-gated bare-name stop-list
@@ -7343,6 +7973,44 @@ var knownExternalPackages = map[string]struct{}{
 	"org.testcontainers": {},
 	"io.micrometer":      {}, // metrics/observability used by Spring Boot
 	"ch.qos.logback":     {}, // default Spring Boot logger
+	// Issue kafka-fix-w3 — Apache Kafka / Confluent / Avro / Jetty / Jersey
+	// ecosystem roots. Multi-segment keys keep longestKnownDottedPrefix
+	// precise so an unrelated `org.apache` user-namespace cannot collide.
+	// All of these appear as `import org.apache.kafka.streams.*` /
+	// `import io.confluent.examples.streams.*` / `import org.apache.avro.*`
+	// in the kafka-streams-examples corpus and across every JVM
+	// streaming/integration repo.
+	"org.apache.kafka":     {}, // Kafka clients, streams, connect, common
+	"org.apache.avro":      {}, // Apache Avro serdes
+	"org.apache.curator":   {}, // ZooKeeper client framework
+	"org.apache.zookeeper": {}, // ZooKeeper
+	"org.apache.log4j":     {}, // log4j 1.x dotted form (in addition to bare `log4j`)
+	"org.apache.logging":   {}, // log4j 2.x (org.apache.logging.log4j.*)
+	"org.apache.hadoop":    {}, // commonly imported alongside Kafka in data pipelines
+	"org.apache.commons.cli": {}, // commons-cli (explicit; org.apache.commons already covers it)
+	"io.confluent":         {}, // Confluent schema-registry / kafka-streams examples / KSQL clients
+	"kafka":                {}, // Scala Kafka classes (`import kafka.server.KafkaConfig`)
+	"com.google.common":    {}, // Guava (`com.google.common.collect.*`) — supersedes legacy `com.google.guava`
+	"com.google.protobuf":  {}, // Protobuf Java runtime
+	"com.google.gson":      {}, // Gson JSON
+	"org.eclipse.jetty":    {}, // Embedded Jetty server (REST interactive-queries demos)
+	"org.glassfish.jersey": {}, // JAX-RS Jersey impl (REST clients in Kafka examples)
+	"org.glassfish":        {}, // broader org.glassfish.* (HK2, etc.)
+	"jakarta.ws":           {}, // jakarta.ws.rs.* (JAX-RS)
+	"javax.ws":             {}, // javax.ws.rs.* (legacy JAX-RS)
+	"org.rocksdb":          {}, // Kafka Streams default state-store backend
+	"org.codehaus":         {}, // org.codehaus.jackson.* legacy / org.codehaus.plexus.*
+	"com.typesafe":         {}, // com.typesafe.config (Akka/Kafka config)
+	"reactor":              {}, // Project Reactor (`reactor.core.*`)
+	"io.netty":             {}, // Netty (transport for many JVM brokers/clients)
+	"io.reactivex":         {}, // RxJava
+	"io.grpc":              {}, // gRPC Java
+	"io.opentelemetry":     {}, // OpenTelemetry Java SDK
+	"org.yaml":             {}, // snakeyaml
+	"org.json":             {}, // org.json reference library
+	"org.slf4j":            {}, // SLF4J Logger/LoggerFactory dotted form
+	"javax.servlet":        {}, // jakarta predecessor (Jetty servlet API)
+	"jakarta.servlet":      {}, // Jakarta Servlet API (Jetty 12+ EE10)
 	// Scala ecosystem (play-scala-starter, Akka, scalatest, sbt, etc.).
 	// Both the language-namespace `scala` root and JVM-style dotted
 	// `org.*` / `com.*` roots are present so every `import` shape in a
