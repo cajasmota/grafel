@@ -5065,6 +5065,58 @@ var swiftBareNames = map[string]struct{}{
 	"Int8":                 {},
 	"Int16":                {},
 	"Int32":                {},
+
+	// Vapor 3 / Fluent 3 service-graph types, factory/builder verbs, and
+	// XCTest assertion DSL (Wave 3, vapor-api-template residuals — issue
+	// #436 follow-up). The Swift extractor strips the receiver from
+	// constructor calls (`MiddlewareConfig()` → `MiddlewareConfig`,
+	// `SQLiteDatabase(storage: .memory)` → `SQLiteDatabase`) and from
+	// static factory calls (`Config.default()` → `default`,
+	// `Services.default()` → `default`). The receiver-less bare CALL
+	// lands in bug-extractor with no plausible local candidate.
+	//
+	// Two name classes:
+	//   1. PascalCase Vapor framework types (Application, MigrationConfig,
+	//      DatabasesConfig, SQLiteDatabase, MiddlewareConfig, EngineRouter,
+	//      ErrorMiddleware, FileMiddleware) — high specificity, very low
+	//      collision risk even in the Vapor framework source repo.
+	//   2. Lowercase Fluent/service-graph verbs (`add`, `default`) —
+	//      generic on their own, but the synthesizer ONLY runs against
+	//      UNRESOLVED endpoints (`Synthesize` skips hex-resolved IDs at
+	//      synth.go:133). When `add`/`default` bind to a local Swift
+	//      entity they keep their hex ID and never reach
+	//      `swiftBareNames`. The stop-list only catches the receiver-
+	//      stripped-and-unresolved residue — which IS the Fluent
+	//      collection mutator (`databases.add(database:as:)`,
+	//      `migrations.add(model:database:)`) or static factory
+	//      (`Config.default()`, `Services.default()`) by construction.
+	//      `register` is already covered by the upstream Swift stdlib
+	//      stop-list. Swift gate prevents cross-language leakage.
+	//
+	// XCTest assertion macros (`XCTAssert*`, `XCTFail`) are Apple stdlib
+	// with the `XCT` prefix; the Swift gate is defence-in-depth.
+	"Application":          {},
+	"MigrationConfig":      {},
+	"DatabasesConfig":      {},
+	"SQLiteDatabase":       {},
+	"MiddlewareConfig":     {},
+	"EngineRouter":         {},
+	"ErrorMiddleware":      {},
+	"FileMiddleware":       {},
+	"add":                  {},
+	"default":              {},
+	"XCTAssert":            {},
+	"XCTAssertEqual":       {},
+	"XCTAssertNotEqual":    {},
+	"XCTAssertTrue":        {},
+	"XCTAssertFalse":       {},
+	"XCTAssertNil":         {},
+	"XCTAssertNotNil":      {},
+	"XCTAssertThrowsError": {},
+	"XCTAssertNoThrow":     {},
+	"XCTAssertGreaterThan": {},
+	"XCTAssertLessThan":    {},
+	"XCTFail":              {},
 }
 
 // csharpBareNames is the C#-language-gated bare-name stop-list (issue
@@ -7423,6 +7475,41 @@ var knownExternalPackages = map[string]struct{}{
 	"openssl":   {},
 	"zlib":      {},
 	"curl":      {},
+	// Swift ecosystem (Wave 3 — vapor-api-template, follow-up to #436).
+	// Vapor + Fluent are the dominant server-side Swift stack; SwiftNIO
+	// is the networking primitive Vapor builds on; Foundation/Combine/
+	// SwiftUI/UIKit/AppKit are Apple stdlib top-levels; PackageDescription
+	// is the Swift Package Manager DSL imported by `Package.swift`
+	// manifests. Without these, Swift `import Vapor` lands in
+	// bug-resolver (the extractor creates a SCOPE.Component named
+	// "Vapor" per import — see internal/extractors/swift/swift.go
+	// buildImport — and the resolver finds it, so it's flagged as a
+	// bug-resolver ambiguous match rather than an external package).
+	// XCTest is the test-runner stdlib (used by the XCTAssert* macros
+	// already in swiftBareNames).
+	"vapor":              {},
+	"fluent":             {},
+	"fluentsqlite":       {},
+	"fluentpostgresql":   {},
+	"fluentmysql":        {},
+	"fluentmongo":        {},
+	"swiftnio":           {},
+	"nio":                {},
+	"niocore":            {},
+	"niohttp1":           {},
+	"niohttp2":           {},
+	"niofoundationcompat": {},
+	"foundation":         {},
+	"combine":            {},
+	"swiftui":            {},
+	"uikit":              {},
+	"appkit":             {},
+	"xctest":             {},
+	"packagedescription": {},
+	"console":            {},
+	"jwt":                {},
+	"leaf":               {},
+	// `redis` already on the allowlist via the Python ecosystem block.
 }
 
 // googleBenchmarkBareNames is the cpp-gated Google Benchmark public-
