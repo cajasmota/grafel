@@ -261,6 +261,82 @@ class App {}
 	}
 }
 
+// TestSwiftExtractor_ImportCarrierDoesNotCollide (#492) — the SCOPE.Component
+// emitted by buildImport must NOT collide with a real Swift component that
+// happens to share the imported module's bare name. Two guarantees:
+//
+//  1. Subtype="module" so the cross-file resolver's (module,name) index
+//     skips the carrier (mirrors the Python convention).
+//  2. The carrier Name is namespaced as `<file>::import::<module>` so it
+//     can never be confused with a real type/target identifier even if a
+//     downstream consumer ignores Subtype.
+//
+// Concretely: a file that both `import App` and `class App {}` must yield
+// exactly ONE SCOPE.Component entity named "App" (the class) — the import
+// carrier must carry a namespaced name, not the bare "App".
+func TestSwiftExtractor_ImportCarrierDoesNotCollide(t *testing.T) {
+	src := `
+import App
+
+class App {
+    func run() {}
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("swift")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "main.swift",
+		Content:  []byte(src),
+		Language: "swift",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var bareApp int
+	var importCarriers int
+	var classFound bool
+	var importToIDFound bool
+	for _, e := range got {
+		if e.Kind == "SCOPE.Component" && e.Name == "App" {
+			bareApp++
+			if e.Subtype == "class" {
+				classFound = true
+			}
+		}
+		if e.Kind == "SCOPE.Component" && e.Subtype == "module" {
+			importCarriers++
+			if e.Name == "App" {
+				t.Errorf("import carrier must NOT use the bare module name 'App'; got name=%q", e.Name)
+			}
+			expected := "main.swift::import::App"
+			if e.Name != expected {
+				t.Errorf("import carrier name = %q, want %q", e.Name, expected)
+			}
+		}
+		for _, rel := range e.Relationships {
+			if rel.Kind == "IMPORTS" && rel.ToID == "App" {
+				importToIDFound = true
+			}
+		}
+	}
+
+	if !classFound {
+		t.Error("expected the SCOPE.Component class 'App' to be extracted")
+	}
+	if bareApp != 1 {
+		t.Errorf("expected exactly one entity Name='App' (the class), got %d — import carrier is colliding (#492)", bareApp)
+	}
+	if importCarriers != 1 {
+		t.Errorf("expected exactly one import-carrier (Subtype=module), got %d", importCarriers)
+	}
+	if !importToIDFound {
+		t.Error("expected an IMPORTS edge with ToID=App (the imported module path is unchanged)")
+	}
+}
+
 func TestSwiftExtractor_EmptyFile(t *testing.T) {
 	tree := parseForTest(t, "")
 	ext, _ := extractor.Get("swift")
