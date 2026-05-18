@@ -495,6 +495,19 @@ func methodSignature(src []byte, node *sitter.Node) string {
 //	                              Foundation` this is "Foundation"; for
 //	                              `import os.log.Logger` this is "os.log".
 //	Properties["imported_name"] — equal to local_name.
+//
+// Issue #492 — the import-carrier entity must NOT collide with real
+// SwiftPM target/product names (e.g. an `import App` in a SwiftPM
+// package whose product is also named `App` previously produced two
+// entities both named `App` and tripped the bug-resolver on every
+// reference). Two layered defenses:
+//
+//  1. Subtype="module" — mirrors the Python convention so the
+//     cross-file resolver's pass-2 (module,name) reverse index skips
+//     this entity entirely (see internal/resolve/imports.go).
+//  2. Name is namespaced as `<file>::import::<module>` so that even if
+//     a downstream consumer ignores Subtype the carrier name cannot
+//     match a bare Swift type/target identifier.
 func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	raw := extractImportPath(node, file.Content)
 	if raw == "" {
@@ -513,15 +526,10 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 		"imported_name": leaf,
 	}
 
-	// Top-level package is the first segment.
-	top := raw
-	if idx := strings.Index(raw, "."); idx >= 0 {
-		top = raw[:idx]
-	}
-
 	return types.EntityRecord{
-		Name:       top,
+		Name:       file.Path + "::import::" + raw,
 		Kind:       "SCOPE.Component",
+		Subtype:    "module",
 		SourceFile: file.Path,
 		Language:   "swift",
 		Relationships: []types.RelationshipRecord{
