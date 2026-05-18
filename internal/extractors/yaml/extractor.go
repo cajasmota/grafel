@@ -44,6 +44,7 @@ import (
 	"bytes"
 	"context"
 	"log"
+	"strconv"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -275,6 +276,9 @@ func nodeText(node *sitter.Node, src []byte) string {
 	}
 	return string(src[node.StartByte():node.EndByte()])
 }
+
+// itoa is a tiny wrapper to keep ref-building one-liners readable.
+func itoa(i int) string { return strconv.Itoa(i) }
 
 // entity builds a typed EntityRecord with required fields set.
 func entity(kind, name, subtype, qualifiedName, sourcefile, language string, startLine, endLine int) types.EntityRecord {
@@ -545,13 +549,19 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 	pairs := topLevelMappings(root)
 	var entities []types.EntityRecord
 
+	// File-scoped ref prefix avoids QualifiedName collisions across workflows.
+	// The same `Checkout` step name appears in hundreds of workflows; without
+	// scoping the resolver index blanks the QualifiedName entry on collision
+	// and every CONTAINS edge to that step lands in bug-extractor (issue #44).
+	refPrefix := "github_actions/" + file.Path + "#"
+
 	// Resolve the workflow ref once (top-level `name:`); fall back to file.Path
 	// when no name is present.
 	workflowRef := ""
 	for _, p := range pairs {
 		if pairKeyText(p, src) == "name" {
 			if v := getPairValueText(p, src); v != "" {
-				workflowRef = "github_actions/workflow/" + v
+				workflowRef = refPrefix + "workflow/" + v
 			}
 			break
 		}
@@ -572,7 +582,7 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 			if name != "" {
 				entities = append(entities, entity(
 					"SCOPE.Operation", name, "workflow",
-					"github_actions/workflow/"+name,
+					refPrefix+"workflow/"+name,
 					file.Path, "yaml", startLine, endLine,
 				))
 			}
@@ -586,7 +596,7 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 				}
 				jStart := int(jp.StartPoint().Row) + 1
 				jEnd := int(jp.EndPoint().Row) + 1
-				jobRef := "github_actions/job/" + jobName
+				jobRef := refPrefix + "job/" + jobName
 				jobEnt := entity(
 					"SCOPE.Operation", jobName, "job",
 					jobRef,
@@ -616,12 +626,14 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 				}
 				stepsNode := findValueNodeForKey(jobPairList, "steps", src)
 				stepMappings := getSequenceItemMappings(stepsNode, src)
-				for _, stepPairs := range stepMappings {
+				for stepIdx, stepPairs := range stepMappings {
 					// step name
 					stepName := findPairValueText(stepPairs, "name", src)
 					if stepName != "" {
 						sStart, sEnd := pairsLineRange(stepPairs)
-						stepRef := "github_actions/step/" + stepName
+						// Include job + position so duplicate step names within
+						// the same workflow still get unique refs.
+						stepRef := refPrefix + "step/" + jobName + "/" + itoa(stepIdx) + "/" + stepName
 						stepEnt := entity(
 							"SCOPE.Operation", stepName, "step",
 							stepRef,
@@ -635,7 +647,7 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 					usesVal := findPairValueText(stepPairs, "uses", src)
 					if usesVal != "" {
 						sStart, sEnd := pairsLineRange(stepPairs)
-						actionRef := "github_actions/action/" + usesVal
+						actionRef := refPrefix + "action/" + jobName + "/" + itoa(stepIdx) + "/" + usesVal
 						actionEnt := entity(
 							"SCOPE.Component", usesVal, "action",
 							actionRef,
@@ -645,11 +657,15 @@ func extractGitHubActions(root *sitter.Node, file extractor.FileInput) []types.E
 						actionEnt.Relationships = append(actionEnt.Relationships,
 							containsRel(jobRef, actionRef))
 						// IMPORTS: workflow file → unique action reference
-						// (e.g. "actions/checkout@v4"). Attach to the workflow
-						// entity if we have one, otherwise to this entity.
+						// (e.g. "actions/checkout@v4"). The `gha_action:` prefix
+						// is consumed by external.synth (Refs #44) and lifted to
+						// an `ext:gha:<org/name>` placeholder — actions live in
+						// the GitHub Actions marketplace, never in the indexed
+						// corpus. Attach to the workflow entity if we have one,
+						// otherwise to this entity.
 						if !seenUses[usesVal] {
 							seenUses[usesVal] = true
-							importRel := importsRel(file.Path, usesVal, "github_actions_uses")
+							importRel := importsRel(file.Path, "gha_action:"+usesVal, "github_actions_uses")
 							if workflowRef != "" {
 								if wfIdx := findEntityIndex(entities, workflowRef); wfIdx >= 0 {
 									entities[wfIdx].Relationships = append(entities[wfIdx].Relationships, importRel)
@@ -940,6 +956,11 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 	pairs := documentMappings(doc)
 	var entities []types.EntityRecord
 
+	// File-scoped ref prefix avoids QualifiedName collisions across manifests
+	// in argocd-style apps where the same metadata.name / container name appears
+	// in many files (Refs #44).
+	refPrefix := "k8s/" + file.Path + "#"
+
 	// Get kind value
 	kindVal := ""
 	for _, p := range pairs {
@@ -967,10 +988,18 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 		if kindVal == "Service" || kindVal == "Deployment" || kindVal == "StatefulSet" || kindVal == "DaemonSet" {
 			topKind = "SCOPE.Service"
 		}
-		resourceRef = "k8s/resource/" + metadataName
+		// Include the K8s Kind in the ref to disambiguate same-name resources
+		// of different kinds in multi-document manifests (e.g. a Deployment
+		// and a Service both named "frontend" — argocd helm-hooks pattern).
+		resourceRef = refPrefix + "resource/" + kindVal + "/" + metadataName
+		// QualifiedName must match resourceRef so CONTAINS edges from
+		// other entities resolve via byQualifiedName (Refs #44). The pre-fix
+		// code passed kindVal here, which caused every K8s resource entity
+		// to be indexed under its Kind ("Deployment", "Service") and the
+		// resolver could never bind ToID = "k8s/<file>#resource/<name>".
 		resEnt := entity(
 			topKind, metadataName, "k8s_resource",
-			kindVal,
+			resourceRef,
 			file.Path, "yaml", startLine, endLine,
 		)
 		// CONTAINS: file → resource.
@@ -983,7 +1012,7 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 
 	switch kindVal {
 	case "Service":
-		entities = append(entities, extractK8sService(specPairs, metadataName, file, src, startLine, endLine)...)
+		entities = append(entities, extractK8sService(specPairs, metadataName, refPrefix, file, src, startLine, endLine)...)
 
 	case "ConfigMap":
 		// ConfigMap data keys → SCOPE.Schema config_key
@@ -997,13 +1026,13 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 			dEnd := int(dp.EndPoint().Row) + 1
 			entities = append(entities, entity(
 				"SCOPE.Schema", k, "config_key",
-				"k8s/configmap/"+metadataName+"/"+k,
+				refPrefix+"configmap/"+metadataName+"/"+k,
 				file.Path, "yaml", dStart, dEnd,
 			))
 		}
 
 	case "Ingress":
-		entities = append(entities, extractK8sIngress(specPairs, metadataName, file, src)...)
+		entities = append(entities, extractK8sIngress(specPairs, metadataName, refPrefix, file, src)...)
 
 	default:
 		// Deployment / StatefulSet / DaemonSet / generic workloads.
@@ -1022,7 +1051,7 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				mlEnd := int(mlp.EndPoint().Row) + 1
 				entities = append(entities, entity(
 					"SCOPE.Component", k+"="+v, "selector",
-					"k8s/selector/"+metadataName+"/"+k,
+					refPrefix+"selector/"+metadataName+"/"+k,
 					file.Path, "yaml", mlStart, mlEnd,
 				))
 			}
@@ -1042,7 +1071,7 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				continue
 			}
 			icStart, icEnd := pairsLineRange(icPairs)
-			icRef := "k8s/init-container/" + name
+			icRef := refPrefix + "init-container/" + name
 			icEnt := entity(
 				"SCOPE.Component", name, "init_container",
 				icRef,
@@ -1068,7 +1097,7 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				continue
 			}
 			cStart, cEnd := pairsLineRange(cPairs)
-			cRef := "k8s/container/" + name
+			cRef := refPrefix + "container/" + name
 			cEnt := entity(
 				"SCOPE.Component", name, "container",
 				cRef,
@@ -1105,7 +1134,7 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				pStart, pEnd := pairsLineRange(portPairs)
 				entities = append(entities, entity(
 					"SCOPE.Component", entityName, "container_port",
-					"k8s/port/"+name+"/"+portVal,
+					refPrefix+"port/"+name+"/"+portVal,
 					file.Path, "yaml", pStart, pEnd,
 				))
 			}
@@ -1121,7 +1150,7 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				eStart, eEnd := pairsLineRange(envPairs)
 				entities = append(entities, entity(
 					"SCOPE.Schema", envName, "env_var",
-					"k8s/env/"+name+"/"+envName,
+					refPrefix+"env/"+name+"/"+envName,
 					file.Path, "yaml", eStart, eEnd,
 				))
 			}
@@ -1140,7 +1169,7 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 					rEnd := int(rp.EndPoint().Row) + 1
 					entities = append(entities, entity(
 						"SCOPE.Schema", section+"."+rKey+"="+rVal, "resource_limit",
-						"k8s/resource/"+name+"/"+section+"/"+rKey,
+						refPrefix+"resource/"+name+"/"+section+"/"+rKey,
 						file.Path, "yaml", rStart, rEnd,
 					))
 				}
@@ -1157,7 +1186,7 @@ func extractKubernetesDoc(doc *sitter.Node, file extractor.FileInput) []types.En
 				vmStart, vmEnd := pairsLineRange(vmPairs)
 				entities = append(entities, entity(
 					"SCOPE.Schema", vmName, "volume_mount",
-					"k8s/volumemount/"+name+"/"+vmName,
+					refPrefix+"volumemount/"+name+"/"+vmName,
 					file.Path, "yaml", vmStart, vmEnd,
 				))
 			}
@@ -1180,7 +1209,7 @@ func k8sTemplatePairs(specPairs []*sitter.Node, src []byte) ([]*sitter.Node, []*
 
 // extractK8sIngress extracts entities from a Kubernetes Ingress spec.
 // Emits ingress_host (SCOPE.ExternalAPI) and ingress_path (SCOPE.Operation).
-func extractK8sIngress(specPairs []*sitter.Node, ingressName string, file extractor.FileInput, src []byte) []types.EntityRecord {
+func extractK8sIngress(specPairs []*sitter.Node, ingressName, refPrefix string, file extractor.FileInput, src []byte) []types.EntityRecord {
 	var entities []types.EntityRecord
 
 	rulesMappings := getSequenceItemMappings(findValueNodeForKey(specPairs, "rules", src), src)
@@ -1190,7 +1219,7 @@ func extractK8sIngress(specPairs []*sitter.Node, ingressName string, file extrac
 		if host != "" {
 			entities = append(entities, entity(
 				"SCOPE.ExternalAPI", host, "ingress_host",
-				"k8s/ingress/"+ingressName+"/"+host,
+				refPrefix+"ingress/"+ingressName+"/"+host,
 				file.Path, "yaml", rStart, rEnd,
 			))
 		}
@@ -1210,7 +1239,7 @@ func extractK8sIngress(specPairs []*sitter.Node, ingressName string, file extrac
 			}
 			entities = append(entities, entity(
 				"SCOPE.Operation", entityName, "ingress_path",
-				"k8s/ingress-path/"+ingressName+"/"+pathVal,
+				refPrefix+"ingress-path/"+ingressName+"/"+pathVal,
 				file.Path, "yaml", pStart, pEnd,
 			))
 		}
@@ -1221,7 +1250,7 @@ func extractK8sIngress(specPairs []*sitter.Node, ingressName string, file extrac
 
 // extractK8sService extracts entities from a Kubernetes Service spec.
 // Emits selector labels as SCOPE.Component and service ports as SCOPE.Component.
-func extractK8sService(specPairs []*sitter.Node, svcName string, file extractor.FileInput, src []byte, startLine, endLine int) []types.EntityRecord {
+func extractK8sService(specPairs []*sitter.Node, svcName, refPrefix string, file extractor.FileInput, src []byte, startLine, endLine int) []types.EntityRecord {
 	var entities []types.EntityRecord
 
 	// Selector entries.
@@ -1234,7 +1263,7 @@ func extractK8sService(specPairs []*sitter.Node, svcName string, file extractor.
 		}
 		entities = append(entities, entity(
 			"SCOPE.Component", k+"="+v, "selector",
-			"k8s/selector/"+svcName+"/"+k,
+			refPrefix+"selector/"+svcName+"/"+k,
 			file.Path, "yaml", startLine, endLine,
 		))
 	}
@@ -1255,7 +1284,7 @@ func extractK8sService(specPairs []*sitter.Node, svcName string, file extractor.
 		pStart, pEnd := pairsLineRange(portPairs)
 		entities = append(entities, entity(
 			"SCOPE.Component", entityName, "service_port",
-			"k8s/svc-port/"+svcName+"/"+portVal,
+			refPrefix+"svc-port/"+svcName+"/"+portVal,
 			file.Path, "yaml", pStart, pEnd,
 		))
 	}
