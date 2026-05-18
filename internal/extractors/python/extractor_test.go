@@ -809,6 +809,176 @@ func TestExtract_NestedClassesFromFixture(t *testing.T) {
 	}
 }
 
+// TestExtract_ClassAttrFields_DRFViewSet covers the canonical DRF ViewSet
+// pattern that motivated issue #526: class-attribute assignments at class
+// scope (e.g. `serializer_class = ArticleSerializer`) must be emitted as
+// Field entities so that `self.serializer_class(...)` CALLS edges resolve.
+func TestExtract_ClassAttrFields_DRFViewSet(t *testing.T) {
+	src := `class ArticleViewSet:
+    serializer_class = ArticleSerializer
+    queryset = Article.objects.all()
+    permission_classes = [IsAuthenticated]
+    pagination_class = LimitOffsetPagination
+
+    def list(self, request):
+        return self.serializer_class(self.queryset, many=True)
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	wantFields := map[string]bool{
+		"ArticleViewSet.serializer_class":   false,
+		"ArticleViewSet.queryset":           false,
+		"ArticleViewSet.permission_classes": false,
+		"ArticleViewSet.pagination_class":   false,
+	}
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "field" {
+			if _, want := wantFields[e.Name]; want {
+				wantFields[e.Name] = true
+			}
+			if e.Language != "python" {
+				t.Errorf("field %q: expected Language=python, got %q", e.Name, e.Language)
+			}
+			if e.SourceFile != "test.py" {
+				t.Errorf("field %q: expected SourceFile=test.py, got %q", e.Name, e.SourceFile)
+			}
+			if e.StartLine <= 0 || e.EndLine < e.StartLine {
+				t.Errorf("field %q: bad line range %d..%d", e.Name, e.StartLine, e.EndLine)
+			}
+		}
+	}
+	for name, seen := range wantFields {
+		if !seen {
+			t.Errorf("expected field entity %q (got %v)", name, entityNames(entities))
+		}
+	}
+}
+
+// TestExtract_ClassAttrFields_DjangoAndSQLAlchemy covers Django ORM field
+// declarations and SQLAlchemy declarative columns — both express schema
+// structure as class-attribute assignments, so the extractor must emit
+// them as Field entities for graph completeness.
+func TestExtract_ClassAttrFields_DjangoAndSQLAlchemy(t *testing.T) {
+	src := `class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+
+class UserDB(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True, nullable=False)
+
+class CommentForm(ModelForm):
+    model = Comment
+    fields = ['body', 'article']
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	want := map[string]bool{
+		"Article.title":      false,
+		"Article.body":       false,
+		"Article.author":     false,
+		"UserDB.id":          false,
+		"UserDB.email":       false,
+		"CommentForm.model":  false,
+		"CommentForm.fields": false,
+	}
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "field" {
+			if _, ok := want[e.Name]; ok {
+				want[e.Name] = true
+			}
+		}
+		// Dunder __tablename__ must NOT be emitted.
+		if e.Name == "UserDB.__tablename__" {
+			t.Errorf("dunder field __tablename__ should be skipped, got %+v", e)
+		}
+	}
+	for name, seen := range want {
+		if !seen {
+			t.Errorf("expected field entity %q (got %v)", name, entityNames(entities))
+		}
+	}
+}
+
+// TestExtract_ClassAttrFields_SkipNonClassScope verifies the field walker
+// is strictly scoped to the immediate class body — assignments inside
+// methods, inside conditionals, and at module level must NOT be emitted
+// as Field entities (over-eager binding risk).
+func TestExtract_ClassAttrFields_SkipNonClassScope(t *testing.T) {
+	src := `module_level = "no"
+
+class Foo:
+    class_attr = "yes"
+
+    def method(self):
+        method_local = "no"
+        self.instance_attr = "no"
+
+    if True:
+        conditional_attr = "no - conditional, not stable"
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	var fieldNames []string
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "field" {
+			fieldNames = append(fieldNames, e.Name)
+		}
+	}
+	if len(fieldNames) != 1 || fieldNames[0] != "Foo.class_attr" {
+		t.Errorf("expected exactly one field [Foo.class_attr], got %v", fieldNames)
+	}
+}
+
+// TestExtract_ClassAttrFields_AnnotatedAndTuple exercises PEP 526
+// annotated assignments and tuple-pattern LHS — both still resolve to
+// bare class attributes.
+func TestExtract_ClassAttrFields_AnnotatedAndTuple(t *testing.T) {
+	src := `class Config:
+    name: str = "default"
+    count: int = 0
+    a, b = 1, 2
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	want := map[string]bool{
+		"Config.name":  false,
+		"Config.count": false,
+		"Config.a":     false,
+		"Config.b":     false,
+	}
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "field" {
+			if _, ok := want[e.Name]; ok {
+				want[e.Name] = true
+			}
+		}
+	}
+	for name, seen := range want {
+		if !seen {
+			t.Errorf("expected field entity %q (got %v)", name, entityNames(entities))
+		}
+	}
+}
+
 // entityNames returns entity names for test diagnostics.
 func entityNames(entities []types.EntityRecord) []string {
 	names := make([]string, len(entities))
