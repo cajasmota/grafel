@@ -2293,6 +2293,132 @@ func TestRubyBareNames_RejectedNamesNotClassified(t *testing.T) {
 	}
 }
 
+// TestRubySidekiqDSLBareNames_ClassifiedWhenLangIsRuby covers issue
+// #449: Sidekiq gem DSL (worker, middleware, config, job context,
+// Sidekiq::Client) and the Redis pipeline / hash / list / set /
+// sorted-set commands exposed via Sidekiq.redis { |conn| ... } get
+// receiver-stripped by the Ruby extractor and land in bug-extractor.
+// These names must classify as stdlib bare-names — but only when
+// the source entity's language is "ruby". Mirrors the AR persistence
+// (#124) precedent.
+func TestRubySidekiqDSLBareNames_ClassifiedWhenLangIsRuby(t *testing.T) {
+	names := []string{
+		// Sidekiq::Worker DSL. `set` covered by stdlibBareNames.
+		"perform_async", "perform_in", "perform_at", "perform_bulk",
+		"enqueue", "enqueue_to", "enqueue_to_in",
+		"sidekiq_options", "sidekiq_retry_in", "sidekiq_retries_exhausted",
+		// Sidekiq::Middleware::Chain. `exists?` covered by AR block;
+		// `remove` covered by rustBareNames.
+		"add", "clear", "prepend", "entries",
+		// Sidekiq config / lifecycle.
+		"redis", "logger", "concurrency", "queues", "strict",
+		"error_handlers", "death_handlers", "on", "lifecycle_events",
+		// Job context accessors.
+		"jid", "bid", "args", "klass", "queue", "retry",
+		"created_at", "enqueued_at",
+		// Sidekiq::Client.
+		"push", "push_bulk",
+		// Redis pipeline / multi-exec / hash / list / set / sorted-set.
+		"pipelined", "multi", "exec", "discard", "watch", "unwatch",
+		"hset", "hget", "hgetall", "lpush", "rpush", "lpop", "rpop",
+		"sadd", "srem", "smembers", "zadd", "zrem", "zrange",
+		"zrangebyscore",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "ruby", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"ruby\", nil) = (_, false); want classified", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"ruby\", nil) subtype=%q, want %q", name, subtype, "function")
+			}
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "rb-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "ruby",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "rb-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestRubySidekiqDSLBareNames_NotClassifiedForOtherLanguages confirms
+// the Ruby language gate holds for the issue #449 Sidekiq additions:
+// a Go method named `enqueue`, a Python `jid`, a JS `perform_async`,
+// etc. must NOT be rewritten when source lang != "ruby".
+func TestRubySidekiqDSLBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	// Names with the highest cross-language collision potential —
+	// generic verbs/accessors that exist as user methods in many
+	// ecosystems. Selection rule: each name MUST be unique to
+	// rubyBareNames (i.e. not in stdlibBareNames or any other
+	// language map), otherwise a different gate would fire first.
+	// Excluded from this negative list (each is classified by another
+	// gate so the non-leak assertion would trivially fail):
+	//   - `on` (swiftBareNames Vapor concurrency / Kotlin Ktor would
+	//     not match but on is in swiftBareNames).
+	//   - `add`, `clear`, `prepend`, `push`, `entries`, `multi`,
+	//     `exec`, `watch` — generic enough that future language gates
+	//     may pick them up; the unique Sidekiq/Redis names below are
+	//     a stronger gate-holding signal.
+	names := []string{
+		"perform_async", "perform_in", "perform_at", "perform_bulk",
+		"enqueue_to_in", "sidekiq_options", "sidekiq_retry_in",
+		"sidekiq_retries_exhausted", "error_handlers", "death_handlers",
+		"lifecycle_events", "jid", "bid", "klass", "push_bulk",
+		"pipelined", "hgetall", "lpush", "rpush", "zrangebyscore",
+		"smembers", "zadd",
+	}
+	otherLangs := []string{"go", "python", "javascript", "rust", "java", "kotlin", "swift", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"ruby\" only)", name, lang)
+				}
+				doc := &graph.Document{
+					Entities: []graph.Entity{{
+						ID:       "src",
+						Name:     "caller",
+						Kind:     "function",
+						Language: lang,
+					}},
+					Relationships: []graph.Relationship{
+						{ID: "rel-1", FromID: "src", ToID: name, Kind: "CALLS"},
+					},
+				}
+				stats := Synthesize(doc)
+				if stats.Synthesized != 0 {
+					t.Fatalf("Synthesize(%q, lang=%q): synthesized=%d, want 0",
+						name, lang, stats.Synthesized)
+				}
+				if doc.Relationships[0].ToID != name {
+					t.Fatalf("ToID=%q, want %q (must not be rewritten for non-Ruby)",
+						doc.Relationships[0].ToID, name)
+				}
+			})
+		}
+	}
+}
+
 // TestIoKtorKnownExternalPackage locks in the issue #106 addition of
 // "io.ktor" to the external-package allowlist so io.ktor.* references
 // classify as ExternalKnown rather than ExternalUnknown.
@@ -2369,10 +2495,11 @@ func TestJSBareNames_NotClassifiedForOtherLanguages(t *testing.T) {
 	for _, name := range names {
 		for _, lang := range otherLangs {
 			// `push` is on the language-specific allowlist for Rust
-			// (rustBareNames covers Vec/String#push). Skip the
-			// Rust-cross-check for that name; the JS/TS gate is what
-			// this test cares about.
-			if name == "push" && lang == "rust" {
+			// (rustBareNames covers Vec/String#push) and Ruby
+			// (rubyBareNames covers Sidekiq::Client#push, #449). Skip
+			// those cross-checks; the JS/TS gate is what this test
+			// cares about.
+			if name == "push" && (lang == "rust" || lang == "ruby") {
 				continue
 			}
 			name, lang := name, lang

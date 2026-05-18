@@ -2395,6 +2395,118 @@ var rubyBareNames = map[string]struct{}{
 	"years":    {},
 	"ago":      {},
 	"from_now": {},
+
+	// Sidekiq gem DSL and Redis pipeline (issue #449). sidekiq
+	// repo bug-extractor was 15.24% after #107/#124 — residual was
+	// dominated by Sidekiq's worker-DSL, middleware-chain lifecycle,
+	// Sidekiq::Client push surface, job context accessors, and the
+	// raw Redis pipeline methods that Sidekiq exposes via its
+	// connection-pool yield (`Sidekiq.redis { |conn| conn.pipelined ... }`).
+	// The Ruby extractor strips the receiver from a builder/yield
+	// call (`MyWorker.perform_async(args)` → `perform_async`,
+	// `conn.hset(k, f, v)` → `hset`), so the resolver only sees
+	// the bare leaf identifier — it lands in bug-extractor. These
+	// names are stable methods on Sidekiq::Worker / Sidekiq::Client /
+	// Sidekiq::Middleware::Chain / Redis::Client (NOT method_missing-
+	// generated), so the bare-name allowlist is the right tool —
+	// mirrors the AR persistence additions (#124) precedent.
+	//
+	// Conservative selection (lessons from #94 / #105 / #106 / #107):
+	// the per-language gate (lang == "ruby") is what makes generic
+	// verbs like `set`, `push`, `add`, `remove`, `clear`, `multi`,
+	// `exec`, `on`, `retry`, `queue` safe — they cannot shadow user
+	// methods in Go/JS/Python/Java/Kotlin/Swift/Rust codebases.
+	// Names already classified by stdlibBareNames (`set`), rustBareNames
+	// (`push`, `remove`), jsBareNames (`push`), or swiftBareNames
+	// (`on`) are still listed here so the Ruby gate is self-documenting;
+	// the language-agnostic / sibling-language maps fire first when
+	// applicable, but listing the names here keeps the Sidekiq surface
+	// complete in one place.
+	//
+	// Categories:
+	//   - Sidekiq::Worker DSL (`perform_async`, `perform_in`,
+	//     `perform_at`, `perform_bulk`, `set`, `enqueue`,
+	//     `enqueue_to`, `enqueue_to_in`, `sidekiq_options`,
+	//     `sidekiq_retry_in`, `sidekiq_retries_exhausted`).
+	//   - Sidekiq::Middleware::Chain (`register`, `add`, `remove`,
+	//     `clear`, `prepend`, `entries`, `exists?` — `exists?`
+	//     already covered above by the AR persistence block).
+	//   - Sidekiq config / lifecycle (`redis`, `logger`,
+	//     `concurrency`, `queues`, `strict`, `error_handlers`,
+	//     `death_handlers`, `on`, `lifecycle_events`).
+	//   - Job context accessors (`jid`, `bid`, `args`, `klass`,
+	//     `queue`, `retry`, `created_at`, `enqueued_at`).
+	//   - Sidekiq::Client (`push`, `push_bulk`).
+	//   - Redis pipeline / multi-exec / hash / list / set / sorted-set
+	//     commands exposed by Sidekiq's connection-pool yield
+	//     (`pipelined`, `multi`, `exec`, `discard`, `watch`,
+	//     `unwatch`, `hset`, `hget`, `hgetall`, `lpush`, `rpush`,
+	//     `lpop`, `rpop`, `sadd`, `srem`, `smembers`, `zadd`,
+	//     `zrem`, `zrange`, `zrangebyscore`).
+	"perform_async":             {},
+	"perform_in":                {},
+	"perform_at":                {},
+	"perform_bulk":              {},
+	"enqueue":                   {},
+	"enqueue_to":                {},
+	"enqueue_to_in":             {},
+	"sidekiq_options":           {},
+	"sidekiq_retry_in":          {},
+	"sidekiq_retries_exhausted": {},
+	// Sidekiq middleware chain. `exists?` already in AR block above.
+	"add":     {},
+	"clear":   {},
+	"prepend": {},
+	"entries": {},
+	// Sidekiq config / lifecycle.
+	"redis":            {},
+	"logger":           {},
+	"concurrency":      {},
+	"queues":           {},
+	"strict":           {},
+	"error_handlers":   {},
+	"death_handlers":   {},
+	"on":               {},
+	"lifecycle_events": {},
+	// Job context accessors.
+	"jid":         {},
+	"bid":         {},
+	"args":        {},
+	"klass":       {},
+	"queue":       {},
+	"retry":       {},
+	"created_at":  {},
+	"enqueued_at": {},
+	// Sidekiq::Client.
+	"push":      {},
+	"push_bulk": {},
+	// Redis pipeline / multi-exec / hash / list / set / sorted-set.
+	"pipelined":     {},
+	"multi":         {},
+	"exec":          {},
+	"discard":       {},
+	"watch":         {},
+	"unwatch":       {},
+	"hset":          {},
+	"hget":          {},
+	"hgetall":       {},
+	"lpush":         {},
+	"rpush":         {},
+	"lpop":          {},
+	"rpop":          {},
+	"sadd":          {},
+	"srem":          {},
+	"smembers":      {},
+	"zadd":          {},
+	"zrem":          {},
+	"zrange":        {},
+	"zrangebyscore": {},
+	// `set` and `remove` belong to the worker DSL / middleware chain
+	// surface too, but are already classified language-agnostically
+	// (stdlibBareNames["set"]) or by another language gate
+	// (rustBareNames["remove"]) — not duplicated here to avoid map
+	// literal duplicate-key compile errors. Same rationale for `push`
+	// being listed once above under Sidekiq::Client.
 }
 
 // jsBareNames is the JS/TS-language-gated bare-name stop-list (issue
