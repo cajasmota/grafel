@@ -46,7 +46,8 @@ miss these lines should be sent back to the agent before merge.
 
 ## Sources of truth
 
-- Latest aggregate measurement: `docs/verify2/quick-tier1-baseline-refresh-2026-05-19-v2.md` (40 repos, post wave-1+2, pre #474-#483)
+- Latest aggregate measurement: `docs/verify2/quick-tier1-baseline-refresh-2026-05-19-v3.md` (40 repos, post-determinism #486, includes #474-#483 chain-fixes — **reliable single-shot**)
+- Prior aggregate: `docs/verify2/quick-tier1-baseline-refresh-2026-05-19-v2.md` (40 repos, post wave-1+2, pre #474-#483; noisy)
 - Prior aggregate: `docs/verify2/quick-tier1-baseline-2026-05-19.md` (40 repos, baseline before any wave)
 - Ship-gate v4: `docs/verify2/ship-gate-baseline-refresh-v4.md` (32-repo intersection, pre-quick-tier1)
 - Wave-1+2 fix PRs: #466 #467 #468 #469 #470 #471 #472 #473
@@ -54,19 +55,20 @@ miss these lines should be sent back to the agent before merge.
 
 ## Ledger
 
-(Bug-rate dates: `v2` = 2026-05-19 quick-tier1 refresh v2. `v4` = 2026-05-18 ship-gate
-v4. PR# in the Latest column means "post-#NNN re-measurement reported in the PR thread,"
-not yet folded into an aggregate baseline doc.)
+(Bug-rate dates: `v3` = 2026-05-19 quick-tier1 refresh v3 (post-determinism #486 — reliable single-shot).
+`v2` = 2026-05-19 quick-tier1 refresh v2 (noisy, pre-determinism). `v4` = 2026-05-18 ship-gate v4.
+PR# in the Latest column means "post-#NNN re-measurement reported in the PR thread," not yet
+folded into an aggregate baseline doc.)
 
 | Repo | Lang | Files | Latest bug-rate (date, source) | Targeting PR | Residual root cause | Status | Blocker / next fix |
 |---|---|---:|---|---|---|---|---|
-| aspnetcore-docs-samples | razor | 2,674 | 6.18% (2026-05-19, v2) | #473 | clean | at-bar | re-measure for ship-gate gap |
-| tide | fish | 130 | 9.02% (2026-05-19, v2) | — | fish-shell extractor untouched | structural | file fish-extractor issue |
-| just | just | 290 | 17.34% (2026-05-19, v2) | — | just-lang extractor untouched | structural | file just-extractor issue |
-| http.zig | zig | 36 | 20.36% (2026-05-19, v2) | — | zig extractor untouched | structural | file zig-extractor issue |
-| kickstart.nvim | lua | 15 | 10.14% (2026-05-19, v2) | — | lua regression (3.45 to 10.14); transitive change from wave-1+2 added 22 endpoints with 10 new bugs | addressable | file lua-regression investigate issue |
-| grpc-go-examples | proto | 203 | 7.11% (post-#480, v2 measured 10.74%) | #472 then #476 then #480 | byPackageComponent gap: bare receiver variable names + dotted Format-B with local-var scope names | upstream | #483 (byPackageComponent landed but receiver-variable-type tracking still pending — separate issue to file) |
-| apollo-server | graphql | 293 | 4.79% (2026-05-19, v2) | #470 | clean | at-bar | re-measure for ship-gate gap |
+| aspnetcore-docs-samples | razor | 2,674 | 6.18% (2026-05-19, v3) | #473 | clean | at-bar | next razor wave for ship-gate gap |
+| tide | fish | 130 | 9.02% (2026-05-19, v3) | — | fish-shell extractor untouched | structural | file fish-extractor issue |
+| just | just | 290 | 17.34% (2026-05-19, v3) | — | just-lang extractor untouched | structural | file just-extractor issue |
+| http.zig | zig | 36 | 20.36% (2026-05-19, v3) | — | zig extractor untouched | structural | file zig-extractor issue |
+| kickstart.nvim | lua | 15 | 9.86% (2026-05-19, v3; v2 was 10.14%) | — | lua regression vs v1 baseline (3.45 to 9.86); transitive change from wave-1+2 added endpoints with new bugs | addressable | file lua-regression investigate issue |
+| grpc-go-examples | proto | 203 | 7.04% (2026-05-19, v3; v2 was 10.74%) | #472 then #476 then #480 then #483 | residual: receiver-variable-type tracking still pending | at-bar | file `receiver-variable-type-tracking` issue; then re-measure |
+| apollo-server | graphql | 293 | 4.74% (2026-05-19, v3) | #470 | clean | at-bar | next graphql wave for ship-gate gap |
 | jupyter-notebook | notebook | — | — | — | — | unmeasured | clone + index |
 | jaffle_shop | sql_dbt | — | — | — | — | unmeasured | clone + index |
 | azure-quickstart-templates | bicep | — | — | — | — | unmeasured | clone + index |
@@ -87,36 +89,36 @@ not yet folded into an aggregate baseline doc.)
 | envoy | envoy-yaml | — | — | — | — | unmeasured | clone + index |
 | haproxy | haproxy-cfg | — | — | — | — | unmeasured | clone + index |
 | seleniumhq-examples | multi | — | — | — | — | unmeasured | clone + index |
-| requests | python | 111 | 1.54% (2026-05-19, v2) | — | clean | at-bar | re-measure for ship-gate gap (close — within striking distance of 1%) |
-| flask-realworld | python | 43 | 14.78% (2026-05-19, v2) | — | python extractor not targeted in wave-1+2 beyond #455 bare-name allowlist | structural | file python-fix-wave issue |
-| click | python | 138 | 6.86% (2026-05-19, v2) | #455 (allowlist) | clean | at-bar | re-measure for ship-gate gap |
-| django-realworld | python | 48 | 13.96% (2026-05-19, v2) | — | python extractor not targeted beyond #455 | structural | file python-fix-wave issue |
-| pandas | python | 197 | 13.86% (2026-05-19, v2) | — | python extractor not targeted beyond #455 | structural | file python-fix-wave issue |
-| gin | go | 121 | 6.20% (post-#480, v2 measured 8.63%) | #480 | post-#480 residual: byPackageComponent gap (same family as grpc) | upstream | #483 partial, receiver-variable-type issue pending |
-| chi | go | 93 | 4.81% (post-#480, v2 measured 8.50%) | #480 | post-#480 residual: byPackageComponent gap | at-bar | re-measure to confirm; ship-gate gap remains |
-| etcd | go | 424 | 8.88% (post-#480, v2 measured 12.40%) and -149 bug-resolver from #483 | #480 then #483 | bare receiver variable names + dotted Format-B with local-var scope names | upstream | file `receiver-variable-type-tracking` issue (separate, multi-day) |
-| express-realworld | javascript | 66 | 9.83% (2026-05-19, v2) | — | javascript extractor not targeted in wave-1+2 | structural | file js-fix-wave issue |
-| nestjs-starter | typescript | 16 | 16.67% (2026-05-19, v2) | #475 (Node stdlib) | post-#475 TS-on-Node residual still dominates | addressable | next TS wave (decorator + DI graph) |
-| nextjs-commerce | typescript | 76 | 17.22% (2026-05-19, v2) | #475 (Node stdlib) | TS extractor: framework-level (Next.js router + RSC) symbol resolution | structural | file ts-framework-extractor issue |
-| spring-petclinic | java | 120 | 8.45% (2026-05-19, v2) | — | java extractor not targeted in wave-1+2 | at-bar | re-measure for ship-gate gap |
-| kafka-streams-examples | java | 172 | 22.31% (2026-05-19, v2) | — | java extractor not targeted in wave-1+2 | structural | file java-fix-wave issue |
-| exposed | kotlin | 115 | 8.56% (2026-05-19, v2) | #471 then #477 | Kotlin DSL receivers beyond Ktor Routing (Exposed SQL DSL) | addressable | next Kotlin wave (Exposed/coroutine DSL receivers) |
-| ktor-samples | kotlin | 509 | 6.34% (post-#477, v2 measured 10.40%) | #471 then #477 | residual not surfaced by #477 agent; re-investigate per "beyond minimum" rule | at-bar | re-investigate residual, then re-measure |
-| play-scala-starter | scala | 37 | 7.75% (2026-05-19, v2) | #469 | 9 bug-extractor are project-local imports (services.Counter, controllers.AsyncController) — IMPORTS-aware resolver gap | addressable | file scala-imports-resolver issue |
-| usermanager-example | clojure | 17 | 19.74% (2026-05-19, v2) | — | clojure extractor untouched | structural | file clojure-extractor issue |
-| rails-realworld | ruby | 105 | 6.65% (2026-05-19, v2) | — | clean | at-bar | re-measure for ship-gate gap |
-| sidekiq | ruby | 85 | 13.47% (2026-05-19, v2) | — | ruby extractor not targeted in wave-1+2 | structural | file ruby-fix-wave issue |
-| laravel-quickstart | php | 83 | 24.08% (2026-05-19, v2) | — | php extractor untouched in wave-1+2 | structural | file php-fix-wave issue |
-| symfony-demo | php | 241 | 23.02% (2026-05-19, v2) | — | php extractor untouched in wave-1+2 | structural | file php-fix-wave issue |
-| mini-redis | rust | 33 | 14.85% (2026-05-19, v2) | — | rust extractor not targeted in wave-1+2 | structural | file rust-fix-wave issue |
-| actix-examples | rust | 460 | 18.75% (2026-05-19, v2) | — | rust extractor not targeted in wave-1+2 | structural | file rust-fix-wave issue |
-| vapor-api-template | swift | 21 | 21.28% (2026-05-19, v2) | — | swift extractor untouched | structural | file swift-extractor issue |
+| requests | python | 111 | 1.54% (2026-05-19, v3) | — | clean | at-bar | within striking distance of 1% — push for ship-gate |
+| flask-realworld | python | 43 | 14.78% (2026-05-19, v3) | — | python extractor not targeted in wave-1+2 beyond #455 bare-name allowlist | structural | file python-fix-wave issue |
+| click | python | 138 | 6.86% (2026-05-19, v3) | #455 (allowlist) | clean | at-bar | next python wave for ship-gate gap |
+| django-realworld | python | 48 | 13.96% (2026-05-19, v3) | — | python extractor not targeted beyond #455 | structural | file python-fix-wave issue |
+| pandas | python | 197 | 13.86% (2026-05-19, v3) | — | python extractor not targeted beyond #455 | structural | file python-fix-wave issue |
+| gin | go | 121 | 6.17% (2026-05-19, v3; v2 was 8.63%) | #480 then #483 | residual: receiver-variable-type tracking still pending | at-bar | receiver-variable-type-tracking issue |
+| chi | go | 93 | 4.80% (2026-05-19, v3; v2 was 8.50%) | #480 then #483 | residual: receiver-variable-type tracking still pending | at-bar | receiver-variable-type-tracking issue; ship-gate gap remains |
+| etcd | go | 424 | 8.62% (2026-05-19, v3; v2 was 12.40%) | #480 then #483 | bare receiver variable names + dotted Format-B with local-var scope names | upstream | file `receiver-variable-type-tracking` issue (separate, multi-day) — 0.62 pp away from bar |
+| express-realworld | javascript | 66 | 9.83% (2026-05-19, v3) | — | javascript extractor not targeted in wave-1+2 | structural | file js-fix-wave issue |
+| nestjs-starter | typescript | 16 | 16.67% (2026-05-19, v3) | #475 (Node stdlib) | post-#475 TS-on-Node residual still dominates | addressable | next TS wave (decorator + DI graph) |
+| nextjs-commerce | typescript | 76 | 17.14% (2026-05-19, v3; v2 was 17.22%) | #475 (Node stdlib) | TS extractor: framework-level (Next.js router + RSC) symbol resolution | structural | file ts-framework-extractor issue |
+| spring-petclinic | java | 120 | 8.34% (2026-05-19, v3; v2 was 8.45%) | — | java extractor not targeted in wave-1+2; just above bar | addressable | first java wave — close to bar |
+| kafka-streams-examples | java | 172 | 22.19% (2026-05-19, v3; v2 was 22.31%) | — | java extractor not targeted in wave-1+2 | structural | file java-fix-wave issue |
+| exposed | kotlin | 115 | 11.00% (2026-05-19, v3; v2 was 8.56% — REGRESSION vs v2 noisy baseline, but v3 single-shot trustworthy) | #471 then #477 | Kotlin DSL receivers beyond Ktor Routing (Exposed SQL DSL) — back above bar | addressable | next Kotlin wave (Exposed/coroutine DSL receivers) |
+| ktor-samples | kotlin | 509 | 6.29% (2026-05-19, v3; v2 was 10.40%) | #471 then #477 | residual under bar — wave-3 chain-fix folded in | at-bar | next kotlin wave for ship-gate gap |
+| play-scala-starter | scala | 37 | 7.75% (2026-05-19, v3) | #469 | 9 bug-extractor are project-local imports (services.Counter, controllers.AsyncController) — IMPORTS-aware resolver gap | at-bar | file scala-imports-resolver issue |
+| usermanager-example | clojure | 17 | 19.74% (2026-05-19, v3) | — | clojure extractor untouched | structural | file clojure-extractor issue |
+| rails-realworld | ruby | 105 | 6.65% (2026-05-19, v3) | — | clean | at-bar | next ruby wave for ship-gate gap |
+| sidekiq | ruby | 85 | 13.47% (2026-05-19, v3) | — | ruby extractor not targeted in wave-1+2 | structural | file ruby-fix-wave issue |
+| laravel-quickstart | php | 83 | 24.08% (2026-05-19, v3) | — | php extractor untouched in wave-1+2 | structural | file php-fix-wave issue |
+| symfony-demo | php | 241 | 23.02% (2026-05-19, v3) | — | php extractor untouched in wave-1+2 | structural | file php-fix-wave issue |
+| mini-redis | rust | 33 | 14.85% (2026-05-19, v3) | — | rust extractor not targeted in wave-1+2 | structural | file rust-fix-wave issue |
+| actix-examples | rust | 460 | 18.75% (2026-05-19, v3) | — | rust extractor not targeted in wave-1+2 | structural | file rust-fix-wave issue |
+| vapor-api-template | swift | 21 | 21.28% (2026-05-19, v3) | — | swift extractor untouched | structural | file swift-extractor issue |
 | sample-food-truck | swift | — | — | — | — | unmeasured | clone + index |
-| aspnetcore-realworld | csharp | 97 | 9.82% (2026-05-19, v2) | #473 | razor/csharp fix improved but residual cs-specific identifier resolution remains | addressable | next csharp wave |
-| spdlog | cpp | 175 | 6.95% (2026-05-19, v2) | #468 | clean | at-bar | re-measure for ship-gate gap |
+| aspnetcore-realworld | csharp | 97 | 9.82% (2026-05-19, v3) | #473 | razor/csharp fix improved but residual cs-specific identifier resolution remains | addressable | next csharp wave |
+| spdlog | cpp | 175 | 6.95% (2026-05-19, v3) | #468 | clean | at-bar | next cpp wave for ship-gate gap |
 | esp-idf | c | — | — | — | — | unmeasured | clone + index |
 | flutter-samples | dart | — | — | — | — | unmeasured | clone + index |
-| phoenix-todo-list | elixir | 69 | 9.38% (2026-05-19, v2) | — | elixir extractor not targeted in wave-1+2 | addressable | next elixir wave (close to bar) |
+| phoenix-todo-list | elixir | 69 | 9.38% (2026-05-19, v3) | — | elixir extractor not targeted in wave-1+2 | addressable | next elixir wave (close to bar) |
 | microblog | python | — | — | — | — | unmeasured | clone + index |
 | fastapi-realworld | python | — | — | — | — | unmeasured | clone + index |
 | golang-gin-realworld | go | — | — | — | — | unmeasured | clone + index |
@@ -127,7 +129,7 @@ not yet folded into an aggregate baseline doc.)
 | ent | go | — | — | — | — | unmeasured | clone + index |
 | sqlc-examples | go | — | — | — | — | unmeasured | clone + index |
 | netcore-boilerplate | csharp | — | — | — | — | unmeasured | clone + index |
-| tokio | rust | 389 | 16.04% (2026-05-19, v2) | — | rust extractor not targeted in wave-1+2 | structural | file rust-fix-wave issue |
+| tokio | rust | 389 | 16.04% (2026-05-19, v3) | — | rust extractor not targeted in wave-1+2 | structural | file rust-fix-wave issue |
 | pnpm | javascript | — | — | — | — | unmeasured | clone + index |
 | bazel | java | — | — | — | — | unmeasured | clone + index |
 | cmake | cpp | — | — | — | — | unmeasured | clone + index |
@@ -145,11 +147,11 @@ not yet folded into an aggregate baseline doc.)
 | crossplane | yaml | — | — | — | — | unmeasured | clone + index |
 | ansible-for-devops | yaml | — | — | — | — | unmeasured | clone + index |
 | nomad-pack | hcl | — | — | — | — | unmeasured | clone + index |
-| terraform-aws-vpc | hcl | 105 | 6.34% (2026-05-19, v2) | #466 | README markdown extraction artifacts (sibling-dir ambiguous basenames + markdown link targets) | at-bar | chain-fixed by #474 markdown work; re-measure |
-| argocd-example-apps | yaml | 91 | 0.00% (post-#478, v2 measured 16.01%) | #467 then #474 then #478 | clean | at-ship-gate | re-measure to confirm in next aggregate baseline |
-| prometheus-helm | yaml | 52 | 0.00% (2026-05-19, v2) | — | clean | at-ship-gate | maintenance |
-| starter-workflows | yaml | 514 | 0.55% (post-#478, v2 measured 11.89%) | #467 then #475 then #478 | clean | at-ship-gate | re-measure to confirm in next aggregate baseline |
-| openapi-stripe | yaml | 5 | 0.00% (2026-05-19, v2) | — | clean | at-ship-gate | maintenance |
+| terraform-aws-vpc | hcl | 105 | 6.34% (2026-05-19, v3) | #466 then #474 | residual: README markdown extraction artifacts (sibling-dir ambiguous basenames) | at-bar | next hcl/markdown wave for ship-gate gap |
+| argocd-example-apps | yaml | 91 | 0.00% (2026-05-19, v3; v2 was 16.01%) | #467 then #474 then #478 | clean | at-ship-gate | maintenance |
+| prometheus-helm | yaml | 52 | 0.00% (2026-05-19, v3) | — | clean | at-ship-gate | maintenance |
+| starter-workflows | yaml | 514 | 0.55% (2026-05-19, v3; v2 was 11.89%) | #467 then #475 then #478 | clean | at-ship-gate | maintenance |
+| openapi-stripe | yaml | 5 | 0.00% (2026-05-19, v3) | — | clean | at-ship-gate | maintenance |
 | gitlab-runner | yaml | — | — | — | — | unmeasured | clone + index |
 | circleci-demo-python-django | yaml | — | — | — | — | unmeasured | clone + index |
 | jenkins | groovy | — | — | — | — | unmeasured | clone + index |
@@ -176,33 +178,36 @@ not yet folded into an aggregate baseline doc.)
 | phoenix-live-view | elixir | — | — | — | — | unmeasured | clone + index |
 | http4k | kotlin | — | — | — | — | unmeasured | clone + index |
 
-## Status roll-up (seed snapshot 2026-05-19)
+## Status roll-up (v3 refresh 2026-05-19)
 
 | Status | Count |
 |---|---:|
 | at-ship-gate | 4 |
-| at-bar | 10 |
+| at-bar | 16 |
 | addressable | 6 |
-| structural | 14 |
-| upstream | 3 |
-| unmeasured | 78 |
+| structural | 13 |
+| upstream | 1 |
+| unmeasured | 75 |
 | **total tier-1 repos** | **115** |
 
-Note: counts of measured rows (37 = 115 - 78) differ slightly from the 40 in the
-v2 doc because #483 / #480 split-measurements (etcd, gin, chi, grpc-go-examples)
-are folded into a single row each in this ledger. The v2 doc remains the
-authoritative aggregate measurement until the next baseline run.
+Notes:
+- 4 ship-gate (argocd-example-apps, starter-workflows, prometheus-helm, openapi-stripe) — argocd + starter-workflows now folded into the aggregate baseline.
+- 16 at-bar (was 10 at v2): added chi, gin, grpc-go-examples, ktor-samples, terraform-aws-vpc (chain-fixed and folded), play-scala-starter (promoted from addressable).
+- 1 upstream (etcd): 0.62 pp from bar but waiting on receiver-variable-type-tracking primitive.
+- exposed moved addressable -> addressable but BACK ABOVE bar (8.56 -> 11.00) — v2 number was a noisy underestimate; v3 single-shot trustworthy. Treat as not-yet-at-bar.
 
-## Next-wave candidates (filter: status in {at-bar, addressable}, sorted by bug-rate desc)
+## Next-wave candidates (filter: status in {at-bar, addressable}, sorted by bug-rate desc, v3 numbers)
 
 | Rank | Repo | Lang | Bug-rate | Why |
 |---:|---|---|---:|---|
-| 1 | nestjs-starter | typescript | 16.67% | post-#475 TS-on-Node residual still dominates |
-| 2 | nextjs-commerce | typescript | 17.22% | TS framework-level resolution (could overlap with above) |
-| 3 | kickstart.nvim | lua | 10.14% | regression — quick win if root cause is transitive |
-| 4 | aspnetcore-realworld | csharp | 9.82% | next csharp wave (one-step from at-bar) |
-| 5 | phoenix-todo-list | elixir | 9.38% | first elixir wave, very close to bar |
-| 6 | exposed | kotlin | 8.56% | extend Kotlin DSL receivers beyond Ktor Routing |
+| 1 | nextjs-commerce | typescript | 17.14% | TS framework-level resolution (Next.js router + RSC) |
+| 2 | nestjs-starter | typescript | 16.67% | post-#475 TS-on-Node residual still dominates |
+| 3 | exposed | kotlin | 11.00% | Kotlin DSL receivers beyond Ktor Routing (v3 reveals v2 was noisy under-read) |
+| 4 | kickstart.nvim | lua | 9.86% | lua regression vs v1 — investigate transitive cause |
+| 5 | aspnetcore-realworld | csharp | 9.82% | next csharp wave (one-step from bar) |
+| 6 | phoenix-todo-list | elixir | 9.38% | first elixir wave, very close to bar |
+| 7 | spring-petclinic | java | 8.34% | first java wave — within striking distance of bar |
+| 8 | etcd | go | 8.62% | upstream — receiver-variable-type primitive will unblock |
 
 `structural` rows (rust, php, java, ruby, python, swift, zig, just, fish, clojure)
 are higher-bug-rate but each requires a dedicated multi-day extractor wave —
