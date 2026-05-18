@@ -100,6 +100,7 @@ REPOS=(
   "sample-food-truck|https://github.com/apple/sample-food-truck.git|main|swift"
   "aspnetcore-realworld|https://github.com/gothinkster/aspnetcore-realworld-example-app.git|master|csharp"
   "spdlog|https://github.com/gabime/spdlog.git|v1.x|cpp"
+  "esp-idf|https://github.com/espressif/esp-idf.git|master|c|examples/get-started"  # pure-C corpus; cpp extractor registers for both "c" and "cpp" languages via tree-sitter-c
   "flutter-samples|https://github.com/flutter/samples.git|main|dart"
   "phoenix-todo-list|https://github.com/dwyl/phoenix-todo-list-tutorial.git|main|elixir"
   # --- Secondary distinctive coverage ---
