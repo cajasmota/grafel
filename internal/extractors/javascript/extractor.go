@@ -90,6 +90,39 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		repoRoot: file.RepoRoot,
 	}
 
+	// Issue #570 — emit a file-level SCOPE.Component (subtype="file")
+	// entity per source file so the cross-repo import linker (#566)
+	// can map IMPORTS edges back to the originating repo via the
+	// resolver's byName index. Before this change every JS/TS IMPORTS
+	// edge carried FromID=<file path string>; the linker's
+	// `entRepo[edge.FromID]` lookup missed because no entity had that
+	// path as its ID, collapsing the candidate cross-repo
+	// `method=import` link count to ~0 across the client-fixture
+	// group despite #566/#569 making the rest of the pipeline work
+	// end-to-end. With the file-level entity present, the resolver's
+	// ReferencesEmbeddedWithAllowlist pass rewrites the IMPORTS
+	// FromID from the path string to the file entity's stamped hex ID
+	// (graph.EntityID(repoTag, "SCOPE.Component", path, path)) via
+	// byName, and the linker then matches it back to the source repo.
+	// We do NOT pre-stamp the ID here — the extractor doesn't know
+	// the indexer's repoTag seed, so any hex we wrote would be
+	// short-circuited as already-hex by isHexID in the resolver and
+	// the rewrite would never happen.
+	fileEntity := types.EntityRecord{
+		Name:       file.Path,
+		Kind:       "SCOPE.Component",
+		SourceFile: file.Path,
+		Language:   file.Language,
+		Subtype:    "file",
+		Properties: map[string]string{
+			"kind":    "SCOPE.Component",
+			"subtype": "file",
+		},
+		EnrichmentStatus: types.StatusPending,
+		QualityScore:     1.0,
+	}
+	x.entities = append(x.entities, fileEntity)
+
 	// Issue #421 — collect import bindings BEFORE walking the body so
 	// receiver-typed CALLS edges materialised inside class methods can
 	// look up the imported source file at emission time. Bindings is
@@ -926,10 +959,17 @@ func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool, bin
 func (x *extractor) emitImport(module string, n *sitter.Node, bindings []*importBinding) {
 	// Use the full module path as the entity name for parity with Python indexer.
 	start, end := lines(n)
+	// Issue #570 — FromID is the importing file's path. The extractor
+	// also emits a file-level SCOPE.Component (subtype="file") entity
+	// with Name == file path at the top of Extract; the resolver's
+	// byName index then rewrites this path-shaped FromID to the file
+	// entity's stamped hex ID, and the cross-repo import linker
+	// (#566) can map the edge back to its originating repo.
+	fromID := x.filePath
 	rels := make([]types.RelationshipRecord, 0, max1(len(bindings)))
 	if len(bindings) == 0 {
 		rels = append(rels, types.RelationshipRecord{
-			FromID: x.filePath,
+			FromID: fromID,
 			ToID:   module,
 			Kind:   "IMPORTS",
 		})
@@ -963,7 +1003,7 @@ func (x *extractor) emitImport(module string, n *sitter.Node, bindings []*import
 				toID = b.sourceModule + "." + b.importedName
 			}
 			rels = append(rels, types.RelationshipRecord{
-				FromID:     x.filePath,
+				FromID:     fromID,
 				ToID:       toID,
 				Kind:       "IMPORTS",
 				Properties: props,

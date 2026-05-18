@@ -430,3 +430,80 @@ function run(repo: Repository) {
 			caller.Relationships)
 	}
 }
+
+// TestExtract_FileLevelEntityEnablesImportsFromIDRewrite (#570) —
+// the cross-repo import linker (#566) consults a per-entity-id →
+// repo index; a file-path-shaped from_id isn't in that index, so the
+// linker silently skipped every JS/TS import edge — collapsing the
+// candidate `method=import` link count to near-zero on shared
+// packages like react / axios / react-native between sibling repos.
+//
+// The fix has two parts that this test pins:
+//
+//  1. The extractor emits a file-level SCOPE.Component (subtype="file")
+//     entity whose Name == the file path. The indexer stamps it with
+//     graph.EntityID(repoTag, ...), and the resolver's byName index
+//     then maps the file-path string to the file-entity's hex ID.
+//
+//  2. Every IMPORTS edge keeps FromID == the file path string at
+//     extract time. The path is the file-entity's Name, so the
+//     resolver's ReferencesEmbeddedWithAllowlist pass rewrites the
+//     FromID to the file-entity's stamped hex ID before the link
+//     pipeline reads the graph. We do NOT pre-stamp a hex in the
+//     extractor because the extractor doesn't know the indexer's
+//     repoTag seed — a pre-stamped hex would short-circuit isHexID
+//     in ReferencesEmbedded and prevent the rewrite.
+//
+// This test asserts the extractor-side contract (file entity exists,
+// IMPORTS FromID matches its Name). The end-to-end hex-rewrite is
+// verified by re-indexing client-fixture-{a,b,c} and inspecting the
+// saved graph.json — see PR description.
+func TestExtract_FileLevelEntityEnablesImportsFromIDRewrite(t *testing.T) {
+	src := `import { UserService } from "./user/user.service";
+import express from "express";
+import * as fs from "fs";
+import "./side-effect";
+const lodash = require("lodash");
+`
+	tree := parseTSRel(t, []byte(src))
+	const path = "src/app/app.module.ts"
+	ents := runJSPath(t, src, "typescript", tree, path)
+
+	// 1. A file-level SCOPE.Component subtype="file" must exist for
+	//    the source path, so the indexer's byName index can map the
+	//    path-shaped FromID to the file entity's stamped hex ID.
+	var fileEntFound bool
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "file" && e.Name == path {
+			fileEntFound = true
+			break
+		}
+	}
+	if !fileEntFound {
+		t.Fatalf("expected file-level SCOPE.Component subtype=file entity for %s; ents=%+v", path, ents)
+	}
+
+	// 2. Every IMPORTS edge across every import-entity must carry
+	//    FromID == path (the file entity's Name). The resolver
+	//    rewrites this to the stamped hex ID at index-time.
+	var importEdges int
+	for _, e := range ents {
+		if e.Subtype != "import" {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind != "IMPORTS" {
+				continue
+			}
+			importEdges++
+			if r.FromID != path {
+				t.Errorf("IMPORTS edge on %q has FromID=%q; want file path %q",
+					e.Name, r.FromID, path)
+			}
+		}
+	}
+	// Five distinct import shapes: named, default, namespace, side-effect, require.
+	if importEdges < 5 {
+		t.Errorf("expected at least 5 IMPORTS edges across shapes, got %d", importEdges)
+	}
+}
