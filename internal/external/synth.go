@@ -6020,6 +6020,216 @@ var jsBareNames = map[string]struct{}{
 	"on":                 {},
 	// `off` (modern EventEmitter alias for removeListener).
 	"off":                {},
+
+	// Wave-4 (RN/Expo, #508) — bare-name hooks + receiver-stripped APIs
+	// observed as the dominant bug-extractor residual on the core-mobile
+	// (Upvate Expo+RN) fixture after pass-1 (knownExternalPackages
+	// allowlist). All names are distinctive ecosystem APIs gated by
+	// lang=="javascript"||lang=="typescript" in stdlibFunction. Each
+	// follows the React convention (`use*` is reserved by rules-of-hooks
+	// lint) or is a TanStack Query / Expo Router / React Navigation /
+	// React Native core hook with vanishingly low collision risk vs a
+	// hand-rolled user method.
+	//
+	// TanStack Query (@tanstack/react-query) — RN apps overwhelmingly use
+	// this for data fetching. Receiver-stripped from `qc.invalidateQueries(...)`.
+	"useQuery":               {},
+	"useQueries":             {},
+	"useInfiniteQuery":       {},
+	"useMutation":            {},
+	"useIsFetching":          {},
+	"useIsMutating":          {},
+	"useQueryClient":         {},
+	"useSuspenseQuery":       {},
+	"useSuspenseQueries":     {},
+	"useSuspenseInfiniteQuery": {},
+	"invalidateQueries":      {},
+	"prefetchQuery":          {},
+	"prefetchInfiniteQuery":  {},
+	"removeQueries":          {},
+	"resetQueries":           {},
+	"refetchQueries":         {},
+	"cancelQueries":          {},
+	"getQueryData":           {},
+	"getQueriesData":         {},
+	"getQueryState":          {},
+	// `setQueryData` is sufficiently distinctive (the `QueryData` suffix
+	// has no realistic user-method collision in TS code).
+	"setQueryData":           {},
+	"setQueriesData":         {},
+	"ensureQueryData":        {},
+	"fetchQuery":             {},
+	"fetchInfiniteQuery":     {},
+	// React Navigation (`@react-navigation/native`) hooks. Each `use*` is
+	// reserved by rules-of-hooks; non-navigation user hooks named
+	// identically are essentially impossible.
+	"useNavigation":          {},
+	"useRoute":               {},
+	"useFocusEffect":         {},
+	"useIsFocused":           {},
+	"useNavigationState":     {},
+	"useNavigationContainerRef": {},
+	"useScrollToTop":         {},
+	"usePreventRemove":       {},
+	"useLinkBuilder":         {},
+	"useLinkTo":              {},
+	"useLinkProps":           {},
+	"useTheme":               {}, // navigation theme — also legitimately used by @mui/@chakra; ts/js gate is fine
+	// Expo Router hooks (`expo-router`). `useLocalSearchParams` /
+	// `useGlobalSearchParams` are unique to Expo Router; `useSegments`
+	// and `useRootNavigationState` are too.
+	"useLocalSearchParams":   {},
+	"useGlobalSearchParams":  {},
+	"useSegments":            {},
+	"useRootNavigationState": {},
+	"useRootNavigation":      {},
+	// React Native core hooks (from `react-native`). `useColorScheme` and
+	// `useWindowDimensions` are RN-specific; `Appearance.getColorScheme()`
+	// is the underlying API.
+	"useColorScheme":         {},
+	"useWindowDimensions":    {},
+	"useAnimatedValue":       {},
+	// Reanimated v2/v3 hooks (`react-native-reanimated`).
+	"useSharedValue":         {},
+	"useAnimatedStyle":       {},
+	"useAnimatedScrollHandler": {},
+	"useAnimatedGestureHandler": {},
+	"useAnimatedReaction":    {},
+	"useAnimatedRef":         {},
+	"useAnimatedProps":       {},
+	"useDerivedValue":        {},
+	"useFrameCallback":       {},
+	"useWorkletCallback":     {},
+	"useScrollViewOffset":    {},
+	"useReducedMotion":       {},
+	"runOnUI":                {},
+	"runOnJS":                {},
+	"withTiming":             {},
+	"withSpring":             {},
+	"withDecay":              {},
+	"withDelay":              {},
+	"withRepeat":             {},
+	"withSequence":           {},
+	"interpolate":            {},
+	"interpolateColor":       {},
+	// Zustand store hooks. `useShallow` is the canonical selector helper.
+	"useShallow":             {},
+	// React-Hook-Form / common form-state hooks.
+	"useForm":                {},
+	"useController":          {},
+	"useFormContext":         {},
+	// `useFormState` already in jsBareNames (React 19 form-state hook); not duplicated.
+	"useWatch":               {},
+	"useFieldArray":          {},
+	// Other distinctive RN-ecosystem hooks observed in core-mobile.
+	"useHeaderHeight":        {}, // @react-navigation/elements
+	"useBottomTabBarHeight":  {}, // @react-navigation/bottom-tabs
+	"useSafeAreaInsets":      {}, // react-native-safe-area-context
+	"useSafeAreaFrame":       {},
+	"useKeyboard":            {}, // @react-native-community/hooks
+	"useAudioPlayer":         {}, // expo-audio
+	"useAudioPlayerStatus":   {},
+	"useAudioRecorder":       {},
+	"useVideoPlayer":         {}, // expo-video
+	"useEvent":                {}, // expo modules event hook
+	"useEventListener":       {},
+	"usePermissions":         {}, // expo-camera / expo-media-library / etc.
+	"useCameraPermissions":   {},
+	"useMediaLibraryPermissions": {},
+	"useLocationPermissions": {},
+	"useAssets":              {}, // expo-asset
+	"useFonts":               {}, // expo-font
+	"useUpdates":             {}, // expo-updates
+	"useBackHandler":         {}, // RN BackHandler hook helper
+	"useDeviceOrientation":   {},
+	"useAppState":            {},
+	"useFocusable":           {},
+	"useDimensions":          {},
+	// TanStack Query / RTK / React common callback prop names. These are
+	// JSX prop callbacks (`<Mutation onSuccess={...} onError={...} />`)
+	// that the TS extractor receiver-strips. The TS/JS gate plus the
+	// distinctive `on*` shape keeps collision risk low — they only ever
+	// appear in framework call sites.
+	"onSuccess":              {},
+	"onError":                {},
+	"onSettled":              {},
+	"onMutate":               {},
+	"onProgress":             {}, // file upload / video player
+	// `padStart`/`padEnd` — String.prototype receiver-strip.
+	"padStart":               {},
+	"padEnd":                 {},
+	// TanStack Query / React Query lifecycle helper (mutation `mutate()`
+	// and `mutateAsync()` are distinct enough to not collide).
+	"mutate":                 {},
+	"mutateAsync":            {},
+	"refetch":                {}, // useQuery().refetch
+
+	// Wave-4 (RN/Expo, #508) — pass-3 additions. Each is a distinctive
+	// receiver-stripped API from React Navigation / RN core / Zustand /
+	// Expo Router observed in the core-mobile pass-2 residual.
+	// React Navigation `navigation.setOptions({...})` — distinctive name
+	// for screen header config; no realistic user-method collision in TS.
+	"setOptions":            {},
+	// RN Linking `Linking.openURL(url)`, `Linking.canOpenURL(url)`.
+	"openURL":               {},
+	"canOpenURL":            {},
+	"getInitialURL":         {},
+	"sendIntent":            {}, // android intent
+	"openSettings":          {}, // RN Linking / permissions
+	// Zustand `useStore.getState()` / `useStore.setState(...)` / `.subscribe()`.
+	// `getState`/`setState` are React-classic names too; the ts/js gate is
+	// the safety net (React class `setState` is the most likely collision —
+	// modern React is hooks-only so the false-positive rate is negligible).
+	"getState":              {},
+	// `setState` is the React class-component method too — too collision-prone.
+	// Skip — zustand `setState` residual is small.
+	// `subscribe` is already in jsBareNames (gql subscribe). Not duplicated.
+	// React Navigation `navigation.navigate(...)`, `.goBack()`, `.pop()`,
+	// `.push()`, `.replace()` — generic verbs. Only `pop`/`replace` get
+	// added (Array.prototype `pop` is JS builtin so already safe to gate;
+	// `push` already in jsBareNames). `replace` is also String.prototype.
+	"pop":                   {}, // Array.prototype + navigation.pop
+	// `replace` is intentionally OMITTED — String.prototype.replace
+	// dominates and many user objects have a `replace` method. The
+	// extractor's receiver-strip ambiguity rules out a safe classification.
+	// `useToast` — multiple toast libs (`react-native-toast-message`,
+	// `@gluestack-ui/toast`, etc.); convention reserved by rules-of-hooks.
+	"useToast":              {},
+	"useAlert":              {},
+	"useDialog":             {},
+	"useModal":              {},
+	// `useAuth` / `useUser` — common auth-library hooks (Clerk, Supabase
+	// Auth, expo-auth-session). User-app stores named `useAuthStore` are
+	// NOT this — extractor sees the literal call site name. Skip the
+	// generic `useAuth` since it collides with user-defined auth stores
+	// in any codebase.
+	// String.prototype `padStart`/`padEnd` already added above.
+	// `gray` — chalk receiver-strip (`chalk.gray(...)`). chalk already
+	// allowlisted at the package level; the bare call leaks through.
+	"gray":                  {},
+	"red":                   {},
+	"green":                 {},
+	"yellow":                {},
+	"blue":                  {},
+	"magenta":               {},
+	"cyan":                  {},
+	"white":                 {},
+	"black":                 {},
+	"bold":                  {},
+	"dim":                   {},
+	"italic":                {},
+	"underline":             {},
+	// String.prototype `localeCompare` / `startsWith` / `lastIndexOf` —
+	// distinctive JS String API; receiver-stripped.
+	"localeCompare":         {},
+	"startsWith":            {},
+	"endsWith":              {},
+	"lastIndexOf":           {},
+	// `normalize` already in jsBareNames (Node path.normalize); not duplicated.
+	// Number.prototype `toFixed` / `toPrecision` / `toExponential`.
+	"toFixed":               {},
+	"toPrecision":           {},
+	"toExponential":         {},
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue
@@ -9068,6 +9278,184 @@ var knownExternalPackages = map[string]struct{}{
 	"sass":             {},
 	"less":             {},
 	"stylelint":        {},
+	// Wave-4 (RN/Expo, #508) — React Native + Expo SDK runtime allowlist.
+	// The core-mobile (Upvate Expo+RN) fixture has 538 files and 16.10% bug-rate
+	// dominated by IMPORTS to react-native-* / @react-navigation / expo-*
+	// packages. Every name is a real npm package shipped by Meta/Expo or a
+	// well-known RN community lib; collision risk with hand-rolled local
+	// modules is negligible because RN package conventions (`react-native-`
+	// prefix, `expo-` prefix, `@react-native(-*)/` scope, `@react-navigation/`
+	// scope) are reserved by the ecosystem.
+	// React Native core + scopes
+	"react-native":                          {},
+	"@react-native":                         {}, // @react-native/*, @react-native-community/*-shaped
+	"@react-native-community":               {}, // @react-native-community/async-storage, datetimepicker, ...
+	"@react-native-async-storage":           {},
+	"@react-native-firebase":                {},
+	"@react-native-google-signin":           {},
+	"@react-native-picker":                  {},
+	"@react-native-masked-view":             {},
+	"@react-native-clipboard":               {},
+	"@react-native-segmented-control":       {},
+	// React Navigation family
+	"@react-navigation": {}, // /native, /native-stack, /bottom-tabs, /drawer, /stack, /material-top-tabs, ...
+	// Expo SDK family — unscoped npm names (`expo`, `expo-router`, `expo-image`, ...)
+	"expo":                          {},
+	"expo-router":                   {},
+	"expo-image":                    {},
+	"expo-image-picker":             {},
+	"expo-image-manipulator":        {},
+	"expo-camera":                   {},
+	"expo-location":                 {},
+	"expo-notifications":            {},
+	"expo-secure-store":             {},
+	"expo-file-system":              {},
+	"expo-asset":                    {},
+	"expo-font":                     {},
+	"expo-constants":                {},
+	"expo-status-bar":               {},
+	"expo-splash-screen":            {},
+	"expo-haptics":                  {},
+	"expo-blur":                     {},
+	"expo-linking":                  {},
+	"expo-linear-gradient":          {},
+	"expo-clipboard":                {},
+	"expo-document-picker":          {},
+	"expo-print":                    {},
+	"expo-sharing":                  {},
+	"expo-video":                    {},
+	"expo-av":                       {},
+	"expo-audio":                    {},
+	"expo-application":              {},
+	"expo-device":                   {},
+	"expo-localization":             {},
+	"expo-network":                  {},
+	"expo-task-manager":             {},
+	"expo-modules-core":             {},
+	"expo-modules-autolinking":      {},
+	"expo-updates":                  {},
+	"expo-web-browser":              {},
+	"expo-store-review":             {},
+	"expo-tracking-transparency":    {},
+	"expo-build-properties":         {},
+	"expo-dev-client":               {},
+	"expo-dev-launcher":             {},
+	"expo-dev-menu":                 {},
+	"expo-system-ui":                {},
+	"expo-screen-orientation":       {},
+	"expo-keep-awake":               {},
+	"expo-background-fetch":         {},
+	"expo-media-library":            {},
+	"expo-mail-composer":            {},
+	"expo-sms":                      {},
+	"expo-contacts":                 {},
+	"expo-calendar":                 {},
+	"expo-battery":                  {},
+	"expo-brightness":               {},
+	"expo-crypto":                   {},
+	"expo-sqlite":                   {},
+	"expo-symbols":                  {},
+	"expo-modules":                  {},
+	"expo-gl":                       {},
+	"expo-three":                    {},
+	"@expo":                         {}, // @expo/vector-icons, @expo/config, @expo/cli, @expo/metro-config, ...
+	"@expo-google-fonts":            {},
+	// React Native community packages (npm-published, no scope)
+	"react-native-reanimated":               {},
+	"react-native-gesture-handler":          {},
+	"react-native-safe-area-context":        {},
+	"react-native-screens":                  {},
+	"react-native-svg":                      {},
+	"react-native-svg-transformer":          {},
+	"react-native-vector-icons":             {},
+	"react-native-paper":                    {},
+	"react-native-elements":                 {},
+	"react-native-modal":                    {},
+	"react-native-toast-message":            {},
+	"react-native-mmkv":                     {},
+	"react-native-keychain":                 {},
+	"react-native-permissions":              {},
+	"react-native-device-info":              {},
+	"react-native-fast-image":               {},
+	"react-native-image-crop-picker":        {},
+	"react-native-image-picker":             {},
+	"react-native-webview":                  {},
+	"react-native-maps":                     {},
+	"react-native-pager-view":               {},
+	"react-native-tab-view":                 {},
+	"react-native-chart-kit":                {},
+	"react-native-calendars":                {},
+	"react-native-date-picker":              {},
+	"react-native-dotenv":                   {},
+	"react-native-config":                   {},
+	"react-native-localize":                 {},
+	"react-native-orientation-locker":       {},
+	"react-native-share":                    {},
+	"react-native-splash-screen":            {},
+	"react-native-url-polyfill":             {},
+	"react-native-uuid":                     {},
+	"react-native-get-random-values":        {},
+	"react-native-bootsplash":               {},
+	"react-native-haptic-feedback":          {},
+	"react-native-iap":                      {},
+	"react-native-purchases":                {},
+	"react-native-rename":                   {},
+	"react-native-svg-charts":               {},
+	"react-native-track-player":             {},
+	"react-native-video":                    {},
+	"react-native-youtube-iframe":           {},
+	// Shopify + Gorhom RN ecosystem (scope-level). `@shopify` already in
+	// wave-4 npm-scope block above; not duplicated.
+	"@gorhom": {}, // @gorhom/bottom-sheet, @gorhom/portal, ...
+	// NativeWind (Tailwind for RN)
+	"nativewind":                            {},
+	"react-native-css-interop":              {},
+	// Metro bundler (RN-default)
+	"metro":                                 {},
+	"metro-config":                          {},
+	"metro-react-native-babel-preset":       {},
+	"metro-react-native-babel-transformer":  {},
+	// Babel presets/plugins used universally by RN/Expo projects
+	"babel-preset-expo":                     {},
+	"babel-plugin-module-resolver":          {},
+	"babel-plugin-transform-remove-console": {},
+	// EAS (Expo Application Services)
+	"eas-cli":                               {},
+	"@eas":                                  {},
+	// Additional Expo / RN ecosystem packages observed in real Expo+RN apps
+	// (core-mobile fixture, #508 pass-2). Each is a real npm package; the
+	// `lucide-react-native` icon set and `@gluestack-ui` component library
+	// are the dominant residuals after pass-1.
+	"@gluestack-ui":              {}, // @gluestack-ui/themed, @gluestack-ui/config, ...
+	"@gluestack-style":           {},
+	"lucide-react-native":        {}, // RN port of lucide icon set
+	"lucide-react":               {}, // web sibling (some RN apps import both)
+	"@legendapp":                 {}, // @legendapp/state, @legendapp/list, ...
+	"aws-amplify":                {},
+	"@aws-amplify":               {},
+	"expo-local-authentication":  {},
+	"expo-secure-storage":        {},
+	"@sentry/react-native":       {}, // @sentry scope already allowlisted; explicit doc-key
+	"@formidable-webview":        {},
+	"@notifee":                   {}, // @notifee/react-native push notifications
+	"@invertase":                 {}, // @invertase/react-native-apple-authentication
+	"@miblanchard":               {}, // @miblanchard/react-native-slider
+	"@callstack":                 {}, // @callstack/react-native-paper-dates, /repack
+	"@bam.tech":                  {},
+	"@viro-community":            {},
+	"@unimodules":                {}, // legacy expo unimodules
+	"react-native-render-html":   {},
+	"react-native-blob-util":     {},
+	"react-native-fs":            {},
+	"react-native-svg-uri":       {},
+	"react-native-flipper":       {},
+	"react-native-restart":       {},
+	"react-native-quick-crypto":  {},
+	"react-native-quick-sqlite":  {},
+	"victory-native":             {},
+	"realm":                      {},
+	"@realm":                     {},
+	"@op-engineering":            {}, // @op-engineering/op-sqlite
 	// Next.js sub-paths — register as bare-keys too, so the leading-`/`
 	// strip via slashCanonical above (in the import:external branch)
 	// folds them all to "next" when scopedNpmRoot doesn't apply.
