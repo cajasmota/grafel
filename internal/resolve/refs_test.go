@@ -1567,3 +1567,34 @@ func TestDisposition_PythonRelativeImport_IsDynamic(t *testing.T) {
 			stats.DispositionCounts)
 	}
 }
+
+// TestLooksLikeSourceFilePath_BasenameOnly verifies that basename-only
+// source-file paths (root-level files like Package.swift, root main.go,
+// root index.ts) are accepted, while non-source basenames (Makefile,
+// Dockerfile) are still rejected. Regression coverage for issue #491.
+func TestLooksLikeSourceFilePath_BasenameOnly(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		// Basename-only source files — must be accepted (#491).
+		{"Package.swift", true},
+		{"main.go", true},
+		{"index.ts", true},
+		// Sub-path source files — must still be accepted.
+		{"a/b/Package.swift", true},
+		{"src/main.go", true},
+		// Non-source basenames — must still be rejected.
+		{"Makefile", false},
+		{"Dockerfile", false},
+		// Existing guards still hold.
+		{"", false},
+		{"/abs/path/main.go", false},
+		{"scope:component:foo", false},
+	}
+	for _, tc := range cases {
+		if got := looksLikeSourceFilePath(tc.in); got != tc.want {
+			t.Errorf("looksLikeSourceFilePath(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
