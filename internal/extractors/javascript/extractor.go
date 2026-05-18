@@ -512,7 +512,151 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		if body != nil {
 			x.walkChildren(body, parentClass, cb)
 		}
+
+	default:
+		// Issue #522 — every other `const X = <expr>` shape currently
+		// produces no entity, so alias-resolved imports targeting these
+		// consts land in bug-extractor. Emit a value-export entity so the
+		// resolver has something to bind to.
+		//
+		// Two refinements on top of the bare emit:
+		//   1. React/MobX/Redux wrapper-call values that wrap a function
+		//      (forwardRef, memo, observer, styled.x``, withRouter, …)
+		//      get classified as SCOPE.Operation so existing
+		//      function-targeted resolver paths apply. The wrapper's
+		//      inner function body is walked for CALLS so the const's
+		//      relationships mirror what `export function X` would emit.
+		//   2. Plain values (objects, primitives, instances) become
+		//      SCOPE.Component subtype="const" — the same shape the
+		//      import-resolver expects for module-level value bindings.
+		//
+		// We always recurse into the value so nested function expressions
+		// (e.g. inside `createSlice({ reducers: { add(state) {...} }})`)
+		// still get walked.
+		if x.isFunctionWrapperCall(valueNode) {
+			subtype := "function"
+			if parentClass != "" {
+				subtype = "method"
+			}
+			// Find an inner arrow/function expression to attribute
+			// CALLS to. Fall back to walking the entire value node
+			// when the inner shape isn't a literal function (e.g.
+			// `forwardRef(someExternalRef)`).
+			inner := x.findInnerFunctionBody(valueNode)
+			frame := x.functionParamFrame(nil, cb)
+			rels := x.extractCallRelationships(valueNode, name, frame)
+			_ = inner
+			x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = <wrapper>", name), rels)
+		} else {
+			subtype := constValueSubtype(valueNode.Type())
+			x.emit(name, "SCOPE.Component", valueNode, subtype, fmt.Sprintf("const %s", name))
+		}
+		// Recurse so nested function/class declarations inside the value
+		// (object methods, callbacks, JSX children, …) still get emitted.
+		x.walkChildren(valueNode, parentClass, cb)
 	}
+}
+
+// isFunctionWrapperCall returns true when valueNode is a call_expression
+// whose callee is one of the well-known React / MobX / Redux / Recoil /
+// styled-components / MobX-react function wrappers. We treat the bound
+// name as a function (SCOPE.Operation) in that case so the resolver's
+// function-targeted edges apply.
+//
+// The match is intentionally conservative — we only recognise wrappers
+// whose semantic IS "this value is a function" (forwardRef returns a
+// component, memo returns a component, observer returns a component,
+// styled.* returns a component, withRouter wraps a component, connect()
+// returns a component, createSlice().reducer is a function, etc.). For
+// the dotted shapes (`styled.div`, `createSlice(...).reducer`,
+// `Animated.createAnimatedComponent(...)`) we walk down the function
+// child to find the leaf identifier.
+func (x *extractor) isFunctionWrapperCall(n *sitter.Node) bool {
+	if n == nil || n.Type() != "call_expression" {
+		return false
+	}
+	fn := n.ChildByFieldName("function")
+	if fn == nil {
+		return false
+	}
+	leaf := ""
+	switch fn.Type() {
+	case "identifier", "type_identifier":
+		leaf = x.nodeText(fn)
+	case "member_expression":
+		if prop := fn.ChildByFieldName("property"); prop != nil {
+			leaf = x.nodeText(prop)
+		}
+	case "call_expression":
+		// e.g. styled(Foo)`...` → recurse on inner call
+		return x.isFunctionWrapperCall(fn)
+	}
+	switch leaf {
+	case
+		// React
+		"forwardRef", "memo", "lazy", "createContext",
+		// MobX-react / MobX
+		"observer",
+		// styled-components / emotion
+		"styled", "css", "keyframes",
+		// React Router HOCs
+		"withRouter", "withTranslation", "withTheme", "withStyles",
+		// Redux / Recoil / Zustand selectors
+		"connect", "createSelector", "createStructuredSelector",
+		// React Native Animated
+		"createAnimatedComponent",
+		// HOC-shape utilities
+		"compose", "pipe",
+		// React Query / TanStack
+		"createMutation", "createQuery":
+		return true
+	}
+	return false
+}
+
+// findInnerFunctionBody returns the innermost arrow_function /
+// function_expression body inside a wrapper-call value, or nil. Used
+// to attribute CALLS to the wrapped function rather than the wrapper
+// call expression as a whole.
+func (x *extractor) findInnerFunctionBody(n *sitter.Node) *sitter.Node {
+	if n == nil {
+		return nil
+	}
+	if n.Type() == "arrow_function" || n.Type() == "function_expression" || n.Type() == "function" {
+		return n.ChildByFieldName("body")
+	}
+	for i := 0; i < int(n.ChildCount()); i++ {
+		if b := x.findInnerFunctionBody(n.Child(i)); b != nil {
+			return b
+		}
+	}
+	return nil
+}
+
+// constValueSubtype maps a tree-sitter value-node type to a stable
+// subtype string for `export const X = <value>` entity emission. The
+// subtype is informational — the resolver keys on Kind + Name + file,
+// not on subtype — but a stable string keeps debugging tractable.
+func constValueSubtype(nodeType string) string {
+	switch nodeType {
+	case "object":
+		return "const_object"
+	case "array":
+		return "const_array"
+	case "string", "template_string", "number", "true", "false", "null", "undefined":
+		return "const_literal"
+	case "new_expression":
+		return "const_instance"
+	case "call_expression":
+		return "const_call"
+	case "jsx_element", "jsx_self_closing_element":
+		return "const_jsx"
+	case "member_expression", "subscript_expression":
+		return "const_reference"
+	case "identifier":
+		return "const_alias"
+	}
+	return "const"
 }
 
 // extractCallRelationships returns one CALLS RelationshipRecord per unique
