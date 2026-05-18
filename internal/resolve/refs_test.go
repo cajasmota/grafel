@@ -1581,6 +1581,10 @@ func TestLooksLikeSourceFilePath_BasenameOnly(t *testing.T) {
 		{"Package.swift", true},
 		{"main.go", true},
 		{"index.ts", true},
+		// HTML files — must be accepted so that HTML-extractor IMPORTS edge
+		// FromIDs do not land in bug-extractor (#506).
+		{"index.html", true},
+		{"public/index.htm", true},
 		// Sub-path source files — must still be accepted.
 		{"a/b/Package.swift", true},
 		{"src/main.go", true},

@@ -48,6 +48,62 @@ type Extractor struct{}
 // Language returns the canonical language key.
 func (e *Extractor) Language() string { return "html" }
 
+// reEmailTemplate matches filenames that are conventionally transactional
+// email templates rather than browseable HTML pages — emails are server-side
+// rendered, are never imported by a JS/TS bundle, and have no graph identity
+// in a Vite/Webpack/Next.js project (issue #506).
+//
+// Patterns matched (case-insensitive):
+//
+//	templates/*_email.html        — Django/Flask style transactional emails
+//	templates/*_template.html     — generic template files under templates/
+//	*_email.html, *.email.html    — explicit email-template suffix anywhere
+//	emails/*.html, email/*.html   — Rails/MJML convention
+var reEmailTemplate = regexp.MustCompile(`(?i)(^|/)(templates|emails?)/.*\.html$|(^|/)[^/]*[._]email\.html$|(^|/)[^/]*[._]template\.html$`)
+
+// isExternalURL reports whether a <link>/<script>/<img> src or href value
+// points at an external resource (issue #506). External URLs are not graph
+// entities — the cross-file resolver has no file to bind them to, so they
+// land as bug-extractor `to_id` noise. Skip them at extract time.
+//
+// Matches: http://, https://, protocol-relative //, mailto:, tel:, data:,
+// javascript:, about:, blob:, file://. Returns false for the empty string
+// and for in-document fragment refs (#anchor).
+func isExternalURL(s string) bool {
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "//") {
+		return true
+	}
+	lower := strings.ToLower(s)
+	for _, p := range externalURLPrefixes {
+		if strings.HasPrefix(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// externalURLPrefixes is the catalog of URI-scheme prefixes treated as
+// external (non-extractable) by isExternalURL. Kept narrow on purpose:
+// every entry here is a scheme that cannot resolve to a local repo file.
+var externalURLPrefixes = []string{
+	"http://", "https://",
+	"mailto:", "tel:", "sms:",
+	"data:", "blob:", "javascript:",
+	"about:", "file://", "ftp://", "ftps://",
+	"ws://", "wss://",
+}
+
+// isEmailTemplateFile reports whether the file path looks like a
+// transactional email template that should NOT have entities extracted
+// (issue #506). The heuristic is conservative — it matches well-known
+// directory conventions and explicit suffixes, but not arbitrary HTML.
+func isEmailTemplateFile(path string) bool {
+	return reEmailTemplate.MatchString(path)
+}
+
 // reCustomElement matches Web Component / custom element tag names.
 // Per spec: tag name matching [A-Z][a-zA-Z]+-[a-zA-Z]+ OR containing a hyphen
 // (both uppercase-starting like CustomWidget-v2 and lowercase like my-component).
@@ -84,6 +140,19 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	if len(file.Content) == 0 {
 		span.SetAttributes(
 			attribute.Int("file_line_count", 0),
+			attribute.Int("entity_count", 0),
+		)
+		return nil, nil
+	}
+
+	// Issue #506: email-template HTML files (templates/*_email.html etc.)
+	// are server-side rendered, never imported by a JS/TS bundle, and have
+	// no graph identity in a Vite/Webpack/Next.js project. Extracting them
+	// produces nothing but bug-extractor noise (the file path as FromID,
+	// any inline external URLs as ToID). Skip the file wholesale.
+	if isEmailTemplateFile(file.Path) {
+		span.SetAttributes(
+			attribute.Bool("skipped_email_template", true),
 			attribute.Int("entity_count", 0),
 		)
 		return nil, nil
@@ -236,7 +305,9 @@ func visitElement(node *sitter.Node, file extractor.FileInput) []types.EntityRec
 		rel := attrValue(startTag, "rel", file.Content)
 		if strings.ToLower(rel) == "stylesheet" {
 			href := attrValue(startTag, "href", file.Content)
-			if href != "" {
+			// Issue #506: external URLs (https://cdn..., //cdn...) cannot
+			// resolve to a local repo file. Skip to avoid bug-extractor noise.
+			if href != "" && !isExternalURL(href) {
 				recs = append(recs, types.EntityRecord{
 					Name:         href,
 					Kind:         "SCOPE.Component",
@@ -256,7 +327,9 @@ func visitElement(node *sitter.Node, file extractor.FileInput) []types.EntityRec
 
 	case "img":
 		src := attrValue(startTag, "src", file.Content)
-		if src != "" {
+		// Issue #506: external URLs (https://cdn..., data:..., etc.) are not
+		// graph entities. Skip them at extract time.
+		if src != "" && !isExternalURL(src) {
 			recs = append(recs, types.EntityRecord{
 				Name:         src,
 				Kind:         "SCOPE.Component",
@@ -451,7 +524,9 @@ func visitScriptElement(node *sitter.Node, file extractor.FileInput) (types.Enti
 	}
 
 	src := attrValue(startTag, "src", file.Content)
-	if src == "" {
+	// Issue #506: external scripts (https://cdn..., //cdn...) are not graph
+	// entities — they live on a CDN, not in the repo.
+	if src == "" || isExternalURL(src) {
 		return types.EntityRecord{}, false
 	}
 
@@ -492,7 +567,8 @@ func visitSelfClosingTag(node *sitter.Node, file extractor.FileInput) (types.Ent
 	switch tagName {
 	case "img":
 		src := attrValue(node, "src", file.Content)
-		if src == "" {
+		// Issue #506: external image URLs are not graph entities.
+		if src == "" || isExternalURL(src) {
 			return types.EntityRecord{}, false
 		}
 		return types.EntityRecord{
@@ -512,7 +588,8 @@ func visitSelfClosingTag(node *sitter.Node, file extractor.FileInput) (types.Ent
 
 	case "script":
 		src := attrValue(node, "src", file.Content)
-		if src == "" {
+		// Issue #506: external script URLs (CDN scripts) are not graph entities.
+		if src == "" || isExternalURL(src) {
 			return types.EntityRecord{}, false
 		}
 		return types.EntityRecord{
@@ -536,7 +613,8 @@ func visitSelfClosingTag(node *sitter.Node, file extractor.FileInput) (types.Ent
 			return types.EntityRecord{}, false
 		}
 		href := attrValue(node, "href", file.Content)
-		if href == "" {
+		// Issue #506: external stylesheet URLs cannot resolve to a local file.
+		if href == "" || isExternalURL(href) {
 			return types.EntityRecord{}, false
 		}
 		return types.EntityRecord{

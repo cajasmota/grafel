@@ -2268,6 +2268,11 @@ var sourceFileExtensions = []string{
 	// HCL / Terraform — issue #44. The HCL extractor emits file-level
 	// CONTAINS / IMPORTS edges with FromID set to the .tf file path.
 	".tf", ".tfvars", ".hcl",
+	// HTML — issue #506. The HTML extractor emits IMPORTS edges with
+	// FromID set to the .html file path (e.g. index.html → /src/main.jsx).
+	// Without this entry the .html path itself lands in bug-extractor even
+	// when the target resolved successfully.
+	".html", ".htm",
 }
 
 // isHeuristicScopeStub reports whether s is a short-form structural-ref

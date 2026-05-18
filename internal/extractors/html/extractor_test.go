@@ -875,3 +875,125 @@ func TestHTMLExtractor_FlaskJinja2Register_AllKindsAllowlistCompliant(t *testing
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #506 — HTML email-template + external-URL noise suppression
+// ---------------------------------------------------------------------------
+
+func TestHTMLExtractor_SkipsEmailTemplateFiles(t *testing.T) {
+	src := `<!DOCTYPE html><html><body>
+<img src="https://controller.upvate.com/img/controller-logo-400px.png">
+<a href="https://example.com/reset">Click here</a>
+</body></html>`
+
+	cases := []string{
+		"src/templates/new_user_login_email.html",
+		"src/templates/reset_password_email.html",
+		"app/templates/welcome_email.html",
+		"emails/order_confirmation.html",
+		"email/notification.html",
+		"src/templates/account_template.html",
+		"some/path/footer_template.html",
+		"my.email.html",
+	}
+
+	for _, path := range cases {
+		t.Run(path, func(t *testing.T) {
+			tree := parseHTML(t, src)
+			entities := extractEntities(t, path, src, tree)
+			if len(entities) != 0 {
+				t.Fatalf("expected 0 entities for email-template path %q, got %d", path, len(entities))
+			}
+		})
+	}
+}
+
+func TestHTMLExtractor_ExtractsNonEmailTemplateHTML(t *testing.T) {
+	// Negative control: index.html and pages/*.html must still be extracted.
+	src := `<!DOCTYPE html><html><body>
+<script src="/src/main.jsx" type="module"></script>
+<img src="/logo.png">
+</body></html>`
+
+	cases := []string{
+		"index.html",
+		"public/index.html",
+		"src/pages/about.html",
+		"docs/contact.html",
+	}
+
+	for _, path := range cases {
+		t.Run(path, func(t *testing.T) {
+			tree := parseHTML(t, src)
+			entities := extractEntities(t, path, src, tree)
+			if len(entities) == 0 {
+				t.Fatalf("expected entities for non-email path %q, got 0", path)
+			}
+		})
+	}
+}
+
+func TestHTMLExtractor_SkipsExternalURLsInImgScriptLink(t *testing.T) {
+	// External URLs (CDN scripts, hotlinked images, external stylesheets)
+	// must not produce entities. They cannot resolve to a local repo file
+	// and only create bug-extractor `to_id` noise.
+	src := `<!DOCTYPE html><html>
+<head>
+  <link rel="stylesheet" href="https://cdn.example.com/style.css">
+  <link rel="stylesheet" href="//cdn.example.com/proto.css">
+  <script src="https://cdn.example.com/lib.js"></script>
+  <script src="//cdn.example.com/proto.js"></script>
+</head>
+<body>
+  <img src="https://controller.upvate.com/img/logo.png">
+  <img src="data:image/png;base64,AAAA">
+</body>
+</html>`
+
+	tree := parseHTML(t, src)
+	entities := extractEntities(t, "index.html", src, tree)
+
+	for _, e := range entities {
+		if strings.HasPrefix(e.Name, "http://") ||
+			strings.HasPrefix(e.Name, "https://") ||
+			strings.HasPrefix(e.Name, "//") ||
+			strings.HasPrefix(e.Name, "data:") {
+			t.Errorf("external URL leaked into entity: name=%q kind=%q subtype=%q",
+				e.Name, e.Kind, e.Subtype)
+		}
+	}
+}
+
+func TestHTMLExtractor_KeepsLocalImgScriptLink(t *testing.T) {
+	// Positive control: local refs (relative + root-absolute) must still
+	// produce entities.
+	src := `<!DOCTYPE html><html>
+<head>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="./styles/app.css">
+  <script src="/src/main.jsx" type="module"></script>
+  <script src="js/app.js"></script>
+</head>
+<body>
+  <img src="/logo.png">
+  <img src="../assets/banner.svg">
+</body>
+</html>`
+
+	tree := parseHTML(t, src)
+	entities := extractEntities(t, "index.html", src, tree)
+
+	subtypes := map[string]int{}
+	for _, e := range entities {
+		subtypes[e.Subtype]++
+	}
+	if subtypes["style_include"] < 2 {
+		t.Errorf("expected >=2 style_include entities, got %d", subtypes["style_include"])
+	}
+	if subtypes["script_include"] < 2 {
+		t.Errorf("expected >=2 script_include entities, got %d", subtypes["script_include"])
+	}
+	if subtypes["image_include"] < 2 {
+		t.Errorf("expected >=2 image_include entities, got %d", subtypes["image_include"])
+	}
+}
