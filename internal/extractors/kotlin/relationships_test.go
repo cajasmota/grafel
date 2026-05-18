@@ -230,20 +230,81 @@ func TestKotlin_NavigationCallTrailingIdentifier(t *testing.T) {
 	}
 }
 
-// TestKotlin_NoImports (#41): kotlin extractor intentionally does
-// NOT emit IMPORTS edges (Python parity). Guard against future regressions
-// that re-introduce ghost "org" / "com" / "java" entities.
-func TestKotlin_NoImports(t *testing.T) {
+// TestKotlin_ImportsEmittedFullPath locks in the Ktor-verb fix:
+// the kotlin extractor emits one SCOPE.Component (Subtype="import")
+// per import_header, with Name set to the FULL dotted module path
+// (NOT split on '.', so no resurrected `org`/`com`/`java` ghost
+// entities that broke parity verdict classification in the original
+// #41 reject). Each entity carries one IMPORTS relationship
+// FromID=file path, ToID=full dotted module path with the optional
+// `.*` wildcard suffix stripped — consumed by the cross-file resolver
+// and the external-synthesis pass to gate language-specific allowlists
+// (Ktor server DSL HTTP verbs `get/post/put/delete/...` need a real
+// `io.ktor.server.*` import to classify, per the chi-router gate
+// precision model #131).
+func TestKotlin_ImportsEmittedFullPath(t *testing.T) {
 	src := `package x
+import io.ktor.server.routing.get
+import io.ktor.server.routing.*
 import kotlin.io.println
 class A
 `
 	ents := runKotlin(t, src)
+
+	// Helper: collect (Name, ToID) tuples for every IMPORTS edge.
+	type impEdge struct {
+		entName string
+		entKind string
+		entSub  string
+		toID    string
+	}
+	var imps []impEdge
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == "IMPORTS" {
-				t.Errorf("kotlin extractor should not emit IMPORTS, got %+v on %s", r, e.Name)
+				imps = append(imps, impEdge{
+					entName: e.Name, entKind: e.Kind, entSub: e.Subtype, toID: r.ToID,
+				})
 			}
+		}
+	}
+	want := map[string]string{
+		"io.ktor.server.routing.get": "io.ktor.server.routing.get",
+		"io.ktor.server.routing":     "io.ktor.server.routing",
+		"kotlin.io.println":          "kotlin.io.println",
+	}
+	if len(imps) != len(want) {
+		t.Fatalf("expected %d IMPORTS edges, got %d: %+v", len(want), len(imps), imps)
+	}
+	for _, e := range imps {
+		if e.entKind != "SCOPE.Component" {
+			t.Errorf("import entity %q kind=%q, want SCOPE.Component", e.entName, e.entKind)
+		}
+		if e.entSub != "import" {
+			t.Errorf("import entity %q subtype=%q, want \"import\"", e.entName, e.entSub)
+		}
+		wantTo, ok := want[e.entName]
+		if !ok {
+			t.Errorf("unexpected import entity name %q", e.entName)
+			continue
+		}
+		if e.toID != wantTo {
+			t.Errorf("import %q: ToID=%q, want %q", e.entName, e.toID, wantTo)
+		}
+	}
+
+	// Ghost-entity guard: no `org` / `com` / `java` / `io` / `kotlin`
+	// short-segment SCOPE.Component entities — the original #41 hazard
+	// was a split-on-'.' implementation that produced these.
+	for _, e := range ents {
+		if e.Kind != "SCOPE.Component" {
+			continue
+		}
+		switch e.Name {
+		case "org", "com", "java", "io", "kotlin":
+			t.Errorf("ghost import entity %q (Kind=%q, Subtype=%q) — "+
+				"import Name must be the FULL dotted path, never the first segment",
+				e.Name, e.Kind, e.Subtype)
 		}
 	}
 }

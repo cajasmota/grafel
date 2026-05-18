@@ -4,17 +4,25 @@
 //   - class_declaration    → Kind="SCOPE.Component", Subtype="class"
 //   - object_declaration   → Kind="SCOPE.Component", Subtype="object"
 //   - function_declaration → Kind="SCOPE.Operation", Subtype="function"
+//   - import_header        → Kind="SCOPE.Component", Subtype="import"
+//     (one entity per import; Name is the FULL dotted path, NOT the
+//     leading segment — the historical "ghost org / com / java" hazard
+//     came from splitting on '.', which we do NOT do here; mirrors the
+//     Python extractor's importRecord shape.)
 //
 // When a class carries a Spring stereotype annotation (@RestController,
 // @Controller, @Service, @Component, @Repository) we additionally emit a
 // Kind="SCOPE.Service" entity whose Name is the class name, matching the
 // Python indexer's output.
 //
-// Import headers are intentionally NOT emitted as entities or
-// IMPORTS relationships. The Python kotlin extractor does not emit them,
-// and the Go extractor previously produced ghost "org" / "com" / "java"
-// SCOPE.Component entities by splitting import paths on '.', which broke
-// parity verdict classification.
+// Import headers carry one IMPORTS relationship (FromID=file path,
+// ToID=full dotted module path, with `.*` wildcard suffix stripped).
+// This unlocks file-import-aware allowlist gating in
+// internal/external/synth.go — Ktor server DSL HTTP-verb routing
+// (`get("/x") { ... }`, `post(...)`, ...) is the leading residual
+// bug-resolver cohort in ktor-samples (#456 / #470), and the synth
+// classifier needs the file's import set to gate these collision-prone
+// verb names on a genuine Ktor import.
 //
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
@@ -155,7 +163,11 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		}
 		return
 
-		// import_header intentionally NOT handled — see package doc.
+	case "import_header":
+		if rec, ok := buildImport(node, file); ok {
+			*out = append(*out, rec)
+		}
+		return
 	}
 
 	for i := range node.ChildCount() {
@@ -354,6 +366,67 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 		EndLine:            int(node.EndPoint().Row) + 1,
 		Signature:          buildClassSignature(node, file.Content, name),
 		EnrichmentRequired: false,
+	}, true
+}
+
+// buildImport creates a SCOPE.Component entity for an import_header node.
+//
+// The entity Name is the FULL dotted module path (e.g.
+// "io.ktor.server.routing"), with the optional trailing `.*` wildcard
+// suffix stripped. We intentionally do NOT split on '.' or use the first
+// segment as the Name — the historical Kotlin ghost-entity hazard
+// (`org`, `com`, `java` ghosts that broke parity verdict classification)
+// came from splitting; mirroring the Python extractor's importRecord
+// shape avoids it.
+//
+// One IMPORTS relationship is embedded on the entity:
+//
+//	FromID = file path  (the importing source file)
+//	ToID   = full dotted module path (wildcard suffix stripped)
+//	Kind   = "IMPORTS"
+//
+// The cross-file resolver and the external-synthesis pass both consume
+// these edges to gate language-specific allowlists on a real import
+// (e.g. Ktor server DSL HTTP-verb routing — `get("/x") { ... }`,
+// `post(...)` — must only classify as external when the source file
+// imports an `io.ktor.server.*` package, per the same precision model
+// the Go chi-router gate uses, #131).
+func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+	// import_header text shape: `import io.ktor.server.routing.*`
+	// or `import io.ktor.server.routing.get`. Strip the leading
+	// `import` keyword + trailing wildcard, comments, and the optional
+	// `as <alias>` rename — we keep only the dotted module path so the
+	// resolver can do prefix matches against allowlists.
+	raw := strings.TrimSpace(string(file.Content[node.StartByte():node.EndByte()]))
+	raw = strings.TrimPrefix(raw, "import ")
+	raw = strings.TrimSpace(raw)
+	// Drop trailing line comment (`import x.y // foo`).
+	if i := strings.Index(raw, "//"); i >= 0 {
+		raw = strings.TrimSpace(raw[:i])
+	}
+	// Drop `as <alias>` rename.
+	if i := strings.Index(raw, " as "); i >= 0 {
+		raw = strings.TrimSpace(raw[:i])
+	}
+	// Strip wildcard suffix.
+	raw = strings.TrimSuffix(raw, ".*")
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return types.EntityRecord{}, false
+	}
+	return types.EntityRecord{
+		Name:       raw,
+		Kind:       "SCOPE.Component",
+		Subtype:    "import",
+		SourceFile: file.Path,
+		Language:   "kotlin",
+		Relationships: []types.RelationshipRecord{
+			{
+				FromID: file.Path,
+				ToID:   raw,
+				Kind:   "IMPORTS",
+			},
+		},
 	}, true
 }
 

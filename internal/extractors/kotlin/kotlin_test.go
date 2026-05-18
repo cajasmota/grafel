@@ -2,6 +2,7 @@ package kotlin_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -170,15 +171,19 @@ object MySingleton {
 	}
 }
 
-// TestKotlinExtractor_NoImportGhostComponents is the regression guard for
-// AC #2. The Go kotlin extractor previously emitted a SCOPE.Component
-// entity named after the top-level segment of every import path (e.g. "org",
-// "com", "java") plus an IMPORTS relationship. The Python indexer emits
-// neither, so those entities were Go-only ghosts polluting parity output.
+// TestKotlinExtractor_NoImportGhostComponents is the ghost-entity
+// regression guard for AC #2. The Go kotlin extractor previously
+// emitted a SCOPE.Component entity named after the top-level segment
+// of every import path (e.g. "org", "com", "java"). That ghost shape
+// broke parity verdict classification.
 //
-// This test locks the current behaviour: given a file with org./com./java.
-// imports, the extractor must not emit any entity whose name is one of those
-// segments, and must not emit any IMPORTS relationship at all.
+// IMPORTS edges ARE now emitted (Ktor-verb fix — the synth classifier
+// needs the per-file import set to gate Ktor server DSL HTTP verbs),
+// but every import entity carries Name=FULL dotted path. This test
+// locks the current behaviour: given a file with org./com./java.
+// imports, the extractor must not emit any entity whose name is the
+// short leading segment, and every IMPORTS edge must carry the full
+// dotted path as its ToID.
 func TestKotlinExtractor_NoImportGhostComponents(t *testing.T) {
 	src := `
 package com.example.demo
@@ -203,16 +208,25 @@ class Foo {}
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	ghostNames := map[string]bool{"org": true, "com": true, "java": true}
+	ghostNames := map[string]bool{"org": true, "com": true, "java": true, "io": true, "kotlin": true}
 	for _, e := range got {
 		if ghostNames[e.Name] {
 			t.Errorf("ghost entity %q (kind=%s) emitted from package/import parsing",
 				e.Name, e.Kind)
 		}
 		for _, rel := range e.Relationships {
-			if rel.Kind == "IMPORTS" {
-				t.Errorf("unexpected IMPORTS relationship %s → %s — kotlin extractor must not emit imports",
-					rel.FromID, rel.ToID)
+			if rel.Kind != "IMPORTS" {
+				continue
+			}
+			// Every IMPORTS edge must carry a fully-qualified
+			// dotted path — never a short leading segment.
+			if ghostNames[rel.ToID] {
+				t.Errorf("IMPORTS ToID=%q is a ghost segment; want full dotted path",
+					rel.ToID)
+			}
+			if !strings.Contains(rel.ToID, ".") {
+				t.Errorf("IMPORTS ToID=%q has no '.' — expected fully-qualified import path",
+					rel.ToID)
 			}
 		}
 	}
