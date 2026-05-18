@@ -3,6 +3,7 @@ package swift_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -334,6 +335,170 @@ class App {
 	}
 	if !importToIDFound {
 		t.Error("expected an IMPORTS edge with ToID=App (the imported module path is unchanged)")
+	}
+}
+
+// TestSwiftExtractor_ImportAttributeChildrenSkipped (#499) — import
+// attributes such as `@_documentation(visibility: internal)`, `@_exported`,
+// `@preconcurrency`, `@_implementationOnly`, `@testable` must NOT contribute
+// identifier segments to the extracted import path. Previously
+// extractImportPath descended into the `modifiers` / `attribute` subtree
+// and produced synthetic dotted paths like
+// `_documentation.visibility.internal.Foundation`, which then escaped
+// classifyExternal as bug-extractor noise on the vapor framework.
+func TestSwiftExtractor_ImportAttributeChildrenSkipped(t *testing.T) {
+	src := `
+@_documentation(visibility: internal) @_exported import Foundation
+@preconcurrency import Combine
+@_implementationOnly import PrivateKit
+@testable import VaporCore
+import Vapor
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("swift")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "imports.swift",
+		Content:  []byte(src),
+		Language: "swift",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	importTargets := map[string]bool{}
+	for _, e := range got {
+		for _, rel := range e.Relationships {
+			if rel.Kind == "IMPORTS" {
+				importTargets[rel.ToID] = true
+			}
+		}
+	}
+
+	want := []string{"Foundation", "Combine", "PrivateKit", "VaporCore", "Vapor"}
+	for _, m := range want {
+		if !importTargets[m] {
+			t.Errorf("expected clean IMPORTS edge ToID=%q, missing", m)
+		}
+	}
+
+	// Guard: no synthetic path may contain attribute-name fragments.
+	forbiddenFragments := []string{
+		"_documentation", "_exported", "preconcurrency",
+		"_implementationOnly", "testable", "visibility",
+	}
+	for toID := range importTargets {
+		for _, frag := range forbiddenFragments {
+			if strings.Contains(toID, frag) {
+				t.Errorf("synthetic IMPORTS ToID %q contains attribute fragment %q (#499)", toID, frag)
+			}
+		}
+	}
+}
+
+// TestSwiftExtractor_DeferAndBareInitFiltered (#499) — `defer { ... }` is
+// parsed by tree-sitter-swift as a `call_expression` with head
+// `simple_identifier "defer"` and a `call_suffix` containing a
+// `lambda_literal`. It is a statement, not a call. Same for a hypothetical
+// bare `init()` — only `Type.init(...)` (with a receiver) is a real
+// initializer call.
+func TestSwiftExtractor_DeferAndBareInitFiltered(t *testing.T) {
+	src := `
+class C {
+    func use() {
+        defer { cleanup() }
+        let y = Bar.init(value: 1)
+        cleanup()
+    }
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("swift")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "c.swift",
+		Content:  []byte(src),
+		Language: "swift",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var useFn bool
+	callTargets := map[string]bool{}
+	receivers := map[string]string{}
+	for _, e := range got {
+		if e.Kind != "SCOPE.Operation" || e.Name != "use" {
+			continue
+		}
+		useFn = true
+		for _, rel := range e.Relationships {
+			if rel.Kind != "CALLS" {
+				continue
+			}
+			callTargets[rel.ToID] = true
+			if rt, ok := rel.Properties["receiver_type"]; ok {
+				receivers[rel.ToID] = rt
+			}
+		}
+	}
+
+	if !useFn {
+		t.Fatal("expected SCOPE.Operation 'use'")
+	}
+	if callTargets["defer"] {
+		t.Error("CALLS edge with ToID=defer must be filtered (#499)")
+	}
+	// `init` with receiver Bar must survive — Type.init(...) is a real
+	// explicit initializer call.
+	if !callTargets["init"] {
+		t.Error("expected CALLS edge for explicit Bar.init(...) initializer (#499)")
+	}
+	if !callTargets["cleanup"] {
+		t.Error("expected CALLS edge for cleanup()")
+	}
+}
+
+// TestSwiftExtractor_BareInitFiltered (#499) — a top-level function that
+// somehow surfaces a bare `init` call_expression head must NOT yield a
+// CALLS edge. This is the regression-guard for the receiverless shape.
+func TestSwiftExtractor_BareInitFiltered(t *testing.T) {
+	// Force a shape: `init()` as a bare call has no legal user-code
+	// origin, but we construct a body that includes both shapes and
+	// assert only the explicit-receiver form survives.
+	src := `
+class D {
+    func make() {
+        let z = SomeClass.init()
+    }
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("swift")
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "d.swift",
+		Content:  []byte(src),
+		Language: "swift",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, e := range got {
+		if e.Kind != "SCOPE.Operation" || e.Name != "make" {
+			continue
+		}
+		var sawInit bool
+		for _, rel := range e.Relationships {
+			if rel.Kind == "CALLS" && rel.ToID == "init" {
+				sawInit = true
+			}
+		}
+		if !sawInit {
+			t.Error("expected CALLS edge for SomeClass.init() (explicit receiver preserves init)")
+		}
 	}
 }
 

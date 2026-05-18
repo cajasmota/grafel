@@ -267,6 +267,25 @@ var swiftCallStop = map[string]bool{
 	"super": true,
 }
 
+// swiftStatementKeywords are Swift keywords the tree-sitter grammar surfaces
+// as `call_expression` heads when they take a trailing closure (e.g.
+// `defer { ... }`, `repeat { ... }`). They are statements, not invocations,
+// and emitting CALLS edges for them is pure noise (#499).
+var swiftStatementKeywords = map[string]bool{
+	"defer":  true,
+	"repeat": true,
+	"do":     true,
+}
+
+// swiftBareInitFiltered drops `init` when it appears as a bare (no receiver)
+// call target. `Type.init(...)` is a legitimate explicit initializer call and
+// must be preserved with receiver_type, but a bare `init()` token in a body
+// can only originate from a non-call context the grammar mis-shapes — never
+// from real user code (#499).
+var swiftBareInitFiltered = map[string]bool{
+	"init": true,
+}
+
 // extractCallRelationships returns one CALLS RelationshipRecord per unique
 // call_expression descendant of body. The target name is the trailing
 // simple_identifier of the call's expression. FromID is left empty so
@@ -294,6 +313,18 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 			continue
 		}
 		if swiftCallStop[target] {
+			continue
+		}
+		// #499 — drop statement keywords the grammar shapes as
+		// call_expression (e.g. `defer { ... }`). These are never real
+		// invocations regardless of receiver.
+		if swiftStatementKeywords[target] {
+			continue
+		}
+		// #499 — drop bare `init` (no receiver). `Type.init(...)` is a
+		// real explicit-initializer call and is preserved because
+		// recvRoot != "" in that shape.
+		if recvRoot == "" && swiftBareInitFiltered[target] {
 			continue
 		}
 		recvType := ""
@@ -546,6 +577,17 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 // extractImportPath extracts the module path from an import_declaration. The
 // path may be a single identifier (`Foundation`) or a dotted chain
 // (`os.log.Logger`). Submodule access is rare in Swift but supported.
+//
+// #499 — skip the `modifiers` / `attribute` subtrees. tree-sitter-swift
+// shapes import attributes like `@_documentation(visibility: internal)`,
+// `@_exported`, `@preconcurrency`, `@_implementationOnly`, `@testable` as
+// children of a `modifiers` node that lives inside `import_declaration`.
+// Each `attribute` carries `type_identifier` / `simple_identifier`
+// descendants for the attribute name and its arguments, which previously
+// got joined into synthetic dotted import paths
+// (e.g. `_documentation.visibility.internal._exported.Foundation`).
+// Detection is by tree-sitter node type — not by hardcoded attribute name —
+// so any current or future Swift attribute spelling is skipped.
 func extractImportPath(node *sitter.Node, src []byte) string {
 	// Collect all identifier-like child segments and join with '.'.
 	var parts []string
@@ -555,6 +597,10 @@ func extractImportPath(node *sitter.Node, src []byte) string {
 			return
 		}
 		t := n.Type()
+		// #499 — never descend into attribute / modifier subtrees.
+		if t == "modifiers" || t == "attribute" || t == "attributes" {
+			return
+		}
 		if t == "simple_identifier" || t == "type_identifier" {
 			parts = append(parts, string(src[n.StartByte():n.EndByte()]))
 			return
@@ -565,7 +611,13 @@ func extractImportPath(node *sitter.Node, src []byte) string {
 	}
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
-		if ch.Type() == "import" {
+		t := ch.Type()
+		if t == "import" {
+			continue
+		}
+		// #499 — top-level skip; the recursive guard above is a
+		// belt-and-braces defense for any nested shape.
+		if t == "modifiers" || t == "attribute" || t == "attributes" {
 			continue
 		}
 		collect(ch)
@@ -573,9 +625,14 @@ func extractImportPath(node *sitter.Node, src []byte) string {
 	if len(parts) > 0 {
 		return strings.Join(parts, ".")
 	}
-	// Fallback.
+	// Fallback — strip any leading attribute tokens before the literal
+	// `import` keyword so the textual fallback also yields a clean module
+	// path when the AST shape is unexpected.
 	full := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
-	return strings.TrimPrefix(full, "import ")
+	if idx := strings.Index(full, "import "); idx >= 0 {
+		full = full[idx+len("import "):]
+	}
+	return strings.TrimSpace(full)
 }
 
 // extractName finds the name of a declaration node.
