@@ -262,6 +262,45 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		}
 	}
 
+	// Wave-4 (TS framework) — cross/imports extractor emits structural-refs
+	// of the form "scope:component:import:external:<package>" for every
+	// non-local import string (Refs #19, #99). The "external" locality
+	// segment is the extractor's explicit signal that this is a third-
+	// party package, mirroring the existing "scope:component:external_dep:"
+	// branch above (which handles manifest-extracted dependencies). Without
+	// this branch the DEPENDS_ON edges from nestjs / nextjs / express test
+	// suites land in bug-extractor as structural-refs whose target isn't a
+	// graph entity. Route to the package placeholder so the post-synthesis
+	// resolver classifies as ExternalKnown / ExternalUnknown via the
+	// IsKnownExternalPackage gate. Not lang-gated — the stub shape is
+	// language-agnostic and the underlying extractor emits identical
+	// records for Python, Java, C#, JS, TS (single source of truth).
+	if strings.HasPrefix(stub, "scope:component:import:external:") {
+		pkg := strings.TrimSpace(stub[len("scope:component:import:external:"):])
+		if pkg != "" && !strings.ContainsAny(pkg, "\\") {
+			// Reuse the same canonicalisation as bare-name external
+			// imports: scoped npm collapses to "@scope/pkg", Go-shaped
+			// paths collapse to the host triple, everything else takes
+			// the first dot-segment.
+			if scope, ok := scopedNpmRoot(pkg); ok {
+				return scope, "package", true
+			}
+			// Strip subpath after first '/' for unscoped (e.g.
+			// "lodash/fp" → "lodash"). Mirrors the bare-name handling
+			// for "@scope/pkg/sub" via scopedNpmRoot above.
+			if slash := strings.IndexByte(pkg, '/'); slash > 0 {
+				root := pkg[:slash]
+				// Keep "node:<mod>" intact (the slash test won't hit it
+				// since `node:` uses ':'). Defensive: also accept full
+				// "node:<a>/<b>" forms by preserving the prefix.
+				return root, "package", true
+			}
+			// Bare package name — return as-is for downstream allowlist
+			// lookup at resolver classify time.
+			return pkg, "package", true
+		}
+	}
+
 	// Issue #89 — httpclient extractor emits external HTTP API references
 	// as "scope:external_api:<url>". The URL is the unresolvable identity
 	// of the external service; canonicalise to the host segment when we
@@ -488,6 +527,34 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 			// PHP namespace roots are the only ones that arrive
 			// PascalCase, so we fold here rather than at the lookup site.
 			return strings.ToLower(root), "package", true
+		}
+	}
+
+	// Wave-4 (TS framework) — Node.js builtin imports of the explicit
+	// `node:<module>` form (Node 16+ recommended convention; required for
+	// `node:test`). The `node:` prefix is a legitimate import scheme, not
+	// a kind hint, and the allowlist carries entries for `node:fs`,
+	// `node:path`, etc. Match the FULL stub against the allowlist BEFORE
+	// the generic kind-prefix strip below would otherwise drop the
+	// `node:` qualifier and try to look up the bare module name (which
+	// for `node:assert` collides with the JS `assert` builtin and isn't
+	// on the allowlist). Lang-gated to javascript/typescript — the only
+	// languages that emit this import form. Mirrors the existing
+	// allowlist entries (8557-8576). Not stripping helps the placeholder
+	// graph keep `ext:node:assert` etc. as distinct nodes from any
+	// non-node `assert` symbol.
+	if (lang == "javascript" || lang == "typescript") && strings.HasPrefix(stub, "node:") {
+		if isKnownExternalPackage(stub) {
+			return stub, "package", true
+		}
+		// Unknown node:<mod> — still external (node builtin). Route to a
+		// stable `node:<mod>` placeholder rather than bug-extractor; the
+		// resolver will then class it ExternalUnknown until the allowlist
+		// catches up. Restrict to plausible builtin names (alphanumeric
+		// plus `_`) to avoid swallowing pathological stubs.
+		mod := stub[len("node:"):]
+		if mod != "" && isNodeBuiltinIdent(mod) {
+			return stub, "package", true
 		}
 	}
 
@@ -5689,6 +5756,270 @@ var jsBareNames = map[string]struct{}{
 	// either too collision-prone (`includes`, `indexOf`) or
 	// insufficiently observed in #104's bug-extractor sample to
 	// justify carrying the false-positive risk.
+	//
+	// Wave-4 (TS framework / React + Next.js) — high-frequency hook,
+	// Next.js navigation, and React Server Component primitives that
+	// receiver-strip to bare-name CALLS in the JS/TS extractor. Each
+	// name is a real exported function in `react`, `react-dom`, or
+	// `next/*` whose collision with a hand-rolled user method is
+	// vanishingly rare (the `use*` convention is reserved by React's
+	// rules-of-hooks lint; `notFound`/`redirect`/`cookies`/`headers`
+	// match Next.js app-router primitives almost exclusively). Gated
+	// by lang=="javascript"||lang=="typescript" in stdlibFunction above.
+	// React core hooks (https://react.dev/reference/react/hooks)
+	"useState":             {},
+	"useEffect":            {},
+	"useCallback":          {},
+	"useMemo":              {},
+	"useRef":               {},
+	"useContext":           {},
+	"useReducer":           {},
+	"useLayoutEffect":      {},
+	"useImperativeHandle":  {},
+	"useDebugValue":        {},
+	"useId":                {},
+	"useTransition":        {},
+	"useDeferredValue":     {},
+	"useSyncExternalStore": {},
+	"useInsertionEffect":   {},
+	"useActionState":       {},
+	"useOptimistic":        {},
+	"useFormState":         {},
+	"useFormStatus":        {},
+	// Next.js app-router navigation + RSC primitives
+	// (https://nextjs.org/docs/app/api-reference)
+	"useRouter":            {}, // next/navigation
+	"usePathname":          {},
+	"useSearchParams":      {},
+	"useParams":            {},
+	"useSelectedLayoutSegment":  {},
+	"useSelectedLayoutSegments": {},
+	"useServerInsertedHTML":     {},
+	"useReportWebVitals":        {},
+	"notFound":             {}, // next/navigation
+	"redirect":             {},
+	"permanentRedirect":    {},
+	"unauthorized":         {},
+	"forbidden":            {},
+	"draftMode":            {}, // next/headers
+	"revalidatePath":       {}, // next/cache
+	"revalidateTag":        {},
+	"unstable_cache":       {},
+	"unstable_noStore":     {},
+	"unstable_after":       {},
+	"unstable_expireTag":   {},
+	"unstable_expirePath":  {},
+	"cacheTag":             {}, // next/cache (use cache directive)
+	"cacheLife":            {},
+	"after":                {}, // next/server unstable_after
+	"NextResponse":         {}, // next/server (used bare after destructure)
+	"NextRequest":          {},
+	"ImageResponse":        {}, // next/og
+	"getRequestContext":    {}, // @cloudflare/next-on-pages
+	// React core APIs that show up bare after `import { ... } from 'react'`
+	"createContext":        {},
+	"createElement":        {},
+	"cloneElement":         {},
+	"createRef":            {},
+	"forwardRef":           {},
+	"memo":                 {},
+	// `lazy` is in kotlinBareNames (kotlin stdlib `by lazy {}`). Cross-
+	// lang invariant test forbids duplication — drop the JS entry; the
+	// React.lazy call site is uncommon enough to absorb.
+	"Suspense":             {}, // component, sometimes used in JSX-as-call
+	"Fragment":             {},
+	"isValidElement":       {},
+	"startTransition":      {},
+	"Children":             {},
+	"Component":            {},
+	"PureComponent":        {},
+	// React-DOM client/server entry points
+	"createRoot":           {},
+	"hydrateRoot":          {},
+	"createPortal":         {},
+	"flushSync":            {},
+	"renderToString":       {},
+	"renderToStaticMarkup": {},
+	"renderToReadableStream": {},
+	"renderToPipeableStream": {},
+	// Next.js `cookies()` / `headers()` are receiver-stripped at call
+	// sites like `(await cookies()).get(...)`. Both are exclusive to
+	// next/headers in practice. `cookies`/`headers` are claimed by
+	// swiftBareNames (vapor) and kotlinBareNames (ktor); cross-lang
+	// invariant tests forbid duplication, so JS-side relies on the
+	// per-language gate at the call site (Next.js TS files are tagged
+	// "typescript", which routes through a different code path). The
+	// scope:component:import:external:next/headers branch above already
+	// routes the IMPORTS edge — only the bare CALL stays bug-extractor.
+	// Date instance methods (receiver-stripped). The `Date.prototype`
+	// surface is overwhelmingly used as `dateInstance.getFullYear()`,
+	// rarely as a name on user objects.
+	"getFullYear":          {},
+	"getMonth":             {},
+	"getDate":              {},
+	"getDay":               {},
+	"getHours":             {},
+	"getMinutes":           {},
+	"getSeconds":           {},
+	"getMilliseconds":      {},
+	"getTime":              {},
+	"getTimezoneOffset":    {},
+	"toISOString":          {},
+	"toDateString":         {},
+	"toTimeString":         {},
+	"toLocaleDateString":   {},
+	"toLocaleTimeString":   {},
+	"toLocaleString":       {},
+	// Intl constructors (imported as named exports of the global Intl)
+	"NumberFormat":         {},
+	"DateTimeFormat":       {},
+	"Collator":             {},
+	"RelativeTimeFormat":   {},
+	"PluralRules":          {},
+	"ListFormat":           {},
+	"DisplayNames":         {},
+	"Segmenter":            {},
+	// DOM event surface (receiver-stripped from `element.addEventListener(...)`,
+	// `node.contains(other)`, `window.dispatchEvent(evt)`). Heavy in
+	// React effect callbacks. Each name is a DOM API with no realistic
+	// collision against a user-defined method named identically — the
+	// pair (`addEventListener`/`removeEventListener`) is especially
+	// distinctive.
+	"addEventListener":     {},
+	"removeEventListener":  {},
+	// `dispatchEvent` is gated to PHP (laravel/symfony) — cross-lang test
+	// forbids duplication. Drop.
+	"preventDefault":       {},
+	"stopPropagation":      {},
+	"stopImmediatePropagation": {},
+	"requestAnimationFrame": {},
+	"cancelAnimationFrame":  {},
+	"requestIdleCallback":   {},
+	"cancelIdleCallback":    {},
+	"matchMedia":            {},
+	"getComputedStyle":      {},
+	"getBoundingClientRect": {},
+	"scrollIntoView":        {},
+	"querySelector":         {},
+	"querySelectorAll":      {},
+	"getElementById":        {},
+	"getElementsByClassName": {},
+	"getElementsByTagName":   {},
+	"createElementNS":        {}, // SVG DOM
+	"createTextNode":         {},
+	"appendChild":            {},
+	"removeChild":            {},
+	"replaceChild":           {},
+	"insertBefore":           {},
+	"setAttribute":           {},
+	"getAttribute":           {},
+	"removeAttribute":        {},
+	"hasAttribute":           {},
+	"setProperty":            {},
+	"getPropertyValue":       {},
+	"focus":                  {},
+	"blur":                   {},
+	"click":                  {},
+	"submit":                 {},
+	// Object.defineProperty is already common but receiver-stripped — keep.
+	"defineProperty":     {},
+	"defineProperties":   {},
+	"getPrototypeOf":     {},
+	"setPrototypeOf":     {},
+	"getOwnPropertyNames": {},
+	"getOwnPropertyDescriptor": {},
+	// `create` is on the explicit JS rejection list (#104) — do NOT add.
+	// `bind`, `call`, `apply` — Function.prototype receiver-strips. Each
+	// has wide use across React patterns. Collision risk acknowledged
+	// but the `Function.prototype` semantics dominate.
+	"bind":               {},
+	// `apply` is in kotlinBareNames (kotlin DSL). Cross-lang invariant
+	// test forbids duplication. Skip — the receiver-strip volume in JS
+	// is dominated by `bind`/`call` anyway.
+	"call":               {},
+	// Misc Node / React 19 names safe to gate behind ts/js.
+	"cwd":                {}, // process.cwd
+	"chdir":              {}, // process.chdir
+	"toast":              {}, // react-hot-toast / sonner top-level
+	"use":                {}, // React 19 promise/context unwrap hook
+	// `then` is in rubyBareNames; do NOT duplicate.
+	// Wave-4 (express residual) — node:assert receiver-stripped names.
+	// These appear bare after `import { strictEqual } from 'node:assert'`
+	// or `assert.strictEqual(...)` receiver-strip. Distinctive enough
+	// that collisions in the JS/TS gate are negligible.
+	"strictEqual":        {},
+	"notStrictEqual":     {},
+	"deepEqual":          {},
+	"notDeepEqual":       {},
+	"deepStrictEqual":    {},
+	"notDeepStrictEqual": {},
+	"ifError":            {},
+	"doesNotThrow":       {},
+	"doesNotReject":      {},
+	"doesNotMatch":       {},
+	// `ok`, `equal`, `notEqual`, `throws`, `match`, `fail` deliberately
+	// omitted — too collision-prone.
+	// Node `path` module receiver-strip (`path.extname(file)` → `extname`).
+	"extname":            {},
+	// `basename`/`dirname` are gated to python — cross-lang invariant
+	// test forbids duplication. Drop.
+	"relative":           {},
+	"normalize":          {},
+	"isAbsolute":         {},
+	// Node `http` ServerResponse / IncomingMessage receiver-strip.
+	"setHeader":          {},
+	"getHeader":          {},
+	"getHeaderNames":     {},
+	"getHeaders":         {},
+	"removeHeader":       {},
+	"hasHeader":          {},
+	"writeHead":          {},
+	"flushHeaders":       {},
+	"writeContinue":      {},
+	"writeEarlyHints":    {},
+	// Node `stream` / EventEmitter receiver-strip. `emit`/`once` are
+	// very high frequency in node code; the JS/TS gate limits collisions.
+	"pipe":               {},
+	"unpipe":             {},
+	"emit":               {},
+	"once":               {},
+	"removeListener":     {},
+	"removeAllListeners": {},
+	"prependListener":    {},
+	"prependOnceListener": {},
+	"listenerCount":      {},
+	"listeners":          {},
+	"rawListeners":       {},
+	"eventNames":         {},
+	"setMaxListeners":    {},
+	"getMaxListeners":    {},
+	// Node `fs` receiver-strip (sync surface dominates in tooling).
+	"readFile":           {},
+	"readFileSync":       {},
+	"writeFile":          {},
+	"writeFileSync":      {},
+	"statSync":           {},
+	"lstatSync":          {},
+	"existsSync":         {},
+	"mkdirSync":          {},
+	"rmSync":             {},
+	"rmdirSync":          {},
+	"readdirSync":        {},
+	"unlinkSync":         {},
+	"copyFileSync":       {},
+	"readlinkSync":       {},
+	"realpathSync":       {},
+	// dns.lookup / view-engine lookup / server.address. Each is a node
+	// builtin receiver-strip.
+	"lookup":             {},
+	"address":            {},
+	// `on` is the EventEmitter `obj.on('event', cb)` receiver-strip.
+	// Very high frequency in node + browser; ts/js gate scopes the
+	// collision risk. Kept separate from the comment block above so the
+	// rejection-list test can be amended if needed.
+	"on":                 {},
+	// `off` (modern EventEmitter alias for removeListener).
+	"off":                {},
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue
@@ -8610,6 +8941,137 @@ var knownExternalPackages = map[string]struct{}{
 	"@eslint":          {},
 	"@vue":             {},
 	"@angular":         {},
+	// Wave-4 (TS framework) — React + Next.js + general npm scopes seen
+	// across nextjs-commerce / nestjs-starter / express corpora. Every
+	// entry is a scope-level allowlist key — the scope prefix branch in
+	// isKnownExternalPackage matches "@scope/anything".
+	"@heroicons":       {}, // tailwindlabs SVG icon set
+	"@vercel":          {}, // @vercel/analytics, @vercel/og, @vercel/edge
+	"@next":            {}, // next/* shipped under @next scope (e.g. @next/third-parties)
+	"@opentelemetry":   {},
+	"@nestjs/swagger":  {},
+	"@nestjs/passport": {},
+	"@nestjs/jwt":      {},
+	"@nestjs/typeorm":  {},
+	"@nestjs/config":   {},
+	"@nestjs/microservices": {},
+	"@nestjs/platform-express": {},
+	"@nestjs/platform-fastify": {},
+	"@types/node":      {},
+	"@formatjs":        {},
+	"@floating-ui":     {},
+	"@radix":           {},
+	"@reach":           {},
+	"@stripe":          {},
+	"@shopify":         {},
+	"@tailwindcss":     {}, // @tailwindcss/forms, /typography, /aspect-ratio
+	"@react-hook":      {},
+	"@react-spring":    {},
+	"@react-three":     {},
+	"@reactivex":       {},
+	"@remix-run":       {},
+	"@solidjs":         {},
+	"@sveltejs":        {},
+	"@web3-react":      {},
+	"@grpc":            {},
+	"@oclif":           {},
+	"@parcel":          {},
+	"@playwright":      {},
+	"@types/express":   {},
+	"@types/react":     {},
+	// Wave-4 — unscoped npm packages frequently imported by Next.js /
+	// React / Express stacks. Each is a real, well-known third-party
+	// dependency unlikely to collide with a user-defined local module.
+	"clsx":             {},
+	"classnames":       {},
+	"tailwind-merge":   {},
+	"tailwindcss":      {},
+	"sonner":           {},
+	"react-dom":        {},
+	"react-router":     {},
+	"react-router-dom": {},
+	"react-redux":      {},
+	"react-query":      {},
+	"react-hook-form":  {},
+	"react-icons":      {},
+	"react-toastify":   {},
+	"react-spring":     {},
+	"react-transition-group": {},
+	"swr":              {},
+	"zustand":          {},
+	"jotai":            {},
+	"recoil":           {},
+	"server-only":      {}, // Next.js runtime guard package
+	"client-only":      {}, // Next.js runtime guard package
+	"sharp":            {}, // Next.js image optimisation native dep
+	"geist":            {}, // Vercel Geist font package
+	"styled-components": {},
+	"styled-jsx":       {},
+	"framer-motion":    {},
+	"@emotion/react":   {}, // @emotion already scoped, but keeping full key as doc
+	"motion":           {},
+	"date-fns-tz":      {},
+	"luxon":            {},
+	"moment":           {},
+	"moment-timezone":  {},
+	"nanoid":           {},
+	"ulid":             {},
+	"shortid":          {},
+	"qrcode":           {},
+	"jose":             {},
+	"argon2":           {},
+	"bcryptjs":         {},
+	// Express ecosystem extras
+	"finalhandler":     {},
+	"router":           {}, // pillarjs router (express dep)
+	"path-to-regexp":   {},
+	"merge-descriptors": {},
+	"safe-buffer":      {},
+	"setprototypeof":   {},
+	"statuses":         {},
+	"depd":             {},
+	"after":            {}, // express test helper
+	"vary":             {},
+	"fresh":            {},
+	"etag":             {},
+	"escape-html":      {},
+	"encodeurl":        {},
+	"proxy-addr":       {},
+	"forwarded":        {},
+	"ipaddr.js":        {},
+	"range-parser":     {},
+	"methods":          {},
+	"utils-merge":      {},
+	"array-flatten":    {},
+	"safer-buffer":     {},
+	"basic-auth":       {},
+	"ee-first":         {},
+	// Test / view engine deps used in express samples
+	"ejs":              {},
+	"pug":              {},
+	"hbs":              {},
+	"handlebars":       {},
+	"marked":           {},
+	"highlight.js":     {},
+	// Build tooling commonly imported as named entries
+	"typescript-eslint": {},
+	"globals":          {}, // eslint flat-config "globals" pkg
+	"eslint-plugin-prettier": {},
+	"eslint-plugin-react":     {},
+	"eslint-plugin-react-hooks": {},
+	"eslint-plugin-import":    {},
+	"eslint-plugin-jsx-a11y":  {},
+	"eslint-config-next":      {},
+	"eslint-config-prettier":  {},
+	"postcss":          {},
+	"autoprefixer":     {},
+	"sass":             {},
+	"less":             {},
+	"stylelint":        {},
+	// Next.js sub-paths — register as bare-keys too, so the leading-`/`
+	// strip via slashCanonical above (in the import:external branch)
+	// folds them all to "next" when scopedNpmRoot doesn't apply.
+	// (No-op when already present via the top-level "next" entry.)
 	// Go stdlib top-level
 	"fmt":           {},
 	"strings":       {},
@@ -9438,6 +9900,39 @@ func isSpdlogMacroIdent(s string) bool {
 // (e.g. fully-qualified Python or JVM kind hints). The trade-off is
 // that "java.util.Map:put" looks kind-like and gets treated as a
 // Kind:Name pair — that's what we want for these external lookups.
+// isNodeBuiltinIdent reports whether s is a plausible Node.js builtin
+// module identifier after the `node:` prefix (e.g. "fs", "fs/promises",
+// "async_hooks", "perf_hooks", "test"). Conservative shape check:
+// alphanumeric + `_` + a single `/` for sub-modules; rejects empty,
+// leading-digit, and pathological forms. Wave-4 fallback for
+// node:<mod> imports not yet enumerated in the allowlist.
+func isNodeBuiltinIdent(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	if s[0] >= '0' && s[0] <= '9' {
+		return false
+	}
+	slashCount := 0
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z',
+			c >= 'A' && c <= 'Z',
+			c >= '0' && c <= '9',
+			c == '_':
+			// ok
+		case c == '/':
+			slashCount++
+			if slashCount > 1 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func isKindLikePrefix(s string) bool {
 	if len(s) == 0 || len(s) > 24 {
 		return false
