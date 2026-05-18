@@ -8292,6 +8292,108 @@ var pythonBareNames = map[string]struct{}{
 	"BlockPlacement":             {},
 	"get_loc":                    {},
 	"get_indexer":                {},
+
+	// Wave-6 (client-fixture-a, Django + MongoDB). Pulled from the
+	// post-wave-5 bug-extractor sample on client-fixture-a (Django
+	// REST + PyMongo backend at 11.99% pre-wave). All names below
+	// arrive at the resolver as bare identifiers after the Python
+	// extractor strips the receiver from attribute calls
+	// (`db.users.find_one(...)` → `find_one`,
+	// `coll.update_one({...}, {...})` → `update_one`,
+	// `datetime.strptime(s, fmt)` → `strptime`,
+	// `datetime.utcnow()` → `utcnow`).  Gated to lang=="python" so
+	// same-named user methods in other languages are not shadowed
+	// (#94 safer-bias rule).
+	//
+	// Conservative selection rule (same as #455 + wave-4 waves):
+	// include a name only when it is overwhelmingly a stdlib /
+	// well-known-package idiom in Python.  Generic single-word verbs
+	// (`find`, `update`, `delete`, `insert`, `count`, `replace`) and
+	// MongoDB aggregation operators that collide with cross-language
+	// verbs (`match`, `group`, `project`, `sort`, `limit`, `skip`,
+	// `lookup`) are deliberately EXCLUDED.
+
+	// PyMongo Collection / Database method surface.  Suffixed
+	// `_one` / `_many` forms are distinctive (no plausible user-method
+	// collision) and dominate the residual on client-fixture-a.
+	"get_collection":           {},
+	"get_database":             {},
+	"insert_one":               {},
+	"insert_many":              {},
+	"update_one":               {},
+	"update_many":              {},
+	"delete_one":               {},
+	"delete_many":              {},
+	"find_one":                 {},
+	"find_one_and_update":      {},
+	"find_one_and_delete":      {},
+	"find_one_and_replace":     {},
+	"replace_one":              {},
+	"bulk_write":               {},
+	"count_documents":          {},
+	"estimated_document_count": {},
+	"distinct":                 {},
+	// PyMongo index management.
+	"create_index":      {},
+	"create_indexes":    {},
+	"drop_index":        {},
+	"drop_indexes":      {},
+	"list_indexes":      {},
+	"index_information": {},
+	// bson value types.  `ObjectId`, `Timestamp` are already in
+	// stdlibBareNames / pandas allowlist — not duplicated here.
+	// `Regex` excluded — PascalCase fallback heuristic synthesises
+	// it for non-python sources, which would trip the cross-language
+	// gate test.  `Decimal128` kept (no PascalCase collision).
+	"Decimal128": {},
+
+	// datetime / dateutil — receiver-stripped from
+	// `datetime.strptime(...)`, `datetime.utcnow()`,
+	// `dt.fromisoformat(s)`, `datetime.now()`, `date.today()`.
+	// `strptime` collides with cppBareNames (libc time) — the
+	// lang-gate dispatches each language to its own map so this is
+	// behaviourally safe; the collision is only excluded from the
+	// cross-language test assertion below (same pattern as `Path` /
+	// `Iterator` / `Any`).  `now`/`today` collide with phpBareNames
+	// (Laravel global helpers) and several JS / Swift maps — same
+	// pattern: excluded from cross-language test only.
+	"strptime":          {},
+	"fromisoformat":     {},
+	"fromtimestamp":     {},
+	"utcnow":            {},
+	"utcfromtimestamp":  {},
+	"now":               {},
+	"today":             {},
+	"timedelta":         {},
+	"relativedelta":     {},
+
+	// random — `randint` / `randrange` are unambiguous stdlib
+	// `random` module helpers.  `sample` and `choice` excluded
+	// (too generic — collide with user methods).
+	"randint":   {},
+	"randrange": {},
+
+	// uuid — `uuid4` / `uuid1` are the standard generators
+	// (`from uuid import uuid4`).
+	"uuid4": {},
+	"uuid1": {},
+
+	// requests — `raise_for_status` is the canonical
+	// `response.raise_for_status()` call; distinctive idiom.
+	"raise_for_status": {},
+
+	// Django ORM extras receiver-stripped from QuerySet chains
+	// (`qs.order_by("-created_at")`) and Django QueryDict
+	// (`request.GET.getlist("ids")`).
+	"order_by": {},
+	"getlist":  {},
+
+	// Python DB-API — `cursor.fetchall()` / `cursor.fetchone()`.
+	// `cursor` excluded (too generic; many ORMs expose
+	// `model.cursor`).
+	"fetchall": {},
+	"fetchone": {},
+	"fetchmany": {},
 }
 
 // cppBareNames is the C/C++-language-gated bare-name stop-list (issue
