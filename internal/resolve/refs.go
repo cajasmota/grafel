@@ -995,6 +995,76 @@ var (
 		regexp.MustCompile(`.*\$\{.*\}.*`), // template-built strings ${x}
 	}
 
+	// C# / .NET dynamic-pattern catalog (issue #441). Routes
+	// project-internal `using Namespace.SubNamespace;` IMPORTS whose
+	// target dotted namespace has no entity in the graph (because we
+	// index file-level entities, not namespace entities) into Dynamic
+	// instead of bug-extractor. Pattern: PascalCase root segment, at
+	// least one dot, no leading `Microsoft.`/`System.` (those resolve
+	// via the external allowlist) and no leading lowercase (which would
+	// be a method-on-receiver shape, handled elsewhere).
+	//
+	// Also covers a small set of receiver-stripped reflection /
+	// concurrency primitives the C# extractor emits as bare or dotted
+	// callees (`Interlocked.Increment`, `MethodBase.GetCurrentMethod`,
+	// `PeriodicTimer.WaitForNextTickAsync`, `ConcurrentDictionary.
+	// TryRemove`). These are not language-builtins in the strict sense
+	// but they're framework-dispatch entry points that no static binder
+	// can reach without full assembly-level type resolution.
+	csharpDynamicPatterns = []*regexp.Regexp{
+		// PascalCase project-internal namespace import.
+		// Anchored: starts with uppercase, contains at least one dot, every
+		// segment is an identifier (no whitespace / brackets), and there is
+		// no generic `<...>` suffix (those are call sites, not imports).
+		// Negative-lookahead would be cleaner but Go regexp's RE2 dialect
+		// doesn't support lookaround — we filter out the well-known .NET
+		// / Microsoft / EF Core ecosystem roots at the caller (handled in
+		// isDynamicPatternLang via a startsWith check before regex eval).
+		regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)+$`),
+	}
+
+	// csharpExternalNamespaceRoots lists the dotted namespace roots that
+	// must NOT be classified as Dynamic by csharpDynamicPatterns — they
+	// are real external imports (Microsoft.AspNetCore, System.Linq, EF
+	// Core, etc.) that the external synthesiser routes to ext:microsoft
+	// / ext:system. Without this exclusion the dynamic-pattern check
+	// (which runs BEFORE the external-prefix check, Refs #95) would
+	// promote every Microsoft.* import to Dynamic and the corpus would
+	// lose its ExternalKnown classification.
+	csharpExternalNamespaceRoots = []string{
+		"Microsoft.",
+		"System.",
+		"EntityFrameworkCore",
+		"Newtonsoft.",
+		"Serilog",
+		"NLog",
+		"Autofac",
+		"Castle.",
+		"AutoMapper",
+		"MediatR",
+		"FluentValidation",
+		"FluentAssertions",
+		"NUnit",
+		"Xunit",
+		"Moq",
+		"Polly",
+		"Dapper",
+		"RestSharp",
+		"Hangfire",
+		"Quartz",
+		"IdentityServer",
+		"MassTransit",
+		"NServiceBus",
+		"RabbitMQ.",
+		"StackExchange.",
+		"Swashbuckle.",
+		"GraphQL.",
+		"HotChocolate",
+		"AspNetCore",
+		"Org.BouncyCastle",
+		"Mvc.",
+	}
+
 	// dynamicPatternsByLang dispatches a normalized language tag to its
 	// per-language pattern slice. Keys are lower-case canonical names; the
 	// resolver normalizes incoming tags before lookup.
@@ -1010,6 +1080,8 @@ var (
 		"jvm":        jvmDynamicPatterns,
 		"hcl":        hclDynamicPatterns,
 		"terraform":  hclDynamicPatterns,
+		"csharp":     csharpDynamicPatterns,
+		"razor":      csharpDynamicPatterns,
 	}
 )
 
@@ -1093,7 +1165,21 @@ func isDynamicPatternLang(stub, lang string) bool {
 			}
 		}
 	}
-	if patterns, ok := dynamicPatternsByLang[normalizeLang(lang)]; ok {
+	normLang := normalizeLang(lang)
+	if patterns, ok := dynamicPatternsByLang[normLang]; ok {
+		// C# / Razor — exclude well-known external-namespace roots from
+		// the dynamic-pattern dispatch (issue #441). The PascalCase
+		// project-internal pattern matches `Microsoft.AspNetCore.X`
+		// shape too; the external synthesiser routes those to
+		// ext:microsoft / ext:system, so promoting them to Dynamic
+		// would lose ExternalKnown classification.
+		if normLang == "csharp" || normLang == "razor" {
+			for _, root := range csharpExternalNamespaceRoots {
+				if strings.HasPrefix(stub, root) {
+					return false
+				}
+			}
+		}
 		for _, re := range patterns {
 			for _, cand := range candidates {
 				if re.MatchString(cand) {
