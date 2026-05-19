@@ -69,15 +69,18 @@ const primaryHelpTemplate = `archigraph — multi-repo code knowledge graphs for
 Usage:
   archigraph <command> [flags]
 
-Setup:
+First-time setup:
+  install       Register the daemon as a system service and start it
+                (replaces wizard + onboard for most users)
+
+Setup (advanced):
   wizard        Interactive setup for a new group
   onboard       Join a teammate's existing group
-  install       Apply a group config (hooks, watchers, MCP)
 
 Operate:
-  update        Update archigraph and reapply hooks
+  update        Update archigraph
   doctor        Run health checks across all groups
-  status        Show watcher + index status
+  status        Show daemon + index status
   list          List registered groups (alias: ls)
 
 Help:
@@ -91,26 +94,27 @@ Run 'archigraph help advanced' to see uninstall, rebuild, monorepo, etc.
 
 const advancedHelpText = `archigraph — full command surface
 
-Setup:
+First-time setup:
+  install [--foreground]          Register daemon as OS service + start it
+  uninstall                       Stop and remove the daemon service
+
+Setup (advanced):
   wizard                          Interactive setup for a new group
   onboard [path]                  Join a teammate's existing group
-  install <config>|--group <n>    Apply a group config
 
 Operate:
-  update [--refresh-rules-lite]   Update archigraph; reapply hooks
+  update [--refresh-rules-lite]   Update archigraph
   doctor                          Run health checks
-  status [group]                  Show watcher + last-index status
+  status [group]                  Show daemon health + per-repo state
   list                            List registered groups (alias: ls)
 
 Repair:
   rebuild [group] [slug]          Force AST rebuild (no cache, daemon RPC)
   reset [group] [slug]            Wipe .archigraph/ and rebuild via daemon
-  uninstall [group] [--purge]     Remove archigraph from a group
 
-Daemon:
+Daemon (manual):
   start | stop | restart          Daemon lifecycle (ADR-0017)
   logs [-f] [-n N]                Print or follow the daemon log
-  status                          Show daemon health + per-repo state
   watch <repo>                    Long-lived watcher (legacy; daemon owns watching)
 
 Monorepo:

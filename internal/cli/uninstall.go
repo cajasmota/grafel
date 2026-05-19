@@ -1,35 +1,36 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
-	"github.com/cajasmota/archigraph/internal/install"
-	"github.com/cajasmota/archigraph/internal/install/mcpreg"
+	"github.com/cajasmota/archigraph/internal/daemon/service"
 )
 
+// newUninstallCmd returns the `archigraph uninstall` subcommand.
+//
+// Per ADR-0017 Phase C the old "remove from a group" semantic is
+// REMOVED. `archigraph uninstall` now stops and deregisters the
+// daemon OS service (launchd plist / systemd unit). Idempotent: if
+// the service is not installed the command succeeds silently.
 func newUninstallCmd() *cobra.Command {
-	var purge bool
 	cmd := &cobra.Command{
-		Use:   "uninstall [group]",
-		Short: "Remove archigraph from a group",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("uninstall expects exactly one group name")
-			}
-			group := args[0]
-			if err := install.Uninstall(group, purge); err != nil {
+		Use:   "uninstall",
+		Short: "Stop and remove the archigraph daemon service",
+		Long: `Uninstall stops the archigraph daemon and removes its OS service
+registration (launchd plist on macOS, systemd unit on Linux).
+
+Idempotent: if the service is not installed the command exits 0 without
+printing an error.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			out := cmd.OutOrStdout()
+			if err := service.Uninstall(service.Options{}); err != nil {
 				return err
 			}
-			// Best-effort: drop the MCP entry too if no other groups remain.
-			_ = mcpreg.Unregister(mcpreg.ClaudeCode)
-			_ = mcpreg.Unregister(mcpreg.Windsurf)
-			fmt.Fprintf(cmd.OutOrStdout(), "uninstalled group %q (purge=%v)\n", group, purge)
+			fmt.Fprintln(out, "✓ archigraph daemon removed")
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&purge, "purge", false, "also delete per-group state and config")
 	return cmd
 }
