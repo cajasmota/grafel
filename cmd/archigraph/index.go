@@ -398,6 +398,17 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	i.stats.pass3Rels = countEmbeddedRels(pass3Records)
 
+	// Pass 2.6 — Django nested URLconf composition.
+	// Runs after Pass 3 so the classified slice is still populated with file
+	// content. Emits fully-resolved http_endpoint entities for
+	// path("prefix", include("module.path")) chains where the per-file
+	// passes in Pass 2.5 can only see each file in isolation.
+	// Results are appended to pass3Records for buildDocument to merge.
+	if !i.skipPasses[PassFramework] {
+		nestedEntities := runDjangoNestedURLConf(classified)
+		pass3Records = append(pass3Records, nestedEntities...)
+	}
+
 	// Issue #633 — release per-file AST trees + source bytes now that the
 	// last consumer (Pass 3 cross-language extractors) has finished. The
 	// classified slice is otherwise retained until Run() returns, which on
@@ -1347,6 +1358,30 @@ func (i *Indexer) runPass3CrossLang(ctx context.Context, absRepo string, classif
 	// — this preserves the truly-external (stdlib) signal the report calls
 	// out — but cross-file user calls now resolve to a stable entity ID.
 	return out, nil
+}
+
+// runDjangoNestedURLConf runs the cross-file Django URLconf composition
+// pass over the set of classified files. It builds a content-lookup map
+// from repo-relative path to raw bytes, then delegates to
+// engine.ApplyDjangoNestedURLConf.
+func runDjangoNestedURLConf(classified []classifiedFile) []types.EntityRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	// Build a quick lookup: relPath → content (Python files only).
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte {
+		return contentByPath[relPath]
+	}
+	return engine.ApplyDjangoNestedURLConf(pyPaths, reader)
 }
 
 // stampEntityIDs computes the deterministic graph entity ID for every
