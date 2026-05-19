@@ -41,9 +41,10 @@ Fill `output-templates/group-synthesis.md`. Required sections:
 1. **What this group does** — one-paragraph mission lifted from `domain.md`.
 2. **Repos at a glance** — table from `domain.md` repos block.
 3. **Runtime communication map** — describe the synchronous and asynchronous edges across repos. Include:
-   - HTTP call chains surfaced via `archigraph_traces` (process flows).
+   - HTTP call chains surfaced via `archigraph_traces` (process flows). Note: until #769 lands, only single-repo chains are available; describe cross-repo flows via `archigraph_cross_links` instead.
    - `FETCHES` edges: which frontend/consumer calls which backend endpoint.
-   - `PUBLISHES_TO` / `SUBSCRIBES_TO` edges: event flows through `Queue` entities (message topics).
+   - `PUBLISHES_TO` / `SUBSCRIBES_TO` / `TRANSFORMS` edges: event flows through `Queue` (generic brokers) and `MessageTopic` (Kafka-specific) entities.
+   - Real-time edges (`WS_SUBSCRIBES_TO`, `WS_EMITS`, `GRAPHQL_SUBSCRIBES`, `GRAPHQL_PUBLISHES`, `STREAMS_FROM`, `STREAMS_TO`): WebSocket, SSE, and GraphQL subscription flows.
    - `QUERIES` edges: which services access which data stores.
    Use mermaid only if it does not duplicate prose.
 4. **Dynamic couplings** — the ADR-0007 bridge edges. Each bullet names both ends in backticks.

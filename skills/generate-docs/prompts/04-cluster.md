@@ -76,13 +76,18 @@ This returns pre-computed BFS call chains from the indexer's pass over the CALLS
 - Include the call chain directly in `flows.md` as a numbered list under a `## Process flows` section, OR
 - Call `archigraph_traces(action=follow, entry_point_id=<id>, max_depth=8)` for entities that were not selected as pre-computed entry points.
 
+Until #769 lands, `archigraph_traces` returns chains that stay within a single repo — describe cross-repo flows from `archigraph_cross_links` instead.
+
 **New edge kinds to surface in prose.** archigraph now emits several richer edge kinds introduced in 2026-05. When you encounter these via `archigraph_expand` or `archigraph_find`, include the corresponding narrative:
 
 - **`FETCHES`** (HTTP consumer → endpoint): "Frontend `X` FETCHES backend endpoint `Y` via `Z`." Include in `flows.md` under an "HTTP consumer flows" section.
 - **`QUERIES`** (code → ORM table/column): "Service `A` QUERIES table `B` (columns `C`, `D`)." Include in `flows.md` under "Data access flows" or in `reference/api.md` if the module is the primary owner.
-- **`PUBLISHES_TO`** / **`SUBSCRIBES_TO`** (event / message broker flows): "Producer `X` PUBLISHES_TO topic `Y`; consumers `A`, `B` SUBSCRIBES_TO `Y`." Include in `flows.md` under "Event flows". Topics appear as `Queue` entities in the graph.
+- **`PUBLISHES_TO`** (producer → broker): "Producer `X` PUBLISHES_TO topic `Y`." Include in `flows.md` under "Event flows" or "Message flows".
+- **`SUBSCRIBES_TO`** (consumer → broker): "Consumer `C` SUBSCRIBES_TO topic `Y` to receive messages." Include alongside `PUBLISHES_TO` in "Event flows" or "Message flows".
+- **`TRANSFORMS`** (stream processor): "Stream processor `S` TRANSFORMS topic `A` → topic `B`." Include in `flows.md` under "Event flows" or "Message flows".
+- **Real-time edges** (`WS_SUBSCRIBES_TO`, `WS_CONNECTS`, `WS_EMITS`, `STREAMS_FROM`, `STREAMS_TO`, `GRAPHQL_SUBSCRIBES`, `GRAPHQL_PUBLISHES`): Document WebSocket, SSE, and GraphQL subscription flows. Examples: "Client `C` WS_SUBSCRIBES_TO server `S` to receive live updates on channel `X`"; "GraphQL subscription server `S` GRAPHQL_PUBLISHES events to subscriber `C`."
 
-When you find entities of kind `Queue`, treat them as message topics and document them in the event-flows section rather than the data-model section.
+When you find entities of kind `Queue` (generic message broker abstraction, e.g., RabbitMQ, SQS, Google Pub-Sub) or `MessageTopic` (Kafka-specific topic), treat them as message destinations and document them in the event-flows section rather than the data-model section. Note the distinction: `Queue` is a broker-agnostic concept, while `MessageTopic` is Kafka-specific.
 
 ### Step 3 — Pull source where needed
 

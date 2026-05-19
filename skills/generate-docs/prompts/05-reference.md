@@ -28,11 +28,12 @@ archigraph_find(question="CLI commands", repo_filter=["<r>"], depth=1, token_bud
 Also search for message-bus producers and consumers using the newer edge kinds:
 
 ```
-archigraph_find(question="message producers publishers", repo_filter=["<r>"], depth=1, token_budget=600)
-archigraph_find(question="message consumers subscribers", repo_filter=["<r>"], depth=1, token_budget=600)
+archigraph_find(question="message producers publishers Kafka", repo_filter=["<r>"], depth=1, token_budget=600)
+archigraph_find(question="message consumers subscribers Kafka", repo_filter=["<r>"], depth=1, token_budget=600)
+archigraph_find(question="queue broker RabbitMQ SQS", repo_filter=["<r>"], depth=1, token_budget=600)
 ```
 
-For `Queue` entities (message topics), document them in the "Message bus" subsection of `api.md` rather than the HTTP-routes subsection. For each: topic name (backticked), kind (`Queue`), producers (`PUBLISHES_TO` sources), consumers (`SUBSCRIBES_TO` sources).
+For message-broker entities (`Queue` or `MessageTopic`), document them in the "Message bus" subsection of `api.md` rather than the HTTP-routes subsection. For each: entity name (backticked), kind (`Queue` for generic brokers like RabbitMQ/SQS, `MessageTopic` for Kafka topics), producers (via `PUBLISHES_TO` edges), consumers (via `SUBSCRIBES_TO` edges), and any stream transformations (via `TRANSFORMS` edges).
 
 For each route/export, capture: name (in backticks), kind, file path, and a one-line purpose. Group by kind; sort alphabetically within each group.
 

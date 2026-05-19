@@ -37,7 +37,7 @@ The skill is a strict pipeline. Each pass has a dedicated prompt file under `pro
 | 4 | `prompts/04-cluster.md` | Per-module deep-dive (parallel writer subagents, one per cluster). |
 | 5 | `prompts/05-reference.md` | Reference docs: API, config, deployment, scripts, dependencies. |
 | 6 | `prompts/06-cross-cutting.md` | Cross-cutting concerns: auth, logging, error handling, observability. |
-| 7 | `prompts/07-group-synthesis.md` | Group-level synthesis page that ties the repos together. |
+| 7 | `prompts/07-group-synthesis.md` | Group-level synthesis page that ties the repos together. (Cross-repo chains pending #769; until then writers should reach cross-repo via `archigraph_cross_links`). |
 | 8 | `prompts/08-cross-link.md` | Validate links and resolve cross-repo link candidates via `archigraph_cross_links`. |
 | — | *(Pass 9 reserved — planned for milestone-2 doc-site work)* | |
 | 10 | `prompts/10-pattern-convergence.md` | Aggregate subagent pattern candidates + promote convergent ones (ADR-0018 Phase 4). |
