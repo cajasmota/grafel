@@ -106,6 +106,25 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	importEnts := extractImports(root, file)
 	entities = append(entities, importEnts...)
 
+	// Track A (analog of #641 for Python) — REFERENCES-edge emission.
+	// Runs after every primary-pass entity is in place so the file-
+	// scope symbol table covers functions, methods, classes, class
+	// fields (#526), and import bindings. Failures here recover
+	// internally to partial results — never aborts primary output.
+	func() {
+		defer func() { _ = recover() }()
+		emitReferences(root, file, &entities)
+	}()
+
+	// Track B (analog of #642 for Python) — IMPORTS ToID rewrite.
+	// Rewrites IMPORTS edges whose source_module points at a known
+	// external Python package to an `ext:<module>[:<name>]` ToID so
+	// the resolver's external-disposition gate classifies them
+	// ExternalKnown directly. In-tree imports are untouched — the
+	// existing ResolveDottedImportTarget path binds them via
+	// source_module / imported_name properties.
+	resolveImportToIDs(entities)
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("function_count", functionCount),

@@ -1467,3 +1467,89 @@ Chain-fixes filed (out of scope for this PR):
 3. **default-export-name-tracking** — carry-forward from PR #621.
    Long-term: JS extractor records default-export status per entity
    for deterministic `<module>.default` binding.
+
+---
+
+## Python orphan recovery — REFERENCES emission + IMPORTS to_id (analog of #641/#642 for Python)
+
+Date: 2026-05-19. Branch: feat/python-orphan-recovery.
+
+Python extractor previously emitted ~0 REFERENCES edges (audit
+2026-05-19: REFERENCES/fn ≈ 0.00 on all major Python corpora) and left
+IMPORTS ToIDs as bare-name / dotted strings, so the bare-name resolver
+had to round-trip every imported leaf and frequently missed. Two new
+passes — `emitReferences` (Track A, analog of #641) and
+`resolveImportToIDs` (Track B, analog of #642) — close both gaps for
+Python while leaving every other language byte-identical.
+
+### Per-Python-corpus orphan rate before / after
+
+| Corpus | Before | After | REFERENCES/fn after | Risk after |
+|---|---:|---:|---:|---:|
+| requests | 2.6% | **1.7%** | 1.83 | 83 |
+| click | 12.7% | **7.4%** | 1.34 | 76 |
+| flask-realworld | 29.0% | **24.9%** | 1.06 | 81 |
+| django-realworld | 44.2% | **41.9%** | 1.15 | 81 |
+| pandas | 46.0% | **25.8%** | 3.68 | 84 |
+| client-fixture-a (Django) | 48.4% | **37.0%** | 1.85 | 75 |
+
+REFERENCES/fn moved from 0.00 → 1.06–3.68 across the board. Risk score
+(composite of orphan rate, imports hygiene, references density) moved
+29–49 → 75–84.
+
+### Quality fixture recall (gate)
+
+| Fixture | Entity recall | Relationship recall | Forbidden hits |
+|---|---:|---:|---:|
+| python-django-mini | 28/28 (100.0%) | 12/12 (100.0%) | 0 |
+| typescript-react-mini | 20/20 (100.0%) | 16/16 (100.0%) | 0 |
+| java-spring-mini | 25/25 (100.0%) | 18/18 (100.0%) | 0 |
+| go-chi-mini | 20/20 (100.0%) | 19/19 (100.0%) | 0 |
+| rust-tokio-mini | 16/16 (100.0%) | 13/13 (100.0%) | 0 |
+
+100% must-have recall preserved; 0 forbidden edges.
+
+### Cross-language bug-rate parity
+
+| Corpus | Lang | Main bug-rate | Branch bug-rate |
+|---|---|---:|---:|
+| chi | Go | 0.01860 | 0.01860 |
+| spdlog | C++ | 0.02754 | 0.02754 |
+| kafka-streams-examples | Java | 0.03027 | 0.03024 |
+| vapor-api-template | Swift | 0.02083 | 0.02083 |
+| ktor-samples | Kotlin | 0.03200 | 0.03200 |
+
+Bug-rates byte-identical (or within float drift on Kafka). The Python
+extractor changes do not touch any other language's emission path.
+
+### Residual root cause
+
+The remaining Python orphan delta (e.g. django-realworld 41.9%,
+client-fixture-a 37.0%) is dominated by **cross-file orphans** — Django
+model classes, viewsets, and Celery tasks defined in one module and
+referenced only from sibling modules. The Python REFERENCES pass binds
+same-file uses; cross-file binding for those references requires the
+resolver's per-module import-aware `ResolveBareCallTarget` path to also
+fire on REFERENCES (today it only rewrites CALLS). Chain-fixes filed:
+
+- **chain-fix:python-references-cross-file** — extend
+  `resolve/imports.go ResolveImports` to consider REFERENCES edges in
+  addition to CALLS, using the same `source_module + imported_name`
+  resolution. Expected -10–20pp on django-realworld and client-fixture-a.
+- **chain-fix:python-class-field-cross-file** — class fields (#526) are
+  only emitted at the IMMEDIATE class-body scope. Django model fields
+  (`title = models.CharField(...)`) and DRF serializer fields are
+  picked up; mixin and base-class fields referenced via `self.<attr>`
+  on subclasses in OTHER files still miss. Requires hierarchy-aware
+  field lookup or per-class attr propagation through EXTENDS edges.
+
+### Status
+
+- **PR**: shipped; quality gate green; cross-language regression-free.
+- **Coverage**: same-scope identifier, self.<attr>, f-string
+  interpolation, imported-name resolution, known-external rewrite,
+  in-tree imports untouched, builtins skipped, self-references
+  filtered.
+- **Follow-ups**: two chain-fixes above; non-Python language analogs
+  (Go REFERENCES, Java REFERENCES, Ruby REFERENCES, etc.) are
+  independent waves.
