@@ -1,0 +1,85 @@
+{
+  "fixture_name": "rust-tokio-mini",
+  "language": "rust",
+  "description": "Tiny Rust async app exercising tokio::main entry point, async fn definitions, a trait + impl block (UserStore for MemoryStore), structs with derive macros, and a mod hierarchy (handler/store/worker). Used by the extraction-quality benchmark to detect recall regressions in the rust + tokio framework path.",
+  "expected_entities": [
+    { "name": "main", "kind": "SCOPE.Operation", "source_file": "main.rs", "must_exist": true, "note": "#[tokio::main] async fn entry point." },
+
+    { "name": "User", "kind": "SCOPE.Component", "source_file": "store.rs", "must_exist": true, "note": "Domain struct." },
+    { "name": "UserStore", "kind": "SCOPE.Component", "source_file": "store.rs", "must_exist": true, "note": "Trait declaration." },
+    { "name": "MemoryStore", "kind": "SCOPE.Component", "source_file": "store.rs", "must_exist": true, "note": "Struct that implements UserStore." },
+    { "name": "new", "kind": "SCOPE.Operation", "source_file": "store.rs", "must_exist": true, "note": "MemoryStore constructor." },
+    { "name": "get", "kind": "SCOPE.Operation", "source_file": "store.rs", "must_exist": true, "note": "Trait method implementation." },
+    { "name": "put", "kind": "SCOPE.Operation", "source_file": "store.rs", "must_exist": true },
+
+    { "name": "create_user", "kind": "SCOPE.Operation", "source_file": "handler.rs", "must_exist": true, "note": "Async fn." },
+    { "name": "fetch_user", "kind": "SCOPE.Operation", "source_file": "handler.rs", "must_exist": true },
+
+    { "name": "run_worker", "kind": "SCOPE.Operation", "source_file": "worker.rs", "must_exist": true, "note": "Async fn worker loop." },
+    { "name": "handle_message", "kind": "SCOPE.Operation", "source_file": "worker.rs", "must_exist": true },
+
+    { "name": "main.rs", "kind": "SCOPE.Component", "source_file": "main.rs", "must_exist": true, "note": "File-level component (#577)." },
+    { "name": "store.rs", "kind": "SCOPE.Component", "source_file": "store.rs", "must_exist": true },
+    { "name": "handler.rs", "kind": "SCOPE.Component", "source_file": "handler.rs", "must_exist": true },
+    { "name": "worker.rs", "kind": "SCOPE.Component", "source_file": "worker.rs", "must_exist": true },
+    { "name": "lib.rs", "kind": "SCOPE.Component", "source_file": "lib.rs", "must_exist": true, "note": "mod root." },
+
+    { "name": "MemoryStore.new", "kind": "SCOPE.Operation", "source_file": "store.rs", "must_exist": false, "nice_to_have": true, "note": "Ideal: receiver-qualified names like MemoryStore.new. Today rust extractor emits the bare fn name." },
+    { "name": "create_user", "kind": "SCOPE.Operation", "source_file": "handler.rs", "must_exist": false, "nice_to_have": true, "note": "Ideal: async-flag in metadata on the entity." }
+  ],
+  "expected_relationships": [
+    { "from_name": "MemoryStore", "from_kind": "SCOPE.Component", "from_file": "store.rs",
+      "kind": "IMPLEMENTS", "to_name": "UserStore", "to_kind": "SCOPE.Component", "to_file": "store.rs",
+      "must_exist": true,
+      "note": "impl UserStore for MemoryStore — captured by the cross/hierarchy rust extractor." },
+
+    { "from_name": "MemoryStore", "from_kind": "SCOPE.Component", "from_file": "store.rs",
+      "kind": "CONTAINS", "to_name": "new", "to_kind": "SCOPE.Operation", "to_file": "store.rs",
+      "must_exist": true,
+      "note": "impl block CONTAINS fn — bare fn name, not receiver-qualified." },
+    { "from_name": "MemoryStore", "from_kind": "SCOPE.Component", "from_file": "store.rs",
+      "kind": "CONTAINS", "to_name": "get", "to_kind": "SCOPE.Operation", "to_file": "store.rs",
+      "must_exist": true },
+    { "from_name": "MemoryStore", "from_kind": "SCOPE.Component", "from_file": "store.rs",
+      "kind": "CONTAINS", "to_name": "put", "to_kind": "SCOPE.Operation", "to_file": "store.rs",
+      "must_exist": true },
+
+    { "from_name": "main", "from_kind": "SCOPE.Operation", "from_file": "main.rs",
+      "kind": "CALLS", "to_name": "create_user", "to_kind": "SCOPE.Operation", "to_file": "handler.rs",
+      "must_exist": true,
+      "note": "Cross-module async fn call resolves via use crate::handler::create_user." },
+    { "from_name": "main", "from_kind": "SCOPE.Operation", "from_file": "main.rs",
+      "kind": "CALLS", "to_name": "run_worker", "to_kind": "SCOPE.Operation", "to_file": "worker.rs",
+      "must_exist": true },
+    { "from_name": "main", "from_kind": "SCOPE.Operation", "from_file": "main.rs",
+      "kind": "CALLS", "to_name": "new", "to_kind": "SCOPE.Operation", "to_file": "store.rs",
+      "must_exist": true,
+      "note": "MemoryStore::new() resolves to bare 'new' fn — bare-name CALL." },
+
+    { "from_name": "create_user", "from_kind": "SCOPE.Operation", "from_file": "handler.rs",
+      "kind": "CALLS", "to_name": "put", "to_kind": "SCOPE.Operation", "to_file": "store.rs",
+      "must_exist": true,
+      "note": "Cross-module method call store.put(u) — currently resolves to the bare 'put' fn." },
+
+    { "from_name": "fetch_user", "from_kind": "SCOPE.Operation", "from_file": "handler.rs",
+      "kind": "CALLS", "to_name": "get", "to_kind": "SCOPE.Operation", "to_file": "store.rs",
+      "must_exist": true },
+
+    { "from_name": "run_worker", "from_kind": "SCOPE.Operation", "from_file": "worker.rs",
+      "kind": "CALLS", "to_name": "handle_message", "to_kind": "SCOPE.Operation", "to_file": "worker.rs",
+      "must_exist": true,
+      "note": "Same-file async fn call." },
+
+    { "from_name": "main.rs", "from_kind": "SCOPE.Component", "from_file": "main.rs",
+      "kind": "IMPORTS", "to_bare_name": "ext:tokio", "must_exist": true,
+      "note": "External crate import; resolver rewrites to ext:tokio." },
+    { "from_name": "worker.rs", "from_kind": "SCOPE.Component", "from_file": "worker.rs",
+      "kind": "IMPORTS", "to_bare_name": "ext:tokio", "must_exist": true },
+    { "from_name": "store.rs", "from_kind": "SCOPE.Component", "from_file": "store.rs",
+      "kind": "IMPORTS", "to_bare_name": "ext:std", "must_exist": true },
+
+    { "from_name": "create_user", "from_kind": "SCOPE.Operation", "from_file": "handler.rs",
+      "kind": "CALLS", "to_bare_name": "MemoryStore.put", "must_exist": false, "nice_to_have": true,
+      "note": "Receiver-qualified resolution for trait method dispatch is not yet implemented." }
+  ]
+}

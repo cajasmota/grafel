@@ -1,0 +1,102 @@
+{
+  "fixture_name": "go-chi-mini",
+  "language": "go",
+  "description": "Tiny Go HTTP service exercising go-chi routing, handler methods on a struct receiver, a middleware function, an interface declaration + implementing struct, and a goroutine + channel worker pattern. Used by the extraction-quality benchmark to detect recall regressions in the go + chi framework path.",
+  "expected_entities": [
+    { "name": "main", "kind": "SCOPE.Operation", "source_file": "main.go", "must_exist": true },
+    { "name": "runWorker", "kind": "SCOPE.Operation", "source_file": "worker.go", "must_exist": true, "note": "Goroutine-launching function." },
+    { "name": "processEvent", "kind": "SCOPE.Operation", "source_file": "worker.go", "must_exist": true },
+
+    { "name": "User", "kind": "SCOPE.Component", "source_file": "store/store.go", "must_exist": true, "note": "Domain struct." },
+    { "name": "Store", "kind": "SCOPE.Component", "source_file": "store/store.go", "must_exist": true, "note": "Interface declaration." },
+    { "name": "MemoryStore", "kind": "SCOPE.Component", "source_file": "store/store.go", "must_exist": true },
+    { "name": "NewMemoryStore", "kind": "SCOPE.Operation", "source_file": "store/store.go", "must_exist": true },
+    { "name": "MemoryStore.Get", "kind": "SCOPE.Operation", "source_file": "store/store.go", "must_exist": true },
+    { "name": "MemoryStore.List", "kind": "SCOPE.Operation", "source_file": "store/store.go", "must_exist": true },
+    { "name": "MemoryStore.Put", "kind": "SCOPE.Operation", "source_file": "store/store.go", "must_exist": true },
+
+    { "name": "UsersHandler", "kind": "SCOPE.Component", "source_file": "handlers/users.go", "must_exist": true },
+    { "name": "NewUsersHandler", "kind": "SCOPE.Operation", "source_file": "handlers/users.go", "must_exist": true },
+    { "name": "UsersHandler.List", "kind": "SCOPE.Operation", "source_file": "handlers/users.go", "must_exist": true },
+    { "name": "UsersHandler.Get", "kind": "SCOPE.Operation", "source_file": "handlers/users.go", "must_exist": true },
+    { "name": "writeJSON", "kind": "SCOPE.Operation", "source_file": "handlers/users.go", "must_exist": true },
+
+    { "name": "Logger", "kind": "SCOPE.Operation", "source_file": "middleware/logging.go", "must_exist": true, "note": "Chi-style middleware." },
+
+    { "name": "/users", "kind": "Route", "source_file": "main.go", "must_exist": true, "note": "chi.Router.Get route surface." },
+    { "name": "/users/{id}", "kind": "Route", "source_file": "main.go", "must_exist": true },
+    { "name": "middleware.Logger", "kind": "Middleware", "source_file": "main.go", "must_exist": true, "note": "r.Use(...) middleware binding." },
+
+    { "name": "error_handling:go_error_return:32", "kind": "SCOPE.Pattern", "source_file": "handlers/users.go", "must_exist": true, "note": "Go err != nil error-handling pattern." }
+  ],
+  "expected_relationships": [
+    { "from_name": "MemoryStore", "from_kind": "SCOPE.Component", "from_file": "store/store.go",
+      "kind": "IMPLEMENTS", "to_name": "Store", "to_kind": "SCOPE.Component", "to_file": "store/store.go",
+      "must_exist": true, "note": "Method-set inference: MemoryStore has all methods of Store." },
+
+    { "from_name": "MemoryStore", "from_kind": "SCOPE.Component", "from_file": "store/store.go",
+      "kind": "CONTAINS", "to_name": "MemoryStore.Get", "to_kind": "SCOPE.Operation", "to_file": "store/store.go",
+      "must_exist": true },
+    { "from_name": "MemoryStore", "from_kind": "SCOPE.Component", "from_file": "store/store.go",
+      "kind": "CONTAINS", "to_name": "MemoryStore.List", "to_kind": "SCOPE.Operation", "to_file": "store/store.go",
+      "must_exist": true },
+    { "from_name": "MemoryStore", "from_kind": "SCOPE.Component", "from_file": "store/store.go",
+      "kind": "CONTAINS", "to_name": "MemoryStore.Put", "to_kind": "SCOPE.Operation", "to_file": "store/store.go",
+      "must_exist": true },
+    { "from_name": "UsersHandler", "from_kind": "SCOPE.Component", "from_file": "handlers/users.go",
+      "kind": "CONTAINS", "to_name": "UsersHandler.Get", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
+      "must_exist": true },
+    { "from_name": "UsersHandler", "from_kind": "SCOPE.Component", "from_file": "handlers/users.go",
+      "kind": "CONTAINS", "to_name": "UsersHandler.List", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
+      "must_exist": true },
+
+    { "from_name": "main", "from_kind": "SCOPE.Operation", "from_file": "main.go",
+      "kind": "CALLS", "to_name": "NewMemoryStore", "to_kind": "SCOPE.Operation", "to_file": "store/store.go",
+      "must_exist": true,
+      "note": "Cross-package call to a constructor resolves via import-aware Pass 4." },
+    { "from_name": "main", "from_kind": "SCOPE.Operation", "from_file": "main.go",
+      "kind": "CALLS", "to_name": "NewUsersHandler", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
+      "must_exist": true },
+    { "from_name": "main", "from_kind": "SCOPE.Operation", "from_file": "main.go",
+      "kind": "CALLS", "to_name": "runWorker", "to_kind": "SCOPE.Operation", "to_file": "worker.go",
+      "must_exist": true,
+      "note": "Same-package CALL — runWorker lives in worker.go." },
+    { "from_name": "main", "from_kind": "SCOPE.Operation", "from_file": "main.go",
+      "kind": "CALLS", "to_bare_name": "ext:ListenAndServe", "must_exist": true,
+      "note": "External stdlib call." },
+    { "from_name": "runWorker", "from_kind": "SCOPE.Operation", "from_file": "worker.go",
+      "kind": "CALLS", "to_name": "processEvent", "to_kind": "SCOPE.Operation", "to_file": "worker.go",
+      "must_exist": true,
+      "note": "Same-package CALL inside a goroutine closure." },
+
+    { "from_name": "main.go", "from_kind": "SCOPE.Component", "from_file": "main.go",
+      "kind": "IMPORTS", "to_name": "example.com/demo/handlers", "to_kind": "SCOPE.Component", "to_file": "main.go",
+      "must_exist": true,
+      "note": "Go import edges target a per-file import-stub SCOPE.Component, not a resolved package." },
+    { "from_name": "main.go", "from_kind": "SCOPE.Component", "from_file": "main.go",
+      "kind": "IMPORTS", "to_bare_name": "ext:example.com/demo/store", "must_exist": true,
+      "note": "Some imports are rewritten to ext:* by Pass 4.5 (external synth)." },
+    { "from_name": "main.go", "from_kind": "SCOPE.Component", "from_file": "main.go",
+      "kind": "IMPORTS", "to_name": "example.com/demo/middleware", "to_kind": "SCOPE.Component", "to_file": "main.go",
+      "must_exist": true },
+
+    { "from_name": "/users", "from_kind": "Route", "from_file": "main.go",
+      "kind": "ROUTES_TO", "to_bare_name": "Controller:h", "must_exist": true,
+      "note": "Chi route -> handler binding; today the to_bare_name is the receiver variable, not the method (capability gap)." },
+
+    { "from_name": "UsersHandler.Get", "from_kind": "SCOPE.Operation", "from_file": "handlers/users.go",
+      "kind": "CALLS", "to_name": "writeJSON", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
+      "must_exist": true,
+      "note": "Same-file function call." },
+
+    { "from_name": "UsersHandler.List", "from_kind": "SCOPE.Operation", "from_file": "handlers/users.go",
+      "kind": "CALLS", "to_name": "MemoryStore.List", "to_kind": "SCOPE.Operation", "to_file": "store/store.go",
+      "must_exist": false, "nice_to_have": true,
+      "note": "Cross-package method call through interface field (h.Store.List). Today bare-name h.Store.List is not resolved to the implementing struct." },
+
+    { "from_name": "/users", "from_kind": "Route", "from_file": "main.go",
+      "kind": "ROUTES_TO", "to_name": "UsersHandler.List", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
+      "must_exist": false, "nice_to_have": true,
+      "note": "Route should bind to the handler method, not the receiver variable. Filed as a chi-extractor gap." }
+  ]
+}
