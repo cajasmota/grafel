@@ -647,8 +647,11 @@ import "os/exec"
 	if imp == nil {
 		t.Fatalf("expected nested stdlib import %q, got %+v", "os/exec", imports)
 	}
-	if imp["rel_to"] != "os/exec" {
-		t.Errorf("relationship ToID: expected %q, got %q", "os/exec", imp["rel_to"])
+	// IMPORTS ToIDs for known external Go packages are rewritten to
+	// the `ext:<root>` form by resolveImportToIDs (Track B). `os/exec`
+	// collapses onto the `os` stdlib allowlist entry.
+	if imp["rel_to"] != "ext:os" {
+		t.Errorf("relationship ToID: expected %q, got %q", "ext:os", imp["rel_to"])
 	}
 }
 
@@ -1254,13 +1257,15 @@ func main() { fmt.Println("x") }
 	var found bool
 	for _, r := range records {
 		for _, rel := range r.Relationships {
-			if rel.Kind == "IMPORTS" && rel.ToID == "fmt" && rel.FromID == "main.go" {
+			// IMPORTS ToIDs for known external Go packages are
+			// rewritten to `ext:<root>` by resolveImportToIDs (Track B).
+			if rel.Kind == "IMPORTS" && rel.ToID == "ext:fmt" && rel.FromID == "main.go" {
 				found = true
 			}
 		}
 	}
 	if !found {
-		t.Error("expected IMPORTS relationship with FromID=main.go ToID=fmt")
+		t.Error("expected IMPORTS relationship with FromID=main.go ToID=ext:fmt")
 	}
 }
 
