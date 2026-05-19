@@ -244,6 +244,17 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// ORM QUERIES edge synthesis (#723): for every detectable ORM call
+	// site, emit a directed QUERIES edge from the enclosing function to
+	// the targeted model class. Runs AFTER http_endpoint_synthesis so
+	// the per-file entity index already includes any synthetic class
+	// entities emitted earlier. Append-only — never modifies existing
+	// entities or edges, so this pass cannot regress bug-rate on files
+	// without ORM calls.
+	entities, relationships = applyORMQueries(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// Django models-import suffix rewrite (PR #580 wave-10 Chain-fix A):
 	// The YAML rule `from \S+\.models import (\w+)` emits Model:<name>
 	// for every captured identifier. In Django/DRF projects, a sibling

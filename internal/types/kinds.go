@@ -145,6 +145,13 @@ const (
 	// to the canonical base file (Button.tsx). Lets the orphan-rate audit
 	// count platform variants as "connected" to their canonical counterpart.
 	RelationshipKindPlatformVariantOf RelationshipKind = "PLATFORM_VARIANT_OF"
+
+	// #723: ORM query call site → model class. Emitted by the engine-layer
+	// applyORMQueries pass for every recognised ORM query call (Prisma,
+	// Django ORM, SQLAlchemy, JPA, gorm, ActiveRecord, etc.). Properties
+	// on the edge: operation, filter_keys, is_join, orm, pattern_type.
+	// Closes the orphan class on model entities referenced only via ORM.
+	RelationshipKindQueries RelationshipKind = "QUERIES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -182,6 +189,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindCreatedBy,
 		// #713:
 		RelationshipKindPlatformVariantOf,
+		// #723:
+		RelationshipKindQueries,
 	}
 }
 
