@@ -36,6 +36,7 @@ import (
 	"github.com/smacker/go-tree-sitter/sql"
 	"github.com/smacker/go-tree-sitter/swift"
 	"github.com/smacker/go-tree-sitter/toml"
+	"github.com/smacker/go-tree-sitter/typescript/tsx"
 	"github.com/smacker/go-tree-sitter/typescript/typescript"
 	"github.com/smacker/go-tree-sitter/yaml"
 	"go.opentelemetry.io/otel"
@@ -96,7 +97,17 @@ func init() {
 		"terraform":  hcl.GetLanguage(), // alias: terraform files use HCL grammar
 		"toml":       toml.GetLanguage(),
 		"typescript": typescript.GetLanguage(),
-		"yaml":       yaml.GetLanguage(),
+		// tsx grammar handles .tsx and .jsx files (JSX-enabled superset of
+		// typescript). Routed via path extension by callers; entity Language
+		// tag remains "typescript"/"javascript" so downstream language gates
+		// don't fragment. PLT #537 — without this, .tsx files parsed under
+		// the plain typescript grammar produce 90%+ ERROR-node trees, the
+		// extractor never reaches function_declaration nodes, and React-
+		// component default-exported entities (BrandLogo, LoadingEllipsis,
+		// etc.) never make it into the graph — landing every importing
+		// IMPORTS edge in bug-extractor.
+		"tsx": tsx.GetLanguage(),
+		"yaml": yaml.GetLanguage(),
 	}
 }
 

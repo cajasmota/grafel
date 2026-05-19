@@ -1099,6 +1099,113 @@ Chain-fixes filed (for next scala wave):
    any further scala-bareNames additions (avoid over-fitting to
    play-scala-starter's small surface).
 
+---
+
+## Wave: js-barrel-reexport (PLT #537, 2026-05-19)
+
+Driver: client-fixture-c (RN+Expo) was the worst remaining JS/TS
+fixture at 2.31% bug-rate post-wave-13. Top bug-extractor samples
+(`components.branding.BrandLogo.default`, `components.feedback.LoadingEllipsis.default`,
+`components.themed-text.ThemedText`, schema short-form refs) all
+pointed at a single structural gap: the JS/TS pipeline could not
+resolve barrel re-exports, default-export imports, alias-substituted
+imports of non-existent files, OR react_props `scope:schema:<file>#<name>`
+USES_PROPS edges. Root cause diagnosis surfaced a deeper issue —
+`.tsx` files were being parsed under the plain `typescript`
+tree-sitter grammar, which treats JSX tags as syntax errors, leaving
+the entire file body as ERROR nodes and stopping the JS extractor
+from ever reaching `function_declaration` nodes inside React
+components. Default-exported React entities (BrandLogo,
+LoadingEllipsis, NewNoteFeature, AppSelectDialog, ...) consequently
+never made it into the graph, and every consumer's IMPORTS edge
+landed in bug-extractor.
+
+Per-iteration delta on client-fixture-c (target):
+
+| pass | change | bug-rate | delta |
+|---|---|---|---|
+| baseline | — | 2.305% | — |
+| 1 | tsx grammar routing for `.tsx`/`.jsx` | 2.158% | -0.15pp |
+| 2 | `pickExistingAliasTargetExists` (alias-stale → external-unknown) + JS default-leaf fallback in `ResolveDottedImportTargetForJS` + `index.ts` directory rollup in `modulesForJSFile` | 2.090% | -0.07pp |
+| 3 | `lookupModuleEntityCaseFold` (kebab-/snake-/Pascal-case fold + single-Operation default-export bind) | 2.086% | -0.00pp |
+| 4 | jsDynamicPatterns: `^current$`, `^isTablet$`/`isMobile`/`isLandscape`/`isPortrait`/`isDesktop`, `^enqueue$` (RN ref + responsive + notification idioms) | 2.065% | -0.02pp |
+| 5 | `scope:schema:<file>#<name>` short-form in `lookupStructural` (react_props USES_PROPS bind) | **1.420%** | **-0.64pp** |
+
+Cumulative -0.885pp on client-fixture-c — ship-gate (≤1%) not yet
+hit but well below the 2% acceptance bar. Total bug-extractor on c:
+470 → 316 (-154). Total bug-resolver: 23 → 19 (-4). Resolved: 11,299
+→ 13,153 (+1,854) — most of that uplift is real entities the tsx
+grammar now extracts that the plain typescript grammar dropped on the
+floor.
+
+Regression sweep (16 repos, ≥0.5pp = STOP):
+
+| repo | before | after | delta_pp |
+|---|---|---|---|
+| chi (go) | 0.0203 | 0.0203 | 0.0000 |
+| flask (python) | 0.0592 | 0.0592 | 0.0000 |
+| spdlog (cpp) | 0.0286 | 0.0286 | 0.0000 |
+| gin (go) | 0.0338 | 0.0338 | 0.0000 |
+| play-scala-starter (scala) | 0.0070 | 0.0070 | 0.0000 |
+| express (js) | 0.0286 | 0.0286 | 0.0000 |
+| nextjs-commerce (ts) | 0.0179 | 0.0224 | +0.4470 |
+| nestjs-starter (ts) | 0.0175 | 0.0175 | 0.0000 |
+| kafka-streams-examples (java) | 0.0333 | 0.0333 | 0.0000 |
+| vapor-api-template (swift) | 0.0213 | 0.0213 | 0.0000 |
+| ktor-samples (kotlin) | 0.0474 | 0.0474 | 0.0000 |
+| sidekiq (ruby) | 0.0363 | 0.0363 | 0.0000 |
+| exposed (kotlin) | 0.0251 | 0.0251 | 0.0000 |
+| actix-examples (rust) | 0.0590 | 0.0590 | 0.0000 |
+| client-fixture-a (python) | 0.0550 | 0.0550 | 0.0000 |
+| client-fixture-b (ts) | 0.0057 | 0.0057 | 0.0000 |
+| **client-fixture-c (ts/tsx)** | **0.0231** | **0.0142** | **-0.8852** |
+
+Only one non-target movement: `nextjs-commerce +0.45pp` (under the
+0.5pp stop threshold). Investigation: bug-extractor 24 → 35 (+11),
+bug-resolver unchanged at 0, resolved 636 → 787 (+151), external-known
+180 → 187, external-unknown 154 → 209. Net 224 NEW references the
+tsx grammar surfaces that the plain typescript grammar previously
+hid behind ERROR nodes — the percentage uptick reflects extracted-but-
+not-yet-resolved coverage, not a quality regression. Absolute resolved
+count is up 24% in this repo. Acceptable.
+
+Residual root cause (client-fixture-c, post-fix at 1.42%):
+- Bug-extractor top: `ReactAppDependencyProvider`, `useStyleContext`,
+  `createAnimatedComponent`, `timing`, `Value` — all external React
+  Native / gluestack-ui / Reanimated platform symbols that should
+  classify as external-unknown but currently slip past the allowlist
+  because they ride on un-resolvable receiver-strip patterns.
+- Bug-resolver top: `url`, `detail`, `showInlineAlert`, `deficiencies`,
+  `items` — domain-specific bare names too generic to safely allowlist
+  globally (collision with real user methods in other languages).
+
+Status: **below 2% ship-bar (1.42%)**, above 1% ship-gate. Track A
+(barrel/re-export) complete; Track B (bare-locals) partial — the
+RN-specific patterns landed but the domain-generic `url`/`detail`/
+`items` residue is a separate concern (file-scoped allowlists +
+react-native receiver-binding work).
+
+Chain-fixes filed:
+1. **rn-platform-symbol-allowlist** — extend `knownExternalPackages`
+   recognition to bare PascalCase symbols imported from packages
+   already on the allowlist (`ReactAppDependencyProvider`,
+   `useStyleContext`, `createAnimatedComponent`) so they classify
+   external-unknown instead of bug-extractor.
+2. **rn-reanimated-receiver-strip** — Reanimated `timing` / `Value`
+   are bare leaf names left after `Animated.<name>` receiver strip;
+   they need either a JS-gated allowlist or a receiver-aware
+   extractor pass.
+3. **react-props-schema-binding-followups** — react_props now binds
+   props schemas via 3-segment scope refs; verify the same shape is
+   not emitted by other cross extractors (proto, schema) without an
+   equivalent short-form fallback.
+4. **default-export-name-tracking** — long-term: the JS extractor
+   should record on each entity whether it is the file's default
+   export, so the resolver can bind `<module>.default` deterministically
+   instead of relying on file-basename and single-Operation heuristics.
+
+---
+
 ## Wave-10 Track D — Python per-import file-scoped gates (2026-05-19)
 
 Lifts generic Python verbs (`first`, `last`, `info`, `error`, `sub`,

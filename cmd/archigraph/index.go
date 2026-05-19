@@ -970,7 +970,23 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 					RepoRoot: absRepo,
 				}
 
-				if pr, perr := i.parser.Parse(ctx, content, cr.Language); perr == nil && pr != nil {
+				// PLT #537 — route .tsx and .jsx through the tsx grammar
+				// (JSX-enabled superset of typescript). Plain `typescript`
+				// grammar treats JSX tags as syntax errors, which produced
+				// 90%+ ERROR-ratio trees on RN/Expo source files and
+				// stopped the JS extractor from reaching function /
+				// class declarations inside React components. The entity
+				// Language tag stays "typescript" so downstream gating
+				// (dynamic patterns, allowlists, hint families) keeps
+				// firing under the standard tag.
+				parseLang := cr.Language
+				if parseLang == "typescript" || parseLang == "javascript" {
+					low := strings.ToLower(t.relPath)
+					if strings.HasSuffix(low, ".tsx") || strings.HasSuffix(low, ".jsx") {
+						parseLang = "tsx"
+					}
+				}
+				if pr, perr := i.parser.Parse(ctx, content, parseLang); perr == nil && pr != nil {
 					file.Tree = pr.Tree
 					cf.tree = pr.Tree
 				}

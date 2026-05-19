@@ -227,8 +227,19 @@ func (x *extractor) collectFromImportStatement(n *sitter.Node, out *[]importBind
 	aliasResolved := false
 	if resolved == "" {
 		if substituted := x.aliases.ResolveAll(source); len(substituted) > 0 {
-			aliasResolved = true
-			resolved = pickExistingAliasTarget(x.repoRoot, substituted)
+			picked, exists := pickExistingAliasTargetExists(x.repoRoot, substituted)
+			resolved = picked
+			// PLT #537 — when the alias substituted but no candidate file
+			// exists on disk, the import target is genuinely outside the
+			// project source (uninstalled npm dep, stale code path, RN
+			// `@/components/themed-text` shimmed elsewhere). Routing it
+			// through the alias-resolved (`<module>.<leaf>`) ToID shape
+			// then lands every named/default import in bug-extractor with
+			// no project entity to bind to. Flip aliasResolved=false so
+			// the IMPORTS edge keeps the raw alias spec and flows through
+			// external-synth (external-unknown) — honest disposition and
+			// keeps RN/Expo bug-extractor counts off the floor.
+			aliasResolved = exists
 		}
 	}
 	dotted := source // default: npm spec verbatim (slashes become dots below)
@@ -267,18 +278,30 @@ func (x *extractor) collectFromImportStatement(n *sitter.Node, out *[]importBind
 // plus an `/index.<ext>` lookup for directory imports. The first hit
 // wins.
 func pickExistingAliasTarget(repoRoot string, candidates []string) string {
+	picked, _ := pickExistingAliasTargetExists(repoRoot, candidates)
+	return picked
+}
+
+// pickExistingAliasTargetExists is pickExistingAliasTarget plus a boolean
+// reporting whether ANY of the candidates filesystem-checked to a real
+// file (PLT #537). Callers use the boolean to gate the alias-resolved
+// dotted-leaf ToID shape on the IMPORTS edge: when the alias substituted
+// but every candidate misses on disk, the target is not project-internal
+// — emitting `<module>.<leaf>` then leaves the named/default import in
+// bug-extractor instead of external-unknown.
+func pickExistingAliasTargetExists(repoRoot string, candidates []string) (string, bool) {
 	if len(candidates) == 0 {
-		return ""
+		return "", false
 	}
 	if repoRoot == "" {
-		return appendDefaultJSExtension(candidates[0])
+		return appendDefaultJSExtension(candidates[0]), false
 	}
 	for _, c := range candidates {
 		if found := firstExistingJSPath(repoRoot, c); found != "" {
-			return found
+			return found, true
 		}
 	}
-	return appendDefaultJSExtension(candidates[0])
+	return appendDefaultJSExtension(candidates[0]), false
 }
 
 // firstExistingJSPath tries `<candidate><.ext>` and

@@ -569,6 +569,26 @@ var (
 		// far more aggressively than `handle*`/`after*`.
 		regexp.MustCompile(`^handle[A-Z][A-Za-z0-9]*$`),
 		regexp.MustCompile(`^after[A-Z][A-Za-z0-9]*$`),
+		// PLT #537 RN/Expo wave — React ref + responsive-design + RN
+		// notification idioms that the JS extractor strips to bare leaf
+		// identifiers. `current` is the universal React useRef property
+		// (`ref.current`); `isTablet` / `isMobile` / `isLandscape` /
+		// `isPortrait` are responsive-design flags returned by
+		// react-native-device-info / useResponsive hooks and consumed as
+		// bare destructured locals; `enqueue` is the RN notification
+		// queue method on the NotificationContext / Toast / Snackbar
+		// receivers (also antd's notification.enqueue). These names are
+		// indistinguishable from real user methods to the resolver
+		// after the receiver is stripped — same shape as the wave-11
+		// `^on[A-Z]` rule. JS-only gate keeps them out of Go / Python /
+		// Java where `current` is a real first-class symbol name.
+		regexp.MustCompile(`^current$`),
+		regexp.MustCompile(`^isTablet$`),
+		regexp.MustCompile(`^isMobile$`),
+		regexp.MustCompile(`^isLandscape$`),
+		regexp.MustCompile(`^isPortrait$`),
+		regexp.MustCompile(`^isDesktop$`),
+		regexp.MustCompile(`^enqueue$`),
 	}
 
 	rubyDynamicPatterns = []*regexp.Regexp{
@@ -2276,6 +2296,28 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 			}
 		}
 		return "", statusUnmatched, true
+	}
+	// PLT #537 — react_props short-form: scope:schema:<file>#<name>.
+	// internal/extractors/cross/react_props/extractor.go's propsSchemaRef
+	// emits this 3-segment shape on USES_PROPS edge ToIDs targeting the
+	// component's Props interface / type-alias. The base JS/TS extractor
+	// indexes interfaces / type aliases under byLocation[file][name]; this
+	// short-form bypasses the 6-segment Format A path and binds directly.
+	// Without it every USES_PROPS edge on tsx components lands in
+	// bug-extractor (cfc 2.09% pre-fix — `AdditionalInfoFieldsProps` etc.).
+	if strings.HasPrefix(stub, "scope:schema:") && strings.IndexByte(stub, stubMemberDelim) > 0 {
+		rest := stub[len("scope:schema:"):]
+		if hash := strings.IndexByte(rest, stubMemberDelim); hash > 0 {
+			filePath := normalizePath(rest[:hash])
+			member := rest[hash+1:]
+			if filePath != "" && member != "" && !strings.Contains(filePath, ":") {
+				if bucket, ok := idx.byLocation[filePath]; ok {
+					if id, ok := bucket[member]; ok && id != "" {
+						return id, statusRewritten, true
+					}
+				}
+			}
+		}
 	}
 	// Issue #432 — testmap short-form: scope:operation:<file>#<name>.
 	// testFunctionRef + productionFunctionRef in

@@ -485,6 +485,22 @@ func modulesForJSFile(p string) []string {
 	}
 	dotted := strings.ReplaceAll(stripped, "/", ".")
 	out := []string{dotted}
+	// PLT #537 — JS/TS directory-import rollup. `components/branding/index.ts`
+	// is the conventional "barrel" file for the `components/branding` module:
+	// imports of `@/components/branding` resolve to this file, and a named
+	// import like `import { BrandLogo } from '@/components/branding'` emits
+	// IMPORTS ToID `components.branding.BrandLogo`. Without the rollup, the
+	// per-module reverse index only carries the file's `.index` form
+	// (`components.branding.index`), the (module, leaf) lookup misses, and
+	// every consumer of the barrel lands in bug-extractor. Mirrors the
+	// existing Python `__init__.py → parent dir` rollup in
+	// modulesForPythonFile.
+	if strings.HasSuffix(stripped, "/index") {
+		parent := strings.TrimSuffix(stripped, "/index")
+		if parent != "" {
+			out = append(out, strings.ReplaceAll(parent, "/", "."))
+		}
+	}
 	for _, prefix := range sourceRootPrefixes {
 		if strings.HasPrefix(out[0], prefix) {
 			out = append(out, strings.TrimPrefix(out[0], prefix))
@@ -499,6 +515,19 @@ func modulesForJSFile(p string) []string {
 // extractor-side resolveRelativeImport so module derivation and import
 // resolution agree on which extension to strip.
 var jsExtensions = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
+
+// isJSImportSource reports whether the importing file path looks like a
+// JS/TS source file. Used to gate ResolveDottedImportTargetForJS so the
+// default-export fallback only fires for JS/TS IMPORTS edges (PLT #537).
+func isJSImportSource(p string) bool {
+	low := strings.ToLower(p)
+	for _, ext := range jsExtensions {
+		if strings.HasSuffix(low, ext) {
+			return true
+		}
+	}
+	return false
+}
 
 // modulesForPythonFile is the original Python-specific dotted-module
 // derivation (issue #93). Extracted from modulesForFile so the
@@ -967,6 +996,213 @@ func (t ImportTable) ResolveDottedImportTarget(dotted string) (string, bool) {
 	return t.lookupModuleEntity(module, leaf)
 }
 
+// ResolveDottedImportTargetForJS performs the same (module, leaf) lookup
+// as ResolveDottedImportTarget, plus a JS/TS-specific default-export
+// fallback (PLT #537). React / React Native source files commonly emit a
+// single `export default function Foo` per file, so a consumer's
+// `import Foo from '@/components/.../Foo'` lands an IMPORTS edge with
+// ToID `<module>.default`. The base (module, leaf) lookup misses because
+// the file's primary entity is named `Foo`, not `default`. When leaf is
+// "default", retry with the module's last segment (the file's basename,
+// which by convention matches the default export name in PascalCase
+// component files). The retry is conservative — we only bind when the
+// (module, basename) tuple resolves unambiguously through the existing
+// per-module reverse index, so an off-convention default export still
+// stays unresolved rather than picking an arbitrary entity.
+//
+// Also handles barrel re-exports through `index.ts`. The directory-roll
+// in modulesForJSFile registers `components/branding/index.ts` entities
+// under module `components.branding`, so `components.branding.BrandLogo`
+// resolves directly when the consumer uses a directory import. The leaf
+// fallback below targets the explicit-file-import case where the entity
+// is the default export of a single-component file.
+//
+// Caller MUST gate on lang ∈ {javascript, typescript}.
+func (t ImportTable) ResolveDottedImportTargetForJS(dotted string) (string, bool) {
+	if id, ok := t.ResolveDottedImportTarget(dotted); ok {
+		return id, true
+	}
+	// default-leaf fallback: try (module, last-segment(module)).
+	dot := strings.LastIndexByte(dotted, '.')
+	if dot <= 0 || dot == len(dotted)-1 {
+		return "", false
+	}
+	leaf := dotted[dot+1:]
+	if leaf != "default" {
+		return "", false
+	}
+	module := dotted[:dot]
+	innerDot := strings.LastIndexByte(module, '.')
+	var basename string
+	if innerDot < 0 {
+		basename = module
+	} else {
+		basename = module[innerDot+1:]
+	}
+	if basename == "" {
+		return "", false
+	}
+	if id, ok := t.lookupModuleEntityCaseFold(module, basename); ok {
+		return id, true
+	}
+	// `<dir>/index.ts` barrel case: try the parent directory's last
+	// segment instead. `src.features.new-note.index.default` →
+	// (module=src.features.new-note, leaf=new-note). The directory
+	// rollup in modulesForJSFile makes index-file entities visible
+	// under both module forms, so this lookup binds whichever side
+	// owns the default export.
+	if basename == "index" {
+		if innerDot <= 0 {
+			return "", false
+		}
+		parentModule := module[:innerDot]
+		parentDot := strings.LastIndexByte(parentModule, '.')
+		var parentBase string
+		if parentDot < 0 {
+			parentBase = parentModule
+		} else {
+			parentBase = parentModule[parentDot+1:]
+		}
+		if parentBase == "" {
+			return "", false
+		}
+		return t.lookupModuleEntityCaseFold(parentModule, parentBase)
+	}
+	return t.lookupModuleEntityCaseFold(module, basename)
+}
+
+// lookupModuleEntityCaseFold tries exact (module, name); if it misses,
+// tries a PascalCased variant of name (kebab-case/snake_case → Pascal);
+// if that misses, walks the module's bucket once looking for an entry
+// whose name case-folds (and dash/underscore-strips) to the same key.
+// Used by ResolveDottedImportTargetForJS to bridge the
+// `file-basename ≠ default-export-name` gap for React-component files
+// where the file is kebab-cased (`themed-text.tsx`) and the default
+// export is PascalCased (`ThemedText`).
+//
+// Returns (id, true) only on a unique single match. If the case-folded
+// scan finds two or more entries that normalise to the same key, leave
+// it ambiguous — we never guess between collisions.
+func (t ImportTable) lookupModuleEntityCaseFold(module, name string) (string, bool) {
+	if id, ok := t.lookupModuleEntity(module, name); ok {
+		return id, true
+	}
+	if pascal := toPascalCase(name); pascal != "" && pascal != name {
+		if id, ok := t.lookupModuleEntity(module, pascal); ok {
+			return id, true
+		}
+	}
+	bucket, ok := t.entitiesByModuleName[module]
+	if !ok || len(bucket) == 0 {
+		return "", false
+	}
+	key := normaliseIdent(name)
+	if key != "" {
+		var match string
+		for ename, eid := range bucket {
+			if normaliseIdent(ename) != key {
+				continue
+			}
+			if match != "" && match != eid {
+				return "", false
+			}
+			match = eid
+		}
+		if match != "" {
+			return match, true
+		}
+	}
+	// Last-resort default-export bind: a single PascalCase entity in the
+	// module (excluding obviously-non-component entries like lowercase
+	// locals or `default`/`index`) most likely IS the default export.
+	// This catches the `feature/index.tsx` shape where the default
+	// export name doesn't track the directory basename (e.g.
+	// `new-note/index.tsx` exporting `NewNoteFeature`). Conservative
+	// gating: only fires when the module bucket has exactly one
+	// PascalCase candidate, so multi-component barrels still miss
+	// rather than guess.
+	// Prefer SCOPE.Operation entries (the actual function/component). A
+	// React-component module typically also exports a Props type/schema
+	// with a related PascalCase name (`NewNoteFeature` + `NewNoteProps`);
+	// the default export is the Operation, not the Schema. When exactly
+	// one Operation lives in the module, bind to it.
+	var (
+		opMatch string
+		opCount int
+	)
+	for ename, eid := range bucket {
+		if ename == "" || ename == "default" || ename == "index" {
+			continue
+		}
+		r0 := ename[0]
+		if !(r0 >= 'A' && r0 <= 'Z') {
+			continue
+		}
+		kind := t.entityKind[eid]
+		if kind != "SCOPE.Operation" {
+			continue
+		}
+		if opCount == 0 {
+			opMatch = eid
+			opCount = 1
+		} else if eid != opMatch {
+			opCount++
+		}
+	}
+	if opCount == 1 {
+		return opMatch, true
+	}
+	return "", false
+}
+
+// toPascalCase converts kebab-case / snake_case to PascalCase.
+// `themed-text` → `ThemedText`; `new_note` → `NewNote`. ASCII only;
+// unrecognised characters pass through unchanged.
+func toPascalCase(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	upNext := true
+	for _, r := range s {
+		if r == '-' || r == '_' {
+			upNext = true
+			continue
+		}
+		if upNext && r >= 'a' && r <= 'z' {
+			b.WriteRune(r - 32)
+		} else {
+			b.WriteRune(r)
+		}
+		upNext = false
+	}
+	return b.String()
+}
+
+// normaliseIdent lowercases s and strips '-' and '_'. Used as the
+// case-fold key in lookupModuleEntityCaseFold so `themed-text`,
+// `ThemedText`, `themedText`, and `themed_text` all collide on the
+// same bucket key.
+func normaliseIdent(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r == '-' || r == '_' {
+			continue
+		}
+		if r >= 'A' && r <= 'Z' {
+			b.WriteRune(r + 32)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // ResolveDottedImportTargetForPHP performs the same (module, leaf)
 // lookup as ResolveDottedImportTarget, plus a PHP-specific namespace-
 // prefix fallback for IMPORTS edges whose ToID names a sub-namespace
@@ -1296,6 +1532,8 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				)
 				if isPHP {
 					id, ok = tbl.ResolveDottedImportTargetForPHP(normalized)
+				} else if isJSImportSource(callerFile) {
+					id, ok = tbl.ResolveDottedImportTargetForJS(normalized)
 				} else {
 					id, ok = tbl.ResolveDottedImportTarget(normalized)
 				}
