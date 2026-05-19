@@ -31,7 +31,8 @@ func TestIssue481_GraphJSONIsByteIdenticalAcrossRuns(t *testing.T) {
 		// Use a per-run output path so we are not racing the indexer's own
 		// .tmp+rename atomic write across loop iterations.
 		out := filepath.Join(t.TempDir(), "graph.json")
-		if err := Index(fixture, out, "fixture", nil, false, false); err != nil {
+		if err := Index(fixture, out, "fixture", nil, false, false,
+			WithExportJSON(true)); err != nil {
 			t.Fatalf("run %d: Index failed: %v", i, err)
 		}
 		data, err := os.ReadFile(out)

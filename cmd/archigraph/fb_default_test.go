@@ -11,9 +11,9 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 )
 
-// TestIndex_FBAlwaysWritten verifies that Index() writes graph.fb by default
-// (ADR-0016 flip-day, issue #808) without needing --export-fb.
-func TestIndex_FBAlwaysWritten(t *testing.T) {
+// TestIndex_FBOnlyByDefault verifies that Index() writes graph.fb by default
+// without graph.json (ADR-0016 flip-day, issue #808).
+func TestIndex_FBOnlyByDefault(t *testing.T) {
 	tmp := t.TempDir()
 	outPath := filepath.Join(tmp, "graph.json")
 
@@ -21,12 +21,12 @@ func TestIndex_FBAlwaysWritten(t *testing.T) {
 		t.Fatalf("Index: %v", err)
 	}
 
-	// graph.json should still be written (dual-write is the default).
-	if _, err := os.Stat(outPath); err != nil {
-		t.Errorf("graph.json not written: %v", err)
+	// graph.json MUST NOT be written by default (FB-only, ADR-0016 flip-day).
+	if _, err := os.Stat(outPath); err == nil {
+		t.Errorf("graph.json was written by default (should be FB-only)")
 	}
 
-	// graph.fb MUST now be written alongside graph.json.
+	// graph.fb MUST be written.
 	fbPath := filepath.Join(tmp, "graph.fb")
 	info, err := os.Stat(fbPath)
 	if err != nil {
@@ -47,26 +47,26 @@ func TestIndex_FBAlwaysWritten(t *testing.T) {
 	}
 }
 
-// TestIndex_SkipJSON verifies that Index() with WithSkipJSON(true) omits
-// graph.json while still writing graph.fb.
-func TestIndex_SkipJSON(t *testing.T) {
+// TestIndex_ExportJSON verifies that Index() with WithExportJSON(true)
+// writes both graph.fb and graph.json.
+func TestIndex_ExportJSON(t *testing.T) {
 	tmp := t.TempDir()
 	outPath := filepath.Join(tmp, "graph.json")
 
 	if err := Index("testdata/crossfile_go", outPath, "test-repo", nil, false, false,
-		WithSkipJSON(true)); err != nil {
-		t.Fatalf("Index with --skip-json: %v", err)
+		WithExportJSON(true)); err != nil {
+		t.Fatalf("Index with --export-json: %v", err)
 	}
 
-	// graph.json must NOT be present.
-	if _, err := os.Stat(outPath); err == nil {
-		t.Errorf("graph.json was written despite --skip-json flag")
+	// graph.json MUST be present when --export-json is used.
+	if _, err := os.Stat(outPath); err != nil {
+		t.Errorf("graph.json not written with --export-json flag: %v", err)
 	}
 
-	// graph.fb MUST be present and valid.
+	// graph.fb MUST also be present.
 	fbPath := filepath.Join(tmp, "graph.fb")
 	if _, err := os.Stat(fbPath); err != nil {
-		t.Fatalf("graph.fb not written with --skip-json: %v", err)
+		t.Fatalf("graph.fb not written with --export-json: %v", err)
 	}
 }
 
@@ -95,7 +95,8 @@ func TestFBRoundTrip_LoadGraphFromDir(t *testing.T) {
 	tmp := t.TempDir()
 	outPath := filepath.Join(tmp, "graph.json")
 
-	if err := Index("testdata/crossfile_go", outPath, "test-repo", nil, false, false); err != nil {
+	if err := Index("testdata/crossfile_go", outPath, "test-repo", nil, false, false,
+		WithExportJSON(true)); err != nil {
 		t.Fatalf("Index: %v", err)
 	}
 

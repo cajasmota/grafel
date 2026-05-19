@@ -104,7 +104,7 @@ type IndexArgs struct {
 	// AdditionalSkipDirs extends the walk-time hard-coded skip list with
 	// per-group names from fleet.json's additional_skip_dirs field.
 	AdditionalSkipDirs []string `json:"additional_skip_dirs,omitempty"`
-	SkipJSON    bool     `json:"skip_json,omitempty"`  // when true, skip writing graph.json (ADR-0016 flip-day)
+	ExportJSON  bool     `json:"export_json,omitempty"`  // when true, also write graph.json alongside graph.fb (ADR-0016 flip-day)
 }
 
 // IndexReply carries the post-index summary. The stats are an opaque

@@ -95,11 +95,10 @@ type Indexer struct {
 	// Removed in the next major release (issue #808 / ADR-0016 flip-day).
 	exportFB bool // DEPRECATED: always-on since #808; kept for back-compat
 
-	// skipJSON suppresses emission of graph.json when true. Users who
-	// want the smaller, faster-write-only binary output can pass
-	// --skip-json on `archigraph index` or `archigraph rebuild`.
-	// Default false (dual-write for one release deprecation window).
-	skipJSON bool
+	// exportJSON enables emission of graph.json alongside graph.fb.
+	// By default only graph.fb is written (ADR-0016 flip-day).
+	// Pass --export-json to also emit graph.json (useful for FB validation).
+	exportJSON bool
 
 	// printSkipped, when true, emits one [skip] line to stderr for each
 	// directory that was skipped at walk-time (issue #805). Shows which
@@ -150,22 +149,23 @@ func WithRepairApply(enabled bool) IndexOption {
 // (ADR-0016 flip-day, issue #808). The flag is kept for back-compat
 // and will be removed in the next major release.
 //
-// Deprecated: use WithSkipJSON(true) to suppress graph.json instead.
+// Deprecated: graph.fb is the default; use WithExportJSON(true) if you also need graph.json.
 func WithExportFB(enabled bool) IndexOption {
 	return func(i *Indexer) {
 		if enabled {
 			fmt.Fprintf(os.Stderr,
-				"archigraph: --export-fb is deprecated; graph.fb is now written by default (ADR-0016 flip-day). Use --skip-json to drop graph.json instead.\n")
+				"archigraph: --export-fb is deprecated; graph.fb is now written by default (ADR-0016 flip-day). Use --export-json if you also need graph.json.\n")
 		}
 		i.exportFB = enabled // stored but unused
 	}
 }
 
-// WithSkipJSON suppresses emission of graph.json. When true, only
-// graph.fb is written after a successful index pass. Use this to save
-// ~7 MB per repo once you are confident all consumers read from FB.
-func WithSkipJSON(skip bool) IndexOption {
-	return func(i *Indexer) { i.skipJSON = skip }
+// WithExportJSON enables emission of graph.json alongside graph.fb.
+// By default, only graph.fb is written (ADR-0016 flip-day). Pass this to
+// also emit graph.json for backward compatibility or validation purposes.
+// Default is false (FB-only to save ~7 MB per repo).
+func WithExportJSON(export bool) IndexOption {
+	return func(i *Indexer) { i.exportJSON = export }
 }
 
 // WithPrintSkipped enables the --print-skipped flag. When true each
@@ -284,7 +284,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", fbPath)
 		}
 
-		if !idx.skipJSON {
+		if idx.exportJSON {
 			if err := graph.WriteAtomic(outPath, doc, pretty); err != nil {
 				return err
 			}

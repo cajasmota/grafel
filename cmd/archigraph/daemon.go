@@ -204,10 +204,7 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 	opts := []IndexOption{
 		WithRepairCandidates(args.Repair),
 		WithRepairApply(args.RepairApply),
-		WithExportFB(args.ExportFB),
-		WithPrintSkipped(args.PrintSkipped),
-		WithAdditionalSkipDirs(args.AdditionalSkipDirs),
-		WithSkipJSON(args.SkipJSON),
+
 	}
 	// Capture stats into a local buffer when the caller asked for them.
 	// setCapturedStats is a tiny package-level swap (Phase A serializes
