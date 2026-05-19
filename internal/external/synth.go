@@ -4183,6 +4183,54 @@ var javaBareNames = map[string]struct{}{
 	"ofMillis":  {},
 	"ofSeconds": {},
 	"ofMinutes": {},
+
+	// Issue java-spring-petclinic-wave — JCache (javax.cache / JSR-107)
+	// configuration helpers used by Spring's @EnableCaching support.
+	// Distinctive JCache names (lang gate is sufficient).
+	"setStatisticsEnabled":   {},
+	"setManagementEnabled":   {},
+	"setStoreByValue":        {},
+	"setTypes":               {},
+	"createCache":            {},
+	"cacheConfiguration":     {},
+	"getCache":               {},
+	"destroyCache":           {},
+
+	// Spring AOT — RuntimeHints registrar API
+	// (org.springframework.aot.hint.*). Receiver-stripped from
+	// `hints.reflection().registerType(...)`,
+	// `hints.resources().registerPattern(...)`.
+	"registerType":     {},
+	"registerPattern": {},
+	"registerResource": {},
+	"registerProxy":    {},
+	"registerSerialization": {},
+	"reflection":       {},
+	"resources":        {},
+	"serialization":    {},
+	"proxies":          {},
+	"reflectionHints":  {},
+	"resourceHints":    {},
+	"isAssignableFrom": {}, // Class.isAssignableFrom — JDK reflection
+
+	// JDK java.util.stream / Stream chain leaves that are distinctive
+	// enough that the lang="java" gate prevents user-method
+	// shadowing. `map`/`filter`/`flatMap`/`reduce` are deliberately
+	// EXCLUDED per #105 (user-method collision risk).
+	"allMatch":   {},
+	"anyMatch":   {},
+	"noneMatch":  {},
+	"toList":     {},
+	"toUnmodifiableList": {},
+	"toUnmodifiableSet":  {},
+	"toUnmodifiableMap":  {},
+	"toArray":            {},
+
+	// Java 8 Optional.orElseGet (low collision, completes the
+	// Optional set already partially present).
+	"orElseGet":     {},
+	"ifPresentOrElse": {},
+	"or":              {},
 }
 
 // javaTestBareNames is the Java test-file-gated bare-name stop-list
@@ -4301,6 +4349,86 @@ var javaTestBareNames = map[string]struct{}{
 	"hasMessageContaining":               {},
 	"hasRootCauseInstanceOf":             {},
 	"extracting":                         {},
+
+	// Issue java-spring-petclinic-wave — AssertJ chained matcher
+	// leaves emitted bare after receiver-strip in test files.
+	// Distinctive AssertJ-specific names — gated to Java test files
+	// via isJavaTestFile() so production code with same-named
+	// user methods isn't shadowed.
+	"isNotNull":            {},
+	"isNull":               {},
+	"isNotZero":            {},
+	"isZero":               {},
+	"isPositive":           {},
+	"isNegative":           {},
+	"containsEntry":        {},
+	"containsKey":          {},
+	"containsValue":        {},
+	"containsSubsequence":  {},
+	"containsSequence":     {},
+	"containsAnyOf":        {},
+	"containsAll":          {},
+	"hasToString":          {},
+	"hasGlobalErrors":      {},
+	"isThrownBy":           {},
+	"withMessageContaining": {},
+	"withMessage":          {},
+	"withNoCause":          {},
+	"withCauseInstanceOf":  {},
+	"as":                   {}, // AssertJ describe-as (test-only context)
+
+	// Spring MockMvcRequestBuilders post-builder leaves (chained on
+	// the request builder returned by `get(...)`/`post(...)`).
+	"contentType": {},
+	"accept":      {},
+	"with":        {},
+
+	// Spring MockMvcResultMatchers model/view/cookie chain leaves
+	// (chained on the matcher object returned by `model()` /
+	// `view()` / `cookie()`).
+	"attribute":      {},
+	"name":           {},
+	"value":          {}, // cookie().value(...)
+	"maxAge":         {},
+	"domain":         {},
+	"path":           {},
+	"secure":         {},
+	"httpOnly":       {},
+
+	// SpringBoot SpringApplication test helpers (chained on
+	// SpringApplicationBuilder / SpringApplication in test files).
+	"isDockerAvailable":          {},
+	"printProperties":            {},
+	"findPropertiesPropertySources": {},
+	"getEnvironment":             {},
+	"profiles":                   {},
+	"properties":                 {},
+	"listeners":                  {},
+	"webApplicationType":         {},
+	"bannerMode":                 {},
+	"logStartupInfo":             {},
+
+	// BindingResult validation chain helpers (in test files via
+	// `new DataBinder(...).getBindingResult().hasFieldErrors()`).
+	"validate":         {},
+	"createValidator":  {},
+	"getFieldErrors":   {},
+	"getGlobalErrors":  {},
+	"getAllErrors":     {},
+
+	// Reactor / time chained matchers (Instant/LocalDate test
+	// comparisons via AssertJ).
+	"isAfter":     {},
+	"isBefore":    {},
+	"isAfterOrEqualTo":  {},
+	"isBeforeOrEqualTo": {},
+	"isBetween":   {},
+	"isCloseTo":   {},
+
+	// AssertJ collection accessor.
+	"element": {},
+	"first":   {},
+	"last":    {},
 
 	// Mockito façades (org.mockito.Mockito / BDDMockito).
 	"mock":                     {},

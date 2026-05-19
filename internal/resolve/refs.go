@@ -3225,6 +3225,23 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if lang == "java" && isJavaExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
+	// Issue java-spring-petclinic-wave — Spring MVC ROUTES_TO edges
+	// emit `Route:<path>` -> `Controller:<methodName>` stubs from
+	// both the AST-driven composed-route extractor (spring_routes.go)
+	// and the YAML regex-based extractor (spring_mvc.yaml). The
+	// Java method extractor emits the handler under SCOPE.Operation
+	// (not `Controller:` kind), so the kind-bucket lookup misses.
+	// Spring's HandlerMapping dispatches by method-name lookup at
+	// runtime — the binding is framework-mediated, not an extractor
+	// bug. Route to Dynamic. Lang-gated to java (lang on the edge
+	// originates from the spring_routes.go Language="java" tag).
+	// Also accept lang="" because YAML-emitted edges may not
+	// propagate the source language onto the edge properties.
+	if (lang == "java" || lang == "") &&
+		(strings.HasPrefix(originalStub, "Controller:") ||
+			strings.HasPrefix(originalStub, "Route:")) {
+		return DispositionDynamic
+	}
 	// Wave-4 (PHP) — Symfony / Doctrine / PSR / PHPUnit framework
 	// interfaces and abstract base classes routinely appear as the
 	// trailing segment of structural-ref IMPLEMENTS / EXTENDS stubs
@@ -4817,6 +4834,108 @@ var javaExternalBaseTypes = map[string]struct{}{
 	"OrderValidation": {},
 	"Emailer":         {},
 	"Service":         {},
+
+	// Issue java-spring-petclinic-wave — Spring Framework / Spring Boot
+	// / Spring Data / Spring MVC / Spring Security framework
+	// interfaces and abstract base classes routinely appear as the
+	// trailing segment of structural-ref EXTENDS / IMPLEMENTS stubs
+	// (`scope:component:interface:java:WebMvcConfigurer`,
+	// `:ApplicationListener`, `:RuntimeHintsRegistrar`, `:Formatter`,
+	// `:Validator`, ...) because the parent type is imported from a
+	// Spring jar and has no in-tree entity. Curated from
+	// spring-petclinic bug-resolver samples post-#593 cpp-spdlog wave.
+	// Lang-gated to java per #94 safer-bias rule.
+	//
+	// Spring Core / Beans / Context.
+	"ApplicationListener":            {},
+	"ApplicationContextInitializer":  {},
+	"ApplicationContextAware":        {},
+	"ApplicationEventPublisherAware": {},
+	"BeanPostProcessor":              {},
+	"BeanFactoryPostProcessor":       {},
+	"FactoryBean":                    {},
+	"InitializingBean":               {},
+	"DisposableBean":                 {},
+	"EnvironmentAware":               {},
+	"EnvironmentPostProcessor":       {},
+	"ResourceLoaderAware":            {},
+	"SmartLifecycle":                 {},
+	"Lifecycle":                      {},
+	"Ordered":                        {},
+	"PriorityOrdered":                {},
+	"ImportSelector":                 {},
+	"ImportBeanDefinitionRegistrar":  {},
+	"Condition":                      {},
+	// Spring Boot.
+	"SpringBootServletInitializer":   {},
+	"CommandLineRunner":              {},
+	"ApplicationRunner":              {},
+	"WebServerFactoryCustomizer":     {},
+	"ErrorViewResolver":              {},
+	"FailureAnalyzer":                {},
+	// Spring AOT (RuntimeHints).
+	"RuntimeHintsRegistrar":          {},
+	// Spring MVC / Web.
+	"WebMvcConfigurer":               {},
+	"WebMvcConfigurationSupport":     {},
+	"HandlerInterceptor":             {},
+	"HandlerMethodArgumentResolver":  {},
+	"HandlerMethodReturnValueHandler": {},
+	"HandlerExceptionResolver":       {},
+	"HttpMessageConverter":           {},
+	"Filter":                         {},
+	"OncePerRequestFilter":           {},
+	"WebFilter":                      {},
+	"WebMvcRegistrations":            {},
+	// Spring WebFlux.
+	"WebFluxConfigurer":              {},
+	"WebFilterChain":                 {},
+	// Spring Data / JPA / Repositories.
+	"JpaRepository":                  {},
+	"CrudRepository":                 {},
+	"PagingAndSortingRepository":     {},
+	"Repository":                     {},
+	"ReactiveCrudRepository":         {},
+	"ReactiveMongoRepository":        {},
+	"MongoRepository":                {},
+	"AttributeConverter":             {},
+	"Specification":                  {},
+	// Spring Validation / Conversion.
+	"Validator":                      {},
+	"ConstraintValidator":            {},
+	"Formatter":                      {},
+	"GenericConverter":               {},
+	"ConverterFactory":               {},
+	// Spring Security.
+	"WebSecurityConfigurerAdapter":           {},
+	"AbstractWebSecurityConfigurerAdapter":   {},
+	"UserDetailsService":                     {},
+	"UserDetails":                            {},
+	"AuthenticationProvider":                 {},
+	"AuthenticationManager":                  {},
+	"GrantedAuthority":                       {},
+	"PasswordEncoder":                        {},
+	"SecurityFilterChain":                    {},
+	// Spring Boot Test slices (commonly extended in tests).
+	"SpringBootTest":                 {},
+	"WebMvcTest":                     {},
+	"DataJpaTest":                    {},
+	"JsonTest":                       {},
+	"RestClientTest":                 {},
+	// jakarta.persistence / JPA standard interfaces.
+	"EntityManager":      {},
+	"EntityManagerFactory": {},
+	"AttributeOverride":  {},
+	// jakarta.servlet.
+	"HttpServletRequest":  {},
+	"HttpServletResponse": {},
+	"ServletContextListener": {},
+	"ServletContextInitializer": {},
+	// SLF4J / logging.
+	"Logger":                {},
+	"LoggerFactory":         {},
+	// AspectJ.
+	"MethodInterceptor":     {},
 }
 
 // isTSBuiltinType reports whether s is a TypeScript / JavaScript
