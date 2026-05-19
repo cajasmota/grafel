@@ -14,6 +14,10 @@
 //     bootstrap, start, init, on*, useEffect, componentDidMount, …
 //   - HTTP boundary: entity with inbound IMPLEMENTS / ROUTES_TO / SERVES
 //     from a Route or http_endpoint is almost certainly an entry.
+//   - Broker boundary (#797): entity that is the target of a SUBSCRIBES_TO
+//     (Kafka @Incoming / @KafkaListener), WS_SUBSCRIBES_TO (WebSocket handler),
+//     or TRIGGERS (ScheduledJob → handler) edge is a broker-side entry and
+//     receives the same score boost as HTTP handlers.
 //   - Exported flag: pythonic dunder-init or capitalised Go identifier,
 //     or signature substring " export " — boosted.
 //   - Utility penalty: get*, set*, format*, parse*, validate*, *Helper,
@@ -33,10 +37,11 @@ import (
 
 // entryCandidate carries the scoring breakdown alongside the entity id.
 type entryCandidate struct {
-	id    string
-	name  string
-	kind  string
-	score float64
+	id        string
+	name      string
+	kind      string
+	score     float64
+	entryKind string // e.g. "http", "kafka_consumer", "scheduled", "websocket", "webhook", ""
 }
 
 // rankEntryPoints scores every Function/Method/Operation/Component entity
@@ -47,6 +52,14 @@ func rankEntryPoints(doc *graph.Document, byID map[string]*graph.Entity, adj *ca
 	// ROUTES_TO / SERVES edge is almost certainly an entry point (or the
 	// endpoint it serves).
 	httpBoundary := buildHTTPBoundarySet(doc)
+
+	// #797 — broker-boundary signal: any entity that is the target of a
+	// SUBSCRIBES_TO (Kafka @Incoming / @KafkaListener / akka EventBus),
+	// WS_SUBSCRIBES_TO (WebSocket @OnMessage / fastapi websocket handler), or
+	// TRIGGERS (ScheduledJob → handler) edge is a broker-side entry point.
+	// These methods are the functional equivalent of HTTP handlers for their
+	// respective transports and deserve the same score boost.
+	brokerBoundary := buildBrokerBoundarySet(doc)
 
 	out := make([]entryCandidate, 0, 64)
 	for i := range doc.Entities {
@@ -75,8 +88,20 @@ func rankEntryPoints(doc *graph.Document, byID map[string]*graph.Entity, adj *ca
 		// HTTP boundary signal — biggest boost. An IMPLEMENTS edge from a
 		// route handler to this entity (or vice versa) makes it the
 		// canonical entry for that route.
+		entryKind := ""
 		if httpBoundary[e.ID] {
 			score += 6.0
+			entryKind = "http"
+		}
+
+		// #797 — broker boundary signal. Equal boost to HTTP so Kafka
+		// consumers and WebSocket handlers are ranked on par with route
+		// handlers. When both signals fire (unusual but not impossible for a
+		// handler that both implements an HTTP route AND subscribes to a
+		// topic), we take the broker label as the more specific one.
+		if bkind, ok := brokerBoundary[e.ID]; ok {
+			score += 6.0
+			entryKind = bkind // "kafka_consumer", "scheduled", "websocket", "webhook"
 		}
 
 		// Exported / public boost.
@@ -97,7 +122,7 @@ func rankEntryPoints(doc *graph.Document, byID map[string]*graph.Entity, adj *ca
 		if score <= 0 {
 			continue
 		}
-		out = append(out, entryCandidate{id: e.ID, name: e.Name, kind: e.Kind, score: score})
+		out = append(out, entryCandidate{id: e.ID, name: e.Name, kind: e.Kind, score: score, entryKind: entryKind})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -106,6 +131,62 @@ func rankEntryPoints(doc *graph.Document, byID map[string]*graph.Entity, adj *ca
 		}
 		return out[i].id < out[j].id
 	})
+	return out
+}
+
+// buildBrokerBoundarySet returns a map from entity ID to entry-kind label for
+// every entity that is the CALLEE side of a broker-subscription edge. These
+// are the handler methods that receive messages from a broker and are
+// functionally equivalent to HTTP route handlers as BFS entry points.
+//
+// Edge kinds recognised (#797):
+//
+//   - SUBSCRIBES_TO (to-side): the entity is a Kafka @Incoming / @KafkaListener
+//     or RabbitMQ / SQS consumer handler. Entry kind = "kafka_consumer".
+//   - WS_SUBSCRIBES_TO (to-side): the entity is a WebSocket @OnMessage /
+//     FastAPI websocket / socket.io handler. Entry kind = "websocket".
+//   - TRIGGERS (from-side of ScheduledJob → handler): a ScheduledJob entity
+//     fires TRIGGERS at the handler function. The handler entity is the target,
+//     so we detect TRIGGERS edges where the from-entity is SCOPE.ScheduledJob.
+//     Entry kind = "scheduled".
+//   - Webhook http_endpoint entities with is_webhook=true are already scored
+//     via the HTTP boundary set (IMPLEMENTS edges); no separate detection needed.
+//
+// The map value is the most-specific entry-kind label: if a method appears on
+// multiple broker-subscription edges, the last-seen label wins (all are valid
+// broker entries so the label choice is cosmetic only).
+func buildBrokerBoundarySet(doc *graph.Document) map[string]string {
+	out := make(map[string]string)
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		switch r.Kind {
+		case "SUBSCRIBES_TO":
+			// The entity SUBSCRIBES to a topic — it's the consumer handler.
+			// The FromID is the method/function entity; the ToID is the topic.
+			// We mark the FROM entity as a kafka_consumer entry point.
+			if r.FromID != "" {
+				if _, already := out[r.FromID]; !already {
+					out[r.FromID] = "kafka_consumer"
+				}
+			}
+		case "WS_SUBSCRIBES_TO":
+			// The entity is a WebSocket message handler. FromID is the handler;
+			// ToID is the ChannelEvent entity.
+			if r.FromID != "" {
+				if _, already := out[r.FromID]; !already {
+					out[r.FromID] = "websocket"
+				}
+			}
+		case "TRIGGERS":
+			// TRIGGERS goes from SCOPE.ScheduledJob → handler function.
+			// The ToID is the handler — mark it as a scheduled entry.
+			if r.ToID != "" {
+				if _, already := out[r.ToID]; !already {
+					out[r.ToID] = "scheduled"
+				}
+			}
+		}
+	}
 	return out
 }
 

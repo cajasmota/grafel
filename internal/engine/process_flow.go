@@ -159,6 +159,15 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 	candidates = pruneReachableEntries(candidates, adj, cfg.MaxDepth)
 	stats.EntriesUsed = len(candidates)
 
+	// #797 — build a lookup from entry entity ID → entryKind so we can
+	// stamp the entry_kind property on emitted Process entities.
+	entryKindByID := make(map[string]string, len(candidates))
+	for _, c := range candidates {
+		if c.entryKind != "" {
+			entryKindByID[c.id] = c.entryKind
+		}
+	}
+
 	// BFS from each entry point.
 	best := make(map[traceKey][]string) // key -> longest chain
 	for _, c := range candidates {
@@ -283,6 +292,12 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 			"crosses_external_lib":  strconv.FormatBool(crossesExternalLib),
 			"chain":                 strings.Join(chain, ","),
 			"chain_labels":          strings.Join(chainLabels(chain, byID), " → "),
+		}
+		// #797 — stamp entry_kind so consumers can filter by entry type.
+		if ek, ok := entryKindByID[entry.ID]; ok && ek != "" {
+			props["entry_kind"] = ek
+		} else if entry != nil && httpBoundary[entry.ID] {
+			props["entry_kind"] = "http"
 		}
 		if terminalIsPhantom {
 			props["terminal_is_phantom"] = "true"
