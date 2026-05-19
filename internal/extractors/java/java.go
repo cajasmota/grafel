@@ -95,6 +95,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	errorPatterns := extractErrorHandlingPatterns(root, file.Path)
 	entities = append(entities, errorPatterns...)
 
+	// Issue #818 — PanacheQuery / PanacheUpdate DSL builder method synthesis.
+	// Emit synthetic interface + method entities for every DSL method on the
+	// PanacheQuery / PanacheUpdate / ReactivePanacheQuery interfaces so that
+	// chained calls like `q.list()`, `q.page(0,20)`, `q.count()`, etc. resolve
+	// to a synthesized entity rather than landing as bug-extractor unresolved
+	// edges. Called once per FILE (not per class) to avoid per-class duplication;
+	// the indexer dedup layer collapses identical Name+Kind entries across files.
+	rawImportsForDSL := collectRawImports(file.Content)
+	entities = append(entities, synthesizePanacheDSLEntities(file.Path, rawImportsForDSL)...)
+
 	// Track A (analog of #641/#650 for Java) — REFERENCES-edge emission.
 	// Runs after every primary-pass entity is in place so the file-
 	// scope symbol table covers methods, classes, fields, and import
@@ -469,6 +479,34 @@ func javaCallTarget(
 	return ""
 }
 
+// panacheQueryReturningMethods is the set of method names that return a
+// PanacheQuery object when called on a Panache entity class or repository.
+// Used by receiverTypeName to type chained calls like
+// `Order.find(...).list()` → `PanacheQuery.list`.
+//
+// Issue #818 — method-return-type tracking for Panache DSL chains.
+var panacheQueryReturningMethods = map[string]bool{
+	"find":    true,
+	"findAll": true,
+}
+
+// panacheQueryDSLChainMethods is the set of PanacheQuery instance methods
+// that return PanacheQuery<T> (i.e. chainable). Methods that are terminal
+// (returning List, T, Optional, long, etc.) are NOT listed here, but they
+// still bind to PanacheQuery.* when the receiver is a panache chain.
+var panacheQueryDSLChainMethods = map[string]bool{
+	"page":          true,
+	"nextPage":      true,
+	"previousPage":  true,
+	"firstPage":     true,
+	"lastPage":      true,
+	"range":         true,
+	"withHint":      true,
+	"withLock":      true,
+	"project":       true,
+	"filter":        true,
+}
+
 // receiverTypeName returns the declared type of a method_invocation's
 // `object` field when statically determinable, or "" otherwise.
 //
@@ -484,7 +522,11 @@ func javaCallTarget(
 //     names and lowerCamelCase for fields/locals, so the case
 //     heuristic alone is reliable enough to catch JDK constants like
 //     `Math.max`, `Integer.parseInt`, `String.format` etc.
-//  5. Anything else — return "" so the caller falls back to the bare
+//  5. Receiver is a method_invocation whose callee is a Panache
+//     query-returning method (find, findAll, or a DSL chain method like
+//     page, withHint, etc.) → return "PanacheQuery" so the chained DSL
+//     method binds to the PanacheQuery.* synthesized entity (#818).
+//  6. Anything else — return "" so the caller falls back to the bare
 //     method name.
 func receiverTypeName(
 	obj *sitter.Node,
@@ -534,6 +576,27 @@ func receiverTypeName(
 			if t, ok := cc.fields[ident]; ok && t != "" {
 				return t
 			}
+		}
+		return ""
+	case "method_invocation":
+		// Issue #818 — PanacheQuery chain detection.
+		//
+		// Pattern: `EntityClass.find(...).list()` — the outer call's receiver
+		// is a method_invocation. If that inner call's method is a known
+		// Panache query-returning method (find, findAll) OR a PanacheQuery DSL
+		// chain method (page, withHint, etc.), we return "PanacheQuery" so the
+		// outer call target becomes "PanacheQuery.<method>".
+		//
+		// This handles both:
+		//   Entity.find(...).list()         → PanacheQuery.list
+		//   Entity.find(...).page(0,20).list() → PanacheQuery.list (via recursive typing)
+		innerName := obj.ChildByFieldName("name")
+		if innerName == nil {
+			return ""
+		}
+		callee := string(src[innerName.StartByte():innerName.EndByte()])
+		if panacheQueryReturningMethods[callee] || panacheQueryDSLChainMethods[callee] {
+			return "PanacheQuery"
 		}
 		return ""
 	}

@@ -8,6 +8,15 @@
 // entities every call to Book.findById(1L), Book.count(), book.persist() etc.
 // lands as a bug-extractor unresolved reference.
 //
+// Issue #818 (sub-story (d) of #787): extends #809 with DSL builder method
+// synthesis for PanacheQuery and PanacheUpdate. After #809 resolves static
+// methods on entity classes (Order.find, Order.count, etc.), the returned
+// PanacheQuery object's chained DSL calls (.list(), .page(), .stream(), etc.)
+// remain unresolved because PanacheQuery is an external interface. This file
+// adds synthesizePanacheDSLEntities which emits one SCOPE.Component:PanacheQuery
+// interface entity and one SCOPE.Operation per DSL method, enabling the
+// resolver to bind `q.list()`, `q.page(0,20)`, `q.count()`, etc.
+//
 // Design mirrors the Lombok synthesizer (lombok.go / #799):
 //   - Synthesized entities carry pattern_type and synthesized_from in
 //     Properties so downstream consumers can distinguish them from
@@ -34,6 +43,9 @@
 // Additionally synthesizes entities for:
 //   - @NamedQuery annotations on entity classes
 //   - Panache projection calls (project(MyDto.class))
+//   - PanacheQuery DSL methods (#818): list, stream, page, count, etc.
+//   - PanacheUpdate DSL methods (#818): where, whereOptional
+//   - Reactive variants: ReactivePanacheQuery with Uni/Multi return shapes
 package java
 
 import (
@@ -616,5 +628,239 @@ func synthesizePanacheEntities(
 	// @NamedQuery synthesis — scan the class declaration for named queries.
 	out = append(out, synthesizeNamedQueryEntities(className, classDeclSrc, sourceFile)...)
 
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Issue #818 — PanacheQuery / PanacheUpdate DSL builder method synthesis
+// ---------------------------------------------------------------------------
+//
+// The static methods synthesized by #809 (Book.find, Book.findAll, etc.)
+// return PanacheQuery<T> — an external Quarkus interface. When callers chain
+// DSL methods on the returned object (q.list(), q.page(0,20), q.count(), …)
+// those calls are emitted by the extractor as CALLS edges whose target is
+// "PanacheQuery.list", "PanacheQuery.page", etc. Without synthesized entities
+// for these methods the resolver classifies every chained DSL call as a
+// bug-extractor unresolved reference.
+//
+// synthesizePanacheDSLEntities is called once per Java FILE (not per class)
+// when any Panache import is detected. It emits:
+//
+//   1. A SCOPE.Component "PanacheQuery" interface entity.
+//   2. One SCOPE.Operation per DSL method on PanacheQuery (SQL + reactive).
+//   3. A SCOPE.Component "PanacheUpdate" interface entity.
+//   4. One SCOPE.Operation per DSL method on PanacheUpdate.
+//   5. A SCOPE.Component "ReactivePanacheQuery" interface entity.
+//   6. One SCOPE.Operation per DSL method on ReactivePanacheQuery.
+//
+// The entities carry synthesized_from="quarkus_panache_dsl" and
+// pattern_type="panache_dsl_method" so downstream consumers can distinguish
+// them from entity-class synthesized methods.
+//
+// Deduplication: the file-scope entity emitter appends these to the global
+// entity list. The indexer's dedup layer (byName) prevents duplicate graph
+// nodes when multiple Panache entity files share the same PanacheQuery stub.
+
+const panacheDSLSynthFrom = "quarkus_panache_dsl"
+
+// panacheDSLOp builds a DSL method entity owned by a synthetic interface.
+func panacheDSLOp(ownerIface, methodName, signature string, extraProps map[string]string) types.EntityRecord {
+	props := map[string]string{
+		"synthesized_from": panacheDSLSynthFrom,
+		"pattern_type":     "panache_dsl_method",
+		"owner":            ownerIface,
+	}
+	for k, v := range extraProps {
+		props[k] = v
+	}
+	return types.EntityRecord{
+		Name:         ownerIface + "." + methodName,
+		Kind:         "SCOPE.Operation",
+		Subtype:      "method",
+		Language:     "java",
+		Signature:    signature,
+		QualityScore: panacheSynthQuality,
+		Properties:   props,
+	}
+}
+
+// panacheQueryDSLMethods returns the blocking (SQL ORM) PanacheQuery DSL surface.
+// These are instance methods on the PanacheQuery<T> interface returned by
+// entity.find(), entity.findAll(), repository.find(), etc.
+func panacheQueryDSLMethods() []types.EntityRecord {
+	const iface = "PanacheQuery"
+	// No extra props for plain SQL variant.
+	return []types.EntityRecord{
+		// Terminal result methods
+		panacheDSLOp(iface, "list", "List<T> list()", nil),
+		panacheDSLOp(iface, "stream", "Stream<T> stream()", nil),
+		panacheDSLOp(iface, "singleResult", "T singleResult()", nil),
+		panacheDSLOp(iface, "singleResultOptional", "Optional<T> singleResultOptional()", nil),
+		panacheDSLOp(iface, "firstResult", "T firstResult()", nil),
+		panacheDSLOp(iface, "firstResultOptional", "Optional<T> firstResultOptional()", nil),
+		panacheDSLOp(iface, "iterator", "Iterator<T> iterator()", nil),
+		// Aggregate
+		panacheDSLOp(iface, "count", "long count()", nil),
+		panacheDSLOp(iface, "pageCount", "int pageCount()", nil),
+		// Pagination (returns PanacheQuery for chaining)
+		panacheDSLOp(iface, "page", "PanacheQuery<T> page(Page page)", nil),
+		panacheDSLOp(iface, "page", "PanacheQuery<T> page(int index, int size)", nil),
+		panacheDSLOp(iface, "nextPage", "PanacheQuery<T> nextPage()", nil),
+		panacheDSLOp(iface, "previousPage", "PanacheQuery<T> previousPage()", nil),
+		panacheDSLOp(iface, "firstPage", "PanacheQuery<T> firstPage()", nil),
+		panacheDSLOp(iface, "lastPage", "PanacheQuery<T> lastPage()", nil),
+		panacheDSLOp(iface, "hasNextPage", "boolean hasNextPage()", nil),
+		panacheDSLOp(iface, "hasPreviousPage", "boolean hasPreviousPage()", nil),
+		// Range
+		panacheDSLOp(iface, "range", "PanacheQuery<T> range(int startIndex, int lastIndex)", nil),
+		// Hint / lock
+		panacheDSLOp(iface, "withHint", "PanacheQuery<T> withHint(String hintName, Object value)", nil),
+		panacheDSLOp(iface, "withLock", "PanacheQuery<T> withLock(LockModeType lockMode)", nil),
+		// Projection
+		panacheDSLOp(iface, "project", "PanacheQuery<T> project(Class<T> type)", nil),
+		// Filter
+		panacheDSLOp(iface, "filter", "PanacheQuery<T> filter(String filterName, Parameters parameters)", nil),
+		panacheDSLOp(iface, "filter", "PanacheQuery<T> filter(String filterName, Map<String,Object> parameters)", nil),
+	}
+}
+
+// panacheUpdateDSLMethods returns the PanacheUpdate DSL surface.
+// PanacheUpdate is returned by entity.update("field=:val", params) and
+// provides a fluent where() terminal that executes the update.
+func panacheUpdateDSLMethods() []types.EntityRecord {
+	const iface = "PanacheUpdate"
+	return []types.EntityRecord{
+		panacheDSLOp(iface, "where", "int where(String query, Object... params)", nil),
+		panacheDSLOp(iface, "where", "int where(String query, Map<String,Object> params)", nil),
+		panacheDSLOp(iface, "where", "int where(String query, Parameters params)", nil),
+		panacheDSLOp(iface, "whereOptional", "int whereOptional(String query, Object... params)", nil),
+	}
+}
+
+// reactivePanacheQueryDSLMethods returns the Reactive Panache query DSL surface.
+// ReactivePanacheQuery wraps results in Uni<T> or Multi<T> (Mutiny types).
+func reactivePanacheQueryDSLMethods() []types.EntityRecord {
+	const iface = "ReactivePanacheQuery"
+	reactive := map[string]string{"reactive": "true"}
+	return []types.EntityRecord{
+		// Terminal result methods — wrapped in Uni<>
+		panacheDSLOp(iface, "list", "Uni<List<T>> list()", reactive),
+		panacheDSLOp(iface, "stream", "Multi<T> stream()", reactive),
+		panacheDSLOp(iface, "singleResult", "Uni<T> singleResult()", reactive),
+		panacheDSLOp(iface, "singleResultOptional", "Uni<Optional<T>> singleResultOptional()", reactive),
+		panacheDSLOp(iface, "firstResult", "Uni<T> firstResult()", reactive),
+		panacheDSLOp(iface, "firstResultOptional", "Uni<Optional<T>> firstResultOptional()", reactive),
+		// Aggregate
+		panacheDSLOp(iface, "count", "Uni<Long> count()", reactive),
+		panacheDSLOp(iface, "pageCount", "Uni<Integer> pageCount()", reactive),
+		// Pagination
+		panacheDSLOp(iface, "page", "ReactivePanacheQuery<T> page(Page page)", reactive),
+		panacheDSLOp(iface, "page", "ReactivePanacheQuery<T> page(int index, int size)", reactive),
+		panacheDSLOp(iface, "nextPage", "ReactivePanacheQuery<T> nextPage()", reactive),
+		panacheDSLOp(iface, "previousPage", "ReactivePanacheQuery<T> previousPage()", reactive),
+		panacheDSLOp(iface, "firstPage", "ReactivePanacheQuery<T> firstPage()", reactive),
+		panacheDSLOp(iface, "lastPage", "ReactivePanacheQuery<T> lastPage()", reactive),
+		panacheDSLOp(iface, "hasNextPage", "Uni<Boolean> hasNextPage()", reactive),
+		panacheDSLOp(iface, "hasPreviousPage", "boolean hasPreviousPage()", reactive),
+		// Range
+		panacheDSLOp(iface, "range", "ReactivePanacheQuery<T> range(int startIndex, int lastIndex)", reactive),
+		// Hint / lock / projection / filter
+		panacheDSLOp(iface, "withHint", "ReactivePanacheQuery<T> withHint(String hintName, Object value)", reactive),
+		panacheDSLOp(iface, "withLock", "ReactivePanacheQuery<T> withLock(LockModeType lockMode)", reactive),
+		panacheDSLOp(iface, "project", "ReactivePanacheQuery<T> project(Class<T> type)", reactive),
+		panacheDSLOp(iface, "filter", "ReactivePanacheQuery<T> filter(String filterName, Parameters parameters)", reactive),
+		panacheDSLOp(iface, "filter", "ReactivePanacheQuery<T> filter(String filterName, Map<String,Object> parameters)", reactive),
+	}
+}
+
+// synthesizePanacheDSLEntities emits PanacheQuery / PanacheUpdate / ReactivePanacheQuery
+// interface entities and all their DSL methods. Called once per Java FILE that
+// imports any Quarkus Panache package. The rawFileImports string is the same
+// token passed to synthesizePanacheEntities; we reuse the existing import-
+// detection machinery to decide whether Panache is in scope.
+//
+// Returns nil when no Panache import is detected (most Java files).
+//
+// The SourceFile field on returned entities is intentionally set to the
+// calling file — this lets the resolver's file-scope byName lookup bind
+// `PanacheQuery.list` references emitted from the same file. Cross-file
+// binding via the global byName/byMember index also works because the
+// same entity name is emitted from every Panache file and the indexer
+// merges by Name (keeping the first occurrence).
+func synthesizePanacheDSLEntities(sourceFile, rawFileImports string) []types.EntityRecord {
+	// Only emit DSL stubs when the file has a Quarkus Panache import.
+	hasPanache := false
+	for _, imp := range panacheImportSets {
+		if strings.Contains(rawFileImports, imp.prefix) {
+			hasPanache = true
+			break
+		}
+	}
+	if !hasPanache {
+		return nil
+	}
+
+	const synthFrom = panacheDSLSynthFrom
+
+	// PanacheQuery interface component entity.
+	pqComponent := types.EntityRecord{
+		Name:         "PanacheQuery",
+		Kind:         "SCOPE.Component",
+		Subtype:      "interface",
+		Language:     "java",
+		SourceFile:   sourceFile,
+		Signature:    "interface PanacheQuery<T>",
+		QualityScore: panacheSynthQuality,
+		Properties: map[string]string{
+			"synthesized_from": synthFrom,
+			"pattern_type":     "panache_dsl_interface",
+		},
+	}
+
+	// PanacheUpdate interface component entity.
+	puComponent := types.EntityRecord{
+		Name:         "PanacheUpdate",
+		Kind:         "SCOPE.Component",
+		Subtype:      "interface",
+		Language:     "java",
+		SourceFile:   sourceFile,
+		Signature:    "interface PanacheUpdate",
+		QualityScore: panacheSynthQuality,
+		Properties: map[string]string{
+			"synthesized_from": synthFrom,
+			"pattern_type":     "panache_dsl_interface",
+		},
+	}
+
+	// ReactivePanacheQuery interface component entity.
+	rpqComponent := types.EntityRecord{
+		Name:         "ReactivePanacheQuery",
+		Kind:         "SCOPE.Component",
+		Subtype:      "interface",
+		Language:     "java",
+		SourceFile:   sourceFile,
+		Signature:    "interface ReactivePanacheQuery<T>",
+		QualityScore: panacheSynthQuality,
+		Properties: map[string]string{
+			"synthesized_from": synthFrom,
+			"pattern_type":     "panache_dsl_interface",
+			"reactive":         "true",
+		},
+	}
+
+	var out []types.EntityRecord
+	out = append(out, pqComponent)
+	out = append(out, panacheQueryDSLMethods()...)
+	out = append(out, puComponent)
+	out = append(out, panacheUpdateDSLMethods()...)
+	out = append(out, rpqComponent)
+	out = append(out, reactivePanacheQueryDSLMethods()...)
+
+	// Stamp SourceFile on all method entities.
+	for i := range out {
+		if out[i].SourceFile == "" {
+			out[i].SourceFile = sourceFile
+		}
+	}
 	return out
 }

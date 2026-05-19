@@ -3,6 +3,8 @@ package java
 import (
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // -----------------------------------------------------------------------------
@@ -534,5 +536,358 @@ func TestSynthesizePanache_SQLEntity_HasProject(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected Book.project entity for projections support")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #818 — PanacheQuery / PanacheUpdate DSL synthesizer tests
+// ---------------------------------------------------------------------------
+
+// helper to call synthesizePanacheDSLEntities with a standard SQL Panache import.
+func dslEntities(t *testing.T) []types.EntityRecord {
+	t.Helper()
+	rawImports := "import io.quarkus.hibernate.orm.panache.PanacheEntity;\n"
+	entities := synthesizePanacheDSLEntities("/src/Order.java", rawImports)
+	if len(entities) == 0 {
+		t.Fatal("expected DSL entities, got none")
+	}
+	return entities
+}
+
+// helper to find by name in entity slice.
+func findDSLEntity(entities []types.EntityRecord, name string) (types.EntityRecord, bool) {
+	for _, e := range entities {
+		if e.Name == name {
+			return e, true
+		}
+	}
+	return types.EntityRecord{}, false
+}
+
+func TestSynthesizePanacheDSL_NilWhenNoPanacheImport(t *testing.T) {
+	rawImports := "import java.util.List;\nimport org.springframework.stereotype.Service;\n"
+	entities := synthesizePanacheDSLEntities("/src/MyService.java", rawImports)
+	if len(entities) != 0 {
+		t.Errorf("expected nil for non-Panache file, got %d entities", len(entities))
+	}
+}
+
+func TestSynthesizePanacheDSL_EmitsPanacheQueryInterface(t *testing.T) {
+	entities := dslEntities(t)
+	e, ok := findDSLEntity(entities, "PanacheQuery")
+	if !ok {
+		t.Fatal("expected PanacheQuery component entity")
+	}
+	if e.Kind != "SCOPE.Component" {
+		t.Errorf("PanacheQuery: expected Kind=SCOPE.Component, got %q", e.Kind)
+	}
+	if e.Subtype != "interface" {
+		t.Errorf("PanacheQuery: expected Subtype=interface, got %q", e.Subtype)
+	}
+	if e.Properties["synthesized_from"] != panacheDSLSynthFrom {
+		t.Errorf("PanacheQuery: expected synthesized_from=%s, got %q", panacheDSLSynthFrom, e.Properties["synthesized_from"])
+	}
+}
+
+func TestSynthesizePanacheDSL_EmitsPanacheUpdateInterface(t *testing.T) {
+	entities := dslEntities(t)
+	e, ok := findDSLEntity(entities, "PanacheUpdate")
+	if !ok {
+		t.Fatal("expected PanacheUpdate component entity")
+	}
+	if e.Kind != "SCOPE.Component" || e.Subtype != "interface" {
+		t.Errorf("PanacheUpdate: expected SCOPE.Component/interface, got %s/%s", e.Kind, e.Subtype)
+	}
+}
+
+func TestSynthesizePanacheDSL_EmitsReactivePanacheQueryInterface(t *testing.T) {
+	entities := dslEntities(t)
+	e, ok := findDSLEntity(entities, "ReactivePanacheQuery")
+	if !ok {
+		t.Fatal("expected ReactivePanacheQuery component entity")
+	}
+	if e.Kind != "SCOPE.Component" || e.Subtype != "interface" {
+		t.Errorf("ReactivePanacheQuery: expected SCOPE.Component/interface, got %s/%s", e.Kind, e.Subtype)
+	}
+	if e.Properties["reactive"] != "true" {
+		t.Error("ReactivePanacheQuery: expected reactive=true")
+	}
+}
+
+// --- PanacheQuery DSL method tests ---
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasList(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.list"); !ok {
+		t.Error("expected PanacheQuery.list entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasStream(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.stream"); !ok {
+		t.Error("expected PanacheQuery.stream entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasSingleResult(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.singleResult"); !ok {
+		t.Error("expected PanacheQuery.singleResult entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasSingleResultOptional(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.singleResultOptional"); !ok {
+		t.Error("expected PanacheQuery.singleResultOptional entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasFirstResult(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.firstResult"); !ok {
+		t.Error("expected PanacheQuery.firstResult entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasFirstResultOptional(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.firstResultOptional"); !ok {
+		t.Error("expected PanacheQuery.firstResultOptional entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasPage(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.page"); !ok {
+		t.Error("expected PanacheQuery.page entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasNextPage(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.nextPage"); !ok {
+		t.Error("expected PanacheQuery.nextPage entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasPreviousPage(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.previousPage"); !ok {
+		t.Error("expected PanacheQuery.previousPage entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasCount(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.count"); !ok {
+		t.Error("expected PanacheQuery.count (instance, DSL) entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasPageCount(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.pageCount"); !ok {
+		t.Error("expected PanacheQuery.pageCount entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasRange(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.range"); !ok {
+		t.Error("expected PanacheQuery.range entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasWithHint(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.withHint"); !ok {
+		t.Error("expected PanacheQuery.withHint entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasWithLock(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.withLock"); !ok {
+		t.Error("expected PanacheQuery.withLock entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasProject(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.project"); !ok {
+		t.Error("expected PanacheQuery.project entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasFilter(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.filter"); !ok {
+		t.Error("expected PanacheQuery.filter entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_HasIterator(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheQuery.iterator"); !ok {
+		t.Error("expected PanacheQuery.iterator entity")
+	}
+}
+
+// --- PanacheUpdate DSL method tests ---
+
+func TestSynthesizePanacheDSL_PanacheUpdate_HasWhere(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheUpdate.where"); !ok {
+		t.Error("expected PanacheUpdate.where entity")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheUpdate_HasWhereOptional(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "PanacheUpdate.whereOptional"); !ok {
+		t.Error("expected PanacheUpdate.whereOptional entity")
+	}
+}
+
+// --- ReactivePanacheQuery DSL method tests ---
+
+func TestSynthesizePanacheDSL_Reactive_HasList(t *testing.T) {
+	entities := dslEntities(t)
+	e, ok := findDSLEntity(entities, "ReactivePanacheQuery.list")
+	if !ok {
+		t.Fatal("expected ReactivePanacheQuery.list entity")
+	}
+	if e.Properties["reactive"] != "true" {
+		t.Error("ReactivePanacheQuery.list: expected reactive=true")
+	}
+	if !strings.Contains(e.Signature, "Uni<") {
+		t.Errorf("ReactivePanacheQuery.list: expected Uni<> return, got %q", e.Signature)
+	}
+}
+
+func TestSynthesizePanacheDSL_Reactive_HasStream(t *testing.T) {
+	entities := dslEntities(t)
+	e, ok := findDSLEntity(entities, "ReactivePanacheQuery.stream")
+	if !ok {
+		t.Fatal("expected ReactivePanacheQuery.stream entity")
+	}
+	if !strings.Contains(e.Signature, "Multi<") {
+		t.Errorf("ReactivePanacheQuery.stream: expected Multi<> return, got %q", e.Signature)
+	}
+}
+
+func TestSynthesizePanacheDSL_Reactive_HasCount(t *testing.T) {
+	entities := dslEntities(t)
+	e, ok := findDSLEntity(entities, "ReactivePanacheQuery.count")
+	if !ok {
+		t.Fatal("expected ReactivePanacheQuery.count entity")
+	}
+	if !strings.Contains(e.Signature, "Uni<") {
+		t.Errorf("ReactivePanacheQuery.count: expected Uni<Long> return, got %q", e.Signature)
+	}
+}
+
+func TestSynthesizePanacheDSL_Reactive_HasFirstResult(t *testing.T) {
+	entities := dslEntities(t)
+	if _, ok := findDSLEntity(entities, "ReactivePanacheQuery.firstResult"); !ok {
+		t.Error("expected ReactivePanacheQuery.firstResult entity")
+	}
+}
+
+// --- Quality and metadata tests ---
+
+func TestSynthesizePanacheDSL_AllEntitiesHaveCorrectQualityScore(t *testing.T) {
+	entities := dslEntities(t)
+	for _, e := range entities {
+		if e.QualityScore != panacheSynthQuality {
+			t.Errorf("entity %s: expected QualityScore=%.1f, got %.1f", e.Name, panacheSynthQuality, e.QualityScore)
+		}
+	}
+}
+
+func TestSynthesizePanacheDSL_AllEntitiesHaveSourceFile(t *testing.T) {
+	rawImports := "import io.quarkus.hibernate.orm.panache.PanacheEntity;\n"
+	entities := synthesizePanacheDSLEntities("/repo/src/Order.java", rawImports)
+	for _, e := range entities {
+		if e.SourceFile == "" {
+			t.Errorf("entity %s: expected non-empty SourceFile", e.Name)
+		}
+	}
+}
+
+func TestSynthesizePanacheDSL_AllMethodEntitiesHaveDSLSynthFrom(t *testing.T) {
+	entities := dslEntities(t)
+	for _, e := range entities {
+		if e.Kind != "SCOPE.Operation" {
+			continue
+		}
+		if e.Properties["synthesized_from"] != panacheDSLSynthFrom {
+			t.Errorf("entity %s: expected synthesized_from=%s, got %q", e.Name, panacheDSLSynthFrom, e.Properties["synthesized_from"])
+		}
+		if e.Properties["pattern_type"] != "panache_dsl_method" {
+			t.Errorf("entity %s: expected pattern_type=panache_dsl_method, got %q", e.Name, e.Properties["pattern_type"])
+		}
+	}
+}
+
+func TestSynthesizePanacheDSL_MinimumMethodCount(t *testing.T) {
+	entities := dslEntities(t)
+	// Count operation entities only.
+	opCount := 0
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Operation" {
+			opCount++
+		}
+	}
+	// PanacheQuery (24) + PanacheUpdate (4) + ReactivePanacheQuery (22) = 50+
+	if opCount < 40 {
+		t.Errorf("expected at least 40 DSL operation entities, got %d", opCount)
+	}
+}
+
+func TestSynthesizePanacheDSL_ReactivePanacheImport(t *testing.T) {
+	// Reactive Panache import should also trigger DSL synthesis.
+	rawImports := "import io.quarkus.hibernate.reactive.panache.PanacheEntity;\n"
+	entities := synthesizePanacheDSLEntities("/src/Task.java", rawImports)
+	if len(entities) == 0 {
+		t.Fatal("expected DSL entities for reactive Panache import, got none")
+	}
+	if _, ok := findDSLEntity(entities, "PanacheQuery.list"); !ok {
+		t.Error("expected PanacheQuery.list for reactive Panache import")
+	}
+}
+
+func TestSynthesizePanacheDSL_MongoPanacheImport(t *testing.T) {
+	// MongoDB Panache import should also trigger DSL synthesis.
+	rawImports := "import io.quarkus.mongodb.panache.PanacheMongoEntity;\n"
+	entities := synthesizePanacheDSLEntities("/src/Article.java", rawImports)
+	if len(entities) == 0 {
+		t.Fatal("expected DSL entities for MongoDB Panache import, got none")
+	}
+}
+
+func TestSynthesizePanacheDSL_PanacheQuery_AllDSLMethodsHaveOwnerProperty(t *testing.T) {
+	entities := dslEntities(t)
+	for _, e := range entities {
+		if e.Kind != "SCOPE.Operation" {
+			continue
+		}
+		if e.Properties["owner"] == "" {
+			t.Errorf("entity %s: missing owner property", e.Name)
+		}
+		// Verify owner matches the entity name prefix.
+		expectedOwner := ""
+		if strings.HasPrefix(e.Name, "PanacheQuery.") {
+			expectedOwner = "PanacheQuery"
+		} else if strings.HasPrefix(e.Name, "PanacheUpdate.") {
+			expectedOwner = "PanacheUpdate"
+		} else if strings.HasPrefix(e.Name, "ReactivePanacheQuery.") {
+			expectedOwner = "ReactivePanacheQuery"
+		}
+		if expectedOwner != "" && e.Properties["owner"] != expectedOwner {
+			t.Errorf("entity %s: expected owner=%s, got %q", e.Name, expectedOwner, e.Properties["owner"])
+		}
 	}
 }
