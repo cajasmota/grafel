@@ -72,6 +72,7 @@ below; per-tool tables omit them unless the semantics differ.
 | [`archigraph_inspect`](#archigraph_inspect) | Look up an entity by id, qualified name, or label. |
 | [`archigraph_expand`](#archigraph_expand) | Return neighbors of a node out to a given depth. |
 | [`archigraph_trace`](#archigraph_trace) | Confidence-weighted shortest path between two nodes. |
+| [`archigraph_traces`](#archigraph_traces) | Process-flow traces (action: list\|get\|follow). |
 | [`archigraph_clusters`](#archigraph_clusters) | List Louvain communities across the loaded graphs. |
 | [`archigraph_stats`](#archigraph_stats) | Corpus-level metrics for the resolved group. |
 | [`archigraph_enrichments`](#archigraph_enrichments) | Manage enrichment candidates (action: list\|submit\|reject). |
@@ -288,6 +289,65 @@ use the link's recorded confidence (default `0.7` if unset). Returns
 
 The response also carries a `findings` array — every saved finding whose
 `nodes` list references any node along the resolved `path`. (Refs #59.)
+
+---
+
+### `archigraph_traces`
+
+Process-flow query surface (#724). Surfaces the `SCOPE.Process` entities
+emitted by the indexer's Pass 7 BFS over the CALLS graph from
+heuristically-detected entry points (route handlers, `main`, framework
+lifecycle hooks). Each Process is a linearized call chain with
+`STEP_IN_PROCESS` edges (step_index ordered) and an `ENTRY_POINT_OF`
+edge from the entry function.
+
+Three sub-actions selected via the required `action` argument:
+
+- `list` — return top-ranked Processes for the resolved group, sorted
+  cross-stack first then by step count. Optional `cross_stack_only=true`
+  filters to chains that traverse an HTTP boundary.
+- `get` — return the full step chain for one `process_id` (bare or
+  `repo::local` prefixed). Steps include node id, name, kind,
+  source_file, and start_line.
+- `follow` — ad-hoc forward BFS from any `entry_point_id`. Useful for
+  probing entities that weren't selected as pre-computed entry points.
+  Honours `max_depth` (≤10) and `branching_factor` (≤4) caps.
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `action` | string | yes | — | `list` \| `get` \| `follow` |
+| `process_id` | string | conditional | — | (`get`) Process entity id. |
+| `entry_point_id` | string | conditional | — | (`follow`) Entity id of the entry function. |
+| `max_depth` | number | no | `8` | (`follow`) BFS depth cap. Clamped to ≤10. |
+| `branching_factor` | number | no | `3` | (`follow`) Per-step branch cap. Clamped to ≤4. |
+| `cross_stack_only` | bool | no | `false` | (`list`) Only return cross-stack Processes. |
+| `limit` | number | no | `25` | (`list`) Max processes returned. |
+| `repo_filter` | string[] | no | `[]` | Common arg. |
+| `group`, `cwd` | string | no | — | Common args. |
+
+**Output** (action=list) — JSON object:
+
+```json
+{
+  "count": 2,
+  "processes": [
+    {
+      "process_id": "cf-d::proc:df0cd633e7f8f7f4",
+      "repo": "cf-d",
+      "label": "OrdersPublicController.processOrder → Correlative",
+      "entry_id": "b95e636c1955e82f",
+      "entry_name": "OrdersPublicController.processOrder",
+      "terminal_id": "d358909b92891554",
+      "step_count": 7,
+      "cross_stack": true,
+      "chain_labels": ["OrdersPublicController.processOrder", "OrdersService.processOrderByEcwidNumber", "..."],
+      "source_file": "src/main/java/.../OrdersPublicController.java"
+    }
+  ]
+}
+```
 
 ---
 
