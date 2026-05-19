@@ -4183,6 +4183,87 @@ var pythonExternalBaseTypes = map[string]struct{}{
 	"WD_PARAGRAPH_ALIGNMENT": {},
 	"WD_TABLE_ALIGNMENT":   {},
 	"WD_LINE_SPACING":      {},
+
+	// pandas wave (post-wave-4 residual at 9.80% → ship-gate <=5%).
+	// Structural-ref EXTENDS targets — stdlib + typing base classes
+	// frequently used as Python class parents that previously hit
+	// bug-extractor because the resolver could not find a definition.
+	// Each is conservative: well-known stdlib/typing class names that
+	// can be a parent (`class Foo(NamedTuple)`, `class C(TypedDict)`,
+	// `class M(ChainMap)`, `class S(Enum)`, `class L(list)`).
+	"NamedTuple": {}, // typing.NamedTuple
+	"TypedDict":  {}, // typing.TypedDict
+	"Enum":       {}, // enum.Enum
+	"IntEnum":    {}, // enum.IntEnum
+	"StrEnum":    {}, // enum.StrEnum
+	"Flag":       {}, // enum.Flag
+	"ChainMap":   {}, // collections.ChainMap
+	"list":       {}, // builtin list (used as parent for FrozenList etc.)
+	"dict":       {}, // builtin dict
+	"tuple":      {}, // builtin tuple
+	"set":        {}, // builtin set
+	"type":       {}, // builtin type (metaclass-as-base usage)
+	// Generic / Protocol already in map above.
+
+	// pandas-internal mixin/ABC base classes — these are pandas's own
+	// public-internal hierarchy roots that subclasses across the
+	// codebase extend. They land in bug-resolver (ambig-kind) because
+	// the resolver sees multi-kind matches; allowlisting them as
+	// external-known base types routes EXTENDS edges to ExternalKnown
+	// cleanly. Distinctive pandas names — no plausible Django/Flask
+	// collision.
+	"PandasObject":               {},
+	"OpsMixin":                   {},
+	"SelectionMixin":             {},
+	"IndexOpsMixin":              {},
+	"GroupByIndexingMixin":       {},
+	"NoNewAttributesMixin":       {},
+	"PandasDelegate":             {},
+	"ExtensionArray":             {},
+	"ExtensionDtype":             {},
+	"BaseStringArray":            {},
+	"BaseMaskedArray":            {},
+	"BaseMaskedDtype":            {},
+	"NumericArray":               {},
+	"NDArrayBackedExtensionArray": {},
+	"NDArrayBackedExtensionIndex": {},
+	"NDArrayBacked":              {},
+	"NDFrame":                    {},
+	"NDFrameIndexerBase":         {},
+	"NDFrameDescriberAbstract":   {},
+	"IntervalMixin":              {},
+	"DatetimeTimedeltaMixin":     {},
+	"DatetimeIndexOpsMixin":      {},
+	"DatetimeLikeArrayMixin":     {},
+	"DataFrameXchg":              {},
+	"PandasDataFrameXchg":        {},
+	"ArrowExtensionArray":        {},
+	"ArrowStringArrayMixin":      {},
+	"ObjectStringArrayMixin":     {},
+	"StorageExtensionDtype":      {},
+	"ExtensionArrayNaResult":     {},
+	"PeriodDtypeBase":            {},
+	"_GroupByMixin":              {},
+	"GroupBy":                    {},
+	"BaseGroupBy":                {},
+	"BaseWindow":                 {},
+	"BaseWindowGroupby":          {},
+	"RollingAndExpandingMixin":   {},
+	// pandas interchange protocol abstract bases (in
+	// pandas/core/interchange/dataframe_protocol.py).
+	"ABC": {}, // abc.ABC (used as `class Foo(ABC)`)
+	"ABCMeta": {}, // abc.ABCMeta — also surfaces via metaclass kwarg parser leak
+
+	// pandas wave pass-2 — more pandas-internal mixin/base classes
+	// surfaced in post-pass-1 bug-resolver residual.
+	"NumericDtype":           {},
+	"Buffer":                 {},
+	"NumpyExtensionArray":    {},
+	"Grouper":                {},
+	"ExtensionIndex":         {},
+	"DirNamesMixin":          {},
+	"DatetimeLikeBlock":      {},
+	"BaseExprVisitor":        {},
 }
 
 // javaExternalBaseTypes is the Java-language-gated allowlist of

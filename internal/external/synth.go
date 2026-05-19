@@ -8979,6 +8979,171 @@ var pythonBareNames = map[string]struct{}{
 	"get_loc":                    {},
 	"get_indexer":                {},
 
+	// pandas wave (post-wave-4 residual at 9.80%, target <=5%).
+	// PyArrow ChunkedArray / Array / scalar receiver-strips — pandas-Arrow
+	// bridge surface in pandas/core/arrays/arrow/*.py. These arrive bare
+	// after `pa_array.is_null()` → `is_null`, `scalar.as_py()` → `as_py`,
+	// `arr.combine_chunks()` → `combine_chunks` etc. All distinctive
+	// pyarrow idioms (no plausible user-method collision in python).
+	"is_timestamp":      {},
+	"is_duration":       {},
+	"is_nan_na":         {},
+	"is_large_string":   {},
+	"is_large_binary":   {},
+	"is_decimal":        {},
+	"is_dictionary":     {},
+	"is_pdna_or_none":   {},
+	"as_py":             {},
+	"as_unit":           {},
+	"combine_chunks":    {},
+	"iterchunks":        {},
+	"fill_null":         {},
+	"replace_with_mask": {},
+	"to_pandas_dtype":   {},
+	"type_for_alias":    {},
+	"negate_checked":    {},
+	"pyarrow_meth":      {},
+	"remask":            {},
+	// pyarrow type-test predicates — `is_string`, `is_floating`,
+	// `is_boolean`, `is_date`, `is_time`, `is_null`, `is_nan` collide
+	// with possible user-method names but the python gate keeps the
+	// allowlist scoped to python-only resolution, so this only shadows
+	// receiver-stripped same-named python user methods. Acceptable
+	// trade per wave-7 safer-bias rule (high pandas/pyarrow signal).
+	"is_string":   {},
+	"is_floating": {},
+	"is_boolean":  {},
+	"is_date":     {},
+	"is_time":     {},
+	"is_null":     {},
+	"is_nan":      {},
+	// pyarrow scalar constructors / dtype names — distinctive numeric-
+	// dtype names not in numpy allowlist yet.
+	"int32":    {},
+	"int64":    {},
+	"duration": {},
+	"timestamp": {},
+	// pandas-internal helper functions surfaced as `cls`-receiver bare
+	// names from `cls._from_sequence(...)` chains. Wave-4 added
+	// `_simple_new`/`_from_sequence`/`_constructor`; rest below are
+	// other distinctive `_<helper>` patterns from pandas/core internals
+	// (underscore-prefix + pandas-only naming → safe).
+	"_gotitem":                    {},
+	"_get_axis_number":            {},
+	"maybe_dispatch_ufunc_to_dunder_op": {},
+	// pandas error class — receiver-stripped from `errors.SpecificationError`.
+	"SpecificationError": {},
+	// pandas internal `pprint_thing` helper from io/formats.
+	"pprint_thing": {},
+
+	// pandas wave pass-2 — additional pyarrow.compute (pc.*) function
+	// surface receiver-stripped from `pc.is_temporal(arr)`,
+	// `pc.equal(a, b)`, `pc.dictionary_encode(x)` etc across
+	// pandas/core/arrays/arrow/*. All names below are distinctive
+	// pyarrow.compute identifiers — generic verbs (`equal`, `divide`,
+	// `multiply`, `keys`, `items`, `apply`, `append`, `pop`, `length`,
+	// `func`, `op`, `cls`, `view`, `transform`, `search`, `repeat`,
+	// `wrap`, `pop`, `empty`, `count`, `quantile`, `value_counts`,
+	// `partition`, `quarter`, `hour`, `minute`, `second`, `day`,
+	// `month`, `year`) deliberately EXCLUDED — too collision-prone.
+	// `if_else`, `is_in`, `index_in` deliberately included — distinctive.
+	"if_else":                {},
+	"is_temporal":            {},
+	"is_binary":              {},
+	"is_list":                {},
+	"is_large_list":          {},
+	"is_fixed_size_list":     {},
+	"is_fixed_size_binary":   {},
+	"is_struct":              {},
+	"is_map":                 {},
+	"is_date64":              {},
+	"is_leap_year":           {},
+	"is_string_array":        {},
+	"large_string":           {},
+	"floor_temporal":         {},
+	"ceil_temporal":          {},
+	"days_between":           {},
+	"local_timestamp":        {},
+	"dictionary_encode":      {},
+	"concat_arrays":          {},
+	"array_sort_indices":     {},
+	"to_pylist":              {},
+	"not_equal":              {},
+	"less_equal":             {},
+	"greater_equal":          {},
+	"or_kleene":              {},
+	"fill_null_backward":     {},
+	"fill_null_forward":      {},
+	"drop_null":              {},
+	"struct_field":           {},
+	"list_flatten":           {},
+	"list_value_length":      {},
+	"split_pattern":          {},
+	"count_substring_regex":  {},
+	"binary_repeat":          {},
+	"binary_join":            {},
+	"divide_checked":         {},
+	"sqrt_checked":           {},
+	"pairwise_diff_checked":  {},
+	"utf8_capitalize":        {},
+	"utf8_split_whitespace":  {},
+	"utf8_normalize":         {},
+	"utf8_zfill":             {},
+	"index_in":               {},
+	"is_in":                  {},
+	"from_numpy_dtype":       {},
+	"from_arrays":            {},
+	"iso_calendar":           {},
+	"pa_contains":            {},
+	"_safe_fill_null":        {},
+	"_box_pa_array":          {},
+	"__arrow_array__":        {},
+	"maybe_convert_objects":  {},
+	"maybe_get_tz":           {},
+	"infer_dtype":            {},
+	"validate_na_arg":        {},
+	"to_pydatetime":          {},
+	"to_pytimedelta":         {},
+	"to_offset":              {},
+	"time64":                 {},
+	"uint64":                 {},
+	"bool_":                  {},
+	"list_":                  {},
+	"and_":                   {},
+	"or_":                    {},
+	"invert":                 {},
+	"rounding_method":        {},
+	"regex_parser":           {},
+	"has_unsupported_code":   {},
+
+	// pandas wave pass-3 — additional pyarrow.compute / numpy /
+	// warnings / pandas-internal helpers from post-pass-2 residual.
+	// `warn` (warnings.warn), `filterwarnings`, `catch_warnings`,
+	// `errstate` (numpy.errstate) — distinctive stdlib/numpy idioms.
+	"filterwarnings":             {},
+	"catch_warnings":             {},
+	"errstate":                   {},
+	"utf8_slice_codeunits":       {},
+	"utf8_length":                {},
+	"string_is_ascii":            {},
+	"starts_with":                {},
+	"ends_with":                  {},
+	"is_monotonic":               {},
+	"add_tmp":                    {},
+	"has_reference":              {},
+	"get_window_bounds":          {},
+	"_consolidate_inplace":       {},
+	"DataError":                  {},
+	"map_infer_mask":             {},
+	"homogeneous_func":           {},
+	"validate_stat_ddof_func":    {},
+	"scalar_fillna_inplace":      {},
+	"tz_convert":                 {},
+	"tile":                       {},
+	"stringify":                  {},
+	"argsort":                    {},
+	"pc_func":                    {},
+
 	// Wave-6 (client-fixture-a, Django + MongoDB). Pulled from the
 	// post-wave-5 bug-extractor sample on client-fixture-a (Django
 	// REST + PyMongo backend at 11.99% pre-wave). All names below
@@ -9927,6 +10092,13 @@ var knownExternalPackages = map[string]struct{}{
 	"numpy":             {},
 	"pandas":            {},
 	"scipy":             {},
+	// pandas wave — pyarrow is the pandas Arrow backend; cython is
+	// the build-time accelerator imported by pandas/_libs/*.pyx
+	// generated stubs. Both arrive as top-level `import pyarrow as pa`
+	// / `import cython` and as submodule chains
+	// (`pyarrow.compute`, `pyarrow.types`, `cython.parallel`).
+	"pyarrow": {},
+	"cython":  {},
 	"pytest":            {},
 	"mypy":              {},
 	"attrs":             {},
