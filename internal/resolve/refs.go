@@ -2170,10 +2170,10 @@ func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) 
 	return "", statusUnmatched
 }
 
-// componentKindFamily / operationKindFamily are the entity-kind families
-// the hint resolver biases toward for type-shaped vs call-shaped edges.
-// Centralising the slices keeps hintKinds and structuralKindFamilies in
-// agreement (issue #49).
+// componentKindFamily / operationKindFamily / schemaKindFamily are the
+// entity-kind families the hint resolver biases toward for type-shaped vs
+// call-shaped vs field-shaped edges. Centralising the slices keeps
+// hintKinds and structuralKindFamilies in agreement (issue #49).
 var (
 	componentKindFamily = []string{
 		"Component", "Class", "View", "Model",
@@ -2184,6 +2184,16 @@ var (
 	operationKindFamily = []string{
 		"Operation", "Function", "Method",
 		scopeKindPrefix + "Operation",
+	}
+	// schemaKindFamily covers field / schema / property entities (issue #778).
+	// Used by structuralKindFamilies to disambiguate scope:schema:field:*
+	// structural refs when byLocation finds both a SCOPE.Schema and a
+	// SCOPE.Operation entity with the same (file, name) — a common pattern
+	// when a Java class declares a field and a getter/setter with the same
+	// leaf name (e.g. Cell.borderTop field + Cell.borderTop setter).
+	schemaKindFamily = []string{
+		"Schema", "Field", "Property",
+		scopeKindPrefix + "Schema",
 	}
 )
 
@@ -2528,14 +2538,22 @@ func (idx Index) lookupUniqueRealComponentByName(name string) (string, bool) {
 }
 
 // structuralKindFamilies maps a scope-kind segment from a structural ref
-// (e.g. "component", "operation") to the entity-kind families it might be
-// indexed under. Returns nil for unknown segments.
+// (e.g. "component", "operation", "schema") to the entity-kind families it
+// might be indexed under. Returns nil for unknown segments.
+//
+// Issue #778 — add "schema" so scope:schema:field:java:* stubs resolve via
+// lookupLocationKind using schemaKindFamily instead of falling through to
+// the kind-agnostic byLocation fallback, which hits ambiguity when a Java
+// class declares both a field and a getter/setter sharing the same
+// qualified name (e.g. Cell.borderTop as SCOPE.Schema + SCOPE.Operation).
 func structuralKindFamilies(scopeKind string) []string {
 	switch strings.ToLower(scopeKind) {
 	case "component":
 		return componentKindFamily
 	case "operation":
 		return operationKindFamily
+	case "schema":
+		return schemaKindFamily
 	}
 	return nil
 }
@@ -2797,6 +2815,93 @@ func (idx Index) lookupPackageMember(pkgDir, receiverType, member string) (strin
 	return id, true
 }
 
+// lookupMemberByLeafName scans byMember[filePath] for any scope whose
+// member bucket contains memberName. Returns (id, true) only when exactly
+// one scope inside the file has a member by that name and the match is
+// unambiguous (non-blank sentinel). Returns ("", false) when the name is
+// missing from all scopes, or ("", false) when two or more scopes share
+// a member of the same leaf name (caller must not guess).
+//
+// Issue #778 — Java CALLS resolution. The Java extractor emits method
+// entities as "ClassName.method" (qualified name). A bare-name CALLS stub
+// "method" never reaches byPackageOperation (which only indexes non-dotted
+// names). Scanning byMember for the leaf name is the correct fallback:
+// a caller inside InventoryService calling `merge()` should bind to
+// byMember[callerFile]["InventoryService"]["merge"].
+func (idx Index) lookupMemberByLeafName(filePath, memberName string) (string, bool) {
+	if filePath == "" || memberName == "" {
+		return "", false
+	}
+	fileBucket := idx.byMember[filePath]
+	if fileBucket == nil {
+		return "", false
+	}
+	var match string
+	ambig := false
+	for _, scopeBucket := range fileBucket {
+		id, ok := scopeBucket[memberName]
+		if !ok {
+			continue
+		}
+		if id == "" {
+			// Blank sentinel within this scope = ambiguous member for this scope.
+			// Two different overloads in the same class — can't resolve.
+			ambig = true
+			break
+		}
+		if match != "" && match != id {
+			// Two different scopes each have a member named memberName —
+			// ambiguous across scopes; do not pick one.
+			ambig = true
+			break
+		}
+		match = id
+	}
+	if ambig || match == "" {
+		return "", false
+	}
+	return match, true
+}
+
+// lookupPackageMemberByLeafName scans byPackageMember[pkgDir] for any
+// scope whose member bucket contains memberName. Returns (id, true) only
+// when exactly one scope in the package has an unambiguous member by that
+// name. Same semantics as lookupMemberByLeafName but package-scoped (for
+// cross-file same-package CALLS in Java/Kotlin).
+//
+// Issue #778 — package-level fallback after the same-file scan misses
+// (e.g. when the callee is defined in a sibling file of the same package).
+func (idx Index) lookupPackageMemberByLeafName(pkgDir, memberName string) (string, bool) {
+	if pkgDir == "" || memberName == "" {
+		return "", false
+	}
+	pkgBucket := idx.byPackageMember[pkgDir]
+	if pkgBucket == nil {
+		return "", false
+	}
+	var match string
+	ambig := false
+	for _, scopeBucket := range pkgBucket {
+		id, ok := scopeBucket[memberName]
+		if !ok {
+			continue
+		}
+		if id == "" {
+			ambig = true
+			break
+		}
+		if match != "" && match != id {
+			ambig = true
+			break
+		}
+		match = id
+	}
+	if ambig || match == "" {
+		return "", false
+	}
+	return match, true
+}
+
 // isComponentTargetKind reports whether the relationship-kind's natural
 // ToID shape is a Component. Used to gate the byPackageComponent fast-
 // path so call-shaped edges (CALLS) don't accidentally bind to a same-
@@ -2864,6 +2969,22 @@ func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir str
 		return id, st
 	}
 	if st == statusAmbiguous && (callerFile != "" || callerPkgDir != "") {
+		if localID, ok := idx.lookupBareWithLocality(ref, relKind, callerFile, callerPkgDir); ok {
+			return localID, statusRewritten
+		}
+	}
+	// Issue #778 — Java bare CALLS to qualified-name operations.
+	// The global bare-name lookup returns statusUnmatched for bare stubs
+	// like "merge" or "findRawById" because the entity is named
+	// "InventoryService.merge" (qualified). lookupBareWithLocality is
+	// only called on statusAmbiguous, so it never fires. Extend to also
+	// probe the byMember leaf-name index when the stub is unmatched and
+	// the relationship kind is CALLS with caller context available.
+	// We do NOT extend this to other relationship kinds (EXTENDS,
+	// IMPLEMENTS) because those shapes use Component-family targets which
+	// do not carry qualified names in this way.
+	if st == statusUnmatched && (callerFile != "" || callerPkgDir != "") &&
+		strings.ToUpper(relKind) == "CALLS" && !strings.ContainsAny(ref, ":.#") {
 		if localID, ok := idx.lookupBareWithLocality(ref, relKind, callerFile, callerPkgDir); ok {
 			return localID, statusRewritten
 		}
@@ -2942,6 +3063,26 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 		case "CALLS":
 			if bucket, ok := idx.byPackageOperation[callerPkgDir]; ok {
 				if id, ok := bucket[name]; ok && id != "" {
+					return id, true
+				}
+			}
+			// Issue #778 — Java bare CALLS to qualified-name methods.
+			// The Java extractor emits method entities with qualified names
+			// ("InventoryService.merge") so they land in byMember[file][scope][name]
+			// rather than byPackageOperation (which only indexes non-dotted names).
+			// When a bare CALLS stub like "merge" reaches here, scan byMember
+			// for the callerFile first and then byPackageMember for the callerPkgDir.
+			// Return the match only when exactly ONE scope declares a member
+			// by this bare name — if two different scopes both declare "find",
+			// we cannot pick without additional type information and leave the
+			// stub unresolved (correct: ambiguous, not a false bind).
+			if callerFile != "" {
+				if id, ok := idx.lookupMemberByLeafName(callerFile, name); ok {
+					return id, true
+				}
+			}
+			if callerPkgDir != "" {
+				if id, ok := idx.lookupPackageMemberByLeafName(callerPkgDir, name); ok {
 					return id, true
 				}
 			}

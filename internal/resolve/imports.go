@@ -129,6 +129,13 @@ type ImportTable struct {
 	// IMPORTS resolution (issue #485 PHP wave-3 follow-up).
 	entityFile map[string]string
 	entityKind map[string]string
+	// candidatesByModuleName[module_path][name] = all entity IDs that were
+	// seen for this (module, name) pair, including the ones that caused
+	// the ambiguity. Populated alongside ambigModuleName so that
+	// lookupModuleEntityJavaCanonical can apply a Java-specific tie-break
+	// (prefer the entity whose SourceFile basename matches the class name)
+	// without requiring a full entity scan. Issue #778.
+	candidatesByModuleName map[string]map[string][]string
 	// methodsByFileName[source_file][method_name] = entity_id, populated
 	// only for PHP method entities and only when the (file, name) tuple
 	// resolves to exactly one entity. Ambiguous tuples are tracked in
@@ -178,20 +185,21 @@ type ImportTable struct {
 // rewrites a CALLS target.
 func BuildImportTable(records []types.EntityRecord) ImportTable {
 	tbl := ImportTable{
-		byFile:               make(map[string]map[string]ImportBinding),
-		ambig:                make(map[string]map[string]bool),
-		wildcardModules:      make(map[string][]string),
-		modulesByName:        make(map[string]map[string]bool),
-		entitiesByModuleName: make(map[string]map[string]string),
-		ambigModuleName:      make(map[string]map[string]bool),
-		entityFile:           make(map[string]string),
-		entityKind:           make(map[string]string),
-		methodsByFileName:    make(map[string]map[string]string),
-		ambigMethodFileName:  make(map[string]map[string]bool),
-		docByFilePath:        make(map[string]string),
-		docByFilePathRank:    make(map[string]int),
-		docByDir:             make(map[string]string),
-		localNamesByFile:     make(map[string]map[string]bool),
+		byFile:                 make(map[string]map[string]ImportBinding),
+		ambig:                  make(map[string]map[string]bool),
+		wildcardModules:        make(map[string][]string),
+		modulesByName:          make(map[string]map[string]bool),
+		entitiesByModuleName:   make(map[string]map[string]string),
+		ambigModuleName:        make(map[string]map[string]bool),
+		entityFile:             make(map[string]string),
+		entityKind:             make(map[string]string),
+		candidatesByModuleName: make(map[string]map[string][]string),
+		methodsByFileName:      make(map[string]map[string]string),
+		ambigMethodFileName:    make(map[string]map[string]bool),
+		docByFilePath:          make(map[string]string),
+		docByFilePathRank:      make(map[string]int),
+		docByDir:               make(map[string]string),
+		localNamesByFile:       make(map[string]map[string]bool),
 	}
 
 	// Pass 1 — per-file import bindings.
@@ -320,6 +328,24 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 			files[normalizePath(e.SourceFile)] = true
 
 			if tbl.ambigModuleName[mod] != nil && tbl.ambigModuleName[mod][e.Name] {
+				// Still record this entity as a candidate so
+				// lookupModuleEntityJavaCanonical can apply the
+				// canonical-file tie-break even when earlier collisions
+				// already set the ambig flag (issue #778). Without this,
+				// entities that arrive after two non-canonical ones have
+				// already triggered ambig are silently excluded from the
+				// candidate list and the canonical SCOPE.Component is
+				// never considered.
+				incomingFileLate := normalizePath(e.SourceFile)
+				if incomingFileLate != "" {
+					if tbl.candidatesByModuleName[mod] == nil {
+						tbl.candidatesByModuleName[mod] = make(map[string][]string)
+					}
+					tbl.candidatesByModuleName[mod][e.Name] = append(
+						tbl.candidatesByModuleName[mod][e.Name], e.ID)
+					tbl.entityFile[e.ID] = incomingFileLate
+					tbl.entityKind[e.ID] = e.Kind
+				}
 				continue
 			}
 			bucket := tbl.entitiesByModuleName[mod]
@@ -367,8 +393,48 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 						bucket[e.Name] = e.ID
 						tbl.entityFile[e.ID] = incomingFile
 						tbl.entityKind[e.ID] = e.Kind
+						// Also replace the existing entity in candidatesByModuleName
+						// with the preferred incoming entity so
+						// lookupModuleEntityJavaCanonical sees the canonical
+						// SCOPE.* entity even when a later Dependency collision
+						// re-reads the candidates list (issue #778 follow-up).
+						if tbl.candidatesByModuleName[mod] != nil {
+							prev := tbl.candidatesByModuleName[mod][e.Name]
+							updated := prev[:0:len(prev)] // same backing array, zero length
+							for _, cid := range prev {
+								if cid == existing {
+									updated = append(updated, e.ID)
+								} else {
+									updated = append(updated, cid)
+								}
+							}
+							tbl.candidatesByModuleName[mod][e.Name] = updated
+						}
 					}
 					continue
+				}
+				// Record both the evicted entity and the incoming entity as
+				// candidates so lookupModuleEntityJavaCanonical can apply a
+				// Java file-name tie-break later (issue #778).
+				if tbl.candidatesByModuleName[mod] == nil {
+					tbl.candidatesByModuleName[mod] = make(map[string][]string)
+				}
+				candidates := tbl.candidatesByModuleName[mod][e.Name]
+				if len(candidates) == 0 {
+					candidates = []string{existing}
+				}
+				candidates = append(candidates, e.ID)
+				tbl.candidatesByModuleName[mod][e.Name] = candidates
+				// Ensure entityFile is populated for the incoming entity too —
+				// it never reaches the first-write path below, so we must
+				// record its SourceFile here. Without this, entityFile[e.ID]
+				// stays "" and lookupModuleEntityJavaCanonical silently skips
+				// the canonical entity when it happens to arrive second.
+				// (incomingFile is already computed above for the same-file
+				// dedup check.)
+				if incomingFile != "" {
+					tbl.entityFile[e.ID] = incomingFile
+					tbl.entityKind[e.ID] = e.Kind
 				}
 				delete(bucket, e.Name)
 				if tbl.ambigModuleName[mod] == nil {
@@ -376,6 +442,14 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 				}
 				tbl.ambigModuleName[mod][e.Name] = true
 				continue
+			}
+			// Also record every first-write as a candidate so subsequent
+			// collisions have the evicted ID available (issue #778).
+			if tbl.candidatesByModuleName[mod] == nil {
+				tbl.candidatesByModuleName[mod] = make(map[string][]string)
+			}
+			if len(tbl.candidatesByModuleName[mod][e.Name]) == 0 {
+				tbl.candidatesByModuleName[mod][e.Name] = []string{e.ID}
 			}
 			bucket[e.Name] = e.ID
 			tbl.entityFile[e.ID] = normalizePath(e.SourceFile)
@@ -901,6 +975,20 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, boo
 			if id, ok := t.lookupModuleEntity(b.SourceModule, b.ImportedName); ok {
 				return id, true
 			}
+			// Issue #778 — Java canonical tie-break for bare CALLS that
+			// map to an ambiguous (module, name) tuple. When the generic
+			// module lookup fails (two entities share the class name, e.g.
+			// the canonical WSException.java entity PLUS a hierarchy-
+			// inference entity in EntityNotFoundException.java), try the
+			// file-name tie-break: prefer the entity whose SourceFile
+			// basename matches the class name ("WSException.java" →
+			// "WSException"). Safe to apply unconditionally because
+			// lookupModuleEntityJavaCanonical itself checks for the
+			// ambiguous flag and the canonical-suffix match — if neither
+			// condition holds it returns (false) immediately.
+			if id, ok := t.lookupModuleEntityJavaCanonical(b.SourceModule, b.ImportedName); ok {
+				return id, true
+			}
 		}
 	}
 	// Module-attribute access: any plain `import x` in this file means
@@ -1075,6 +1163,85 @@ func (t ImportTable) lookupModuleEntity(module, name string) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+// lookupModuleEntityJavaCanonical is the Java-specific tie-breaker for the
+// case where (module, name) is ambiguous in entitiesByModuleName (issue #778).
+//
+// In Java, every top-level class is declared in a file whose basename
+// (minus the `.java` extension) matches the class name: `WSException` lives
+// in `WSException.java`. When the hierarchy extractor emits a reference to
+// `WSException` inside a peer file (`EntityNotFoundException.java`) as a
+// hierarchy-inference entity, both the canonical definition in `WSException.java`
+// AND the inference entity in `EntityNotFoundException.java` land in the same
+// module bucket, flipping the tuple ambiguous.
+//
+// The tie-break: among all candidate entity IDs stored for (module, name) in
+// candidatesByModuleName, prefer the one whose SourceFile path ends with
+// "/<name>.java". If exactly one candidate matches that criterion, return it.
+// If zero or more than one match (corner case: two files named identically),
+// fall through to ("", false) — safety first, no false bindings.
+//
+// This function is ONLY called when lookupModuleEntity fails due to ambiguity
+// AND the caller has confirmed the edge language is Java.
+func (t ImportTable) lookupModuleEntityJavaCanonical(module, name string) (string, bool) {
+	if module == "" || name == "" {
+		return "", false
+	}
+	// Only applies to the ambiguous case.
+	if t.ambigModuleName[module] == nil || !t.ambigModuleName[module][name] {
+		// Not ambiguous — caller should use lookupModuleEntity.
+		return "", false
+	}
+	candidates := t.candidatesByModuleName[module][name]
+	if len(candidates) == 0 {
+		return "", false
+	}
+	// The canonical Java file for class <name> is "<name>.java".
+	canonicalSuffix := "/" + name + ".java"
+	// Collect all candidate IDs whose SourceFile ends with the canonical suffix.
+	var canonical []string
+	for _, id := range candidates {
+		file := t.entityFile[id]
+		if file == "" {
+			continue
+		}
+		if !strings.HasSuffix(file, canonicalSuffix) {
+			continue
+		}
+		canonical = append(canonical, id)
+	}
+	switch len(canonical) {
+	case 0:
+		return "", false
+	case 1:
+		return canonical[0], true
+	default:
+		// Multiple entities from the canonical file — this happens when a
+		// Java class has both a SCOPE.Component (emitted by the extractor)
+		// and a framework projection like `Service` / `Repository` (emitted
+		// by the YAML-driven framework synth) with the same Name and file.
+		// In that case apply the same same-file projection preference used
+		// by BuildImportTable's Pass 2: prefer the SCOPE.* entity because
+		// it is the canonical structural entity for the class. This mirrors
+		// the `preferEntityKind` tie-break for PHP/Scala projections (issue
+		// #485 / #498 follow-ups).
+		// If exactly one SCOPE.* entity survives, return it. If zero or
+		// two+ survive, leave ambiguous (safety first).
+		var scopeMatch string
+		for _, id := range canonical {
+			if isScopeKind(t.entityKind[id]) {
+				if scopeMatch != "" && scopeMatch != id {
+					return "", false // two SCOPE.* entities — still ambiguous
+				}
+				scopeMatch = id
+			}
+		}
+		if scopeMatch != "" {
+			return scopeMatch, true
+		}
+		return "", false
+	}
 }
 
 // ImportResolveStats reports how many CALLS endpoints the import-aware
@@ -1742,6 +1909,21 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					id, ok = tbl.ResolveDottedImportTargetForJS(normalized)
 				} else {
 					id, ok = tbl.ResolveDottedImportTarget(normalized)
+					// Issue #778 — Java FQCN ambiguity tie-break.
+					// When the generic dotted-import lookup fails because
+					// (module, name) is ambiguous AND the edge carries explicit
+					// source_module + imported_name properties (Java IMPORTS
+					// edges always do), try the Java-specific canonical-file
+					// tie-break: prefer the entity whose SourceFile basename
+					// matches the class name (Java naming convention).
+					if !ok && rel.Properties != nil &&
+						rel.Properties[importPropSourceModule] != "" &&
+						rel.Properties[importPropImportedName] != "" &&
+						rel.Properties["language"] == "java" {
+						srcMod := rel.Properties[importPropSourceModule]
+						impName := rel.Properties[importPropImportedName]
+						id, ok = tbl.lookupModuleEntityJavaCanonical(srcMod, impName)
+					}
 				}
 				if !ok {
 					continue

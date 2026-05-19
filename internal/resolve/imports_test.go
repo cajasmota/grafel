@@ -1680,6 +1680,396 @@ func TestResolveImports_ReferencesFormatBSkipped(t *testing.T) {
 // REFERENCES edge already pointing at a hex entity ID (e.g. resolved by
 // an earlier pass or emitted directly by a cross-extractor) is left
 // alone.
+// ---------------------------------------------------------------------------
+// Issue #778 — Java FQCN ambiguity tie-break (canonical-file lookup)
+// ---------------------------------------------------------------------------
+
+// TestJavaCanonicalLookup_WinsOverHierarchyInferenceEntity verifies that
+// lookupModuleEntityJavaCanonical prefers the entity declared in the
+// canonical file (e.g. "WSException.java") over a hierarchy-inference
+// entity in a peer file ("EntityNotFoundException.java") when both have
+// the same Name and live in the same module bucket.
+func TestJavaCanonicalLookup_WinsOverHierarchyInferenceEntity(t *testing.T) {
+	const module = "com.example.errors"
+	records := []types.EntityRecord{
+		// Canonical class entity (correct file)
+		{
+			ID:         "canonical00000001",
+			Name:       "MyException",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/main/java/com/example/errors/MyException.java",
+			Language:   "java",
+		},
+		// Hierarchy-inference entity (wrong file)
+		{
+			ID:         "inference0000001",
+			Name:       "MyException",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/main/java/com/example/errors/OtherException.java",
+			Language:   "java",
+		},
+		// File with FQCN IMPORTS edge
+		{
+			ID:         "fileentity000001",
+			Name:       "src/main/java/com/example/service/Svc.java",
+			Kind:       "SCOPE.Component",
+			Subtype:    "file",
+			SourceFile: "src/main/java/com/example/service/Svc.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/main/java/com/example/service/Svc.java",
+				ToID:   module + ".MyException",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "MyException",
+					"source_module": module,
+					"imported_name": "MyException",
+					"language":      "java",
+				},
+			}},
+		},
+	}
+
+	tbl := BuildImportTable(records)
+	// Verify ambiguity is detected
+	if !tbl.ambigModuleName[module]["MyException"] {
+		t.Fatal("expected (module, MyException) to be ambiguous")
+	}
+	// Verify canonical lookup resolves to the canonical entity
+	id, ok := tbl.lookupModuleEntityJavaCanonical(module, "MyException")
+	if !ok {
+		t.Fatal("lookupModuleEntityJavaCanonical returned false")
+	}
+	if id != "canonical00000001" {
+		t.Errorf("expected canonical00000001, got %q", id)
+	}
+	// Verify IMPORTS edge is rewritten
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 IMPORTS rewrite, got %d", stats.ImportsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "canonical00000001" {
+		t.Errorf("IMPORTS edge: expected canonical00000001, got %q", got)
+	}
+}
+
+// TestJavaCanonicalLookup_EntityFileSetForIncomingCollision verifies that
+// entityFile is set for an entity that arrives second in a collision (the
+// v4 fix). When the canonical SCOPE.Component arrives after the inference
+// entity, its entityFile must still be recorded so the canonical suffix
+// match succeeds.
+func TestJavaCanonicalLookup_EntityFileSetForIncomingCollision(t *testing.T) {
+	const module = "com.example.errors"
+	// Deliberate order: inference entity first so canonical arrives via collision.
+	records := []types.EntityRecord{
+		{
+			ID:         "inference0000002",
+			Name:       "Widget",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/main/java/com/example/errors/OtherWidget.java",
+			Language:   "java",
+		},
+		// Canonical entity — arrives second → goes through collision branch
+		{
+			ID:         "canonical00000002",
+			Name:       "Widget",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/main/java/com/example/errors/Widget.java",
+			Language:   "java",
+		},
+		{
+			ID:         "importer000000002",
+			Name:       "src/main/java/com/example/svc/Consumer.java",
+			Kind:       "SCOPE.Component",
+			Subtype:    "file",
+			SourceFile: "src/main/java/com/example/svc/Consumer.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/main/java/com/example/svc/Consumer.java",
+				ToID:   module + ".Widget",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "Widget",
+					"source_module": module,
+					"imported_name": "Widget",
+					"language":      "java",
+				},
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	id, ok := tbl.lookupModuleEntityJavaCanonical(module, "Widget")
+	if !ok {
+		t.Fatal("expected canonical lookup to succeed when canonical arrives second")
+	}
+	if id != "canonical00000002" {
+		t.Errorf("expected canonical00000002, got %q", id)
+	}
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 IMPORTS rewrite, got %d", stats.ImportsRewritten)
+	}
+}
+
+// TestJavaCanonicalLookup_ScopePreferredOverFrameworkProjection verifies
+// that when both a SCOPE.Component and a framework projection (e.g. Service)
+// live in the canonical file, lookupModuleEntityJavaCanonical returns the
+// SCOPE.Component entity. This is the Java analog of the PHP/Scala same-file
+// projection dedup (issue #485 / #498 follow-ups).
+func TestJavaCanonicalLookup_ScopePreferredOverFrameworkProjection(t *testing.T) {
+	const module = "com.example.svc"
+	records := []types.EntityRecord{
+		// Framework projection (e.g. from YAML synth) — arrives first
+		{
+			ID:         "projection0000001",
+			Name:       "OrderService",
+			Kind:       "Service",
+			SourceFile: "src/main/java/com/example/svc/OrderService.java",
+			Language:   "java",
+		},
+		// Canonical SCOPE.Component — arrives second (same file, diff kind)
+		{
+			ID:         "canonical00000003",
+			Name:       "OrderService",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/main/java/com/example/svc/OrderService.java",
+			Language:   "java",
+		},
+		// Non-canonical Dependency entity in the same module from another file
+		{
+			ID:         "dependency000001",
+			Name:       "OrderService",
+			Kind:       "Dependency",
+			SourceFile: "src/main/java/com/example/svc/InvoiceService.java",
+			Language:   "java",
+		},
+		{
+			ID:         "importer000000003",
+			Name:       "src/main/java/com/example/ctrl/Ctrl.java",
+			Kind:       "SCOPE.Component",
+			Subtype:    "file",
+			SourceFile: "src/main/java/com/example/ctrl/Ctrl.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/main/java/com/example/ctrl/Ctrl.java",
+				ToID:   module + ".OrderService",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "OrderService",
+					"source_module": module,
+					"imported_name": "OrderService",
+					"language":      "java",
+				},
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	id, ok := tbl.lookupModuleEntityJavaCanonical(module, "OrderService")
+	if !ok {
+		t.Fatal("expected canonical lookup to succeed with SCOPE preferred over Service")
+	}
+	if id != "canonical00000003" {
+		t.Errorf("expected SCOPE.Component canonical00000003, got %q", id)
+	}
+}
+
+// TestJavaCanonicalLookup_LateArrivalAfterAmbigFlag verifies the v6 fix:
+// when two non-canonical entities arrive first and set the ambig flag, a
+// late-arriving canonical entity is still added to the candidate list and
+// its entityFile is set, so lookupModuleEntityJavaCanonical can resolve it.
+func TestJavaCanonicalLookup_LateArrivalAfterAmbigFlag(t *testing.T) {
+	const module = "com.example.svc"
+	records := []types.EntityRecord{
+		// Two dependency entities arrive first → ambig flag set
+		{
+			ID:         "dependency000010",
+			Name:       "PayService",
+			Kind:       "Dependency",
+			SourceFile: "src/main/java/com/example/svc/InvoiceService.java",
+			Language:   "java",
+		},
+		{
+			ID:         "dependency000011",
+			Name:       "PayService",
+			Kind:       "Dependency",
+			SourceFile: "src/main/java/com/example/svc/OrderService.java",
+			Language:   "java",
+		},
+		// Canonical entity arrives AFTER ambig flag was set
+		{
+			ID:         "canonical00000010",
+			Name:       "PayService",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/main/java/com/example/svc/PayService.java",
+			Language:   "java",
+		},
+		{
+			ID:         "importer000000010",
+			Name:       "src/main/java/com/example/ctrl/CheckoutCtrl.java",
+			Kind:       "SCOPE.Component",
+			Subtype:    "file",
+			SourceFile: "src/main/java/com/example/ctrl/CheckoutCtrl.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/main/java/com/example/ctrl/CheckoutCtrl.java",
+				ToID:   module + ".PayService",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "PayService",
+					"source_module": module,
+					"imported_name": "PayService",
+					"language":      "java",
+				},
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	if !tbl.ambigModuleName[module]["PayService"] {
+		t.Fatal("expected ambig flag to be set for PayService")
+	}
+	id, ok := tbl.lookupModuleEntityJavaCanonical(module, "PayService")
+	if !ok {
+		t.Fatal("expected canonical lookup to succeed for late-arriving entity")
+	}
+	if id != "canonical00000010" {
+		t.Errorf("expected canonical00000010, got %q", id)
+	}
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 IMPORTS rewrite via canonical fallback, got %d", stats.ImportsRewritten)
+	}
+}
+
+// TestJavaCanonicalLookup_BareCallsViaResolveBareCallTarget verifies that
+// when a caller imports a class (e.g. `import com.example.errors.MyError`)
+// and then calls it bare (`throw new MyError()`), ResolveBareCallTarget
+// resolves the ambiguous bare CALLS target via lookupModuleEntityJavaCanonical.
+func TestJavaCanonicalLookup_BareCallsViaResolveBareCallTarget(t *testing.T) {
+	const module = "com.example.errors"
+	const callerFile = "src/main/java/com/example/service/Service.java"
+	records := []types.EntityRecord{
+		// Canonical entity
+		{
+			ID:         "canonical00000020",
+			Name:       "MyError",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/main/java/com/example/errors/MyError.java",
+			Language:   "java",
+		},
+		// Inference entity (causes ambiguity)
+		{
+			ID:         "inference0000020",
+			Name:       "MyError",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/main/java/com/example/errors/OtherError.java",
+			Language:   "java",
+		},
+		// File entity carrying IMPORTS and a bare CALLS edge
+		{
+			ID:         "fileentity000020",
+			Name:       callerFile,
+			Kind:       "SCOPE.Component",
+			Subtype:    "file",
+			SourceFile: callerFile,
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{
+				// IMPORTS binding: local_name "MyError" → module+imported_name
+				{
+					FromID: callerFile,
+					ToID:   module + ".MyError",
+					Kind:   importRelKind,
+					Properties: map[string]string{
+						"local_name":    "MyError",
+						"source_module": module,
+						"imported_name": "MyError",
+						"language":      "java",
+					},
+				},
+			},
+		},
+		// Method entity with a bare CALLS to "MyError"
+		{
+			ID:         "callermethod00020",
+			Name:       "Service.doWork",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "method",
+			SourceFile: callerFile,
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				ToID: "MyError",
+				Kind: "CALLS",
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	// The IMPORTS lookup should fail (ambiguous) but ResolveBareCallTarget
+	// must fall through to the Java canonical tie-break.
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 bare CALLS rewrite via canonical fallback, got %d (considered=%d)",
+			stats.CallsRewritten, stats.CallsConsidered)
+	}
+	if got := records[3].Relationships[0].ToID; got != "canonical00000020" {
+		t.Errorf("expected CALLS rewritten to canonical00000020, got %q", got)
+	}
+}
+
+// TestJavaCanonicalLookup_NoFalseBindWhenMultipleCanonicalFiles guards
+// against a corner case: if two files both end with "/<name>.java" (can
+// happen with inner classes or unusual package structures), the canonical
+// lookup must return false rather than pick one arbitrarily.
+func TestJavaCanonicalLookup_NoFalseBindWhenMultipleCanonicalFiles(t *testing.T) {
+	const module = "com.example"
+	records := []types.EntityRecord{
+		{
+			ID:         "canonical00000030",
+			Name:       "Util",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/main/java/com/example/Util.java",
+			Language:   "java",
+		},
+		// Another entity named "Util" in a sub-package that also maps back to
+		// this module (unusual but possible in flat module derivation).
+		{
+			ID:         "canonical00000031",
+			Name:       "Util",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/main/java/com/example/sub/Util.java", // different file but both end in /Util.java
+			Language:   "java",
+		},
+		{
+			ID:         "importer000000030",
+			Name:       "src/main/java/com/example/App.java",
+			Kind:       "SCOPE.Component",
+			Subtype:    "file",
+			SourceFile: "src/main/java/com/example/App.java",
+			Language:   "java",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/main/java/com/example/App.java",
+				ToID:   "com.example.Util",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "Util",
+					"source_module": "com.example",
+					"imported_name": "Util",
+					"language":      "java",
+				},
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	// Should NOT resolve — two entities both in "Util.java" files
+	_, ok := tbl.lookupModuleEntityJavaCanonical("com.example", "Util")
+	if ok {
+		t.Error("expected no resolution when two entities both live in /Util.java files")
+	}
+}
+
 func TestResolveImports_ReferencesHexToIDUntouched(t *testing.T) {
 	records := []types.EntityRecord{
 		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
