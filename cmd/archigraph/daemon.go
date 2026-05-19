@@ -90,6 +90,11 @@ func runDaemon(argv []string) error {
 
 		MaxRSSBudgetMB: maxRSSBudget,
 		RSSHistoryPath: filepath.Join(filepath.Dir(layout.PIDPath), "repo-rss-history.json"),
+
+		// Pattern confidence time-decay: runs every 6 hours.
+		// PatternGroupDirs returns the patterns storage directory for each
+		// registered group so the decay scheduler can find patterns.json.
+		PatternGroupDirs: daemonPatternGroupDirs,
 	}
 
 	ctx := context.Background()
@@ -329,3 +334,28 @@ func mustEncodeStatus(w io.Writer, reply proto.StatusReply) error {
 var daemonNotRunningErr = errors.New(
 	"daemon not running; run 'archigraph start' or reinstall via 'archigraph install'",
 )
+
+// daemonPatternGroupDirs returns a map of group-name → patterns storage
+// directory for every registered group. This is injected into daemon.Config
+// so the pattern decay scheduler can find each group's patterns.json.
+//
+// Directory convention mirrors internal/mcp/patterns.go defaultPatternsDir:
+// ~/.archigraph/groups/<group>-patterns/. Groups whose patterns are stored in
+// a custom MemoryDir (MCP registry config) will be found there by the MCP
+// server; the daemon uses the default path which covers production deployments.
+func daemonPatternGroupDirs() map[string]string {
+	groups, err := registry.Groups()
+	if err != nil {
+		return nil
+	}
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		return nil
+	}
+	out := make(map[string]string, len(groups))
+	for _, g := range groups {
+		dir := filepath.Join(home, ".archigraph", "groups", g.Name+"-patterns")
+		out[g.Name] = dir
+	}
+	return out
+}

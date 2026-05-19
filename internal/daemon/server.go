@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/agentpatterns"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
@@ -48,6 +49,16 @@ type Config struct {
 	// RSSHistoryPath is where the scheduler persists per-repo observed
 	// peak RSS for predictor calibration. Empty disables history.
 	RSSHistoryPath string
+
+	// PatternDecayInterval controls how often the confidence time-decay
+	// pass runs. Default (zero value) → 6 hours. Set to a shorter interval
+	// for testing.
+	PatternDecayInterval time.Duration
+
+	// PatternGroupDirs is a function that returns a map of group-name →
+	// patterns directory (the dir that contains patterns.json). When nil,
+	// the decay scheduler is not started. Populated by cmd/archigraph.
+	PatternGroupDirs func() map[string]string
 }
 
 // Run starts the daemon. It blocks until either:
@@ -136,6 +147,22 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}
 
+	// Pattern confidence time-decay scheduler — runs every 6 hours (or a
+	// caller-supplied interval for tests). Requires PatternGroupDirs to be
+	// non-nil; skipped gracefully when the caller has not provided it.
+	if cfg.PatternGroupDirs != nil {
+		decayInterval := cfg.PatternDecayInterval
+		if decayInterval <= 0 {
+			decayInterval = 6 * time.Hour
+		}
+		decayJob := buildPatternDecayJob(cfg.PatternGroupDirs, logger)
+		decaySched := agentpatterns.NewDecayScheduler(decayInterval, decayJob)
+		decayCtx, decayCancel := context.WithCancel(ctx)
+		go decaySched.Run(decayCtx)
+		defer decayCancel()
+		logger.Printf("pattern decay scheduler started interval=%s", decayInterval)
+	}
+
 	server := rpc.NewServer()
 	if err := server.RegisterName(proto.ServiceName, svc); err != nil {
 		return fmt.Errorf("register %s: %w", proto.ServiceName, err)
@@ -220,4 +247,63 @@ func (c *loggingConn) Read(p []byte) (int, error) {
 		c.log.Printf("conn read: %v", err)
 	}
 	return n, err
+}
+
+// buildPatternDecayJob constructs the DecayJob that the pattern decay scheduler
+// calls on each tick (every 6 hours by default).
+//
+// Decay rule (per ADR-0018 and γ spec):
+//
+//	For each pattern: if last_applied > 30 days ago AND confidence > 0.2,
+//	decrement by DecayDeltaPer30Day (0.05) on each scheduler tick, floored at
+//	ConfidenceFloor (0.2). Each tick is one decay step; the 30-day window is
+//	the eligibility threshold, not the delta size.
+func buildPatternDecayJob(groupDirs func() map[string]string, logger *log.Logger) agentpatterns.DecayJob {
+	return func(nowUnix int64) {
+		dirs := groupDirs()
+		for group, dir := range dirs {
+			if dir == "" {
+				continue
+			}
+			patterns, err := agentpatterns.Load(dir)
+			if err != nil {
+				if logger != nil {
+					logger.Printf("pattern decay: load %s: %v", group, err)
+				}
+				continue
+			}
+			changed := false
+			for i := range patterns {
+				p := &patterns[i]
+				if p.LastApplied == 0 {
+					continue // never applied — skip decay
+				}
+				daysSince := float64(nowUnix-p.LastApplied) / 86400.0
+				if daysSince <= 30 {
+					continue // within the 30-day grace window
+				}
+				if p.Confidence <= agentpatterns.ConfidenceFloor {
+					continue // already at floor
+				}
+				// Flat decrement per scheduler tick (not proportional to days).
+				before := p.Confidence
+				newConf := p.Confidence - agentpatterns.DecayDeltaPer30Day
+				if newConf < agentpatterns.ConfidenceFloor {
+					newConf = agentpatterns.ConfidenceFloor
+				}
+				p.Confidence = newConf
+				if p.Confidence != before {
+					changed = true
+				}
+			}
+			if !changed {
+				continue
+			}
+			if err := agentpatterns.Save(dir, patterns); err != nil {
+				if logger != nil {
+					logger.Printf("pattern decay: save %s: %v", group, err)
+				}
+			}
+		}
+	}
 }

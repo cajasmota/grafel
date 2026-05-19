@@ -98,6 +98,20 @@ type Pattern struct {
 	// Exemplars holds the entity IDs of canonical examples of this pattern
 	// in use. Required on record (≥1). Written as EXEMPLAR edges to the graph.
 	Exemplars []string `json:"exemplars,omitempty"`
+
+	// Touches holds entity IDs that this pattern touches (produces TOUCHES edges).
+	Touches []string `json:"touches,omitempty"`
+
+	// AntiExemplars holds entity IDs that are counter-examples (ANTI_EXEMPLAR edges).
+	AntiExemplars []string `json:"anti_exemplars,omitempty"`
+
+	// RejectReason is populated by action=reject.
+	RejectReason string `json:"reject_reason,omitempty"`
+	// RejectTimestamp is the unix timestamp of the last reject event.
+	RejectTimestamp int64 `json:"reject_timestamp,omitempty"`
+
+	// ApprovalNote is an optional user-facing note set during action=promote.
+	ApprovalNote string `json:"approval_note,omitempty"`
 }
 
 // PatternID computes the deterministic ID for a pattern given its group and

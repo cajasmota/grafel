@@ -1,9 +1,9 @@
 package mcp
 
-// patterns.go — MCP handler for archigraph_patterns (ADR-0018, PR β).
+// patterns.go — MCP handler for archigraph_patterns (ADR-0018, PR γ).
 //
-// Implements action=query and action=record. Actions refine|apply|reject|promote
-// are reserved for PR γ and return a "not implemented yet — γ" error.
+// Implements action=query, action=record (PR β), and the γ lifecycle actions:
+// refine, apply, reject, promote.
 //
 // Storage delegates entirely to internal/agentpatterns/. No duplicate logic.
 
@@ -64,13 +64,19 @@ func (s *Server) handlePatterns(ctx context.Context, req mcpapi.CallToolRequest)
 		return s.handlePatternsQuery(ctx, req)
 	case "record":
 		return s.handlePatternsRecord(ctx, req)
-	case "refine", "apply", "reject", "promote":
-		return mcpapi.NewToolResultError(fmt.Sprintf(
-			"action=%q not implemented yet — γ", action,
-		)), nil
+	case "refine":
+		return s.handlePatternsRefine(ctx, req)
+	case "apply":
+		return s.handlePatternsApply(ctx, req)
+	case "reject":
+		return s.handlePatternsReject(ctx, req)
+	case "promote":
+		return s.handlePatternsPromote(ctx, req)
+	case "get":
+		return s.handlePatternsGet(ctx, req)
 	default:
 		return mcpapi.NewToolResultError(fmt.Sprintf(
-			"unknown action %q (allowed in β: query, record)", action,
+			"unknown action %q (allowed: query, record, refine, apply, reject, promote, get)", action,
 		)), nil
 	}
 }
@@ -977,6 +983,7 @@ func patternToMap(p agentpatterns.Pattern, includePrivate bool) map[string]any {
 		"confidence":        p.Confidence,
 		"observations":      p.Observations,
 		"last_applied":      p.LastApplied,
+		"last_validated":    p.LastValidated,
 		"is_candidate":      p.IsCandidate,
 		"convergence_count": p.ConvergenceCount,
 		"exemplars":         p.Exemplars,
@@ -984,6 +991,19 @@ func patternToMap(p agentpatterns.Pattern, includePrivate bool) map[string]any {
 	}
 	if len(p.ProposerSubagents) > 0 {
 		out["proposer_subagents"] = p.ProposerSubagents
+	}
+	if len(p.Touches) > 0 {
+		out["touches"] = p.Touches
+	}
+	if len(p.AntiExemplars) > 0 {
+		out["anti_exemplars"] = p.AntiExemplars
+	}
+	if p.RejectReason != "" {
+		out["reject_reason"] = p.RejectReason
+		out["reject_timestamp"] = p.RejectTimestamp
+	}
+	if p.ApprovalNote != "" {
+		out["approval_note"] = p.ApprovalNote
 	}
 	return out
 }
@@ -1003,4 +1023,405 @@ func formatTimestamp(ts int64) string {
 		return ""
 	}
 	return time.Unix(ts, 0).UTC().Format(time.RFC3339)
+}
+
+// ---------------------------------------------------------------------------
+// action=get — single-id lookup (bypass BM25 ranking)
+// ---------------------------------------------------------------------------
+
+func (s *Server) handlePatternsGet(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	patternID, err := req.RequireString("pattern_id")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	includePrivate := argBool(req, "include_private", false)
+
+	groupName, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	dir := patternsDir(groupName, lg)
+	patterns, loadErr := agentpatterns.Load(dir)
+	if loadErr != nil {
+		return mcpapi.NewToolResultError("load patterns: " + loadErr.Error()), nil
+	}
+	p := agentpatterns.ByID(patterns, patternID)
+	if p == nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("pattern %q not found", patternID)), nil
+	}
+	return jsonResult(patternToMap(*p, includePrivate)), nil
+}
+
+// ---------------------------------------------------------------------------
+// action=refine
+// ---------------------------------------------------------------------------
+
+// handlePatternsRefine applies structural edits to an existing pattern.
+// Confidence is unchanged (refinement is neutral per ADR-0018).
+func (s *Server) handlePatternsRefine(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	patternID, err := req.RequireString("pattern_id")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	changes := argObject(req, "changes")
+	if changes == nil {
+		return mcpapi.NewToolResultError("changes is required for action=refine"), nil
+	}
+
+	groupName, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	dir := patternsDir(groupName, lg)
+
+	patternsMu.Lock()
+	defer patternsMu.Unlock()
+
+	patterns, loadErr := agentpatterns.Load(dir)
+	if loadErr != nil {
+		return mcpapi.NewToolResultError("load patterns: " + loadErr.Error()), nil
+	}
+	p := agentpatterns.ByID(patterns, patternID)
+	if p == nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("pattern %q not found", patternID)), nil
+	}
+
+	// Apply each change, collecting edge change descriptions.
+	var edgeChanges []map[string]any
+	now := agentpatterns.NowUnix()
+
+	// --- add_step ---
+	if v, ok := changes["add_step"].(string); ok && v != "" {
+		p.Steps = append(p.Steps, v)
+	}
+
+	// --- remove_step_index ---
+	if raw, ok := changes["remove_step_index"]; ok {
+		idx := toInt(raw)
+		if idx >= 0 && idx < len(p.Steps) {
+			p.Steps = append(p.Steps[:idx], p.Steps[idx+1:]...)
+		}
+	}
+
+	// --- edit_step: {index, new_text} ---
+	if m, ok := changes["edit_step"].(map[string]any); ok {
+		idx := toInt(m["index"])
+		newText, _ := m["new_text"].(string)
+		if idx >= 0 && idx < len(p.Steps) && newText != "" {
+			p.Steps[idx] = newText
+		}
+	}
+
+	// --- add_anti_pattern: {do_not, reason, private} ---
+	if m, ok := changes["add_anti_pattern"].(map[string]any); ok {
+		ap := agentpatterns.AntiPattern{}
+		if v, ok2 := m["do_not"].(string); ok2 {
+			ap.DoNot = v
+		}
+		if v, ok2 := m["reason"].(string); ok2 {
+			ap.Reason = v
+		}
+		if v, ok2 := m["private"].(bool); ok2 {
+			ap.Private = v
+		}
+		p.AntiPatterns = append(p.AntiPatterns, ap)
+	}
+
+	// --- remove_anti_pattern_index ---
+	if raw, ok := changes["remove_anti_pattern_index"]; ok {
+		idx := toInt(raw)
+		if idx >= 0 && idx < len(p.AntiPatterns) {
+			p.AntiPatterns = append(p.AntiPatterns[:idx], p.AntiPatterns[idx+1:]...)
+		}
+	}
+
+	// --- add_exemplar ---
+	if v, ok := changes["add_exemplar"].(string); ok && v != "" {
+		if !containsString(p.Exemplars, v) {
+			p.Exemplars = append(p.Exemplars, v)
+			edgeChanges = append(edgeChanges, map[string]any{
+				"op":        "add",
+				"from":      p.ID,
+				"to":        v,
+				"edge_kind": "EXEMPLAR",
+			})
+		}
+	}
+
+	// --- remove_exemplar ---
+	if v, ok := changes["remove_exemplar"].(string); ok && v != "" {
+		if containsString(p.Exemplars, v) {
+			p.Exemplars = removeString(p.Exemplars, v)
+			edgeChanges = append(edgeChanges, map[string]any{
+				"op":        "remove",
+				"from":      p.ID,
+				"to":        v,
+				"edge_kind": "EXEMPLAR",
+			})
+		}
+	}
+
+	// --- change_scope: partial — only non-nil fields overwrite existing ---
+	if m, ok := changes["change_scope"].(map[string]any); ok {
+		if v := stringSliceFromAny(m["repos"]); v != nil {
+			p.Scope.Repos = v
+		}
+		if v := stringSliceFromAny(m["module_paths"]); v != nil {
+			p.Scope.ModulePaths = v
+		}
+		if v := stringSliceFromAny(m["languages"]); v != nil {
+			p.Scope.Languages = v
+		}
+		if v := stringSliceFromAny(m["stacks"]); v != nil {
+			p.Scope.Stacks = v
+		}
+		if v := stringSliceFromAny(m["entity_kinds"]); v != nil {
+			p.Scope.EntityKinds = v
+		}
+	}
+
+	// --- change_category ---
+	if v, ok := changes["change_category"].(string); ok && v != "" {
+		cat := agentpatterns.Category(v)
+		if validCategories[cat] {
+			p.Category = cat
+		}
+	}
+
+	// --- set_documentation_url ---
+	if v, ok := changes["set_documentation_url"].(string); ok {
+		p.DocumentationURL = v
+	}
+
+	// Refinement is neutral — confidence unchanged. Update last_validated.
+	p.LastValidated = now
+	// Increment observations (refinement is an interaction).
+	p.Observations++
+
+	patterns = agentpatterns.Upsert(patterns, *p)
+	if saveErr := agentpatterns.Save(dir, patterns); saveErr != nil {
+		return mcpapi.NewToolResultError("save patterns: " + saveErr.Error()), nil
+	}
+
+	return jsonResult(map[string]any{
+		"pattern":      patternToMap(*p, true),
+		"edge_changes": edgeChanges,
+	}), nil
+}
+
+// ---------------------------------------------------------------------------
+// action=apply
+// ---------------------------------------------------------------------------
+
+// handlePatternsApply records a use outcome and adjusts confidence.
+func (s *Server) handlePatternsApply(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	patternID, err := req.RequireString("pattern_id")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	args := req.GetArguments()
+	successRaw, ok := args["success"]
+	if !ok {
+		return mcpapi.NewToolResultError("success is required for action=apply"), nil
+	}
+	success, _ := successRaw.(bool)
+	createdEntities := argStringSliceFromAny(req, "created_entities")
+
+	groupName, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	dir := patternsDir(groupName, lg)
+
+	patternsMu.Lock()
+	defer patternsMu.Unlock()
+
+	patterns, loadErr := agentpatterns.Load(dir)
+	if loadErr != nil {
+		return mcpapi.NewToolResultError("load patterns: " + loadErr.Error()), nil
+	}
+	p := agentpatterns.ByID(patterns, patternID)
+	if p == nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("pattern %q not found", patternID)), nil
+	}
+
+	now := agentpatterns.NowUnix()
+
+	// Confidence adjustment.
+	if success {
+		p.Confidence = agentpatterns.ApplyConfidenceDelta(p.Confidence, agentpatterns.EventApplySuccess)
+		p.LastApplied = now
+	} else {
+		p.Confidence = agentpatterns.ApplyConfidenceDelta(p.Confidence, agentpatterns.EventApplyFailure)
+	}
+	p.Observations++
+	p.LastValidated = now
+
+	// Build CREATED_BY edges with apply-call provenance.
+	applyCallID := fmt.Sprintf("apply:%s:%d", patternID[:8], now)
+	var createdByEdges []map[string]any
+	for _, eid := range createdEntities {
+		createdByEdges = append(createdByEdges, map[string]any{
+			"from":          eid,
+			"to":            p.ID,
+			"edge_kind":     "CREATED_BY",
+			"apply_call_id": applyCallID,
+			"success":       success,
+			"timestamp":     now,
+		})
+	}
+
+	patterns = agentpatterns.Upsert(patterns, *p)
+	if saveErr := agentpatterns.Save(dir, patterns); saveErr != nil {
+		return mcpapi.NewToolResultError("save patterns: " + saveErr.Error()), nil
+	}
+
+	return jsonResult(map[string]any{
+		"pattern":           patternToMap(*p, true),
+		"created_by_edges":  createdByEdges,
+		"created_by_count":  len(createdByEdges),
+		"apply_call_id":     applyCallID,
+	}), nil
+}
+
+// ---------------------------------------------------------------------------
+// action=reject
+// ---------------------------------------------------------------------------
+
+// handlePatternsReject marks a pattern as rejected, adjusting confidence.
+func (s *Server) handlePatternsReject(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	patternID, err := req.RequireString("pattern_id")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	reason, err := req.RequireString("reason")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	setToZero := argBool(req, "set_to_zero", false)
+
+	groupName, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	dir := patternsDir(groupName, lg)
+
+	patternsMu.Lock()
+	defer patternsMu.Unlock()
+
+	patterns, loadErr := agentpatterns.Load(dir)
+	if loadErr != nil {
+		return mcpapi.NewToolResultError("load patterns: " + loadErr.Error()), nil
+	}
+	p := agentpatterns.ByID(patterns, patternID)
+	if p == nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("pattern %q not found", patternID)), nil
+	}
+
+	now := agentpatterns.NowUnix()
+
+	if setToZero {
+		// Hard-set to 0 (bypasses floor — intentional hard rejection).
+		// Note: normal floor is 0.2; set_to_zero explicitly overrides it.
+		p.Confidence = 0
+	} else {
+		p.Confidence = agentpatterns.ApplyConfidenceDelta(p.Confidence, agentpatterns.EventReject)
+	}
+	p.Observations++
+	p.LastValidated = now
+	p.RejectReason = reason
+	p.RejectTimestamp = now
+
+	patterns = agentpatterns.Upsert(patterns, *p)
+	if saveErr := agentpatterns.Save(dir, patterns); saveErr != nil {
+		return mcpapi.NewToolResultError("save patterns: " + saveErr.Error()), nil
+	}
+
+	return jsonResult(map[string]any{
+		"pattern":       patternToMap(*p, true),
+		"reject_reason": reason,
+	}), nil
+}
+
+// ---------------------------------------------------------------------------
+// action=promote
+// ---------------------------------------------------------------------------
+
+// handlePatternsPromote promotes a candidate pattern to approved.
+func (s *Server) handlePatternsPromote(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	candidateID, err := req.RequireString("candidate_id")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	approvalNote := argString(req, "approval_note", "")
+
+	groupName, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	dir := patternsDir(groupName, lg)
+
+	patternsMu.Lock()
+	defer patternsMu.Unlock()
+
+	patterns, loadErr := agentpatterns.Load(dir)
+	if loadErr != nil {
+		return mcpapi.NewToolResultError("load patterns: " + loadErr.Error()), nil
+	}
+	p := agentpatterns.ByID(patterns, candidateID)
+	if p == nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("pattern %q not found", candidateID)), nil
+	}
+	if !p.IsCandidate {
+		return mcpapi.NewToolResultError(fmt.Sprintf(
+			"pattern %q is already approved (is_candidate=false); cannot promote again", candidateID,
+		)), nil
+	}
+
+	now := agentpatterns.NowUnix()
+	p.IsCandidate = false
+	p.LastValidated = now
+	if approvalNote != "" {
+		p.ApprovalNote = approvalNote
+	}
+
+	patterns = agentpatterns.Upsert(patterns, *p)
+	if saveErr := agentpatterns.Save(dir, patterns); saveErr != nil {
+		return mcpapi.NewToolResultError("save patterns: " + saveErr.Error()), nil
+	}
+
+	return jsonResult(patternToMap(*p, true)), nil
+}
+
+// ---------------------------------------------------------------------------
+// Helpers: slice utilities used by refine
+// ---------------------------------------------------------------------------
+
+// removeString removes the first occurrence of s from slice.
+func removeString(slice []string, s string) []string {
+	out := make([]string, 0, len(slice))
+	removed := false
+	for _, x := range slice {
+		if !removed && x == s {
+			removed = true
+			continue
+		}
+		out = append(out, x)
+	}
+	return out
+}
+
+// toInt converts an interface{} numeric to int. Returns -1 on failure.
+func toInt(v any) int {
+	switch t := v.(type) {
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	case float32:
+		return int(t)
+	}
+	return -1
 }
