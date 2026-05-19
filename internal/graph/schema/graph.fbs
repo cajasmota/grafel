@@ -1,0 +1,51 @@
+// archigraph binary graph format — FlatBuffers schema.
+//
+// This schema is the v2 on-disk format companion to the legacy v1
+// graph.json (encoding/json). It is designed for zero-copy mmap reads
+// from MCP query servers and from the doctor / quality / dashboard
+// subcommands.
+//
+// Field IDs are assigned by ordinal position; do NOT reorder existing
+// fields. To deprecate, mark `(deprecated)`; to add, append at the end.
+//
+// Codegen:
+//   flatc --go -o internal/graph/fbgraph internal/graph/schema/graph.fbs
+//
+// See docs/adrs/0016-binary-graph-format.md for rationale.
+
+namespace archigraph;
+
+table PropertyEntry {
+  key: string;
+  value: string;
+}
+
+table Entity {
+  id: string (key);
+  qualified_name: string;
+  kind: string;
+  subtype: string;
+  module: string;
+  name: string;
+  source_file: string;
+  source_line: int;
+  source_col: int;
+  properties: [PropertyEntry];
+}
+
+table Relationship {
+  from_id: string;
+  to_id: string;
+  kind: string;
+  properties: [PropertyEntry];
+}
+
+table Graph {
+  version: int = 2;
+  computed_at: string;
+  repo_tag: string;
+  entities: [Entity];
+  relationships: [Relationship];
+}
+
+root_type Graph;

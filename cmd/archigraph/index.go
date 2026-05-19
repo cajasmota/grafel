@@ -24,6 +24,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractors"
 	"github.com/cajasmota/archigraph/internal/extractors/cross"
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	"github.com/cajasmota/archigraph/internal/resolve"
 	"github.com/cajasmota/archigraph/internal/treesitter"
 	"github.com/cajasmota/archigraph/internal/types"
@@ -84,6 +85,15 @@ type Indexer struct {
 	// trust-model rules in docs/specs/repair-trust-model.md.
 	enableRepairApply bool
 
+	// exportFB toggles dual-write of the v2 FlatBuffers binary graph
+	// alongside graph.json (issue #634 / ADR-0016 phase-1 design +
+	// prototype). When true, after graph.WriteAtomic emits graph.json
+	// the indexer also writes graph.fb in the same .archigraph dir.
+	// Default false during phase-1 rollout — the writer is opt-in until
+	// the binary reader proves itself on consumers (MCP query, doctor,
+	// dashboard).
+	exportFB bool
+
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
 
@@ -118,6 +128,13 @@ func WithRepairCandidates(enabled bool) IndexOption {
 // emit → human/agent writes → apply loop.
 func WithRepairApply(enabled bool) IndexOption {
 	return func(i *Indexer) { i.enableRepairApply = enabled }
+}
+
+// WithExportFB toggles dual-write of the v2 FlatBuffers binary graph
+// (issue #634 / ADR-0016). When true, graph.fb is written next to
+// graph.json after a successful index pass. Default is false.
+func WithExportFB(enabled bool) IndexOption {
+	return func(i *Indexer) { i.exportFB = enabled }
 }
 
 type indexerStats struct {
@@ -215,6 +232,19 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", outPath)
+
+		// Dual-write the v2 FlatBuffers binary graph next to graph.json
+		// when --export-fb is set (issue #634 / ADR-0016 phase-1).
+		// Failures here are non-fatal — graph.json is still the source of
+		// truth during phase-1.
+		if idx.exportFB {
+			fbPath := filepath.Join(filepath.Dir(outPath), "graph.fb")
+			if err := fbwriter.WriteAtomic(fbPath, doc); err != nil {
+				fmt.Fprintf(os.Stderr, "archigraph: graph.fb dual-write failed: %v\n", err)
+			} else {
+				fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", fbPath)
+			}
+		}
 
 		// Sidecar: corpus-level metrics for `archigraph doctor` and the future
 		// MCP `graph_stats` tool. Only written when Pass 4 actually ran.

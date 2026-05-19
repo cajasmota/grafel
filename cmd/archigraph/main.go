@@ -32,6 +32,7 @@ func runIndex(argv []string) error {
 	jsonStats := fs.Bool("json-stats", false, "emit per-run statistics (entities, relationships, dispositions, bug-rate) to stdout as JSON")
 	enableRepair := fs.Bool("enable-repair-candidates", false, "emit ADR-0015 phase-1 repair_edge entries into enrichment-candidates.json (issue #544; default false during phase-1 rollout)")
 	enableRepairApply := fs.Bool("enable-repair-apply", false, "read <repo>/.archigraph/repair.json and apply allowlisted repairs before disposition classification (issue #545 / ADR-0015 phase-1; default false during phase-1 rollout)")
+	exportFB := fs.Bool("export-fb", false, "also write <repo>/.archigraph/graph.fb in the v2 FlatBuffers binary format alongside graph.json (issue #634 / ADR-0016 phase-1; default false during phase-1 rollout)")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -46,7 +47,8 @@ func runIndex(argv []string) error {
 	}
 	return Index(repoPath, *out, *repoTag, skipPasses, *pretty, *jsonStats,
 		WithRepairCandidates(*enableRepair),
-		WithRepairApply(*enableRepairApply))
+		WithRepairApply(*enableRepairApply),
+		WithExportFB(*exportFB))
 }
 
 // runLinksHook is wired into cli.Hooks so the watcher can re-run cross-
