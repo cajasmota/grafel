@@ -541,6 +541,34 @@ var (
 		// top bug-extractor sample after wave-10 was `onClearAll` /
 		// `onClose` confirming this is the dominant residual shape.
 		regexp.MustCompile(`^on[A-Z][A-Za-z0-9]*$`),
+		// Wave-13 (TS/JS React frontend, real-residue) — `handle*` and
+		// `after*` callable-prop / lifecycle-hook conventions. Mirrors
+		// the wave-11 `^on[A-Z]...` rule. React/JSX components routinely
+		// destructure callable props named `handleClientSelection`,
+		// `handleReloadData`, `handleSaveOnCell`, `afterSaveNote`,
+		// `afterCreateSuccess` from parent components or pass them as
+		// `useCallback` returns. The actual implementation lives in the
+		// parent (or in a higher-order hook) and is bound at component-
+		// invocation time, so the call site cannot statically bind it.
+		// `handleX` is universal React tutorial style (React docs +
+		// every state-of-the-art repo); `afterX` is form/lifecycle hook
+		// convention (antd Form `afterClose`, react-hook-form `afterSubmit`).
+		// Both names dominate cfb wave-12-FINAL bug-extractor + bug-resolver
+		// residues (`handleClientSelection`, `handleReloadData`,
+		// `afterSaveNote`, `afterSaveSuccess`, `afterCreateSuccess`).
+		// Same-file preference resolver (wave-9 Chain-fix A) fires BEFORE
+		// the dynamic pattern check via the hex-ID branch in
+		// classifyDispositionLang, so a same-file lifted handler entity
+		// still wins. Per-language gate (js/ts only) keeps these from
+		// shadowing `HandleXxx` Go method conventions / Python `handle_*`
+		// snake_case (covered by other patterns). Conservative scope:
+		// `get*` / `set*` / `load*` / `save*` / `create*` / `update*` /
+		// `delete*` / `fetch*` / `use*` / `submit*` / `cancel*` / `select*`
+		// / `reset*` / `toggle*` are deliberately EXCLUDED — those verbs
+		// shadow real user-defined entities (services, repos, mutators)
+		// far more aggressively than `handle*`/`after*`.
+		regexp.MustCompile(`^handle[A-Z][A-Za-z0-9]*$`),
+		regexp.MustCompile(`^after[A-Z][A-Za-z0-9]*$`),
 	}
 
 	rubyDynamicPatterns = []*regexp.Regexp{

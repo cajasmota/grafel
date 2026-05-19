@@ -6810,6 +6810,247 @@ var jsBareNames = map[string]struct{}{
 	// per-language gate (js/ts only) keeps them safe.
 	"clearFilters":    {}, // antd Table filterDropdown render-prop arg
 	"setSelectedKeys": {}, // antd Table filterDropdown render-prop arg
+
+	// Wave-13 (ts-w13 react real-residue, client-fixture-b 0.875% → lower).
+	// All TS/JS-gated. Each name is a real exported function from a
+	// well-known React-ecosystem package whose collision with a hand-rolled
+	// user method named identically is vanishingly rare. Empirical residue
+	// from cfb diagnostic samples (n=100 bug-extractor leaves).
+	//
+	// @dnd-kit drag-and-drop ecosystem (https://docs.dndkit.com/).
+	// `useSortable`/`useDraggable`/`useDroppable`/`useDndContext`/
+	// `useDndMonitor` are rules-of-hooks reserved. `closestCenter` /
+	// `closestCorners` / `rectIntersection` / `pointerWithin` are
+	// canonical collision-detection strategies. `arrayMove` is the
+	// canonical sortable helper. `restrictTo*` are @dnd-kit/modifiers
+	// exports. All names are @dnd-kit-distinctive.
+	"useSortable":                       {},
+	"useDraggable":                      {},
+	"useDroppable":                      {},
+	"useDndContext":                     {},
+	"useDndMonitor":                     {},
+	"closestCenter":                     {},
+	"closestCorners":                    {},
+	"rectIntersection":                  {},
+	"pointerWithin":                     {},
+	"arrayMove":                         {},
+	"defaultDropAnimationSideEffects":   {},
+	"restrictToWindowEdges":             {},
+	"restrictToVerticalAxis":            {},
+	"restrictToHorizontalAxis":          {},
+	"restrictToFirstScrollableAncestor": {},
+	"restrictToParentElement":           {},
+
+	// React Router DOM v6 advanced hooks
+	// (https://reactrouter.com/en/main/start/overview). Rules-of-hooks
+	// reserved (`use*`). `useNavigation`/`useFormState` already present
+	// elsewhere; not duplicated.
+	"useRouteError":          {},
+	"useRouteLoaderData":     {},
+	"useRevalidator":         {},
+	"useBlocker":             {},
+	"useFormAction":          {},
+	"useFetcher":             {},
+	"useFetchers":            {},
+	"useViewTransitionState": {},
+	"useSubmit":              {},
+	"useAsyncValue":          {},
+	"useAsyncError":          {},
+
+	// antd Grid responsive hook (Grid.useBreakpoint). antd-distinctive
+	// `useBreakpoint` is also used by chakra-ui under the same name —
+	// both are JS/TS-only.
+	"useBreakpoint": {},
+
+	// SheetJS (xlsx) / ExcelJS receiver-strip surface
+	// (https://docs.sheetjs.com/). The xlsx pkg is allowlisted but
+	// `XLSX.utils.sheet_to_json(...)` strips both receivers leaving the
+	// bare snake_case name. The `_` separator and snake_case style is
+	// xlsx-distinctive (no user JS class uses snake_case methods at any
+	// scale).
+	"sheet_to_json":          {},
+	"sheet_add_json":         {},
+	"sheet_add_aoa":          {},
+	"aoa_to_sheet":           {},
+	"json_to_sheet":          {},
+	"book_new":               {},
+	"book_append_sheet":      {},
+	"book_set_sheet_visible": {},
+	"decode_range":           {},
+	"encode_range":           {},
+	"decode_cell":            {},
+	"encode_cell":            {},
+
+	// Clipboard API (https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API).
+	// `navigator.clipboard.writeText(...)` / `.readText(...)` strip both
+	// receivers. `ClipboardItem` is a distinctive constructor name.
+	// `writeText` already lives in kotlinBareNames (kotlin.io.File.writeText) —
+	// the kotlin gate fires for kotlin sources; the JS gate fires for js/ts.
+	// Both are language-scoped so they don't collide.
+	"ClipboardItem": {},
+	// `writeText` intentionally NOT added here (kotlinBareNames covers
+	// it for kotlin; for JS we accept the small residual since
+	// `writeText` is also used by file-stream user methods more often).
+	// `readText` already present elsewhere (FileReader chain). Don't dup.
+
+	// styled-components / emotion (https://styled-components.com/docs).
+	// `styled`, `css`, `keyframes`, `createGlobalStyle` are top-level
+	// exports commonly called bare after destructuring. `ThemeProvider`
+	// is a component name (JSX) but appears as a bare call-target in
+	// some HOC patterns. `styled` is intentionally OMITTED — it
+	// collides with user variable names too readily ("const styled =
+	// require(...)" patterns). The other three are distinctive.
+	"keyframes":         {},
+	"createGlobalStyle": {},
+	// `css` is intentionally OMITTED — too short / collision-prone with
+	// CSS-prop variables. `ThemeProvider` is a JSX component; not a
+	// bare-call target in well-typed code.
+
+	// date-fns (https://date-fns.org/) — the canonical JS date library.
+	// All names are date-fns-distinctive: the `differenceIn*` /
+	// `startOf*` / `endOf*` / `addX` / `subX` / `parseISO` / `isSame*`
+	// surface has no user-method collision pattern. `parseISO` is
+	// distinctive. `addDays`/`subDays` are camelCase verb+noun.
+	"parseISO":                {},
+	"isSameDay":               {},
+	"isSameMonth":             {},
+	"isSameYear":              {},
+	"isSameWeek":              {},
+	"isSameHour":              {},
+	"isSameMinute":            {},
+	"isSameSecond":            {},
+	"isWithinInterval":        {},
+	"differenceInDays":        {},
+	"differenceInMonths":      {},
+	"differenceInYears":       {},
+	"differenceInWeeks":       {},
+	"differenceInHours":       {},
+	"differenceInMinutes":     {},
+	"differenceInSeconds":     {},
+	"differenceInMilliseconds": {},
+	"differenceInCalendarDays": {},
+	"addDays":                 {},
+	"addHours":                {},
+	"addMinutes":              {},
+	"addSeconds":              {},
+	"addWeeks":                {},
+	"addMonths":               {},
+	"addYears":                {},
+	"subDays":                 {},
+	"subHours":                {},
+	"subMinutes":              {},
+	"subSeconds":              {},
+	"subWeeks":                {},
+	"subMonths":               {},
+	"subYears":                {},
+	"startOfMonth":            {},
+	"endOfMonth":              {},
+	"startOfWeek":             {},
+	"endOfWeek":               {},
+	"startOfYear":             {},
+	"endOfYear":               {},
+	"startOfDay":              {},
+	"endOfDay":                {},
+	"startOfHour":             {},
+	"endOfHour":               {},
+	"startOfMinute":           {},
+	"endOfMinute":             {},
+	"startOfQuarter":          {},
+	"endOfQuarter":            {},
+	"formatDistance":          {},
+	"formatDistanceToNow":     {},
+	"formatRelative":          {},
+	"formatISO":               {},
+
+	// FileReader / DOMParser API (https://developer.mozilla.org/en-US/docs/Web/API/FileReader).
+	// `readAsDataURL`/`readAsText`/`readAsArrayBuffer`/`readAsBinaryString`
+	// already present above. `FileReader` constructor is bare-extracted
+	// when used as `new FileReader()` — captures the constructor leaf.
+	// `parseFromString` is DOMParser-distinctive
+	// (https://developer.mozilla.org/en-US/docs/Web/API/DOMParser).
+	"FileReader":      {},
+	"parseFromString": {},
+
+	// React error/suspense boundaries (react-error-boundary npm pkg —
+	// canonical community library). `useErrorBoundary` is rules-of-hooks
+	// reserved. `ErrorBoundary` is JSX-component but bare-extracted in
+	// some HOC patterns.
+	"useErrorBoundary": {},
+	// `ErrorBoundary` and `Suspense` are JSX-only; not bare-call targets.
+
+	// React 18 hook alias commonly used: `useReactEffect` (re-export
+	// from internal effect hooks). Distinctive `useReact` prefix.
+	"useReactEffect": {},
+
+	// Wave-13 pass-3 — additional web/DOM observer + API residuals from
+	// cfb post-pass-2 sampling. All TS/JS-gated, all distinctive web-
+	// platform names.
+	// MutationObserver / ResizeObserver / IntersectionObserver / PerformanceObserver:
+	// `new ResizeObserver(cb)` constructor is bare-extracted; `.observe()` /
+	// `.disconnect()` strip the receiver. Distinctive in JS/TS code.
+	"ResizeObserver":        {},
+	"MutationObserver":      {},
+	"IntersectionObserver":  {},
+	"PerformanceObserver":   {},
+	"observe":               {},
+	"disconnect":            {},
+	"unobserve":             {},
+	"takeRecords":           {},
+	// DOMParser API. `parseFromString` already added above.
+	"DOMParser":             {},
+	"XMLSerializer":         {},
+	"serializeToString":     {},
+	// String.prototype additions — `charAt` is distinctive (single
+	// String.prototype method, no user-class collision pattern at scale
+	// in React/Node codebases). `subtract` is dayjs's symmetric counterpart
+	// to `add` (already in jsBareNames). `toDate` is dayjs `.toDate()`
+	// returning a native Date.
+	"charAt":   {},
+	"subtract": {}, // dayjs(x).subtract(1, 'day')
+	"toDate":   {}, // dayjs(x).toDate()
+	// Blob / Response body methods. `arrayBuffer` is distinctive (Blob,
+	// Response, Request all expose it). Not user-overridden in practice.
+	"arrayBuffer": {},
+	// Web Storage. `getItem` / `setItem` / `removeItem` on
+	// localStorage / sessionStorage. `setItem` would collide with React
+	// state setters too — gated by setX pattern already. Just add
+	// `getItem` and `removeItem` which are distinctive Storage API names.
+	"getItem":    {},
+	"removeItem": {},
+	// Window.scrollTo and Element.scrollTo. Distinctive enough.
+	"scrollTo": {},
+	"scrollBy": {},
+	// `scrollIntoView` already present earlier in jsBareNames.
+	// RegExp.prototype.exec. Distinctive — no user-method collision.
+	"exec": {},
+	// DOMPurify.sanitize. DOMPurify pkg is allowlisted but the call site
+	// is receiver-stripped (`DOMPurify.sanitize(html)` → `sanitize`).
+	"sanitize": {},
+
+	// Wave-13 pass-4 — Date.prototype UTC accessors + Intl
+	// formatToParts + String.prototype.substring. All distinctive
+	// JS-platform names; no user-class collision pattern at scale.
+	"getUTCDate":     {},
+	"getUTCMonth":    {},
+	"getUTCFullYear": {},
+	"getUTCHours":    {},
+	"getUTCMinutes":  {},
+	"getUTCSeconds":  {},
+	"getUTCDay":      {},
+	"getUTCMilliseconds": {},
+	"setUTCDate":     {},
+	"setUTCMonth":    {},
+	"setUTCFullYear": {},
+	"setUTCHours":    {},
+	"setUTCMinutes":  {},
+	"setUTCSeconds":  {},
+	"setUTCMilliseconds": {},
+	"toUTCString":    {},
+	// `toISOString` / `toDateString` / `toTimeString` /
+	// `toLocaleDateString` / `toLocaleTimeString` already present
+	// earlier in jsBareNames; not duplicated here.
+	"formatToParts": {}, // Intl.NumberFormat / Intl.DateTimeFormat
+	"substring":     {}, // String.prototype.substring (substr is deprecated)
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue

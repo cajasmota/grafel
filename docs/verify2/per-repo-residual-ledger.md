@@ -698,6 +698,127 @@ future wave.
 
 ---
 
+## Wave-13 React (TS/JS real-residue, ts-w13 cfb 0.875% → 0.574%)
+
+Targeted continuation of wave-12-FINAL ship-gate. Wave-12-FINAL closed
+the resolver-residual gap at 0.875% on cfb but left empirical residue
+that the prior agent's analysis of 292 bug-extractor edges identified
+as real React-ecosystem coverage gaps (Track A) plus a destructured-
+parameter callable-lift gap (Track B). Four diagnostic passes:
+
+- **Pass-1 (Track A: library allowlist additions, synth.go jsBareNames):**
+  @dnd-kit (useSortable/useDraggable/useDroppable/useDndContext/
+  useDndMonitor/closestCenter/closestCorners/rectIntersection/
+  pointerWithin/arrayMove/defaultDropAnimationSideEffects/restrictTo*),
+  react-router v6 advanced hooks (useRouteError/useRouteLoaderData/
+  useRevalidator/useBlocker/useFormAction/useFetcher/useFetchers/
+  useViewTransitionState/useSubmit/useAsyncValue/useAsyncError),
+  antd Grid (useBreakpoint), SheetJS XLSX snake_case utils
+  (sheet_to_json/sheet_add_json/sheet_add_aoa/aoa_to_sheet/
+  json_to_sheet/book_new/book_append_sheet/book_set_sheet_visible/
+  decode_range/encode_range/decode_cell/encode_cell), Clipboard API
+  (ClipboardItem), styled-components (keyframes/createGlobalStyle),
+  date-fns (parseISO/isSameDay/isSameMonth/.../isWithinInterval/
+  differenceIn{Days,Months,Years,Weeks,Hours,Minutes,Seconds,
+  Milliseconds,CalendarDays}/add{Days,Hours,Minutes,Seconds,Weeks,
+  Months,Years}/sub{Days,Hours,Minutes,Seconds,Weeks,Months,Years}/
+  startOf{Month,Week,Year,Day,Hour,Minute,Quarter}/endOf{...}/
+  formatDistance/formatDistanceToNow/formatRelative/formatISO),
+  FileReader/DOMParser (FileReader/parseFromString), react-error-
+  boundary (useErrorBoundary), and React effect alias
+  (useReactEffect). All TS/JS-gated. 0.875% → 0.764% (-0.111pp);
+  bug-extractor 292 → 239.
+
+- **Pass-2 (Track B: handler-convention Dynamic patterns, refs.go
+  jsDynamicPatterns):** added `^handle[A-Z][A-Za-z0-9]*$` and
+  `^after[A-Z][A-Za-z0-9]*$` mirroring the wave-11 `^on[A-Z]...`
+  rule. Conservative scope — generic verbs (get/set/load/save/create/
+  update/delete/fetch/use/submit/cancel/select/reset/toggle) are
+  deliberately EXCLUDED to avoid shadowing user-defined entities.
+  `handleX` is universal React tutorial convention (cfb residue:
+  handleClientSelection/handleReloadData/handleSaveOnCell/
+  handleCloseModal/handleOnRemove/handleCancelButton/etc.);
+  `afterX` is form/lifecycle convention (cfb: afterSaveNote/
+  afterSaveSuccess/afterCreateSuccess). Same-file preference resolver
+  (wave-9 Chain-fix A) fires BEFORE the dynamic-pattern check via
+  the hex-ID branch in classifyDispositionLang, so a same-file
+  lifted handler still wins. 0.764% → 0.646% (-0.118pp); bug-extractor
+  239 → 216; bug-resolver 123 → 90 (33 handler residuals routed to
+  Dynamic).
+
+- **Pass-3 (synth.go web platform observers + APIs):** ResizeObserver/
+  MutationObserver/IntersectionObserver/PerformanceObserver +
+  observe/disconnect/unobserve/takeRecords; DOMParser/XMLSerializer/
+  serializeToString; String.prototype additions (charAt/substring);
+  dayjs symmetric additions (subtract/toDate); Blob/Response
+  (arrayBuffer); Storage API (getItem/removeItem); window/Element
+  scroll API (scrollTo/scrollBy); RegExp (exec); DOMPurify (sanitize).
+  All TS/JS-gated, all distinctive web-platform names. 0.646% →
+  0.591% (-0.055pp); bug-extractor 216 → 190.
+
+- **Pass-4 (synth.go Date UTC + Intl):** Date.prototype UTC accessors
+  (getUTCDate/getUTCMonth/getUTCFullYear/getUTCHours/getUTCMinutes/
+  getUTCSeconds/getUTCDay/getUTCMilliseconds + setUTC*); toUTCString;
+  Intl formatToParts. 0.591% → 0.574% (-0.017pp); bug-extractor 190 →
+  182.
+
+Per-iteration delta on client-fixture-b (primary target):
+
+| Pass | bug-rate | bug-ext | bug-res | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| baseline (post-wave-12-FINAL) | 0.875% | 292 | 123 | — |
+| Pass-1 (Track A library allowlist) | 0.764% | 239 | 123 | -0.111pp |
+| Pass-2 (Track B handle*/after* dynamic) | 0.646% | 216 | 90 | -0.229pp |
+| Pass-3 (web observers + APIs) | 0.591% | 190 | 90 | -0.284pp |
+| Pass-4 (Date UTC + Intl) | 0.574% | 182 | 90 | -0.301pp |
+
+Regression check (main vs ts-w13) — 11 listed repos + cfa:
+
+| Repo | Main | W13 | Δ |
+|---|---:|---:|---:|
+| chi | 4.233% | 4.233% | 0.000pp |
+| flask | 9.424% | 9.424% | 0.000pp |
+| spdlog | 5.758% | 5.758% | 0.000pp |
+| gin | 4.931% | 4.931% | 0.000pp |
+| play-scala-starter | 2.113% | 2.113% | 0.000pp |
+| express | 2.856% | 2.856% | 0.000pp |
+| nextjs-commerce | 1.794% | 1.794% | 0.000pp |
+| nestjs-starter | 1.754% | 1.754% | 0.000pp |
+| kafka-streams-examples | 3.396% | 3.396% | 0.000pp |
+| vapor-api-template | 2.128% | 2.128% | 0.000pp |
+| ktor-samples | 4.844% | 4.750% | -0.094pp |
+| client-fixture-a | 5.927% | 5.927% | 0.000pp |
+
+No regression. Every non-JS/TS corpus is bit-identical. ktor-samples
+shows -0.094pp (a handful of sample modules ship JS templates that
+benefit from the @dnd-kit / react-router additions) — confirms the
+additions are real language-surface, not fixture-specific overfit.
+
+Residual root cause: post-wave-13 cfb bug-extractor top samples are
+now `find`, `append`, `splice`, `concat`, `flatMap`, `forEach`,
+`reduce`, `delete`, `get`, `clear`, `read`, `write`, `select` — all
+#94 safer-bias rejects (collide with user methods on hand-rolled
+classes); plus user-handler names without the `handle*` / `after*`
+convention (`saveDirectly`, `fetchModel`, `reportPendingChanges`,
+`reload`, `requestFetchData`, `getNameForId`, `getEditableElement`)
+that remain extractor-lift gaps for destructured-arrow `const
+fetchX = useCallback(...)` not yet handled, plus `styled` and dayjs
+field-accessor getters (`year`, `minute`, `second`, `millisecond`)
+that are intentionally kept off the allowlist per the wave-7
+collision-with-user-model-field rationale.
+
+Status: well-under-ship-gate. cfb 0.875% → 0.574% (-0.301pp,
+**34% relative reduction**); ≤1% target retained with deeper margin.
+The remaining 0.574% splits ~60% safer-bias rejects (#94 stays
+rejected) / ~30% non-handle/after handler-lift gap (filed as
+chain-fix candidate: extractor lift of all `const X = useCallback(...)`
+inside JSX function bodies — wider than wave-8 #567's wrapper-call
+heuristic) / ~10% dayjs field-accessor collisions (kept rejected).
+
+| client-fixture-b | javascript (Vite + React) | ~659 | **0.574% (2026-05-19, ts-w13 react real-residue)** — was 0.875% (post-wave-12-FINAL) | ts-w13-react-real-residue | Wave-13, 4 passes (Track A library allowlist + Track B handle/after Dynamic regex + web-platform observers + Date UTC/Intl). Cumulative -0.301pp; bug-rate 0.875% → 0.574% (-34% relative). bug-extractor 292 → 182; bug-resolver 123 → 90. | well-under-ship-gate | chain-fixes filed: (1) extractor: lift ALL `const X = useCallback/useMemo/=> {...}` inside JSX function bodies to file-scoped SCOPE.Operation (wider than wave-8 #567's wrapper-call heuristic, to cover handlers without `useCallback` wrapper); (2) follow-up #104 relaxation deferred per safer-bias rule. |
+
+---
+
 ## Wave-4 PHP (Symfony residual reduction, post-#498 chase to ≤3%)
 
 Targeted continuation of PHP wave-3 (#485) symfony-demo residual chase
