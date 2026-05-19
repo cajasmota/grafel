@@ -283,6 +283,24 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// Google Cloud Pub/Sub producer/consumer cross-repo edges (wave 3 of #726).
+	// Emits SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for
+	// google-cloud-pubsub (Python/Node/Go/Java), Pub/Sub Lite, and
+	// Eventarc / Cloud Run trigger consumers.
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	entities, relationships = applyPubSubEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
+	// NATS producer/consumer cross-repo edges (wave 3 of #726). Emits
+	// SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for
+	// nats.go / nats.js / nats.py / nats.java, JetStream, and NATS
+	// Streaming (STAN). Wildcard subjects and request/reply pattern tracked.
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	entities, relationships = applyNATSEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// #727: Real-time event channel synthesis. Three append-only passes
 	// for WebSocket, Server-Sent Events, and GraphQL subscriptions. Each
 	// scans the file directly and emits ChannelEvent / Stream /
