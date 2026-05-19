@@ -36,10 +36,11 @@ One new tool, `archigraph_patterns`, with an `action` argument matching the shap
 | Action  | Description |
 |---------|-------------|
 | `query`  | Find patterns applicable to a task description and caller context. Returns ranked matches with steps, anti-patterns, exemplar links, and confidence. |
-| `record` | Create a new pattern from observed work. Requires at least one exemplar (entity ID in the group's graph). Scope auto-derived from exemplars unless overridden. |
+| `record` | Create a new pattern from observed work. Takes `as_candidate: bool` arg. `as_candidate=true` emits a `PatternCandidate` (subagent path). `as_candidate=false` creates a Pattern directly (agent-task path). Requires at least one exemplar (entity ID in the group's graph). Scope auto-derived from exemplars unless overridden. |
 | `refine` | Update an existing pattern's steps, anti-patterns, or scope without changing its confidence. For corrections that don't reflect a success or failure. |
 | `apply`  | Mark that a pattern was applied to a task. Records success/failure; updates confidence and `last_applied`. Writes a `CREATED_BY` edge from the produced entity back to the pattern. |
 | `reject` | Flag a pattern as stale or wrong. Decreases confidence; does not delete — pattern is retained for audit and may be refined. |
+| `promote` | Coordinator-driven action invoked during Phase 4 aggregation. Takes a `candidate_id`; sets `is_candidate=false` and surfaces to user for final approval. |
 
 No other tools are modified. The routing cascade from ADR-0004 (explicit `group` arg → CWD walk → singleton fallback) applies to `archigraph_patterns` identically to every other tool.
 
@@ -79,6 +80,10 @@ Pattern {
   last_validated:  timestamp
   last_applied:    timestamp
   documentation_url: string      // optional: pointer to the doc section this pattern maps to (written by /generate-docs integration)
+
+  is_candidate:        bool         // true until convergence + user-approval; default true on record(as_candidate=true)
+  convergence_count:   int          // number of independent subagents that proposed this candidate
+  proposer_subagents:  []string     // identifiers of subagents that contributed observations (for audit)
 }
 ```
 
@@ -133,23 +138,27 @@ To intentionally create a broad pattern, the agent passes `scope.repos=[]` (or a
 
 ### Discovery: doc-generation integration
 
-Pattern detection has two entry points:
+Pattern detection has three entry points:
 
-1. **Primary — doc-generation skill (`/generate-docs`).** The doc-gen pass is already exploring the codebase end-to-end and loading every entity into context. Pattern detection piggybacks on that exploration as a new phase:
+1. **Primary — doc-generation skill (`/generate-docs`).** The doc-gen pass dispatches multiple subagents over disjoint codebase slices. No single subagent sees enough samples to call a pattern with confidence. The phased workflow uses convergence across subagents as the signal:
 
-   - Phase 1 (discovery): scan codebase for entities — also note structural recurrences (≥3 similar shapes within the same scope = candidate pattern).
-   - Phase 2 (domain Q&A): unchanged.
-   - Phase 3 (generation): write docs.
-   - **Phase 4 (pattern proposal, new):** surface candidate patterns to the user. User approves, refines, or rejects each. Approved candidates flow into `record` action.
-   - **Phase 5 (cross-link, new):** approved patterns receive `documentation_url` pointing at the doc section they map to.
+   - **Phase 1 (discovery, per subagent):** each subagent scans its assigned slice, noting structural recurrences. If a subagent sees ≥`per_subagent_threshold` (default 2) instances of a candidate shape within its slice, it emits a `PatternCandidate` via `record(as_candidate=true)`.
+   - **Phase 2 (domain Q&A):** unchanged.
+   - **Phase 3 (generation):** write docs.
+   - **Phase 4 (aggregation + promotion, new):** the coordinator runs a convergence pass:
+     1. List all candidates emitted during Phase 1.
+     2. Cluster by similarity (BM25 cosine on trigger text ≥ `cluster_similarity_threshold`, default 0.8; min one overlapping exemplar).
+     3. For each cluster with ≥ `convergence_threshold` (default 3) independent proposer subagents, merge into a single candidate (union of exemplars, best-scored trigger text) and call `promote(candidate_id)`.
+     4. Surface promoted candidates to the user for final approval. User approval flips `is_candidate=false`.
+   - **Phase 5 (cross-link, new):** approved patterns receive `documentation_url` populated with the matching doc-section anchor.
 
-   Rationale: doc-gen achieves ≥3 observations on day one (statistical confidence floor), whereas per-task discovery accumulates observations slowly. Doc-gen also runs at a natural periodic cadence (monthly, on stale-doc trigger), making it the right place for pattern audits — re-validating existing patterns and discovering new candidates as the code changes.
+   Non-convergent candidates persist with `is_candidate=true` for future runs; they may converge in the next doc-gen cycle. The `archigraph patterns gc` command (v1.1) prunes candidates older than `candidate_decay_days` (default 90).
 
-2. **Secondary — standalone `/archigraph-patterns-discover` skill.** For users who want pattern refresh without doc regeneration. Same detection logic, no doc emission phase.
+2. **Secondary — `/archigraph-patterns-discover` standalone skill.** Same detection logic as Phases 1 + 4, no doc emission. For users refreshing patterns without regenerating docs.
 
-3. **Tertiary — agent-task observation.** When an agent completes a task and the query returned no applicable pattern, it can call `record` directly to formalize what it just did. Lowest sample size, highest immediacy.
+3. **Tertiary — agent-task observation.** When an agent completes a task and `query` returned no applicable pattern, it can call `record(as_candidate=false)` directly to formalize what it just did. Sample size of one, immediacy of now. The most fragile path; relies on the agent's own confidence rather than convergence.
 
-The three entry points coexist. Doc-gen integration is the primary because the exploration cost is already paid and the user is in review mode.
+The three entry points coexist. Doc-gen is primary because convergence across slices is the strongest signal and the exploration cost is already paid.
 
 ### Confidence model
 
@@ -171,6 +180,18 @@ The three entry points coexist. Doc-gen integration is the primary because the e
 | team                      | 0.5               |
 
 Below threshold the agent surfaces the pattern and asks for confirmation before applying.
+
+### Configuration
+
+Tunable defaults via `archigraph patterns config <key>=<value>`:
+
+| Setting                          | Default | Purpose |
+|----------------------------------|---------|---------|
+| `per_subagent_threshold`         | 2       | Minimum observations within a single subagent's slice before emitting a candidate |
+| `convergence_threshold`          | 3       | Minimum independent subagents required to promote a candidate to a Pattern |
+| `cluster_similarity_threshold`   | 0.8     | BM25 cosine threshold for clustering similar candidates during aggregation |
+| `candidate_decay_days`           | 90      | Auto-prune non-convergent candidates after this many days (via `gc` subcommand) |
+| `silent_apply_threshold.<category>` | varies (see Confidence model) | Per-category confidence threshold for silent apply vs prompt-to-confirm |
 
 ### Lifecycle flows
 
