@@ -4,6 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -40,6 +42,8 @@ func runIndexClient(cmd *cobra.Command, argv []string) error {
 	exportFB := fs.Bool("export-fb", false, "[deprecated] graph.fb is now written by default; this flag is a no-op (ADR-0016 flip-day)")
 	exportJSON := fs.Bool("export-json", false, "also write graph.json alongside graph.fb (default: FB-only, ADR-0016 flip-day)")
 	printSkipped := fs.Bool("print-skipped", false, "print each directory skipped at walk-time with the matching rule")
+	quiet := fs.Bool("quiet", false, "suppress progress output; print only the final summary line")
+	jsonProgress := fs.Bool("json-progress", false, "emit one JSON event per line (for scripting; implies --quiet for non-JSON output)")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -55,29 +59,86 @@ func runIndexClient(cmd *cobra.Command, argv []string) error {
 	}
 	defer c.Close()
 
+	repoPath := fs.Arg(0)
+	slug := filepath.Base(repoPath)
+	w := cmd.OutOrStdout()
+
 	var skipPasses []string
 	if *skip != "" {
 		skipPasses = []string{*skip}
 	}
-	reply, err := c.Index(proto.IndexArgs{
-		RepoPath:    fs.Arg(0),
-		OutPath:     *out,
-		RepoTag:     *repoTag,
-		SkipPasses:  skipPasses,
-		Pretty:      *pretty,
-		JSONStats:   *jsonStats,
-		Repair:      *repair,
-		RepairApply: *repairApply,
-		ExportFB:    *exportFB, // deprecated no-op; kept for back-compat
-		ExportJSON:  *exportJSON,
+
+	indexArgs := proto.IndexArgs{
+		RepoPath:     repoPath,
+		OutPath:      *out,
+		RepoTag:      *repoTag,
+		SkipPasses:   skipPasses,
+		Pretty:       *pretty,
+		JSONStats:    *jsonStats,
+		Repair:       *repair,
+		RepairApply:  *repairApply,
+		ExportFB:     *exportFB, // deprecated no-op; kept for back-compat
+		ExportJSON:   *exportJSON,
 		PrintSkipped: *printSkipped,
-	})
-	if err != nil {
-		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "indexed %s -> %s\n", reply.RepoPath, reply.GraphPath)
-	if reply.StatsJSON != "" {
-		fmt.Fprintln(cmd.OutOrStdout(), reply.StatsJSON)
+
+	if *quiet || *jsonProgress {
+		// Quiet or scripting mode: run synchronously, no heartbeat.
+		reply, err := c.Index(indexArgs)
+		if err != nil {
+			return err
+		}
+		if *jsonProgress {
+			// Emit a simple done event.
+			emitJSONProgressState(w, "", proto.RepoProgressState{
+				Slug:    slug,
+				Path:    reply.RepoPath,
+				Phase:   proto.PhaseCompleted,
+				Index:   1,
+				Total:   1,
+			})
+		} else {
+			fmt.Fprintf(w, "indexed %s -> %s\n", reply.RepoPath, reply.GraphPath)
+			if reply.StatsJSON != "" {
+				fmt.Fprintln(w, reply.StatsJSON)
+			}
+		}
+		return nil
+	}
+
+	// Default: show heartbeat while index is running.
+	fmt.Fprintf(w, "Indexing '%s'...\n", slug)
+
+	type indexResult struct {
+		reply proto.IndexReply
+		err   error
+	}
+	resultCh := make(chan indexResult, 1)
+	start := time.Now()
+	go func() {
+		reply, err := c.Index(indexArgs)
+		resultCh <- indexResult{reply: reply, err: err}
+	}()
+
+	const heartbeatInterval = 5 * time.Second
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+	var res indexResult
+	for {
+		select {
+		case res = <-resultCh:
+			goto done
+		case <-ticker.C:
+			fmt.Fprintf(w, "  ... indexing %s (%s elapsed)\n", slug, fmtDuration(time.Since(start)))
+		}
+	}
+done:
+	if res.err != nil {
+		return res.err
+	}
+	fmt.Fprintf(w, "indexed %s -> %s\n", res.reply.RepoPath, res.reply.GraphPath)
+	if res.reply.StatsJSON != "" {
+		fmt.Fprintln(w, res.reply.StatsJSON)
 	}
 	return nil
 }

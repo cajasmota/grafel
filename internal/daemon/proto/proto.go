@@ -122,6 +122,11 @@ type RebuildArgs struct {
 	Group string `json:"group"`
 	Slug  string `json:"slug,omitempty"`
 	Wipe  bool   `json:"wipe,omitempty"`
+	// ProgressToken, when non-empty, causes the daemon to store per-repo
+	// progress events under this key so the CLI can poll them via the
+	// IndexProgress RPC. Clients should use a short unique string (e.g.
+	// a timestamp + random suffix). Empty disables progress tracking.
+	ProgressToken string `json:"progress_token,omitempty"`
 }
 
 // RebuildReply lists the repos that were rebuilt and any warning that
@@ -129,6 +134,79 @@ type RebuildArgs struct {
 type RebuildReply struct {
 	Repos   []string `json:"repos"`
 	Warning string   `json:"warning,omitempty"`
+	// Summary fields — populated when the daemon tracked per-repo stats.
+	TotalEntities int64 `json:"total_entities,omitempty"`
+	TotalRels     int64 `json:"total_rels,omitempty"`
+	ElapsedSec    float64 `json:"elapsed_sec,omitempty"`
+}
+
+// IndexProgressArgs polls the progress of a rebuild operation started
+// with a ProgressToken.
+type IndexProgressArgs struct {
+	Token string `json:"token"`
+}
+
+// IndexProgressPhase is a phase label for a single-repo progress event.
+//
+// Values: "queued", "started", "walking", "extracting", "finalizing", "completed", "failed".
+type IndexProgressPhase = string
+
+const (
+	PhaseQueued     IndexProgressPhase = "queued"
+	PhaseStarted    IndexProgressPhase = "started"
+	PhaseWalking    IndexProgressPhase = "walking"
+	PhaseExtracting IndexProgressPhase = "extracting"
+	PhaseFinalizing IndexProgressPhase = "finalizing"
+	PhaseCompleted  IndexProgressPhase = "completed"
+	PhaseFailed     IndexProgressPhase = "failed"
+)
+
+// RepoProgressState holds the current progress snapshot for one repo in
+// a rebuild batch.
+type RepoProgressState struct {
+	// Slug is the short repo name (last path component).
+	Slug string `json:"slug"`
+	// Path is the absolute on-disk path.
+	Path string `json:"path"`
+	// Phase is the current lifecycle phase.
+	Phase IndexProgressPhase `json:"phase"`
+	// Index is 1-based position in the batch (0 if unknown).
+	Index int `json:"index"`
+	// Total is the total number of repos in the batch.
+	Total int `json:"total"`
+	// FilesWalked is how many files were seen during the walk phase.
+	FilesWalked int `json:"files_walked,omitempty"`
+	// FilesExtracted is how many files have been extracted so far.
+	FilesExtracted int `json:"files_extracted,omitempty"`
+	// Entities is the final entity count (set on completion).
+	Entities int64 `json:"entities,omitempty"`
+	// Rels is the final relationship count (set on completion).
+	Rels int64 `json:"rels,omitempty"`
+	// ElapsedSec is seconds since this repo's indexing started.
+	ElapsedSec float64 `json:"elapsed_sec,omitempty"`
+	// ErrMsg is non-empty when Phase is "failed".
+	ErrMsg string `json:"err_msg,omitempty"`
+	// UpdatedAt is the Unix timestamp of the last update (for heartbeat detection).
+	UpdatedAt int64 `json:"updated_at"`
+}
+
+// IndexProgressReply is the poll response for an in-flight rebuild.
+type IndexProgressReply struct {
+	// Token echoes the request token.
+	Token string `json:"token"`
+	// Done is true when all repos have reached a terminal state
+	// (completed or failed) and the rebuild RPC has returned.
+	Done bool `json:"done"`
+	// Repos is the per-repo progress snapshot, ordered by index.
+	Repos []RepoProgressState `json:"repos"`
+	// GroupName is the group being rebuilt.
+	GroupName string `json:"group_name,omitempty"`
+	// TotalEntities is the sum of entities so far (updated on each completion).
+	TotalEntities int64 `json:"total_entities,omitempty"`
+	// TotalRels is the sum of rels so far.
+	TotalRels int64 `json:"total_rels,omitempty"`
+	// ElapsedSec is total wall time since the rebuild started.
+	ElapsedSec float64 `json:"elapsed_sec,omitempty"`
 }
 
 // StopArgs requests a graceful shutdown of the daemon.
