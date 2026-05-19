@@ -1,0 +1,33 @@
+name: board-hygiene
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  closure-keyword:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body has closure keyword
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+            if (labels.includes('board:exempt')) {
+              core.info('PR has board:exempt label, skipping closure-keyword check.');
+              return;
+            }
+            const closureRegex = /(?:closes|fixes|resolves)\s+#\d+/i;
+            const refsRegex = /refs\s+#\d+/i;
+            const epicRegex = /closes-epic-on-merge-of-pr-#\d+\s+#\d+/i;
+            const hasClosing = closureRegex.test(body) || refsRegex.test(body) || epicRegex.test(body);
+            if (!hasClosing) {
+              core.setFailed(
+                'PR body must include one of: `Closes #N`, `Fixes #N`, `Resolves #N`, ' +
+                '`Refs #N`, or `Closes-epic-on-merge-of-PR-#X #N`. ' +
+                'See issue #815 for the board-hygiene convention.\n' +
+                'Add the `board:exempt` label for one-off cleanups that legitimately don\'t map to an issue.'
+              );
+            } else {
+              core.info('PR body has a valid closure keyword.');
+            }
