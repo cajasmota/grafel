@@ -2065,6 +2065,61 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 				return "function", true
 			}
 		}
+		// Wave-RN-platform-symbols (PR follow-up to #621). File-scoped
+		// gates for React Native ecosystem packages. The names are too
+		// generic for the global jsBareNames stop-list (`timing`,
+		// `Value`, `sequence`, `parallel`, `useStyleContext`,
+		// `goBack`, `addListener`, `*Async` verbs) — they would shadow
+		// user methods on hand-rolled classes — but inside files that
+		// import the canonical RN platform package these are
+		// overwhelmingly the library form. Same precedent as the
+		// wave-9 `hasJSCollectionLibImport` gate and the python
+		// wave-10 per-import gates.
+		if hasReanimatedImport(fromImports) {
+			if _, ok := jsReanimatedBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		if hasGluestackImport(fromImports) {
+			if _, ok := jsGluestackBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		if hasExpoCameraImport(fromImports) {
+			if _, ok := jsExpoCameraBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		if hasExpoFileImport(fromImports) {
+			if _, ok := jsExpoFileBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		if hasExpoNetworkImport(fromImports) {
+			if _, ok := jsExpoPlatformBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		if hasRNAudioRecorderImport(fromImports) {
+			if _, ok := jsRNAudioRecorderBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		if hasRNGestureHandlerImport(fromImports) {
+			if _, ok := jsRNGestureHandlerBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		if hasReactNavigationImport(fromImports) {
+			if _, ok := jsReactNavigationBareNames[name]; ok {
+				return "function", true
+			}
+		}
+		if hasGorhomBottomSheetImport(fromImports) {
+			if _, ok := jsGorhomBottomSheetBareNames[name]; ok {
+				return "function", true
+			}
+		}
 	}
 	if lang == "swift" {
 		if _, ok := swiftBareNames[name]; ok {
@@ -2908,6 +2963,393 @@ func hasJSCollectionLibImport(imports map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// hasReanimatedImport reports whether the source JS/TS file imports
+// `react-native-reanimated`. Gates the Reanimated 3.x bare-name
+// allowlist (`withTiming` etc. already in jsBareNames; the gate
+// brings in the generic `timing` / `Value` / `sequence` / `parallel`
+// / `Easing` / `interpolate` / `Extrapolate` shapes that ride on
+// `Animated.<name>` receiver-strip and would shadow user methods if
+// classified globally).
+func hasReanimatedImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		// `react-native-reanimated` is the canonical source for the
+		// Reanimated API. `react-native` itself re-exports `Animated`
+		// (with `.timing`/`.sequence`/`.parallel`/`.Value`/
+		// `.createAnimatedComponent` as members) — files calling
+		// `Animated.<name>(...)` in a `react-native` import context
+		// produce the same bare leaves. Treat both as activating the
+		// Animated allowlist.
+		if spec == "react-native-reanimated" ||
+			strings.HasPrefix(spec, "react-native-reanimated/") ||
+			spec == "react-native" ||
+			strings.HasPrefix(spec, "react-native/") {
+			return true
+		}
+	}
+	return false
+}
+
+// jsReanimatedBareNames is the file-scoped Reanimated 3.x surface
+// gated by hasReanimatedImport. These names ride on
+// `Animated.<name>(...)` receiver-strip and on the
+// `react-native-reanimated` factory + helper exports. Curated from
+// client-fixture-c bug-extractor residual: `timing`, `Value`,
+// `sequence`, `parallel`, `createAnimatedComponent` appear on the
+// Reanimated `Animated` namespace and standalone re-exports.
+//
+// `withTiming`/`withSpring`/`withDecay`/`withDelay`/`withRepeat`/
+// `withSequence`/`interpolate`/`interpolateColor` and the Reanimated
+// hooks (`useSharedValue` etc.) are already in jsBareNames
+// (unconditional) — not duplicated here.
+var jsReanimatedBareNames = map[string]struct{}{
+	"timing":                  {}, // Animated.timing
+	"spring":                  {}, // Animated.spring
+	"decay":                   {}, // Animated.decay
+	"sequence":                {}, // Animated.sequence (also array-shape)
+	"parallel":                {}, // Animated.parallel
+	"stagger":                 {}, // Animated.stagger
+	"delay":                   {}, // Animated.delay
+	"loop":                    {}, // Animated.loop
+	"event":                   {}, // Animated.event
+	"diffClamp":               {}, // Animated.diffClamp
+	"Value":                   {}, // Animated.Value
+	"ValueXY":                 {}, // Animated.ValueXY
+	"createAnimatedComponent": {}, // Animated.createAnimatedComponent
+	"cancelAnimation":         {}, // reanimated
+	"useFrameCallback":        {},
+	"useAnimatedSensor":       {},
+	"measure":                 {}, // reanimated measure() worklet
+	"scrollTo":                {}, // reanimated scrollTo worklet
+	"defineAnimation":         {},
+}
+
+// hasGluestackImport reports whether the source JS/TS file imports
+// any `@gluestack-ui/*` or `@gluestack-style/*` package. Gates the
+// gluestack-ui bare-name allowlist (`useStyleContext`,
+// `withStyleContext`, `tva`, ...). The package surface is distinctive
+// enough that the gate is mostly belt-and-braces against rare user
+// methods of the same name elsewhere in the codebase.
+func hasGluestackImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		if strings.HasPrefix(spec, "@gluestack-ui/") ||
+			strings.HasPrefix(spec, "@gluestack-style/") {
+			return true
+		}
+	}
+	return false
+}
+
+// jsGluestackBareNames is the gluestack-ui surface gated by
+// hasGluestackImport. Top-residual on client-fixture-c (`useStyleContext`
+// = 43 hits — single largest leaf) plus the related style-context
+// helpers.
+var jsGluestackBareNames = map[string]struct{}{
+	"useStyleContext":           {},
+	"withStyleContext":          {},
+	"withStyleContextAndStates": {},
+	"useStyleContextAndStates":  {},
+	"tva":                       {}, // gluestack tva() variant authoring
+	"createStyle":               {},
+	"styled":                    {},
+	"createConfig":              {},
+	"createComponents":          {},
+	"createGenericComponent":    {},
+	"useBreakpointValue":        {}, // gluestack responsive helper
+	"useDrawerStatus":           {}, // gluestack drawer
+	"useToken":                  {}, // gluestack token reader
+}
+
+// hasGorhomBottomSheetImport reports whether the file imports
+// `@gorhom/bottom-sheet`. Activates the bottom-sheet handle method
+// surface (`snapToIndex`, `expand`, `collapse`, `close`, ...).
+func hasGorhomBottomSheetImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		if spec == "@gorhom/bottom-sheet" ||
+			strings.HasPrefix(spec, "@gorhom/bottom-sheet/") {
+			return true
+		}
+	}
+	return false
+}
+
+var jsGorhomBottomSheetBareNames = map[string]struct{}{
+	"snapToIndex":    {},
+	"snapToPosition": {},
+	"expand":         {},
+	"collapse":       {},
+	"forceClose":     {},
+	"present":        {},
+	"dismiss":        {},
+	"dismissAll":     {},
+}
+
+// hasExpoCameraImport reports whether the file imports expo-camera /
+// expo-image-picker. Activates the camera/permission surface.
+func hasExpoCameraImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		if spec == "expo-camera" || strings.HasPrefix(spec, "expo-camera/") ||
+			spec == "expo-image-picker" || strings.HasPrefix(spec, "expo-image-picker/") ||
+			spec == "react-native-image-crop-picker" {
+			return true
+		}
+	}
+	return false
+}
+
+var jsExpoCameraBareNames = map[string]struct{}{
+	"requestCameraPermissionsAsync":   {},
+	"getCameraPermissionsAsync":       {},
+	"requestMicrophonePermissionsAsync": {},
+	"requestMediaLibraryPermissionsAsync": {},
+	"launchCameraAsync":              {},
+	"launchImageLibraryAsync":        {},
+	"openCamera":                     {}, // react-native-image-crop-picker
+	"openPicker":                     {},
+	"openCropper":                    {},
+	"clean":                          {}, // ImagePicker.clean()
+}
+
+// hasExpoFileImport reports whether the file imports expo-file-system /
+// expo-document-picker / expo-media-library / expo-sharing.
+func hasExpoFileImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		if spec == "expo-file-system" || strings.HasPrefix(spec, "expo-file-system/") ||
+			spec == "expo-document-picker" || strings.HasPrefix(spec, "expo-document-picker/") ||
+			spec == "expo-media-library" || strings.HasPrefix(spec, "expo-media-library/") ||
+			spec == "expo-sharing" {
+			return true
+		}
+	}
+	return false
+}
+
+var jsExpoFileBareNames = map[string]struct{}{
+	"downloadFileAsync":         {}, // expo-file-system
+	"uploadAsync":               {},
+	"readAsStringAsync":         {},
+	"writeAsStringAsync":        {},
+	"deleteAsync":               {},
+	"moveAsync":                 {},
+	"copyAsync":                 {},
+	"makeDirectoryAsync":        {},
+	"readDirectoryAsync":        {},
+	"getInfoAsync":              {},
+	"getContentUriAsync":        {},
+	"getFreeDiskStorageAsync":   {},
+	"getTotalDiskCapacityAsync": {},
+	"pickDirectoryAsync":        {}, // expo-document-picker
+	"getDocumentAsync":          {},
+	"shareAsync":                {}, // expo-sharing
+	"isAvailableAsync":          {}, // expo-sharing / expo-haptics / ...
+	"createAssetAsync":          {}, // expo-media-library
+	"createAlbumAsync":          {},
+	"addAssetsToAlbumAsync":     {},
+	"saveToLibraryAsync":        {},
+}
+
+// hasExpoNetworkImport reports whether the file imports expo-network /
+// expo-intent-launcher / expo-linking / expo-local-authentication /
+// expo-notifications — the smaller expo platform modules whose
+// distinctive `*Async` surface needs gating.
+func hasExpoNetworkImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		switch spec {
+		case "expo-network", "expo-intent-launcher", "expo-linking",
+			"expo-local-authentication", "expo-notifications",
+			"expo-application", "expo-device", "expo-haptics",
+			"expo-clipboard", "expo-screen-orientation", "expo-status-bar":
+			return true
+		}
+	}
+	return false
+}
+
+var jsExpoPlatformBareNames = map[string]struct{}{
+	"getNetworkStateAsync":              {}, // expo-network
+	"getIpAddressAsync":                 {},
+	"getMacAddressAsync":                {},
+	"startActivityAsync":                {}, // expo-intent-launcher
+	"supportedAuthenticationTypesAsync": {}, // expo-local-authentication
+	"authenticateAsync":                 {},
+	"hasHardwareAsync":                  {},
+	"isEnrolledAsync":                   {},
+	"scheduleNotificationAsync":         {}, // expo-notifications
+	"cancelScheduledNotificationAsync":  {},
+	"cancelAllScheduledNotificationsAsync": {},
+	"setNotificationHandler":            {},
+	"getExpoPushTokenAsync":             {},
+	"getDevicePushTokenAsync":           {},
+	"setStringAsync":                    {}, // expo-clipboard
+	"getStringAsync":                    {},
+	"hasStringAsync":                    {},
+	"lockAsync":                         {}, // expo-screen-orientation
+	"unlockAsync":                       {},
+	"impactAsync":                       {}, // expo-haptics
+	"notificationAsync":                 {},
+	"selectionAsync":                    {},
+}
+
+// hasRNAudioRecorderImport reports whether the file imports
+// `react-native-audio-recorder-player`. Activates the recorder/player
+// bare-name allowlist — every method on the singleton instance leaks
+// as a receiver-stripped bare name.
+func hasRNAudioRecorderImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		if spec == "react-native-audio-recorder-player" ||
+			strings.HasPrefix(spec, "react-native-audio-recorder-player/") ||
+			spec == "react-native-nitro-sound" ||
+			strings.HasPrefix(spec, "react-native-nitro-sound/") {
+			return true
+		}
+	}
+	return false
+}
+
+var jsRNAudioRecorderBareNames = map[string]struct{}{
+	"startPlayer":               {},
+	"stopPlayer":                {},
+	"pausePlayer":               {},
+	"resumePlayer":              {},
+	"seekToPlayer":              {},
+	"setVolume":                 {},
+	"setSubscriptionDuration":   {},
+	"addPlayBackListener":       {},
+	"removePlayBackListener":    {},
+	"addPlaybackEndListener":    {},
+	"removePlaybackEndListener": {},
+	"startRecorder":             {},
+	"stopRecorder":              {},
+	"pauseRecorder":             {},
+	"resumeRecorder":            {},
+	"addRecordBackListener":     {},
+	"removeRecordBackListener":  {},
+	"mmssss":                    {},
+	"mmss":                      {},
+}
+
+// hasRNGestureHandlerImport reports whether the file imports
+// `react-native-gesture-handler`. Activates the gesture-builder
+// chain-method surface.
+func hasRNGestureHandlerImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		if spec == "react-native-gesture-handler" ||
+			strings.HasPrefix(spec, "react-native-gesture-handler/") {
+			return true
+		}
+	}
+	return false
+}
+
+var jsRNGestureHandlerBareNames = map[string]struct{}{
+	"requireExternalGestureToFail": {},
+	"requireExternalGestureToBegin": {},
+	"simultaneousWithExternalGesture": {},
+	"numberOfTaps":                 {},
+	"maxDuration":                  {},
+	"minDuration":                  {},
+	"manualActivation":             {},
+	"shouldCancelWhenOutside":      {},
+	"hitSlop":                      {},
+	"activeOffsetX":                {},
+	"activeOffsetY":                {},
+	"failOffsetX":                  {},
+	"failOffsetY":                  {},
+}
+
+// hasReactNavigationImport reports whether the file imports any
+// `@react-navigation/*` package, or `expo-router` (which wraps it).
+// Activates a focused navigation-handle surface
+// (`goBack`/`jumpTo`/`reset`/...). `setOptions` and several other
+// names are already in jsBareNames (unconditional) — not duplicated.
+func hasReactNavigationImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		if strings.HasPrefix(spec, "@react-navigation/") ||
+			spec == "expo-router" || strings.HasPrefix(spec, "expo-router/") {
+			return true
+		}
+	}
+	return false
+}
+
+var jsReactNavigationBareNames = map[string]struct{}{
+	"goBack":        {}, // navigation.goBack
+	"jumpTo":        {}, // navigation.jumpTo
+	"toggleDrawer":  {}, // drawer navigation
+	"openDrawer":    {},
+	"closeDrawer":   {},
+	"setParams":     {},
+	"isFocused":     {},
+	"canGoBack":     {},
+	"addListener":   {}, // navigation.addListener (also EventEmitter)
+	"removeListener": {},
+	"dispatch":      {}, // navigation.dispatch (Redux dispatch already
+	// handled by useDispatch hook; navigation.dispatch is the bare
+	// receiver-stripped name).
 }
 
 // jsCollectionLibBareNames is the wave-9 Array.prototype / lodash /

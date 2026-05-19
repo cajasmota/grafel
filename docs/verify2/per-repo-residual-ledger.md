@@ -1290,6 +1290,7 @@ type primitive) — chain-fix already filed in click PR #601.
    signal (could be: presence of a `with open(...)` block in the
    function, or a `bytes`/`str` literal-typed receiver inference).
 
+---
 
 ## #613 — Go chi/gin/echo/fiber/gorilla_mux ROUTES_TO method binding (2026-05-19)
 
@@ -1354,3 +1355,115 @@ would cover those cases.
 **Chain-fixes filed:** none — implementation is self-contained and the
 remaining unresolved cases are tracked under the existing #494 receiver-
 type primitive umbrella.
+
+---
+
+## Wave: rn-platform-symbols (PR follow-up to #621, 2026-05-19)
+
+Driver: client-fixture-c (RN+Expo) post-#621 sat at 1.43% — above the
+1% ship-gate. PR #621 chain-fixes 1 + 2 (RN platform symbols, Reanimated
+receiver-strip) are this wave. Diagnosis raised `maxDispositionSamples`
+locally to 5000 (reverted before commit) to aggregate true bug-extractor
+frequencies. Top residual stubs (count):
+
+- `useStyleContext` (43) — `@gluestack-ui/utils/nativewind-utils`
+- `indicator` (12), `delete` (12), `show` (10) — domain-generic
+- `Value` (4), `timing` (3), `sequence` (2), `parallel` (1),
+  `createAnimatedComponent` (2) — `react-native` `Animated.*`
+- `startPlayer` / `stopPlayer` / `pausePlayer` / `seekToPlayer` /
+  `startRecorder` / `stopRecorder` / `addPlayBackListener` /
+  `removePlayBackListener` / `addRecordBackListener` /
+  `removeRecordBackListener` / `addPlaybackEndListener` /
+  `removePlaybackEndListener` — `react-native-nitro-sound`
+- `getNetworkStateAsync` (3), `requestCameraPermissionsAsync`,
+  `pickDirectoryAsync`, `getDocumentAsync`, `startActivityAsync`,
+  `shareAsync`, `downloadFileAsync`, `supportedAuthenticationTypesAsync`,
+  `isAvailableAsync` — expo-* platform modules
+- `openCamera`, `openCropper`, `openPicker` —
+  `react-native-image-crop-picker`
+- `goBack`, `addListener`, `toggleDrawer`, `back`, `isFocused`,
+  `requestCancel` — `@react-navigation/*` / `expo-router`
+- `snapToIndex` — `@gorhom/bottom-sheet`
+- `requireExternalGestureToFail`, `numberOfTaps`, `manualActivation` —
+  `react-native-gesture-handler`
+- `useBreakpointValue`, `useDrawerStatus` — gluestack-ui
+
+Eight new file-scoped gates, all in `synth.go` and TS/JS-language-gated
+above the call site. Each gate matches on the canonical npm spec
+(`spec == "react-native-reanimated"` etc., with prefix match for
+sub-paths). The Reanimated gate also fires on `react-native` itself
+because `Animated.<name>(...)` is the dominant caller of `timing` /
+`Value` / `sequence` / `createAnimatedComponent` and the names ride
+on the core `react-native` `Animated` namespace, not the standalone
+`react-native-reanimated` package.
+
+Per-iteration delta on client-fixture-c (target):
+
+| pass | change | bug-rate | delta |
+|---|---|---|---|
+| baseline (#621 merged) | — | 1.433% | — |
+| 1 | reanimated/gluestack/expo-camera/expo-file/expo-network/audio-recorder/gesture-handler/react-navigation gates (initial) | 1.043% | -0.39pp |
+| 2 | reanimated gate widened to include `react-native` core; audio-recorder gate widened to include `react-native-nitro-sound` | 0.882% | -0.16pp |
+| 3 | `@gorhom/bottom-sheet` gate + `useBreakpointValue` / `useDrawerStatus` / `useToken` added to gluestack | 0.873% | -0.01pp |
+
+Cumulative **-0.560pp** on client-fixture-c — **ship-gate (≤1%)
+reached at 0.873%**. bug-extractor 317 → 185 (-132). Resolved count
+unchanged (13,156) — every win is reclassification from bug-extractor
+to external-known/unknown, not new extraction.
+
+Regression sweep (14 repos, ≥0.5pp = STOP):
+
+| repo | main | branch | delta_pp |
+|---|---|---|---|
+| chi (go) | 0.02025 | 0.02025 | 0.0000 |
+| flask (python) | 0.05249 | 0.05192 | -0.057 |
+| spdlog (cpp) | 0.02856 | 0.02856 | 0.0000 |
+| gin (go) | 0.03383 | 0.03383 | 0.0000 |
+| play-scala-starter (scala) | 0.00704 | 0.00704 | 0.0000 |
+| express (js) | 0.02856 | 0.02856 | 0.0000 |
+| nextjs-commerce (ts) | 0.02241 | 0.02241 | 0.0000 |
+| nestjs-starter (ts) | 0.01754 | 0.01754 | 0.0000 |
+| kafka-streams-examples (java) | 0.03329 | 0.03329 | 0.0000 |
+| vapor-api-template (swift) | 0.02128 | 0.02128 | 0.0000 |
+| ktor-samples (kotlin) | 0.04735 | 0.04735 | 0.0000 |
+| client-fixture-a (python) | 0.03410 | 0.03427 | +0.017 |
+| client-fixture-b (ts) | 0.00572 | 0.00572 | 0.0000 |
+| **client-fixture-c (ts/tsx)** | **0.01433** | **0.00873** | **-0.560** |
+
+Zero ≥0.5pp regressions. The +0.017pp on client-fixture-a (python) is
+unrelated to this PR (no python code touched); within run-to-run
+noise. The -0.057pp on flask is similarly orthogonal — likely an
+artifact of the post-#621 merge ordering on shared infra. All TS/JS
+allowlists are inside `if lang == "javascript" || lang == "typescript"`,
+no cross-language leakage possible.
+
+Residual root cause (client-fixture-c, post-fix at 0.87%):
+- Bug-extractor top: `indicator` (12), `delete` (12), `show` (10),
+  `has` (6), `create` (5), `close` (4), `copy` (4), `back` (3) — all
+  domain-generic verbs / nouns too collision-prone for a global
+  allowlist. Resolving requires receiver-type inference (cross #494
+  equivalent for JS/TS).
+- Bug-resolver top (21 total): `detail` (7), `deficiencies` (5),
+  `showInlineAlert` (3) — user-defined cross-module bare names that
+  failed to bind because the extractor receiver-stripped them.
+  Resolver-side fix is out of scope for the external-synth allowlist.
+
+Status: **ship-gate (≤1%) cleared at 0.87%**. Track A (RN platform
+symbols, PR #621 chain-fix #1) complete. Track B (Reanimated
+receiver-strip via file-scoped gate, PR #621 chain-fix #2) complete.
+Chain-fixes #3 (react_props followups) and #4 (default-export name
+tracking) remain queued.
+
+Chain-fixes filed (out of scope for this PR):
+1. **js-receiver-type-inference** — domain-generic bare names
+   (`indicator`, `delete`, `show`, `has`, `create`, `close`, `copy`)
+   are receiver-stripped at extraction time and lose the class context.
+   Same blocker as Python #494; a TS-side receiver-type primitive
+   would lift these without a global allowlist.
+2. **js-resolver-shortform-followups** — bug-resolver residue
+   (`detail`, `deficiencies`, `showInlineAlert`) suggests other
+   cross-file extraction shapes that fail to bind via `byLocation`
+   short-form. Audit needed.
+3. **default-export-name-tracking** — carry-forward from PR #621.
+   Long-term: JS extractor records default-export status per entity
+   for deterministic `<module>.default` binding.
