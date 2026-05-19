@@ -10,6 +10,31 @@ import (
 	mcpsrv "github.com/mark3labs/mcp-go/server"
 )
 
+// mcpInstructions is the handshake text returned to MCP clients on initialize.
+// It tells agents to call archigraph_whoami first and act on suggested_action.
+// The doc-gen flow (pattern discovery, repair sweep, ORM query extraction,
+// response shape extraction) must run before substantive graph queries are
+// reliable — this nudge ensures agents prompt the user when it hasn't run yet.
+const mcpInstructions = `archigraph — code graph MCP server
+
+On first connect in a session:
+  1. Call archigraph_whoami (with cwd= set to the caller's working directory).
+  2. Check the suggested_action field in the response.
+  3. If suggested_action is "run /generate-docs": proactively suggest to the
+     user that they trigger documentation generation before substantive queries.
+     Say something like: "I noticed archigraph is connected but documentation
+     hasn't been generated yet — want me to run /generate-docs now? It enables
+     pattern discovery, repair sweep, ORM query mapping, and response shape
+     extraction, which makes subsequent graph queries much more accurate."
+  4. If suggested_action starts with "refresh docs": surface that N files have
+     changed and offer to refresh. Example: "N files have changed since docs
+     were last generated — want me to refresh them?"
+  5. If suggested_action mentions "pattern candidates" or "repair candidates":
+     offer to review them after the user's immediate task is addressed.
+  6. If suggested_action is "none — graph is healthy": proceed normally.
+
+Set ARCHIGRAPH_WHOAMI_NUDGE=quiet to suppress doc-state fields (e.g. in CI).`
+
 // Config controls server construction.
 type Config struct {
 	RegistryPath string
@@ -43,7 +68,8 @@ func NewServer(cfg Config) (*Server, error) {
 	tel := NewTelemetry(cfg.DebugLevel)
 
 	srv := mcpsrv.NewMCPServer("archigraph", version.String(),
-		mcpsrv.WithToolCapabilities(true))
+		mcpsrv.WithToolCapabilities(true),
+		mcpsrv.WithInstructions(mcpInstructions))
 
 	s := &Server{State: st, Tel: tel, MCP: srv, cfg: cfg}
 	s.registerTools()
