@@ -178,6 +178,41 @@ var pyEnvLookupRe = regexp.MustCompile(
 	`\bos\.(?:environ\.get|getenv|environ\s*\[)\s*["'][A-Z_][A-Z0-9_]*["']`,
 )
 
+// pyEnvAccessFrag is the non-capturing regex fragment that matches any of
+// the three common Python env-variable access forms:
+//
+//	os.environ["NAME"]       (bracket subscript — closes with ])
+//	os.environ.get("NAME")   (method call — closes with ))
+//	os.getenv("NAME")        (module-level call — closes with ))
+//
+// The fragment is used inside the concatenation regexes below. Each form
+// handles its own closing delimiter, so we list them as three explicit
+// alternatives.
+const pyEnvAccessFrag = `(?:os\.environ\s*\["[^"]+"\]|os\.environ\.get\s*\("[^"]+"\)|os\.getenv\s*\("[^"]+"\))`
+
+// pyEnvConcatVerbTopRe matches HTTP client calls where the URL is an env-var
+// concatenation, e.g.:
+//
+//	requests.get(os.environ["API_URL"] + "/users", ...)
+//	httpx.post(os.getenv("BASE") + "/items", json=body)
+//	session.get(os.environ.get("API") + "/health")
+//
+// Capture groups:
+//
+//	1 = framework (requests/httpx)
+//	2 = http verb
+//	3 = path suffix literal (the string being concatenated after the env var)
+var pyEnvConcatVerbTopRe = regexp.MustCompile(
+	`\b(requests|httpx)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*` +
+		pyEnvAccessFrag + `\s*\+\s*["']([^"'\n\r]*)["']`,
+)
+
+// pyEnvConcatSessionRe is the same but for session/client/etc. receiver forms.
+var pyEnvConcatSessionRe = regexp.MustCompile(
+	`\b(session|client|http_client|api_client|http|api)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*` +
+		pyEnvAccessFrag + `\s*\+\s*["']([^"'\n\r]*)["']`,
+)
+
 // pyEnclosingFuncRe captures `def <name>(` and `async def <name>(`. Same
 // shape as the legacy regex in http_endpoint_client_synthesis.go.
 var pyEnclosingFuncRe = regexp.MustCompile(
@@ -380,6 +415,43 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
 		emit(verb, canonical, "httpx", "Function", caller, dynamic)
 	}
+
+	// Env-var concatenation: requests.get(os.environ["X"] + "/path")
+	// and session.get(os.environ["X"] + "/path"). These emit with
+	// runtime_dynamic=true so the repair flow (#732) can annotate them.
+	for _, m := range pyEnvConcatVerbTopRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 8 {
+			continue
+		}
+		framework := content[m[2]:m[3]]
+		verb := strings.ToUpper(content[m[4]:m[5]])
+		suffix := content[m[6]:m[7]]
+		if suffix == "" || !looksLikeURLPath(suffix) {
+			continue
+		}
+		path := stripURLHost(suffix)
+		caller := enclosingPyFuncAt(funcs, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
+		emit(verb, canonical, framework, "Function", caller, true)
+	}
+
+	for _, m := range pyEnvConcatSessionRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 8 {
+			continue
+		}
+		if m[0] > 0 && content[m[0]-1] == '@' {
+			continue
+		}
+		verb := strings.ToUpper(content[m[4]:m[5]])
+		suffix := content[m[6]:m[7]]
+		if suffix == "" || !looksLikeURLPath(suffix) {
+			continue
+		}
+		path := stripURLHost(suffix)
+		caller := enclosingPyFuncAt(funcs, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
+		emit(verb, canonical, "http_client", "Function", caller, true)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -392,6 +464,8 @@ func pyHasAnyHTTPClient(content string) bool {
 		strings.Contains(content, "aiohttp.") ||
 		strings.Contains(content, "urlopen(") ||
 		strings.Contains(content, "Request(") ||
+		strings.Contains(content, "os.environ") ||
+		strings.Contains(content, "os.getenv") ||
 		strings.Contains(content, "session.") ||
 		strings.Contains(content, "client.") ||
 		strings.Contains(content, "http_client.") ||

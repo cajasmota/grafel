@@ -875,3 +875,310 @@ export async function listUsers() {
 	want := []string{"http:GET:/api/v1/users"}
 	requireContains(t, got, want, "#712 axios instance bare ident with baseURL")
 }
+
+// ---------------------------------------------------------------------------
+// Issue #721 — FETCHES edge emission for JS/TS consumers
+// ---------------------------------------------------------------------------
+
+// TestSynth721_FetchEmitsFetchesEdge verifies that a static fetch() call
+// emits both a consumer http_endpoint entity AND a FETCHES relationship
+// from the enclosing function to that endpoint.
+func TestSynth721_FetchEmitsFetchesEdge(t *testing.T) {
+	src := `
+export async function loadUsers() {
+  return fetch("/api/users");
+}
+`
+	_, res := runDetect(t, "typescript", "721-fetch-edge.ts", src)
+	// Assert the entity exists.
+	foundEntity := false
+	for _, e := range res.Entities {
+		if e.ID == "http:GET:/api/users" {
+			foundEntity = true
+		}
+	}
+	if !foundEntity {
+		t.Fatalf("expected http:GET:/api/users entity, not found")
+	}
+	// Assert the FETCHES edge exists.
+	foundEdge := false
+	for _, r := range res.Relationships {
+		if r.Kind == fetchesEdgeKind && r.ToID == "http:GET:/api/users" {
+			if r.FromID == "Function:loadUsers" {
+				foundEdge = true
+			}
+		}
+	}
+	if !foundEdge {
+		t.Errorf("expected FETCHES edge Function:loadUsers → http:GET:/api/users, not found (relationships: %v)", res.Relationships)
+	}
+}
+
+// TestSynth721_AxiosEmitsFetchesEdge verifies FETCHES edge for axios.get().
+func TestSynth721_AxiosEmitsFetchesEdge(t *testing.T) {
+	src := `import axios from "axios";
+
+export async function getOrder(id) {
+  return axios.get("/api/orders");
+}
+`
+	_, res := runDetect(t, "typescript", "721-axios-edge.ts", src)
+	foundEdge := false
+	for _, r := range res.Relationships {
+		if r.Kind == fetchesEdgeKind && r.ToID == "http:GET:/api/orders" && r.FromID == "Function:getOrder" {
+			foundEdge = true
+		}
+	}
+	if !foundEdge {
+		t.Errorf("expected FETCHES edge Function:getOrder → http:GET:/api/orders")
+	}
+}
+
+// TestSynth721_TemplateLiteralEmitsFetchesEdge verifies FETCHES for template literal fetch.
+func TestSynth721_TemplateLiteralEmitsFetchesEdge(t *testing.T) {
+	src := "export async function getUser(id) {\n" +
+		"  return fetch(`/users/${id}`);\n" +
+		"}\n"
+	_, res := runDetect(t, "typescript", "721-tmpl-edge.ts", src)
+	foundEdge := false
+	for _, r := range res.Relationships {
+		if r.Kind == fetchesEdgeKind && r.ToID == "http:GET:/users/{id}" && r.FromID == "Function:getUser" {
+			foundEdge = true
+		}
+	}
+	if !foundEdge {
+		t.Errorf("expected FETCHES edge Function:getUser → http:GET:/users/{id}")
+	}
+}
+
+// TestSynth721_DollarHTTPEmitsFetchesEdge verifies FETCHES for $http calls.
+func TestSynth721_DollarHTTPEmitsFetchesEdge(t *testing.T) {
+	src := `import { $http } from "./httpClient";
+
+export async function getSchedule() {
+  return $http.get('/schedule/');
+}
+`
+	_, res := runDetect(t, "typescript", "721-dollar-http-edge.ts", src)
+	foundEdge := false
+	for _, r := range res.Relationships {
+		if r.Kind == fetchesEdgeKind && r.ToID == "http:GET:/schedule" && r.FromID == "Function:getSchedule" {
+			foundEdge = true
+		}
+	}
+	if !foundEdge {
+		t.Errorf("expected FETCHES edge Function:getSchedule → http:GET:/schedule")
+	}
+}
+
+// TestSynth721_ClassPropertyArrowEmitsFetchesEdge verifies FETCHES for class
+// property arrow functions — the dominant pattern in Angular/Vue service classes
+// and React component class methods:
+//
+//	class AuthService { login = (email) => $http.post('/auth/login', ...) }
+func TestSynth721_ClassPropertyArrowEmitsFetchesEdge(t *testing.T) {
+	src := `import { $http } from "../../utils/http.utils";
+
+class AuthService {
+  login = (email, password) => $http.post('/auth/login', {email, password})
+  current = () => $http.get('/users/current')
+}
+`
+	_, res := runDetect(t, "javascript", "721-class-arrow.js", src)
+	// login method should emit FETCHES to /auth/login.
+	foundLogin := false
+	for _, r := range res.Relationships {
+		if r.Kind == fetchesEdgeKind && r.ToID == "http:POST:/auth/login" && r.FromID == "Function:login" {
+			foundLogin = true
+		}
+	}
+	if !foundLogin {
+		t.Errorf("expected FETCHES edge Function:login → http:POST:/auth/login")
+	}
+	// current method should emit FETCHES to /users/current.
+	foundCurrent := false
+	for _, r := range res.Relationships {
+		if r.Kind == fetchesEdgeKind && r.ToID == "http:GET:/users/current" && r.FromID == "Function:current" {
+			foundCurrent = true
+		}
+	}
+	if !foundCurrent {
+		t.Errorf("expected FETCHES edge Function:current → http:GET:/users/current")
+	}
+}
+
+// TestSynth721_WrapperCallEmitsFetchesEdge verifies FETCHES for custom HTTP wrapper.
+func TestSynth721_WrapperCallEmitsFetchesEdge(t *testing.T) {
+	src := `export async function listClients(token) {
+  return callApi({ endpoint: "/clients/" }, "GET");
+}
+`
+	_, res := runDetect(t, "javascript", "721-wrapper-edge.js", src)
+	foundEdge := false
+	for _, r := range res.Relationships {
+		if r.Kind == fetchesEdgeKind && r.ToID == "http:GET:/clients" && r.FromID == "Function:listClients" {
+			foundEdge = true
+		}
+	}
+	if !foundEdge {
+		t.Errorf("expected FETCHES edge Function:listClients → http:GET:/clients")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #721 — env-var runtime_dynamic for JS/TS (process.env / import.meta.env)
+// ---------------------------------------------------------------------------
+
+// TestSynth721_ProcessEnvFetchRuntimeDynamic verifies that
+// fetch(process.env.API + '/users') emits an endpoint with runtime_dynamic=true.
+func TestSynth721_ProcessEnvFetchRuntimeDynamic(t *testing.T) {
+	src := `
+export async function loadUsers() {
+  return fetch(process.env.API_URL + '/users');
+}
+`
+	_, res := runDetect(t, "typescript", "721-process-env-fetch.ts", src)
+	foundDynamic := false
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.ID == "http:GET:/users" {
+			if e.Properties["runtime_dynamic"] == "true" {
+				foundDynamic = true
+			}
+		}
+	}
+	if !foundDynamic {
+		t.Errorf("expected http:GET:/users with runtime_dynamic=true for process.env concat")
+	}
+}
+
+// TestSynth721_ImportMetaEnvAxiosRuntimeDynamic verifies that
+// axios.get(import.meta.env.VITE_API + '/items') emits runtime_dynamic=true.
+func TestSynth721_ImportMetaEnvAxiosRuntimeDynamic(t *testing.T) {
+	src := `import axios from "axios";
+
+export async function listItems() {
+  return axios.get(import.meta.env.VITE_API_URL + '/items');
+}
+`
+	_, res := runDetect(t, "typescript", "721-import-meta-axios.ts", src)
+	foundDynamic := false
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.ID == "http:GET:/items" {
+			if e.Properties["runtime_dynamic"] == "true" {
+				foundDynamic = true
+			}
+		}
+	}
+	if !foundDynamic {
+		t.Errorf("expected http:GET:/items with runtime_dynamic=true for import.meta.env concat")
+	}
+}
+
+// TestSynth721_ProcessEnvNextPublicRuntimeDynamic verifies that
+// Next.js-style process.env.NEXT_PUBLIC_X + "/path" emits runtime_dynamic=true.
+func TestSynth721_ProcessEnvNextPublicRuntimeDynamic(t *testing.T) {
+	src := `
+export async function getHealth() {
+  return fetch(process.env.NEXT_PUBLIC_API_URL + '/health');
+}
+`
+	_, res := runDetect(t, "typescript", "721-next-public.ts", src)
+	foundDynamic := false
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.ID == "http:GET:/health" {
+			if e.Properties["runtime_dynamic"] == "true" {
+				foundDynamic = true
+			}
+		}
+	}
+	if !foundDynamic {
+		t.Errorf("expected http:GET:/health with runtime_dynamic=true for NEXT_PUBLIC env concat")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #721 — Python env-var runtime_dynamic
+// ---------------------------------------------------------------------------
+
+// TestSynth721_PythonEnvConcatRuntimeDynamic verifies that
+// requests.get(os.environ["API_URL"] + '/users') emits runtime_dynamic=true.
+func TestSynth721_PythonEnvConcatRuntimeDynamic(t *testing.T) {
+	src := `import requests
+import os
+
+def fetch_users():
+    return requests.get(os.environ["API_URL"] + "/users")
+`
+	_, res := runDetect(t, "python", "721-py-env-concat.py", src)
+	foundDynamic := false
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.ID == "http:GET:/users" {
+			if e.Properties["runtime_dynamic"] == "true" {
+				foundDynamic = true
+			}
+		}
+	}
+	if !foundDynamic {
+		t.Errorf("expected http:GET:/users with runtime_dynamic=true for os.environ concat (Python)")
+	}
+}
+
+// TestSynth721_PythonGetenvConcatRuntimeDynamic verifies that
+// httpx.post(os.getenv("BASE") + '/items') emits runtime_dynamic=true.
+func TestSynth721_PythonGetenvConcatRuntimeDynamic(t *testing.T) {
+	src := `import httpx
+import os
+
+def create_item(body):
+    return httpx.post(os.getenv("BASE_URL") + "/items", json=body)
+`
+	_, res := runDetect(t, "python", "721-py-getenv-concat.py", src)
+	foundDynamic := false
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.ID == "http:POST:/items" {
+			if e.Properties["runtime_dynamic"] == "true" {
+				foundDynamic = true
+			}
+		}
+	}
+	if !foundDynamic {
+		t.Errorf("expected http:POST:/items with runtime_dynamic=true for os.getenv concat (Python)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #721 — Java env-var runtime_dynamic
+// ---------------------------------------------------------------------------
+
+// TestSynth721_JavaGetenvConcatRuntimeDynamic verifies that
+// URI.create(System.getenv("API_URL") + "/users") emits runtime_dynamic=true.
+func TestSynth721_JavaGetenvConcatRuntimeDynamic(t *testing.T) {
+	src := `import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.URI;
+
+public class UserService {
+    private final HttpClient httpClient = HttpClient.newHttpClient();
+
+    public List<User> fetchUsers() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(System.getenv("API_URL") + "/users"))
+            .GET()
+            .build();
+        return httpClient.send(request, null);
+    }
+}
+`
+	_, res := runDetect(t, "java", "721-java-getenv.java", src)
+	foundDynamic := false
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.ID == "http:GET:/users" {
+			if e.Properties["runtime_dynamic"] == "true" {
+				foundDynamic = true
+			}
+		}
+	}
+	if !foundDynamic {
+		t.Errorf("expected http:GET:/users with runtime_dynamic=true for System.getenv concat (Java)")
+	}
+}

@@ -127,8 +127,21 @@ var axiosClientRe = regexp.MustCompile(
 // then a binary-search-free linear walk to find the nearest preceding
 // definition. Good enough for Phase 1 attribution; a Phase 2 chain-fix
 // can swap this for AST-derived spans.
+// jsFuncDeclRe recognises named function definitions in JS/TS source.
+// We intentionally cast a wide net to cover four common shapes:
+//
+//  1. `function foo(` / `async function foo(`
+//  2. `const/let/var foo = (` / `const/let/var foo = async (`
+//  3. Class property arrow: `foo = (` / `foo = async (` (without var/const/let).
+//     This covers React component class methods and service-class patterns
+//     common in Angular/Vue/RN frontends, e.g. `login = (email) => $http.post(...)`.
+//  4. Object method shorthand: `foo(` inside an object/class body.
+//     We do NOT attempt to match these to avoid colliding with arbitrary
+//     function calls; shapes 1–3 cover >95% of real-world named callers.
 var jsFuncDeclRe = regexp.MustCompile(
-	`(?m)(?:^|[^\w$])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(|(?m)(?:^|[^\w$])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(`,
+	`(?m)(?:^|[^\w$])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(` +
+		`|(?m)(?:^|[^\w$])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(` +
+		`|(?m)(?:^|[\s{,;])([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(`,
 )
 
 // ---------------------------------------------------------------------------
@@ -212,6 +225,55 @@ var axiosClientTemplateLiteralRe = regexp.MustCompile(
 // Capture groups: 1=name, 2=value (without quotes).
 var jsConstStringRe = regexp.MustCompile(
 	`(?m)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*['"]([^'"]{1,256})['"]`,
+)
+
+// ---------------------------------------------------------------------------
+// Env-var URL patterns (#721 beyond-minimum)
+// ---------------------------------------------------------------------------
+//
+// Handles fetch(process.env.X + "/path"), fetch(import.meta.env.VITE_X + "/path"),
+// axios.get(process.env.NEXT_PUBLIC_X + "/path"), etc.
+// Emits the path suffix with runtime_dynamic=true so the repair flow (#732)
+// can annotate the resulting synthetic.
+
+// jsEnvPrefixRe matches `process.env.<IDENT>`, `process.env["IDENT"]`,
+// `import.meta.env.<IDENT>`, and `import.meta.env["IDENT"]`.
+// Used as a building block in the compound env-fetch regexes below.
+var jsEnvPrefixRe = regexp.MustCompile(
+	`(?:process\.env(?:\.[A-Za-z_$][\w$]*|\["[^"]+"\])|import\.meta\.env(?:\.[A-Za-z_$][\w$]*|\["[^"]+"\]))`,
+)
+
+// fetchEnvConcatRe matches `fetch(process.env.X + "/path", ...)` and
+// `fetch(import.meta.env.VITE_X + "/path", ...)`.
+//
+// Capture groups:
+//
+//	1 = path suffix literal
+//	2 = optional options object (for method extraction)
+var fetchEnvConcatRe = regexp.MustCompile(
+	`(?:^|[^\w$.])fetch\s*\(\s*(?:process\.env|import\.meta\.env)[^\s+]+\s*\+\s*['"]([^'"\n\r]+)['"](\s*,\s*\{[^}]*\})?`,
+)
+
+// axiosEnvConcatRe matches `axios.<verb>(process.env.X + "/path", ...)`.
+//
+// Capture groups:
+//
+//	1 = verb
+//	2 = path suffix literal
+var axiosEnvConcatRe = regexp.MustCompile(
+	`\baxios\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*(?:process\.env|import\.meta\.env)[^\s+]+\s*\+\s*['"]([^'"\n\r]+)['"]`,
+)
+
+// clientEnvConcatRe matches `<ident>Client.<verb>(process.env.X + "/path")` and
+// `$http.get(process.env.X + "/path")`.
+//
+// Capture groups:
+//
+//	1 = receiver identifier
+//	2 = verb
+//	3 = path suffix literal
+var clientEnvConcatRe = regexp.MustCompile(
+	`(?:^|[^\w$.])(\$?[A-Za-z_$][\w$]*)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*(?:process\.env|import\.meta\.env)[^\s+]+\s*\+\s*['"]([^'"\n\r]+)['"]`,
 )
 
 // buildJSConstantSymbolTable returns a map from identifier name → string
@@ -535,6 +597,88 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	// the path is a file-local string constant (not a quoted literal).
 	// The symbol table already exists from the template-literal phase.
 	synthesizeBareIdentifierCalls(content, funcs, syms, instances, emit)
+}
+
+// jsRuntimeEmitFn is the runtime-dynamic-aware emitter type used by
+// synthesizeFetchAxiosWithRuntime. Mirrors pyClientEmitFn / javaClientEmitFn.
+type jsRuntimeEmitFn func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool)
+
+// synthesizeFetchAxiosWithRuntime is the #721 entry point for JS/TS
+// consumer-side synthesis. It calls the existing synthesizeFetchAxios for
+// all static/template-literal patterns (delegating via an adapter) and
+// additionally scans for env-var URL concatenations, emitting those with
+// runtime_dynamic=true.
+func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
+	// Delegate all existing static/template/wrapper/axios-instance patterns
+	// through the adapter. The adapter bridges emitFn → jsRuntimeEmitFn
+	// with runtimeDynamic=false (these URLs are known at analysis time).
+	adapter := func(method, canonicalPath, framework, refKind, refName string) {
+		emit(method, canonicalPath, framework, refKind, refName, false)
+	}
+	synthesizeFetchAxios(content, adapter)
+
+	// Env-var concatenation patterns — emit with runtimeDynamic=true.
+	if !strings.Contains(content, "process.env") && !strings.Contains(content, "import.meta.env") {
+		return
+	}
+	funcs := indexJSEnclosingFunctions(content)
+
+	// fetch(process.env.X + "/path", ...) and fetch(import.meta.env.Y + "/path")
+	for _, m := range fetchEnvConcatRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		suffix := content[m[2]:m[3]]
+		if !looksLikeURLPath(suffix) {
+			continue
+		}
+		verb := "GET"
+		if len(m) >= 6 && m[4] >= 0 {
+			opts := content[m[4]:m[5]]
+			if mv := fetchMethodRe.FindStringSubmatch(opts); len(mv) >= 2 {
+				verb = strings.ToUpper(mv[1])
+			}
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
+		caller := enclosingJSFuncAt(funcs, m[0])
+		emit(verb, canonical, "fetch", "Function", caller, true)
+	}
+
+	// axios.<verb>(process.env.X + "/path")
+	for _, m := range axiosEnvConcatRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		verb := strings.ToUpper(content[m[2]:m[3]])
+		suffix := content[m[4]:m[5]]
+		if !looksLikeURLPath(suffix) {
+			continue
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
+		caller := enclosingJSFuncAt(funcs, m[0])
+		emit(verb, canonical, "axios", "Function", caller, true)
+	}
+
+	// <ident>.<verb>(process.env.X + "/path") — $http, apiClient, etc.
+	for _, m := range clientEnvConcatRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 8 {
+			continue
+		}
+		receiver := content[m[2]:m[3]]
+		verb := strings.ToUpper(content[m[4]:m[5]])
+		suffix := content[m[6]:m[7]]
+		// Filter: only known HTTP-client receivers (same guard as axiosClientRe).
+		instances := buildAxiosInstanceTable(content)
+		if !isBareIdentHTTPReceiver(receiver, instances) && receiver != "axios" {
+			continue
+		}
+		if !looksLikeURLPath(suffix) {
+			continue
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
+		caller := enclosingJSFuncAt(funcs, m[0])
+		emit(verb, canonical, "http_client", "Function", caller, true)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1102,10 +1246,13 @@ func indexJSEnclosingFunctions(content string) []jsFuncSpan {
 		}
 		name := ""
 		// Group 1 (function foo(...)) takes precedence over group 2 (const foo = ...)
+		// which takes precedence over group 3 (class property arrow: foo = (...) =>).
 		if m[2] >= 0 {
 			name = content[m[2]:m[3]]
 		} else if m[4] >= 0 {
 			name = content[m[4]:m[5]]
+		} else if len(m) >= 8 && m[6] >= 0 {
+			name = content[m[6]:m[7]]
 		}
 		if name == "" {
 			continue
@@ -1129,16 +1276,22 @@ func enclosingJSFuncAt(funcs []jsFuncSpan, pos int) string {
 }
 
 // ---------------------------------------------------------------------------
-// Python: helpers shared with http_endpoint_python_client.go (#721 wave 1)
+// Python: shared span types and helpers
 // ---------------------------------------------------------------------------
 //
-// The Python consumer-side synthesizer (synthesizePyClient + supporting
-// regex/symbol-table helpers) now lives in http_endpoint_python_client.go.
-// Only the shared enclosing-function indexer remains here, since it shares
-// the jsFuncSpan layout with the JS/TS scanner above.
+// The Python consumer-side synthesizer moved to http_endpoint_python_client.go
+// (#721). The span types and index helpers are retained here because they
+// are part of the shared engine package used by tests and other passes.
 
+// pyFuncSpan is an alias for jsFuncSpan. Python function spans carry the
+// same (offset, name) structure as JS/TS spans; we alias to avoid
+// proliferating near-identical types.
 type pyFuncSpan = jsFuncSpan
 
+// indexPyEnclosingFunctions builds a sorted (offset, name) list for every
+// Python function definition recognisable by pyEnclosingFuncRe. Used by
+// the Python consumer-side synthesizer (http_endpoint_python_client.go)
+// and by tests.
 func indexPyEnclosingFunctions(content string) []pyFuncSpan {
 	var out []pyFuncSpan
 	for _, m := range pyEnclosingFuncRe.FindAllStringSubmatchIndex(content, -1) {

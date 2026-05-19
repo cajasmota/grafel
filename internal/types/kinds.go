@@ -161,7 +161,7 @@ const (
 	RelationshipKindQueries RelationshipKind = "QUERIES"
 
 	// #721: Consumer-side HTTP fetch edge. Emitted from a calling
-	// function/method entity -> the synthetic http_endpoint entity that
+	// function/method entity → the synthetic http_endpoint entity that
 	// represents the URL the client invokes. Lets the process-flow BFS
 	// and cross-repo HTTP matcher traverse directly from a caller to its
 	// endpoint without re-running the post-hoc regex matcher.

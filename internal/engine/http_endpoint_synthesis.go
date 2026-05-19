@@ -62,13 +62,12 @@ const servesEdgeKind = "SERVED_BY"
 const implementsEdgeKind = "IMPLEMENTS"
 
 // fetchesEdgeKind is the consumer-side counterpart: caller FETCHES
-// http_endpoint. Introduced by #721 wave 1 (Python + Java). Direction:
+// http_endpoint. Introduced by #721 (JS/TS + Python + Java). Direction:
 // `<caller-function/method> -> http_endpoint:<verb>:<path>`. The edge's
 // FromID is intentionally an unresolved kind-qualified reference
 // (`Function:<name>`) — the resolve pass binds it to a stamped entity
 // later. Emitting the edge here makes the producer↔consumer narrative
-// chain queryable via the same FETCHES edge kind that the wave-2 work
-// will also use for Go/Kotlin/Ruby/PHP/Rust/C#.
+// chain queryable via the same FETCHES edge kind across all languages.
 const fetchesEdgeKind = "FETCHES"
 
 // synthesisSupportsLanguage reports whether applyHTTPEndpointSynthesis
@@ -161,9 +160,9 @@ func applyHTTPEndpointSynthesis(
 	emitClient := makeEmit("http_endpoint_client_synthesis", "source_caller")
 
 	// makeRuntimeEmit wraps the consumer-side emit with a FETCHES edge
-	// emission (#721 wave 1). The edge's FromID is a kind-qualified
-	// reference (`<kind>:<name>`) that the downstream resolver binds to a
-	// stamped entity. When `runtimeDynamic` is true the synthetic carries
+	// emission (#721). The edge's FromID is a kind-qualified reference
+	// (`<kind>:<name>`) that the downstream resolver binds to a stamped
+	// entity. When `runtimeDynamic` is true the synthetic carries
 	// `runtime_dynamic=true`, surfacing the URL to the repair flow (#732).
 	makeRuntimeEmit := func() func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool) {
 		return func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool) {
@@ -200,13 +199,12 @@ func applyHTTPEndpointSynthesis(
 	emitClientRuntime := makeRuntimeEmit()
 
 	// Phase 1 deliberately emits synthetic entities WITHOUT producer-side
-	// handler→endpoint or consumer-side caller→endpoint edges. The
-	// referenced entity is recorded as a property (`source_handler` or
-	// `source_caller`) so a follow-up pass can resolve it against the
-	// existing entity table once the AST extractors emit stable
-	// controller / function IDs. Emitting unresolved edges here would
-	// inflate bug-rate because the resolver treats every edge with a
-	// non-existent target as a resolution failure.
+	// handler→endpoint edges. The referenced entity is recorded as a
+	// property (`source_handler`) so a follow-up pass can resolve it
+	// against the existing entity table once the AST extractors emit
+	// stable controller / function IDs. Consumer-side FETCHES edges ARE
+	// emitted here — the unresolved `Function:<name>` FromID is a soft
+	// reference that the graph walk tolerates gracefully.
 
 	switch lang {
 	case "java":
@@ -216,7 +214,7 @@ func applyHTTPEndpointSynthesis(
 		synthesizeSpringFromComposed(entities, path, emit)
 		// JAX-RS: scan the file directly.
 		synthesizeJAXRS(string(content), emit)
-		// Consumer side (#721 wave 1): HttpClient / RestTemplate /
+		// Consumer side (#721): HttpClient / RestTemplate /
 		// WebClient / OkHttp / Apache HttpClient / Retrofit.
 		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
 	case "python":
@@ -233,17 +231,16 @@ func applyHTTPEndpointSynthesis(
 		// Producer side: Django composed Routes (from django_routes.go).
 		// Method is unknown statically, so emit with verb=ANY.
 		synthesizeDjangoFromComposed(entities, path, emit)
-		// Consumer side (#721 wave 1, extends #533): requests / httpx /
-		// aiohttp / urllib / session-style HTTP client calls. Now emits
-		// FETCHES edges at extraction time.
+		// Consumer side (#721, extends #533): requests / httpx /
+		// aiohttp / urllib / session-style HTTP client calls.
+		// Now emits FETCHES edges at extraction time.
 		synthesizePyClientWithRuntime(string(content), emitClientRuntime)
 	case "javascript", "typescript":
 		// Producer side: Express.
 		synthesizeExpress(string(content), emit)
-		// Consumer side (#533 Phase 1): fetch / axios / generic *Client
-		// HTTP client calls. JS/TS already covered; FETCHES edge wiring
-		// for JS/TS is a separate follow-up to this wave.
-		synthesizeFetchAxios(string(content), emitClient)
+		// Consumer side (#721): fetch / axios / generic *Client
+		// HTTP client calls. Now emits FETCHES edges at extraction time.
+		synthesizeFetchAxiosWithRuntime(string(content), emitClientRuntime)
 	case "go":
 		// Producer side: Gin / Echo / Chi route registrations. #722.
 		synthesizeGoRouters(string(content), emit)

@@ -200,6 +200,19 @@ var javaStringConstRe = regexp.MustCompile(
 	`(?:private|public|protected|static|final|\s)+\s+String\s+([A-Za-z_][\w]*)\s*=\s*"([^"\n\r]+)"\s*;`,
 )
 
+// javaEnvGetenvRe matches `System.getenv("NAME")` or
+// `System.getenv("NAME") + "/path"`. Used to detect runtime-dynamic URLs.
+var javaEnvGetenvRe = regexp.MustCompile(
+	`System\.getenv\s*\(\s*"[^"]+"\s*\)\s*\+\s*"([^"\n\r]*)"`,
+)
+
+// javaURICreateEnvRe matches `URI.create(System.getenv("X") + "/path")`.
+// These are env-var-derived URLs; we emit the path suffix with
+// runtime_dynamic=true so the repair flow can annotate them.
+var javaURICreateEnvRe = regexp.MustCompile(
+	`\bURI\s*\.\s*create\s*\(\s*System\.getenv\s*\(\s*"[^"]+"\s*\)\s*\+\s*"([^"\n\r]*)"`,
+)
+
 // javaEnclosingMethodRe captures `<modifiers> <return-type> <name>(...)` at
 // the start of a method declaration. Heuristic — we accept any line that
 // looks plausibly like a method header, including `void`, primitive, and
@@ -400,6 +413,26 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, path)
 		emit(verb, canonical, "retrofit", "Function", caller, false)
 	}
+
+	// ----- Env-var URL concatenation: URI.create(System.getenv("X") + "/path") -----
+	// Emits the path suffix with runtime_dynamic=true so the repair flow
+	// (#732) can annotate the resulting synthetic. The verb is resolved the
+	// same way as standard HttpClient URIs — look forward for a builder
+	// verb terminator.
+	for _, m := range javaURICreateEnvRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		suffix := content[m[2]:m[3]]
+		if suffix == "" || !looksLikeURLPath(suffix) {
+			continue
+		}
+		path := stripURLHost(suffix)
+		verb := javaResolveBuilderVerb(content, m[1], javaBuilderVerbRe)
+		caller := enclosingJavaMethodAt(methods, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, path)
+		emit(verb, canonical, "http_client", "Function", caller, true)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +441,7 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 
 func javaHasAnyHTTPClient(content string) bool {
 	return strings.Contains(content, "URI.create") ||
+		strings.Contains(content, "System.getenv") ||
 		strings.Contains(content, "restTemplate") ||
 		strings.Contains(content, "RestTemplate") ||
 		strings.Contains(content, "webClient") ||
