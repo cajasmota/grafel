@@ -61,13 +61,30 @@ const servesEdgeKind = "SERVED_BY"
 // both directions to make downstream queries cheap from either side.
 const implementsEdgeKind = "IMPLEMENTS"
 
+// fetchesEdgeKind is the consumer-side counterpart: caller FETCHES
+// http_endpoint. Introduced by #721 wave 1 (Python + Java). Direction:
+// `<caller-function/method> -> http_endpoint:<verb>:<path>`. The edge's
+// FromID is intentionally an unresolved kind-qualified reference
+// (`Function:<name>`) — the resolve pass binds it to a stamped entity
+// later. Emitting the edge here makes the producer↔consumer narrative
+// chain queryable via the same FETCHES edge kind that the wave-2 work
+// will also use for Go/Kotlin/Ruby/PHP/Rust/C#.
+const fetchesEdgeKind = "FETCHES"
+
 // synthesisSupportsLanguage reports whether applyHTTPEndpointSynthesis
 // can emit synthetics for `lang`. The detector consults this when
 // deciding whether to allow a file through even though no YAML rules
 // are compiled for its language.
 func synthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "java", "python", "javascript", "typescript", "go":
+	case "java", "python", "javascript", "typescript":
+		return true
+	// #727: WebSocket / SSE / GraphQL subscription synthesis covers
+	// additional languages. We allow these through even when no YAML
+	// rules are compiled for them so the per-protocol synthesizers can
+	// run. Files in these languages that contain none of the recognised
+	// anchors are no-ops in the synthesizers themselves.
+	case "kotlin", "go", "csharp":
 		return true
 	default:
 		return false
@@ -143,6 +160,45 @@ func applyHTTPEndpointSynthesis(
 	emit := makeEmit("http_endpoint_synthesis", "source_handler")
 	emitClient := makeEmit("http_endpoint_client_synthesis", "source_caller")
 
+	// makeRuntimeEmit wraps the consumer-side emit with a FETCHES edge
+	// emission (#721 wave 1). The edge's FromID is a kind-qualified
+	// reference (`<kind>:<name>`) that the downstream resolver binds to a
+	// stamped entity. When `runtimeDynamic` is true the synthetic carries
+	// `runtime_dynamic=true`, surfacing the URL to the repair flow (#732).
+	makeRuntimeEmit := func() func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool) {
+		return func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool) {
+			if canonicalPath == "" {
+				return
+			}
+			id := httproutes.SyntheticID(method, canonicalPath)
+			alreadySeen := seen[id]
+			emitClient(method, canonicalPath, framework, refKind, refName)
+			// Stamp runtime_dynamic on the newly emitted entity if this
+			// is the first time we see this ID and the URL was derived
+			// from a runtime-dynamic source (env var, unresolved const).
+			// Note: the entity is the last one appended by emitClient.
+			if !alreadySeen && runtimeDynamic && len(entities) > 0 {
+				entities[len(entities)-1].Properties["runtime_dynamic"] = "true"
+			}
+			// FETCHES edge: <kind>:<name> → http_endpoint:<verb>:<path>.
+			// We only emit the edge when we have a caller reference; the
+			// resolver will discard edges whose FromID never resolves.
+			if refName != "" {
+				relationships = append(relationships, types.RelationshipRecord{
+					FromID: fmt.Sprintf("%s:%s", refKind, refName),
+					ToID:   id,
+					Kind:   fetchesEdgeKind,
+					Properties: map[string]string{
+						"verb":      strings.ToUpper(method),
+						"path":      canonicalPath,
+						"framework": framework,
+					},
+				})
+			}
+		}
+	}
+	emitClientRuntime := makeRuntimeEmit()
+
 	// Phase 1 deliberately emits synthetic entities WITHOUT producer-side
 	// handler→endpoint or consumer-side caller→endpoint edges. The
 	// referenced entity is recorded as a property (`source_handler` or
@@ -160,6 +216,9 @@ func applyHTTPEndpointSynthesis(
 		synthesizeSpringFromComposed(entities, path, emit)
 		// JAX-RS: scan the file directly.
 		synthesizeJAXRS(string(content), emit)
+		// Consumer side (#721 wave 1): HttpClient / RestTemplate /
+		// WebClient / OkHttp / Apache HttpClient / Retrofit.
+		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
 	case "python":
 		// Producer side: Flask + FastAPI run FIRST so their synthetics —
 		// which carry a real handler function name as source_handler —
@@ -174,14 +233,16 @@ func applyHTTPEndpointSynthesis(
 		// Producer side: Django composed Routes (from django_routes.go).
 		// Method is unknown statically, so emit with verb=ANY.
 		synthesizeDjangoFromComposed(entities, path, emit)
-		// Consumer side (#533 Phase 1): requests / httpx / aiohttp /
-		// session-style HTTP client calls.
-		synthesizePyClient(string(content), emitClient)
+		// Consumer side (#721 wave 1, extends #533): requests / httpx /
+		// aiohttp / urllib / session-style HTTP client calls. Now emits
+		// FETCHES edges at extraction time.
+		synthesizePyClientWithRuntime(string(content), emitClientRuntime)
 	case "javascript", "typescript":
 		// Producer side: Express.
 		synthesizeExpress(string(content), emit)
 		// Consumer side (#533 Phase 1): fetch / axios / generic *Client
-		// HTTP client calls.
+		// HTTP client calls. JS/TS already covered; FETCHES edge wiring
+		// for JS/TS is a separate follow-up to this wave.
 		synthesizeFetchAxios(string(content), emitClient)
 	case "go":
 		// Producer side: Gin / Echo / Chi route registrations. #722.
@@ -243,6 +304,23 @@ func synthesizeSpringFromComposed(entities []types.EntityRecord, path string, em
 // Django wires HTTP methods at the View / ViewSet level, not the URL
 // level; we can refine the verb in a follow-up by walking ViewSet
 // classes for `def get(self, ...)` / `def post(self, ...)` etc.
+//
+// #748 — Only ast_driven routes are processed here. Routes with
+// pattern_type=yaml_driven come from the Django YAML source_patterns
+// (specifically the bare `path("...")` regex) which can also fire on
+// non-Django Python files — most importantly FastAPI files that
+// happen to call `path(...)` in their scope. Processing yaml_driven
+// Route entities here causes FastAPI endpoints to be emitted as
+// `http:ANY:/path` instead of `http:GET:/path` (or whatever the
+// actual decorator verb is), because this function always emits with
+// verb=ANY.
+//
+// ast_driven routes come exclusively from django_routes.go /
+// django_urlconf_nested.go / drf_router pass — all of which require
+// Django-specific structural signals (urlpatterns, DRF router binding)
+// before emitting. They are safe to process here. yaml_driven routes
+// from FastAPI / Flask files that accidentally match the Django
+// path() regex are NOT safe and must be skipped.
 func synthesizeDjangoFromComposed(entities []types.EntityRecord, path string, emit emitFn) {
 	for _, e := range entities {
 		if e.Kind != "Route" || e.SourceFile != path {
@@ -251,17 +329,14 @@ func synthesizeDjangoFromComposed(entities []types.EntityRecord, path string, em
 		if e.Properties == nil {
 			continue
 		}
-		// Accept only ast_driven Route entities — those are the ones
-		// django_routes.go composes from `path(prefix, include(router.urls))`
-		// + `router.register(...)`, which is the genuine Django/DRF
-		// composition shape. The YAML rule fires on every Python file
-		// containing `@<obj>.route(...)` (Flask's blueprint decorators
-		// also match!) and we must not treat those as Django routes:
-		// the Flask synthesizer above already emitted them with a
-		// proper function-name source_handler. #753.
 		if e.Properties["framework"] != "python" {
 			continue
 		}
+		// #748 — skip yaml_driven routes: the Django YAML path() regex
+		// fires on any `path("...")` call regardless of file type, which
+		// includes FastAPI @router.get / @app.get decorated files.
+		// Only ast_driven routes (from the Django AST composition passes)
+		// are reliable signals of a true Django URL conf.
 		if e.Properties["pattern_type"] != "ast_driven" {
 			continue
 		}
@@ -296,9 +371,9 @@ func synthesizeDjangoFromComposed(entities []types.EntityRecord, path string, em
 		// {pk}/{id}/{param}/{userId} all to {*} at lookup time — so
 		// emitting ONE canonical {pk} placeholder is sufficient. No
 		// multi-variant loop needed.
-		if e.Properties["pattern_type"] != "ast_driven" {
-			continue
-		}
+		// NOTE: the ast_driven gate at the top of the loop already ensures
+		// we never reach this point with a yaml_driven route — the check
+		// that was here previously is now a no-op and has been removed.
 		if strings.Contains(canonical, "{") {
 			continue
 		}

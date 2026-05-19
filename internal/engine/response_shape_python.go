@@ -25,9 +25,6 @@ import (
 	"strings"
 )
 
-// pyDefRe locates the start of a Python function definition by name.
-var pyDefRe = regexp.MustCompile(`(?m)^(\s*)(?:async\s+)?def\s+(%s)\s*\(`)
-
 // fastapiResponseModelRe captures the response_model=ClassName kwarg
 // off a FastAPI decorator above the handler. Multiple decorators are
 // supported; we only need the response_model token.
