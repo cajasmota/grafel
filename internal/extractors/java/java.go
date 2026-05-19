@@ -235,6 +235,37 @@ func walk(
 					})
 			}
 		}
+
+		// Issue #793 — Lombok annotation-driven entity synthesis.
+		// Synthesize SCOPE.Operation / SCOPE.Component entities for every
+		// method Lombok generates at compile time (@Builder, @Data, @Value,
+		// @Getter, @Setter, @*Constructor, @With, @Accessors, @Singular).
+		// We pass the raw source text of the class declaration (annotations +
+		// declaration tokens, excluding the body) and the body text separately
+		// so detectedAnnotations can scan the header and collectLombokFields
+		// can scan the body.
+		//
+		// Synthesized entities are appended AFTER the CONTAINS-edge loop so
+		// the class entity's CONTAINS relationships point only at real
+		// tree-sitter-parsed children, not at synthesized ones (the resolver
+		// handles synthesized entities differently).
+		if node.Type() == "class_declaration" {
+			var classDeclSrc string
+			if body != nil {
+				// Declaration text = everything before the body's opening brace.
+				classDeclSrc = string(file.Content[node.StartByte():body.StartByte()])
+			} else {
+				classDeclSrc = string(file.Content[node.StartByte():node.EndByte()])
+			}
+			var classBodySrc string
+			if body != nil {
+				classBodySrc = string(file.Content[body.StartByte():body.EndByte()])
+			}
+			// Class-level Lombok synthesis.
+			*out = append(*out, synthesizeLombokEntities(rec.Name, classDeclSrc, classBodySrc, file.Path)...)
+			// Field-level @Getter / @Setter / @With synthesis (supplements class-level).
+			*out = append(*out, synthesizeFieldLevelLombok(rec.Name, classBodySrc, file.Path)...)
+		}
 		return
 
 	case "method_declaration":
