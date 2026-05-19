@@ -132,6 +132,48 @@ var jsFuncDeclRe = regexp.MustCompile(
 )
 
 // ---------------------------------------------------------------------------
+// Phase 4 (#712) — bare const-variable path resolution
+// ---------------------------------------------------------------------------
+//
+// Handles calls where the URL argument is a bare identifier (not a quoted
+// string or template literal), e.g.:
+//
+//	const BASE_PATH = "/buildings/";
+//	$http.get(BASE_PATH, { params: {...} })   // ← this case
+//
+// The identifier is resolved via the file-local const symbol table built
+// by buildJSConstantSymbolTable. If it maps to a URL-path string, an
+// endpoint is emitted. This covers the "plain const-path" miss class (#712).
+//
+// bareIdentCallRe matches `<receiver>.<verb>( <IDENT> [, ...] )` where:
+//   - receiver is any JS identifier (we filter by instance table / $-prefix
+//     / known HTTP-client naming in the loop)
+//   - verb is one of the HTTP verbs
+//   - the first argument is a bare identifier (no quotes, no backtick, no
+//     parentheses — those are string literals, template literals, and calls)
+//
+// Capture groups:
+//
+//	1 = receiver identifier
+//	2 = HTTP verb
+//	3 = bare identifier (path variable name)
+//
+// The leading `(?:^|[^\w$.])` boundary avoids matching the trailing half
+// of a dotted chain like `foo.bar.get(PATH)` (it fires on foo.bar but the
+// `bar.get` portion still matches because `bar` itself is a word-char
+// preceded by a dot boundary miss). We accept that minor over-match and
+// rely on the symbol-table lookup to reject non-path identifiers.
+var bareIdentCallRe = regexp.MustCompile(
+	`(?:^|[^\w$.])(` +
+		`\$?[A-Za-z_$][\w$]*` + // receiver (group 1)
+		`)` +
+		`\s*\.\s*(get|post|put|patch|delete|head|options)` + // verb (group 2)
+		`(?:\s*<[^<>()]*>)?` + // optional TS generic
+		`\s*\(\s*([A-Za-z_$][\w$]*)` + // bare identifier (group 3)
+		`\s*(?:[,)])`, // end: comma (more args) or close-paren (only arg)
+)
+
+// ---------------------------------------------------------------------------
 // JS / TS: template-literal URL extraction (Phase 2)
 // ---------------------------------------------------------------------------
 
@@ -484,6 +526,15 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	// frontend↔backend cross-repo matching survives prefix differences.
 	instances := buildAxiosInstanceTable(content)
 	synthesizeAxiosInstanceCalls(content, funcs, syms, instances, emit)
+
+	// -----------------------------------------------------------------
+	// Phase 4 (#712): bare const-variable path resolution
+	// -----------------------------------------------------------------
+	//
+	// Handles `$http.get(BASE_PATH)` and `instance.get(PATH_VAR)` where
+	// the path is a file-local string constant (not a quoted literal).
+	// The symbol table already exists from the template-literal phase.
+	synthesizeBareIdentifierCalls(content, funcs, syms, instances, emit)
 }
 
 // ---------------------------------------------------------------------------
@@ -842,6 +893,116 @@ func synthesizeAxiosInstanceCalls(
 		}
 		emitMatch(receiver, verb, pathArg, isTemplate, m[0])
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 (#712) — bare const-variable path resolution
+// ---------------------------------------------------------------------------
+
+// synthesizeBareIdentifierCalls handles HTTP client calls where the URL
+// argument is a bare identifier (not a quoted string literal or template
+// literal), e.g.:
+//
+//	const BASE_PATH = "/buildings/";
+//	$http.get(BASE_PATH, { params: {...} })
+//	$http.delete(RECENTS_PATH, { params: {...} })
+//
+// The identifier is resolved via the file-local constant symbol table
+// (syms) built by buildJSConstantSymbolTable. If it resolves to a URL
+// path string, a synthetic http_endpoint entity is emitted.
+//
+// Receiver filtering (same logic as synthesizeAxiosInstanceCalls):
+//   - Any receiver in the per-file axios.create() instance table
+//   - Any $-prefixed receiver (imported axios-like instance)
+//   - `axios` itself
+//   - Any *Client / *HttpClient / httpClient / apiClient receiver
+//     (mirrors axiosClientRe; avoids false-firing on non-HTTP calls like
+//     `router.get(PATH)` which are producer-side Express routes)
+//
+// Beyond-minimum (#712): also handles `let X = "..."` assignments (covered
+// by buildJSConstantSymbolTable which matches const|let|var) so no extra
+// work is needed here.
+func synthesizeBareIdentifierCalls(
+	content string,
+	funcs []jsFuncSpan,
+	syms map[string]string,
+	instances map[string]axiosInstance,
+	emit emitFn,
+) {
+	if len(syms) == 0 {
+		return
+	}
+
+	for _, m := range bareIdentCallRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 8 {
+			continue
+		}
+		receiver := content[m[2]:m[3]]
+		verb := strings.ToUpper(content[m[4]:m[5]])
+		ident := content[m[6]:m[7]]
+
+		// Filter: only known HTTP-client receivers. This prevents false
+		// positives from Express producer-side `app.get(ROUTE, handler)`
+		// and other framework calls that happen to pass a const first.
+		if !isBareIdentHTTPReceiver(receiver, instances) {
+			continue
+		}
+
+		// Resolve the identifier via the symbol table.
+		raw, ok := syms[ident]
+		if !ok {
+			continue
+		}
+
+		// Must look like a URL path.
+		candidate := stripURLHost(raw)
+		if !looksLikeURLPath(candidate) {
+			continue
+		}
+
+		// Prepend baseURL if the receiver is a known axios.create instance.
+		if inst, found := instances[receiver]; found && inst.baseURL != "" {
+			candidate = composeBaseURL(inst.baseURL, candidate)
+		}
+
+		caller := enclosingJSFuncAt(funcs, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, candidate)
+		framework := "axios_instance"
+		if strings.HasPrefix(receiver, "$") {
+			framework = "axios_instance"
+		} else if strings.EqualFold(receiver, "axios") {
+			framework = "axios"
+		} else if strings.HasSuffix(strings.ToLower(receiver), "client") ||
+			strings.Contains(strings.ToLower(receiver), "httpclient") {
+			framework = "http_client"
+		}
+		emit(verb, canonical, framework, "Function", caller)
+	}
+}
+
+// isBareIdentHTTPReceiver returns true when the receiver name is a known
+// HTTP-client pattern — same classification logic used by axiosClientRe
+// and dollarPrefixedHTTPRe, but applied to a resolved identifier name
+// rather than a regex anchor.
+func isBareIdentHTTPReceiver(receiver string, instances map[string]axiosInstance) bool {
+	if _, ok := instances[receiver]; ok {
+		return true
+	}
+	if strings.HasPrefix(receiver, "$") {
+		return true
+	}
+	lower := strings.ToLower(receiver)
+	if lower == "axios" {
+		return true
+	}
+	// *Client / *HttpClient / httpClient / apiClient patterns.
+	if strings.HasSuffix(lower, "client") ||
+		strings.Contains(lower, "httpclient") ||
+		lower == "api" ||
+		lower == "http" {
+		return true
+	}
+	return false
 }
 
 // composeBaseURL joins a baseURL prefix and a request path the way axios

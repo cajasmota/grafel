@@ -174,6 +174,13 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		x.emitReferences(root)
 	}()
 
+	// Third pass (#713): platform-variant and test-file relationship emission.
+	// Detects React Native platform-specific file naming (.ios.tsx,
+	// .android.tsx, .tablet.tsx, …) and emits PLATFORM_VARIANT_OF edges.
+	// Also detects *.test.tsx / *.spec.tsx files and emits TESTS edges.
+	// Runs after the primary walk so the file entity already exists.
+	x.emitPlatformVariantRelationships()
+
 	// Secondary pass: error-handling patterns.
 	// Runs after the primary extraction so a detection failure here
 	// cannot abort the primary entity output — extractErrorHandlingPatterns

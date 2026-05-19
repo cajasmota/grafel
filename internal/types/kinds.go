@@ -139,6 +139,12 @@ const (
 	RelationshipKindPrerequisite  RelationshipKind = "PREREQUISITE"   // Pattern → Pattern: must be satisfied before this one
 	// Incoming to Pattern:
 	RelationshipKindCreatedBy RelationshipKind = "CREATED_BY" // Entity → Pattern: entity produced using the linked pattern
+
+	// #713: React Native / Expo platform-specific file variants.
+	// Emitted from a platform-variant file entity (e.g. Button.ios.tsx)
+	// to the canonical base file (Button.tsx). Lets the orphan-rate audit
+	// count platform variants as "connected" to their canonical counterpart.
+	RelationshipKindPlatformVariantOf RelationshipKind = "PLATFORM_VARIANT_OF"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -174,6 +180,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindCoAppliesWith,
 		RelationshipKindPrerequisite,
 		RelationshipKindCreatedBy,
+		// #713:
+		RelationshipKindPlatformVariantOf,
 	}
 }
 
