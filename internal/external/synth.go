@@ -732,6 +732,25 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		if isSpdlogFactoryName(name) {
 			return "spdlog", "function", true
 		}
+		// spdlog wave follow-up — distinctive `*_sink` / `*_formatter`
+		// snake_case class names defined inside `spdlog::sinks` and
+		// `spdlog::details::flag_formatters`. The cpp extractor
+		// receiver-strips `std::shared_ptr<rotating_file_sink>` /
+		// `unique_ptr<short_filename_formatter>` to a bare name; the
+		// suffixes are overwhelmingly spdlog conventions. Route to
+		// ext:spdlog. Single-char prefixes are allowed (T_formatter,
+		// Y_formatter, ...) because spdlog's pattern flag classes
+		// follow exactly that shape (one upper-case letter + `_formatter`).
+		if isSpdlogSinkOrFormatterShape(name) {
+			return "spdlog", "class", true
+		}
+		// spdlog wave follow-up — Qt method API surface (cpp/c gated).
+		// Receiver-stripped from `text_edit_->setForeground(...)` etc.
+		// inside spdlog/sinks/qt_sinks.h. Route to ext:qt — already
+		// on the knownExternalPackages allowlist.
+		if _, ok := qtBareNames[name]; ok {
+			return "qt", "function", true
+		}
 		// Issue #44 — Google Benchmark public API (UpperCamelCase).
 		// The benchmark library surface is small and distinctive; the
 		// names below are the high-volume call sites in spdlog/bench
@@ -10492,6 +10511,132 @@ var cppBareNames = map[string]struct{}{
 	"string_view_t":  {},
 	"wstring_view_t": {},
 
+	// spdlog wave (issue #44 follow-up) — additional POSIX / libc / Win32 /
+	// systemd / pthread / android-log surface that survives as bug-extractor
+	// in real spdlog corpora. Distinctive POSIX / Win32 / journal names that
+	// are essentially never user-defined.
+	//
+	// POSIX file / fd / dir surface.
+	"mkdir":           {},
+	"rename":          {},
+	"truncate":        {},
+	"opendir":         {},
+	"readdir":         {},
+	"closedir":        {},
+	"fcntl":           {},
+	"fdopen":          {},
+	"fileno":          {},
+	"fstat":           {},
+	"fstat64":         {},
+	"stat":            {},
+	"setvbuf":         {},
+	"basename":        {},
+	"fwrite_unlocked": {},
+	"put_time":        {},
+
+	// POSIX env / time / process / select.
+	"setenv":       {},
+	"unsetenv":     {},
+	"clock_gettime": {},
+	"select":       {},
+
+	// MSVC / Windows CRT (_-prefixed names; almost never user-defined).
+	"_stat":            {},
+	"_fileno":          {},
+	"_filelength":      {},
+	"_filelengthi64":   {},
+	"_fwrite_nolock":   {},
+	"_mkdir":           {},
+	"_isatty":          {},
+	"_get_osfhandle":   {},
+	"_wfsopen":         {},
+	"_fsopen":          {},
+	"_wstat":           {},
+	"_wrename":         {},
+	"_wremove":         {},
+	"_wmkdir":          {},
+	"_putenv_s":        {},
+	"_dupenv_s":        {},
+	"_tzset":           {},
+	"_mkgmtime":        {},
+
+	// POSIX thread / pid identifiers.
+	"getpid":                 {},
+	"getthrid":               {},
+	"_lwp_self":              {},
+	"_thread_id":             {},
+	"pthread_self":           {},
+	"pthread_threadid_np":    {},
+	"pthread_mach_thread_np": {},
+	"pthread_getthreadid_np": {},
+	"pthread_getthrds_np":    {},
+	"thr_self":               {},
+
+	// systemd journal API — gated cpp/c via this stop-list; sd_journal_*
+	// is distinctive and only ever the libsystemd surface.
+	"sd_journal_open":                       {},
+	"sd_journal_open_namespace":             {},
+	"sd_journal_close":                      {},
+	"sd_journal_next":                       {},
+	"sd_journal_get_data":                   {},
+	"sd_journal_get_realtime_usec":          {},
+	"sd_journal_seek_realtime_usec":         {},
+	"sd_journal_send":                       {},
+	"sd_journal_stream_fd":                  {},
+	"sd_journal_stream_fd_with_namespace":   {},
+	"sd_journal_wait":                       {},
+	"sd_journal_add_match":                  {},
+	"openlog":                               {},
+
+	// Android log API.
+	"__android_log_write":     {},
+	"__android_log_buf_write": {},
+
+	// POSIX socket / inet helpers not yet declared above.
+	"ioctlsocket": {},
+	"inet_aton":   {},
+	"gai_strerror": {},
+
+	// libc misc — assert / static_assert / exit / memchr / character class.
+	"assert":         {},
+	"static_assert":  {},
+	"exit":           {},
+	"memchr":         {},
+	"isatty":         {},
+	"isprint":        {},
+	"to_chars":       {},
+
+	// STL types occasionally surfaced bare (initializer_list constructor,
+	// numeric_limits<T>::max bare-receiver, std::equal algorithm).
+	"initializer_list":     {},
+	"numeric_limits":       {},
+	"istreambuf_iterator":  {},
+	"equal":                {},
+
+	// Win32 PascalCase API — distinctive names virtually never user-defined.
+	// (Existing Win32 section above covers GetStdHandle, CreateFileA, etc.)
+	"Sleep":                 {},
+	"ZeroMemory":            {},
+	"MAKEWORD":              {},
+	"WSASetLastError":       {},
+	"IsValidSid":            {},
+	"IsDebuggerPresent":     {},
+	"InetPtonA":             {},
+	"GetFullPathNameA":      {},
+	"GetFullPathNameW":      {},
+	"GetDriveTypeA":         {},
+	"GetConsoleMode":        {},
+	"FlushFileBuffers":      {},
+	"FindFirstFileA":        {},
+	"FindNextFileA":         {},
+	"FindClose":             {},
+	"SetHandleInformation":  {},
+	"OpenProcessToken":      {},
+	"RegisterEventSourceA":  {},
+	"OpenEventLogA":         {},
+	"ReadEventLogA":         {},
+	"CloseEventLog":         {},
+
 	// Smart-pointer type constructors invoked as bare names (e.g.
 	// `unique_ptr<T>{ ... }`).
 	"unique_ptr": {},
@@ -12017,6 +12162,88 @@ var googleBenchmarkBareNames = map[string]struct{}{
 // spdlog. Conservative shape check: at least 5 chars, prefix is
 // snake_case lowercase letters/digits/underscores, ends in `_mt` /
 // `_st`, prefix is non-empty after suffix strip.
+// isSpdlogSinkOrFormatterShape reports whether s matches the distinctive
+// spdlog `*_sink` / `*_formatter` class-name convention. Used (cpp/c
+// gated) to route receiver-stripped bare references to spdlog internal
+// classes (`rotating_file_sink`, `short_filename_formatter`,
+// `T_formatter`, `Y_formatter`, ...) to ext:spdlog rather than
+// bug-extractor. The suffixes are overwhelmingly spdlog idioms in
+// real C++ corpora; the small false-positive risk (a user defining
+// their own `my_sink` class outside the spdlog allowlist context) is
+// preferable to leaving 60+ unresolved bare names in bug-extractor.
+func isSpdlogSinkOrFormatterShape(s string) bool {
+	const (
+		sinkSuf = "_sink"
+		fmtSuf  = "_formatter"
+	)
+	switch {
+	case strings.HasSuffix(s, sinkSuf):
+		prefix := s[:len(s)-len(sinkSuf)]
+		if prefix == "" {
+			return false
+		}
+		return isSnakeOrLowerCppIdent(prefix)
+	case strings.HasSuffix(s, fmtSuf):
+		prefix := s[:len(s)-len(fmtSuf)]
+		if prefix == "" {
+			return false
+		}
+		return isSnakeOrLowerCppIdent(prefix)
+	}
+	return false
+}
+
+// isSnakeOrLowerCppIdent reports whether s is a C++ identifier prefix
+// consisting only of lowercase letters, digits, and underscores, OR a
+// single uppercase letter (spdlog pattern-flag formatter shape:
+// `T_formatter`, `Y_formatter`, ...).
+func isSnakeOrLowerCppIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	// Single uppercase letter prefix (T_formatter, Y_formatter, ...).
+	if len(s) == 1 && s[0] >= 'A' && s[0] <= 'Z' {
+		return true
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '_':
+		default:
+			return false
+		}
+	}
+	// Must not start or end with underscore (avoids `_sink` / `sink_`-
+	// style member-variable confusions; we want real class names).
+	if s[0] == '_' || s[len(s)-1] == '_' {
+		return false
+	}
+	return true
+}
+
+// qtBareNames is the cpp/c-gated Qt API stop-list (spdlog wave follow-up).
+// Qt's QTextEdit / QTextCursor / QTextCharFormat / QMetaObject methods
+// receiver-stripped from spdlog/sinks/qt_sinks.h call sites. Distinctive
+// camelCase Qt names virtually never user-defined. Conservative scope:
+// only names that actually surface as bug-extractor in spdlog and are
+// unambiguously Qt API (no generic English verbs).
+var qtBareNames = map[string]struct{}{
+	"setForeground":       {},
+	"setBackground":       {},
+	"setCharFormat":       {},
+	"currentCharFormat":   {},
+	"movePosition":        {},
+	"insertText":          {},
+	"deleteChar":          {},
+	"removeSelectedText":  {},
+	"blockCount":          {},
+	"fromUtf8":            {},
+	"fromLatin1":          {},
+	"invokeMethod":        {},
+	"Q_ARG":               {},
+}
+
 func isSpdlogFactoryName(s string) bool {
 	if len(s) < 5 {
 		return false
