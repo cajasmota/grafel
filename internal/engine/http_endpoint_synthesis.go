@@ -97,46 +97,60 @@ func applyHTTPEndpointSynthesis(
 	// regex (e.g. Spring's @GetMapping pattern). We only want one
 	// synthetic per endpoint per file.
 	seen := map[string]bool{}
-	emit := func(method, canonicalPath, framework, handlerKind, handlerName string) {
-		if canonicalPath == "" {
-			return
-		}
-		id := httproutes.SyntheticID(method, canonicalPath)
-		if seen[id] {
-			return
-		}
-		seen[id] = true
+	// makeEmit builds an emit-closure parameterised by `patternType`
+	// (producer vs. consumer) and the property key used to record the
+	// related-entity reference (`source_handler` for the producer side
+	// from #534, `source_caller` for the consumer side from #533 Phase 1).
+	// The Phase-2 resolver (`ResolveHTTPEndpointHandlers`) only acts on
+	// `source_handler`; consumer synthetics with `source_caller` fall
+	// through the resolver untouched and land in the cross-repo linker
+	// by Name (`http:<verb>:<path>`) — the linker matches across repos
+	// on Name only, so no edge wiring is required for cross-repo links.
+	makeEmit := func(patternType, refPropKey string) emitFn {
+		return func(method, canonicalPath, framework, refKind, refName string) {
+			if canonicalPath == "" {
+				return
+			}
+			id := httproutes.SyntheticID(method, canonicalPath)
+			if seen[id] {
+				return
+			}
+			seen[id] = true
 
-		props := map[string]string{
-			"verb":         strings.ToUpper(method),
-			"path":         canonicalPath,
-			"framework":    framework,
-			"pattern_type": "http_endpoint_synthesis",
-		}
-		if handlerName != "" {
-			props["source_handler"] = fmt.Sprintf("%s:%s", handlerKind, handlerName)
-		}
+			props := map[string]string{
+				"verb":         strings.ToUpper(method),
+				"path":         canonicalPath,
+				"framework":    framework,
+				"pattern_type": patternType,
+			}
+			if refName != "" {
+				props[refPropKey] = fmt.Sprintf("%s:%s", refKind, refName)
+			}
 
-		entities = append(entities, types.EntityRecord{
-			ID:                 id,
-			Name:               id,
-			Kind:               httpEndpointKind,
-			SourceFile:         path,
-			Language:           lang,
-			Properties:         props,
-			EnrichmentRequired: false,
-			EnrichmentStatus:   types.StatusPending,
-			QualityScore:       0.8,
-		})
-
-		// Phase 1 deliberately emits the synthetic entity WITHOUT
-		// handler→endpoint edges. The handler reference is recorded as a
-		// property (`source_handler`) so a follow-up pass can resolve it
-		// against the existing entity table once the AST extractors emit
-		// stable controller IDs. Emitting unresolved edges here would
-		// inflate bug-rate because the resolver treats every edge with a
-		// non-existent target as a resolution failure.
+			entities = append(entities, types.EntityRecord{
+				ID:                 id,
+				Name:               id,
+				Kind:               httpEndpointKind,
+				SourceFile:         path,
+				Language:           lang,
+				Properties:         props,
+				EnrichmentRequired: false,
+				EnrichmentStatus:   types.StatusPending,
+				QualityScore:       0.8,
+			})
+		}
 	}
+	emit := makeEmit("http_endpoint_synthesis", "source_handler")
+	emitClient := makeEmit("http_endpoint_client_synthesis", "source_caller")
+
+	// Phase 1 deliberately emits synthetic entities WITHOUT producer-side
+	// handler→endpoint or consumer-side caller→endpoint edges. The
+	// referenced entity is recorded as a property (`source_handler` or
+	// `source_caller`) so a follow-up pass can resolve it against the
+	// existing entity table once the AST extractors emit stable
+	// controller / function IDs. Emitting unresolved edges here would
+	// inflate bug-rate because the resolver treats every edge with a
+	// non-existent target as a resolution failure.
 
 	switch lang {
 	case "java":
@@ -147,14 +161,21 @@ func applyHTTPEndpointSynthesis(
 		// JAX-RS: scan the file directly.
 		synthesizeJAXRS(string(content), emit)
 	case "python":
-		// Django composed Routes (from django_routes.go) — method is
-		// unknown statically, so emit with verb=ANY.
+		// Producer side: Django composed Routes (from django_routes.go) —
+		// method is unknown statically, so emit with verb=ANY.
 		synthesizeDjangoFromComposed(entities, path, emit)
-		// Flask + FastAPI: scan the file directly.
+		// Producer side: Flask + FastAPI.
 		synthesizeFlask(string(content), emit)
 		synthesizeFastAPI(string(content), emit)
+		// Consumer side (#533 Phase 1): requests / httpx / aiohttp /
+		// session-style HTTP client calls.
+		synthesizePyClient(string(content), emitClient)
 	case "javascript", "typescript":
+		// Producer side: Express.
 		synthesizeExpress(string(content), emit)
+		// Consumer side (#533 Phase 1): fetch / axios / generic *Client
+		// HTTP client calls.
+		synthesizeFetchAxios(string(content), emitClient)
 	}
 
 	return entities, relationships
