@@ -78,6 +78,7 @@ Pattern {
   observations:    int
   last_validated:  timestamp
   last_applied:    timestamp
+  documentation_url: string      // optional: pointer to the doc section this pattern maps to (written by /generate-docs integration)
 }
 ```
 
@@ -129,6 +130,26 @@ Narrow by default. Scope is auto-derived from the exemplar entities passed to `r
 - Stack detection: a lightweight inference pass over the exemplars' import graph (already in memory) tags the stack. Agent may override.
 
 To intentionally create a broad pattern, the agent passes `scope.repos=[]` (or any empty field) to clear the auto-derived constraint.
+
+### Discovery: doc-generation integration
+
+Pattern detection has two entry points:
+
+1. **Primary — doc-generation skill (`/generate-docs`).** The doc-gen pass is already exploring the codebase end-to-end and loading every entity into context. Pattern detection piggybacks on that exploration as a new phase:
+
+   - Phase 1 (discovery): scan codebase for entities — also note structural recurrences (≥3 similar shapes within the same scope = candidate pattern).
+   - Phase 2 (domain Q&A): unchanged.
+   - Phase 3 (generation): write docs.
+   - **Phase 4 (pattern proposal, new):** surface candidate patterns to the user. User approves, refines, or rejects each. Approved candidates flow into `record` action.
+   - **Phase 5 (cross-link, new):** approved patterns receive `documentation_url` pointing at the doc section they map to.
+
+   Rationale: doc-gen achieves ≥3 observations on day one (statistical confidence floor), whereas per-task discovery accumulates observations slowly. Doc-gen also runs at a natural periodic cadence (monthly, on stale-doc trigger), making it the right place for pattern audits — re-validating existing patterns and discovering new candidates as the code changes.
+
+2. **Secondary — standalone `/archigraph-patterns-discover` skill.** For users who want pattern refresh without doc regeneration. Same detection logic, no doc emission phase.
+
+3. **Tertiary — agent-task observation.** When an agent completes a task and the query returned no applicable pattern, it can call `record` directly to formalize what it just did. Lowest sample size, highest immediacy.
+
+The three entry points coexist. Doc-gen integration is the primary because the exploration cost is already paid and the user is in review mode.
 
 ### Confidence model
 
@@ -221,7 +242,7 @@ Do not queue these PRs until the current HTTP overhaul and the Java/Python chain
 | α   | Pattern entity kind; per-group `patterns.json` storage; schema only (no MCP wiring). |
 | β   | `archigraph_patterns` MCP tool: `query` and `record` actions; BM25 index integration; scope derivation from exemplars. |
 | γ   | Lifecycle: `refine`, `apply`, `reject`; confidence model; time decay; `CREATED_BY` edge write on apply. |
-| δ   | Skills (`/archigraph-patterns-discover`, `/archigraph-patterns-sync`); private anti-pattern sanitization; `archigraph patterns` CLI subcommand. |
+| δ   | Skills: `/generate-docs` integration (Phase 4 + 5 added — pattern proposal + cross-link); `/archigraph-patterns-discover` standalone; `/archigraph-patterns-sync` for CLAUDE.md export. Private anti-pattern sanitization. `archigraph patterns` CLI subcommand. |
 
 ## Open questions
 
