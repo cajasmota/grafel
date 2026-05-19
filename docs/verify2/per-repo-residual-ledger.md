@@ -455,6 +455,82 @@ this is a categorisation pass, not a known-name addition).
 
 ---
 
+## Wave-11 (TS/JS React ship-gate push, post-#582 chain-fixes)
+
+Continuation of wave-10 (#582) ship-gate push targeting the two
+chain-fixes called out in the #582 PR body residual analysis.
+
+- **Chain-fix A (jsDynamicPatterns: React handler-prop convention):**
+  added `^on[A-Z][A-Za-z0-9]*$` to the JS/TS dynamic-pattern set so
+  React handler-prop call sites (`onClose`, `onClick`, `onChange`,
+  `onSubmit`, `onCancel`, `onConfirm`, `onSuccess`, `onError`,
+  `onValueChange`, `onSelect`, `onFocus`, `onBlur`, `onClearAll`,
+  `onDirtyChange`, …) classify as `dynamic` rather than
+  `bug-extractor`. These are callable props bound by the parent at
+  invocation time — statically unresolvable by design. The per-language
+  gate (js/ts only) prevents collision with non-React ecosystems.
+- **Chain-fix B (jsBareNames: antd App-context hook returners,
+  bounded version):** added `useMessage` / `useNotification` / `useApp`
+  to jsBareNames for antd v5 App-context hooks. The fuller
+  dotted-path leaf-binding fix for destructure-rename mutation
+  callables (`const { mutate: createAddress } =
+  useCreateAlternateAddress()` → bare `createAddress(...)`) is
+  deferred as a chain-fix issue because it requires JS/TS
+  extractor work to emit SCOPE.Operation entities for
+  destructure-rename bindings — out of scope for a synth/resolve-only
+  wave.
+
+Per-iteration delta on client-fixture-b (primary target):
+
+| Pass | bug-rate | bug-ext | bug-res | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| baseline (post-#582) | 2.367% | 883 | 239 | — |
+| Pass-1 (Chain-fix A: handler-prop dynamic) | 1.740% | 645 | 180 | -0.626pp |
+| Pass-2 (Chain-fix B: antd hooks) | 1.738% | 644 | 180 | -0.629pp |
+
+client-fixture-c (secondary target):
+
+| Pass | bug-rate | Δ |
+|---|---:|---:|
+| baseline | 2.942% | — |
+| Pass-1 | 2.680% | -0.261pp |
+| Pass-2 | 2.680% | -0.261pp |
+
+Regression check (main vs wave-11) — 11 listed repos + client-fixture-a:
+
+| Repo | Main | W11 | Δ |
+|---|---:|---:|---:|
+| chi | 4.233% | 4.233% | 0.000pp |
+| flask | 9.458% | 9.458% | 0.000pp |
+| spdlog | 5.758% | 5.758% | 0.000pp |
+| gin | 4.931% | 4.931% | 0.000pp |
+| play-scala-starter | 2.113% | 2.113% | 0.000pp |
+| express | 2.996% | 2.996% | 0.000pp |
+| nextjs-commerce | 2.317% | 2.317% | 0.000pp |
+| nestjs-starter | 1.754% | 1.754% | 0.000pp |
+| kafka-streams-examples | 3.396% | 3.396% | 0.000pp |
+| vapor-api-template | 2.128% | 2.128% | 0.000pp |
+| ktor-samples | 4.874% | 4.864% | -0.010pp |
+| client-fixture-a | 6.082% | 6.082% | 0.000pp |
+
+No regression — all repos identical except ktor-samples slight
+improvement.
+
+Residual root cause: post-wave-10 cfb bug-extractor was dominated by
+React handler-prop callables (`onClose`, `onCancel`, `onChange`, …)
+that the parent component supplies — Chain-fix A categorises these
+as Dynamic. Remaining residual is React Query mutation destructure-
+renamed callables (`const { mutate: createAddress } = useFooMutation()`)
+which need extractor-level entity lift; filed as a chain-fix issue
+for follow-up wave.
+
+Status: at-bar (toward ship-gate; cfb 2.37% → 1.74%, cfc 2.94% →
+2.68%; cfb is now within 0.74pp of the 1% ship-gate floor — one more
+extractor-level wave on the destructure-rename pattern should close
+it).
+
+---
+
 ## Wave-4 PHP (Symfony residual reduction, post-#498 chase to ≤3%)
 
 Targeted continuation of PHP wave-3 (#485) symfony-demo residual chase
@@ -535,10 +611,6 @@ Regression check (main vs wave-4 PHP) — 11 listed repos:
 | spdlog | 5.758% | 5.758% | 0.000pp |
 | gin | 4.931% | 4.931% | 0.000pp |
 | play-scala-starter | 2.113% | 2.113% | 0.000pp |
-| nextjs-commerce | 2.317% | 2.317% | 0.000pp |
-| nestjs-starter | 1.754% | 1.754% | 0.000pp |
-| kafka-streams-examples | 3.396% | 3.396% | 0.000pp |
-| vapor-api-template | 2.128% | 2.128% | 0.000pp |
 | flask-realworld | 6.585% | 6.585% | 0.000pp |
 
 Perfect zero-delta across every non-PHP corpus — the `lang == "php"`

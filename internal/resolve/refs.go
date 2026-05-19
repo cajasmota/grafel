@@ -528,6 +528,19 @@ var (
 		regexp.MustCompile(`^then$`),
 		regexp.MustCompile(`^catch$`),
 		regexp.MustCompile(`^finally$`),
+		// Wave-11 (TS/JS React frontend, ship-gate) — React handler-prop
+		// convention `onClose`, `onClick`, `onChange`, `onSubmit`,
+		// `onCancel`, `onConfirm`, `onSuccess`, `onError`, `onValueChange`,
+		// `onSelect`, `onFocus`, `onBlur`, etc. These are callable props
+		// passed from a parent component; the actual handler implementation
+		// lives in the parent and is bound at component-invocation time, so
+		// the call site (inside the child component) cannot statically bind
+		// it. Standard React convention (React docs + RFC). The per-language
+		// gate (js/ts only) keeps it from biting Python/Go/etc. where the
+		// `onX` callable-prop convention does not exist. client-fixture-b
+		// top bug-extractor sample after wave-10 was `onClearAll` /
+		// `onClose` confirming this is the dominant residual shape.
+		regexp.MustCompile(`^on[A-Z][A-Za-z0-9]*$`),
 	}
 
 	rubyDynamicPatterns = []*regexp.Regexp{

@@ -6655,6 +6655,22 @@ var jsBareNames = map[string]struct{}{
 	// lang invariant test will reject if jqueryBareNames cross-
 	// gates — it doesn't (jquery is file-gated, not lang-gated).
 	"closest": {},
+
+	// Wave-11 (ship-gate, chain-fix B partial) — antd notification +
+	// message + Modal hook returners. The antd App-context API
+	// (`const [api, contextHolder] = message.useMessage()` /
+	// `notification.useNotification()` / `Modal.useModal()`) returns
+	// a callable + a contextHolder. The hook itself bare-extracts
+	// from the receiver-strip (`message.useMessage` → `useMessage`).
+	// `useMessage` / `useNotification` are rules-of-hooks reserved
+	// (must start with `use`) and antd-distinctive enough to be
+	// safe. `useApp` is the antd v5 App component hook returning
+	// `{message, notification, modal}` accessors. The per-language
+	// gate (js/ts only) prevents shadowing in non-JS codebases.
+	// `useModal` already in jsBareNames above (antd).
+	"useMessage":      {}, // antd message.useMessage hook
+	"useNotification": {}, // antd notification.useNotification hook
+	"useApp":          {}, // antd App.useApp hook
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue
