@@ -38,7 +38,8 @@ func runIndexClient(cmd *cobra.Command, argv []string) error {
 	repair := fs.Bool("enable-repair-candidates", false, "emit ADR-0015 repair candidates")
 	repairApply := fs.Bool("enable-repair-apply", false, "apply allowlisted repairs before classification")
 	exportFB := fs.Bool("export-fb", false, "[deprecated] graph.fb is now written by default; this flag is a no-op (ADR-0016 flip-day)")
-
+	exportJSON := fs.Bool("export-json", false, "also write graph.json alongside graph.fb (default: FB-only, ADR-0016 flip-day)")
+	printSkipped := fs.Bool("print-skipped", false, "print each directory skipped at walk-time with the matching rule")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -67,7 +68,9 @@ func runIndexClient(cmd *cobra.Command, argv []string) error {
 		JSONStats:   *jsonStats,
 		Repair:      *repair,
 		RepairApply: *repairApply,
-
+		ExportFB:    *exportFB, // deprecated no-op; kept for back-compat
+		ExportJSON:  *exportJSON,
+		PrintSkipped: *printSkipped,
 	})
 	if err != nil {
 		return err
