@@ -55,6 +55,24 @@ func runStatus(w io.Writer, filter string) error {
 				fmt.Fprintf(w, "  scheduler: queue=%d in_flight=%d pending_algo=%d pending_links=%d\n",
 					st.QueueLen, len(st.IndexInFlight), len(st.PendingAlgo), len(st.PendingLinks))
 			}
+			if st.RSSBudgetMB > 0 {
+				headroom := st.RSSBudgetMB - st.RSSUsedMB
+				if headroom < 0 {
+					headroom = 0
+				}
+				fmt.Fprintf(w, "  rss budget: used=%dMB / %dMB (headroom=%dMB) blocked=%d\n",
+					st.RSSUsedMB, st.RSSBudgetMB, headroom, len(st.BlockedJobs))
+				if len(st.InFlightJobs) > 0 {
+					for _, j := range st.InFlightJobs {
+						fmt.Fprintf(w, "    running: %s (predicted=%dMB)\n", j.Path, j.PredictedMB)
+					}
+				}
+				if len(st.BlockedJobs) > 0 {
+					for _, p := range st.BlockedJobs {
+						fmt.Fprintf(w, "    blocked: %s\n", p)
+					}
+				}
+			}
 			if len(st.IndexedRepos) > 0 {
 				fmt.Fprintln(w, "  indexed repos:")
 				for _, r := range st.IndexedRepos {

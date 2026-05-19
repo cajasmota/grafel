@@ -48,6 +48,22 @@ type StatusReply struct {
 	PendingLinks   []string           `json:"pending_links,omitempty"`
 	IndexedRepos   []IndexedRepoState `json:"indexed_repos,omitempty"`
 	RecentLog      []SchedLogEntry    `json:"recent_log,omitempty"`
+
+	// Concurrency-cap additions. BudgetMB=0 means admission control is
+	// disabled. UsedMB is the sum of predicted RSS reserved by jobs
+	// currently running. InFlightJobs duplicates IndexInFlight with
+	// per-job predicted-MB so the status formatter can print headroom.
+	// BlockedJobs lists repos waiting for the budget to free.
+	RSSBudgetMB  int64               `json:"rss_budget_mb,omitempty"`
+	RSSUsedMB    int64               `json:"rss_used_mb,omitempty"`
+	InFlightJobs []InFlightJobState  `json:"in_flight_jobs,omitempty"`
+	BlockedJobs  []string            `json:"blocked_jobs,omitempty"`
+}
+
+// InFlightJobState mirrors sched.InFlightJob on the wire.
+type InFlightJobState struct {
+	Path        string `json:"path"`
+	PredictedMB int64  `json:"predicted_mb"`
 }
 
 // IndexedRepoState mirrors sched.RepoSnapshot for the wire.
@@ -55,9 +71,11 @@ type IndexedRepoState struct {
 	Path       string `json:"path"`
 	LastIndex  string `json:"last_index,omitempty"`
 	LastAlgo   string `json:"last_algo,omitempty"`
-	IndexCount int64  `json:"index_count"`
-	AlgoCount  int64  `json:"algo_count"`
-	LastErr    string `json:"last_err,omitempty"`
+	IndexCount  int64  `json:"index_count"`
+	AlgoCount   int64  `json:"algo_count"`
+	LastErr     string `json:"last_err,omitempty"`
+	LastPeakMB  int64  `json:"last_peak_mb,omitempty"`
+	PredictedMB int64  `json:"predicted_mb,omitempty"`
 }
 
 // SchedLogEntry is the wire form of a scheduler log entry.

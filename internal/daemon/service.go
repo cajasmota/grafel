@@ -93,15 +93,25 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	if s.scheduler != nil {
 		snap := s.scheduler.Snapshot()
 		reply.QueueLen = snap.QueueLen
-		reply.IndexInFlight = snap.InFlight
 		reply.PendingAlgo = snap.PendingAlgo
 		reply.PendingLinks = snap.PendingLinks
+		reply.RSSBudgetMB = snap.BudgetMB
+		reply.RSSUsedMB = snap.UsedMB
+		reply.BlockedJobs = snap.BlockedJobs
+		for _, j := range snap.InFlight {
+			reply.IndexInFlight = append(reply.IndexInFlight, j.Path)
+			reply.InFlightJobs = append(reply.InFlightJobs, proto.InFlightJobState{
+				Path: j.Path, PredictedMB: j.PredictedMB,
+			})
+		}
 		for _, r := range snap.IndexedRepos {
 			ir := proto.IndexedRepoState{
-				Path:       r.Path,
-				IndexCount: r.IndexCount,
-				AlgoCount:  r.AlgoCount,
-				LastErr:    r.LastErr,
+				Path:        r.Path,
+				IndexCount:  r.IndexCount,
+				AlgoCount:   r.AlgoCount,
+				LastErr:     r.LastErr,
+				LastPeakMB:  r.LastPeakMB,
+				PredictedMB: r.PredictedMB,
 			}
 			if !r.LastIndex.IsZero() {
 				ir.LastIndex = r.LastIndex.UTC().Format(time.RFC3339)

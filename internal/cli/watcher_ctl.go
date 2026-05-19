@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -21,13 +22,17 @@ import (
 // keeps the daemon alive (Phase C).
 
 func newStartCmd() *cobra.Command {
-	return &cobra.Command{
+	var maxRSSBudget int64
+	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the archigraph daemon",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runDaemonStart(cmd.OutOrStdout())
+			return runDaemonStartWithBudget(cmd.OutOrStdout(), maxRSSBudget)
 		},
 	}
+	cmd.Flags().Int64Var(&maxRSSBudget, "max-rss-budget", 0,
+		"max predicted RSS (MB) for concurrent index jobs (0 = use daemon default of 500)")
+	return cmd
 }
 
 func newStopCmd() *cobra.Command {
@@ -74,11 +79,18 @@ func newLogsCmd() *cobra.Command {
 	return cmd
 }
 
-// runDaemonStart forks the current binary in daemon mode and detaches.
-// It does not wait for the daemon to become ready beyond a short ping
-// poll. If the daemon is already running, start is a no-op (the call
-// is idempotent — important for service-managed restarts).
+// runDaemonStart is the legacy zero-arg form retained for restart's
+// internal use. It forwards to runDaemonStartWithBudget with 0,
+// letting the daemon pick its own default.
 func runDaemonStart(out io.Writer) error {
+	return runDaemonStartWithBudget(out, 0)
+}
+
+// runDaemonStartWithBudget forks the current binary in daemon mode and
+// detaches. It does not wait for the daemon to become ready beyond a
+// short ping poll. If the daemon is already running, start is a no-op
+// (the call is idempotent — important for service-managed restarts).
+func runDaemonStartWithBudget(out io.Writer, maxRSSBudgetMB int64) error {
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		return err
@@ -102,7 +114,11 @@ func runDaemonStart(out io.Writer) error {
 	}
 	defer logFile.Close()
 
-	cmd := exec.Command(bin, "daemon")
+	args := []string{"daemon"}
+	if maxRSSBudgetMB > 0 {
+		args = append(args, "--max-rss-budget", strconv.FormatInt(maxRSSBudgetMB, 10))
+	}
+	cmd := exec.Command(bin, args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	// Detach: a fresh process group so the daemon survives this CLI.

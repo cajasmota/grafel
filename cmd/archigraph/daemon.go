@@ -5,16 +5,24 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
+
+// defaultRSSBudgetMB is the production default for the concurrency
+// cap. Chosen to match the post-#639 single-reindex peak (343MB) plus
+// headroom for one small concurrent reindex: targets the 500MB cap
+// from the real-fixture benchmark.
+const defaultRSSBudgetMB = 500
 
 // runDaemon is the long-running mode of the archigraph binary. It is
 // wired into the CLI as a hidden `archigraph daemon` subcommand —
@@ -24,6 +32,23 @@ import (
 // All extractor + registry + linker work happens here. The CLI's other
 // subcommands are thin RPC clients (see internal/daemon/client).
 func runDaemon(argv []string) error {
+	// Parse daemon-only flags. The root cobra command has flag parsing
+	// disabled for "daemon" so we own the argv. Unknown flags exit
+	// with a clear error rather than being silently ignored.
+	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
+	var maxRSSBudget int64
+	envBudget := int64(defaultRSSBudgetMB)
+	if v := os.Getenv("ARCHIGRAPH_MAX_RSS_BUDGET_MB"); v != "" {
+		if parsed, perr := strconv.ParseInt(v, 10, 64); perr == nil && parsed >= 0 {
+			envBudget = parsed
+		}
+	}
+	fs.Int64Var(&maxRSSBudget, "max-rss-budget", envBudget,
+		"max predicted RSS (MB) for concurrent index jobs; 0 disables admission control")
+	if err := fs.Parse(argv); err != nil {
+		return err
+	}
+
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		return fmt.Errorf("resolve daemon layout: %w", err)
@@ -59,6 +84,9 @@ func runDaemon(argv []string) error {
 		SchedulerIndex: daemonSchedulerIndex,
 		SchedulerLinks: daemonSchedulerLinks,
 		SchedulerAlgo:  daemonSchedulerAlgo,
+
+		MaxRSSBudgetMB: maxRSSBudget,
+		RSSHistoryPath: filepath.Join(filepath.Dir(layout.PIDPath), "repo-rss-history.json"),
 	}
 
 	ctx := context.Background()

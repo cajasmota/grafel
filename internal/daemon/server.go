@@ -37,6 +37,16 @@ type Config struct {
 	SchedulerIndex func(ctx context.Context, repo string) error // fast reindex (skip algo pass)
 	SchedulerLinks func(ctx context.Context, group string) error
 	SchedulerAlgo  func(ctx context.Context, repo string) error
+
+	// MaxRSSBudgetMB caps the total predicted RSS of concurrently
+	// running index jobs. 0 disables admission control (legacy
+	// behaviour). The CLI sets this via --max-rss-budget on the
+	// daemon subcommand or the ARCHIGRAPH_MAX_RSS_BUDGET_MB env var.
+	MaxRSSBudgetMB int64
+
+	// RSSHistoryPath is where the scheduler persists per-repo observed
+	// peak RSS for predictor calibration. Empty disables history.
+	RSSHistoryPath string
 }
 
 // Run starts the daemon. It blocks until either:
@@ -88,13 +98,21 @@ func Run(ctx context.Context, cfg Config) error {
 	// supplied the four hooks. They are optional so tests can exercise
 	// the bare RPC surface without dragging the extractor into scope.
 	if cfg.SchedulerIndex != nil {
+		history := sched.LoadRSSHistory(cfg.RSSHistoryPath)
 		scheduler := sched.New(sched.Config{
 			Index:         cfg.SchedulerIndex,
 			Links:         cfg.SchedulerLinks,
 			Algorithms:    cfg.SchedulerAlgo,
 			GroupsForRepo: cfg.GroupsForRepo,
 			Logger:        logger,
+			BudgetMB:      cfg.MaxRSSBudgetMB,
+			Predict:       sched.PredictRSS,
+			History:       history,
 		})
+		if cfg.MaxRSSBudgetMB > 0 {
+			logger.Printf("scheduler: RSS-budget admission control enabled budget=%dMB history=%s",
+				cfg.MaxRSSBudgetMB, cfg.RSSHistoryPath)
+		}
 		scheduler.Start()
 		svc.scheduler = scheduler
 		defer scheduler.Stop()
