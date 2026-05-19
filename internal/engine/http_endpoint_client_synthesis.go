@@ -12,9 +12,9 @@
 //
 // Phase 1 covers STATIC URL literals only:
 //   - JS/TS:   fetch("/users/123"), fetch("/users/123", {method:"POST"}),
-//              axios.<verb>("/path", ...), httpClient.<verb>("/path", ...)
+//     axios.<verb>("/path", ...), httpClient.<verb>("/path", ...)
 //   - Python:  requests.<verb>("/path"), httpx.<verb>("/path"),
-//              aiohttp.ClientSession.<verb>("/path"), session.<verb>("/path")
+//     aiohttp.ClientSession.<verb>("/path"), session.<verb>("/path")
 //
 // Deferred to Phase 2 chain-fixes (filed per #533 spec):
 //   - Template literals: fetch(`/users/${id}/posts`)
@@ -29,16 +29,16 @@
 //   - verb         — uppercase HTTP method
 //   - path         — canonical path with `{name}` params
 //   - framework    — "fetch" / "axios" / "http_client" / "requests" /
-//                    "httpx" / "aiohttp"
+//     "httpx" / "aiohttp"
 //   - pattern_type — "http_endpoint_client_synthesis"
 //   - source_caller — present when the call sits inside a detectable
-//                     enclosing function. Format `Function:<name>`. The
-//                     existing resolver (`ResolveHTTPEndpointHandlers`)
-//                     ignores synthetics that lack `source_handler`, so
-//                     using a different property key keeps consumer-side
-//                     synthetics out of the producer-side resolver's
-//                     drop path; they fall into NoHandlerProp and pass
-//                     through untouched.
+//     enclosing function. Format `Function:<name>`. The
+//     existing resolver (`ResolveHTTPEndpointHandlers`)
+//     ignores synthetics that lack `source_handler`, so
+//     using a different property key keeps consumer-side
+//     synthetics out of the producer-side resolver's
+//     drop path; they fall into NoHandlerProp and pass
+//     through untouched.
 //
 // No edges are emitted in this PR. CALLS-edge wiring from caller →
 // synthetic is deferred to a later phase (it requires the AST-stamped
@@ -92,9 +92,10 @@ var fetchMethodRe = regexp.MustCompile(
 // registrations, which are producer-side (#534).
 //
 // To avoid that collision cleanly we run TWO matchers:
-//   1. axiosLiteralRe  — anchors on the literal `axios.`
-//   2. axiosClientRe   — anchors on `<ident>Client.` / `<ident>HttpClient.`
-//                        / `httpClient.` / `apiClient.`
+//  1. axiosLiteralRe  — anchors on the literal `axios.`
+//  2. axiosClientRe   — anchors on `<ident>Client.` / `<ident>HttpClient.`
+//     / `httpClient.` / `apiClient.`
+//
 // Producer-side (Express) idiomatic forms (`app.get`, `router.get`,
 // `<router>.get`) do not match either anchor.
 var axiosLiteralRe = regexp.MustCompile(
@@ -112,6 +113,7 @@ var axiosClientRe = regexp.MustCompile(
 //   - const foo = function(
 //   - foo: function( (object-literal methods)
 //   - async function foo(
+//
 // We scan the file once and build a sorted list of (offset, name) records,
 // then a binary-search-free linear walk to find the nearest preceding
 // definition. Good enough for Phase 1 attribution; a Phase 2 chain-fix
@@ -245,6 +247,7 @@ var pyRequestsLiteralRe = regexp.MustCompile(
 //   - requests.Session() instances: `session.get(url)`
 //   - httpx.Client / AsyncClient instances: `client.get(url)`
 //   - aiohttp.ClientSession instances: `session.get(url)`
+//
 // We deliberately restrict the leading identifier to a small allow-list of
 // names to avoid colliding with framework producer patterns (Flask /
 // FastAPI use `@app.get(...)` / `@router.get(...)` as DECORATORS — those
