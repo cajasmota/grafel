@@ -168,17 +168,27 @@ public class Demo {}
 	}
 }
 
-// ---- Issue #666: IMPORTS entity Name must be the local bound name ----
-
-// TestJavaImportNameIsLeaf verifies that a plain import emits an entity
-// whose Name is the last dotted segment (the identifier bound in the
-// file) rather than the top-level package segment. This is the core
-// fix for #666: the references pass indexes imports by local_name and
-// then looks up the entity by Name — so Name must equal local_name.
+// ---- Issue #666 + #681: IMPORTS edges carry local_name in Properties ----
 //
-//	import com.example.UserService;  → Name = "UserService"  (not "com")
-//	import java.util.List;           → Name = "List"          (not "java")
-func TestJavaImportNameIsLeaf(t *testing.T) {
+// Issue #666 fixed: the local bound name is now in Properties["local_name"]
+// on the IMPORTS edge (e.g. "List" for `import java.util.List;`).
+//
+// Issue #681 changed: IMPORTS edges are now attached to the file-level
+// entity (Name=file path, Subtype="file") instead of a separate
+// SCOPE.Component placeholder per import. The resolver's BuildImportTable
+// reads rel.Properties["local_name"] — it does not need the entity Name to
+// equal the local name. The old import-placeholder entities with
+// Name="List", Name="UserService" etc. no longer exist; their absence is
+// the whole point of #681.
+
+// TestJavaImportLocalNameInProperties verifies that IMPORTS edges carry
+// the correct local_name in Properties (issue #666 contract), and that
+// no separate import-placeholder SCOPE.Component entity is emitted
+// (issue #681 contract — no dangling orphan entities).
+//
+//	import com.example.UserService;  → Properties["local_name"] = "UserService"
+//	import java.util.List;           → Properties["local_name"] = "List"
+func TestJavaImportLocalNameInProperties(t *testing.T) {
 	src := `package com.demo;
 
 import com.example.UserService;
@@ -188,37 +198,48 @@ public class Demo {}
 `
 	ents := runJavaExtract(t, src)
 
-	// Helper: find IMPORTS entity by source_module and return its Name.
-	findName := func(sourceModule string) string {
+	// Helper: find IMPORTS edge by source_module and return its local_name property.
+	findLocalName := func(sourceModule string) string {
 		for i := range ents {
 			e := &ents[i]
-			if e.Kind != "SCOPE.Component" {
-				continue
-			}
 			for j := range e.Relationships {
 				r := &e.Relationships[j]
 				if r.Kind == "IMPORTS" && r.Properties != nil &&
 					r.Properties["source_module"] == sourceModule {
-					return e.Name
+					return r.Properties["local_name"]
 				}
 			}
 		}
 		return ""
 	}
 
-	if got := findName("com.example"); got != "UserService" {
-		t.Errorf("import com.example.UserService: entity Name = %q, want UserService", got)
+	if got := findLocalName("com.example"); got != "UserService" {
+		t.Errorf("import com.example.UserService: local_name = %q, want UserService", got)
 	}
-	if got := findName("java.util"); got != "List" {
-		t.Errorf("import java.util.List: entity Name = %q, want List", got)
+	if got := findLocalName("java.util"); got != "List" {
+		t.Errorf("import java.util.List: local_name = %q, want List", got)
+	}
+
+	// Issue #681 — no import-placeholder SCOPE.Component entity should exist.
+	// The only SCOPE.Component entities must be: file entity + class entities.
+	for i := range ents {
+		e := &ents[i]
+		if e.Kind != "SCOPE.Component" {
+			continue
+		}
+		// Allowed: subtype="file" (file entity) or subtype="class"/"interface"/"enum".
+		if e.Subtype == "" {
+			t.Errorf("import-placeholder entity still emitted: Name=%q SourceFile=%q", e.Name, e.SourceFile)
+		}
 	}
 }
 
 // TestJavaImportNameStaticAndWildcard verifies that static and wildcard
-// imports also get the correct Name shape (issue #666 edge cases).
+// imports carry the correct local_name / wildcard properties (issue #666
+// edge cases) and do not produce orphan placeholder entities (#681).
 //
-//	import static com.example.UserService.create; → Name = "create"
-//	import org.springframework.boot.*;             → Name = "*"
+//	import static com.example.UserService.create; → local_name = "create"
+//	import org.springframework.boot.*;             → wildcard = "1"
 func TestJavaImportNameStaticAndWildcard(t *testing.T) {
 	src := `package com.demo;
 
@@ -230,49 +251,56 @@ public class Demo {}
 `
 	ents := runJavaExtract(t, src)
 
-	findName := func(sourceModule string) string {
+	// findImportsEdge returns the first IMPORTS edge whose source_module AND
+	// local_name both match. For wildcard imports, pass localName="".
+	findImportsEdge := func(sourceModule, localName string) *types.RelationshipRecord {
 		for i := range ents {
 			e := &ents[i]
-			if e.Kind != "SCOPE.Component" {
-				continue
-			}
 			for j := range e.Relationships {
 				r := &e.Relationships[j]
-				if r.Kind == "IMPORTS" && r.Properties != nil &&
-					r.Properties["source_module"] == sourceModule {
-					return e.Name
+				if r.Kind != "IMPORTS" || r.Properties == nil {
+					continue
+				}
+				if r.Properties["source_module"] != sourceModule {
+					continue
+				}
+				if localName == "" {
+					// wildcard: no local_name key expected
+					if r.Properties["wildcard"] == "1" {
+						return r
+					}
+					continue
+				}
+				if r.Properties["local_name"] == localName {
+					return r
 				}
 			}
 		}
-		return ""
+		return nil
 	}
 
 	// Static import: `import static com.example.UserService.create;`
-	// The last segment is "create" — that is the local bound name.
-	if got := findName("com.example.UserService"); got != "create" {
-		t.Errorf("import static ...UserService.create: entity Name = %q, want create", got)
+	// local_name = "create"
+	if r := findImportsEdge("com.example.UserService", "create"); r == nil {
+		t.Errorf("import static ...UserService.create: no IMPORTS edge with local_name=create for source_module=com.example.UserService")
 	}
 
-	// Wildcard import: conventional Name is "*".
-	if got := findName("org.springframework.boot"); got != "*" {
-		t.Errorf("import org.springframework.boot.*: entity Name = %q, want *", got)
+	// Wildcard import: wildcard = "1", no local_name.
+	if r := findImportsEdge("org.springframework.boot", ""); r == nil {
+		t.Errorf("import org.springframework.boot.*: no wildcard IMPORTS edge found")
 	}
 
 	// Inner class import: `import com.example.UserService.Inner;`
-	// The last segment is "Inner".
-	if got := findName("com.example.UserService"); got == "" {
-		// May share source_module with static import above — acceptable if one
-		// of the two entities has Name = "Inner". Scan directly.
-		found := false
-		for i := range ents {
-			e := &ents[i]
-			if e.Kind == "SCOPE.Component" && e.Name == "Inner" {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("import com.example.UserService.Inner: no entity with Name=Inner found")
+	// Shares source_module "com.example.UserService" with the static import.
+	if r := findImportsEdge("com.example.UserService", "Inner"); r == nil {
+		t.Errorf("import com.example.UserService.Inner: no IMPORTS edge with local_name=Inner found")
+	}
+
+	// Issue #681 — no import-placeholder SCOPE.Component entity should exist.
+	for i := range ents {
+		e := &ents[i]
+		if e.Kind == "SCOPE.Component" && e.Subtype == "" {
+			t.Errorf("import-placeholder entity still emitted: Name=%q SourceFile=%q", e.Name, e.SourceFile)
 		}
 	}
 }

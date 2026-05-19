@@ -5,7 +5,7 @@
 //   - interface_declaration   → Kind="SCOPE.Component", Subtype="interface"
 //   - method_declaration      → Kind="SCOPE.Operation", Subtype="method"
 //   - constructor_declaration → Kind="SCOPE.Operation", Subtype="constructor"
-//   - import_declaration      → IMPORTS relationship
+//   - import_declaration      → IMPORTS relationship on file entity (issue #681)
 //
 // Issue #120 — cross-file receiver binding. method_invocation nodes
 // whose receiver (object) is a field/parameter of a known type emit
@@ -79,6 +79,17 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	root := file.Tree.RootNode()
 	imports := collectImportNames(root, file.Content)
 	walk(root, file, "", nil, imports, &entities)
+
+	// Issue #681 — attach IMPORTS relationships directly to the file-level
+	// entity instead of emitting a separate SCOPE.Component placeholder
+	// per import_declaration. Placeholder entities were dangling (zero
+	// inbound edges) because REFERENCES edges point at the real external
+	// entity (ext:java:List), not the placeholder. Eliminating the
+	// placeholder entities drops ~1205 orphans on client-fixture-d
+	// (-25 to -35pp on the orphan rate).
+	//
+	// entities[0] is always the file entity (appended first above).
+	attachImportRelationships(root, file, &entities[0])
 
 	// Secondary pass: error-handling patterns.
 	errorPatterns := extractErrorHandlingPatterns(root, file.Path)
@@ -256,10 +267,11 @@ func walk(
 			*out = append(*out, rec)
 		}
 
-	case "import_declaration":
-		if rec, ok := buildImport(node, file); ok {
-			*out = append(*out, rec)
-		}
+	// import_declaration is handled by attachImportRelationships (issue #681)
+	// which attaches IMPORTS edges to the file-level entity instead of
+	// emitting a separate SCOPE.Component placeholder per import. The
+	// placeholder entities were dangling (zero inbound edges) and
+	// contributed ~1205 orphans on client-fixture-d.
 	}
 
 	// Default recursion. parentType / cc do NOT propagate through unrelated
@@ -825,93 +837,6 @@ func buildFieldSignature(node *sitter.Node, src []byte, name string) string {
 		raw = strings.ReplaceAll(raw, mod, "")
 	}
 	return strings.TrimSpace(raw)
-}
-
-// buildImport creates a Component entity representing an imported
-// package. Issue #120 — IMPORTS edges now carry the same Properties
-// contract Python emits (issue #93) so the cross-file resolver can
-// build a per-file binding table:
-//
-//	Properties["local_name"]    — the simple identifier introduced by
-//	                              the import (e.g. "Bar" for
-//	                              `import com.foo.Bar;`). For wildcard
-//	                              imports this property is omitted.
-//	Properties["source_module"] — the dotted package path. For
-//	                              `import com.foo.Bar;` this is
-//	                              "com.foo"; for `import com.foo.*;`
-//	                              it is "com.foo".
-//	Properties["imported_name"] — equal to local_name for non-static,
-//	                              non-wildcard imports. For static
-//	                              imports of a member it is the member
-//	                              name.
-//	Properties["wildcard"]      — "1" when the import ends with `.*`.
-//
-// The ToID is preserved as the full dotted path (including the leaf
-// name for non-wildcards, or the source module for wildcards) so the
-// existing external-synthesis pass continues to recognise well-known
-// JDK / framework prefixes.
-func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
-	raw := strings.TrimSpace(string(file.Content[node.StartByte():node.EndByte()]))
-	raw = strings.TrimPrefix(raw, "import ")
-	isStatic := strings.HasPrefix(raw, "static ")
-	raw = strings.TrimPrefix(raw, "static ")
-	raw = strings.TrimSuffix(raw, ";")
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return types.EntityRecord{}, false
-	}
-
-	props := map[string]string{}
-	toID := raw
-	// localName is the identifier actually bound in this file — used as
-	// the entity Name so the symbol-table-by-name lookup in the
-	// references pass can index imports under their local_name (issue #666).
-	// For wildcard imports the bound name is conventionally "*".
-	localName := "*"
-	switch {
-	case strings.HasSuffix(raw, ".*"):
-		// Wildcard: source_module is the path with the trailing ".*"
-		// stripped. ToID drops the wildcard so the resolver and
-		// synth pass don't see "*" as a leaf identifier.
-		mod := strings.TrimSuffix(raw, ".*")
-		props["source_module"] = mod
-		props["wildcard"] = "1"
-		toID = mod
-		// localName stays "*" for wildcards.
-	default:
-		// Non-wildcard. local_name = leaf (last dotted segment),
-		// source_module = path with the leaf stripped (or full path
-		// when there are no dots, which is rare but legal for
-		// default-package imports).
-		leaf := raw
-		mod := raw
-		if dot := strings.LastIndexByte(raw, '.'); dot > 0 {
-			leaf = raw[dot+1:]
-			mod = raw[:dot]
-		}
-		props["local_name"] = leaf
-		props["source_module"] = mod
-		props["imported_name"] = leaf
-		localName = leaf
-		_ = isStatic // recorded indirectly: static imports bind the
-		// trailing member name as local_name, matching the Java
-		// spec — `import static X.Y.Z;` introduces Z at top level.
-	}
-
-	return types.EntityRecord{
-		Name:       localName,
-		Kind:       "SCOPE.Component",
-		SourceFile: file.Path,
-		Language:   "java",
-		Relationships: []types.RelationshipRecord{
-			{
-				FromID:     file.Path,
-				ToID:       toID,
-				Kind:       "IMPORTS",
-				Properties: props,
-			},
-		},
-	}, true
 }
 
 // nodeText returns the source text covered by node.
