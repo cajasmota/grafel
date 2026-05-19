@@ -462,6 +462,15 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	if !i.skipPasses[PassFramework] {
 		nestedEntities := runDjangoNestedURLConf(classified)
 		pass3Records = append(pass3Records, nestedEntities...)
+
+		// Pass 2.6b — DRF router.register expansion (#703, #705). Emits
+		// detail-route ({pk}) and @action endpoints alongside the list
+		// route that runDjangoNestedURLConf already produces.
+		drfEntities := runDjangoDRFRoutes(classified)
+		if len(drfEntities) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: drf_router_expanded=%d entities\n", len(drfEntities))
+		}
+		pass3Records = append(pass3Records, drfEntities...)
 	}
 
 	// Pass 2.6 — Java JAX-RS / Spring MVC annotation route composition.
@@ -1450,6 +1459,29 @@ func runDjangoNestedURLConf(classified []classifiedFile) []types.EntityRecord {
 		return contentByPath[relPath]
 	}
 	return engine.ApplyDjangoNestedURLConf(pyPaths, reader)
+}
+
+// runDjangoDRFRoutes runs the DRF router.register expansion pass over the
+// classified files. Emits http_endpoint entities for every DRF CRUD detail
+// route and every @action decorated method (#703, #705). Reuses the same
+// per-Python-file content cache as runDjangoNestedURLConf.
+func runDjangoDRFRoutes(classified []classifiedFile) []types.EntityRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte {
+		return contentByPath[relPath]
+	}
+	return engine.ApplyDjangoDRFRoutes(pyPaths, reader)
 }
 
 // stampEntityIDs computes the deterministic graph entity ID for every
