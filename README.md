@@ -71,6 +71,9 @@ archigraph reset <group> [slug]      # wipe .archigraph/ and rebuild
 archigraph monorepo add <group> <p>  # opt a path inside a monorepo into indexing
 archigraph doctor                    # smoke-check install + tools
 archigraph uninstall <group>         # remove hooks/watchers from a group
+archigraph patterns list             # inspect agent-learned patterns (ADR-0018)
+archigraph patterns export --repo X  # write the CLAUDE.md marker block
+archigraph patterns config           # show / set pattern thresholds
 ```
 
 `archigraph help advanced` lists the full set.
