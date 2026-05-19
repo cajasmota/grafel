@@ -93,7 +93,7 @@ func checkRepo(w io.Writer, r registry.Repo) {
 		fmt.Fprintf(w, "  %s repo %s (%s)\n", statusOK, r.Slug, r.Stack)
 	}
 	jsonPath := daemon.GraphPathForRepo(r.Path)
-	fbPath := daemon.FBPathForRepo(r.Path)
+	fbPath := daemon.GraphFBPathForRepo(r.Path)
 	hasFB := func() bool { _, e := os.Stat(fbPath); return e == nil }()
 	hasJSON := func() bool { _, e := os.Stat(jsonPath); return e == nil }()
 	switch {

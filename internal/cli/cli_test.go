@@ -134,6 +134,89 @@ func TestStatusFiltering(t *testing.T) {
 	}
 }
 
+func TestStatusGraphFileDetection(t *testing.T) {
+	home := withSandboxHome(t)
+
+	repo := filepath.Join(home, "repos", "test")
+	makeRepo(t, repo)
+
+	// Create a group with one repo but no graph files yet
+	cfg := &registry.GroupConfig{Name: "demo"}
+	cfg.Repos = []registry.Repo{{Slug: "test", Path: repo, Stack: "go"}}
+	cfgPath, _ := registry.ConfigPathFor("demo")
+	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.AddGroup("demo", cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	archigraphDir := filepath.Join(repo, ".archigraph")
+
+	// Test 1: No graph files exist
+	out := &bytes.Buffer{}
+	if err := runStatus(out, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "graph: (none)") {
+		t.Errorf("status should show 'graph: (none)' when no files exist: %s", out.String())
+	}
+
+	// Test 2: Only graph.json exists
+	if err := os.MkdirAll(archigraphDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(archigraphDir, "graph.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out = &bytes.Buffer{}
+	if err := runStatus(out, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	statusText := out.String()
+	if !strings.Contains(statusText, "graph:") || strings.Contains(statusText, "(none)") {
+		t.Errorf("status should show graph timestamp when json exists: %s", statusText)
+	}
+	if strings.Contains(statusText, "graph.json:") {
+		t.Errorf("status should not show 'graph.json:' label (issue #822): %s", statusText)
+	}
+
+	// Test 3: graph.fb exists (the main #822 fix)
+	if err := os.Remove(filepath.Join(archigraphDir, "graph.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(archigraphDir, "graph.fb"), []byte("fb"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out = &bytes.Buffer{}
+	if err := runStatus(out, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	statusText = out.String()
+	if !strings.Contains(statusText, "graph:") || strings.Contains(statusText, "(none)") {
+		t.Errorf("status should show graph timestamp when fb exists (fix for #822): %s", statusText)
+	}
+	if strings.Contains(statusText, "graph.json:") {
+		t.Errorf("status should not show 'graph.json:' label when only fb exists: %s", statusText)
+	}
+
+	// Test 4: Both graph.fb and graph.json exist
+	if err := os.WriteFile(filepath.Join(archigraphDir, "graph.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out = &bytes.Buffer{}
+	if err := runStatus(out, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	statusText = out.String()
+	if !strings.Contains(statusText, "graph:") || strings.Contains(statusText, "(none)") {
+		t.Errorf("status should show graph timestamp when both files exist: %s", statusText)
+	}
+}
+
 func TestPrimaryHelpHidesAdvanced(t *testing.T) {
 	root := newRoot()
 	out := &bytes.Buffer{}

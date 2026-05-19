@@ -79,8 +79,42 @@ func GraphPathForRepo(repoPath string) string {
 	return filepath.Join(StateDirForRepo(repoPath), "graph.json")
 }
 
-// FBPathForRepo returns the canonical graph.fb path inside the
-// per-repo state directory. Added for ADR-0016 flip-day (#808).
-func FBPathForRepo(repoPath string) string {
+// GraphFBPathForRepo returns the path to graph.fb (FlatBuffers binary format)
+// inside the per-repo state directory.
+func GraphFBPathForRepo(repoPath string) string {
 	return filepath.Join(StateDirForRepo(repoPath), "graph.fb")
+}
+
+// FindGraphFile checks for the newest graph file (graph.fb preferred over
+// graph.json) and returns its path and modification time. Returns ("", 0)
+// if neither file exists. The returned modtime is in nanoseconds since epoch.
+func FindGraphFile(repoPath string) (path string, modtime int64) {
+	stateDir := StateDirForRepo(repoPath)
+
+	fbPath := filepath.Join(stateDir, "graph.fb")
+	jsonPath := filepath.Join(stateDir, "graph.json")
+
+	fbInfo, fbErr := os.Stat(fbPath)
+	jsonInfo, jsonErr := os.Stat(jsonPath)
+
+	// Check graph.fb first (preferred)
+	if fbErr == nil {
+		fbMtime := fbInfo.ModTime().UnixNano()
+		// If both exist, return whichever is newer
+		if jsonErr == nil {
+			jsonMtime := jsonInfo.ModTime().UnixNano()
+			if fbMtime >= jsonMtime {
+				return fbPath, fbMtime
+			}
+			return jsonPath, jsonMtime
+		}
+		return fbPath, fbMtime
+	}
+
+	// Fall back to graph.json if graph.fb doesn't exist
+	if jsonErr == nil {
+		return jsonPath, jsonInfo.ModTime().UnixNano()
+	}
+
+	return "", 0
 }

@@ -1,10 +1,12 @@
 package daemon
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStateDirForRepo_DefaultColocated(t *testing.T) {
@@ -108,5 +110,130 @@ func TestStateDirForRepo_TwoDaemonRootsSameRepoIsolated(t *testing.T) {
 	if filepath.Base(a) != filepath.Base(b) {
 		t.Fatalf("hash segments differ: %q vs %q (should match for same repo)",
 			filepath.Base(a), filepath.Base(b))
+	}
+}
+
+func TestFindGraphFile_NoFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(EnvRoot, tmpDir)
+
+	path, modtime := FindGraphFile("/nonexistent/repo")
+	if path != "" {
+		t.Fatalf("expected empty path when neither graph file exists, got %q", path)
+	}
+	if modtime != 0 {
+		t.Fatalf("expected modtime 0 when neither file exists, got %d", modtime)
+	}
+}
+
+func TestFindGraphFile_OnlyJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(EnvRoot, tmpDir)
+	repo := t.TempDir()
+
+	stateDir := StateDirForRepo(repo)
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	jsonPath := filepath.Join(stateDir, "graph.json")
+	if err := os.WriteFile(jsonPath, []byte("{}"), 0644); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+
+	path, modtime := FindGraphFile(repo)
+	if path != jsonPath {
+		t.Fatalf("expected json path %q, got %q", jsonPath, path)
+	}
+	if modtime == 0 {
+		t.Fatal("expected non-zero modtime for json file")
+	}
+}
+
+func TestFindGraphFile_OnlyFB(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(EnvRoot, tmpDir)
+	repo := t.TempDir()
+
+	stateDir := StateDirForRepo(repo)
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fbPath := filepath.Join(stateDir, "graph.fb")
+	if err := os.WriteFile(fbPath, []byte("fb"), 0644); err != nil {
+		t.Fatalf("write fb: %v", err)
+	}
+
+	path, modtime := FindGraphFile(repo)
+	if path != fbPath {
+		t.Fatalf("expected fb path %q, got %q", fbPath, path)
+	}
+	if modtime == 0 {
+		t.Fatal("expected non-zero modtime for fb file")
+	}
+}
+
+func TestFindGraphFile_BothFiles_FBNewer(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(EnvRoot, tmpDir)
+	repo := t.TempDir()
+
+	stateDir := StateDirForRepo(repo)
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	jsonPath := filepath.Join(stateDir, "graph.json")
+	if err := os.WriteFile(jsonPath, []byte("{}"), 0644); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+
+	// Write json first, then fb with a newer mtime
+	time.Sleep(10 * time.Millisecond)
+
+	fbPath := filepath.Join(stateDir, "graph.fb")
+	if err := os.WriteFile(fbPath, []byte("fb"), 0644); err != nil {
+		t.Fatalf("write fb: %v", err)
+	}
+
+	path, modtime := FindGraphFile(repo)
+	if path != fbPath {
+		t.Fatalf("expected fb path %q when both exist, got %q", fbPath, path)
+	}
+	if modtime == 0 {
+		t.Fatal("expected non-zero modtime for fb file")
+	}
+}
+
+func TestFindGraphFile_BothFiles_JSONNewer(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(EnvRoot, tmpDir)
+	repo := t.TempDir()
+
+	stateDir := StateDirForRepo(repo)
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fbPath := filepath.Join(stateDir, "graph.fb")
+	if err := os.WriteFile(fbPath, []byte("fb"), 0644); err != nil {
+		t.Fatalf("write fb: %v", err)
+	}
+
+	// Write fb first, then json with a newer mtime
+	time.Sleep(10 * time.Millisecond)
+
+	jsonPath := filepath.Join(stateDir, "graph.json")
+	if err := os.WriteFile(jsonPath, []byte("{}"), 0644); err != nil {
+		t.Fatalf("write json: %v", err)
+	}
+
+	path, modtime := FindGraphFile(repo)
+	if path != jsonPath {
+		t.Fatalf("expected json path %q when json is newer, got %q", jsonPath, path)
+	}
+	if modtime == 0 {
+		t.Fatal("expected non-zero modtime for json file")
 	}
 }

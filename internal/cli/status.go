@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -130,12 +129,13 @@ func runStatus(w io.Writer, filter string) error {
 		}
 		for _, r := range cfg.Repos {
 			line := fmt.Sprintf("  %-20s  %s", r.Slug, r.Path)
-			graph := daemon.GraphPathForRepo(r.Path)
-			if fi, err := os.Stat(graph); err == nil {
-				age := time.Since(fi.ModTime()).Truncate(time.Second)
-				line += fmt.Sprintf("  graph.json: %s ago", age)
+			graphPath, modtimeNano := daemon.FindGraphFile(r.Path)
+			if graphPath != "" {
+				mtime := time.Unix(0, modtimeNano)
+				age := time.Since(mtime).Truncate(time.Second)
+				line += fmt.Sprintf("  graph: %s ago", age)
 			} else {
-				line += "  graph.json: (none)"
+				line += "  graph: (none)"
 			}
 			fmt.Fprintln(w, line)
 		}
