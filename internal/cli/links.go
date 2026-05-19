@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/links"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
@@ -132,7 +133,7 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 	}
 	cleanup := func() { _ = os.RemoveAll(tmp) }
 	for _, r := range cfg.Repos {
-		src := filepath.Join(r.Path, ".archigraph", "graph.json")
+		src := daemon.GraphPathForRepo(r.Path)
 		if _, err := os.Stat(src); err != nil {
 			continue
 		}

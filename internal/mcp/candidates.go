@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/cajasmota/archigraph/internal/daemon"
 )
 
 // LinkCandidate is one row in <group>-link-candidates.json.
@@ -68,7 +70,7 @@ func readEnrichmentCandidates(repoPath string) []EnrichmentCandidate {
 	if repoPath == "" {
 		return nil
 	}
-	path := filepath.Join(repoPath, ".archigraph", "enrichment-candidates.json")
+	path := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-candidates.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -88,7 +90,7 @@ func readEnrichmentCandidates(repoPath string) []EnrichmentCandidate {
 
 // writeEnrichmentCandidates persists candidates to a repo path (array form).
 func writeEnrichmentCandidates(repoPath string, cs []EnrichmentCandidate) error {
-	path := filepath.Join(repoPath, ".archigraph", "enrichment-candidates.json")
+	path := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-candidates.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -124,7 +126,7 @@ func appendResolution(repoPath string, res EnrichmentResolution) error {
 	if repoPath == "" {
 		return fmt.Errorf("repo path is empty")
 	}
-	path := filepath.Join(repoPath, ".archigraph", "enrichment-resolutions.json")
+	path := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-resolutions.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -142,7 +144,7 @@ func appendRejection(repoPath string, candidateID, reason string) error {
 	if repoPath == "" {
 		return fmt.Errorf("repo path is empty")
 	}
-	path := filepath.Join(repoPath, ".archigraph", "enrichment-rejections.json")
+	path := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-rejections.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

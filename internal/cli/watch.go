@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/client"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/registry"
@@ -170,7 +171,7 @@ func snapshotGraphMtimes(repo, explicitGroup string) map[string]time.Time {
 	out := map[string]time.Time{}
 	for _, g := range groupsForRepo(repo, explicitGroup) {
 		for _, p := range repoPathsForGroup(g) {
-			gj := filepath.Join(p, ".archigraph", "graph.json")
+			gj := daemon.GraphPathForRepo(p)
 			if fi, err := os.Stat(gj); err == nil {
 				out[gj] = fi.ModTime()
 			} else {
@@ -192,7 +193,7 @@ func detectGraphChanges(repo, explicitGroup string, prev map[string]time.Time) [
 	graphToGroups := map[string][]string{}
 	for _, g := range groups {
 		for _, p := range repoPathsForGroup(g) {
-			gj := filepath.Join(p, ".archigraph", "graph.json")
+			gj := daemon.GraphPathForRepo(p)
 			graphToGroups[gj] = append(graphToGroups[gj], g)
 		}
 	}

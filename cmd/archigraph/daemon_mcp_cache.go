@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	daemonmcp "github.com/cajasmota/archigraph/internal/daemon/mcp"
 )
 
@@ -18,7 +19,7 @@ var daemonMCPCache = daemonmcp.NewCache(daemonmcp.DefaultCapacity)
 // repoGraphFBPath is the canonical on-disk location of a repo's
 // FlatBuffers graph, matching the path used in Index().
 func repoGraphFBPath(repoPath string) string {
-	return filepath.Join(repoPath, ".archigraph", "graph.fb")
+	return filepath.Join(daemon.StateDirForRepo(repoPath), "graph.fb")
 }
 
 // invalidateAfterIndex is the post-index hook: it drops any cached

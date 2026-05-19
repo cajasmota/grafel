@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
+
 	"github.com/cajasmota/archigraph/internal/graph"
 )
 
@@ -176,7 +178,7 @@ func AuditPath(path string, corpus bool) (*Report, error) {
 
 // hasGraphJSON returns true if dir/.archigraph/graph.json exists.
 func hasGraphJSON(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, ".archigraph", "graph.json"))
+	_, err := os.Stat(daemon.GraphPathForRepo(dir))
 	return err == nil
 }
 
@@ -237,7 +239,7 @@ func auditMany(paths []string) []*RepoReport {
 // large entities + relationships arrays so we avoid materialising the
 // whole document twice in memory.
 func auditRepo(repoPath string) (*RepoReport, error) {
-	graphPath := filepath.Join(repoPath, ".archigraph", "graph.json")
+	graphPath := daemon.GraphPathForRepo(repoPath)
 	rr := &RepoReport{
 		Path:                 repoPath,
 		EntitiesByLanguage:   map[string]int{},

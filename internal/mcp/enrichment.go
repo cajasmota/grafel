@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/cajasmota/archigraph/internal/daemon"
 )
 
 // EnrichmentResolution is one resolved enrichment entry stored under a repo's
@@ -23,7 +25,7 @@ func readResolutions(repoPath string) []EnrichmentResolution {
 	if repoPath == "" {
 		return nil
 	}
-	path := filepath.Join(repoPath, ".archigraph", "enrichment-resolutions.json")
+	path := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-resolutions.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil

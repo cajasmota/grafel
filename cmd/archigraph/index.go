@@ -18,6 +18,7 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 
 	"github.com/cajasmota/archigraph/internal/classifier"
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/extract"
 	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/enrichment"
@@ -183,7 +184,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		repoTag = filepath.Base(absRepo)
 	}
 	if outPath == "" {
-		outPath = filepath.Join(absRepo, ".archigraph", "graph.json")
+		outPath = daemon.GraphPathForRepo(absRepo)
 	}
 
 	skipSet, err := parseSkipPasses(skipPasses)
@@ -533,7 +534,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Default-off (--enable-repair-apply false) so existing bug-rate
 	// measurements across the 10-corpus regression set stay unchanged.
 	if i.enableRepairApply {
-		archigraphDir := filepath.Join(absRepo, ".archigraph")
+		archigraphDir := daemon.StateDirForRepo(absRepo)
 		repairs, rerr := enrichment.ReadRepairs(archigraphDir)
 		if rerr != nil {
 			fmt.Fprintf(os.Stderr,
@@ -1113,7 +1114,7 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 	if doc == nil {
 		return
 	}
-	archigraphDir := filepath.Join(absRepo, ".archigraph")
+	archigraphDir := daemon.StateDirForRepo(absRepo)
 
 	// 1) Merge resolutions back onto entities BEFORE emitting. This both
 	//    persists agent values across rebuilds and short-circuits emitters
