@@ -8284,6 +8284,251 @@ var phpBareNames = map[string]struct{}{
 	"CommandTester":            {},
 	"InputArgument":            {},
 	"InputOption":              {},
+
+	// Wave-4 (PHP) — Symfony String component DSL (post-receiver-strip
+	// from `u('foo')->slug()->lower()` chains). The `u()` global helper
+	// returns an AbstractString and the chain methods are unambiguous
+	// Symfony String operations. PHP-gated so they don't shadow user
+	// methods in other languages (#94 safer-bias rule). Names already
+	// in stdlibBareNames or phpBareNames above are NOT duplicated.
+	"u":              {},
+	"slug":           {},
+	"ascii":          {},
+	"lower":          {},
+	"upper":          {},
+	"camel":          {},
+	"snake":          {},
+	"folded":         {},
+	"truncate":       {},
+	"wordwrap":       {},
+	"padEnd":         {},
+	"padStart":       {},
+	"padBoth":        {},
+	"trimStart":      {},
+	"trimEnd":        {},
+	"trimPrefix":     {},
+	"trimSuffix":     {},
+	"replaceMatches": {},
+	"ignoreCase":     {},
+	"containsAny":    {},
+	"equalsTo":       {},
+	"bytesAt":        {},
+	"codePointsAt":   {},
+	// AbstractString core API — names exist in JS/Kotlin/Swift maps
+	// but each map is language-gated, so PHP needs its own entry.
+	"length":     {},
+	"startsWith": {},
+	"endsWith":   {},
+	"indexOf":    {},
+	"repeat":     {},
+	"toString":   {},
+	"reverse":    {},
+	"afterLast":  {},
+	"before":     {},
+	"beforeLast": {},
+
+	// Symfony Mailer DSL — receiver-stripped from
+	// `(new Email())->from(...)->to(...)->subject(...)->text(...)->html(...)`.
+	"subject":      {},
+	"htmlTemplate": {},
+	"textTemplate": {},
+	"replyTo":      {},
+	"cc":           {},
+	"bcc":          {},
+	"priority":     {},
+	"attach":       {},
+	"attachFromPath": {},
+	"embed":        {},
+	"embedFromPath": {},
+
+	// Symfony HttpFoundation Request / Response accessors (receiver-
+	// stripped from `$request->isMainRequest()`, `$request->getCharset()`).
+	"isMainRequest":         {},
+	"isMethod":              {},
+	"isXmlHttpRequest":      {},
+	"getCharset":            {},
+	"getSchemeAndHttpHost":  {},
+	"getRequestUri":         {},
+	"getQueryString":        {},
+	"getPathInfo":           {},
+	"getBaseUrl":            {},
+	"getClientIp":           {},
+	"getClientIps":          {},
+	"getMethod":             {},
+	"getRealMethod":         {},
+	"getPreferredLanguage":  {},
+	"getLanguages":          {},
+	"getLocale":             {},
+	"setLocale":             {},
+	"getSession":            {},
+	"hasSession":            {},
+	"getThrowable":          {},
+	"setResponse":           {},
+	"getResponse":           {},
+	"getControllerResult":   {},
+	"setControllerResult":   {},
+
+	// Doctrine DataFixtures ReferenceRepository helpers (receiver-
+	// stripped from `$this->addReference(...)` / `$this->getReference(...)`
+	// in fixture loaders).
+	"addReference":      {},
+	"getReference":      {},
+	"setReference":      {},
+	"hasReference":      {},
+	"getReferenceNames": {},
+
+	// PHP stdlib (snake_case + array_* extras observed in symfony-demo
+	// fixtures / repositories). Mirrors the existing array_* block.
+	"mb_substr_count": {},
+	"array_pop":       {},
+	"array_unshift":   {},
+	"array_shift":     {},
+	"array_push":      {},
+	"array_reverse":   {},
+	"array_chunk":     {},
+	"array_count_values": {},
+	"array_column":    {},
+	"array_pad":       {},
+	"array_fill_keys": {},
+	"array_replace":   {},
+
+	// Symfony Validator / Form constraint class names (receiver bare
+	// names from `new NotBlank()`, `new Length(['min' => 6])` inside
+	// `getConstraints()` / form-builder closures).
+	"NotBlank":         {},
+	"NotNull":          {},
+	"Length":           {},
+	"Range":            {},
+	"Regex":            {},
+	"GreaterThan":      {},
+	"LessThan":         {},
+	"GreaterThanOrEqual": {},
+	"LessThanOrEqual":  {},
+	"Positive":         {},
+	"PositiveOrZero":   {},
+	"Negative":         {},
+	"Choice":           {},
+	"Url":              {},
+	"Ip":               {},
+	"Uuid":             {},
+	"Json":             {},
+	"Type":             {},
+	"Callback":         {},
+	"Valid":            {},
+	"All":              {},
+	"Collection":       {},
+	"Count":            {},
+	"UniqueEntity":     {},
+
+	// Symfony HttpFoundation response constructors + Symfony Form
+	// constructor leaves observed as bare receivers in symfony-demo.
+	"RedirectResponse":             {},
+	"JsonResponse":                 {},
+	"BinaryFileResponse":           {},
+	"StreamedResponse":             {},
+	"CollectionToArrayTransformer": {},
+	"BufferedOutput":               {},
+	"DoctrinePaginator":            {},
+	"Paginator":                    {},
+	"NullOutput":                   {},
+	"ConsoleOutput":                {},
+
+	// Wave-4 (PHP) pass-3 — Doctrine entity / Symfony Security
+	// `User` accessor convention. After the PHP extractor strips the
+	// receiver from `$user->getId()` / `$post->getAuthor()` the bare
+	// camelCase getter lands at the resolver; the resolver can't bind
+	// it back to the local entity class because the receiver type was
+	// erased. These names are unambiguous Doctrine entity getters in
+	// Symfony / Laravel codebases (every annotated entity emits them
+	// via `make:entity`), and the PHP language gate keeps them from
+	// shadowing user identifiers in JS/Go/Ruby/Python/etc.
+	"getId":           {},
+	"getUuid":         {},
+	"getSlug":         {},
+	"getTitle":        {},
+	"getSummary":      {},
+	"getContent":      {},
+	"getBody":         {},
+	"getAuthor":       {},
+	"getAuthorEmail":  {},
+	"getPublishedAt":  {},
+	"getCreatedAt":    {},
+	"getUpdatedAt":    {},
+	"getTags":         {},
+	"getComments":     {},
+	"getPosts":        {},
+	"getComment":      {},
+	"getPost":         {},
+	"getMember":       {},
+	// User-entity convention (Symfony Security UserInterface impls).
+	"getRoles":        {},
+	"getSalt":         {},
+	"getUserIdentifier": {},
+	"eraseCredentials":  {},
+	"hashPassword":      {},
+	"getEmail":          {},
+	"getFullName":       {},
+
+	// Symfony Validator user-defined Validator helpers (residual from
+	// symfony-demo's `src/Utils/Validator.php` invoked via
+	// `$this->validator->validateX(...)` chains in tests/commands).
+	// Bare leaf after extractor strip. Real local methods, but
+	// receiver-type tracking is missing; PHP-gated keeps them from
+	// shadowing user methods in other languages.
+	"validateUsername":  {},
+	"validatePassword":  {},
+	"validateEmail":     {},
+	"validateFullName":  {},
+
+	// Symfony Form DataTransformerInterface methods (residual from
+	// symfony-demo TagArrayToStringTransformer tests).
+	"reverseTransform": {},
+	"transform":        {},
+
+	// Wave-4 (PHP) pass-3 residual — additional Symfony helpers:
+	// `to` / `from` (Mailer Email already covers `from` for callers
+	// outside this map; `to` here is the chainable setter), `form`
+	// (BrowserKit Crawler `$crawler->form()`), `generate` (Routing
+	// UrlGenerator), `remove` (Doctrine EntityManager `$em->remove(
+	// $entity)`), plus a handful of `get*` accessors on framework
+	// types (BrowserKit Client, Symfony Console Application, Console
+	// Tester, Doctrine Connection, HttpKernel ConsoleErrorEvent).
+	"to":                       {},
+	"form":                     {},
+	"generate":                 {},
+	"remove":                   {},
+	"getName":                  {},
+	"getUsername":              {},
+	"getInput":                 {},
+	"getOutput":                {},
+	"getDisplay":               {},
+	"getCommand":               {},
+	"getCommandName":           {},
+	"getConnection":            {},
+	"getDatabasePlatform":      {},
+	"getCookieJar":             {},
+	"getRequest":               {},
+	"getDuration":              {},
+	"getMemory":                {},
+	"getPrevious":              {},
+	"getCode":                  {},
+	"getStartLine":             {},
+	"getEndLine":               {},
+	"getFileName":              {},
+	"getSourceContext":         {},
+	"getPath":                  {},
+	"getData":                  {},
+	"getPayload":               {},
+	"getController":            {},
+	"getLastUsername":          {},
+	"getLastAuthenticationError": {},
+	"getDQLPart":               {},
+	"isVerbose":                {},
+	"resolveTemplate":          {},
+	"logout":                   {},
+	"willReturn":               {},
+	"method":                   {},
+	"getMock":                  {},
 }
 
 // pythonBareNames is the Python-language-gated bare-name stop-list

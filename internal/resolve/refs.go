@@ -3085,6 +3085,20 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if lang == "java" && isJavaExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
+	// Wave-4 (PHP) — Symfony / Doctrine / PSR / PHPUnit framework
+	// interfaces and abstract base classes routinely appear as the
+	// trailing segment of structural-ref IMPLEMENTS / EXTENDS stubs
+	// (`scope:component:interface:php:UserInterface`,
+	// `:EventSubscriberInterface`, `:DataTransformerInterface`,
+	// `:PasswordAuthenticatedUserInterface`, `:Constraint`, `:Voter`,
+	// `:AbstractType`, `:AbstractController`, `:Command`, etc.) because
+	// the parent type is imported from a third-party package and has no
+	// in-tree entity. They are framework parent types, not extractor
+	// bugs. Gated to lang=="php" so a same-named user class in another
+	// language is not shadowed (#94 safer-bias rule).
+	if lang == "php" && isPHPExternalBaseType(name) {
+		return DispositionExternalKnown
+	}
 	// Wave-7 — Python CALLS where the stub leaf is `<Class>.<method>`
 	// and the method is a well-known framework-inherited method (DRF
 	// GenericAPIView / GenericViewSet pagination + serializer + lookup
@@ -3435,6 +3449,149 @@ func isJavaExternalBaseType(s string) bool {
 		return true
 	}
 	return false
+}
+
+// isPHPExternalBaseType reports whether s is a well-known Symfony /
+// Doctrine / PSR / PHPUnit framework interface or abstract base class
+// commonly used as the EXTENDS / IMPLEMENTS parent in a Symfony /
+// Laravel codebase. Used by classifyDispositionLang to route PHP
+// structural-ref IMPLEMENTS / EXTENDS stubs into ExternalKnown rather
+// than BugExtractor (kind-mismatch). Curated from real symfony-demo
+// bug-resolver samples (wave-4 PHP); the lang=="php" gate at the call
+// site keeps the safer-bias rule (#94) intact for other languages.
+func isPHPExternalBaseType(s string) bool {
+	_, ok := phpExternalBaseTypes[s]
+	return ok
+}
+
+var phpExternalBaseTypes = map[string]struct{}{
+	// Symfony Security — user / authenticator / voter interfaces.
+	"UserInterface":                          {},
+	"PasswordAuthenticatedUserInterface":     {},
+	"LegacyPasswordAuthenticatedUserInterface": {},
+	"EquatableUserInterface":                 {},
+	"UserProviderInterface":                  {},
+	"PasswordUpgraderInterface":              {},
+	"AuthenticatorInterface":                 {},
+	"AuthenticationEntryPointInterface":      {},
+	"VoterInterface":                         {},
+	"Voter":                                  {},
+	"AbstractAuthenticator":                  {},
+	"AbstractLoginFormAuthenticator":         {},
+	"AccessDecisionStrategyInterface":        {},
+
+	// Symfony EventDispatcher.
+	"EventSubscriberInterface": {},
+	"EventDispatcherInterface": {},
+	"Event":                    {},
+	"StoppableEventInterface":  {},
+
+	// Symfony Form / Validator / OptionsResolver.
+	"DataTransformerInterface":         {},
+	"FormTypeInterface":                {},
+	"FormTypeExtensionInterface":       {},
+	"FormBuilderInterface":             {},
+	"FormInterface":                    {},
+	"FormFactoryInterface":             {},
+	"FormViewInterface":                {},
+	"AbstractType":                     {},
+	"AbstractTypeExtension":            {},
+	"Constraint":                       {},
+	"ConstraintValidatorInterface":     {},
+	"ConstraintValidator":              {},
+	"ValidatorInterface":               {},
+	"OptionsResolverInterface":         {},
+
+	// Symfony HttpKernel / HttpFoundation.
+	"KernelInterface":          {},
+	"HttpKernelInterface":      {},
+	"TerminableInterface":      {},
+	"ControllerResolverInterface": {},
+	"ArgumentResolverInterface": {},
+	"Kernel":                   {},
+	"BaseKernel":               {},
+	"AbstractController":       {},
+	"AbstractBundle":           {},
+	"Bundle":                   {},
+	"BundleInterface":          {},
+	"ExtensionInterface":       {},
+	"Extension":                {},
+	"ConfigurableExtension":    {},
+	"CompilerPassInterface":    {},
+
+	// Symfony Console.
+	"Command":                  {},
+	"ContainerAwareCommand":    {},
+	"LockableTrait":            {},
+	"OutputInterface":          {},
+	"InputInterface":           {},
+	"InputDefinition":          {},
+	"CommandLoaderInterface":   {},
+
+	// Symfony DI / Config.
+	"ContainerAwareInterface":  {},
+	"ContainerInterface":       {},
+	"ConfigurationInterface":   {},
+	"TreeBuilder":              {},
+
+	// Symfony Routing.
+	"RouterInterface":          {},
+	"UrlGeneratorInterface":    {},
+	"UrlMatcherInterface":      {},
+	"RequestContextAwareInterface": {},
+	"LoaderInterface":          {},
+
+	// Symfony Messenger / Serializer / Mailer / Notifier.
+	"MessageHandlerInterface": {},
+	"NormalizerInterface":     {},
+	"DenormalizerInterface":   {},
+	"EncoderInterface":        {},
+	"DecoderInterface":        {},
+	"MailerInterface":         {},
+	"NotifierInterface":       {},
+
+	// Doctrine ORM / DBAL / Persistence / Common.
+	"EntityRepository":           {},
+	"ServiceEntityRepository":    {},
+	"ObjectRepository":           {},
+	"AbstractMigration":          {},
+	"AbstractRepository":         {},
+	"ObjectManager":              {},
+	"EntityManagerInterface":     {},
+	"ManagerRegistry":            {},
+	"AbstractIdGenerator":        {},
+	"FixtureInterface":           {},
+	"OrderedFixtureInterface":    {},
+	"DependentFixtureInterface":  {},
+	"AbstractFixture":            {},
+	"Fixture":                    {},
+	"AbstractEnumType":           {},
+
+	// Twig. ExtensionInterface is shared with Symfony DI — both are
+	// external framework types, so a single entry covers both.
+	"AbstractExtension":          {},
+	"RuntimeExtensionInterface":  {},
+	"GlobalsInterface":           {},
+
+	// PSR / PHPUnit / monolog common base interfaces. PSR-11
+	// ContainerInterface shares the simple name with Symfony DI
+	// ContainerInterface — both are external framework types.
+	"LoggerInterface":            {},
+	"LoggerAwareInterface":       {},
+	"HttpClientInterface":        {},
+	"ResponseInterface":          {},
+	"RequestInterface":           {},
+	"ServerRequestInterface":     {},
+	"StreamInterface":            {},
+	"UriInterface":               {},
+	"MessageInterface":           {},
+	"TestCase":                   {},
+	"KernelTestCase":             {},
+	"WebTestCase":                {},
+	"BrowserKitAssertionsTrait":  {},
+	"ProcessorInterface":         {},
+	"FormatterInterface":         {},
+	"HandlerInterface":           {},
 }
 
 // isPythonExternalInheritedMethod reports whether s is the leaf of a

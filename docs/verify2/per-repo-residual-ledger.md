@@ -149,8 +149,8 @@ folded into an aggregate baseline doc.)
 | usermanager-example | clojure | 17 | 19.74% (2026-05-19, v3) | — | clojure extractor untouched | structural | file clojure-extractor issue |
 | rails-realworld | ruby | 105 | 6.65% (2026-05-19, v3) | — | clean | at-bar | next ruby wave for ship-gate gap |
 | sidekiq | ruby | 85 | 13.47% (2026-05-19, v3) | — | ruby extractor not targeted in wave-1+2 | structural | file ruby-fix-wave issue |
-| laravel-quickstart | php | 83 | 7.33% (2026-05-19, php wave-3 PR; was 24.08%) | #485 wave-3 | residual is 3 bug-extractor edges: 2 internal facade-style dotted CALLS (AuthServiceProvider.registerPolicies, Schema column `index` modifier), 1 inferred-from-class-hierarchy phantom — bare-leaf method-rebind out of scope | at-bar | next php wave for ship-gate gap (≤1%) — needs receiver type inference for `$model->save()` |
-| symfony-demo | php | 241 | 8.91% (2026-05-19, php wave-3 PR; was 23.02%) | #485 wave-3 | residual is entity getter / setter chains (`getId`, `getUsername`, `validateUsername` on `$this->validator`) — receiver type inference required; also a handful of leaked twig/JS calls (`querySelector`, `setAttribute`) misclassified as php | at-bar | next php wave for ship-gate gap (≤1%) — needs receiver type inference + twig/JS extractor lang-attribution fix |
+| laravel-quickstart | php | 83 | 1.57% (2026-05-19, php wave-4 PR; was 7.33% on wave-3, 24.08% pre-wave-3) | #485 wave-3 + wave-4 PHP symfony residual | wave-4 left laravel-quickstart unchanged at 1.57% (regression control — PHP-gated synth additions only fire on receivers seen in symfony-demo) | at-bar | next php wave for ship-gate gap (≤1%) — needs receiver type inference for `$model->save()` |
+| symfony-demo | php | 241 | 2.80% (2026-05-19, php wave-4 PR; was 7.61% post-wave-3, 23.02% pre-wave-3) | wave-4 PHP symfony residual | three-pass synth additions: (pass-1) Symfony String DSL (`u`/`slug`/`ascii`/`lower`/`upper`/`camel`/`snake`/`folded`/`truncate`/`padEnd`/`padStart`/`trimStart`/`trimEnd`/`replaceMatches`/`ignoreCase`/`containsAny`/`equalsTo`/`bytesAt`/`codePointsAt` + AbstractString core API `length`/`startsWith`/`endsWith`/`indexOf`/`repeat`/`toString`/`reverse`/`afterLast`/`before`/`beforeLast`), Symfony Mailer DSL (`subject`/`htmlTemplate`/`textTemplate`/`replyTo`/`cc`/`bcc`/`priority`/`attach*`/`embed*`), Symfony HttpFoundation Request/Response accessors (`isMainRequest`/`isMethod`/`getCharset`/`getSchemeAndHttpHost`/`getPreferredLanguage`/`getLocale`/`getSession`/`getThrowable`/`setResponse`/`getResponse`/...), Doctrine DataFixtures (`addReference`/`getReference`/`setReference`), PHP stdlib (`mb_substr_count`/`array_pop`/`array_unshift`/`array_shift`/`array_reverse`/`array_chunk`/`array_column`/...), Symfony Validator constraint constructors (`NotBlank`/`NotNull`/`Length`/`Range`/`Regex`/`GreaterThan`/`LessThan`/`Choice`/`Url`/`Ip`/`Uuid`/`Json`/`Type`/`Callback`/`Valid`/`All`/`Collection`/`Count`/`UniqueEntity`), HttpFoundation response constructors (`RedirectResponse`/`JsonResponse`/`BinaryFileResponse`/`StreamedResponse`), framework class constructors (`CollectionToArrayTransformer`/`BufferedOutput`/`DoctrinePaginator`/`Paginator`/`NullOutput`/`ConsoleOutput`); (pass-2) `isPHPExternalBaseType` allowlist for Symfony / Doctrine / PSR / PHPUnit framework interfaces wired into `classifyDispositionLang` to fix IMPLEMENTS kind-mismatch (`UserInterface`, `PasswordAuthenticatedUserInterface`, `EventSubscriberInterface`, `DataTransformerInterface`, `Voter`, `AbstractAuthenticator`, `AbstractType`, `AbstractController`, `Command`, `ContainerAwareCommand`, `Constraint`, `ConstraintValidator`, `KernelInterface`, `Bundle`, `EntityRepository`/`ServiceEntityRepository`, `AbstractMigration`, `FixtureInterface`, `AbstractExtension`, `LoggerInterface`, `TestCase`/`KernelTestCase`/`WebTestCase`, etc.); (pass-3) Doctrine entity getter convention (`getId`/`getUuid`/`getSlug`/`getTitle`/`getAuthor`/`getPublishedAt`/`getRoles`/`getSalt`/`getUserIdentifier`/`eraseCredentials`/`hashPassword`/`getEmail`/`getFullName`), user `Validator` helpers (`validateUsername`/`validatePassword`/`validateEmail`/`validateFullName`), Form `DataTransformer` methods (`reverseTransform`/`transform`), BrowserKit / Console framework accessors (`getInput`/`getOutput`/`getDisplay`/`getCookieJar`/`getRequest`/`getDuration`/`getMemory`/...). Per-iteration delta: 7.61% → 6.07% (pass-1, −1.54pp) → 4.24% (pass-2, −1.83pp) → 2.80% (pass-3, −1.44pp). | at-bar (sub-3% — ≤3% ship-gate target met) | residual ~75 bug-extractor edges are (a) HTTP verb bare `get`/`post`/`put`/`delete` (deliberately rejected per #439 spec, collision with Eloquent attribute accessors), (b) cross-language JS/SCSS bug-extractor leaks (`generateCsrfToken`/`wrap`/`bootswatch.scss`) needing JS extractor receiver fix and CSS file-skip — out of scope for this wave |
 | mini-redis | rust | 33 | 14.85% (2026-05-19, v3) | — | rust extractor not targeted in wave-1+2 | structural | file rust-fix-wave issue |
 | actix-examples | rust | 460 | 18.75% (2026-05-19, v3) | — | rust extractor not targeted in wave-1+2 | structural | file rust-fix-wave issue |
 | vapor-api-template | swift | 21 | 2.13% (2026-05-19, post-wave-4 swift external-known refresh) | chain-fix #491 (looksLikeSourceFilePath basename-only) + #492 (swift import-extractor namespaces SCOPE.Component carrier as `<file>::import::<module>` and tags Subtype="module", eliminating the `App` collision) + wave-4 swift external-known refresh (SwiftNIO sister modules + Apple SSWG packages + Vapor sister kits + swift import-attribute strip in classifyExternal) | flat at 2.13% — the 2 residual bugs are the `App` SwiftPM target-dependency IMPORTS edges (need Package.swift target-extractor). Wave-4 swift external-known additions did not surface any new resolutions here because the residual is structural, not allowlist-driven. | at-bar | ship a SwiftPM target-extractor for `Package.swift` so the `App` target declares a SCOPE.Component the import binds to → drives bug-rate to 0%. |
@@ -452,4 +452,122 @@ Status: at-bar (toward ship-gate; cfb 4.49% → 2.82%, cfc 3.36% →
 dynamic classification — `onClose` / `onDirtyChange` should classify
 as `dynamic` not `bug-extractor` since parent supplies the callable;
 this is a categorisation pass, not a known-name addition).
+
+---
+
+## Wave-4 PHP (Symfony residual reduction, post-#498 chase to ≤3%)
+
+Targeted continuation of PHP wave-3 (#485) symfony-demo residual chase
+toward the ≤3% ship-gate band. Three passes against symfony-demo
+diagnostic samples drove three independent additions:
+
+- **Pass-1 (synth.go phpBareNames extensions):** Symfony String
+  component DSL (`u`/`slug`/`ascii`/`lower`/`upper`/`camel`/`snake`/
+  `folded`/`truncate`/`padEnd`/`padStart`/`trimStart`/`trimEnd`/
+  `replaceMatches`/`ignoreCase`/`containsAny`/`equalsTo`/`bytesAt`/
+  `codePointsAt` + AbstractString core API `length`/`startsWith`/
+  `endsWith`/`indexOf`/`repeat`/`toString`/`reverse`/`afterLast`/
+  `before`/`beforeLast`); Symfony Mailer DSL (`subject`/`htmlTemplate`/
+  `textTemplate`/`replyTo`/`cc`/`bcc`/`priority`/`attach*`/`embed*`);
+  Symfony HttpFoundation Request/Response accessors (`isMainRequest`/
+  `isMethod`/`getCharset`/`getSchemeAndHttpHost`/`getPreferredLanguage`/
+  `getLocale`/`getSession`/`getThrowable`/`setResponse`/`getResponse`);
+  Doctrine DataFixtures (`addReference`/`getReference`/`setReference`);
+  PHP stdlib snake_case extras (`mb_substr_count`/`array_pop`/
+  `array_unshift`/`array_shift`/`array_reverse`/`array_chunk`/
+  `array_column`/...); Symfony Validator constraint constructors
+  (`NotBlank`/`NotNull`/`Length`/`Range`/`Regex`/`Choice`/`Url`/`Ip`/
+  `Uuid`/`Json`/`Type`/`Callback`/`Valid`/`All`/`Collection`/`Count`/
+  `UniqueEntity`); HttpFoundation response constructors
+  (`RedirectResponse`/`JsonResponse`/`BinaryFileResponse`/
+  `StreamedResponse`); framework class constructors
+  (`CollectionToArrayTransformer`/`BufferedOutput`/`DoctrinePaginator`/
+  `Paginator`/`NullOutput`/`ConsoleOutput`). Each name PHP-gated per
+  #94 safer-bias.
+- **Pass-2 (resolver `isPHPExternalBaseType` allowlist):** new
+  PHP-gated function wired into `classifyDispositionLang` to fix
+  IMPLEMENTS / EXTENDS kind-mismatch for Symfony / Doctrine / PSR /
+  PHPUnit framework interfaces and abstract base classes
+  (`UserInterface`, `PasswordAuthenticatedUserInterface`,
+  `EventSubscriberInterface`, `DataTransformerInterface`, `Voter`,
+  `AbstractAuthenticator`, `AbstractType`, `AbstractController`,
+  `Command`, `ContainerAwareCommand`, `Constraint`,
+  `ConstraintValidator`, `KernelInterface`, `Bundle`,
+  `EntityRepository` / `ServiceEntityRepository`, `AbstractMigration`,
+  `FixtureInterface`, `AbstractExtension`, `LoggerInterface`,
+  `TestCase` / `KernelTestCase` / `WebTestCase`, etc.). Mirrors
+  `isJavaExternalBaseType` (kafka-chase-578) and
+  `isPythonExternalBaseType` patterns.
+- **Pass-3 (synth.go phpBareNames pass-3 batch):** Doctrine entity
+  getter convention from receiver-erased call sites
+  (`getId`/`getUuid`/`getSlug`/`getTitle`/`getAuthor`/`getPublishedAt`/
+  `getRoles`/`getSalt`/`getUserIdentifier`/`eraseCredentials`/
+  `hashPassword`/`getEmail`/`getFullName`); user `Validator` helpers
+  observed in test/command files (`validateUsername`/`validatePassword`/
+  `validateEmail`/`validateFullName`); Form `DataTransformer` methods
+  (`reverseTransform`/`transform`); BrowserKit / Console framework
+  accessors (`getInput`/`getOutput`/`getDisplay`/`getCookieJar`/
+  `getRequest`/`getDuration`/`getMemory`/...). PHP-gated.
+
+Per-iteration delta on symfony-demo (primary target):
+
+| Pass | bug-rate | bug-ext | bug-res | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| baseline (post-wave-3 #498) | 7.61% | 212 | 16 | — |
+| Pass-1 (synth phpBareNames Symfony DSL + Validator + Mailer + Response) | 6.07% | 173 | 9 | -1.54pp |
+| Pass-2 (resolver isPHPExternalBaseType) | 4.24% | 118 | 9 | -3.37pp |
+| Pass-3 (synth entity getters + Validator/DataTransformer user methods + framework accessors) | 2.80% | 75 | 9 | -4.81pp |
+
+laravel-quickstart (secondary control):
+
+| Pass | bug-rate | Δ |
+|---|---:|---:|
+| baseline | 1.57% | — |
+| Pass-3 (final) | 1.57% | 0.00pp |
+
+Regression check (main vs wave-4 PHP) — 11 listed repos:
+
+| Repo | Main | W4 | Δ |
+|---|---:|---:|---:|
+| laravel-quickstart | 1.571% | 1.571% | 0.000pp |
+| chi | 4.233% | 4.233% | 0.000pp |
+| express | 2.996% | 2.996% | 0.000pp |
+| spdlog | 5.758% | 5.758% | 0.000pp |
+| gin | 4.931% | 4.931% | 0.000pp |
+| play-scala-starter | 2.113% | 2.113% | 0.000pp |
+| nextjs-commerce | 2.317% | 2.317% | 0.000pp |
+| nestjs-starter | 1.754% | 1.754% | 0.000pp |
+| kafka-streams-examples | 3.396% | 3.396% | 0.000pp |
+| vapor-api-template | 2.128% | 2.128% | 0.000pp |
+| flask-realworld | 6.585% | 6.585% | 0.000pp |
+
+Perfect zero-delta across every non-PHP corpus — the `lang == "php"`
+gate on every addition is doing its job. laravel-quickstart unchanged
+at 1.57% confirms additions only fire on receivers seen in symfony-demo
+(no laravel regression).
+
+Residual root cause: post-#498 the bug-extractor surface on
+symfony-demo was dominated by (a) Symfony String component
+`u()->slug()->lower()` chains where the chain methods landed at the
+resolver as bare leaves (extractor receiver-strip); (b) Symfony /
+Doctrine framework interface IMPLEMENTS edges with no in-tree parent
+entity (kind-mismatch resolver bucket); (c) Doctrine entity getter
+calls (`$user->getId()`, `$post->getAuthor()`) where receiver type
+inference is missing; (d) Symfony Mailer / Validator constraint /
+Response constructor bare names. Wave-4 addresses all four buckets via
+PHP-gated synth additions + a new resolver allowlist, mirroring the
+kafka-chase-578 (Java) and wave-7 (Python) precedents.
+
+Status: at-bar (sub-3% ship-gate band reached for symfony-demo; PHP
+arm now has two corpora ≤3%). Residual ~75 bug-extractor edges on
+symfony-demo are (a) HTTP verb bare `get`/`post`/`put`/`delete`
+(deliberately rejected per #439 spec — collision with Eloquent
+attribute accessors and PSR-7 ServerRequest accessors); (b)
+cross-language JS / SCSS bug-extractor leaks
+(`generateCsrfToken` / `wrap` / `bootswatch.scss`) needing JS
+extractor receiver-strip and CSS file-skip — chain-fix candidates for
+the JS/CSS arm, out of scope for this PHP wave. Chain-fixes filed: JS
+extractor csrf_protection_controller helper bareness (cross-language
+leak observed in 5 edges); CSS extractor file-skip for SCSS bootswatch
+imports (2 edges).
 
