@@ -418,18 +418,66 @@ func synthesizeFastAPI(content string, emit emitFn) {
 // Express (JS/TS)
 // ---------------------------------------------------------------------------
 
+// expressAllowedReceiverRe matches receiver names that look like an Express
+// app or router object. The allowlist covers the most common conventions:
+//   - `app`, `router`, `r`, `srv`, `server` (exact matches, word-boundary)
+//   - any identifier ending in `Router`, `App`, `Server`, `Srv`, `Handler`
+//     (e.g. `apiRouter`, `httpServer`, `myApp`)
+//
+// This replaces the open `(?:\w+)` anchor in both expressVerbRe and
+// expressVerbRePathOnly which matched ANY identifier — including FormData,
+// URLSearchParams, Dimensions, Map, etc. (issue #653).
+var expressAllowedReceiverRe = regexp.MustCompile(
+	`(?:^|[^.\w])(app|router|r|srv|server|httpServer|` +
+		`\w+[Rr]outer|\w+[Aa]pp|\w+[Ss]erver|\w+[Ss]rv|\w+[Hh]andler)\b`,
+)
+
+// expressBlocklistRe matches receiver names that are definitively NOT HTTP
+// routers — they are browser/RN/DOM APIs that share the same method names
+// (get, post, delete, put, patch). Even if a future allowlist regex
+// accidentally matches one of these, this blocklist is the final veto.
+var expressBlocklistRe = regexp.MustCompile(
+	`^(?i:formData|formdata|urlSearchParams|urlsearchparams|` +
+		`searchParams|searchparams|headers|dimensions|` +
+		`localStorage|localstorage|sessionStorage|sessionstorage|` +
+		`cache|map|set|params|query|queryParams|queryparams)$`,
+)
+
 // expressVerbRe captures the canonical Express form
-// `<obj>.<verb>("/path", handler)` where verb is one of the HTTP verbs.
-// The handler may be:
-//   - a bare identifier (e.g. `users.list`)
-//   - an inline function (regex captures only identifier-style handlers;
-//     inline handlers don't yield a useful handler name).
-var expressVerbRe = regexp.MustCompile(`(?:\w+)\.(get|post|put|patch|delete|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\n\r]+)['"` + "`" + `]\s*(?:,[^,)]*)*?,\s*([\w$.]+)\s*[\),]`)
+// `<receiver>.<verb>("/path", handler)` where verb is one of the HTTP verbs.
+// capture group 1 = receiver, 2 = verb, 3 = path string, 4 = handler name.
+// The receiver is now captured (not discarded) so we can apply the
+// allowlist/blocklist gates before emitting.
+var expressVerbRe = regexp.MustCompile(`(\w+)\.(get|post|put|patch|delete|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\n\r]+)['"` + "`" + `]\s*(?:,[^,)]*)*?,\s*([\w$.]+)\s*[\),]`)
 
 // expressVerbRePathOnly captures the path-only variant where the handler
 // is inline (function expression / arrow); we still emit the synthetic
 // entity but without a handler reference.
-var expressVerbRePathOnly = regexp.MustCompile(`(?:\w+)\.(get|post|put|patch|delete|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\n\r]+)['"` + "`" + `]`)
+// capture group 1 = receiver, 2 = verb, 3 = path string.
+var expressVerbRePathOnly = regexp.MustCompile(`(\w+)\.(get|post|put|patch|delete|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\n\r]+)['"` + "`" + `]`)
+
+// isExpressReceiver returns true when the receiver identifier looks like an
+// Express app/router variable (allowlist) and is not on the hard blocklist.
+// This is the central guard that prevents false positives from FormData,
+// URLSearchParams, React Native Dimensions, and similar non-HTTP objects.
+func isExpressReceiver(receiver string) bool {
+	// Hard blocklist — highest priority veto.
+	if expressBlocklistRe.MatchString(receiver) {
+		return false
+	}
+	// Allowlist: must look like an express app or router variable.
+	// We test the receiver in isolation (prefix the string with a space so
+	// the word-boundary anchor in expressAllowedReceiverRe fires correctly).
+	return expressAllowedReceiverRe.MatchString(" " + receiver)
+}
+
+// looksLikeExpressPath returns true when a raw string argument looks like an
+// HTTP path (must start with `/`). This blocks single-word keys like
+// "cronjob_opt_in", "window", "segment" that are valid JS keys but not HTTP
+// paths. Belt-and-suspenders on top of the receiver gate.
+func looksLikeExpressPath(raw string) bool {
+	return len(raw) > 0 && raw[0] == '/'
+}
 
 func synthesizeExpress(content string, emit emitFn) {
 	if !strings.Contains(content, ".get(") && !strings.Contains(content, ".post(") &&
@@ -438,15 +486,24 @@ func synthesizeExpress(content string, emit emitFn) {
 		!strings.Contains(content, ".head(") && !strings.Contains(content, ".options(") {
 		return
 	}
-	// First pass: handler-named form.
+	// First pass: handler-named form (groups: receiver, verb, path, handler).
 	withHandler := map[string]bool{}
 	for _, m := range expressVerbRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
+		if len(m) < 5 {
 			continue
 		}
-		verb := strings.ToUpper(m[1])
-		raw := m[2]
-		handler := m[3]
+		receiver := m[1]
+		verb := strings.ToUpper(m[2])
+		raw := m[3]
+		handler := m[4]
+		// Receiver-shape gate (allowlist + blocklist) — primary false-positive guard.
+		if !isExpressReceiver(receiver) {
+			continue
+		}
+		// Path-shape gate — belt-and-suspenders; rejects non-path string literals.
+		if !looksLikeExpressPath(raw) {
+			continue
+		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
 		// Express `.all(...)` registers every verb on the path; emit as ANY.
 		if verb == "ALL" {
@@ -456,14 +513,22 @@ func synthesizeExpress(content string, emit emitFn) {
 		withHandler[key] = true
 		emit(verb, canonical, "express", "Controller", handler)
 	}
-	// Second pass: path-only form, skipping any (verb, path) already
-	// claimed by the handler-named scan.
+	// Second pass: path-only form (groups: receiver, verb, path), skipping any
+	// (verb, path) already claimed by the handler-named scan.
 	for _, m := range expressVerbRePathOnly.FindAllStringSubmatch(content, -1) {
-		if len(m) < 3 {
+		if len(m) < 4 {
 			continue
 		}
-		verb := strings.ToUpper(m[1])
-		raw := m[2]
+		receiver := m[1]
+		verb := strings.ToUpper(m[2])
+		raw := m[3]
+		// Same gates as the handler-named pass.
+		if !isExpressReceiver(receiver) {
+			continue
+		}
+		if !looksLikeExpressPath(raw) {
+			continue
+		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
 		if verb == "ALL" {
 			verb = "ANY"
