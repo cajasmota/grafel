@@ -101,8 +101,16 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 
 	// ----------------------------------------------------------------
 	// 1. Functions and methods
-	// ----------------------------------------------------------------
-	funcEntities, fCount := extractFunctions(root, file.Content, file.Path)
+	//
+	// Issue #614 — collect struct field types (intra-file) BEFORE function
+	// extraction so call_expression resolution inside method bodies can
+	// detect interface-field dispatch patterns like `h.Store.List()` and
+	// stamp the field's static type onto the CALLS edge. Per-file scope:
+	// only field types declared in this file are recorded; cross-file
+	// resolution to the implementing struct is the resolver's job
+	// (refs.go interface-field dispatch lookup).
+	structFields := collectStructFieldTypes(root, file.Content)
+	funcEntities, fCount := extractFunctions(root, file.Content, file.Path, structFields)
 	records = append(records, funcEntities...)
 	funcs = fCount
 
@@ -795,7 +803,7 @@ func unwrapGenericType(node *sitter.Node, src []byte) string {
 // RelationshipRecord values extracted from call_expression nodes inside its
 // body. Methods additionally carry a DEPENDS_ON edge to the receiver type
 // so the graph can traverse from method back to its owning schema.
-func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.EntityRecord, int) {
+func extractFunctions(root *sitter.Node, src []byte, filePath string, structFields map[string]map[string]string) ([]types.EntityRecord, int) {
 	importStems := collectImportStems(root, src)
 	nodes := findAll(root, "function_declaration", "method_declaration")
 
@@ -912,7 +920,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 		// Body-derived var types do NOT include closure-param shadowing — the
 		// per-call walker below maintains its own scope stack to disambiguate.
 		paramTypes = mergeVarTypes(paramTypes, collectBodyVarTypes(bodyOrNode, src))
-		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes, filePath)
+		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes, filePath, structFields)
 		// Rewrite FromID on each CALLS edge to the qualified Name so the
 		// edge source matches the entity ID downstream.
 		//
@@ -998,7 +1006,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string) ([]types.E
 // entity. Calls on other selector operands (e.g. `other.foo()`, package-
 // qualified calls) are NOT stamped — the heuristic is intentionally
 // conservative to avoid false same-package binds (Refs #94 lesson).
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string) []types.RelationshipRecord {
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string, structFields map[string]map[string]string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -1050,7 +1058,15 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 		}
 		if t == "call_expression" {
 			target, isSelfReceiver, operand := callExpressionTargetWithOperand(n, src, recvVarName)
-			if target != "" && target != callerName && !seen[target] {
+			// Self-recursion suppression: drop a call only when target
+			// equals callerName AND the call genuinely dispatches to the
+			// enclosing method (self-receiver) or the enclosing scope is a
+			// top-level function with no receiver. A method `(h *Foo) List`
+			// calling `h.Store.List()` shares the bare name `List` with its
+			// caller but the dispatch is on `h.Store` (a different receiver
+			// chain), so the edge MUST be emitted — issue #614.
+			isSelfCall := target == callerName && (isSelfReceiver || recvType == "")
+			if target != "" && !isSelfCall && !seen[target] {
 				seen[target] = true
 				rec := types.RelationshipRecord{
 					FromID: callerName,
@@ -1063,6 +1079,29 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 				case operand != "":
 					if ty := lookup(operand); ty != "" {
 						rec.Properties = map[string]string{"receiver_type": ty}
+					}
+				}
+				// Issue #614 — interface-field dispatch detection. When the
+				// call is `<recvVarName>.<Field>.<method>(...)` (a 2-level
+				// selector whose outermost operand is a selector_expression
+				// rooted at the enclosing method's receiver var), look up
+				// the field's declared type on the enclosing receiver
+				// struct and stamp it onto the edge as
+				// `interface_dispatch_type` so the resolver can fan out to
+				// any IMPLEMENTS edge targeting that interface name and
+				// rebind the bare-name target to the implementing struct's
+				// method (`MemoryStore.List`). Per-file scope: structFields
+				// only contains fields declared in this file's structs, so
+				// the dispatch stamp is emitted ONLY when the receiver type
+				// and the interface field are both intra-file.
+				if recvVarName != "" && recvType != "" && structFields != nil {
+					if fieldName, isFieldDispatch := selectorFieldOnReceiver(n, src, recvVarName); isFieldDispatch {
+						if fieldType := structFields[recvType][fieldName]; fieldType != "" {
+							if rec.Properties == nil {
+								rec.Properties = map[string]string{}
+							}
+							rec.Properties["interface_dispatch_type"] = fieldType
+						}
 					}
 				}
 				// Refs #44 (Refs #476 follow-up) — identifier-form CALLS edges
@@ -1082,7 +1121,14 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 				// `recv.method`) keep their bare ToID — they resolve through
 				// byMember / external-package / receiver_type paths that the
 				// structural-ref shape doesn't help with.
-				if operand == "" && !isSelfReceiver && filePath != "" {
+				// Issue #614 — skip the structural-ref rewrite when the
+				// edge is an interface-field dispatch. The resolver's
+				// dispatch path keys on the bare member name in r.ToID
+				// (no per-file rewrite); the structural-ref would bury
+				// the bare name inside a `scope:operation:` stub that
+				// the dispatch lookup cannot match.
+				hasIfaceDispatch := rec.Properties["interface_dispatch_type"] != ""
+				if operand == "" && !isSelfReceiver && filePath != "" && !hasIfaceDispatch {
 					rec.ToID = extractor.BuildOperationStructuralRef("go", filePath, target)
 				}
 				rels = append(rels, rec)
@@ -1402,6 +1448,122 @@ func extractStructFieldDependencies(body *sitter.Node, src []byte, ownerName str
 		}
 	}
 	return rels
+}
+
+// collectStructFieldTypes walks every struct_type declaration in the file
+// and returns a per-struct map from field name to its declared type string
+// (e.g. `Store`, `store.Store`, `*MemoryStore`). Used by extractCallRelationships
+// (issue #614) to recognise `<recv>.<Field>.<method>()` interface-field
+// dispatch and stamp the field's type on the CALLS edge so the resolver
+// can fan out to IMPLEMENTS edges.
+//
+// Per-file scope: only structs declared in this file are recorded. The
+// resolver consumes the stamp across files; the extractor stays local.
+//
+// Field handling:
+//   - Named fields keep their identifier name and the verbatim type text.
+//   - Pointer / slice / map wrappers are kept verbatim — the resolver
+//     normalises pointer prefixes and package qualifiers.
+//   - Embedded fields (no name child) are SKIPPED — `Store` embedded in
+//     `UsersHandler` is rare in handler structs and the resolver path
+//     for embedded promotion is out of scope for #614.
+func collectStructFieldTypes(root *sitter.Node, src []byte) map[string]map[string]string {
+	if root == nil {
+		return nil
+	}
+	out := map[string]map[string]string{}
+	for _, typeDecl := range findAll(root, "type_declaration") {
+		count := int(typeDecl.ChildCount())
+		for i := 0; i < count; i++ {
+			spec := typeDecl.Child(i)
+			if spec.Type() != "type_spec" {
+				continue
+			}
+			nameNode := spec.ChildByFieldName("name")
+			if nameNode == nil {
+				continue
+			}
+			structName := nodeText(nameNode, src)
+			// Find struct_type child (skip interface/type_alias).
+			var body *sitter.Node
+			specCount := int(spec.ChildCount())
+			for j := 0; j < specCount; j++ {
+				c := spec.Child(j)
+				if c.Type() == "struct_type" {
+					body = c
+					break
+				}
+			}
+			if body == nil {
+				continue
+			}
+			fields := map[string]string{}
+			for _, field := range findAll(body, "field_declaration") {
+				typeNode := field.ChildByFieldName("type")
+				if typeNode == nil {
+					continue
+				}
+				typeText := nodeText(typeNode, src)
+				if typeText == "" {
+					continue
+				}
+				// field_declaration may have a `name` field
+				// (field_identifier) OR an identifier_list (multiple fields
+				// sharing one type: `A, B int`). Walk children to collect
+				// every leading identifier before the type.
+				for k := 0; k < int(field.ChildCount()); k++ {
+					ch := field.Child(k)
+					switch ch.Type() {
+					case "field_identifier":
+						fields[nodeText(ch, src)] = typeText
+					}
+				}
+			}
+			if len(fields) > 0 {
+				out[structName] = fields
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// selectorFieldOnReceiver tests whether call's function is of the shape
+// `<recvVarName>.<Field>.<method>(...)` — a 2-level selector_expression
+// whose outermost operand is itself a selector_expression rooted at
+// recvVarName. Returns (fieldName, true) when the pattern matches, where
+// fieldName is the middle identifier (`Field`). Returns ("", false) for
+// any other call shape.
+//
+// Used by extractCallRelationships to detect interface-field dispatch
+// (`h.Store.List()` inside `(h *UsersHandler).List`) so the resolver can
+// rebind the bare method target to the implementing struct's method.
+func selectorFieldOnReceiver(call *sitter.Node, src []byte, recvVarName string) (string, bool) {
+	if call == nil || recvVarName == "" {
+		return "", false
+	}
+	fn := call.ChildByFieldName("function")
+	if fn == nil || fn.Type() != "selector_expression" {
+		return "", false
+	}
+	outerOperand := fn.ChildByFieldName("operand")
+	if outerOperand == nil || outerOperand.Type() != "selector_expression" {
+		return "", false
+	}
+	innerOperand := outerOperand.ChildByFieldName("operand")
+	innerField := outerOperand.ChildByFieldName("field")
+	if innerOperand == nil || innerField == nil {
+		return "", false
+	}
+	if innerOperand.Type() != "identifier" {
+		return "", false
+	}
+	if nodeText(innerOperand, src) != recvVarName {
+		return "", false
+	}
+	return nodeText(innerField, src), true
 }
 
 // resolveTypeReferences walks a type AST node and returns every

@@ -1972,3 +1972,137 @@ func TestReferences_NoCallerContext_AmbiguousPreserved(t *testing.T) {
 		t.Fatalf("ambig bare-name without caller context must be preserved, got %q", rels[0].ToID)
 	}
 }
+
+// Issue #614 — Go cross-package interface-field dispatch. When a CALLS edge
+// carries Properties["interface_dispatch_type"] = "<InterfaceName>", the
+// resolver builds an index over IMPLEMENTS edges (bare-name keyed) and
+// fans out to byPackageMember[implPkgDir][implName][member]. When EXACTLY
+// ONE implementer/member resolves, ToID is rewritten to that entity ID.
+func TestReferencesEmbedded_InterfaceFieldDispatch_Issue614(t *testing.T) {
+	records := []types.EntityRecord{
+		// Implementer: MemoryStore.List in store/store.go. Indexed under
+		// byPackageMember[store][MemoryStore][List].
+		{
+			ID:         "1111111111111111",
+			Kind:       "SCOPE.Operation",
+			Name:       "MemoryStore.List",
+			SourceFile: "store/store.go",
+			Language:   "go",
+		},
+		// Implementer struct + IMPLEMENTS edge to interface Store.
+		{
+			ID:         "2222222222222222",
+			Kind:       "SCOPE.Component",
+			Name:       "MemoryStore",
+			SourceFile: "store/store.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{
+				{ToID: "Store", Kind: "IMPLEMENTS"},
+			},
+		},
+		// Interface entity (referenced by IMPLEMENTS ToID).
+		{
+			ID:         "3333333333333333",
+			Kind:       "SCOPE.Component",
+			Name:       "Store",
+			SourceFile: "store/store.go",
+			Language:   "go",
+		},
+		// Caller method whose body issues `h.Store.List()`. The CALLS
+		// edge carries the dispatch stamp and a bare-name ToID.
+		{
+			ID:         "4444444444444444",
+			Kind:       "SCOPE.Operation",
+			Name:       "UsersHandler.List",
+			SourceFile: "handlers/users.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{
+				{
+					ToID:       "List",
+					Kind:       "CALLS",
+					Properties: map[string]string{"interface_dispatch_type": "store.Store"},
+				},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	_ = ReferencesEmbedded(records, idx)
+	got := records[3].Relationships[0].ToID
+	if got != "1111111111111111" {
+		t.Fatalf("interface-field dispatch did not resolve to MemoryStore.List: got ToID=%q", got)
+	}
+}
+
+// Issue #614 — when MULTIPLE implementers each have a same-name method,
+// the resolver must NOT pick one arbitrarily; the edge falls through to
+// the existing resolution paths. This guards against false positives in
+// any corpus with multiple impls of the same interface.
+func TestReferencesEmbedded_InterfaceFieldDispatchMultiImpl_Issue614(t *testing.T) {
+	records := []types.EntityRecord{
+		{ID: "1111111111111111", Kind: "SCOPE.Operation", Name: "MemoryStore.List", SourceFile: "store/mem.go", Language: "go"},
+		{ID: "5555555555555555", Kind: "SCOPE.Operation", Name: "RedisStore.List", SourceFile: "store/redis.go", Language: "go"},
+		{
+			ID: "2222222222222222", Kind: "SCOPE.Component", Name: "MemoryStore", SourceFile: "store/mem.go", Language: "go",
+			Relationships: []types.RelationshipRecord{{ToID: "Store", Kind: "IMPLEMENTS"}},
+		},
+		{
+			ID: "6666666666666666", Kind: "SCOPE.Component", Name: "RedisStore", SourceFile: "store/redis.go", Language: "go",
+			Relationships: []types.RelationshipRecord{{ToID: "Store", Kind: "IMPLEMENTS"}},
+		},
+		{ID: "3333333333333333", Kind: "SCOPE.Component", Name: "Store", SourceFile: "store/store.go", Language: "go"},
+		{
+			ID:         "4444444444444444",
+			Kind:       "SCOPE.Operation",
+			Name:       "UsersHandler.List",
+			SourceFile: "handlers/users.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{{
+				ToID:       "List",
+				Kind:       "CALLS",
+				Properties: map[string]string{"interface_dispatch_type": "store.Store"},
+			}},
+		},
+	}
+	idx := BuildIndex(records)
+	_ = ReferencesEmbedded(records, idx)
+	got := records[5].Relationships[0].ToID
+	// Two distinct candidate methods → the dispatch path must not commit.
+	// The edge falls through to the existing rewriter, which leaves it
+	// unresolved (ambiguous) — anything except one of the two distinct
+	// implementer IDs is acceptable.
+	if got == "1111111111111111" || got == "5555555555555555" {
+		t.Fatalf("multi-impl dispatch picked an arbitrary implementer: got %q", got)
+	}
+}
+
+// Issue #614 — when only ONE implementer is registered but the member
+// lookup misses (e.g. wrong method name), the path must fall through
+// without rewriting. Guards against blind commits.
+func TestReferencesEmbedded_InterfaceFieldDispatchMissingMethod_Issue614(t *testing.T) {
+	records := []types.EntityRecord{
+		// Implementer with a DIFFERENT method name (Get, not List).
+		{ID: "1111111111111111", Kind: "SCOPE.Operation", Name: "MemoryStore.Get", SourceFile: "store/store.go", Language: "go"},
+		{
+			ID: "2222222222222222", Kind: "SCOPE.Component", Name: "MemoryStore", SourceFile: "store/store.go", Language: "go",
+			Relationships: []types.RelationshipRecord{{ToID: "Store", Kind: "IMPLEMENTS"}},
+		},
+		{
+			ID:         "4444444444444444",
+			Kind:       "SCOPE.Operation",
+			Name:       "UsersHandler.List",
+			SourceFile: "handlers/users.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{{
+				ToID:       "List",
+				Kind:       "CALLS",
+				Properties: map[string]string{"interface_dispatch_type": "Store"},
+			}},
+		},
+	}
+	idx := BuildIndex(records)
+	_ = ReferencesEmbedded(records, idx)
+	got := records[2].Relationships[0].ToID
+	if got == "1111111111111111" {
+		t.Fatalf("dispatch wrongly bound to MemoryStore.Get when the call was List")
+	}
+}

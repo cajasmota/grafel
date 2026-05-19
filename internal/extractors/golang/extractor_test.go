@@ -2233,3 +2233,155 @@ func Run() {
 	}
 	t.Fatalf("Run entity not found")
 }
+
+// Issue #614 — interface-field dispatch stamp. The extractor must:
+//  1. Record struct field types so `h.Store` resolves to `store.Store`.
+//  2. Detect `<recvVar>.<Field>.<method>()` call shape inside method bodies.
+//  3. Stamp Properties["interface_dispatch_type"] = "<fieldType>" on the
+//     CALLS edge so the resolver can fan out IMPLEMENTS edges to the
+//     implementing struct's method.
+//  4. NOT rewrite the ToID to a per-file structural ref (which would bury
+//     the bare member name the resolver keys on).
+func TestExtractInterfaceFieldDispatchStamp_Issue614(t *testing.T) {
+	src := `package handlers
+
+import "example.com/demo/store"
+
+type UsersHandler struct {
+	Store store.Store
+}
+
+func (h *UsersHandler) List() {
+	h.Store.List()
+}
+`
+	results, err := extractFromPath(src, "handlers/users.go")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	var found bool
+	for _, r := range results {
+		e := r.(types.EntityRecord)
+		if e.Kind != "SCOPE.Operation" || e.Name != "UsersHandler.List" {
+			continue
+		}
+		for _, rel := range e.Relationships {
+			if rel.Kind != "CALLS" || rel.ToID != "List" {
+				continue
+			}
+			found = true
+			gotType := rel.Properties["interface_dispatch_type"]
+			if gotType != "store.Store" {
+				t.Errorf("interface_dispatch_type = %q, want %q", gotType, "store.Store")
+			}
+			if strings.HasPrefix(rel.ToID, "scope:") {
+				t.Errorf("ToID = %q, must stay bare for dispatch lookup", rel.ToID)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected a CALLS edge to bare-name 'List' from UsersHandler.List; got none")
+	}
+}
+
+// Issue #614 — self-recursion suppression must NOT fire on a same-name
+// cross-receiver dispatch. `(h *UsersHandler).List` calling `h.Store.List()`
+// shares the bare method name but the receiver chain is different, so the
+// edge MUST be emitted.
+func TestExtractCrossReceiverSameName_Issue614(t *testing.T) {
+	src := `package handlers
+
+import "example.com/demo/store"
+
+type UsersHandler struct {
+	Store store.Store
+}
+
+func (h *UsersHandler) List() {
+	h.Store.List()
+}
+`
+	results, err := extractFromPath(src, "handlers/users.go")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	for _, r := range results {
+		e := r.(types.EntityRecord)
+		if e.Name != "UsersHandler.List" {
+			continue
+		}
+		var hasCall bool
+		for _, rel := range e.Relationships {
+			if rel.Kind == "CALLS" && rel.ToID == "List" {
+				hasCall = true
+			}
+		}
+		if !hasCall {
+			t.Fatalf("expected CALLS edge to 'List' (cross-receiver dispatch), got none")
+		}
+		return
+	}
+	t.Fatalf("UsersHandler.List entity not found")
+}
+
+// Issue #614 — self-recursion suppression MUST still fire on a real
+// self-receiver call. `(h *Foo).Bar` calling `h.Bar()` is genuine
+// recursion and must not produce an edge.
+func TestExtractSelfReceiverRecursionStillSuppressed_Issue614(t *testing.T) {
+	src := `package main
+
+type Foo struct{}
+
+func (h *Foo) Bar() {
+	h.Bar()
+}
+`
+	results, err := extractFromPath(src, "main.go")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	for _, r := range results {
+		e := r.(types.EntityRecord)
+		if e.Name != "Foo.Bar" {
+			continue
+		}
+		for _, rel := range e.Relationships {
+			if rel.Kind == "CALLS" && rel.ToID == "Bar" {
+				t.Errorf("self-recursion edge leaked: %+v", rel)
+			}
+		}
+		return
+	}
+	t.Fatalf("Foo.Bar entity not found")
+}
+
+// Issue #614 — top-level self-recursion (no receiver) MUST still be
+// suppressed. `func loop() { loop() }` is a self-recursive direct call.
+func TestExtractTopLevelSelfRecursionStillSuppressed_Issue614(t *testing.T) {
+	src := `package main
+
+func loop() {
+	loop()
+}
+`
+	results, err := extractFromPath(src, "main.go")
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	for _, r := range results {
+		e := r.(types.EntityRecord)
+		if e.Name != "loop" {
+			continue
+		}
+		for _, rel := range e.Relationships {
+			if rel.Kind == "CALLS" && rel.ToID == "loop" {
+				t.Errorf("self-recursion edge leaked: %+v", rel)
+			}
+			if rel.Kind == "CALLS" && strings.HasSuffix(rel.ToID, ":loop") {
+				t.Errorf("self-recursion edge leaked (structural ref): %+v", rel)
+			}
+		}
+		return
+	}
+	t.Fatalf("loop entity not found")
+}

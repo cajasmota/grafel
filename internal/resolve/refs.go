@@ -5418,6 +5418,46 @@ func ReferencesEmbedded(records []types.EntityRecord, idx Index) Stats {
 // external-package allowlist for disposition classification.
 func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, allow ExternalAllowlist) Stats {
 	var stats Stats
+
+	// Issue #614 — Go interface-field dispatch. Build a name-keyed index
+	// over every IMPLEMENTS edge in the embedded relationships so a CALLS
+	// edge stamped with Properties["interface_dispatch_type"] can fan out
+	// to the implementing struct's method. The IMPLEMENTS edge is emitted
+	// by the Go extractor as `<implementerStruct> -IMPLEMENTS-> <interface>`
+	// with bare names; resolution happens here. Same-name collisions are
+	// accumulated so the inner lookup can pick the unique
+	// (pkgDir, implementerName, member) entry from byPackageMember.
+	type implCandidate struct {
+		name       string
+		sourceFile string
+	}
+	implementersByInterfaceName := map[string][]implCandidate{}
+	for k := range records {
+		recName := records[k].Name
+		recFile := records[k].SourceFile
+		if recName == "" {
+			continue
+		}
+		for _, r := range records[k].Relationships {
+			if strings.ToUpper(r.Kind) != "IMPLEMENTS" {
+				continue
+			}
+			ifaceName := r.ToID
+			if ifaceName == "" || isHexID(ifaceName) {
+				continue
+			}
+			// Skip structural-ref ToIDs — issue #614 only fires when the
+			// edge carries a bare interface name (Go extractor today).
+			if strings.Contains(ifaceName, ":") {
+				continue
+			}
+			implementersByInterfaceName[ifaceName] = append(implementersByInterfaceName[ifaceName], implCandidate{
+				name:       recName,
+				sourceFile: recFile,
+			})
+		}
+	}
+
 	for k := range records {
 		rels := records[k].Relationships
 		// Embedded relationships inherit the parent entity's language when
@@ -5448,6 +5488,66 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 			}
 			if r.ToID != "" && !isHexID(r.ToID) {
 				orig := r.ToID
+				// Issue #614 — Go cross-package interface-field dispatch.
+				// When the Go extractor stamps
+				// Properties["interface_dispatch_type"] on a CALLS edge
+				// (a method calling `<recv>.<Field>.<method>()` where
+				// Field is a struct field of an interface type), look up
+				// every implementer of that interface (harvested above
+				// from IMPLEMENTS edges across the corpus) and probe
+				// byPackageMember[implPkgDir][implName][member]. If
+				// EXACTLY ONE candidate resolves, rewrite the ToID.
+				// Multiple distinct hits fall through to the existing
+				// resolution paths (and ultimately Dynamic / Unmatched)
+				// — we never bind to an arbitrary implementer to avoid
+				// false-positive cross-package edges.
+				//
+				// Approximation rationale: full Go interface-satisfaction
+				// analysis needs a real type checker. The IMPLEMENTS
+				// edges we already emit (intra-file method-set superset
+				// in attachImplementsRelationships) are the conservative
+				// signal — a struct only reaches the candidate list if
+				// the extractor proved its method set is a superset of
+				// the interface's. Combined with the "exactly one match"
+				// gate, the surfaced CALLS edge is precise.
+				if ifaceType := r.Properties["interface_dispatch_type"]; ifaceType != "" {
+					ifaceName := ifaceType
+					// Strip a leading `*` and any package qualifier
+					// (`store.Store` → `Store`) to align with the
+					// bare-name key used in implementersByInterfaceName.
+					ifaceName = strings.TrimPrefix(ifaceName, "*")
+					if dot := strings.LastIndexByte(ifaceName, '.'); dot >= 0 && dot < len(ifaceName)-1 {
+						ifaceName = ifaceName[dot+1:]
+					}
+					if candidates := implementersByInterfaceName[ifaceName]; len(candidates) > 0 {
+						var hit string
+						hits := 0
+						for _, c := range candidates {
+							implPkgDir := pkgDirOf(normalizePath(c.sourceFile))
+							if implPkgDir == "" {
+								continue
+							}
+							id, ok := idx.lookupPackageMember(implPkgDir, c.name, r.ToID)
+							if !ok || id == "" {
+								continue
+							}
+							if hit == "" {
+								hit = id
+							} else if hit != id {
+								hits = 2
+								break
+							}
+							hits++
+						}
+						if hits == 1 && hit != "" {
+							r.ToID = hit
+							applyEndpointStats(&stats, statusRewritten, false)
+							d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
+							stats.recordDisposition(d, orig)
+							continue
+						}
+					}
+				}
 				// Issue #148 — Go same-package method dispatch. When the
 				// extractor stamped Properties["receiver_type"] on a CALLS
 				// edge (a method calling another method on its own receiver),
