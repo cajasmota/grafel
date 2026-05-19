@@ -281,6 +281,13 @@ func TestDetect_GinEntityProperties(t *testing.T) {
 		if e.Language != "go" {
 			t.Errorf("entity %q: Language = %q, want go", e.Name, e.Language)
 		}
+		// Synthetic http_endpoint entities emitted by the response-shape
+		// pass (#722) intentionally carry framework=gin / pattern_type=
+		// http_endpoint_synthesis — those are not subject to the YAML
+		// invariants below.
+		if e.Kind == httpEndpointKind {
+			continue
+		}
 		if e.Properties["framework"] != "go" {
 			t.Errorf("entity %q: framework property = %q, want go", e.Name, e.Properties["framework"])
 		}
