@@ -9820,6 +9820,58 @@ var jsBareNames = map[string]struct{}{
 	// earlier in jsBareNames; not duplicated here.
 	"formatToParts": {}, // Intl.NumberFormat / Intl.DateTimeFormat
 	"substring":     {}, // String.prototype.substring (substr is deprecated)
+
+	// Wave-14 (issue #44 fixture-e 1.29% → ≤0.8%) — DOM + JS built-in
+	// methods unresolved in fixture-e bug-extractor. Per #44 research, names
+	// like `find`, `append`, `splice`, `write` are receiver-stripped DOM/
+	// built-in calls with no entity binding. Gated to js/ts, preventing
+	// collisions with other-language user methods. Vanishingly low collision
+	// risk in React/Node codebases.
+	"splice":      {}, // Array.prototype.splice
+	"slice":       {}, // Array.prototype.slice / String.prototype.slice
+	"concat":      {}, // Array.prototype.concat / String.prototype.concat
+	"join":        {}, // Array.prototype.join
+	"charCodeAt":  {}, // String.prototype.charCodeAt
+	"match":       {}, // String.prototype.match
+	"search":      {}, // String.prototype.search
+	"split":       {}, // String.prototype.split
+	"cloneNode":   {}, // Node.cloneNode
+	"contains":    {}, // Node/Element.contains
+	"matches":     {}, // Element.matches
+	"scroll":      {}, // Window.scroll
+	"countReset":  {}, // console.countReset
+	"group":       {}, // console.group
+	"groupEnd":    {}, // console.groupEnd
+	"groupCollapsed": {}, // console.groupCollapsed
+	"time":        {}, // console.time
+	"timeEnd":     {}, // console.timeEnd
+	"timeLog":     {}, // console.timeLog
+	"trunc":       {}, // Math.trunc
+	"sign":        {}, // Math.sign
+	"cbrt":        {}, // Math.cbrt
+	"hypot":       {}, // Math.hypot
+	"imul":        {}, // Math.imul
+	"fround":      {}, // Math.fround
+	"clz32":       {}, // Math.clz32
+	"EPSILON":     {}, // Number.EPSILON
+	"setFullYear":     {}, // Date.prototype.setFullYear
+	"setMonth":        {}, // Date.prototype.setMonth
+	"setDate":         {}, // Date.prototype.setDate
+	"setHours":        {}, // Date.prototype.setHours
+	"setMinutes":      {}, // Date.prototype.setMinutes
+	"setSeconds":      {}, // Date.prototype.setSeconds
+	"setMilliseconds": {}, // Date.prototype.setMilliseconds
+	"setTime":         {}, // Date.prototype.setTime
+	"formData":    {}, // Response.formData
+	"setItem":     {}, // Storage.setItem
+	"key":         {}, // Storage.key
+	"reset":       {}, // HTMLFormElement.reset
+	"checkValidity":  {}, // HTMLFormElement.checkValidity
+	"reportValidity": {}, // HTMLFormElement.reportValidity
+	"getAll":      {}, // URLSearchParams.getAll
+	"stack":       {}, // Error.stack
+	"cause":       {}, // Error.cause
+	"resolvedOptions": {}, // Intl.*.resolvedOptions
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue
