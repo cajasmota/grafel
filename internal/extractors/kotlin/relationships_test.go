@@ -314,3 +314,107 @@ class A
 		}
 	}
 }
+
+// --- Issue #690: Kotlin property CONTAINS emission ---
+
+// TestKotlin_PropertyContains_BareDeclaration (#690): a class with body
+// val/var properties must emit SCOPE.Schema/field entities and CONTAINS
+// edges from the class.
+func TestKotlin_PropertyContains_BareDeclaration(t *testing.T) {
+	src := `class UserService {
+    val name: String = "default"
+    var count: Int = 0
+    private val repo: Any = TODO()
+    fun find() {}
+}
+`
+	ents := runKotlin(t, src)
+	svc := ktFind(ents, "UserService", "SCOPE.Component")
+	if svc == nil {
+		t.Fatal("expected UserService component")
+	}
+	// Field entities must exist.
+	for _, fn := range []string{"UserService.name", "UserService.count", "UserService.repo"} {
+		if ktFind(ents, fn, "SCOPE.Schema") == nil {
+			t.Errorf("expected SCOPE.Schema entity %s", fn)
+		}
+	}
+	// CONTAINS edges via structural-ref stubs.
+	wantContains := map[string]bool{
+		"scope:schema:field:kotlin:Test.kt:UserService.name":      false,
+		"scope:schema:field:kotlin:Test.kt:UserService.count":     false,
+		"scope:schema:field:kotlin:Test.kt:UserService.repo":      false,
+		"scope:operation:method:kotlin:Test.kt:find":              false,
+	}
+	for _, r := range svc.Relationships {
+		if r.Kind == "CONTAINS" {
+			if _, ok := wantContains[r.ToID]; ok {
+				wantContains[r.ToID] = true
+			}
+		}
+	}
+	for stub, seen := range wantContains {
+		if !seen {
+			t.Errorf("expected CONTAINS UserService→%s (rels=%+v)", stub, svc.Relationships)
+		}
+	}
+}
+
+// TestKotlin_PropertyContains_PrimaryConstructor (#690): data class primary
+// constructor val/var parameters must also get CONTAINS edges.
+// `data class User(val id: Int, val name: String)` → 2 field entities.
+func TestKotlin_PropertyContains_PrimaryConstructor(t *testing.T) {
+	src := `data class User(val id: Int, val name: String)
+`
+	ents := runKotlin(t, src)
+	user := ktFind(ents, "User", "SCOPE.Component")
+	if user == nil {
+		t.Fatal("expected User component")
+	}
+	for _, field := range []string{"User.id", "User.name"} {
+		if ktFind(ents, field, "SCOPE.Schema") == nil {
+			t.Errorf("expected SCOPE.Schema entity %s", field)
+		}
+		want := "scope:schema:field:kotlin:Test.kt:" + field
+		if !ktHasRel(ents, "User", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS User→%s (rels=%+v)", want, user.Relationships)
+		}
+	}
+}
+
+// TestKotlin_PropertyContains_PrimaryConstructorPlainParam (#690): a primary
+// constructor parameter WITHOUT a val/var binding is NOT a property — it must
+// NOT produce a SCOPE.Schema/field entity or a CONTAINS edge.
+func TestKotlin_PropertyContains_PrimaryConstructorPlainParam(t *testing.T) {
+	src := `class Wrapper(x: Int)
+`
+	ents := runKotlin(t, src)
+	// x is a plain constructor parameter, not a property.
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "field" {
+			t.Errorf("unexpected SCOPE.Schema/field entity %q for plain parameter", e.Name)
+		}
+	}
+}
+
+// TestKotlin_PropertyContains_ObjectDeclaration (#690): Kotlin object
+// declarations also emit CONTAINS for their val/var properties.
+func TestKotlin_PropertyContains_ObjectDeclaration(t *testing.T) {
+	src := `object Config {
+    val timeout: Int = 30
+    val prefix: String = "app"
+    fun load() {}
+}
+`
+	ents := runKotlin(t, src)
+	cfg := ktFind(ents, "Config", "SCOPE.Component")
+	if cfg == nil {
+		t.Fatal("expected Config component")
+	}
+	for _, field := range []string{"Config.timeout", "Config.prefix"} {
+		want := "scope:schema:field:kotlin:Test.kt:" + field
+		if !ktHasRel(ents, "Config", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Config→%s (rels=%+v)", want, cfg.Relationships)
+		}
+	}
+}

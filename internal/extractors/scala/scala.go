@@ -160,25 +160,50 @@ func emitContainerWithMembers(
 
 	body := findTemplateBody(node)
 	if body == nil {
+		// Even without a body, emit case class parameter fields.
+		emitScalaCaseClassFields(node, file, rec.Name, classIdx, out)
 		return
 	}
 	before := len(*out)
 	for i := range body.ChildCount() {
-		walkNode(body.Child(int(i)), file, localCtx, out)
+		ch := body.Child(int(i))
+		// Issue #690 — intercept val/var definition children so we can
+		// qualify the name with the enclosing class name. walkNode does not
+		// carry parentType, so emitting through it would produce bare names
+		// that don't match the CONTAINS stub's byLocation key.
+		switch ch.Type() {
+		case "val_definition", "var_definition":
+			if fieldRec, ok := buildScalaField(ch, file, rec.Name); ok {
+				*out = append(*out, fieldRec)
+			}
+			continue
+		}
+		walkNode(ch, file, localCtx, out)
 	}
 	after := len(*out)
 	for k := before; k < after; k++ {
 		child := &(*out)[k]
-		if child.Kind != "SCOPE.Operation" {
+		var toID string
+		switch {
+		case child.Kind == "SCOPE.Operation":
+			toID = extractor.BuildOperationStructuralRef("scala", file.Path, child.Name)
+		case child.Kind == "SCOPE.Schema" && child.Subtype == "field":
+			// Issue #690 — CONTAINS for class/object/trait val/var fields,
+			// mirroring the Python fix from #689.
+			toID = extractor.BuildSchemaFieldStructuralRef("scala", file.Path, child.Name)
+		default:
 			continue
 		}
-		toID := extractor.BuildOperationStructuralRef("scala", file.Path, child.Name)
 		(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 			types.RelationshipRecord{
 				ToID: toID,
 				Kind: "CONTAINS",
 			})
 	}
+	// Issue #690 — also emit SCOPE.Schema/field for case class parameters
+	// (class_parameters child of the class_definition node). These are
+	// structural fields, not just constructor arguments.
+	emitScalaCaseClassFields(node, file, rec.Name, classIdx, out)
 }
 
 // findTemplateBody returns the template_body child of a class/object/
@@ -481,6 +506,91 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 		}
 	}
 	return out
+}
+
+// buildScalaField creates a SCOPE.Schema/field entity for a Scala val_definition
+// or var_definition node. The name is extracted via extractName and qualified
+// with parentType as "<Class>.<field>" so the CONTAINS stub's byLocation key
+// matches.
+//
+// Issue #690 — closes the Scala analog of the Python field orphan gap (#689).
+func buildScalaField(node *sitter.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+	name := extractName(node, file.Content)
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+	emittedName := name
+	if parentType != "" {
+		emittedName = parentType + "." + name
+	}
+	return types.EntityRecord{
+		Name:       emittedName,
+		Kind:       "SCOPE.Schema",
+		Subtype:    "field",
+		SourceFile: file.Path,
+		Language:   "scala",
+		StartLine:  int(node.StartPoint().Row) + 1,
+		EndLine:    int(node.EndPoint().Row) + 1,
+	}, true
+}
+
+// emitScalaCaseClassFields scans a class_definition / case_class_definition
+// node for a class_parameters child and emits a SCOPE.Schema/field entity for
+// each class_parameter, appending CONTAINS edges on the parent class entity at
+// classIdx.
+//
+// Issue #690 — case class pattern:
+//
+//	case class Order(id: Int, total: BigDecimal)
+//
+// Every positional parameter is a structural field accessible as `order.id`.
+// Unlike Kotlin, all Scala case class parameters are structural properties
+// regardless of whether they carry a `val`/`var` modifier (case classes
+// generate accessors by default).
+func emitScalaCaseClassFields(
+	classNode *sitter.Node,
+	file extractor.FileInput,
+	className string,
+	classIdx int,
+	out *[]types.EntityRecord,
+) {
+	if className == "" {
+		return
+	}
+	for i := 0; i < int(classNode.ChildCount()); i++ {
+		ch := classNode.Child(i)
+		if ch.Type() != "class_parameters" {
+			continue
+		}
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			param := ch.Child(j)
+			if param.Type() != "class_parameter" {
+				continue
+			}
+			name := extractName(param, file.Content)
+			if name == "" {
+				continue
+			}
+			emittedName := className + "." + name
+			rec := types.EntityRecord{
+				Name:       emittedName,
+				Kind:       "SCOPE.Schema",
+				Subtype:    "field",
+				SourceFile: file.Path,
+				Language:   "scala",
+				StartLine:  int(param.StartPoint().Row) + 1,
+				EndLine:    int(param.EndPoint().Row) + 1,
+			}
+			*out = append(*out, rec)
+			toID := extractor.BuildSchemaFieldStructuralRef("scala", file.Path, emittedName)
+			(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+				types.RelationshipRecord{
+					ToID: toID,
+					Kind: "CONTAINS",
+				})
+		}
+		break // only one class_parameters block
+	}
 }
 
 // buildComponent creates a SCOPE.Component entity.

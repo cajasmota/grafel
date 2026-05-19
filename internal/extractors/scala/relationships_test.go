@@ -282,3 +282,123 @@ class A {}
 		t.Errorf("expected wildcard IMPORTS edge for scala.collection.mutable._")
 	}
 }
+
+// --- Issue #690: Scala field CONTAINS emission ---
+
+// TestScala_FieldContains_ValDeclaration (#690): a class with body `val`
+// members must emit SCOPE.Schema/field entities and CONTAINS edges.
+func TestScala_FieldContains_ValDeclaration(t *testing.T) {
+	src := `class Service {
+  val name: String = "default"
+  var count: Int = 0
+  def run() = {}
+}
+`
+	ents := runScala(t, src)
+	svc := scalaFind(ents, "Service", "SCOPE.Component")
+	if svc == nil {
+		t.Fatal("expected Service component")
+	}
+	// Field entities must exist.
+	for _, fn := range []string{"Service.name", "Service.count"} {
+		if scalaFind(ents, fn, "SCOPE.Schema") == nil {
+			t.Errorf("expected SCOPE.Schema entity %s", fn)
+		}
+	}
+	// CONTAINS edges via structural-ref stubs.
+	wantContains := map[string]bool{
+		"scope:schema:field:scala:Test.scala:Service.name":      false,
+		"scope:schema:field:scala:Test.scala:Service.count":     false,
+		"scope:operation:method:scala:Test.scala:run":            false,
+	}
+	for _, r := range svc.Relationships {
+		if r.Kind == "CONTAINS" {
+			if _, ok := wantContains[r.ToID]; ok {
+				wantContains[r.ToID] = true
+			}
+		}
+	}
+	for stub, seen := range wantContains {
+		if !seen {
+			t.Errorf("expected CONTAINS Service→%s (rels=%+v)", stub, svc.Relationships)
+		}
+	}
+}
+
+// TestScala_FieldContains_CaseClassParams (#690): case class parameters are
+// structural fields — each must produce a SCOPE.Schema/field entity and a
+// CONTAINS edge.
+func TestScala_FieldContains_CaseClassParams(t *testing.T) {
+	src := `case class Order(id: Int, total: Double)
+`
+	ents := runScala(t, src)
+	order := scalaFind(ents, "Order", "SCOPE.Component")
+	if order == nil {
+		t.Fatal("expected Order component")
+	}
+	for _, field := range []string{"Order.id", "Order.total"} {
+		if scalaFind(ents, field, "SCOPE.Schema") == nil {
+			t.Errorf("expected SCOPE.Schema entity %s", field)
+		}
+		want := "scope:schema:field:scala:Test.scala:" + field
+		if !scalaHasRel(ents, "Order", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Order→%s (rels=%+v)", want, order.Relationships)
+		}
+	}
+}
+
+// TestScala_FieldContains_ObjectMembers (#690): object member vals also get
+// CONTAINS edges.
+func TestScala_FieldContains_ObjectMembers(t *testing.T) {
+	src := `object Config {
+  val timeout: Int = 30
+  val prefix: String = "app"
+  def load() = {}
+}
+`
+	ents := runScala(t, src)
+	cfg := scalaFind(ents, "Config", "SCOPE.Component")
+	if cfg == nil {
+		t.Fatal("expected Config component")
+	}
+	for _, field := range []string{"Config.timeout", "Config.prefix"} {
+		want := "scope:schema:field:scala:Test.scala:" + field
+		if !scalaHasRel(ents, "Config", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Config→%s (rels=%+v)", want, cfg.Relationships)
+		}
+	}
+}
+
+// TestScala_FieldContains_NoRegressionMethodContains (#690): adding field
+// CONTAINS must not disrupt method CONTAINS. A class with both fields and
+// methods must emit CONTAINS for all.
+func TestScala_FieldContains_NoRegressionMethodContains(t *testing.T) {
+	src := `class Repo {
+  val db: DB = null
+  def find() = {}
+  def save() = {}
+}
+`
+	ents := runScala(t, src)
+	repo := scalaFind(ents, "Repo", "SCOPE.Component")
+	if repo == nil {
+		t.Fatal("expected Repo component")
+	}
+	wantContains := map[string]bool{
+		"scope:schema:field:scala:Test.scala:Repo.db":        false,
+		"scope:operation:method:scala:Test.scala:find":        false,
+		"scope:operation:method:scala:Test.scala:save":        false,
+	}
+	for _, r := range repo.Relationships {
+		if r.Kind == "CONTAINS" {
+			if _, ok := wantContains[r.ToID]; ok {
+				wantContains[r.ToID] = true
+			}
+		}
+	}
+	for stub, seen := range wantContains {
+		if !seen {
+			t.Errorf("expected CONTAINS Repo→%s (rels=%+v)", stub, repo.Relationships)
+		}
+	}
+}

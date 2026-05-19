@@ -266,3 +266,110 @@ class A {
 		t.Errorf("expected CALLS run -> Helpers.compute (static receiver)")
 	}
 }
+
+// --- Issue #690: Java field CONTAINS emission ---
+
+// TestJava_FieldContains_BareDeclaration (#690): a class with a bare field
+// declaration (`private int count;`) must emit a SCOPE.Schema/field entity
+// with name "<Class>.<field>" AND a CONTAINS edge from the class to the field
+// via a BuildSchemaFieldStructuralRef stub.
+func TestJava_FieldContains_BareDeclaration(t *testing.T) {
+	src := `
+class Box {
+    private int count;
+    String name;
+}
+`
+	ents := runJava(t, src)
+	box := javaFind(ents, "Box", "SCOPE.Component")
+	if box == nil {
+		t.Fatal("expected Box component")
+	}
+	// Field entities must be emitted with qualified names.
+	if javaFind(ents, "Box.count", "SCOPE.Schema") == nil {
+		t.Error("expected SCOPE.Schema entity Box.count")
+	}
+	if javaFind(ents, "Box.name", "SCOPE.Schema") == nil {
+		t.Error("expected SCOPE.Schema entity Box.name")
+	}
+	// CONTAINS edges via structural-ref stubs.
+	for _, field := range []string{"Box.count", "Box.name"} {
+		want := "scope:schema:field:java:Test.java:" + field
+		if !javaHasRel(ents, "Box", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Box→%s (rels=%+v)", want, box.Relationships)
+		}
+	}
+}
+
+// TestJava_FieldContains_InitializedField (#690): a class with an initialized
+// field (`String name = "default";`) must also produce a CONTAINS edge.
+func TestJava_FieldContains_InitializedField(t *testing.T) {
+	src := `
+class Config {
+    String name = "default";
+    int count = 0;
+}
+`
+	ents := runJava(t, src)
+	for _, field := range []string{"Config.name", "Config.count"} {
+		want := "scope:schema:field:java:Test.java:" + field
+		if !javaHasRel(ents, "Config", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Config→%s", want)
+		}
+	}
+}
+
+// TestJava_FieldContains_StaticField (#690): static fields must also get
+// CONTAINS edges.
+func TestJava_FieldContains_StaticField(t *testing.T) {
+	src := `
+class Constants {
+    public static final int MAX = 100;
+    private static String prefix = "app";
+}
+`
+	ents := runJava(t, src)
+	for _, field := range []string{"Constants.MAX", "Constants.prefix"} {
+		want := "scope:schema:field:java:Test.java:" + field
+		if !javaHasRel(ents, "Constants", "SCOPE.Component", "CONTAINS", want) {
+			t.Errorf("expected CONTAINS Constants→%s", want)
+		}
+	}
+}
+
+// TestJava_FieldContains_NoRegressionMethodContains (#690): adding field
+// CONTAINS must not break method CONTAINS — a class with both fields and
+// methods must emit CONTAINS for all.
+func TestJava_FieldContains_NoRegressionMethodContains(t *testing.T) {
+	src := `
+class Service {
+    private Repo repo;
+    private int count;
+    void save() {}
+    void load() {}
+}
+`
+	ents := runJava(t, src)
+	svc := javaFind(ents, "Service", "SCOPE.Component")
+	if svc == nil {
+		t.Fatal("expected Service component")
+	}
+	wantContains := map[string]bool{
+		"scope:schema:field:java:Test.java:Service.repo":      false,
+		"scope:schema:field:java:Test.java:Service.count":     false,
+		"scope:operation:method:java:Test.java:Service.save":  false,
+		"scope:operation:method:java:Test.java:Service.load":  false,
+	}
+	for _, r := range svc.Relationships {
+		if r.Kind == "CONTAINS" {
+			if _, ok := wantContains[r.ToID]; ok {
+				wantContains[r.ToID] = true
+			}
+		}
+	}
+	for stub, seen := range wantContains {
+		if !seen {
+			t.Errorf("expected CONTAINS Service→%s (rels=%+v)", stub, svc.Relationships)
+		}
+	}
+}

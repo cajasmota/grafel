@@ -164,9 +164,26 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 				bareSymbols[leaf] = javaSymbol{kind: e.Kind, subtype: e.Subtype, name: e.Name}
 			}
 		case e.Kind == "SCOPE.Schema" && e.Subtype == "field":
-			// Java fields: emitted with bare Name today.
-			if _, exists := bareSymbols[e.Name]; !exists {
-				bareSymbols[e.Name] = javaSymbol{kind: e.Kind, subtype: e.Subtype, name: e.Name}
+			// Issue #690 — fields are emitted with qualified names
+			// "<Class>.<field>" (e.g. "Box.counter"). Index by:
+			//   1. dottedSymbols["Box.counter"] — `this.counter` and
+			//      `ClassName.counter` lookups in handleFieldAccess.
+			//   2. bareSymbols["counter"] (leaf only) — bare field
+			//      references in method bodies: `return counter;`,
+			//      `counter++`. Only when no method/class entry already
+			//      occupies the leaf slot (same don't-displace policy as
+			//      operations). If a getter shares the leaf name the bare
+			//      identifier is more likely a call; the dotted lookup in
+			//      handleFieldAccess still handles `this.counter`.
+			if _, exists := dottedSymbols[e.Name]; !exists {
+				dottedSymbols[e.Name] = javaSymbol{kind: e.Kind, subtype: e.Subtype, name: e.Name}
+			}
+			leaf := e.Name
+			if dot := strings.LastIndexByte(e.Name, '.'); dot >= 0 {
+				leaf = e.Name[dot+1:]
+			}
+			if _, exists := bareSymbols[leaf]; !exists {
+				bareSymbols[leaf] = javaSymbol{kind: e.Kind, subtype: e.Subtype, name: e.Name}
 			}
 		case e.Kind == "SCOPE.Component" &&
 			(e.Subtype == "class" || e.Subtype == "interface" || e.Subtype == "enum"):

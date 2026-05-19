@@ -211,14 +211,23 @@ func walk(
 			after := len(*out)
 			for k := before; k < after; k++ {
 				child := &(*out)[k]
-				if child.Kind != "SCOPE.Operation" {
+				var toID string
+				switch {
+				case child.Kind == "SCOPE.Operation":
+					// Issue #144 — emit a structural-ref (Format A) keyed on
+					// the source file. child.Name is dotted "Outer.method" for
+					// nested types (issue #65); the same string is the entity
+					// Name indexed by byLocation, so the resolver matches.
+					toID = extractor.BuildOperationStructuralRef("java", file.Path, child.Name)
+				case child.Kind == "SCOPE.Schema" && child.Subtype == "field":
+					// Issue #690 — emit CONTAINS for class fields, mirroring
+					// the Python fix from #689. child.Name is "<Class>.<field>"
+					// (qualified in buildField), matching the byLocation index
+					// the resolver uses to bind the stub.
+					toID = extractor.BuildSchemaFieldStructuralRef("java", file.Path, child.Name)
+				default:
 					continue
 				}
-				// Issue #144 — emit a structural-ref (Format A) keyed on
-				// the source file. child.Name is dotted "Outer.method" for
-				// nested types (issue #65); the same string is the entity
-				// Name indexed by byLocation, so the resolver matches.
-				toID := extractor.BuildOperationStructuralRef("java", file.Path, child.Name)
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: toID,
@@ -263,7 +272,10 @@ func walk(
 		return
 
 	case "field_declaration":
-		if rec, ok := buildField(node, file); ok {
+		// Issue #690 — pass parentType so the field name is qualified as
+		// "<Class>.<field>", matching the CONTAINS stub's byLocation key.
+		// Fields at module scope (parentType="") keep a bare name.
+		if rec, ok := buildField(node, file, parentType); ok {
 			*out = append(*out, rec)
 		}
 
@@ -793,7 +805,12 @@ func buildOperation(node *sitter.Node, file extractor.FileInput, subtype, parent
 }
 
 // buildField creates a Schema entity for field declarations.
-func buildField(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+//
+// Issue #690 — parentType qualifies the field name as "<Class>.<field>"
+// when non-empty, matching the pattern used for methods (issue #65) so
+// the resolver's byLocation index can bind CONTAINS stubs to field entities
+// the same way it binds class→method CONTAINS edges.
+func buildField(node *sitter.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
 	// Field declarations have a "declarator" child containing the variable name.
 	name := ""
 	for i := range node.ChildCount() {
@@ -807,11 +824,16 @@ func buildField(node *sitter.Node, file extractor.FileInput) (types.EntityRecord
 		return types.EntityRecord{}, false
 	}
 
+	emittedName := name
+	if parentType != "" {
+		emittedName = parentType + "." + name
+	}
+
 	// Build field signature: "Type name" (strip visibility).
 	fieldSig := buildFieldSignature(node, file.Content, name)
 
 	return types.EntityRecord{
-		Name:       name,
+		Name:       emittedName,
 		Kind:       "SCOPE.Schema",
 		Subtype:    "field",
 		SourceFile: file.Path,

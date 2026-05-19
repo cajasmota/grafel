@@ -118,24 +118,48 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		if svc, ok := buildSpringService(node, file, rec.Name); ok {
 			*out = append(*out, svc)
 		}
-		// CONTAINS: every function declared in the class body.
+		// Issue #690 — emit SCOPE.Schema/field for primary-constructor
+		// val/var parameters (data class pattern: `data class Foo(val x: T)`).
+		// These are structural properties, not just formal parameters, so they
+		// must appear as field entities with CONTAINS edges to the class.
+		emitPrimaryConstructorFields(node, file, rec.Name, classIdx, out)
+		// CONTAINS: every function AND property declared in the class body.
 		body := findClassBody(node)
 		if body != nil {
 			before := len(*out)
 			for i := range body.ChildCount() {
-				walk(body.Child(int(i)), file, out)
+				ch := body.Child(int(i))
+				// Issue #690 — intercept property_declaration children so
+				// we can qualify the name with the enclosing class name.
+				// The generic walk() call below does not carry parentType,
+				// so property entities would get bare names and CONTAINS
+				// stubs would not resolve. Emit them here instead.
+				if ch.Type() == "property_declaration" {
+					if propRec, ok := buildProperty(ch, file, rec.Name); ok {
+						*out = append(*out, propRec)
+					}
+					continue
+				}
+				walk(ch, file, out)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
 				child := &(*out)[k]
-				if child.Kind != "SCOPE.Operation" {
+				var toID string
+				switch {
+				case child.Kind == "SCOPE.Operation":
+					// Issue #144 — emit a structural-ref (Format A) keyed on
+					// the source file so the resolver disambiguates by location
+					// when two Kotlin classes/objects in different files declare
+					// same-named functions.
+					toID = extractor.BuildOperationStructuralRef("kotlin", file.Path, child.Name)
+				case child.Kind == "SCOPE.Schema" && child.Subtype == "field":
+					// Issue #690 — CONTAINS for class-body properties,
+					// mirroring the Python fix from #689.
+					toID = extractor.BuildSchemaFieldStructuralRef("kotlin", file.Path, child.Name)
+				default:
 					continue
 				}
-				// Issue #144 — emit a structural-ref (Format A) keyed on
-				// the source file so the resolver disambiguates by location
-				// when two Kotlin classes/objects in different files declare
-				// same-named functions.
-				toID := extractor.BuildOperationStructuralRef("kotlin", file.Path, child.Name)
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: toID,
@@ -159,19 +183,34 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		if body != nil {
 			before := len(*out)
 			for i := range body.ChildCount() {
-				walk(body.Child(int(i)), file, out)
+				ch := body.Child(int(i))
+				// Issue #690 — intercept property_declaration children so
+				// we can qualify the name with the enclosing object name.
+				if ch.Type() == "property_declaration" {
+					if propRec, ok := buildProperty(ch, file, rec.Name); ok {
+						*out = append(*out, propRec)
+					}
+					continue
+				}
+				walk(ch, file, out)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
 				child := &(*out)[k]
-				if child.Kind != "SCOPE.Operation" {
+				var toID string
+				switch {
+				case child.Kind == "SCOPE.Operation":
+					// Issue #144 — emit a structural-ref (Format A) keyed on
+					// the source file so the resolver disambiguates by location
+					// when two Kotlin classes/objects in different files declare
+					// same-named functions.
+					toID = extractor.BuildOperationStructuralRef("kotlin", file.Path, child.Name)
+				case child.Kind == "SCOPE.Schema" && child.Subtype == "field":
+					// Issue #690 — CONTAINS for object-body properties.
+					toID = extractor.BuildSchemaFieldStructuralRef("kotlin", file.Path, child.Name)
+				default:
 					continue
 				}
-				// Issue #144 — emit a structural-ref (Format A) keyed on
-				// the source file so the resolver disambiguates by location
-				// when two Kotlin classes/objects in different files declare
-				// same-named functions.
-				toID := extractor.BuildOperationStructuralRef("kotlin", file.Path, child.Name)
 				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
 					types.RelationshipRecord{
 						ToID: toID,
@@ -180,6 +219,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 			}
 		}
 		return
+
 
 	case "function_declaration":
 		if rec, ok := buildOperation(node, file); ok {
@@ -568,6 +608,127 @@ func findSpringStereotype(header string) string {
 		}
 	}
 	return ""
+}
+
+// buildProperty creates a SCOPE.Schema/field entity for a Kotlin
+// property_declaration node. The name comes from the variable_declaration's
+// first simple_identifier child. When parentType is non-empty the emitted
+// name is "<parentType>.<name>", matching the qualified form used by
+// BuildSchemaFieldStructuralRef so the resolver's byLocation index can bind
+// the CONTAINS stub to the field entity.
+//
+// Issue #690 — closes the Kotlin analog of the Python field orphan gap (#689).
+func buildProperty(node *sitter.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+	// property_declaration structure:
+	//   binding_pattern_kind (val|var)
+	//   variable_declaration
+	//     simple_identifier  ← property name
+	//     ":" type?
+	//   ["=" initializer]
+	name := ""
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch.Type() != "variable_declaration" {
+			continue
+		}
+		// First simple_identifier inside variable_declaration is the name.
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			gc := ch.Child(j)
+			if gc.Type() == "simple_identifier" {
+				name = string(file.Content[gc.StartByte():gc.EndByte()])
+				break
+			}
+		}
+		break
+	}
+	if name == "" {
+		return types.EntityRecord{}, false
+	}
+	emittedName := name
+	if parentType != "" {
+		emittedName = parentType + "." + name
+	}
+	return types.EntityRecord{
+		Name:       emittedName,
+		Kind:       "SCOPE.Schema",
+		Subtype:    "field",
+		SourceFile: file.Path,
+		Language:   "kotlin",
+		StartLine:  int(node.StartPoint().Row) + 1,
+		EndLine:    int(node.EndPoint().Row) + 1,
+	}, true
+}
+
+// emitPrimaryConstructorFields scans a class_declaration's primary_constructor
+// for class_parameter nodes that carry a binding_pattern_kind (val or var).
+// Each such parameter is a structural property of the class — not just a
+// constructor argument — so we emit it as a SCOPE.Schema/field entity and
+// append a CONTAINS edge on the parent class entity at classIdx.
+//
+// Issue #690 — data class pattern:
+//
+//	data class User(val id: Int, val name: String)
+//
+// Tree: class_declaration → primary_constructor → class_parameter+
+//       class_parameter carries binding_pattern_kind (val|var) when the
+//       parameter is a property; plain parameters have no such child.
+func emitPrimaryConstructorFields(
+	classNode *sitter.Node,
+	file extractor.FileInput,
+	className string,
+	classIdx int,
+	out *[]types.EntityRecord,
+) {
+	for i := 0; i < int(classNode.ChildCount()); i++ {
+		ch := classNode.Child(i)
+		if ch.Type() != "primary_constructor" {
+			continue
+		}
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			param := ch.Child(j)
+			if param.Type() != "class_parameter" {
+				continue
+			}
+			// Only emit a field entity when the parameter has a
+			// binding_pattern_kind child (val or var).
+			hasBinding := false
+			name := ""
+			for k := 0; k < int(param.ChildCount()); k++ {
+				gc := param.Child(k)
+				switch gc.Type() {
+				case "binding_pattern_kind":
+					hasBinding = true
+				case "simple_identifier":
+					if name == "" {
+						name = string(file.Content[gc.StartByte():gc.EndByte()])
+					}
+				}
+			}
+			if !hasBinding || name == "" {
+				continue
+			}
+			emittedName := className + "." + name
+			rec := types.EntityRecord{
+				Name:       emittedName,
+				Kind:       "SCOPE.Schema",
+				Subtype:    "field",
+				SourceFile: file.Path,
+				Language:   "kotlin",
+				StartLine:  int(param.StartPoint().Row) + 1,
+				EndLine:    int(param.EndPoint().Row) + 1,
+			}
+			fieldIdx := len(*out)
+			*out = append(*out, rec)
+			_ = fieldIdx
+			toID := extractor.BuildSchemaFieldStructuralRef("kotlin", file.Path, emittedName)
+			(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+				types.RelationshipRecord{
+					ToID: toID,
+					Kind: "CONTAINS",
+				})
+		}
+		break // only one primary_constructor per class
+	}
 }
 
 // childFieldText extracts the text of a named child field.
