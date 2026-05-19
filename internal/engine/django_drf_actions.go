@@ -195,6 +195,12 @@ func ApplyDjangoDRFRoutes(
 	// multiple prefixes (e.g. the bare-prefix + parent-include variants).
 	seenMethods := map[string]bool{}
 
+	// currentURLPrefix is set to the parent include() prefix that is active
+	// for the current emitCRUDFamily / emitActionRoutes call. The emit
+	// closure reads it so every emitted entity carries the url_prefix
+	// property for downstream consumers.
+	var currentURLPrefix string
+
 	emit := func(verb, canonical, sourceFile, viewSet, methodName string) {
 		if canonical == "" || canonical == "/" {
 			return
@@ -224,6 +230,12 @@ func ApplyDjangoDRFRoutes(
 			"path":         canonical,
 			"framework":    "django",
 			"pattern_type": "drf_router_expanded",
+		}
+		if currentURLPrefix != "" {
+			// Record the parent include() prefix so downstream consumers
+			// can strip it when matching against client-side API calls that
+			// use a baseURL (e.g. Axios baseURL = "/api/v1"). Fix #800.
+			props["url_prefix"] = "/" + strings.Trim(currentURLPrefix, "/")
 		}
 		if viewSet != "" {
 			if methodName != "" {
@@ -267,22 +279,23 @@ func ApplyDjangoDRFRoutes(
 		// Determine the parent include() prefix(es) for this file. If
 		// this file is included from another file via path("api/v1/",
 		// include("<thismod>")), we want to compose every route under
-		// the parent prefix. We ALSO emit the bare-prefix variant
-		// (no parent include prefix) so consumers that strip the API
-		// baseURL (`/api/v1/`) still match — many SPA fixtures set the
-		// baseURL on the HTTP client and write `/contracts/{id}` in the
-		// component, while the producer carries the full prefix.
+		// the parent prefix.
+		//
+		// Fix #800: do NOT also emit at the bare (unprefixed) path when the
+		// file is reached via a parent include(). The bare-path entity is a
+		// structural duplicate of the prefixed one — Django will only ever
+		// resolve requests at the prefixed path (e.g. /api/v1/buildings/),
+		// never at /buildings/. Emitting both caused 486 duplicate
+		// http_endpoint entities on fixture-a (40% inflation).
+		//
+		// We add the bare prefix ONLY when the file has no parent include()
+		// at all (i.e. the router file is at the URL conf root — uncommon but
+		// valid, and required so routes still land somewhere rather than being
+		// silently dropped).
 		parentPrefixes := findParentIncludePrefixes(relPath, parentFiles, fileReader)
-		// Always include the empty prefix to widen the match surface.
-		hasBare := false
-		for _, p := range parentPrefixes {
-			if p == "" {
-				hasBare = true
-				break
-			}
-		}
-		if !hasBare {
-			parentPrefixes = append(parentPrefixes, "")
+		if len(parentPrefixes) == 0 {
+			// File is not included from anywhere — emit at bare prefix.
+			parentPrefixes = []string{""}
 		}
 
 		// Find every router.register() call. Each yields (prefix, ViewSet).
@@ -345,10 +358,20 @@ func ApplyDjangoDRFRoutes(
 			}
 			emitViewSetMethodEntities(&out, seenMethods, viewSetName, vc, handlerFile)
 
-			for _, fullPrefix := range composedPrefixes {
+			// expandRegisterPrefixes produces composedPrefixes in the same
+			// order as parentPrefixes, so we can zip them to recover the
+			// parent prefix that applies to each composed prefix. This lets
+			// the emit closure attach url_prefix correctly.
+			for i, fullPrefix := range composedPrefixes {
+				if i < len(parentPrefixes) {
+					currentURLPrefix = parentPrefixes[i]
+				} else {
+					currentURLPrefix = ""
+				}
 				emitCRUDFamily(emit, fullPrefix, vc, relPath, viewSetName)
 				emitActionRoutes(emit, fullPrefix, vc, relPath, viewSetName)
 			}
+			currentURLPrefix = "" // reset for safety
 		}
 	}
 	return out
@@ -1298,18 +1321,13 @@ func ApplyDjangoCBVRoutes(
 		// defining module.
 		importMap := parseImports(src)
 
-		// Collect parent include() prefixes for this file (same logic as
-		// the DRF pass — widen match surface with bare prefix too).
+		// Collect parent include() prefixes for this file. Same fix as #800
+		// for DRF routes: only emit at bare prefix when the file is NOT
+		// reached via a parent include(). Emitting at both bare and prefixed
+		// paths produces duplicate http_endpoint entities.
 		parentPrefixes := findParentIncludePrefixes(relPath, parentFiles, fileReader)
-		hasBare := false
-		for _, p := range parentPrefixes {
-			if p == "" {
-				hasBare = true
-				break
-			}
-		}
-		if !hasBare {
-			parentPrefixes = append(parentPrefixes, "")
+		if len(parentPrefixes) == 0 {
+			parentPrefixes = []string{""}
 		}
 
 		for _, m := range cbvAsViewRe.FindAllStringSubmatch(flat, -1) {

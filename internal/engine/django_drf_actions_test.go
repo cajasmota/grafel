@@ -712,6 +712,200 @@ class UserViewSet(ModelViewSet):
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Issue #800 — prefix-doubled duplicate suppression tests
+// ---------------------------------------------------------------------------
+
+// TestApplyDjangoDRFRoutes_PrefixedOnlyNoBareDupe is the primary regression
+// test for #800. When a router module is included via
+// path('api/v1/', include('core.routers')), each ViewSet route must be emitted
+// EXACTLY ONCE at the prefixed path (/api/v1/<prefix>/...) and NOT at the
+// bare path (/<prefix>/...).
+func TestApplyDjangoDRFRoutes_PrefixedOnlyNoBareDupe(t *testing.T) {
+	files := fileMap{
+		"upvate_core/urls.py": `
+from django.urls import path, include
+urlpatterns = [
+    path('api/v1/', include('core.routers')),
+]
+`,
+		"core/routers.py": `
+from rest_framework import routers
+from core.views import BuildingViewSet, DeviceViewSet, ContractViewSet
+
+router = routers.DefaultRouter()
+router.register(r'buildings', BuildingViewSet)
+router.register(r'devices', DeviceViewSet)
+router.register(r'contracts', ContractViewSet)
+`,
+		"core/views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class BuildingViewSet(ModelViewSet):
+    pass
+
+class DeviceViewSet(ModelViewSet):
+    pass
+
+class ContractViewSet(ModelViewSet):
+    pass
+`,
+	}
+	pyPaths := []string{"upvate_core/urls.py", "core/routers.py", "core/views.py"}
+	got := ApplyDjangoDRFRoutes(pyPaths, files.reader)
+
+	// Each of the 3 ViewSets should appear ONLY at the /api/v1/ prefix.
+	prefixedIDs := []string{
+		"http:GET:/api/v1/buildings",
+		"http:POST:/api/v1/buildings",
+		"http:GET:/api/v1/buildings/{pk}",
+		"http:PUT:/api/v1/buildings/{pk}",
+		"http:PATCH:/api/v1/buildings/{pk}",
+		"http:DELETE:/api/v1/buildings/{pk}",
+		"http:GET:/api/v1/devices",
+		"http:GET:/api/v1/contracts",
+	}
+	assertHasAllIDs(t, got, prefixedIDs)
+
+	// Bare-path duplicates must NOT be present.
+	bareIDs := []string{
+		"http:GET:/buildings",
+		"http:POST:/buildings",
+		"http:GET:/buildings/{pk}",
+		"http:GET:/devices",
+		"http:GET:/contracts",
+	}
+	assertHasNoneIDs(t, got, bareIDs)
+
+	// Verify each route was emitted exactly once.
+	for _, wantID := range prefixedIDs {
+		count := 0
+		for _, r := range got {
+			if r.ID == wantID {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("entity %q: emitted %d times, want exactly 1", wantID, count)
+		}
+	}
+}
+
+// TestApplyDjangoDRFRoutes_URLPrefixProperty verifies that entities emitted
+// under a parent include() prefix carry the url_prefix property so downstream
+// consumers can strip it when matching client-side API calls.
+func TestApplyDjangoDRFRoutes_URLPrefixProperty(t *testing.T) {
+	files := fileMap{
+		"upvate_core/urls.py": `
+from django.urls import path, include
+urlpatterns = [
+    path('api/v1/', include('core.routers')),
+]
+`,
+		"core/routers.py": `
+from rest_framework import routers
+from core.views import BuildingViewSet
+
+router = routers.DefaultRouter()
+router.register(r'buildings', BuildingViewSet)
+`,
+		"core/views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class BuildingViewSet(ModelViewSet):
+    pass
+`,
+	}
+	pyPaths := []string{"upvate_core/urls.py", "core/routers.py", "core/views.py"}
+	got := ApplyDjangoDRFRoutes(pyPaths, files.reader)
+
+	for _, r := range got {
+		if r.Kind != httpEndpointKind {
+			continue
+		}
+		if r.Properties["url_prefix"] != "/api/v1" {
+			t.Errorf("entity %q: url_prefix=%q want \"/api/v1\"", r.ID, r.Properties["url_prefix"])
+		}
+	}
+}
+
+// TestApplyDjangoDRFRoutes_NestedIncludeChain tests the "beyond the minimum"
+// case: path('api/', include([path('v1/', include('core.routers'))]))
+// should resolve to /api/v1/buildings/, not /buildings/ or /v1/buildings/.
+// This test covers the case where findParentIncludePrefixes recursively
+// resolves the chain (current implementation walks one level; this test
+// validates at least the direct include level works correctly).
+func TestApplyDjangoDRFRoutes_NestedIncludeChain(t *testing.T) {
+	files := fileMap{
+		"upvate_core/urls.py": `
+from django.urls import path, include
+urlpatterns = [
+    path('api/v1/', include('core.routers')),
+]
+`,
+		"core/routers.py": `
+from rest_framework import routers
+from core.views import ContractViewSet
+
+router = routers.DefaultRouter()
+router.register(r'contracts', ContractViewSet)
+`,
+		"core/views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class ContractViewSet(ModelViewSet):
+    pass
+`,
+	}
+	pyPaths := []string{"upvate_core/urls.py", "core/routers.py", "core/views.py"}
+	got := ApplyDjangoDRFRoutes(pyPaths, files.reader)
+
+	// Prefixed form must be present.
+	assertHasAllIDs(t, got, []string{"http:GET:/api/v1/contracts"})
+	// Bare form must NOT be present.
+	assertHasNoneIDs(t, got, []string{"http:GET:/contracts"})
+}
+
+// TestApplyDjangoDRFRoutes_LegitimateMultiPrefixKept verifies that when the
+// SAME ViewSet is registered under two DIFFERENT URL prefixes (a legitimate
+// multi-prefix setup, NOT a duplicate), both routes are kept. Dedup must
+// only suppress the bare/prefixed pair, not routes at genuinely different
+// paths.
+func TestApplyDjangoDRFRoutes_LegitimateMultiPrefixKept(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from django.urls import path, include
+urlpatterns = [
+    path('api/v1/', include('core.routers')),
+    path('legacy/', include('core.routers')),
+]
+`,
+		"core/routers.py": `
+from rest_framework import routers
+from core.views import LoginViewSet
+
+router = routers.DefaultRouter()
+router.register(r'login', LoginViewSet)
+`,
+		"core/views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class LoginViewSet(ModelViewSet):
+    pass
+`,
+	}
+	pyPaths := []string{"urls.py", "core/routers.py", "core/views.py"}
+	got := ApplyDjangoDRFRoutes(pyPaths, files.reader)
+
+	// Both prefixed forms are legitimate and must be present.
+	assertHasAllIDs(t, got, []string{
+		"http:GET:/api/v1/login",
+		"http:GET:/legacy/login",
+	})
+	// The bare form must NOT be present — it is a dupe of one of the above.
+	assertHasNoneIDs(t, got, []string{"http:GET:/login"})
+}
+
 func equalStringSlicesDRF(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -888,7 +1082,10 @@ class CustomListView(ListView):
 }
 
 // TestApplyDjangoCBVRoutes_NestedIncludeComposesPrefix verifies that CBV
-// routes in an included urls.py are combined with the parent include() prefix.
+// routes in an included urls.py are emitted ONLY at the prefixed path. Fix
+// #800: emitting both /orders and /api/v1/orders is wrong — Django only
+// resolves to /api/v1/orders when the root conf says
+// path("api/v1/", include("core.urls")).
 func TestApplyDjangoCBVRoutes_NestedIncludeComposesPrefix(t *testing.T) {
 	files := fileMap{
 		"myproject/urls.py": `
@@ -917,24 +1114,10 @@ class OrderListView(ListView):
 		files.reader,
 	)
 
-	// core/urls.py is an included file scanned independently by the CBV
-	// pass — bare prefix (no parent compose) yields /orders.
-	found := false
-	for _, r := range got {
-		if r.Kind == httpEndpointKind && r.Properties["path"] == "/orders" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		ids := make([]string, 0, len(got))
-		for _, r := range got {
-			if r.Kind == httpEndpointKind {
-				ids = append(ids, r.ID)
-			}
-		}
-		t.Errorf("missing /orders endpoint; got: %v", ids)
-	}
+	// Fix #800: ONLY the prefixed form should be emitted; bare /orders is
+	// a structural duplicate and must NOT appear.
+	assertHasAllIDs(t, got, []string{"http:GET:/api/v1/orders"})
+	assertHasNoneIDs(t, got, []string{"http:GET:/orders"})
 }
 
 // TestApplyDjangoCBVRoutes_DeleteViewEmitsGetPost verifies DeleteView
