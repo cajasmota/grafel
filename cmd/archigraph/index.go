@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -341,8 +342,30 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	i.stats.pass3Rels = countEmbeddedRels(pass3Records)
 
+	// Issue #633 — release per-file AST trees + source bytes now that the
+	// last consumer (Pass 3 cross-language extractors) has finished. The
+	// classified slice is otherwise retained until Run() returns, which on
+	// TS-heavy fixtures pinned hundreds of MB of tree-sitter AST nodes
+	// across the entire downstream pipeline (resolver, build-document,
+	// external-synthesis, Pass 4). tree-sitter trees are CGo-allocated so
+	// runtime.GC alone can't reclaim them — Close() is required.
+	releaseClassifiedASTs(classified)
+	classified = nil
+	runtime.GC()
+
 	// Pass 5 — build document (deduped).
 	doc := i.buildDocument(pass1Records, pass2Records, pass2Rels, pass3Records)
+	// Drop the per-pass record slices now that buildDocument has produced
+	// the merged + deduped graph.Entity / graph.Relationship slices. These
+	// pass-level slices hold a copy of every entity's Properties /
+	// Metadata maps and embedded Relationship slices; releasing them
+	// before the resolver-classification + Pass 4 algorithms cuts the
+	// peak by roughly the merged-set size on entity-dense repos.
+	pass1Records = nil
+	pass2Records = nil
+	pass2Rels = nil
+	pass3Records = nil
+	runtime.GC()
 
 	// Pass 4.5 — external entity synthesis. Runs BEFORE Pass 4 so the
 	// synthesised "ext:<name>" placeholders participate in the graph
@@ -449,6 +472,20 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				}
 			}
 			dumpBugResolverSamples(out, doc, *i.resolveIdx, allow, n)
+		}
+		// Issue #633 — release the resolver's lookup tables now that the
+		// final classification + optional sample dumps have consumed them.
+		// The Index struct holds 10+ string-keyed nested maps sized for the
+		// full merged entity set (byKind, byName, nameKinds, nameKindsReal,
+		// byLocation, byLocationKind, byLocationKindReal, byMember,
+		// byPackageMember, byPackageOperation, byPackageComponent, …) —
+		// none of them are needed past this point. Pass 6 enrichment uses
+		// resolveIdx only via the optional ADR-0015 repair-edge path; that
+		// path is gated behind --enable-repair-candidates and falls back
+		// gracefully when resolveIdx is nil.
+		if !i.enableRepairCandidates {
+			i.resolveIdx = nil
+			runtime.GC()
 		}
 	}
 
@@ -1456,6 +1493,24 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		},
 		Entities:      entities,
 		Relationships: relationships,
+	}
+}
+
+// releaseClassifiedASTs explicitly drops the tree-sitter parse trees + source
+// bytes attached to each classifiedFile entry. Called after the last
+// extractor pass (Pass 3 cross-language) finishes. The tree-sitter Tree.Close
+// path releases the C-side tree allocation that runtime.GC cannot reclaim
+// because the goroutine handle is reference-counted via CGo, not via the Go
+// allocator. Setting .content to nil drops the per-file source-byte buffer
+// the resolver no longer needs. Issue #633.
+func releaseClassifiedASTs(classified []classifiedFile) {
+	for k := range classified {
+		cf := &classified[k]
+		if cf.tree != nil {
+			cf.tree.Close()
+			cf.tree = nil
+		}
+		cf.content = nil
 	}
 }
 
