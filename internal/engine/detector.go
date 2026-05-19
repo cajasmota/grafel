@@ -265,6 +265,24 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.RepoRoot, file.Content, entities, relationships,
 	)
 
+	// RabbitMQ producer/consumer cross-repo edges (wave 2 of #726). Emits
+	// SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for pika
+	// (Python), amqplib (Node), Spring AMQP / direct RabbitMQ client (Java),
+	// amqp091-go (Go), Quarkus RabbitMQ connector, and Celery with AMQP
+	// broker. Append-only — cannot regress the surrounding pipeline's bug-rate.
+	entities, relationships = applyRabbitMQEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
+	// AWS SQS producer/consumer cross-repo edges (wave 2 of #726). Emits
+	// SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for boto3
+	// (Python), aws-sdk v2/v3 (Node), aws-sdk-go-v2 (Go), AWS SDK v2
+	// (Java), and Lambda SQS triggers. Also detects SNS→SQS fanout.
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	entities, relationships = applySQSEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// #727: Real-time event channel synthesis. Three append-only passes
 	// for WebSocket, Server-Sent Events, and GraphQL subscriptions. Each
 	// scans the file directly and emits ChannelEvent / Stream /
