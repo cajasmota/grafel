@@ -49,6 +49,32 @@ type Stats struct {
 	UniqueExternals int
 }
 
+// upsertImportSet adds an IMPORTS edge to a per-file import set,
+// returning the (possibly newly-allocated) set. The set is keyed by
+// the import target (the ToID for #577-shape IMPORTS edges this is
+// `ext:<package>`; for pre-#577 path-shape edges it was the imported
+// package literal). The Properties["source_module"] / ["imported_name"]
+// columns are also folded in so module-prefix gates
+// (`hasKafkaImport` looks for `org.apache.kafka.*`) match against the
+// real dotted module name, not just the ext:* placeholder.
+func upsertImportSet(set map[string]bool, rel *graph.Relationship) map[string]bool {
+	if set == nil {
+		set = make(map[string]bool, 4)
+	}
+	if rel.ToID != "" {
+		set[rel.ToID] = true
+	}
+	if rel.Properties != nil {
+		if mod := rel.Properties["source_module"]; mod != "" {
+			set[mod] = true
+		}
+		if imp := rel.Properties["imported_name"]; imp != "" {
+			set[imp] = true
+		}
+	}
+	return set
+}
+
 // Synthesize scans every relationship in doc, looks for endpoints
 // whose ToID is a still-unresolved string that matches an external
 // reference heuristic, and appends placeholder entities for each
@@ -103,12 +129,21 @@ func Synthesize(doc *graph.Document) Stats {
 		if rel.FromID == "" || rel.ToID == "" {
 			continue
 		}
-		set, ok := fileImports[rel.FromID]
-		if !ok {
-			set = make(map[string]bool)
-			fileImports[rel.FromID] = set
+		// Issue kafka-chase-578 — #577 moved every extractor's IMPORTS
+		// FromID from the literal file path to the hex ID of a
+		// `SCOPE.Component(subtype=file)` entity that mirrors the file.
+		// File-import gates (`hasKafkaImport`, `hasCommonsCliImport`,
+		// `hasJaxRsImport`, `hasGoChiImport`, `hasKtorServerImport`, ...)
+		// look the import set up by the *caller file path* via
+		// `fileImports[entityFile[caller]]`. Index by both shapes so the
+		// path-keyed lookup the gates use keeps working, while older
+		// extractors that still emit path-shaped FromIDs (or any future
+		// regression) continue to populate the same set.
+		key := rel.FromID
+		fileImports[key] = upsertImportSet(fileImports[key], rel)
+		if path := entityFile[rel.FromID]; path != "" && path != rel.FromID {
+			fileImports[path] = upsertImportSet(fileImports[path], rel)
 		}
-		set[rel.ToID] = true
 	}
 
 	// First pass — collect every unique external name we want to
@@ -1402,6 +1437,62 @@ var javaLangReceivers = map[string]struct{}{
 	"Logger": {}, // also covers org.slf4j.Logger receiver-strip when slf4j prefix isn't reached
 	"UUID":   {},
 	"Base64": {},
+	// Issue kafka-chase-578 — Apache Kafka Streams DSL types that are
+	// statically-imported / aliased receivers across kafka-streams-
+	// examples: `KStream.map(...)`, `Serdes.String()`, `Consumed.with(
+	// ...)`, `KafkaStreams.start()`, `StreamsBuilder.stream(...)`,
+	// `ProcessorContext.forward(...)`, `AdminClient.create(...)`,
+	// `Materialized.with(...)`, `TimeWindows.ofSizeWithNoGrace(...)`.
+	// All originate in `org.apache.kafka.streams.*` /
+	// `org.apache.kafka.clients.*` which is already on the
+	// knownExternalPackages allowlist (line 10346); these rows route
+	// the `Receiver.method` bare-form into ext:java rather than
+	// bug-extractor. lang=="java" gate at call-site keeps the rule
+	// from shadowing same-named user types in other ecosystems.
+	"KStream":               {},
+	"KTable":                {},
+	"KGroupedStream":        {},
+	"KGroupedTable":         {},
+	"GlobalKTable":          {},
+	"KafkaStreams":          {},
+	"StreamsBuilder":        {},
+	"Topology":              {},
+	"TopologyTestDriver":    {},
+	"ProcessorContext":      {},
+	"Serdes":                {},
+	"Consumed":              {},
+	"Produced":              {},
+	"Grouped":               {},
+	"Joined":                {},
+	"StreamJoined":          {},
+	"Materialized":          {},
+	"TimeWindows":           {},
+	"SessionWindows":        {},
+	"SlidingWindows":        {},
+	"Suppressed":            {},
+	"Windowed":              {},
+	"KeyValue":              {},
+	"Record":                {}, // org.apache.kafka.streams.processor.api.Record (also a Java 14+ keyword type)
+	"AdminClient":           {}, // org.apache.kafka.clients.admin.AdminClient
+	"ConsumerRecord":        {}, // org.apache.kafka.clients.consumer.ConsumerRecord
+	"ProducerRecord":        {}, // org.apache.kafka.clients.producer.ProducerRecord
+	"QueryableStoreTypes":   {},
+	"ReadOnlyKeyValueStore": {},
+	"TestInputTopic":        {},
+	"TestOutputTopic":       {},
+	"TestUtils":             {},
+	"Schemas":               {}, // kafka-streams-examples helper
+	"JSerdes":               {}, // kafka-streams-examples helper
+	"Utils":                 {}, // org.apache.kafka.common.utils.Utils
+	// Apache Commons CLI receivers (kafka-streams-examples REST CLI).
+	"Option":            {},
+	"Options":           {},
+	"CommandLine":       {},
+	"CommandLineParser": {},
+	"HelpFormatter":     {},
+	"DefaultParser":     {},
+	// JUnit (Assert.assertEquals(...) static-import receiver).
+	"Assert": {},
 }
 
 // longestKnownDottedPrefix walks the dot-separated prefixes of name
@@ -2751,6 +2842,28 @@ var kafkaStreamsDSLVerbs = map[string]struct{}{
 	"keyValueStoreBuilder":    {},
 	"windowStoreBuilder":      {},
 	"sessionStoreBuilder":     {},
+	// Issue kafka-chase-578 — additional Materialized / Stores /
+	// StoreBuilder fluent verbs receiver-stripped in kafka-streams-
+	// examples (`Materialized.<>as(...).withCachingEnabled().
+	// withLoggingEnabled()`, `Stores...withRetention(...)`).
+	"withCachingEnabled":  {},
+	"withCachingDisabled": {},
+	"withLoggingEnabled":  {},
+	"withLoggingDisabled": {},
+	"withRetention":       {},
+	// Issue kafka-chase-578 — TimeWindows / SessionWindows /
+	// SlidingWindows builder verbs receiver-stripped.
+	"ofSizeWithNoGrace":           {},
+	"ofSizeAndGrace":              {},
+	"ofInactivityGapWithNoGrace":  {},
+	"ofTimeDifferenceWithNoGrace": {},
+	"advanceBy":                   {},
+	// Issue kafka-chase-578 — ProcessorContext fluent verbs
+	// receiver-stripped in custom Processor implementations.
+	"forward":                  {},
+	"stateStoreNames":          {},
+	"setStateRestoreListener":  {},
+	"setStandbyUpdateListener": {},
 	// Properties helpers commonly chained.
 	"put":         {},
 	"putAll":      {},

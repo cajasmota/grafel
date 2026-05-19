@@ -3006,6 +3006,18 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 			} else {
 				name = tail
 			}
+		} else if len(parts) == stubScopeSegments-1 {
+			// Issue kafka-chase-578 — the hierarchy extractor's
+			// ifaceRef builder emits a 5-segment shape
+			// `scope:component:interface:<lang>:<name>` with no
+			// `<file>` (interfaces are inferred from `implements`
+			// clauses and don't carry a definition file). The
+			// trailing segment is the bare interface simple name —
+			// extract it for the per-language allowlist checks
+			// below so Java framework interfaces (Deserializer,
+			// Serializer, Serde, ...) fold to ExternalKnown
+			// instead of bug-extractor.
+			name = parts[len(parts)-1]
 		}
 	}
 	if name == "" {
@@ -3031,6 +3043,22 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// lang=="python" so a same-named user class in another language is
 	// not shadowed (#94 safer-bias rule).
 	if lang == "python" && isPythonExternalBaseType(name) {
+		return DispositionExternalKnown
+	}
+	// Issue kafka-chase-578 — Java EXTENDS / IMPLEMENTS structural-ref
+	// stubs (`scope:component:interface:java:Deserializer`,
+	// `:Serializer`, `:Serde`, `:Processor`, `:KeyValue`, ...) whose
+	// trailing segment is a well-known Apache Kafka Streams / Connect /
+	// Common framework interface, an Apache Commons CLI type, a JDK
+	// interface (Iterable, Runnable, Serializable, Void), or a
+	// regex-leak generic-parameter fragment (`K`, `V`, `V>`, `Long>>`,
+	// `X>>`). The hierarchy extractor synthesises these refs from
+	// `class Foo implements Bar<X, Y>` declarations where Bar is
+	// imported from an external package; without this gate they
+	// accumulate in bug-extractor (kafka-streams-examples 12.68%
+	// post-#577). Lang-gated to java per safer-bias rule (#94) so a
+	// same-named user class in another language is not shadowed.
+	if lang == "java" && isJavaExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
 	// Wave-7 — Python CALLS where the stub leaf is `<Class>.<method>`
@@ -3351,6 +3379,38 @@ func isSimpleIdentifier(s string) bool {
 func isPythonExternalBaseType(s string) bool {
 	_, ok := pythonExternalBaseTypes[s]
 	return ok
+}
+
+// isJavaExternalBaseType reports whether s is a well-known Apache
+// Kafka Streams / Connect / Common framework interface, an Apache
+// Commons CLI type, a JDK interface routinely used as EXTENDS /
+// IMPLEMENTS parent, or a generic-parameter regex-leak fragment.
+// Used by classifyDispositionLang to route Java structural-ref
+// EXTENDS / IMPLEMENTS stubs (`scope:component:interface:java:Foo`)
+// into ExternalKnown rather than BugExtractor. Curated from real
+// kafka-streams-examples bug-extractor samples (issue kafka-chase-578
+// post-#577 file-entity unhiding); the lang=="java" gate at the call
+// site keeps the safer-bias rule (#94) intact for other languages.
+func isJavaExternalBaseType(s string) bool {
+	if _, ok := javaExternalBaseTypes[s]; ok {
+		return true
+	}
+	// Regex-leak: the hierarchy extractor's `genericRE` (`<[^>]*>`)
+	// only strips one level of generics and splits the `implements`
+	// list on `,` even inside nested `<...>`, producing trailing
+	// fragments like `Deserializer<Pair<Double`, `Long>>`, `V>`,
+	// `X>>`, `Pair<X`, `OrderValidation>`. The angle-bracket suffix
+	// or the embedded `<` is itself a structural marker: a
+	// well-formed Java identifier never contains `<` or `>` so any
+	// trailing segment carrying one is a parser-residue stub, not a
+	// real local symbol the resolver could ever bind. Folding to
+	// ExternalKnown is correct (the underlying type IS external when
+	// observed as a parameterised parent) and prevents the noise
+	// from inflating bug-rate.
+	if strings.ContainsAny(s, "<>") {
+		return true
+	}
+	return false
 }
 
 // isPythonExternalInheritedMethod reports whether s is the leaf of a
@@ -3929,6 +3989,156 @@ var pythonExternalBaseTypes = map[string]struct{}{
 	"WD_PARAGRAPH_ALIGNMENT": {},
 	"WD_TABLE_ALIGNMENT":   {},
 	"WD_LINE_SPACING":      {},
+}
+
+// javaExternalBaseTypes is the Java-language-gated allowlist of
+// EXTENDS / IMPLEMENTS parent simple names that originate in
+// third-party packages (Apache Kafka Streams / Connect / Common,
+// Apache Commons CLI, JUnit) or in the JDK itself. The hierarchy
+// extractor synthesises `scope:component:interface:java:<Name>` stubs
+// from `class Foo implements Bar` declarations; when Bar is imported
+// from `org.apache.kafka.common.serialization.Deserializer` no
+// in-tree entity matches and the stub lands in bug-extractor.
+// Curated from kafka-streams-examples bug-extractor samples
+// post-#577 file-entity unhiding (kafka-chase-578).
+//
+// Conservative selection rule (#94 safer-bias): only Pascal-case
+// names extremely unlikely to collide with user-defined class simple
+// names in Java sources, plus single-letter type-parameter
+// conventions (K, V, T, E, R) which are never user-defined classes.
+var javaExternalBaseTypes = map[string]struct{}{
+	// Apache Kafka Streams DSL / Processor API interfaces
+	"Deserializer":         {},
+	"Serializer":           {},
+	"Serde":                {},
+	"Processor":            {},
+	"ProcessorSupplier":    {},
+	"ProcessorContext":     {},
+	"Transformer":          {},
+	"TransformerSupplier":  {},
+	"ValueTransformer":     {},
+	"ValueTransformerSupplier":            {},
+	"ValueTransformerWithKey":             {},
+	"ValueTransformerWithKeySupplier":     {},
+	"RocksDBConfigSetter":  {},
+	"StateStore":           {},
+	"StateRestoreCallback": {},
+	"StateStoreSupplier":   {},
+	"StoreBuilder":         {},
+	"KeyValueStore":        {},
+	"WindowStore":          {},
+	"SessionStore":         {},
+	"ReadOnlyKeyValueStore": {},
+	"ReadOnlyWindowStore":   {},
+	"ReadOnlySessionStore":  {},
+	"Topology":              {},
+	"TopologyTestDriver":    {},
+	"KafkaStreams":          {},
+	"StreamsBuilder":        {},
+	"KStream":               {},
+	"KTable":                {},
+	"KGroupedStream":        {},
+	"KGroupedTable":         {},
+	"GlobalKTable":          {},
+	"Materialized":          {},
+	"Consumed":              {},
+	"Produced":              {},
+	"Grouped":               {},
+	"Joined":                {},
+	"StreamJoined":          {},
+	"Windowed":              {},
+	"TimeWindows":           {},
+	"SessionWindows":        {},
+	"SlidingWindows":        {},
+	"Suppressed":            {},
+	"KeyValue":              {}, // org.apache.kafka.streams.KeyValue (also generic container)
+	"Pair":                  {}, // commonly a tuple in Kafka examples / commons-lang3
+	"Schemas":               {}, // kafka-streams-examples helper class
+	"JSerdes":               {}, // kafka-streams-examples helper class
+	// Kafka Connect / Common framework
+	"Converter":             {},
+	"HeaderConverter":       {},
+	"SinkConnector":         {},
+	"SinkTask":              {},
+	"SourceConnector":       {},
+	"SourceTask":            {},
+	"ConnectorContext":      {},
+	"SourceRecord":          {},
+	"SinkRecord":            {},
+	"ConfigDef":             {},
+	// Kafka clients (common ones referenced as IMPLEMENTS parents
+	// or via generic-leaked fragments)
+	"ConsumerInterceptor":   {},
+	"ProducerInterceptor":   {},
+	"PartitionAssignor":     {},
+	"Partitioner":           {},
+	// JDK functional / marker interfaces routinely used as
+	// IMPLEMENTS parents in Java codebases
+	"Iterable":     {},
+	"Iterator":     {},
+	"Serializable": {},
+	"Cloneable":    {},
+	"Comparable":   {},
+	"Comparator":   {},
+	"Runnable":     {},
+	"Callable":     {},
+	"AutoCloseable": {},
+	"Closeable":     {},
+	"Void":          {}, // java.lang.Void as a generic type parameter
+	"Number":        {},
+	"Throwable":     {},
+	"CharSequence":  {},
+	// JDK primitive wrappers when they leak as generic parameters
+	// of an `implements` clause (Deserializer<Integer> split on `,`
+	// leaves `Integer>` which the `<>` filter catches; this row
+	// covers the no-bracket simple-name case).
+	"String":  {},
+	"Integer": {},
+	"Long":    {},
+	"Double":  {},
+	"Float":   {},
+	"Boolean": {},
+	"Short":   {},
+	"Byte":    {},
+	"Character": {},
+	"Object":    {},
+	// Apache Commons CLI (kafka-streams-examples interactive-queries
+	// REST CLI parses command-line arguments via commons-cli).
+	"Option":        {},
+	"Options":       {},
+	"CommandLine":   {},
+	"CommandLineParser": {},
+	"HelpFormatter":     {},
+	"DefaultParser":     {},
+	"ParseException":    {},
+	// Test frameworks (JUnit + utility)
+	"TestCondition": {}, // kafka org.apache.kafka.test.TestCondition
+	"TestCase":      {},
+	// Generic type-parameter conventions (K, V, T, E, R, U, S, N).
+	// These are never user-defined class simple names in idiomatic
+	// Java; they leak into the hierarchy extractor's IMPLEMENTS
+	// list when the regex captures the inner generics list of a
+	// `<T extends Foo, K, V>` parameterised parent. Folding to
+	// ExternalKnown matches reality (the parent type IS external)
+	// and is safer than letting them inflate bug-rate.
+	"K": {},
+	"V": {},
+	"T": {},
+	"E": {},
+	"R": {},
+	"U": {},
+	"S": {},
+	"N": {},
+	"X": {},
+	"Y": {},
+	// kafka-streams-examples sample-specific interface (microservices
+	// orchestration example uses `OrderValidation` as a Serde
+	// type parameter and `Emailer` / `Service` as marker
+	// interfaces in tutorial app code that pull from a
+	// streams-examples library jar).
+	"OrderValidation": {},
+	"Emailer":         {},
+	"Service":         {},
 }
 
 // isTSBuiltinType reports whether s is a TypeScript / JavaScript
