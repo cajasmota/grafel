@@ -3068,10 +3068,275 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 		isPythonExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
+	// Wave-9 (Python) — module-level constant references emitted by the
+	// Python framework-extractor as `Model:<SCREAMING_SNAKE>` (e.g.
+	// `Model:MA_JURISDICTION_NAME`, `Model:DEFAULT_VIEWSET_ACTIONS`,
+	// `Model:PERMISSION_PAGES`). These are module-scope CONSTANT
+	// assignments imported from a sibling `settings.py` /
+	// `constants.py` module; the base Python extractor only emits
+	// SCOPE.Schema/field entities for class-body assignments
+	// (#526), so module-scope constants have no in-tree entity and
+	// drop to bug-extractor under the `Model:` kind prefix. The leaf
+	// name is unambiguously a constant (^[A-Z][A-Z0-9_]+$ with at
+	// least one underscore-or-multichar token), so route to Dynamic
+	// — the reference is real and resolved at runtime, not an
+	// extractor bug. Gated to lang=="python" or lang=="" with a
+	// kind-prefixed stub (cross-language synthesiser strips the
+	// language tag); safer-bias rule (#94) preserved by the strict
+	// SCREAMING_SNAKE shape which never collides with user method or
+	// class identifiers in JS/Go/Ruby/etc.
+	if (lang == "python" || (lang == "" && strings.Contains(originalStub, stubDelim) &&
+		!strings.HasPrefix(originalStub, stubPrefixScope) &&
+		!strings.HasPrefix(originalStub, stubPrefixExternal))) &&
+		isPythonModuleConstantName(name) {
+		return DispositionDynamic
+	}
+	// Wave-9 (Python) — Celery task dispatch refs (`Task:<name>`)
+	// emitted by the Python framework-extractor when a function is
+	// decorated with `@app.task` / `@celery.task` / `@shared_task`.
+	// The decorator wraps the function so the call site appears as
+	// `mytask.delay(...)` or `mytask.apply_async(...)`; the
+	// extractor records the wrapped target under the `Task:` kind
+	// prefix but the function entity is emitted under SCOPE.Operation
+	// without the prefix, so the kind-bucket lookup misses. These
+	// dispatches are real but resolved at runtime by the Celery
+	// broker — Dynamic is the honest classification. Sample:
+	// `Task:changelog_task`, `Task:my_task`, `Task:task_chain`,
+	// `Task:app`. Gated to lang=="python" / lang=="" with a
+	// kind-prefixed stub.
+	if (lang == "python" || (lang == "" && strings.Contains(originalStub, stubDelim) &&
+		!strings.HasPrefix(originalStub, stubPrefixScope) &&
+		!strings.HasPrefix(originalStub, stubPrefixExternal))) &&
+		isPythonCeleryTaskStub(originalStub) {
+		return DispositionDynamic
+	}
+	// Wave-9 (Python) — DRF `@action`-decorated viewset method
+	// dispatch refs (`Action:<name>`). Same shape as `Task:` above:
+	// the `@action(detail=True)` decorator wraps a viewset method,
+	// the extractor records the wrapped target under the `Action:`
+	// kind prefix, but the method entity is emitted as
+	// SCOPE.Operation without the prefix. The dispatch is real but
+	// resolved at runtime by DRF's router. Defensive — no instances
+	// observed on client-fixture-a but added for symmetry with
+	// Track B and to cover django-rest-framework heavy corpora.
+	if (lang == "python" || (lang == "" && strings.Contains(originalStub, stubDelim) &&
+		!strings.HasPrefix(originalStub, stubPrefixScope) &&
+		!strings.HasPrefix(originalStub, stubPrefixExternal))) &&
+		isPythonDRFActionStub(originalStub) {
+		return DispositionDynamic
+	}
+	// Wave-9 (Python) — dotted-lower-head references to a
+	// module-level constant: `<pkg>.<module>.<SCREAMING_SNAKE>`
+	// (e.g. `upvate_core.settings.PERMISSION_PAGES`,
+	// `upvate_core.settings.DEFAULT_VIEWSET_ACTIONS`). The head
+	// segments are a module path (lower_snake) and the trailing
+	// segment is a constant. The Python framework-extractor doesn't
+	// emit SCOPE entities for module-scope constants (see Track A
+	// rationale above) so the dotted lookup misses both the module
+	// and the bare leaf. Route to Dynamic since the reference is a
+	// real runtime constant import, not an extractor bug. Gated to
+	// lang=="python" (the leaf shape — uppercase with underscore —
+	// is rare in non-python idioms; safer-bias rule preserved).
+	if lang == "python" && isPythonDottedModuleConstant(name) {
+		return DispositionDynamic
+	}
+	// Wave-9 (Python) — receiver-qualified builtin-type method calls
+	// (`str.strip`, `str.lower`, `dict.items`, `list.append`,
+	// `tuple.count`, etc.). The Python extractor preserves the
+	// receiver type name on the call site when the receiver is a
+	// bare builtin-type reference rather than an instance variable,
+	// producing dotted stubs whose head is one of Python's
+	// well-known builtin types and whose leaf is a builtin-method
+	// identifier. Route to ExternalKnown — these are stdlib data-
+	// model methods, not extractor bugs and not user code. Sample:
+	// `str.strip` (26), `str.lower` (12), `str.split` (10),
+	// `str.replace` (4), `str.isdigit` (4), `dict.items` (1).
+	// Gated to lang=="python" so a same-shaped reference in
+	// another language (e.g. Go's `str.Title` receiver pattern) is
+	// not shadowed; safer-bias rule (#94) preserved by the strict
+	// builtin-type head allowlist.
+	if lang == "python" && isPythonBuiltinTypeMethod(name) {
+		return DispositionExternalKnown
+	}
 	if idx.nameExists(name) {
 		return DispositionBugResolver
 	}
 	return DispositionBugExtractor
+}
+
+// isPythonModuleConstantName reports whether s is a SCREAMING_SNAKE_CASE
+// identifier of the form ^[A-Z][A-Z0-9_]*$ AND contains either an
+// underscore or is at least 3 characters long — restricting to names
+// that are unambiguously module-level CONSTANT declarations in Python
+// idiom. Single uppercase letters (`F`, `T`) and short two-letter
+// names (`PI`, `OK`) would collide with type variables and HTTP-status
+// constants and are excluded. Wave-9 client-fixture-a addition for
+// `Model:MA_JURISDICTION_NAME`-style stubs where the base Python
+// extractor doesn't emit entities for module-scope assignments.
+func isPythonModuleConstantName(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	hasUnderscore := false
+	for i, c := range s {
+		switch {
+		case c >= 'A' && c <= 'Z':
+			// ok
+		case c >= '0' && c <= '9':
+			if i == 0 {
+				return false
+			}
+		case c == '_':
+			if i == 0 || i == len(s)-1 {
+				return false
+			}
+			hasUnderscore = true
+		default:
+			return false
+		}
+	}
+	// Require an underscore so two-letter all-caps (`OK`, `PI`) and
+	// HTTP-status short names don't bind here.
+	return hasUnderscore
+}
+
+// isPythonCeleryTaskStub reports whether stub is of the form
+// `Task:<name>` where <name> is a lower_snake_case or PascalCase
+// identifier (i.e. not itself a module path). Used to route
+// `@app.task` / `@celery.task` / `@shared_task` dispatch references
+// (`mytask.delay(...)`, `mytask.apply_async(...)`) to Dynamic when
+// the wrapped function entity is emitted without the `Task:` kind
+// prefix and the kind-bucket lookup misses. Wave-9 client-fixture-a
+// addition. Gated upstream to lang=="python" or lang="" with a
+// kind-prefixed stub.
+func isPythonCeleryTaskStub(stub string) bool {
+	const prefix = "Task:"
+	if !strings.HasPrefix(stub, prefix) {
+		return false
+	}
+	name := stub[len(prefix):]
+	return isSimpleIdentifier(name)
+}
+
+// isPythonDRFActionStub reports whether stub is of the form
+// `Action:<name>` where <name> is a simple identifier. DRF
+// `@action(detail=True)` viewset-method decorator wraps a method;
+// the dispatch reference arrives under the `Action:` kind prefix
+// without a matching kind bucket. Wave-9 client-fixture-a defensive
+// addition (no instances observed on client-fixture-a; added for
+// symmetry with isPythonCeleryTaskStub and to cover DRF-heavy
+// corpora). Gated upstream same as Task.
+func isPythonDRFActionStub(stub string) bool {
+	const prefix = "Action:"
+	if !strings.HasPrefix(stub, prefix) {
+		return false
+	}
+	name := stub[len(prefix):]
+	return isSimpleIdentifier(name)
+}
+
+// isPythonDottedModuleConstant reports whether s is a dotted-path
+// reference of the form `<lower_seg>.<lower_seg>...<SCREAMING_SNAKE>`
+// with at least one dot and the trailing segment being a
+// module-level CONSTANT (per isPythonModuleConstantName). Used to
+// route refs like `upvate_core.settings.PERMISSION_PAGES` to Dynamic
+// when the Python framework-extractor doesn't emit SCOPE entities
+// for module-scope constants. Wave-9 client-fixture-a addition.
+// Gated upstream to lang=="python" (the trailing SCREAMING_SNAKE
+// leaf is rare in non-python idioms; safer-bias rule preserved).
+func isPythonDottedModuleConstant(s string) bool {
+	dot := strings.LastIndexByte(s, '.')
+	if dot <= 0 || dot >= len(s)-1 {
+		return false
+	}
+	head := s[:dot]
+	leaf := s[dot+1:]
+	if !isPythonModuleConstantName(leaf) {
+		return false
+	}
+	// Head must be a sequence of lower-case dotted segments — a
+	// canonical Python module path. Empty segments, leading dots,
+	// or uppercase characters disqualify (avoids binding
+	// `ClassName.METHOD` shapes which are class-method refs, not
+	// module-constant refs).
+	if head == "" {
+		return false
+	}
+	for _, seg := range strings.Split(head, ".") {
+		if seg == "" {
+			return false
+		}
+		for i, c := range seg {
+			switch {
+			case c >= 'a' && c <= 'z':
+				// ok
+			case c >= '0' && c <= '9':
+				if i == 0 {
+					return false
+				}
+			case c == '_':
+				// ok
+			default:
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isPythonBuiltinTypeMethod reports whether s is a dotted reference
+// `<builtin_type>.<method>` where <builtin_type> is one of Python's
+// well-known builtin types (str, dict, list, tuple, set, frozenset,
+// bytes, bytearray, int, float, bool). Used by classifyDispositionLang
+// to route receiver-qualified builtin-type method calls (e.g.
+// `str.strip`, `dict.items`) to ExternalKnown when the resolver
+// can't bind them as in-tree entities. Wave-9 client-fixture-a
+// addition; gated upstream to lang=="python".
+func isPythonBuiltinTypeMethod(s string) bool {
+	dot := strings.IndexByte(s, '.')
+	if dot <= 0 || dot >= len(s)-1 {
+		return false
+	}
+	head := s[:dot]
+	switch head {
+	case "str", "dict", "list", "tuple", "set", "frozenset",
+		"bytes", "bytearray", "int", "float", "bool":
+		// fall through — head is a builtin type
+	default:
+		return false
+	}
+	// Reject further dotted segments — only a single dotted leaf
+	// is a builtin method (avoid binding `str.foo.bar`).
+	rest := s[dot+1:]
+	if strings.ContainsRune(rest, '.') {
+		return false
+	}
+	return isSimpleIdentifier(rest)
+}
+
+// isSimpleIdentifier reports whether s is a non-empty Python
+// identifier consisting only of letters, digits, and underscores
+// with a non-digit leading character. Used by Celery / DRF action
+// stub classifiers to filter out dotted module paths and other
+// non-identifier shapes that should not bind to a wrapped function
+// entity. Wave-9 client-fixture-a helper.
+func isSimpleIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_':
+			// ok
+		case c >= '0' && c <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // isPythonExternalBaseType reports whether s is a well-known Django /
