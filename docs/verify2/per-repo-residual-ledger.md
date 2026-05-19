@@ -1290,3 +1290,67 @@ type primitive) — chain-fix already filed in click PR #601.
    signal (could be: presence of a `with open(...)` block in the
    function, or a `bytes`/`str` literal-typed receiver inference).
 
+
+## #613 — Go chi/gin/echo/fiber/gorilla_mux ROUTES_TO method binding (2026-05-19)
+
+The YAML rules for the five supported Go HTTP routers capture the handler
+argument with `(\w+)`, which cannot span `.` — so `r.Get("/users", h.List)`
+emits a ROUTES_TO edge to `Controller:h` (the receiver variable) instead of
+`Controller:UsersHandler.List` (the actual method entity). Every Go web
+service in the corpus + downstream user stacks is affected.
+
+**Fix (Option A):** new AST-driven post-pass `applyGoRouteComposition` in
+`internal/engine/go_routes.go`. The pass parses Go source with the stdlib
+`go/parser`, builds a same-file `varName -> typeName` map covering the three
+declaration shapes that dominate handler-registration code:
+
+1. `var h *UsersHandler` / `var h UsersHandler` — typed var decl.
+2. `h := &UsersHandler{...}` / `h := UsersHandler{...}` — composite literal.
+3. `h := NewUsersHandler(...)` / `h := handlers.NewUsersHandler(...)` —
+   Go `NewT` constructor idiom, which by convention returns `*T`.
+
+It then walks every `<recv>.<HTTPVerb>("<path>", <recv>.<Method>)` call,
+resolves `<recv>` via the var-type map, and rewrites the matching
+`Controller:<recv>` ROUTES_TO ToID to `Controller:<TypeName>.<Method>`. The
+pass edits ToID only — no entities created, no relationships added or
+removed — so it cannot regress non-Go pipelines or introduce
+false-positive Routes. When a receiver cannot be confidently resolved the
+edge is left untouched (safer-bias).
+
+**Quality bench delta (go-chi-mini fixture):**
+
+- Pre-fix recall: relationships 15/16 (93.8%); `nice_to_have` 1/2 (the
+  /users → UsersHandler.List edge was nice-to-have because the must_exist
+  asserted the broken `Controller:h` target).
+- Post-fix recall: relationships 17/17 (100.0%); `must_exist`
+  flipped to the correct method target, plus a second must_exist for
+  /users/{id} → UsersHandler.Get to assert multiple bindings off one
+  receiver var.
+- Forbidden hits: 0 (unchanged).
+
+**Regression check (mandatory):**
+
+| Fixture | Pre | Post | Δ |
+|---|---:|---:|---:|
+| go-chi-mini | 93.8% | 100.0% | +6.2pp |
+| java-spring-mini | 100.0% | 100.0% | 0.000pp |
+| python-django-mini | 100.0% | 100.0% | 0.000pp |
+| rust-tokio-mini | 100.0% | 100.0% | 0.000pp |
+| typescript-react-mini | 100.0% | 100.0% | 0.000pp |
+
+Zero regressions outside go (language-gated). All five quality fixtures at
+100% recall post-fix.
+
+**Residual root cause:** receiver-type tracking is intentionally bounded to
+the three Go-idiomatic shapes above; uncommon patterns (factories that
+don't follow `NewT`, struct fields holding handlers, generic-typed
+receivers, embedded-struct method promotion) still fall through to
+"unresolved → leave edge alone". A future #494 receiver-type primitive
+would cover those cases.
+
+**Status:** shipped. New edges land at `pattern_type=ast_driven` +
+`go_route_binding=method_receiver_resolved` for downstream telemetry.
+
+**Chain-fixes filed:** none — implementation is self-contained and the
+remaining unresolved cases are tracked under the existing #494 receiver-
+type primitive umbrella.

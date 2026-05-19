@@ -81,8 +81,9 @@
       "must_exist": true },
 
     { "from_name": "/users", "from_kind": "Route", "from_file": "main.go",
-      "kind": "ROUTES_TO", "to_bare_name": "Controller:h", "must_exist": true,
-      "note": "Chi route -> handler binding; today the to_bare_name is the receiver variable, not the method (capability gap)." },
+      "kind": "ROUTES_TO", "to_name": "UsersHandler.List", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
+      "must_exist": true,
+      "note": "Chi route -> handler method binding. Fixed by #613: the Go AST receiver-resolution post-pass rewrites Controller:<recv> to Controller:<Type>.<Method>." },
 
     { "from_name": "UsersHandler.Get", "from_kind": "SCOPE.Operation", "from_file": "handlers/users.go",
       "kind": "CALLS", "to_name": "writeJSON", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
@@ -94,9 +95,9 @@
       "must_exist": false, "nice_to_have": true,
       "note": "Cross-package method call through interface field (h.Store.List). Today bare-name h.Store.List is not resolved to the implementing struct." },
 
-    { "from_name": "/users", "from_kind": "Route", "from_file": "main.go",
-      "kind": "ROUTES_TO", "to_name": "UsersHandler.List", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
-      "must_exist": false, "nice_to_have": true,
-      "note": "Route should bind to the handler method, not the receiver variable. Filed as a chi-extractor gap." }
+    { "from_name": "/users/{id}", "from_kind": "Route", "from_file": "main.go",
+      "kind": "ROUTES_TO", "to_name": "UsersHandler.Get", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
+      "must_exist": true,
+      "note": "Second chi route emitted from the same `h := handlers.NewUsersHandler(s)` receiver. Asserts the post-pass handles multiple bindings off one receiver var. Refs #613." }
   ]
 }

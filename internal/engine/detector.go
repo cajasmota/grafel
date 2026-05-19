@@ -225,6 +225,16 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		ctx, file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// Go HTTP route binding pass: rewrites YAML-emitted
+	// `Route:<path> -ROUTES_TO-> Controller:<receiverVar>` edges to point at
+	// the qualified handler method (`Controller:<Type>.<Method>`). Covers
+	// chi, gin, echo, fiber, gorilla_mux — every framework whose YAML rule
+	// captures only the bare receiver identifier with `(\w+)`. Edits ToID
+	// only; never adds/removes entities. No-op for non-Go files. Refs #613.
+	entities, relationships = applyGoRouteComposition(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// Synthetic http_endpoint emission for typed-HTTP cross-repo matching.
 	// Runs AFTER the Spring + Django composition passes so it can re-use
 	// the composed Route entities they emit. Appends new entities/edges
