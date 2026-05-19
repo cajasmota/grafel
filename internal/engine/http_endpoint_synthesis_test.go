@@ -142,6 +142,125 @@ func TestSynth_Express(t *testing.T) {
 	requireContains(t, got, want, "Express")
 }
 
+// TestSynth_Express_FalsePositiveBlocklist verifies that non-HTTP API calls
+// that share the same method names as Express routes do NOT produce
+// http_endpoint entities. This covers the confirmed false-positive patterns
+// from audit report 2026-05-19 (issue #653).
+//
+// Blacklisted receivers tested here:
+//   - formData.delete(key)        — FormData API (browser)
+//   - urlSearchParams.get(key)    — URLSearchParams API (browser)
+//   - searchParams.get(key)       — URLSearchParams alias (common)
+//   - headers.delete(key)         — Headers API (browser fetch)
+//   - Dimensions.get('window')    — React Native screen dimensions
+//   - localStorage.getItem(key)   — Web Storage API
+//   - sessionStorage.getItem(key) — Web Storage API
+//   - cache.delete(key)           — Cache API (service-worker)
+//   - map.get(key)                — ES6 Map
+//   - set.delete(key)             — ES6 Set
+func TestSynth_Express_FalsePositiveBlocklist(t *testing.T) {
+	src := "// All of the following look like express verbs but are NOT HTTP routes.\n" +
+		"formData.delete('cronjob_opt_in');\n" +
+		"formData.delete('deficiency_proposal_pricing');\n" +
+		"urlSearchParams.get('segment');\n" +
+		"searchParams.get('session_expired');\n" +
+		"headers.delete('Authorization');\n" +
+		"Dimensions.get('window');\n" +
+		"localStorage.getItem('token');\n" +
+		"sessionStorage.getItem('user');\n" +
+		"cache.delete('my-cache-key');\n" +
+		"map.get('some-key');\n" +
+		"set.delete('some-key');\n" +
+		"params.get('id');\n" +
+		"query.get('filter');\n"
+	got, _ := runDetect(t, "javascript", "components/ui/Form.jsx", src)
+	if len(got) != 0 {
+		t.Errorf("expected zero http_endpoint entities from non-HTTP calls, got %v", got)
+	}
+}
+
+// TestSynth_Express_ReceiverAllowlist verifies that the receiver-shape gate
+// allows known Express receiver names through while blocking unknown or
+// ambiguous names.
+func TestSynth_Express_ReceiverAllowlist(t *testing.T) {
+	// Should match: these look like Express app/router variables.
+	allowed := []struct {
+		receiver string
+		verb     string
+		path     string
+	}{
+		{"app", "get", "/users"},
+		{"router", "post", "/items"},
+		{"r", "delete", "/things/:id"},
+		{"srv", "get", "/health"},
+		{"server", "put", "/profile"},
+		{"apiRouter", "get", "/api/v1/orders"},
+		{"myApp", "post", "/submit"},
+		{"httpServer", "get", "/ping"},
+		{"userRouter", "delete", "/users/:id"},
+	}
+
+	for _, tc := range allowed {
+		line := tc.receiver + "." + tc.verb + "('" + tc.path + "', handler);\n"
+		got, _ := runDetect(t, "javascript", "server.js", line)
+		if len(got) == 0 {
+			t.Errorf("receiver %q with path %q: expected an http_endpoint entity, got none", tc.receiver, tc.path)
+		}
+	}
+}
+
+// TestSynth_Express_ReceiverBlocklistUnknown verifies that arbitrary unknown
+// receiver names without any express-like suffix are NOT emitted as endpoints.
+func TestSynth_Express_ReceiverBlocklistUnknown(t *testing.T) {
+	// These should NOT emit HTTP endpoints even though the method name looks
+	// like an Express verb — the receiver is not Express-shaped.
+	blocked := []struct {
+		receiver string
+		verb     string
+		path     string
+	}{
+		{"myObj", "get", "/users"},
+		{"someService", "post", "/items"},
+		{"helper", "delete", "/things"},
+		{"config", "get", "/settings"},
+	}
+
+	for _, tc := range blocked {
+		line := tc.receiver + "." + tc.verb + "('" + tc.path + "', handler);\n"
+		got, _ := runDetect(t, "javascript", "utils/helper.js", line)
+		if len(got) != 0 {
+			t.Errorf("receiver %q: expected zero http_endpoint entities, got %v", tc.receiver, got)
+		}
+	}
+}
+
+// TestSynth_Express_PathGate verifies the path-shape gate: a receiver that
+// looks Express-shaped but passes a non-path string (no leading `/`) must not
+// emit an endpoint. This is the belt-and-suspenders layer on top of the
+// receiver gate (issue #653 strategy C).
+func TestSynth_Express_PathGate(t *testing.T) {
+	// Even if the receiver were allowlisted, these string args are not HTTP paths.
+	src := "app.get('window', handler);\n" +
+		"app.delete('key', handler);\n" +
+		"router.get('cronjob_opt_in', handler);\n"
+	got, _ := runDetect(t, "javascript", "server.js", src)
+	if len(got) != 0 {
+		t.Errorf("expected zero http_endpoint entities for non-path args, got %v", got)
+	}
+}
+
+// TestSynth_Express_ReactNativeDimensions specifically reproduces the
+// fixture-c false positive: Dimensions.get('window') in React Native files.
+func TestSynth_Express_ReactNativeDimensions(t *testing.T) {
+	src := "import { Dimensions } from 'react-native';\n" +
+		"const { width, height } = Dimensions.get('window');\n" +
+		"const windowWidth = Dimensions.get('window').width;\n"
+	got, _ := runDetect(t, "typescript", "components/ui/drawer/index.tsx", src)
+	if len(got) != 0 {
+		t.Errorf("Dimensions.get('window') should not produce http_endpoint entities, got %v", got)
+	}
+}
+
 // TestSynth_JAXRS exercises a class-level @Path with method-level @GET +
 // @Path and bare @POST without a method-level path.
 func TestSynth_JAXRS(t *testing.T) {
