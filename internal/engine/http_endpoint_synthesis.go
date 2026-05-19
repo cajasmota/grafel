@@ -67,7 +67,7 @@ const implementsEdgeKind = "IMPLEMENTS"
 // are compiled for its language.
 func synthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "java", "python", "javascript", "typescript":
+	case "java", "python", "javascript", "typescript", "go":
 		return true
 	default:
 		return false
@@ -176,7 +176,15 @@ func applyHTTPEndpointSynthesis(
 		// Consumer side (#533 Phase 1): fetch / axios / generic *Client
 		// HTTP client calls.
 		synthesizeFetchAxios(string(content), emitClient)
+	case "go":
+		// Producer side: Gin / Echo / Chi route registrations. #722.
+		synthesizeGoRouters(string(content), emit)
 	}
+
+	// #722 — response/request shape extraction. Mutates Properties on
+	// the synthetic entities emitted above; never adds or removes
+	// entities, so it cannot regress the bug-rate of upstream passes.
+	applyResponseShapes(lang, content, entities)
 
 	return entities, relationships
 }

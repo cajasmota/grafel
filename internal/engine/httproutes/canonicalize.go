@@ -25,6 +25,13 @@ const (
 	FrameworkSpring  = "spring"
 	FrameworkJAXRS   = "jaxrs"
 	FrameworkExpress = "express"
+	// FrameworkGin, FrameworkEcho, FrameworkChi (#722) share Express's
+	// `:name` parameter convention; their canonicalisation reuses the
+	// colon-param walker. They are listed as distinct constants so call
+	// sites in per-language extractors read naturally.
+	FrameworkGin  = "gin"
+	FrameworkEcho = "echo"
+	FrameworkChi  = "chi"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -47,7 +54,7 @@ func Canonicalize(framework, raw string) string {
 		out = canonicalizeAngleBrackets(raw)
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS:
 		out = canonicalizeCurlyBraces(raw)
-	case FrameworkExpress:
+	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi:
 		out = canonicalizeColonParams(raw)
 	default:
 		// Unknown framework: pass through but still normalise slashes.
