@@ -531,6 +531,19 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			fmt.Fprintf(os.Stderr, "archigraph: django_cbv_routes=%d entities\n", len(cbvEntities))
 		}
 		pass3Records = append(pass3Records, cbvEntities...)
+
+		// Pass 2.6d — Django admin route synthesis (#801). Emits
+		// http_endpoint synthetics for every ModelAdmin registration found
+		// in admin.py files (admin.site.register, @admin.register,
+		// class FooAdmin(admin.ModelAdmin)). Covers changelist, add,
+		// change, delete, history, autocomplete, custom actions, and
+		// get_urls() overrides. Also emits site-level routes (login,
+		// logout, password_change, jsi18n) once per project.
+		adminEntities := runDjangoAdminRoutes(classified)
+		if len(adminEntities) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: django_admin_synthetic=%d entities\n", len(adminEntities))
+		}
+		pass3Records = append(pass3Records, adminEntities...)
 	}
 
 	// Pass 2.6 — Java JAX-RS / Spring MVC annotation route composition.
@@ -1607,6 +1620,30 @@ func runDjangoDRFRoutes(classified []classifiedFile) []types.EntityRecord {
 		return contentByPath[relPath]
 	}
 	return engine.ApplyDjangoDRFRoutes(pyPaths, reader)
+}
+
+// runDjangoAdminRoutes runs the Django admin URL synthesis pass (#801).
+// Emits http_endpoint synthetics for every ModelAdmin registration found in
+// admin.py files: admin.site.register, @admin.register, and class-based
+// admin definitions. Also emits site-level routes (login, logout, etc.)
+// once per project.
+func runDjangoAdminRoutes(classified []classifiedFile) []types.EntityRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte {
+		return contentByPath[relPath]
+	}
+	return engine.ApplyDjangoAdminRoutes(pyPaths, reader)
 }
 
 // runDjangoCBVRoutes runs the Django CBV generic-method resolution pass
