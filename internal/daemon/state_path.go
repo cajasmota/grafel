@@ -78,3 +78,9 @@ func StateDirForRepo(repoPath string) string {
 func GraphPathForRepo(repoPath string) string {
 	return filepath.Join(StateDirForRepo(repoPath), "graph.json")
 }
+
+// FBPathForRepo returns the canonical graph.fb path inside the
+// per-repo state directory. Added for ADR-0016 flip-day (#808).
+func FBPathForRepo(repoPath string) string {
+	return filepath.Join(StateDirForRepo(repoPath), "graph.fb")
+}

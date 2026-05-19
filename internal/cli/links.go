@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -144,10 +143,12 @@ func runLinksForGroup(cmd *cobra.Command, group string) error {
 	return nil
 }
 
-// stageGraphsDir does NOT copy graphs; it returns a directory containing
-// one symlink per repo to the repo's actual <repo>/.archigraph/graph.json.
-// This keeps the on-disk layout that loadAllGraphs expects (one
-// graph.json per nested dir) without duplicating bytes.
+// stageGraphsDir creates a scratch directory containing one sub-dir per
+// repo. Each sub-dir has symlinks pointing at the repo's on-disk graph
+// files (graph.fb and/or graph.json). This keeps the layout that
+// loadAllGraphs expects without duplicating bytes. ADR-0016 flip-day
+// (#808): graph.fb is symlinked when present so LoadGraphFromDir
+// can prefer the binary format in downstream passes.
 func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 	tmp, err := os.MkdirTemp("", "archigraph-links-")
 	if err != nil {
@@ -155,8 +156,13 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 	}
 	cleanup := func() { _ = os.RemoveAll(tmp) }
 	for _, r := range cfg.Repos {
-		src := daemon.GraphPathForRepo(r.Path)
-		if _, err := os.Stat(src); err != nil {
+		stateDir := daemon.StateDirForRepo(r.Path)
+		jsonSrc := daemon.GraphPathForRepo(r.Path)
+		fbSrc := filepath.Join(stateDir, "graph.fb")
+
+		hasFB := func() bool { _, e := os.Stat(fbSrc); return e == nil }()
+		hasJSON := func() bool { _, e := os.Stat(jsonSrc); return e == nil }()
+		if !hasFB && !hasJSON {
 			continue
 		}
 		dstDir := filepath.Join(tmp, r.Slug)
@@ -164,10 +170,17 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 			cleanup()
 			return "", func() {}, err
 		}
-		dst := filepath.Join(dstDir, "graph.json")
-		if err := os.Symlink(src, dst); err != nil {
-			cleanup()
-			return "", func() {}, err
+		if hasJSON {
+			if err := os.Symlink(jsonSrc, filepath.Join(dstDir, "graph.json")); err != nil {
+				cleanup()
+				return "", func() {}, err
+			}
+		}
+		if hasFB {
+			if err := os.Symlink(fbSrc, filepath.Join(dstDir, "graph.fb")); err != nil {
+				cleanup()
+				return "", func() {}, err
+			}
 		}
 	}
 	return tmp, cleanup, nil
@@ -205,20 +218,26 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 		return 0, nil // nothing to promote
 	}
 
-	// Load each repo's graph.Document.
+	// Load each repo's graph.Document. Prefer graph.fb when available
+	// (ADR-0016 flip-day #808); fall back to graph.json via LoadGraphFromDir.
 	docs := make(map[string]*graph.Document, len(cfg.Repos))
-	graphPaths := make(map[string]string, len(cfg.Repos)) // slug → on-disk path
+	graphPaths := make(map[string]string, len(cfg.Repos)) // slug → graph.json path for WriteAtomic
 	for _, r := range cfg.Repos {
-		p := daemon.GraphPathForRepo(r.Path)
-		if _, err := os.Stat(p); err != nil {
+		stateDir := daemon.StateDirForRepo(r.Path)
+		fbPath := filepath.Join(stateDir, "graph.fb")
+		jsonPath := daemon.GraphPathForRepo(r.Path)
+		// Check that at least one graph file exists before attempting load.
+		hasFB := func() bool { _, e := os.Stat(fbPath); return e == nil }()
+		hasJSON := func() bool { _, e := os.Stat(jsonPath); return e == nil }()
+		if !hasFB && !hasJSON {
 			continue // repo not indexed yet
 		}
-		doc, err := loadGraphDocument(p)
+		doc, err := loadGraphDocument(stateDir)
 		if err != nil {
 			return 0, fmt.Errorf("phantom-edge pass: load %s: %w", r.Slug, err)
 		}
 		docs[r.Slug] = doc
-		graphPaths[r.Slug] = p
+		graphPaths[r.Slug] = jsonPath // WriteAtomic still writes graph.json
 	}
 	if len(docs) == 0 {
 		return 0, nil
@@ -322,18 +341,14 @@ func stripProcessEntities(doc *graph.Document) ([]graph.Entity, []graph.Relation
 	return entities, rels
 }
 
-// loadGraphDocument reads and decodes a graph.json file from disk.
-func loadGraphDocument(path string) (*graph.Document, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var doc graph.Document
-	if err := json.NewDecoder(f).Decode(&doc); err != nil {
-		return nil, fmt.Errorf("decode %s: %w", path, err)
-	}
-	return &doc, nil
+// loadGraphDocument loads a graph.Document from a state directory (the
+// directory containing graph.fb / graph.json). Prefers graph.fb when
+// present; falls back to graph.json. ADR-0016 flip-day (#808).
+//
+// The path argument MUST be the state directory (e.g. the value returned
+// by daemon.StateDirForRepo), NOT the graph.json path itself.
+func loadGraphDocument(stateDir string) (*graph.Document, error) {
+	return graph.LoadGraphFromDir(stateDir)
 }
 
 // splitKey is a local thin wrapper around the shape used by Link.Source/Target:

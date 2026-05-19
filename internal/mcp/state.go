@@ -257,17 +257,14 @@ func (s *State) SnapshotGroups() []*LoadedGroup {
 	return out
 }
 
-// readDocument loads a graph.json file from disk.
-func readDocument(path string) (*graph.Document, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var doc graph.Document
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("graph %s: %w", path, err)
-	}
-	return &doc, nil
+// readDocument loads a graph document from disk. It receives the
+// graph.json path for back-compat with the registry's graphFile()
+// helper, derives the state directory, then delegates to
+// graph.LoadGraphFromDir which prefers graph.fb when present (ADR-0016
+// flip-day, issue #808).
+func readDocument(graphJSONPath string) (*graph.Document, error) {
+	stateDir := filepath.Dir(graphJSONPath)
+	return graph.LoadGraphFromDir(stateDir)
 }
 
 // readLinks reads the cross-repo links file.

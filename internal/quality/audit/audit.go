@@ -9,7 +9,6 @@
 package audit
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -20,7 +19,6 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
-
 	"github.com/cajasmota/archigraph/internal/graph"
 )
 
@@ -176,10 +174,18 @@ func AuditPath(path string, corpus bool) (*Report, error) {
 	return rep, nil
 }
 
-// hasGraphJSON returns true if dir/.archigraph/graph.json exists.
+// hasGraph returns true if dir has any indexable graph (graph.fb or
+// graph.json) in its .archigraph state directory.
+// Renamed from hasGraphJSON for ADR-0016 flip-day (#808).
 func hasGraphJSON(dir string) bool {
-	_, err := os.Stat(daemon.GraphPathForRepo(dir))
-	return err == nil
+	stateDir := daemon.StateDirForRepo(dir)
+	if _, err := os.Stat(filepath.Join(stateDir, "graph.fb")); err == nil {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "graph.json")); err == nil {
+		return true
+	}
+	return false
 }
 
 // findRepos walks one directory level deep looking for subdirectories that
@@ -234,12 +240,11 @@ func auditMany(paths []string) []*RepoReport {
 	return out
 }
 
-// auditRepo loads .archigraph/graph.json for one repo and computes every
-// metric in RepoReport. It uses encoding/json's streaming decoder for the
-// large entities + relationships arrays so we avoid materialising the
-// whole document twice in memory.
+// auditRepo loads the graph for one repo (graph.fb preferred, graph.json
+// fallback — ADR-0016 flip-day, issue #808) and computes every metric
+// in RepoReport.
 func auditRepo(repoPath string) (*RepoReport, error) {
-	graphPath := daemon.GraphPathForRepo(repoPath)
+	stateDir := daemon.StateDirForRepo(repoPath)
 	rr := &RepoReport{
 		Path:                 repoPath,
 		EntitiesByLanguage:   map[string]int{},
@@ -253,7 +258,7 @@ func auditRepo(repoPath string) (*RepoReport, error) {
 		ClassificationByLang: map[string]map[OrphanCause]int{},
 	}
 
-	doc, err := loadDocument(graphPath)
+	doc, err := graph.LoadGraphFromDir(stateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -373,25 +378,6 @@ func auditRepo(repoPath string) (*RepoReport, error) {
 	return rr, nil
 }
 
-// loadDocument streams graph.json into memory. We use a one-shot Decoder
-// rather than splitting entities/relationships into chunks: the bottleneck on
-// modern hardware is allocation, and json.Unmarshal of a 200 MB document
-// completes in ~2-3 s, well inside the per-repo budget. If a future corpus
-// outgrows that, this is the choke point to revisit (an Iterator-style decoder
-// that calls back into Pass 1/2/3 directly would halve memory.)
-func loadDocument(path string) (*graph.Document, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open graph.json: %w", err)
-	}
-	defer f.Close()
-	dec := json.NewDecoder(f)
-	var doc graph.Document
-	if err := dec.Decode(&doc); err != nil {
-		return nil, fmt.Errorf("decode %s: %w", path, err)
-	}
-	return &doc, nil
-}
 
 // relLanguage returns the canonical language for a relationship. We prefer
 // the explicit `language` property the extractor sets on most edges; if it's

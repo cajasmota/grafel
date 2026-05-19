@@ -89,14 +89,17 @@ type Indexer struct {
 	// trust-model rules in docs/specs/repair-trust-model.md.
 	enableRepairApply bool
 
-	// exportFB toggles dual-write of the v2 FlatBuffers binary graph
-	// alongside graph.json (issue #634 / ADR-0016 phase-1 design +
-	// prototype). When true, after graph.WriteAtomic emits graph.json
-	// the indexer also writes graph.fb in the same .archigraph dir.
-	// Default false during phase-1 rollout — the writer is opt-in until
-	// the binary reader proves itself on consumers (MCP query, doctor,
-	// dashboard).
-	exportFB bool
+	// exportFB is a deprecated no-op field retained for back-compat with
+	// existing callers that pass WithExportFB(true). graph.fb is now
+	// always written; setting exportFB has no additional effect.
+	// Removed in the next major release (issue #808 / ADR-0016 flip-day).
+	exportFB bool // DEPRECATED: always-on since #808; kept for back-compat
+
+	// skipJSON suppresses emission of graph.json when true. Users who
+	// want the smaller, faster-write-only binary output can pass
+	// --skip-json on `archigraph index` or `archigraph rebuild`.
+	// Default false (dual-write for one release deprecation window).
+	skipJSON bool
 
 	// printSkipped, when true, emits one [skip] line to stderr for each
 	// directory that was skipped at walk-time (issue #805). Shows which
@@ -143,11 +146,26 @@ func WithRepairApply(enabled bool) IndexOption {
 	return func(i *Indexer) { i.enableRepairApply = enabled }
 }
 
-// WithExportFB toggles dual-write of the v2 FlatBuffers binary graph
-// (issue #634 / ADR-0016). When true, graph.fb is written next to
-// graph.json after a successful index pass. Default is false.
+// WithExportFB is a deprecated no-op. graph.fb is now always written
+// (ADR-0016 flip-day, issue #808). The flag is kept for back-compat
+// and will be removed in the next major release.
+//
+// Deprecated: use WithSkipJSON(true) to suppress graph.json instead.
 func WithExportFB(enabled bool) IndexOption {
-	return func(i *Indexer) { i.exportFB = enabled }
+	return func(i *Indexer) {
+		if enabled {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: --export-fb is deprecated; graph.fb is now written by default (ADR-0016 flip-day). Use --skip-json to drop graph.json instead.\n")
+		}
+		i.exportFB = enabled // stored but unused
+	}
+}
+
+// WithSkipJSON suppresses emission of graph.json. When true, only
+// graph.fb is written after a successful index pass. Use this to save
+// ~7 MB per repo once you are confident all consumers read from FB.
+func WithSkipJSON(skip bool) IndexOption {
+	return func(i *Indexer) { i.skipJSON = skip }
 }
 
 // WithPrintSkipped enables the --print-skipped flag. When true each
@@ -253,22 +271,24 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// attaches per-entity attributes via map lookups; resort by canonical
 		// IDs so the on-disk bytes are stable across runs of the SAME repo.
 		sortDocumentForEmission(doc)
-		if err := graph.WriteAtomic(outPath, doc, pretty); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", outPath)
 
-		// Dual-write the v2 FlatBuffers binary graph next to graph.json
-		// when --export-fb is set (issue #634 / ADR-0016 phase-1).
-		// Failures here are non-fatal — graph.json is still the source of
-		// truth during phase-1.
-		if idx.exportFB {
-			fbPath := filepath.Join(filepath.Dir(outPath), "graph.fb")
-			if err := fbwriter.WriteAtomic(fbPath, doc); err != nil {
-				fmt.Fprintf(os.Stderr, "archigraph: graph.fb dual-write failed: %v\n", err)
-			} else {
-				fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", fbPath)
+		// ADR-0016 flip-day (#808): always emit graph.fb first.
+		// graph.json is emitted alongside unless --skip-json was passed.
+		fbPath := filepath.Join(filepath.Dir(outPath), "graph.fb")
+		if err := fbwriter.WriteAtomic(fbPath, doc); err != nil {
+			fmt.Fprintf(os.Stderr, "archigraph: graph.fb write failed: %v\n", err)
+			// Non-fatal — we still try to write graph.json so the system
+			// remains functional. If both fail, the error from graph.json
+			// propagates below.
+		} else {
+			fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", fbPath)
+		}
+
+		if !idx.skipJSON {
+			if err := graph.WriteAtomic(outPath, doc, pretty); err != nil {
+				return err
 			}
+			fmt.Fprintf(os.Stderr, "archigraph: wrote %s\n", outPath)
 		}
 
 		// Sidecar: corpus-level metrics for `archigraph doctor` and the future

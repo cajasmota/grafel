@@ -70,6 +70,9 @@ func runDaemon(argv []string) error {
 	defer logFile.Close()
 	logger := log.New(io.MultiWriter(os.Stderr, logFile), "archigraph-daemon: ",
 		log.LstdFlags|log.Lmicroseconds)
+	// ADR-0016 flip-day (#808): log the active graph format mode so users
+	// can confirm the daemon is running in the expected configuration.
+	logger.Printf("graph format: fb-default (json-fallback enabled) — graph.fb written on every index; --skip-json opt-in drops graph.json")
 
 	cfg := daemon.Config{
 		Layout:       layout,
@@ -167,10 +170,9 @@ func daemonGroupsForRepo(repoPath string) []string {
 // the algorithm pass runs separately via daemonSchedulerAlgo on a
 // longer debounce.
 func daemonSchedulerIndex(_ context.Context, repoPath string) error {
-	// Phase D: daemon-driven indexes always dual-write graph.fb so MCP
-	// queries can mmap them. WithExportFB is opt-in for the standalone
-	// `archigraph index` CLI but mandatory inside the daemon.
-	err := Index(repoPath, "", "", []string{"graph-algo"}, false, false, WithExportFB(true))
+	// ADR-0016 flip-day (#808): graph.fb is always written by default now.
+	// WithExportFB is a no-op kept for back-compat; removed in next release.
+	err := Index(repoPath, "", "", []string{"graph-algo"}, false, false)
 	// Drop the cached mmap so the next MCP query reopens against the
 	// freshly written graph.fb. Done on both success and failure paths
 	// — a stale handle is worse than a cold miss.
@@ -189,9 +191,8 @@ func daemonSchedulerLinks(_ context.Context, group string) error {
 // against a repo. The scheduler arranges cancel+reschedule on new
 // writes, so this is allowed to be slow.
 func daemonSchedulerAlgo(_ context.Context, repoPath string) error {
-	// Phase D: see daemonSchedulerIndex — always emit graph.fb alongside
-	// graph.json so the daemon's MCP cache has a mmap source-of-truth.
-	err := Index(repoPath, "", "", nil, false, false, WithExportFB(true))
+	// ADR-0016 flip-day (#808): graph.fb is always written by default now.
+	err := Index(repoPath, "", "", nil, false, false)
 	invalidateAfterIndex(repoPath)
 	return err
 }
@@ -206,6 +207,7 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 		WithExportFB(args.ExportFB),
 		WithPrintSkipped(args.PrintSkipped),
 		WithAdditionalSkipDirs(args.AdditionalSkipDirs),
+		WithSkipJSON(args.SkipJSON),
 	}
 	// Capture stats into a local buffer when the caller asked for them.
 	// setCapturedStats is a tiny package-level swap (Phase A serializes

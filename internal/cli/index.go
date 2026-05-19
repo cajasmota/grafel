@@ -37,7 +37,8 @@ func runIndexClient(cmd *cobra.Command, argv []string) error {
 	jsonStats := fs.Bool("json-stats", false, "print per-run statistics as JSON")
 	repair := fs.Bool("enable-repair-candidates", false, "emit ADR-0015 repair candidates")
 	repairApply := fs.Bool("enable-repair-apply", false, "apply allowlisted repairs before classification")
-	exportFB := fs.Bool("export-fb", false, "also write graph.fb (ADR-0016)")
+	exportFB := fs.Bool("export-fb", false, "[deprecated] graph.fb is now written by default; this flag is a no-op (ADR-0016 flip-day)")
+	skipJSON := fs.Bool("skip-json", false, "skip writing graph.json; only graph.fb is emitted (ADR-0016 flip-day opt-in)")
 	printSkipped := fs.Bool("print-skipped", false, "print each directory skipped at walk-time with the matching rule")
 	if err := fs.Parse(argv); err != nil {
 		return err
@@ -59,16 +60,17 @@ func runIndexClient(cmd *cobra.Command, argv []string) error {
 		skipPasses = []string{*skip}
 	}
 	reply, err := c.Index(proto.IndexArgs{
-		RepoPath:     fs.Arg(0),
-		OutPath:      *out,
-		RepoTag:      *repoTag,
-		SkipPasses:   skipPasses,
-		Pretty:       *pretty,
-		JSONStats:    *jsonStats,
-		Repair:       *repair,
-		RepairApply:  *repairApply,
-		ExportFB:     *exportFB,
-		PrintSkipped: *printSkipped,
+		RepoPath:    fs.Arg(0),
+		OutPath:     *out,
+		RepoTag:     *repoTag,
+		SkipPasses:  skipPasses,
+		Pretty:      *pretty,
+		JSONStats:   *jsonStats,
+		Repair:      *repair,
+		RepairApply: *repairApply,
+		ExportFB:           *exportFB, // deprecated no-op; kept for back-compat
+		PrintSkipped:       *printSkipped,
+		SkipJSON:           *skipJSON,
 	})
 	if err != nil {
 		return err

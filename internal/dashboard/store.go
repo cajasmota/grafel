@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
@@ -60,7 +61,7 @@ func (liveStore) GroupGraph(group string) ([]byte, error) {
 		return nil, err
 	}
 	// Compose a minimal envelope: one entry per repo with the embedded
-	// graph.json bytes. Communities, god-nodes and cross-repo links are
+	// graph JSON bytes. Communities, god-nodes and cross-repo links are
 	// deferred per the issue body.
 	type repoEntry struct {
 		Slug  string          `json:"slug"`
@@ -71,7 +72,7 @@ func (liveStore) GroupGraph(group string) ([]byte, error) {
 	entries := make([]repoEntry, 0, len(cfg.Repos))
 	for _, r := range cfg.Repos {
 		e := repoEntry{Slug: r.Slug, Path: r.Path}
-		b, err := os.ReadFile(daemon.GraphPathForRepo(r.Path))
+		b, err := repoGraphBytes(r.Path)
 		if err != nil {
 			e.Error = err.Error()
 		} else {
@@ -94,10 +95,28 @@ func (liveStore) RepoGraph(group, repo string) ([]byte, error) {
 	}
 	for _, r := range cfg.Repos {
 		if r.Slug == repo {
-			return os.ReadFile(daemon.GraphPathForRepo(r.Path))
+			return repoGraphBytes(r.Path)
 		}
 	}
 	return nil, fmt.Errorf("repo %q not registered in group %q", repo, group)
+}
+
+// repoGraphBytes returns the graph as JSON bytes for a repo. ADR-0016
+// flip-day (#808): tries graph.json first (fast raw-read), falls back
+// to loading graph.fb and re-marshaling to JSON when only the binary
+// graph exists.
+func repoGraphBytes(repoPath string) ([]byte, error) {
+	jsonPath := daemon.GraphPathForRepo(repoPath)
+	if b, err := os.ReadFile(jsonPath); err == nil {
+		return b, nil
+	}
+	// graph.json not found — try to load from graph.fb and re-marshal.
+	stateDir := daemon.StateDirForRepo(repoPath)
+	doc, err := graph.LoadGraphFromDir(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(doc)
 }
 
 func (liveStore) CreateGroup(name string) (GroupSummary, error) {

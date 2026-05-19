@@ -92,8 +92,20 @@ func checkRepo(w io.Writer, r registry.Repo) {
 	} else {
 		fmt.Fprintf(w, "  %s repo %s (%s)\n", statusOK, r.Slug, r.Stack)
 	}
-	graph := daemon.GraphPathForRepo(r.Path)
-	if _, err := os.Stat(graph); err == nil {
-		fmt.Fprintf(w, "         graph.json present\n")
+	jsonPath := daemon.GraphPathForRepo(r.Path)
+	fbPath := daemon.FBPathForRepo(r.Path)
+	hasFB := func() bool { _, e := os.Stat(fbPath); return e == nil }()
+	hasJSON := func() bool { _, e := os.Stat(jsonPath); return e == nil }()
+	switch {
+	case hasFB && hasJSON:
+		fmt.Fprintf(w, "         graph.fb + graph.json present (dual-write active)\n")
+	case hasFB:
+		fmt.Fprintf(w, "         graph.fb present (--skip-json mode)\n")
+	case hasJSON:
+		// ADR-0016 flip-day (#808): old install with only graph.json.
+		// Suggest a re-index so graph.fb is written.
+		fmt.Fprintf(w, "         graph.json present (graph.fb missing — run 'archigraph index' to generate the binary graph)\n")
+	default:
+		fmt.Fprintf(w, "         no graph found — run 'archigraph index %s' to build\n", r.Path)
 	}
 }

@@ -97,13 +97,14 @@ type IndexArgs struct {
 	JSONStats   bool     `json:"json_stats,omitempty"`
 	Repair      bool     `json:"repair,omitempty"`
 	RepairApply bool     `json:"repair_apply,omitempty"`
-	ExportFB    bool     `json:"export_fb,omitempty"`
+	ExportFB    bool     `json:"export_fb,omitempty"`  // deprecated no-op; graph.fb always written since #808
 	// PrintSkipped, when true, emits one [skip] line per skipped directory
 	// at walk-time showing which rule matched (issue #805).
 	PrintSkipped bool `json:"print_skipped,omitempty"`
 	// AdditionalSkipDirs extends the walk-time hard-coded skip list with
 	// per-group names from fleet.json's additional_skip_dirs field.
 	AdditionalSkipDirs []string `json:"additional_skip_dirs,omitempty"`
+	SkipJSON    bool     `json:"skip_json,omitempty"`  // when true, skip writing graph.json (ADR-0016 flip-day)
 }
 
 // IndexReply carries the post-index summary. The stats are an opaque
