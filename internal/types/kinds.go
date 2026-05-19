@@ -45,6 +45,12 @@ const (
 	// in ADR-0018. Stored as "AgentPattern" (no SCOPE. prefix) to distinguish
 	// from the structural SCOPE.Pattern kind used by static-analysis extractors.
 	EntityKindAgentPattern EntityKind = "AgentPattern"
+	// #726 wave 1: Kafka producer/consumer cross-repo edges. MessageTopic
+	// represents a message-broker topic. Cross-repo identity = the topic
+	// name string (per-broker namespace via the `broker` property). Wave 1
+	// is Kafka-only; wave 2 will reuse the kind for RabbitMQ, SQS, NATS,
+	// and Pub/Sub.
+	EntityKindMessageTopic EntityKind = "SCOPE.MessageTopic"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -83,6 +89,7 @@ func AllEntityKinds() []EntityKind {
 		EntityKindConfig,
 		EntityKindModel,
 		EntityKindAgentPattern,
+		EntityKindMessageTopic,
 	}
 }
 
@@ -159,6 +166,17 @@ const (
 	// and cross-repo HTTP matcher traverse directly from a caller to its
 	// endpoint without re-running the post-hoc regex matcher.
 	RelationshipKindFetches RelationshipKind = "FETCHES"
+
+	// #726 wave 1: Kafka producer/consumer cross-repo edges.
+	//   PUBLISHES_TO  : caller method → MessageTopic
+	//   SUBSCRIBES_TO : consumer method → MessageTopic
+	//   TRANSFORMS    : input topic → output topic (a single method is BOTH
+	//                   @Incoming and @Outgoing — a stream transformer).
+	// PUBLISHES_TO is distinct from the older PUBLISHES_TO above which is
+	// already declared (RelationshipKindPublishesTo) — we reuse that
+	// constant from kafka_edges.go rather than introducing a duplicate.
+	RelationshipKindSubscribesTo RelationshipKind = "SUBSCRIBES_TO"
+	RelationshipKindTransforms   RelationshipKind = "TRANSFORMS"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -200,6 +218,9 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindQueries,
 		// #721:
 		RelationshipKindFetches,
+		// #726 wave 1:
+		RelationshipKindSubscribesTo,
+		RelationshipKindTransforms,
 	}
 }
 

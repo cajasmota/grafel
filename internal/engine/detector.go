@@ -255,6 +255,16 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// Kafka producer/consumer cross-repo edges (wave 1 of #726). Emits
+	// synthetic MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO edges
+	// using the same cross-repo matching strategy as #534: identical
+	// topic IDs on both sides naturally link via the existing import-
+	// channel linker. Append-only — cannot regress the surrounding
+	// pipeline's bug-rate.
+	entities, relationships = applyKafkaEdges(
+		file.Language, file.Path, file.RepoRoot, file.Content, entities, relationships,
+	)
+
 	// Django models-import suffix rewrite (PR #580 wave-10 Chain-fix A):
 	// The YAML rule `from \S+\.models import (\w+)` emits Model:<name>
 	// for every captured identifier. In Django/DRF projects, a sibling
