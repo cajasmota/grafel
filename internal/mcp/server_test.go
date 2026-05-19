@@ -177,7 +177,7 @@ func TestBM25RankingPrefersRareTerms(t *testing.T) {
 	}
 }
 
-// 4. describe uses the LabelIndex (O(1) by name/id).
+// 4. inspect uses the LabelIndex (O(1) by name/id).
 func TestGetNodeViaIndex(t *testing.T) {
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "r1")
@@ -185,7 +185,7 @@ func TestGetNodeViaIndex(t *testing.T) {
 	writeGraph(t, repo, fixtureDoc("r1"))
 	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
 	srv, _ := NewServer(Config{RegistryPath: regPath})
-	res := callTool(t, srv, "archigraph_describe", map[string]any{"label_or_id": "DashboardScreen"})
+	res := callTool(t, srv, "archigraph_inspect", map[string]any{"label_or_id": "DashboardScreen"})
 	txt := resultText(res)
 	if !strings.Contains(txt, "DashboardScreen") {
 		t.Fatalf("expected DashboardScreen in result, got: %s", txt)
@@ -302,12 +302,12 @@ func TestLinkCandidateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	listRes := callTool(t, srv, "archigraph_list_link_candidates", map[string]any{})
+	listRes := callTool(t, srv, "archigraph_cross_links", map[string]any{"action": "list"})
 	if !strings.Contains(resultText(listRes), "c1") {
 		t.Fatalf("expected c1 in list, got: %s", resultText(listRes))
 	}
-	resolveRes := callTool(t, srv, "archigraph_resolve_link_candidate", map[string]any{
-		"candidate_id": "c1", "decision": "accept",
+	resolveRes := callTool(t, srv, "archigraph_cross_links", map[string]any{
+		"action": "accept", "candidate_id": "c1",
 	})
 	if strings.Contains(resultText(resolveRes), "error") {
 		t.Fatalf("resolve failed: %s", resultText(resolveRes))
@@ -335,12 +335,12 @@ func TestEnrichmentCandidateRoundTrip(t *testing.T) {
 	_ = os.WriteFile(candPath, d, 0o644)
 	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
 	srv, _ := NewServer(Config{RegistryPath: regPath})
-	listRes := callTool(t, srv, "archigraph_list_enrichment_candidates", nil)
+	listRes := callTool(t, srv, "archigraph_enrichments", map[string]any{"action": "list"})
 	if !strings.Contains(resultText(listRes), "e1") {
 		t.Fatalf("expected e1 in list: %s", resultText(listRes))
 	}
-	subRes := callTool(t, srv, "archigraph_submit_enrichment", map[string]any{
-		"candidate_id": "e1", "value": "controls dashboard", "confidence": 0.9, "reason": "test",
+	subRes := callTool(t, srv, "archigraph_enrichments", map[string]any{
+		"action": "submit", "candidate_id": "e1", "value": "controls dashboard", "confidence": 0.9, "reason": "test",
 	})
 	if strings.Contains(resultText(subRes), "error") {
 		t.Fatalf("submit error: %s", resultText(subRes))
@@ -390,15 +390,15 @@ func TestPerRepoUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := callTool(t, srv, "archigraph_graph_stats", nil)
+	res := callTool(t, srv, "archigraph_stats", nil)
 	txt := resultText(res)
 	if !strings.Contains(txt, "unavailable") {
-		t.Errorf("expected 'unavailable' in graph_stats, got: %s", txt)
+		t.Errorf("expected 'unavailable' in stats, got: %s", txt)
 	}
 	// good repo still queryable
-	res2 := callTool(t, srv, "archigraph_describe", map[string]any{"label_or_id": "DashboardScreen"})
+	res2 := callTool(t, srv, "archigraph_inspect", map[string]any{"label_or_id": "DashboardScreen"})
 	if !strings.Contains(resultText(res2), "DashboardScreen") {
-		t.Errorf("expected good repo to serve describe, got: %s", resultText(res2))
+		t.Errorf("expected good repo to serve inspect, got: %s", resultText(res2))
 	}
 }
 
@@ -410,7 +410,7 @@ func TestQueryGraphRendersCompact(t *testing.T) {
 	writeGraph(t, repo, fixtureDoc("r1"))
 	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
 	srv, _ := NewServer(Config{RegistryPath: regPath})
-	res := callTool(t, srv, "archigraph_search", map[string]any{
+	res := callTool(t, srv, "archigraph_find", map[string]any{
 		"question":     "rareUniqueWidget",
 		"depth":        1,
 		"token_budget": 800,
@@ -425,7 +425,7 @@ func TestQueryGraphRendersCompact(t *testing.T) {
 	}
 }
 
-// 13. Tool registration uses the finalized distinct names; old names are gone.
+// 13. Tool registration uses the finalized distinct names (#668); old names are gone.
 func TestToolNameSurface(t *testing.T) {
 	dir := t.TempDir()
 	regPath := filepath.Join(dir, "registry.json")
@@ -440,21 +440,36 @@ func TestToolNameSurface(t *testing.T) {
 	for _, st := range srv.MCP.ListTools() {
 		registered[st.Tool.Name] = true
 	}
+	// 14 tools: 9 renamed/bundled + 5 unchanged.
 	wantPresent := []string{
-		"archigraph_search", "archigraph_describe", "archigraph_related", "archigraph_trace",
-		"archigraph_list_clusters", "archigraph_save_finding", "archigraph_list_findings", "archigraph_get_source",
-		"archigraph_whoami", "archigraph_recent_activity", "archigraph_graph_stats", "archigraph_get_telemetry",
+		// renamed (5)
+		"archigraph_find", "archigraph_inspect", "archigraph_expand",
+		"archigraph_clusters", "archigraph_stats",
+		// bundled (3)
+		"archigraph_enrichments", "archigraph_cross_links", "archigraph_repairs",
+		// unchanged (5) — trace included here as it was not renamed
+		"archigraph_trace",
+		"archigraph_whoami", "archigraph_save_finding", "archigraph_list_findings",
+		"archigraph_get_source", "archigraph_get_telemetry",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
 			t.Errorf("expected tool %q to be registered", n)
 		}
 	}
+	// Old names (pre-#668) must not exist.
 	wantAbsent := []string{
+		// old singular tool names replaced by bundles
+		"archigraph_list_link_candidates", "archigraph_resolve_link_candidate",
+		"archigraph_list_enrichment_candidates", "archigraph_submit_enrichment", "archigraph_reject_enrichment",
+		"archigraph_list_residuals", "archigraph_submit_repair",
+		// old renamed tool names
+		"archigraph_search", "archigraph_describe", "archigraph_related",
+		"archigraph_list_clusters", "archigraph_graph_stats",
+		// bare unprefixed names (Refs #62)
 		"query_graph", "get_node", "get_neighbors", "shortest_path",
 		"list_communities", "save_result", "get_node_source",
-		// Refs #62: generic names collide with other MCP servers; must be prefixed.
-		"search", "describe", "related", "trace",
+		"search", "describe", "related",
 		"list_clusters", "save_finding", "get_source",
 		"whoami", "recent_activity", "graph_stats", "get_telemetry",
 	}
@@ -462,6 +477,12 @@ func TestToolNameSurface(t *testing.T) {
 		if registered[n] {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
+	}
+	// Total count must be exactly 15 (19 original − 4 saved by 3 bundles).
+	// Bundles: enrichments (3→1, saves 2), cross_links (2→1, saves 1),
+	// repairs (2→1, saves 1).
+	if got := len(srv.MCP.ListTools()); got != 15 {
+		t.Errorf("expected 15 registered tools, got %d", got)
 	}
 }
 
@@ -510,7 +531,7 @@ func TestFindingsRoundTrip(t *testing.T) {
 	}
 }
 
-// 15. describe attaches saved findings keyed by entity ID (Refs #59 strategy A).
+// 15. inspect attaches saved findings keyed by entity ID (Refs #59 strategy A).
 func TestDescribeAttachesFindings(t *testing.T) {
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "r1")
@@ -525,8 +546,8 @@ func TestDescribeAttachesFindings(t *testing.T) {
 		"answer":   "Top-level home view.",
 		"nodes":    []any{"a1"},
 	})
-	// Describe should include it under "findings".
-	res := callTool(t, srv, "archigraph_describe", map[string]any{
+	// Inspect should include it under "findings".
+	res := callTool(t, srv, "archigraph_inspect", map[string]any{
 		"label_or_id": "DashboardScreen",
 	})
 	txt := resultText(res)
@@ -581,7 +602,7 @@ func TestGraphStatsRepoFilter(t *testing.T) {
 	}
 
 	// Baseline: no filter -> both repos in totals.
-	resAll := callTool(t, srv, "archigraph_graph_stats", nil)
+	resAll := callTool(t, srv, "archigraph_stats", nil)
 	var allOut struct {
 		Entities      int              `json:"entities"`
 		Relationships int              `json:"relationships"`
@@ -598,7 +619,7 @@ func TestGraphStatsRepoFilter(t *testing.T) {
 	}
 
 	// Filtered: only alpha -> totals halved, single repo entry.
-	resFiltered := callTool(t, srv, "archigraph_graph_stats", map[string]any{
+	resFiltered := callTool(t, srv, "archigraph_stats", map[string]any{
 		"repo_filter": []any{"alpha"},
 	})
 	var filtOut struct {
@@ -620,7 +641,7 @@ func TestGraphStatsRepoFilter(t *testing.T) {
 	}
 
 	// Star: ["*"] equals no filter.
-	resStar := callTool(t, srv, "archigraph_graph_stats", map[string]any{
+	resStar := callTool(t, srv, "archigraph_stats", map[string]any{
 		"repo_filter": []any{"*"},
 	})
 	var starOut struct {
@@ -634,7 +655,7 @@ func TestGraphStatsRepoFilter(t *testing.T) {
 	}
 }
 
-// ADR-0015 phase-1 (#549 + #550): list_residuals + submit_repair round-trip.
+// ADR-0015 phase-1 (#549 + #550): archigraph_repairs action=list|submit round-trip.
 func TestRepairToolsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "rA")
@@ -665,7 +686,7 @@ func TestRepairToolsRoundTrip(t *testing.T) {
 				},
 			},
 		},
-		// A non-repair candidate that should be ignored by list_residuals.
+		// A non-repair candidate that should be ignored by action=list.
 		{
 			"id":         "ec:other000000ffff",
 			"kind":       "describe_entity",
@@ -687,9 +708,8 @@ func TestRepairToolsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 1. list_residuals returns the repair_edge entry and skips the
-	//    describe_entity entry.
-	listRes := callTool(t, srv, "archigraph_list_residuals", map[string]any{})
+	// 1. action=list returns the repair_edge entry and skips describe_entity.
+	listRes := callTool(t, srv, "archigraph_repairs", map[string]any{"action": "list"})
 	text := resultText(listRes)
 	if !strings.Contains(text, "er:deadbeef00000001") {
 		t.Fatalf("expected edge_id in list: %s", text)
@@ -711,25 +731,27 @@ func TestRepairToolsRoundTrip(t *testing.T) {
 		t.Fatalf("expected relation=CALLS, got %q", got)
 	}
 
-	// 2. submit_repair with an unknown resolution must fail validation.
-	badRes := callTool(t, srv, "archigraph_submit_repair", map[string]any{
-		"edge_id":    "er:deadbeef00000001",
-		"resolution": "make_it_work",
+	// 2. action=submit with an unknown resolution must fail validation.
+	badRes := callTool(t, srv, "archigraph_repairs", map[string]any{
+		"action":      "submit",
+		"residual_id": "er:deadbeef00000001",
+		"resolution":  "make_it_work",
 	})
 	if !badRes.IsError {
 		t.Fatalf("expected error for unknown resolution, got: %s", resultText(badRes))
 	}
 
-	// 3. submit_repair with a valid resolution appends to repair.json.
-	okRes := callTool(t, srv, "archigraph_submit_repair", map[string]any{
-		"edge_id":          "er:deadbeef00000001",
+	// 3. action=submit with a valid resolution appends to repair.json.
+	okRes := callTool(t, srv, "archigraph_repairs", map[string]any{
+		"action":           "submit",
+		"residual_id":      "er:deadbeef00000001",
 		"resolution":       "bind_to_entity",
 		"target_entity_id": "a3",
 		"confidence":       0.85,
 		"reasoning":        "agent inferred save() is on ProposalsService",
 	})
 	if okRes.IsError {
-		t.Fatalf("submit_repair unexpected error: %s", resultText(okRes))
+		t.Fatalf("submit unexpected error: %s", resultText(okRes))
 	}
 	rpath := filepath.Join(repo, ".archigraph", "repair.json")
 	data, err := os.ReadFile(rpath)
@@ -743,16 +765,16 @@ func TestRepairToolsRoundTrip(t *testing.T) {
 		t.Fatalf("repair.json missing resolution: %s", data)
 	}
 
-	// 4. Second submit appends — repair_count should be 2 and the file
-	//    must still parse as a repairFileOnDisk with 2 entries.
-	okRes2 := callTool(t, srv, "archigraph_submit_repair", map[string]any{
-		"edge_id":        "er:deadbeef00000001",
+	// 4. Second submit appends — repair_count should be 2.
+	okRes2 := callTool(t, srv, "archigraph_repairs", map[string]any{
+		"action":         "submit",
+		"residual_id":    "er:deadbeef00000001",
 		"resolution":     "abandon",
 		"abandon_reason": "test-only dynamic dispatch",
 		"confidence":     0.4,
 	})
 	if okRes2.IsError {
-		t.Fatalf("second submit_repair error: %s", resultText(okRes2))
+		t.Fatalf("second submit error: %s", resultText(okRes2))
 	}
 	var out2 struct {
 		RepairCount int `json:"repair_count"`
@@ -765,21 +787,23 @@ func TestRepairToolsRoundTrip(t *testing.T) {
 	}
 
 	// 5. Confidence out-of-range is rejected.
-	badConf := callTool(t, srv, "archigraph_submit_repair", map[string]any{
-		"edge_id":    "er:deadbeef00000001",
-		"resolution": "abandon",
-		"confidence": 1.5,
+	badConf := callTool(t, srv, "archigraph_repairs", map[string]any{
+		"action":      "submit",
+		"residual_id": "er:deadbeef00000001",
+		"resolution":  "abandon",
+		"confidence":  1.5,
 	})
 	if !badConf.IsError {
 		t.Fatalf("expected error for confidence>1, got: %s", resultText(badConf))
 	}
 
-	// 6. Unknown edge_id is rejected when not in any repo.
-	unknownEdge := callTool(t, srv, "archigraph_submit_repair", map[string]any{
-		"edge_id":    "er:notfoundnotfound",
-		"resolution": "abandon",
+	// 6. Unknown residual_id is rejected when not in any repo.
+	unknownEdge := callTool(t, srv, "archigraph_repairs", map[string]any{
+		"action":      "submit",
+		"residual_id": "er:notfoundnotfound",
+		"resolution":  "abandon",
 	})
 	if !unknownEdge.IsError {
-		t.Fatalf("expected error for unknown edge_id, got: %s", resultText(unknownEdge))
+		t.Fatalf("expected error for unknown residual_id, got: %s", resultText(unknownEdge))
 	}
 }
