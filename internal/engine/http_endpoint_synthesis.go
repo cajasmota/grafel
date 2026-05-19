@@ -255,6 +255,13 @@ func applyHTTPEndpointSynthesis(
 	case "csharp":
 		// Consumer side (#721 wave 2b): HttpClient, RestSharp, Refit, WebClient.
 		synthesizeCSharpClientWithRuntime(string(content), emitClientRuntime)
+	case "rust":
+		// Consumer side (#721 wave 2c): reqwest, hyper, ureq, surf.
+		synthesizeRustClientWithRuntime(string(content), emitClientRuntime)
+	case "php":
+		// Consumer side (#721 wave 2c): Guzzle, Symfony HttpClient, cURL, file_get_contents,
+		// WordPress HTTP API, Laravel Http facade.
+		synthesizePHPClientWithRuntime(string(content), emitClientRuntime)
 	}
 
 	// #722 — response/request shape extraction. Mutates Properties on
