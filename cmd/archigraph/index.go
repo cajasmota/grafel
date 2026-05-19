@@ -1497,6 +1497,17 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d PHP FQN-method CALLS targets\n",
 			importStats.PHPFQNMethodRewritten, importStats.PHPFQNMethodConsidered)
 	}
+	// Chain-fix: python-references-cross-file. Cross-file REFERENCES
+	// targets that the same-file structural-ref pass cannot bind because
+	// the entity lives in another file or in an external package. Mirror
+	// of the CALLS path above. Surfaced separately so the verify2 harness
+	// can attribute the orphan-rate delta on python-* corpora (especially
+	// django-realworld and client-fixture-a, where #650's residual is
+	// dominated by cross-file references).
+	if importStats.ReferencesConsidered > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: import-aware rewrote=%d/%d cross-file REFERENCES targets\n",
+			importStats.ReferencesRewritten, importStats.ReferencesConsidered)
+	}
 
 	idx := resolve.BuildIndex(merged)
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)

@@ -1495,3 +1495,217 @@ func TestResolveRelativeImportTarget_TriesAllJSExtensions(t *testing.T) {
 		t.Error("resolveRelativeImportTarget should refuse non-relative specifiers")
 	}
 }
+
+// referencerRecord builds an EntityRecord representing a function whose
+// body REFERENCES a same-file structural ref stub. Mirrors what
+// internal/extractors/python/references.go:buildPyReferenceTargetID
+// emits.
+//
+// stubFile is the file path embedded in the stub (the caller's file
+// path); name is the bare tail. The stub shape is
+// `scope:<kind>:ref:python:<stubFile>:<name>`.
+func referencerRecord(callerName, callerFile string, stubKind, stubFile, stubName string) types.EntityRecord {
+	return types.EntityRecord{
+		ID:         "0123456789abcdef",
+		Name:       callerName,
+		Kind:       "SCOPE.Operation",
+		Subtype:    "function",
+		SourceFile: callerFile,
+		Language:   "python",
+		Relationships: []types.RelationshipRecord{{
+			ToID: "scope:" + stubKind + ":ref:python:" + stubFile + ":" + stubName,
+			Kind: "REFERENCES",
+		}},
+	}
+}
+
+// importerWithToID is like importerRecord but lets the test specify the
+// IMPORTS edge's ToID, mirroring what
+// internal/extractors/python/imports.go:resolveImportToIDs stamps
+// (`ext:<root>[:<name>]` for known external roots; the dotted module
+// path otherwise).
+func importerWithToID(file, modulePath, toID string, props map[string]string) types.EntityRecord {
+	rec := importerRecord(file, modulePath, props)
+	rec.Relationships[0].ToID = toID
+	return rec
+}
+
+// TestResolveImports_ReferencesCrossFileExternal covers the chain-fix
+// path for an imported name whose source module is a known external
+// package. The Python extractor's resolveImportToIDs has already
+// rewritten the IMPORTS edge's ToID to `ext:django:Model`; the
+// REFERENCES edge in the caller body is a same-file structural ref. The
+// resolver must rewrite the REFERENCES ToID to the binding's `ext:` ID.
+func TestResolveImports_ReferencesCrossFileExternal(t *testing.T) {
+	records := []types.EntityRecord{
+		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
+			"local_name":    "Model",
+			"source_module": "django.db.models",
+			"imported_name": "Model",
+		}),
+		referencerRecord("UserView.get", "api/views.py", "component", "api/views.py", "Model"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ReferencesConsidered != 1 {
+		t.Fatalf("expected 1 considered, got %d", stats.ReferencesConsidered)
+	}
+	if stats.ReferencesRewritten != 1 {
+		t.Fatalf("expected 1 rewritten, got %d", stats.ReferencesRewritten)
+	}
+	if got := records[1].Relationships[0].ToID; got != "ext:django:Model" {
+		t.Fatalf("expected REFERENCES rewritten to ext:django:Model, got %q", got)
+	}
+}
+
+// TestResolveImports_ReferencesCrossFileInternal covers the in-project
+// cross-file case: `from app.models import Post` in views.py, with
+// `Post` defined in app/models.py. The IMPORTS edge's ToID is the raw
+// dotted module path (no `ext:` prefix because the root is not in the
+// extractor's known-external list). The resolver must look up the
+// (source_module, imported_name) tuple in the per-module reverse index
+// and rewrite the REFERENCES ToID to the hex entity ID of Post.
+func TestResolveImports_ReferencesCrossFileInternal(t *testing.T) {
+	records := []types.EntityRecord{
+		importerWithToID("app/views.py", "app.models.Post", "app.models.Post", map[string]string{
+			"local_name":    "Post",
+			"source_module": "app.models",
+			"imported_name": "Post",
+		}),
+		targetRecord("Post", "app/models.py", "dddddddddddddddd"),
+		referencerRecord("list_posts", "app/views.py", "component", "app/views.py", "Post"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ReferencesRewritten != 1 {
+		t.Fatalf("expected 1 rewritten, got %d (considered=%d)", stats.ReferencesRewritten, stats.ReferencesConsidered)
+	}
+	if got := records[2].Relationships[0].ToID; got != "dddddddddddddddd" {
+		t.Fatalf("expected REFERENCES rewritten to dddddddddddddddd, got %q", got)
+	}
+}
+
+// TestResolveImports_ReferencesFileLocalUntouched asserts that a
+// structural-ref REFERENCES edge whose tail name corresponds to a
+// same-file entity is left alone — the local definition shadows any
+// potential import, and the same-file structural-ref pass will bind it
+// via byLocation downstream. Rewriting here would skip that path.
+func TestResolveImports_ReferencesFileLocalUntouched(t *testing.T) {
+	original := "scope:component:ref:python:app/views.py:helper"
+	records := []types.EntityRecord{
+		// Same file ALSO imports a name `helper` from elsewhere — the
+		// local definition still shadows the import in Python semantics.
+		importerWithToID("app/views.py", "app.utils.helper", "app.utils.helper", map[string]string{
+			"local_name":    "helper",
+			"source_module": "app.utils",
+			"imported_name": "helper",
+		}),
+		// File-local definition of `helper` in the same file.
+		targetRecord("helper", "app/views.py", "eeeeeeeeeeeeeeee"),
+		referencerRecord("entry", "app/views.py", "component", "app/views.py", "helper"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ReferencesConsidered != 0 {
+		t.Fatalf("expected 0 considered (shadowed by local), got %d", stats.ReferencesConsidered)
+	}
+	if got := records[2].Relationships[0].ToID; got != original {
+		t.Fatalf("expected REFERENCES ToID untouched, got %q", got)
+	}
+}
+
+// TestResolveImports_ReferencesUnresolvedNameUntouched asserts that a
+// REFERENCES edge whose tail name does NOT correspond to any IMPORTS
+// binding in the source file is left alone — we must never fabricate a
+// binding. The same-file structural-ref pass will mark this edge as
+// unmatched (orphan) downstream; that's the correct disposition.
+func TestResolveImports_ReferencesUnresolvedNameUntouched(t *testing.T) {
+	original := "scope:component:ref:python:api/views.py:Unknown"
+	records := []types.EntityRecord{
+		// Caller's file has an import, but for a DIFFERENT name.
+		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
+			"local_name":    "Model",
+			"source_module": "django.db.models",
+			"imported_name": "Model",
+		}),
+		referencerRecord("entry", "api/views.py", "component", "api/views.py", "Unknown"),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ReferencesRewritten != 0 {
+		t.Fatalf("expected 0 rewritten (no import for `Unknown`), got %d", stats.ReferencesRewritten)
+	}
+	if got := records[1].Relationships[0].ToID; got != original {
+		t.Fatalf("expected REFERENCES ToID untouched, got %q", got)
+	}
+}
+
+// TestResolveImports_ReferencesFormatBSkipped asserts that a Format B
+// structural-ref REFERENCES edge (`...:<file>:<scope>#<member>`) is
+// skipped — only Format A bare names participate in import-aware
+// rewrite. Format B edges encode a member access that the local
+// byMember path handles.
+func TestResolveImports_ReferencesFormatBSkipped(t *testing.T) {
+	original := "scope:component:ref:python:api/views.py:UserView#Model"
+	records := []types.EntityRecord{
+		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
+			"local_name":    "Model",
+			"source_module": "django.db.models",
+			"imported_name": "Model",
+		}),
+		{
+			ID:         "0123456789abcdef",
+			Name:       "entry",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "function",
+			SourceFile: "api/views.py",
+			Language:   "python",
+			Relationships: []types.RelationshipRecord{{
+				ToID: original,
+				Kind: "REFERENCES",
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ReferencesConsidered != 0 {
+		t.Fatalf("expected 0 considered (Format B skipped), got %d", stats.ReferencesConsidered)
+	}
+	if got := records[1].Relationships[0].ToID; got != original {
+		t.Fatalf("expected Format B REFERENCES ToID untouched, got %q", got)
+	}
+}
+
+// TestResolveImports_ReferencesHexToIDUntouched asserts that a
+// REFERENCES edge already pointing at a hex entity ID (e.g. resolved by
+// an earlier pass or emitted directly by a cross-extractor) is left
+// alone.
+func TestResolveImports_ReferencesHexToIDUntouched(t *testing.T) {
+	records := []types.EntityRecord{
+		importerWithToID("api/views.py", "django.db.models", "ext:django:Model", map[string]string{
+			"local_name":    "Model",
+			"source_module": "django.db.models",
+			"imported_name": "Model",
+		}),
+		{
+			ID:         "0123456789abcdef",
+			Name:       "entry",
+			Kind:       "SCOPE.Operation",
+			Subtype:    "function",
+			SourceFile: "api/views.py",
+			Language:   "python",
+			Relationships: []types.RelationshipRecord{{
+				ToID: "ffffffffffffffff",
+				Kind: "REFERENCES",
+			}},
+		},
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ReferencesConsidered != 0 {
+		t.Fatalf("expected 0 considered (hex skipped at outer guard), got %d", stats.ReferencesConsidered)
+	}
+	if got := records[1].Relationships[0].ToID; got != "ffffffffffffffff" {
+		t.Fatalf("expected hex REFERENCES ToID untouched, got %q", got)
+	}
+}
