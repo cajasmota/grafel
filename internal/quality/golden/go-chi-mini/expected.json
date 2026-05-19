@@ -92,8 +92,13 @@
 
     { "from_name": "UsersHandler.List", "from_kind": "SCOPE.Operation", "from_file": "handlers/users.go",
       "kind": "CALLS", "to_name": "MemoryStore.List", "to_kind": "SCOPE.Operation", "to_file": "store/store.go",
-      "must_exist": false, "nice_to_have": true,
-      "note": "Cross-package method call through interface field (h.Store.List). Today bare-name h.Store.List is not resolved to the implementing struct." },
+      "must_exist": true,
+      "note": "Cross-package method call through interface field (h.Store.List). Fixed by #614: extractor stamps interface_dispatch_type on the CALLS edge; resolver fans IMPLEMENTS edges out to the unique implementing struct's method." },
+
+    { "from_name": "UsersHandler.Get", "from_kind": "SCOPE.Operation", "from_file": "handlers/users.go",
+      "kind": "CALLS", "to_name": "MemoryStore.Get", "to_kind": "SCOPE.Operation", "to_file": "store/store.go",
+      "must_exist": true,
+      "note": "Second cross-package interface-field dispatch off the same h.Store receiver. Asserts the resolver path generalises past the first call site. Refs #614." },
 
     { "from_name": "/users/{id}", "from_kind": "Route", "from_file": "main.go",
       "kind": "ROUTES_TO", "to_name": "UsersHandler.Get", "to_kind": "SCOPE.Operation", "to_file": "handlers/users.go",
