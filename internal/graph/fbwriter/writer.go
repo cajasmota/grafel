@@ -170,4 +170,3 @@ func buildPropertyVector(b *flatbuffers.Builder, props map[string]string) flatbu
 	}
 	return b.EndVector(len(entryOffsets))
 }
-

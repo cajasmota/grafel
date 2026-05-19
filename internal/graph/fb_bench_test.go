@@ -6,7 +6,8 @@
 // the bench is skipped (so `go test ./...` stays green on CI).
 //
 // Run with:
-//   go test ./internal/graph/ -bench=. -benchmem -run=^$ -count=3
+//
+//	go test ./internal/graph/ -bench=. -benchmem -run=^$ -count=3
 package graph_test
 
 import (
