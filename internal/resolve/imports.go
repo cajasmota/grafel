@@ -77,6 +77,19 @@ type ImportBinding struct {
 	// best-effort: a bare CALLS target N is rewritten to <module>.N if
 	// such an entity exists.
 	Wildcard bool
+	// ResolvedToID is the ToID of the IMPORTS relationship that created
+	// this binding, as it stood when BuildImportTable read it. For Python
+	// (after extractor-side resolveImportToIDs) this is `ext:<root>[:<name>]`
+	// when the source module's root is a known external package; otherwise
+	// it remains the raw dotted module path emitted by the extractor.
+	// Used by the cross-file REFERENCES resolver (chain-fix: python-
+	// references-cross-file): when a same-file structural REFERENCES stub
+	// can't bind (because the target lives in another file), the resolver
+	// looks the local name up in this table and, if the binding has an
+	// `ext:` ResolvedToID, rewrites the REFERENCES edge to that ext: ID;
+	// otherwise it falls back to `lookupModuleEntity(SourceModule,
+	// ImportedName)` for in-project cross-file resolution.
+	ResolvedToID string
 }
 
 // ImportTable maps file path → local-name → ImportBinding, plus the
@@ -147,6 +160,12 @@ type ImportTable struct {
 	// for `<dir>/README.md` (any case). Markdown links to bare directories
 	// (`[plugins](./plugins)`) resolve to the directory's README.
 	docByDir map[string]string
+	// localNamesByFile[file_path][name] = true when an entity named `name`
+	// is declared in `file_path`. Used by the cross-file REFERENCES
+	// resolver to skip rewriting when a same-file entity already shadows
+	// the imported name (the structural-ref pass will bind it locally via
+	// byLocation). Chain-fix: python-references-cross-file.
+	localNamesByFile map[string]map[string]bool
 }
 
 // BuildImportTable scans every embedded IMPORTS relationship in records
@@ -172,6 +191,7 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		docByFilePath:        make(map[string]string),
 		docByFilePathRank:    make(map[string]int),
 		docByDir:             make(map[string]string),
+		localNamesByFile:     make(map[string]map[string]bool),
 	}
 
 	// Pass 1 — per-file import bindings.
@@ -227,6 +247,7 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 				LocalName:    local,
 				SourceModule: module,
 				ImportedName: imported,
+				ResolvedToID: strings.TrimSpace(rel.ToID),
 			}
 		}
 	}
@@ -274,6 +295,19 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 					}
 				}
 			}
+		}
+
+		// Same-file name index (chain-fix: python-references-cross-file).
+		// Tracks whether an entity named e.Name is declared in
+		// e.SourceFile so the REFERENCES resolver can skip a cross-file
+		// rewrite when a same-file definition would shadow the import.
+		if file := normalizePath(e.SourceFile); file != "" && e.Name != "" {
+			bucket := tbl.localNamesByFile[file]
+			if bucket == nil {
+				bucket = make(map[string]bool)
+				tbl.localNamesByFile[file] = bucket
+			}
+			bucket[e.Name] = true
 		}
 
 		modules := modulesForFile(normalizePath(e.SourceFile))
@@ -911,6 +945,117 @@ func (t ImportTable) ResolveBareCallTarget(callerFile, name string) (string, boo
 	return "", false
 }
 
+// splitFormatAStructuralRef parses a Format A structural-ref stub
+// (`scope:<kind>:<subtype>:<lang>:<file>:<name>`) and returns the
+// normalised file path and the bare tail name. Returns ok=false for
+// shapes that aren't a 6-segment Format A stub, or whose tail contains
+// the Format B member delimiter `#`.
+//
+// Used by the cross-file REFERENCES resolver in ResolveImports.
+func splitFormatAStructuralRef(stub string) (filePath, name string, ok bool) {
+	if !strings.HasPrefix(stub, stubPrefixScope) {
+		return "", "", false
+	}
+	parts := strings.SplitN(stub, stubDelim, stubScopeSegments)
+	if len(parts) != stubScopeSegments {
+		return "", "", false
+	}
+	filePath = normalizePath(parts[stubScopeFileIndex])
+	tail := parts[stubScopeTailIndex]
+	if filePath == "" || tail == "" {
+		return "", "", false
+	}
+	// Format B uses `#` in the tail. We only rewrite Format A bare names.
+	if strings.IndexByte(tail, stubMemberDelim) >= 0 {
+		return "", "", false
+	}
+	return filePath, tail, true
+}
+
+// ResolveCrossFileReferenceTarget looks up the bare name N in the import
+// table for callerFile and, if N was introduced into that file by an
+// IMPORTS edge, returns the cross-file target the REFERENCES edge should
+// point at.
+//
+// Resolution order (mirrors ResolveBareCallTarget, but additionally
+// honours `ext:` ResolvedToID values pre-stamped by the Python
+// extractor's resolveImportToIDs pass):
+//
+//  1. Explicit binding for (file, N) — `from x import N`, `import x as N`,
+//     etc. If the binding already carries an `ext:` ResolvedToID (set by
+//     the Python extractor when the source module's root is a known
+//     external package), return that ext-ID. Otherwise fall back to
+//     lookupModuleEntity(source_module, imported_name) for in-project
+//     cross-file resolution.
+//  2. Module-attribute access for plain `import x` bindings — if exactly
+//     one plain-import binding's module contains an entity named N,
+//     return that entity ID. Skipped when multiple plain imports yield
+//     conflicting hits (conservative — matches CALLS policy).
+//  3. Wildcard `from x import *` — best-effort lookup in the wildcard
+//     modules for callerFile.
+//
+// Returns ("", false) when none of the paths resolve. The caller leaves
+// the original REFERENCES stub alone (no fabrication).
+//
+// Chain-fix: python-references-cross-file. The Python extractor's
+// emitReferences pass (PR #650 Track A) builds a file-local symbol
+// table; imported names landed in that table as same-file structural
+// refs because the extractor doesn't know the imported entity's
+// declaring file. This resolver bridges that gap.
+func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (string, bool) {
+	if name == "" {
+		return "", false
+	}
+	callerFile = normalizePath(callerFile)
+	bucket := t.byFile[callerFile]
+	if bucket != nil {
+		if b, ok := bucket[name]; ok {
+			// `ext:` shapes are stamped on the IMPORTS edge by the
+			// Python extractor for known-external roots and are the
+			// authoritative external target for this binding.
+			if strings.HasPrefix(b.ResolvedToID, "ext:") {
+				return b.ResolvedToID, true
+			}
+			if id, ok := t.lookupModuleEntity(b.SourceModule, b.ImportedName); ok {
+				return id, true
+			}
+		}
+	}
+	// Module-attribute access via plain `import x`. Mirrors
+	// ResolveBareCallTarget's branch 2; collect across plain-import
+	// bindings deterministically and require exactly one disagreement-free
+	// hit.
+	var (
+		plainCandidate string
+		plainHits      int
+	)
+	for _, b := range bucket {
+		if b.SourceModule != b.ImportedName {
+			continue
+		}
+		if id, ok := t.lookupModuleEntity(b.SourceModule, name); ok {
+			if plainHits == 0 {
+				plainCandidate = id
+				plainHits = 1
+			} else if id != plainCandidate {
+				plainHits++
+			}
+		}
+	}
+	if plainHits == 1 {
+		return plainCandidate, true
+	}
+	if plainHits > 1 {
+		return "", false
+	}
+	for _, mod := range t.wildcardModules[callerFile] {
+		if id, ok := t.lookupModuleEntity(mod, name); ok {
+			return id, true
+		}
+	}
+	return "", false
+}
+
 // lookupModuleEntity returns (id, true) when (module, name) maps to
 // exactly one entity. Ambiguous tuples return ("", false); the caller
 // leaves the original CALLS stub alone.
@@ -966,6 +1111,20 @@ type ImportResolveStats struct {
 	// MarkdownFilePathConsidered that resolved to a 16-char entity ID
 	// via the docByFilePath / docByDir indices.
 	MarkdownFilePathRewritten int
+	// ReferencesConsidered counts every embedded REFERENCES edge whose
+	// ToID was an unresolved same-file structural ref
+	// (`scope:<kind>:<subtype>:<lang>:<file>:<name>`) and whose tail
+	// name matched a local import in the source file (i.e. a candidate
+	// for cross-file rewrite). Chain-fix: python-references-cross-file.
+	ReferencesConsidered int
+	// ReferencesRewritten counts the subset of ReferencesConsidered
+	// that resolved either to a 16-char in-project entity ID (via
+	// lookupModuleEntity over the binding's (source_module,
+	// imported_name)) or to an `ext:<root>[:<name>]` placeholder (when
+	// the IMPORTS edge that introduced the local name already carried
+	// an `ext:` ResolvedToID from the Python extractor's
+	// resolveImportToIDs pass).
+	ReferencesRewritten int
 }
 
 // ResolveDottedImportTarget looks up a project-internal IMPORTS ToID of
@@ -1479,6 +1638,52 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 				}
 				rel.ToID = id
 				stats.CallsRewritten++
+			case "REFERENCES":
+				// Chain-fix: python-references-cross-file. The Python
+				// extractor's emitReferences pass (PR #650 Track A) emits
+				// REFERENCES ToIDs as same-file structural refs
+				// (`scope:<kind>:ref:<lang>:<file>:<name>`). When the
+				// referenced symbol is an imported name, the actual entity
+				// lives in another file, so the structural lookup
+				// (byLocation[callerFile][name]) misses and the edge lands
+				// orphan. Mirror the CALLS path: parse the structural ref,
+				// confirm the tail name maps to an IMPORTS binding in the
+				// caller's file, and rewrite the ToID to either the
+				// in-project entity ID or the binding's `ext:` placeholder.
+				//
+				// Conservative gating:
+				//   - skip non-structural-ref ToIDs (already resolved, or
+				//     not a candidate)
+				//   - skip Format B (`tail#member`) — only Format A bare
+				//     names participate in import-aware rewrite
+				//   - skip when the caller file declares a same-file entity
+				//     by the same name (the local definition shadows the
+				//     import; lookupStructural will bind it).
+				if !strings.HasPrefix(to, stubPrefixScope) {
+					continue
+				}
+				stubFile, stubName, ok := splitFormatAStructuralRef(to)
+				if !ok {
+					continue
+				}
+				if stubFile != callerFile {
+					// Defensive: the stub embeds the caller file, but if a
+					// future emitter ever stamps a different file in the
+					// stub we shouldn't rewrite against the wrong file's
+					// imports.
+					continue
+				}
+				if tbl.localNamesByFile[stubFile] != nil &&
+					tbl.localNamesByFile[stubFile][stubName] {
+					continue
+				}
+				stats.ReferencesConsidered++
+				id, ok := tbl.ResolveCrossFileReferenceTarget(stubFile, stubName)
+				if !ok {
+					continue
+				}
+				rel.ToID = id
+				stats.ReferencesRewritten++
 			case importRelKind:
 				// Markdown cross-file file-path shape (issue #44 follow-up):
 				// `[text](path)` emits ToID="<resolved-path>", which is a
