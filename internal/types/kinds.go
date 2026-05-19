@@ -177,6 +177,29 @@ const (
 	// constant from kafka_edges.go rather than introducing a duplicate.
 	RelationshipKindSubscribesTo RelationshipKind = "SUBSCRIBES_TO"
 	RelationshipKindTransforms   RelationshipKind = "TRANSFORMS"
+
+	// #727: Real-time event channel edges. Emitted by the engine-layer
+	// synthesizers in internal/engine/{websocket_edges,sse_edges,
+	// graphql_subscriptions}.go. All append-only — they never replace or
+	// modify existing edges, so they cannot regress surrounding passes.
+	//
+	// WebSocket:
+	//   WS_SUBSCRIBES_TO   handler  → ChannelEvent  (server: on/onMessage; channel/room as props)
+	//   WS_EMITS           emitter  → ChannelEvent  (server: emit/send; scope=broadcast|room|user)
+	//   WS_CONNECTS        client   → ChannelEvent  (browser/Node client construct on a channel)
+	// Server-Sent Events:
+	//   STREAMS_FROM       client   → Stream        (browser EventSource / polling SSE client)
+	//   STREAMS_TO         server   → Stream        (server emits text/event-stream)
+	// GraphQL subscriptions:
+	//   GRAPHQL_SUBSCRIBES client   → Subscription  (Apollo/urql/graphql client subscription)
+	//   GRAPHQL_PUBLISHES  server   → Subscription  (resolver / subscriptionType)
+	RelationshipKindWSSubscribesTo    RelationshipKind = "WS_SUBSCRIBES_TO"
+	RelationshipKindWSEmits           RelationshipKind = "WS_EMITS"
+	RelationshipKindWSConnects        RelationshipKind = "WS_CONNECTS"
+	RelationshipKindStreamsFrom       RelationshipKind = "STREAMS_FROM"
+	RelationshipKindStreamsTo         RelationshipKind = "STREAMS_TO"
+	RelationshipKindGraphQLSubscribes RelationshipKind = "GRAPHQL_SUBSCRIBES"
+	RelationshipKindGraphQLPublishes  RelationshipKind = "GRAPHQL_PUBLISHES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -221,6 +244,14 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #726 wave 1:
 		RelationshipKindSubscribesTo,
 		RelationshipKindTransforms,
+		// #727 real-time event channels:
+		RelationshipKindWSSubscribesTo,
+		RelationshipKindWSEmits,
+		RelationshipKindWSConnects,
+		RelationshipKindStreamsFrom,
+		RelationshipKindStreamsTo,
+		RelationshipKindGraphQLSubscribes,
+		RelationshipKindGraphQLPublishes,
 	}
 }
 

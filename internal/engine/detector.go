@@ -265,6 +265,23 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.RepoRoot, file.Content, entities, relationships,
 	)
 
+	// #727: Real-time event channel synthesis. Three append-only passes
+	// for WebSocket, Server-Sent Events, and GraphQL subscriptions. Each
+	// scans the file directly and emits ChannelEvent / Stream /
+	// Subscription entities plus the WS_SUBSCRIBES_TO / WS_EMITS /
+	// WS_CONNECTS / STREAMS_{TO,FROM} / GRAPHQL_{PUBLISHES,SUBSCRIBES}
+	// edges. Same architectural shape as applyHTTPEndpointSynthesis: no
+	// existing entity or edge is touched, so these passes cannot regress
+	// the surrounding pipeline.
+	entities, relationships = applyWebSocketSynthesis(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+	entities, relationships = applySSESynthesis(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+	entities, relationships = applyGraphQLSubscriptionSynthesis(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
 	// Django models-import suffix rewrite (PR #580 wave-10 Chain-fix A):
 	// The YAML rule `from \S+\.models import (\w+)` emits Model:<name>
 	// for every captured identifier. In Django/DRF projects, a sibling
