@@ -84,6 +84,26 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	errorPatterns := extractErrorHandlingPatterns(root, file.Path)
 	entities = append(entities, errorPatterns...)
 
+	// Track A (analog of #641/#650 for Java) — REFERENCES-edge emission.
+	// Runs after every primary-pass entity is in place so the file-
+	// scope symbol table covers methods, classes, fields, and import
+	// bindings. Failures here recover internally to partial results —
+	// never aborts primary output.
+	func() {
+		defer func() { _ = recover() }()
+		emitReferences(root, file, &entities)
+	}()
+
+	// Track B (analog of #642/#650 for Java) — IMPORTS ToID rewrite.
+	// Rewrites IMPORTS edges whose source_module's longest dotted
+	// prefix matches a known external JVM package to an
+	// `ext:<prefix>[:<name>]` ToID so the resolver's external-
+	// disposition gate classifies them ExternalKnown directly.
+	// In-tree imports are untouched — the existing
+	// ResolveDottedImportTarget path binds them via source_module /
+	// imported_name properties.
+	resolveImportToIDs(entities)
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("error_pattern_count", len(errorPatterns)),

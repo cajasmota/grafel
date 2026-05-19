@@ -255,11 +255,15 @@ public class Foo {}
 		}
 	}
 
-	if !importTargets["java.util.List"] {
-		t.Error("expected IMPORTS relationship for java.util.List")
+	// IMPORTS ToIDs for known external JVM packages are rewritten to the
+	// `ext:<root>:<leaf>` form by resolveImportToIDs (analog of #642/#650)
+	// so the resolver's external-disposition gate classifies them as
+	// ExternalKnown directly.
+	if !importTargets["ext:java:List"] {
+		t.Errorf("expected IMPORTS ext:java:List, got: %v", importTargets)
 	}
-	if !importTargets["java.util.ArrayList"] {
-		t.Error("expected IMPORTS relationship for java.util.ArrayList")
+	if !importTargets["ext:java:ArrayList"] {
+		t.Errorf("expected IMPORTS ext:java:ArrayList, got: %v", importTargets)
 	}
 }
 

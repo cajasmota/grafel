@@ -117,7 +117,11 @@ import java.util.Map;
 class A {}
 `
 	ents := runJava(t, src)
-	want := map[string]bool{"java.util.List": false, "java.util.Map": false}
+	// IMPORTS ToIDs for the `java` external root are rewritten to
+	// `ext:java:<leaf>` by resolveImportToIDs (analog of #642/#650) so
+	// the resolver's external-disposition gate classifies them as
+	// ExternalKnown directly.
+	want := map[string]bool{"ext:java:List": false, "ext:java:Map": false}
 	for _, e := range ents {
 		for _, r := range e.Relationships {
 			if r.Kind == "IMPORTS" {

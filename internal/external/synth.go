@@ -16230,6 +16230,31 @@ var knownExternalPackages = map[string]struct{}{
 	"org.testcontainers": {},
 	"io.micrometer":      {}, // metrics/observability used by Spring Boot
 	"ch.qos.logback":     {}, // default Spring Boot logger
+	// Issue java-orphan-recovery — Quarkus / SmallRye / Vert.x / Swagger /
+	// Hibernate / Eclipse / Gradle / cloud SDKs / misc JVM ecosystem
+	// roots imported in client-fixture-d (Quarkus) and other JVM corpora.
+	// Multi-segment keys keep longestKnownDottedPrefix precise so an
+	// unrelated `com.acme` user-namespace cannot collide on a bare
+	// `com` root.
+	"io.quarkus":     {}, // Quarkus runtime/CDI/extensions
+	"io.smallrye":    {}, // SmallRye Reactive / Mutiny / Config / Health
+	"io.vertx":       {}, // Eclipse Vert.x reactive toolkit
+	"io.swagger":     {}, // Swagger / OpenAPI annotations
+	"org.hibernate":  {}, // Hibernate ORM / Validator / Reactive
+	"org.eclipse":    {}, // Eclipse foundation umbrella (Jetty, JKube, etc.)
+	"org.gradle":     {}, // Gradle build / plugin APIs
+	"org.apache":     {}, // bare org.apache umbrella for unlisted subpackages
+	"com.google":     {}, // broader com.google.* (Guice, Closure, etc.)
+	"com.fasterxml":  {}, // broader com.fasterxml.* (woodstox, etc.)
+	"com.amazonaws":  {}, // AWS SDK for Java v1
+	"com.azure":      {}, // Azure SDK for Java
+	"com.microsoft":  {}, // MSAL / SQL Server JDBC / etc.
+	"com.oracle":     {}, // Oracle JDBC / GraalVM SDK
+	"com.sun":        {}, // legacy com.sun.* (Xerces, JAX-WS RI, etc.)
+	"com.zaxxer":     {}, // HikariCP connection pool
+	"redis.clients":  {}, // Jedis Redis client (`redis.clients.jedis.*`)
+	"at.favre.lib":   {}, // BCrypt password hashing
+	"groovy":         {}, // Groovy language / Gradle build DSL
 	// Issue kafka-fix-w3 — Apache Kafka / Confluent / Avro / Jetty / Jersey
 	// ecosystem roots. Multi-segment keys keep longestKnownDottedPrefix
 	// precise so an unrelated `org.apache` user-namespace cannot collide.
