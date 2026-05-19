@@ -79,6 +79,13 @@ func synthesisSupportsLanguage(lang string) bool {
 	switch lang {
 	case "java", "python", "javascript", "typescript":
 		return true
+	// #727: WebSocket / SSE / GraphQL subscription synthesis covers
+	// additional languages. We allow these through even when no YAML
+	// rules are compiled for them so the per-protocol synthesizers can
+	// run. Files in these languages that contain none of the recognised
+	// anchors are no-ops in the synthesizers themselves.
+	case "kotlin", "go", "csharp":
+		return true
 	default:
 		return false
 	}
