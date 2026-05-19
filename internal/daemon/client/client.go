@@ -123,3 +123,15 @@ func (c *Client) Stop() error {
 	var reply proto.StopReply
 	return c.rpc.Call(proto.ServiceName+".Stop", proto.StopArgs{}, &reply)
 }
+
+// QualityAudit forwards an audit-orphans request to the daemon. The
+// daemon runs internal/quality/audit and returns a pre-formatted report
+// alongside the scalar summary fields so the CLI can write output
+// without importing the audit package.
+func (c *Client) QualityAudit(args proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
+	var reply proto.QualityAuditReply
+	if err := c.rpc.Call(proto.ServiceName+".QualityAudit", args, &reply); err != nil {
+		return proto.QualityAuditReply{}, err
+	}
+	return reply, nil
+}

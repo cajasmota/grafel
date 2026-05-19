@@ -12,9 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/quality/audit"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
@@ -70,10 +72,11 @@ func runDaemon(argv []string) error {
 		log.LstdFlags|log.Lmicroseconds)
 
 	cfg := daemon.Config{
-		Layout:  layout,
-		Logger:  logger,
-		Index:   daemonIndexFunc,
-		Rebuild: daemonRebuildFunc,
+		Layout:       layout,
+		Logger:       logger,
+		Index:        daemonIndexFunc,
+		Rebuild:      daemonRebuildFunc,
+		QualityAudit: daemonQualityAuditFunc,
 
 		// Phase B — wire the watcher + scheduler. The fast reactive
 		// reindex skips Pass 4 (graph algorithms) so a freshly-saved
@@ -260,6 +263,56 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 		warning = fmt.Sprintf("link passes failed: %v", err)
 	}
 	return rebuilt, warning, nil
+}
+
+// daemonQualityAuditFunc is the QualityAuditFunc handed to daemon.Run.
+// It calls audit.AuditPath (in this process — the daemon process) and
+// serialises the result into the wire reply.
+func daemonQualityAuditFunc(args proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
+	rep, err := audit.AuditPath(args.RepoPath, args.Corpus)
+	if err != nil {
+		return proto.QualityAuditReply{}, err
+	}
+
+	// Build the scalar summary by folding per-repo numbers.
+	var totalEntities, totalOrphans int
+	orphansByKind := make(map[string]int)
+	for _, rr := range rep.Repos {
+		if rr == nil {
+			continue
+		}
+		totalEntities += rr.Entities
+		totalOrphans += rr.Orphans
+		for cause, n := range rr.OrphanClassification {
+			orphansByKind[string(cause)] += n
+		}
+	}
+	orphanRate := 0.0
+	if totalEntities > 0 {
+		orphanRate = 100.0 * float64(totalOrphans) / float64(totalEntities)
+	}
+
+	// Serialise the report according to the requested format.
+	var sb strings.Builder
+	if args.JSON {
+		enc := json.NewEncoder(&sb)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(rep); err != nil {
+			return proto.QualityAuditReply{}, fmt.Errorf("encode audit report: %w", err)
+		}
+	} else {
+		if err := rep.WriteMarkdown(&sb); err != nil {
+			return proto.QualityAuditReply{}, fmt.Errorf("format audit report: %w", err)
+		}
+	}
+
+	return proto.QualityAuditReply{
+		OrphansByKind:     orphansByKind,
+		TotalEntities:     totalEntities,
+		TotalOrphans:      totalOrphans,
+		OrphanRatePercent: orphanRate,
+		Markdown:          sb.String(),
+	}, nil
 }
 
 // mustEncodeStatus is a small helper for the `status` command when it

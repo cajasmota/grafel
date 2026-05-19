@@ -22,10 +22,11 @@ import (
 
 // Config configures Run. Fields are required unless documented otherwise.
 type Config struct {
-	Layout  Layout      // on-disk paths (see DefaultLayout)
-	Index   IndexFunc   // injected from cmd/archigraph
-	Rebuild RebuildFunc // injected from cmd/archigraph
-	Logger  *log.Logger // optional; defaults to stderr
+	Layout       Layout           // on-disk paths (see DefaultLayout)
+	Index        IndexFunc        // injected from cmd/archigraph
+	Rebuild      RebuildFunc      // injected from cmd/archigraph
+	QualityAudit QualityAuditFunc // injected from cmd/archigraph (Phase E)
+	Logger       *log.Logger      // optional; defaults to stderr
 
 	// Phase B optional wiring. When all four are non-nil the daemon
 	// starts the fsnotify watcher + scheduler and registers every
@@ -92,7 +93,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}()
 
 	stopReq := make(chan struct{})
-	svc := newService(cfg.Index, cfg.Rebuild, cfg.Layout.SocketPath, stopReq)
+	svc := newService(cfg.Index, cfg.Rebuild, cfg.QualityAudit, cfg.Layout.SocketPath, stopReq)
 
 	// Phase B — bring up the scheduler + watcher when the caller
 	// supplied the four hooks. They are optional so tests can exercise

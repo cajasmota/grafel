@@ -25,6 +25,12 @@ type IndexFunc func(args proto.IndexArgs) (graphPath string, statsJSON string, e
 // injected from cmd/archigraph at construction.
 type RebuildFunc func(args proto.RebuildArgs) (repos []string, warning string, err error)
 
+// QualityAuditFunc runs the audit-orphans analysis for a repo (or
+// corpus directory). Returns the pre-formatted markdown (or JSON) report
+// and the scalar summary. Like IndexFunc, the heavy audit package lives
+// in cmd/archigraph and is injected here at construction time.
+type QualityAuditFunc func(args proto.QualityAuditRequest) (reply proto.QualityAuditReply, err error)
+
 // Service is the RPC handler registered under proto.ServiceName. All
 // public methods follow the net/rpc signature so jsonrpc can invoke
 // them: func (s *Service) Method(args *T1, reply *T2) error.
@@ -33,13 +39,14 @@ type RebuildFunc func(args proto.RebuildArgs) (repos []string, warning string, e
 // in-flight tracking, and (b) the underlying IndexFunc/RebuildFunc
 // being responsible for their own concurrency.
 type Service struct {
-	startedAt  time.Time
-	socketPath string
-	index      IndexFunc
-	rebuild    RebuildFunc
-	stopReq    chan<- struct{}
-	stopped    int32 // atomic; 1 once stopReq has been closed
-	inFlight   int64
+	startedAt    time.Time
+	socketPath   string
+	index        IndexFunc
+	rebuild      RebuildFunc
+	qualityAudit QualityAuditFunc
+	stopReq      chan<- struct{}
+	stopped      int32 // atomic; 1 once stopReq has been closed
+	inFlight     int64
 
 	// Phase B — populated only when the daemon is run with a watcher
 	// + scheduler attached. Both may be nil in test wiring that
@@ -51,13 +58,14 @@ type Service struct {
 // newService wires the injected entrypoints onto a fresh Service. The
 // stopReq channel is closed by Stop to signal the server loop; the
 // service itself never re-closes it (a stopped atomic guards the close).
-func newService(idx IndexFunc, rb RebuildFunc, socketPath string, stopReq chan<- struct{}) *Service {
+func newService(idx IndexFunc, rb RebuildFunc, qa QualityAuditFunc, socketPath string, stopReq chan<- struct{}) *Service {
 	return &Service{
-		startedAt:  time.Now(),
-		socketPath: socketPath,
-		index:      idx,
-		rebuild:    rb,
-		stopReq:    stopReq,
+		startedAt:    time.Now(),
+		socketPath:   socketPath,
+		index:        idx,
+		rebuild:      rb,
+		qualityAudit: qa,
+		stopReq:      stopReq,
 	}
 }
 
@@ -188,5 +196,25 @@ func (s *Service) Stop(_ *proto.StopArgs, _ *proto.StopReply) error {
 	if atomic.CompareAndSwapInt32(&s.stopped, 0, 1) {
 		close(s.stopReq)
 	}
+	return nil
+}
+
+// QualityAudit runs the audit-orphans analysis for a repo or corpus
+// directory and returns the pre-formatted report. The heavy audit
+// package lives in cmd/archigraph; it is injected via QualityAuditFunc.
+func (s *Service) QualityAudit(args *proto.QualityAuditRequest, reply *proto.QualityAuditReply) error {
+	if s.qualityAudit == nil {
+		return errors.New("quality audit entrypoint not configured")
+	}
+	if args == nil || args.RepoPath == "" {
+		return errors.New("repo_path is required")
+	}
+	atomic.AddInt64(&s.inFlight, 1)
+	defer atomic.AddInt64(&s.inFlight, -1)
+	r, err := s.qualityAudit(*args)
+	if err != nil {
+		return err
+	}
+	*reply = r
 	return nil
 }

@@ -2,16 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
-
 	"strings"
 
+	"github.com/cajasmota/archigraph/internal/daemon/client"
+	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/quality"
-	"github.com/cajasmota/archigraph/internal/quality/audit"
 )
 
 // runQuality handles `archigraph quality <fixture-dir>`.
@@ -26,9 +27,10 @@ import (
 // the harness end-to-end honest and lets fixtures detect regressions in
 // any pass (extract / framework / cross-lang / resolver / synthesis).
 func runQuality(argv []string) error {
-	// Subverb dispatch: `quality audit-orphans <path>` runs the audit tool
-	// (internal/quality/audit) instead of the golden-fixture harness. The
-	// legacy `quality <fixture-dir>` form is preserved untouched.
+	// Subverb dispatch: `quality audit-orphans <path>` routes via the
+	// daemon's QualityAudit RPC (ADR-0017 Phase E). The legacy
+	// `quality <fixture-dir>` form runs the in-process indexer for
+	// golden-fixture CI gating and is preserved untouched.
 	if len(argv) >= 1 && (argv[0] == "audit-orphans" || argv[0] == "audit") {
 		return runAuditOrphans(argv[1:])
 	}
@@ -110,12 +112,13 @@ func runQuality(argv []string) error {
 }
 
 // runAuditOrphans is the entry point for `archigraph quality audit-orphans`.
-// It accepts a single repo path (auto-detected by looking for
-// .archigraph/graph.json) or a corpus directory under --corpus.
 //
-// Output format defaults to markdown on stdout; --json flips to JSON;
-// --output redirects to a file. The format is inferred from the output path
-// extension when both --json and --output are present without conflicts.
+// Per ADR-0017 Phase E this is a thin daemon RPC — the audit logic lives
+// in the daemon (which imports internal/quality/audit). If the daemon is
+// not running the command prints the canonical hint and exits non-zero.
+//
+// Flag surface is unchanged from the previous in-process implementation so
+// existing scripts and aliases keep working.
 func runAuditOrphans(argv []string) error {
 	fs := flag.NewFlagSet("quality audit-orphans", flag.ContinueOnError)
 	corpus := fs.String("corpus", "", "treat <path> as a corpus directory containing many indexed repos")
@@ -138,13 +141,14 @@ func runAuditOrphans(argv []string) error {
 		return fmt.Errorf("usage: archigraph quality audit-orphans [--corpus] <path> [--json] [--output FILE]")
 	}
 
-	rep, err := audit.AuditPath(path, corpusMode)
+	// Resolve to absolute so the daemon (which may have a different cwd)
+	// can open the path without ambiguity.
+	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve path: %w", err)
 	}
 
-	// Decide output format. If --output ends in .json we honour that; else
-	// the --json flag picks the encoder.
+	// Decide output format up front (mirrors the old in-process logic).
 	jsonMode := *jsonOut
 	if *outPath != "" && strings.HasSuffix(*outPath, ".json") {
 		jsonMode = true
@@ -153,6 +157,27 @@ func runAuditOrphans(argv []string) error {
 		jsonMode = false
 	}
 
+	// Dial the daemon. Fail fast with the canonical install hint.
+	c, err := client.Dial()
+	if err != nil {
+		if errors.Is(err, client.ErrDaemonNotRunning) {
+			return daemonNotRunningErr
+		}
+		return err
+	}
+	defer c.Close()
+
+	reply, err := c.QualityAudit(proto.QualityAuditRequest{
+		RepoPath: absPath,
+		Kind:     "orphans",
+		Corpus:   corpusMode,
+		JSON:     jsonMode,
+	})
+	if err != nil {
+		return fmt.Errorf("quality audit RPC: %w", err)
+	}
+
+	// Write the report.
 	var w *os.File = os.Stdout
 	if *outPath != "" {
 		f, ferr := os.Create(*outPath)
@@ -162,14 +187,8 @@ func runAuditOrphans(argv []string) error {
 		defer f.Close()
 		w = f
 	}
-	if jsonMode {
-		if err := rep.WriteJSON(w); err != nil {
-			return err
-		}
-	} else {
-		if err := rep.WriteMarkdown(w); err != nil {
-			return err
-		}
+	if _, err := fmt.Fprint(w, reply.Markdown); err != nil {
+		return err
 	}
 	if *outPath != "" {
 		fmt.Fprintf(os.Stderr, "audit-orphans: wrote %s\n", *outPath)
