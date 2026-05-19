@@ -436,6 +436,16 @@ func looksLikeURLPathOrParam(s string) bool {
 // http_endpoint per detected client call. Handles both static string literals
 // (Phase 1) and template literals with ${...} substitutions (Phase 2).
 func synthesizeFetchAxios(content string, emit emitFn) {
+	// Phase 5 (#806): React Query / RTK Query patterns can appear in files
+	// that contain none of the standard HTTP-client markers below. Handle
+	// them first so the early-exit guard doesn't drop them.
+	if strings.Contains(content, "useQuery") || strings.Contains(content, "builder.query") ||
+		strings.Contains(content, "builder.mutation") || strings.Contains(content, "createApi") {
+		funcsRQ := indexJSEnclosingFunctions(content)
+		symsRQ := buildJSConstantSymbolTable(content)
+		synthesizeReactQueryCalls(content, funcsRQ, symsRQ, emit)
+	}
+
 	if !strings.Contains(content, "fetch(") &&
 		!strings.Contains(content, "axios.") &&
 		!strings.Contains(content, "axios(") &&
@@ -571,7 +581,14 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	// any function call whose first argument is an object literal with an
 	// `endpoint:` / `url:` / `path:` / `route:` key whose value is a
 	// string literal or template literal.
-	synthesizeWrapperCalls(content, funcs, syms, emit)
+	//
+	// Phase 5 (#806): also accepts bare resource names (no leading /)
+	// when the wrapper name is recognized as HTTP-aware (Option A heuristic
+	// or Option B per-repo config). Bare names are normalized to /name/.
+	synthesizeWrapperCalls(content, funcs, syms, nil, emit)
+
+	// Note: React Query / RTK Query synthesis is handled in the early-exit
+	// section at the top of this function (Phase 5 / #806). No second call needed.
 
 	// -----------------------------------------------------------------
 	// Phase 3 (#651): named axios-instance method calls
@@ -762,7 +779,17 @@ var wrapperBlocklist = map[string]bool{
 // first arg with an `endpoint:`/`url:`/`path:`/`route:` URL key) so it
 // works regardless of the project-specific wrapper name (`callApi`,
 // `api`, `request`, `http`, `client`, etc.).
-func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]string, emit emitFn) {
+//
+// Phase 5 (#806): when the wrapper name is recognized as HTTP-aware via
+// Option A (heuristic) or Option B (per-repo wrappers.json config, passed
+// in wrapperIdx), bare resource names (no leading /) are accepted and
+// normalized to /name/.
+//
+// wrapperIdx may be nil — in that case only Option A heuristics apply.
+func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]string, wrapperIdx WrapperConfigIndex, emit emitFn) {
+	if wrapperIdx == nil {
+		wrapperIdx = WrapperConfigIndex{}
+	}
 	for _, m := range wrapperCallStartRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
@@ -815,6 +842,8 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 		}
 
 		// Resolve URL to a canonical path.
+		// Phase 5 (#806): when the wrapper name is HTTP-aware (Option A or B),
+		// accept bare resource names and normalize them to /name/.
 		var path string
 		var ok bool
 		if isTemplate && strings.Contains(rawURL, "${") {
@@ -824,6 +853,14 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 			if looksLikeURLPath(candidate) {
 				path = candidate
 				ok = true
+			} else if IsHTTPWrapperHeuristic(wrapper, wrapperIdx) {
+				// Bare resource name from a recognized HTTP wrapper:
+				// normalize "checklists" → "/checklists/" and accept.
+				normalized := normalizeBareName(candidate)
+				if normalized != "" && normalized != "/" {
+					path = normalized
+					ok = true
+				}
 			}
 		}
 		if !ok {
@@ -854,6 +891,68 @@ func synthesizeWrapperCalls(content string, funcs []jsFuncSpan, syms map[string]
 		caller := enclosingJSFuncAt(funcs, m[0])
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
 		emit(verb, canonical, "http_wrapper", "Function", caller)
+	}
+}
+
+// synthesizeReactQueryCalls emits FETCHES edges for React Query / SWR /
+// RTK Query patterns that wrap callApi-style invocations (#806 beyond-minimum).
+//
+// Recognized patterns:
+//   - useQuery({ queryKey: ['resource'], queryFn: () => callApi('resource', 'GET') })
+//     → FETCHES to /resource/
+//   - createApi builder.query({ query: () => 'resource' })
+//     → FETCHES to /resource/
+//
+// The enclosing function at the call site is used as source_caller.
+func synthesizeReactQueryCalls(content string, funcs []jsFuncSpan, syms map[string]string, emit emitFn) {
+	if !strings.Contains(content, "useQuery") && !strings.Contains(content, "createApi") &&
+		!strings.Contains(content, "builder.") {
+		return
+	}
+
+	// useQuery({ queryKey: ['resource'], ... }) patterns.
+	for _, m := range useQueryKeyRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		resource := content[m[2]:m[3]]
+		if resource == "" {
+			continue
+		}
+		normalized := normalizeBareName(resource)
+		if normalized == "" || normalized == "/" {
+			continue
+		}
+		// Resolve via const symbol table (in case the key is a constant name).
+		if resolved, ok := syms[resource]; ok {
+			normalized = normalizeBareName(resolved)
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, normalized)
+		caller := enclosingJSFuncAt(funcs, m[0])
+		emit("GET", canonical, "react_query", "Function", caller)
+	}
+
+	// RTK Query builder.query/mutation patterns.
+	for _, m := range rtkQueryEndpointRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		resource := content[m[2]:m[3]]
+		if resource == "" {
+			continue
+		}
+		normalized := normalizeBareName(resource)
+		if normalized == "" || normalized == "/" {
+			continue
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, normalized)
+		caller := enclosingJSFuncAt(funcs, m[0])
+		// Determine verb from builder method: query → GET, mutation → POST.
+		verb := "GET"
+		if strings.Contains(content[m[0]:m[0]+50], "mutation") {
+			verb = "POST"
+		}
+		emit(verb, canonical, "rtk_query", "Function", caller)
 	}
 }
 
