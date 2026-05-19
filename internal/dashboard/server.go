@@ -19,6 +19,8 @@ import (
 type Server struct {
 	cfg      Config
 	registry RegistryStore
+	graphs   *GraphCache
+	hub      *wsHub
 	listener net.Listener
 	srv      *http.Server
 	rng      *rand.Rand
@@ -34,9 +36,13 @@ func NewServer(cfg Config, store RegistryStore) (*Server, error) {
 	if store == nil {
 		return nil, errors.New("dashboard: nil RegistryStore")
 	}
+	h := newWSHub()
+	go h.run()
 	return &Server{
 		cfg:      cfg,
 		registry: store,
+		graphs:   NewGraphCache(60 * time.Second),
+		hub:      h,
 		rng:      rand.New(rand.NewSource(time.Now().UnixNano())),
 	}, nil
 }
@@ -117,11 +123,56 @@ func (s *Server) routes() http.Handler {
 		mux.Handle("/", http.FileServer(http.FS(sub)))
 	}
 
+	// --- DASH-1 (legacy) endpoints ---
 	mux.HandleFunc("GET /api/registry", s.handleListRegistry)
 	mux.HandleFunc("GET /api/groups/{group}/graph", s.handleGroupGraph)
 	mux.HandleFunc("GET /api/groups/{group}/repos/{repo}/graph", s.handleRepoGraph)
 	mux.HandleFunc("POST /api/admin/groups", s.handleCreateGroup)
 	mux.HandleFunc("POST /api/admin/groups/{group}/repos", s.handleAddRepo)
+
+	// --- Phase 1 aggregator endpoints ---
+
+	// First-paint aggregate
+	mux.HandleFunc("GET /api/dashboard/init", s.handleDashboardInit)
+
+	// LoD-aware graph
+	mux.HandleFunc("GET /api/graph/{group}", s.handleGraph)
+	mux.HandleFunc("GET /api/graph/{group}/entity/{id}", s.handleGraphEntity)
+
+	// Process flows
+	mux.HandleFunc("GET /api/flows/{group}", s.handleFlowsList)
+	mux.HandleFunc("GET /api/flows/{group}/{processId}", s.handleFlowDetail)
+
+	// API paths / contracts
+	mux.HandleFunc("GET /api/paths/{group}", s.handlePathsList)
+	mux.HandleFunc("GET /api/paths/{group}/{pathHash}", s.handlePathDetail)
+
+	// Broker topology
+	mux.HandleFunc("GET /api/topology/{group}", s.handleTopology)
+
+	// Docs portal
+	mux.HandleFunc("GET /api/docs/{group}", s.handleDocTree)
+	mux.HandleFunc("GET /api/docs/{group}/{path...}", s.handleDocPage)
+
+	// Global typeahead search
+	mux.HandleFunc("GET /api/search/{group}", s.handleSearch)
+
+	// Pattern store
+	mux.HandleFunc("GET /api/patterns/{group}", s.handlePatterns)
+
+	// Repair queue (admin)
+	mux.HandleFunc("GET /api/repairs/{group}", s.handleRepairs)
+
+	// Supporting endpoints
+	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
+	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)
+	mux.HandleFunc("GET /api/groups/{group}/links", s.handleGroupLinks)
+	mux.HandleFunc("GET /api/groups/{group}/topics", s.handleGroupTopics)
+	mux.HandleFunc("GET /api/source", s.handleSource)
+	mux.HandleFunc("GET /api/findings", s.handleListFindings)
+
+	// WebSocket push
+	mux.HandleFunc("/ws/events", s.handleWSEvents)
 
 	return s.withAuth(mux)
 }
