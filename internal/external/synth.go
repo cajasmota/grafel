@@ -15349,6 +15349,41 @@ var knownExternalPackages = map[string]struct{}{
 	"random":      {},
 	"traceback":   {},
 	"importlib":   {},
+	// Wave-8 stdlib additions — comprehensive Python stdlib coverage
+	// addressing issue #44 (fixture-a Python bug-rate 2.65%).
+	// Covers numeric/math, sequence, compression, configuration,
+	// database, network, and XML/HTML parsing.
+	"cmath":        {}, // complex number math
+	"difflib":      {}, // diff operations (fixture-a residual)
+	"fractions":    {}, // rational number arithmetic
+	"statistics":   {}, // statistics functions
+	"shelve":       {}, // persistent object storage
+	"dbm":          {}, // DBM database
+	"ftplib":       {}, // FTP client
+	"smtplib":      {}, // SMTP client
+	"nntplib":      {}, // NNTP client
+	"poplib":       {}, // POP3 client
+	"imaplib":      {}, // IMAP4 client
+	"telnetlib":    {}, // Telnet client
+	"binascii":     {}, // binary/ASCII conversion
+	"quopri":       {}, // Quoted-Printable encoding
+	"uu":           {}, // UU encoding
+	"formatter":    {}, // text formatting
+	"stringprep":   {}, // string preparation
+	"readline":     {}, // GNU readline interface
+	"rlcompleter":  {}, // readline completer
+	"cmd":          {}, // command-line interfaces
+	"configparser": {}, // configuration file parsing
+	"netrc":        {}, // .netrc file parsing
+	"xdrlib":       {}, // XDR data marshalling
+	"plistlib":     {}, // plist file format
+	"bdb":          {}, // debugger base
+	"profile":      {}, // Python profiler
+	"cProfile":     {}, // C extension profiler
+	"timeit":       {}, // measure execution time
+	"trace":        {}, // trace module execution
+	"atexit":       {}, // exit handlers
+	"tracemalloc":  {}, // trace memory allocations
 	// Click wave — Python stdlib roots seen as bug-resolver IMPORTS
 	// targets in click's own source (`from gettext import gettext as _`,
 	// `import codecs`, `import errno`, `import inspect`, `import shutil`,
@@ -15404,6 +15439,10 @@ var knownExternalPackages = map[string]struct{}{
 	// used by click on Windows (`import colorama`). Pure-Python package
 	// shipped on PyPI as the canonical click dependency.
 	"colorama": {},
+	// Wave-8 third-party additions (fixture-a residual & common testing/imaging).
+	"cv2":         {}, // OpenCV
+	"pdf2image":   {}, // PDF to image conversion
+	"coreapi":     {}, // Django REST coreapi client
 	// Wave-7 third-party additions (Django/Channels/AWS/PDF/Excel
 	// stack from client-fixture-a residual).
 	"asgiref":                  {},

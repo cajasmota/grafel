@@ -164,6 +164,14 @@ var pythonKnownExternalRoots = map[string]struct{}{
 	"beautifulsoup4": {},
 	"selenium": {},
 	"playwright": {},
+	// Image / PDF processing (wave-8 fixture-a residual)
+	"cv2":        {}, // OpenCV
+	"PIL":        {}, // Python Imaging Library
+	"pil":        {}, // PIL alternate import
+	"pdf2image":  {}, // PDF to image
+	"pdfplumber": {}, // PDF extraction
+	// Django REST (wave-8 fixture-a residual)
+	"coreapi": {}, // Django REST coreapi client
 }
 
 // resolveImportToIDs walks every IMPORTS edge on every entity in
