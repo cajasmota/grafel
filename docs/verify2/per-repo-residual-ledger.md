@@ -643,3 +643,97 @@ extractor csrf_protection_controller helper bareness (cross-language
 leak observed in 5 edges); CSS extractor file-skip for SCSS bootswatch
 imports (2 edges).
 
+---
+
+## #-w10 — python wave-10 django.yaml IMPORTS suffix rewrite (Chain-fix A) (2026-05-19)
+
+Targets PR #580 wave-9 residual analysis: 60 `kind-mismatch`
+bug-resolver edges where `django.yaml:119` + `sqlalchemy.yaml:85`
+relationship rules emit `Model:<name>` for any
+`from X.models import Y` / `from X import <PascalCase>` capture,
+but Y is regularly a DRF Serializer or CBV/ViewSet class re-exported
+through a sibling `models` module.
+
+Implementation: `internal/engine/django_imports_rewrite.go` Go post-pass
+runs after `applyDjangoRouteComposition` (Python-gated in detector.go).
+Rewrites `Model:<X>Serializer` → `Component:<X>Serializer` and
+`Model:<X>(View|ViewSet|Viewset|ListView|DetailView|...|APIView)` →
+`View:<X>...`. Genuine Django ORM model names (no suffix match) keep
+the original `Model:` prefix. Other languages unaffected.
+
+Per-iteration delta (client-fixture-a, 1 pass):
+
+| Pass | bug_rate | bug-resolver | kind-mismatch | Δ | Mechanism |
+|------|----------|---|---|---|-----------|
+| baseline (main) | 6.08% | 259 | 60 | — | post-#582 main |
+| pass-1 | 5.93% | 211 | 3 | -0.15pp | Chain-fix A suffix rewrite |
+
+Residual after pass-1: 84 `ambig-bare-hint-fail` (file-scoped helpers
+— requires receiver-variable-type primitive #494), 9 new `ambig-kind`
+on `Component:<X>Serializer` (DRF custom extractor + base Python class
+extractor BOTH emit `SCOPE.Component:UserSerializer` in the same file
+→ Component kind bucket flips ambiguous — structural duplicate-entity
+problem, separate fix), 3 `kind-mismatch` `Model:User` (no suffix to
+detect, genuinely unresolvable from a regex pass).
+
+Regression check (14 corpora vs current main / post-#582):
+
+| Repo | Lang | main | w10 | Δ |
+|---|---|---:|---:|---:|
+| chi | go | 4.23% | 4.23% | 0.000pp |
+| express | js | 3.00% | 3.00% | 0.000pp |
+| spdlog | cpp | 5.76% | 5.76% | 0.000pp |
+| gin | go | 4.93% | 4.93% | 0.000pp |
+| play-scala-starter | scala | 2.11% | 2.11% | 0.000pp |
+| nextjs-commerce | ts | 2.32% | 2.32% | 0.000pp |
+| nestjs-starter | ts | 1.75% | 1.75% | 0.000pp |
+| django-realworld | python | 3.77% | 3.68% | -0.094pp |
+| flask-realworld | python | 6.58% | 6.58% | 0.000pp |
+| click | python | 5.99% | 5.99% | 0.000pp |
+| requests | python | 1.43% | 1.43% | 0.000pp |
+| pandas | python | 9.80% | 9.80% | 0.000pp |
+| kafka-streams-examples | java | 3.40% | 3.40% | 0.000pp |
+| vapor-api-template | swift | 2.13% | 2.13% | 0.000pp |
+
+Zero non-python deltas (Python-gated). django-realworld improves
+spillover -0.094pp. No regression >0.5pp on any corpus.
+
+Tests: `go test ./internal/engine/...` pass; new
+`django_imports_rewrite_test.go` covers all suffix cases + non-Model
+prefix passthrough + non-IMPORTS/DEPENDS_ON kind passthrough.
+
+Residual root cause: kind-mismatch dropped 60 → 3 (only `User`-shaped
+bare-name imports remain, which have no suffix discriminator). The
+larger remaining bug-resolver bucket (84 `ambig-bare-hint-fail`) is
+file-scoped helper functions defined in multiple modules — requires
+file-scoped resolution (#494 receiver-variable-type primitive).
+Bug-extractor (1676) dominated by generic Python verbs blocked per
+safer-bias rule (#94).
+
+Status: at-bar (5.93%, well below 8% floor; ship-gate target ≤3% —
+gap 2.93pp remains).
+
+Chain-fixes filed (for next wave):
+1. **Python module-constant entity lift at extractor level** —
+   wave-9 already routes `Model:<SCREAMING_SNAKE>` to Dynamic
+   (resolver-level); the structural alternative emits SCOPE.Component
+   entities for `^[A-Z][A-Z0-9_]*$` module-level assignments so they
+   become queryable in the graph (no bug-rate movement, completeness
+   win).
+2. **DRF @action structural binding** — wave-9 routes `Action:<x>` to
+   Dynamic; structural alternative looks up `<x>` as a method in any
+   class in the same module that inherits from a viewset base. No
+   bug-rate change (Dynamic isn't a bug bucket).
+3. **Per-import file-scoped Python allowlists** — pandas `query`/`head`,
+   numpy `array`/`zeros`, requests `get`/`post`, boto3 `client`,
+   redis `set`/`incr`. Mirrors the wave-9 React Track B precedent
+   (jsCollectionLibBareNames gated on lodash/ramda imports). On
+   client-fixture-a the candidate volume is small (~50 edges, ~-0.16pp)
+   so it ships as a separate followup PR with the broader python
+   ecosystem corpora (pandas, requests).
+4. **Serializer duplicate-extraction dedup** — both DRF custom
+   extractor (`internal/custom/python/django.go:153`) AND the base
+   Python class extractor emit `SCOPE.Component:UserSerializer` in
+   `*/serializers.py` files, populating `ambigKind[Component][Name]`.
+   Same-file same-name same-kind dedup at extractor merge time would
+   eliminate the 9 residual `ambig-kind` exposed by Chain-fix A.
