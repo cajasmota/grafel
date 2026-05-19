@@ -57,6 +57,7 @@ func newRoot() *cobra.Command {
 		newQualityCmd(),
 		newLinksCmd(),
 		newExtractCmd(),
+		newPatternsCmd(),
 		newHelpCmd(),
 	)
 
@@ -135,4 +136,14 @@ Dashboard:
 Quality:
   quality <fixture-dir>                       Measure extraction recall vs a golden fixture
   quality audit-orphans [--corpus] <path>     Audit orphan rate + edge hygiene; emits md or JSON
+
+Agent-learned patterns (ADR-0018):
+  patterns list [--needs-attention]           Show patterns table (rejected/low-conf/stale with --needs-attention)
+  patterns show <id>                          Pretty-print a pattern as JSON
+  patterns edit <id>                          Edit a pattern in $EDITOR
+  patterns delete <id> [--force]              Remove a pattern (dry-run by default)
+  patterns export --repo <p> | --file <p>     Write the CLAUDE.md marker block
+  patterns import --repo <p> | --file <p>     Diff CLAUDE.md vs the store
+  patterns config [key=value]                 Get/set thresholds (per_subagent_threshold, …)
+  patterns gc [--dry-run=false]               Prune candidates older than candidate_decay_days
 `

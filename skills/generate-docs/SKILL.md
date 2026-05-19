@@ -39,6 +39,11 @@ The skill is a strict pipeline. Each pass has a dedicated prompt file under `pro
 | 7 | `prompts/07-group-synthesis.md` | Group-level synthesis page that ties the repos together. |
 | 8 | `prompts/08-cross-link.md` | Validate links and resolve `archigraph_list_link_candidates`. |
 | 9 | `prompts/09-vitepress.md` | Optional VitePress site config. |
+| 10 | `prompts/10-pattern-convergence.md` | Aggregate subagent pattern candidates + promote convergent ones (ADR-0018 Phase 4). |
+| 11 | `prompts/11-pattern-cross-link.md` | Populate each approved pattern's `documentation_url` (ADR-0018 Phase 5). |
+| 12 | `prompts/12-pattern-prose.md` | Emit `docs/patterns/<category>/<id>.md` per approved pattern (ADR-0018 Phase 6). |
+
+During Pass 4 (per-module writers), each subagent additionally emits `PatternCandidate` entities via `archigraph_patterns(action=record, as_candidate=true)` whenever it observes ≥ `per_subagent_threshold` (default 2) instances of a structural recurrence in its slice. The candidates aggregate in Pass 10, cross-link in Pass 11, and produce dedicated markdown in Pass 12. The full design is in [ADR-0018](../../docs/adrs/0018-agent-learned-patterns.md).
 
 ## archigraph MCP tool surface
 

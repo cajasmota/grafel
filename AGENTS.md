@@ -34,3 +34,8 @@ and PR wiring it into `internal/mcp/server.go`), not from this file.
 - `go test ./...` is the baseline gate
 - Bug-rate parity across PRs is checked via golden fixtures + cross-language invariant tests
 - Determinism test in `cmd/archigraph/determinism_test.go` must pass byte-identical output
+
+## Skills
+- Skill markdown lives under `skills/<skill-name>/SKILL.md`; per-pass prompts (when applicable) live in `skills/<skill-name>/prompts/`.
+- The pattern-discovery + sync skills (ADR-0018) are `/archigraph-patterns-discover` and `/archigraph-patterns-sync`. They sit alongside `/generate-docs`, which holds the primary discovery path.
+- Invoke skills via the agent host's `/skill-name` command. The CLI surface for direct pattern inspection is `archigraph patterns <verb>` — see `archigraph help advanced`.

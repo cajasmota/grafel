@@ -252,12 +252,18 @@ func (c *loggingConn) Read(p []byte) (int, error) {
 // buildPatternDecayJob constructs the DecayJob that the pattern decay scheduler
 // calls on each tick (every 6 hours by default).
 //
-// Decay rule (per ADR-0018 and γ spec):
+// The job performs two passes:
 //
-//	For each pattern: if last_applied > 30 days ago AND confidence > 0.2,
-//	decrement by DecayDeltaPer30Day (0.05) on each scheduler tick, floored at
-//	ConfidenceFloor (0.2). Each tick is one decay step; the 30-day window is
-//	the eligibility threshold, not the delta size.
+//  1. Confidence decay (per ADR-0018 + γ spec): for each pattern with
+//     last_applied > 30 days ago AND confidence > 0.2, decrement by
+//     DecayDeltaPer30Day (0.05) per tick, floored at ConfidenceFloor (0.2).
+//  2. Candidate pruning (per ADR-0018 δ spec): for each candidate
+//     (is_candidate=true) with last_validated older than the group's
+//     `candidate_decay_days` (loaded from patterns-config.json; default
+//     90), drop it from the store.
+//
+// The decay step and the candidate-pruning step share a single load+save
+// cycle so the store mutates atomically.
 func buildPatternDecayJob(groupDirs func() map[string]string, logger *log.Logger) agentpatterns.DecayJob {
 	return func(nowUnix int64) {
 		dirs := groupDirs()
@@ -272,7 +278,14 @@ func buildPatternDecayJob(groupDirs func() map[string]string, logger *log.Logger
 				}
 				continue
 			}
+			cfg, cfgErr := agentpatterns.LoadConfig(dir)
+			if cfgErr != nil && logger != nil {
+				logger.Printf("pattern decay: load config %s: %v (using defaults)", group, cfgErr)
+				cfg = agentpatterns.DefaultConfig()
+			}
 			changed := false
+
+			// Pass 1 — confidence decay.
 			for i := range patterns {
 				p := &patterns[i]
 				if p.LastApplied == 0 {
@@ -296,6 +309,31 @@ func buildPatternDecayJob(groupDirs func() map[string]string, logger *log.Logger
 					changed = true
 				}
 			}
+
+			// Pass 2 — candidate pruning. Operates only on patterns
+			// with is_candidate=true and last_validated older than
+			// the configured cutoff. Approved patterns are never
+			// auto-pruned (per ADR-0018 Open Question 1).
+			if cfg.CandidateDecayDays > 0 {
+				cutoff := nowUnix - int64(cfg.CandidateDecayDays)*86400
+				kept := patterns[:0]
+				pruned := 0
+				for _, p := range patterns {
+					if p.IsCandidate && p.LastValidated > 0 && p.LastValidated < cutoff {
+						pruned++
+						continue
+					}
+					kept = append(kept, p)
+				}
+				if pruned > 0 {
+					patterns = kept
+					changed = true
+					if logger != nil {
+						logger.Printf("pattern decay: pruned %d stale candidates in %s", pruned, group)
+					}
+				}
+			}
+
 			if !changed {
 				continue
 			}
