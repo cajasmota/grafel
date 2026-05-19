@@ -1,0 +1,91 @@
+{
+  "fixture_name": "typescript-react-mini",
+  "language": "typescript",
+  "description": "Tiny React + TypeScript app exercising function components with hooks (useState, useEffect, useCallback), component composition, Context API (createContext + Provider + useContext), a custom hook, react-router (useNavigate, useParams), and TypeScript interfaces / type aliases. Used by the extraction-quality benchmark to detect recall regressions in the TS/React extractor path.",
+  "expected_entities": [
+    { "name": "User", "kind": "SCOPE.Schema", "source_file": "types/user.ts", "must_exist": true, "note": "Domain interface." },
+    { "name": "UserRole", "kind": "SCOPE.Schema", "source_file": "types/user.ts", "must_exist": true, "note": "Type alias." },
+    { "name": "UserWithRole", "kind": "SCOPE.Schema", "source_file": "types/user.ts", "must_exist": true, "note": "Interface extending User." },
+
+    { "name": "AuthContextValue", "kind": "SCOPE.Schema", "source_file": "context/AuthContext.tsx", "must_exist": true },
+    { "name": "AuthProvider", "kind": "SCOPE.Operation", "source_file": "context/AuthContext.tsx", "must_exist": true, "note": "Provider component." },
+    { "name": "useAuth", "kind": "SCOPE.Operation", "source_file": "context/AuthContext.tsx", "must_exist": true, "note": "Custom hook wrapping useContext." },
+    { "name": "login", "kind": "SCOPE.Operation", "source_file": "context/AuthContext.tsx", "must_exist": true },
+    { "name": "logout", "kind": "SCOPE.Operation", "source_file": "context/AuthContext.tsx", "must_exist": true },
+
+    { "name": "useUsers", "kind": "SCOPE.Operation", "source_file": "hooks/useUsers.ts", "must_exist": true, "note": "Custom hook." },
+    { "name": "refresh", "kind": "SCOPE.Operation", "source_file": "hooks/useUsers.ts", "must_exist": true, "note": "useCallback function inside the custom hook." },
+
+    { "name": "UserCardProps", "kind": "SCOPE.Schema", "source_file": "components/UserCard.tsx", "must_exist": true },
+    { "name": "UserCard", "kind": "SCOPE.Operation", "source_file": "components/UserCard.tsx", "must_exist": true, "note": "Function component." },
+    { "name": "handleClick", "kind": "SCOPE.Operation", "source_file": "components/UserCard.tsx", "must_exist": true },
+
+    { "name": "UserListProps", "kind": "SCOPE.Schema", "source_file": "components/UserList.tsx", "must_exist": true },
+    { "name": "UserList", "kind": "SCOPE.Operation", "source_file": "components/UserList.tsx", "must_exist": true },
+
+    { "name": "Home", "kind": "SCOPE.Operation", "source_file": "pages/Home.tsx", "must_exist": true },
+    { "name": "pick", "kind": "SCOPE.Operation", "source_file": "pages/Home.tsx", "must_exist": true },
+
+    { "name": "UserDetail", "kind": "SCOPE.Operation", "source_file": "pages/UserDetail.tsx", "must_exist": true },
+    { "name": "goBack", "kind": "SCOPE.Operation", "source_file": "pages/UserDetail.tsx", "must_exist": true },
+
+    { "name": "App", "kind": "SCOPE.Operation", "source_file": "App.tsx", "must_exist": true },
+
+    { "name": "AuthContext", "kind": "SCOPE.Operation", "source_file": "context/AuthContext.tsx", "must_exist": false, "nice_to_have": true, "note": "Today emitted as SCOPE.Operation because createContext is treated as a callable; ideal kind would be SCOPE.Component." }
+  ],
+  "expected_relationships": [
+    { "from_name": "App.tsx", "from_kind": "SCOPE.Component", "from_file": "App.tsx",
+      "kind": "IMPORTS", "to_name": "./pages/Home", "to_kind": "SCOPE.Component", "to_file": "App.tsx",
+      "must_exist": true, "note": "Local import edge between sibling files." },
+    { "from_name": "App.tsx", "from_kind": "SCOPE.Component", "from_file": "App.tsx",
+      "kind": "IMPORTS", "to_name": "./pages/UserDetail", "to_kind": "SCOPE.Component", "to_file": "App.tsx",
+      "must_exist": true },
+    { "from_name": "App.tsx", "from_kind": "SCOPE.Component", "from_file": "App.tsx",
+      "kind": "IMPORTS", "to_name": "./context/AuthContext", "to_kind": "SCOPE.Component", "to_file": "App.tsx",
+      "must_exist": true },
+    { "from_name": "components/UserList.tsx", "from_kind": "SCOPE.Component", "from_file": "components/UserList.tsx",
+      "kind": "IMPORTS", "to_name": "./UserCard", "to_kind": "SCOPE.Component", "to_file": "components/UserList.tsx",
+      "must_exist": true },
+    { "from_name": "components/UserList.tsx", "from_kind": "SCOPE.Component", "from_file": "components/UserList.tsx",
+      "kind": "IMPORTS", "to_name": "../hooks/useUsers", "to_kind": "SCOPE.Component", "to_file": "components/UserList.tsx",
+      "must_exist": true },
+    { "from_name": "pages/Home.tsx", "from_kind": "SCOPE.Component", "from_file": "pages/Home.tsx",
+      "kind": "IMPORTS", "to_name": "../components/UserList", "to_kind": "SCOPE.Component", "to_file": "pages/Home.tsx",
+      "must_exist": true },
+
+    { "from_name": "useUsers", "from_kind": "SCOPE.Operation", "from_file": "hooks/useUsers.ts",
+      "kind": "CALLS", "to_bare_name": "ext:useState", "must_exist": true,
+      "note": "Hook invocation inside a custom hook; resolver rewrites bare name to ext:useState." },
+    { "from_name": "useUsers", "from_kind": "SCOPE.Operation", "from_file": "hooks/useUsers.ts",
+      "kind": "CALLS", "to_bare_name": "ext:useEffect", "must_exist": true },
+    { "from_name": "useUsers", "from_kind": "SCOPE.Operation", "from_file": "hooks/useUsers.ts",
+      "kind": "CALLS", "to_bare_name": "ext:useCallback", "must_exist": true },
+    { "from_name": "useUsers", "from_kind": "SCOPE.Operation", "from_file": "hooks/useUsers.ts",
+      "kind": "CALLS", "to_bare_name": "ext:fetch", "must_exist": true },
+
+    { "from_name": "useAuth", "from_kind": "SCOPE.Operation", "from_file": "context/AuthContext.tsx",
+      "kind": "CALLS", "to_bare_name": "ext:useContext", "must_exist": true },
+
+    { "from_name": "UserDetail", "from_kind": "SCOPE.Operation", "from_file": "pages/UserDetail.tsx",
+      "kind": "CALLS", "to_bare_name": "ext:useNavigate", "must_exist": true },
+    { "from_name": "UserDetail", "from_kind": "SCOPE.Operation", "from_file": "pages/UserDetail.tsx",
+      "kind": "CALLS", "to_bare_name": "ext:useParams", "must_exist": true },
+    { "from_name": "UserDetail", "from_kind": "SCOPE.Operation", "from_file": "pages/UserDetail.tsx",
+      "kind": "CALLS", "to_name": "useAuth", "to_kind": "SCOPE.Operation", "to_file": "context/AuthContext.tsx",
+      "must_exist": true,
+      "note": "Cross-file custom-hook call resolved by the import-aware resolver." },
+
+    { "from_name": "Home", "from_kind": "SCOPE.Operation", "from_file": "pages/Home.tsx",
+      "kind": "CALLS", "to_bare_name": "ext:useNavigate", "must_exist": true },
+
+    { "from_name": "UserList", "from_kind": "SCOPE.Operation", "from_file": "components/UserList.tsx",
+      "kind": "CALLS", "to_name": "useUsers", "to_kind": "SCOPE.Operation", "to_file": "hooks/useUsers.ts",
+      "must_exist": true,
+      "note": "Custom-hook call across files." },
+
+    { "from_name": "UserCard", "from_kind": "SCOPE.Operation", "from_file": "components/UserCard.tsx",
+      "kind": "CALLS", "to_name": "UserCard", "to_kind": "SCOPE.Operation", "to_file": "components/UserList.tsx",
+      "must_exist": false, "nice_to_have": true,
+      "note": "Ideal RENDERS edge for JSX <UserCard /> composition; today JSX usage isn't extracted as a RENDERS edge for plain function components." }
+  ]
+}

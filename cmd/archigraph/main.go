@@ -18,6 +18,7 @@ func main() {
 		RunMCP:       runMCP,
 		RunLinks:     runLinksHook,
 		RunDashboard: runDashboard,
+		RunQuality:   runQuality,
 	})
 }
 

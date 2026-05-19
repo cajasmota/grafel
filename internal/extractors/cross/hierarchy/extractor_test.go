@@ -125,6 +125,62 @@ func TestPython_DeclaredParentStillResolvable(t *testing.T) {
 	}
 }
 
+// TestJava_InterfaceExtendsEmitsEdge is the regression for issue #612: a Java
+// `interface Foo extends Bar<T>, Baz` declaration must emit an EXTENDS edge
+// from Foo to each parent interface, with generic type arguments stripped.
+func TestJava_InterfaceExtendsEmitsEdge(t *testing.T) {
+	src := "public interface UserRepository extends JpaRepository<User, Long>, Serializable {\n" +
+		"    Optional<User> findByEmail(String email);\n}\n"
+	got := runExtract(t, "java", "repo/UserRepository.java", src)
+
+	// Interface entity must be emitted with subtype="interface".
+	var hasIface bool
+	for _, e := range got {
+		if e.Name == "UserRepository" && e.Subtype == "interface" {
+			hasIface = true
+		}
+	}
+	if !hasIface {
+		t.Fatalf("expected UserRepository interface entity, got %v", entityNames(got))
+	}
+
+	// EXTENDS edges to JpaRepository and Serializable must both be present.
+	wantTargets := map[string]bool{
+		"JpaRepository": false,
+		"Serializable":  false,
+	}
+	for _, e := range got {
+		for _, rel := range e.Relationships {
+			if rel.Kind != "EXTENDS" {
+				continue
+			}
+			for tgt := range wantTargets {
+				if rel.ToID == ifaceRef(tgt, "java") {
+					wantTargets[tgt] = true
+				}
+			}
+		}
+	}
+	for tgt, found := range wantTargets {
+		if !found {
+			t.Errorf("expected EXTENDS edge to %q, missing. entities=%v", tgt, entityNames(got))
+		}
+	}
+}
+
+// TestJava_InterfaceWithoutExtendsIsSkipped guards against emitting empty
+// interface entities (no EXTENDS, no useful signal — the per-language
+// extractor already covers entity emission).
+func TestJava_InterfaceWithoutExtendsIsSkipped(t *testing.T) {
+	src := "public interface Marker {\n}\n"
+	got := runExtract(t, "java", "repo/Marker.java", src)
+	for _, e := range got {
+		if e.Name == "Marker" {
+			t.Errorf("expected no Marker entity from hierarchy extractor (no extends), got %v", entityNames(got))
+		}
+	}
+}
+
 func entityNames(records []types.EntityRecord) []string {
 	out := make([]string, 0, len(records))
 	for _, r := range records {

@@ -77,19 +77,19 @@ func TestRewritePythonModelImports(t *testing.T) {
 func TestClassifyDjangoModelImportName(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"UserSerializer":          "Component",
-		"OrderViewSet":            "View",
-		"OrderViewset":            "View",
-		"DetailView":              "View",
-		"BlogListView":            "View",
-		"DashboardView":           "View",
-		"APIView":                 "View",
-		"User":                    "",
-		"Article":                 "",
-		"DocumentTemplate":        "",
-		"ChecklistItem":           "",
-		"PermissionPagesEnum":     "",
-		"MA_JURISDICTION_NAME":    "",
+		"UserSerializer":       "Component",
+		"OrderViewSet":         "View",
+		"OrderViewset":         "View",
+		"DetailView":           "View",
+		"BlogListView":         "View",
+		"DashboardView":        "View",
+		"APIView":              "View",
+		"User":                 "",
+		"Article":              "",
+		"DocumentTemplate":     "",
+		"ChecklistItem":        "",
+		"PermissionPagesEnum":  "",
+		"MA_JURISDICTION_NAME": "",
 	}
 	for name, want := range cases {
 		name, want := name, want

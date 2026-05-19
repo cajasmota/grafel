@@ -128,8 +128,13 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	)
 	defer span.End()
 
+	// Resolve compiled YAML-rule sets for this language. If no rules are
+	// registered we still allow the language through when the synthesis
+	// pass below knows how to handle it — that pass scans content
+	// directly and can emit framework entities (notably the http_endpoint
+	// synthetics from #534) even when no YAML rules are present.
 	sets, ok := d.compiled[file.Language]
-	if !ok {
+	if !ok && !synthesisSupportsLanguage(file.Language) {
 		span.SetAttributes(
 			attribute.Int("entity_count", 0),
 			attribute.Int("relationship_count", 0),
@@ -218,6 +223,15 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// Route:/api/users. No-op for non-Python files. Refs #64.
 	entities, relationships = applyDjangoRouteComposition(
 		ctx, file.Language, file.Path, file.Content, entities, relationships,
+	)
+
+	// Synthetic http_endpoint emission for typed-HTTP cross-repo matching.
+	// Runs AFTER the Spring + Django composition passes so it can re-use
+	// the composed Route entities they emit. Appends new entities/edges
+	// only — never modifies or removes existing ones, so this pass cannot
+	// regress the surrounding pipeline's bug-rate. Refs #534.
+	entities, relationships = applyHTTPEndpointSynthesis(
+		file.Language, file.Path, file.Content, entities, relationships,
 	)
 
 	// Django models-import suffix rewrite (PR #580 wave-10 Chain-fix A):

@@ -1,0 +1,119 @@
+{
+  "fixture_name": "python-django-mini",
+  "language": "python",
+  "description": "Tiny Django project with a single app exercising Model, custom Manager, Class-Based + Function-Based Views, URLconf, signal receiver, admin registration, and AppConfig.ready import side-effect. Used by the extraction-quality benchmark to detect recall regressions in the python + Django framework path.",
+  "expected_entities": [
+    { "name": "User", "kind": "SCOPE.Component", "source_file": "users/models.py", "must_exist": true, "note": "Django Model class." },
+    { "name": "User", "kind": "Model", "source_file": "users/models.py", "must_exist": true, "note": "Framework-level Model entity emitted by the Django YAML rules." },
+    { "name": "ActiveUserManager", "kind": "SCOPE.Component", "source_file": "users/models.py", "must_exist": true, "note": "Custom manager subclass." },
+    { "name": "Meta", "kind": "SCOPE.Component", "source_file": "users/models.py", "must_exist": true, "note": "Inner Meta class on User." },
+
+    { "name": "UserListView", "kind": "SCOPE.Component", "source_file": "users/views.py", "must_exist": true },
+    { "name": "UserDetailView", "kind": "SCOPE.Component", "source_file": "users/views.py", "must_exist": true },
+    { "name": "UserListView", "kind": "View", "source_file": "users/views.py", "must_exist": true, "note": "Framework-level View entity." },
+    { "name": "UserDetailView", "kind": "View", "source_file": "users/views.py", "must_exist": true },
+
+    { "name": "UsersConfig", "kind": "SCOPE.Component", "source_file": "users/apps.py", "must_exist": true },
+    { "name": "UsersConfig", "kind": "Config", "source_file": "users/apps.py", "must_exist": true, "note": "AppConfig subclass surfaced by the framework rules." },
+    { "name": "UserAdmin", "kind": "SCOPE.Component", "source_file": "users/admin.py", "must_exist": true },
+
+    { "name": "ActiveUserManager.by_email", "kind": "SCOPE.Operation", "source_file": "users/models.py", "must_exist": true },
+    { "name": "ActiveUserManager.get_queryset", "kind": "SCOPE.Operation", "source_file": "users/models.py", "must_exist": true },
+    { "name": "User.full_label", "kind": "SCOPE.Operation", "source_file": "users/models.py", "must_exist": true },
+    { "name": "UserListView.get", "kind": "SCOPE.Operation", "source_file": "users/views.py", "must_exist": true },
+    { "name": "UserDetailView.get", "kind": "SCOPE.Operation", "source_file": "users/views.py", "must_exist": true },
+    { "name": "health_check", "kind": "SCOPE.Operation", "source_file": "users/views.py", "must_exist": true },
+    { "name": "UsersConfig.ready", "kind": "SCOPE.Operation", "source_file": "users/apps.py", "must_exist": true },
+    { "name": "user_post_save", "kind": "SCOPE.Operation", "source_file": "users/signals.py", "must_exist": true, "note": "Signal receiver function." },
+    { "name": "main", "kind": "SCOPE.Operation", "source_file": "manage.py", "must_exist": true },
+
+    { "name": "User.email", "kind": "SCOPE.Schema", "source_file": "users/models.py", "must_exist": true },
+    { "name": "User.name", "kind": "SCOPE.Schema", "source_file": "users/models.py", "must_exist": true },
+    { "name": "User.is_active", "kind": "SCOPE.Schema", "source_file": "users/models.py", "must_exist": true },
+    { "name": "User.objects", "kind": "SCOPE.Schema", "source_file": "users/models.py", "must_exist": true },
+    { "name": "User.active", "kind": "SCOPE.Schema", "source_file": "users/models.py", "must_exist": true, "note": "Custom-manager binding." },
+
+    { "name": "users/", "kind": "Route", "source_file": "myproject/urls.py", "must_exist": true },
+    { "name": "admin/", "kind": "Route", "source_file": "myproject/urls.py", "must_exist": true },
+    { "name": "health/", "kind": "Route", "source_file": "users/urls.py", "must_exist": true },
+
+    { "name": "UserAdmin.register_with_admin", "kind": "SCOPE.Operation", "source_file": "users/admin.py", "must_exist": false, "nice_to_have": true, "note": "We would like a synthesized binding for @admin.register(User) -> UserAdmin." },
+    { "name": "post_save_receiver", "kind": "SCOPE.Pattern", "source_file": "users/signals.py", "must_exist": false, "nice_to_have": true, "note": "Synthesized signal-binding entity would be a nice future capability." }
+  ],
+  "expected_relationships": [
+    { "from_name": "User", "from_kind": "Model", "from_file": "users/models.py",
+      "kind": "EXTENDS", "to_bare_name": "ext:models", "must_exist": true,
+      "note": "User extends models.Model — emitted on the framework-level Model entity (id 7f30f...) once external synthesis rewrites the target to ext:models." },
+
+    { "from_name": "UserListView", "from_kind": "View", "from_file": "users/views.py",
+      "kind": "EXTENDS", "to_bare_name": "scope:component:class:python:users/views.py:View", "must_exist": true,
+      "note": "UserListView extends django.views.View — EXTENDS is emitted on the framework-level View entity, target currently a scope:* stub." },
+
+    { "from_name": "UsersConfig", "from_kind": "SCOPE.Component", "from_file": "users/apps.py",
+      "kind": "EXTENDS", "to_bare_name": "scope:component:class:python:users/apps.py:AppConfig", "must_exist": true },
+
+    { "from_name": "ActiveUserManager.by_email", "from_kind": "SCOPE.Operation", "from_file": "users/models.py",
+      "kind": "CALLS", "to_name": "ActiveUserManager.get_queryset", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
+      "must_exist": true, "note": "Same-class method call inside the manager." },
+
+    { "from_name": "UserDetailView.get", "from_kind": "SCOPE.Operation", "from_file": "users/views.py",
+      "kind": "CALLS", "to_name": "User.full_label", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
+      "must_exist": false, "nice_to_have": true,
+      "note": "Cross-file method binding on a typed receiver; current resolver leaves this as a bare 'full_label' stub." },
+
+    { "from_name": "UserListView", "from_kind": "SCOPE.Component", "from_file": "users/views.py",
+      "kind": "CONTAINS", "to_name": "UserListView.get", "to_kind": "SCOPE.Operation", "to_file": "users/views.py",
+      "must_exist": true },
+    { "from_name": "User", "from_kind": "SCOPE.Component", "from_file": "users/models.py",
+      "kind": "CONTAINS", "to_name": "User.full_label", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
+      "must_exist": true },
+    { "from_name": "ActiveUserManager", "from_kind": "SCOPE.Component", "from_file": "users/models.py",
+      "kind": "CONTAINS", "to_name": "ActiveUserManager.by_email", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
+      "must_exist": true },
+    { "from_name": "ActiveUserManager", "from_kind": "SCOPE.Component", "from_file": "users/models.py",
+      "kind": "CONTAINS", "to_name": "ActiveUserManager.get_queryset", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
+      "must_exist": true },
+    { "from_name": "UserDetailView", "from_kind": "SCOPE.Component", "from_file": "users/views.py",
+      "kind": "CONTAINS", "to_name": "UserDetailView.get", "to_kind": "SCOPE.Operation", "to_file": "users/views.py",
+      "must_exist": true },
+    { "from_name": "UsersConfig", "from_kind": "SCOPE.Component", "from_file": "users/apps.py",
+      "kind": "CONTAINS", "to_name": "UsersConfig.ready", "to_kind": "SCOPE.Operation", "to_file": "users/apps.py",
+      "must_exist": true },
+
+    { "from_name": "main", "from_kind": "SCOPE.Operation", "from_file": "manage.py",
+      "kind": "CALLS", "to_bare_name": "execute_from_command_line", "must_exist": true },
+
+    { "from_name": "users/", "from_kind": "Route", "from_file": "myproject/urls.py",
+      "kind": "SERVES", "to_bare_name": "scope:operation:users/urls.py#views.UserDetailView.as_view",
+      "must_exist": false, "nice_to_have": true,
+      "note": "include('users.urls') currently fans to a per-handler SERVES bundle; the include itself doesn't expose a direct edge." },
+
+    { "from_name": "UserListView", "from_kind": "SCOPE.Component", "from_file": "users/views.py",
+      "kind": "SERVES", "to_name": "GET ", "to_kind": "SCOPE.Operation", "to_file": "users/urls.py",
+      "must_exist": false, "nice_to_have": true,
+      "note": "Class-based view -> URLconf binding; today expressed via Route-level SERVES instead." },
+
+    { "from_name": "UserAdmin", "from_kind": "SCOPE.Component", "from_file": "users/admin.py",
+      "kind": "DEPENDS_ON", "to_name": "User", "to_kind": "SCOPE.Component", "to_file": "users/models.py",
+      "must_exist": false, "nice_to_have": true,
+      "note": "@admin.register(User) binds the admin class to the model — not yet captured as a direct edge." },
+
+    { "from_name": "user_post_save", "from_kind": "SCOPE.Operation", "from_file": "users/signals.py",
+      "kind": "CALLS", "to_bare_name": "full_label", "must_exist": true,
+      "note": "Bare-name CALLS — would ideally resolve to User.full_label." }
+  ],
+  "forbidden_relationships": [
+    { "from_name": "UserListView.get", "from_kind": "SCOPE.Operation", "from_file": "users/views.py",
+      "kind": "CALLS", "to_name": "User.full_label", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
+      "must_exist": false,
+      "note": "UserListView.get does NOT call full_label — only UserDetailView.get does. If this edge appears, the resolver has bound to the wrong method." },
+    { "from_name": "health_check", "from_kind": "SCOPE.Operation", "from_file": "users/views.py",
+      "kind": "CALLS", "to_name": "User.full_label", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
+      "must_exist": false,
+      "note": "health_check has no User interaction at all." },
+    { "from_name": "ActiveUserManager.get_queryset", "from_kind": "SCOPE.Operation", "from_file": "users/models.py",
+      "kind": "CALLS", "to_name": "ActiveUserManager.by_email", "to_kind": "SCOPE.Operation", "to_file": "users/models.py",
+      "must_exist": false,
+      "note": "Reverse-direction false positive guard." }
+  ]
+}
