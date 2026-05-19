@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/enrichment"
 )
 
@@ -52,7 +53,7 @@ func readRepairEdgeCandidates(repoPath string) []enrichment.Candidate {
 	if repoPath == "" {
 		return nil
 	}
-	path := filepath.Join(repoPath, ".archigraph", "enrichment-candidates.json")
+	path := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-candidates.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -80,7 +81,7 @@ func readRepairEdgeCandidates(repoPath string) []enrichment.Candidate {
 
 // readRepairFile reads repair.json. Absent file → empty struct, not error.
 func readRepairFile(repoPath string) (repairFileOnDisk, error) {
-	path := filepath.Join(repoPath, ".archigraph", "repair.json")
+	path := filepath.Join(daemon.StateDirForRepo(repoPath), "repair.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -111,7 +112,7 @@ func writeRepairFile(repoPath string, rf repairFileOnDisk) error {
 	if repoPath == "" {
 		return fmt.Errorf("repo path is empty")
 	}
-	dir := filepath.Join(repoPath, ".archigraph")
+	dir := daemon.StateDirForRepo(repoPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}

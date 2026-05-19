@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
 
@@ -71,7 +71,7 @@ func (liveStore) GroupGraph(group string) ([]byte, error) {
 	entries := make([]repoEntry, 0, len(cfg.Repos))
 	for _, r := range cfg.Repos {
 		e := repoEntry{Slug: r.Slug, Path: r.Path}
-		b, err := os.ReadFile(filepath.Join(r.Path, ".archigraph", "graph.json"))
+		b, err := os.ReadFile(daemon.GraphPathForRepo(r.Path))
 		if err != nil {
 			e.Error = err.Error()
 		} else {
@@ -94,7 +94,7 @@ func (liveStore) RepoGraph(group, repo string) ([]byte, error) {
 	}
 	for _, r := range cfg.Repos {
 		if r.Slug == repo {
-			return os.ReadFile(filepath.Join(r.Path, ".archigraph", "graph.json"))
+			return os.ReadFile(daemon.GraphPathForRepo(r.Path))
 		}
 	}
 	return nil, fmt.Errorf("repo %q not registered in group %q", repo, group)

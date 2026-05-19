@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
 	"github.com/cajasmota/archigraph/internal/registry"
 	"github.com/cajasmota/archigraph/internal/version"
@@ -91,7 +92,7 @@ func checkRepo(w io.Writer, r registry.Repo) {
 	} else {
 		fmt.Fprintf(w, "  %s repo %s (%s)\n", statusOK, r.Slug, r.Stack)
 	}
-	graph := filepath.Join(r.Path, ".archigraph", "graph.json")
+	graph := daemon.GraphPathForRepo(r.Path)
 	if _, err := os.Stat(graph); err == nil {
 		fmt.Fprintf(w, "         graph.json present\n")
 	}

@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/graph"
 )
 
@@ -93,7 +94,7 @@ func (r RegistryRepo) graphFile() string {
 	if r.Path == "" {
 		return ""
 	}
-	return filepath.Join(r.Path, ".archigraph", "graph.json")
+	return daemon.GraphPathForRepo(r.Path)
 }
 
 // CrossRepoLink is one entry in a group-links.json file.

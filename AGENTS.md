@@ -21,6 +21,7 @@ and PR wiring it into `internal/mcp/server.go`), not from this file.
 - Verify no PIDs survive with `ps aux | grep archigraph`
 - Never `git stash` (concurrent worktree race; commit-checkpoint instead)
 - See `docs/adrs/0004-single-mcp-process-per-machine.md` for the daemon architecture
+- `ARCHIGRAPH_DAEMON_ROOT` isolates THREE things: the daemon socket, the registry, AND per-repo state (issue #745). When the env var is set, per-repo state lives at `$ARCHIGRAPH_DAEMON_ROOT/state/<sha256(abs_repo_path)[:16]>/` instead of `<repo>/.archigraph/`. This means two parallel agents can index the SAME fixture without racing, and the fixture's own `.archigraph/` is never touched. When the env var is unset, ADR-0007 co-located behavior is preserved. Helper: `internal/daemon.StateDirForRepo` / `GraphPathForRepo` — use it for every per-repo state read/write; never hardcode `<repo>/.archigraph/<file>`.
 
 ## Where things live
 - MCP server: `internal/mcp/`

@@ -149,3 +149,24 @@ If a target is missed, the PR that lands the relevant phase must document why an
 **Migration**
 
 Users on any prior binary reinstall via `archigraph install`. There is no compat shim; the standalone subcommands listed above return helpful errors pointing at the new install path.
+
+## Amendment (2026-05-20) — Per-repo state isolation under `ARCHIGRAPH_DAEMON_ROOT` (issue #745)
+
+When parallel coding agents each run an isolated daemon (different `ARCHIGRAPH_DAEMON_ROOT`s) against a shared fixture corpus, the socket and registry are isolated but the per-repo state directory — `<repo>/.archigraph/` per ADR-0007 — is shared. Two daemons indexing the same fixture race on `graph.json` and corrupt each other's outputs.
+
+This amendment narrows the daemon's reach into the repo working tree:
+
+- **Default behavior (no env var set) is unchanged.** Per-repo state continues to live in `<repo>/.archigraph/` per ADR-0007. Single-user installs are not affected.
+- **When `ARCHIGRAPH_DAEMON_ROOT` is set,** the daemon writes ALL per-repo state under
+
+  ```
+  $ARCHIGRAPH_DAEMON_ROOT/state/<sha256(abs_repo_path)[:16]>/
+  ```
+
+  instead of into the repo working tree. The hash segment is deterministic (same repo → same segment across processes and hosts), filesystem-safe, and collision-resistant.
+- **The repo's own `.archigraph/` is never created or modified by the daemon under this mode.** Pristine read-only fixture corpora stay pristine, no matter how many parallel agents index them.
+- **Group-level metadata that lives co-located by design** (`<repo>/.archigraph/group.json`, written by the wizard for repo-to-group discovery via CWD walk) is NOT routed through the helper. That file is a configuration marker, not state, and must be discoverable regardless of which daemon is running.
+
+The helper is `internal/daemon.StateDirForRepo(repoPath)` (and the convenience wrapper `GraphPathForRepo`). All indexer write paths, reader paths (audit, dashboard, MCP, doctor, status, watch, links), and enrichment/repair persistence go through it. The variable name `ARCHIGRAPH_DAEMON_ROOT` becomes the single switch for the full three-dimensional isolation (socket + registry + per-repo state).
+
+This is a deliberate, env-gated exception to ADR-0007. ADR-0007's co-located default remains the right model for the single-user installation it was written for; the daemon-root override exists solely for the parallel-agent development workflow.

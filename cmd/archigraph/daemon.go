@@ -221,7 +221,7 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 	}
 	graphPath := args.OutPath
 	if graphPath == "" {
-		graphPath = filepath.Join(args.RepoPath, ".archigraph", "graph.json")
+		graphPath = daemon.GraphPathForRepo(args.RepoPath)
 	}
 	return graphPath, statsBuf.String(), nil
 }
@@ -254,7 +254,7 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 			continue
 		}
 		if args.Wipe {
-			_ = os.RemoveAll(filepath.Join(r.Path, ".archigraph"))
+			_ = os.RemoveAll(daemon.StateDirForRepo(r.Path))
 		}
 		if err := Index(r.Path, "", "", nil, false, false); err != nil {
 			return rebuilt, "", fmt.Errorf("index %s: %w", r.Slug, err)

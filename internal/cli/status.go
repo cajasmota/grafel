@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/client"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
@@ -130,7 +130,7 @@ func runStatus(w io.Writer, filter string) error {
 		}
 		for _, r := range cfg.Repos {
 			line := fmt.Sprintf("  %-20s  %s", r.Slug, r.Path)
-			graph := filepath.Join(r.Path, ".archigraph", "graph.json")
+			graph := daemon.GraphPathForRepo(r.Path)
 			if fi, err := os.Stat(graph); err == nil {
 				age := time.Since(fi.ModTime()).Truncate(time.Second)
 				line += fmt.Sprintf("  graph.json: %s ago", age)
