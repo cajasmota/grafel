@@ -91,7 +91,50 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	entities = append(entities, extractor.FileEntity(file))
 
 	// Walk top-level children.
+	walkBeforeCount := len(entities)
 	walkNode(root, file, "", &entities, &functionCount, &classCount)
+
+	// Issue #699b — emit CONTAINS edges from the file entity to every
+	// top-level class (SCOPE.Component/class) and module-level function
+	// (SCOPE.Operation/function) added by walkNode.
+	//
+	// Top-level classes have bare names (no dot separator); methods and
+	// nested classes carry a dotted path ("Class.method", "Class.Inner").
+	// Module-level functions also have bare names; methods always contain
+	// a dot. We use the structural-ref format that the resolver's
+	// lookupLocationKind or lookupUniqueRealComponentByName can bind
+	// back to the real entity ID after buildDocument runs.
+	//
+	// This gives every top-level declaration an inbound CONTAINS edge
+	// from the file entity, eliminating the orphan-class and
+	// orphan-function buckets that account for ~4pp of the Python
+	// orphan rate on Django corpora.
+	for i := walkBeforeCount; i < len(entities); i++ {
+		child := &entities[i]
+		var toID string
+		switch {
+		case child.Kind == "SCOPE.Component" && child.Subtype == "class" &&
+			!strings.ContainsRune(child.Name, '.'):
+			// Top-level class — mirrors the inner-class CONTAINS stub format
+			// (issue #757) with the class's own source file so the resolver's
+			// byLocation [file][name] lookup finds it.
+			toID = "scope:component:class:python:" + child.SourceFile + ":" + child.Name
+		case child.Kind == "SCOPE.Operation" && child.Subtype == "function" &&
+			!strings.ContainsRune(child.Name, '.'):
+			// Module-level function — bare name (methods always carry a dot).
+			// BuildOperationStructuralRef uses subtype="method" in its path
+			// but the resolver's lookupLocationKind key is (file, name),
+			// so the subtype label in the stub does not gate resolution.
+			toID = extractor.BuildOperationStructuralRef("python", child.SourceFile, child.Name)
+		}
+		if toID != "" {
+			entities[0].Relationships = append(entities[0].Relationships,
+				types.RelationshipRecord{
+					ToID: toID,
+					Kind: "CONTAINS",
+				})
+		}
+	}
 
 	// Secondary pass: error-handling patterns.
 	// Runs after the base walker so a failure here cannot abort the
