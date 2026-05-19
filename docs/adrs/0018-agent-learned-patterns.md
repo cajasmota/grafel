@@ -151,6 +151,16 @@ Pattern detection has three entry points:
      3. For each cluster with ≥ `convergence_threshold` (default 3) independent proposer subagents, merge into a single candidate (union of exemplars, best-scored trigger text) and call `promote(candidate_id)`.
      4. Surface promoted candidates to the user for final approval. User approval flips `is_candidate=false`.
    - **Phase 5 (cross-link, new):** approved patterns receive `documentation_url` populated with the matching doc-section anchor.
+   - **Phase 6 (pattern prose generation, new):** for each approved pattern (newly promoted in Phase 4 or refined in this run), generate a markdown doc section at `docs/patterns/<category>/<pattern-id>.md`. Content uses the pattern's structured data plus the doc-gen's codebase context:
+     - **When to use**: re-words the trigger field into natural prose.
+     - **Recipe**: numbered steps with concrete file references resolved from EXEMPLAR + TOUCHES edges.
+     - **Exemplars**: cite the canonical entities (`see src/handlers/users.go:42`) with hyperlinks where applicable.
+     - **Anti-patterns**: each with rationale; `private=true` anti-patterns are excluded from the generated output (consistent with the CLAUDE.md export rule).
+     - **Related patterns**: follow `CO_APPLIES_WITH` and `SUPERSEDES` edges to link sibling/predecessor patterns.
+
+     Pattern docs are committed to the repo alongside the prose output. The pattern's `documentation_url` field is populated with the URL of this generated doc — not an existing pre-authored section. Existing /generate-docs prose links back to pattern docs where applicable ("when adding a handler, follow the [endpoint pattern](patterns/code/endpoint.md)").
+
+     Re-running /generate-docs regenerates the pattern docs from the current pattern store, so refinements + new applications propagate automatically. Private anti-patterns and any pattern marked `is_candidate=true` are skipped.
 
    Non-convergent candidates persist with `is_candidate=true` for future runs; they may converge in the next doc-gen cycle. The `archigraph patterns gc` command (v1.1) prunes candidates older than `candidate_decay_days` (default 90).
 
@@ -263,7 +273,7 @@ Do not queue these PRs until the current HTTP overhaul and the Java/Python chain
 | α   | Pattern entity kind; per-group `patterns.json` storage; schema only (no MCP wiring). |
 | β   | `archigraph_patterns` MCP tool: `query` and `record` actions; BM25 index integration; scope derivation from exemplars. |
 | γ   | Lifecycle: `refine`, `apply`, `reject`; confidence model; time decay; `CREATED_BY` edge write on apply. |
-| δ   | Skills: `/generate-docs` integration (Phase 4 + 5 added — pattern proposal + cross-link); `/archigraph-patterns-discover` standalone; `/archigraph-patterns-sync` for CLAUDE.md export. Private anti-pattern sanitization. `archigraph patterns` CLI subcommand. |
+| δ   | Skills: `/generate-docs` integration with Phases 4 + 5 + 6 (pattern proposal, cross-link, prose generation); `/archigraph-patterns-discover` standalone; `/archigraph-patterns-sync` for CLAUDE.md export. Private anti-pattern sanitization. `archigraph patterns` CLI subcommand. |
 
 ## Open questions
 
