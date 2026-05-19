@@ -368,13 +368,32 @@ func extractParamName(expr string) string {
 // The resulting string is stripped of any host prefix (via stripURLHost) and
 // validated by looksLikeURLPathOrParam before being returned. Returns ("", false)
 // when the template does not look like a URL path.
+// isEnvVarStyleExpr returns true when the expression inside ${...} looks like
+// an explicit env-var accessor rather than a path parameter. Such expressions:
+//   - Start with process.env. (e.g. process.env.API_URL)
+//   - Start with import.meta.env. (e.g. import.meta.env.VITE_CORE_API)
+//
+// NOTE: We deliberately do NOT classify plain ALL_CAPS identifiers as env-var
+// prefixes because they may be legitimate local constants (e.g. `${UNKNOWN_BASE}`
+// in tests expecting `{UNKNOWN_BASE}` as a path placeholder, per #706). Only
+// the explicit accessor forms are reliable env-var signals.
+func isEnvVarStyleExpr(expr string) bool {
+	return strings.HasPrefix(expr, "process.env.") || strings.HasPrefix(expr, "import.meta.env.")
+}
+
 func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, bool) {
+	// Whether the FIRST substitution was an env-var prefix (to be stripped).
+	firstSubst := true
+
 	// Replace each ${expr} with its constant value or a named placeholder.
 	result := templateSubstRe.ReplaceAllStringFunc(tmpl, func(match string) string {
 		// Extract the expression inside ${...}.
 		inner := match[2 : len(match)-1]
 		// Trim whitespace.
 		inner = strings.TrimSpace(inner)
+
+		isFirst := firstSubst
+		firstSubst = false
 
 		// For simple identifiers: look up in the constant symbol table.
 		// For member expressions (e.g. `obj.field`), try the full expr
@@ -389,6 +408,15 @@ func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, b
 			}
 		}
 
+		// #807 — If this is the FIRST substitution and it looks like an env-var
+		// (ALL_CAPS or process.env.X / import.meta.env.X), strip it (return "")
+		// so it doesn't pollute the entity ID with a `{VITE_CORE_API}` prefix.
+		// This produces the same path as the producer side which serves `/buildings`
+		// without the base-URL prefix.
+		if isFirst && isEnvVarStyleExpr(inner) {
+			return ""
+		}
+
 		// Constant folding didn't apply — derive a semantic placeholder from
 		// the expression identifier (#706).
 		if name := extractParamName(inner); name != "" {
@@ -398,6 +426,11 @@ func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, b
 		// Fallback for complex expressions (function calls, subscripts, etc.).
 		return "{param}"
 	})
+
+	// Strip leading slash that remains after removing an env-var prefix.
+	// When ${ENV}/path → ""/path → /path (leading slash already there).
+	// When ${ENV}path (no leading slash) → ""path → "path" — add slash.
+	// normaliseResult handles both cases.
 
 	// Strip host prefix for absolute URLs.
 	result = stripURLHost(result)
@@ -461,7 +494,7 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		}
 		// FindAllStringSubmatchIndex returns 2*(N+1) ints. m[0..1] is the
 		// full match, m[2..3] is group 1 (path), m[4..5] is group 2 (opts).
-		path := content[m[2]:m[3]]
+		raw := content[m[2]:m[3]]
 		verb := "GET"
 		if len(m) >= 6 && m[4] >= 0 {
 			opts := content[m[4]:m[5]]
@@ -469,11 +502,13 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 				verb = strings.ToUpper(mv[1])
 			}
 		}
-		if !looksLikeURLPath(path) {
+		// #807: normalize before URL-path check (strips query strings etc.)
+		path, ok := normalizeRawClientPath(raw)
+		if !ok {
 			continue
 		}
 		caller := enclosingJSFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(path))
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
 		emit(verb, canonical, "fetch", "Function", caller)
 	}
 
@@ -505,12 +540,14 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 			continue
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
-		path := content[m[4]:m[5]]
-		if !looksLikeURLPath(path) {
+		raw := content[m[4]:m[5]]
+		// #807: normalize before URL-path check
+		path, ok := normalizeRawClientPath(raw)
+		if !ok {
 			continue
 		}
 		caller := enclosingJSFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(path))
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
 		emit(verb, canonical, "axios", "Function", caller)
 	}
 
@@ -536,12 +573,14 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 			continue
 		}
 		verb := strings.ToUpper(content[m[4]:m[5]])
-		path := content[m[6]:m[7]]
-		if !looksLikeURLPath(path) {
+		raw := content[m[6]:m[7]]
+		// #807: normalize before URL-path check
+		path, ok := normalizeRawClientPath(raw)
+		if !ok {
 			continue
 		}
 		caller := enclosingJSFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(path))
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
 		emit(verb, canonical, "http_client", "Function", caller)
 	}
 
@@ -1358,4 +1397,19 @@ func stripURLHost(s string) string {
 		return "/"
 	}
 	return rest[idx:]
+}
+
+// normalizeRawClientPath is the entry-point normalizer for static-literal
+// URL paths extracted by the client synthesizers (fetch, axios, requests,
+// etc.). It applies normalizePath (#807) to strip query strings and
+// env-var prefixes, then calls stripURLHost to remove scheme://host.
+//
+// Returns ("", false) when the result is not a usable URL path.
+func normalizeRawClientPath(raw string) (string, bool) {
+	normed := normalizePath(raw)
+	path := stripURLHost(normed.Path)
+	if !looksLikeURLPath(path) {
+		return "", false
+	}
+	return path, true
 }

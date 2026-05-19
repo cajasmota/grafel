@@ -208,8 +208,8 @@ func synthesizeKotlinClientWithRuntime(content string, emit ktClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingKtFuncAt(funcs, m[0])
@@ -232,8 +232,8 @@ func synthesizeKotlinClientWithRuntime(content string, emit ktClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingKtFuncAt(funcs, m[0])
@@ -259,8 +259,8 @@ func synthesizeKotlinClientWithRuntime(content string, emit ktClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingKtFuncAt(funcs, m[0])
@@ -285,8 +285,8 @@ func synthesizeKotlinClientWithRuntime(content string, emit ktClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		// Resolve verb from the builder chain forward.
@@ -303,8 +303,8 @@ func synthesizeKotlinClientWithRuntime(content string, emit ktClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		raw := content[m[4]:m[5]]
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		if retrofitBase != "" {
@@ -325,7 +325,8 @@ func synthesizeKotlinClientWithRuntime(content string, emit ktClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		suffix := content[m[4]:m[5]]
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingKtFuncAt(funcs, m[0])

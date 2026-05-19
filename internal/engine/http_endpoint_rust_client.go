@@ -247,8 +247,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -266,8 +266,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -303,8 +303,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -329,8 +329,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -348,8 +348,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -367,8 +367,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -394,8 +394,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -413,7 +413,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if m[4] >= 0 {
 			suffix = content[m[4]:m[5]]
 		}
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -431,7 +432,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if m[4] >= 0 {
 			suffix = content[m[4]:m[5]]
 		}
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])
@@ -449,7 +451,8 @@ func synthesizeRustClientWithRuntime(content string, emit rustClientEmitFn) {
 		if m[4] >= 0 {
 			suffix = content[m[4]:m[5]]
 		}
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingRustFnAt(funcs, m[0])

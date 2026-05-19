@@ -271,8 +271,8 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		// Look forward up to 512 bytes (across newlines) for a verb
@@ -295,8 +295,8 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		if restTemplateBase != "" {
@@ -316,8 +316,8 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		verb := strings.ToUpper(content[m[8]:m[9]])
@@ -339,8 +339,8 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		if webClientBase != "" {
@@ -360,8 +360,8 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		verb := javaResolveBuilderVerb(content, m[1], javaOkHttpVerbBuilderRe)
@@ -380,8 +380,8 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingJavaMethodAt(methods, m[0])
@@ -396,8 +396,8 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		raw := content[m[4]:m[5]]
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		if retrofitBase != "" {
@@ -424,10 +424,10 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 			continue
 		}
 		suffix := content[m[2]:m[3]]
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		path, pathOK := normalizeRawClientPath(suffix) // #807
+		if !pathOK {
 			continue
 		}
-		path := stripURLHost(suffix)
 		verb := javaResolveBuilderVerb(content, m[1], javaBuilderVerbRe)
 		caller := enclosingJavaMethodAt(methods, m[0])
 		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, path)

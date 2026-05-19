@@ -561,6 +561,13 @@ func pyCanonicalize(raw string, isFString bool, syms map[string]string) (string,
 	if raw == "" {
 		return "", false
 	}
+
+	// #807 — Apply env-var prefix normalization BEFORE f-string substitution.
+	// Handles patterns like os.environ["API_URL"] + "/users" where the
+	// raw argument has an env-var prefix rather than a pure path.
+	normed := normalizePath(raw)
+	raw = normed.Path
+
 	if isFString {
 		// Substitute {ident} with constant values from syms when known,
 		// otherwise canonicalise to a `{name}` placeholder.

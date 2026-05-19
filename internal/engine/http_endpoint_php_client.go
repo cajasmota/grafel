@@ -269,8 +269,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])
@@ -288,8 +288,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		if verb == "" || raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])
@@ -307,8 +307,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		if verb == "" || raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])
@@ -336,8 +336,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 
@@ -377,8 +377,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])
@@ -414,8 +414,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])
@@ -433,8 +433,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])
@@ -452,8 +452,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])
@@ -468,7 +468,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		suffix := phpPickEnvSuffix(content, m, 4)
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])
@@ -483,7 +484,8 @@ func synthesizePHPClientWithRuntime(content string, emit phpClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		suffix := phpPickEnvSuffix(content, m, 4)
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingPHPFnAt(funcs, m[0])

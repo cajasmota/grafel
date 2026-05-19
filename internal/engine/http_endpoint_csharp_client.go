@@ -226,8 +226,8 @@ func synthesizeCSharpClientWithRuntime(content string, emit csClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingCsMethodAt(funcs, m[0])
@@ -245,8 +245,8 @@ func synthesizeCSharpClientWithRuntime(content string, emit csClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingCsMethodAt(funcs, m[0])
@@ -272,8 +272,8 @@ func synthesizeCSharpClientWithRuntime(content string, emit csClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		// Verb: from Method enum group 3, defaulting to GET.
@@ -293,8 +293,8 @@ func synthesizeCSharpClientWithRuntime(content string, emit csClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		raw := content[m[4]:m[5]]
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := csNextInterfaceMethod(content, m[1])
@@ -314,8 +314,8 @@ func synthesizeCSharpClientWithRuntime(content string, emit csClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingCsMethodAt(funcs, m[0])
@@ -332,8 +332,8 @@ func synthesizeCSharpClientWithRuntime(content string, emit csClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingCsMethodAt(funcs, m[0])
@@ -352,7 +352,8 @@ func synthesizeCSharpClientWithRuntime(content string, emit csClientEmitFn) {
 		if m[6] >= 0 {
 			suffix = content[m[6]:m[7]]
 		}
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingCsMethodAt(funcs, m[0])

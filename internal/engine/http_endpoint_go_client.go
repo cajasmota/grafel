@@ -286,8 +286,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])
@@ -314,8 +314,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])
@@ -333,8 +333,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])
@@ -352,8 +352,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])
@@ -371,8 +371,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])
@@ -389,8 +389,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		// Resolve verb from nearby SetMethod call in a 256-byte window.
@@ -417,7 +417,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		if suffix == "" {
 			continue
 		}
-		if !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])
@@ -435,7 +436,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 			verb = "POST"
 		}
 		suffix := content[m[4]:m[5]]
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])
@@ -450,7 +452,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[4]:m[5]])
 		suffix := content[m[6]:m[7]]
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])
@@ -465,7 +468,8 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		suffix := content[m[4]:m[5]]
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingGoFuncAt(funcs, m[0])

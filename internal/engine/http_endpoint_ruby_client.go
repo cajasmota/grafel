@@ -265,8 +265,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -284,8 +284,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -303,8 +303,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -322,8 +322,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -341,8 +341,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -360,8 +360,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -380,8 +380,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 			if raw == "" {
 				continue
 			}
-			path := stripURLHost(raw)
-			if !looksLikeURLPath(path) {
+			path, pathOK := normalizeRawClientPath(raw) // #807
+			if !pathOK {
 				continue
 			}
 			caller := enclosingRubyMethodAt(funcs, m[0])
@@ -400,8 +400,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		if raw == "" {
 			continue
 		}
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -431,8 +431,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 			continue
 		}
 		verb := strings.ToUpper(content[m[8]:m[9]])
-		path := stripURLHost(raw)
-		if !looksLikeURLPath(path) {
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -447,7 +447,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		suffix := rubyPickEnvSuffix(content, m, 4)
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -462,7 +463,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		suffix := rubyPickEnvSuffix(content, m, 4)
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
@@ -477,7 +479,8 @@ func synthesizeRubyClientWithRuntime(content string, emit rubyClientEmitFn) {
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
 		suffix := rubyPickEnvSuffix(content, m, 4)
-		if suffix == "" || !looksLikeURLPath(suffix) {
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
 			continue
 		}
 		caller := enclosingRubyMethodAt(funcs, m[0])
