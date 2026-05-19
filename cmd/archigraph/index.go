@@ -76,6 +76,13 @@ type Indexer struct {
 	// (#545) lands before the writer is flipped on by default in #546.
 	enableRepairCandidates bool
 
+	// enableRepairApply toggles ADR-0015 phase-1 repair.json read+apply
+	// (issue #545). Default false during phase-1 rollout. When true, the
+	// indexer reads <repo>/.archigraph/repair.json BEFORE the final
+	// disposition reclassification pass and rewrites edges per the
+	// trust-model rules in docs/specs/repair-trust-model.md.
+	enableRepairApply bool
+
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
 
@@ -100,6 +107,16 @@ type IndexOption func(*Indexer)
 // bug-resolver disposition. Default is false.
 func WithRepairCandidates(enabled bool) IndexOption {
 	return func(i *Indexer) { i.enableRepairCandidates = enabled }
+}
+
+// WithRepairApply toggles ADR-0015 phase-1 repair.json apply (issue #545).
+// When true the indexer reads <repo>/.archigraph/repair.json before the
+// final disposition reclassification and applies allowlisted rewrites
+// (bind_to_entity / reclassify_* / abandon) per the trust model. Default
+// is false; pair with --enable-repair-candidates for the full
+// emit → human/agent writes → apply loop.
+func WithRepairApply(enabled bool) IndexOption {
+	return func(i *Indexer) { i.enableRepairApply = enabled }
 }
 
 type indexerStats struct {
@@ -338,6 +355,35 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			extStats.Synthesized, extStats.RelationshipsResolved, extStats.UniqueExternals)
 	}
 	i.stats.extSynth = extStats
+
+	// ADR-0015 phase-1 (#545) — repair.json apply path. Runs BEFORE the
+	// final reclassification so the bug-rate measurement that follows
+	// already reflects agent-supplied repairs. The disposition classifier
+	// core is unchanged — repairs land via the override hook here,
+	// mutating ToID + edge properties; classification then sees the
+	// rewritten edges as ordinary resolved/external/dynamic endpoints.
+	//
+	// Default-off (--enable-repair-apply false) so existing bug-rate
+	// measurements across the 10-corpus regression set stay unchanged.
+	if i.enableRepairApply {
+		archigraphDir := filepath.Join(absRepo, ".archigraph")
+		repairs, rerr := enrichment.ReadRepairs(archigraphDir)
+		if rerr != nil {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: repair.json read error (continuing without): %v\n", rerr)
+		}
+		repairStats := enrichment.ApplyRepairs(doc, repairs,
+			enrichment.ApplyRepairsOptions{RepoRoot: absRepo})
+		if werr := enrichment.WriteRepairStats(archigraphDir, repairStats); werr != nil {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: repair_stats.json write failed: %v\n", werr)
+		}
+		if verbose() {
+			fmt.Fprintf(os.Stderr,
+				"repair-apply: applied=%d rejected=%d stale=%d (ADR-0015 phase-1)\n",
+				repairStats.AppliedCount, repairStats.RejectedCount, repairStats.StaleCount)
+		}
+	}
 
 	// VERIFY-2-PREP / issue #56 — reclassify dispositions over the FINAL
 	// edge state (post-external-synthesis) so "ext:<pkg>" endpoints land in
