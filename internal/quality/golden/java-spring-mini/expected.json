@@ -94,7 +94,7 @@
       "kind": "ROUTES_TO", "to_bare_name": "Controller:health", "must_exist": true },
 
     { "from_name": "UserRepository", "from_kind": "SCOPE.Component", "from_file": "com/example/demo/repository/UserRepository.java",
-      "kind": "EXTENDS", "to_bare_name": "JpaRepository", "must_exist": false, "nice_to_have": true,
-      "note": "interface extends JpaRepository — hierarchy extractor currently only handles class declarations, not interfaces." }
+      "kind": "EXTENDS", "to_bare_name": "scope:component:interface:java:JpaRepository", "must_exist": true,
+      "note": "interface UserRepository extends JpaRepository<User, Long> — emitted by cross/hierarchy extractor (#612). Target stays a structural stub since JpaRepository is external; resolved post-hoc by the Java external-base allowlist." }
   ]
 }

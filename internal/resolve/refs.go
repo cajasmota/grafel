@@ -1689,6 +1689,29 @@ func BuildIndex(entities []types.EntityRecord) Index {
 			}
 		}
 
+		// Issue #612 — Java / TypeScript / JS / C# / Kotlin / Scala / Dart /
+		// PHP hierarchy-extractor interface stubs. The cross/hierarchy
+		// extractor now emits an interface entity + EXTENDS edges for
+		// `interface Foo extends Bar` declarations (Spring Data repositories,
+		// generic interface chains, multi-interface extension). The edge's
+		// FromID is `scope:component:interface:<lang>:<name>`, so it must be
+		// indexable under that ref. First-writer-wins, matching the Rust
+		// policy above — interface refs are globally unique per (lang, name)
+		// by construction.
+		if refProp := e.Properties["ref"]; refProp != "" && refProp != e.QualifiedName &&
+			(strings.HasPrefix(refProp, "scope:component:interface:java:") ||
+				strings.HasPrefix(refProp, "scope:component:interface:typescript:") ||
+				strings.HasPrefix(refProp, "scope:component:interface:javascript:") ||
+				strings.HasPrefix(refProp, "scope:component:interface:csharp:") ||
+				strings.HasPrefix(refProp, "scope:component:interface:kotlin:") ||
+				strings.HasPrefix(refProp, "scope:component:interface:scala:") ||
+				strings.HasPrefix(refProp, "scope:component:interface:dart:") ||
+				strings.HasPrefix(refProp, "scope:component:interface:php:")) {
+			if _, ok := idx.byQualifiedName[refProp]; !ok {
+				idx.byQualifiedName[refProp] = e.ID
+			}
+		}
+
 		// Index under both the plain kind and the trimmed kind ("SCOPE.View"
 		// → "View"), so stubs can match either form.
 		kinds := []string{e.Kind}

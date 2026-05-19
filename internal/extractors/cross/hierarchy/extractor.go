@@ -58,6 +58,14 @@ var jtcClassRE = regexp.MustCompile(
 		`(?:\s+implements\s+([\w.<>, ]+?))?(?:\s*\{|$|\s*:)`,
 )
 
+// Java / TypeScript / C# / Kotlin / Scala / Dart / PHP: interface declarations.
+// Captures `interface Foo extends Bar, Baz<T>` (issue #612). Interfaces only
+// support `extends` (multi-inheritance), never `implements`.
+var jtcInterfaceRE = regexp.MustCompile(
+	`(?m)(?:^|[\s;{])interface\s+(\w+)(?:<[^>]*>)?` +
+		`(?:\s+extends\s+([\w.<>, ]+?))?(?:\s*\{|$)`,
+)
+
 // Python: class Foo(Base1, Base2):
 var pyClassRE = regexp.MustCompile(`(?m)^class\s+(\w+)\s*\(([^)]+)\)\s*:`)
 
@@ -238,6 +246,50 @@ func extractJTCSharp(source, filePath, language string, res *result) {
 				res.addRel(clsID, ifID, "IMPLEMENTS", map[string]string{"language": language})
 				res.implementsFound++
 			}
+		}
+	}
+}
+
+// extractJTCInterface handles `interface Foo extends Bar, Baz` for Java / TS /
+// C# / Kotlin (and other JTC-family langs). Emits EXTENDS edges from the
+// declared interface to each parent interface. Issue #612.
+func extractJTCInterface(source, filePath, language string, res *result) {
+	for _, m := range jtcInterfaceRE.FindAllStringSubmatch(source, -1) {
+		ifaceName := m[1]
+		extendsRaw := strings.TrimSpace(m[2])
+		if extendsRaw == "" {
+			continue
+		}
+
+		res.classesFound++
+		ifaceID := ifaceRef(ifaceName, language)
+		res.addEntity(types.EntityRecord{
+			Name:       ifaceName,
+			Kind:       "SCOPE.Component",
+			Subtype:    "interface",
+			SourceFile: filePath,
+			Language:   language,
+			Properties: map[string]string{
+				"role":       "interface",
+				"ref":        ifaceID,
+				"provenance": "INFERRED_FROM_CLASS_HIERARCHY",
+			},
+			QualityScore: 0.9,
+		})
+
+		// Strip generic type arguments BEFORE splitting on comma — a generic
+		// like `JpaRepository<User, Long>` would otherwise be split into two
+		// bogus parents. After stripping, `JpaRepository<User, Long>, X`
+		// becomes `JpaRepository, X`.
+		stripped := genericRE.ReplaceAllString(extendsRaw, "")
+		for _, parentRaw := range strings.Split(stripped, ",") {
+			parentName := strings.TrimSpace(parentRaw)
+			if parentName == "" {
+				continue
+			}
+			parentID := ifaceRef(parentName, language)
+			res.addRel(ifaceID, parentID, "EXTENDS", map[string]string{"language": language})
+			res.extendsFound++
 		}
 	}
 }
@@ -590,6 +642,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	switch lang {
 	case "java", "typescript", "javascript", "csharp", "kotlin", "scala", "dart", "php":
 		extractJTCSharp(source, file.Path, lang, res)
+		extractJTCInterface(source, file.Path, lang, res)
 	case "python":
 		extractPython(source, file.Path, res)
 	case "ruby":
