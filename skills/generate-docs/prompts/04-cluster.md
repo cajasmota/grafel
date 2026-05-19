@@ -30,7 +30,7 @@ Per module:
 Use the community ids in your plan entry:
 
 ```
-archigraph_search(
+archigraph_find(
   question="<module title> architecture",
   repo_filter=["<repo>"],
   depth=3,
@@ -41,17 +41,17 @@ archigraph_search(
 Then for each of the top-5 entities in the module:
 
 ```
-archigraph_related(node="<entity>", depth=2, repo_filter=["<repo>"])
+archigraph_expand(node="<entity>", depth=2, repo_filter=["<repo>"])
 ```
 
 These neighbors are what you describe in the module README's "Key entities" section.
 
-### Step 2 — Find dynamic edges
+### Step 2 — Find dynamic edges and process flows
 
 The graph cannot see runtime-only couplings. The convention file lists places where these typically live for the stack (e.g., for `django.md`: signal connections, middleware, async tasks). For each, ask:
 
 ```
-archigraph_search(
+archigraph_find(
   question="<dynamic-edge-pattern>",
   repo_filter=["<repo>"],
   depth=2,
@@ -65,9 +65,28 @@ When you find one, name both ends of the connection in a backticked heading insi
 ## How `OrderCreated` reaches `BillingService`
 ```
 
+**Process flows (added in #724).** For modules that own entry points (HTTP route handlers, scheduled jobs, message consumers), call:
+
+```
+archigraph_traces(action=list, repo_filter=["<repo>"], limit=25)
+```
+
+This returns pre-computed BFS call chains from the indexer's pass over the CALLS graph. For each process whose `entry_id` falls within your module's community, either:
+
+- Include the call chain directly in `flows.md` as a numbered list under a `## Process flows` section, OR
+- Call `archigraph_traces(action=follow, entry_point_id=<id>, max_depth=8)` for entities that were not selected as pre-computed entry points.
+
+**New edge kinds to surface in prose.** archigraph now emits several richer edge kinds introduced in 2026-05. When you encounter these via `archigraph_expand` or `archigraph_find`, include the corresponding narrative:
+
+- **`FETCHES`** (HTTP consumer → endpoint): "Frontend `X` FETCHES backend endpoint `Y` via `Z`." Include in `flows.md` under an "HTTP consumer flows" section.
+- **`QUERIES`** (code → ORM table/column): "Service `A` QUERIES table `B` (columns `C`, `D`)." Include in `flows.md` under "Data access flows" or in `reference/api.md` if the module is the primary owner.
+- **`PUBLISHES_TO`** / **`SUBSCRIBES_TO`** (event / message broker flows): "Producer `X` PUBLISHES_TO topic `Y`; consumers `A`, `B` SUBSCRIBES_TO `Y`." Include in `flows.md` under "Event flows". Topics appear as `Queue` entities in the graph.
+
+When you find entities of kind `Queue`, treat them as message topics and document them in the event-flows section rather than the data-model section.
+
 ### Step 3 — Pull source where needed
 
-Within your `source_snippets` budget, use `archigraph_get_source(node_id=..., context_lines=20)` for entities whose intent is unclear from name + neighbors alone. Quote at most ~10 lines per snippet in the doc; reference the file path in backticks.
+Within your `source_snippets` budget, use `archigraph_get_source(node_id=<id>, context_lines=20)` for entities whose intent is unclear from name + neighbors alone. Quote at most ~10 lines per snippet in the doc; reference the file path in backticks.
 
 ### Step 4 — Render
 

@@ -1,6 +1,6 @@
 # Pass 3a — Generation-time repair (in-prose hook)
 
-A **hook**, not a standalone pass. Every writer subagent in Passes 3, 4, 5, 6, and 12 runs this check immediately before emitting prose that describes an entity. The hook closes residuals discovered late (after Pass 1a) or that the agent missed in the sweep.
+A **hook**, not a standalone pass. Every writer subagent in Passes 3, 4, 5, 6, and 12 runs this check immediately before emitting prose that describes an entity. The hook is the primary site for `bind_to_entity` resolutions — Pass 1a deliberately defers those here because the writer has full local subgraph context via `archigraph_expand`. It also catches residuals discovered late (after Pass 1a) that the earlier sweep missed.
 
 ## When the hook fires
 
@@ -16,7 +16,7 @@ Filter the result client-side to residuals whose `from_entity.id == E.id`. If th
 
 For each residual where `from_entity.id == E.id`:
 
-1. Inspect the residual's `original_stub`, `relation`, and the entity's neighborhood (`archigraph_related(entity_id=E.id, depth=1)` or `archigraph_describe`).
+1. Inspect the residual's `original_stub`, `relation`, and the entity's neighborhood (`archigraph_expand(node=E.id, depth=1)` or `archigraph_inspect`).
 2. Decide whether you can submit a repair **without asking the user**. The same auto-resolve criteria from Pass 1a apply:
    - Unambiguous binding target visible in the local subgraph, OR
    - Matches an active template in `repair-templates.json`, OR

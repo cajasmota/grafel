@@ -64,4 +64,4 @@ A community typically maps to a single module or to one root env. Treat each `en
 
 ## Cross-repo signals
 
-The `terraform_remote_state` data source is the canonical cross-repo bridge. When another repo's `outputs.tf` declares a value this repo consumes, that's a high-confidence edge. `archigraph_list_link_candidates` should usually accept these without manual intervention.
+The `terraform_remote_state` data source is the canonical cross-repo bridge. When another repo's `outputs.tf` declares a value this repo consumes, that's a high-confidence edge. `archigraph_cross_links(action=list)` should usually accept these without manual intervention.

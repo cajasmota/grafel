@@ -43,8 +43,7 @@ Ask the user, one batch at a time, in order. Stop and wait for answers before mo
 
 ### Batch E — Doc preferences
 
-11. Do you want a VitePress site (Pass 9) or just markdown files?
-12. Any topics you specifically want **emphasized** or **excluded**?
+11. Any topics you specifically want **emphasized** or **excluded**?
 
 ## Output format
 
@@ -77,7 +76,6 @@ Write the answers into `domain.md` with this skeleton:
 - <description>; encode in `<repo>/docs/...` per ADR-0007.
 
 ## Doc preferences
-- VitePress: yes\|no
 - Emphasize: ...
 - Exclude: ...
 ```

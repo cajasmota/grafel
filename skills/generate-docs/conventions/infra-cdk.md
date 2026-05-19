@@ -65,4 +65,4 @@ Pass 4 writers should produce a `flows.md` per stack listing every `addEventSour
 
 ## Cross-repo signals
 
-CDK is the prime source of cross-repo dynamic edges. A Lambda defined here that consumes from a queue produced by another team's repo is exactly the kind of edge ADR-0007 is built to capture. When `archigraph_list_link_candidates` proposes an edge to/from this repo's stack outputs or to a Lambda handler whose code lives in another repo, accept with high confidence — the IaC repo is usually the canonical witness.
+CDK is the prime source of cross-repo dynamic edges. A Lambda defined here that consumes from a queue produced by another team's repo is exactly the kind of edge ADR-0007 is built to capture. When `archigraph_cross_links(action=list)` proposes an edge to/from this repo's stack outputs or to a Lambda handler whose code lives in another repo, accept with high confidence — the IaC repo is usually the canonical witness.

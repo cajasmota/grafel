@@ -38,4 +38,4 @@ You cannot reliably guess these. Leave the cross-cutting pages stubbed and recom
 
 ## Cross-repo signals
 
-Treat every `archigraph_list_link_candidates` result as needing manual confirmation. Do not auto-accept.
+Treat every `archigraph_cross_links(action=list)` result as needing manual confirmation. Do not auto-accept.

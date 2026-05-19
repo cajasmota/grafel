@@ -1,6 +1,8 @@
 # Pass 1b — Repair-aware Q&A
 
-Surfaces the residuals Pass 1a could not auto-resolve. The user answers in plain language; the agent translates each answer into an `archigraph_repairs(action=submit)` call.
+Surfaces the residuals Pass 1a could not auto-resolve (see Pass 1a § "Classify each residual" for the narrowed auto-resolve scope). The user answers in plain language; the agent translates each answer into an `archigraph_repairs(action=submit)` call.
+
+This pass handles all three resolution kinds — `bind_to_entity`, `reclassify_as_external`, `reclassify_as_dynamic` — because the user's answer provides the disambiguation that Pass 1a lacked. When the user provides a binding target for `bind_to_entity`, use `archigraph_find` to confirm the entity exists before submitting; do not fabricate ids.
 
 This pass is **skipped** when `~/.archigraph/groups/<group>/repair-questions.json` is missing, empty, or contains only entries already answered in a prior run (see "Repair history" below).
 
@@ -118,6 +120,6 @@ Continue to Pass 2 regardless of skip/reject counts; the doc-gen pipeline is rob
 ## Invariants
 
 - One submit per question. Never bundle multiple residuals into one submit call.
-- Never invent `target_entity_id` values the user did not provide. If the user gestures at a target without an exact id, search `inventory.json` with `archigraph_search` and present the candidates back to the user; only submit once they pick one.
+- Never invent `target_entity_id` values the user did not provide. If the user gestures at a target without an exact id, search with `archigraph_find` and present the candidates back to the user; only submit once they pick one.
 - The pass is **interactive** — never silently fall through unanswered questions. If the user requests "skip the rest," record the remaining questions back into `repair-questions.json` for the next run.
 - Don't re-ask answered residuals. The history file is authoritative.

@@ -18,16 +18,16 @@ For each repo `<r>`:
 
 ### Step 1 — Confirm scope
 
-Call `archigraph_whoami` with `cwd=<repo absolute path>` so subsequent calls scope correctly. Then `archigraph_graph_stats(repo_filter=["<r>"])` to confirm the inventory numbers match.
+Call `archigraph_whoami` with `cwd=<repo absolute path>` so subsequent calls scope correctly. Then `archigraph_stats(repo_filter=["<r>"])` to confirm the inventory numbers match.
 
 ### Step 2 — Identify the architectural skeleton
 
 Call:
 
 ```
-archigraph_search(question="entry points", repo_filter=["<r>"], depth=2, token_budget=600)
-archigraph_search(question="public API surface", repo_filter=["<r>"], depth=2, token_budget=600)
-archigraph_search(question="data model", repo_filter=["<r>"], depth=2, token_budget=600)
+archigraph_find(question="entry points", repo_filter=["<r>"], depth=2, token_budget=600)
+archigraph_find(question="public API surface", repo_filter=["<r>"], depth=2, token_budget=600)
+archigraph_find(question="data model", repo_filter=["<r>"], depth=2, token_budget=600)
 ```
 
 Use the convention file's `entry_points` section to know what "entry point" means for this stack. For example, in `django.md` it means URLConf root + `wsgi.py` + management commands; in `react.md` it means the router root + the top-level `App` component.
@@ -35,7 +35,7 @@ Use the convention file's `entry_points` section to know what "entry point" mean
 ### Step 3 — Identify cross-repo edges
 
 ```
-archigraph_list_link_candidates(repo_filter=["<r>"], limit=20)
+archigraph_cross_links(action=list, repo_filter=["<r>"], limit=20)
 ```
 
 Mention any accepted cross-repo links in a section called "Connections to other repos". Pending candidates go in a "Pending links" callout; do not assert them as facts.

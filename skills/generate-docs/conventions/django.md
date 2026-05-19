@@ -30,7 +30,7 @@ A Django "app" is the natural module boundary. For each app:
 - `migrations/*.py` are usually summarized, not described per-file.
 - `tests/` is excluded from generated docs.
 
-A community detected by `archigraph_list_clusters` that mixes two apps is rare in idiomatic Django. When it happens, split it back along app boundaries.
+A community detected by `archigraph_clusters` that mixes two apps is rare in idiomatic Django. When it happens, split it back along app boundaries.
 
 ## Entry points (Pass 3)
 
@@ -80,4 +80,4 @@ A Django repo most often connects to other repos through:
 - Outbound message bus via Celery or a direct boto3 SQS publish.
 - Shared database — another repo runs migrations against the same Postgres. Note this in `dependencies.md`.
 
-When `archigraph_list_link_candidates` returns a candidate from this repo, the connection method is usually one of those three. Pass 8 should accept HTTP and message-bus candidates with high confidence; shared-DB candidates need user confirmation because the static signal is weaker.
+When `archigraph_cross_links(action=list)` returns a candidate from this repo, the connection method is usually one of those three. Pass 8 should accept HTTP and message-bus candidates with high confidence; shared-DB candidates need user confirmation because the static signal is weaker.

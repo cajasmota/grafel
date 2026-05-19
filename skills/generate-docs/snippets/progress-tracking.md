@@ -17,8 +17,7 @@ The orchestrator records pass progress in `~/.archigraph/groups/<group>/progress
     "5_reference": { "status": "...", "per_repo": { "<slug>": "done|pending|failed" } },
     "6_cross_cutting": { "status": "...", "per_topic": { "auth": "done|pending|failed" } },
     "7_synthesis": { "status": "...", "output": "<path>" },
-    "8_cross_link": { "status": "...", "report": "<path>" },
-    "9_vitepress": { "status": "...", "site_path": "<path>" }
+    "8_cross_link": { "status": "...", "report": "<path>" }
   },
   "failures": [
     { "pass": "<id>", "scope": "<repo|module|topic>", "reason": "<short>", "timestamp": "<RFC3339>" }
@@ -34,7 +33,7 @@ If the user re-invokes `generate-docs` and `progress.json` exists, the orchestra
 2. Asks the user: "Resume from `<first non-done pass>`, or restart from Pass 0?"
 3. Resumes by skipping `done` work and re-running everything `pending` or `failed`.
 
-A pass marked `skipped` is treated as `done` for ordering — used for Pass 9 when the user opted out.
+A pass marked `skipped` is treated as `done` for ordering — used for Pass 10/11/12 when no patterns were generated.
 
 ## Reporting
 

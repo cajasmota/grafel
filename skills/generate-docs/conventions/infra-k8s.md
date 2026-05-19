@@ -73,4 +73,4 @@ For Helm: `Chart.yaml`, `Chart.lock`, `values.yaml`. For Kustomize: `kustomizati
 
 ## Cross-repo signals
 
-The image tag in a `Deployment` is the join key to whichever code repo built it. When `archigraph_list_link_candidates` proposes an edge from a `Deployment` to a `cmd/<name>/main.go` in a sibling repo, accept if the image name matches the build artifact name. Helm subchart dependencies (`Chart.yaml` `dependencies`) are also cross-repo edges, usually to a separate chart repo.
+The image tag in a `Deployment` is the join key to whichever code repo built it. When `archigraph_cross_links(action=list)` proposes an edge from a `Deployment` to a `cmd/<name>/main.go` in a sibling repo, accept if the image name matches the build artifact name. Helm subchart dependencies (`Chart.yaml` `dependencies`) are also cross-repo edges, usually to a separate chart repo.

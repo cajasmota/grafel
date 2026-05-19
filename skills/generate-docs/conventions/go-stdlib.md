@@ -59,4 +59,4 @@ Communities typically map to one `internal/<package>`. A `cmd/<name>/main.go` is
 
 ## Cross-repo signals
 
-Outbound HTTP via `net/http`; outbound gRPC via generated client code (the proto file is the join key); message bus via the cloud SDK. When `archigraph_list_link_candidates` proposes an edge keyed on a proto package or on an HTTP path, accept with high confidence.
+Outbound HTTP via `net/http`; outbound gRPC via generated client code (the proto file is the join key); message bus via the cloud SDK. When `archigraph_cross_links(action=list)` proposes an edge keyed on a proto package or on an HTTP path, accept with high confidence.

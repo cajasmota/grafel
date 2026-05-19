@@ -37,7 +37,7 @@ Summary only — full listing lives in [`reference/config.md`](./reference/confi
 
 ## Connections to other repos
 
-> Each accepted cross-repo edge from `archigraph_list_link_candidates` (status=accepted) goes here as one bullet:
+> Each accepted cross-repo edge from `archigraph_cross_links(action=list)` (status=accepted) goes here as one bullet:
 > - `<this entity>` → `<other repo>:<entity>` via <method>.
 
 ## Pending links

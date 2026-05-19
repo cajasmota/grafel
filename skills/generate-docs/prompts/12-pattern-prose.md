@@ -47,6 +47,12 @@ this; if you bypass the renderer you must enforce it yourself.)
 ## Related patterns
 
 - [`<related trigger>`](../<category>/<other-id>.md) (via SUPERSEDES | CO_APPLIES_WITH | PREREQUISITE)
+
+## Conflicts
+
+> This pattern conflicts with [`<other trigger>`](../<category>/<other-id>.md): <reason why they cannot both apply>.
+
+*(Omit this section entirely if no `CONFLICTS_WITH` edges exist for this pattern.)*
 ```
 
 ## Backtick convention (ADR-0007)
@@ -59,8 +65,17 @@ If a heading legitimately contains a CamelCase word that is NOT a code identifie
 
 For each approved pattern `p` (every pattern with `is_candidate=false`) that was newly promoted in this run OR refined in this run:
 
-1. Resolve exemplar entities to `ExemplarRef` tuples via `archigraph_describe` for entity-name + `archigraph_get_source` for file path + line range.
-2. Resolve outgoing `SUPERSEDES` / `CO_APPLIES_WITH` / `PREREQUISITE` edges via `archigraph_related(entity_id=<pattern_id>, depth=1)`; convert hits into `RelatedPattern` entries.
+1. Resolve exemplar entities to `ExemplarRef` tuples via `archigraph_inspect(label_or_id=<entity_name>)` for entity-name + `archigraph_get_source` for file path + line range.
+2. Resolve all outgoing pattern-relationship edges via `archigraph_expand(node=<pattern_id>, depth=1)`:
+   - **`SUPERSEDES`** → RelatedPattern (this pattern replaces the linked one).
+   - **`CO_APPLIES_WITH`** → RelatedPattern (typically applied together).
+   - **`PREREQUISITE`** → RelatedPattern (the linked pattern must be satisfied first).
+   - **`CONFLICTS_WITH`** → mention in a "Conflicts" callout (these two patterns cannot both apply to the same target).
+   - **`EXEMPLAR`** → additional exemplar entities (code examples of the pattern in use).
+   - **`ANTI_EXEMPLAR`** → additional anti-pattern exemplars (code examples of what NOT to do; omit if the entity's `private=true`).
+   - **`TOUCHES`** → entities the pattern's steps read or modify (listed in the "Recipe" section as context, not as exemplars).
+   - **`CREATED_BY`** (incoming, from Entity to Pattern) → this is written by `apply` when a pattern is used, not emitted here; do not follow it in this pass.
+   Convert `SUPERSEDES` / `CO_APPLIES_WITH` / `PREREQUISITE` hits into `RelatedPattern` entries for the "Related patterns" section.
 3. Call `WriteMarkdown(<docs_root>, MarkdownInput{Pattern: p, ExemplarRefs: ..., RelatedPatterns: ...})`. The renderer:
    - Skips when `is_candidate=true` (returns empty markdown — caller is expected to no-op).
    - Strips private anti-patterns.

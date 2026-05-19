@@ -10,21 +10,21 @@ Two responsibilities:
 For each generated markdown file, parse every `[text](path)` and confirm:
 
 - The path resolves to an existing file (relative paths) or a known anchor (`#section-slug`).
-- The anchor matches the heading slug exactly. archigraph slugifies headings the same way GitHub/VitePress do (lowercase, spaces→hyphens, drop non-alphanumeric except `-`); your anchor check must match that.
+- The anchor matches the heading slug exactly. The slugification rule: lowercase, spaces → hyphens, drop non-alphanumeric except `-`; your anchor check must match that.
 
 Broken links are auto-fixed where the target is unambiguous; otherwise log them and report at the end.
 
 ## Step 2 — Cross-repo link candidates
 
 ```
-archigraph_list_link_candidates(limit=200)
+archigraph_cross_links(action=list, limit=200)
 ```
 
 For each candidate:
 
 ```
-archigraph_describe(label_or_id="<from>")
-archigraph_describe(label_or_id="<to>")
+archigraph_inspect(label_or_id="<from>")
+archigraph_inspect(label_or_id="<to>")
 archigraph_trace(source="<from>", target="<to>")
 ```
 
@@ -37,9 +37,9 @@ Decide:
 Resolve each:
 
 ```
-archigraph_resolve_link_candidate(
+archigraph_cross_links(
+  action="accept" | "reject",
   candidate_id="<id>",
-  decision="accept" | "reject",
   reason="<short explanation>",
   override_target="<optional>",
 )
@@ -52,13 +52,13 @@ Record every decision in `~/.archigraph/groups/<group>/docs/cross-links.md` so a
 Anything that blocked a doc page in earlier passes shows up in:
 
 ```
-archigraph_list_enrichment_candidates(limit=100)
+archigraph_enrichments(action=list, limit=100)
 ```
 
 For each:
 
-- If you can answer it from the docs you just wrote, call `archigraph_submit_enrichment(candidate_id=..., value=..., confidence=...)`.
-- If you cannot, call `archigraph_reject_enrichment(candidate_id=..., reason=...)`.
+- If you can answer it from the docs you just wrote, call `archigraph_enrichments(action=submit, candidate_id=..., value=..., confidence=...)`.
+- If you cannot, call `archigraph_enrichments(action=reject, candidate_id=..., reason=...)`.
 - If a human must decide, leave it alone and list it in the cross-link report under "Human-required enrichment".
 
 ## Step 4 — Report
@@ -84,4 +84,4 @@ Write `~/.archigraph/groups/<group>/docs/cross-links.md` with sections:
 - candidate `<id>` (`<kind>`): <description>
 ```
 
-Hand back to the orchestrator. The orchestrator now decides whether to run Pass 9.
+Hand back to the orchestrator. The orchestrator now decides whether to run Pass 10 (pattern convergence), which runs only if Pass 4 emitted pattern candidates.

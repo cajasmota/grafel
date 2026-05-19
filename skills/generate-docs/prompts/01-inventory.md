@@ -18,7 +18,7 @@ Call `archigraph_whoami`. Verify the resolved group matches what the user expect
 For each repo `<r>` in the group:
 
 ```
-archigraph_graph_stats(repo_filter=["<r>"])
+archigraph_stats(repo_filter=["<r>"])
 ```
 
 Record: total nodes, total edges, top entity kinds, top edge kinds, communities count, bridge-doc count.
@@ -28,7 +28,7 @@ Record: total nodes, total edges, top entity kinds, top edge kinds, communities 
 For each repo:
 
 ```
-archigraph_list_clusters(repo_filter=["<r>"])
+archigraph_clusters(repo_filter=["<r>"])
 ```
 
 A community is a candidate "module" for Pass 2 to plan around. Capture community id, size, and the top-5 entities (by centrality) in each. This is your raw module list before grouping.
@@ -36,7 +36,7 @@ A community is a candidate "module" for Pass 2 to plan around. Capture community
 ### Step 4 — Cross-repo bridges
 
 ```
-archigraph_list_link_candidates(limit=50)
+archigraph_cross_links(action=list, limit=50)
 ```
 
 These are pending cross-repo edges. Note them — Pass 8 will resolve them, but writer subagents in Pass 4 should know they exist so they do not invent contradictory descriptions.
@@ -46,7 +46,7 @@ These are pending cross-repo edges. Note them — Pass 8 will resolve them, but 
 For each repo:
 
 ```
-archigraph_list_enrichment_candidates(repo_filter=["<r>"], limit=20)
+archigraph_enrichments(action=list, repo_filter=["<r>"], limit=20)
 ```
 
 If anything blocks accurate documentation (e.g., an unresolved env-var, a class with unknown base), flag it. Pass 4 writers will need to either route around it or prompt the user during the deep-dive.

@@ -11,7 +11,7 @@ Convert the raw community list from Pass 1 into a documentation plan. The plan i
 
 ### Step 1 — Group communities into modules
 
-A Louvain community from `archigraph_list_clusters` is a graph cluster, not necessarily a "module" a human would want documented. Merge or split as needed:
+A Louvain community from `archigraph_clusters` is a graph cluster, not necessarily a "module" a human would want documented. Merge or split as needed:
 
 - Merge two communities if they share more than 30% of their bridge-doc nodes or if their top-entity names share a clear prefix (e.g., `users.views`, `users.serializers` -> module `users`).
 - Split a community if it contains entities from two unrelated layers (e.g., HTTP handlers + DB migrations); rare, but the convention file for the stack tells you when to expect it.
@@ -59,8 +59,7 @@ Write `~/.archigraph/groups/<group>/plan.json`:
       "topics": ["auth", "logging", "errors", "observability"]
     },
     "7_synthesis": { "scope": "group" },
-    "8_cross_link": { "candidates_to_review": 0 },
-    "9_vitepress": { "enabled": false }
+    "8_cross_link": { "candidates_to_review": 0 }
   }
 }
 ```

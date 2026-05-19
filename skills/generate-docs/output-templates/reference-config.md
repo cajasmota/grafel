@@ -28,4 +28,4 @@
 
 ## Known gaps
 
-> List `archigraph_list_enrichment_candidates(kind="env-var")` blockers here verbatim. Do not fabricate values.
+> List `archigraph_enrichments(action=list, kind="env-var")` blockers here verbatim. Do not fabricate values.

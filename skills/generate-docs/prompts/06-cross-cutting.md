@@ -32,7 +32,7 @@ Group-level aggregator (Pass 7 will use these to fill the synthesis page):
 ### Step 1 — Collect signals across all repos
 
 ```
-archigraph_search(question="<topic>", repo_filter=null, depth=2, token_budget=1200)
+archigraph_find(question="<topic>", repo_filter=null, depth=2, token_budget=1200)
 ```
 
 Setting `repo_filter=null` is intentional — this is a cross-group question and you want the summary-first behavior.
@@ -42,7 +42,7 @@ Setting `repo_filter=null` is intentional — this is a cross-group question and
 For each repo `<r>`:
 
 ```
-archigraph_search(question="<topic>", repo_filter=["<r>"], depth=2, token_budget=800)
+archigraph_find(question="<topic>", repo_filter=["<r>"], depth=2, token_budget=800)
 ```
 
 ### Step 3 — Resolve the slug-collision targets

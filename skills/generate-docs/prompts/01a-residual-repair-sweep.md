@@ -39,10 +39,10 @@ Continue paging while the returned `residuals[]` length equals `limit`. Cap tota
 For each residual returned, decide one of:
 
 1. **Auto-resolve** — apply a repair without asking the user. Allowed only when:
-   - The resolution is unambiguous from the discovery output in `inventory.json` (e.g., a single entity in scope matches `original_stub` and `relation` exactly), OR
    - A repair template (Step 4) matches the residual's shape with `confidence >= 0.8`, OR
-   - The residual is a recognised third-party API call (e.g., `original_stub` starts with `https://api.<vendor>/`) and the relation is `CALLS` → `reclassify_as_external` with `module=<vendor>`.
-2. **Ask user** — surface to Pass 1b. Use this when more than one binding target is plausible, or when the residual is a dynamic baseURL / tenant-prefixed route / runtime-resolved edge.
+   - The residual is a recognised third-party API call (e.g., `original_stub` starts with `https://api.<vendor>/` or matches a well-known SDK stub like `stripe.charges.create`) and the relation is `CALLS` → `reclassify_as_external` with `module=<vendor>`.
+   - **DO NOT auto-resolve `bind_to_entity` here.** Pass 1 (inventory) produces a corpus census (top-5 entities per community, kind counts). It does not provide full entity-level data, so there is no reliable way to confirm that a single unambiguous binding target exists. All `bind_to_entity` candidates must go to bucket 2 (Ask user) or be deferred to Pass 3a (generation-time, where the writer has full subgraph context via `archigraph_expand`).
+2. **Ask user** — surface to Pass 1b. Use this for `bind_to_entity` candidates, dynamic baseURL / tenant-prefixed routes, and any runtime-resolved edge where the resolution is not mechanically deterministic.
 3. **Defer** — skip for this run (record reason). Defer is only legal when residual carries no actionable context window (extremely rare; should not happen on real corpora).
 
 Every auto-resolve decision must have a one-sentence `reasoning` string and a `confidence` value. The trust model (`R7`) requires non-empty reasoning. Aim for `confidence >= 0.7` on auto-resolves; lower confidence belongs in the user-question bucket.

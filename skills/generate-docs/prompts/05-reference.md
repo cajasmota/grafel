@@ -20,29 +20,38 @@ Sections (each is a separate file, each has a template):
 Public API includes: HTTP routes, gRPC services, exported functions/classes (per the convention's "public surface" rules), CLI commands, message-bus producers/consumers.
 
 ```
-archigraph_search(question="HTTP routes", repo_filter=["<r>"], depth=1, token_budget=900)
-archigraph_search(question="public exports", repo_filter=["<r>"], depth=1, token_budget=900)
-archigraph_search(question="CLI commands", repo_filter=["<r>"], depth=1, token_budget=600)
+archigraph_find(question="HTTP routes", repo_filter=["<r>"], depth=1, token_budget=900)
+archigraph_find(question="public exports", repo_filter=["<r>"], depth=1, token_budget=900)
+archigraph_find(question="CLI commands", repo_filter=["<r>"], depth=1, token_budget=600)
 ```
+
+Also search for message-bus producers and consumers using the newer edge kinds:
+
+```
+archigraph_find(question="message producers publishers", repo_filter=["<r>"], depth=1, token_budget=600)
+archigraph_find(question="message consumers subscribers", repo_filter=["<r>"], depth=1, token_budget=600)
+```
+
+For `Queue` entities (message topics), document them in the "Message bus" subsection of `api.md` rather than the HTTP-routes subsection. For each: topic name (backticked), kind (`Queue`), producers (`PUBLISHES_TO` sources), consumers (`SUBSCRIBES_TO` sources).
 
 For each route/export, capture: name (in backticks), kind, file path, and a one-line purpose. Group by kind; sort alphabetically within each group.
 
 ### `config.md`
 
 ```
-archigraph_search(question="environment variables", repo_filter=["<r>"], depth=2, token_budget=900)
-archigraph_search(question="settings constants", repo_filter=["<r>"], depth=2, token_budget=900)
-archigraph_list_enrichment_candidates(repo_filter=["<r>"], kind="env-var")
+archigraph_find(question="environment variables", repo_filter=["<r>"], depth=2, token_budget=900)
+archigraph_find(question="settings constants", repo_filter=["<r>"], depth=2, token_budget=900)
+archigraph_enrichments(action=list, repo_filter=["<r>"], kind="env-var")
 ```
 
-If `archigraph_list_enrichment_candidates` returns blocking unknowns, list them in a "Known gaps" section. Do not fabricate values.
+If `archigraph_enrichments(action=list)` returns blocking unknowns, list them in a "Known gaps" section. Do not fabricate values.
 
 ### `deployment.md`
 
 Read the convention's `deployment_signals` section. For Django that means `wsgi.py`/`asgi.py`/Procfile/Dockerfile; for an infra-cdk repo it means stack files and synth output; for `infra-terraform.md` it means modules + backends.
 
 ```
-archigraph_search(question="deployment", repo_filter=["<r>"], depth=2, token_budget=800)
+archigraph_find(question="deployment", repo_filter=["<r>"], depth=2, token_budget=800)
 ```
 
 Cross-reference `domain.md` "Deployment" section to make sure you do not contradict it.
