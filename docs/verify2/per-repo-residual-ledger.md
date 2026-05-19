@@ -613,6 +613,91 @@ plus a small set of antd static helpers).
 
 ---
 
+## Wave-12 FINAL (ship-gate close, post-#587 receiver-type residual)
+
+Synth-only follow-up to wave-12 (#587) that closes the 0.155pp gap to
+the ≤1% ship-gate by classifying the three receiver-type residual
+clusters left after the destructure-rename lift. All additions are
+TS/JS-gated (per-language dynamicPatternsByLang lookup or
+hasJSCollectionLibImport file gate).
+
+- **Track A (String.prototype receiver-strip):** added `replace`,
+  `replaceAll`, `trimStart`, `trimEnd`, `repeat`, `matchAll` to
+  `jsBareNames`. `trim`, `toLowerCase`, `toUpperCase`, `padStart`,
+  `padEnd`, `normalize`, `localeCompare` were already present.
+  `replace` was the top bug-extractor leaf on cfb wave-11 residual.
+- **Track B (antd Modal/message/notification static + Table render-
+  prop callbacks):** added `warning`, `success`, `loading`, `destroyAll`,
+  `clearFilters`, `setSelectedKeys` to `jsBareNames`. `confirm`, `error`,
+  `info` were already present. These cover `Modal.confirm(...)`,
+  `message.success(...)`, `notification.warning(...)`, and antd Table
+  `filterDropdown` render-prop callbacks.
+- **Track C (lodash / ramda chain-style util methods):** added 80+
+  names to `jsCollectionLibBareNames` (per-file-import gated): `get`,
+  `set`, `has`, `unwrap`, `omit`, `pick`, `merge`, `cloneDeep`,
+  `isEqual`/`isEmpty`/`isObject`/`isString`/`isNumber`/`isFunction`/
+  `isNil`/`isNull`/`isUndefined`/`isPlainObject`/..., `keyBy`,
+  `orderBy`, `sortBy`, `uniqBy`, `uniq`, `intersection`, `union`,
+  `difference`, `chunk`, `compact`, `flatten`, `flattenDeep`, `zip`,
+  `unzip`, `times`, `partial`, `debounce`, `throttle`, `memoize`,
+  `noop`, `identity`, `constant`, `defaults`, `invert`, `mapValues`/
+  `mapKeys`, `keys`/`values`/`entries`, `sumBy`/`meanBy`/`maxBy`/
+  `minBy`/`countBy`, `partition`, `take`/`drop`/`head`/`last`/`tail`/
+  `initial`/`nth`, `sample`/`sampleSize`/`shuffle`. Already gated by
+  hasJSCollectionLibImport so files without lodash/ramda/immutable/
+  react imports preserve the safer-bias rule.
+- **Track D (opaque `get`):** absorbed into Track C — `get` is
+  allowlisted only on files importing lodash/ramda/react. Avoids
+  blanket allowlist that would shadow `axios.get` user methods.
+
+Per-iteration delta on client-fixture-b (primary target):
+
+| Pass | bug-rate | bug-ext | bug-res | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| baseline (post-wave-12 #587) | 1.154% | 422 | 125 | — |
+| Pass-1 (A + B + C combined) | 0.875% | 292 | 123 | -0.279pp |
+
+Single pass closed the gap. **SHIP-GATE ACHIEVED**: 0.875% < 1.0%.
+
+Regression check (main vs wave-12-final) — 11 listed repos + cfa:
+
+| Repo | Main | W12-F | Δ |
+|---|---:|---:|---:|
+| chi | 4.233% | 4.233% | 0.000pp |
+| flask | 9.450% | 9.450% | 0.000pp |
+| spdlog | 5.758% | 5.758% | 0.000pp |
+| gin | 4.931% | 4.931% | 0.000pp |
+| play-scala-starter | 2.113% | 2.113% | 0.000pp |
+| express | 2.996% | 2.856% | -0.140pp |
+| nextjs-commerce | 2.093% | 1.794% | -0.299pp |
+| nestjs-starter | 1.754% | 1.754% | 0.000pp |
+| kafka-streams-examples | 3.396% | 3.396% | 0.000pp |
+| vapor-api-template | 2.128% | 2.128% | 0.000pp |
+| ktor-samples | 4.864% | 4.844% | -0.020pp |
+| client-fixture-a | 5.927% | 5.927% | 0.000pp |
+
+No regression. Every non-JS/TS corpus is bit-identical. The JS/TS
+corpora (express, nextjs-commerce) and ktor-samples (which ships JS
+build templates in a handful of sample modules) show improvements
+between -0.02pp and -0.30pp — confirms the additions are real
+language-surface, not fixture-specific overfit.
+
+Residual root cause: post-wave-12-FINAL cfb bug-extractor top samples
+are now `find`, `append`, `splice`, plus per-component user-handler
+names (`handleClientSelection`, `handleReloadData`). `find`/`splice`
+are #94 safer-bias rejects (collide with user `find` on hand-rolled
+classes); per-component handlers are an extractor-lift gap that
+wave-12 (#587) addressed for destructure-rename but not for bare
+`const handleX = () => {...}` arrow declarations inside JSX.
+
+Status: at-ship-gate. cfb 1.154% → 0.875% — ≤1% target met. The
+remaining 0.875% is split between (a) safer-bias rejects (`find`,
+`splice`, `append`) that should stay rejected per #94, and (b) per-
+component bare-arrow handler lift that is an extractor change for a
+future wave.
+
+---
+
 ## Wave-4 PHP (Symfony residual reduction, post-#498 chase to ≤3%)
 
 Targeted continuation of PHP wave-3 (#485) symfony-demo residual chase

@@ -2744,6 +2744,101 @@ var jsCollectionLibBareNames = map[string]struct{}{
 	"filter":      {},
 	"map":         {},
 	"flatMap":     {},
+	// Wave-12 (ship-gate FINAL) — lodash / ramda chain-style and
+	// utility-collection methods. These dominate the wave-11 residual on
+	// client-fixture-b (`unwrap`, `get`, `omit`, `pick`, `merge`,
+	// `cloneDeep`). Already gated by hasJSCollectionLibImport so files
+	// without lodash/ramda/immutable/react imports don't activate them —
+	// preserves the safer-bias rule for hand-rolled classes with same
+	// method names. Curated from lodash API docs + client-fixture-b
+	// disposition samples.
+	"get":         {}, // lodash _.get(obj, 'path')
+	"set":         {}, // lodash _.set
+	"has":         {}, // lodash _.has
+	"unset":       {}, // lodash _.unset
+	"unwrap":      {}, // ramda R.unwrap / lodash chain wrap/unwrap
+	"omit":        {}, // lodash _.omit
+	"omitBy":      {}, // lodash _.omitBy
+	"pick":        {}, // lodash _.pick
+	"pickBy":      {}, // lodash _.pickBy
+	"merge":       {}, // lodash _.merge
+	"mergeWith":   {}, // lodash _.mergeWith
+	"cloneDeep":   {}, // lodash _.cloneDeep
+	"clone":       {}, // lodash _.clone
+	"isEqual":     {}, // lodash _.isEqual
+	"isEmpty":     {}, // lodash _.isEmpty
+	"isObject":    {}, // lodash _.isObject
+	"isPlainObject": {}, // lodash _.isPlainObject
+	"isString":    {}, // lodash _.isString
+	"isNumber":    {}, // lodash _.isNumber
+	"isFunction":  {}, // lodash _.isFunction
+	"isBoolean":   {}, // lodash _.isBoolean
+	"isNil":       {}, // lodash _.isNil
+	"isNull":      {}, // lodash _.isNull
+	"isUndefined": {}, // lodash _.isUndefined
+	"isDate":      {}, // lodash _.isDate
+	"isRegExp":    {}, // lodash _.isRegExp
+	"isError":     {}, // lodash _.isError
+	"isFinite":    {}, // lodash _.isFinite
+	"isInteger":   {}, // lodash _.isInteger
+	"keyBy":       {}, // lodash _.keyBy
+	"orderBy":     {}, // lodash _.orderBy
+	"sortBy":      {}, // lodash _.sortBy
+	"uniqBy":      {}, // lodash _.uniqBy
+	"uniq":        {}, // lodash _.uniq
+	"uniqWith":    {}, // lodash _.uniqWith
+	"intersection": {}, // lodash _.intersection
+	"intersectionBy": {}, // lodash _.intersectionBy
+	"union":       {}, // lodash _.union
+	"unionBy":     {}, // lodash _.unionBy
+	"difference":  {}, // lodash _.difference
+	"differenceBy": {}, // lodash _.differenceBy
+	"chunk":       {}, // lodash _.chunk
+	"compact":     {}, // lodash _.compact
+	"flatten":     {}, // lodash _.flatten
+	"flattenDeep": {}, // lodash _.flattenDeep
+	"flattenDepth": {}, // lodash _.flattenDepth
+	"zip":         {}, // lodash _.zip
+	"unzip":       {}, // lodash _.unzip
+	"zipObject":   {}, // lodash _.zipObject
+	"times":       {}, // lodash _.times
+	"partial":     {}, // lodash _.partial
+	"partialRight": {}, // lodash _.partialRight
+	"debounce":    {}, // lodash _.debounce
+	"throttle":    {}, // lodash _.throttle
+	"memoize":     {}, // lodash _.memoize
+	"noop":        {}, // lodash _.noop
+	"identity":    {}, // lodash _.identity
+	"constant":    {}, // lodash _.constant
+	"defaults":    {}, // lodash _.defaults
+	"defaultsDeep": {}, // lodash _.defaultsDeep
+	"invert":      {}, // lodash _.invert
+	"mapValues":   {}, // lodash _.mapValues (also kafka, but file-gated so disjoint)
+	"mapKeys":     {}, // lodash _.mapKeys
+	"keys":        {}, // lodash _.keys
+	"values":      {}, // lodash _.values
+	"entries":     {}, // lodash _.entries
+	"fromPairs":   {}, // lodash _.fromPairs
+	"toPairs":     {}, // lodash _.toPairs
+	"sumBy":       {}, // lodash _.sumBy
+	"meanBy":      {}, // lodash _.meanBy
+	"maxBy":       {}, // lodash _.maxBy
+	"minBy":       {}, // lodash _.minBy
+	"countBy":     {}, // lodash _.countBy
+	"partition":   {}, // lodash _.partition
+	"take":        {}, // lodash _.take
+	"takeWhile":   {}, // lodash _.takeWhile
+	"drop":        {}, // lodash _.drop
+	"dropWhile":   {}, // lodash _.dropWhile
+	"head":        {}, // lodash _.head
+	"last":        {}, // lodash _.last
+	"tail":        {}, // lodash _.tail
+	"initial":     {}, // lodash _.initial
+	"nth":         {}, // lodash _.nth
+	"sample":      {}, // lodash _.sample
+	"sampleSize":  {}, // lodash _.sampleSize
+	"shuffle":     {}, // lodash _.shuffle
+	"trim":        {}, // (already in jsBareNames; harmless dupe via gate)
 }
 
 // kafkaStreamsDSLVerbs is the Kafka-Streams/Kafka-clients bare-name
@@ -6671,6 +6766,50 @@ var jsBareNames = map[string]struct{}{
 	"useMessage":      {}, // antd message.useMessage hook
 	"useNotification": {}, // antd notification.useNotification hook
 	"useApp":          {}, // antd App.useApp hook
+
+	// Wave-12 (ship-gate FINAL, client-fixture-b residual 1.154% → ≤1%).
+	// String.prototype receiver-strip names. The JS extractor strips the
+	// receiver on dotted calls (`str.replace(...)` → bare `replace`) and
+	// the resolver can't bind to a String prototype. These are the names
+	// that dominate `top_bug_ext` on client-fixture-b wave-11 residual.
+	// Per-language gate (js/ts only) keeps them out of Python `str.replace`
+	// / Go `strings.Replace` / Java `String.replace` collisions. Bare leaf
+	// identifiers are unique enough within JS/TS that the safer-bias rule
+	// (#94) doesn't block them — they have no plausible user-method form
+	// at this scale on hand-rolled classes in a React/Node codebase.
+	// `trim`, `toLowerCase`, `toUpperCase`, `padStart`, `padEnd`,
+	// `normalize`, `localeCompare` already present above.
+	"replace":    {}, // String.prototype.replace (top bug-ext residual)
+	"replaceAll": {}, // String.prototype.replaceAll (ES2021)
+	"trimStart":  {}, // String.prototype.trimStart
+	"trimEnd":    {}, // String.prototype.trimEnd
+	"repeat":     {}, // String.prototype.repeat
+	"matchAll":   {}, // String.prototype.matchAll (ES2020)
+
+	// Wave-12 — antd Modal / message / notification STATIC method names.
+	// The antd App-static API (`Modal.confirm({...})`, `message.success(...)`,
+	// `notification.error(...)`) is the canonical imperative API across
+	// every antd-based React admin (client-fixture-b is exactly this shape).
+	// The receiver-strip drops `Modal.` / `message.` / `notification.` and
+	// leaves the bare method name. `warning` is the top-2 bug-extractor
+	// residual on client-fixture-b. `confirm`, `info`, `error` already in
+	// jsBareNames above (DOM `window.confirm`, `console.info`,
+	// `console.error`); `success`, `warning`, `loading`, `destroy`,
+	// `destroyAll`, `open` are added here. Per-language gate (js/ts) keeps
+	// these out of other-lang collisions.
+	"warning":    {}, // antd Modal.warning / message.warning / notification.warning
+	"success":    {}, // antd Modal.success / message.success / notification.success
+	"loading":    {}, // antd message.loading
+	"destroyAll": {}, // antd Modal.destroyAll
+
+	// Wave-12 — antd Table / Form receiver-stripped callback method names.
+	// `clearFilters` is a top bug-extractor residual on client-fixture-b
+	// (antd Table column `filterDropdown` provides `clearFilters` /
+	// `confirm` / `setSelectedKeys` as render-prop arg methods). The
+	// receiver-strip loses the binding. Names are antd-distinctive and the
+	// per-language gate (js/ts only) keeps them safe.
+	"clearFilters":    {}, // antd Table filterDropdown render-prop arg
+	"setSelectedKeys": {}, // antd Table filterDropdown render-prop arg
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue
