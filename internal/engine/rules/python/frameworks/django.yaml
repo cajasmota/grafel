@@ -82,6 +82,15 @@ source_patterns:
     name_group: 1
     scope: class
   # URL pattern: path("...", view, name="...")
+  #
+  # NOTE (#748): This pattern fires on ANY `path("...")` call in a Python file,
+  # including FastAPI / Flask files that happen to use `path(...)` syntax.
+  # The resulting yaml_driven Route entities must NOT be consumed by
+  # synthesizeDjangoFromComposed to produce http_endpoint entities — that
+  # function now guards on pattern_type=ast_driven only.  These yaml_driven
+  # Route entities are still useful for graph-level "this file declares URL
+  # patterns" signals (quality scoring, cross-file composition detection)
+  # but they must NOT drive http_endpoint synthesis directly.
   - pattern: "path\\s*\\(\\s*[\"']([^\"']+)[\"']"
     entity_type: Route
     name_group: 1

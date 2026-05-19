@@ -697,3 +697,247 @@ def get_thing(id):
 		t.Error("expected synthetic http:GET:/things/{id} to carry source_handler=Controller:get_thing")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #748 — FastAPI / Django YAML rule collision regression tests
+// ---------------------------------------------------------------------------
+
+// TestSynth_FastAPI_VerbSpecific_NotANY is the primary regression test for
+// #748. FastAPI endpoints declared with @app.get / @router.post / etc. MUST
+// emit verb-specific http_endpoint IDs (http:GET:, http:POST:, …), NOT the
+// catch-all http:ANY: that synthesizeDjangoFromComposed would have produced
+// before the fix.
+//
+// Pre-fix behaviour: the Django YAML path() pattern matched any `path("...")`
+// call in a Python file, producing yaml_driven Route entities with
+// framework=python. synthesizeDjangoFromComposed consumed those entities
+// (it previously accepted both ast_driven and yaml_driven) and emitted
+// http:ANY:… synthetics. FastAPI synthesis ran afterwards but the dedup-by-ID
+// `seen` map in applyHTTPEndpointSynthesis made it skip the already-claimed
+// path. Result: FastAPI endpoints emerged as ANY-verb.
+//
+// Post-fix: synthesizeDjangoFromComposed skips yaml_driven routes. FastAPI
+// synthesis claims all paths first with their proper verbs.
+func TestSynth_FastAPI_VerbSpecific_NotANY(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+router = APIRouter(prefix="/v1")
+
+@app.get("/users")
+async def list_users():
+    return []
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: int):
+    return {}
+
+@router.post("/items")
+def create_item():
+    return {}
+
+@app.delete("/users/{user_id}")
+def delete_user(user_id: int):
+    return None
+
+@app.patch("/users/{user_id}")
+def update_user(user_id: int):
+    return {}
+`
+	got, res := runDetect(t, "python", "main.py", src)
+
+	// All of these must be present — and with the specific verb.
+	want := []string{
+		"http:DELETE:/users/{user_id}",
+		"http:GET:/users",
+		"http:GET:/users/{user_id}",
+		"http:PATCH:/users/{user_id}",
+		"http:POST:/items",
+	}
+	requireContains(t, got, want, "FastAPI verb-specific")
+
+	// None of the above paths may appear with ANY verb — that is the
+	// specific regression from #748.
+	anyVerbPaths := []string{
+		"http:ANY:/users",
+		"http:ANY:/users/{user_id}",
+		"http:ANY:/items",
+	}
+	for _, forbidden := range anyVerbPaths {
+		for _, id := range got {
+			if id == forbidden {
+				t.Errorf("FastAPI endpoint %q emitted as ANY-verb (Django yaml_driven collision regression #748)", forbidden)
+			}
+		}
+	}
+
+	// Verify the verb property is correct on each emitted entity.
+	verbFor := map[string]string{}
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind {
+			verbFor[e.ID] = e.Properties["verb"]
+		}
+	}
+	for _, id := range want {
+		// Extract expected verb from ID "http:VERB:path"
+		parts := strings.SplitN(id, ":", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		expectedVerb := parts[1]
+		if verbFor[id] != expectedVerb {
+			t.Errorf("entity %q has verb=%q, want %q", id, verbFor[id], expectedVerb)
+		}
+	}
+}
+
+// TestSynth_FastAPI_RouterVerbSpecific verifies that named routers other than
+// `router` (e.g. `items_router`, `api_router`) also emit verb-specific
+// endpoints, not ANY.
+func TestSynth_FastAPI_RouterVerbSpecific(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+items_router = APIRouter(prefix="/items")
+users_router = APIRouter(prefix="/users")
+
+@items_router.get("/")
+async def list_items():
+    return []
+
+@items_router.post("/")
+async def create_item():
+    return {}
+
+@users_router.get("/{user_id}")
+async def get_user(user_id: int):
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/items.py", src)
+	want := []string{
+		"http:GET:/",
+		"http:POST:/",
+		"http:GET:/{user_id}",
+	}
+	requireContains(t, got, want, "FastAPI named router verb-specific")
+
+	// No ANY-verb synthetics for these paths.
+	for _, id := range got {
+		if strings.HasPrefix(id, "http:ANY:") {
+			t.Errorf("unexpected ANY-verb entity %q from FastAPI named router (#748)", id)
+		}
+	}
+}
+
+// TestSynth_FastAPI_YamlDrivenRouteNotSynthesized_Unit is a direct unit test
+// of synthesizeDjangoFromComposed — it feeds it a yaml_driven Route entity
+// (the kind that the Django YAML path() pattern would produce for a FastAPI
+// file) and asserts that NO http_endpoint is emitted.
+func TestSynth_FastAPI_YamlDrivenRouteNotSynthesized_Unit(t *testing.T) {
+	// Simulate a yaml_driven Route that the Django YAML path() pattern
+	// would produce when it fires on a FastAPI file containing path("...").
+	yamlDrivenFastapiRoute := types.EntityRecord{
+		ID:         "yaml:Route:/users",
+		Name:       "/users",
+		Kind:       "Route",
+		SourceFile: "main.py",
+		Language:   "python",
+		Properties: map[string]string{
+			"framework":    "python",
+			"pattern_type": "yaml_driven", // <- the problematic case
+		},
+	}
+
+	var emitted []string
+	synthesizeDjangoFromComposed(
+		[]types.EntityRecord{yamlDrivenFastapiRoute},
+		"main.py",
+		func(method, canonicalPath, framework, refKind, refName string) {
+			id := httproutes.SyntheticID(method, canonicalPath)
+			emitted = append(emitted, id)
+		},
+	)
+
+	if len(emitted) != 0 {
+		t.Errorf("#748 regression: synthesizeDjangoFromComposed emitted %v for a yaml_driven Route; expected zero emissions (yaml_driven routes must be skipped)", emitted)
+	}
+}
+
+// TestSynth_Django_AstDriven_StillWorks verifies that the #748 fix does NOT
+// regress real Django URL conf routes. ast_driven Route entities (produced by
+// the Django AST composition passes) must still be synthesized as ANY-verb
+// http_endpoints.
+func TestSynth_Django_AstDriven_StillWorks(t *testing.T) {
+	// Simulate entities that django_routes.go / django_urlconf_nested.go
+	// would produce for a Django urls.py file.
+	astDrivenRoutes := []types.EntityRecord{
+		{
+			ID:         "ast:Route:/api/v1/users",
+			Name:       "/api/v1/users",
+			Kind:       "Route",
+			SourceFile: "api/urls.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+			},
+		},
+		{
+			ID:         "ast:Route:/api/v1/orders",
+			Name:       "/api/v1/orders",
+			Kind:       "Route",
+			SourceFile: "api/urls.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+			},
+		},
+	}
+
+	var emitted []string
+	synthesizeDjangoFromComposed(
+		astDrivenRoutes,
+		"api/urls.py",
+		func(method, canonicalPath, framework, refKind, refName string) {
+			id := httproutes.SyntheticID(method, canonicalPath)
+			emitted = append(emitted, id)
+		},
+	)
+
+	// Both list routes should be emitted as ANY.
+	wantList := []string{
+		"http:ANY:/api/v1/users",
+		"http:ANY:/api/v1/orders",
+	}
+	for _, want := range wantList {
+		found := false
+		for _, id := range emitted {
+			if id == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("#748 regression guard: ast_driven Django route %q not emitted; got %v", want, emitted)
+		}
+	}
+
+	// Detail-route variants should also be present ({pk} suffix).
+	wantDetail := []string{
+		"http:ANY:/api/v1/users/{pk}",
+		"http:ANY:/api/v1/orders/{pk}",
+	}
+	for _, want := range wantDetail {
+		found := false
+		for _, id := range emitted {
+			if id == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("#748 regression guard: ast_driven Django detail route %q not emitted; got %v", want, emitted)
+		}
+	}
+}
