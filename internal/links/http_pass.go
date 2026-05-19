@@ -337,27 +337,31 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		if len(producers) == 0 || len(consumers) == 0 {
 			continue
 		}
-		// Emit one link per (consumer-repo, producer-repo) cross-repo
-		// pair. Within a repo-pair we pick the first hit on each side
-		// (sorted by file then stampedID for determinism).
+		// Deterministic ordering for tie-breaking inside each verb tier.
 		sort.SliceStable(producers, func(i, j int) bool { return less(producers[i], producers[j]) })
 		sort.SliceStable(consumers, func(i, j int) bool { return less(consumers[i], consumers[j]) })
 
-		// Group by repo (first hit per repo, per side).
-		firstByRepo := func(hh []*httpEndpointHit) map[string]*httpEndpointHit {
-			out := map[string]*httpEndpointHit{}
-			for _, h := range hh {
-				if _, ok := out[h.repo]; !ok {
-					out[h.repo] = h
-				}
-			}
-			return out
+		// Group producers by repo so we can run the verb-aware picker
+		// independently for every (consumer-repo, producer-repo) pair.
+		producersByRepo := map[string][]*httpEndpointHit{}
+		for _, p := range producers {
+			producersByRepo[p.repo] = append(producersByRepo[p.repo], p)
 		}
-		producerRepos := firstByRepo(producers)
-		consumerRepos := firstByRepo(consumers)
+		// Group consumers by repo (first hit per repo — the deterministic
+		// ordering above means we keep the smallest stampedID per repo).
+		consumerRepos := map[string]*httpEndpointHit{}
+		for _, h := range consumers {
+			if _, ok := consumerRepos[h.repo]; !ok {
+				consumerRepos[h.repo] = h
+			}
+		}
 
 		consumerRepoNames := sortedKeys(consumerRepos)
-		producerRepoNames := sortedKeys(producerRepos)
+		producerRepoNames := make([]string, 0, len(producersByRepo))
+		for r := range producersByRepo {
+			producerRepoNames = append(producerRepoNames, r)
+		}
+		sort.Strings(producerRepoNames)
 
 		for _, cRepo := range consumerRepoNames {
 			for _, pRepo := range producerRepoNames {
@@ -365,7 +369,21 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					continue // never emit a self-pair as a cross-repo edge
 				}
 				c := consumerRepos[cRepo]
-				p := producerRepos[pRepo]
+				// Verb-aware producer selection (#747):
+				//   Tier 1 — producer with the SAME specific verb as the
+				//            consumer (exact_verb).
+				//   Tier 2 — producer with verb=ANY (any_fallback).
+				//   Tier 3 — none. We skip rather than fall through to a
+				//            different specific verb: DELETE/{id} must
+				//            never link to PATCH/{id} just because both
+				//            paths normalize the same.
+				// Producers within each tier are already sorted by
+				// less() above, so picking the first match is
+				// deterministic.
+				p, quality := pickProducerForConsumer(c, producersByRepo[pRepo])
+				if p == nil {
+					continue
+				}
 
 				// Source / target: consumer's caller → producer's handler.
 				// If either side hasn't resolved to a real entity, fall
@@ -403,6 +421,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						{c.sourceFile},
 						{p.sourceFile},
 					},
+					MatchQuality: quality,
 				}
 				fresh = append(fresh, link)
 			}
@@ -513,6 +532,62 @@ func canonicalIdentifier(c, p *httpEndpointHit) string {
 		path = p.canonicalPath
 	}
 	return "http:" + verb + ":" + path
+}
+
+// Match-quality labels written to Link.MatchQuality.
+const (
+	matchQualityExactVerb   = "exact_verb"
+	matchQualityAnyFallback = "any_fallback"
+	matchQualityWildcard    = "wildcard"
+)
+
+// pickProducerForConsumer selects the best producer for a consumer hit
+// from a single producer-repo's candidate pool. See #747.
+//
+// Selection tiers (first non-empty wins):
+//  1. Producer with EXACT same specific verb as consumer (exact_verb).
+//  2. Producer with verb=ANY (any_fallback) — Django ViewSets without
+//     per-method routing legitimately emit ANY-verb endpoints; the
+//     pre-fix matcher was right to consider them, just not to pick a
+//     mismatched specific verb in preference.
+//  3. If consumer itself is ANY, fall back to first producer (wildcard).
+//  4. Otherwise: no match. We deliberately do NOT cross-link to a
+//     different specific verb — that is the verb-confusion bug.
+//
+// `candidates` MUST already be sorted by `less()` so tier-internal tie
+// breaking is deterministic.
+func pickProducerForConsumer(c *httpEndpointHit, candidates []*httpEndpointHit) (*httpEndpointHit, string) {
+	if len(candidates) == 0 {
+		return nil, ""
+	}
+	cVerb := strings.ToUpper(c.verb)
+	// Tier 1: exact specific-verb match.
+	if cVerb != "" && cVerb != "ANY" {
+		for _, p := range candidates {
+			if strings.ToUpper(p.verb) == cVerb {
+				return p, matchQualityExactVerb
+			}
+		}
+		// Tier 2: ANY-verb fallback.
+		for _, p := range candidates {
+			if strings.ToUpper(p.verb) == "ANY" {
+				return p, matchQualityAnyFallback
+			}
+		}
+		// Tier 3: no match. Drop rather than pick a different specific
+		// verb — that is exactly the bug #747 fixes.
+		return nil, ""
+	}
+	// Consumer verb is ANY (or empty). Prefer an ANY-verb producer
+	// when one exists (wildcard-on-wildcard); otherwise take the
+	// first specific-verb producer (consumer is unspecified, so
+	// any specific verb is a defensible match).
+	for _, p := range candidates {
+		if strings.ToUpper(p.verb) == "ANY" {
+			return p, matchQualityWildcard
+		}
+	}
+	return candidates[0], matchQualityWildcard
 }
 
 // splitKindNameRef parses "<Kind>:<Name>" into (kind, name). The Kind
