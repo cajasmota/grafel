@@ -56,6 +56,7 @@ func newRoot() *cobra.Command {
 		newDashboardCmd(),
 		newQualityCmd(),
 		newLinksCmd(),
+		newExtractCmd(),
 		newHelpCmd(),
 	)
 

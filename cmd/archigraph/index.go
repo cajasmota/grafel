@@ -18,6 +18,7 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 
 	"github.com/cajasmota/archigraph/internal/classifier"
+	"github.com/cajasmota/archigraph/internal/daemon/extract"
 	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/external"
@@ -377,26 +378,80 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	i.stats.files = len(files)
 	fmt.Fprintf(os.Stderr, "archigraph: discovered %d candidate files in %s\n", len(files), absRepo)
 
-	// Pass 1 — per-language AST extraction.
-	pass1Records, classified, err := i.runPass1Extract(ctx, absRepo, files)
-	if err != nil {
-		return nil, fmt.Errorf("pass 1: %w", err)
-	}
-	i.stats.pass1Rels = countEmbeddedRels(pass1Records)
+	var (
+		pass1Records []types.EntityRecord
+		pass2Records []types.EntityRecord
+		pass2Rels    []types.RelationshipRecord
+		pass3Records []types.EntityRecord
+		classified   []classifiedFile
+	)
 
-	// Pass 2.5 — YAML-driven framework rules.
-	pass2Records, pass2Rels, err := i.runPass25FrameworkRules(ctx, absRepo, classified)
-	if err != nil {
-		return nil, fmt.Errorf("pass 2.5: %w", err)
-	}
-	i.stats.pass2Rels = len(pass2Rels) + countEmbeddedRels(pass2Records)
+	// Phase F — subprocess extractor path. Gated on
+	// ARCHIGRAPH_SUBPROC_EXTRACT=1 during the rollout so the in-process
+	// path remains the default until benchmarks + quality fixtures
+	// confirm byte-identical output. When enabled, the coordinator
+	// fork-execs `archigraph extract` per language-bucketed batch and
+	// returns the merged record set (Pass 1 + 2.5 + 3 combined); the
+	// daemon then runs everything from buildDocument onward unchanged.
+	if subprocExtract() {
+		res, cerr := extract.Coordinate(ctx, absRepo, files, extract.CoordinatorConfig{
+			Concurrency: subprocConcurrency(),
+			BatchSize:   subprocBatchSize(),
+			SkipPasses:  skipPassNames(i.skipPasses),
+			Stderr:      os.Stderr,
+		})
+		if cerr != nil {
+			return nil, fmt.Errorf("subprocess extract: %w", cerr)
+		}
+		// The coordinator merges Pass 1 / 2.5 / 3 entity records into a
+		// single stream; surface that as pass1Records so buildDocument
+		// sees the same shape it would in-process. Standalone Pass 2.5
+		// relationships flow through pass2Rels.
+		pass1Records = res.Entities
+		pass2Rels = res.Relationships
+		i.stats.processed = res.Processed
+		i.stats.extracted = res.Extracted
+		i.stats.skipped = res.Skipped
+		i.stats.failed = res.Failed
+		i.stats.pass1Rels = res.Pass1Rels
+		i.stats.pass2Rels = res.Pass25Rels + len(res.Relationships)
+		i.stats.pass3Rels = res.Pass3Rels
+		for k, v := range res.ByLang {
+			i.stats.pass1RelsByLang[k] += v
+		}
+		for k, v := range res.ByCrossExt {
+			i.stats.pass3RelsByExt[k] += v
+		}
+		fmt.Fprintf(os.Stderr,
+			"archigraph: subproc-extract subprocs=%d peak_rss=%.1fMB entities=%d rels=%d\n",
+			res.Subprocesses,
+			float64(res.PeakRSSBytes)/(1024*1024),
+			len(res.Entities), len(res.Relationships))
+		for _, e := range res.NonFatalErrors {
+			fmt.Fprintf(os.Stderr, "archigraph: subproc-extract warning: %s\n", e)
+		}
+	} else {
+		// Pass 1 — per-language AST extraction.
+		pass1Records, classified, err = i.runPass1Extract(ctx, absRepo, files)
+		if err != nil {
+			return nil, fmt.Errorf("pass 1: %w", err)
+		}
+		i.stats.pass1Rels = countEmbeddedRels(pass1Records)
 
-	// Pass 3 — cross-language extractors.
-	pass3Records, err := i.runPass3CrossLang(ctx, absRepo, classified)
-	if err != nil {
-		return nil, fmt.Errorf("pass 3: %w", err)
+		// Pass 2.5 — YAML-driven framework rules.
+		pass2Records, pass2Rels, err = i.runPass25FrameworkRules(ctx, absRepo, classified)
+		if err != nil {
+			return nil, fmt.Errorf("pass 2.5: %w", err)
+		}
+		i.stats.pass2Rels = len(pass2Rels) + countEmbeddedRels(pass2Records)
+
+		// Pass 3 — cross-language extractors.
+		pass3Records, err = i.runPass3CrossLang(ctx, absRepo, classified)
+		if err != nil {
+			return nil, fmt.Errorf("pass 3: %w", err)
+		}
+		i.stats.pass3Rels = countEmbeddedRels(pass3Records)
 	}
-	i.stats.pass3Rels = countEmbeddedRels(pass3Records)
 
 	// Issue #633 — release per-file AST trees + source bytes now that the
 	// last consumer (Pass 3 cross-language extractors) has finished. The

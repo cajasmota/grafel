@@ -20,6 +20,7 @@ func main() {
 		RunLinks:     runLinksHook,
 		RunDashboard: runDashboard,
 		RunQuality:   runQuality,
+		RunExtract:   runExtractSubprocess,
 	})
 }
 

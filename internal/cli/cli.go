@@ -26,6 +26,13 @@ type Hooks struct {
 	// passes whenever a registered repo's graph.json changes.
 	// May be nil; callers must check.
 	RunLinks func(group string) error
+
+	// RunExtract is the Phase F subprocess entrypoint. Wired up from
+	// cmd/archigraph so the extract subcommand can run the per-file
+	// extractor pipeline (Pass 1 + 2.5 + 3) on a bounded batch and
+	// stream JSONL records to stdout. Invoked by the daemon-side
+	// extract coordinator via fork-exec of the same binary.
+	RunExtract func(argv []string) error
 }
 
 // Execute is the entrypoint called from cmd/archigraph/main.go.
