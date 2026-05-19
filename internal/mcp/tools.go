@@ -163,12 +163,111 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 		}), nil
 	}
 	repo := repoFromCWD(cwd)
-	return jsonResult(map[string]any{
+
+	// Base response.
+	resp := map[string]any{
 		"group":         group,
 		"repo":          repo,
 		"source":        source,
 		"registry_path": s.State.registry.Path,
-	}), nil
+	}
+
+	// Nudge suppression: ARCHIGRAPH_WHOAMI_NUDGE=quiet disables doc-state fields.
+	if os.Getenv("ARCHIGRAPH_WHOAMI_NUDGE") == "quiet" {
+		return jsonResult(resp), nil
+	}
+
+	// Enrich with documentation state + action counts.
+	lg := s.State.Group(group)
+	if lg == nil {
+		return jsonResult(resp), nil
+	}
+
+	docState := ComputeDocState(group, lg)
+
+	// Count pattern candidates and residuals for suggested_action priority.
+	candidateCount := countPatternCandidates(group, lg)
+	residualCount := countResiduals(lg)
+
+	suggestedAction := composeSuggestedAction(docState, candidateCount, residualCount)
+
+	resp["documentation_state"] = docState.DocumentationState
+	resp["last_docgen_at"] = docState.LastDocgenAt
+	resp["stale_count"] = docState.StaleCount
+	resp["patterns_count"] = countPatterns(group, lg)
+	resp["candidate_count"] = candidateCount
+	resp["residual_count"] = residualCount
+	resp["suggested_action"] = suggestedAction
+	if len(docState.PerRepoStale) > 0 {
+		resp["per_repo_stale"] = docState.PerRepoStale
+	}
+
+	return jsonResult(resp), nil
+}
+
+// countPatterns returns the total number of patterns (candidate + approved) for a group.
+func countPatterns(groupName string, lg *LoadedGroup) int {
+	dir := patternsDir(groupName, lg)
+	patterns, err := loadPatternsQuiet(dir)
+	if err != nil {
+		return 0
+	}
+	return len(patterns)
+}
+
+// countPatternCandidates returns the number of is_candidate=true patterns.
+func countPatternCandidates(groupName string, lg *LoadedGroup) int {
+	dir := patternsDir(groupName, lg)
+	patterns, err := loadPatternsQuiet(dir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, p := range patterns {
+		if p.IsCandidate {
+			count++
+		}
+	}
+	return count
+}
+
+// countResiduals returns the total repair_edge candidate count across all repos.
+func countResiduals(lg *LoadedGroup) int {
+	total := 0
+	for _, r := range lg.Repos {
+		if r == nil || r.Path == "" {
+			continue
+		}
+		total += len(readRepairEdgeCandidates(r.Path))
+	}
+	return total
+}
+
+// loadPatternsQuiet loads patterns without propagating errors (whoami must not fail).
+func loadPatternsQuiet(dir string) ([]patternForCount, error) {
+	if dir == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "patterns.json"))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var env struct {
+		Patterns []patternForCount `json:"patterns"`
+	}
+	if err := json.Unmarshal(data, &env); err != nil {
+		return nil, err
+	}
+	return env.Patterns, nil
+}
+
+// patternForCount is a minimal pattern shape for counting — avoids importing
+// agentpatterns here (already imported in patterns.go; this avoids the cycle).
+type patternForCount struct {
+	IsCandidate bool `json:"is_candidate"`
 }
 
 // ---------------------------------------------------------------------------
