@@ -12,6 +12,8 @@ package watch
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/cajasmota/archigraph/internal/daemon/walk"
 )
 
 // SkipDirs is the static list of directory basenames the watcher never
@@ -20,21 +22,57 @@ import (
 // without producing any signal we care about.
 //
 // We honour these by basename so any depth matches (e.g. nested
-// node_modules under a monorepo).
+// node_modules under a monorepo). This list now also covers iOS/Android
+// build artifacts and prior-tool outputs (issue #805).
 var SkipDirs = map[string]struct{}{
-	".archigraph":  {},
-	".git":         {},
-	".next":        {},
-	".expo":        {},
-	".venv":        {},
-	"venv":         {},
-	"node_modules": {},
-	"target":       {},
-	"build":        {},
-	"dist":         {},
-	"__pycache__":  {},
-	".idea":        {},
-	".vscode":      {},
+	// VCS
+	".archigraph": {},
+	".git":        {},
+	".hg":         {},
+	".svn":        {},
+	// JS / TS
+	"node_modules":  {},
+	".next":         {},
+	".nuxt":         {},
+	"dist":          {},
+	"out":           {},
+	"coverage":      {},
+	".expo":         {},
+	".expo-shared":  {},
+	".parcel-cache": {},
+	".turbo":        {},
+	// Python
+	"__pycache__":   {},
+	".pytest_cache": {},
+	".mypy_cache":   {},
+	".tox":          {},
+	// Python virtualenvs
+	".venv": {},
+	"venv":  {},
+	// Go / Rust / JVM
+	"vendor": {},
+	"target": {},
+	"build":  {},
+	// iOS / Xcode / CocoaPods
+	"Pods":        {},
+	"DerivedData": {},
+	"xcuserdata":  {},
+	".swiftpm":    {},
+	// Android / Gradle
+	".gradle":  {},
+	"captures": {},
+	// Mobile build outputs
+	"APK":      {},
+	"IPA":      {},
+	"Builds":   {},
+	"Releases": {},
+	// Prior-tool outputs
+	"graphify-out":    {},
+	"gfleet-out":      {},
+	".archigraph-out": {},
+	// IDE
+	".idea":   {},
+	".vscode": {},
 }
 
 // SkipExts is the suffix list for files we never re-index for. Lock
@@ -59,13 +97,14 @@ var SkipExts = map[string]struct{}{
 }
 
 // ShouldSkipDir reports whether a directory basename is on the skip
-// list. It is the watcher's only mechanism for excluding directories —
-// we deliberately avoid parsing every .gitignore in the tree (correct
-// .gitignore semantics need a full implementation we do not want to
-// reproduce here).
+// list. It delegates to the canonical walk.IsHardcodedSkip so the
+// watcher and the indexer use the identical extended set (issue #805).
 func ShouldSkipDir(base string) bool {
-	_, ok := SkipDirs[base]
-	return ok
+	if _, ok := SkipDirs[base]; ok {
+		return true
+	}
+	// Delegate to walk package for suffix-based rules (*.egg-info, etc.)
+	return walk.IsHardcodedSkip(base)
 }
 
 // ShouldSkipPath reports whether a path event should be dropped before
@@ -76,7 +115,7 @@ func ShouldSkipDir(base string) bool {
 func ShouldSkipPath(p string) bool {
 	parts := strings.Split(filepath.ToSlash(p), "/")
 	for _, part := range parts {
-		if _, ok := SkipDirs[part]; ok {
+		if ShouldSkipDir(part) {
 			return true
 		}
 	}
