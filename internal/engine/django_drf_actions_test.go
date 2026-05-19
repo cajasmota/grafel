@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -1172,6 +1173,277 @@ func TestClassifyCBVParent(t *testing.T) {
 		}
 		if got["post"] != tc.wantPost {
 			t.Errorf("classifyCBVParent(%q) post=%v want %v", tc.base, got["post"], tc.wantPost)
+		}
+	}
+}
+
+// TestDeduplicateNestedURLConfDRF_DeduplicatesWhenDRFCoversPath verifies that
+// urlconf_nested_include ANY entries are dropped when drf_router_expanded
+// per-verb entries cover the same path.
+func TestDeduplicateNestedURLConfDRF_DeduplicatesWhenDRFCoversPath(t *testing.T) {
+	nestedEntities := []types.EntityRecord{
+		{
+			ID:   "http:ANY:/api/v1/contracts",
+			Name: "http:ANY:/api/v1/contracts",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         "/api/v1/contracts",
+				"pattern_type": "urlconf_nested_include",
+			},
+		},
+		{
+			ID:   "http:ANY:/api/v1/users",
+			Name: "http:ANY:/api/v1/users",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         "/api/v1/users",
+				"pattern_type": "urlconf_nested_include",
+			},
+		},
+	}
+
+	drfEntities := []types.EntityRecord{
+		{
+			ID:   "http:GET:/api/v1/contracts",
+			Name: "http:GET:/api/v1/contracts",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "GET",
+				"path":         "/api/v1/contracts",
+				"pattern_type": "drf_router_expanded",
+			},
+		},
+		{
+			ID:   "http:POST:/api/v1/contracts",
+			Name: "http:POST:/api/v1/contracts",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "POST",
+				"path":         "/api/v1/contracts",
+				"pattern_type": "drf_router_expanded",
+			},
+		},
+	}
+
+	got := DeduplicateNestedURLConfDRF(nestedEntities, drfEntities)
+
+	// /api/v1/contracts ANY should be dropped (drf_router_expanded covers it)
+	// /api/v1/users ANY should be kept (no drf_router_expanded coverage)
+	if len(got) != 1 {
+		t.Errorf("DeduplicateNestedURLConfDRF returned %d entities, want 1", len(got))
+	}
+	if len(got) > 0 && got[0].Properties["path"] != "/api/v1/users" {
+		t.Errorf("Expected remaining entity for /api/v1/users, got %v", got[0].Properties["path"])
+	}
+}
+
+// TestDeduplicateNestedURLConfDRF_KeepsWhenNoDRFCoverage verifies that
+// urlconf_nested_include entries are kept when no drf_router_expanded
+// entries exist for the same path.
+func TestDeduplicateNestedURLConfDRF_KeepsWhenNoDRFCoverage(t *testing.T) {
+	nestedEntities := []types.EntityRecord{
+		{
+			ID:   "http:ANY:/api/v1/users",
+			Name: "http:ANY:/api/v1/users",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         "/api/v1/users",
+				"pattern_type": "urlconf_nested_include",
+			},
+		},
+	}
+
+	// No drf_router_expanded entries
+	drfEntities := []types.EntityRecord{}
+
+	got := DeduplicateNestedURLConfDRF(nestedEntities, drfEntities)
+
+	// Should keep the nested_include entry since no drf coverage
+	if len(got) != 1 {
+		t.Errorf("DeduplicateNestedURLConfDRF returned %d entities, want 1", len(got))
+	}
+}
+
+// TestDeduplicateNestedURLConfDRF_PreservesNonDjangoEntities verifies that
+// non-Django entities are preserved unchanged.
+func TestDeduplicateNestedURLConfDRF_PreservesNonDjangoEntities(t *testing.T) {
+	nestedEntities := []types.EntityRecord{
+		{
+			ID:   "http:GET:/api/v1/users",
+			Name: "http:GET:/api/v1/users",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "GET",
+				"path":         "/api/v1/users",
+				"pattern_type": "flask_route",
+			},
+		},
+		{
+			ID:   "http:ANY:/api/v1/admin",
+			Name: "http:ANY:/api/v1/admin",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         "/api/v1/admin",
+				"pattern_type": "urlconf_nested_include",
+			},
+		},
+	}
+
+	drfEntities := []types.EntityRecord{}
+
+	got := DeduplicateNestedURLConfDRF(nestedEntities, drfEntities)
+
+	// Both should be kept (non-Django + nested with no drf coverage)
+	if len(got) != 2 {
+		t.Errorf("DeduplicateNestedURLConfDRF returned %d entities, want 2", len(got))
+	}
+}
+
+// TestDeduplicateNestedURLConfDRF_HandlesMultiplePaths verifies correct
+// behavior with multiple paths, some with drf coverage and some without.
+func TestDeduplicateNestedURLConfDRF_HandlesMultiplePaths(t *testing.T) {
+	nestedEntities := []types.EntityRecord{
+		{
+			ID:   "http:ANY:/api/v1/users",
+			Name: "http:ANY:/api/v1/users",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         "/api/v1/users",
+				"pattern_type": "urlconf_nested_include",
+			},
+		},
+		{
+			ID:   "http:ANY:/api/v1/posts",
+			Name: "http:ANY:/api/v1/posts",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         "/api/v1/posts",
+				"pattern_type": "urlconf_nested_include",
+			},
+		},
+		{
+			ID:   "http:ANY:/api/v1/comments",
+			Name: "http:ANY:/api/v1/comments",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         "/api/v1/comments",
+				"pattern_type": "urlconf_nested_include",
+			},
+		},
+	}
+
+	drfEntities := []types.EntityRecord{
+		// /api/v1/users has drf coverage
+		{
+			ID:   "http:GET:/api/v1/users",
+			Name: "http:GET:/api/v1/users",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "GET",
+				"path":         "/api/v1/users",
+				"pattern_type": "drf_router_expanded",
+			},
+		},
+		// /api/v1/posts has drf coverage
+		{
+			ID:   "http:POST:/api/v1/posts",
+			Name: "http:POST:/api/v1/posts",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "POST",
+				"path":         "/api/v1/posts",
+				"pattern_type": "drf_router_expanded",
+			},
+		},
+		// /api/v1/comments has no drf coverage
+	}
+
+	got := DeduplicateNestedURLConfDRF(nestedEntities, drfEntities)
+
+	// Should keep only /api/v1/comments (no drf coverage)
+	if len(got) != 1 {
+		t.Errorf("DeduplicateNestedURLConfDRF returned %d entities, want 1; got paths: %v",
+			len(got), func() []string {
+				var paths []string
+				for _, e := range got {
+					paths = append(paths, e.Properties["path"])
+				}
+				return paths
+			}())
+	}
+	if len(got) > 0 && got[0].Properties["path"] != "/api/v1/comments" {
+		t.Errorf("Expected remaining entity for /api/v1/comments, got %v", got[0].Properties["path"])
+	}
+}
+
+// TestDeduplicateNestedURLConfDRF_FixtureAScenario simulates the fixture-a
+// scenario where 46-68 urlconf_nested_include entries are deduplicated by
+// drf_router_expanded coverage, leaving only bare nested-include entries
+// (those with no DRF registration).
+func TestDeduplicateNestedURLConfDRF_FixtureAScenario(t *testing.T) {
+	// Create 68 urlconf_nested_include entries representing fixture-a
+	nestedEntities := make([]types.EntityRecord, 68)
+	for i := 0; i < 68; i++ {
+		path := fmt.Sprintf("/api/v1/resource%d", i)
+		nestedEntities[i] = types.EntityRecord{
+			ID:   fmt.Sprintf("http:ANY:%s", path),
+			Name: fmt.Sprintf("http:ANY:%s", path),
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         path,
+				"pattern_type": "urlconf_nested_include",
+			},
+		}
+	}
+
+	// Create drf_router_expanded entries for paths 0-45 (46 total)
+	// This leaves paths 46-67 with only nested_include coverage
+	drfEntities := make([]types.EntityRecord, 46)
+	for i := 0; i < 46; i++ {
+		path := fmt.Sprintf("/api/v1/resource%d", i)
+		drfEntities[i] = types.EntityRecord{
+			ID:   fmt.Sprintf("http:GET:%s", path),
+			Name: fmt.Sprintf("http:GET:%s", path),
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"verb":         "GET",
+				"path":         path,
+				"pattern_type": "drf_router_expanded",
+			},
+		}
+	}
+
+	got := DeduplicateNestedURLConfDRF(nestedEntities, drfEntities)
+
+	// Should drop 46 entries (those with drf coverage), keep 22
+	if len(got) != 22 {
+		t.Errorf("Expected 22 remaining nested_include entries, got %d (removed %d)",
+			len(got), len(nestedEntities)-len(got))
+	}
+
+	// Verify remaining are paths 46-67
+	remainingPaths := make(map[string]bool)
+	for _, e := range got {
+		remainingPaths[e.Properties["path"]] = true
+	}
+	for i := 46; i < 68; i++ {
+		path := fmt.Sprintf("/api/v1/resource%d", i)
+		if !remainingPaths[path] {
+			t.Errorf("Expected to keep path %s", path)
+		}
+	}
+	for i := 0; i < 46; i++ {
+		path := fmt.Sprintf("/api/v1/resource%d", i)
+		if remainingPaths[path] {
+			t.Errorf("Expected to drop path %s", path)
 		}
 	}
 }

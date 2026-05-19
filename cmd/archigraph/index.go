@@ -510,7 +510,6 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Results are appended to pass3Records for buildDocument to merge.
 	if !i.skipPasses[PassFramework] {
 		nestedEntities := runDjangoNestedURLConf(classified)
-		pass3Records = append(pass3Records, nestedEntities...)
 
 		// Pass 2.6b — DRF router.register expansion (#703, #705). Emits
 		// detail-route ({pk}) and @action endpoints alongside the list
@@ -519,6 +518,16 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		if len(drfEntities) > 0 {
 			fmt.Fprintf(os.Stderr, "archigraph: drf_router_expanded=%d entities\n", len(drfEntities))
 		}
+
+		// Issue #792: Deduplicate urlconf_nested_include ANY entries when
+		// drf_router_expanded per-verb entries cover the same path.
+		deduplicatedNestedEntities := engine.DeduplicateNestedURLConfDRF(nestedEntities, drfEntities)
+		if len(nestedEntities) > len(deduplicatedNestedEntities) {
+			fmt.Fprintf(os.Stderr, "archigraph: deduped %d urlconf_nested_include entries (drf coverage)\n",
+				len(nestedEntities)-len(deduplicatedNestedEntities))
+		}
+
+		pass3Records = append(pass3Records, deduplicatedNestedEntities...)
 		pass3Records = append(pass3Records, drfEntities...)
 
 		// Pass 2.6c — Django CBV generic-method resolution (#786). Emits

@@ -377,6 +377,88 @@ func ApplyDjangoDRFRoutes(
 	return out
 }
 
+// DeduplicateNestedURLConfDRF filters urlconf_nested_include ANY-verb entities
+// when drf_router_expanded per-verb entries cover the same path.
+//
+// When `router.register('users', UserViewSet)` is included via
+// `path('api/v1/', include(router.urls))`, the urlconf_nested_include pass
+// emits a parent ANY entry for `api/v1/users` and the drf_router_expanded
+// pass emits per-method entries (GET/POST/etc.) for the same path. They
+// duplicate.
+//
+// This function detects the overlap and removes the urlconf_nested_include
+// ANY entry when a drf_router_expanded per-method entry exists for the same
+// (verb, path) combination.
+//
+// nestedURLConfEntities: output from ApplyDjangoNestedURLConf
+// drfEntities: output from ApplyDjangoDRFRoutes
+// Returns: filtered nestedURLConfEntities with duplicates removed.
+func DeduplicateNestedURLConfDRF(
+	nestedURLConfEntities []types.EntityRecord,
+	drfEntities []types.EntityRecord,
+) []types.EntityRecord {
+	if len(nestedURLConfEntities) == 0 || len(drfEntities) == 0 {
+		return nestedURLConfEntities
+	}
+
+	// Build an index of drf_router_expanded (verb, path) pairs.
+	// Map key: "verb:path", value: true if any drf_router_expanded entry exists.
+	drfVerbPaths := make(map[string]bool)
+	for _, e := range drfEntities {
+		if e.Properties == nil {
+			continue
+		}
+		if e.Properties["pattern_type"] != "drf_router_expanded" {
+			continue
+		}
+		verb := e.Properties["verb"]
+		path := e.Properties["path"]
+		if verb != "" && path != "" {
+			drfVerbPaths[verb+":"+path] = true
+		}
+	}
+
+	// Filter: keep only urlconf_nested_include entries that DON'T have
+	// a corresponding drf_router_expanded per-verb entry for the same path.
+	var result []types.EntityRecord
+	for _, e := range nestedURLConfEntities {
+		if e.Properties == nil {
+			result = append(result, e)
+			continue
+		}
+		if e.Properties["pattern_type"] != "urlconf_nested_include" {
+			result = append(result, e)
+			continue
+		}
+
+		// This is a urlconf_nested_include entry. Check if ANY per-verb
+		// drf_router_expanded entry covers the same path.
+		path := e.Properties["path"]
+		if path == "" {
+			result = append(result, e)
+			continue
+		}
+
+		// If any per-verb entry exists for this path, drop the ANY entry.
+		// We check common HTTP verbs to determine overlap.
+		hasDRFCoverage := false
+		for _, verb := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} {
+			if drfVerbPaths[verb+":"+path] {
+				hasDRFCoverage = true
+				break
+			}
+		}
+
+		if !hasDRFCoverage {
+			// No drf_router_expanded entry for this path; keep the nested_include ANY.
+			result = append(result, e)
+		}
+		// else: drop the nested_include ANY entry (don't append to result)
+	}
+
+	return result
+}
+
 // isDjangoRoutersFile reports whether the file looks like a DRF routers
 // module (commonly named routers.py or *_routers.py). We expand the file
 // scan beyond urls.py so DRF-only files (no path() calls) still get their
