@@ -149,6 +149,29 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	records = attachClassContains(records, file.Path)
 
 	// ----------------------------------------------------------------
+	// 4c. Track A (analog of #641/#650/#670 for Go) — REFERENCES-edge
+	//     emission. Runs after every primary-pass entity is in place so
+	//     the file-scope symbol table covers functions, methods,
+	//     structs, interfaces, type aliases, and import placeholders.
+	//     Failures here recover internally to partial results — never
+	//     aborts primary output.
+	// ----------------------------------------------------------------
+	func() {
+		defer func() { _ = recover() }()
+		emitReferences(root, file, &records, structFields)
+	}()
+
+	// ----------------------------------------------------------------
+	// 4d. Track B (analog of #642/#650/#670 for Go) — IMPORTS ToID
+	//     rewrite. Rewrites IMPORTS edges whose import-path prefix is
+	//     a known external Go package (stdlib + popular third-party)
+	//     to an `ext:<prefix>` ToID so the resolver's external-
+	//     disposition gate classifies them ExternalKnown directly.
+	//     In-tree imports are untouched.
+	// ----------------------------------------------------------------
+	resolveImportToIDs(records)
+
+	// ----------------------------------------------------------------
 	// 5. Error-handling patterns — secondary pass.
 	//    Emits one SCOPE.Pattern entity per `if err != nil { ... }`
 	//    occurrence. Runs after the base extraction so a detection
