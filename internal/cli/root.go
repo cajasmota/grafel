@@ -53,6 +53,7 @@ func newRoot() *cobra.Command {
 		newIndexCmd(),
 		newMCPCmd(),
 		newDashboardCmd(),
+		newQualityCmd(),
 		newLinksCmd(),
 		newHelpCmd(),
 	)
@@ -123,4 +124,7 @@ MCP:
 
 Dashboard:
   dashboard serve                 Run the local dashboard HTTP server
+
+Quality:
+  quality <fixture-dir>           Measure extraction recall vs a golden fixture
 `
