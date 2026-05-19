@@ -172,7 +172,10 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 			// consumer endpoint = 2 steps) but the cross-stack signal is
 			// the load-bearing semantic, so keep them.
 			minSteps := cfg.MinSteps
-			if chainHasFetchesEdge(t, adj) {
+			if chainHasFetchesEdge(t, adj) || chainCrossesRepo(t, adj) {
+				// #769 — phantom cross-repo CALLS chains are typically
+				// shallow (caller → phantom terminal = 2 steps). Relax the
+				// MinSteps gate so they survive emission.
 				minSteps = 2
 			}
 			if len(t) < minSteps {
@@ -223,7 +226,14 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 		chain := best[k]
 		entry := byID[chain[0]]
 		terminal := byID[chain[len(chain)-1]]
-		if entry == nil || terminal == nil {
+		// #769 — phantom cross-repo terminals live in another repo's
+		// Entities slice and are intentionally absent from this doc's byID
+		// map. Allow chains that end on a phantom edge even when terminal
+		// is nil: the phantom edge Properties carry the target_repo and
+		// link_method so we can still emit a meaningful Process label.
+		terminalIsPhantom := terminal == nil && len(chain) >= 2 &&
+			adj != nil && adj.phantom[edgeKey{chain[len(chain)-2], chain[len(chain)-1]}]
+		if entry == nil || (terminal == nil && !terminalIsPhantom) {
 			continue
 		}
 		crossStack, crossReason := chainCrossesRepoBoundary(chain, byID, adj)
@@ -245,17 +255,37 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 		}
 		crossesExternalLib := chainCrossesExternalLib(chain, byID, httpBoundary)
 		processID := computeProcessID(doc.Repo, chain)
-		label := fmt.Sprintf("%s → %s", entry.Name, terminal.Name)
+
+		// Resolve terminal name/ID — phantom terminals are not in byID.
+		terminalID := chain[len(chain)-1]
+		terminalName := terminalID // fallback for phantom targets
+		if terminal != nil {
+			terminalID = terminal.ID
+			terminalName = terminal.Name
+		} else if terminalIsPhantom {
+			// Try to derive a human-readable label from the phantom edge
+			// Properties. This makes the Process label less cryptic.
+			phantomEdge := phantomEdgeForStep(chain[len(chain)-2], chain[len(chain)-1], doc)
+			if phantomEdge != nil {
+				if tgt := phantomEdge.Properties["target_repo"]; tgt != "" {
+					terminalName = tgt + ":<cross-repo>"
+				}
+			}
+		}
+		label := fmt.Sprintf("%s → %s", entry.Name, terminalName)
 
 		props := map[string]string{
 			"entry_id":              entry.ID,
 			"entry_name":            entry.Name,
-			"terminal_id":           terminal.ID,
+			"terminal_id":           terminalID,
 			"step_count":            strconv.Itoa(len(chain)),
 			"cross_stack":           strconv.FormatBool(crossStack),
 			"crosses_external_lib":  strconv.FormatBool(crossesExternalLib),
 			"chain":                 strings.Join(chain, ","),
 			"chain_labels":          strings.Join(chainLabels(chain, byID), " → "),
+		}
+		if terminalIsPhantom {
+			props["terminal_is_phantom"] = "true"
 		}
 		if crossStack && crossReason != "" {
 			props["cross_stack_reason"] = crossReason
@@ -328,10 +358,15 @@ func clampConfig(cfg ProcessFlowConfig) ProcessFlowConfig {
 // pairs that originated from a FETCHES edge so the cross-stack detector
 // can distinguish "this step was reached by traversing a fetch boundary"
 // from "this step was reached by an ordinary intra-repo CALLS edge".
+// The `phantom` side-set records (from,to) pairs that originated from a
+// phantom CALLS edge (cross_repo="true" property) injected by the phantom-
+// edge pass (#769). chainCrossesRepo uses this to mark Process entities
+// cross_stack=true when a chain traverses a phantom edge.
 type callsAdjacency struct {
 	out     map[string][]string
 	in      map[string]int
 	fetches map[edgeKey]bool
+	phantom map[edgeKey]bool
 }
 
 // edgeKey is a directed (from,to) edge identity.
@@ -349,17 +384,19 @@ func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 		out:     make(map[string][]string),
 		in:      make(map[string]int),
 		fetches: make(map[edgeKey]bool),
+		phantom: make(map[edgeKey]bool),
 	}
 	seen := make(map[string]map[string]bool)
 	for i := range doc.Relationships {
 		r := &doc.Relationships[i]
 		isFetches := r.Kind == RelationshipKindFetches
+		isPhantom := isPhantomCallsEdge(r)
 		if r.Kind != string(RelationshipKindCalls) && !isFetches {
 			continue
 		}
-		// Only CALLS edges are confidence-gated; FETCHES is a structural
-		// extraction-time primitive and is always trusted.
-		if !isFetches && !confidenceOK(r) {
+		// Only CALLS edges are confidence-gated; FETCHES and phantom edges are
+		// structural primitives always trusted.
+		if !isFetches && !isPhantom && !confidenceOK(r) {
 			continue
 		}
 		if r.FromID == r.ToID {
@@ -370,10 +407,13 @@ func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 		}
 		if seen[r.FromID][r.ToID] {
 			// Already added under a different edge kind. Still want to
-			// record the fetches flag if this iteration provides it —
-			// FETCHES wins (cross-stack signal is preserved).
+			// record the fetches/phantom flag if this iteration provides it —
+			// both cross-stack signals are preserved.
 			if isFetches {
 				a.fetches[edgeKey{r.FromID, r.ToID}] = true
+			}
+			if isPhantom {
+				a.phantom[edgeKey{r.FromID, r.ToID}] = true
 			}
 			continue
 		}
@@ -383,11 +423,27 @@ func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 		if isFetches {
 			a.fetches[edgeKey{r.FromID, r.ToID}] = true
 		}
+		if isPhantom {
+			a.phantom[edgeKey{r.FromID, r.ToID}] = true
+		}
 	}
 	for k := range a.out {
 		sort.Strings(a.out[k])
 	}
 	return a
+}
+
+// isPhantomCallsEdge reports whether a CALLS relationship is a phantom
+// cross-repo edge injected by the phantom-edge pass (#769). Phantom
+// edges carry cross_repo="true" in their Properties.
+func isPhantomCallsEdge(r *graph.Relationship) bool {
+	if r.Kind != string(RelationshipKindCalls) {
+		return false
+	}
+	if r.Properties == nil {
+		return false
+	}
+	return r.Properties["cross_repo"] == "true"
 }
 
 // confidenceOK returns true when the relationship has either no
@@ -631,6 +687,13 @@ func chainCrossesRepoBoundary(
 		if adj != nil && adj.fetches[edgeKey{from, to}] {
 			return true, fmt.Sprintf("FETCHES edge at step %d (%s → %s)", i, from, to)
 		}
+		// #769 — phantom CALLS edge: cross-repo link promoted by the
+		// phantom-edge pass. The target entity lives in another repo; the
+		// BFS terminates there (no outgoing edges), making this the final
+		// step. Separate label from crosses_external_lib.
+		if adj != nil && adj.phantom[edgeKey{from, to}] {
+			return true, fmt.Sprintf("phantom cross-repo CALLS edge at step %d (%s → %s)", i, from, to)
+		}
 		if isConsumerHTTPEndpoint(byID[to]) {
 			return true, fmt.Sprintf("consumer http_endpoint at step %d (%s)", i, to)
 		}
@@ -641,6 +704,44 @@ func chainCrossesRepoBoundary(
 		return true, fmt.Sprintf("consumer http_endpoint at step 0 (%s)", chain[0])
 	}
 	return false, ""
+}
+
+// phantomEdgeForStep returns the first phantom CALLS relationship between
+// fromID and toID in the document, or nil when no such edge exists.
+// Used to extract Properties (target_repo, link_method) for label generation
+// when the terminal entity is a phantom target absent from byID.
+func phantomEdgeForStep(fromID, toID string, doc *graph.Document) *graph.Relationship {
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		if r.FromID != fromID || r.ToID != toID {
+			continue
+		}
+		if r.Kind != string(RelationshipKindCalls) {
+			continue
+		}
+		if r.Properties != nil && r.Properties["cross_repo"] == "true" {
+			return r
+		}
+	}
+	return nil
+}
+
+// chainCrossesRepo is a convenience predicate that returns true iff any
+// step in the chain is connected to the next by a phantom cross-repo CALLS
+// edge (#769). Used by tests and by RunProcessFlow's MinSteps relaxation.
+// Distinct from chainCrossesRepoBoundary which also fires on FETCHES edges
+// and consumer http_endpoint kinds — this one is narrowly scoped to
+// phantom edges only, which is what the phantom-edge pass emits.
+func chainCrossesRepo(chain []string, adj *callsAdjacency) bool {
+	if adj == nil {
+		return false
+	}
+	for i := 1; i < len(chain); i++ {
+		if adj.phantom[edgeKey{chain[i-1], chain[i]}] {
+			return true
+		}
+	}
+	return false
 }
 
 // isConsumerHTTPEndpoint returns true when the entity is an http_endpoint

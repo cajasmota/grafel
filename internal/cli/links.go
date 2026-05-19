@@ -1,14 +1,19 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/engine"
+	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/links"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
@@ -28,10 +33,13 @@ func newLinksCmd() *cobra.Command {
 }
 
 // RunLinksForGroup is the watcher-facing entry point. It re-runs the
-// three cross-repo link passes for a named group, writing all output
-// to the canonical archigraph home. Returns nil when the group has
-// no per-repo graph.json files yet (links are a no-op until the
-// indexer has run at least once).
+// cross-repo link passes for a named group, then runs the phantom-edge
+// pass (#769) to promote cross-repo CALLS links into phantom Relationships
+// on each source repo's graph.Document, and re-runs RunProcessFlow on
+// any doc that gained phantom edges so Process entities reflect the new
+// cross-repo chains. Writes all output to the canonical archigraph home.
+// Returns nil when the group has no per-repo graph.json files yet
+// (links are a no-op until the indexer has run at least once).
 func RunLinksForGroup(group string) error {
 	groups, err := registry.Groups()
 	if err != nil {
@@ -56,8 +64,14 @@ func RunLinksForGroup(group string) error {
 		return err
 	}
 	defer cleanup()
-	if _, err := links.RunAllPasses(group, graphsDir, ""); err != nil {
+	res, err := links.RunAllPasses(group, graphsDir, "")
+	if err != nil {
 		return err
+	}
+	// P5 — phantom-edge promotion (#769).
+	if _, perr := runPhantomEdgePass(group, cfg, res.OutLinks); perr != nil {
+		// Best-effort: log but don't fail the link pass.
+		fmt.Fprintf(os.Stderr, "archigraph: phantom-edge pass warning: %v\n", perr)
 	}
 	return nil
 }
@@ -119,6 +133,14 @@ func runLinksForGroup(cmd *cobra.Command, group string) error {
 			r.Pass, r.LinksAdded, r.Candidates, r.Skipped)
 	}
 	fmt.Fprintf(out, "  output: %s\n", res.OutLinks)
+
+	// P5 — phantom-edge promotion (#769).
+	phantomAdded, perr := runPhantomEdgePass(group, cfg, res.OutLinks)
+	if perr != nil {
+		fmt.Fprintf(out, "  phantom-edge pass warning: %v\n", perr)
+	} else {
+		fmt.Fprintf(out, "  phantom  edges_added=%-4d\n", phantomAdded)
+	}
 	return nil
 }
 
@@ -149,4 +171,188 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 		}
 	}
 	return tmp, cleanup, nil
+}
+
+// runPhantomEdgePass is the P5 phantom-edge promotion pass (#769).
+//
+// After links.RunAllPasses writes <group>-links.json, this pass:
+//  1. Reads the links file.
+//  2. Loads each source repo's graph.Document from disk.
+//  3. Calls links.PromoteToPhantomEdges to inject phantom CALLS edges.
+//  4. For each mutated document, strips the stale SCOPE.Process entities
+//     (they were emitted before phantom edges existed) and re-runs
+//     engine.RunProcessFlow so Process entities reflect the new
+//     cross-repo chains.
+//  5. Writes each updated document back to disk atomically.
+//
+// Returns the total number of phantom edges added across all repos.
+// On error, returns what was added so far plus the first error — the
+// caller decides whether to treat it as fatal.
+//
+// Architecture note (why here and not inside links.RunAllPasses):
+// RunAllPasses operates on the links-internal `repoGraph` projection
+// (no internal/graph import). Moving phantom-edge logic there would add
+// a large bidirectional import between internal/links ↔ internal/graph ↔
+// internal/engine. Placing it in the CLI layer (which already imports all
+// three packages) keeps the dependency arrow pointing inward.
+func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath string) (int, error) {
+	// Read the just-written links file.
+	allLinks, err := links.LoadLinksDocument(linksPath)
+	if err != nil {
+		return 0, fmt.Errorf("phantom-edge pass: load links: %w", err)
+	}
+	if len(allLinks) == 0 {
+		return 0, nil // nothing to promote
+	}
+
+	// Load each repo's graph.Document.
+	docs := make(map[string]*graph.Document, len(cfg.Repos))
+	graphPaths := make(map[string]string, len(cfg.Repos)) // slug → on-disk path
+	for _, r := range cfg.Repos {
+		p := daemon.GraphPathForRepo(r.Path)
+		if _, err := os.Stat(p); err != nil {
+			continue // repo not indexed yet
+		}
+		doc, err := loadGraphDocument(p)
+		if err != nil {
+			return 0, fmt.Errorf("phantom-edge pass: load %s: %w", r.Slug, err)
+		}
+		docs[r.Slug] = doc
+		graphPaths[r.Slug] = p
+	}
+	if len(docs) == 0 {
+		return 0, nil
+	}
+
+	// Determine which source repos will receive phantom edges so we can
+	// strip stale SCOPE.Process entities and re-run process flow.
+	affectedRepos := make(map[string]bool)
+	for _, lk := range allLinks {
+		if !strings.EqualFold(lk.Relation, links.RelationCalls) {
+			continue
+		}
+		srcRepo, _, ok := splitKey(lk.Source)
+		if ok {
+			affectedRepos[srcRepo] = true
+		}
+	}
+
+	// Promote phantom edges.
+	added, err := links.PromoteToPhantomEdges(allLinks, docs, group)
+	if err != nil {
+		return added, fmt.Errorf("phantom-edge pass: promote: %w", err)
+	}
+
+	// Re-run RunProcessFlow on each affected doc + write back to disk.
+	slugs := sortedStringKeys(affectedRepos)
+	for _, slug := range slugs {
+		doc, ok := docs[slug]
+		if !ok {
+			continue
+		}
+		// Strip stale SCOPE.Process entities + their edges so the re-run
+		// starts clean. Process entities have Kind=engine.EntityKindProcess.
+		doc.Entities, doc.Relationships = stripProcessEntities(doc)
+
+		// Re-run process flow.
+		_ = engine.RunProcessFlow(doc, engine.DefaultProcessFlowConfig())
+
+		// Update stats.
+		doc.Stats.Entities = len(doc.Entities)
+		doc.Stats.Relationships = len(doc.Relationships)
+
+		// Sort entities + relationships for determinism (mirrors index.go).
+		sort.SliceStable(doc.Entities, func(a, b int) bool {
+			return doc.Entities[a].ID < doc.Entities[b].ID
+		})
+		sort.SliceStable(doc.Relationships, func(a, b int) bool {
+			ra, rb := &doc.Relationships[a], &doc.Relationships[b]
+			if ra.FromID != rb.FromID {
+				return ra.FromID < rb.FromID
+			}
+			if ra.ToID != rb.ToID {
+				return ra.ToID < rb.ToID
+			}
+			return ra.Kind < rb.Kind
+		})
+
+		// Write atomically.
+		p := graphPaths[slug]
+		if werr := graph.WriteAtomic(p, doc, false); werr != nil {
+			return added, fmt.Errorf("phantom-edge pass: write %s: %w", slug, werr)
+		}
+		fmt.Fprintf(os.Stderr,
+			"archigraph: phantom-edge pass group=%s repo=%s phantom_edges=%d\n",
+			group, slug, added)
+	}
+	return added, nil
+}
+
+// stripProcessEntities returns new entity and relationship slices with all
+// SCOPE.Process entities and their STEP_IN_PROCESS / ENTRY_POINT_OF edges
+// removed. Used before re-running RunProcessFlow after phantom-edge injection.
+func stripProcessEntities(doc *graph.Document) ([]graph.Entity, []graph.Relationship) {
+	// Collect process entity IDs to drop.
+	processIDs := make(map[string]bool)
+	for _, e := range doc.Entities {
+		if e.Kind == string(engine.EntityKindProcess) {
+			processIDs[e.ID] = true
+		}
+	}
+	if len(processIDs) == 0 {
+		return doc.Entities, doc.Relationships
+	}
+	entities := doc.Entities[:0:0]
+	for _, e := range doc.Entities {
+		if !processIDs[e.ID] {
+			entities = append(entities, e)
+		}
+	}
+	rels := doc.Relationships[:0:0]
+	for _, r := range doc.Relationships {
+		// Drop STEP_IN_PROCESS and ENTRY_POINT_OF edges for removed processes.
+		if processIDs[r.FromID] || processIDs[r.ToID] {
+			if r.Kind == string(engine.RelationshipKindStepInProcess) ||
+				r.Kind == string(engine.RelationshipKindEntryPointOf) {
+				continue
+			}
+		}
+		rels = append(rels, r)
+	}
+	return entities, rels
+}
+
+// loadGraphDocument reads and decodes a graph.json file from disk.
+func loadGraphDocument(path string) (*graph.Document, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var doc graph.Document
+	if err := json.NewDecoder(f).Decode(&doc); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", path, err)
+	}
+	return &doc, nil
+}
+
+// splitKey is a local thin wrapper around the shape used by Link.Source/Target:
+// "<repo>::<entityID>".
+func splitKey(key string) (repo, entityID string, ok bool) {
+	const sep = "::"
+	i := strings.Index(key, sep)
+	if i <= 0 || i+len(sep) >= len(key) {
+		return "", "", false
+	}
+	return key[:i], key[i+len(sep):], true
+}
+
+// sortedStringKeys returns the sorted key list of a map[string]bool.
+func sortedStringKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

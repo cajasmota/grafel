@@ -358,3 +358,88 @@ func TestProcessFlow_DeterministicAcrossRuns(t *testing.T) {
 		}
 	}
 }
+
+func TestProcessFlow_PhantomEdgeCrossStack(t *testing.T) {
+	// #769 — a phantom CALLS edge (cross_repo="true") injected by the
+	// phantom-edge pass should mark the resulting Process cross_stack=true
+	// with a cross_stack_reason indicating the phantom edge step.
+	doc := &graph.Document{Repo: "fixture-b"}
+	doc.Entities = []graph.Entity{
+		{ID: "entry", Name: "fetchUsers", Kind: "SCOPE.Function", Language: "ts", SourceFile: "svc.ts"},
+		{ID: "caller", Name: "callUsers", Kind: "SCOPE.Function", Language: "ts", SourceFile: "svc.ts"},
+		// phantom target lives in another repo — NOT in doc.Entities
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "entry", ToID: "caller", Kind: "CALLS"},
+		{
+			ID:     "2",
+			FromID: "caller",
+			ToID:   "fixture-a-handler-xyz",
+			Kind:   "CALLS",
+			Properties: map[string]string{
+				"cross_repo":  "true",
+				"target_repo": "fixture-a",
+				"link_method": "http",
+				"via":         "phantom_edge_pass_#769 group=test",
+			},
+		},
+	}
+	RunProcessFlow(doc, DefaultProcessFlowConfig())
+
+	var crossStack, reason string
+	for _, e := range doc.Entities {
+		if e.Kind == EntityKindProcess {
+			crossStack = e.Properties["cross_stack"]
+			reason = e.Properties["cross_stack_reason"]
+			break
+		}
+	}
+	if crossStack != "true" {
+		t.Errorf("cross_stack = %q, want true for phantom-edge chain", crossStack)
+	}
+	if reason == "" {
+		t.Errorf("cross_stack_reason should be set for phantom-edge chains")
+	}
+	if !strings.Contains(reason, "phantom") {
+		t.Errorf("cross_stack_reason %q should mention 'phantom'", reason)
+	}
+}
+
+func TestProcessFlow_PhantomEdgeMinStepsRelaxed(t *testing.T) {
+	// #769 — a 2-step chain caller→phantom should survive even when
+	// cfg.MinSteps=3, because the phantom edge relaxes the gate.
+	doc := &graph.Document{Repo: "b"}
+	doc.Entities = []graph.Entity{
+		{ID: "caller", Name: "doFetch", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
+	}
+	doc.Relationships = []graph.Relationship{
+		{
+			ID:     "p1",
+			FromID: "caller",
+			ToID:   "remote-handler",
+			Kind:   "CALLS",
+			Properties: map[string]string{
+				"cross_repo":  "true",
+				"target_repo": "a",
+				"link_method": "http",
+				"via":         "phantom_edge_pass_#769 group=g",
+			},
+		},
+	}
+	cfg := DefaultProcessFlowConfig()
+	cfg.MinSteps = 3
+	RunProcessFlow(doc, cfg)
+
+	var found bool
+	for _, e := range doc.Entities {
+		if e.Kind == EntityKindProcess {
+			found = true
+			if e.Properties["cross_stack"] != "true" {
+				t.Errorf("cross_stack = %q, want true", e.Properties["cross_stack"])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected a Process entity for 2-step phantom chain, got none")
+	}
+}
