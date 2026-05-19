@@ -8,6 +8,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/service"
+	"github.com/cajasmota/archigraph/internal/install/mcpreg"
 )
 
 // newInstallCmd returns the `archigraph install` subcommand.
@@ -22,6 +23,7 @@ import (
 // cooperating and you need debug output directly in the terminal.
 func newInstallCmd() *cobra.Command {
 	var foreground bool
+	var claudeConfigDirs []string
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Register archigraph daemon as a system service and start it",
@@ -86,10 +88,34 @@ in this terminal — useful for debugging launchd/systemd issues.`,
 			fmt.Fprintf(out, "✓ archigraph daemon installed and running%s\n", pidStr)
 			fmt.Fprintf(out, "  socket:  %s\n", opts.SocketPath)
 			fmt.Fprintf(out, "  service: %s\n", st.UnitFile)
+
+			// Register archigraph MCP bridge in every detected Claude Code
+			// config dir (primary ~/.claude.json + any ~/.claude-*/). Per
+			// ADR-0017 #827 the bridge translates MCP JSON-RPC 2.0 from
+			// Claude Code to the daemon's JSON-RPC 1.0 socket. Failures are
+			// soft — we report them but do not abort the install.
+			claudeDirs := mcpreg.DetectClaudeConfigDirs(claudeConfigDirs)
+			registered := []string{}
+			for _, cfgPath := range claudeDirs {
+				if _, err := mcpreg.RegisterPath(cfgPath, bin); err != nil {
+					fmt.Fprintf(out, "  ⚠ MCP register %s: %v\n", cfgPath, err)
+				} else {
+					registered = append(registered, cfgPath)
+				}
+			}
+			if len(registered) > 0 {
+				fmt.Fprintf(out, "  MCP registered in:\n")
+				for _, p := range registered {
+					fmt.Fprintf(out, "    %s\n", p)
+				}
+				fmt.Fprintf(out, "  Restart Claude Code to load the archigraph MCP tools.\n")
+			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&foreground, "foreground", false,
 		"skip service registration; run the daemon directly in this terminal (debug mode)")
+	cmd.Flags().StringSliceVar(&claudeConfigDirs, "claude-config-dirs", nil,
+		"explicit list of .claude.json paths to register MCP in (default: auto-detect ~/.claude.json + ~/.claude-*/)")
 	return cmd
 }

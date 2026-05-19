@@ -36,8 +36,12 @@ func TestRegisterCreatesEntry(t *testing.T) {
 	if got.Command != "/bin/archigraph" {
 		t.Fatalf("command: %q", got.Command)
 	}
-	if len(got.Args) != 4 || got.Args[0] != "mcp" || got.Args[1] != "serve" || got.Args[3] != "/r/registry.json" {
-		t.Fatalf("args: %+v", got.Args)
+	// New behaviour: args = ["mcp-bridge"], type = "stdio"
+	if len(got.Args) != 1 || got.Args[0] != "mcp-bridge" {
+		t.Fatalf("args: %+v (want [mcp-bridge])", got.Args)
+	}
+	if got.Type != "stdio" {
+		t.Fatalf("type: %q (want stdio)", got.Type)
 	}
 }
 
@@ -93,5 +97,120 @@ func TestWindsurfPath(t *testing.T) {
 	}
 	if filepath.Base(p) != "mcp_config.json" {
 		t.Fatalf("windsurf path unexpected: %s", p)
+	}
+}
+
+func TestClaudeCodePathIsHomeClaudeJSON(t *testing.T) {
+	home := withHome(t)
+	p, err := SettingsPath(ClaudeCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".claude.json")
+	if p != want {
+		t.Fatalf("ClaudeCode path: got %s, want %s", p, want)
+	}
+}
+
+func TestRegisterPathIdempotent(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".claude.json")
+
+	// Register twice — should produce exactly one entry.
+	if _, err := RegisterPath(path, "/bin/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RegisterPath(path, "/bin/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+
+	b, _ := os.ReadFile(path)
+	var doc map[string]any
+	_ = json.Unmarshal(b, &doc)
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if len(servers) != 1 {
+		t.Fatalf("expected exactly 1 server entry, got %d: %s", len(servers), b)
+	}
+}
+
+func TestRegisterPathUpdatesCommand(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".claude.json")
+
+	if _, err := RegisterPath(path, "/old/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RegisterPath(path, "/new/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+
+	b, _ := os.ReadFile(path)
+	var doc struct {
+		McpServers map[string]Entry `json:"mcpServers"`
+	}
+	_ = json.Unmarshal(b, &doc)
+	got := doc.McpServers[ServerName]
+	if got.Command != "/new/archigraph" {
+		t.Fatalf("command not updated: %q", got.Command)
+	}
+}
+
+func TestDetectClaudeConfigDirs_ExplicitOverride(t *testing.T) {
+	explicit := []string{"/a/.claude.json", "/b/.claude.json"}
+	got := DetectClaudeConfigDirs(explicit)
+	if len(got) != 2 || got[0] != explicit[0] || got[1] != explicit[1] {
+		t.Fatalf("explicit dirs not returned as-is: %v", got)
+	}
+}
+
+func TestDetectClaudeConfigDirs_ScansDotClaudeDirs(t *testing.T) {
+	home := withHome(t)
+
+	// Create ~/.claude-personal/ directory.
+	personalDir := filepath.Join(home, ".claude-personal")
+	if err := os.MkdirAll(personalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	dirs := DetectClaudeConfigDirs(nil)
+
+	primary := filepath.Join(home, ".claude.json")
+	secondary := filepath.Join(personalDir, ".claude.json")
+
+	foundPrimary := false
+	foundSecondary := false
+	for _, d := range dirs {
+		if d == primary {
+			foundPrimary = true
+		}
+		if d == secondary {
+			foundSecondary = true
+		}
+	}
+	if !foundPrimary {
+		t.Errorf("primary %s not in dirs: %v", primary, dirs)
+	}
+	if !foundSecondary {
+		t.Errorf("secondary %s not in dirs: %v", secondary, dirs)
+	}
+}
+
+func TestUnregisterPath(t *testing.T) {
+	home := withHome(t)
+	path := filepath.Join(home, ".claude.json")
+
+	if _, err := RegisterPath(path, "/bin/archigraph"); err != nil {
+		t.Fatal(err)
+	}
+	if err := UnregisterPath(path); err != nil {
+		t.Fatal(err)
+	}
+
+	b, _ := os.ReadFile(path)
+	var doc map[string]any
+	_ = json.Unmarshal(b, &doc)
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if _, ok := servers[ServerName]; ok {
+		t.Fatalf("archigraph entry still present after Unregister: %s", b)
 	}
 }

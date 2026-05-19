@@ -58,6 +58,7 @@ func newRoot() *cobra.Command {
 		newLinksCmd(),
 		newExtractCmd(),
 		newPatternsCmd(),
+		newMCPBridgeCmd(),
 		newHelpCmd(),
 	)
 
