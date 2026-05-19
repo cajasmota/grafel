@@ -7,8 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"strings"
+
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/quality"
+	"github.com/cajasmota/archigraph/internal/quality/audit"
 )
 
 // runQuality handles `archigraph quality <fixture-dir>`.
@@ -23,6 +26,12 @@ import (
 // the harness end-to-end honest and lets fixtures detect regressions in
 // any pass (extract / framework / cross-lang / resolver / synthesis).
 func runQuality(argv []string) error {
+	// Subverb dispatch: `quality audit-orphans <path>` runs the audit tool
+	// (internal/quality/audit) instead of the golden-fixture harness. The
+	// legacy `quality <fixture-dir>` form is preserved untouched.
+	if len(argv) >= 1 && (argv[0] == "audit-orphans" || argv[0] == "audit") {
+		return runAuditOrphans(argv[1:])
+	}
 	fs := flag.NewFlagSet("quality", flag.ContinueOnError)
 	jsonOut := fs.String("json", "", "write JSON report to this path (default: stderr-only human summary)")
 	keepGraph := fs.Bool("keep-graph", false, "preserve the temp graph.json (path printed on stderr)")
@@ -96,6 +105,74 @@ func runQuality(argv []string) error {
 		// Returning an error from a cobra RunE would surface "Error: ..."
 		// which is noisier than necessary — exit cleanly with code 2.
 		os.Exit(2)
+	}
+	return nil
+}
+
+// runAuditOrphans is the entry point for `archigraph quality audit-orphans`.
+// It accepts a single repo path (auto-detected by looking for
+// .archigraph/graph.json) or a corpus directory under --corpus.
+//
+// Output format defaults to markdown on stdout; --json flips to JSON;
+// --output redirects to a file. The format is inferred from the output path
+// extension when both --json and --output are present without conflicts.
+func runAuditOrphans(argv []string) error {
+	fs := flag.NewFlagSet("quality audit-orphans", flag.ContinueOnError)
+	corpus := fs.String("corpus", "", "treat <path> as a corpus directory containing many indexed repos")
+	jsonOut := fs.Bool("json", false, "emit JSON instead of markdown")
+	outPath := fs.String("output", "", "write to this file instead of stdout")
+	_ = fs.Bool("reindex", false, "(not implemented) re-run indexer before auditing; default trusts graph.json")
+	if err := fs.Parse(argv); err != nil {
+		return err
+	}
+
+	var path string
+	corpusMode := false
+	switch {
+	case *corpus != "":
+		path = *corpus
+		corpusMode = true
+	case fs.NArg() >= 1:
+		path = fs.Arg(0)
+	default:
+		return fmt.Errorf("usage: archigraph quality audit-orphans [--corpus] <path> [--json] [--output FILE]")
+	}
+
+	rep, err := audit.AuditPath(path, corpusMode)
+	if err != nil {
+		return err
+	}
+
+	// Decide output format. If --output ends in .json we honour that; else
+	// the --json flag picks the encoder.
+	jsonMode := *jsonOut
+	if *outPath != "" && strings.HasSuffix(*outPath, ".json") {
+		jsonMode = true
+	}
+	if *outPath != "" && strings.HasSuffix(*outPath, ".md") {
+		jsonMode = false
+	}
+
+	var w *os.File = os.Stdout
+	if *outPath != "" {
+		f, ferr := os.Create(*outPath)
+		if ferr != nil {
+			return fmt.Errorf("create output: %w", ferr)
+		}
+		defer f.Close()
+		w = f
+	}
+	if jsonMode {
+		if err := rep.WriteJSON(w); err != nil {
+			return err
+		}
+	} else {
+		if err := rep.WriteMarkdown(w); err != nil {
+			return err
+		}
+	}
+	if *outPath != "" {
+		fmt.Fprintf(os.Stderr, "audit-orphans: wrote %s\n", *outPath)
 	}
 	return nil
 }

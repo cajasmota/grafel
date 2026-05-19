@@ -128,5 +128,6 @@ Dashboard:
   dashboard serve                 Run the local dashboard HTTP server
 
 Quality:
-  quality <fixture-dir>           Measure extraction recall vs a golden fixture
+  quality <fixture-dir>                       Measure extraction recall vs a golden fixture
+  quality audit-orphans [--corpus] <path>     Audit orphan rate + edge hygiene; emits md or JSON
 `
