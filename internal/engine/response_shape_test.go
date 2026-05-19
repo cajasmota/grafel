@@ -376,3 +376,30 @@ def list_items():
 	assertProp(t, props, "status_codes", "200")
 	assertProp(t, props, "response_keys_known", "true")
 }
+
+// TestFindHandlerBody_NoTrailingNewline verifies that findHandlerBody does not
+// panic when the source file ends without a trailing newline and the function
+// body contains the last line of the file (issue #699b panic fix: slice bounds
+// out of range [:N+1] with length N when the last line had no newline).
+func TestFindHandlerBody_NoTrailingNewline(t *testing.T) {
+	// Deliberately omit the trailing newline — this was the crash trigger.
+	src := "def my_view(request):\n    return JsonResponse({'ok': True})"
+	// Must not panic.
+	body := findHandlerBody(src, "my_view")
+	if body == "" {
+		t.Error("findHandlerBody returned empty body for valid function; want non-empty")
+	}
+	if !strings.Contains(body, "JsonResponse") {
+		t.Errorf("findHandlerBody body missing expected content; got %q", body)
+	}
+}
+
+// TestFindHandlerBody_MultiLineNoTrailingNewline verifies the same no-panic
+// guarantee when multiple indented lines exist and the file ends mid-body.
+func TestFindHandlerBody_MultiLineNoTrailingNewline(t *testing.T) {
+	src := "def process(request):\n    data = request.POST\n    result = data.get('key')\n    return JsonResponse({'result': result})"
+	body := findHandlerBody(src, "process")
+	if body == "" {
+		t.Error("findHandlerBody returned empty body for multi-line function; want non-empty")
+	}
+}

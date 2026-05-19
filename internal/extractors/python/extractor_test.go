@@ -1343,6 +1343,118 @@ func TestExtract_PydanticModel_ConfigContainsEdge(t *testing.T) {
 	}
 }
 
+// TestExtract_FileEntityContainsTopLevelClass verifies that the file entity
+// emits a CONTAINS structural-ref for every top-level class (issue #699b).
+// The edge is needed so the graph has a file→class inbound link for each
+// class declaration, giving agents a consistent hierarchy path.
+func TestExtract_FileEntityContainsTopLevelClass(t *testing.T) {
+	src := `class Order(models.Model):
+    title = models.CharField(max_length=200)
+
+    def save(self, *args, **kwargs):
+        pass
+
+class OrderSerializer:
+    pass
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	// Find the file entity (first entity emitted is always the file entity).
+	var fileEnt *types.EntityRecord
+	for i := range entities {
+		if entities[i].Kind == "SCOPE.Component" && entities[i].Subtype == "file" {
+			fileEnt = &entities[i]
+			break
+		}
+	}
+	if fileEnt == nil {
+		t.Fatalf("file entity not found; entities: %v", entityNames(entities))
+	}
+
+	// The file entity must have CONTAINS edges to both top-level classes.
+	wantTargets := []string{
+		"scope:component:class:python:test.py:Order",
+		"scope:component:class:python:test.py:OrderSerializer",
+	}
+	for _, want := range wantTargets {
+		found := false
+		for _, rel := range fileEnt.Relationships {
+			if rel.Kind == "CONTAINS" && rel.ToID == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("file entity: expected CONTAINS to_id=%q; got rels=%+v", want, fileEnt.Relationships)
+		}
+	}
+}
+
+// TestExtract_FileEntityContainsModuleLevelFunction verifies that the file
+// entity emits a CONTAINS edge for every module-level function (issue #699b).
+// Module-level functions are the ones with bare names (no dot), distinct from
+// methods which carry a "ClassName.method" dotted name.
+func TestExtract_FileEntityContainsModuleLevelFunction(t *testing.T) {
+	src := `def validate_email(value):
+    return "@" in value
+
+def send_notification(user):
+    pass
+
+class Mailer:
+    def send(self):
+        pass
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	var fileEnt *types.EntityRecord
+	for i := range entities {
+		if entities[i].Kind == "SCOPE.Component" && entities[i].Subtype == "file" {
+			fileEnt = &entities[i]
+			break
+		}
+	}
+	if fileEnt == nil {
+		t.Fatalf("file entity not found")
+	}
+
+	// Module-level functions must appear as CONTAINS targets.
+	wantFunctions := []string{
+		"scope:operation:method:python:test.py:validate_email",
+		"scope:operation:method:python:test.py:send_notification",
+	}
+	for _, want := range wantFunctions {
+		found := false
+		for _, rel := range fileEnt.Relationships {
+			if rel.Kind == "CONTAINS" && rel.ToID == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("file entity: expected CONTAINS to_id=%q; got rels=%+v", want, fileEnt.Relationships)
+		}
+	}
+
+	// Class methods must NOT appear as file-level CONTAINS (only class→method CONTAINS).
+	unwanted := "scope:operation:method:python:test.py:Mailer.send"
+	for _, rel := range fileEnt.Relationships {
+		if rel.Kind == "CONTAINS" && rel.ToID == unwanted {
+			t.Errorf("file entity: unexpected CONTAINS to class method %q", unwanted)
+		}
+	}
+}
+
 // entityNames returns entity names for test diagnostics.
 func entityNames(entities []types.EntityRecord) []string {
 	names := make([]string, len(entities))
