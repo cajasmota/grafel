@@ -1,0 +1,34 @@
+// Process-flow entity + edge kind constants (#724).
+//
+// These constants are intentionally kept in their own file so the typed-
+// kind allowlist in internal/types/kinds.go is not perturbed while the
+// process-flow feature is rolled out append-only. They live in package
+// engine because that is the package that emits them; downstream
+// consumers (MCP, doc-gen) reference the string values directly.
+package engine
+
+// EntityKindProcess identifies a Process entity — a linearized call chain
+// emitted by RunProcessFlow. Name: "<entry> → <terminal>".
+const EntityKindProcess = "SCOPE.Process"
+
+// RelationshipKindStepInProcess identifies a Process → step edge.
+// The step_index property (0-based) records position in the chain.
+const RelationshipKindStepInProcess = "STEP_IN_PROCESS"
+
+// RelationshipKindEntryPointOf identifies the entry-function → Process
+// edge that marks a function as the entry for a Process.
+const RelationshipKindEntryPointOf = "ENTRY_POINT_OF"
+
+// RelationshipKindCalls re-exports the canonical CALLS string for use in
+// this package without an internal/types import cycle.
+const RelationshipKindCalls = "CALLS"
+
+// EntityKindEndpoint, EntityKindRoute, EntityKindExternalAPI are referenced
+// by chainCrossesStack and match the canonical SCOPE.* names produced by
+// the per-language extractors. Duplicated here as raw strings to avoid an
+// internal/types import for a single-use lookup.
+const (
+	EntityKindEndpoint    = "SCOPE.Endpoint"
+	EntityKindRoute       = "SCOPE.Route"
+	EntityKindExternalAPI = "SCOPE.ExternalAPI"
+)

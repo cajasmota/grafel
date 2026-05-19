@@ -201,6 +201,24 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_trace", s.handleShortestPath))
 
+	// archigraph_traces — process-flow query surface (#724).
+	// action=list  → ranked Process entities loaded for the group
+	// action=get   → full step chain for one Process
+	// action=follow→ ad-hoc forward BFS from any entry_point_id
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_traces",
+		mcpapi.WithDescription("Process-flow traces. action=list: ranked Processes; action=get: full step chain; action=follow: ad-hoc BFS from an entry point."),
+		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("list|get|follow")),
+		mcpapi.WithString("process_id", mcpapi.Description("(get) Process entity id; bare or repo-prefixed.")),
+		mcpapi.WithString("entry_point_id", mcpapi.Description("(follow) Entity id of the entry function.")),
+		mcpapi.WithNumber("max_depth", mcpapi.DefaultNumber(8), mcpapi.Description("(follow) BFS depth cap (≤10).")),
+		mcpapi.WithNumber("branching_factor", mcpapi.DefaultNumber(3), mcpapi.Description("(follow) Per-step branch cap (≤4).")),
+		mcpapi.WithBoolean("cross_stack_only", mcpapi.DefaultBool(false), mcpapi.Description("(list) Only return Processes that traverse an HTTP boundary.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(25), mcpapi.Description("(list) Max processes returned.")),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_traces", s.handleTraces))
+
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_clusters",
 		mcpapi.WithDescription("List Louvain communities across the loaded graphs."),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),

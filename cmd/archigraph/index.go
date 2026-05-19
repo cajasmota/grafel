@@ -42,11 +42,12 @@ const (
 	PassGraphAlgo     = "graph-algo"     // Pass 4: placeholder for PORT-4
 	PassBuildDocument = "build-document" // Pass 5: assemble graph.Document
 	PassEnrichment    = "enrichment"     // Pass 6: emit enrichment candidates
+	PassProcessFlow   = "process-flow"   // Pass 7: process-flow BFS over CALLS (#724)
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassEnrichment,
+	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassEnrichment, PassProcessFlow,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -655,6 +656,28 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			return ra.Kind < rb.Kind
 		})
 		i.runPass4Algorithms(doc)
+	}
+
+	// Pass 7 — process-flow BFS (#724). Runs AFTER all CALLS edges are
+	// finalised (resolver + external synthesis + Pass 4) so the trace
+	// algorithm sees the same graph as downstream consumers. Emits
+	// SCOPE.Process entities + STEP_IN_PROCESS / ENTRY_POINT_OF edges.
+	// Skippable via --skip-pass=process-flow (default on).
+	if !i.skipPasses[PassProcessFlow] {
+		pfStats := engine.RunProcessFlow(doc, engine.DefaultProcessFlowConfig())
+		if verbose() || pfStats.Processes > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: process-flow entry_candidates=%d entries_used=%d "+
+					"processes=%d cross_stack=%d step_edges=%d entry_edges=%d\n",
+				pfStats.EntryCandidates, pfStats.EntriesUsed,
+				pfStats.Processes, pfStats.CrossStack,
+				pfStats.StepEdges, pfStats.EntryEdges)
+		}
+		// Re-sync Stats so the downstream sidecar + emission see the new
+		// entity/edge counts. The final sort below in Index() will fold the
+		// process entities into the canonical id ordering.
+		doc.Stats.Entities = len(doc.Entities)
+		doc.Stats.Relationships = len(doc.Relationships)
 	}
 
 	// Pass 6 — enrichment candidate emission (PORT-LLM / issue #15). Runs

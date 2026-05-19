@@ -454,6 +454,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_get_source", "archigraph_get_telemetry",
 		// ADR-0018 β
 		"archigraph_patterns",
+		// #724 process-flow BFS query surface
+		"archigraph_traces",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -481,11 +483,12 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count must be exactly 16 (15 pre-β + 1 new archigraph_patterns).
+	// Total count must be exactly 17 (16 pre-#724 + archigraph_traces).
 	// Bundles: enrichments (3→1, saves 2), cross_links (2→1, saves 1),
-	// repairs (2→1, saves 1). Plus archigraph_patterns (ADR-0018 β).
-	if got := len(srv.MCP.ListTools()); got != 16 {
-		t.Errorf("expected 16 registered tools, got %d", got)
+	// repairs (2→1, saves 1). Plus archigraph_patterns (ADR-0018 β) and
+	// archigraph_traces (#724 process-flow BFS query surface).
+	if got := len(srv.MCP.ListTools()); got != 17 {
+		t.Errorf("expected 17 registered tools, got %d", got)
 	}
 }
 
