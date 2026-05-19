@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/daemon/walk"
 )
 
 // PredictRSS returns a predicted peak RSS contribution (in MB) for
@@ -30,9 +32,8 @@ func PredictRSS(repoPath string) int64 {
 			return nil
 		}
 		if d.IsDir() {
-			name := d.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" ||
-				name == "dist" || name == "build" || name == ".archigraph" {
+			// Use the extended hard-coded skip list (issue #805).
+			if walk.IsHardcodedSkip(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

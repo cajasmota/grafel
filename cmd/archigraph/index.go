@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,6 +19,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/classifier"
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/extract"
+	"github.com/cajasmota/archigraph/internal/daemon/walk"
 	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/external"
@@ -98,6 +98,15 @@ type Indexer struct {
 	// dashboard).
 	exportFB bool
 
+	// printSkipped, when true, emits one [skip] line to stderr for each
+	// directory that was skipped at walk-time (issue #805). Shows which
+	// rule caused the skip (.gitignore, hardcoded, .archigraphignore).
+	printSkipped bool
+
+	// additionalSkipDirs is the per-group fleet.json additional_skip_dirs
+	// list; merged into the hard-coded skip list at walk-time.
+	additionalSkipDirs []string
+
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
 
@@ -139,6 +148,18 @@ func WithRepairApply(enabled bool) IndexOption {
 // graph.json after a successful index pass. Default is false.
 func WithExportFB(enabled bool) IndexOption {
 	return func(i *Indexer) { i.exportFB = enabled }
+}
+
+// WithPrintSkipped enables the --print-skipped flag. When true each
+// directory skipped at walk-time is printed to stderr with its rule.
+func WithPrintSkipped(enabled bool) IndexOption {
+	return func(i *Indexer) { i.printSkipped = enabled }
+}
+
+// WithAdditionalSkipDirs extends the hard-coded walk-time skip list
+// with per-group names from fleet.json's additional_skip_dirs field.
+func WithAdditionalSkipDirs(dirs []string) IndexOption {
+	return func(i *Indexer) { i.additionalSkipDirs = dirs }
 }
 
 type indexerStats struct {
@@ -373,7 +394,13 @@ func emitJSONStats(w io.Writer, idx *Indexer, doc *graph.Document) error {
 func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, error) {
 	start := time.Now()
 
-	files, err := walkRepo(absRepo)
+	walkOpts := &walk.Options{
+		AdditionalSkipDirs: i.additionalSkipDirs,
+	}
+	if i.printSkipped {
+		walkOpts.PrintSkipped = os.Stderr
+	}
+	files, _, err := walk.WalkRepo(absRepo, walkOpts)
 	if err != nil {
 		return nil, fmt.Errorf("walk repo: %w", err)
 	}
@@ -2023,47 +2050,12 @@ func parseSkipPasses(skip []string) (map[string]bool, error) {
 	return out, nil
 }
 
-// walkRepo returns repo-relative file paths, skipping common directories
-// that should never be indexed (.git, node_modules, vendor, etc.).
+// walkRepo is replaced by walk.WalkRepo (issue #805). This stub remains
+// temporarily to avoid breaking any in-package test references; it will
+// be removed in a follow-up cleanup pass.
+//
+// Deprecated: use walk.WalkRepo directly.
 func walkRepo(root string) ([]string, error) {
-	var out []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip unreadable entries
-		}
-		rel, rerr := filepath.Rel(root, path)
-		if rerr != nil {
-			return nil
-		}
-		if rel == "." {
-			return nil
-		}
-		base := d.Name()
-		if d.IsDir() {
-			if isSkippedDir(base) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		out = append(out, filepath.ToSlash(rel))
-		return nil
-	})
-	return out, err
-}
-
-func isSkippedDir(name string) bool {
-	switch name {
-	case ".git", ".hg", ".svn",
-		"node_modules", "vendor", "__pycache__",
-		".archigraph", ".venv", "venv",
-		".idea", ".vscode",
-		"dist", "build", "target", ".next", ".nuxt",
-		"coverage", ".pytest_cache", ".mypy_cache":
-		return true
-	}
-	if strings.HasPrefix(name, ".") && len(name) > 1 {
-		// hidden dirs: skip by default (.terraform, .gradle, .m2, etc.)
-		return true
-	}
-	return false
+	files, _, err := walk.WalkRepo(root, nil)
+	return files, err
 }
