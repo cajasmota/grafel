@@ -75,10 +75,10 @@ archigraph uninstall <group>         # remove hooks/watchers from a group
 
 `archigraph help advanced` lists the full set.
 
-## For AI agents
+## Contributing
 
-If you're an AI agent calling archigraph via MCP, see [AGENTS.md](AGENTS.md) for
-the cost model, recommended query patterns, and the full tool reference.
+If you're an AI agent contributing to archigraph, see [AGENTS.md](AGENTS.md) for conventions.
+End-user-facing agent docs are delivered via the MCP `instructions` handshake — there is no per-user setup.
 
 ## Corpus & coverage
 
