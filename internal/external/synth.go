@@ -6562,6 +6562,99 @@ var jsBareNames = map[string]struct{}{
 	"isFieldTouched":    {},
 	"isFieldsTouched":   {},
 	"isFieldValidating": {},
+
+	// Wave-10 (#579 chain-fix A — client-fixture-b residual analysis).
+	// Top bare-name extractor residuals after wave-9 lift. Each name
+	// below is a real exported function from a well-known JS/TS
+	// package whose collision against a user-defined method named
+	// identically is vanishingly rare. Gated to JS/TS via lang
+	// switch above.
+	//
+	// AWS Amplify v6 auth — `fetchAuthSession` is the dominant
+	// residual (372 rows in cfb diagnostic). Distinctive verb +
+	// `AuthSession` suffix has no plausible collision.
+	"fetchAuthSession":     {},
+	"fetchUserAttributes":  {},
+	"getCurrentUser":       {},
+	"signIn":               {},
+	"signOut":              {},
+	"signUp":               {},
+	"confirmSignIn":        {},
+	"confirmSignUp":        {},
+	"resetPassword":        {},
+	"confirmResetPassword": {},
+	"updatePassword":       {},
+	// React Router v6 hooks — `useNavigate` returns a `navigate`
+	// function that's bound to a const inside the component scope;
+	// the hook-call itself bare-extracts but the import binds it.
+	// `use*` reserved by rules-of-hooks.
+	"useNavigate":         {},
+	"useNavigationType":   {},
+	"useResolvedPath":     {},
+	"useMatch":            {},
+	"useMatches":          {},
+	"useOutlet":           {},
+	"useOutletContext":    {},
+	"useRoutes":           {},
+	"useLinkClickHandler": {},
+	"useLinkPressHandler": {},
+	"useHref":             {},
+	"useInRouterContext":  {},
+	"useBeforeUnload":     {},
+	// Browser URL static methods — `URL.createObjectURL(blob)` and
+	// `URL.revokeObjectURL(url)` are receiver-stripped from the URL
+	// global. No user-defined method overlap in practice.
+	"createObjectURL": {},
+	"revokeObjectURL": {},
+	// antd `theme.useToken()` hook — `useToken` is the canonical
+	// antd theme accessor. Reserved by rules-of-hooks naming.
+	"useToken": {},
+	// Mantine / antd / @emotion style helpers. `createStyles` is
+	// the Mantine v6 / @mantine/styles canonical entry.
+	"createStyles": {},
+	// uuid v4 named-export shorthand commonly imported as `v4 as uuidv4`.
+	"uuidv4": {},
+	"uuidv1": {},
+	"uuidv5": {},
+	// dayjs / moment receiver-strip — `dayjs().startOf('day')` →
+	// `startOf`, `.endOf`, `.utc`, `.extend(plugin)`.
+	// `year`/`month`/`day` getters deliberately OMITTED — too
+	// collision-prone with user model fields (e.g. inspection.year).
+	// `extend` collides with no other gate.
+	"startOf": {},
+	"endOf":   {},
+	"utc":     {},
+	"extend":  {},
+	// React Hook Form / RTK Query / formik destructured helpers.
+	// `useFieldArray`/`useController`/`useWatch`/`useFormContext`
+	// already in jsBareNames above (RHF block).
+	// `unwrap` is gated to lang="rust" via cross-lang invariant test
+	// (TestRustBareNames_NotClassifiedForOtherLanguages) — cannot
+	// classify it here. Leave as bug-extractor in JS/TS.
+	// antd Modal.confirm / window.confirm. `confirm` collides with
+	// the global builtin AND antd; either way it's external.
+	// `success`/`info` deliberately OMITTED — would shadow user
+	// callbacks named identically. `warning` is in swiftBareNames
+	// (cross-lang invariant test forbids duplication).
+	"confirm": {},
+
+	// Wave-10 chain-fix B — pass-2 additions after pass-1 measure
+	// (cfb 4.49% → 3.25%). Top remaining safe residuals: more
+	// react-router hooks + antd Form hooks + dayjs typeguard +
+	// FileReader API + DOM closest.
+	"useLocation":     {}, // react-router hook (rules-of-hooks)
+	"useFormInstance": {}, // antd Form instance hook
+	"isDayjs":         {}, // dayjs typeguard, distinctive name
+	"readAsDataURL":   {}, // FileReader prototype
+	"readAsText":      {}, // FileReader prototype
+	"readAsArrayBuffer": {},
+	"readAsBinaryString": {},
+	// `closest` is in jqueryBareNames but jquery is file-gated.
+	// In React component code `element.closest('.x')` is the DOM
+	// Element.closest API — heavy in event-handler code. Cross-
+	// lang invariant test will reject if jqueryBareNames cross-
+	// gates — it doesn't (jquery is file-gated, not lang-gated).
+	"closest": {},
 }
 
 // swiftBareNames is the Swift-language-gated bare-name stop-list (issue

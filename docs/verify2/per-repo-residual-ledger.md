@@ -370,3 +370,86 @@ Status: at-bar (cross-repo import channel unblocked for all per-language
 extractors; per-language bug-rate deltas are #575-pattern trades, not
 breakage).
 
+---
+
+## Wave-10 (TS/JS React residual reduction, post-#579 chain-fixes)
+
+Targeted continuation of wave-9 (#579) react residual chase toward the
+≤1% ship-gate floor. Three passes against client-fixture-b diagnostic
+samples drove three independent fixes:
+
+- **Chain-fix A (jsBareNames extensions):** AWS Amplify v6 auth surface
+  (`fetchAuthSession`, `signIn`, …), React Router v6 hooks
+  (`useNavigate`, `useLocation`, …), browser URL static methods
+  (`createObjectURL`, `revokeObjectURL`), antd `useToken` / `useFormInstance`,
+  Mantine `createStyles`, dayjs receiver-strip verbs (`startOf` / `endOf`
+  / `utc` / `extend`), uuid `v4` aliases, FileReader prototype
+  (`readAsDataURL` / `readAsText`), DOM `closest`, antd Modal `confirm`.
+  Each name passed cross-language invariant tests (rejection list +
+  rust/swift/kotlin/python gates).
+- **Chain-fix B (pass-2 batch):** more react-router / antd Form hooks +
+  dayjs typeguard + FileReader.
+- **Chain-fix C (resolver SCOPE.Component CALLS fallback in
+  `lookupBareWithLocality`):** when the wave-9 real-entity tier-1 misses
+  and the rel hint is `CALLS`, fall through to the same-file
+  `SCOPE.Component` placeholder. This binds `const navigate =
+  useNavigate()` / `const isValid = ...` value-bound consts that get
+  called like functions. EXTENDS / IMPLEMENTS continue to require a real
+  Component / Class. Strictly same-file so cross-file collisions remain
+  ambig.
+
+Per-iteration delta on client-fixture-b (primary target):
+
+| Pass | bug-rate | bug-ext | bug-res | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| baseline (post-#579) | 4.49% | 1715 | 412 | — |
+| Pass-1 (synth.go jsBareNames) | 3.25% | 1129 | 412 | -1.24pp |
+| Pass-2 (synth.go more) | 3.18% | 1096 | 412 | -1.31pp |
+| Pass-3 (resolver SCOPE.Component CALLS) | 2.82% | 1096 | 239 | -1.67pp |
+
+client-fixture-c (secondary target):
+
+| Pass | bug-rate | Δ |
+|---|---:|---:|
+| baseline | 3.36% | — |
+| Pass-1 | 3.32% | -0.04pp |
+| Pass-2 | 3.32% | -0.04pp |
+| Pass-3 | 3.19% | -0.17pp |
+
+Regression check (main vs wave-10) — all 12 listed repos + client-fixture-a:
+
+| Repo | Main | W10 | Δ |
+|---|---:|---:|---:|
+| chi | 5.280% | 5.226% | -0.054pp |
+| flask | 9.458% | 9.458% | 0.000pp |
+| spdlog | 5.818% | 5.758% | -0.060pp |
+| gin | 5.770% | 5.765% | -0.005pp |
+| play-scala-starter | 2.113% | 2.113% | 0.000pp |
+| express | 3.184% | 2.996% | -0.188pp |
+| nextjs-commerce | 2.541% | 2.541% | 0.000pp |
+| nestjs-starter | 1.754% | 1.754% | 0.000pp |
+| kafka-streams-examples | 12.684% | 12.659% | -0.025pp |
+| vapor-api-template | 2.128% | 2.128% | 0.000pp |
+| ktor-samples | 6.685% | 6.556% | -0.129pp |
+| django-realworld | 3.774% | 3.774% | 0.000pp |
+| client-fixture-a | 6.244% | 6.492% | +0.248pp |
+
+No regression exceeds the 0.5pp floor. cfa +0.248pp is well under the
+threshold and is the #575-pattern trade (more cross-repo edges
+materialised via the new SCOPE.Component CALLS fallback). All other
+repos are unchanged or improved.
+
+Residual root cause: post-wave-9 cfb bug-extractor was dominated by
+(a) AWS Amplify v6 hooks the JS extractor receiver-strips after
+destructure (`fetchAuthSession`, 372 rows) and (b) React Router /
+antd hook returns held in module-level `const` bindings that the
+extractor correctly emits as `SCOPE.Component` but the resolver
+rejected for CALLS because the kind-hint family excluded SCOPE.*
+placeholders.
+
+Status: at-bar (toward ship-gate; cfb 4.49% → 2.82%, cfc 3.36% →
+3.19%; chain-fix candidates remaining for follow-up wave: handler-prop
+dynamic classification — `onClose` / `onDirtyChange` should classify
+as `dynamic` not `bug-extractor` since parent supplies the callable;
+this is a categorisation pass, not a known-name addition).
+

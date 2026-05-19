@@ -2725,6 +2725,30 @@ func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir 
 			}
 		}
 	}
+	// Wave-10 chain-fix C — SCOPE.Component fallback for same-file
+	// CALLS targets (#579 client-fixture-b residual analysis). When
+	// the real-entity tier above misses and the rel hint is CALLS,
+	// a same-file SCOPE.Component placeholder is the correct binding
+	// for `const navigate = useNavigate()` / `const isValid = ...` /
+	// other value-bound consts that get called like functions inside
+	// React components. The wave-9 tier-1 deliberately excludes
+	// SCOPE.* placeholders to avoid shadowing imported framework
+	// parents (#525); this tier runs only after that path fails and
+	// only for CALLS so EXTENDS/IMPLEMENTS continue to require a
+	// real Component / Class. Strictly same-file so cross-file
+	// collisions remain ambig.
+	if callerFile != "" && strings.ToUpper(relKind) == "CALLS" {
+		if fileBucket := idx.byLocationKind[callerFile]; fileBucket != nil {
+			if nameBucket := fileBucket[name]; nameBucket != nil {
+				if id := nameBucket[scopeKindPrefix+"Operation"]; id != "" {
+					return id, true
+				}
+				if id := nameBucket[scopeKindPrefix+"Component"]; id != "" {
+					return id, true
+				}
+			}
+		}
+	}
 	return "", false
 }
 
