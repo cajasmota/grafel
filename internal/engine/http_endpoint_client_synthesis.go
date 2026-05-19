@@ -1,5 +1,5 @@
 // Client-side (consumer) synthetic http_endpoint emission for typed-HTTP
-// cross-repo matching (issue #533, Phase 1).
+// cross-repo matching (issue #533, Phase 1 + template-literal Phase 2).
 //
 // Producer-side (#534 Phase 1/2) emits one synthetic `http:<METHOD>:<path>`
 // entity per backend route. This file is the symmetric consumer pass: for
@@ -10,14 +10,20 @@
 // by Name across repos, so emitting the consumer side is sufficient to
 // land HTTP cross-repo links — no new linker code is required.
 //
-// Phase 1 covers STATIC URL literals only:
+// Phase 1 covers STATIC URL literals:
 //   - JS/TS:   fetch("/users/123"), fetch("/users/123", {method:"POST"}),
 //     axios.<verb>("/path", ...), httpClient.<verb>("/path", ...)
 //   - Python:  requests.<verb>("/path"), httpx.<verb>("/path"),
 //     aiohttp.ClientSession.<verb>("/path"), session.<verb>("/path")
 //
-// Deferred to Phase 2 chain-fixes (filed per #533 spec):
-//   - Template literals: fetch(`/users/${id}/posts`)
+// Phase 2 (this file) adds TEMPLATE-LITERAL URL extraction for JS/TS:
+//   - fetch(`/users/${id}/checklists`) → http:GET:/users/{param}/checklists
+//   - axios.post(`/api/v1/users/${userId}`, body) → http:POST:/api/v1/users/{param}
+//   - Simple constant folding: const API_BASE = "/api/v1"; fetch(`${API_BASE}/users`)
+//     → resolves API_BASE to "/api/v1" → http:GET:/api/v1/users
+//   - Unknown substitutions emit {param} as a placeholder.
+//
+// Still deferred to later chain-fixes:
 //   - URL builders: const u = new URL(...); fetch(u)
 //   - Axios instance binding: const api = axios.create({baseURL}); api.get(p)
 //   - React Query / SWR key arrays as URL surrogates
@@ -122,8 +128,140 @@ var jsFuncDeclRe = regexp.MustCompile(
 	`(?m)(?:^|[^\w$])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(|(?m)(?:^|[^\w$])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(`,
 )
 
+// ---------------------------------------------------------------------------
+// JS / TS: template-literal URL extraction (Phase 2)
+// ---------------------------------------------------------------------------
+
+// fetchTemplateLiteralRe matches fetch(`...`) where the argument is a
+// template literal containing at least one ${...} substitution.
+//
+// Capture groups:
+//   1. the raw template body (content between the outermost backticks,
+//      excluding the backticks themselves). We do a single-line scan and
+//      stop at the first newline-free closing backtick after the opening
+//      one. Multiline template literals whose path spans multiple lines are
+//      uncommon in URL context and are left for a later phase.
+//   2. optional options object (`,{...}`) to extract the HTTP method.
+//
+// The [^`\n\r]*\$\{[^`\n\r]* pattern requires at least one ${…} sequence so
+// we only match actual template strings, not plain backtick strings (those
+// are covered by fetchCallRe already).
+var fetchTemplateLiteralRe = regexp.MustCompile(
+	"(?:^|[^\\w$.])fetch\\s*\\(\\s*`([^`\\n\\r]*\\$\\{[^`\\n\\r]*)`(\\s*,\\s*\\{[^}]*\\})?",
+)
+
+// axiosLiteralTemplateLiteralRe matches axios.<verb>(`...${...}...`, ...).
+var axiosLiteralTemplateLiteralRe = regexp.MustCompile(
+	"\\baxios\\s*\\.\\s*(get|post|put|patch|delete|head|options)\\s*\\(\\s*`([^`\\n\\r]*\\$\\{[^`\\n\\r]*)`",
+)
+
+// axiosClientTemplateLiteralRe matches <ident>Client.<verb>(`...${...}...`).
+var axiosClientTemplateLiteralRe = regexp.MustCompile(
+	"\\b([A-Za-z_$][\\w$]*(?:HttpClient|Client|httpClient|apiClient))\\s*\\.\\s*(get|post|put|patch|delete|head|options)\\s*\\(\\s*`([^`\\n\\r]*\\$\\{[^`\\n\\r]*)`",
+)
+
+// jsConstStringRe matches simple string-literal const / let / var
+// declarations: `const NAME = "/value"` or `const NAME = '/value'`.
+// Used to build a lightweight constant-folding symbol table.
+//
+// Capture groups: 1=name, 2=value (without quotes).
+var jsConstStringRe = regexp.MustCompile(
+	`(?m)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*['"]([^'"]{1,256})['"]`,
+)
+
+// buildJSConstantSymbolTable returns a map from identifier name → string
+// value for every simple string-literal const declaration in the file.
+// Used by canonicalizeTemplateLiteral for constant folding.
+// Only single-line string assignments are captured; complex expressions
+// and computed values are ignored (unknown variables fold to {param}).
+func buildJSConstantSymbolTable(content string) map[string]string {
+	syms := make(map[string]string)
+	for _, m := range jsConstStringRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		name := content[m[2]:m[3]]
+		value := content[m[4]:m[5]]
+		if _, dup := syms[name]; !dup {
+			syms[name] = value
+		}
+	}
+	return syms
+}
+
+// templateSubstRe matches ${<identifier>} inside a template literal.
+// We capture the identifier inside. Supports plain identifiers and simple
+// member expressions like `${obj.prop}`, `${obj.prop.sub}` — all map to
+// the leading identifier for constant-folding purposes.
+var templateSubstRe = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+// canonicalizeTemplateLiteral converts a raw template-literal body (the
+// content between backticks) into a canonical URL path suitable for
+// cross-repo matching. Each `${expr}` substitution is either:
+//   - Resolved to its constant string value from syms (constant folding), or
+//   - Replaced with the `{param}` placeholder.
+//
+// The resulting string is stripped of any host prefix (via stripURLHost) and
+// validated by looksLikeURLPathOrParam before being returned. Returns ("", false)
+// when the template does not look like a URL path.
+func canonicalizeTemplateLiteral(tmpl string, syms map[string]string) (string, bool) {
+	// Replace each ${expr} with its constant value or {param}.
+	result := templateSubstRe.ReplaceAllStringFunc(tmpl, func(match string) string {
+		// Extract the expression inside ${...}.
+		inner := match[2 : len(match)-1]
+		// Trim whitespace.
+		inner = strings.TrimSpace(inner)
+		// For simple identifiers: look up in the constant symbol table.
+		// For member expressions (e.g. `obj.field`), try the full expr
+		// first, then the leading identifier.
+		if val, ok := syms[inner]; ok {
+			return val
+		}
+		// Try just the leading identifier of a dotted expression.
+		if dot := strings.IndexByte(inner, '.'); dot > 0 {
+			if val, ok := syms[inner[:dot]]; ok {
+				return val
+			}
+		}
+		return "{param}"
+	})
+
+	// Strip host prefix for absolute URLs.
+	result = stripURLHost(result)
+
+	// Validate that this looks like a URL path (absolute) or a
+	// template-parameter-prefixed path (starts with {param}).
+	if !looksLikeURLPathOrParam(result) {
+		return "", false
+	}
+
+	return result, true
+}
+
+// looksLikeURLPathOrParam extends looksLikeURLPath to also accept paths
+// that start with a {param} placeholder. These arise when the first segment
+// of the template literal is a substitution whose value is unknown, e.g.:
+//
+//	fetch(`${BASE}/users/${id}`)  →  {param}/users/{param}
+//
+// The resulting path starts with `{param}` rather than `/` because the
+// constant BASE was not resolvable. We still emit these so cross-repo
+// matching has something to work with; the linker normalises leading slashes.
+func looksLikeURLPathOrParam(s string) bool {
+	if looksLikeURLPath(s) {
+		return true
+	}
+	s = strings.TrimSpace(s)
+	// Accept {param}/... or {param} alone.
+	if strings.HasPrefix(s, "{") {
+		return true
+	}
+	return false
+}
+
 // synthesizeFetchAxios scans a JS/TS file and emits one synthetic
-// http_endpoint per detected client call. Static URL literals only.
+// http_endpoint per detected client call. Handles both static string literals
+// (Phase 1) and template literals with ${...} substitutions (Phase 2).
 func synthesizeFetchAxios(content string, emit emitFn) {
 	if !strings.Contains(content, "fetch(") &&
 		!strings.Contains(content, "axios.") &&
@@ -134,8 +272,11 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	}
 
 	funcs := indexJSEnclosingFunctions(content)
+	// Build constant symbol table once for the whole file (used by template
+	// literal folding below).
+	syms := buildJSConstantSymbolTable(content)
 
-	// fetch(...)
+	// fetch(...) — static string literals
 	for _, m := range fetchCallRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
@@ -158,7 +299,29 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		emit(verb, canonical, "fetch", "Function", caller)
 	}
 
-	// axios.<verb>(...)
+	// fetch(`...${...}...`, ...) — template literal URLs
+	for _, m := range fetchTemplateLiteralRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		tmpl := content[m[2]:m[3]]
+		verb := "GET"
+		if len(m) >= 6 && m[4] >= 0 {
+			opts := content[m[4]:m[5]]
+			if mv := fetchMethodRe.FindStringSubmatch(opts); len(mv) >= 2 {
+				verb = strings.ToUpper(mv[1])
+			}
+		}
+		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		if !ok {
+			continue
+		}
+		caller := enclosingJSFuncAt(funcs, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
+		emit(verb, canonical, "fetch", "Function", caller)
+	}
+
+	// axios.<verb>(...) — static string literals
 	for _, m := range axiosLiteralRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 6 {
 			continue
@@ -173,7 +336,23 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		emit(verb, canonical, "axios", "Function", caller)
 	}
 
-	// <ident>{HttpClient,Client,httpClient,apiClient}.<verb>(...)
+	// axios.<verb>(`...${...}...`) — template literal URLs
+	for _, m := range axiosLiteralTemplateLiteralRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		verb := strings.ToUpper(content[m[2]:m[3]])
+		tmpl := content[m[4]:m[5]]
+		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		if !ok {
+			continue
+		}
+		caller := enclosingJSFuncAt(funcs, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
+		emit(verb, canonical, "axios", "Function", caller)
+	}
+
+	// <ident>{HttpClient,Client,httpClient,apiClient}.<verb>(...) — static string literals
 	for _, m := range axiosClientRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 8 {
 			continue
@@ -185,6 +364,22 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		}
 		caller := enclosingJSFuncAt(funcs, m[0])
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(path))
+		emit(verb, canonical, "http_client", "Function", caller)
+	}
+
+	// <ident>{HttpClient,Client,httpClient,apiClient}.<verb>(`...${...}...`) — template literal URLs
+	for _, m := range axiosClientTemplateLiteralRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 8 {
+			continue
+		}
+		verb := strings.ToUpper(content[m[4]:m[5]])
+		tmpl := content[m[6]:m[7]]
+		path, ok := canonicalizeTemplateLiteral(tmpl, syms)
+		if !ok {
+			continue
+		}
+		caller := enclosingJSFuncAt(funcs, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
 		emit(verb, canonical, "http_client", "Function", caller)
 	}
 }
