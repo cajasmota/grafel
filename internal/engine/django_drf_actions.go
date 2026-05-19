@@ -432,6 +432,13 @@ func expandRegisterPrefixes(
 // emitCRUDFamily emits the standard DRF CRUD endpoints for a single
 // (prefix, ViewSet) pair. The set of verbs emitted depends on which
 // methods the ViewSet supports — derived from its parent class.
+//
+// With #704 byPath normalization on main, the matcher canonicalizes all
+// path-parameter placeholder names to {*} at index-lookup time. This
+// means a Django-emitted {pk} endpoint will match a JS-emitted {userId}
+// consumer without needing to emit multiple variants. We therefore emit
+// exactly ONE canonical placeholder per detail route — the ViewSet's
+// declared lookup_field (defaulting to "pk").
 func emitCRUDFamily(
 	emit func(verb, canonical, sourceFile, viewSet, methodName string),
 	fullPrefix string,
@@ -439,22 +446,7 @@ func emitCRUDFamily(
 	sourceFile string,
 	viewSetName string,
 ) {
-	// Emit a detail-route variant for each placeholder name the consumer
-	// side is likely to use. DRF's canonical form is `{pk}` (or whatever
-	// `lookup_field` is set to). The JS/TS consumer extractor emits
-	// `{<varName>}` from template literals — so the frontend writes
-	// `/contracts/{id}` while the backend writes `/contracts/{pk}`. Until
-	// the linker normalises path placeholders (#704), this multi-emit
-	// strategy lets either shape match.
-	detailPlaceholders := []string{vc.lookupField}
-	for _, alt := range []string{"id", "pk", "param"} {
-		if alt != vc.lookupField {
-			detailPlaceholders = append(detailPlaceholders, alt)
-		}
-	}
-	for _, ph := range detailPlaceholders {
-		emitOneCRUDFamily(emit, fullPrefix, ph, vc, sourceFile, viewSetName)
-	}
+	emitOneCRUDFamily(emit, fullPrefix, vc.lookupField, vc, sourceFile, viewSetName)
 }
 
 // emitOneCRUDFamily emits the CRUD-route family for a single placeholder
@@ -520,21 +512,18 @@ func emitActionRoutes(
 			methods = []string{"GET"}
 		}
 
-		// For detail=True actions, emit the action under each candidate
-		// placeholder (`{pk}`, `{id}`, `{param}`, and whatever the
-		// ViewSet declared as `lookup_field`) so a consumer-side path
-		// like `/contracts/{id}/cancel` still resolves against a
-		// `{pk}` producer. Dedup-by-ID prevents duplicate entities.
-		placeholders := []string{vc.lookupField}
+		// For detail=True actions, emit the action under the ViewSet's
+		// canonical lookup_field placeholder only. With #704 byPath
+		// normalization on main, the matcher canonicalizes {pk}/{id}/{param}
+		// to {*} at lookup time — a single canonical emission is sufficient
+		// to match any consumer-side placeholder shape. Dedup-by-ID is still
+		// present as a safety net but is no longer exercised here.
+		var placeholders []string
 		if act.detail {
-			for _, alt := range []string{"id", "pk", "param"} {
-				if alt != vc.lookupField {
-					placeholders = append(placeholders, alt)
-				}
-			}
+			placeholders = []string{vc.lookupField}
 		} else {
 			// Collection actions don't carry the detail placeholder —
-			// nothing to widen.
+			// use an empty sentinel so the loop body builds the right path.
 			placeholders = []string{""}
 		}
 

@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cajasmota/archigraph/internal/engine/httproutes"
 	"github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // runDetect is a small test helper that loads all framework YAML rules
@@ -597,6 +599,62 @@ func expressProducerIDs(res *DetectResult) []string {
 		}
 	}
 	return out
+}
+
+// TestSynth_DjangoComposed_SingleDetailPlaceholder verifies that
+// synthesizeDjangoFromComposed emits exactly ONE {pk} detail-route
+// variant per ast_driven list route — not the three-variant set
+// ({pk}/{id}/{param}) that the pre-#730 workaround produced. The
+// #704 byPath normalizer handles cross-placeholder matching at lookup
+// time, so a single emission is sufficient.
+func TestSynth_DjangoComposed_SingleDetailPlaceholder(t *testing.T) {
+	// Simulate the entity slice that django_routes.go emits for a DRF
+	// router.register(r"users", UserViewSet) where the AST pass composes
+	// the parent path("api/v1/", include(...)) prefix.
+	composedRoute := types.EntityRecord{
+		ID:         "ast:Route:/api/v1/users",
+		Name:       "/api/v1/users",
+		Kind:       "Route",
+		SourceFile: "api/urls.py",
+		Language:   "python",
+		Properties: map[string]string{
+			"framework":    "python",
+			"pattern_type": "ast_driven",
+		},
+	}
+
+	var emitted []string
+	emitFnCapture := func(method, canonicalPath, framework, refKind, refName string) {
+		id := httproutes.SyntheticID(method, canonicalPath)
+		emitted = append(emitted, id)
+	}
+	synthesizeDjangoFromComposed(
+		[]types.EntityRecord{composedRoute},
+		"api/urls.py",
+		emitFnCapture,
+	)
+
+	// Must have the single {pk} detail-route variant.
+	found := false
+	for _, id := range emitted {
+		if id == "http:ANY:/api/v1/users/{pk}" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected http:ANY:/api/v1/users/{pk} to be emitted; got %v", emitted)
+	}
+
+	// Must NOT have {id} or {param} variants — those were the pre-#730
+	// multi-emit workaround and are no longer needed.
+	for _, id := range emitted {
+		if id == "http:ANY:/api/v1/users/{id}" {
+			t.Errorf("unexpected {id} variant present (pre-#730 workaround must be removed): %v", emitted)
+		}
+		if id == "http:ANY:/api/v1/users/{param}" {
+			t.Errorf("unexpected {param} variant present (pre-#730 workaround must be removed): %v", emitted)
+		}
+	}
 }
 
 // TestSynth_RecordsHandlerInProperty asserts that the handler reference

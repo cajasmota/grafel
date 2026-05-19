@@ -231,10 +231,60 @@ class ArticleViewSet(ModelViewSet):
 		"http:GET:/articles/{slug}",
 		"http:POST:/articles/{slug}/publish",
 	})
-	// The lookup_field=slug declaration is the canonical placeholder.
-	// The pass ALSO emits {pk}/{id}/{param} alias variants as a
-	// cross-repo match widener (#704 companion). The canonical slug
-	// variant being present is the load-bearing assertion.
+	// With #730 dedup: exactly ONE canonical placeholder is emitted.
+	// {pk}/{id}/{param} alias variants must NOT be present — the #704
+	// byPath normalizer handles cross-placeholder matching at lookup time.
+	assertHasNoneIDs(t, got, []string{
+		"http:GET:/articles/{pk}",
+		"http:GET:/articles/{id}",
+		"http:GET:/articles/{param}",
+		"http:POST:/articles/{pk}/publish",
+		"http:POST:/articles/{id}/publish",
+		"http:POST:/articles/{param}/publish",
+	})
+}
+
+// TestApplyDjangoDRFRoutes_SinglePlaceholderEmission verifies that #730
+// dedup is in effect: a ViewSet with lookup_field="slug" emits exactly ONE
+// detail-route placeholder shape ({slug}), NOT the four-variant set that
+// the pre-#730 multi-emit workaround produced.
+func TestApplyDjangoDRFRoutes_SinglePlaceholderEmission(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import PostViewSet
+
+router = routers.DefaultRouter()
+router.register(r"posts", PostViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class PostViewSet(ModelViewSet):
+    lookup_field = "slug"
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	// Canonical slug placeholder must be present.
+	assertHasAllIDs(t, got, []string{
+		"http:GET:/posts/{slug}",
+		"http:PUT:/posts/{slug}",
+		"http:PATCH:/posts/{slug}",
+		"http:DELETE:/posts/{slug}",
+	})
+
+	// Alias variants must NOT be present — the byPath normalizer (#704)
+	// handles cross-placeholder matching at index-lookup time so we no
+	// longer need to inflate the entity set with duplicates.
+	assertHasNoneIDs(t, got, []string{
+		"http:GET:/posts/{pk}",
+		"http:GET:/posts/{id}",
+		"http:GET:/posts/{param}",
+		"http:PUT:/posts/{pk}",
+		"http:PUT:/posts/{id}",
+		"http:PUT:/posts/{param}",
+	})
 }
 
 // TestApplyDjangoDRFRoutes_LegacyDetailRoute verifies that the pre-DRF-3.8

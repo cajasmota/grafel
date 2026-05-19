@@ -262,33 +262,30 @@ func synthesizeDjangoFromComposed(entities []types.EntityRecord, path string, em
 		// it emits. The single-file AST pass (django_routes.go) only
 		// records the list-route prefix; synthesise the matching
 		// detail-route http_endpoint here so the cross-repo linker can
-		// match consumer-side `PATCH /contracts/{param}` calls to the
-		// producer side. Only fire on ast_driven routes (the AST pass
-		// composes DRF router prefixes) and skip when the path already
-		// contains a `{...}` placeholder — those routes are
-		// path()-based and already encode their parameter.
+		// match consumer-side calls to the producer side. Only fire on
+		// ast_driven routes (the AST pass composes DRF router prefixes)
+		// and skip when the path already contains a `{...}` placeholder
+		// — those routes are path()-based and already encode their
+		// parameter.
+		//
+		// With #704 byPath normalization on main, the matcher collapses
+		// {pk}/{id}/{param}/{userId} all to {*} at lookup time — so
+		// emitting ONE canonical {pk} placeholder is sufficient. No
+		// multi-variant loop needed.
 		if e.Properties["pattern_type"] != "ast_driven" {
 			continue
 		}
 		if strings.Contains(canonical, "{") {
 			continue
 		}
-		// Emit detail-route variants for the common placeholder names
-		// (`{pk}` — DRF's default; `{id}` — JS/TS consumer extractor
-		// emits this from `${id}` template literals; `{param}` — legacy
-		// JS extractor; #704 companion). Dedup-by-ID handles cases
-		// where the same canonical lands twice.
-		for _, ph := range []string{"pk", "id", "param"} {
-			detail := strings.TrimSuffix(canonical, "/") + "/{" + ph + "}"
-			detailCanonical := httproutes.Canonicalize(httproutes.FrameworkDjango, detail)
-			if detailCanonical == "" || detailCanonical == canonical {
-				continue
-			}
+		detail := strings.TrimSuffix(canonical, "/") + "/{pk}"
+		detailCanonical := httproutes.Canonicalize(httproutes.FrameworkDjango, detail)
+		if detailCanonical != "" && detailCanonical != canonical {
 			// Empty refName so the resolver leaves this synthetic in the
 			// `NoHandlerProp` keep-path. The list-route synthetic above
 			// is the one with the real Route handler; the detail
-			// variants are matched by canonical Name from the
-			// cross-repo linker.
+			// variant is matched by canonical Name from the cross-repo
+			// linker via the byPath normalized index.
 			emit("ANY", detailCanonical, "django", "Route", "")
 		}
 	}
