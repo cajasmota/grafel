@@ -104,7 +104,10 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 		reply.PendingAlgo = snap.PendingAlgo
 		reply.PendingLinks = snap.PendingLinks
 		reply.RSSBudgetMB = snap.BudgetMB
-		reply.RSSUsedMB = snap.UsedMB
+		// RSSUsedMB reports actual measured daemon RSS (in MB), not predicted
+		// sum of in-flight jobs. This ensures the budget display shows the
+		// real memory pressure (#803).
+		reply.RSSUsedMB = int64(reply.RSSBytes / (1024 * 1024))
 		reply.BlockedJobs = snap.BlockedJobs
 		for _, j := range snap.InFlight {
 			reply.IndexInFlight = append(reply.IndexInFlight, j.Path)
