@@ -501,6 +501,24 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		if isRustCrateIdent(root) && isKnownExternalPackage(root) {
 			return root, "package", true
 		}
+		// Rust wave (S19+) — bare sibling-module imports like
+		// `use entry::{...}` / `use worker::Context` / `use clients::
+		// Client` appear inside multi-file rust crates where the
+		// extractor's intra-crate filter (which skips `crate::*` /
+		// `self::*` / `super::*`) doesn't catch them. The path's root
+		// is an unqualified lowercase Rust ident with no `::` chain
+		// to a known crate — it's a sibling module, not a third-party
+		// dep. Route to a single `ext:rust_sibling_module` placeholder
+		// so the resolver classifies as ExternalKnown via the gate
+		// below (placeholder added to knownExternalPackages). Without
+		// this, every bare-module use lands in bug-extractor and
+		// dominates the residual on tokio / mini-redis. Safer-bias
+		// (#94) preserved by the strict lowercase-Rust-ident shape
+		// + the lang=="rust" path-shape predicate already implied by
+		// the `::` separator.
+		if isRustCrateIdent(root) && isLowerRustIdent(root) {
+			return "rust_sibling_module", "package", true
+		}
 	}
 
 	// Issue #116 — Go full-import-path stubs (`net/http`,
@@ -803,6 +821,14 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		// than synthesising ext:<bare-leaf> per call site.
 		if subtype == "jquery_function" {
 			return "jquery", "function", true
+		}
+		if subtype == "rust_builtin_function" {
+			// Fold every receiver-stripped Rust stdlib / tokio / actix
+			// bare-name to a single `ext:std` placeholder. `std` is
+			// already on the knownExternalPackages allowlist, so the
+			// resolver routes the edge to ExternalKnown rather than
+			// fanning out per-verb ext:* nodes.
+			return "std", "function", true
 		}
 		return name, subtype, true
 	}
@@ -1835,7 +1861,13 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 	}
 	if lang == "rust" {
 		if _, ok := rustBareNames[name]; ok {
-			return "function", true
+			// Rust wave (S19+) — signal via "rust_builtin_function" so
+			// the caller folds to a single canonical "std" placeholder
+			// rather than synthesising ext:<bare-leaf> per call site.
+			// Without this fold every receiver-stripped tokio/std verb
+			// (`with_uri`, `write_all`, `spawn`, ...) becomes its own
+			// ext:<verb> node and lands in external-unknown.
+			return "rust_builtin_function", true
 		}
 	}
 	if lang == "java" {
@@ -3909,6 +3941,254 @@ var rustBareNames = map[string]struct{}{
 	// `data` — Actix `App::data(...)` shared-state injector. Listed
 	// after the actor lifecycle hooks to keep grouping legible.
 	"data": {},
+
+	// Actix-web HttpResponse 4xx/5xx/3xx factory names (post-receiver
+	// strip from `HttpResponse::TooManyRequests()` etc.) and common
+	// error-builder verbs from `actix_web::error::*`. PascalCase HTTP
+	// status names cannot shadow user methods in other languages.
+	"TooManyRequests":           {},
+	"UnsupportedMediaType":      {},
+	"MethodNotAllowed":          {},
+	"MovedPermanently":          {},
+	"PermanentRedirect":         {},
+	"TemporaryRedirect":         {},
+	"SeeOther":                  {},
+	"NotModified":               {},
+	"PaymentRequired":           {},
+	"ServiceUnavailable":        {},
+	"GatewayTimeout":            {},
+	"BadGateway":                {},
+	"NotImplemented":            {},
+	"PreconditionFailed":        {},
+	"PreconditionRequired":      {},
+	"PayloadTooLarge":           {},
+	"UriTooLong":                {},
+	"RangeNotSatisfiable":       {},
+	"ExpectationFailed":         {},
+	"Gone":                      {},
+	"LengthRequired":            {},
+	"ImATeapot":                 {},
+	"MisdirectedRequest":        {},
+	"Locked":                    {},
+	"FailedDependency":          {},
+	"UpgradeRequired":           {},
+	"RequestHeaderFieldsTooLarge": {},
+	"ErrorBadRequest":           {},
+	"ErrorInternalServerError":  {},
+	"ErrorNotFound":             {},
+	"ErrorRequestTimeout":       {},
+	"ErrorUnauthorized":         {},
+	"ErrorForbidden":            {},
+	"ErrorConflict":             {},
+	"ErrorPreconditionFailed":   {},
+	"ErrorUnprocessableEntity":  {},
+	"ErrorTooManyRequests":      {},
+	"ErrorServiceUnavailable":   {},
+	// Actix-web HttpResponse builder verbs.
+	"MessageResult":             {},
+	"ThinData":                  {},
+	"ClientSession":             {},
+
+	// Rust wave (S19+) verbs — continuation. Tokio + std + popular-
+	// crate verbs commonly stripped of their receiver. Each entry is a method or free
+	// function with a low natural collision rate against user-defined
+	// methods in other languages (safer-bias #94) and a high
+	// frequency in real tokio / actix-examples / mini-redis bug-
+	// extractor samples. The lang=="rust" gate keeps these scoped to
+	// Rust source; same-named user methods in other ecosystems are
+	// not affected.
+	//
+	// Tokio macros + spawning primitives.
+	"spawn":          {},
+	"spawn_blocking": {},
+	"spawn_local":    {},
+	"spawn_on":       {},
+	"select":         {},
+	"join":           {},
+	"try_join":       {},
+	"pin":            {},
+	"pin_mut":        {},
+	"sleep":          {},
+	"timeout":        {},
+	"interval":       {},
+	"yield_now":      {},
+	"block_on":       {},
+	"block_in_place": {},
+	// Tokio sync / shared-state idioms.
+	"try_lock":   {},
+	"try_acquire": {},
+	"try_send":   {},
+	"try_recv":   {},
+	"recv":       {},
+	"subscribe":  {},
+	"notify":     {},
+	"notify_one": {},
+	"notify_waiters": {},
+	"acquire":    {},
+	"release":    {},
+	"unparked":   {},
+	"unpark":     {},
+	"park":       {},
+	"wake":       {},
+	"wake_by_ref": {},
+	"wake_all":   {},
+	"will_wake":  {},
+	// std / tokio common reader/writer + iterator verbs (post-receiver).
+	"read_to_string": {},
+	"read_to_end":    {},
+	"read_exact":     {},
+	"read_buf":       {},
+	"read_u8":        {},
+	"write_all":      {},
+	"write_u8":       {},
+	"write_vectored": {},
+	"flush":          {},
+	"close":          {},
+	"open":           {},
+	"create":         {},
+	"copy_to":        {},
+	"copy_from":      {},
+	"put_slice":      {},
+	// std::time / std::path / std::env idioms post-receiver.
+	"as_secs":        {},
+	"as_millis":      {},
+	"as_micros":      {},
+	"as_nanos":       {},
+	"as_path":        {},
+	"as_os_str":      {},
+	"to_path_buf":    {},
+	"to_string_lossy": {},
+	"file_name":      {},
+	"extension":      {},
+	"parent":         {},
+	"join_paths":     {},
+	"current_dir":    {},
+	"set_current_dir": {},
+	"current_exe":    {},
+	"args_os":        {},
+	"vars_os":        {},
+	// std::process verbs.
+	"output":         {},
+	"status":         {},
+	"wait_with_output": {},
+	"kill":           {},
+	// std::result + Option helpers.
+	"unwrap_unchecked":  {},
+	"unwrap_err":        {},
+	"expect_err":        {},
+	"map_err":           {},
+	"map_or":            {},
+	"map_or_else":       {},
+	"and_then":          {},
+	"or_else":           {},
+	"ok_or":             {},
+	"ok_or_else":        {},
+	"transpose":         {},
+	"flatten":           {},
+	"copied":            {},
+	"cloned":            {},
+	"as_deref":          {},
+	"as_deref_mut":      {},
+	"take_if":           {},
+	// Iterator combinators commonly stripped of receiver.
+	"map_while":     {},
+	"step_by":       {},
+	"skip_while":    {},
+	"take_while":    {},
+	"scan":          {},
+	"peekable":      {},
+	"by_ref":        {},
+	"min_by":        {},
+	"max_by":        {},
+	"min_by_key":    {},
+	"max_by_key":    {},
+	"chunks":        {},
+	"windows":       {},
+	"enumerate":     {},
+	"zip":           {},
+	"rev":           {},
+	"sum":           {},
+	"product":       {},
+	"position":      {},
+	"any":           {},
+	"all":           {},
+	"find":          {},
+	"find_map":      {},
+	"fuse":          {},
+	"cycle":         {},
+	// tracing + log crate macros (post-`!` strip).
+	"trace":         {},
+	"info":          {},
+	"warn":          {},
+	"error":         {},
+	"info_span":     {},
+	"warn_span":     {},
+	"error_span":    {},
+	"debug_span":    {},
+	"trace_span":    {},
+	"instrument":    {},
+	"in_current_span": {},
+	"in_scope":      {},
+	// Common builder-pattern with_* verbs from tracing-subscriber /
+	// rustls / aws_config / opentelemetry / clap etc.
+	"with_writer":              {},
+	"with_max_level":           {},
+	"with_target":              {},
+	"with_ansi":                {},
+	"with_thread_names":        {},
+	"with_thread_ids":          {},
+	"with_file":                {},
+	"with_line_number":         {},
+	"with_env_filter":          {},
+	"with_default":             {},
+	"with_default_directive":   {},
+	"with_filter":              {},
+	"with_state":               {},
+	"with_capacity":            {},
+	"with_status":              {},
+	"with_body":                {},
+	"with_header":              {},
+	"with_uri":                 {},
+	"with_uri_str":             {},
+	"with_method":              {},
+	"with_tracer":              {},
+	"with_trace_config":        {},
+	"with_sampler":             {},
+	"with_id_generator":        {},
+	"with_exporter":            {},
+	"with_cert_resolver":       {},
+	"with_client_cert_verifier": {},
+	"with_single_cert":         {},
+	"with_no_client_auth":      {},
+	"with_root_certificates":   {},
+	"with_safe_default_cipher_suites": {},
+	"with_safe_default_kx_groups":     {},
+	"with_safe_default_protocol_versions": {},
+	"with_scheduler":           {},
+	"with_ready":               {},
+	"with_time":                {},
+	"with_mut":                 {},
+	"with_current":             {},
+	"without_time":             {},
+	// try_* builder verbs (chrono / clap / aws-config).
+	"try_init":              {},
+	"try_init_from_env":     {},
+	"try_build":             {},
+	"try_seconds":           {},
+	"try_hours":             {},
+	"try_minutes":           {},
+	"try_milliseconds":      {},
+	// Mpsc / channels.
+	"unbounded_channel":  {},
+	// Common bare functions stripped of crate path.
+	"zeroed":         {},
+	"size_of":        {},
+	"align_of":       {},
+	"replace_with":   {},
+	"swap_with":      {},
+	"forget":         {},
+	"drop_in_place":  {},
+	"transmute":      {},
 }
 
 // javaBareNames is the Java-language-gated bare-name stop-list (issue
@@ -12724,6 +13004,335 @@ var knownExternalPackages = map[string]struct{}{
 	"tokio_stream":         {},
 	"tokio_util":           {},
 	"derive_more":          {},
+	// Rust wave (S19+) — tokio + actix-examples + mini-redis residual
+	// reduction. Top external crate roots that previously leaked into
+	// bug-extractor / external-unknown because the v1.1 allowlist
+	// stopped at the most-popular fifteen. Each entry corresponds to
+	// a real crates.io publication. Hyphenated variants are listed
+	// alongside underscore forms because the resolver emits the
+	// Cargo.toml dep name (with hyphens) for the ext:* placeholder
+	// while Rust source uses underscores; the lowercase isKnown lookup
+	// doesn't normalise the two.
+	//
+	// Tokio runtime ecosystem.
+	"tokio_test":     {},
+	"tokio-test":     {},
+	"tokio_macros":   {},
+	"tokio-macros":   {},
+	"tokio-stream":   {},
+	"tokio-util":     {},
+	"tokio_uring":    {},
+	"tokio-uring":    {},
+	"tokio_tungstenite": {},
+	"tokio-tungstenite": {},
+	"tokio_native_tls": {},
+	"tokio-native-tls": {},
+	"tokio_rustls":   {},
+	"tokio-rustls":   {},
+	"tokio_postgres": {},
+	"tokio-postgres": {},
+	"tokio_pg_mapper": {},
+	"tokio-pg-mapper": {},
+	"tokio_pg_mapper_derive": {},
+	"tokio-pg-mapper-derive": {},
+	// Async ecosystem.
+	"futures_util":  {},
+	"futures-util":  {},
+	"futures_core":  {},
+	"futures-core":  {},
+	"futures_io":    {},
+	"futures-io":    {},
+	"futures_channel": {},
+	"futures-channel": {},
+	"futures_task":  {},
+	"futures-task":  {},
+	"futures_executor": {},
+	"futures-executor": {},
+	"async-stream":  {},
+	"async_channel": {},
+	"async-channel": {},
+	"async-trait":   {},
+	"pin_project":   {},
+	"pin-project":   {},
+	"pin_project_lite": {},
+	"pin-project-lite": {},
+	// Tokio system primitives (low-level deps Tokio itself uses).
+	"mio":        {},
+	"libc":       {},
+	"loom":       {},
+	"io_uring":   {},
+	"io-uring":   {},
+	"socket2":    {},
+	"slab":       {},
+	"nix":        {},
+	"mockall":    {},
+	"backtrace":  {},
+	// Windows / WASM platform crates seen in tokio.
+	"windows_sys":     {},
+	"windows-sys":     {},
+	"windows":         {},
+	"windows-targets": {},
+	"wasm_bindgen":    {},
+	"wasm-bindgen":    {},
+	"wasm_bindgen_test": {},
+	"wasm-bindgen-test": {},
+	"js_sys":          {},
+	"js-sys":          {},
+	// Actix extended ecosystem.
+	"actix_broker":   {},
+	"actix-broker":   {},
+	"actix_web_lab":  {},
+	"actix-web-lab":  {},
+	"actix_ws":       {},
+	"actix-ws":       {},
+	"actix_redis":    {},
+	"actix-redis":    {},
+	"actix_form_data": {},
+	"actix-form-data": {},
+	"actix_settings": {},
+	"actix-settings": {},
+	"actix_tls":      {},
+	"actix-tls":      {},
+	"actix_macros":   {},
+	"actix-macros":   {},
+	"actix_derive":   {},
+	"actix-derive":   {},
+	"ractor":         {},
+	// HTTP / TLS / serialization crates.
+	"rustls":          {},
+	"rustls_pemfile":  {},
+	"rustls-pemfile":  {},
+	"rustls_native_certs": {},
+	"rustls-native-certs": {},
+	"webpki":          {},
+	"webpki_roots":    {},
+	"webpki-roots":    {},
+	"openssl_sys":     {},
+	"openssl-sys":     {},
+	"native_tls":      {},
+	"native-tls":      {},
+	"http_body":       {},
+	"http-body":       {},
+	"http_body_util":  {},
+	"http-body-util":  {},
+	"hyper_util":      {},
+	"hyper-util":      {},
+	"hyper_rustls":    {},
+	"hyper-rustls":    {},
+	"hyper_tls":       {},
+	"hyper-tls":       {},
+	"h2":              {},
+	"h3":              {},
+	"reqwest_middleware": {},
+	"reqwest-middleware": {},
+	"mime_guess":      {},
+	"mime-guess":      {},
+	"percent_encoding": {},
+	"percent-encoding": {},
+	"form_urlencoded": {},
+	"form-urlencoded": {},
+	// Serialization beyond serde core.
+	"serde_yaml":      {},
+	"serde-yaml":      {},
+	"serde_derive":    {},
+	"serde-derive":    {},
+	"serde_urlencoded": {},
+	"serde-urlencoded": {},
+	"serde_with":      {},
+	"serde-with":      {},
+	"serde_repr":      {},
+	"serde-repr":      {},
+	"toml_edit":       {},
+	"toml-edit":       {},
+	"serde_qs":        {},
+	"serde-qs":        {},
+	"bincode":         {},
+	"rmp":             {},
+	"rmp_serde":       {},
+	"rmp-serde":       {},
+	"prost":           {},
+	"prost_types":     {},
+	"prost-types":     {},
+	"tonic":           {},
+	"tonic_build":     {},
+	"tonic-build":     {},
+	// Error handling + utilities.
+	"eyre":            {},
+	"color_eyre":      {},
+	"color-eyre":      {},
+	"miette":          {},
+	"snafu":           {},
+	"derive_builder":  {},
+	"derive-builder":  {},
+	"strum":           {},
+	"strum_macros":    {},
+	"strum-macros":    {},
+	"num":             {},
+	"num_traits":      {},
+	"num-traits":      {},
+	"num_cpus":        {},
+	"num-cpus":        {},
+	"num_derive":      {},
+	"num-derive":      {},
+	"either":          {},
+	"smallvec":        {},
+	"arrayvec":        {},
+	"indexmap":        {},
+	"dashmap":         {},
+	"ahash":           {},
+	"fxhash":          {},
+	"rustc_hash":      {},
+	"rustc-hash":      {},
+	"hashbrown":       {},
+	"ordered_float":   {},
+	"ordered-float":   {},
+	// IDs / time / UUID.
+	"chrono_tz":       {},
+	"chrono-tz":       {},
+	// Templating + GraphQL + REST clients seen in actix-examples.
+	"juniper":         {},
+	"async_graphql":   {},
+	"async-graphql":   {},
+	"async_graphql_actix_web": {},
+	"async-graphql-actix-web": {},
+	"tera":            {},
+	"askama":          {},
+	"askama_actix":    {},
+	"askama-actix":    {},
+	"sailfish":        {},
+	"minijinja":       {},
+	"minijinja_autoreload": {},
+	"minijinja-autoreload": {},
+	"yarte":           {},
+	"yarte_helpers":   {},
+	"yarte-helpers":   {},
+	"tinytemplate":    {},
+	"fluent_templates": {},
+	"fluent-templates": {},
+	"validator_derive": {},
+	"validator-derive": {},
+	// DB / pooling.
+	"deadpool":        {},
+	"deadpool_postgres": {},
+	"deadpool-postgres": {},
+	"deadpool_redis":  {},
+	"deadpool-redis":  {},
+	"deadpool_diesel": {},
+	"deadpool-diesel": {},
+	"diesel_async":    {},
+	"diesel-async":    {},
+	"sqlx_core":       {},
+	"sqlx-core":       {},
+	"sqlx_macros":     {},
+	"sqlx-macros":     {},
+	"sea_query":       {},
+	"sea-query":       {},
+	"sea_schema":      {},
+	"sea-schema":      {},
+	"rusqlite":        {},
+	"r2d2":            {},
+	"refinery":        {},
+	"mongodb":         {},
+	// Observability.
+	"tracing_actix_web": {},
+	"tracing-actix-web": {},
+	"tracing-subscriber": {},
+	"tracing_bunyan_formatter": {},
+	"tracing-bunyan-formatter": {},
+	"tracing_opentelemetry": {},
+	"tracing-opentelemetry": {},
+	"tracing_log":     {},
+	"tracing-log":     {},
+	"tracing_appender": {},
+	"tracing-appender": {},
+	"slog":            {},
+	"slog_async":      {},
+	"slog-async":      {},
+	"opentelemetry_sdk": {},
+	"opentelemetry-sdk": {},
+	"opentelemetry-aws": {},
+	"opentelemetry-otlp": {},
+	"opentelemetry-jaeger": {},
+	"opentelemetry_zipkin": {},
+	"opentelemetry-zipkin": {},
+	"opentelemetry_prometheus": {},
+	"opentelemetry-prometheus": {},
+	"opentelemetry_semantic_conventions": {},
+	"opentelemetry-semantic-conventions": {},
+	"metrics_exporter_prometheus": {},
+	"metrics-exporter-prometheus": {},
+	"prometheus":      {},
+	"sentry":          {},
+	"sentry_actix":    {},
+	"sentry-actix":    {},
+	// Cloud SDKs (AWS).
+	"aws_config":      {},
+	"aws-config":      {},
+	"aws_sdk_s3":      {},
+	"aws-sdk-s3":      {},
+	"aws_sdk_dynamodb": {},
+	"aws-sdk-dynamodb": {},
+	"aws_smithy_types": {},
+	"aws-smithy-types": {},
+	"aws_smithy_http": {},
+	"aws-smithy-http": {},
+	"aws_credential_types": {},
+	"aws-credential-types": {},
+	"sparkpost":       {},
+	"sparklepost":     {},
+	"lettre":          {},
+	// Misc commonly-seen.
+	"notify":          {},
+	"confik":          {},
+	"figment":         {},
+	"config":          {},
+	"dotenvy":         {},
+	"clap_derive":     {},
+	"clap-derive":     {},
+	"structopt":       {},
+	"apalis":          {},
+	"apalis_core":     {},
+	"apalis-core":     {},
+	"apalis_redis":    {},
+	"apalis-redis":    {},
+	"bb8":             {},
+	"deadqueue":       {},
+	"crossbeam_utils": {},
+	"crossbeam-utils": {},
+	"crossbeam_channel": {},
+	"crossbeam-channel": {},
+	"crossbeam_epoch": {},
+	"crossbeam-epoch": {},
+	"flume":           {},
+	"sha2":            {},
+	"sha1":            {},
+	"md5":             {},
+	"hex":             {},
+	"hmac":            {},
+	"acme":            {},
+	"acme_lib":        {},
+	"acme-lib":        {},
+	// Tutorial / demo crates that are published on crates.io and
+	// also appear as the host repo in their own corpus.
+	"mini_redis":     {},
+	"mini-redis":     {},
+	// Rust wave (S19+) — synthetic placeholder for bare-sibling-module
+	// use-paths emitted by the rust extractor (`use worker::Context`,
+	// `use entry::*`). Single ext:rust_sibling_module node per repo;
+	// folded in by classifyExternal's `::` branch.
+	"rust_sibling_module": {},
+	// Misc widely-used rust crates from actix-examples + tokio.
+	"byteorder":      {},
+	"aes_gcm_siv":    {},
+	"aes-gcm-siv":    {},
+	"actix_utils":    {},
+	"actix-utils":    {},
+	"actix_governor": {},
+	"actix-governor": {},
+	// Tokio internals that surface in tokio source as use-paths but
+	// are tokio's own sub-crates resolved at build time — listed as
+	// known so that `use loom::...` / `use mio::...` / `use libc::...`
+	// in tokio test/loom modules land in external-known.
 	// PHP ecosystem (Issue #102 — symfony-demo bug-rate reduction).
 	// PHP namespace roots reach this allowlist via the `\`-separator
 	// branch in classifyExternal, gated on isPhpNamespaceIdent. Keys
@@ -13451,6 +14060,22 @@ func looksLikeExternalImport(s string) bool {
 // a digit. Issue #101: gates the `::` separator branch so we only
 // trust the leading segment of a use-path when it looks like a crate
 // name (and not, e.g., a bracketed/spaced fragment that slipped in).
+// isLowerRustIdent reports whether s is a Rust ident whose leading
+// character is a lowercase ASCII letter or underscore. Used by the
+// rust `::` branch of classifyExternal to identify the bare-sibling-
+// module shape (`worker::Foo`, `entry::Bar`) — sibling modules are
+// always lowercase in idiomatic Rust, while unknown third-party
+// crates are also conventionally lowercase, so this gate is not
+// itself the discriminator (both folds land in non-bug buckets,
+// which is the win).
+func isLowerRustIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	return (c >= 'a' && c <= 'z') || c == '_'
+}
+
 func isRustCrateIdent(s string) bool {
 	if s == "" {
 		return false

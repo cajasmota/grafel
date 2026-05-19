@@ -3225,6 +3225,23 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	if lang == "java" && isJavaExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
+	// Issue java-spring-petclinic-wave — Spring MVC ROUTES_TO edges
+	// emit `Route:<path>` -> `Controller:<methodName>` stubs from
+	// both the AST-driven composed-route extractor (spring_routes.go)
+	// and the YAML regex-based extractor (spring_mvc.yaml). The
+	// Java method extractor emits the handler under SCOPE.Operation
+	// (not `Controller:` kind), so the kind-bucket lookup misses.
+	// Spring's HandlerMapping dispatches by method-name lookup at
+	// runtime — the binding is framework-mediated, not an extractor
+	// bug. Route to Dynamic. Lang-gated to java (lang on the edge
+	// originates from the spring_routes.go Language="java" tag).
+	// Also accept lang="" because YAML-emitted edges may not
+	// propagate the source language onto the edge properties.
+	if (lang == "java" || lang == "") &&
+		(strings.HasPrefix(originalStub, "Controller:") ||
+			strings.HasPrefix(originalStub, "Route:")) {
+		return DispositionDynamic
+	}
 	// Wave-4 (PHP) — Symfony / Doctrine / PSR / PHPUnit framework
 	// interfaces and abstract base classes routinely appear as the
 	// trailing segment of structural-ref IMPLEMENTS / EXTENDS stubs
@@ -3237,6 +3254,23 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// bugs. Gated to lang=="php" so a same-named user class in another
 	// language is not shadowed (#94 safer-bias rule).
 	if lang == "php" && isPHPExternalBaseType(name) {
+		return DispositionExternalKnown
+	}
+	// Rust wave (S19+) — Tokio / Actix / Serde / Diesel / Rust std
+	// traits routinely appear as the trailing segment of
+	// structural-ref IMPLEMENTS / EXTENDS stubs
+	// (`scope:component:interface:rust:Future`,
+	// `:AsyncRead`, `:AsyncWrite`, `:Stream`, `:Serialize`,
+	// `:Deserialize`, `:Actor`, `:Handler<Foo>`, `:From<Bar>`,
+	// `:Drop`, `:Iterator`, ...) because the trait is imported from
+	// std or a third-party crate and has no in-tree entity. They are
+	// framework / stdlib trait names, not extractor bugs. The helper
+	// strips generic-argument tails (`Handler<Foo>` → `Handler`,
+	// `From<cqueue::Entry>` → `From`) before lookup so the entire
+	// `Trait<Generic>` family folds in one check. Gated to
+	// lang=="rust" so a same-named user trait/struct in another
+	// language is not shadowed (#94 safer-bias rule).
+	if lang == "rust" && isRustExternalBaseType(name) {
 		return DispositionExternalKnown
 	}
 	// Wave-7 — Python CALLS where the stub leaf is `<Class>.<method>`
@@ -4817,6 +4851,214 @@ var javaExternalBaseTypes = map[string]struct{}{
 	"OrderValidation": {},
 	"Emailer":         {},
 	"Service":         {},
+}
+
+// isRustExternalBaseType reports whether s is a well-known Rust
+// stdlib / Tokio / Actix / Serde / Diesel / common-ecosystem trait
+// commonly used as the parent in `impl Trait for Foo` or
+// `trait Bar: Trait` declarations. Used by classifyDispositionLang to
+// route Rust structural-ref IMPLEMENTS / EXTENDS stubs
+// (`scope:component:interface:rust:Future`,
+// `scope:component:interface:rust:From<Foo>`, ...) into ExternalKnown
+// rather than BugExtractor. The leading generic-argument tail is
+// stripped before lookup so the entire `Trait<...>` family folds in a
+// single check (`Handler<Foo>`, `Handler<server::Message>`, and
+// `Handler<Vec<Bar>>` all collapse to `Handler`). Curated from real
+// tokio / actix-examples / mini-redis bug-resolver samples; the
+// lang=="rust" gate at the call site keeps the safer-bias rule (#94)
+// intact for other languages.
+func isRustExternalBaseType(s string) bool {
+	base := s
+	// Strip the generic-argument tail (`Handler<Foo>` → `Handler`).
+	if lt := strings.IndexByte(base, '<'); lt > 0 {
+		base = base[:lt]
+	}
+	// Strip the leading module path (`std::error::Error` → `Error`,
+	// `ops::Sub` → `Sub`, `task::Schedule` → `Schedule`). The
+	// hierarchy extractor preserves the fully-qualified path for
+	// trait references that are imported via a `use` statement with
+	// a path prefix, and the structural-ref's trailing segment is the
+	// only part we need to match against the curated allowlist.
+	if cc := strings.LastIndex(base, "::"); cc >= 0 {
+		base = base[cc+2:]
+	}
+	_, ok := rustExternalBaseTypes[base]
+	return ok
+}
+
+// rustExternalBaseTypes is the Rust-language-gated allowlist of
+// stdlib + popular-crate trait names that legitimately appear as the
+// trailing segment of structural-ref IMPLEMENTS / EXTENDS stubs.
+// Lookups strip the generic-argument tail in isRustExternalBaseType,
+// so keys here are bare trait names without `<...>`. Curated from
+// real tokio / actix-examples / mini-redis bug-resolver samples.
+var rustExternalBaseTypes = map[string]struct{}{
+	// std::marker / core derive + auto traits.
+	"Send":          {},
+	"Sync":          {},
+	"Sized":         {},
+	"Unpin":         {},
+	"Copy":          {},
+	"Clone":         {},
+	"Debug":         {},
+	"Default":       {},
+	"Display":       {},
+	"Drop":          {},
+	"Hash":          {},
+	"PartialEq":     {},
+	"Eq":            {},
+	"PartialOrd":    {},
+	"Ord":           {},
+	"Error":         {},
+	"RefUnwindSafe": {},
+	"UnwindSafe":    {},
+	// std::convert + std::borrow.
+	"From":      {},
+	"Into":      {},
+	"TryFrom":   {},
+	"TryInto":   {},
+	"AsRef":     {},
+	"AsMut":     {},
+	"Borrow":    {},
+	"BorrowMut": {},
+	"ToOwned":   {},
+	// std::ops + std::iter + std::convert traits commonly implemented.
+	"Deref":               {},
+	"DerefMut":            {},
+	"Iterator":            {},
+	"IntoIterator":        {},
+	"DoubleEndedIterator": {},
+	"ExactSizeIterator":   {},
+	"FusedIterator":       {},
+	"FromIterator":        {},
+	"Extend":              {},
+	"Add":                 {},
+	"Sub":                 {},
+	"Mul":                 {},
+	"Div":                 {},
+	"Rem":                 {},
+	"Neg":                 {},
+	"Not":                 {},
+	"BitAnd":              {},
+	"BitOr":               {},
+	"BitXor":              {},
+	"Shl":                 {},
+	"Shr":                 {},
+	"Index":               {},
+	"IndexMut":            {},
+	"Fn":                  {},
+	"FnMut":               {},
+	"FnOnce":              {},
+	// std::io.
+	"Read":      {},
+	"Write":     {},
+	"Seek":      {},
+	"BufRead":   {},
+	"IsTerminal": {},
+	// std::fmt.
+	"Binary":   {},
+	"Octal":    {},
+	"LowerHex": {},
+	"UpperHex": {},
+	"LowerExp": {},
+	"UpperExp": {},
+	"Pointer":  {},
+	// std::os::unix / windows raw-fd / raw-handle traits.
+	"AsFd":         {},
+	"AsHandle":     {},
+	"AsRawFd":      {},
+	"AsRawHandle":  {},
+	"AsRawSocket":  {},
+	"FromRawFd":    {},
+	"FromRawHandle":{},
+	"FromRawSocket":{},
+	"IntoRawFd":    {},
+	"IntoRawHandle":{},
+	"IntoRawSocket":{},
+	"OwnedFd":      {},
+	"OwnedHandle":  {},
+	// std::net.
+	"ToSocketAddrs": {},
+	// std::thread / std::process killers.
+	"Termination": {},
+	// Tokio / async traits.
+	"Future":            {},
+	"Stream":            {},
+	"Sink":              {},
+	"AsyncRead":         {},
+	"AsyncWrite":        {},
+	"AsyncBufRead":      {},
+	"AsyncSeek":         {},
+	"AsyncReadExt":      {},
+	"AsyncWriteExt":     {},
+	"AsyncBufReadExt":   {},
+	"AsyncSeekExt":      {},
+	"StreamExt":         {},
+	"SinkExt":           {},
+	"TryStreamExt":      {},
+	"FutureExt":         {},
+	"TryFutureExt":      {},
+	// Tokio-specific runtime traits seen in the real corpora.
+	"Wake":              {},
+	"WakerRef":          {},
+	"Wait":              {},
+	"UringFd":           {},
+	"Source":            {},
+	"Schedule":          {},
+	"Storage":           {},
+	"Semaphore":         {},
+	"Kill":              {},
+	"OrphanQueue":       {},
+	"InstrumentedFuture":{},
+	"InternalStream":    {},
+	"ReadBuffer":        {},
+	"Completable":       {},
+	"Cancellable":       {},
+	"RotatorSelect":     {},
+	"AssertSync":        {},
+	"Overflow":          {},
+	// Serde.
+	"Serialize":           {},
+	"Deserialize":         {},
+	"Serializer":          {},
+	"Deserializer":        {},
+	"DeserializeOwned":    {},
+	"SerializeStruct":     {},
+	"SerializeSeq":        {},
+	"SerializeMap":        {},
+	"Visitor":             {},
+	// Actix-web / actix actor framework parent traits / response types.
+	"Actor":            {},
+	"Handler":          {},
+	"StreamHandler":    {},
+	"WriteHandler":     {},
+	"MessageResponse":  {},
+	"Recipient":        {},
+	"Supervised":       {},
+	"SystemService":    {},
+	"ArbiterService":   {},
+	"ActorContext":     {},
+	"AsyncContext":     {},
+	"FromRequest":      {},
+	"Responder":        {},
+	"ResponseError":    {},
+	"MessageBody":      {},
+	"Service":          {},
+	"ServiceFactory":   {},
+	"Transform":        {},
+	"Decoder":          {},
+	"Encoder":          {},
+	"ImplNetwork":      {},
+	// Diesel / SQLx / common ORM traits seen in actix-examples.
+	"Queryable":   {},
+	"Insertable":  {},
+	"Identifiable":{},
+	"AsChangeset": {},
+	"FromRow":     {},
+	// rand / distributions.
+	"Distribution": {},
+	// std::process / clone helpers.
+	"ToOwn": {},
 }
 
 // isTSBuiltinType reports whether s is a TypeScript / JavaScript

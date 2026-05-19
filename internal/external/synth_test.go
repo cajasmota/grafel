@@ -1192,8 +1192,12 @@ func TestRustBareNames_ClassifiedWhenLangIsRust(t *testing.T) {
 			if !ok {
 				t.Fatalf("stdlibFunction(%q, \"rust\", nil) = (_, false); want classified as stdlib bare-name", name)
 			}
-			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q, \"rust\", nil) subtype=%q, want %q", name, subtype, "function")
+			// Rust wave (S19+) — rustBareNames now signals via the
+			// "rust_builtin_function" subtype so the caller folds all
+			// rust bare-name receiver-strips to a single `ext:std`
+			// placeholder. Accept both "function" and the new subtype.
+			if subtype != "function" && subtype != "rust_builtin_function" {
+				t.Fatalf("stdlibFunction(%q, \"rust\", nil) subtype=%q, want %q or %q", name, subtype, "function", "rust_builtin_function")
 			}
 			doc := &graph.Document{
 				Entities: []graph.Entity{{
@@ -1210,9 +1214,17 @@ func TestRustBareNames_ClassifiedWhenLangIsRust(t *testing.T) {
 			if stats.Synthesized != 1 {
 				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
 			}
-			want := "ext:" + name
-			if doc.Relationships[0].ToID != want {
-				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			// Rust wave (S19+) — receiver-stripped rustBareNames now
+			// fold to a single `ext:std` placeholder so the resolver
+			// classifies as ExternalKnown (std is on the package
+			// allowlist) and bare-name fan-out goes away. Older
+			// behavior was per-name `ext:<name>` which landed in
+			// external-unknown. Either ToID is acceptable as the
+			// classification is "synthesised to an external", with
+			// `ext:std` strictly better.
+			tid := doc.Relationships[0].ToID
+			if tid != "ext:std" && tid != "ext:"+name {
+				t.Fatalf("ToID=%q, want %q or %q", tid, "ext:std", "ext:"+name)
 			}
 		})
 	}
@@ -1325,8 +1337,12 @@ func TestRustActixDSLBareNames_ClassifiedWhenLangIsRust(t *testing.T) {
 			if !ok {
 				t.Fatalf("stdlibFunction(%q, \"rust\", nil) = (_, false); want classified as stdlib bare-name", name)
 			}
-			if subtype != "function" {
-				t.Fatalf("stdlibFunction(%q, \"rust\", nil) subtype=%q, want %q", name, subtype, "function")
+			// Rust wave (S19+) — rustBareNames now signals via the
+			// "rust_builtin_function" subtype so the caller folds all
+			// rust bare-name receiver-strips to a single `ext:std`
+			// placeholder. Accept both "function" and the new subtype.
+			if subtype != "function" && subtype != "rust_builtin_function" {
+				t.Fatalf("stdlibFunction(%q, \"rust\", nil) subtype=%q, want %q or %q", name, subtype, "function", "rust_builtin_function")
 			}
 			doc := &graph.Document{
 				Entities: []graph.Entity{{
@@ -1343,9 +1359,10 @@ func TestRustActixDSLBareNames_ClassifiedWhenLangIsRust(t *testing.T) {
 			if stats.Synthesized != 1 {
 				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
 			}
-			want := "ext:" + name
-			if doc.Relationships[0].ToID != want {
-				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			// Rust wave (S19+) — accept folded `ext:std` placeholder.
+			tid := doc.Relationships[0].ToID
+			if tid != "ext:std" && tid != "ext:"+name {
+				t.Fatalf("ToID=%q, want %q or %q", tid, "ext:std", "ext:"+name)
 			}
 		})
 	}
