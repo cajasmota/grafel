@@ -130,15 +130,15 @@ const (
 
 	// ADR-0018: Agent-learned pattern edge kinds (append-only additions).
 	// Outgoing from Pattern entities:
-	RelationshipKindExemplar      RelationshipKind = "EXEMPLAR"       // Pattern → Entity: real code example of this pattern in use
-	RelationshipKindTouches       RelationshipKind = "TOUCHES"        // Pattern → Entity: entity the pattern's steps read or modify
-	RelationshipKindAntiExemplar  RelationshipKind = "ANTI_EXEMPLAR"  // Pattern → Entity: real code example of the anti-pattern
-	RelationshipKindSupersedes    RelationshipKind = "SUPERSEDES"     // Pattern → Pattern: this pattern replaces an older one
-	RelationshipKindConflictsWith RelationshipKind = "CONFLICTS_WITH" // Pattern → Pattern: these two patterns cannot both apply
-	RelationshipKindCoAppliesWith RelationshipKind = "CO_APPLIES_WITH" // Pattern → Pattern: typically applied together
-	RelationshipKindPrerequisite  RelationshipKind = "PREREQUISITE"   // Pattern → Pattern: must be satisfied before this one
+	RelationshipKindExemplar      RelationshipKind = "EXEMPLAR"       // Pattern -> Entity: real code example of this pattern in use
+	RelationshipKindTouches       RelationshipKind = "TOUCHES"        // Pattern -> Entity: entity the pattern's steps read or modify
+	RelationshipKindAntiExemplar  RelationshipKind = "ANTI_EXEMPLAR"  // Pattern -> Entity: real code example of the anti-pattern
+	RelationshipKindSupersedes    RelationshipKind = "SUPERSEDES"     // Pattern -> Pattern: this pattern replaces an older one
+	RelationshipKindConflictsWith RelationshipKind = "CONFLICTS_WITH" // Pattern -> Pattern: these two patterns cannot both apply
+	RelationshipKindCoAppliesWith RelationshipKind = "CO_APPLIES_WITH" // Pattern -> Pattern: typically applied together
+	RelationshipKindPrerequisite  RelationshipKind = "PREREQUISITE"   // Pattern -> Pattern: must be satisfied before this one
 	// Incoming to Pattern:
-	RelationshipKindCreatedBy RelationshipKind = "CREATED_BY" // Entity → Pattern: entity produced using the linked pattern
+	RelationshipKindCreatedBy RelationshipKind = "CREATED_BY" // Entity -> Pattern: entity produced using the linked pattern
 
 	// #713: React Native / Expo platform-specific file variants.
 	// Emitted from a platform-variant file entity (e.g. Button.ios.tsx)
@@ -146,12 +146,19 @@ const (
 	// count platform variants as "connected" to their canonical counterpart.
 	RelationshipKindPlatformVariantOf RelationshipKind = "PLATFORM_VARIANT_OF"
 
-	// #723: ORM query call site → model class. Emitted by the engine-layer
+	// #723: ORM query call site -> model class. Emitted by the engine-layer
 	// applyORMQueries pass for every recognised ORM query call (Prisma,
 	// Django ORM, SQLAlchemy, JPA, gorm, ActiveRecord, etc.). Properties
 	// on the edge: operation, filter_keys, is_join, orm, pattern_type.
 	// Closes the orphan class on model entities referenced only via ORM.
 	RelationshipKindQueries RelationshipKind = "QUERIES"
+
+	// #721: Consumer-side HTTP fetch edge. Emitted from a calling
+	// function/method entity -> the synthetic http_endpoint entity that
+	// represents the URL the client invokes. Lets the process-flow BFS
+	// and cross-repo HTTP matcher traverse directly from a caller to its
+	// endpoint without re-running the post-hoc regex matcher.
+	RelationshipKindFetches RelationshipKind = "FETCHES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -191,6 +198,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindPlatformVariantOf,
 		// #723:
 		RelationshipKindQueries,
+		// #721:
+		RelationshipKindFetches,
 	}
 }
 

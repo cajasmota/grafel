@@ -1129,115 +1129,13 @@ func enclosingJSFuncAt(funcs []jsFuncSpan, pos int) string {
 }
 
 // ---------------------------------------------------------------------------
-// Python: requests / httpx / aiohttp
+// Python: helpers shared with http_endpoint_python_client.go (#721 wave 1)
 // ---------------------------------------------------------------------------
-
-// pyRequestsLiteralRe matches `requests.<verb>("path", ...)` and the
-// identical `httpx.<verb>(...)` form. Both libraries expose the same
-// top-level verb functions, so a single regex handles them.
-var pyRequestsLiteralRe = regexp.MustCompile(
-	`\b(requests|httpx)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*['"]([^'"\n\r]+)['"]`,
-)
-
-// pySessionClientRe matches `<ident>.<verb>("path", ...)` where ident is
-// a typical session/client variable name. This catches:
-//   - requests.Session() instances: `session.get(url)`
-//   - httpx.Client / AsyncClient instances: `client.get(url)`
-//   - aiohttp.ClientSession instances: `session.get(url)`
 //
-// We deliberately restrict the leading identifier to a small allow-list of
-// names to avoid colliding with framework producer patterns (Flask /
-// FastAPI use `@app.get(...)` / `@router.get(...)` as DECORATORS — those
-// are preceded by `@`, which this regex's `\b<ident>\s*\.` anchor does
-// not match, since `@` is not a word boundary on its left and `\b` only
-// matches between word/non-word; `@app` -> the `\b` is at `@|a`, so it
-// DOES match. We exclude `app` and `router` from the allow-list to be
-// safe; if a project uses `app.get(url)` as a true HTTP call it will be
-// missed in Phase 1 — file a Phase 2 chain-fix.
-var pySessionClientRe = regexp.MustCompile(
-	`\b(session|client|http_client|api_client|http|api)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*['"]([^'"\n\r]+)['"]`,
-)
-
-// pyAiohttpRe matches `ClientSession().<verb>("path", ...)` inline form
-// and `async with session.get("path") as ...` which the session re above
-// also handles. This separate matcher catches the awaited inline form
-// `await aiohttp.ClientSession().get("path")`.
-var pyAiohttpRe = regexp.MustCompile(
-	`aiohttp\.ClientSession\s*\(\s*\)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*['"]([^'"\n\r]+)['"]`,
-)
-
-// pyEnclosingFuncRe captures `def <name>(` and `async def <name>(`.
-var pyEnclosingFuncRe = regexp.MustCompile(
-	`(?m)^[ \t]*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(`,
-)
-
-// synthesizePyClient scans a Python file for HTTP client call sites.
-func synthesizePyClient(content string, emit emitFn) {
-	if !strings.Contains(content, "requests.") &&
-		!strings.Contains(content, "httpx.") &&
-		!strings.Contains(content, "aiohttp.") &&
-		!strings.Contains(content, "session.") &&
-		!strings.Contains(content, "client.") &&
-		!strings.Contains(content, "http_client.") &&
-		!strings.Contains(content, "api_client.") {
-		return
-	}
-
-	funcs := indexPyEnclosingFunctions(content)
-
-	// requests / httpx
-	for _, m := range pyRequestsLiteralRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(m) < 8 {
-			continue
-		}
-		framework := content[m[2]:m[3]]
-		verb := strings.ToUpper(content[m[4]:m[5]])
-		path := content[m[6]:m[7]]
-		if !looksLikeURLPath(path) {
-			continue
-		}
-		caller := enclosingPyFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, stripURLHost(path))
-		emit(verb, canonical, framework, "Function", caller)
-	}
-
-	// Session / client instances
-	for _, m := range pySessionClientRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(m) < 8 {
-			continue
-		}
-		// Skip decorator forms: a true match preceded by `@` is a Flask /
-		// FastAPI route decorator on the producer side. We can't easily
-		// constrain that in the regex without breaking `\b`, so check the
-		// preceding byte manually.
-		if m[0] > 0 && content[m[0]-1] == '@' {
-			continue
-		}
-		verb := strings.ToUpper(content[m[4]:m[5]])
-		path := content[m[6]:m[7]]
-		if !looksLikeURLPath(path) {
-			continue
-		}
-		caller := enclosingPyFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, stripURLHost(path))
-		emit(verb, canonical, "http_client", "Function", caller)
-	}
-
-	// aiohttp inline
-	for _, m := range pyAiohttpRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(m) < 6 {
-			continue
-		}
-		verb := strings.ToUpper(content[m[2]:m[3]])
-		path := content[m[4]:m[5]]
-		if !looksLikeURLPath(path) {
-			continue
-		}
-		caller := enclosingPyFuncAt(funcs, m[0])
-		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, stripURLHost(path))
-		emit(verb, canonical, "aiohttp", "Function", caller)
-	}
-}
+// The Python consumer-side synthesizer (synthesizePyClient + supporting
+// regex/symbol-table helpers) now lives in http_endpoint_python_client.go.
+// Only the shared enclosing-function indexer remains here, since it shares
+// the jsFuncSpan layout with the JS/TS scanner above.
 
 type pyFuncSpan = jsFuncSpan
 
