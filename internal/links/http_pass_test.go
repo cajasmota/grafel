@@ -2,6 +2,7 @@ package links
 
 import (
 	"path/filepath"
+	"sort"
 	"testing"
 )
 
@@ -765,5 +766,278 @@ func TestHTTPPass_ParseHTTPName(t *testing.T) {
 		if ok != c.ok || v != c.verb || p != c.path {
 			t.Errorf("parseHTTPName(%q) = (%q,%q,%v), want (%q,%q,%v)", c.in, v, p, ok, c.verb, c.path, c.ok)
 		}
+	}
+}
+
+// --- #747 verb-confusion regression tests ----------------------------
+//
+// These exercise the multi-verb producer pool created when DRF detail
+// routes (PR #729) coexist with the legacy ANY-verb synthesizer output.
+// Before the #747 fix, `firstByRepo` sorted by stampedID lexicographically
+// and could pick (e.g.) PATCH as the "winner" for a DELETE consumer just
+// because the PATCH endpoint's stamped ID sorted first.
+
+// TestHTTPPass_VerbConfusion_ExactVerbPreference verifies that when
+// producers cover multiple specific verbs on the same path, the matcher
+// picks the producer whose verb EXACTLY matches the consumer's verb.
+// Lexicographic order of stampedIDs must NOT win over verb match.
+func TestHTTPPass_VerbConfusion_ExactVerbPreference(t *testing.T) {
+	root := fixtureRoot(t)
+	// Producer emits the full DRF CRUD family plus a legacy ANY-verb
+	// synthetic. IDs are crafted so that PATCH and DELETE sort BEFORE
+	// the consumer's verb (GET) when ordered lexicographically — this
+	// is the exact stampedID-ordering regime that produced the bug in
+	// production data.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h-delete", "name": "destroy", "kind": "Function", "source_file": "app/views.py"},
+			{"id": "h-patch", "name": "partial_update", "kind": "Function", "source_file": "app/views.py"},
+			{"id": "h-get", "name": "retrieve", "kind": "Function", "source_file": "app/views.py"},
+			{"id": "h-any", "name": "InspectionViewSet", "kind": "Class", "source_file": "app/views.py"},
+			{
+				"id": "ep-delete", "name": "http:DELETE:/inspections/{pk}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "DELETE", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
+			},
+			{
+				"id": "ep-patch", "name": "http:PATCH:/inspections/{pk}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "PATCH", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
+			},
+			{
+				"id": "ep-get", "name": "http:GET:/inspections/{pk}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "GET", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
+			},
+			{
+				"id": "ep-any", "name": "http:ANY:/inspections/{pk}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "ANY", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h-delete", "to_id": "ep-delete", "kind": "IMPLEMENTS"},
+			{"from_id": "h-patch", "to_id": "ep-patch", "kind": "IMPLEMENTS"},
+			{"from_id": "h-get", "to_id": "ep-get", "kind": "IMPLEMENTS"},
+			{"from_id": "h-any", "to_id": "ep-any", "kind": "IMPLEMENTS"},
+		},
+	})
+	// Consumer is DELETE. Pre-fix matcher would link to PATCH (because
+	// "ep-patch" < "ep-delete" lexicographically inside the producer
+	// pool entered via the ANY-verb pivot). Post-fix it MUST land on
+	// the DELETE handler.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn-delete", "name": "deleteInspection", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep-c-delete", "name": "http:DELETE:/inspections/{id}", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb":          "DELETE",
+					"path":          "/inspections/{id}",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:deleteInspection",
+				},
+			},
+		},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g747-exact", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g747-exact-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var httpLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			httpLinks = append(httpLinks, l)
+		}
+	}
+	if len(httpLinks) != 1 {
+		t.Fatalf("want exactly one http link (DELETE→DELETE), got %d: %+v", len(httpLinks), httpLinks)
+	}
+	l := httpLinks[0]
+	if l.Target != "backend::h-delete" {
+		t.Errorf("verb-confusion regression: DELETE consumer must link to DELETE handler, got target=%s", l.Target)
+	}
+	if l.Identifier == nil || *l.Identifier != "http:DELETE:/inspections/{id}" {
+		t.Errorf("identifier: want http:DELETE:/inspections/{id}, got %v", l.Identifier)
+	}
+	if l.MatchQuality != "exact_verb" {
+		t.Errorf("match_quality: want exact_verb, got %q", l.MatchQuality)
+	}
+}
+
+// TestHTTPPass_VerbConfusion_AnyFallback verifies that when no producer
+// matches the consumer's specific verb but an ANY-verb producer exists,
+// the matcher falls back to ANY (and tags the link with match_quality
+// = "any_fallback").
+func TestHTTPPass_VerbConfusion_AnyFallback(t *testing.T) {
+	root := fixtureRoot(t)
+	// Backend has PATCH + DELETE + ANY producers but NO GET. The
+	// consumer asks for GET — we must take the ANY producer, never
+	// the PATCH or DELETE.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h-patch", "name": "partial_update", "kind": "Function", "source_file": "app/views.py"},
+			{"id": "h-delete", "name": "destroy", "kind": "Function", "source_file": "app/views.py"},
+			{"id": "h-any", "name": "RoleViewSet", "kind": "Class", "source_file": "app/views.py"},
+			{
+				"id": "ep-patch", "name": "http:PATCH:/roles/{roleId}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "PATCH", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
+			},
+			{
+				"id": "ep-delete", "name": "http:DELETE:/roles/{roleId}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "DELETE", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
+			},
+			{
+				"id": "ep-any", "name": "http:ANY:/roles/{roleId}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "ANY", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h-patch", "to_id": "ep-patch", "kind": "IMPLEMENTS"},
+			{"from_id": "h-delete", "to_id": "ep-delete", "kind": "IMPLEMENTS"},
+			{"from_id": "h-any", "to_id": "ep-any", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn-get", "name": "loadRole", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep-c-get", "name": "http:GET:/roles/{roleId}", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/roles/{roleId}",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:loadRole",
+				},
+			},
+		},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g747-any", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g747-any-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var httpLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			httpLinks = append(httpLinks, l)
+		}
+	}
+	if len(httpLinks) != 1 {
+		t.Fatalf("want exactly one http link (GET→ANY), got %d: %+v", len(httpLinks), httpLinks)
+	}
+	if httpLinks[0].Target != "backend::h-any" {
+		t.Errorf("any-fallback regression: GET consumer must fall back to ANY handler, got target=%s", httpLinks[0].Target)
+	}
+	if httpLinks[0].MatchQuality != "any_fallback" {
+		t.Errorf("match_quality: want any_fallback, got %q", httpLinks[0].MatchQuality)
+	}
+}
+
+// TestHTTPPass_VerbConfusion_NoMatchWhenOnlyWrongVerbs verifies that a
+// consumer whose verb has no exact-verb producer AND no ANY-verb
+// producer is DROPPED — we never cross-link to a different specific
+// verb. This is the linchpin of #747.
+func TestHTTPPass_VerbConfusion_NoMatchWhenOnlyWrongVerbs(t *testing.T) {
+	root := fixtureRoot(t)
+	// Backend only emits GET and DELETE — consumer wants POST.
+	// Pre-fix matcher would have happily linked to GET (smallest
+	// stampedID after path-normalization). Post-fix we MUST emit no
+	// link.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h-get", "name": "list", "kind": "Function", "source_file": "app/views.py"},
+			{"id": "h-delete", "name": "destroy", "kind": "Function", "source_file": "app/views.py"},
+			{
+				"id": "ep-get", "name": "http:GET:/widgets", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "GET", "path": "/widgets", "pattern_type": "http_endpoint_synthesis"},
+			},
+			{
+				"id": "ep-delete", "name": "http:DELETE:/widgets", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{"verb": "DELETE", "path": "/widgets", "pattern_type": "http_endpoint_synthesis"},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h-get", "to_id": "ep-get", "kind": "IMPLEMENTS"},
+			{"from_id": "h-delete", "to_id": "ep-delete", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn-post", "name": "createWidget", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep-c-post", "name": "http:POST:/widgets", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb":          "POST",
+					"path":          "/widgets",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:createWidget",
+				},
+			},
+		},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g747-nomatch", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g747-nomatch-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			t.Errorf("unexpected http link emitted (POST should not link to GET or DELETE): %+v", l)
+		}
+	}
+}
+
+// TestHTTPPass_VerbConfusion_Determinism verifies that repeated runs
+// over the same producer set yield the same picked producer (no
+// dependency on map iteration order leaking into link target).
+func TestHTTPPass_VerbConfusion_Determinism(t *testing.T) {
+	candidates := []*httpEndpointHit{
+		{repo: "backend", stampedID: "z-last", verb: "GET"},
+		{repo: "backend", stampedID: "a-first", verb: "GET"},
+		{repo: "backend", stampedID: "m-mid", verb: "PATCH"},
+	}
+	// less() puts a-first before z-last for the same repo.
+	sort.SliceStable(candidates, func(i, j int) bool { return less(candidates[i], candidates[j]) })
+	consumer := &httpEndpointHit{repo: "frontend", verb: "GET"}
+	var first *httpEndpointHit
+	for i := 0; i < 50; i++ {
+		p, q := pickProducerForConsumer(consumer, candidates)
+		if q != "exact_verb" {
+			t.Fatalf("iter %d: want exact_verb, got %q", i, q)
+		}
+		if first == nil {
+			first = p
+		}
+		if p != first {
+			t.Fatalf("non-deterministic pick on iter %d: %+v vs %+v", i, p, first)
+		}
+	}
+	if first.stampedID != "a-first" {
+		t.Errorf("want smallest-stampedID GET producer (a-first), got %s", first.stampedID)
 	}
 }

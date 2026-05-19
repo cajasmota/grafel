@@ -69,6 +69,17 @@ type Link struct {
 	DiscoveredAt    string     `json:"discovered_at"`
 	SourceLocations [][]string `json:"source_locations,omitempty"`
 
+	// MatchQuality, when set, annotates how a method-specific matcher
+	// (currently only the HTTP pass) selected this producer:
+	//   "exact_verb"   — consumer's HTTP verb matched the producer's
+	//   "any_fallback" — consumer had a specific verb, no specific-verb
+	//                    producer existed; matched against an ANY-verb
+	//                    producer (Django ViewSet without per-method
+	//                    routing, etc.)
+	//   "wildcard"     — both sides used ANY (no specific verb on either)
+	// Empty for any non-HTTP method.
+	MatchQuality string `json:"match_quality,omitempty"`
+
 	// Reason is populated only on candidate entries (not in links.json).
 	Reason string `json:"reason,omitempty"`
 
