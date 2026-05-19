@@ -78,6 +78,26 @@ var jsGlobals = map[string]struct{}{
 	"React": {}, // very commonly the React default-import binding; harmless to skip
 }
 
+// tsBuiltinTypes — TypeScript built-in / lib.d.ts type names we should
+// never emit a REFERENCES edge to in type-position. These usually have
+// no same-file declaration, so the symbol-table guard already filters
+// them — this list is belt-and-suspenders to prevent accidental binding
+// when a user types something like `type Array = ...` and then writes
+// `Array<X>` in the same file (which would be a self-edge anyway).
+var tsBuiltinTypes = map[string]struct{}{
+	"string": {}, "number": {}, "boolean": {}, "bigint": {}, "symbol": {},
+	"any": {}, "unknown": {}, "never": {}, "void": {}, "undefined": {}, "null": {},
+	"object": {}, "Object": {}, "Function": {}, "Array": {}, "ReadonlyArray": {},
+	"Promise": {}, "Map": {}, "Set": {}, "WeakMap": {}, "WeakSet": {},
+	"Date": {}, "RegExp": {}, "Error": {}, "TypeError": {}, "RangeError": {},
+	"SyntaxError": {}, "ReferenceError": {}, "JSON": {}, "Math": {},
+	"Record": {}, "Partial": {}, "Required": {}, "Readonly": {}, "Pick": {},
+	"Omit": {}, "Exclude": {}, "Extract": {}, "NonNullable": {}, "ReturnType": {},
+	"Parameters": {}, "ConstructorParameters": {}, "InstanceType": {},
+	"ThisType": {}, "Awaited": {}, "Iterable": {}, "Iterator": {},
+	"AsyncIterable": {}, "AsyncIterator": {}, "Generator": {}, "AsyncGenerator": {},
+}
+
 // fileSymbol is a single file-scope symbol-table entry: the declared
 // name maps to the (kind, subtype) pair we need to build a Format A
 // structural ref for the resolver.
@@ -221,6 +241,23 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 						pushed = true
 					}
 				}
+				// #709 — TS `const x: MyType = ...` carries a type
+				// annotation on the declarator. Push a frame so the
+				// type-position use attributes to the const, even when
+				// the value is not function-shaped. Only fires when the
+				// declarator has an explicit type annotation.
+				if !pushed && n.ChildByFieldName("type") != nil {
+					fstack = append(fstack, frame{funcName: x.nodeText(name)})
+					pushed = true
+				}
+			}
+		case "interface_declaration", "type_alias_declaration", "class_declaration":
+			// #709 — type-position uses inside a type/interface/class
+			// declaration body (extends clause, generic constraints,
+			// field type annotations) attribute to the declaring entity.
+			if nameNode := n.ChildByFieldName("name"); nameNode != nil {
+				fstack = append(fstack, frame{funcName: x.nodeText(nameNode)})
+				pushed = true
 			}
 		}
 
@@ -228,7 +265,7 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 		// We only care about identifier-shaped nodes; everything else
 		// is a structural node and identifiers will surface as we
 		// recurse into its children.
-		if nt == "identifier" || nt == "shorthand_property_identifier" {
+		if nt == "identifier" || nt == "shorthand_property_identifier" || nt == "type_identifier" {
 			// Two filters here:
 			//   1. We only emit REFERENCES while inside a function
 			//      frame — file-scope identifier usages (outside any
@@ -237,13 +274,22 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 			//      (its parent's `name` field) AND must not be the
 			//      CALLEE of a call/new expression (CALLS owns that
 			//      edge already).
+			//
+			// #709 — type_identifier nodes appear in type-position uses
+			// (type annotations, generic args, extends clauses, `as`
+			// casts, `is` predicates, `satisfies` operators, conditional
+			// types). The same emit path produces a Format-A REFERENCES
+			// edge; the resolver's component family covers Schema
+			// (interface/type_alias) targets.
 			if len(fstack) > 0 {
 				name := x.nodeText(n)
 				if name != "" {
 					if _, isGlobal := jsGlobals[name]; !isGlobal {
-						if _, isLocal := symbols[name]; isLocal {
-							if !isDeclarationPosition(n) && !isCallCallee(n) {
-								emit(fstack, name)
+						if _, isBuiltin := tsBuiltinTypes[name]; !isBuiltin || nt != "type_identifier" {
+							if _, isLocal := symbols[name]; isLocal {
+								if !isDeclarationPosition(n) && !isCallCallee(n) {
+									emit(fstack, name)
+								}
 							}
 						}
 					}
@@ -321,10 +367,19 @@ func isDeclarationPosition(n *sitter.Node) bool {
 	if parent == nil {
 		return false
 	}
+	pt := parent.Type()
+	// #709 — JSX component-name children are USES, not declarations,
+	// even though they sit in the `name` field of the JSX element.
+	// Tree-sitter exposes them as `<MyComponent />` → jsx_self_closing_element
+	// with field `name`. Without this exception, JSX component references
+	// to same-file type-imported components would be silently dropped.
+	switch pt {
+	case "jsx_opening_element", "jsx_self_closing_element", "jsx_closing_element":
+		return false
+	}
 	if name := parent.ChildByFieldName("name"); name != nil && name == n {
 		return true
 	}
-	pt := parent.Type()
 	switch pt {
 	case "import_specifier", "namespace_import":
 		return true
