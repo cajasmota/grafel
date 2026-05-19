@@ -5788,6 +5788,258 @@ var kotlinBareNames = map[string]struct{}{
 	"JsonArray":               {},
 	"JsonPrimitive":           {},
 	"isAssignableFrom":        {},
+
+	// Issue: kotlin-exposed-dsl wave — JetBrains Exposed SQL DSL/ORM
+	// (`org.jetbrains.exposed.v1.core.*`, `.v1.jdbc.*`, `.dao.*`)
+	// receiver-stripped types and helpers dominating the residual
+	// bug-extractor sample on the `exposed` corpus. The Kotlin
+	// extractor strips the receiver from a call
+	// (`column.appendValueAlias(builder)` → bare `appendValueAlias`,
+	// `LongColumnType()` → bare `LongColumnType`), so the resolver sees
+	// only the leaf and the call lands in bug-extractor.
+	//
+	// All additions are Kotlin-language-gated. Categories:
+	//
+	//   1. Exposed Column type constructors — Exposed-specific Pascal
+	//      names; effectively zero collision risk in non-Exposed Kotlin
+	//      code, and Kotlin-gated keeps them away from JS/Java/Go.
+	//   2. Exposed DSL leaves — `op`, `joinPart`, `JoinCondition`,
+	//      `wrap`-family (`wrap` already gated to rust, excluded),
+	//      `defaultValue`, `transformFromValue`, `transformToValue`,
+	//      `columnTransformer`, `NullableColumnWithTransform`,
+	//      `ColumnWithTransform`.
+	//   3. JVM collection types + Triple/Pair (java.util.*, kotlin
+	//      built-ins) — Pascal names dominated by Java stdlib in
+	//      Kotlin code.
+	//   4. java.time / kotlinx-datetime conversion helpers —
+	//      `atZone`, `atOffset`, `atTime`, `systemDefault`,
+	//      `currentSystemDefault`, `toKotlinInstant`,
+	//      `toKotlinLocalTime`, `toKotlinUuid`, `toJavaUuid`,
+	//      `toJavaLocalTime`, `toEpochMilliseconds`,
+	//      `fromEpochMilliseconds`, `fromEpochSeconds`,
+	//      `toEpochMilli`, `floorDiv` (Math).
+	//   5. kotlin.collections / kotlin.sequences residue —
+	//      `addAll`, `removeAll`, `mapValues`, `filterValues`,
+	//      `filterNot`, `filterIsInstance`, `subtract`, `asList`,
+	//      `withIndex`, `buildList`, `ifEmpty`, `joinTo`, `none`,
+	//      `flatMapTo`. (`flatMap` remains excluded per swift gate.)
+	//   6. kotlin.text helpers — `replaceBefore`, `replaceRange`,
+	//      `replaceFirst`, `uppercase`, `lowercase`, `ifBlank`,
+	//      `isNullOrBlank`, `contentEquals`, `contentHashCode`,
+	//      `contentToString`, `toBooleanStrict`, `toShort`, `toByte`
+	//      (already added), `toBigInteger`, `toBigDecimal`, `toChar`,
+	//      `toUByte`, `toUShort`, `toULong` (toULongOrNull already
+	//      added), `toUInt`, `toIntArray`, `toFloatArray`,
+	//      `toTypedArray`, `toHashSet`, `arrayOfNulls`, `orEmpty`,
+	//      `isNaN` (Float/Double — gated; `isNaN` already in jsBareNames
+	//      but adding the Kotlin gate via stdlibFunction is safe).
+	//   7. JVM concurrency leaves — `compareAndSet`, `getOrSet`
+	//      (ThreadLocal.getOrSet), `pop`, `peek` (Stack/Deque), `Stack`.
+	//   8. kotlin.uuid (Kotlin 2.x stdlib) — `generateV4`, `generateV7`,
+	//      `fromByteArray`, `getUuid`.
+	//   9. java.nio.charset / java.nio.ByteBuffer leaves — `allocate`,
+	//      `putLong`, `codePointCount`.
+	//  10. kotlin.reflect — `isSubclassOf`, `callBy`, `isEntityIdentifier`
+	//      (Exposed reflection helper).
+	//  11. Gradle DSL — `signAllPublications`, `useInMemoryPgpKeys`,
+	//      `configure`. These are kotlin-gated Gradle Kotlin-DSL
+	//      build-script leaves.
+	//  12. Misc Exposed internals — `resolveColumnType`,
+	//      `resolveVectorColumnType`, `appendValueAlias`,
+	//      `booleanOperator`, `precessOrderByClause` (sic, upstream),
+	//      `isColumnTypeIncorrect`, `isJsonBColumnForCasting`,
+	//      `mappedIndices`, `existingIndices`, `filterInternalIndices`,
+	//      `filterForeignKeys`, `isInternalConstraint`, `topLevelWrap`,
+	//      `additionalConstraint`, `secondFraction`, `Format`,
+	//      `likePatternSpecialChars`, `removeAt`, `setScale`, `scale`,
+	//      `precision`, `traverse`, `fromDb`, `toDb`, `fromByteArray`.
+	//
+	// Excluded (#106 safer-bias — collide with user methods on any
+	// domain type even Kotlin-gated):
+	//   - `value` (already gated elsewhere but kept rejected for the
+	//     Exposed wave — collides with every property accessor).
+	//   - `body`, `on`, `last`, `unzip`, `warn`, `info`, `source`,
+	//     `keys`, `valueOf`, `distinct`, `count`, `update`, `insert`,
+	//     `select`, `selectAll` (already added), `join`, `eq` (already
+	//     added), `transaction` (already added), `deleteWhere` (already
+	//     added), `orderBy` (already added), `limit` (already added) —
+	//     present in other lang maps OR previously added Kotlin gate.
+	//   - `add`, `get`, `set`, `remove`, `isEmpty`, `size` (rejected
+	//     per the original #106 rule).
+
+	// Exposed Column type constructors.
+	"LongColumnType":             {},
+	"IntegerColumnType":          {},
+	"ShortColumnType":            {},
+	"ByteColumnType":             {},
+	"UByteColumnType":            {},
+	"UShortColumnType":           {},
+	"UIntegerColumnType":         {},
+	"ULongColumnType":            {},
+	"FloatColumnType":            {},
+	"DoubleColumnType":           {},
+	"DecimalColumnType":          {},
+	"BooleanColumnType":          {},
+	"CharacterColumnType":        {},
+	"VarCharColumnType":          {},
+	"TextColumnType":             {},
+	"MediumTextColumnType":       {},
+	"LargeTextColumnType":        {},
+	"BinaryColumnType":           {},
+	"BasicBinaryColumnType":      {},
+	"BlobColumnType":             {},
+	"UuidColumnType":             {},
+	"EnumerationColumnType":      {},
+	"EnumerationNameColumnType":  {},
+	"CustomEnumerationColumnType": {},
+	"AutoIncColumnType":          {},
+	"ArrayColumnType":            {},
+	"EntityIDColumnType":         {},
+	"FloatVectorColumnType":      {},
+	"IntVectorColumnType":        {},
+	"ColumnWithTransform":        {},
+	"NullableColumnWithTransform": {},
+	"JoinCondition":              {},
+
+	// Exposed DSL helpers / internals.
+	"op":                       {},
+	"joinPart":                 {},
+	"topLevelWrap":             {},
+	"defaultValue":             {},
+	"transformFromValue":       {},
+	"transformToValue":         {},
+	"columnTransformer":        {},
+	"appendValueAlias":         {},
+	"booleanOperator":          {},
+	"resolveColumnType":        {},
+	"resolveVectorColumnType":  {},
+	"isColumnTypeIncorrect":    {},
+	"isJsonBColumnForCasting":  {},
+	"isInternalConstraint":     {},
+	"isEntityIdentifier":       {},
+	"mappedIndices":            {},
+	"existingIndices":          {},
+	"filterInternalIndices":    {},
+	"filterForeignKeys":        {},
+	"additionalConstraint":     {},
+	"secondFraction":           {},
+	"likePatternSpecialChars":  {},
+	"precessOrderByClause":     {}, // (sic) Exposed dialect hook
+	"Format":                   {},
+
+	// JVM collection types (java.util / kotlin built-ins).
+	"LinkedHashMap": {},
+	"LinkedHashSet": {},
+	"HashMap":       {},
+	"HashSet":       {},
+	"ArrayList":     {},
+	"Stack":         {},
+	"Triple":        {},
+	"Pair":          {},
+
+	// java.time / kotlinx-datetime conversions.
+	"atZone":                {},
+	"atOffset":              {},
+	"atTime":                {},
+	"systemDefault":         {},
+	"currentSystemDefault":  {},
+	"toKotlinInstant":       {},
+	"toKotlinLocalTime":     {},
+	"toKotlinUuid":          {},
+	"toJavaUuid":            {},
+	"toJavaLocalTime":       {},
+	"toEpochMilliseconds":   {},
+	"fromEpochMilliseconds": {},
+	"fromEpochSeconds":      {},
+	"floorDiv":              {},
+
+	// kotlin.collections / kotlin.sequences residue.
+	"addAll":            {},
+	"removeAll":         {},
+	"mapValues":         {},
+	"filterValues":      {},
+	"filterNot":         {},
+	"filterIsInstance":  {},
+	"subtract":          {},
+	"asList":            {},
+	"withIndex":         {},
+	"buildList":         {},
+	"ifEmpty":           {},
+	"joinTo":            {},
+	"none":              {},
+	"flatMapTo":         {},
+	"toTypedArray":      {},
+	"toHashSet":         {},
+	"arrayOfNulls":      {},
+	"orEmpty":           {},
+	"findLast":          {},
+
+	// kotlin.text helpers.
+	"replaceBefore":   {},
+	"replaceRange":    {},
+	"replaceFirst":    {},
+	"uppercase":       {},
+	"lowercase":       {},
+	"ifBlank":         {},
+	"isNullOrBlank":   {},
+	"contentEquals":   {},
+	"contentHashCode": {},
+	"contentToString": {},
+	"toBooleanStrict": {},
+	"toShort":         {},
+	"toBigInteger":    {},
+	"toBigDecimal":    {},
+	"toChar":          {},
+	"toUByte":         {},
+	"toUShort":        {},
+	"toULong":         {},
+	"toUInt":          {},
+	"toIntArray":      {},
+	"toFloatArray":    {},
+	"isNaN":           {},
+
+	// JVM concurrency leaves.
+	"compareAndSet": {},
+	"getOrSet":      {},
+	"pop":           {},
+	"peek":          {},
+
+	// kotlin.uuid (Kotlin 2.x stdlib).
+	"generateV4":    {},
+	"generateV7":    {},
+	"fromByteArray": {},
+	"getUuid":       {},
+
+	// java.nio.
+	"allocate":       {},
+	"putLong":        {},
+	"codePointCount": {},
+
+	// kotlin.reflect.
+	"isSubclassOf": {},
+	"callBy":       {},
+
+	// Gradle Kotlin DSL.
+	// `configure` excluded — gated to rust per rustBareNames (Actix-web App.configure).
+	"signAllPublications": {},
+	"useInMemoryPgpKeys":  {},
+
+	// Misc.
+	"removeAt":     {},
+	"setScale":     {},
+	"scale":        {},
+	"precision":    {},
+	"traverse":     {},
+	"fromDb":       {},
+	"toDb":         {},
+	"BigInteger":   {},
+	"Timestamp":    {},
+	"List":         {},
+	"Array":        {},
+	"String":       {},
+	"LocalDate":    {},
+	"LocalDateTime": {},
+	"isSupported":  {},
 }
 
 // kotlinTestBareNames is the Kotlin test-file-gated bare-name stop-list
@@ -12858,6 +13110,15 @@ var knownExternalPackages = map[string]struct{}{
 	"kotlin":                {},
 	"kotlinx":               {},
 	"io.ktor":               {}, // io.ktor.* server / client / websockets (Issue #106)
+	// Kotlin Exposed SQL DSL/ORM (JetBrains). Both v0 (legacy) and v1
+	// import roots are present in the wild: legacy `org.jetbrains.exposed.sql.*`,
+	// `org.jetbrains.exposed.dao.*`, and the v1 layout
+	// `org.jetbrains.exposed.v1.core.*`, `.v1.jdbc.*`, `.v1.json.*`,
+	// `.v1.datetime.*`, etc. A single `org.jetbrains.exposed` prefix
+	// covers every subpackage via longestKnownDottedPrefix.
+	"org.jetbrains.exposed":           {},
+	"org.jetbrains.kotlinx":           {}, // org.jetbrains.kotlinx.* (kotlinx coroutines/serialization JB-published artifacts)
+	"org.jetbrains.kotlin":            {}, // org.jetbrains.kotlin.* (kotlin compiler/std)
 	"org.springframework":   {},
 	"com.fasterxml.jackson": {},
 	"com.google.guava":      {},
