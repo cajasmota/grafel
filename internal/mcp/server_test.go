@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1173,20 +1174,25 @@ func TestPatterns_RecordErrorCases(t *testing.T) {
 	}
 }
 
-// TestPatterns_GammaActionsNotImplemented verifies that γ actions return
-// "not implemented yet" errors.
-func TestPatterns_GammaActionsNotImplemented(t *testing.T) {
+// TestPatterns_GammaActionsImplemented verifies that γ lifecycle actions are
+// now implemented (no longer stubs) and return errors only for missing required
+// args, not for "not implemented" reasons.
+func TestPatterns_GammaActionsImplemented(t *testing.T) {
 	srv, _ := makePatternsServer(t)
 
+	// Each γ action should now return a real error (missing required arg) —
+	// NOT the "not implemented yet — γ" message.
 	for _, action := range []string{"refine", "apply", "reject", "promote"} {
 		res := callTool(t, srv, "archigraph_patterns", map[string]any{
 			"action": action,
+			// Intentionally missing required args to trigger validation errors.
 		})
 		if !res.IsError {
-			t.Errorf("expected error for γ action %q, got: %s", action, resultText(res))
+			t.Errorf("expected validation error for %q with missing args, got success", action)
 		}
-		if !strings.Contains(resultText(res), "γ") {
-			t.Errorf("expected γ mention in error for action=%q, got: %s", action, resultText(res))
+		txt := resultText(res)
+		if strings.Contains(txt, "not implemented yet") {
+			t.Errorf("action %q still returns stub error: %s", action, txt)
 		}
 	}
 }
@@ -1263,5 +1269,567 @@ func TestPatterns_EdgeEmission(t *testing.T) {
 		if e["edge_kind"] != "EXEMPLAR" {
 			t.Errorf("expected edge_kind=EXEMPLAR, got: %v", e["edge_kind"])
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// γ lifecycle action tests
+// ---------------------------------------------------------------------------
+
+// absF returns absolute value of a float64 (local helper for γ tests).
+func absF(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// recordPattern is a helper that records a pattern and returns its id.
+func recordPattern(t *testing.T, srv *Server, nl string) string {
+	t.Helper()
+	res := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":   "record",
+		"trigger":  map[string]any{"natural_language": nl, "keywords": []any{"test"}},
+		"steps":    []any{"step A", "step B"},
+		"exemplars": []any{"myrepo::a1"},
+		"category": "code",
+	})
+	if res.IsError {
+		t.Fatalf("record error: %s", resultText(res))
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(resultText(res)), &out); err != nil {
+		t.Fatalf("unmarshal record: %v", err)
+	}
+	return out.ID
+}
+
+// TestPatterns_RefineAddRemoveStep verifies that refine add/remove step works and persists.
+func TestPatterns_RefineAddRemoveStep(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "refine step test pattern")
+
+	// Add a step.
+	refRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "refine",
+		"pattern_id": id,
+		"changes":    map[string]any{"add_step": "step C — added by refine"},
+	})
+	if refRes.IsError {
+		t.Fatalf("refine add_step error: %s", resultText(refRes))
+	}
+	var refOut struct {
+		Pattern map[string]any   `json:"pattern"`
+		EdgeChanges []map[string]any `json:"edge_changes"`
+	}
+	if err := json.Unmarshal([]byte(resultText(refRes)), &refOut); err != nil {
+		t.Fatalf("unmarshal refine: %v: %s", err, resultText(refRes))
+	}
+	steps, _ := refOut.Pattern["steps"].([]any)
+	if len(steps) != 3 {
+		t.Errorf("expected 3 steps after add_step, got %d: %v", len(steps), steps)
+	}
+	if steps[2] != "step C — added by refine" {
+		t.Errorf("unexpected step[2]: %v", steps[2])
+	}
+
+	// Remove step at index 0.
+	rem := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "refine",
+		"pattern_id": id,
+		"changes":    map[string]any{"remove_step_index": float64(0)},
+	})
+	if rem.IsError {
+		t.Fatalf("refine remove_step_index error: %s", resultText(rem))
+	}
+	var remOut struct {
+		Pattern map[string]any `json:"pattern"`
+	}
+	if err := json.Unmarshal([]byte(resultText(rem)), &remOut); err != nil {
+		t.Fatalf("unmarshal refine remove: %v", err)
+	}
+	stepsAfter, _ := remOut.Pattern["steps"].([]any)
+	if len(stepsAfter) != 2 {
+		t.Errorf("expected 2 steps after remove, got %d: %v", len(stepsAfter), stepsAfter)
+	}
+	// step A was removed; remaining: step B and the added step C.
+	if stepsAfter[0] != "step B" {
+		t.Errorf("expected step B at [0] after remove, got: %v", stepsAfter[0])
+	}
+
+	// Verify confidence unchanged (neutral).
+	if conf, ok := remOut.Pattern["confidence"].(float64); ok {
+		if conf != 0.4 { // initial confidence from New()
+			t.Errorf("refine should not change confidence: got %v", conf)
+		}
+	}
+}
+
+// TestPatterns_RefineAddRemoveExemplar verifies add/remove exemplar produces correct edge change records.
+func TestPatterns_RefineAddRemoveExemplar(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "refine exemplar test pattern")
+
+	// Add exemplar.
+	addRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "refine",
+		"pattern_id": id,
+		"changes":    map[string]any{"add_exemplar": "myrepo::a2"},
+	})
+	if addRes.IsError {
+		t.Fatalf("refine add_exemplar error: %s", resultText(addRes))
+	}
+	var addOut struct {
+		Pattern     map[string]any   `json:"pattern"`
+		EdgeChanges []map[string]any `json:"edge_changes"`
+	}
+	if err := json.Unmarshal([]byte(resultText(addRes)), &addOut); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(addOut.EdgeChanges) != 1 {
+		t.Errorf("expected 1 edge change for add_exemplar, got %d", len(addOut.EdgeChanges))
+	}
+	if addOut.EdgeChanges[0]["op"] != "add" || addOut.EdgeChanges[0]["edge_kind"] != "EXEMPLAR" {
+		t.Errorf("unexpected edge change: %v", addOut.EdgeChanges[0])
+	}
+	exemplars, _ := addOut.Pattern["exemplars"].([]any)
+	if len(exemplars) != 2 {
+		t.Errorf("expected 2 exemplars, got %d", len(exemplars))
+	}
+
+	// Remove exemplar.
+	remRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "refine",
+		"pattern_id": id,
+		"changes":    map[string]any{"remove_exemplar": "myrepo::a2"},
+	})
+	if remRes.IsError {
+		t.Fatalf("refine remove_exemplar error: %s", resultText(remRes))
+	}
+	var remOut struct {
+		EdgeChanges []map[string]any `json:"edge_changes"`
+	}
+	if err := json.Unmarshal([]byte(resultText(remRes)), &remOut); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(remOut.EdgeChanges) != 1 || remOut.EdgeChanges[0]["op"] != "remove" {
+		t.Errorf("expected 1 remove edge change, got: %v", remOut.EdgeChanges)
+	}
+}
+
+// TestPatterns_RefineChangeScope verifies partial scope update (fields not provided preserved).
+func TestPatterns_RefineChangeScope(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "refine scope test pattern")
+
+	// Start by setting a scope.
+	callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "refine",
+		"pattern_id": id,
+		"changes": map[string]any{
+			"change_scope": map[string]any{
+				"repos":     []any{"myrepo"},
+				"languages": []any{"go"},
+			},
+		},
+	})
+
+	// Now change only languages; repos must be preserved.
+	res := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "refine",
+		"pattern_id": id,
+		"changes": map[string]any{
+			"change_scope": map[string]any{
+				"languages": []any{"typescript"},
+			},
+		},
+	})
+	if res.IsError {
+		t.Fatalf("refine scope error: %s", resultText(res))
+	}
+	var out struct {
+		Pattern map[string]any `json:"pattern"`
+	}
+	if err := json.Unmarshal([]byte(resultText(res)), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	scope, _ := out.Pattern["scope"].(map[string]any)
+	langs, _ := scope["languages"].([]any)
+	repos, _ := scope["repos"].([]any)
+	if len(langs) != 1 || langs[0] != "typescript" {
+		t.Errorf("expected languages=[typescript], got %v", langs)
+	}
+	if len(repos) != 1 || repos[0] != "myrepo" {
+		t.Errorf("expected repos=[myrepo] preserved, got %v", repos)
+	}
+}
+
+// TestPatterns_ApplySuccess verifies confidence += 0.1, observations++, CREATED_BY edges.
+func TestPatterns_ApplySuccess(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "apply success test pattern")
+
+	res := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":           "apply",
+		"pattern_id":       id,
+		"success":          true,
+		"created_entities": []any{"myrepo::new-entity-1", "myrepo::new-entity-2"},
+	})
+	if res.IsError {
+		t.Fatalf("apply error: %s", resultText(res))
+	}
+	var out struct {
+		Pattern        map[string]any   `json:"pattern"`
+		CreatedByEdges []map[string]any `json:"created_by_edges"`
+		CreatedByCount int              `json:"created_by_count"`
+		ApplyCallID    string           `json:"apply_call_id"`
+	}
+	if err := json.Unmarshal([]byte(resultText(res)), &out); err != nil {
+		t.Fatalf("unmarshal: %v: %s", err, resultText(res))
+	}
+
+	// confidence 0.4 + 0.1 = 0.5
+	conf, _ := out.Pattern["confidence"].(float64)
+	if absF(conf-0.5) > 1e-9 {
+		t.Errorf("expected confidence=0.5, got %v", conf)
+	}
+	// observations == 1
+	obs, _ := out.Pattern["observations"].(float64)
+	if int(obs) != 1 {
+		t.Errorf("expected observations=1, got %v", obs)
+	}
+	// CREATED_BY edges
+	if out.CreatedByCount != 2 {
+		t.Errorf("expected 2 created_by edges, got %d", out.CreatedByCount)
+	}
+	if len(out.CreatedByEdges) != 2 {
+		t.Errorf("expected 2 edges in created_by_edges, got %d", len(out.CreatedByEdges))
+	}
+	for _, e := range out.CreatedByEdges {
+		if e["edge_kind"] != "CREATED_BY" {
+			t.Errorf("expected edge_kind=CREATED_BY, got %v", e["edge_kind"])
+		}
+		if e["success"] != true {
+			t.Errorf("expected success=true on edge, got %v", e["success"])
+		}
+		if e["apply_call_id"] == "" {
+			t.Errorf("expected non-empty apply_call_id")
+		}
+	}
+	if out.ApplyCallID == "" {
+		t.Errorf("expected non-empty apply_call_id in response")
+	}
+	// last_applied must be set
+	if la, ok := out.Pattern["last_applied"].(float64); !ok || la == 0 {
+		t.Errorf("expected last_applied to be set, got %v", out.Pattern["last_applied"])
+	}
+}
+
+// TestPatterns_ApplyFailure verifies confidence -= 0.15 (floor at 0.2).
+func TestPatterns_ApplyFailure(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "apply failure test pattern")
+
+	res := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "apply",
+		"pattern_id": id,
+		"success":    false,
+	})
+	if res.IsError {
+		t.Fatalf("apply error: %s", resultText(res))
+	}
+	var out struct {
+		Pattern map[string]any `json:"pattern"`
+	}
+	if err := json.Unmarshal([]byte(resultText(res)), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// confidence 0.4 - 0.15 = 0.25
+	conf, _ := out.Pattern["confidence"].(float64)
+	if absF(conf-0.25) > 1e-9 {
+		t.Errorf("expected confidence=0.25, got %v", conf)
+	}
+	// last_applied should NOT be set on failure
+	if la, _ := out.Pattern["last_applied"].(float64); la != 0 {
+		t.Errorf("last_applied should not be set on failure, got %v", la)
+	}
+}
+
+// TestPatterns_ApplyFloorNotBroken verifies repeated failures floor at 0.2.
+func TestPatterns_ApplyFloorNotBroken(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "apply floor test pattern")
+
+	for i := 0; i < 10; i++ {
+		res := callTool(t, srv, "archigraph_patterns", map[string]any{
+			"action":     "apply",
+			"pattern_id": id,
+			"success":    false,
+		})
+		if res.IsError {
+			t.Fatalf("apply iteration %d error: %s", i, resultText(res))
+		}
+	}
+	getRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "get",
+		"pattern_id": id,
+	})
+	if getRes.IsError {
+		t.Fatalf("get error: %s", resultText(getRes))
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(resultText(getRes)), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	conf, _ := out["confidence"].(float64)
+	if conf < 0.2 {
+		t.Errorf("confidence floor breached: got %v", conf)
+	}
+	if conf != 0.2 {
+		t.Errorf("expected confidence=0.2 (floor), got %v", conf)
+	}
+}
+
+// TestPatterns_RejectDelta verifies confidence -= 0.3 with set_to_zero=false.
+func TestPatterns_RejectDelta(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "reject delta test pattern")
+
+	res := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "reject",
+		"pattern_id": id,
+		"reason":     "outdated approach",
+	})
+	if res.IsError {
+		t.Fatalf("reject error: %s", resultText(res))
+	}
+	var out struct {
+		Pattern      map[string]any `json:"pattern"`
+		RejectReason string         `json:"reject_reason"`
+	}
+	if err := json.Unmarshal([]byte(resultText(res)), &out); err != nil {
+		t.Fatalf("unmarshal: %v: %s", err, resultText(res))
+	}
+	// confidence 0.4 - 0.3 = 0.2 (exactly at floor)
+	conf, _ := out.Pattern["confidence"].(float64)
+	if absF(conf-0.2) > 1e-9 {
+		t.Errorf("expected confidence=0.2, got %v", conf)
+	}
+	if out.RejectReason != "outdated approach" {
+		t.Errorf("expected reject_reason='outdated approach', got %q", out.RejectReason)
+	}
+	// reject_reason must persist on pattern too
+	if rr, _ := out.Pattern["reject_reason"].(string); rr != "outdated approach" {
+		t.Errorf("expected pattern.reject_reason to be set, got %q", rr)
+	}
+	if ts, _ := out.Pattern["reject_timestamp"].(float64); ts == 0 {
+		t.Errorf("expected reject_timestamp to be set")
+	}
+}
+
+// TestPatterns_RejectSetToZero verifies confidence is hard-set to 0 with set_to_zero=true.
+func TestPatterns_RejectSetToZero(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "reject zero test pattern")
+
+	res := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":       "reject",
+		"pattern_id":   id,
+		"reason":       "completely wrong",
+		"set_to_zero":  true,
+	})
+	if res.IsError {
+		t.Fatalf("reject error: %s", resultText(res))
+	}
+	var out struct {
+		Pattern map[string]any `json:"pattern"`
+	}
+	if err := json.Unmarshal([]byte(resultText(res)), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	conf, _ := out.Pattern["confidence"].(float64)
+	if conf != 0.0 {
+		t.Errorf("expected confidence=0 with set_to_zero=true, got %v", conf)
+	}
+}
+
+// TestPatterns_PromoteCandidate verifies is_candidate flips to false on promote.
+func TestPatterns_PromoteCandidate(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+
+	// Record as candidate.
+	recRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":       "record",
+		"trigger":      map[string]any{"natural_language": "promote test pattern"},
+		"steps":        []any{"do the thing"},
+		"exemplars":    []any{"myrepo::a1"},
+		"category":     "code",
+		"as_candidate": true,
+	})
+	if recRes.IsError {
+		t.Fatalf("record error: %s", resultText(recRes))
+	}
+	var recOut struct{ ID string `json:"id"` }
+	if err := json.Unmarshal([]byte(resultText(recRes)), &recOut); err != nil {
+		t.Fatalf("unmarshal record: %v", err)
+	}
+
+	// Promote.
+	promRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":        "promote",
+		"candidate_id":  recOut.ID,
+		"approval_note": "reviewed and approved in sprint S19",
+	})
+	if promRes.IsError {
+		t.Fatalf("promote error: %s", resultText(promRes))
+	}
+	var promOut map[string]any
+	if err := json.Unmarshal([]byte(resultText(promRes)), &promOut); err != nil {
+		t.Fatalf("unmarshal promote: %v: %s", err, resultText(promRes))
+	}
+	if isCand, _ := promOut["is_candidate"].(bool); isCand {
+		t.Errorf("expected is_candidate=false after promote, got true")
+	}
+	if note, _ := promOut["approval_note"].(string); note != "reviewed and approved in sprint S19" {
+		t.Errorf("expected approval_note to be set, got %q", note)
+	}
+	if lv, _ := promOut["last_validated"].(float64); lv == 0 {
+		t.Errorf("expected last_validated to be set after promote")
+	}
+}
+
+// TestPatterns_PromoteAlreadyApproved verifies error when promoting a non-candidate.
+func TestPatterns_PromoteAlreadyApproved(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+
+	// Record as candidate so we can promote.
+	recRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":       "record",
+		"trigger":      map[string]any{"natural_language": "promote twice test pattern"},
+		"steps":        []any{"do the thing"},
+		"exemplars":    []any{"myrepo::a1"},
+		"category":     "code",
+		"as_candidate": true,
+	})
+	if recRes.IsError {
+		t.Fatalf("record error: %s", resultText(recRes))
+	}
+	var recOut struct{ ID string `json:"id"` }
+	if err := json.Unmarshal([]byte(resultText(recRes)), &recOut); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// First promote: should succeed.
+	promRes1 := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":       "promote",
+		"candidate_id": recOut.ID,
+	})
+	if promRes1.IsError {
+		t.Fatalf("first promote should succeed: %s", resultText(promRes1))
+	}
+
+	// Second promote on already-approved pattern → error.
+	promRes2 := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":       "promote",
+		"candidate_id": recOut.ID,
+	})
+	if !promRes2.IsError {
+		t.Errorf("expected error promoting already-approved pattern, got: %s", resultText(promRes2))
+	}
+}
+
+// TestPatterns_GetByID verifies get action returns a pattern directly by id.
+func TestPatterns_GetByID(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "get by id test pattern")
+
+	getRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "get",
+		"pattern_id": id,
+	})
+	if getRes.IsError {
+		t.Fatalf("get error: %s", resultText(getRes))
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(resultText(getRes)), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out["id"] != id {
+		t.Errorf("expected id=%q, got %v", id, out["id"])
+	}
+	if steps, _ := out["steps"].([]any); len(steps) != 2 {
+		t.Errorf("expected 2 steps, got %v", steps)
+	}
+}
+
+// TestPatterns_GetNotFound verifies get returns error for unknown id.
+func TestPatterns_GetNotFound(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	res := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "get",
+		"pattern_id": "nonexistentdeadbeef",
+	})
+	if !res.IsError {
+		t.Errorf("expected error for unknown pattern id, got: %s", resultText(res))
+	}
+}
+
+// TestPatterns_ConcurrentRefineApply verifies no torn writes with concurrent refine+apply.
+func TestPatterns_ConcurrentRefineApply(t *testing.T) {
+	srv, _ := makePatternsServer(t)
+	id := recordPattern(t, srv, "concurrent access test pattern")
+
+	const goroutines = 8
+	errs := make(chan string, goroutines*2)
+	done := make(chan struct{})
+
+	// Half goroutines refine, half apply; all race on the same pattern id.
+	for i := 0; i < goroutines; i++ {
+		i := i
+		go func() {
+			defer func() { done <- struct{}{} }()
+			var res *mcpapi.CallToolResult
+			if i%2 == 0 {
+				res = callTool(t, srv, "archigraph_patterns", map[string]any{
+					"action":     "refine",
+					"pattern_id": id,
+					"changes":    map[string]any{"add_step": fmt.Sprintf("concurrent step %d", i)},
+				})
+			} else {
+				res = callTool(t, srv, "archigraph_patterns", map[string]any{
+					"action":     "apply",
+					"pattern_id": id,
+					"success":    i%4 == 1,
+				})
+			}
+			if res.IsError {
+				errs <- resultText(res)
+			}
+		}()
+	}
+	for i := 0; i < goroutines; i++ {
+		<-done
+	}
+	close(errs)
+	for e := range errs {
+		t.Errorf("concurrent op error: %s", e)
+	}
+	// After all goroutines, pattern must still be loadable and valid.
+	getRes := callTool(t, srv, "archigraph_patterns", map[string]any{
+		"action":     "get",
+		"pattern_id": id,
+	})
+	if getRes.IsError {
+		t.Errorf("get after concurrent ops failed: %s", resultText(getRes))
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(resultText(getRes)), &out); err != nil {
+		t.Errorf("unmarshal after concurrent ops: %v", err)
+	}
+	// Confidence must be within valid bounds.
+	if conf, _ := out["confidence"].(float64); conf < 0.0 || conf > 1.0 {
+		t.Errorf("confidence out of bounds after concurrent ops: %v", conf)
 	}
 }
