@@ -422,6 +422,296 @@ func TestClassifyViewSetParent(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Issue #699c — source_handler + synthetic SCOPE.Operation entity tests
+// ---------------------------------------------------------------------------
+
+// TestApplyDjangoDRFRoutes_SourceHandlerSet verifies that each http_endpoint
+// synthetic emitted for a CRUD method carries source_handler =
+// "SCOPE.Operation:<ViewSet>.<method>" so ResolveHTTPEndpointHandlers can
+// emit an IMPLEMENTS edge. The ANY catch-all must NOT carry source_handler
+// (it has no single owning method).
+func TestApplyDjangoDRFRoutes_SourceHandlerSet(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import UserViewSet
+
+router = routers.DefaultRouter()
+router.register(r"users", UserViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class UserViewSet(ModelViewSet):
+    pass
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	wantHandlers := map[string]string{
+		"http:GET:/users":         "SCOPE.Operation:UserViewSet.list",
+		"http:POST:/users":        "SCOPE.Operation:UserViewSet.create",
+		"http:GET:/users/{pk}":    "SCOPE.Operation:UserViewSet.retrieve",
+		"http:PUT:/users/{pk}":    "SCOPE.Operation:UserViewSet.update",
+		"http:PATCH:/users/{pk}":  "SCOPE.Operation:UserViewSet.partial_update",
+		"http:DELETE:/users/{pk}": "SCOPE.Operation:UserViewSet.destroy",
+	}
+
+	for _, r := range got {
+		if r.Kind != httpEndpointKind {
+			continue
+		}
+		want, ok := wantHandlers[r.ID]
+		if !ok {
+			continue
+		}
+		got := r.Properties["source_handler"]
+		if got != want {
+			t.Errorf("entity %q: source_handler=%q want %q", r.ID, got, want)
+		}
+	}
+
+	// ANY catch-all must NOT have source_handler.
+	for _, r := range got {
+		if r.Kind != httpEndpointKind {
+			continue
+		}
+		if r.Properties["verb"] == "ANY" && r.Properties["source_handler"] != "" {
+			t.Errorf("ANY catch-all entity %q has unexpected source_handler=%q",
+				r.ID, r.Properties["source_handler"])
+		}
+	}
+}
+
+// TestApplyDjangoDRFRoutes_SyntheticMethodEntitiesEmittedForInherited verifies
+// that when a ModelViewSet does NOT explicitly define a CRUD method, a
+// synthetic SCOPE.Operation entity is emitted for that method so the
+// source_handler resolver has a target to bind.
+func TestApplyDjangoDRFRoutes_SyntheticMethodEntitiesEmittedForInherited(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import ArticleViewSet
+
+router = routers.DefaultRouter()
+router.register(r"articles", ArticleViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class ArticleViewSet(ModelViewSet):
+    # No methods defined — all 6 are inherited from ModelViewSet.
+    queryset = None
+    serializer_class = None
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	// All six CRUD method entities should be emitted as synthetics.
+	wantMethodNames := []string{
+		"ArticleViewSet.list",
+		"ArticleViewSet.create",
+		"ArticleViewSet.retrieve",
+		"ArticleViewSet.update",
+		"ArticleViewSet.partial_update",
+		"ArticleViewSet.destroy",
+	}
+
+	nameSet := make(map[string]bool)
+	for _, r := range got {
+		if r.Kind == "SCOPE.Operation" {
+			nameSet[r.Name] = true
+		}
+	}
+
+	for _, want := range wantMethodNames {
+		if !nameSet[want] {
+			t.Errorf("missing synthetic SCOPE.Operation entity for %q", want)
+		}
+	}
+}
+
+// TestApplyDjangoDRFRoutes_NoSyntheticForExplicitMethods verifies that when
+// a ViewSet explicitly defines a CRUD method, NO duplicate synthetic entity
+// is emitted (the Python extractor will have already emitted a real one).
+func TestApplyDjangoDRFRoutes_NoSyntheticForExplicitMethods(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import PostViewSet
+
+router = routers.DefaultRouter()
+router.register(r"posts", PostViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class PostViewSet(ModelViewSet):
+    def list(self, request):
+        return super().list(request)
+    def retrieve(self, request, pk=None):
+        return super().retrieve(request, pk=pk)
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	// list and retrieve are explicitly defined — no synthetic entity expected.
+	explicitMethods := map[string]bool{
+		"PostViewSet.list":     true,
+		"PostViewSet.retrieve": true,
+	}
+
+	for _, r := range got {
+		if r.Kind == "SCOPE.Operation" && explicitMethods[r.Name] {
+			t.Errorf("unexpected synthetic SCOPE.Operation entity for explicitly-defined method %q", r.Name)
+		}
+	}
+
+	// create, update, partial_update, destroy are inherited — synthetics expected.
+	inheritedMethods := []string{
+		"PostViewSet.create",
+		"PostViewSet.update",
+		"PostViewSet.partial_update",
+		"PostViewSet.destroy",
+	}
+	nameSet := make(map[string]bool)
+	for _, r := range got {
+		if r.Kind == "SCOPE.Operation" {
+			nameSet[r.Name] = true
+		}
+	}
+	for _, want := range inheritedMethods {
+		if !nameSet[want] {
+			t.Errorf("missing synthetic SCOPE.Operation entity for inherited method %q", want)
+		}
+	}
+}
+
+// TestApplyDjangoDRFRoutes_ReadOnlyViewSetSyntheticMethods verifies that
+// ReadOnlyModelViewSet emits synthetics only for list + retrieve.
+func TestApplyDjangoDRFRoutes_ReadOnlyViewSetSyntheticMethods(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import ReadOnlyVS
+
+router = routers.DefaultRouter()
+router.register(r"items", ReadOnlyVS)
+`,
+		"views.py": `
+from rest_framework.viewsets import ReadOnlyModelViewSet
+
+class ReadOnlyVS(ReadOnlyModelViewSet):
+    pass
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	nameSet := make(map[string]bool)
+	for _, r := range got {
+		if r.Kind == "SCOPE.Operation" {
+			nameSet[r.Name] = true
+		}
+	}
+
+	// Only list and retrieve should be emitted for ReadOnly.
+	if !nameSet["ReadOnlyVS.list"] {
+		t.Error("missing ReadOnlyVS.list synthetic entity")
+	}
+	if !nameSet["ReadOnlyVS.retrieve"] {
+		t.Error("missing ReadOnlyVS.retrieve synthetic entity")
+	}
+
+	// Mutable methods must NOT be emitted.
+	for _, unwanted := range []string{"ReadOnlyVS.create", "ReadOnlyVS.update", "ReadOnlyVS.destroy"} {
+		if nameSet[unwanted] {
+			t.Errorf("unexpected synthetic entity for ReadOnly-unsupported method %q", unwanted)
+		}
+	}
+}
+
+// TestApplyDjangoDRFRoutes_ActionSourceHandlerSet verifies that @action
+// endpoints also receive source_handler pointing to the action method name.
+func TestApplyDjangoDRFRoutes_ActionSourceHandlerSet(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import ContractViewSet
+
+router = routers.DefaultRouter()
+router.register(r"contracts", ContractViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import action
+
+class ContractViewSet(ModelViewSet):
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        pass
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	var cancelEndpoint *types.EntityRecord
+	for i := range got {
+		if got[i].Kind == httpEndpointKind && got[i].ID == "http:POST:/contracts/{pk}/cancel" {
+			cancelEndpoint = &got[i]
+			break
+		}
+	}
+	if cancelEndpoint == nil {
+		t.Fatal("missing http:POST:/contracts/{pk}/cancel entity")
+	}
+	wantHandler := "SCOPE.Operation:ContractViewSet.cancel"
+	if got := cancelEndpoint.Properties["source_handler"]; got != wantHandler {
+		t.Errorf("cancel action source_handler=%q want %q", got, wantHandler)
+	}
+}
+
+// TestApplyDjangoDRFRoutes_NoDuplicateSyntheticEntities verifies that when a
+// ViewSet is registered on multiple prefixes (bare + parent-include), only ONE
+// set of synthetic method entities is emitted (not one per prefix).
+func TestApplyDjangoDRFRoutes_NoDuplicateSyntheticEntities(t *testing.T) {
+	files := fileMap{
+		"myproject/urls.py": `
+from django.urls import path, include
+urlpatterns = [
+    path("api/v1/", include("core.routers")),
+]
+`,
+		"core/routers.py": `
+from rest_framework import routers
+from core.views import UserViewSet
+
+router = routers.DefaultRouter()
+router.register(r"users", UserViewSet)
+`,
+		"core/views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class UserViewSet(ModelViewSet):
+    pass
+`,
+	}
+	got := ApplyDjangoDRFRoutes(
+		[]string{"myproject/urls.py", "core/routers.py", "core/views.py"},
+		files.reader,
+	)
+
+	// Count synthetic SCOPE.Operation entities for UserViewSet.list.
+	var listCount int
+	for _, r := range got {
+		if r.Kind == "SCOPE.Operation" && r.Name == "UserViewSet.list" {
+			listCount++
+		}
+	}
+	if listCount != 1 {
+		t.Errorf("UserViewSet.list synthetic entity count=%d want 1", listCount)
+	}
+}
+
 func equalStringSlicesDRF(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

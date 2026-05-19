@@ -120,6 +120,15 @@ var drfRouterVarDeclRe = regexp.MustCompile(
 	`(\w+)\s*=\s*\w*\.?(?:Default|Simple|Extended|Nested(?:Simple|Default)?)Router\s*\(`,
 )
 
+// drfExplicitMethodRe detects explicit CRUD method definitions in a ViewSet
+// class body. Matches `def <method>(self` where <method> is one of the six
+// standard DRF CRUD method names. Used to distinguish methods that are
+// explicitly defined (handler entity already emitted by the Python extractor)
+// from inherited methods (no entity exists — we must emit a synthetic one).
+var drfExplicitMethodRe = regexp.MustCompile(
+	`\bdef\s+(list|create|retrieve|update|partial_update|destroy)\s*\(\s*self`,
+)
+
 // drfViewSetClass describes a ViewSet class located on disk and parsed for
 // its CRUD method support + @action endpoints + lookup_field override.
 type drfViewSetClass struct {
@@ -127,6 +136,11 @@ type drfViewSetClass struct {
 	// derived from its parent classes (ModelViewSet etc.). Keys are
 	// "list", "create", "retrieve", "update", "partial_update", "destroy".
 	crudMethods map[string]bool
+	// explicitMethods is the subset of crudMethods that are directly defined
+	// in the ViewSet class body (not merely inherited). When a method is in
+	// crudMethods but NOT in explicitMethods, we emit a synthetic
+	// SCOPE.Operation entity for it so source_handler can resolve.
+	explicitMethods map[string]bool
 	// lookupField is the placeholder name to use for detail routes
 	// (default "pk").
 	lookupField string
@@ -175,6 +189,12 @@ func ApplyDjangoDRFRoutes(
 	var out []types.EntityRecord
 	seen := map[string]bool{}
 
+	// seenMethods tracks (viewSetFile, viewSet.method) pairs for which we
+	// have already emitted a synthetic SCOPE.Operation entity. Prevents
+	// duplicate synthetic method entities when a ViewSet is registered on
+	// multiple prefixes (e.g. the bare-prefix + parent-include variants).
+	seenMethods := map[string]bool{}
+
 	emit := func(verb, canonical, sourceFile, viewSet, methodName string) {
 		if canonical == "" || canonical == "/" {
 			return
@@ -185,18 +205,20 @@ func ApplyDjangoDRFRoutes(
 		}
 		seen[id] = true
 
-		// NOTE: we deliberately do NOT set the `source_handler` property
-		// here. The Phase-2 resolver (`ResolveHTTPEndpointHandlers`) drops
-		// any synthetic whose `source_handler` does not resolve against
-		// the merged entity index — and the ViewSet method entity lives
-		// in a different file with a different name shape than our
-		// synthetic refers to. Leaving it unset routes the synthetic
-		// through the `NoHandlerProp` keep-path of the resolver, so all
-		// the expanded routes survive and can be matched by the
-		// cross-repo HTTP linker via their canonical Name.
-		// We record the ViewSet method in `drf_view_method` instead so
-		// downstream consumers retain the link without going through the
-		// resolver.
+		// Issue #699c — set source_handler so the Phase-2 resolver
+		// (ResolveHTTPEndpointHandlers) can emit an IMPLEMENTS edge from the
+		// ViewSet method entity to this synthetic. The resolver's cross-file
+		// globalIdx fallback (PR #753) finds the handler even though it lives
+		// in a different file than the urlconf synthetic.
+		//
+		// When the CRUD method is inherited (not explicitly defined in the
+		// ViewSet class body), emitViewSetMethodEntities emits a synthetic
+		// SCOPE.Operation entity for it BEFORE the http_endpoint synthetics
+		// are added to `out`. The resolver therefore sees a candidate in the
+		// merged entity index and resolves successfully.
+		//
+		// For the ANY-verb detail catch-all (methodName == ""), we skip
+		// source_handler because ANY has no single owning handler method.
 		props := map[string]string{
 			"verb":         strings.ToUpper(verb),
 			"path":         canonical,
@@ -205,9 +227,13 @@ func ApplyDjangoDRFRoutes(
 		}
 		if viewSet != "" {
 			if methodName != "" {
-				props["drf_view_method"] = viewSet + "." + methodName
+				qualifiedMethod := viewSet + "." + methodName
+				props["drf_view_method"] = qualifiedMethod
+				props["source_handler"] = "SCOPE.Operation:" + qualifiedMethod
 			} else {
 				props["drf_view_method"] = viewSet
+				// ANY catch-all: no single handler — leave source_handler unset
+				// so the resolver takes the NoHandlerProp keep-path.
 			}
 		}
 
@@ -301,6 +327,23 @@ func ApplyDjangoDRFRoutes(
 			// Compose the prefix with any parent include() prefix and any
 			// nested-router parent prefix the router was attached to.
 			composedPrefixes := expandRegisterPrefixes(prefix, parentPrefixes, nestedPrefixes, src)
+
+			// Issue #699c — emit synthetic SCOPE.Operation entities for each
+			// CRUD method that the ViewSet exposes via inheritance but does NOT
+			// explicitly define. Without these entities, source_handler cannot
+			// resolve against the merged entity index and the http_endpoint
+			// synthetics would remain orphaned. emitViewSetMethodEntities must
+			// run BEFORE emitCRUDFamily so the method entities appear in `out`
+			// ahead of the http_endpoint synthetics (first-writer-wins dedup).
+			//
+			// We use the ViewSet's source file when available; fall back to the
+			// urlconf file. seenMethods prevents duplicate emission when the
+			// same ViewSet is registered on multiple prefixes.
+			handlerFile := viewFile
+			if handlerFile == "" {
+				handlerFile = relPath
+			}
+			emitViewSetMethodEntities(&out, seenMethods, viewSetName, vc, handlerFile)
 
 			for _, fullPrefix := range composedPrefixes {
 				emitCRUDFamily(emit, fullPrefix, vc, relPath, viewSetName)
@@ -542,6 +585,71 @@ func emitActionRoutes(
 	}
 }
 
+// emitViewSetMethodEntities emits synthetic SCOPE.Operation entities for each
+// CRUD method that the ViewSet exposes via inheritance but does NOT explicitly
+// define in its class body (i.e. methods in crudMethods but NOT in
+// explicitMethods). These synthetic entities give ResolveHTTPEndpointHandlers
+// a target for the source_handler = "SCOPE.Operation:ViewSet.method" property
+// set on http_endpoint synthetics, so it can emit IMPLEMENTS edges and resolve
+// the orphan.
+//
+// Without these, a `ModelViewSet` with no overridden methods would have 6
+// http_endpoint entities with source_handler set, but none of the CRUD method
+// entities in the index (the Python extractor only emits methods it actually
+// parses from the file). The resolver would drop all 6 synthetics as
+// HandlerDropped.
+//
+// Design notes:
+//   - Uses kind=SCOPE.Operation, subtype=method — identical to what the Python
+//     extractor emits for explicitly-defined ViewSet methods.
+//   - Name = "<ViewSet>.<method>" — the resolver's globalIdx key (kind, name)
+//     will find this entity when looking up source_handler references.
+//   - SourceFile = the ViewSet's source file (or the urlconf file as fallback).
+//   - QualityScore = 0.7 (below extractor-emitted entities at 1.0, above the
+//     http_endpoint synthetic at 0.8) so dedup-by-ID prefers the real entity
+//     if the extractor later emits one for the same method.
+//   - seenMethods prevents duplicate emission when the same ViewSet is
+//     registered on multiple URL prefixes (bare + parent-include variants).
+func emitViewSetMethodEntities(
+	out *[]types.EntityRecord,
+	seenMethods map[string]bool,
+	viewSetName string,
+	vc drfViewSetClass,
+	sourceFile string,
+) {
+	for method := range vc.crudMethods {
+		if vc.explicitMethods[method] {
+			// The Python extractor already emitted a real SCOPE.Operation
+			// entity for this method — no synthetic needed.
+			continue
+		}
+		key := sourceFile + "\x00" + viewSetName + "." + method
+		if seenMethods[key] {
+			continue
+		}
+		seenMethods[key] = true
+		qualifiedName := viewSetName + "." + method
+		*out = append(*out, types.EntityRecord{
+			// ID is left blank — stampEntityIDs in the indexer pipeline
+			// will compute it from (repoTag, Kind, Name, SourceFile).
+			Name:               qualifiedName,
+			Kind:               "SCOPE.Operation",
+			Subtype:            "method",
+			Language:           "python",
+			SourceFile:         sourceFile,
+			Signature:          "def " + method + "(self, request, *args, **kwargs)",
+			EnrichmentRequired: false,
+			QualityScore:       0.7,
+			Properties: map[string]string{
+				"pattern_type":      "drf_viewset_implicit_method",
+				"viewset_class":     viewSetName,
+				"inherited_from":    "rest_framework",
+				"drf_method_origin": method,
+			},
+		})
+	}
+}
+
 // canonicalDjango is a small convenience wrapper around
 // httproutes.Canonicalize tuned for the Django framework.
 func canonicalDjango(raw string) string {
@@ -721,6 +829,17 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 		out.lookupField = m[1]
 	}
 	out.actions = extractActions(classBody)
+
+	// Issue #699c — detect which CRUD methods are explicitly defined in
+	// the class body. Only methods with an explicit `def <name>(self` in
+	// the body are marked explicit; all others are inherited from a mixin
+	// or parent class and need a synthetic SCOPE.Operation entity.
+	out.explicitMethods = make(map[string]bool)
+	for _, m := range drfExplicitMethodRe.FindAllStringSubmatch(classBody, -1) {
+		if len(m) >= 2 {
+			out.explicitMethods[m[1]] = true
+		}
+	}
 	return out
 }
 
