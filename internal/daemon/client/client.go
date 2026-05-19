@@ -74,6 +74,13 @@ func (c *Client) Close() error {
 	return c.rpc.Close()
 }
 
+// SocketPath returns the UDS path this client is connected to. Used by
+// callers that need to open a second connection (e.g. for progress polling
+// while a long Rebuild call blocks the primary connection).
+func (c *Client) SocketPath() string {
+	return c.socketPath
+}
+
 // Ping returns the daemon's reported version. Used by `archigraph status`
 // as a liveness probe before calling Status (which is allowed to fail
 // in informative ways).
@@ -134,4 +141,26 @@ func (c *Client) QualityAudit(args proto.QualityAuditRequest) (proto.QualityAudi
 		return proto.QualityAuditReply{}, err
 	}
 	return reply, nil
+}
+
+// IndexProgress polls the daemon for progress on an in-flight rebuild
+// identified by the given token (issued in RebuildArgs.ProgressToken).
+// Returns ErrTokenNotFound (wrapped) when the session has expired or the
+// token was never registered; Done=true when the rebuild has finished.
+func (c *Client) IndexProgress(token string) (proto.IndexProgressReply, error) {
+	var reply proto.IndexProgressReply
+	if err := c.rpc.Call(proto.ServiceName+".IndexProgress",
+		proto.IndexProgressArgs{Token: token}, &reply); err != nil {
+		return proto.IndexProgressReply{}, err
+	}
+	return reply, nil
+}
+
+// DialProgress returns a second Client connection that is used exclusively
+// for polling progress while the primary connection is blocked on a long
+// Rebuild call. Progress polls need their own connection because net/rpc
+// multiplexes calls sequentially over a single connection — a blocked
+// Rebuild call would starve progress polls on the same Client.
+func DialProgress(socketPath string) (*Client, error) {
+	return DialPath(socketPath)
 }
