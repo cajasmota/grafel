@@ -50,6 +50,12 @@ const (
 	MethodStringResolved     = "string+resolved"
 )
 
+// (Re-declared in http_pass.go; this comment is the public anchor.)
+//
+// MethodHTTP identifies cross-repo HTTP route ↔ fetch links emitted by
+// runHTTPPass — see http_pass.go for the contract. Declared in the
+// pass file so the constant lives next to its consumer.
+
 // Link is one cross-repo edge.
 type Link struct {
 	ID              string     `json:"id"`
@@ -215,6 +221,16 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 		return nil, fmt.Errorf("string pass: %w", err)
 	}
 	res.Results = append(res.Results, p3)
+
+	// P4 — cross-repo HTTP route ↔ fetch matcher (this pass). Runs
+	// after the structural / label / string passes so that its
+	// method-segregated entries are rewritten cleanly without
+	// disturbing earlier output.
+	p4, err := runHTTPPass(graphs, paths, rejects)
+	if err != nil {
+		return nil, fmt.Errorf("http pass: %w", err)
+	}
+	res.Results = append(res.Results, p4)
 
 	for _, r := range res.Results {
 		res.TotalLinks += r.LinksAdded
