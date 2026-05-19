@@ -802,6 +802,21 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 		case "shorthand_property_identifier_pattern":
 			name := x.nodeText(p)
 			x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { %s }", sigPrefix, name))
+		case "object_assignment_pattern":
+			// `{ foo = defaultValue }` — tree-sitter wraps the
+			// shorthand identifier in an object_assignment_pattern when
+			// a default value is present. The bound local is the LHS;
+			// we ignore the RHS default-value expression for entity
+			// emission (#710 — destructure-with-defaults).
+			if left := p.ChildByFieldName("left"); left != nil {
+				switch left.Type() {
+				case "shorthand_property_identifier_pattern", "identifier":
+					name := x.nodeText(left)
+					x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { %s = ... }", sigPrefix, name))
+				default:
+					walk(left)
+				}
+			}
 		case "pair_pattern":
 			// `{ key: value }` — value can be identifier, nested object_pattern,
 			// array_pattern, or assignment_pattern (default value).

@@ -471,3 +471,256 @@ function use() { return A; }
 		t.Errorf("expected 1 REFERENCES from use, got %d", n)
 	}
 }
+
+// =============================================================================
+// Issue #710 — Same-file destructure binding REFERENCES.
+//
+// Destructured bindings (const { foo } = useHook()) emit a const_destructure
+// SCOPE.Component entity per local name. Same-file uses of that name must
+// produce a REFERENCES edge from the enclosing function frame to the
+// destructure entity, including when the use is in call position (CALLS
+// edges target Operation-kinded callees only, so the const_destructure
+// entity stays orphaned without an additive REFERENCES edge).
+// =============================================================================
+
+// anySameFileReferenceTo reports whether any entity in the slice has a
+// REFERENCES edge whose ToID trails with `:targetName`. Used when the
+// emitter attributes the edge to whichever same-file frame (parent
+// component or nested arrow-bound const) wraps the usage — what we care
+// about for orphan reduction is that SOMETHING in the file references
+// the destructure binding entity.
+func anySameFileReferenceTo(ents []types.EntityRecord, targetName string) bool {
+	suffix := ":" + targetName
+	for i := range ents {
+		for _, r := range ents[i].Relationships {
+			if r.Kind == "REFERENCES" && strings.HasSuffix(r.ToID, suffix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestReferences_DestructureBinding_SimpleObject — `const { foo } = obj`
+// then `foo()` inside the same function emits REFERENCES to foo. The
+// attribution lands on the nearest enclosing function-like frame; nested
+// arrow bound to a const wins over the outer component.
+func TestReferences_DestructureBinding_SimpleObject(t *testing.T) {
+	src := `function ReviewTabContent() {
+  const { onConfirmLeave } = useReviewLeaveGuard();
+  const handleClose = () => onConfirmLeave();
+  return handleClose;
+}
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJS(t, src, "typescript", tree)
+
+	if !anySameFileReferenceTo(ents, "onConfirmLeave") {
+		t.Errorf("expected SOME same-file REFERENCES edge to onConfirmLeave; got from ReviewTabContent=%v, from handleClose=%v",
+			referencesFrom(ents, "ReviewTabContent"),
+			referencesFrom(ents, "handleClose"))
+	}
+}
+
+// TestReferences_DestructureBinding_Renamed — `const { foo: bar } = obj`
+// renames the property; the local binding name is bar. Same-file uses of
+// bar must REFERENCES the bar entity (not foo).
+func TestReferences_DestructureBinding_Renamed(t *testing.T) {
+	src := `function comp() {
+  const { mutate: createAddress } = useCreateAddress();
+  const onSave = () => createAddress();
+  return onSave;
+}
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJS(t, src, "typescript", tree)
+
+	if !hasReferencesTo(ents, "comp", "createAddress") {
+		t.Errorf("expected REFERENCES comp->createAddress; got %v",
+			referencesFrom(ents, "comp"))
+	}
+	// Negative: should NOT bind to the property key 'mutate'.
+	for _, id := range referencesFrom(ents, "comp") {
+		if strings.HasSuffix(id, ":mutate") {
+			t.Errorf("unexpected REFERENCES to property key 'mutate': %s", id)
+		}
+	}
+}
+
+// TestReferences_DestructureBinding_WithDefault — `const { foo = "x" } = obj`
+// still binds foo; default value should not prevent REFERENCES emission.
+func TestReferences_DestructureBinding_WithDefault(t *testing.T) {
+	src := `function comp() {
+  const { onConfirm = noop } = props;
+  const fire = () => onConfirm();
+  return fire;
+}
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJS(t, src, "typescript", tree)
+
+	if !anySameFileReferenceTo(ents, "onConfirm") {
+		t.Errorf("expected SOME same-file REFERENCES edge to onConfirm; got from comp=%v, from fire=%v",
+			referencesFrom(ents, "comp"), referencesFrom(ents, "fire"))
+	}
+}
+
+// TestReferences_DestructureBinding_ArrayPattern — `const [first, second] = arr`
+// emits one entity per identifier; same-file uses must REFERENCES the
+// binding entity.
+func TestReferences_DestructureBinding_ArrayPattern(t *testing.T) {
+	src := `function comp() {
+  const [first, second] = useState(0);
+  const show = () => first + second;
+  return show;
+}
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJS(t, src, "typescript", tree)
+
+	if !hasReferencesTo(ents, "comp", "first") {
+		t.Errorf("expected REFERENCES comp->first; got %v",
+			referencesFrom(ents, "comp"))
+	}
+	if !hasReferencesTo(ents, "comp", "second") {
+		t.Errorf("expected REFERENCES comp->second; got %v",
+			referencesFrom(ents, "comp"))
+	}
+}
+
+// TestReferences_DestructureBinding_CallPosition — the destructured
+// binding is invoked as a function. CALLS would target an Operation
+// (which a SCOPE.Component const_destructure is not); REFERENCES must
+// still fire so the binding entity has an inbound edge.
+func TestReferences_DestructureBinding_CallPosition(t *testing.T) {
+	src := `function ReviewTabContent() {
+  const { onConfirmLeave } = useReviewLeaveGuard();
+  return <Foo onConfirm={() => onConfirmLeave(clearChecks)} />;
+}
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJS(t, src, "typescript", tree)
+
+	if !hasReferencesTo(ents, "ReviewTabContent", "onConfirmLeave") {
+		t.Errorf("expected REFERENCES ReviewTabContent->onConfirmLeave (call position); got %v",
+			referencesFrom(ents, "ReviewTabContent"))
+	}
+}
+
+// =============================================================================
+// Issue #711 — Define-then-export icon pattern.
+//
+// `const X = createIcon(...); export { X };` produces a const_call entity
+// for X but no inbound edge (X is never referenced inside the file; the
+// export clause is a separate statement). Emit REFERENCES from the file
+// entity to each named specifier whose binding is a same-file symbol.
+// =============================================================================
+
+// TestReferences_ExportClause_DefineThenExport — define-then-export
+// emits REFERENCES from the file entity to the named const.
+func TestReferences_ExportClause_DefineThenExport(t *testing.T) {
+	src := `const FlamingoIcon = createIcon({ viewBox: "0 0 24 24" });
+const HippoIcon = createIcon({ viewBox: "0 0 24 24" });
+export { FlamingoIcon, HippoIcon };
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJSPath(t, src, "typescript", tree, "icons.tsx")
+
+	// File entity carries the REFERENCES edges for export clauses.
+	file := findByNameRel(ents, "icons.tsx")
+	if file == nil {
+		t.Fatalf("file entity not found")
+	}
+	got := map[string]bool{}
+	for _, r := range file.Relationships {
+		if r.Kind == "REFERENCES" {
+			for _, name := range []string{"FlamingoIcon", "HippoIcon"} {
+				if strings.HasSuffix(r.ToID, ":"+name) {
+					got[name] = true
+				}
+			}
+		}
+	}
+	if !got["FlamingoIcon"] {
+		t.Errorf("expected REFERENCES file->FlamingoIcon; got %+v", file.Relationships)
+	}
+	if !got["HippoIcon"] {
+		t.Errorf("expected REFERENCES file->HippoIcon; got %+v", file.Relationships)
+	}
+}
+
+// TestReferences_ExportClause_RenamedExport — `export { X as Y }` binds
+// to the local name X (the `name` field of export_specifier).
+func TestReferences_ExportClause_RenamedExport(t *testing.T) {
+	src := `const FlamingoIcon = createIcon({});
+export { FlamingoIcon as Flamingo };
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJSPath(t, src, "typescript", tree, "icons.tsx")
+
+	file := findByNameRel(ents, "icons.tsx")
+	if file == nil {
+		t.Fatalf("file entity not found")
+	}
+	found := false
+	for _, r := range file.Relationships {
+		if r.Kind == "REFERENCES" && strings.HasSuffix(r.ToID, ":FlamingoIcon") {
+			found = true
+		}
+		if r.Kind == "REFERENCES" && strings.HasSuffix(r.ToID, ":Flamingo") {
+			t.Errorf("unexpected REFERENCES to alias name Flamingo: %s", r.ToID)
+		}
+	}
+	if !found {
+		t.Errorf("expected REFERENCES file->FlamingoIcon for `export { FlamingoIcon as Flamingo }`; got %+v", file.Relationships)
+	}
+}
+
+// TestReferences_ExportClause_MultipleSpecifiers — a single export
+// statement with N specifiers emits REFERENCES to each named const.
+func TestReferences_ExportClause_MultipleSpecifiers(t *testing.T) {
+	src := `const A = createIcon({});
+const B = createIcon({});
+const C = createIcon({});
+export { A, B, C };
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJSPath(t, src, "typescript", tree, "icons.tsx")
+
+	file := findByNameRel(ents, "icons.tsx")
+	if file == nil {
+		t.Fatalf("file entity not found")
+	}
+	for _, name := range []string{"A", "B", "C"} {
+		found := false
+		for _, r := range file.Relationships {
+			if r.Kind == "REFERENCES" && strings.HasSuffix(r.ToID, ":"+name) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected REFERENCES file->%s; got %+v", name, file.Relationships)
+		}
+	}
+}
+
+// TestReferences_ExportClause_ReExportSkipped — `export { X } from './baz'`
+// is a re-export forwarding from another module; X is NOT a same-file
+// declaration and MUST NOT receive a REFERENCES edge from the file.
+func TestReferences_ExportClause_ReExportSkipped(t *testing.T) {
+	src := `export { Foo } from './baz';
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJSPath(t, src, "typescript", tree, "barrel.ts")
+
+	file := findByNameRel(ents, "barrel.ts")
+	if file == nil {
+		t.Fatalf("file entity not found")
+	}
+	for _, r := range file.Relationships {
+		if r.Kind == "REFERENCES" && strings.HasSuffix(r.ToID, ":Foo") {
+			t.Errorf("unexpected REFERENCES edge for re-export `export { Foo } from './baz'`: %s", r.ToID)
+		}
+	}
+}

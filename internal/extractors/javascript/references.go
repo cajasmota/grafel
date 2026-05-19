@@ -109,8 +109,11 @@ type fileSymbol struct {
 // emitReferences is the second-pass entry point invoked from Extract
 // AFTER x.walk() has populated x.entities. It (1) builds the file-scope
 // symbol table from emitted entities, (2) walks every function-like
-// body in the tree, and (3) appends REFERENCES edges to the enclosing
-// function entity. Mutates x.entities in place.
+// body in the tree appending REFERENCES edges to the enclosing
+// function entity, and (3) processes `export { ... }` statements,
+// emitting REFERENCES edges from the file entity to each named const
+// (issue #711 — define-then-export pattern). Mutates x.entities in
+// place.
 //
 // Safe to call with an empty entity slice — degenerates to a no-op. Safe
 // to call when the file has no function bodies — degenerates to a no-op.
@@ -131,12 +134,22 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 	// x.entities. We need it to append REFERENCES edges to the
 	// enclosing function entity below.
 	entIdxByName := make(map[string]int)
+	// fileEntIdx is the index of the file-level SCOPE.Component entity
+	// for this source file (emitted in Extract before walk). Used as
+	// the from-attribution for #711 export-clause REFERENCES so the
+	// const_call entity that backs an `export { X }` clause gets a real
+	// inbound edge from the file. Defaults to -1 (no file entity), in
+	// which case the #711 emission is skipped.
+	fileEntIdx := -1
 	for i := range x.entities {
 		e := &x.entities[i]
 		if e.SourceFile != x.filePath {
 			continue
 		}
 		if e.Subtype == "file" {
+			if fileEntIdx == -1 {
+				fileEntIdx = i
+			}
 			continue
 		}
 		// First emission wins on duplicate names (matches Phase-1
@@ -165,8 +178,9 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 
 	// seen dedupes (fromName, toName) pairs across the entire file so a
 	// function that uses the same identifier N times produces a single
-	// REFERENCES edge.
-	type edgeKey struct{ from, to string }
+	// REFERENCES edge. Shared with Phase 3 (#711 export-clause emission)
+	// so a file-from edge can't accidentally double-emit when the same
+	// const is also referenced inside another function body.
 	seen := make(map[edgeKey]bool)
 
 	// Emit one REFERENCES edge from the enclosing function (top of
@@ -286,9 +300,24 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 				if name != "" {
 					if _, isGlobal := jsGlobals[name]; !isGlobal {
 						if _, isBuiltin := tsBuiltinTypes[name]; !isBuiltin || nt != "type_identifier" {
-							if _, isLocal := symbols[name]; isLocal {
-								if !isDeclarationPosition(n) && !isCallCallee(n) {
-									emit(fstack, name)
+							if sym, isLocal := symbols[name]; isLocal {
+								if !isDeclarationPosition(n) {
+									// #710 — Same-file destructure binding
+									// references in call position. CALLS edges
+									// resolve to Operation-kinded targets only;
+									// a SCOPE.Component target (const_destructure,
+									// const_call, const, const_alias, …) would
+									// never bind via CALLS, so the entity stays
+									// orphaned. Emit REFERENCES from the
+									// enclosing function frame so the binding
+									// gains an inbound edge. CALLS-eligible
+									// (Operation) targets still skip — those
+									// remain owned by the CALLS pathway and an
+									// additive REFERENCES edge would double-count.
+									callee := isCallCallee(n)
+									if !callee || sym.kind == "SCOPE.Component" {
+										emit(fstack, name)
+									}
 								}
 							}
 						}
@@ -316,7 +345,119 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 	}
 
 	walk(root, nil)
+
+	// Phase 3 — #711 define-then-export.
+	// `const X = createIcon(...); export { X };` produces a const_call
+	// entity for X but no incoming edge: the export clause is a separate
+	// AST statement and the const itself has no usage inside the file.
+	// Wire the export by emitting a REFERENCES edge from the file entity
+	// to each export-specifier whose `name` matches a same-file symbol.
+	//
+	// Skipped shapes:
+	//   - Re-exports with a `source` field: `export { X } from './foo'`
+	//     — X here is NOT a same-file declaration (it's a binding being
+	//     forwarded from another module); emitting a same-file
+	//     REFERENCES would attribute the edge to the wrong entity.
+	//   - `export *` (no specifiers): documented gap; the resolver
+	//     handles wildcard re-exports through the IMPORTS path.
+	//
+	// Rename shape: `export { X as Y }` — the local-binding name
+	// is the `name` field (X); the alias (Y) is the externally
+	// visible name. We bind to X because X is the same-file entity;
+	// downstream consumers that import Y resolve via the file-level
+	// barrel index, not via this in-file REFERENCES edge.
+	if fileEntIdx >= 0 {
+		x.emitExportClauseReferences(root, symbols, fileEntIdx, seen)
+	}
 }
+
+// emitExportClauseReferences walks the AST looking for `export_statement`
+// nodes that carry an `export_clause` of named specifiers (and no
+// `source` field — re-exports forwarding from another module are skipped).
+// For each specifier whose local-binding name matches a same-file symbol,
+// it appends a REFERENCES edge from the file entity to the named symbol
+// using the same Format-A structural-ref the regular emit path produces.
+//
+// Issue #711.
+func (x *extractor) emitExportClauseReferences(
+	root *sitter.Node,
+	symbols map[string]fileSymbol,
+	fileEntIdx int,
+	seen map[edgeKey]bool,
+) {
+	if root == nil {
+		return
+	}
+	fromName := x.entities[fileEntIdx].Name
+	var visit func(n *sitter.Node)
+	visit = func(n *sitter.Node) {
+		if n == nil {
+			return
+		}
+		nt := n.Type()
+		if nt == "export_statement" {
+			// Skip re-exports like `export { X } from './baz'` —
+			// the source field signals the binding originates from
+			// another module, so X is not a same-file declaration.
+			if src := n.ChildByFieldName("source"); src == nil {
+				// Find the export_clause child (named specifiers).
+				count := int(n.ChildCount())
+				for i := 0; i < count; i++ {
+					c := n.Child(i)
+					if c == nil {
+						continue
+					}
+					if c.Type() != "export_clause" {
+						continue
+					}
+					// Iterate export_specifier children.
+					sc := int(c.ChildCount())
+					for j := 0; j < sc; j++ {
+						sp := c.Child(j)
+						if sp == nil || sp.Type() != "export_specifier" {
+							continue
+						}
+						// Local binding name is the `name` field;
+						// `alias` (when present) is the external name.
+						nameNode := sp.ChildByFieldName("name")
+						if nameNode == nil {
+							continue
+						}
+						local := x.nodeText(nameNode)
+						if local == "" {
+							continue
+						}
+						sym, ok := symbols[local]
+						if !ok {
+							continue
+						}
+						key := edgeKey{fromName, local}
+						if seen[key] {
+							continue
+						}
+						seen[key] = true
+						toID := buildReferenceTargetID(x.language, x.filePath, local, sym.kind)
+						x.entities[fileEntIdx].Relationships = append(
+							x.entities[fileEntIdx].Relationships,
+							types.RelationshipRecord{
+								ToID: toID,
+								Kind: "REFERENCES",
+							},
+						)
+					}
+				}
+			}
+		}
+		count := int(n.ChildCount())
+		for i := 0; i < count; i++ {
+			visit(n.Child(i))
+		}
+	}
+	visit(root)
+}
+
+// edgeKey is the dedup key for REFERENCES emission (file-scope).
+type edgeKey struct{ from, to string }
 
 // buildReferenceTargetID emits a Format A structural-ref so the resolver
 // routes through `lookupStructural` -> `lookupLocationKind` without any
