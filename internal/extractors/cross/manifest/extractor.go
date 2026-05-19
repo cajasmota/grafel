@@ -408,6 +408,35 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 	projRef := projectRef(filePath)
 	seen := map[string]bool{}
 
+	// Rust wave-2 (S20+) — emit a project anchor entity for the manifest
+	// file so the DEPENDS_ON edges' FromID (= projRef) resolves to a real
+	// in-tree entity via byQualifiedName. Without this anchor, every
+	// dependency edge contributes one bug-extractor count for its FromID
+	// endpoint regardless of whether the dependency itself classifies
+	// (single-manifest repos drown the signal; actix-examples has 73 Cargo
+	// .toml files in a workspace and these dangling FromIDs dominated its
+	// bug-extractor bucket — issue tracked alongside #596 chain-fixes).
+	//
+	// Provenance INFERRED_FROM_PACKAGE_MANIFEST mirrors the dep records;
+	// QualityScore is lower because this is a structural anchor, not a
+	// language-level entity. The `ref` property is what byQualifiedName
+	// keys off (resolve/refs.go line ~1662); we set QualifiedName too for
+	// belt-and-braces resolution.
+	out = append(out, types.EntityRecord{
+		Name:          filepath.Base(filePath),
+		Kind:          "SCOPE.Component",
+		Subtype:       "project",
+		SourceFile:    filePath,
+		Language:      "",
+		QualifiedName: projRef,
+		Properties: map[string]string{
+			"package_manager": packageManager,
+			"ref":             projRef,
+			"provenance":      "INFERRED_FROM_PACKAGE_MANIFEST",
+		},
+		QualityScore: 0.5,
+	})
+
 	for _, d := range deps {
 		if seen[d.name] {
 			continue

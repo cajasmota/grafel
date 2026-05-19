@@ -1665,6 +1665,29 @@ func BuildIndex(entities []types.EntityRecord) Index {
 				idx.byQualifiedName[refProp] = e.ID
 			}
 		}
+		// Rust wave-2 (S20+) — same first-writer-wins policy for
+		// hierarchy-extractor interface stubs. The cross/hierarchy
+		// extractor emits one trait entity per `impl Trait for Foo`
+		// site, so the same trait (e.g. `Handler<server::Message>`,
+		// `actix::Message`, `fmt::Display`) gets re-emitted from
+		// every implementor file. Under the default-blanking policy
+		// above, every collision blanks the qname, so the
+		// IMPLEMENTS edge's ToID never resolves and the trait
+		// stub lands in bug-extractor.
+		//
+		// scope:component:interface: refs are unique per (lang,
+		// trait-name) tuple BY DESIGN — they're a global naming
+		// for the language's trait surface; choosing the first-seen
+		// entity is safe (the entity itself is a synthesised anchor,
+		// not a definition site, so all instances are equivalent).
+		// Scoped strictly to the interface prefix; class refs still
+		// carry file paths and don't need this branch.
+		if refProp := e.Properties["ref"]; refProp != "" && refProp != e.QualifiedName &&
+			strings.HasPrefix(refProp, "scope:component:interface:rust:") {
+			if _, ok := idx.byQualifiedName[refProp]; !ok {
+				idx.byQualifiedName[refProp] = e.ID
+			}
+		}
 
 		// Index under both the plain kind and the trimmed kind ("SCOPE.View"
 		// → "View"), so stubs can match either form.
@@ -5161,6 +5184,28 @@ var rustExternalBaseTypes = map[string]struct{}{
 	"Distribution": {},
 	// std::process / clone helpers.
 	"ToOwn": {},
+	// ---------------------------------------------------------------------
+	// Rust wave-2 (S20+) — trait names curated from real diagnostic
+	// samples on actix-examples / tokio. Each is a stdlib or popular-crate
+	// trait that appears as the parent in `impl Trait for Foo` and is
+	// imported via a `use` statement with a path prefix — the structural-
+	// ref's trailing segment is what we match against. The lang=="rust"
+	// gate at the call site preserves the safer-bias rule (#94).
+	// ---------------------------------------------------------------------
+	// actix-web / actix actor framework — additional parent traits seen
+	// on actix-examples impls.
+	"Message":          {},
+	"Configuration":    {},
+	"Context":          {},
+	// std::sealed / std::net private traits (the hierarchy extractor
+	// preserves the path; lookup strips the path and gets the bare name).
+	"ToSocketAddrsPriv": {},
+	// std::ops / iter additions (Sub<Duration>, Add<Duration> base).
+	"AddAssign":        {},
+	"SubAssign":        {},
+	"BitOrAssign":      {},
+	// tokio runtime additional traits.
+	"AssertSend":       {},
 }
 
 // isTSBuiltinType reports whether s is a TypeScript / JavaScript
