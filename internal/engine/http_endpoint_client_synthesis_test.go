@@ -103,21 +103,117 @@ export async function pingHealth() {
 	requireContains(t, got, want, "absolute-url")
 }
 
-// TestSynth_Fetch_TemplateLiteralDeferred verifies that template-literal
-// URLs (Phase 2) do NOT crash the extractor and do NOT emit a malformed
-// synthetic.
-func TestSynth_Fetch_TemplateLiteralDeferred(t *testing.T) {
+// TestSynth_Fetch_TemplateLiteralSimple verifies that a fetch call with a
+// simple template-literal URL emits a canonical synthetic with {param}
+// substitution. This was deferred in Phase 1; Phase 2 (this PR) enables it.
+func TestSynth_Fetch_TemplateLiteralSimple(t *testing.T) {
 	src := "export async function fetchUser(id) {\n" +
 		"  return fetch(`/users/${id}`);\n" +
 		"}\n"
 	got, _ := runDetect(t, "typescript", "tmpl.ts", src)
+	// Must not contain raw ${...} syntax.
 	for _, id := range got {
-		if strings.Contains(id, "$") || strings.Contains(id, "{id}") {
-			// {id} would only be present if we mis-extracted the template;
-			// the deferred path means we emit nothing.
-		}
 		if strings.Contains(id, "${") {
 			t.Errorf("template literal leaked into synthetic: %q", id)
+		}
+	}
+	want := []string{"http:GET:/users/{param}"}
+	requireContains(t, got, want, "template-literal fetch")
+}
+
+// TestSynth_TemplateLiteral_MultiSegment verifies multiple ${...} substitutions
+// in the same URL template.
+func TestSynth_TemplateLiteral_MultiSegment(t *testing.T) {
+	src := "export async function fetchChecklist(userId, listId) {\n" +
+		"  return fetch(`/api/users/${userId}/checklists/${listId}`);\n" +
+		"}\n"
+	got, _ := runDetect(t, "typescript", "tmpl2.ts", src)
+	want := []string{"http:GET:/api/users/{param}/checklists/{param}"}
+	requireContains(t, got, want, "template-literal multi-segment")
+}
+
+// TestSynth_TemplateLiteral_ConstantFolding verifies that a known const
+// string is resolved before {param} substitution.
+func TestSynth_TemplateLiteral_ConstantFolding(t *testing.T) {
+	src := `const API_BASE = "/api/v1";
+
+export async function getUsers() {
+  return fetch(` + "`" + `${API_BASE}/users` + "`" + `);
+}
+
+export async function getUser(id) {
+  return fetch(` + "`" + `${API_BASE}/users/${id}` + "`" + `);
+}
+`
+	got, _ := runDetect(t, "typescript", "const-fold.ts", src)
+	want := []string{
+		"http:GET:/api/v1/users",
+		"http:GET:/api/v1/users/{param}",
+	}
+	requireContains(t, got, want, "constant-folding fetch")
+}
+
+// TestSynth_TemplateLiteral_AxiosPost verifies axios.post with a template URL.
+func TestSynth_TemplateLiteral_AxiosPost(t *testing.T) {
+	src := `import axios from "axios";
+
+export async function updateUser(userId, body) {
+  return axios.post(` + "`" + `/api/v1/users/${userId}` + "`" + `, body);
+}
+
+export async function deleteUser(userId) {
+  return axios.delete(` + "`" + `/api/v1/users/${userId}` + "`" + `);
+}
+`
+	got, _ := runDetect(t, "typescript", "axios-tmpl.ts", src)
+	want := []string{
+		"http:POST:/api/v1/users/{param}",
+		"http:DELETE:/api/v1/users/{param}",
+	}
+	requireContains(t, got, want, "axios template literal")
+}
+
+// TestSynth_TemplateLiteral_AxiosConstantFolding verifies axios with a
+// const base URL folded into the canonical path.
+func TestSynth_TemplateLiteral_AxiosConstantFolding(t *testing.T) {
+	src := `import axios from "axios";
+const BASE = "/api/v1";
+
+export async function listOrders(userId) {
+  return axios.get(` + "`" + `${BASE}/users/${userId}/orders` + "`" + `);
+}
+`
+	got, _ := runDetect(t, "typescript", "axios-const-fold.ts", src)
+	want := []string{"http:GET:/api/v1/users/{param}/orders"}
+	requireContains(t, got, want, "axios constant-folding")
+}
+
+// TestSynth_TemplateLiteral_UnknownBase verifies that when the first
+// segment is an unknown variable, we emit {param}/... as a fallback.
+func TestSynth_TemplateLiteral_UnknownBase(t *testing.T) {
+	src := `export async function fetchUser(userId) {
+  return fetch(` + "`" + `${UNKNOWN_BASE}/users/${userId}` + "`" + `);
+}
+`
+	got, _ := runDetect(t, "typescript", "unknown-base.ts", src)
+	// {param}/users/{param} — first segment is unknown
+	want := []string{"http:GET:/{param}/users/{param}"}
+	requireContains(t, got, want, "unknown base constant")
+}
+
+// TestSynth_TemplateLiteral_NonURLRejected verifies that template literals
+// that don't look like URL paths are not emitted as synthetics.
+func TestSynth_TemplateLiteral_NonURLRejected(t *testing.T) {
+	src := `export function buildMsg(name) {
+  const msg = ` + "`" + `Hello ${name}!` + "`" + `;
+  console.log(` + "`" + `greeting: ${msg}` + "`" + `);
+  fetch(` + "`" + `not-a-path-${name}` + "`" + `);
+}
+`
+	got, _ := runDetect(t, "typescript", "non-url-tmpl.ts", src)
+	for _, id := range got {
+		if strings.Contains(id, "Hello") || strings.Contains(id, "greeting") || strings.Contains(id, "not-a-path") {
+			t.Errorf("non-URL template literal produced synthetic: %q", id)
 		}
 	}
 }
