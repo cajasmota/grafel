@@ -24,7 +24,11 @@ func runExtract(t *testing.T, filePath, source string) []types.EntityRecord {
 func depEntities(records []types.EntityRecord) []types.EntityRecord {
 	var out []types.EntityRecord
 	for _, r := range records {
-		if r.Kind == "SCOPE.Component" {
+		// Filter to dependency entities only — the manifest extractor now
+		// also emits a SCOPE.Component subtype="project" anchor for the
+		// manifest file itself (Rust wave-2: enables DEPENDS_ON FromID
+		// resolution via byQualifiedName).
+		if r.Kind == "SCOPE.Component" && r.Subtype == "external_dependency" {
 			out = append(out, r)
 		}
 	}
@@ -97,8 +101,12 @@ func TestPackageJSON_EmptyDeps(t *testing.T) {
 func TestPackageJSON_InvalidJSON(t *testing.T) {
 	src := `{invalid json`
 	records := runExtract(t, "package.json", src)
-	if len(records) != 0 {
-		t.Errorf("expected 0 records for invalid JSON, got %d", len(records))
+	// Rust wave-2: the manifest extractor still emits the project
+	// anchor (subtype=project) for any recognised-manifest path, even
+	// when parsing fails. Filter to dep entities to assert the parse
+	// produced nothing.
+	if deps := depEntities(records); len(deps) != 0 {
+		t.Errorf("expected 0 dep entities for invalid JSON, got %d", len(deps))
 	}
 }
 
@@ -293,8 +301,9 @@ func TestPomXML_Dependencies(t *testing.T) {
 func TestPomXML_InvalidXML(t *testing.T) {
 	src := `<project><broken`
 	records := runExtract(t, "pom.xml", src)
-	if len(records) != 0 {
-		t.Errorf("expected 0 records for invalid XML, got %d", len(records))
+	// Rust wave-2: project anchor is unconditional; assert no deps.
+	if deps := depEntities(records); len(deps) != 0 {
+		t.Errorf("expected 0 dep entities for invalid XML, got %d", len(deps))
 	}
 }
 
