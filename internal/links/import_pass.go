@@ -1,6 +1,9 @@
 package links
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // isBareNameExt reports whether id is a bare-name external placeholder
 // of the form "ext:<name>" with no module qualifier (no second ":" after
@@ -77,6 +80,11 @@ func isBuiltinExt(id string, subtypes map[string]string) bool {
 	return true // bare-name built-in placeholder — skip.
 }
 
+// httpEndpointKindLink is the entity Kind used by the synthetic
+// http_endpoint emission pass (#534 Phase 1). Repeated here as a string
+// literal to avoid an internal/engine import cycle.
+const httpEndpointKindLink = "http_endpoint"
+
 // runImportPass implements P1: structural cross-repo imports/calls edges.
 //
 // Idempotent overwrite: every link previously emitted with method=import is
@@ -87,6 +95,16 @@ func isBuiltinExt(id string, subtypes map[string]string) bool {
 // per-(source,target,method) dedupe so a graph that mentions the same
 // edge twice (e.g. two extractor passes touching the same call site)
 // emits exactly one link.
+//
+// Also handles #534 Phase 2: synthetic `http_endpoint` entities whose
+// Name is a canonical `http:<METHOD>:<path>` string are matched across
+// repos by Name (kind+name identity). When the same endpoint name shows
+// up in two repos — typically because one repo is the backend that
+// SERVES the route and the other is the frontend that CONSUMES it via
+// a typed-client extractor (landing in #533) — emit a cross-repo
+// import-method link. The frontend side isn't extracted yet, so this is
+// a no-op on today's corpora but the linker change is required so the
+// edges appear automatically when #533 ships.
 func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (PassResult, error) {
 	res := PassResult{Pass: "import"}
 
@@ -175,6 +193,84 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 		}
 	}
 
+	// #534 Phase 2 — cross-repo http_endpoint matching by Name. The
+	// synthetic emission gives every endpoint a deterministic
+	// `http:<METHOD>:<path>` Name; if two repos emit the same Name we
+	// know they reference the same logical HTTP route.
+	//
+	// Match by Name (the canonical http:VERB:PATH string), not by
+	// stamped ID — EntityID hashes in the repo tag and source file, so
+	// the on-disk IDs for the same endpoint in two repos are distinct.
+	//
+	// Index: name → repo → stampedID. First-occurrence wins per repo
+	// because the per-file synth pass already deduped by canonical ID
+	// and the buildDocument step deduped by (kind, name, sourceFile);
+	// the only remaining source of multiplicity here is two source
+	// files in the SAME repo emitting the same route, in which case
+	// either entity-id works as the cross-repo endpoint.
+	type httpEntry struct {
+		stampedID string
+	}
+	httpByName := map[string]map[string]httpEntry{}
+	for _, g := range graphs {
+		for _, e := range g.Entities {
+			if e.Kind != httpEndpointKindLink {
+				continue
+			}
+			if e.Name == "" {
+				continue
+			}
+			byRepo, ok := httpByName[e.Name]
+			if !ok {
+				byRepo = map[string]httpEntry{}
+				httpByName[e.Name] = byRepo
+			}
+			if _, exists := byRepo[g.Repo]; !exists {
+				byRepo[g.Repo] = httpEntry{stampedID: e.ID}
+			}
+		}
+	}
+	// Sort names for deterministic emission order.
+	httpNames := make([]string, 0, len(httpByName))
+	for n := range httpByName {
+		httpNames = append(httpNames, n)
+	}
+	sort.Strings(httpNames)
+	for _, name := range httpNames {
+		byRepo := httpByName[name]
+		if len(byRepo) < 2 {
+			continue
+		}
+		repos := make([]string, 0, len(byRepo))
+		for r := range byRepo {
+			repos = append(repos, r)
+		}
+		sort.Strings(repos)
+		for i := 0; i < len(repos); i++ {
+			for j := i + 1; j < len(repos); j++ {
+				ra, rb := repos[i], repos[j]
+				source := entityKey(ra, byRepo[ra].stampedID)
+				target := entityKey(rb, byRepo[rb].stampedID)
+				id := MakeID(source, target, MethodImport)
+				if emitted[id] {
+					continue
+				}
+				emitted[id] = true
+				fresh = append(fresh, Link{
+					ID:           id,
+					Source:       source,
+					Target:       target,
+					Relation:     RelationImports,
+					Method:       MethodImport,
+					Confidence:   ScoreImport(),
+					Channel:      nil,
+					Identifier:   nil,
+					DiscoveredAt: now,
+				})
+			}
+		}
+	}
+
 	added, skipped, err := replaceByMethod(paths.Links, newMethodSet(MethodImport), fresh, rejects)
 	if err != nil {
 		return res, err
@@ -183,6 +279,7 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 	res.Skipped = skipped
 	return res, nil
 }
+
 
 // normalizedRelation maps a graph relationship Kind to one of the
 // canonical relation values used in links.json. Accepts upper- or

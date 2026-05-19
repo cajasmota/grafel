@@ -1196,6 +1196,24 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	// resolve to the same winner across runs of the SAME corpus.
 	sortEntityRecords(merged)
 
+	// Issue #534 Phase 2 — resolve synthetic http_endpoint handler
+	// references emitted by applyHTTPEndpointSynthesis. Runs BEFORE
+	// stampEntityIDs so the appended IMPLEMENTS edges use Kind:Name stubs
+	// that the resolver pass (below) rewrites against the merged entity
+	// index in the same step it handles every other stub. Unresolved
+	// synthetics are dropped here — keeping them would leave orphan
+	// http_endpoint nodes in the graph and inflate bug-rate.
+	var httpEndpointStats engine.ResolveHTTPEndpointStats
+	merged, httpEndpointStats = engine.ResolveHTTPEndpointHandlers(merged)
+	if httpEndpointStats.Synthetics > 0 {
+		fmt.Fprintf(os.Stderr,
+			"http-endpoint-resolve: synthetics=%d handler_resolved=%d handler_dropped=%d no_handler_prop=%d\n",
+			httpEndpointStats.Synthetics,
+			httpEndpointStats.HandlerResolved,
+			httpEndpointStats.HandlerDropped,
+			httpEndpointStats.NoHandlerProp)
+	}
+
 	// Stamp deterministic entity IDs onto every record so the resolver can
 	// look them up by (kind, name).
 	i.stampEntityIDs(merged)

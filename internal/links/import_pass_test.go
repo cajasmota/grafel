@@ -345,3 +345,86 @@ func TestIsBareNameExt(t *testing.T) {
 		}
 	}
 }
+
+// TestImportPass_MatchesHTTPEndpointByName verifies #534 Phase 2 Track B:
+// two repos whose http_endpoint entities share the canonical
+// `http:<METHOD>:<path>` Name are linked via the import-method pass even
+// when there is no edge between them. The synthetic emission gives both
+// sides a deterministic Name; the linker keys on Name (not stamped ID,
+// which incorporates the repo tag and source file and therefore differs
+// per repo).
+func TestImportPass_MatchesHTTPEndpointByName(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "backend_ep_id", "name": "http:GET:/users/{id}", "kind": "http_endpoint", "source_file": "app/routes.py"},
+		},
+		Edges: []map[string]string{},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "frontend_ep_id", "name": "http:GET:/users/{id}", "kind": "http_endpoint", "source_file": "src/api.ts"},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g534p2", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g534p2-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, l := range doc.Links {
+		if l.Method != MethodImport {
+			continue
+		}
+		// Both endpoint keys must reference the http_endpoint stamped IDs
+		// from the two fixtures.
+		if (l.Source == "backend::backend_ep_id" && l.Target == "frontend::frontend_ep_id") ||
+			(l.Source == "frontend::frontend_ep_id" && l.Target == "backend::backend_ep_id") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected cross-repo http_endpoint import link by shared Name; got links: %+v", doc.Links)
+	}
+}
+
+// TestImportPass_HTTPEndpointDoesNotMatchAcrossDifferentNames verifies
+// the safety contract: distinct http_endpoint Names in two repos do NOT
+// produce a cross-repo link.
+func TestImportPass_HTTPEndpointDoesNotMatchAcrossDifferentNames(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "backend_ep_id", "name": "http:GET:/users/{id}", "kind": "http_endpoint", "source_file": "app/routes.py"},
+		},
+		Edges: []map[string]string{},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "frontend_ep_id", "name": "http:POST:/orders", "kind": "http_endpoint", "source_file": "src/api.ts"},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g534p2-neg", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g534p2-neg-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method == MethodImport {
+			t.Errorf("expected no import links for mismatched http_endpoint Names; got %+v", l)
+		}
+	}
+}
