@@ -1844,3 +1844,131 @@ func TestLookupByKindHint_ExtendsPrefersRealComponent(t *testing.T) {
 		}
 	})
 }
+
+// Wave-9 — same-file preference for ambiguous bare-name CALLS
+// (chain-fix A). Cross-language regression suite: every language's
+// extractor should benefit from "the local same-file definition wins"
+// when the global bare-name index is ambiguous.
+
+func TestReferencesEmbedded_SameFilePreference_JavaScript(t *testing.T) {
+	// Two files both define a CALLABLE named `handleDelete`. A caller
+	// in file A calls `handleDelete` — should bind to the same-file
+	// definition, not stay ambiguous (the dominant React/wave-9 pattern).
+	records := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "Function", "handleDelete", "src/components/A.tsx"),
+		entAt("bbbbbbbbbbbbbbbb", "Function", "handleDelete", "src/components/B.tsx"),
+		{
+			ID: "cccccccccccccccc", Kind: "Function", Name: "Caller",
+			SourceFile: "src/components/A.tsx",
+			Relationships: []types.RelationshipRecord{
+				{ToID: "handleDelete", Kind: "CALLS"},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	ReferencesEmbedded(records, idx)
+	if got := records[2].Relationships[0].ToID; got != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("same-file preference: got ToID=%q, want aaaaaaaaaaaaaaaa", got)
+	}
+}
+
+func TestReferencesEmbedded_SameFilePreference_Python(t *testing.T) {
+	records := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "Function", "is_valid", "core/views/a.py"),
+		entAt("bbbbbbbbbbbbbbbb", "Function", "is_valid", "core/views/b.py"),
+		{
+			ID: "cccccccccccccccc", Kind: "Function", Name: "caller",
+			SourceFile: "core/views/a.py",
+			Relationships: []types.RelationshipRecord{
+				{ToID: "is_valid", Kind: "CALLS"},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	ReferencesEmbedded(records, idx)
+	if got := records[2].Relationships[0].ToID; got != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("python same-file preference: got ToID=%q, want aaaaaaaaaaaaaaaa", got)
+	}
+}
+
+func TestReferencesEmbedded_SameFilePreference_Go(t *testing.T) {
+	records := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "Function", "Helper", "pkg/a.go"),
+		entAt("bbbbbbbbbbbbbbbb", "Function", "Helper", "pkg/b.go"),
+		{
+			ID: "cccccccccccccccc", Kind: "Function", Name: "Caller",
+			SourceFile: "pkg/a.go",
+			Relationships: []types.RelationshipRecord{
+				{ToID: "Helper", Kind: "CALLS"},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	ReferencesEmbedded(records, idx)
+	if got := records[2].Relationships[0].ToID; got != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("go same-file preference: got ToID=%q, want aaaaaaaaaaaaaaaa", got)
+	}
+}
+
+func TestReferencesEmbedded_SameFilePreference_Java(t *testing.T) {
+	records := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "Method", "process", "com/example/A.java"),
+		entAt("bbbbbbbbbbbbbbbb", "Method", "process", "com/example/B.java"),
+		{
+			ID: "cccccccccccccccc", Kind: "Method", Name: "caller",
+			SourceFile: "com/example/A.java",
+			Relationships: []types.RelationshipRecord{
+				{ToID: "process", Kind: "CALLS"},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	ReferencesEmbedded(records, idx)
+	if got := records[2].Relationships[0].ToID; got != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("java same-file preference: got ToID=%q, want aaaaaaaaaaaaaaaa", got)
+	}
+}
+
+// SCOPE.* placeholders must NOT shadow real entities under the
+// same-file preference (#525 tier-1 contract preserved).
+func TestReferencesEmbedded_SameFilePreference_RealWinsOverPlaceholder(t *testing.T) {
+	// Same-file SCOPE.Component placeholder + cross-file real Component
+	// of the same name. The bare-name "TestCase" is ambiguous globally;
+	// the same-file preference must NOT bind to the placeholder.
+	records := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "Component", "TestCase", "tests/external.py"),
+		entAt("bbbbbbbbbbbbbbbb", "SCOPE.Component", "TestCase", "tests/local.py"),
+		{
+			ID: "cccccccccccccccc", Kind: "Class", Name: "MyTest",
+			SourceFile: "tests/local.py",
+			Relationships: []types.RelationshipRecord{
+				{ToID: "TestCase", Kind: "EXTENDS"},
+			},
+		},
+	}
+	idx := BuildIndex(records)
+	ReferencesEmbedded(records, idx)
+	got := records[2].Relationships[0].ToID
+	if got == "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("placeholder shadowed real: got ToID=%q (SCOPE.Component placeholder)", got)
+	}
+}
+
+// Caller without context (empty file/pkg) must behave exactly like the
+// pre-wave-9 ambiguous-bare-name path — no implicit locality, stub
+// preserved. Guards against References() and other call sites that
+// don't supply caller context.
+func TestReferences_NoCallerContext_AmbiguousPreserved(t *testing.T) {
+	entities := []types.EntityRecord{
+		entAt("aaaaaaaaaaaaaaaa", "Function", "doWork", "a.go"),
+		entAt("bbbbbbbbbbbbbbbb", "Function", "doWork", "b.go"),
+	}
+	rels := []types.RelationshipRecord{
+		{FromID: "0000000000000000", ToID: "doWork", Kind: "CALLS"},
+	}
+	idx := BuildIndex(entities)
+	References(rels, idx)
+	if rels[0].ToID != "doWork" {
+		t.Fatalf("ambig bare-name without caller context must be preserved, got %q", rels[0].ToID)
+	}
+}

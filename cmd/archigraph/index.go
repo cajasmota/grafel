@@ -290,14 +290,14 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	i.stats.pass1Rels = countEmbeddedRels(pass1Records)
 
 	// Pass 2.5 — YAML-driven framework rules.
-	pass2Records, pass2Rels, err := i.runPass25FrameworkRules(ctx, classified)
+	pass2Records, pass2Rels, err := i.runPass25FrameworkRules(ctx, absRepo, classified)
 	if err != nil {
 		return nil, fmt.Errorf("pass 2.5: %w", err)
 	}
 	i.stats.pass2Rels = len(pass2Rels) + countEmbeddedRels(pass2Records)
 
 	// Pass 3 — cross-language extractors.
-	pass3Records, err := i.runPass3CrossLang(ctx, classified)
+	pass3Records, err := i.runPass3CrossLang(ctx, absRepo, classified)
 	if err != nil {
 		return nil, fmt.Errorf("pass 3: %w", err)
 	}
@@ -1028,7 +1028,7 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 // runPass25FrameworkRules applies the YAML rule engine to every classified
 // file. Returns extra entity records (from source_patterns) plus standalone
 // relationship records (from relationship_rules).
-func (i *Indexer) runPass25FrameworkRules(ctx context.Context, classified []classifiedFile) ([]types.EntityRecord, []types.RelationshipRecord, error) {
+func (i *Indexer) runPass25FrameworkRules(ctx context.Context, absRepo string, classified []classifiedFile) ([]types.EntityRecord, []types.RelationshipRecord, error) {
 	if i.skipPasses[PassFramework] {
 		return nil, nil, nil
 	}
@@ -1054,6 +1054,7 @@ func (i *Indexer) runPass25FrameworkRules(ctx context.Context, classified []clas
 					Path:     cf.relPath,
 					Content:  cf.content,
 					Language: cf.language,
+					RepoRoot: absRepo,
 				}
 				res, err := i.detector.Detect(ctx, input)
 				if err != nil || res == nil {
@@ -1082,7 +1083,7 @@ func (i *Indexer) runPass25FrameworkRules(ctx context.Context, classified []clas
 //
 // This is the critical fix flagged by the PORT-1 review: the
 // internal/extractors/cross/* packages had ZERO callers before this pass.
-func (i *Indexer) runPass3CrossLang(ctx context.Context, classified []classifiedFile) ([]types.EntityRecord, error) {
+func (i *Indexer) runPass3CrossLang(ctx context.Context, absRepo string, classified []classifiedFile) ([]types.EntityRecord, error) {
 	if i.skipPasses[PassCrossLang] {
 		return nil, nil
 	}
@@ -1112,6 +1113,7 @@ func (i *Indexer) runPass3CrossLang(ctx context.Context, classified []classified
 					Path:     cf.relPath,
 					Content:  cf.content,
 					Language: cf.language,
+					RepoRoot: absRepo,
 				}
 				if cf.tree != nil {
 					input.Tree = cf.tree

@@ -2611,6 +2611,23 @@ func (idx Index) lookupPackageComponent(pkgDir, name string) (string, bool) {
 // rewritten) ID string and the status code from LookupStatusHint. Hex IDs
 // and empty strings short-circuit with a zero status, signalling "skip".
 func (idx Index) rewriteOne(ref, relKind string) (string, int) {
+	return idx.rewriteOneWithCaller(ref, relKind, "", "")
+}
+
+// rewriteOneWithCaller is rewriteOne with the caller's (sourceFile, pkgDir)
+// context. When the global lookup is ambiguous on a bare name, the caller's
+// file/package is consulted as a tie-breaker — the dominant intent across
+// languages is "the local same-file definition wins", with a same-package
+// fallback for languages whose compilation unit is the directory. This is
+// the wave-9 cross-file same-named-const disambiguation (chain-fix A): JS/TS
+// codebases routinely declare `handleDelete`, `isValid`, `useStyle` in
+// dozens of files; without locality the resolver tags `ambig-bare-hint-fail`
+// and the edge ends up as bug-resolver.
+//
+// Empty callerFile / callerPkgDir disables the locality preference and
+// behaves identically to rewriteOne — preserving the existing test contract
+// for call sites that don't supply caller context.
+func (idx Index) rewriteOneWithCaller(ref, relKind, callerFile, callerPkgDir string) (string, int) {
 	if ref == "" || isHexID(ref) {
 		return ref, 0
 	}
@@ -2618,7 +2635,97 @@ func (idx Index) rewriteOne(ref, relKind string) (string, int) {
 	if st == statusRewritten {
 		return id, st
 	}
+	if st == statusAmbiguous && (callerFile != "" || callerPkgDir != "") {
+		if localID, ok := idx.lookupBareWithLocality(ref, relKind, callerFile, callerPkgDir); ok {
+			return localID, statusRewritten
+		}
+	}
 	return ref, st
+}
+
+// lookupBareWithLocality is the wave-9 same-file / same-package tie-breaker
+// for ambiguous bare-name lookups. Consulted only after LookupStatusHint
+// returned statusAmbiguous — i.e. the global bare-name index has multiple
+// candidates and the relKind hint did not narrow to one. We try, in order:
+//
+//  1. byLocation[callerFile][name]  — local same-file definition
+//  2. byLocationKind[callerFile][name][kind] for every kind in the relKind
+//     family — same-file but kind-disambiguated, in case byLocation flagged
+//     the (file, name) ambiguous because of a SCOPE.* placeholder collision
+//  3. byPackageOperation[callerPkgDir][name] for CALLS-shaped relKinds
+//  4. byPackageComponent[callerPkgDir][name] for EXTENDS/IMPLEMENTS-shaped
+//     relKinds
+//
+// Returns (id, true) only on an unambiguous hit. Blank-string sentinel
+// (ambiguous within file/pkg) returns ("", false) so the caller leaves the
+// stub alone — we never silently pick one of multiple same-locality
+// definitions.
+//
+// Same-file preference is language-agnostic — every language has cross-file
+// naming collisions on common identifier names (`isValid`, `handler`,
+// `helper`). The same-package fallback (steps 3-4) duplicates the
+// pre-existing Go-only paths but unconditionally on language because the
+// global byName already failed; we cannot bind to a wrong overload
+// because the package buckets only carry entities whose SourceFile rolls
+// up to the same directory as the caller.
+func (idx Index) lookupBareWithLocality(stub, relKind, callerFile, callerPkgDir string) (string, bool) {
+	_, name := splitStub(stub)
+	if name == "" {
+		name = stub
+	}
+	if name == "" {
+		return "", false
+	}
+	families := hintKinds(relKind)
+	if callerFile != "" {
+		// Prefer the kind-disambiguated real-entity bucket (no SCOPE.*
+		// placeholders) so a same-file SCOPE.Component placeholder never
+		// shadows a framework parent that would otherwise classify as
+		// ExternalKnown via the python/ts allowlists. Mirrors the tier-1
+		// preference in lookupByKindHint (#525).
+		if len(families) > 0 {
+			if fileBucket := idx.byLocationKindReal[callerFile]; fileBucket != nil {
+				if nameBucket := fileBucket[name]; nameBucket != nil {
+					var match string
+					ambig := false
+					for _, k := range families {
+						if strings.HasPrefix(k, scopeKindPrefix) {
+							continue
+						}
+						id := nameBucket[k]
+						if id == "" {
+							continue
+						}
+						if match != "" && match != id {
+							ambig = true
+							break
+						}
+						match = id
+					}
+					if !ambig && match != "" {
+						return match, true
+					}
+				}
+			}
+		}
+	}
+	if callerPkgDir != "" {
+		switch strings.ToUpper(relKind) {
+		case "CALLS":
+			if bucket, ok := idx.byPackageOperation[callerPkgDir]; ok {
+				if id, ok := bucket[name]; ok && id != "" {
+					return id, true
+				}
+			}
+		case "EXTENDS", "IMPLEMENTS":
+			if bucket, ok := idx.byPackageComponent[callerPkgDir]; ok {
+				if id, ok := bucket[name]; ok && id != "" {
+					return id, true
+				}
+			}
+		}
+	}
+	return "", false
 }
 
 // nameExists reports whether the supplied name appears anywhere in the
@@ -3714,7 +3821,8 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 		// Issue #148 — same-package method-dispatch lookup needs the caller's
 		// package directory. Embedded edges are anchored on records[k] so the
 		// parent's SourceFile is the caller file.
-		parentPkgDir := pkgDirOf(normalizePath(records[k].SourceFile))
+		parentSourceFile := normalizePath(records[k].SourceFile)
+		parentPkgDir := pkgDirOf(parentSourceFile)
 		for j := range rels {
 			r := &rels[j]
 			lang := relLanguage(r)
@@ -3723,7 +3831,7 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 			}
 			if r.FromID != "" && !isHexID(r.FromID) {
 				orig := r.FromID
-				newID, st := idx.rewriteOne(r.FromID, r.Kind)
+				newID, st := idx.rewriteOneWithCaller(r.FromID, r.Kind, parentSourceFile, parentPkgDir)
 				r.FromID = newID
 				applyEndpointStats(&stats, st, true)
 				d := idx.classifyDispositionLang(r.FromID, orig, lang, allow)
@@ -3804,7 +3912,7 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 						// ambiguous against the global byName index.
 					}
 				}
-				newID, st := idx.rewriteOne(r.ToID, r.Kind)
+				newID, st := idx.rewriteOneWithCaller(r.ToID, r.Kind, parentSourceFile, parentPkgDir)
 				r.ToID = newID
 				applyEndpointStats(&stats, st, false)
 				d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)

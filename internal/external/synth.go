@@ -1851,6 +1851,22 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 				return "jquery_function", true
 			}
 		}
+		// Wave-9 — per-import-gated Array.prototype / lodash / ramda
+		// allowlist (chain-fix B). `reduce`, `find`, `forEach`, `filter`,
+		// `map` are generic collection ops that the safer-bias rule (#94)
+		// keeps OUT of jsBareNames because they collide with user methods
+		// on classes in every language. But within JS/TS files that import
+		// the canonical collection libraries (lodash, ramda, immutable, or
+		// React itself — `useReducer` chains use `reduce`) these names are
+		// overwhelmingly the library/builtin form. File-scoped gate mirrors
+		// the Ktor (#131) and PHP wave-3 (#498) precedent: presence of the
+		// canonical import on this file activates the allowlist, files
+		// without it keep the safer-bias miss.
+		if hasJSCollectionLibImport(fromImports) {
+			if _, ok := jsCollectionLibBareNames[name]; ok {
+				return "function", true
+			}
+		}
 	}
 	if lang == "swift" {
 		if _, ok := swiftBareNames[name]; ok {
@@ -2571,6 +2587,72 @@ func hasCommonsCliImport(imports map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// hasJSCollectionLibImport reports whether the source JS/TS file imports
+// any canonical collection library — lodash / lodash-es / lodash/fp /
+// ramda / immutable — or React itself. Gates the wave-9 Array.prototype
+// bare-name allowlist (`reduce`, `find`, `forEach`, `filter`, `map`).
+// Without an import gate these generic names would shadow user methods
+// on hand-rolled classes; with the gate the file is signalling intent
+// to consume one of the libraries whose surface these names belong to.
+//
+// React is included because the JSX/hooks idioms (`items.map(...)`,
+// `arr.reduce(...)`, `list.filter(...)`) inside React components are the
+// dominant source of these receiver-stripped bare names — and any file
+// importing React is a UI component file unlikely to also hand-roll a
+// user method named `reduce`.
+//
+// Imports are matched on the post-extractor canonical form (the JS
+// extractor stores raw npm spec for non-relative imports, or the dotted
+// repo-relative module path for resolved imports). Bare-name imports
+// like `react`, `lodash`, `ramda` are exact-match; namespaced lodash
+// subpaths (`lodash/fp`, `lodash/get`) get a prefix match.
+func hasJSCollectionLibImport(imports map[string]bool) bool {
+	if len(imports) == 0 {
+		return false
+	}
+	for p := range imports {
+		// Strip ext: prefix if the external synthesiser has already
+		// canonicalised this import edge.
+		spec := p
+		if strings.HasPrefix(spec, "ext:") {
+			spec = spec[len("ext:"):]
+		}
+		switch spec {
+		case "react", "lodash", "lodash-es", "ramda", "immutable", "immer":
+			return true
+		}
+		if strings.HasPrefix(spec, "lodash/") || strings.HasPrefix(spec, "lodash-es/") ||
+			strings.HasPrefix(spec, "ramda/") {
+			return true
+		}
+	}
+	return false
+}
+
+// jsCollectionLibBareNames is the wave-9 Array.prototype / lodash /
+// ramda allowlist gated by hasJSCollectionLibImport. These names are the
+// generic-collection ops that #94's safer-bias rule keeps out of the
+// global jsBareNames stop-list; the per-import gate brings them in only
+// for files that actually consume one of the libraries.
+//
+// Curated from client-fixture-b wave-8 residual: `reduce`, `find`,
+// `forEach`, `filter`, `map` together account for ~110 of the remaining
+// bug-extractor leaf-name hits on that fixture; all originate in React
+// components iterating over arrays via Array.prototype.
+// `every`, `some`, `push`, `trim`, `isArray` already in jsBareNames
+// (unconditional) — not duplicated here.
+var jsCollectionLibBareNames = map[string]struct{}{
+	"reduce":      {},
+	"reduceRight": {},
+	"find":        {},
+	"findIndex":   {},
+	"findLast":    {},
+	"forEach":     {},
+	"filter":      {},
+	"map":         {},
+	"flatMap":     {},
 }
 
 // kafkaStreamsDSLVerbs is the Kafka-Streams/Kafka-clients bare-name

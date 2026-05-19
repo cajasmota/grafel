@@ -34,6 +34,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
+	jsaliases "github.com/cajasmota/archigraph/internal/extractors/javascript"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -132,6 +133,54 @@ func topLevelModule(path string) string {
 // ---------------------------------------------------------------------------
 // Per-language extractors
 // ---------------------------------------------------------------------------
+
+// extractJSWithAliases is the JS/TS variant that consults the per-repo
+// tsconfig / metro / vite / babel alias map (chain-fix C, wave-9). When
+// an import specifier matches a known alias (`@/components/Foo`,
+// `@components/Foo`, `~/lib/foo`), the resolved repo-relative target
+// path replaces the raw spec — turning what would have been a bogus
+// `ext:@` external into a proper local DEPENDS_ON edge that the
+// downstream resolver can bind to a real file.
+//
+// Falls back to the legacy non-aliased extractJS when:
+//   - repoRoot is empty (test harness without a real repo)
+//   - no alias map is declared (no tsconfig/metro/vite/babel config)
+//   - the specifier doesn't match any alias prefix
+//
+// The alias substitution preserves the import's locality classification:
+// every alias target is repo-relative by construction (aliases.go skips
+// absolute paths outside the repo at parse time), so substituted imports
+// are always marked is_local=true.
+func extractJSWithAliases(source, repoRoot string) []importRecord {
+	imports := extractJS(source)
+	if repoRoot == "" {
+		return imports
+	}
+	am := jsaliases.AliasMapFor(repoRoot)
+	for i := range imports {
+		raw := imports[i].raw
+		// Only consider unresolved non-relative specifiers — relative
+		// imports already flow through the standard local path.
+		if imports[i].isLocal {
+			continue
+		}
+		// Skip specifiers without an `@`, `~` or `#` alias-ish leading
+		// character to avoid a hot-path lookup on every npm spec.
+		first := byte(0)
+		if len(raw) > 0 {
+			first = raw[0]
+		}
+		if first != '@' && first != '~' && first != '#' {
+			continue
+		}
+		resolved := am.Resolve(raw)
+		if resolved == "" {
+			continue
+		}
+		imports[i] = importRecord{module: resolved, isLocal: true, raw: raw}
+	}
+	return imports
+}
 
 func extractJS(source string) []importRecord {
 	var out []importRecord
@@ -351,18 +400,27 @@ func extractElixir(source string) []importRecord {
 // Language dispatcher
 // ---------------------------------------------------------------------------
 
-type extractFn func(string) []importRecord
+type extractFn func(source, repoRoot string) []importRecord
+
+// adaptExtractor wraps a legacy source-only extractor into the
+// (source, repoRoot) signature so the dispatcher table stays uniform.
+// Per-language extractors that don't need repo-relative path-alias
+// resolution use this — only the JS/TS extractor consumes repoRoot
+// to query the tsconfig / metro / vite / babel alias map.
+func adaptExtractor(fn func(string) []importRecord) extractFn {
+	return func(src, _ string) []importRecord { return fn(src) }
+}
 
 var langExtractors = map[string]extractFn{
-	"javascript": extractJS,
-	"typescript": extractJS,
-	"python":     extractPython,
-	"java":       extractJava,
-	"csharp":     extractCSharp,
-	"ruby":       extractRuby,
-	"go":         extractGo,
-	"rust":       extractRust,
-	"elixir":     extractElixir,
+	"javascript": extractJSWithAliases,
+	"typescript": extractJSWithAliases,
+	"python":     adaptExtractor(extractPython),
+	"java":       adaptExtractor(extractJava),
+	"csharp":     adaptExtractor(extractCSharp),
+	"ruby":       adaptExtractor(extractRuby),
+	"go":         adaptExtractor(extractGo),
+	"rust":       adaptExtractor(extractRust),
+	"elixir":     adaptExtractor(extractElixir),
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +514,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		return nil, nil
 	}
 
-	imports := fn(string(file.Content))
+	imports := fn(string(file.Content), file.RepoRoot)
 
 	localCount := 0
 	externalCount := 0
