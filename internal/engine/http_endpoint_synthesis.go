@@ -420,7 +420,7 @@ func synthesizeFastAPI(content string, emit emitFn) {
 
 // expressAllowedReceiverRe matches receiver names that look like an Express
 // app or router object. The allowlist covers the most common conventions:
-//   - `app`, `router`, `r`, `srv`, `server` (exact matches, word-boundary)
+//   - `app`, `router`, `r`, `srv`, `server`, `httpServer` (exact matches)
 //   - any identifier ending in `Router`, `App`, `Server`, `Srv`, `Handler`
 //     (e.g. `apiRouter`, `httpServer`, `myApp`)
 //
@@ -428,19 +428,47 @@ func synthesizeFastAPI(content string, emit emitFn) {
 // expressVerbRePathOnly which matched ANY identifier — including FormData,
 // URLSearchParams, Dimensions, Map, etc. (issue #653).
 var expressAllowedReceiverRe = regexp.MustCompile(
-	`(?:^|[^.\w])(app|router|r|srv|server|httpServer|` +
+	`(?:^|[^.\w$])(app|router|r|srv|server|httpServer|` +
 		`\w+[Rr]outer|\w+[Aa]pp|\w+[Ss]erver|\w+[Ss]rv|\w+[Hh]andler)\b`,
 )
 
 // expressBlocklistRe matches receiver names that are definitively NOT HTTP
-// routers — they are browser/RN/DOM APIs that share the same method names
-// (get, post, delete, put, patch). Even if a future allowlist regex
-// accidentally matches one of these, this blocklist is the final veto.
+// routers — they are browser/RN/DOM APIs or known HTTP CLIENT variable names
+// that share the same method names. Even if the allowlist regex accidentally
+// matches one of these, this blocklist is the final veto.
+//
+// Round 1 (#653): formData, urlSearchParams, searchParams, headers,
+// dimensions, localStorage, sessionStorage, cache, map, set, params, query,
+// queryParams.
+//
+// Round 2 (#684): $http (Angular/Vue axios instance), api, client, http,
+// request, xhr, and any name ending in Client or Api (e.g. apiClient,
+// myClient, branchesApi). These are consumer-side HTTP wrapper variables
+// recognized by synthesizeFetchAxios (#672) — they must never be treated as
+// Express producers.
 var expressBlocklistRe = regexp.MustCompile(
 	`^(?i:formData|formdata|urlSearchParams|urlsearchparams|` +
 		`searchParams|searchparams|headers|dimensions|` +
 		`localStorage|localstorage|sessionStorage|sessionstorage|` +
-		`cache|map|set|params|query|queryParams|queryparams)$`,
+		`cache|map|set|params|query|queryParams|queryparams|` +
+		`\$http|\$api|\$client|api|client|http|request|xhr)$` +
+		`|^(?i:.*[Cc]lient|.*[Aa]pi|.*[Ss]ervice)$`,
+)
+
+// expressHTTPClientConstructorRe matches assignments that create an HTTP
+// client instance from a known factory. Variables assigned via these
+// constructors are consumer-side and must never be classified as Express
+// producers even if their name would otherwise pass the allowlist.
+//
+// Patterns matched:
+//   - `const $http = axios.create(...)`
+//   - `const apiClient = axios.create(...)`
+//   - `const http = ky.create(...)`
+//   - `const myHttp = got.extend(...)`
+var expressHTTPClientConstructorRe = regexp.MustCompile(
+	`(?:const|let|var)\s+([$\w][\w$]*)\s*=\s*` +
+		`(?:axios\.create|ky\.create|ky\.extend|got\.extend|got\.create|` +
+		`superagent\.agent|needle|wretch)\s*\(`,
 )
 
 // expressVerbRe captures the canonical Express form
@@ -448,21 +476,27 @@ var expressBlocklistRe = regexp.MustCompile(
 // capture group 1 = receiver, 2 = verb, 3 = path string, 4 = handler name.
 // The receiver is now captured (not discarded) so we can apply the
 // allowlist/blocklist gates before emitting.
-var expressVerbRe = regexp.MustCompile(`(\w+)\.(get|post|put|patch|delete|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\n\r]+)['"` + "`" + `]\s*(?:,[^,)]*)*?,\s*([\w$.]+)\s*[\),]`)
+var expressVerbRe = regexp.MustCompile(`([$\w][\w$]*)\.(get|post|put|patch|delete|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\n\r]+)['"` + "`" + `]\s*(?:,[^,)]*)*?,\s*([\w$.]+)\s*[\),]`)
 
 // expressVerbRePathOnly captures the path-only variant where the handler
 // is inline (function expression / arrow); we still emit the synthetic
 // entity but without a handler reference.
 // capture group 1 = receiver, 2 = verb, 3 = path string.
-var expressVerbRePathOnly = regexp.MustCompile(`(\w+)\.(get|post|put|patch|delete|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\n\r]+)['"` + "`" + `]`)
+var expressVerbRePathOnly = regexp.MustCompile(`([$\w][\w$]*)\.(get|post|put|patch|delete|head|options|all)\s*\(\s*['"` + "`" + `]([^'"` + "`" + `\n\r]+)['"` + "`" + `]`)
 
 // isExpressReceiver returns true when the receiver identifier looks like an
 // Express app/router variable (allowlist) and is not on the hard blocklist.
-// This is the central guard that prevents false positives from FormData,
-// URLSearchParams, React Native Dimensions, and similar non-HTTP objects.
-func isExpressReceiver(receiver string) bool {
+// It also consults the per-file HTTP-client symbol table built by
+// buildExpressClientSymbolTable so that variables assigned from axios.create()
+// / ky.create() / got.extend() are never misclassified as producers (#684).
+func isExpressReceiver(receiver string, clientSymbols map[string]bool) bool {
 	// Hard blocklist — highest priority veto.
 	if expressBlocklistRe.MatchString(receiver) {
+		return false
+	}
+	// File-local symbol table check: a variable assigned from a known HTTP
+	// client constructor in this file is ALWAYS a consumer, never a producer.
+	if clientSymbols[receiver] {
 		return false
 	}
 	// Allowlist: must look like an express app or router variable.
@@ -479,6 +513,21 @@ func looksLikeExpressPath(raw string) bool {
 	return len(raw) > 0 && raw[0] == '/'
 }
 
+// buildExpressClientSymbolTable scans the file content for variable
+// assignments from known HTTP-client constructors (axios.create, ky.create,
+// got.extend, etc.) and returns the set of variable names that are confirmed
+// consumer-side HTTP clients. These variables must never be matched as
+// Express producers regardless of their name shape.
+func buildExpressClientSymbolTable(content string) map[string]bool {
+	symbols := make(map[string]bool)
+	for _, m := range expressHTTPClientConstructorRe.FindAllStringSubmatch(content, -1) {
+		if len(m) >= 2 && m[1] != "" {
+			symbols[m[1]] = true
+		}
+	}
+	return symbols
+}
+
 func synthesizeExpress(content string, emit emitFn) {
 	if !strings.Contains(content, ".get(") && !strings.Contains(content, ".post(") &&
 		!strings.Contains(content, ".put(") && !strings.Contains(content, ".patch(") &&
@@ -486,6 +535,11 @@ func synthesizeExpress(content string, emit emitFn) {
 		!strings.Contains(content, ".head(") && !strings.Contains(content, ".options(") {
 		return
 	}
+	// Build the per-file HTTP-client symbol table once for the whole pass.
+	// Variables assigned from axios.create() / ky.create() / got.extend()
+	// are consumer-side and must never be emitted as Express producers (#684).
+	clientSymbols := buildExpressClientSymbolTable(content)
+
 	// First pass: handler-named form (groups: receiver, verb, path, handler).
 	withHandler := map[string]bool{}
 	for _, m := range expressVerbRe.FindAllStringSubmatch(content, -1) {
@@ -496,8 +550,8 @@ func synthesizeExpress(content string, emit emitFn) {
 		verb := strings.ToUpper(m[2])
 		raw := m[3]
 		handler := m[4]
-		// Receiver-shape gate (allowlist + blocklist) — primary false-positive guard.
-		if !isExpressReceiver(receiver) {
+		// Receiver-shape gate (allowlist + blocklist + symbol table) — primary false-positive guard.
+		if !isExpressReceiver(receiver, clientSymbols) {
 			continue
 		}
 		// Path-shape gate — belt-and-suspenders; rejects non-path string literals.
@@ -523,7 +577,7 @@ func synthesizeExpress(content string, emit emitFn) {
 		verb := strings.ToUpper(m[2])
 		raw := m[3]
 		// Same gates as the handler-named pass.
-		if !isExpressReceiver(receiver) {
+		if !isExpressReceiver(receiver, clientSymbols) {
 			continue
 		}
 		if !looksLikeExpressPath(raw) {

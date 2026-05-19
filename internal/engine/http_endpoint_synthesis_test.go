@@ -142,10 +142,14 @@ func TestSynth_Express(t *testing.T) {
 	requireContains(t, got, want, "Express")
 }
 
+// ---------------------------------------------------------------------------
+// Express false-positive guard tests — round 1 (#653) + round 2 (#684)
+// ---------------------------------------------------------------------------
+
 // TestSynth_Express_FalsePositiveBlocklist verifies that non-HTTP API calls
 // that share the same method names as Express routes do NOT produce
-// http_endpoint entities. This covers the confirmed false-positive patterns
-// from audit report 2026-05-19 (issue #653).
+// express-producer http_endpoint entities. This covers the confirmed
+// false-positive patterns from issues #653 and #684.
 //
 // Blacklisted receivers tested here:
 //   - formData.delete(key)        — FormData API (browser)
@@ -173,9 +177,9 @@ func TestSynth_Express_FalsePositiveBlocklist(t *testing.T) {
 		"set.delete('some-key');\n" +
 		"params.get('id');\n" +
 		"query.get('filter');\n"
-	got, _ := runDetect(t, "javascript", "components/ui/Form.jsx", src)
-	if len(got) != 0 {
-		t.Errorf("expected zero http_endpoint entities from non-HTTP calls, got %v", got)
+	_, res := runDetect(t, "javascript", "components/ui/Form.jsx", src)
+	if hasExpressProducer(res) {
+		t.Errorf("expected zero express producer entities from non-HTTP calls, got %v", expressProducerIDs(res))
 	}
 }
 
@@ -210,10 +214,11 @@ func TestSynth_Express_ReceiverAllowlist(t *testing.T) {
 }
 
 // TestSynth_Express_ReceiverBlocklistUnknown verifies that arbitrary unknown
-// receiver names without any express-like suffix are NOT emitted as endpoints.
+// receiver names without any express-like suffix are NOT emitted as Express
+// producer endpoints.
 func TestSynth_Express_ReceiverBlocklistUnknown(t *testing.T) {
-	// These should NOT emit HTTP endpoints even though the method name looks
-	// like an Express verb — the receiver is not Express-shaped.
+	// These should NOT emit express producer entities even though the method
+	// name looks like an Express verb — the receiver is not Express-shaped.
 	blocked := []struct {
 		receiver string
 		verb     string
@@ -227,9 +232,9 @@ func TestSynth_Express_ReceiverBlocklistUnknown(t *testing.T) {
 
 	for _, tc := range blocked {
 		line := tc.receiver + "." + tc.verb + "('" + tc.path + "', handler);\n"
-		got, _ := runDetect(t, "javascript", "utils/helper.js", line)
-		if len(got) != 0 {
-			t.Errorf("receiver %q: expected zero http_endpoint entities, got %v", tc.receiver, got)
+		_, res := runDetect(t, "javascript", "utils/helper.js", line)
+		if hasExpressProducer(res) {
+			t.Errorf("receiver %q: expected zero express producer entities, got %v", tc.receiver, expressProducerIDs(res))
 		}
 	}
 }
@@ -243,9 +248,9 @@ func TestSynth_Express_PathGate(t *testing.T) {
 	src := "app.get('window', handler);\n" +
 		"app.delete('key', handler);\n" +
 		"router.get('cronjob_opt_in', handler);\n"
-	got, _ := runDetect(t, "javascript", "server.js", src)
-	if len(got) != 0 {
-		t.Errorf("expected zero http_endpoint entities for non-path args, got %v", got)
+	_, res := runDetect(t, "javascript", "server.js", src)
+	if hasExpressProducer(res) {
+		t.Errorf("expected zero express producer entities for non-path args, got %v", expressProducerIDs(res))
 	}
 }
 
@@ -255,9 +260,193 @@ func TestSynth_Express_ReactNativeDimensions(t *testing.T) {
 	src := "import { Dimensions } from 'react-native';\n" +
 		"const { width, height } = Dimensions.get('window');\n" +
 		"const windowWidth = Dimensions.get('window').width;\n"
-	got, _ := runDetect(t, "typescript", "components/ui/drawer/index.tsx", src)
-	if len(got) != 0 {
-		t.Errorf("Dimensions.get('window') should not produce http_endpoint entities, got %v", got)
+	_, res := runDetect(t, "typescript", "components/ui/drawer/index.tsx", src)
+	if hasExpressProducer(res) {
+		t.Errorf("Dimensions.get('window') must not produce express producer entities, got %v", expressProducerIDs(res))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Express false-positive guard tests — round 2 only (#684)
+// Consumer HTTP-client wrapper variables ($http, *Client, axios.create)
+// ---------------------------------------------------------------------------
+
+// TestSynth_Express_DollarHttp_NotProducer verifies that `$http.get('/path')`
+// — the Angular/Vue axios-instance pattern — is NOT emitted as an Express
+// producer. This was the primary false-positive reported in fixture-e (#684).
+// Note: the consumer-side synthesizer (synthesizeFetchAxios) may legitimately
+// emit an http_endpoint_client_synthesis entity for the same call; we only
+// assert that NO express producer entity is emitted.
+func TestSynth_Express_DollarHttp_NotProducer(t *testing.T) {
+	src := "import {$http} from '../../utils/http.utils';\n" +
+		"\n" +
+		"class BranchesService {\n" +
+		"  allBranches = () => $http.get('/branches')\n" +
+		"  assignedUsers = ({branchId}) => $http.get(`/branches/${branchId}/users`)\n" +
+		"}\n"
+	_, res := runDetect(t, "javascript", "src/store/branches/branches.service.js", src)
+	if hasExpressProducer(res) {
+		t.Errorf("$http.get('/branches') must NOT emit Express producer entity, got express producers: %v", expressProducerIDs(res))
+	}
+}
+
+// TestSynth_Express_ApiClient_NotProducer verifies that `apiClient.post('/path')`
+// is not classified as an Express route (#684).
+// Note: synthesizeFetchAxios will emit a consumer-side entity for this call;
+// we only assert that NO express producer entity is emitted.
+func TestSynth_Express_ApiClient_NotProducer(t *testing.T) {
+	src := "import apiClient from '../http';\n" +
+		"\n" +
+		"export function createOrder(body) {\n" +
+		"  return apiClient.post('/orders', body);\n" +
+		"}\n"
+	_, res := runDetect(t, "javascript", "src/api/orders.js", src)
+	if hasExpressProducer(res) {
+		t.Errorf("apiClient.post('/orders') must NOT emit Express producer entity, got express producers: %v", expressProducerIDs(res))
+	}
+}
+
+// TestSynth_Express_CustomClient_NotProducer verifies that a custom client
+// variable named `myCustomClient` is not classified as an Express route (#684).
+// Note: synthesizeFetchAxios will emit a consumer-side entity for this call;
+// we only assert that NO express producer entity is emitted.
+func TestSynth_Express_CustomClient_NotProducer(t *testing.T) {
+	src := "const myCustomClient = new HttpClient();\n" +
+		"myCustomClient.delete('/foo');\n"
+	_, res := runDetect(t, "javascript", "src/services/foo.service.js", src)
+	if hasExpressProducer(res) {
+		t.Errorf("myCustomClient.delete('/foo') must NOT emit Express producer entity, got express producers: %v", expressProducerIDs(res))
+	}
+}
+
+// TestSynth_Express_AxiosCreate_SymbolTable verifies the per-file symbol table
+// check: `const $http = axios.create(...)` marks `$http` as a known HTTP
+// client, so `$http.get('/path')` must not be classified as an Express producer
+// even if the name would otherwise pass the allowlist (#684 fix C).
+func TestSynth_Express_AxiosCreate_SymbolTable(t *testing.T) {
+	src := "import axios from 'axios';\n" +
+		"\n" +
+		"const $http = axios.create({\n" +
+		"  baseURL: process.env.API_URL,\n" +
+		"});\n" +
+		"\n" +
+		"export const getUsers = () => $http.get('/users');\n" +
+		"export const createUser = (data) => $http.post('/users', data);\n"
+	_, res := runDetect(t, "javascript", "src/utils/http.utils.js", src)
+	if hasExpressProducer(res) {
+		t.Errorf("axios.create instance $http.get('/users') must NOT emit Express producer, got express producers: %v", expressProducerIDs(res))
+	}
+}
+
+// TestSynth_Express_KyCreate_SymbolTable verifies symbol table detection
+// also works for ky.create(...) instances (#684 fix C).
+func TestSynth_Express_KyCreate_SymbolTable(t *testing.T) {
+	src := "import ky from 'ky';\n" +
+		"\n" +
+		"const apiClient = ky.create({ prefixUrl: '/api' });\n" +
+		"\n" +
+		"export const fetchBranches = () => apiClient.get('/branches');\n"
+	_, res := runDetect(t, "javascript", "src/api/branches.js", src)
+	if hasExpressProducer(res) {
+		t.Errorf("ky.create instance apiClient.get('/branches') must NOT emit Express producer, got express producers: %v", expressProducerIDs(res))
+	}
+}
+
+// TestSynth_Express_RealRoutes_NotRejected ensures the round-2 blocklist
+// additions did NOT accidentally break real Express route extraction.
+// This is the regression guard for #684.
+func TestSynth_Express_RealRoutes_NotRejected(t *testing.T) {
+	src := "const express = require('express');\n" +
+		"const app = express();\n" +
+		"const router = express.Router();\n" +
+		"\n" +
+		"app.get('/route', handler);\n" +
+		"router.post('/route', handler);\n" +
+		"app.delete('/users/:id', deleteUser);\n" +
+		"router.put('/users/:id', updateUser);\n"
+	got, _ := runDetect(t, "javascript", "server.js", src)
+	want := []string{
+		"http:DELETE:/users/{id}",
+		"http:GET:/route",
+		"http:POST:/route",
+		"http:PUT:/users/{id}",
+	}
+	requireContains(t, got, want, "Express real routes must survive round-2 blocklist")
+}
+
+// TestSynth_Express_ClientNamedHttp_NotProducer verifies that variables
+// named `http`, `client`, `request`, `xhr` are not emitted as Express
+// producers — these are generic consumer-client naming conventions (#684).
+// Note: synthesizeFetchAxios may legitimately emit consumer-side entities;
+// we only assert no express producer entities are emitted.
+func TestSynth_Express_ClientNamedHttp_NotProducer(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{"http", "http.get('/users');\n"},
+		{"client", "client.post('/items');\n"},
+		{"request", "request.delete('/things/1');\n"},
+		{"xhr", "xhr.get('/data');\n"},
+		{"api", "api.get('/api/v1/users');\n"},
+	}
+	for _, tc := range cases {
+		_, res := runDetect(t, "javascript", "src/services/api.js", tc.content)
+		if hasExpressProducer(res) {
+			t.Errorf("consumer receiver %q: must NOT emit express producer entities, got %v", tc.name, expressProducerIDs(res))
+		}
+	}
+}
+
+// TestSynth_Express_ServiceSuffix_NotProducer verifies that variables ending
+// in `Service` (e.g. `branchesService`, `userService`) are blocked — these
+// are Angular/React service classes not Express routers (#684).
+func TestSynth_Express_ServiceSuffix_NotProducer(t *testing.T) {
+	src := "branchesService.get('/branches');\n" +
+		"userService.post('/users', data);\n"
+	_, res := runDetect(t, "javascript", "src/store/app.service.js", src)
+	if hasExpressProducer(res) {
+		t.Errorf("*Service suffix receivers must not emit Express producer entities, got %v", expressProducerIDs(res))
+	}
+}
+
+// TestSynth_Express_BranchesService_FixtureE_Pattern reproduces the exact
+// fixture-e false-positive pattern from the #684 audit: a BranchesService
+// class importing $http from utils and calling $http.get('/branches').
+// This must emit ZERO producer-side (framework=express) http_endpoint entities.
+// Consumer-side entities from synthesizeFetchAxios are allowed and expected.
+func TestSynth_Express_BranchesService_FixtureE_Pattern(t *testing.T) {
+	src := "import {$http} from '../../utils/http.utils';\n" +
+		"\n" +
+		"class BranchesService {\n" +
+		"  allBranches = () => $http.get('/branches')\n" +
+		"  countBranches = () => $http.get('/branches/count')\n" +
+		"  createBranch = (data) => $http.post('/branches', data)\n" +
+		"  updateBranch = (id, data) => $http.put(`/branches/${id}`, data)\n" +
+		"  deleteBranch = (id) => $http.delete(`/branches/${id}`)\n" +
+		"}\n"
+	_, res := runDetect(t, "javascript", "src/store/branches/branches.service.js", src)
+	if hasExpressProducer(res) {
+		t.Errorf("BranchesService $http calls must NOT be express producer; got express producer entities: %v", expressProducerIDs(res))
+	}
+}
+
+// TestSynth_Express_buildClientSymbolTable unit-tests the symbol table builder
+// directly, verifying it captures axios.create, ky.create, and got.extend
+// variable names correctly without touching synthesizeExpress.
+func TestSynth_Express_buildClientSymbolTable(t *testing.T) {
+	content := "const $http = axios.create({ baseURL: '/api' });\n" +
+		"const kyClient = ky.create({ prefixUrl: '/v1' });\n" +
+		"const myHttp = got.extend({ prefixUrl: 'http://host' });\n" +
+		"const normalVar = someOtherFunc();\n"
+	symbols := buildExpressClientSymbolTable(content)
+	for _, want := range []string{"$http", "kyClient", "myHttp"} {
+		if !symbols[want] {
+			t.Errorf("buildExpressClientSymbolTable: expected %q in symbol table, got %v", want, symbols)
+		}
+	}
+	if symbols["normalVar"] {
+		t.Error("buildExpressClientSymbolTable: normalVar must NOT be in symbol table")
 	}
 }
 
@@ -380,6 +569,34 @@ func contains(xs []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// hasExpressProducer returns true if any http_endpoint entity in res was
+// emitted with framework=express (i.e. was classified as an Express producer
+// route). Consumer-side entities (framework=http_client, axios, fetch, etc.)
+// are intentionally ignored — they come from synthesizeFetchAxios and are
+// correct. Used by #684 fix-validation tests to assert zero false producers
+// while allowing the consumer-side pass to run.
+func hasExpressProducer(res *DetectResult) bool {
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.Properties != nil && e.Properties["framework"] == "express" {
+			return true
+		}
+	}
+	return false
+}
+
+// expressProducerIDs returns the IDs of all http_endpoint entities emitted as
+// Express producer routes (framework=express). Used in assertions that need to
+// report which specific entities are the false positives.
+func expressProducerIDs(res *DetectResult) []string {
+	var out []string
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.Properties != nil && e.Properties["framework"] == "express" {
+			out = append(out, e.ID)
+		}
+	}
+	return out
 }
 
 // TestSynth_RecordsHandlerInProperty asserts that the handler reference
