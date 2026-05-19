@@ -83,7 +83,7 @@ func synthesisSupportsLanguage(lang string) bool {
 	// rules are compiled for them so the per-protocol synthesizers can
 	// run. Files in these languages that contain none of the recognised
 	// anchors are no-ops in the synthesizers themselves.
-	case "kotlin", "go", "csharp":
+	case "kotlin", "go", "csharp", "ruby":
 		return true
 	default:
 		return false
@@ -249,6 +249,12 @@ func applyHTTPEndpointSynthesis(
 	case "kotlin":
 		// Consumer side (#721 wave 2a): Ktor, OkHttp-Kotlin, Retrofit-K.
 		synthesizeKotlinClientWithRuntime(string(content), emitClientRuntime)
+	case "ruby":
+		// Consumer side (#721 wave 2b): Net::HTTP, Faraday, HTTParty, RestClient.
+		synthesizeRubyClientWithRuntime(string(content), emitClientRuntime)
+	case "csharp":
+		// Consumer side (#721 wave 2b): HttpClient, RestSharp, Refit, WebClient.
+		synthesizeCSharpClientWithRuntime(string(content), emitClientRuntime)
 	}
 
 	// #722 — response/request shape extraction. Mutates Properties on
