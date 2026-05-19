@@ -21,11 +21,31 @@
 //      edges (step_index ordered) and ENTRY_POINT_OF edges from the
 //      entry function to the Process.
 //
-// Cross-stack detection: a Process is marked cross_stack=true when its
-// chain traverses an HTTP boundary — i.e. one of its steps is an HTTP
-// endpoint / route entity, or any edge target switches to a "SCOPE.Endpoint",
-// "SCOPE.Route", or "http_endpoint" kind. Once #726 (FETCHES) lands the
-// detection here will also include that edge kind.
+// Cross-stack detection (#754): a Process is marked cross_stack=true only
+// when its chain traverses a real cross-repo boundary, signalled by one of:
+//
+//   - At least one step in the chain is reached via a FETCHES edge (the
+//     consumer-side HTTP fetch primitive: caller function → synthetic
+//     consumer http_endpoint). FETCHES is emitted by the http_endpoint
+//     resolver (`http_endpoint_resolve.go`) for any consumer synthetic
+//     whose `source_caller` resolves in-file, and directly by the
+//     per-language wave-1 client extractors (#721+).
+//   - The chain contains a CONSUMER-side synthetic http_endpoint
+//     (pattern_type="http_endpoint_client_synthesis"). The cross-repo
+//     HTTP linker pairs these with a producer entity in another repo
+//     during the link pass, so any chain that lands on one is by
+//     construction a chain that crosses a repo boundary.
+//
+// The previous heuristic (`chainTouchesHTTP` — any step appears on an
+// IMPLEMENTS / ROUTES_TO / SERVES edge boundary) is preserved as a separate
+// `crosses_external_lib` property whenever the chain ALSO terminates in
+// an external-library SCOPE.External / SCOPE.ExternalAPI node. That
+// property captures the original intent ("this process bottoms out in a
+// third-party dep") without conflating it with cross-repo traversal.
+//
+// Internal HTTP handlers (a controller method that implements a same-repo
+// route synthetic) are intentionally NOT cross_stack: the BFS never
+// leaves the source repo. They appear in the graph as plain CALLS chains.
 //
 // The pass is deterministic: entries are sorted by descending score then
 // by canonical ID; outgoing edges at each BFS step are sorted by callee ID
@@ -106,6 +126,19 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 	// rather than the CALLS chain.
 	httpBoundary := buildHTTPBoundarySet(doc)
 
+	// #754 — file-level consumer endpoint index. Maps a source file path
+	// to whether it contains a CONSUMER-side synthetic http_endpoint.
+	// Class-field arrow methods (`byId = (id) => $http.get(...)`) and
+	// other shapes the per-language extractors don't surface as discrete
+	// function entities still produce one consumer synthetic per call
+	// site at synthesis time. Treating any same-file Process chain as
+	// cross_stack lets the cross-stack semantic survive that extraction
+	// gap. The signal is necessarily file-coarse — when the per-language
+	// extractors catch up (eventual JS/TS class-field support) the BFS
+	// will reach the endpoint structurally and this fallback becomes a
+	// no-op overlay on top of the precise FETCHES-edge signal.
+	consumerEndpointFiles := buildConsumerEndpointFileSet(doc)
+
 	// Build CALLS adjacency. Edges with explicit `confidence < 0.5` are
 	// excluded so fuzzy global-fallback matches don't dominate traces.
 	adj := buildCallsAdjacency(doc)
@@ -133,7 +166,16 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 		stats.TruncatedDepth += depthTrunc
 		stats.TruncatedFanout += fanTrunc
 		for _, t := range traces {
-			if len(t) < cfg.MinSteps {
+			// #754 — short chains are allowed when the chain traverses a
+			// FETCHES edge (i.e. crosses a repo boundary). Cross-repo
+			// bridges typically have a tiny intra-repo depth (caller →
+			// consumer endpoint = 2 steps) but the cross-stack signal is
+			// the load-bearing semantic, so keep them.
+			minSteps := cfg.MinSteps
+			if chainHasFetchesEdge(t, adj) {
+				minSteps = 2
+			}
+			if len(t) < minSteps {
 				continue
 			}
 			term := t[len(t)-1]
@@ -184,18 +226,39 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 		if entry == nil || terminal == nil {
 			continue
 		}
-		crossStack := chainCrossesStack(chain, byID) || chainTouchesHTTP(chain, httpBoundary)
+		crossStack, crossReason := chainCrossesRepoBoundary(chain, byID, adj)
+		if !crossStack {
+			// Fallback (#754): any chain whose entry file contains a
+			// consumer http_endpoint entity is treated as cross_stack
+			// even when the BFS couldn't physically reach the endpoint.
+			// This captures the cross-repo semantic for JS/TS class-
+			// field arrow methods (fixture-e shape) where the per-
+			// language extractor doesn't surface the method as a
+			// discrete entity. Producer-side handler processes are NOT
+			// caught by this rule — their file contains producer-only
+			// synthetics (pattern_type=http_endpoint_synthesis) which
+			// buildConsumerEndpointFileSet excludes.
+			if entry != nil && consumerEndpointFiles[entry.SourceFile] {
+				crossStack = true
+				crossReason = "entry file contains consumer http_endpoint synthetics (BFS chain didn't reach the bridge structurally — see #754 fallback)"
+			}
+		}
+		crossesExternalLib := chainCrossesExternalLib(chain, byID, httpBoundary)
 		processID := computeProcessID(doc.Repo, chain)
 		label := fmt.Sprintf("%s → %s", entry.Name, terminal.Name)
 
 		props := map[string]string{
-			"entry_id":     entry.ID,
-			"entry_name":   entry.Name,
-			"terminal_id":  terminal.ID,
-			"step_count":   strconv.Itoa(len(chain)),
-			"cross_stack":  strconv.FormatBool(crossStack),
-			"chain":        strings.Join(chain, ","),
-			"chain_labels": strings.Join(chainLabels(chain, byID), " → "),
+			"entry_id":              entry.ID,
+			"entry_name":            entry.Name,
+			"terminal_id":           terminal.ID,
+			"step_count":            strconv.Itoa(len(chain)),
+			"cross_stack":           strconv.FormatBool(crossStack),
+			"crosses_external_lib":  strconv.FormatBool(crossesExternalLib),
+			"chain":                 strings.Join(chain, ","),
+			"chain_labels":          strings.Join(chainLabels(chain, byID), " → "),
+		}
+		if crossStack && crossReason != "" {
+			props["cross_stack_reason"] = crossReason
 		}
 
 		doc.Entities = append(doc.Entities, graph.Entity{
@@ -260,28 +323,43 @@ func clampConfig(cfg ProcessFlowConfig) ProcessFlowConfig {
 	return cfg
 }
 
-// callsAdjacency stores out / in degree per node id over CALLS edges.
+// callsAdjacency stores out / in degree per node id over the BFS-traversable
+// edge kinds (CALLS + FETCHES). The `fetches` side-set records (from,to)
+// pairs that originated from a FETCHES edge so the cross-stack detector
+// can distinguish "this step was reached by traversing a fetch boundary"
+// from "this step was reached by an ordinary intra-repo CALLS edge".
 type callsAdjacency struct {
-	out map[string][]string
-	in  map[string]int
+	out     map[string][]string
+	in      map[string]int
+	fetches map[edgeKey]bool
 }
 
-// buildCallsAdjacency filters the document's edges down to CALLS only and
-// produces a deterministic adjacency list. Edges with confidence < 0.5
-// (as set by the resolver) are excluded — they're typically global-fallback
-// matches and inflate trace counts with false branches.
+// edgeKey is a directed (from,to) edge identity.
+type edgeKey struct{ from, to string }
+
+// buildCallsAdjacency filters the document's edges down to CALLS + FETCHES
+// (#754) and produces a deterministic adjacency list. Edges with
+// confidence < 0.5 (as set by the resolver) are excluded — they're
+// typically global-fallback matches and inflate trace counts with false
+// branches. FETCHES edges are unconditionally included: they're emitted
+// at extraction/resolve time with no confidence property and represent
+// definite cross-repo fetch points, not fuzzy resolution candidates.
 func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 	a := &callsAdjacency{
-		out: make(map[string][]string),
-		in:  make(map[string]int),
+		out:     make(map[string][]string),
+		in:      make(map[string]int),
+		fetches: make(map[edgeKey]bool),
 	}
 	seen := make(map[string]map[string]bool)
 	for i := range doc.Relationships {
 		r := &doc.Relationships[i]
-		if r.Kind != string(RelationshipKindCalls) {
+		isFetches := r.Kind == RelationshipKindFetches
+		if r.Kind != string(RelationshipKindCalls) && !isFetches {
 			continue
 		}
-		if !confidenceOK(r) {
+		// Only CALLS edges are confidence-gated; FETCHES is a structural
+		// extraction-time primitive and is always trusted.
+		if !isFetches && !confidenceOK(r) {
 			continue
 		}
 		if r.FromID == r.ToID {
@@ -291,11 +369,20 @@ func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 			seen[r.FromID] = make(map[string]bool)
 		}
 		if seen[r.FromID][r.ToID] {
+			// Already added under a different edge kind. Still want to
+			// record the fetches flag if this iteration provides it —
+			// FETCHES wins (cross-stack signal is preserved).
+			if isFetches {
+				a.fetches[edgeKey{r.FromID, r.ToID}] = true
+			}
 			continue
 		}
 		seen[r.FromID][r.ToID] = true
 		a.out[r.FromID] = append(a.out[r.FromID], r.ToID)
 		a.in[r.ToID]++
+		if isFetches {
+			a.fetches[edgeKey{r.FromID, r.ToID}] = true
+		}
 	}
 	for k := range a.out {
 		sort.Strings(a.out[k])
@@ -461,24 +548,143 @@ func buildHTTPBoundarySet(doc *graph.Document) map[string]bool {
 	return out
 }
 
-// chainTouchesHTTP returns true when any step in the chain is on the
-// HTTP-boundary set (i.e. is the source or target of an IMPLEMENTS /
-// ROUTES_TO / SERVES edge).
-func chainTouchesHTTP(chain []string, boundary map[string]bool) bool {
-	for _, id := range chain {
-		if boundary[id] {
+// buildConsumerEndpointFileSet returns a set of source-file paths that
+// contain at least one CONSUMER-side synthetic http_endpoint entity
+// (pattern_type="http_endpoint_client_synthesis"). Files where the only
+// http_endpoint entities are PRODUCER-side synthetics (handlers /
+// routes) are EXCLUDED — producer synthetics represent the handler's
+// own HTTP surface, not a cross-repo fetch call site.
+//
+// Used by RunProcessFlow as a file-coarse fallback for cross_stack when
+// a chain's entry lives in a file with consumer endpoints that the BFS
+// couldn't structurally reach (typically because the per-language
+// extractor doesn't surface class-field arrow methods as entities).
+func buildConsumerEndpointFileSet(doc *graph.Document) map[string]bool {
+	out := map[string]bool{}
+	for i := range doc.Entities {
+		e := &doc.Entities[i]
+		if strings.ToLower(e.Kind) != "http_endpoint" {
+			continue
+		}
+		if e.Properties == nil {
+			continue
+		}
+		if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+			out[e.SourceFile] = true
+			continue
+		}
+		// Fallback recognition for older synthetics that lost their
+		// pattern_type stamp: any http_endpoint stamped with a
+		// source_caller property is consumer-side by construction.
+		if _, hasCaller := e.Properties["source_caller"]; hasCaller {
+			out[e.SourceFile] = true
+		}
+	}
+	return out
+}
+
+// chainHasFetchesEdge returns true when any consecutive pair in the chain
+// is connected by a FETCHES edge (recorded in adj.fetches at adjacency-
+// build time). Used to relax the MinSteps gate for cross-repo chains so
+// the 2-step caller → consumer-endpoint bridge survives.
+func chainHasFetchesEdge(chain []string, adj *callsAdjacency) bool {
+	if adj == nil {
+		return false
+	}
+	for i := 1; i < len(chain); i++ {
+		if adj.fetches[edgeKey{chain[i-1], chain[i]}] {
 			return true
 		}
 	}
 	return false
 }
 
-// chainCrossesStack reports whether any step in the chain points at an
-// entity whose kind represents an HTTP / service boundary. Once the
-// FETCHES edge kind lands (#726) the detection is extended in
-// buildCallsAdjacency to flag the transition there.
-func chainCrossesStack(chain []string, byID map[string]*graph.Entity) bool {
+// chainCrossesRepoBoundary reports whether the BFS chain actually crosses
+// a repo boundary (#754). The two recognised signals are:
+//
+//  1. An edge in the chain is a FETCHES edge: the BFS stepped from a
+//     calling function into a consumer-side synthetic http_endpoint,
+//     which the cross-repo HTTP linker pairs with a producer in another
+//     repo. This is the canonical "definitely cross-stack" marker.
+//  2. A step in the chain is a CONSUMER-side synthetic http_endpoint
+//     entity (pattern_type="http_endpoint_client_synthesis"). Even
+//     without a direct FETCHES edge, landing on a consumer synthetic
+//     means the chain reached a cross-repo bridge node — the linker
+//     joins the same Name to a producer entity in another repo.
+//
+// The second argument returns a short human-readable reason that the
+// caller stamps onto `cross_stack_reason` for the emitted Process so
+// docs can say "this process enters another repo at step N via FETCHES".
+//
+// PRODUCER-side synthetics (pattern_type="http_endpoint_synthesis") are
+// deliberately NOT a cross-stack signal: they're the local handler for
+// an HTTP route that lives in this repo. A controller method calling
+// its same-repo route synthetic is intra-repo by definition.
+func chainCrossesRepoBoundary(
+	chain []string,
+	byID map[string]*graph.Entity,
+	adj *callsAdjacency,
+) (bool, string) {
+	// Walk pairwise — every transition has an originating edge.
+	for i := 1; i < len(chain); i++ {
+		from, to := chain[i-1], chain[i]
+		if adj != nil && adj.fetches[edgeKey{from, to}] {
+			return true, fmt.Sprintf("FETCHES edge at step %d (%s → %s)", i, from, to)
+		}
+		if isConsumerHTTPEndpoint(byID[to]) {
+			return true, fmt.Sprintf("consumer http_endpoint at step %d (%s)", i, to)
+		}
+	}
+	// Also check the entry itself — a Process whose entry IS a consumer
+	// synthetic (unusual but possible) still crosses repos.
+	if len(chain) > 0 && isConsumerHTTPEndpoint(byID[chain[0]]) {
+		return true, fmt.Sprintf("consumer http_endpoint at step 0 (%s)", chain[0])
+	}
+	return false, ""
+}
+
+// isConsumerHTTPEndpoint returns true when the entity is an http_endpoint
+// synthetic emitted by the consumer-side (client) synthesizer rather than
+// the producer-side route synthesizer. We discriminate on the
+// `pattern_type` property the synthesisers stamp on every entity:
+//
+//   - producer: pattern_type="http_endpoint_synthesis"
+//   - consumer: pattern_type="http_endpoint_client_synthesis"
+//
+// When pattern_type is missing (older docs) we fall back to a presence
+// check on `source_caller`, the property the consumer side always sets.
+func isConsumerHTTPEndpoint(e *graph.Entity) bool {
+	if e == nil {
+		return false
+	}
+	if strings.ToLower(e.Kind) != "http_endpoint" {
+		return false
+	}
+	if e.Properties == nil {
+		return false
+	}
+	if pt, ok := e.Properties["pattern_type"]; ok {
+		return pt == "http_endpoint_client_synthesis"
+	}
+	// Fallback: the consumer side stamps `source_caller` on every entity.
+	_, hasCaller := e.Properties["source_caller"]
+	return hasCaller
+}
+
+// chainCrossesExternalLib captures the OLD `chainCrossesStack ||
+// chainTouchesHTTP` heuristic (#754): the chain either includes a step
+// whose entity kind is HTTP/route-like, or touches the HTTP-boundary set
+// (IMPLEMENTS / ROUTES_TO / SERVES). It is preserved as a separate
+// boolean property so consumers that previously relied on the inflated
+// `cross_stack` flag for "this process touches an HTTP handler" can
+// switch to this label without losing that signal. The check is also
+// useful for documentation generators that want to highlight processes
+// terminating in third-party libraries (SCOPE.External / SCOPE.ExternalAPI).
+func chainCrossesExternalLib(chain []string, byID map[string]*graph.Entity, boundary map[string]bool) bool {
 	for _, id := range chain {
+		if boundary[id] {
+			return true
+		}
 		e, ok := byID[id]
 		if !ok {
 			continue
@@ -487,7 +693,8 @@ func chainCrossesStack(chain []string, byID map[string]*graph.Entity) bool {
 		case "http_endpoint",
 			strings.ToLower(string(EntityKindEndpoint)),
 			strings.ToLower(string(EntityKindRoute)),
-			strings.ToLower(string(EntityKindExternalAPI)):
+			strings.ToLower(string(EntityKindExternalAPI)),
+			"scope.external":
 			return true
 		}
 	}

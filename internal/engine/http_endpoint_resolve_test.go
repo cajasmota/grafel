@@ -99,3 +99,127 @@ func TestResolveHandlers_KeepsSyntheticWithNoHandlerProp(t *testing.T) {
 		t.Errorf("expected synthetic preserved, got %d", len(out))
 	}
 }
+
+// TestResolveCallers_EmitsFetchesEdge (#754) verifies that a consumer
+// synthetic with a resolvable source_caller produces a FETCHES edge on
+// the caller's embedded relationships and clears the property.
+func TestResolveCallers_EmitsFetchesEdge(t *testing.T) {
+	caller := types.EntityRecord{
+		Kind:       "Function",
+		Name:       "fetchUsers",
+		SourceFile: "client.ts",
+		Language:   "typescript",
+	}
+	synth := types.EntityRecord{
+		Kind:       httpEndpointKind,
+		Name:       "http:GET:/api/users",
+		SourceFile: "client.ts",
+		Language:   "typescript",
+		Properties: map[string]string{
+			"framework":     "fetch",
+			"pattern_type":  "http_endpoint_client_synthesis",
+			"source_caller": "Function:fetchUsers",
+		},
+	}
+	merged := []types.EntityRecord{caller, synth}
+	out, stats := ResolveHTTPEndpointHandlers(merged)
+	if stats.CallerResolved != 1 {
+		t.Errorf("expected 1 caller_resolved, got %d", stats.CallerResolved)
+	}
+	if len(out) != 2 {
+		t.Fatalf("expected 2 entities preserved, got %d", len(out))
+	}
+	// caller should now own a FETCHES relationship to the synthetic.
+	var found bool
+	for _, r := range out[0].Relationships {
+		if r.Kind == "FETCHES" {
+			found = true
+			if r.FromID != "Function:fetchUsers" {
+				t.Errorf("FETCHES from = %q, want Function:fetchUsers", r.FromID)
+			}
+			if r.ToID != "http_endpoint:http:GET:/api/users" {
+				t.Errorf("FETCHES to = %q, want http_endpoint:http:GET:/api/users", r.ToID)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected FETCHES edge on caller, got %+v", out[0].Relationships)
+	}
+	// source_caller should be cleared.
+	if _, has := out[1].Properties["source_caller"]; has {
+		t.Errorf("source_caller should be cleared after resolution; got %v", out[1].Properties)
+	}
+}
+
+// TestResolveCallers_FallbackToFileContainer (#754) verifies that when
+// the precise caller-name lookup fails, the resolver falls back to
+// any same-file container entity (class/module/file-component) and
+// still emits a FETCHES edge — necessary because real-world JS/TS
+// class-field arrow methods aren't surfaced as discrete entities.
+func TestResolveCallers_FallbackToFileContainer(t *testing.T) {
+	fileComponent := types.EntityRecord{
+		Kind:       "SCOPE.Component",
+		Name:       "src/svc.js",
+		SourceFile: "src/svc.js",
+	}
+	classComponent := types.EntityRecord{
+		Kind:       "SCOPE.Component",
+		Name:       "BranchesService",
+		SourceFile: "src/svc.js",
+	}
+	synth := types.EntityRecord{
+		Kind:       httpEndpointKind,
+		Name:       "http:GET:/api/x",
+		SourceFile: "src/svc.js",
+		Properties: map[string]string{
+			"framework":     "axios",
+			"pattern_type":  "http_endpoint_client_synthesis",
+			"source_caller": "Function:byId", // not a real entity name
+		},
+	}
+	merged := []types.EntityRecord{fileComponent, classComponent, synth}
+	out, stats := ResolveHTTPEndpointHandlers(merged)
+	if stats.CallerResolved != 1 {
+		t.Errorf("expected 1 caller_resolved via fallback, got %d", stats.CallerResolved)
+	}
+	// Both same-file Components should now own a FETCHES edge to the synthetic.
+	gotEdges := 0
+	for i := range out {
+		for _, r := range out[i].Relationships {
+			if r.Kind == "FETCHES" {
+				gotEdges++
+			}
+		}
+	}
+	if gotEdges < 2 {
+		t.Errorf("expected at least 2 FETCHES edges from same-file containers, got %d", gotEdges)
+	}
+}
+
+// TestResolveCallers_NoMatchKeepsSynthetic (#754) verifies that when
+// nothing in the same file matches as a fallback, the synthetic stays
+// alive (cross-repo bridges are valuable even when intra-repo
+// reachability is missing) and no edge is emitted.
+func TestResolveCallers_NoMatchKeepsSynthetic(t *testing.T) {
+	synth := types.EntityRecord{
+		Kind:       httpEndpointKind,
+		Name:       "http:GET:/orphan",
+		SourceFile: "lonely.js",
+		Properties: map[string]string{
+			"framework":     "fetch",
+			"pattern_type":  "http_endpoint_client_synthesis",
+			"source_caller": "Function:nobody",
+		},
+	}
+	merged := []types.EntityRecord{synth}
+	out, stats := ResolveHTTPEndpointHandlers(merged)
+	if stats.CallerResolved != 0 {
+		t.Errorf("expected 0 caller_resolved, got %d", stats.CallerResolved)
+	}
+	if stats.CallerUnresolved != 1 {
+		t.Errorf("expected 1 caller_unresolved, got %d", stats.CallerUnresolved)
+	}
+	if len(out) != 1 {
+		t.Errorf("expected synthetic preserved despite unresolved caller, got %d", len(out))
+	}
+}

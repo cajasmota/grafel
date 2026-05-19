@@ -159,12 +159,20 @@ func TestProcessFlow_DedupByEntryTerminal(t *testing.T) {
 }
 
 func TestProcessFlow_CrossStack(t *testing.T) {
-	// entry → call → http_endpoint. Should mark cross_stack=true.
+	// #754 — repo-aware cross_stack: a chain that lands on a CONSUMER-side
+	// synthetic http_endpoint (pattern_type=http_endpoint_client_synthesis)
+	// crosses a repo boundary. The consumer synthetic is the bridge node
+	// the cross-repo HTTP linker pairs with a producer in another repo.
 	doc := &graph.Document{Repo: "r"}
 	doc.Entities = []graph.Entity{
 		{ID: "entry", Name: "handleSubmit", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
 		{ID: "svc", Name: "callService", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
-		{ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", Language: "ts", SourceFile: "api.ts"},
+		{
+			ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", Language: "ts", SourceFile: "api.ts",
+			Properties: map[string]string{
+				"pattern_type": "http_endpoint_client_synthesis",
+			},
+		},
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "entry", ToID: "svc", Kind: "CALLS"},
@@ -183,16 +191,56 @@ func TestProcessFlow_CrossStack(t *testing.T) {
 	}
 }
 
-func TestProcessFlow_CrossStackViaImplements(t *testing.T) {
-	// Handler function implements an http_endpoint via an IMPLEMENTS edge
-	// (not by appearing on the CALLS chain). The Process should still
-	// be marked cross_stack=true because the entry is on the HTTP boundary.
+func TestProcessFlow_CrossStackViaFetches(t *testing.T) {
+	// #754 — chain reaches a consumer endpoint via a FETCHES edge. The
+	// presence of the FETCHES edge alone is the canonical cross-stack
+	// signal: caller → consumer http_endpoint represents a real
+	// cross-repo call site.
+	doc := &graph.Document{Repo: "r"}
+	doc.Entities = []graph.Entity{
+		{ID: "entry", Name: "handleSubmit", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
+		{ID: "svc", Name: "callService", Kind: "SCOPE.Function", Language: "ts", SourceFile: "x.ts"},
+		{
+			ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", Language: "ts", SourceFile: "x.ts",
+			Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"},
+		},
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "entry", ToID: "svc", Kind: "CALLS"},
+		{ID: "2", FromID: "svc", ToID: "ep", Kind: "FETCHES"},
+	}
+	RunProcessFlow(doc, DefaultProcessFlowConfig())
+	var got, reason string
+	for _, e := range doc.Entities {
+		if e.Kind == EntityKindProcess {
+			got = e.Properties["cross_stack"]
+			reason = e.Properties["cross_stack_reason"]
+			break
+		}
+	}
+	if got != "true" {
+		t.Errorf("cross_stack = %q, want true (via FETCHES)", got)
+	}
+	if reason == "" {
+		t.Errorf("cross_stack_reason missing; want FETCHES-step annotation")
+	}
+}
+
+func TestProcessFlow_InternalHandlerNotCrossStack(t *testing.T) {
+	// #754 — regression for fixture-d false-labeling. An intra-repo HTTP
+	// handler that IMPLEMENTS a producer-side endpoint synthetic and
+	// terminates in an external library is NOT cross_stack (the BFS never
+	// leaves the source repo). It IS crosses_external_lib=true.
 	doc := &graph.Document{Repo: "r"}
 	doc.Entities = []graph.Entity{
 		{ID: "h", Name: "handleOrders", Kind: "SCOPE.Function", Language: "py", SourceFile: "api.py"},
 		{ID: "svc", Name: "callService", Kind: "SCOPE.Function", Language: "py", SourceFile: "api.py"},
 		{ID: "db", Name: "writeRecord", Kind: "SCOPE.Function", Language: "py", SourceFile: "db.py"},
-		{ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", Language: "py", SourceFile: "api.py"},
+		{
+			ID: "ep", Name: "http:POST:/api/orders", Kind: "http_endpoint", Language: "py", SourceFile: "api.py",
+			// Producer-side synthetic — NOT a cross-repo bridge.
+			Properties: map[string]string{"pattern_type": "http_endpoint_synthesis"},
+		},
 	}
 	doc.Relationships = []graph.Relationship{
 		{ID: "1", FromID: "h", ToID: "svc", Kind: "CALLS"},
@@ -200,15 +248,49 @@ func TestProcessFlow_CrossStackViaImplements(t *testing.T) {
 		{ID: "3", FromID: "h", ToID: "ep", Kind: "IMPLEMENTS"},
 	}
 	RunProcessFlow(doc, DefaultProcessFlowConfig())
-	var got string
+	var crossStack, externalLib string
 	for _, e := range doc.Entities {
 		if e.Kind == EntityKindProcess {
-			got = e.Properties["cross_stack"]
+			crossStack = e.Properties["cross_stack"]
+			externalLib = e.Properties["crosses_external_lib"]
 			break
 		}
 	}
-	if got != "true" {
-		t.Errorf("expected cross_stack=true via IMPLEMENTS, got %q", got)
+	if crossStack != "false" {
+		t.Errorf("intra-repo handler: cross_stack = %q, want false", crossStack)
+	}
+	if externalLib != "true" {
+		t.Errorf("intra-repo handler touching HTTP boundary: crosses_external_lib = %q, want true", externalLib)
+	}
+}
+
+func TestProcessFlow_ExternalLibTerminalNotCrossStack(t *testing.T) {
+	// #754 — chain terminating in SCOPE.External / SCOPE.ExternalAPI is
+	// crosses_external_lib=true but NOT cross_stack=true.
+	doc := &graph.Document{Repo: "r"}
+	doc.Entities = []graph.Entity{
+		{ID: "entry", Name: "handleJob", Kind: "SCOPE.Function", Language: "java", SourceFile: "Job.java"},
+		{ID: "svc", Name: "doWork", Kind: "SCOPE.Function", Language: "java", SourceFile: "Job.java"},
+		{ID: "ext", Name: "jakarta.enterprise", Kind: "SCOPE.External", Language: "java", SourceFile: ""},
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "entry", ToID: "svc", Kind: "CALLS"},
+		{ID: "2", FromID: "svc", ToID: "ext", Kind: "CALLS"},
+	}
+	RunProcessFlow(doc, DefaultProcessFlowConfig())
+	var crossStack, externalLib string
+	for _, e := range doc.Entities {
+		if e.Kind == EntityKindProcess {
+			crossStack = e.Properties["cross_stack"]
+			externalLib = e.Properties["crosses_external_lib"]
+			break
+		}
+	}
+	if crossStack != "false" {
+		t.Errorf("external-lib terminal: cross_stack = %q, want false", crossStack)
+	}
+	if externalLib != "true" {
+		t.Errorf("external-lib terminal: crosses_external_lib = %q, want true", externalLib)
 	}
 }
 

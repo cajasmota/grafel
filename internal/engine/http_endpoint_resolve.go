@@ -12,7 +12,8 @@
 //
 //  1. Builds a (kind, name, sourceFile) → record-pointer index over the
 //     merged set.
-//  2. For each synthetic http_endpoint with a source_handler property:
+//  2. For each synthetic http_endpoint with a source_handler property
+//     (producer side):
 //     a. Parses the property into (handlerKind, handlerName).
 //     b. Resolves to a real entity in the same SourceFile (handlers and
 //     their owning routes always live in the same file by construction
@@ -22,12 +23,31 @@
 //     source_handler property (its job is done).
 //     d. If NOT resolved: marks the synthetic for removal so it never
 //     reaches the resolver as an orphan.
+//  3. For each synthetic http_endpoint with a source_caller property
+//     (consumer side, #754):
+//     a. Parses the property into (callerKind, callerName).
+//     b. Resolves to a real entity in the same SourceFile (the JS/TS
+//     and Python consumer extractors stamp the enclosing function's
+//     NAME on each emitted endpoint, and that function lives in the
+//     same file by construction).
+//     c. If resolved: appends a FETCHES edge (caller → synthetic) to
+//     the caller's embedded Relationships, then clears the
+//     source_caller property. This wires the consumer-side
+//     http_endpoint into the per-repo graph so the process-flow BFS
+//     (#724) can traverse from the caller into the bridge node, and
+//     the cross-stack detector (#754) can fire correctly when the
+//     chain crosses a repo boundary. Without this edge, the 41
+//     consumer endpoints on fixture-e remained structural orphans
+//     and no fixture-e Process was ever marked cross_stack=true.
+//     d. If NOT resolved: the synthetic is kept (consumer endpoints
+//     are valuable cross-repo bridges regardless of caller resolution)
+//     but no FETCHES edge is emitted.
 //
-// Returning a NEW slice of EntityRecords (with unresolved synthetics
-// dropped) keeps the data flow obvious and avoids in-place slice
-// shuffling at the call site.
+// Returning a NEW slice of EntityRecords (with unresolved producer
+// synthetics dropped) keeps the data flow obvious and avoids in-place
+// slice shuffling at the call site.
 //
-// Refs #534 Phase 2.
+// Refs #534 Phase 2, #754.
 package engine
 
 import (
@@ -56,10 +76,12 @@ var resolverKindEquivalents = map[string][]string{
 // Exposed so cmd/archigraph can log a stats line analogous to the
 // import-aware resolver line.
 type ResolveHTTPEndpointStats struct {
-	Synthetics      int // total http_endpoint records seen
-	HandlerResolved int // source_handler resolved → IMPLEMENTS edge emitted
-	HandlerDropped  int // synthetics dropped because source_handler unresolved
-	NoHandlerProp   int // synthetics with no source_handler property (kept as-is)
+	Synthetics       int // total http_endpoint records seen
+	HandlerResolved  int // source_handler resolved → IMPLEMENTS edge emitted
+	HandlerDropped   int // synthetics dropped because source_handler unresolved
+	NoHandlerProp    int // synthetics with no source_handler property (kept as-is)
+	CallerResolved   int // #754: source_caller resolved → FETCHES edge emitted
+	CallerUnresolved int // #754: source_caller present but not found in-file
 }
 
 // ResolveHTTPEndpointHandlers runs the Phase-2 post-pass over `merged`.
@@ -69,11 +91,15 @@ type ResolveHTTPEndpointStats struct {
 // `merged` MUST already be sorted in canonical order (entity-id
 // disambiguation depends on first-writer-wins). The slice may be
 // returned as-is if no synthetics were dropped.
+// httpResolveKey is the (kind, name, sourceFile) index key used by the
+// resolver to look up entities by their stable in-file identity.
+type httpResolveKey struct{ kind, name, sourceFile string }
+
 func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
 	var stats ResolveHTTPEndpointStats
 
 	// (kind, name, sourceFile) → index into `merged`.
-	type key struct{ kind, name, sourceFile string }
+	type key = httpResolveKey
 	idx := make(map[key]int, len(merged))
 	// (kind, name) → first index — used as cross-file fallback for
 	// handlers declared in a different module than the route synthetic
@@ -110,6 +136,21 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 			continue
 		}
 		stats.Synthetics++
+
+		// #754 — consumer-side: resolve source_caller into a FETCHES edge.
+		// We run this BEFORE the producer-side source_handler branch so a
+		// synthetic that somehow carries both is handled correctly (in
+		// practice they're mutually exclusive: makeEmit in
+		// http_endpoint_synthesis.go uses a single refPropKey per side).
+		if r.Properties != nil {
+			if callerRef := r.Properties["source_caller"]; callerRef != "" {
+				if resolveCallerToFetchesEdge(callerRef, r, merged, idx) {
+					stats.CallerResolved++
+				} else {
+					stats.CallerUnresolved++
+				}
+			}
+		}
 
 		handlerRef := ""
 		if r.Properties != nil {
@@ -222,6 +263,129 @@ func splitHandlerRef(ref string) (kind, name string, ok bool) {
 		return "", "", false
 	}
 	return ref[:i], ref[i+1:], true
+}
+
+// resolveCallerToFetchesEdge attempts to resolve a consumer synthetic's
+// `source_caller` property into a real caller entity in the same file
+// and, on success, appends a FETCHES edge from caller → synthetic and
+// clears the property. Returns true iff an edge was emitted.
+//
+// The `key` type and `idx` map are passed by the caller (they're
+// computed once per resolve pass). We do a primary lookup on the
+// declared (kind, name, file) and fall back to a small allow-list of
+// equivalent caller kinds — the consumer extractors stamp
+// `source_caller="Function:<name>"` regardless of whether the real
+// merged record's kind is "Function", "SCOPE.Operation", "Method", or
+// a framework-specific kind like "TypeScriptFunction".
+func resolveCallerToFetchesEdge(
+	callerRef string,
+	syn *types.EntityRecord,
+	merged []types.EntityRecord,
+	idx map[httpResolveKey]int,
+) bool {
+	ck, cn, ok := splitHandlerRef(callerRef)
+	if !ok {
+		return false
+	}
+	emit := func(callerIdx int) {
+		caller := &merged[callerIdx]
+		fromStub := caller.Kind + ":" + caller.Name
+		toStub := syn.Kind + ":" + syn.Name
+		caller.Relationships = append(caller.Relationships, types.RelationshipRecord{
+			FromID: fromStub,
+			ToID:   toStub,
+			Kind:   string(types.RelationshipKindFetches),
+			Properties: map[string]string{
+				"pattern_type": "http_endpoint_client_synthesis_resolved",
+				"framework":    propOr(syn, "framework", ""),
+			},
+		})
+		delete(syn.Properties, "source_caller")
+	}
+	if callerIdx, found := idx[httpResolveKey{ck, cn, syn.SourceFile}]; found {
+		emit(callerIdx)
+		return true
+	}
+	for _, altKind := range callerKindAliases(ck) {
+		if callerIdx, found := idx[httpResolveKey{altKind, cn, syn.SourceFile}]; found {
+			emit(callerIdx)
+			return true
+		}
+	}
+	// Final fallback: the consumer extractors stamp the enclosing
+	// function's NAME, but real-world JS/TS class-field arrow methods
+	// (e.g. `byId = (id) => $http.get(...)` on fixture-e) are not
+	// surfaced as discrete function entities by the per-language
+	// extractor — only the enclosing class or the file-level component
+	// is. To keep the consumer http_endpoint reachable in the graph
+	// (so the process-flow BFS can land on it and the cross-stack
+	// detector can fire), wire FETCHES edges from EVERY plausible
+	// same-file container (class, module, file-component, exported
+	// service singleton) to the synthetic. The cross-repo HTTP linker
+	// is unaffected — it pairs synthetics by Name only. Emitting
+	// multiple FETCHES edges is logically over-coarse but structurally
+	// correct: whichever container the BFS actually reaches via CALLS
+	// resolution becomes a viable entry into the bridge.
+	emitted := false
+	for i := range merged {
+		c := &merged[i]
+		if c.SourceFile != syn.SourceFile {
+			continue
+		}
+		if !isFallbackCallerCandidate(c) {
+			continue
+		}
+		// Skip the synthetic itself.
+		if c.Kind == httpEndpointKind {
+			continue
+		}
+		emit(i)
+		emitted = true
+	}
+	return emitted
+}
+
+// isFallbackCallerCandidate reports whether an entity is a plausible
+// source for a FETCHES edge when the precise per-method caller can't be
+// resolved. We accept the file-level container kinds (SCOPE.Component
+// where Name=path, SCOPE.Module, SCOPE.File) AND any class-shaped
+// entity (SCOPE.Component / SCOPE.Class / SCOPE.Operation) in the same
+// file. This produces a small fan-out (typically 1-3 edges per
+// synthetic) and keeps the consumer endpoint reachable regardless of
+// which container the resolver/BFS happens to traverse to.
+func isFallbackCallerCandidate(r *types.EntityRecord) bool {
+	switch r.Kind {
+	case "SCOPE.Component", "SCOPE.Module", "SCOPE.File",
+		"SCOPE.Class", "SCOPE.Operation", "SCOPE.Function",
+		"Function", "Method":
+		return true
+	}
+	return false
+}
+
+// callerKindAliases returns the set of entity kinds that the consumer
+// extractors might use for a caller named in `source_caller`. The JS/TS
+// and Python extractors stamp `Function:<name>` but the actual merged
+// record may be a SCOPE.Operation, a Method, or a language-specific
+// function kind depending on which extractor produced it. Probing this
+// list lets us resolve callers without forcing the extractors to know
+// the downstream kind name in advance.
+func callerKindAliases(declared string) []string {
+	switch declared {
+	case "Function":
+		return []string{
+			"SCOPE.Operation",
+			"Method",
+			"TypeScriptFunction",
+			"JavaScriptFunction",
+			"PythonFunction",
+		}
+	case "Method":
+		return []string{"Function", "SCOPE.Operation"}
+	case "SCOPE.Operation":
+		return []string{"Function", "Method"}
+	}
+	return nil
 }
 
 // propOr returns r.Properties[k] or fallback if missing/nil.

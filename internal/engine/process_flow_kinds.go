@@ -23,6 +23,21 @@ const RelationshipKindEntryPointOf = "ENTRY_POINT_OF"
 // this package without an internal/types import cycle.
 const RelationshipKindCalls = "CALLS"
 
+// RelationshipKindFetches is the consumer-side HTTP fetch edge: caller
+// function → synthetic consumer http_endpoint. Emitted by
+// http_endpoint_resolve.go for any consumer synthetic that carries a
+// resolvable `source_caller` property (per-language extractor wave-1
+// work in #721 will emit the same kind directly once it lands).
+//
+// The process-flow BFS treats FETCHES as a traversable edge AND as the
+// canonical signal that a chain crosses a repo boundary: the consumer
+// http_endpoint is the bridge node that the cross-repo HTTP linker
+// pairs with a producer-side endpoint in another repo. Without a
+// FETCHES edge into the consumer endpoint, the BFS has no way to reach
+// the bridge, and the chain can never be (correctly) marked
+// cross_stack=true. See issue #754.
+const RelationshipKindFetches = "FETCHES"
+
 // EntityKindEndpoint, EntityKindRoute, EntityKindExternalAPI are referenced
 // by chainCrossesStack and match the canonical SCOPE.* names produced by
 // the per-language extractors. Duplicated here as raw strings to avoid an

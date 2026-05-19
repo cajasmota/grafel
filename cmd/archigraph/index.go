@@ -1619,11 +1619,13 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	merged, httpEndpointStats = engine.ResolveHTTPEndpointHandlers(merged)
 	if httpEndpointStats.Synthetics > 0 {
 		fmt.Fprintf(os.Stderr,
-			"http-endpoint-resolve: synthetics=%d handler_resolved=%d handler_dropped=%d no_handler_prop=%d\n",
+			"http-endpoint-resolve: synthetics=%d handler_resolved=%d handler_dropped=%d no_handler_prop=%d caller_resolved=%d caller_unresolved=%d\n",
 			httpEndpointStats.Synthetics,
 			httpEndpointStats.HandlerResolved,
 			httpEndpointStats.HandlerDropped,
-			httpEndpointStats.NoHandlerProp)
+			httpEndpointStats.NoHandlerProp,
+			httpEndpointStats.CallerResolved,
+			httpEndpointStats.CallerUnresolved)
 	}
 
 	// Stamp deterministic entity IDs onto every record so the resolver can
