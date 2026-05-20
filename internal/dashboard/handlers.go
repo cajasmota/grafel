@@ -18,6 +18,12 @@ func (s *Server) handleListRegistry(w http.ResponseWriter, _ *http.Request) {
 	if groups == nil {
 		groups = []GroupSummary{}
 	}
+	// Best-effort: enrich with top frameworks from the in-memory graph cache.
+	for i := range groups {
+		if grp, gErr := s.graphs.GetGroup(groups[i].Name); gErr == nil {
+			groups[i].Frameworks = groupTopFrameworks(grp, 8)
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"groups": groups})
 }
 

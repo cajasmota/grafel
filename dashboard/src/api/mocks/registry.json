@@ -11,7 +11,8 @@
       "entity_count": 6916,
       "indexed_at": "2026-05-20T10:05:00Z",
       "bug_rate": 3.2,
-      "bug_rate_history": [4.8, 4.1, 3.9, 3.5, 3.4, 3.2]
+      "bug_rate_history": [4.8, 4.1, 3.9, 3.5, 3.4, 3.2],
+      "frameworks": ["Python", "Django", "React", "TypeScript", "Node", "FastAPI", "GraphQL"]
     },
     {
       "id": "go-chi-mini",
@@ -23,7 +24,8 @@
       "entity_count": 1592,
       "indexed_at": "2026-05-20T08:35:00Z",
       "bug_rate": 9.7,
-      "bug_rate_history": [12.3, 11.8, 11.2, 10.5, 9.9, 9.7]
+      "bug_rate_history": [12.3, 11.8, 11.2, 10.5, 9.9, 9.7],
+      "frameworks": ["Go/chi", "Go/net-http"]
     },
     {
       "id": "rust-tokio-mini",
@@ -34,7 +36,8 @@
       "entity_count": 2310,
       "indexed_at": "2026-05-20T07:20:00Z",
       "bug_rate": 18.4,
-      "bug_rate_history": [22.1, 20.5, 19.8, 19.1, 18.8, 18.4]
+      "bug_rate_history": [22.1, 20.5, 19.8, 19.1, 18.8, 18.4],
+      "frameworks": ["Axum", "Tokio"]
     },
     {
       "id": "python-django-mini",
@@ -46,7 +49,8 @@
       "entity_count": 4730,
       "indexed_at": "2026-05-20T06:05:00Z",
       "bug_rate": 6.1,
-      "bug_rate_history": [9.4, 8.2, 7.5, 7.0, 6.4, 6.1]
+      "bug_rate_history": [9.4, 8.2, 7.5, 7.0, 6.4, 6.1],
+      "frameworks": ["Django", "Python", "Celery", "DRF"]
     }
   ],
   "version": "1.0.0-m2"

@@ -68,6 +68,9 @@ func (s *Server) handleDashboardInit(w http.ResponseWriter, r *http.Request) {
 			}
 			entry["total_entities"] = totalE
 			entry["total_relationships"] = totalR
+			if fws := groupTopFrameworks(grp, 8); len(fws) > 0 {
+				entry["frameworks"] = fws
+			}
 		}
 		enriched = append(enriched, entry)
 	}

@@ -96,6 +96,8 @@ export interface GroupMeta {
   bug_rate?: number
   /** Rolling bug-rate history (oldest → newest), used for the sparkline. */
   bug_rate_history?: number[]
+  /** Top frameworks detected across all repos in the group (sorted by usage, capped at 8). */
+  frameworks?: string[]
 }
 
 export interface Registry {

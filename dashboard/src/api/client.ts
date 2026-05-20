@@ -107,6 +107,7 @@ type WireGroup = {
   repos?: string[]
   entity_count?: number
   last_indexed?: string
+  frameworks?: string[]
 }
 
 function normalizeRegistry(raw: { groups: Array<WireGroup> }): Registry {
@@ -121,6 +122,7 @@ function normalizeRegistry(raw: { groups: Array<WireGroup> }): Registry {
     })),
     entity_count: g.entity_count ?? 0,
     indexed_at: g.last_indexed,
+    frameworks: g.frameworks,
   }))
   return { groups, version: '1' }
 }

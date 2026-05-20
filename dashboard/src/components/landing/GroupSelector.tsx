@@ -125,7 +125,7 @@ function Sparkline({ history, bugRate, width = 60, height = 24 }: SparklineProps
 function GroupCardSkeleton() {
   return (
     <div
-      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60 p-5 h-[152px] space-y-4"
+      className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 h-[232px] space-y-4"
       role="status"
       aria-label="Loading group…"
     >
@@ -140,6 +140,15 @@ function GroupCardSkeleton() {
         <div className="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
         <div className="h-4 w-14 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
         <div className="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+      </div>
+      {/* footer skeleton */}
+      <div className="border-t border-slate-800/60 pt-3 space-y-2">
+        <div className="flex gap-1">
+          <div className="h-4 w-14 rounded bg-slate-800 animate-pulse" />
+          <div className="h-4 w-12 rounded bg-slate-800 animate-pulse" />
+          <div className="h-4 w-10 rounded bg-slate-800 animate-pulse" />
+        </div>
+        <div className="h-3 w-36 rounded bg-slate-800 animate-pulse" />
       </div>
       <span className="sr-only">Loading…</span>
     </div>
@@ -172,6 +181,76 @@ function StatPill({ icon, tooltip, label, value, valueClass = 'text-slate-700 da
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FrameworkChips — Row 1 of the card footer
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_VISIBLE_CHIPS = 4
+
+interface FrameworkChipsProps {
+  frameworks?: string[]
+}
+
+function FrameworkChips({ frameworks }: FrameworkChipsProps) {
+  if (!frameworks || frameworks.length === 0) {
+    return <div className="flex items-center gap-1 h-5" aria-label="No frameworks detected" />
+  }
+
+  const visible = frameworks.slice(0, MAX_VISIBLE_CHIPS)
+  const overflow = frameworks.slice(MAX_VISIBLE_CHIPS)
+  const overflowTip = overflow.join(', ')
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap min-h-[20px]" role="list" aria-label="Frameworks">
+      {visible.map((fw) => (
+        <span
+          key={fw}
+          role="listitem"
+          className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono leading-none bg-slate-700 text-sky-400"
+        >
+          {fw}
+        </span>
+      ))}
+      {overflow.length > 0 && (
+        <Tooltip tip={overflowTip}>
+          <span
+            data-overflow-chip
+            className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono leading-none cursor-default bg-slate-700 text-sky-400"
+          >
+            +{overflow.length} more
+          </span>
+        </Tooltip>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RepoRow — Row 2 of the card footer
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RepoRowProps {
+  repos: Array<{ slug: string }>
+}
+
+function RepoRow({ repos }: RepoRowProps) {
+  const names = repos.map((r) => r.slug)
+  const joined = names.join(', ')
+  const tip = names.length > 1 ? joined : ''
+
+  return (
+    <Tooltip tip={tip}>
+      <span
+        data-repo-row
+        className="block text-[10px] text-slate-500 truncate w-full leading-snug"
+        aria-label={`Repos: ${joined}`}
+      >
+        {joined}
+      </span>
+    </Tooltip>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Group card
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -190,66 +269,77 @@ function GroupCard({ group, onClick }: GroupCardProps) {
   return (
     <button
       type="button"
+      data-card
       onClick={onClick}
       className={[
-        'w-full text-left rounded-xl border bg-slate-100/60 dark:bg-slate-900/60 p-5',
-        // Fixed height ensures all cards are the same regardless of bug-rate / sparkline presence
-        'h-[152px] flex flex-col justify-between',
+        'w-full text-left rounded-xl border bg-slate-900/60 p-5',
+        // Fixed height: 152px (stats) + 80px (footer) = 232px.
+        // All cards identical height regardless of framework count.
+        'h-[232px] flex flex-col',
         'transition-all duration-150 cursor-pointer',
         'border-slate-200 dark:border-slate-800 hover:border-sky-500/40 hover:-translate-y-px hover:bg-slate-200 dark:hover:bg-slate-900',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60',
       ].join(' ')}
     >
-      {/* Header: group name + sparkline */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <GitBranch className="w-4 h-4 text-sky-400 shrink-0" aria-hidden />
-          <span className="text-xl font-semibold text-slate-900 dark:text-slate-100 truncate">
-            {group.display_name}
-          </span>
+      {/* Main content — grows to fill available space */}
+      <div className="flex-1 flex flex-col justify-between min-h-0">
+        {/* Header: group name + sparkline */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <GitBranch className="w-4 h-4 text-sky-400 shrink-0" aria-hidden />
+            <span className="text-xl font-semibold text-slate-100 truncate">
+              {group.display_name}
+            </span>
+          </div>
+          <div className="shrink-0 pt-0.5">
+            <Sparkline history={group.bug_rate_history} bugRate={group.bug_rate} />
+          </div>
         </div>
-        <div className="shrink-0 pt-0.5">
-          <Sparkline history={group.bug_rate_history} bugRate={group.bug_rate} />
+
+        {/* Stats grid — 2×2 to keep consistent height */}
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+          {/* Repos */}
+          <StatPill
+            icon={<Database className="w-3.5 h-3.5" aria-hidden />}
+            tooltip="Number of repositories in this group"
+            label="Repos"
+            value={String(group.repos.length)}
+          />
+
+          {/* Entities */}
+          <StatPill
+            icon={<TerminalSquare className="w-3.5 h-3.5" aria-hidden />}
+            tooltip="Total entities across all repos"
+            label="Entities"
+            value={formatCount(group.entity_count)}
+            dimmed={!hasRealData}
+          />
+
+          {/* Bug rate */}
+          <StatPill
+            icon={<Activity className="w-3.5 h-3.5" aria-hidden />}
+            tooltip="Percentage of unresolved/ambiguous edges (lower is better)"
+            label="Bug-rate"
+            value={rateLabel}
+            valueClass={`text-xs font-medium font-mono ${rateColor}`}
+            dimmed={group.bug_rate === undefined}
+          />
+
+          {/* Last indexed */}
+          <StatPill
+            icon={<Clock className="w-3.5 h-3.5" aria-hidden />}
+            tooltip="Time since most recent indexing"
+            label="Indexed"
+            value={relativeTime(group.indexed_at)}
+            dimmed={!hasIndexedAt}
+          />
         </div>
       </div>
 
-      {/* Stats grid — 2×2 to keep consistent height */}
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-        {/* Repos */}
-        <StatPill
-          icon={<Database className="w-3.5 h-3.5" aria-hidden />}
-          tooltip="Number of repositories in this group"
-          label="Repos"
-          value={String(group.repos.length)}
-        />
-
-        {/* Entities */}
-        <StatPill
-          icon={<TerminalSquare className="w-3.5 h-3.5" aria-hidden />}
-          tooltip="Total entities across all repos"
-          label="Entities"
-          value={formatCount(group.entity_count)}
-          dimmed={!hasRealData}
-        />
-
-        {/* Bug rate */}
-        <StatPill
-          icon={<Activity className="w-3.5 h-3.5" aria-hidden />}
-          tooltip="Percentage of unresolved/ambiguous edges (lower is better)"
-          label="Bug-rate"
-          value={rateLabel}
-          valueClass={`text-xs font-medium font-mono ${rateColor}`}
-          dimmed={group.bug_rate === undefined}
-        />
-
-        {/* Last indexed */}
-        <StatPill
-          icon={<Clock className="w-3.5 h-3.5" aria-hidden />}
-          tooltip="Time since most recent indexing"
-          label="Indexed"
-          value={relativeTime(group.indexed_at)}
-          dimmed={!hasIndexedAt}
-        />
+      {/* Footer — fixed 80px: framework chips + repo names */}
+      <div className="h-[80px] flex flex-col justify-center gap-1.5 pt-3 border-t border-slate-800/60 mt-3 shrink-0">
+        <FrameworkChips frameworks={group.frameworks} />
+        <RepoRow repos={group.repos} />
       </div>
     </button>
   )

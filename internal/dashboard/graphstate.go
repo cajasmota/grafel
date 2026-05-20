@@ -315,3 +315,51 @@ func hashStr(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return fmt.Sprintf("%x", h[:8])
 }
+
+// groupTopFrameworks scans all http_endpoint / Endpoint / Route entities
+// across the group and returns the top-N framework names sorted by usage
+// frequency (descending). cap controls the maximum number returned (≤8).
+func groupTopFrameworks(grp *DashGroup, cap int) []string {
+	freq := map[string]int{}
+	for _, r := range sortedRepos(grp) {
+		if r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			kind := dashStripScopePrefix(e.Kind)
+			if !strings.EqualFold(kind, httpEndpointKind) && kind != "Endpoint" && kind != "Route" {
+				continue
+			}
+			if fw := e.Properties["framework"]; fw != "" {
+				freq[fw]++
+			}
+		}
+	}
+	if len(freq) == 0 {
+		return nil
+	}
+
+	type kv struct {
+		k string
+		v int
+	}
+	pairs := make([]kv, 0, len(freq))
+	for k, v := range freq {
+		pairs = append(pairs, kv{k, v})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].v != pairs[j].v {
+			return pairs[i].v > pairs[j].v
+		}
+		return pairs[i].k < pairs[j].k
+	})
+	if cap > 0 && len(pairs) > cap {
+		pairs = pairs[:cap]
+	}
+	out := make([]string, len(pairs))
+	for i, p := range pairs {
+		out[i] = p.k
+	}
+	return out
+}
