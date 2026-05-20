@@ -44,11 +44,15 @@ var allowedRepairResolutions = map[string]bool{
 	enrichment.RepairAbandon:              true,
 }
 
-// readRepairEdgeCandidates returns the repair_edge entries from a repo's
-// enrichment-candidates.json. We re-parse the file as
-// []enrichment.Candidate (the rich shape with Context) because the
-// simplified MCP EnrichmentCandidate struct drops the Context map the
-// repair tools depend on.
+// readRepairEdgeCandidates returns the repair_edge AND dynamic_baseurl_endpoint
+// entries from a repo's enrichment-candidates.json. Both kinds surface in
+// archigraph_repairs action=list — repair_edge for structurally ambiguous
+// symbol edges (ADR-0015 phase-1) and dynamic_baseurl_endpoint for
+// consumer-side HTTP calls whose baseURL is runtime-determined (#708).
+//
+// We re-parse the file as []enrichment.Candidate (the rich shape with
+// Context) because the simplified MCP EnrichmentCandidate struct drops the
+// Context map the repair tools depend on.
 func readRepairEdgeCandidates(repoPath string) []enrichment.Candidate {
 	if repoPath == "" {
 		return nil
@@ -70,9 +74,10 @@ func readRepairEdgeCandidates(repoPath string) []enrichment.Candidate {
 		}
 		arr = obj.Candidates
 	}
-	out := arr[:0]
+	out := make([]enrichment.Candidate, 0, len(arr))
 	for _, c := range arr {
-		if c.Kind == enrichment.KindRepairEdge {
+		if c.Kind == enrichment.KindRepairEdge ||
+			c.Kind == enrichment.KindDynamicBaseURLEndpoint {
 			out = append(out, c)
 		}
 	}
@@ -148,6 +153,12 @@ func writeRepairFile(repoPath string, rf repairFileOnDisk) error {
 // summarizeRepairEdge produces a compact, agent-friendly row for the
 // list_residuals output. The full Context is also included so an agent
 // pipeline can build a prompt without a second round-trip.
+//
+// The function handles both repair_edge candidates (ADR-0015 phase-1) and
+// dynamic_baseurl_endpoint candidates (#708). Dynamic-baseurl entries carry
+// category="cross-repo runtime" in their context; the summary promotes that
+// to a top-level field so callers can filter without inspecting the full
+// context object.
 func summarizeRepairEdge(repo string, c enrichment.Candidate) map[string]any {
 	row := map[string]any{
 		"candidate_id": c.ID,
@@ -158,6 +169,8 @@ func summarizeRepairEdge(repo string, c enrichment.Candidate) map[string]any {
 	if c.Context == nil {
 		return row
 	}
+
+	// repair_edge fields.
 	if v, ok := c.Context["edge_id"].(string); ok {
 		row["edge_id"] = v
 	}
@@ -176,6 +189,30 @@ func summarizeRepairEdge(repo string, c enrichment.Candidate) map[string]any {
 	if v, ok := c.Context["from_entity"]; ok {
 		row["from_entity"] = v
 	}
+
+	// dynamic_baseurl_endpoint fields (#708).
+	if v, ok := c.Context["category"].(string); ok {
+		row["category"] = v
+	}
+	if v, ok := c.Context["dynamic_kind"].(string); ok {
+		row["dynamic_kind"] = v
+	}
+	if v, ok := c.Context["path"].(string); ok && c.Kind == enrichment.KindDynamicBaseURLEndpoint {
+		row["path"] = v
+	}
+	if v, ok := c.Context["verb"].(string); ok && c.Kind == enrichment.KindDynamicBaseURLEndpoint {
+		row["verb"] = v
+	}
+	if v, ok := c.Context["source_file"].(string); ok && c.Kind == enrichment.KindDynamicBaseURLEndpoint {
+		row["source_file"] = v
+	}
+	if v, ok := c.Context["static_path_suffix"].(string); ok {
+		row["static_path_suffix"] = v
+	}
+	if v, ok := c.Context["dynamic_prefix_var"].(string); ok {
+		row["dynamic_prefix_var"] = v
+	}
+
 	// Expose the full context too so callers don't have to fetch the raw
 	// file. This is the most expensive field but it's bounded by the
 	// emitter's context-window cap (~50 lines).

@@ -941,3 +941,34 @@ func TestSynth_Django_AstDriven_StillWorks(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #708 — hasDynamicBaseURLPath unit test
+// ---------------------------------------------------------------------------
+
+// TestHasDynamicBaseURLPath verifies the path-classification helper used by
+// makeEmit to tag leading-param consumer endpoints with dynamic_baseurl=true.
+func TestHasDynamicBaseURLPath(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		// Leading placeholder — dynamic baseURL.
+		{"/{tenantId}/contracts/{id}", true},
+		{"{tenantId}/contracts/{id}", true},
+		{"/{x}", true},
+		{"{x}", true},
+		// Non-leading placeholder — NOT dynamic baseURL.
+		{"/api/{version}/users", false},
+		{"/users/{id}", false},
+		{"/api/v1/items", false},
+		{"/", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		got := hasDynamicBaseURLPath(tc.path)
+		if got != tc.want {
+			t.Errorf("hasDynamicBaseURLPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}

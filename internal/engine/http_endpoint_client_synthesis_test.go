@@ -1291,3 +1291,67 @@ public class UserService {
 		t.Errorf("expected http:GET:/users with runtime_dynamic=true for System.getenv concat (Java)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #708 — dynamic baseURL: template-literal paths that start with a
+// {<name>} placeholder (e.g. /${tenantId}/contracts/${contractId}) must
+// surface with dynamic_baseurl=true so the repair flow can annotate them.
+// ---------------------------------------------------------------------------
+
+// TestSynth708_DynamicBaseURL_TemplateLiteralLeadingParam verifies that
+// fetch(`/${tenantId}/contracts/${contractId}`) emits an http_endpoint
+// entity tagged with dynamic_baseurl=true and pattern_type=
+// http_endpoint_client_synthesis.
+func TestSynth708_DynamicBaseURL_TemplateLiteralLeadingParam(t *testing.T) {
+	src := `
+export async function fetchContracts(tenantId, contractId) {
+  return fetch(` + "`" + `/${tenantId}/contracts/${contractId}` + "`" + `);
+}
+`
+	_, res := runDetect(t, "typescript", "708-dynamic-baseurl.ts", src)
+	var foundPath, foundPatternType, foundDynBaseURL string
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.Properties["dynamic_baseurl"] == "true" {
+			foundPath = e.Properties["path"]
+			foundPatternType = e.Properties["pattern_type"]
+			foundDynBaseURL = e.Properties["dynamic_baseurl"]
+			break
+		}
+	}
+	if foundDynBaseURL != "true" {
+		t.Fatalf("expected http_endpoint with dynamic_baseurl=true; entities: %+v", res.Entities)
+	}
+	if foundPatternType != "http_endpoint_client_synthesis" {
+		t.Errorf("pattern_type: want http_endpoint_client_synthesis, got %q", foundPatternType)
+	}
+	// The canonical path must start with /{tenantId} or {tenantId} so the
+	// repair collector can extract the leading placeholder name.
+	strippedPath := strings.TrimPrefix(foundPath, "/")
+	if !strings.HasPrefix(strippedPath, "{tenantId}") {
+		t.Errorf("path: want prefix {tenantId} (with optional leading /), got %q", foundPath)
+	}
+}
+
+// TestSynth708_DynamicBaseURL_ProcessEnvBaseURL verifies that
+// const baseURL = process.env.API_URL; fetch(baseURL + '/users') produces
+// an entity with runtime_dynamic=true (env-var pattern, not leading-param
+// pattern). Both signals feed into CollectDynamicBaseURLCandidates.
+func TestSynth708_DynamicBaseURL_ProcessEnvBaseURL(t *testing.T) {
+	src := `
+export async function loadUsers() {
+  return fetch(process.env.API_URL + '/users');
+}
+`
+	_, res := runDetect(t, "typescript", "708-env-baseurl.ts", src)
+	found := false
+	for _, e := range res.Entities {
+		if e.Kind == httpEndpointKind && e.ID == "http:GET:/users" {
+			if e.Properties["runtime_dynamic"] == "true" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected http:GET:/users with runtime_dynamic=true for process.env.API_URL + '/users'")
+	}
+}

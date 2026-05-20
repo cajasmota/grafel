@@ -142,6 +142,20 @@ func applyHTTPEndpointSynthesis(
 			if refName != "" {
 				props[refPropKey] = fmt.Sprintf("%s:%s", refKind, refName)
 			}
+			// Issue #708 — mark consumer-side synthetics whose canonical
+			// path begins with a `{<name>}` placeholder, either at the
+			// very start or immediately after the leading slash (e.g.
+			// `{tenantId}/contracts/{id}` or `/{tenantId}/contracts/{id}`).
+			// The first segment is a tenant ID / environment selector that
+			// determines which backend the call targets at runtime — static
+			// link matching can never land these. The flag is consumed by
+			// enrichment.CollectDynamicBaseURLCandidates, which surfaces
+			// them in archigraph_repairs action=list with
+			// category="cross-repo runtime".
+			if patternType == "http_endpoint_client_synthesis" &&
+				hasDynamicBaseURLPath(canonicalPath) {
+				props["dynamic_baseurl"] = "true"
+			}
 
 			entities = append(entities, types.EntityRecord{
 				ID:                 id,
@@ -769,4 +783,24 @@ func joinPathFragments(prefix, method string) string {
 		return prefix + "/" + method
 	}
 	return prefix + method
+}
+
+// hasDynamicBaseURLPath reports whether a canonical URL path indicates a
+// dynamic-baseURL consumer call (issue #708). These are calls where the
+// FIRST path segment is a runtime variable (tenant ID, environment
+// selector, etc.) that determines which backend the request targets.
+//
+// Accepted forms:
+//
+//	{tenantId}/contracts/{id}   — leading placeholder, no root slash
+//	/{tenantId}/contracts/{id}  — leading placeholder after root slash
+//
+// We intentionally do NOT flag paths like `/api/{version}/users` where
+// the dynamic segment is NOT the first segment — those are normal
+// parameterised routes that the linker can match by shape.
+func hasDynamicBaseURLPath(path string) bool {
+	// Drop the optional leading slash so we can check the first segment.
+	rest := strings.TrimPrefix(path, "/")
+	// First character of the first segment must open a placeholder.
+	return strings.HasPrefix(rest, "{")
 }

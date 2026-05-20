@@ -1301,6 +1301,22 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 		}
 	}
 
+	// 4) Issue #708 — dynamic-baseurl endpoint candidates. Emitted
+	//    unconditionally (no resolver required) whenever there are
+	//    consumer-side http_endpoint entities whose baseURL is
+	//    runtime-determined (runtime_dynamic=true or dynamic_baseurl=true).
+	//    These surface in archigraph_repairs action=list so an agent can
+	//    annotate them with a curated baseURL hint.
+	dynBaseURL := enrichment.CollectDynamicBaseURLCandidates(doc)
+	if len(dynBaseURL) > 0 {
+		cands = append(cands, dynBaseURL...)
+		if verbose() {
+			fmt.Fprintf(os.Stderr,
+				"enrichment: collected %d dynamic_baseurl_endpoint candidates (#708)\n",
+				len(dynBaseURL))
+		}
+	}
+
 	if err := enrichment.WriteCandidates(archigraphDir, cands); err != nil {
 		fmt.Fprintf(os.Stderr, "archigraph: enrichment candidate write failed: %v\n", err)
 		return
