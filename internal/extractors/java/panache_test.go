@@ -826,6 +826,10 @@ func TestSynthesizePanacheDSL_AllEntitiesHaveSourceFile(t *testing.T) {
 	for _, e := range entities {
 		if e.SourceFile == "" {
 			t.Errorf("entity %s: expected non-empty SourceFile", e.Name)
+		}
+	}
+}
+
 // Issue #820 — regression tests for dedup-by-Name fix.
 // Verifies that the entity Name set is unique after synthesis, so the
 // resolver's byName index never flips to the ambiguous blank-sentinel
@@ -953,6 +957,10 @@ func TestSynthesizePanacheDSL_PanacheQuery_AllDSLMethodsHaveOwnerProperty(t *tes
 		}
 		if expectedOwner != "" && e.Properties["owner"] != expectedOwner {
 			t.Errorf("entity %s: expected owner=%s, got %q", e.Name, expectedOwner, e.Properties["owner"])
+		}
+	}
+}
+
 func TestDedupSynthByName_DirectFunction(t *testing.T) {
 	// Unit test for the dedupSynthByName helper directly.
 	input := []types.EntityRecord{

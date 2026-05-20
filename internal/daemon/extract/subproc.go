@@ -116,6 +116,25 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 	runFramework := !opts.SkipPasses["framework"]
 	runCross := !opts.SkipPasses["cross-lang"]
 
+	// Pre-pass (#845): build cross-file Java DI registry before the synthesis
+	// pass runs. For each Java file in the batch, scan @RegisterRestClient and
+	// @FeignClient interface definitions so that consumer files in the same
+	// batch can resolve cross-file @Inject/@Autowired call sites.
+	// ClearJavaDIRegistry resets any state from a prior batch so we don't bleed
+	// registrations across unrelated index runs.
+	if runFramework {
+		engine.ClearJavaDIRegistry()
+		for _, rel := range files {
+			abs := filepath.Join(opts.RepoRoot, rel)
+			if !strings.HasSuffix(strings.ToLower(rel), ".java") {
+				continue
+			}
+			if javaContent, err := os.ReadFile(abs); err == nil {
+				engine.ScanJavaDIRegistry(string(javaContent))
+			}
+		}
+	}
+
 	for _, rel := range files {
 		abs := filepath.Join(opts.RepoRoot, rel)
 		st, statErr := os.Stat(abs)

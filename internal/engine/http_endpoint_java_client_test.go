@@ -2,6 +2,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // TestJavaClient_StdlibHttpClient covers
@@ -555,4 +557,271 @@ public class OrderHandler {
 	requireContains(t, ids, want, "feign-basic")
 	requireFetches(t, rels, "http:GET:/customers/{id}", "feign-basic")
 	requireFetches(t, rels, "http:POST:/customers", "feign-basic")
+}
+
+// ---------------------------------------------------------------------------
+// #845 — Cross-file @Inject resolution
+// ---------------------------------------------------------------------------
+//
+// runCrossFileDetect pre-populates the global JavaDIRegistry with the content
+// of every "interface" file, then runs detection on the "consumer" file.
+// It resets the registry before and after so tests are isolated.
+
+func runCrossFileDetect(t *testing.T, interfaceContents []string, lang, consumerPath, consumerContent string) ([]string, []types.RelationshipRecord) {
+	t.Helper()
+	ClearJavaDIRegistry()
+	t.Cleanup(ClearJavaDIRegistry)
+	for _, ifc := range interfaceContents {
+		ScanJavaDIRegistry(ifc)
+	}
+	return runDetectWithRels(t, lang, consumerPath, consumerContent)
+}
+
+// TestJavaClient_CrossFile_QuarkusRestClient verifies the fixture-f
+// cross-file pattern: CustomerApiClient is defined in file A
+// (io/triage/ai/client/CustomerApiClient.java) and injected in file B
+// (io/triage/ai/TriageTools.java). FETCHES edges must be emitted when
+// ScanJavaDIRegistry has pre-indexed file A.
+func TestJavaClient_CrossFile_QuarkusRestClient(t *testing.T) {
+	// File A: the @RegisterRestClient interface definition (CustomerApiClient.java).
+	fileA := `
+package io.triage.ai.client;
+
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+import javax.ws.rs.GET;
+import javax.ws.rs.POST;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+
+@RegisterRestClient
+@Path("/customers")
+public interface CustomerApiClient {
+    @GET
+    @Path("/{id}")
+    Customer getCustomer(@PathParam("id") String id);
+
+    @POST
+    Customer create(Customer body);
+}
+`
+	// File B: the consumer — DIFFERENT file, DIFFERENT package.
+	fileB := `
+package io.triage.ai;
+
+import org.eclipse.microprofile.rest.client.inject.RestClient;
+import javax.inject.Inject;
+import javax.enterprise.context.ApplicationScoped;
+
+@ApplicationScoped
+public class TriageTools {
+    @Inject @RestClient CustomerApiClient customerApi;
+
+    void process() {
+        Customer c = customerApi.getCustomer("abc");
+        customerApi.create(new Customer());
+    }
+}
+`
+	ids, rels := runCrossFileDetect(t, []string{fileA}, "java", "TriageTools.java", fileB)
+	want := []string{
+		"http:GET:/customers/{id}",
+		"http:POST:/customers",
+	}
+	requireContains(t, ids, want, "cross-file-quarkus")
+	requireFetches(t, rels, "http:GET:/customers/{id}", "cross-file-quarkus")
+	requireFetches(t, rels, "http:POST:/customers", "cross-file-quarkus")
+}
+
+// TestJavaClient_CrossFile_QuarkusMultipleInterfaces verifies that two
+// @RegisterRestClient interfaces in separate files are both resolved when
+// the consumer class injects both.
+func TestJavaClient_CrossFile_QuarkusMultipleInterfaces(t *testing.T) {
+	fileCustomer := `
+package io.triage.ai.client;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+
+@RegisterRestClient @Path("/customers")
+public interface CustomerApiClient {
+    @GET @Path("/{id}")
+    Customer getCustomer(@PathParam("id") String id);
+}
+`
+	fileOffer := `
+package io.triage.ai.client;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+import javax.ws.rs.GET;
+import javax.ws.rs.DELETE;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+
+@RegisterRestClient @Path("/offers")
+public interface OfferApiClient {
+    @GET @Path("/active")
+    java.util.List<Offer> getActiveOffers();
+
+    @DELETE @Path("/{id}")
+    void deleteOffer(@PathParam("id") long id);
+}
+`
+	// Consumer in its own file referencing both cross-file interfaces.
+	consumer := `
+package io.triage.ai;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
+import javax.inject.Inject;
+import javax.enterprise.context.ApplicationScoped;
+
+@ApplicationScoped
+public class TriageTools {
+    @Inject @RestClient CustomerApiClient customerApi;
+    @Inject @RestClient OfferApiClient offerApi;
+
+    void process() {
+        Customer c = customerApi.getCustomer("abc");
+        java.util.List<Offer> offers = offerApi.getActiveOffers();
+        offerApi.deleteOffer(42L);
+    }
+}
+`
+	ids, rels := runCrossFileDetect(t, []string{fileCustomer, fileOffer}, "java", "TriageTools.java", consumer)
+	want := []string{
+		"http:GET:/customers/{id}",
+		"http:GET:/offers/active",
+		"http:DELETE:/offers/{id}",
+	}
+	requireContains(t, ids, want, "cross-file-multi-iface")
+	requireFetches(t, rels, "http:GET:/customers/{id}", "cross-file-multi-iface")
+	requireFetches(t, rels, "http:GET:/offers/active", "cross-file-multi-iface")
+	requireFetches(t, rels, "http:DELETE:/offers/{id}", "cross-file-multi-iface")
+}
+
+// TestJavaClient_CrossFile_FeignClient verifies that a @FeignClient interface
+// defined in file A produces FETCHES edges when consumed via @Autowired in
+// file B (no FeignClient text in consumer file).
+func TestJavaClient_CrossFile_FeignClient(t *testing.T) {
+	fileA := `
+package com.example.client;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+@FeignClient(name = "order-service", url = "http://order-svc")
+public interface OrderServiceClient {
+    @GetMapping("/orders/{id}")
+    Order getOrder(String id);
+
+    @PostMapping("/orders")
+    Order placeOrder(Order o);
+}
+`
+	// Consumer in a different package — no FeignClient import.
+	fileB := `
+package com.example.checkout;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+@Service
+public class CheckoutService {
+    @Autowired
+    OrderServiceClient orderClient;
+
+    public Order checkout(Order o) {
+        return orderClient.placeOrder(o);
+    }
+
+    public Order getOrder(String id) {
+        return orderClient.getOrder(id);
+    }
+}
+`
+	ids, rels := runCrossFileDetect(t, []string{fileA}, "java", "CheckoutService.java", fileB)
+	want := []string{
+		"http:GET:/orders/{id}",
+		"http:POST:/orders",
+	}
+	requireContains(t, ids, want, "cross-file-feign")
+	requireFetches(t, rels, "http:GET:/orders/{id}", "cross-file-feign")
+	requireFetches(t, rels, "http:POST:/orders", "cross-file-feign")
+}
+
+// TestJavaClient_CrossFile_MultipleInjectedFields verifies the case where a
+// single consumer class has multiple injected cross-file DI fields.
+func TestJavaClient_CrossFile_MultipleInjectedFields(t *testing.T) {
+	inventoryIface := `
+package io.example.clients;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
+
+@RegisterRestClient @Path("/inventory")
+public interface InventoryClient {
+    @PUT @Path("/{sku}")
+    void updateStock(@javax.ws.rs.PathParam("sku") String sku, int qty);
+}
+`
+	paymentIface := `
+package io.example.clients;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+
+@RegisterRestClient @Path("/payments")
+public interface PaymentClient {
+    @GET @Path("/{txId}")
+    Payment getPayment(@javax.ws.rs.PathParam("txId") String txId);
+}
+`
+	consumer := `
+package io.example.service;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
+import javax.inject.Inject;
+
+public class OrderProcessor {
+    @Inject @RestClient InventoryClient inventoryClient;
+    @Inject @RestClient PaymentClient paymentClient;
+
+    void fulfil(String sku, String txId) {
+        inventoryClient.updateStock(sku, 1);
+        Payment p = paymentClient.getPayment(txId);
+    }
+}
+`
+	ids, rels := runCrossFileDetect(t, []string{inventoryIface, paymentIface}, "java", "OrderProcessor.java", consumer)
+	want := []string{
+		"http:PUT:/inventory/{sku}",
+		"http:GET:/payments/{txId}",
+	}
+	requireContains(t, ids, want, "cross-file-multi-fields")
+	requireFetches(t, rels, "http:PUT:/inventory/{sku}", "cross-file-multi-fields")
+	requireFetches(t, rels, "http:GET:/payments/{txId}", "cross-file-multi-fields")
+}
+
+// TestJavaClient_CrossFile_NoRegistryNoBleeding verifies that without
+// ScanJavaDIRegistry being called, cross-file injection produces no FETCHES
+// edges (no bleed from a previous test).
+func TestJavaClient_CrossFile_NoRegistryNoBleeding(t *testing.T) {
+	ClearJavaDIRegistry()
+	t.Cleanup(ClearJavaDIRegistry)
+
+	// Consumer file only — no interface in the same file, no pre-scan.
+	consumer := `
+package io.triage.ai;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
+import javax.inject.Inject;
+
+public class TriageTools {
+    @Inject @RestClient CustomerApiClient customerApi;
+    void process() {
+        customerApi.getCustomer("abc");
+    }
+}
+`
+	_, rels := runDetectWithRels(t, "java", "TriageTools.java", consumer)
+	for _, r := range rels {
+		if r.Kind == "FETCHES" {
+			t.Errorf("unexpected FETCHES edge %+v without registry pre-scan", r)
+		}
+	}
 }

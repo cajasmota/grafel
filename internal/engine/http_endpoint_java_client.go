@@ -51,9 +51,160 @@ package engine
 import (
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
 )
+
+// ---------------------------------------------------------------------------
+// Cross-file DI registry (#845 — Option B)
+//
+// The per-file synthesis pass cannot see @RegisterRestClient interfaces
+// declared in a DIFFERENT file. This global registry is populated with a
+// pre-pass (ScanJavaDIRegistry) before the per-file synthesis runs. The
+// Quarkus and Feign consumer passes then look up the cross-file registry
+// when a local lookup fails.
+//
+// Lifecycle:
+//   - ScanJavaDIRegistry(content) populates the registry from one file.
+//   - synthesizeQuarkusRestClient / synthesizeFeignClient fall back to the
+//     registry when the local (same-file) interface is not found.
+//   - ClearJavaDIRegistry() resets the registry (test isolation / new index run).
+// ---------------------------------------------------------------------------
+
+// javaDIMethodMap maps method simple-name → (verb, canonicalPath).
+type javaDIMethodMap = map[string]restClientMethodEntry
+
+// JavaDIRegistry maps interface simple-name → javaDIMethodMap.
+// Exported so callers outside the engine package can build and pass it.
+type JavaDIRegistry map[string]javaDIMethodMap
+
+// javaDIGlobal is the package-level cross-file registry, protected by a
+// reader-writer mutex so parallel index passes can populate it safely.
+var (
+	javaDIGlobal   JavaDIRegistry = JavaDIRegistry{}
+	javaDIGlobalMu sync.RWMutex
+)
+
+// ScanJavaDIRegistry extracts all @RegisterRestClient and @FeignClient
+// interface definitions from `content` and merges them into the global
+// cross-file registry. Safe for concurrent calls from parallel file walkers.
+//
+// Call once per Java source file BEFORE the per-file synthesis pass runs.
+// The registry is additive — subsequent calls never overwrite earlier entries
+// (first-declaration-wins, which is correct for a well-typed codebase where
+// each interface name is unique within a repo).
+func ScanJavaDIRegistry(content string) {
+	if !javaHasRestClientMarker(content) {
+		return
+	}
+	local := buildQuarkusDIEntries(content)
+	local = mergeFeignDIEntries(content, local)
+	if len(local) == 0 {
+		return
+	}
+	javaDIGlobalMu.Lock()
+	defer javaDIGlobalMu.Unlock()
+	for ifaceName, methodMap := range local {
+		if _, exists := javaDIGlobal[ifaceName]; !exists {
+			javaDIGlobal[ifaceName] = methodMap
+		}
+	}
+}
+
+// ClearJavaDIRegistry resets the global cross-file DI registry.
+// Call at the start of each index run and in test teardowns.
+func ClearJavaDIRegistry() {
+	javaDIGlobalMu.Lock()
+	defer javaDIGlobalMu.Unlock()
+	javaDIGlobal = JavaDIRegistry{}
+}
+
+// lookupDIRegistry returns the method map for `ifaceName` by checking first
+// the provided local registry, then the global cross-file registry.
+func lookupDIRegistry(ifaceName string, local JavaDIRegistry) (javaDIMethodMap, bool) {
+	if mm, ok := local[ifaceName]; ok {
+		return mm, true
+	}
+	javaDIGlobalMu.RLock()
+	defer javaDIGlobalMu.RUnlock()
+	mm, ok := javaDIGlobal[ifaceName]
+	return mm, ok
+}
+
+// buildQuarkusDIEntries parses all @RegisterRestClient interfaces in content
+// and returns their method maps (same logic as Pass 1 of synthesizeQuarkusRestClient).
+func buildQuarkusDIEntries(content string) JavaDIRegistry {
+	registry := JavaDIRegistry{}
+	for _, annotMatch := range javaRegisterRestClientHeaderRe.FindAllStringIndex(content, -1) {
+		searchEnd := annotMatch[1] + 512
+		if searchEnd > len(content) {
+			searchEnd = len(content)
+		}
+		header := content[annotMatch[1]:searchEnd]
+
+		classPath := ""
+		ifaceIdx := javaInterfaceDeclRe.FindStringIndex(header)
+		if ifaceIdx == nil {
+			continue
+		}
+		headerBefore := header[:ifaceIdx[0]]
+		if pm := javaClassLevelPathRe.FindStringSubmatch(headerBefore); pm != nil {
+			classPath = pm[1]
+		}
+		if classPath == "" {
+			lookback := annotMatch[0] - 256
+			if lookback < 0 {
+				lookback = 0
+			}
+			priorSlice := content[lookback:annotMatch[0]]
+			if pm := javaClassLevelPathRe.FindStringSubmatch(priorSlice); pm != nil {
+				classPath = pm[1]
+			}
+		}
+
+		ifaceNameMatch := javaInterfaceDeclRe.FindStringSubmatch(header)
+		if len(ifaceNameMatch) < 2 {
+			continue
+		}
+		ifaceName := ifaceNameMatch[1]
+
+		bodyStartInFull := annotMatch[1] + ifaceIdx[1]
+		body := javaFindInterfaceBody(content, bodyStartInFull)
+		if body == "" {
+			continue
+		}
+		methodMap := parseRestClientInterfaceMethods(body, classPath)
+		registry[ifaceName] = methodMap
+	}
+	return registry
+}
+
+// mergeFeignDIEntries parses all @FeignClient interfaces in content and adds
+// them to `into`, returning the merged result.
+func mergeFeignDIEntries(content string, into JavaDIRegistry) JavaDIRegistry {
+	if !strings.Contains(content, "FeignClient") {
+		return into
+	}
+	for _, ifaceMatch := range javaFeignClientRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(ifaceMatch) < 6 {
+			continue
+		}
+		baseURL := ""
+		if ifaceMatch[2] >= 0 {
+			rawBase := content[ifaceMatch[2]:ifaceMatch[3]]
+			baseURL = stripURLHost(rawBase)
+		}
+		ifaceName := content[ifaceMatch[4]:ifaceMatch[5]]
+		body := javaFindInterfaceBody(content, ifaceMatch[1])
+		if body == "" {
+			continue
+		}
+		methodMap := parseFeignInterfaceMethods(body, baseURL)
+		into[ifaceName] = methodMap
+	}
+	return into
+}
 
 // ---------------------------------------------------------------------------
 // Stdlib HttpClient (Java 11+)
@@ -636,6 +787,9 @@ func synthesizeQuarkusRestClient(content string, emit javaClientEmitFn) {
 
 	// ---- Pass 2: find @Inject @RestClient fields and call sites ----
 	// fieldToIface: field variable name → interface name.
+	// We match against both the local registry (same-file interfaces) AND the
+	// global cross-file DI registry (#845 Option B) so consumers in file B can
+	// resolve interfaces declared in file A.
 	fieldToIface := map[string]string{}
 
 	for _, mm := range javaInjectRestClientFieldRe.FindAllStringSubmatch(content, -1) {
@@ -643,7 +797,7 @@ func synthesizeQuarkusRestClient(content string, emit javaClientEmitFn) {
 			continue
 		}
 		ifaceType, fieldName := mm[1], mm[2]
-		if _, known := registry[ifaceType]; known {
+		if _, known := lookupDIRegistry(ifaceType, registry); known {
 			fieldToIface[fieldName] = ifaceType
 		}
 	}
@@ -652,7 +806,7 @@ func synthesizeQuarkusRestClient(content string, emit javaClientEmitFn) {
 			continue
 		}
 		ifaceType, fieldName := mm[1], mm[2]
-		if _, known := registry[ifaceType]; known {
+		if _, known := lookupDIRegistry(ifaceType, registry); known {
 			fieldToIface[fieldName] = ifaceType
 		}
 	}
@@ -673,7 +827,12 @@ func synthesizeQuarkusRestClient(content string, emit javaClientEmitFn) {
 		if !ok {
 			continue
 		}
-		entry, ok := registry[ifaceName][methodName]
+		// Look up method entry in local registry first, then cross-file registry.
+		methodMap, ok := lookupDIRegistry(ifaceName, registry)
+		if !ok {
+			continue
+		}
+		entry, ok := methodMap[methodName]
 		if !ok {
 			continue
 		}
@@ -841,9 +1000,20 @@ var javaRequestMappingVerbRe = regexp.MustCompile(
 
 // synthesizeFeignClient scans `content` for @FeignClient interfaces and
 // emits FETCHES for each call site found in the consuming class.
+// When the global cross-file DI registry (#845) has @FeignClient entries, the
+// pass also runs for consumer files that don't define any @FeignClient interface
+// themselves (they may reference one by type name alone).
 func synthesizeFeignClient(content string, emit javaClientEmitFn) {
 	if !strings.Contains(content, "FeignClient") {
-		return
+		// Skip fast when neither a local interface nor a cross-file consumer
+		// pattern is plausible. We still run when the global registry is
+		// non-empty because the consumer may inject by type name only.
+		javaDIGlobalMu.RLock()
+		hasCrossFile := len(javaDIGlobal) > 0
+		javaDIGlobalMu.RUnlock()
+		if !hasCrossFile {
+			return
+		}
 	}
 	methods := indexJavaEnclosingMethods(content)
 
@@ -870,15 +1040,26 @@ func synthesizeFeignClient(content string, emit javaClientEmitFn) {
 		registry[ifaceName] = methodMap
 	}
 
-	if len(registry) == 0 {
-		return
-	}
-
 	// ---- Pass 2: find Feign client field references and call sites ----
 	// Feign clients are injected as plain Spring beans (@Autowired / constructor).
-	// We scan for field declarations that reference a known interface type name.
+	// We scan for field declarations that reference a known interface type name,
+	// checking both the local (same-file) registry and the global cross-file DI
+	// registry (#845 Option B).
 	fieldToIface := map[string]string{}
+
+	// Combine local registry keys with cross-file registry keys so we can match
+	// field declarations for interfaces defined in other files.
+	allIfaceNames := make(map[string]struct{}, len(registry))
 	for ifaceName := range registry {
+		allIfaceNames[ifaceName] = struct{}{}
+	}
+	javaDIGlobalMu.RLock()
+	for ifaceName := range javaDIGlobal {
+		allIfaceNames[ifaceName] = struct{}{}
+	}
+	javaDIGlobalMu.RUnlock()
+
+	for ifaceName := range allIfaceNames {
 		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(ifaceName) + `\s+(\w+)\s*[;=({,]`)
 		for _, mm := range re.FindAllStringSubmatch(content, -1) {
 			if len(mm) < 2 {
@@ -903,7 +1084,12 @@ func synthesizeFeignClient(content string, emit javaClientEmitFn) {
 		if !ok {
 			continue
 		}
-		entry, ok := registry[ifaceName][methodName]
+		// Look up method entry in local registry first, then cross-file registry.
+		methodMap, ok := lookupDIRegistry(ifaceName, registry)
+		if !ok {
+			continue
+		}
+		entry, ok := methodMap[methodName]
 		if !ok {
 			continue
 		}
@@ -984,7 +1170,7 @@ func parseFeignInterfaceMethods(body, baseURL string) map[string]restClientMetho
 // ---------------------------------------------------------------------------
 
 func javaHasAnyHTTPClient(content string) bool {
-	return strings.Contains(content, "URI.create") ||
+	if strings.Contains(content, "URI.create") ||
 		strings.Contains(content, "System.getenv") ||
 		strings.Contains(content, "restTemplate") ||
 		strings.Contains(content, "RestTemplate") ||
@@ -1002,7 +1188,17 @@ func javaHasAnyHTTPClient(content string) bool {
 		strings.Contains(content, "@OPTIONS(") ||
 		strings.Contains(content, "RegisterRestClient") ||
 		strings.Contains(content, "@RestClient") ||
-		strings.Contains(content, "FeignClient")
+		strings.Contains(content, "FeignClient") {
+		return true
+	}
+	// When the global cross-file DI registry (#845) is populated, a file that
+	// injects a registered interface by type name alone (e.g. @Autowired
+	// OrderServiceClient orderClient) may be a DI consumer even without any
+	// explicit HTTP-client marker.
+	javaDIGlobalMu.RLock()
+	hasRegistry := len(javaDIGlobal) > 0
+	javaDIGlobalMu.RUnlock()
+	return hasRegistry
 }
 
 func buildJavaStringSymbolTable(content string) map[string]string {

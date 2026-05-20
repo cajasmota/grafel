@@ -1463,6 +1463,17 @@ func (i *Indexer) runPass25FrameworkRules(ctx context.Context, absRepo string, c
 	if i.skipPasses[PassFramework] {
 		return nil, nil, nil
 	}
+
+	// Pre-pass (#845): build the cross-file Java DI registry before the
+	// per-file synthesis pass runs. Scanning is cheap (regex, no AST),
+	// single-threaded to avoid lock contention on the global registry.
+	engine.ClearJavaDIRegistry()
+	for _, cf := range classified {
+		if cf.language == "java" {
+			engine.ScanJavaDIRegistry(string(cf.content))
+		}
+	}
+
 	var (
 		mu       sync.Mutex
 		entities []types.EntityRecord
