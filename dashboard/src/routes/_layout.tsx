@@ -1,10 +1,11 @@
-import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { Link, NavLink, Outlet, useParams, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import {
   GitBranch, Network, Workflow, Radio, Globe, BookOpen,
   Moon, Sun, Settings,
 } from 'lucide-react'
 import { useRegistry } from '@/hooks/shared/useRegistry'
+import { useThemeContext } from '@/context/ThemeContext'
 
 const GROUP_DEFAULT = 'fixture-a'
 
@@ -12,6 +13,25 @@ export function AppLayout() {
   const { group = GROUP_DEFAULT } = useParams()
   const { data: registry } = useRegistry()
   const groups = registry?.groups ?? []
+  const location = useLocation()
+
+  // Keyboard shortcut: g h → go home
+  useEffect(() => {
+    let lastG = false
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'g' || e.key === 'G') {
+        lastG = true
+        setTimeout(() => { lastG = false }, 1000)
+        return
+      }
+      if (lastG && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault()
+        window.location.href = '/'
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200">
@@ -23,10 +43,18 @@ export function AppLayout() {
           archigraph
         </Link>
 
-        {/* Group selector */}
+        {/* Breadcrumb: current group */}
+        {groups.length > 0 && (
+          <div className="flex items-center gap-2 ml-2">
+            <span className="text-xs text-slate-500">/</span>
+            <span className="text-xs font-mono text-slate-400">{group}</span>
+          </div>
+        )}
+
+        {/* Group selector dropdown */}
         {groups.length > 1 && (
-          <div className="flex items-center gap-1 ml-2">
-            <span className="text-xs text-slate-500">Group:</span>
+          <div className="flex items-center gap-1 ml-4">
+            <span className="text-xs text-slate-500">Switch:</span>
             {groups.map((g) => (
               <Link
                 key={g.id}
@@ -98,40 +126,7 @@ function NavItem({ to, icon, label }: NavItemProps) {
 }
 
 function ThemeToggle() {
-  // Use state to subscribe to theme changes + DOM class mutations.
-  // Persists to localStorage + toggles .dark on <html>.
-  const [isDark, setIsDark] = useState(() => {
-    if (typeof document === 'undefined') return false
-    return document.documentElement.classList.contains('dark')
-  })
-
-  useEffect(() => {
-    // Listen for changes to the .dark class on the document element
-    const observer = new MutationObserver(() => {
-      const newIsDark = document.documentElement.classList.contains('dark')
-      setIsDark(newIsDark)
-    })
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
-
-    return () => observer.disconnect()
-  }, [])
-
-  const toggle = () => {
-    const html = document.documentElement
-    if (html.classList.contains('dark')) {
-      html.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
-    } else {
-      html.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
-    }
-    // Update local state to trigger re-render
-    setIsDark(html.classList.contains('dark'))
-  }
+  const { isDark, toggle } = useThemeContext()
 
   return (
     <button

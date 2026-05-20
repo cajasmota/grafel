@@ -26,6 +26,7 @@
     "@tanstack/react-query-devtools": "^5.64.2",
     "3d-force-graph": "^1.80.0",
     "clsx": "^2.1.1",
+    "fuse.js": "^7.3.0",
     "katex": "^0.16.47",
     "lucide-react": "^0.468.0",
     "mermaid": "^11.15.0",

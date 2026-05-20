@@ -3,7 +3,7 @@ import { useDocTree } from '@/hooks/docs/useDocTree'
 import { useDocContent } from '@/hooks/docs/useDocContent'
 import { DocsSidebar } from './DocsSidebar'
 import { DocsContent } from './DocsContent'
-import { DocsSearch } from './DocsSearch'
+import { DocsTopSearch } from './DocsTopSearch'
 import { PathTreeSkeleton, CardSkeleton } from '@/components/shared/LoadingState'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
@@ -33,42 +33,49 @@ export function DocsPage({ group, docPath }: DocsPageProps) {
   const { data: content, isLoading: contentLoading, error: contentError } = useDocContent(group, docPath)
 
   return (
-    <div className="flex h-full bg-slate-950">
-      {/* Skip-to-content */}
-      <a href="#main-content" className="skip-link focus:translate-y-0">
-        Skip to content
-      </a>
+    <div className="flex flex-col h-full bg-slate-950">
+      {/* Search bar at top */}
+      <div className="flex items-center gap-4 px-4 py-3 border-b border-slate-800 bg-slate-950/50 flex-shrink-0">
+        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Docs Search</span>
+        <DocsTopSearch group={group} />
+      </div>
 
-      {/* Sidebar */}
-      <aside
-        className="hidden md:flex flex-col w-60 flex-shrink-0 border-r border-slate-800 bg-slate-950/80 overflow-y-auto"
-        aria-label="Documentation navigation"
-      >
-        {/* Sidebar header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Docs</span>
-          <DocsSearch group={group} />
-        </div>
+      {/* Main content area */}
+      <div className="flex h-full overflow-hidden">
+        {/* Skip-to-content */}
+        <a href="#main-content" className="skip-link focus:translate-y-0">
+          Skip to content
+        </a>
 
-        {treeLoading && (
-          <div className="p-4">
-            <PathTreeSkeleton />
+        {/* Sidebar */}
+        <aside
+          className="hidden md:flex flex-col w-60 flex-shrink-0 border-r border-slate-800 bg-slate-950/80 overflow-y-auto"
+          aria-label="Documentation navigation"
+        >
+          {/* Sidebar header */}
+          <div className="flex items-center px-4 py-3 border-b border-slate-800">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Navigation</span>
           </div>
-        )}
-        {treeError && (
-          <div className="p-4 text-xs text-rose-400">Failed to load navigation</div>
-        )}
-        {treeData && (
-          <DocsSidebar
-            group={group}
-            tree={treeData.tree}
-            currentPath={docPath}
-          />
-        )}
-      </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-y-auto min-w-0">
+          {treeLoading && (
+            <div className="p-4">
+              <PathTreeSkeleton />
+            </div>
+          )}
+          {treeError && (
+            <div className="p-4 text-xs text-rose-400">Failed to load navigation</div>
+          )}
+          {treeData && (
+            <DocsSidebar
+              group={group}
+              tree={treeData.tree}
+              currentPath={docPath}
+            />
+          )}
+        </aside>
+
+        {/* Main content */}
+        <main className="flex-1 overflow-y-auto min-w-0">
         <ErrorBoundary
           fallback={
             <EmptyState
@@ -109,7 +116,8 @@ export function DocsPage({ group, docPath }: DocsPageProps) {
             <DocsContent group={group} content={content} />
           )}
         </ErrorBoundary>
-      </main>
+        </main>
+      </div>
     </div>
   )
 }
