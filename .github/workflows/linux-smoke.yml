@@ -1,0 +1,66 @@
+name: Linux Smoke Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Build archigraph
+        run: go build -o archigraph ./cmd/archigraph
+        timeout-minutes: 2
+
+      - name: Start daemon
+        run: |
+          set -x
+          export ARCHIGRAPH_DAEMON_ROOT=$(mktemp -d)
+          timeout 30 ./archigraph daemon &
+          DAEMON_PID=$!
+          sleep 2
+
+          # Verify daemon is running
+          if ! kill -0 $DAEMON_PID 2>/dev/null; then
+            echo "Daemon failed to start"
+            exit 1
+          fi
+
+          echo "DAEMON_PID=$DAEMON_PID" >> $GITHUB_ENV
+          echo "ARCHIGRAPH_DAEMON_ROOT=$ARCHIGRAPH_DAEMON_ROOT" >> $GITHUB_ENV
+
+      - name: Onboard golden fixture
+        run: |
+          export ARCHIGRAPH_DAEMON_ROOT=${{ env.ARCHIGRAPH_DAEMON_ROOT }}
+          timeout 30 ./archigraph onboard ./internal/quality/golden/go-chi-mini
+
+      - name: Check daemon indexed the repo
+        run: |
+          export ARCHIGRAPH_DAEMON_ROOT=${{ env.ARCHIGRAPH_DAEMON_ROOT }}
+          output=$(timeout 10 ./archigraph status)
+          echo "$output"
+
+          # Verify status shows indexed = true
+          if ! echo "$output" | grep -q '"indexed":true'; then
+            echo "Repository not indexed"
+            exit 1
+          fi
+
+      - name: Kill daemon
+        if: always()
+        run: |
+          if [ -n "${{ env.DAEMON_PID }}" ]; then
+            kill ${{ env.DAEMON_PID }} 2>/dev/null || true
+            sleep 1
+          fi
