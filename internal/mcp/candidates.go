@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/enrichment"
 )
 
 // LinkCandidate is one row in <group>-link-candidates.json.
@@ -129,45 +130,29 @@ func appendLink(group string, link CrossRepoLink) error {
 }
 
 // appendResolution appends an enrichment resolution to the repo's
-// enrichment-resolutions.json (array form).
+// enrichment-resolutions.json. Delegates to the canonical implementation
+// in internal/enrichment to avoid parallel implementations (#1016).
 func appendResolution(repoPath string, res EnrichmentResolution) error {
 	if repoPath == "" {
 		return fmt.Errorf("repo path is empty")
 	}
-	path := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-resolutions.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	cur := readResolutions(repoPath)
-	cur = append(cur, res)
-	data, err := json.MarshalIndent(cur, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
+	archigraphDir := daemon.StateDirForRepo(repoPath)
+	return enrichment.AppendResolution(archigraphDir, enrichment.Resolution{
+		ID:         res.CandidateID,
+		SubjectID:  res.NodeID,
+		Kind:       res.Kind,
+		Value:      res.Value,
+		Confidence: res.Confidence,
+		Reason:     res.Reason,
+	})
 }
 
 // appendRejection appends a rejection record to enrichment-rejections.json.
+// Delegates to the canonical implementation in internal/enrichment (#1016).
 func appendRejection(repoPath string, candidateID, reason string) error {
 	if repoPath == "" {
 		return fmt.Errorf("repo path is empty")
 	}
-	path := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-rejections.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	type rej struct {
-		CandidateID string `json:"candidate_id"`
-		Reason      string `json:"reason"`
-	}
-	var cur []rej
-	if data, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(data, &cur)
-	}
-	cur = append(cur, rej{CandidateID: candidateID, Reason: reason})
-	data, err := json.MarshalIndent(cur, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
+	archigraphDir := daemon.StateDirForRepo(repoPath)
+	return enrichment.AppendRejection(archigraphDir, candidateID, "", "", reason)
 }
