@@ -6,6 +6,7 @@ import { useEdgeKindFilters } from '@/hooks/graph/useEdgeKindFilters'
 import { useEntityInspector } from '@/hooks/graph/useEntityInspector'
 import { useCommunityColors } from '@/hooks/graph/useCommunityColors'
 import { useGraphSearch } from '@/hooks/graph/useGraphSearch'
+import { useHoverLabel } from '@/hooks/graph/useHoverLabel'
 import { useGraphCameraStore, useSimulationRunning } from '@/store/graphCameraStore'
 import { useThemeContext } from '@/context/ThemeContext'
 import { GraphCanvas } from '@/components/graph/GraphCanvas'
@@ -148,6 +149,14 @@ export function GraphRoute() {
     group ?? '',
     selectedNodeId,
   )
+
+  // ── Hover-to-label (Tier 2) ────────────────────────────────────────────────
+  // When a hovered node was not in the initial top-200 label fetch its label
+  // falls back to the raw id.  useHoverLabel detects that sentinel and fires a
+  // one-shot /labels?ids= fetch, seeding the result back into react-query cache
+  // so the node label updates on the next render cycle.
+  const hoveredNode = hoveredNodeId ? nodes.find((n) => n.id === hoveredNodeId) : undefined
+  useHoverLabel(group ?? '', hoveredNodeId, hoveredNode?.label)
 
   // ── Search ─────────────────────────────────────────────────────────────────
   const { results: searchResults, isSearching } = useGraphSearch(searchQuery, nodes)

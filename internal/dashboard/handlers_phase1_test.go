@@ -324,6 +324,92 @@ func TestGraphEntity_NotFound_404(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// /api/graph/{group}/labels — Tier 2
+// ---------------------------------------------------------------------------
+
+func TestGraphLabels_TopN(t *testing.T) {
+	ts, _ := newPhase1Server(t)
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup/labels?top=3")
+	if code != 200 {
+		t.Fatalf("status=%d body=%v", code, body)
+	}
+	labels, ok := body["labels"].([]interface{})
+	if !ok {
+		t.Fatalf("missing labels array: %+v", body)
+	}
+	if len(labels) == 0 {
+		t.Fatalf("expected labels, got 0")
+	}
+	if len(labels) > 3 {
+		t.Fatalf("expected at most 3 labels (top=3), got %d", len(labels))
+	}
+	// Each entry must have id and label fields.
+	entry, _ := labels[0].(map[string]any)
+	if entry["id"] == nil || entry["label"] == nil {
+		t.Fatalf("label entry missing id or label: %+v", entry)
+	}
+}
+
+func TestGraphLabels_IDs(t *testing.T) {
+	ts, _ := newPhase1Server(t)
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup/labels?ids=svc::e1")
+	if code != 200 {
+		t.Fatalf("status=%d body=%v", code, body)
+	}
+	labels, ok := body["labels"].([]interface{})
+	if !ok {
+		t.Fatalf("missing labels array: %+v", body)
+	}
+	if len(labels) != 1 {
+		t.Fatalf("expected 1 label for ids=svc::e1, got %d", len(labels))
+	}
+	entry, _ := labels[0].(map[string]any)
+	if entry["label"] != "UserService" {
+		t.Fatalf("wrong label: %v", entry["label"])
+	}
+}
+
+func TestGraphLabels_UnknownGroup_404(t *testing.T) {
+	ts, _ := newPhase1Server(t)
+	code, _ := getJSON(t, ts.URL, "/api/graph/nonexistent/labels")
+	if code != 404 {
+		t.Fatalf("expected 404, got %d", code)
+	}
+}
+
+func TestGraph_LitePayload_NoLabelOrKind(t *testing.T) {
+	ts, _ := newPhase1Server(t)
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	nodes, _ := body["nodes"].([]interface{})
+	if len(nodes) == 0 {
+		t.Fatalf("expected nodes")
+	}
+	// Tier 1 compact: nodes must NOT carry label, kind, source_file, pagerank.
+	for _, n := range nodes {
+		nm, _ := n.(map[string]any)
+		if nm["label"] != nil {
+			t.Errorf("Tier 1 node should not carry label field; got %v", nm["label"])
+		}
+		if nm["kind"] != nil {
+			t.Errorf("Tier 1 node should not carry kind field; got %v", nm["kind"])
+		}
+		if nm["source_file"] != nil {
+			t.Errorf("Tier 1 node should not carry source_file field; got %v", nm["source_file"])
+		}
+		// Mandatory fields
+		if nm["id"] == nil {
+			t.Errorf("Tier 1 node missing id")
+		}
+		if nm["repo"] == nil {
+			t.Errorf("Tier 1 node missing repo")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // /api/flows/{group}
 // ---------------------------------------------------------------------------
 

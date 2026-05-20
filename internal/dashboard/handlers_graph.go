@@ -4,14 +4,26 @@ package dashboard
 //
 //	GET /api/graph/{group}?filter_kind=&filter_repo=&repos=slug1,slug2&include_external=false
 //	GET /api/graph/{group}/entity/{id}
+//	GET /api/graph/{group}/labels?top=200
+//	GET /api/graph/{group}/labels?ids=a,b,c
+//
+// Three-tier graph data model:
+//
+//	Tier 1 (default): Compact render payload — nodes carry only id, repo,
+//	  degree, community_id. Edges carry source, target, kind.
+//	  This is the only shape; there is no ?full= opt-in.
+//
+//	Tier 2: Labels endpoint — GET /api/graph/{group}/labels?top=200 returns
+//	  {id, label} for the top-N nodes by degree. Accepts ?ids=a,b,c for
+//	  explicit id lookup (hover-to-label).
+//
+//	Tier 3: Entity detail — GET /api/graph/{group}/entity/{id} returns the
+//	  full inspector shape (kind, source_file, start_line, pagerank, inbound[],
+//	  outbound[]). Fetched lazily on node click.
 //
 // #1023: LoD tiers removed. The endpoint returns all entities — no per-repo
 // node cap. Cosmograph handles 1M+ nodes via GPU WebGL at 60fps; no sampling
 // or LoD switching is needed.
-//
-// Removed functions: serveGraphCentroids, serveGraphMid, serveGraphFull.
-// Removed: ?lod= param, COMMUNITY_LINK synthetic edges, centroid nodes,
-//          denseNodeLimit (was 500/repo — legacy react-force-graph artifact).
 //
 // If the response exceeds 50,000 nodes, an X-Graph-Warning header is added so
 // the frontend can optionally surface a notice to the user.
@@ -104,10 +116,14 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 // dashStripScopePrefix strips the leading "SCOPE." prefix.
 const externalKindSuffix = "External"
 
-// serveGraphAll returns every entity in the indexed graph — no per-repo cap.
+// serveGraphDense returns every entity in the indexed graph — no per-repo cap.
 // Cosmograph handles 1M+ nodes at 60fps via GPU WebGL (#1023 removed LoD).
 // A soft X-Graph-Warning header is added when node count exceeds
 // softNodeWarnThreshold so the frontend can optionally surface a notice.
+//
+// Tier 1 compact payload: nodes carry only id, repo, degree, community_id.
+// Full entity detail is available via GET /api/graph/{group}/entity/{id} (Tier 3).
+// Labels for the top-N nodes are available via GET /api/graph/{group}/labels (Tier 2).
 //
 // includeExternal controls whether SCOPE.External placeholder entities are
 // emitted. Default (false) hides stdlib/builtin nodes from the graph view.
@@ -161,8 +177,15 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 				continue
 			}
 			visible[pid] = true
-			node := serializeEntity(r.Slug, e)
+			// Tier 1 compact node: id, repo, degree, community_id only.
+			node := map[string]any{
+				"id":   pid,
+				"repo": r.Slug,
+			}
 			node["degree"] = degreeMap[e.ID]
+			if e.CommunityID != nil {
+				node["community_id"] = *e.CommunityID
+			}
 			nodes = append(nodes, node)
 		}
 	}
@@ -194,6 +217,106 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 		"communities":      communities,
 		"total_node_count": len(nodes),
 	})
+}
+
+// handleGraphLabels — GET /api/graph/{group}/labels?top=200
+//                      GET /api/graph/{group}/labels?ids=a,b,c
+//
+// Tier 2: Returns {id, label} pairs so the frontend can display node labels
+// without carrying them in the main graph payload.
+//
+// ?top=N  — returns the top-N nodes by degree (default 200, max 2000).
+// ?ids=   — returns labels for an explicit comma-separated list of node IDs
+//           (used for hover-to-label of unlabeled nodes).
+//
+// The two params are mutually exclusive; ?ids= takes priority when present.
+func (s *Server) handleGraphLabels(w http.ResponseWriter, r *http.Request) {
+	group := r.PathValue("group")
+	if group == "" {
+		writeErr(w, http.StatusBadRequest, "group required")
+		return
+	}
+	grp, err := s.graphs.GetGroup(group)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	idsParam := r.URL.Query().Get("ids")
+
+	if idsParam != "" {
+		// Explicit ID lookup — return labels for the given node IDs only.
+		want := map[string]bool{}
+		for _, id := range strings.Split(idsParam, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				want[id] = true
+			}
+		}
+		type labelEntry struct {
+			ID    string `json:"id"`
+			Label string `json:"label"`
+		}
+		out := []labelEntry{}
+		for _, r := range sortedRepos(grp) {
+			if r.Doc == nil {
+				continue
+			}
+			for i := range r.Doc.Entities {
+				e := &r.Doc.Entities[i]
+				pid := dashPrefixedID(r.Slug, e.ID)
+				if want[pid] {
+					out = append(out, labelEntry{ID: pid, Label: e.Name})
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"labels": out})
+		return
+	}
+
+	// Top-N by degree.
+	topN := 200
+	if s := r.URL.Query().Get("top"); s != "" {
+		if n, err2 := strconv.Atoi(s); err2 == nil && n > 0 {
+			topN = n
+			if topN > 2000 {
+				topN = 2000
+			}
+		}
+	}
+
+	type degreeLabel struct {
+		id     string
+		label  string
+		degree int
+	}
+	var all []degreeLabel
+
+	for _, repo := range sortedRepos(grp) {
+		if repo.Doc == nil {
+			continue
+		}
+		degMap := buildDegreeMap(repo.Doc.Relationships)
+		for i := range repo.Doc.Entities {
+			e := &repo.Doc.Entities[i]
+			pid := dashPrefixedID(repo.Slug, e.ID)
+			all = append(all, degreeLabel{id: pid, label: e.Name, degree: degMap[e.ID]})
+		}
+	}
+
+	sort.Slice(all, func(i, j int) bool { return all[i].degree > all[j].degree })
+	if len(all) > topN {
+		all = all[:topN]
+	}
+
+	type labelEntry struct {
+		ID    string `json:"id"`
+		Label string `json:"label"`
+	}
+	out := make([]labelEntry, len(all))
+	for i, dl := range all {
+		out[i] = labelEntry{ID: dl.id, Label: dl.label}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"labels": out})
 }
 
 // handleGraphEntity — GET /api/graph/{group}/entity/{id}

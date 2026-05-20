@@ -155,8 +155,9 @@ func (s *Server) routes() http.Handler {
 	// First-paint aggregate
 	mux.HandleFunc("GET /api/dashboard/init", s.handleDashboardInit)
 
-	// LoD-aware graph
+	// Three-tier graph: compact render payload, labels, entity detail
 	mux.HandleFunc("GET /api/graph/{group}", s.handleGraph)
+	mux.HandleFunc("GET /api/graph/{group}/labels", s.handleGraphLabels)
 	mux.HandleFunc("GET /api/graph/{group}/entity/{id}", s.handleGraphEntity)
 
 	// Process flows
