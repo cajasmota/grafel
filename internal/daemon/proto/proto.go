@@ -229,3 +229,38 @@ type StopArgs struct{}
 // StopReply is empty; the daemon closes the socket once the reply is
 // flushed and exits when the last in-flight request finishes.
 type StopReply struct{}
+
+// RemoveRepoArgs requests the daemon unregister a single repo from a group.
+// The watcher is stopped, the git hook block is removed, and the per-repo
+// .archigraph/ cache is deleted (unless KeepCache is true). The repo entry
+// is removed from the fleet config and the fleet is persisted.
+type RemoveRepoArgs struct {
+	Group     string `json:"group"`
+	Slug      string `json:"slug"`
+	KeepCache bool   `json:"keep_cache,omitempty"`
+}
+
+// RemoveRepoReply is returned by the RemoveRepo RPC.
+type RemoveRepoReply struct {
+	// RepoPath is the absolute on-disk path of the removed repo.
+	RepoPath string `json:"repo_path"`
+	// FreedBytes is the number of bytes reclaimed from .archigraph/. Zero
+	// when KeepCache was true or the directory did not exist.
+	FreedBytes int64 `json:"freed_bytes"`
+}
+
+// DeleteGroupArgs requests the daemon tear down every repo in a group and
+// remove the group entirely. Per-repo teardown mirrors RemoveRepo for each
+// member. The fleet config file and the per-group state directory are deleted.
+type DeleteGroupArgs struct {
+	Group      string `json:"group"`
+	KeepCaches bool   `json:"keep_caches,omitempty"`
+}
+
+// DeleteGroupReply is returned by the DeleteGroup RPC.
+type DeleteGroupReply struct {
+	// RemovedRepos lists the slugs of every repo that was removed.
+	RemovedRepos []string `json:"removed_repos"`
+	// FreedBytes is the total bytes reclaimed across all per-repo caches.
+	FreedBytes int64 `json:"freed_bytes"`
+}

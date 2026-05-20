@@ -164,3 +164,24 @@ func (c *Client) IndexProgress(token string) (proto.IndexProgressReply, error) {
 func DialProgress(socketPath string) (*Client, error) {
 	return DialPath(socketPath)
 }
+
+// RemoveRepo asks the daemon to unregister a single repo from a group,
+// stop its watcher, remove the git hook block, and (optionally) delete
+// the per-repo .archigraph/ cache.
+func (c *Client) RemoveRepo(args proto.RemoveRepoArgs) (proto.RemoveRepoReply, error) {
+	var reply proto.RemoveRepoReply
+	if err := c.rpc.Call(proto.ServiceName+".RemoveRepo", args, &reply); err != nil {
+		return proto.RemoveRepoReply{}, err
+	}
+	return reply, nil
+}
+
+// DeleteGroup asks the daemon to tear down every repo in a group and
+// remove the group from the registry entirely.
+func (c *Client) DeleteGroup(args proto.DeleteGroupArgs) (proto.DeleteGroupReply, error) {
+	var reply proto.DeleteGroupReply
+	if err := c.rpc.Call(proto.ServiceName+".DeleteGroup", args, &reply); err != nil {
+		return proto.DeleteGroupReply{}, err
+	}
+	return reply, nil
+}

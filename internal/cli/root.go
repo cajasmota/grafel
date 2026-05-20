@@ -62,6 +62,8 @@ func newRoot() *cobra.Command {
 		newMCPBridgeCmd(),
 		newCleanupCmd(),
 		newRegisterCmd(),
+		newRemoveCmd(),
+		newDeleteCmd(),
 		newHelpCmd(),
 	)
 
@@ -118,6 +120,10 @@ Operate:
 Repair:
   rebuild [group] [slug]          Force AST rebuild (no cache, daemon RPC)
   reset [group] [slug]            Wipe .archigraph/ and rebuild via daemon
+
+Lifecycle:
+  remove <group> <slug>           Remove a single repo from a group
+  delete <group>                  Delete an entire group and all its repos
 
 Maintenance:
   cleanup [--dry-run]             Remove orphaned registry entries

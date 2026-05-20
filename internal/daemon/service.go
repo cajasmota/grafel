@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
+	"github.com/cajasmota/archigraph/internal/install/hooks"
+	"github.com/cajasmota/archigraph/internal/registry"
 	"github.com/cajasmota/archigraph/internal/version"
 )
 
@@ -422,6 +425,169 @@ func (s *Service) Stop(_ *proto.StopArgs, _ *proto.StopReply) error {
 		close(s.stopReq)
 	}
 	return nil
+}
+
+// RemoveRepo unregisters a single repo from a group: stops the watcher,
+// removes the git hook block, optionally deletes the per-repo cache, and
+// persists the updated fleet config. It does not contact the registry
+// directly — fleet persistence is handled via install.Uninstall so all
+// teardown logic lives in one place.
+func (s *Service) RemoveRepo(args *proto.RemoveRepoArgs, reply *proto.RemoveRepoReply) error {
+	if args == nil || args.Group == "" || args.Slug == "" {
+		return errors.New("group and slug are required")
+	}
+
+	groups, err := registry.Groups()
+	if err != nil {
+		return err
+	}
+	var ref *registry.GroupRef
+	for i := range groups {
+		if groups[i].Name == args.Group {
+			ref = &groups[i]
+			break
+		}
+	}
+	if ref == nil {
+		return fmt.Errorf("unknown group: %s", args.Group)
+	}
+	cfg, err := registry.LoadGroupConfig(ref.ConfigPath)
+	if err != nil {
+		return err
+	}
+
+	// Find the repo.
+	var target *registry.Repo
+	for i := range cfg.Repos {
+		if cfg.Repos[i].Slug == args.Slug {
+			target = &cfg.Repos[i]
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("repo %q not found in group %s", args.Slug, args.Group)
+	}
+	repoPath := target.Path
+	reply.RepoPath = repoPath
+
+	// Stop watcher for this repo.
+	if s.watcher != nil {
+		s.watcher.RemoveRepo(repoPath)
+	}
+
+	// Remove git hooks.
+	if cfg.Features.GitHooks {
+		_ = hooks.Uninstall(repoPath)
+	}
+
+	// Optionally delete the per-repo cache.
+	if !args.KeepCache {
+		cacheDir := StateDirForRepo(repoPath)
+		if info, err := os.Stat(cacheDir); err == nil {
+			freed, _ := dirSize(cacheDir)
+			reply.FreedBytes = freed
+			if err := os.RemoveAll(cacheDir); err != nil && s.logger != nil {
+				s.logger.Printf("remove-repo: delete cache %s: %v", cacheDir, err)
+			}
+			_ = info
+		}
+	}
+
+	// Remove the repo entry from the fleet config.
+	kept := cfg.Repos[:0]
+	for _, r := range cfg.Repos {
+		if r.Slug != args.Slug {
+			kept = append(kept, r)
+		}
+	}
+	cfg.Repos = kept
+	if err := registry.SaveGroupConfig(ref.ConfigPath, cfg); err != nil {
+		return fmt.Errorf("persist fleet: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteGroup tears down every repo in a group and removes the group from
+// the registry. Mirrors RemoveRepo for each member repo, then deletes the
+// fleet config file and per-group state directory.
+func (s *Service) DeleteGroup(args *proto.DeleteGroupArgs, reply *proto.DeleteGroupReply) error {
+	if args == nil || args.Group == "" {
+		return errors.New("group is required")
+	}
+
+	groups, err := registry.Groups()
+	if err != nil {
+		return err
+	}
+	var ref *registry.GroupRef
+	for i := range groups {
+		if groups[i].Name == args.Group {
+			ref = &groups[i]
+			break
+		}
+	}
+	if ref == nil {
+		return fmt.Errorf("unknown group: %s", args.Group)
+	}
+	cfg, err := registry.LoadGroupConfig(ref.ConfigPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	if cfg != nil {
+		for _, r := range cfg.Repos {
+			// Stop watcher.
+			if s.watcher != nil {
+				s.watcher.RemoveRepo(r.Path)
+			}
+			// Remove git hooks.
+			if cfg.Features.GitHooks {
+				_ = hooks.Uninstall(r.Path)
+			}
+			// Delete per-repo cache.
+			if !args.KeepCaches {
+				cacheDir := StateDirForRepo(r.Path)
+				if _, err := os.Stat(cacheDir); err == nil {
+					freed, _ := dirSize(cacheDir)
+					reply.FreedBytes += freed
+					_ = os.RemoveAll(cacheDir)
+				}
+			}
+			reply.RemovedRepos = append(reply.RemovedRepos, r.Slug)
+		}
+	}
+
+	// Remove the group from the registry.
+	if err := registry.RemoveGroup(args.Group); err != nil {
+		return fmt.Errorf("remove group from registry: %w", err)
+	}
+
+	// Delete the fleet config file.
+	_ = os.Remove(ref.ConfigPath)
+
+	// Delete per-group state directory.
+	stateDir, err := registry.StateDirFor(args.Group)
+	if err == nil {
+		_ = os.RemoveAll(stateDir)
+	}
+
+	return nil
+}
+
+// dirSize returns the total number of bytes in a directory tree.
+func dirSize(dir string) (int64, error) {
+	var total int64
+	err := filepath.Walk(dir, func(_ string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !fi.IsDir() {
+			total += fi.Size()
+		}
+		return nil
+	})
+	return total, err
 }
 
 // QualityAudit runs the audit-orphans analysis for a repo or corpus
