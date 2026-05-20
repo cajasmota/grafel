@@ -7,14 +7,12 @@ import { useEntityInspector } from '@/hooks/graph/useEntityInspector'
 import { useCommunityColors } from '@/hooks/graph/useCommunityColors'
 import { useGraphSearch } from '@/hooks/graph/useGraphSearch'
 import { useGraphCameraStore } from '@/store/graphCameraStore'
-import { GraphCanvas3D } from '@/components/graph/GraphCanvas3D'
-import { GraphCanvas2D } from '@/components/graph/GraphCanvas2D'
+import { GraphCanvas } from '@/components/graph/GraphCanvas'
 import { GraphToolbar } from '@/components/graph/GraphToolbar'
 import { EdgeKindFilters } from '@/components/graph/EdgeKindFilters'
 import { CommunityLegend } from '@/components/graph/CommunityLegend'
 import { EntityInspector } from '@/components/graph/EntityInspector'
 import { GraphSearchTypeahead } from '@/components/graph/GraphSearchTypeahead'
-import { LodLevelIndicator } from '@/components/graph/LodLevelIndicator'
 import {
   GraphEmptyState,
   GraphLoadingState,
@@ -22,21 +20,17 @@ import {
 } from '@/components/graph/GraphEmptyState'
 import { repoColor } from '@/lib/colors'
 import type { GraphNode, RelationshipKind } from '@/types/api'
-import type { LayoutMode } from '@/components/graph/GraphToolbar'
 
 /**
  * Surface 1 — Graph Viewer
  *
+ * #1023: migrated to Cosmograph (GPU WebGL). LoD architecture removed.
+ * Single canvas, dense tier always, no zoom-level switching.
+ *
  * URL params:
- *   ?lod=           LoD override (zoom-out|mid|zoom-in)
  *   ?filter_kind=   comma-separated RelationshipKind values
  *   ?filter_repo=   repo slug
  *   ?selected=      selected entity ID (shareable deep-link)
- *
- * #1000 additions:
- *   - Repo filter chips in left sidebar (above Communities)
- *   - Community drill-in with breadcrumb
- *   - Layout modes now passed down to canvas components
  */
 export function GraphRoute() {
   const { group } = useParams<{ group: string }>()
@@ -46,31 +40,26 @@ export function GraphRoute() {
   const { selectedNodeId, select: selectNode, clear: clearSelection } = useGraphSelection()
   const { activeKinds, toggle: toggleKind, clearAll: clearKindFilters } = useEdgeKindFilters()
 
-  // ── Camera / zoom ──────────────────────────────────────────────────────────
-  const { zoomLevel, hoveredNodeId, setHoveredNode, zoomToNode, resetView } = useGraphCameraStore()
+  // ── Camera state ───────────────────────────────────────────────────────────
+  const { hoveredNodeId, setHoveredNode, zoomToNode, resetView } = useGraphCameraStore()
 
-  // ── Layout / view state ────────────────────────────────────────────────────
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>('force')
+  // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [highContrast, setHighContrast] = useState(false)
   const [hoveredCommunityId, setHoveredCommunityId] = useState<number | null>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
-  // ── Community drill-in state (#1000) ──────────────────────────────────────
+  // ── Community drill-in state ───────────────────────────────────────────────
   const [selectedCommunityId, setSelectedCommunityId] = useState<number | null>(null)
   const [selectedCommunityName, setSelectedCommunityName] = useState<string | null>(null)
 
-  // ── Repo filter state (#1000) ─────────────────────────────────────────────
+  // ── Repo filter state ──────────────────────────────────────────────────────
   // null = not yet initialised (wait for communities to load); Set = active slugs
   const [activeRepos, setActiveRepos] = useState<Set<string> | null>(null)
   const [allRepoSlugs, setAllRepoSlugs] = useState<string[]>([])
 
-  // Respect prefers-reduced-motion → default to 2D
-  const [use2D, setUse2D] = useState(() =>
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  )
+  // Respect prefers-contrast
   const [preferHighContrast] = useState(() =>
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-contrast: more)').matches,
@@ -80,17 +69,16 @@ export function GraphRoute() {
   }, [preferHighContrast])
 
   // ── Data ───────────────────────────────────────────────────────────────────
-  // activeRepos → only send ?repos= when filtering is active (not all-selected)
   const effectiveActiveRepos = activeRepos && allRepoSlugs.length > 0
     ? (activeRepos.size === allRepoSlugs.length ? null : activeRepos)
     : null
 
-  const { nodes, edges, communities, allEdgeKinds, lodLevel, totalNodeCount, isLoading, error, refetch } =
+  const { nodes, edges, communities, allEdgeKinds, totalNodeCount, isLoading, error, refetch } =
     useGraphData(
       group ?? '',
       { edge_kinds: activeKinds.size > 0 ? [...activeKinds] as RelationshipKind[] : undefined },
-      zoomLevel,
-      null,
+      1.0,  // zoomLevel: compat param — no longer drives LoD
+      null, // viewport: compat param — no longer used
       selectedNodeId,
       selectedCommunityId,
       effectiveActiveRepos,
@@ -98,7 +86,7 @@ export function GraphRoute() {
 
   const colorMap = useCommunityColors(communities)
 
-  // Derive unique repo slugs from communities once data loads (#1000)
+  // Derive unique repo slugs from communities once data loads
   useEffect(() => {
     if (communities.length === 0) return
     const slugs = [...new Set(communities.map((c) => c.repo))].sort()
@@ -128,12 +116,10 @@ export function GraphRoute() {
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      // "/" focuses search
       if (e.key === '/' && !isInputActive()) {
         e.preventDefault()
         document.getElementById('graph-search')?.focus()
       }
-      // Esc closes inspector
       if (e.key === 'Escape') {
         if (showSearchResults) {
           setShowSearchResults(false)
@@ -164,7 +150,6 @@ export function GraphRoute() {
   }, [selectNode, zoomToNode])
 
   const handleSaveSnapshot = useCallback(() => {
-    // Extract canvas and save as PNG
     const canvas = document.querySelector<HTMLCanvasElement>('.graph-canvas canvas')
     if (!canvas) return
     const a = document.createElement('a')
@@ -173,17 +158,11 @@ export function GraphRoute() {
     a.click()
   }, [group])
 
-  const handleLayoutChange = useCallback((mode: LayoutMode) => {
-    setLayoutMode(mode)
-    // 2D canvas renders '2d' and 'tree' modes; 3D canvas renders 'force'
-    setUse2D(mode === '2d' || mode === 'tree')
-  }, [])
-
   const handleOpenInFlows = useCallback((entityId: string) => {
     navigate(`/${group}/flows?entry=${encodeURIComponent(entityId)}`)
   }, [group, navigate])
 
-  // ── Community drill-in handlers (#1000) ───────────────────────────────────
+  // ── Community drill-in handlers ────────────────────────────────────────────
   const handleCommunityClick = useCallback((id: number, name: string) => {
     setSelectedCommunityId(id)
     setSelectedCommunityName(name)
@@ -195,7 +174,7 @@ export function GraphRoute() {
     setSelectedCommunityName(null)
   }, [])
 
-  // ── Repo filter handlers (#1000) ──────────────────────────────────────────
+  // ── Repo filter handlers ───────────────────────────────────────────────────
   const handleToggleRepo = useCallback((slug: string) => {
     setActiveRepos((prev) => {
       if (!prev) return prev
@@ -224,7 +203,7 @@ export function GraphRoute() {
   }
 
   const showInspector = !!selectedNodeId
-  const canvasReady = !isLoading && !error && lodLevel !== 'blocked'
+  const canvasReady = !isLoading && !error
   const isEmpty = !isLoading && !error && nodes.length === 0
 
   return (
@@ -236,8 +215,6 @@ export function GraphRoute() {
           onSearchChange={setSearchQuery}
           onResetView={resetView}
           onSaveSnapshot={handleSaveSnapshot}
-          layoutMode={layoutMode}
-          onLayoutChange={handleLayoutChange}
         />
         {showSearchResults && (
           <div className="absolute left-3 right-3 top-full z-50">
@@ -252,7 +229,7 @@ export function GraphRoute() {
         )}
       </div>
 
-      {/* Community drill-in breadcrumb (#1000) */}
+      {/* Community drill-in breadcrumb */}
       {selectedCommunityId !== null && (
         <div className="px-3 py-1 border-b border-slate-200 dark:border-slate-800 bg-sky-950/40 flex items-center gap-1.5 text-xs text-slate-300">
           <button
@@ -299,7 +276,7 @@ export function GraphRoute() {
           className="hidden lg:flex flex-col w-48 min-w-[160px] border-r border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 p-2 gap-2 overflow-y-auto"
           aria-label="Graph filters sidebar"
         >
-          {/* Repo filter (#1000) */}
+          {/* Repo filter */}
           {allRepoSlugs.length > 0 && (
             <div>
               <div className="flex items-center justify-between px-2 pb-1">
@@ -379,53 +356,30 @@ export function GraphRoute() {
             />
           )}
 
-          {!isLoading && !error && lodLevel === 'blocked' && (
-            <GraphEmptyState reason="blocked" />
-          )}
-
-          {!isLoading && !error && isEmpty && lodLevel !== 'blocked' && (
+          {!isLoading && !error && isEmpty && (
             <GraphEmptyState reason="filtered" />
           )}
 
           {canvasReady && !isEmpty && (
-            use2D ? (
-              <GraphCanvas2D
-                nodes={nodes}
-                edges={edges}
-                selectedNodeId={selectedNodeId}
-                hoveredNodeId={hoveredNodeId}
-                onNodeClick={handleNodeClick}
-                onNodeHover={handleNodeHover}
-                onZoomChange={useGraphCameraStore.getState().setZoomLevel}
-                highContrast={highContrast}
-                layoutMode={layoutMode}
-                className="w-full h-full"
-              />
-            ) : (
-              <GraphCanvas3D
-                nodes={nodes}
-                edges={edges}
-                selectedNodeId={selectedNodeId}
-                hoveredNodeId={hoveredNodeId}
-                onNodeClick={handleNodeClick}
-                onNodeHover={handleNodeHover}
-                onZoomChange={useGraphCameraStore.getState().setZoomLevel}
-                highContrast={highContrast}
-                layoutMode={layoutMode}
-                className="w-full h-full"
-              />
-            )
+            <GraphCanvas
+              nodes={nodes}
+              edges={edges}
+              selectedNodeId={selectedNodeId}
+              hoveredNodeId={hoveredNodeId}
+              onNodeClick={handleNodeClick}
+              onNodeHover={handleNodeHover}
+              highContrast={highContrast}
+              className="w-full h-full"
+            />
           )}
 
-          {/* LoD indicator (top-right overlay) */}
+          {/* Node count + high-contrast toggle */}
           {!isLoading && !error && (
             <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2">
-              <LodLevelIndicator
-                lodLevel={lodLevel}
-                visibleCount={nodes.length}
-                totalCount={totalNodeCount}
-              />
-              {/* High-contrast toggle */}
+              <div className="text-[10px] px-2 py-0.5 rounded border border-slate-700 bg-slate-800/80 text-slate-400 font-mono select-none">
+                {nodes.length.toLocaleString()} nodes
+                {totalNodeCount > nodes.length && ` / ${totalNodeCount.toLocaleString()} total`}
+              </div>
               <button
                 type="button"
                 onClick={() => setHighContrast((v) => !v)}

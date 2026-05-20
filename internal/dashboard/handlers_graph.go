@@ -1,26 +1,20 @@
 package dashboard
 
-// handlers_graph.go — LoD-aware graph endpoints
+// handlers_graph.go — graph endpoints
 //
-//	GET /api/graph/{group}?lod=centroids|mid|dense|full&filter_kind=&filter_repo=&repos=slug1,slug2
+//	GET /api/graph/{group}?filter_kind=&filter_repo=&repos=slug1,slug2
 //	GET /api/graph/{group}/entity/{id}
 //
-// The LoD tiers:
-//   - centroids : one centroid per non-singleton community (skips size-1 communities)
-//   - mid       : top-50 nodes by degree+pagerank per repo (~150 nodes)
-//   - dense     : top-500 nodes by degree+pagerank per repo — default tier (issue #1000)
-//   - full      : all nodes up to 20 000 hard cap; falls back to dense when cap exceeded
+// #1023: LoD tiers removed. The endpoint always returns the dense tier
+// (top-500 per repo by PageRank). Cosmograph handles large node counts
+// via GPU WebGL — no need for centroid/mid/full switching.
 //
-// Sampling strategy (fix #1020):
-//   Nodes are sorted by (in-degree + out-degree) DESC, PageRank DESC as tiebreaker.
-//   This ensures the highest-connectivity nodes appear first, yielding a sample where
-//   most included nodes have edges to other included nodes (low isolated-node rate).
+// Removed functions: serveGraphCentroids, serveGraphMid, serveGraphFull.
+// Removed: ?lod= param, COMMUNITY_LINK synthetic edges, centroid nodes.
 //
-// Default lod is "dense" (issue #1000: user wants to SEE the graph).
 // "repos" param accepts comma-separated repo slugs for multi-select filtering.
 
 import (
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -29,8 +23,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph"
 )
 
-const fullNodeCap = 20_000
-const denseNodeLimit = 500 // per-repo limit for the "dense" tier
+const denseNodeLimit = 500 // per-repo limit for the dense tier
 
 // buildDegreeMap returns a map from entity ID to total degree (in + out) for
 // all relationships in a repo.  Used by the dense/mid samplers to rank nodes
@@ -51,13 +44,9 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "group required")
 		return
 	}
-	lod := r.URL.Query().Get("lod")
-	if lod == "" {
-		lod = "dense" // #1000: default to dense tier so the graph feels populated
-	}
 	filterKind := r.URL.Query().Get("filter_kind")
 	filterRepo := r.URL.Query().Get("filter_repo")
-	reposParam := r.URL.Query().Get("repos") // comma-separated list of repo slugs (#1000)
+	reposParam := r.URL.Query().Get("repos") // comma-separated list of repo slugs
 
 	grp, err := s.graphs.GetGroup(group)
 	if err != nil {
@@ -78,7 +67,7 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		repos = filtered
 	}
 
-	// Multi-repo filter — ?repos=slug1,slug2 (#1000)
+	// Multi-repo filter — ?repos=slug1,slug2
 	if reposParam != "" {
 		slugSet := map[string]bool{}
 		for _, s := range strings.Split(reposParam, ",") {
@@ -93,276 +82,15 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		repos = filtered
 	}
 
-	switch lod {
-	case "centroids":
-		s.serveGraphCentroids(w, group, repos)
-	case "mid":
-		s.serveGraphMid(w, group, repos, filterKind)
-	case "dense":
-		s.serveGraphDense(w, group, repos, filterKind)
-	default: // "full"
-		s.serveGraphFull(w, group, repos, filterKind)
-	}
+	s.serveGraphDense(w, group, repos, filterKind)
 }
 
-// serveGraphCentroids returns one centroid per non-singleton community (zoom-out tier).
+// serveGraphDense returns top-N nodes by degree+pagerank per repo — the only tier (#1023).
+// Cosmograph handles >1500 nodes at 60fps via GPU; no LoD switching needed.
 //
-// Each centroid is emitted as a GraphNode-shaped object (id, label, kind,
-// repo, is_centroid=true, centroid_size) so the force-graph renderer can
-// draw it without additional client-side normalization.
-//
-// Inter-community edges are derived by counting how many relationships cross
-// community boundaries; edges with weight ≥ 1 are emitted so the layout
-// engine has structure to work with (without edges the force simulation
-// produces a uniform blob with no visible separation).
-//
-// Fix #1020: singleton communities (size=1) are skipped.  They never have
-// cross-boundary edges, so including them only adds isolated dots to the view.
-const centroidMinSize = 2 // skip communities smaller than this
-
-func (s *Server) serveGraphCentroids(w http.ResponseWriter, group string, repos []*DashRepo) {
-	nodes := []map[string]any{}
-	communities := []map[string]any{}
-
-	// centroidID builds a stable, unique node ID for a community centroid.
-	centroidID := func(repoSlug string, communityID int) string {
-		return fmt.Sprintf("%s::community::%d", repoSlug, communityID)
-	}
-
-	// Build entity→communityID lookup for edge derivation.
-	type entityKey struct{ repo, id string }
-	entityCommunity := map[entityKey]int{}
-
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		for _, c := range r.Doc.Communities {
-			// Skip singleton communities — they have no cross-boundary edges and
-			// only contribute isolated dots to the centroid view (#1020).
-			if c.Size < centroidMinSize {
-				continue
-			}
-
-			top := c.TopEntities
-			if len(top) > 3 {
-				top = top[:3]
-			}
-			prefixed := make([]string, len(top))
-			for i, id := range top {
-				prefixed[i] = dashPrefixedID(r.Slug, id)
-			}
-
-			name := c.AutoName
-			if c.AgentName != "" {
-				name = c.AgentName
-			}
-			if name == "" {
-				name = fmt.Sprintf("Community %d", c.ID)
-			}
-
-			nid := centroidID(r.Slug, c.ID)
-			node := map[string]any{
-				"id":             nid,
-				"label":          name,
-				"kind":           "Community",
-				"repo":           r.Slug,
-				"is_centroid":    true,
-				"centroid_size":  c.Size,
-				"community_id":   c.ID,
-				"top_entity_ids": prefixed,
-			}
-			nodes = append(nodes, node)
-
-			cm := map[string]any{
-				"id":               c.ID,
-				"size":             c.Size,
-				"auto_name":        c.AutoName,
-				"repo":             r.Slug,
-				"top_entities":     prefixed,
-				"centroid_node_id": nid,
-			}
-			if c.AgentName != "" {
-				cm["agent_name"] = c.AgentName
-			}
-			communities = append(communities, cm)
-
-			// Populate entity→community lookup for all members.
-			for i := range r.Doc.Entities {
-				e := &r.Doc.Entities[i]
-				if e.CommunityID != nil && *e.CommunityID == c.ID {
-					entityCommunity[entityKey{r.Slug, e.ID}] = c.ID
-				}
-			}
-		}
-	}
-
-	// Derive inter-community edges: count cross-boundary relationships.
-	type edgeKey struct {
-		fromRepo string
-		fromCID  int
-		toRepo   string
-		toCID    int
-	}
-	edgeWeights := map[edgeKey]int{}
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		for _, rel := range r.Doc.Relationships {
-			fromCID, okFrom := entityCommunity[entityKey{r.Slug, rel.FromID}]
-			toCID, okTo := entityCommunity[entityKey{r.Slug, rel.ToID}]
-			if !okFrom || !okTo {
-				continue
-			}
-			if fromCID == toCID {
-				continue // intra-community — skip
-			}
-			// Normalise direction so A→B and B→A collapse to one key.
-			k := edgeKey{r.Slug, fromCID, r.Slug, toCID}
-			if fromCID > toCID {
-				k = edgeKey{r.Slug, toCID, r.Slug, fromCID}
-			}
-			edgeWeights[k]++
-		}
-	}
-
-	edges := []map[string]any{}
-	for k, weight := range edgeWeights {
-		fromID := centroidID(k.fromRepo, k.fromCID)
-		toID := centroidID(k.toRepo, k.toCID)
-		edges = append(edges, map[string]any{
-			"from_id": fromID,
-			"to_id":   toID,
-			"kind":    "COMMUNITY_LINK",
-			"weight":  weight,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"nodes":       nodes,
-		"edges":       edges,
-		"communities": communities,
-		"lod_level":   "centroids",
-		"total_nodes": len(nodes),
-	})
-}
-
-// serveGraphMid returns top-50 nodes by degree+pagerank per repo (mid-zoom tier).
-//
-// Fix #1020: sort by actual edge degree (in+out) descending, using PageRank as
-// tiebreaker.  High-degree nodes are most likely to connect to other sampled nodes,
-// dramatically reducing the isolated-node rate vs. pure PageRank ordering.
-func (s *Server) serveGraphMid(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
-	nodes := []map[string]any{}
-	edges := []map[string]any{}
-	communities := []map[string]any{}
-	visible := map[string]bool{}
-
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		// Add community centroids.
-		for _, c := range r.Doc.Communities {
-			top := c.TopEntities
-			if len(top) > 3 {
-				top = top[:3]
-			}
-			prefixed := make([]string, len(top))
-			for i, id := range top {
-				prefixed[i] = dashPrefixedID(r.Slug, id)
-			}
-			cm := map[string]any{
-				"id":           c.ID,
-				"size":         c.Size,
-				"auto_name":    c.AutoName,
-				"repo":         r.Slug,
-				"top_entities": prefixed,
-			}
-			if c.AgentName != "" {
-				cm["agent_name"] = c.AgentName
-			}
-			communities = append(communities, cm)
-		}
-
-		// Build degree map for this repo (in-degree + out-degree).
-		degree := buildDegreeMap(r.Doc.Relationships)
-
-		// Collect god-nodes: top-50 by degree+pagerank per repo.
-		type scored struct {
-			e      *graph.Entity
-			degree int
-			pr     float64
-		}
-		var godCandidates []scored
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
-			if filterKind != "" && dashStripScopePrefix(e.Kind) != filterKind {
-				continue
-			}
-			pr := 0.0
-			if e.PageRank != nil {
-				pr = *e.PageRank
-			}
-			deg := degree[e.ID]
-			if e.IsGodNode || pr > 0 || deg > 0 {
-				godCandidates = append(godCandidates, scored{e: e, degree: deg, pr: pr})
-			}
-		}
-		sort.Slice(godCandidates, func(i, j int) bool {
-			if godCandidates[i].degree != godCandidates[j].degree {
-				return godCandidates[i].degree > godCandidates[j].degree
-			}
-			return godCandidates[i].pr > godCandidates[j].pr
-		})
-		limit := 50
-		if len(godCandidates) > limit {
-			godCandidates = godCandidates[:limit]
-		}
-		for _, sc := range godCandidates {
-			pid := dashPrefixedID(r.Slug, sc.e.ID)
-			if visible[pid] {
-				continue
-			}
-			visible[pid] = true
-			nodes = append(nodes, serializeEntity(r.Slug, sc.e))
-		}
-	}
-
-	// Include edges where both endpoints are visible.
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		for _, rel := range r.Doc.Relationships {
-			from := dashPrefixedID(r.Slug, rel.FromID)
-			to := dashPrefixedID(r.Slug, rel.ToID)
-			if visible[from] && visible[to] {
-				edges = append(edges, map[string]any{
-					"from_id": from,
-					"to_id":   to,
-					"kind":    rel.Kind,
-				})
-			}
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"nodes":       nodes,
-		"edges":       edges,
-		"communities": communities,
-		"lod_level":   "mid",
-		"total_nodes": len(nodes),
-	})
-}
-
-// serveGraphDense returns top-N nodes by degree+pagerank per repo — the default tier (#1000).
-// Gives a much richer view than "mid" (50/repo) while staying bounded below full.
-//
-// Fix #1020: sort by actual edge degree (in+out) descending, using PageRank as
-// tiebreaker.  High-degree nodes are most likely to connect to other sampled nodes,
-// dramatically reducing the isolated-node rate vs. pure PageRank ordering.
+// Sampling strategy (fix #1020): sort by actual edge degree (in+out) descending,
+// using PageRank as tiebreaker. High-degree nodes are most likely to connect to
+// other sampled nodes, dramatically reducing the isolated-node rate.
 func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
 	nodes := []map[string]any{}
 	edges := []map[string]any{}
@@ -456,98 +184,10 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"nodes":       nodes,
-		"edges":       edges,
-		"communities": communities,
-		"lod_level":   "zoom-in",
-		"total_nodes": len(nodes),
-	})
-}
-
-// serveGraphFull returns all nodes up to the hard cap.
-//
-// Fix #1020: when the unfiltered entity count exceeds the 20 000-node hard cap,
-// fall back to the dense sampler (top-N by degree+pagerank) instead of returning
-// an empty "blocked" response.  The blocked sentinel is preserved only so the
-// frontend can update its LoD indicator; the actual node/edge payload is non-empty.
-func (s *Server) serveGraphFull(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
-	nodes := []map[string]any{}
-	edges := []map[string]any{}
-	communities := []map[string]any{}
-	visible := map[string]bool{}
-
-	totalEntities := 0
-	for _, r := range repos {
-		if r.Doc != nil {
-			totalEntities += len(r.Doc.Entities)
-		}
-	}
-
-	// Hard cap exceeded without a kind filter: delegate to dense sampler so the
-	// user still sees a useful graph rather than an empty canvas (#1020).
-	if filterKind == "" && totalEntities > fullNodeCap {
-		s.serveGraphDense(w, group, repos, filterKind)
-		return
-	}
-
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		for _, c := range r.Doc.Communities {
-			top := c.TopEntities
-			if len(top) > 3 {
-				top = top[:3]
-			}
-			prefixed := make([]string, len(top))
-			for i, id := range top {
-				prefixed[i] = dashPrefixedID(r.Slug, id)
-			}
-			cm := map[string]any{
-				"id":           c.ID,
-				"size":         c.Size,
-				"auto_name":    c.AutoName,
-				"repo":         r.Slug,
-				"top_entities": prefixed,
-			}
-			if c.AgentName != "" {
-				cm["agent_name"] = c.AgentName
-			}
-			communities = append(communities, cm)
-		}
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
-			if filterKind != "" && dashStripScopePrefix(e.Kind) != filterKind {
-				continue
-			}
-			pid := dashPrefixedID(r.Slug, e.ID)
-			visible[pid] = true
-			nodes = append(nodes, serializeEntity(r.Slug, e))
-		}
-	}
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		for _, rel := range r.Doc.Relationships {
-			from := dashPrefixedID(r.Slug, rel.FromID)
-			to := dashPrefixedID(r.Slug, rel.ToID)
-			if visible[from] && visible[to] {
-				edges = append(edges, map[string]any{
-					"from_id": from,
-					"to_id":   to,
-					"kind":    rel.Kind,
-				})
-			}
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"nodes":       nodes,
-		"edges":       edges,
-		"communities": communities,
-		"lod_level":   "full",
-		"total_nodes": len(nodes),
+		"nodes":            nodes,
+		"edges":            edges,
+		"communities":      communities,
+		"total_node_count": len(nodes),
 	})
 }
 

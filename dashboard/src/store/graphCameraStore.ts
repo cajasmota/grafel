@@ -1,23 +1,27 @@
 import { create } from 'zustand'
 
 /**
- * Zustand slice for the 3D graph camera.
+ * Zustand slice for the graph camera / Cosmograph instance.
  * High-frequency state (zoom, hover) that should NOT live in URL params.
  *
- * The `graphRef` is set by <GraphCanvas3D> once the instance is mounted,
- * allowing toolbar / inspector to call camera methods imperatively.
+ * The `graphRef` is set by <GraphCanvas> once the Cosmograph instance mounts,
+ * allowing toolbar / inspector to call imperative camera methods.
+ *
+ * #1023: migrated from 3d-force-graph to Cosmograph. The imperative API is now:
+ *   - fitView(duration?) → replaces zoomToFit()
+ *   - getPointIndicesByIds([id]) + zoomToPoint(index, duration) → replaces cameraPosition()
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ForceGraphInstance = any  // 3d-force-graph has no @types package
+type CosmographInstance = any  // typed via @cosmograph/react CosmographRef
 
 interface GraphCameraState {
-  graphRef: ForceGraphInstance | null
+  graphRef: CosmographInstance | null
   zoomLevel: number
   hoveredNodeId: string | null
 
   // Actions
-  setGraphRef: (ref: ForceGraphInstance | null) => void
+  setGraphRef: (ref: CosmographInstance | null) => void
   setZoomLevel: (z: number) => void
   setHoveredNode: (id: string | null) => void
   zoomToNode: (nodeId: string) => void
@@ -33,29 +37,20 @@ export const useGraphCameraStore = create<GraphCameraState>((set, get) => ({
   setZoomLevel: (z) => set({ zoomLevel: z }),
   setHoveredNode: (id) => set({ hoveredNodeId: id }),
 
-  zoomToNode: (nodeId) => {
+  zoomToNode: async (nodeId) => {
     const { graphRef } = get()
     if (!graphRef) return
-    // 3d-force-graph API: centerAt + zoom
-    const node = graphRef.graphData().nodes.find((n: { id: string }) => n.id === nodeId)
-    if (!node) return
-    const distance = 80
-    const distRatio = 1 + distance / Math.hypot(node.x ?? 0, node.y ?? 0, node.z ?? 0)
-    graphRef.cameraPosition(
-      {
-        x: (node.x ?? 0) * distRatio,
-        y: (node.y ?? 0) * distRatio,
-        z: (node.z ?? 0) * distRatio,
-      },
-      node,
-      800, // ms transition
-    )
+    // Cosmograph: resolve id → index, then zoom to that point
+    const indices: number[] | undefined = await graphRef.getPointIndicesByIds([nodeId])
+    if (indices && indices.length > 0) {
+      graphRef.zoomToPoint(indices[0], 800)
+    }
   },
 
   resetView: () => {
     const { graphRef } = get()
     if (!graphRef) return
-    graphRef.zoomToFit(600)
+    graphRef.fitView(600)
   },
 }))
 

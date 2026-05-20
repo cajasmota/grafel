@@ -223,44 +223,48 @@ func TestDashboardInit_200(t *testing.T) {
 
 func TestGraph_Full_200(t *testing.T) {
 	ts, _ := newPhase1Server(t)
-	code, body := getJSON(t, ts.URL, "/api/graph/testgroup?lod=full")
+	// #1023: lod param is ignored; always returns dense tier.
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup")
 	if code != 200 {
 		t.Fatalf("status=%d", code)
 	}
 	nodes, _ := body["nodes"].([]interface{})
-	// Should include all non-blocked entities (doc has 6 entities).
+	// Should include all entities (doc has 6 entities, below dense cap of 500).
 	if len(nodes) != 6 {
 		t.Fatalf("expected 6 nodes, got %d", len(nodes))
 	}
-	if body["lod_level"] != "full" {
-		t.Fatalf("wrong lod_level: %v", body["lod_level"])
+	// #1023: no lod_level in response; use total_node_count instead.
+	if body["lod_level"] != nil {
+		t.Fatalf("lod_level should be absent after #1023, got: %v", body["lod_level"])
 	}
 }
 
 func TestGraph_Centroids_200(t *testing.T) {
 	ts, _ := newPhase1Server(t)
-	code, body := getJSON(t, ts.URL, "/api/graph/testgroup?lod=centroids")
+	// #1023: lod=centroids param is ignored; always returns dense tier.
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup")
 	if code != 200 {
 		t.Fatalf("status=%d", code)
 	}
 	nodes, _ := body["nodes"].([]interface{})
-	// Should return one centroid per community (2 communities).
-	if len(nodes) != 2 {
-		t.Fatalf("expected 2 centroids, got %d", len(nodes))
+	// Dense tier returns all 6 entities (no centroid collapsing post-#1023).
+	if len(nodes) != 6 {
+		t.Fatalf("expected 6 nodes (dense), got %d", len(nodes))
 	}
-	if body["lod_level"] != "centroids" {
-		t.Fatalf("wrong lod_level: %v", body["lod_level"])
+	if body["lod_level"] != nil {
+		t.Fatalf("lod_level should be absent after #1023, got: %v", body["lod_level"])
 	}
 }
 
 func TestGraph_Mid_200(t *testing.T) {
 	ts, _ := newPhase1Server(t)
-	code, body := getJSON(t, ts.URL, "/api/graph/testgroup?lod=mid")
+	// #1023: lod=mid param is ignored; always returns dense tier.
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup")
 	if code != 200 {
 		t.Fatalf("status=%d", code)
 	}
-	if body["lod_level"] != "mid" {
-		t.Fatalf("wrong lod_level: %v", body["lod_level"])
+	if body["lod_level"] != nil {
+		t.Fatalf("lod_level should be absent after #1023, got: %v", body["lod_level"])
 	}
 }
 
@@ -274,7 +278,7 @@ func TestGraph_UnknownGroup_404(t *testing.T) {
 
 func TestGraph_FilterKind(t *testing.T) {
 	ts, _ := newPhase1Server(t)
-	code, body := getJSON(t, ts.URL, "/api/graph/testgroup?lod=full&filter_kind=Function")
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup?filter_kind=Function")
 	if code != 200 {
 		t.Fatalf("status=%d", code)
 	}
@@ -778,22 +782,24 @@ func TestGraph_Dense_EdgeConnectivity(t *testing.T) {
 	}
 }
 
-// TestGraph_Full_FallbackToDense ensures that when total entities exceed the
-// 20k hard cap the full-tier request falls back to dense sampling rather than
-// returning an empty blocked response.  The fake group has 6 entities (below
-// cap), so we verify the happy path still returns all 6 with lod_level="full".
-func TestGraph_Full_FallbackToDense(t *testing.T) {
+// TestGraph_Dense_TotalNodeCount verifies the dense response includes total_node_count
+// (replacing the old lod_level field removed in #1023).
+func TestGraph_Dense_TotalNodeCount(t *testing.T) {
 	ts, _ := newPhase1Server(t)
-	code, body := getJSON(t, ts.URL, "/api/graph/testgroup?lod=full")
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup")
 	if code != 200 {
 		t.Fatalf("status=%d", code)
 	}
 	nodes, _ := body["nodes"].([]interface{})
 	if len(nodes) != 6 {
-		t.Fatalf("expected 6 nodes (below cap), got %d", len(nodes))
+		t.Fatalf("expected 6 nodes, got %d", len(nodes))
 	}
-	// lod_level should be "full" since we are below the 20k cap.
-	if body["lod_level"] != "full" {
-		t.Fatalf("wrong lod_level: %v (expected full)", body["lod_level"])
+	// total_node_count replaces the old total_nodes/lod_level fields (#1023).
+	totalNodeCount, ok := body["total_node_count"].(float64)
+	if !ok {
+		t.Fatalf("missing or wrong type for total_node_count: %v", body["total_node_count"])
+	}
+	if int(totalNodeCount) != 6 {
+		t.Fatalf("expected total_node_count=6, got %v", totalNodeCount)
 	}
 }

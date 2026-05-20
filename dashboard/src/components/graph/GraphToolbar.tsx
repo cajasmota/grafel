@@ -1,8 +1,10 @@
-import { Search, RotateCcw, Camera, Box, Grid2x2, GitBranch } from 'lucide-react'
+import { Search, RotateCcw, Camera } from 'lucide-react'
 import { useRef } from 'react'
 
-// Globe removed in #1000 — non-functional; per tech-debt rule, also removed 'sphere' from the type.
-export type LayoutMode = 'force' | '2d' | 'tree'
+// #1023: layout modes collapsed to 'force' only — Cosmograph 2D GPU force is the single renderer.
+// Tree layout removed (was broken with cyclic graphs; dagMode not supported by Cosmograph).
+// 3D toggle removed (3d-force-graph dependency dropped).
+export type LayoutMode = 'force'
 
 interface GraphToolbarProps {
   searchQuery: string
@@ -14,29 +16,22 @@ interface GraphToolbarProps {
   className?: string
 }
 
-const LAYOUT_BUTTONS: { mode: LayoutMode; icon: React.FC<{ className?: string }>; label: string }[] = [
-  { mode: 'force', icon: Box, label: '3D force' },
-  { mode: '2d', icon: Grid2x2, label: '2D force' },
-  { mode: 'tree', icon: GitBranch, label: 'Tree' },
-  // Globe removed: was non-functional dead UI (#1000). Sphere layout requires
-  // non-trivial THREE.js coord math and is not in scope for this release.
-]
-
 /**
- * Graph toolbar: search input, layout toggles (3D|2D|tree), reset view, save snapshot.
+ * Graph toolbar: search input, reset view, save snapshot.
  *
- * Globe button removed in #1000.
- * Tree now actually works (dagMode on 2D force-graph).
+ * Layout toggles removed in #1023 (Tree was broken; 3D dropped with react-force-graph).
+ * Cosmograph renders a single 2D GPU force layout at 60fps.
  */
 export function GraphToolbar({
   searchQuery,
   onSearchChange,
   onResetView,
   onSaveSnapshot,
-  layoutMode,
-  onLayoutChange,
   className = '',
-}: GraphToolbarProps) {
+}: Omit<GraphToolbarProps, 'layoutMode' | 'onLayoutChange'> & {
+  layoutMode?: LayoutMode
+  onLayoutChange?: (mode: LayoutMode) => void
+}) {
   const searchRef = useRef<HTMLInputElement>(null)
 
   return (
@@ -69,30 +64,6 @@ export function GraphToolbar({
           autoComplete="off"
           spellCheck={false}
         />
-      </div>
-
-      {/* Layout toggles */}
-      <div className="flex items-center gap-0.5" role="group" aria-label="Graph layout">
-        {LAYOUT_BUTTONS.map(({ mode, icon: Icon, label }) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => onLayoutChange(mode)}
-            aria-pressed={layoutMode === mode}
-            className={[
-              'flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
-              layoutMode === mode
-                ? 'bg-sky-700/60 text-sky-200 border border-sky-700'
-                : 'text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 border border-transparent',
-            ].join(' ')}
-            title={label}
-            aria-label={`Switch to ${label} layout`}
-          >
-            <Icon className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{label}</span>
-          </button>
-        ))}
       </div>
 
       <div className="flex-1" aria-hidden />

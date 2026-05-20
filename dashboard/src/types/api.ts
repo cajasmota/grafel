@@ -438,21 +438,13 @@ export interface PendingEnrichmentsResponse {
 // Surface 1 — Graph Viewer
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * @deprecated LoD removed in #1023 — Cosmograph handles large node counts natively.
+ * Kept as a compat alias; value is always 'zoom-in' (dense tier).
+ */
 export type LodLevel = 'zoom-out' | 'mid' | 'zoom-in' | 'blocked'
 
-/** Server-side LoD parameter values accepted by GET /api/graph/{group}?lod= */
-export type ServerLodLevel = 'centroids' | 'mid' | 'dense' | 'full'
-
-/** A community centroid node — rendered at zoom-out tier only */
-export interface CommunityCentroid {
-  community_id: number
-  size: number
-  auto_name?: string
-  agent_name?: string
-  top_entity_ids: string[]
-}
-
-/** Flat node as understood by 3d-force-graph / react-force-graph-2d */
+/** Flat node as understood by Cosmograph / graph renderers */
 export interface GraphNode {
   id: string
   label: string
@@ -460,9 +452,9 @@ export interface GraphNode {
   repo: string
   community_id?: number
   pagerank?: number
-  /** true when this node is a community centroid (zoom-out tier) */
+  /** true when this node is a community centroid (legacy centroid tier — unused since #1023) */
   is_centroid?: boolean
-  centroid_size?: number          // member count — drives sphere radius for centroids
+  centroid_size?: number          // member count — legacy centroid data; unused since #1023
   source_file?: string
   start_line?: number
   properties?: Record<string, unknown>
@@ -481,17 +473,15 @@ export interface GraphResponse {
   nodes: GraphNode[]
   edges: GraphEdge[]
   communities: Community[]
-  /** Server-side LoD tier returned in the response (centroids | mid | full | blocked) */
-  lod: ServerLodLevel | 'blocked'
-  total_node_count: number        // unfiltered count — drives hard-cap check
+  /** @deprecated always 'zoom-in' since #1023 — LoD removed */
+  lod: LodLevel
+  total_node_count: number
 }
 
 export interface GraphFilters {
-  /** Server-side LOD tier (centroids | mid | dense | full). */
-  lod?: ServerLodLevel
   edge_kinds?: RelationshipKind[]
   repo?: string
-  /** Comma-separated list of repo slugs for multi-repo filtering (#1000). */
+  /** Comma-separated list of repo slugs for multi-repo filtering. */
   repos?: string
 }
 

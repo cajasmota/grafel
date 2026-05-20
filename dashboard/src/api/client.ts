@@ -84,8 +84,6 @@ import type {
   GraphResponse,
   GraphFilters,
   EntityNeighborResponse,
-  LodLevel,
-  ServerLod,
   PendingRepairsResponse,
   PendingEnrichmentsResponse,
 } from '@/types/api'
@@ -246,45 +244,21 @@ function normalizeEdge(raw: { from_id: string; to_id: string; kind: string; cros
 }
 
 /**
- * Map the server's lod_level string (ServerLod) to the client's LodLevel enum.
- *
- * Server emits: "zoom-out" | "centroids" → "zoom-out"
- *               "mid"                    → "mid"
- *               "full" | "zoom-in"       → "zoom-in"
- *               "blocked"                → "blocked"
- */
-function serverLodToLodLevel(raw: string | undefined): LodLevel {
-  switch (raw as ServerLod | LodLevel | undefined) {
-    case 'centroids':
-    case 'zoom-out':
-      return 'zoom-out'
-    case 'mid':
-      return 'mid'
-    case 'blocked':
-      return 'blocked'
-    case 'full':
-    case 'zoom-in':
-    default:
-      return 'zoom-in'
-  }
-}
-
-/**
  * Normalise a raw /api/graph response to the GraphResponse shape the
  * frontend types expect.  The Go server uses:
  *   - edges[].from_id / to_id  →  edges[].source / target (+ synthetic id)
- *   - lod_level                →  lod (mapped via serverLodToLodLevel)
- *   - total_nodes              →  total_node_count
+ *   - total_node_count (or total_nodes)  →  total_node_count
+ *
+ * #1023: lod field removed — server always returns dense tier.
  */
 function normalizeGraphResponse(raw: Record<string, unknown>): GraphResponse {
   type RawEdge = { from_id: string; to_id: string; kind: string; cross_repo?: boolean }
   const rawEdges = (raw.edges as RawEdge[] | undefined) ?? []
-  const rawLod = (raw.lod ?? raw.lod_level) as string | undefined
   return {
     nodes: (raw.nodes as GraphResponse['nodes'] | undefined) ?? [],
     edges: rawEdges.map(normalizeEdge),
     communities: (raw.communities as GraphResponse['communities'] | undefined) ?? [],
-    lod: serverLodToLodLevel(rawLod),
+    lod: 'zoom-in',  // compat: always 'zoom-in' (dense) — no LoD switching
     total_node_count: (raw.total_node_count ?? raw.total_nodes ?? 0) as number,
   }
 }
@@ -297,7 +271,7 @@ export async function fetchGraph(
     const data = await loadMock<GraphResponse>('graph')
     return applyGraphMockFilters(data, filters)
   }
-  const params = buildParams({ lod: filters.lod, repo: filters.repo, repos: (filters as { repos?: string }).repos })
+  const params = buildParams({ repo: filters.repo, repos: (filters as { repos?: string }).repos })
   const raw = await apiFetch<Record<string, unknown>>(`/api/graph/${group}?${params}`)
   return normalizeGraphResponse(raw)
 }
