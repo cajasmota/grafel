@@ -1,0 +1,58 @@
+{
+  "description": "Synthetic repair corpus for ADR-0015 #8/8 (issue #551). Five known-bad edges exercising both bug-resolver and bug-extractor dispositions.",
+  "stub_selection_notes": [
+    "save → bug-resolver: two entities share the name, resolver cannot pick one",
+    "get_all → bug-extractor: not in graph, Python plain name",
+    "submitProposal → bug-extractor: not in graph, JS PascalCase-initial-lower name",
+    "ProposalCard → bug-extractor: barrel re-export, not directly in graph",
+    "api_client → bug-extractor: runtime-injected dependency, not in graph",
+    "NOTE: template-literal and env-var stubs hit 'dynamic' disposition, NOT bug-extractor, and are therefore outside the repair scope. They are documented in the source files for completeness."
+  ],
+  "known_residuals": [
+    {
+      "edge_id_key": "views_create_save",
+      "from_entity_id": "aaaaaaaaaaaaaaaa",
+      "relation": "CALLS",
+      "original_stub": "save",
+      "disposition": "bug-resolver",
+      "disposition_reason": "ambig-bare-hint-fail",
+      "note": "DRF ViewSet self.service.save() — two classes have save() methods. Reference: bind to ProposalService.save (bbbbbbbbbbbbbbbb)."
+    },
+    {
+      "edge_id_key": "views_list_get_all",
+      "from_entity_id": "aaaaaaaaaaaaaaaa",
+      "relation": "CALLS",
+      "original_stub": "get_all",
+      "disposition": "bug-extractor",
+      "disposition_reason": "extractor-stub-unbound",
+      "note": "self.service.get_all() — not in graph. Reference: reclassify_as_external module=DraftService."
+    },
+    {
+      "edge_id_key": "tasks_submit_proposal",
+      "from_entity_id": "cccccccccccccccc",
+      "relation": "CALLS",
+      "original_stub": "submitProposal",
+      "disposition": "bug-extractor",
+      "disposition_reason": "extractor-stub-unbound",
+      "note": "submitProposal() call from fetchProposal — not in graph. Reference: bind_to_entity bbbbbbbbbbbbbbbb."
+    },
+    {
+      "edge_id_key": "tasks_barrel_import",
+      "from_entity_id": "dddddddddddddddd",
+      "relation": "IMPORTS",
+      "original_stub": "ProposalCard",
+      "disposition": "bug-extractor",
+      "disposition_reason": "extractor-stub-unbound",
+      "note": "Barrel re-export — origin module lost. Reference: reclassify_as_external module=app/proposal-card."
+    },
+    {
+      "edge_id_key": "tasks_api_client",
+      "from_entity_id": "cccccccccccccccc",
+      "relation": "CALLS",
+      "original_stub": "api_client",
+      "disposition": "bug-extractor",
+      "disposition_reason": "extractor-stub-unbound",
+      "note": "Runtime-injected dependency — no graph entity. Reference: abandon."
+    }
+  ]
+}
