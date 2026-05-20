@@ -355,7 +355,16 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	entities, relationships = applyServerlessEdges(
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
-
+	// Redis pub/sub + Streams channel discovery (#930). Emits SCOPE.Queue
+	// entities keyed by channel:redis-pubsub:<name> or stream:redis:<name>,
+	// plus PUBLISHES_TO / SUBSCRIBES_TO edges. Covers Python (redis-py /
+	// aioredis), Node (ioredis / node-redis), Go (go-redis), and Ruby
+	// (redis-rb). Non-pub/sub cache calls (GET/SET/etc.) are filtered out
+	// by the fast-path pre-filter gate. Append-only — cannot regress
+	// surrounding passes.
+	entities, relationships = applyRedisPubSubEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
 	// Django models-import suffix rewrite (PR #580 wave-10 Chain-fix A):
 	// The YAML rule `from \S+\.models import (\w+)` emits Model:<name>
 	// for every captured identifier. In Django/DRF projects, a sibling
