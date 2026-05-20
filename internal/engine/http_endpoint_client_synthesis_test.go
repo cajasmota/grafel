@@ -1152,6 +1152,115 @@ def create_item(body):
 
 // TestSynth721_JavaGetenvConcatRuntimeDynamic verifies that
 // URI.create(System.getenv("API_URL") + "/users") emits runtime_dynamic=true.
+// ---------------------------------------------------------------------------
+// Issue #652 — template-literal URLs with file-local const BASE_PATH
+// ---------------------------------------------------------------------------
+
+// TestSynth652_FetchTemplateLiteralWithBasePath verifies that fetch() calls
+// using template literals whose first substitution is a file-local const
+// string are resolved to the correct endpoint.
+// Covers the primary fixture-c pattern: await $http.get(`${BASE_PATH}${id}/`).
+func TestSynth652_FetchTemplateLiteralWithBasePath(t *testing.T) {
+	src := `import { $http } from "./httpClient";
+const BASE_PATH = '/api/v1';
+
+export async function getUser(id) {
+  return await fetch(` + "`" + `${BASE_PATH}/users/${id}/` + "`" + `);
+}
+`
+	got, _ := runDetect(t, "typescript", "652-fetch-template.ts", src)
+	requireContains(t, got, []string{"http:GET:/api/v1/users/{id}"}, "#652 fetch template with BASE_PATH")
+}
+
+// TestSynth652_HttpClientTemplateLiteralMultipleRoutes verifies that multiple
+// $http template-literal calls with the same const prefix all produce endpoints.
+// This mirrors the fixture-c api-service files.
+func TestSynth652_HttpClientTemplateLiteralMultipleRoutes(t *testing.T) {
+	src := `import { $http } from "./httpClient";
+const BASE_PATH = '/inspections/';
+
+export async function getInspection(id) {
+  return $http.get(` + "`" + `${BASE_PATH}${id}/` + "`" + `);
+}
+
+export async function patchInspection(id) {
+  return $http.patch(` + "`" + `${BASE_PATH}${id}/` + "`" + `);
+}
+
+export async function getCounts() {
+  return $http.get(` + "`" + `${BASE_PATH}get_counts/` + "`" + `);
+}
+
+export async function postNotes(id) {
+  return $http.post(` + "`" + `${BASE_PATH}notes/` + "`" + `);
+}
+`
+	got, _ := runDetect(t, "typescript", "652-http-multiple.ts", src)
+	requireContains(t, got, []string{
+		"http:GET:/inspections/{id}",
+		"http:PATCH:/inspections/{id}",
+		"http:GET:/inspections/get_counts",
+		"http:POST:/inspections/notes",
+	}, "#652 multiple $http template routes")
+}
+
+// ---------------------------------------------------------------------------
+// Issue #654 — fetch()/axios() with env-var or dynamic URL variable
+// ---------------------------------------------------------------------------
+
+// TestSynth654_FetchBareIdentTemplateLiteral verifies that
+// `const url = `${process.env.API_URL}/users`; fetch(url);`
+// produces the extracted path /users.
+func TestSynth654_FetchBareIdentTemplateLiteral(t *testing.T) {
+	src := "const url = `${process.env.API_URL}/users`;\nawait fetch(url);"
+	got, _ := runDetect(t, "typescript", "654-bare-ident.ts", src)
+	requireContains(t, got, []string{"http:GET:/users"}, "#654 fetch(url) where url is template literal with env prefix")
+}
+
+// TestSynth654_FetchBareIdentWithMethod verifies that the HTTP method is
+// extracted from the options object when fetch(url, { method: "POST" }) is used.
+func TestSynth654_FetchBareIdentWithMethod(t *testing.T) {
+	src := "const url = `${process.env.API_URL}/login/`;\nawait fetch(url, { method: \"POST\" });"
+	got, _ := runDetect(t, "typescript", "654-bare-ident-method.ts", src)
+	requireContains(t, got, []string{"http:POST:/login"}, "#654 fetch(url, {method:POST}) with env prefix")
+}
+
+// TestSynth654_FetchBareIdentImportMetaEnv verifies that import.meta.env
+// prefix is also stripped from template literal variables.
+func TestSynth654_FetchBareIdentImportMetaEnv(t *testing.T) {
+	src := "const url = `${import.meta.env.VITE_CORE_API}/devices/`;\nconst response = await fetch(url);"
+	got, _ := runDetect(t, "typescript", "654-import-meta.ts", src)
+	requireContains(t, got, []string{"http:GET:/devices"}, "#654 fetch(url) with import.meta.env prefix")
+}
+
+// TestSynth654_FetchBareIdentLocalConst verifies that file-local const
+// variable is resolved when used as base URL via variable traceback.
+func TestSynth654_FetchBareIdentLocalConst(t *testing.T) {
+	src := `const CORE_API = '/api';
+const url = ` + "`${CORE_API}/buildings/`" + `;
+const response = await fetch(url);`
+	got, _ := runDetect(t, "typescript", "654-local-const-base.ts", src)
+	requireContains(t, got, []string{"http:GET:/api/buildings"}, "#654 fetch(url) with local const base URL")
+}
+
+// TestSynth654_StringConstNotDoubled verifies that a bare-identifier fetch
+// call whose variable holds a plain string is NOT double-emitted (once by
+// fetchCallRe already, once by fetchBareIdentRe).
+func TestSynth654_StringConstNotDoubled(t *testing.T) {
+	src := `const url = '/users';
+fetch(url);`
+	got, _ := runDetect(t, "typescript", "654-string-const-no-double.ts", src)
+	count := 0
+	for _, id := range got {
+		if id == "http:GET:/users" {
+			count++
+		}
+	}
+	if count > 1 {
+		t.Errorf("#654 plain string const emitted %d times, want ≤1", count)
+	}
+}
+
 func TestSynth721_JavaGetenvConcatRuntimeDynamic(t *testing.T) {
 	src := `import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
