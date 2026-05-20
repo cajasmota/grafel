@@ -18,6 +18,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/extractors"
 	"github.com/cajasmota/archigraph/internal/extractors/cross"
+	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
 	"github.com/cajasmota/archigraph/internal/treesitter"
 )
 
@@ -131,6 +132,25 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 			}
 			if javaContent, err := os.ReadFile(abs); err == nil {
 				engine.ScanJavaDIRegistry(string(javaContent))
+			}
+		}
+	}
+
+	// Pre-pass (#698): build cross-file Python class registry before per-file
+	// extraction runs. For each Python file in the batch, scan top-level class
+	// declarations so that extractBaseClasses can resolve cross-file
+	// `class Foo(Bar):` shapes to the correct source file. Scanning is a
+	// lightweight line-based pass (no AST). ClearPythonClassRegistry resets any
+	// state from a prior batch to avoid bleeding across unrelated index runs.
+	if runExtract {
+		pyextr.ClearPythonClassRegistry()
+		for _, rel := range files {
+			abs := filepath.Join(opts.RepoRoot, rel)
+			if !strings.HasSuffix(strings.ToLower(rel), ".py") {
+				continue
+			}
+			if pyContent, err := os.ReadFile(abs); err == nil {
+				pyextr.ScanPythonClassRegistry(rel, string(pyContent))
 			}
 		}
 	}

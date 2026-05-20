@@ -226,6 +226,14 @@ func walkNode(
 			classIdx := len(*out)
 			*out = append(*out, rec)
 			*classCount++
+			// Issue #698 — emit EXTENDS edges for base classes declared in the
+			// argument_list of this class_definition. Top-level classes use their
+			// bare name; nested classes use their qualified name (rec.Name).
+			// extractBaseClasses consults the global PythonClassRegistry to resolve
+			// cross-file bases to the correct source file path when unambiguous.
+			if extendsRels := extractBaseClasses(node, file.Path, rec.Name, file.Content); len(extendsRels) > 0 {
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships, extendsRels...)
+			}
 			// Walk the class body so methods are captured with parentClass set.
 			// For nested classes the parent path accumulates: "Outer" → "Outer.Inner".
 			// childParent is now just rec.Name (already qualified above).
@@ -366,6 +374,10 @@ func walkNode(
 				classIdx := len(*out)
 				*out = append(*out, rec)
 				*classCount++
+				// Issue #698 — emit EXTENDS edges for decorated class.
+				if extendsRels := extractBaseClasses(inner, file.Path, rec.Name, file.Content); len(extendsRels) > 0 {
+					(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships, extendsRels...)
+				}
 				childParent := rec.Name
 				body := inner.ChildByFieldName("body")
 				if body != nil {
