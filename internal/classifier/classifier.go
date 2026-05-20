@@ -394,6 +394,8 @@ var extensionLanguageMap = map[string]string{
 	".swift": "swift",
 	// Dart
 	".dart": "dart",
+	// Crystal
+	".cr": "crystal",
 	// Scala
 	".scala": "scala",
 	".sc":    "scala",

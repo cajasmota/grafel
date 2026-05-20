@@ -4,6 +4,7 @@ package extractors
 
 import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/clojure"
+	_ "github.com/cajasmota/archigraph/internal/extractors/crystal"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cpp"
 	_ "github.com/cajasmota/archigraph/internal/extractors/csharp"
 	_ "github.com/cajasmota/archigraph/internal/extractors/css"
