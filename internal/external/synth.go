@@ -9468,12 +9468,13 @@ var jsBareNames = map[string]struct{}{
 	"toPrecision":   {},
 	"toExponential": {},
 
-	// Wave-7 (TS/JS React frontend, #538) — react-redux + state
-	// management bare-name hooks/helpers. The JS extractor strips
-	// receivers for `dispatch(action)`, `store.dispatch(...)`,
-	// `selector(state)` patterns, and the hooks are bare callee names.
-	// Names are distinctive enough that the js/ts gate prevents
-	// collision (Python `connect`/`create` etc. are gated by lang).
+	// Wave-7 (TS/JS React frontend, #538) — react-redux named-import
+	// surface (useSelector, useDispatch, useStore). State management
+	// bare-name hooks/helpers. The JS extractor strips receivers for
+	// `dispatch(action)`, `store.dispatch(...)`, `selector(state)`
+	// patterns, and the hooks are bare callee names. Names are
+	// distinctive enough that the js/ts gate prevents collision
+	// (Python `connect`/`create` etc. are gated by lang).
 	"useSelector":              {},
 	"useDispatch":              {},
 	"useStore":                 {},
@@ -9578,13 +9579,13 @@ var jsBareNames = map[string]struct{}{
 	"reduceRight":   {},
 	"indexOf":       {},
 
-	// Wave-8 (#567 chain-fix C) — antd Form-instance methods. The
-	// antd `Form.useForm()` hook returns a Form instance whose API
-	// surface is a fixed set of method names. The JS extractor
-	// receiver-strips `form.setFieldsValue(...)` → `setFieldsValue`,
-	// `form.validateFields(...)` → `validateFields`, etc. Each is
-	// distinctive enough that a user-defined non-Form method
-	// colliding on the same name is rare (no generic verbs like
+	// Wave-8 (#567 chain-fix C, issue #539) — antd Form-instance
+	// methods. The antd `Form.useForm()` hook returns a Form instance
+	// whose API surface is a fixed set of method names. The JS
+	// extractor receiver-strips `form.setFieldsValue(...)` →
+	// `setFieldsValue`, `form.validateFields(...)` → `validateFields`,
+	// etc. Each is distinctive enough that a user-defined non-Form
+	// method colliding on the same name is rare (no generic verbs like
 	// `submit` — that one would collide with too many user methods).
 	// The `Fields`/`Field` suffix is a clear antd signal. Gated to
 	// JS/TS via the lang switch above. Parent `antd` package is
@@ -9612,9 +9613,10 @@ var jsBareNames = map[string]struct{}{
 	// identically is vanishingly rare. Gated to JS/TS via lang
 	// switch above.
 	//
-	// AWS Amplify v6 auth — `fetchAuthSession` is the dominant
-	// residual (372 rows in cfb diagnostic). Distinctive verb +
-	// `AuthSession` suffix has no plausible collision.
+	// Issue #536 — AWS Amplify v6 auth. `fetchAuthSession` is the
+	// dominant residual (372 rows in cfb diagnostic). Distinctive verb +
+	// `AuthSession` suffix has no plausible collision. Full method set
+	// covers sign-up/sign-in/reset flows and user attribute management.
 	"fetchAuthSession":     {},
 	"fetchUserAttributes":  {},
 	"getCurrentUser":       {},
@@ -9623,6 +9625,7 @@ var jsBareNames = map[string]struct{}{
 	"signUp":               {},
 	"confirmSignIn":        {},
 	"confirmSignUp":        {},
+	"resendSignUpCode":     {},
 	"resetPassword":        {},
 	"confirmResetPassword": {},
 	"updatePassword":       {},
