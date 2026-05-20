@@ -1,7 +1,6 @@
 import { useRef, useEffect, useCallback, memo, useMemo } from 'react'
 import { Cosmograph } from '@cosmograph/react'
 import type { CosmographRef } from '@cosmograph/react'
-import { edgeKindColor } from './EdgeBadge'
 import { communityColor } from '@/hooks/graph/useCommunityColors'
 import { repoColor } from '@/lib/colors'
 import type { GraphNode, GraphEdge } from '@/types/api'
@@ -21,6 +20,8 @@ export interface GraphCanvasProps {
   highContrast?: boolean
   /** Current theme — drives canvas background color */
   isDark?: boolean
+  /** When true, filter links to cross-repo edges only (#1065) */
+  crossRepoOnly?: boolean
   className?: string
 }
 
@@ -62,6 +63,7 @@ const GraphCanvasInner = ({
   onZoomChange,
   highContrast = false,
   isDark = true,
+  crossRepoOnly = false,
   className = '',
 }: GraphCanvasProps) => {
   const cosmographRef = useRef<CosmographRef>(undefined)
@@ -85,15 +87,28 @@ const GraphCanvasInner = ({
 
   const cosmographLinks = useMemo(() => {
     const idToIdx = new Map(nodes.map((n, i) => [String(n.id), i]))
+    const idToRepo = new Map(nodes.map((n) => [String(n.id), n.repo ?? '']))
     return edges
-      .map((e, i) => ({
-        ...e,
-        __idx: i,
-        __srcIdx: idToIdx.get(String(e.source)),
-        __tgtIdx: idToIdx.get(String(e.target)),
-      }))
+      .map((e, i) => {
+        const srcRepo = idToRepo.get(String(e.source)) ?? ''
+        const tgtRepo = idToRepo.get(String(e.target)) ?? ''
+        return {
+          ...e,
+          __idx: i,
+          __srcIdx: idToIdx.get(String(e.source)),
+          __tgtIdx: idToIdx.get(String(e.target)),
+          // 1 = cross-repo, 0 = intra-repo; stored as number for DuckDB-WASM compatibility
+          __crossRepo: srcRepo !== tgtRepo ? 1 : 0,
+        }
+      })
       .filter((e) => e.__srcIdx !== undefined && e.__tgtIdx !== undefined)
   }, [nodes, edges])
+
+  // When crossRepoOnly is active, restrict to cross-repo edges only (#1065 Task 3)
+  const visibleLinks = useMemo(
+    () => crossRepoOnly ? cosmographLinks.filter((e) => e.__crossRepo === 1) : cosmographLinks,
+    [cosmographLinks, crossRepoOnly],
+  )
 
   // Expose a cosmograph-compatible ref to the camera store so
   // resetView / zoomToNode keep working with the new renderer.
@@ -128,10 +143,17 @@ const GraphCanvasInner = ({
   // CosmographPointSizeStrategy.Degree uses quantile-bounded degree distribution.
   // pointSizeRange controls min/max pixel sizes across the full degree spectrum.
 
-  // Link color accessor — receives the value of the `linkColorBy` column ('kind')
-  const linkColorByFn = useCallback((kind: string) => {
-    const base = edgeKindColor(kind as GraphEdge['kind'])
-    return highContrast ? base : base + '99'
+  // Link color accessor — receives the value of the `linkColorBy` column ('__crossRepo').
+  // __crossRepo is 1 for cross-repo edges, 0 for intra-repo (#1065).
+  // Values come in as number, but DuckDB-WASM may convert them to string — handle both.
+  const linkColorByFn = useCallback((crossRepo: unknown) => {
+    const isCross = crossRepo === 1 || crossRepo === '1'
+    if (isCross) {
+      // sky-400 at 70% opacity — bright accent for cross-repo bridges
+      return highContrast ? 'rgba(56,189,248,1.0)' : 'rgba(56,189,248,0.7)'
+    }
+    // slate-500 at reduced opacity for intra-repo
+    return highContrast ? 'rgba(100,116,139,0.5)' : 'rgba(100,116,139,0.15)'
   }, [highContrast])
 
   // Click: Cosmograph provides the point index in the current `nodes` array
@@ -230,12 +252,13 @@ const GraphCanvasInner = ({
         // __idx is included so Cosmograph can resolve its numeric index lookups.
         pointIncludeColumns={['__idx', 'id', 'label', 'kind', 'repo', 'community_id', 'pagerank', 'is_centroid', 'centroid_size', 'source_file', 'start_line', 'degree']}
 
-        links={cosmographLinks as unknown as Record<string, unknown>[]}
+        links={visibleLinks as unknown as Record<string, unknown>[]}
         linkSourceBy="source"
         linkSourceIndexBy="__srcIdx"
         linkTargetBy="target"
         linkTargetIndexBy="__tgtIdx"
-        linkIncludeColumns={['kind']}
+        // __crossRepo carries the cross-repo flag for color/width differentiation (#1065)
+        linkIncludeColumns={['kind', '__crossRepo']}
 
         // ── Node appearance ────────────────────────────────────────────────
         pointColorBy="id"
@@ -260,9 +283,11 @@ const GraphCanvasInner = ({
         pointLabelFontSize={11}
 
         // ── Edge appearance ────────────────────────────────────────────────
-        linkColorBy="kind"
+        // Color driven by __crossRepo: cross-repo = sky-400, intra-repo = slate-500 (#1065)
+        linkColorBy="__crossRepo"
         linkColorByFn={linkColorByFn as (value: unknown) => string}
-        linkWidthRange={highContrast ? [1, 2] : [0.5, 1.5]}
+        // Cross-repo edges drawn thicker: range maps to [intra-repo, cross-repo] width
+        linkWidthRange={highContrast ? [1, 3] : [0.5, 2]}
 
         // ── Background ────────────────────────────────────────────────────
         backgroundColor={canvasBg}

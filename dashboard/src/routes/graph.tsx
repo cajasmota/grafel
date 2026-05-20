@@ -52,6 +52,7 @@ export function GraphRoute() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [highContrast, setHighContrast] = useState(false)
+  const [crossRepoOnly, setCrossRepoOnly] = useState(false)
   const [hoveredCommunityId, setHoveredCommunityId] = useState<number | null>(null)
 
   // ── Hover tooltip state (#1060) ────────────────────────────────────────────
@@ -247,6 +248,8 @@ export function GraphRoute() {
           onResetZoom={resetZoom}
           onToggleSimulation={toggleSimulation}
           simulationRunning={simulationRunning}
+          crossRepoOnly={crossRepoOnly}
+          onCrossRepoOnlyChange={setCrossRepoOnly}
         />
         {showSearchResults && (
           <div className="absolute left-3 right-3 top-full z-50">
@@ -403,6 +406,7 @@ export function GraphRoute() {
               onCursorMove={handleCursorMove}
               highContrast={highContrast}
               isDark={isDark}
+              crossRepoOnly={crossRepoOnly}
               className="w-full h-full"
             />
           )}
