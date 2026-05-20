@@ -16,7 +16,7 @@ interface PathRowProps {
 export function PathRow({ path, group, isSelected = false, onSelect }: PathRowProps) {
   const navigate = useNavigate()
   const parts = splitPathParts(path.path)
-  const verbs = sortVerbs(path.verbs)
+  const verbs = sortVerbs(path.verbs ?? [])
 
   const handleClick = () => {
     onSelect?.(path.path_hash)
@@ -78,13 +78,13 @@ export function PathRow({ path, group, isSelected = false, onSelect }: PathRowPr
       )}
 
       {/* Repo chips (only shown if multiple repos) */}
-      {path.repos.length > 0 && (
+      {(path.repos ?? []).length > 0 && (
         <span className="hidden md:flex items-center gap-1 flex-shrink-0">
-          {path.repos.slice(0, 2).map((r) => (
+          {(path.repos ?? []).slice(0, 2).map((r) => (
             <RepoChip key={r} repo={r} />
           ))}
-          {path.repos.length > 2 && (
-            <span className="text-xs text-slate-500">+{path.repos.length - 2}</span>
+          {(path.repos ?? []).length > 2 && (
+            <span className="text-xs text-slate-500">+{(path.repos ?? []).length - 2}</span>
           )}
         </span>
       )}

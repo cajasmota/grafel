@@ -134,8 +134,12 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 	for _, ep := range endpoints {
 		if _, ok := grouped[ep.Path]; !ok {
 			grouped[ep.Path] = &PathRow{
-				PathHash: hashStr(ep.Path),
-				Path:     ep.Path,
+				PathHash:   hashStr(ep.Path),
+				Path:       ep.Path,
+				Verbs:      []string{},
+				Handlers:   []string{},
+				Frameworks: []string{},
+				Repos:      []string{},
 			}
 			pathOrder = append(pathOrder, ep.Path)
 		}
@@ -198,6 +202,9 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 		end = total
 	}
 	paged := rows[start:end]
+	if paged == nil {
+		paged = []PathRow{}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"paths":    paged,

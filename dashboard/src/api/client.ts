@@ -91,7 +91,7 @@ import type { DocTreeResponse, DocContentResponse, DocSearchResponse, EntityCard
 
 /**
  * Wire-format group from GET /api/registry:
- *   { name, config_path, repos: string[] }
+ *   { name, config_path, repos: string[], entity_count, last_indexed? }
  *
  * Frontend GroupMeta expects:
  *   { id, display_name, repos: RepoMeta[], entity_count, indexed_at? }
@@ -99,7 +99,15 @@ import type { DocTreeResponse, DocContentResponse, DocSearchResponse, EntityCard
  * normalizeRegistry maps the wire format to the frontend type so the SPA
  * group-selector and routing work without modification.
  */
-function normalizeRegistry(raw: { groups: Array<{ name: string; config_path?: string; repos?: string[] }> }): Registry {
+type WireGroup = {
+  name: string
+  config_path?: string
+  repos?: string[]
+  entity_count?: number
+  last_indexed?: string
+}
+
+function normalizeRegistry(raw: { groups: Array<WireGroup> }): Registry {
   const groups = (raw.groups ?? []).map((g) => ({
     id: g.name,
     display_name: g.name,
@@ -109,18 +117,57 @@ function normalizeRegistry(raw: { groups: Array<{ name: string; config_path?: st
       language: 'unknown',
       entity_count: 0,
     })),
-    entity_count: 0,
+    entity_count: g.entity_count ?? 0,
+    indexed_at: g.last_indexed,
   }))
   return { groups, version: '1' }
 }
 
 export async function fetchRegistry(): Promise<Registry> {
   if (USE_MOCKS) return loadMock<Registry>('registry')
-  const raw = await apiFetch<{ groups: Array<{ name: string; config_path?: string; repos?: string[] }> }>('/api/registry')
+  const raw = await apiFetch<{ groups: Array<WireGroup> }>('/api/registry')
   return normalizeRegistry(raw)
 }
 
 // ── Surface 4: Paths ─────────────────────────────────────────────────────────
+
+/**
+ * Wire tree node shape from the backend (handlers_paths.go buildPrefixTree).
+ * Different from the frontend PathTreeNode — normalize before returning.
+ */
+type WireTreeNode = {
+  segment?: string
+  path?: string
+  has_paths?: boolean
+  children?: WireTreeNode[]
+  // Frontend-style fields (from mock data)
+  prefix?: string
+  label?: string
+  count?: number
+}
+
+function normalizeTreeNode(n: WireTreeNode): PathTreeNode {
+  return {
+    prefix: n.prefix ?? n.path ?? '',
+    label: n.label ?? n.segment ?? '',
+    count: n.count ?? 0,
+    children: (n.children ?? []).map(normalizeTreeNode),
+  }
+}
+
+function normalizePathListResponse(raw: PathListResponse): PathListResponse {
+  return {
+    ...raw,
+    paths: (raw.paths ?? []).map((p) => ({
+      ...p,
+      verbs: p.verbs ?? [],
+      handlers: (p as unknown as { handlers?: unknown[] }).handlers as never ?? [],
+      repos: p.repos ?? [],
+      frameworks: p.frameworks ?? [],
+    })),
+    tree: (raw.tree ?? []).map((n) => normalizeTreeNode(n as unknown as WireTreeNode)),
+  }
+}
 
 export async function fetchPaths(
   group: string,
@@ -132,7 +179,8 @@ export async function fetchPaths(
     return applyMockFilters(data, filters)
   }
   const params = buildParams(filters)
-  return apiFetch<PathListResponse>(`/api/paths/${group}?${params}`)
+  const raw = await apiFetch<PathListResponse>(`/api/paths/${group}?${params}`)
+  return normalizePathListResponse(raw)
 }
 
 export async function fetchPathDetail(

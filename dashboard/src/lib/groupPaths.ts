@@ -42,8 +42,8 @@ function groupKey(path: PathRow): string {
 /** Sort paths within a group: by method order, then alphabetically by path */
 function sortPathRows(rows: PathRow[]): PathRow[] {
   return [...rows].sort((a, b) => {
-    const aVerb = sortVerbs(a.verbs)[0] ?? 'ANY'
-    const bVerb = sortVerbs(b.verbs)[0] ?? 'ANY'
+    const aVerb = sortVerbs(a.verbs ?? [])[0] ?? 'ANY'
+    const bVerb = sortVerbs(b.verbs ?? [])[0] ?? 'ANY'
     const aIdx = VERB_ORDER.indexOf(aVerb)
     const bIdx = VERB_ORDER.indexOf(bVerb)
     if (aIdx !== bIdx) return aIdx - bIdx
@@ -55,7 +55,7 @@ function sortPathRows(rows: PathRow[]): PathRow[] {
 function buildVerbCounts(rows: PathRow[]): { verb: HttpVerb; count: number }[] {
   const counts = new Map<HttpVerb, number>()
   for (const row of rows) {
-    for (const verb of row.verbs) {
+    for (const verb of (row.verbs ?? [])) {
       counts.set(verb, (counts.get(verb) ?? 0) + 1)
     }
   }
