@@ -380,7 +380,8 @@ func TestExtensionCoverage(t *testing.T) {
 		{"foo.zig", "zig"},
 		{"foo.lua", "lua"},
 		{"foo.sql", "sql"},
-		{"foo.tf", "hcl"},
+		{"foo.tf", "terraform"},
+		{"foo.hcl", "hcl"},
 		{"foo.proto", "protobuf"},
 		{"foo.graphql", "graphql"},
 		{"foo.prisma", "prisma"},
@@ -714,7 +715,8 @@ var classifierRepresentativeInputs = map[string]string{
 	"zig":        "src/main.zig",
 	"lua":        "src/main.lua",
 	"sql":        "migrations/001_init.sql",
-	"hcl":        "infra/main.tf",
+	"hcl":        "infra/backend.hcl",
+	"terraform":  "infra/main.tf",
 	"css":        "styles/main.css",
 	"html":       "templates/index.html",
 	"yaml":       "config/app.yaml",
@@ -741,10 +743,6 @@ var knownMismatches = map[string]string{
 	// registers as "proto". Fix: align classifier token to "proto" or rename
 	// the extractor to "protobuf".
 	"protobuf": "proto/service.proto",
-	// Classifier produces "terraform" via no classifier rule — extractor
-	// registers "terraform" but no extension routes to it.
-	// (terraform is registered via hcl extractor's init(); .tf → "hcl", not "terraform")
-	"terraform": "infra/main.tf", // .tf → "hcl", not "terraform"
 	// Languages recognised by the classifier but with no extractor yet:
 	"objective_c": "src/AppDelegate.m",
 	"haskell":     "src/Main.hs",

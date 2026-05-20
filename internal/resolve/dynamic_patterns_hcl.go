@@ -278,5 +278,8 @@ var hclDynamicPatterns = []*regexp.Regexp{
 
 func init() {
 	dynamicPatternsByLang["hcl"] = hclDynamicPatterns
-	dynamicPatternsByLang["terraform"] = hclDynamicPatterns
+	// "terraform" key is registered separately in dynamic_patterns_terraform.go
+	// so that Terraform-specific additions (provider functions, registry sources,
+	// git:: module refs) can extend the shared hclDynamicPatterns base without
+	// polluting generic HCL (Packer, Vault, Consul) resolution.
 }

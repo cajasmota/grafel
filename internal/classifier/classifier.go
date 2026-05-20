@@ -451,9 +451,14 @@ var extensionLanguageMap = map[string]string{
 	".lua": "lua",
 	// SQL
 	".sql": "sql",
-	// HCL / Terraform
-	".tf":     "hcl",
-	".tfvars": "hcl",
+	// Terraform / HCL
+	// .tf and .tfvars are Terraform-specific; route to "terraform" so the
+	// extractor emits Language="terraform" on every entity (enabling
+	// Terraform-specific resolver patterns and graph labels).
+	// .hcl stays "hcl" — Packer, Vault, Consul and generic HCL consumers
+	// all use the same HCL grammar and extractor but are not Terraform.
+	".tf":     "terraform",
+	".tfvars": "terraform",
 	".hcl":    "hcl",
 	// Protobuf
 	".proto": "protobuf",

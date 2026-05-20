@@ -705,3 +705,234 @@ func TestFixtureDependsOn(t *testing.T) {
 		t.Error("expected at least 1 DEPENDS_ON relationship in fixture")
 	}
 }
+
+// ----------------------------------------------------------------
+// Terraform fixture: EKS + Lambda + RDS infra module
+// Acceptance criteria: ≥80% entity recall on the synthetic fixture.
+// ----------------------------------------------------------------
+
+// terraformFixturePath is the path to the EKS + Lambda + RDS fixture relative
+// to the test file.
+const terraformFixturePath = "../../../fixtures/sources/terraform/terraform__infra.tf"
+
+// expectedTerraformEntities lists every entity that must be present in the
+// fixture to satisfy the ≥80% recall gate.  The list covers the canonical
+// representative for each block type; the full fixture has more entries.
+var expectedTerraformEntities = []struct {
+	subtype string
+	label   string
+}{
+	// resources
+	{"resource", "postgres"},
+	{"resource", "processor"},
+	{"resource", "lambda_role"},
+	{"resource", "lambda_policy"},
+	{"resource", "lambda"},
+	{"resource", "rds"},
+	{"resource", "processor_input"},
+	{"resource", "processor_dlq"},
+	{"resource", "artifacts"},
+	// data sources
+	{"data_source", "available"},
+	{"data_source", "current"},
+	{"data_source", "lambda_assume_role"},
+	{"data_source", "lambda_permissions"},
+	{"data_source", "cluster"},
+	// modules
+	{"module", "vpc"},
+	{"module", "eks"},
+	// variables
+	{"variable", "region"},
+	{"variable", "cluster_name"},
+	{"variable", "db_password"},
+	{"variable", "lambda_memory"},
+	{"variable", "environment"},
+	// outputs
+	{"output", "eks_cluster_name"},
+	{"output", "rds_endpoint"},
+	{"output", "lambda_arn"},
+	{"output", "sqs_queue_url"},
+	{"output", "vpc_id"},
+	// providers
+	{"provider", "aws"},
+	{"provider", "kubernetes"},
+	// locals
+	{"local", "name_prefix"},
+	{"local", "common_tags"},
+	{"local", "lambda_function_name"},
+	{"local", "db_identifier"},
+}
+
+func TestTerraformFixtureEntityCount(t *testing.T) {
+	src, err := os.ReadFile(terraformFixturePath)
+	if err != nil {
+		t.Skipf("terraform fixture not found: %v", err)
+	}
+	records, err := extractTerraform(string(src), "terraform__infra.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The fixture is large; verify a floor that represents ≥80% recall.
+	// (Actual count is much higher due to file-level SCOPE.Component + many
+	// resources; 30 is a conservative lower bound.)
+	if len(records) < 30 {
+		t.Errorf("expected >= 30 entities from terraform fixture, got %d", len(records))
+		for _, r := range records {
+			t.Logf("  [%s] %s (%s)", r.Kind, r.Name, r.Subtype)
+		}
+	}
+}
+
+func TestTerraformFixtureLanguageLabel(t *testing.T) {
+	src, err := os.ReadFile(terraformFixturePath)
+	if err != nil {
+		t.Skipf("terraform fixture not found: %v", err)
+	}
+	records, err := extractTerraform(string(src), "terraform__infra.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, r := range records {
+		if r.Language != "terraform" {
+			t.Errorf("entity %q has Language=%s, expected terraform", r.Name, r.Language)
+		}
+	}
+}
+
+func TestTerraformFixtureSubtypeCoverage(t *testing.T) {
+	src, err := os.ReadFile(terraformFixturePath)
+	if err != nil {
+		t.Skipf("terraform fixture not found: %v", err)
+	}
+	records, err := extractTerraform(string(src), "terraform__infra.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	subtypes := map[string]int{}
+	for _, r := range records {
+		subtypes[r.Subtype]++
+	}
+
+	required := []string{"resource", "data_source", "variable", "output", "module", "provider", "local"}
+	for _, sub := range required {
+		if subtypes[sub] == 0 {
+			t.Errorf("expected at least 1 entity with subtype=%s in terraform fixture, got 0", sub)
+		}
+	}
+}
+
+func TestTerraformFixtureRecall(t *testing.T) {
+	src, err := os.ReadFile(terraformFixturePath)
+	if err != nil {
+		t.Skipf("terraform fixture not found: %v", err)
+	}
+	records, err := extractTerraform(string(src), "terraform__infra.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	found := 0
+	missing := []string{}
+	for _, want := range expectedTerraformEntities {
+		r := findBySubtypeAndName(records, want.subtype, want.label)
+		if r != nil {
+			found++
+		} else {
+			missing = append(missing, want.subtype+":"+want.label)
+		}
+	}
+	total := len(expectedTerraformEntities)
+	recall := float64(found) / float64(total)
+	if recall < 0.80 {
+		t.Errorf("terraform fixture recall %.1f%% (%d/%d) < 80%%; missing: %v",
+			recall*100, found, total, missing)
+	}
+}
+
+func TestTerraformFixtureDependsOn(t *testing.T) {
+	src, err := os.ReadFile(terraformFixturePath)
+	if err != nil {
+		t.Skipf("terraform fixture not found: %v", err)
+	}
+	records, err := extractTerraform(string(src), "terraform__infra.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	found := false
+	for _, r := range records {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "DEPENDS_ON" {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Error("expected at least 1 DEPENDS_ON relationship in terraform fixture")
+	}
+}
+
+func TestTerraformFixtureModuleImports(t *testing.T) {
+	src, err := os.ReadFile(terraformFixturePath)
+	if err != nil {
+		t.Skipf("terraform fixture not found: %v", err)
+	}
+	records, err := extractTerraform(string(src), "terraform__infra.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The file-level entity should carry IMPORTS edges for both module sources.
+	fileRec := findFileComponent(records, "terraform__infra.tf")
+	if fileRec == nil {
+		t.Fatal("expected file-level SCOPE.Component entity, not found")
+	}
+
+	importsCount := 0
+	for _, rel := range fileRec.Relationships {
+		if rel.Kind == "IMPORTS" {
+			importsCount++
+		}
+	}
+	if importsCount < 2 {
+		t.Errorf("expected >= 2 IMPORTS edges from file entity (vpc + eks modules), got %d", importsCount)
+	}
+}
+
+func TestTerraformFixtureZeroFalsePositives(t *testing.T) {
+	src, err := os.ReadFile(terraformFixturePath)
+	if err != nil {
+		t.Skipf("terraform fixture not found: %v", err)
+	}
+	records, err := extractTerraform(string(src), "terraform__infra.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Zero false-positive check: every entity must have a non-empty Name,
+	// Kind, and Language, and must have a valid Subtype.
+	validSubtypes := map[string]bool{
+		"resource": true, "data_source": true, "module": true,
+		"variable": true, "output": true, "provider": true,
+		"local": true, "file": true,
+	}
+	for _, r := range records {
+		if r.Name == "" {
+			t.Errorf("entity has empty Name (Kind=%s, Subtype=%s)", r.Kind, r.Subtype)
+		}
+		if r.Kind == "" {
+			t.Errorf("entity %q has empty Kind", r.Name)
+		}
+		if r.Language == "" {
+			t.Errorf("entity %q has empty Language", r.Name)
+		}
+		if r.Subtype != "" && !validSubtypes[r.Subtype] {
+			t.Errorf("entity %q has unexpected Subtype=%s", r.Name, r.Subtype)
+		}
+	}
+}
