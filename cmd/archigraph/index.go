@@ -528,6 +528,18 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				len(nestedEntities)-len(deduplicatedNestedEntities))
 		}
 
+		// Issue #1126: Deduplicate http_endpoint_synthesis ANY entries emitted
+		// by synthesizeDjangoFromComposed when drf_router_expanded per-verb
+		// entries cover the same path. These ANY synthetics come from Pass 2.5
+		// (applyHTTPEndpointSynthesis, per-file) and coexist with the
+		// concrete-verb entries from Pass 2.6b because they have different IDs
+		// (http:ANY:<path> vs http:GET:<path> etc.), inflating the ANY count.
+		beforeDedup := len(pass2Records)
+		pass2Records = engine.DeduplicateHTTPSynthesisANY(pass2Records, drfEntities)
+		if deduped := beforeDedup - len(pass2Records); deduped > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: deduped %d http_endpoint_synthesis ANY entries (drf coverage)\n", deduped)
+		}
+
 		pass3Records = append(pass3Records, deduplicatedNestedEntities...)
 		pass3Records = append(pass3Records, drfEntities...)
 

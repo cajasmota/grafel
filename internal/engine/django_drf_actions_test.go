@@ -1447,3 +1447,247 @@ func TestDeduplicateNestedURLConfDRF_FixtureAScenario(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #1126 — DeduplicateHTTPSynthesisANY tests
+// ---------------------------------------------------------------------------
+
+// makeHTTPSynthesisANY is a helper that builds an http_endpoint_synthesis
+// ANY entity for the given path (mimicking synthesizeDjangoFromComposed output).
+func makeHTTPSynthesisANY(path string) types.EntityRecord {
+	id := "http:ANY:" + path
+	return types.EntityRecord{
+		ID:   id,
+		Name: id,
+		Kind: httpEndpointKind,
+		Properties: map[string]string{
+			"verb":         "ANY",
+			"path":         path,
+			"framework":    "django",
+			"pattern_type": "http_endpoint_synthesis",
+		},
+	}
+}
+
+// makeDRFExpanded builds an http_endpoint entity as ApplyDjangoDRFRoutes emits.
+func makeDRFExpanded(verb, path string) types.EntityRecord {
+	id := "http:" + verb + ":" + path
+	return types.EntityRecord{
+		ID:   id,
+		Name: id,
+		Kind: httpEndpointKind,
+		Properties: map[string]string{
+			"verb":         verb,
+			"path":         path,
+			"framework":    "django",
+			"pattern_type": "drf_router_expanded",
+		},
+	}
+}
+
+// TestDeduplicateHTTPSynthesisANY_BasicCRUD verifies that ANY synthesis entries
+// for a ModelViewSet-backed path are removed when concrete verbs are present.
+// Fixture: ModelViewSet on /api/v1/contracts — 6 concrete verbs + 1 ANY
+// detail catch-all from ApplyDjangoDRFRoutes. The per-file ANY synthesis
+// entry for /api/v1/contracts (list route) must be dropped; the detail
+// ANY catch-all (from drf_router_expanded) must be preserved.
+func TestDeduplicateHTTPSynthesisANY_BasicCRUD(t *testing.T) {
+	listPath := "/api/v1/contracts"
+	detailPath := "/api/v1/contracts/{pk}"
+
+	// Pass 2.5 synthesis entries (would have been ~200 ANY in upvate).
+	synthEntities := []types.EntityRecord{
+		makeHTTPSynthesisANY(listPath),
+		makeHTTPSynthesisANY(detailPath),
+		// Non-endpoint record — must be preserved unchanged.
+		{ID: "other:entity", Name: "other", Kind: "SCOPE.Component"},
+	}
+
+	// Pass 2.6b DRF entries (6 CRUD verbs + 1 ANY detail catch-all).
+	drfEntities := []types.EntityRecord{
+		makeDRFExpanded("GET", listPath),
+		makeDRFExpanded("POST", listPath),
+		makeDRFExpanded("GET", detailPath),
+		makeDRFExpanded("PUT", detailPath),
+		makeDRFExpanded("PATCH", detailPath),
+		makeDRFExpanded("DELETE", detailPath),
+		// Intentional ANY from emitCRUDFamily — pattern_type=drf_router_expanded.
+		{
+			ID:   "http:ANY:" + detailPath,
+			Name: "http:ANY:" + detailPath,
+			Kind: httpEndpointKind,
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         detailPath,
+				"framework":    "django",
+				"pattern_type": "drf_router_expanded",
+			},
+		},
+	}
+
+	got := DeduplicateHTTPSynthesisANY(synthEntities, drfEntities)
+
+	// Both http_endpoint_synthesis ANY entries (list + detail) must be gone.
+	for _, e := range got {
+		if e.Kind == httpEndpointKind &&
+			e.Properties != nil &&
+			e.Properties["pattern_type"] == "http_endpoint_synthesis" &&
+			e.Properties["verb"] == "ANY" {
+			t.Errorf("unexpected http_endpoint_synthesis ANY survived: id=%q path=%q",
+				e.ID, e.Properties["path"])
+		}
+	}
+
+	// The non-endpoint record must survive.
+	found := false
+	for _, e := range got {
+		if e.ID == "other:entity" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("non-endpoint entity was incorrectly removed")
+	}
+}
+
+// TestDeduplicateHTTPSynthesisANY_ReadOnly verifies that ANY synthesis entries
+// for a ReadOnlyModelViewSet path (list + retrieve only) are dropped when those
+// concrete-verb entries exist.
+func TestDeduplicateHTTPSynthesisANY_ReadOnly(t *testing.T) {
+	listPath := "/api/v1/products"
+	detailPath := "/api/v1/products/{pk}"
+
+	synthEntities := []types.EntityRecord{
+		makeHTTPSynthesisANY(listPath),
+		makeHTTPSynthesisANY(detailPath),
+	}
+
+	drfEntities := []types.EntityRecord{
+		makeDRFExpanded("GET", listPath),   // list
+		makeDRFExpanded("GET", detailPath), // retrieve
+		// ANY detail catch-all still emitted by emitCRUDFamily.
+		{
+			ID:   "http:ANY:" + detailPath,
+			Name: "http:ANY:" + detailPath,
+			Kind: httpEndpointKind,
+			Properties: map[string]string{
+				"verb":         "ANY",
+				"path":         detailPath,
+				"framework":    "django",
+				"pattern_type": "drf_router_expanded",
+			},
+		},
+	}
+
+	got := DeduplicateHTTPSynthesisANY(synthEntities, drfEntities)
+
+	// Both synthesis ANY entries must be removed.
+	for _, e := range got {
+		if e.Kind == httpEndpointKind &&
+			e.Properties != nil &&
+			e.Properties["pattern_type"] == "http_endpoint_synthesis" &&
+			e.Properties["verb"] == "ANY" {
+			t.Errorf("unexpected http_endpoint_synthesis ANY survived: id=%q path=%q",
+				e.ID, e.Properties["path"])
+		}
+	}
+
+	if len(got) != 0 {
+		t.Errorf("expected 0 remaining entities, got %d: %+v", len(got), got)
+	}
+}
+
+// TestDeduplicateHTTPSynthesisANY_NoDRFCoverage verifies that ANY synthesis
+// entries for paths NOT covered by drf_router_expanded are preserved.
+// These are genuine multi-verb endpoints or non-DRF routes.
+func TestDeduplicateHTTPSynthesisANY_NoDRFCoverage(t *testing.T) {
+	genuinePath := "/api/v1/some-custom-view"
+
+	synthEntities := []types.EntityRecord{
+		makeHTTPSynthesisANY(genuinePath),
+	}
+
+	// Only DRF entries for a different path — no coverage for genuinePath.
+	drfEntities := []types.EntityRecord{
+		makeDRFExpanded("GET", "/api/v1/contracts"),
+		makeDRFExpanded("POST", "/api/v1/contracts"),
+	}
+
+	got := DeduplicateHTTPSynthesisANY(synthEntities, drfEntities)
+
+	if len(got) != 1 {
+		t.Errorf("expected 1 entity preserved, got %d", len(got))
+	}
+	if len(got) > 0 && got[0].ID != "http:ANY:"+genuinePath {
+		t.Errorf("wrong entity preserved: %q", got[0].ID)
+	}
+}
+
+// TestDeduplicateHTTPSynthesisANY_EmptyInputs verifies nil-safety.
+func TestDeduplicateHTTPSynthesisANY_EmptyInputs(t *testing.T) {
+	if got := DeduplicateHTTPSynthesisANY(nil, nil); got != nil {
+		t.Errorf("expected nil for nil inputs, got %v", got)
+	}
+	entities := []types.EntityRecord{makeHTTPSynthesisANY("/api/v1/foo")}
+	if got := DeduplicateHTTPSynthesisANY(entities, nil); len(got) != 1 {
+		t.Errorf("expected 1 entity preserved with nil drfEntities, got %d", len(got))
+	}
+	if got := DeduplicateHTTPSynthesisANY(nil, []types.EntityRecord{makeDRFExpanded("GET", "/api/v1/foo")}); got != nil {
+		t.Errorf("expected nil for nil synthEntities, got %v", got)
+	}
+}
+
+// TestDeduplicateHTTPSynthesisANY_ModelViewSetAndAction verifies the full
+// fixture from issue #1126: a ModelViewSet with one @action emits 6+1=7
+// drf_router_expanded entries; the synthesis ANY for the same paths must be
+// dropped. The @action-path ANY synthesis entry should also be dropped when
+// covered.
+func TestDeduplicateHTTPSynthesisANY_ModelViewSetAndAction(t *testing.T) {
+	listPath := "/api/v1/users"
+	detailPath := "/api/v1/users/{pk}"
+	actionPath := "/api/v1/users/activate"
+
+	synthEntities := []types.EntityRecord{
+		makeHTTPSynthesisANY(listPath),
+		makeHTTPSynthesisANY(detailPath),
+		makeHTTPSynthesisANY(actionPath),
+	}
+
+	drfEntities := []types.EntityRecord{
+		makeDRFExpanded("GET", listPath),
+		makeDRFExpanded("POST", listPath),
+		makeDRFExpanded("GET", detailPath),
+		makeDRFExpanded("PUT", detailPath),
+		makeDRFExpanded("PATCH", detailPath),
+		makeDRFExpanded("DELETE", detailPath),
+		{
+			ID:   "http:ANY:" + detailPath,
+			Name: "http:ANY:" + detailPath,
+			Kind: httpEndpointKind,
+			Properties: map[string]string{
+				"verb": "ANY", "path": detailPath,
+				"framework": "django", "pattern_type": "drf_router_expanded",
+			},
+		},
+		// @action(detail=False, methods=["post"]) on activate endpoint.
+		makeDRFExpanded("POST", actionPath),
+	}
+
+	got := DeduplicateHTTPSynthesisANY(synthEntities, drfEntities)
+
+	// All three http_endpoint_synthesis ANY entries must be removed.
+	for _, e := range got {
+		if e.Kind == httpEndpointKind &&
+			e.Properties != nil &&
+			e.Properties["pattern_type"] == "http_endpoint_synthesis" &&
+			e.Properties["verb"] == "ANY" {
+			t.Errorf("unexpected http_endpoint_synthesis ANY survived: id=%q path=%q",
+				e.ID, e.Properties["path"])
+		}
+	}
+
+	if len(got) != 0 {
+		t.Errorf("expected 0 remaining entities, got %d", len(got))
+	}
+}

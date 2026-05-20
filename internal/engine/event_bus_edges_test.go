@@ -64,7 +64,7 @@ func requireEventBusEntity(t *testing.T, ents []types.EntityRecord, id, label st
 	}
 }
 
-func requireEdgeTo(t *testing.T, rels []types.RelationshipRecord, toID, kind, label string) {
+func requireEdgeToEB(t *testing.T, rels []types.RelationshipRecord, toID, kind, label string) {
 	t.Helper()
 	for _, r := range rels {
 		if r.Kind == kind && r.ToID == toID {
@@ -73,6 +73,7 @@ func requireEdgeTo(t *testing.T, rels []types.RelationshipRecord, toID, kind, la
 	}
 	t.Errorf("%s: expected %s edge to %q; rels=%v", label, kind, toID, relSummary(rels))
 }
+
 
 func requireEdgeFromTo(t *testing.T, rels []types.RelationshipRecord, fromID, toID, kind, label string) {
 	t.Helper()
@@ -134,7 +135,7 @@ def publish_order(order):
 
 	wantID := "event:eventbridge:orders:OrderPlaced"
 	requireEventBusEntity(t, ents, wantID, "boto3 producer")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "boto3 producer edge")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "boto3 producer edge")
 }
 
 func TestEventBridgeNodeProducer(t *testing.T) {
@@ -160,7 +161,7 @@ async function emitOrderEvent() {
 
 	wantID := "event:eventbridge:order.svc:OrderPlaced"
 	requireEventBusEntity(t, ents, wantID, "Node PutEventsCommand producer")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "Node producer edge")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "Node producer edge")
 }
 
 func TestEventBridgeGoProducer(t *testing.T) {
@@ -187,7 +188,7 @@ func PublishShipped(ctx context.Context, orderID string) error {
 
 	wantID := "event:eventbridge:fulfillment:OrderShipped"
 	requireEventBusEntity(t, ents, wantID, "Go producer")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "Go producer edge")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "Go producer edge")
 }
 
 func TestEventBridgeTerraformRuleAndTarget(t *testing.T) {
@@ -218,7 +219,7 @@ resource "aws_cloudwatch_event_target" "lambda_target" {
 
 	// Target should emit EVENTBRIDGE_TRIGGERS to the Lambda.
 	lambdaTarget := serverlessFunctionKind + ":" + lambdaFunctionID("process_order")
-	requireEdgeTo(t, rels, lambdaTarget, eventBridgeTriggersEdge, "TF target EVENTBRIDGE_TRIGGERS")
+	requireEdgeToEB(t, rels, lambdaTarget, eventBridgeTriggersEdge, "TF target EVENTBRIDGE_TRIGGERS")
 }
 
 func TestEventBridgeTerraformLambdaSubscribesToEvent(t *testing.T) {
@@ -241,7 +242,7 @@ resource "aws_cloudwatch_event_target" "order_target" {
 	requireEventBusEntity(t, ents, wantEventID, "HCL rule event entity")
 
 	lambdaID := serverlessFunctionKind + ":" + lambdaFunctionID("order_handler")
-	requireEdgeTo(t, rels, lambdaID, eventBridgeTriggersEdge, "HCL EVENTBRIDGE_TRIGGERS")
+	requireEdgeToEB(t, rels, lambdaID, eventBridgeTriggersEdge, "HCL EVENTBRIDGE_TRIGGERS")
 	requireEdgeFromTo(t, rels, lambdaID, eventBusEventKind+":"+wantEventID, "SUBSCRIBES_TO", "Lambda SUBSCRIBES_TO event")
 }
 
@@ -287,7 +288,7 @@ def publish_inventory(topic_key):
 
 	wantID := "event:eventgrid:/inventory/low:Inventory.LowStock"
 	requireEventBusEntity(t, ents, wantID, "EventGrid Python producer")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "EventGrid Python producer edge")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "EventGrid Python producer edge")
 }
 
 func TestEventGridPythonConsumer(t *testing.T) {
@@ -305,9 +306,9 @@ async def handle_inventory_event(event: func.EventGridEvent):
 	// Should emit wildcard EventBusEvent + SUBSCRIBES_TO + EVENTGRID_TRIGGERS.
 	wildcardID := "event:eventgrid:*:*"
 	requireEventBusEntity(t, ents, wildcardID, "EventGrid consumer wildcard entity")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wildcardID, "SUBSCRIBES_TO", "EventGrid consumer SUBSCRIBES_TO")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wildcardID, "SUBSCRIBES_TO", "EventGrid consumer SUBSCRIBES_TO")
 	azureTarget := serverlessFunctionKind + ":" + azureFunctionID("handle_inventory_event")
-	requireEdgeTo(t, rels, azureTarget, eventGridTriggersEdge, "EventGrid EVENTGRID_TRIGGERS")
+	requireEdgeToEB(t, rels, azureTarget, eventGridTriggersEdge, "EventGrid EVENTGRID_TRIGGERS")
 }
 
 func TestEventGridNodeProducer(t *testing.T) {
@@ -329,7 +330,7 @@ async function emitOrderShipped() {
 
 	wantID := "event:eventgrid:/orders/shipped:Order.Shipped"
 	requireEventBusEntity(t, ents, wantID, "EventGrid Node producer")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "EventGrid Node producer edge")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "EventGrid Node producer edge")
 }
 
 func TestEventGridCSharpConsumer(t *testing.T) {
@@ -352,9 +353,9 @@ public static class InventoryFunction
 
 	wildcardID := "event:eventgrid:*:*"
 	requireEventBusEntity(t, ents, wildcardID, "C# EventGridTrigger consumer entity")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wildcardID, "SUBSCRIBES_TO", "C# EventGridTrigger SUBSCRIBES_TO")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wildcardID, "SUBSCRIBES_TO", "C# EventGridTrigger SUBSCRIBES_TO")
 	azureTarget := serverlessFunctionKind + ":" + azureFunctionID("Run")
-	requireEdgeTo(t, rels, azureTarget, eventGridTriggersEdge, "C# EVENTGRID_TRIGGERS")
+	requireEdgeToEB(t, rels, azureTarget, eventGridTriggersEdge, "C# EVENTGRID_TRIGGERS")
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +379,7 @@ def emit_shipment_event(order_id: str):
 
 	wantID := "event:cloudevents:/shop/orders:com.example.order.shipped"
 	requireEventBusEntity(t, ents, wantID, "Python CloudEvent producer")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "Python CloudEvent PUBLISHES_TO")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "Python CloudEvent PUBLISHES_TO")
 }
 
 func TestCloudEventNodeProducer(t *testing.T) {
@@ -399,7 +400,7 @@ async function publishEvent() {
 
 	wantID := "event:cloudevents:/users/signup:com.example.user.created"
 	requireEventBusEntity(t, ents, wantID, "Node CloudEvent producer")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "Node CloudEvent PUBLISHES_TO")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wantID, "PUBLISHES_TO", "Node CloudEvent PUBLISHES_TO")
 }
 
 func TestCloudEventGoProducer(t *testing.T) {
@@ -427,12 +428,12 @@ func SendEvent(ctx context.Context) error {
 
 	wantProducerID := "event:cloudevents:https://example.com/producer:com.example.data.created"
 	requireEventBusEntity(t, ents, wantProducerID, "Go CloudEvent producer entity")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wantProducerID, "PUBLISHES_TO", "Go CloudEvent PUBLISHES_TO")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wantProducerID, "PUBLISHES_TO", "Go CloudEvent PUBLISHES_TO")
 
 	// NewClientHTTP() also registers a consumer wildcard.
 	wildcardID := "event:cloudevents:*:*"
 	requireEventBusEntity(t, ents, wildcardID, "Go CloudEvent client consumer entity")
-	requireEdgeTo(t, rels, eventBusEventKind+":"+wildcardID, "SUBSCRIBES_TO", "Go CloudEvent SUBSCRIBES_TO")
+	requireEdgeToEB(t, rels, eventBusEventKind+":"+wildcardID, "SUBSCRIBES_TO", "Go CloudEvent SUBSCRIBES_TO")
 }
 
 func TestCloudEventHTTPHeaderDetection(t *testing.T) {

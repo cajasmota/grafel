@@ -459,6 +459,87 @@ func DeduplicateNestedURLConfDRF(
 	return result
 }
 
+// DeduplicateHTTPSynthesisANY removes ANY-verb http_endpoint entities emitted
+// by synthesizeDjangoFromComposed (pattern_type="http_endpoint_synthesis")
+// when drf_router_expanded per-verb entries cover the same canonical path.
+//
+// Root cause (issue #1126): applyHTTPEndpointSynthesis runs per-file during
+// Pass 2.5 and calls synthesizeDjangoFromComposed, which always emits
+// http:ANY:<path> from each ast_driven Route entity. ApplyDjangoDRFRoutes
+// runs later in Pass 2.6b and emits the correct per-verb entries
+// (http:GET:..., http:POST:..., etc.). Because the IDs differ (ANY vs GET/
+// POST/etc.), both sets coexist in the merged entity list, producing ~200
+// spurious ANY paths.
+//
+// This function removes the ANY synthesis entries for every path already
+// covered by at least one drf_router_expanded per-verb entry. The ANY entry
+// from emitCRUDFamily (the detail-route wildcard) is NOT removed — it is
+// intentional and carries pattern_type="drf_router_expanded", not
+// "http_endpoint_synthesis".
+//
+// synthEntities: the merged entity slice from pass2 (from applyHTTPEndpointSynthesis)
+// drfEntities:   output from ApplyDjangoDRFRoutes
+// Returns: synthEntities with spurious ANY entries removed.
+func DeduplicateHTTPSynthesisANY(
+	synthEntities []types.EntityRecord,
+	drfEntities []types.EntityRecord,
+) []types.EntityRecord {
+	if len(synthEntities) == 0 || len(drfEntities) == 0 {
+		return synthEntities
+	}
+
+	// Build a set of canonical paths covered by drf_router_expanded entries
+	// with a concrete (non-ANY) verb. Key: canonical path string.
+	drfCoveredPaths := make(map[string]bool)
+	for _, e := range drfEntities {
+		if e.Properties == nil {
+			continue
+		}
+		if e.Properties["pattern_type"] != "drf_router_expanded" {
+			continue
+		}
+		verb := e.Properties["verb"]
+		path := e.Properties["path"]
+		if verb != "" && verb != "ANY" && path != "" {
+			drfCoveredPaths[path] = true
+		}
+	}
+
+	if len(drfCoveredPaths) == 0 {
+		return synthEntities
+	}
+
+	// Filter: remove http_endpoint_synthesis ANY entries whose path is
+	// already covered by drf_router_expanded concrete-verb entries.
+	result := synthEntities[:0:0]
+	for _, e := range synthEntities {
+		if e.Kind != httpEndpointKind {
+			result = append(result, e)
+			continue
+		}
+		if e.Properties == nil {
+			result = append(result, e)
+			continue
+		}
+		if e.Properties["pattern_type"] != "http_endpoint_synthesis" {
+			result = append(result, e)
+			continue
+		}
+		if e.Properties["verb"] != "ANY" {
+			result = append(result, e)
+			continue
+		}
+		// This is an http_endpoint_synthesis ANY entry. Drop it when the
+		// drf_router_expanded pass covers the same path with concrete verbs.
+		if drfCoveredPaths[e.Properties["path"]] {
+			continue
+		}
+		result = append(result, e)
+	}
+
+	return result
+}
+
 // isDjangoRoutersFile reports whether the file looks like a DRF routers
 // module (commonly named routers.py or *_routers.py). We expand the file
 // scan beyond urls.py so DRF-only files (no path() calls) still get their
