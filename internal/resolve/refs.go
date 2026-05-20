@@ -2851,6 +2851,21 @@ func isHeuristicScopeStub(s string) bool {
 	// short-circuit at the hex-ID check above.
 	case strings.HasPrefix(s, "scope:operation:"):
 		return true
+	// Issue #44 (TS/JS slice) — `scope:component:ref:<lang>:<file>:<name>`
+	// stubs emitted by the JS/TS extractor's references.go for local
+	// variable references that have no corresponding graph entity (e.g.
+	// `const navigate = useNavigate()`, local destructure bindings, or any
+	// variable whose declaration site is NOT extracted as a named entity).
+	// The structural-ref resolver (lookupStructural / lookupBareWithLocality)
+	// tries to bind these to a same-file entity by (file, name); reaching
+	// isHeuristicScopeStub means that lookup already failed — the local
+	// variable simply isn't a graph entity. Route to Dynamic rather than
+	// bug-extractor: these are intra-scope value-binding references, not
+	// missing extractor output. Concrete resolutions short-circuit via the
+	// hex-ID check before this function is ever called.
+	case strings.HasPrefix(s, "scope:component:ref:typescript:"),
+		strings.HasPrefix(s, "scope:component:ref:javascript:"):
+		return true
 	}
 	return false
 }

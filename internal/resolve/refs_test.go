@@ -2197,3 +2197,51 @@ func TestJavaExtendsFieldRefAmbiguous(t *testing.T) {
 		t.Fatalf("#667 ambiguous: should not bind when two field entities exist; got %q", rels[0].ToID)
 	}
 }
+
+// TestIsHeuristicScopeStub_TypescriptRefStubs — Issue #44 (TS/JS resolver slice).
+// scope:component:ref:typescript: and scope:component:ref:javascript: stubs
+// emitted by the JS/TS extractor for local variable references (e.g.
+// `navigate`, `ctx`) that have no graph entity must route to DispositionDynamic,
+// not DispositionBugExtractor. This test verifies isHeuristicScopeStub returns
+// true for these stubs so classifyDispositionLang returns Dynamic.
+func TestIsHeuristicScopeStub_TypescriptRefStubs(t *testing.T) {
+	cases := []struct {
+		stub string
+		want bool
+	}{
+		// TS/JS local-variable REFERENCES stubs — must be heuristic (Dynamic).
+		{"scope:component:ref:typescript:src/pages/Home.tsx:navigate", true},
+		{"scope:component:ref:javascript:src/App.js:router", true},
+		{"scope:component:ref:typescript:src/context/AuthContext.tsx:ctx", true},
+		// Other heuristic stubs still recognised.
+		{"scope:component:import:local:../hooks/useUsers", true},
+		{"scope:component:http_caller:src/hooks/useUsers.ts", true},
+		{"scope:component:file:src/pages/Home.tsx", true},
+		{"scope:operation:src/context/AuthContext.tsx#User", true},
+		// Non-heuristic stubs — only scope:schema:ref:, ext:, and bare names.
+		// Note: scope:operation: is intentionally heuristic (already true above).
+		{"scope:schema:ref:java:src/Foo.java:MyClass", false},
+		{"ext:react", false},
+		{"navigate", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		got := isHeuristicScopeStub(c.stub)
+		if got != c.want {
+			t.Errorf("isHeuristicScopeStub(%q) = %v, want %v", c.stub, got, c.want)
+		}
+	}
+}
+
+// TestClassifyDispositionLang_TSRefStubIsDynamic — Issue #44 (TS/JS resolver slice).
+// End-to-end classification: a scope:component:ref:typescript: stub with no
+// matching entity in the index must land in DispositionDynamic, not
+// DispositionBugExtractor.
+func TestClassifyDispositionLang_TSRefStubIsDynamic(t *testing.T) {
+	idx := BuildIndex(nil) // empty graph — nothing to resolve to
+	stub := "scope:component:ref:typescript:src/pages/Home.tsx:navigate"
+	got := idx.classifyDispositionLang(stub, stub, "typescript", nil)
+	if got != DispositionDynamic {
+		t.Errorf("classifyDispositionLang(%q) = %v, want DispositionDynamic", stub, got)
+	}
+}

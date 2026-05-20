@@ -170,6 +170,10 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// assignments. It returns nil when no express-family import is present.
 	x.frameworkDSL = x.buildFrameworkDSLTracker(root)
 
+	// Issue #44 (TS/JS slice) — build the hook-variable map before walk()
+	// so that callTarget can rewrite CALLS-to-hook-result edges.
+	x.hookVarToModule = x.buildHookVarToModule(root)
+
 	var extractErr error
 	func() {
 		defer func() {
@@ -270,6 +274,15 @@ type extractor struct {
 	// extractCallRelationships stamps Properties["receiver_package"] on
 	// CALLS edges whose receiver traces to a framework-DSL object.
 	frameworkDSL *frameworkDSLTracker
+
+	// hookVarToModule — Issue #44 (TS/JS slice). Built once per file after
+	// importByLocal is populated. Maps local variable names assigned from a
+	// React-hook call (e.g. `const navigate = useNavigate()`) to the npm
+	// package the hook was imported from (e.g. "react-router-dom"). This
+	// lets callTarget rewrite CALLS-to-hook-result edges to
+	// "ext:<module>" rather than the bare local-variable name, which
+	// would otherwise be unresolvable and land in bug-extractor.
+	hookVarToModule map[string]string
 }
 
 // applyAlias attempts to substitute a path-alias prefix in spec using
@@ -1335,6 +1348,14 @@ func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
 		if id := x.classifyBareNodeStdlibCall(name); id != "" {
 			return id
 		}
+		// Issue #44 (TS/JS slice) — hook-variable rewrite: if `name` is a
+		// local variable assigned from a React/framework hook call (e.g.
+		// `const navigate = useNavigate()`), rewrite to "ext:<module>" so
+		// the external synthesiser handles it correctly rather than
+		// producing an unresolvable bare-name CALLS edge (bug-extractor).
+		if mod, ok := x.hookVarToModule[name]; ok && mod != "" {
+			return "ext:" + mod
+		}
 		return name
 	case "member_expression":
 		prop := fn.ChildByFieldName("property")
@@ -1384,9 +1405,15 @@ func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
 // true) so hook functions and plain utilities don't pick up spurious RENDERS
 // edges from JSX fragments inside non-component functions.
 //
-// The ToID is the bare PascalCase component name. The cross-file resolver
-// (or the react_props cross-extractor) will bind it to the declaring entity.
-// Self-renders (caller == tag name) are skipped.
+// The ToID is the bare PascalCase component name by default. When the tag is
+// identified in importByLocal as an external (npm) import (resolvedFile==""),
+// the ToID is set to "ext:<module>" so the external synthesiser produces a
+// well-formed placeholder and the resolver classifies it as ExternalKnown /
+// ExternalUnknown instead of BugExtractor. Issue #44 TS/JS slice.
+//
+// The cross-file resolver (or the react_props cross-extractor) will bind
+// local tags to the declaring entity. Self-renders (caller == tag name) are
+// skipped.
 func (x *extractor) extractJSXRendersRelationships(body *sitter.Node, callerName string) []types.RelationshipRecord {
 	if body == nil || !isComponentName(callerName) {
 		return nil
@@ -1414,11 +1441,25 @@ func (x *extractor) extractJSXRendersRelationships(body *sitter.Node, callerName
 		if tag == callerName {
 			continue
 		}
-		// Skip known React namespace tags (React.Fragment etc.) — take
-		// the member object as the effective tag for e.g. styled.div.
+		// Issue #44 (TS/JS resolver slice) — handle member-expression JSX
+		// tags of the form "Object.Property" (e.g. AuthContext.Provider,
+		// React.Fragment, styled.div).
+		//
+		// Strategy:
+		//   1. Split into objectPart + propertyPart.
+		//   2. If propertyPart is "Provider" or "Consumer" — React context
+		//      API — use "ext:react" as the toID directly and skip the
+		//      normal import lookup. These are React runtime internals, not
+		//      separate graph entities.
+		//   3. For other member expressions (e.g. styled.Button), take the
+		//      property as the effective tag for the import lookup below.
+		//   4. If the derived property is not PascalCase (e.g. styled.div),
+		//      skip the edge entirely — it's an HTML intrinsic.
+		var memberObjectPart string
 		if strings.Contains(tag, ".") {
-			// member_expression: take the trailing property as the tag.
-			tag = tag[strings.LastIndex(tag, ".")+1:]
+			dot := strings.LastIndex(tag, ".")
+			memberObjectPart = tag[:dot]
+			tag = tag[dot+1:]
 			if !isComponentName(tag) {
 				continue
 			}
@@ -1427,12 +1468,87 @@ func (x *extractor) extractJSXRendersRelationships(body *sitter.Node, callerName
 			continue
 		}
 		seen[tag] = true
+
+		// Issue #44 (TS/JS resolver slice) — determine toID:
+		//   a) React context .Provider / .Consumer patterns → ext:react.
+		//   b) External (npm) PascalCase imports → ext:<module>.
+		//   c) Everything else keeps the bare component name for the
+		//      cross-file resolver to bind at pass2.
+		toID := tag
+		if memberObjectPart != "" && (tag == "Provider" || tag == "Consumer") {
+			// AuthContext.Provider, SomeCtx.Consumer, etc. — always React API.
+			toID = "ext:react"
+		} else if x.importByLocal != nil {
+			if b := x.importByLocal[tag]; b != nil && b.resolvedFile == "" && b.sourceModule != "" {
+				toID = "ext:" + b.sourceModule
+			}
+		}
+
 		rels = append(rels, types.RelationshipRecord{
-			ToID: tag,
+			ToID: toID,
 			Kind: "RENDERS",
 		})
 	}
 	return rels
+}
+
+// buildHookVarToModule scans the file AST for variable declarations of the
+// form `const localName = hookCall()` where `hookCall` resolves to an
+// external (npm) import via importByLocal. It returns a map from localName
+// to the npm package the hook was imported from.
+//
+// This covers the common React pattern:
+//
+//	const navigate = useNavigate();   // useNavigate ← react-router-dom
+//	const dispatch = useDispatch();   // useDispatch ← react-redux
+//
+// Without this map, extractCallRelationships emits `navigate(...)` as a
+// CALLS edge with target "navigate" — a bare local variable with no graph
+// entity, which lands in bug-extractor. With the map, callTarget rewrites
+// the target to "ext:<module>" so the external synthesiser handles it
+// correctly. Issue #44 (TS/JS resolver slice).
+func (x *extractor) buildHookVarToModule(root *sitter.Node) map[string]string {
+	if root == nil || x.importByLocal == nil {
+		return nil
+	}
+	result := make(map[string]string)
+	stack := make([]*sitter.Node, 0, 64)
+	stack = append(stack, root)
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n == nil {
+			continue
+		}
+		if n.Type() == "variable_declarator" {
+			// Pattern: `localName = hookCall()` or `localName = hookCall(args)`
+			// The LHS must be a simple identifier and the RHS a call_expression
+			// whose function resolves to an external import.
+			nameNode := n.ChildByFieldName("name")
+			valNode := n.ChildByFieldName("value")
+			if nameNode != nil && valNode != nil && valNode.Type() == "call_expression" {
+				localName := x.nodeText(nameNode)
+				// Only handle simple identifiers on the LHS (not destructures).
+				if localName != "" && !strings.ContainsAny(localName, "{}[].,") {
+					fnNode := valNode.ChildByFieldName("function")
+					if fnNode != nil {
+						hookName := x.nodeText(fnNode)
+						if b, ok := x.importByLocal[hookName]; ok && b != nil && b.resolvedFile == "" && b.sourceModule != "" {
+							result[localName] = b.sourceModule
+						}
+					}
+				}
+			}
+		}
+		count := int(n.ChildCount())
+		for i := count - 1; i >= 0; i-- {
+			stack = append(stack, n.Child(i))
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // isComponentName returns true when name starts with an ASCII uppercase
