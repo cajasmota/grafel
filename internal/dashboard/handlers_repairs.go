@@ -2,16 +2,20 @@ package dashboard
 
 // handlers_repairs.go — Pending queue endpoints for the dashboard (#987).
 //
-//	GET /api/repairs/{group}      — repair_edge + dynamic_baseurl_endpoint candidates
-//	GET /api/enrichments/{group}  — all other enrichment candidates (describe_entity, classify_domain, …)
+//	GET  /api/repairs/{group}           — repair_edge + dynamic_baseurl_endpoint candidates
+//	GET  /api/enrichments/{group}       — all other enrichment candidates (describe_entity, classify_domain, …)
+//	POST /api/repairs/{group}/action    — apply or reject a repair candidate (#1016)
+//	POST /api/enrichments/{group}/action — apply or reject an enrichment candidate (#1016)
 
 import (
 	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/enrichment"
 )
 
 // repairKinds is the closed set of candidate kinds surfaced on the "Repair
@@ -287,4 +291,172 @@ func parseInt(s string) (int, error) {
 		n = n*10 + int(c-'0')
 	}
 	return n, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action endpoints — POST /api/{enrichments|repairs}/{group}/action (#1016)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// candidateActionReq is the JSON body accepted by both action endpoints.
+type candidateActionReq struct {
+	CandidateID string `json:"candidate_id"`
+	// Action is "apply" or "reject".
+	Action string `json:"action"`
+	// Value is the proposed resolved value for apply; optional for enrichment candidates.
+	Value string `json:"value,omitempty"`
+	// Reason is an optional note stored in the rejection record.
+	Reason string `json:"reason,omitempty"`
+}
+
+// candidateActionResp is the JSON body returned on success.
+type candidateActionResp struct {
+	Success     bool   `json:"success"`
+	CandidateID string `json:"updated_candidate_id"`
+	ResolutionID string `json:"resolution_id,omitempty"`
+}
+
+// handleEnrichmentAction — POST /api/enrichments/{group}/action
+//
+// Applies or rejects one enrichment candidate. The write path mirrors the
+// MCP's handleSubmitEnrichment / handleRejectEnrichment using the shared
+// helpers extracted in internal/enrichment (#1016 tech-debt rule).
+func (s *Server) handleEnrichmentAction(w http.ResponseWriter, r *http.Request) {
+	s.handleCandidateAction(w, r, false)
+}
+
+// handleRepairAction — POST /api/repairs/{group}/action
+//
+// Applies or rejects one repair candidate. Rejects are stored in
+// enrichment-rejections.json; applies write a resolution row so the next
+// index run can consume them.
+func (s *Server) handleRepairAction(w http.ResponseWriter, r *http.Request) {
+	s.handleCandidateAction(w, r, true)
+}
+
+// handleCandidateAction is the shared body for both POST endpoints.
+// repairOnly=true means only repair-kind candidates are searched.
+func (s *Server) handleCandidateAction(w http.ResponseWriter, r *http.Request, repairOnly bool) {
+	group := r.PathValue("group")
+	if group == "" {
+		writeErr(w, http.StatusBadRequest, "group required")
+		return
+	}
+
+	var req candidateActionReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	if req.CandidateID == "" {
+		writeErr(w, http.StatusBadRequest, "candidate_id required")
+		return
+	}
+	if req.Action != "apply" && req.Action != "reject" {
+		writeErr(w, http.StatusBadRequest, "action must be \"apply\" or \"reject\"")
+		return
+	}
+
+	grp, err := s.graphs.GetGroup(group)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	// Search every repo for the candidate.
+	type matchResult struct {
+		repoPath  string
+		candidate candidateRaw
+	}
+	var match *matchResult
+	for _, repo := range grp.Repos {
+		if repo == nil || repo.Path == "" {
+			continue
+		}
+		for _, c := range readAllCandidates(repo.Path) {
+			if c.ID != req.CandidateID {
+				continue
+			}
+			// Enforce repair/enrichment partition.
+			isRepair := repairKinds[c.Kind]
+			if repairOnly && !isRepair {
+				continue
+			}
+			if !repairOnly && isRepair {
+				continue
+			}
+			match = &matchResult{repoPath: repo.Path, candidate: c}
+			break
+		}
+		if match != nil {
+			break
+		}
+	}
+	if match == nil {
+		writeErr(w, http.StatusNotFound, "candidate not found: "+req.CandidateID)
+		return
+	}
+
+	archigraphDir := daemon.StateDirForRepo(match.repoPath)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	switch req.Action {
+	case "apply":
+		// Build a Resolution using the enrichment package's canonical type.
+		// SubjectID comes from the candidate; Kind and Value are required.
+		subjectID, _ := match.candidate.Context["subject_id"].(string)
+		if subjectID == "" {
+			subjectID = match.candidate.SubjectID
+		}
+		value := req.Value
+		if value == "" {
+			// Fall back to proposed_value from context if the caller omitted the field.
+			if pv, ok := match.candidate.Context["proposed_value"].(string); ok {
+				value = pv
+			}
+		}
+		res := enrichment.Resolution{
+			ID:         match.candidate.ID,
+			SubjectID:  subjectID,
+			Kind:       match.candidate.Kind,
+			Value:      value,
+			Confidence: match.candidate.Confidence,
+			Reason:     req.Reason,
+			ResolvedAt: now,
+		}
+		if err := enrichment.AppendResolution(archigraphDir, res); err != nil {
+			writeErr(w, http.StatusInternalServerError, "write resolution: "+err.Error())
+			return
+		}
+		if err := enrichment.RemoveCandidateByID(archigraphDir, match.candidate.ID); err != nil {
+			// Non-fatal: the candidate list will be rebuilt on the next index
+			// run, and the resolution is already written. Log and continue.
+			_ = err
+		}
+		writeJSON(w, http.StatusOK, candidateActionResp{
+			Success:      true,
+			CandidateID:  match.candidate.ID,
+			ResolutionID: match.candidate.ID,
+		})
+
+	case "reject":
+		subjectID, _ := match.candidate.Context["subject_id"].(string)
+		if subjectID == "" {
+			subjectID = match.candidate.SubjectID
+		}
+		reason := req.Reason
+		if reason == "" {
+			reason = "rejected via dashboard"
+		}
+		if err := enrichment.AppendRejection(archigraphDir, match.candidate.ID, subjectID, match.candidate.Kind, reason); err != nil {
+			writeErr(w, http.StatusInternalServerError, "write rejection: "+err.Error())
+			return
+		}
+		if err := enrichment.RemoveCandidateByID(archigraphDir, match.candidate.ID); err != nil {
+			_ = err
+		}
+		writeJSON(w, http.StatusOK, candidateActionResp{
+			Success:     true,
+			CandidateID: match.candidate.ID,
+		})
+	}
 }

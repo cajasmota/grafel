@@ -542,6 +542,125 @@ func ApplyCommunityNameResolutions(doc *graph.Document, resolutions []Resolution
 	return applied
 }
 
+// AppendResolution appends one resolution record to
+// <archigraphDir>/enrichment-resolutions.json atomically. The existing
+// array is read, the new entry appended, and the file rewritten so
+// callers never leave a half-written file.
+func AppendResolution(archigraphDir string, res Resolution) error {
+	if archigraphDir == "" {
+		return fmt.Errorf("enrichment: archigraphDir is empty")
+	}
+	if err := os.MkdirAll(archigraphDir, 0o755); err != nil {
+		return err
+	}
+	path := resolutionsPath(archigraphDir)
+	cur := ReadResolutions(archigraphDir)
+	cur = append(cur, res)
+	data, err := json.MarshalIndent(cur, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// AppendRejection appends one rejection record to
+// <archigraphDir>/enrichment-rejections.json. Tolerates a missing file.
+func AppendRejection(archigraphDir, candidateID, subjectID, kind, reason string) error {
+	if archigraphDir == "" {
+		return fmt.Errorf("enrichment: archigraphDir is empty")
+	}
+	if err := os.MkdirAll(archigraphDir, 0o755); err != nil {
+		return err
+	}
+	path := rejectionsPath(archigraphDir)
+	var cur []Rejection
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &cur)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	cur = append(cur, Rejection{
+		ID:         candidateID,
+		SubjectID:  subjectID,
+		Kind:       kind,
+		Reason:     reason,
+		RejectedAt: now,
+	})
+	data, err := json.MarshalIndent(cur, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// RemoveCandidateByID removes the candidate with the given ID from
+// <archigraphDir>/enrichment-candidates.json (if present). Returns nil
+// when the candidate is absent (idempotent).
+func RemoveCandidateByID(archigraphDir, candidateID string) error {
+	if archigraphDir == "" {
+		return fmt.Errorf("enrichment: archigraphDir is empty")
+	}
+	path := candidatesPath(archigraphDir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	// Parse using whichever shape is on disk.
+	var candidates []Candidate
+	var envelope candidatesEnvelope
+	useEnvelope := false
+	if jsonErr := json.Unmarshal(data, &envelope); jsonErr == nil && (envelope.Version > 0 || len(envelope.Candidates) > 0) {
+		candidates = envelope.Candidates
+		useEnvelope = true
+	} else if jsonErr := json.Unmarshal(data, &candidates); jsonErr != nil {
+		return jsonErr
+	}
+	// Filter out the target.
+	filtered := candidates[:0]
+	for _, c := range candidates {
+		if c.ID != candidateID {
+			filtered = append(filtered, c)
+		}
+	}
+	var out []byte
+	if useEnvelope {
+		envelope.Candidates = filtered
+		out, err = json.MarshalIndent(envelope, "", "  ")
+	} else {
+		out, err = json.MarshalIndent(filtered, "", "  ")
+	}
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, out, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
 // ApplyResolutions merges resolved enrichment values into the document
 // in-place. The resolution.Value is written to entity.Properties under
 // the resolution.Kind key, mirroring internal/mcp/enrichment.go.
