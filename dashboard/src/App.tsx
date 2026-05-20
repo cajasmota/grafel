@@ -9,6 +9,7 @@ import { TopologyRoute } from '@/routes/topology'
 import { PathsRoute } from '@/routes/paths'
 import { PathsDetailRoute } from '@/routes/paths.detail'
 import { DocsRoute } from '@/routes/docs'
+import { RouterErrorBoundary } from '@/components/RouterErrorBoundary'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Globe } from 'lucide-react'
 
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
   {
     path: '/',
     element: <AppLayout />,
+    errorElement: <RouterErrorBoundary />,
     children: [
       { index: true, element: <IndexRoute /> },
 
