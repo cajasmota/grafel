@@ -28,7 +28,14 @@ function applyTheme(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme)
+  const [theme, setTheme] = useState<Theme>(() => {
+    const initial = getInitialTheme()
+    // Apply synchronously so first paint matches the stored/system preference.
+    // main.tsx already does this before React boots, but ThemeProvider guards
+    // against the edge-case where main.tsx runs before localStorage is ready.
+    applyTheme(initial)
+    return initial
+  })
 
   useEffect(() => {
     applyTheme(theme)

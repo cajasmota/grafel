@@ -18,13 +18,15 @@ export function usePathFilters(): {
     q: params.get('q') ?? undefined,
     repo: params.get('repo') ?? undefined,
     framework: params.get('framework') ?? undefined,
-    status_code: params.get('status_code') ? Number(params.get('status_code')) : undefined,
+    status_code: params.get('status_code')
+      ? (parseInt(params.get('status_code')!, 10) || undefined)
+      : undefined,
     is_webhook: params.get('is_webhook') === 'true'
       ? true
       : params.get('is_webhook') === 'false'
         ? false
         : undefined,
-    page: params.get('page') ? Number(params.get('page')) : 1,
+    page: Math.max(1, parseInt(params.get('page') ?? '1', 10) || 1),
     page_size: 50,
   }
 

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, Outlet, useNavigate } from 'react-router-dom'
-import { ChevronUp, ChevronDown, List } from 'lucide-react'
-import { PathTreeSidebar } from '@/components/paths/PathTreeSidebar'
+import { ChevronUp, ChevronDown, List, Globe } from 'lucide-react'
 import { PathRow } from '@/components/paths/PathRow'
 import { PathsGroup } from '@/components/paths/PathsGroup'
 import { PathFilterPanel } from '@/components/paths/PathFilterPanel'
@@ -11,10 +10,8 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { PathListSkeleton } from '@/components/shared/LoadingState'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { usePathList } from '@/hooks/paths/usePathList'
-import { usePathTree } from '@/hooks/paths/usePathTree'
 import { usePathFilters } from '@/hooks/paths/usePathFilters'
 import { groupPaths } from '@/lib/groupPaths'
-import { Globe } from 'lucide-react'
 
 // ─── localStorage key for flat/grouped preference ────────────────────────────
 const LS_FLAT_KEY = 'paths-view-flat'
@@ -48,7 +45,6 @@ export function PathsRoute() {
   const { group = 'fixture-a' } = useParams<{ group: string }>()
   const { filters, setFilter, clearFilters } = usePathFilters()
   const { data, isLoading, isFetching } = usePathList(group, filters)
-  const { tree, isLoading: treeLoading } = usePathTree(group)
   const navigate = useNavigate()
   const searchRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -150,25 +146,7 @@ export function PathsRoute() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Sidebar — prefix tree */}
-      <aside
-        className="w-52 flex-shrink-0 border-r border-slate-800 bg-slate-900/60 overflow-hidden"
-        aria-label="API path groups"
-      >
-        <div className="px-3 py-2 border-b border-slate-800">
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Prefixes
-          </h2>
-        </div>
-        <PathTreeSidebar
-          tree={tree}
-          isLoading={treeLoading}
-          activePrefix={filters.prefix}
-          onPrefixSelect={(prefix) => setFilter('prefix', prefix)}
-        />
-      </aside>
-
-      {/* Main content — list + detail */}
+      {/* Main content — list + detail (full width, no prefix-tree sidebar) */}
       <div className="flex flex-1 overflow-hidden">
         {/* Path list panel */}
         <div className="flex flex-col w-[520px] flex-shrink-0 border-r border-slate-800 overflow-hidden">
@@ -239,12 +217,13 @@ export function PathsRoute() {
             </div>
           )}
 
-          {/* Filters */}
+          {/* Filters — data-driven chips derived from current paths */}
           <ErrorBoundary>
             <PathFilterPanel
               filters={filters}
               setFilter={setFilter}
               clearFilters={clearFilters}
+              paths={paths}
             />
           </ErrorBoundary>
 

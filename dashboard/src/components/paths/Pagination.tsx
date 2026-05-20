@@ -9,9 +9,12 @@ interface PaginationProps {
 }
 
 export function Pagination({ page, pageSize, total, hasMore, onPageChange }: PaginationProps) {
-  const start = (page - 1) * pageSize + 1
-  const end = Math.min(page * pageSize, total)
-  const hasPrev = page > 1
+  // Guard against NaN/0 from URL param parsing
+  const safePage = (Number.isFinite(page) && page >= 1) ? page : 1
+  const safePageSize = (Number.isFinite(pageSize) && pageSize >= 1) ? pageSize : 50
+  const start = (safePage - 1) * safePageSize + 1
+  const end = Math.min(safePage * safePageSize, total)
+  const hasPrev = safePage > 1
 
   return (
     <nav
@@ -26,16 +29,16 @@ export function Pagination({ page, pageSize, total, hasMore, onPageChange }: Pag
           label="Previous page"
           icon={<ChevronLeft className="w-4 h-4" />}
           disabled={!hasPrev}
-          onClick={() => onPageChange(page - 1)}
+          onClick={() => onPageChange(safePage - 1)}
         />
         <span className="px-2 text-xs text-slate-400">
-          Page {page}
+          Page {safePage}
         </span>
         <PaginationButton
           label="Next page"
           icon={<ChevronRight className="w-4 h-4" />}
           disabled={!hasMore}
-          onClick={() => onPageChange(page + 1)}
+          onClick={() => onPageChange(safePage + 1)}
         />
       </div>
     </nav>
