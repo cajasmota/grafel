@@ -462,11 +462,12 @@ var extensionLanguageMap = map[string]string{
 	".scss": "css",
 	".sass": "css",
 	".less": "css",
+	// Vue SFCs — dedicated vue extractor handles <template>+<script>+<style>
+	".vue": "vue",
 	// HTML / Templates — all route to "html" to match extractor.Register("html", …)
-	".html":       "html",
-	".htm":        "html",
-	".vue":        "html",
-	".svelte":     "svelte",
+	".html":    "html",
+	".htm":     "html",
+	".svelte":  "svelte",
 	".astro":      "html",
 	".erb":        "html",
 	".ejs":        "html",

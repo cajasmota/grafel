@@ -538,6 +538,25 @@ func TestMX1100_Dockerfile_ClassifyWithSize(t *testing.T) {
 	}
 }
 
+// TestMX1100_Vue_LanguageToken verifies that .vue maps to "vue" (the dedicated
+// Vue SFC extractor, not the generic "html" extractor).
+func TestMX1100_Vue_LanguageToken(t *testing.T) {
+	c := newTestClassifier(t)
+	ctx := context.Background()
+
+	for _, file := range []string{"src/App.vue", "components/MyButton.vue"} {
+		t.Run(file, func(t *testing.T) {
+			r := c.Classify(ctx, file)
+			if r.Skip {
+				t.Errorf("file=%q: should NOT be skipped, got Skip=true reason=%q", file, r.SkipReason)
+			}
+			if r.Language != "vue" {
+				t.Errorf("file=%q: expected Language=vue, got %q", file, r.Language)
+			}
+		})
+	}
+}
+
 // TestMX1100_HTML_LanguageToken verifies that .html and .htm map to "html"
 // (matching extractor.Register("html", …)) — not the old "html_templates" token.
 func TestMX1100_HTML_LanguageToken(t *testing.T) {
@@ -550,7 +569,6 @@ func TestMX1100_HTML_LanguageToken(t *testing.T) {
 		{"index.html"},
 		{"page.htm"},
 		{"templates/base.html"},
-		{"src/App.vue"},
 		{"page.astro"},
 		{"view.erb"},
 		{"template.ejs"},
@@ -587,7 +605,7 @@ func TestMX1100_HTML_ClassifyWithSize(t *testing.T) {
 
 	const smallFile = int64(2048)
 
-	for _, file := range []string{"index.html", "page.htm", "App.vue"} {
+	for _, file := range []string{"index.html", "page.htm"} {
 		t.Run(file, func(t *testing.T) {
 			r := c.ClassifyWithSize(ctx, file, smallFile)
 			if r.Skip {
@@ -616,6 +634,21 @@ func TestSvelte_LanguageToken(t *testing.T) {
 				t.Errorf("file=%q: expected Language=svelte, got %q", file, r.Language)
 			}
 		})
+	}
+}
+
+// TestMX1100_Vue_ClassifyWithSize verifies that .vue maps to "vue" via the size path.
+func TestMX1100_Vue_ClassifyWithSize(t *testing.T) {
+	c := newTestClassifier(t)
+	ctx := context.Background()
+
+	const smallFile = int64(2048)
+	r := c.ClassifyWithSize(ctx, "App.vue", smallFile)
+	if r.Skip {
+		t.Errorf("App.vue: should NOT be skipped, reason=%q", r.SkipReason)
+	}
+	if r.Language != "vue" {
+		t.Errorf("App.vue: expected Language=vue, got %q", r.Language)
 	}
 }
 
