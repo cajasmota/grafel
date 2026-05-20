@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, memo, useMemo } from 'react'
+import { useRef, useEffect, useCallback, memo, useMemo, useState } from 'react'
 import { Cosmograph } from '@cosmograph/react'
 import type { CosmographRef } from '@cosmograph/react'
 import { communityColor } from '@/hooks/graph/useCommunityColors'
@@ -145,6 +145,14 @@ export interface GraphCanvasProps {
   isDark?: boolean
   /** When true, filter links to cross-repo edges only (#1065) */
   crossRepoOnly?: boolean
+  /**
+   * When true, the force simulation is paused (nodes frozen).
+   * When false/undefined, simulation runs and auto-pauses after first settle.
+   * Pass true to resume layout after the user clicks "Resume layout".
+   */
+  simulationRunning?: boolean
+  /** Called when the internal simulation-running state changes (e.g. auto-paused after settle) */
+  onSimulationRunningChange?: (running: boolean) => void
   className?: string
   /**
    * #1069: client-side repo filter. When non-null, only nodes whose `repo`
@@ -197,11 +205,16 @@ const GraphCanvasInner = ({
   highContrast = false,
   isDark = true,
   crossRepoOnly = false,
+  simulationRunning,
+  onSimulationRunningChange,
   className = '',
   activeRepos,
 }: GraphCanvasProps) => {
   const cosmographRef = useRef<CosmographRef>(undefined)
   const { setGraphRef, setZoomLevel } = useGraphCameraStore()
+
+  // Track whether the first settle has happened so we only auto-pause once.
+  const [hasSettled, setHasSettled] = useState(false)
 
   // Mirror of nodes so click handler can resolve index → GraphNode synchronously
   const nodesRef = useRef<GraphNode[]>(nodes)
@@ -312,6 +325,39 @@ const GraphCanvasInner = ({
       if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
     }
   }, [setGraphRef])
+
+  // onSimulationEnd fires when Cosmograph's force layout reaches alpha ≈ 0.
+  // On first settle we auto-pause and notify the parent so it can show
+  // a "Resume layout" button.  After that, parent controls the state.
+  const handleSimulationEnd = useCallback(() => {
+    if (!hasSettled) {
+      setHasSettled(true)
+      onSimulationRunningChange?.(false)
+    }
+  }, [hasSettled, onSimulationRunningChange])
+
+  // Fallback: if onSimulationEnd never fires (rare) pause after 6 seconds.
+  useEffect(() => {
+    if (hasSettled) return
+    const t = window.setTimeout(() => {
+      if (!hasSettled) {
+        cosmographRef.current?.pause()
+        setHasSettled(true)
+        onSimulationRunningChange?.(false)
+      }
+    }, 6000)
+    return () => window.clearTimeout(t)
+  }, [hasSettled, onSimulationRunningChange])
+
+  // React to parent-controlled simulationRunning changes after first settle.
+  useEffect(() => {
+    if (!hasSettled) return          // before first settle, Cosmograph owns it
+    if (simulationRunning === true) {
+      cosmographRef.current?.start()
+    } else if (simulationRunning === false) {
+      cosmographRef.current?.pause()
+    }
+  }, [simulationRunning, hasSettled])
 
   // Point color accessor — receives the value of the `pointColorBy` column ('id'),
   // so `value` here is the node id string.
@@ -532,6 +578,9 @@ const GraphCanvasInner = ({
         selectPointOnClick="single"
         focusPointOnClick={false}
         resetSelectionOnEmptyCanvasClick={false}
+
+        // ── Simulation events ──────────────────────────────────────────────
+        onSimulationEnd={handleSimulationEnd}
 
         // ── Events ────────────────────────────────────────────────────────
         onClick={handleClick}

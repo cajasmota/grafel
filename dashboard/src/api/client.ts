@@ -273,6 +273,9 @@ function normalizeGraphNode(raw: Record<string, unknown>): import('@/types/api')
     centroid_size: raw.centroid_size as number | undefined,
     source_file:  raw.source_file != null ? String(raw.source_file) : undefined,
     start_line:   raw.start_line as number | undefined,
+    // degree: total in+out edge count, emitted by the server for Cosmograph's
+    // pointSizeStrategy="degree" so hub nodes appear larger than leaf nodes.
+    degree:       raw.degree as number | undefined,
     // `properties` intentionally omitted — nested object breaks DuckDB-WASM
     // columnar ingestion.  Entity detail is fetched separately via /api/graph/{group}/entity/{id}.
   }
@@ -299,7 +302,11 @@ export async function fetchGraph(
     const data = await loadMock<GraphResponse>('graph')
     return applyGraphMockFilters(data, filters)
   }
-  const params = buildParams({ repo: filters.repo, repos: (filters as { repos?: string }).repos })
+  const params = buildParams({
+    repo: filters.repo,
+    repos: (filters as { repos?: string }).repos,
+    include_external: filters.include_external === true ? 'true' : undefined,
+  })
   const raw = await apiFetch<Record<string, unknown>>(`/api/graph/${group}?${params}`)
   return normalizeGraphResponse(raw)
 }

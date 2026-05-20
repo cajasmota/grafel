@@ -2,7 +2,7 @@ package dashboard
 
 // handlers_graph.go — graph endpoints
 //
-//	GET /api/graph/{group}?filter_kind=&filter_repo=&repos=slug1,slug2
+//	GET /api/graph/{group}?filter_kind=&filter_repo=&repos=slug1,slug2&include_external=false
 //	GET /api/graph/{group}/entity/{id}
 //
 // #1023: LoD tiers removed. The endpoint returns all entities — no per-repo
@@ -17,6 +17,11 @@ package dashboard
 // the frontend can optionally surface a notice to the user.
 //
 // "repos" param accepts comma-separated repo slugs for multi-select filtering.
+//
+// "include_external" (default "false") controls whether entities with kind
+// "SCOPE.External" (stdlib/builtin placeholders) are included in the response.
+// When false, those entities and any edges referencing only external nodes are
+// excluded. Pass "include_external=true" to opt back in.
 
 import (
 	"net/http"
@@ -54,6 +59,10 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	filterRepo := r.URL.Query().Get("filter_repo")
 	reposParam := r.URL.Query().Get("repos") // comma-separated list of repo slugs
 
+	// include_external defaults to false: External stdlib/builtin placeholder
+	// entities are excluded unless the caller explicitly opts in.
+	includeExternal := r.URL.Query().Get("include_external") == "true"
+
 	grp, err := s.graphs.GetGroup(group)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, err.Error())
@@ -88,14 +97,21 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		repos = filtered
 	}
 
-	s.serveGraphDense(w, group, repos, filterKind)
+	s.serveGraphDense(w, group, repos, filterKind, includeExternal)
 }
+
+// externalKindSuffix is the trailing portion of the SCOPE.External kind after
+// dashStripScopePrefix strips the leading "SCOPE." prefix.
+const externalKindSuffix = "External"
 
 // serveGraphAll returns every entity in the indexed graph — no per-repo cap.
 // Cosmograph handles 1M+ nodes at 60fps via GPU WebGL (#1023 removed LoD).
 // A soft X-Graph-Warning header is added when node count exceeds
 // softNodeWarnThreshold so the frontend can optionally surface a notice.
-func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
+//
+// includeExternal controls whether SCOPE.External placeholder entities are
+// emitted. Default (false) hides stdlib/builtin nodes from the graph view.
+func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string, includeExternal bool) {
 	nodes := []map[string]any{}
 	edges := []map[string]any{}
 	communities := []map[string]any{}
@@ -127,9 +143,16 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 			communities = append(communities, cm)
 		}
 
+		// Build per-repo degree map (total in + out edges) for node sizing.
+		degreeMap := buildDegreeMap(r.Doc.Relationships)
+
 		// Emit all entities — no cap. Filter by kind when requested.
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
+			// Filter external stdlib/builtin placeholders unless opted in.
+			if !includeExternal && dashStripScopePrefix(e.Kind) == externalKindSuffix {
+				continue
+			}
 			if filterKind != "" && dashStripScopePrefix(e.Kind) != filterKind {
 				continue
 			}
@@ -138,7 +161,9 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 				continue
 			}
 			visible[pid] = true
-			nodes = append(nodes, serializeEntity(r.Slug, e))
+			node := serializeEntity(r.Slug, e)
+			node["degree"] = degreeMap[e.ID]
+			nodes = append(nodes, node)
 		}
 	}
 

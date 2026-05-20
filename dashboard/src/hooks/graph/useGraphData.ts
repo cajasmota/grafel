@@ -42,6 +42,7 @@ export interface GraphDataResult {
  * @param selectedNodeId - kept for call-site compat; Cosmograph renders all nodes
  * @param selectedCommunityId - community drill-in filter (client-side)
  * @param _activeRepos - kept for call-site compat; filtering is now handled in GraphCanvas
+ * @param includeExternal - when true, External stdlib/builtin nodes are included
  */
 export function useGraphData(
   group: string,
@@ -51,6 +52,7 @@ export function useGraphData(
   selectedNodeId: string | null,
   selectedCommunityId?: number | null,
   _activeRepos?: Set<string> | null,
+  includeExternal?: boolean,
 ): GraphDataResult {
   void selectedNodeId  // kept in signature for call-site compat
   void _activeRepos    // kept in signature for call-site compat; not used in query
@@ -62,8 +64,8 @@ export function useGraphData(
     refetch,
   } = useQuery({
     // #1069: repos intentionally excluded — repo filter is client-side, no refetch
-    queryKey: ['graph', group, filters.repo],
-    queryFn: () => fetchGraph(group, { repo: filters.repo }),
+    queryKey: ['graph', group, filters.repo, includeExternal],
+    queryFn: () => fetchGraph(group, { repo: filters.repo, include_external: includeExternal }),
     staleTime: 5 * 60 * 1000,
     enabled: !!group,
   })

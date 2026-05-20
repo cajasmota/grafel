@@ -458,6 +458,8 @@ export interface GraphNode {
   source_file?: string
   start_line?: number
   properties?: Record<string, unknown>
+  /** Total in+out edge count, used by Cosmograph pointSizeStrategy="degree" */
+  degree?: number
 }
 
 /** Flat edge as understood by the graph renderers */
@@ -483,6 +485,11 @@ export interface GraphFilters {
   repo?: string
   /** Comma-separated list of repo slugs for multi-repo filtering. */
   repos?: string
+  /**
+   * When true, External stdlib/builtin placeholder nodes are included.
+   * Default server-side is false — external nodes are hidden unless opted in.
+   */
+  include_external?: boolean
 }
 
 /** 1-hop neighbor response for entity inspector */

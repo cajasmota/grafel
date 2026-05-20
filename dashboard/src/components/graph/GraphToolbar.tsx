@@ -4,6 +4,8 @@ import { useGraphCameraStore } from '@/store/graphCameraStore'
 
 // #1023: Tree + 3D layout modes removed — Cosmograph is 2D-only GPU force renderer.
 // #1059: LayoutMode type + dead props scrubbed (no-tech-debt).
+// #1066: Resume/Pause layout button added (simulation auto-pauses after settle).
+// #1067: Show external/stdlib toggle added (hidden by default).
 
 interface GraphToolbarProps {
   searchQuery: string
@@ -21,6 +23,10 @@ interface GraphToolbarProps {
   /** Cross-repo edge filter toggle (Task 3) */
   crossRepoOnly: boolean
   onCrossRepoOnlyChange: (v: boolean) => void
+  /** Whether External stdlib/builtin nodes are included in the graph */
+  showExternal?: boolean
+  /** Called when user clicks the Show external toggle */
+  onToggleExternal?: () => void
   className?: string
 }
 
@@ -43,6 +49,7 @@ const btnCls = [
  * Features:
  * - Zoom controls (in/out/fit/reset) and cross-repo-only edge filter (#1074)
  * - Fit View, Reset Zoom, Pause/Resume simulation buttons (#1070)
+ * - Show/Hide external (stdlib/builtin) nodes toggle (#1067)
  */
 export function GraphToolbar({
   searchQuery,
@@ -55,6 +62,8 @@ export function GraphToolbar({
   simulationRunning = false,
   crossRepoOnly,
   onCrossRepoOnlyChange,
+  showExternal,
+  onToggleExternal,
   className = '',
 }: GraphToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
@@ -148,6 +157,26 @@ export function GraphToolbar({
         />
         cross-repo
       </button>
+
+      {/* Show external/stdlib toggle */}
+      {onToggleExternal && (
+        <button
+          type="button"
+          onClick={onToggleExternal}
+          title={showExternal ? 'Hide external/stdlib nodes' : 'Show external/stdlib nodes'}
+          aria-pressed={!!showExternal}
+          aria-label={showExternal ? 'Hide external/stdlib nodes' : 'Show external/stdlib nodes'}
+          className={[
+            'px-2 py-1 rounded text-xs font-medium transition-colors',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
+            showExternal
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 border border-transparent',
+          ].join(' ')}
+        >
+          {showExternal ? 'Hide stdlib' : 'Show stdlib'}
+        </button>
+      )}
 
       {/* Zoom control group — Task 1 (#1074) */}
       <div

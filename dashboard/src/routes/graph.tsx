@@ -60,6 +60,10 @@ export function GraphRoute() {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
+  // ── External node visibility state (#1067) ─────────────────────────────────
+  // Hidden by default — External stdlib/builtin placeholders clutter the graph.
+  const [showExternal, setShowExternal] = useState(false)
+
   // ── Community drill-in state ───────────────────────────────────────────────
   const [selectedCommunityId, setSelectedCommunityId] = useState<number | null>(null)
   const [selectedCommunityName, setSelectedCommunityName] = useState<string | null>(null)
@@ -94,6 +98,8 @@ export function GraphRoute() {
       selectedCommunityId,
       // #1069: activeRepos no longer passed to the hook — repo filter is client-side only.
       // The hook ignores this param but it's kept in the signature for compat.
+      effectiveActiveRepos,
+      showExternal,
     )
 
   const colorMap = useCommunityColors(communities)
@@ -268,6 +274,8 @@ export function GraphRoute() {
           simulationRunning={simulationRunning}
           crossRepoOnly={crossRepoOnly}
           onCrossRepoOnlyChange={setCrossRepoOnly}
+          showExternal={showExternal}
+          onToggleExternal={() => setShowExternal((v) => !v)}
         />
         {showSearchResults && (
           <div className="absolute left-3 right-3 top-full z-50">
@@ -426,6 +434,8 @@ export function GraphRoute() {
               highContrast={highContrast}
               isDark={isDark}
               crossRepoOnly={crossRepoOnly}
+              simulationRunning={simulationRunning}
+              onSimulationRunningChange={toggleSimulation}
               className="w-full h-full"
               activeRepos={effectiveActiveRepos}
             />
