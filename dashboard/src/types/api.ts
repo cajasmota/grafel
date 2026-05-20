@@ -92,9 +92,9 @@ export interface GroupMeta {
   repos: RepoMeta[]
   entity_count: number
   indexed_at?: string
-  /** Bug-rate percentage for the group (0–100). Present when the group has been indexed. */
+  /** Unresolved edges percentage for the group (0–100). Percentage of graph edges that point to unknown or ambiguous targets. Present when the group has been indexed. */
   bug_rate?: number
-  /** Rolling bug-rate history (oldest → newest), used for the sparkline. */
+  /** Rolling unresolved edges history (oldest → newest), used for the sparkline. */
   bug_rate_history?: number[]
   /** Top frameworks detected across all repos in the group (sorted by usage, capped at 8). */
   frameworks?: string[]

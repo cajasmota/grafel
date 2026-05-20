@@ -4,8 +4,8 @@
  * Features:
  *  - Search/filter input
  *  - Pinned groups float to top (localStorage, max 3)
- *  - Bug-rate status dot: green ≤5% / amber 5-15% / red >15%
- *    (uses entity_count as proxy until a real bug_rate field ships)
+ *  - Unresolved edges status dot: green ≤5% / amber 5-15% / red >15%
+ *    (uses entity_count as proxy until a real unresolved_edges field ships)
  *  - Entity count in tooltip
  *  - Active group: bg-slate-200 dark:bg-slate-800 + sky-500 left border
  *  - Switching preserves current surface (e.g. /flows/A → /flows/B)
@@ -22,9 +22,9 @@ interface GroupSwitcherProps {
   onNavigate?: () => void   // called after navigation (e.g. close mobile drawer)
 }
 
-/** Derive a synthetic bug-rate bucket from entity_count for mock data. */
+/** Derive a synthetic unresolved edges bucket from entity_count for mock data. */
 function bugRateBucket(g: GroupMeta): 'green' | 'amber' | 'red' {
-  // Real API will eventually carry a `bug_rate` field.
+  // Real API will eventually carry a `unresolved_edges` field.
   // Until then we use a deterministic hash of the id so fixture groups get
   // stable (but varied) colours in the UI.
   const sum = g.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
@@ -41,9 +41,9 @@ const bucketClass: Record<'green' | 'amber' | 'red', string> = {
 }
 
 const bucketLabel: Record<'green' | 'amber' | 'red', string> = {
-  green: '≤5% bug rate',
-  amber: '5–15% bug rate',
-  red: '>15% bug rate',
+  green: '≤5% unresolved edges',
+  amber: '5–15% unresolved edges',
+  red: '>15% unresolved edges',
 }
 
 /** Extracts the current surface prefix from a pathname like "/flows/fixture-a" → "flows" */
@@ -192,7 +192,7 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
                   )}
                 </span>
 
-                {/* Bug-rate status dot */}
+                {/* Unresolved edges status dot */}
                 <span
                   title={`${bucketLabel[bucket]} — ${g.entity_count.toLocaleString()} entities`}
                   aria-label={bucketLabel[bucket]}

@@ -2,7 +2,7 @@
  * GroupSelector — landing page card grid.
  *
  * Shows all indexed groups as cards with name, sparkline, repo count,
- * entity count, bug-rate and last-indexed time. Clicking a card navigates
+ * entity count, unresolved edges and last-indexed time. Clicking a card navigates
  * to /graph/<group>.
  */
 
@@ -315,11 +315,11 @@ function GroupCard({ group, onClick }: GroupCardProps) {
             dimmed={!hasRealData}
           />
 
-          {/* Bug rate */}
+          {/* Unresolved edges */}
           <StatPill
             icon={<Activity className="w-3.5 h-3.5" aria-hidden />}
-            tooltip="Percentage of unresolved/ambiguous edges (lower is better)"
-            label="Bug-rate"
+            tooltip="Percentage of graph edges that point to unknown or ambiguous targets. Lower is better. Drops as the resolver improves."
+            label="Unresolved edges"
             value={rateLabel}
             valueClass={`text-xs font-medium font-mono ${rateColor}`}
             dimmed={group.bug_rate === undefined}

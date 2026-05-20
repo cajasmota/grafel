@@ -9,7 +9,7 @@
  *  - Search input at top of panel
  *  - Pinned groups section (max 3, star toggle per row)
  *  - Other groups section
- *  - Bug-rate status dot: green ≤5% / amber 5–15% / red >15%
+ *  - Unresolved edges status dot: green ≤5% / amber 5–15% / red >15%
  *  - Entity-count tooltip
  *  - Selected row visually highlighted
  *  - Closes on outside-click or Escape
@@ -33,7 +33,7 @@ interface GroupSelectorProps {
   groups: GroupMeta[]
 }
 
-/** Derive a synthetic bug-rate bucket from entity_count for mock data. */
+/** Derive a synthetic unresolved edges bucket from entity_count for mock data. */
 function bugRateBucket(g: GroupMeta): 'green' | 'amber' | 'red' {
   const sum = g.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
   const pct = sum % 30
@@ -49,9 +49,9 @@ const bucketClass: Record<'green' | 'amber' | 'red', string> = {
 }
 
 const bucketLabel: Record<'green' | 'amber' | 'red', string> = {
-  green: '≤5% bug rate',
-  amber: '5–15% bug rate',
-  red: '>15% bug rate',
+  green: '≤5% unresolved edges',
+  amber: '5–15% unresolved edges',
+  red: '>15% unresolved edges',
 }
 
 /** Extracts the current surface prefix from a pathname like "/flows/fixture-a" → "flows" */
@@ -328,7 +328,7 @@ function GroupSection({ label, groups, activeGroup, pinnedIds, onSelect, onToggl
                   {isPinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
                 </span>
 
-                {/* Bug-rate dot */}
+                {/* Unresolved edges dot */}
                 <span
                   title={`${bucketLabel[bucket]} — ${g.entity_count.toLocaleString()} entities`}
                   aria-label={bucketLabel[bucket]}
