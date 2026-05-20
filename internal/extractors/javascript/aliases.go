@@ -764,6 +764,13 @@ func parseBabelAliases(repoRoot string) []aliasEntry {
 // outer block to be syntactically well-formed JavaScript, only that
 // the inner object literal's first `{` appears after the inner key.
 //
+// Issue #523 — also handles ENV-based ternary values:
+//
+//	alias: process.env.NODE_ENV === 'test' ? { ... } : { ... }
+//
+// Both branches are parsed and their entries merged (union). This covers
+// the case where different alias maps are used in test vs production.
+//
 // Returns nil when the configured keys aren't present.
 func extractAliasBlock(src []byte, outer, inner string) []aliasEntry {
 	// Look for "outer:" anywhere in the source. We don't bother
@@ -785,11 +792,7 @@ func extractAliasBlock(src []byte, outer, inner string) []aliasEntry {
 	if innerIdx < 0 {
 		return nil
 	}
-	obj := extractObjectLiteral(body[innerIdx:])
-	if obj == "" {
-		return nil
-	}
-	return parseAliasObjectLiteral(obj)
+	return extractAliasValue(body[innerIdx:])
 }
 
 // extractBabelModuleResolverAliases is the babel-specific variant. It
@@ -805,11 +808,79 @@ func extractBabelModuleResolverAliases(src []byte) []aliasEntry {
 	if innerIdx < 0 {
 		return nil
 	}
-	obj := extractObjectLiteral(body[innerIdx:])
+	return extractAliasValue(body[innerIdx:])
+}
+
+// extractAliasValue resolves the alias value starting at the text fragment
+// that begins right after a key (`alias:`) position. It handles:
+//
+//   - Plain object literal `{ '@foo': './foo', ... }`
+//   - Object-spread form `{ ...base, '@foo': './foo' }` (spreads are silently
+//     skipped — only literal key/value pairs are extracted)
+//   - ENV-based ternary `cond ? { ... } : { ... }` — both branches are parsed
+//     and their entries merged (union). Issue #523.
+//
+// Computed key entries `{ [\`${expr}\`]: './foo' }` are silently skipped
+// because the key cannot be determined without evaluation.
+func extractAliasValue(fragment string) []aliasEntry {
+	// Skip whitespace and the ':' separator (indexOfKey returns the key
+	// start; the caller has already advanced to the key position, so the
+	// colon is the next non-space char after the key text — but
+	// extractAliasValue is called with the substring starting AT the key
+	// (or just after), so we look for the first '{' or '?' to
+	// determine the value shape).
+	colonIdx := strings.IndexByte(fragment, ':')
+	if colonIdx < 0 {
+		return nil
+	}
+	after := strings.TrimSpace(fragment[colonIdx+1:])
+
+	// Check for ternary pattern: `<cond> ? { ... } : { ... }`
+	// We look for '?' before the first '{'. If found, extract both
+	// the consequent and alternate object literals.
+	firstBrace := strings.IndexByte(after, '{')
+	firstQ := strings.IndexByte(after, '?')
+	if firstQ >= 0 && (firstBrace < 0 || firstQ < firstBrace) {
+		// Ternary shape — find both branches.
+		return extractTernaryAliasObjects(after)
+	}
+
+	obj := extractObjectLiteral(after)
 	if obj == "" {
 		return nil
 	}
 	return parseAliasObjectLiteral(obj)
+}
+
+// extractTernaryAliasObjects extracts alias entries from both branches of a
+// ternary expression: `cond ? { ... } : { ... }`. Returns the union of both
+// branches so aliases present in either environment are included. Issue #523.
+func extractTernaryAliasObjects(s string) []aliasEntry {
+	// Find the '?' and the first `{` after it (consequent branch).
+	qIdx := strings.IndexByte(s, '?')
+	if qIdx < 0 {
+		return nil
+	}
+	rest := s[qIdx+1:]
+	obj1 := extractObjectLiteral(rest)
+	var entries []aliasEntry
+	if obj1 != "" {
+		entries = append(entries, parseAliasObjectLiteral(obj1)...)
+		// Advance past the first object literal to find the alternate.
+		consumed := strings.Index(rest, obj1)
+		if consumed >= 0 {
+			rest = rest[consumed+len(obj1):]
+		}
+	}
+	// The alternate branch follows the ':' separator after the consequent.
+	colonIdx := strings.IndexByte(rest, ':')
+	if colonIdx >= 0 {
+		obj2 := extractObjectLiteral(rest[colonIdx+1:])
+		if obj2 != "" {
+			entries = append(entries, parseAliasObjectLiteral(obj2)...)
+		}
+	}
+	return entries
 }
 
 // indexOfKey returns the byte index of an unquoted key occurrence

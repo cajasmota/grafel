@@ -444,6 +444,10 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 	params := n.ChildByFieldName("parameters")
 	frame := x.functionParamFrame(params, cb)
 	rels := x.extractCallRelationships(body, name, frame)
+	// Issue #610 — for PascalCase function components, scan the body for
+	// JSX child elements and emit RENDERS edges so the component-composition
+	// graph is complete.
+	rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
 	x.emitWithRels(name, "SCOPE.Operation", n, subtype, sig, rels)
 
 	// Recurse into the body for nested declarations.
@@ -668,7 +672,13 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 	// branch below).
 	if nameNode.Type() == "object_pattern" || nameNode.Type() == "array_pattern" {
 		opLift := isMutationStyleHookCall(x, valueNode)
-		x.emitDestructuredEntities(nameNode, valueNode, opLift, parentClass, cb)
+		// Issue #513 — for state hooks returning [value, setter] tuples
+		// (useState, useReducer, useTransition, etc.), emit the setter
+		// elements (index ≥ 1 in the array pattern) with subtype
+		// "state_setter" so the resolver binds setX() calls to a real
+		// entity instead of landing in bug-extractor.
+		stateHook := nameNode.Type() == "array_pattern" && isStateHookCall(x, valueNode)
+		x.emitDestructuredEntities(nameNode, valueNode, opLift, stateHook, parentClass, cb)
 		if valueNode != nil {
 			x.walkChildren(valueNode, parentClass, cb)
 		}
@@ -694,6 +704,8 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		params := valueNode.ChildByFieldName("parameters")
 		frame := x.functionParamFrame(params, cb)
 		rels := x.extractCallRelationships(body, name, frame)
+		// Issue #610 — PascalCase arrow components emit RENDERS edges.
+		rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = (...) =>", name), rels)
 		if body != nil {
 			x.walkChildren(body, parentClass, cb)
@@ -708,6 +720,8 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		params := valueNode.ChildByFieldName("parameters")
 		frame := x.functionParamFrame(params, cb)
 		rels := x.extractCallRelationships(body, name, frame)
+		// Issue #610 — PascalCase function-expression components emit RENDERS edges.
+		rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = function", name), rels)
 		if body != nil {
 			x.walkChildren(body, parentClass, cb)
@@ -911,10 +925,12 @@ func (x *extractor) findInnerFunctionBody(n *sitter.Node) *sitter.Node {
 // Classification:
 //   - opLift=true → SCOPE.Operation (mutation hooks return callables)
 //   - opLift=false → SCOPE.Component
+//   - stateHook=true (issue #513) → array elements at index≥1 get subtype
+//     "state_setter" so setX() calls resolve to a real entity
 //
 // Each emit is anchored to valueNode for line numbers (the LHS doesn't
 // carry useful position info beyond what's already on the declarator).
-func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, opLift bool, parentClass string, cb *classBindings) {
+func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, opLift bool, stateHook bool, parentClass string, cb *classBindings) {
 	if pattern == nil {
 		return
 	}
@@ -931,17 +947,18 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 		sigPrefix = "const"
 	}
 
-	var walk func(p *sitter.Node)
-	walk = func(p *sitter.Node) {
+	var walk func(p *sitter.Node, arrayIdx int)
+	walk = func(p *sitter.Node, arrayIdx int) {
 		if p == nil {
 			return
 		}
 		switch p.Type() {
 		case "object_pattern":
 			for i := 0; i < int(p.ChildCount()); i++ {
-				walk(p.Child(i))
+				walk(p.Child(i), -1)
 			}
 		case "array_pattern":
+			elemIdx := 0
 			for i := 0; i < int(p.ChildCount()); i++ {
 				ch := p.Child(i)
 				if ch == nil {
@@ -950,14 +967,24 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 				switch ch.Type() {
 				case "identifier":
 					name := x.nodeText(ch)
-					x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s [%s, ...]", sigPrefix, name))
+					// Issue #513 — setters in state-hook array patterns
+					// (index ≥ 1) get subtype "state_setter" so the
+					// resolver can bind setX() CALLS to this entity.
+					elemSubtype := subtype
+					if stateHook && elemIdx >= 1 {
+						elemSubtype = "state_setter"
+					}
+					x.emit(name, kind, anchor, elemSubtype, fmt.Sprintf("%s [%s, ...]", sigPrefix, name))
+					elemIdx++
 				case "object_pattern", "array_pattern":
-					walk(ch)
+					walk(ch, elemIdx)
+					elemIdx++
 				case "rest_pattern":
 					if id := firstIdentifierChild(ch); id != nil {
 						name := x.nodeText(id)
 						x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s [...%s]", sigPrefix, name))
 					}
+					elemIdx++
 				case "assignment_pattern":
 					// e.g. [a = 1] — the binding name is the LHS identifier.
 					if left := ch.ChildByFieldName("left"); left != nil {
@@ -965,9 +992,10 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 							name := x.nodeText(left)
 							x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s [%s = ...]", sigPrefix, name))
 						} else {
-							walk(left)
+							walk(left, -1)
 						}
 					}
+					elemIdx++
 				}
 			}
 		case "shorthand_property_identifier_pattern":
@@ -985,7 +1013,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 					name := x.nodeText(left)
 					x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { %s = ... }", sigPrefix, name))
 				default:
-					walk(left)
+					walk(left, -1)
 				}
 			}
 		case "pair_pattern":
@@ -1000,14 +1028,14 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 				name := x.nodeText(value)
 				x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { ...: %s }", sigPrefix, name))
 			case "object_pattern", "array_pattern":
-				walk(value)
+				walk(value, -1)
 			case "assignment_pattern":
 				if left := value.ChildByFieldName("left"); left != nil {
 					if left.Type() == "identifier" {
 						name := x.nodeText(left)
 						x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { ...: %s = ... }", sigPrefix, name))
 					} else {
-						walk(left)
+						walk(left, -1)
 					}
 				}
 			}
@@ -1022,7 +1050,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 					name := x.nodeText(left)
 					x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s %s = ...", sigPrefix, name))
 				} else {
-					walk(left)
+					walk(left, -1)
 				}
 			}
 		case "identifier":
@@ -1030,7 +1058,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 			x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s %s", sigPrefix, name))
 		}
 	}
-	walk(pattern)
+	walk(pattern, -1)
 }
 
 // firstIdentifierChild returns the first identifier-typed child of n, or nil.
@@ -1046,6 +1074,29 @@ func firstIdentifierChild(n *sitter.Node) *sitter.Node {
 		}
 	}
 	return nil
+}
+
+// isStateHookCall returns true when the RHS is a call to one of the built-in
+// React state hooks that return a [value, setter] tuple. Used by #513 to tag
+// array-pattern setters with subtype="state_setter".
+func isStateHookCall(x *extractor, valueNode *sitter.Node) bool {
+	if valueNode == nil || valueNode.Type() != "call_expression" {
+		return false
+	}
+	fn := valueNode.ChildByFieldName("function")
+	if fn == nil {
+		return false
+	}
+	leaf := ""
+	switch fn.Type() {
+	case "identifier":
+		leaf = x.nodeText(fn)
+	case "member_expression":
+		if prop := fn.ChildByFieldName("property"); prop != nil {
+			leaf = x.nodeText(prop)
+		}
+	}
+	return isStateHookName(leaf)
 }
 
 // isMutationStyleHookCall returns true when the RHS of a destructuring
@@ -1102,12 +1153,29 @@ func isMutationStyleHookCall(x *extractor, valueNode *sitter.Node) bool {
 	return isMutationStyleHookName(leaf)
 }
 
+// isStateHookName returns true when the hook name is one of the built-in
+// React hooks that return a [value, setter] tuple. Issue #513 — setters from
+// these hooks (e.g. setIsOpen, setActive) must be lifted as SCOPE.Operation
+// with subtype="state_setter" so the resolver can bind same-file CALLS edges
+// instead of routing them to bug-extractor.
+func isStateHookName(leaf string) bool {
+	switch leaf {
+	case "useState", "useReducer", "useTransition", "useOptimistic",
+		"useActionState", "useFormState":
+		return true
+	}
+	return false
+}
+
 // isMutationStyleHookName encodes the name-shape rule documented on
 // isMutationStyleHookCall. Pure function, exported via test seam.
 func isMutationStyleHookName(leaf string) bool {
+	// State hooks are a subset of mutation-style — they return callables.
+	if isStateHookName(leaf) {
+		return true
+	}
 	switch leaf {
 	case
-		"useState", "useReducer",
 		"useMutation", "useSWRMutation",
 		"useForm",
 		"useModal", "useMessage", "useNotification", "useApp",
@@ -1292,6 +1360,75 @@ func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
 		}
 	}
 	return ""
+}
+
+// extractJSXRendersRelationships scans body for JSX elements whose tag name
+// begins with an uppercase ASCII letter (= React component convention) and
+// emits one RENDERS RelationshipRecord per unique component. Issue #610.
+//
+// Only emits when callerName is itself PascalCase (isComponentName returns
+// true) so hook functions and plain utilities don't pick up spurious RENDERS
+// edges from JSX fragments inside non-component functions.
+//
+// The ToID is the bare PascalCase component name. The cross-file resolver
+// (or the react_props cross-extractor) will bind it to the declaring entity.
+// Self-renders (caller == tag name) are skipped.
+func (x *extractor) extractJSXRendersRelationships(body *sitter.Node, callerName string) []types.RelationshipRecord {
+	if body == nil || !isComponentName(callerName) {
+		return nil
+	}
+	jsxNodes := findAllNodes(body,
+		"jsx_opening_element",
+		"jsx_self_closing_element",
+	)
+	if len(jsxNodes) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(jsxNodes))
+	var rels []types.RelationshipRecord
+	for _, jx := range jsxNodes {
+		nameNode := jx.ChildByFieldName("name")
+		if nameNode == nil {
+			continue
+		}
+		tag := x.nodeText(nameNode)
+		// Only PascalCase tags — HTML intrinsics (div, span, …) start lowercase.
+		if !isComponentName(tag) {
+			continue
+		}
+		// Skip self-renders.
+		if tag == callerName {
+			continue
+		}
+		// Skip known React namespace tags (React.Fragment etc.) — take
+		// the member object as the effective tag for e.g. styled.div.
+		if strings.Contains(tag, ".") {
+			// member_expression: take the trailing property as the tag.
+			tag = tag[strings.LastIndex(tag, ".")+1:]
+			if !isComponentName(tag) {
+				continue
+			}
+		}
+		if seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		rels = append(rels, types.RelationshipRecord{
+			ToID: tag,
+			Kind: "RENDERS",
+		})
+	}
+	return rels
+}
+
+// isComponentName returns true when name starts with an ASCII uppercase
+// letter — the React convention for function component identifiers.
+func isComponentName(name string) bool {
+	if name == "" {
+		return false
+	}
+	c := name[0]
+	return c >= 'A' && c <= 'Z'
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
