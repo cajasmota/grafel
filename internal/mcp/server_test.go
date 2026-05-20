@@ -777,6 +777,7 @@ func TestRepairToolsRoundTrip(t *testing.T) {
 		"residual_id":    "er:deadbeef00000001",
 		"resolution":     "abandon",
 		"abandon_reason": "test-only dynamic dispatch",
+		"reasoning":      "no static binding possible; dynamic dispatch confirmed",
 		"confidence":     0.4,
 	})
 	if okRes2.IsError {

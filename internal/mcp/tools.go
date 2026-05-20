@@ -1489,6 +1489,9 @@ func (s *Server) handleRepairs(ctx context.Context, req mcpapi.CallToolRequest) 
 
 // handleSubmitRepairFromBundle is handleSubmitRepair adapted for the bundled
 // archigraph_repairs tool where the edge identifier comes in as residual_id.
+// Trust-model rules R1-R7 (ADR-0015 / repair-trust-model.md) are enforced
+// before the repair is written so the agent gets immediate feedback rather
+// than discovering a rejection only on the next index run (#546).
 func (s *Server) handleSubmitRepairFromBundle(ctx context.Context, req mcpapi.CallToolRequest, edgeID string) (*mcpapi.CallToolResult, error) {
 	resolution := argString(req, "resolution", "")
 	if resolution == "" {
@@ -1519,6 +1522,7 @@ func (s *Server) handleSubmitRepairFromBundle(ctx context.Context, req mcpapi.Ca
 
 	repos := reposToConsider(lg, nil)
 	var target *LoadedRepo
+	var candidates []enrichment.Candidate
 	if repoOverride != "" {
 		for _, r := range repos {
 			if r.Repo == repoOverride {
@@ -1529,11 +1533,14 @@ func (s *Server) handleSubmitRepairFromBundle(ctx context.Context, req mcpapi.Ca
 		if target == nil {
 			return mcpapi.NewToolResultError(fmt.Sprintf("repo %q not loaded in group", repoOverride)), nil
 		}
+		candidates = readRepairEdgeCandidates(target.Path)
 	} else {
 		for _, r := range repos {
-			for _, c := range readRepairEdgeCandidates(r.Path) {
+			cands := readRepairEdgeCandidates(r.Path)
+			for _, c := range cands {
 				if v, ok := c.Context["edge_id"].(string); ok && v == edgeID {
 					target = r
+					candidates = cands
 					break
 				}
 			}
@@ -1546,12 +1553,13 @@ func (s *Server) handleSubmitRepairFromBundle(ctx context.Context, req mcpapi.Ca
 		}
 	}
 
-	rf, err := readRepairFile(target.Path)
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	repair := enrichment.Repair{
+	// ── Trust-model R1-R7 ────────────────────────────────────────────────
+	// Build verify context from the loaded graph document.
+	docEnts, containsParents := buildVerifyContext(target.Doc)
+	edgeIDSet := candidateEdgeIDSet(candidates)
+	fromEntityID := fromEntityIDForEdge(candidates, edgeID)
+
+	repairProposal := enrichment.Repair{
 		EdgeID:         edgeID,
 		Resolution:     resolution,
 		TargetEntityID: targetEntity,
@@ -1562,13 +1570,28 @@ func (s *Server) handleSubmitRepairFromBundle(ctx context.Context, req mcpapi.Ca
 		Confidence:     confidence,
 		Reasoning:      reasoning,
 		Source:         source,
-		ResolvedAt:     now,
 	}
-	rf.Repairs = append(rf.Repairs, repair)
+	if vr := VerifyRepairSubmit(repairProposal, fromEntityID, edgeIDSet, docEnts, containsParents); !vr.OK {
+		return jsonResult(map[string]any{
+			"ok":              false,
+			"rejected_reason": vr.RejectedReason,
+			"residual_id":     edgeID,
+		}), nil
+	}
+	// ── End trust-model ──────────────────────────────────────────────────
+
+	rf, err := readRepairFile(target.Path)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	repairProposal.ResolvedAt = now
+	rf.Repairs = append(rf.Repairs, repairProposal)
 	if err := writeRepairFile(target.Path, rf); err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
 	return jsonResult(map[string]any{
+		"ok":           true,
 		"residual_id":  edgeID,
 		"repo":         target.Repo,
 		"resolution":   resolution,
