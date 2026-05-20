@@ -189,6 +189,34 @@ public class Recurser {
 	}
 }
 
+// TestJavaReferencesInheritedFieldHint — Issue #667.
+// When a subclass method accesses `this.<attr>` and the field is NOT
+// declared in the same file (it's inherited from a parent class),
+// the extractor should emit a cross-file hint stub so the resolver can
+// follow EXTENDS edges to find the field.
+func TestJavaReferencesInheritedFieldHint(t *testing.T) {
+	// Child declares no "value" field — it would be inherited from a parent.
+	// The extractor should emit a hint REFERENCES stub for this.value.
+	src := `package com.demo;
+
+public class Child {
+    public int read() {
+        return this.value;
+    }
+}
+`
+	ents := runJavaExtract(t, src)
+	// Expect a REFERENCES edge from Child.read to a stub containing "value".
+	if !hasJavaRef(ents, "Child.read", "value") {
+		t.Fatalf("#667: expected cross-file hint REFERENCES Child.read -> *value*, got: %s", javaRelsSummary(ents))
+	}
+	// Verify the stub uses the enclosing class name (Child.value) so the
+	// resolver can probe byPackageMember or global schema index.
+	if !hasJavaRef(ents, "Child.read", "Child.value") {
+		t.Fatalf("#667: expected hint stub to contain 'Child.value', got: %s", javaRelsSummary(ents))
+	}
+}
+
 // javaRelsSummary stringifies every entity's REFERENCES edges for
 // failure messages.
 func javaRelsSummary(ents []types.EntityRecord) string {

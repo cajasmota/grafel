@@ -240,6 +240,48 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 			})
 	}
 
+	// emitCrossFileFieldHint emits a REFERENCES stub for a `this.<attr>`
+	// access where the field is NOT in the current file's symbol table —
+	// i.e. it may be inherited from a parent class declared in another
+	// file (issue #667). The stub targets the field via the enclosing
+	// class name so the resolver can follow EXTENDS edges:
+	//
+	//   scope:schema:ref:java:<file>:<EnclosingClass>.<attr>
+	//
+	// The resolver's lookupStructural → lookupLocationKind path will
+	// first try the same file and miss; the new Java cross-file field
+	// fallback added to lookupStructural then probes byPackageMember and
+	// the global schema index to find the field in a parent class file.
+	emitCrossFileFieldHint := func(fstack []javaFrame, enclosingClass, attr string) {
+		if len(fstack) == 0 {
+			return
+		}
+		top := fstack[len(fstack)-1]
+		if top.funcEmittedName == "" || enclosingClass == "" || attr == "" {
+			return
+		}
+		dottedName := enclosingClass + "." + attr
+		key := edgeKey{top.funcEmittedName, dottedName}
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		idx, ok := findEntityIndex(*entities, top.funcEmittedName, file.Path)
+		if !ok {
+			return
+		}
+		toID := buildJavaReferenceTargetID(file.Path, javaSymbol{
+			kind:    "SCOPE.Schema",
+			subtype: "field",
+			name:    dottedName,
+		})
+		(*entities)[idx].Relationships = append((*entities)[idx].Relationships,
+			types.RelationshipRecord{
+				ToID: toID,
+				Kind: "REFERENCES",
+			})
+	}
+
 	var walk func(n *sitter.Node, parentClass string, fstack []javaFrame)
 	walk = func(n *sitter.Node, parentClass string, fstack []javaFrame) {
 		if n == nil {
@@ -309,7 +351,7 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 			case "type_identifier":
 				handleTypeIdentifier(n, file, fstack, bareSymbols, emit)
 			case "field_access":
-				handleFieldAccess(n, file, fstack, bareSymbols, dottedSymbols, emit)
+				handleFieldAccess(n, file, fstack, bareSymbols, dottedSymbols, emit, emitCrossFileFieldHint)
 			}
 		}
 
@@ -428,6 +470,7 @@ func handleFieldAccess(
 	bareSymbols map[string]javaSymbol,
 	dottedSymbols map[string]javaSymbol,
 	emit func([]javaFrame, javaSymbol),
+	emitHint func(fstack []javaFrame, enclosingClass, attr string),
 ) {
 	// Skip when this field_access IS the `object` child of a
 	// method_invocation — CALLS owns that edge through its own resolver.
@@ -471,6 +514,14 @@ func handleFieldAccess(
 				return
 			}
 			emit(fstack, sym)
+			return
+		}
+		// Issue #667 — `this.<attr>` misses the local symbol table;
+		// the field may be inherited from a parent class in another
+		// file. Emit a cross-file hint stub so the resolver can
+		// follow EXTENDS edges to find it.
+		if emitHint != nil && top.parentClass != "" {
+			emitHint(fstack, top.parentClass, attr)
 		}
 	case "identifier":
 		recv := nodeText(objChild, file.Content)

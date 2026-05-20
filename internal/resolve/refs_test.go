@@ -2110,3 +2110,90 @@ func TestReferencesEmbedded_InterfaceFieldDispatchMissingMethod_Issue614(t *test
 		t.Fatalf("dispatch wrongly bound to MemoryStore.Get when the call was List")
 	}
 }
+
+// TestGoSamePackageComponentRef — Issue #686.
+// A Go REFERENCES stub `scope:component:ref:go:<caller_file>:Server` where
+// Server is defined in a sibling file of the same package should resolve via
+// byPackageComponent.
+func TestGoSamePackageComponentRef(t *testing.T) {
+	// Server struct defined in pkg/server.go.
+	serverEnt := entAt("aaaaaaaaaaaaaaaa", "SCOPE.Component", "Server", "pkg/server.go")
+	// Handler defined in pkg/handler.go references Server.
+	rels := []types.RelationshipRecord{{
+		FromID: "bbbbbbbbbbbbbbbb",
+		ToID:   "scope:component:ref:go:pkg/handler.go:Server",
+		Kind:   "REFERENCES",
+	}}
+	idx := BuildIndex([]types.EntityRecord{serverEnt})
+	stats := References(rels, idx)
+	if rels[0].ToID != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("#686 Go same-package component: ToID=%q, want aaaaaaaaaaaaaaaa (stats=%+v)", rels[0].ToID, stats)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("#686: expected 1 ToRewritten, got %d", stats.ToRewritten)
+	}
+}
+
+// TestGoSamePackageReceiverFieldRef — Issue #687.
+// A Go REFERENCES stub `scope:schema:ref:go:<caller_file>:Foo.bar` where
+// Foo is defined in a sibling file should resolve via byPackageMember.
+func TestGoSamePackageReceiverFieldRef(t *testing.T) {
+	// Foo.bar entity in pkg/foo.go — emitted as SCOPE.Component with dotted name.
+	fieldEnt := entAt("cccccccccccccccc", "SCOPE.Component", "Foo.bar", "pkg/foo.go")
+	// Method in pkg/handler.go references Foo.bar via receiver.
+	rels := []types.RelationshipRecord{{
+		FromID: "dddddddddddddddd",
+		ToID:   "scope:schema:ref:go:pkg/handler.go:Foo.bar",
+		Kind:   "REFERENCES",
+	}}
+	idx := BuildIndex([]types.EntityRecord{fieldEnt})
+	stats := References(rels, idx)
+	if rels[0].ToID != "cccccccccccccccc" {
+		t.Fatalf("#687 Go receiver-field: ToID=%q, want cccccccccccccccc (stats=%+v)", rels[0].ToID, stats)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("#687: expected 1 ToRewritten, got %d", stats.ToRewritten)
+	}
+}
+
+// TestJavaExtendsFieldRef — Issue #667.
+// A Java REFERENCES stub `scope:schema:ref:java:<child_file>:Child.parentField`
+// where the field entity is `Parent.parentField` in a different file
+// should resolve via lookupUniqueSchemaFieldByName.
+func TestJavaExtendsFieldRef(t *testing.T) {
+	// Parent.parentField entity declared in parent.java — Kind=SCOPE.Schema.
+	parentFieldEnt := entAt("eeeeeeeeeeeeeeee", "SCOPE.Schema", "Parent.parentField", "src/Parent.java")
+	// Child.method() references this.parentField — extractor emits the hint stub.
+	rels := []types.RelationshipRecord{{
+		FromID: "0000000000000000",
+		ToID:   "scope:schema:ref:java:src/Child.java:Child.parentField",
+		Kind:   "REFERENCES",
+	}}
+	idx := BuildIndex([]types.EntityRecord{parentFieldEnt})
+	stats := References(rels, idx)
+	if rels[0].ToID != "eeeeeeeeeeeeeeee" {
+		t.Fatalf("#667 Java EXTENDS field: ToID=%q, want eeeeeeeeeeeeeeee (stats=%+v)", rels[0].ToID, stats)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("#667: expected 1 ToRewritten, got %d", stats.ToRewritten)
+	}
+}
+
+// TestJavaExtendsFieldRefAmbiguous — Issue #667 ambiguous case.
+// When two different classes both declare a field with the same name,
+// the resolver should NOT bind and should leave the stub alone.
+func TestJavaExtendsFieldRefAmbiguous(t *testing.T) {
+	field1 := entAt("aaaaaaaaaaaaaaaa", "SCOPE.Schema", "Parent1.value", "src/Parent1.java")
+	field2 := entAt("bbbbbbbbbbbbbbbb", "SCOPE.Schema", "Parent2.value", "src/Parent2.java")
+	rels := []types.RelationshipRecord{{
+		FromID: "0000000000000000",
+		ToID:   "scope:schema:ref:java:src/Child.java:Child.value",
+		Kind:   "REFERENCES",
+	}}
+	idx := BuildIndex([]types.EntityRecord{field1, field2})
+	_ = References(rels, idx)
+	// Two candidates — should remain unresolved or ambiguous, not bound.
+	if rels[0].ToID == "aaaaaaaaaaaaaaaa" || rels[0].ToID == "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("#667 ambiguous: should not bind when two field entities exist; got %q", rels[0].ToID)
+	}
+}

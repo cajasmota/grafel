@@ -2484,11 +2484,98 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 	// (single real entity), so cross-file collisions are left
 	// unresolved rather than guessed.
 	if strings.EqualFold(scopeKind, "component") {
+		lang := strings.ToLower(parts[stubScopeLangIndex])
 		// Restrict to python (other languages have their own
 		// package/file-keyed lookup paths and shouldn't be widened).
-		if lang := strings.ToLower(parts[stubScopeLangIndex]); lang == "python" {
+		if lang == "python" {
 			if id, ok := idx.lookupUniqueRealComponentByName(tail); ok {
 				return id, statusRewritten, true
+			}
+		}
+		// Issue #686 — Go cross-file same-package REFERENCES to struct /
+		// interface types. The Go extractor emits REFERENCES edges with
+		// `scope:component:ref:go:<caller_file>:<TypeName>` stubs where
+		// the type (struct/interface) is defined in a sibling file in the
+		// same package. Same-file lookup above fails; probe
+		// byPackageComponent[pkgDir][TypeName] for the single definition
+		// within the package directory. A blank-sentinel hit means
+		// ambiguous — leave the stub alone. Lang-gated to "go" to avoid
+		// widening resolution for other languages whose component
+		// namespace isn't package-scoped.
+		if lang == "go" {
+			if pkgDir := pkgDirOf(filePath); pkgDir != "" {
+				if pkgBucket, ok := idx.byPackageComponent[pkgDir]; ok {
+					if id, ok := pkgBucket[tail]; ok {
+						if id == "" {
+							return "", statusAmbiguous, true
+						}
+						return id, statusRewritten, true
+					}
+				}
+			}
+		}
+	}
+	// Issue #687 — Go cross-file receiver-field REFERENCES. The Go
+	// extractor's handleGoSelector emits REFERENCES stubs of the form
+	// `scope:schema:ref:go:<caller_file>:ReceiverType.fieldName` when
+	// `dottedSymbols["ReceiverType.fieldName"]` hits in the file-local
+	// struct-field map. When the ReceiverType struct is defined in a
+	// sibling file, dottedSymbols misses and no stub is emitted (the
+	// field reference is dropped). However when the struct IS local but
+	// the field lookup in lookupStructural misses (e.g. the struct entity
+	// is indexed in a different file's byLocation), probe
+	// byPackageMember[pkgDir][ReceiverType][fieldName].
+	//
+	// Note: The Go extractor now also emits a cross-file hint stub when
+	// the receiver var is a field of an interface type (chain-fix-2).
+	// This fallback resolves those stubs.
+	if strings.EqualFold(scopeKind, "schema") {
+		lang := strings.ToLower(parts[stubScopeLangIndex])
+		if lang == "go" {
+			// tail has the form "ReceiverType.fieldName" for receiver
+			// fields. Split on the last dot.
+			if dot := strings.LastIndexByte(tail, '.'); dot > 0 {
+				receiverType := tail[:dot]
+				fieldName := tail[dot+1:]
+				if pkgDir := pkgDirOf(filePath); pkgDir != "" {
+					if id, ok := idx.lookupPackageMember(pkgDir, receiverType, fieldName); ok {
+						return id, statusRewritten, true
+					}
+				}
+			}
+		}
+		// Issue #667 — Java cross-file EXTENDS field resolution. The
+		// Java extractor emits a hint stub
+		// `scope:schema:ref:java:<child_file>:<ChildClass>.<field>`
+		// when `this.<field>` doesn't resolve locally (the field is
+		// inherited from a parent class in another file). Same-file
+		// lookup above fails. Probe byPackageMember[pkgDir][ChildClass]
+		// first (same-package parent); fall back to
+		// lookupUniqueSchemaFieldByName for the bare field name (cross-
+		// package parent). Conservative: only fires when the global
+		// lookup is unambiguous (single schema field entity), matching
+		// the byName-tier safety policy used by lookupUniqueRealComponentByName.
+		if strings.ToLower(parts[stubScopeLangIndex]) == "java" {
+			if dot := strings.LastIndexByte(tail, '.'); dot > 0 {
+				className := tail[:dot]
+				fieldName := tail[dot+1:]
+				// Tier 1: same-package — probe byPackageMember.
+				if pkgDir := pkgDirOf(filePath); pkgDir != "" {
+					if id, ok := idx.lookupPackageMember(pkgDir, className, fieldName); ok {
+						return id, statusRewritten, true
+					}
+					// Also try parent class names by scanning the
+					// package's member index for any class that declares
+					// this field name. The ChildClass may differ from
+					// the ParentClass that owns the field.
+					if id, ok := idx.lookupPackageMemberByLeafName(pkgDir, fieldName); ok {
+						return id, statusRewritten, true
+					}
+				}
+				// Tier 2: global unique schema field lookup.
+				if id, ok := idx.lookupUniqueSchemaFieldByName(fieldName); ok {
+					return id, statusRewritten, true
+				}
 			}
 		}
 	}
@@ -2539,6 +2626,51 @@ func (idx Index) lookupUniqueRealComponentByName(name string) (string, bool) {
 			return "", false
 		}
 		match = id
+	}
+	if match != "" {
+		return match, true
+	}
+	return "", false
+}
+
+// lookupUniqueSchemaFieldByName returns (id, true) when exactly one
+// SCOPE.Schema/field entity is registered globally under the supplied
+// bare field name (leaf name, e.g. "parentField" not "Parent.parentField").
+// Used by the Java cross-file EXTENDS field resolver (issue #667) to bind
+// `this.parentField` references when the field is declared in a parent class
+// in another file. Conservative: returns ("", false) when zero or >=2
+// candidates match — the resolver leaves the stub alone rather than
+// guessing a wrong overload.
+func (idx Index) lookupUniqueSchemaFieldByName(fieldName string) (string, bool) {
+	if fieldName == "" {
+		return "", false
+	}
+	// Scan byLocationKind for SCOPE.Schema/field entities whose leaf name
+	// matches. The dotted entity name is "ClassName.fieldName"; we compare
+	// the suffix after the last dot.
+	var match string
+	for _, fileBucket := range idx.byLocationKind {
+		for entityName, kindBucket := range fileBucket {
+			// Check if this entity's leaf matches fieldName.
+			leaf := entityName
+			if dot := strings.LastIndexByte(entityName, '.'); dot >= 0 {
+				leaf = entityName[dot+1:]
+			}
+			if leaf != fieldName {
+				continue
+			}
+			// Must be a Schema-family entity.
+			for _, fam := range schemaKindFamily {
+				id := kindBucket[fam]
+				if id == "" {
+					continue
+				}
+				if match != "" && match != id {
+					return "", false // ambiguous
+				}
+				match = id
+			}
+		}
 	}
 	if match != "" {
 		return match, true
