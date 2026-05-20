@@ -6,9 +6,9 @@ import { resolve } from 'path'
 export default defineConfig(({ mode }) => {
   // Load env so VITE_API_PORT is available at config-build time
   const env = loadEnv(mode, process.cwd(), '')
-  // Default to 9090 — the port the daemon's embedded dashboard listens on (#929/#931).
+  // Default to 47274 — the port the daemon's embedded dashboard listens on (#929/#931).
   // Override with VITE_API_PORT=<n> for non-default installations.
-  const apiPort = env.VITE_API_PORT ?? '9090'
+  const apiPort = env.VITE_API_PORT ?? '47274'
   const apiBase = `http://127.0.0.1:${apiPort}`
 
   return {

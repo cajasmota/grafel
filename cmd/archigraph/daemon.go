@@ -23,7 +23,7 @@ import (
 )
 
 // defaultDashboardPort is the default TCP port for the embedded dashboard.
-const defaultDashboardPort = 9090
+const defaultDashboardPort = 47274
 
 // defaultRSSBudgetMB is the production default for the concurrency
 // cap. Chosen to match the post-#639 single-reindex peak (343MB) plus

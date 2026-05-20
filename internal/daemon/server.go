@@ -84,7 +84,7 @@ type Config struct {
 
 	// DashboardPort is the TCP port for the embedded dashboard HTTP server
 	// (#929/#931). When 0 the dashboard is disabled. Default production
-	// value is 9090. Configurable via ARCHIGRAPH_DASHBOARD_PORT env or
+	// value is 47274. Configurable via ARCHIGRAPH_DASHBOARD_PORT env or
 	// ~/.config/archigraph/daemon.toml.
 	DashboardPort int
 
