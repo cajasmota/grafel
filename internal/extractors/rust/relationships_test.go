@@ -80,7 +80,9 @@ impl Foo {
 	}
 	// Issue #144 — CONTAINS targets are structural-ref stubs (Format A)
 	// keyed on the source file so impl→method edges disambiguate by location.
-	for _, m := range []string{"a", "b", "c"} {
+	// Issue #615 — impl method names are now qualified as "Foo.a", so the
+	// structural ref is "scope:operation:method:rust:test.rs:Foo.a".
+	for _, m := range []string{"Foo.a", "Foo.b", "Foo.c"} {
 		want := "scope:operation:method:rust:test.rs:" + m
 		found := false
 		for _, r := range impl.Relationships {

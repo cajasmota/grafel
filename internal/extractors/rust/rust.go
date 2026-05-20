@@ -115,12 +115,28 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 			return
 		}
 		implIdx := len(*out)
+		implName := rec.Name
 		*out = append(*out, rec)
 		body := findRustDeclList(node)
 		if body != nil {
 			before := len(*out)
 			for i := range body.ChildCount() {
-				walk(body.Child(int(i)), file, out)
+				ch := body.Child(int(i))
+				if ch.Type() == "function_item" {
+					// Issue #615 — emit impl methods qualified as "TypeName.fnName"
+					// so they are traceable back to their owner type.
+					if fnRec, ok2 := buildOperation(ch, file); ok2 {
+						paramTypes := collectRustParamTypes(ch, file.Content)
+						// Issue #616 — resolve self.method() and dyn-param calls.
+						fnRec.Relationships = append(fnRec.Relationships,
+							extractCallRelationships(ch.ChildByFieldName("body"), file.Content, fnRec.Name, implName, paramTypes)...)
+						// Qualify the name with the impl type owner.
+						fnRec.Name = implName + "." + fnRec.Name
+						*out = append(*out, fnRec)
+					}
+				} else {
+					walk(ch, file, out)
+				}
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
@@ -131,6 +147,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				// Issue #144 — structural-ref (Format A) keyed on file path
 				// so impl→method CONTAINS edges disambiguate when two files
 				// each define an `impl Foo { fn new() }` shape.
+				// Use the already-qualified name (e.g. "Foo.bar") for the ref.
 				toID := extractor.BuildOperationStructuralRef("rust", file.Path, child.Name)
 				(*out)[implIdx].Relationships = append((*out)[implIdx].Relationships,
 					types.RelationshipRecord{
@@ -143,8 +160,9 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 
 	case "function_item":
 		if rec, ok := buildOperation(node, file); ok {
+			paramTypes := collectRustParamTypes(node, file.Content)
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name, "", paramTypes)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -176,7 +194,12 @@ func findRustDeclList(node *sitter.Node) *sitter.Node {
 // call_expression / macro_invocation descendant of body. Targets resolve to
 // the rightmost identifier in the function expression; FromID is left empty
 // so buildDocument substitutes the caller's entity ID at emit time.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+//
+// Issue #616 — ownerName is the impl type this function belongs to (e.g.
+// "Foo"); it enables `self.method()` calls to resolve to "Foo.method".
+// paramTypes maps parameter names to their declared types so that calls
+// through typed receivers (e.g. `r: &dyn Repo`) resolve to "Repo.method".
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerName string, paramTypes map[string]string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -187,7 +210,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
-		target := rustCallTarget(call, src)
+		target := rustCallTarget(call, src, ownerName, paramTypes)
 		if target == "" || target == callerName {
 			continue
 		}
@@ -206,7 +229,11 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 // rustCallTarget resolves the callee identifier from a Rust call_expression
 // or macro_invocation. For call_expression the function is the first child;
 // for scoped_identifier / field_expression we use the rightmost identifier.
-func rustCallTarget(call *sitter.Node, src []byte) string {
+//
+// Issue #616 — ownerName and paramTypes enable receiver-qualified targets:
+//   - "self.method()" inside impl Foo → "Foo.method"
+//   - "repo.find()" where repo: &dyn Repo → "Repo.find"
+func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes map[string]string) string {
 	switch call.Type() {
 	case "call_expression":
 		fn := call.ChildByFieldName("function")
@@ -224,9 +251,27 @@ func rustCallTarget(call *sitter.Node, src []byte) string {
 				return string(src[name.StartByte():name.EndByte()])
 			}
 		case "field_expression":
+			method := ""
 			if name := fn.ChildByFieldName("field"); name != nil {
-				return string(src[name.StartByte():name.EndByte()])
+				method = string(src[name.StartByte():name.EndByte()])
 			}
+			if method == "" {
+				return ""
+			}
+			// Issue #616 — resolve receiver type for self and typed params.
+			recv := ""
+			if value := fn.ChildByFieldName("value"); value != nil {
+				recv = string(src[value.StartByte():value.EndByte()])
+			}
+			if recv == "self" && ownerName != "" {
+				return ownerName + "." + method
+			}
+			if recv != "" && len(paramTypes) > 0 {
+				if recvType, ok := paramTypes[recv]; ok && recvType != "" {
+					return recvType + "." + method
+				}
+			}
+			return method
 		case "generic_function":
 			if path := fn.ChildByFieldName("function"); path != nil {
 				switch path.Type() {
@@ -257,6 +302,71 @@ func rustCallTarget(call *sitter.Node, src []byte) string {
 		}
 	}
 	return ""
+}
+
+// collectRustParamTypes scans a function_item node's parameters child and
+// returns a map of parameter-name → declared leaf type. Type references are
+// normalised by stripping leading `&`, `&mut`, `Box<dyn `, `dyn `, `Arc<`,
+// `Rc<`, and trailing `>` so that `r: &dyn Repo` → {"r": "Repo"}.
+//
+// Issue #616 — used by extractCallRelationships to qualify dyn-receiver
+// CALLS edges (e.g. `r.find(1)` → "Repo.find").
+func collectRustParamTypes(node *sitter.Node, src []byte) map[string]string {
+	out := map[string]string{}
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch.Type() != "parameters" {
+			continue
+		}
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			p := ch.Child(j)
+			if p.Type() != "parameter" {
+				continue
+			}
+			nameNode := p.ChildByFieldName("pattern")
+			typeNode := p.ChildByFieldName("type")
+			if nameNode == nil || typeNode == nil {
+				continue
+			}
+			name := string(src[nameNode.StartByte():nameNode.EndByte()])
+			if name == "self" || name == "&self" || name == "&mut self" {
+				continue
+			}
+			typ := string(src[typeNode.StartByte():typeNode.EndByte()])
+			typ = normalizeRustType(typ)
+			if name != "" && typ != "" {
+				out[name] = typ
+			}
+		}
+		break
+	}
+	return out
+}
+
+// normalizeRustType strips common Rust type wrappers to extract the bare
+// type name for receiver binding. Examples:
+//
+//	"&dyn Repo"        → "Repo"
+//	"Box<dyn Repo>"    → "Repo"
+//	"Arc<MyService>"   → "MyService"
+//	"&mut Writer"      → "Writer"
+func normalizeRustType(typ string) string {
+	// Strip leading reference/mut.
+	for _, prefix := range []string{"&mut ", "&"} {
+		if strings.HasPrefix(typ, prefix) {
+			typ = strings.TrimPrefix(typ, prefix)
+			break
+		}
+	}
+	// Strip wrapper types.
+	for _, wrap := range []string{"Box<dyn ", "Box<", "Arc<dyn ", "Arc<", "Rc<dyn ", "Rc<", "dyn "} {
+		if strings.HasPrefix(typ, wrap) {
+			typ = strings.TrimPrefix(typ, wrap)
+			typ = strings.TrimSuffix(typ, ">")
+			break
+		}
+	}
+	return strings.TrimSpace(typ)
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.

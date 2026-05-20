@@ -2,6 +2,7 @@ package rust_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -427,6 +428,225 @@ func TestRustExtractor_ImportRootOnly(t *testing.T) {
 	}
 	if foundToID != "tokio" {
 		t.Fatalf("root-only `use tokio;` should emit IMPORTS ToID=%q, got %q", "tokio", foundToID)
+	}
+}
+
+// Issue #615 — fn names inside impl blocks must be qualified as "TypeName.fnName".
+func TestRustExtractor_ImplFnQualified(t *testing.T) {
+	src := `
+struct Foo {}
+impl Foo {
+    fn bar(&self) {}
+    fn new() -> Foo { Foo {} }
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("rust")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "foo.rs",
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var foundBar, foundNew bool
+	for _, e := range got {
+		if e.Kind == "SCOPE.Operation" && e.Name == "Foo.bar" {
+			foundBar = true
+		}
+		if e.Kind == "SCOPE.Operation" && e.Name == "Foo.new" {
+			foundNew = true
+		}
+		// Bare names must NOT appear as SCOPE.Operation.
+		if e.Kind == "SCOPE.Operation" && (e.Name == "bar" || e.Name == "new") {
+			t.Errorf("bare function name %q leaked — should be qualified as Foo.bar/Foo.new", e.Name)
+		}
+	}
+	if !foundBar {
+		t.Error("expected SCOPE.Operation Name=Foo.bar")
+	}
+	if !foundNew {
+		t.Error("expected SCOPE.Operation Name=Foo.new")
+	}
+
+	// The Foo impl entity must have CONTAINS edges pointing to qualified refs.
+	for _, e := range got {
+		if e.Kind == "SCOPE.Component" && e.Subtype == "impl" && e.Name == "Foo" {
+			var barRef, newRef bool
+			for _, r := range e.Relationships {
+				if r.Kind == "CONTAINS" && strings.Contains(r.ToID, "Foo.bar") {
+					barRef = true
+				}
+				if r.Kind == "CONTAINS" && strings.Contains(r.ToID, "Foo.new") {
+					newRef = true
+				}
+			}
+			if !barRef {
+				t.Error("Foo impl CONTAINS edge missing ref to Foo.bar")
+			}
+			if !newRef {
+				t.Error("Foo impl CONTAINS edge missing ref to Foo.new")
+			}
+		}
+	}
+}
+
+// Issue #615 — multiple impl blocks must not cross-contaminate names.
+func TestRustExtractor_ImplMultipleTypes(t *testing.T) {
+	src := `
+struct A {}
+struct B {}
+impl A { fn hello(&self) {} }
+impl B { fn world(&self) {} }
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("rust")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "multi.rs",
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var foundAHello, foundBWorld bool
+	for _, e := range got {
+		if e.Kind == "SCOPE.Operation" && e.Name == "A.hello" {
+			foundAHello = true
+		}
+		if e.Kind == "SCOPE.Operation" && e.Name == "B.world" {
+			foundBWorld = true
+		}
+		// Bare names must NOT appear.
+		if e.Kind == "SCOPE.Operation" && (e.Name == "hello" || e.Name == "world") {
+			t.Errorf("bare function name %q leaked from impl block", e.Name)
+		}
+	}
+	if !foundAHello {
+		t.Error("expected SCOPE.Operation Name=A.hello")
+	}
+	if !foundBWorld {
+		t.Error("expected SCOPE.Operation Name=B.world")
+	}
+}
+
+// Issue #616 — self.method() inside an impl block should resolve to TypeName.method.
+func TestRustExtractor_DynReceiverSelf(t *testing.T) {
+	src := `
+trait Processor { fn process(&self, x: u32) -> u32; }
+impl Processor for MyImpl {
+    fn process(&self, x: u32) -> u32 {
+        self.transform(x)
+    }
+    fn transform(&self, x: u32) -> u32 { x * 2 }
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("rust")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "processor.rs",
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find the "MyImpl.process" function entity and check its CALLS edges.
+	var callsTransform bool
+	for _, e := range got {
+		if e.Kind == "SCOPE.Operation" && e.Name == "MyImpl.process" {
+			for _, r := range e.Relationships {
+				if r.Kind == "CALLS" && strings.Contains(r.ToID, "transform") {
+					callsTransform = true
+				}
+			}
+		}
+	}
+	if !callsTransform {
+		t.Error("expected MyImpl.process to have a CALLS edge containing 'transform' (should be MyImpl.transform)")
+	}
+}
+
+// Issue #616 — typed dyn-receiver parameter calls should resolve to TraitName.method.
+func TestRustExtractor_DynParamReceiver(t *testing.T) {
+	src := `
+trait Repo { fn find(&self, id: u32) -> u32; }
+fn use_repo(r: &dyn Repo) {
+    r.find(1);
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("rust")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "repo.rs",
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var foundRepoFind bool
+	for _, e := range got {
+		if e.Kind == "SCOPE.Operation" && e.Name == "use_repo" {
+			for _, r := range e.Relationships {
+				if r.Kind == "CALLS" && r.ToID == "Repo.find" {
+					foundRepoFind = true
+				}
+			}
+		}
+	}
+	if !foundRepoFind {
+		t.Error("expected use_repo to have CALLS edge with ToID=Repo.find")
+	}
+}
+
+// Issue #615 negative — trait method bodies must NOT be owner-qualified.
+// Only impl methods get the "TypeName." prefix; trait methods remain bare.
+func TestRustExtractor_TraitFnNotQualified(t *testing.T) {
+	src := `
+trait MyTrait {
+    fn method(&self) {}
+}
+`
+	tree := parseForTest(t, src)
+	ext, _ := extractor.Get("rust")
+
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     "trait.rs",
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, e := range got {
+		if e.Kind == "SCOPE.Operation" && e.Name == "MyTrait.method" {
+			t.Error("trait method should NOT be qualified — expected Name=method, got MyTrait.method")
+		}
+	}
+	var foundBare bool
+	for _, e := range got {
+		if e.Kind == "SCOPE.Operation" && e.Name == "method" {
+			foundBare = true
+		}
+	}
+	if !foundBare {
+		t.Error("expected trait method Name=method (bare, unqualified)")
 	}
 }
 
