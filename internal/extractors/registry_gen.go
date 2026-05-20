@@ -14,6 +14,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/fish"
 	_ "github.com/cajasmota/archigraph/internal/extractors/fsharp"
 	_ "github.com/cajasmota/archigraph/internal/extractors/golang"
+	_ "github.com/cajasmota/archigraph/internal/extractors/haskell"
 	_ "github.com/cajasmota/archigraph/internal/extractors/graphql"
 	_ "github.com/cajasmota/archigraph/internal/extractors/groovy"
 	_ "github.com/cajasmota/archigraph/internal/extractors/hcl"

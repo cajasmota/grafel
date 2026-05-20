@@ -1,0 +1,51 @@
+{
+  "fixture_name": "haskell-warp-mini",
+  "language": "haskell",
+  "description": "Tiny Haskell WAI/Warp HTTP API exercising module declarations, data types, newtype, type synonyms, type class instances, import statements, function definitions with type signatures, and do-notation. Used by the extraction-quality benchmark to detect recall regressions in the haskell + warp framework path.",
+  "expected_entities": [
+    { "name": "Types",  "kind": "SCOPE.Component", "source_file": "src/Types.hs",   "must_exist": true, "note": "module declaration" },
+    { "name": "Store",  "kind": "SCOPE.Component", "source_file": "src/Store.hs",   "must_exist": true, "note": "module declaration" },
+    { "name": "Handler","kind": "SCOPE.Component", "source_file": "src/Handler.hs", "must_exist": true, "note": "module declaration" },
+    { "name": "Main",   "kind": "SCOPE.Component", "source_file": "src/Main.hs",    "must_exist": true, "note": "module declaration" },
+
+    { "name": "User",               "kind": "SCOPE.Component", "source_file": "src/Types.hs", "must_exist": true, "note": "data declaration" },
+    { "name": "CreateUserRequest",  "kind": "SCOPE.Component", "source_file": "src/Types.hs", "must_exist": true, "note": "data declaration" },
+    { "name": "AppConfig",          "kind": "SCOPE.Component", "source_file": "src/Types.hs", "must_exist": true, "note": "data declaration" },
+    { "name": "UserStore",          "kind": "SCOPE.Component", "source_file": "src/Types.hs", "must_exist": true, "note": "type synonym" },
+    { "name": "HandlerResult",      "kind": "SCOPE.Component", "source_file": "src/Types.hs", "must_exist": true, "note": "type synonym" },
+
+    { "name": "newStore",    "kind": "SCOPE.Operation", "source_file": "src/Store.hs", "must_exist": true },
+    { "name": "getUser",     "kind": "SCOPE.Operation", "source_file": "src/Store.hs", "must_exist": true },
+    { "name": "putUser",     "kind": "SCOPE.Operation", "source_file": "src/Store.hs", "must_exist": true },
+    { "name": "deleteUser",  "kind": "SCOPE.Operation", "source_file": "src/Store.hs", "must_exist": true },
+    { "name": "listUsers",   "kind": "SCOPE.Operation", "source_file": "src/Store.hs", "must_exist": true },
+    { "name": "countUsers",  "kind": "SCOPE.Operation", "source_file": "src/Store.hs", "must_exist": true },
+
+    { "name": "handleGetUser",    "kind": "SCOPE.Operation", "source_file": "src/Handler.hs", "must_exist": true },
+    { "name": "handleListUsers",  "kind": "SCOPE.Operation", "source_file": "src/Handler.hs", "must_exist": true },
+    { "name": "handleCreateUser", "kind": "SCOPE.Operation", "source_file": "src/Handler.hs", "must_exist": true },
+    { "name": "validateUser",     "kind": "SCOPE.Operation", "source_file": "src/Handler.hs", "must_exist": true },
+
+    { "name": "router",          "kind": "SCOPE.Operation", "source_file": "src/Main.hs", "must_exist": true },
+    { "name": "dispatchRequest", "kind": "SCOPE.Operation", "source_file": "src/Main.hs", "must_exist": true },
+    { "name": "mkApp",           "kind": "SCOPE.Operation", "source_file": "src/Main.hs", "must_exist": true },
+    { "name": "loadConfig",      "kind": "SCOPE.Operation", "source_file": "src/Main.hs", "must_exist": true },
+    { "name": "main",            "kind": "SCOPE.Operation", "source_file": "src/Main.hs", "must_exist": true }
+  ],
+  "expected_relationships": [
+    { "from_name": "Store",  "from_kind": "SCOPE.Component", "from_file": "src/Store.hs",
+      "kind": "IMPORTS", "to_name": "Types",
+      "must_exist": false, "nice_to_have": true,
+      "note": "import Types (User(..), UserStore)" },
+
+    { "from_name": "Handler", "from_kind": "SCOPE.Component", "from_file": "src/Handler.hs",
+      "kind": "IMPORTS", "to_name": "Store",
+      "must_exist": false, "nice_to_have": true,
+      "note": "import Store (getUser, putUser, listUsers)" },
+
+    { "from_name": "Main", "from_kind": "SCOPE.Component", "from_file": "src/Main.hs",
+      "kind": "IMPORTS", "to_name": "Handler",
+      "must_exist": false, "nice_to_have": true,
+      "note": "import Handler" }
+  ]
+}
