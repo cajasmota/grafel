@@ -5946,6 +5946,20 @@ func ReferencesEmbeddedWithAllowlist(records []types.EntityRecord, idx Index, al
 				newID, st := idx.rewriteOneWithCaller(r.ToID, r.Kind, parentSourceFile, parentPkgDir)
 				r.ToID = newID
 				applyEndpointStats(&stats, st, false)
+				// Issues #514 / #517 — framework-DSL receiver gate. The
+				// JS/TS extractor stamps Properties["receiver_package"] on
+				// CALLS edges whose receiver was bound to an Express-family
+				// or NestJS application object (express/koa/fastify/hono).
+				// Bare DSL method names like "get", "post", "listen",
+				// "status", "json", "send" cannot be added to the global
+				// jsDynamicPatterns catalog (collision with non-Express user
+				// code per issue #104). The receiver_package property is the
+				// framework-presence gate: if it is set, the edge is
+				// definitionally a framework-DSL call and should be Dynamic.
+				if r.Properties != nil && r.Properties["receiver_package"] != "" && (lang == "javascript" || lang == "typescript") {
+					stats.recordDisposition(DispositionDynamic, orig)
+					continue
+				}
 				d := idx.classifyDispositionLang(r.ToID, orig, lang, allow)
 				stats.recordDisposition(d, orig)
 			} else if isHexID(r.ToID) {

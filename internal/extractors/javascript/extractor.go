@@ -162,6 +162,14 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		x.importByLocal[b.localName] = b
 	}
 
+	// Issues #514 / #517 — build the framework-DSL tracker before walk()
+	// so that extractCallRelationships can stamp receiver_package on
+	// CALLS edges originating from Express-family or NestJS receivers.
+	// buildFrameworkDSLTracker is cheap: it iterates importByLocal (already
+	// populated above) and does one pass over the AST to find factory-call
+	// assignments. It returns nil when no express-family import is present.
+	x.frameworkDSL = x.buildFrameworkDSLTracker(root)
+
 	var extractErr error
 	func() {
 		defer func() {
@@ -255,6 +263,13 @@ type extractor struct {
 	// exists on disk rather than emitting an IMPORTS edge per candidate
 	// (which would inflate bug-extractor counts for the wrong ones).
 	repoRoot string
+
+	// frameworkDSL — issues #514 / #517. Built once per file after
+	// importByLocal is populated; nil when no express-family import is
+	// detected in the file (fast-path for non-Express files). When non-nil,
+	// extractCallRelationships stamps Properties["receiver_package"] on
+	// CALLS edges whose receiver traces to a framework-DSL object.
+	frameworkDSL *frameworkDSLTracker
 }
 
 // applyAlias attempts to substitute a path-alias prefix in spec using
@@ -1214,10 +1229,20 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 			continue
 		}
 		seen[target] = true
-		rels = append(rels, types.RelationshipRecord{
+		// Issues #514 / #517 — stamp receiver_package when the call's
+		// receiver was bound to an Express-family or NestJS application
+		// object. The resolver checks this property before
+		// classifyDispositionLang to route the edge to DispositionDynamic.
+		rel := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
-		})
+		}
+		if pkg := x.frameworkDSL.receiverPackageForCall(x, call); pkg != "" {
+			rel.Properties = map[string]string{
+				PropReceiverPackage: pkg,
+			}
+		}
+		rels = append(rels, rel)
 	}
 	return rels
 }
