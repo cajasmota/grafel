@@ -569,7 +569,6 @@ func TestMX1100_HTML_LanguageToken(t *testing.T) {
 		{"index.html"},
 		{"page.htm"},
 		{"templates/base.html"},
-		{"page.astro"},
 		{"view.erb"},
 		{"template.ejs"},
 		{"layout.hbs"},
@@ -593,6 +592,29 @@ func TestMX1100_HTML_LanguageToken(t *testing.T) {
 			}
 			if r.Language != "html" {
 				t.Errorf("file=%q: expected Language=html (not html_templates), got %q", tc.file, r.Language)
+			}
+		})
+	}
+}
+
+// TestAstroLanguageToken verifies that .astro files map to the "astro"
+// language token (matching extractor.Register("astro", …)).
+func TestAstroLanguageToken(t *testing.T) {
+	c := newTestClassifier(t)
+	ctx := context.Background()
+
+	for _, file := range []string{
+		"page.astro",
+		"src/pages/index.astro",
+		"src/components/Header.astro",
+	} {
+		t.Run(file, func(t *testing.T) {
+			r := c.Classify(ctx, file)
+			if r.Skip {
+				t.Errorf("file=%q: should NOT be skipped, reason=%q", file, r.SkipReason)
+			}
+			if r.Language != "astro" {
+				t.Errorf("file=%q: expected Language=astro, got %q", file, r.Language)
 			}
 		})
 	}

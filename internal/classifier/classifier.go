@@ -465,10 +465,11 @@ var extensionLanguageMap = map[string]string{
 	// Vue SFCs — dedicated vue extractor handles <template>+<script>+<style>
 	".vue": "vue",
 	// HTML / Templates — all route to "html" to match extractor.Register("html", …)
-	".html":    "html",
-	".htm":     "html",
-	".svelte":  "svelte",
-	".astro":      "html",
+	".html":   "html",
+	".htm":    "html",
+	".svelte": "svelte",
+	// Astro SFCs — dedicated astro extractor (feat/astro-extractor)
+	".astro": "astro",
 	".erb":        "html",
 	".ejs":        "html",
 	".hbs":        "html",
