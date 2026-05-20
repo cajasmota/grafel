@@ -1,0 +1,732 @@
+{
+  "topics": [
+    {
+      "id": "svc-orders::topic/orders.created",
+      "repo": "svc-orders",
+      "label": "orders.created",
+      "broker": "kafka",
+      "producer_ids": ["svc-orders::fn/OrderService.placeOrder", "svc-orders::fn/OrderService.retryOrder"],
+      "consumer_ids": [
+        "svc-inventory::fn/InventoryHandler.reserveStock",
+        "svc-notifications::fn/NotificationWorker.onOrderCreated",
+        "svc-analytics::fn/AnalyticsConsumer.trackOrder"
+      ],
+      "transforms_to": []
+    },
+    {
+      "id": "svc-orders::topic/orders.fulfilled",
+      "repo": "svc-orders",
+      "label": "orders.fulfilled",
+      "broker": "kafka",
+      "producer_ids": ["svc-inventory::fn/InventoryService.confirmReservation"],
+      "consumer_ids": [
+        "svc-shipping::fn/ShipmentWorker.schedulePickup",
+        "svc-billing::fn/BillingConsumer.chargeCustomer"
+      ],
+      "transforms_to": []
+    },
+    {
+      "id": "svc-inventory::topic/inventory.low-stock",
+      "repo": "svc-inventory",
+      "label": "inventory.low-stock",
+      "broker": "kafka",
+      "producer_ids": ["svc-inventory::fn/StockMonitor.checkThreshold"],
+      "consumer_ids": ["svc-purchasing::fn/PurchaseWorker.triggerReorder"],
+      "transforms_to": ["svc-inventory::topic/inventory.reorder-requested"]
+    },
+    {
+      "id": "svc-inventory::topic/inventory.reorder-requested",
+      "repo": "svc-inventory",
+      "label": "inventory.reorder-requested",
+      "broker": "kafka",
+      "producer_ids": ["svc-inventory::fn/StockMonitor.checkThreshold"],
+      "consumer_ids": ["svc-purchasing::fn/PurchaseWorker.createPO"],
+      "transforms_to": []
+    },
+    {
+      "id": "svc-payments::topic/payments.processed",
+      "repo": "svc-payments",
+      "label": "payments.processed",
+      "broker": "kafka",
+      "producer_ids": ["svc-payments::fn/PaymentGateway.processCharge"],
+      "consumer_ids": [
+        "svc-billing::fn/BillingConsumer.markInvoicePaid",
+        "svc-analytics::fn/AnalyticsConsumer.trackRevenue"
+      ],
+      "transforms_to": []
+    },
+    {
+      "id": "svc-users::topic/users.registered",
+      "repo": "svc-users",
+      "label": "users.registered",
+      "broker": "kafka",
+      "producer_ids": ["svc-users::fn/AuthService.completeRegistration"],
+      "consumer_ids": [
+        "svc-notifications::fn/NotificationWorker.sendWelcome",
+        "svc-crm::fn/CrmSync.createContact"
+      ],
+      "transforms_to": []
+    },
+    {
+      "id": "svc-search::topic/search.index-request",
+      "repo": "svc-search",
+      "label": "search.index-request",
+      "broker": "kafka",
+      "producer_ids": [
+        "svc-catalog::fn/CatalogService.publishProduct",
+        "svc-catalog::fn/CatalogService.updateProduct"
+      ],
+      "consumer_ids": ["svc-search::fn/IndexWorker.ingestDocument"],
+      "transforms_to": []
+    },
+    {
+      "id": "svc-audit::topic/audit.events",
+      "repo": "svc-audit",
+      "label": "audit.events",
+      "broker": "kafka",
+      "producer_ids": [
+        "svc-orders::fn/OrderService.placeOrder",
+        "svc-users::fn/AuthService.login",
+        "svc-payments::fn/PaymentGateway.processCharge"
+      ],
+      "consumer_ids": ["svc-audit::fn/AuditWriter.persist"],
+      "transforms_to": []
+    }
+  ],
+  "queues": [
+    {
+      "id": "svc-notifications::queue/email-notifications",
+      "repo": "svc-notifications",
+      "label": "email-notifications",
+      "broker": "rabbitmq",
+      "queue_type": "direct",
+      "producer_ids": ["svc-notifications::fn/NotificationRouter.routeEmail"],
+      "consumer_ids": ["svc-notifications::fn/EmailWorker.sendEmail"]
+    },
+    {
+      "id": "svc-notifications::queue/sms-notifications",
+      "repo": "svc-notifications",
+      "label": "sms-notifications",
+      "broker": "rabbitmq",
+      "queue_type": "direct",
+      "producer_ids": ["svc-notifications::fn/NotificationRouter.routeSms"],
+      "consumer_ids": ["svc-notifications::fn/SmsWorker.sendSms"]
+    },
+    {
+      "id": "svc-notifications::queue/push-broadcast",
+      "repo": "svc-notifications",
+      "label": "push-broadcast",
+      "broker": "rabbitmq",
+      "queue_type": "fanout",
+      "producer_ids": ["svc-notifications::fn/BroadcastService.fanout"],
+      "consumer_ids": [
+        "svc-notifications::fn/MobilePushWorker.sendIos",
+        "svc-notifications::fn/MobilePushWorker.sendAndroid"
+      ]
+    },
+    {
+      "id": "svc-reports::queue/report-generation",
+      "repo": "svc-reports",
+      "label": "report-generation",
+      "broker": "sqs",
+      "queue_type": "standard",
+      "producer_ids": ["svc-reports::fn/ReportScheduler.enqueue"],
+      "consumer_ids": ["svc-reports::fn/ReportWorker.generate"]
+    },
+    {
+      "id": "svc-exports::queue/data-export",
+      "repo": "svc-exports",
+      "label": "data-export",
+      "broker": "sqs",
+      "queue_type": "fifo",
+      "producer_ids": ["svc-exports::fn/ExportController.requestExport"],
+      "consumer_ids": ["svc-exports::fn/ExportWorker.process"]
+    },
+    {
+      "id": "svc-ingest::queue/raw-events",
+      "repo": "svc-ingest",
+      "label": "raw-events",
+      "broker": "sqs",
+      "queue_type": "standard",
+      "producer_ids": ["svc-ingest::fn/IngestGateway.receive"],
+      "consumer_ids": ["svc-ingest::fn/NormalizerWorker.normalize"]
+    },
+    {
+      "id": "svc-catalog::queue/catalog.updates",
+      "repo": "svc-catalog",
+      "label": "catalog.updates",
+      "broker": "pubsub",
+      "queue_type": "subscription",
+      "producer_ids": ["svc-catalog::fn/CatalogService.updateProduct"],
+      "consumer_ids": [
+        "svc-search::fn/SearchIndexer.onCatalogUpdate",
+        "svc-cdn::fn/CdnInvalidator.flush"
+      ]
+    },
+    {
+      "id": "svc-catalog::queue/price.updates",
+      "repo": "svc-catalog",
+      "label": "price.updates",
+      "broker": "pubsub",
+      "queue_type": "subscription",
+      "producer_ids": ["svc-pricing::fn/PricingEngine.publishUpdate"],
+      "consumer_ids": ["svc-catalog::fn/PriceSync.applyUpdate"]
+    }
+  ],
+  "channels": [
+    {
+      "id": "svc-realtime::ws/order-tracking",
+      "repo": "svc-realtime",
+      "label": "order-tracking",
+      "channel_type": "websocket",
+      "server_endpoint": "/ws/orders/{orderId}/track",
+      "emitter_ids": ["svc-realtime::fn/OrderTrackingHub.broadcastStatus"],
+      "subscriber_ids": [
+        "frontend-web::comp/OrderTracker",
+        "frontend-mobile::comp/TrackingScreen"
+      ]
+    },
+    {
+      "id": "svc-realtime::sse/inventory-feed",
+      "repo": "svc-realtime",
+      "label": "inventory-feed",
+      "channel_type": "sse",
+      "server_endpoint": "/events/inventory",
+      "emitter_ids": ["svc-realtime::fn/InventoryEventStream.push"],
+      "subscriber_ids": ["frontend-web::comp/InventoryDashboard"]
+    }
+  ],
+  "graphql_subscriptions": [
+    {
+      "id": "svc-gql::subscription/orderStatusChanged",
+      "repo": "svc-gql",
+      "label": "orderStatusChanged",
+      "schema_type": "Subscription",
+      "return_type": "OrderStatus",
+      "publisher_ids": ["svc-gql::fn/OrderResolver.publishStatus"],
+      "subscriber_ids": [
+        "frontend-web::comp/OrderStatusWidget",
+        "frontend-web::comp/AdminOrderList"
+      ]
+    }
+  ],
+  "nats_subjects": [
+    {
+      "id": "svc-gateway::nats/gateway.requests",
+      "repo": "svc-gateway",
+      "label": "gateway.requests",
+      "broker": "nats",
+      "producer_ids": ["svc-gateway::fn/RequestRouter.dispatch"],
+      "consumer_ids": [
+        "svc-catalog::fn/CatalogHandler.handle",
+        "svc-users::fn/UserHandler.handle"
+      ]
+    },
+    {
+      "id": "svc-gateway::nats/gateway.responses",
+      "repo": "svc-gateway",
+      "label": "gateway.responses",
+      "broker": "nats",
+      "producer_ids": [
+        "svc-catalog::fn/CatalogHandler.reply",
+        "svc-users::fn/UserHandler.reply"
+      ],
+      "consumer_ids": ["svc-gateway::fn/RequestRouter.aggregate"]
+    },
+    {
+      "id": "svc-telemetry::nats/metrics.raw",
+      "repo": "svc-telemetry",
+      "label": "metrics.raw",
+      "broker": "nats",
+      "producer_ids": ["svc-telemetry::fn/MetricsCollector.emit"],
+      "consumer_ids": ["svc-telemetry::fn/MetricsAggregator.aggregate"]
+    },
+    {
+      "id": "svc-telemetry::nats/metrics.aggregated",
+      "repo": "svc-telemetry",
+      "label": "metrics.aggregated",
+      "broker": "nats",
+      "producer_ids": ["svc-telemetry::fn/MetricsAggregator.aggregate"],
+      "consumer_ids": [
+        "svc-telemetry::fn/AlertEngine.evaluate",
+        "svc-telemetry::fn/DashboardFeed.publish"
+      ]
+    }
+  ],
+  "transforms": [
+    {
+      "from_id": "svc-inventory::topic/inventory.low-stock",
+      "to_id": "svc-inventory::topic/inventory.reorder-requested",
+      "transformer_id": "svc-inventory::fn/StockTransformer.transform",
+      "repo": "svc-inventory"
+    }
+  ],
+  "producers": {
+    "svc-orders::fn/OrderService.placeOrder": {
+      "id": "svc-orders::fn/OrderService.placeOrder",
+      "label": "OrderService.placeOrder",
+      "repo": "svc-orders",
+      "kind": "Function",
+      "source_file": "src/orders/service.ts",
+      "start_line": 42
+    },
+    "svc-orders::fn/OrderService.retryOrder": {
+      "id": "svc-orders::fn/OrderService.retryOrder",
+      "label": "OrderService.retryOrder",
+      "repo": "svc-orders",
+      "kind": "Function",
+      "source_file": "src/orders/service.ts",
+      "start_line": 88
+    },
+    "svc-inventory::fn/InventoryService.confirmReservation": {
+      "id": "svc-inventory::fn/InventoryService.confirmReservation",
+      "label": "InventoryService.confirmReservation",
+      "repo": "svc-inventory",
+      "kind": "Function",
+      "source_file": "src/inventory/service.py",
+      "start_line": 110
+    },
+    "svc-inventory::fn/StockMonitor.checkThreshold": {
+      "id": "svc-inventory::fn/StockMonitor.checkThreshold",
+      "label": "StockMonitor.checkThreshold",
+      "repo": "svc-inventory",
+      "kind": "Function",
+      "source_file": "src/inventory/monitor.py",
+      "start_line": 35
+    },
+    "svc-payments::fn/PaymentGateway.processCharge": {
+      "id": "svc-payments::fn/PaymentGateway.processCharge",
+      "label": "PaymentGateway.processCharge",
+      "repo": "svc-payments",
+      "kind": "Function",
+      "source_file": "internal/payments/gateway.go",
+      "start_line": 67
+    },
+    "svc-users::fn/AuthService.completeRegistration": {
+      "id": "svc-users::fn/AuthService.completeRegistration",
+      "label": "AuthService.completeRegistration",
+      "repo": "svc-users",
+      "kind": "Function",
+      "source_file": "src/auth/service.rb",
+      "start_line": 23
+    },
+    "svc-catalog::fn/CatalogService.publishProduct": {
+      "id": "svc-catalog::fn/CatalogService.publishProduct",
+      "label": "CatalogService.publishProduct",
+      "repo": "svc-catalog",
+      "kind": "Function",
+      "source_file": "src/catalog/service.ts",
+      "start_line": 55
+    },
+    "svc-catalog::fn/CatalogService.updateProduct": {
+      "id": "svc-catalog::fn/CatalogService.updateProduct",
+      "label": "CatalogService.updateProduct",
+      "repo": "svc-catalog",
+      "kind": "Function",
+      "source_file": "src/catalog/service.ts",
+      "start_line": 78
+    },
+    "svc-audit::fn/AuditWriter.persist": {
+      "id": "svc-audit::fn/AuditWriter.persist",
+      "label": "AuditWriter.persist",
+      "repo": "svc-audit",
+      "kind": "Function",
+      "source_file": "internal/audit/writer.go",
+      "start_line": 19
+    },
+    "svc-notifications::fn/NotificationRouter.routeEmail": {
+      "id": "svc-notifications::fn/NotificationRouter.routeEmail",
+      "label": "NotificationRouter.routeEmail",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/router.py",
+      "start_line": 44
+    },
+    "svc-notifications::fn/NotificationRouter.routeSms": {
+      "id": "svc-notifications::fn/NotificationRouter.routeSms",
+      "label": "NotificationRouter.routeSms",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/router.py",
+      "start_line": 60
+    },
+    "svc-notifications::fn/BroadcastService.fanout": {
+      "id": "svc-notifications::fn/BroadcastService.fanout",
+      "label": "BroadcastService.fanout",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/broadcast.py",
+      "start_line": 12
+    },
+    "svc-reports::fn/ReportScheduler.enqueue": {
+      "id": "svc-reports::fn/ReportScheduler.enqueue",
+      "label": "ReportScheduler.enqueue",
+      "repo": "svc-reports",
+      "kind": "Function",
+      "source_file": "src/reports/scheduler.py",
+      "start_line": 30
+    },
+    "svc-exports::fn/ExportController.requestExport": {
+      "id": "svc-exports::fn/ExportController.requestExport",
+      "label": "ExportController.requestExport",
+      "repo": "svc-exports",
+      "kind": "Function",
+      "source_file": "src/exports/controller.ts",
+      "start_line": 18
+    },
+    "svc-ingest::fn/IngestGateway.receive": {
+      "id": "svc-ingest::fn/IngestGateway.receive",
+      "label": "IngestGateway.receive",
+      "repo": "svc-ingest",
+      "kind": "Function",
+      "source_file": "internal/ingest/gateway.go",
+      "start_line": 41
+    },
+    "svc-catalog::fn/CatalogService.updateProduct_pubsub": {
+      "id": "svc-catalog::fn/CatalogService.updateProduct",
+      "label": "CatalogService.updateProduct",
+      "repo": "svc-catalog",
+      "kind": "Function",
+      "source_file": "src/catalog/service.ts",
+      "start_line": 78
+    },
+    "svc-pricing::fn/PricingEngine.publishUpdate": {
+      "id": "svc-pricing::fn/PricingEngine.publishUpdate",
+      "label": "PricingEngine.publishUpdate",
+      "repo": "svc-pricing",
+      "kind": "Function",
+      "source_file": "src/pricing/engine.ts",
+      "start_line": 90
+    },
+    "svc-realtime::fn/OrderTrackingHub.broadcastStatus": {
+      "id": "svc-realtime::fn/OrderTrackingHub.broadcastStatus",
+      "label": "OrderTrackingHub.broadcastStatus",
+      "repo": "svc-realtime",
+      "kind": "Function",
+      "source_file": "src/realtime/hub.go",
+      "start_line": 55
+    },
+    "svc-realtime::fn/InventoryEventStream.push": {
+      "id": "svc-realtime::fn/InventoryEventStream.push",
+      "label": "InventoryEventStream.push",
+      "repo": "svc-realtime",
+      "kind": "Function",
+      "source_file": "src/realtime/streams.go",
+      "start_line": 22
+    },
+    "svc-gql::fn/OrderResolver.publishStatus": {
+      "id": "svc-gql::fn/OrderResolver.publishStatus",
+      "label": "OrderResolver.publishStatus",
+      "repo": "svc-gql",
+      "kind": "Function",
+      "source_file": "src/resolvers/order.ts",
+      "start_line": 88
+    },
+    "svc-gateway::fn/RequestRouter.dispatch": {
+      "id": "svc-gateway::fn/RequestRouter.dispatch",
+      "label": "RequestRouter.dispatch",
+      "repo": "svc-gateway",
+      "kind": "Function",
+      "source_file": "internal/gateway/router.go",
+      "start_line": 34
+    },
+    "svc-catalog::fn/CatalogHandler.reply": {
+      "id": "svc-catalog::fn/CatalogHandler.reply",
+      "label": "CatalogHandler.reply",
+      "repo": "svc-catalog",
+      "kind": "Function",
+      "source_file": "internal/catalog/handler.go",
+      "start_line": 66
+    },
+    "svc-users::fn/UserHandler.reply": {
+      "id": "svc-users::fn/UserHandler.reply",
+      "label": "UserHandler.reply",
+      "repo": "svc-users",
+      "kind": "Function",
+      "source_file": "internal/users/handler.go",
+      "start_line": 43
+    },
+    "svc-telemetry::fn/MetricsCollector.emit": {
+      "id": "svc-telemetry::fn/MetricsCollector.emit",
+      "label": "MetricsCollector.emit",
+      "repo": "svc-telemetry",
+      "kind": "Function",
+      "source_file": "internal/telemetry/collector.go",
+      "start_line": 28
+    },
+    "svc-telemetry::fn/MetricsAggregator.aggregate": {
+      "id": "svc-telemetry::fn/MetricsAggregator.aggregate",
+      "label": "MetricsAggregator.aggregate",
+      "repo": "svc-telemetry",
+      "kind": "Function",
+      "source_file": "internal/telemetry/aggregator.go",
+      "start_line": 51
+    }
+  },
+  "consumers": {
+    "svc-inventory::fn/InventoryHandler.reserveStock": {
+      "id": "svc-inventory::fn/InventoryHandler.reserveStock",
+      "label": "InventoryHandler.reserveStock",
+      "repo": "svc-inventory",
+      "kind": "Function",
+      "source_file": "src/inventory/handler.py",
+      "start_line": 15
+    },
+    "svc-notifications::fn/NotificationWorker.onOrderCreated": {
+      "id": "svc-notifications::fn/NotificationWorker.onOrderCreated",
+      "label": "NotificationWorker.onOrderCreated",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/worker.py",
+      "start_line": 20
+    },
+    "svc-analytics::fn/AnalyticsConsumer.trackOrder": {
+      "id": "svc-analytics::fn/AnalyticsConsumer.trackOrder",
+      "label": "AnalyticsConsumer.trackOrder",
+      "repo": "svc-analytics",
+      "kind": "Function",
+      "source_file": "src/analytics/consumer.py",
+      "start_line": 33
+    },
+    "svc-shipping::fn/ShipmentWorker.schedulePickup": {
+      "id": "svc-shipping::fn/ShipmentWorker.schedulePickup",
+      "label": "ShipmentWorker.schedulePickup",
+      "repo": "svc-shipping",
+      "kind": "Function",
+      "source_file": "src/shipping/worker.go",
+      "start_line": 18
+    },
+    "svc-billing::fn/BillingConsumer.chargeCustomer": {
+      "id": "svc-billing::fn/BillingConsumer.chargeCustomer",
+      "label": "BillingConsumer.chargeCustomer",
+      "repo": "svc-billing",
+      "kind": "Function",
+      "source_file": "src/billing/consumer.java",
+      "start_line": 44
+    },
+    "svc-purchasing::fn/PurchaseWorker.triggerReorder": {
+      "id": "svc-purchasing::fn/PurchaseWorker.triggerReorder",
+      "label": "PurchaseWorker.triggerReorder",
+      "repo": "svc-purchasing",
+      "kind": "Function",
+      "source_file": "src/purchasing/worker.py",
+      "start_line": 27
+    },
+    "svc-purchasing::fn/PurchaseWorker.createPO": {
+      "id": "svc-purchasing::fn/PurchaseWorker.createPO",
+      "label": "PurchaseWorker.createPO",
+      "repo": "svc-purchasing",
+      "kind": "Function",
+      "source_file": "src/purchasing/worker.py",
+      "start_line": 55
+    },
+    "svc-billing::fn/BillingConsumer.markInvoicePaid": {
+      "id": "svc-billing::fn/BillingConsumer.markInvoicePaid",
+      "label": "BillingConsumer.markInvoicePaid",
+      "repo": "svc-billing",
+      "kind": "Function",
+      "source_file": "src/billing/consumer.java",
+      "start_line": 72
+    },
+    "svc-analytics::fn/AnalyticsConsumer.trackRevenue": {
+      "id": "svc-analytics::fn/AnalyticsConsumer.trackRevenue",
+      "label": "AnalyticsConsumer.trackRevenue",
+      "repo": "svc-analytics",
+      "kind": "Function",
+      "source_file": "src/analytics/consumer.py",
+      "start_line": 60
+    },
+    "svc-notifications::fn/NotificationWorker.sendWelcome": {
+      "id": "svc-notifications::fn/NotificationWorker.sendWelcome",
+      "label": "NotificationWorker.sendWelcome",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/worker.py",
+      "start_line": 44
+    },
+    "svc-crm::fn/CrmSync.createContact": {
+      "id": "svc-crm::fn/CrmSync.createContact",
+      "label": "CrmSync.createContact",
+      "repo": "svc-crm",
+      "kind": "Function",
+      "source_file": "src/crm/sync.ts",
+      "start_line": 11
+    },
+    "svc-search::fn/IndexWorker.ingestDocument": {
+      "id": "svc-search::fn/IndexWorker.ingestDocument",
+      "label": "IndexWorker.ingestDocument",
+      "repo": "svc-search",
+      "kind": "Function",
+      "source_file": "internal/search/worker.go",
+      "start_line": 38
+    },
+    "svc-audit::fn/AuditWriter.persist_consumer": {
+      "id": "svc-audit::fn/AuditWriter.persist",
+      "label": "AuditWriter.persist",
+      "repo": "svc-audit",
+      "kind": "Function",
+      "source_file": "internal/audit/writer.go",
+      "start_line": 19
+    },
+    "svc-notifications::fn/EmailWorker.sendEmail": {
+      "id": "svc-notifications::fn/EmailWorker.sendEmail",
+      "label": "EmailWorker.sendEmail",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/workers/email.py",
+      "start_line": 14
+    },
+    "svc-notifications::fn/SmsWorker.sendSms": {
+      "id": "svc-notifications::fn/SmsWorker.sendSms",
+      "label": "SmsWorker.sendSms",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/workers/sms.py",
+      "start_line": 9
+    },
+    "svc-notifications::fn/MobilePushWorker.sendIos": {
+      "id": "svc-notifications::fn/MobilePushWorker.sendIos",
+      "label": "MobilePushWorker.sendIos",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/workers/push.py",
+      "start_line": 18
+    },
+    "svc-notifications::fn/MobilePushWorker.sendAndroid": {
+      "id": "svc-notifications::fn/MobilePushWorker.sendAndroid",
+      "label": "MobilePushWorker.sendAndroid",
+      "repo": "svc-notifications",
+      "kind": "Function",
+      "source_file": "src/notifications/workers/push.py",
+      "start_line": 38
+    },
+    "svc-reports::fn/ReportWorker.generate": {
+      "id": "svc-reports::fn/ReportWorker.generate",
+      "label": "ReportWorker.generate",
+      "repo": "svc-reports",
+      "kind": "Function",
+      "source_file": "src/reports/worker.py",
+      "start_line": 22
+    },
+    "svc-exports::fn/ExportWorker.process": {
+      "id": "svc-exports::fn/ExportWorker.process",
+      "label": "ExportWorker.process",
+      "repo": "svc-exports",
+      "kind": "Function",
+      "source_file": "src/exports/worker.ts",
+      "start_line": 15
+    },
+    "svc-ingest::fn/NormalizerWorker.normalize": {
+      "id": "svc-ingest::fn/NormalizerWorker.normalize",
+      "label": "NormalizerWorker.normalize",
+      "repo": "svc-ingest",
+      "kind": "Function",
+      "source_file": "internal/ingest/normalizer.go",
+      "start_line": 29
+    },
+    "svc-search::fn/SearchIndexer.onCatalogUpdate": {
+      "id": "svc-search::fn/SearchIndexer.onCatalogUpdate",
+      "label": "SearchIndexer.onCatalogUpdate",
+      "repo": "svc-search",
+      "kind": "Function",
+      "source_file": "internal/search/indexer.go",
+      "start_line": 44
+    },
+    "svc-cdn::fn/CdnInvalidator.flush": {
+      "id": "svc-cdn::fn/CdnInvalidator.flush",
+      "label": "CdnInvalidator.flush",
+      "repo": "svc-cdn",
+      "kind": "Function",
+      "source_file": "src/cdn/invalidator.ts",
+      "start_line": 8
+    },
+    "svc-catalog::fn/PriceSync.applyUpdate": {
+      "id": "svc-catalog::fn/PriceSync.applyUpdate",
+      "label": "PriceSync.applyUpdate",
+      "repo": "svc-catalog",
+      "kind": "Function",
+      "source_file": "src/catalog/pricesync.ts",
+      "start_line": 31
+    },
+    "frontend-web::comp/OrderTracker": {
+      "id": "frontend-web::comp/OrderTracker",
+      "label": "OrderTracker",
+      "repo": "frontend-web",
+      "kind": "Component",
+      "source_file": "src/components/OrderTracker.tsx",
+      "start_line": 12
+    },
+    "frontend-mobile::comp/TrackingScreen": {
+      "id": "frontend-mobile::comp/TrackingScreen",
+      "label": "TrackingScreen",
+      "repo": "frontend-mobile",
+      "kind": "Component",
+      "source_file": "screens/TrackingScreen.tsx",
+      "start_line": 8
+    },
+    "frontend-web::comp/InventoryDashboard": {
+      "id": "frontend-web::comp/InventoryDashboard",
+      "label": "InventoryDashboard",
+      "repo": "frontend-web",
+      "kind": "Component",
+      "source_file": "src/components/InventoryDashboard.tsx",
+      "start_line": 20
+    },
+    "frontend-web::comp/OrderStatusWidget": {
+      "id": "frontend-web::comp/OrderStatusWidget",
+      "label": "OrderStatusWidget",
+      "repo": "frontend-web",
+      "kind": "Component",
+      "source_file": "src/components/OrderStatusWidget.tsx",
+      "start_line": 5
+    },
+    "frontend-web::comp/AdminOrderList": {
+      "id": "frontend-web::comp/AdminOrderList",
+      "label": "AdminOrderList",
+      "repo": "frontend-web",
+      "kind": "Component",
+      "source_file": "src/components/AdminOrderList.tsx",
+      "start_line": 14
+    },
+    "svc-catalog::fn/CatalogHandler.handle": {
+      "id": "svc-catalog::fn/CatalogHandler.handle",
+      "label": "CatalogHandler.handle",
+      "repo": "svc-catalog",
+      "kind": "Function",
+      "source_file": "internal/catalog/handler.go",
+      "start_line": 28
+    },
+    "svc-users::fn/UserHandler.handle": {
+      "id": "svc-users::fn/UserHandler.handle",
+      "label": "UserHandler.handle",
+      "repo": "svc-users",
+      "kind": "Function",
+      "source_file": "internal/users/handler.go",
+      "start_line": 17
+    },
+    "svc-gateway::fn/RequestRouter.aggregate": {
+      "id": "svc-gateway::fn/RequestRouter.aggregate",
+      "label": "RequestRouter.aggregate",
+      "repo": "svc-gateway",
+      "kind": "Function",
+      "source_file": "internal/gateway/router.go",
+      "start_line": 78
+    },
+    "svc-telemetry::fn/AlertEngine.evaluate": {
+      "id": "svc-telemetry::fn/AlertEngine.evaluate",
+      "label": "AlertEngine.evaluate",
+      "repo": "svc-telemetry",
+      "kind": "Function",
+      "source_file": "internal/telemetry/alerts.go",
+      "start_line": 15
+    },
+    "svc-telemetry::fn/DashboardFeed.publish": {
+      "id": "svc-telemetry::fn/DashboardFeed.publish",
+      "label": "DashboardFeed.publish",
+      "repo": "svc-telemetry",
+      "kind": "Function",
+      "source_file": "internal/telemetry/feed.go",
+      "start_line": 22
+    }
+  }
+}

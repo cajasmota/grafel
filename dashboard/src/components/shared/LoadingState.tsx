@@ -96,6 +96,18 @@ export function FlowListSkeleton({ count = 8 }: { count?: number }) {
   )
 }
 
+/** Skeleton chip row for topology protocol filters */
+export function ProtocolChipsSkeleton() {
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-800" role="status" aria-label="Loading filters…">
+      {Array.from({ length: 9 }, (_, i) => (
+        <Skeleton key={i} className={`h-6 rounded-full ${i === 0 ? 'w-8' : 'w-16'}`} />
+      ))}
+      <span className="sr-only">Loading…</span>
+    </div>
+  )
+}
+
 /** Skeleton for the swim-lane panel */
 export function SwimLaneSkeleton() {
   return (

@@ -3,7 +3,7 @@
  * All color values are Tailwind utility classes — dark-mode-aware via the dark: prefix.
  */
 
-import type { HttpVerb, EntityKind } from '@/types/api'
+import type { HttpVerb, EntityKind, TopologyProtocol } from '@/types/api'
 
 // ────────────────────────────────────────────────────────────────────────────
 // HTTP Verb colors
@@ -92,4 +92,38 @@ export function repoColor(slug: string): (typeof REPO_PALETTE)[number] {
     repoCache.set(slug, REPO_PALETTE[hashStr(slug) % REPO_PALETTE.length])
   }
   return repoCache.get(slug)!
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Protocol colors — each broker/channel protocol gets a distinct hue + shape
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface ProtocolColorSpec {
+  /** Tailwind bg class */
+  bg: string
+  /** Tailwind text class */
+  text: string
+  /** Tailwind border class */
+  border: string
+  /** CSS hex for canvas rendering (SVG / canvas cannot use Tailwind classes) */
+  hex: string
+  /** Accessible shape name for protocol nodes */
+  shape: 'square' | 'circle' | 'hexagon' | 'diamond' | 'triangle' | 'star' | 'pentagon' | 'cross'
+  /** Human-readable label */
+  label: string
+}
+
+export const PROTOCOL_COLORS: Record<TopologyProtocol, ProtocolColorSpec> = {
+  kafka:                { bg: 'bg-cyan-900/40',    text: 'text-cyan-300',    border: 'border-cyan-700',    hex: '#22d3ee', shape: 'square',   label: 'Kafka' },
+  rabbitmq:             { bg: 'bg-amber-900/40',   text: 'text-amber-300',   border: 'border-amber-700',   hex: '#fbbf24', shape: 'circle',   label: 'RabbitMQ' },
+  sqs:                  { bg: 'bg-orange-900/40',  text: 'text-orange-300',  border: 'border-orange-700',  hex: '#fb923c', shape: 'hexagon',  label: 'SQS' },
+  pubsub:               { bg: 'bg-blue-900/40',    text: 'text-blue-300',    border: 'border-blue-700',    hex: '#60a5fa', shape: 'diamond',  label: 'Pub/Sub' },
+  nats:                 { bg: 'bg-fuchsia-900/40', text: 'text-fuchsia-300', border: 'border-fuchsia-700', hex: '#e879f9', shape: 'pentagon', label: 'NATS' },
+  websocket:            { bg: 'bg-teal-900/40',    text: 'text-teal-300',    border: 'border-teal-700',    hex: '#2dd4bf', shape: 'triangle', label: 'WebSocket' },
+  sse:                  { bg: 'bg-indigo-900/40',  text: 'text-indigo-300',  border: 'border-indigo-700',  hex: '#818cf8', shape: 'star',     label: 'SSE' },
+  graphql_subscription: { bg: 'bg-pink-900/40',    text: 'text-pink-300',    border: 'border-pink-700',    hex: '#f472b6', shape: 'cross',    label: 'GraphQL Sub' },
+}
+
+export function protocolColor(protocol: TopologyProtocol): ProtocolColorSpec {
+  return PROTOCOL_COLORS[protocol]
 }

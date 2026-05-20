@@ -257,32 +257,90 @@ export interface SwimLaneEntry {
 // Surface 3 — Broker Topology
 // ────────────────────────────────────────────────────────────────────────────
 
-export interface MessageTopic {
+export type BrokerProtocol = 'kafka' | 'rabbitmq' | 'sqs' | 'pubsub' | 'nats'
+export type ChannelProtocol = 'websocket' | 'sse' | 'graphql_subscription'
+export type TopologyProtocol = BrokerProtocol | ChannelProtocol
+
+/** A lightweight entity stub carried in topology responses (avoids re-fetching full Entity) */
+export interface TopologyEntityStub {
+  id: string
+  label: string
+  repo: string
+  kind: EntityKind
+  source_file: string
+  start_line: number
+}
+
+export interface TopicNode {
   id: string
   repo: string
   label: string
-  broker: string
-  producers: string[]
-  consumers: string[]
-  transforms_to?: string[]
+  broker: BrokerProtocol
+  producer_ids: string[]
+  consumer_ids: string[]
+  transforms_to: string[]
 }
 
 export interface QueueNode {
   id: string
   repo: string
   label: string
-  broker: string
-  producers: string[]
-  consumers: string[]
+  broker: BrokerProtocol
+  queue_type?: 'direct' | 'fanout' | 'standard' | 'fifo' | 'subscription'
+  producer_ids: string[]
+  consumer_ids: string[]
 }
 
-export interface ChannelEvent {
+export interface NatsSubject {
   id: string
   repo: string
   label: string
-  channel_type: 'websocket' | 'sse' | 'graphql_subscription'
-  emitters: string[]
-  subscribers: string[]
+  broker: 'nats'
+  producer_ids: string[]
+  consumer_ids: string[]
+}
+
+export interface ChannelNode {
+  id: string
+  repo: string
+  label: string
+  channel_type: ChannelProtocol
+  server_endpoint?: string
+  emitter_ids: string[]
+  subscriber_ids: string[]
+}
+
+export interface GraphQLSubscription {
+  id: string
+  repo: string
+  label: string
+  schema_type: string
+  return_type?: string
+  publisher_ids: string[]
+  subscriber_ids: string[]
+}
+
+export interface TopologyTransform {
+  from_id: string
+  to_id: string
+  transformer_id: string
+  repo: string
+}
+
+export interface TopologyResponse {
+  topics: TopicNode[]
+  queues: QueueNode[]
+  channels: ChannelNode[]
+  graphql_subscriptions: GraphQLSubscription[]
+  nats_subjects: NatsSubject[]
+  transforms: TopologyTransform[]
+  producers: Record<string, TopologyEntityStub>
+  consumers: Record<string, TopologyEntityStub>
+}
+
+export interface TopologyFilters {
+  protocols?: TopologyProtocol[]
+  topic?: string
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -323,4 +381,65 @@ export interface RepairResidual {
   confidence: number
   reasoning?: string
   resolved_at?: string
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Surface 1 — Graph Viewer
+// ────────────────────────────────────────────────────────────────────────────
+
+export type LodLevel = 'zoom-out' | 'mid' | 'zoom-in' | 'blocked'
+
+/** A community centroid node — rendered at zoom-out tier only */
+export interface CommunityCentroid {
+  community_id: number
+  size: number
+  auto_name?: string
+  agent_name?: string
+  top_entity_ids: string[]
+}
+
+/** Flat node as understood by 3d-force-graph / react-force-graph-2d */
+export interface GraphNode {
+  id: string
+  label: string
+  kind: EntityKind
+  repo: string
+  community_id?: number
+  pagerank?: number
+  /** true when this node is a community centroid (zoom-out tier) */
+  is_centroid?: boolean
+  centroid_size?: number          // member count — drives sphere radius for centroids
+  source_file?: string
+  start_line?: number
+  properties?: Record<string, unknown>
+}
+
+/** Flat edge as understood by the graph renderers */
+export interface GraphEdge {
+  id: string                      // synthetic: `${from_id}::${to_id}::${kind}`
+  source: string                  // node id
+  target: string                  // node id
+  kind: RelationshipKind
+  cross_repo?: boolean
+}
+
+export interface GraphResponse {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  communities: Community[]
+  lod: LodLevel
+  total_node_count: number        // unfiltered count — drives hard-cap check
+}
+
+export interface GraphFilters {
+  lod?: LodLevel
+  edge_kinds?: RelationshipKind[]
+  repo?: string
+}
+
+/** 1-hop neighbor response for entity inspector */
+export interface EntityNeighborResponse {
+  entity: Entity
+  outbound: Array<{ edge: GraphEdge; node: GraphNode }>
+  inbound: Array<{ edge: GraphEdge; node: GraphNode }>
 }
