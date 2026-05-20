@@ -83,10 +83,39 @@ func topNKinds(m map[string]int, n int) ([]kindRow, int) {
 	return rows[:n], other
 }
 
+// graphStats mirrors the shape of graph-stats.json written by the indexer.
+// It is the primary (cheap) source for entity/relationship totals.
+type graphStats struct {
+	TotalEntities      int `json:"total_entities"`
+	TotalRelationships int `json:"total_relationships"`
+}
+
+// loadGraphStats reads <stateDir>/graph-stats.json and returns the totals.
+// Returns (0, 0) on any read or parse error so callers always get a safe value.
+func loadGraphStats(stateDir string) (entities, rels int) {
+	data, err := os.ReadFile(filepath.Join(stateDir, "graph-stats.json"))
+	if err != nil {
+		return
+	}
+	var st graphStats
+	if err := json.Unmarshal(data, &st); err != nil {
+		return
+	}
+	return st.TotalEntities, st.TotalRelationships
+}
+
 // ComputeRebuildSummary loads the per-repo graphs and candidate files produced
 // by a rebuild and aggregates them into a RebuildSummary. repoPaths is the list
 // of absolute on-disk repo paths that were rebuilt (in order). group is the
 // group name, used to locate the group-links.json.
+//
+// Strategy:
+//  1. Read graph-stats.json sidecar for cheap entity/relationship totals (it
+//     is always written by the indexer alongside graph.fb).
+//  2. Load graph.fb via LoadGraphFromDir for per-kind breakdown, HTTP
+//     endpoints, process flows, and orphan computation.
+//  3. If LoadGraphFromDir fails but the sidecar succeeded, the totals from the
+//     sidecar are preserved so the summary shows real numbers instead of zeros.
 //
 // Errors reading individual files are silently skipped so a partial result
 // (e.g. a repo that failed to index) does not prevent summary generation.
@@ -105,8 +134,12 @@ func ComputeRebuildSummary(group string, repoPaths []string, elapsed time.Durati
 	for _, repoPath := range repoPaths {
 		stateDir := daemon.StateDirForRepo(repoPath)
 
+		// Primary: read the pre-computed sidecar for totals (fast, no mmap).
+		sidecarEnts, sidecarRels := loadGraphStats(stateDir)
+
 		doc, err := graph.LoadGraphFromDir(stateDir)
 		if err == nil && doc != nil {
+			// Full graph loaded — use it for per-kind detail and orphan computation.
 			for _, e := range doc.Entities {
 				s.TotalEntities++
 				k := normaliseEntityKind(e.Kind)
@@ -131,6 +164,11 @@ func ComputeRebuildSummary(group string, repoPaths []string, elapsed time.Durati
 					s.OrphanEntities++
 				}
 			}
+		} else if sidecarEnts > 0 || sidecarRels > 0 {
+			// Graph load failed (e.g. FB decode error) but the sidecar is present.
+			// Fall back to sidecar totals so the summary shows real numbers.
+			s.TotalEntities += sidecarEnts
+			s.TotalRelationships += sidecarRels
 		}
 
 		enrichCount, repairCount := loadCandidateCounts(stateDir)

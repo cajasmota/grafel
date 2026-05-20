@@ -361,6 +361,71 @@ func TestNormaliseEntityKind(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// loadGraphStats (#1076)
+// ---------------------------------------------------------------------------
+
+func TestLoadGraphStats_Missing(t *testing.T) {
+	e, r := loadGraphStats("/nonexistent/stateDir")
+	if e != 0 || r != 0 {
+		t.Errorf("expected (0,0) for missing file, got (%d,%d)", e, r)
+	}
+}
+
+func TestLoadGraphStats_Valid(t *testing.T) {
+	tmp := t.TempDir()
+	content := `{"version":1,"total_entities":7343,"total_relationships":25930,"communities":690}`
+	if err := writeTestFile(tmp+"/graph-stats.json", content); err != nil {
+		t.Fatal(err)
+	}
+	e, r := loadGraphStats(tmp)
+	if e != 7343 {
+		t.Errorf("expected total_entities=7343, got %d", e)
+	}
+	if r != 25930 {
+		t.Errorf("expected total_relationships=25930, got %d", r)
+	}
+}
+
+func TestLoadGraphStats_Malformed(t *testing.T) {
+	tmp := t.TempDir()
+	if err := writeTestFile(tmp+"/graph-stats.json", "not json {"); err != nil {
+		t.Fatal(err)
+	}
+	e, r := loadGraphStats(tmp)
+	if e != 0 || r != 0 {
+		t.Errorf("expected (0,0) for malformed JSON, got (%d,%d)", e, r)
+	}
+}
+
+// TestComputeRebuildSummary_SidecarFallback verifies that when the graph.fb
+// file is absent (simulating a LoadGraphFromDir failure) the sidecar totals
+// from graph-stats.json are used, fixing #1076.
+func TestComputeRebuildSummary_SidecarFallback(t *testing.T) {
+	// Create a fake repo directory with only graph-stats.json (no graph.fb).
+	// Use t.TempDir() as both the repo dir and its .archigraph/ subdir since
+	// StateDirForRepo adds "/.archigraph" to the path.
+	repoDir := t.TempDir()
+	stateDir := repoDir + "/.archigraph"
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	statsContent := `{"version":1,"total_entities":12345,"total_relationships":67890}`
+	if err := writeTestFile(stateDir+"/graph-stats.json", statsContent); err != nil {
+		t.Fatal(err)
+	}
+
+	sum := ComputeRebuildSummary("testgroup", []string{repoDir}, 5*time.Second)
+
+	// graph.fb absent → LoadGraphFromDir fails → sidecar fallback kicks in.
+	if sum.TotalEntities != 12345 {
+		t.Errorf("TotalEntities = %d, want 12345 (sidecar fallback)", sum.TotalEntities)
+	}
+	if sum.TotalRelationships != 67890 {
+		t.Errorf("TotalRelationships = %d, want 67890 (sidecar fallback)", sum.TotalRelationships)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 

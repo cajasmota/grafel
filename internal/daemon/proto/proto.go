@@ -138,8 +138,16 @@ type RebuildArgs struct {
 // RebuildReply lists the repos that were rebuilt and any warning that
 // applies to the whole batch.
 type RebuildReply struct {
-	Repos   []string `json:"repos"`
-	Warning string   `json:"warning,omitempty"`
+	// Repos holds the slug of each rebuilt repo (display name).
+	Repos []string `json:"repos"`
+	// RepoPaths holds the absolute on-disk path of each rebuilt repo, in the
+	// same order as Repos. The CLI uses these paths to locate per-repo state
+	// directories (graph.fb, graph-stats.json, enrichment-candidates.json)
+	// for the post-rebuild summary. Added to fix #1076 where slugs were
+	// passed to StateDirForRepo, producing wrong relative paths and zero
+	// entity/relationship counts.
+	RepoPaths []string `json:"repo_paths,omitempty"`
+	Warning   string   `json:"warning,omitempty"`
 	// Summary fields — populated when the daemon tracked per-repo stats.
 	TotalEntities int64   `json:"total_entities,omitempty"`
 	TotalRels     int64   `json:"total_rels,omitempty"`

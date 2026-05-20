@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -127,7 +128,8 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			return err
 		}
 		for _, r := range reply.Repos {
-			fmt.Fprintf(w, "rebuilt %s\n", r)
+			// reply.Repos contains absolute paths since #1076 fix; show basename.
+			fmt.Fprintf(w, "rebuilt %s\n", filepath.Base(r))
 		}
 		if reply.Warning != "" {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", reply.Warning)
@@ -146,7 +148,8 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			return err2
 		}
 		for _, r := range reply.Repos {
-			fmt.Fprintf(w, "rebuilt %s\n", r)
+			// reply.Repos contains absolute paths since #1076 fix; show basename.
+			fmt.Fprintf(w, "rebuilt %s\n", filepath.Base(r))
 		}
 		if reply.Warning != "" {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", reply.Warning)
@@ -259,12 +262,18 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			Elapsed  string   `json:"elapsed,omitempty"`
 			Warning  string   `json:"warning,omitempty"`
 		}
+		// Convert absolute paths back to slug/basename for the JSON event so
+		// the wire format stays stable (slugs, not paths).
+		slugs := make([]string, len(reply.Repos))
+		for i, r := range reply.Repos {
+			slugs[i] = filepath.Base(r)
+		}
 		enc := json.NewEncoder(w)
 		_ = enc.Encode(summaryEvent{
 			Event:    "done",
 			Token:    token,
 			Group:    group,
-			Repos:    reply.Repos,
+			Repos:    slugs,
 			Entities: reply.TotalEntities,
 			Rels:     reply.TotalRels,
 			Elapsed:  elapsedStr,

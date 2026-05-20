@@ -291,7 +291,11 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 		if err := Index(r.Path, "", "", nil, false, false); err != nil {
 			return rebuilt, "", fmt.Errorf("index %s: %w", r.Slug, err)
 		}
-		rebuilt = append(rebuilt, r.Slug)
+		// Append the absolute repo path, not the slug.  The CLI uses these
+		// paths to locate per-repo state directories (graph.fb, graph-stats.json,
+		// enrichment-candidates.json) when building the post-rebuild summary.
+		// Returning slugs here was the root cause of #1076 (zero counts).
+		rebuilt = append(rebuilt, r.Path)
 	}
 	// Cross-repo link passes run after every member is indexed.
 	warning := ""
