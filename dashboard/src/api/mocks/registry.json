@@ -9,17 +9,44 @@
         { "slug": "gateway", "display_name": "API Gateway", "language": "go", "entity_count": 892, "indexed_at": "2026-05-20T10:02:00Z" }
       ],
       "entity_count": 6916,
-      "indexed_at": "2026-05-20T10:05:00Z"
+      "indexed_at": "2026-05-20T10:05:00Z",
+      "bug_rate": 3.2,
+      "bug_rate_history": [4.8, 4.1, 3.9, 3.5, 3.4, 3.2]
     },
     {
-      "id": "fixture-b",
-      "display_name": "Fixture B",
+      "id": "go-chi-mini",
+      "display_name": "Go Chi Mini",
       "repos": [
-        { "slug": "web-app", "display_name": "Web App", "language": "typescript", "entity_count": 3102, "indexed_at": "2026-05-20T09:00:00Z" },
-        { "slug": "data-pipeline", "display_name": "Data Pipeline", "language": "python", "entity_count": 1455, "indexed_at": "2026-05-20T09:01:00Z" }
+        { "slug": "chi-server", "display_name": "Chi Server", "language": "go", "entity_count": 1204, "indexed_at": "2026-05-20T08:30:00Z" },
+        { "slug": "chi-middleware", "display_name": "Chi Middleware", "language": "go", "entity_count": 388, "indexed_at": "2026-05-20T08:31:00Z" }
       ],
-      "entity_count": 4557,
-      "indexed_at": "2026-05-20T09:05:00Z"
+      "entity_count": 1592,
+      "indexed_at": "2026-05-20T08:35:00Z",
+      "bug_rate": 9.7,
+      "bug_rate_history": [12.3, 11.8, 11.2, 10.5, 9.9, 9.7]
+    },
+    {
+      "id": "rust-tokio-mini",
+      "display_name": "Rust Tokio Mini",
+      "repos": [
+        { "slug": "tokio-server", "display_name": "Tokio Server", "language": "rust", "entity_count": 2310, "indexed_at": "2026-05-20T07:15:00Z" }
+      ],
+      "entity_count": 2310,
+      "indexed_at": "2026-05-20T07:20:00Z",
+      "bug_rate": 18.4,
+      "bug_rate_history": [22.1, 20.5, 19.8, 19.1, 18.8, 18.4]
+    },
+    {
+      "id": "python-django-mini",
+      "display_name": "Python Django Mini",
+      "repos": [
+        { "slug": "django-app", "display_name": "Django App", "language": "python", "entity_count": 3750, "indexed_at": "2026-05-20T06:00:00Z" },
+        { "slug": "celery-workers", "display_name": "Celery Workers", "language": "python", "entity_count": 980, "indexed_at": "2026-05-20T06:01:00Z" }
+      ],
+      "entity_count": 4730,
+      "indexed_at": "2026-05-20T06:05:00Z",
+      "bug_rate": 6.1,
+      "bug_rate_history": [9.4, 8.2, 7.5, 7.0, 6.4, 6.1]
     }
   ],
   "version": "1.0.0-m2"

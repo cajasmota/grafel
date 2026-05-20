@@ -90,6 +90,10 @@ export interface GroupMeta {
   repos: RepoMeta[]
   entity_count: number
   indexed_at?: string
+  /** Bug-rate percentage for the group (0–100). Present when the group has been indexed. */
+  bug_rate?: number
+  /** Rolling bug-rate history (oldest → newest), used for the sparkline. */
+  bug_rate_history?: number[]
 }
 
 export interface Registry {

@@ -1,5 +1,5 @@
-import { Navigate } from "react-router-dom"
+import { GroupSelector } from '@/components/landing/GroupSelector'
 
 export function IndexRoute() {
-  return <Navigate to="/graph/fixture-a" replace />
+  return <GroupSelector />
 }
