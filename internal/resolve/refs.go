@@ -4540,6 +4540,32 @@ var pythonExternalBaseTypes = map[string]struct{}{
 	"BaseUserManager":  {},
 	"PermissionsMixin": {},
 	"AppConfig":        {},
+	// Django class-based views (django.views.generic). `View` is the root
+	// base; the remaining names are the built-in generic-display and
+	// editing views routinely used as parents via
+	// `class Foo(ListView):` / `class Bar(View):` etc.
+	// Refs #44 — Python EXTENDS stubs for these landed in BugExtractor
+	// because `View` (and siblings) were missing from this table.
+	"View":                 {},
+	"TemplateView":         {},
+	"RedirectView":         {},
+	"ListView":             {},
+	"DetailView":           {},
+	"FormView":             {},
+	"CreateView":           {},
+	"UpdateView":           {},
+	"DeleteView":           {},
+	"ArchiveIndexView":     {},
+	"YearArchiveView":      {},
+	"MonthArchiveView":     {},
+	"WeekArchiveView":      {},
+	"DayArchiveView":       {},
+	"TodayArchiveView":     {},
+	"DateDetailView":       {},
+	"ContextMixin":         {},
+	"TemplateResponseMixin": {},
+	"SingleObjectMixin":    {},
+	"MultipleObjectMixin":  {},
 	// Django REST Framework view + viewset + renderer + permission base
 	// classes (when used as a parent — `class Foo(APIView)`).
 	"APIView":                      {},

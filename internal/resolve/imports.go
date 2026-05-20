@@ -167,6 +167,15 @@ type ImportTable struct {
 	// for `<dir>/README.md` (any case). Markdown links to bare directories
 	// (`[plugins](./plugins)`) resolve to the directory's README.
 	docByDir map[string]string
+	// moduleFileEntity maps a dotted Python module path to the entity ID
+	// of the SCOPE.Component/file entity that represents it. Populated in
+	// BuildImportTable Pass 2 for every Python file-level SCOPE.Component
+	// entity (kind=="SCOPE.Component" with a source-file-matching name).
+	// Used by ResolvePythonModuleImport to bind IMPORTS edges of the form
+	// `to_id = "users.views"` to the concrete file entity (id hex) so
+	// `from users import views` resolves to the views.py file entity
+	// instead of landing in bug-extractor. Refs #44.
+	moduleFileEntity map[string]string
 	// localNamesByFile[file_path][name] = true when an entity named `name`
 	// is declared in `file_path`. Used by the cross-file REFERENCES
 	// resolver to skip rewriting when a same-file entity already shadows
@@ -200,6 +209,7 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		docByFilePathRank:      make(map[string]int),
 		docByDir:               make(map[string]string),
 		localNamesByFile:       make(map[string]map[string]bool),
+		moduleFileEntity:       make(map[string]string),
 	}
 
 	// Pass 1 — per-file import bindings.
@@ -319,6 +329,33 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		}
 
 		modules := modulesForFile(normalizePath(e.SourceFile))
+
+		// Refs #44 — Python module-level IMPORTS resolution. When the
+		// extractor emits `from users import views` it produces an IMPORTS
+		// edge with to_id = "users.views". ResolveDottedImportTarget splits
+		// on the last dot (module="users", leaf="views") and looks for an
+		// entity named "views" in module "users" — but the file entity is
+		// named "users/views.py", not "views", so the lookup misses. We fix
+		// this by recording the file-level SCOPE.Component entity (the one
+		// whose Name matches its own SourceFile) under each dotted-module
+		// form of the file. ResolvePythonModuleImport then tries a direct
+		// module-name lookup when the (module, leaf) pair fails. Only Python
+		// is gated here; other languages have their own module-import shapes.
+		if e.Language == "python" && e.Kind == "SCOPE.Component" &&
+			e.ID != "" && e.SourceFile != "" {
+			normalFile := normalizePath(e.SourceFile)
+			if normalFile != "" && normalizePath(e.Name) == normalFile {
+				// This entity IS the file-level SCOPE.Component for this file.
+				// Register it under every dotted-module form of the file so
+				// "users.views" → entity-id of users/views.py SCOPE.Component.
+				for _, mod := range modules {
+					if _, exists := tbl.moduleFileEntity[mod]; !exists {
+						tbl.moduleFileEntity[mod] = e.ID
+					}
+				}
+			}
+		}
+
 		for _, mod := range modules {
 			files := tbl.modulesByName[mod]
 			if files == nil {
@@ -1323,6 +1360,33 @@ func (t ImportTable) ResolveDottedImportTarget(dotted string) (string, bool) {
 	return t.lookupModuleEntity(module, leaf)
 }
 
+// ResolvePythonModuleImport resolves an IMPORTS edge whose ToID is a
+// plain Python dotted module path (e.g. "users.views") referring to a
+// project-internal module — not a symbol within it. This arises from
+// `from users import views` or `import users.views` statements where the
+// imported name IS the module itself, not a class or function.
+//
+// ResolveDottedImportTarget splits on the last dot and looks for a symbol
+// named "views" in module "users" — which misses because the file entity
+// is named "users/views.py", not "views". This function instead probes
+// the moduleFileEntity index built from SCOPE.Component/file entities:
+// "users.views" → the hex ID of the users/views.py file-level entity.
+//
+// Returns ("", false) when the dotted path is not a known in-project
+// Python module. Callers MUST gate on language=="python" so other
+// languages' IMPORTS edges (which may use dotted paths for different
+// reasons) are not shadowed. Refs #44.
+func (t ImportTable) ResolvePythonModuleImport(dotted string) (string, bool) {
+	if dotted == "" || t.moduleFileEntity == nil {
+		return "", false
+	}
+	id, ok := t.moduleFileEntity[dotted]
+	if !ok || id == "" {
+		return "", false
+	}
+	return id, true
+}
+
 // ResolveDottedImportTargetForJS performs the same (module, leaf) lookup
 // as ResolveDottedImportTarget, plus a JS/TS-specific default-export
 // fallback (PLT #537). React / React Native source files commonly emit a
@@ -1923,6 +1987,20 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 						srcMod := rel.Properties[importPropSourceModule]
 						impName := rel.Properties[importPropImportedName]
 						id, ok = tbl.lookupModuleEntityJavaCanonical(srcMod, impName)
+					}
+					// Refs #44 — Python module-level import resolution.
+					// `from users import views` emits to_id = "users.views".
+					// ResolveDottedImportTarget splits on the last dot and
+					// looks for a symbol named "views" in module "users",
+					// which misses (the file entity is named "users/views.py").
+					// Fallback: probe moduleFileEntity for the dotted path
+					// as a whole module name, resolving to the file's
+					// SCOPE.Component entity. Only fires for Python (language
+					// property on the IMPORTS edge) so other languages with
+					// dotted paths are not widened.
+					if !ok && rel.Properties != nil &&
+						rel.Properties["language"] == "python" {
+						id, ok = tbl.ResolvePythonModuleImport(normalized)
 					}
 				}
 				if !ok {
