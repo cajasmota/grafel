@@ -31,14 +31,14 @@ import (
 
 // OrphanCallerRow is one unresolved call site returned by the endpoint.
 type OrphanCallerRow struct {
-	CallerID           string `json:"caller_id"`
-	CallerFile         string `json:"caller_file"`
-	CallerLine         int    `json:"caller_line"`
-	URLPattern         string `json:"url_pattern"`
-	Method             string `json:"method"`
-	Reason             string `json:"reason"`
+	ID                  string `json:"id"`
+	CallerFile          string `json:"caller_file"`
+	CallerLine          int    `json:"caller_line"`
+	URLPattern          string `json:"url_pattern"`
+	Method              string `json:"method"`
+	Reason              string `json:"reason"`
 	SuggestedRepairKind string `json:"suggested_repair_kind"`
-	Repo               string `json:"repo"`
+	Repo                string `json:"repo"`
 }
 
 // orphanCallerReason classifies why a FETCHES edge could not be resolved.
@@ -79,8 +79,8 @@ func (s *Server) handleOrphanCallers(w http.ResponseWriter, r *http.Request) {
 	rows := collectOrphanCallers(grp)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"orphan_callers": rows,
-		"total":          len(rows),
+		"callers": rows,
+		"total":   len(rows),
 	})
 }
 
@@ -211,7 +211,7 @@ func collectOrphanCallers(grp *DashGroup) []OrphanCallerRow {
 			repairKind := suggestedRepair[reason]
 
 			rows = append(rows, OrphanCallerRow{
-				CallerID:            callerID,
+				ID:                  callerID,
 				CallerFile:          callerFile,
 				CallerLine:          callerLine,
 				URLPattern:          urlPattern,

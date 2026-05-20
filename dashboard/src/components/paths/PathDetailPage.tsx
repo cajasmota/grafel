@@ -442,32 +442,41 @@ function TestsSection({ entities }: { entities: Entity[] }) {
   )
 }
 
-// ─── Source section ───────────────────────────────────────────────────────────
+// ─── Defined-in section (backend handler definitions only) ───────────────────
 
-function SourceSection({ handlers }: { handlers: HandlerDetail[] }) {
+function DefinedInSection({ handlers }: { handlers: HandlerDetail[] }) {
   return (
-    <Section id="source" title="Source" icon={<FileCode2 className="w-4 h-4" />} defaultOpen>
-      <ul className="space-y-2" role="list">
-        {handlers.map((h, i) => (
-          <li
-            key={i}
-            className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
-          >
-            <VerbChip verb={h.verb} />
-            <span
-              className="font-mono text-xs text-slate-700 dark:text-slate-300 flex-1 min-w-0 truncate"
-              title={`${h.source_file}:${h.start_line}`}
+    <Section id="defined-in" title="Defined in" icon={<FileCode2 className="w-4 h-4" />} count={handlers.length} defaultOpen>
+      {handlers.length === 0 ? (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" aria-hidden />
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            No backend handler found — this endpoint is an orphan call.
+          </p>
+        </div>
+      ) : (
+        <ul className="space-y-2" role="list">
+          {handlers.map((h, i) => (
+            <li
+              key={i}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
             >
-              {h.source_file}
-              <span className="text-slate-400 dark:text-slate-500">:{h.start_line}</span>
-            </span>
-            {h.framework && (
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono hidden sm:block">{h.framework}</span>
-            )}
-            <RepoChip repo={h.entity.repo} />
-          </li>
-        ))}
-      </ul>
+              <VerbChip verb={h.verb} />
+              <span
+                className="font-mono text-xs text-slate-700 dark:text-slate-300 flex-1 min-w-0 truncate"
+                title={`${h.source_file}:${h.start_line}`}
+              >
+                {h.source_file}
+                <span className="text-slate-400 dark:text-slate-500">:{h.start_line}</span>
+              </span>
+              {h.framework && (
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono hidden sm:block">{h.framework}</span>
+              )}
+              <RepoChip repo={h.entity.repo} />
+            </li>
+          ))}
+        </ul>
+      )}
     </Section>
   )
 }
@@ -586,7 +595,10 @@ export function PathDetailPage({ group }: PathDetailPageProps) {
         {/* Response shapes */}
         <ResponseShapesSection shapes={data.response_shapes} />
 
-        {/* Called by */}
+        {/* Defined in — backend handler definitions only */}
+        <DefinedInSection handlers={data.handlers} />
+
+        {/* Called by — frontend / service call sites that FETCHES this path */}
         <CalledBySection entities={data.inbound_fetches} />
 
         {/* Downstream */}
@@ -597,9 +609,6 @@ export function PathDetailPage({ group }: PathDetailPageProps) {
 
         {/* Tests */}
         <TestsSection entities={testEntities} />
-
-        {/* Source */}
-        <SourceSection handlers={data.handlers} />
 
       </div>
     </div>

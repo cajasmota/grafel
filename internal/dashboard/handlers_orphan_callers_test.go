@@ -79,8 +79,8 @@ func TestCollectOrphanCallers_NoHandlerFound(t *testing.T) {
 	if r.SuggestedRepairKind != "add_missing_handler" {
 		t.Errorf("suggested_repair_kind: want add_missing_handler, got %q", r.SuggestedRepairKind)
 	}
-	if r.CallerID != "frontend::caller_fn" {
-		t.Errorf("caller_id: want frontend::caller_fn, got %q", r.CallerID)
+	if r.ID != "frontend::caller_fn" {
+		t.Errorf("id: want frontend::caller_fn, got %q", r.ID)
 	}
 }
 
@@ -363,8 +363,8 @@ func TestHandleOrphanCallers_HTTPSmoke(t *testing.T) {
 
 	b, _ := io.ReadAll(resp.Body)
 	var body struct {
-		OrphanCallers []OrphanCallerRow `json:"orphan_callers"`
-		Total         int               `json:"total"`
+		Callers []OrphanCallerRow `json:"callers"`
+		Total   int               `json:"total"`
 	}
 	if err := json.Unmarshal(b, &body); err != nil {
 		t.Fatalf("decode response: %v\nbody: %s", err, b)
@@ -373,11 +373,11 @@ func TestHandleOrphanCallers_HTTPSmoke(t *testing.T) {
 	if body.Total != 1 {
 		t.Errorf("total: want 1, got %d", body.Total)
 	}
-	if len(body.OrphanCallers) != 1 {
-		t.Fatalf("orphan_callers len: want 1, got %d", len(body.OrphanCallers))
+	if len(body.Callers) != 1 {
+		t.Fatalf("callers len: want 1, got %d", len(body.Callers))
 	}
 
-	row := body.OrphanCallers[0]
+	row := body.Callers[0]
 	if row.Method != "DELETE" {
 		t.Errorf("method: want DELETE, got %q", row.Method)
 	}
@@ -427,9 +427,9 @@ func TestHandleOrphanCallers_EmptyResult(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	callers, ok := body["orphan_callers"]
+	callers, ok := body["callers"]
 	if !ok {
-		t.Fatal("orphan_callers key missing")
+		t.Fatal("callers key missing")
 	}
 	arr, ok := callers.([]any)
 	if !ok || len(arr) != 0 {

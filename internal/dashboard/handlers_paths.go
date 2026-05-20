@@ -90,6 +90,11 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 				e.Kind != "Endpoint" && e.Kind != "Route" {
 				continue
 			}
+			// Skip frontend-only synthetic call-site entries — those belong
+			// in the Orphan Callers tab, not the Endpoints list.
+			if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+				continue
+			}
 			path := e.Properties["path"]
 			if path == "" {
 				path = e.Name
@@ -248,6 +253,10 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 			e := &repo.Doc.Entities[i]
 			if !strings.EqualFold(dashStripScopePrefix(e.Kind), httpEndpointKind) &&
 				e.Kind != "Endpoint" && e.Kind != "Route" {
+				continue
+			}
+			// Skip frontend-only call-site synthetics — they are not real endpoints.
+			if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
 				continue
 			}
 			path := e.Properties["path"]
