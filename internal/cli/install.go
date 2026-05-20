@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -10,6 +11,33 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/service"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
 )
+
+// registerMCPInClaudeConfigs registers the archigraph MCP entry in all detected
+// Claude Code config directories. It's extracted into a separate function so it
+// can be tested independently of service.Install, which requires OS permissions.
+//
+// binPath is the full path to the archigraph binary.
+// claudeConfigDirs, when non-empty, overrides auto-detection of ~/.claude.json dirs.
+// Returns a list of successfully registered paths and prints status to out.
+func registerMCPInClaudeConfigs(out io.Writer, binPath string, claudeConfigDirs []string) []string {
+	claudeDirs := mcpreg.DetectClaudeConfigDirs(claudeConfigDirs)
+	registered := []string{}
+	for _, cfgPath := range claudeDirs {
+		if _, err := mcpreg.RegisterPath(cfgPath, binPath); err != nil {
+			fmt.Fprintf(out, "  ⚠ MCP register %s: %v\n", cfgPath, err)
+		} else {
+			registered = append(registered, cfgPath)
+		}
+	}
+	if len(registered) > 0 {
+		fmt.Fprintf(out, "  MCP registered in:\n")
+		for _, p := range registered {
+			fmt.Fprintf(out, "    %s\n", p)
+		}
+		fmt.Fprintf(out, "  Restart Claude Code to load the archigraph MCP tools.\n")
+	}
+	return registered
+}
 
 // newInstallCmd returns the `archigraph install` subcommand.
 //
@@ -94,22 +122,7 @@ in this terminal — useful for debugging launchd/systemd issues.`,
 			// ADR-0017 #827 the bridge translates MCP JSON-RPC 2.0 from
 			// Claude Code to the daemon's JSON-RPC 1.0 socket. Failures are
 			// soft — we report them but do not abort the install.
-			claudeDirs := mcpreg.DetectClaudeConfigDirs(claudeConfigDirs)
-			registered := []string{}
-			for _, cfgPath := range claudeDirs {
-				if _, err := mcpreg.RegisterPath(cfgPath, bin); err != nil {
-					fmt.Fprintf(out, "  ⚠ MCP register %s: %v\n", cfgPath, err)
-				} else {
-					registered = append(registered, cfgPath)
-				}
-			}
-			if len(registered) > 0 {
-				fmt.Fprintf(out, "  MCP registered in:\n")
-				for _, p := range registered {
-					fmt.Fprintf(out, "    %s\n", p)
-				}
-				fmt.Fprintf(out, "  Restart Claude Code to load the archigraph MCP tools.\n")
-			}
+			registerMCPInClaudeConfigs(out, bin, claudeConfigDirs)
 			return nil
 		},
 	}

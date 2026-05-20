@@ -2,12 +2,39 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon/service"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
 )
+
+// unregisterMCPFromClaudeConfigs removes the archigraph MCP entry from all
+// detected Claude Code config directories. It's extracted into a separate
+// function so it can be tested independently of service.Uninstall, which
+// requires OS permissions.
+//
+// claudeConfigDirs, when non-empty, overrides auto-detection of ~/.claude.json dirs.
+// Returns a list of successfully unregistered paths and prints status to out.
+func unregisterMCPFromClaudeConfigs(out io.Writer, claudeConfigDirs []string) []string {
+	claudeDirs := mcpreg.DetectClaudeConfigDirs(claudeConfigDirs)
+	removed := []string{}
+	for _, cfgPath := range claudeDirs {
+		if err := mcpreg.UnregisterPath(cfgPath); err != nil {
+			fmt.Fprintf(out, "  ⚠ MCP unregister %s: %v\n", cfgPath, err)
+		} else {
+			removed = append(removed, cfgPath)
+		}
+	}
+	if len(removed) > 0 {
+		fmt.Fprintf(out, "  MCP removed from:\n")
+		for _, p := range removed {
+			fmt.Fprintf(out, "    %s\n", p)
+		}
+	}
+	return removed
+}
 
 // newUninstallCmd returns the `archigraph uninstall` subcommand.
 //
@@ -38,21 +65,7 @@ printing an error.`,
 			fmt.Fprintln(out, "✓ archigraph daemon removed")
 
 			// Remove MCP registrations from every detected Claude config dir.
-			claudeDirs := mcpreg.DetectClaudeConfigDirs(claudeConfigDirs)
-			removed := []string{}
-			for _, cfgPath := range claudeDirs {
-				if err := mcpreg.UnregisterPath(cfgPath); err != nil {
-					fmt.Fprintf(out, "  ⚠ MCP unregister %s: %v\n", cfgPath, err)
-				} else {
-					removed = append(removed, cfgPath)
-				}
-			}
-			if len(removed) > 0 {
-				fmt.Fprintf(out, "  MCP removed from:\n")
-				for _, p := range removed {
-					fmt.Fprintf(out, "    %s\n", p)
-				}
-			}
+			unregisterMCPFromClaudeConfigs(out, claudeConfigDirs)
 			return nil
 		},
 	}
