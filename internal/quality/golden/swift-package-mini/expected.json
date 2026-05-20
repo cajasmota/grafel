@@ -1,0 +1,22 @@
+{
+  "fixture_name": "swift-package-mini",
+  "language": "swift_package",
+  "description": "Tiny SwiftPM Package.swift manifest with an executable target (App), a library target (Models), and a test target (AppTests). Exercises .executableTarget, .target, .testTarget, .product(name:package:) dependencies, and target-to-target string dependencies. Used to guard the swift_package extractor (#497) against regressions.",
+  "expected_entities": [
+    { "name": "App",       "kind": "SCOPE.Component", "source_file": "Package.swift", "must_exist": true,  "note": "executableTarget" },
+    { "name": "Models",    "kind": "SCOPE.Component", "source_file": "Package.swift", "must_exist": true,  "note": "library target" },
+    { "name": "AppTests",  "kind": "SCOPE.Component", "source_file": "Package.swift", "must_exist": true,  "note": "testTarget" },
+    { "name": "Vapor",     "kind": "SCOPE.External",  "source_file": "Package.swift", "must_exist": true,  "note": ".product(name:\"Vapor\", package:\"vapor\")" },
+    { "name": "Fluent",    "kind": "SCOPE.External",  "source_file": "Package.swift", "must_exist": true,  "note": ".product(name:\"Fluent\", package:\"fluent\")" },
+    { "name": "FluentSQLiteDriver", "kind": "SCOPE.External", "source_file": "Package.swift", "must_exist": true }
+  ],
+  "expected_relationships": [
+    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Vapor",              "must_exist": true },
+    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Fluent",             "must_exist": true },
+    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "FluentSQLiteDriver", "must_exist": true },
+    { "from_name": "App",      "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Models",             "must_exist": true, "note": "target-to-target string dep" },
+    { "from_name": "Models",   "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Fluent",             "must_exist": true },
+    { "from_name": "AppTests", "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "App",                "must_exist": true },
+    { "from_name": "AppTests", "from_kind": "SCOPE.Component", "kind": "DEPENDS_ON", "to_bare_name": "Vapor",              "must_exist": true }
+  ]
+}

@@ -1034,3 +1034,36 @@ func TestMX1122_CppRoutesToCppExtractor(t *testing.T) {
 		})
 	}
 }
+
+// TestClassify_PackageSwift_IsSwiftPackage verifies that "Package.swift" is
+// classified as "swift_package" (not the generic "swift"), and that the
+// registered swift_package extractor is reachable via the classifier's output
+// token. Issue #497.
+func TestClassify_PackageSwift_IsSwiftPackage(t *testing.T) {
+	c := newTestClassifier(t)
+	ctx := context.Background()
+
+	cases := []string{
+		"Package.swift",
+		"Sources/MyApp/Package.swift",
+	}
+
+	for _, file := range cases {
+		t.Run(file, func(t *testing.T) {
+			r := c.Classify(ctx, file)
+			if r.Skip {
+				t.Errorf("file=%q should NOT be skipped", file)
+			}
+			if r.Language != "swift_package" {
+				t.Errorf("file=%q: Language=%q, want swift_package", file, r.Language)
+			}
+			ex, ok := extractors.Get(r.Language)
+			if !ok {
+				t.Fatalf("file=%q: no extractor registered for %q", file, r.Language)
+			}
+			if ex.Language() != "swift_package" {
+				t.Errorf("extractor.Language()=%q want swift_package", ex.Language())
+			}
+		})
+	}
+}

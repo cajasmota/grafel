@@ -494,6 +494,19 @@ var extensionLanguageMap = map[string]string{
 	".rst":      "markdown",
 }
 
+// exactBasenameLanguageMap maps exact file basenames (case-sensitive) to
+// language tokens for files that carry a known extension but must be assigned
+// a more specific language key than the generic extension match would produce.
+// This map is consulted BEFORE extensionLanguageMap so that specialised
+// handlers win over the generic extension-based dispatch.
+//
+// Issue #497 — Package.swift is a SwiftPM manifest whose extraction
+// requires a dedicated regex-based extractor ("swift_package") rather than
+// the tree-sitter-based generic Swift extractor ("swift").
+var exactBasenameLanguageMap = map[string]string{
+	"Package.swift": "swift_package",
+}
+
 // basenameLanguageMap maps exact file basenames (case-sensitive) to language
 // tokens. Checked only when the file has no extension or its extension is not
 // in extensionLanguageMap.
@@ -517,13 +530,22 @@ func detectLanguage(norm string) string {
 	if strings.HasSuffix(lower, ".scala.html") {
 		return "scala"
 	}
+
+	// Issue #497 — exact-basename check before the extension lookup so that
+	// files like "Package.swift" (which carry a recognised extension) can be
+	// assigned a more specific language key ("swift_package") instead of the
+	// generic one ("swift").
+	base := path.Base(norm)
+	if lang, ok := exactBasenameLanguageMap[base]; ok {
+		return lang
+	}
+
 	ext := strings.ToLower(filepath.Ext(norm))
 	if lang, ok := extensionLanguageMap[ext]; ok {
 		return lang
 	}
 	// Fall back to basename matching for files like Dockerfile / Containerfile
 	// that carry no extension.
-	base := path.Base(norm)
 	return basenameLanguageMap[base]
 }
 
