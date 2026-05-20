@@ -227,6 +227,55 @@ var jsConstStringRe = regexp.MustCompile(
 	`(?m)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*['"]([^'"]{1,256})['"]`,
 )
 
+// jsConstTemplateLiteralRe matches template-literal variable assignments:
+//
+//	const url = `${process.env.API_URL}/users`;
+//	const url = `${apiUrl}/${endpoint}`;
+//
+// These are NOT captured by jsConstStringRe (which requires plain string
+// quotes) but ARE needed for #654: when fetch(url) is called with a
+// variable that holds a template literal, we must trace back to the
+// template literal to extract the URL pattern.
+//
+// Capture groups: 1=name, 2=template-literal body (between backticks).
+var jsConstTemplateLiteralRe = regexp.MustCompile(
+	"(?m)(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*`([^`\\n\\r]*\\$\\{[^`\\n\\r]*)`",
+)
+
+// fetchBareIdentRe matches `fetch(ident, ...)` where the argument is a bare
+// identifier (not a quoted string, not a template literal). Used by #654
+// to handle the pattern:
+//
+//	const url = `${process.env.API_URL}/users`;
+//	fetch(url, { method: "POST" });
+//
+// Capture groups:
+//
+//	1 = bare identifier (the URL variable name)
+//	2 = optional options object (for method extraction)
+var fetchBareIdentRe = regexp.MustCompile(
+	`(?:^|[^\w$.])fetch\s*\(\s*([A-Za-z_$][\w$]*)\s*(?:,(\s*\{[^}]*\}))?\)`,
+)
+
+// buildJSTemplateLiteralSymbolTable returns a map from identifier name →
+// raw template-literal body (excluding backticks) for every
+// const/let/var assignment of the form `const X = `...${...}...``.
+// Used by #654 to resolve bare-identifier fetch arguments.
+func buildJSTemplateLiteralSymbolTable(content string) map[string]string {
+	syms := make(map[string]string)
+	for _, m := range jsConstTemplateLiteralRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		name := content[m[2]:m[3]]
+		tmplBody := content[m[4]:m[5]]
+		if _, dup := syms[name]; !dup {
+			syms[name] = tmplBody
+		}
+	}
+	return syms
+}
+
 // ---------------------------------------------------------------------------
 // Env-var URL patterns (#721 beyond-minimum)
 // ---------------------------------------------------------------------------
@@ -542,6 +591,41 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		caller := enclosingJSFuncAt(funcs, m[0])
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
 		emit(verb, canonical, "fetch", "Function", caller)
+	}
+
+	// fetch(url, ...) — bare identifier whose value is a template literal (#654)
+	// e.g.: const url = `${process.env.API_URL}/users`; fetch(url, { method: "POST" });
+	// Build the template literal symbol table (template-body values, not plain strings).
+	tmplSyms := buildJSTemplateLiteralSymbolTable(content)
+	if len(tmplSyms) > 0 {
+		for _, m := range fetchBareIdentRe.FindAllStringSubmatchIndex(content, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			ident := content[m[2]:m[3]]
+			// Skip if the identifier is a known string const (handled by fetchCallRe).
+			if _, ok := syms[ident]; ok {
+				continue
+			}
+			tmplBody, ok := tmplSyms[ident]
+			if !ok {
+				continue
+			}
+			verb := "GET"
+			if len(m) >= 6 && m[4] >= 0 {
+				opts := content[m[4]:m[5]]
+				if mv := fetchMethodRe.FindStringSubmatch(opts); len(mv) >= 2 {
+					verb = strings.ToUpper(mv[1])
+				}
+			}
+			path, ok2 := canonicalizeTemplateLiteral(tmplBody, syms)
+			if !ok2 {
+				continue
+			}
+			caller := enclosingJSFuncAt(funcs, m[0])
+			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
+			emit(verb, canonical, "fetch", "Function", caller)
+		}
 	}
 
 	// axios.<verb>(...) — static string literals
