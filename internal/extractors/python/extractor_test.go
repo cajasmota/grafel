@@ -1455,6 +1455,59 @@ class Mailer:
 	}
 }
 
+// TestPascalCaseReceiverCALLSEdges verifies that bare PascalCase identifier
+// receivers (e.g. `User.save(...)`) produce qualified CALLS edges
+// `User.save` instead of an ambiguous bare `save`. Regression test for
+// issue #557: Python dotted-receiver class member binding.
+func TestPascalCaseReceiverCALLSEdges(t *testing.T) {
+	src := `
+def create_user():
+    User.objects.create(username="alice")
+    User.save(obj)
+    Article.objects.filter(title="foo")
+    lower_case_var.some_method()
+    ALLOWED_HOSTS.append("example.com")
+`
+	tree := parse(t, []byte(src))
+	ext, ok := extractor.Get("python")
+	if !ok {
+		t.Fatal("python extractor not registered")
+	}
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	// Collect all CALLS ToIDs across all entities.
+	calledTargets := map[string]bool{}
+	for _, e := range entities {
+		for _, r := range e.Relationships {
+			if r.Kind == "CALLS" {
+				calledTargets[r.ToID] = true
+			}
+		}
+	}
+
+	// Qualified CALLS edges expected (PascalCase receiver → class name prefix).
+	// Note: chained `User.objects.create` — the receiver is `User.objects`
+	// which is an attribute access, not a plain identifier, so `create` stays
+	// bare-ambiguous. `User.save` has a plain identifier receiver `User`.
+	wantQualified := "User.save"
+	if !calledTargets[wantQualified] {
+		t.Errorf("expected qualified CALLS edge %q; got targets: %v", wantQualified, calledTargets)
+	}
+
+	// Lower-case receiver (`lower_case_var`) must NOT produce a qualified edge.
+	if calledTargets["lower_case_var.some_method"] {
+		t.Errorf("should not produce qualified edge for lowercase receiver lower_case_var")
+	}
+
+	// SCREAMING_SNAKE receiver (`ALLOWED_HOSTS`) must NOT produce a qualified edge.
+	if calledTargets["ALLOWED_HOSTS.append"] {
+		t.Errorf("should not produce qualified edge for SCREAMING_SNAKE receiver ALLOWED_HOSTS")
+	}
+}
+
 // entityNames returns entity names for test diagnostics.
 func entityNames(entities []types.EntityRecord) []string {
 	names := make([]string, len(entities))

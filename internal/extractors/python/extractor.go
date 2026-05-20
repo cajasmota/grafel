@@ -641,8 +641,22 @@ func receiverClass(recv *sitter.Node, src []byte, parentClass string) string {
 	}
 	switch recv.Type() {
 	case "identifier":
-		if nodeText(recv, src) == "self" {
+		text := nodeText(recv, src)
+		if text == "self" || text == "cls" {
 			return parentClass
+		}
+		// Issue #557 — bare PascalCase/CamelCase identifier as receiver, e.g.
+		// `User.save(...)`, `Article.objects.create(...)`.  Python convention
+		// reserves TitleCase identifiers for class names (PEP 8).  When the
+		// first rune is uppercase we treat the identifier as a class-name
+		// reference and qualify the call site: `User.save` instead of the bare
+		// ambiguous `save`. This is intentionally conservative — all-lowercase
+		// identifiers (module aliases, instance variables) are left unresolved
+		// so we never bind to the wrong class.  SCREAMING_SNAKE constants are
+		// also excluded because their first rune is uppercase but they are
+		// clearly not class names (e.g. `ALLOWED_HOSTS.append`).
+		if isPascalCaseClassName(text) {
+			return text
 		}
 		return ""
 	case "call":
@@ -661,6 +675,37 @@ func receiverClass(recv *sitter.Node, src []byte, parentClass string) string {
 		}
 	}
 	return ""
+}
+
+// isPascalCaseClassName reports whether name looks like a Python class name
+// by PEP 8 convention: starts with an uppercase letter and contains at least
+// one lowercase letter (to exclude SCREAMING_SNAKE_CASE constants and single
+// uppercase letters used as type variables). Examples:
+//
+//	User            → true   (class name)
+//	ArticleManager  → true   (class name)
+//	BaseViewSet     → true   (class name)
+//	user            → false  (instance variable / module alias)
+//	ALLOWED_HOSTS   → false  (module-level constant)
+//	T               → false  (single-letter type variable)
+func isPascalCaseClassName(name string) bool {
+	if name == "" {
+		return false
+	}
+	first := rune(name[0])
+	if first < 'A' || first > 'Z' {
+		return false
+	}
+	// Must contain at least one lowercase letter so that SCREAMING_SNAKE and
+	// single-uppercase-letter type vars are excluded.
+	hasLower := false
+	for _, r := range name[1:] {
+		if r >= 'a' && r <= 'z' {
+			hasLower = true
+			break
+		}
+	}
+	return hasLower
 }
 
 // extractImports walks the parse tree for top-level Python import statements
