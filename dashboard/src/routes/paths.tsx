@@ -249,6 +249,7 @@ export function PathsRoute() {
           </ErrorBoundary>
 
           {/* Path list */}
+          <ErrorBoundary>
           <div
             ref={listRef}
             className="flex-1 overflow-y-auto"
@@ -308,6 +309,8 @@ export function PathsRoute() {
               </div>
             )}
           </div>
+
+          </ErrorBoundary>
 
           {/* Pagination */}
           {!isLoading && data && data.total > (data.page_size ?? 50) && (

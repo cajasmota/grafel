@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
@@ -24,10 +26,80 @@ type RegistryStore interface {
 }
 
 // GroupSummary is the registry list shape returned by GET /api/registry.
+// entity_count, last_indexed are aggregated from per-repo graph-stats.json
+// sidecars (written by `archigraph index`). The aggregation is cached in
+// registryStatsCache and refreshed at most once every 30 s.
 type GroupSummary struct {
-	Name       string   `json:"name"`
-	ConfigPath string   `json:"config_path"`
-	Repos      []string `json:"repos"`
+	Name        string   `json:"name"`
+	ConfigPath  string   `json:"config_path"`
+	Repos       []string `json:"repos"`
+	EntityCount int      `json:"entity_count"`
+	LastIndexed string   `json:"last_indexed,omitempty"` // RFC3339, most-recent across repos
+}
+
+// ---------------------------------------------------------------------------
+// Per-group registry-stats cache
+// ---------------------------------------------------------------------------
+
+type registryStatsCacheEntry struct {
+	entityCount int
+	lastIndexed time.Time
+	computedAt  time.Time
+}
+
+var (
+	registryStatsMu    sync.Mutex
+	registryStatsCache = map[string]registryStatsCacheEntry{}
+	registryStatsTTL   = 30 * time.Second
+)
+
+// aggregateGroupStats reads graph-stats.json for each repo in the group and
+// returns (entity_count_sum, most_recent_computed_at). Results are cached for
+// registryStatsTTL to keep /api/registry latency well under 100 ms on warm
+// paths.
+func aggregateGroupStats(groupName string, repos []registry.Repo) (entityCount int, lastIndexed time.Time) {
+	registryStatsMu.Lock()
+	if e, ok := registryStatsCache[groupName]; ok && time.Since(e.computedAt) < registryStatsTTL {
+		registryStatsMu.Unlock()
+		return e.entityCount, e.lastIndexed
+	}
+	registryStatsMu.Unlock()
+
+	// Compute fresh — no lock held during I/O.
+	var totalEntities int
+	var latest time.Time
+	for _, r := range repos {
+		stateDir := daemon.StateDirForRepo(r.Path)
+		sidecarPath := filepath.Join(stateDir, "graph-stats.json")
+		data, err := os.ReadFile(sidecarPath)
+		if err != nil {
+			// Sidecar not yet written — fall back to graph.fb/graph.json mtime.
+			if info, e2 := os.Stat(filepath.Join(stateDir, "graph.fb")); e2 == nil {
+				if info.ModTime().After(latest) {
+					latest = info.ModTime()
+				}
+			}
+			continue
+		}
+		var side graph.GraphStatsSidecar
+		if json.Unmarshal(data, &side) != nil {
+			continue
+		}
+		totalEntities += side.TotalEntities
+		if side.ComputedAt.After(latest) {
+			latest = side.ComputedAt
+		}
+	}
+
+	registryStatsMu.Lock()
+	registryStatsCache[groupName] = registryStatsCacheEntry{
+		entityCount: totalEntities,
+		lastIndexed: latest,
+		computedAt:  time.Now(),
+	}
+	registryStatsMu.Unlock()
+
+	return totalEntities, latest
 }
 
 // liveStore is the production RegistryStore: it reads from the on-disk
@@ -45,10 +117,18 @@ func (liveStore) ListGroups() ([]GroupSummary, error) {
 	out := make([]GroupSummary, 0, len(groups))
 	for _, g := range groups {
 		s := GroupSummary{Name: g.Name, ConfigPath: g.ConfigPath}
+		var repos []registry.Repo
 		if cfg, err := registry.LoadGroupConfig(g.ConfigPath); err == nil {
+			repos = cfg.Repos
 			for _, r := range cfg.Repos {
 				s.Repos = append(s.Repos, r.Slug)
 			}
+		}
+		// Aggregate entity_count + last_indexed from per-repo graph-stats.json.
+		entityCount, lastIndexed := aggregateGroupStats(g.Name, repos)
+		s.EntityCount = entityCount
+		if !lastIndexed.IsZero() {
+			s.LastIndexed = lastIndexed.UTC().Format(time.RFC3339)
 		}
 		out = append(out, s)
 	}
