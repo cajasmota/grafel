@@ -92,8 +92,8 @@ function buildRepoCenters(
  * small graphs (few high-degree nodes) still show something at overview.
  */
 const ZOOM_BANDS = [
-  { maxZoom: 0.5,      degreeMin: 50,  topN: 50,  label: 'overview', topLabels: 50 },
-  { maxZoom: 2.0,      degreeMin: 5,   topN: null, label: 'mid',      topLabels: 30 },
+  { maxZoom: 0.5,      degreeMin: 10,  topN: 150, label: 'overview', topLabels: 50 },
+  { maxZoom: 2.0,      degreeMin: 2,   topN: null, label: 'mid',      topLabels: 30 },
   { maxZoom: Infinity, degreeMin: 0,   topN: null, label: 'full',     topLabels: 20 },
 ] as const
 
@@ -335,6 +335,15 @@ const GraphCanvasInner = ({
     for (const n of nodes) { if ((n.pagerank ?? 0) > maxPR) maxPR = n.pagerank ?? 0 }
     if (maxPR === 0) maxPR = 1
 
+    // #1121 P2: per-repo entity count for proportional jitter radius.
+    // Flat ±50px collapses 600+ Process nodes into a single pixel blob.
+    // Radius = sqrt(repoEntityCount) × 8 so a 7000-entity repo spreads ~670px.
+    const repoEntityCount = new Map<string, number>()
+    for (const n of nodes) {
+      const repo = n.repo ?? ''
+      repoEntityCount.set(repo, (repoEntityCount.get(repo) ?? 0) + 1)
+    }
+
     return nodes.map((n, i) => {
       const repoIdx = repoToIdx.get(n.repo ?? '') ?? 0
       const cid = clusterIdFor(n, repoIdx)
@@ -345,13 +354,21 @@ const GraphCanvasInner = ({
       // each island into a single point rather than letting nodes spread naturally.
       const strength = 0.10 + normalizedPR * 0.08
       // #1089: pre-computed log-degree size for pointSizeByFn
-      const __size = computeSize(n.degree ?? 0)
+      // #1121 P3: Process entities use a flat small range — they have artificially
+      // high degree (aggregate all flow steps) so log-degree sizing maxes them out.
+      const __size = n.kind === 'Process'
+        ? 4 + Math.min((n.degree ?? 0) * 0.005, 6)  // 4–10 px flat range
+        : computeSize(n.degree ?? 0)
       // #1106: seed each node near its repo's canvas center so the sim starts in
       // the right region and converges without fighting a random-soup start state.
-      // Small jitter (±50px) prevents all nodes from stacking at the exact center.
+      // #1121 P2: jitter radius proportional to sqrt(entityCount) × 8 so large
+      // repos spread their 600+ Process nodes instead of stacking at center.
       const center = repoCenters.get(n.repo ?? '')
-      const __x = center ? center.x + (Math.random() * 100 - 50) : 0
-      const __y = center ? center.y + (Math.random() * 100 - 50) : 0
+      const jitterR = Math.sqrt(repoEntityCount.get(n.repo ?? '') ?? 1) * 8
+      const angle = Math.random() * 2 * Math.PI
+      const r = Math.random() * jitterR
+      const __x = center ? center.x + r * Math.cos(angle) : 0
+      const __y = center ? center.y + r * Math.sin(angle) : 0
       return { ...n, __idx: i, __cluster_id: cid, __cluster_strength: strength, __size, __x, __y }
     })
   // repoCenters and repoToIdx are derived from nodes — listing all three would
