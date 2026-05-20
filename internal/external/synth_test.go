@@ -3955,6 +3955,96 @@ func TestPHPBareNames_UnknownPHPMethodFallsThrough(t *testing.T) {
 	}
 }
 
+// TestPHPSlice8BareNames_ClassifiedWhenLangIsPHP covers the slice-8
+// (issue #44) additions to phpBareNames:
+//   - Laravel Blueprint column/modifier methods: `integer`, `foreignId`,
+//     `constrained`, `index`, `hasTable`, `hasColumn`, `dropTable`.
+//   - Eloquent Model lifecycle methods forwarded through traits:
+//     `bootTraits`, `booted`, `fireModelEvent`, `initializeTraits`,
+//     `syncOriginal`.
+//   - Laravel HTTP helpers: `noContent`, `hasFile`, `validate`,
+//     `withErrors`, `insertGetId`, `attempt`, `regenerate`, `invalidate`,
+//     `intended`.
+//
+// All names must classify as stdlib bare-names when lang=="php" and
+// must NOT be rewritten for any other language (PHP gate holds).
+func TestPHPSlice8BareNames_ClassifiedWhenLangIsPHP(t *testing.T) {
+	names := []string{
+		// Blueprint column/modifier methods (slice-8).
+		"integer", "foreignId", "constrained", "index",
+		"hasTable", "hasColumn", "dropTable",
+		// Eloquent Model lifecycle trait methods (slice-8).
+		"bootTraits", "booted", "fireModelEvent",
+		"initializeTraits", "syncOriginal",
+		// Laravel HTTP helpers (slice-8).
+		"noContent", "hasFile", "validate", "withErrors", "insertGetId",
+		"attempt", "regenerate", "invalidate", "intended",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			subtype, ok := stdlibFunction(name, "php", "", nil)
+			if !ok {
+				t.Fatalf("stdlibFunction(%q, \"php\", nil) = (_, false); want classified (slice-8 phpBareNames)", name)
+			}
+			if subtype != "function" {
+				t.Fatalf("stdlibFunction(%q, \"php\", nil) subtype=%q, want \"function\"", name, subtype)
+			}
+			// Full Synthesize round-trip: bare CALLS edge rewrites to ext:<name>.
+			doc := &graph.Document{
+				Entities: []graph.Entity{{
+					ID:       "php-src",
+					Name:     "caller",
+					Kind:     "function",
+					Language: "php",
+				}},
+				Relationships: []graph.Relationship{
+					{ID: "rel-1", FromID: "php-src", ToID: name, Kind: "CALLS"},
+				},
+			}
+			stats := Synthesize(doc)
+			if stats.Synthesized != 1 {
+				t.Fatalf("Synthesize(%q): synthesized=%d, want 1", name, stats.Synthesized)
+			}
+			want := "ext:" + name
+			if doc.Relationships[0].ToID != want {
+				t.Fatalf("ToID=%q, want %q", doc.Relationships[0].ToID, want)
+			}
+		})
+	}
+}
+
+// TestPHPSlice8BareNames_NotClassifiedForOtherLanguages confirms the
+// PHP language gate for slice-8 names: these names must NOT be rewritten
+// when the source entity's language is anything other than "php".
+// Each name is unique to phpBareNames (not in stdlibBareNames or any
+// other language map) so the gate test is clean.
+func TestPHPSlice8BareNames_NotClassifiedForOtherLanguages(t *testing.T) {
+	names := []string{
+		// Blueprint methods unique to PHP.
+		"foreignId", "constrained", "hasTable", "hasColumn",
+		// Eloquent lifecycle methods unique to PHP.
+		"bootTraits", "fireModelEvent", "initializeTraits", "syncOriginal",
+		// HTTP helpers unique to PHP in this context.
+		"noContent", "hasFile", "withErrors", "insertGetId",
+		"regenerate", "invalidate", "intended",
+	}
+	otherLangs := []string{"go", "python", "javascript", "ruby", "rust", "java", "kotlin", "swift", ""}
+	for _, name := range names {
+		for _, lang := range otherLangs {
+			name, lang := name, lang
+			t.Run(name+"/"+lang, func(t *testing.T) {
+				t.Parallel()
+				if _, ok := stdlibFunction(name, lang, "", nil); ok {
+					t.Fatalf("stdlibFunction(%q, %q, nil) classified; want fall-through "+
+						"(name is gated to lang=\"php\" only, slice-8)", name, lang)
+				}
+			})
+		}
+	}
+}
+
 // TestPythonDjangoDRFDSLBareNames_ClassifiedWhenLangIsPython covers
 // issue #447: Django ORM model fields (`CharField`, `ForeignKey`,
 // `ManyToManyField`, ...), QuerySet / manager verbs (`objects`,
