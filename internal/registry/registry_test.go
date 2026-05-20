@@ -3,6 +3,7 @@ package registry
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,16 +26,49 @@ func TestLoadEmpty(t *testing.T) {
 	}
 }
 
+func TestAddGroupValidatesConfigExists(t *testing.T) {
+	home := withHome(t)
+	cfgPath := filepath.Join(home, "xdg", "archigraph", "missing.fleet.json")
+
+	// Try to add a group with a non-existent config file.
+	err := AddGroup("missing", cfgPath)
+	if err == nil {
+		t.Fatal("expected error for missing config file, got nil")
+	}
+	errMsg := err.Error()
+	if !contains(errMsg, "does not exist") && !contains(errMsg, "cannot access") {
+		t.Fatalf("expected error about config file not being accessible, got: %v", err)
+	}
+
+	// Verify the group was not added.
+	groups, _ := Groups()
+	if len(groups) != 0 {
+		t.Fatalf("expected no groups, got %d", len(groups))
+	}
+}
+
 func TestAddRemoveGroup(t *testing.T) {
-	withHome(t)
+	home := withHome(t)
 	cfgPath, err := ConfigPathFor("alpha")
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Create the config file first.
+	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
+	if err := os.WriteFile(cfgPath, []byte(`{"name":"alpha"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := AddGroup("alpha", cfgPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddGroup("beta", cfgPath+".beta"); err != nil {
+
+	betaCfgPath := filepath.Join(home, "xdg", "archigraph", "beta.fleet.json")
+	os.MkdirAll(filepath.Dir(betaCfgPath), 0o755)
+	if err := os.WriteFile(betaCfgPath, []byte(`{"name":"beta"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddGroup("beta", betaCfgPath); err != nil {
 		t.Fatal(err)
 	}
 	groups, err := Groups()
@@ -102,4 +136,8 @@ func TestLoadManifest(t *testing.T) {
 	if m.Group != "demo" || len(m.Repos) != 1 || m.Repos[0].Slug != "core" {
 		t.Fatalf("manifest: %+v", m)
 	}
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }

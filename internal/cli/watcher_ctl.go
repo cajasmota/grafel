@@ -95,9 +95,18 @@ func runDaemonStartWithBudget(out io.Writer, maxRSSBudgetMB int64) error {
 	if err != nil {
 		return err
 	}
-	// Already running? net.Dial succeeds → done.
+	// Already running? net.Dial succeeds → check for binary mismatch (#855).
 	if c, err := client.DialPath(layout.SocketPath); err == nil {
-		_ = c.Close()
+		defer c.Close()
+		st, statusErr := c.Status()
+		currentBin, _ := os.Executable()
+		// If the running daemon is from a different binary path, it's likely stale.
+		if statusErr == nil && st.BinaryPath != "" && currentBin != "" &&
+			filepath.Clean(st.BinaryPath) != filepath.Clean(currentBin) {
+			return fmt.Errorf("stale daemon running from %s (you are %s)\n"+
+				"Run: pkill -f \"archigraph daemon\" && archigraph start",
+				st.BinaryPath, currentBin)
+		}
 		fmt.Fprintln(out, "daemon already running")
 		return nil
 	}

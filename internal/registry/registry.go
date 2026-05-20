@@ -178,10 +178,17 @@ func saveTo(path string, r *Registry) error {
 }
 
 // AddGroup adds a group to the registry and persists. Idempotent: if the
-// group already exists it is updated in place.
+// group already exists it is updated in place. The config file must exist
+// at the target path; otherwise an error is returned.
 func AddGroup(name, configPath string) error {
 	if name == "" {
 		return errors.New("group name required")
+	}
+	// Validate that the config file exists.
+	if _, err := os.Stat(configPath); err == os.ErrNotExist {
+		return fmt.Errorf("config file does not exist: %s", configPath)
+	} else if err != nil {
+		return fmt.Errorf("cannot access config file: %w", err)
 	}
 	r, err := Load()
 	if err != nil {

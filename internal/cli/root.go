@@ -59,6 +59,7 @@ func newRoot() *cobra.Command {
 		newExtractCmd(),
 		newPatternsCmd(),
 		newMCPBridgeCmd(),
+		newCleanupCmd(),
 		newHelpCmd(),
 	)
 
@@ -114,6 +115,9 @@ Operate:
 Repair:
   rebuild [group] [slug]          Force AST rebuild (no cache, daemon RPC)
   reset [group] [slug]            Wipe .archigraph/ and rebuild via daemon
+
+Maintenance:
+  cleanup [--dry-run]             Remove orphaned registry entries
 
 Daemon (manual):
   start | stop | restart          Daemon lifecycle (ADR-0017)

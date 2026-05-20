@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -40,11 +42,24 @@ func runStatus(w io.Writer, filter string) error {
 		if statErr != nil {
 			fmt.Fprintf(w, "Daemon: running (status rpc failed: %v)\n", statErr)
 		} else {
-			uptime := time.Duration(st.UptimeSec) * time.Second
-			fmt.Fprintf(w, "Daemon: running  pid=%d  uptime=%s  rss=%s  in_flight=%d\n",
-				st.PID, uptime, humanBytes(st.RSSBytes), st.InFlight)
-			fmt.Fprintf(w, "  version: %s\n", st.Version)
-			fmt.Fprintf(w, "  socket:  %s\n", st.SocketPath)
+			// Check for binary mismatch (#855).
+			currentBin, _ := os.Executable()
+			if st.BinaryPath != "" && currentBin != "" &&
+				filepath.Clean(st.BinaryPath) != filepath.Clean(currentBin) {
+				fmt.Fprintf(w, "Daemon: running (binary mismatch)\n")
+				fmt.Fprintf(w, "  ⚠️ DAEMON MISMATCH: status shows a daemon from %s, but you ran %s.\n",
+					st.BinaryPath, currentBin)
+				fmt.Fprintf(w, "  The %s binary is likely stale. Run: pkill -f \"archigraph daemon\" && archigraph start\n",
+					st.BinaryPath)
+				fmt.Fprintf(w, "  version: %s (from %s)\n", st.Version, st.BinaryPath)
+				fmt.Fprintf(w, "  socket:  %s\n", st.SocketPath)
+			} else {
+				uptime := time.Duration(st.UptimeSec) * time.Second
+				fmt.Fprintf(w, "Daemon: running  pid=%d  uptime=%s  rss=%s  in_flight=%d\n",
+					st.PID, uptime, humanBytes(st.RSSBytes), st.InFlight)
+				fmt.Fprintf(w, "  version: %s\n", st.Version)
+				fmt.Fprintf(w, "  socket:  %s\n", st.SocketPath)
+			}
 			if st.WatcherRepos > 0 || st.WatcherEvents > 0 {
 				fmt.Fprintf(w, "  watcher: repos=%d dirs=%d events=%d dropped=%d\n",
 					st.WatcherRepos, st.WatcherDirs, st.WatcherEvents, st.WatcherDropped)
@@ -122,6 +137,15 @@ func runStatus(w io.Writer, filter string) error {
 			continue
 		}
 		fmt.Fprintf(w, "\nGroup: %s\n", g.Name)
+
+		// Check if config file exists (#854).
+		_, statErr := os.Stat(g.ConfigPath)
+		if statErr != nil && os.IsNotExist(statErr) {
+			fmt.Fprintf(w, "  ⚠️ config not found: %s\n", g.ConfigPath)
+			fmt.Fprintf(w, "  Run 'archigraph cleanup' to remove this orphaned entry\n")
+			continue
+		}
+
 		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
 		if err != nil {
 			fmt.Fprintf(w, "  (config error: %v)\n", err)

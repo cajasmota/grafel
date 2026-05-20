@@ -35,6 +35,7 @@ type StatusReply struct {
 	Groups     []string `json:"groups,omitempty"`
 	StartedAt  string   `json:"started_at"`
 	SocketPath string   `json:"socket_path"`
+	BinaryPath string   `json:"binary_path,omitempty"`
 
 	// Phase B additions — watcher + scheduler observability. Fields
 	// are optional; older clients ignore them.

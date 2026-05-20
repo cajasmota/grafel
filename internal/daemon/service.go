@@ -160,6 +160,10 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	reply.InFlight = int(atomic.LoadInt64(&s.inFlight))
 	reply.StartedAt = s.startedAt.UTC().Format(time.RFC3339)
 	reply.SocketPath = s.socketPath
+	// Report the binary path so clients can detect stale daemons (#855).
+	if bin, err := os.Executable(); err == nil {
+		reply.BinaryPath = bin
+	}
 
 	if s.watcher != nil {
 		repos, dirs, events, dropped := s.watcher.Stats()
