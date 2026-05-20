@@ -1,8 +1,9 @@
 package dashboard
 
-// handlers_repairs.go — Repair queue (admin) endpoints
+// handlers_repairs.go — Pending queue endpoints for the dashboard (#987).
 //
-//	GET /api/repairs/{group}
+//	GET /api/repairs/{group}      — repair_edge + dynamic_baseurl_endpoint candidates
+//	GET /api/enrichments/{group}  — all other enrichment candidates (describe_entity, classify_domain, …)
 
 import (
 	"encoding/json"
@@ -13,7 +14,33 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 )
 
+// repairKinds is the closed set of candidate kinds surfaced on the "Repair
+// candidates" tab. Everything else lands on the "Enrichment candidates" tab.
+var repairKinds = map[string]bool{
+	"repair_edge":                true,
+	"dynamic_baseurl_endpoint":   true,
+}
+
+// pendingCandidateRow is the wire shape shared by both /api/repairs and
+// /api/enrichments. The richer Context map is forwarded as-is so the
+// dashboard can display subject / proposed-value without a second round-trip.
+type pendingCandidateRow struct {
+	CandidateID    string         `json:"candidate_id"`
+	Repo           string         `json:"repo"`
+	Kind           string         `json:"kind"`
+	SubjectID      string         `json:"subject_id"`
+	Context        map[string]any `json:"context,omitempty"`
+	Hint           string         `json:"hint,omitempty"`
+	Confidence     float64        `json:"confidence,omitempty"`
+	DiscoveredAt   string         `json:"discovered_at,omitempty"`
+	AutoResolvable bool           `json:"auto_resolvable"`
+}
+
 // handleRepairs — GET /api/repairs/{group}
+//
+// Returns repair_edge and dynamic_baseurl_endpoint candidates for every repo in
+// the group. These are the structurally ambiguous edges that require an agent
+// (or a human) to choose a resolution.
 func (s *Server) handleRepairs(w http.ResponseWriter, r *http.Request) {
 	group := r.PathValue("group")
 	if group == "" {
@@ -27,58 +54,105 @@ func (s *Server) handleRepairs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect repair_edge candidates from all repos in the group.
-	type ResidualRow struct {
-		ResidualID     string  `json:"residual_id"`
-		Repo           string  `json:"repo"`
-		Kind           string  `json:"kind"`
-		Hint           string  `json:"hint,omitempty"`
-		Confidence     float64 `json:"confidence,omitempty"`
-		AutoResolvable bool    `json:"auto_resolvable"`
-	}
-
-	residuals := []ResidualRow{}
+	items := []pendingCandidateRow{}
 	autoResolvable := 0
 
-	for slug, r := range grp.Repos {
-		if r == nil || r.Path == "" {
+	for slug, repo := range grp.Repos {
+		if repo == nil || repo.Path == "" {
 			continue
 		}
-		cands := readRepairCandidates(r.Path)
-		for _, c := range cands {
+		for _, c := range readAllCandidates(repo.Path) {
+			if !repairKinds[c.Kind] {
+				continue
+			}
 			ar := c.Confidence >= 0.85
 			if ar {
 				autoResolvable++
 			}
-			residuals = append(residuals, ResidualRow{
-				ResidualID:     c.ID,
+			items = append(items, pendingCandidateRow{
+				CandidateID:    c.ID,
 				Repo:           slug,
 				Kind:           c.Kind,
+				SubjectID:      c.SubjectID,
+				Context:        c.Context,
 				Hint:           c.Hint,
 				Confidence:     c.Confidence,
+				DiscoveredAt:   c.DiscoveredAt,
 				AutoResolvable: ar,
 			})
 		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"residuals":             residuals,
-		"open_count":            len(residuals),
+		"items":                 items,
+		"total":                 len(items),
 		"auto_resolvable_count": autoResolvable,
 	})
 }
 
-// candidateRaw is a minimal parse of enrichment-candidates.json entries.
-type candidateRaw struct {
-	ID         string  `json:"id"`
-	Kind       string  `json:"kind"`
-	Hint       string  `json:"hint,omitempty"`
-	Confidence float64 `json:"confidence,omitempty"`
+// handleEnrichments — GET /api/enrichments/{group}
+//
+// Returns all non-repair enrichment candidates (describe_entity, classify_domain,
+// describe_role, name_community, infer_xlang_call, summarize_api, …) for every
+// repo in the group.
+func (s *Server) handleEnrichments(w http.ResponseWriter, r *http.Request) {
+	group := r.PathValue("group")
+	if group == "" {
+		writeErr(w, http.StatusBadRequest, "group required")
+		return
+	}
+
+	grp, err := s.graphs.GetGroup(group)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	items := []pendingCandidateRow{}
+
+	for slug, repo := range grp.Repos {
+		if repo == nil || repo.Path == "" {
+			continue
+		}
+		for _, c := range readAllCandidates(repo.Path) {
+			if repairKinds[c.Kind] {
+				continue // repair tab handles these
+			}
+			items = append(items, pendingCandidateRow{
+				CandidateID:  c.ID,
+				Repo:         slug,
+				Kind:         c.Kind,
+				SubjectID:    c.SubjectID,
+				Context:      c.Context,
+				Hint:         c.Hint,
+				Confidence:   c.Confidence,
+				DiscoveredAt: c.DiscoveredAt,
+			})
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+		"total": len(items),
+	})
 }
 
-// readRepairCandidates reads the repair_edge entries from a repo's
-// enrichment-candidates.json without importing internal/enrichment.
-func readRepairCandidates(repoPath string) []candidateRaw {
+// candidateRaw is the full on-disk shape of one enrichment-candidates.json entry.
+// We parse the Context map so the REST layer can forward it without importing
+// internal/enrichment.
+type candidateRaw struct {
+	ID           string         `json:"id"`
+	Kind         string         `json:"kind"`
+	SubjectID    string         `json:"subject_id"`
+	Context      map[string]any `json:"context,omitempty"`
+	Hint         string         `json:"hint,omitempty"`
+	Confidence   float64        `json:"confidence,omitempty"`
+	DiscoveredAt string         `json:"discovered_at,omitempty"`
+}
+
+// readAllCandidates reads every entry from a repo's enrichment-candidates.json.
+// Returns nil (not an error) when the file is absent.
+func readAllCandidates(repoPath string) []candidateRaw {
 	if repoPath == "" {
 		return nil
 	}
@@ -90,26 +164,16 @@ func readRepairCandidates(repoPath string) []candidateRaw {
 	// Try flat array first.
 	var arr []candidateRaw
 	if json.Unmarshal(data, &arr) == nil {
-		return filterRepairKind(arr)
+		return arr
 	}
-	// Try {"candidates": [...]} wrapper.
+	// Try {"candidates": [...]} wrapper (v2 schema).
 	var obj struct {
 		Candidates []candidateRaw `json:"candidates"`
 	}
 	if json.Unmarshal(data, &obj) == nil {
-		return filterRepairKind(obj.Candidates)
+		return obj.Candidates
 	}
 	return nil
-}
-
-func filterRepairKind(cands []candidateRaw) []candidateRaw {
-	out := cands[:0]
-	for _, c := range cands {
-		if c.Kind == "repair_edge" {
-			out = append(out, c)
-		}
-	}
-	return out
 }
 
 // handleListFindings — GET /api/findings

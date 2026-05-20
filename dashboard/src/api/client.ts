@@ -86,6 +86,8 @@ import type {
   EntityNeighborResponse,
   LodLevel,
   ServerLod,
+  PendingRepairsResponse,
+  PendingEnrichmentsResponse,
 } from '@/types/api'
 import type { DocTreeResponse, DocContentResponse, DocSearchResponse, EntityCard } from '@/types/docs'
 
@@ -603,4 +605,43 @@ export async function fetchEntityHovercard(entityId: string): Promise<EntityCard
     }
   }
   return apiFetch<EntityCard>(`/api/inspect?id=${encodeURIComponent(entityId)}&compact=true`)
+}
+
+// ── Surface 6: Pending queue (repairs + enrichments) ─────────────────────────
+
+/** GET /api/repairs/{group} — repair_edge and dynamic_baseurl_endpoint candidates */
+export async function fetchRepairs(group: string): Promise<PendingRepairsResponse> {
+  if (USE_MOCKS) {
+    return { items: [], total: 0, auto_resolvable_count: 0 }
+  }
+  return apiFetch<PendingRepairsResponse>(`/api/repairs/${group}`)
+}
+
+/** GET /api/enrichments/{group} — all non-repair enrichment candidates */
+export async function fetchEnrichments(group: string): Promise<PendingEnrichmentsResponse> {
+  if (USE_MOCKS) {
+    return { items: [], total: 0 }
+  }
+  return apiFetch<PendingEnrichmentsResponse>(`/api/enrichments/${group}`)
+}
+
+/**
+ * POST a resolution (apply) or rejection for a single candidate.
+ * The daemon MCP RPC handles the actual write; this just POSTs to the
+ * same daemon HTTP endpoint the other surfaces use.
+ *
+ * action = 'apply'  → adds a resolution record
+ * action = 'reject' → adds a rejection record
+ */
+export async function postCandidateAction(
+  group: string,
+  candidateId: string,
+  action: 'apply' | 'reject',
+  value?: string,
+): Promise<void> {
+  if (USE_MOCKS) return
+  await apiFetch<unknown>(`/api/enrichments/${group}/action`, {
+    method: 'POST',
+    body: JSON.stringify({ candidate_id: candidateId, action, value }),
+  })
 }
