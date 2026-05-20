@@ -243,6 +243,15 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 	}
 	res.Results = append(res.Results, p4)
 
+	// P5 — OpenAPI spec → HTTP route cross-linker. Uses openapi_operation
+	// entities emitted by the patterns extractor as the pivot to create
+	// consumer-caller → producer-handler links with method=openapi-spec.
+	p5, err := runOpenAPISpecPass(graphs, paths, rejects)
+	if err != nil {
+		return nil, fmt.Errorf("openapi-spec pass: %w", err)
+	}
+	res.Results = append(res.Results, p5)
+
 	for _, r := range res.Results {
 		res.TotalLinks += r.LinksAdded
 		res.TotalCandid += r.Candidates
