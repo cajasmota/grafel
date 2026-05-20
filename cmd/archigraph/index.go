@@ -26,6 +26,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/extractors"
 	"github.com/cajasmota/archigraph/internal/extractors/cross"
+	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	"github.com/cajasmota/archigraph/internal/resolve"
@@ -1324,6 +1325,24 @@ func (i *Indexer) runPass1Extract(ctx context.Context, absRepo string, files []s
 		classified, _ := i.classifyAndRead(ctx, absRepo, files, false)
 		return nil, classified, nil
 	}
+
+	// Pre-pass (#698): build the cross-file Python class registry before the
+	// per-file extraction runs. Scanning is a lightweight line-based pass (no
+	// AST), single-threaded to avoid lock contention on the global registry.
+	// This allows extractBaseClasses in the Python extractor to resolve
+	// cross-file `class Foo(Bar):` shapes to the correct source file when
+	// exactly one project file declares `Bar`.
+	pyextr.ClearPythonClassRegistry()
+	for _, rel := range files {
+		abs := filepath.Join(absRepo, rel)
+		if !strings.HasSuffix(strings.ToLower(rel), ".py") {
+			continue
+		}
+		if content, err := os.ReadFile(abs); err == nil {
+			pyextr.ScanPythonClassRegistry(rel, string(content))
+		}
+	}
+
 	classified, records := i.classifyAndRead(ctx, absRepo, files, true)
 	return records, classified, nil
 }
