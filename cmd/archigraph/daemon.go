@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,9 +17,13 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/dashboard"
 	"github.com/cajasmota/archigraph/internal/quality/audit"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
+
+// defaultDashboardPort is the default TCP port for the embedded dashboard.
+const defaultDashboardPort = 47274
 
 // defaultRSSBudgetMB is the production default for the concurrency
 // cap. Chosen to match the post-#639 single-reindex peak (343MB) plus
@@ -74,6 +79,15 @@ func runDaemon(argv []string) error {
 	// can confirm the daemon is running in the expected configuration.
 	logger.Printf("graph format: fb-default (json-fallback enabled) — graph.fb written on every index; --skip-json opt-in drops graph.json")
 
+	// Resolve dashboard port: env var > default. A future
+	// ~/.config/archigraph/daemon.toml can add more overrides.
+	dashPort := defaultDashboardPort
+	if v := os.Getenv("ARCHIGRAPH_DASHBOARD_PORT"); v != "" {
+		if p, perr := strconv.Atoi(v); perr == nil && p > 0 && p <= 65535 {
+			dashPort = p
+		}
+	}
+
 	cfg := daemon.Config{
 		Layout:       layout,
 		Logger:       logger,
@@ -104,6 +118,12 @@ func runDaemon(argv []string) error {
 		// Daemon.MCPToolList / Daemon.MCPToolCall over the socket.
 		MCPListTools: daemonMCPListTools,
 		MCPCallTool:  daemonMCPCallTool,
+
+		// Dashboard HTTP server (#929/#931): fold the SPA + REST API
+		// into the daemon process so a single launchd unit serves both.
+		DashboardServe: daemonDashboardServe,
+		DashboardPort:  dashPort,
+		DashboardBind:  "127.0.0.1",
 	}
 
 	ctx := context.Background()
@@ -368,4 +388,34 @@ func daemonPatternGroupDirs() map[string]string {
 		out[g.Name] = dir
 	}
 	return out
+}
+
+// daemonDashboardServe is the DashboardServe hook injected into daemon.Config.
+// It binds a TCP listener on the given address:port and serves the embedded
+// SPA plus the REST API. Blocks until ctx is done.
+//
+// This function lives in cmd/archigraph (not internal/daemon) to avoid the
+// import cycle: internal/dashboard already imports internal/daemon.
+func daemonDashboardServe(ctx context.Context, bind string, port int, logger *log.Logger) error {
+	addr := net.JoinHostPort(bind, strconv.Itoa(port))
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("dashboard listen %s: %w", addr, err)
+	}
+
+	// Build dashboard config: fixed port (the daemon already owns the listener).
+	cfg := dashboard.Config{
+		PortRange: dashboard.PortRange{Min: port, Max: port},
+		Bind:      bind,
+	}
+	srv, err := dashboard.NewServer(cfg, dashboard.NewLiveStore())
+	if err != nil {
+		_ = l.Close()
+		return fmt.Errorf("dashboard new server: %w", err)
+	}
+	srv.UseListener(l)
+	if logger != nil {
+		logger.Printf("dashboard ready http://%s/", addr)
+	}
+	return srv.Serve(ctx)
 }

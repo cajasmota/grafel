@@ -1,13 +1,33 @@
-.PHONY: build test lint fmt vet clean fbgen fb-bench
+.PHONY: build dashboard-build test lint fmt vet clean fbgen fb-bench
 
 GO ?= go
+NPM ?= npm
 BINARY := archigraph
 LDFLAGS := -s -w \
   -X github.com/cajasmota/archigraph/internal/version.Version=$(shell git describe --tags --always --dirty 2>/dev/null || echo dev) \
   -X github.com/cajasmota/archigraph/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown) \
   -X github.com/cajasmota/archigraph/internal/version.Date=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
-build:
+# dashboard-build: compile the React SPA and copy the output into
+# internal/dashboard/dist/ so the Go embed directive picks it up.
+# Must run before `go build` or the embed will fail (no dist/ dir).
+# We use `vite build` directly instead of `npm run build` (which calls
+# `tsc -b && vite build`) to skip the TypeScript emit step — Vite has
+# its own transpilation pass. Type-checking is done separately via
+# `npm run lint` (tsc --noEmit).
+dashboard-build:
+	cd dashboard && $(NPM) ci && npx vite build
+	rm -rf internal/dashboard/dist
+	cp -r dashboard/dist internal/dashboard/dist
+
+# build: full binary including embedded SPA. Depends on dashboard-build
+# so `make build` always produces a self-contained binary.
+build: dashboard-build
+	$(GO) build -ldflags='$(LDFLAGS)' -o $(BINARY) ./cmd/archigraph
+
+# build-go-only: skip the npm step (for CI environments that have already
+# pre-built the SPA or for fast Go-only iteration when the SPA is unchanged).
+build-go-only:
 	$(GO) build -ldflags='$(LDFLAGS)' -o $(BINARY) ./cmd/archigraph
 
 test:

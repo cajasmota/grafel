@@ -67,6 +67,30 @@ type Config struct {
 	// the import cycle that would arise from importing internal/mcp here.
 	MCPListTools MCPListToolsFunc
 	MCPCallTool  MCPCallToolFunc
+
+	// DashboardServe is an optional hook that starts the embedded HTTP
+	// dashboard alongside the daemon process (#929/#931). When non-nil,
+	// Run calls it in a goroutine with the daemon's context so the
+	// dashboard shuts down when the daemon shuts down.
+	//
+	// The hook is injected from cmd/archigraph (which imports both
+	// internal/daemon and internal/dashboard). Keeping it here as a
+	// function value avoids the import cycle that would arise if
+	// internal/daemon imported internal/dashboard directly.
+	//
+	// The hook receives the bind address and port to listen on, and the
+	// daemon logger. It should block until ctx is done.
+	DashboardServe func(ctx context.Context, bind string, port int, logger *log.Logger) error
+
+	// DashboardPort is the TCP port for the embedded dashboard HTTP server
+	// (#929/#931). When 0 the dashboard is disabled. Default production
+	// value is 47274. Configurable via ARCHIGRAPH_DASHBOARD_PORT env or
+	// ~/.config/archigraph/daemon.toml.
+	DashboardPort int
+
+	// DashboardBind is the bind address for the dashboard TCP listener.
+	// Defaults to "127.0.0.1" (loopback-only).
+	DashboardBind string
 }
 
 // Run starts the daemon. It blocks until either:
@@ -184,6 +208,25 @@ func Run(ctx context.Context, cfg Config) error {
 		go decaySched.Run(decayCtx)
 		defer decayCancel()
 		logger.Printf("pattern decay scheduler started interval=%s", decayInterval)
+	}
+
+	// Dashboard HTTP server — started in a goroutine so it does not
+	// block the RPC socket. Shuts down when the daemon context is done.
+	// The DashboardServe hook is injected from cmd/archigraph to avoid
+	// the import cycle that would arise from importing internal/dashboard here.
+	if cfg.DashboardServe != nil && cfg.DashboardPort > 0 {
+		bind := cfg.DashboardBind
+		if bind == "" {
+			bind = "127.0.0.1"
+		}
+		dashCtx, dashCancel := context.WithCancel(ctx)
+		defer dashCancel()
+		go func() {
+			if err := cfg.DashboardServe(dashCtx, bind, cfg.DashboardPort, logger); err != nil {
+				logger.Printf("dashboard: %v", err)
+			}
+		}()
+		logger.Printf("dashboard listening on http://%s:%d/", bind, cfg.DashboardPort)
 	}
 
 	server := rpc.NewServer()
