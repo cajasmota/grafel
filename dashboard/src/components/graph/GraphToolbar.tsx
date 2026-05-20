@@ -1,18 +1,14 @@
 import { Search, RotateCcw, Camera } from 'lucide-react'
 import { useRef } from 'react'
 
-// #1023: layout modes collapsed to 'force' only — Cosmograph 2D GPU force is the single renderer.
-// Tree layout removed (was broken with cyclic graphs; dagMode not supported by Cosmograph).
-// 3D toggle removed (3d-force-graph dependency dropped).
-export type LayoutMode = 'force'
+// #1023: Tree + 3D layout modes removed — Cosmograph is 2D-only GPU force renderer.
+// #1059: LayoutMode type + dead props scrubbed (no-tech-debt).
 
 interface GraphToolbarProps {
   searchQuery: string
   onSearchChange: (q: string) => void
   onResetView: () => void
   onSaveSnapshot: () => void
-  layoutMode: LayoutMode
-  onLayoutChange: (mode: LayoutMode) => void
   className?: string
 }
 
@@ -28,10 +24,7 @@ export function GraphToolbar({
   onResetView,
   onSaveSnapshot,
   className = '',
-}: Omit<GraphToolbarProps, 'layoutMode' | 'onLayoutChange'> & {
-  layoutMode?: LayoutMode
-  onLayoutChange?: (mode: LayoutMode) => void
-}) {
+}: GraphToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
 
   return (
