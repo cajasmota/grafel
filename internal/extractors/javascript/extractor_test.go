@@ -335,8 +335,15 @@ func TestCommonJSRequire(t *testing.T) {
 	tree := parseJS(t, src)
 	entities := extract(t, src, "javascript", tree)
 
-	assertKind(t, entities, "path", "SCOPE.Component")
-	assertKind(t, entities, "express", "SCOPE.Component")
+	// Issue #562 — plain const assignments (require() calls that aren't
+	// function wrappers or context factories) are no longer emitted.
+	// Expect zero entities for `const X = require(...)`.
+	if e := findByName(entities, "path"); e != nil {
+		t.Fatalf("path should not be emitted; got %+v", e)
+	}
+	if e := findByName(entities, "express"); e != nil {
+		t.Fatalf("express should not be emitted; got %+v", e)
+	}
 }
 
 // --------------------------------------------------------------------------
@@ -599,7 +606,11 @@ function validateUser(req, res, next) {
 	entities := extract(t, src, "javascript", tree)
 
 	assertKind(t, entities, "validateUser", "SCOPE.Operation")
-	assertKind(t, entities, "express", "SCOPE.Component")
+	// Issue #562 — plain const assignments (require() and call results)
+	// are no longer emitted. Only function entities are expected.
+	if e := findByName(entities, "express"); e != nil {
+		t.Fatalf("express should not be emitted; got %+v", e)
+	}
 }
 
 // --------------------------------------------------------------------------
@@ -685,8 +696,14 @@ func TestConstExportObjectLiteral(t *testing.T) {
 	tree := parseJS(t, src)
 	entities := extract(t, src, "javascript", tree)
 
-	assertKind(t, entities, "ROUTES", "SCOPE.Component")
-	assertKind(t, entities, "COLORS", "SCOPE.Component")
+	// Issue #562 — plain const assignments (objects, arrays, literals, etc.)
+	// are no longer emitted. They are synthetic resolver state, not queryable.
+	if e := findByName(entities, "ROUTES"); e != nil {
+		t.Fatalf("ROUTES should not be emitted; got %+v", e)
+	}
+	if e := findByName(entities, "COLORS"); e != nil {
+		t.Fatalf("COLORS should not be emitted; got %+v", e)
+	}
 }
 
 const constExportInstanceSrc = `
@@ -702,8 +719,15 @@ func TestConstExportInstance(t *testing.T) {
 	tree := parseJS(t, src)
 	entities := extract(t, src, "javascript", tree)
 
-	assertKind(t, entities, "api", "SCOPE.Component")
-	assertKind(t, entities, "queryClient", "SCOPE.Component")
+	// Issue #562 — plain const assignments (call results, new instances)
+	// are no longer emitted. Only function wrappers and context factories
+	// are kept as they're semantically meaningful graph nodes.
+	if e := findByName(entities, "api"); e != nil {
+		t.Fatalf("api should not be emitted; got %+v", e)
+	}
+	if e := findByName(entities, "queryClient"); e != nil {
+		t.Fatalf("queryClient should not be emitted; got %+v", e)
+	}
 }
 
 const constExportReactWrappersSrc = `
@@ -740,9 +764,14 @@ func TestConstExportHookAlias(t *testing.T) {
 	tree := parseJS(t, src)
 	entities := extract(t, src, "javascript", tree)
 
-	// Plain identifier alias is a value re-export → Component.
-	assertKind(t, entities, "useAppSelector", "SCOPE.Component")
-	assertKind(t, entities, "useAppDispatch", "SCOPE.Component")
+	// Issue #562 — plain identifier aliases (const X = Y) are no longer emitted.
+	// These are synthetic resolver state resolved through structural refs.
+	if e := findByName(entities, "useAppSelector"); e != nil {
+		t.Fatalf("useAppSelector should not be emitted; got %+v", e)
+	}
+	if e := findByName(entities, "useAppDispatch"); e != nil {
+		t.Fatalf("useAppDispatch should not be emitted; got %+v", e)
+	}
 }
 
 const constExportReducerSrc = `
@@ -759,8 +788,14 @@ func TestConstExportReducer(t *testing.T) {
 	tree := parseJS(t, src)
 	entities := extract(t, src, "javascript", tree)
 
-	assertKind(t, entities, "cartReducer", "SCOPE.Component")
-	assertKind(t, entities, "cartActions", "SCOPE.Component")
+	// Issue #562 — plain const assignments (member expressions like
+	// slice.reducer and slice.actions) are no longer emitted.
+	if e := findByName(entities, "cartReducer"); e != nil {
+		t.Fatalf("cartReducer should not be emitted; got %+v", e)
+	}
+	if e := findByName(entities, "cartActions"); e != nil {
+		t.Fatalf("cartActions should not be emitted; got %+v", e)
+	}
 }
 
 const tsConstExportTypedSrc = `
@@ -778,6 +813,11 @@ func TestTSConstExportTyped(t *testing.T) {
 	tree := parseTS(t, src)
 	entities := extract(t, src, "typescript", tree)
 
+	// Issue #562 + #709: type-annotated const declarations ARE emitted to
+	// support type-position REFERENCES edge attribution. Plain const assignments
+	// without type annotations are not emitted (synthetic resolver state).
+	// Both userSchema and MAX_RETRIES have explicit type annotations, so they
+	// should be emitted as SCOPE.Component subtype="const".
 	assertKind(t, entities, "userSchema", "SCOPE.Component")
 	assertKind(t, entities, "MAX_RETRIES", "SCOPE.Component")
 }
@@ -910,15 +950,20 @@ function Cmp() {
 	assertKind(t, entities, "closeModal", "SCOPE.Operation")
 }
 
-// Regression: non-destructured `const X = identifier` still routes through
-// the default branch (SCOPE.Component subtype="const_alias"). This guards
-// that the new top-of-function early-return doesn't swallow the normal path.
+// Regression: issue #562 — plain const assignments (non-function-wrapper,
+// non-context-factory) are no longer emitted as entities. This test verifies
+// that `const useAppDispatch = useDispatch;` produces zero entities (synthetic
+// state, not queryable graph structure). REFERENCES edges will still resolve
+// through structural refs without entity materialization.
 func TestDestructureRegressionNonPattern(t *testing.T) {
 	src := []byte(`const useAppDispatch = useDispatch;`)
 	tree := parseJS(t, src)
 	entities := extract(t, src, "javascript", tree)
 
-	assertKind(t, entities, "useAppDispatch", "SCOPE.Component")
+	// Expect no entity for plain const assignment
+	if e := findByName(entities, "useAppDispatch"); e != nil {
+		t.Fatalf("useAppDispatch should not be emitted; got %+v", e)
+	}
 }
 
 // --------------------------------------------------------------------------
