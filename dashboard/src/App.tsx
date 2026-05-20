@@ -10,6 +10,7 @@ import { TopologyRoute } from '@/routes/topology'
 import { PathsRoute } from '@/routes/paths'
 import { PathsDetailRoute } from '@/routes/paths.detail'
 import { DocsRoute } from '@/routes/docs'
+import { PendingRoute } from '@/routes/pending'
 import { RouterErrorBoundary } from '@/components/RouterErrorBoundary'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Globe } from 'lucide-react'
@@ -70,6 +71,10 @@ const router = createBrowserRouter([
       { path: 'docs', element: <Navigate to="/docs/fixture-a" replace /> },
       { path: 'docs/:group', element: <DocsRoute /> },
       { path: 'docs/:group/*', element: <DocsRoute /> },
+
+      // Surface 6 — Pending queue (repairs + enrichments, #987)
+      { path: 'pending', element: <Navigate to="/pending/fixture-a" replace /> },
+      { path: 'pending/:group', element: <PendingRoute /> },
     ],
   },
 ])

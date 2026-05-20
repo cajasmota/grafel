@@ -406,6 +406,35 @@ export interface RepairResidual {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Pending queue — repairs + enrichments (Surface 6, #987)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** One row returned by GET /api/repairs/{group} or GET /api/enrichments/{group}. */
+export interface PendingCandidateRow {
+  candidate_id: string
+  repo: string
+  kind: string
+  subject_id: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context?: Record<string, any>
+  hint?: string
+  confidence?: number
+  discovered_at?: string
+  auto_resolvable?: boolean
+}
+
+export interface PendingRepairsResponse {
+  items: PendingCandidateRow[]
+  total: number
+  auto_resolvable_count: number
+}
+
+export interface PendingEnrichmentsResponse {
+  items: PendingCandidateRow[]
+  total: number
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Surface 1 — Graph Viewer
 // ────────────────────────────────────────────────────────────────────────────
 
