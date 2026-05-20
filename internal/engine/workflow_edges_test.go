@@ -68,7 +68,7 @@ func requireEntityKind(t *testing.T, ents []types.EntityRecord, kind, id, label 
 	}
 }
 
-func requireEdgeTo(t *testing.T, rels []types.RelationshipRecord, edgeKind, toID, label string) {
+func requireWorkflowEdgeTo(t *testing.T, rels []types.RelationshipRecord, edgeKind, toID, label string) {
 	t.Helper()
 	for _, r := range rels {
 		if r.Kind == edgeKind && r.ToID == toID {
@@ -132,7 +132,7 @@ func TestTemporalPythonWorkflowDefinition(t *testing.T) {
 	requireEntityKind(t, ents, activityKind, temporalActivityID("send_receipt"), "send_receipt activity (custom name)")
 
 	// STARTS_WORKFLOW: main → OrderWorkflow
-	requireEdgeTo(t, rels, startsWorkflowEdgeKind,
+	requireWorkflowEdgeTo(t, rels, startsWorkflowEdgeKind,
 		workflowKind+":"+temporalWorkflowID("OrderWorkflow"), "starts_workflow from main")
 
 	// EXECUTES_ACTIVITY: OrderWorkflow → charge_card
@@ -212,7 +212,7 @@ func TestTemporalGoExecuteWorkflow(t *testing.T) {
 	ents, rels := runWorkflowEdges(t, "go", "worker/main.go", goTemporalSrc)
 
 	// STARTS_WORKFLOW from main → OrderWorkflow
-	requireEdgeTo(t, rels, startsWorkflowEdgeKind,
+	requireWorkflowEdgeTo(t, rels, startsWorkflowEdgeKind,
 		workflowKind+":"+temporalWorkflowID("OrderWorkflow"), "ExecuteWorkflow triggers STARTS_WORKFLOW")
 	_ = ents
 }
@@ -269,7 +269,7 @@ func TestJavaTemporalWorkflowInterface(t *testing.T) {
 	requireEntityKind(t, ents, activityKind, temporalActivityID("PaymentActivities"), "PaymentActivities entity")
 
 	// STARTS_WORKFLOW via newWorkflowStub(OrderWorkflow.class)
-	requireEdgeTo(t, rels, startsWorkflowEdgeKind,
+	requireWorkflowEdgeTo(t, rels, startsWorkflowEdgeKind,
 		workflowKind+":"+temporalWorkflowID("OrderWorkflow"), "java STARTS_WORKFLOW via newWorkflowStub")
 	_ = rels
 }
@@ -359,7 +359,7 @@ func TestTemporalTypeScriptWorkflow(t *testing.T) {
 func TestTemporalTypeScriptClientStart(t *testing.T) {
 	ents, rels := runWorkflowEdges(t, "typescript", "src/client.ts", tsClientSrc)
 
-	requireEdgeTo(t, rels, startsWorkflowEdgeKind,
+	requireWorkflowEdgeTo(t, rels, startsWorkflowEdgeKind,
 		workflowKind+":"+temporalWorkflowID("orderWorkflow"), "TS client.start STARTS_WORKFLOW")
 	_ = ents
 }
@@ -444,7 +444,7 @@ func TestASLStatesLambdaInvokeResource(t *testing.T) {
 	_, rels := applyASLWorkflowEdges("infra/sm.asl.json", []byte(aslParamsJSON), nil, nil)
 
 	target := serverlessFunctionKind + ":" + lambdaFunctionID("process-order")
-	requireEdgeTo(t, rels, stepFunctionStepInvokesEdgeKind, target, "states:::lambda:invoke Parameters FunctionName")
+	requireWorkflowEdgeTo(t, rels, stepFunctionStepInvokesEdgeKind, target, "states:::lambda:invoke Parameters FunctionName")
 }
 
 // ---------------------------------------------------------------------------
@@ -500,7 +500,7 @@ func TestPythonSFNStartExecution(t *testing.T) {
 	ents, rels := runSFNStartEdges(t, "python", "handlers/trigger.py", pySFNInvokeSrc)
 
 	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("order-flow-machine"), "SFN entity from Python invocation")
-	requireEdgeTo(t, rels, startsWorkflowEdgeKind,
+	requireWorkflowEdgeTo(t, rels, startsWorkflowEdgeKind,
 		stateMachineKind+":"+sfnStateMachineID("order-flow-machine"), "Python STARTS_WORKFLOW → SFN")
 }
 
@@ -524,7 +524,7 @@ func TestGoSFNStartExecution(t *testing.T) {
 	ents, rels := runSFNStartEdges(t, "go", "infra/trigger.go", goSFNInvokeSrc)
 
 	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("order-flow-machine"), "SFN entity from Go invocation")
-	requireEdgeTo(t, rels, startsWorkflowEdgeKind,
+	requireWorkflowEdgeTo(t, rels, startsWorkflowEdgeKind,
 		stateMachineKind+":"+sfnStateMachineID("order-flow-machine"), "Go STARTS_WORKFLOW → SFN")
 }
 
@@ -545,7 +545,7 @@ func TestNodeSFNStartExecution(t *testing.T) {
 	ents, rels := runSFNStartEdges(t, "typescript", "src/trigger.ts", nodeSFNInvokeSrc)
 
 	requireEntityKind(t, ents, stateMachineKind, sfnStateMachineID("order-flow-machine"), "SFN entity from Node invocation")
-	requireEdgeTo(t, rels, startsWorkflowEdgeKind,
+	requireWorkflowEdgeTo(t, rels, startsWorkflowEdgeKind,
 		stateMachineKind+":"+sfnStateMachineID("order-flow-machine"), "Node STARTS_WORKFLOW → SFN")
 }
 

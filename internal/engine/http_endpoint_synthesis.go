@@ -383,6 +383,12 @@ func synthesizeDjangoFromComposed(entities []types.EntityRecord, path string, em
 		if canonical == "" {
 			continue
 		}
+		// Issue #1125 — reject XML namespace XPath strings that the Django
+		// YAML `path(...)` rule may have captured from python-docx / lxml
+		// code (e.g. `element.find(path('./w:tblBorders'))`).
+		if isXMLNamespacePath(canonical) {
+			continue
+		}
 		emit("ANY", canonical, "django", "Route", raw)
 
 		// #703 — DRF DefaultRouter / SimpleRouter auto-generates a
@@ -803,4 +809,57 @@ func hasDynamicBaseURLPath(path string) bool {
 	rest := strings.TrimPrefix(path, "/")
 	// First character of the first segment must open a placeholder.
 	return strings.HasPrefix(rest, "{")
+}
+
+// isXMLNamespacePath reports whether a canonical path looks like an XML
+// XPath namespace reference rather than an HTTP route. These arise when
+// YAML extraction rules fire on Python code that uses xml.etree, lxml,
+// or python-docx XPath APIs (e.g. `element.find('./w:tblBorders')`).
+//
+// Rejected patterns:
+//   - Paths containing a `prefix:Name` segment where `prefix` is a short
+//     (≤4 chars) purely alphabetic string — classic XML namespace prefix.
+//   - Paths with a `./` component (XPath relative path notation).
+//   - Paths containing `[@` (XPath attribute selector syntax).
+//
+// This guard is deliberately conservative: a false-negative (letting an
+// XML path through) is worse than a false-positive (dropping a
+// legitimate route). Legitimate HTTP paths never contain `./` or `[@`
+// and virtually never contain a short-prefix colon segment.
+func isXMLNamespacePath(canonical string) bool {
+	// XPath relative-path notation: ./elem or ./../elem
+	if strings.Contains(canonical, "./") {
+		return true
+	}
+	// XPath attribute selector: //div[@class='x']
+	if strings.Contains(canonical, "[@") {
+		return true
+	}
+	// XML namespace prefix: /api/w:tblBorders or just w:tblBorders
+	// Scan each slash-separated segment for the `prefix:Name` pattern.
+	segments := strings.Split(strings.TrimPrefix(canonical, "/"), "/")
+	for _, seg := range segments {
+		// Strip curly-brace path parameters before checking.
+		seg = strings.TrimPrefix(strings.TrimSuffix(seg, "}"), "{")
+		colonIdx := strings.IndexByte(seg, ':')
+		if colonIdx <= 0 || colonIdx == len(seg)-1 {
+			continue
+		}
+		prefix := seg[:colonIdx]
+		// XML namespace prefixes are short (1–4 chars) and purely alphabetic.
+		if len(prefix) > 4 {
+			continue
+		}
+		allAlpha := true
+		for _, c := range prefix {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+				allAlpha = false
+				break
+			}
+		}
+		if allAlpha {
+			return true
+		}
+	}
+	return false
 }

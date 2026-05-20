@@ -99,6 +99,13 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 			if path == "" {
 				path = e.Name
 			}
+			// Issue #1125 — drop XML namespace XPath strings (e.g.
+			// `./w:tblBorders`) that leaked into the entity graph via YAML
+			// rules firing on python-docx / lxml code. HTTP paths never
+			// start with "./" or contain short-alphabetic-prefix colons.
+			if !isHTTPEndpointPath(path) {
+				continue
+			}
 			verb := strings.ToUpper(e.Properties["verb"])
 			if verb == "" {
 				verb = "ANY"
@@ -529,6 +536,64 @@ func buildPrefixTree(rows []PathRow) []PathTreeNode {
 		return out
 	}
 	return toNodes(root)
+}
+
+// isHTTPEndpointPath reports whether path looks like a real HTTP endpoint
+// path rather than an XML namespace XPath expression or other non-HTTP
+// string that leaked into the entity graph. Issue #1125.
+//
+// Accepted:
+//   - Paths starting with "/" (absolute routes)
+//   - Full URLs starting with http(s)://
+//
+// Rejected:
+//   - Paths containing "./" (XPath relative notation)
+//   - Paths containing "[@" (XPath attribute selector)
+//   - Paths containing a short (≤4 char) alphabetic prefix:Name segment
+//     e.g. "w:tblBorders", "xml:lang" — classic XML namespace patterns
+func isHTTPEndpointPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	// Full absolute URL — always valid.
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return true
+	}
+	// Must start with "/" for an HTTP route.
+	if !strings.HasPrefix(path, "/") {
+		return false
+	}
+	// Reject XPath relative notation.
+	if strings.Contains(path, "./") {
+		return false
+	}
+	// Reject XPath attribute selectors.
+	if strings.Contains(path, "[@") {
+		return false
+	}
+	// Reject paths with XML namespace prefix:Name segments.
+	segments := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	for _, seg := range segments {
+		colonIdx := strings.IndexByte(seg, ':')
+		if colonIdx <= 0 || colonIdx == len(seg)-1 {
+			continue
+		}
+		prefix := seg[:colonIdx]
+		if len(prefix) > 4 {
+			continue
+		}
+		allAlpha := true
+		for _, c := range prefix {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+				allAlpha = false
+				break
+			}
+		}
+		if allAlpha {
+			return false
+		}
+	}
+	return true
 }
 
 // containsStr checks if a string slice contains a string.
