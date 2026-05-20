@@ -298,40 +298,76 @@ func TestCountLinksFile_ValidFile(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoadCandidateCounts_MissingDir(t *testing.T) {
-	enrich, repair := loadCandidateCounts("/nonexistent/stateDir")
-	if enrich != 0 || repair != 0 {
-		t.Errorf("expected (0,0) for missing dir, got (%d,%d)", enrich, repair)
+	subjects, actions, repair := loadCandidateCounts("/nonexistent/stateDir")
+	if subjects != 0 || actions != 0 || repair != 0 {
+		t.Errorf("expected (0,0,0) for missing dir, got (%d,%d,%d)", subjects, actions, repair)
 	}
 }
 
 func TestLoadCandidateCounts_BareArray(t *testing.T) {
 	tmp := t.TempDir()
-	// Write a bare-array candidates file.
-	content := `[{"kind":"describe_entity"},{"kind":"repair_edge"},{"kind":"describe_entity"}]`
+	// Two describe_entity candidates for different subjects + one repair.
+	content := `[
+		{"kind":"describe_entity","subject_id":"e1"},
+		{"kind":"repair_edge","subject_id":"e2"},
+		{"kind":"describe_entity","subject_id":"e3"}
+	]`
 	if err := writeTestFile(tmp+"/enrichment-candidates.json", content); err != nil {
 		t.Fatal(err)
 	}
-	enrich, repair := loadCandidateCounts(tmp)
-	if enrich != 2 {
-		t.Errorf("expected enrich=2, got %d", enrich)
+	subjects, actions, repair := loadCandidateCounts(tmp)
+	// 2 unique subjects (e1, e3), 2 total actions, 1 repair.
+	if subjects != 2 {
+		t.Errorf("expected subjects=2, got %d", subjects)
+	}
+	if actions != 2 {
+		t.Errorf("expected actions=2, got %d", actions)
 	}
 	if repair != 1 {
 		t.Errorf("expected repair=1, got %d", repair)
 	}
 }
 
-func TestLoadCandidateCounts_ObjectEnvelope(t *testing.T) {
+// TestLoadCandidateCounts_MultiAction verifies that an entity with 3 action
+// kinds counts as 1 subject but 3 actions — the core #1134 invariant.
+func TestLoadCandidateCounts_MultiAction(t *testing.T) {
 	tmp := t.TempDir()
-	content := `{"candidates":[{"kind":"repair_edge"},{"kind":"repair_edge"}]}`
+	// Same subject, 3 different action kinds.
+	content := `[
+		{"kind":"describe_entity","subject_id":"e1"},
+		{"kind":"classify_domain","subject_id":"e1"},
+		{"kind":"describe_role","subject_id":"e1"}
+	]`
 	if err := writeTestFile(tmp+"/enrichment-candidates.json", content); err != nil {
 		t.Fatal(err)
 	}
-	enrich, repair := loadCandidateCounts(tmp)
+	subjects, actions, repair := loadCandidateCounts(tmp)
+	if subjects != 1 {
+		t.Errorf("expected subjects=1 (1 entity), got %d", subjects)
+	}
+	if actions != 3 {
+		t.Errorf("expected actions=3, got %d", actions)
+	}
+	if repair != 0 {
+		t.Errorf("expected repair=0, got %d", repair)
+	}
+}
+
+func TestLoadCandidateCounts_ObjectEnvelope(t *testing.T) {
+	tmp := t.TempDir()
+	content := `{"candidates":[{"kind":"repair_edge","subject_id":"e1"},{"kind":"repair_edge","subject_id":"e2"}]}`
+	if err := writeTestFile(tmp+"/enrichment-candidates.json", content); err != nil {
+		t.Fatal(err)
+	}
+	subjects, actions, repair := loadCandidateCounts(tmp)
 	if repair != 2 {
 		t.Errorf("expected repair=2, got %d", repair)
 	}
-	if enrich != 0 {
-		t.Errorf("expected enrich=0, got %d", enrich)
+	if subjects != 0 {
+		t.Errorf("expected subjects=0, got %d", subjects)
+	}
+	if actions != 0 {
+		t.Errorf("expected actions=0, got %d", actions)
 	}
 }
 

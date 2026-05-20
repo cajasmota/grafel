@@ -255,6 +255,18 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_enrichments", s.handleEnrichments))
 
+	// archigraph_get_next_enrichment_task — returns the highest-priority
+	// EnrichmentTask (1 entity, N pending actions) so agents can work
+	// task-by-task instead of candidate-by-candidate. Issue #1134.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_next_enrichment_task",
+		mcpapi.WithDescription("Return the next highest-priority enrichment task: one entity with all its pending enrichment actions (describe_entity, classify_domain, describe_role, …). Each action has a candidate_id that can be resolved via archigraph_enrichments action=submit. Use this instead of action=list when you want to enrich one entity completely before moving to the next."),
+		mcpapi.WithString("kind", mcpapi.Description("Optional: filter to tasks that have at least one action of this kind (e.g. 'describe_entity').")),
+		mcpapi.WithBoolean("overdue_only", mcpapi.DefaultBool(false), mcpapi.Description("When true, return only tasks whose oldest pending action is >7 days old.")),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("Repos to consider; empty means all.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_get_next_enrichment_task", s.handleGetNextEnrichmentTask))
+
 	// archigraph_cross_links — bundles: list_link_candidates,
 	//   resolve_link_candidate. action: list|accept|reject.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_cross_links",

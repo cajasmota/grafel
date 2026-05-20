@@ -181,6 +181,235 @@ func readAllCandidates(repoPath string) []candidateRaw {
 	return nil
 }
 
+// handleEnrichmentTasks — GET /api/enrichments/{group}/tasks
+//
+// Returns one EnrichmentTaskRow per unique entity (subject) that has at least
+// one pending enrichment action, aggregated across all repos in the group.
+// This is the "1 candidate per entity with N pending actions" view requested
+// in issue #1134.
+//
+// The response shape is:
+//
+//	{
+//	  "tasks":        [ {EnrichmentTaskRow}, … ],  // sorted by overall_score DESC
+//	  "total_tasks":  42,                          // unique entity count
+//	  "total_actions": 97,                         // sum of pending action counts
+//	  "overdue_count": 5
+//	}
+func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
+	group := r.PathValue("group")
+	if group == "" {
+		writeErr(w, http.StatusBadRequest, "group required")
+		return
+	}
+
+	grp, err := s.graphs.GetGroup(group)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	var allTasks []enrichmentTaskRow
+	totalActions := 0
+	overdueCount := 0
+
+	for slug, repo := range grp.Repos {
+		if repo == nil || repo.Path == "" {
+			continue
+		}
+		// Build resolved-set from enrichment-resolutions.json so completed
+		// actions are marked correctly.
+		resolvedSet := buildResolvedSet(repo.Path)
+
+		// Group candidates by SubjectID.
+		type actionEntry struct {
+			candidateID  string
+			kind         string
+			score        float64
+			reason       string
+			discoveredAt string
+			completed    bool
+		}
+		type subjectEntry struct {
+			subjectKind string
+			subjectName string
+			actions     []actionEntry
+		}
+		subjects := make(map[string]*subjectEntry)
+		var subjectOrder []string
+
+		for _, c := range readAllCandidates(repo.Path) {
+			if repairKinds[c.Kind] {
+				continue // repair tab handles these
+			}
+			key := c.SubjectID + "|" + c.Kind
+			completed := resolvedSet[key]
+
+			se, exists := subjects[c.SubjectID]
+			if !exists {
+				se = &subjectEntry{}
+				subjects[c.SubjectID] = se
+				subjectOrder = append(subjectOrder, c.SubjectID)
+				// Extract subject kind/name from context.
+				if v, ok := c.Context["kind"].(string); ok {
+					se.subjectKind = v
+				}
+				if v, ok := c.Context["name"].(string); ok {
+					se.subjectName = v
+				}
+			}
+			se.actions = append(se.actions, actionEntry{
+				candidateID:  c.ID,
+				kind:         c.Kind,
+				score:        c.Confidence,
+				reason:       c.Hint,
+				discoveredAt: c.DiscoveredAt,
+				completed:    completed,
+			})
+		}
+
+		for _, sid := range subjectOrder {
+			se := subjects[sid]
+			var overallScore, maxScore float64
+			var oldestPending string
+			pendingCount := 0
+
+			actions := make([]enrichmentActionWire, 0, len(se.actions))
+			for _, a := range se.actions {
+				if a.Score > maxScore {
+					maxScore = a.Score
+				}
+				if !a.Completed {
+					pendingCount++
+					if a.Score > overallScore {
+						overallScore = a.Score
+					}
+					if oldestPending == "" || (a.discoveredAt != "" && a.discoveredAt < oldestPending) {
+						oldestPending = a.discoveredAt
+					}
+				}
+				actions = append(actions, enrichmentActionWire{
+					Kind:        a.kind,
+					CandidateID: a.candidateID,
+					Score:       a.Score,
+					Reason:      a.reason,
+					Completed:   a.completed,
+				})
+			}
+
+			if pendingCount == 0 {
+				continue // all actions resolved — skip
+			}
+
+			overdue := isOverdue(oldestPending)
+			if overdue {
+				overdueCount++
+			}
+			totalActions += pendingCount
+
+			allTasks = append(allTasks, enrichmentTaskRow{
+				SubjectID:      sid,
+				SubjectKind:    se.subjectKind,
+				SubjectName:    se.subjectName,
+				Repo:           slug,
+				PendingActions: actions,
+				PendingCount:   pendingCount,
+				OverallScore:   overallScore,
+				MaxActionScore: maxScore,
+				Overdue:        overdue,
+				DiscoveredAt:   oldestPending,
+			})
+		}
+	}
+
+	// Sort: OverallScore DESC → MaxActionScore DESC → SubjectID ASC.
+	sortEnrichmentTasks(allTasks)
+
+	if allTasks == nil {
+		allTasks = []enrichmentTaskRow{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tasks":        allTasks,
+		"total_tasks":  len(allTasks),
+		"total_actions": totalActions,
+		"overdue_count": overdueCount,
+	})
+}
+
+// enrichmentActionWire is the JSON-wire shape for one action inside a task row.
+type enrichmentActionWire struct {
+	Kind        string  `json:"kind"`
+	CandidateID string  `json:"candidate_id"`
+	Score       float64 `json:"score,omitempty"`
+	Reason      string  `json:"reason,omitempty"`
+	Completed   bool    `json:"completed"`
+}
+
+// enrichmentTaskRow is the JSON-wire shape for one task row.
+type enrichmentTaskRow struct {
+	SubjectID      string                 `json:"subject_id"`
+	SubjectKind    string                 `json:"subject_kind,omitempty"`
+	SubjectName    string                 `json:"subject_name,omitempty"`
+	Repo           string                 `json:"repo"`
+	PendingActions []enrichmentActionWire `json:"pending_actions"`
+	PendingCount   int                    `json:"pending_count"`
+	OverallScore   float64                `json:"overall_score"`
+	MaxActionScore float64                `json:"max_action_score,omitempty"`
+	Overdue        bool                   `json:"overdue"`
+	DiscoveredAt   string                 `json:"discovered_at,omitempty"`
+}
+
+// buildResolvedSet reads enrichment-resolutions.json for a repo and returns a
+// set keyed by "subject_id|kind" for completed-action lookups.
+func buildResolvedSet(repoPath string) map[string]bool {
+	if repoPath == "" {
+		return nil
+	}
+	resolutions := enrichment.ReadResolutions(daemon.StateDirForRepo(repoPath))
+	out := make(map[string]bool, len(resolutions))
+	for _, r := range resolutions {
+		if r.SubjectID != "" && r.Kind != "" {
+			out[r.SubjectID+"|"+r.Kind] = true
+		}
+	}
+	return out
+}
+
+// isOverdue reports whether the given RFC 3339 timestamp is older than 7 days.
+func isOverdue(discoveredAt string) bool {
+	if discoveredAt == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, discoveredAt)
+	if err != nil {
+		return false
+	}
+	return time.Since(t) > 7*24*time.Hour
+}
+
+// sortEnrichmentTasks sorts tasks by OverallScore DESC, MaxActionScore DESC,
+// then SubjectID ASC for a stable deterministic order.
+func sortEnrichmentTasks(tasks []enrichmentTaskRow) {
+	// Simple insertion sort — task counts per repo are typically in the
+	// thousands, not millions, so O(n²) is acceptable here.
+	for i := 1; i < len(tasks); i++ {
+		for j := i; j > 0 && enrichmentTaskLess(tasks[j], tasks[j-1]); j-- {
+			tasks[j], tasks[j-1] = tasks[j-1], tasks[j]
+		}
+	}
+}
+
+func enrichmentTaskLess(a, b enrichmentTaskRow) bool {
+	if a.OverallScore != b.OverallScore {
+		return a.OverallScore > b.OverallScore
+	}
+	if a.MaxActionScore != b.MaxActionScore {
+		return a.MaxActionScore > b.MaxActionScore
+	}
+	return a.SubjectID < b.SubjectID
+}
+
 // handleListFindings — GET /api/findings
 func (s *Server) handleListFindings(w http.ResponseWriter, r *http.Request) {
 	group := r.URL.Query().Get("group")

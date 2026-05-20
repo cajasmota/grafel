@@ -504,6 +504,223 @@ func CollectCandidatesSkippingRejected(doc *graph.Document, emitters []Candidate
 	return out
 }
 
+// ---------------------------------------------------------------------------
+// EnrichmentTask — one-per-entity aggregated view (issue #1134)
+// ---------------------------------------------------------------------------
+
+// EnrichmentAction represents one pending subjective enrichment action for a
+// subject entity. Actions are independently completable; completing one leaves
+// the others pending so the whole task is not removed prematurely.
+type EnrichmentAction struct {
+	// Kind is the canonical action kind (e.g. "describe_entity", "classify_domain").
+	Kind string `json:"kind"`
+	// CandidateID is the stable candidate ID for this (subject, kind) pair.
+	CandidateID string `json:"candidate_id"`
+	// Reason describes why this entity was selected for this action.
+	Reason string `json:"reason,omitempty"`
+	// Score is the per-action confidence floor (0–1).
+	Score float64 `json:"score,omitempty"`
+	// Completed is true once an agent or a human has filed a resolution for
+	// this (subject_id, kind) pair. Set by CollectTasks when a resolution is
+	// present.
+	Completed bool `json:"completed"`
+}
+
+// EnrichmentTask is the per-entity roll-up of all pending enrichment actions.
+// One task per unique subject is what the dashboard and the MCP tool expose
+// instead of the flat N-candidates-per-entity shape.
+type EnrichmentTask struct {
+	// SubjectID is the entity (or community) identifier.
+	SubjectID string `json:"subject_id"`
+	// SubjectKind is the entity Kind value (e.g. "class", "SCOPE.Component").
+	SubjectKind string `json:"subject_kind,omitempty"`
+	// SubjectName is the entity Name, included for display without a second lookup.
+	SubjectName string `json:"subject_name,omitempty"`
+	// PendingActions is the ordered list of actions that still need resolution.
+	// Completed actions are included (with Completed=true) so callers can show
+	// progress without a separate API call.
+	PendingActions []EnrichmentAction `json:"pending_actions"`
+	// OverallScore is the maximum Score across all pending (not-yet-completed)
+	// actions. Used for entity-level prioritisation.
+	OverallScore float64 `json:"overall_score"`
+	// MaxActionScore is the highest score among ALL actions (pending or
+	// completed). Useful for stable sort keys that don't change as actions
+	// complete.
+	MaxActionScore float64 `json:"max_action_score"`
+	// Overdue is true when the task's oldest pending action was discovered more
+	// than overdueDays ago with no resolution.
+	Overdue bool `json:"overdue"`
+	// DiscoveredAt is the RFC 3339 timestamp of the earliest pending action.
+	DiscoveredAt string `json:"discovered_at,omitempty"`
+	// Repo is the repository slug this task belongs to (set by callers).
+	Repo string `json:"repo,omitempty"`
+}
+
+// overdueDays is the number of calendar days after which a pending enrichment
+// task is considered overdue. Exposed as a var so tests can override it.
+var overdueDays = 7
+
+// CollectTasks runs all emitters against every entity in doc and returns one
+// EnrichmentTask per unique subject. This is the canonical multi-action view
+// requested in issue #1134.
+//
+// resolved maps "subject_id|kind" → true for pairs that already have a
+// resolution; rejected maps the same key → true for pairs to skip entirely.
+// Both maps may be nil.
+//
+// The returned slice is sorted by OverallScore DESC (high-priority first), then
+// by SubjectID for a stable tiebreak.
+func CollectTasks(
+	doc *graph.Document,
+	emitters []CandidateEmitter,
+	rejected map[string]bool,
+	resolved map[string]bool,
+) []EnrichmentTask {
+	if doc == nil {
+		return nil
+	}
+
+	// entityKind / entityName indexed by ID for quick lookup.
+	kindOf := make(map[string]string, len(doc.Entities))
+	nameOf := make(map[string]string, len(doc.Entities))
+	for i := range doc.Entities {
+		e := &doc.Entities[i]
+		kindOf[e.ID] = e.Kind
+		nameOf[e.ID] = e.Name
+	}
+
+	// taskMap accumulates actions per subject.
+	type taskEntry struct {
+		actions      []EnrichmentAction
+		discoveredAt string
+	}
+	taskMap := make(map[string]*taskEntry)
+	// Preserve subject insertion order for stable output.
+	var subjectOrder []string
+
+	for i := range doc.Entities {
+		e := &doc.Entities[i]
+		for _, em := range emitters {
+			for _, c := range em.EmitFor(e, doc) {
+				if c.ID == "" {
+					continue
+				}
+				key := c.SubjectID + "|" + c.Kind
+				if rejected[key] {
+					continue
+				}
+				completed := resolved[key]
+
+				action := EnrichmentAction{
+					Kind:        c.Kind,
+					CandidateID: c.ID,
+					Reason:      c.PromptTemplate,
+					Score:       c.ConfidenceFloor,
+					Completed:   completed,
+				}
+
+				entry, exists := taskMap[c.SubjectID]
+				if !exists {
+					entry = &taskEntry{}
+					taskMap[c.SubjectID] = entry
+					subjectOrder = append(subjectOrder, c.SubjectID)
+				}
+				entry.actions = append(entry.actions, action)
+				if c.DiscoveredAt != "" && (entry.discoveredAt == "" || c.DiscoveredAt < entry.discoveredAt) {
+					entry.discoveredAt = c.DiscoveredAt
+				}
+			}
+		}
+	}
+
+	now := nowRFC3339()
+	tasks := make([]EnrichmentTask, 0, len(taskMap))
+	for _, sid := range subjectOrder {
+		entry := taskMap[sid]
+
+		var overallScore, maxScore float64
+		for _, a := range entry.actions {
+			if a.Score > maxScore {
+				maxScore = a.Score
+			}
+			if !a.Completed && a.Score > overallScore {
+				overallScore = a.Score
+			}
+		}
+
+		overdue := false
+		if entry.discoveredAt != "" {
+			if t, err := time.Parse(time.RFC3339, entry.discoveredAt); err == nil {
+				if time.Now().Sub(t) > time.Duration(overdueDays)*24*time.Hour {
+					overdue = true
+				}
+			}
+		}
+
+		tasks = append(tasks, EnrichmentTask{
+			SubjectID:      sid,
+			SubjectKind:    kindOf[sid],
+			SubjectName:    nameOf[sid],
+			PendingActions: entry.actions,
+			OverallScore:   overallScore,
+			MaxActionScore: maxScore,
+			Overdue:        overdue,
+			DiscoveredAt:   entry.discoveredAt,
+		})
+		_ = now // used for overdue calc via time.Now()
+	}
+
+	// Sort: OverallScore DESC → MaxActionScore DESC → SubjectID ASC.
+	sort.SliceStable(tasks, func(i, j int) bool {
+		if tasks[i].OverallScore != tasks[j].OverallScore {
+			return tasks[i].OverallScore > tasks[j].OverallScore
+		}
+		if tasks[i].MaxActionScore != tasks[j].MaxActionScore {
+			return tasks[i].MaxActionScore > tasks[j].MaxActionScore
+		}
+		return tasks[i].SubjectID < tasks[j].SubjectID
+	})
+
+	return tasks
+}
+
+// CandidatesFromTasks converts an []EnrichmentTask back into a flat []Candidate
+// slice, preserving backward compatibility for callers that still use the flat
+// shape (MCP candidate queries, CollectCandidates-based paths). Only
+// not-yet-completed actions are included so the flat list represents the
+// outstanding work.
+func CandidatesFromTasks(tasks []EnrichmentTask) []Candidate {
+	var out []Candidate
+	for _, t := range tasks {
+		for _, a := range t.PendingActions {
+			if a.Completed {
+				continue
+			}
+			out = append(out, Candidate{
+				ID:              a.CandidateID,
+				Kind:            a.Kind,
+				SubjectID:       t.SubjectID,
+				PromptTemplate:  a.Reason,
+				ConfidenceFloor: a.Score,
+				DiscoveredAt:    t.DiscoveredAt,
+			})
+		}
+	}
+	return out
+}
+
+// UniqueSubjectCount returns the number of distinct SubjectIDs in cs (the flat
+// Candidate slice), which equals the number of EnrichmentTask rows that
+// CollectTasks would produce for the same input. This is the display-friendly
+// "X entities need enrichment" count from issue #1132.
+func UniqueSubjectCount(cs []Candidate) int {
+	seen := make(map[string]struct{}, len(cs))
+	for _, c := range cs {
+		seen[c.SubjectID] = struct{}{}
+	}
+	return len(seen)
+}
+
 // CollectCommunityCandidates emits one name_community candidate per community
 // that does not yet have an AgentName assigned. The SubjectID uses the
 // "community:<id>" prefix so consumers can distinguish them from entity

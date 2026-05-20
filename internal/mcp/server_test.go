@@ -547,7 +547,7 @@ func TestToolNameSurface(t *testing.T) {
 	for _, st := range srv.MCP.ListTools() {
 		registered[st.Tool.Name] = true
 	}
-	// 15 tools: 9 renamed/bundled + 5 unchanged + 1 new (archigraph_patterns).
+	// 16 tools: 9 renamed/bundled + 5 unchanged + 1 new (archigraph_patterns) + 1 new (#1134).
 	wantPresent := []string{
 		// renamed (5)
 		"archigraph_find", "archigraph_inspect", "archigraph_expand",
@@ -562,6 +562,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_patterns",
 		// #724 process-flow BFS query surface
 		"archigraph_traces",
+		// #1134 per-entity task view
+		"archigraph_get_next_enrichment_task",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -589,12 +591,12 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count must be exactly 17 (16 pre-#724 + archigraph_traces).
+	// Total count must be exactly 18 (17 pre-#1134 + archigraph_get_next_enrichment_task).
 	// Bundles: enrichments (3→1, saves 2), cross_links (2→1, saves 1),
-	// repairs (2→1, saves 1). Plus archigraph_patterns (ADR-0018 β) and
-	// archigraph_traces (#724 process-flow BFS query surface).
-	if got := len(srv.MCP.ListTools()); got != 17 {
-		t.Errorf("expected 17 registered tools, got %d", got)
+	// repairs (2→1, saves 1). Plus archigraph_patterns (ADR-0018 β),
+	// archigraph_traces (#724), and archigraph_get_next_enrichment_task (#1134).
+	if got := len(srv.MCP.ListTools()); got != 18 {
+		t.Errorf("expected 18 registered tools, got %d", got)
 	}
 }
 

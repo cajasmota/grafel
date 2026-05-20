@@ -187,6 +187,8 @@ func (s *Server) routes() http.Handler {
 	// Pending queue — repair candidates + enrichment candidates (#987)
 	mux.HandleFunc("GET /api/repairs/{group}", s.handleRepairs)
 	mux.HandleFunc("GET /api/enrichments/{group}", s.handleEnrichments)
+	// Aggregated enrichment-task view — 1 task per entity with N actions (#1134)
+	mux.HandleFunc("GET /api/enrichments/{group}/tasks", s.handleEnrichmentTasks)
 	// Candidate apply/reject actions (#1016)
 	mux.HandleFunc("POST /api/repairs/{group}/action", s.handleRepairAction)
 	mux.HandleFunc("POST /api/enrichments/{group}/action", s.handleEnrichmentAction)

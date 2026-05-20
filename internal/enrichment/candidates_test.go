@@ -397,3 +397,181 @@ func TestEmitFor_NonNoiseKindStillEmits(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Tests for issue #1134 — EnrichmentTask (1-per-entity aggregated view)
+// ---------------------------------------------------------------------------
+
+// TestCollectTasks_ThreeActions verifies that an entity needing all three
+// enrichment actions (describe_entity + classify_domain + describe_role) produces
+// exactly ONE EnrichmentTask with THREE PendingActions.
+func TestCollectTasks_ThreeActions(t *testing.T) {
+	// God-node with no properties → qualifies for all three emitters.
+	pr := 0.05
+	doc := mkDoc(graph.Entity{
+		ID:        "g1",
+		Name:      "Coordinator",
+		Kind:      "class",
+		IsGodNode: true,
+		PageRank:  &pr,
+	})
+
+	tasks := CollectTasks(doc, DefaultEmitters(), nil, nil)
+
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 EnrichmentTask (1 entity), got %d", len(tasks))
+	}
+	task := tasks[0]
+	if task.SubjectID != "g1" {
+		t.Errorf("SubjectID = %q, want g1", task.SubjectID)
+	}
+	if len(task.PendingActions) != 3 {
+		t.Errorf("PendingActions count = %d, want 3; got %v", len(task.PendingActions), task.PendingActions)
+	}
+	// No action should be marked completed.
+	for _, a := range task.PendingActions {
+		if a.Completed {
+			t.Errorf("action %q unexpectedly marked completed", a.Kind)
+		}
+	}
+}
+
+// TestCollectTasks_OneAction verifies that an entity needing only describe_entity
+// produces one task with one action.
+func TestCollectTasks_OneAction(t *testing.T) {
+	doc := mkDoc(graph.Entity{ID: "e1", Name: "PaymentHandler", Kind: "class"})
+
+	tasks := CollectTasks(doc, DefaultEmitters(), nil, nil)
+
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(tasks))
+	}
+	if len(tasks[0].PendingActions) != 1 {
+		t.Errorf("expected 1 action (describe_entity), got %d", len(tasks[0].PendingActions))
+	}
+	if tasks[0].PendingActions[0].Kind != KindDescribeEntity {
+		t.Errorf("action kind = %q, want %q", tasks[0].PendingActions[0].Kind, KindDescribeEntity)
+	}
+}
+
+// TestCollectTasks_CompletedActionRemains verifies that completing one action
+// leaves the others pending — the task is NOT removed when a partial resolution
+// is present.
+func TestCollectTasks_CompletedActionRemains(t *testing.T) {
+	pr := 0.05
+	doc := mkDoc(graph.Entity{
+		ID:        "g1",
+		Name:      "Coordinator",
+		Kind:      "class",
+		IsGodNode: true,
+		PageRank:  &pr,
+	})
+
+	// Mark describe_entity as resolved; classify_domain and describe_role still pending.
+	resolved := map[string]bool{
+		"g1|" + KindDescribeEntity: true,
+	}
+
+	tasks := CollectTasks(doc, DefaultEmitters(), nil, resolved)
+
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task (entity still has pending actions), got %d", len(tasks))
+	}
+	var completed, pending int
+	for _, a := range tasks[0].PendingActions {
+		if a.Completed {
+			completed++
+		} else {
+			pending++
+		}
+	}
+	if completed != 1 {
+		t.Errorf("completed actions = %d, want 1", completed)
+	}
+	if pending != 2 {
+		t.Errorf("pending actions = %d, want 2", pending)
+	}
+}
+
+// TestCollectTasks_UniqueSubjectCount verifies that CollectTasks returns one
+// task per unique entity regardless of how many actions it needs.
+func TestCollectTasks_UniqueSubjectCount(t *testing.T) {
+	pr := 0.05
+	doc := mkDoc(
+		graph.Entity{ID: "e1", Name: "Plain", Kind: "class"},                                              // 1 action
+		graph.Entity{ID: "g1", Name: "God", Kind: "class", IsGodNode: true, PageRank: &pr},                // 3 actions
+		graph.Entity{ID: "a1", Name: "Bridge", Kind: "class", IsArticulationPt: true},                    // 2 actions (describe+role)
+	)
+
+	tasks := CollectTasks(doc, DefaultEmitters(), nil, nil)
+
+	if len(tasks) != 3 {
+		t.Errorf("expected 3 tasks (unique entities), got %d", len(tasks))
+	}
+
+	// Verify the flat candidate count would be > unique entity count.
+	flat := CollectCandidates(doc, DefaultEmitters(), nil)
+	if len(flat) <= len(tasks) {
+		t.Errorf("flat candidates (%d) should be > unique tasks (%d)", len(flat), len(tasks))
+	}
+}
+
+// TestCollectTasks_RejectedActionSkipped verifies that a rejected (subject, kind)
+// pair does not appear in the task's PendingActions.
+func TestCollectTasks_RejectedActionSkipped(t *testing.T) {
+	doc := mkDoc(graph.Entity{
+		ID:        "g1",
+		Name:      "Coordinator",
+		Kind:      "class",
+		IsGodNode: true,
+	})
+
+	rejected := map[string]bool{
+		"g1|" + KindDescribeEntity: true,
+	}
+
+	tasks := CollectTasks(doc, DefaultEmitters(), rejected, nil)
+
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(tasks))
+	}
+	for _, a := range tasks[0].PendingActions {
+		if a.Kind == KindDescribeEntity {
+			t.Errorf("rejected action %q should not appear", KindDescribeEntity)
+		}
+	}
+}
+
+// TestCandidatesFromTasks verifies that the flat backward-compat adapter
+// returns only pending (not completed) actions as Candidate records.
+func TestCandidatesFromTasks(t *testing.T) {
+	tasks := []EnrichmentTask{
+		{
+			SubjectID:   "e1",
+			SubjectKind: "class",
+			PendingActions: []EnrichmentAction{
+				{Kind: KindDescribeEntity, CandidateID: "ec:aaa", Score: 0.6, Completed: false},
+				{Kind: KindClassifyDomain, CandidateID: "ec:bbb", Score: 0.5, Completed: true},
+			},
+		},
+	}
+	flat := CandidatesFromTasks(tasks)
+	if len(flat) != 1 {
+		t.Fatalf("expected 1 candidate (completed excluded), got %d", len(flat))
+	}
+	if flat[0].Kind != KindDescribeEntity {
+		t.Errorf("candidate kind = %q, want %q", flat[0].Kind, KindDescribeEntity)
+	}
+}
+
+// TestUniqueSubjectCount verifies the helper counts distinct SubjectIDs.
+func TestUniqueSubjectCount(t *testing.T) {
+	cs := []Candidate{
+		{ID: "a", SubjectID: "e1", Kind: KindDescribeEntity},
+		{ID: "b", SubjectID: "e1", Kind: KindClassifyDomain},
+		{ID: "c", SubjectID: "e2", Kind: KindDescribeEntity},
+	}
+	if n := UniqueSubjectCount(cs); n != 2 {
+		t.Errorf("UniqueSubjectCount = %d, want 2", n)
+	}
+}

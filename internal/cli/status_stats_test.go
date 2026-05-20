@@ -236,20 +236,24 @@ func TestLoadCandidateCountsArray(t *testing.T) {
 	stateDir := filepath.Join(tmpDir, ".archigraph")
 	os.MkdirAll(stateDir, 0o755)
 
-	// Write enrichment-candidates.json as a bare array.
+	// Write enrichment-candidates.json as a bare array with distinct subject IDs.
 	candidates := []map[string]interface{}{
-		{"kind": "enrichment_edge"},
-		{"kind": "enrichment_edge"},
-		{"kind": "repair_edge"},
-		{"kind": "enrichment_edge"},
-		{"kind": "repair_edge"},
+		{"kind": "enrichment_edge", "subject_id": "e1"},
+		{"kind": "enrichment_edge", "subject_id": "e2"},
+		{"kind": "repair_edge", "subject_id": "r1"},
+		{"kind": "enrichment_edge", "subject_id": "e3"},
+		{"kind": "repair_edge", "subject_id": "r2"},
 	}
 	data, _ := json.Marshal(candidates)
 	os.WriteFile(filepath.Join(stateDir, "enrichment-candidates.json"), data, 0o644)
 
-	enrich, repair := loadCandidateCounts(stateDir)
-	if enrich != 3 {
-		t.Errorf("expected 3 enrichment candidates, got %d", enrich)
+	// loadCandidateCounts now returns (uniqueSubjects, totalActions, repairCount).
+	subjects, actions, repair := loadCandidateCounts(stateDir)
+	if subjects != 3 {
+		t.Errorf("expected 3 unique enrichment subjects, got %d", subjects)
+	}
+	if actions != 3 {
+		t.Errorf("expected 3 total enrichment actions, got %d", actions)
 	}
 	if repair != 2 {
 		t.Errorf("expected 2 repair candidates, got %d", repair)
@@ -262,9 +266,12 @@ func TestLoadCandidateCountsMissing(t *testing.T) {
 	os.MkdirAll(stateDir, 0o755)
 
 	// No enrichment-candidates.json file.
-	enrich, repair := loadCandidateCounts(stateDir)
-	if enrich != 0 {
-		t.Errorf("expected 0 enrichment candidates when file missing, got %d", enrich)
+	subjects, actions, repair := loadCandidateCounts(stateDir)
+	if subjects != 0 {
+		t.Errorf("expected 0 enrichment subjects when file missing, got %d", subjects)
+	}
+	if actions != 0 {
+		t.Errorf("expected 0 enrichment actions when file missing, got %d", actions)
 	}
 	if repair != 0 {
 		t.Errorf("expected 0 repair candidates when file missing, got %d", repair)

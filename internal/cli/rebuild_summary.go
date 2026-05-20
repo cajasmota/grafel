@@ -43,7 +43,11 @@ type RebuildSummary struct {
 	CrossRepoEdges int
 
 	// Candidate counts loaded from each repo's enrichment-candidates.json.
-	EnrichmentCandidates int
+	// EnrichmentCandidates is the number of unique subject entities needing
+	// enrichment (one-per-entity, issue #1134). EnrichmentActions is the total
+	// number of pending action items across those entities.
+	EnrichmentCandidates int // unique subjects (entities) needing enrichment
+	EnrichmentActions    int // total pending actions across all subjects
 	RepairCandidates     int
 
 	// Orphan proxy — entities with no incoming relationships.
@@ -171,8 +175,9 @@ func ComputeRebuildSummary(group string, repoPaths []string, elapsed time.Durati
 			s.TotalRelationships += sidecarRels
 		}
 
-		enrichCount, repairCount := loadCandidateCounts(stateDir)
-		s.EnrichmentCandidates += enrichCount
+		enrichSubjects, enrichActions, repairCount := loadCandidateCounts(stateDir)
+		s.EnrichmentCandidates += enrichSubjects
+		s.EnrichmentActions += enrichActions
 		s.RepairCandidates += repairCount
 	}
 
@@ -202,9 +207,17 @@ func normaliseEntityKind(kind string) string {
 	}
 }
 
-// loadCandidateCounts reads enrichment-candidates.json and returns (enrichCount,
-// repairCount). Both are zero on any read/parse error.
-func loadCandidateCounts(stateDir string) (enrich, repair int) {
+// loadCandidateCounts reads enrichment-candidates.json and returns
+// (enrichSubjects, enrichActions, repairCount).
+//
+// enrichSubjects is the number of distinct SubjectIDs among non-repair
+// candidates — the "X entities need enrichment" display count (#1134).
+// enrichActions is the total number of non-repair candidate rows (total
+// pending actions across all subjects). repairCount is the total number of
+// repair-kind rows.
+//
+// All three are zero on any read/parse error.
+func loadCandidateCounts(stateDir string) (enrichSubjects, enrichActions, repair int) {
 	path := filepath.Join(stateDir, "enrichment-candidates.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -213,13 +226,15 @@ func loadCandidateCounts(stateDir string) (enrich, repair int) {
 
 	// The file is a bare JSON array of candidate objects (standard shape).
 	var arr []struct {
-		Kind string `json:"kind"`
+		Kind      string `json:"kind"`
+		SubjectID string `json:"subject_id"`
 	}
 	if err := json.Unmarshal(data, &arr); err != nil {
 		// Try object envelope {"candidates": [...]} used by some older emitters.
 		var obj struct {
 			Candidates []struct {
-				Kind string `json:"kind"`
+				Kind      string `json:"kind"`
+				SubjectID string `json:"subject_id"`
 			} `json:"candidates"`
 		}
 		if err2 := json.Unmarshal(data, &obj); err2 != nil {
@@ -227,13 +242,18 @@ func loadCandidateCounts(stateDir string) (enrich, repair int) {
 		}
 		arr = obj.Candidates
 	}
+	seenSubjects := make(map[string]struct{})
 	for _, c := range arr {
 		if c.Kind == "repair_edge" {
 			repair++
 		} else {
-			enrich++
+			enrichActions++
+			if c.SubjectID != "" {
+				seenSubjects[c.SubjectID] = struct{}{}
+			}
 		}
 	}
+	enrichSubjects = len(seenSubjects)
 	return
 }
 
@@ -299,7 +319,12 @@ func PrintRebuildSummary(w io.Writer, s *RebuildSummary) {
 	fmt.Fprintf(w, "\nCross-repo edges:       %s\n", fmtInt(s.CrossRepoEdges))
 	fmt.Fprintf(w, "Process flows:          %s\n", fmtInt(s.ProcessFlows))
 	fmt.Fprintf(w, "HTTP endpoints:         %s\n", fmtInt(s.HTTPEndpoints))
-	fmt.Fprintf(w, "Enrichment candidates:  %s\n", fmtInt(s.EnrichmentCandidates))
+	if s.EnrichmentActions > s.EnrichmentCandidates {
+		fmt.Fprintf(w, "Enrichment candidates:  %s entities (%s pending actions)\n",
+			fmtInt(s.EnrichmentCandidates), fmtInt(s.EnrichmentActions))
+	} else {
+		fmt.Fprintf(w, "Enrichment candidates:  %s\n", fmtInt(s.EnrichmentCandidates))
+	}
 	fmt.Fprintf(w, "Repair candidates:      %s\n", fmtInt(s.RepairCandidates))
 	if s.TotalEntities > 0 {
 		fmt.Fprintf(w, "Orphan entities:        %s (%.1f%%)\n",

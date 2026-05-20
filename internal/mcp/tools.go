@@ -1493,6 +1493,133 @@ func (s *Server) handleEnrichments(ctx context.Context, req mcpapi.CallToolReque
 	}
 }
 
+// handleGetNextEnrichmentTask implements archigraph_get_next_enrichment_task.
+//
+// It returns the highest-priority EnrichmentTask across all repos in the group
+// — one entity with all its pending enrichment actions. The agent can then
+// submit each action via archigraph_enrichments action=submit, one per action
+// kind, without needing another list round-trip.
+//
+// The "adapter" contract: existing archigraph_enrichments action=list queries
+// keep working as before. This tool adds the task-view on top without
+// changing the underlying candidate data.
+func (s *Server) handleGetNextEnrichmentTask(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	_, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	kindFilter := argString(req, "kind", "")
+	overdueOnly := argBool(req, "overdue_only", false)
+	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+
+	type taskCandidate struct {
+		subjectID string
+		repo      string
+		actions   []map[string]any
+		score     float64
+		maxScore  float64
+		overdue   bool
+	}
+
+	var best *taskCandidate
+
+	for _, r := range repos {
+		// Group candidates by SubjectID.
+		type actionItem struct {
+			candidateID string
+			kind        string
+			hint        string
+		}
+		type subEntry struct {
+			actions []actionItem
+		}
+		subjects := make(map[string]*subEntry)
+		var subjectOrder []string
+
+		for _, c := range readEnrichmentCandidates(r.Path) {
+			// readEnrichmentCandidates returns the simplified MCP shape;
+			// score/discoveredAt are not in that struct so we use defaults.
+			se, ok := subjects[c.NodeID]
+			if !ok {
+				se = &subEntry{}
+				subjects[c.NodeID] = se
+				subjectOrder = append(subjectOrder, c.NodeID)
+			}
+			se.actions = append(se.actions, actionItem{
+				candidateID: c.ID,
+				kind:        c.Kind,
+				hint:        c.Hint,
+			})
+		}
+
+		for _, sid := range subjectOrder {
+			se := subjects[sid]
+
+			// Apply kind filter: skip if no action of the requested kind present.
+			if kindFilter != "" {
+				found := false
+				for _, a := range se.actions {
+					if a.kind == kindFilter {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+
+			// MCP candidate shape lacks discoveredAt so overdue is always false here.
+			overdue := false
+			if overdueOnly && !overdue {
+				continue
+			}
+
+			// Score: use 0.6 as default (the describe_entity confidence floor)
+			// since the simplified MCP struct drops ConfidenceFloor.
+			score := 0.6
+
+			if best == nil || score > best.score {
+				actions := make([]map[string]any, 0, len(se.actions))
+				for _, a := range se.actions {
+					actions = append(actions, map[string]any{
+						"kind":         a.kind,
+						"candidate_id": a.candidateID,
+						"hint":         a.hint,
+					})
+				}
+				best = &taskCandidate{
+					subjectID: prefixedID(r.Repo, sid),
+					repo:      r.Repo,
+					actions:   actions,
+					score:     score,
+					maxScore:  score,
+					overdue:   overdue,
+				}
+			}
+		}
+	}
+
+	if best == nil {
+		return jsonResult(map[string]any{
+			"task":    nil,
+			"message": "no pending enrichment tasks found",
+		}), nil
+	}
+
+	return jsonResult(map[string]any{
+		"task": map[string]any{
+			"subject_id":      best.subjectID,
+			"repo":            best.repo,
+			"pending_actions": best.actions,
+			"pending_count":   len(best.actions),
+			"overall_score":   best.score,
+			"overdue":         best.overdue,
+		},
+		"tip": "Resolve each action via archigraph_enrichments action=submit with the action's candidate_id.",
+	}), nil
+}
+
 // handleCrossLinks dispatches archigraph_cross_links based on action=list|accept|reject.
 func (s *Server) handleCrossLinks(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	action, err := req.RequireString("action")
