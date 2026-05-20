@@ -36,7 +36,60 @@ and PR wiring it into `internal/mcp/server.go`), not from this file.
 - Bug-rate parity across PRs is checked via golden fixtures + cross-language invariant tests
 - Determinism test in `cmd/archigraph/determinism_test.go` must pass byte-identical output
 
+## Runtime edge extractors
+
+As of 2026-05-20, the following runtime-distributed systems are fully wired:
+
+**Async task queues:**
+- Celery, Sidekiq, Bull, dramatiq, RQ, Hangfire, Quartz
+
+**Serverless:**
+- AWS Lambda, Google Cloud Functions, Azure Functions
+
+**Event buses:**
+- AWS EventBridge, Azure EventGrid, CloudEvents
+
+**Pub/Sub + Streams:**
+- Apache Kafka, RabbitMQ, AWS SQS, Google Cloud Pub/Sub, NATS
+- Redis pub/sub, Redis Streams, Apache Pulsar
+
+**Workflows:**
+- Temporal, Cadence, AWS Step Functions
+
+**Real-time protocols:**
+- gRPC, WebSockets, Server-Sent Events, GraphQL subscriptions
+
+See `internal/engine/rules/*.yaml` for per-framework rule packs.
+
+## Resolver slices
+
+**Go:** +83% bug-rate reduction on fixture corpus via per-import gate + sentinel folding
+
+**Python:** Cross-file class-hierarchy resolution with EXTENDS edge emission + global registry
+
+**TypeScript/JavaScript:** External JSX/hook CALLS rewritten to ext: + route ref stubs to Dynamic
+
+See #945, #961, #962 for implementation details.
+
+## Cross-platform status
+
+**Phase 1 (macOS, Linux):** Complete
+- macOS: native install + daemon lifecycle ✓
+- Linux: systemd integration + XDG socket paths ✓
+
+**Phase 2 (Windows):** Planning in progress (see #856 for decision items)
+
+## MCP server
+
+17 tools available (stable per #669). Clients auto-discover via `archigraph mcp serve`.
+
 ## Skills
+
 - Skill markdown lives under `skills/<skill-name>/SKILL.md`; per-pass prompts (when applicable) live in `skills/<skill-name>/prompts/`.
 - The pattern-discovery + sync skills (ADR-0018) are `/archigraph-patterns-discover` and `/archigraph-patterns-sync`. They sit alongside `/generate-docs`, which holds the primary discovery path.
 - Invoke skills via the agent host's `/skill-name` command. The CLI surface for direct pattern inspection is `archigraph patterns <verb>` — see `archigraph help advanced`.
+
+## CLI features
+
+- **Path alias resolution:** TypeScript path aliases via tsconfig.json
+- **Graph export:** --export-json flag controls graph.json output (post-#816 default is graph.fb)

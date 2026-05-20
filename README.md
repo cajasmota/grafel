@@ -44,22 +44,33 @@ make build
 
 ## Usage
 
-archigraph is a CLI plus a single MCP server process. The common path:
+archigraph is a CLI plus a unified daemon process that manages indexing,
+the MCP server, embedded dashboard, and file watchers. The common path:
 
 ```sh
 # 1. Set up a group (interactive). Creates the group config and a
 #    cross-repo links file scaffold.
 archigraph wizard
 
-# 2. Apply the group: install hooks + watchers, register the MCP server.
+# 2. One-shot setup: daemon, MCP, indexer, and dashboard.
 archigraph install <group>
 
 # 3. Confirm everything is wired.
 archigraph status <group>
 
-# 4. Run the MCP server (stdio). Most agents auto-spawn this; you can
-#    also invoke it directly to debug.
-archigraph mcp serve
+# 4. Open the dashboard in your browser (auto-starts daemon if needed).
+archigraph dashboard
+```
+
+The daemon process manages everything — MCP server, indexing, live file
+watchers, and the embedded dashboard on http://127.0.0.1:47274/. Control it
+via:
+
+```sh
+archigraph start                # start the daemon
+archigraph stop                 # stop the daemon
+archigraph restart              # restart the daemon
+archigraph dashboard serve      # run dashboard server standalone
 ```
 
 Other useful commands:
