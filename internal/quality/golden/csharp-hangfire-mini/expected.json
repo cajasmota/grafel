@@ -1,0 +1,12 @@
+{
+  "fixture_name": "csharp-hangfire-mini",
+  "language": "csharp",
+  "description": "Minimal Hangfire project with IBackgroundJob consumers, BackgroundJob.Enqueue producers, RecurringJob.AddOrUpdate, and [AutomaticRetry]. Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for Hangfire.",
+  "expected_entities": [
+    { "name": "EmailJob", "kind": "SCOPE.Service", "source_file": "jobs/EmailJob.cs", "must_exist": true, "note": "Hangfire IBackgroundJob consumer." },
+    { "name": "CleanupJob", "kind": "SCOPE.Service", "source_file": "jobs/EmailJob.cs", "must_exist": true, "note": "Hangfire IBackgroundJob consumer with AutomaticRetry." },
+    { "name": "EmailService.SendConfirmation", "kind": "SCOPE.Operation", "source_file": "api/OrderController.cs", "must_exist": true, "note": "Producer: BackgroundJob.Enqueue()." },
+    { "name": "daily-cleanup", "kind": "SCOPE.Pattern", "source_file": "api/OrderController.cs", "must_exist": true, "note": "Producer: RecurringJob.AddOrUpdate." },
+    { "name": "IEmailService.SendNewsletter", "kind": "SCOPE.Operation", "source_file": "api/OrderController.cs", "must_exist": true, "note": "Producer: BackgroundJob.Enqueue<T>()." }
+  ]
+}

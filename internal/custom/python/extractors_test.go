@@ -1128,11 +1128,194 @@ func TestFlaskReqResp_NoMatch(t *testing.T) {
 // Empty input tests (all extractors)
 // ============================================================================
 
+// ============================================================================
+// dramatiq tests
+// ============================================================================
+
+func TestDramatiq_Actor(t *testing.T) {
+	src := `import dramatiq
+
+@dramatiq.actor
+def send_email(to, subject):
+    pass
+`
+	ents := extract(t, "python_dramatiq", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "send_email" && e.Kind == "SCOPE.Service" && e.Props["framework"] == "dramatiq" && e.Props["edge_kind"] == "CONSUMES" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected @dramatiq.actor consumer entity for send_email")
+	}
+}
+
+func TestDramatiq_ActorWithOptions(t *testing.T) {
+	src := `@dramatiq.actor(queue_name="billing", max_retries=3)
+def charge_card(user_id, amount):
+    pass
+`
+	ents := extract(t, "python_dramatiq", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "charge_card" && e.Props["pattern_type"] == "actor" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected @dramatiq.actor(options) consumer entity")
+	}
+}
+
+func TestDramatiq_Send(t *testing.T) {
+	src := `send_email.send("user@example.com", "Hello")
+`
+	ents := extract(t, "python_dramatiq", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "send_email.send" && e.Props["edge_kind"] == "PRODUCES" && e.Props["actor_ref"] == "send_email" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected actor.send() producer entity")
+	}
+}
+
+func TestDramatiq_SendWithOptions(t *testing.T) {
+	src := `charge_card.send_with_options(args=[42, 9.99], delay=5000)
+`
+	ents := extract(t, "python_dramatiq", src)
+	found := false
+	for _, e := range ents {
+		if e.Name == "charge_card.send_with_options" && e.Props["edge_kind"] == "PRODUCES" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected actor.send_with_options() producer entity")
+	}
+}
+
+func TestDramatiq_NoBareActorFalsePositive(t *testing.T) {
+	// @actor without dramatiq. prefix should NOT be matched
+	src := `@actor
+def my_handler():
+    pass
+`
+	ents := extract(t, "python_dramatiq", src)
+	for _, e := range ents {
+		if e.Props["framework"] == "dramatiq" && e.Kind == "SCOPE.Service" {
+			t.Fatalf("false positive: bare @actor matched as dramatiq actor: %+v", e)
+		}
+	}
+}
+
+func TestDramatiq_NoMatch(t *testing.T) {
+	src := `def regular():
+    pass
+`
+	ents := extract(t, "python_dramatiq", src)
+	if len(ents) != 0 {
+		t.Fatalf("expected 0 entities for non-dramatiq code, got %d", len(ents))
+	}
+}
+
+// ============================================================================
+// RQ tests
+// ============================================================================
+
+func TestRQ_Enqueue(t *testing.T) {
+	src := `from rq import Queue
+from workers.billing import charge_card
+
+q = Queue(connection=conn)
+q.enqueue(charge_card, user_id=42)
+`
+	ents := extract(t, "python_rq", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["framework"] == "rq" && e.Props["callable"] == "charge_card" && e.Props["edge_kind"] == "PRODUCES" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected queue.enqueue producer entity")
+	}
+}
+
+func TestRQ_EnqueueCall(t *testing.T) {
+	src := `from rq import Queue
+
+q = Queue(connection=conn)
+q.enqueue_call(func="workers.emails.send_email", args=["hello"])
+`
+	ents := extract(t, "python_rq", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["framework"] == "rq" && e.Props["callable"] == "workers.emails.send_email" && e.Props["pattern_type"] == "enqueue_call" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected enqueue_call producer entity with string func")
+	}
+}
+
+func TestRQ_Worker(t *testing.T) {
+	src := `from rq import Queue, Worker
+from redis import Redis
+
+redis_conn = Redis()
+q = Queue(connection=redis_conn)
+worker = Worker([q], connection=redis_conn)
+worker.work()
+`
+	ents := extract(t, "python_rq", src)
+	found := false
+	for _, e := range ents {
+		if e.Props["framework"] == "rq" && e.Props["pattern_type"] == "worker" && e.Props["edge_kind"] == "CONSUMES" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected Worker consumer entity")
+	}
+}
+
+func TestRQ_NoWorkerWithoutImport(t *testing.T) {
+	// Worker class without rq import — generic class, should not emit worker entity
+	src := `class Worker:
+    pass
+
+q = SomeQueue()
+q.enqueue(my_func)
+`
+	ents := extract(t, "python_rq", src)
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "worker" {
+			t.Fatalf("false positive: Worker entity emitted without rq import: %+v", e)
+		}
+	}
+}
+
+func TestRQ_NoMatch(t *testing.T) {
+	src := `def regular():
+    pass
+`
+	ents := extract(t, "python_rq", src)
+	if len(ents) != 0 {
+		t.Fatalf("expected 0 entities for non-RQ code, got %d", len(ents))
+	}
+}
+
 func TestAllExtractors_EmptyInput(t *testing.T) {
 	keys := []string{
 		"python_django", "python_fastapi", "python_flask", "python_celery",
 		"python_pytest", "python_langchain", "python_mongodb", "python_redis",
 		"python_sqlalchemy", "python_fastapi_reqresp", "python_flask_reqresp",
+		"python_dramatiq", "python_rq",
 	}
 	for _, key := range keys {
 		ext, ok := extractor.Get(key)
@@ -1160,6 +1343,7 @@ func TestAllExtractors_Registered(t *testing.T) {
 		"python_django", "python_fastapi", "python_flask", "python_celery",
 		"python_pytest", "python_langchain", "python_mongodb", "python_redis",
 		"python_sqlalchemy", "python_fastapi_reqresp", "python_flask_reqresp",
+		"python_dramatiq", "python_rq",
 	}
 	for _, key := range keys {
 		_, ok := extractor.Get(key)

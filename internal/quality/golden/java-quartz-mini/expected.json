@@ -1,0 +1,14 @@
+{
+  "fixture_name": "java-quartz-mini",
+  "language": "java",
+  "description": "Minimal Quartz Java project with two Job consumers (@DisallowConcurrentExecution on one), JobBuilder.newJob producers, TriggerBuilder.newTrigger, and scheduler.scheduleJob call sites. Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for Quartz Java.",
+  "expected_entities": [
+    { "name": "SendEmailJob", "kind": "SCOPE.Service", "source_file": "jobs/SendEmailJob.java", "must_exist": true, "note": "Quartz Job consumer (implements Job)." },
+    { "name": "GenerateReportJob", "kind": "SCOPE.Service", "source_file": "jobs/SendEmailJob.java", "must_exist": true, "note": "Quartz Job consumer with @DisallowConcurrentExecution." },
+    { "name": "SendEmailJob.execute", "kind": "SCOPE.Operation", "source_file": "jobs/SendEmailJob.java", "must_exist": true, "note": "Consumer execute method." },
+    { "name": "GenerateReportJob.execute", "kind": "SCOPE.Operation", "source_file": "jobs/SendEmailJob.java", "must_exist": true, "note": "Consumer execute method." },
+    { "name": "JobBuilder.newJob<SendEmailJob>", "kind": "SCOPE.Operation", "source_file": "AppScheduler.java", "must_exist": true, "note": "Producer: JobBuilder.newJob()." },
+    { "name": "newJob<GenerateReportJob>", "kind": "SCOPE.Operation", "source_file": "AppScheduler.java", "must_exist": true, "note": "Producer: static import newJob()." },
+    { "name": "scheduler.scheduleJob", "kind": "SCOPE.Operation", "source_file": "AppScheduler.java", "must_exist": true, "note": "Producer: scheduler.scheduleJob()." }
+  ]
+}

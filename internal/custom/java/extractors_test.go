@@ -1075,6 +1075,129 @@ public class Outer {
 }
 
 // ============================================================================
+// Quartz Java tests
+// ============================================================================
+
+func makeQuartzCtx(src, filePath string) PatternContext {
+	return PatternContext{Source: src, Language: "java", Framework: "quartz", FilePath: filePath}
+}
+
+func containsQuartzEntity(result PatternResult, kind, subtype, name string) bool {
+	for _, e := range result.Entities {
+		if e.Kind == kind && e.Subtype == subtype && e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func TestQuartzJava_IJobConsumer(t *testing.T) {
+	src := `
+public class SendEmailJob implements Job {
+    public void execute(JobExecutionContext context) throws JobExecutionException {
+        // send email
+    }
+}
+`
+	result := ExtractQuartzJava(makeQuartzCtx(src, "jobs/SendEmailJob.java"))
+	if !containsQuartzEntity(result, "SCOPE.Service", "job_class", "SendEmailJob") {
+		names := entityNames(result.Entities)
+		t.Errorf("expected SendEmailJob consumer job_class entity; got: %v", names)
+	}
+}
+
+func TestQuartzJava_ExecuteMethod(t *testing.T) {
+	src := `
+public class NotifyJob implements Job {
+    public void execute(JobExecutionContext context) { }
+}
+`
+	result := ExtractQuartzJava(makeQuartzCtx(src, "jobs/NotifyJob.java"))
+	found := false
+	for _, e := range result.Entities {
+		if e.Subtype == "job_execute" && strings.HasPrefix(e.Name, "NotifyJob") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected execute method entity for NotifyJob")
+	}
+}
+
+func TestQuartzJava_JobBuilderProducer(t *testing.T) {
+	src := `
+JobDetail job = JobBuilder.newJob(SendEmailJob.class)
+    .withIdentity("send-email-job", "email-group")
+    .build();
+`
+	result := ExtractQuartzJava(makeQuartzCtx(src, "Scheduler.java"))
+	found := false
+	for _, e := range result.Entities {
+		if e.Subtype == "job_builder" && e.Properties["job_class"] == "SendEmailJob" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected JobBuilder.newJob producer entity for SendEmailJob")
+	}
+}
+
+func TestQuartzJava_TriggerBuilder(t *testing.T) {
+	src := `
+Trigger trigger = TriggerBuilder.newTrigger()
+    .withIdentity("email-trigger")
+    .startNow()
+    .build();
+`
+	result := ExtractQuartzJava(makeQuartzCtx(src, "Scheduler.java"))
+	found := false
+	for _, e := range result.Entities {
+		if e.Subtype == "trigger" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected TriggerBuilder.newTrigger trigger entity")
+	}
+}
+
+func TestQuartzJava_SchedulerScheduleJob(t *testing.T) {
+	src := `scheduler.scheduleJob(jobDetail, trigger);`
+	result := ExtractQuartzJava(makeQuartzCtx(src, "Scheduler.java"))
+	if !containsQuartzEntity(result, "SCOPE.Operation", "schedule_job", "scheduler.scheduleJob") {
+		t.Error("expected scheduler.scheduleJob producer entity")
+	}
+}
+
+func TestQuartzJava_DisallowConcurrentExecution(t *testing.T) {
+	src := `
+@DisallowConcurrentExecution
+public class HeavyJob implements Job {
+    public void execute(JobExecutionContext ctx) { }
+}
+`
+	result := ExtractQuartzJava(makeQuartzCtx(src, "jobs/HeavyJob.java"))
+	found := false
+	for _, e := range result.Entities {
+		if e.Subtype == "concurrency_policy" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected @DisallowConcurrentExecution concurrency_policy entity")
+	}
+}
+
+func TestQuartzJava_NonJavaLanguageSkipped(t *testing.T) {
+	src := `class Foo implements Job { }`
+	ctx := PatternContext{Source: src, Language: "kotlin", Framework: "quartz", FilePath: "Foo.kt"}
+	result := ExtractQuartzJava(ctx)
+	if len(result.Entities) != 0 {
+		t.Errorf("expected no entities for non-java language, got %d", len(result.Entities))
+	}
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 

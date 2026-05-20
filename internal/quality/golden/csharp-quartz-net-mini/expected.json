@@ -1,0 +1,12 @@
+{
+  "fixture_name": "csharp-quartz-net-mini",
+  "language": "csharp",
+  "description": "Minimal Quartz.NET project with IJob consumers, [DisallowConcurrentExecution], JobBuilder.Create producers, TriggerBuilder, and scheduler.ScheduleJob. Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for Quartz.NET.",
+  "expected_entities": [
+    { "name": "ReportJob", "kind": "SCOPE.Service", "source_file": "jobs/ReportJob.cs", "must_exist": true, "note": "Quartz.NET IJob consumer." },
+    { "name": "EmailJob", "kind": "SCOPE.Service", "source_file": "jobs/ReportJob.cs", "must_exist": true, "note": "Quartz.NET IJob consumer." },
+    { "name": "JobBuilder.Create<ReportJob>", "kind": "SCOPE.Operation", "source_file": "Startup.cs", "must_exist": true, "note": "Producer: JobBuilder.Create<T>()." },
+    { "name": "JobBuilder.Create<EmailJob>", "kind": "SCOPE.Operation", "source_file": "Startup.cs", "must_exist": true, "note": "Producer: JobBuilder.Create<T>()." },
+    { "name": "scheduler.ScheduleJob", "kind": "SCOPE.Operation", "source_file": "Startup.cs", "must_exist": true, "note": "Producer: scheduler.ScheduleJob()." }
+  ]
+}

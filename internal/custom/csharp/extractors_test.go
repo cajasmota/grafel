@@ -241,3 +241,93 @@ func TestEFCoreNoMatch(t *testing.T) {
 		t.Errorf("expected no entities, got %d", len(ents))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Hangfire
+// ---------------------------------------------------------------------------
+
+func TestHangfireEnqueueStatic(t *testing.T) {
+	src := `BackgroundJob.Enqueue(() => EmailService.Send(userId));`
+	ents := extract(t, "custom_csharp_hangfire", fi("jobs/EmailJob.cs", "csharp", src))
+	if !containsEntity(ents, "SCOPE.Operation", "EmailService.Send") {
+		t.Error("expected Hangfire enqueue producer entity EmailService.Send")
+	}
+}
+
+func TestHangfireEnqueueTyped(t *testing.T) {
+	src := `BackgroundJob.Enqueue<IEmailService>(x => x.Send(userId));`
+	ents := extract(t, "custom_csharp_hangfire", fi("jobs/EmailJob.cs", "csharp", src))
+	if !containsEntity(ents, "SCOPE.Operation", "IEmailService.Send") {
+		t.Error("expected typed Hangfire enqueue producer entity IEmailService.Send")
+	}
+}
+
+func TestHangfireRecurring(t *testing.T) {
+	src := `RecurringJob.AddOrUpdate("daily-report", () => ReportService.Generate(), Cron.Daily);`
+	ents := extract(t, "custom_csharp_hangfire", fi("jobs/RecurringJobs.cs", "csharp", src))
+	if !containsEntity(ents, "SCOPE.Pattern", "daily-report") {
+		t.Error("expected Hangfire recurring job pattern entity 'daily-report'")
+	}
+}
+
+func TestHangfireIJobConsumer(t *testing.T) {
+	src := `
+public class CleanupJob : IBackgroundJob
+{
+    public async Task Execute(PerformContext ctx) { }
+}
+`
+	ents := extract(t, "custom_csharp_hangfire", fi("jobs/CleanupJob.cs", "csharp", src))
+	if !containsEntity(ents, "SCOPE.Service", "CleanupJob") {
+		t.Error("expected Hangfire IBackgroundJob consumer entity CleanupJob")
+	}
+}
+
+func TestHangfireNoMatch(t *testing.T) {
+	src := `namespace App { class Helper { } }`
+	ents := extract(t, "custom_csharp_hangfire", fi("Helper.cs", "csharp", src))
+	if len(ents) != 0 {
+		t.Errorf("expected 0 hangfire entities, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Quartz.NET
+// ---------------------------------------------------------------------------
+
+func TestQuartzNetIJobConsumer(t *testing.T) {
+	src := `
+public class SendEmailJob : IJob
+{
+    public async Task Execute(IJobExecutionContext context) { }
+}
+`
+	ents := extract(t, "custom_csharp_quartz_net", fi("jobs/SendEmailJob.cs", "csharp", src))
+	if !containsEntity(ents, "SCOPE.Service", "SendEmailJob") {
+		t.Error("expected Quartz.NET IJob consumer entity SendEmailJob")
+	}
+}
+
+func TestQuartzNetJobBuilder(t *testing.T) {
+	src := `var job = JobBuilder.Create<SendEmailJob>().WithIdentity("email-job").Build();`
+	ents := extract(t, "custom_csharp_quartz_net", fi("Scheduler.cs", "csharp", src))
+	if !containsEntity(ents, "SCOPE.Operation", "JobBuilder.Create<SendEmailJob>") {
+		t.Error("expected Quartz.NET JobBuilder producer entity")
+	}
+}
+
+func TestQuartzNetScheduleJob(t *testing.T) {
+	src := `await scheduler.ScheduleJob(job, trigger);`
+	ents := extract(t, "custom_csharp_quartz_net", fi("Scheduler.cs", "csharp", src))
+	if !containsEntity(ents, "SCOPE.Operation", "scheduler.ScheduleJob") {
+		t.Error("expected Quartz.NET scheduler.ScheduleJob producer entity")
+	}
+}
+
+func TestQuartzNetNoMatch(t *testing.T) {
+	src := `namespace App { class Helper { } }`
+	ents := extract(t, "custom_csharp_quartz_net", fi("Helper.cs", "csharp", src))
+	if len(ents) != 0 {
+		t.Errorf("expected 0 Quartz.NET entities, got %d", len(ents))
+	}
+}

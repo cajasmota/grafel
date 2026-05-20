@@ -1,0 +1,10 @@
+{
+  "fixture_name": "python-rq-mini",
+  "language": "python",
+  "description": "Minimal RQ (Redis Queue) project with enqueue producers and a Worker consumer. Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for RQ.",
+  "expected_entities": [
+    { "name": "send_email.enqueue", "kind": "SCOPE.Operation", "source_file": "api/notifications.py", "must_exist": true, "note": "Producer: queue.enqueue(callable)." },
+    { "name": "workers.email.generate_report.enqueue_call", "kind": "SCOPE.Operation", "source_file": "api/notifications.py", "must_exist": true, "note": "Producer: queue.enqueue_call(func=string)." },
+    { "name": "Worker([notification_queue, report_queue])", "kind": "SCOPE.Service", "source_file": "worker_runner.py", "must_exist": true, "note": "Consumer: RQ Worker declaration." }
+  ]
+}

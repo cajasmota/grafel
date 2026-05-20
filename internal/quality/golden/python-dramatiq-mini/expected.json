@@ -1,0 +1,11 @@
+{
+  "fixture_name": "python-dramatiq-mini",
+  "language": "python",
+  "description": "Minimal dramatiq project with two @dramatiq.actor consumers and producer call sites using .send() and .send_with_options(). Used by the extraction-quality benchmark to verify PRODUCES/CONSUMES edge emission for dramatiq.",
+  "expected_entities": [
+    { "name": "charge_card", "kind": "SCOPE.Service", "source_file": "workers/billing.py", "must_exist": true, "note": "Dramatiq actor consumer." },
+    { "name": "send_receipt", "kind": "SCOPE.Service", "source_file": "workers/billing.py", "must_exist": true, "note": "Bare @dramatiq.actor consumer." },
+    { "name": "charge_card.send", "kind": "SCOPE.Operation", "source_file": "api/checkout.py", "must_exist": true, "note": "Producer: actor.send() call." },
+    { "name": "send_receipt.send_with_options", "kind": "SCOPE.Operation", "source_file": "api/checkout.py", "must_exist": true, "note": "Producer: actor.send_with_options() call." }
+  ]
+}
