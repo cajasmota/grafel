@@ -220,7 +220,6 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		}
 		return
 
-
 	case "function_declaration":
 		if rec, ok := buildOperation(node, file); ok {
 			rec.Relationships = append(rec.Relationships,
@@ -670,8 +669,9 @@ func buildProperty(node *sitter.Node, file extractor.FileInput, parentType strin
 //	data class User(val id: Int, val name: String)
 //
 // Tree: class_declaration → primary_constructor → class_parameter+
-//       class_parameter carries binding_pattern_kind (val|var) when the
-//       parameter is a property; plain parameters have no such child.
+//
+//	class_parameter carries binding_pattern_kind (val|var) when the
+//	parameter is a property; plain parameters have no such child.
 func emitPrimaryConstructorFields(
 	classNode *sitter.Node,
 	file extractor.FileInput,

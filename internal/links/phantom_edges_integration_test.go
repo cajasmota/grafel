@@ -117,10 +117,10 @@ func TestPhantomEdges_CrossRepoBFSChain(t *testing.T) {
 
 	// Collect Process entities.
 	type proc struct {
-		name               string
-		crossStack         bool
-		crossStackReason   string
-		terminalIsPhantom  bool
+		name              string
+		crossStack        bool
+		crossStackReason  string
+		terminalIsPhantom bool
 	}
 	var procs []proc
 	for _, e := range docB.Entities {

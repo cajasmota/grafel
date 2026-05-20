@@ -10,6 +10,9 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"github.com/cajasmota/archigraph/internal/agentpatterns"
+	"github.com/cajasmota/archigraph/internal/types"
+	mcpapi "github.com/mark3labs/mcp-go/mcp"
 	"math"
 	"os"
 	"path/filepath"
@@ -17,9 +20,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/cajasmota/archigraph/internal/agentpatterns"
-	"github.com/cajasmota/archigraph/internal/types"
-	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
 // Compile-time checks that we use the right RelationshipKind constants.
@@ -154,10 +154,10 @@ func (s *Server) handlePatternsQuery(ctx context.Context, req mcpapi.CallToolReq
 
 	// Filter + score.
 	type candidate struct {
-		p         agentpatterns.Pattern
-		bm25      float64
-		specific  int     // count of non-empty scope fields
-		recency   float64 // 1/(1+days/30)
+		p          agentpatterns.Pattern
+		bm25       float64
+		specific   int     // count of non-empty scope fields
+		recency    float64 // 1/(1+days/30)
 		finalScore float64
 	}
 
@@ -1277,10 +1277,10 @@ func (s *Server) handlePatternsApply(_ context.Context, req mcpapi.CallToolReque
 	}
 
 	return jsonResult(map[string]any{
-		"pattern":           patternToMap(*p, true),
-		"created_by_edges":  createdByEdges,
-		"created_by_count":  len(createdByEdges),
-		"apply_call_id":     applyCallID,
+		"pattern":          patternToMap(*p, true),
+		"created_by_edges": createdByEdges,
+		"created_by_count": len(createdByEdges),
+		"apply_call_id":    applyCallID,
 	}), nil
 }
 

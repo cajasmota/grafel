@@ -65,9 +65,9 @@ func TestNormalizeBareName(t *testing.T) {
 		{"checklists", "/checklists/"},
 		{"checklists/", "/checklists/"},
 		{"api/users", "/api/users/"},
-		{"/checklists", "/checklists"},      // already has leading slash: unchanged
-		{"/checklists/", "/checklists/"},    // already absolute: unchanged
-		{"", ""},                            // empty: unchanged
+		{"/checklists", "/checklists"},                           // already has leading slash: unchanged
+		{"/checklists/", "/checklists/"},                         // already absolute: unchanged
+		{"", ""},                                                 // empty: unchanged
 		{"https://example.com/path", "https://example.com/path"}, // absolute URL: unchanged
 	}
 	for _, c := range cases {

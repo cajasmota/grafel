@@ -438,9 +438,9 @@ func TestKafka_LooksLikeKafkaTopic(t *testing.T) {
 		{"orders.created", true},
 		{"payments_failed", true},
 		{"trace-topic", true},
-		{"orders/created", false},   // path-shaped
-		{"hello world", false},      // contains space
-		{"<dynamic>", false},        // brackets
+		{"orders/created", false}, // path-shaped
+		{"hello world", false},    // contains space
+		{"<dynamic>", false},      // brackets
 		{"", false},
 	}
 	for _, tc := range cases {

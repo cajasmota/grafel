@@ -355,10 +355,10 @@ class Service {
 		t.Fatal("expected Service component")
 	}
 	wantContains := map[string]bool{
-		"scope:schema:field:java:Test.java:Service.repo":      false,
-		"scope:schema:field:java:Test.java:Service.count":     false,
-		"scope:operation:method:java:Test.java:Service.save":  false,
-		"scope:operation:method:java:Test.java:Service.load":  false,
+		"scope:schema:field:java:Test.java:Service.repo":     false,
+		"scope:schema:field:java:Test.java:Service.count":    false,
+		"scope:operation:method:java:Test.java:Service.save": false,
+		"scope:operation:method:java:Test.java:Service.load": false,
 	}
 	for _, r := range svc.Relationships {
 		if r.Kind == "CONTAINS" {

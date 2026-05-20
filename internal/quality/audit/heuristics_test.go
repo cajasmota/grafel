@@ -76,16 +76,16 @@ func TestClassifyOrphan_Misc(t *testing.T) {
 
 func TestClassifyImportToID(t *testing.T) {
 	cases := map[string]ImportFormat{
-		"0123456789abcdef":      ImportFormatHex,
-		"ext:react:useState":    ImportFormatExtQualified,
-		"ext:antd":              ImportFormatExtBare,
-		"./constants":           ImportFormatPathString,
-		"../../util":            ImportFormatPathString,
-		"/abs/path":             ImportFormatPathString,
-		"raw_module_name":       ImportFormatOther,
-		"PascalNoPrefix":        ImportFormatOther,
-		"0123456789ABCDEF":      ImportFormatOther, // uppercase hex isn't our canonical id
-		"short":                 ImportFormatOther,
+		"0123456789abcdef":   ImportFormatHex,
+		"ext:react:useState": ImportFormatExtQualified,
+		"ext:antd":           ImportFormatExtBare,
+		"./constants":        ImportFormatPathString,
+		"../../util":         ImportFormatPathString,
+		"/abs/path":          ImportFormatPathString,
+		"raw_module_name":    ImportFormatOther,
+		"PascalNoPrefix":     ImportFormatOther,
+		"0123456789ABCDEF":   ImportFormatOther, // uppercase hex isn't our canonical id
+		"short":              ImportFormatOther,
 	}
 	for in, want := range cases {
 		if got := classifyImportToID(in); got != want {

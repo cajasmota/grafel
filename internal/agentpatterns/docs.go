@@ -34,8 +34,8 @@ type RelatedPattern struct {
 // populated by the /generate-docs coordinator using the existing MCP
 // surface (archigraph_describe / archigraph_related) and passed in here.
 type MarkdownInput struct {
-	Pattern        Pattern
-	ExemplarRefs   []ExemplarRef
+	Pattern         Pattern
+	ExemplarRefs    []ExemplarRef
 	RelatedPatterns []RelatedPattern
 }
 

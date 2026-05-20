@@ -50,7 +50,6 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-
 // rnPlatformSuffixes is the ordered set of React Native / Expo platform
 // extensions that are stripped to find the canonical base name.
 // Order matters for the multi-suffix case: we strip suffixes from the
@@ -77,10 +76,10 @@ var rnPlatformSuffixes = []string{
 // suffix. We restrict to TS/TSX/JS/JSX to avoid false matches on CSS,
 // config, etc.
 var jsVariantExts = map[string]bool{
-	".tsx":  true,
-	".ts":   true,
-	".jsx":  true,
-	".js":   true,
+	".tsx": true,
+	".ts":  true,
+	".jsx": true,
+	".js":  true,
 }
 
 // stripOnePlatformSuffix attempts to strip one platform suffix from a

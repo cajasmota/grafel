@@ -29,12 +29,12 @@ func (s *Server) handleRepairs(w http.ResponseWriter, r *http.Request) {
 
 	// Collect repair_edge candidates from all repos in the group.
 	type ResidualRow struct {
-		ResidualID   string  `json:"residual_id"`
-		Repo         string  `json:"repo"`
-		Kind         string  `json:"kind"`
-		Hint         string  `json:"hint,omitempty"`
-		Confidence   float64 `json:"confidence,omitempty"`
-		AutoResolvable bool  `json:"auto_resolvable"`
+		ResidualID     string  `json:"residual_id"`
+		Repo           string  `json:"repo"`
+		Kind           string  `json:"kind"`
+		Hint           string  `json:"hint,omitempty"`
+		Confidence     float64 `json:"confidence,omitempty"`
+		AutoResolvable bool    `json:"auto_resolvable"`
 	}
 
 	residuals := []ResidualRow{}
@@ -62,8 +62,8 @@ func (s *Server) handleRepairs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"residuals":            residuals,
-		"open_count":           len(residuals),
+		"residuals":             residuals,
+		"open_count":            len(residuals),
 		"auto_resolvable_count": autoResolvable,
 	})
 }
@@ -203,12 +203,12 @@ func (s *Server) handleSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"source":     src,
-		"language":   entity.Language,
-		"start_line": entity.StartLine,
-		"end_line":   entity.EndLine,
+		"source":      src,
+		"language":    entity.Language,
+		"start_line":  entity.StartLine,
+		"end_line":    entity.EndLine,
 		"source_file": entity.SourceFile,
-		"repo":       repo.Slug,
+		"repo":        repo.Slug,
 	})
 }
 

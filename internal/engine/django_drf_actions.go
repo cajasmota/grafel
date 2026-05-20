@@ -3,18 +3,18 @@
 // `router.register(prefix, ViewSet)` in a DRF urlconf does NOT mean a single
 // URL — DRF's DefaultRouter / SimpleRouter auto-generates a family of routes:
 //
-//   GET    /<prefix>/         — list
-//   POST   /<prefix>/         — create
-//   GET    /<prefix>/{pk}/    — retrieve
-//   PUT    /<prefix>/{pk}/    — update
-//   PATCH  /<prefix>/{pk}/    — partial_update
-//   DELETE /<prefix>/{pk}/    — destroy
+//	GET    /<prefix>/         — list
+//	POST   /<prefix>/         — create
+//	GET    /<prefix>/{pk}/    — retrieve
+//	PUT    /<prefix>/{pk}/    — update
+//	PATCH  /<prefix>/{pk}/    — partial_update
+//	DELETE /<prefix>/{pk}/    — destroy
 //
 // Plus, every `@action(detail=True|False, methods=[...], url_path="...")`
 // decorated method on the ViewSet class adds another endpoint:
 //
-//   detail=True:  /<prefix>/{pk}/<url_path or method_name>/
-//   detail=False: /<prefix>/<url_path or method_name>/
+//	detail=True:  /<prefix>/{pk}/<url_path or method_name>/
+//	detail=False: /<prefix>/<url_path or method_name>/
 //
 // The base `ApplyDjangoNestedURLConf` pass only emits ONE endpoint per
 // `router.register(...)` call (the list/create root). This pass is the
@@ -1174,9 +1174,10 @@ func parseActionArgs(args, methodName string, defaultDetail bool) drfAction {
 
 // cbvAsViewRe matches `path("pattern", ClassName.as_view())` or the
 // `re_path` variant. Captures:
-//   group 1 — route pattern string
-//   group 2 — view class name (bare identifier only; dotted paths are
-//              normalised to the last component by cbvClassName)
+//
+//	group 1 — route pattern string
+//	group 2 — view class name (bare identifier only; dotted paths are
+//	           normalised to the last component by cbvClassName)
 var cbvAsViewRe = regexp.MustCompile(
 	`(?:re_)?path\s*\(\s*r?["']([^"']*)["']\s*,\s*([\w.]+)\s*\.\s*as_view\s*\(\s*\)`)
 

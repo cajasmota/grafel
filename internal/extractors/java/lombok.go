@@ -367,9 +367,9 @@ func synthConstructor(
 		Signature:    sig,
 		QualityScore: lombokSynthQuality,
 		Properties: map[string]string{
-			"synthesized_from":  synthesizedFrom,
-			"pattern_type":      "lombok_constructor",
-			"constructor_kind":  kind,
+			"synthesized_from": synthesizedFrom,
+			"pattern_type":     "lombok_constructor",
+			"constructor_kind": kind,
 		},
 	}
 }

@@ -2,18 +2,18 @@
 //
 // Covers:
 //   - Django ORM    : `Model.objects.<verb>(...)`
-//                     `<qs>.filter(...).filter(...)` chains are attributed
-//                     to the originating Model when statically visible
-//                     (only the first link is required — subsequent links
-//                     are inferred to share the same target).
+//     `<qs>.filter(...).filter(...)` chains are attributed
+//     to the originating Model when statically visible
+//     (only the first link is required — subsequent links
+//     are inferred to share the same target).
 //   - SQLAlchemy    : `session.query(Model)` (Classic API)
-//                     `select(Model).where(...)` (2.0 / async style)
-//                     `session.execute(select(Model)...)` — handled by
-//                     the same select(Model) matcher
+//     `select(Model).where(...)` (2.0 / async style)
+//     `session.execute(select(Model)...)` — handled by
+//     the same select(Model) matcher
 //   - Tortoise ORM  : `Model.filter(...)` / `Model.get(...)` / `Model.all()`
-//                     (recognised by capitalised target + Tortoise-style verbs)
+//     (recognised by capitalised target + Tortoise-style verbs)
 //   - Peewee        : `Model.select()` / `Model.get(...)` (overlaps with
-//                     Tortoise — both share the capitalised-target shape)
+//     Tortoise — both share the capitalised-target shape)
 //
 // Out of phase 1:
 //   - SQLAlchemy ORM relationships (`User.addresses` traversal -> is_join)

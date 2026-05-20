@@ -87,12 +87,12 @@ func collectTopology(grp *DashGroup) (topics, queues, channels []map[string]any)
 			case kindMessageTopic:
 				producers, consumers, transformsTo := brokerEdges(r, e.ID)
 				entry := map[string]any{
-					"id":           dashPrefixedID(r.Slug, e.ID),
-					"repo":         r.Slug,
-					"label":        e.Name,
-					"broker":       e.Properties["broker"],
-					"producers":    producers,
-					"consumers":    consumers,
+					"id":            dashPrefixedID(r.Slug, e.ID),
+					"repo":          r.Slug,
+					"label":         e.Name,
+					"broker":        e.Properties["broker"],
+					"producers":     producers,
+					"consumers":     consumers,
 					"transforms_to": transformsTo,
 				}
 				topics = append(topics, entry)

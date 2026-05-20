@@ -4392,14 +4392,14 @@ func TestHasPythonImportHelpers(t *testing.T) {
 // are classified as external-known and folded to ext:org.apache.poi.
 func TestPoiBareNames_ClassifiedWithPoiImport(t *testing.T) {
 	importPaths := []string{
-		"org.apache.poi.xssf.usermodel",           // explicit class import
-		"org.apache.poi.xssf.streaming",           // streaming SXSSF
-		"org.apache.poi.ss.util",                  // CellRangeAddress package
-		"org.apache.poi.ss.usermodel",             // wildcard spread
-		"org.apache.poi",                          // root umbrella
-		"org.apache.poi.hssf.usermodel",           // legacy HSSF
-		"org.apache.poi.xwpf.usermodel",           // Word
-		"org.apache.poi.xslf.usermodel",           // PowerPoint
+		"org.apache.poi.xssf.usermodel", // explicit class import
+		"org.apache.poi.xssf.streaming", // streaming SXSSF
+		"org.apache.poi.ss.util",        // CellRangeAddress package
+		"org.apache.poi.ss.usermodel",   // wildcard spread
+		"org.apache.poi",                // root umbrella
+		"org.apache.poi.hssf.usermodel", // legacy HSSF
+		"org.apache.poi.xwpf.usermodel", // Word
+		"org.apache.poi.xslf.usermodel", // PowerPoint
 	}
 	names := []string{
 		"XSSFWorkbook", "XSSFSheet", "XSSFRow", "XSSFCell",

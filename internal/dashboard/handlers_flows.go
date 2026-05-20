@@ -246,22 +246,22 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 	sc, _ := strconv.Atoi(processEnt.Properties["step_count"])
 
 	process := map[string]any{
-		"process_id":  dashPrefixedID(processRepo.Slug, processEnt.ID),
-		"repo":        processRepo.Slug,
-		"label":       processEnt.Name,
-		"entry_id":    processEnt.Properties["entry_id"],
-		"entry_name":  processEnt.Properties["entry_name"],
-		"terminal_id": processEnt.Properties["terminal_id"],
-		"step_count":  sc,
-		"cross_stack": cs,
+		"process_id":   dashPrefixedID(processRepo.Slug, processEnt.ID),
+		"repo":         processRepo.Slug,
+		"label":        processEnt.Name,
+		"entry_id":     processEnt.Properties["entry_id"],
+		"entry_name":   processEnt.Properties["entry_name"],
+		"terminal_id":  processEnt.Properties["terminal_id"],
+		"step_count":   sc,
+		"cross_stack":  cs,
 		"chain_labels": splitChainLabels(processEnt.Properties["chain_labels"]),
-		"source_file": processEnt.SourceFile,
-		"steps":       steps,
+		"source_file":  processEnt.SourceFile,
+		"steps":        steps,
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"process":        process,
-		"chain_entities": steps,
+		"process":         process,
+		"chain_entities":  steps,
 		"source_snippets": snippets,
 	})
 }

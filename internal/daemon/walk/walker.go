@@ -65,7 +65,10 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 	// depthStack tracks which stack entries were pushed at each depth so
 	// we can Pop when leaving a directory.
 	// key: absolute dir path → count of entries pushed when entering it.
-	type entry struct{ absDir string; count int }
+	type entry struct {
+		absDir string
+		count  int
+	}
 	var depthEntries []entry
 
 	err := filepath.WalkDir(root, func(absPath string, d fs.DirEntry, err error) error {
@@ -176,16 +179,16 @@ var hardcodedSkipDirs = map[string]struct{}{
 	".svn": {},
 
 	// JS / TS
-	"node_modules": {},
-	"dist":         {},
-	"out":          {},
-	".next":        {},
-	".nuxt":        {},
-	"coverage":     {},
-	".expo":        {},
-	".expo-shared": {},
+	"node_modules":  {},
+	"dist":          {},
+	"out":           {},
+	".next":         {},
+	".nuxt":         {},
+	"coverage":      {},
+	".expo":         {},
+	".expo-shared":  {},
 	".parcel-cache": {},
-	".turbo":       {},
+	".turbo":        {},
 
 	// Go / Rust / Java / Python (common names in SkipDirs already)
 	"vendor":        {},

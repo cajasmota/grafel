@@ -2,11 +2,11 @@
 //
 // Covers (phase 1):
 //   - Go    : gorm (`db.First(&user, ...)`, `.Find(&users)`, `.Where(...)`,
-//             `.Create(...)`, `.Updates(...)`, `.Delete(...)`)
+//     `.Create(...)`, `.Updates(...)`, `.Delete(...)`)
 //   - Java  : JPA EntityManager (`em.find(User.class, id)`),
-//             Spring Data repository methods (`userRepository.findById(...)`)
+//     Spring Data repository methods (`userRepository.findById(...)`)
 //   - Ruby  : ActiveRecord (`User.find`, `User.where`, `User.create`,
-//             `User.find_by`, `User.all`, `User.first`, `User.last`)
+//     `User.find_by`, `User.all`, `User.first`, `User.last`)
 //
 // Out of phase 1 (filed as #723 follow-up):
 //   - Go: ent (`ent.Client.User.Query()`), sqlx/pgx table-name extraction
@@ -28,11 +28,12 @@ import (
 // recover the type. Bare `*User` arguments are also accepted.
 //
 // Pattern matches one of:
-//   db.First(&user, ...)
-//   db.Find(&users, ...)
-//   tx.Create(&user)
-//   db.Where(...).First(&user)
-//   db.Model(&User{}).Updates(...)
+//
+//	db.First(&user, ...)
+//	db.Find(&users, ...)
+//	tx.Create(&user)
+//	db.Where(...).First(&user)
+//	db.Model(&User{}).Updates(...)
 //
 // The leading receiver identifier is unconstrained (`db`, `tx`, `r.db`,
 // `s.gormDB`) so the matcher fires across the typical gorm idioms.

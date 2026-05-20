@@ -104,28 +104,28 @@ var panacheImportSets = []struct {
 // panacheEntitySuperclasses is the set of simple names (and common short forms)
 // that map to Panache entity base classes.
 var panacheEntitySuperclasses = map[string]bool{
-	"PanacheEntity":            true,
-	"PanacheEntityBase":        true,
-	"PanacheMongoEntity":       true,
-	"PanacheMongoEntityBase":   true,
+	"PanacheEntity":              true,
+	"PanacheEntityBase":          true,
+	"PanacheMongoEntity":         true,
+	"PanacheMongoEntityBase":     true,
 	"ReactivePanacheMongoEntity": true,
 }
 
 // panacheRepositoryInterfaces is the set of simple interface names that map to
 // Panache repository interfaces. These are identified by implements clauses.
 var panacheRepositoryInterfaces = map[string]bool{
-	"PanacheRepository":            true,
-	"PanacheRepositoryBase":        true,
-	"PanacheMongoRepository":       true,
-	"PanacheMongoRepositoryBase":   true,
+	"PanacheRepository":              true,
+	"PanacheRepositoryBase":          true,
+	"PanacheMongoRepository":         true,
+	"PanacheMongoRepositoryBase":     true,
 	"ReactivePanacheMongoRepository": true,
 }
 
 // panacheClassInfo holds everything detectPanache extracts from a class declaration.
 type panacheClassInfo struct {
-	variant   panacheVariant
-	isEntity  bool // true = static methods on the class; false = instance methods
-	reactive  bool
+	variant  panacheVariant
+	isEntity bool // true = static methods on the class; false = instance methods
+	reactive bool
 }
 
 // detectPanache analyses classDeclSrc (the class declaration text, annotations
@@ -200,8 +200,9 @@ func resolveRepositoryVariant(iface string, fileVariant panacheVariant, reactive
 
 // extractExtends returns the simple name of the superclass from a class
 // declaration text, or "" if not found. Handles both bare and generic forms:
-//   "extends PanacheEntity" → "PanacheEntity"
-//   "extends PanacheEntityBase<Long>" → "PanacheEntityBase"
+//
+//	"extends PanacheEntity" → "PanacheEntity"
+//	"extends PanacheEntityBase<Long>" → "PanacheEntityBase"
 func extractExtends(classDeclSrc string) string {
 	const kw = "extends"
 	idx := strings.Index(classDeclSrc, kw)

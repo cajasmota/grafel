@@ -23,14 +23,14 @@ const (
 
 // PathRow is one grouped API path returned by the list endpoint.
 type PathRow struct {
-	PathHash    string   `json:"path_hash"`
-	Path        string   `json:"path"`
-	Verbs       []string `json:"verbs"`
-	Handlers    []string `json:"handlers"`
-	Multiplicity int     `json:"multiplicity"`
-	Frameworks  []string `json:"frameworks"`
-	IsWebhook   bool     `json:"is_webhook"`
-	Repos       []string `json:"repos"`
+	PathHash     string   `json:"path_hash"`
+	Path         string   `json:"path"`
+	Verbs        []string `json:"verbs"`
+	Handlers     []string `json:"handlers"`
+	Multiplicity int      `json:"multiplicity"`
+	Frameworks   []string `json:"frameworks"`
+	IsWebhook    bool     `json:"is_webhook"`
+	Repos        []string `json:"repos"`
 }
 
 // PathTreeNode is one node in the hierarchical prefix tree.
@@ -226,19 +226,19 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Find all endpoints with this pathHash.
 	type endpointDetail struct {
-		ID            string   `json:"id"`
-		Verb          string   `json:"verb"`
-		Path          string   `json:"path"`
-		Handler       string   `json:"handler"`
-		Framework     string   `json:"framework,omitempty"`
-		IsWebhook     bool     `json:"is_webhook,omitempty"`
-		ResponseKeys  []string `json:"response_keys,omitempty"`
-		StatusCodes   []int    `json:"status_codes,omitempty"`
-		InboundFetches []string `json:"inbound_fetches,omitempty"`
+		ID              string   `json:"id"`
+		Verb            string   `json:"verb"`
+		Path            string   `json:"path"`
+		Handler         string   `json:"handler"`
+		Framework       string   `json:"framework,omitempty"`
+		IsWebhook       bool     `json:"is_webhook,omitempty"`
+		ResponseKeys    []string `json:"response_keys,omitempty"`
+		StatusCodes     []int    `json:"status_codes,omitempty"`
+		InboundFetches  []string `json:"inbound_fetches,omitempty"`
 		OutboundQueries []string `json:"outbound_queries,omitempty"`
-		Repo          string   `json:"repo"`
-		SourceFile    string   `json:"source_file"`
-		StartLine     int      `json:"start_line"`
+		Repo            string   `json:"repo"`
+		SourceFile      string   `json:"source_file"`
+		StartLine       int      `json:"start_line"`
 	}
 
 	var matched []endpointDetail

@@ -169,4 +169,3 @@ func (s *Service) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCallReply) er
 	}
 	return nil
 }
-

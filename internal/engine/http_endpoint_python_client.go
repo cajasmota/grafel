@@ -20,8 +20,8 @@
 //
 // Beyond-minimum behaviours:
 //   - File-local constant folding for string URLs:
-//	BASE = "/api/v1"
-//	requests.get(f"{BASE}/users") → /api/v1/users
+//     BASE = "/api/v1"
+//     requests.get(f"{BASE}/users") → /api/v1/users
 //   - f-string templates with simple `{name}` interpolation
 //   - String concatenation: `os.environ["API_URL"] + "/users"` →
 //     `/users` with `runtime_dynamic=true` (the host comes from env)

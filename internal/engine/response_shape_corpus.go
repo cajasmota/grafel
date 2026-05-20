@@ -17,16 +17,16 @@
 // full classified-file set rather than only same-file.
 //
 // Resolution priority for finding the handler entity, per http_endpoint:
-//   1. `source_handler` property "<Kind>:<Name>" — set by every
-//      framework-specific synthesizer (#534, #722).
-//   2. `drf_view_method` property "<ViewSet>.<method>" — set by the DRF
-//      action expander (#705). Falls back to the View entity for the
-//      ViewSet class and looks up the method name inside.
-//   3. ROUTES_TO relationship from a composed Route to a View entity
-//      (Django composed routes set this in django_routes.go but do NOT
-//      propagate the view name into `source_handler` because the
-//      Phase-2 resolver historically required same-file resolution and
-//      would drop the synthetic). We follow the edge here instead.
+//  1. `source_handler` property "<Kind>:<Name>" — set by every
+//     framework-specific synthesizer (#534, #722).
+//  2. `drf_view_method` property "<ViewSet>.<method>" — set by the DRF
+//     action expander (#705). Falls back to the View entity for the
+//     ViewSet class and looks up the method name inside.
+//  3. ROUTES_TO relationship from a composed Route to a View entity
+//     (Django composed routes set this in django_routes.go but do NOT
+//     propagate the view name into `source_handler` because the
+//     Phase-2 resolver historically required same-file resolution and
+//     would drop the synthetic). We follow the edge here instead.
 //
 // Once we have a handler entity, we read its SourceFile content (still
 // live on the `classified` slice at this point of the pipeline), and

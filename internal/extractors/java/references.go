@@ -459,8 +459,8 @@ func handleTypeIdentifier(
 //   - if obj is `this` and bareSymbols has `<attr>` as a field, emit
 //     REFERENCES to the field entity.
 //   - if obj is a PascalCase identifier (ClassName.staticMember):
-//       * look up `<ClassName>.<attr>` in dottedSymbols (method).
-//       * fall back to bareSymbols[<attr>] for field/method bare match.
+//   - look up `<ClassName>.<attr>` in dottedSymbols (method).
+//   - fall back to bareSymbols[<attr>] for field/method bare match.
 //   - otherwise leave the receiver to the generic identifier walk
 //     (recursion handles it).
 func handleFieldAccess(

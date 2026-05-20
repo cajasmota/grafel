@@ -55,10 +55,10 @@ type StatusReply struct {
 	// currently running. InFlightJobs duplicates IndexInFlight with
 	// per-job predicted-MB so the status formatter can print headroom.
 	// BlockedJobs lists repos waiting for the budget to free.
-	RSSBudgetMB  int64               `json:"rss_budget_mb,omitempty"`
-	RSSUsedMB    int64               `json:"rss_used_mb,omitempty"`
-	InFlightJobs []InFlightJobState  `json:"in_flight_jobs,omitempty"`
-	BlockedJobs  []string            `json:"blocked_jobs,omitempty"`
+	RSSBudgetMB  int64              `json:"rss_budget_mb,omitempty"`
+	RSSUsedMB    int64              `json:"rss_used_mb,omitempty"`
+	InFlightJobs []InFlightJobState `json:"in_flight_jobs,omitempty"`
+	BlockedJobs  []string           `json:"blocked_jobs,omitempty"`
 }
 
 // InFlightJobState mirrors sched.InFlightJob on the wire.
@@ -69,9 +69,9 @@ type InFlightJobState struct {
 
 // IndexedRepoState mirrors sched.RepoSnapshot for the wire.
 type IndexedRepoState struct {
-	Path       string `json:"path"`
-	LastIndex  string `json:"last_index,omitempty"`
-	LastAlgo   string `json:"last_algo,omitempty"`
+	Path        string `json:"path"`
+	LastIndex   string `json:"last_index,omitempty"`
+	LastAlgo    string `json:"last_algo,omitempty"`
 	IndexCount  int64  `json:"index_count"`
 	AlgoCount   int64  `json:"algo_count"`
 	LastErr     string `json:"last_err,omitempty"`
@@ -98,14 +98,14 @@ type IndexArgs struct {
 	JSONStats   bool     `json:"json_stats,omitempty"`
 	Repair      bool     `json:"repair,omitempty"`
 	RepairApply bool     `json:"repair_apply,omitempty"`
-	ExportFB    bool     `json:"export_fb,omitempty"`  // deprecated no-op; graph.fb always written since #808
+	ExportFB    bool     `json:"export_fb,omitempty"` // deprecated no-op; graph.fb always written since #808
 	// PrintSkipped, when true, emits one [skip] line per skipped directory
 	// at walk-time showing which rule matched (issue #805).
 	PrintSkipped bool `json:"print_skipped,omitempty"`
 	// AdditionalSkipDirs extends the walk-time hard-coded skip list with
 	// per-group names from fleet.json's additional_skip_dirs field.
 	AdditionalSkipDirs []string `json:"additional_skip_dirs,omitempty"`
-	ExportJSON  bool     `json:"export_json,omitempty"`  // when true, also write graph.json alongside graph.fb (ADR-0016 flip-day)
+	ExportJSON         bool     `json:"export_json,omitempty"` // when true, also write graph.json alongside graph.fb (ADR-0016 flip-day)
 }
 
 // IndexReply carries the post-index summary. The stats are an opaque
@@ -136,8 +136,8 @@ type RebuildReply struct {
 	Repos   []string `json:"repos"`
 	Warning string   `json:"warning,omitempty"`
 	// Summary fields — populated when the daemon tracked per-repo stats.
-	TotalEntities int64 `json:"total_entities,omitempty"`
-	TotalRels     int64 `json:"total_rels,omitempty"`
+	TotalEntities int64   `json:"total_entities,omitempty"`
+	TotalRels     int64   `json:"total_rels,omitempty"`
 	ElapsedSec    float64 `json:"elapsed_sec,omitempty"`
 }
 

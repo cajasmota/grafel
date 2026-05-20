@@ -9,7 +9,7 @@
 //
 // Server patterns:
 //   - GraphQL SDL: `type Subscription { <field>: <Type> ... }` in .graphql,
-//     .graphqls, .gql files, or inside a `gql\`...\`` / `gql("...")` /
+//     .graphqls, .gql files, or inside a `gql\`...\“ / `gql("...")` /
 //     `buildSchema(\`...\`)` literal. We extract every field name under
 //     the Subscription type.
 //   - Apollo Server / graphql-yoga resolvers: `Subscription: { <field>: { subscribe(...) } }`
@@ -20,7 +20,7 @@
 //
 // Client patterns:
 //   - GraphQL operation document: `subscription <Name> { <field>(args) { ... } }`
-//     inside `gql\`...\`` / `graphql(\`...\`)` / `useSubscription(\`...\`)` /
+//     inside `gql\`...\“ / `graphql(\`...\`)` / `useSubscription(\`...\`)` /
 //     `useSubscription(gql\`...\`)`. We extract the top-level selection
 //     field as the subscription identity.
 //   - Apollo `useSubscription(DOCUMENT)` / urql `useSubscription({ query: ... })`.
@@ -83,12 +83,12 @@ func applyGraphQLSubscriptionSynthesis(
 			props["args"] = args
 		}
 		entities = append(entities, types.EntityRecord{
-			ID:         id,
-			Name:       id,
-			Kind:       graphqlSubscriptionKind,
-			SourceFile: path,
-			Language:   lang,
-			Properties: props,
+			ID:                 id,
+			Name:               id,
+			Kind:               graphqlSubscriptionKind,
+			SourceFile:         path,
+			Language:           lang,
+			Properties:         props,
 			EnrichmentRequired: false,
 			EnrichmentStatus:   types.StatusPending,
 			QualityScore:       0.8,
@@ -180,7 +180,7 @@ func synthGraphQLSchema(
 			}
 			emitEdge(
 				string(types.RelationshipKindGraphQLPublishes),
-				"Schema:Subscription." + field,
+				"Schema:Subscription."+field,
 				id,
 				props,
 			)
@@ -262,7 +262,7 @@ func synthGraphQLResolvers(
 			}
 			emitEdge(
 				string(types.RelationshipKindGraphQLPublishes),
-				"Function:resolver_" + field,
+				"Function:resolver_"+field,
 				id,
 				props,
 			)
@@ -280,6 +280,7 @@ func synthGraphQLResolvers(
 //   - `subscription { messageAdded { id text } }`
 //   - `subscription OnMessage { messageAdded(channelId: $cid) { id } }`
 //   - `subscription OnMessage($cid: ID!) { messageAdded(channelId: $cid) { id } }`
+//
 // Capture: 1 = field name, 2 = optional arg list (may be empty).
 var graphqlSubscriptionOpRe = regexp.MustCompile(
 	`\bsubscription\b(?:\s+\w+)?(?:\s*\([^)]*\))?\s*\{\s*(\w+)(?:\s*\(([^)]*)\))?`,

@@ -2,21 +2,21 @@
 //
 // Covers:
 //   - Prisma     : `prisma.<model>.<verb>(...)` (also `db.<model>.<verb>`,
-//                  `ctx.prisma.<model>.<verb>`, generic <client>.<model>.<verb>)
-//                  Recognised verbs map directly to canonical ops.
+//     `ctx.prisma.<model>.<verb>`, generic <client>.<model>.<verb>)
+//     Recognised verbs map directly to canonical ops.
 //   - Mongoose   : `<Model>.findOne(...)`, `<Model>.findById(...)`,
-//                  `<Model>.create(...)`, etc. Anchors on capitalised
-//                  model variable + Mongoose-style verbs.
+//     `<Model>.create(...)`, etc. Anchors on capitalised
+//     model variable + Mongoose-style verbs.
 //   - TypeORM    : `<repo>.find(...)` / `.findOne(...)` / `.save(...)` /
-//                  `.delete(...)` — relies on a `<x>Repo`/`<x>Repository`
-//                  naming convention so the matcher can infer the model
-//                  from the receiver identifier.
+//     `.delete(...)` — relies on a `<x>Repo`/`<x>Repository`
+//     naming convention so the matcher can infer the model
+//     from the receiver identifier.
 //   - Sequelize  : same surface as Mongoose; `Model.findAll`, `Model.create`,
-//                  etc. Distinguished only by the verb list.
+//     etc. Distinguished only by the verb list.
 //   - Supabase   : `supabase.from('<table>').<verb>(...)` / generic
-//                  `<client>.from(...).<verb>` — Supabase doesn't expose
-//                  a model class, so we use the table name as the target
-//                  (singularised + capitalised).
+//     `<client>.from(...).<verb>` — Supabase doesn't expose
+//     a model class, so we use the table name as the target
+//     (singularised + capitalised).
 //
 // Out of phase 1:
 //   - Drizzle (`db.select().from(users).where(...)`)
@@ -89,36 +89,36 @@ func scanJSORM(src string, funcs []funcSpan, emit emitORMQueryFn) {
 	// / `sequelize` covers the dominant module-import shapes (CommonJS
 	// require and ESM import).
 	if mentionsMongooseSequelize(src) {
-	for _, m := range jsMongooseSequelizeRe.FindAllStringSubmatchIndex(src, -1) {
-		if len(m) < 6 {
-			continue
+		for _, m := range jsMongooseSequelizeRe.FindAllStringSubmatchIndex(src, -1) {
+			if len(m) < 6 {
+				continue
+			}
+			// Skip if this looks like a Prisma client invocation we've already
+			// covered (`<client>.user.findUnique` would have a capitalised first
+			// segment only if the client itself is `Db`/`Client`/etc; both are
+			// allow-listed in the Prisma regex above and matched there). A
+			// rougher de-dup heuristic: don't match if the start of the captured
+			// model name is preceded by `.` (chained method on something else).
+			if m[0] > 0 && src[m[0]] == '.' {
+				continue
+			}
+			// Drop common false positives (class instantiation, type refs).
+			model := src[m[2]:m[3]]
+			verb := src[m[4]:m[5]]
+			// Reject if preceded by `new ` (constructor call), `import `, `from `.
+			if hasPrecedingKeyword(src, m[2], "new ") ||
+				hasPrecedingKeyword(src, m[2], "import ") ||
+				hasPrecedingKeyword(src, m[2], "from ") ||
+				hasPrecedingKeyword(src, m[2], "class ") {
+				continue
+			}
+			caller := enclosingFuncAt(funcs, m[0])
+			argsBlob := extractCallArgs(src, m[5])
+			filterKeys := parseFilterKeys(argsBlob)
+			isJoin := strings.Contains(argsBlob, "populate") ||
+				strings.Contains(argsBlob, "include:")
+			emit(caller, model, canonicalOp(verb), filterKeys, "mongoose_sequelize", isJoin)
 		}
-		// Skip if this looks like a Prisma client invocation we've already
-		// covered (`<client>.user.findUnique` would have a capitalised first
-		// segment only if the client itself is `Db`/`Client`/etc; both are
-		// allow-listed in the Prisma regex above and matched there). A
-		// rougher de-dup heuristic: don't match if the start of the captured
-		// model name is preceded by `.` (chained method on something else).
-		if m[0] > 0 && src[m[0]] == '.' {
-			continue
-		}
-		// Drop common false positives (class instantiation, type refs).
-		model := src[m[2]:m[3]]
-		verb := src[m[4]:m[5]]
-		// Reject if preceded by `new ` (constructor call), `import `, `from `.
-		if hasPrecedingKeyword(src, m[2], "new ") ||
-			hasPrecedingKeyword(src, m[2], "import ") ||
-			hasPrecedingKeyword(src, m[2], "from ") ||
-			hasPrecedingKeyword(src, m[2], "class ") {
-			continue
-		}
-		caller := enclosingFuncAt(funcs, m[0])
-		argsBlob := extractCallArgs(src, m[5])
-		filterKeys := parseFilterKeys(argsBlob)
-		isJoin := strings.Contains(argsBlob, "populate") ||
-			strings.Contains(argsBlob, "include:")
-		emit(caller, model, canonicalOp(verb), filterKeys, "mongoose_sequelize", isJoin)
-	}
 	}
 
 	// TypeORM repository pattern

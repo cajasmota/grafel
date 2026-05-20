@@ -39,7 +39,7 @@ func TestRenderMarkdown_basicShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustContain := []string{
-		"# ",                         // title
+		"# ", // title
 		"**Status**: Active",
 		"**Category**: code",
 		"**Confidence**: 0.72",

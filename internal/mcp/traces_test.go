@@ -29,7 +29,7 @@ func processFixtureDoc(repo string) *graph.Document {
 				Properties: map[string]string{
 					"entry_id": "f1", "entry_name": "handleSubmit",
 					"terminal_id": "f2", "step_count": "3",
-					"cross_stack": "false",
+					"cross_stack":  "false",
 					"chain":        "f1,f3,f2",
 					"chain_labels": "handleSubmit → submitOrder → validateForm",
 				}},
@@ -38,7 +38,7 @@ func processFixtureDoc(repo string) *graph.Document {
 				Properties: map[string]string{
 					"entry_id": "f1", "entry_name": "handleSubmit",
 					"terminal_id": "ep", "step_count": "3",
-					"cross_stack": "true",
+					"cross_stack":  "true",
 					"chain":        "f1,f3,ep",
 					"chain_labels": "handleSubmit → submitOrder → http:POST:/api/orders",
 				}},

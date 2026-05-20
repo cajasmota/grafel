@@ -12,10 +12,10 @@ func TestRegisterWriteAgentsMD(t *testing.T) {
 	agentsMDPath := filepath.Join(tmpDir, "AGENTS.md")
 
 	tests := []struct {
-		name           string
+		name            string
 		existingContent string
-		group          string
-		wantContains   []string
+		group           string
+		wantContains    []string
 		wantNotContains string
 	}{
 		{

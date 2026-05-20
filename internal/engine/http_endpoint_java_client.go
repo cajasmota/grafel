@@ -8,34 +8,34 @@
 // Patterns covered (per the wave-1 brief):
 //
 //   - Java 11+ stdlib HttpClient:
-//	HttpRequest.newBuilder().uri(URI.create("/api/users")).build()
-//	httpClient.send(req, ...)
+//     HttpRequest.newBuilder().uri(URI.create("/api/users")).build()
+//     httpClient.send(req, ...)
 //   - Spring RestTemplate:
-//	restTemplate.getForObject("/api/users", User.class)
-//	restTemplate.postForEntity("/api/users", body, User.class)
-//	restTemplate.exchange("/api/users/{id}", HttpMethod.PUT, ...)
+//     restTemplate.getForObject("/api/users", User.class)
+//     restTemplate.postForEntity("/api/users", body, User.class)
+//     restTemplate.exchange("/api/users/{id}", HttpMethod.PUT, ...)
 //   - Spring WebClient:
-//	webClient.get().uri("/api/users").retrieve()...
-//	webClient.post().uri("/api/users").bodyValue(b).retrieve()...
+//     webClient.get().uri("/api/users").retrieve()...
+//     webClient.post().uri("/api/users").bodyValue(b).retrieve()...
 //   - OkHttp:
-//	client.newCall(new Request.Builder().url("/api/users").build()).execute()
-//	new Request.Builder().url(...).method("POST", body)
+//     client.newCall(new Request.Builder().url("/api/users").build()).execute()
+//     new Request.Builder().url(...).method("POST", body)
 //   - Apache HttpClient:
-//	httpclient.execute(new HttpGet("/api/users"))
-//	httpclient.execute(new HttpPost("/api/users"))
+//     httpclient.execute(new HttpGet("/api/users"))
+//     httpclient.execute(new HttpPost("/api/users"))
 //   - Retrofit (interface methods):
-//	@GET("/api/users") Call<List<User>> users();
-//	@POST("/api/users") Call<User> create(@Body User u);
+//     @GET("/api/users") Call<List<User>> users();
+//     @POST("/api/users") Call<User> create(@Body User u);
 //
 // #796 extensions:
 //
 //   - MicroProfile @RegisterRestClient (Quarkus):
-//	@RegisterRestClient @Path("/customers") interface CustomerApiClient { @GET @Path("/{id}") ... }
-//	@Inject @RestClient CustomerApiClient customerApi; → customerApi.getCustomer(id)
+//     @RegisterRestClient @Path("/customers") interface CustomerApiClient { @GET @Path("/{id}") ... }
+//     @Inject @RestClient CustomerApiClient customerApi; → customerApi.getCustomer(id)
 //   - @ClientHeaderParam and @ClientRequestFilter recording (auth/header pattern)
 //   - @RegisterClientHeaders recording (auto-header propagator)
 //   - Spring Cloud OpenFeign (@FeignClient):
-//	@FeignClient(name="customer", url="${...}") interface CustomerClient { ... }
+//     @FeignClient(name="customer", url="${...}") interface CustomerClient { ... }
 //
 // Beyond-minimum behaviours:
 //   - Base URL composition from `HttpClient.Builder`, `RestTemplate.setRootUri`,

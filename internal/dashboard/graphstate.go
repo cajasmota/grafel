@@ -89,8 +89,8 @@ type CrossRepoLink struct {
 
 // cacheEntry holds a loaded group plus the time it was last refreshed.
 type cacheEntry struct {
-	group     *DashGroup
-	loadedAt  time.Time
+	group    *DashGroup
+	loadedAt time.Time
 }
 
 // GraphCache is the dashboard's in-memory graph store.  It is safe for

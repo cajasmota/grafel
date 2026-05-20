@@ -3208,33 +3208,33 @@ func hasPdfBoxImport(imports map[string]bool) bool {
 // Issue #787c.
 var poiBareNames = map[string]struct{}{
 	// ---- XSSF (xlsx — OOXML spreadsheet) ----
-	"XSSFWorkbook":          {},
-	"XSSFSheet":             {},
-	"XSSFRow":               {},
-	"XSSFCell":              {},
-	"XSSFFont":              {},
-	"XSSFCellStyle":         {},
-	"XSSFColor":             {},
-	"XSSFRichTextString":    {},
-	"XSSFDrawing":           {},
-	"XSSFClientAnchor":      {},
-	"XSSFChart":             {},
-	"XSSFCreationHelper":    {},
-	"XSSFFormulaEvaluator":  {},
-	"XSSFPivotTable":        {},
-	"XSSFTable":             {},
-	"XSSFDataValidation":    {},
-	"XSSFConditionalFormatting": {},
-	"XSSFHyperlink":         {},
-	"XSSFComment":           {},
-	"XSSFName":              {},
-	"XSSFPrintSetup":        {},
+	"XSSFWorkbook":                   {},
+	"XSSFSheet":                      {},
+	"XSSFRow":                        {},
+	"XSSFCell":                       {},
+	"XSSFFont":                       {},
+	"XSSFCellStyle":                  {},
+	"XSSFColor":                      {},
+	"XSSFRichTextString":             {},
+	"XSSFDrawing":                    {},
+	"XSSFClientAnchor":               {},
+	"XSSFChart":                      {},
+	"XSSFCreationHelper":             {},
+	"XSSFFormulaEvaluator":           {},
+	"XSSFPivotTable":                 {},
+	"XSSFTable":                      {},
+	"XSSFDataValidation":             {},
+	"XSSFConditionalFormatting":      {},
+	"XSSFHyperlink":                  {},
+	"XSSFComment":                    {},
+	"XSSFName":                       {},
+	"XSSFPrintSetup":                 {},
 	"XSSFSheetConditionalFormatting": {},
 	// ---- SXSSF (streaming xlsx — large file write) ----
-	"SXSSFWorkbook":         {},
-	"SXSSFSheet":            {},
-	"SXSSFRow":              {},
-	"SXSSFCell":             {},
+	"SXSSFWorkbook": {},
+	"SXSSFSheet":    {},
+	"SXSSFRow":      {},
+	"SXSSFCell":     {},
 	// ---- HSSF (xls — legacy BIFF8 spreadsheet) ----
 	"HSSFWorkbook":          {},
 	"HSSFSheet":             {},
@@ -3248,64 +3248,64 @@ var poiBareNames = map[string]struct{}{
 	"HSSFPrintSetup":        {},
 	"HSSFPatternFormatting": {},
 	// ---- SS common interfaces (org.apache.poi.ss.usermodel) ----
-	"Workbook":              {},
-	"Sheet":                 {},
-	"Row":                   {},
-	"CellStyle":             {},
-	"CreationHelper":        {},
-	"DataFormat":            {},
-	"FormulaEvaluator":      {},
-	"Drawing":               {},
-	"Hyperlink":             {},
-	"Comment":               {},
-	"Name":                  {},
-	"PictureData":           {},
-	"PrintSetup":            {},
-	"RichTextString":        {},
+	"Workbook":         {},
+	"Sheet":            {},
+	"Row":              {},
+	"CellStyle":        {},
+	"CreationHelper":   {},
+	"DataFormat":       {},
+	"FormulaEvaluator": {},
+	"Drawing":          {},
+	"Hyperlink":        {},
+	"Comment":          {},
+	"Name":             {},
+	"PictureData":      {},
+	"PrintSetup":       {},
+	"RichTextString":   {},
 	// NOTE: `Cell`, `Font`, `Sheet`, `Row` are excluded because they collide
 	// with extremely common non-POI user class names and project-local names;
 	// the primary fix (synthetic-FQN in upsertImportSet) handles those.
 	// ---- SS util (org.apache.poi.ss.util) ----
-	"CellRangeAddress":      {},
-	"CellReference":         {},
-	"CellRangeAddressList":  {},
-	"RegionUtil":            {},
-	"CellUtil":              {},
-	"AreaReference":         {},
+	"CellRangeAddress":     {},
+	"CellReference":        {},
+	"CellRangeAddressList": {},
+	"RegionUtil":           {},
+	"CellUtil":             {},
+	"AreaReference":        {},
 	// ---- WorkbookFactory / utility classes ----
-	"WorkbookFactory":       {},
-	"DataFormatter":         {},
+	"WorkbookFactory":           {},
+	"DataFormatter":             {},
 	"WorkbookEvaluatorProvider": {},
 	// ---- XWPF (Word docx) ----
-	"XWPFDocument":          {},
-	"XWPFParagraph":         {},
-	"XWPFRun":               {},
-	"XWPFTable":             {},
-	"XWPFTableRow":          {},
-	"XWPFTableCell":         {},
-	"XWPFHeader":            {},
-	"XWPFFooter":            {},
-	"XWPFHyperlink":         {},
-	"XWPFStyle":             {},
-	"XWPFStyles":            {},
-	"XWPFComment":           {},
-	"XWPFComments":          {},
-	"XWPFList":              {},
-	"XWPFNumbering":         {},
+	"XWPFDocument":  {},
+	"XWPFParagraph": {},
+	"XWPFRun":       {},
+	"XWPFTable":     {},
+	"XWPFTableRow":  {},
+	"XWPFTableCell": {},
+	"XWPFHeader":    {},
+	"XWPFFooter":    {},
+	"XWPFHyperlink": {},
+	"XWPFStyle":     {},
+	"XWPFStyles":    {},
+	"XWPFComment":   {},
+	"XWPFComments":  {},
+	"XWPFList":      {},
+	"XWPFNumbering": {},
 	// ---- XSLF (PowerPoint pptx) ----
-	"XMLSlideShow":          {},
-	"XSLFSlide":             {},
-	"XSLFSlideLayout":       {},
-	"XSLFSlideMaster":       {},
-	"XSLFTextShape":         {},
-	"XSLFTextParagraph":     {},
-	"XSLFTextRun":           {},
-	"XSLFShape":             {},
-	"XSLFGroupShape":        {},
-	"XSLFPictureShape":      {},
-	"XSLFTable":             {},
-	"XSLFTableRow":          {},
-	"XSLFTableCell":         {},
+	"XMLSlideShow":      {},
+	"XSLFSlide":         {},
+	"XSLFSlideLayout":   {},
+	"XSLFSlideMaster":   {},
+	"XSLFTextShape":     {},
+	"XSLFTextParagraph": {},
+	"XSLFTextRun":       {},
+	"XSLFShape":         {},
+	"XSLFGroupShape":    {},
+	"XSLFPictureShape":  {},
+	"XSLFTable":         {},
+	"XSLFTableRow":      {},
+	"XSLFTableCell":     {},
 }
 
 // pdfBoxBareNames is the allowlist of Apache PDFBox class names that
@@ -3315,52 +3315,52 @@ var poiBareNames = map[string]struct{}{
 // Gated by hasPdfBoxImport. Issue #787c.
 var pdfBoxBareNames = map[string]struct{}{
 	// ---- org.apache.pdfbox.pdmodel ----
-	"PDDocument":          {},
-	"PDPage":              {},
-	"PDPageContentStream": {},
-	"PDPageTree":          {},
-	"PDResources":         {},
+	"PDDocument":            {},
+	"PDPage":                {},
+	"PDPageContentStream":   {},
+	"PDPageTree":            {},
+	"PDResources":           {},
 	"PDDocumentInformation": {},
-	"PDDocumentCatalog":   {},
-	"PDDocumentOutline":   {},
-	"PDOutlineItem":       {},
-	"PDPageDestination":   {},
-	"PDNamedDestination":  {},
+	"PDDocumentCatalog":     {},
+	"PDDocumentOutline":     {},
+	"PDOutlineItem":         {},
+	"PDPageDestination":     {},
+	"PDNamedDestination":    {},
 	// ---- org.apache.pdfbox.pdmodel.common ----
-	"PDRectangle":         {},
-	"PDStream":            {},
-	"PDMetadata":          {},
+	"PDRectangle": {},
+	"PDStream":    {},
+	"PDMetadata":  {},
 	// ---- org.apache.pdfbox.pdmodel.font ----
-	"PDFont":              {},
-	"PDType1Font":         {},
-	"PDTrueTypeFont":      {},
-	"PDType0Font":         {},
-	"PDCIDFontType2":      {},
-	"Standard14Fonts":     {},
+	"PDFont":          {},
+	"PDType1Font":     {},
+	"PDTrueTypeFont":  {},
+	"PDType0Font":     {},
+	"PDCIDFontType2":  {},
+	"Standard14Fonts": {},
 	// ---- org.apache.pdfbox.pdmodel.graphics.image ----
-	"PDImageXObject":      {},
-	"JPEGFactory":         {},
-	"LosslessFactory":     {},
-	"CCITTFactory":        {},
+	"PDImageXObject":  {},
+	"JPEGFactory":     {},
+	"LosslessFactory": {},
+	"CCITTFactory":    {},
 	// ---- org.apache.pdfbox.pdmodel.graphics.color ----
-	"PDColorSpace":        {},
-	"PDDeviceRGB":         {},
-	"PDDeviceGray":        {},
-	"PDDeviceCMYK":        {},
+	"PDColorSpace": {},
+	"PDDeviceRGB":  {},
+	"PDDeviceGray": {},
+	"PDDeviceCMYK": {},
 	// ---- org.apache.pdfbox.pdmodel.interactive.* ----
-	"PDAnnotation":        {},
-	"PDAnnotationLink":    {},
-	"PDActionURI":         {},
-	"PDActionGoTo":        {},
-	"PDAnnotationWidget":  {},
+	"PDAnnotation":       {},
+	"PDAnnotationLink":   {},
+	"PDActionURI":        {},
+	"PDActionGoTo":       {},
+	"PDAnnotationWidget": {},
 	// ---- org.apache.pdfbox.rendering ----
-	"PDFRenderer":         {},
-	"RenderingHints":      {},
+	"PDFRenderer":    {},
+	"RenderingHints": {},
 	// ---- org.apache.pdfbox.text ----
-	"PDFTextStripper":     {},
-	"TextPosition":        {},
+	"PDFTextStripper": {},
+	"TextPosition":    {},
 	// ---- org.apache.pdfbox.util ----
-	"Matrix":              {},
+	"Matrix": {},
 }
 
 // hasJSCollectionLibImport reports whether the source JS/TS file imports
@@ -10005,33 +10005,33 @@ var jsBareNames = map[string]struct{}{
 	// built-in calls with no entity binding. Gated to js/ts, preventing
 	// collisions with other-language user methods. Vanishingly low collision
 	// risk in React/Node codebases.
-	"splice":      {}, // Array.prototype.splice
-	"slice":       {}, // Array.prototype.slice / String.prototype.slice
-	"concat":      {}, // Array.prototype.concat / String.prototype.concat
-	"join":        {}, // Array.prototype.join
-	"charCodeAt":  {}, // String.prototype.charCodeAt
-	"match":       {}, // String.prototype.match
-	"search":      {}, // String.prototype.search
-	"split":       {}, // String.prototype.split
-	"cloneNode":   {}, // Node.cloneNode
-	"contains":    {}, // Node/Element.contains
-	"matches":     {}, // Element.matches
-	"scroll":      {}, // Window.scroll
-	"countReset":  {}, // console.countReset
-	"group":       {}, // console.group
-	"groupEnd":    {}, // console.groupEnd
-	"groupCollapsed": {}, // console.groupCollapsed
-	"time":        {}, // console.time
-	"timeEnd":     {}, // console.timeEnd
-	"timeLog":     {}, // console.timeLog
-	"trunc":       {}, // Math.trunc
-	"sign":        {}, // Math.sign
-	"cbrt":        {}, // Math.cbrt
-	"hypot":       {}, // Math.hypot
-	"imul":        {}, // Math.imul
-	"fround":      {}, // Math.fround
-	"clz32":       {}, // Math.clz32
-	"EPSILON":     {}, // Number.EPSILON
+	"splice":          {}, // Array.prototype.splice
+	"slice":           {}, // Array.prototype.slice / String.prototype.slice
+	"concat":          {}, // Array.prototype.concat / String.prototype.concat
+	"join":            {}, // Array.prototype.join
+	"charCodeAt":      {}, // String.prototype.charCodeAt
+	"match":           {}, // String.prototype.match
+	"search":          {}, // String.prototype.search
+	"split":           {}, // String.prototype.split
+	"cloneNode":       {}, // Node.cloneNode
+	"contains":        {}, // Node/Element.contains
+	"matches":         {}, // Element.matches
+	"scroll":          {}, // Window.scroll
+	"countReset":      {}, // console.countReset
+	"group":           {}, // console.group
+	"groupEnd":        {}, // console.groupEnd
+	"groupCollapsed":  {}, // console.groupCollapsed
+	"time":            {}, // console.time
+	"timeEnd":         {}, // console.timeEnd
+	"timeLog":         {}, // console.timeLog
+	"trunc":           {}, // Math.trunc
+	"sign":            {}, // Math.sign
+	"cbrt":            {}, // Math.cbrt
+	"hypot":           {}, // Math.hypot
+	"imul":            {}, // Math.imul
+	"fround":          {}, // Math.fround
+	"clz32":           {}, // Math.clz32
+	"EPSILON":         {}, // Number.EPSILON
 	"setFullYear":     {}, // Date.prototype.setFullYear
 	"setMonth":        {}, // Date.prototype.setMonth
 	"setDate":         {}, // Date.prototype.setDate
@@ -10040,15 +10040,15 @@ var jsBareNames = map[string]struct{}{
 	"setSeconds":      {}, // Date.prototype.setSeconds
 	"setMilliseconds": {}, // Date.prototype.setMilliseconds
 	"setTime":         {}, // Date.prototype.setTime
-	"formData":    {}, // Response.formData
-	"setItem":     {}, // Storage.setItem
-	"key":         {}, // Storage.key
-	"reset":       {}, // HTMLFormElement.reset
-	"checkValidity":  {}, // HTMLFormElement.checkValidity
-	"reportValidity": {}, // HTMLFormElement.reportValidity
-	"getAll":      {}, // URLSearchParams.getAll
-	"stack":       {}, // Error.stack
-	"cause":       {}, // Error.cause
+	"formData":        {}, // Response.formData
+	"setItem":         {}, // Storage.setItem
+	"key":             {}, // Storage.key
+	"reset":           {}, // HTMLFormElement.reset
+	"checkValidity":   {}, // HTMLFormElement.checkValidity
+	"reportValidity":  {}, // HTMLFormElement.reportValidity
+	"getAll":          {}, // URLSearchParams.getAll
+	"stack":           {}, // Error.stack
+	"cause":           {}, // Error.cause
 	"resolvedOptions": {}, // Intl.*.resolvedOptions
 }
 
@@ -15938,9 +15938,9 @@ var knownExternalPackages = map[string]struct{}{
 	// shipped on PyPI as the canonical click dependency.
 	"colorama": {},
 	// Wave-8 third-party additions (fixture-a residual & common testing/imaging).
-	"cv2":         {}, // OpenCV
-	"pdf2image":   {}, // PDF to image conversion
-	"coreapi":     {}, // Django REST coreapi client
+	"cv2":       {}, // OpenCV
+	"pdf2image": {}, // PDF to image conversion
+	"coreapi":   {}, // Django REST coreapi client
 	// Wave-7 third-party additions (Django/Channels/AWS/PDF/Excel
 	// stack from client-fixture-a residual).
 	"asgiref":                  {},
@@ -16782,37 +16782,37 @@ var knownExternalPackages = map[string]struct{}{
 	// Additional JVM ecosystem roots from java-orphan-recovery: Swagger, Hibernate,
 	// Eclipse umbrella, Gradle, bare org.apache, com.google, com.fasterxml, cloud SDKs,
 	// HikariCP, Jedis, BCrypt, Groovy.
-	"io.quarkus":                {},
-	"io.smallrye":               {},
-	"io.vertx":                  {},
-	"jakarta.inject":            {},
-	"jakarta.enterprise":        {},
-	"jakarta.ws.rs":             {},
-	"jakarta.persistence":       {},
-	"jakarta.validation":        {},
-	"jakarta.transaction":       {},
-	"jakarta.annotation":        {},
-	"jakarta.servlet":           {},
-	"jakarta.json":              {}, // jakarta.json.bind for JSON-B serialization
-	"at.favre.lib.crypto":       {},
-	"org.eclipse.microprofile":  {}, // MicroProfile spec (Config, JWT, OpenAPI, REST Client, etc.)
-	"io.hypersistence":          {}, // Hibernate utilities for JSON/JSONB type mapping
-	"io.swagger":                {}, // Swagger / OpenAPI annotations
-	"org.hibernate":             {}, // Hibernate ORM / Validator / Reactive
-	"org.eclipse":               {}, // Eclipse foundation umbrella (Jetty, JKube, etc.)
-	"org.gradle":                {}, // Gradle build / plugin APIs
-	"org.apache":                {}, // bare org.apache umbrella for unlisted subpackages
-	"com.google":                {}, // broader com.google.* (Guice, Closure, etc.)
-	"com.fasterxml":             {}, // broader com.fasterxml.* (woodstox, etc.)
-	"com.amazonaws":             {}, // AWS SDK for Java v1
-	"com.azure":                 {}, // Azure SDK for Java
-	"com.microsoft":             {}, // MSAL / SQL Server JDBC / etc.
-	"com.oracle":                {}, // Oracle JDBC / GraalVM SDK
-	"com.sun":                   {}, // legacy com.sun.* (Xerces, JAX-WS RI, etc.)
-	"com.zaxxer":                {}, // HikariCP connection pool
-	"redis.clients":             {}, // Jedis Redis client (`redis.clients.jedis.*`)
-	"at.favre.lib":              {}, // BCrypt password hashing
-	"groovy":                    {}, // Groovy language / Gradle build DSL
+	"io.quarkus":               {},
+	"io.smallrye":              {},
+	"io.vertx":                 {},
+	"jakarta.inject":           {},
+	"jakarta.enterprise":       {},
+	"jakarta.ws.rs":            {},
+	"jakarta.persistence":      {},
+	"jakarta.validation":       {},
+	"jakarta.transaction":      {},
+	"jakarta.annotation":       {},
+	"jakarta.servlet":          {},
+	"jakarta.json":             {}, // jakarta.json.bind for JSON-B serialization
+	"at.favre.lib.crypto":      {},
+	"org.eclipse.microprofile": {}, // MicroProfile spec (Config, JWT, OpenAPI, REST Client, etc.)
+	"io.hypersistence":         {}, // Hibernate utilities for JSON/JSONB type mapping
+	"io.swagger":               {}, // Swagger / OpenAPI annotations
+	"org.hibernate":            {}, // Hibernate ORM / Validator / Reactive
+	"org.eclipse":              {}, // Eclipse foundation umbrella (Jetty, JKube, etc.)
+	"org.gradle":               {}, // Gradle build / plugin APIs
+	"org.apache":               {}, // bare org.apache umbrella for unlisted subpackages
+	"com.google":               {}, // broader com.google.* (Guice, Closure, etc.)
+	"com.fasterxml":            {}, // broader com.fasterxml.* (woodstox, etc.)
+	"com.amazonaws":            {}, // AWS SDK for Java v1
+	"com.azure":                {}, // Azure SDK for Java
+	"com.microsoft":            {}, // MSAL / SQL Server JDBC / etc.
+	"com.oracle":               {}, // Oracle JDBC / GraalVM SDK
+	"com.sun":                  {}, // legacy com.sun.* (Xerces, JAX-WS RI, etc.)
+	"com.zaxxer":               {}, // HikariCP connection pool
+	"redis.clients":            {}, // Jedis Redis client (`redis.clients.jedis.*`)
+	"at.favre.lib":             {}, // BCrypt password hashing
+	"groovy":                   {}, // Groovy language / Gradle build DSL
 	// Issue kafka-fix-w3 — Apache Kafka / Confluent / Avro / Jetty / Jersey
 	// ecosystem roots. Multi-segment keys keep longestKnownDottedPrefix
 	// precise so an unrelated `org.apache` user-namespace cannot collide.
@@ -16837,51 +16837,51 @@ var knownExternalPackages = map[string]struct{}{
 	// POI sub-packages (ss=spreadsheet, xssf=OOXML, hssf=legacy, sxssf=streaming,
 	// xwpf=Word, xslf=PowerPoint, ooxml=generic OOXML schemas, extractor=text
 	// extraction).  org.apache.poi covers them all as an umbrella.
-	"org.apache.poi":         {}, // Apache POI: XSSF/HSSF/SXSSF/XWPF/XSLF spreadsheet+doc APIs
-	"org.apache.poi.ss":      {}, // POI Spreadsheet (ss) common API — Cell, Row, Sheet, Workbook interfaces
-	"org.apache.poi.xssf":    {}, // POI XSSF — OOXML-format (xlsx/xlsm) classes
-	"org.apache.poi.hssf":    {}, // POI HSSF — legacy BIFF8 format (xls) classes
-	"org.apache.poi.xwpf":    {}, // POI XWPF — Word 2007+ (docx) classes
-	"org.apache.poi.xslf":    {}, // POI XSLF — PowerPoint 2007+ (pptx) classes
-	"org.apache.poi.ooxml":   {}, // POI generic OOXML schemas
+	"org.apache.poi":       {}, // Apache POI: XSSF/HSSF/SXSSF/XWPF/XSLF spreadsheet+doc APIs
+	"org.apache.poi.ss":    {}, // POI Spreadsheet (ss) common API — Cell, Row, Sheet, Workbook interfaces
+	"org.apache.poi.xssf":  {}, // POI XSSF — OOXML-format (xlsx/xlsm) classes
+	"org.apache.poi.hssf":  {}, // POI HSSF — legacy BIFF8 format (xls) classes
+	"org.apache.poi.xwpf":  {}, // POI XWPF — Word 2007+ (docx) classes
+	"org.apache.poi.xslf":  {}, // POI XSLF — PowerPoint 2007+ (pptx) classes
+	"org.apache.poi.ooxml": {}, // POI generic OOXML schemas
 	// PDFBox — Apache's pure-Java PDF library (org.apache.pdfbox.pdmodel.*,
 	// org.apache.pdfbox.rendering.*, org.apache.pdfbox.text.*, etc.).
 	// Covered by the bare org.apache umbrella, but the explicit entry keeps
 	// longestKnownDottedPrefix from unnecessarily walking to `org.apache` when
 	// org.apache.pdfbox is the real library.
-	"org.apache.pdfbox":      {}, // Apache PDFBox: PDDocument, PDPage, PDPageContentStream, PDFont, …
+	"org.apache.pdfbox": {}, // Apache PDFBox: PDDocument, PDPage, PDPageContentStream, PDFont, …
 	// Apache Commons — commons-io, commons-lang3, commons-collections, and
 	// commons-compress are commonly co-imported with POI in enterprise Java.
 	// org.apache.commons is already on the allowlist but listing the
 	// high-traffic sub-families here gives longestKnownDottedPrefix a
 	// more precise canonical name for each.
-	"org.apache.commons.io":          {}, // Apache Commons IO — FileUtils, IOUtils, FilenameUtils, …
+	"org.apache.commons.io":           {}, // Apache Commons IO — FileUtils, IOUtils, FilenameUtils, …
 	"org.apache.commons.lang3":        {}, // Apache Commons Lang3 — StringUtils, ArrayUtils, ObjectUtils, …
 	"org.apache.commons.collections4": {}, // Apache Commons Collections4 — Bag, MultiMap, …
 	"org.apache.commons.compress":     {}, // Apache Commons Compress — zip/tar/7z helpers often used with POI
 	"org.apache.commons.text":         {}, // Apache Commons Text — StringSubstitutor, WordUtils, …
-	"io.confluent":           {}, // Confluent schema-registry / kafka-streams examples / KSQL clients
-	"kafka":                  {}, // Scala Kafka classes (`import kafka.server.KafkaConfig`)
-	"com.google.common":      {}, // Guava (`com.google.common.collect.*`) — supersedes legacy `com.google.guava`
-	"com.google.protobuf":    {}, // Protobuf Java runtime
-	"com.google.gson":        {}, // Gson JSON
-	"org.eclipse.jetty":      {}, // Embedded Jetty server (REST interactive-queries demos)
-	"org.glassfish.jersey":   {}, // JAX-RS Jersey impl (REST clients in Kafka examples)
-	"org.glassfish":          {}, // broader org.glassfish.* (HK2, etc.)
-	"jakarta.ws":             {}, // jakarta.ws.rs.* (JAX-RS)
-	"javax.ws":               {}, // javax.ws.rs.* (legacy JAX-RS)
-	"org.rocksdb":            {}, // Kafka Streams default state-store backend
-	"org.codehaus":           {}, // org.codehaus.jackson.* legacy / org.codehaus.plexus.*
-	"com.typesafe":           {}, // com.typesafe.config (Akka/Kafka config)
-	"reactor":                {}, // Project Reactor (`reactor.core.*`)
-	"io.netty":               {}, // Netty (transport for many JVM brokers/clients)
-	"io.reactivex":           {}, // RxJava
-	"io.grpc":                {}, // gRPC Java
-	"io.opentelemetry":       {}, // OpenTelemetry Java SDK
-	"org.yaml":               {}, // snakeyaml
-	"org.json":               {}, // org.json reference library
-	"org.slf4j":              {}, // SLF4J Logger/LoggerFactory dotted form
-	"javax.servlet":          {}, // jakarta predecessor (Jetty servlet API)
+	"io.confluent":                    {}, // Confluent schema-registry / kafka-streams examples / KSQL clients
+	"kafka":                           {}, // Scala Kafka classes (`import kafka.server.KafkaConfig`)
+	"com.google.common":               {}, // Guava (`com.google.common.collect.*`) — supersedes legacy `com.google.guava`
+	"com.google.protobuf":             {}, // Protobuf Java runtime
+	"com.google.gson":                 {}, // Gson JSON
+	"org.eclipse.jetty":               {}, // Embedded Jetty server (REST interactive-queries demos)
+	"org.glassfish.jersey":            {}, // JAX-RS Jersey impl (REST clients in Kafka examples)
+	"org.glassfish":                   {}, // broader org.glassfish.* (HK2, etc.)
+	"jakarta.ws":                      {}, // jakarta.ws.rs.* (JAX-RS)
+	"javax.ws":                        {}, // javax.ws.rs.* (legacy JAX-RS)
+	"org.rocksdb":                     {}, // Kafka Streams default state-store backend
+	"org.codehaus":                    {}, // org.codehaus.jackson.* legacy / org.codehaus.plexus.*
+	"com.typesafe":                    {}, // com.typesafe.config (Akka/Kafka config)
+	"reactor":                         {}, // Project Reactor (`reactor.core.*`)
+	"io.netty":                        {}, // Netty (transport for many JVM brokers/clients)
+	"io.reactivex":                    {}, // RxJava
+	"io.grpc":                         {}, // gRPC Java
+	"io.opentelemetry":                {}, // OpenTelemetry Java SDK
+	"org.yaml":                        {}, // snakeyaml
+	"org.json":                        {}, // org.json reference library
+	"org.slf4j":                       {}, // SLF4J Logger/LoggerFactory dotted form
+	"javax.servlet":                   {}, // jakarta predecessor (Jetty servlet API)
 	// Scala ecosystem (play-scala-starter, Akka, scalatest, sbt, etc.).
 	// Both the language-namespace `scala` root and JVM-style dotted
 	// `org.*` / `com.*` roots are present so every `import` shape in a

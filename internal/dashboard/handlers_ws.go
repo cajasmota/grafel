@@ -32,7 +32,7 @@ import (
 
 // WSEvent is the shape pushed to all connected clients.
 type WSEvent struct {
-	Type      string `json:"type"`       // "reindex_started" | "reindex_completed" | "watcher_event" | "daemon_log"
+	Type      string `json:"type"` // "reindex_started" | "reindex_completed" | "watcher_event" | "daemon_log"
 	Group     string `json:"group"`
 	Repo      string `json:"repo,omitempty"`
 	Path      string `json:"path,omitempty"`

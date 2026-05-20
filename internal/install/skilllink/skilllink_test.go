@@ -29,10 +29,10 @@ func TestDiscoverSkillsDir(t *testing.T) {
 			expectFound:     true,
 		},
 		{
-			name:        "empty skills source dir falls through to defaults",
+			name:            "empty skills source dir falls through to defaults",
 			skillsSourceDir: "",
-			envPath:     "",
-			expectFound: false, // won't find anything in a temp dir
+			envPath:         "",
+			expectFound:     false, // won't find anything in a temp dir
 		},
 	}
 

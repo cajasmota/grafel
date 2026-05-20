@@ -362,11 +362,11 @@ func walk(
 			*out = append(*out, rec)
 		}
 
-	// import_declaration is handled by attachImportRelationships (issue #681)
-	// which attaches IMPORTS edges to the file-level entity instead of
-	// emitting a separate SCOPE.Component placeholder per import. The
-	// placeholder entities were dangling (zero inbound edges) and
-	// contributed ~1205 orphans on client-fixture-d.
+		// import_declaration is handled by attachImportRelationships (issue #681)
+		// which attaches IMPORTS edges to the file-level entity instead of
+		// emitting a separate SCOPE.Component placeholder per import. The
+		// placeholder entities were dangling (zero inbound edges) and
+		// contributed ~1205 orphans on client-fixture-d.
 	}
 
 	// Default recursion. parentType / cc do NOT propagate through unrelated
@@ -529,16 +529,16 @@ var panacheQueryReturningMethods = map[string]bool{
 // (returning List, T, Optional, long, etc.) are NOT listed here, but they
 // still bind to PanacheQuery.* when the receiver is a panache chain.
 var panacheQueryDSLChainMethods = map[string]bool{
-	"page":          true,
-	"nextPage":      true,
-	"previousPage":  true,
-	"firstPage":     true,
-	"lastPage":      true,
-	"range":         true,
-	"withHint":      true,
-	"withLock":      true,
-	"project":       true,
-	"filter":        true,
+	"page":         true,
+	"nextPage":     true,
+	"previousPage": true,
+	"firstPage":    true,
+	"lastPage":     true,
+	"range":        true,
+	"withHint":     true,
+	"withLock":     true,
+	"project":      true,
+	"filter":       true,
 }
 
 // receiverTypeName returns the declared type of a method_invocation's
