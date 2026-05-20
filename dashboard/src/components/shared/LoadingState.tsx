@@ -68,3 +68,50 @@ export function CardSkeleton() {
     </div>
   )
 }
+
+/** Skeleton for a single FlowRow */
+export function FlowRowSkeleton() {
+  return (
+    <div className="flex items-start gap-3 px-4 py-3 border-b border-slate-800">
+      <Skeleton className="w-4 h-4 mt-0.5 rounded" />
+      <div className="flex-1 space-y-2">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-5 w-20 rounded" />
+        </div>
+        <Skeleton className="h-3 w-64" />
+      </div>
+      <Skeleton className="h-5 w-12 rounded" />
+    </div>
+  )
+}
+
+/** List of FlowRow skeletons */
+export function FlowListSkeleton({ count = 8 }: { count?: number }) {
+  return (
+    <div role="status" aria-label="Loading flows…">
+      {Array.from({ length: count }, (_, i) => <FlowRowSkeleton key={i} />)}
+      <span className="sr-only">Loading…</span>
+    </div>
+  )
+}
+
+/** Skeleton for the swim-lane panel */
+export function SwimLaneSkeleton() {
+  return (
+    <div className="flex gap-0 overflow-x-auto" role="status" aria-label="Loading flow visualization…">
+      {Array.from({ length: 2 }, (_, i) => (
+        <div key={i} className="min-w-[240px] border-r border-slate-800 last:border-r-0">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-800 bg-slate-900/60">
+            <Skeleton className="w-2 h-2 rounded-full" />
+            <Skeleton className="h-5 w-24 rounded" />
+          </div>
+          <div className="p-3 space-y-2">
+            {Array.from({ length: 4 }, (_, j) => <Skeleton key={j} className="h-6 w-full rounded" />)}
+          </div>
+        </div>
+      ))}
+      <span className="sr-only">Loading…</span>
+    </div>
+  )
+}

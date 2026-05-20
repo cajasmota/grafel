@@ -48,6 +48,7 @@ async function loadMock<T>(name: string): Promise<T> {
     registry: () => import('./mocks/registry.json'),
     paths: () => import('./mocks/paths.json'),
     'path-detail': () => import('./mocks/path-detail.json'),
+    flows: () => import('./mocks/flows.json'),
   }
   const loader = mocks[name]
   if (!loader) throw new Error(`No mock registered for "${name}"`)
@@ -65,6 +66,9 @@ import type {
   PathListResponse,
   PathDetailResponse,
   PathFilters,
+  FlowListResponse,
+  FlowDetailResponse,
+  FlowFilters,
 } from '@/types/api'
 
 // ── Registry ────────────────────────────────────────────────────────────────
@@ -97,9 +101,70 @@ export async function fetchPathDetail(
   return apiFetch<PathDetailResponse>(`/api/paths/${group}/${pathHash}`)
 }
 
+// ── Surface 2: Flows ─────────────────────────────────────────────────────────
+
+export async function fetchFlows(
+  group: string,
+  filters: FlowFilters = {},
+): Promise<FlowListResponse> {
+  if (USE_MOCKS) {
+    const data = await loadMock<FlowListResponse>('flows')
+    return applyFlowMockFilters(data, filters)
+  }
+  const params = buildParams(filters as Record<string, unknown>)
+  return apiFetch<FlowListResponse>(`/api/flows/${group}?${params}`)
+}
+
+export async function fetchFlowDetail(
+  group: string,
+  processId: string,
+): Promise<FlowDetailResponse> {
+  if (USE_MOCKS) {
+    const data = await loadMock<FlowListResponse>('flows')
+    const process = data.processes.find((p) => p.process_id === processId)
+    if (!process) throw new Error(`Mock: no flow with id "${processId}"`)
+    return {
+      process,
+      chain_entities: [],
+      source_snippets: {},
+    }
+  }
+  return apiFetch<FlowDetailResponse>(`/api/flows/${group}/${processId}`)
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
+
+function applyFlowMockFilters(
+  data: FlowListResponse,
+  filters: FlowFilters,
+): FlowListResponse {
+  let processes = [...data.processes]
+
+  if (filters.entry) {
+    processes = processes.filter(
+      (p) => p.entry_id === filters.entry || p.entry_name.toLowerCase().includes(filters.entry!.toLowerCase()),
+    )
+  }
+  if (filters.cross_stack_only) {
+    processes = processes.filter((p) => p.cross_stack)
+  }
+  if (filters.repo) {
+    processes = processes.filter((p) => p.repo === filters.repo)
+  }
+
+  const limit = filters.limit ?? 50
+  const total = processes.length
+  const pageItems = processes.slice(0, limit)
+
+  return {
+    ...data,
+    processes: pageItems,
+    total,
+    has_more: total > limit,
+  }
+}
 
 function buildParams(obj: Record<string, unknown>): string {
   const params = new URLSearchParams()

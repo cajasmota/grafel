@@ -214,6 +214,7 @@ export interface Process {
   label: string
   entry_id: string
   entry_name: string
+  entry_kind?: EntityKind
   terminal_id: string
   step_count: number
   cross_stack: boolean
@@ -221,7 +222,35 @@ export interface Process {
   terminal_is_phantom?: boolean
   chain_labels: string[]
   source_file?: string
+  /** Populated on action=get (detail); absent on action=list */
   steps?: ProcessStep[]
+  /** entity_kind of the process entry point (http, kafka_consumer, scheduled, ws_handler) */
+  entity_kind?: 'http' | 'kafka_consumer' | 'scheduled' | 'ws_handler'
+}
+
+export interface FlowListResponse {
+  processes: Process[]
+  total: number
+  has_more: boolean
+}
+
+export interface FlowDetailResponse {
+  process: Process
+  chain_entities: Entity[]
+  source_snippets: Record<string, string>
+}
+
+export interface FlowFilters {
+  entry?: string
+  cross_stack_only?: boolean
+  limit?: number
+  repo?: string
+}
+
+export interface SwimLaneEntry {
+  repo: string
+  steps: ProcessStep[]
+  laneIndex: number
 }
 
 // ────────────────────────────────────────────────────────────────────────────
