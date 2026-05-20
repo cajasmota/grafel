@@ -5,7 +5,7 @@
  */
 import { RepoChip } from '@/components/shared/RepoChip'
 import { ChainStep } from './ChainStep'
-import { repoColor } from '@/lib/colors'
+import { repoTailwindColor as repoColor } from "@/lib/colors"
 import type { ProcessStep, SwimLaneEntry, EntityKind } from '@/types/api'
 
 interface SwimLanePanelProps {

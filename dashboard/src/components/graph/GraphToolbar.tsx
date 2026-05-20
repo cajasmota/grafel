@@ -1,7 +1,8 @@
-import { Search, RotateCcw, Camera, Box, Grid2x2, GitBranch, Globe } from 'lucide-react'
+import { Search, RotateCcw, Camera, Box, Grid2x2, GitBranch } from 'lucide-react'
 import { useRef } from 'react'
 
-export type LayoutMode = 'force' | '2d' | 'tree' | 'sphere'
+// Globe removed in #1000 — non-functional; per tech-debt rule, also removed 'sphere' from the type.
+export type LayoutMode = 'force' | '2d' | 'tree'
 
 interface GraphToolbarProps {
   searchQuery: string
@@ -17,11 +18,15 @@ const LAYOUT_BUTTONS: { mode: LayoutMode; icon: React.FC<{ className?: string }>
   { mode: 'force', icon: Box, label: '3D force' },
   { mode: '2d', icon: Grid2x2, label: '2D force' },
   { mode: 'tree', icon: GitBranch, label: 'Tree' },
-  { mode: 'sphere', icon: Globe, label: 'Globe' },
+  // Globe removed: was non-functional dead UI (#1000). Sphere layout requires
+  // non-trivial THREE.js coord math and is not in scope for this release.
 ]
 
 /**
- * Graph toolbar: search input, layout toggles (3D|2D|tree|sphere), reset view, save snapshot.
+ * Graph toolbar: search input, layout toggles (3D|2D|tree), reset view, save snapshot.
+ *
+ * Globe button removed in #1000.
+ * Tree now actually works (dagMode on 2D force-graph).
  */
 export function GraphToolbar({
   searchQuery,
@@ -34,8 +39,6 @@ export function GraphToolbar({
 }: GraphToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
 
-  // Keyboard: "/" focuses search from anywhere on the page
-  // (registered in the route via useEffect)
   return (
     <div
       className={[

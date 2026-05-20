@@ -1,4 +1,4 @@
-import { repoColor } from '@/lib/colors'
+import { repoTailwindColor as repoColor } from "@/lib/colors"
 
 interface ProducerSpokeProps {
   /** ID of the producer entity (source of arrow) */
