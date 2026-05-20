@@ -31,7 +31,7 @@
 
     { "name": "App", "kind": "SCOPE.Operation", "source_file": "App.tsx", "must_exist": true },
 
-    { "name": "AuthContext", "kind": "SCOPE.Operation", "source_file": "context/AuthContext.tsx", "must_exist": false, "nice_to_have": true, "note": "Today emitted as SCOPE.Operation because createContext is treated as a callable; ideal kind would be SCOPE.Component." }
+    { "name": "AuthContext", "kind": "SCOPE.Component", "source_file": "context/AuthContext.tsx", "must_exist": true, "note": "Context object from createContext(); emitted as SCOPE.Component subtype=context after #611 fix." }
   ],
   "expected_relationships": [
     { "from_name": "App.tsx", "from_kind": "SCOPE.Component", "from_file": "App.tsx",
@@ -83,9 +83,9 @@
       "must_exist": true,
       "note": "Custom-hook call across files." },
 
-    { "from_name": "UserCard", "from_kind": "SCOPE.Operation", "from_file": "components/UserCard.tsx",
-      "kind": "CALLS", "to_name": "UserCard", "to_kind": "SCOPE.Operation", "to_file": "components/UserList.tsx",
-      "must_exist": false, "nice_to_have": true,
-      "note": "Ideal RENDERS edge for JSX <UserCard /> composition; today JSX usage isn't extracted as a RENDERS edge for plain function components." }
+    { "from_name": "UserList", "from_kind": "SCOPE.Operation", "from_file": "components/UserList.tsx",
+      "kind": "RENDERS", "to_name": "UserCard", "to_kind": "SCOPE.Operation", "to_file": "components/UserCard.tsx",
+      "must_exist": true,
+      "note": "JSX <UserCard /> composition emitted as RENDERS by the react_props cross-extractor (issue #611-related)." }
   ]
 }

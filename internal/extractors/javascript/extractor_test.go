@@ -1179,3 +1179,102 @@ class ItemService {
 		t.Errorf("ItemService has no CONTAINS relationships; list and detail should be contained")
 	}
 }
+
+// --------------------------------------------------------------------------
+// Issue #611 — createContext() emitted as SCOPE.Component subtype=context
+// --------------------------------------------------------------------------
+
+// TestCreateContext_BasicContext verifies that `const X = createContext(default)`
+// is emitted as SCOPE.Component with subtype="context", not SCOPE.Operation.
+func TestCreateContext_BasicContext(t *testing.T) {
+	src := []byte(`
+import { createContext } from 'react';
+const AuthContext = createContext(null);
+`)
+	tree := parseTS(t, src)
+	entities := extract(t, src, "typescript", tree)
+
+	assertKind(t, entities, "AuthContext", "SCOPE.Component")
+	e := findByName(entities, "AuthContext")
+	if e == nil {
+		t.Fatal("AuthContext entity not found")
+	}
+	if e.Subtype != "context" {
+		t.Errorf("AuthContext: Subtype=%q, want 'context'", e.Subtype)
+	}
+}
+
+// TestCreateContext_Typed verifies the TypeScript generic form:
+// `const X = createContext<T | null>(null)` — still SCOPE.Component.
+func TestCreateContext_Typed(t *testing.T) {
+	src := []byte(`
+import { createContext } from 'react';
+interface AuthCtx { user: string; }
+const AuthContext = createContext<AuthCtx | null>(null);
+`)
+	tree := parseTS(t, src)
+	entities := extract(t, src, "typescript", tree)
+
+	assertKind(t, entities, "AuthContext", "SCOPE.Component")
+	e := findByName(entities, "AuthContext")
+	if e != nil && e.Subtype != "context" {
+		t.Errorf("AuthContext (typed): Subtype=%q, want 'context'", e.Subtype)
+	}
+}
+
+// TestCreateContext_MultipleContexts verifies that multiple createContext calls
+// in one file each produce their own SCOPE.Component context entity.
+func TestCreateContext_MultipleContexts(t *testing.T) {
+	src := []byte(`
+import { createContext } from 'react';
+const UserContext = createContext(null);
+const ThemeContext = createContext({ color: 'blue' });
+const AuthContext = createContext(null);
+`)
+	tree := parseTS(t, src)
+	entities := extract(t, src, "typescript", tree)
+
+	for _, name := range []string{"UserContext", "ThemeContext", "AuthContext"} {
+		assertKind(t, entities, name, "SCOPE.Component")
+		e := findByName(entities, name)
+		if e != nil && e.Subtype != "context" {
+			t.Errorf("%s: Subtype=%q, want 'context'", name, e.Subtype)
+		}
+	}
+}
+
+// TestCreateContext_NotAWrapper verifies that createContext is no longer treated
+// as a function wrapper (it must NOT be SCOPE.Operation).
+func TestCreateContext_NotAWrapper(t *testing.T) {
+	src := []byte(`
+import { createContext, createContext as createCtx } from 'react';
+const Ctx = createContext(defaultValue);
+`)
+	tree := parseTS(t, src)
+	entities := extract(t, src, "typescript", tree)
+
+	e := findByName(entities, "Ctx")
+	if e == nil {
+		t.Fatal("Ctx entity not found")
+	}
+	if e.Kind == "SCOPE.Operation" {
+		t.Errorf("Ctx: should not be SCOPE.Operation (createContext result is a Context object, not a function)")
+	}
+	if e.Kind != "SCOPE.Component" {
+		t.Errorf("Ctx: Kind=%q, want SCOPE.Component", e.Kind)
+	}
+}
+
+// TestMemo_StillOperation verifies that memo() (a wrapper that DOES return a
+// component function) is still emitted as SCOPE.Operation, not affected by #611.
+func TestMemo_StillOperation(t *testing.T) {
+	src := []byte(`
+import { memo } from 'react';
+function CardInner({ user }) { return null; }
+const MemoCard = memo(CardInner);
+`)
+	tree := parseTS(t, src)
+	entities := extract(t, src, "typescript", tree)
+
+	assertKind(t, entities, "MemoCard", "SCOPE.Operation")
+}

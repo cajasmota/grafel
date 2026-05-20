@@ -721,7 +721,14 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		// We always recurse into the value so nested function expressions
 		// (e.g. inside `createSlice({ reducers: { add(state) {...} }})`)
 		// still get walked.
-		if x.isFunctionWrapperCall(valueNode) {
+		if x.isContextFactory(valueNode) {
+			// Issue #611 — createContext() and similar context-factory calls
+			// return a Context object (with .Provider / .Consumer / .displayName
+			// properties), NOT a callable function. Emit as SCOPE.Component with
+			// subtype="context" so Provider/Consumer relationships can attach and
+			// the entity is not confused with a regular callable.
+			x.emit(name, "SCOPE.Component", valueNode, "context", fmt.Sprintf("const %s = createContext()", name))
+		} else if x.isFunctionWrapperCall(valueNode) {
 			subtype := "function"
 			if parentClass != "" {
 				subtype = "method"
@@ -782,7 +789,7 @@ func (x *extractor) isFunctionWrapperCall(n *sitter.Node) bool {
 	switch leaf {
 	case
 		// React
-		"forwardRef", "memo", "lazy", "createContext",
+		"forwardRef", "memo", "lazy",
 		// MobX-react / MobX
 		"observer",
 		// styled-components / emotion
@@ -819,6 +826,37 @@ func (x *extractor) isFunctionWrapperCall(n *sitter.Node) bool {
 		// not values bound to a name — the `const cleanup =
 		// useEffect(...)` shape is not idiomatic.
 		"useCallback", "useMemo":
+		return true
+	}
+	return false
+}
+
+// isContextFactory returns true when valueNode is a call_expression whose
+// callee is one of the React context-factory functions. These return a Context
+// object (with .Provider / .Consumer) — NOT a callable — so the bound const
+// should be emitted as SCOPE.Component subtype="context" (issue #611).
+//
+// Recognised factories: createContext (React), createNamedContext (common
+// utility wrapper shape), createOptionalContext (pattern from some React libs).
+func (x *extractor) isContextFactory(n *sitter.Node) bool {
+	if n == nil || n.Type() != "call_expression" {
+		return false
+	}
+	fn := n.ChildByFieldName("function")
+	if fn == nil {
+		return false
+	}
+	var leaf string
+	switch fn.Type() {
+	case "identifier", "type_identifier":
+		leaf = x.nodeText(fn)
+	case "member_expression":
+		if prop := fn.ChildByFieldName("property"); prop != nil {
+			leaf = x.nodeText(prop)
+		}
+	}
+	switch leaf {
+	case "createContext", "createNamedContext", "createOptionalContext":
 		return true
 	}
 	return false
