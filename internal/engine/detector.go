@@ -301,6 +301,17 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// Apache Pulsar producer/consumer cross-repo edges (#936). Emits
+	// SCOPE.MessageTopic entities (broker=pulsar) + PUBLISHES_TO /
+	// SUBSCRIBES_TO edges for pulsar-client (Python/Java/Kotlin),
+	// pulsar-client-go (Go), and pulsar-client (Node/TS). Topic names are
+	// canonicalised to the full persistent://tenant/namespace/topic URI so
+	// the cross-repo linker matches producer and consumer sides on the same
+	// entity ID. Append-only — cannot regress the surrounding pipeline.
+	entities, relationships = applyPulsarEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// #727: Real-time event channel synthesis. Three append-only passes
 	// for WebSocket, Server-Sent Events, and GraphQL subscriptions. Each
 	// scans the file directly and emits ChannelEvent / Stream /

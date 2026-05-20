@@ -463,6 +463,31 @@ func TestTopology_200(t *testing.T) {
 	}
 }
 
+// TestTopology_NullGuard_NatsSubjects verifies that a group with no NATS
+// edges returns nats_subjects: [] (not null) in the JSON wire shape (#944).
+func TestTopology_NullGuard_NatsSubjects(t *testing.T) {
+	ts, _ := newPhase1Server(t)
+	code, body := getJSON(t, ts.URL, "/api/topology/testgroup")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	// All array fields must be present and be arrays (not null).
+	for _, field := range []string{"nats_subjects", "graphql_subscriptions", "transforms", "queues", "channels"} {
+		v, exists := body[field]
+		if !exists {
+			t.Errorf("field %q missing from topology response", field)
+			continue
+		}
+		if v == nil {
+			t.Errorf("field %q is null, want []", field)
+			continue
+		}
+		if _, ok := v.([]interface{}); !ok {
+			t.Errorf("field %q is type %T, want []interface{}", field, v)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // /api/search/{group}
 // ---------------------------------------------------------------------------
