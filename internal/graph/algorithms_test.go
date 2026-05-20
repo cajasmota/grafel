@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"fmt"
+	"math"
 	"testing"
 )
 
@@ -182,5 +184,92 @@ func TestAlgorithmStatsPopulated(t *testing.T) {
 	}
 	if res.Stats.RuntimeMS < 0 {
 		t.Error("RuntimeMS should be >= 0")
+	}
+}
+
+// makeLargeGraph constructs a synthetic graph with n nodes arranged in
+// overlapping cliques and random-ish cross-links, mimicking the structure of
+// real code corpora (gin ~6 k nodes, spdlog ~1.8 k nodes) where PageRank
+// float drift was observed crossing the 1e-5 rounding boundary.
+//
+// The topology is a ring of size-8 cliques with every clique connected to the
+// next via a single bridge node. This produces a mix of high-degree hub nodes
+// (inside cliques) and low-degree bridge nodes — exactly the shapes where
+// PageRankSparse summation order matters.
+func makeLargeGraph(cliqueCount int) ([]Entity, []Relationship) {
+	nodes := cliqueCount * 8
+	ids := make([]string, nodes)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("e%04d", i)
+	}
+	ents := makeEntities(ids...)
+
+	var rels []Relationship
+	for c := 0; c < cliqueCount; c++ {
+		base := c * 8
+		// fully-connected clique of 8
+		for i := 0; i < 8; i++ {
+			for j := 0; j < 8; j++ {
+				if i == j {
+					continue
+				}
+				rels = append(rels, rel(ids[base+i], ids[base+j]))
+			}
+		}
+		// bridge to next clique
+		next := (c + 1) % cliqueCount
+		rels = append(rels, rel(ids[base], ids[next*8]))
+	}
+	return ents, rels
+}
+
+// TestDeterminism_PageRank — issue #489. Run ComputeCentrality 10 times on a
+// 400-node (50-clique) graph and verify that every run produces byte-identical
+// PageRank scores. This catches float drift that crosses the rounding boundary
+// introduced by non-deterministic map iteration order inside PageRankSparse.
+func TestDeterminism_PageRank(t *testing.T) {
+	const runs = 10
+	ents, rels := makeLargeGraph(50) // 400 nodes, mimics mid-size real corpus
+
+	g, idx := BuildGraph(ents, rels)
+
+	// Capture baseline on first run.
+	_, base := ComputeCentrality(g, idx)
+
+	for i := 1; i < runs; i++ {
+		_, pr := ComputeCentrality(g, idx)
+		for id, want := range base {
+			got := pr[id]
+			if got != want {
+				t.Errorf("run %d: PageRank[%s] = %v, want %v (delta=%e)",
+					i, id, got, want, math.Abs(got-want))
+			}
+		}
+		if t.Failed() {
+			t.Fatalf("pagerank is non-deterministic after %d runs — see above", i)
+		}
+	}
+}
+
+// TestRoundForDeterminism_Precision — verify that roundForDeterminism buckets
+// values to 4 decimal places (1e-4 tolerance), which is the guarantee
+// established by issue #489 to absorb larger-graph float drift.
+func TestRoundForDeterminism_Precision(t *testing.T) {
+	cases := []struct {
+		input float64
+		want  float64
+	}{
+		{0.123456789, 0.1235},
+		{0.00001, 0.0},    // below 1e-4 threshold rounds to 0
+		{0.00005, 0.0001}, // rounds up to 1e-4
+		{0.12344, 0.1234},
+		{0.12345, 0.1235}, // rounds half-up
+		{0.0, 0.0},
+	}
+	for _, tc := range cases {
+		got := roundForDeterminism(tc.input)
+		if got != tc.want {
+			t.Errorf("roundForDeterminism(%v) = %v, want %v", tc.input, got, tc.want)
+		}
 	}
 }
