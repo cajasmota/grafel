@@ -30,13 +30,18 @@ export interface GraphDataResult {
  * (top-500 per repo by PageRank). No zoom-level-based tier switching, no centroid
  * nodes, no COMMUNITY_LINK synthetic edges, no LodLevelIndicator.
  *
+ * #1069: repo filter is now client-side only — the full graph is always fetched
+ * and Cosmograph selection-greyout is used to hide filtered-out nodes without
+ * re-running the force layout. `activeRepos` is intentionally NOT included in the
+ * queryKey so toggling a repo chip never triggers a network request.
+ *
  * @param group - group ID
  * @param filters - edge-kind and repo filters
  * @param _zoomLevel - kept for call-site compat; no longer drives server LoD
  * @param _viewport - kept for call-site compat; no longer used
  * @param selectedNodeId - kept for call-site compat; Cosmograph renders all nodes
  * @param selectedCommunityId - community drill-in filter (client-side)
- * @param activeRepos - set of active repo slugs for multi-repo filter
+ * @param _activeRepos - kept for call-site compat; filtering is now handled in GraphCanvas
  */
 export function useGraphData(
   group: string,
@@ -45,14 +50,10 @@ export function useGraphData(
   _viewport: null,
   selectedNodeId: string | null,
   selectedCommunityId?: number | null,
-  activeRepos?: Set<string> | null,
+  _activeRepos?: Set<string> | null,
 ): GraphDataResult {
   void selectedNodeId  // kept in signature for call-site compat
-
-  // Build repos param for multi-repo filter
-  const reposParam = activeRepos && activeRepos.size > 0
-    ? [...activeRepos].sort().join(',')
-    : undefined
+  void _activeRepos    // kept in signature for call-site compat; not used in query
 
   const {
     data,
@@ -60,8 +61,9 @@ export function useGraphData(
     error,
     refetch,
   } = useQuery({
-    queryKey: ['graph', group, filters.repo, reposParam],
-    queryFn: () => fetchGraph(group, { repo: filters.repo, repos: reposParam }),
+    // #1069: repos intentionally excluded — repo filter is client-side, no refetch
+    queryKey: ['graph', group, filters.repo],
+    queryFn: () => fetchGraph(group, { repo: filters.repo }),
     staleTime: 5 * 60 * 1000,
     enabled: !!group,
   })

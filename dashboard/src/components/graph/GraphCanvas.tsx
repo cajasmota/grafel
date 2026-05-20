@@ -23,6 +23,15 @@ export interface GraphCanvasProps {
   /** When true, filter links to cross-repo edges only (#1065) */
   crossRepoOnly?: boolean
   className?: string
+  /**
+   * #1069: client-side repo filter. When non-null, only nodes whose `repo`
+   * is in this set are shown. Non-matching nodes are hidden via Cosmograph
+   * selection greyout (pointGreyoutOpacity=0) without triggering a refetch
+   * or re-running the force layout.
+   *
+   * null / undefined = show all repos.
+   */
+  activeRepos?: Set<string> | null
 }
 
 /** Truncate long labels at ~30 chars for layout legibility */
@@ -65,6 +74,7 @@ const GraphCanvasInner = ({
   isDark = true,
   crossRepoOnly = false,
   className = '',
+  activeRepos,
 }: GraphCanvasProps) => {
   const cosmographRef = useRef<CosmographRef>(undefined)
   const { setGraphRef, setZoomLevel } = useGraphCameraStore()
@@ -78,6 +88,32 @@ const GraphCanvasInner = ({
 
   // Track the last hovered index so we can avoid redundant selectPoint calls
   const lastHoverIndexRef = useRef<number | null>(null)
+
+  // #1069: client-side repo filter — compute numeric indices of visible nodes.
+  // When activeRepos is null/undefined, all nodes are visible (selectPoints(null) = clear selection).
+  // When activeRepos is a non-empty Set, only nodes in that set are selected so unselected
+  // nodes get pointGreyoutOpacity=0 (invisible) without re-uploading data to DuckDB-WASM.
+  const repoFilterActive = activeRepos != null
+  const visibleIndices = useMemo<number[] | null>(() => {
+    if (!activeRepos) return null  // no filter — show all
+    return nodes
+      .map((n, i) => (activeRepos.has(n.repo) ? i : -1))
+      .filter((i) => i !== -1)
+  }, [nodes, activeRepos])
+
+  // Keep a ref to latest visibleIndices so handleMount can re-apply after mount
+  const visibleIndicesRef = useRef<number[] | null>(visibleIndices)
+  visibleIndicesRef.current = visibleIndices
+
+  // Apply the repo filter via Cosmograph's imperative selection API.
+  // We do this in a useEffect (not in render) because cosmographRef is populated
+  // after mount. The effect runs whenever visibleIndices reference changes.
+  useEffect(() => {
+    const cosmo = cosmographRef.current
+    if (!cosmo) return
+    // null → clear selection (show all); array → select visible subset
+    cosmo.selectPoints(visibleIndices)
+  }, [visibleIndices])
 
   // Cosmograph requires a sequential numeric index column on both points and links.
   // We derive these from the incoming arrays rather than mutating the originals.
@@ -112,10 +148,17 @@ const GraphCanvasInner = ({
 
   // Expose a cosmograph-compatible ref to the camera store so
   // resetView / zoomToNode keep working with the new renderer.
+  // Also re-apply the repo filter selection immediately on mount so that if
+  // activeRepos was set before the canvas mounted, the filter still takes effect.
   const handleMount = useCallback((instance: NonNullable<CosmographRef>) => {
     cosmographRef.current = instance
     // Wrap the Cosmograph instance to match the camera store's ForceGraphInstance duck-type
     setGraphRef(instance as unknown as Parameters<typeof setGraphRef>[0])
+    // Re-apply repo filter in case visibleIndices effect fired before mount
+    const indices = visibleIndicesRef.current
+    if (indices !== null) {
+      instance.selectPoints(indices)
+    }
   }, [setGraphRef])
 
   // Cleanup on unmount
@@ -267,20 +310,19 @@ const GraphCanvasInner = ({
         // CosmographPointSizeStrategy.Degree uses quantile-bounded (p5–p95) degree distribution.
         pointSizeStrategy="degree"
         pointSizeRange={[4, 30]}
-        pointLabelBy="label"
-
         // ── Labels ────────────────────────────────────────────────────────
-        // #1059: show dynamic + top labels so hubs are named at a glance.
-        // showDynamicLabels: evenly distributed visible nodes get labels automatically.
-        // showTopLabels: highest-degree nodes always show labels regardless of viewport.
-        showDynamicLabels={true}
+        // Truncate long entity names at 30 chars; pill background for readability.
+        // showTopLabels: hub nodes always labelled; showDynamicLabels: evenly distributed.
+        showLabels={true}
         showTopLabels={true}
-        showTopLabelsLimit={15}
-        showDynamicLabelsLimit={20}
+        showTopLabelsLimit={60}
+        showDynamicLabels={true}
+        showDynamicLabelsLimit={40}
+        showFocusedPointLabel={true}
         showHoveredPointLabel={true}
-        pointLabelClassName="text-xs font-mono"
-        pointLabelColor="#e2e8f0"
         pointLabelFontSize={11}
+        pointLabelFn={truncateLabel as (value: unknown) => string}
+        pointLabelClassName={labelPillStyle}
 
         // ── Edge appearance ────────────────────────────────────────────────
         // Color driven by __crossRepo: cross-repo = sky-400, intra-repo = slate-500 (#1065)
@@ -292,22 +334,12 @@ const GraphCanvasInner = ({
         // ── Background ────────────────────────────────────────────────────
         backgroundColor={canvasBg}
 
-        // ── Hover-to-focus greyout (#1060) ─────────────────────────────────
-        // When selectPoint is called, non-selected nodes get these opacity values.
-        pointGreyoutOpacity={0.15}
-        linkGreyoutOpacity={0.1}
-
-        // ── Labels ────────────────────────────────────────────────────────
-        // Truncate long entity names at 30 chars; pill background for readability.
-        showLabels={true}
-        showTopLabels={true}
-        showTopLabelsLimit={60}
-        showDynamicLabels={true}
-        showDynamicLabelsLimit={40}
-        showFocusedPointLabel={true}
-        pointLabelFontSize={11}
-        pointLabelFn={truncateLabel as (value: unknown) => string}
-        pointLabelClassName={labelPillStyle}
+        // ── Greyout opacity ────────────────────────────────────────────────
+        // #1069: when repo filter is active, opacity=0 makes filtered-out nodes
+        // and edges invisible. When no filter is active, hover-focus greyout (#1060)
+        // uses 0.15 so non-adjacent nodes dim on hover.
+        pointGreyoutOpacity={repoFilterActive ? 0 : 0.15}
+        linkGreyoutOpacity={repoFilterActive ? 0 : 0.1}
 
         // ── Simulation ─────────────────────────────────────────────────────
         enableSimulation={true}

@@ -78,7 +78,8 @@ export function GraphRoute() {
     if (preferHighContrast) setHighContrast(true)
   }, [preferHighContrast])
 
-  // ── Data ───────────────────────────────────────────────────────────────────
+  // #1069: compute effectiveActiveRepos for passing to GraphCanvas (client-side filter).
+  // null = all repos visible (no filter chip active or all repos selected).
   const effectiveActiveRepos = activeRepos && allRepoSlugs.length > 0
     ? (activeRepos.size === allRepoSlugs.length ? null : activeRepos)
     : null
@@ -91,7 +92,8 @@ export function GraphRoute() {
       null, // viewport: compat param — no longer used
       selectedNodeId,
       selectedCommunityId,
-      effectiveActiveRepos,
+      // #1069: activeRepos no longer passed to the hook — repo filter is client-side only.
+      // The hook ignores this param but it's kept in the signature for compat.
     )
 
   const colorMap = useCommunityColors(communities)
@@ -124,6 +126,16 @@ export function GraphRoute() {
       return new Set(slugs)
     })
   }, [communities])
+
+  // #1069: close the inspector when the selected node's repo is filtered out.
+  // This prevents the inspector showing data for a node that is visually hidden.
+  useEffect(() => {
+    if (!selectedNodeId || !effectiveActiveRepos) return
+    const selectedNode = nodes.find((n) => n.id === selectedNodeId)
+    if (selectedNode && !effectiveActiveRepos.has(selectedNode.repo)) {
+      clearSelection()
+    }
+  }, [effectiveActiveRepos, selectedNodeId, nodes, clearSelection])
 
   // ── Inspector ──────────────────────────────────────────────────────────────
   const { data: inspectorData, isLoading: inspectorLoading } = useEntityInspector(
@@ -408,6 +420,7 @@ export function GraphRoute() {
               isDark={isDark}
               crossRepoOnly={crossRepoOnly}
               className="w-full h-full"
+              activeRepos={effectiveActiveRepos}
             />
           )}
 
