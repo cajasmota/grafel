@@ -4,10 +4,31 @@ import { ChainStep } from '@/components/flows/ChainStep'
 import type { ProcessStep } from '@/types/api'
 
 vi.mock('lucide-react', () => ({
-  FunctionSquare: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Box: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Code: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Component: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
   Database: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
   File: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  FileText: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Folder: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  FunctionSquare: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
   Globe: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Hash: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Layers: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  LayoutGrid: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Link2: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  MessageSquare: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Network: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Package: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Play: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Puzzle: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Radio: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Server: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Settings: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Shapes: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Table: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Workflow: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
+  Zap: (props: React.SVGProps<SVGSVGElement>) => <svg {...props} />,
 }))
 
 vi.mock('@/lib/colors', () => ({
