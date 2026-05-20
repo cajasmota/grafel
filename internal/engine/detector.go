@@ -355,6 +355,19 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	entities, relationships = applyServerlessEdges(
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
+	// Workflow orchestration edges (#934). Emits SCOPE.Workflow, SCOPE.Activity,
+	// and SCOPE.StateMachine entities plus STARTS_WORKFLOW, EXECUTES_ACTIVITY,
+	// and STEPFUNCTION_STEP_INVOKES edges for Temporal (Python, Go, Java, Node),
+	// Cadence (Java), and AWS Step Functions (ASL JSON, Terraform, CloudFormation,
+	// CDK). Step Functions Task states referencing Lambda ARNs are linked to the
+	// SCOPE.ServerlessFunction entities emitted by #940 (serverless_edges.go)
+	// without new linker code. Append-only — cannot regress surrounding passes.
+	entities, relationships = applyWorkflowEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+	entities, relationships = applySFNStartExecutionEdges(
+		file.Language, string(file.Content), file.Path, entities, relationships,
+	)
 	// Redis pub/sub + Streams channel discovery (#930). Emits SCOPE.Queue
 	// entities keyed by channel:redis-pubsub:<name> or stream:redis:<name>,
 	// plus PUBLISHES_TO / SUBSCRIBES_TO edges. Covers Python (redis-py /
