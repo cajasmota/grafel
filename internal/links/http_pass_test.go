@@ -1041,3 +1041,338 @@ func TestHTTPPass_VerbConfusion_Determinism(t *testing.T) {
 		t.Errorf("want smallest-stampedID GET producer (a-first), got %s", first.stampedID)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #819 — URL-prefix stripping in byPath index
+//
+// PR #811 stopped emitting bare-path duplicates for DRF router-expanded
+// endpoints. After that PR, a DRF ViewSet registered under include("/api/v1/")
+// emits ONLY http:GET:/api/v1/buildings (with url_prefix=/api/v1) and NOT the
+// unprefixed http:GET:/buildings. Consumer clients (JS/TS) call without the
+// prefix, so their synthetic is http:GET:/buildings — no direct name match.
+//
+// The fix (#819) teaches the byPath index to also register the prefix-stripped
+// path so the consumer can find the producer via the verb-wildcard lookup.
+// ---------------------------------------------------------------------------
+
+// TestHTTPPass_URLPrefixStrip_ExactVerb verifies that a DRF router-expanded
+// producer at /api/v1/buildings (url_prefix=/api/v1, verb=GET) is matched by
+// a consumer at /buildings (verb=GET) with match_quality=exact_verb.
+// This is the core regression from #819: before the fix, exact_verb count
+// dropped from 110 → 0 because the prefix-stripped path wasn't in byPath.
+func TestHTTPPass_URLPrefixStrip_ExactVerb(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "BuildingViewSet.list", "kind": "Function", "source_file": "core/views/building_viewset.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/buildings", "kind": "http_endpoint",
+				"source_file": "core/routers.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/buildings",
+					"framework":    "django",
+					"pattern_type": "drf_router_expanded",
+					"url_prefix":   "/api/v1",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "listBuildings", "kind": "Function", "source_file": "src/services/buildings/buildings.api.ts"},
+			{
+				// Consumer calls $http.get('/buildings/') — Canonicalize strips trailing slash → /buildings
+				"id": "ep2", "name": "http:GET:/buildings", "kind": "http_endpoint",
+				"source_file": "src/services/buildings/buildings.api.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/buildings",
+					"framework":     "axios_instance",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:listBuildings",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g819-prefix", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g819-prefix-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var httpLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			httpLinks = append(httpLinks, l)
+		}
+	}
+	if len(httpLinks) == 0 {
+		t.Fatalf("want ≥1 http link (GET /buildings→ GET /api/v1/buildings via url_prefix strip), got 0")
+	}
+	l := httpLinks[0]
+	if l.Target != "backend::h1" {
+		t.Errorf("target: want backend::h1, got %s", l.Target)
+	}
+	if l.Source != "frontend::fn1" {
+		t.Errorf("source: want frontend::fn1, got %s", l.Source)
+	}
+	if l.MatchQuality != "exact_verb" {
+		t.Errorf("match_quality: want exact_verb (GET↔GET), got %q", l.MatchQuality)
+	}
+	if l.Identifier == nil || *l.Identifier != "http:GET:/buildings" {
+		t.Errorf("identifier: want http:GET:/buildings, got %v", l.Identifier)
+	}
+}
+
+// TestHTTPPass_URLPrefixStrip_AnyFallback verifies that a DRF router-expanded
+// ANY-verb producer at /api/v1/buildings/{pk} (url_prefix=/api/v1) is matched
+// by a consumer at /buildings/{id} (verb=DELETE) with match_quality=any_fallback.
+// This covers the detail-route shape (plural-model list + {pk} placeholder).
+func TestHTTPPass_URLPrefixStrip_AnyFallback(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "BuildingViewSet", "kind": "Class", "source_file": "core/views/building_viewset.py"},
+			{
+				"id": "ep1", "name": "http:ANY:/api/v1/buildings/{pk}", "kind": "http_endpoint",
+				"source_file": "core/routers.py",
+				"properties": map[string]any{
+					"verb":         "ANY",
+					"path":         "/api/v1/buildings/{pk}",
+					"framework":    "django",
+					"pattern_type": "drf_router_expanded",
+					"url_prefix":   "/api/v1",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "deleteBuilding", "kind": "Function", "source_file": "src/services/buildings/buildings.api.ts"},
+			{
+				"id": "ep2", "name": "http:DELETE:/buildings/{id}", "kind": "http_endpoint",
+				"source_file": "src/services/buildings/buildings.api.ts",
+				"properties": map[string]any{
+					"verb":          "DELETE",
+					"path":          "/buildings/{id}",
+					"framework":     "axios_instance",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:deleteBuilding",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g819-any", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g819-any-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var httpLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			httpLinks = append(httpLinks, l)
+		}
+	}
+	if len(httpLinks) == 0 {
+		t.Fatalf("want ≥1 http link (DELETE /buildings/{id} → ANY /api/v1/buildings/{pk}), got 0")
+	}
+	if httpLinks[0].MatchQuality != "any_fallback" {
+		t.Errorf("match_quality: want any_fallback (DELETE↔ANY), got %q", httpLinks[0].MatchQuality)
+	}
+}
+
+// TestHTTPPass_URLPrefixStrip_MultipleEndpoints verifies that multiple
+// endpoints (list + action routes) under the same API prefix all match
+// correctly. Simulates the ABC-group fixture shape: Django DRF backend
+// with /api/v1/ prefix, JS/TS frontend calling without prefix.
+// Regression gate: exact_verb count must be ≥3 for a mini ABC group.
+func TestHTTPPass_URLPrefixStrip_MultipleEndpoints(t *testing.T) {
+	root := fixtureRoot(t)
+	// Backend: DRF with /api/v1/ prefix, specific verbs (CRUD family)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h-list", "name": "BuildingViewSet.list", "kind": "Function", "source_file": "core/views/building_viewset.py"},
+			{"id": "h-create", "name": "BuildingViewSet.create", "kind": "Function", "source_file": "core/views/building_viewset.py"},
+			{"id": "h-retrieve", "name": "BuildingViewSet.retrieve", "kind": "Function", "source_file": "core/views/building_viewset.py"},
+			{
+				"id": "ep-list", "name": "http:GET:/api/v1/buildings", "kind": "http_endpoint",
+				"source_file": "core/routers.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v1/buildings",
+					"framework": "django", "pattern_type": "drf_router_expanded",
+					"url_prefix": "/api/v1",
+				},
+			},
+			{
+				"id": "ep-create", "name": "http:POST:/api/v1/buildings", "kind": "http_endpoint",
+				"source_file": "core/routers.py",
+				"properties": map[string]any{
+					"verb": "POST", "path": "/api/v1/buildings",
+					"framework": "django", "pattern_type": "drf_router_expanded",
+					"url_prefix": "/api/v1",
+				},
+			},
+			{
+				"id": "ep-detail", "name": "http:GET:/api/v1/buildings/{pk}", "kind": "http_endpoint",
+				"source_file": "core/routers.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v1/buildings/{pk}",
+					"framework": "django", "pattern_type": "drf_router_expanded",
+					"url_prefix": "/api/v1",
+				},
+			},
+			{
+				"id": "ep-any-detail", "name": "http:ANY:/api/v1/buildings/{pk}", "kind": "http_endpoint",
+				"source_file": "core/routers.py",
+				"properties": map[string]any{
+					"verb": "ANY", "path": "/api/v1/buildings/{pk}",
+					"framework": "django", "pattern_type": "drf_router_expanded",
+					"url_prefix": "/api/v1",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h-list", "to_id": "ep-list", "kind": "IMPLEMENTS"},
+			{"from_id": "h-create", "to_id": "ep-create", "kind": "IMPLEMENTS"},
+			{"from_id": "h-retrieve", "to_id": "ep-detail", "kind": "IMPLEMENTS"},
+		},
+	})
+	// Frontend: consumer calls without /api/v1/ prefix
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn-list", "name": "listBuildings", "kind": "Function", "source_file": "src/services/buildings/buildings.api.ts"},
+			{"id": "fn-create", "name": "createBuilding", "kind": "Function", "source_file": "src/services/buildings/buildings.api.ts"},
+			{"id": "fn-retrieve", "name": "retrieveBuilding", "kind": "Function", "source_file": "src/services/buildings/buildings.api.ts"},
+			{
+				"id": "ep-c-list", "name": "http:GET:/buildings", "kind": "http_endpoint",
+				"source_file": "src/services/buildings/buildings.api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/buildings",
+					"pattern_type": "http_endpoint_client_synthesis", "source_caller": "Function:listBuildings",
+				},
+			},
+			{
+				"id": "ep-c-create", "name": "http:POST:/buildings", "kind": "http_endpoint",
+				"source_file": "src/services/buildings/buildings.api.ts",
+				"properties": map[string]any{
+					"verb": "POST", "path": "/buildings",
+					"pattern_type": "http_endpoint_client_synthesis", "source_caller": "Function:createBuilding",
+				},
+			},
+			{
+				"id": "ep-c-retrieve", "name": "http:GET:/buildings/{id}", "kind": "http_endpoint",
+				"source_file": "src/services/buildings/buildings.api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/buildings/{id}",
+					"pattern_type": "http_endpoint_client_synthesis", "source_caller": "Function:retrieveBuilding",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g819-multi", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g819-multi-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var httpLinks []Link
+	var exactVerb, anyFallback int
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			httpLinks = append(httpLinks, l)
+			switch l.MatchQuality {
+			case "exact_verb":
+				exactVerb++
+			case "any_fallback":
+				anyFallback++
+			}
+		}
+	}
+	if len(httpLinks) < 3 {
+		t.Errorf("want ≥3 http links for mini ABC group, got %d: %+v", len(httpLinks), httpLinks)
+	}
+	if exactVerb < 3 {
+		t.Errorf("want ≥3 exact_verb matches (GET list + POST create + GET detail), got %d (any_fallback=%d)", exactVerb, anyFallback)
+	}
+}
+
+// TestHTTPPass_URLPrefixStrip_Idempotence verifies that the url_prefix
+// stripping is not applied when url_prefix is empty, and that stripping
+// a prefix that is NOT a prefix of the path has no effect.
+func TestHTTPPass_URLPrefixStrip_Idempotence(t *testing.T) {
+	root := fixtureRoot(t)
+	// Producer WITHOUT url_prefix — should not be indexed under any stripped key.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{
+				"id": "ep1", "name": "http:GET:/buildings", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/buildings",
+					"pattern_type": "http_endpoint_synthesis",
+					// url_prefix intentionally absent
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{
+				"id": "ep2", "name": "http:GET:/buildings", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/buildings",
+					"pattern_type": "http_endpoint_client_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g819-idem", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g819-idem-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var httpLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			httpLinks = append(httpLinks, l)
+		}
+	}
+	// Must still match (same path, same verb — direct hit via hits map).
+	if len(httpLinks) == 0 {
+		t.Fatalf("want ≥1 http link for exact-name match even without url_prefix, got 0")
+	}
+	if httpLinks[0].MatchQuality != "exact_verb" {
+		t.Errorf("match_quality: want exact_verb for same-name match, got %q", httpLinks[0].MatchQuality)
+	}
+}

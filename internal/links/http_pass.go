@@ -123,6 +123,11 @@ type httpEndpointHit struct {
 	verb string
 	// canonicalPath is `path` from the synthetic's properties.
 	canonicalPath string
+	// urlPrefix is the parent include()-prefix stored on DRF router-expanded
+	// entities (e.g. "/api/v1"). Used by the byPath index to also register
+	// the prefix-stripped path so that consumers that call without the prefix
+	// can still match. See #819.
+	urlPrefix string
 	// side is producer / consumer / unknown.
 	side httpSide
 	// handlerID is the entity ID of the producer-side handler resolved
@@ -216,6 +221,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				hit.verb = e.Properties["verb"]
 				hit.canonicalPath = e.Properties["path"]
 				hit.framework = e.Properties["framework"]
+				hit.urlPrefix = e.Properties["url_prefix"]
 				switch e.Properties["pattern_type"] {
 				case patternTypeProducer:
 					hit.side = sideProducer
@@ -292,6 +298,24 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				}
 				key := normalizePathForIndex(h.canonicalPath)
 				byPath[key] = append(byPath[key], h)
+
+				// #819 — also index under the prefix-stripped path when the
+				// producer carries a url_prefix (set by DRF router expansion
+				// via #800/#811). This lets consumers that call without the
+				// API-version prefix (e.g. fetch('/buildings/') vs server at
+				// '/api/v1/buildings/') still find the producer via byPath.
+				// We only strip when h.urlPrefix is a valid path prefix of
+				// h.canonicalPath to avoid false-positive strip-downs.
+				if h.urlPrefix != "" && strings.HasPrefix(h.canonicalPath, h.urlPrefix) {
+					stripped := h.canonicalPath[len(h.urlPrefix):]
+					if stripped == "" {
+						stripped = "/"
+					}
+					strippedKey := normalizePathForIndex(stripped)
+					if strippedKey != key {
+						byPath[strippedKey] = append(byPath[strippedKey], h)
+					}
+				}
 			}
 		}
 	}

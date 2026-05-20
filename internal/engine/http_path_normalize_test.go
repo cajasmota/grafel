@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -436,6 +437,209 @@ func TestStripOuterQuotes(t *testing.T) {
 		got := stripOuterQuotes(tc.in)
 		if got != tc.want {
 			t.Errorf("stripOuterQuotes(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Idempotence tests — normalizePath applied twice must equal once.
+//
+// These ensure that the normalizer's output is already in a stable canonical
+// form and that running again on already-normalized output has no further
+// effect. This is the "closed-form" contract from issue #819: both consumer
+// and producer paths pass through normalizePath before entity-ID computation,
+// so the function MUST be idempotent to guarantee they can meet at the same ID.
+// ---------------------------------------------------------------------------
+
+// TestNormalizePath_Idempotence_Rule1_ProcessEnv — env-var stripping must not
+// double-strip or corrupt the path when applied to already-normalized output.
+func TestNormalizePath_Idempotence_Rule1_ProcessEnv(t *testing.T) {
+	// First pass: strips the env-var prefix.
+	first := normalizePath("${process.env.API_URL}/users")
+	// Second pass: should be a no-op on the already-normalized path.
+	second := normalizePath(first.Path)
+	if first.Path != second.Path {
+		t.Errorf("Rule1 idempotence: first=%q second=%q — not stable", first.Path, second.Path)
+	}
+}
+
+// TestNormalizePath_Idempotence_Rule1_ImportMetaEnv — same check for import.meta.env.
+func TestNormalizePath_Idempotence_Rule1_ImportMetaEnv(t *testing.T) {
+	first := normalizePath("${import.meta.env.VITE_BASE}/api/v1/users")
+	second := normalizePath(first.Path)
+	if first.Path != second.Path {
+		t.Errorf("Rule1 idempotence (import.meta.env): first=%q second=%q", first.Path, second.Path)
+	}
+}
+
+// TestNormalizePath_Idempotence_Rule1_Python — Python os.environ stripping.
+func TestNormalizePath_Idempotence_Rule1_Python(t *testing.T) {
+	first := normalizePath(`os.environ['API_URL'] + '/buildings'`)
+	second := normalizePath(first.Path)
+	if first.Path != second.Path {
+		t.Errorf("Rule1 Python idempotence: first=%q second=%q", first.Path, second.Path)
+	}
+}
+
+// TestNormalizePath_Idempotence_Rule2_QueryString — query-string stripping must
+// be idempotent: the cleaned path has no '?' so second pass changes nothing.
+func TestNormalizePath_Idempotence_Rule2_QueryString(t *testing.T) {
+	first := normalizePath("/buildings?foo=1&bar=2")
+	second := normalizePath(first.Path)
+	if first.Path != second.Path {
+		t.Errorf("Rule2 idempotence: first=%q second=%q", first.Path, second.Path)
+	}
+	// After second pass no new query_template should appear.
+	if _, ok := second.Props["query_template"]; ok {
+		t.Errorf("Rule2 idempotence: unexpected query_template on second pass: %v", second.Props)
+	}
+}
+
+// TestNormalizePath_Idempotence_Rule3_DuplicateSlashes — collapsed slashes must
+// already be in their final form after the first pass.
+func TestNormalizePath_Idempotence_Rule3_DuplicateSlashes(t *testing.T) {
+	inputs := []string{"/api//foo", "/api///v1//users", "//buildings"}
+	for _, in := range inputs {
+		first := normalizePath(in)
+		second := normalizePath(first.Path)
+		if first.Path != second.Path {
+			t.Errorf("Rule3 idempotence (%q): first=%q second=%q", in, first.Path, second.Path)
+		}
+	}
+}
+
+// TestNormalizePath_Idempotence_Rule4_TemplateLiteralParams — ${name} → {name}
+// must be stable: {name} has no ${ so the second pass must not alter it.
+func TestNormalizePath_Idempotence_Rule4_TemplateLiteralParams(t *testing.T) {
+	inputs := []string{
+		"/users/${id}/profile",
+		"/users/${user.id}/profile",
+		"/users/${user?.id}",
+		"/users/${userId as string}/items",
+		"/users/${userId}/items/${itemId}",
+		"/items/${getItemId()}/details",
+	}
+	for _, in := range inputs {
+		first := normalizePath(in)
+		second := normalizePath(first.Path)
+		if first.Path != second.Path {
+			t.Errorf("Rule4 idempotence (%q): first=%q second=%q", in, first.Path, second.Path)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Symmetry / canonical-form contract tests — issue #819.
+//
+// normalizePath MUST produce the same canonical output for path strings that
+// represent the same logical endpoint. This ensures that a consumer-extracted
+// path and the corresponding producer-extracted path resolve to the same entity
+// ID even when written with slightly different surface forms.
+// ---------------------------------------------------------------------------
+
+// TestNormalizePath_Symmetry_SlashVariants — trailing-slash variants must
+// produce the same path segment before the trailing slash is later stripped by
+// httproutes.Canonicalize. The Rule 3 duplicate-slash collapser must not
+// introduce asymmetry between "/foo" and "/foo/".
+func TestNormalizePath_Symmetry_SlashVariants(t *testing.T) {
+	// Both forms are already "canonical" — normalizePath should leave the
+	// trailing slash alone (Canonicalize owns that step). The key invariant
+	// is that the path component is the same.
+	withoutTrail := normalizePath("/buildings")
+	withTrail := normalizePath("/buildings/")
+	// Strip trailing slash from the "with" case for comparison; Canonicalize
+	// would produce "/buildings" from both. We just verify that the non-slash
+	// segment is identical.
+	segWithout := withoutTrail.Path
+	segWith := strings.TrimRight(withTrail.Path, "/")
+	if segWithout != segWith {
+		t.Errorf("Symmetry slash variants: /buildings=%q, /buildings/=%q — segments differ", segWithout, segWith)
+	}
+}
+
+// TestNormalizePath_Symmetry_TemplateParamAlternateForms — different surface
+// forms for the same path parameter (${id}, ${item.id}, ${item?.id}) should
+// all normalize to the same {id} placeholder, ensuring producer/consumer IDs
+// can still match via the byPath wildcard in the linker.
+func TestNormalizePath_Symmetry_TemplateParamAlternateForms(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantParam string // the {x} placeholder we expect
+	}{
+		{"/users/${id}/profile", "{id}"},
+		{"/users/${user.id}/profile", "{id}"},
+		{"/users/${user?.id}/profile", "{id}"},
+		{"/users/${userId as string}/profile", "{userId}"},
+	}
+	for _, tc := range cases {
+		r := normalizePath(tc.in)
+		// The normalized path must contain the expected placeholder.
+		if !strings.Contains(r.Path, tc.wantParam) {
+			t.Errorf("Symmetry param forms (%q): path=%q, want placeholder %q", tc.in, r.Path, tc.wantParam)
+		}
+		// And must NOT still contain the ${...} form.
+		if strings.Contains(r.Path, "${") {
+			t.Errorf("Symmetry param forms (%q): path=%q still contains ${...}", tc.in, r.Path)
+		}
+	}
+}
+
+// TestNormalizePath_Symmetry_EnvVarPrefixEquivalence — different env-var prefix
+// forms for the same logical base URL (process.env.API_URL,
+// import.meta.env.API_URL, os.environ['API_URL']) should all be stripped,
+// leaving identical path tails.
+func TestNormalizePath_Symmetry_EnvVarPrefixEquivalence(t *testing.T) {
+	suffix := "/api/v1/users"
+	cases := []string{
+		"${process.env.API_URL}" + suffix,
+		"${import.meta.env.API_URL}" + suffix,
+		`os.environ['API_URL'] + '` + suffix + `'`,
+		`os.getenv('API_URL') + '` + suffix + `'`,
+		`System.getenv("API_URL") + "` + suffix + `"`,
+		`os.Getenv("API_URL") + "` + suffix + `"`,
+	}
+	for _, in := range cases {
+		r := normalizePath(in)
+		if r.Path != suffix {
+			t.Errorf("EnvVar prefix equivalence (%q): path=%q, want %q", in, r.Path, suffix)
+		}
+	}
+}
+
+// TestNormalizePath_Symmetry_DuplicateSlashEquivalence — paths that differ
+// only in redundant slashes should produce the same normalized form, ensuring
+// that a producer at "/api//v1/users" and a consumer at "/api/v1/users"
+// resolve to the same entity ID.
+func TestNormalizePath_Symmetry_DuplicateSlashEquivalence(t *testing.T) {
+	canonical := "/api/v1/users"
+	variants := []string{
+		"/api//v1/users",
+		"/api///v1/users",
+		"/api/v1//users",
+		"//api/v1/users",
+	}
+	for _, v := range variants {
+		r := normalizePath(v)
+		if r.Path != canonical {
+			t.Errorf("DuplicateSlash equivalence (%q): path=%q, want %q", v, r.Path, canonical)
+		}
+	}
+}
+
+// TestNormalizePath_Symmetry_QueryStringEquivalence — paths that differ only
+// in their query string should produce the same normalized path, because the
+// entity ID is derived from the path only (not the query parameters).
+func TestNormalizePath_Symmetry_QueryStringEquivalence(t *testing.T) {
+	canonical := "/buildings"
+	variants := []string{
+		"/buildings?active=true",
+		"/buildings?page=1&limit=20",
+		"/buildings?",
+	}
+	for _, v := range variants {
+		r := normalizePath(v)
+		if r.Path != canonical {
+			t.Errorf("QueryString equivalence (%q): path=%q, want %q", v, r.Path, canonical)
 		}
 	}
 }
