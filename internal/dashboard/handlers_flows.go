@@ -192,20 +192,12 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Collect STEP_IN_PROCESS edges (sorted by step_index property).
-	type Step struct {
-		EntityID   string `json:"entity_id"`
-		Label      string `json:"label"`
-		SourceFile string `json:"source_file"`
-		StartLine  int    `json:"start_line"`
-		Repo       string `json:"repo"`
-		StepIndex  int    `json:"step_index"`
-		EdgeKind   string `json:"edge_kind"`
-	}
+	// rawStep carries the pre-annotation fields; annotateFlowSteps enriches them.
 
 	// STEP_IN_PROCESS edges are emitted as FromID=processID → ToID=stepEntityID
 	// (see engine/process_flow.go). Collect all edges whose FromID matches the
 	// process entity, then resolve the step entity from ToID.
-	var steps []Step
+	var rawSteps []rawStep
 	for _, r := range sortedRepos(grp) {
 		for _, rel := range r.Doc.Relationships {
 			if rel.Kind != stepInProcessEdge {
@@ -225,7 +217,7 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				idx, _ := strconv.Atoi(rel.Properties["step_index"])
-				steps = append(steps, Step{
+				rawSteps = append(rawSteps, rawStep{
 					EntityID:   dashPrefixedID(stepRepo.Slug, e.ID),
 					Label:      e.Name,
 					SourceFile: e.SourceFile,
@@ -233,13 +225,19 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 					Repo:       stepRepo.Slug,
 					StepIndex:  idx,
 					EdgeKind:   rel.Kind,
+					EntityKind: e.Kind,
 				})
 				break
 			}
 		}
 	}
 
-	sort.Slice(steps, func(i, j int) bool { return steps[i].StepIndex < steps[j].StepIndex })
+	sort.Slice(rawSteps, func(i, j int) bool { return rawSteps[i].StepIndex < rawSteps[j].StepIndex })
+
+	// Annotate steps with step_kind, per-step side_effects, and derive
+	// flow-level metadata (entry_kind, flow_side_effects, complexity_score,
+	// is_cross_repo, data_lineage).
+	steps, flowMeta := annotateFlowSteps(rawSteps, grp, processRepo.Slug, processEnt.Properties["entry_id"])
 
 	// Collect source snippets for each step (context=5 lines).
 	// Response shape is a map of entity_id → source string, matching the
@@ -273,17 +271,23 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 	enrichedFM, enrichedSummary := extractFlowDocs(group, processEnt.ID, docgenStateDetail)
 
 	process := map[string]any{
-		"process_id":   dashPrefixedID(processRepo.Slug, processEnt.ID),
-		"repo":         processRepo.Slug,
-		"label":        processEnt.Name,
-		"entry_id":     processEnt.Properties["entry_id"],
-		"entry_name":   processEnt.Properties["entry_name"],
-		"terminal_id":  processEnt.Properties["terminal_id"],
-		"step_count":   sc,
-		"cross_stack":  cs,
-		"chain_labels": splitChainLabels(processEnt.Properties["chain_labels"]),
-		"source_file":  processEnt.SourceFile,
-		"steps":        steps,
+		"process_id":        dashPrefixedID(processRepo.Slug, processEnt.ID),
+		"repo":              processRepo.Slug,
+		"label":             processEnt.Name,
+		"entry_id":          processEnt.Properties["entry_id"],
+		"entry_name":        processEnt.Properties["entry_name"],
+		"terminal_id":       processEnt.Properties["terminal_id"],
+		"step_count":        sc,
+		"cross_stack":       cs,
+		"chain_labels":      splitChainLabels(processEnt.Properties["chain_labels"]),
+		"source_file":       processEnt.SourceFile,
+		"steps":             steps,
+		// Flows v2 annotations.
+		"entry_kind":        flowMeta.EntryKind,
+		"flow_side_effects": flowMeta.FlowSideEffects,
+		"complexity_score":  flowMeta.ComplexityScore,
+		"is_cross_repo":     flowMeta.IsCrossRepo,
+		"data_lineage":      flowMeta.DataLineage,
 	}
 	if enrichedFM != nil {
 		process["docs_summary"] = enrichedFM.Summary
