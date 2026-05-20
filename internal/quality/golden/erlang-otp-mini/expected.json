@@ -1,0 +1,30 @@
+{
+  "fixture_name": "erlang-otp-mini",
+  "language": "erlang",
+  "description": "Minimal OTP application: a gen_server cache, a supervisor, and an application callback. Exercises module/function/record extraction, include-based IMPORTS, OTP behaviour callbacks, and CONTAINS edges from module to exported functions.",
+  "expected_entities": [
+    { "name": "cache_server", "kind": "SCOPE.Component", "source_file": "src/cache_server.erl", "must_exist": true, "note": "gen_server module." },
+    { "name": "start_link",   "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true, "note": "Public API." },
+    { "name": "get",          "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+    { "name": "put",          "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+    { "name": "delete",       "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+    { "name": "flush",        "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+    { "name": "init",         "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true, "note": "gen_server callback." },
+    { "name": "handle_call",  "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+    { "name": "handle_cast",  "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+    { "name": "handle_info",  "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+    { "name": "terminate",    "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+    { "name": "code_change",  "kind": "SCOPE.Operation", "source_file": "src/cache_server.erl", "must_exist": true },
+
+    { "name": "cache_sup",    "kind": "SCOPE.Component", "source_file": "src/cache_sup.erl", "must_exist": true, "note": "Supervisor module." },
+    { "name": "start_link",   "kind": "SCOPE.Operation", "source_file": "src/cache_sup.erl", "must_exist": true },
+    { "name": "init",         "kind": "SCOPE.Operation", "source_file": "src/cache_sup.erl", "must_exist": true },
+
+    { "name": "cache_app",    "kind": "SCOPE.Component", "source_file": "src/cache_app.erl", "must_exist": true, "note": "Application callback module." },
+    { "name": "start",        "kind": "SCOPE.Operation", "source_file": "src/cache_app.erl", "must_exist": true },
+    { "name": "stop",         "kind": "SCOPE.Operation", "source_file": "src/cache_app.erl", "must_exist": true },
+
+    { "name": "cache_entry",  "kind": "SCOPE.Component", "source_file": "src/cache.hrl", "must_exist": true, "note": "Record definition." },
+    { "name": "cache_stats",  "kind": "SCOPE.Component", "source_file": "src/cache.hrl", "must_exist": true, "note": "Record definition." }
+  ]
+}

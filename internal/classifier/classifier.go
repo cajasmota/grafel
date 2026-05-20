@@ -433,6 +433,9 @@ var extensionLanguageMap = map[string]string{
 	".edn":  "clojure",
 	// Zig
 	".zig": "zig",
+	// Erlang
+	".erl": "erlang",
+	".hrl": "erlang",
 	// Nim
 	".nim":    "nim",
 	".nimble": "nim",

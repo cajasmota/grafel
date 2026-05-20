@@ -11,6 +11,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/dart"
 	_ "github.com/cajasmota/archigraph/internal/extractors/dockerfile"
 	_ "github.com/cajasmota/archigraph/internal/extractors/elixir"
+	_ "github.com/cajasmota/archigraph/internal/extractors/erlang"
 	_ "github.com/cajasmota/archigraph/internal/extractors/fish"
 	_ "github.com/cajasmota/archigraph/internal/extractors/golang"
 	_ "github.com/cajasmota/archigraph/internal/extractors/graphql"
