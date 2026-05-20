@@ -5259,6 +5259,187 @@ func TestSynthesizeDBEntities_DjangoFixture(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------
+// Refs #44 slice-2 — Go stdlib package-fold tests
+// ---------------------------------------------------------------------
+
+// TestSynthesize_GoLogImport_FoldsToExtLog verifies that bare stubs from
+// log.Printf / log.Println / log.Fatal / log.Fatalf / log.Panic / log.Panicf
+// are folded to ext:log when the source file imports "log" (via the
+// ext:log IMPORTS edge form the Go extractor writes). Without the import gate
+// these would produce isolated ext:Printf / ext:Println / … stubs that land
+// as ExternalUnknown. Refs #44.
+func TestSynthesize_GoLogImport_FoldsToExtLog(t *testing.T) {
+	t.Parallel()
+	for _, stub := range []string{
+		"Printf", "Println", "Print",
+		"Fatalf", "Fatal", "Fatalln",
+		"Panicf", "Panic", "Panicln",
+	} {
+		stub := stub
+		t.Run(stub, func(t *testing.T) {
+			t.Parallel()
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{ID: "file-ent", Name: "worker.go", Kind: "SCOPE.Component", Language: "go", SourceFile: "worker.go"},
+					{ID: "fn-ent", Name: "processEvent", Kind: "function", Language: "go", SourceFile: "worker.go"},
+				},
+				Relationships: []graph.Relationship{
+					// Go extractor writes ext:-prefixed IMPORTS edges.
+					{ID: "imp-log", FromID: "file-ent", ToID: "ext:log", Kind: "IMPORTS"},
+					{ID: "call-stub", FromID: "fn-ent", ToID: stub, Kind: "CALLS"},
+				},
+			}
+			Synthesize(doc)
+			got := doc.Relationships[1].ToID
+			if got == stub {
+				t.Fatalf("stub=%q: not rewritten; log import gate did not fire (pre-stdlibBareNames Go gate is broken)", stub)
+			}
+			if got != "ext:log" {
+				t.Fatalf("stub=%q: ToID=%q, want ext:log", stub, got)
+			}
+		})
+	}
+}
+
+// TestSynthesize_GoContextImport_FoldsToExtContext verifies that bare stubs
+// from context.Background / context.WithCancel / context.WithTimeout /
+// context.WithDeadline / context.WithValue / context.TODO are folded to
+// ext:context when the source file imports "context". Without the gate these
+// land as ext:Background / ext:WithCancel / … (ExternalUnknown). Refs #44.
+func TestSynthesize_GoContextImport_FoldsToExtContext(t *testing.T) {
+	t.Parallel()
+	for _, stub := range []string{
+		"Background", "TODO",
+		"WithCancel", "WithTimeout", "WithDeadline", "WithValue",
+	} {
+		stub := stub
+		t.Run(stub, func(t *testing.T) {
+			t.Parallel()
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{ID: "file-ent", Name: "main.go", Kind: "SCOPE.Component", Language: "go", SourceFile: "main.go"},
+					{ID: "fn-ent", Name: "main", Kind: "function", Language: "go", SourceFile: "main.go"},
+				},
+				Relationships: []graph.Relationship{
+					{ID: "imp-ctx", FromID: "file-ent", ToID: "ext:context", Kind: "IMPORTS"},
+					{ID: "call-stub", FromID: "fn-ent", ToID: stub, Kind: "CALLS"},
+				},
+			}
+			Synthesize(doc)
+			got := doc.Relationships[1].ToID
+			if got == stub {
+				t.Fatalf("stub=%q: not rewritten; context import gate did not fire", stub)
+			}
+			if got != "ext:context" {
+				t.Fatalf("stub=%q: ToID=%q, want ext:context", stub, got)
+			}
+		})
+	}
+}
+
+// TestSynthesize_GoNetImport_FoldsToExtNetHttp verifies that bare stubs for
+// http.HandlerFunc / http.ServeHTTP / http.HandleFunc / http.WriteHeader
+// are folded to ext:net/http when the source file's IMPORTS edge carries
+// ext:net (the form the Go extractor writes for "net/http" imports). These
+// stubs were previously landing as ext:HandlerFunc / ext:ServeHTTP / …
+// (ExternalUnknown). Refs #44.
+func TestSynthesize_GoNetImport_FoldsToExtNetHttp(t *testing.T) {
+	t.Parallel()
+	for _, stub := range []string{
+		"HandlerFunc", "ServeHTTP",
+		"HandleFunc", "WriteHeader",
+	} {
+		stub := stub
+		t.Run(stub, func(t *testing.T) {
+			t.Parallel()
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					// The Go extractor reduces "net/http" → ext:net in the
+					// IMPORTS edge (goKnownExternalRoots uses "net" as root).
+					{ID: "file-ent", Name: "middleware.go", Kind: "SCOPE.Component", Language: "go", SourceFile: "middleware.go"},
+					{ID: "fn-ent", Name: "Logger", Kind: "function", Language: "go", SourceFile: "middleware.go"},
+				},
+				Relationships: []graph.Relationship{
+					{ID: "imp-net", FromID: "file-ent", ToID: "ext:net", Kind: "IMPORTS"},
+					{ID: "call-stub", FromID: "fn-ent", ToID: stub, Kind: "CALLS"},
+				},
+			}
+			Synthesize(doc)
+			got := doc.Relationships[1].ToID
+			if got == stub {
+				t.Fatalf("stub=%q: not rewritten; net import gate did not fire", stub)
+			}
+			if got != "ext:net/http" {
+				t.Fatalf("stub=%q: ToID=%q, want ext:net/http", stub, got)
+			}
+		})
+	}
+}
+
+// TestSynthesize_GoTimeImport_FoldsToExtTime_Slice2 extends the time-gate
+// tests from #945 (which covered Now/After/Date/Unix) to the additional
+// names added in slice-2: Since, Sleep, NewTicker, NewTimer, Until,
+// AfterFunc, ParseDuration. All should fold to ext:time. Refs #44.
+func TestSynthesize_GoTimeImport_FoldsToExtTime_Slice2(t *testing.T) {
+	t.Parallel()
+	for _, stub := range []string{
+		"Since", "Sleep", "NewTicker", "NewTimer",
+		"Until", "AfterFunc", "ParseDuration",
+	} {
+		stub := stub
+		t.Run(stub, func(t *testing.T) {
+			t.Parallel()
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{ID: "file-ent", Name: "worker.go", Kind: "SCOPE.Component", Language: "go", SourceFile: "worker.go"},
+					{ID: "fn-ent", Name: "processEvent", Kind: "function", Language: "go", SourceFile: "worker.go"},
+				},
+				Relationships: []graph.Relationship{
+					{ID: "imp-time", FromID: "file-ent", ToID: "ext:time", Kind: "IMPORTS"},
+					{ID: "call-stub", FromID: "fn-ent", ToID: stub, Kind: "CALLS"},
+				},
+			}
+			Synthesize(doc)
+			got := doc.Relationships[1].ToID
+			if got == stub {
+				t.Fatalf("stub=%q: not rewritten; time import gate did not fire", stub)
+			}
+			if got != "ext:time" {
+				t.Fatalf("stub=%q: ToID=%q, want ext:time", stub, got)
+			}
+		})
+	}
+}
+
+// TestSynthesize_GoLogImport_NoFalsePositive verifies that the log gate does
+// NOT fire when the caller language is non-Go. A Python/JS/Rust function
+// named "Printf" should not be synthesised as ext:log. Refs #44.
+func TestSynthesize_GoLogImport_NoFalsePositive(t *testing.T) {
+	t.Parallel()
+	for _, lang := range []string{"python", "javascript", "rust", "java", ""} {
+		lang := lang
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{ID: "file-ent", Name: "foo.py", Kind: "SCOPE.Component", Language: lang, SourceFile: "foo.py"},
+					{ID: "fn-ent", Name: "caller", Kind: "function", Language: lang, SourceFile: "foo.py"},
+				},
+				Relationships: []graph.Relationship{
+					{ID: "imp-log", FromID: "file-ent", ToID: "ext:log", Kind: "IMPORTS"},
+					{ID: "call-printf", FromID: "fn-ent", ToID: "Printf", Kind: "CALLS"},
+				},
+			}
+			Synthesize(doc)
+			got := doc.Relationships[1].ToID
+			if got == "ext:log" {
+				t.Fatalf("lang=%q: Printf synthesised as ext:log but log gate should only fire for Go", lang)
+			}
+		})
+	}
+}
+
 // TestSynthesizeDBEntities_Idempotent confirms running SynthesizeDBEntities
 // twice on the same document is a no-op on the second call.
 func TestSynthesizeDBEntities_Idempotent(t *testing.T) {

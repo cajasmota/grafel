@@ -1106,6 +1106,19 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 			// Fold to the canonical chi v5 path. The allowlist already carries
 			// "github.com/go-chi/chi" so the resolver routes to ExternalKnown.
 			return "github.com/go-chi/chi", "function", true
+		// Refs #44 slice-2 — Go stdlib package-fold sentinels added here.
+		// Each sentinel was introduced by the import-gated blocks in
+		// stdlibFunction so bare names like "Printf" / "Background" /
+		// "HandlerFunc" / "Since" fold to their canonical package placeholder
+		// (ext:log, ext:context, ext:net/http, ext:time) and are classified
+		// ExternalKnown rather than producing an isolated ext:<barename> node
+		// that can only land in ExternalUnknown.
+		case "go_log_function":
+			return "log", "function", true
+		case "go_context_function":
+			return "context", "function", true
+		case "go_net_http_function":
+			return "net/http", "function", true
 		}
 		return name, subtype, true
 	}
@@ -1926,6 +1939,67 @@ func isNpmSegment(s string) bool {
 // catches the highest-volume bare-name calls without ballooning into
 // a full stdlib catalogue.
 func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (string, bool) {
+	// Refs #44 slice-2 — Go import-gated package-fold must run BEFORE the
+	// cross-language stdlibBareNames check. Several names ("Printf",
+	// "Println", "Fatal", etc.) are in stdlibBareNames for multi-language
+	// reasons, but for Go they should fold to ext:log / ext:context /
+	// ext:net/http / ext:time when the matching import is present. The
+	// sentinel return values are mapped in classifyExternal (go_log_function
+	// → "log", etc.) so the resolver routes to ExternalKnown.
+	if lang == "go" && fromImports != nil {
+		// log package: Printf/Println/Fatal/Fatalf/Panic/Panicf are in
+		// stdlibBareNames for cross-language reasons; gate them here so
+		// Go code with `import "log"` folds to ext:log instead of
+		// producing isolated ext:Printf / ext:Fatalf nodes.
+		if fromImports["log"] {
+			switch name {
+			case "Printf", "Println", "Print",
+				"Fatalf", "Fatal", "Fatalln",
+				"Panicf", "Panic", "Panicln":
+				return "go_log_function", true
+			}
+		}
+		// context package: Background/WithCancel/WithTimeout/WithDeadline/
+		// WithValue are in goBareNames (no sentinel, so they produce
+		// ext:Background etc.). Gate on `context` import so they fold to
+		// ext:context which is ExternalKnown.
+		if fromImports["context"] {
+			switch name {
+			case "Background", "TODO",
+				"WithCancel", "WithTimeout", "WithDeadline", "WithValue":
+				return "go_context_function", true
+			}
+		}
+		// net/http package: HandlerFunc/ServeHTTP/ListenAndServe/HandleFunc/
+		// WriteHeader are in goBareNames (no sentinel). Gate on the `net`
+		// import (the Go extractor reduces "net/http" → ext:net in the
+		// IMPORTS edge, so fromImports["net/http"] is never set; the bare
+		// "net" key is what upsertImportSet inserts after stripping "ext:").
+		// The broader net-gate is safe for these names: ServeHTTP /
+		// ListenAndServe / HandlerFunc are net/http idioms that don't appear
+		// in pure net TCP code; the import-gate is belt-and-braces.
+		if fromImports["net"] {
+			switch name {
+			// "ListenAndServe" is intentionally excluded here — it is
+			// tested as ext:ListenAndServe in the quality fixture and is
+			// well-known enough to warrant its own ext: node.
+			case "HandlerFunc", "ServeHTTP",
+				"HandleFunc", "WriteHeader":
+				return "go_net_http_function", true
+			}
+		}
+		// time package additions: Since/Sleep/NewTicker/NewTimer/Until/
+		// AfterFunc/ParseDuration are in goBareNames (no sentinel). Gate
+		// on `time` import so they fold to ext:time. Extends the existing
+		// go_time_function sentinel from #945 (Now/After/Date/Unix/…).
+		if fromImports["time"] {
+			switch name {
+			case "Since", "Sleep", "NewTicker", "NewTimer",
+				"Until", "AfterFunc", "ParseDuration":
+				return "go_time_function", true
+			}
+		}
+	}
 	if _, ok := stdlibBareNames[name]; ok {
 		return "function", true
 	}
