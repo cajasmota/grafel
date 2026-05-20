@@ -165,6 +165,7 @@ func (s *Server) routes() http.Handler {
 
 	// API paths / contracts
 	mux.HandleFunc("GET /api/paths/{group}", s.handlePathsList)
+	mux.HandleFunc("GET /api/paths/{group}/orphan-callers", s.handleOrphanCallers)
 	mux.HandleFunc("GET /api/paths/{group}/{pathHash}", s.handlePathDetail)
 
 	// Broker topology
