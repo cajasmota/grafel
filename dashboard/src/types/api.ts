@@ -411,12 +411,8 @@ export interface RepairResidual {
 
 export type LodLevel = 'zoom-out' | 'mid' | 'zoom-in' | 'blocked'
 
-/**
- * Server-side LOD tier names — what the backend accepts as the `?lod=` query
- * param and returns as `lod_level` in the response.  Distinct from the
- * client-facing LodLevel which uses zoom-metaphor names.
- */
-export type ServerLod = 'centroids' | 'mid' | 'full'
+/** Server-side LoD parameter values accepted by GET /api/graph/{group}?lod= */
+export type ServerLodLevel = 'centroids' | 'mid' | 'full'
 
 /** A community centroid node — rendered at zoom-out tier only */
 export interface CommunityCentroid {
@@ -456,13 +452,14 @@ export interface GraphResponse {
   nodes: GraphNode[]
   edges: GraphEdge[]
   communities: Community[]
-  lod: LodLevel
+  /** Server-side LoD tier returned in the response (centroids | mid | full | blocked) */
+  lod: ServerLodLevel | 'blocked'
   total_node_count: number        // unfiltered count — drives hard-cap check
 }
 
 export interface GraphFilters {
-  /** Server-side LOD tier (centroids | mid | full). */
-  lod?: ServerLod
+  /** Server-side LoD tier — uses ServerLodLevel values (centroids | mid | full) */
+  lod?: ServerLodLevel
   edge_kinds?: RelationshipKind[]
   repo?: string
 }

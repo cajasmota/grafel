@@ -23,8 +23,8 @@ export interface LodResult {
   lodLevel: LodLevel
 }
 
-const LOD_ZOOM_OUT_THRESHOLD = 0.5    // zoom < 0.5  → zoom-out (centroids only)
-const LOD_MID_THRESHOLD = 2.0         // 0.5 ≤ zoom < 2.0 → mid (centroids + god-nodes)
+export const LOD_ZOOM_OUT_THRESHOLD = 0.5    // zoom < 0.5  → zoom-out (centroids only)
+export const LOD_MID_THRESHOLD = 2.0         // 0.5 ≤ zoom < 2.0 → mid (centroids + god-nodes)
                                        // zoom ≥ 2.0  → zoom-in (full)
 
 const MAX_RENDER_CAP = 20_000
@@ -89,14 +89,25 @@ export function useGraphLoD(
     let visibleNodeIds: Set<string>
 
     if (lodLevel === 'zoom-out') {
-      // Centroids only (+ always-visible override)
-      visibleNodeIds = new Set([...centroidIds, ...alwaysVisible])
+      // Centroids only (+ always-visible override).
+      // When server pre-filters (lod=centroids), all received nodes are centroid
+      // nodes — is_centroid flag ensures centroidIds covers them all.
+      // If for some reason is_centroid is not set, fall back to all received nodes.
+      const base = centroidIds.size > 0 ? centroidIds : new Set(nodes.map((n) => n.id))
+      visibleNodeIds = new Set([...base, ...alwaysVisible])
     } else if (lodLevel === 'mid') {
-      // Centroids + god-nodes (+ always-visible override)
-      // If no centroid nodes present, fall back to god-nodes only
+      // Centroids + god-nodes (+ always-visible override).
+      // When server pre-filters nodes (lod=mid), the returned set is already the
+      // right tier — god-node IDs from communities.top_entities may use a different
+      // ID format than actual node IDs. Fall back to showing all received nodes
+      // when the community ID set doesn't intersect the actual node ID set.
+      const nodeIdSet = new Set(nodes.map((n) => n.id))
+      const godHits = [...godNodeIds].filter((id) => nodeIdSet.has(id))
       const base = centroidIds.size > 0
         ? new Set([...centroidIds, ...godNodeIds])
-        : new Set([...godNodeIds])
+        : godHits.length > 0
+          ? new Set([...godHits])
+          : nodeIdSet  // server pre-filtered — trust the payload
       visibleNodeIds = new Set([...base, ...alwaysVisible])
     } else {
       // Zoom-in: full expansion, optionally frustum-culled

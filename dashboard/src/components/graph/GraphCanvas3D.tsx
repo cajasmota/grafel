@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, memo } from 'react'
+import { useRef, useEffect, memo } from 'react'
 import ForceGraph3D from '3d-force-graph'
 import { kindColors } from '@/lib/colors'
 import { edgeKindColor } from './EdgeBadge'
@@ -114,6 +114,24 @@ const GraphCanvas3DInner = ({
     graphRef.current = graph
     setGraphRef(graph)
 
+    // 3d-force-graph v1.80 removed the .onZoom() chainable setter.
+    // Listen to the OrbitControls 'change' event instead; camera distance
+    // from origin serves as the zoom proxy.
+    const controls = graph.controls()
+    const handleCameraChange = () => {
+      const camera = graph.camera()
+      if (!camera) return
+      // Distance from origin — smaller = zoomed in
+      const dist = camera.position.length()
+      // Invert + scale to a zoom factor similar to what .onZoom({ k }) provided
+      const k = dist > 0 ? 1000 / dist : 1
+      setZoomLevel(k)
+      onZoomChange?.(k)
+    }
+    if (controls) {
+      controls.addEventListener('change', handleCameraChange)
+    }
+
     // Resize observer
     const ro = new ResizeObserver(() => {
       graph.width(el.clientWidth).height(el.clientHeight)
@@ -122,6 +140,9 @@ const GraphCanvas3DInner = ({
 
     return () => {
       ro.disconnect()
+      if (controls) {
+        controls.removeEventListener('change', handleCameraChange)
+      }
       setGraphRef(null)
       try { graph._destructor?.() } catch { /* ignore */ }
     }

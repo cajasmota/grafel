@@ -1,21 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { fetchGraph } from '@/api/client'
-import { useGraphLoD } from './useGraphLoD'
-import type { GraphFilters, GraphNode, GraphEdge, Community, LodLevel, ServerLod } from '@/types/api'
+import { useGraphLoD, LOD_ZOOM_OUT_THRESHOLD, LOD_MID_THRESHOLD } from './useGraphLoD'
+import type { GraphFilters, GraphNode, GraphEdge, Community, LodLevel, ServerLodLevel } from '@/types/api'
 import type { ZoomLevel, Viewport } from './useGraphLoD'
 
-// ── LOD tier selection ────────────────────────────────────────────────────────
-// Map the camera zoom level to a server-side LOD tier.  The server caps the
-// "full" tier at 20 000 nodes; for large groups we must start at "centroids"
-// and step up as the user zooms in.
-const LOD_ZOOM_OUT_THRESHOLD = 0.5
-const LOD_MID_THRESHOLD = 2.0
-
-function zoomToServerLod(zoom: ZoomLevel): ServerLod {
+/**
+ * Map a camera zoom level to the server-side LoD parameter.
+ * Server accepts: "centroids" | "mid" | "full"
+ * - centroids: ~50–200 centroid nodes (very zoomed out)
+ * - mid: centroids + top god-nodes per community
+ * - full: all nodes up to 20k cap (zoomed in — we avoid this for large graphs)
+ */
+function zoomToServerLod(zoom: ZoomLevel): ServerLodLevel {
   if (zoom < LOD_ZOOM_OUT_THRESHOLD) return 'centroids'
   if (zoom < LOD_MID_THRESHOLD) return 'mid'
-  return 'full'
+  return 'mid' // default to mid even when zoomed in to avoid 20k blocked payload
 }
 
 // Synthetic edge kinds emitted by the server only for layout purposes.
@@ -64,9 +64,9 @@ export function useGraphData(
   viewport: Viewport | null,
   selectedNodeId: string | null,
 ): GraphDataResult {
-  // Derive the server-side LOD from the current zoom level.  This is passed
-  // as a query param so the server returns only the nodes appropriate for the
-  // current view (avoids fetching 20k+ nodes when zoomed out to centroid tier).
+  // Map zoom level to server-side LoD so the API pre-filters to a safe node count.
+  // Server accepts: "centroids" | "mid" | "full". We never request "full" for large
+  // graphs to avoid the 20k-node blocked response.
   const serverLod = zoomToServerLod(zoomLevel)
 
   const {
