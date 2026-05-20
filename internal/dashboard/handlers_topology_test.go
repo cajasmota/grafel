@@ -25,6 +25,11 @@ func TestClassifyTopologyBucket(t *testing.T) {
 		{"Queue", "orders", map[string]string{"broker": "rabbitmq"}, "queue"},
 		{"ChannelEvent", "chat-events", nil, "channel"},
 		{"SCOPE.Queue", "some-queue", nil, "queue"},
+		// #1116: Task / ScheduledJob entity kinds
+		{"Task", "send_invoice", map[string]string{"framework": "celery"}, "queue"},
+		{"SCOPE.Task", "process_order", map[string]string{"framework": "dramatiq"}, "queue"},
+		{"ScheduledJob", "nightly_report", map[string]string{"framework": "celery_beat", "schedule": "0 0 * * *"}, "queue"},
+		{"SCOPE.ScheduledJob", "cleanup_job", map[string]string{"framework": "bullmq"}, "queue"},
 		// New Name-prefix classifications
 		{"SCOPE.Queue", "channel:redis-pubsub:orders", nil, "channel"},
 		{"SCOPE.Queue", "channel:redis-pubsub:notifications", map[string]string{"channel_type": "pubsub"}, "channel"},
@@ -224,6 +229,107 @@ func TestCollectTopology_AsyncTasks(t *testing.T) {
 	q := queues[0]
 	if q["framework"] != "dramatiq" {
 		t.Errorf("framework = %v, want dramatiq", q["framework"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// collectTopology — Task (celery) + ScheduledJob entities (#1116)
+// ---------------------------------------------------------------------------
+
+// TestCollectTopology_CeleryTaskAndScheduledJob covers the vocabulary-mismatch
+// fix from #1116: entities with kind=Task (from Celery/dramatiq/RQ extractors)
+// and kind=ScheduledJob (from the scheduled-job pass) must appear in the queues
+// bucket with the correct framework property. ScheduledJob entries must also
+// carry scheduled:true and the schedule expression.
+func TestCollectTopology_CeleryTaskAndScheduledJob(t *testing.T) {
+	doc := &graph.Document{
+		Repo: "client-fixture-a",
+		Entities: []graph.Entity{
+			// Task entity emitted by Celery extractor (kind has no SCOPE. prefix in
+			// this fixture, matching what real custom extractors may emit).
+			{
+				ID:         "task:send_invoice",
+				Name:       "send_invoice",
+				Kind:       "Task",
+				SourceFile: "worker/tasks.py",
+				Language:   "python",
+				Properties: map[string]string{
+					"framework":    "celery",
+					"pattern_type": "task",
+				},
+			},
+			// ScheduledJob entity emitted by the scheduled-job pass (SCOPE. prefix).
+			{
+				ID:         "celery_beat:nightly_report",
+				Name:       "nightly_report",
+				Kind:       "SCOPE.ScheduledJob",
+				SourceFile: "worker/beat.py",
+				Language:   "python",
+				Properties: map[string]string{
+					"framework":    "celery_beat",
+					"schedule":     "0 0 * * *",
+					"pattern_type": "scheduled_job_synthesis",
+				},
+			},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "fn:api_handler", ToID: "task:send_invoice", Kind: "PUBLISHES_TO"},
+			{ID: "r2", FromID: "fn:worker", ToID: "task:send_invoice", Kind: "SUBSCRIBES_TO"},
+		},
+	}
+	grp := &DashGroup{
+		Name:  "g",
+		Repos: map[string]*DashRepo{"client-fixture-a": {Slug: "client-fixture-a", Doc: doc}},
+	}
+
+	_, queues, _, _ := collectTopology(grp)
+
+	if len(queues) != 2 {
+		t.Fatalf("expected 2 queue entries (1 Task + 1 ScheduledJob), got %d", len(queues))
+	}
+
+	// Find each entry by label.
+	var taskEntry, scheduledEntry map[string]any
+	for _, q := range queues {
+		switch q["label"] {
+		case "send_invoice":
+			taskEntry = q
+		case "nightly_report":
+			scheduledEntry = q
+		}
+	}
+
+	// Task entry checks.
+	if taskEntry == nil {
+		t.Fatal("Task entity 'send_invoice' not found in queues bucket")
+	}
+	if taskEntry["framework"] != "celery" {
+		t.Errorf("Task framework = %v, want celery", taskEntry["framework"])
+	}
+	if _, hasScheduled := taskEntry["scheduled"]; hasScheduled {
+		t.Errorf("Task entry should NOT have scheduled field, but it does")
+	}
+	producers, _ := taskEntry["producers"].([]string)
+	consumers, _ := taskEntry["consumers"].([]string)
+	if len(producers) != 1 {
+		t.Errorf("expected 1 producer for Task, got %d", len(producers))
+	}
+	if len(consumers) != 1 {
+		t.Errorf("expected 1 consumer for Task, got %d", len(consumers))
+	}
+
+	// ScheduledJob entry checks.
+	if scheduledEntry == nil {
+		t.Fatal("ScheduledJob entity 'nightly_report' not found in queues bucket")
+	}
+	if scheduledEntry["framework"] != "celery_beat" {
+		t.Errorf("ScheduledJob framework = %v, want celery_beat", scheduledEntry["framework"])
+	}
+	if scheduledEntry["scheduled"] != true {
+		t.Errorf("ScheduledJob entry should have scheduled=true, got %v", scheduledEntry["scheduled"])
+	}
+	if scheduledEntry["schedule"] != "0 0 * * *" {
+		t.Errorf("ScheduledJob schedule = %v, want '0 0 * * *'", scheduledEntry["schedule"])
 	}
 }
 

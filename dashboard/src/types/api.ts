@@ -328,6 +328,12 @@ export interface QueueNode {
   repo: string
   label: string
   broker: BrokerProtocol
+  /** framework property from async task extractors (celery/dramatiq/rq/sidekiq/bull) — #1116 */
+  framework?: string
+  /** scheduled=true for SCOPE.ScheduledJob entities (celery_beat, APScheduler, node-cron, etc.) — #1116 */
+  scheduled?: boolean
+  /** cron/interval expression when scheduled=true — #1116 */
+  schedule?: string
   queue_type?: 'direct' | 'fanout' | 'standard' | 'fifo' | 'subscription'
   producer_ids: string[]
   consumer_ids: string[]

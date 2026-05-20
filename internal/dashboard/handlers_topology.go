@@ -24,6 +24,11 @@ const (
 	kindChannelEvent       = "ChannelEvent"
 	kindSubscription       = "Subscription"       // GraphQL subscriptions
 	kindServerlessFunction = "ServerlessFunction" // SCOPE.ServerlessFunction stripped
+	// #1116: async task frameworks (Celery, dramatiq, RQ, Sidekiq, Bull, …) emit
+	// entities with kind "Task" or "ScheduledJob" (with optional "SCOPE." prefix).
+	// After prefix-stripping these must be bucketed into the queues track.
+	kindTask         = "Task"
+	kindScheduledJob = "ScheduledJob"
 )
 
 // topologyResponse is the wire shape for both topology endpoints.
@@ -62,6 +67,12 @@ func classifyTopologyBucket(kind, name string, props map[string]string) string {
 		return "function"
 	case kindSubscription:
 		return "subscription"
+	// #1116: async task frameworks (Celery, dramatiq, RQ, Sidekiq, Bull, …) emit
+	// Task entities; scheduled-job pass emits ScheduledJob entities. Both belong
+	// in the queues bucket so the frontend renders them with the correct icon and
+	// framework tag. The framework property is carried through in collectTopologyResponse.
+	case kindTask, kindScheduledJob:
+		return "queue"
 	}
 
 	// --- Name-prefix classification (new runtime extractors, #930 / #925 / #941) ---
@@ -190,6 +201,17 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 					"framework": framework,
 					"producers": producers,
 					"consumers": consumers,
+				}
+				// #1116: ScheduledJob entities (emitted by the scheduled-job pass for
+				// Celery beat, APScheduler, node-cron, Spring @Scheduled, etc.) carry a
+				// "schedule" property. Expose it as `scheduled: true` so the frontend
+				// can render the clock icon and filter scheduled vs. on-demand tasks.
+				stripped := dashStripScopePrefix(e.Kind)
+				if stripped == kindScheduledJob {
+					entry["scheduled"] = true
+					if e.Properties["schedule"] != "" {
+						entry["schedule"] = e.Properties["schedule"]
+					}
 				}
 				// NATS subjects (SCOPE.Queue with broker=nats) are surfaced in
 				// the dedicated nats_subjects bucket so the frontend can render
