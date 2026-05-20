@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -248,4 +249,242 @@ func TestHelpAdvancedListsEverything(t *testing.T) {
 			t.Errorf("advanced help missing %q\n%s", cmd, got)
 		}
 	}
+}
+
+// TestRegisterMCPInClaudeConfigs verifies that registerMCPInClaudeConfigs
+// correctly writes archigraph MCP entries to detected Claude config files.
+// This tests the fix for issue #841: `archigraph install` must write
+// mcpServers.archigraph to ~/.claude.json (and any ~/.claude-*/.claude.json).
+func TestRegisterMCPInClaudeConfigs(t *testing.T) {
+	home := withSandboxHome(t)
+
+	// Create mock Claude config directories: primary and secondary.
+	claudeDir := filepath.Join(home, ".claude.json")
+	claudePersonalDir := filepath.Join(home, ".claude-personal")
+	if err := os.MkdirAll(claudePersonalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	claudePersonalJSON := filepath.Join(claudePersonalDir, ".claude.json")
+
+	// Create a fake binary path for testing.
+	binPath := "/usr/local/bin/archigraph"
+
+	// Call the MCP registration function.
+	out := &bytes.Buffer{}
+	registered := registerMCPInClaudeConfigs(out, binPath, []string{claudeDir, claudePersonalJSON})
+
+	// Verify it reports both directories as registered.
+	if len(registered) != 2 {
+		t.Fatalf("expected 2 registered dirs, got %d: %v", len(registered), registered)
+	}
+
+	// Verify that the primary Claude config was created and contains the archigraph entry.
+	primaryContent, err := os.ReadFile(claudeDir)
+	if err != nil {
+		t.Fatalf("failed to read primary config: %v", err)
+	}
+
+	var primaryDoc map[string]interface{}
+	if err := json.Unmarshal(primaryContent, &primaryDoc); err != nil {
+		t.Fatalf("primary config not valid JSON: %v", err)
+	}
+
+	// Check for mcpServers.archigraph entry.
+	servers, ok := primaryDoc["mcpServers"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("mcpServers not found or not a map in primary config: %+v", primaryDoc)
+	}
+
+	archigraphEntry, ok := servers["archigraph"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("archigraph MCP entry not found in primary config: %+v", servers)
+	}
+
+	// Verify the entry structure: command, args:["mcp-bridge"], type:"stdio"
+	if archigraphEntry["command"] != binPath {
+		t.Fatalf("command not set correctly: got %q, want %q", archigraphEntry["command"], binPath)
+	}
+
+	args, ok := archigraphEntry["args"].([]interface{})
+	if !ok || len(args) != 1 || args[0] != "mcp-bridge" {
+		t.Fatalf("args not set correctly (want [mcp-bridge]): %+v", archigraphEntry["args"])
+	}
+
+	if archigraphEntry["type"] != "stdio" {
+		t.Fatalf("type not set to 'stdio': %+v", archigraphEntry["type"])
+	}
+
+	// Verify that the secondary Claude config was also updated.
+	secondaryContent, err := os.ReadFile(claudePersonalJSON)
+	if err != nil {
+		t.Fatalf("failed to read secondary config: %v", err)
+	}
+
+	var secondaryDoc map[string]interface{}
+	if err := json.Unmarshal(secondaryContent, &secondaryDoc); err != nil {
+		t.Fatalf("secondary config not valid JSON: %v", err)
+	}
+
+	secondaryServers, ok := secondaryDoc["mcpServers"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("mcpServers not found in secondary config: %+v", secondaryDoc)
+	}
+
+	if _, ok := secondaryServers["archigraph"]; !ok {
+		t.Fatalf("archigraph entry not found in secondary config: %+v", secondaryServers)
+	}
+
+	// Verify the output messages.
+	output := out.String()
+	if !strings.Contains(output, "MCP registered in:") {
+		t.Fatalf("output missing 'MCP registered in:' message: %s", output)
+	}
+	if !strings.Contains(output, "Restart Claude Code to load") {
+		t.Fatalf("output missing 'Restart Claude Code' message: %s", output)
+	}
+}
+
+// TestRegisterMCPInClaudeConfigsIdempotent verifies that calling
+// registerMCPInClaudeConfigs twice doesn't duplicate the archigraph entry.
+func TestRegisterMCPInClaudeConfigsIdempotent(t *testing.T) {
+	home := withSandboxHome(t)
+	claudeDir := filepath.Join(home, ".claude.json")
+	binPath := "/usr/local/bin/archigraph"
+
+	// Register twice.
+	out1 := &bytes.Buffer{}
+	registerMCPInClaudeConfigs(out1, binPath, []string{claudeDir})
+
+	out2 := &bytes.Buffer{}
+	registerMCPInClaudeConfigs(out2, binPath, []string{claudeDir})
+
+	// Verify the config has exactly one archigraph entry.
+	content, err := os.ReadFile(claudeDir)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+
+	var doc map[string]interface{}
+	if err := json.Unmarshal(content, &doc); err != nil {
+		t.Fatalf("config not valid JSON: %v", err)
+	}
+
+	servers, _ := doc["mcpServers"].(map[string]interface{})
+	if len(servers) != 1 {
+		t.Fatalf("expected exactly 1 MCP server entry after 2 registrations, got %d: %+v", len(servers), servers)
+	}
+
+	if _, ok := servers["archigraph"]; !ok {
+		t.Fatalf("archigraph entry missing after idempotent re-registration: %+v", servers)
+	}
+}
+
+// TestUnregisterMCPFromClaudeConfigs verifies that unregisterMCPFromClaudeConfigs
+// correctly removes archigraph MCP entries from Claude config files.
+func TestUnregisterMCPFromClaudeConfigs(t *testing.T) {
+	home := withSandboxHome(t)
+
+	// Create mock Claude config directories with existing MCP entries.
+	claudeDir := filepath.Join(home, ".claude.json")
+	claudePersonalDir := filepath.Join(home, ".claude-personal")
+	if err := os.MkdirAll(claudePersonalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	claudePersonalJSON := filepath.Join(claudePersonalDir, ".claude.json")
+
+	// Pre-populate configs with archigraph MCP entries.
+	binPath := "/usr/local/bin/archigraph"
+	registerOut := &bytes.Buffer{}
+	registerMCPInClaudeConfigs(registerOut, binPath, []string{claudeDir, claudePersonalJSON})
+
+	// Verify both configs have the entry before unregistering.
+	content, _ := os.ReadFile(claudeDir)
+	var doc map[string]interface{}
+	json.Unmarshal(content, &doc)
+	servers, _ := doc["mcpServers"].(map[string]interface{})
+	if _, ok := servers["archigraph"]; !ok {
+		t.Fatalf("archigraph entry not found before unregister")
+	}
+
+	// Call unregister.
+	unregOut := &bytes.Buffer{}
+	removed := unregisterMCPFromClaudeConfigs(unregOut, []string{claudeDir, claudePersonalJSON})
+
+	// Verify it reports both directories as unregistered.
+	if len(removed) != 2 {
+		t.Fatalf("expected 2 removed dirs, got %d: %v", len(removed), removed)
+	}
+
+	// Verify both configs no longer have the archigraph entry.
+	primaryContent, _ := os.ReadFile(claudeDir)
+	var primaryDoc map[string]interface{}
+	json.Unmarshal(primaryContent, &primaryDoc)
+	primaryServers, _ := primaryDoc["mcpServers"].(map[string]interface{})
+	if _, ok := primaryServers["archigraph"]; ok {
+		t.Fatalf("archigraph entry still present in primary config after unregister")
+	}
+
+	secondaryContent, _ := os.ReadFile(claudePersonalJSON)
+	var secondaryDoc map[string]interface{}
+	json.Unmarshal(secondaryContent, &secondaryDoc)
+	secondaryServers, _ := secondaryDoc["mcpServers"].(map[string]interface{})
+	if _, ok := secondaryServers["archigraph"]; ok {
+		t.Fatalf("archigraph entry still present in secondary config after unregister")
+	}
+
+	// Verify the output messages.
+	output := unregOut.String()
+	if !strings.Contains(output, "MCP removed from:") {
+		t.Fatalf("output missing 'MCP removed from:' message: %s", output)
+	}
+}
+
+// TestUnregisterMCPFromClaudeConfigsIdempotent verifies that calling
+// unregisterMCPFromClaudeConfigs twice is safe and doesn't error.
+func TestUnregisterMCPFromClaudeConfigsIdempotent(t *testing.T) {
+	home := withSandboxHome(t)
+	claudeDir := filepath.Join(home, ".claude.json")
+
+	// Register first, then unregister twice.
+	registerOut := &bytes.Buffer{}
+	registerMCPInClaudeConfigs(registerOut, "/usr/local/bin/archigraph", []string{claudeDir})
+
+	// Verify the entry exists.
+	content, _ := os.ReadFile(claudeDir)
+	var doc map[string]interface{}
+	json.Unmarshal(content, &doc)
+	servers, _ := doc["mcpServers"].(map[string]interface{})
+	if _, ok := servers["archigraph"]; !ok {
+		t.Fatalf("archigraph entry not found before unregister")
+	}
+
+	// First unregister.
+	unregOut1 := &bytes.Buffer{}
+	removed1 := unregisterMCPFromClaudeConfigs(unregOut1, []string{claudeDir})
+	if len(removed1) != 1 {
+		t.Fatalf("expected 1 removed dir on first unregister, got %d", len(removed1))
+	}
+
+	// Verify the entry is gone.
+	content, _ = os.ReadFile(claudeDir)
+	var doc2 map[string]interface{}
+	json.Unmarshal(content, &doc2)
+	servers2, _ := doc2["mcpServers"].(map[string]interface{})
+	if _, ok := servers2["archigraph"]; ok {
+		t.Fatalf("archigraph entry still present after first unregister")
+	}
+
+	// Second unregister on same config (file exists but no entry).
+	// UnregisterPath treats this as a no-op (returns nil), so it's counted as "removed".
+	unregOut2 := &bytes.Buffer{}
+	removed2 := unregisterMCPFromClaudeConfigs(unregOut2, []string{claudeDir})
+
+	// Second unregister should still report success (idempotent).
+	if len(removed2) != 1 {
+		t.Fatalf("expected 1 removed dir on second unregister (idempotent), got %d", len(removed2))
+	}
+
+	// Verify no output is printed on second unregister (no successful removals in the message sense).
+	// Actually, UnregisterPath succeeds silently, so it will be reported.
+	// This is correct behavior - the system says "MCP removed from: ..." even if it was already gone.
 }
