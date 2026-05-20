@@ -37,6 +37,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/scala"
 	_ "github.com/cajasmota/archigraph/internal/extractors/shell"
 	_ "github.com/cajasmota/archigraph/internal/extractors/sql"
+	_ "github.com/cajasmota/archigraph/internal/extractors/svelte"
 	_ "github.com/cajasmota/archigraph/internal/extractors/swift"
 	_ "github.com/cajasmota/archigraph/internal/extractors/yaml"
 	_ "github.com/cajasmota/archigraph/internal/extractors/zig"

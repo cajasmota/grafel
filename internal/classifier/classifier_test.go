@@ -548,7 +548,6 @@ func TestMX1100_HTML_LanguageToken(t *testing.T) {
 		{"page.htm"},
 		{"templates/base.html"},
 		{"src/App.vue"},
-		{"src/App.svelte"},
 		{"page.astro"},
 		{"view.erb"},
 		{"template.ejs"},
@@ -585,7 +584,7 @@ func TestMX1100_HTML_ClassifyWithSize(t *testing.T) {
 
 	const smallFile = int64(2048)
 
-	for _, file := range []string{"index.html", "page.htm", "App.vue", "App.svelte"} {
+	for _, file := range []string{"index.html", "page.htm", "App.vue"} {
 		t.Run(file, func(t *testing.T) {
 			r := c.ClassifyWithSize(ctx, file, smallFile)
 			if r.Skip {
@@ -593,6 +592,25 @@ func TestMX1100_HTML_ClassifyWithSize(t *testing.T) {
 			}
 			if r.Language != "html" {
 				t.Errorf("%s: expected Language=html, got %q", file, r.Language)
+			}
+		})
+	}
+}
+
+// TestSvelte_LanguageToken verifies that .svelte files are classified as
+// "svelte" (not "html") now that a dedicated svelte extractor is registered.
+func TestSvelte_LanguageToken(t *testing.T) {
+	c := newTestClassifier(t)
+	ctx := context.Background()
+
+	for _, file := range []string{"src/App.svelte", "lib/Button.svelte", "routes/+page.svelte"} {
+		t.Run(file, func(t *testing.T) {
+			r := c.Classify(ctx, file)
+			if r.Skip {
+				t.Errorf("file=%q: should NOT be skipped, got Skip=true reason=%q", file, r.SkipReason)
+			}
+			if r.Language != "svelte" {
+				t.Errorf("file=%q: expected Language=svelte, got %q", file, r.Language)
 			}
 		})
 	}
