@@ -83,6 +83,7 @@ import type {
   TopologyProtocol,
   GraphResponse,
   GraphFilters,
+  GraphLabelsResponse,
   EntityNeighborResponse,
   PendingRepairsResponse,
   PendingEnrichmentsResponse,
@@ -406,6 +407,35 @@ export async function fetchEntityNeighbors(
     .filter((x): x is NonNullable<typeof x> => x !== null)
 
   return { entity: raw.entity, outbound, inbound }
+}
+
+// ── Tier 2: Graph labels ──────────────────────────────────────────────────────
+
+/**
+ * GET /api/graph/{group}/labels?top=N
+ * GET /api/graph/{group}/labels?ids=a,b,c
+ *
+ * Tier 2 of the three-tier graph model.  The main /api/graph/{group} payload
+ * emits only id/repo/degree/community_id per node (Tier 1).  This endpoint
+ * patches in {id, label} pairs so the canvas can display labels without
+ * carrying them in the bulkier render payload.
+ *
+ * Pass `top` to fetch labels for the top-N nodes by degree (default 200).
+ * Pass `ids` (comma-separated) to fetch labels for a specific set of nodes
+ * (used for hover-to-label of nodes not in the initial top-N).
+ */
+export async function fetchGraphLabels(
+  group: string,
+  options: { top?: number; ids?: string[] } = {},
+): Promise<GraphLabelsResponse> {
+  if (USE_MOCKS) return { labels: [] }
+  const params = new URLSearchParams()
+  if (options.ids && options.ids.length > 0) {
+    params.set('ids', options.ids.join(','))
+  } else {
+    params.set('top', String(options.top ?? 200))
+  }
+  return apiFetch<GraphLabelsResponse>(`/api/graph/${group}/labels?${params}`)
 }
 
 // ── Surface 3: Topology ───────────────────────────────────────────────────────

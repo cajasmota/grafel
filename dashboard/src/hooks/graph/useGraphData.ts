@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { fetchGraph } from '@/api/client'
+import { fetchGraph, fetchGraphLabels } from '@/api/client'
 import type { GraphFilters, GraphNode, GraphEdge, Community } from '@/types/api'
 
 // Synthetic edge kinds emitted by the server only for layout purposes.
@@ -58,9 +58,9 @@ export function useGraphData(
   void _activeRepos    // kept in signature for call-site compat; not used in query
 
   const {
-    data,
-    isLoading,
-    error,
+    data: rawData,
+    isLoading: graphLoading,
+    error: graphError,
     refetch,
   } = useQuery({
     // #1069: repos intentionally excluded — repo filter is client-side, no refetch
@@ -69,6 +69,33 @@ export function useGraphData(
     staleTime: 5 * 60 * 1000,
     enabled: !!group,
   })
+
+  // Tier 2: fetch top-200 labels. Enabled only after the graph payload lands.
+  // staleTime matches graph so both stay fresh together.
+  const { data: labelsData, isLoading: labelsLoading } = useQuery({
+    queryKey: ['graph-labels', group, filters.repo, includeExternal],
+    queryFn: () => fetchGraphLabels(group, { top: 200 }),
+    staleTime: 5 * 60 * 1000,
+    enabled: !!group && !!rawData,
+  })
+
+  // Merge labels into nodes.  Nodes outside the top-200 keep label=id as
+  // a safe fallback so nothing in the canvas throws on undefined.
+  const data = useMemo(() => {
+    if (!rawData) return rawData
+    if (!labelsData) return rawData
+    const labelMap = new Map(labelsData.labels.map((l) => [l.id, l.label]))
+    return {
+      ...rawData,
+      nodes: rawData.nodes.map((n) => ({
+        ...n,
+        label: labelMap.get(n.id) ?? n.id,
+      })),
+    }
+  }, [rawData, labelsData])
+
+  const isLoading = graphLoading || labelsLoading
+  const error = graphError
 
   // Apply edge-kind filter client-side (cheap — just a Set lookup)
   const filteredEdges = useMemo(() => {

@@ -533,3 +533,16 @@ export interface EntityNeighborResponse {
   outbound: Array<{ edge: GraphEdge; node: GraphNode }>
   inbound: Array<{ edge: GraphEdge; node: GraphNode }>
 }
+
+// ── Tier 2: Graph labels ──────────────────────────────────────────────────────
+
+/** One entry from GET /api/graph/{group}/labels */
+export interface GraphLabelEntry {
+  id: string
+  label: string
+}
+
+/** Response shape of GET /api/graph/{group}/labels */
+export interface GraphLabelsResponse {
+  labels: GraphLabelEntry[]
+}
