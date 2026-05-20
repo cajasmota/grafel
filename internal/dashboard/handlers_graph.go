@@ -6,10 +6,15 @@ package dashboard
 //	GET /api/graph/{group}/entity/{id}
 //
 // The LoD tiers:
-//   - centroids : one centroid object per community (~50–200 nodes)
-//   - mid       : centroids + top-50 god-nodes per community (~150 nodes)
-//   - dense     : top-500 by pagerank per repo — default tier (issue #1000)
-//   - full      : all nodes up to 20 000 hard cap
+//   - centroids : one centroid per non-singleton community (skips size-1 communities)
+//   - mid       : top-50 nodes by degree+pagerank per repo (~150 nodes)
+//   - dense     : top-500 nodes by degree+pagerank per repo — default tier (issue #1000)
+//   - full      : all nodes up to 20 000 hard cap; falls back to dense when cap exceeded
+//
+// Sampling strategy (fix #1020):
+//   Nodes are sorted by (in-degree + out-degree) DESC, PageRank DESC as tiebreaker.
+//   This ensures the highest-connectivity nodes appear first, yielding a sample where
+//   most included nodes have edges to other included nodes (low isolated-node rate).
 //
 // Default lod is "dense" (issue #1000: user wants to SEE the graph).
 // "repos" param accepts comma-separated repo slugs for multi-select filtering.
@@ -26,6 +31,18 @@ import (
 
 const fullNodeCap = 20_000
 const denseNodeLimit = 500 // per-repo limit for the "dense" tier
+
+// buildDegreeMap returns a map from entity ID to total degree (in + out) for
+// all relationships in a repo.  Used by the dense/mid samplers to rank nodes
+// by connectivity rather than PageRank alone (#1020).
+func buildDegreeMap(rels []graph.Relationship) map[string]int {
+	deg := make(map[string]int, len(rels)*2)
+	for _, r := range rels {
+		deg[r.FromID]++
+		deg[r.ToID]++
+	}
+	return deg
+}
 
 // handleGraph — GET /api/graph/{group}
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +105,7 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serveGraphCentroids returns one centroid per community (zoom-out tier).
+// serveGraphCentroids returns one centroid per non-singleton community (zoom-out tier).
 //
 // Each centroid is emitted as a GraphNode-shaped object (id, label, kind,
 // repo, is_centroid=true, centroid_size) so the force-graph renderer can
@@ -98,6 +115,11 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 // community boundaries; edges with weight ≥ 1 are emitted so the layout
 // engine has structure to work with (without edges the force simulation
 // produces a uniform blob with no visible separation).
+//
+// Fix #1020: singleton communities (size=1) are skipped.  They never have
+// cross-boundary edges, so including them only adds isolated dots to the view.
+const centroidMinSize = 2 // skip communities smaller than this
+
 func (s *Server) serveGraphCentroids(w http.ResponseWriter, group string, repos []*DashRepo) {
 	nodes := []map[string]any{}
 	communities := []map[string]any{}
@@ -116,6 +138,12 @@ func (s *Server) serveGraphCentroids(w http.ResponseWriter, group string, repos 
 			continue
 		}
 		for _, c := range r.Doc.Communities {
+			// Skip singleton communities — they have no cross-boundary edges and
+			// only contribute isolated dots to the centroid view (#1020).
+			if c.Size < centroidMinSize {
+				continue
+			}
+
 			top := c.TopEntities
 			if len(top) > 3 {
 				top = top[:3]
@@ -135,23 +163,23 @@ func (s *Server) serveGraphCentroids(w http.ResponseWriter, group string, repos 
 
 			nid := centroidID(r.Slug, c.ID)
 			node := map[string]any{
-				"id":            nid,
-				"label":         name,
-				"kind":          "Community",
-				"repo":          r.Slug,
-				"is_centroid":   true,
-				"centroid_size": c.Size,
-				"community_id":  c.ID,
+				"id":             nid,
+				"label":          name,
+				"kind":           "Community",
+				"repo":           r.Slug,
+				"is_centroid":    true,
+				"centroid_size":  c.Size,
+				"community_id":   c.ID,
 				"top_entity_ids": prefixed,
 			}
 			nodes = append(nodes, node)
 
 			cm := map[string]any{
-				"id":           c.ID,
-				"size":         c.Size,
-				"auto_name":    c.AutoName,
-				"repo":         r.Slug,
-				"top_entities": prefixed,
+				"id":               c.ID,
+				"size":             c.Size,
+				"auto_name":        c.AutoName,
+				"repo":             r.Slug,
+				"top_entities":     prefixed,
 				"centroid_node_id": nid,
 			}
 			if c.AgentName != "" {
@@ -215,12 +243,16 @@ func (s *Server) serveGraphCentroids(w http.ResponseWriter, group string, repos 
 		"nodes":       nodes,
 		"edges":       edges,
 		"communities": communities,
-		"lod_level":   "zoom-out",
+		"lod_level":   "centroids",
 		"total_nodes": len(nodes),
 	})
 }
 
-// serveGraphMid returns centroids + top god-nodes (mid-zoom tier).
+// serveGraphMid returns top-50 nodes by degree+pagerank per repo (mid-zoom tier).
+//
+// Fix #1020: sort by actual edge degree (in+out) descending, using PageRank as
+// tiebreaker.  High-degree nodes are most likely to connect to other sampled nodes,
+// dramatically reducing the isolated-node rate vs. pure PageRank ordering.
 func (s *Server) serveGraphMid(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
 	nodes := []map[string]any{}
 	edges := []map[string]any{}
@@ -254,10 +286,14 @@ func (s *Server) serveGraphMid(w http.ResponseWriter, group string, repos []*Das
 			communities = append(communities, cm)
 		}
 
-		// Collect god-nodes: top-50 by PageRank per repo (or centrality).
+		// Build degree map for this repo (in-degree + out-degree).
+		degree := buildDegreeMap(r.Doc.Relationships)
+
+		// Collect god-nodes: top-50 by degree+pagerank per repo.
 		type scored struct {
-			e  *graph.Entity
-			pr float64
+			e      *graph.Entity
+			degree int
+			pr     float64
 		}
 		var godCandidates []scored
 		for i := range r.Doc.Entities {
@@ -269,11 +305,15 @@ func (s *Server) serveGraphMid(w http.ResponseWriter, group string, repos []*Das
 			if e.PageRank != nil {
 				pr = *e.PageRank
 			}
-			if e.IsGodNode || pr > 0 {
-				godCandidates = append(godCandidates, scored{e: e, pr: pr})
+			deg := degree[e.ID]
+			if e.IsGodNode || pr > 0 || deg > 0 {
+				godCandidates = append(godCandidates, scored{e: e, degree: deg, pr: pr})
 			}
 		}
 		sort.Slice(godCandidates, func(i, j int) bool {
+			if godCandidates[i].degree != godCandidates[j].degree {
+				return godCandidates[i].degree > godCandidates[j].degree
+			}
 			return godCandidates[i].pr > godCandidates[j].pr
 		})
 		limit := 50
@@ -317,8 +357,12 @@ func (s *Server) serveGraphMid(w http.ResponseWriter, group string, repos []*Das
 	})
 }
 
-// serveGraphDense returns top-N nodes by PageRank per repo — the default tier (#1000).
+// serveGraphDense returns top-N nodes by degree+pagerank per repo — the default tier (#1000).
 // Gives a much richer view than "mid" (50/repo) while staying bounded below full.
+//
+// Fix #1020: sort by actual edge degree (in+out) descending, using PageRank as
+// tiebreaker.  High-degree nodes are most likely to connect to other sampled nodes,
+// dramatically reducing the isolated-node rate vs. pure PageRank ordering.
 func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
 	nodes := []map[string]any{}
 	edges := []map[string]any{}
@@ -351,9 +395,13 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 			communities = append(communities, cm)
 		}
 
+		// Build degree map for this repo (in-degree + out-degree).
+		degree := buildDegreeMap(r.Doc.Relationships)
+
 		type scored struct {
-			e  *graph.Entity
-			pr float64
+			e      *graph.Entity
+			degree int
+			pr     float64
 		}
 		var candidates []scored
 		for i := range r.Doc.Entities {
@@ -365,9 +413,15 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 			if e.PageRank != nil {
 				pr = *e.PageRank
 			}
-			candidates = append(candidates, scored{e: e, pr: pr})
+			candidates = append(candidates, scored{e: e, degree: degree[e.ID], pr: pr})
 		}
+		// Sort by degree DESC, then PageRank DESC as tiebreaker.
+		// Degree-first ensures the most-connected nodes survive the cap,
+		// which maximises the number of edges that land within the sample.
 		sort.Slice(candidates, func(i, j int) bool {
+			if candidates[i].degree != candidates[j].degree {
+				return candidates[i].degree > candidates[j].degree
+			}
 			return candidates[i].pr > candidates[j].pr
 		})
 		limit := denseNodeLimit
@@ -411,6 +465,11 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 }
 
 // serveGraphFull returns all nodes up to the hard cap.
+//
+// Fix #1020: when the unfiltered entity count exceeds the 20 000-node hard cap,
+// fall back to the dense sampler (top-N by degree+pagerank) instead of returning
+// an empty "blocked" response.  The blocked sentinel is preserved only so the
+// frontend can update its LoD indicator; the actual node/edge payload is non-empty.
 func (s *Server) serveGraphFull(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
 	nodes := []map[string]any{}
 	edges := []map[string]any{}
@@ -424,15 +483,10 @@ func (s *Server) serveGraphFull(w http.ResponseWriter, group string, repos []*Da
 		}
 	}
 
-	// Hard cap: if unfiltered count > 20k, return empty with "blocked" signal.
+	// Hard cap exceeded without a kind filter: delegate to dense sampler so the
+	// user still sees a useful graph rather than an empty canvas (#1020).
 	if filterKind == "" && totalEntities > fullNodeCap {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"nodes":       []any{},
-			"edges":       []any{},
-			"communities": []any{},
-			"lod_level":   "blocked",
-			"total_nodes": totalEntities,
-		})
+		s.serveGraphDense(w, group, repos, filterKind)
 		return
 	}
 
