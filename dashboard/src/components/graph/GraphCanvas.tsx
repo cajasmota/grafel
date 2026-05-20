@@ -17,7 +17,14 @@ export interface GraphCanvasProps {
   onZoomChange?: (zoom: number) => void
   /** High-contrast mode — wider edges, higher opacity */
   highContrast?: boolean
+  /** Current theme — drives canvas background color */
+  isDark?: boolean
   className?: string
+}
+
+/** Truncate long labels at ~30 chars for layout legibility */
+function truncateLabel(text: string): string {
+  return text.length > 30 ? text.slice(0, 28) + '…' : text
 }
 
 /**
@@ -46,6 +53,7 @@ const GraphCanvasInner = ({
   onNodeHover,
   onZoomChange,
   highContrast = false,
+  isDark = true,
   className = '',
 }: GraphCanvasProps) => {
   const cosmographRef = useRef<CosmographRef>(undefined)
@@ -141,9 +149,20 @@ const GraphCanvasInner = ({
     onZoomChange?.(k)
   }, [setZoomLevel, onZoomChange])
 
+  // Theme-aware canvas background:
+  //   dark mode  → deep slate-950 (#020617) — same as before, no visual regression
+  //   light mode → slate-50 (#f8fafc) — avoids the jarring black-on-light layout
+  const canvasBg = isDark ? '#020617' : '#f8fafc'
+
+  // Label pill style — gives a semi-transparent background behind label text so
+  // it reads over edges. Uses inline CSS (Cosmograph className prop accepts style strings).
+  const labelPillStyle = isDark
+    ? 'background: rgba(2,6,23,0.72); color: #e2e8f0; font-weight: 500; padding: 1px 5px; border-radius: 4px; font-size: 11px; white-space: nowrap;'
+    : 'background: rgba(248,250,252,0.82); color: #1e293b; font-weight: 500; padding: 1px 5px; border-radius: 4px; font-size: 11px; white-space: nowrap;'
+
   return (
     <div
-      className={['w-full h-full cursor-pointer', className].join(' ')}
+      className={['w-full h-full cursor-pointer relative', className].join(' ')}
       aria-label="Dependency graph"
       role="img"
       aria-describedby="graph-canvas-a11y-desc"
@@ -151,9 +170,10 @@ const GraphCanvasInner = ({
       <span id="graph-canvas-a11y-desc" className="sr-only">
         Interactive GPU-accelerated force-directed graph. Use the inspector panel to navigate nodes with keyboard.
       </span>
+
       <Cosmograph
         ref={cosmographRef}
-        style={{ width: '100%', height: '100%', background: '#020617' }}
+        style={{ width: '100%', height: '100%' }}
         onMount={handleMount}
 
         // ── Data ──────────────────────────────────────────────────────────────
@@ -199,9 +219,28 @@ const GraphCanvasInner = ({
         linkColorByFn={linkColorByFn as (value: unknown) => string}
         linkWidthRange={highContrast ? [1, 2] : [0.5, 1.5]}
 
+        // ── Background ────────────────────────────────────────────────────
+        backgroundColor={canvasBg}
+
+        // ── Labels ────────────────────────────────────────────────────────
+        // Truncate long entity names at 30 chars; pill background for readability.
+        showLabels={true}
+        showTopLabels={true}
+        showTopLabelsLimit={60}
+        showDynamicLabels={true}
+        showDynamicLabelsLimit={40}
+        showFocusedPointLabel={true}
+        pointLabelFontSize={11}
+        pointLabelFn={truncateLabel as (value: unknown) => string}
+        pointLabelClassName={labelPillStyle}
+
         // ── Simulation ─────────────────────────────────────────────────────
         enableSimulation={true}
         preservePointPositionsOnDataUpdate={true}
+        // Higher friction → nodes settle more smoothly (less jitter after layout)
+        simulationFriction={0.7}
+        // Slightly stronger repulsion → cleaner separation between dense clusters
+        simulationRepulsion={0.6}
 
         // ── Selection / interaction ────────────────────────────────────────
         selectPointOnClick="single"
@@ -217,6 +256,20 @@ const GraphCanvasInner = ({
         // Suppress internal status messages — we have our own loading states
         statusIndicatorMode={false}
         disableLogging={true}
+      />
+
+      {/* Vignette overlay — radial gradient darker at edges for perceived depth.
+          pointer-events:none so it doesn't block canvas interaction. */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          background: isDark
+            ? 'radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(2,6,23,0.55) 100%)'
+            : 'radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(226,232,240,0.45) 100%)',
+        }}
       />
     </div>
   )

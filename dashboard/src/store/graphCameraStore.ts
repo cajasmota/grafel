@@ -19,6 +19,8 @@ interface GraphCameraState {
   graphRef: CosmographInstance | null
   zoomLevel: number
   hoveredNodeId: string | null
+  /** Whether the force simulation is currently running */
+  simulationRunning: boolean
 
   // Actions
   setGraphRef: (ref: CosmographInstance | null) => void
@@ -26,12 +28,23 @@ interface GraphCameraState {
   setHoveredNode: (id: string | null) => void
   zoomToNode: (nodeId: string) => void
   resetView: () => void
+  /** Fit all visible nodes into the viewport (smooth pan+zoom) */
+  fitView: () => void
+  /** Reset zoom level to 1:1 then fit view */
+  resetZoom: () => void
+  /** Pause the force simulation */
+  pauseSimulation: () => void
+  /** Resume the force simulation */
+  resumeSimulation: () => void
+  /** Toggle simulation pause/resume */
+  toggleSimulation: () => void
 }
 
 export const useGraphCameraStore = create<GraphCameraState>((set, get) => ({
   graphRef: null,
   zoomLevel: 1.0,
   hoveredNodeId: null,
+  simulationRunning: true,
 
   setGraphRef: (ref) => set({ graphRef: ref }),
   setZoomLevel: (z) => set({ zoomLevel: z }),
@@ -52,9 +65,47 @@ export const useGraphCameraStore = create<GraphCameraState>((set, get) => ({
     if (!graphRef) return
     graphRef.fitView(600)
   },
+
+  fitView: () => {
+    const { graphRef } = get()
+    if (!graphRef) return
+    graphRef.fitView(500)
+  },
+
+  resetZoom: () => {
+    const { graphRef } = get()
+    if (!graphRef) return
+    // Set zoom to 1:1 first, then fit view so all nodes are visible
+    graphRef.setZoomLevel(1, 300)
+    setTimeout(() => graphRef.fitView(400), 350)
+  },
+
+  pauseSimulation: () => {
+    const { graphRef } = get()
+    if (!graphRef) return
+    graphRef.pause()
+    set({ simulationRunning: false })
+  },
+
+  resumeSimulation: () => {
+    const { graphRef } = get()
+    if (!graphRef) return
+    graphRef.unpause()
+    set({ simulationRunning: true })
+  },
+
+  toggleSimulation: () => {
+    const { simulationRunning, pauseSimulation, resumeSimulation } = get()
+    if (simulationRunning) {
+      pauseSimulation()
+    } else {
+      resumeSimulation()
+    }
+  },
 }))
 
 /** Convenience selector hooks */
 export const useGraphRef = () => useGraphCameraStore((s) => s.graphRef)
 export const useZoomLevel = () => useGraphCameraStore((s) => s.zoomLevel)
 export const useHoveredNodeId = () => useGraphCameraStore((s) => s.hoveredNodeId)
+export const useSimulationRunning = () => useGraphCameraStore((s) => s.simulationRunning)

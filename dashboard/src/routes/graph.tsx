@@ -6,7 +6,8 @@ import { useEdgeKindFilters } from '@/hooks/graph/useEdgeKindFilters'
 import { useEntityInspector } from '@/hooks/graph/useEntityInspector'
 import { useCommunityColors } from '@/hooks/graph/useCommunityColors'
 import { useGraphSearch } from '@/hooks/graph/useGraphSearch'
-import { useGraphCameraStore } from '@/store/graphCameraStore'
+import { useGraphCameraStore, useSimulationRunning } from '@/store/graphCameraStore'
+import { useThemeContext } from '@/context/ThemeContext'
 import { GraphCanvas } from '@/components/graph/GraphCanvas'
 import { GraphToolbar } from '@/components/graph/GraphToolbar'
 import { EdgeKindFilters } from '@/components/graph/EdgeKindFilters'
@@ -40,8 +41,12 @@ export function GraphRoute() {
   const { selectedNodeId, select: selectNode, clear: clearSelection } = useGraphSelection()
   const { activeKinds, toggle: toggleKind, clearAll: clearKindFilters } = useEdgeKindFilters()
 
+  // ── Theme ──────────────────────────────────────────────────────────────────
+  const { isDark } = useThemeContext()
+
   // ── Camera state ───────────────────────────────────────────────────────────
-  const { hoveredNodeId, setHoveredNode, zoomToNode, resetView } = useGraphCameraStore()
+  const { hoveredNodeId, setHoveredNode, zoomToNode, resetView, fitView, resetZoom, toggleSimulation } = useGraphCameraStore()
+  const simulationRunning = useSimulationRunning()
 
   // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -215,6 +220,10 @@ export function GraphRoute() {
           onSearchChange={setSearchQuery}
           onResetView={resetView}
           onSaveSnapshot={handleSaveSnapshot}
+          onFitView={fitView}
+          onResetZoom={resetZoom}
+          onToggleSimulation={toggleSimulation}
+          simulationRunning={simulationRunning}
         />
         {showSearchResults && (
           <div className="absolute left-3 right-3 top-full z-50">
@@ -369,6 +378,7 @@ export function GraphRoute() {
               onNodeClick={handleNodeClick}
               onNodeHover={handleNodeHover}
               highContrast={highContrast}
+              isDark={isDark}
               className="w-full h-full"
             />
           )}
