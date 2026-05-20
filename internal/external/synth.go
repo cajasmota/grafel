@@ -6184,6 +6184,39 @@ var javaBareNames = map[string]struct{}{
 	"orElseGet":       {},
 	"ifPresentOrElse": {},
 	"or":              {},
+
+	// Refs #44 — Spring MVC ResponseEntity builder chain leaf methods.
+	// Spring MVC controller methods follow the pattern:
+	//
+	//   ResponseEntity.notFound().build()
+	//   ResponseEntity.noContent().build()
+	//   ResponseEntity.status(HttpStatus.CREATED).body(entity)
+	//   ResponseEntity.ok().body(entity)
+	//   ResponseEntity.badRequest().body(error)
+	//
+	// The Java extractor receiver-strips each chained call to its leaf
+	// identifier. The intermediate receiver (the `BodyBuilder` /
+	// `HeadersBuilder` return value) has no statically knowable type at
+	// extractor time, so the leaf (`build`, `body`, ...) lands as a bare
+	// name and falls into bug-extractor without this entry.
+	//
+	// Selection rule (#105 safer-bias): included only when the Java
+	// language gate makes user-method collision risk acceptably low.
+	// `build` is the highest-collision name but it is gated here to
+	// lang="java" — a user-defined `myBuilder.build()` would produce a
+	// real CALLS edge to a project entity (resolved via cross-class
+	// receiver binding), not a bare leaf stub; bare `build` only
+	// survives when the receiver chain has no statically determinable
+	// type, which is exactly the Spring ResponseEntity / builder-DSL
+	// case. `body` is Spring-specific as a response-builder leaf verb
+	// with the Java gate; other meanings are guarded by the same
+	// receiver-type logic. `header` / `headers` / `contentType` are
+	// HTTP-response builder methods; the Java gate is sufficient.
+	"build":       {},
+	"body":        {},
+	"header":      {},
+	"headers":     {},
+	"contentType": {},
 }
 
 // javaTestBareNames is the Java test-file-gated bare-name stop-list
