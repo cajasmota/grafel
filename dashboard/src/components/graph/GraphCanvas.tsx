@@ -101,14 +101,9 @@ const GraphCanvasInner = ({
     return repoColor(node.repo)
   }, [selectedNodeId, hoveredNodeId])
 
-  // Point size accessor — receives the node id (same column as pointColorBy)
-  const pointSizeByFn = useCallback((nodeId: string) => {
-    const node = nodesRef.current.find((n) => n.id === nodeId)
-    if (!node) return 4
-    if (node.is_centroid) return Math.max(4, Math.min(20, (node.centroid_size ?? 100) / 25))
-    if ((node.pagerank ?? 0) > 0.6) return 10  // god node
-    return 4 + (node.pagerank ?? 0) * 12
-  }, [])
+  // #1059: size nodes by degree (hub nodes appear larger than leaves).
+  // CosmographPointSizeStrategy.Degree uses quantile-bounded degree distribution.
+  // pointSizeRange controls min/max pixel sizes across the full degree spectrum.
 
   // Link color accessor — receives the value of the `linkColorBy` column ('kind')
   const linkColorByFn = useCallback((kind: string) => {
@@ -148,7 +143,7 @@ const GraphCanvasInner = ({
 
   return (
     <div
-      className={['w-full h-full', className].join(' ')}
+      className={['w-full h-full cursor-pointer', className].join(' ')}
       aria-label="Dependency graph"
       role="img"
       aria-describedby="graph-canvas-a11y-desc"
@@ -168,7 +163,7 @@ const GraphCanvasInner = ({
         // Explicit allowlist guards against any future non-primitive field reaching
         // DuckDB-WASM (nested objects/arrays crash columnar type inference).
         // __idx is included so Cosmograph can resolve its numeric index lookups.
-        pointIncludeColumns={['__idx', 'id', 'label', 'kind', 'repo', 'community_id', 'pagerank', 'is_centroid', 'centroid_size', 'source_file', 'start_line']}
+        pointIncludeColumns={['__idx', 'id', 'label', 'kind', 'repo', 'community_id', 'pagerank', 'is_centroid', 'centroid_size', 'source_file', 'start_line', 'degree']}
 
         links={cosmographLinks as unknown as Record<string, unknown>[]}
         linkSourceBy="source"
@@ -180,9 +175,24 @@ const GraphCanvasInner = ({
         // ── Node appearance ────────────────────────────────────────────────
         pointColorBy="id"
         pointColorByFn={pointColorByFn as (value: unknown) => string}
-        pointSizeBy="id"
-        pointSizeByFn={pointSizeByFn as (value: unknown) => number}
+        // #1059: size by degree — hub nodes are visually larger than leaf nodes.
+        // CosmographPointSizeStrategy.Degree uses quantile-bounded (p5–p95) degree distribution.
+        pointSizeStrategy="degree"
+        pointSizeRange={[4, 30]}
         pointLabelBy="label"
+
+        // ── Labels ────────────────────────────────────────────────────────
+        // #1059: show dynamic + top labels so hubs are named at a glance.
+        // showDynamicLabels: evenly distributed visible nodes get labels automatically.
+        // showTopLabels: highest-degree nodes always show labels regardless of viewport.
+        showDynamicLabels={true}
+        showTopLabels={true}
+        showTopLabelsLimit={15}
+        showDynamicLabelsLimit={20}
+        showHoveredPointLabel={true}
+        pointLabelClassName="text-xs font-mono"
+        pointLabelColor="#e2e8f0"
+        pointLabelFontSize={11}
 
         // ── Edge appearance ────────────────────────────────────────────────
         linkColorBy="kind"
