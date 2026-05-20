@@ -1,6 +1,9 @@
 package dashboard
 
-// handlers_topology_orphans.go — Topology v2: orphan publisher detector (#1136).
+// handlers_topology_orphans.go — Topology v2: orphan publisher (#1136) and
+// orphan subscriber (#1137) detectors.
+//
+// Orphan publishers:
 //
 //	GET /api/topology/{group}/orphan-publishers
 //
@@ -12,17 +15,26 @@ package dashboard
 // These are "fire-and-forget" message producers with no known listener —
 // a likely dead-letter or integration gap.
 //
-// Detection algorithm:
-//  1. Walk all entities in the group; keep only those whose topology bucket
-//     is topic, queue, channel, or subscription (nats_subjects and
-//     graphql_subscriptions share these buckets).
-//  2. For each such entity, collect producers and consumers using the same
-//     brokerEdges / channelEdges helpers already used by collectTopologyResponse.
-//  3. Emit a row when len(producers) > 0 && len(consumers) == 0.
-//  4. Entities with zero producers AND zero consumers are NOT emitted
-//     (those are orphan subscribers, a different endpoint).
+// Orphan subscribers:
 //
-// Wire shape:
+//	GET /api/topology/{group}/orphan-subscribers
+//
+// Returns every topic/queue/channel entity that has at least one consumer
+// but zero producers anywhere in the group. These are listeners waiting for
+// messages that no known code publishes — typically dead consumers or
+// misconfigured queue bindings.
+//
+// Detection algorithms:
+//  1. Walk all entities in the group; keep only those whose topology bucket
+//     is topic, queue, channel, or subscription.
+//  2. For each such entity collect producers and consumers using the same
+//     brokerEdges / channelEdges helpers used by collectTopologyResponse.
+//  3. Orphan publisher: len(producers) > 0 && len(consumers) == 0.
+//  4. Orphan subscriber: len(consumers) > 0 && len(producers) == 0.
+//  5. Entities with zero producers AND zero consumers are NOT emitted by
+//     either endpoint.
+//
+// Orphan-publisher wire shape:
 //
 //	{
 //	  "orphan_publishers": [
@@ -39,7 +51,26 @@ package dashboard
 //	  "total": N
 //	}
 //
-// All array fields marshal as [] (never null).
+// Orphan-subscriber wire shape:
+//
+//	{
+//	  "orphan_subscribers": [
+//	    {
+//	      "id":               "repo::entityId",
+//	      "label":            "orders.created",
+//	      "broker":           "rabbitmq",
+//	      "framework":        "",
+//	      "repo":             "backend",
+//	      "consumers":        ["repo::entityId1"],
+//	      "reason":           "no_publisher_found",
+//	      "last_message_seen": null
+//	    }
+//	  ],
+//	  "total": N
+//	}
+//
+// All array fields marshal as [] (never null). last_message_seen is always
+// null today but the field is reserved for future timestamp population.
 
 import (
 	"net/http"
@@ -150,6 +181,141 @@ func collectOrphanPublishers(grp *DashGroup) []OrphanPublisherRow {
 
 	if rows == nil {
 		rows = []OrphanPublisherRow{}
+	}
+	return rows
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Orphan subscriber detector (#1137)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// OrphanSubscriberRow is one entity returned by the orphan-subscriber endpoint.
+type OrphanSubscriberRow struct {
+	ID              string   `json:"id"`
+	Label           string   `json:"label"`
+	Broker          string   `json:"broker"`
+	Framework       string   `json:"framework"`
+	Repo            string   `json:"repo"`
+	Consumers       []string `json:"consumers"`
+	Reason          string   `json:"reason"`
+	LastMessageSeen *string  `json:"last_message_seen"` // always null today; field reserved
+}
+
+// reason constants for the orphan-subscriber endpoint.
+const (
+	reasonNoPublisherFound        = "no_publisher_found"
+	reasonPublisherOnlyInExternal = "publisher_only_in_external_lib"
+)
+
+// handleOrphanSubscribers — GET /api/topology/{group}/orphan-subscribers
+func (s *Server) handleOrphanSubscribers(w http.ResponseWriter, r *http.Request) {
+	group := r.PathValue("group")
+	if group == "" {
+		writeErr(w, http.StatusBadRequest, "group required")
+		return
+	}
+
+	grp, err := s.graphs.GetGroup(group)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	rows := collectOrphanSubscribers(grp)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"orphan_subscribers": rows,
+		"total":              len(rows),
+	})
+}
+
+// collectOrphanSubscribers runs the orphan-subscriber detection pass against a
+// loaded group. Extracted so unit tests can call it without HTTP scaffolding.
+func collectOrphanSubscribers(grp *DashGroup) []OrphanSubscriberRow {
+	var rows []OrphanSubscriberRow
+
+	for _, r := range sortedRepos(grp) {
+		if r.Doc == nil {
+			continue
+		}
+
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			bucket := classifyTopologyBucket(e.Kind, e.Name, e.Properties)
+
+			// Only inspect buckets that use broker/channel semantics.
+			switch bucket {
+			case "topic", "queue", "channel", "subscription":
+				// handled below
+			default:
+				continue
+			}
+
+			var producers, consumers []string
+
+			switch bucket {
+			case "topic", "queue":
+				producers, consumers, _ = brokerEdges(r, e.ID)
+			case "channel":
+				// channelEdges returns (emitters, subscribers); map to producers/consumers.
+				producers, consumers = channelEdges(r, e.ID)
+			case "subscription":
+				// graphqlSubEdges returns (publishers, subscribers).
+				producers, consumers = graphqlSubEdges(r, e.ID)
+			}
+
+			// Emit only when there is at least one consumer and zero producers.
+			if len(consumers) == 0 || len(producers) > 0 {
+				continue
+			}
+
+			broker := e.Properties["broker"]
+			if broker == "" {
+				broker = inferBrokerFromName(e.Name)
+			}
+			framework := e.Properties["framework"]
+
+			// Reason classification: if the entity properties hint that the
+			// publisher lives in an external library, surface that explicitly;
+			// otherwise default to no_publisher_found.
+			reason := reasonNoPublisherFound
+			if e.Properties["publisher_source"] == "external" ||
+				e.Properties["producer_source"] == "external" {
+				reason = reasonPublisherOnlyInExternal
+			}
+
+			row := OrphanSubscriberRow{
+				ID:              dashPrefixedID(r.Slug, e.ID),
+				Label:           e.Name,
+				Broker:          broker,
+				Framework:       framework,
+				Repo:            r.Slug,
+				Consumers:       consumers,
+				Reason:          reason,
+				LastMessageSeen: nil, // reserved for future timestamp
+			}
+			rows = append(rows, row)
+		}
+	}
+
+	// Stable deterministic sort: repo → label → first consumer label.
+	sort.Slice(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Repo != b.Repo {
+			return a.Repo < b.Repo
+		}
+		if a.Label != b.Label {
+			return a.Label < b.Label
+		}
+		// Tertiary: first consumer ID for full stability.
+		if len(a.Consumers) > 0 && len(b.Consumers) > 0 {
+			return a.Consumers[0] < b.Consumers[0]
+		}
+		return len(a.Consumers) < len(b.Consumers)
+	})
+
+	if rows == nil {
+		rows = []OrphanSubscriberRow{}
 	}
 	return rows
 }
