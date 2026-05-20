@@ -2,7 +2,7 @@ import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
 import { useEffect } from 'react'
 import {
   GitBranch, Network, Workflow, Radio, Globe, BookOpen,
-  Moon, Sun,
+  Moon, Sun, Clock,
 } from 'lucide-react'
 import { useRegistry } from '@/hooks/shared/useRegistry'
 import { useThemeContext } from '@/context/ThemeContext'
@@ -44,11 +44,12 @@ export function AppLayout() {
           archigraph
         </Link>
 
-        {/* Surface nav — 5 chips (Graph / Flows / Topology / Paths / Docs) */}
+        {/* Surface nav — 6 chips (Graph / Flows / Topology / Pending / Paths / Docs) */}
         <nav className="flex items-center gap-0.5 ml-2 sm:ml-4 sm:gap-1 flex-shrink-0" aria-label="Surface navigation">
           <NavItem to={`/graph/${group}`} icon={<Network className="w-4 h-4" />} label="Graph" />
           <NavItem to={`/flows/${group}`} icon={<Workflow className="w-4 h-4" />} label="Flows" />
           <NavItem to={`/topology/${group}`} icon={<Radio className="w-4 h-4" />} label="Topology" />
+          <NavItem to={`/pending/${group}`} icon={<Clock className="w-4 h-4" />} label="Pending" />
           <NavItem to={`/paths/${group}`} icon={<Globe className="w-4 h-4" />} label="Paths" />
           <NavItem to={`/docs/${group}`} icon={<BookOpen className="w-4 h-4" />} label="Docs" />
         </nav>

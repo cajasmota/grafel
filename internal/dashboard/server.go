@@ -180,8 +180,9 @@ func (s *Server) routes() http.Handler {
 	// Pattern store
 	mux.HandleFunc("GET /api/patterns/{group}", s.handlePatterns)
 
-	// Repair queue (admin)
+	// Pending queue — repair candidates + enrichment candidates (#987)
 	mux.HandleFunc("GET /api/repairs/{group}", s.handleRepairs)
+	mux.HandleFunc("GET /api/enrichments/{group}", s.handleEnrichments)
 
 	// Build / version info
 	mux.HandleFunc("GET /api/info", s.handleInfo)

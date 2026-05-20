@@ -12038,6 +12038,60 @@ var phpBareNames = map[string]struct{}{
 	"willReturn":                 {},
 	"method":                     {},
 	"getMock":                    {},
+
+	// Slice-8 (PHP resolver wave) — Laravel Blueprint column/modifier
+	// methods missing from the wave-3 list. Migration closures receive a
+	// `$table` Blueprint and chain these methods; the PHP extractor
+	// receiver-strips to the bare leaf. `integer` is the 32-bit column
+	// type (analogous to `string`/`text` already listed); `foreignId` is
+	// the `UNSIGNED BIGINT` helper for FK columns; `constrained` is the
+	// chained FK constraint modifier; `index` is the explicit index
+	// declaration. PHP-gated (issue #44 slice-8).
+	"integer":     {},
+	"foreignId":   {},
+	"constrained": {},
+	"index":       {},
+	"hasTable":    {},
+	"hasColumn":   {},
+	"dropTable":   {},
+
+	// Slice-8 (PHP resolver wave) — Eloquent Model lifecycle methods
+	// forwarded through trait composition. Eloquent's `Model` class
+	// uses PHP `use` traits (`HasAttributes`, `HasEvents`, `HasTimestamps`,
+	// etc.) for `syncOriginal`, `initializeTraits`, `bootTraits`, `booted`,
+	// `fireModelEvent`. The PHP extractor sees bare-name calls inside
+	// `__construct` / `boot` and can't bind them to the trait-provided
+	// method because trait resolution is invisible to static analysis.
+	// These are unambiguous Eloquent internals (the `boot` + `booted`
+	// pair is the Eloquent boot-cycle; `fireModelEvent` is the HasEvents
+	// dispatch hook). PHP-gated — `booted` / `boot` do not collide with
+	// user methods in Go/Ruby/Python/etc. under the php gate (issue #44).
+	"bootTraits":       {},
+	"booted":           {},
+	"fireModelEvent":   {},
+	"initializeTraits": {},
+	"syncOriginal":     {},
+
+	// Slice-8 (PHP resolver wave) — Laravel HTTP helpers receiver-stripped
+	// from Laravel Response / Request / Query Builder chains. `noContent`
+	// is the HTTP 204 factory on the Response facade (`response()->
+	// noContent()`); `hasFile` is the Request file-upload check
+	// (`$request->hasFile('avatar')`); `validate` is the fluent Validator
+	// terminal (`Validator::make(...)->validate()`); `withErrors` is the
+	// Redirector flash helper (`back()->withErrors([...])`);
+	// `insertGetId` is the Query Builder single-row insert returning the
+	// new PK. All are Laravel-specific enough to be safely PHP-gated under
+	// the safer-bias rule (#94/#106). The HTTP verbs `get`/`post`/`put`
+	// remain excluded per the issue #439 spec.
+	"noContent":   {},
+	"hasFile":     {},
+	"validate":    {},
+	"withErrors":  {},
+	"insertGetId": {},
+	"attempt":     {},
+	"regenerate":  {},
+	"invalidate":  {},
+	"intended":    {},
 }
 
 // pythonBareNames is the Python-language-gated bare-name stop-list

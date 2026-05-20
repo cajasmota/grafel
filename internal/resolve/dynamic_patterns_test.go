@@ -370,6 +370,34 @@ func TestDynamicPatterns_Catalog(t *testing.T) {
 		{"quartz_generic_factory_python_neg", "python", `BackgroundJob.Enqueue<IEmailService>`, false},
 		{"quartz_generic_factory_ts_neg", "typescript", `JobBuilder.Create<EmailJob>`, false},
 
+		// ---- Rust stdlib / tokio dynamic-dispatch stubs (issue #44 slice-7) ---
+		// Bare channel-constructor names emitted when the Rust extractor strips
+		// the module path from a scoped call like `mpsc::channel::<String>(8)`.
+		{"rust_channel_bare", "rust", `channel`, true},
+		// Generic-receiver method stubs: the extractor emits `Type<T>.method`
+		// when it resolves the receiver's concrete type from the function's
+		// parameter list. No in-tree entity can satisfy `Receiver<String>.recv`
+		// because the resolver's bare-name lookup discards the generic suffix.
+		{"rust_receiver_string_recv", "rust", `Receiver<String>.recv`, true},
+		{"rust_sender_string_send", "rust", `Sender<String>.send`, true},
+		{"rust_receiver_u64_next", "rust", `Receiver<u64>.next`, true},
+		{"rust_vec_u8_push", "rust", `Vec<u8>.push`, true},
+		{"rust_option_string_unwrap", "rust", `Option<String>.unwrap`, true},
+		{"rust_arc_mutex_lock", "rust", `Arc<Mutex<State>>.lock`, true},
+		// Cross-language gate: Rust channel/generic-receiver stubs MUST NOT
+		// fire for other languages (safer-bias rule #94).
+		{"rust_channel_go_neg", "go", `channel`, false},
+		{"rust_channel_python_neg", "python", `channel`, false},
+		{"rust_channel_java_neg", "java", `channel`, false},
+		{"rust_channel_kotlin_neg", "kotlin", `channel`, false},
+		{"rust_receiver_recv_go_neg", "go", `Receiver<String>.recv`, false},
+		{"rust_receiver_recv_python_neg", "python", `Receiver<String>.recv`, false},
+		{"rust_receiver_recv_java_neg", "java", `Receiver<String>.recv`, false},
+		// Additional negative: patterns that look similar but should NOT be dynamic
+		// in Rust itself (lowercase receiver, no generics, etc.).
+		{"rust_store_get_no_generic_neg", "rust", `Store.get`, false},
+		{"rust_lowercase_recv_neg", "rust", `foo.recv`, false},
+
 		// ---- Swift — Combine publisher operator leaf names (issue #44) ---
 		// The Swift extractor emits bare CALLS edges for navigation-chain
 		// method calls. When the receiver is an external Combine Publisher
