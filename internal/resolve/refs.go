@@ -3480,6 +3480,48 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 			strings.HasPrefix(originalStub, "Route:")) {
 		return DispositionDynamic
 	}
+	// Wave-4 stragglers (#529) — HTTP-client synthesiser FETCHES edges and
+	// the ORM queries pass emit the enclosing function as `Function:<name>`
+	// on the FromID side (http_endpoint_synthesis.go `makeRuntimeEmit`,
+	// orm_queries.go `buildCallerID`, scheduled_jobs_edges.go emitJob).
+	// These are "soft caller references" — the entity IS a real function in
+	// the codebase but was extracted under SCOPE.Operation kind (not
+	// `Function`), so the kind-bucket lookup misses; the bare-name fallback
+	// also misses when the method is only indexed under a qualified
+	// `ClassName.method` key. None of these synthesisers set
+	// Properties["language"] on the edge, so lang arrives as "".
+	// The `Function:` prefix on a non-resolved stub is the unique signal
+	// that this is a soft-caller reference, not a target entity ref — route
+	// to Dynamic. `isSimplePythonIdentifier` (no dots) excludes qualified
+	// names like `Function:Cls.method` which would resolve differently.
+	if strings.HasPrefix(originalStub, "Function:") && isSimplePythonIdentifier(name) {
+		return DispositionDynamic
+	}
+	// Wave-4 stragglers (#529) — Django ORM queries pass emits
+	// `Class:<ModelName>` as QUERIES_TO targets (orm_queries.go buildModelID).
+	// Python model entities are extracted under SCOPE.Component/class kind,
+	// so `byKind["Class"]` misses; bare-name fallback succeeds when the model
+	// exists in-tree → bug-resolver. The ORM dispatch is resolved at runtime
+	// by Django's metaclass; nameExists guard restricts to kind-mismatch case.
+	// lang=="" because orm_queries.go does not set Properties["language"].
+	if (lang == "" || lang == "python") && strings.HasPrefix(originalStub, "Class:") &&
+		isSimplePythonIdentifier(name) && idx.nameExists(name) {
+		return DispositionDynamic
+	}
+	// Wave-4 stragglers (#529) — Django YAML relationship rule
+	// `from \S+\.models import (\w+)` emits `Model:<Name>` IMPORTS edges
+	// rewritten to `View:<Name>` by the django_imports_rewrite pass when
+	// the source is a view file and the name matches a view-class suffix.
+	// Base-class names like `TimestampedModel` (ends in neither viewSuffix
+	// nor "Serializer") reach here as `View:<Name>` but the entity is
+	// extracted as kind `Model`, so `byKind["View"]` misses and
+	// bare-name hits → bug-resolver. The import is real but the kind
+	// mismatch is a YAML-pass artefact. nameExists guard prevents false
+	// Dynamic routing for View: stubs whose targets genuinely don't exist.
+	if (lang == "" || lang == "python") && strings.HasPrefix(originalStub, "View:") &&
+		isSimplePythonIdentifier(name) && idx.nameExists(name) {
+		return DispositionDynamic
+	}
 	// Wave-4 (PHP) — Symfony / Doctrine / PSR / PHPUnit framework
 	// interfaces and abstract base classes routinely appear as the
 	// trailing segment of structural-ref IMPLEMENTS / EXTENDS stubs

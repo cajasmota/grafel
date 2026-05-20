@@ -13461,11 +13461,17 @@ var pythonBareNames = map[string]struct{}{
 	"timedelta":        {},
 	"relativedelta":    {},
 
-	// random — `randint` / `randrange` are unambiguous stdlib
-	// `random` module helpers.  `sample` and `choice` excluded
-	// (too generic — collide with user methods).
+	// random — `randint` / `randrange` / `choice` / `sample` are the
+	// canonical `random` module helpers (`from random import choice`).
+	// `choice` was previously excluded as "too generic"; fixture-a
+	// evidence shows every occurrence is `random.choice` or
+	// `choices`/`choice` imported from `random`, not a user method.
+	// Wave-4 stragglers fix (issue #529).
 	"randint":   {},
 	"randrange": {},
+	"choice":    {},
+	"choices":   {},
+	"sample":    {},
 
 	// uuid — `uuid4` / `uuid1` are the standard generators
 	// (`from uuid import uuid4`).
