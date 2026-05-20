@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io/fs"
 	"math/rand"
+	"mime"
 	"net"
 	"net/http"
+	"path"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -71,6 +74,14 @@ func (s *Server) Listen() (int, error) {
 		s.cfg.PortRange.Min, s.cfg.PortRange.Max, maxAttempts)
 }
 
+// UseListener hands an already-bound TCP listener to the server. This is
+// used by the daemon integration (#929): the daemon binds port 47274 at
+// startup and passes the listener in rather than calling Listen().
+// Calling Listen() after UseListener returns an error.
+func (s *Server) UseListener(l net.Listener) {
+	s.listener = l
+}
+
 // Serve runs the HTTP server on the listener bound by Listen. It blocks
 // until ctx is cancelled or http.Server returns a non-shutdown error.
 func (s *Server) Serve(ctx context.Context) error {
@@ -116,11 +127,12 @@ func (s *Server) Addr() string {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
-	// Static SPA. The embed root is "static/", strip that prefix so the
+	// Static SPA. The embed root is "dist/", strip that prefix so the
 	// browser sees /index.html etc.
-	sub, err := fs.Sub(staticFS, "static")
+	// Unknown paths (SPA client-side routes) fall through to index.html.
+	sub, err := fs.Sub(staticFS, "dist")
 	if err == nil {
-		mux.Handle("/", http.FileServer(http.FS(sub)))
+		mux.Handle("/", spaHandler(sub))
 	}
 
 	// --- DASH-1 (legacy) endpoints ---
@@ -175,6 +187,67 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/ws/events", s.handleWSEvents)
 
 	return s.withAuth(mux)
+}
+
+// spaHandler returns an http.Handler that serves static files from fsys.
+// For requests whose path does not match an existing file the handler
+// falls back to index.html so the React Router can take over on the
+// client side. Hashed assets (e.g. main-abc123.js) receive a long-lived
+// immutable cache header; everything else gets no-cache.
+func spaHandler(fsys fs.FS) http.Handler {
+	fileServer := http.FileServer(http.FS(fsys))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Strip leading slash for fs.Stat lookup.
+		p := strings.TrimPrefix(r.URL.Path, "/")
+		if p == "" {
+			p = "index.html"
+		}
+
+		// Check whether the file exists in the embed.
+		if _, err := fs.Stat(fsys, p); err == nil {
+			// Apply cache headers before the file server writes them.
+			if isCacheable(p) {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else {
+				w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+			}
+			// Ensure proper MIME type for JavaScript modules (important in
+			// some browsers when served from embed.FS).
+			if ext := path.Ext(p); ext != "" {
+				if mt := mime.TypeByExtension(ext); mt != "" {
+					w.Header().Set("Content-Type", mt)
+				}
+			}
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// Unknown path — serve index.html for SPA client-side routing.
+		// Rewrite the request to / so the file server picks up index.html.
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/"
+		fileServer.ServeHTTP(w, r2)
+	})
+}
+
+// isCacheable reports whether a static asset path carries a content hash
+// and can be served with a long-lived immutable cache directive. Vite
+// generates hashed names for JS/CSS chunks (e.g. index-BcDe1234.js).
+func isCacheable(p string) bool {
+	ext := path.Ext(p)
+	switch ext {
+	case ".js", ".css", ".woff", ".woff2", ".ttf", ".eot":
+		base := strings.TrimSuffix(path.Base(p), ext)
+		// Vite hashes are 8 hex chars separated by a dash.
+		if idx := strings.LastIndex(base, "-"); idx >= 0 {
+			suffix := base[idx+1:]
+			if len(suffix) >= 6 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // withAuth wraps the mux with a bearer-token check when cfg.Auth.Enabled.
