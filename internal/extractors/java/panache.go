@@ -628,6 +628,36 @@ func synthesizePanacheEntities(
 	// @NamedQuery synthesis — scan the class declaration for named queries.
 	out = append(out, synthesizeNamedQueryEntities(className, classDeclSrc, sourceFile)...)
 
+	// Issue #820 — deduplicate by Name so that overloaded methods (e.g.
+	// multiple findById / find / list overloads that all carry the same
+	// entity Name "Order.findById") don't collide in the resolver's byName
+	// and byKind indexes. The resolver binds CALLS stubs by entity Name,
+	// not by signature, so one canonical entity per (class, methodName)
+	// pair is sufficient to make every call site resolve. First-writer-wins
+	// matches the byName first-writer-wins policy in BuildIndex.
+	out = dedupSynthByName(out)
+
+	return out
+}
+
+// dedupSynthByName returns a new slice containing the FIRST entity for each
+// unique Name. Preserves the original ordering for entities whose Name has
+// not been seen before; duplicates (same Name, any Kind/Signature) are
+// dropped. Used to prevent synthesized overloads from poisoning the global
+// byName index with a blank ambiguous sentinel (issue #820).
+func dedupSynthByName(entities []types.EntityRecord) []types.EntityRecord {
+	if len(entities) == 0 {
+		return entities
+	}
+	seen := make(map[string]bool, len(entities))
+	out := make([]types.EntityRecord, 0, len(entities))
+	for _, e := range entities {
+		if seen[e.Name] {
+			continue
+		}
+		seen[e.Name] = true
+		out = append(out, e)
+	}
 	return out
 }
 

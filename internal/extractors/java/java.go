@@ -255,10 +255,13 @@ func walk(
 		// so detectedAnnotations can scan the header and collectLombokFields
 		// can scan the body.
 		//
-		// Synthesized entities are appended AFTER the CONTAINS-edge loop so
-		// the class entity's CONTAINS relationships point only at real
-		// tree-sitter-parsed children, not at synthesized ones (the resolver
-		// handles synthesized entities differently).
+		// Issue #820 — emit CONTAINS edges from the class entity to every
+		// synthesized SCOPE.Operation and SCOPE.Component entity. Without these
+		// edges the synthesized entities have zero inbound edges and appear
+		// orphaned. The CONTAINS relationship correctly models the fact that the
+		// class "contains" its annotation-generated methods even though the
+		// method bodies don't appear in source. We emit structural refs (Format A)
+		// exactly as for real extracted children so the resolver can rebind them.
 		if node.Type() == "class_declaration" {
 			var classDeclSrc string
 			if body != nil {
@@ -272,9 +275,11 @@ func walk(
 				classBodySrc = string(file.Content[body.StartByte():body.EndByte()])
 			}
 			// Class-level Lombok synthesis.
-			*out = append(*out, synthesizeLombokEntities(rec.Name, classDeclSrc, classBodySrc, file.Path)...)
+			lombokSynth := synthesizeLombokEntities(rec.Name, classDeclSrc, classBodySrc, file.Path)
+			*out = append(*out, lombokSynth...)
 			// Field-level @Getter / @Setter / @With synthesis (supplements class-level).
-			*out = append(*out, synthesizeFieldLevelLombok(rec.Name, classBodySrc, file.Path)...)
+			lombokFieldSynth := synthesizeFieldLevelLombok(rec.Name, classBodySrc, file.Path)
+			*out = append(*out, lombokFieldSynth...)
 			// Issue #804 — Quarkus Panache static-method synthesizer.
 			// Synthesize SCOPE.Operation entities for every method that Panache
 			// provides at runtime for classes extending PanacheEntity / PanacheEntityBase,
@@ -282,7 +287,36 @@ func walk(
 			// rawImports is derived from the full file content so import-package
 			// detection determines which Panache flavour (SQL/Reactive/MongoDB) to use.
 			rawImports := collectRawImports(file.Content)
-			*out = append(*out, synthesizePanacheEntities(rec.Name, classDeclSrc, classBodySrc, file.Path, rawImports)...)
+			panacheSynth := synthesizePanacheEntities(rec.Name, classDeclSrc, classBodySrc, file.Path, rawImports)
+			*out = append(*out, panacheSynth...)
+
+			// Issue #820 — emit CONTAINS edges from the class entity to every
+			// synthesized entity. This gives each synthesized method/component
+			// at least one inbound edge (from its containing class) so it is no
+			// longer orphaned. Use Format A structural refs matching the kind:
+			//   SCOPE.Operation  → extractor.BuildOperationStructuralRef
+			//   SCOPE.Component  → scope:component:ref:java:<file>:<name>
+			//   SCOPE.Schema     → not emitted by synthesizers, skip
+			allSynth := append(lombokSynth, lombokFieldSynth...)
+			allSynth = append(allSynth, panacheSynth...)
+			for _, s := range allSynth {
+				var toID string
+				switch s.Kind {
+				case "SCOPE.Operation":
+					toID = extractor.BuildOperationStructuralRef("java", file.Path, s.Name)
+				case "SCOPE.Component":
+					// Builder class entities (e.g. OrderBuilder). Use the
+					// component structural ref form mirroring buildComponent.
+					toID = extractor.BuildComponentStructuralRef("java", file.Path, s.Name)
+				default:
+					continue
+				}
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: toID,
+						Kind: "CONTAINS",
+					})
+			}
 		}
 		return
 

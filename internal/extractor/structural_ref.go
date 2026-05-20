@@ -16,6 +16,22 @@ func BuildOperationStructuralRef(lang, filePath, name string) string {
 	return "scope:operation:method:" + lang + ":" + filepath.ToSlash(filePath) + ":" + name
 }
 
+// BuildComponentStructuralRef returns the canonical Format A structural-ref
+// for class→nested-class CONTAINS edges. Shape:
+//
+//	scope:component:class:<lang>:<file>:<name>
+//
+// where <file> is forward-slash normalized via filepath.ToSlash. Used by the
+// Java extractor to emit CONTAINS edges from a class entity to synthesized
+// builder / companion classes (e.g. Lombok @Builder emits an `OrderBuilder`
+// class). Giving each synthesized SCOPE.Component at least one inbound edge
+// prevents it from counting as an orphan in the graph.
+//
+// Counterpart of BuildOperationStructuralRef for SCOPE.Operation entities.
+func BuildComponentStructuralRef(lang, filePath, name string) string {
+	return "scope:component:class:" + lang + ":" + filepath.ToSlash(filePath) + ":" + name
+}
+
 // BuildSchemaColumnStructuralRef returns the canonical Format B structural-ref
 // for table→column CONTAINS edges (and column-as-FromID on column REFERENCES
 // edges). Shape:

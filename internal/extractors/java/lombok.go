@@ -642,6 +642,35 @@ func synthesizeLombokEntities(
 		}
 	}
 
+	// Issue #820 — deduplicate by Name: when multiple Lombok annotations on
+	// the same class independently synthesize the same entity Name (e.g.
+	// @Builder + @NoArgsConstructor + @AllArgsConstructor all emit
+	// "Dto.Dto" as the constructor entity, or @Data + @Getter both emit
+	// getters), keep only the first occurrence. First-writer-wins matches
+	// the resolver's byName first-writer-wins policy. Without dedup the
+	// byName index blanks the entry as ambiguous and CALLS edges targeting
+	// the synthesized method name can't resolve (issue #820).
+	out = dedupLombokByName(out)
+
+	return out
+}
+
+// dedupLombokByName returns a new slice containing the FIRST entity for each
+// unique Name, preserving order. Duplicates (same Name, any Kind/Signature)
+// are dropped. Mirrors dedupSynthByName in panache.go.
+func dedupLombokByName(entities []types.EntityRecord) []types.EntityRecord {
+	if len(entities) == 0 {
+		return entities
+	}
+	seen := make(map[string]bool, len(entities))
+	out := make([]types.EntityRecord, 0, len(entities))
+	for _, e := range entities {
+		if seen[e.Name] {
+			continue
+		}
+		seen[e.Name] = true
+		out = append(out, e)
+	}
 	return out
 }
 

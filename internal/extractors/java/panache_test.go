@@ -227,20 +227,23 @@ func TestSynthesizePanache_SQLEntity_HasFindById(t *testing.T) {
 	}
 }
 
-func TestSynthesizePanache_SQLEntity_HasInstancePersist(t *testing.T) {
+func TestSynthesizePanache_SQLEntity_HasPersist(t *testing.T) {
+	// Issue #820: after dedup-by-Name the static persist overloads appear
+	// first and the instance form is dropped. The entity still exists under
+	// the name "Book.persist" and all call sites (static + instance) resolve
+	// to it. We no longer assert on is_static — only that the entity exists.
 	decl := `@Entity public class Book extends PanacheEntity {`
 	imports := `import io.quarkus.hibernate.orm.panache.PanacheEntity;`
 	entities := synthesizePanacheEntities("Book", decl, "", "/src/Book.java", imports)
 
-	// Instance persist is the one without is_static
 	found := false
 	for _, e := range entities {
-		if e.Name == "Book.persist" && e.Properties["is_static"] == "" {
+		if e.Name == "Book.persist" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected instance Book.persist entity (no is_static)")
+		t.Error("expected Book.persist entity")
 	}
 }
 
@@ -499,13 +502,23 @@ func TestSynthesizePanache_NonPanache_NilOutput(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestSynthesizePanache_SQLEntity_MinimumMethodCount(t *testing.T) {
+	// Issue #820: after dedup-by-Name overloaded methods (findById, find,
+	// findAll, list, listAll, stream, streamAll, count, delete, persist, update)
+	// are collapsed to one entity per method name. The unique method names for
+	// a SQL PanacheEntity are:
+	//   Static:   findById, findByIdOptional, find, findAll, list, listAll,
+	//             stream, streamAll, count, delete, deleteById, deleteAll,
+	//             persist, update, project  → 15
+	//   Instance: persistAndFlush, isPersistent, flush  → 3 new unique names
+	//             (persist and delete already emitted by static side)
+	//   Total:    18 unique names
+	// We require ≥15 to guard against regressions that drop entire families.
 	decl := `@Entity public class Book extends PanacheEntity {`
 	imports := `import io.quarkus.hibernate.orm.panache.PanacheEntity;`
 	entities := synthesizePanacheEntities("Book", decl, "", "/src/Book.java", imports)
 
-	// We expect at least 30 entities (24 static + 5 instance + any named queries)
-	if len(entities) < 30 {
-		t.Errorf("expected at least 30 synthesized entities, got %d", len(entities))
+	if len(entities) < 15 {
+		t.Errorf("expected at least 15 synthesized entities after dedup, got %d", len(entities))
 	}
 }
 
@@ -813,6 +826,58 @@ func TestSynthesizePanacheDSL_AllEntitiesHaveSourceFile(t *testing.T) {
 	for _, e := range entities {
 		if e.SourceFile == "" {
 			t.Errorf("entity %s: expected non-empty SourceFile", e.Name)
+// Issue #820 — regression tests for dedup-by-Name fix.
+// Verifies that the entity Name set is unique after synthesis, so the
+// resolver's byName index never flips to the ambiguous blank-sentinel
+// and CALLS stubs always resolve.
+
+func TestDedupSynthByName_UniqueNames(t *testing.T) {
+	decl := `@Entity public class Order extends PanacheEntity {`
+	imports := `import io.quarkus.hibernate.orm.panache.PanacheEntity;`
+	entities := synthesizePanacheEntities("Order", decl, "", "/src/Order.java", imports)
+
+	seen := make(map[string]int)
+	for _, e := range entities {
+		seen[e.Name]++
+	}
+	for name, count := range seen {
+		if count > 1 {
+			t.Errorf("duplicate entity Name %q emitted %d times after dedup (issue #820)", name, count)
+		}
+	}
+}
+
+func TestDedupSynthByName_FindByIdPresent(t *testing.T) {
+	// After dedup, the canonical Order.findById entity must still exist.
+	decl := `@Entity public class Order extends PanacheEntity {`
+	imports := `import io.quarkus.hibernate.orm.panache.PanacheEntity;`
+	entities := synthesizePanacheEntities("Order", decl, "", "/src/Order.java", imports)
+
+	found := false
+	for _, e := range entities {
+		if e.Name == "Order.findById" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("Order.findById must be present after dedup (issue #820)")
+	}
+}
+
+func TestDedupLombokByName_ConstructorNoDup(t *testing.T) {
+	// @Builder + @NoArgsConstructor + @AllArgsConstructor all emit className.className
+	// as a constructor entity. After dedup only one must survive.
+	decl := "@Builder\n@NoArgsConstructor\n@AllArgsConstructor\npublic class Dto"
+	body := "    private String value;\n"
+	entities := synthesizeLombokEntities("Dto", decl, body, "Dto.java")
+
+	seen := make(map[string]int)
+	for _, e := range entities {
+		seen[e.Name]++
+	}
+	for name, count := range seen {
+		if count > 1 {
+			t.Errorf("duplicate Lombok entity Name %q emitted %d times after dedup (issue #820)", name, count)
 		}
 	}
 }
@@ -888,6 +953,32 @@ func TestSynthesizePanacheDSL_PanacheQuery_AllDSLMethodsHaveOwnerProperty(t *tes
 		}
 		if expectedOwner != "" && e.Properties["owner"] != expectedOwner {
 			t.Errorf("entity %s: expected owner=%s, got %q", e.Name, expectedOwner, e.Properties["owner"])
+func TestDedupSynthByName_DirectFunction(t *testing.T) {
+	// Unit test for the dedupSynthByName helper directly.
+	input := []types.EntityRecord{
+		{Name: "A.findById", Kind: "SCOPE.Operation"},
+		{Name: "A.findById", Kind: "SCOPE.Operation"}, // dup
+		{Name: "A.find", Kind: "SCOPE.Operation"},
+		{Name: "A.findAll", Kind: "SCOPE.Operation"},
+		{Name: "A.findAll", Kind: "SCOPE.Operation"}, // dup
+	}
+	result := dedupSynthByName(input)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 unique entities, got %d", len(result))
+	}
+	names := make([]string, len(result))
+	for i, e := range result {
+		names[i] = e.Name
+	}
+	for _, want := range []string{"A.findById", "A.find", "A.findAll"} {
+		found := false
+		for _, n := range names {
+			if n == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in deduplicated result %v", want, names)
 		}
 	}
 }
