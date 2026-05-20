@@ -163,10 +163,10 @@ export function GroupSelector({ groups }: GroupSelectorProps) {
         onClick={() => (open ? closePanel() : openPanel())}
         className={[
           'flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors',
-          'border border-slate-700',
+          'border border-slate-200 dark:border-slate-700',
           open
-            ? 'bg-slate-800 text-slate-200 border-sky-500'
-            : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200',
+            ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200 border-sky-500'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200',
         ].join(' ')}
         data-testid="group-selector-trigger"
       >
@@ -188,10 +188,10 @@ export function GroupSelector({ groups }: GroupSelectorProps) {
           className={[
             // Mobile: fixed full-screen sheet from top
             'sm:absolute sm:right-0 sm:top-full sm:mt-1 sm:w-72',
-            'sm:max-h-[min(480px,80vh)] sm:rounded-lg sm:shadow-xl sm:border sm:border-slate-700',
+            'sm:max-h-[min(480px,80vh)] sm:rounded-lg sm:shadow-xl sm:border sm:border-slate-200 dark:sm:border-slate-700',
             // Mobile overrides applied below via fixed
             'fixed sm:static inset-x-0 top-12 bottom-0 sm:inset-auto',
-            'bg-slate-950 z-50 flex flex-col',
+            'bg-white dark:bg-slate-950 z-50 flex flex-col',
           ].join(' ')}
           role="dialog"
           aria-modal="false"
@@ -199,24 +199,24 @@ export function GroupSelector({ groups }: GroupSelectorProps) {
           data-testid="group-selector-panel"
         >
           {/* Mobile close strip */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 sm:hidden">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-800 sm:hidden">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Switch group
             </span>
             <button
               type="button"
               aria-label="Close"
               onClick={closePanel}
-              className="p-1 rounded text-slate-500 hover:text-slate-300"
+              className="p-1 rounded text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Search input */}
-          <div className="relative px-3 py-2 border-b border-slate-800">
+          <div className="relative px-3 py-2 border-b border-slate-200 dark:border-slate-800">
             <Search
-              className="absolute left-5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600 pointer-events-none"
+              className="absolute left-5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-slate-600 pointer-events-none"
               aria-hidden
             />
             <input
@@ -227,8 +227,8 @@ export function GroupSelector({ groups }: GroupSelectorProps) {
               onChange={(e) => setQuery(e.target.value)}
               aria-label="Filter groups"
               className={[
-                'w-full bg-slate-900 border border-slate-700 rounded text-xs',
-                'pl-7 pr-2 py-1.5 text-slate-300 placeholder-slate-600',
+                'w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs',
+                'pl-7 pr-2 py-1.5 text-slate-700 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-600',
                 'focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500',
               ].join(' ')}
               data-testid="group-selector-search"
@@ -238,7 +238,7 @@ export function GroupSelector({ groups }: GroupSelectorProps) {
           {/* Scrollable list */}
           <div className="overflow-y-auto flex-1" role="listbox" aria-label="Groups">
             {pinned.length === 0 && others.length === 0 && (
-              <p className="px-4 py-3 text-xs text-slate-600 select-none">
+              <p className="px-4 py-3 text-xs text-slate-500 dark:text-slate-600 select-none">
                 No groups match
               </p>
             )}
@@ -274,7 +274,7 @@ function GroupSection({ label, groups, activeGroup, pinnedIds, onSelect, onToggl
   return (
     <div>
       {label && (
-        <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-slate-600 font-semibold select-none">
+        <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold select-none">
           {label}
         </p>
       )}
@@ -295,8 +295,8 @@ function GroupSection({ label, groups, activeGroup, pinnedIds, onSelect, onToggl
                   'group w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors',
                   'border-l-2',
                   isActive
-                    ? 'bg-slate-800 border-sky-500 text-slate-100'
-                    : 'border-transparent text-slate-400 hover:bg-slate-800/60 hover:text-slate-300',
+                    ? 'bg-slate-100 dark:bg-slate-800 border-sky-500 text-slate-900 dark:text-slate-100'
+                    : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 hover:text-slate-800 dark:hover:text-slate-300',
                 ].join(' ')}
               >
                 {/* Group name */}
@@ -321,7 +321,7 @@ function GroupSection({ label, groups, activeGroup, pinnedIds, onSelect, onToggl
                     'p-0.5 rounded transition-colors cursor-pointer',
                     isPinned
                       ? 'text-sky-400 opacity-100'
-                      : 'text-slate-600 opacity-0 group-hover:opacity-100',
+                      : 'text-slate-400 dark:text-slate-600 opacity-0 group-hover:opacity-100',
                     'hover:text-sky-300',
                   ].join(' ')}
                 >

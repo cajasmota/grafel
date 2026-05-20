@@ -37,7 +37,7 @@ export function PathRow({ path, group, isSelected = false, onSelect }: PathRowPr
       aria-selected={isSelected}
       className={[
         'group flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 dark:border-slate-800',
-        'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 focus:outline-none focus:bg-slate-800/80',
+        'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 focus:outline-none focus:bg-slate-200/80 dark:focus:bg-slate-800/80',
         'transition-colors duration-75',
         isSelected ? 'bg-slate-200/80 dark:bg-slate-800/80 border-l-2 border-l-sky-500' : '',
       ].filter(Boolean).join(' ')}
