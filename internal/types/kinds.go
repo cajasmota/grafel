@@ -60,6 +60,11 @@ const (
 	//   sides so the import-channel linker can join them without new linker code.
 	EntityKindGrpcService EntityKind = "SCOPE.GrpcService"
 	EntityKindGrpcMethod  EntityKind = "SCOPE.GrpcMethod"
+
+	// #749: Django Model.Meta constraints=[UniqueConstraint/CheckConstraint]
+	// emit SCOPE.Constraint entities bound to the parent Model via CONTAINS.
+	// Subtypes: "unique" (UniqueConstraint) and "check" (CheckConstraint).
+	EntityKindConstraint EntityKind = "SCOPE.Constraint"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -102,6 +107,8 @@ func AllEntityKinds() []EntityKind {
 		// #725:
 		EntityKindGrpcService,
 		EntityKindGrpcMethod,
+		// #749:
+		EntityKindConstraint,
 	}
 }
 

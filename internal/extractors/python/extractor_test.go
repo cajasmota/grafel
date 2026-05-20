@@ -1455,6 +1455,7 @@ class Mailer:
 	}
 }
 
+
 // TestPascalCaseReceiverCALLSEdges verifies that bare PascalCase identifier
 // receivers (e.g. `User.save(...)`) produce qualified CALLS edges
 // `User.save` instead of an ambiguous bare `save`. Regression test for
@@ -1505,6 +1506,158 @@ def create_user():
 	// SCREAMING_SNAKE receiver (`ALLOWED_HOSTS`) must NOT produce a qualified edge.
 	if calledTargets["ALLOWED_HOSTS.append"] {
 		t.Errorf("should not produce qualified edge for SCREAMING_SNAKE receiver ALLOWED_HOSTS")
+	}
+}
+
+// Issue #749 — Django Model.Meta constraints CONTAINS edges
+// ---------------------------------------------------------------------------
+
+// TestExtract_DjangoModel_MetaConstraints verifies that a Django model with
+// Meta.constraints = [UniqueConstraint(...), CheckConstraint(...)] emits:
+//  1. Two SCOPE.Constraint entities with the correct Name, Kind, and Subtype.
+//  2. CONTAINS edges from the parent class to each constraint.
+//
+// This closes the gap where constraints were either missing from the graph
+// entirely or emitted as orphans by the SQLAlchemy ForeignKey YAML rule
+// misfiring on Django model files.
+func TestExtract_DjangoModel_MetaConstraints(t *testing.T) {
+	src := `class Order(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    quantity = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "orders"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "post"],
+                name="unique_user_post",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=0),
+                name="check_quantity_gte_zero",
+            ),
+        ]
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	entities = stripFileEntity(entities)
+
+	// 1. Both SCOPE.Constraint entities must exist.
+	wantConstraints := map[string]string{
+		"Order.unique_user_post":       "unique",
+		"Order.check_quantity_gte_zero": "check",
+	}
+	for wantName, wantSubtype := range wantConstraints {
+		var found *types.EntityRecord
+		for i := range entities {
+			if entities[i].Name == wantName {
+				found = &entities[i]
+				break
+			}
+		}
+		if found == nil {
+			t.Errorf("constraint entity %q not found; got %v", wantName, entityNames(entities))
+			continue
+		}
+		if found.Kind != "SCOPE.Constraint" {
+			t.Errorf("%q: expected Kind=SCOPE.Constraint, got %q", wantName, found.Kind)
+		}
+		if found.Subtype != wantSubtype {
+			t.Errorf("%q: expected Subtype=%q, got %q", wantName, wantSubtype, found.Subtype)
+		}
+	}
+
+	// 2. Order class must have CONTAINS edges to each constraint.
+	var orderEntity *types.EntityRecord
+	for i := range entities {
+		if entities[i].Name == "Order" && entities[i].Kind == "SCOPE.Component" {
+			orderEntity = &entities[i]
+			break
+		}
+	}
+	if orderEntity == nil {
+		t.Fatalf("Order class entity not found; got %v", entityNames(entities))
+	}
+	for wantName := range wantConstraints {
+		wantToID := "scope:constraint:python:test.py:" + wantName
+		found := false
+		for _, rel := range orderEntity.Relationships {
+			if rel.Kind == "CONTAINS" && rel.ToID == wantToID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Order: missing CONTAINS edge to %q; got rels=%+v", wantToID, orderEntity.Relationships)
+		}
+	}
+}
+
+// TestExtract_DjangoModel_MetaConstraints_BareNames verifies that constraints
+// expressed without the `models.` prefix (e.g. after `from django.db.models
+// import UniqueConstraint`) are also captured.
+func TestExtract_DjangoModel_MetaConstraints_BareNames(t *testing.T) {
+	src := `from django.db.models import UniqueConstraint, CheckConstraint
+
+class Article(models.Model):
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=["slug"], name="unique_article_slug"),
+            CheckConstraint(condition=Q(rating__gte=0), name="article_rating_gte_zero"),
+        ]
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	entities = stripFileEntity(entities)
+
+	wantConstraints := []string{
+		"Article.unique_article_slug",
+		"Article.article_rating_gte_zero",
+	}
+	for _, wantName := range wantConstraints {
+		var found bool
+		for _, e := range entities {
+			if e.Name == wantName && e.Kind == "SCOPE.Constraint" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("bare-name constraint %q not found; got %v", wantName, entityNames(entities))
+		}
+	}
+}
+
+// TestExtract_DjangoModel_MetaConstraints_NoNameArg verifies that constraints
+// lacking a `name=` keyword argument are NOT emitted (they cannot be stably
+// identified across indexing runs). The test ensures no partial/unnamed
+// entities are added.
+func TestExtract_DjangoModel_MetaConstraints_NoNameArg(t *testing.T) {
+	src := `class Product(models.Model):
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["sku"]),
+        ]
+`
+	tree := parse(t, []byte(src))
+	ext, _ := extractor.Get("python")
+	entities, err := ext.Extract(context.Background(), makeFile(src, tree))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	entities = stripFileEntity(entities)
+	for _, e := range entities {
+		if e.Kind == "SCOPE.Constraint" {
+			t.Errorf("unexpected SCOPE.Constraint entity for unnamed constraint: %+v", e)
+		}
 	}
 }
 

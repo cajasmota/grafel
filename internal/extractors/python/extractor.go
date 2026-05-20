@@ -304,6 +304,14 @@ func walkNode(
 					child := &(*out)[k]
 					if child.Kind == "SCOPE.Component" && child.Subtype == "class" {
 						applyFrameworkInnerClassProperties(&(*out)[classIdx], child, body, file.Content, childParent)
+						// Issue #749 — Django Model.Meta constraints=[UniqueConstraint/
+						// CheckConstraint] emit SCOPE.Constraint entities that were
+						// previously orphaned because no CONTAINS edge linked them to
+						// the parent Model class. Parse the Meta.constraints list and
+						// emit synthetic SCOPE.Constraint entities with CONTAINS edges.
+						// extractMetaConstraintEntities is a no-op for non-Meta inner
+						// classes (Config, etc.) — it re-checks the name internally.
+						extractMetaConstraintEntities(body, file, child.Name, childParent, classIdx, out)
 					}
 				}
 			}
@@ -400,6 +408,9 @@ func walkNode(
 						child := &(*out)[k]
 						if child.Kind == "SCOPE.Component" && child.Subtype == "class" {
 							applyFrameworkInnerClassProperties(&(*out)[classIdx], child, body, file.Content, childParent)
+							// Issue #749 — emit SCOPE.Constraint entities for
+							// Meta.constraints=[UniqueConstraint/CheckConstraint].
+							extractMetaConstraintEntities(body, file, child.Name, childParent, classIdx, out)
 						}
 					}
 				}
@@ -1251,6 +1262,187 @@ func findAll(root *sitter.Node, kind string) []*sitter.Node {
 		}
 	}
 	return out
+}
+
+// extractMetaConstraintEntities parses the `constraints = [...]` assignment
+// inside a Django Model.Meta inner class body and emits a SCOPE.Constraint
+// entity for each UniqueConstraint / CheckConstraint entry that carries a
+// `name=` keyword argument. It also appends CONTAINS relationships from the
+// parent class entity (at index classIdx in *out) to each emitted constraint.
+//
+// Issue #749 — previously these Meta.constraints declarations either produced
+// no entities (when the Meta body was only parsed for properties) or produced
+// orphan Constraint entities (from the SQLAlchemy YAML rule misfiring on Django
+// model files). This function closes the gap by emitting them directly from the
+// Python extractor with proper CONTAINS edges.
+//
+// Parameters:
+//
+//	metaClassBody  — the class body sitter.Node of the enclosing class (not the
+//	                 Meta body itself — we search downward for the Meta assignment)
+//	file           — the source file input
+//	innerClassName — the full dotted name of the Meta inner class (e.g. "Order.Meta")
+//	parentClass    — the name of the enclosing parent class (e.g. "Order")
+//	classIdx       — index of the parent class entity in *out
+//	out            — the shared entity accumulator
+//
+// The function is a no-op when innerClassName does not end in ".Meta" or when
+// no `constraints = [...]` assignment is present in the Meta body.
+func extractMetaConstraintEntities(
+	metaClassBody *sitter.Node,
+	file extractor.FileInput,
+	innerClassName string,
+	parentClass string,
+	classIdx int,
+	out *[]types.EntityRecord,
+) {
+	// Only act on inner classes whose bare name is "Meta".
+	bareName := innerClassName
+	if dot := strings.LastIndexByte(bareName, '.'); dot >= 0 {
+		bareName = bareName[dot+1:]
+	}
+	if bareName != "Meta" {
+		return
+	}
+
+	// Locate the Meta class_definition node inside metaClassBody so we can
+	// walk its body for the `constraints = [...]` assignment.
+	var metaBody *sitter.Node
+	for i := range int(metaClassBody.ChildCount()) {
+		ch := metaClassBody.Child(i)
+		if ch == nil {
+			continue
+		}
+		var candidate *sitter.Node
+		switch ch.Type() {
+		case "class_definition":
+			candidate = ch
+		case "decorated_definition":
+			if inner := ch.ChildByFieldName("definition"); inner != nil && inner.Type() == "class_definition" {
+				candidate = inner
+			}
+		}
+		if candidate == nil {
+			continue
+		}
+		nameNode := candidate.ChildByFieldName("name")
+		if nameNode == nil {
+			continue
+		}
+		if nodeText(nameNode, file.Content) == "Meta" {
+			metaBody = candidate.ChildByFieldName("body")
+			break
+		}
+	}
+	if metaBody == nil {
+		return
+	}
+
+	// Walk the Meta body for `constraints = [...]` assignments.
+	for i := range int(metaBody.ChildCount()) {
+		stmt := metaBody.Child(i)
+		if stmt == nil {
+			continue
+		}
+		if stmt.Type() != "expression_statement" {
+			continue
+		}
+		for j := range int(stmt.NamedChildCount()) {
+			expr := stmt.NamedChild(j)
+			if expr == nil || expr.Type() != "assignment" {
+				continue
+			}
+			lhs := expr.ChildByFieldName("left")
+			rhs := expr.ChildByFieldName("right")
+			if lhs == nil || rhs == nil {
+				continue
+			}
+			if lhs.Type() != "identifier" || nodeText(lhs, file.Content) != "constraints" {
+				continue
+			}
+			// Found `constraints = <rhs>`. Walk rhs for UniqueConstraint /
+			// CheckConstraint call nodes and extract their `name=` argument.
+			constraintCalls := findAll(rhs, "call")
+			for _, call := range constraintCalls {
+				funcNode := call.ChildByFieldName("function")
+				if funcNode == nil {
+					continue
+				}
+				funcText := nodeText(funcNode, file.Content)
+				// Accept models.UniqueConstraint, models.CheckConstraint,
+				// UniqueConstraint, CheckConstraint (with or without module prefix).
+				isConstraintCall := strings.HasSuffix(funcText, "UniqueConstraint") ||
+					strings.HasSuffix(funcText, "CheckConstraint")
+				if !isConstraintCall {
+					continue
+				}
+				// Extract the `name=` keyword argument value.
+				argsNode := call.ChildByFieldName("arguments")
+				if argsNode == nil {
+					continue
+				}
+				var constraintName string
+				for a := range int(argsNode.ChildCount()) {
+					arg := argsNode.Child(a)
+					if arg == nil || arg.Type() != "keyword_argument" {
+						continue
+					}
+					keyNode := arg.ChildByFieldName("name")
+					valNode := arg.ChildByFieldName("value")
+					if keyNode == nil || valNode == nil {
+						continue
+					}
+					if nodeText(keyNode, file.Content) == "name" {
+						constraintName = stripQuotes(strings.TrimSpace(nodeText(valNode, file.Content)))
+						break
+					}
+				}
+				if constraintName == "" {
+					// No `name=` found — skip (anonymous constraints can't be
+					// stably identified; leave them unlinked).
+					continue
+				}
+
+				// Qualified constraint name: "ParentClass.constraint_name" so
+				// multiple models in the same file don't collide.
+				qualifiedName := parentClass + "." + constraintName
+
+				// Determine whether this is UniqueConstraint or CheckConstraint.
+				constraintSubtype := "check"
+				if strings.HasSuffix(funcText, "UniqueConstraint") {
+					constraintSubtype = "unique"
+				}
+
+				// Emit the SCOPE.Constraint entity.
+				constRec := types.EntityRecord{
+					Name:       qualifiedName,
+					Kind:       "SCOPE.Constraint",
+					Subtype:    constraintSubtype,
+					SourceFile: file.Path,
+					Language:   file.Language,
+					StartLine:  int(call.StartPoint().Row) + 1,
+					EndLine:    int(call.EndPoint().Row) + 1,
+					Properties: map[string]string{
+						"pattern_type":    "django_meta_constraint",
+						"constraint_name": constraintName,
+						"constraint_kind": funcText[strings.LastIndex(funcText, ".")+1:],
+					},
+					QualityScore: 0.8,
+				}
+				*out = append(*out, constRec)
+
+				// Emit CONTAINS edge from parent class to this constraint.
+				// Use a structural-ref ToID so the resolver can bind the stub
+				// via byLocation[file][qualifiedName].
+				toID := extractor.BuildConstraintStructuralRef(file.Path, qualifiedName)
+				(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+					types.RelationshipRecord{
+						ToID: toID,
+						Kind: "CONTAINS",
+					})
+			}
+		}
+	}
 }
 
 // nodeText returns the raw source bytes for a tree-sitter node as a string.

@@ -78,3 +78,18 @@ func BuildSchemaColumnStructuralRef(filePath, table, column string) string {
 func BuildSchemaFieldStructuralRef(lang, filePath, name string) string {
 	return "scope:schema:field:" + lang + ":" + filepath.ToSlash(filePath) + ":" + name
 }
+
+// BuildConstraintStructuralRef returns the canonical Format A structural-ref
+// for parent-class→constraint CONTAINS edges emitted by the Django Meta
+// constraint extractor (issue #749). Shape:
+//
+//	scope:constraint:python:<file>:<ParentClass>.<constraintName>
+//
+// where <file> is forward-slash normalized via filepath.ToSlash. The trailing
+// name segment matches the SCOPE.Constraint entity's Name ("<Parent>.<name>")
+// so the resolver's byLocation fallback binds the stub to the entity ID.
+// "python" is the only producer so the language is hard-coded to avoid
+// accidental cross-language collisions.
+func BuildConstraintStructuralRef(filePath, qualifiedName string) string {
+	return "scope:constraint:python:" + filepath.ToSlash(filePath) + ":" + qualifiedName
+}
