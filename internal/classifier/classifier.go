@@ -496,6 +496,9 @@ var extensionLanguageMap = map[string]string{
 	// OCaml — .ml is claimed for OCaml (SML is much less common)
 	".ml":  "ocaml",
 	".mli": "ocaml",
+	// ReScript
+	".res":  "rescript",
+	".resi": "rescript",
 	// Perl
 	".pl": "perl",
 	".pm": "perl",

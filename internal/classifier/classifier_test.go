@@ -386,6 +386,8 @@ func TestExtensionCoverage(t *testing.T) {
 		{"foo.prisma", "prisma"},
 		{"foo.hs", "haskell"},
 		{"foo.pl", "perl"},
+		{"foo.res", "rescript"},
+		{"foo.resi", "rescript"},
 	}
 
 	for _, tc := range cases {

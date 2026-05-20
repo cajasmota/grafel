@@ -33,6 +33,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/proto"
 	_ "github.com/cajasmota/archigraph/internal/extractors/python"
 	_ "github.com/cajasmota/archigraph/internal/extractors/razor"
+	_ "github.com/cajasmota/archigraph/internal/extractors/rescript"
 	_ "github.com/cajasmota/archigraph/internal/extractors/ruby"
 	_ "github.com/cajasmota/archigraph/internal/extractors/rust"
 	_ "github.com/cajasmota/archigraph/internal/extractors/scala"
