@@ -25,24 +25,35 @@ If the daemon is not running, the skill stops at Pass 0 and tells the user to ru
 
 The skill is a strict pipeline. Each pass has a dedicated prompt file under `prompts/`. A subagent reads the prompt and follows it; the orchestrator (this skill) tracks progress and gates each pass on the previous one's output.
 
-| Pass | Prompt | Purpose |
-|------|--------|---------|
-| 0 | `prompts/00-domain-qa.md` | First-run domain interview: what is this group, who owns it, what are the deployment boundaries. |
-| 1 | `prompts/01-inventory.md` | Discover repos and entities via `archigraph_find` / `archigraph_stats` / `archigraph_clusters`. |
-| 1a | `prompts/01a-residual-repair-sweep.md` | Pre-Q&A repair sweep (ADR-0015): list residuals via `archigraph_repairs(action=list)`, auto-resolve unambiguous ones, surface the rest as questions for Pass 1b. |
-| 1b | `prompts/01b-repair-aware-qa.md` | Repair-aware Q&A: walk the user through residuals Pass 1a could not auto-resolve; each answer becomes an `archigraph_repairs(action=submit)` call. |
-| 2 | `prompts/02-plan.md` | Produce a per-module documentation plan with token estimates. |
-| 3 | `prompts/03-overview.md` | Repo-level `overview.md` for every repo. |
-| 3a | `prompts/03a-generation-time-repair.md` | Hook (not a standalone pass): every writer in Passes 3-6 + 12 inspects outbound residuals of the entity it is about to describe, repairs in-place when possible, documents as runtime-resolved otherwise. |
-| 4 | `prompts/04-cluster.md` | Per-module deep-dive (parallel writer subagents, one per cluster). |
-| 5 | `prompts/05-reference.md` | Reference docs: API, config, deployment, scripts, dependencies. |
-| 6 | `prompts/06-cross-cutting.md` | Cross-cutting concerns: auth, logging, error handling, observability. |
-| 7 | `prompts/07-group-synthesis.md` | Group-level synthesis page that ties the repos together. (Cross-repo chains pending #769; until then writers should reach cross-repo via `archigraph_cross_links`). |
-| 8 | `prompts/08-cross-link.md` | Validate links and resolve cross-repo link candidates via `archigraph_cross_links`. |
-| — | *(Pass 9 reserved — planned for milestone-2 doc-site work)* | |
-| 10 | `prompts/10-pattern-convergence.md` | Aggregate subagent pattern candidates + promote convergent ones (ADR-0018 Phase 4). |
-| 11 | `prompts/11-pattern-cross-link.md` | Populate each approved pattern's `documentation_url` (ADR-0018 Phase 5). |
-| 12 | `prompts/12-pattern-prose.md` | Emit `docs/patterns/<category>/<id>.md` per approved pattern (ADR-0018 Phase 6). |
+### Expected time per pass
+
+Time estimates assume typical small-to-medium codebases (1k–10k source entities). Larger corpora (100k+ entities) may take 2–3× longer in inventory and parallel passes.
+
+| Pass | Prompt | Purpose | Est. time |
+|------|--------|---------|-----------|
+| 0 | `prompts/00-domain-qa.md` | First-run domain interview: what is this group, who owns it, what are the deployment boundaries. | 5–10 min interactive |
+| 1 | `prompts/01-inventory.md` | Discover repos and entities via `archigraph_find` / `archigraph_stats` / `archigraph_clusters`. | 2–5 min |
+| 1a | `prompts/01a-residual-repair-sweep.md` | Pre-Q&A repair sweep (ADR-0015): list residuals via `archigraph_repairs(action=list)`, auto-resolve unambiguous ones, surface the rest as questions for Pass 1b. | 1–3 min |
+| 1b | `prompts/01b-repair-aware-qa.md` | Repair-aware Q&A: walk the user through residuals Pass 1a could not auto-resolve; each answer becomes an `archigraph_repairs(action=submit)` call. | 2–10 min (depends on residual count) |
+| 2 | `prompts/02-plan.md` | Produce a per-module documentation plan with token estimates. | 2–3 min |
+| 3 | `prompts/03-overview.md` | Repo-level `overview.md` for every repo. | 3–5 min |
+| 3a | `prompts/03a-generation-time-repair.md` | Hook (not a standalone pass): every writer in Passes 3-6 + 12 inspects outbound residuals of the entity it is about to describe, repairs in-place when possible, documents as runtime-resolved otherwise. | (integrated into Passes 3–6 + 12) |
+| 4 | `prompts/04-cluster.md` | Per-module deep-dive (parallel writer subagents, one per cluster). | 5–20 min (highly parallelized) |
+| 5 | `prompts/05-reference.md` | Reference docs: API, config, deployment, scripts, dependencies. | 3–8 min |
+| 6 | `prompts/06-cross-cutting.md` | Cross-cutting concerns: auth, logging, error handling, observability. | 2–5 min |
+| 7 | `prompts/07-group-synthesis.md` | Group-level synthesis page that ties the repos together. (Cross-repo chains pending #769; until then writers should reach cross-repo via `archigraph_cross_links`). | 3–5 min |
+| 8 | `prompts/08-cross-link.md` | Validate links and resolve cross-repo link candidates via `archigraph_cross_links`. | 2–4 min |
+| — | *(Pass 9 reserved — planned for milestone-2 doc-site work)* | | |
+| 10 | `prompts/10-pattern-convergence.md` | Aggregate subagent pattern candidates + promote convergent ones (ADR-0018 Phase 4). | 2–3 min |
+| 11 | `prompts/11-pattern-cross-link.md` | Populate each approved pattern's `documentation_url` (ADR-0018 Phase 5). | 1–2 min |
+| 12 | `prompts/12-pattern-prose.md` | Emit `docs/patterns/<category>/<id>.md` per approved pattern (ADR-0018 Phase 6). | 2–4 min |
+
+**Total wall time:** typically **25–60 minutes** for small repos (1k entities), **1–2 hours** for medium repos (10k entities), **2–4 hours** for large repos (100k+ entities). Pass 4 parallelizes across module clusters, so the critical path is dominated by Pass 0 (user interaction), Passes 1–2 (discovery), and Passes 4–5 (content generation).
+
+If a pass appears to hang:
+1. Check `archigraph status` — the daemon must be running and idle (not indexing another repo).
+2. Check the agent console in Claude Code for errors. Common issues: daemon timeout, network glitch, or user timeout in Pass 1b (too many residuals to resolve interactively).
+3. To resume, re-invoke `/generate-docs` in the same CWD — the orchestrator checks for completed passes and skips them.
 
 During Pass 4 (per-module writers), each subagent additionally emits `PatternCandidate` entities via `archigraph_patterns(action=record, as_candidate=true)` whenever it observes ≥ `per_subagent_threshold` (default 2) instances of a structural recurrence in its slice. The candidates aggregate in Pass 10, cross-link in Pass 11, and produce dedicated markdown in Pass 12. The full design is in [ADR-0018](../../docs/adrs/0018-agent-learned-patterns.md).
 

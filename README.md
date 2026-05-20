@@ -42,6 +42,22 @@ make build
 ./archigraph --version
 ```
 
+## Quick start
+
+```sh
+# 1. Create a group and index your repos
+archigraph wizard
+archigraph install <group>
+
+# 2. Open the dashboard
+archigraph dashboard
+
+# 3. Generate docs (in Claude Code)
+/generate-docs
+```
+
+The `/generate-docs` skill produces per-repo documentation (overview, module guides, API reference, patterns) and a cross-repo synthesis. It runs a 12-pass pipeline that typically takes 25–60 minutes for small repos, 1–2 hours for medium repos, and 2–4 hours for large repos. Estimates and pass details are in the [generate-docs skill docs](skills/generate-docs/SKILL.md).
+
 ## Usage
 
 archigraph is a CLI plus a unified daemon process that manages indexing,
