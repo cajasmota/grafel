@@ -9,8 +9,8 @@ package dashboard
 //
 // Three-tier graph data model:
 //
-//	Tier 1 (default): Compact render payload — nodes carry only id, repo,
-//	  degree, community_id. Edges carry source, target, kind.
+//	Tier 1 (default): Compact render payload — nodes carry id, repo, kind,
+//	  degree, community_id, and label (Process nodes only). Edges carry source, target, kind.
 //	  This is the only shape; there is no ?full= opt-in.
 //
 //	Tier 2: Labels endpoint — GET /api/graph/{group}/labels?top=200 returns
@@ -177,14 +177,24 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 				continue
 			}
 			visible[pid] = true
-			// Tier 1 compact node: id, repo, degree, community_id only.
+			// Tier 1 compact node: id, repo, kind, degree, community_id.
+			// `kind` is included so the frontend can special-case Process sizing (#1121 P3)
+			// and `label` is included for Process entities so they never fall back to
+			// their hash ID in the Tier-2 top-200 labels window (#1121 P4).
 			node := map[string]any{
 				"id":   pid,
 				"repo": r.Slug,
+				"kind": dashStripScopePrefix(e.Kind),
 			}
 			node["degree"] = degreeMap[e.ID]
 			if e.CommunityID != nil {
 				node["community_id"] = *e.CommunityID
+			}
+			// Process entities carry their human label (entry → terminal) in e.Name.
+			// Include it inline so the frontend never falls back to the proc:<hash> ID.
+			// e.Kind is "SCOPE.Process" (the engine constant); strip prefix before comparing.
+			if dashStripScopePrefix(e.Kind) == "Process" {
+				node["label"] = e.Name
 			}
 			nodes = append(nodes, node)
 		}
