@@ -141,6 +141,12 @@ const (
 	// placeholder but the package is NOT on the allowlist. Likely a real
 	// external dep we haven't catalogued yet.
 	DispositionExternalUnknown
+	// DispositionExternalSQL — the endpoint is an unresolved
+	// scope:dataaccess:<file>#<orm>:<op>:<table> stub identifying SQL
+	// surface area (issue #531). Distinct from ExternalKnown so that
+	// SQL surface area is counted separately in disposition_counts output
+	// and is queryable via archigraph doctor as its own metric bucket.
+	DispositionExternalSQL
 	// DispositionDynamic — the stub matches a pattern that is intrinsically
 	// static-unresolvable (reflection, dynamic import, env-driven names,
 	// template-built strings). Not a bug; the call cannot be resolved
@@ -168,6 +174,8 @@ func (d Disposition) String() string {
 		return "external-known"
 	case DispositionExternalUnknown:
 		return "external-unknown"
+	case DispositionExternalSQL:
+		return "external-sql"
 	case DispositionDynamic:
 		return "dynamic"
 	case DispositionBugExtractor:
@@ -187,6 +195,7 @@ var AllDispositions = []Disposition{
 	DispositionResolved,
 	DispositionExternalKnown,
 	DispositionExternalUnknown,
+	DispositionExternalSQL,
 	DispositionDynamic,
 	DispositionBugExtractor,
 	DispositionBugResolver,
@@ -3355,7 +3364,7 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// (client-fixture-a, Django backend pre-fix). The new external-sql disposition
 	// bucket is tracked as a chain-fix.
 	if isDataAccessSQLStub(originalStub) {
-		return DispositionExternalKnown
+		return DispositionExternalSQL
 	}
 	// Issue #120 — IMPORTS edges across every language extractor
 	// emit FromID = the importing file's source path (the file the

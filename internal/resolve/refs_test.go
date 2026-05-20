@@ -1642,12 +1642,13 @@ func TestIsDataAccessSQLStub(t *testing.T) {
 	}
 }
 
-// TestDisposition_DataAccessSQLRoutesToExternalKnown is the issue #507
+// TestDisposition_DataAccessSQLRoutesToExternalSQL is the issue #531
 // regression test. When a SCOPE.DataAccess structural-ref doesn't resolve
 // to a concrete entity (e.g. UNKNOWN table, edge survives dedup miss) it
-// must land in ExternalKnown — not bug-extractor — so backend SQL surface
-// area stops polluting the bug-rate on Django / Flask / FastAPI repos.
-func TestDisposition_DataAccessSQLRoutesToExternalKnown(t *testing.T) {
+// must land in ExternalSQL — not bug-extractor and not the generic
+// ExternalKnown bucket — so SQL surface area is counted separately from
+// generic external package imports in disposition_counts.
+func TestDisposition_DataAccessSQLRoutesToExternalSQL(t *testing.T) {
 	t.Parallel()
 	stubs := []string{
 		"scope:dataaccess:app/views/sync_viewset.py#psycopg2:SELECT:UNKNOWN",
@@ -1666,8 +1667,11 @@ func TestDisposition_DataAccessSQLRoutesToExternalKnown(t *testing.T) {
 	}
 	idx := BuildIndex(nil)
 	stats := idx.ClassifyEndpoints(endpoints, allowDjango)
-	if got := stats.DispositionCounts[DispositionExternalKnown]; got != len(stubs) {
-		t.Fatalf("expected %d external-known, got counts=%+v", len(stubs), stats.DispositionCounts)
+	if got := stats.DispositionCounts[DispositionExternalSQL]; got != len(stubs) {
+		t.Fatalf("expected %d external-sql, got counts=%+v", len(stubs), stats.DispositionCounts)
+	}
+	if got := stats.DispositionCounts[DispositionExternalKnown]; got != 0 {
+		t.Fatalf("unexpected external-known count %d (SQL stubs must use external-sql bucket post #531)", got)
 	}
 	if got := stats.DispositionCounts[DispositionBugExtractor]; got != 0 {
 		t.Fatalf("unexpected bug-extractor count %d (should be zero post #507)", got)
