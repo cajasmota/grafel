@@ -20,6 +20,8 @@ import (
 // Flow:
 //  1. Load <fixture-dir>/expected.json
 //  2. Run the production indexer over <fixture-dir>/src/ into a tempdir
+//     (ADR-0016: graph.fb is primary; WithExportJSON ensures graph.json
+//     is also written so loadDocument and --keep-graph continue to work)
 //  3. Load the resulting graph.json
 //  4. Diff with internal/quality.Evaluate, emit a human + (optional) JSON report
 //
@@ -59,7 +61,10 @@ func runQuality(argv []string) error {
 		return fmt.Errorf("fixture src/ missing or not a directory: %s", srcDir)
 	}
 
-	// Output graph.json to a tempdir so we never pollute the fixture tree.
+	// Output to a tempdir so we never pollute the fixture tree.
+	// ADR-0016: the indexer now writes graph.fb by default; we pass
+	// WithExportJSON so graph.json is also produced (needed by loadDocument
+	// and --keep-graph). The graphPath points at graph.json inside tmp.
 	tmp, err := os.MkdirTemp("", "archigraph-quality-*")
 	if err != nil {
 		return fmt.Errorf("mktemp: %w", err)
@@ -72,7 +77,8 @@ func runQuality(argv []string) error {
 	// Run the production indexer. repoTag is set to the fixture name for
 	// readability when humans inspect graph.json by hand. We pass an
 	// explicit out path so nothing is written under the fixture.
-	if err := Index(srcDir, graphPath, fix.Name, nil /*skip*/, false /*pretty*/, false /*jsonStats*/); err != nil {
+	if err := Index(srcDir, graphPath, fix.Name, nil /*skip*/, false /*pretty*/, false, /*jsonStats*/
+		WithExportJSON(true)); err != nil {
 		return fmt.Errorf("index fixture src: %w", err)
 	}
 	if *keepGraph {

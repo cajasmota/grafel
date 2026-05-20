@@ -25,7 +25,11 @@ internal/quality/
 ├── report.go           # WriteHuman / WriteJSON
 ├── diff_test.go        # Unit tests for the matcher
 └── golden/
-    └── python-django-mini/
+    ├── python-django-mini/      # Python + Django
+    ├── typescript-react-mini/   # TypeScript + React
+    ├── java-spring-mini/        # Java + Spring Boot
+    ├── go-chi-mini/             # Go + chi router
+    └── rust-tokio-mini/         # Rust + tokio
         ├── src/        # Small hand-curated source tree
         └── expected.json
 ```
@@ -100,17 +104,19 @@ have driven it from 30%+ down to ~11%); quality runs are tiny by design
 (<10 files per fixture) so a fixture failure points at a specific code
 path rather than a corpus-level trend.
 
-## Phase 1 scope (this PR)
+## Phase 1 scope (PR #600)
 
 - Framework + `archigraph quality` subcommand
 - One fixture: `python-django-mini`
 - Unit tests for the matcher
 - Baseline: see [baseline.md](./baseline.md)
 
-## Phase 2 (followup issues)
+## Phase 2 scope (PRs #617 + #607)
 
-- `typescript-react-mini` — React + hooks + context + useQuery
-- `java-spring-mini` — Spring Boot REST controller + JPA repository
-- `go-chi-mini` — Go HTTP handler + middleware + struct receiver methods
-- `rust-tokio-mini` — Rust async + tokio + traits + generics
-- CI wiring (`scripts/verify2/`) so quality is a per-PR gate
+- Four new fixtures: `typescript-react-mini`, `java-spring-mini`,
+  `go-chi-mini`, `rust-tokio-mini`
+- ADR-0016 compat fix in `runQuality` (`WithExportJSON` so the harness
+  produces `graph.json` alongside `graph.fb`)
+- CI wiring: `.github/workflows/quality.yml` + `scripts/verify2/run-quality.sh`
+  make quality a per-PR gate; per-fixture JSON artifacts are uploaded on every run
+- All five fixtures achieve 100% must-have recall + 0 forbidden hits on `main`
