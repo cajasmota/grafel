@@ -68,6 +68,70 @@ type patternRule struct {
 	extra func(string) bool
 }
 
+// isXMLElementRef returns true if the string looks like a Word XML element
+// reference (e.g., "./w:tblBorders", "./w:tcBorders"). Such patterns should
+// not be classified as HTTP paths. Issue #958.
+func isXMLElementRef(s string) bool {
+	if !strings.Contains(s, ":") || strings.Contains(s, "://") {
+		return false
+	}
+
+	// Find the first colon that is not part of ://
+	colonIdx := strings.Index(s, ":")
+	if colonIdx < 0 {
+		return false
+	}
+
+	// Check if this colon is part of :// (protocol separator)
+	if colonIdx+2 < len(s) && s[colonIdx+1:colonIdx+3] == "//" {
+		// This is a protocol (http://, https://, etc.), not an XML namespace
+		return false
+	}
+
+	// Now check if the part before the colon looks like an XML namespace prefix.
+	// We need to extract the last path segment before the colon.
+	beforeColon := s[:colonIdx]
+
+	// For paths like "/api/v1/w:something", extract "w"
+	// For refs like "./w:something", extract "w"
+	lastSlash := strings.LastIndexByte(beforeColon, '/')
+	namespace := beforeColon
+	if lastSlash >= 0 {
+		namespace = beforeColon[lastSlash+1:]
+	}
+
+	// If namespace is empty or too long, not XML
+	if len(namespace) == 0 || len(namespace) > 4 {
+		return false
+	}
+
+	// Check if namespace is purely alphabetic (like 'w', 'xml', 'xsl', etc.)
+	// These are typical XML namespace prefixes
+	for _, c := range namespace {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+			return false
+		}
+	}
+
+	// At this point, we have a short alphabetic prefix followed by a colon.
+	// Check that what follows the colon is a valid XML element name
+	// (starts with letter or underscore)
+	afterColon := s[colonIdx+1:]
+	if len(afterColon) == 0 {
+		return false
+	}
+
+	firstChar := afterColon[0]
+	if !((firstChar >= 'a' && firstChar <= 'z') ||
+		(firstChar >= 'A' && firstChar <= 'Z') ||
+		firstChar == '_') {
+		return false
+	}
+
+	// This looks like an XML element reference
+	return true
+}
+
 // kafkaTLDBlock filters out hostnames misidentified as kafka topics.
 var kafkaTLDBlock = map[string]bool{
 	"com": true, "net": true, "org": true, "io": true, "co": true,
@@ -98,7 +162,9 @@ func natsExtra(s string) bool {
 // patternCatalog is shared across calls. Compiled once.
 var patternCatalog = []patternRule{
 	{Cat: catWebhookPath, Re: regexp.MustCompile(`^/(webhooks?|hooks)/[a-zA-Z0-9_\-/.]+$`)},
-	{Cat: catHTTPPath, Re: regexp.MustCompile(`^/(api|v\d+|public|internal)(/[a-zA-Z0-9_\-{}.<>:%]+)+/?$`)},
+	{Cat: catHTTPPath, Re: regexp.MustCompile(`^/(api|v\d+|public|internal)(/[a-zA-Z0-9_\-{}.<>:%]+)+/?$`), extra: func(s string) bool {
+		return !isXMLElementRef(s)
+	}},
 	{Cat: catS3URI, Re: regexp.MustCompile(`^s3://[a-z0-9.\-]+(/\S*)?$`)},
 	// AWS ARNs and the SQS URL precede the generic redis-key pattern,
 	// because that pattern is broad enough to also match colon-separated

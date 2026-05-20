@@ -369,6 +369,61 @@ func TestStringPass_HTTPPath(t *testing.T) {
 	}
 }
 
+func TestStringPass_WordXMLElementsNotExtractedAsHTTPPaths(t *testing.T) {
+	// Issue #958: Word XML elements like ./w:tblBorders should not be
+	// extracted as HTTP paths. Verify that python-docx-like code patterns
+	// don't produce spurious path entities.
+	root := fixtureRoot(t)
+	mkRepo := func(name, src string) {
+		dir := filepath.Join(root, name, "src")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		f := filepath.Join(dir, "docx_handler.py")
+		if err := os.WriteFile(f, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		writeFixture(t, root, fixtureGraph{
+			Repo: name,
+			Entities: []map[string]any{
+				{"id": name + "_e", "name": "process_doc", "kind": "function", "source_file": "src/docx_handler.py"},
+			},
+		})
+	}
+	// Python code using python-docx library with Word XML elements
+	pythonDocxCode := `from docx.oxml.ns import qn
+
+def process_word_doc(elem):
+    # Access Word XML elements with namespaced references
+    borders = elem.find(qn('w:tblBorders'))
+    cell_borders = elem.find(qn('w:tcBorders'))
+    return borders, cell_borders
+`
+	mkRepo("app", pythonDocxCode)
+	mkRepo("service", pythonDocxCode)
+
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g4", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g4-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that no links were created for Word XML element names.
+	// These should NOT be classified as HTTP paths.
+	for _, l := range doc.Links {
+		if l.Method == MethodString && l.Identifier != nil {
+			id := *l.Identifier
+			if strings.Contains(id, "w:tblBorders") || strings.Contains(id, "w:tcBorders") ||
+				strings.Contains(id, "w:") {
+				t.Errorf("Word XML element %q should not be extracted as HTTP path link", id)
+			}
+		}
+	}
+}
+
 func TestStringPass_CacheHits(t *testing.T) {
 	root := fixtureRoot(t)
 	src := filepath.Join(root, "alpha-repo")
@@ -496,6 +551,12 @@ func TestPatternCatalog(t *testing.T) {
 		{"arn:aws:events:us-east-1:123456789012:rule/my-rule", catEventbridgeARN, false},
 		{"hello world", "", true},
 		{"file.json", "", true}, // kafka TLD blocklist
+		// Issue #958: Word XML element references should NOT match HTTP path pattern
+		{"./w:tblBorders", "", true},          // Word XML table borders element
+		{"./w:tcBorders", "", true},           // Word XML table cell borders element
+		{"./xml:element", "", true},           // Generic XML namespace element
+		{"/api/v1/w:something", "", true},     // XML-like path (namespace colon) should not match
+		{"/api/v1/users", catHTTPPath, false}, // Valid HTTP path with no namespace colon
 	}
 	for _, c := range cases {
 		got := classify(c.s)
