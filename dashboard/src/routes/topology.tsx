@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTopologyData } from '@/hooks/topology/useTopologyData'
 import { useTopicDetail } from '@/hooks/topology/useTopicDetail'
@@ -7,31 +7,80 @@ import { useTopologyLayout } from '@/hooks/topology/useTopologyLayout'
 import { useTopologySearch } from '@/hooks/topology/useTopologySearch'
 import { ProtocolFilterChips } from '@/components/topology/ProtocolFilterChips'
 import { TopologyMap } from '@/components/topology/TopologyMap'
+import { TopologyList } from '@/components/topology/TopologyList'
 import { TopicDetailPanel } from '@/components/topology/TopicDetailPanel'
 import { ChannelTrack } from '@/components/topology/ChannelTrack'
 import { GraphQLSubscriptionPanel } from '@/components/topology/GraphQLSubscriptionPanel'
 import { TopologyLoadingState } from '@/components/topology/TopologyLoadingState'
 import { TopologyEmptyState } from '@/components/topology/TopologyEmptyState'
 import { TopologyErrorState } from '@/components/topology/TopologyErrorState'
-import { Search, X } from 'lucide-react'
+import { Search, X, Map, List } from 'lucide-react'
+
+// ────────────────────────────────────────────────────────────────────────────
+// localStorage persistence for view mode
+// ────────────────────────────────────────────────────────────────────────────
+
+type ViewMode = 'map' | 'list'
+
+const LS_VIEW_MODE_KEY = 'archigraph:topology-view-mode'
+
+function readViewMode(isMobile: boolean): ViewMode {
+  // Mobile defaults to list (map is hard to use on small screens)
+  if (isMobile) return 'list'
+  try {
+    const v = localStorage.getItem(LS_VIEW_MODE_KEY)
+    if (v === 'map' || v === 'list') return v
+  } catch { /* noop */ }
+  return 'map'
+}
+
+function writeViewMode(v: ViewMode) {
+  try { localStorage.setItem(LS_VIEW_MODE_KEY, v) } catch { /* noop */ }
+}
+
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return isMobile
+}
 
 /**
  * Surface 3 — Broker Topology route.
  * URL params: ?protocol=kafka,rabbitmq&topic=<topicId>
  *
  * Layout:
- *   ┌─ TopNav ──────────────────────────────────┐
- *   │ ProtocolFilterChips + search              │
- *   ├───────────────────────────────────────────┤
- *   │ TopologyMap (flex-1) │ TopicDetailPanel   │
- *   │                      │ (slide-in, 320px)  │
- *   ├──────────────────────┤                    │
- *   │ ChannelTrack         │                    │
- *   └──────────────────────┴────────────────────┘
+ *   ┌─ TopNav ──────────────────────────────────────────────────────┐
+ *   │ ProtocolFilterChips + search + [Map | List] toggle            │
+ *   ├───────────────────────────────────────────────────────────────┤
+ *   │ Map view: TopologyMap (flex-1) │ TopicDetailPanel (320px)     │
+ *   │           ChannelTrack                                        │
+ *   │ List view: TopologyList        │ TopicDetailPanel (320px)     │
+ *   └───────────────────────────────┴───────────────────────────────┘
  */
 export function TopologyRoute() {
   const { group } = useParams<{ group: string }>()
   const [searchQuery, setSearchQuery] = useState('')
+  const isMobile = useIsMobile()
+
+  // View mode — persisted, defaulting to list on mobile
+  const [viewMode, setViewModeRaw] = useState<ViewMode>(() => readViewMode(isMobile))
+
+  const setViewMode = useCallback((next: ViewMode) => {
+    setViewModeRaw(next)
+    writeViewMode(next)
+  }, [])
+
+  // When screen crosses the mobile breakpoint, force list view; restore on desktop
+  useEffect(() => {
+    if (isMobile) {
+      setViewModeRaw('list')
+    }
+  }, [isMobile])
 
   const {
     activeProtocols,
@@ -80,6 +129,9 @@ export function TopologyRoute() {
     ((data?.channels ?? []).some((c) => c.id === selectedId) ||
       (data?.graphql_subscriptions ?? []).some((g) => g.id === selectedId))
 
+  // In list view, channels/GQL subs are first-class rows — don't exclude them
+  const isChannelSelectedInMap = viewMode === 'map' && isChannelSelected
+
   if (!group) {
     return (
       <div className="h-full flex flex-col items-center justify-center">
@@ -88,9 +140,17 @@ export function TopologyRoute() {
     )
   }
 
+  const isEmpty = !data || (
+    data.topics.length === 0 &&
+    data.queues.length === 0 &&
+    data.nats_subjects.length === 0 &&
+    data.channels.length === 0 &&
+    data.graphql_subscriptions.length === 0
+  )
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-slate-950">
-      {/* Protocol filter chips + search */}
+      {/* Protocol filter chips + search + view mode toggle */}
       <div className="flex items-center gap-0 border-b border-slate-800 bg-slate-950/90 backdrop-blur-sm z-10 flex-shrink-0">
         <ProtocolFilterChips
           allProtocols={allProtocols}
@@ -99,6 +159,7 @@ export function TopologyRoute() {
           onToggle={toggle}
           onSetAll={setAll}
         />
+
         {/* Typeahead search */}
         <div className="relative px-3 py-1.5 border-l border-slate-800 flex-shrink-0">
           <div className="flex items-center gap-2 h-7 px-2 rounded bg-slate-900 border border-slate-700 focus-within:border-sky-700">
@@ -125,8 +186,8 @@ export function TopologyRoute() {
             )}
           </div>
 
-          {/* Search results dropdown */}
-          {searchQuery && searchResults.length > 0 && (
+          {/* Search results dropdown — only in map view; list view filters inline */}
+          {viewMode === 'map' && searchQuery && searchResults.length > 0 && (
             <ul
               id="topology-search-results"
               role="listbox"
@@ -152,11 +213,49 @@ export function TopologyRoute() {
             </ul>
           )}
         </div>
+
+        {/* View mode toggle — hidden on mobile (locked to list) */}
+        {!isMobile && (
+          <div className="flex items-center gap-0.5 px-3 py-1.5 border-l border-slate-800 flex-shrink-0 ml-auto">
+            <button
+              type="button"
+              aria-pressed={viewMode === 'map'}
+              title="Map view"
+              onClick={() => setViewMode('map')}
+              className={[
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-l text-xs font-medium border transition-colors',
+                'focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1 focus:ring-offset-slate-950',
+                viewMode === 'map'
+                  ? 'bg-sky-900/50 text-sky-300 border-sky-700 z-10'
+                  : 'bg-slate-900 text-slate-500 border-slate-700 hover:text-slate-300 hover:border-slate-500',
+              ].join(' ')}
+            >
+              <Map className="w-3.5 h-3.5" aria-hidden />
+              Map
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === 'list'}
+              title="List view"
+              onClick={() => setViewMode('list')}
+              className={[
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-r text-xs font-medium border -ml-px transition-colors',
+                'focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1 focus:ring-offset-slate-950',
+                viewMode === 'list'
+                  ? 'bg-sky-900/50 text-sky-300 border-sky-700 z-10'
+                  : 'bg-slate-900 text-slate-500 border-slate-700 hover:text-slate-300 hover:border-slate-500',
+              ].join(' ')}
+            >
+              <List className="w-3.5 h-3.5" aria-hidden />
+              List
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Canvas + channel track column */}
+        {/* Canvas / list column */}
         <div className="flex flex-col flex-1 overflow-hidden">
           {isLoading ? (
             <TopologyLoadingState />
@@ -164,6 +263,7 @@ export function TopologyRoute() {
             <div className="flex-1 flex items-center justify-center">
               <TopologyErrorState error={error} onRetry={() => void refetch()} />
             </div>
+<<<<<<< HEAD
           ) : !data || (
             (data.topics ?? []).length === 0 &&
             (data.queues ?? []).length === 0 &&
@@ -175,14 +275,23 @@ export function TopologyRoute() {
             <div className="flex-1 flex items-center justify-center">
               <TopologyEmptyState hasFilters={!isAllActive} onClearFilters={setAll} />
             </div>
+          ) : viewMode === 'list' ? (
+            /* ── List view ─────────────────────────────────────────────── */
+            <TopologyList
+              data={data!}
+              searchQuery={searchQuery}
+              selectedId={selectedId}
+              onSelectEntity={setSelectedTopic}
+            />
           ) : (
+            /* ── Map view ─────────────────────────────────────────────── */
             <>
               {/* Force-layout canvas — only broker topics, not channels */}
               <div className="flex-1 overflow-hidden relative">
                 <TopologyMap
                   layout={layout}
-                  data={data}
-                  selectedId={isChannelSelected ? null : selectedId}
+                  data={data!}
+                  selectedId={isChannelSelectedInMap ? null : selectedId}
                   onSelectTopic={setSelectedTopic}
                 />
               </div>
@@ -201,7 +310,7 @@ export function TopologyRoute() {
         </div>
 
         {/* Right panel: topic detail or GraphQL subscription panel */}
-        {selectedId && !isChannelSelected && topicDetail.node && (
+        {selectedId && !isChannelSelectedInMap && topicDetail.node && (
           <TopicDetailPanel
             detail={topicDetail}
             onClose={() => setSelectedTopic(null)}
@@ -211,7 +320,8 @@ export function TopologyRoute() {
           />
         )}
 
-        {selectedGqlSub && (
+        {/* In map view: GraphQL subscription panel for channel-track selections */}
+        {viewMode === 'map' && selectedGqlSub && (
           <GraphQLSubscriptionPanel
             subscription={selectedGqlSub}
             publishers={gqlPublishers}
