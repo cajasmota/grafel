@@ -259,6 +259,14 @@ const GraphCanvasInner = ({
   // so the force simulation groups nodes by community + module locality.
   // Hub nodes (high pagerank) get a stronger attraction to pull them toward
   // the center of their community island.
+  //
+  // #1089: also compute __size via log scale so degree-750 god nodes are
+  // visibly huge relative to degree-1 leaves.
+  //   d=0  → 2 px  | d=10  → ~14 px
+  //   d=100 → ~26 px | d=750 → ~36 px  (before pointSizeRange remapping)
+  const computeSize = (d: number): number =>
+    2 + Math.log10(d + 1) * 12
+
   const cosmographPoints = useMemo(() => {
     // Compute per-node max pagerank for normalising cluster strength
     let maxPR = 0
@@ -269,9 +277,12 @@ const GraphCanvasInner = ({
       const cid = clusterIdFor(n)
       // Hub nodes (top ~10% by pagerank) get stronger pull → stay near community center
       const normalizedPR = (n.pagerank ?? 0) / maxPR
-      // Base strength 0.25 + up to 0.45 extra for top hubs = range [0.25, 0.70]
-      const strength = 0.25 + normalizedPR * 0.45
-      return { ...n, __idx: i, __cluster_id: cid, __cluster_strength: strength }
+      // #1089: Reduce max cluster strength from 0.70 → 0.40 so hubs can drift
+      // toward island edges and the layout breathes more. Range [0.25, 0.40].
+      const strength = 0.25 + normalizedPR * 0.15
+      // #1089: pre-computed log-degree size for pointSizeByFn
+      const __size = computeSize(n.degree ?? 0)
+      return { ...n, __idx: i, __cluster_id: cid, __cluster_strength: strength, __size }
     })
   }, [nodes])
 
@@ -496,7 +507,7 @@ const GraphCanvasInner = ({
         // DuckDB-WASM (nested objects/arrays crash columnar type inference).
         // __idx is included so Cosmograph can resolve its numeric index lookups.
         // #1072: __cluster_id and __cluster_strength added for semantic layout.
-        pointIncludeColumns={['__idx', 'id', 'label', 'kind', 'repo', 'community_id', 'pagerank', 'is_centroid', 'centroid_size', 'source_file', 'start_line', 'degree', '__cluster_id', '__cluster_strength']}
+        pointIncludeColumns={['__idx', 'id', 'label', 'kind', 'repo', 'community_id', 'pagerank', 'is_centroid', 'centroid_size', 'source_file', 'start_line', 'degree', '__cluster_id', '__cluster_strength', '__size']}
 
         links={visibleLinks as unknown as Record<string, unknown>[]}
         linkSourceBy="source"
@@ -519,10 +530,13 @@ const GraphCanvasInner = ({
         // ── Node appearance ────────────────────────────────────────────────
         pointColorBy="id"
         pointColorByFn={pointColorByFn as (value: unknown) => string}
-        // #1059: size by degree — hub nodes are visually larger than leaf nodes.
-        // CosmographPointSizeStrategy.Degree uses quantile-bounded (p5–p95) degree distribution.
-        pointSizeStrategy="degree"
-        pointSizeRange={[4, 30]}
+        // #1089: log-scale sizing so degree-750 god nodes are dramatically larger
+        // than degree-1 leaves. pointSizeByFn receives the __size pre-computed value;
+        // pointSizeRange [2, 60] remaps the log output to final pixel sizes.
+        // log formula: d=0 → 2 px, d=10 → ~14 px, d=100 → ~26 px, d=750 → ~36 px (before remap).
+        // After remap the hub (deg=750, raw≈36) lands at ~60 px; leaf (deg=1, raw≈3.6) → ~2 px.
+        pointSizeBy="__size"
+        pointSizeRange={[2, 60]}
         pointLabelBy="label"
 
         // ── Labels ────────────────────────────────────────────────────────
@@ -533,12 +547,13 @@ const GraphCanvasInner = ({
         // showTopLabels: hub nodes always labelled; showDynamicLabels: evenly distributed.
         showLabels={true}
         showTopLabels={true}
-        showTopLabelsLimit={60}
+        // #1089: increase to 50 so more hub labels are always visible at a glance.
+        // Top nodes are ranked by degree (highest-degree always labelled first).
+        showTopLabelsLimit={50}
         showDynamicLabels={true}
         showDynamicLabelsLimit={40}
         showHoveredPointLabel={true}
         showFocusedPointLabel={true}
-        showHoveredPointLabel={true}
         pointLabelFontSize={11}
         pointLabelFn={truncateLabel as (value: unknown) => string}
         pointLabelClassName={labelPillStyle}
@@ -565,9 +580,10 @@ const GraphCanvasInner = ({
         preservePointPositionsOnDataUpdate={true}
         // Higher friction → nodes settle more smoothly (less jitter after layout)
         simulationFriction={0.7}
-        // #1072: cluster force is now the primary separator; keep repulsion
-        // moderate so clusters aren't blown apart before they can cohere.
-        simulationRepulsion={0.5}
+        // #1089: raise repulsion so god nodes (deg=750) physically push their
+        // neighborhood outward, making the size differential more visually apparent.
+        // 0.8 is still safe — cluster positions prevent full blowout.
+        simulationRepulsion={0.8}
         // Gentle center-mass pull keeps the graph from drifting off-canvas
         // as cluster positions are arranged around the origin.
         simulationCenter={0.1}
