@@ -724,3 +724,107 @@ func TestReferences_ExportClause_ReExportSkipped(t *testing.T) {
 		}
 	}
 }
+
+// TestReferences_ThisAttrJS — Issue #679.
+// A JS class method that accesses `this.<field>` should emit a REFERENCES
+// edge to the class field entity (SCOPE.Schema/field, Name=ClassName.field).
+func TestReferences_ThisAttrJS(t *testing.T) {
+	src := `class Counter {
+  count = 0;
+  increment() {
+    this.count = this.count + 1;
+  }
+  reset() {
+    this.count = 0;
+  }
+}
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJS(t, src, "javascript", tree)
+
+	// The field entity must exist.
+	field := findByNameRel(ents, "Counter.count")
+	if field == nil {
+		t.Fatalf("expected SCOPE.Schema/field entity Counter.count; got nil")
+	}
+	if field.Kind != "SCOPE.Schema" || field.Subtype != "field" {
+		t.Errorf("field entity: want Kind=SCOPE.Schema/field, got %s/%s", field.Kind, field.Subtype)
+	}
+
+	// increment() must reference Counter.count.
+	if !hasReferencesTo(ents, "increment", "Counter.count") {
+		t.Errorf("expected REFERENCES increment->Counter.count; got %v", referencesFrom(ents, "increment"))
+	}
+	// reset() must reference Counter.count.
+	if !hasReferencesTo(ents, "reset", "Counter.count") {
+		t.Errorf("expected REFERENCES reset->Counter.count; got %v", referencesFrom(ents, "reset"))
+	}
+}
+
+// TestReferences_ThisAttrTS — Issue #679 TypeScript variant.
+// A TS class method that accesses `this.<field>` (typed field) should emit
+// a REFERENCES edge to the class field entity.
+func TestReferences_ThisAttrTS(t *testing.T) {
+	src := `class Service {
+  private baseUrl: string;
+  private timeout: number;
+  fetch(path: string): string {
+    return this.baseUrl + path;
+  }
+  getTimeout(): number {
+    return this.timeout;
+  }
+}
+`
+	tree := parseTSRel(t, []byte(src))
+	ents := runJS(t, src, "typescript", tree)
+
+	// Both typed fields must be emitted as SCOPE.Schema/field.
+	baseUrlField := findByNameRel(ents, "Service.baseUrl")
+	if baseUrlField == nil {
+		t.Fatalf("expected SCOPE.Schema/field entity Service.baseUrl; got nil")
+	}
+	timeoutField := findByNameRel(ents, "Service.timeout")
+	if timeoutField == nil {
+		t.Fatalf("expected SCOPE.Schema/field entity Service.timeout; got nil")
+	}
+
+	// fetch() must reference Service.baseUrl.
+	if !hasReferencesTo(ents, "fetch", "Service.baseUrl") {
+		t.Errorf("expected REFERENCES fetch->Service.baseUrl; got %v", referencesFrom(ents, "fetch"))
+	}
+	// getTimeout() must reference Service.timeout.
+	if !hasReferencesTo(ents, "getTimeout", "Service.timeout") {
+		t.Errorf("expected REFERENCES getTimeout->Service.timeout; got %v", referencesFrom(ents, "getTimeout"))
+	}
+}
+
+// TestReferences_ThisAttrCallNotDoubleEmitted — Issue #679.
+// `this.method()` calls are CALLS-owned; no REFERENCES edge for the callee.
+// The object `this` itself is not a project entity — no edge for `this`.
+func TestReferences_ThisAttrCallNotDoubleEmitted(t *testing.T) {
+	src := `class Processor {
+  data = [];
+  process() {
+    this.helper();
+  }
+  helper() {
+    return this.data;
+  }
+}
+`
+	tree := parseJSRel(t, []byte(src))
+	ents := runJS(t, src, "javascript", tree)
+
+	// process() calls helper() — CALLS owns that edge; no REFERENCES to helper.
+	for _, id := range referencesFrom(ents, "process") {
+		if strings.HasSuffix(id, ":helper") {
+			t.Errorf("process() should not emit REFERENCES to helper (CALLS owns it); got %s", id)
+		}
+	}
+
+	// helper() accesses this.data — REFERENCES to Processor.data expected.
+	if !hasReferencesTo(ents, "helper", "Processor.data") {
+		t.Errorf("expected REFERENCES helper->Processor.data; got %v", referencesFrom(ents, "helper"))
+	}
+}

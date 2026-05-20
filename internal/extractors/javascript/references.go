@@ -130,6 +130,11 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 	// path, is explicitly excluded so an identifier matching the basename
 	// can't accidentally bind to it.
 	symbols := make(map[string]fileSymbol)
+	// dottedSymbols maps "ClassName.fieldName" → fileSymbol for class
+	// field entities (SCOPE.Schema/field) emitted by handlePublicFieldDefinition
+	// (issue #679). Used by the this.attr handler to emit REFERENCES edges
+	// from method bodies to class field targets.
+	dottedSymbols := make(map[string]fileSymbol)
 	// entIdxByName maps a same-file symbol name to its index in
 	// x.entities. We need it to append REFERENCES edges to the
 	// enclosing function entity below.
@@ -152,6 +157,20 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 			}
 			continue
 		}
+		// Issue #679 — class field entities (SCOPE.Schema/field) are
+		// indexed by their dotted name ("ClassName.fieldName") in
+		// dottedSymbols so the this.attr handler can look them up.
+		// They are also indexed in the bare symbols table under the
+		// dotted name so that emit() can find the entity index.
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "field" {
+			if _, ok := dottedSymbols[e.Name]; !ok {
+				dottedSymbols[e.Name] = fileSymbol{kind: e.Kind, subtype: e.Subtype}
+				entIdxByName[e.Name] = i
+			}
+			// Do NOT add to the bare symbols table — the dotted name
+			// would match a bare identifier falsely. Skip to next entity.
+			continue
+		}
 		// First emission wins on duplicate names (matches Phase-1
 		// dedup rule used in collectDeclarations of the references
 		// extractor).
@@ -161,7 +180,7 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 		symbols[e.Name] = fileSymbol{kind: e.Kind, subtype: e.Subtype}
 		entIdxByName[e.Name] = i
 	}
-	if len(symbols) == 0 {
+	if len(symbols) == 0 && len(dottedSymbols) == 0 {
 		return
 	}
 
@@ -174,6 +193,10 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 		// funcName is the name of the enclosing function/method. Empty
 		// when we're at file scope (outside any function body).
 		funcName string
+		// parentClass is the name of the enclosing class_declaration,
+		// propagated into method bodies so `this.<attr>` references can
+		// be resolved as "ClassName.attr" (issue #679).
+		parentClass string
 	}
 
 	// seen dedupes (fromName, toName) pairs across the entire file so a
@@ -212,6 +235,35 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 			})
 	}
 
+	// emitDotted is the analog of emit for dotted "ClassName.field"
+	// targets stored in dottedSymbols (issue #679). The toID uses the
+	// schema scope segment because field entities are SCOPE.Schema.
+	emitDotted := func(fstack []frame, dottedTarget string) {
+		if len(fstack) == 0 {
+			return
+		}
+		from := fstack[len(fstack)-1].funcName
+		if from == "" || from == dottedTarget {
+			return
+		}
+		key := edgeKey{from, dottedTarget}
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		fromIdx, ok := entIdxByName[from]
+		if !ok {
+			return
+		}
+		sym := dottedSymbols[dottedTarget]
+		toID := buildReferenceTargetID(x.language, x.filePath, dottedTarget, sym.kind)
+		x.entities[fromIdx].Relationships = append(x.entities[fromIdx].Relationships,
+			types.RelationshipRecord{
+				ToID: toID,
+				Kind: "REFERENCES",
+			})
+	}
+
 	// Walk: depth-first, manually managing a parallel function-frame
 	// stack. We push when entering a function-like body and pop on the
 	// way out. The frame stack is shared across recursion; we use an
@@ -232,15 +284,21 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 		// handle the variable_declarator shape by inspecting the
 		// declarator's `name` field when its `value` is a function.
 		pushed := false
+		// currentParentClass carries the enclosing class name when we're
+		// inside a class body, for propagation into method frames (#679).
+		currentParentClass := ""
+		if len(fstack) > 0 {
+			currentParentClass = fstack[len(fstack)-1].parentClass
+		}
 		switch nt {
 		case "function_declaration":
 			if nameNode := n.ChildByFieldName("name"); nameNode != nil {
-				fstack = append(fstack, frame{funcName: x.nodeText(nameNode)})
+				fstack = append(fstack, frame{funcName: x.nodeText(nameNode), parentClass: currentParentClass})
 				pushed = true
 			}
 		case "method_definition":
 			if nameNode := n.ChildByFieldName("name"); nameNode != nil {
-				fstack = append(fstack, frame{funcName: x.nodeText(nameNode)})
+				fstack = append(fstack, frame{funcName: x.nodeText(nameNode), parentClass: currentParentClass})
 				pushed = true
 			}
 		case "variable_declarator":
@@ -251,7 +309,7 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 			if name := n.ChildByFieldName("name"); name != nil && name.Type() == "identifier" {
 				if val := n.ChildByFieldName("value"); val != nil {
 					if isFunctionLikeValue(val) {
-						fstack = append(fstack, frame{funcName: x.nodeText(name)})
+						fstack = append(fstack, frame{funcName: x.nodeText(name), parentClass: currentParentClass})
 						pushed = true
 					}
 				}
@@ -261,14 +319,24 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 				// the value is not function-shaped. Only fires when the
 				// declarator has an explicit type annotation.
 				if !pushed && n.ChildByFieldName("type") != nil {
-					fstack = append(fstack, frame{funcName: x.nodeText(name)})
+					fstack = append(fstack, frame{funcName: x.nodeText(name), parentClass: currentParentClass})
 					pushed = true
 				}
 			}
-		case "interface_declaration", "type_alias_declaration", "class_declaration":
-			// #709 — type-position uses inside a type/interface/class
-			// declaration body (extends clause, generic constraints,
-			// field type annotations) attribute to the declaring entity.
+		case "class_declaration":
+			// #679 — track the class name so method bodies can resolve
+			// `this.<attr>` using "ClassName.attr" dottedSymbols lookup.
+			// Also serves as the entity frame for #709 type-position uses
+			// inside extends clause / class body type annotations.
+			if nameNode := n.ChildByFieldName("name"); nameNode != nil {
+				className := x.nodeText(nameNode)
+				fstack = append(fstack, frame{funcName: className, parentClass: className})
+				pushed = true
+			}
+		case "interface_declaration", "type_alias_declaration":
+			// #709 — type-position uses inside a type/interface declaration
+			// body (extends clause, generic constraints, field type annotations)
+			// attribute to the declaring entity.
 			if nameNode := n.ChildByFieldName("name"); nameNode != nil {
 				fstack = append(fstack, frame{funcName: x.nodeText(nameNode)})
 				pushed = true
@@ -320,6 +388,42 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 									}
 								}
 							}
+						}
+					}
+				}
+			}
+		}
+
+		// Issue #679 — `this.<attr>` in a class method body.
+		// When we encounter a member_expression node whose object is the
+		// `this` keyword and the enclosing frame carries a parentClass,
+		// attempt to look up "ClassName.property" in dottedSymbols and
+		// emit a REFERENCES edge. Only fires inside a method frame
+		// (len(fstack) > 0 AND top.funcName != top.parentClass, meaning
+		// we're in a method rather than the class-declaration frame itself).
+		//
+		// Exclusion: when this member_expression is the `function` child
+		// of a call_expression (`this.method()`) — CALLS owns that edge.
+		if nt == "member_expression" && len(fstack) > 0 {
+			top := fstack[len(fstack)-1]
+			if top.parentClass != "" && top.funcName != top.parentClass {
+				obj := n.ChildByFieldName("object")
+				prop := n.ChildByFieldName("property")
+				if obj != nil && prop != nil && x.nodeText(obj) == "this" {
+					// Skip if this member_expression is the callee of a call.
+					isThisCallee := false
+					if parent := n.Parent(); parent != nil && parent.Type() == "call_expression" {
+						if fn := parent.ChildByFieldName("function"); fn == n {
+							isThisCallee = true
+						}
+					}
+					if !isThisCallee {
+						propName := x.nodeText(prop)
+						dotted := top.parentClass + "." + propName
+						if _, ok := dottedSymbols[dotted]; ok {
+							// Use emitDotted to produce a REFERENCES edge from
+							// the enclosing method to the dotted field entity.
+							emitDotted(fstack, dotted)
 						}
 					}
 				}
@@ -461,11 +565,12 @@ type edgeKey struct{ from, to string }
 
 // buildReferenceTargetID emits a Format A structural-ref so the resolver
 // routes through `lookupStructural` -> `lookupLocationKind` without any
-// reliance on bare-name hint families. Operation-kinded targets emit a
-// `scope:operation:...` stub; everything else emits a `scope:component:...`
-// stub. The Schema family (interfaces, type aliases) falls under the
-// component family in `structuralKindFamilies`, so a schema-kinded
-// target uses the component scope segment.
+// reliance on bare-name hint families.
+//
+// Scope segments:
+//   - "operation" for Operation/Function/Method entities
+//   - "schema"    for SCOPE.Schema/field entities (#679 — class fields)
+//   - "component" for everything else (classes, imports, type aliases)
 //
 // IMPORTANT: must stay aligned with structuralKindFamilies in
 // internal/resolve/refs.go. Adding a new scope segment here requires a
@@ -476,9 +581,15 @@ func buildReferenceTargetID(lang, filePath, name, targetKind string) string {
 	switch targetKind {
 	case "SCOPE.Operation", "Operation", "Function", "Method":
 		scopeSeg = "operation"
+	case "SCOPE.Schema":
+		// Issue #679 — class field entities use the schema scope segment
+		// so the resolver routes them through schemaKindFamily via
+		// structuralKindFamilies("schema"). This aligns with the Java
+		// extractor's scope:schema:ref:java:* shape for field targets.
+		scopeSeg = "schema"
 	}
-	// `member` is a placeholder subtype slot the resolver doesn't key
-	// on for Format A lookup (it splits to scopeKind + filePath + tail).
+	// `ref` is a placeholder subtype slot the resolver doesn't key on
+	// for Format A lookup (it splits to scopeKind + filePath + tail).
 	// Keep it stable so any future caller that DOES key on it can
 	// distinguish REFERENCES from CONTAINS/CALLS structural refs.
 	return "scope:" + scopeSeg + ":ref:" + lang + ":" + filepath.ToSlash(filePath) + ":" + name

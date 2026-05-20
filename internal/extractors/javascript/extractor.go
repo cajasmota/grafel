@@ -13,6 +13,7 @@
 //   - class_declaration          → Kind="SCOPE.Component"
 //   - method_definition          → Kind="SCOPE.Operation"
 //   - public_field_definition (arrow RHS) → Kind="SCOPE.Operation" (issue #771)
+//   - public_field_definition (non-arrow, plain value) → Kind="SCOPE.Schema/field" (issue #679)
 //   - interface_declaration (TS) → Kind="SCOPE.Schema"
 //   - type_alias_declaration (TS)→ Kind="SCOPE.Schema"
 //   - import_statement + require → IMPORTS edge on file entity (issue #742)
@@ -551,7 +552,18 @@ func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass stri
 	if valueNode == nil || valueNode.Type() != "arrow_function" {
 		// Not an arrow method — recurse into children so nested
 		// declarations (e.g. arrow inside object literal RHS) still get
-		// visited, but do NOT emit an Operation entity for this field.
+		// visited. Issue #679: also emit a SCOPE.Schema/field entity for
+		// plain class fields (e.g. `name: string`, `count = 0`) so that
+		// `this.<field>` REFERENCES edges have a resolvable target.
+		if parentClass != "" {
+			emittedName := parentClass + "." + name
+			sig := name
+			// Include a type annotation in the signature when present.
+			if typeNode := n.ChildByFieldName("type"); typeNode != nil {
+				sig = name + ": " + x.nodeText(typeNode)
+			}
+			x.emit(emittedName, "SCOPE.Schema", n, "field", sig)
+		}
 		x.walkChildren(n, parentClass, cb)
 		return
 	}
