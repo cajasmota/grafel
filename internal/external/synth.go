@@ -63,6 +63,22 @@ func upsertImportSet(set map[string]bool, rel *graph.Relationship) map[string]bo
 	}
 	if rel.ToID != "" {
 		set[rel.ToID] = true
+		// Refs #44 — Go per-import gate fix. The Go extractor rewrites
+		// IMPORTS edge ToIDs to the `ext:<path>` form (e.g.
+		// "ext:time", "ext:github.com/go-chi/chi") BEFORE Synthesize()
+		// builds the fileImports map, so upsertImportSet always inserts
+		// the ext:-prefixed value. Per-import gates like
+		// `fromImports["time"]` and `hasGoChiImport` check for the
+		// bare path (e.g. "time", "github.com/go-chi/chi") — they never
+		// matched because the bare form was never inserted. Fix: when
+		// the ToID carries an "ext:" prefix, also add the bare path so
+		// all existing gate predicates fire correctly.
+		if strings.HasPrefix(rel.ToID, ExtIDPrefix) {
+			bare := rel.ToID[len(ExtIDPrefix):]
+			if bare != "" {
+				set[bare] = true
+			}
+		}
 	}
 	if rel.Properties != nil {
 		mod := rel.Properties["source_module"]
@@ -1070,6 +1086,26 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 			return "org.apache.poi", "package", true
 		case "pdfbox_type":
 			return "org.apache.pdfbox", "package", true
+		// Refs #44 — Go per-import gate sentinels. Each sentinel folds
+		// bare-name stubs to their canonical stdlib/framework package so
+		// the resolver routes to ExternalKnown instead of ExternalUnknown.
+		// The per-package fold is required because the bare name ("Now",
+		// "Get", "Marshal", ...) is too collision-prone to use as the
+		// canonical placeholder across all Go codebases.
+		case "go_time_function":
+			return "time", "function", true
+		case "go_net_function":
+			return "net", "function", true
+		case "go_sync_atomic_function":
+			return "sync/atomic", "function", true
+		case "go_errors_function":
+			return "errors", "function", true
+		case "go_encoding_json_function":
+			return "encoding/json", "function", true
+		case "go_chi_function":
+			// Fold to the canonical chi v5 path. The allowlist already carries
+			// "github.com/go-chi/chi" so the resolver routes to ExternalKnown.
+			return "github.com/go-chi/chi", "function", true
 		}
 		return name, subtype, true
 	}
@@ -1940,9 +1976,11 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 		// for non-chi callers, matching the safer-bias rule from #94 (a
 		// missed external is strictly better than a synthesised placeholder
 		// shadowing a real user method).
+		// Returns "go_chi_function" sentinel so classifyExternal folds to
+		// ext:github.com/go-chi/chi rather than ext:<bare-name>. Refs #44.
 		if hasGoChiImport(fromImports) {
 			if _, ok := goChiRouterNames[name]; ok {
-				return "function", true
+				return "go_chi_function", true
 			}
 		}
 		// Issue #44 / proto-fix — google.golang.org/grpc + protobuf
@@ -2027,27 +2065,31 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 		// Issue #44 / proto-fix — time package PascalCase helpers gated
 		// on `time` import. `Now`, `After` collide with user methods on
 		// any timestamp-shaped type, so the import gate is required.
+		// Returns the "go_time_function" sentinel so classifyExternal folds
+		// the edge to ext:time rather than ext:<bare-name>.
 		if fromImports != nil && fromImports["time"] {
 			switch name {
 			case "Now", "After", "Date", "Unix", "UnixMilli", "UnixMicro", "UnixNano":
-				return "function", true
+				return "go_time_function", true
 			}
 		}
 		// Issue #44 / proto-fix — net package PascalCase helpers gated
 		// on `net` (or `net/http`) import. `Listen`, `Accept`, `Addr`
 		// are universal net.Listener / net.Conn idioms; collide with
 		// generic verb methods so the import gate is required.
+		// Returns "go_net_function" so classifyExternal folds to ext:net.
 		if fromImports != nil && (fromImports["net"] || fromImports["net/http"]) {
 			switch name {
 			case "Listen", "ListenPacket", "Accept", "Addr", "LocalAddr",
 				"RemoteAddr", "SetDeadline", "SetReadDeadline", "SetWriteDeadline":
-				return "function", true
+				return "go_net_function", true
 			}
 		}
 		// Issue #44 / proto-fix — sync/atomic Load*/Store*/Add*/Swap*
 		// helpers gated on `sync/atomic` import. The full type-suffix
 		// shape (`LoadUint64`, `StoreInt32`, `AddInt64`, ...) is
 		// distinctive enough that the import gate is belt-and-braces.
+		// Returns "go_sync_atomic_function" for classifyExternal folding.
 		if fromImports != nil && fromImports["sync/atomic"] {
 			switch name {
 			case "LoadUint32", "LoadUint64", "LoadInt32", "LoadInt64",
@@ -2058,7 +2100,7 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 				"CompareAndSwapUint64", "CompareAndSwapInt32",
 				"CompareAndSwapInt64", "CompareAndSwapPointer",
 				"Load", "Store", "Add", "Swap":
-				return "function", true
+				return "go_sync_atomic_function", true
 			}
 		}
 		// Issue #44 / proto-fix — reflect package PascalCase helpers
@@ -2114,6 +2156,33 @@ func stdlibFunction(name, lang, fromFile string, fromImports map[string]bool) (s
 				"Replace", "NewReader", "NewReplacer", "Map", "Trim",
 				"Title", "Fields":
 				return "function", true
+			}
+		}
+		// Refs #44 — errors package helpers gated on `errors` import.
+		// `errors.New(msg)` is receiver-stripped to bare "New" by the
+		// Go extractor. "New" is too generic for goBareNames (it appears
+		// as a constructor pattern in virtually every Go codebase), so
+		// the import gate is required. "As", "Is", "Unwrap" are
+		// likewise generic but their errors-package semantics are
+		// unambiguous when the file imports "errors".
+		// Returns "go_errors_function" so classifyExternal folds to ext:errors.
+		if fromImports != nil && fromImports["errors"] {
+			switch name {
+			case "New", "As", "Is", "Unwrap":
+				return "go_errors_function", true
+			}
+		}
+		// Refs #44 — encoding/json constructor gated on `encoding` (or
+		// `encoding/json`) import. `json.NewEncoder(w)` /
+		// `json.NewDecoder(r)` are the dominant shapes; bare "NewEncoder"
+		// / "NewDecoder" are short enough to collide with project-local
+		// constructors so the import gate is required.
+		// Returns "go_encoding_json_function" for classifyExternal folding.
+		if fromImports != nil && (fromImports["encoding"] || fromImports["encoding/json"]) {
+			switch name {
+			case "NewEncoder", "NewDecoder", "Marshal", "Unmarshal",
+				"MarshalIndent", "Compact", "HTMLEscape":
+				return "go_encoding_json_function", true
 			}
 		}
 	}
@@ -3035,6 +3104,15 @@ var goChiRouterNames = map[string]struct{}{
 	"Handle":           {},
 	"NotFound":         {},
 	"MethodNotAllowed": {},
+
+	// chi constructor / URL-param helpers. Refs #44 — bare-name calls
+	// `chi.NewRouter()` → "NewRouter" and `chi.URLParam(r,"id")` →
+	// "URLParam" are receiver-stripped by the Go extractor. Both names
+	// are distinctive enough within non-chi Go code but the import gate
+	// provides belt-and-braces safety.
+	"NewRouter": {},
+	"URLParam":  {},
+	"URLParamFromCtx": {},
 }
 
 // goChiImportPaths is the set of canonical import paths that signal a

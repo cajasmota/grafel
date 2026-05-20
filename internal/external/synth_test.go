@@ -3333,11 +3333,16 @@ func TestGoTestingTBareNames_NoDuplicatesWithGoBareNames(t *testing.T) {
 // TestGoChiRouterNames_ClassifiedWithChiImport locks in issue #131:
 // go-chi router-method bare names (Get/Post/Put/Delete/Mount/Group/...)
 // that arrive at the resolver after the Go extractor strips the
-// receiver (`r.Get("/x", h)` → `Get`) must classify as stdlib bare-names
+// receiver (`r.Get("/x", h)` → `Get`) must classify under the chi gate
 // — but only when (a) the source entity's language is "go" AND (b) the
 // source file's IMPORTS edges include any canonical go-chi import path.
 // The dual gate keeps these collision-prone names from shadowing user
 // methods like `Repository.Get` in non-chi code.
+//
+// Refs #44: after the package-fold sentinel fix, stdlibFunction returns
+// "go_chi_function" (not "function") and classifyExternal folds to the
+// canonical chi placeholder ext:github.com/go-chi/chi — a better outcome
+// than per-verb ext:<name> placeholders.
 func TestGoChiRouterNames_ClassifiedWithChiImport(t *testing.T) {
 	names := []string{
 		"Get", "Post", "Put", "Delete", "Patch",
@@ -3364,13 +3369,19 @@ func TestGoChiRouterNames_ClassifiedWithChiImport(t *testing.T) {
 					t.Fatalf("stdlibFunction(%q, \"go\", chi=%q) = (_, false); want classified",
 						name, chiPath)
 				}
-				if subtype != "function" {
-					t.Fatalf("stdlibFunction(%q, \"go\", chi=%q) subtype=%q, want %q",
-						name, chiPath, subtype, "function")
+				// Refs #44 — names that are also in goBareNames fire that
+				// catalog first and return "function"; names that are ONLY in
+				// goChiRouterNames return the "go_chi_function" sentinel so
+				// classifyExternal folds to the package placeholder.
+				// Either outcome means the name is classified — that is the
+				// structural invariant we assert here.
+				if subtype != "function" && subtype != "go_chi_function" {
+					t.Fatalf("stdlibFunction(%q, \"go\", chi=%q) subtype=%q, want function or go_chi_function",
+						name, chiPath, subtype)
 				}
-				// End-to-end: a Go entity in a file that emits an IMPORTS
-				// edge to the chi package must rewrite a CALLS edge with a
-				// chi-router method name to ext:<name>.
+				// End-to-end: a Go entity in a file that imports chi must
+				// rewrite chi-router bare stubs to ext:github.com/go-chi/chi
+				// (the package canonical), NOT to ext:<bare-name>. Refs #44.
 				doc := &graph.Document{
 					Entities: []graph.Entity{{
 						ID:         "go-chi-src",
@@ -3385,7 +3396,6 @@ func TestGoChiRouterNames_ClassifiedWithChiImport(t *testing.T) {
 					},
 				}
 				Synthesize(doc)
-				want := "ext:" + name
 				// Find the CALLS edge and check it was rewritten.
 				var got string
 				for _, r := range doc.Relationships {
@@ -3394,9 +3404,31 @@ func TestGoChiRouterNames_ClassifiedWithChiImport(t *testing.T) {
 						break
 					}
 				}
-				if got != want {
-					t.Fatalf("CALLS edge ToID=%q, want %q "+
-						"(name=%q, chi import=%q)", got, want, name, chiPath)
+				// The stub must have been rewritten to some ext: form.
+				if got == name {
+					t.Fatalf("CALLS edge ToID=%q unchanged; chi gate did not fire "+
+						"(name=%q, chi import=%q)", got, name, chiPath)
+				}
+				if !strings.HasPrefix(got, "ext:") {
+					t.Fatalf("CALLS edge ToID=%q, want ext: prefix "+
+						"(name=%q, chi import=%q)", got, name, chiPath)
+				}
+				// Names that are only in goChiRouterNames (not in goBareNames)
+				// fold to the chi package canonical. Names that are in BOTH
+				// (HandleFunc, NotFound, MethodNotAllowed) fire goBareNames
+				// first and produce ext:<bare-name> — that is still correct
+				// because they are goBareNames members. We only assert the
+				// chi-exclusive names fold to the package.
+				chiExclusiveNames := map[string]bool{
+					"Get": true, "Post": true, "Put": true, "Delete": true,
+					"Patch": true, "Head": true, "Options": true, "Connect": true,
+					"Trace": true, "Mount": true, "Group": true, "Route": true,
+					"Use": true, "With": true, "NewRouter": true,
+					"URLParam": true, "URLParamFromCtx": true,
+				}
+				if chiExclusiveNames[name] && !strings.HasPrefix(got, "ext:github.com/go-chi") {
+					t.Fatalf("CALLS edge ToID=%q, want prefix ext:github.com/go-chi for chi-exclusive name "+
+						"(name=%q, chi import=%q)", got, name, chiPath)
 				}
 			})
 		}
@@ -4652,6 +4684,209 @@ func TestHasPdfBoxImport_Variants(t *testing.T) {
 			t.Parallel()
 			if got := hasPdfBoxImport(c.imports); got != c.want {
 				t.Errorf("hasPdfBoxImport(%v) = %v, want %v", c.imports, got, c.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Refs #44 — Go per-import gate fix: upsertImportSet must strip the ext:
+// prefix so bare package paths (e.g. "time", "errors", "github.com/go-chi/chi")
+// are inserted alongside the ext:-prefixed form that the Go extractor writes.
+// ---------------------------------------------------------------------------
+
+// TestUpsertImportSet_GoExtractorExtPrefix verifies that when the Go extractor
+// rewrites an IMPORTS edge ToID to the "ext:<path>" form (no Properties set),
+// upsertImportSet adds BOTH the ext:-prefixed value AND the bare path to the
+// import set, enabling all existing per-import gate predicates.
+func TestUpsertImportSet_GoExtractorExtPrefix(t *testing.T) {
+	cases := []struct {
+		name     string
+		toID     string
+		wantBare string
+	}{
+		{"time", "ext:time", "time"},
+		{"errors", "ext:errors", "errors"},
+		{"encoding/json", "ext:encoding/json", "encoding/json"},
+		{"sync/atomic", "ext:sync/atomic", "sync/atomic"},
+		{"chi v5", "ext:github.com/go-chi/chi", "github.com/go-chi/chi"},
+		{"chi v5 full", "ext:github.com/go-chi/chi/v5", "github.com/go-chi/chi/v5"},
+		{"net/http", "ext:net/http", "net/http"},
+		{"bare ext (no path)", "ext:", ""}, // degenerate: empty bare path should not panic
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			rel := &graph.Relationship{ToID: c.toID, Kind: "IMPORTS"}
+			set := upsertImportSet(nil, rel)
+			// ext:-prefixed form must always be present.
+			if !set[c.toID] {
+				t.Errorf("set[%q] = false; want true (ext:-prefixed form must be inserted)", c.toID)
+			}
+			// bare form must also be present (unless the path is empty).
+			if c.wantBare != "" && !set[c.wantBare] {
+				t.Errorf("set[%q] = false; want true (bare form must be inserted for gate predicates)", c.wantBare)
+			}
+		})
+	}
+}
+
+// TestSynthesize_GoTimeImport_ExtPrefixedImports verifies end-to-end that
+// a Go source file whose IMPORTS edges use the ext:-prefixed ToID form (as
+// the Go extractor writes) correctly activates the `time` import gate,
+// causing bare stubs like "Now" to be classified as ext:time. Refs #44.
+func TestSynthesize_GoTimeImport_ExtPrefixedImports(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{
+				ID:         "file-ent",
+				Name:       "worker.go",
+				Kind:       "SCOPE.Component",
+				Language:   "go",
+				SourceFile: "worker.go",
+			},
+			{
+				ID:         "fn-ent",
+				Name:       "RunJob",
+				Kind:       "function",
+				Language:   "go",
+				SourceFile: "worker.go",
+			},
+		},
+		Relationships: []graph.Relationship{
+			{
+				// Go extractor writes ext: form — no Properties set.
+				ID:     "imp-time",
+				FromID: "file-ent",
+				ToID:   "ext:time",
+				Kind:   "IMPORTS",
+			},
+			{
+				// Bare stub emitted by Go extractor for `time.Now()` call.
+				ID:     "call-now",
+				FromID: "fn-ent",
+				ToID:   "Now",
+				Kind:   "CALLS",
+			},
+		},
+	}
+	Synthesize(doc)
+	got := doc.Relationships[1].ToID
+	if got != "ext:time" {
+		t.Fatalf("ToID=%q, want ext:time — time import gate did not fire; upsertImportSet ext: stripping is broken", got)
+	}
+}
+
+// TestSynthesize_GoChiImport_ExtPrefixedImports verifies end-to-end that a
+// Go source file whose IMPORTS edge for chi uses the ext:-prefixed ToID form
+// correctly activates hasGoChiImport, so bare router-method stubs like "Get",
+// "NewRouter", and "URLParam" synthesise to ext:github.com/go-chi/chi. Refs #44.
+func TestSynthesize_GoChiImport_ExtPrefixedImports(t *testing.T) {
+	chiNames := []string{"Get", "Post", "Route", "Use", "NewRouter", "URLParam", "URLParamFromCtx"}
+	for _, name := range chiNames {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{
+						ID:         "file-ent",
+						Name:       "main.go",
+						Kind:       "SCOPE.Component",
+						Language:   "go",
+						SourceFile: "main.go",
+					},
+					{
+						ID:         "fn-ent",
+						Name:       "SetupRouter",
+						Kind:       "function",
+						Language:   "go",
+						SourceFile: "main.go",
+					},
+				},
+				Relationships: []graph.Relationship{
+					{
+						// Go extractor uses ext: prefix — no Properties.
+						ID:     "imp-chi",
+						FromID: "file-ent",
+						ToID:   "ext:github.com/go-chi/chi",
+						Kind:   "IMPORTS",
+					},
+					{
+						ID:     "call-chi",
+						FromID: "fn-ent",
+						ToID:   name,
+						Kind:   "CALLS",
+					},
+				},
+			}
+			Synthesize(doc)
+			got := doc.Relationships[1].ToID
+			if got == name {
+				t.Fatalf("name=%q: stub not rewritten; hasGoChiImport gate did not fire — upsertImportSet ext: stripping is broken", name)
+			}
+			if !strings.HasPrefix(got, "ext:github.com/go-chi") {
+				t.Fatalf("name=%q: ToID=%q, want prefix ext:github.com/go-chi", name, got)
+			}
+		})
+	}
+}
+
+// TestSynthesize_GoErrorsImport_ExtPrefixedImports verifies that the errors
+// import gate fires when the IMPORTS edge is in ext:-prefixed form. Refs #44.
+func TestSynthesize_GoErrorsImport_ExtPrefixedImports(t *testing.T) {
+	for _, stub := range []string{"New", "As", "Is", "Unwrap"} {
+		stub := stub
+		t.Run(stub, func(t *testing.T) {
+			t.Parallel()
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{ID: "file-ent", Name: "errs.go", Kind: "SCOPE.Component", Language: "go", SourceFile: "errs.go"},
+					{ID: "fn-ent", Name: "wrap", Kind: "function", Language: "go", SourceFile: "errs.go"},
+				},
+				Relationships: []graph.Relationship{
+					{ID: "imp-errors", FromID: "file-ent", ToID: "ext:errors", Kind: "IMPORTS"},
+					{ID: "call-stub", FromID: "fn-ent", ToID: stub, Kind: "CALLS"},
+				},
+			}
+			Synthesize(doc)
+			got := doc.Relationships[1].ToID
+			if got == stub {
+				t.Fatalf("stub=%q: not rewritten; errors import gate did not fire", stub)
+			}
+			if got != "ext:errors" {
+				t.Fatalf("stub=%q: ToID=%q, want ext:errors", stub, got)
+			}
+		})
+	}
+}
+
+// TestSynthesize_GoEncodingJsonImport_ExtPrefixedImports verifies that the
+// encoding/json import gate fires when the IMPORTS edge uses the ext: form.
+// Refs #44.
+func TestSynthesize_GoEncodingJsonImport_ExtPrefixedImports(t *testing.T) {
+	for _, stub := range []string{"Marshal", "Unmarshal", "NewEncoder", "NewDecoder"} {
+		stub := stub
+		t.Run(stub, func(t *testing.T) {
+			t.Parallel()
+			doc := &graph.Document{
+				Entities: []graph.Entity{
+					{ID: "file-ent", Name: "codec.go", Kind: "SCOPE.Component", Language: "go", SourceFile: "codec.go"},
+					{ID: "fn-ent", Name: "encode", Kind: "function", Language: "go", SourceFile: "codec.go"},
+				},
+				Relationships: []graph.Relationship{
+					{ID: "imp-json", FromID: "file-ent", ToID: "ext:encoding/json", Kind: "IMPORTS"},
+					{ID: "call-stub", FromID: "fn-ent", ToID: stub, Kind: "CALLS"},
+				},
+			}
+			Synthesize(doc)
+			got := doc.Relationships[1].ToID
+			if got == stub {
+				t.Fatalf("stub=%q: not rewritten; encoding/json import gate did not fire", stub)
+			}
+			if !strings.HasPrefix(got, "ext:encoding") {
+				t.Fatalf("stub=%q: ToID=%q, want ext:encoding prefix", stub, got)
 			}
 		})
 	}
