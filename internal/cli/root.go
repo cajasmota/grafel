@@ -60,6 +60,7 @@ func newRoot() *cobra.Command {
 		newPatternsCmd(),
 		newMCPBridgeCmd(),
 		newCleanupCmd(),
+		newRegisterCmd(),
 		newHelpCmd(),
 	)
 
