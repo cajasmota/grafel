@@ -1,5 +1,5 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate } from "react-router-dom"
 
 export function IndexRoute() {
-  return <Navigate to="/api/fixture-a" replace />
+  return <Navigate to="/graph/fixture-a" replace />
 }
