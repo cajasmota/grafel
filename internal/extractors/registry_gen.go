@@ -28,6 +28,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/lua"
 	_ "github.com/cajasmota/archigraph/internal/extractors/markdown"
 	_ "github.com/cajasmota/archigraph/internal/extractors/nim"
+	_ "github.com/cajasmota/archigraph/internal/extractors/ocaml"
 	_ "github.com/cajasmota/archigraph/internal/extractors/php"
 	_ "github.com/cajasmota/archigraph/internal/extractors/proto"
 	_ "github.com/cajasmota/archigraph/internal/extractors/python"
