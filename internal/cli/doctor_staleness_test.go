@@ -3,100 +3,14 @@ package cli
 // doctor_staleness_test.go — unit tests for the stale-daemon scan logic
 // introduced in issue #857 (Layer 3).
 //
-// We test the parsing helpers (parsePsEo, parsePsAux) and the classification
-// logic (isOrphan, isTmp) directly because they are pure functions over text.
+// The parse helpers (parsePsEo, parsePsAux) were removed in #932 and
+// replaced by internal/process. This file now tests the classification
+// logic (isOrphan, isTmp) and the end-to-end scan function.
 
 import (
 	"strings"
 	"testing"
 )
-
-// TestParsePsEo_IdentifiesArchigraphProcs verifies that parsePsEo correctly
-// extracts archigraph processes from `ps -eo pid,ppid,comm` output.
-func TestParsePsEo_IdentifiesArchigraphProcs(t *testing.T) {
-	// Synthetic ps -eo pid,ppid,comm output with one archigraph daemon
-	// adopted by launchd (ppid=1) and one canonical daemon.
-	psOut := []byte(`  PID  PPID COMM
-  100     1 /tmp/arch-test/archigraph
-  200   150 /usr/local/bin/archigraph
-  300   200 /usr/local/bin/sleep
-  400     1 /tmp/arch-wave2/archigraph
-`)
-	myPID := 9999 // not in the list
-	procs := parsePsEo(psOut, myPID)
-
-	if len(procs) != 3 {
-		t.Fatalf("expected 3 archigraph procs, got %d: %+v", len(procs), procs)
-	}
-
-	// First proc: pid=100, ppid=1, /tmp binary → orphan + tmp
-	p0 := procs[0]
-	if p0.PID != 100 {
-		t.Errorf("proc[0].PID: want 100, got %d", p0.PID)
-	}
-	if !p0.IsOrphan {
-		t.Errorf("proc[0] should be orphan (ppid=1)")
-	}
-	if !p0.IsTmp {
-		t.Errorf("proc[0] should be IsTmp")
-	}
-
-	// Second proc: pid=200, ppid=150, canonical binary → not orphan, not tmp
-	p1 := procs[1]
-	if p1.PID != 200 {
-		t.Errorf("proc[1].PID: want 200, got %d", p1.PID)
-	}
-	if p1.IsOrphan {
-		t.Errorf("proc[1] should NOT be orphan (ppid=150)")
-	}
-	if p1.IsTmp {
-		t.Errorf("proc[1] should NOT be IsTmp (/usr/local/bin path)")
-	}
-
-	// Third proc: pid=400, ppid=1, /tmp binary → orphan + tmp
-	p2 := procs[2]
-	if p2.PID != 400 {
-		t.Errorf("proc[2].PID: want 400, got %d", p2.PID)
-	}
-	if !p2.IsOrphan {
-		t.Errorf("proc[2] should be orphan (ppid=1)")
-	}
-	if !p2.IsTmp {
-		t.Errorf("proc[2] should be IsTmp")
-	}
-}
-
-// TestParsePsEo_ExcludesMyPID verifies that the calling process is excluded
-// from the scan results.
-func TestParsePsEo_ExcludesMyPID(t *testing.T) {
-	psOut := []byte(`  PID  PPID COMM
- 1234   500 /usr/local/bin/archigraph
-`)
-	procs := parsePsEo(psOut, 1234) // exclude pid 1234
-	if len(procs) != 0 {
-		t.Errorf("expected myPID to be excluded, got %+v", procs)
-	}
-}
-
-// TestParsePsAux_BasicParsing verifies the ps aux fallback parser.
-func TestParsePsAux_BasicParsing(t *testing.T) {
-	// ps aux format: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND...
-	psOut := []byte(`USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
-jorge        123  0.0  0.1  12345  6789 ?        Ss   10:00   0:01 /tmp/arch-agent/archigraph daemon start
-jorge        456  0.0  0.1  12345  6789 ?        Ss   09:00   0:10 /usr/local/bin/archigraph daemon start
-jorge        789  0.0  0.0   1234   567 ?        S    10:01   0:00 /bin/sleep 60
-`)
-	procs := parsePsAux(psOut, 9999)
-	if len(procs) != 2 {
-		t.Fatalf("expected 2 archigraph procs, got %d: %+v", len(procs), procs)
-	}
-	if !procs[0].IsTmp {
-		t.Errorf("proc[0] should be IsTmp, exe=%s", procs[0].Exe)
-	}
-	if procs[1].IsTmp {
-		t.Errorf("proc[1] should NOT be IsTmp, exe=%s", procs[1].Exe)
-	}
-}
 
 // TestStaleProcessClassification verifies the stale detection criteria:
 // - orphan /tmp binary → stale

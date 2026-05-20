@@ -121,7 +121,7 @@ func runDaemonStartWithBudget(out io.Writer, maxRSSBudgetMB int64) error {
 		if statusErr == nil && st.BinaryPath != "" && currentBin != "" &&
 			filepath.Clean(st.BinaryPath) != filepath.Clean(currentBin) {
 			return fmt.Errorf("stale daemon running from %s (you are %s)\n"+
-				"Run: pkill -f \"archigraph daemon\" && archigraph start",
+				"Run: archigraph doctor --kill-stale && archigraph start",
 				st.BinaryPath, currentBin)
 		}
 		fmt.Fprintln(out, "daemon already running")

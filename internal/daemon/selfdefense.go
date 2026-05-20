@@ -21,13 +21,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
-	"runtime"
 	"runtime/pprof"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/process"
 )
 
 // isTmpPath reports whether path starts with /tmp (a hard-coded exclusion zone
@@ -116,41 +115,29 @@ func FindCanonicalDaemon() (pid int, exe string) {
 // whose binary path is NOT under /tmp. It returns the pid and executable path
 // of the first match, or (0, "") if none is found.
 //
-// Implementation uses `ps aux` for portability across macOS and Linux without
-// requiring /proc access. The search is intentionally O(n-processes) and only
-// runs once at startup, so the cost is acceptable.
+// Uses the cross-platform process package which reads /proc on Linux and
+// invokes ps on macOS — no shell-out to ps on Linux.
 func findCanonicalDaemon() (pid int, exe string) {
 	myPID := os.Getpid()
 
-	out, err := exec.Command("ps", "aux").Output()
+	procs, err := process.FindByName("archigraph")
 	if err != nil {
 		return 0, ""
 	}
 
-	for _, line := range strings.Split(string(out), "\n") {
-		if !strings.Contains(line, "archigraph") {
+	for _, p := range procs {
+		if p.PID == myPID {
 			continue
 		}
-		if !strings.Contains(line, "daemon") {
-			continue
+		cmdBin := p.Exe
+		if cmdBin == "" {
+			cmdBin = p.Name
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 11 {
-			continue
-		}
-		p, err := strconv.Atoi(fields[1])
-		if err != nil || p == myPID {
-			continue
-		}
-		// fields[10] is the first token of the COMMAND column.
-		// For a process like "/usr/local/bin/archigraph daemon start",
-		// fields[10] holds the binary path.
-		cmdBin := fields[10]
 		if isTmpPath(cmdBin) {
 			continue // also a temp daemon — not canonical
 		}
-		if strings.Contains(cmdBin, "archigraph") {
-			return p, cmdBin
+		if strings.Contains(strings.ToLower(cmdBin), "archigraph") {
+			return p.PID, cmdBin
 		}
 	}
 	return 0, ""
@@ -210,19 +197,13 @@ func cpuWatchdog(inflight *int64, logger *log.Logger) {
 }
 
 // selfCPUPercent returns the instantaneous CPU percentage of the current
-// process using the same `ps` shell-out as the RSS sampler. Returns 0 on error.
+// process using the cross-platform process package. Returns 0 on error.
 func selfCPUPercent() float64 {
-	pid := strconv.Itoa(os.Getpid())
-	switch runtime.GOOS {
-	case "darwin", "linux":
-		out, err := exec.Command("ps", "-o", "%cpu=", "-p", pid).Output()
-		if err != nil {
-			return 0
-		}
-		pct, _ := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-		return pct
+	pct, err := process.CPUPercent(os.Getpid())
+	if err != nil {
+		return 0
 	}
-	return 0
+	return pct
 }
 
 // dumpGoroutineProfile writes a goroutine stack dump (for diagnosing the hot

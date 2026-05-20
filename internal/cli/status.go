@@ -49,7 +49,7 @@ func runStatus(w io.Writer, filter string) error {
 				fmt.Fprintf(w, "Daemon: running (binary mismatch)\n")
 				fmt.Fprintf(w, "  ⚠️ DAEMON MISMATCH: status shows a daemon from %s, but you ran %s.\n",
 					st.BinaryPath, currentBin)
-				fmt.Fprintf(w, "  The %s binary is likely stale. Run: pkill -f \"archigraph daemon\" && archigraph start\n",
+				fmt.Fprintf(w, "  The %s binary is likely stale. Run: archigraph doctor --kill-stale && archigraph start\n",
 					st.BinaryPath)
 				fmt.Fprintf(w, "  version: %s (from %s)\n", st.Version, st.BinaryPath)
 				fmt.Fprintf(w, "  socket:  %s\n", st.SocketPath)

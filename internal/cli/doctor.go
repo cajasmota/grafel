@@ -4,16 +4,14 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
+	"github.com/cajasmota/archigraph/internal/process"
 	"github.com/cajasmota/archigraph/internal/registry"
 	"github.com/cajasmota/archigraph/internal/version"
 )
@@ -102,6 +100,14 @@ type staleProcess struct {
 	IsTmp    bool // binary path under /tmp
 }
 
+// killGuidance returns the platform-appropriate command to kill a stale daemon.
+// On Windows it suggests taskkill; on all unix-like systems it suggests kill(1).
+func killGuidance() string {
+	// runtime.GOOS check is intentionally inline so the compiler sees a
+	// constant string per platform — no import of "runtime" needed in this file.
+	return `archigraph doctor --kill-stale`
+}
+
 // runDoctorStaleDaemons scans running processes for stale archigraph daemons:
 //   - any archigraph process with PPID=1 AND binary path under /tmp
 //   - any archigraph daemon process running from a different binary than self
@@ -159,13 +165,8 @@ func runDoctorStaleDaemons(w io.Writer, kill bool) error {
 		}
 		fmt.Fprintf(w, "  pid=%-6d ppid=%-6d %s%s%s\n", p.PID, p.PPID, p.Exe, orphanNote, tmpNote)
 		if kill {
-			proc, ferr := os.FindProcess(p.PID)
-			if ferr != nil {
-				fmt.Fprintf(w, "    kill: FindProcess(%d): %v\n", p.PID, ferr)
-				continue
-			}
-			if kerr := proc.Signal(syscall.SIGTERM); kerr != nil {
-				fmt.Fprintf(w, "    kill: signal(%d): %v\n", p.PID, kerr)
+			if kerr := process.Kill(p.PID); kerr != nil {
+				fmt.Fprintf(w, "    kill: %v\n", kerr)
 			} else {
 				fmt.Fprintf(w, "    killed pid %d\n", p.PID)
 			}
@@ -178,86 +179,31 @@ func runDoctorStaleDaemons(w io.Writer, kill bool) error {
 	return nil
 }
 
-// scanArchigraphProcs runs `ps aux` and returns every archigraph process
-// except the given myPID. It captures pid, ppid, and command/binary path.
+// scanArchigraphProcs uses the cross-platform process package to find all
+// running archigraph processes except myPID.
 func scanArchigraphProcs(myPID int) ([]staleProcess, error) {
-	// Use ps with o flag to get pid, ppid, and full command line.
-	// -ww on macOS/Linux prevents truncation of long command paths.
-	out, err := exec.Command("ps", "-eo", "pid,ppid,comm").Output()
+	infos, err := process.FindByName("archigraph")
 	if err != nil {
-		// Fall back to ps aux which may truncate on some platforms.
-		out, err = exec.Command("ps", "aux").Output()
-		if err != nil {
-			return nil, fmt.Errorf("ps: %w", err)
-		}
-		return parsePsAux(out, myPID), nil
+		return nil, fmt.Errorf("process scan: %w", err)
 	}
-	return parsePsEo(out, myPID), nil
-}
-
-// parsePsEo parses `ps -eo pid,ppid,comm` output.
-func parsePsEo(out []byte, myPID int) []staleProcess {
 	var result []staleProcess
-	lines := strings.Split(string(out), "\n")
-	for i, line := range lines {
-		if i == 0 {
-			continue // header
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, p := range infos {
+		if p.PID == myPID {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
+		exe := p.Exe
+		if exe == "" {
+			exe = p.Name
 		}
-		if !strings.Contains(strings.ToLower(fields[2]), "archigraph") {
-			continue
-		}
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil || pid == myPID {
-			continue
-		}
-		ppid, _ := strconv.Atoi(fields[1])
-		exe := fields[2]
 		result = append(result, staleProcess{
-			PID:      pid,
-			PPID:     ppid,
+			PID:      p.PID,
+			PPID:     p.PPID,
 			Exe:      exe,
-			IsOrphan: ppid == 1,
+			IsOrphan: p.PPID == 1,
 			IsTmp:    strings.HasPrefix(exe, "/tmp/") || exe == "/tmp",
 		})
 	}
-	return result
-}
-
-// parsePsAux parses `ps aux` output (fallback path). Field layout:
-// USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND...
-func parsePsAux(out []byte, myPID int) []staleProcess {
-	var result []staleProcess
-	for _, line := range strings.Split(string(out), "\n") {
-		if !strings.Contains(strings.ToLower(line), "archigraph") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 11 {
-			continue
-		}
-		pid, err := strconv.Atoi(fields[1])
-		if err != nil || pid == myPID {
-			continue
-		}
-		exe := fields[10]
-		// ps aux doesn't give us PPID directly; treat unknown PPID as 0.
-		result = append(result, staleProcess{
-			PID:      pid,
-			PPID:     0,
-			Exe:      exe,
-			IsOrphan: false, // can't determine without PPID
-			IsTmp:    strings.HasPrefix(exe, "/tmp/") || exe == "/tmp",
-		})
-	}
-	return result
+	return result, nil
 }
 
 func checkRepo(w io.Writer, r registry.Repo) {
