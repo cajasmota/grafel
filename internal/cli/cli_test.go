@@ -488,3 +488,210 @@ func TestUnregisterMCPFromClaudeConfigsIdempotent(t *testing.T) {
 	// Actually, UnregisterPath succeeds silently, so it will be reported.
 	// This is correct behavior - the system says "MCP removed from: ..." even if it was already gone.
 }
+
+// TestInstallSkillsInClaudeConfigs verifies that installSkillsInClaudeConfigs
+// correctly symlinks the 6 archigraph skills into detected Claude config
+// directories' skills/ subdirectories. This tests the fix for issue #824:
+// after `archigraph install`, users should be able to invoke /archigraph-quality-check
+// and other skills directly in Claude Code.
+func TestInstallSkillsInClaudeConfigs(t *testing.T) {
+	home := withSandboxHome(t)
+
+	// Create a SEPARATE directory for source skills (not inside home).
+	// This avoids confusion where source and destination would be in the same tree.
+	srcRoot := t.TempDir()
+	skillsDir := filepath.Join(srcRoot, "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skillNames := []string{
+		"archigraph-quality-check",
+		"archigraph-patterns-discover",
+		"archigraph-patterns-sync",
+		"archigraph-repair",
+		"extend-convention",
+		"generate-docs",
+	}
+	for _, skillName := range skillNames {
+		skillPath := filepath.Join(skillsDir, skillName)
+		if err := os.MkdirAll(skillPath, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Write a marker file to verify symlink resolution.
+		if err := os.WriteFile(filepath.Join(skillPath, "skill.yaml"), []byte("name: "+skillName), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create mock Claude config directories inside home.
+	claudeDir := filepath.Join(home, ".claude.json")
+	claudePersonalDir := filepath.Join(home, ".claude-personal")
+	if err := os.MkdirAll(claudePersonalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	claudePersonalJSON := filepath.Join(claudePersonalDir, ".claude.json")
+
+	// Call installSkillsInClaudeConfigs with explicit skillsSourceDir.
+	out := &bytes.Buffer{}
+	installed := installSkillsInClaudeConfigs(out, "/fake/bin/archigraph", skillsDir, []string{claudeDir, claudePersonalJSON})
+
+	// Verify both directories reported as installed.
+	if len(installed) != 2 {
+		t.Fatalf("expected 2 installed dirs, got %d: %v", len(installed), installed)
+	}
+
+	// Verify symlinks in primary Claude config.
+	primarySkillsDir := filepath.Join(filepath.Dir(claudeDir), "skills")
+	for _, skillName := range skillNames {
+		skillPath := filepath.Join(primarySkillsDir, skillName)
+		info, err := os.Lstat(skillPath)
+		if err != nil {
+			t.Fatalf("symlink not created for %s: %v", skillName, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("%s is not a symlink", skillName)
+		}
+
+		// Verify symlink target.
+		target, err := os.Readlink(skillPath)
+		if err != nil {
+			t.Fatalf("failed to read symlink %s: %v", skillName, err)
+		}
+		expectedTarget := filepath.Join(skillsDir, skillName)
+		if target != expectedTarget {
+			t.Errorf("symlink target mismatch for %s: expected %q, got %q", skillName, expectedTarget, target)
+		}
+	}
+
+	// Verify symlinks in secondary Claude config.
+	secondarySkillsDir := filepath.Join(filepath.Dir(claudePersonalJSON), "skills")
+	for _, skillName := range skillNames {
+		skillPath := filepath.Join(secondarySkillsDir, skillName)
+		info, err := os.Lstat(skillPath)
+		if err != nil {
+			t.Fatalf("symlink not created for %s in secondary config: %v", skillName, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("%s is not a symlink in secondary config", skillName)
+		}
+	}
+
+	// Verify output reports the success.
+	outStr := out.String()
+	if !strings.Contains(outStr, "Skills linked in:") {
+		t.Fatalf("output missing 'Skills linked in:' message: %s", outStr)
+	}
+}
+
+// TestInstallSkillsIdempotent verifies that running installSkillsInClaudeConfigs
+// twice on the same config is safe and doesn't error or duplicate symlinks.
+func TestInstallSkillsIdempotent(t *testing.T) {
+	home := withSandboxHome(t)
+
+	// Create source skills directory in a separate temp dir.
+	srcRoot := t.TempDir()
+	skillsDir := filepath.Join(srcRoot, "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skillNames := []string{"archigraph-quality-check", "generate-docs"}
+	for _, skillName := range skillNames {
+		if err := os.MkdirAll(filepath.Join(skillsDir, skillName), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create Claude config directory in home.
+	claudeDir := filepath.Join(home, ".claude.json")
+
+	// First install.
+	out1 := &bytes.Buffer{}
+	installed1 := installSkillsInClaudeConfigs(out1, "/fake/bin", skillsDir, []string{claudeDir})
+	if len(installed1) != 1 {
+		t.Fatalf("first install: expected 1 dir, got %d", len(installed1))
+	}
+
+	// Re-run install (should be idempotent).
+	out2 := &bytes.Buffer{}
+	installed2 := installSkillsInClaudeConfigs(out2, "/fake/bin", skillsDir, []string{claudeDir})
+	if len(installed2) != 1 {
+		t.Fatalf("second install: expected 1 dir, got %d", len(installed2))
+	}
+
+	// Verify symlinks still exist and point correctly.
+	skillsSubdir := filepath.Join(filepath.Dir(claudeDir), "skills")
+	for _, skillName := range skillNames {
+		skillPath := filepath.Join(skillsSubdir, skillName)
+		target, err := os.Readlink(skillPath)
+		if err != nil {
+			t.Fatalf("failed to read symlink %s after re-install: %v", skillName, err)
+		}
+		expectedTarget := filepath.Join(skillsDir, skillName)
+		if target != expectedTarget {
+			t.Errorf("symlink target mismatch after re-install: expected %q, got %q", expectedTarget, target)
+		}
+	}
+
+	// Both installs should report success.
+	if !strings.Contains(out1.String(), "Skills linked in:") {
+		t.Errorf("first install didn't report success: %s", out1.String())
+	}
+	if !strings.Contains(out2.String(), "Skills linked in:") {
+		t.Errorf("second install didn't report success: %s", out2.String())
+	}
+}
+
+// TestRemoveSkillsFromClaudeConfigs verifies that removeSkillsFromClaudeConfigs
+// correctly removes symlinked skills from Claude config directories.
+func TestRemoveSkillsFromClaudeConfigs(t *testing.T) {
+	home := withSandboxHome(t)
+
+	// Create source skills directory in a separate temp dir.
+	srcRoot := t.TempDir()
+	skillsDir := filepath.Join(srcRoot, "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skillNames := []string{"archigraph-quality-check", "generate-docs"}
+	for _, skillName := range skillNames {
+		if err := os.MkdirAll(filepath.Join(skillsDir, skillName), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create Claude config directory in home and install skills.
+	claudeDir := filepath.Join(home, ".claude.json")
+	installOut := &bytes.Buffer{}
+	installSkillsInClaudeConfigs(installOut, "/fake/bin", skillsDir, []string{claudeDir})
+
+	// Verify skills are installed.
+	skillsSubdir := filepath.Join(filepath.Dir(claudeDir), "skills")
+	for _, skillName := range skillNames {
+		_, err := os.Lstat(filepath.Join(skillsSubdir, skillName))
+		if err != nil {
+			t.Fatalf("skill symlink missing before removal: %v", err)
+		}
+	}
+
+	// Now remove the skills.
+	removeOut := &bytes.Buffer{}
+	removed := removeSkillsFromClaudeConfigs(removeOut, []string{claudeDir})
+
+	// Verify removal was reported.
+	if len(removed) != 1 {
+		t.Fatalf("expected 1 removed dir, got %d", len(removed))
+	}
+
+	// Verify symlinks were removed.
+	for _, skillName := range skillNames {
+		_, err := os.Lstat(filepath.Join(skillsSubdir, skillName))
+		if !os.IsNotExist(err) {
+			t.Fatalf("symlink not removed for %s", skillName)
+		}
+	}
+
+	// Verify output mentions removal.
+	if !strings.Contains(removeOut.String(), "Skills removed from:") {
+		t.Errorf("should report removal: %s", removeOut.String())
+	}
+}

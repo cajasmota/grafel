@@ -10,6 +10,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/service"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
+	"github.com/cajasmota/archigraph/internal/install/skilllink"
 )
 
 // registerMCPInClaudeConfigs registers the archigraph MCP entry in all detected
@@ -39,6 +40,19 @@ func registerMCPInClaudeConfigs(out io.Writer, binPath string, claudeConfigDirs 
 	return registered
 }
 
+// installSkillsInClaudeConfigs symlinks the 6 archigraph skills into every
+// detected Claude Code config directory. It's extracted into a separate
+// function so it can be tested independently of service.Install.
+//
+// binPath is the full path to the archigraph binary (used to infer skills location).
+// skillsSourceDir is an explicit override for the skills directory (from --skills-source-dir flag).
+// claudeConfigDirs, when non-empty, overrides auto-detection of ~/.claude.json dirs.
+// Returns a list of successfully installed paths and prints status to out.
+func installSkillsInClaudeConfigs(out io.Writer, binPath, skillsSourceDir string, claudeConfigDirs []string) []string {
+	claudeDirs := mcpreg.DetectClaudeConfigDirs(claudeConfigDirs)
+	return skilllink.InstallSkillsInClaudeConfigs(out, binPath, skillsSourceDir, claudeDirs)
+}
+
 // newInstallCmd returns the `archigraph install` subcommand.
 //
 // Per ADR-0017 Phase C the old "apply a group config" semantic is
@@ -52,6 +66,9 @@ func registerMCPInClaudeConfigs(out io.Writer, binPath string, claudeConfigDirs 
 func newInstallCmd() *cobra.Command {
 	var foreground bool
 	var claudeConfigDirs []string
+	var skillsSourceDir string
+	var skipSkillLink bool
+
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Register archigraph daemon as a system service and start it",
@@ -70,7 +87,11 @@ Re-running install when the service is already active prints the current
 status and exits successfully (idempotent).
 
 Use --foreground to skip service registration and run the daemon directly
-in this terminal — useful for debugging launchd/systemd issues.`,
+in this terminal — useful for debugging launchd/systemd issues.
+
+Install also symlinks the 6 archigraph skills into every detected Claude Code
+config directory's skills/ subdirectory. Use --skip-skill-link to disable this,
+or --skills-source-dir to override the skills discovery location.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 
@@ -123,6 +144,15 @@ in this terminal — useful for debugging launchd/systemd issues.`,
 			// Claude Code to the daemon's JSON-RPC 1.0 socket. Failures are
 			// soft — we report them but do not abort the install.
 			registerMCPInClaudeConfigs(out, bin, claudeConfigDirs)
+
+			// Symlink the 6 archigraph skills into every detected Claude Code
+			// config directory's skills/ subdirectory. This allows Claude Code
+			// to discover and run the skills directly (e.g. /archigraph-quality-check).
+			// Failures are soft — we report them but do not abort the install.
+			if !skipSkillLink {
+				installSkillsInClaudeConfigs(out, bin, skillsSourceDir, claudeConfigDirs)
+			}
+
 			return nil
 		},
 	}
@@ -130,5 +160,9 @@ in this terminal — useful for debugging launchd/systemd issues.`,
 		"skip service registration; run the daemon directly in this terminal (debug mode)")
 	cmd.Flags().StringSliceVar(&claudeConfigDirs, "claude-config-dirs", nil,
 		"explicit list of .claude.json paths to register MCP in (default: auto-detect ~/.claude.json + ~/.claude-*/)")
+	cmd.Flags().StringVar(&skillsSourceDir, "skills-source-dir", "",
+		"override the skills directory location (default: auto-detect from binary location or dev paths)")
+	cmd.Flags().BoolVar(&skipSkillLink, "skip-skill-link", false,
+		"skip symlinking skills into Claude Code's skills/ directories")
 	return cmd
 }

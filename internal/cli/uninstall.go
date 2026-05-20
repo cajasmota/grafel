@@ -8,6 +8,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/daemon/service"
 	"github.com/cajasmota/archigraph/internal/install/mcpreg"
+	"github.com/cajasmota/archigraph/internal/install/skilllink"
 )
 
 // unregisterMCPFromClaudeConfigs removes the archigraph MCP entry from all
@@ -36,6 +37,17 @@ func unregisterMCPFromClaudeConfigs(out io.Writer, claudeConfigDirs []string) []
 	return removed
 }
 
+// removeSkillsFromClaudeConfigs removes the symlinked archigraph skills from
+// every detected Claude Code config directory. It's extracted into a separate
+// function so it can be tested independently of service.Uninstall.
+//
+// claudeConfigDirs, when non-empty, overrides auto-detection of ~/.claude.json dirs.
+// Returns a list of successfully updated paths and prints status to out.
+func removeSkillsFromClaudeConfigs(out io.Writer, claudeConfigDirs []string) []string {
+	claudeDirs := mcpreg.DetectClaudeConfigDirs(claudeConfigDirs)
+	return skilllink.RemoveSkillsFromClaudeConfigs(out, claudeDirs)
+}
+
 // newUninstallCmd returns the `archigraph uninstall` subcommand.
 //
 // Per ADR-0017 Phase C the old "remove from a group" semantic is
@@ -45,6 +57,8 @@ func unregisterMCPFromClaudeConfigs(out io.Writer, claudeConfigDirs []string) []
 // Idempotent: if the service is not installed the command succeeds silently.
 func newUninstallCmd() *cobra.Command {
 	var claudeConfigDirs []string
+	var skipSkillUnlink bool
+
 	cmd := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Stop and remove the archigraph daemon service",
@@ -54,6 +68,9 @@ registration (launchd plist on macOS, systemd unit on Linux).
 Also removes the archigraph MCP entry from ~/.claude.json and any
 ~/.claude-*/.claude.json files, so Claude Code no longer tries to
 connect to the daemon.
+
+Also removes the symlinked archigraph skills from every detected Claude Code
+config directory's skills/ subdirectory. Use --skip-skill-unlink to disable this.
 
 Idempotent: if the service is not installed the command exits 0 without
 printing an error.`,
@@ -66,10 +83,18 @@ printing an error.`,
 
 			// Remove MCP registrations from every detected Claude config dir.
 			unregisterMCPFromClaudeConfigs(out, claudeConfigDirs)
+
+			// Remove symlinked skills from every detected Claude config dir.
+			if !skipSkillUnlink {
+				removeSkillsFromClaudeConfigs(out, claudeConfigDirs)
+			}
+
 			return nil
 		},
 	}
 	cmd.Flags().StringSliceVar(&claudeConfigDirs, "claude-config-dirs", nil,
-		"explicit list of .claude.json paths to deregister MCP from (default: auto-detect)")
+		"explicit list of .claude.json paths to deregister from (default: auto-detect)")
+	cmd.Flags().BoolVar(&skipSkillUnlink, "skip-skill-unlink", false,
+		"skip removing skills from Claude Code's skills/ directories")
 	return cmd
 }
