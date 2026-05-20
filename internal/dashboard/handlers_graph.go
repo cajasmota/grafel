@@ -5,12 +5,16 @@ package dashboard
 //	GET /api/graph/{group}?filter_kind=&filter_repo=&repos=slug1,slug2
 //	GET /api/graph/{group}/entity/{id}
 //
-// #1023: LoD tiers removed. The endpoint always returns the dense tier
-// (top-500 per repo by PageRank). Cosmograph handles large node counts
-// via GPU WebGL — no need for centroid/mid/full switching.
+// #1023: LoD tiers removed. The endpoint returns all entities — no per-repo
+// node cap. Cosmograph handles 1M+ nodes via GPU WebGL at 60fps; no sampling
+// or LoD switching is needed.
 //
 // Removed functions: serveGraphCentroids, serveGraphMid, serveGraphFull.
-// Removed: ?lod= param, COMMUNITY_LINK synthetic edges, centroid nodes.
+// Removed: ?lod= param, COMMUNITY_LINK synthetic edges, centroid nodes,
+//          denseNodeLimit (was 500/repo — legacy react-force-graph artifact).
+//
+// If the response exceeds 50,000 nodes, an X-Graph-Warning header is added so
+// the frontend can optionally surface a notice to the user.
 //
 // "repos" param accepts comma-separated repo slugs for multi-select filtering.
 
@@ -23,7 +27,9 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph"
 )
 
-const denseNodeLimit = 500 // per-repo limit for the dense tier
+// softNodeWarnThreshold is the node count above which the API adds an
+// X-Graph-Warning response header so the frontend can surface a notice.
+const softNodeWarnThreshold = 50_000
 
 // buildDegreeMap returns a map from entity ID to total degree (in + out) for
 // all relationships in a repo.  Used by the dense/mid samplers to rank nodes
@@ -85,12 +91,10 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	s.serveGraphDense(w, group, repos, filterKind)
 }
 
-// serveGraphDense returns top-N nodes by degree+pagerank per repo — the only tier (#1023).
-// Cosmograph handles >1500 nodes at 60fps via GPU; no LoD switching needed.
-//
-// Sampling strategy (fix #1020): sort by actual edge degree (in+out) descending,
-// using PageRank as tiebreaker. High-degree nodes are most likely to connect to
-// other sampled nodes, dramatically reducing the isolated-node rate.
+// serveGraphAll returns every entity in the indexed graph — no per-repo cap.
+// Cosmograph handles 1M+ nodes at 60fps via GPU WebGL (#1023 removed LoD).
+// A soft X-Graph-Warning header is added when node count exceeds
+// softNodeWarnThreshold so the frontend can optionally surface a notice.
 func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
 	nodes := []map[string]any{}
 	edges := []map[string]any{}
@@ -123,46 +127,18 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 			communities = append(communities, cm)
 		}
 
-		// Build degree map for this repo (in-degree + out-degree).
-		degree := buildDegreeMap(r.Doc.Relationships)
-
-		type scored struct {
-			e      *graph.Entity
-			degree int
-			pr     float64
-		}
-		var candidates []scored
+		// Emit all entities — no cap. Filter by kind when requested.
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
 			if filterKind != "" && dashStripScopePrefix(e.Kind) != filterKind {
 				continue
 			}
-			pr := 0.0
-			if e.PageRank != nil {
-				pr = *e.PageRank
-			}
-			candidates = append(candidates, scored{e: e, degree: degree[e.ID], pr: pr})
-		}
-		// Sort by degree DESC, then PageRank DESC as tiebreaker.
-		// Degree-first ensures the most-connected nodes survive the cap,
-		// which maximises the number of edges that land within the sample.
-		sort.Slice(candidates, func(i, j int) bool {
-			if candidates[i].degree != candidates[j].degree {
-				return candidates[i].degree > candidates[j].degree
-			}
-			return candidates[i].pr > candidates[j].pr
-		})
-		limit := denseNodeLimit
-		if len(candidates) < limit {
-			limit = len(candidates)
-		}
-		for _, sc := range candidates[:limit] {
-			pid := dashPrefixedID(r.Slug, sc.e.ID)
+			pid := dashPrefixedID(r.Slug, e.ID)
 			if visible[pid] {
 				continue
 			}
 			visible[pid] = true
-			nodes = append(nodes, serializeEntity(r.Slug, sc.e))
+			nodes = append(nodes, serializeEntity(r.Slug, e))
 		}
 	}
 
@@ -181,6 +157,10 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 				})
 			}
 		}
+	}
+
+	if len(nodes) > softNodeWarnThreshold {
+		w.Header().Set("X-Graph-Warning", "large-graph: node count exceeds 50k; consider filtering by repo or kind")
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
