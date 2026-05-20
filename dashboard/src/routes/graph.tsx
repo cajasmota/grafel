@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useGraphData } from '@/hooks/graph/useGraphData'
 import { useGraphSelection } from '@/hooks/graph/useGraphSelection'
@@ -53,6 +53,10 @@ export function GraphRoute() {
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [highContrast, setHighContrast] = useState(false)
   const [hoveredCommunityId, setHoveredCommunityId] = useState<number | null>(null)
+
+  // ── Hover tooltip state (#1060) ────────────────────────────────────────────
+  // Track cursor position in screen coordinates for tooltip placement
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
   // ── Community drill-in state ───────────────────────────────────────────────
@@ -90,6 +94,20 @@ export function GraphRoute() {
     )
 
   const colorMap = useCommunityColors(communities)
+
+  // ── Hover neighbor counts (#1060) ──────────────────────────────────────────
+  // Pre-index edges by source and target so neighbor lookup is O(1) per query.
+  const edgeIndex = useMemo(() => {
+    const callers = new Map<string, number>()  // target → inbound count
+    const callees = new Map<string, number>()  // source → outbound count
+    for (const e of edges) {
+      const src = String(e.source)
+      const tgt = String(e.target)
+      callees.set(src, (callees.get(src) ?? 0) + 1)
+      callers.set(tgt, (callers.get(tgt) ?? 0) + 1)
+    }
+    return { callers, callees }
+  }, [edges])
 
   // Derive unique repo slugs from communities once data loads
   useEffect(() => {
@@ -145,7 +163,12 @@ export function GraphRoute() {
 
   const handleNodeHover = useCallback((node: GraphNode | null) => {
     setHoveredNode(node?.id ?? null)
+    if (!node) setCursorPos(null)
   }, [setHoveredNode])
+
+  const handleCursorMove = useCallback((x: number, y: number) => {
+    if (hoveredNodeId) setCursorPos({ x, y })
+  }, [hoveredNodeId])
 
   const handleSearchSelect = useCallback((node: GraphNode) => {
     selectNode(node.id)
@@ -377,11 +400,38 @@ export function GraphRoute() {
               hoveredNodeId={hoveredNodeId}
               onNodeClick={handleNodeClick}
               onNodeHover={handleNodeHover}
+              onCursorMove={handleCursorMove}
               highContrast={highContrast}
               isDark={isDark}
               className="w-full h-full"
             />
           )}
+
+          {/* Hover tooltip — label + neighbor counts (#1060) */}
+          {hoveredNodeId && cursorPos && (() => {
+            const hovNode = nodes.find((n) => n.id === hoveredNodeId)
+            if (!hovNode) return null
+            const callerCount = edgeIndex.callers.get(String(hoveredNodeId)) ?? 0
+            const calleeCount = edgeIndex.callees.get(String(hoveredNodeId)) ?? 0
+            // Offset tooltip so it doesn't overlap the cursor
+            const tx = cursorPos.x + 14
+            const ty = cursorPos.y - 36
+            return (
+              <div
+                className="pointer-events-none fixed z-50 px-2.5 py-1.5 rounded-md border border-slate-700 bg-slate-900/95 text-xs text-slate-200 shadow-lg max-w-[220px]"
+                style={{ left: tx, top: ty }}
+                aria-hidden="true"
+              >
+                <div className="font-medium truncate">{hovNode.label ?? hovNode.id}</div>
+                {(callerCount > 0 || calleeCount > 0) && (
+                  <div className="mt-0.5 text-slate-400 flex gap-2">
+                    {callerCount > 0 && <span>{callerCount} caller{callerCount !== 1 ? 's' : ''}</span>}
+                    {calleeCount > 0 && <span>{calleeCount} callee{calleeCount !== 1 ? 's' : ''}</span>}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Node count + high-contrast toggle */}
           {!isLoading && !error && (

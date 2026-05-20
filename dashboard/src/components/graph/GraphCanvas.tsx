@@ -14,6 +14,8 @@ export interface GraphCanvasProps {
   hoveredNodeId: string | null
   onNodeClick: (node: GraphNode) => void
   onNodeHover: (node: GraphNode | null) => void
+  /** Called when the cursor moves over the canvas — provides screen coords for tooltip */
+  onCursorMove?: (x: number, y: number) => void
   onZoomChange?: (zoom: number) => void
   /** High-contrast mode — wider edges, higher opacity */
   highContrast?: boolean
@@ -43,6 +45,11 @@ function truncateLabel(text: string): string {
  *
  * Click handling: Cosmograph provides the point _index_ in onClick.
  * We keep a ref mirror of `nodes` so we can do O(1) lookup without async API calls.
+ *
+ * Hover-to-focus (#1060): When a node is hovered, selectPoint with connected
+ * neighbors is called so non-adjacent nodes are greyed out via Cosmograph's
+ * built-in greyout system (pointGreyoutOpacity / linkGreyoutOpacity).
+ * unselectAllPoints() restores full opacity on mouse leave.
  */
 const GraphCanvasInner = ({
   nodes,
@@ -51,6 +58,7 @@ const GraphCanvasInner = ({
   hoveredNodeId,
   onNodeClick,
   onNodeHover,
+  onCursorMove,
   onZoomChange,
   highContrast = false,
   isDark = true,
@@ -62,6 +70,12 @@ const GraphCanvasInner = ({
   // Mirror of nodes so click handler can resolve index → GraphNode synchronously
   const nodesRef = useRef<GraphNode[]>(nodes)
   nodesRef.current = nodes
+
+  // Debounce timer for hover — prevents thrashing on rapid micro-movements
+  const hoverDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Track the last hovered index so we can avoid redundant selectPoint calls
+  const lastHoverIndexRef = useRef<number | null>(null)
 
   // Cosmograph requires a sequential numeric index column on both points and links.
   // We derive these from the incoming arrays rather than mutating the originals.
@@ -93,6 +107,7 @@ const GraphCanvasInner = ({
   useEffect(() => {
     return () => {
       setGraphRef(null)
+      if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
     }
   }, [setGraphRef])
 
@@ -126,20 +141,49 @@ const GraphCanvasInner = ({
     if (node) onNodeClick(node)
   }, [onNodeClick])
 
-  // Background click: clear hover
+  // Background click: clear hover + greyout
   const handleBackgroundClick = useCallback(() => {
+    if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
+    lastHoverIndexRef.current = null
+    cosmographRef.current?.unselectAllPoints()
     onNodeHover(null)
   }, [onNodeHover])
 
-  // Hover: Cosmograph provides the point index on mouse move
+  // Hover: Cosmograph provides the point index on mouse move.
+  // Debounced 50 ms to avoid thrashing GPU on rapid micro-movements.
+  // When a node is hovered, selectPoint with selectConnectedPoints=true activates
+  // Cosmograph's greyout: non-selected/non-adjacent nodes get pointGreyoutOpacity.
   const handleMouseMove = useCallback((index: number | undefined) => {
+    if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
+
     if (index === undefined) {
-      onNodeHover(null)
+      // Schedule clear with slight delay so leaving a node doesn't flicker
+      hoverDebounceRef.current = setTimeout(() => {
+        lastHoverIndexRef.current = null
+        cosmographRef.current?.unselectAllPoints()
+        onNodeHover(null)
+      }, 50)
       return
     }
-    const node = nodesRef.current[index]
-    onNodeHover(node ?? null)
+
+    // Same node — no work needed
+    if (index === lastHoverIndexRef.current) return
+
+    hoverDebounceRef.current = setTimeout(() => {
+      lastHoverIndexRef.current = index
+      const node = nodesRef.current[index]
+      if (!node) return
+      // selectPoint with selectConnectedPoints=true highlights the hovered node
+      // and its direct neighbors; all others get greyout opacity applied by Cosmograph.
+      cosmographRef.current?.selectPoint(index, false, true)
+      onNodeHover(node)
+    }, 50)
   }, [onNodeHover])
+
+  // Track raw screen cursor position for tooltip overlay
+  const handleWrapperMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    onCursorMove?.(e.clientX, e.clientY)
+  }, [onCursorMove])
 
   // Zoom: Cosmograph's onZoom fires with a D3 zoom event; extract the k scale
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,6 +210,7 @@ const GraphCanvasInner = ({
       aria-label="Dependency graph"
       role="img"
       aria-describedby="graph-canvas-a11y-desc"
+      onMouseMove={handleWrapperMouseMove}
     >
       <span id="graph-canvas-a11y-desc" className="sr-only">
         Interactive GPU-accelerated force-directed graph. Use the inspector panel to navigate nodes with keyboard.
@@ -221,6 +266,11 @@ const GraphCanvasInner = ({
 
         // ── Background ────────────────────────────────────────────────────
         backgroundColor={canvasBg}
+
+        // ── Hover-to-focus greyout (#1060) ─────────────────────────────────
+        // When selectPoint is called, non-selected nodes get these opacity values.
+        pointGreyoutOpacity={0.15}
+        linkGreyoutOpacity={0.1}
 
         // ── Labels ────────────────────────────────────────────────────────
         // Truncate long entity names at 30 chars; pill background for readability.
