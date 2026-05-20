@@ -520,6 +520,127 @@ func TestPathsList_SearchFilter(t *testing.T) {
 	}
 }
 
+// TestIsHTTPEndpointPath verifies the path-shape predicate used by the
+// Paths list API to filter out XML namespace XPath strings (issue #1125).
+func TestIsHTTPEndpointPath(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		// Valid HTTP paths.
+		{"/api/v1/users", true},
+		{"/api/v1/users/{id}", true},
+		{"/webhooks/stripe", true},
+		{"/v1/orders/{pk}", true},
+		{"/", true},
+		{"https://example.com/api/v1/users", true},
+		{"http://localhost/api/orders", true},
+		// XML namespace XPath strings — must be rejected.
+		{"./w:tblBorders", false},
+		{"./w:tcBorders", false},
+		{"/./w:tblBorders", false},      // canonicalized form
+		{"/api/v1/w:something", false},  // XML prefix colon in segment
+		{"/w:root", false},
+		{"/div[@class='x']", false}, // XPath attribute selector
+		{"", false},
+		// Long "prefix" before colon — NOT XML namespace, should pass.
+		{"/version1/items", true},  // no colon at all
+	}
+	for _, tc := range cases {
+		got := isHTTPEndpointPath(tc.path)
+		if got != tc.want {
+			t.Errorf("isHTTPEndpointPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestPathsList_XMLNoiseFiltered verifies that XML namespace XPath strings
+// (e.g. "./w:tblBorders") are excluded from the Paths list even when they
+// are present as Route or http_endpoint entities in the graph (issue #1125).
+func TestPathsList_XMLNoiseFiltered(t *testing.T) {
+	// Build a server with extra XML-noise entities injected.
+	st := newFakeStore()
+	st.groups["xmlgroup"] = GroupSummary{
+		Name:       "xmlgroup",
+		ConfigPath: "/tmp/xmlgroup.json",
+		Repos:      []string{"svc"},
+	}
+	cfg := DefaultConfig()
+	srv, err := NewServer(cfg, st)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	grp := fakeDashGroup()
+	grp.Name = "xmlgroup"
+
+	// Inject XML-noise Route and http_endpoint entities that should be
+	// filtered out from the Paths list.
+	xmlEntities := []graph.Entity{
+		{
+			ID:         "xml1",
+			Name:       "./w:tblBorders",
+			Kind:       "Route",
+			SourceFile: "docx_utils.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"pattern_type": "ast_driven",
+				"framework":    "python",
+			},
+		},
+		{
+			ID:         "xml2",
+			Name:       "./w:tcBorders",
+			Kind:       "Route",
+			SourceFile: "docx_utils.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"pattern_type": "ast_driven",
+				"framework":    "python",
+			},
+		},
+		{
+			ID:   "xml3",
+			Name: "http:ANY:/./w:tblBorders",
+			Kind: "http_endpoint",
+			Properties: map[string]string{
+				"path":         "/./w:tblBorders",
+				"verb":         "ANY",
+				"pattern_type": "http_endpoint_synthesis",
+			},
+		},
+	}
+	doc := grp.Repos["svc"].Doc
+	for _, e := range xmlEntities {
+		doc.Entities = append(doc.Entities, e)
+	}
+
+	srv.graphs.mu.Lock()
+	srv.graphs.entries["xmlgroup"] = &cacheEntry{group: grp, loadedAt: time.Now()}
+	srv.graphs.mu.Unlock()
+
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+
+	code, body := getJSON(t, ts.URL, "/api/paths/xmlgroup")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	paths, _ := body["paths"].([]interface{})
+
+	// Verify none of the paths contain XML namespace strings.
+	for _, p := range paths {
+		pm := p.(map[string]any)
+		pathStr, _ := pm["path"].(string)
+		if strings.Contains(pathStr, "w:tblBorders") || strings.Contains(pathStr, "w:tcBorders") {
+			t.Errorf("XML namespace path %q should not appear in Paths list", pathStr)
+		}
+		if strings.Contains(pathStr, "./") {
+			t.Errorf("XPath relative path %q should not appear in Paths list", pathStr)
+		}
+	}
+}
+
 func TestPathDetail_200(t *testing.T) {
 	ts, _ := newPhase1Server(t)
 	// Compute the hash for /api/users.

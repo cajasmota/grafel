@@ -972,3 +972,120 @@ func TestHasDynamicBaseURLPath(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #1125 — isXMLNamespacePath unit tests
+// ---------------------------------------------------------------------------
+
+// TestIsXMLNamespacePath verifies that XML XPath expressions are correctly
+// identified so they can be excluded from http_endpoint synthesis.
+func TestIsXMLNamespacePath(t *testing.T) {
+	cases := []struct {
+		path    string
+		wantXML bool
+	}{
+		// XML XPath relative paths — must be detected.
+		{"./w:tblBorders", true},
+		{"./w:tcBorders", true},
+		{"./xml:element", true},
+		{"/./w:tblBorders", true}, // canonicalized form after normaliseSlashes
+		// XML namespace colons in path segments.
+		{"/api/v1/w:something", true},
+		{"/w:root/child", true},
+		// XPath attribute selector.
+		{"/div[@class='x']", true},
+		{"//div[@id]", true},
+		// Valid HTTP paths — must NOT be detected.
+		{"/api/v1/users", false},
+		{"/api/v1/users/{id}", false},
+		{"/webhooks/stripe", false},
+		{"/v1/orders/{pk}", false},
+		{"/", false},
+		{"", false},
+		// Paths with longer "prefixes" that are NOT XML namespaces.
+		{"/version:1/items", false},       // "version" is >4 chars
+		{"/abcde:something/foo", false},   // >4 chars prefix
+	}
+	for _, tc := range cases {
+		got := isXMLNamespacePath(tc.path)
+		if got != tc.wantXML {
+			t.Errorf("isXMLNamespacePath(%q) = %v, want %v", tc.path, got, tc.wantXML)
+		}
+	}
+}
+
+// TestSynth_DjangoComposed_RejectsXMLPaths verifies that synthesizeDjangoFromComposed
+// does not emit http_endpoint synthetics for XPath/XML namespace strings that
+// the Django YAML `path(...)` rule may have captured from python-docx / lxml
+// code (issue #1125).
+func TestSynth_DjangoComposed_RejectsXMLPaths(t *testing.T) {
+	// Simulate Route entities with XML XPath names that the YAML rule
+	// might capture from code like:
+	//   elem.find(path('./w:tblBorders'))
+	xmlRoutes := []types.EntityRecord{
+		{
+			ID:         "ast:Route:./w:tblBorders",
+			Name:       "./w:tblBorders",
+			Kind:       "Route",
+			SourceFile: "word_processor/docx_utils.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+			},
+		},
+		{
+			ID:         "ast:Route:./w:tcBorders",
+			Name:       "./w:tcBorders",
+			Kind:       "Route",
+			SourceFile: "word_processor/docx_utils.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+			},
+		},
+	}
+	// Also include a real Django route to verify it IS still emitted.
+	realRoute := types.EntityRecord{
+		ID:         "ast:Route:/api/v1/documents",
+		Name:       "/api/v1/documents",
+		Kind:       "Route",
+		SourceFile: "word_processor/urls.py",
+		Language:   "python",
+		Properties: map[string]string{
+			"framework":    "python",
+			"pattern_type": "ast_driven",
+		},
+	}
+
+	var emitted []string
+	emitFnCapture := func(method, canonicalPath, framework, refKind, refName string) {
+		id := httproutes.SyntheticID(method, canonicalPath)
+		emitted = append(emitted, id)
+	}
+
+	allRoutes := append(xmlRoutes, realRoute)
+	synthesizeDjangoFromComposed(allRoutes, "word_processor/docx_utils.py", emitFnCapture)
+	// Also run for the real url file.
+	synthesizeDjangoFromComposed(allRoutes, "word_processor/urls.py", emitFnCapture)
+
+	// XML XPath paths must NOT be emitted.
+	for _, id := range emitted {
+		if strings.Contains(id, "w:tblBorders") || strings.Contains(id, "w:tcBorders") {
+			t.Errorf("XML XPath string should not produce http_endpoint synthetic; got %q", id)
+		}
+	}
+
+	// Real route must still be emitted.
+	found := false
+	for _, id := range emitted {
+		if id == "http:ANY:/api/v1/documents" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("real Django route http:ANY:/api/v1/documents should be emitted; got %v", emitted)
+	}
+}
