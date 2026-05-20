@@ -11,9 +11,13 @@ package dashboard
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/cajasmota/archigraph/internal/mcp"
 )
 
 const (
@@ -225,12 +229,18 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 		Repo            string   `json:"repo"`
 		SourceFile      string   `json:"source_file"`
 		StartLine       int      `json:"start_line"`
+		HasDocs         bool     `json:"has_docs,omitempty"`
+		DocsSummary     string   `json:"docs_summary,omitempty"`
+		DocsPath        string   `json:"docs_path,omitempty"`
 	}
 
 	var matched []endpointDetail
 	var pathStr string
 	isWebhook := false
 	var webhookProvider string
+
+	// Load docgen state for documentation enrichment.
+	docgenState, _ := mcp.LoadDocgenState(group)
 
 	for _, repo := range sortedRepos(grp) {
 		for i := range repo.Doc.Entities {
@@ -293,6 +303,9 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 				webhookProvider = e.Properties["webhook_provider"]
 			}
 
+			// Enrich with docgen data.
+			hasDocs, docsSummary, docsPath := extractEndpointDocs(group, pathHash, docgenState)
+
 			matched = append(matched, endpointDetail{
 				ID:              dashPrefixedID(repo.Slug, e.ID),
 				Verb:            verb,
@@ -307,6 +320,9 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 				Repo:            repo.Slug,
 				SourceFile:      e.SourceFile,
 				StartLine:       e.StartLine,
+				HasDocs:         hasDocs,
+				DocsSummary:     docsSummary,
+				DocsPath:        docsPath,
 			})
 		}
 	}
@@ -329,24 +345,30 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Transform handlers to HandlerDetail shape with resolved entities.
 	type HandlerDetail struct {
-		Entity     map[string]any `json:"entity"`
-		Verb       string         `json:"verb"`
-		Framework  string         `json:"framework,omitempty"`
-		SourceFile string         `json:"source_file"`
-		StartLine  int            `json:"start_line"`
-		Language   string         `json:"language"`
+		Entity      map[string]any `json:"entity"`
+		Verb        string         `json:"verb"`
+		Framework   string         `json:"framework,omitempty"`
+		SourceFile  string         `json:"source_file"`
+		StartLine   int            `json:"start_line"`
+		Language    string         `json:"language"`
+		HasDocs     bool           `json:"has_docs,omitempty"`
+		DocsSummary string         `json:"docs_summary,omitempty"`
+		DocsPath    string         `json:"docs_path,omitempty"`
 	}
 
 	handlers := make([]HandlerDetail, len(matched))
 	for i, m := range matched {
 		_, entity := findEntity(grp, m.ID)
 		handlers[i] = HandlerDetail{
-			Entity:     serializeEntity(m.Repo, entity),
-			Verb:       m.Verb,
-			Framework:  m.Framework,
-			SourceFile: m.SourceFile,
-			StartLine:  m.StartLine,
-			Language:   entity.Language,
+			Entity:      serializeEntity(m.Repo, entity),
+			Verb:        m.Verb,
+			Framework:   m.Framework,
+			SourceFile:  m.SourceFile,
+			StartLine:   m.StartLine,
+			Language:    entity.Language,
+			HasDocs:     m.HasDocs,
+			DocsSummary: m.DocsSummary,
+			DocsPath:    m.DocsPath,
 		}
 	}
 
@@ -515,4 +537,67 @@ func containsSubstr(sl []string, sub string) bool {
 		}
 	}
 	return false
+}
+
+// extractEndpointDocs reads documentation for an endpoint identified by pathHash.
+// It checks docgen-state.json for the group and attempts to find and parse the
+// generated documentation file for this endpoint.
+//
+// Returns: (hasDocs bool, docsSummary string, docsPath string)
+// - hasDocs is true if documentation exists
+// - docsSummary is the first line/paragraph of the doc file (if exists)
+// - docsPath is the relative path to the doc file (if exists)
+func extractEndpointDocs(group string, pathHash string, docgenState *mcp.DocgenState) (bool, string, string) {
+	if docgenState == nil || docgenState.GeneratedPaths == nil {
+		return false, "", ""
+	}
+
+	// Try to find a doc file matching this endpoint.
+	// Expected pattern: something like "reference/endpoints/{pathHash}.md" or similar.
+	// For now, we'll search GeneratedPaths for a file that contains the pathHash.
+	for _, docPath := range docgenState.GeneratedPaths {
+		// Check if the path contains the pathHash or looks like an endpoint doc.
+		if !strings.Contains(docPath, pathHash) && !strings.Contains(docPath, "endpoint") {
+			continue
+		}
+
+		// Try to read the file from the standard docgen location.
+		fullPath := getDocFilePath(group, docPath)
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			continue
+		}
+
+		// Extract summary from the file (first non-empty line).
+		lines := strings.Split(string(data), "\n")
+		var summary string
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+				// Get first 150 chars of content as summary.
+				if len(trimmed) > 150 {
+					summary = trimmed[:150] + "..."
+				} else {
+					summary = trimmed
+				}
+				break
+			}
+		}
+
+		return true, summary, docPath
+	}
+
+	return false, "", ""
+}
+
+// getDocFilePath constructs the full file path to a generated documentation file.
+// Docs are stored in ~/.archigraph/groups/<group>/docs/<docPath>
+func getDocFilePath(group string, docPath string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	// Remove leading "./" if present
+	docPath = strings.TrimPrefix(docPath, "./")
+	return filepath.Join(home, ".archigraph", "groups", group, "docs", docPath)
 }

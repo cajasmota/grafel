@@ -12,11 +12,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/mcp"
 )
 
 // ---------------------------------------------------------------------------
@@ -441,6 +444,103 @@ func TestPathDetail_NotFound_404(t *testing.T) {
 	code, _ := getJSON(t, ts.URL, "/api/paths/testgroup/badhash00")
 	if code != 404 {
 		t.Fatalf("expected 404, got %d", code)
+	}
+}
+
+func TestPathDetail_DocgenFields(t *testing.T) {
+	ts, _ := newPhase1Server(t)
+	// Compute the hash for /api/users.
+	h := hashStr("/api/users")
+	code, body := getJSON(t, ts.URL, "/api/paths/testgroup/"+h)
+	if code != 200 {
+		t.Fatalf("status=%d body=%v", code, body)
+	}
+
+	// Verify response structure is valid.
+	if body["handlers"] == nil {
+		t.Fatalf("handlers field missing")
+	}
+
+	// Check that response is valid JSON and handlers is an array.
+	handlers, ok := body["handlers"].([]interface{})
+	if !ok {
+		t.Fatalf("handlers is not an array: %T", body["handlers"])
+	}
+	if len(handlers) == 0 {
+		t.Fatal("handlers array is empty")
+	}
+
+	// When docgen hasn't run, has_docs should be absent or false.
+	// Since we use omitempty, it will be absent when false.
+	handler := handlers[0].(map[string]any)
+	if hasDocs, ok := handler["has_docs"].(bool); ok && hasDocs {
+		t.Fatalf("has_docs should not be true when docgen hasn't run")
+	}
+
+	// Verify the handler has the basic fields we expect.
+	if handler["entity"] == nil {
+		t.Fatalf("entity field missing from handler")
+	}
+	if handler["verb"] == nil {
+		t.Fatalf("verb field missing from handler")
+	}
+}
+
+func TestPathDetail_DocgenFields_WithDocumentation(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	ts, _ := newPhase1Server(t)
+
+	// Create docgen state with a generated doc file for the /api/users endpoint.
+	pathHash := hashStr("/api/users")
+	docPath := "reference/endpoints/" + pathHash + ".md"
+	docsDir := filepath.Join(tmp, ".archigraph", "groups", "testgroup", "docs", "reference", "endpoints")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a sample doc file.
+	docContent := "# GET /api/users\n\nFetch all users from the system with pagination support.\n\n## Parameters\n- page: Page number\n- limit: Results per page\n"
+	if err := os.WriteFile(filepath.Join(docsDir, pathHash+".md"), []byte(docContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Save docgen state.
+	now := time.Now().UTC()
+	docgenState := mcp.DocgenState{
+		LastDocgenAt:   &now,
+		GeneratedPaths: []string{docPath},
+	}
+	if err := mcp.SaveDocgenState("testgroup", docgenState); err != nil {
+		t.Fatal(err)
+	}
+
+	// Query the endpoint.
+	code, body := getJSON(t, ts.URL, "/api/paths/testgroup/"+pathHash)
+	if code != 200 {
+		t.Fatalf("status=%d body=%v", code, body)
+	}
+
+	// Verify has_docs is true.
+	handlers, ok := body["handlers"].([]interface{})
+	if !ok || len(handlers) == 0 {
+		t.Fatal("handlers empty or not found")
+	}
+
+	handler := handlers[0].(map[string]any)
+	if hasDocs, ok := handler["has_docs"].(bool); !ok || !hasDocs {
+		t.Fatalf("has_docs should be true when docs exist, got: %v", handler["has_docs"])
+	}
+
+	// Verify docs_summary is populated.
+	if summary, ok := handler["docs_summary"].(string); !ok || summary == "" {
+		t.Fatalf("docs_summary should be populated, got: %v", handler["docs_summary"])
+	}
+
+	// Verify docs_path is populated.
+	if path, ok := handler["docs_path"].(string); !ok || path == "" {
+		t.Fatalf("docs_path should be populated, got: %v", handler["docs_path"])
 	}
 }
 
