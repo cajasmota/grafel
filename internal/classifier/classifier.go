@@ -510,6 +510,13 @@ var basenameLanguageMap = map[string]string{
 // detectLanguage returns the language token for the given normalised path, or
 // "" if neither the extension nor the basename is recognised.
 func detectLanguage(norm string) string {
+	// Issue #501 — Twirl templates (*.scala.html) carry a double extension.
+	// filepath.Ext only returns ".html", so we check for the compound suffix
+	// before the single-extension lookup.
+	lower := strings.ToLower(norm)
+	if strings.HasSuffix(lower, ".scala.html") {
+		return "scala"
+	}
 	ext := strings.ToLower(filepath.Ext(norm))
 	if lang, ok := extensionLanguageMap[ext]; ok {
 		return lang

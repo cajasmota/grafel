@@ -56,15 +56,41 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 
 	var entities []types.EntityRecord
-	// Issue #577 — emit file-level SCOPE.Component (subtype="file") so the
-	// cross-repo import linker (#566) can map IMPORTS edges back to the
-	// originating repo via the resolver's byName index. Generalises the
-	// JS/TS fix from #570/#575.
-	entities = append(entities, extractor.FileEntity(file))
+	// Issue #501 — Twirl templates (*.scala.html) are Scala+HTML templates
+	// compiled by the Twirl plugin. Emit a file entity with subtype="twirl"
+	// to distinguish them from regular Scala source files, then still walk
+	// the CST so embedded Scala constructs (import statements, class
+	// definitions in template companion objects) are captured.
+	if isTwirlTemplate(file.Path) {
+		fe := extractor.FileEntity(file)
+		fe.Subtype = "twirl"
+		fe.Properties["subtype"] = "twirl"
+		entities = append(entities, fe)
+	} else {
+		// Issue #577 — emit file-level SCOPE.Component (subtype="file") so the
+		// cross-repo import linker (#566) can map IMPORTS edges back to the
+		// originating repo via the resolver's byName index. Generalises the
+		// JS/TS fix from #570/#575.
+		entities = append(entities, extractor.FileEntity(file))
+	}
 	walkNode(file.Tree.RootNode(), file, nil, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "scala")
 	return entities, nil
+}
+
+// isTwirlTemplate reports whether the given file path is a Twirl template.
+// Twirl templates use a compound extension: *.scala.html (HTML with embedded
+// Scala), *.scala.xml, *.scala.js, *.scala.txt. The most common is .scala.html.
+//
+// Issue #501 — proper detection so Twirl files are not misclassified as
+// plain HTML or plain Scala.
+func isTwirlTemplate(path string) bool {
+	lower := strings.ToLower(path)
+	return strings.HasSuffix(lower, ".scala.html") ||
+		strings.HasSuffix(lower, ".scala.xml") ||
+		strings.HasSuffix(lower, ".scala.js") ||
+		strings.HasSuffix(lower, ".scala.txt")
 }
 
 // classCtx carries the lexical scope used by extractCallRelationships to
