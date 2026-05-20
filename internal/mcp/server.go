@@ -282,6 +282,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("(list) Repos to scope.")),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(20), mcpapi.Description("(list) Max residuals returned.")),
 		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0), mcpapi.Description("(list) Pagination offset.")),
+		mcpapi.WithBoolean("include_stale", mcpapi.DefaultBool(false), mcpapi.Description("(list) When true, return stale repairs from repair_stats.json instead of active residuals. Stale repairs are repairs whose edge_id no longer matches any current candidate — the source moved since the repair was submitted.")),
 		// submit args
 		mcpapi.WithString("residual_id", mcpapi.Description("(submit) er:<hex16> identifier from action=list.")),
 		mcpapi.WithString("resolution", mcpapi.Description("(submit) bind_to_entity|reclassify_as_external|reclassify_as_dynamic|reclassify_as_resolved|abandon")),

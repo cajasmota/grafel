@@ -408,6 +408,66 @@ func TestReadRepairs_Absent(t *testing.T) {
 	}
 }
 
+// ReadRepairStats round-trip from disk.
+func TestReadRepairStats_RoundTrip(t *testing.T) {
+	tmp := t.TempDir()
+	stats := RepairStats{
+		SchemaVersion: 1,
+		Applied:       []RepairAppliedRecord{{EdgeID: "er:aaa", Resolution: "bind_to_entity"}},
+		Stale:         []RepairStaleRecord{{EdgeID: "er:bbb", Resolution: "abandon", ResolvedAt: "2026-05-19T07:00:00Z"}},
+		AppliedCount:  1,
+		StaleCount:    1,
+	}
+	if err := WriteRepairStats(tmp, stats); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadRepairStats(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AppliedCount != 1 || got.StaleCount != 1 {
+		t.Fatalf("got=%+v", got)
+	}
+	if len(got.Stale) != 1 || got.Stale[0].EdgeID != "er:bbb" {
+		t.Fatalf("stale=%+v", got.Stale)
+	}
+}
+
+// ReadRepairStats returns a zero-value when the file is absent.
+func TestReadRepairStats_Absent(t *testing.T) {
+	tmp := t.TempDir()
+	got, err := ReadRepairStats(tmp)
+	if err != nil {
+		t.Fatalf("error on absent file: %v", err)
+	}
+	if got.AppliedCount != 0 || got.StaleCount != 0 {
+		t.Fatalf("non-zero stats on absent file: %+v", got)
+	}
+}
+
+// ApplyRepairs stale detection — repair whose edge_id is not in the
+// current relationship walk is recorded as stale, not applied.
+func TestApplyRepairs_StaleViaEdgeIDMismatch(t *testing.T) {
+	doc := mkRepairDoc()
+	// The repair references an edge_id that does not match any current edge.
+	staleID := "er:aaaa0000000000ff"
+	stats := ApplyRepairs(doc, []Repair{{
+		EdgeID:         staleID,
+		Resolution:     RepairBindToEntity,
+		TargetEntityID: "bbbbbbbbbbbbbbbb",
+		Reasoning:      "stale repair — source moved",
+		ResolvedAt:     "2026-05-18T00:00:00Z",
+	}}, ApplyRepairsOptions{})
+	if stats.AppliedCount != 0 {
+		t.Fatalf("stale repair was applied")
+	}
+	if stats.StaleCount != 1 || stats.Stale[0].EdgeID != staleID {
+		t.Fatalf("stale=%+v", stats.Stale)
+	}
+	// Stale repair does NOT delete itself from repair.json — that is up to
+	// the operator/agent. This test validates only the in-memory stats.
+}
+
 // WriteRepairStats writes a valid JSON document with sorted slices.
 func TestWriteRepairStats_Deterministic(t *testing.T) {
 	tmp := t.TempDir()

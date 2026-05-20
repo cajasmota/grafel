@@ -453,6 +453,24 @@ func buildContainsParents(doc *graph.Document) map[string]map[string]bool {
 	return out
 }
 
+// ReadRepairStats reads repair_stats.json from the archigraph dir. Returns
+// a zero-value RepairStats (with nil slices) if the file is absent — callers
+// can distinguish "no stats yet" from "zero stale" via the zero-value check.
+func ReadRepairStats(archigraphDir string) (RepairStats, error) {
+	data, err := os.ReadFile(repairStatsPath(archigraphDir))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return RepairStats{}, nil
+		}
+		return RepairStats{}, err
+	}
+	var s RepairStats
+	if err := json.Unmarshal(data, &s); err != nil {
+		return RepairStats{}, fmt.Errorf("parse repair_stats.json: %w", err)
+	}
+	return s, nil
+}
+
 // WriteRepairStats writes repair_stats.json to the archigraph dir.
 // Always-emit-on-read so audit history is preserved even when no repairs
 // applied. The on-disk bytes are stable across runs of the same input

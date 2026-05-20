@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/graph"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
@@ -1271,8 +1272,13 @@ func (s *Server) handleGetTelemetry(ctx context.Context, req mcpapi.CallToolRequ
 // ---------------------------------------------------------------------------
 
 // handleListResiduals returns paginated repair_edge enrichment candidates
-// across the resolved group's repos. Filters: repo_filter, since (ignored
-// for v1 — candidate file has no per-row timestamp), limit, offset.
+// across the resolved group's repos. Filters: repo_filter, limit, offset.
+//
+// When include_stale=true the response lists stale repairs from
+// repair_stats.json (repairs whose edge_id no longer matches any current
+// candidate) instead of active residuals. Stale entries carry enough context
+// for the agent to re-submit: edge_id, resolution, resolved_at, repo.
+// (ADR-0015 #5/8 — issue #548)
 func (s *Server) handleListResiduals(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	_, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
@@ -1287,6 +1293,11 @@ func (s *Server) handleListResiduals(ctx context.Context, req mcpapi.CallToolReq
 		offset = 0
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+
+	includeStale := argBool(req, "include_stale", false)
+	if includeStale {
+		return s.handleListStaleRepairs(repos, limit, offset)
+	}
 
 	// Collect first, then page. The candidate file is bounded per repo
 	// (max 8 candidates per ambiguous name) so flattening is cheap.
@@ -1314,6 +1325,49 @@ func (s *Server) handleListResiduals(ctx context.Context, req mcpapi.CallToolReq
 		"total":     total,
 		"offset":    offset,
 		"limit":     limit,
+	}), nil
+}
+
+// handleListStaleRepairs reads repair_stats.json for each repo and aggregates
+// the stale[] entries into a paginated response. Stale repairs are ones whose
+// edge_id no longer matches any current repair_edge candidate — the source
+// moved between index runs and the repair must be re-submitted.
+func (s *Server) handleListStaleRepairs(repos []*LoadedRepo, limit, offset int) (*mcpapi.CallToolResult, error) {
+	all := make([]map[string]any, 0, 32)
+	for _, r := range repos {
+		stats, err := enrichment.ReadRepairStats(daemon.StateDirForRepo(r.Path))
+		if err != nil {
+			continue // missing or malformed stats file — skip silently
+		}
+		for _, st := range stats.Stale {
+			entry := map[string]any{
+				"edge_id":     st.EdgeID,
+				"resolution":  st.Resolution,
+				"resolved_at": st.ResolvedAt,
+				"repo":        r.Repo,
+				"stale":       true,
+			}
+			all = append(all, entry)
+		}
+	}
+	total := len(all)
+	if offset >= total {
+		return jsonResult(map[string]any{
+			"stale":  []map[string]any{},
+			"total":  total,
+			"offset": offset,
+			"limit":  limit,
+		}), nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return jsonResult(map[string]any{
+		"stale":  all[offset:end],
+		"total":  total,
+		"offset": offset,
+		"limit":  limit,
 	}), nil
 }
 

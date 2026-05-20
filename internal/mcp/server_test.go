@@ -979,6 +979,102 @@ func TestInspect_AgentResolvedEdges(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Stale-repair detection tests (ADR-0015 #5/8 — issue #548)
+// ---------------------------------------------------------------------------
+
+// TestListResiduals_IncludeStale verifies that action=list with include_stale=true
+// returns stale repairs from repair_stats.json.
+func TestListResiduals_IncludeStale(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "rA")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGraph(t, repo, fixtureDoc("rA"))
+
+	// Write a repair_stats.json with two stale entries.
+	archDir := filepath.Join(repo, ".archigraph")
+	if err := os.MkdirAll(archDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	statsData, _ := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"applied":        []any{},
+		"rejected":       []any{},
+		"stale": []any{
+			map[string]any{"edge_id": "er:stale0000000001", "resolution": "bind_to_entity", "resolved_at": "2026-05-19T07:00:00Z"},
+			map[string]any{"edge_id": "er:stale0000000002", "resolution": "abandon", "resolved_at": "2026-05-20T08:00:00Z"},
+		},
+		"applied_count": 0, "rejected_count": 0, "stale_count": 2,
+	})
+	if err := os.WriteFile(filepath.Join(archDir, "repair_stats.json"), statsData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"rA": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Without include_stale the stale list is not returned.
+	res := callTool(t, srv, "archigraph_repairs", map[string]any{"action": "list"})
+	if res.IsError {
+		t.Fatalf("list error: %s", resultText(res))
+	}
+	if strings.Contains(resultText(res), "er:stale0000000001") {
+		t.Fatalf("stale entries should not appear in normal list: %s", resultText(res))
+	}
+
+	// With include_stale=true stale entries appear.
+	staleRes := callTool(t, srv, "archigraph_repairs", map[string]any{"action": "list", "include_stale": true})
+	if staleRes.IsError {
+		t.Fatalf("stale list error: %s", resultText(staleRes))
+	}
+	text := resultText(staleRes)
+	if !strings.Contains(text, "er:stale0000000001") {
+		t.Fatalf("stale entry 1 missing: %s", text)
+	}
+	if !strings.Contains(text, "er:stale0000000002") {
+		t.Fatalf("stale entry 2 missing: %s", text)
+	}
+	var out struct {
+		Stale []map[string]any `json:"stale"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("unmarshal: %v: %s", err, text)
+	}
+	if out.Total != 2 || len(out.Stale) != 2 {
+		t.Fatalf("expected 2 stale, got total=%d len=%d", out.Total, len(out.Stale))
+	}
+	// Each stale entry carries the stale=true flag.
+	for _, s := range out.Stale {
+		if v, ok := s["stale"].(bool); !ok || !v {
+			t.Fatalf("stale flag missing or false: %v", s)
+		}
+	}
+
+	// Pagination: limit=1 offset=1 returns only the second stale entry.
+	pagedRes := callTool(t, srv, "archigraph_repairs", map[string]any{
+		"action":        "list",
+		"include_stale": true,
+		"limit":         1,
+		"offset":        1,
+	})
+	if pagedRes.IsError {
+		t.Fatalf("paged stale error: %s", resultText(pagedRes))
+	}
+	pagedText := resultText(pagedRes)
+	if !strings.Contains(pagedText, "er:stale0000000002") {
+		t.Fatalf("paged stale should contain entry 2: %s", pagedText)
+	}
+	if strings.Contains(pagedText, "er:stale0000000001") {
+		t.Fatalf("paged stale should NOT contain entry 1: %s", pagedText)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // archigraph_patterns tests (ADR-0018 β)
 // ---------------------------------------------------------------------------
 
