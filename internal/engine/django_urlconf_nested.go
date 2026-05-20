@@ -2,14 +2,14 @@
 //
 // Problem: Django's URL routing uses two-level include() composition:
 //
-//   # myproject/urls.py
-//   urlpatterns = [
-//       path("api/v1/", include("api.urls")),
-//   ]
-//   # api/urls.py
-//   urlpatterns = [
-//       path("users/<int:id>/checklists/", ChecklistView.as_view()),
-//   ]
+//	# myproject/urls.py
+//	urlpatterns = [
+//	    path("api/v1/", include("api.urls")),
+//	]
+//	# api/urls.py
+//	urlpatterns = [
+//	    path("users/<int:id>/checklists/", ChecklistView.as_view()),
+//	]
 //
 // The full HTTP route is `/api/v1/users/{id}/checklists`. The per-file
 // YAML + AST passes emit separate Route entities for each file independently
@@ -166,12 +166,12 @@ func ApplyDjangoNestedURLConf(
 				}
 
 				out = append(out, types.EntityRecord{
-					ID:         id,
-					Name:       id,
-					Kind:       httpEndpointKind,
-					SourceFile: relPath,
-					Language:   "python",
-					Properties: props,
+					ID:                 id,
+					Name:               id,
+					Kind:               httpEndpointKind,
+					SourceFile:         relPath,
+					Language:           "python",
+					Properties:         props,
 					EnrichmentRequired: false,
 					EnrichmentStatus:   types.StatusPending,
 					QualityScore:       0.8,

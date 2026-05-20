@@ -341,10 +341,10 @@ func TestKotlin_PropertyContains_BareDeclaration(t *testing.T) {
 	}
 	// CONTAINS edges via structural-ref stubs.
 	wantContains := map[string]bool{
-		"scope:schema:field:kotlin:Test.kt:UserService.name":      false,
-		"scope:schema:field:kotlin:Test.kt:UserService.count":     false,
-		"scope:schema:field:kotlin:Test.kt:UserService.repo":      false,
-		"scope:operation:method:kotlin:Test.kt:find":              false,
+		"scope:schema:field:kotlin:Test.kt:UserService.name":  false,
+		"scope:schema:field:kotlin:Test.kt:UserService.count": false,
+		"scope:schema:field:kotlin:Test.kt:UserService.repo":  false,
+		"scope:operation:method:kotlin:Test.kt:find":          false,
 	}
 	for _, r := range svc.Relationships {
 		if r.Kind == "CONTAINS" {

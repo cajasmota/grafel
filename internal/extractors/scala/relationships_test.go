@@ -307,9 +307,9 @@ func TestScala_FieldContains_ValDeclaration(t *testing.T) {
 	}
 	// CONTAINS edges via structural-ref stubs.
 	wantContains := map[string]bool{
-		"scope:schema:field:scala:Test.scala:Service.name":      false,
-		"scope:schema:field:scala:Test.scala:Service.count":     false,
-		"scope:operation:method:scala:Test.scala:run":            false,
+		"scope:schema:field:scala:Test.scala:Service.name":  false,
+		"scope:schema:field:scala:Test.scala:Service.count": false,
+		"scope:operation:method:scala:Test.scala:run":       false,
 	}
 	for _, r := range svc.Relationships {
 		if r.Kind == "CONTAINS" {
@@ -385,9 +385,9 @@ func TestScala_FieldContains_NoRegressionMethodContains(t *testing.T) {
 		t.Fatal("expected Repo component")
 	}
 	wantContains := map[string]bool{
-		"scope:schema:field:scala:Test.scala:Repo.db":        false,
-		"scope:operation:method:scala:Test.scala:find":        false,
-		"scope:operation:method:scala:Test.scala:save":        false,
+		"scope:schema:field:scala:Test.scala:Repo.db":  false,
+		"scope:operation:method:scala:Test.scala:find": false,
+		"scope:operation:method:scala:Test.scala:save": false,
 	}
 	for _, r := range repo.Relationships {
 		if r.Kind == "CONTAINS" {

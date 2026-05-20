@@ -20,7 +20,6 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-
 // noOrphanSCOPEComponents returns every SCOPE.Component entity in ents
 // that has no Subtype (i.e. the old import-placeholder shape). These
 // should not exist after issue #681.
@@ -124,8 +123,8 @@ public class DataService {
 
 	// All four IMPORTS edges must be present.
 	want := map[string]bool{
-		"java.util":                     false, // List
-		"javax.inject":                  false, // Inject
+		"java.util":                      false, // List
+		"javax.inject":                   false, // Inject
 		"org.springframework.stereotype": false, // Component
 	}
 	for _, e := range ents {

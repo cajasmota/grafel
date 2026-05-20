@@ -243,9 +243,9 @@ func TestSynthesizeLombok_Builder_BasicEntities(t *testing.T) {
 
 	names := entityNameSet(out)
 	wantNames := []string{
-		"OrderBuilder",      // class entity
-		"Order.builder",     // static factory
-		"OrderBuilder.id",   // fluent setter
+		"OrderBuilder",    // class entity
+		"Order.builder",   // static factory
+		"OrderBuilder.id", // fluent setter
 		"OrderBuilder.total",
 		"OrderBuilder.build",
 	}
@@ -381,7 +381,7 @@ func TestSynthesizeLombok_Data(t *testing.T) {
 		"    private String name;\n    private int age;\n", "User.java")
 	names := entityNameSet(out)
 	wantNames := []string{
-		"User.User",    // constructor
+		"User.User", // constructor
 		"User.getName",
 		"User.setName",
 		"User.getAge",

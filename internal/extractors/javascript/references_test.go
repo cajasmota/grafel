@@ -54,7 +54,7 @@ function fetchClients() {
 }
 
 // TestReferences_TemplateLiteralInterpolation — Track B.
-// `` fetch(`${BASE}/users`) `` should resolve BASE as a REFERENCES edge.
+// “ fetch(`${BASE}/users`) “ should resolve BASE as a REFERENCES edge.
 func TestReferences_TemplateLiteralInterpolation(t *testing.T) {
 	src := `const BASE = "/api";
 function loadUsers() {

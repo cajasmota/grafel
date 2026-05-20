@@ -97,9 +97,9 @@ type mcpToolInfo struct {
 
 // mcpInitializeResult is the fixed capability handshake response.
 type mcpInitializeResult struct {
-	ProtocolVersion string              `json:"protocolVersion"`
-	Capabilities    map[string]any      `json:"capabilities"`
-	ServerInfo      map[string]string   `json:"serverInfo"`
+	ProtocolVersion string            `json:"protocolVersion"`
+	Capabilities    map[string]any    `json:"capabilities"`
+	ServerInfo      map[string]string `json:"serverInfo"`
 }
 
 // mcpToolCallResult wraps the daemon's reply for the tools/call response.

@@ -13,12 +13,12 @@ import (
 // matched by two heuristics ends up in the most actionable bucket.
 //
 // The rules below mirror the manual analysis verbatim:
-//   1. SCOPE.Component / subtype "import"            -> import_placeholder
-//   2. Operation/Component + subtype "const_*"       -> const_no_references
-//   3. PascalCase / camelCase exported-looking name  -> cross_file_export
-//   4. Synthetic framework prefixes (manifest:/...)  -> framework_synthetic
-//   5. Class / Function / Method / Interface         -> real_construct_bug
-//   6. anything else                                 -> misc
+//  1. SCOPE.Component / subtype "import"            -> import_placeholder
+//  2. Operation/Component + subtype "const_*"       -> const_no_references
+//  3. PascalCase / camelCase exported-looking name  -> cross_file_export
+//  4. Synthetic framework prefixes (manifest:/...)  -> framework_synthetic
+//  5. Class / Function / Method / Interface         -> real_construct_bug
+//  6. anything else                                 -> misc
 func ClassifyOrphan(e *graph.Entity) OrphanCause {
 	kind := e.Kind
 	st := e.Subtype

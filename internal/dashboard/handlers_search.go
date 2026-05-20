@@ -40,8 +40,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// A production implementation would use BM25 (same as MCP); for Phase 1
 	// this substring search is fast and correct enough for typeahead.
 	type entityHit struct {
-		e    *graph.Entity
-		repo string
+		e     *graph.Entity
+		repo  string
 		score int // 2 = prefix, 1 = substring
 	}
 

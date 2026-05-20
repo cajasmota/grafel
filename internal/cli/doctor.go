@@ -95,11 +95,11 @@ func runDoctor(w io.Writer) error {
 
 // staleProcess describes an archigraph process that is a candidate for cleanup.
 type staleProcess struct {
-	PID     int
-	PPID    int
-	Exe     string
+	PID      int
+	PPID     int
+	Exe      string
 	IsOrphan bool // PPID == 1 (adopted by launchd/systemd after parent exited)
-	IsTmp   bool  // binary path under /tmp
+	IsTmp    bool // binary path under /tmp
 }
 
 // runDoctorStaleDaemons scans running processes for stale archigraph daemons:

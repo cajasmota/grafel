@@ -10,26 +10,26 @@ import (
 func samplePatterns() []Pattern {
 	return []Pattern{
 		{
-			ID:          "aaaa1111bbbb2222",
-			Kind:        "AgentPattern",
-			Category:    CategoryCode,
-			Trigger:     Trigger{NaturalLanguage: "adding a chi HTTP handler"},
-			Confidence:  0.72,
+			ID:           "aaaa1111bbbb2222",
+			Kind:         "AgentPattern",
+			Category:     CategoryCode,
+			Trigger:      Trigger{NaturalLanguage: "adding a chi HTTP handler"},
+			Confidence:   0.72,
 			Observations: 6,
-			IsCandidate: false,
+			IsCandidate:  false,
 			AntiPatterns: []AntiPattern{
 				{DoNot: "register a route in `init()`", Reason: "breaks teardown ordering"},
 				{DoNot: "stash a DB handle in the request", Reason: "leaks across goroutines", Private: true},
 			},
 		},
 		{
-			ID:          "ccc3333dddd44444",
-			Kind:        "AgentPattern",
-			Category:    CategoryProcess,
-			Trigger:     Trigger{NaturalLanguage: "shipping a feature branch"},
-			Confidence:  0.85,
+			ID:           "ccc3333dddd44444",
+			Kind:         "AgentPattern",
+			Category:     CategoryProcess,
+			Trigger:      Trigger{NaturalLanguage: "shipping a feature branch"},
+			Confidence:   0.85,
 			Observations: 12,
-			IsCandidate: false,
+			IsCandidate:  false,
 		},
 		{
 			ID:          "candidate1234567",

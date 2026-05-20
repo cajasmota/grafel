@@ -16,10 +16,10 @@ import (
 // two — because 60+60=120 > 100.
 func TestAdmissionDefersOversizeJobs(t *testing.T) {
 	var (
-		mu          sync.Mutex
-		concurrent  int
-		maxConcurr  int
-		totalCalls  int32
+		mu         sync.Mutex
+		concurrent int
+		maxConcurr int
+		totalCalls int32
 	)
 	gate := make(chan struct{})
 
@@ -76,9 +76,9 @@ func TestAdmissionDefersOversizeJobs(t *testing.T) {
 // jobs (50MB each) can run concurrently under a 200MB budget.
 func TestAdmissionAllowsParallelWhenBudgetFits(t *testing.T) {
 	var (
-		mu          sync.Mutex
-		concurrent  int
-		maxConcurr  int
+		mu         sync.Mutex
+		concurrent int
+		maxConcurr int
 	)
 	gate := make(chan struct{})
 

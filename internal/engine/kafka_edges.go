@@ -97,9 +97,9 @@ func applyKafkaEdges(
 		}
 		seenTopic[topicID] = true
 		merged := map[string]string{
-			"broker":         broker,
-			"topic_name":     topicName,
-			"pattern_type":   "kafka_synthesis",
+			"broker":          broker,
+			"topic_name":      topicName,
+			"pattern_type":    "kafka_synthesis",
 			"runtime_dynamic": boolStr(dynamic),
 		}
 		for k, v := range props {
@@ -601,7 +601,6 @@ func isDeadLetterTopic(topic string) bool {
 		strings.HasSuffix(low, "_dlq") || strings.HasSuffix(low, "-deadletter") ||
 		strings.HasSuffix(low, ".deadletter") || strings.Contains(low, ".dead-letter")
 }
-
 
 // ---------------------------------------------------------------------------
 // Node — kafkajs producer + consumer

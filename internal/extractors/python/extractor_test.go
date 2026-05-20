@@ -1455,7 +1455,6 @@ class Mailer:
 	}
 }
 
-
 // TestPascalCaseReceiverCALLSEdges verifies that bare PascalCase identifier
 // receivers (e.g. `User.save(...)`) produce qualified CALLS edges
 // `User.save` instead of an ambiguous bare `save`. Regression test for
@@ -1548,7 +1547,7 @@ func TestExtract_DjangoModel_MetaConstraints(t *testing.T) {
 
 	// 1. Both SCOPE.Constraint entities must exist.
 	wantConstraints := map[string]string{
-		"Order.unique_user_post":       "unique",
+		"Order.unique_user_post":        "unique",
 		"Order.check_quantity_gte_zero": "check",
 	}
 	for wantName, wantSubtype := range wantConstraints {

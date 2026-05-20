@@ -438,8 +438,8 @@ func synthesizePyPubSub(
 			handlerName := src[m[2]:m[3]]
 			topicID := pubsubTopicID("", "eventarc-pubsub-trigger")
 			emitTopic(topicID, "eventarc-pubsub-trigger", "", map[string]string{
-				"eventarc":       "true",
-				"trigger_type":   "google.cloud.pubsub.topic.v1.messagePublished",
+				"eventarc":     "true",
+				"trigger_type": "google.cloud.pubsub.topic.v1.messagePublished",
 			})
 			emitEdge("Function", handlerName, topicID, subscribesToEdgeKind, map[string]string{
 				"messaging_layer": "eventarc",
@@ -683,8 +683,8 @@ func synthesizeJavaPubSub(
 		// Only emit if we haven't already emitted one via subscription name.
 		topicID := pubsubTopicID("", className+"-subscription")
 		emitTopic(topicID, className+"-subscription", "", map[string]string{
-			"messaging_layer":   "google-cloud-pubsub-java",
-			"message_receiver":  "true",
+			"messaging_layer":  "google-cloud-pubsub-java",
+			"message_receiver": "true",
 		})
 		emitEdge("Service", className, topicID, subscribesToEdgeKind, map[string]string{
 			"messaging_layer":  "google-cloud-pubsub-java",

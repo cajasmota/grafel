@@ -118,10 +118,10 @@ func TestIntegrationThreeRepoTightBudgetDefersBig(t *testing.T) {
 		"/repo-big-c":   280,
 	}
 	var (
-		mu              sync.Mutex
-		concurrent      = map[string]bool{}
+		mu               sync.Mutex
+		concurrent       = map[string]bool{}
 		bigEverConcSmall = false
-		peakUsedMB      int64
+		peakUsedMB       int64
 	)
 	gates := map[string]chan struct{}{
 		"/repo-small-a": make(chan struct{}),

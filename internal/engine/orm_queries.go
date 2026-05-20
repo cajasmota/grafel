@@ -8,24 +8,24 @@
 // pass that lives in `internal/engine/orm_queries*.go`, not per-language
 // extractor files. The pass:
 //
-//   1. Indexes the file's existing class definitions so it can attach
-//      QUERIES edges to entities the detector already emitted (avoids
-//      hallucinating model targets that don't exist in the graph).
-//   2. Indexes enclosing functions/methods so each call site can be
-//      attributed to a `source_caller` for the FromID.
-//   3. Per-language: runs ORM-specific regex matchers that locate
-//      `<Model>.<verb>(...)` / `<orm>.<model>.<verb>(...)` call sites.
-//   4. Emits one QUERIES edge per call site with properties:
-//        - `operation`   — canonicalised verb (find / create / update /
-//                          delete / aggregate)
-//        - `filter_keys` — comma-separated keys parsed from the call's
-//                          first argument (when statically extractable)
-//        - `is_join`     — "true" when the call references related models
-//                          (Prisma nested include/where on a relation, JPA
-//                          @JoinColumn-style traversal, ActiveRecord
-//                          .includes / .joins)
-//        - `orm`         — short ORM identifier
-//        - `pattern_type`— "orm_queries"
+//  1. Indexes the file's existing class definitions so it can attach
+//     QUERIES edges to entities the detector already emitted (avoids
+//     hallucinating model targets that don't exist in the graph).
+//  2. Indexes enclosing functions/methods so each call site can be
+//     attributed to a `source_caller` for the FromID.
+//  3. Per-language: runs ORM-specific regex matchers that locate
+//     `<Model>.<verb>(...)` / `<orm>.<model>.<verb>(...)` call sites.
+//  4. Emits one QUERIES edge per call site with properties:
+//     - `operation`   — canonicalised verb (find / create / update /
+//     delete / aggregate)
+//     - `filter_keys` — comma-separated keys parsed from the call's
+//     first argument (when statically extractable)
+//     - `is_join`     — "true" when the call references related models
+//     (Prisma nested include/where on a relation, JPA
+//     @JoinColumn-style traversal, ActiveRecord
+//     .includes / .joins)
+//     - `orm`         — short ORM identifier
+//     - `pattern_type`— "orm_queries"
 //
 // Closes a major orphan class: model classes that are referenced ONLY via
 // ORM clients (Prisma `prisma.user.findUnique`, Django `User.objects.get`)
@@ -35,17 +35,17 @@
 // Scope (phase 1, ALL major ORMs):
 //
 //   - Python  : Django ORM (`Model.objects.<verb>(...)`),
-//               SQLAlchemy (`session.query(Model)`, `select(Model)`),
-//               Tortoise (`Model.filter(...)` etc.),
-//               Peewee (`Model.select()` etc.)
+//     SQLAlchemy (`session.query(Model)`, `select(Model)`),
+//     Tortoise (`Model.filter(...)` etc.),
+//     Peewee (`Model.select()` etc.)
 //   - JS/TS   : Prisma (`prisma.user.findUnique(...)`),
-//               Mongoose (`User.findOne(...)` on Model instances),
-//               TypeORM (`userRepo.findOne(...)`),
-//               Sequelize (`User.findAll(...)`),
-//               Supabase (`supabase.from('users').select(...)`)
+//     Mongoose (`User.findOne(...)` on Model instances),
+//     TypeORM (`userRepo.findOne(...)`),
+//     Sequelize (`User.findAll(...)`),
+//     Supabase (`supabase.from('users').select(...)`)
 //   - Go      : gorm (`db.First(&user, ...)` / `.Find(&users)`)
 //   - Java    : JPA `EntityManager.find(User.class, ...)`,
-//               Spring Data `userRepo.findById(...)`
+//     Spring Data `userRepo.findById(...)`
 //   - Ruby    : ActiveRecord (`User.find / .where / .create`)
 //
 // Refs #723.

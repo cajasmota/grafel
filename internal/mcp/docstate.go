@@ -111,10 +111,10 @@ func SaveDocgenState(group string, st DocgenState) error {
 }
 
 // ComputeDocState computes the documentation state for a loaded group.
-// - Reads docgen-state.json for the group.
-// - Walks every source file in every loaded repo to count stale files
-//   (mtime > last_docgen_at, per-repo and group-wide).
-// - Counts per-repo per-repo stale files separately for detailed surfacing.
+//   - Reads docgen-state.json for the group.
+//   - Walks every source file in every loaded repo to count stale files
+//     (mtime > last_docgen_at, per-repo and group-wide).
+//   - Counts per-repo per-repo stale files separately for detailed surfacing.
 func ComputeDocState(groupName string, lg *LoadedGroup) DocStateResult {
 	state, err := LoadDocgenState(groupName)
 	if err != nil || state == nil || state.LastDocgenAt == nil {

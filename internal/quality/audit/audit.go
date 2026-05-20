@@ -53,37 +53,37 @@ const (
 // RepoReport is the per-repo result of an audit. Aggregate-level numbers are
 // produced by combining many of these in Report.Aggregate.
 type RepoReport struct {
-	Path                  string                  `json:"path"`
-	Languages             []string                `json:"languages"`
-	Entities              int                     `json:"entities"`
-	Relationships         int                     `json:"relationships"`
-	EntitiesByLanguage    map[string]int          `json:"entities_by_language"`
-	TopKinds              []KVCount               `json:"top_kinds"`
-	RelKinds              []KVCount               `json:"rel_kinds"`
-	Orphans               int                     `json:"orphans"`
-	OrphanRate            float64                 `json:"orphan_rate"`
-	OrphansByLanguage     map[string]int          `json:"orphans_by_language"`
-	TopOrphanKinds        []KVCount               `json:"top_orphan_kinds"`
-	ImportsTotal          int                     `json:"imports_total"`
-	ImportsToIDFormat     map[ImportFormat]int    `json:"imports_to_id_format"`
-	ImportsByLanguage     map[string]ImportHealth `json:"imports_by_language"`
-	ReferencesTotal       int                     `json:"references_total"`
-	ReferencesByLanguage  map[string]int          `json:"references_by_language"`
-	FunctionsByLanguage   map[string]int          `json:"functions_by_language"`
-	ReferencesPerFunction float64                 `json:"references_per_function"`
-	CallsTotal            int                     `json:"calls_total"`
-	CallsByLanguage       map[string]int          `json:"calls_by_language"`
-	OrphanClassification  map[OrphanCause]int     `json:"orphan_classification"`
+	Path                  string                         `json:"path"`
+	Languages             []string                       `json:"languages"`
+	Entities              int                            `json:"entities"`
+	Relationships         int                            `json:"relationships"`
+	EntitiesByLanguage    map[string]int                 `json:"entities_by_language"`
+	TopKinds              []KVCount                      `json:"top_kinds"`
+	RelKinds              []KVCount                      `json:"rel_kinds"`
+	Orphans               int                            `json:"orphans"`
+	OrphanRate            float64                        `json:"orphan_rate"`
+	OrphansByLanguage     map[string]int                 `json:"orphans_by_language"`
+	TopOrphanKinds        []KVCount                      `json:"top_orphan_kinds"`
+	ImportsTotal          int                            `json:"imports_total"`
+	ImportsToIDFormat     map[ImportFormat]int           `json:"imports_to_id_format"`
+	ImportsByLanguage     map[string]ImportHealth        `json:"imports_by_language"`
+	ReferencesTotal       int                            `json:"references_total"`
+	ReferencesByLanguage  map[string]int                 `json:"references_by_language"`
+	FunctionsByLanguage   map[string]int                 `json:"functions_by_language"`
+	ReferencesPerFunction float64                        `json:"references_per_function"`
+	CallsTotal            int                            `json:"calls_total"`
+	CallsByLanguage       map[string]int                 `json:"calls_by_language"`
+	OrphanClassification  map[OrphanCause]int            `json:"orphan_classification"`
 	ClassificationByLang  map[string]map[OrphanCause]int `json:"orphan_classification_by_language"`
-	RiskScore             int                     `json:"risk_score"`
-	Errors                []string                `json:"errors,omitempty"`
+	RiskScore             int                            `json:"risk_score"`
+	Errors                []string                       `json:"errors,omitempty"`
 }
 
 // ImportHealth summarises IMPORTS edge to_id quality for a single language.
 type ImportHealth struct {
-	Total      int                  `json:"total"`
-	ByFormat   map[ImportFormat]int `json:"by_format"`
-	HygieneScore float64            `json:"hygiene_score"` // 0..1 ; share of edges in {hex, ext_qualified}
+	Total        int                  `json:"total"`
+	ByFormat     map[ImportFormat]int `json:"by_format"`
+	HygieneScore float64              `json:"hygiene_score"` // 0..1 ; share of edges in {hex, ext_qualified}
 }
 
 // KVCount is a sortable (key, count) pair used for top-N tables.
@@ -94,11 +94,11 @@ type KVCount struct {
 
 // Report is the full audit output across one or more repos.
 type Report struct {
-	Version         int                       `json:"version"`
-	AuditedAt       time.Time                 `json:"audited_at"`
-	Repos           []*RepoReport             `json:"repos"`
-	Aggregate       AggregateReport           `json:"aggregate"`
-	Recommendations []Recommendation          `json:"recommendations"`
+	Version         int              `json:"version"`
+	AuditedAt       time.Time        `json:"audited_at"`
+	Repos           []*RepoReport    `json:"repos"`
+	Aggregate       AggregateReport  `json:"aggregate"`
+	Recommendations []Recommendation `json:"recommendations"`
 }
 
 // AggregateReport rolls the per-repo numbers up into per-language buckets so a
@@ -127,10 +127,10 @@ type LanguageRollup struct {
 // Recommendation is one actionable bullet point synthesised from the
 // aggregate numbers. The list is ordered by priority (1 = highest).
 type Recommendation struct {
-	Priority                     int    `json:"priority"`
-	Issue                        string `json:"issue"`
-	AffectedRepos                int    `json:"affected_repos"`
-	RecoverableEntitiesEstimate  int    `json:"recoverable_entities_estimate"`
+	Priority                    int    `json:"priority"`
+	Issue                       string `json:"issue"`
+	AffectedRepos               int    `json:"affected_repos"`
+	RecoverableEntitiesEstimate int    `json:"recoverable_entities_estimate"`
 }
 
 // AuditPath dispatches based on whether path is a single repo (contains
@@ -377,7 +377,6 @@ func auditRepo(repoPath string) (*RepoReport, error) {
 
 	return rr, nil
 }
-
 
 // relLanguage returns the canonical language for a relationship. We prefer
 // the explicit `language` property the extractor sets on most edges; if it's

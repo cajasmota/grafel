@@ -91,11 +91,11 @@ func runIndexClient(cmd *cobra.Command, argv []string) error {
 		if *jsonProgress {
 			// Emit a simple done event.
 			emitJSONProgressState(w, "", proto.RepoProgressState{
-				Slug:    slug,
-				Path:    reply.RepoPath,
-				Phase:   proto.PhaseCompleted,
-				Index:   1,
-				Total:   1,
+				Slug:  slug,
+				Path:  reply.RepoPath,
+				Phase: proto.PhaseCompleted,
+				Index: 1,
+				Total: 1,
 			})
 		} else {
 			fmt.Fprintf(w, "indexed %s -> %s\n", reply.RepoPath, reply.GraphPath)

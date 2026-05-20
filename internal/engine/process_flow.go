@@ -7,19 +7,19 @@
 // produce and never inspects source code directly.
 //
 // Algorithm (per ADR-0018 / issue #724):
-//   1. Score every Function/Method/Operation/Component candidate by
-//      fan-out, name pattern, exported flag, framework signal, and HTTP
-//      boundary signal.
-//   2. Keep the top entry points (capped at MaxEntryPoints).
-//   3. For each entry point, run forward BFS over CALLS edges with depth
-//      bounded by MaxDepth (≤10) and branching bounded by BranchingFactor
-//      (≤4). Each traversal stops on a leaf (no outgoing CALLS) or when
-//      bounds are hit.
-//   4. Dedupe traces by (entry_id, terminal_id) — keep the longest chain
-//      and drop strict prefixes of longer chains.
-//   5. Emit one Process entity per surviving trace plus STEP_IN_PROCESS
-//      edges (step_index ordered) and ENTRY_POINT_OF edges from the
-//      entry function to the Process.
+//  1. Score every Function/Method/Operation/Component candidate by
+//     fan-out, name pattern, exported flag, framework signal, and HTTP
+//     boundary signal.
+//  2. Keep the top entry points (capped at MaxEntryPoints).
+//  3. For each entry point, run forward BFS over CALLS edges with depth
+//     bounded by MaxDepth (≤10) and branching bounded by BranchingFactor
+//     (≤4). Each traversal stops on a leaf (no outgoing CALLS) or when
+//     bounds are hit.
+//  4. Dedupe traces by (entry_id, terminal_id) — keep the longest chain
+//     and drop strict prefixes of longer chains.
+//  5. Emit one Process entity per surviving trace plus STEP_IN_PROCESS
+//     edges (step_index ordered) and ENTRY_POINT_OF edges from the
+//     entry function to the Process.
 //
 // Cross-stack detection (#754): a Process is marked cross_stack=true only
 // when its chain traverses a real cross-repo boundary, signalled by one of:
@@ -284,14 +284,14 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 		label := fmt.Sprintf("%s → %s", entry.Name, terminalName)
 
 		props := map[string]string{
-			"entry_id":              entry.ID,
-			"entry_name":            entry.Name,
-			"terminal_id":           terminalID,
-			"step_count":            strconv.Itoa(len(chain)),
-			"cross_stack":           strconv.FormatBool(crossStack),
-			"crosses_external_lib":  strconv.FormatBool(crossesExternalLib),
-			"chain":                 strings.Join(chain, ","),
-			"chain_labels":          strings.Join(chainLabels(chain, byID), " → "),
+			"entry_id":             entry.ID,
+			"entry_name":           entry.Name,
+			"terminal_id":          terminalID,
+			"step_count":           strconv.Itoa(len(chain)),
+			"cross_stack":          strconv.FormatBool(crossStack),
+			"crosses_external_lib": strconv.FormatBool(crossesExternalLib),
+			"chain":                strings.Join(chain, ","),
+			"chain_labels":         strings.Join(chainLabels(chain, byID), " → "),
 		}
 		// #797 — stamp entry_kind so consumers can filter by entry type.
 		if ek, ok := entryKindByID[entry.ID]; ok && ek != "" {

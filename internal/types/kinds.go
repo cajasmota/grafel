@@ -156,13 +156,13 @@ const (
 
 	// ADR-0018: Agent-learned pattern edge kinds (append-only additions).
 	// Outgoing from Pattern entities:
-	RelationshipKindExemplar      RelationshipKind = "EXEMPLAR"       // Pattern -> Entity: real code example of this pattern in use
-	RelationshipKindTouches       RelationshipKind = "TOUCHES"        // Pattern -> Entity: entity the pattern's steps read or modify
-	RelationshipKindAntiExemplar  RelationshipKind = "ANTI_EXEMPLAR"  // Pattern -> Entity: real code example of the anti-pattern
-	RelationshipKindSupersedes    RelationshipKind = "SUPERSEDES"     // Pattern -> Pattern: this pattern replaces an older one
-	RelationshipKindConflictsWith RelationshipKind = "CONFLICTS_WITH" // Pattern -> Pattern: these two patterns cannot both apply
+	RelationshipKindExemplar      RelationshipKind = "EXEMPLAR"        // Pattern -> Entity: real code example of this pattern in use
+	RelationshipKindTouches       RelationshipKind = "TOUCHES"         // Pattern -> Entity: entity the pattern's steps read or modify
+	RelationshipKindAntiExemplar  RelationshipKind = "ANTI_EXEMPLAR"   // Pattern -> Entity: real code example of the anti-pattern
+	RelationshipKindSupersedes    RelationshipKind = "SUPERSEDES"      // Pattern -> Pattern: this pattern replaces an older one
+	RelationshipKindConflictsWith RelationshipKind = "CONFLICTS_WITH"  // Pattern -> Pattern: these two patterns cannot both apply
 	RelationshipKindCoAppliesWith RelationshipKind = "CO_APPLIES_WITH" // Pattern -> Pattern: typically applied together
-	RelationshipKindPrerequisite  RelationshipKind = "PREREQUISITE"   // Pattern -> Pattern: must be satisfied before this one
+	RelationshipKindPrerequisite  RelationshipKind = "PREREQUISITE"    // Pattern -> Pattern: must be satisfied before this one
 	// Incoming to Pattern:
 	RelationshipKindCreatedBy RelationshipKind = "CREATED_BY" // Entity -> Pattern: entity produced using the linked pattern
 

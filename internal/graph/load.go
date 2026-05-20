@@ -20,8 +20,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 	fb "github.com/cajasmota/archigraph/internal/graph/fbgraph"
+	"github.com/cajasmota/archigraph/internal/graph/fbreader"
 )
 
 // LoadGraphFromDir loads a graph.Document from dir, where dir is the

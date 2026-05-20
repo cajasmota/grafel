@@ -308,7 +308,7 @@ func (s *Scheduler) tryAdmit() {
 		s.inflight[repo] = predicted
 		s.usedMB += predicted
 		s.logEventLocked("admit_ok", repo,
-			"predicted=" + formatMB(predicted) + " used=" + formatMB(s.usedMB))
+			"predicted="+formatMB(predicted)+" used="+formatMB(s.usedMB))
 		tok := jobToken{repoPath: repo, predictedMB: predicted}
 		s.mu.Unlock()
 		// Block on jobs channel — workers are sized to drain this
@@ -559,8 +559,8 @@ type Snapshot struct {
 	RecentLog    []LogEntry
 
 	// Budget telemetry (added with admission control).
-	BudgetMB   int64
-	UsedMB     int64
+	BudgetMB    int64
+	UsedMB      int64
 	BlockedJobs []string
 }
 

@@ -19,9 +19,9 @@ import (
 // response.  Target: < 100 ms on a local repo set.
 func (s *Server) handleDashboardInit(w http.ResponseWriter, r *http.Request) {
 	var (
-		wg       sync.WaitGroup
-		groupsMu sync.Mutex
-		groups   []GroupSummary
+		wg        sync.WaitGroup
+		groupsMu  sync.Mutex
+		groups    []GroupSummary
 		groupsErr string
 	)
 
@@ -76,8 +76,8 @@ func (s *Server) handleDashboardInit(w http.ResponseWriter, r *http.Request) {
 		"registry": map[string]any{
 			"groups": groups,
 		},
-		"groups":     enriched,
-		"settings":   map[string]any{},
-		"served_at":  time.Now().UTC().Format(time.RFC3339),
+		"groups":    enriched,
+		"settings":  map[string]any{},
+		"served_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }

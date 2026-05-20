@@ -4,15 +4,15 @@
 // pass cannot handle and that PR #744's empirical validation flagged
 // on every backend fixture:
 //
-//   1. Django composed URLconf — handler is a view in views.py while the
-//      route is registered in urls.py.
-//   2. DRF ViewSet — list/create/etc. method on a class registered with
-//      router.register(prefix, ViewSet); handler is a method on the
-//      ViewSet class in viewsets.py.
-//   3. Express imported controller — `router.get("/x", users.list)`
-//      where `users` is imported from another module.
-//   4. JAX-RS handler — class-level @Path with method-level @GET in a
-//      Java file separate from any URL dispatcher.
+//  1. Django composed URLconf — handler is a view in views.py while the
+//     route is registered in urls.py.
+//  2. DRF ViewSet — list/create/etc. method on a class registered with
+//     router.register(prefix, ViewSet); handler is a method on the
+//     ViewSet class in viewsets.py.
+//  3. Express imported controller — `router.get("/x", users.list)`
+//     where `users` is imported from another module.
+//  4. JAX-RS handler — class-level @Path with method-level @GET in a
+//     Java file separate from any URL dispatcher.
 //
 // In every case the per-file pass produces empty response_keys because
 // either source_handler is empty or the handler entity lives in
@@ -98,7 +98,7 @@ class UserViewSet(ModelViewSet):
 	// Union of list() + create() keys: id, email, total, users.
 	want := []string{"id", "email", "total", "users"}
 	for _, k := range want {
-		if !csvContains(got,k) {
+		if !csvContains(got, k) {
 			t.Errorf("response_keys=%q missing %q", got, k)
 		}
 	}
@@ -141,7 +141,7 @@ func TestCorpusResponseShape_DRFViewSetMethodCrossFile(t *testing.T) {
 	}
 	got := entities[1].Properties["response_keys"]
 	for _, k := range []string{"id", "items", "total"} {
-		if !csvContains(got,k) {
+		if !csvContains(got, k) {
 			t.Errorf("response_keys=%q missing %q", got, k)
 		}
 	}
@@ -183,7 +183,7 @@ func TestCorpusResponseShape_ExpressImportedController(t *testing.T) {
 	}
 	got := entities[1].Properties["response_keys"]
 	for _, k := range []string{"page", "total", "users"} {
-		if !csvContains(got,k) {
+		if !csvContains(got, k) {
 			t.Errorf("response_keys=%q missing %q", got, k)
 		}
 	}

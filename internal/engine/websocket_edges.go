@@ -13,8 +13,10 @@
 //     and be matchable without extra wiring.
 //
 //   - WS_SUBSCRIBES_TO edges — server-side message handlers → ChannelEvent.
+//
 //   - WS_EMITS          edges — server-side emit/broadcast/send → ChannelEvent.
 //     A `scope` property records broadcast|room|user.
+//
 //   - WS_CONNECTS       edges — client-side `new WebSocket(...)` / `io(...)`
 //     constructors → ChannelEvent. This is the cross-stack pivot point.
 //
@@ -235,7 +237,7 @@ func synthJavaServerEndpoint(
 		for range jakartaSessionSendRe.FindAllStringSubmatch(src, -1) {
 			emitEdge(
 				string(types.RelationshipKindWSEmits),
-				"Class:" + className,
+				"Class:"+className,
 				channelID,
 				map[string]string{
 					"framework": framework,
@@ -308,7 +310,7 @@ func synthSpringMessageMapping(
 		id := emitChannel(channel, framework)
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
-			"Class:" + method,
+			"Class:"+method,
 			id,
 			map[string]string{"framework": framework, "channel": channel},
 		)
@@ -339,7 +341,7 @@ func synthKtorWebSocket(
 		id := emitChannel(channel, "ktor")
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
-			"Function:ktor_ws_" + sanitiseID(channel),
+			"Function:ktor_ws_"+sanitiseID(channel),
 			id,
 			map[string]string{"framework": "ktor", "channel": channel},
 		)
@@ -390,7 +392,7 @@ func synthFastAPIWebSocket(
 		}
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
-			"Function:" + handler,
+			"Function:"+handler,
 			id,
 			props,
 		)
@@ -452,7 +454,7 @@ func synthPyWebsocketsServe(
 		id := emitChannel(channel, "websockets")
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
-			"Function:" + handler,
+			"Function:"+handler,
 			id,
 			map[string]string{"framework": "websockets", "channel": channel, "handler": handler},
 		)
@@ -505,7 +507,7 @@ func synthSocketIOServer(
 		id := emitChannel(channel, "socket.io")
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
-			"Function:socketio_on_" + sanitiseID(event),
+			"Function:socketio_on_"+sanitiseID(event),
 			id,
 			map[string]string{"framework": "socket.io", "channel": channel, "event_name": event},
 		)
@@ -546,7 +548,7 @@ func synthSocketIOServer(
 		}
 		emitEdge(
 			string(types.RelationshipKindWSEmits),
-			"Function:socketio_emit_" + sanitiseID(event),
+			"Function:socketio_emit_"+sanitiseID(event),
 			id,
 			props,
 		)
@@ -597,7 +599,7 @@ func synthBareWSServer(
 		event := m[1]
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
-			"Function:ws_on_" + event,
+			"Function:ws_on_"+event,
 			id,
 			map[string]string{"framework": "ws", "channel": channel, "event_name": event},
 		)
@@ -631,7 +633,7 @@ var browserWSClientRe = regexp.MustCompile(
 // `new WebSocket(wsUrl())` / `new WebSocket(resolveWsUrl())`). Frontend
 // code routinely hides the URL behind a helper, so the file usually
 // contains the literal URL elsewhere — inside a `return "..."` or
-// `return \`...\`` statement. This regex captures every WebSocket-shaped
+// `return \`...\“ statement. This regex captures every WebSocket-shaped
 // URL literal in the file (absolute `ws://` / `wss://` or a path that
 // starts with `/ws/`). The companion file-scope scan emits one
 // WS_CONNECTS edge per distinct URL when a `new WebSocket(` appears.
@@ -771,9 +773,9 @@ func synthBrowserWSClient(
 			fromID,
 			id,
 			map[string]string{
-				"framework":     "browser_websocket",
-				"channel":       channelPath,
-				"resolved_via":  "url_literal_scan",
+				"framework":    "browser_websocket",
+				"channel":      channelPath,
+				"resolved_via": "url_literal_scan",
 			},
 		)
 	}
@@ -894,7 +896,7 @@ func synthGorillaWebSocket(
 		id := emitChannel(channel, "gorilla_websocket")
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
-			"Function:" + handler,
+			"Function:"+handler,
 			id,
 			map[string]string{"framework": "gorilla_websocket", "channel": channel, "handler": handler},
 		)
@@ -932,7 +934,7 @@ func synthAspNetWebSocket(
 		id := emitChannel(channel, "aspnet_websocket")
 		emitEdge(
 			string(types.RelationshipKindWSSubscribesTo),
-			"Class:" + handler,
+			"Class:"+handler,
 			id,
 			map[string]string{"framework": "aspnet_websocket", "channel": channel, "handler": handler},
 		)

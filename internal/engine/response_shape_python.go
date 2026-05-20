@@ -10,10 +10,10 @@
 //   - jsonify({...})                    Flask
 //   - {...}                             dict literal (Flask, FastAPI)
 //   - SomeModel(...)                    Pydantic / dataclass return; the
-//                                       caller-side type is taken from a
-//                                       FastAPI response_model decorator
-//                                       (when present) or the function
-//                                       return-type annotation.
+//     caller-side type is taken from a
+//     FastAPI response_model decorator
+//     (when present) or the function
+//     return-type annotation.
 //
 // Request-body extraction (request_keys/request_schema) parses FastAPI
 // parameter annotations: `body: SomeModel` → walk SomeModel's class body

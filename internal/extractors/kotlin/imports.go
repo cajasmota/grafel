@@ -66,12 +66,12 @@ import (
 // through to a hypothetical `io` bare root.
 var kotlinKnownExternalRoots = map[string]struct{}{
 	// Kotlin language / stdlib / ecosystems
-	"kotlin":                {},
-	"kotlinx":               {},
-	"org.jetbrains":         {},
-	"org.jetbrains.exposed": {},
-	"org.jetbrains.kotlinx": {},
-	"org.jetbrains.kotlin":  {},
+	"kotlin":                    {},
+	"kotlinx":                   {},
+	"org.jetbrains":             {},
+	"org.jetbrains.exposed":     {},
+	"org.jetbrains.kotlinx":     {},
+	"org.jetbrains.kotlin":      {},
 	"org.jetbrains.annotations": {},
 
 	// JVM language stdlib
@@ -82,18 +82,18 @@ var kotlinKnownExternalRoots = map[string]struct{}{
 	"groovy":  {},
 
 	// Ktor / Quarkus / SmallRye / Netty / reactive / vertx
-	"io.ktor":         {},
-	"io.quarkus":      {},
-	"io.smallrye":     {},
-	"io.netty":        {},
-	"io.grpc":         {},
-	"io.reactivex":    {},
-	"io.vertx":        {},
-	"io.micrometer":   {},
-	"io.swagger":      {},
-	"io.confluent":    {},
+	"io.ktor":          {},
+	"io.quarkus":       {},
+	"io.smallrye":      {},
+	"io.netty":         {},
+	"io.grpc":          {},
+	"io.reactivex":     {},
+	"io.vertx":         {},
+	"io.micrometer":    {},
+	"io.swagger":       {},
+	"io.confluent":     {},
 	"io.opentelemetry": {},
-	"reactor":         {},
+	"reactor":          {},
 
 	// Spring / Hibernate
 	"org.springframework": {},

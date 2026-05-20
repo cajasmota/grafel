@@ -161,7 +161,7 @@ func synthSSENodeServer(
 		id := emitStream(channelPath, "node_sse")
 		emitEdge(
 			string(types.RelationshipKindStreamsTo),
-			"Function:" + caller,
+			"Function:"+caller,
 			id,
 			map[string]string{"framework": "node_sse", "path": channelPath},
 		)
@@ -269,7 +269,7 @@ func synthSSEDjangoStreaming(
 		id := emitStream(channelPath, "django_sse")
 		emitEdge(
 			string(types.RelationshipKindStreamsTo),
-			"Function:" + handler,
+			"Function:"+handler,
 			id,
 			map[string]string{"framework": "django_sse", "path": channelPath},
 		)
@@ -319,7 +319,7 @@ func synthSSEFastAPIStreaming(
 		id := emitStream(channelPath, "fastapi_sse")
 		emitEdge(
 			string(types.RelationshipKindStreamsTo),
-			"Function:" + handler,
+			"Function:"+handler,
 			id,
 			map[string]string{"framework": "fastapi_sse", "path": channelPath},
 		)
@@ -361,7 +361,7 @@ func synthSSESpringEmitter(
 		id := emitStream(channelPath, "spring_sse")
 		emitEdge(
 			string(types.RelationshipKindStreamsTo),
-			"Class:" + handler,
+			"Class:"+handler,
 			id,
 			map[string]string{"framework": "spring_sse", "path": channelPath, "handler": handler},
 		)
@@ -405,7 +405,7 @@ func synthSSEQuarkusProduces(
 		id := emitStream(channelPath, "quarkus_sse")
 		emitEdge(
 			string(types.RelationshipKindStreamsTo),
-			"Class:" + handler,
+			"Class:"+handler,
 			id,
 			map[string]string{"framework": "quarkus_sse", "path": channelPath, "handler": handler},
 		)

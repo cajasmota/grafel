@@ -42,8 +42,8 @@ urlpatterns = [
 	got := ApplyDjangoNestedURLConf(pyPaths, files.reader)
 
 	wantIDs := map[string]bool{
-		"http:ANY:/api/v1/users":        false,
-		"http:ANY:/api/v1/users/{id}":   false,
+		"http:ANY:/api/v1/users":      false,
+		"http:ANY:/api/v1/users/{id}": false,
 	}
 	for _, e := range got {
 		if e.Kind != httpEndpointKind {
@@ -271,7 +271,7 @@ urlpatterns = [
 	got := ApplyDjangoNestedURLConf(pyPaths, files.reader)
 
 	wantIDs := map[string]bool{
-		"http:ANY:/users/{pk}": false,
+		"http:ANY:/users/{pk}":   false,
 		"http:ANY:/users/health": false,
 		// path("", ...) with empty pattern composes to /users
 		"http:ANY:/users": false,
@@ -416,7 +416,7 @@ func TestResolveFBVHandler(t *testing.T) {
 		{"", ""},
 		{"app.views.fn", "fn"},
 		{"ALLOWED_HOSTS.append", "append"}, // bare word after last dot — valid identifier
-		{"include(router.urls)", ""},        // include() call — no handler
+		{"include(router.urls)", ""},       // include() call — no handler
 	}
 	for _, tt := range tests {
 		got := resolveFBVHandler(tt.input)

@@ -53,9 +53,9 @@ import (
 // represent actual code calling across repo boundaries; IMPORTS,
 // SHARED_LABEL, and STRING_MATCH links are not traversable call steps.
 var phantomEdgeMethods = map[string]bool{
-	MethodHTTP:       true,
-	"kafka_topic":    true,
-	"ws_channel":     true,
+	MethodHTTP:    true,
+	"kafka_topic": true,
+	"ws_channel":  true,
 }
 
 // PhantomEdgeResult summarises one PromoteToPhantomEdges call.
@@ -86,7 +86,7 @@ func PromoteToPhantomEdges(
 ) (added int, err error) {
 	// Collect candidate links: relation=calls, method ∈ phantomEdgeMethods.
 	type candidate struct {
-		link      Link
+		link       Link
 		sourceRepo string
 		targetRepo string
 		sourceID   string // local entity ID in source repo

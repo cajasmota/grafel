@@ -750,10 +750,10 @@ func TestHTTPPass_VerbsCompatible(t *testing.T) {
 // TestHTTPPass_ParseHTTPName verifies the canonical-name parser.
 func TestHTTPPass_ParseHTTPName(t *testing.T) {
 	cases := []struct {
-		in        string
-		verb      string
-		path      string
-		ok        bool
+		in   string
+		verb string
+		path string
+		ok   bool
 	}{
 		{"http:GET:/users/{id}", "GET", "/users/{id}", true},
 		{"http:ANY:/foo", "ANY", "/foo", true},
@@ -798,22 +798,22 @@ func TestHTTPPass_VerbConfusion_ExactVerbPreference(t *testing.T) {
 			{
 				"id": "ep-delete", "name": "http:DELETE:/inspections/{pk}", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "DELETE", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "DELETE", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
 			},
 			{
 				"id": "ep-patch", "name": "http:PATCH:/inspections/{pk}", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "PATCH", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "PATCH", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
 			},
 			{
 				"id": "ep-get", "name": "http:GET:/inspections/{pk}", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "GET", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "GET", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
 			},
 			{
 				"id": "ep-any", "name": "http:ANY:/inspections/{pk}", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "ANY", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "ANY", "path": "/inspections/{pk}", "pattern_type": "http_endpoint_synthesis"},
 			},
 		},
 		Edges: []map[string]string{
@@ -890,17 +890,17 @@ func TestHTTPPass_VerbConfusion_AnyFallback(t *testing.T) {
 			{
 				"id": "ep-patch", "name": "http:PATCH:/roles/{roleId}", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "PATCH", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "PATCH", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
 			},
 			{
 				"id": "ep-delete", "name": "http:DELETE:/roles/{roleId}", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "DELETE", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "DELETE", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
 			},
 			{
 				"id": "ep-any", "name": "http:ANY:/roles/{roleId}", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "ANY", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "ANY", "path": "/roles/{roleId}", "pattern_type": "http_endpoint_synthesis"},
 			},
 		},
 		Edges: []map[string]string{
@@ -968,12 +968,12 @@ func TestHTTPPass_VerbConfusion_NoMatchWhenOnlyWrongVerbs(t *testing.T) {
 			{
 				"id": "ep-get", "name": "http:GET:/widgets", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "GET", "path": "/widgets", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "GET", "path": "/widgets", "pattern_type": "http_endpoint_synthesis"},
 			},
 			{
 				"id": "ep-delete", "name": "http:DELETE:/widgets", "kind": "http_endpoint",
 				"source_file": "app/views.py",
-				"properties": map[string]any{"verb": "DELETE", "path": "/widgets", "pattern_type": "http_endpoint_synthesis"},
+				"properties":  map[string]any{"verb": "DELETE", "path": "/widgets", "pattern_type": "http_endpoint_synthesis"},
 			},
 		},
 		Edges: []map[string]string{

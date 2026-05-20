@@ -6,12 +6,12 @@
 //
 //   - response_keys      top-level keys of literal-object responses
 //   - response_schema    {key: type} JSON map when type info is statically
-//                        recoverable (Spring DTO, JAX-RS @Schema, Pydantic
-//                        BaseModel, Go struct, NestJS DTO class)
+//     recoverable (Spring DTO, JAX-RS @Schema, Pydantic
+//     BaseModel, Go struct, NestJS DTO class)
 //   - error_keys         keys observed in 4xx/5xx returns
 //   - status_codes       sorted comma-separated list of emitted HTTP codes
 //   - request_keys       request-body shape (FastAPI Pydantic param,
-//                        NestJS @Body() Dto, Spring @RequestBody Dto)
+//     NestJS @Body() Dto, Spring @RequestBody Dto)
 //   - request_schema     same shape as response_schema for the request body
 //   - response_keys_known=false when the return value is a free variable
 //     that we cannot statically resolve to a literal/typed shape.

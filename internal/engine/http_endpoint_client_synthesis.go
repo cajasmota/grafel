@@ -259,7 +259,7 @@ var fetchBareIdentRe = regexp.MustCompile(
 
 // buildJSTemplateLiteralSymbolTable returns a map from identifier name →
 // raw template-literal body (excluding backticks) for every
-// const/let/var assignment of the form `const X = `...${...}...``.
+// const/let/var assignment of the form `const X = `...${...}...“.
 // Used by #654 to resolve bare-identifier fetch arguments.
 func buildJSTemplateLiteralSymbolTable(content string) map[string]string {
 	syms := make(map[string]string)

@@ -145,11 +145,11 @@ func TestComputeDocState_stale(t *testing.T) {
 
 func TestComposeSuggestedAction_transitions(t *testing.T) {
 	cases := []struct {
-		name           string
-		docState       DocStateResult
-		candidates     int
-		residuals      int
-		wantSubstring  string
+		name          string
+		docState      DocStateResult
+		candidates    int
+		residuals     int
+		wantSubstring string
 	}{
 		{
 			name:          "never_generated",

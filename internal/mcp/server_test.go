@@ -164,13 +164,13 @@ func TestCLIRegistryFormat(t *testing.T) {
 		"version": 1,
 		"groups": []map[string]any{
 			{
-				"name":        "upvate",
-				"config_path": cfg1Path,
+				"name":         "upvate",
+				"config_path":  cfg1Path,
 				"installed_at": "2026-05-20T12:00:00Z",
 			},
 			{
-				"name":        "client-fixture",
-				"config_path": cfg2Path,
+				"name":         "client-fixture",
+				"config_path":  cfg2Path,
 				"installed_at": "2026-05-20T12:00:00Z",
 			},
 		},
@@ -1104,11 +1104,11 @@ func TestPatterns_RecordThenQuery(t *testing.T) {
 
 	// 1. Record.
 	recRes := callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": "create a new HTTP endpoint", "keywords": []any{"endpoint", "handler", "http"}},
-		"steps":    []any{"Create handler in internal/handlers/", "Register route in routes.go"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": "create a new HTTP endpoint", "keywords": []any{"endpoint", "handler", "http"}},
+		"steps":     []any{"Create handler in internal/handlers/", "Register route in routes.go"},
 		"exemplars": []any{"myrepo::a1"},
-		"category": "code",
+		"category":  "code",
 	})
 	if recRes.IsError {
 		t.Fatalf("record error: %s", resultText(recRes))
@@ -1261,21 +1261,21 @@ func TestPatterns_SpecificityScopedQueryWins(t *testing.T) {
 
 	// Broad pattern — no scope constraints.
 	callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": "register a new service broad variant", "keywords": []any{"service", "register", "new"}},
-		"steps":    []any{"Step 1 — broad"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": "register a new service broad variant", "keywords": []any{"service", "register", "new"}},
+		"steps":     []any{"Step 1 — broad"},
 		"exemplars": []any{"myrepo::a1"},
-		"category": "code",
+		"category":  "code",
 	})
 
 	// Specific pattern — repos + languages set (2 non-empty scope fields).
 	callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": "register a new service specific variant", "keywords": []any{"service", "register", "new"}},
-		"steps":    []any{"Step A — specific"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": "register a new service specific variant", "keywords": []any{"service", "register", "new"}},
+		"steps":     []any{"Step A — specific"},
 		"exemplars": []any{"myrepo::a2"},
-		"category": "code",
-		"scope":    map[string]any{"repos": []any{"myrepo"}, "languages": []any{"go"}},
+		"category":  "code",
+		"scope":     map[string]any{"repos": []any{"myrepo"}, "languages": []any{"go"}},
 	})
 
 	qRes := callTool(t, srv, "archigraph_patterns", map[string]any{
@@ -1310,21 +1310,21 @@ func TestPatterns_ExplicitScopeFilter(t *testing.T) {
 
 	// Pattern for repo "myrepo".
 	callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": "create a new endpoint for myrepo"},
-		"steps":    []any{"myrepo step"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": "create a new endpoint for myrepo"},
+		"steps":     []any{"myrepo step"},
 		"exemplars": []any{"myrepo::a1"},
-		"category": "code",
-		"scope":    map[string]any{"repos": []any{"myrepo"}},
+		"category":  "code",
+		"scope":     map[string]any{"repos": []any{"myrepo"}},
 	})
 	// Pattern for repo "otherrepo".
 	callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": "create a new endpoint for otherrepo"},
-		"steps":    []any{"otherrepo step"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": "create a new endpoint for otherrepo"},
+		"steps":     []any{"otherrepo step"},
 		"exemplars": []any{"myrepo::a2"},
-		"category": "code",
-		"scope":    map[string]any{"repos": []any{"otherrepo"}},
+		"category":  "code",
+		"scope":     map[string]any{"repos": []any{"otherrepo"}},
 	})
 
 	// Query with explicit scope override restricting to "otherrepo".
@@ -1415,11 +1415,11 @@ func TestPatterns_RecordErrorCases(t *testing.T) {
 
 	// Invalid category.
 	res2 := callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": "test pattern 2"},
-		"steps":    []any{"step one"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": "test pattern 2"},
+		"steps":     []any{"step one"},
 		"exemplars": []any{"myrepo::a1"},
-		"category": "bogus_category",
+		"category":  "bogus_category",
 	})
 	if !res2.IsError {
 		t.Errorf("expected error for invalid category, got: %s", resultText(res2))
@@ -1427,10 +1427,10 @@ func TestPatterns_RecordErrorCases(t *testing.T) {
 
 	// Missing steps.
 	res3 := callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": "test pattern 3"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": "test pattern 3"},
 		"exemplars": []any{"myrepo::a1"},
-		"category": "code",
+		"category":  "code",
 	})
 	if !res3.IsError {
 		t.Errorf("expected error for missing steps, got: %s", resultText(res3))
@@ -1490,8 +1490,8 @@ func TestPatterns_QueryIncludeCandidates(t *testing.T) {
 
 	// With include_candidates=true.
 	qWithCands := callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":            "query",
-		"text":              "candidate endpoint pattern",
+		"action":             "query",
+		"text":               "candidate endpoint pattern",
 		"include_candidates": true,
 	})
 	var outWith struct {
@@ -1510,11 +1510,11 @@ func TestPatterns_EdgeEmission(t *testing.T) {
 	srv, _ := makePatternsServer(t)
 
 	res := callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": "edge emission test"},
-		"steps":    []any{"step one"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": "edge emission test"},
+		"steps":     []any{"step one"},
 		"exemplars": []any{"myrepo::a1", "myrepo::a2"},
-		"category": "code",
+		"category":  "code",
 	})
 	if res.IsError {
 		t.Fatalf("record error: %s", resultText(res))
@@ -1551,11 +1551,11 @@ func absF(x float64) float64 {
 func recordPattern(t *testing.T, srv *Server, nl string) string {
 	t.Helper()
 	res := callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":   "record",
-		"trigger":  map[string]any{"natural_language": nl, "keywords": []any{"test"}},
-		"steps":    []any{"step A", "step B"},
+		"action":    "record",
+		"trigger":   map[string]any{"natural_language": nl, "keywords": []any{"test"}},
+		"steps":     []any{"step A", "step B"},
 		"exemplars": []any{"myrepo::a1"},
-		"category": "code",
+		"category":  "code",
 	})
 	if res.IsError {
 		t.Fatalf("record error: %s", resultText(res))
@@ -1584,7 +1584,7 @@ func TestPatterns_RefineAddRemoveStep(t *testing.T) {
 		t.Fatalf("refine add_step error: %s", resultText(refRes))
 	}
 	var refOut struct {
-		Pattern map[string]any   `json:"pattern"`
+		Pattern     map[string]any   `json:"pattern"`
 		EdgeChanges []map[string]any `json:"edge_changes"`
 	}
 	if err := json.Unmarshal([]byte(resultText(refRes)), &refOut); err != nil {
@@ -1898,10 +1898,10 @@ func TestPatterns_RejectSetToZero(t *testing.T) {
 	id := recordPattern(t, srv, "reject zero test pattern")
 
 	res := callTool(t, srv, "archigraph_patterns", map[string]any{
-		"action":       "reject",
-		"pattern_id":   id,
-		"reason":       "completely wrong",
-		"set_to_zero":  true,
+		"action":      "reject",
+		"pattern_id":  id,
+		"reason":      "completely wrong",
+		"set_to_zero": true,
 	})
 	if res.IsError {
 		t.Fatalf("reject error: %s", resultText(res))
@@ -1934,7 +1934,9 @@ func TestPatterns_PromoteCandidate(t *testing.T) {
 	if recRes.IsError {
 		t.Fatalf("record error: %s", resultText(recRes))
 	}
-	var recOut struct{ ID string `json:"id"` }
+	var recOut struct {
+		ID string `json:"id"`
+	}
 	if err := json.Unmarshal([]byte(resultText(recRes)), &recOut); err != nil {
 		t.Fatalf("unmarshal record: %v", err)
 	}
@@ -1979,7 +1981,9 @@ func TestPatterns_PromoteAlreadyApproved(t *testing.T) {
 	if recRes.IsError {
 		t.Fatalf("record error: %s", resultText(recRes))
 	}
-	var recOut struct{ ID string `json:"id"` }
+	var recOut struct {
+		ID string `json:"id"`
+	}
 	if err := json.Unmarshal([]byte(resultText(recRes)), &recOut); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

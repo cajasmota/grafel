@@ -15,7 +15,9 @@ func TestStatusRSSReportsActualMemory(t *testing.T) {
 	svc := newService(
 		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
 		func(proto.RebuildArgs) ([]string, string, error) { return []string{}, "", nil },
-		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) { return proto.QualityAuditReply{}, nil },
+		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
+			return proto.QualityAuditReply{}, nil
+		},
 		"/tmp/test.sock",
 		make(chan struct{}),
 		nil, // logger

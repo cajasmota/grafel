@@ -76,8 +76,8 @@ func (r *Registry) UnmarshalJSON(data []byte) error {
 		ConfigPath string `json:"config_path"`
 	}
 	type rawReg struct {
-		Version int       `json:"version"`
-		Groups  []rawRef  `json:"groups"`
+		Version int      `json:"version"`
+		Groups  []rawRef `json:"groups"`
 	}
 	var raw rawReg
 	if err := json.Unmarshal(data, &raw); err == nil && len(raw.Groups) > 0 {
@@ -121,8 +121,8 @@ func (r *Registry) UnmarshalJSON(data []byte) error {
 
 // groupConfig matches internal/registry.GroupConfig structure for per-group config files.
 type groupConfig struct {
-	Name      string `json:"name"`
-	Repos     []struct {
+	Name  string `json:"name"`
+	Repos []struct {
 		Slug string `json:"slug"`
 		Path string `json:"path"`
 	} `json:"repos"`

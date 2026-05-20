@@ -93,15 +93,15 @@ var javaKnownExternalRoots = map[string]struct{}{
 	"lombok":         {},
 
 	// Apache / Eclipse / JetBrains / Gradle / Codehaus umbrellas
-	"org.apache":            {},
-	"org.apache.commons":    {},
-	"org.apache.kafka":      {},
-	"org.apache.avro":       {},
-	"org.apache.curator":    {},
-	"org.apache.zookeeper":  {},
-	"org.apache.log4j":      {},
-	"org.apache.logging":    {},
-	"org.apache.hadoop":     {},
+	"org.apache":           {},
+	"org.apache.commons":   {},
+	"org.apache.kafka":     {},
+	"org.apache.avro":      {},
+	"org.apache.curator":   {},
+	"org.apache.zookeeper": {},
+	"org.apache.log4j":     {},
+	"org.apache.logging":   {},
+	"org.apache.hadoop":    {},
 	// Issue #787c — Apache POI and PDFBox (see synth.go knownExternalPackages
 	// for rationale). Adding specific sub-families here gives resolveImportToIDs
 	// a canonical ext:<prefix> that is more precise than the bare `org.apache`
@@ -120,53 +120,53 @@ var javaKnownExternalRoots = map[string]struct{}{
 	"org.apache.commons.collections4": {}, // Commons Collections4
 	"org.apache.commons.compress":     {}, // Commons Compress
 	"org.apache.commons.text":         {}, // Commons Text
-	"org.eclipse":           {},
-	"org.eclipse.jetty":     {},
-	"org.jetbrains":         {},
-	"org.jetbrains.exposed": {},
-	"org.jetbrains.kotlinx": {},
-	"org.jetbrains.kotlin":  {},
-	"org.gradle":            {},
-	"org.codehaus":          {},
-	"org.glassfish":         {},
-	"org.glassfish.jersey":  {},
-	"org.rocksdb":           {},
-	"org.json":              {},
-	"org.yaml":              {},
+	"org.eclipse":                     {},
+	"org.eclipse.jetty":               {},
+	"org.jetbrains":                   {},
+	"org.jetbrains.exposed":           {},
+	"org.jetbrains.kotlinx":           {},
+	"org.jetbrains.kotlin":            {},
+	"org.gradle":                      {},
+	"org.codehaus":                    {},
+	"org.glassfish":                   {},
+	"org.glassfish.jersey":            {},
+	"org.rocksdb":                     {},
+	"org.json":                        {},
+	"org.yaml":                        {},
 
 	// Quarkus / SmallRye / Netty / gRPC / reactive / metrics / docs
-	"io.quarkus":      {},
-	"io.smallrye":     {},
-	"io.netty":        {},
-	"io.grpc":         {},
-	"io.reactivex":    {},
-	"io.vertx":        {},
-	"io.micrometer":   {},
-	"io.swagger":      {},
-	"io.ktor":         {},
-	"io.confluent":    {},
+	"io.quarkus":       {},
+	"io.smallrye":      {},
+	"io.netty":         {},
+	"io.grpc":          {},
+	"io.reactivex":     {},
+	"io.vertx":         {},
+	"io.micrometer":    {},
+	"io.swagger":       {},
+	"io.ktor":          {},
+	"io.confluent":     {},
 	"io.opentelemetry": {},
-	"reactor":         {},
+	"reactor":          {},
 
 	// Google / Fasterxml (Jackson) / cloud SDKs
-	"com.google":           {},
-	"com.google.common":    {},
-	"com.google.guava":     {},
-	"com.google.protobuf":  {},
-	"com.google.gson":      {},
-	"com.fasterxml":        {},
+	"com.google":            {},
+	"com.google.common":     {},
+	"com.google.guava":      {},
+	"com.google.protobuf":   {},
+	"com.google.gson":       {},
+	"com.fasterxml":         {},
 	"com.fasterxml.jackson": {},
-	"com.amazonaws":        {},
-	"com.azure":            {},
-	"com.microsoft":        {},
-	"com.oracle":           {},
-	"com.sun":              {},
-	"com.typesafe":         {},
-	"com.zaxxer":           {}, // HikariCP connection pool
+	"com.amazonaws":         {},
+	"com.azure":             {},
+	"com.microsoft":         {},
+	"com.oracle":            {},
+	"com.sun":               {},
+	"com.typesafe":          {},
+	"com.zaxxer":            {}, // HikariCP connection pool
 
 	// Crypto / Redis / misc
-	"redis.clients": {},  // Jedis Redis client
-	"at.favre.lib":  {},  // BCrypt
+	"redis.clients": {}, // Jedis Redis client
+	"at.favre.lib":  {}, // BCrypt
 }
 
 // resolveImportToIDs walks every IMPORTS edge on every entity in
