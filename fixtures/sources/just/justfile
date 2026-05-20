@@ -1,0 +1,46 @@
+#!/usr/bin/env just
+# Sample justfile for golden-fixture corpus.
+# Covers: recipes, variables, imports, cross-recipe dependencies.
+
+import "tools.just"
+import? "local.just"
+
+# Variables
+image    := "sample-app"
+tag      := "latest"
+registry := "registry.example.com"
+
+# Default recipe — runs when `just` is invoked with no args.
+default: help
+
+# Display available recipes.
+help:
+    @just --list
+
+# Build the project.
+build:
+    cargo build --release
+
+# Run the test suite.
+test: build
+    cargo test --all
+
+# Lint the codebase.
+lint:
+    cargo clippy -- -D warnings
+    cargo fmt --check
+
+# Run CI pipeline.
+ci: lint test build
+
+# Build the Docker image.
+docker-build: build
+    docker build -t {{registry}}/{{image}}:{{tag}} .
+
+# Push the Docker image.
+docker-push: docker-build
+    docker push {{registry}}/{{image}}:{{tag}}
+
+# Deploy to staging.
+deploy: docker-push
+    kubectl apply -f k8s/
