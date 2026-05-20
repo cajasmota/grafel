@@ -441,7 +441,7 @@ export interface PendingEnrichmentsResponse {
 export type LodLevel = 'zoom-out' | 'mid' | 'zoom-in' | 'blocked'
 
 /** Server-side LoD parameter values accepted by GET /api/graph/{group}?lod= */
-export type ServerLodLevel = 'centroids' | 'mid' | 'full'
+export type ServerLodLevel = 'centroids' | 'mid' | 'dense' | 'full'
 
 /** A community centroid node — rendered at zoom-out tier only */
 export interface CommunityCentroid {
@@ -487,10 +487,12 @@ export interface GraphResponse {
 }
 
 export interface GraphFilters {
-  /** Server-side LoD tier — uses ServerLodLevel values (centroids | mid | full) */
+  /** Server-side LOD tier (centroids | mid | dense | full). */
   lod?: ServerLodLevel
   edge_kinds?: RelationshipKind[]
   repo?: string
+  /** Comma-separated list of repo slugs for multi-repo filtering (#1000). */
+  repos?: string
 }
 
 /** 1-hop neighbor response for entity inspector */

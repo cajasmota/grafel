@@ -2,24 +2,30 @@ package dashboard
 
 // handlers_graph.go — LoD-aware graph endpoints
 //
-//	GET /api/graph/{group}?lod=centroids|mid|full&filter_kind=&filter_repo=
+//	GET /api/graph/{group}?lod=centroids|mid|dense|full&filter_kind=&filter_repo=&repos=slug1,slug2
 //	GET /api/graph/{group}/entity/{id}
 //
 // The LoD tiers:
 //   - centroids : one centroid object per community (~50–200 nodes)
-//   - mid       : centroids + top-50 god-nodes per community
+//   - mid       : centroids + top-50 god-nodes per community (~150 nodes)
+//   - dense     : top-500 by pagerank per repo — default tier (issue #1000)
 //   - full      : all nodes up to 20 000 hard cap
+//
+// Default lod is "dense" (issue #1000: user wants to SEE the graph).
+// "repos" param accepts comma-separated repo slugs for multi-select filtering.
 
 import (
 	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/cajasmota/archigraph/internal/graph"
 )
 
 const fullNodeCap = 20_000
+const denseNodeLimit = 500 // per-repo limit for the "dense" tier
 
 // handleGraph — GET /api/graph/{group}
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
@@ -30,10 +36,11 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	}
 	lod := r.URL.Query().Get("lod")
 	if lod == "" {
-		lod = "full"
+		lod = "dense" // #1000: default to dense tier so the graph feels populated
 	}
 	filterKind := r.URL.Query().Get("filter_kind")
 	filterRepo := r.URL.Query().Get("filter_repo")
+	reposParam := r.URL.Query().Get("repos") // comma-separated list of repo slugs (#1000)
 
 	grp, err := s.graphs.GetGroup(group)
 	if err != nil {
@@ -42,10 +49,27 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	repos := sortedRepos(grp)
+
+	// Single-repo legacy filter
 	if filterRepo != "" {
 		var filtered []*DashRepo
 		for _, r := range repos {
 			if r.Slug == filterRepo {
+				filtered = append(filtered, r)
+			}
+		}
+		repos = filtered
+	}
+
+	// Multi-repo filter — ?repos=slug1,slug2 (#1000)
+	if reposParam != "" {
+		slugSet := map[string]bool{}
+		for _, s := range strings.Split(reposParam, ",") {
+			slugSet[strings.TrimSpace(s)] = true
+		}
+		var filtered []*DashRepo
+		for _, r := range repos {
+			if slugSet[r.Slug] {
 				filtered = append(filtered, r)
 			}
 		}
@@ -57,6 +81,8 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		s.serveGraphCentroids(w, group, repos)
 	case "mid":
 		s.serveGraphMid(w, group, repos, filterKind)
+	case "dense":
+		s.serveGraphDense(w, group, repos, filterKind)
 	default: // "full"
 		s.serveGraphFull(w, group, repos, filterKind)
 	}
@@ -291,6 +317,98 @@ func (s *Server) serveGraphMid(w http.ResponseWriter, group string, repos []*Das
 	})
 }
 
+// serveGraphDense returns top-N nodes by PageRank per repo — the default tier (#1000).
+// Gives a much richer view than "mid" (50/repo) while staying bounded below full.
+func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {
+	nodes := []map[string]any{}
+	edges := []map[string]any{}
+	communities := []map[string]any{}
+	visible := map[string]bool{}
+
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		for _, c := range r.Doc.Communities {
+			top := c.TopEntities
+			if len(top) > 3 {
+				top = top[:3]
+			}
+			prefixed := make([]string, len(top))
+			for i, id := range top {
+				prefixed[i] = dashPrefixedID(r.Slug, id)
+			}
+			cm := map[string]any{
+				"id":           c.ID,
+				"size":         c.Size,
+				"auto_name":    c.AutoName,
+				"repo":         r.Slug,
+				"top_entities": prefixed,
+			}
+			if c.AgentName != "" {
+				cm["agent_name"] = c.AgentName
+			}
+			communities = append(communities, cm)
+		}
+
+		type scored struct {
+			e  *graph.Entity
+			pr float64
+		}
+		var candidates []scored
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			if filterKind != "" && dashStripScopePrefix(e.Kind) != filterKind {
+				continue
+			}
+			pr := 0.0
+			if e.PageRank != nil {
+				pr = *e.PageRank
+			}
+			candidates = append(candidates, scored{e: e, pr: pr})
+		}
+		sort.Slice(candidates, func(i, j int) bool {
+			return candidates[i].pr > candidates[j].pr
+		})
+		limit := denseNodeLimit
+		if len(candidates) < limit {
+			limit = len(candidates)
+		}
+		for _, sc := range candidates[:limit] {
+			pid := dashPrefixedID(r.Slug, sc.e.ID)
+			if visible[pid] {
+				continue
+			}
+			visible[pid] = true
+			nodes = append(nodes, serializeEntity(r.Slug, sc.e))
+		}
+	}
+
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		for _, rel := range r.Doc.Relationships {
+			from := dashPrefixedID(r.Slug, rel.FromID)
+			to := dashPrefixedID(r.Slug, rel.ToID)
+			if visible[from] && visible[to] {
+				edges = append(edges, map[string]any{
+					"from_id": from,
+					"to_id":   to,
+					"kind":    rel.Kind,
+				})
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nodes":       nodes,
+		"edges":       edges,
+		"communities": communities,
+		"lod_level":   "zoom-in",
+		"total_nodes": len(nodes),
+	})
+}
 
 // serveGraphFull returns all nodes up to the hard cap.
 func (s *Server) serveGraphFull(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string) {

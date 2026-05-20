@@ -63,10 +63,43 @@ export function kindColors(kind: EntityKind): { bg: string; text: string } {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Repo palette — stable color per slug
+// Repo island colors — distinct hues for multi-repo graph clusters (#1000)
 // ────────────────────────────────────────────────────────────────────────────
 
-const REPO_PALETTE = [
+/**
+ * Returns a stable hex color for a repo slug.
+ * Uses a fixed palette of 8 distinct hues; repos beyond 8 wrap around.
+ * The palette avoids red/green (reserved for error/success UI) and grey
+ * (reserved for unknown/filtered nodes).
+ */
+const REPO_COLOR_PALETTE: string[] = [
+  '#38bdf8', // sky-400    — repo 0
+  '#a78bfa', // violet-400 — repo 1
+  '#34d399', // emerald-400 — repo 2
+  '#fbbf24', // amber-400  — repo 3
+  '#f472b6', // pink-400   — repo 4
+  '#60a5fa', // blue-400   — repo 5
+  '#fb923c', // orange-400 — repo 6
+  '#4ade80', // green-400  — repo 7
+]
+
+const repoColorCache = new Map<string, string>()
+const repoOrder: string[] = []
+
+export function repoColor(slug: string): string {
+  if (repoColorCache.has(slug)) return repoColorCache.get(slug)!
+  if (!repoOrder.includes(slug)) repoOrder.push(slug)
+  const idx = repoOrder.indexOf(slug)
+  const color = REPO_COLOR_PALETTE[idx % REPO_COLOR_PALETTE.length]
+  repoColorCache.set(slug, color)
+  return color
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Repo Tailwind palette — stable Tailwind color per slug (for UI chips)
+// ────────────────────────────────────────────────────────────────────────────
+
+const REPO_TAILWIND_PALETTE = [
   { bg: 'bg-sky-900/40',     text: 'text-sky-300',     dot: 'bg-sky-400' },
   { bg: 'bg-fuchsia-900/40', text: 'text-fuchsia-300', dot: 'bg-fuchsia-400' },
   { bg: 'bg-lime-900/40',    text: 'text-lime-300',    dot: 'bg-lime-400' },
@@ -77,7 +110,7 @@ const REPO_PALETTE = [
   { bg: 'bg-orange-900/40',  text: 'text-orange-300',  dot: 'bg-orange-400' },
 ]
 
-const repoCache = new Map<string, (typeof REPO_PALETTE)[number]>()
+const repoTwCache = new Map<string, (typeof REPO_TAILWIND_PALETTE)[number]>()
 
 function hashStr(s: string): number {
   let h = 0
@@ -87,11 +120,12 @@ function hashStr(s: string): number {
   return Math.abs(h)
 }
 
-export function repoColor(slug: string): (typeof REPO_PALETTE)[number] {
-  if (!repoCache.has(slug)) {
-    repoCache.set(slug, REPO_PALETTE[hashStr(slug) % REPO_PALETTE.length])
+/** Returns Tailwind color classes for a repo slug — for use in UI chip components. */
+export function repoTailwindColor(slug: string): (typeof REPO_TAILWIND_PALETTE)[number] {
+  if (!repoTwCache.has(slug)) {
+    repoTwCache.set(slug, REPO_TAILWIND_PALETTE[hashStr(slug) % REPO_TAILWIND_PALETTE.length])
   }
-  return repoCache.get(slug)!
+  return repoTwCache.get(slug)!
 }
 
 // ────────────────────────────────────────────────────────────────────────────

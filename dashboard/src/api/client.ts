@@ -297,7 +297,7 @@ export async function fetchGraph(
     const data = await loadMock<GraphResponse>('graph')
     return applyGraphMockFilters(data, filters)
   }
-  const params = buildParams({ lod: filters.lod, repo: filters.repo })
+  const params = buildParams({ lod: filters.lod, repo: filters.repo, repos: (filters as { repos?: string }).repos })
   const raw = await apiFetch<Record<string, unknown>>(`/api/graph/${group}?${params}`)
   return normalizeGraphResponse(raw)
 }

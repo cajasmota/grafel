@@ -20,6 +20,7 @@ import {
   GraphLoadingState,
   GraphErrorState,
 } from '@/components/graph/GraphEmptyState'
+import { repoColor } from '@/lib/colors'
 import type { GraphNode, RelationshipKind } from '@/types/api'
 import type { LayoutMode } from '@/components/graph/GraphToolbar'
 
@@ -31,6 +32,11 @@ import type { LayoutMode } from '@/components/graph/GraphToolbar'
  *   ?filter_kind=   comma-separated RelationshipKind values
  *   ?filter_repo=   repo slug
  *   ?selected=      selected entity ID (shareable deep-link)
+ *
+ * #1000 additions:
+ *   - Repo filter chips in left sidebar (above Communities)
+ *   - Community drill-in with breadcrumb
+ *   - Layout modes now passed down to canvas components
  */
 export function GraphRoute() {
   const { group } = useParams<{ group: string }>()
@@ -51,6 +57,15 @@ export function GraphRoute() {
   const [hoveredCommunityId, setHoveredCommunityId] = useState<number | null>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
+  // ── Community drill-in state (#1000) ──────────────────────────────────────
+  const [selectedCommunityId, setSelectedCommunityId] = useState<number | null>(null)
+  const [selectedCommunityName, setSelectedCommunityName] = useState<string | null>(null)
+
+  // ── Repo filter state (#1000) ─────────────────────────────────────────────
+  // null = not yet initialised (wait for communities to load); Set = active slugs
+  const [activeRepos, setActiveRepos] = useState<Set<string> | null>(null)
+  const [allRepoSlugs, setAllRepoSlugs] = useState<string[]>([])
+
   // Respect prefers-reduced-motion → default to 2D
   const [use2D, setUse2D] = useState(() =>
     typeof window !== 'undefined' &&
@@ -65,6 +80,11 @@ export function GraphRoute() {
   }, [preferHighContrast])
 
   // ── Data ───────────────────────────────────────────────────────────────────
+  // activeRepos → only send ?repos= when filtering is active (not all-selected)
+  const effectiveActiveRepos = activeRepos && allRepoSlugs.length > 0
+    ? (activeRepos.size === allRepoSlugs.length ? null : activeRepos)
+    : null
+
   const { nodes, edges, communities, allEdgeKinds, lodLevel, totalNodeCount, isLoading, error, refetch } =
     useGraphData(
       group ?? '',
@@ -72,9 +92,26 @@ export function GraphRoute() {
       zoomLevel,
       null,
       selectedNodeId,
+      selectedCommunityId,
+      effectiveActiveRepos,
     )
 
   const colorMap = useCommunityColors(communities)
+
+  // Derive unique repo slugs from communities once data loads (#1000)
+  useEffect(() => {
+    if (communities.length === 0) return
+    const slugs = [...new Set(communities.map((c) => c.repo))].sort()
+    setAllRepoSlugs((prev) => {
+      if (prev.join(',') === slugs.join(',')) return prev
+      return slugs
+    })
+    // Initialise activeRepos to all repos (no filter) on first load
+    setActiveRepos((prev) => {
+      if (prev !== null) return prev // already initialised
+      return new Set(slugs)
+    })
+  }, [communities])
 
   // ── Inspector ──────────────────────────────────────────────────────────────
   const { data: inspectorData, isLoading: inspectorLoading } = useEntityInspector(
@@ -138,12 +175,44 @@ export function GraphRoute() {
 
   const handleLayoutChange = useCallback((mode: LayoutMode) => {
     setLayoutMode(mode)
-    setUse2D(mode === '2d')
+    // 2D canvas renders '2d' and 'tree' modes; 3D canvas renders 'force'
+    setUse2D(mode === '2d' || mode === 'tree')
   }, [])
 
   const handleOpenInFlows = useCallback((entityId: string) => {
     navigate(`/${group}/flows?entry=${encodeURIComponent(entityId)}`)
   }, [group, navigate])
+
+  // ── Community drill-in handlers (#1000) ───────────────────────────────────
+  const handleCommunityClick = useCallback((id: number, name: string) => {
+    setSelectedCommunityId(id)
+    setSelectedCommunityName(name)
+    clearSelection()
+  }, [clearSelection])
+
+  const handleClearCommunity = useCallback(() => {
+    setSelectedCommunityId(null)
+    setSelectedCommunityName(null)
+  }, [])
+
+  // ── Repo filter handlers (#1000) ──────────────────────────────────────────
+  const handleToggleRepo = useCallback((slug: string) => {
+    setActiveRepos((prev) => {
+      if (!prev) return prev
+      const next = new Set(prev)
+      if (next.has(slug)) {
+        if (next.size <= 1) return prev // prevent deselecting all
+        next.delete(slug)
+      } else {
+        next.add(slug)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSelectAllRepos = useCallback(() => {
+    setActiveRepos(new Set(allRepoSlugs))
+  }, [allRepoSlugs])
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (!group) {
@@ -183,6 +252,34 @@ export function GraphRoute() {
         )}
       </div>
 
+      {/* Community drill-in breadcrumb (#1000) */}
+      {selectedCommunityId !== null && (
+        <div className="px-3 py-1 border-b border-slate-200 dark:border-slate-800 bg-sky-950/40 flex items-center gap-1.5 text-xs text-slate-300">
+          <button
+            type="button"
+            onClick={handleClearCommunity}
+            className="text-sky-400 hover:text-sky-300 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+          >
+            All communities
+          </button>
+          <span className="text-slate-500" aria-hidden>›</span>
+          <span className="text-slate-200 font-medium">
+            {selectedCommunityName ?? `Community ${selectedCommunityId}`}
+          </span>
+          <span className="text-slate-500 ml-auto">
+            {nodes.length.toLocaleString()} nodes
+          </span>
+          <button
+            type="button"
+            onClick={handleClearCommunity}
+            className="ml-2 px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+            aria-label="Back to all communities"
+          >
+            ✕ back to all
+          </button>
+        </div>
+      )}
+
       {/* Edge kind filters */}
       {allEdgeKinds.length > 0 && (
         <div className="px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 overflow-x-auto">
@@ -197,20 +294,78 @@ export function GraphRoute() {
 
       {/* Main area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left: community legend */}
+        {/* Left: repo filter + community legend */}
         <aside
-          className="hidden lg:flex flex-col w-48 min-w-[160px] border-r border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 p-2"
-          aria-label="Community legend sidebar"
+          className="hidden lg:flex flex-col w-48 min-w-[160px] border-r border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 p-2 gap-2 overflow-y-auto"
+          aria-label="Graph filters sidebar"
         >
-          <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold px-2 pb-1">
-            Communities
-          </p>
-          <CommunityLegend
-            communities={communities}
-            colorMap={colorMap}
-            highlightId={hoveredCommunityId}
-            onHover={setHoveredCommunityId}
-          />
+          {/* Repo filter (#1000) */}
+          {allRepoSlugs.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between px-2 pb-1">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold">
+                  Repos
+                </p>
+                {activeRepos && activeRepos.size < allRepoSlugs.length && (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllRepos}
+                    className="text-[9px] text-sky-500 hover:text-sky-400 focus-visible:outline-none"
+                  >
+                    all
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {allRepoSlugs.map((slug) => {
+                  const active = !activeRepos || activeRepos.has(slug)
+                  const color = repoColor(slug)
+                  return (
+                    <button
+                      key={slug}
+                      type="button"
+                      onClick={() => handleToggleRepo(slug)}
+                      className={[
+                        'flex items-center gap-2 px-2 py-1 rounded text-left text-xs w-full transition-colors',
+                        'hover:bg-slate-200/60 dark:hover:bg-slate-800/60',
+                        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
+                        active ? '' : 'opacity-40',
+                      ].join(' ')}
+                      aria-pressed={active}
+                      title={slug}
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0 transition-opacity"
+                        style={{ background: color }}
+                        aria-hidden
+                      />
+                      <span className="flex-1 truncate text-slate-700 dark:text-slate-300">{slug}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Divider between repos and communities */}
+          {allRepoSlugs.length > 0 && (
+            <div className="border-t border-slate-200 dark:border-slate-700" />
+          )}
+
+          {/* Community legend */}
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold px-2 pb-1">
+              Communities
+            </p>
+            <CommunityLegend
+              communities={communities}
+              colorMap={colorMap}
+              highlightId={hoveredCommunityId}
+              onHover={setHoveredCommunityId}
+              onSelect={handleCommunityClick}
+              selectedId={selectedCommunityId}
+            />
+          </div>
         </aside>
 
         {/* Center: canvas */}
@@ -243,6 +398,7 @@ export function GraphRoute() {
                 onNodeHover={handleNodeHover}
                 onZoomChange={useGraphCameraStore.getState().setZoomLevel}
                 highContrast={highContrast}
+                layoutMode={layoutMode}
                 className="w-full h-full"
               />
             ) : (
@@ -255,6 +411,7 @@ export function GraphRoute() {
                 onNodeHover={handleNodeHover}
                 onZoomChange={useGraphCameraStore.getState().setZoomLevel}
                 highContrast={highContrast}
+                layoutMode={layoutMode}
                 className="w-full h-full"
               />
             )
