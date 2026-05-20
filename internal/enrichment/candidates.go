@@ -28,13 +28,21 @@ import (
 // Candidate kinds. These are the canonical "kind" string values the agent
 // branches on when deciding which prompt to apply.
 const (
-	KindDescribeEntity = "describe_entity"
-	KindClassifyDomain = "classify_domain"
-	KindInferXLangCall = "infer_xlang_call"
-	KindSummarizeAPI   = "summarize_api"
-	KindFlagDeadCode   = "flag_dead_code"
-	KindDescribeRole   = "describe_role"
+	KindDescribeEntity  = "describe_entity"
+	KindClassifyDomain  = "classify_domain"
+	KindInferXLangCall  = "infer_xlang_call"
+	KindSummarizeAPI    = "summarize_api"
+	KindFlagDeadCode    = "flag_dead_code"
+	KindDescribeRole    = "describe_role"
+	KindNameCommunity   = "name_community"
 )
+
+// communitySubjectID returns the synthetic subject ID for a community
+// enrichment candidate. The prefix "community:" distinguishes it from
+// entity IDs so the resolution consumer can route correctly.
+func communitySubjectID(communityID int) string {
+	return fmt.Sprintf("community:%d", communityID)
+}
 
 // CandidatesSchemaVersion is the integer version of the on-disk
 // enrichment-candidates.json schema. Bump on a breaking change.
@@ -460,6 +468,78 @@ func CollectCandidatesSkippingRejected(doc *graph.Document, emitters []Candidate
 		out = append(out, c)
 	}
 	return out
+}
+
+// CollectCommunityCandidates emits one name_community candidate per community
+// that does not yet have an AgentName assigned. The SubjectID uses the
+// "community:<id>" prefix so consumers can distinguish them from entity
+// candidates. Context includes the top-10 entities by centrality so the
+// agent can infer a business label.
+func CollectCommunityCandidates(doc *graph.Document, rejected map[string]bool) []Candidate {
+	if doc == nil {
+		return nil
+	}
+	var out []Candidate
+	for i := range doc.Communities {
+		c := &doc.Communities[i]
+		if c.AgentName != "" {
+			// Already resolved — skip.
+			continue
+		}
+		sid := communitySubjectID(c.ID)
+		key := sid + "|" + KindNameCommunity
+		if rejected[key] {
+			continue
+		}
+		// Top-10 entities by position in TopEntities (already ranked by centrality).
+		top := c.TopEntities
+		if len(top) > 10 {
+			top = top[:10]
+		}
+		out = append(out, Candidate{
+			ID:        candidateID(sid, KindNameCommunity),
+			Kind:      KindNameCommunity,
+			SubjectID: sid,
+			Context: map[string]any{
+				"community_id": c.ID,
+				"auto_name":    c.AutoName,
+				"size":         c.Size,
+				"top_entities": top,
+			},
+			PromptTemplate:  "Give a concise business name (UpperCamelCase, ≤30 chars) for the module cluster whose top members are {{top_entities}}.",
+			ConfidenceFloor: 0.6,
+			DiscoveredAt:    nowRFC3339(),
+		})
+	}
+	return out
+}
+
+// ApplyCommunityNameResolutions scans resolutions for kind="name_community"
+// entries and writes the resolved Value into the matching community's
+// AgentName field. Returns the count of applied resolutions.
+func ApplyCommunityNameResolutions(doc *graph.Document, resolutions []Resolution) int {
+	if doc == nil {
+		return 0
+	}
+	applied := 0
+	for _, r := range resolutions {
+		if r.Kind != KindNameCommunity || r.Value == "" {
+			continue
+		}
+		// SubjectID format: "community:<id>"
+		var cid int
+		if _, err := fmt.Sscanf(r.SubjectID, "community:%d", &cid); err != nil {
+			continue
+		}
+		for i := range doc.Communities {
+			if doc.Communities[i].ID == cid {
+				doc.Communities[i].AgentName = r.Value
+				applied++
+				break
+			}
+		}
+	}
+	return applied
 }
 
 // ApplyResolutions merges resolved enrichment values into the document

@@ -199,3 +199,84 @@ func TestWriteCandidates_ByteIdenticalAcrossRuns(t *testing.T) {
 			string(bytes1), string(bytes2))
 	}
 }
+
+// TestCollectCommunityCandidates verifies that one name_community candidate is
+// emitted per community without an AgentName, and that communities that
+// already have an AgentName are skipped.
+func TestCollectCommunityCandidates(t *testing.T) {
+	doc := &graph.Document{
+		Communities: []graph.CommunityResult{
+			{ID: 0, Size: 100, AutoName: "Order Fulfillment", TopEntities: []string{"e1", "e2"}},
+			{ID: 1, Size: 50, AutoName: "Auth", AgentName: "AlreadyNamed", TopEntities: []string{"e3"}},
+			{ID: 2, Size: 30, AutoName: "Payments", TopEntities: []string{"e4", "e5", "e6"}},
+		},
+	}
+	cands := CollectCommunityCandidates(doc, nil)
+	if len(cands) != 2 {
+		t.Fatalf("expected 2 candidates (skip AlreadyNamed), got %d", len(cands))
+	}
+	for _, c := range cands {
+		if c.Kind != KindNameCommunity {
+			t.Errorf("kind = %q, want %q", c.Kind, KindNameCommunity)
+		}
+	}
+	// IDs must be stable (deterministic).
+	ids := map[string]bool{}
+	for _, c := range cands {
+		if ids[c.ID] {
+			t.Errorf("duplicate candidate ID %q", c.ID)
+		}
+		ids[c.ID] = true
+	}
+	// Subject IDs use the "community:<id>" prefix.
+	if cands[0].SubjectID != "community:0" {
+		t.Errorf("subject_id = %q, want community:0", cands[0].SubjectID)
+	}
+	if cands[1].SubjectID != "community:2" {
+		t.Errorf("subject_id = %q, want community:2", cands[1].SubjectID)
+	}
+}
+
+// TestCollectCommunityCandidates_Rejected verifies that a rejected
+// (community:<id>, name_community) pair produces no candidate.
+func TestCollectCommunityCandidates_Rejected(t *testing.T) {
+	doc := &graph.Document{
+		Communities: []graph.CommunityResult{
+			{ID: 0, Size: 10, AutoName: "Foo"},
+		},
+	}
+	rejected := map[string]bool{
+		"community:0|" + KindNameCommunity: true,
+	}
+	cands := CollectCommunityCandidates(doc, rejected)
+	if len(cands) != 0 {
+		t.Fatalf("expected 0 candidates after rejection, got %d", len(cands))
+	}
+}
+
+// TestApplyCommunityNameResolutions verifies that matching resolutions are
+// written onto the correct CommunityResult.AgentName and that non-matching
+// kinds are ignored.
+func TestApplyCommunityNameResolutions(t *testing.T) {
+	doc := &graph.Document{
+		Communities: []graph.CommunityResult{
+			{ID: 0, AutoName: "Order Fulfillment"},
+			{ID: 1, AutoName: "Auth"},
+		},
+	}
+	resolutions := []Resolution{
+		{SubjectID: "community:0", Kind: KindNameCommunity, Value: "OrderProcessing"},
+		{SubjectID: "community:1", Kind: "describe_entity", Value: "should be ignored"},
+		{SubjectID: "community:99", Kind: KindNameCommunity, Value: "no such community"},
+	}
+	n := ApplyCommunityNameResolutions(doc, resolutions)
+	if n != 1 {
+		t.Fatalf("applied = %d, want 1", n)
+	}
+	if doc.Communities[0].AgentName != "OrderProcessing" {
+		t.Errorf("community 0 AgentName = %q, want OrderProcessing", doc.Communities[0].AgentName)
+	}
+	if doc.Communities[1].AgentName != "" {
+		t.Errorf("community 1 AgentName = %q, want empty (wrong kind)", doc.Communities[1].AgentName)
+	}
+}

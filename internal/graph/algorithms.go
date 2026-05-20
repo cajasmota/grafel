@@ -32,14 +32,18 @@ import (
 // AutoName is the deterministic Layer-1 label produced by AssignCommunityNames
 // (TF-IDF over member entity names). It is always populated when communities
 // are computed; consumers that previously fell back to "community_<id>" can
-// now display AutoName directly. A future Layer-2 agent-resolved label will
-// take precedence over AutoName when present.
+// now display AutoName directly.
+//
+// AgentName is the Layer-2 label resolved by an MCP agent via
+// submit_enrichment(kind="name_community"). It takes precedence over AutoName
+// when present (issue #426).
 type CommunityResult struct {
 	ID          int      `json:"id"`
 	Size        int      `json:"size"`
 	Modularity  float64  `json:"modularity"`
 	TopEntities []string `json:"top_entities"`
 	AutoName    string   `json:"auto_name,omitempty"`
+	AgentName   string   `json:"agent_name,omitempty"`
 }
 
 // SurpriseEdge is a cross-community edge whose pair frequency is rare.

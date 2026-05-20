@@ -67,6 +67,7 @@ func (s *Server) serveGraphCentroids(w http.ResponseWriter, group string, repos 
 		CommunityID  int      `json:"community_id"`
 		Size         int      `json:"size"`
 		AutoName     string   `json:"auto_name,omitempty"`
+		AgentName    string   `json:"agent_name,omitempty"`
 		Repo         string   `json:"repo"`
 		TopEntityIDs []string `json:"top_entity_ids"`
 	}
@@ -92,16 +93,21 @@ func (s *Server) serveGraphCentroids(w http.ResponseWriter, group string, repos 
 				CommunityID:  c.ID,
 				Size:         c.Size,
 				AutoName:     c.AutoName,
+				AgentName:    c.AgentName,
 				Repo:         r.Slug,
 				TopEntityIDs: prefixed,
 			})
-			communities = append(communities, map[string]any{
+			cm := map[string]any{
 				"id":           c.ID,
 				"size":         c.Size,
 				"auto_name":    c.AutoName,
 				"repo":         r.Slug,
 				"top_entities": prefixed,
-			})
+			}
+			if c.AgentName != "" {
+				cm["agent_name"] = c.AgentName
+			}
+			communities = append(communities, cm)
 		}
 	}
 
@@ -135,13 +141,17 @@ func (s *Server) serveGraphMid(w http.ResponseWriter, group string, repos []*Das
 			for i, id := range top {
 				prefixed[i] = dashPrefixedID(r.Slug, id)
 			}
-			communities = append(communities, map[string]any{
+			cm := map[string]any{
 				"id":           c.ID,
 				"size":         c.Size,
 				"auto_name":    c.AutoName,
 				"repo":         r.Slug,
 				"top_entities": prefixed,
-			})
+			}
+			if c.AgentName != "" {
+				cm["agent_name"] = c.AgentName
+			}
+			communities = append(communities, cm)
 		}
 
 		// Collect god-nodes: top-50 by PageRank per repo (or centrality).
@@ -246,13 +256,17 @@ func (s *Server) serveGraphFull(w http.ResponseWriter, group string, repos []*Da
 			for i, id := range top {
 				prefixed[i] = dashPrefixedID(r.Slug, id)
 			}
-			communities = append(communities, map[string]any{
+			cm := map[string]any{
 				"id":           c.ID,
 				"size":         c.Size,
 				"auto_name":    c.AutoName,
 				"repo":         r.Slug,
 				"top_entities": prefixed,
-			})
+			}
+			if c.AgentName != "" {
+				cm["agent_name"] = c.AgentName
+			}
+			communities = append(communities, cm)
 		}
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
@@ -409,14 +423,18 @@ func (s *Server) handleGroupCommunities(w http.ResponseWriter, r *http.Request) 
 			for i, id := range top {
 				prefixed[i] = dashPrefixedID(r.Slug, id)
 			}
-			out = append(out, map[string]any{
+			cm := map[string]any{
 				"repo":         r.Slug,
 				"id":           c.ID,
 				"size":         c.Size,
 				"modularity":   c.Modularity,
 				"auto_name":    c.AutoName,
 				"top_entities": prefixed,
-			})
+			}
+			if c.AgentName != "" {
+				cm["agent_name"] = c.AgentName
+			}
+			out = append(out, cm)
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"communities": out})

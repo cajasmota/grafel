@@ -1274,12 +1274,32 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 			fmt.Fprintf(os.Stderr,
 				"enrichment: applied %d resolutions to entities\n", applied)
 		}
+		// Also apply name_community resolutions so the AgentName field is
+		// populated on CommunityResult before candidate emission and before
+		// graph.json is written (issue #426).
+		appliedComm := enrichment.ApplyCommunityNameResolutions(doc, resolutions)
+		if verbose() && appliedComm > 0 {
+			fmt.Fprintf(os.Stderr,
+				"enrichment: applied %d community name resolutions\n", appliedComm)
+		}
 	}
 
-	// 2) Emit candidates. Rejected (subject_id, kind) pairs are dropped.
+	// 2) Emit entity candidates. Rejected (subject_id, kind) pairs are dropped.
 	cands := enrichment.CollectCandidatesSkippingRejected(
 		doc, enrichment.DefaultEmitters(), archigraphDir,
 	)
+
+	// 2b) Emit name_community candidates (issue #426 Layer 2). One candidate
+	//     per community that lacks an agent-resolved name.
+	rej := enrichment.ReadRejections(archigraphDir)
+	commCands := enrichment.CollectCommunityCandidates(doc, rej)
+	if len(commCands) > 0 {
+		cands = append(cands, commCands...)
+		if verbose() {
+			fmt.Fprintf(os.Stderr,
+				"enrichment: collected %d name_community candidates\n", len(commCands))
+		}
+	}
 
 	// 3) ADR-0015 phase-1 (#544) — repair_edge emission. Purely additive;
 	//    gated behind --enable-repair-candidates so we can land the
