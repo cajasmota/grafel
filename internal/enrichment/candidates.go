@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"time"
 
@@ -113,6 +114,30 @@ func candidateID(subjectID, kind string) string {
 // the DiscoveredAt field comparator without freezing time globally.
 var nowRFC3339 = func() string { return time.Now().UTC().Format(time.RFC3339) }
 
+// describeEntityNoiseKinds is the set of entity kinds that are structural or
+// framework artefacts and therefore not meaningful targets for agent-written
+// descriptions. Entities in this set are skipped by describeEntityEmitter.
+var describeEntityNoiseKinds = map[string]bool{
+	"SCOPE.Pattern":    true,
+	"SCOPE.External":   true,
+	"SCOPE.Heading":    true,
+	"SCOPE.Stylesheet": true,
+	"SCOPE.CodeBlock":  true,
+	"SCOPE.Document":   true,
+}
+
+// selfDescriptiveOperationRE matches SCOPE.Operation names that are fully
+// self-describing: the name is a verb prefix + capitalised noun, so a
+// one-sentence description would be a trivial paraphrase of the name itself
+// (e.g. "getUserById" → "Gets a user by ID"). Emitting candidates for these
+// entities wastes agent budget without producing actionable signal.
+//
+// Pattern: verb prefix followed immediately by an uppercase letter, meaning
+// the whole name encodes both the action and the subject.
+var selfDescriptiveOperationRE = regexp.MustCompile(
+	`^(get|set|is|has|can|validate|parse|format|create|delete|fetch|load|save|send|build|render|on|use)[A-Z][a-zA-Z]+$`,
+)
+
 // ---------------------------------------------------------------------------
 // Built-in emitters
 // ---------------------------------------------------------------------------
@@ -126,6 +151,15 @@ func (describeEntityEmitter) Name() string { return KindDescribeEntity }
 
 func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candidate {
 	if e == nil || e.Name == "" {
+		return nil
+	}
+	// A — skip structural/framework noise kinds that are not enrichable code entities.
+	if describeEntityNoiseKinds[e.Kind] {
+		return nil
+	}
+	// B — skip SCOPE.Operation entities whose name is fully self-descriptive
+	// (verb prefix + capitalised noun). A description would just paraphrase the name.
+	if e.Kind == "SCOPE.Operation" && selfDescriptiveOperationRE.MatchString(e.Name) {
 		return nil
 	}
 	if v, ok := e.Properties["description"]; ok && v != "" {

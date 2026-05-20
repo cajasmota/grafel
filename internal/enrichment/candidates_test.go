@@ -280,3 +280,120 @@ func TestApplyCommunityNameResolutions(t *testing.T) {
 		t.Errorf("community 1 AgentName = %q, want empty (wrong kind)", doc.Communities[1].AgentName)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Tests for issue #1130: noise-kind filtering + self-descriptive name skipping
+// ---------------------------------------------------------------------------
+
+// TestEmitFor_NoiseKinds verifies that entities whose kind is in the noise set
+// produce no describe_entity candidate.
+func TestEmitFor_NoiseKinds(t *testing.T) {
+	noiseKinds := []string{
+		"SCOPE.Pattern",
+		"SCOPE.External",
+		"SCOPE.Heading",
+		"SCOPE.Stylesheet",
+		"SCOPE.CodeBlock",
+		"SCOPE.Document",
+	}
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	for _, kind := range noiseKinds {
+		doc := mkDoc(graph.Entity{ID: "n1", Name: "SomeName", Kind: kind})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("kind %q: expected 0 candidates (noise), got %d", kind, len(got))
+		}
+	}
+}
+
+// TestEmitFor_SelfDescriptiveOperation verifies that SCOPE.Operation entities
+// whose name matches the self-descriptive pattern produce no candidate.
+func TestEmitFor_SelfDescriptiveOperation(t *testing.T) {
+	selfDescriptive := []string{
+		"getUserById",
+		"setUserName",
+		"isAuthenticated",
+		"hasPermission",
+		"canDelete",
+		"validateEmail",
+		"parseToken",
+		"formatDate",
+		"createOrder",
+		"deleteRecord",
+		"fetchUser",
+		"loadConfig",
+		"saveSession",
+		"sendNotification",
+		"buildQuery",
+		"renderPage",
+		"onClick",
+		"useEffect",
+	}
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	for _, name := range selfDescriptive {
+		doc := mkDoc(graph.Entity{ID: "op1", Name: name, Kind: "SCOPE.Operation"})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("name %q: expected 0 candidates (self-descriptive), got %d", name, len(got))
+		}
+	}
+}
+
+// TestEmitFor_AmbiguousOperation verifies that SCOPE.Operation entities with
+// ambiguous names (single-word, no obvious verb+noun decomposition) DO produce
+// a describe_entity candidate because an agent can add value.
+func TestEmitFor_AmbiguousOperation(t *testing.T) {
+	ambiguous := []string{
+		"process",
+		"handle",
+		"execute",
+		"run",
+		"apply",
+		"transform",
+	}
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	for _, name := range ambiguous {
+		doc := mkDoc(graph.Entity{ID: "op2", Name: name, Kind: "SCOPE.Operation"})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 1 {
+			t.Errorf("name %q: expected 1 candidate (ambiguous), got %d", name, len(got))
+		}
+	}
+}
+
+// TestEmitFor_OperationWithDescription verifies that a SCOPE.Operation that
+// already has a description set (self-descriptive or not) emits no candidate.
+func TestEmitFor_OperationWithDescription(t *testing.T) {
+	doc := mkDoc(graph.Entity{
+		ID:   "op3",
+		Name: "process",
+		Kind: "SCOPE.Operation",
+		Properties: map[string]string{
+			"description": "Processes the incoming payload through the validation pipeline.",
+		},
+	})
+	got := CollectCandidates(doc, []CandidateEmitter{describeEntityEmitter{}}, nil)
+	if len(got) != 0 {
+		t.Fatalf("Operation with description: expected 0 candidates, got %d", len(got))
+	}
+}
+
+// TestEmitFor_NonNoiseKindStillEmits verifies that a non-noise kind (e.g.
+// SCOPE.Class) still produces a candidate after the noise filter is applied,
+// confirming the filter is not over-broad.
+func TestEmitFor_NonNoiseKindStillEmits(t *testing.T) {
+	normalKinds := []string{
+		"SCOPE.Class",
+		"SCOPE.Function",
+		"SCOPE.Component",
+		"SCOPE.Service",
+	}
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	for _, kind := range normalKinds {
+		doc := mkDoc(graph.Entity{ID: "e1", Name: "AuthService", Kind: kind})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 1 {
+			t.Errorf("kind %q: expected 1 candidate (normal kind), got %d", kind, len(got))
+		}
+	}
+}
