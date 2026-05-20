@@ -420,3 +420,16 @@ func inferProviderFromID(id string) string {
 		return "serverless"
 	}
 }
+
+// collectTopology is a compatibility shim used by the unit tests.  It
+// delegates to collectTopologyResponse and unpacks the struct into the
+// four slices the tests expect: (topics, queues, channels, functions).
+func collectTopology(grp *DashGroup) (
+	topics []map[string]any,
+	queues []map[string]any,
+	channels []map[string]any,
+	functions []map[string]any,
+) {
+	resp := collectTopologyResponse(grp)
+	return resp.Topics, resp.Queues, resp.Channels, resp.Functions
+}

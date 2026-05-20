@@ -179,6 +179,13 @@ func (c *GraphCache) loadGroup(groupName string) (*DashGroup, error) {
 		if err != nil {
 			dr.err = err.Error()
 		} else {
+			// graph.fb (the canonical store) omits community/pagerank/god-node
+			// data — those fields live only in graph.json and are not encoded in
+			// the FlatBuffers schema. Re-derive them from the loaded entities so
+			// the dashboard graph endpoints (centroids, mid, full) see the data.
+			if len(doc.Communities) == 0 && len(doc.Entities) > 0 {
+				attachAlgorithmResults(doc)
+			}
 			dr.Doc = doc
 			// Record the newer of fb/json mtime for cache invalidation.
 			if info, e := os.Stat(filepath.Join(stateDir, "graph.fb")); e == nil {
@@ -200,6 +207,35 @@ func (c *GraphCache) loadGroup(groupName string) (*DashGroup, error) {
 	}
 
 	return grp, nil
+}
+
+// attachAlgorithmResults re-derives community, pagerank, and god-node data
+// for a Document loaded from graph.fb.  graph.fb does not encode these
+// fields (they are only present in graph.json), so the dashboard server runs
+// the same Pass-4 algorithms that the indexer ran at index time.  Results are
+// attached in place so subsequent handler calls see the community-derived
+// topology needed by serveGraphCentroids and serveGraphMid.
+func attachAlgorithmResults(doc *graph.Document) {
+	res := graph.RunAlgorithms(doc.Entities, doc.Relationships)
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		if cid, ok := res.CommunityID[e.ID]; ok {
+			cidCopy := cid
+			e.CommunityID = &cidCopy
+		}
+		if pr, ok := res.PageRank[e.ID]; ok {
+			prCopy := pr
+			e.PageRank = &prCopy
+		}
+		if res.GodNodes[e.ID] {
+			e.IsGodNode = true
+		}
+	}
+	doc.Communities = res.Communities
+	if doc.AlgorithmStats == nil {
+		stats := res.Stats
+		doc.AlgorithmStats = &stats
+	}
 }
 
 // defaultLinksFile mirrors mcp.defaultLinksFile.

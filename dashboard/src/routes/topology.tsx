@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTopologyData } from '@/hooks/topology/useTopologyData'
 import { useTopicDetail } from '@/hooks/topology/useTopicDetail'
@@ -15,6 +15,28 @@ import { TopologyLoadingState } from '@/components/topology/TopologyLoadingState
 import { TopologyEmptyState } from '@/components/topology/TopologyEmptyState'
 import { TopologyErrorState } from '@/components/topology/TopologyErrorState'
 import { Search, X, Map, List } from 'lucide-react'
+import type { TopologyResponse, TopologyProtocol } from '@/types/api'
+
+// ── derive available protocols from actual data ───────────────────────────────
+// Only show chips for protocols that have at least one entity in the response.
+// This prevents phantom chips (e.g. "Kafka") for groups with no Kafka data.
+function deriveAvailableProtocols(data: TopologyResponse | undefined): TopologyProtocol[] {
+  if (!data) return []
+  const protocols = new Set<TopologyProtocol>()
+  for (const t of data.topics ?? []) protocols.add(t.broker as TopologyProtocol)
+  for (const q of data.queues ?? []) {
+    const broker = q.broker as TopologyProtocol
+    // Redis stream queues use a synthetic id prefix; normalise to redis-stream.
+    if (q.id?.startsWith('stream:redis:')) protocols.add('redis-stream')
+    else if (q.id?.startsWith('task:')) protocols.add('task-queue')
+    else protocols.add(broker)
+  }
+  for (const c of data.channels ?? []) protocols.add(c.channel_type as TopologyProtocol)
+  for (const _ of data.graphql_subscriptions ?? []) protocols.add('graphql_subscription')
+  for (const _ of data.nats_subjects ?? []) protocols.add('nats')
+  for (const _ of data.functions ?? []) protocols.add('serverless')
+  return [...protocols].sort()
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // localStorage persistence for view mode
@@ -84,7 +106,6 @@ export function TopologyRoute() {
 
   const {
     activeProtocols,
-    allProtocols,
     isAllActive,
     toggle,
     setAll,
@@ -100,6 +121,9 @@ export function TopologyRoute() {
   } = useTopologyData(group ?? '', {
     protocols: isAllActive ? [] : [...activeProtocols],
   })
+
+  // Derive the chip list from actual data — only show protocols that exist.
+  const availableProtocols = useMemo(() => deriveAvailableProtocols(data), [data])
 
   const layout = useTopologyLayout(data, activeProtocols)
   const searchResults = useTopologySearch(searchQuery, data)
@@ -153,7 +177,7 @@ export function TopologyRoute() {
       {/* Protocol filter chips + search + view mode toggle */}
       <div className="flex items-center gap-0 border-b border-slate-800 bg-slate-950/90 backdrop-blur-sm z-10 flex-shrink-0">
         <ProtocolFilterChips
-          allProtocols={allProtocols}
+          allProtocols={availableProtocols}
           activeProtocols={activeProtocols}
           isAllActive={isAllActive}
           onToggle={toggle}

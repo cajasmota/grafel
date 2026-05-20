@@ -176,19 +176,21 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 		EdgeKind   string `json:"edge_kind"`
 	}
 
-	// Build reverse adjacency: edges pointing INTO the process entity.
+	// STEP_IN_PROCESS edges are emitted as FromID=processID → ToID=stepEntityID
+	// (see engine/process_flow.go). Collect all edges whose FromID matches the
+	// process entity, then resolve the step entity from ToID.
 	var steps []Step
 	for _, r := range sortedRepos(grp) {
 		for _, rel := range r.Doc.Relationships {
 			if rel.Kind != stepInProcessEdge {
 				continue
 			}
-			// ToID should be the process entity ID.
-			if rel.ToID != processEnt.ID && dashPrefixedID(r.Slug, rel.ToID) != processID {
+			// FromID is the process entity ID.
+			if rel.FromID != processEnt.ID && dashPrefixedID(r.Slug, rel.FromID) != processID {
 				continue
 			}
-			// FromID is the step entity.
-			stepIDLocal := rel.FromID
+			// ToID is the step entity.
+			stepIDLocal := rel.ToID
 			stepRepo := r
 			// Find the step entity.
 			for i := range stepRepo.Doc.Entities {
@@ -214,12 +216,9 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(steps, func(i, j int) bool { return steps[i].StepIndex < steps[j].StepIndex })
 
 	// Collect source snippets for each step (context=5 lines).
-	type SourceSnippet struct {
-		EntityID string `json:"entity_id"`
-		Source   string `json:"source"`
-		Language string `json:"language"`
-	}
-	snippets := []SourceSnippet{}
+	// Response shape is a map of entity_id → source string, matching the
+	// FlowDetailResponse.source_snippets: Record<string, string> frontend type.
+	snippets := map[string]string{}
 	for _, step := range steps {
 		rSlug, localID := dashSplitPrefixed(step.EntityID)
 		r, ok := grp.Repos[rSlug]
@@ -233,11 +232,9 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			src, _ := readSourceLines(e.SourceFile, r.Path, e.StartLine, e.EndLine, 5)
-			snippets = append(snippets, SourceSnippet{
-				EntityID: step.EntityID,
-				Source:   src,
-				Language: e.Language,
-			})
+			if src != "" {
+				snippets[step.EntityID] = src
+			}
 			break
 		}
 	}

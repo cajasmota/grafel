@@ -13,8 +13,8 @@ export function GraphEmptyState({ reason = 'no-group' }: GraphEmptyStateProps) {
     return (
       <EmptyState
         icon={Filter}
-        title="Graph too large to render"
-        message="This graph has more than 20 000 nodes. Apply a filter or select a specific repo to render it."
+        title="Graph too large to render at full resolution"
+        message="This group has more than 20 000 entities. Use the edge-kind filters above to narrow the view, or zoom out to explore community clusters."
       />
     )
   }
@@ -23,7 +23,7 @@ export function GraphEmptyState({ reason = 'no-group' }: GraphEmptyStateProps) {
       <EmptyState
         icon={Filter}
         title="No nodes match current filters"
-        message="Try adjusting the edge-kind filters or clearing the repo filter."
+        message="Try adjusting the edge-kind filters to show more of the graph."
       />
     )
   }
