@@ -2,11 +2,12 @@ import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
 import { useEffect } from 'react'
 import {
   GitBranch, Network, Workflow, Radio, Globe, BookOpen,
-  Moon, Sun, Settings,
+  Moon, Sun,
 } from 'lucide-react'
 import { useRegistry } from '@/hooks/shared/useRegistry'
 import { useThemeContext } from '@/context/ThemeContext'
 import { GroupSelector } from '@/components/layout/GroupSelector'
+import { VersionPopover } from '@/components/layout/VersionPopover'
 
 const GROUP_DEFAULT = 'fixture-a'
 
@@ -53,16 +54,10 @@ export function AppLayout() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          {/* Group selector — sits between theme toggle and settings */}
+          {/* Group selector — sits between theme toggle and version info */}
           <GroupSelector groups={groups} />
           <ThemeToggle />
-          <Link
-            to="/settings"
-            className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-            aria-label="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </Link>
+          <VersionPopover />
         </div>
       </header>
 

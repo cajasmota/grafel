@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
@@ -121,7 +122,8 @@ func runDaemon(argv []string) error {
 
 		// Dashboard HTTP server (#929/#931): fold the SPA + REST API
 		// into the daemon process so a single launchd unit serves both.
-		DashboardServe: daemonDashboardServe,
+		// Capture startedAt so /api/info can report daemon uptime (#991).
+		DashboardServe: makeDaemonDashboardServe(time.Now()),
 		DashboardPort:  dashPort,
 		DashboardBind:  "127.0.0.1",
 	}
@@ -390,32 +392,37 @@ func daemonPatternGroupDirs() map[string]string {
 	return out
 }
 
-// daemonDashboardServe is the DashboardServe hook injected into daemon.Config.
-// It binds a TCP listener on the given address:port and serves the embedded
-// SPA plus the REST API. Blocks until ctx is done.
+// makeDaemonDashboardServe returns the DashboardServe hook injected into
+// daemon.Config. It captures daemonStartedAt so the /api/info endpoint can
+// report uptime without a separate RPC call (#991).
 //
 // This function lives in cmd/archigraph (not internal/daemon) to avoid the
 // import cycle: internal/dashboard already imports internal/daemon.
-func daemonDashboardServe(ctx context.Context, bind string, port int, logger *log.Logger) error {
-	addr := net.JoinHostPort(bind, strconv.Itoa(port))
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("dashboard listen %s: %w", addr, err)
-	}
+func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Context, bind string, port int, logger *log.Logger) error {
+	return func(ctx context.Context, bind string, port int, logger *log.Logger) error {
+		addr := net.JoinHostPort(bind, strconv.Itoa(port))
+		l, err := net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("dashboard listen %s: %w", addr, err)
+		}
 
-	// Build dashboard config: fixed port (the daemon already owns the listener).
-	cfg := dashboard.Config{
-		PortRange: dashboard.PortRange{Min: port, Max: port},
-		Bind:      bind,
+		// Build dashboard config: fixed port (the daemon already owns the listener).
+		cfg := dashboard.Config{
+			PortRange: dashboard.PortRange{Min: port, Max: port},
+			Bind:      bind,
+		}
+		srv, err := dashboard.NewServer(cfg, dashboard.NewLiveStore())
+		if err != nil {
+			_ = l.Close()
+			return fmt.Errorf("dashboard new server: %w", err)
+		}
+		// Tell the dashboard server when the daemon started so /api/info
+		// can compute and report uptime (#991).
+		srv.SetDaemonStartedAt(daemonStartedAt)
+		srv.UseListener(l)
+		if logger != nil {
+			logger.Printf("dashboard ready http://%s/", addr)
+		}
+		return srv.Serve(ctx)
 	}
-	srv, err := dashboard.NewServer(cfg, dashboard.NewLiveStore())
-	if err != nil {
-		_ = l.Close()
-		return fmt.Errorf("dashboard new server: %w", err)
-	}
-	srv.UseListener(l)
-	if logger != nil {
-		logger.Printf("dashboard ready http://%s/", addr)
-	}
-	return srv.Serve(ctx)
 }

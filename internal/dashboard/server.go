@@ -20,13 +20,14 @@ import (
 // composes a chi-style router by hand on top of net/http so we keep the
 // stdlib-only constraint from the issue body.
 type Server struct {
-	cfg      Config
-	registry RegistryStore
-	graphs   *GraphCache
-	hub      *wsHub
-	listener net.Listener
-	srv      *http.Server
-	rng      *rand.Rand
+	cfg             Config
+	registry        RegistryStore
+	graphs          *GraphCache
+	hub             *wsHub
+	listener        net.Listener
+	srv             *http.Server
+	rng             *rand.Rand
+	daemonStartedAt time.Time // zero when not embedded inside a daemon process
 }
 
 // NewServer wires a server against the given config and registry-store
@@ -48,6 +49,13 @@ func NewServer(cfg Config, store RegistryStore) (*Server, error) {
 		hub:      h,
 		rng:      rand.New(rand.NewSource(time.Now().UnixNano())),
 	}, nil
+}
+
+// SetDaemonStartedAt records when the parent daemon process started so
+// the /api/info endpoint can report uptime. Call this from cmd/archigraph
+// after the daemon's embedded server is wired up.
+func (s *Server) SetDaemonStartedAt(t time.Time) {
+	s.daemonStartedAt = t
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is
@@ -174,6 +182,9 @@ func (s *Server) routes() http.Handler {
 
 	// Repair queue (admin)
 	mux.HandleFunc("GET /api/repairs/{group}", s.handleRepairs)
+
+	// Build / version info
+	mux.HandleFunc("GET /api/info", s.handleInfo)
 
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)

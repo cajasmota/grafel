@@ -544,6 +544,31 @@ export async function fetchDocsSearch(group: string, query: string): Promise<Doc
   return apiFetch<DocSearchResponse>(`/api/search/${group}?${params}`)
 }
 
+// ── Build / version info ──────────────────────────────────────────────────────
+
+/** Wire shape of GET /api/info */
+export interface DaemonInfo {
+  version: string
+  commit: string
+  built_at: string
+  daemon_started_at?: string
+  dashboard_port?: number
+}
+
+/** Mock info returned when VITE_USE_MOCKS=true */
+const MOCK_INFO: DaemonInfo = {
+  version: '0.0.0-dev',
+  commit: 'abc1234567890',
+  built_at: new Date().toISOString(),
+  daemon_started_at: new Date(Date.now() - 83 * 60 * 1000).toISOString(), // 1h 23m ago
+  dashboard_port: 47274,
+}
+
+export async function fetchInfo(): Promise<DaemonInfo> {
+  if (USE_MOCKS) return MOCK_INFO
+  return apiFetch<DaemonInfo>('/api/info')
+}
+
 /** Fetch minimal entity metadata for a hovercard */
 export async function fetchEntityHovercard(entityId: string): Promise<EntityCard> {
   if (USE_MOCKS) {
