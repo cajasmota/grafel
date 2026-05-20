@@ -19,14 +19,18 @@ export function TopicDetailPanel({ detail, onClose, onNavigateToTopic }: TopicDe
   const { node, producers, consumers, transformsTo } = detail
   if (!node) return null
 
-  const protocol = 'broker' in node
+  // #1116: Task/ScheduledJob entities have empty broker + framework property.
+  // Fall back to 'task-queue' so PROTOCOL_COLORS lookup is always defined.
+  const rawProtocol = 'broker' in node
     ? (node as TopicNode | QueueNode | NatsSubject).broker
     : 'channel_type' in node
       ? node.channel_type
       : 'graphql_subscription'
+  const hasFramework = 'framework' in node && !!(node as QueueNode).framework
+  const protocol = (!rawProtocol || hasFramework) ? 'task-queue' : rawProtocol
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const spec = PROTOCOL_COLORS[protocol as keyof typeof PROTOCOL_COLORS]
+  const spec = PROTOCOL_COLORS[protocol as keyof typeof PROTOCOL_COLORS] ?? PROTOCOL_COLORS['task-queue']
   const label = node.label
 
   // Determine metadata fields

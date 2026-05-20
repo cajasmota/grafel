@@ -25,11 +25,16 @@ function deriveAvailableProtocols(data: TopologyResponse | undefined): TopologyP
   const protocols = new Set<TopologyProtocol>()
   for (const t of data.topics ?? []) protocols.add(t.broker as TopologyProtocol)
   for (const q of data.queues ?? []) {
-    const broker = q.broker as TopologyProtocol
     // Redis stream queues use a synthetic id prefix; normalise to redis-stream.
-    if (q.id?.startsWith('stream:redis:')) protocols.add('redis-stream')
-    else if (q.id?.startsWith('task:')) protocols.add('task-queue')
-    else protocols.add(broker)
+    // #1116: Task/ScheduledJob entities have empty broker + non-empty framework;
+    // fall back to 'task-queue' so PROTOCOL_COLORS lookup is always defined.
+    if (q.id?.startsWith('stream:redis:')) {
+      protocols.add('redis-stream')
+    } else if (q.id?.startsWith('task:') || q.framework || !q.broker) {
+      protocols.add('task-queue')
+    } else {
+      protocols.add(q.broker as TopologyProtocol)
+    }
   }
   for (const c of data.channels ?? []) protocols.add(c.channel_type as TopologyProtocol)
   for (const _ of data.graphql_subscriptions ?? []) protocols.add('graphql_subscription')

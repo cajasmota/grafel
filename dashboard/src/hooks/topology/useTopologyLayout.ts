@@ -117,11 +117,15 @@ export function useTopologyLayout(
       // framework name; we map it to the canonical TopologyProtocol.
       const qRaw = q as unknown as Record<string, unknown>
       const qLabel = (qRaw.label as string) ?? ''
-      let protocol: TopologyProtocol = (q.broker as TopologyProtocol) ?? 'sqs'
+      // #1116: Task/ScheduledJob entities arrive with empty broker + framework property.
+      // Fall back to 'task-queue' so the protocol is always a valid TopologyProtocol key.
+      let protocol: TopologyProtocol = 'task-queue'
       if (qLabel.startsWith('stream:redis:')) {
         protocol = 'redis-stream'
       } else if (
         qLabel.startsWith('task:') ||
+        !q.broker ||
+        (q as unknown as { framework?: string }).framework ||
         q.broker === 'dramatiq' ||
         q.broker === 'rq' ||
         q.broker === 'celery' ||
@@ -131,6 +135,8 @@ export function useTopologyLayout(
         protocol = 'task-queue'
       } else if (q.broker === 'redis') {
         protocol = 'redis'
+      } else {
+        protocol = q.broker as TopologyProtocol
       }
       if (!showAll && !activeProtocols.has(protocol)) continue
       const pids = getProducers(qRaw)

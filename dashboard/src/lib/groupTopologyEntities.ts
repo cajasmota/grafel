@@ -58,11 +58,18 @@ function fromTopic(t: TopicNode): TopologyListRow {
 }
 
 function fromQueue(q: QueueNode): TopologyListRow {
+  // #1116: Task/ScheduledJob entities arrive with an empty broker but a non-empty
+  // framework property. Fall back to the 'task-queue' protocol so PROTOCOL_COLORS
+  // lookup always returns a defined spec (avoids .hex crash in TopicNode/TopologyList).
+  const protocol: TopologyProtocol =
+    q.broker && (q.broker as string) !== ''
+      ? (q.broker as TopologyProtocol)
+      : 'task-queue'
   return {
     id: q.id,
     label: q.label,
-    protocol: q.broker as TopologyProtocol,
-    protocolLabel: PROTOCOL_COLORS[q.broker as TopologyProtocol]?.label ?? q.broker,
+    protocol,
+    protocolLabel: PROTOCOL_COLORS[protocol]?.label ?? (q.broker || 'Task Queue'),
     repo: q.repo,
     producerCount: q.producer_ids.length,
     consumerCount: q.consumer_ids.length,
