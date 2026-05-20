@@ -146,7 +146,9 @@ const GraphCanvasInner = ({
         // ── Data ──────────────────────────────────────────────────────────────
         points={nodes as unknown as Record<string, unknown>[]}
         pointIdBy="id"
-        pointIncludeColumns={['*']}
+        // Explicit allowlist guards against any future non-primitive field reaching
+        // DuckDB-WASM (nested objects/arrays crash columnar type inference).
+        pointIncludeColumns={['id', 'label', 'kind', 'repo', 'community_id', 'pagerank', 'is_centroid', 'centroid_size', 'source_file', 'start_line']}
 
         links={edges as unknown as Record<string, unknown>[]}
         linkSourceBy="source"

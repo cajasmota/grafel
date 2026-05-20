@@ -251,11 +251,39 @@ function normalizeEdge(raw: { from_id: string; to_id: string; kind: string; cros
  *
  * #1023: lod field removed — server always returns dense tier.
  */
+/**
+ * Strip non-primitive fields from a raw node before passing it to Cosmograph.
+ *
+ * Cosmograph uses DuckDB-WASM for columnar storage and requires every column
+ * to be a primitive (string | number | boolean | null).  The `properties`
+ * field is a nested Record that causes a `TypeError: Cannot read properties
+ * of undefined (reading 'constructor')` during DuckDB type inference (#1032).
+ *
+ * We keep only the fields declared on GraphNode and known to be primitives.
+ */
+function normalizeGraphNode(raw: Record<string, unknown>): import('@/types/api').GraphNode {
+  return {
+    id:           String(raw.id ?? ''),
+    label:        String(raw.label ?? raw.id ?? ''),
+    kind:         raw.kind as import('@/types/api').EntityKind,
+    repo:         String(raw.repo ?? ''),
+    community_id: raw.community_id as number | undefined,
+    pagerank:     raw.pagerank as number | undefined,
+    is_centroid:  raw.is_centroid as boolean | undefined,
+    centroid_size: raw.centroid_size as number | undefined,
+    source_file:  raw.source_file != null ? String(raw.source_file) : undefined,
+    start_line:   raw.start_line as number | undefined,
+    // `properties` intentionally omitted — nested object breaks DuckDB-WASM
+    // columnar ingestion.  Entity detail is fetched separately via /api/graph/{group}/entity/{id}.
+  }
+}
+
 function normalizeGraphResponse(raw: Record<string, unknown>): GraphResponse {
   type RawEdge = { from_id: string; to_id: string; kind: string; cross_repo?: boolean }
   const rawEdges = (raw.edges as RawEdge[] | undefined) ?? []
+  const rawNodes = (raw.nodes as Record<string, unknown>[] | undefined) ?? []
   return {
-    nodes: (raw.nodes as GraphResponse['nodes'] | undefined) ?? [],
+    nodes: rawNodes.map(normalizeGraphNode),
     edges: rawEdges.map(normalizeEdge),
     communities: (raw.communities as GraphResponse['communities'] | undefined) ?? [],
     lod: 'zoom-in',  // compat: always 'zoom-in' (dense) — no LoD switching
