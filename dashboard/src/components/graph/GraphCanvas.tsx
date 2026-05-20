@@ -216,6 +216,9 @@ const GraphCanvasInner = ({
   // Track whether the first settle has happened so we only auto-pause once.
   const [hasSettled, setHasSettled] = useState(false)
 
+  // Hard-stop timer ref — cleared on unmount and when sim settles naturally.
+  const hardStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Mirror of nodes so click handler can resolve index → GraphNode synchronously
   const nodesRef = useRef<GraphNode[]>(nodes)
   nodesRef.current = nodes
@@ -277,9 +280,10 @@ const GraphCanvasInner = ({
       const cid = clusterIdFor(n)
       // Hub nodes (top ~10% by pagerank) get stronger pull → stay near community center
       const normalizedPR = (n.pagerank ?? 0) / maxPR
-      // #1089: Reduce max cluster strength from 0.70 → 0.40 so hubs can drift
-      // toward island edges and the layout breathes more. Range [0.25, 0.40].
-      const strength = 0.25 + normalizedPR * 0.15
+      // Lower max cluster strength so islands separate visually instead of
+      // collapsing into a single amorphous blob. Range [0.08, 0.20] keeps
+      // community affinity but lets inter-community repulsion push islands apart.
+      const strength = 0.08 + normalizedPR * 0.12
       // #1089: pre-computed log-degree size for pointSizeByFn
       const __size = computeSize(n.degree ?? 0)
       return { ...n, __idx: i, __cluster_id: cid, __cluster_strength: strength, __size }
@@ -334,31 +338,49 @@ const GraphCanvasInner = ({
     return () => {
       setGraphRef(null)
       if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
+      if (hardStopTimerRef.current) clearTimeout(hardStopTimerRef.current)
     }
   }, [setGraphRef])
+
+  // Shared settle helper: called by onSimulationEnd OR the hard-stop timer,
+  // whichever fires first.
+  const doSettle = useCallback(() => {
+    if (hardStopTimerRef.current) {
+      clearTimeout(hardStopTimerRef.current)
+      hardStopTimerRef.current = null
+    }
+    cosmographRef.current?.pause()
+    setHasSettled(true)
+    onSimulationRunningChange?.(false)
+  }, [onSimulationRunningChange])
 
   // onSimulationEnd fires when Cosmograph's force layout reaches alpha ≈ 0.
   // On first settle we auto-pause and notify the parent so it can show
   // a "Resume layout" button.  After that, parent controls the state.
   const handleSimulationEnd = useCallback(() => {
     if (!hasSettled) {
-      setHasSettled(true)
-      onSimulationRunningChange?.(false)
+      doSettle()
     }
-  }, [hasSettled, onSimulationRunningChange])
+  }, [hasSettled, doSettle])
 
-  // Fallback: if onSimulationEnd never fires (rare) pause after 6 seconds.
+  // Hard-stop: if onSimulationEnd never fires (large graph may never converge)
+  // force-pause after 8 seconds. The timer is set on mount and cleared either by
+  // doSettle (natural convergence wins) or on unmount.
   useEffect(() => {
     if (hasSettled) return
-    const t = window.setTimeout(() => {
+    hardStopTimerRef.current = window.setTimeout(() => {
       if (!hasSettled) {
-        cosmographRef.current?.pause()
-        setHasSettled(true)
-        onSimulationRunningChange?.(false)
+        doSettle()
       }
-    }, 6000)
-    return () => window.clearTimeout(t)
-  }, [hasSettled, onSimulationRunningChange])
+    }, 8000)
+    return () => {
+      if (hardStopTimerRef.current) {
+        clearTimeout(hardStopTimerRef.current)
+        hardStopTimerRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])  // intentionally run once on mount; doSettle is stable via useCallback
 
   // React to parent-controlled simulationRunning changes after first settle.
   useEffect(() => {
@@ -431,6 +453,13 @@ const GraphCanvasInner = ({
   // Debounced 50 ms to avoid thrashing GPU on rapid micro-movements.
   // When a node is hovered, selectPoint with selectConnectedPoints=true activates
   // Cosmograph's greyout: non-selected/non-adjacent nodes get pointGreyoutOpacity.
+  //
+  // IMPORTANT: after the sim has settled (hasSettled=true) we re-pause immediately
+  // after selectPoint because Cosmograph internally bumps alpha on selection changes,
+  // which causes perpetual micro-motion if unchecked (#1071 side-effect).
+  const hasSettledRef = useRef(false)
+  hasSettledRef.current = hasSettled
+
   const handleMouseMove = useCallback((index: number | undefined) => {
     if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
 
@@ -439,6 +468,8 @@ const GraphCanvasInner = ({
       hoverDebounceRef.current = setTimeout(() => {
         lastHoverIndexRef.current = null
         cosmographRef.current?.unselectAllPoints()
+        // Re-pause if sim was settled — unselectAllPoints may nudge alpha
+        if (hasSettledRef.current) cosmographRef.current?.pause()
         onNodeHover(null)
       }, 50)
       return
@@ -454,6 +485,8 @@ const GraphCanvasInner = ({
       // selectPoint with selectConnectedPoints=true highlights the hovered node
       // and its direct neighbors; all others get greyout opacity applied by Cosmograph.
       cosmographRef.current?.selectPoint(index, false, true)
+      // Re-pause immediately so selectPoint's internal alpha bump doesn't restart motion
+      if (hasSettledRef.current) cosmographRef.current?.pause()
       onNodeHover(node)
     }, 50)
   }, [onNodeHover])
@@ -536,7 +569,9 @@ const GraphCanvasInner = ({
         // log formula: d=0 → 2 px, d=10 → ~14 px, d=100 → ~26 px, d=750 → ~36 px (before remap).
         // After remap the hub (deg=750, raw≈36) lands at ~60 px; leaf (deg=1, raw≈3.6) → ~2 px.
         pointSizeBy="__size"
-        pointSizeRange={[2, 60]}
+        // Wider range so leaf nodes stay visible (min 5px) and hub nodes are
+        // dramatically larger (max 80px). Fixes uniform-tiny-dot appearance.
+        pointSizeRange={[5, 80]}
         pointLabelBy="label"
 
         // ── Labels ────────────────────────────────────────────────────────
@@ -587,8 +622,9 @@ const GraphCanvasInner = ({
         // Gentle center-mass pull keeps the graph from drifting off-canvas
         // as cluster positions are arranged around the origin.
         simulationCenter={0.1}
-        // Decay slightly slower so cluster forces have time to converge.
-        simulationDecay={6000}
+        // Lower decay so the simulation settles within the 8s hard-stop window.
+        // Faster alpha decay → quicker convergence on large graphs.
+        simulationDecay={2000}
 
         // ── Selection / interaction ────────────────────────────────────────
         selectPointOnClick="single"
