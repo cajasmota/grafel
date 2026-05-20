@@ -488,6 +488,8 @@ var extensionLanguageMap = map[string]string{
 	".gql":     "graphql",
 	// Prisma
 	".prisma": "prisma",
+	// Elm
+	".elm": "elm",
 	// Haskell
 	".hs":  "haskell",
 	".lhs": "haskell",
