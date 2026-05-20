@@ -263,7 +263,6 @@ export function TopologyRoute() {
             <div className="flex-1 flex items-center justify-center">
               <TopologyErrorState error={error} onRetry={() => void refetch()} />
             </div>
-<<<<<<< HEAD
           ) : !data || (
             (data.topics ?? []).length === 0 &&
             (data.queues ?? []).length === 0 &&

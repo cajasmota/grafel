@@ -18,6 +18,7 @@ import type {
   NatsSubject,
   ChannelNode,
   GraphQLSubscription,
+  FunctionNode,
 } from '@/types/api'
 import { PROTOCOL_COLORS } from '@/lib/colors'
 
@@ -104,6 +105,18 @@ function fromGraphQLSubscription(g: GraphQLSubscription): TopologyListRow {
   }
 }
 
+function fromFunction(f: FunctionNode): TopologyListRow {
+  return {
+    id: f.id,
+    label: f.label,
+    protocol: 'serverless',
+    protocolLabel: PROTOCOL_COLORS.serverless?.label ?? 'Serverless',
+    repo: f.repo,
+    producerCount: f.invoker_ids.length,
+    consumerCount: f.handler_ids.length,
+  }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Public API
 // ────────────────────────────────────────────────────────────────────────────
@@ -124,6 +137,7 @@ export function flattenTopologyEntities(
     ...data.nats_subjects.map(fromNatsSubject),
     ...data.channels.map(fromChannel),
     ...data.graphql_subscriptions.map(fromGraphQLSubscription),
+    ...(data.functions ?? []).map(fromFunction),
   ]
 
   if (!query.trim()) return rows
