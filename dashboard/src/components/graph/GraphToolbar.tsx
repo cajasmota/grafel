@@ -1,4 +1,4 @@
-import { Search, RotateCcw, Camera, Box, Grid2x2, GitBranch, Sphere } from 'lucide-react'
+import { Search, RotateCcw, Camera, Box, Grid2x2, GitBranch, Globe } from 'lucide-react'
 import { useRef } from 'react'
 
 export type LayoutMode = 'force' | '2d' | 'tree' | 'sphere'
@@ -17,7 +17,7 @@ const LAYOUT_BUTTONS: { mode: LayoutMode; icon: React.FC<{ className?: string }>
   { mode: 'force', icon: Box, label: '3D force' },
   { mode: '2d', icon: Grid2x2, label: '2D force' },
   { mode: 'tree', icon: GitBranch, label: 'Tree' },
-  { mode: 'sphere', icon: Sphere, label: 'Sphere' },
+  { mode: 'sphere', icon: Globe, label: 'Sphere' },
 ]
 
 /**
