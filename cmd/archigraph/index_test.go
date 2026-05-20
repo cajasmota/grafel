@@ -769,3 +769,59 @@ func TestScalaPlayMiniFutureStdlibDynamic(t *testing.T) {
 		t.Errorf("dynamic count = 0, expected > 0 after Scala stdlib fix")
 	}
 }
+
+// TestRustTokioMiniChannelRecvDynamic verifies that the two highest-count
+// unresolved Rust CALLS stubs on the tokio-mini fixture classify as
+// DispositionDynamic rather than DispositionBugExtractor after the fix in
+// issue #44 slice-7.
+//
+// The fix adds rustDynamicPatterns (bare `channel` + generic-receiver
+// `Type<T>.method` form) and registers lang=="rust" in dynamicPatternsByLang
+// in internal/resolve/refs.go.
+//
+// Pre-fix baseline (rust-tokio-mini, 5 files, 50 total dispositions):
+//
+//	bug-extractor = 2  (`channel`, `Receiver<String>.recv`)
+//	dynamic       = 7
+//	bug_rate      = 4.0%
+//
+// After fix:
+//
+//	bug-extractor = 0
+//	dynamic       = 9
+//	bug_rate      = 0.0%
+func TestRustTokioMiniChannelRecvDynamic(t *testing.T) {
+	fixtureDir := filepath.Join("../../internal/quality/golden/rust-tokio-mini/src")
+	abs, err := filepath.Abs(fixtureDir)
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	if _, serr := os.Stat(abs); serr != nil {
+		t.Skipf("rust-tokio-mini fixture not found at %s: %v", abs, serr)
+	}
+
+	idx := newTestIndexer(t, "rust-tokio-mini", nil)
+	doc, err := idx.Run(context.Background(), abs)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if doc == nil {
+		t.Fatal("Run returned nil document")
+	}
+
+	bugCount := idx.finalDispositions.DispositionCounts[resolve.DispositionBugExtractor]
+	dynCount := idx.finalDispositions.DispositionCounts[resolve.DispositionDynamic]
+
+	// Pre-fix baseline: 2 bug-extractor stubs (`channel` × 1,
+	// `Receiver<String>.recv` × 1).  Post-fix: both → Dynamic.
+	// Asserting < 2 confirms the rustDynamicPatterns fired; asserting == 0
+	// confirms complete elimination of the target category.
+	if bugCount >= 2 {
+		samples := idx.finalDispositions.DispositionSamples[resolve.DispositionBugExtractor]
+		t.Errorf("bug-extractor count = %d (want < 2, pre-fix baseline); dynamic = %d; samples = %v",
+			bugCount, dynCount, samples)
+	}
+	if dynCount == 0 {
+		t.Errorf("dynamic count = 0, expected > 0 after Rust channel/recv fix")
+	}
+}
