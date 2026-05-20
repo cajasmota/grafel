@@ -60,6 +60,7 @@ func runDoctor(w io.Writer) error {
 	}
 	fmt.Fprintf(w, "%s registry %s (%d group(s))\n", statusOK, regPath, len(groups))
 
+	// Run basic config checks
 	for _, g := range groups {
 		fmt.Fprintf(w, "\nGroup: %s\n", g.Name)
 		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
@@ -88,6 +89,12 @@ func runDoctor(w io.Writer) error {
 			fmt.Fprintf(w, "%s mcp %s: %s\n", statusOK, tool, p)
 		}
 	}
+
+	// Print enriched health report for each group
+	fmt.Fprintf(w, "\n--- Enriched Health Report ---\n")
+	healthReports := ComputeDoctorHealth(groups)
+	PrintDoctorHealth(w, healthReports)
+
 	return nil
 }
 
