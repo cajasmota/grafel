@@ -86,6 +86,7 @@ func (s *Server) handleRepairs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":                 items,
 		"total":                 len(items),
+		"open_count":            len(items), // alias for total (tests + clients rely on both)
 		"auto_resolvable_count": autoResolvable,
 	})
 }

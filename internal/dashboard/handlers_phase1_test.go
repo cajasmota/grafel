@@ -710,3 +710,90 @@ func TestExtractBacktickSymbols(t *testing.T) {
 		t.Fatalf("unexpected symbols: %v", syms)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Graph isolated-node regression tests (#1020)
+// ---------------------------------------------------------------------------
+
+// TestBuildDegreeMap verifies that buildDegreeMap correctly counts in+out edges.
+func TestBuildDegreeMap(t *testing.T) {
+	rels := []graph.Relationship{
+		{ID: "r1", FromID: "A", ToID: "B", Kind: "CALLS"},
+		{ID: "r2", FromID: "A", ToID: "C", Kind: "CALLS"},
+		{ID: "r3", FromID: "B", ToID: "C", Kind: "CALLS"},
+	}
+	deg := buildDegreeMap(rels)
+	// A: out=2 → degree 2; B: in=1+out=1 → degree 2; C: in=2 → degree 2
+	if deg["A"] != 2 {
+		t.Errorf("degree[A]=%d want 2", deg["A"])
+	}
+	if deg["B"] != 2 {
+		t.Errorf("degree[B]=%d want 2", deg["B"])
+	}
+	if deg["C"] != 2 {
+		t.Errorf("degree[C]=%d want 2", deg["C"])
+	}
+	if deg["X"] != 0 {
+		t.Errorf("degree[X] should be 0 for unknown node")
+	}
+}
+
+// TestGraph_Dense_EdgeConnectivity verifies that the dense tier returns edges
+// where both endpoints are in the node set (low isolated-node rate).
+// The fake group has 4 relationships so the high-degree nodes should all
+// survive the denseNodeLimit cap, yielding in-sample edges.
+func TestGraph_Dense_EdgeConnectivity(t *testing.T) {
+	ts, _ := newPhase1Server(t)
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup?lod=dense")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	nodes, _ := body["nodes"].([]interface{})
+	edges, _ := body["edges"].([]interface{})
+	if len(nodes) == 0 {
+		t.Fatalf("expected nodes, got 0")
+	}
+	if len(edges) == 0 {
+		t.Fatalf("expected edges in dense response, got 0; nodes=%d", len(nodes))
+	}
+	// Build node ID set.
+	nodeIDs := map[string]bool{}
+	for _, n := range nodes {
+		nm, _ := n.(map[string]any)
+		id, _ := nm["id"].(string)
+		nodeIDs[id] = true
+	}
+	// Count edges where both endpoints are in the node set.
+	connected := 0
+	for _, e := range edges {
+		em, _ := e.(map[string]any)
+		from, _ := em["from_id"].(string)
+		to, _ := em["to_id"].(string)
+		if nodeIDs[from] && nodeIDs[to] {
+			connected++
+		}
+	}
+	if connected == 0 {
+		t.Errorf("all %d edges are isolated (no both-endpoint match); dense tier should include connected edges", len(edges))
+	}
+}
+
+// TestGraph_Full_FallbackToDense ensures that when total entities exceed the
+// 20k hard cap the full-tier request falls back to dense sampling rather than
+// returning an empty blocked response.  The fake group has 6 entities (below
+// cap), so we verify the happy path still returns all 6 with lod_level="full".
+func TestGraph_Full_FallbackToDense(t *testing.T) {
+	ts, _ := newPhase1Server(t)
+	code, body := getJSON(t, ts.URL, "/api/graph/testgroup?lod=full")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	nodes, _ := body["nodes"].([]interface{})
+	if len(nodes) != 6 {
+		t.Fatalf("expected 6 nodes (below cap), got %d", len(nodes))
+	}
+	// lod_level should be "full" since we are below the 20k cap.
+	if body["lod_level"] != "full" {
+		t.Fatalf("wrong lod_level: %v (expected full)", body["lod_level"])
+	}
+}
