@@ -17,10 +17,11 @@ import (
 
 // Broker entity kinds (suffix after stripping the optional "SCOPE." prefix).
 const (
-	kindMessageTopic    = "MessageTopic"
-	kindQueue           = "Queue"
-	kindChannelEvent    = "ChannelEvent"
-	kindSubscription    = "Subscription" // GraphQL subscriptions
+	kindMessageTopic       = "MessageTopic"
+	kindQueue              = "Queue"
+	kindChannelEvent       = "ChannelEvent"
+	kindSubscription       = "Subscription"       // GraphQL subscriptions
+	kindServerlessFunction = "ServerlessFunction" // SCOPE.ServerlessFunction stripped
 )
 
 // topologyResponse is the wire shape for both topology endpoints.
@@ -32,6 +33,60 @@ type topologyResponse struct {
 	NatsSubjects         []map[string]any `json:"nats_subjects"`
 	GraphQLSubscriptions []map[string]any `json:"graphql_subscriptions"`
 	Transforms           []map[string]any `json:"transforms"`
+	Functions            []map[string]any `json:"functions"`
+}
+
+// classifyTopologyBucket maps an entity (by kind + name + properties) to
+// one of the topology buckets.  Returns "" when the entity should be
+// ignored by the topology surface.
+//
+// NOTE: `name` is the graph.Entity.Name field (human-readable / canonical
+// identifier), NOT the hashed graph.Entity.ID.  Synthetic runtime entities
+// emitted by the engine passes (redis_pubsub_edges, serverless_edges, etc.)
+// store the semantic prefix in the Name field (e.g. "channel:redis-pubsub:foo",
+// "aws-lambda:OrderProcessor") rather than in the hashed ID.
+//
+// Bucket values: "topic" | "queue" | "channel" | "function" | "subscription"
+func classifyTopologyBucket(kind, name string, props map[string]string) string {
+	stripped := dashStripScopePrefix(kind)
+
+	// --- Existing kinds (order matters: check specific first) ---
+	switch stripped {
+	case kindMessageTopic:
+		return "topic"
+	case kindChannelEvent:
+		return "channel"
+	case kindServerlessFunction:
+		return "function"
+	case kindSubscription:
+		return "subscription"
+	}
+
+	// --- Name-prefix classification (new runtime extractors, #930 / #925 / #941) ---
+	// These synthetic entities use the semantic name as a cross-repo key.
+	switch {
+	case strings.HasPrefix(name, "channel:redis-pubsub:"):
+		return "channel"
+	case strings.HasPrefix(name, "stream:redis:"):
+		return "queue"
+	case strings.HasPrefix(name, "aws-lambda:"),
+		strings.HasPrefix(name, "gcp-cloudfunction:"),
+		strings.HasPrefix(name, "azure-function:"):
+		return "function"
+	case strings.HasPrefix(name, "task:"):
+		return "queue"
+	}
+
+	// --- Properties-based classification (channel_type = pubsub/stream) ---
+	if stripped == kindQueue {
+		switch props["channel_type"] {
+		case "pubsub":
+			return "channel" // Redis pub/sub folded into channel track
+		}
+		return "queue"
+	}
+
+	return ""
 }
 
 // handleTopology — GET /api/topology/{group}
@@ -79,6 +134,7 @@ func collectTopologyResponse(grp *DashGroup) topologyResponse {
 		NatsSubjects:         []map[string]any{},
 		GraphQLSubscriptions: []map[string]any{},
 		Transforms:           []map[string]any{},
+		Functions:            []map[string]any{},
 	}
 
 	for _, r := range sortedRepos(grp) {
@@ -86,13 +142,15 @@ func collectTopologyResponse(grp *DashGroup) topologyResponse {
 			continue
 		}
 
-		// For each broker entity, collect producers and consumers from edges.
+		// For each entity, classify into a topology bucket and collect edges.
+		// classifyTopologyBucket uses the entity Name (not hashed ID) because
+		// synthetic runtime entities store the semantic prefix in the Name field.
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			kind := dashStripScopePrefix(e.Kind)
+			bucket := classifyTopologyBucket(e.Kind, e.Name, e.Properties)
 
-			switch kind {
-			case kindMessageTopic:
+			switch bucket {
+			case "topic":
 				producers, consumers, transformsTo := brokerEdges(r, e.ID)
 				entry := map[string]any{
 					"id":            dashPrefixedID(r.Slug, e.ID),
@@ -105,14 +163,21 @@ func collectTopologyResponse(grp *DashGroup) topologyResponse {
 				}
 				resp.Topics = append(resp.Topics, entry)
 
-			case kindQueue:
+			case "queue":
 				producers, consumers, _ := brokerEdges(r, e.ID)
 				broker := e.Properties["broker"]
+				if broker == "" {
+					// Fall back to inferring from the entity Name prefix.
+					broker = inferBrokerFromName(e.Name)
+				}
+				// Async task queues carry framework info instead of a broker name.
+				framework := e.Properties["framework"]
 				entry := map[string]any{
 					"id":        dashPrefixedID(r.Slug, e.ID),
 					"repo":      r.Slug,
 					"label":     e.Name,
 					"broker":    broker,
+					"framework": framework,
 					"producers": producers,
 					"consumers": consumers,
 				}
@@ -126,11 +191,18 @@ func collectTopologyResponse(grp *DashGroup) topologyResponse {
 					resp.Queues = append(resp.Queues, entry)
 				}
 
-			case kindChannelEvent:
+			case "channel":
 				emitters, subscribers := channelEdges(r, e.ID)
 				channelType := e.Properties["channel_type"]
 				if channelType == "" {
 					channelType = inferChannelType(e.Kind)
+					if channelType == "websocket" && strings.HasPrefix(e.Name, "channel:redis-pubsub:") {
+						channelType = "redis_pubsub"
+					}
+				}
+				// Normalize redis pub/sub channel_type for frontend protocol matching.
+				if channelType == "pubsub" && strings.HasPrefix(e.Name, "channel:redis-pubsub:") {
+					channelType = "redis_pubsub"
 				}
 				entry := map[string]any{
 					"id":           dashPrefixedID(r.Slug, e.ID),
@@ -142,7 +214,23 @@ func collectTopologyResponse(grp *DashGroup) topologyResponse {
 				}
 				resp.Channels = append(resp.Channels, entry)
 
-			case kindSubscription:
+			case "function":
+				invokers, handlers := serverlessEdges(r, e.ID)
+				provider := e.Properties["provider"]
+				if provider == "" {
+					provider = inferProviderFromID(e.ID)
+				}
+				entry := map[string]any{
+					"id":       dashPrefixedID(r.Slug, e.ID),
+					"repo":     r.Slug,
+					"label":    e.Name,
+					"provider": provider,
+					"invokers": invokers,
+					"handlers": handlers,
+				}
+				resp.Functions = append(resp.Functions, entry)
+
+			case "subscription":
 				// GraphQL subscriptions — emitted by applyGraphQLSubscriptionSynthesis.
 				publishers, subscribers := graphqlSubEdges(r, e.ID)
 				entry := map[string]any{
@@ -171,14 +259,6 @@ func collectTopologyResponse(grp *DashGroup) topologyResponse {
 	}
 
 	return resp
-}
-
-// collectTopology is retained for callers that only need the three core
-// buckets (topics, queues, channels). It delegates to collectTopologyResponse
-// for consistency.
-func collectTopology(grp *DashGroup) (topics, queues, channels []map[string]any) {
-	resp := collectTopologyResponse(grp)
-	return resp.Topics, resp.Queues, resp.Channels
 }
 
 // brokerEdges returns producers, consumers, and TRANSFORMS targets for a
@@ -217,7 +297,9 @@ func brokerEdges(r *DashRepo, entityID string) (producers, consumers, transforms
 	return
 }
 
-// channelEdges returns emitters and subscribers for a ChannelEvent entity.
+// channelEdges returns emitters and subscribers for a ChannelEvent or Redis
+// pub/sub entity.  Redis pub/sub uses PUBLISHES_TO / SUBSCRIBES_TO (same as
+// brokers) so we also include those edge kinds here.
 func channelEdges(r *DashRepo, entityID string) (emitters, subscribers []string) {
 	emitters = []string{}
 	subscribers = []string{}
@@ -230,6 +312,39 @@ func channelEdges(r *DashRepo, entityID string) (emitters, subscribers []string)
 		case "WS_SUBSCRIBES_TO", "STREAMS_FROM", "GRAPHQL_SUBSCRIBES":
 			if rel.ToID == entityID {
 				subscribers = append(subscribers, dashPrefixedID(r.Slug, rel.FromID))
+			}
+		// Redis pub/sub and similar emit PUBLISHES_TO / SUBSCRIBES_TO.
+		case "PUBLISHES_TO":
+			if rel.ToID == entityID {
+				emitters = append(emitters, dashPrefixedID(r.Slug, rel.FromID))
+			}
+		case "SUBSCRIBES_TO":
+			if rel.ToID == entityID {
+				subscribers = append(subscribers, dashPrefixedID(r.Slug, rel.FromID))
+			}
+			if rel.FromID == entityID {
+				subscribers = append(subscribers, dashPrefixedID(r.Slug, rel.ToID))
+			}
+		}
+	}
+	return
+}
+
+// serverlessEdges returns invokers (callers) and handlers for a
+// ServerlessFunction entity.  Invokers arrive via CALLS edges; handlers via
+// HANDLES edges.
+func serverlessEdges(r *DashRepo, entityID string) (invokers, handlers []string) {
+	invokers = []string{}
+	handlers = []string{}
+	for _, rel := range r.Doc.Relationships {
+		switch rel.Kind {
+		case "CALLS":
+			if rel.ToID == entityID {
+				invokers = append(invokers, dashPrefixedID(r.Slug, rel.FromID))
+			}
+		case "HANDLES":
+			if rel.ToID == entityID {
+				handlers = append(handlers, dashPrefixedID(r.Slug, rel.FromID))
 			}
 		}
 	}
@@ -266,5 +381,42 @@ func inferChannelType(kind string) string {
 		return "sse"
 	default:
 		return "websocket"
+	}
+}
+
+// inferBrokerFromName guesses the broker name from the entity Name prefix.
+// Used when the "broker" property is absent (e.g. Redis Streams, task queues).
+func inferBrokerFromName(name string) string {
+	switch {
+	case strings.HasPrefix(name, "stream:redis:"):
+		return "redis"
+	case strings.HasPrefix(name, "task:dramatiq:"):
+		return "dramatiq"
+	case strings.HasPrefix(name, "task:rq:"):
+		return "rq"
+	case strings.HasPrefix(name, "task:celery:"):
+		return "celery"
+	case strings.HasPrefix(name, "task:hangfire:"):
+		return "hangfire"
+	case strings.HasPrefix(name, "task:quartz"):
+		return "quartz"
+	case strings.HasPrefix(name, "task:"):
+		return "task-queue"
+	default:
+		return ""
+	}
+}
+
+// inferProviderFromID guesses the cloud provider from the entity ID prefix.
+func inferProviderFromID(id string) string {
+	switch {
+	case strings.HasPrefix(id, "aws-lambda:"):
+		return "aws-lambda"
+	case strings.HasPrefix(id, "gcp-cloudfunction:"):
+		return "gcp-cloudfunction"
+	case strings.HasPrefix(id, "azure-function:"):
+		return "azure-function"
+	default:
+		return "serverless"
 	}
 }

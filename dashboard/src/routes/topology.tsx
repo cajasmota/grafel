@@ -58,7 +58,7 @@ export function TopologyRoute() {
 
   // Determine if a GraphQL subscription is selected
   const selectedGqlSub = selectedId
-    ? data?.graphql_subscriptions.find((g) => g.id === selectedId)
+    ? (data?.graphql_subscriptions ?? []).find((g) => g.id === selectedId)
     : undefined
 
   const gqlPublishers = selectedGqlSub
@@ -77,8 +77,8 @@ export function TopologyRoute() {
   // Is the selected item a channel/GQL (shown in channel track, not topology map)?
   const isChannelSelected =
     selectedId &&
-    (data?.channels.some((c) => c.id === selectedId) ||
-      data?.graphql_subscriptions.some((g) => g.id === selectedId))
+    ((data?.channels ?? []).some((c) => c.id === selectedId) ||
+      (data?.graphql_subscriptions ?? []).some((g) => g.id === selectedId))
 
   if (!group) {
     return (
@@ -165,11 +165,12 @@ export function TopologyRoute() {
               <TopologyErrorState error={error} onRetry={() => void refetch()} />
             </div>
           ) : !data || (
-            data.topics.length === 0 &&
-            data.queues.length === 0 &&
-            data.nats_subjects.length === 0 &&
-            data.channels.length === 0 &&
-            data.graphql_subscriptions.length === 0
+            (data.topics ?? []).length === 0 &&
+            (data.queues ?? []).length === 0 &&
+            (data.nats_subjects ?? []).length === 0 &&
+            (data.channels ?? []).length === 0 &&
+            (data.graphql_subscriptions ?? []).length === 0 &&
+            (data.functions ?? []).length === 0
           ) ? (
             <div className="flex-1 flex items-center justify-center">
               <TopologyEmptyState hasFilters={!isAllActive} onClearFilters={setAll} />
@@ -187,10 +188,10 @@ export function TopologyRoute() {
               </div>
 
               {/* Channel track (WebSocket/SSE/GraphQL) */}
-              {(data.channels.length > 0 || data.graphql_subscriptions.length > 0) && (
+              {((data.channels ?? []).length > 0 || (data.graphql_subscriptions ?? []).length > 0) && (
                 <ChannelTrack
-                  channels={data.channels}
-                  graphqlSubscriptions={data.graphql_subscriptions}
+                  channels={data.channels ?? []}
+                  graphqlSubscriptions={data.graphql_subscriptions ?? []}
                   selectedId={isChannelSelected ? selectedId : null}
                   onSelect={setSelectedTopic}
                 />

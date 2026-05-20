@@ -108,12 +108,13 @@ export interface ProtocolColorSpec {
   /** CSS hex for canvas rendering (SVG / canvas cannot use Tailwind classes) */
   hex: string
   /** Accessible shape name for protocol nodes */
-  shape: 'square' | 'circle' | 'hexagon' | 'diamond' | 'triangle' | 'star' | 'pentagon' | 'cross'
+  shape: 'square' | 'circle' | 'hexagon' | 'diamond' | 'triangle' | 'star' | 'pentagon' | 'cross' | 'chevron' | 'bolt' | 'clock' | 'ring'
   /** Human-readable label */
   label: string
 }
 
 export const PROTOCOL_COLORS: Record<TopologyProtocol, ProtocolColorSpec> = {
+  // ── existing ──────────────────────────────────────────────────────────────
   kafka:                { bg: 'bg-cyan-900/40',    text: 'text-cyan-300',    border: 'border-cyan-700',    hex: '#22d3ee', shape: 'square',   label: 'Kafka' },
   rabbitmq:             { bg: 'bg-amber-900/40',   text: 'text-amber-300',   border: 'border-amber-700',   hex: '#fbbf24', shape: 'circle',   label: 'RabbitMQ' },
   sqs:                  { bg: 'bg-orange-900/40',  text: 'text-orange-300',  border: 'border-orange-700',  hex: '#fb923c', shape: 'hexagon',  label: 'SQS' },
@@ -122,6 +123,17 @@ export const PROTOCOL_COLORS: Record<TopologyProtocol, ProtocolColorSpec> = {
   websocket:            { bg: 'bg-teal-900/40',    text: 'text-teal-300',    border: 'border-teal-700',    hex: '#2dd4bf', shape: 'triangle', label: 'WebSocket' },
   sse:                  { bg: 'bg-indigo-900/40',  text: 'text-indigo-300',  border: 'border-indigo-700',  hex: '#818cf8', shape: 'star',     label: 'SSE' },
   graphql_subscription: { bg: 'bg-pink-900/40',    text: 'text-pink-300',    border: 'border-pink-700',    hex: '#f472b6', shape: 'cross',    label: 'GraphQL Sub' },
+  // ── new runtime entities (#946) ───────────────────────────────────────────
+  /** Redis pub/sub channels (channel:redis-pubsub:*) */
+  redis_pubsub:         { bg: 'bg-red-900/40',     text: 'text-red-300',     border: 'border-red-700',     hex: '#f87171', shape: 'ring',     label: 'Redis P/S' },
+  /** Redis Streams (stream:redis:*) */
+  'redis-stream':       { bg: 'bg-rose-900/40',    text: 'text-rose-300',    border: 'border-rose-700',    hex: '#fb7185', shape: 'chevron',  label: 'Redis Stream' },
+  /** Top-level redis broker protocol (folded view) */
+  redis:                { bg: 'bg-red-900/40',     text: 'text-red-300',     border: 'border-red-700',     hex: '#f87171', shape: 'ring',     label: 'Redis' },
+  /** Async task queues (dramatiq / RQ / Hangfire / Quartz) */
+  'task-queue':         { bg: 'bg-lime-900/40',    text: 'text-lime-300',    border: 'border-lime-700',    hex: '#a3e635', shape: 'clock',    label: 'Task Queue' },
+  /** Serverless functions (AWS Lambda / GCF / Azure) */
+  serverless:           { bg: 'bg-yellow-900/40',  text: 'text-yellow-300',  border: 'border-yellow-700',  hex: '#fde047', shape: 'bolt',     label: 'Serverless' },
 }
 
 export function protocolColor(protocol: TopologyProtocol): ProtocolColorSpec {

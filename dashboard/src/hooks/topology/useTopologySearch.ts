@@ -6,7 +6,7 @@ export interface TopologySearchResult {
   label: string
   protocol: string
   repo: string
-  kind: 'topic' | 'queue' | 'channel' | 'nats' | 'graphql'
+  kind: 'topic' | 'queue' | 'channel' | 'nats' | 'graphql' | 'function'
 }
 
 /**
@@ -32,25 +32,29 @@ export function useTopologySearch(
       return 0
     }
 
-    for (const t of data.topics) {
+    for (const t of (data.topics ?? [])) {
       const s = score(t.label)
       if (s > 0) results.push({ id: t.id, label: t.label, protocol: 'kafka', repo: t.repo, kind: 'topic', score: s })
     }
-    for (const q_ of data.queues) {
+    for (const q_ of (data.queues ?? [])) {
       const s = score(q_.label)
       if (s > 0) results.push({ id: q_.id, label: q_.label, protocol: q_.broker, repo: q_.repo, kind: 'queue', score: s })
     }
-    for (const n of data.nats_subjects) {
+    for (const n of (data.nats_subjects ?? [])) {
       const s = score(n.label)
       if (s > 0) results.push({ id: n.id, label: n.label, protocol: 'nats', repo: n.repo, kind: 'nats', score: s })
     }
-    for (const c of data.channels) {
+    for (const c of (data.channels ?? [])) {
       const s = score(c.label)
       if (s > 0) results.push({ id: c.id, label: c.label, protocol: c.channel_type, repo: c.repo, kind: 'channel', score: s })
     }
-    for (const g of data.graphql_subscriptions) {
+    for (const g of (data.graphql_subscriptions ?? [])) {
       const s = score(g.label)
       if (s > 0) results.push({ id: g.id, label: g.label, protocol: 'graphql_subscription', repo: g.repo, kind: 'graphql', score: s })
+    }
+    for (const f of (data.functions ?? [])) {
+      const s = score(f.label)
+      if (s > 0) results.push({ id: f.id, label: f.label, protocol: 'serverless', repo: f.repo, kind: 'function', score: s })
     }
 
     return results

@@ -121,8 +121,8 @@ export function TopologyMap({ layout, data, selectedId, onSelectTopic }: Topolog
   }, [onSelectTopic])
 
   // Build producer/consumer entity positions alongside their topics
-  const allProducerStubs = data.producers
-  const allConsumerStubs = data.consumers
+  const allProducerStubs = data.producers ?? {}
+  const allConsumerStubs = data.consumers ?? {}
 
   if (layout.nodes.length === 0) {
     return (
@@ -174,14 +174,23 @@ export function TopologyMap({ layout, data, selectedId, onSelectTopic }: Topolog
 
           // Collect producer_ids and consumer_ids for this node
           const topicData =
-            data.topics.find((t) => t.id === node.id) ??
-            data.queues.find((q) => q.id === node.id) ??
-            data.nats_subjects.find((n) => n.id === node.id)
+            (data.topics ?? []).find((t) => t.id === node.id) ??
+            (data.queues ?? []).find((q) => q.id === node.id) ??
+            (data.nats_subjects ?? []).find((n) => n.id === node.id) ??
+            (data.functions ?? []).find((f) => f.id === node.id)
 
           if (!topicData) return null
 
-          const producerIds = topicData.producer_ids
-          const consumerIds = topicData.consumer_ids
+          // FunctionNode uses invoker_ids/handler_ids; all other node types use
+          // producer_ids/consumer_ids. Fall back to empty arrays when absent.
+          const producerIds: string[] =
+            ('producer_ids' in topicData ? topicData.producer_ids : null) ??
+            ('invoker_ids' in topicData ? (topicData as { invoker_ids: string[] }).invoker_ids : null) ??
+            []
+          const consumerIds: string[] =
+            ('consumer_ids' in topicData ? topicData.consumer_ids : null) ??
+            ('handler_ids' in topicData ? (topicData as { handler_ids: string[] }).handler_ids : null) ??
+            []
 
           const producerEndpoints = getSpokeEndpoints(node.x, node.y, producerIds, 'in')
           const consumerEndpoints = getSpokeEndpoints(node.x, node.y, consumerIds, 'out')

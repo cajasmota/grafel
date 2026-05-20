@@ -376,12 +376,18 @@ function applyTopologyMockFilters(
 
   return {
     ...data,
-    topics: protocols.has('kafka') ? data.topics : [],
-    queues: data.queues.filter((q) => protocols.has(q.broker as TopologyProtocol)),
-    channels: data.channels.filter((c) => protocols.has(c.channel_type as TopologyProtocol)),
-    graphql_subscriptions: protocols.has('graphql_subscription') ? data.graphql_subscriptions : [],
-    nats_subjects: protocols.has('nats') ? data.nats_subjects : [],
-    transforms: data.transforms,
+    topics: protocols.has('kafka') ? (data.topics ?? []) : [],
+    queues: (data.queues ?? []).filter((q) => {
+      const proto = (q.id?.startsWith('stream:redis:') ? 'redis-stream'
+        : q.id?.startsWith('task:') ? 'task-queue'
+        : q.broker) as TopologyProtocol
+      return protocols.has(proto) || protocols.has(q.broker as TopologyProtocol)
+    }),
+    channels: (data.channels ?? []).filter((c) => protocols.has(c.channel_type as TopologyProtocol)),
+    graphql_subscriptions: protocols.has('graphql_subscription') ? (data.graphql_subscriptions ?? []) : [],
+    nats_subjects: protocols.has('nats') ? (data.nats_subjects ?? []) : [],
+    transforms: data.transforms ?? [],
+    functions: (data.functions ?? []).filter(() => protocols.has('serverless')),
   }
 }
 

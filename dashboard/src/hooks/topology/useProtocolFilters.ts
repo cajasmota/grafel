@@ -2,14 +2,22 @@ import { useSearchParams } from 'react-router-dom'
 import type { TopologyProtocol } from '@/types/api'
 
 const ALL_PROTOCOLS: TopologyProtocol[] = [
+  // Broker protocols
   'kafka',
   'rabbitmq',
   'sqs',
   'pubsub',
   'nats',
+  // Channel protocols
   'websocket',
   'sse',
   'graphql_subscription',
+  // New runtime entities (#946)
+  'redis',
+  'redis-stream',
+  'redis_pubsub',
+  'task-queue',
+  'serverless',
 ]
 
 /**

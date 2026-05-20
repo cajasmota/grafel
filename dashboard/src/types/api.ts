@@ -264,9 +264,10 @@ export interface SwimLaneEntry {
 // Surface 3 — Broker Topology
 // ────────────────────────────────────────────────────────────────────────────
 
-export type BrokerProtocol = 'kafka' | 'rabbitmq' | 'sqs' | 'pubsub' | 'nats'
-export type ChannelProtocol = 'websocket' | 'sse' | 'graphql_subscription'
-export type TopologyProtocol = BrokerProtocol | ChannelProtocol
+export type BrokerProtocol = 'kafka' | 'rabbitmq' | 'sqs' | 'pubsub' | 'nats' | 'redis' | 'redis-stream' | 'task-queue'
+export type ChannelProtocol = 'websocket' | 'sse' | 'graphql_subscription' | 'redis_pubsub'
+export type ServerlessProtocol = 'serverless'
+export type TopologyProtocol = BrokerProtocol | ChannelProtocol | ServerlessProtocol
 
 /** A lightweight entity stub carried in topology responses (avoids re-fetching full Entity) */
 export interface TopologyEntityStub {
@@ -334,10 +335,25 @@ export interface TopologyTransform {
   repo: string
 }
 
+/** A serverless function node — AWS Lambda, GCP Cloud Functions, Azure Functions */
+export interface FunctionNode {
+  id: string
+  repo: string
+  label: string
+  /** Cloud provider: 'aws-lambda' | 'gcp-cloudfunction' | 'azure-function' | 'serverless' */
+  provider: string
+  /** Entities that invoke (CALLS) this function */
+  invoker_ids: string[]
+  /** Entities that handle (HANDLES) this function */
+  handler_ids: string[]
+}
+
 export interface TopologyResponse {
   topics: TopicNode[]
   queues: QueueNode[]
   channels: ChannelNode[]
+  /** Serverless functions (#946) */
+  functions: FunctionNode[]
   graphql_subscriptions: GraphQLSubscription[]
   nats_subjects: NatsSubject[]
   transforms: TopologyTransform[]

@@ -139,6 +139,40 @@ function ProtocolShapeGlyph({
           <path d="M3,0.5 H5 V3 H7.5 V5 H5 V7.5 H3 V5 H0.5 V3 H3 Z" fill={fill} />
         </svg>
       )
+    // ── new runtime entities (#946) ─────────────────────────────────────
+    case 'redis':
+    case 'redis_pubsub':
+      // Ring shape — concentric circles (pub/sub broadcast feel)
+      return (
+        <svg width={size} height={size} viewBox="0 0 8 8" aria-hidden>
+          <circle cx="4" cy="4" r="3.5" fill="none" stroke={fill} strokeWidth="1.5" />
+          <circle cx="4" cy="4" r="1.5" fill={fill} />
+        </svg>
+      )
+    case 'redis-stream':
+      // Chevron / right-arrow (stream direction)
+      return (
+        <svg width={size} height={size} viewBox="0 0 8 8" aria-hidden>
+          <polyline points="1,1 5,4 1,7" fill="none" stroke={fill} strokeWidth="1.5" strokeLinejoin="round" />
+          <polyline points="4,1 8,4 4,7" fill="none" stroke={fill} strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      )
+    case 'task-queue':
+      // Clock shape — 12/3/6/9 tick marks
+      return (
+        <svg width={size} height={size} viewBox="0 0 8 8" aria-hidden>
+          <circle cx="4" cy="4" r="3.5" fill="none" stroke={fill} strokeWidth="1" />
+          <line x1="4" y1="1" x2="4" y2="2.2" stroke={fill} strokeWidth="1" />
+          <line x1="4" y1="4" x2="5.8" y2="4" stroke={fill} strokeWidth="1" />
+        </svg>
+      )
+    case 'serverless':
+      // Lightning bolt
+      return (
+        <svg width={size} height={size} viewBox="0 0 8 8" aria-hidden>
+          <polygon points="4.5,0.5 2,4.5 4,4.5 3.5,7.5 6,3.5 4,3.5" fill={fill} />
+        </svg>
+      )
     default:
       return (
         <svg width={size} height={size} viewBox="0 0 8 8" aria-hidden>

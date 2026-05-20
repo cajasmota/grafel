@@ -3,6 +3,12 @@ import { RepoChip } from '@/components/shared/RepoChip'
 import { PROTOCOL_COLORS } from '@/lib/colors'
 import type { ChannelNode, GraphQLSubscription } from '@/types/api'
 
+/** Support both *_ids (TypeScript type) and plain * (REST API) field names */
+function getIds(node: unknown, idsKey: string, plainKey: string): string[] {
+  const r = node as Record<string, unknown>
+  return (r[idsKey] as string[] | undefined) ?? (r[plainKey] as string[] | undefined) ?? []
+}
+
 interface ChannelTrackProps {
   channels: ChannelNode[]
   graphqlSubscriptions: GraphQLSubscription[]
@@ -45,8 +51,8 @@ export function ChannelTrack({ channels, graphqlSubscriptions, selectedId, onSel
             channelType={ch.channel_type}
             repo={ch.repo}
             endpoint={ch.server_endpoint}
-            emitterCount={ch.emitter_ids.length}
-            subscriberCount={ch.subscriber_ids.length}
+            emitterCount={getIds(ch, 'emitter_ids', 'emitters').length}
+            subscriberCount={getIds(ch, 'subscriber_ids', 'subscribers').length}
             isSelected={ch.id === selectedId}
             onSelect={onSelect}
           />
@@ -58,8 +64,8 @@ export function ChannelTrack({ channels, graphqlSubscriptions, selectedId, onSel
             label={sub.label}
             repo={sub.repo}
             returnType={sub.return_type}
-            publisherCount={sub.publisher_ids.length}
-            subscriberCount={sub.subscriber_ids.length}
+            publisherCount={getIds(sub, 'publisher_ids', 'publishers').length}
+            subscriberCount={getIds(sub, 'subscriber_ids', 'subscribers').length}
             isSelected={sub.id === selectedId}
             onSelect={onSelect}
           />
@@ -72,7 +78,7 @@ export function ChannelTrack({ channels, graphqlSubscriptions, selectedId, onSel
 interface ChannelCardProps {
   id: string
   label: string
-  channelType: 'websocket' | 'sse' | 'graphql_subscription'
+  channelType: 'websocket' | 'sse' | 'graphql_subscription' | 'redis_pubsub'
   repo: string
   endpoint?: string
   emitterCount: number
