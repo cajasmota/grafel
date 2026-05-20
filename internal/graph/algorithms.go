@@ -460,7 +460,7 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 	// point with identical damping/tolerance using a sparse row-compressed
 	// matrix proportional to |E|. Both gonum variants use the same un-seeded
 	// init vector and converge to the same scores; roundForDeterminism()
-	// rounds to 1e-5 (well above the 1e-6 solver tolerance) so the on-disk
+	// rounds to 1e-4 (well above the 1e-6 solver tolerance) so the on-disk
 	// bytes stay stable. Always use sparse — code graphs are sparse by nature.
 	prRaw := network.PageRankSparse(g, 0.85, 1e-6)
 	for nid, v := range prRaw {
@@ -479,19 +479,24 @@ func runtimeMSFor(start time.Time) int64 {
 	return time.Since(start).Milliseconds()
 }
 
-// roundForDeterminism rounds a gonum-derived score to 6 decimal digits.
+// roundForDeterminism rounds a gonum-derived score to 4 decimal digits.
 // Issue #481 — gonum's PageRank and Betweenness implementations iterate
 // over node maps internally, so tiny floating-point reorderings accumulate
 // to differences of ~1e-8 across runs of the same input. The PageRank
-// solver converges to a tolerance of 1e-6 (see the call site below), so
-// anything past the 6th decimal is noise of the same order as the
-// solver's own convergence guarantee. Rounding to 1e-6 keeps graph.json
-// byte-identical without losing actionable precision.
+// solver converges to a tolerance of 1e-6 (see the call site below).
+//
+// Issue #489 — on larger graphs (gin ~6.4k entities, spdlog ~1.8k entities)
+// the accumulated float drift crosses the 1e-5 boundary occasionally,
+// causing 2/10 runs to produce different byte output even though the logical
+// PageRank ranking is identical. Widening the rounding bucket to 1e-4 (4
+// decimal places) absorbs all solver-tolerance noise while still retaining
+// actionable score differences — practical PageRank delta thresholds for
+// ranking are well above 1e-4.
 func roundForDeterminism(v float64) float64 {
 	if v == 0 || math.IsNaN(v) || math.IsInf(v, 0) {
 		return v
 	}
-	const scale = 1e5
+	const scale = 1e4
 	return math.Round(v*scale) / scale
 }
 
