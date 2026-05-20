@@ -33,10 +33,10 @@ export function DocsPage({ group, docPath }: DocsPageProps) {
   const { data: content, isLoading: contentLoading, error: contentError } = useDocContent(group, docPath)
 
   return (
-    <div className="flex flex-col h-full bg-slate-950">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-950">
       {/* Search bar at top */}
-      <div className="flex items-center gap-4 px-4 py-3 border-b border-slate-800 bg-slate-950/50 flex-shrink-0">
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Docs Search</span>
+      <div className="flex items-center gap-4 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/50 flex-shrink-0">
+        <span className="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Docs Search</span>
         <DocsTopSearch group={group} />
       </div>
 
@@ -49,12 +49,12 @@ export function DocsPage({ group, docPath }: DocsPageProps) {
 
         {/* Sidebar */}
         <aside
-          className="hidden md:flex flex-col w-60 flex-shrink-0 border-r border-slate-800 bg-slate-950/80 overflow-y-auto"
+          className="hidden md:flex flex-col w-60 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 overflow-y-auto"
           aria-label="Documentation navigation"
         >
           {/* Sidebar header */}
-          <div className="flex items-center px-4 py-3 border-b border-slate-800">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Navigation</span>
+          <div className="flex items-center px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+            <span className="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Navigation</span>
           </div>
 
           {treeLoading && (

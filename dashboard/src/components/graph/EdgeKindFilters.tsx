@@ -52,7 +52,7 @@ export function EdgeKindFilters({
         <button
           type="button"
           onClick={onClear}
-          className="text-[10px] text-slate-500 hover:text-slate-300 px-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 rounded transition-colors"
+          className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 px-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 rounded transition-colors"
           aria-label="Clear all edge filters"
         >
           clear

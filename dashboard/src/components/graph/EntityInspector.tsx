@@ -30,20 +30,20 @@ export function EntityInspector({
 }: EntityInspectorProps) {
   return (
     <aside
-      className="flex flex-col h-full bg-slate-950 border-l border-slate-800 w-[340px] min-w-[280px] max-w-md overflow-y-auto"
+      className="flex flex-col h-full bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-slate-800 w-[340px] min-w-[280px] max-w-md overflow-y-auto"
       aria-label="Entity inspector"
       role="complementary"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/60 sticky top-0 z-10">
-        <h2 className="text-sm font-semibold text-slate-200 truncate">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60 sticky top-0 z-10">
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
           {isLoading ? 'Loading…' : (data?.entity.label ?? 'Inspector')}
         </h2>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close inspector"
-          className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+          className="p-1 rounded text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
         >
           <X className="w-4 h-4" />
         </button>
@@ -59,11 +59,11 @@ export function EntityInspector({
               <KindBadge kind={data.entity.kind} />
               <RepoChip repo={data.entity.repo} />
             </div>
-            <p className="text-xs font-mono text-slate-400 mt-1 break-all">
+            <p className="text-xs font-mono text-slate-400 dark:text-slate-400 mt-1 break-all">
               {data.entity.qualified_name}
             </p>
             {data.entity.pagerank !== undefined && (
-              <p className="text-xs text-slate-600 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-600 mt-0.5">
                 PageRank: {data.entity.pagerank.toFixed(4)}
               </p>
             )}
@@ -116,7 +116,7 @@ export function EntityInspector({
               )}
               <a
                 href={`vscode://file/${data.entity.source_file}:${data.entity.start_line}`}
-                className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >
                 <MapPin className="w-3.5 h-3.5" />
@@ -128,7 +128,7 @@ export function EntityInspector({
       )}
 
       {!isLoading && !data && (
-        <div className="flex-1 flex items-center justify-center p-6 text-center text-sm text-slate-600">
+        <div className="flex-1 flex items-center justify-center p-6 text-center text-sm text-slate-500 dark:text-slate-600">
           Select a node to inspect it.
         </div>
       )}
@@ -140,9 +140,9 @@ export function EntityInspector({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="px-4 py-3 border-b border-slate-800/60">
+    <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800/60">
       {title && (
-        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-600 mb-2">
           {title}
         </h3>
       )}
@@ -185,7 +185,7 @@ function NeighborList({
               </li>
             ))}
             {entries.length > 15 && (
-              <li className="text-[10px] text-slate-600 pl-2">
+              <li className="text-[10px] text-slate-500 dark:text-slate-600 pl-2">
                 +{entries.length - 15} more
               </li>
             )}
@@ -199,11 +199,11 @@ function NeighborList({
 function InspectorSkeleton() {
   return (
     <div className="p-4 flex flex-col gap-3" role="status" aria-label="Loading entity…">
-      <div className="h-5 w-3/4 rounded animate-pulse bg-slate-800" />
-      <div className="h-4 w-1/2 rounded animate-pulse bg-slate-800" />
-      <div className="h-20 w-full rounded animate-pulse bg-slate-800" />
-      <div className="h-4 w-full rounded animate-pulse bg-slate-800" />
-      <div className="h-4 w-5/6 rounded animate-pulse bg-slate-800" />
+      <div className="h-5 w-3/4 rounded animate-pulse bg-slate-200 dark:bg-slate-800" />
+      <div className="h-4 w-1/2 rounded animate-pulse bg-slate-200 dark:bg-slate-800" />
+      <div className="h-20 w-full rounded animate-pulse bg-slate-200 dark:bg-slate-800" />
+      <div className="h-4 w-full rounded animate-pulse bg-slate-200 dark:bg-slate-800" />
+      <div className="h-4 w-5/6 rounded animate-pulse bg-slate-200 dark:bg-slate-800" />
       <span className="sr-only">Loading…</span>
     </div>
   )

@@ -26,14 +26,14 @@ export function ChainStepDetail({
     >
       {/* Header */}
       <div className="flex items-start gap-3">
-        <span className="text-slate-400 mt-0.5" aria-hidden>
+        <span className="text-slate-400 dark:text-slate-400 mt-0.5" aria-hidden>
           <KindIcon kind={entityKind} className="w-4 h-4" />
         </span>
         <div className="flex-1 min-w-0">
-          <h3 className="font-mono text-sm font-semibold text-slate-200 truncate">
+          <h3 className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
             {step.label}
           </h3>
-          <p className="text-xs text-slate-500 font-mono mt-0.5">
+          <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-0.5">
             step {step.step_index + 1} · {step.edge_kind}
           </p>
         </div>
@@ -42,7 +42,7 @@ export function ChainStepDetail({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+            className="p-1 rounded text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
             aria-label="Close step detail"
           >
             <X className="w-4 h-4" />

@@ -69,8 +69,8 @@ export function PathsGroup({ group, isExpanded, onToggle, children }: PathsGroup
         type="button"
         className={[
           'w-full flex items-center gap-2 px-3 py-2',
-          'bg-slate-900/80 border-b border-slate-800',
-          'hover:bg-slate-800/60 focus:outline-none focus:bg-slate-800/60',
+          'bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800',
+          'hover:bg-slate-200/60 dark:hover:bg-slate-800/60 focus:outline-none focus:bg-slate-800/60',
           'transition-colors duration-75 cursor-pointer',
           'sticky top-0 z-10',
         ].join(' ')}
@@ -81,7 +81,7 @@ export function PathsGroup({ group, isExpanded, onToggle, children }: PathsGroup
         {/* Caret */}
         <ChevronRight
           className={[
-            'w-3.5 h-3.5 text-slate-500 flex-shrink-0',
+            'w-3.5 h-3.5 text-slate-400 dark:text-slate-500 flex-shrink-0',
             'transition-transform duration-150',
             isExpanded ? 'rotate-90' : '',
           ].join(' ')}
@@ -89,7 +89,7 @@ export function PathsGroup({ group, isExpanded, onToggle, children }: PathsGroup
         />
 
         {/* Controller / module name */}
-        <span className="flex-1 min-w-0 text-left text-base font-medium text-slate-200 truncate">
+        <span className="flex-1 min-w-0 text-left text-base font-medium text-slate-800 dark:text-slate-200 truncate">
           {group.name}
         </span>
 
@@ -98,7 +98,7 @@ export function PathsGroup({ group, isExpanded, onToggle, children }: PathsGroup
 
         {/* Total count badge */}
         <span
-          className="flex-shrink-0 text-xs tabular-nums text-slate-400 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 ml-1"
+          className="flex-shrink-0 text-xs tabular-nums text-slate-400 dark:text-slate-400 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 ml-1"
           title={`${group.totalEndpoints} endpoints`}
         >
           {group.paths.length}

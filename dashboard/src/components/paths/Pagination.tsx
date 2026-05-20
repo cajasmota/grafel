@@ -18,10 +18,10 @@ export function Pagination({ page, pageSize, total, hasMore, onPageChange }: Pag
 
   return (
     <nav
-      className="flex items-center justify-between px-4 py-2 border-t border-slate-800"
+      className="flex items-center justify-between px-4 py-2 border-t border-slate-200 dark:border-slate-800"
       aria-label="Pagination"
     >
-      <span className="text-xs text-slate-500">
+      <span className="text-xs text-slate-400 dark:text-slate-500">
         {total > 0 ? `${start}–${end} of ${total}` : 'No results'}
       </span>
       <div className="flex items-center gap-1">
@@ -31,7 +31,7 @@ export function Pagination({ page, pageSize, total, hasMore, onPageChange }: Pag
           disabled={!hasPrev}
           onClick={() => onPageChange(safePage - 1)}
         />
-        <span className="px-2 text-xs text-slate-400">
+        <span className="px-2 text-xs text-slate-400 dark:text-slate-400">
           Page {safePage}
         </span>
         <PaginationButton
@@ -63,7 +63,7 @@ function PaginationButton({ label, icon, disabled, onClick }: PaginationButtonPr
         'transition-colors',
         disabled
           ? 'text-slate-700 cursor-not-allowed'
-          : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200',
+          : 'text-slate-400 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200',
       ].join(' ')}
       onClick={onClick}
     >

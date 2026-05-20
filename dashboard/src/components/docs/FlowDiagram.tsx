@@ -62,16 +62,16 @@ export function FlowDiagram({ entryEntityId }: FlowDiagramProps) {
 
   if (isLoading) {
     return (
-      <div className="my-6 rounded-lg border border-slate-700 bg-slate-900 p-4 animate-pulse">
-        <div className="h-4 w-48 rounded bg-slate-800 mb-2" />
-        <div className="h-32 rounded bg-slate-800" />
+      <div className="my-6 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-4 animate-pulse">
+        <div className="h-4 w-48 rounded bg-slate-200 dark:bg-slate-800 mb-2" />
+        <div className="h-32 rounded bg-slate-200 dark:bg-slate-800" />
       </div>
     )
   }
 
   if (!steps || steps.length === 0) {
     return (
-      <div className="my-6 rounded-lg border border-slate-700 bg-slate-900 px-4 py-6 text-center text-sm text-slate-500">
+      <div className="my-6 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 px-4 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
         <GitBranch className="w-8 h-8 mx-auto mb-2 text-slate-700" aria-hidden />
         No flow data for this entry point.
       </div>
@@ -81,13 +81,13 @@ export function FlowDiagram({ entryEntityId }: FlowDiagramProps) {
   const mermaidCode = stepsToMermaid(steps)
 
   return (
-    <figure className="my-6 rounded-lg border border-slate-700 bg-slate-900 overflow-hidden" aria-label="Process flow diagram">
-      <figcaption className="px-4 py-2 border-b border-slate-800 flex items-center gap-2 text-xs text-slate-400">
+    <figure className="my-6 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 overflow-hidden" aria-label="Process flow diagram">
+      <figcaption className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-400">
         <GitBranch className="w-3.5 h-3.5" aria-hidden />
         Process Flow
       </figcaption>
       <div className="p-4">
-        <Suspense fallback={<div className="h-40 animate-pulse rounded bg-slate-800" />}>
+        <Suspense fallback={<div className="h-40 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />}>
           <MermaidBlock code={mermaidCode} />
         </Suspense>
       </div>

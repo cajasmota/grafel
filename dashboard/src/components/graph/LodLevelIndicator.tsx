@@ -14,9 +14,9 @@ const LOD_LABELS: Record<LodLevel, string> = {
 }
 
 const LOD_COLORS: Record<LodLevel, string> = {
-  'zoom-out': 'bg-slate-800/80 text-slate-400 border-slate-700',
-  'mid': 'bg-slate-800/80 text-sky-400 border-sky-900',
-  'zoom-in': 'bg-slate-800/80 text-emerald-400 border-emerald-900',
+  'zoom-out': 'bg-slate-200/80 dark:bg-slate-800/80 text-slate-400 dark:text-slate-400 border-slate-300 dark:border-slate-700',
+  'mid': 'bg-slate-200/80 dark:bg-slate-800/80 text-sky-400 border-sky-900',
+  'zoom-in': 'bg-slate-200/80 dark:bg-slate-800/80 text-emerald-400 border-emerald-900',
   'blocked': 'bg-red-950/80 text-red-400 border-red-900',
 }
 

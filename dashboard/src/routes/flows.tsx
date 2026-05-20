@@ -71,7 +71,7 @@ export function FlowsRoute() {
       {/* Left panel: entry picker + flow list */}
       <div
         className={[
-          'flex flex-col border-r border-slate-800 bg-slate-950',
+          'flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950',
           'transition-[width] duration-200',
           hasSelection ? 'w-[360px] min-w-[280px]' : 'flex-1',
         ].join(' ')}
@@ -91,14 +91,14 @@ export function FlowsRoute() {
 
         {/* Active filter banner */}
         {filters.entry && (
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-800 bg-slate-900/60 text-xs text-slate-400">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60 text-xs text-slate-400 dark:text-slate-400">
             <span className="flex-1 truncate font-mono">
               Entry: <span className="text-sky-400">{filters.entry}</span>
             </span>
             <button
               type="button"
               onClick={clearFilters}
-              className="text-slate-600 hover:text-slate-300 transition-colors px-1"
+              className="text-slate-500 dark:text-slate-600 hover:text-slate-700 dark:hover:text-slate-300 transition-colors px-1"
               aria-label="Clear entry filter"
             >
               Clear
@@ -112,11 +112,11 @@ export function FlowsRoute() {
         ) : listError ? (
           <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
             <AlertCircle className="w-8 h-8 text-red-400" aria-hidden />
-            <p className="text-sm text-slate-400">{listError.message}</p>
+            <p className="text-sm text-slate-400 dark:text-slate-400">{listError.message}</p>
             <button
               type="button"
               onClick={() => refetch()}
-              className="px-3 py-1.5 rounded text-sm bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+              className="px-3 py-1.5 rounded text-sm bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
             >
               Retry
             </button>
@@ -151,7 +151,7 @@ export function FlowsRoute() {
 
       {/* Empty right side hint */}
       {!hasSelection && processes.length > 0 && (
-        <div className="hidden xl:flex flex-1 items-center justify-center text-slate-600 text-sm">
+        <div className="hidden xl:flex flex-1 items-center justify-center text-slate-500 dark:text-slate-600 text-sm">
           Select a flow to see its chain
         </div>
       )}

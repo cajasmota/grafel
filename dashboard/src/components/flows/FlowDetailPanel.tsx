@@ -51,7 +51,7 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
           <button
             type="button"
             onClick={() => refetch()}
-            className="px-3 py-1.5 rounded text-sm bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+            className="px-3 py-1.5 rounded text-sm bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
           >
             Retry
           </button>
@@ -71,15 +71,15 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
       aria-label={`Flow detail: ${process.label}`}
     >
       {/* Header */}
-      <div className="flex items-start gap-3 px-4 py-3 border-b border-slate-800 bg-slate-900/80 flex-shrink-0">
+      <div className="flex items-start gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/80 flex-shrink-0">
         <div className="flex-1 min-w-0">
-          <h2 className="font-mono text-sm font-semibold text-slate-200 truncate">
+          <h2 className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
             {process.label}
           </h2>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <RepoChip repo={process.repo} />
             {process.cross_stack && <CrossStackBadge />}
-            <span className="text-xs text-slate-500 font-mono">
+            <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
               {process.step_count} steps
             </span>
           </div>
@@ -88,7 +88,7 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors flex-shrink-0"
+            className="p-1.5 rounded text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors flex-shrink-0"
             aria-label="Close flow detail"
           >
             <X className="w-4 h-4" />
@@ -98,8 +98,8 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
 
       {/* Keyboard nav hint */}
       {steps.length > 0 && (
-        <div className="px-4 py-1.5 border-b border-slate-800 bg-slate-950/60 flex-shrink-0">
-          <p className="text-[10px] text-slate-600">
+        <div className="px-4 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-950/60 flex-shrink-0">
+          <p className="text-[10px] text-slate-500 dark:text-slate-600">
             ↑ ↓ navigate steps · Enter expand source
           </p>
         </div>
@@ -108,7 +108,7 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
       {/* Tabs: Swim lane + Chain list */}
       <Tabs.Root defaultValue="lanes" className="flex flex-col flex-1 overflow-hidden">
         <Tabs.List
-          className="flex border-b border-slate-800 px-4 bg-slate-900/60 flex-shrink-0"
+          className="flex border-b border-slate-200 dark:border-slate-800 px-4 bg-slate-100/60 dark:bg-slate-900/60 flex-shrink-0"
           aria-label="Flow detail views"
         >
           <FlowTabTrigger value="lanes">
@@ -154,7 +154,7 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
                     'rounded-lg border transition-colors cursor-pointer',
                     focusedIndex === idx
                       ? 'border-sky-700 bg-sky-900/20'
-                      : 'border-slate-800 hover:border-slate-700 hover:bg-slate-900/60',
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-200/60 dark:hover:bg-slate-900/60',
                   ].join(' ')}
                   onClick={() => { setSelectedStep(step); focusStep(idx) }}
                   role="button"
@@ -169,8 +169,8 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
                   }}
                 >
                   <div className="px-3 py-2">
-                    <span className="text-[10px] text-slate-600 font-mono mr-2">{idx + 1}.</span>
-                    <span className="font-mono text-xs text-slate-300">{step.label}</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-600 font-mono mr-2">{idx + 1}.</span>
+                    <span className="font-mono text-xs text-slate-700 dark:text-slate-300">{step.label}</span>
                     <RepoChip repo={step.repo} className="ml-2" />
                   </div>
                 </div>
@@ -182,7 +182,7 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
 
       {/* Selected step detail slide-in */}
       {selectedStep && (
-        <div className="border-t border-slate-800 p-4 bg-slate-900/60 flex-shrink-0 max-h-64 overflow-y-auto">
+        <div className="border-t border-slate-200 dark:border-slate-800 p-4 bg-slate-100/60 dark:bg-slate-900/60 flex-shrink-0 max-h-64 overflow-y-auto">
           <ChainStepDetail
             step={selectedStep}
             sourceCode={data.source_snippets?.[selectedStep.entity_id]}
@@ -200,8 +200,8 @@ function FlowTabTrigger({ value, children }: { value: string; children: React.Re
       value={value}
       className={[
         'flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 border-transparent transition-colors',
-        'text-slate-500 hover:text-slate-300',
-        'data-[state=active]:border-sky-500 data-[state=active]:text-slate-200',
+        'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
+        'data-[state=active]:border-sky-500 data-[state=active]:text-slate-800 dark:data-[state=active]:text-slate-200',
         'focus:outline-none focus-visible:ring-1 focus-visible:ring-sky-500',
       ].join(' ')}
     >

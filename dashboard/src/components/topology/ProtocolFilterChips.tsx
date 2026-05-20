@@ -25,7 +25,7 @@ export function ProtocolFilterChips({
     <div
       role="group"
       aria-label="Filter by protocol"
-      className="flex items-center gap-1.5 flex-wrap px-4 py-2 border-b border-slate-800"
+      className="flex items-center gap-1.5 flex-wrap px-4 py-2 border-b border-slate-200 dark:border-slate-800"
     >
       {/* "All" chip */}
       <button
@@ -37,8 +37,8 @@ export function ProtocolFilterChips({
           'inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-colors',
           'focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1 focus:ring-offset-slate-950',
           isAllActive
-            ? 'bg-slate-700 text-slate-200 border-slate-500'
-            : 'bg-slate-900 text-slate-500 border-slate-700 hover:border-slate-500 hover:text-slate-300',
+            ? 'bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border-slate-500'
+            : 'bg-slate-100 dark:bg-slate-900 text-slate-400 dark:text-slate-500 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
         ].join(' ')}
       >
         All
@@ -60,7 +60,7 @@ export function ProtocolFilterChips({
               'focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-slate-950',
               isActive
                 ? `${spec.bg} ${spec.text} ${spec.border}`
-                : 'bg-slate-900 text-slate-500 border-slate-700 hover:border-slate-500 hover:text-slate-300',
+                : 'bg-slate-100 dark:bg-slate-900 text-slate-400 dark:text-slate-500 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
             ].join(' ')}
             style={isActive ? {} : undefined}
           >

@@ -28,7 +28,7 @@ function relativeTime(iso?: string): string {
 }
 
 function bugRateColor(rate?: number): string {
-  if (rate === undefined) return 'text-slate-500'
+  if (rate === undefined) return 'text-slate-400 dark:text-slate-500'
   if (rate <= 5) return 'text-emerald-400'
   if (rate <= 15) return 'text-amber-400'
   return 'text-red-400'
@@ -65,7 +65,7 @@ function Tooltip({ tip, children }: TooltipProps) {
         role="tooltip"
         className={[
           'pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20',
-          'whitespace-nowrap rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 shadow-lg',
+          'whitespace-nowrap rounded bg-slate-300 dark:bg-slate-700 px-2 py-1 text-xs text-slate-800 dark:text-slate-200 shadow-lg',
           'opacity-0 group-hover/tip:opacity-100 transition-opacity duration-150',
         ].join(' ')}
       >
@@ -125,21 +125,21 @@ function Sparkline({ history, bugRate, width = 60, height = 24 }: SparklineProps
 function GroupCardSkeleton() {
   return (
     <div
-      className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 h-[152px] space-y-4"
+      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60 p-5 h-[152px] space-y-4"
       role="status"
       aria-label="Loading group…"
     >
       {/* header row */}
       <div className="flex items-center justify-between">
-        <div className="h-5 w-32 rounded bg-slate-800 animate-pulse" />
-        <div className="h-6 w-16 rounded bg-slate-800 animate-pulse" />
+        <div className="h-5 w-32 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        <div className="h-6 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
       </div>
       {/* stats row */}
       <div className="flex items-center gap-4">
-        <div className="h-4 w-12 rounded bg-slate-800 animate-pulse" />
-        <div className="h-4 w-16 rounded bg-slate-800 animate-pulse" />
-        <div className="h-4 w-14 rounded bg-slate-800 animate-pulse" />
-        <div className="h-4 w-16 rounded bg-slate-800 animate-pulse" />
+        <div className="h-4 w-12 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        <div className="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        <div className="h-4 w-14 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        <div className="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
       </div>
       <span className="sr-only">Loading…</span>
     </div>
@@ -159,13 +159,13 @@ interface StatPillProps {
   dimmed?: boolean
 }
 
-function StatPill({ icon, tooltip, label, value, valueClass = 'text-slate-300', dimmed = false }: StatPillProps) {
+function StatPill({ icon, tooltip, label, value, valueClass = 'text-slate-700 dark:text-slate-300', dimmed = false }: StatPillProps) {
   return (
     <span className={`flex items-center gap-1 min-w-0 ${dimmed ? 'opacity-40' : ''}`}>
       <Tooltip tip={tooltip}>
-        <span className="text-slate-500 shrink-0">{icon}</span>
+        <span className="text-slate-400 dark:text-slate-500 shrink-0">{icon}</span>
       </Tooltip>
-      <span className="text-slate-500 text-xs shrink-0">{label}:</span>
+      <span className="text-slate-400 dark:text-slate-500 text-xs shrink-0">{label}:</span>
       <span className={`text-xs font-medium truncate ${valueClass}`}>{value}</span>
     </span>
   )
@@ -192,11 +192,11 @@ function GroupCard({ group, onClick }: GroupCardProps) {
       type="button"
       onClick={onClick}
       className={[
-        'w-full text-left rounded-xl border bg-slate-900/60 p-5',
+        'w-full text-left rounded-xl border bg-slate-100/60 dark:bg-slate-900/60 p-5',
         // Fixed height ensures all cards are the same regardless of bug-rate / sparkline presence
         'h-[152px] flex flex-col justify-between',
         'transition-all duration-150 cursor-pointer',
-        'border-slate-800 hover:border-sky-500/40 hover:-translate-y-px hover:bg-slate-900',
+        'border-slate-200 dark:border-slate-800 hover:border-sky-500/40 hover:-translate-y-px hover:bg-slate-200 dark:hover:bg-slate-900',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60',
       ].join(' ')}
     >
@@ -204,7 +204,7 @@ function GroupCard({ group, onClick }: GroupCardProps) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <GitBranch className="w-4 h-4 text-sky-400 shrink-0" aria-hidden />
-          <span className="text-xl font-semibold text-slate-100 truncate">
+          <span className="text-xl font-semibold text-slate-900 dark:text-slate-100 truncate">
             {group.display_name}
           </span>
         </div>
@@ -262,25 +262,25 @@ function GroupCard({ group, onClick }: GroupCardProps) {
 function NoGroupsState() {
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-24 px-8 text-center">
-      <div className="rounded-full bg-slate-800 p-5">
-        <GitBranch className="w-10 h-10 text-slate-500" aria-hidden />
+      <div className="rounded-full bg-slate-200 dark:bg-slate-800 p-5">
+        <GitBranch className="w-10 h-10 text-slate-400 dark:text-slate-500" aria-hidden />
       </div>
       <div className="space-y-2">
-        <h2 className="text-xl font-semibold text-slate-200">No groups indexed yet</h2>
-        <p className="max-w-sm text-sm text-slate-400">
+        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200">No groups indexed yet</h2>
+        <p className="max-w-sm text-sm text-slate-400 dark:text-slate-400">
           Register a group and index at least one repo to see it here.
         </p>
       </div>
       <div className="w-full max-w-md space-y-3 text-left">
-        <div className="rounded-lg bg-slate-900 border border-slate-800 p-4">
-          <p className="text-xs text-slate-500 mb-2 font-mono uppercase tracking-wider">Step 1 — register a group</p>
-          <pre className="text-sm text-slate-300 font-mono whitespace-pre-wrap">
+        <div className="rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4">
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-2 font-mono uppercase tracking-wider">Step 1 — register a group</p>
+          <pre className="text-sm text-slate-700 dark:text-slate-300 font-mono whitespace-pre-wrap">
             <code>archigraph register --group my-service --path ./my-repo</code>
           </pre>
         </div>
-        <div className="rounded-lg bg-slate-900 border border-slate-800 p-4">
-          <p className="text-xs text-slate-500 mb-2 font-mono uppercase tracking-wider">Step 2 — index the repo</p>
-          <pre className="text-sm text-slate-300 font-mono whitespace-pre-wrap">
+        <div className="rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4">
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-2 font-mono uppercase tracking-wider">Step 2 — index the repo</p>
+          <pre className="text-sm text-slate-700 dark:text-slate-300 font-mono whitespace-pre-wrap">
             <code>archigraph index my-service</code>
           </pre>
         </div>
@@ -301,8 +301,8 @@ export function GroupSelector() {
     return (
       <div className="px-6 py-8 max-w-7xl mx-auto">
         <div className="mb-6">
-          <div className="h-7 w-48 rounded bg-slate-800 animate-pulse mb-1" />
-          <div className="h-4 w-72 rounded bg-slate-800 animate-pulse" />
+          <div className="h-7 w-48 rounded bg-slate-200 dark:bg-slate-800 animate-pulse mb-1" />
+          <div className="h-4 w-72 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
         </div>
         <div
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
@@ -332,8 +332,8 @@ export function GroupSelector() {
   return (
     <div className="px-6 py-8 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-100">Groups</h1>
-        <p className="text-sm text-slate-400 mt-1">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Groups</h1>
+        <p className="text-sm text-slate-400 dark:text-slate-400 mt-1">
           Select a group to explore its graph, flows, topology, paths and docs.
         </p>
       </div>

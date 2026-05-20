@@ -7,7 +7,7 @@
  *  - Bug-rate status dot: green ≤5% / amber 5-15% / red >15%
  *    (uses entity_count as proxy until a real bug_rate field ships)
  *  - Entity count in tooltip
- *  - Active group: bg-slate-800 + sky-500 left border
+ *  - Active group: bg-slate-200 dark:bg-slate-800 + sky-500 left border
  *  - Switching preserves current surface (e.g. /flows/A → /flows/B)
  */
 
@@ -101,14 +101,14 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
   return (
     <div className="flex flex-col gap-1">
       {/* Section label */}
-      <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold px-2 pb-1 select-none">
+      <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold px-2 pb-1 select-none">
         Groups
       </p>
 
       {/* Search input */}
       <div className="relative px-2 mb-1">
         <Search
-          className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600 pointer-events-none"
+          className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 dark:text-slate-600 pointer-events-none"
           aria-hidden
         />
         <input
@@ -118,8 +118,8 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Filter groups"
           className={[
-            'w-full bg-slate-900 border border-slate-700 rounded text-xs',
-            'pl-7 pr-2 py-1 text-slate-300 placeholder-slate-600',
+            'w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-xs',
+            'pl-7 pr-2 py-1 text-slate-700 dark:text-slate-300 placeholder-slate-600',
             'focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500',
           ].join(' ')}
         />
@@ -133,7 +133,7 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
         aria-label="Groups"
       >
         {sorted.length === 0 && (
-          <li className="px-3 py-2 text-xs text-slate-600 select-none">
+          <li className="px-3 py-2 text-xs text-slate-500 dark:text-slate-600 select-none">
             No groups match
           </li>
         )}
@@ -154,8 +154,8 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
                   'group w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors',
                   'border-l-2',
                   isActive
-                    ? 'bg-slate-800 border-sky-500 text-slate-100'
-                    : 'border-transparent text-slate-400 hover:bg-slate-800/60 hover:text-slate-300',
+                    ? 'bg-slate-200 dark:bg-slate-800 border-sky-500 text-slate-900 dark:text-slate-100'
+                    : 'border-transparent text-slate-400 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 hover:text-slate-700 dark:hover:text-slate-300',
                 ].join(' ')}
               >
                 {/* Group name */}
@@ -181,7 +181,7 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
                     'p-0.5 rounded transition-colors cursor-pointer',
                     isPinned
                       ? 'text-sky-400 opacity-100'
-                      : 'text-slate-600 opacity-0 group-hover:opacity-100',
+                      : 'text-slate-500 dark:text-slate-600 opacity-0 group-hover:opacity-100',
                     'hover:text-sky-300',
                   ].join(' ')}
                 >

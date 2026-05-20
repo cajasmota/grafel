@@ -27,7 +27,7 @@ export function DocsTOC({ headings, activeId }: DocsTOCProps) {
       aria-label="On this page"
       className="space-y-0.5"
     >
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+      <p className="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider mb-3">
         On this page
       </p>
       {headings.map(({ id, text, depth }) => (
@@ -40,7 +40,7 @@ export function DocsTOC({ headings, activeId }: DocsTOCProps) {
             depth === 3 && 'pl-4',
             activeId === id
               ? 'text-sky-400 font-medium'
-              : 'text-slate-500 hover:text-slate-300',
+              : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
           )}
         >
           {text}

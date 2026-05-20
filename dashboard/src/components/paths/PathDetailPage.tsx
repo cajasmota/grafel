@@ -35,9 +35,9 @@ export function PathDetailPage({ group }: PathDetailPageProps) {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/80">
+      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/80">
         <div className="flex items-start gap-3 flex-wrap">
-          <h1 className="font-mono text-base font-semibold text-slate-200 flex-1 min-w-0">
+          <h1 className="font-mono text-base font-semibold text-slate-800 dark:text-slate-200 flex-1 min-w-0">
             {pathParts.map((part, i) => (
               <span key={i} className={part.isDynamic ? 'text-amber-400' : ''}>
                 {part.text}
@@ -54,7 +54,7 @@ export function PathDetailPage({ group }: PathDetailPageProps) {
             )}
           </div>
         </div>
-        <div className="mt-1 text-xs text-slate-500 font-mono">{data.path_hash}</div>
+        <div className="mt-1 text-xs text-slate-400 dark:text-slate-500 font-mono">{data.path_hash}</div>
       </div>
 
       {/* Multi-impl banner */}
@@ -63,7 +63,7 @@ export function PathDetailPage({ group }: PathDetailPageProps) {
       {/* Tabs */}
       <Tabs.Root defaultValue="handlers" className="flex flex-col flex-1 overflow-hidden">
         <Tabs.List
-          className="flex border-b border-slate-800 px-6 bg-slate-900/60"
+          className="flex border-b border-slate-200 dark:border-slate-800 px-6 bg-slate-100/60 dark:bg-slate-900/60"
           aria-label="Path detail sections"
         >
           <TabTrigger value="handlers">
@@ -110,9 +110,9 @@ export function PathDetailPage({ group }: PathDetailPageProps) {
             ) : (
               <ul className="space-y-2">
                 {data.inbound_fetches.map((e) => (
-                  <li key={e.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800">
+                  <li key={e.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                     <KindBadge kind={e.kind} />
-                    <span className="font-mono text-sm text-slate-300 flex-1 truncate">{e.label}</span>
+                    <span className="font-mono text-sm text-slate-700 dark:text-slate-300 flex-1 truncate">{e.label}</span>
                     <RepoChip repo={e.repo} />
                     <a
                       href={`#entity-${e.id}`}
@@ -138,9 +138,9 @@ export function PathDetailPage({ group }: PathDetailPageProps) {
             ) : (
               <ul className="space-y-2">
                 {data.outbound_queries.map((e) => (
-                  <li key={e.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800">
+                  <li key={e.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                     <Database className="w-4 h-4 text-amber-400" aria-hidden />
-                    <span className="font-mono text-sm text-slate-300 flex-1 truncate">{e.label}</span>
+                    <span className="font-mono text-sm text-slate-700 dark:text-slate-300 flex-1 truncate">{e.label}</span>
                     <RepoChip repo={e.repo} />
                   </li>
                 ))}
@@ -159,8 +159,8 @@ function TabTrigger({ value, children }: { value: string; children: React.ReactN
       value={value}
       className={[
         'px-4 py-2.5 text-sm border-b-2 border-transparent transition-colors',
-        'text-slate-500 hover:text-slate-300',
-        'data-[state=active]:border-sky-500 data-[state=active]:text-slate-200',
+        'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
+        'data-[state=active]:border-sky-500 data-[state=active]:text-slate-800 dark:data-[state=active]:text-slate-200',
         'focus:outline-none focus-visible:ring-1 focus-visible:ring-sky-500',
       ].join(' ')}
     >
@@ -171,16 +171,16 @@ function TabTrigger({ value, children }: { value: string; children: React.ReactN
 
 function HandlerCard({ handler }: { handler: HandlerDetail }) {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900 overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800">
+    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
         <VerbChip verb={handler.verb} />
         <KindBadge kind={handler.entity.kind} />
-        <span className="font-mono text-sm text-slate-300 flex-1 truncate">
+        <span className="font-mono text-sm text-slate-700 dark:text-slate-300 flex-1 truncate">
           {handler.entity.label}
         </span>
         <RepoChip repo={handler.entity.repo} />
       </div>
-      <div className="px-4 py-2 text-xs text-slate-500 font-mono">
+      <div className="px-4 py-2 text-xs text-slate-400 dark:text-slate-500 font-mono">
         {handler.source_file}:{handler.start_line}
       </div>
     </div>
@@ -189,7 +189,7 @@ function HandlerCard({ handler }: { handler: HandlerDetail }) {
 
 function ResponseShapeCard({ shape }: { shape: ResponseShape }) {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 p-4">
       <div className="flex items-center gap-2 mb-3">
         <VerbChip verb={shape.verb} />
         <div className="flex gap-1">
@@ -218,14 +218,14 @@ function ResponseShapeCard({ shape }: { shape: ResponseShape }) {
           {shape.keys.map((key) => (
             <code
               key={key}
-              className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs font-mono border border-slate-700"
+              className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-mono border border-slate-300 dark:border-slate-700"
             >
               {key}
             </code>
           ))}
         </div>
       ) : (
-        <p className="text-xs text-slate-500 italic">
+        <p className="text-xs text-slate-400 dark:text-slate-500 italic">
           {shape.dynamic ? 'Response shape determined at runtime.' : 'Empty response body.'}
         </p>
       )}

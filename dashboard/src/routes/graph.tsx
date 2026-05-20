@@ -185,7 +185,7 @@ export function GraphRoute() {
 
       {/* Edge kind filters */}
       {allEdgeKinds.length > 0 && (
-        <div className="px-3 py-1.5 border-b border-slate-800 bg-slate-950/80 overflow-x-auto">
+        <div className="px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 overflow-x-auto">
           <EdgeKindFilters
             kinds={allEdgeKinds}
             activeKinds={activeKinds}
@@ -199,10 +199,10 @@ export function GraphRoute() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: community legend */}
         <aside
-          className="hidden lg:flex flex-col w-48 min-w-[160px] border-r border-slate-800 bg-slate-950/80 p-2"
+          className="hidden lg:flex flex-col w-48 min-w-[160px] border-r border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 p-2"
           aria-label="Community legend sidebar"
         >
-          <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold px-2 pb-1">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold px-2 pb-1">
             Communities
           </p>
           <CommunityLegend
@@ -277,7 +277,7 @@ export function GraphRoute() {
                   'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
                   highContrast
                     ? 'bg-slate-200 text-slate-900 border-slate-300'
-                    : 'bg-slate-800/80 text-slate-400 border-slate-700',
+                    : 'bg-slate-200/80 dark:bg-slate-800/80 text-slate-400 dark:text-slate-400 border-slate-300 dark:border-slate-700',
                 ].join(' ')}
                 aria-pressed={highContrast}
                 aria-label="Toggle high-contrast mode"

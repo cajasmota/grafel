@@ -80,16 +80,16 @@ export function PatternCallout({ patternId }: PatternCalloutProps) {
             <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">
               Pattern
             </span>
-            <span className="text-sm font-semibold text-slate-200">{pattern.title}</span>
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{pattern.title}</span>
           </div>
-          <p className="text-sm text-slate-400 leading-relaxed">{pattern.description}</p>
+          <p className="text-sm text-slate-400 dark:text-slate-400 leading-relaxed">{pattern.description}</p>
           {pattern.exemplars.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-1">
-              <span className="text-xs text-slate-500">Exemplars:</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">Exemplars:</span>
               {pattern.exemplars.map((name) => (
                 <code
                   key={name}
-                  className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-xs border border-slate-700"
+                  className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-xs border border-slate-300 dark:border-slate-700"
                 >
                   {name}
                 </code>

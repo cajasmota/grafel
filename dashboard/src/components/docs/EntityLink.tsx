@@ -22,7 +22,7 @@ export function EntityLink({ symbol, entityId, prefetchedCard }: EntityLinkProps
   if (!resolvedId && !prefetchedCard) {
     // No entity match — just render styled code
     return (
-      <code className="px-1 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[0.875em] border border-slate-700">
+      <code className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[0.875em] border border-slate-300 dark:border-slate-700">
         {symbol}
       </code>
     )

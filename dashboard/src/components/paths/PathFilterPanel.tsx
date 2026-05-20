@@ -24,11 +24,11 @@ export function PathFilterPanel({ filters, setFilter, clearFilters, paths = [] }
   }
 
   return (
-    <div className="flex flex-col gap-1.5 px-4 py-2 border-b border-slate-800 text-xs">
+    <div className="flex flex-col gap-1.5 px-4 py-2 border-b border-slate-200 dark:border-slate-800 text-xs">
       {/* Row 1 — Repos */}
       {uniqueRepos.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-slate-500 shrink-0">Repos:</span>
+          <span className="text-slate-400 dark:text-slate-500 shrink-0">Repos:</span>
           {uniqueRepos.map((repo) => (
             <FilterChip
               key={repo}
@@ -43,7 +43,7 @@ export function PathFilterPanel({ filters, setFilter, clearFilters, paths = [] }
       {/* Row 2 — Frameworks */}
       {uniqueFrameworks.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-slate-500 shrink-0">Frameworks:</span>
+          <span className="text-slate-400 dark:text-slate-500 shrink-0">Frameworks:</span>
           {uniqueFrameworks.map((fw) => (
             <FilterChip
               key={fw}
@@ -70,7 +70,7 @@ export function PathFilterPanel({ filters, setFilter, clearFilters, paths = [] }
         {hasActiveFilters && (
           <button
             type="button"
-            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
             onClick={clearFilters}
             aria-label="Clear all filters"
           >
@@ -98,7 +98,7 @@ function FilterChip({ label, active, onClick }: FilterChipProps) {
         'px-2 py-0.5 rounded border transition-colors font-mono',
         active
           ? 'bg-sky-900/50 border-sky-500 text-sky-300'
-          : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-300',
+          : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-400 dark:text-slate-400 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
       ].join(' ')}
       onClick={onClick}
     >

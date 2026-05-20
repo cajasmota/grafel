@@ -36,10 +36,10 @@ export function PathRow({ path, group, isSelected = false, onSelect }: PathRowPr
       tabIndex={0}
       aria-selected={isSelected}
       className={[
-        'group flex items-center gap-3 px-4 py-2.5 border-b border-slate-800',
-        'cursor-pointer hover:bg-slate-800/60 focus:outline-none focus:bg-slate-800/80',
+        'group flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 dark:border-slate-800',
+        'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 focus:outline-none focus:bg-slate-800/80',
         'transition-colors duration-75',
-        isSelected ? 'bg-slate-800/80 border-l-2 border-l-sky-500' : '',
+        isSelected ? 'bg-slate-200/80 dark:bg-slate-800/80 border-l-2 border-l-sky-500' : '',
       ].filter(Boolean).join(' ')}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
@@ -49,7 +49,7 @@ export function PathRow({ path, group, isSelected = false, onSelect }: PathRowPr
         {parts.map((part, i) => (
           <span
             key={i}
-            className={part.isDynamic ? 'text-amber-400' : 'text-slate-300'}
+            className={part.isDynamic ? 'text-amber-400' : 'text-slate-700 dark:text-slate-300'}
           >
             {part.text}
           </span>
@@ -84,7 +84,7 @@ export function PathRow({ path, group, isSelected = false, onSelect }: PathRowPr
             <RepoChip key={r} repo={r} />
           ))}
           {(path.repos ?? []).length > 2 && (
-            <span className="text-xs text-slate-500">+{(path.repos ?? []).length - 2}</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">+{(path.repos ?? []).length - 2}</span>
           )}
         </span>
       )}

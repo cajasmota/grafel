@@ -38,25 +38,25 @@ export function EntityHovercard({ entityId, prefetchedCard, children }: EntityHo
             side="top"
             align="start"
             sideOffset={6}
-            className="z-50 rounded-lg bg-slate-900 border border-slate-700 shadow-xl p-3 max-w-xs text-sm"
+            className="z-50 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 shadow-xl p-3 max-w-xs text-sm"
             onEscapeKeyDown={() => setOpen(false)}
           >
             {!card ? (
-              <div className="text-slate-500 text-xs">Loading…</div>
+              <div className="text-slate-400 dark:text-slate-500 text-xs">Loading…</div>
             ) : (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 justify-between">
                   <span className="font-mono font-medium text-sky-300 text-xs">{card.label}</span>
                   <KindBadge kind={card.kind as EntityKind} />
                 </div>
-                <div className="text-xs text-slate-500 truncate">
+                <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
                   {card.source_file}:{card.start_line}
                 </div>
                 {card.outbound_edges.length > 0 && (
                   <ul className="space-y-1 text-xs">
                     {card.outbound_edges.slice(0, 3).map((e, i) => (
-                      <li key={i} className="flex items-center gap-1.5 text-slate-400">
-                        <span className="px-1 py-0.5 rounded bg-slate-800 text-slate-500 font-mono text-[10px]">
+                      <li key={i} className="flex items-center gap-1.5 text-slate-400 dark:text-slate-400">
+                        <span className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 font-mono text-[10px]">
                           {e.kind}
                         </span>
                         <span className="truncate">{e.target_label}</span>

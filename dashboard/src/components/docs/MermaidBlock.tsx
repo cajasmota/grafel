@@ -94,7 +94,7 @@ export function MermaidBlock({ code, theme: themeProp }: MermaidBlockProps) {
   if (!svg) {
     return (
       <div
-        className="animate-pulse rounded bg-slate-800 h-40"
+        className="animate-pulse rounded bg-slate-200 dark:bg-slate-800 h-40"
         role="status"
         aria-label="Loading diagram"
       />

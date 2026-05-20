@@ -37,17 +37,17 @@ export function CodeBlock({ code, language = 'text', showLineNumbers = false, fi
 
   return (
     <figure
-      className="my-4 rounded-lg overflow-hidden border border-slate-800 bg-slate-950"
+      className="my-4 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950"
       aria-label={`Code block: ${language}`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-4 py-2 bg-slate-900 border-b border-slate-800">
+      <div className="flex items-center justify-between gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-2 min-w-0">
           {filename && (
-            <span className="text-xs font-mono text-slate-400 truncate">{filename}</span>
+            <span className="text-xs font-mono text-slate-400 dark:text-slate-400 truncate">{filename}</span>
           )}
           {!filename && language && language !== 'text' && (
-            <span className="text-xs font-mono text-slate-500">{language}</span>
+            <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{language}</span>
           )}
         </div>
         <button
@@ -57,7 +57,7 @@ export function CodeBlock({ code, language = 'text', showLineNumbers = false, fi
             'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors',
             copied
               ? 'text-emerald-400 bg-emerald-950/50'
-              : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800',
+              : 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800',
           )}
           onClick={handleCopy}
         >
@@ -97,7 +97,7 @@ export function CodeBlock({ code, language = 'text', showLineNumbers = false, fi
                 >
                   {showLineNumbers && (
                     <span
-                      className="table-cell pr-4 text-right select-none text-slate-600 text-xs"
+                      className="table-cell pr-4 text-right select-none text-slate-500 dark:text-slate-600 text-xs"
                       aria-hidden
                     >
                       {i + 1}

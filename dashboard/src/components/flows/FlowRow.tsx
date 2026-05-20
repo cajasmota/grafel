@@ -47,17 +47,17 @@ export function FlowRow({ process, isSelected = false, onSelect }: FlowRowProps)
       tabIndex={0}
       aria-selected={isSelected}
       className={[
-        'group flex items-start gap-3 px-4 py-3 border-b border-slate-800',
-        'cursor-pointer hover:bg-slate-800/60 focus:outline-none focus:bg-slate-800/80',
+        'group flex items-start gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800',
+        'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 focus:outline-none focus:bg-slate-800/80',
         'transition-colors duration-75',
-        isSelected ? 'bg-slate-800/80 border-l-2 border-l-sky-500' : '',
+        isSelected ? 'bg-slate-200/80 dark:bg-slate-800/80 border-l-2 border-l-sky-500' : '',
       ].filter(Boolean).join(' ')}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
       {/* Kind icon */}
       <span
-        className="flex-shrink-0 mt-0.5 text-slate-500 group-hover:text-slate-400"
+        className="flex-shrink-0 mt-0.5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:hover:text-slate-400"
         title={kindLabel}
         aria-label={kindLabel}
       >
@@ -68,14 +68,14 @@ export function FlowRow({ process, isSelected = false, onSelect }: FlowRowProps)
       <div className="flex-1 min-w-0">
         {/* Entry name + repo */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-mono text-sm text-slate-200 truncate max-w-xs" title={process.entry_name}>
+          <span className="font-mono text-sm text-slate-800 dark:text-slate-200 truncate max-w-xs" title={process.entry_name}>
             {process.entry_name}
           </span>
           <RepoChip repo={process.repo} />
         </div>
 
         {/* Chain summary */}
-        <p className="mt-1 text-xs text-slate-500 font-mono truncate" title={summary}>
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500 font-mono truncate" title={summary}>
           {summary}
         </p>
       </div>
@@ -87,7 +87,7 @@ export function FlowRow({ process, isSelected = false, onSelect }: FlowRowProps)
         )}
         {/* Step count badge */}
         <span
-          className="px-1.5 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-400 border border-slate-700"
+          className="px-1.5 py-0.5 rounded text-xs font-mono bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-400 border border-slate-300 dark:border-slate-700"
           title={`${process.step_count} steps`}
           aria-label={`${process.step_count} steps`}
         >

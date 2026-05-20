@@ -14,29 +14,29 @@ interface SourceSnippetProps {
 
 export function SourceSnippet({ sourceFile, startLine, endLine, language, code }: SourceSnippetProps) {
   return (
-    <div className="rounded-lg overflow-hidden border border-slate-800 text-xs">
+    <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 text-xs">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 border-b border-slate-800">
-        <span className="font-mono text-slate-400">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+        <span className="font-mono text-slate-400 dark:text-slate-400">
           {sourceFile}
-          <span className="text-slate-600">:{startLine}</span>
+          <span className="text-slate-500 dark:text-slate-600">:{startLine}</span>
           {endLine && endLine !== startLine && (
-            <span className="text-slate-600">–{endLine}</span>
+            <span className="text-slate-500 dark:text-slate-600">–{endLine}</span>
           )}
         </span>
         {language && (
-          <span className="text-slate-600 uppercase tracking-wider">{language}</span>
+          <span className="text-slate-500 dark:text-slate-600 uppercase tracking-wider">{language}</span>
         )}
       </div>
 
       {/* Code body */}
-      <div className="bg-slate-950 p-3 overflow-x-auto">
+      <div className="bg-white dark:bg-slate-950 p-3 overflow-x-auto">
         {code ? (
-          <pre className="font-mono text-slate-300 whitespace-pre leading-relaxed">
+          <pre className="font-mono text-slate-700 dark:text-slate-300 whitespace-pre leading-relaxed">
             <code>{code}</code>
           </pre>
         ) : (
-          <p className="text-slate-600 italic">
+          <p className="text-slate-500 dark:text-slate-600 italic">
             Source loading requires live Go server connection.
           </p>
         )}

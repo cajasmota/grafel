@@ -45,7 +45,7 @@ interface GraphLoadingStateProps {
  */
 export function GraphLoadingState({ label = 'Loading graph…' }: GraphLoadingStateProps) {
   return (
-    <div className="relative w-full h-full flex items-center justify-center bg-slate-950">
+    <div className="relative w-full h-full flex items-center justify-center bg-white dark:bg-slate-950">
       {/* Animated gradient circles mimicking a force graph */}
       <div className="absolute inset-0 overflow-hidden" aria-hidden>
         {Array.from({ length: 12 }, (_, i) => (
@@ -64,7 +64,7 @@ export function GraphLoadingState({ label = 'Loading graph…' }: GraphLoadingSt
         ))}
       </div>
       <div role="status" aria-live="polite" className="relative z-10 text-center">
-        <p className="text-sm text-slate-400 animate-pulse">{label}</p>
+        <p className="text-sm text-slate-400 dark:text-slate-400 animate-pulse">{label}</p>
         <span className="sr-only">{label}</span>
       </div>
     </div>
@@ -87,7 +87,7 @@ export function GraphErrorState({ message, onRetry }: GraphErrorStateProps) {
           <button
             type="button"
             onClick={onRetry}
-            className="px-3 py-1.5 rounded text-sm bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            className="px-3 py-1.5 rounded text-sm bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           >
             Retry
           </button>

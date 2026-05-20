@@ -11,10 +11,11 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'dark'
+  if (typeof window === 'undefined') return 'light'
   const stored = localStorage.getItem('theme')
   if (stored === 'dark' || stored === 'light') return stored
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  // Default is light — no stored preference means first-time visitor gets light
+  return 'light'
 }
 
 function applyTheme(theme: Theme) {

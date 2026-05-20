@@ -1,11 +1,23 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/archigraph.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Archigraph — Code Knowledge Graph Dashboard" />
     <title>Archigraph</title>
+    <!-- FOUC prevention: apply theme before first paint, default = light -->
+    <script>
+      (function() {
+        var stored = localStorage.getItem('theme');
+        var theme = (stored === 'dark' || stored === 'light') ? stored : 'light';
+        document.documentElement.classList.remove('dark', 'light');
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        }
+        // No class needed for light — html:not(.dark) handles it
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

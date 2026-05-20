@@ -53,7 +53,7 @@ export function SwimLanePanel({
             <div
               key={lane.repo}
               className={[
-                'flex flex-col min-w-[240px] border-r border-slate-800',
+                'flex flex-col min-w-[240px] border-r border-slate-200 dark:border-slate-800',
                 isLastLane ? 'border-r-0' : '',
               ].join(' ')}
             >
@@ -61,12 +61,12 @@ export function SwimLanePanel({
               <div
                 className={[
                   'flex items-center gap-2 px-3 py-2',
-                  'border-b border-slate-800 bg-slate-900/60',
+                  'border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60',
                 ].join(' ')}
               >
                 <span className={`w-2 h-2 rounded-full ${colors.dot}`} aria-hidden />
                 <RepoChip repo={lane.repo} />
-                <span className="ml-auto text-[10px] text-slate-600 font-mono">
+                <span className="ml-auto text-[10px] text-slate-500 dark:text-slate-600 font-mono">
                   {lane.steps.length} step{lane.steps.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -96,7 +96,7 @@ export function SwimLanePanel({
 
       {/* Cross-lane phantom edge indicator */}
       {allSteps.some((s) => s.edge_kind === 'FETCHES') && (
-        <div className="px-3 py-2 border-t border-slate-800 bg-slate-900/40">
+        <div className="px-3 py-2 border-t border-slate-200 dark:border-slate-800 bg-slate-100/40 dark:bg-slate-900/40">
           <span className="text-[10px] text-violet-400 flex items-center gap-1.5">
             <span className="inline-block w-8 border-t border-dashed border-violet-500" aria-hidden />
             Phantom edge (cross-repo boundary)

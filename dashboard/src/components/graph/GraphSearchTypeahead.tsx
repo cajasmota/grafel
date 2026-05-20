@@ -40,7 +40,7 @@ export function GraphSearchTypeahead({
     <div
       className={[
         'absolute top-full left-0 right-0 z-50 mt-1',
-        'rounded-lg border border-slate-700 bg-slate-900 shadow-xl',
+        'rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 shadow-xl',
         'max-h-72 overflow-y-auto',
       ].join(' ')}
       role="listbox"
@@ -48,7 +48,7 @@ export function GraphSearchTypeahead({
       aria-label="Search results"
     >
       {isSearching && (
-        <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-500">
+        <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-400 dark:text-slate-500">
           <Loader2 className="w-3 h-3 animate-spin" />
           Searching…
         </div>
@@ -66,12 +66,12 @@ export function GraphSearchTypeahead({
               }}
               className={[
                 'w-full flex items-center gap-2 px-3 py-2 text-left',
-                'hover:bg-slate-800 transition-colors',
-                'focus-visible:outline-none focus-visible:bg-slate-800',
+                'hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors',
+                'focus-visible:outline-none focus-visible:bg-slate-200 dark:focus-visible:bg-slate-800',
               ].join(' ')}
             >
               <NodeChip kind={node.kind} label={node.label} repo={node.repo} />
-              <span className="ml-auto text-[10px] text-slate-600 truncate max-w-[100px]">
+              <span className="ml-auto text-[10px] text-slate-500 dark:text-slate-600 truncate max-w-[100px]">
                 {node.repo}
               </span>
             </button>

@@ -149,9 +149,9 @@ export function PathsRoute() {
       {/* Main content — list + detail (full width, no prefix-tree sidebar) */}
       <div className="flex flex-1 overflow-hidden">
         {/* Path list panel */}
-        <div className="flex flex-col w-[520px] flex-shrink-0 border-r border-slate-800 overflow-hidden">
+        <div className="flex flex-col w-[520px] flex-shrink-0 border-r border-slate-200 dark:border-slate-800 overflow-hidden">
           {/* Search + header */}
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-800 bg-slate-900/80">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/80">
             <div ref={searchRef} className="flex-1">
               <PathSearchInput
                 value={filters.q ?? ''}
@@ -159,7 +159,7 @@ export function PathsRoute() {
               />
             </div>
             {totalLabel && (
-              <span className="text-xs text-slate-500 flex-shrink-0 tabular-nums">
+              <span className="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0 tabular-nums">
                 {isFetching && !isLoading ? '↻ ' : ''}{totalLabel}
               </span>
             )}
@@ -167,12 +167,12 @@ export function PathsRoute() {
 
           {/* Grouped-view controls — hidden in flat mode */}
           {!isFlat && !isLoading && paths.length > 0 && (
-            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-800 bg-slate-900/60">
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60">
               <button
                 type="button"
                 title="Expand all groups"
                 onClick={expandAll}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+                className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
               >
                 <ChevronDown className="w-3.5 h-3.5" aria-hidden />
                 Expand all
@@ -181,7 +181,7 @@ export function PathsRoute() {
                 type="button"
                 title="Collapse all groups"
                 onClick={collapseAll}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+                className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
               >
                 <ChevronUp className="w-3.5 h-3.5" aria-hidden />
                 Collapse all
@@ -191,7 +191,7 @@ export function PathsRoute() {
                 type="button"
                 title="Switch to flat list"
                 onClick={toggleFlat}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+                className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
                 aria-pressed={false}
               >
                 <List className="w-3.5 h-3.5" aria-hidden />
@@ -202,13 +202,13 @@ export function PathsRoute() {
 
           {/* Flat-mode: show toggle to switch back to grouped */}
           {isFlat && !isLoading && paths.length > 0 && (
-            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-800 bg-slate-900/60">
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60">
               <span className="flex-1" />
               <button
                 type="button"
                 title="Switch to grouped view"
                 onClick={toggleFlat}
-                className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+                className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
                 aria-pressed={true}
               >
                 <List className="w-3.5 h-3.5" aria-hidden />
@@ -304,7 +304,7 @@ export function PathsRoute() {
         </div>
 
         {/* Detail panel — rendered by nested route */}
-        <div className="flex-1 overflow-hidden bg-slate-950">
+        <div className="flex-1 overflow-hidden bg-white dark:bg-slate-950">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

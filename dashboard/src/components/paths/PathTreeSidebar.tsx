@@ -31,7 +31,7 @@ export function PathTreeSidebar({
             'transition-colors',
             !activePrefix
               ? 'bg-sky-900/40 text-sky-300'
-              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-300',
+              : 'text-slate-400 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300',
           ].join(' ')}
           onClick={() => onPrefixSelect(undefined)}
           aria-current={!activePrefix ? 'page' : undefined}
@@ -89,7 +89,7 @@ function TreeNode({ node, depth, activePrefix, onPrefixSelect }: TreeNodeProps) 
           'transition-colors group',
           isActive
             ? 'bg-sky-900/40 text-sky-300'
-            : 'text-slate-400 hover:bg-slate-800 hover:text-slate-300',
+            : 'text-slate-400 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300',
         ].join(' ')}
         style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
         onClick={() => {
@@ -109,7 +109,7 @@ function TreeNode({ node, depth, activePrefix, onPrefixSelect }: TreeNodeProps) 
           <span className="w-3 h-3 flex-shrink-0" aria-hidden />
         )}
         <span className="font-mono truncate flex-1">{node.label}/</span>
-        <span className="text-slate-600 tabular-nums ml-1">{node.count}</span>
+        <span className="text-slate-500 dark:text-slate-600 tabular-nums ml-1">{node.count}</span>
       </button>
 
       {hasChildren && expanded && (

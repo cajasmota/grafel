@@ -76,7 +76,7 @@ export function MarkdownRenderer({ markdown, hovercards = {}, onHeadingsFound }:
 
       if (lang === 'mermaid') {
         return (
-          <Suspense fallback={<div className="h-40 animate-pulse rounded bg-slate-800" />}>
+          <Suspense fallback={<div className="h-40 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />}>
             <MermaidBlock code={code} />
           </Suspense>
         )
@@ -100,7 +100,7 @@ export function MarkdownRenderer({ markdown, hovercards = {}, onHeadingsFound }:
       }
 
       return (
-        <code className="px-1 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[0.875em] border border-slate-700">
+        <code className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[0.875em] border border-slate-300 dark:border-slate-700">
           {children}
         </code>
       )
@@ -108,7 +108,7 @@ export function MarkdownRenderer({ markdown, hovercards = {}, onHeadingsFound }:
 
     // ── Headings ─────────────────────────────────────────────────────────────
     h1({ children }) {
-      return <h1 className="text-3xl font-bold text-slate-100 mt-0 mb-6 leading-tight">{children}</h1>
+      return <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-0 mb-6 leading-tight">{children}</h1>
     },
     h2({ children }) {
       const text = String(children)
@@ -117,7 +117,7 @@ export function MarkdownRenderer({ markdown, hovercards = {}, onHeadingsFound }:
       return (
         <h2
           id={id}
-          className="text-xl font-semibold text-slate-100 mt-10 mb-4 pb-2 border-b border-slate-800 scroll-mt-20"
+          className="text-xl font-semibold text-slate-900 dark:text-slate-100 mt-10 mb-4 pb-2 border-b border-slate-200 dark:border-slate-800 scroll-mt-20"
         >
           <a href={`#${id}`} className="no-underline hover:text-sky-400 transition-colors">{children}</a>
         </h2>
@@ -130,7 +130,7 @@ export function MarkdownRenderer({ markdown, hovercards = {}, onHeadingsFound }:
       return (
         <h3
           id={id}
-          className="text-lg font-semibold text-slate-200 mt-8 mb-3 scroll-mt-20"
+          className="text-lg font-semibold text-slate-800 dark:text-slate-200 mt-8 mb-3 scroll-mt-20"
         >
           <a href={`#${id}`} className="no-underline hover:text-sky-400 transition-colors">{children}</a>
         </h3>
@@ -149,22 +149,22 @@ export function MarkdownRenderer({ markdown, hovercards = {}, onHeadingsFound }:
         const directive = parseDirective(children[0])
         if (directive) return <>{directive}</>
       }
-      return <p className="text-slate-400 leading-7 my-4">{children}</p>
+      return <p className="text-slate-400 dark:text-slate-400 leading-7 my-4">{children}</p>
     },
 
     blockquote({ children }) {
       return (
-        <blockquote className="my-4 pl-4 border-l-4 border-sky-700 text-slate-400 italic">
+        <blockquote className="my-4 pl-4 border-l-4 border-sky-700 text-slate-400 dark:text-slate-400 italic">
           {children}
         </blockquote>
       )
     },
 
     ul({ children }) {
-      return <ul className="my-4 ml-6 space-y-1.5 list-disc text-slate-400">{children}</ul>
+      return <ul className="my-4 ml-6 space-y-1.5 list-disc text-slate-400 dark:text-slate-400">{children}</ul>
     },
     ol({ children }) {
-      return <ol className="my-4 ml-6 space-y-1.5 list-decimal text-slate-400">{children}</ol>
+      return <ol className="my-4 ml-6 space-y-1.5 list-decimal text-slate-400 dark:text-slate-400">{children}</ol>
     },
     li({ children }) {
       return <li className="leading-7 pl-1">{children}</li>
@@ -173,23 +173,23 @@ export function MarkdownRenderer({ markdown, hovercards = {}, onHeadingsFound }:
     // ── Tables ────────────────────────────────────────────────────────────────
     table({ children }) {
       return (
-        <div className="my-6 overflow-x-auto rounded-lg border border-slate-800">
+        <div className="my-6 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
           <table className="min-w-full text-sm">{children}</table>
         </div>
       )
     },
     thead({ children }) {
-      return <thead className="bg-slate-900">{children}</thead>
+      return <thead className="bg-slate-100 dark:bg-slate-900">{children}</thead>
     },
     th({ children }) {
       return (
-        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
           {children}
         </th>
       )
     },
     td({ children }) {
-      return <td className="px-4 py-2.5 text-slate-400 border-b border-slate-800/50">{children}</td>
+      return <td className="px-4 py-2.5 text-slate-400 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800/50">{children}</td>
     },
 
     // ── Links ─────────────────────────────────────────────────────────────────
@@ -208,18 +208,18 @@ export function MarkdownRenderer({ markdown, hovercards = {}, onHeadingsFound }:
 
     // ── Horizontal rule ───────────────────────────────────────────────────────
     hr() {
-      return <hr className="my-8 border-slate-800" />
+      return <hr className="my-8 border-slate-200 dark:border-slate-800" />
     },
 
     // ── Strong / em ───────────────────────────────────────────────────────────
     strong({ children }) {
-      return <strong className="font-semibold text-slate-200">{children}</strong>
+      return <strong className="font-semibold text-slate-800 dark:text-slate-200">{children}</strong>
     },
     em({ children }) {
-      return <em className="italic text-slate-300">{children}</em>
+      return <em className="italic text-slate-700 dark:text-slate-300">{children}</em>
     },
     del({ children }) {
-      return <del className="line-through text-slate-500">{children}</del>
+      return <del className="line-through text-slate-400 dark:text-slate-500">{children}</del>
     },
   }
 

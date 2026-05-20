@@ -65,7 +65,7 @@ function SidebarGroup({
         type="button"
         aria-expanded={isOpen}
         className={cn(
-          'flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors text-left',
+          'flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors text-left',
           depth > 0 && 'pl-4',
         )}
         style={{ paddingLeft: `${(depth + 1) * 12}px` }}
@@ -74,15 +74,15 @@ function SidebarGroup({
       >
         <ChevronRight
           className={cn(
-            'w-3.5 h-3.5 flex-shrink-0 transition-transform text-slate-600',
+            'w-3.5 h-3.5 flex-shrink-0 transition-transform text-slate-500 dark:text-slate-600',
             isOpen && 'rotate-90',
           )}
           aria-hidden
         />
         {isOpen ? (
-          <FolderOpen className="w-3.5 h-3.5 flex-shrink-0 text-slate-500" aria-hidden />
+          <FolderOpen className="w-3.5 h-3.5 flex-shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
         ) : (
-          <Folder className="w-3.5 h-3.5 flex-shrink-0 text-slate-500" aria-hidden />
+          <Folder className="w-3.5 h-3.5 flex-shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
         )}
         <span className="truncate">{node.label}</span>
       </button>
@@ -128,7 +128,7 @@ function SidebarFile({
           'flex items-center gap-2 rounded py-1.5 pr-2 text-sm transition-colors',
           isActive
             ? 'bg-sky-950/60 text-sky-300 font-medium border-l-2 border-sky-500'
-            : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/40',
+            : 'text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-800/40',
         )}
         style={{ paddingLeft: `${(depth + 1) * 12 + 6}px` }}
       >

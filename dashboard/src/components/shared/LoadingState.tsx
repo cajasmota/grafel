@@ -10,7 +10,7 @@ interface SkeletonProps {
 function Skeleton({ className = '' }: SkeletonProps) {
   return (
     <div
-      className={`animate-pulse rounded bg-slate-800 ${className}`}
+      className={`animate-pulse rounded bg-slate-200 dark:bg-slate-800 ${className}`}
       aria-hidden
     />
   )
@@ -19,7 +19,7 @@ function Skeleton({ className = '' }: SkeletonProps) {
 /** Skeleton for a single PathRow */
 export function PathRowSkeleton() {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800">
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
       <Skeleton className="h-4 w-48" />
       <Skeleton className="h-5 w-10 rounded" />
       <Skeleton className="h-5 w-10 rounded" />
@@ -60,7 +60,7 @@ export function PathTreeSkeleton() {
 /** Generic card skeleton */
 export function CardSkeleton() {
   return (
-    <div className="rounded-lg border border-slate-800 p-4 space-y-3" role="status" aria-label="Loading…">
+    <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-3" role="status" aria-label="Loading…">
       <Skeleton className="h-5 w-3/4" />
       <Skeleton className="h-4 w-full" />
       <Skeleton className="h-4 w-5/6" />
@@ -72,7 +72,7 @@ export function CardSkeleton() {
 /** Skeleton for a single FlowRow */
 export function FlowRowSkeleton() {
   return (
-    <div className="flex items-start gap-3 px-4 py-3 border-b border-slate-800">
+    <div className="flex items-start gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
       <Skeleton className="w-4 h-4 mt-0.5 rounded" />
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export function FlowListSkeleton({ count = 8 }: { count?: number }) {
 /** Skeleton chip row for topology protocol filters */
 export function ProtocolChipsSkeleton() {
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-800" role="status" aria-label="Loading filters…">
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800" role="status" aria-label="Loading filters…">
       {Array.from({ length: 9 }, (_, i) => (
         <Skeleton key={i} className={`h-6 rounded-full ${i === 0 ? 'w-8' : 'w-16'}`} />
       ))}
@@ -113,8 +113,8 @@ export function SwimLaneSkeleton() {
   return (
     <div className="flex gap-0 overflow-x-auto" role="status" aria-label="Loading flow visualization…">
       {Array.from({ length: 2 }, (_, i) => (
-        <div key={i} className="min-w-[240px] border-r border-slate-800 last:border-r-0">
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-800 bg-slate-900/60">
+        <div key={i} className="min-w-[240px] border-r border-slate-200 dark:border-slate-800 last:border-r-0">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60">
             <Skeleton className="w-2 h-2 rounded-full" />
             <Skeleton className="h-5 w-24 rounded" />
           </div>

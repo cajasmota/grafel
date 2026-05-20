@@ -126,7 +126,7 @@ export function TopologyMap({ layout, data, selectedId, onSelectTopic }: Topolog
 
   if (layout.nodes.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-slate-600 text-sm">
+      <div className="flex-1 flex items-center justify-center text-slate-500 dark:text-slate-600 text-sm">
         No topics match the current filters
       </div>
     )
@@ -137,7 +137,7 @@ export function TopologyMap({ layout, data, selectedId, onSelectTopic }: Topolog
       ref={svgRef}
       role="application"
       aria-label="Broker topology map — use arrow keys to navigate topics, Enter to select"
-      className="flex-1 w-full h-full bg-slate-950 cursor-grab active:cursor-grabbing select-none"
+      className="flex-1 w-full h-full bg-white dark:bg-slate-950 cursor-grab active:cursor-grabbing select-none"
       viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}

@@ -3,13 +3,8 @@ import { createRoot } from 'react-dom/client'
 import './styles/globals.css'
 import { App } from './App'
 
-// Apply saved theme before first paint to avoid flash
-const savedTheme = localStorage.getItem('theme')
-if (savedTheme === 'light') {
-  document.documentElement.classList.remove('dark')
-} else {
-  document.documentElement.classList.add('dark')
-}
+// NOTE: Theme class is applied before first paint by the inline script in index.html.
+// ThemeProvider (ThemeContext.tsx) takes over from here and keeps class in sync.
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')

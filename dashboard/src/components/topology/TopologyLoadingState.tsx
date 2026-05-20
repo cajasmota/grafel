@@ -1,5 +1,5 @@
 function Skeleton({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
-  return <div className={`animate-pulse rounded bg-slate-800 ${className}`} style={style} aria-hidden />
+  return <div className={`animate-pulse rounded bg-slate-200 dark:bg-slate-800 ${className}`} style={style} aria-hidden />
 }
 
 /**
@@ -9,14 +9,14 @@ export function TopologyLoadingState() {
   return (
     <div role="status" aria-label="Loading topology…" className="flex flex-col h-full">
       {/* Filter chips skeleton */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-800">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800">
         {Array.from({ length: 9 }, (_, i) => (
           <Skeleton key={i} className={`h-6 rounded-full ${i === 0 ? 'w-8' : 'w-16'}`} />
         ))}
       </div>
 
       {/* Canvas skeleton — scattered circles representing topic nodes */}
-      <div className="flex-1 relative bg-slate-950 overflow-hidden">
+      <div className="flex-1 relative bg-white dark:bg-slate-950 overflow-hidden">
         {/* Simulated scattered nodes */}
         {[
           { top: '20%', left: '25%', size: 48 },
@@ -43,8 +43,8 @@ export function TopologyLoadingState() {
       </div>
 
       {/* Channel track skeleton */}
-      <div className="border-t border-slate-800">
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-800/60">
+      <div className="border-t border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800/60">
           <Skeleton className="w-3.5 h-3.5 rounded" />
           <Skeleton className="h-3.5 w-32 rounded" />
         </div>

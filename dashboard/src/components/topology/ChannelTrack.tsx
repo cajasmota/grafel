@@ -27,13 +27,13 @@ export function ChannelTrack({ channels, graphqlSubscriptions, selectedId, onSel
   if (!hasChannels) return null
 
   return (
-    <div className="border-t border-slate-800 bg-slate-950/60">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-800/60">
-        <Wifi className="w-3.5 h-3.5 text-slate-500" aria-hidden />
-        <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+    <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-950/60">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800/60">
+        <Wifi className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" aria-hidden />
+        <span className="text-xs font-medium text-slate-400 dark:text-slate-400 uppercase tracking-wider">
           Real-time Channels
         </span>
-        <span className="ml-auto text-xs text-slate-600">
+        <span className="ml-auto text-xs text-slate-500 dark:text-slate-600">
           {channels.length + graphqlSubscriptions.length} channel{channels.length + graphqlSubscriptions.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -121,7 +121,7 @@ function ChannelCard({
         'focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1 focus:ring-offset-slate-950',
         isSelected
           ? `${spec.bg} ${spec.border} border`
-          : 'bg-slate-900 border-slate-800 hover:border-slate-600',
+          : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600',
       ].join(' ')}
     >
       {/* Header row */}
@@ -135,19 +135,19 @@ function ChannelCard({
       </div>
 
       {/* Label */}
-      <p className="font-mono text-xs text-slate-200 truncate mb-1" title={label}>
+      <p className="font-mono text-xs text-slate-800 dark:text-slate-200 truncate mb-1" title={label}>
         {label}
       </p>
 
       {/* Endpoint if present */}
       {endpoint && (
-        <p className="font-mono text-xs text-slate-500 truncate mb-2" title={endpoint}>
+        <p className="font-mono text-xs text-slate-400 dark:text-slate-500 truncate mb-2" title={endpoint}>
           {endpoint}
         </p>
       )}
 
       {/* Stats row */}
-      <div className="flex items-center gap-3 text-xs text-slate-500">
+      <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
         <span title={`${emitterCount} emitter${emitterCount !== 1 ? 's' : ''}`}>
           ↑ {emitterCount}
         </span>
@@ -203,7 +203,7 @@ function GraphQLSubCard({
         'focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1 focus:ring-offset-slate-950',
         isSelected
           ? `${spec.bg} ${spec.border} border`
-          : 'bg-slate-900 border-slate-800 hover:border-slate-600',
+          : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600',
       ].join(' ')}
     >
       {/* Header */}
@@ -216,17 +216,17 @@ function GraphQLSubCard({
         </span>
       </div>
 
-      <p className="font-mono text-xs text-slate-200 truncate mb-1" title={label}>
+      <p className="font-mono text-xs text-slate-800 dark:text-slate-200 truncate mb-1" title={label}>
         subscription {label}
       </p>
 
       {returnType && (
-        <p className="font-mono text-xs text-slate-500 truncate mb-2" title={returnType}>
+        <p className="font-mono text-xs text-slate-400 dark:text-slate-500 truncate mb-2" title={returnType}>
           → {returnType}
         </p>
       )}
 
-      <div className="flex items-center gap-3 text-xs text-slate-500">
+      <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
         <span title={`${publisherCount} publisher${publisherCount !== 1 ? 's' : ''}`}>
           ↑ {publisherCount}
         </span>

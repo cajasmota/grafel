@@ -35,15 +35,15 @@ export class ErrorBoundary extends React.Component<Props, State> {
           role="alert"
         >
           <AlertTriangle className="w-10 h-10 text-red-400" />
-          <h3 className="text-base font-semibold text-slate-200">Something went wrong</h3>
+          <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">Something went wrong</h3>
           {import.meta.env.DEV && this.state.error && (
-            <pre className="mt-2 max-w-lg overflow-auto rounded bg-slate-900 p-3 text-left text-xs text-red-300">
+            <pre className="mt-2 max-w-lg overflow-auto rounded bg-slate-100 dark:bg-slate-900 p-3 text-left text-xs text-red-300">
               {this.state.error.message}
             </pre>
           )}
           <button
             type="button"
-            className="mt-2 rounded px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            className="mt-2 rounded px-3 py-1.5 text-sm bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
             onClick={() => this.setState({ hasError: false, error: null })}
           >
             Try again

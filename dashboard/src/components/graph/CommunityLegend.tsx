@@ -42,7 +42,7 @@ export function CommunityLegend({
             role="listitem"
             className={[
               'flex items-center gap-2 px-2 py-1 rounded text-left',
-              'hover:bg-slate-800/60 transition-colors text-xs w-full',
+              'hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors text-xs w-full',
               'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
               dimmed ? 'opacity-40' : '',
             ].join(' ')}
@@ -56,8 +56,8 @@ export function CommunityLegend({
               style={{ background: color }}
               aria-hidden
             />
-            <span className="flex-1 truncate text-slate-300">{name}</span>
-            <span className="text-slate-600 tabular-nums">{c.size.toLocaleString()}</span>
+            <span className="flex-1 truncate text-slate-700 dark:text-slate-300">{name}</span>
+            <span className="text-slate-500 dark:text-slate-600 tabular-nums">{c.size.toLocaleString()}</span>
           </button>
         )
       })}

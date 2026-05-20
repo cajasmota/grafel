@@ -13,19 +13,19 @@ interface DocsBreadcrumbsProps {
  */
 export function DocsBreadcrumbs({ group, crumbs }: DocsBreadcrumbsProps) {
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm text-slate-500 mb-6">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm text-slate-400 dark:text-slate-500 mb-6">
       {crumbs.map((crumb, i) => (
         <span key={i} className="flex items-center gap-1 min-w-0">
-          {i > 0 && <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-slate-600" aria-hidden />}
+          {i > 0 && <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-slate-500 dark:text-slate-600" aria-hidden />}
           {crumb.path ? (
             <Link
               to={`/docs/${group}/${crumb.path}`}
-              className="hover:text-slate-300 transition-colors truncate"
+              className="hover:text-slate-700 dark:hover:text-slate-300 transition-colors truncate"
             >
               {crumb.label}
             </Link>
           ) : (
-            <span className="text-slate-300 truncate" aria-current="page">
+            <span className="text-slate-700 dark:text-slate-300 truncate" aria-current="page">
               {crumb.label}
             </span>
           )}

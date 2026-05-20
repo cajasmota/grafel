@@ -53,7 +53,7 @@ const router = createBrowserRouter([
           {
             index: true,
             element: (
-              <div className="h-full flex items-center justify-center text-slate-600">
+              <div className="h-full flex items-center justify-center text-slate-500 dark:text-slate-600">
                 <EmptyState
                   icon={Globe}
                   title="Select a path"

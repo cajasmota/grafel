@@ -12,9 +12,9 @@ const EDGE_KIND_COLORS: Partial<Record<RelationshipKind, string>> = {
   CALLS:          'bg-sky-900/50 text-sky-300 border-sky-800',
   IMPORTS:        'bg-indigo-900/50 text-indigo-300 border-indigo-800',
   DEPENDS_ON:     'bg-blue-900/50 text-blue-300 border-blue-800',
-  USES:           'bg-slate-800/60 text-slate-300 border-slate-700',
-  USES_HOOK:      'bg-slate-800/60 text-slate-300 border-slate-700',
-  CONTAINS:       'bg-slate-800/60 text-slate-400 border-slate-700',
+  USES:           'bg-slate-200/60 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700',
+  USES_HOOK:      'bg-slate-200/60 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700',
+  CONTAINS:       'bg-slate-200/60 dark:bg-slate-800/60 text-slate-400 dark:text-slate-400 border-slate-300 dark:border-slate-700',
   // Data
   QUERIES:        'bg-amber-900/50 text-amber-300 border-amber-800',
   FETCHES:        'bg-yellow-900/50 text-yellow-300 border-yellow-800',
@@ -35,13 +35,13 @@ const EDGE_KIND_COLORS: Partial<Record<RelationshipKind, string>> = {
   // OOP
   EXTENDS:        'bg-cyan-900/50 text-cyan-300 border-cyan-800',
   IMPLEMENTS:     'bg-teal-900/50 text-teal-300 border-teal-800',
-  RETURNS:        'bg-slate-800/60 text-slate-400 border-slate-700',
+  RETURNS:        'bg-slate-200/60 dark:bg-slate-800/60 text-slate-400 dark:text-slate-400 border-slate-300 dark:border-slate-700',
   // HTTP
   ROUTES_TO:      'bg-emerald-900/50 text-emerald-300 border-emerald-800',
   SERVES:         'bg-green-900/50 text-green-300 border-green-800',
 }
 
-const EDGE_DEFAULT = 'bg-slate-800/50 text-slate-400 border-slate-700'
+const EDGE_DEFAULT = 'bg-slate-200/50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-400 border-slate-300 dark:border-slate-700'
 
 export function EdgeBadge({ kind, crossRepo, className = '' }: EdgeBadgeProps) {
   const colorClass = EDGE_KIND_COLORS[kind] ?? EDGE_DEFAULT
