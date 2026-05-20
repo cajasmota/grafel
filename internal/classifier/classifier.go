@@ -519,6 +519,9 @@ var extensionLanguageMap = map[string]string{
 	".vh":  "verilog",
 	".sv":  "systemverilog",
 	".svh": "systemverilog",
+	// VHDL — hardware description language (EDA / silicon)
+	".vhd":  "vhdl",
+	".vhdl": "vhdl",
 	// OCaml — .ml is claimed for OCaml (SML is much less common)
 	".ml":  "ocaml",
 	".mli": "ocaml",

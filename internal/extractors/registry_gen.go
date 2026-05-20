@@ -47,6 +47,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/svelte"
 	_ "github.com/cajasmota/archigraph/internal/extractors/swift"
 	_ "github.com/cajasmota/archigraph/internal/extractors/verilog"
+	_ "github.com/cajasmota/archigraph/internal/extractors/vhdl"
 	_ "github.com/cajasmota/archigraph/internal/extractors/vue"
 	_ "github.com/cajasmota/archigraph/internal/extractors/yaml"
 	_ "github.com/cajasmota/archigraph/internal/extractors/zig"
