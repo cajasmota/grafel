@@ -344,6 +344,18 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	entities, relationships = applyGRPCEdges(
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
+	// Serverless function invocation edges (#925). Emits
+	// SCOPE.ServerlessFunction entities + CALLS / HANDLES edges for AWS Lambda
+	// (boto3, AWS SDK v2/v3, Go SDK v2, Java RequestHandler), Google Cloud
+	// Functions (functions-framework Python/Node), and Azure Functions (durable
+	// Python/Node/C#, [FunctionName] C# attribute). Cross-repo: both sides emit
+	// the same provider-prefixed entity ID so the import-channel linker joins
+	// them without new linker code. Append-only — cannot regress surrounding passes.
+	// Lays groundwork for #927 EventBridge (Lambda synthetics as anchor targets).
+	entities, relationships = applyServerlessEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// Django models-import suffix rewrite (PR #580 wave-10 Chain-fix A):
 	// The YAML rule `from \S+\.models import (\w+)` emits Model:<name>
 	// for every captured identifier. In Django/DRF projects, a sibling

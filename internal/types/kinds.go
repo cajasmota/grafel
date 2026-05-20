@@ -65,6 +65,14 @@ const (
 	// emit SCOPE.Constraint entities bound to the parent Model via CONTAINS.
 	// Subtypes: "unique" (UniqueConstraint) and "check" (CheckConstraint).
 	EntityKindConstraint EntityKind = "SCOPE.Constraint"
+
+	// #925: Serverless function invocation edges (AWS Lambda, GCP Cloud Functions,
+	// Azure Functions). ServerlessFunction represents a deployed serverless
+	// function. Cross-repo identity = provider-prefixed name
+	// (`aws-lambda:<name>`, `gcp-cloudfunction:<name>`, `azure-function:<name>`).
+	// Both the invoker side (CALLS) and the handler side (HANDLES) emit the
+	// same entity ID so the import-channel linker joins them cross-repo.
+	EntityKindServerlessFunction EntityKind = "SCOPE.ServerlessFunction"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -109,6 +117,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindGrpcMethod,
 		// #749:
 		EntityKindConstraint,
+		// #925:
+		EntityKindServerlessFunction,
 	}
 }
 
@@ -232,6 +242,11 @@ const (
 	// `grpc:ServiceName/MethodName` so the existing import-channel linker joins them.
 	RelationshipKindGRPCImplements RelationshipKind = "GRPC_IMPLEMENTS"
 	RelationshipKindGRPCHandles    RelationshipKind = "GRPC_HANDLES"
+
+	// #925: Serverless function invocation edges. HANDLES is the consumer-side
+	// counterpart of CALLS — a handler function HANDLES a ServerlessFunction.
+	// CALLS is already declared above (RelationshipKindCalls) and is reused here.
+	RelationshipKindHandles RelationshipKind = "HANDLES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -289,6 +304,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #725 gRPC:
 		RelationshipKindGRPCImplements,
 		RelationshipKindGRPCHandles,
+		// #925 serverless:
+		RelationshipKindHandles,
 	}
 }
 
