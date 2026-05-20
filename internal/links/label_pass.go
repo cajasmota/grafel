@@ -117,6 +117,9 @@ var builtinLabelStopList = map[string]struct{}{
 	"i": {}, "j": {}, "k": {}, "l": {}, "m": {}, "n": {}, "o": {}, "p": {},
 	"q": {}, "r": {}, "s": {}, "t": {}, "u": {}, "v": {}, "w": {}, "x": {},
 	"y": {}, "z": {},
+	// Common 2-3 char identifiers: universally used, pure coincidence across repos
+	"buf": {}, "ctx": {}, "err": {}, "fd": {}, "fs": {}, "req": {}, "res": {}, "xhr": {},
+	"ch": {}, "ok": {},
 }
 
 // genericFieldStopList covers universal field/var names that are
@@ -179,6 +182,8 @@ var genericFieldStopList = map[string]struct{}{
 	"caninteract": {}, "cansave": {}, "canedit": {}, "candelete": {},
 	"canview": {}, "canread": {}, "canwrite": {}, "canupdate": {},
 	"updateprogress": {}, "filteredgroups": {},
+	// Additional universal field names with no architectural signal
+	"socket": {}, "csv": {}, "inactive": {}, "pending": {}, "footer": {},
 }
 
 // isHardenedNoise centralises the #565 noise filters that run AFTER the
