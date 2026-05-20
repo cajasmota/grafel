@@ -1,0 +1,75 @@
+{
+  "fixture_name": "elixir-phoenix-mini",
+  "language": "elixir",
+  "description": "Small Phoenix/Ecto application exercising a controller, an Ecto schema with a changeset pipeline, a repository context wrapping Ecto.Repo operations, and a GenServer cache. Used by the extraction-quality benchmark to detect recall regressions in the elixir extractor + Elixir-gated dynamic-pattern resolver path.",
+  "expected_entities": [
+    { "name": "DemoWeb.UserController", "kind": "SCOPE.Component", "source_file": "lib/demo_web/controllers/user_controller.ex", "must_exist": true, "note": "Phoenix controller module." },
+    { "name": "index", "kind": "SCOPE.Operation", "source_file": "lib/demo_web/controllers/user_controller.ex", "must_exist": true },
+    { "name": "show", "kind": "SCOPE.Operation", "source_file": "lib/demo_web/controllers/user_controller.ex", "must_exist": true },
+    { "name": "create", "kind": "SCOPE.Operation", "source_file": "lib/demo_web/controllers/user_controller.ex", "must_exist": true },
+    { "name": "update", "kind": "SCOPE.Operation", "source_file": "lib/demo_web/controllers/user_controller.ex", "must_exist": true },
+    { "name": "delete", "kind": "SCOPE.Operation", "source_file": "lib/demo_web/controllers/user_controller.ex", "must_exist": true },
+
+    { "name": "Demo.Schemas.User", "kind": "SCOPE.Component", "source_file": "lib/demo/schemas/user.ex", "must_exist": true, "note": "Ecto schema module." },
+    { "name": "changeset", "kind": "SCOPE.Operation", "source_file": "lib/demo/schemas/user.ex", "must_exist": true, "note": "Ecto changeset builder." },
+
+    { "name": "Demo.UserRepo", "kind": "SCOPE.Component", "source_file": "lib/demo/user_repo.ex", "must_exist": true, "note": "Repository context wrapping Ecto.Repo." },
+    { "name": "list_users", "kind": "SCOPE.Operation", "source_file": "lib/demo/user_repo.ex", "must_exist": true },
+    { "name": "get_user!", "kind": "SCOPE.Operation", "source_file": "lib/demo/user_repo.ex", "must_exist": true },
+    { "name": "get_user", "kind": "SCOPE.Operation", "source_file": "lib/demo/user_repo.ex", "must_exist": true },
+    { "name": "create_user", "kind": "SCOPE.Operation", "source_file": "lib/demo/user_repo.ex", "must_exist": true },
+    { "name": "update_user", "kind": "SCOPE.Operation", "source_file": "lib/demo/user_repo.ex", "must_exist": true },
+    { "name": "delete_user", "kind": "SCOPE.Operation", "source_file": "lib/demo/user_repo.ex", "must_exist": true },
+
+    { "name": "Demo.CacheServer", "kind": "SCOPE.Component", "source_file": "lib/demo/cache_server.ex", "must_exist": true, "note": "GenServer cache module." },
+    { "name": "start_link", "kind": "SCOPE.Operation", "source_file": "lib/demo/cache_server.ex", "must_exist": true },
+    { "name": "init", "kind": "SCOPE.Operation", "source_file": "lib/demo/cache_server.ex", "must_exist": true },
+    { "name": "handle_call", "kind": "SCOPE.Operation", "source_file": "lib/demo/cache_server.ex", "must_exist": true },
+    { "name": "handle_cast", "kind": "SCOPE.Operation", "source_file": "lib/demo/cache_server.ex", "must_exist": true },
+    { "name": "handle_info", "kind": "SCOPE.Operation", "source_file": "lib/demo/cache_server.ex", "must_exist": true },
+    { "name": "terminate", "kind": "SCOPE.Operation", "source_file": "lib/demo/cache_server.ex", "must_exist": true }
+  ],
+  "expected_relationships": [
+    { "from_name": "DemoWeb.UserController", "from_kind": "SCOPE.Component", "from_file": "lib/demo_web/controllers/user_controller.ex",
+      "kind": "CONTAINS", "to_name": "index", "to_kind": "SCOPE.Operation", "to_file": "lib/demo_web/controllers/user_controller.ex",
+      "must_exist": true },
+    { "from_name": "DemoWeb.UserController", "from_kind": "SCOPE.Component", "from_file": "lib/demo_web/controllers/user_controller.ex",
+      "kind": "CONTAINS", "to_name": "create", "to_kind": "SCOPE.Operation", "to_file": "lib/demo_web/controllers/user_controller.ex",
+      "must_exist": true },
+    { "from_name": "DemoWeb.UserController", "from_kind": "SCOPE.Component", "from_file": "lib/demo_web/controllers/user_controller.ex",
+      "kind": "CONTAINS", "to_name": "delete", "to_kind": "SCOPE.Operation", "to_file": "lib/demo_web/controllers/user_controller.ex",
+      "must_exist": true },
+
+    { "from_name": "Demo.CacheServer", "from_kind": "SCOPE.Component", "from_file": "lib/demo/cache_server.ex",
+      "kind": "CONTAINS", "to_name": "handle_call", "to_kind": "SCOPE.Operation", "to_file": "lib/demo/cache_server.ex",
+      "must_exist": true },
+    { "from_name": "Demo.CacheServer", "from_kind": "SCOPE.Component", "from_file": "lib/demo/cache_server.ex",
+      "kind": "CONTAINS", "to_name": "handle_cast", "to_kind": "SCOPE.Operation", "to_file": "lib/demo/cache_server.ex",
+      "must_exist": true },
+    { "from_name": "Demo.CacheServer", "from_kind": "SCOPE.Component", "from_file": "lib/demo/cache_server.ex",
+      "kind": "CONTAINS", "to_name": "terminate", "to_kind": "SCOPE.Operation", "to_file": "lib/demo/cache_server.ex",
+      "must_exist": true },
+
+    { "from_name": "index", "from_kind": "SCOPE.Operation", "from_file": "lib/demo_web/controllers/user_controller.ex",
+      "kind": "CALLS", "to_name": "list_users", "to_kind": "SCOPE.Operation", "to_file": "lib/demo/user_repo.ex",
+      "must_exist": true,
+      "note": "Cross-module call: UserController.index → UserRepo.list_users." },
+
+    { "from_name": "list_users", "from_kind": "SCOPE.Operation", "from_file": "lib/demo/user_repo.ex",
+      "kind": "CALLS", "to_bare_name": "all", "must_exist": true,
+      "note": "Ecto.Repo.all — external, not in-tree; classified Dynamic by elixirDynamicPatterns." },
+
+    { "from_name": "changeset", "from_kind": "SCOPE.Operation", "from_file": "lib/demo/schemas/user.ex",
+      "kind": "CALLS", "to_bare_name": "cast", "must_exist": true,
+      "note": "Ecto.Changeset.cast — external macro-injected function; classified Dynamic." },
+
+    { "from_name": "changeset", "from_kind": "SCOPE.Operation", "from_file": "lib/demo/schemas/user.ex",
+      "kind": "CALLS", "to_bare_name": "validate_required", "must_exist": true,
+      "note": "Ecto.Changeset.validate_required — external macro-injected function; classified Dynamic." }
+  ],
+  "forbidden_relationships": [
+    { "from_name": "list_users", "from_kind": "SCOPE.Operation",
+      "kind": "CALLS", "to_bare_name": "Repo",
+      "note": "The receiver alias must NOT appear as a CALLS target — only the trailing method name." }
+  ]
+}
