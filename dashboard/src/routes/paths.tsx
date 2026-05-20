@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, Outlet, useNavigate } from 'react-router-dom'
+import { ChevronUp, ChevronDown, List } from 'lucide-react'
 import { PathTreeSidebar } from '@/components/paths/PathTreeSidebar'
 import { PathRow } from '@/components/paths/PathRow'
+import { PathsGroup } from '@/components/paths/PathsGroup'
 import { PathFilterPanel } from '@/components/paths/PathFilterPanel'
 import { PathSearchInput } from '@/components/paths/PathSearchInput'
 import { Pagination } from '@/components/paths/Pagination'
@@ -11,13 +13,31 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { usePathList } from '@/hooks/paths/usePathList'
 import { usePathTree } from '@/hooks/paths/usePathTree'
 import { usePathFilters } from '@/hooks/paths/usePathFilters'
+import { groupPaths } from '@/lib/groupPaths'
 import { Globe } from 'lucide-react'
+
+// ─── localStorage key for flat/grouped preference ────────────────────────────
+const LS_FLAT_KEY = 'paths-view-flat'
+
+function readFlatPref(): boolean {
+  try {
+    return localStorage.getItem(LS_FLAT_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 /**
  * Surface 4 — API & Contracts Explorer.
  *
  * Layout:
  *   [PathTreeSidebar] | [PathList + detail panel via Outlet]
+ *
+ * Grouped view (default):
+ *   - Endpoints grouped by controller/module/prefix
+ *   - All groups collapsed by default
+ *   - Filter input auto-expands matching groups
+ *   - Expand all / Collapse all / Flat list controls
  *
  * Keyboard shortcuts:
  *   /  → focus search input
@@ -33,7 +53,73 @@ export function PathsRoute() {
   const searchRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Keyboard shortcut: / to focus search
+  // ── View mode ─────────────────────────────────────────────────────────────
+  const [isFlat, setIsFlat] = useState<boolean>(readFlatPref)
+
+  const toggleFlat = useCallback(() => {
+    setIsFlat((prev) => {
+      const next = !prev
+      try { localStorage.setItem(LS_FLAT_KEY, String(next)) } catch { /* noop */ }
+      return next
+    })
+  }, [])
+
+  // ── Group expand/collapse state ───────────────────────────────────────────
+  // Map: groupName → expanded boolean. Default: all collapsed.
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+
+  const toggleGroup = useCallback((name: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [name]: !prev[name] }))
+  }, [])
+
+  const paths = data?.paths ?? []
+  const totalLabel = data ? `${data.total} paths` : ''
+
+  // ── Group computation ─────────────────────────────────────────────────────
+  const groups = useMemo(() => groupPaths(paths), [paths])
+
+  // When the filter (q) changes, auto-expand groups that have matches.
+  // When the filter is cleared, collapse all groups.
+  const filterQ = filters.q?.toLowerCase() ?? ''
+  useEffect(() => {
+    if (isFlat) return
+    if (!filterQ) {
+      // Filter cleared — collapse everything
+      setExpandedGroups({})
+      return
+    }
+    const updates: Record<string, boolean> = {}
+    for (const g of groups) {
+      if (g.paths.some((p) => p.path.toLowerCase().includes(filterQ))) {
+        updates[g.name] = true
+      }
+    }
+    setExpandedGroups(updates)
+  }, [filterQ, groups, isFlat])
+
+  // Reset expand state when groups change substantially (e.g. navigating to a
+  // different fixture group). Skip reset if a text filter is active, because the
+  // auto-expand effect above handles that case.
+  const prevGroupNamesRef = useRef<string>('')
+  useEffect(() => {
+    const key = groups.map((g) => g.name).join(',')
+    if (key !== prevGroupNamesRef.current) {
+      prevGroupNamesRef.current = key
+      if (!filterQ) {
+        setExpandedGroups({})
+      }
+    }
+  }, [groups, filterQ])
+
+  const expandAll = useCallback(() => {
+    const all: Record<string, boolean> = {}
+    for (const g of groups) all[g.name] = true
+    setExpandedGroups(all)
+  }, [groups])
+
+  const collapseAll = useCallback(() => setExpandedGroups({}), [])
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') {
@@ -46,35 +132,21 @@ export function PathsRoute() {
     return () => document.removeEventListener('keydown', handler)
   }, [])
 
-  // Arrow key navigation in the path list
   useEffect(() => {
     const list = listRef.current
     if (!list) return
-
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
       const rows = Array.from(list.querySelectorAll('[role="row"]')) as HTMLElement[]
       const focused = document.activeElement as HTMLElement
       const idx = rows.indexOf(focused)
-      if (idx === -1) {
-        rows[0]?.focus()
-        return
-      }
-      if (e.key === 'ArrowDown' && idx < rows.length - 1) {
-        e.preventDefault()
-        rows[idx + 1].focus()
-      }
-      if (e.key === 'ArrowUp' && idx > 0) {
-        e.preventDefault()
-        rows[idx - 1].focus()
-      }
+      if (idx === -1) { rows[0]?.focus(); return }
+      if (e.key === 'ArrowDown' && idx < rows.length - 1) { e.preventDefault(); rows[idx + 1].focus() }
+      if (e.key === 'ArrowUp' && idx > 0) { e.preventDefault(); rows[idx - 1].focus() }
     }
     list.addEventListener('keydown', handler)
     return () => list.removeEventListener('keydown', handler)
   }, [])
-
-  const paths = data?.paths ?? []
-  const totalLabel = data ? `${data.total} paths` : ''
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -115,6 +187,58 @@ export function PathsRoute() {
             )}
           </div>
 
+          {/* Grouped-view controls — hidden in flat mode */}
+          {!isFlat && !isLoading && paths.length > 0 && (
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-800 bg-slate-900/60">
+              <button
+                type="button"
+                title="Expand all groups"
+                onClick={expandAll}
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+              >
+                <ChevronDown className="w-3.5 h-3.5" aria-hidden />
+                Expand all
+              </button>
+              <button
+                type="button"
+                title="Collapse all groups"
+                onClick={collapseAll}
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+              >
+                <ChevronUp className="w-3.5 h-3.5" aria-hidden />
+                Collapse all
+              </button>
+              <span className="flex-1" />
+              <button
+                type="button"
+                title="Switch to flat list"
+                onClick={toggleFlat}
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+                aria-pressed={false}
+              >
+                <List className="w-3.5 h-3.5" aria-hidden />
+                Flat list
+              </button>
+            </div>
+          )}
+
+          {/* Flat-mode: show toggle to switch back to grouped */}
+          {isFlat && !isLoading && paths.length > 0 && (
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-800 bg-slate-900/60">
+              <span className="flex-1" />
+              <button
+                type="button"
+                title="Switch to grouped view"
+                onClick={toggleFlat}
+                className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+                aria-pressed={true}
+              >
+                <List className="w-3.5 h-3.5" aria-hidden />
+                Flat list
+              </button>
+            </div>
+          )}
+
           {/* Filters */}
           <ErrorBoundary>
             <PathFilterPanel
@@ -149,7 +273,8 @@ export function PathsRoute() {
                   </button>
                 }
               />
-            ) : (
+            ) : isFlat ? (
+              /* ── Flat list (legacy) ─────────────────────────────────────── */
               <div role="rowgroup">
                 {paths.map((path) => (
                   <PathRow
@@ -158,6 +283,27 @@ export function PathsRoute() {
                     group={group}
                     onSelect={() => navigate(`/paths/${group}/${path.path_hash}`)}
                   />
+                ))}
+              </div>
+            ) : (
+              /* ── Grouped list ────────────────────────────────────────────── */
+              <div>
+                {groups.map((g) => (
+                  <PathsGroup
+                    key={g.name}
+                    group={g}
+                    isExpanded={!!expandedGroups[g.name]}
+                    onToggle={() => toggleGroup(g.name)}
+                  >
+                    {g.paths.map((path) => (
+                      <PathRow
+                        key={path.path_hash}
+                        path={path}
+                        group={group}
+                        onSelect={() => navigate(`/paths/${group}/${path.path_hash}`)}
+                      />
+                    ))}
+                  </PathsGroup>
                 ))}
               </div>
             )}

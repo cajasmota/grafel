@@ -1,792 +1,86 @@
 {
   "paths": [
     {
-      "path": "/admin/accounts/export/",
-      "path_hash": "2da66ad863ee",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::9e9287d2c8567ac1",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/accounts/export/",
-          "handler": "handle_get_admin_accounts_export",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/addresses/",
-      "path_hash": "9c5bbeda12b2",
+      "path": "/api/v1/users",
+      "path_hash": "abc001",
+      "controller": "UsersController",
       "verbs": [
         "GET",
         "POST"
       ],
       "endpoints": [
         {
-          "id": "admin-service::07bfb3e1de4e6da1",
-          "repo": "admin-service",
+          "id": "api-service::001",
+          "repo": "api-service",
           "verb": "GET",
-          "path": "/admin/addresses/",
-          "handler": "handle_get_admin_addresses",
-          "framework": "django",
+          "path": "/api/v1/users",
+          "handler": "listUsers",
+          "framework": "spring",
           "response_keys": [
-            "errors",
-            "count",
-            "data",
-            "created_at",
-            "meta",
-            "name"
+            "users",
+            "total"
           ],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
-            200,
-            404
+            200
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         },
         {
-          "id": "admin-service::e545db92598e2327",
-          "repo": "admin-service",
+          "id": "api-service::002",
+          "repo": "api-service",
           "verb": "POST",
-          "path": "/admin/addresses/",
-          "handler": "handle_post_admin_addresses",
-          "framework": "django",
+          "path": "/api/v1/users",
+          "handler": "createUser",
+          "framework": "spring",
           "response_keys": [
-            "errors",
-            "data",
-            "updated_at",
-            "name",
-            "id"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/addresses/{pk}/",
-      "path_hash": "126b34a160bb",
-      "verbs": [
-        "GET",
-        "DELETE"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::3527cc5dda7968ee",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/addresses/{pk}/",
-          "handler": "handle_get_admin_addresses_by_id",
-          "framework": "django",
-          "response_keys": [
-            "count"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::487d41df780c5018",
-          "repo": "admin-service",
-          "verb": "DELETE",
-          "path": "/admin/addresses/{pk}/",
-          "handler": "handle_delete_admin_addresses_by_id",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "created_at",
             "id",
-            "items",
-            "updated_at",
-            "data"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            204,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/agents/search/",
-      "path_hash": "18f1f294e223",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::9c9c1b45799363b3",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/agents/search/",
-          "handler": "handle_get_admin_agents_search",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/alerts/export/",
-      "path_hash": "0bee980541c5",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::37981752fe67e086",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/alerts/export/",
-          "handler": "handle_get_admin_alerts_export",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "status",
-            "name",
-            "errors"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/audits/export/",
-      "path_hash": "a857d5c3c3b6",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::5f3a36d4eeac3aaa",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/audits/export/",
-          "handler": "handle_get_admin_audits_export",
-          "framework": "django",
-          "response_keys": [
-            "created_at",
-            "updated_at",
-            "data"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/branches/",
-      "path_hash": "be5fe25afba8",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::4cb4109a156af82f",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/branches/",
-          "handler": "handle_get_admin_branches",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::2e078f9484348f99",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/branches/",
-          "handler": "handle_post_admin_branches",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "data",
-            "count",
-            "created_at"
+            "email"
           ],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
             201,
-            400,
-            422
+            400
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         }
       ],
       "multiplicity": 2,
       "repos": [
-        "admin-service"
+        "api-service"
       ],
       "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/branches/{pk}/",
-      "path_hash": "710a8f815824",
-      "verbs": [
-        "GET",
-        "DELETE"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::3aa56bd32e72411f",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/branches/{pk}/",
-          "handler": "handle_get_admin_branches_by_id",
-          "framework": "django",
-          "response_keys": [
-            "created_at",
-            "updated_at",
-            "count",
-            "status",
-            "items"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::f789d18d15584ec0",
-          "repo": "admin-service",
-          "verb": "DELETE",
-          "path": "/admin/branches/{pk}/",
-          "handler": "handle_delete_admin_branches_by_id",
-          "framework": "django",
-          "response_keys": [
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            204,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/campaigns/summary/",
-      "path_hash": "8977b66d6c46",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::33097067d58984df",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/campaigns/summary/",
-          "handler": "handle_get_admin_campaigns_summary",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "created_at"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
+        "spring"
       ],
       "is_webhook": false,
       "webhook_provider": null
     },
     {
-      "path": "/admin/categories/",
-      "path_hash": "14c108b289c8",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::8d03f0a9426aaff8",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/categories/",
-          "handler": "handle_get_admin_categories",
-          "framework": "django",
-          "response_keys": [
-            "created_at"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::03222c7d1a879cb8",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/categories/",
-          "handler": "handle_post_admin_categories",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/categories/export/",
-      "path_hash": "2fc32cee4c35",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::568086ba3c2d6859",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/categories/export/",
-          "handler": "handle_get_admin_categories_export",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "updated_at",
-            "status",
-            "items"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/categories/{pk}/",
-      "path_hash": "eb4a3659481a",
-      "verbs": [
-        "GET",
-        "DELETE"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::8d159cab9a27ca1f",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/categories/{pk}/",
-          "handler": "handle_get_admin_categories_by_id",
-          "framework": "django",
-          "response_keys": [
-            "status",
-            "created_at"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::67d0115c256e8931",
-          "repo": "admin-service",
-          "verb": "DELETE",
-          "path": "/admin/categories/{pk}/",
-          "handler": "handle_delete_admin_categories_by_id",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            204,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/channels/",
-      "path_hash": "5f079904c101",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::9ae03181a5b76d52",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/channels/",
-          "handler": "handle_get_admin_channels",
-          "framework": "django",
-          "response_keys": [
-            "count",
-            "data",
-            "id",
-            "name"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/channels/export/",
-      "path_hash": "cd6f60b6f100",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::c80cfcaea70beedc",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/channels/export/",
-          "handler": "handle_get_admin_channels_export",
-          "framework": "django",
-          "response_keys": [
-            "data",
-            "meta",
-            "count"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/comments/",
-      "path_hash": "d1d37cf2b118",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::7b3dd7bfd052767a",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/comments/",
-          "handler": "handle_get_admin_comments",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::eaae97d889e901c2",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/comments/",
-          "handler": "handle_post_admin_comments",
-          "framework": "django",
-          "response_keys": [
-            "data",
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/comments/{pk}/",
-      "path_hash": "2ab08f069194",
+      "path": "/api/v1/users/{id}",
+      "path_hash": "abc002",
+      "controller": "UsersController",
       "verbs": [
         "GET",
         "PUT",
-        "PATCH",
         "DELETE"
       ],
       "endpoints": [
         {
-          "id": "admin-service::9d22610c7dd3dbf9",
-          "repo": "admin-service",
+          "id": "api-service::003",
+          "repo": "api-service",
           "verb": "GET",
-          "path": "/admin/comments/{pk}/",
-          "handler": "handle_get_admin_comments_by_id",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "data",
-            "status",
-            "errors"
-          ],
+          "path": "/api/v1/users/{id}",
+          "handler": "getUser",
+          "framework": "spring",
+          "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
@@ -796,66 +90,35 @@
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         },
         {
-          "id": "admin-service::faa57c17355d0864",
-          "repo": "admin-service",
+          "id": "api-service::004",
+          "repo": "api-service",
           "verb": "PUT",
-          "path": "/admin/comments/{pk}/",
-          "handler": "handle_put_admin_comments_by_id",
-          "framework": "django",
-          "response_keys": [
-            "name",
-            "created_at",
-            "status",
-            "count",
-            "data"
-          ],
+          "path": "/api/v1/users/{id}",
+          "handler": "updateUser",
+          "framework": "spring",
+          "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
             200,
-            404,
-            422
+            404
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         },
         {
-          "id": "admin-service::e608180550f35262",
-          "repo": "admin-service",
-          "verb": "PATCH",
-          "path": "/admin/comments/{pk}/",
-          "handler": "handle_patch_admin_comments_by_id",
-          "framework": "django",
-          "response_keys": [
-            "updated_at"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::c272a0f26ce8d870",
-          "repo": "admin-service",
+          "id": "api-service::005",
+          "repo": "api-service",
           "verb": "DELETE",
-          "path": "/admin/comments/{pk}/",
-          "handler": "handle_delete_admin_comments_by_id",
-          "framework": "django",
-          "response_keys": [
-            "name"
-          ],
+          "path": "/api/v1/users/{id}",
+          "handler": "deleteUser",
+          "framework": "spring",
+          "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
@@ -865,571 +128,209 @@
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         }
       ],
-      "multiplicity": 4,
+      "multiplicity": 3,
       "repos": [
-        "admin-service"
+        "api-service"
       ],
       "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/commits/bulk/",
-      "path_hash": "70425644d8e7",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::65f32145f5d97ed6",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/commits/bulk/",
-          "handler": "handle_get_admin_commits_bulk",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "status",
-            "meta",
-            "id",
-            "data"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
+        "spring"
       ],
       "is_webhook": false,
       "webhook_provider": null
     },
     {
-      "path": "/admin/commits/search/",
-      "path_hash": "e14ee3d6b21c",
+      "path": "/api/v1/users/{id}/profile",
+      "path_hash": "abc003",
+      "controller": "UsersController",
       "verbs": [
-        "GET"
+        "GET",
+        "PATCH"
       ],
       "endpoints": [
         {
-          "id": "admin-service::92841ab6f7769abb",
-          "repo": "admin-service",
+          "id": "api-service::006",
+          "repo": "api-service",
           "verb": "GET",
-          "path": "/admin/commits/search/",
-          "handler": "handle_get_admin_commits_search",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "id",
-            "items",
-            "created_at",
-            "name",
-            "count"
-          ],
+          "path": "/api/v1/users/{id}/profile",
+          "handler": "getUserProfile",
+          "framework": "spring",
+          "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
-            200,
-            404
+            200
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/commits/summary/",
-      "path_hash": "a882f1c76f9a",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
+          "language": "java"
+        },
         {
-          "id": "admin-service::83c9a00e26cc77ee",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/commits/summary/",
-          "handler": "handle_get_admin_commits_summary",
-          "framework": "django",
-          "response_keys": [
-            "id"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/configs/",
-      "path_hash": "0425c21f0c64",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::bc8d6d05137f24ab",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/configs/",
-          "handler": "handle_get_admin_configs",
-          "framework": "django",
+          "id": "api-service::007",
+          "repo": "api-service",
+          "verb": "PATCH",
+          "path": "/api/v1/users/{id}/profile",
+          "handler": "patchUserProfile",
+          "framework": "spring",
           "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
             200,
-            404
+            422
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         }
       ],
-      "multiplicity": 1,
+      "multiplicity": 2,
       "repos": [
-        "admin-service"
+        "api-service"
       ],
       "frameworks": [
-        "django"
+        "spring"
       ],
       "is_webhook": false,
       "webhook_provider": null
     },
     {
-      "path": "/admin/connectors/",
-      "path_hash": "964792f82a6e",
+      "path": "/api/v1/users/{id}/avatar",
+      "path_hash": "abc004",
+      "controller": "UsersController",
       "verbs": [
-        "GET"
+        "POST",
+        "DELETE"
       ],
       "endpoints": [
         {
-          "id": "admin-service::f173c6931a32a3ec",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/connectors/",
-          "handler": "handle_get_admin_connectors",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "created_at",
-            "errors",
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/contacts/export/",
-      "path_hash": "6962fd2d30de",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::baab445bc047420e",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/contacts/export/",
-          "handler": "handle_get_admin_contacts_export",
-          "framework": "django",
-          "response_keys": [
-            "updated_at",
-            "meta",
-            "data",
-            "created_at",
-            "id",
-            "errors"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/contacts/search/",
-      "path_hash": "c5f81cd9de6d",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::6a700d3a9b6fa921",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/contacts/search/",
-          "handler": "handle_get_admin_contacts_search",
-          "framework": "django",
+          "id": "api-service::008",
+          "repo": "api-service",
+          "verb": "POST",
+          "path": "/api/v1/users/{id}/avatar",
+          "handler": "uploadAvatar",
+          "framework": "spring",
           "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
-            200,
-            404
+            200
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/contacts/summary/",
-      "path_hash": "f3d1c41b7cf5",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
+          "language": "java"
+        },
         {
-          "id": "admin-service::aa32f6bc665c13d4",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/contacts/summary/",
-          "handler": "handle_get_admin_contacts_summary",
-          "framework": "django",
-          "response_keys": [
-            "count",
-            "errors",
-            "status",
-            "updated_at"
-          ],
+          "id": "api-service::009",
+          "repo": "api-service",
+          "verb": "DELETE",
+          "path": "/api/v1/users/{id}/avatar",
+          "handler": "deleteAvatar",
+          "framework": "spring",
+          "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
-            200,
-            404
+            204
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         }
       ],
-      "multiplicity": 1,
+      "multiplicity": 2,
       "repos": [
-        "admin-service"
+        "api-service"
       ],
       "frameworks": [
-        "django"
+        "spring"
       ],
       "is_webhook": false,
       "webhook_provider": null
     },
     {
-      "path": "/admin/contracts/import/",
-      "path_hash": "bf4f143ec30e",
+      "path": "/api/v1/orders",
+      "path_hash": "bcd001",
+      "controller": "OrdersController",
       "verbs": [
         "GET",
         "POST"
       ],
       "endpoints": [
         {
-          "id": "admin-service::02bb4a08ed0944b6",
-          "repo": "admin-service",
+          "id": "orders-service::001",
+          "repo": "orders-service",
           "verb": "GET",
-          "path": "/admin/contracts/import/",
-          "handler": "handle_get_admin_contracts_import",
-          "framework": "django",
+          "path": "/api/v1/orders",
+          "handler": "listOrders",
+          "framework": "spring",
           "response_keys": [
-            "status",
-            "meta"
+            "orders",
+            "total"
           ],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
-            200,
-            404
+            200
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         },
         {
-          "id": "admin-service::662d65e7b18fc2d9",
-          "repo": "admin-service",
+          "id": "orders-service::002",
+          "repo": "orders-service",
           "verb": "POST",
-          "path": "/admin/contracts/import/",
-          "handler": "handle_post_admin_contracts_import",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/coupons/export/",
-      "path_hash": "7538f3a2d29d",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::fc8648f2dd6f7a07",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/coupons/export/",
-          "handler": "handle_get_admin_coupons_export",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "data"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/coupons/search/",
-      "path_hash": "75c49234fbb3",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::cd156d2ee35945ee",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/coupons/search/",
-          "handler": "handle_get_admin_coupons_search",
-          "framework": "django",
-          "response_keys": [
-            "id",
-            "created_at",
-            "items"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/credits/",
-      "path_hash": "c2a5e3e1496a",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::bae0b10f6057f3aa",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/credits/",
-          "handler": "handle_get_admin_credits",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "name",
-            "meta",
-            "count",
-            "id"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::a7ff309249c1c2b2",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/credits/",
-          "handler": "handle_post_admin_credits",
-          "framework": "django",
+          "path": "/api/v1/orders",
+          "handler": "placeOrder",
+          "framework": "spring",
           "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
             201,
-            400,
-            422
+            400
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         }
       ],
       "multiplicity": 2,
       "repos": [
-        "admin-service"
+        "orders-service"
       ],
       "frameworks": [
-        "django"
+        "spring"
       ],
-      "is_webhook": false
+      "is_webhook": false,
+      "webhook_provider": null
     },
     {
-      "path": "/admin/credits/export/",
-      "path_hash": "81b7feb605f2",
+      "path": "/api/v1/orders/{id}",
+      "path_hash": "bcd002",
+      "controller": "OrdersController",
       "verbs": [
-        "GET"
+        "GET",
+        "PUT"
       ],
       "endpoints": [
         {
-          "id": "admin-service::e74aa7fdfc409729",
-          "repo": "admin-service",
+          "id": "orders-service::003",
+          "repo": "orders-service",
           "verb": "GET",
-          "path": "/admin/credits/export/",
-          "handler": "handle_get_admin_credits_export",
-          "framework": "django",
-          "response_keys": [
-            "count"
-          ],
+          "path": "/api/v1/orders/{id}",
+          "handler": "getOrder",
+          "framework": "spring",
+          "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
@@ -1439,41 +340,460 @@
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
+        },
+        {
+          "id": "orders-service::004",
+          "repo": "orders-service",
+          "verb": "PUT",
+          "path": "/api/v1/orders/{id}",
+          "handler": "updateOrder",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200,
+            404
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
         }
       ],
-      "multiplicity": 1,
+      "multiplicity": 2,
       "repos": [
-        "admin-service"
+        "orders-service"
       ],
       "frameworks": [
-        "django"
+        "spring"
       ],
       "is_webhook": false,
       "webhook_provider": null
     },
     {
-      "path": "/admin/credits/{pk}/",
-      "path_hash": "09527b1d87ed",
+      "path": "/api/v1/orders/{id}/cancel",
+      "path_hash": "bcd003",
+      "controller": "OrdersController",
+      "verbs": [
+        "POST"
+      ],
+      "endpoints": [
+        {
+          "id": "orders-service::005",
+          "repo": "orders-service",
+          "verb": "POST",
+          "path": "/api/v1/orders/{id}/cancel",
+          "handler": "cancelOrder",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200,
+            409
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
+        }
+      ],
+      "multiplicity": 1,
+      "repos": [
+        "orders-service"
+      ],
+      "frameworks": [
+        "spring"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/api/v1/orders/{id}/refund",
+      "path_hash": "bcd004",
+      "controller": "OrdersController",
+      "verbs": [
+        "POST"
+      ],
+      "endpoints": [
+        {
+          "id": "orders-service::006",
+          "repo": "orders-service",
+          "verb": "POST",
+          "path": "/api/v1/orders/{id}/refund",
+          "handler": "refundOrder",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200,
+            422
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
+        }
+      ],
+      "multiplicity": 1,
+      "repos": [
+        "orders-service"
+      ],
+      "frameworks": [
+        "spring"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/api/v1/orders/{id}/items",
+      "path_hash": "bcd005",
+      "controller": "OrdersController",
+      "verbs": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "endpoints": [
+        {
+          "id": "orders-service::007",
+          "repo": "orders-service",
+          "verb": "GET",
+          "path": "/api/v1/orders/{id}/items",
+          "handler": "listOrderItems",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
+        },
+        {
+          "id": "orders-service::008",
+          "repo": "orders-service",
+          "verb": "POST",
+          "path": "/api/v1/orders/{id}/items",
+          "handler": "addOrderItem",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            201
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
+        },
+        {
+          "id": "orders-service::009",
+          "repo": "orders-service",
+          "verb": "DELETE",
+          "path": "/api/v1/orders/{id}/items",
+          "handler": "clearOrderItems",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            204
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
+        }
+      ],
+      "multiplicity": 3,
+      "repos": [
+        "orders-service"
+      ],
+      "frameworks": [
+        "spring"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/auth/login",
+      "path_hash": "cde001",
+      "controller": "auth_router",
+      "verbs": [
+        "POST"
+      ],
+      "endpoints": [
+        {
+          "id": "auth-service::001",
+          "repo": "auth-service",
+          "verb": "POST",
+          "path": "/auth/login",
+          "handler": "login",
+          "framework": "fastapi",
+          "response_keys": [
+            "token",
+            "refresh_token"
+          ],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200,
+            401
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "python"
+        }
+      ],
+      "multiplicity": 1,
+      "repos": [
+        "auth-service"
+      ],
+      "frameworks": [
+        "fastapi"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/auth/logout",
+      "path_hash": "cde002",
+      "controller": "auth_router",
+      "verbs": [
+        "POST"
+      ],
+      "endpoints": [
+        {
+          "id": "auth-service::002",
+          "repo": "auth-service",
+          "verb": "POST",
+          "path": "/auth/logout",
+          "handler": "logout",
+          "framework": "fastapi",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            204
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "python"
+        }
+      ],
+      "multiplicity": 1,
+      "repos": [
+        "auth-service"
+      ],
+      "frameworks": [
+        "fastapi"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/auth/refresh",
+      "path_hash": "cde003",
+      "controller": "auth_router",
+      "verbs": [
+        "POST"
+      ],
+      "endpoints": [
+        {
+          "id": "auth-service::003",
+          "repo": "auth-service",
+          "verb": "POST",
+          "path": "/auth/refresh",
+          "handler": "refreshToken",
+          "framework": "fastapi",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200,
+            401
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "python"
+        }
+      ],
+      "multiplicity": 1,
+      "repos": [
+        "auth-service"
+      ],
+      "frameworks": [
+        "fastapi"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/auth/me",
+      "path_hash": "cde004",
+      "controller": "auth_router",
+      "verbs": [
+        "GET"
+      ],
+      "endpoints": [
+        {
+          "id": "auth-service::004",
+          "repo": "auth-service",
+          "verb": "GET",
+          "path": "/auth/me",
+          "handler": "getCurrentUser",
+          "framework": "fastapi",
+          "response_keys": [
+            "id",
+            "email",
+            "roles"
+          ],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200,
+            401
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "python"
+        }
+      ],
+      "multiplicity": 1,
+      "repos": [
+        "auth-service"
+      ],
+      "frameworks": [
+        "fastapi"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/auth/password/reset",
+      "path_hash": "cde005",
+      "controller": "auth_router",
+      "verbs": [
+        "POST"
+      ],
+      "endpoints": [
+        {
+          "id": "auth-service::005",
+          "repo": "auth-service",
+          "verb": "POST",
+          "path": "/auth/password/reset",
+          "handler": "requestPasswordReset",
+          "framework": "fastapi",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "python"
+        }
+      ],
+      "multiplicity": 1,
+      "repos": [
+        "auth-service"
+      ],
+      "frameworks": [
+        "fastapi"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/api/v1/products",
+      "path_hash": "def001",
+      "controller": "ProductCatalogController",
+      "verbs": [
+        "GET",
+        "POST"
+      ],
+      "endpoints": [
+        {
+          "id": "catalog-service::001",
+          "repo": "catalog-service",
+          "verb": "GET",
+          "path": "/api/v1/products",
+          "handler": "listProducts",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            200
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
+        },
+        {
+          "id": "catalog-service::002",
+          "repo": "catalog-service",
+          "verb": "POST",
+          "path": "/api/v1/products",
+          "handler": "createProduct",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": false,
+          "webhook_provider": null,
+          "status_codes": [
+            201,
+            400
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
+        }
+      ],
+      "multiplicity": 2,
+      "repos": [
+        "catalog-service"
+      ],
+      "frameworks": [
+        "spring"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/api/v1/products/{id}",
+      "path_hash": "def002",
+      "controller": "ProductCatalogController",
       "verbs": [
         "GET",
         "PUT",
-        "PATCH",
         "DELETE"
       ],
       "endpoints": [
         {
-          "id": "admin-service::c072c4d804ce5e35",
-          "repo": "admin-service",
+          "id": "catalog-service::003",
+          "repo": "catalog-service",
           "verb": "GET",
-          "path": "/admin/credits/{pk}/",
-          "handler": "handle_get_admin_credits_by_id",
-          "framework": "django",
-          "response_keys": [
-            "status",
-            "meta"
-          ],
-          "dynamic_response": true,
+          "path": "/api/v1/products/{id}",
+          "handler": "getProduct",
+          "framework": "spring",
+          "response_keys": [],
+          "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
@@ -1482,72 +802,35 @@
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         },
         {
-          "id": "admin-service::8789be2fc5bc6924",
-          "repo": "admin-service",
+          "id": "catalog-service::004",
+          "repo": "catalog-service",
           "verb": "PUT",
-          "path": "/admin/credits/{pk}/",
-          "handler": "handle_put_admin_credits_by_id",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "data",
-            "name",
-            "created_at"
-          ],
+          "path": "/api/v1/products/{id}",
+          "handler": "updateProduct",
+          "framework": "spring",
+          "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
             200,
-            404,
-            422
+            404
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         },
         {
-          "id": "admin-service::25212c110f718bc7",
-          "repo": "admin-service",
-          "verb": "PATCH",
-          "path": "/admin/credits/{pk}/",
-          "handler": "handle_patch_admin_credits_by_id",
-          "framework": "django",
-          "response_keys": [
-            "count",
-            "id",
-            "updated_at",
-            "items",
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::784306c3a57a95fd",
-          "repo": "admin-service",
+          "id": "catalog-service::005",
+          "repo": "catalog-service",
           "verb": "DELETE",
-          "path": "/admin/credits/{pk}/",
-          "handler": "handle_delete_admin_credits_by_id",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "created_at",
-            "status",
-            "data"
-          ],
+          "path": "/api/v1/products/{id}",
+          "handler": "deleteProduct",
+          "framework": "spring",
+          "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
@@ -1557,541 +840,132 @@
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         }
       ],
-      "multiplicity": 4,
+      "multiplicity": 3,
       "repos": [
-        "admin-service"
+        "catalog-service"
       ],
       "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/deployments/search/",
-      "path_hash": "767287b3b60f",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::6ee4c638512ef259",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/deployments/search/",
-          "handler": "handle_get_admin_deployments_search",
-          "framework": "django",
-          "response_keys": [
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
+        "spring"
       ],
       "is_webhook": false,
       "webhook_provider": null
     },
     {
-      "path": "/admin/events/status/",
-      "path_hash": "d097525886d2",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::0ecd3e182473e9d9",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/events/status/",
-          "handler": "handle_get_admin_events_status",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "meta",
-            "status",
-            "created_at"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/experiments/",
-      "path_hash": "559f85fd61d2",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::a3b61c2f7cdbd791",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/experiments/",
-          "handler": "handle_get_admin_experiments",
-          "framework": "django",
-          "response_keys": [
-            "status",
-            "items"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/features/bulk/",
-      "path_hash": "423b6c7a64be",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::c2cd1269e9e83e13",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/features/bulk/",
-          "handler": "handle_get_admin_features_bulk",
-          "framework": "django",
-          "response_keys": [
-            "data",
-            "status",
-            "errors"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/features/export/",
-      "path_hash": "639f0f43a7df",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::dae7d4300b73f09e",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/features/export/",
-          "handler": "handle_get_admin_features_export",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/feedback/",
-      "path_hash": "dff23f6cdc6a",
+      "path": "/api/v1/products/{id}/images",
+      "path_hash": "def003",
+      "controller": "ProductCatalogController",
       "verbs": [
         "GET",
         "POST"
       ],
       "endpoints": [
         {
-          "id": "admin-service::539e63a64574e242",
-          "repo": "admin-service",
+          "id": "catalog-service::006",
+          "repo": "catalog-service",
           "verb": "GET",
-          "path": "/admin/feedback/",
-          "handler": "handle_get_admin_feedback",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "meta"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::3cd8badb11310bb3",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/feedback/",
-          "handler": "handle_post_admin_feedback",
-          "framework": "django",
-          "response_keys": [
-            "name",
-            "created_at",
-            "items"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/feedback/{pk}/",
-      "path_hash": "1f0fb2c7e79d",
-      "verbs": [
-        "GET",
-        "DELETE"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::bc1602a4ad25749e",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/feedback/{pk}/",
-          "handler": "handle_get_admin_feedback_by_id",
-          "framework": "django",
+          "path": "/api/v1/products/{id}/images",
+          "handler": "listProductImages",
+          "framework": "spring",
           "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
-            200,
-            404
+            200
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         },
         {
-          "id": "admin-service::f045c6f7efc37d85",
-          "repo": "admin-service",
-          "verb": "DELETE",
-          "path": "/admin/feedback/{pk}/",
-          "handler": "handle_delete_admin_feedback_by_id",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "data",
-            "created_at"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            204,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/feeds/",
-      "path_hash": "fcf616341d07",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::06044321b5961083",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/feeds/",
-          "handler": "handle_get_admin_feeds",
-          "framework": "django",
-          "response_keys": [
-            "name",
-            "count",
-            "errors",
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::e4acd59f4a19eda4",
-          "repo": "admin-service",
+          "id": "catalog-service::007",
+          "repo": "catalog-service",
           "verb": "POST",
-          "path": "/admin/feeds/",
-          "handler": "handle_post_admin_feeds",
-          "framework": "django",
+          "path": "/api/v1/products/{id}/images",
+          "handler": "uploadProductImage",
+          "framework": "spring",
           "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
-            201,
-            400,
-            422
+            201
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
-          "language": "python"
+          "language": "java"
         }
       ],
       "multiplicity": 2,
       "repos": [
-        "admin-service"
+        "catalog-service"
       ],
       "frameworks": [
-        "django"
+        "spring"
       ],
-      "is_webhook": false
+      "is_webhook": false,
+      "webhook_provider": null
     },
     {
-      "path": "/admin/feeds/{pk}/",
-      "path_hash": "d73b368464b3",
-      "verbs": [
-        "GET",
-        "PUT",
-        "PATCH",
-        "DELETE"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::b0f3d35ce78cb55e",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/feeds/{pk}/",
-          "handler": "handle_get_admin_feeds_by_id",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "count",
-            "meta",
-            "name"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::fce8b4674d704f2b",
-          "repo": "admin-service",
-          "verb": "PUT",
-          "path": "/admin/feeds/{pk}/",
-          "handler": "handle_put_admin_feeds_by_id",
-          "framework": "django",
-          "response_keys": [
-            "status",
-            "items",
-            "count",
-            "id"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::030b8564c0643abe",
-          "repo": "admin-service",
-          "verb": "PATCH",
-          "path": "/admin/feeds/{pk}/",
-          "handler": "handle_patch_admin_feeds_by_id",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "count",
-            "meta",
-            "updated_at",
-            "status",
-            "items"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::ea2fe9ad69256cc1",
-          "repo": "admin-service",
-          "verb": "DELETE",
-          "path": "/admin/feeds/{pk}/",
-          "handler": "handle_delete_admin_feeds_by_id",
-          "framework": "django",
-          "response_keys": [
-            "name"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            204,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 4,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/files/summary/",
-      "path_hash": "61471eca1f2a",
+      "path": "/api/v1/products/search",
+      "path_hash": "def004",
+      "controller": "ProductCatalogController",
       "verbs": [
         "GET"
       ],
       "endpoints": [
         {
-          "id": "admin-service::645e4672be2795cd",
-          "repo": "admin-service",
+          "id": "catalog-service::008",
+          "repo": "catalog-service",
           "verb": "GET",
-          "path": "/admin/files/summary/",
-          "handler": "handle_get_admin_files_summary",
-          "framework": "django",
+          "path": "/api/v1/products/search",
+          "handler": "searchProducts",
+          "framework": "spring",
           "response_keys": [],
           "dynamic_response": false,
           "is_webhook": false,
           "webhook_provider": null,
           "status_codes": [
-            200,
-            404
+            200
+          ],
+          "inbound_fetches": [],
+          "outbound_queries": [],
+          "language": "java"
+        }
+      ],
+      "multiplicity": 1,
+      "repos": [
+        "catalog-service"
+      ],
+      "frameworks": [
+        "spring"
+      ],
+      "is_webhook": false,
+      "webhook_provider": null
+    },
+    {
+      "path": "/webhooks/stripe",
+      "path_hash": "wh001",
+      "verbs": [
+        "POST"
+      ],
+      "endpoints": [
+        {
+          "id": "payments-service::001",
+          "repo": "payments-service",
+          "verb": "POST",
+          "path": "/webhooks/stripe",
+          "handler": "handleStripeWebhook",
+          "framework": "fastapi",
+          "response_keys": [],
+          "dynamic_response": false,
+          "is_webhook": true,
+          "webhook_provider": "stripe",
+          "status_codes": [
+            200
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
@@ -2100,35 +974,34 @@
       ],
       "multiplicity": 1,
       "repos": [
-        "admin-service"
+        "payments-service"
       ],
       "frameworks": [
-        "django"
+        "fastapi"
       ],
-      "is_webhook": false,
-      "webhook_provider": null
+      "is_webhook": true,
+      "webhook_provider": "stripe"
     },
     {
-      "path": "/admin/images/search/",
-      "path_hash": "1c338c75b049",
+      "path": "/webhooks/github",
+      "path_hash": "wh002",
       "verbs": [
-        "GET"
+        "POST"
       ],
       "endpoints": [
         {
-          "id": "admin-service::706021ae9689403b",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/images/search/",
-          "handler": "handle_get_admin_images_search",
-          "framework": "django",
+          "id": "ci-service::001",
+          "repo": "ci-service",
+          "verb": "POST",
+          "path": "/webhooks/github",
+          "handler": "handleGitHubWebhook",
+          "framework": "fastapi",
           "response_keys": [],
           "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
+          "is_webhook": true,
+          "webhook_provider": "github",
           "status_codes": [
-            200,
-            404
+            200
           ],
           "inbound_fetches": [],
           "outbound_queries": [],
@@ -2137,1290 +1010,56 @@
       ],
       "multiplicity": 1,
       "repos": [
-        "admin-service"
+        "ci-service"
       ],
       "frameworks": [
-        "django"
+        "fastapi"
       ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/insights/summary/",
-      "path_hash": "614393c2095e",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::1a5b73aa966d571c",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/insights/summary/",
-          "handler": "handle_get_admin_insights_summary",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::0c420be3495d4585",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/insights/summary/",
-          "handler": "handle_post_admin_insights_summary",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/leads/",
-      "path_hash": "50da3fd23879",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::b54d3707a78d6149",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/leads/",
-          "handler": "handle_get_admin_leads",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "status",
-            "errors"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::075583eee3847374",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/leads/",
-          "handler": "handle_post_admin_leads",
-          "framework": "django",
-          "response_keys": [
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/leads/{pk}/",
-      "path_hash": "f1770ce5b9cd",
-      "verbs": [
-        "GET",
-        "PUT",
-        "PATCH",
-        "DELETE"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::5552a27d78e49311",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/leads/{pk}/",
-          "handler": "handle_get_admin_leads_by_id",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "id",
-            "data"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::5038e116986f023b",
-          "repo": "admin-service",
-          "verb": "PUT",
-          "path": "/admin/leads/{pk}/",
-          "handler": "handle_put_admin_leads_by_id",
-          "framework": "django",
-          "response_keys": [
-            "status",
-            "created_at",
-            "count"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::0628ce721aa443af",
-          "repo": "admin-service",
-          "verb": "PATCH",
-          "path": "/admin/leads/{pk}/",
-          "handler": "handle_patch_admin_leads_by_id",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "count",
-            "errors",
-            "created_at"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::c8fa64d89c5adfee",
-          "repo": "admin-service",
-          "verb": "DELETE",
-          "path": "/admin/leads/{pk}/",
-          "handler": "handle_delete_admin_leads_by_id",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "status",
-            "name"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            204,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 4,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/leads_384/",
-      "path_hash": "6fc2a0a8c91b",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::0fbc155d5c83f6c2",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/leads_384/",
-          "handler": "handle_get_admin_leads_384",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "created_at",
-            "data",
-            "items",
-            "id",
-            "updated_at"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/members/",
-      "path_hash": "2d978e1f1ed1",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::47e42e2a51e57700",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/members/",
-          "handler": "handle_get_admin_members",
-          "framework": "django",
-          "response_keys": [
-            "count",
-            "data",
-            "items"
-          ],
-          "dynamic_response": true,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::027a06bdcdc3036f",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/members/",
-          "handler": "handle_post_admin_members",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "created_at",
-            "items"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/members/summary/",
-      "path_hash": "c47a7c2e075c",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::7311a08e8b4f656c",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/members/summary/",
-          "handler": "handle_get_admin_members_summary",
-          "framework": "django",
-          "response_keys": [],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
-    },
-    {
-      "path": "/admin/members/{pk}/",
-      "path_hash": "8141df4eb92b",
-      "verbs": [
-        "GET",
-        "PUT",
-        "PATCH",
-        "DELETE"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::b7df9086d19f0aff",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/members/{pk}/",
-          "handler": "handle_get_admin_members_by_id",
-          "framework": "django",
-          "response_keys": [
-            "status",
-            "name"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::0a3bffc161bd8ade",
-          "repo": "admin-service",
-          "verb": "PUT",
-          "path": "/admin/members/{pk}/",
-          "handler": "handle_put_admin_members_by_id",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "data",
-            "name",
-            "updated_at",
-            "meta"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::10d647e5e305ab00",
-          "repo": "admin-service",
-          "verb": "PATCH",
-          "path": "/admin/members/{pk}/",
-          "handler": "handle_patch_admin_members_by_id",
-          "framework": "django",
-          "response_keys": [
-            "meta",
-            "status",
-            "count",
-            "updated_at",
-            "created_at",
-            "id"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::828eeab05bcd2411",
-          "repo": "admin-service",
-          "verb": "DELETE",
-          "path": "/admin/members/{pk}/",
-          "handler": "handle_delete_admin_members_by_id",
-          "framework": "django",
-          "response_keys": [
-            "errors",
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            204,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 4,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/messages/",
-      "path_hash": "5919880d0321",
-      "verbs": [
-        "GET",
-        "POST"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::b29274932549247d",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/messages/",
-          "handler": "handle_get_admin_messages",
-          "framework": "django",
-          "response_keys": [
-            "data",
-            "errors",
-            "id",
-            "count",
-            "meta",
-            "status"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        },
-        {
-          "id": "admin-service::d7ca6fec0d5342d3",
-          "repo": "admin-service",
-          "verb": "POST",
-          "path": "/admin/messages/",
-          "handler": "handle_post_admin_messages",
-          "framework": "django",
-          "response_keys": [
-            "data",
-            "errors",
-            "count"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            201,
-            400,
-            422
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 2,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false
-    },
-    {
-      "path": "/admin/messages/search/",
-      "path_hash": "4492e71141af",
-      "verbs": [
-        "GET"
-      ],
-      "endpoints": [
-        {
-          "id": "admin-service::61fd33a26c48bf49",
-          "repo": "admin-service",
-          "verb": "GET",
-          "path": "/admin/messages/search/",
-          "handler": "handle_get_admin_messages_search",
-          "framework": "django",
-          "response_keys": [
-            "items",
-            "data",
-            "status",
-            "meta",
-            "updated_at",
-            "count"
-          ],
-          "dynamic_response": false,
-          "is_webhook": false,
-          "webhook_provider": null,
-          "status_codes": [
-            200,
-            404
-          ],
-          "inbound_fetches": [],
-          "outbound_queries": [],
-          "language": "python"
-        }
-      ],
-      "multiplicity": 1,
-      "repos": [
-        "admin-service"
-      ],
-      "frameworks": [
-        "django"
-      ],
-      "is_webhook": false,
-      "webhook_provider": null
+      "is_webhook": true,
+      "webhook_provider": "github"
     }
   ],
   "tree": [
     {
-      "prefix": "/admin/",
-      "label": "admin",
-      "count": 93,
-      "children": [
-        {
-          "prefix": "/admin/accounts/",
-          "label": "accounts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/addresses/",
-          "label": "addresses",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/admin/agents/",
-          "label": "agents",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/alerts/",
-          "label": "alerts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/audits/",
-          "label": "audits",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/branches/",
-          "label": "branches",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/admin/campaigns/",
-          "label": "campaigns",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/categories/",
-          "label": "categories",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/admin/channels/",
-          "label": "channels",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/admin/comments/",
-          "label": "comments",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/admin/commits/",
-          "label": "commits",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/admin/configs/",
-          "label": "configs",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/connectors/",
-          "label": "connectors",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/contacts/",
-          "label": "contacts",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/admin/contracts/",
-          "label": "contracts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/coupons/",
-          "label": "coupons",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/admin/credits/",
-          "label": "credits",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/admin/deployments/",
-          "label": "deployments",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/events/",
-          "label": "events",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/admin/experiments/",
-          "label": "experiments",
-          "count": 1,
-          "children": []
-        }
-      ]
-    },
-    {
       "prefix": "/api/",
       "label": "api",
-      "count": 295,
+      "count": 13,
       "children": [
         {
-          "prefix": "/api/admin/",
-          "label": "admin",
-          "count": 114,
+          "prefix": "/api/v1/users",
+          "label": "users",
+          "count": 4,
           "children": []
         },
         {
-          "prefix": "/api/v1/",
-          "label": "v1",
-          "count": 90,
+          "prefix": "/api/v1/orders",
+          "label": "orders",
+          "count": 5,
           "children": []
         },
         {
-          "prefix": "/api/v2/",
-          "label": "v2",
-          "count": 91,
+          "prefix": "/api/v1/products",
+          "label": "products",
+          "count": 4,
           "children": []
         }
       ]
     },
     {
-      "prefix": "/health/",
-      "label": "health",
-      "count": 111,
-      "children": [
-        {
-          "prefix": "/health/artifacts/",
-          "label": "artifacts",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/health/assets/",
-          "label": "assets",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/health/attachments/",
-          "label": "attachments",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/health/audits/",
-          "label": "audits",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/health/builds/",
-          "label": "builds",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/health/channels/",
-          "label": "channels",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/health/configs/",
-          "label": "configs",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/health/contracts/",
-          "label": "contracts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/health/credits/",
-          "label": "credits",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/health/customers/",
-          "label": "customers",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/health/dashboards/",
-          "label": "dashboards",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/health/datasets/",
-          "label": "datasets",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/health/deployments/",
-          "label": "deployments",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/health/documents/",
-          "label": "documents",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/health/events/",
-          "label": "events",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/health/feeds/",
-          "label": "feeds",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/health/groups/",
-          "label": "groups",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/health/images/",
-          "label": "images",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/health/integrations/",
-          "label": "integrations",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/health/inventory/",
-          "label": "inventory",
-          "count": 1,
-          "children": []
-        }
-      ]
-    },
-    {
-      "prefix": "/internal/",
-      "label": "internal",
-      "count": 98,
-      "children": [
-        {
-          "prefix": "/internal/addresses/",
-          "label": "addresses",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/alerts/",
-          "label": "alerts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/branches/",
-          "label": "branches",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/internal/campaigns/",
-          "label": "campaigns",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/internal/categories/",
-          "label": "categories",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/internal/comments/",
-          "label": "comments",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/internal/commits/",
-          "label": "commits",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/internal/connectors/",
-          "label": "connectors",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/contacts/",
-          "label": "contacts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/coupons/",
-          "label": "coupons",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/internal/customers/",
-          "label": "customers",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/internal/dashboards/",
-          "label": "dashboards",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/datasets/",
-          "label": "datasets",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/discounts/",
-          "label": "discounts",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/internal/documents/",
-          "label": "documents",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/events/",
-          "label": "events",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/internal/experiments/",
-          "label": "experiments",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/features/",
-          "label": "features",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/internal/files/",
-          "label": "files",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/internal/groups/",
-          "label": "groups",
-          "count": 1,
-          "children": []
-        }
-      ]
-    },
-    {
-      "prefix": "/v1/",
-      "label": "v1",
-      "count": 108,
-      "children": [
-        {
-          "prefix": "/v1/accounts/",
-          "label": "accounts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/accounts_611/",
-          "label": "accounts_611",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/alerts/",
-          "label": "alerts",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/v1/artifacts/",
-          "label": "artifacts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/assets/",
-          "label": "assets",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/attachments/",
-          "label": "attachments",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/audits/",
-          "label": "audits",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/branches/",
-          "label": "branches",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/v1/builds/",
-          "label": "builds",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/channels/",
-          "label": "channels",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/comments/",
-          "label": "comments",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/v1/configs/",
-          "label": "configs",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/v1/connectors/",
-          "label": "connectors",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/contracts/",
-          "label": "contracts",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/v1/customers/",
-          "label": "customers",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/v1/dashboards/",
-          "label": "dashboards",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/datasets/",
-          "label": "datasets",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/v1/deployments/",
-          "label": "deployments",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/v1/events/",
-          "label": "events",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/v1/features/",
-          "label": "features",
-          "count": 1,
-          "children": []
-        }
-      ]
+      "prefix": "/auth/",
+      "label": "auth",
+      "count": 5,
+      "children": []
     },
     {
       "prefix": "/webhooks/",
       "label": "webhooks",
-      "count": 97,
-      "children": [
-        {
-          "prefix": "/webhooks/accounts/",
-          "label": "accounts",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/addresses/",
-          "label": "addresses",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/agents/",
-          "label": "agents",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/assets/",
-          "label": "assets",
-          "count": 3,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/builds/",
-          "label": "builds",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/campaigns/",
-          "label": "campaigns",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/categories/",
-          "label": "categories",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/channels/",
-          "label": "channels",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/commits/",
-          "label": "commits",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/configs/",
-          "label": "configs",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/connectors/",
-          "label": "connectors",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/contracts/",
-          "label": "contracts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/customers/",
-          "label": "customers",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/dashboards/",
-          "label": "dashboards",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/datasets/",
-          "label": "datasets",
-          "count": 2,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/deployments/",
-          "label": "deployments",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/discounts/",
-          "label": "discounts",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/events/",
-          "label": "events",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/experiments/",
-          "label": "experiments",
-          "count": 1,
-          "children": []
-        },
-        {
-          "prefix": "/webhooks/features/",
-          "label": "features",
-          "count": 1,
-          "children": []
-        }
-      ]
+      "count": 2,
+      "children": []
     }
   ],
-  "total": 802,
-  "has_more": true,
+  "total": 20,
+  "has_more": false,
   "page": 1,
   "page_size": 50
 }

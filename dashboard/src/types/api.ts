@@ -139,6 +139,9 @@ export interface PathRow {
   frameworks: string[]
   is_webhook: boolean
   webhook_provider?: string
+  /** Owning controller class / module / router-prefix group (from extractor).
+   *  Used for grouped view in Surface 4. */
+  controller?: string
 }
 
 /** Prefix tree node for the sidebar */
