@@ -229,9 +229,10 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 		Repo            string   `json:"repo"`
 		SourceFile      string   `json:"source_file"`
 		StartLine       int      `json:"start_line"`
-		HasDocs         bool     `json:"has_docs,omitempty"`
-		DocsSummary     string   `json:"docs_summary,omitempty"`
-		DocsPath        string   `json:"docs_path,omitempty"`
+		HasDocs         bool                   `json:"has_docs,omitempty"`
+		DocsSummary     string                 `json:"docs_summary,omitempty"`
+		DocsPath        string                 `json:"docs_path,omitempty"`
+		Enrichment      *EnrichmentFrontmatter `json:"enrichment,omitempty"`
 	}
 
 	var matched []endpointDetail
@@ -303,8 +304,8 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 				webhookProvider = e.Properties["webhook_provider"]
 			}
 
-			// Enrich with docgen data.
-			hasDocs, docsSummary, docsPath := extractEndpointDocs(group, pathHash, docgenState)
+			// Enrich with docgen data (frontmatter preferred, first-line fallback).
+			hasDocs, docsSummary, docsPath, enrichment := extractEndpointDocsEnriched(group, pathHash, docgenState)
 
 			matched = append(matched, endpointDetail{
 				ID:              dashPrefixedID(repo.Slug, e.ID),
@@ -323,6 +324,7 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 				HasDocs:         hasDocs,
 				DocsSummary:     docsSummary,
 				DocsPath:        docsPath,
+				Enrichment:      enrichment,
 			})
 		}
 	}
@@ -345,15 +347,16 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Transform handlers to HandlerDetail shape with resolved entities.
 	type HandlerDetail struct {
-		Entity      map[string]any `json:"entity"`
-		Verb        string         `json:"verb"`
-		Framework   string         `json:"framework,omitempty"`
-		SourceFile  string         `json:"source_file"`
-		StartLine   int            `json:"start_line"`
-		Language    string         `json:"language"`
-		HasDocs     bool           `json:"has_docs,omitempty"`
-		DocsSummary string         `json:"docs_summary,omitempty"`
-		DocsPath    string         `json:"docs_path,omitempty"`
+		Entity      map[string]any         `json:"entity"`
+		Verb        string                 `json:"verb"`
+		Framework   string                 `json:"framework,omitempty"`
+		SourceFile  string                 `json:"source_file"`
+		StartLine   int                    `json:"start_line"`
+		Language    string                 `json:"language"`
+		HasDocs     bool                   `json:"has_docs,omitempty"`
+		DocsSummary string                 `json:"docs_summary,omitempty"`
+		DocsPath    string                 `json:"docs_path,omitempty"`
+		Enrichment  *EnrichmentFrontmatter `json:"enrichment,omitempty"`
 	}
 
 	handlers := make([]HandlerDetail, len(matched))
@@ -369,6 +372,7 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 			HasDocs:     m.HasDocs,
 			DocsSummary: m.DocsSummary,
 			DocsPath:    m.DocsPath,
+			Enrichment:  m.Enrichment,
 		}
 	}
 
@@ -540,54 +544,43 @@ func containsSubstr(sl []string, sub string) bool {
 }
 
 // extractEndpointDocs reads documentation for an endpoint identified by pathHash.
-// It checks docgen-state.json for the group and attempts to find and parse the
-// generated documentation file for this endpoint.
-//
-// Returns: (hasDocs bool, docsSummary string, docsPath string)
-// - hasDocs is true if documentation exists
-// - docsSummary is the first line/paragraph of the doc file (if exists)
-// - docsPath is the relative path to the doc file (if exists)
+// Deprecated: use extractEndpointDocsEnriched instead. Kept for callers that
+// don't yet consume the EnrichmentFrontmatter field.
 func extractEndpointDocs(group string, pathHash string, docgenState *mcp.DocgenState) (bool, string, string) {
+	hasDocs, summary, path, _ := extractEndpointDocsEnriched(group, pathHash, docgenState)
+	return hasDocs, summary, path
+}
+
+// extractEndpointDocsEnriched reads documentation for an endpoint identified
+// by pathHash. It prefers YAML frontmatter when present; falls back to the
+// first-line summary scan when frontmatter is absent (legacy behaviour).
+//
+// Returns: (hasDocs, docsSummary, docsPath, enrichment)
+func extractEndpointDocsEnriched(group, pathHash string, docgenState *mcp.DocgenState) (bool, string, string, *EnrichmentFrontmatter) {
 	if docgenState == nil || docgenState.GeneratedPaths == nil {
-		return false, "", ""
+		return false, "", "", nil
 	}
 
-	// Try to find a doc file matching this endpoint.
-	// Expected pattern: something like "reference/endpoints/{pathHash}.md" or similar.
-	// For now, we'll search GeneratedPaths for a file that contains the pathHash.
 	for _, docPath := range docgenState.GeneratedPaths {
-		// Check if the path contains the pathHash or looks like an endpoint doc.
 		if !strings.Contains(docPath, pathHash) && !strings.Contains(docPath, "endpoint") {
 			continue
 		}
 
-		// Try to read the file from the standard docgen location.
 		fullPath := getDocFilePath(group, docPath)
-		data, err := os.ReadFile(fullPath)
-		if err != nil {
-			continue
+		fm, fallback := extractEnrichmentFromFile(fullPath)
+		if fm != nil && fm.HasData() {
+			return true, fm.Summary, docPath, fm
 		}
-
-		// Extract summary from the file (first non-empty line).
-		lines := strings.Split(string(data), "\n")
-		var summary string
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
-				// Get first 150 chars of content as summary.
-				if len(trimmed) > 150 {
-					summary = trimmed[:150] + "..."
-				} else {
-					summary = trimmed
-				}
-				break
-			}
+		if fallback != "" {
+			return true, fallback, docPath, nil
 		}
-
-		return true, summary, docPath
+		// File exists but empty — still report hasDocs=true.
+		if _, err := os.Stat(fullPath); err == nil {
+			return true, "", docPath, nil
+		}
 	}
 
-	return false, "", ""
+	return false, "", "", nil
 }
 
 // getDocFilePath constructs the full file path to a generated documentation file.

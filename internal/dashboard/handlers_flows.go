@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/cajasmota/archigraph/internal/mcp"
 )
 
 const (
@@ -45,17 +47,28 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ProcessItem struct {
-		ProcessID   string   `json:"process_id"`
-		Repo        string   `json:"repo"`
-		Label       string   `json:"label"`
-		EntryID     string   `json:"entry_id"`
-		EntryName   string   `json:"entry_name"`
-		TerminalID  string   `json:"terminal_id"`
-		StepCount   int      `json:"step_count"`
-		CrossStack  bool     `json:"cross_stack"`
-		ChainLabels []string `json:"chain_labels"`
-		SourceFile  string   `json:"source_file,omitempty"`
+		ProcessID   string                 `json:"process_id"`
+		Repo        string                 `json:"repo"`
+		Label       string                 `json:"label"`
+		EntryID     string                 `json:"entry_id"`
+		EntryName   string                 `json:"entry_name"`
+		TerminalID  string                 `json:"terminal_id"`
+		StepCount   int                    `json:"step_count"`
+		CrossStack  bool                   `json:"cross_stack"`
+		ChainLabels []string               `json:"chain_labels"`
+		SourceFile  string                 `json:"source_file,omitempty"`
+		// Enrichment fields (from YAML frontmatter, if a doc file exists).
+		DocsSummary string                 `json:"docs_summary,omitempty"`
+		Group       string                 `json:"group,omitempty"`
+		GroupLabel  string                 `json:"group_label,omitempty"`
+		Rank        float64                `json:"rank,omitempty"`
+		Gaps        []string               `json:"gaps,omitempty"`
+		Disqualified bool                  `json:"disqualified,omitempty"`
+		Enrichment  *EnrichmentFrontmatter `json:"enrichment,omitempty"`
 	}
+
+	// Load docgen state for documentation enrichment.
+	docgenState, _ := mcp.LoadDocgenState(group)
 
 	var items []ProcessItem
 	for _, r := range sortedRepos(grp) {
@@ -73,7 +86,7 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			sc, _ := strconv.Atoi(e.Properties["step_count"])
-			items = append(items, ProcessItem{
+			item := ProcessItem{
 				ProcessID:   pid,
 				Repo:        r.Slug,
 				Label:       e.Name,
@@ -84,7 +97,20 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 				CrossStack:  cs,
 				ChainLabels: splitChainLabels(e.Properties["chain_labels"]),
 				SourceFile:  e.SourceFile,
-			})
+			}
+			// Enrich from doc frontmatter when available.
+			if fm, summary := extractFlowDocs(group, e.ID, docgenState); fm != nil {
+				item.DocsSummary = fm.Summary
+				item.Group = fm.Group
+				item.GroupLabel = fm.GroupLabel
+				item.Rank = fm.Rank
+				item.Gaps = fm.Gaps
+				item.Disqualified = fm.Disqualified
+				item.Enrichment = fm
+			} else if summary != "" {
+				item.DocsSummary = summary
+			}
+			items = append(items, item)
 		}
 	}
 
@@ -242,6 +268,10 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 	cs := processEnt.Properties["cross_stack"] == "true"
 	sc, _ := strconv.Atoi(processEnt.Properties["step_count"])
 
+	// Load docgen state for enrichment.
+	docgenStateDetail, _ := mcp.LoadDocgenState(group)
+	enrichedFM, enrichedSummary := extractFlowDocs(group, processEnt.ID, docgenStateDetail)
+
 	process := map[string]any{
 		"process_id":   dashPrefixedID(processRepo.Slug, processEnt.ID),
 		"repo":         processRepo.Slug,
@@ -254,6 +284,17 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 		"chain_labels": splitChainLabels(processEnt.Properties["chain_labels"]),
 		"source_file":  processEnt.SourceFile,
 		"steps":        steps,
+	}
+	if enrichedFM != nil {
+		process["docs_summary"] = enrichedFM.Summary
+		process["group"] = enrichedFM.Group
+		process["group_label"] = enrichedFM.GroupLabel
+		process["rank"] = enrichedFM.Rank
+		process["gaps"] = enrichedFM.Gaps
+		process["disqualified"] = enrichedFM.Disqualified
+		process["enrichment"] = enrichedFM
+	} else if enrichedSummary != "" {
+		process["docs_summary"] = enrichedSummary
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -277,6 +318,33 @@ func splitChainLabels(s string) []string {
 		}
 	}
 	return out
+}
+
+// extractFlowDocs looks up enrichment documentation for a process_flow entity.
+// It searches docgen-state.json GeneratedPaths for a doc file whose name
+// contains the entity id (or "flow"), reads it, and returns the parsed
+// EnrichmentFrontmatter (or a fallback first-line summary when frontmatter
+// is absent).
+//
+// Returns (nil, "") when no documentation file is found.
+func extractFlowDocs(group, entityID string, docgenState *mcp.DocgenState) (*EnrichmentFrontmatter, string) {
+	if docgenState == nil || docgenState.GeneratedPaths == nil {
+		return nil, ""
+	}
+	for _, docPath := range docgenState.GeneratedPaths {
+		if !strings.Contains(docPath, entityID) && !strings.Contains(strings.ToLower(docPath), "flow") {
+			continue
+		}
+		fullPath := getDocFilePath(group, docPath)
+		fm, fallback := extractEnrichmentFromFile(fullPath)
+		if fm != nil && fm.HasData() {
+			return fm, ""
+		}
+		if fallback != "" {
+			return nil, fallback
+		}
+	}
+	return nil, ""
 }
 
 // readSourceLines reads start..end (+ context lines) from a source file.

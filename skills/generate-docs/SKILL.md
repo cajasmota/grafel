@@ -21,7 +21,7 @@ Do not invoke it for one-off docstrings, README touch-ups, or commit-message wri
 
 If the daemon is not running, the skill stops at Pass 0 and tells the user to run `archigraph start`. If a repo is not yet registered, the skill tells the user to run `archigraph register <repo-path>`. Do not invoke `archigraph index` directly — it is now a thin RPC client that delegates to the daemon.
 
-## Pass numbering (Pass 0 through Pass 12)
+## Pass numbering (Pass 0 through Pass 13)
 
 The skill is a strict pipeline. Each pass has a dedicated prompt file under `prompts/`. A subagent reads the prompt and follows it; the orchestrator (this skill) tracks progress and gates each pass on the previous one's output.
 
@@ -47,6 +47,7 @@ Time estimates assume typical small-to-medium codebases (1k–10k source entitie
 | 10 | `prompts/10-pattern-convergence.md` | Aggregate subagent pattern candidates + promote convergent ones (ADR-0018 Phase 4). | 2–3 min |
 | 11 | `prompts/11-pattern-cross-link.md` | Populate each approved pattern's `documentation_url` (ADR-0018 Phase 5). | 1–2 min |
 | 12 | `prompts/12-pattern-prose.md` | Emit `docs/patterns/<category>/<id>.md` per approved pattern (ADR-0018 Phase 6). | 2–4 min |
+| 13 | `prompts/13-enrichment.md` | LLM enrichment pass: emit unified YAML frontmatter for `http_endpoint`, `process_flow`, and `message_topic` entities (merge, disqualify, rank, group, summarise, detect gaps). Dashboard surfaces consume this data. | 5–15 min |
 
 **Total wall time:** typically **25–60 minutes** for small repos (1k entities), **1–2 hours** for medium repos (10k entities), **2–4 hours** for large repos (100k+ entities). Pass 4 parallelizes across module clusters, so the critical path is dominated by Pass 0 (user interaction), Passes 1–2 (discovery), and Passes 4–5 (content generation).
 
@@ -58,6 +59,124 @@ If a pass appears to hang:
 During Pass 4 (per-module writers), each subagent additionally emits `PatternCandidate` entities via `archigraph_patterns(action=record, as_candidate=true)` whenever it observes ≥ `per_subagent_threshold` (default 2) instances of a structural recurrence in its slice. The candidates aggregate in Pass 10, cross-link in Pass 11, and produce dedicated markdown in Pass 12. The full design is in [ADR-0018](../../docs/adrs/0018-agent-learned-patterns.md).
 
 Passes 1a and 1b integrate the ADR-0015 residual-repair flow into doc generation. **Pass 1a scope (narrow):** auto-resolves only (a) residuals that match a saved repair template with confidence ≥ 0.8, and (b) recognised third-party API stubs (e.g. `stripe.charges.create`, `https://api.<vendor>/...`). It does NOT attempt `bind_to_entity` resolutions — those require entity-level data that Pass 1 (inventory) does not provide. All `bind_to_entity` candidates are surfaced to Pass 1b as user questions, or deferred to Pass 3a (generation-time) where the writer has full subgraph context. Pass 1b is a templates-driven interactive Q&A that translates user answers into `archigraph_repairs(action=submit)` calls. Pass 3a is a hook (not a numbered pass): every writer in Passes 3–6 and 12 runs it before describing an entity, so any residual that escaped the sweep (including `bind_to_entity` deferred from Pass 1a) gets one more chance to repair with local subgraph context, or failing that, gets surfaced in prose as a documented runtime-resolved edge per ADR-0007. The standalone `/archigraph-repair` skill (`skills/archigraph-repair/SKILL.md`) exposes the same flow outside doc generation for ad-hoc cleanup.
+
+## Pass 13 — LLM enrichment pass
+
+Pass 13 is an optional post-documentation enrichment step. Run it after the prose docs are complete (Pass 12) when the user wants to enrich dashboard surfaces (Paths, Flows, Topology) with structured metadata.
+
+### When to run Pass 13
+
+The pass is **on-demand** — not part of a standard first-time doc generation run. Trigger it when:
+- The user explicitly asks for enriched dashboard data ("enrich the Paths panel", "add rank and summaries to my flows").
+- The `archigraph_enrichments(action=list)` call returns enrichment candidates with status `pending`.
+
+### What Pass 13 does (per entity kind)
+
+For every entity of kind `http_endpoint`, `process_flow`, or `message_topic`, the enrichment subagent:
+
+1. **Merges** near-duplicates — identifies same logical entity in two places; emits `merged_into` on the redundant one.
+2. **Disqualifies** false positives — marks regex-style noise entities with `disqualified: true`.
+3. **Ranks** by importance — infers a 0..1 score from traffic signals (inbound caller count, business heuristic).
+4. **Groups** by domain — LLM-inferred cluster key (e.g. `orders`, `auth`, `inventory`) + human-readable `group_label`.
+5. **Summarises** — writes a one-sentence natural-language summary.
+6. **Detects gaps** — lists structural problems (missing auth, missing error response, orphan producer, etc.).
+
+The subagent writes the enrichment as YAML frontmatter at the **top** of the entity's existing doc file. If no doc file exists for the entity, a minimal file is created containing only the frontmatter block.
+
+### Unified frontmatter schema
+
+Every enriched entity doc file starts with a YAML frontmatter block delimited by `---`. **All fields are optional** — omit any field the LLM cannot determine with confidence. The dashboard backend falls back to first-line prose summary when frontmatter is absent.
+
+```yaml
+---
+entity_id: <graph entity ID, e.g. "ep-abc123">
+kind: http_endpoint          # http_endpoint | process_flow | message_topic
+disqualified: false          # true = LLM considers this a false-positive entity
+merged_into: ""              # non-empty = this entity is superseded by the named entity_id
+rank: 0.78                   # 0..1 importance score (omit if unknown)
+group: orders                # short domain key, lower-case, no spaces
+group_label: 'Order processing'   # human-readable group name
+summary: 'Returns paginated list of orders for the authenticated user'
+gaps:
+  - 'No error response documented for 4xx status codes'
+  - 'Auth requirement not enforced — missing decorator'
+
+# ── http_endpoint-specific fields ────────────────────────────────────────────
+method: GET
+path: /api/orders
+parameters:
+  - name: page
+    in: query
+    type: int
+    required: false
+    default: 1
+    description: Page number (1-indexed)
+  - name: limit
+    in: query
+    type: int
+    required: false
+    default: 50
+responses:
+  '200':
+    description: Paginated order list
+    shape: '{ orders: Order[], total: int, page: int }'
+  '401':
+    description: Unauthenticated
+  '400':
+    description: Invalid query params
+auth: 'Bearer token required (JWT)'
+tables_touched: [orders, order_items]
+
+# ── process_flow-specific fields ─────────────────────────────────────────────
+steps:
+  - Validate cart contents and check stock
+  - Charge payment method via payment service
+  - Persist order record to database
+  - Emit order.created event to broker
+preconditions: 'User is authenticated and cart is non-empty'
+expected_outcome: 'Order persisted, confirmation email dispatched, inventory decremented'
+
+# ── message_topic-specific fields ────────────────────────────────────────────
+schema: '{ order_id: string, total: float, items: OrderItem[], user_id: string }'
+typical_payload_size_bytes: 512
+volume_estimate: high          # low | medium | high | very-high
+expected_consumers: [order-fulfillment, analytics, notifications]
+---
+
+## Description
+
+Free-form prose continues here (existing content unchanged below this block).
+```
+
+> **Field selection rules**
+> - Emit only `kind`-relevant per-kind fields. Do not emit `steps` for an `http_endpoint`.
+> - Omit `rank` when you have no signal; do not fabricate a number.
+> - `disqualified: true` suppresses the entity from the default dashboard view; only set it when clearly a false positive.
+> - `merged_into` must reference an `entity_id` that exists in the same group.
+> - `gaps` entries should be actionable (the user can act on them); avoid tautological observations.
+
+### Pass 13 procedure
+
+```
+# 1. List entities to enrich.
+archigraph_find(question="HTTP endpoints routes", depth=1, token_budget=1200)
+archigraph_find(question="process flows call chains", depth=1, token_budget=1200)
+archigraph_find(question="message topics broker queues", depth=1, token_budget=800)
+
+# 2. For each entity, inspect neighbours (auth edges, QUERIES edges, PUBLISHES_TO).
+archigraph_expand(node="<entity_id>", depth=2)
+
+# 3. Check enrichment candidates queue for pre-computed signals.
+archigraph_enrichments(action=list, kind="http_endpoint")
+archigraph_enrichments(action=list, kind="process_flow")
+archigraph_enrichments(action=list, kind="message_topic")
+
+# 4. Write frontmatter. Prepend to the existing doc file; do not replace prose.
+# 5. Submit enrichment record so the daemon tracks it.
+archigraph_enrichments(action=submit, entity_id="<id>", summary="...", kind="<kind>")
+```
+
+After writing, run `snippets/verification-checklist.md` for each entity. Hand back to the orchestrator when all entities processed.
 
 ## archigraph MCP tool surface
 

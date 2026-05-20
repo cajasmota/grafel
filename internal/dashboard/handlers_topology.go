@@ -13,6 +13,8 @@ package dashboard
 import (
 	"net/http"
 	"strings"
+
+	"github.com/cajasmota/archigraph/internal/mcp"
 )
 
 // Broker entity kinds (suffix after stripping the optional "SCOPE." prefix).
@@ -102,7 +104,8 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, collectTopologyResponse(grp))
+	docgenState, _ := mcp.LoadDocgenState(group)
+	writeJSON(w, http.StatusOK, collectTopologyResponse(grp, group, docgenState))
 }
 
 // handleGroupTopics — GET /api/groups/{group}/topics
@@ -118,7 +121,8 @@ func (s *Server) handleGroupTopics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, collectTopologyResponse(grp))
+	docgenState, _ := mcp.LoadDocgenState(group)
+	writeJSON(w, http.StatusOK, collectTopologyResponse(grp, group, docgenState))
 }
 
 // collectTopologyResponse builds the full topology wire payload from a loaded
@@ -126,7 +130,9 @@ func (s *Server) handleGroupTopics(w http.ResponseWriter, r *http.Request) {
 // JSON encoding produces [] (not null) when no data exists — fixing the
 // frontend error boundary triggered by null nats_subjects / graphql_subscriptions
 // on groups with no NATS or GraphQL edges (#944).
-func collectTopologyResponse(grp *DashGroup) topologyResponse {
+//
+// groupName and docgenState are optional (pass "" / nil to skip enrichment).
+func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.DocgenState) topologyResponse {
 	resp := topologyResponse{
 		Topics:               []map[string]any{},
 		Queues:               []map[string]any{},
@@ -160,6 +166,10 @@ func collectTopologyResponse(grp *DashGroup) topologyResponse {
 					"producers":     producers,
 					"consumers":     consumers,
 					"transforms_to": transformsTo,
+				}
+				// Enrich topic with frontmatter when available.
+				if groupName != "" {
+					applyTopologyEnrichment(entry, groupName, e.ID, docgenState)
 				}
 				resp.Topics = append(resp.Topics, entry)
 
@@ -421,6 +431,39 @@ func inferProviderFromID(id string) string {
 	}
 }
 
+// applyTopologyEnrichment reads YAML frontmatter for a topology entity and
+// merges enrichment fields (summary, group, rank, gaps, disqualified,
+// enrichment) into the entry map. No-op when no doc file exists or when
+// docgenState is nil.
+func applyTopologyEnrichment(entry map[string]any, group, entityID string, docgenState *mcp.DocgenState) {
+	if docgenState == nil || docgenState.GeneratedPaths == nil {
+		return
+	}
+	for _, docPath := range docgenState.GeneratedPaths {
+		if !strings.Contains(docPath, entityID) &&
+			!strings.Contains(strings.ToLower(docPath), "topic") &&
+			!strings.Contains(strings.ToLower(docPath), "topology") {
+			continue
+		}
+		fullPath := getDocFilePath(group, docPath)
+		fm, fallback := extractEnrichmentFromFile(fullPath)
+		if fm != nil && fm.HasData() {
+			entry["docs_summary"] = fm.Summary
+			entry["group"] = fm.Group
+			entry["group_label"] = fm.GroupLabel
+			entry["rank"] = fm.Rank
+			entry["gaps"] = fm.Gaps
+			entry["disqualified"] = fm.Disqualified
+			entry["enrichment"] = fm
+			return
+		}
+		if fallback != "" {
+			entry["docs_summary"] = fallback
+			return
+		}
+	}
+}
+
 // collectTopology is a compatibility shim used by the unit tests.  It
 // delegates to collectTopologyResponse and unpacks the struct into the
 // four slices the tests expect: (topics, queues, channels, functions).
@@ -430,6 +473,6 @@ func collectTopology(grp *DashGroup) (
 	channels []map[string]any,
 	functions []map[string]any,
 ) {
-	resp := collectTopologyResponse(grp)
+	resp := collectTopologyResponse(grp, "", nil)
 	return resp.Topics, resp.Queues, resp.Channels, resp.Functions
 }
