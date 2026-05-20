@@ -87,7 +87,11 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		source:   file.Content,
 		filePath: file.Path,
 		language: file.Language,
-		aliases:  AliasMapFor(file.RepoRoot),
+		// Issue #842 — use AliasMapForFile so monorepo packages with their
+		// own tsconfig.json (e.g. frontend/tsconfig.json) contribute their
+		// aliases to files under that subdirectory, rather than only
+		// considering the repo-root tsconfig.
+		aliases:  AliasMapForFile(file.RepoRoot, file.Path),
 		repoRoot: file.RepoRoot,
 	}
 

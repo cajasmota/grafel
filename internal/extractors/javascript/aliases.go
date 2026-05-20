@@ -9,12 +9,14 @@
 // project-internal IMPORTS edges bound to a bare `@/...` string that no
 // resolver index could match.
 //
-// This file reads the four config shapes that account for almost every
+// This file reads the five config shapes that account for almost every
 // alias map seen in the wild:
 //
 //	tsconfig.json    — compilerOptions.paths (Microsoft TS, Next.js,
-//	                   Expo / RN — all use this)
+//	                   Expo / RN — all use this); follows local extends
+//	                   chains and scans subdirectory tsconfigs for monorepos
 //	vite.config.{js,ts}  — resolve.alias (Vite-based web apps)
+//	webpack.config.{js,ts} — resolve.alias (CRA, custom Webpack setups)
 //	metro.config.{js,ts} — resolver.alias / resolver.extraNodeModules
 //	                       (React Native / Expo Metro bundler)
 //	babel.config.{js,ts} — `module-resolver` plugin alias map
@@ -27,9 +29,23 @@
 //     comment-free file shipped by Expo / Vite scaffolds. A
 //     comment-strip pre-pass handles the rest.
 //
-//   - Vite / Metro / Babel configs are JavaScript modules whose alias
-//     map is declared as a literal object. A full JS evaluator is out of
-//     scope; we extract the common shape with a regex pass:
+//   - tsconfig `extends` chains: when the extends value is a local file
+//     path (starts with "." or "/") or a relative bare name that resolves
+//     to a local file, the parent tsconfig is loaded and its paths are
+//     merged. npm-package extends values (e.g. "expo/tsconfig.base") are
+//     silently skipped — we can't read node_modules at index time.
+//
+//   - Monorepo nested tsconfigs: LoadAliasMap also walks one level of
+//     subdirectories (skipping hidden dirs and node_modules) collecting
+//     any tsconfig.json / jsconfig.json found there. The per-subdirectory
+//     entries are stored in a nested map keyed by the subdirectory name
+//     (repo-relative). AliasMapForFile selects the nearest ancestor
+//     tsconfig before falling back to the repo-root map, so files inside
+//     `frontend/src/` pick up `frontend/tsconfig.json` aliases first.
+//
+//   - Vite / Metro / Babel / Webpack configs are JavaScript modules whose
+//     alias map is declared as a literal object. A full JS evaluator is
+//     out of scope; we extract the common shape with a regex pass:
 //
 //     '@/foo': '...'              → key='@/foo'
 //     '@/foo': path.resolve(...)  → key='@/foo'
@@ -40,12 +56,13 @@
 //     literal string (`./src/components`) or, when it's a
 //     `path.resolve(...)` / `path.join(...)` expression, the last
 //     string literal argument. That covers the dominant patterns in
-//     Vite, Metro and Babel module-resolver setups.
+//     Vite, Metro, Babel module-resolver and Webpack setups.
 //
 // All maps are merged into a single per-repo AliasMap. When two
 // configs disagree on the same alias the merge order is:
-// tsconfig < vite < metro < babel — later wins (Babel module-resolver
-// is the most authoritative source on RN, and Vite resolve.alias on web).
+// tsconfig < vite < webpack < metro < babel — later wins (Babel
+// module-resolver is the most authoritative source on RN, and Vite
+// resolve.alias on web).
 //
 // The map is cached per repo root so the regex parsers run at most once
 // per index run.
@@ -215,10 +232,10 @@ func cleanRepoRel(p string) string {
 }
 
 // LoadAliasMap discovers and parses every supported config file in
-// repoRoot and returns the merged AliasMap. Errors reading individual
-// files are swallowed silently — alias resolution is a best-effort
-// hint, and any miss falls back to the pre-#505 behaviour of treating
-// the spec as external.
+// repoRoot and returns the merged AliasMap for the repo root. Errors
+// reading individual files are swallowed silently — alias resolution is
+// a best-effort hint, and any miss falls back to the pre-#505 behaviour
+// of treating the spec as external.
 //
 // repoRoot must be an absolute filesystem path. Empty input returns an
 // empty map.
@@ -229,6 +246,7 @@ func LoadAliasMap(repoRoot string) AliasMap {
 	var entries []aliasEntry
 	entries = append(entries, parseTsconfigPaths(repoRoot)...)
 	entries = append(entries, parseViteAliases(repoRoot)...)
+	entries = append(entries, parseWebpackAliases(repoRoot)...)
 	entries = append(entries, parseMetroAliases(repoRoot)...)
 	entries = append(entries, parseBabelAliases(repoRoot)...)
 	// Sort by descending prefix length so longest match wins.
@@ -236,41 +254,142 @@ func LoadAliasMap(repoRoot string) AliasMap {
 	return AliasMap{entries: dedupAliasEntries(entries)}
 }
 
+// loadSubdirAliasMap parses configs found under a specific subdirectory
+// of repoRoot. The subdirRel is the repo-relative path of the subdir
+// (e.g. "frontend"). The returned AliasMap contains entries whose
+// targets are expressed relative to the subdir (not the repo root),
+// shifted back to repo-relative form.
+func loadSubdirAliasMap(repoRoot, subdirRel string) AliasMap {
+	absSubdir := filepath.Join(repoRoot, filepath.FromSlash(subdirRel))
+	// Only load configs from this subdir, not recursively further.
+	var entries []aliasEntry
+	// For subdirectory tsconfigs, targets must be shifted to be
+	// relative to repoRoot (prepend subdirRel/).
+	raw := parseTsconfigPathsFromDir(absSubdir)
+	for i := range raw {
+		shifted := make([]string, len(raw[i].targets))
+		for j, t := range raw[i].targets {
+			if t == "" {
+				shifted[j] = subdirRel
+			} else {
+				shifted[j] = cleanRepoRel(subdirRel + "/" + t)
+			}
+		}
+		raw[i].targets = shifted
+	}
+	entries = append(entries, raw...)
+	// Vite/Webpack/Metro/Babel in subdirs are treated like the root.
+	entries = append(entries, parseViteAliases(absSubdir)...)
+	entries = append(entries, parseWebpackAliases(absSubdir)...)
+	entries = append(entries, parseMetroAliases(absSubdir)...)
+	entries = append(entries, parseBabelAliases(absSubdir)...)
+	sortByPrefixLen(entries)
+	return AliasMap{entries: dedupAliasEntries(entries)}
+}
+
+// repoAliasState holds the root-level AliasMap and a subdirectory index
+// for monorepo-aware nearest-tsconfig resolution.
+type repoAliasState struct {
+	root    AliasMap
+	subdirs map[string]AliasMap // key: repo-relative subdir path (e.g. "frontend")
+}
+
 // aliasMapCache memoises LoadAliasMap by repo root so each indexing run
 // pays the parse cost at most once per project. Concurrent
 // goroutine-safe; the JS extractor's Extract is called in parallel.
 var (
-	aliasMapCache   = map[string]AliasMap{}
+	aliasMapCache   = map[string]repoAliasState{}
 	aliasMapCacheMu sync.RWMutex
 )
 
 // AliasMapFor returns the cached AliasMap for repoRoot, loading and
 // caching it on first access. Empty repoRoot returns an empty map.
+// For per-file nearest-tsconfig resolution use AliasMapForFile.
 func AliasMapFor(repoRoot string) AliasMap {
 	if repoRoot == "" {
 		return AliasMap{}
 	}
+	state := loadRepoAliasState(repoRoot)
+	return state.root
+}
+
+// AliasMapForFile returns the most specific AliasMap for filePath
+// (repo-relative). It walks up from the file's directory toward the repo
+// root looking for a cached subdirectory AliasMap, then falls back to the
+// repo-root map. This enables monorepo packages with their own tsconfig.json
+// to override root-level aliases.
+func AliasMapForFile(repoRoot, filePath string) AliasMap {
+	if repoRoot == "" {
+		return AliasMap{}
+	}
+	state := loadRepoAliasState(repoRoot)
+	// Walk from the file's directory up to the repo root (exclusive).
+	dir := filepath.ToSlash(filepath.Dir(filePath))
+	for dir != "" && dir != "." && dir != "/" {
+		if m, ok := state.subdirs[dir]; ok {
+			return m
+		}
+		parent := filepath.ToSlash(filepath.Dir(dir))
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return state.root
+}
+
+// loadRepoAliasState loads (or returns cached) the full repoAliasState for
+// repoRoot, including the root AliasMap and a subdirectory index.
+func loadRepoAliasState(repoRoot string) repoAliasState {
 	aliasMapCacheMu.RLock()
-	m, ok := aliasMapCache[repoRoot]
+	s, ok := aliasMapCache[repoRoot]
 	aliasMapCacheMu.RUnlock()
 	if ok {
-		return m
+		return s
 	}
 	aliasMapCacheMu.Lock()
 	defer aliasMapCacheMu.Unlock()
-	if m, ok := aliasMapCache[repoRoot]; ok {
-		return m
+	if s, ok := aliasMapCache[repoRoot]; ok {
+		return s
 	}
-	m = LoadAliasMap(repoRoot)
-	aliasMapCache[repoRoot] = m
-	return m
+	root := LoadAliasMap(repoRoot)
+	subdirs := scanSubdirAliasMap(repoRoot)
+	s = repoAliasState{root: root, subdirs: subdirs}
+	aliasMapCache[repoRoot] = s
+	return s
+}
+
+// scanSubdirAliasMap walks one level of subdirectories under repoRoot
+// and builds a map from repo-relative subdir → AliasMap for each subdir
+// that contains a tsconfig or other config file. Hidden directories and
+// node_modules are skipped.
+func scanSubdirAliasMap(repoRoot string) map[string]AliasMap {
+	out := map[string]AliasMap{}
+	entries, err := os.ReadDir(repoRoot)
+	if err != nil {
+		return out
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == "" || name[0] == '.' || name == "node_modules" || name == "dist" || name == "build" || name == ".next" || name == "coverage" {
+			continue
+		}
+		m := loadSubdirAliasMap(repoRoot, name)
+		if len(m.entries) > 0 {
+			out[name] = m
+		}
+	}
+	return out
 }
 
 // resetAliasMapCache clears the per-repo cache. Test-only helper.
 func resetAliasMapCache() {
 	aliasMapCacheMu.Lock()
 	defer aliasMapCacheMu.Unlock()
-	aliasMapCache = map[string]AliasMap{}
+	aliasMapCache = map[string]repoAliasState{}
 }
 
 // dedupAliasEntries removes duplicates produced by overlapping config
@@ -326,7 +445,8 @@ func sortByPrefixLen(in []aliasEntry) {
 
 // parseTsconfigPaths reads <repoRoot>/tsconfig.json (or jsconfig.json)
 // and returns alias entries derived from compilerOptions.paths. Returns
-// nil on any IO/parse failure.
+// nil on any IO/parse failure. Follows local `extends` chains up to
+// maxTsconfigExtendsDepth levels deep.
 //
 // Shape:
 //
@@ -345,13 +465,21 @@ func sortByPrefixLen(in []aliasEntry) {
 // returned as alias entries with prefix and target derived per the
 // `*`-suffix rules described on aliasEntry.
 func parseTsconfigPaths(repoRoot string) []aliasEntry {
+	return parseTsconfigPathsFromDir(repoRoot)
+}
+
+// parseTsconfigPathsFromDir reads tsconfig.json / jsconfig.json from
+// configDir and returns alias entries. configDir is the directory
+// where the tsconfig resides (used as the base for relative extends
+// and target resolution).
+func parseTsconfigPathsFromDir(configDir string) []aliasEntry {
 	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
-		path := filepath.Join(repoRoot, name)
-		data, err := os.ReadFile(path)
+		configPath := filepath.Join(configDir, name)
+		data, err := os.ReadFile(configPath)
 		if err != nil {
 			continue
 		}
-		entries := parseTsconfigPathsBytes(data)
+		entries := parseTsconfigPathsBytesWithDir(data, configDir, 0)
 		if len(entries) > 0 {
 			return entries
 		}
@@ -359,11 +487,25 @@ func parseTsconfigPaths(repoRoot string) []aliasEntry {
 	return nil
 }
 
+// maxTsconfigExtendsDepth caps the number of parent tsconfig files we
+// follow to prevent cycles and infinite recursion on pathological setups.
+const maxTsconfigExtendsDepth = 5
+
 // parseTsconfigPathsBytes parses the raw tsconfig.json bytes. Exposed
-// for direct unit-testing without filesystem fixtures.
+// for direct unit-testing without filesystem fixtures. Uses the repo
+// root as the configDir (no extends resolution, as no filesystem path
+// is available).
 func parseTsconfigPathsBytes(data []byte) []aliasEntry {
+	return parseTsconfigPathsBytesWithDir(data, "", 0)
+}
+
+// parseTsconfigPathsBytesWithDir parses raw tsconfig.json bytes with
+// knowledge of configDir so that local extends paths and relative target
+// paths can be resolved. depth guards against extends cycles.
+func parseTsconfigPathsBytesWithDir(data []byte, configDir string, depth int) []aliasEntry {
 	cleaned := stripJSONComments(data)
 	var raw struct {
+		Extends         string `json:"extends"`
 		CompilerOptions struct {
 			BaseURL string              `json:"baseUrl"`
 			Paths   map[string][]string `json:"paths"`
@@ -372,11 +514,17 @@ func parseTsconfigPathsBytes(data []byte) []aliasEntry {
 	if err := json.Unmarshal(cleaned, &raw); err != nil {
 		return nil
 	}
-	if len(raw.CompilerOptions.Paths) == 0 {
-		return nil
-	}
+
 	baseURL := strings.TrimPrefix(strings.TrimPrefix(raw.CompilerOptions.BaseURL, "./"), "/")
-	out := make([]aliasEntry, 0, len(raw.CompilerOptions.Paths))
+	var out []aliasEntry
+
+	// Child paths take precedence over parent (child is appended last;
+	// sortByPrefixLen+dedupAliasEntries in LoadAliasMap will keep the first
+	// occurrence at equal prefix length — so we append parent first).
+	if raw.Extends != "" && depth < maxTsconfigExtendsDepth {
+		out = append(out, followTsconfigExtends(raw.Extends, configDir, depth+1)...)
+	}
+
 	for key, targets := range raw.CompilerOptions.Paths {
 		if len(targets) == 0 {
 			continue
@@ -388,6 +536,61 @@ func parseTsconfigPathsBytes(data []byte) []aliasEntry {
 		out = append(out, entry)
 	}
 	return out
+}
+
+// followTsconfigExtends resolves a tsconfig `extends` value and returns
+// alias entries from the parent config. Only local-file references are
+// followed; npm package extends (e.g. "expo/tsconfig.base") are silently
+// ignored because we cannot read node_modules at index time.
+//
+// Local references: any value that starts with ".", "/", or resolves as
+// a path relative to configDir that exists on disk.
+func followTsconfigExtends(extendsVal, configDir string, depth int) []aliasEntry {
+	if configDir == "" || depth > maxTsconfigExtendsDepth {
+		return nil
+	}
+	// Skip npm-package references (no "." or "/" prefix, contains "/")
+	// unless the path actually exists — e.g. "expo/tsconfig.base" won't.
+	isLocal := strings.HasPrefix(extendsVal, ".") || strings.HasPrefix(extendsVal, "/")
+	if !isLocal {
+		// Attempt to treat as relative bare name (e.g. "tsconfig.base").
+		candidate := filepath.Join(configDir, extendsVal)
+		// Try with and without .json extension.
+		if !fileExists(candidate) {
+			candidate = candidate + ".json"
+			if !fileExists(candidate) {
+				// npm package or non-existent — skip.
+				return nil
+			}
+		}
+		data, err := os.ReadFile(candidate)
+		if err != nil {
+			return nil
+		}
+		return parseTsconfigPathsBytesWithDir(data, filepath.Dir(candidate), depth)
+	}
+	// Local path (starts with "." or "/").
+	candidate := extendsVal
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(configDir, candidate)
+	}
+	if !fileExists(candidate) {
+		candidate = candidate + ".json"
+		if !fileExists(candidate) {
+			return nil
+		}
+	}
+	data, err := os.ReadFile(candidate)
+	if err != nil {
+		return nil
+	}
+	return parseTsconfigPathsBytesWithDir(data, filepath.Dir(candidate), depth)
+}
+
+// fileExists reports whether path exists as a regular file.
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // tsPathEntry converts a single TypeScript paths declaration (key plus
@@ -486,6 +689,24 @@ var pathStringRe = regexp.MustCompile(`['"]([^'"]+)['"]\s*\)?\s*$`)
 // `resolve` block, then for an `alias` object literal inside it.
 func parseViteAliases(repoRoot string) []aliasEntry {
 	for _, name := range []string{"vite.config.ts", "vite.config.js", "vite.config.mjs", "vite.config.cjs"} {
+		path := filepath.Join(repoRoot, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		entries := extractAliasBlock(data, "resolve", "alias")
+		if len(entries) > 0 {
+			return entries
+		}
+	}
+	return nil
+}
+
+// parseWebpackAliases finds webpack.config.{js,ts,mjs,cjs} in repoRoot
+// and extracts the resolve.alias object. Webpack is the bundler used by
+// Create React App and many custom setups.
+func parseWebpackAliases(repoRoot string) []aliasEntry {
+	for _, name := range []string{"webpack.config.js", "webpack.config.ts", "webpack.config.mjs", "webpack.config.cjs"} {
 		path := filepath.Join(repoRoot, name)
 		data, err := os.ReadFile(path)
 		if err != nil {
