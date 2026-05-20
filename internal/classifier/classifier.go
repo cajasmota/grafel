@@ -431,6 +431,9 @@ var extensionLanguageMap = map[string]string{
 	".edn":  "clojure",
 	// Zig
 	".zig": "zig",
+	// Nim
+	".nim":    "nim",
+	".nimble": "nim",
 	// Lua
 	".lua": "lua",
 	// SQL
