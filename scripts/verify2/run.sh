@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/verify2/run.sh
 #
-# VERIFY-2 (Refs #58, #88) — bug-rate / resolution-rate measurement harness.
+# VERIFY-2 (Refs #58, #88, #482) — bug-rate / resolution-rate measurement harness.
 #
 # Clones a small set of public OSS repositories into
 # $ARCHIGRAPH_CORPORA_DIR (default: $HOME/Documents/Projects/archigraph-corpora)
@@ -14,7 +14,16 @@
 # vendored third-party source.
 #
 # Usage:
-#   scripts/verify2/run.sh
+#   scripts/verify2/run.sh [--runs N]
+#
+# Flag:
+#   --runs N   Index each repo N times and report median bug_rate + min/max
+#              range per repo (Refs #482). Aggregation uses medians, not
+#              single-shot values, eliminating ±3-5pp noise on small repos.
+#              N=1 restores single-shot behaviour.  Default: 5.
+#              Short-circuit: if the first 3 runs of a repo all land within
+#              0.5pp of each other the remaining runs are skipped to avoid
+#              the full 5x cost on stable repos.
 #
 # Env vars:
 #   ARCHIGRAPH_CORPORA_DIR   target dir for clones + reports
@@ -22,7 +31,25 @@
 #   ARCHIGRAPH_BIN           path to archigraph binary (default: ./archigraph
 #                            built ad-hoc into the corpora dir)
 #   ARCHIGRAPH_VERBOSE       set to 1 to forward verbose stderr from indexer
+#   ARCHIGRAPH_VERIFY2_RUNS  number of indexer runs per repo (default: 5;
+#                            overridden by --runs flag)
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Parse --runs flag; all other args are ignored.
+# ---------------------------------------------------------------------------
+RUNS="${ARCHIGRAPH_VERIFY2_RUNS:-5}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runs)    RUNS="${2:?--runs requires an integer value}"; shift 2 ;;
+    --runs=*)  RUNS="${1#--runs=}"; shift ;;
+    *)         shift ;;
+  esac
+done
+if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
+  echo "error: --runs must be a positive integer (got '$RUNS')" >&2
+  exit 1
+fi
 
 CORPORA_DIR="${ARCHIGRAPH_CORPORA_DIR:-$HOME/Documents/Projects/archigraph-corpora}"
 REPORTS_DIR="$CORPORA_DIR/_reports"
@@ -223,11 +250,12 @@ done
   echo "- generated_at: \`$TIMESTAMP\`"
   echo "- corpora_dir: \`$CORPORA_DIR\`"
   echo "- archigraph_bin: \`$BIN\`"
+  echo "- runs_per_repo: \`$RUNS\`"
   echo
   echo "## Per-repo results"
   echo
-  echo "| repo | files | entities | relationships | bug_rate | resolution_rate |"
-  echo "| --- | ---: | ---: | ---: | ---: | ---: |"
+  echo "| repo | files | entities | relationships | bug_rate | resolution_rate | bug_rate_median | bug_rate_range | runs_executed |"
+  echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
 } >"$REPORT"
 
 clone_or_update() {
@@ -260,12 +288,11 @@ clone_or_update() {
   fi
 }
 
-run_one() {
-  local name="$1"
+# run_one_pass: index $name once, writing JSON stats to $out.
+# Returns 0 on success, 1 on timeout/indexer error.
+run_one_pass() {
+  local name="$1" out="$2" stderr_log="$3"
   local dest="$CORPORA_DIR/$name"
-  local out="$TMPDIR_AGG/$name.json"
-  local stderr_log="$TMPDIR_AGG/$name.stderr"
-  echo "==> indexing $name" >&2
   local rc=0
   if [[ -n "$TIMEOUT_BIN" && "$PER_REPO_TIMEOUT" != "0" ]]; then
     "$TIMEOUT_BIN" --foreground "${PER_REPO_TIMEOUT}s" \
@@ -281,19 +308,123 @@ run_one() {
     fi
     return 1
   fi
-  # Extract numbers via a small inline python (jq not assumed present).
-  python3 - "$out" "$REPORT" "$name" <<'PY'
-import json, sys
-path, report, name = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(path) as fh:
-    d = json.load(fh)
-row = "| {name} | {files} | {ent} | {rel} | {br:.2%} | {rr:.2%} |\n".format(
-    name=name,
-    files=d.get("files", 0),
-    ent=d.get("entities", 0),
-    rel=d.get("relationships", 0),
-    br=d.get("bug_rate", 0.0),
-    rr=d.get("resolution_rate", 0.0),
+  return 0
+}
+
+# run_one: run the indexer RUNS times, compute median bug_rate + min/max range,
+# write a canonical merged JSON to $TMPDIR_AGG/$name.json, and append the
+# per-repo row to $REPORT.  Returns 0 on success, 1 if all runs failed.
+run_one() {
+  local name="$1"
+  local out="$TMPDIR_AGG/$name.json"
+  local stderr_log="$TMPDIR_AGG/$name.stderr"
+  echo "==> indexing $name  (runs=$RUNS)" >&2
+
+  # Collect per-run JSON into a scratch directory.
+  local rundir="$TMPDIR_AGG/${name}-runs"
+  mkdir -p "$rundir"
+
+  local run_idx=0
+  local succeeded=0
+  while [[ $run_idx -lt $RUNS ]]; do
+    local rjson="$rundir/run${run_idx}.json"
+    local rlog="$rundir/run${run_idx}.stderr"
+    if run_one_pass "$name" "$rjson" "$rlog"; then
+      succeeded=$((succeeded + 1))
+    fi
+    run_idx=$((run_idx + 1))
+
+    # Short-circuit: once 3+ runs succeeded, check if they are within 0.5pp.
+    if [[ $succeeded -ge 3 ]]; then
+      local stable
+      stable="$(python3 - "$rundir" <<'PY'
+import json, glob, sys, os
+tmp = sys.argv[1]
+paths = sorted(glob.glob(os.path.join(tmp, "run*.json")))
+rates = []
+for p in paths:
+    try:
+        with open(p) as fh:
+            d = json.load(fh)
+        rates.append(float(d.get("bug_rate", 0.0)))
+    except Exception:
+        pass
+if len(rates) < 3:
+    print("no"); sys.exit(0)
+if max(rates) - min(rates) <= 0.005:
+    print("yes")
+else:
+    print("no")
+PY
+)"
+      if [[ "$stable" == "yes" ]]; then
+        echo "    short-circuit: $run_idx runs stable (±0.5pp), skipping remaining" >&2
+        break
+      fi
+    fi
+  done
+
+  if [[ $succeeded -eq 0 ]]; then
+    echo "  ! all $run_idx run(s) failed for $name" >&2
+    return 1
+  fi
+
+  # Median aggregation: merge per-run JSON into canonical $out for this repo.
+  python3 - "$rundir" "$out" "$name" "$REPORT" <<'PY' || return 1
+import json, glob, sys, os, statistics
+
+rundir, out_path, repo_name, report = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+paths = sorted(glob.glob(os.path.join(rundir, "run*.json")))
+reports = []
+for p in paths:
+    try:
+        with open(p) as fh:
+            reports.append(json.load(fh))
+    except Exception:
+        pass
+
+if not reports:
+    print(f"  ! no readable run JSON for {repo_name}", file=sys.stderr)
+    sys.exit(1)
+
+def med(key, default=0.0):
+    return statistics.median(float(r.get(key, default)) for r in reports)
+
+def med_int(key, default=0):
+    return int(statistics.median(int(r.get(key, default)) for r in reports))
+
+# Use the last run's data as the canonical base for disposition_counts etc.
+base = reports[-1]
+
+bug_rate_median    = med("bug_rate")
+bug_rate_min       = min(float(r.get("bug_rate", 0)) for r in reports)
+bug_rate_max       = max(float(r.get("bug_rate", 0)) for r in reports)
+res_rate_median    = med("resolution_rate")
+runs_executed      = len(reports)
+
+merged = dict(base)
+merged["bug_rate"]          = bug_rate_median
+merged["bug_rate_median"]   = bug_rate_median
+merged["bug_rate_range"]    = f"{bug_rate_min:.4%}–{bug_rate_max:.4%}"
+merged["resolution_rate"]   = res_rate_median
+merged["runs_executed"]     = runs_executed
+
+with open(out_path, "w") as fh:
+    json.dump(merged, fh, indent=2)
+    fh.write("\n")
+
+# Append to the markdown report.
+row = "| {name} | {files} | {ent} | {rel} | {br:.2%} | {rr:.2%} | {med:.2%} | {rng} | {runs} |\n".format(
+    name=repo_name,
+    files=med_int("files"),
+    ent=med_int("entities"),
+    rel=med_int("relationships"),
+    br=bug_rate_median,
+    rr=res_rate_median,
+    med=bug_rate_median,
+    rng=f"{bug_rate_min:.2%}–{bug_rate_max:.2%}",
+    runs=runs_executed,
 )
 with open(report, "a") as fh:
     fh.write(row)
@@ -304,7 +435,7 @@ for entry in "${REPOS[@]}"; do
   IFS='|' read -r name url ref lang sparse <<<"$entry"
   clone_or_update "$name" "$url" "$ref" "${sparse:-}"
   if ! run_one "$name"; then
-    echo "| $name | ERROR | - | - | - | - |" >>"$REPORT"
+    echo "| $name | ERROR | - | - | - | - | - | - | - |" >>"$REPORT"
     continue
   fi
 done
@@ -312,17 +443,22 @@ done
 # Fail-fast: if no per-repo JSON files were produced, or every produced
 # JSON had files=0, exit 1 instead of writing an empty report. This guards
 # against silent corpus drift (e.g., clone failures, every clone empty).
+# Note: skip *-runs/ subdirectories (per-run scratch) and _* sentinel files.
 python3 - "$TMPDIR_AGG" <<'PY' || { echo "VERIFY-2: empty corpus — no repos indexed or all repos had files=0" >&2; exit 1; }
 import json, os, sys, glob
 tmp = sys.argv[1]
-paths = sorted(glob.glob(os.path.join(tmp, "*.json")))
+paths = [p for p in sorted(glob.glob(os.path.join(tmp, "*.json")))
+         if not os.path.basename(p).startswith("_")]
 if not paths:
     sys.exit(1)
 total_files = 0
 for p in paths:
-    with open(p) as fh:
-        d = json.load(fh)
-    total_files += d.get("files", 0)
+    try:
+        with open(p) as fh:
+            d = json.load(fh)
+        total_files += d.get("files", 0)
+    except Exception:
+        pass
 if total_files == 0:
     sys.exit(1)
 sys.exit(0)
@@ -331,12 +467,13 @@ PY
 # Aggregate dispositions across every per-repo JSON file. Adds:
 #   - aggregate row inside the per-repo table
 #   - per-repo disposition table for each repo
-#   - corpus-wide aggregate metric table
+#   - corpus-wide aggregate metric table (uses median bug_rate per repo)
 #   - corpus-wide disposition breakdown
 #   - per-language aggregate (using the LANG_MANIFEST written above)
 #   - ship-gate check
 python3 - "$TMPDIR_AGG" "$REPORT" "$LANG_MANIFEST" <<'PY'
-import json, os, sys, glob
+import json, os, sys, glob, statistics
+
 tmp, report, manifest = sys.argv[1], sys.argv[2], sys.argv[3]
 
 DISPOSITIONS = [
@@ -362,18 +499,29 @@ with open(manifest) as fh:
         lang_of[parts[0]] = parts[1]
 
 per_repo = {}
+# Skip *-runs scratch subdirectories (they contain per-run raw JSON).
 for p in sorted(glob.glob(os.path.join(tmp, "*.json"))):
-    with open(p) as fh:
-        d = json.load(fh)
+    try:
+        with open(p) as fh:
+            d = json.load(fh)
+    except Exception:
+        continue
     name = os.path.splitext(os.path.basename(p))[0]
+    # Skip the language manifest (*.tsv) and sentinel (*.complete).
+    if name.startswith("_"):
+        continue
     per_repo[name] = d
 
 # Aggregate row in the per-repo table (still inside ## Per-repo results).
+# Bug-rate aggregation uses per-repo medians (bug_rate_median field when
+# present, falling back to bug_rate for N=1 / legacy runs).
 totals = {"files": 0, "entities": 0, "relationships": 0}
 endpoints_total = 0
 endpoints_resolved = 0
 endpoints_bug = 0
 agg_dispo = {k: 0 for k in DISPOSITIONS}
+median_bug_rates = []  # one per-repo median for corpus-level median-of-medians
+runs_list = []
 for name, d in per_repo.items():
     totals["files"] += d.get("files", 0)
     totals["entities"] += d.get("entities", 0)
@@ -385,14 +533,25 @@ for name, d in per_repo.items():
             endpoints_resolved += v
         if k in ("bug-extractor", "bug-resolver"):
             endpoints_bug += v
+    # Prefer the explicit median field written by run_one (multi-run path).
+    median_bug_rates.append(float(d.get("bug_rate_median", d.get("bug_rate", 0.0))))
+    runs_list.append(int(d.get("runs_executed", 1)))
+
+# Corpus bug_rate: aggregate from raw disposition counts (same as before) so
+# the number is comparable across report versions; we ALSO surface the
+# median-of-medians as bug_rate_median for the multi-run path.
 agg_br = (endpoints_bug / endpoints_total) if endpoints_total else 0.0
 agg_rr = (endpoints_resolved / endpoints_total) if endpoints_total else 0.0
+agg_br_median = statistics.median(median_bug_rates) if median_bug_rates else 0.0
+total_runs = sum(runs_list)
 
 with open(report, "a") as fh:
     # Aggregate row at the bottom of the per-repo table.
-    fh.write("| **AGGREGATE** | **{f}** | **{e}** | **{r}** | **{br:.2%}** | **{rr:.2%}** |\n".format(
-        f=totals["files"], e=totals["entities"], r=totals["relationships"],
-        br=agg_br, rr=agg_rr))
+    fh.write(
+        "| **AGGREGATE** | **{f}** | **{e}** | **{r}** | **{br:.2%}** | **{rr:.2%}** "
+        "| **{med:.2%}** | — | **{runs}** |\n".format(
+            f=totals["files"], e=totals["entities"], r=totals["relationships"],
+            br=agg_br, rr=agg_rr, med=agg_br_median, runs=total_runs))
 
     # Per-repo disposition tables.
     fh.write("\n## Per-repo disposition breakdown\n")
@@ -400,7 +559,12 @@ with open(report, "a") as fh:
         d = per_repo[name]
         counts = d.get("disposition_counts", {})
         repo_total = sum(counts.get(k, 0) for k in DISPOSITIONS)
+        runs_ex = d.get("runs_executed", 1)
+        br_range = d.get("bug_rate_range", "—")
         fh.write(f"\n### {name}\n\n")
+        fh.write(f"- runs_executed: {runs_ex}\n")
+        fh.write(f"- bug_rate_median: {float(d.get('bug_rate_median', d.get('bug_rate', 0))):.4%}\n")
+        fh.write(f"- bug_rate_range: {br_range}\n\n")
         fh.write("| disposition | count | pct |\n| --- | ---: | ---: |\n")
         for k in DISPOSITIONS:
             v = counts.get(k, 0)
@@ -416,7 +580,9 @@ with open(report, "a") as fh:
     fh.write(f"| total_relationships | {totals['relationships']} |\n")
     fh.write(f"| endpoints_classified | {endpoints_total} |\n")
     fh.write(f"| bug_rate | {agg_br:.4%} |\n")
+    fh.write(f"| bug_rate_median | {agg_br_median:.4%} |\n")
     fh.write(f"| resolution_rate | {agg_rr:.4%} |\n")
+    fh.write(f"| total_runs_executed | {total_runs} |\n")
 
     # Corpus-wide disposition breakdown.
     fh.write("\n## Aggregate disposition breakdown\n\n")
@@ -429,14 +595,14 @@ with open(report, "a") as fh:
 
     # Per-language aggregate.
     fh.write("\n## Per-language aggregate\n\n")
-    fh.write("| language | repos | files | entities | relationships | endpoints | bug_rate | resolution_rate |\n")
-    fh.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+    fh.write("| language | repos | files | entities | relationships | endpoints | bug_rate | bug_rate_median | resolution_rate |\n")
+    fh.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
     by_lang = {}
     for name, d in per_repo.items():
         lang = lang_of.get(name, "unknown")
         bucket = by_lang.setdefault(lang, {
             "repos": 0, "files": 0, "entities": 0, "relationships": 0,
-            "endpoints": 0, "resolved": 0, "bug": 0,
+            "endpoints": 0, "resolved": 0, "bug": 0, "medians": [],
         })
         bucket["repos"] += 1
         bucket["files"] += d.get("files", 0)
@@ -448,17 +614,24 @@ with open(report, "a") as fh:
                 bucket["resolved"] += v
             if k in ("bug-extractor", "bug-resolver"):
                 bucket["bug"] += v
+        bucket["medians"].append(float(d.get("bug_rate_median", d.get("bug_rate", 0.0))))
     for lang in sorted(by_lang):
         b = by_lang[lang]
         br = (b["bug"] / b["endpoints"]) if b["endpoints"] else 0.0
         rr = (b["resolved"] / b["endpoints"]) if b["endpoints"] else 0.0
+        br_med = statistics.median(b["medians"]) if b["medians"] else 0.0
         fh.write(f"| {lang} | {b['repos']} | {b['files']} | {b['entities']} | "
-                 f"{b['relationships']} | {b['endpoints']} | {br:.4%} | {rr:.4%} |\n")
+                 f"{b['relationships']} | {b['endpoints']} | {br:.4%} | {br_med:.4%} | {rr:.4%} |\n")
 
-    # Ship-gate check.
+    # Ship-gate check — uses median-of-medians when multi-run, raw aggregate otherwise.
+    gate_rate = agg_br_median if total_runs > len(per_repo) else agg_br
     fh.write("\n## Ship-gate check (target bug_rate <= 1%)\n\n")
-    status = "PASS" if agg_br <= 0.01 else "FAIL"
-    fh.write(f"- status: **{status}** (bug_rate={agg_br:.4%})\n")
+    status = "PASS" if gate_rate <= 0.01 else "FAIL"
+    fh.write(f"- status: **{status}** (bug_rate_median={agg_br_median:.4%}, bug_rate={agg_br:.4%})\n")
+    if total_runs > len(per_repo):
+        fh.write(f"- measurement: median-of-medians from {total_runs} total indexer runs\n")
+    else:
+        fh.write(f"- measurement: single-shot (runs=1)\n")
 PY
 
 # Mark this run complete — the EXIT trap will now garbage-collect
