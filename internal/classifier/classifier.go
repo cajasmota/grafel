@@ -514,6 +514,11 @@ var extensionLanguageMap = map[string]string{
 	".lhs": "haskell",
 	// Solidity — Ethereum smart contracts
 	".sol": "solidity",
+	// Verilog / SystemVerilog — hardware description languages (EDA / silicon)
+	".v":   "verilog",
+	".vh":  "verilog",
+	".sv":  "systemverilog",
+	".svh": "systemverilog",
 	// OCaml — .ml is claimed for OCaml (SML is much less common)
 	".ml":  "ocaml",
 	".mli": "ocaml",
