@@ -159,8 +159,8 @@ func TestStatusGraphFileDetection(t *testing.T) {
 	if err := runStatus(out, "demo"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "graph: (none)") {
-		t.Errorf("status should show 'graph: (none)' when no files exist: %s", out.String())
+	if !strings.Contains(out.String(), "indexed (never)") {
+		t.Errorf("status should show 'indexed (never)' when no files exist: %s", out.String())
 	}
 
 	// Test 2: Only graph.json exists
@@ -176,8 +176,8 @@ func TestStatusGraphFileDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 	statusText := out.String()
-	if !strings.Contains(statusText, "graph:") || strings.Contains(statusText, "(none)") {
-		t.Errorf("status should show graph timestamp when json exists: %s", statusText)
+	if !strings.Contains(statusText, "indexed") || strings.Contains(statusText, "(never)") {
+		t.Errorf("status should show 'indexed' with timestamp when json exists: %s", statusText)
 	}
 	if strings.Contains(statusText, "graph.json:") {
 		t.Errorf("status should not show 'graph.json:' label (issue #822): %s", statusText)
@@ -196,8 +196,8 @@ func TestStatusGraphFileDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 	statusText = out.String()
-	if !strings.Contains(statusText, "graph:") || strings.Contains(statusText, "(none)") {
-		t.Errorf("status should show graph timestamp when fb exists (fix for #822): %s", statusText)
+	if !strings.Contains(statusText, "indexed") || strings.Contains(statusText, "(never)") {
+		t.Errorf("status should show 'indexed' with timestamp when fb exists (fix for #822): %s", statusText)
 	}
 	if strings.Contains(statusText, "graph.json:") {
 		t.Errorf("status should not show 'graph.json:' label when only fb exists: %s", statusText)
@@ -213,8 +213,8 @@ func TestStatusGraphFileDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 	statusText = out.String()
-	if !strings.Contains(statusText, "graph:") || strings.Contains(statusText, "(none)") {
-		t.Errorf("status should show graph timestamp when both files exist: %s", statusText)
+	if !strings.Contains(statusText, "indexed") || strings.Contains(statusText, "(never)") {
+		t.Errorf("status should show 'indexed' with timestamp when both files exist: %s", statusText)
 	}
 }
 

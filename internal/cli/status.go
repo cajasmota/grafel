@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/client"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
@@ -139,11 +138,11 @@ func runStatus(w io.Writer, filter string) error {
 		if filter != "" && g.Name != filter {
 			continue
 		}
-		fmt.Fprintf(w, "\nGroup: %s\n", g.Name)
 
 		// Check if config file exists (#854).
 		_, statErr := os.Stat(g.ConfigPath)
 		if statErr != nil && os.IsNotExist(statErr) {
+			fmt.Fprintf(w, "\nGroup: %s\n", g.Name)
 			fmt.Fprintf(w, "  ⚠️ config not found: %s\n", g.ConfigPath)
 			fmt.Fprintf(w, "  Run 'archigraph cleanup' to remove this orphaned entry\n")
 			continue
@@ -151,21 +150,14 @@ func runStatus(w io.Writer, filter string) error {
 
 		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
 		if err != nil {
+			fmt.Fprintf(w, "\nGroup: %s\n", g.Name)
 			fmt.Fprintf(w, "  (config error: %v)\n", err)
 			continue
 		}
-		for _, r := range cfg.Repos {
-			line := fmt.Sprintf("  %-20s  %s", r.Slug, r.Path)
-			graphPath, modtimeNano := daemon.FindGraphFile(r.Path)
-			if graphPath != "" {
-				mtime := time.Unix(0, modtimeNano)
-				age := time.Since(mtime).Truncate(time.Second)
-				line += fmt.Sprintf("  graph: %s ago", age)
-			} else {
-				line += "  graph: (none)"
-			}
-			fmt.Fprintln(w, line)
-		}
+
+		// Compute rich statistics for this group.
+		summary := ComputeStatusSummary(g.Name, cfg.Repos)
+		PrintStatusSummary(w, summary)
 	}
 	return nil
 }
