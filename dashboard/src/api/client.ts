@@ -4,9 +4,13 @@
  * Set VITE_USE_MOCKS=true in .env to load from src/api/mocks/*.json instead
  * of hitting the live Go server. The mock switch is compile-time (import.meta.env)
  * so the mock modules are tree-shaken in production builds.
+ *
+ * When VITE_USE_MOCKS is absent or set to anything other than 'true', all
+ * calls are proxied to the archigraph dashboard server (see vite.config.ts
+ * proxy and VITE_API_PORT).
  */
 
-const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true' || import.meta.env.DEV
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true'
 
 // ────────────────────────────────────────────────────────────────────────────
 // HTTP fetch wrapper
@@ -85,9 +89,35 @@ import type { DocTreeResponse, DocContentResponse, DocSearchResponse, EntityCard
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
+/**
+ * Wire-format group from GET /api/registry:
+ *   { name, config_path, repos: string[] }
+ *
+ * Frontend GroupMeta expects:
+ *   { id, display_name, repos: RepoMeta[], entity_count, indexed_at? }
+ *
+ * normalizeRegistry maps the wire format to the frontend type so the SPA
+ * group-selector and routing work without modification.
+ */
+function normalizeRegistry(raw: { groups: Array<{ name: string; config_path?: string; repos?: string[] }> }): Registry {
+  const groups = (raw.groups ?? []).map((g) => ({
+    id: g.name,
+    display_name: g.name,
+    repos: (g.repos ?? []).map((slug) => ({
+      slug,
+      display_name: slug,
+      language: 'unknown',
+      entity_count: 0,
+    })),
+    entity_count: 0,
+  }))
+  return { groups, version: '1' }
+}
+
 export async function fetchRegistry(): Promise<Registry> {
   if (USE_MOCKS) return loadMock<Registry>('registry')
-  return apiFetch<Registry>('/api/registry')
+  const raw = await apiFetch<{ groups: Array<{ name: string; config_path?: string; repos?: string[] }> }>('/api/registry')
+  return normalizeRegistry(raw)
 }
 
 // ── Surface 4: Paths ─────────────────────────────────────────────────────────
@@ -146,6 +176,40 @@ export async function fetchFlowDetail(
 
 // ── Surface 1: Graph ─────────────────────────────────────────────────────────
 
+/**
+ * Wire-format edge from the Go server: { from_id, to_id, kind, cross_repo? }
+ * The frontend type (GraphEdge) uses { id, source, target, kind, cross_repo? }.
+ * normalizeEdge converts from the wire format to the frontend type.
+ */
+function normalizeEdge(raw: { from_id: string; to_id: string; kind: string; cross_repo?: boolean }): import('@/types/api').GraphEdge {
+  return {
+    id: `${raw.from_id}::${raw.to_id}::${raw.kind}`,
+    source: raw.from_id,
+    target: raw.to_id,
+    kind: raw.kind as import('@/types/api').RelationshipKind,
+    cross_repo: raw.cross_repo ?? false,
+  }
+}
+
+/**
+ * Normalise a raw /api/graph response to the GraphResponse shape the
+ * frontend types expect.  The Go server uses:
+ *   - edges[].from_id / to_id  →  edges[].source / target (+ synthetic id)
+ *   - lod_level                →  lod
+ *   - total_nodes              →  total_node_count
+ */
+function normalizeGraphResponse(raw: Record<string, unknown>): GraphResponse {
+  type RawEdge = { from_id: string; to_id: string; kind: string; cross_repo?: boolean }
+  const rawEdges = (raw.edges as RawEdge[] | undefined) ?? []
+  return {
+    nodes: (raw.nodes as GraphResponse['nodes'] | undefined) ?? [],
+    edges: rawEdges.map(normalizeEdge),
+    communities: (raw.communities as GraphResponse['communities'] | undefined) ?? [],
+    lod: ((raw.lod ?? raw.lod_level) as GraphResponse['lod'] | undefined) ?? 'full',
+    total_node_count: (raw.total_node_count ?? raw.total_nodes ?? 0) as number,
+  }
+}
+
 export async function fetchGraph(
   group: string,
   filters: GraphFilters = {},
@@ -155,7 +219,8 @@ export async function fetchGraph(
     return applyGraphMockFilters(data, filters)
   }
   const params = buildParams({ lod: filters.lod, repo: filters.repo })
-  return apiFetch<GraphResponse>(`/api/graph/${group}?${params}`)
+  const raw = await apiFetch<Record<string, unknown>>(`/api/graph/${group}?${params}`)
+  return normalizeGraphResponse(raw)
 }
 
 export async function fetchEntityNeighbors(
@@ -193,7 +258,43 @@ export async function fetchEntityNeighbors(
       inbound,
     }
   }
-  return apiFetch<EntityNeighborResponse>(`/api/graph/${group}/entity/${encodeURIComponent(entityId)}`)
+  // Server returns { entity, inbound_edges, outbound_edges, neighbors }
+  // where edges are wire-format { from_id, to_id, kind }.
+  // Normalise to the EntityNeighborResponse shape the frontend expects.
+  type RawEdge = { from_id: string; to_id: string; kind: string; cross_repo?: boolean }
+  type RawNeighbor = { id: string; label: string; kind: string; source_file: string; start_line: number; repo: string }
+  const raw = await apiFetch<{
+    entity: import('@/types/api').Entity
+    inbound_edges: RawEdge[]
+    outbound_edges: RawEdge[]
+    neighbors: RawNeighbor[]
+  }>(`/api/graph/${group}/entity/${encodeURIComponent(entityId)}`)
+
+  const neighborMap = new Map((raw.neighbors ?? []).map((n) => [n.id, n]))
+
+  const toEdgeNode = (re: RawEdge, peerId: string) => {
+    const edge = normalizeEdge(re)
+    const peer = neighborMap.get(peerId)
+    if (!peer) return null
+    const node: import('@/types/api').GraphNode = {
+      id: peer.id,
+      label: peer.label,
+      kind: peer.kind as import('@/types/api').EntityKind,
+      source_file: peer.source_file,
+      start_line: peer.start_line,
+      repo: peer.repo,
+    }
+    return { edge, node }
+  }
+
+  const outbound = (raw.outbound_edges ?? [])
+    .map((re) => toEdgeNode(re, re.to_id))
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+  const inbound = (raw.inbound_edges ?? [])
+    .map((re) => toEdgeNode(re, re.from_id))
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+
+  return { entity: raw.entity, outbound, inbound }
 }
 
 // ── Surface 3: Topology ───────────────────────────────────────────────────────

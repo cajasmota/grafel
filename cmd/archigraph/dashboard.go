@@ -32,6 +32,7 @@ func runDashboard(argv []string) error {
 func runDashboardServe(argv []string) error {
 	fs := flag.NewFlagSet("dashboard serve", flag.ContinueOnError)
 	bindOverride := fs.String("bind", "", "override Bind (default from ~/.archigraph/dashboard.json)")
+	portOverride := fs.Int("port", 0, "pin to a specific port instead of picking from port_range (useful for Vite proxy)")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -42,6 +43,11 @@ func runDashboardServe(argv []string) error {
 	}
 	if *bindOverride != "" {
 		cfg.Bind = *bindOverride
+	}
+	if *portOverride > 0 {
+		// Pin the range to a single port so Listen() always picks it.
+		cfg.PortRange.Min = *portOverride
+		cfg.PortRange.Max = *portOverride
 	}
 
 	srv, err := dashboard.NewServer(cfg, dashboard.NewLiveStore())
