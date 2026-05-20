@@ -25,6 +25,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/javascript"
 	_ "github.com/cajasmota/archigraph/internal/extractors/just"
 	_ "github.com/cajasmota/archigraph/internal/extractors/kotlin"
+	_ "github.com/cajasmota/archigraph/internal/extractors/lisp"
 	_ "github.com/cajasmota/archigraph/internal/extractors/lua"
 	_ "github.com/cajasmota/archigraph/internal/extractors/markdown"
 	_ "github.com/cajasmota/archigraph/internal/extractors/nim"

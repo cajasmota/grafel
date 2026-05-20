@@ -431,6 +431,15 @@ var extensionLanguageMap = map[string]string{
 	".cljs": "clojure",
 	".cljc": "clojure",
 	".edn":  "clojure",
+	// Common Lisp
+	".lisp": "commonlisp",
+	".lsp":  "commonlisp",
+	".cl":   "commonlisp",
+	// Scheme
+	".scm": "scheme",
+	".ss":  "scheme",
+	// Racket
+	".rkt": "racket",
 	// Zig
 	".zig": "zig",
 	// Erlang
