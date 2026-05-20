@@ -86,6 +86,7 @@ import type {
   EntityNeighborResponse,
   PendingRepairsResponse,
   PendingEnrichmentsResponse,
+  OrphanCallersResponse,
 } from '@/types/api'
 import type { DocTreeResponse, DocContentResponse, DocSearchResponse, EntityCard } from '@/types/docs'
 
@@ -193,6 +194,28 @@ export async function fetchPathDetail(
 ): Promise<PathDetailResponse> {
   if (USE_MOCKS) return loadMock<PathDetailResponse>('path-detail')
   return apiFetch<PathDetailResponse>(`/api/paths/${group}/${pathHash}`)
+}
+
+/**
+ * GET /api/paths/{group}/orphan-callers
+ *
+ * Returns frontend FETCH call sites that have no matching backend handler.
+ * Backend (#1091) may not be deployed yet — gracefully returns empty on 404.
+ */
+export async function fetchOrphanCallers(
+  group: string,
+): Promise<OrphanCallersResponse> {
+  if (USE_MOCKS) return { callers: [], total: 0 }
+  try {
+    return await apiFetch<OrphanCallersResponse>(`/api/paths/${group}/orphan-callers`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      // Backend #1091 not yet deployed — return empty gracefully
+      console.info('[paths] orphan-callers endpoint not yet available (404) — backend #1091 pending')
+      return { callers: [], total: 0 }
+    }
+    throw err
+  }
 }
 
 // ── Surface 2: Flows ─────────────────────────────────────────────────────────

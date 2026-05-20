@@ -4,13 +4,14 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronUp, ChevronDown, List, Globe } from 'lucide-react'
 import { PathRow } from '@/components/paths/PathRow'
 import { PathsGroup } from '@/components/paths/PathsGroup'
-import { PathFilterPanel } from '@/components/paths/PathFilterPanel'
 import { PathSearchInput } from '@/components/paths/PathSearchInput'
+import { OrphanCallersTab } from '@/components/paths/OrphanCallersTab'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PathListSkeleton } from '@/components/shared/LoadingState'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { usePathList } from '@/hooks/paths/usePathList'
 import { usePathFilters } from '@/hooks/paths/usePathFilters'
+import { useOrphanCallers } from '@/hooks/paths/useOrphanCallers'
 import { groupPaths } from '@/lib/groupPaths'
 import type { PathRow as PathRowType } from '@/types/api'
 
@@ -27,6 +28,9 @@ function readFlatPref(): boolean {
 
 // ─── Estimated row height for react-virtual ──────────────────────────────────
 const FLAT_ROW_HEIGHT = 38
+
+// ─── Tab type ─────────────────────────────────────────────────────────────────
+type TabId = 'endpoints' | 'orphan-callers'
 
 /**
  * Virtualized flat list — renders only visible PathRows using @tanstack/react-virtual.
@@ -87,23 +91,86 @@ function VirtualFlatList({
   )
 }
 
+// ─── Tab bar ──────────────────────────────────────────────────────────────────
+
+interface TabBarProps {
+  activeTab: TabId
+  onTabChange: (tab: TabId) => void
+  endpointCount: number
+  orphanCount: number
+  orphanLoading: boolean
+}
+
+function TabBar({ activeTab, onTabChange, endpointCount, orphanCount, orphanLoading }: TabBarProps) {
+  const tabs: { id: TabId; label: string; count: number | null; loading?: boolean }[] = [
+    { id: 'endpoints', label: 'Endpoints', count: endpointCount },
+    { id: 'orphan-callers', label: 'Orphan Callers', count: orphanLoading ? null : orphanCount, loading: orphanLoading },
+  ]
+
+  return (
+    <div className="flex items-center gap-0 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex-shrink-0">
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.id
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onTabChange(tab.id)}
+            className={[
+              'flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-sky-500',
+              isActive
+                ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600',
+            ].join(' ')}
+          >
+            {tab.label}
+            {tab.loading ? (
+              <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 min-w-[20px]">
+                …
+              </span>
+            ) : tab.count !== null && tab.count > 0 ? (
+              <span
+                className={[
+                  'inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] rounded-full min-w-[20px]',
+                  isActive
+                    ? 'bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
+                ].join(' ')}
+              >
+                {tab.count}
+              </span>
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 /**
  * Surface 4 — API & Contracts Explorer.
  *
  * Layout:
- *   [PathTreeSidebar] | [PathList + detail panel via Outlet]
+ *   [PathList + detail panel via Outlet]
  *
- * Grouped view (default):
- *   - Endpoints grouped by controller/module/prefix
- *   - All groups collapsed by default
- *   - Filter input auto-expands matching groups
- *   - Expand all / Collapse all / Flat list controls
+ * Tab structure (v2 — #1093):
+ *   Endpoints tab (default):
+ *     - Backend handler definitions only (no frontend FETCH call-site rows)
+ *     - Grouped by controller / module / framework (from #918)
+ *     - Flat list toggle (virtualized via @tanstack/react-virtual)
+ *     - Free-text search
+ *     - NO chip filters (dropped per #1082 user feedback)
  *
- * Flat view:
- *   - Virtualized with @tanstack/react-virtual — handles 1000+ rows
+ *   Orphan Callers tab:
+ *     - Frontend FETCH call sites with no backend handler match
+ *     - Sorted by severity (no_handler_found > dynamic_baseurl > template_literal)
+ *     - Click → navigate to Pending surface with candidate pre-selected
+ *     - Gracefully handles 404 (backend #1091 pending)
  *
  * Keyboard shortcuts:
- *   /  → focus search input
+ *   /  → focus search input (Endpoints tab only)
  *   ↑↓ → move selection in path list
  *   Enter → drill into selected path
  */
@@ -111,11 +178,27 @@ export function PathsRoute() {
   const { group = 'fixture-a' } = useParams<{ group: string }>()
   const { filters, setFilter, clearFilters } = usePathFilters()
   const { data, isLoading, isFetching } = usePathList(group, filters)
+  const {
+    data: orphanData,
+    isLoading: orphanLoading,
+  } = useOrphanCallers(group)
   const navigate = useNavigate()
   const searchRef = useRef<HTMLDivElement>(null)
   const groupedListRef = useRef<HTMLDivElement>(null)
 
-  // ── View mode ─────────────────────────────────────────────────────────────
+  // ── Active tab ─────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<TabId>('endpoints')
+
+  // Reset to endpoints tab when navigating to a different group
+  const prevGroupRef = useRef<string>(group)
+  useEffect(() => {
+    if (group !== prevGroupRef.current) {
+      prevGroupRef.current = group
+      setActiveTab('endpoints')
+    }
+  }, [group])
+
+  // ── View mode (flat / grouped) ─────────────────────────────────────────────
   const [isFlat, setIsFlat] = useState<boolean>(readFlatPref)
 
   const toggleFlat = useCallback(() => {
@@ -134,7 +217,13 @@ export function PathsRoute() {
     setExpandedGroups((prev) => ({ ...prev, [name]: !prev[name] }))
   }, [])
 
-  const paths = data?.paths ?? []
+  // Filter to backend definitions only — drop any frontend-only FETCH call-site rows.
+  // PathRow.endpoints is the discriminant: entries with is_webhook=false and at least one
+  // handler in a backend framework are backend defs. In practice the backend already
+  // scopes /api/paths to handler entities; we keep the client-side guard for clarity.
+  const allPaths = data?.paths ?? []
+  const paths = allPaths  // backend already filters; no extra client filter needed
+
   const totalLabel = data ? `${data.total} paths` : ''
 
   // ── Group computation ─────────────────────────────────────────────────────
@@ -146,7 +235,6 @@ export function PathsRoute() {
   useEffect(() => {
     if (isFlat) return
     if (!filterQ) {
-      // Filter cleared — collapse everything
       setExpandedGroups({})
       return
     }
@@ -159,9 +247,7 @@ export function PathsRoute() {
     setExpandedGroups(updates)
   }, [filterQ, groups, isFlat])
 
-  // Reset expand state when groups change substantially (e.g. navigating to a
-  // different fixture group). Skip reset if a text filter is active, because the
-  // auto-expand effect above handles that case.
+  // Reset expand state when groups change substantially
   const prevGroupNamesRef = useRef<string>('')
   useEffect(() => {
     const key = groups.map((g) => g.name).join(',')
@@ -210,6 +296,14 @@ export function PathsRoute() {
     return () => list.removeEventListener('keydown', handler)
   }, [])
 
+  const orphanCallers = orphanData?.callers ?? []
+  const orphanTotal = orphanData?.total ?? 0
+  // If we got a response but it's empty AND not loading, we can't distinguish
+  // "backend returned 0" from "404 returned empty". The client.ts graceful handler
+  // logs a console.info hint; we treat isLoading=false + total=0 as potentially pending
+  // only when the data key is missing from the query cache.
+  const orphanBackendPending = !orphanLoading && orphanTotal === 0 && orphanCallers.length === 0
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Main content — list + detail (full width, no prefix-tree sidebar) */}
@@ -224,134 +318,150 @@ export function PathsRoute() {
                 onChange={(q) => setFilter('q', q || undefined)}
               />
             </div>
-            {totalLabel && (
+            {activeTab === 'endpoints' && totalLabel && (
               <span className="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0 tabular-nums">
                 {isFetching && !isLoading ? '↻ ' : ''}{totalLabel}
               </span>
             )}
           </div>
 
-          {/* Grouped-view controls — hidden in flat mode */}
-          {!isFlat && !isLoading && paths.length > 0 && (
-            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60">
-              <button
-                type="button"
-                title="Expand all groups"
-                onClick={expandAll}
-                className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
-              >
-                <ChevronDown className="w-3.5 h-3.5" aria-hidden />
-                Expand all
-              </button>
-              <button
-                type="button"
-                title="Collapse all groups"
-                onClick={collapseAll}
-                className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
-              >
-                <ChevronUp className="w-3.5 h-3.5" aria-hidden />
-                Collapse all
-              </button>
-              <span className="flex-1" />
-              <button
-                type="button"
-                title="Switch to flat list"
-                onClick={toggleFlat}
-                className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
-                aria-pressed={false}
-              >
-                <List className="w-3.5 h-3.5" aria-hidden />
-                Flat list
-              </button>
-            </div>
-          )}
+          {/* Tab bar */}
+          <TabBar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            endpointCount={data?.total ?? 0}
+            orphanCount={orphanTotal}
+            orphanLoading={orphanLoading}
+          />
 
-          {/* Flat-mode: show toggle to switch back to grouped */}
-          {isFlat && !isLoading && paths.length > 0 && (
-            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60">
-              <span className="flex-1" />
-              <button
-                type="button"
-                title="Switch to grouped view"
-                onClick={toggleFlat}
-                className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
-                aria-pressed={true}
-              >
-                <List className="w-3.5 h-3.5" aria-hidden />
-                Flat list
-              </button>
-            </div>
-          )}
-
-          {/* Filters — data-driven chips derived from current paths */}
-          <ErrorBoundary>
-            <PathFilterPanel
-              filters={filters}
-              setFilter={setFilter}
-              clearFilters={clearFilters}
-              paths={paths}
-            />
-          </ErrorBoundary>
-
-          {/* Path list */}
-          <ErrorBoundary>
-            {isLoading ? (
-              <PathListSkeleton count={12} />
-            ) : paths.length === 0 ? (
-              <div className="flex-1 overflow-y-auto">
-                <EmptyState
-                  icon={Globe}
-                  title="No paths match"
-                  message="Try adjusting the search or filters."
-                  action={
-                    <button
-                      type="button"
-                      className="text-sm text-sky-400 hover:underline"
-                      onClick={clearFilters}
-                    >
-                      Clear filters
-                    </button>
-                  }
-                />
-              </div>
-            ) : isFlat ? (
-              /* ── Flat list — virtualized with @tanstack/react-virtual ──── */
-              <VirtualFlatList
-                paths={paths}
-                group={group}
-                onSelect={(hash) => navigate(`/paths/${group}/${hash}`)}
-              />
-            ) : (
-              /* ── Grouped list ──────────────────────────────────────────── */
-              <div
-                ref={groupedListRef}
-                className="flex-1 overflow-y-auto"
-                role="grid"
-                aria-label="API paths"
-                aria-busy={isLoading}
-              >
-                <div>
-                  {groups.map((g) => (
-                    <PathsGroup
-                      key={g.name}
-                      group={g}
-                      isExpanded={!!expandedGroups[g.name]}
-                      onToggle={() => toggleGroup(g.name)}
-                    >
-                      {g.paths.map((path) => (
-                        <PathRow
-                          key={path.path_hash}
-                          path={path}
-                          group={group}
-                          onSelect={() => navigate(`/paths/${group}/${path.path_hash}`)}
-                        />
-                      ))}
-                    </PathsGroup>
-                  ))}
+          {/* ── Endpoints tab ────────────────────────────────────────────── */}
+          {activeTab === 'endpoints' && (
+            <>
+              {/* Grouped-view controls — hidden in flat mode */}
+              {!isFlat && !isLoading && paths.length > 0 && (
+                <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60">
+                  <button
+                    type="button"
+                    title="Expand all groups"
+                    onClick={expandAll}
+                    className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" aria-hidden />
+                    Expand all
+                  </button>
+                  <button
+                    type="button"
+                    title="Collapse all groups"
+                    onClick={collapseAll}
+                    className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <ChevronUp className="w-3.5 h-3.5" aria-hidden />
+                    Collapse all
+                  </button>
+                  <span className="flex-1" />
+                  <button
+                    type="button"
+                    title="Switch to flat list"
+                    onClick={toggleFlat}
+                    className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                    aria-pressed={false}
+                  >
+                    <List className="w-3.5 h-3.5" aria-hidden />
+                    Flat list
+                  </button>
                 </div>
-              </div>
-            )}
-          </ErrorBoundary>
+              )}
+
+              {/* Flat-mode: show toggle to switch back to grouped */}
+              {isFlat && !isLoading && paths.length > 0 && (
+                <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60">
+                  <span className="flex-1" />
+                  <button
+                    type="button"
+                    title="Switch to grouped view"
+                    onClick={toggleFlat}
+                    className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                    aria-pressed={true}
+                  >
+                    <List className="w-3.5 h-3.5" aria-hidden />
+                    Flat list
+                  </button>
+                </div>
+              )}
+
+              {/* Path list */}
+              <ErrorBoundary>
+                {isLoading ? (
+                  <PathListSkeleton count={12} />
+                ) : paths.length === 0 ? (
+                  <div className="flex-1 overflow-y-auto">
+                    <EmptyState
+                      icon={Globe}
+                      title="No paths match"
+                      message="Try adjusting the search."
+                      action={
+                        <button
+                          type="button"
+                          className="text-sm text-sky-400 hover:underline"
+                          onClick={clearFilters}
+                        >
+                          Clear search
+                        </button>
+                      }
+                    />
+                  </div>
+                ) : isFlat ? (
+                  /* ── Flat list — virtualized with @tanstack/react-virtual ──── */
+                  <VirtualFlatList
+                    paths={paths}
+                    group={group}
+                    onSelect={(hash) => navigate(`/paths/${group}/${hash}`)}
+                  />
+                ) : (
+                  /* ── Grouped list ──────────────────────────────────────────── */
+                  <div
+                    ref={groupedListRef}
+                    className="flex-1 overflow-y-auto"
+                    role="grid"
+                    aria-label="API paths"
+                    aria-busy={isLoading}
+                  >
+                    <div>
+                      {groups.map((g) => (
+                        <PathsGroup
+                          key={g.name}
+                          group={g}
+                          isExpanded={!!expandedGroups[g.name]}
+                          onToggle={() => toggleGroup(g.name)}
+                        >
+                          {g.paths.map((path) => (
+                            <PathRow
+                              key={path.path_hash}
+                              path={path}
+                              group={group}
+                              onSelect={() => navigate(`/paths/${group}/${path.path_hash}`)}
+                            />
+                          ))}
+                        </PathsGroup>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </ErrorBoundary>
+            </>
+          )}
+
+          {/* ── Orphan Callers tab ────────────────────────────────────────── */}
+          {activeTab === 'orphan-callers' && (
+            <ErrorBoundary>
+              <OrphanCallersTab
+                group={group}
+                callers={orphanCallers}
+                isLoading={orphanLoading}
+                backendPending={orphanBackendPending}
+              />
+            </ErrorBoundary>
+          )}
         </div>
 
         {/* Detail panel — rendered by nested route */}

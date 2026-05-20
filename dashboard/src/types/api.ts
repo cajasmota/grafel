@@ -162,6 +162,35 @@ export interface PathListResponse {
   total: number
 }
 
+// ── Orphan Callers — frontend FETCH call sites with no backend handler match ──
+
+/** Reason why a call site has no matching backend handler */
+export type OrphanCallerReason =
+  | 'dynamic_baseurl'
+  | 'template_literal'
+  | 'no_handler_found'
+
+export interface OrphanCaller {
+  id: string
+  /** source file containing the FETCH call site */
+  caller_file: string
+  /** line number of the call site */
+  caller_line: number
+  /** URL pattern (may contain placeholders like {id} or ${var}) */
+  url_pattern: string
+  /** HTTP method */
+  method: string
+  /** Why this caller has no matching backend handler */
+  reason: OrphanCallerReason
+  /** Human-readable description of the resolution suggestion */
+  repair_hint?: string
+}
+
+export interface OrphanCallersResponse {
+  callers: OrphanCaller[]
+  total: number
+}
+
 export interface PathFilters {
   prefix?: string
   q?: string
