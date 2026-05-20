@@ -59,6 +59,11 @@ type StatusReply struct {
 	RSSUsedMB    int64              `json:"rss_used_mb,omitempty"`
 	InFlightJobs []InFlightJobState `json:"in_flight_jobs,omitempty"`
 	BlockedJobs  []string           `json:"blocked_jobs,omitempty"`
+
+	// DashboardPort is the TCP port the daemon's embedded dashboard HTTP
+	// server is bound to. Zero means the dashboard is not running.
+	// Added in #938.
+	DashboardPort int `json:"dashboard_port,omitempty"`
 }
 
 // InFlightJobState mirrors sched.InFlightJob on the wire.

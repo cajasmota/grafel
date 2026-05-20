@@ -119,6 +119,11 @@ type Service struct {
 	// logger is the daemon's structured logger, forwarded to the MCP
 	// dispatcher for per-call debug logging (tool=name elapsed=X repo=Y).
 	logger *log.Logger
+
+	// dashboardPort is the TCP port the embedded dashboard server is
+	// bound to. Set by server.go after the dashboard goroutine starts.
+	// Zero means dashboard is not running. Read by Status RPC (#938).
+	dashboardPort int
 }
 
 // newService wires the injected entrypoints onto a fresh Service. The
@@ -164,6 +169,9 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	if bin, err := os.Executable(); err == nil {
 		reply.BinaryPath = bin
 	}
+	// Report the dashboard port so `archigraph dashboard` can construct
+	// the URL without a separate config read (#938).
+	reply.DashboardPort = s.dashboardPort
 
 	if s.watcher != nil {
 		repos, dirs, events, dropped := s.watcher.Stats()

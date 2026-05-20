@@ -25,7 +25,16 @@ func newStartCmd() *cobra.Command {
 	var maxRSSBudget int64
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start the archigraph daemon",
+		Short: "Start the daemon (manages MCP, indexer, dashboard, and watchers)",
+		Long: `Start the archigraph daemon.
+
+The daemon is a single long-running process that owns:
+  - MCP server (AI assistant tools)
+  - Indexer + file-watcher (reactive re-index on save)
+  - Dashboard HTTP server (default http://127.0.0.1:47274/)
+
+Use 'archigraph stop' to stop all of the above at once.
+Use 'archigraph dashboard' to open the dashboard in your browser.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDaemonStartWithBudget(cmd.OutOrStdout(), maxRSSBudget)
 		},
@@ -38,7 +47,15 @@ func newStartCmd() *cobra.Command {
 func newStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
-		Short: "Stop the archigraph daemon",
+		Short: "Stop the daemon and all managed services",
+		Long: `Stop the archigraph daemon.
+
+Stopping the daemon also stops all services it manages:
+  - MCP server
+  - Indexer + file-watcher
+  - Dashboard HTTP server
+
+Use 'archigraph start' to bring everything back up.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDaemonStop(cmd.OutOrStdout())
 		},
@@ -48,7 +65,7 @@ func newStopCmd() *cobra.Command {
 func newRestartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "restart",
-		Short: "Restart the archigraph daemon",
+		Short: "Restart the daemon (MCP, indexer, dashboard, watchers)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := runDaemonStop(cmd.OutOrStdout()); err != nil &&
 				!errors.Is(err, client.ErrDaemonNotRunning) {

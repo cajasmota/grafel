@@ -9,14 +9,15 @@ import (
 // primarySurface is the small command list shown by `archigraph --help`.
 // Power commands live under `archigraph help advanced`.
 var primarySurface = map[string]bool{
-	"wizard":  true,
-	"onboard": true,
-	"install": true,
-	"update":  true,
-	"doctor":  true,
-	"status":  true,
-	"list":    true,
-	"help":    true,
+	"wizard":    true,
+	"onboard":   true,
+	"install":   true,
+	"update":    true,
+	"doctor":    true,
+	"status":    true,
+	"list":      true,
+	"dashboard": true,
+	"help":      true,
 }
 
 // newRoot constructs the cobra root command with every subcommand
@@ -87,6 +88,7 @@ Operate:
   doctor        Run health checks across all groups
   status        Show daemon + index status
   list          List registered groups (alias: ls)
+  dashboard     Open the code-graph dashboard in your browser
 
 Help:
   help          Show this message
@@ -121,7 +123,9 @@ Maintenance:
   cleanup [--dry-run]             Remove orphaned registry entries
 
 Daemon (manual):
-  start | stop | restart          Daemon lifecycle (ADR-0017)
+  start                           Start daemon (MCP + indexer + dashboard + watchers)
+  stop                            Stop daemon and all managed services
+  restart                         Restart daemon (MCP + indexer + dashboard + watchers)
   logs [-f] [-n N]                Print or follow the daemon log
   watch <repo>                    Long-lived watcher (legacy; daemon owns watching)
 
@@ -137,7 +141,8 @@ MCP:
   mcp                             (removed) daemon serves MCP; see ADR-0017
 
 Dashboard:
-  dashboard serve                 Run the local dashboard HTTP server
+  dashboard                       Open dashboard in browser (auto-starts daemon if needed)
+  dashboard serve [--port N]      Run standalone dashboard HTTP server (dev/advanced)
 
 Quality:
   quality <fixture-dir>                       Measure extraction recall vs a golden fixture

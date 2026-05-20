@@ -147,6 +147,9 @@ func Run(ctx context.Context, cfg Config) error {
 	svc := newService(cfg.Index, cfg.Rebuild, cfg.QualityAudit, cfg.Layout.SocketPath, stopReq, logger)
 	svc.mcpListTools = cfg.MCPListTools
 	svc.mcpCallTool = cfg.MCPCallTool
+	if cfg.DashboardPort > 0 {
+		svc.dashboardPort = cfg.DashboardPort
+	}
 
 	// Layer 2 self-defense: start CPU watchdog for ephemeral /tmp daemons.
 	// The watchdog passes the service's real inFlight counter so it can

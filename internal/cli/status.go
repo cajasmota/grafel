@@ -59,6 +59,9 @@ func runStatus(w io.Writer, filter string) error {
 					st.PID, uptime, humanBytes(st.RSSBytes), st.InFlight)
 				fmt.Fprintf(w, "  version: %s\n", st.Version)
 				fmt.Fprintf(w, "  socket:  %s\n", st.SocketPath)
+				if st.DashboardPort > 0 {
+					fmt.Fprintf(w, "  dashboard: http://127.0.0.1:%d/\n", st.DashboardPort)
+				}
 			}
 			if st.WatcherRepos > 0 || st.WatcherEvents > 0 {
 				fmt.Fprintf(w, "  watcher: repos=%d dirs=%d events=%d dropped=%d\n",
