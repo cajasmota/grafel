@@ -617,6 +617,56 @@ func TestScopePatternContains_AllPatternsHaveContainsEdge(t *testing.T) {
 	}
 }
 
+// TestCSharpQuartzNetBuilderDynamic verifies that Quartz.NET fluent builder
+// method stubs and generic static-factory calls emitted by the C# extractor
+// (JobBuilder.Create<T>, TriggerBuilder.Create<T>, WithIdentity, StartNow,
+// BackgroundJob.Enqueue<T>) classify as DispositionDynamic rather than
+// DispositionBugExtractor after the fix in issue #44 slice-7.
+//
+// The fix extends csharpDynamicPatterns in internal/resolve/refs.go with:
+//   - a generic-factory pattern matching PascalCase.PascalCase<...> stubs, and
+//   - bare-name patterns for Quartz.NET builder leaf methods (WithIdentity,
+//     StartNow).
+//
+// Without the fix the csharp-quartz-net-mini fixture has 4 bug-extractor edges
+// (StartNow, WithIdentity, JobBuilder.Create<EmailJob>,
+// JobBuilder.Create<ReportJob>). After the fix all 4 move to dynamic and
+// bug-extractor drops to 0 for that fixture.
+func TestCSharpQuartzNetBuilderDynamic(t *testing.T) {
+	fixtureDir := filepath.Join("../../internal/quality/golden/csharp-quartz-net-mini/src")
+	abs, err := filepath.Abs(fixtureDir)
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	if _, serr := os.Stat(abs); serr != nil {
+		t.Skipf("csharp-quartz-net-mini fixture not found at %s: %v", abs, serr)
+	}
+
+	idx := newTestIndexer(t, "csharp-quartz-net-mini", nil)
+	doc, err := idx.Run(context.Background(), abs)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if doc == nil {
+		t.Fatal("Run returned nil document")
+	}
+
+	// Pre-fix baseline: 4 bug-extractor (StartNow, WithIdentity,
+	// JobBuilder.Create<EmailJob>, JobBuilder.Create<ReportJob>).
+	// Post-fix: all 4 move to dynamic; bug-extractor must be 0.
+	bugCount := idx.finalDispositions.DispositionCounts[resolve.DispositionBugExtractor]
+	dynCount := idx.finalDispositions.DispositionCounts[resolve.DispositionDynamic]
+
+	if bugCount >= 4 {
+		samples := idx.finalDispositions.DispositionSamples[resolve.DispositionBugExtractor]
+		t.Errorf("bug-extractor count = %d (want < 4, pre-fix baseline); dynamic = %d; samples = %v",
+			bugCount, dynCount, samples)
+	}
+	if dynCount == 0 {
+		t.Errorf("dynamic count = 0, expected > 0 after Quartz.NET builder fix")
+	}
+}
+
 // TestKotlinSpringResponseEntityDynamic verifies that the Spring MVC
 // ResponseEntity fluent builder method stubs emitted by the Kotlin extractor
 // (notFound, ok, build, body, noContent) classify as DispositionDynamic

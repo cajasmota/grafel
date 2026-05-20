@@ -1,0 +1,42 @@
+{
+  "fixture_name": "csharp-aspnet-core-mini",
+  "language": "csharp",
+  "description": "Minimal ASP.NET Core Web API project with [ApiController], [HttpGet/Post/Delete] action methods, and DI via constructor injection. Used to verify IActionResult return-helper CALLS (Ok, NotFound, BadRequest, NoContent, CreatedAtAction) are not classified as bug-extractor after the Quartz.NET / generic-factory fix in issue #44.",
+  "expected_entities": [
+    {
+      "name": "UsersController",
+      "kind": "SCOPE.Component",
+      "source_file": "Controllers/UsersController.cs",
+      "must_exist": true,
+      "note": "ASP.NET Core ApiController with DI constructor."
+    },
+    {
+      "name": "UsersController.GetById",
+      "kind": "SCOPE.Operation",
+      "source_file": "Controllers/UsersController.cs",
+      "must_exist": true,
+      "note": "HttpGet action returning Ok/NotFound."
+    },
+    {
+      "name": "UsersController.Create",
+      "kind": "SCOPE.Operation",
+      "source_file": "Controllers/UsersController.cs",
+      "must_exist": true,
+      "note": "HttpPost action returning BadRequest/CreatedAtAction."
+    },
+    {
+      "name": "UsersController.Delete",
+      "kind": "SCOPE.Operation",
+      "source_file": "Controllers/UsersController.cs",
+      "must_exist": true,
+      "note": "HttpDelete action returning NotFound/NoContent."
+    },
+    {
+      "name": "UserService",
+      "kind": "SCOPE.Component",
+      "source_file": "Services/UserService.cs",
+      "must_exist": true,
+      "note": "IUserService implementation."
+    }
+  ]
+}

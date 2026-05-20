@@ -1286,6 +1286,30 @@ var (
 		// / Microsoft / EF Core ecosystem roots at the caller (handled in
 		// isDynamicPatternLang via a startsWith check before regex eval).
 		regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)+$`),
+
+		// Issue #44 — Quartz.NET / Hangfire generic static-factory calls.
+		// The C# extractor emits `JobBuilder.Create<ReportJob>` and
+		// `BackgroundJob.Enqueue<IEmailService>` as bare CALLS stubs when the
+		// receiver type carries a generic type argument. The existing PascalCase-
+		// dotted pattern above only matches stubs without a `<` suffix; these
+		// generic forms fall through to BugExtractor. Pattern: PascalCase
+		// dotted identifier immediately followed by `<` (the opening of the
+		// type-argument list). C#-language gate keeps this from firing on
+		// non-.NET codebases (Go generics, TypeScript generics, etc.).
+		regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*<`),
+
+		// Issue #44 — Quartz.NET fluent builder bare-name leaf methods.
+		// The Quartz.NET JobBuilder / TriggerBuilder API uses a fluent chain:
+		//   JobBuilder.Create<T>().WithIdentity("name").Build()
+		//   TriggerBuilder.Create().WithIdentity("t").StartNow().Build()
+		// After the extractor strips the receiver the bare method leaves
+		// `WithIdentity` and `StartNow` land in BugExtractor because they
+		// are not in any allowlist. Without full type inference the resolver
+		// cannot bind these to the Quartz.NET builder — Dynamic is the
+		// correct disposition. C#-language gate (#94 safer-bias rule) keeps
+		// these from polluting non-.NET graphs.
+		regexp.MustCompile(`^WithIdentity$`), // JobBuilder/TriggerBuilder.WithIdentity(...)
+		regexp.MustCompile(`^StartNow$`),     // TriggerBuilder.StartNow()
 	}
 
 	// csharpExternalNamespaceRoots lists the dotted namespace roots that

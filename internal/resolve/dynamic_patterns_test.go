@@ -347,6 +347,28 @@ func TestDynamicPatterns_Catalog(t *testing.T) {
 		{"scala_list_map_go_neg", "go", `List.map`, false},
 		{"scala_map_get_python_neg", "python", `Map.get`, false},
 		{"scala_map_get_go_neg", "go", `Map.get`, false},
+
+		// ---- Quartz.NET / Hangfire C# fluent builder + generic factory (issue #44) ---
+		// Quartz.NET: JobBuilder.Create<T>() / TriggerBuilder.Create<T>() generic calls
+		// land as dotted + generic stubs that the existing PascalCase-dotted pattern
+		// cannot match (it rejects the `<` suffix). The new generic-factory pattern
+		// promotes them to Dynamic instead of BugExtractor.
+		{"quartz_jobbuilder_create_generic", "csharp", `JobBuilder.Create<ReportJob>`, true},
+		{"quartz_jobbuilder_create_email", "csharp", `JobBuilder.Create<EmailJob>`, true},
+		{"quartz_triggerbuilder_create_generic", "csharp", `TriggerBuilder.Create<DailyTrigger>`, true},
+		// Hangfire: BackgroundJob.Enqueue<T>() / RecurringJob.AddOrUpdate<T>()
+		{"hangfire_backgroundjob_enqueue_generic", "csharp", `BackgroundJob.Enqueue<IEmailService>`, true},
+		{"hangfire_recurringjob_addorupdate_generic", "csharp", `RecurringJob.AddOrUpdate<IReportService>`, true},
+		// Quartz.NET fluent builder bare-name leaf methods.
+		{"quartz_withidentity", "csharp", `WithIdentity`, true},
+		{"quartz_startnow", "csharp", `StartNow`, true},
+		// Cross-language gate: Quartz.NET patterns MUST NOT fire for non-C# languages.
+		{"quartz_withidentity_go_neg", "go", `WithIdentity`, false},
+		{"quartz_startnow_python_neg", "python", `StartNow`, false},
+		{"quartz_withidentity_java_neg", "java", `WithIdentity`, false},
+		{"quartz_generic_factory_go_neg", "go", `JobBuilder.Create<ReportJob>`, false},
+		{"quartz_generic_factory_python_neg", "python", `BackgroundJob.Enqueue<IEmailService>`, false},
+		{"quartz_generic_factory_ts_neg", "typescript", `JobBuilder.Create<EmailJob>`, false},
 	}
 
 	for _, tc := range cases {
