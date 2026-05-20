@@ -129,7 +129,7 @@ export function VersionPopover() {
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
-        className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+        className="p-1.5 rounded text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         data-testid="version-info-trigger"
       >
         <Info className="w-4 h-4" />
@@ -141,18 +141,18 @@ export function VersionPopover() {
           role="dialog"
           aria-label="Version info panel"
           data-testid="version-info-panel"
-          className="absolute right-0 top-full mt-1 z-50 w-72 rounded-lg border border-slate-700 bg-slate-900 shadow-xl text-sm"
+          className="absolute right-0 top-full mt-1 z-50 w-72 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl text-sm"
         >
           {/* Header */}
-          <div className="px-4 py-3 border-b border-slate-800">
-            <p className="font-semibold text-slate-100 tracking-tight">archigraph</p>
+          <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+            <p className="font-semibold text-slate-900 dark:text-slate-100 tracking-tight">archigraph</p>
             {info ? (
-              <p className="text-slate-400 mt-0.5">
+              <p className="text-slate-600 dark:text-slate-400 mt-0.5">
                 Version{' '}
-                <span className="text-slate-200 font-mono">{info.version}</span>
+                <span className="text-slate-800 dark:text-slate-200 font-mono">{info.version}</span>
               </p>
             ) : error ? (
-              <p className="text-red-400 mt-0.5">{error}</p>
+              <p className="text-red-600 dark:text-red-400 mt-0.5">{error}</p>
             ) : (
               <p className="text-slate-500 mt-0.5">Loading…</p>
             )}
@@ -162,7 +162,7 @@ export function VersionPopover() {
           {info && (
             <div className="px-4 py-3 space-y-2">
               {/* Commit */}
-              <div className="flex items-center gap-2 text-slate-400">
+              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                 <GitCommit className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="flex-1 truncate">
                   Commit:{' '}
@@ -171,23 +171,23 @@ export function VersionPopover() {
                       href={commitUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sky-400 hover:text-sky-300 font-mono"
+                      className="text-sky-600 dark:text-sky-400 hover:text-sky-500 dark:hover:text-sky-300 font-mono"
                     >
                       {commitSHA}
                     </a>
                   ) : (
-                    <span className="text-slate-300 font-mono">{commitSHA}</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-mono">{commitSHA}</span>
                   )}
                 </span>
               </div>
 
               {/* Built */}
               {info.built_at && info.built_at !== 'unknown' && (
-                <div className="flex items-center gap-2 text-slate-400">
+                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                   <Clock className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>
                     Built:{' '}
-                    <span className="text-slate-300" title={info.built_at}>
+                    <span className="text-slate-700 dark:text-slate-300" title={info.built_at}>
                       {relativeTime(info.built_at)}
                     </span>
                   </span>
@@ -196,21 +196,21 @@ export function VersionPopover() {
 
               {/* Daemon uptime */}
               {info.daemon_started_at && (
-                <div className="flex items-center gap-2 text-slate-400">
+                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                   <Clock className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>
                     Daemon uptime:{' '}
-                    <span className="text-slate-300">{fmtUptime(info.daemon_started_at)}</span>
+                    <span className="text-slate-700 dark:text-slate-300">{fmtUptime(info.daemon_started_at)}</span>
                   </span>
                 </div>
               )}
 
               {/* Dashboard URL */}
-              <div className="flex items-center gap-2 text-slate-400">
+              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                 <Globe className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="truncate">
                   Dashboard:{' '}
-                  <span className="text-slate-300 font-mono text-xs">{dashboardUrl}</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-mono text-xs">{dashboardUrl}</span>
                 </span>
               </div>
             </div>
@@ -219,7 +219,7 @@ export function VersionPopover() {
           {/* Debug mode extras */}
           {IS_DEBUG && (
             <>
-              <div className="mx-4 border-t border-slate-800" />
+              <div className="mx-4 border-t border-slate-200 dark:border-slate-800" />
               <div className="px-4 py-2 text-xs text-amber-400">
                 Build mode:{' '}
                 {USE_MOCKS ? 'development (mocks)' : 'real-data (debug)'}
@@ -228,7 +228,7 @@ export function VersionPopover() {
           )}
 
           {/* Footer divider + GitHub link */}
-          <div className="mx-4 border-t border-slate-800" />
+          <div className="mx-4 border-t border-slate-200 dark:border-slate-800" />
           <div className="px-4 py-2">
             <a
               href="https://github.com/cajasmota/archigraph"

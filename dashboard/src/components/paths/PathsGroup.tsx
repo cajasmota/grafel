@@ -70,7 +70,7 @@ export function PathsGroup({ group, isExpanded, onToggle, children }: PathsGroup
         className={[
           'w-full flex items-center gap-2 px-3 py-2',
           'bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800',
-          'hover:bg-slate-200/60 dark:hover:bg-slate-800/60 focus:outline-none focus:bg-slate-800/60',
+          'hover:bg-slate-200/60 dark:hover:bg-slate-800/60 focus:outline-none focus:bg-slate-200/60 dark:focus:bg-slate-800/60',
           'transition-colors duration-75 cursor-pointer',
           'sticky top-0 z-10',
         ].join(' ')}

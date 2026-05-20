@@ -35,9 +35,9 @@ export function AppLayout() {
   }, [])
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-200">
+    <div className="flex flex-col h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-200">
       {/* ── Top nav ──────────────────────────────────────────────────────────── */}
-      <header className="flex items-center gap-4 px-4 h-12 border-b border-slate-800 flex-shrink-0 bg-slate-950/90 backdrop-blur-sm z-20">
+      <header className="flex items-center gap-4 px-4 h-12 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-sm z-20">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 font-bold text-sm tracking-tight text-sky-400 hover:text-sky-300">
           <GitBranch className="w-5 h-5" aria-hidden />
@@ -85,8 +85,8 @@ function NavItem({ to, icon, label }: NavItemProps) {
           'flex items-center gap-1.5 px-2 py-1.5 rounded text-sm transition-colors',
           'sm:px-3',
           isActive
-            ? 'bg-slate-800 text-slate-200'
-            : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-300',
+            ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200'
+            : 'text-slate-500 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 hover:text-slate-700 dark:hover:text-slate-300',
         ].join(' ')
       }
     >
@@ -103,7 +103,7 @@ function ThemeToggle() {
     <button
       type="button"
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+      className="p-1.5 rounded text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
       onClick={toggle}
     >
       {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
