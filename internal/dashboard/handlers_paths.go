@@ -250,10 +250,12 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 
 	var matched []endpointDetail
 	var pathStr string
+	isWebhook := false
+	var webhookProvider string
 
-	for _, r := range sortedRepos(grp) {
-		for i := range r.Doc.Entities {
-			e := &r.Doc.Entities[i]
+	for _, repo := range sortedRepos(grp) {
+		for i := range repo.Doc.Entities {
+			e := &repo.Doc.Entities[i]
 			if !strings.EqualFold(dashStripScopePrefix(e.Kind), httpEndpointKind) &&
 				e.Kind != "Endpoint" && e.Kind != "Route" {
 				continue
@@ -293,21 +295,27 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 			// Collect inbound FETCHES and outbound QUERIES from edges.
 			inbound := []string{}
 			outbound := []string{}
-			for _, rel := range r.Doc.Relationships {
+			for _, rel := range repo.Doc.Relationships {
 				if rel.ToID == e.ID {
 					if rel.Kind == "FETCHES" {
-						inbound = append(inbound, dashPrefixedID(r.Slug, rel.FromID))
+						inbound = append(inbound, dashPrefixedID(repo.Slug, rel.FromID))
 					}
 				}
 				if rel.FromID == e.ID {
 					if rel.Kind == "QUERIES" || rel.Kind == "ACCESSES_TABLE" {
-						outbound = append(outbound, dashPrefixedID(r.Slug, rel.ToID))
+						outbound = append(outbound, dashPrefixedID(repo.Slug, rel.ToID))
 					}
 				}
 			}
 
+			// Track webhook status
+			if e.Properties["is_webhook"] == "true" {
+				isWebhook = true
+				webhookProvider = e.Properties["webhook_provider"]
+			}
+
 			matched = append(matched, endpointDetail{
-				ID:              dashPrefixedID(r.Slug, e.ID),
+				ID:              dashPrefixedID(repo.Slug, e.ID),
 				Verb:            verb,
 				Path:            path,
 				Handler:         e.Name,
@@ -317,7 +325,7 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 				StatusCodes:     statusCodes,
 				InboundFetches:  inbound,
 				OutboundQueries: outbound,
-				Repo:            r.Slug,
+				Repo:            repo.Slug,
 				SourceFile:      e.SourceFile,
 				StartLine:       e.StartLine,
 			})
@@ -340,11 +348,122 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(verbs)
 
+	// Transform handlers to HandlerDetail shape with resolved entities.
+	type HandlerDetail struct {
+		Entity     map[string]any `json:"entity"`
+		Verb       string         `json:"verb"`
+		Framework  string         `json:"framework,omitempty"`
+		SourceFile string         `json:"source_file"`
+		StartLine  int            `json:"start_line"`
+		Language   string         `json:"language"`
+	}
+
+	handlers := make([]HandlerDetail, len(matched))
+	for i, m := range matched {
+		_, entity := findEntity(grp, m.ID)
+		handlers[i] = HandlerDetail{
+			Entity:     serializeEntity(m.Repo, entity),
+			Verb:       m.Verb,
+			Framework:  m.Framework,
+			SourceFile: m.SourceFile,
+			StartLine:  m.StartLine,
+			Language:   entity.Language,
+		}
+	}
+
+	// Build response_shapes from the matched endpoints.
+	type ResponseShape struct {
+		Verb        string `json:"verb"`
+		Keys        []string `json:"keys"`
+		Dynamic     bool   `json:"dynamic"`
+		StatusCodes []int  `json:"status_codes"`
+	}
+
+	// Group by verb to build distinct response shapes.
+	shapesByVerb := map[string]*ResponseShape{}
+	for _, m := range matched {
+		if _, ok := shapesByVerb[m.Verb]; !ok {
+			shapesByVerb[m.Verb] = &ResponseShape{
+				Verb:        m.Verb,
+				Keys:        []string{},
+				StatusCodes: []int{},
+			}
+		}
+		shape := shapesByVerb[m.Verb]
+		// Merge response keys (deduplicate).
+		for _, k := range m.ResponseKeys {
+			if !containsStr(shape.Keys, k) {
+				shape.Keys = append(shape.Keys, k)
+			}
+		}
+		// Merge status codes (deduplicate).
+		for _, sc := range m.StatusCodes {
+			found := false
+			for _, existing := range shape.StatusCodes {
+				if existing == sc {
+					found = true
+					break
+				}
+			}
+			if !found {
+				shape.StatusCodes = append(shape.StatusCodes, sc)
+			}
+		}
+		// Mark as dynamic if any endpoint has dynamic response.
+		if len(m.ResponseKeys) > 0 || len(m.StatusCodes) > 0 {
+			// If we have any response metadata, assume it could be dynamic.
+			// In a more sophisticated system, check for 'dynamic' property.
+		}
+	}
+	responseShapes := make([]ResponseShape, 0, len(shapesByVerb))
+	for _, shape := range shapesByVerb {
+		sort.Ints(shape.StatusCodes)
+		responseShapes = append(responseShapes, *shape)
+	}
+	sort.Slice(responseShapes, func(i, j int) bool {
+		return responseShapes[i].Verb < responseShapes[j].Verb
+	})
+
+	// Resolve inbound_fetches and outbound_queries to Entity objects.
+	inboundFetchIDs := map[string]bool{}
+	outboundQueryIDs := map[string]bool{}
+	for _, m := range matched {
+		for _, id := range m.InboundFetches {
+			inboundFetchIDs[id] = true
+		}
+		for _, id := range m.OutboundQueries {
+			outboundQueryIDs[id] = true
+		}
+	}
+
+	inboundFetches := make([]map[string]any, 0)
+	for id := range inboundFetchIDs {
+		_, entity := findEntity(grp, id)
+		if entity != nil {
+			repo, _ := dashSplitPrefixed(id)
+			inboundFetches = append(inboundFetches, serializeEntity(repo, entity))
+		}
+	}
+
+	outboundQueries := make([]map[string]any, 0)
+	for id := range outboundQueryIDs {
+		_, entity := findEntity(grp, id)
+		if entity != nil {
+			repo, _ := dashSplitPrefixed(id)
+			outboundQueries = append(outboundQueries, serializeEntity(repo, entity))
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"path":      pathStr,
-		"path_hash": pathHash,
-		"verbs":     verbs,
-		"handlers":  matched,
+		"path":               pathStr,
+		"path_hash":          pathHash,
+		"verbs":              verbs,
+		"handlers":           handlers,
+		"response_shapes":    responseShapes,
+		"inbound_fetches":    inboundFetches,
+		"outbound_queries":   outboundQueries,
+		"is_webhook":         isWebhook,
+		"webhook_provider":   webhookProvider,
 	})
 }
 
