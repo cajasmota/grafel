@@ -729,25 +729,34 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		}
 
 	default:
-		// Issue #522 — every other `const X = <expr>` shape currently
-		// produces no entity, so alias-resolved imports targeting these
-		// consts land in bug-extractor. Emit a value-export entity so the
-		// resolver has something to bind to.
+		// Issue #562 — PR #522 emitted const_* entities for every `const X = <expr>`
+		// shape, producing 2,464+ orphans in client-fixture-c (2,448 of them orphans
+		// with no inbound or outbound edges). These entities are synthetic resolver
+		// state, not queryable graph structure. Instead of emitting them as standalone
+		// entities:
 		//
-		// Two refinements on top of the bare emit:
-		//   1. React/MobX/Redux wrapper-call values that wrap a function
-		//      (forwardRef, memo, observer, styled.x``, withRouter, …)
-		//      get classified as SCOPE.Operation so existing
-		//      function-targeted resolver paths apply. The wrapper's
-		//      inner function body is walked for CALLS so the const's
-		//      relationships mirror what `export function X` would emit.
-		//   2. Plain values (objects, primitives, instances) become
-		//      SCOPE.Component subtype="const" — the same shape the
-		//      import-resolver expects for module-level value bindings.
+		// Only emit semantically meaningful const declarations:
+		//   1. React/MobX/Redux wrapper-call values (forwardRef, memo, observer,
+		//      styled, withRouter, connect, createSelector, useCallback, useMemo, etc.)
+		//      — classified as SCOPE.Operation so existing function-targeted resolver
+		//      paths apply. These ARE semantically significant graph nodes.
+		//   2. Context-factory calls (createContext, etc.) — classified as
+		//      SCOPE.Component subtype="context" for Provider/Consumer relationships.
+		//   3. Type-annotated const declarations (issue #709) — TS `const x: MyType = ...`
+		//      carries a type annotation where type-position uses need to resolve back to
+		//      the const. Emit as SCOPE.Component so the references walker can attribute
+		//      type-position REFERENCES edges to the const entity.
 		//
-		// We always recurse into the value so nested function expressions
-		// (e.g. inside `createSlice({ reducers: { add(state) {...} }})`)
-		// still get walked.
+		// Plain values without type annotations (objects, arrays, primitives, instances,
+		// alias assignments, call results that aren't wrappers/contexts) are NOT emitted
+		// as separate entities. The resolver's structural-ref mechanism (used by same-file
+		// and cross-file REFERENCES/IMPORTS edges) resolves these WITHOUT requiring
+		// entity materialization — it uses `scope:<kind>:<sub>:<lang>:<file>:<name>`
+		// lookups that work on the symbol table alone.
+		//
+		// We always recurse into the value so nested function/class declarations
+		// inside the value (object methods, callbacks, JSX children, etc.) still
+		// get emitted.
 		if x.isContextFactory(valueNode) {
 			// Issue #611 — createContext() and similar context-factory calls
 			// return a Context object (with .Provider / .Consumer / .displayName
@@ -770,8 +779,14 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 			_ = inner
 			x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = <wrapper>", name), rels)
 		} else {
-			subtype := constValueSubtype(valueNode.Type())
-			x.emit(name, "SCOPE.Component", valueNode, subtype, fmt.Sprintf("const %s", name))
+			// Issue #709 — TS `const x: MyType = ...` has a type annotation.
+			// We need to emit it as an entity so type-position REFERENCES edges
+			// can be attributed to it. This applies only when there's an explicit
+			// type annotation on the declarator.
+			if n.ChildByFieldName("type") != nil {
+				// Has a type annotation; emit as SCOPE.Component
+				x.emit(name, "SCOPE.Component", valueNode, "const", fmt.Sprintf("const %s: Type", name))
+			}
 		}
 		// Recurse so nested function/class declarations inside the value
 		// (object methods, callbacks, JSX children, …) still get emitted.
@@ -1153,32 +1168,6 @@ func isMutationStyleHookName(leaf string) bool {
 		}
 	}
 	return false
-}
-
-// constValueSubtype maps a tree-sitter value-node type to a stable
-// subtype string for `export const X = <value>` entity emission. The
-// subtype is informational — the resolver keys on Kind + Name + file,
-// not on subtype — but a stable string keeps debugging tractable.
-func constValueSubtype(nodeType string) string {
-	switch nodeType {
-	case "object":
-		return "const_object"
-	case "array":
-		return "const_array"
-	case "string", "template_string", "number", "true", "false", "null", "undefined":
-		return "const_literal"
-	case "new_expression":
-		return "const_instance"
-	case "call_expression":
-		return "const_call"
-	case "jsx_element", "jsx_self_closing_element":
-		return "const_jsx"
-	case "member_expression", "subscript_expression":
-		return "const_reference"
-	case "identifier":
-		return "const_alias"
-	}
-	return "const"
 }
 
 // extractCallRelationships returns one CALLS RelationshipRecord per unique

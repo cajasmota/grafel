@@ -122,7 +122,7 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 		return
 	}
 
-	// Phase 1 — build the file-scope symbol table from emitted entities.
+	// Phase 1a — build the file-scope symbol table from emitted entities.
 	// Only entities whose SourceFile matches the current file are
 	// considered (some entities, like cross-file IMPORTS placeholders,
 	// might not — but in this extractor they all do). The file-level
@@ -180,6 +180,38 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 		symbols[e.Name] = fileSymbol{kind: e.Kind, subtype: e.Subtype}
 		entIdxByName[e.Name] = i
 	}
+
+	// Phase 1b — Issue #562: include non-emitted const declarations in the
+	// symbol table. When plain const assignments are no longer emitted as
+	// standalone entities, we still need to know about them for REFERENCES
+	// edge emission. Scan the AST for variable_declarator nodes with const
+	// values and add them to the symbol table (but NOT to entIdxByName,
+	// since they have no entity index). buildReferenceTargetID will handle
+	// the case where a symbol has no entity index by constructing a
+	// structural ref target.
+	var collectConstSymbols func(n *sitter.Node)
+	collectConstSymbols = func(n *sitter.Node) {
+		if n == nil {
+			return
+		}
+		if n.Type() == "variable_declarator" {
+			if nameNode := n.ChildByFieldName("name"); nameNode != nil &&
+				nameNode.Type() == "identifier" {
+				name := x.nodeText(nameNode)
+				// Only add if not already emitted as an entity
+				if _, exists := symbols[name]; !exists {
+					// Infer kind from the value type (non-function, non-context cases)
+					// Default to SCOPE.Component for plain const values
+					symbols[name] = fileSymbol{kind: "SCOPE.Component", subtype: "const"}
+				}
+			}
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			collectConstSymbols(n.Child(i))
+		}
+	}
+	collectConstSymbols(root)
+
 	if len(symbols) == 0 && len(dottedSymbols) == 0 {
 		return
 	}
