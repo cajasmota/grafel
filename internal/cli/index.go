@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -31,6 +32,20 @@ func newIndexCmd() *cobra.Command {
 }
 
 func runIndexClient(cmd *cobra.Command, argv []string) error {
+	// Reorder argv so flags appear before positional arguments.
+	// This allows both: archigraph index <repo> --export-fb
+	//              and: archigraph index --export-fb <repo>
+	var flags []string
+	var positionals []string
+	for _, arg := range argv {
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+		} else {
+			positionals = append(positionals, arg)
+		}
+	}
+	reorderedArgv := append(flags, positionals...)
+
 	fs := flag.NewFlagSet("index", flag.ContinueOnError)
 	out := fs.String("out", "", "output path for graph.json (default: <repo>/.archigraph/graph.json)")
 	repoTag := fs.String("repo-tag", "", "repository tag stored on entities")
@@ -44,7 +59,7 @@ func runIndexClient(cmd *cobra.Command, argv []string) error {
 	printSkipped := fs.Bool("print-skipped", false, "print each directory skipped at walk-time with the matching rule")
 	quiet := fs.Bool("quiet", false, "suppress progress output; print only the final summary line")
 	jsonProgress := fs.Bool("json-progress", false, "emit one JSON event per line (for scripting; implies --quiet for non-JSON output)")
-	if err := fs.Parse(argv); err != nil {
+	if err := fs.Parse(reorderedArgv); err != nil {
 		return err
 	}
 	if fs.NArg() < 1 {
