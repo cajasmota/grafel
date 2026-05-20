@@ -45,7 +45,7 @@ export function GraphRoute() {
   const { isDark } = useThemeContext()
 
   // ── Camera state ───────────────────────────────────────────────────────────
-  const { hoveredNodeId, setHoveredNode, zoomToNode, resetView, fitView, resetZoom, toggleSimulation } = useGraphCameraStore()
+  const { hoveredNodeId, setHoveredNode, zoomToNode, resetView, fitView, resetZoom, toggleSimulation, graphRef } = useGraphCameraStore()
   const simulationRunning = useSimulationRunning()
 
   // ── View state ─────────────────────────────────────────────────────────────
@@ -137,6 +137,17 @@ export function GraphRoute() {
     setShowSearchResults(searchQuery.length > 0)
   }, [searchQuery])
 
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  const handleNodeClick = useCallback((node: GraphNode) => {
+    selectNode(node.id)
+  }, [selectNode])
+
+  /** Clears node selection: removes URL param + signals Cosmograph to unhighlight. */
+  const handleDeselect = useCallback(() => {
+    clearSelection()
+    graphRef?.unselectPoints?.()
+  }, [clearSelection, graphRef])
+
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -149,18 +160,13 @@ export function GraphRoute() {
           setShowSearchResults(false)
           setSearchQuery('')
         } else {
-          clearSelection()
+          handleDeselect()
         }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [clearSelection, showSearchResults])
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
-  const handleNodeClick = useCallback((node: GraphNode) => {
-    selectNode(node.id)
-  }, [selectNode])
+  }, [handleDeselect, showSearchResults])
 
   const handleNodeHover = useCallback((node: GraphNode | null) => {
     setHoveredNode(node?.id ?? null)
@@ -404,6 +410,7 @@ export function GraphRoute() {
               onNodeClick={handleNodeClick}
               onNodeHover={handleNodeHover}
               onCursorMove={handleCursorMove}
+              onEmptyClick={handleDeselect}
               highContrast={highContrast}
               isDark={isDark}
               crossRepoOnly={crossRepoOnly}
@@ -469,7 +476,7 @@ export function GraphRoute() {
           <EntityInspector
             data={inspectorData}
             isLoading={inspectorLoading}
-            onClose={clearSelection}
+            onClose={handleDeselect}
             onSelectEntity={(id) => {
               selectNode(id)
               zoomToNode(id)

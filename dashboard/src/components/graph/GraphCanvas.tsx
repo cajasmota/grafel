@@ -15,6 +15,8 @@ export interface GraphCanvasProps {
   onNodeHover: (node: GraphNode | null) => void
   /** Called when the cursor moves over the canvas — provides screen coords for tooltip */
   onCursorMove?: (x: number, y: number) => void
+  /** Called when user clicks empty canvas (no node hit) */
+  onEmptyClick?: () => void
   onZoomChange?: (zoom: number) => void
   /** High-contrast mode — wider edges, higher opacity */
   highContrast?: boolean
@@ -60,6 +62,7 @@ const GraphCanvasInner = ({
   onNodeClick,
   onNodeHover,
   onCursorMove,
+  onEmptyClick,
   onZoomChange,
   highContrast = false,
   isDark = true,
@@ -156,20 +159,32 @@ const GraphCanvasInner = ({
     return highContrast ? 'rgba(100,116,139,0.5)' : 'rgba(100,116,139,0.15)'
   }, [highContrast])
 
-  // Click: Cosmograph provides the point index in the current `nodes` array
+  // Click: Cosmograph provides the point index in the current `nodes` array.
+  // index === undefined means click landed on empty canvas (Cosmograph fires onBackgroundClick
+  // for that case, but guard here too for belt-and-suspenders).
   const handleClick = useCallback((index: number | undefined) => {
-    if (index === undefined) return
+    if (index === undefined) {
+      onEmptyClick?.()
+      return
+    }
     const node = nodesRef.current[index]
-    if (node) onNodeClick(node)
-  }, [onNodeClick])
+    if (!node) return
+    // Toggle: clicking the already-selected node deselects it
+    if (node.id === selectedNodeId) {
+      onEmptyClick?.()
+      return
+    }
+    onNodeClick(node)
+  }, [onNodeClick, onEmptyClick, selectedNodeId])
 
-  // Background click: clear hover + greyout
+  // Background click: clear hover + greyout + deselect node
   const handleBackgroundClick = useCallback(() => {
     if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
     lastHoverIndexRef.current = null
     cosmographRef.current?.unselectAllPoints()
     onNodeHover(null)
-  }, [onNodeHover])
+    onEmptyClick?.()
+  }, [onNodeHover, onEmptyClick])
 
   // Hover: Cosmograph provides the point index on mouse move.
   // Debounced 50 ms to avoid thrashing GPU on rapid micro-movements.
