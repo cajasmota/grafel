@@ -388,6 +388,7 @@ func TestExtensionCoverage(t *testing.T) {
 		{"foo.pl", "perl"},
 		{"foo.res", "rescript"},
 		{"foo.resi", "rescript"},
+		{"foo.sol", "solidity"},
 	}
 
 	for _, tc := range cases {
@@ -743,8 +744,9 @@ var classifierRepresentativeInputs = map[string]string{
 	// C / C++ — fully wired via the cpp extractor which registers both tokens
 	// under "c" and "cpp" (added the extractor; wired it into
 	// registry_gen.go so the init() fires at import time).
-	"c":   "src/main.c",
-	"cpp": "src/main.cpp",
+	"c":        "src/main.c",
+	"cpp":      "src/main.cpp",
+	"solidity": "contracts/TokenMint.sol",
 }
 
 // knownMismatches documents classifier ↔ extractor gaps that exist on the

@@ -38,6 +38,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/extractors/ruby"
 	_ "github.com/cajasmota/archigraph/internal/extractors/rust"
 	_ "github.com/cajasmota/archigraph/internal/extractors/scala"
+	_ "github.com/cajasmota/archigraph/internal/extractors/solidity"
 	_ "github.com/cajasmota/archigraph/internal/extractors/shell"
 	_ "github.com/cajasmota/archigraph/internal/extractors/sql"
 	_ "github.com/cajasmota/archigraph/internal/extractors/svelte"

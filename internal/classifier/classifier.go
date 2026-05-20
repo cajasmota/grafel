@@ -496,6 +496,8 @@ var extensionLanguageMap = map[string]string{
 	// Haskell
 	".hs":  "haskell",
 	".lhs": "haskell",
+	// Solidity — Ethereum smart contracts
+	".sol": "solidity",
 	// OCaml — .ml is claimed for OCaml (SML is much less common)
 	".ml":  "ocaml",
 	".mli": "ocaml",
