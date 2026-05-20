@@ -253,6 +253,184 @@ func Synthesize(doc *graph.Document) Stats {
 	}
 }
 
+// parseDataAccessQN parses a scope:dataaccess:<file>#<orm>:<op>:<table>
+// qualified name and returns (file, table, ok).
+// Returns ok=false if the form is invalid, table is empty, or table is "UNKNOWN".
+func parseDataAccessQN(qn string) (file, table string, ok bool) {
+	const prefix = "scope:dataaccess:"
+	if !strings.HasPrefix(qn, prefix) {
+		return "", "", false
+	}
+	rest := qn[len(prefix):]
+	hash := strings.IndexByte(rest, '#')
+	if hash < 0 {
+		return "", "", false
+	}
+	file = rest[:hash]
+	after := rest[hash+1:]
+	// after = <orm>:<op>:<table>
+	parts := strings.SplitN(after, ":", 3)
+	if len(parts) != 3 {
+		return "", "", false
+	}
+	table = parts[2]
+	if table == "" || table == "UNKNOWN" {
+		return "", "", false
+	}
+	return file, table, true
+}
+
+// SynthesizeDBEntities (issue #532) scans every SCOPE.DataAccess entity in
+// doc, extracts the table name from its QualifiedName
+// (scope:dataaccess:<file>#<orm>:<op>:<table>), and synthesises:
+//
+//  1. One ext:db.<table> external entity per distinct table seen.
+//  2. One IMPORTS edge per distinct (sourceFile, table) pair.
+//
+// UNKNOWN table entries are skipped. The pass is idempotent: calling it
+// twice on the same document is a no-op on the second call. Returns Stats
+// with Synthesized = new entity count and RelationshipsResolved = new IMPORTS
+// edge count.
+func SynthesizeDBEntities(doc *graph.Document) Stats {
+	if doc == nil {
+		return Stats{}
+	}
+
+	// Build a set of existing entity IDs for idempotency.
+	knownEntities := make(map[string]bool, len(doc.Entities))
+	for k := range doc.Entities {
+		knownEntities[doc.Entities[k].ID] = true
+	}
+
+	// Build a set of existing IMPORTS edges for deduplication.
+	// Key: fromID + "|" + toID
+	knownEdges := make(map[string]bool, len(doc.Relationships))
+	for k := range doc.Relationships {
+		rel := &doc.Relationships[k]
+		if rel.Kind == string(types.RelationshipKindImports) {
+			knownEdges[rel.FromID+"|"+rel.ToID] = true
+		}
+	}
+
+	// Scan SCOPE.DataAccess entities.
+	// tables: table name → bool (distinct tables seen)
+	// seenFileTables: "file|table" → bool (dedup IMPORTS edges)
+	tables := make(map[string]bool)
+	seenFileTables := make(map[string]bool)
+	type importEdge struct {
+		fromID string
+		toID   string
+		table  string
+	}
+	var newEdges []importEdge
+
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		if e.Kind != "SCOPE.DataAccess" {
+			continue
+		}
+		file, table, ok := parseDataAccessQN(e.QualifiedName)
+		if !ok {
+			continue
+		}
+		tables[table] = true
+		extID := ExtIDPrefix + "db." + table
+		// Use SourceFile from the entity as the FromID of the IMPORTS edge.
+		// This is consistent with how other extractors emit IMPORTS edges
+		// from file paths (pre-#577 shape; works for MCP graph queries).
+		fromID := e.SourceFile
+		if fromID == "" {
+			fromID = file
+		}
+		fileTableKey := fromID + "|" + table
+		if seenFileTables[fileTableKey] {
+			continue
+		}
+		seenFileTables[fileTableKey] = true
+		edgeKey := fromID + "|" + extID
+		if knownEdges[edgeKey] {
+			continue
+		}
+		newEdges = append(newEdges, importEdge{
+			fromID: fromID,
+			toID:   extID,
+			table:  table,
+		})
+	}
+
+	if len(tables) == 0 {
+		return Stats{}
+	}
+
+	// Sort for deterministic append order.
+	sortedTables := make([]string, 0, len(tables))
+	for t := range tables {
+		sortedTables = append(sortedTables, t)
+	}
+	sort.Strings(sortedTables)
+
+	synthesised := 0
+	for _, table := range sortedTables {
+		extID := ExtIDPrefix + "db." + table
+		if knownEntities[extID] {
+			continue
+		}
+		doc.Entities = append(doc.Entities, graph.Entity{
+			ID:            extID,
+			Name:          table,
+			QualifiedName: "db." + table,
+			Kind:          KindExternal,
+			Subtype:       "sql_table",
+			SourceFile:    "",
+			Language:      "",
+			Metadata: map[string]interface{}{
+				"is_external":    true,
+				"discovered_via": "db-synth",
+				"module":         "db",
+			},
+		})
+		knownEntities[extID] = true
+		synthesised++
+	}
+
+	// Sort edges for deterministic append order.
+	sort.Slice(newEdges, func(i, j int) bool {
+		if newEdges[i].fromID != newEdges[j].fromID {
+			return newEdges[i].fromID < newEdges[j].fromID
+		}
+		return newEdges[i].toID < newEdges[j].toID
+	})
+
+	edgesAdded := 0
+	for _, e := range newEdges {
+		edgeKey := e.fromID + "|" + e.toID
+		if knownEdges[edgeKey] {
+			continue
+		}
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:     graph.RelationshipID(e.fromID, e.toID, string(types.RelationshipKindImports)),
+			FromID: e.fromID,
+			ToID:   e.toID,
+			Kind:   string(types.RelationshipKindImports),
+			Properties: map[string]string{
+				"generated": "true",
+				"table":     e.table,
+				"db_synth":  "531-532",
+			},
+		})
+		knownEdges[edgeKey] = true
+		edgesAdded++
+	}
+
+	doc.Stats.Entities = len(doc.Entities)
+	doc.Stats.Relationships = len(doc.Relationships)
+
+	return Stats{
+		Synthesized:           synthesised,
+		RelationshipsResolved: edgesAdded,
+	}
+}
+
 // classifyExternal decides whether a stub-shaped ToID looks like an
 // external reference, and if so returns the canonical name we should
 // use for the placeholder entity.

@@ -1,6 +1,7 @@
 package external
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -4677,5 +4678,136 @@ func TestPoiKnownExternalPackages_EntryExists(t *testing.T) {
 				t.Errorf("isKnownExternalPackage(%q) = false; want true (entry missing from knownExternalPackages)", pkg)
 			}
 		})
+	}
+}
+
+// TestSynthesizeDBEntities_DjangoFixture (issue #532) — verifies that for a
+// Django-shaped fixture with multiple files querying overlapping tables the
+// synthesiser produces:
+//   - one ext:db.<table> entity per distinct table (deduped)
+//   - one IMPORTS edge per distinct (file, table) pair (deduped)
+//   - UNKNOWN table entries are skipped
+func TestSynthesizeDBEntities_DjangoFixture(t *testing.T) {
+	t.Parallel()
+	// Simulate five SCOPE.DataAccess entities:
+	//   app/views/orders.py -> SELECT users
+	//   app/views/orders.py -> INSERT orders  (same file, different table)
+	//   app/views/profile.py -> SELECT users  (different file, same table as first)
+	//   app/models/user.py -> SELECT users    (third file reading users)
+	//   app/views/sync.py -> SELECT UNKNOWN   (should be skipped)
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{
+				ID:            "aaaa000000000001",
+				Kind:          "SCOPE.DataAccess",
+				Name:          "SELECT users",
+				QualifiedName: "scope:dataaccess:app/views/orders.py#psycopg2:SELECT:users",
+				SourceFile:    "app/views/orders.py",
+				Language:      "python",
+			},
+			{
+				ID:            "aaaa000000000002",
+				Kind:          "SCOPE.DataAccess",
+				Name:          "INSERT orders",
+				QualifiedName: "scope:dataaccess:app/views/orders.py#psycopg2:INSERT:orders",
+				SourceFile:    "app/views/orders.py",
+				Language:      "python",
+			},
+			{
+				ID:            "aaaa000000000003",
+				Kind:          "SCOPE.DataAccess",
+				Name:          "SELECT users",
+				QualifiedName: "scope:dataaccess:app/views/profile.py#psycopg2:SELECT:users",
+				SourceFile:    "app/views/profile.py",
+				Language:      "python",
+			},
+			{
+				ID:            "aaaa000000000004",
+				Kind:          "SCOPE.DataAccess",
+				Name:          "SELECT users",
+				QualifiedName: "scope:dataaccess:app/models/user.py#sqlalchemy:SELECT:users",
+				SourceFile:    "app/models/user.py",
+				Language:      "python",
+			},
+			{
+				ID:            "aaaa000000000005",
+				Kind:          "SCOPE.DataAccess",
+				Name:          "SELECT UNKNOWN",
+				QualifiedName: "scope:dataaccess:app/views/sync.py#psycopg2:SELECT:UNKNOWN",
+				SourceFile:    "app/views/sync.py",
+				Language:      "python",
+			},
+		},
+	}
+
+	stats := SynthesizeDBEntities(doc)
+
+	// 2 distinct tables: users, orders (UNKNOWN skipped)
+	if stats.Synthesized != 2 {
+		t.Fatalf("Synthesized=%d, want 2 (users, orders)", stats.Synthesized)
+	}
+
+	// 4 distinct (file, table) pairs:
+	//   (orders.py, users), (orders.py, orders), (profile.py, users), (models/user.py, users)
+	if stats.RelationshipsResolved != 4 {
+		t.Fatalf("RelationshipsResolved=%d, want 4 IMPORTS edges", stats.RelationshipsResolved)
+	}
+
+	// Verify ext:db.users and ext:db.orders entities exist
+	entityIDs := make(map[string]bool)
+	for _, e := range doc.Entities {
+		entityIDs[e.ID] = true
+	}
+	if !entityIDs["ext:db.users"] {
+		t.Error("missing ext:db.users entity")
+	}
+	if !entityIDs["ext:db.orders"] {
+		t.Error("missing ext:db.orders entity")
+	}
+
+	// Count IMPORTS edges to db:* targets
+	importCount := 0
+	importTargets := make(map[string]int)
+	for _, r := range doc.Relationships {
+		if r.Kind == "IMPORTS" && strings.HasPrefix(r.ToID, "ext:db.") {
+			importCount++
+			importTargets[r.ToID]++
+		}
+	}
+	if importCount != 4 {
+		t.Fatalf("got %d IMPORTS->db:* edges, want 4", importCount)
+	}
+	// users should have 3 callers; orders should have 1
+	if importTargets["ext:db.users"] != 3 {
+		t.Errorf("ext:db.users: %d IMPORTS edges, want 3", importTargets["ext:db.users"])
+	}
+	if importTargets["ext:db.orders"] != 1 {
+		t.Errorf("ext:db.orders: %d IMPORTS edges, want 1", importTargets["ext:db.orders"])
+	}
+}
+
+// TestSynthesizeDBEntities_Idempotent confirms running SynthesizeDBEntities
+// twice on the same document is a no-op on the second call.
+func TestSynthesizeDBEntities_Idempotent(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{
+				ID:            "bbbb000000000001",
+				Kind:          "SCOPE.DataAccess",
+				Name:          "SELECT items",
+				QualifiedName: "scope:dataaccess:store/views.py#psycopg2:SELECT:items",
+				SourceFile:    "store/views.py",
+				Language:      "python",
+			},
+		},
+	}
+	first := SynthesizeDBEntities(doc)
+	if first.Synthesized != 1 || first.RelationshipsResolved != 1 {
+		t.Fatalf("first run: Synthesized=%d RelationshipsResolved=%d, want 1,1", first.Synthesized, first.RelationshipsResolved)
+	}
+	second := SynthesizeDBEntities(doc)
+	if second.Synthesized != 0 || second.RelationshipsResolved != 0 {
+		t.Fatalf("second run: Synthesized=%d RelationshipsResolved=%d, want 0,0 (idempotent)", second.Synthesized, second.RelationshipsResolved)
 	}
 }
