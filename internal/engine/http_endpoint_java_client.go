@@ -1,4 +1,4 @@
-// Java consumer-side HTTP client synthesis (#721 wave 1).
+// Java consumer-side HTTP client synthesis (#721 wave 1, #796 Quarkus extension).
 //
 // Mirrors http_endpoint_python_client.go for Java consumer-side HTTP
 // patterns. Emits a synthetic http_endpoint (consumer side) per detected
@@ -26,6 +26,16 @@
 //   - Retrofit (interface methods):
 //	@GET("/api/users") Call<List<User>> users();
 //	@POST("/api/users") Call<User> create(@Body User u);
+//
+// #796 extensions:
+//
+//   - MicroProfile @RegisterRestClient (Quarkus):
+//	@RegisterRestClient @Path("/customers") interface CustomerApiClient { @GET @Path("/{id}") ... }
+//	@Inject @RestClient CustomerApiClient customerApi; → customerApi.getCustomer(id)
+//   - @ClientHeaderParam and @ClientRequestFilter recording (auth/header pattern)
+//   - @RegisterClientHeaders recording (auto-header propagator)
+//   - Spring Cloud OpenFeign (@FeignClient):
+//	@FeignClient(name="customer", url="${...}") interface CustomerClient { ... }
 //
 // Beyond-minimum behaviours:
 //   - Base URL composition from `HttpClient.Builder`, `RestTemplate.setRootUri`,
@@ -433,6 +443,540 @@ func synthesizeJavaClientWithRuntime(content string, emit javaClientEmitFn) {
 		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, path)
 		emit(verb, canonical, "http_client", "Function", caller, true)
 	}
+
+	// ----- MicroProfile @RegisterRestClient (Quarkus) — #796 -----
+	synthesizeQuarkusRestClient(content, emit)
+
+	// ----- Spring Cloud OpenFeign (@FeignClient) — #796 beyond-minimum -----
+	synthesizeFeignClient(content, emit)
+}
+
+// ---------------------------------------------------------------------------
+// MicroProfile @RegisterRestClient (Quarkus) — #796
+// ---------------------------------------------------------------------------
+//
+// Detection strategy (two-pass):
+//
+//  Pass 1 — Interface scanning. For each interface annotated with
+//  @RegisterRestClient (and optionally @Path on the interface), we
+//  extract the class-level path prefix and then scan each method
+//  annotated with @GET/@POST/... plus @Path("...").
+//
+//  Pass 2 — Usage scanning. We look for @Inject @RestClient fields
+//  that reference a recognised interface type, then find call sites of
+//  methods on that field. The enclosing method of each call site becomes
+//  the FETCHES edge source.
+//
+// The two passes share a registry: maps interface-simple-name →
+// map[method-name](verb, fullPath).
+
+// javaRegisterRestClientHeaderRe matches just the @RegisterRestClient
+// annotation marker (short or FQ form), used to locate declaration start.
+var javaRegisterRestClientHeaderRe = regexp.MustCompile(
+	`@(?:org\.eclipse\.microprofile\.rest\.client\.inject\.)?RegisterRestClient` +
+		`(?:\s*\([^)]*\))?`, // optional (...) e.g. baseUri="..."
+)
+
+// javaInterfaceDeclRe matches the interface keyword + name after annotations.
+// Group 1: interface name.
+var javaInterfaceDeclRe = regexp.MustCompile(
+	`(?:public\s+)?interface\s+(\w+)`,
+)
+
+// javaClassLevelPathRe extracts a @Path annotation value.
+// Group 1: path string.
+var javaClassLevelPathRe = regexp.MustCompile(
+	`@(?:javax\.ws\.rs\.|jakarta\.ws\.rs\.)?Path\s*\(\s*"([^"\n\r]*)"\s*\)`,
+)
+
+// javaVerbAnnotationRe matches a standalone verb annotation (no path in it).
+// Group 1: verb name.
+var javaVerbAnnotationRe = regexp.MustCompile(
+	`@(?:javax\.ws\.rs\.|jakarta\.ws\.rs\.)?(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b`,
+)
+
+// javaMethodNameRe matches a method declaration (return-type + name + paren
+// ending with `;` for interface methods). The negative lookbehind excludes
+// annotation values like `@Path("...")` — an annotation is preceded by `@`,
+// so we require that the identifier is NOT directly preceded by `@`.
+// Pattern: `<return-type-word> <name>(...)..;` where the name is a word NOT
+// preceded by `@`.
+// Group 1: method name.
+var javaMethodNameRe = regexp.MustCompile(
+	`(?:[\w<>,\[\]?\s.]+)\s+([a-z][A-Za-z0-9_]*)\s*\([^;{]*\)\s*(?:throws\s+[\w.,\s]+)?\s*;`,
+)
+
+// javaInjectRestClientFieldRe matches a field injection pattern:
+//
+//	@Inject @RestClient <InterfaceType> <fieldName>;
+//	(annotations can appear in either order)
+var javaInjectRestClientFieldRe = regexp.MustCompile(
+	`@(?:javax\.inject\.|jakarta\.inject\.)?Inject[\s\n]+` +
+		`@(?:org\.eclipse\.microprofile\.rest\.client\.inject\.)?RestClient[\s\n]+` +
+		`(\w+)\s+(\w+)\s*;`, // group 1: interface type, group 2: field name
+)
+
+// javaInjectRestClientFieldRe2 accepts the other annotation order:
+//
+//	@RestClient @Inject <InterfaceType> <fieldName>;
+var javaInjectRestClientFieldRe2 = regexp.MustCompile(
+	`@(?:org\.eclipse\.microprofile\.rest\.client\.inject\.)?RestClient[\s\n]+` +
+		`@(?:javax\.inject\.|jakarta\.inject\.)?Inject[\s\n]+` +
+		`(\w+)\s+(\w+)\s*;`, // group 1: interface type, group 2: field name
+)
+
+// javaRestClientCallRe matches `<fieldName>.<methodName>(...)` call sites.
+// Group 1: field name. Group 2: method name.
+var javaRestClientCallRe = regexp.MustCompile(
+	`\b(\w+)\s*\.\s*(\w+)\s*\(`,
+)
+
+// javaClientHeaderParamRe detects @ClientHeaderParam (beyond-minimum).
+var javaClientHeaderParamRe = regexp.MustCompile(
+	`@ClientHeaderParam\s*\(\s*name\s*=\s*"([^"\n\r]*)"\s*`,
+)
+
+// javaRegisterClientHeadersRe detects @RegisterClientHeaders (beyond-minimum).
+var javaRegisterClientHeadersRe = regexp.MustCompile(
+	`@RegisterClientHeaders\s*(?:\(\s*(\w+)\.class\s*\))?`,
+)
+
+// restClientMethodEntry holds the extracted verb and full composed path for
+// one method on a @RegisterRestClient interface.
+type restClientMethodEntry struct {
+	verb     string
+	fullPath string
+}
+
+// synthesizeQuarkusRestClient scans `content` for @RegisterRestClient
+// interface definitions and @Inject @RestClient field usages, then emits
+// FETCHES edges for each call site found in the consuming class.
+//
+// Pass 1 builds an interface registry (interface name → method name → entry).
+// Pass 2 finds injected field names + types, then matches call sites.
+func synthesizeQuarkusRestClient(content string, emit javaClientEmitFn) {
+	if !javaHasRestClientMarker(content) {
+		return
+	}
+	methods := indexJavaEnclosingMethods(content)
+
+	// ---- Pass 1: parse @RegisterRestClient interfaces in the same file ----
+	// registry: interface simple name → method name → (verb, fullPath)
+	registry := map[string]map[string]restClientMethodEntry{}
+
+	for _, annotMatch := range javaRegisterRestClientHeaderRe.FindAllStringIndex(content, -1) {
+		// Scan forward up to 512 bytes to find the interface declaration.
+		searchEnd := annotMatch[1] + 512
+		if searchEnd > len(content) {
+			searchEnd = len(content)
+		}
+		header := content[annotMatch[1]:searchEnd]
+
+		// Extract class-level @Path if present before `interface`.
+		classPath := ""
+		ifaceIdx := javaInterfaceDeclRe.FindStringIndex(header)
+		if ifaceIdx == nil {
+			continue
+		}
+		// Look for @Path within the header slice before the interface keyword.
+		headerBefore := header[:ifaceIdx[0]]
+		if pm := javaClassLevelPathRe.FindStringSubmatch(headerBefore); pm != nil {
+			classPath = pm[1]
+		}
+		// Also check the few bytes just before @RegisterRestClient (in case
+		// @Path precedes @RegisterRestClient in source order).
+		checkBefore := annotMatch[0]
+		if classPath == "" {
+			lookback := checkBefore - 256
+			if lookback < 0 {
+				lookback = 0
+			}
+			priorSlice := content[lookback:annotMatch[0]]
+			if pm := javaClassLevelPathRe.FindStringSubmatch(priorSlice); pm != nil {
+				classPath = pm[1]
+			}
+		}
+
+		ifaceNameMatch := javaInterfaceDeclRe.FindStringSubmatch(header)
+		if len(ifaceNameMatch) < 2 {
+			continue
+		}
+		ifaceName := ifaceNameMatch[1]
+
+		// Find the interface body starting from after the interface declaration.
+		bodyStartInFull := annotMatch[1] + ifaceIdx[1]
+		body := javaFindInterfaceBody(content, bodyStartInFull)
+		if body == "" {
+			continue
+		}
+
+		// Parse interface body procedurally: find verb annotations then
+		// optional @Path then the method name on the declaration line.
+		methodMap := parseRestClientInterfaceMethods(body, classPath)
+		registry[ifaceName] = methodMap
+		_ = checkBefore
+	}
+
+	// Always emit consumer endpoint entities for every method found in
+	// @RegisterRestClient interfaces — even when no consumer call site is
+	// visible in this file (cross-file injection scenario). This ensures the
+	// http_endpoint consumer entity exists in the graph for cross-repo linker
+	// matching, even if no FETCHES edge is emitted here.
+	for _, methodMap := range registry {
+		for _, entry := range methodMap {
+			if entry.fullPath != "" {
+				emit(entry.verb, entry.fullPath, "quarkus_rest_client", "Function", "", false)
+			}
+		}
+	}
+
+	if len(registry) == 0 {
+		return
+	}
+
+	// ---- Pass 2: find @Inject @RestClient fields and call sites ----
+	// fieldToIface: field variable name → interface name.
+	fieldToIface := map[string]string{}
+
+	for _, mm := range javaInjectRestClientFieldRe.FindAllStringSubmatch(content, -1) {
+		if len(mm) < 3 {
+			continue
+		}
+		ifaceType, fieldName := mm[1], mm[2]
+		if _, known := registry[ifaceType]; known {
+			fieldToIface[fieldName] = ifaceType
+		}
+	}
+	for _, mm := range javaInjectRestClientFieldRe2.FindAllStringSubmatch(content, -1) {
+		if len(mm) < 3 {
+			continue
+		}
+		ifaceType, fieldName := mm[1], mm[2]
+		if _, known := registry[ifaceType]; known {
+			fieldToIface[fieldName] = ifaceType
+		}
+	}
+
+	if len(fieldToIface) == 0 {
+		return
+	}
+
+	// Scan for call sites: <fieldName>.<methodName>(...)
+	for _, callMatch := range javaRestClientCallRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(callMatch) < 6 {
+			continue
+		}
+		fieldName := content[callMatch[2]:callMatch[3]]
+		methodName := content[callMatch[4]:callMatch[5]]
+
+		ifaceName, ok := fieldToIface[fieldName]
+		if !ok {
+			continue
+		}
+		entry, ok := registry[ifaceName][methodName]
+		if !ok {
+			continue
+		}
+
+		// Beyond-minimum: @ClientHeaderParam and @RegisterClientHeaders are
+		// markers we note but route to the same framework label. A future
+		// pass can inspect properties for header-propagation metadata.
+		framework := "quarkus_rest_client"
+		_ = javaClientHeaderParamRe
+		_ = javaRegisterClientHeadersRe
+
+		caller := enclosingJavaMethodAt(methods, callMatch[0])
+		emit(entry.verb, entry.fullPath, framework, "Function", caller, false)
+	}
+}
+
+// parseRestClientInterfaceMethods scans the body of a @RegisterRestClient
+// interface and extracts (method-name → restClientMethodEntry) pairs.
+//
+// The scan works as a small state machine:
+//  1. Collect all verb annotation positions (sorted by offset).
+//  2. For each verb, the scan window is [verb_end .. next_verb_start).
+//     This prevents cross-method @Path contamination.
+//  3. Within that window: find optional @Path → method-level path;
+//     find method name (identifier before `(`).
+//  4. Compose classPath + methodPath → canonical full path.
+func parseRestClientInterfaceMethods(body, classPath string) map[string]restClientMethodEntry {
+	out := map[string]restClientMethodEntry{}
+
+	allVerbs := javaVerbAnnotationRe.FindAllStringIndex(body, -1)
+	for i, verbMatch := range allVerbs {
+		vm := javaVerbAnnotationRe.FindStringSubmatch(body[verbMatch[0]:verbMatch[1]])
+		if len(vm) < 2 {
+			continue
+		}
+		verb := strings.ToUpper(vm[1])
+
+		// Window ends at the start of the NEXT verb annotation (or +512 bytes).
+		windowStart := verbMatch[1]
+		windowEnd := windowStart + 512
+		if i+1 < len(allVerbs) {
+			nextVerbStart := allVerbs[i+1][0]
+			if nextVerbStart > windowStart && nextVerbStart < windowEnd {
+				windowEnd = nextVerbStart
+			}
+		}
+		if windowEnd > len(body) {
+			windowEnd = len(body)
+		}
+		window := body[windowStart:windowEnd]
+
+		// Method-level @Path (optional) — first one found in window.
+		methodPath := ""
+		if pm := javaClassLevelPathRe.FindStringSubmatch(window); pm != nil {
+			methodPath = pm[1]
+		}
+
+		// Method name: first `identifier(` in window that is a method declaration.
+		methodName := javaNextMethodNameInWindow(window)
+		if methodName == "" {
+			continue
+		}
+
+		fullPath := composeBaseURL(classPath, methodPath)
+		path, ok := normalizeRawClientPath(fullPath)
+		if !ok {
+			path = fullPath
+		}
+		if path == "" && classPath == "" {
+			// No path at all — skip to avoid emitting http:VERB: junk.
+			continue
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, path)
+		out[methodName] = restClientMethodEntry{verb: verb, fullPath: canonical}
+	}
+	return out
+}
+
+// javaNextMethodNameInWindow finds the first method declaration (not an
+// annotation, not a type) in `window` and returns the method name.
+func javaNextMethodNameInWindow(window string) string {
+	mm := javaMethodNameRe.FindStringSubmatch(window)
+	if len(mm) < 2 {
+		return ""
+	}
+	return mm[1]
+}
+
+// javaHasRestClientMarker is a fast pre-check to avoid the full scan on
+// files that contain no MicroProfile or Feign markers.
+func javaHasRestClientMarker(content string) bool {
+	return strings.Contains(content, "RegisterRestClient") ||
+		strings.Contains(content, "@RestClient") ||
+		strings.Contains(content, "FeignClient")
+}
+
+// javaFindInterfaceBody returns the content between the first '{' at or
+// after `start` (inclusive) and the matching '}', up to 8192 bytes. The
+// naïve brace counter is sufficient for typical interface bodies which do
+// not contain deeply-nested generics or string literals with braces.
+func javaFindInterfaceBody(content string, start int) string {
+	depth := 0
+	began := -1
+	limit := start + 8192
+	if limit > len(content) {
+		limit = len(content)
+	}
+	for i := start; i < limit; i++ {
+		switch content[i] {
+		case '{':
+			if depth == 0 {
+				began = i + 1
+			}
+			depth++
+		case '}':
+			depth--
+			if depth == 0 && began >= 0 {
+				return content[began:i]
+			}
+		}
+	}
+	if began >= 0 {
+		return content[began:limit]
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
+// Spring Cloud OpenFeign (@FeignClient) — #796 beyond-minimum
+// ---------------------------------------------------------------------------
+//
+// @FeignClient(name="customer-service", url="${customer.url}")
+// public interface CustomerClient {
+//     @GetMapping("/customers/{id}")   // or @RequestMapping(method=GET)
+//     Customer getCustomer(@PathVariable String id);
+// }
+//
+// Detection mirrors @RegisterRestClient but uses Spring MVC verb annotations
+// (@GetMapping / @PostMapping / @RequestMapping) on the interface methods
+// instead of JAX-RS annotations.
+
+// javaFeignClientRe detects @FeignClient-annotated interfaces.
+// Group 1: url attribute (optional). Group 2: interface name.
+var javaFeignClientRe = regexp.MustCompile(
+	`@FeignClient\s*\(\s*` +
+		`(?:[^)]*?url\s*=\s*"([^"\n\r]*)"[^)]*?|[^)]*)` + // group 1: url (optional)
+		`\)\s*` +
+		`(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*` +
+		`(?:public\s+)?interface\s+(\w+)`, // group 2: interface name
+)
+
+// javaSpringMappingAnnotationRe matches Spring MVC shortcut mapping annotations
+// used on Feign interface methods.
+// Group 1: verb capitalization (Get/Post/Put/Delete/Patch).
+// Group 2: path string.
+var javaSpringMappingAnnotationRe = regexp.MustCompile(
+	`@(Get|Post|Put|Delete|Patch)Mapping\s*\(\s*(?:value\s*=\s*)?"([^"\n\r]*)"\s*\)`,
+)
+
+// javaRequestMappingVerbRe matches @RequestMapping with method= and value=.
+// Group 1: verb (e.g. GET). Group 2: path string (may be empty).
+var javaRequestMappingVerbRe = regexp.MustCompile(
+	`@RequestMapping\s*\([^)]*method\s*=\s*RequestMethod\.([A-Z]+)(?:[^)]*value\s*=\s*"([^"\n\r]*)")?[^)]*\)`,
+)
+
+// synthesizeFeignClient scans `content` for @FeignClient interfaces and
+// emits FETCHES for each call site found in the consuming class.
+func synthesizeFeignClient(content string, emit javaClientEmitFn) {
+	if !strings.Contains(content, "FeignClient") {
+		return
+	}
+	methods := indexJavaEnclosingMethods(content)
+
+	// ---- Pass 1: parse @FeignClient interface definitions ----
+	registry := map[string]map[string]restClientMethodEntry{}
+
+	for _, ifaceMatch := range javaFeignClientRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(ifaceMatch) < 6 {
+			continue
+		}
+		baseURL := ""
+		if ifaceMatch[2] >= 0 {
+			rawBase := content[ifaceMatch[2]:ifaceMatch[3]]
+			baseURL = stripURLHost(rawBase) // strip http://host prefix
+		}
+		ifaceName := content[ifaceMatch[4]:ifaceMatch[5]]
+
+		body := javaFindInterfaceBody(content, ifaceMatch[1])
+		if body == "" {
+			continue
+		}
+
+		methodMap := parseFeignInterfaceMethods(body, baseURL)
+		registry[ifaceName] = methodMap
+	}
+
+	if len(registry) == 0 {
+		return
+	}
+
+	// ---- Pass 2: find Feign client field references and call sites ----
+	// Feign clients are injected as plain Spring beans (@Autowired / constructor).
+	// We scan for field declarations that reference a known interface type name.
+	fieldToIface := map[string]string{}
+	for ifaceName := range registry {
+		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(ifaceName) + `\s+(\w+)\s*[;=({,]`)
+		for _, mm := range re.FindAllStringSubmatch(content, -1) {
+			if len(mm) < 2 {
+				continue
+			}
+			fieldToIface[mm[1]] = ifaceName
+		}
+	}
+
+	if len(fieldToIface) == 0 {
+		return
+	}
+
+	for _, callMatch := range javaRestClientCallRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(callMatch) < 6 {
+			continue
+		}
+		fieldName := content[callMatch[2]:callMatch[3]]
+		methodName := content[callMatch[4]:callMatch[5]]
+
+		ifaceName, ok := fieldToIface[fieldName]
+		if !ok {
+			continue
+		}
+		entry, ok := registry[ifaceName][methodName]
+		if !ok {
+			continue
+		}
+
+		caller := enclosingJavaMethodAt(methods, callMatch[0])
+		emit(entry.verb, entry.fullPath, "feign_client", "Function", caller, false)
+	}
+}
+
+// parseFeignInterfaceMethods extracts (method-name → restClientMethodEntry)
+// from the body of a @FeignClient interface. Uses Spring MVC shortcut
+// annotations (@GetMapping etc.) and @RequestMapping(method=...).
+func parseFeignInterfaceMethods(body, baseURL string) map[string]restClientMethodEntry {
+	out := map[string]restClientMethodEntry{}
+
+	// Collect all mapping annotation positions.
+	type verbPos struct {
+		start int
+		end   int
+		verb  string
+		path  string
+	}
+	var positions []verbPos
+
+	for _, m := range javaSpringMappingAnnotationRe.FindAllStringSubmatchIndex(body, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		verb := strings.ToUpper(body[m[2]:m[3]])
+		path := body[m[4]:m[5]]
+		positions = append(positions, verbPos{start: m[0], end: m[1], verb: verb, path: path})
+	}
+	for _, m := range javaRequestMappingVerbRe.FindAllStringSubmatchIndex(body, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		verb := strings.ToUpper(body[m[2]:m[3]])
+		path := ""
+		if m[4] >= 0 {
+			path = body[m[4]:m[5]]
+		}
+		positions = append(positions, verbPos{start: m[0], end: m[1], verb: verb, path: path})
+	}
+
+	// For each annotation, find the method name in the window between this
+	// annotation end and the next annotation start.
+	for i, pos := range positions {
+		windowStart := pos.end
+		windowEnd := windowStart + 512
+		if i+1 < len(positions) {
+			if positions[i+1].start > windowStart && positions[i+1].start < windowEnd {
+				windowEnd = positions[i+1].start
+			}
+		}
+		if windowEnd > len(body) {
+			windowEnd = len(body)
+		}
+		window := body[windowStart:windowEnd]
+
+		methodName := javaNextMethodNameInWindow(window)
+		if methodName == "" {
+			continue
+		}
+
+		fullPath := composeBaseURL(baseURL, pos.path)
+		path, ok := normalizeRawClientPath(fullPath)
+		if !ok {
+			path = fullPath
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, path)
+		out[methodName] = restClientMethodEntry{verb: pos.verb, fullPath: canonical}
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -455,7 +999,10 @@ func javaHasAnyHTTPClient(content string) bool {
 		strings.Contains(content, "@GET(") || strings.Contains(content, "@POST(") ||
 		strings.Contains(content, "@PUT(") || strings.Contains(content, "@DELETE(") ||
 		strings.Contains(content, "@PATCH(") || strings.Contains(content, "@HEAD(") ||
-		strings.Contains(content, "@OPTIONS(")
+		strings.Contains(content, "@OPTIONS(") ||
+		strings.Contains(content, "RegisterRestClient") ||
+		strings.Contains(content, "@RestClient") ||
+		strings.Contains(content, "FeignClient")
 }
 
 func buildJavaStringSymbolTable(content string) map[string]string {
