@@ -73,6 +73,17 @@ const (
 	// Both the invoker side (CALLS) and the handler side (HANDLES) emit the
 	// same entity ID so the import-channel linker joins them cross-repo.
 	EntityKindServerlessFunction EntityKind = "SCOPE.ServerlessFunction"
+
+	// #927: Managed event-bus entities. EventBusEvent is a synthetic entity
+	// representing a routable event type on a managed event bus. Cross-repo
+	// identity = bus-prefixed event key:
+	//   `event:eventbridge:<source>:<detail-type>`
+	//   `event:eventgrid:<topic>:<event-type>`
+	//   `event:cloudevents:<ce-source>:<ce-type>`
+	// Both producers (PUBLISHES_TO) and consumers / rules (SUBSCRIBES_TO) emit
+	// the same synthetic ID so the existing import-channel linker joins them
+	// without any new linker code.
+	EntityKindEventBusEvent EntityKind = "SCOPE.EventBusEvent"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -119,6 +130,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindConstraint,
 		// #925:
 		EntityKindServerlessFunction,
+		// #927:
+		EntityKindEventBusEvent,
 	}
 }
 
@@ -247,6 +260,22 @@ const (
 	// counterpart of CALLS — a handler function HANDLES a ServerlessFunction.
 	// CALLS is already declared above (RelationshipKindCalls) and is reused here.
 	RelationshipKindHandles RelationshipKind = "HANDLES"
+
+	// #927: Managed event-bus edges. Both sides emit a synthetic EventBusEvent
+	// entity with the same bus-prefixed key, so the import-channel linker joins
+	// producer ↔ rule/consumer without new linker code.
+	//   PUBLISHES_TO  : producer call site → EventBusEvent  (reuses existing constant)
+	//   SUBSCRIBES_TO : rule / trigger handler → EventBusEvent  (reuses existing constant)
+	// The two edge kinds above are already declared:
+	//   RelationshipKindPublishesTo  ("PUBLISHES_TO")
+	//   RelationshipKindSubscribesTo ("SUBSCRIBES_TO")
+	// New kinds introduced for #927:
+	//   EVENTBRIDGE_TRIGGERS : EventBridge rule entity → aws-lambda target
+	//   EVENTGRID_TRIGGERS   : EventGrid subscription → Azure Function target
+	//   CLOUDEVENT_FLOWS     : CloudEvent route → CloudEvent route (HTTP metadata match)
+	RelationshipKindEventBridgeTriggers RelationshipKind = "EVENTBRIDGE_TRIGGERS"
+	RelationshipKindEventGridTriggers   RelationshipKind = "EVENTGRID_TRIGGERS"
+	RelationshipKindCloudEventFlows     RelationshipKind = "CLOUDEVENT_FLOWS"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -306,6 +335,10 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindGRPCHandles,
 		// #925 serverless:
 		RelationshipKindHandles,
+		// #927 managed event buses:
+		RelationshipKindEventBridgeTriggers,
+		RelationshipKindEventGridTriggers,
+		RelationshipKindCloudEventFlows,
 	}
 }
 

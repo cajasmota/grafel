@@ -365,6 +365,16 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	entities, relationships = applyRedisPubSubEdges(
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
+	// Managed event-bus edges (#927): AWS EventBridge, Azure EventGrid, and
+	// CNCF CloudEvents. Emits SCOPE.EventBusEvent synthetic entities plus
+	// PUBLISHES_TO / SUBSCRIBES_TO edges for producers/consumers, and
+	// EVENTBRIDGE_TRIGGERS / EVENTGRID_TRIGGERS / CLOUDEVENT_FLOWS edges for
+	// rule-to-target linkage. EventBridge rule targets reference Lambda
+	// entity IDs from #925 (`aws-lambda:<name>`) without reinventing them.
+	// Append-only — cannot regress surrounding passes.
+	entities, relationships = applyEventBusEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
 	// Django models-import suffix rewrite (PR #580 wave-10 Chain-fix A):
 	// The YAML rule `from \S+\.models import (\w+)` emits Model:<name>
 	// for every captured identifier. In Django/DRF projects, a sibling
