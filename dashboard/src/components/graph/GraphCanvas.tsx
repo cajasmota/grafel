@@ -5,6 +5,7 @@ import { communityColor } from '@/hooks/graph/useCommunityColors'
 import { repoColor } from '@/lib/colors'
 import type { GraphNode, GraphEdge } from '@/types/api'
 import { useGraphCameraStore } from '@/store/graphCameraStore'
+import type { ColorMode } from '@/hooks/graph/useColorMode'
 
 // ---------------------------------------------------------------------------
 // Semantic layout helpers (#1072 / #1106 repo-first layout)
@@ -78,7 +79,7 @@ function buildRepoCenters(
 }
 
 // ---------------------------------------------------------------------------
-// Zoom-driven Level-of-Detail (#1107)
+// Zoom-driven Level-of-Detail (#1107 / #1120)
 // ---------------------------------------------------------------------------
 
 /**
@@ -102,6 +103,88 @@ type ZoomBand = typeof ZOOM_BANDS[number]
 function pickBand(zoom: number): ZoomBand {
   return ZOOM_BANDS.find((b) => zoom < b.maxZoom) ?? ZOOM_BANDS[ZOOM_BANDS.length - 1]
 }
+
+/**
+ * Compute LoD-visible indices for a given band.
+ *
+ * @param nodes      - full node array
+ * @param band       - current zoom band
+ * @param activeRepos - repo filter (null = no filter)
+ * @param forceVisibleIds - node IDs that MUST remain visible regardless of band (#1157 Jarvis hook)
+ */
+function computeLodIndices(
+  nodes: GraphNode[],
+  band: ZoomBand,
+  activeRepos: Set<string> | null | undefined,
+  forceVisibleIds: ReadonlySet<string>,
+): number[] | null {
+  if (band.label === 'full' && !activeRepos && forceVisibleIds.size === 0) {
+    return null
+  }
+
+  let eligible: number[]
+
+  if (band.label === 'full') {
+    eligible = nodes.map((_, i) => i)
+  } else if (band.topN !== null) {
+    // overview: take top-N by degree, then also include degreeMin floor
+    const sorted = nodes
+      .map((n, i) => ({ i, deg: n.degree ?? 0 }))
+      .sort((a, b) => b.deg - a.deg)
+    const topNSet = new Set(sorted.slice(0, band.topN).map((x) => x.i))
+    eligible = nodes
+      .map((n, i) => ({ n, i }))
+      .filter(({ n, i }) => (n.degree ?? 0) >= band.degreeMin || topNSet.has(i))
+      .map(({ i }) => i)
+  } else {
+    // mid: degree threshold only
+    eligible = nodes
+      .map((n, i) => ({ n, i }))
+      .filter(({ n }) => (n.degree ?? 0) >= band.degreeMin)
+      .map(({ i }) => i)
+  }
+
+  // #1157: Force-visible IDs (Jarvis highlighted nodes) must NOT be dropped by LoD.
+  const forceIndices: number[] = []
+  if (forceVisibleIds.size > 0) {
+    nodes.forEach((n, i) => {
+      if (forceVisibleIds.has(n.id)) forceIndices.push(i)
+    })
+  }
+
+  // Merge force-visible into eligible (union, deduplicated)
+  const eligibleSet = new Set(eligible)
+  for (const fi of forceIndices) eligibleSet.add(fi)
+  const merged = Array.from(eligibleSet)
+
+  // Intersect with repo filter if active
+  if (activeRepos) {
+    const repoSet = activeRepos
+    return merged.filter((i) => repoSet.has(nodes[i]?.repo ?? ''))
+  }
+
+  return merged
+}
+
+// ---------------------------------------------------------------------------
+// Hub pulse animation helpers (#1153 — Silk Road aesthetic)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the indices of the top-N degree hubs in the node array.
+ * Used to identify which nodes get the post-settle pulse animation.
+ */
+function topHubIndices(nodes: GraphNode[], n = 12): number[] {
+  return nodes
+    .map((node, i) => ({ i, deg: node.degree ?? 0 }))
+    .sort((a, b) => b.deg - a.deg)
+    .slice(0, n)
+    .map((x) => x.i)
+}
+
+// ---------------------------------------------------------------------------
+// Component interface
+// ---------------------------------------------------------------------------
 
 export interface GraphCanvasProps {
   nodes: GraphNode[]
@@ -139,6 +222,19 @@ export interface GraphCanvasProps {
    * null / undefined = show all repos.
    */
   activeRepos?: Set<string> | null
+  /**
+   * #1153: 3-way color mode.
+   *   'repo'      — per-repo color (default)
+   *   'degree'    — Cosmograph's 'connections count' gradient (Silk Road look)
+   *   'community' — community_id deterministic palette
+   */
+  colorMode?: ColorMode
+  /**
+   * #1157: Node IDs that MUST remain visible regardless of LoD zoom band.
+   * Used by the future Jarvis MCP highlighting overlay. Pass an empty Set
+   * (or omit) when no Jarvis session is active.
+   */
+  forceVisibleIds?: ReadonlySet<string>
 }
 
 /** Truncate long labels at ~30 chars for layout legibility */
@@ -146,27 +242,25 @@ function truncateLabel(text: string): string {
   return text.length > 30 ? text.slice(0, 28) + '…' : text
 }
 
+// ---------------------------------------------------------------------------
+// Cosmograph pointColorStrategy passthrough
+// ---------------------------------------------------------------------------
+
+// 'connections count' is the Silk Road degree gradient — purple → pink → yellow.
+// This value is passed directly to Cosmograph when colorMode === 'degree'.
+// Defined as a constant so it doesn't cause useMemo invalidations.
+const DEGREE_COLOR_STRATEGY = 'connections count'
+
 /**
  * GPU-accelerated WebGL force-graph via Cosmograph.
  *
  * Replaces GraphCanvas3D + GraphCanvas2D (#1023).
- * - No LoD: receives pre-filtered nodes + edges from useGraphData
+ * - Receives pre-filtered nodes + edges from useGraphData
  * - Single canvas, 2D force simulation (60fps at 1M+ nodes)
  * - Drop-in prop interface — route component unchanged
  *
- * Cosmograph data model:
- *   points  = nodes array  (pointIdBy: 'id')
- *   links   = edges array  (linkSourceBy: 'source', linkTargetBy: 'target')
- * Both arrays must be stable references across renders to avoid full rebuilds;
- * we memoise them via useMemo in the calling component (useGraphData already does this).
- *
- * Click handling: Cosmograph provides the point _index_ in onClick.
- * We keep a ref mirror of `nodes` so we can do O(1) lookup without async API calls.
- *
- * Hover-to-focus (#1060): When a node is hovered, selectPoint with connected
- * neighbors is called so non-adjacent nodes are greyed out via Cosmograph's
- * built-in greyout system (pointGreyoutOpacity / linkGreyoutOpacity).
- * unselectAllPoints() restores full opacity on mouse leave.
+ * #1153: Silk Road galaxy params applied for distinct community islands.
+ * #1157: Jarvis MCP highlight overlay channel reserved via forceVisibleIds.
  */
 const GraphCanvasInner = ({
   nodes,
@@ -185,6 +279,8 @@ const GraphCanvasInner = ({
   onSimulationRunningChange,
   className = '',
   activeRepos,
+  colorMode = 'repo',
+  forceVisibleIds,
 }: GraphCanvasProps) => {
   const cosmographRef = useRef<CosmographRef>(undefined)
   const { setGraphRef, setZoomLevel } = useGraphCameraStore()
@@ -199,6 +295,9 @@ const GraphCanvasInner = ({
   // Hard-stop timer ref — cleared on unmount and when sim settles naturally.
   const hardStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Pulse animation — runs once after sim settles. cancelPulseRef stops it on unmount.
+  const cancelPulseRef = useRef<(() => void) | null>(null)
+
   // Mirror of nodes so click handler can resolve index → GraphNode synchronously
   const nodesRef = useRef<GraphNode[]>(nodes)
   nodesRef.current = nodes
@@ -209,10 +308,11 @@ const GraphCanvasInner = ({
   // Track the last hovered index so we can avoid redundant selectPoint calls
   const lastHoverIndexRef = useRef<number | null>(null)
 
+  // #1157: stable empty set for the default forceVisibleIds
+  const stableEmptySet = useMemo(() => new Set<string>(), [])
+  const effectiveForceIds = forceVisibleIds ?? stableEmptySet
+
   // #1069: client-side repo filter — compute numeric indices of visible nodes.
-  // When activeRepos is null/undefined, all nodes are visible (selectPoints(null) = clear selection).
-  // When activeRepos is a non-empty Set, only nodes in that set are selected so unselected
-  // nodes get pointGreyoutOpacity=0 (invisible) without re-uploading data to DuckDB-WASM.
   const repoFilterActive = activeRepos != null
   const visibleIndices = useMemo<number[] | null>(() => {
     if (!activeRepos) return null  // no filter — show all
@@ -225,119 +325,53 @@ const GraphCanvasInner = ({
   const visibleIndicesRef = useRef<number[] | null>(visibleIndices)
   visibleIndicesRef.current = visibleIndices
 
-  // #1107: Zoom-driven LoD — compute which nodes are visible for current zoom band.
-  // When a repo filter is also active, intersect: node must pass BOTH filters.
-  //
-  // Band selection logic:
-  //   overview (zoom<0.5): top 50 by degree (floor: degree≥50, cap: top-50 nodes)
-  //   mid      (zoom<2.0): degree≥5
-  //   full     (zoom≥2.0): all nodes
-  //
-  // The result is a numeric index array fed to cosmographRef.selectPoints.
-  // null means "show everything" (no LoD restriction at full zoom).
+  // #1107 / #1157: Zoom-driven LoD — compute which nodes are visible for current zoom band.
+  // forceVisibleIds nodes are NEVER filtered out (#1157 Jarvis constraint).
   const currentBand = useMemo(() => pickBand(currentZoom), [currentZoom])
 
   const lodVisibleIndices = useMemo<number[] | null>(() => {
-    const band = currentBand
-    if (band.label === 'full') {
-      // At full zoom no LoD restriction — repo filter still applied separately
-      return null
-    }
-
-    // Sort nodes by degree descending to enforce topN cap at overview
-    let eligible: number[]
-    if (band.topN !== null) {
-      // overview: take top-N by degree, then filter for degreeMin as a floor
-      const sorted = nodes
-        .map((n, i) => ({ i, deg: n.degree ?? 0 }))
-        .sort((a, b) => b.deg - a.deg)
-      // Pick whichever is more inclusive: topN by count OR degreeMin threshold
-      const topNSet = new Set(sorted.slice(0, band.topN).map((x) => x.i))
-      eligible = nodes
-        .map((n, i) => ({ n, i }))
-        .filter(({ n, i }) => (n.degree ?? 0) >= band.degreeMin || topNSet.has(i))
-        .map(({ i }) => i)
-    } else {
-      // mid: degree threshold only
-      eligible = nodes
-        .map((n, i) => ({ n, i }))
-        .filter(({ n }) => (n.degree ?? 0) >= band.degreeMin)
-        .map(({ i }) => i)
-    }
-
-    // Intersect with repo filter if active
-    if (activeRepos) {
-      const repoSet = activeRepos
-      return eligible.filter((i) => repoSet.has(nodes[i]?.repo ?? ''))
-    }
-    return eligible
-  }, [nodes, currentBand, activeRepos])
+    return computeLodIndices(nodes, currentBand, activeRepos, effectiveForceIds)
+  }, [nodes, currentBand, activeRepos, effectiveForceIds])
 
   // Apply LoD visibility via Cosmograph's imperative selection API.
-  // Fires when lodVisibleIndices changes — this happens when:
-  //   1. nodes load (data arrives after mount)
-  //   2. zoom band changes (currentZoom crosses a threshold)
-  //   3. repo filter changes (activeRepos changes)
-  // lodVisibleIndices is a new array reference each time any of those change,
-  // so this effect correctly fires for all three cases.
   useEffect(() => {
     const cosmo = cosmographRef.current
     if (!cosmo) return
 
-    if (currentBand.label === 'full' && !activeRepos) {
-      // Full zoom + no repo filter → show everything
+    if (currentBand.label === 'full' && !activeRepos && effectiveForceIds.size === 0) {
       cosmo.selectPoints(null)
     } else {
       cosmo.selectPoints(lodVisibleIndices)
     }
-  }, [lodVisibleIndices, currentBand, activeRepos])
+  }, [lodVisibleIndices, currentBand, activeRepos, effectiveForceIds])
 
-  // Apply the repo filter via Cosmograph's imperative selection API.
-  // We do this in a useEffect (not in render) because cosmographRef is populated
-  // after mount. The effect runs whenever visibleIndices reference changes.
-  // NOTE: with LoD active the combined filter is applied in the LoD effect above.
-  // This effect is kept as a fallback for the mount case where LoD hasn't fired yet.
+  // Fallback repo-filter application at full-zoom (before LoD fires)
   useEffect(() => {
     const cosmo = cosmographRef.current
     if (!cosmo) return
-    // null → clear selection (show all); array → select visible subset
-    // When LoD is active (not full band), the LoD effect already applied a combined filter.
     if (currentBand.label !== 'full') return
     cosmo.selectPoints(visibleIndices)
   }, [visibleIndices, currentBand])
 
-  // Cosmograph requires a sequential numeric index column on both points and links.
-  // We derive these from the incoming arrays rather than mutating the originals.
-  //
-  // #1072 / #1106: add __cluster_id (repo-first composite) and __cluster_strength
-  // so the force simulation groups nodes by repo first, then community + module.
-  // Repo is the dominant signal: repoIdx * 10_000_000 ensures clear separation.
-  //
-  // #1089: also compute __size via log scale so degree-750 god nodes are
-  // visibly huge relative to degree-1 leaves.
-  //   d=0  → 2 px  | d=10  → ~14 px
-  //   d=100 → ~26 px | d=750 → ~36 px  (before pointSizeRange remapping)
+  // ---------------------------------------------------------------------------
+  // Node data with pre-computed cluster + size + position fields
+  // ---------------------------------------------------------------------------
+
   const computeSize = (d: number): number =>
     2 + Math.log10(d + 1) * 12
 
-  // #1106: repo → index map (alphabetically sorted, deterministic)
   const repoToIdx = useMemo(() => {
     const repos = Array.from(new Set(nodes.map((n) => n.repo ?? ''))).sort()
     return new Map(repos.map((r, i) => [r, i]))
   }, [nodes])
 
-  // #1106: repo → canvas-center positions placed on a large circle
   const repoCenters = useMemo(() => buildRepoCenters(nodes), [nodes])
 
   const cosmographPoints = useMemo(() => {
-    // Compute per-node max pagerank for normalising cluster strength
     let maxPR = 0
     for (const n of nodes) { if ((n.pagerank ?? 0) > maxPR) maxPR = n.pagerank ?? 0 }
     if (maxPR === 0) maxPR = 1
 
-    // #1121 P2: per-repo entity count for proportional jitter radius.
-    // Flat ±50px collapses 600+ Process nodes into a single pixel blob.
-    // Radius = sqrt(repoEntityCount) × 8 so a 7000-entity repo spreads ~670px.
     const repoEntityCount = new Map<string, number>()
     for (const n of nodes) {
       const repo = n.repo ?? ''
@@ -347,22 +381,12 @@ const GraphCanvasInner = ({
     return nodes.map((n, i) => {
       const repoIdx = repoToIdx.get(n.repo ?? '') ?? 0
       const cid = clusterIdFor(n, repoIdx)
-      // Hub nodes (top ~10% by pagerank) get stronger pull → stay near cluster center
       const normalizedPR = (n.pagerank ?? 0) / maxPR
-      // #1106: keep cluster strength low (0.10-0.18) — the pre-positioned initial
-      // positions + strong repulsion do the heavy lifting. Too-high strength collapses
-      // each island into a single point rather than letting nodes spread naturally.
       const strength = 0.10 + normalizedPR * 0.08
-      // #1089: pre-computed log-degree size for pointSizeByFn
-      // #1121 P3: Process entities use a flat small range — they have artificially
-      // high degree (aggregate all flow steps) so log-degree sizing maxes them out.
+      // #1127 P3: Process entities use a flat small range
       const __size = n.kind === 'Process'
-        ? 4 + Math.min((n.degree ?? 0) * 0.005, 6)  // 4–10 px flat range
+        ? 4 + Math.min((n.degree ?? 0) * 0.005, 6)
         : computeSize(n.degree ?? 0)
-      // #1106: seed each node near its repo's canvas center so the sim starts in
-      // the right region and converges without fighting a random-soup start state.
-      // #1121 P2: jitter radius proportional to sqrt(entityCount) × 8 so large
-      // repos spread their 600+ Process nodes instead of stacking at center.
       const center = repoCenters.get(n.repo ?? '')
       const jitterR = Math.sqrt(repoEntityCount.get(n.repo ?? '') ?? 1) * 8
       const angle = Math.random() * 2 * Math.PI
@@ -371,8 +395,6 @@ const GraphCanvasInner = ({
       const __y = center ? center.y + r * Math.sin(angle) : 0
       return { ...n, __idx: i, __cluster_id: cid, __cluster_strength: strength, __size, __x, __y }
     })
-  // repoCenters and repoToIdx are derived from nodes — listing all three would
-  // fire on every nodes change anyway; suppress exhaustive-deps for the derived maps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, repoToIdx, repoCenters])
 
@@ -388,44 +410,35 @@ const GraphCanvasInner = ({
           __idx: i,
           __srcIdx: idToIdx.get(String(e.source)),
           __tgtIdx: idToIdx.get(String(e.target)),
-          // 1 = cross-repo, 0 = intra-repo; stored as number for DuckDB-WASM compatibility
           __crossRepo: srcRepo !== tgtRepo ? 1 : 0,
         }
       })
       .filter((e) => e.__srcIdx !== undefined && e.__tgtIdx !== undefined)
   }, [nodes, edges])
 
-  // When crossRepoOnly is active, restrict to cross-repo edges only (#1065 Task 3)
   const visibleLinks = useMemo(
     () => crossRepoOnly ? cosmographLinks.filter((e) => e.__crossRepo === 1) : cosmographLinks,
     [cosmographLinks, crossRepoOnly],
   )
 
-  // Ref to lodVisibleIndices so handleMount can re-apply the LoD filter on mount
   const lodVisibleIndicesRef = useRef<number[] | null>(null)
   lodVisibleIndicesRef.current = lodVisibleIndices
 
-  // Expose a cosmograph-compatible ref to the camera store so
-  // resetView / zoomToNode keep working with the new renderer.
-  // Also re-apply the LoD/repo filter selection immediately on mount so that if
-  // the effect fired before mount, the filter still takes effect.
-  // #1107: set initial zoom to 0.3 (overview band) so the graph starts with
-  // only the top hubs visible — matching the music-genre reference look.
+  // ---------------------------------------------------------------------------
+  // Mount / camera setup
+  // ---------------------------------------------------------------------------
+
   const handleMount = useCallback((instance: NonNullable<CosmographRef>) => {
     cosmographRef.current = instance
-    // Wrap the Cosmograph instance to match the camera store's ForceGraphInstance duck-type
     setGraphRef(instance as unknown as Parameters<typeof setGraphRef>[0])
 
-    // #1107: set initial zoom to overview band (0.3) after a short delay so
-    // Cosmograph has finished initialising its WebGL context.
+    // #1153: fitViewOnInit=true + fitViewDelay=1000ms for smooth initial fit.
+    // Also set initial zoom to overview band after fit completes.
     setTimeout(() => {
-      instance.setZoomLevel?.(0.3, 0)
+      instance.setZoomLevel?.(0.3, 300)  // smooth 300ms zoom transition
       setCurrentZoom(0.3)
-    }, 150)
+    }, 1200)  // after fitViewDelay (1000ms) + buffer
 
-    // Apply LoD filter immediately so overview-band nodes are visible from frame 1.
-    // This handles the case where data arrived before mount (e.g. cached response).
-    // The LoD useEffect will also fire for any data that loads after mount.
     const lodIndices = lodVisibleIndicesRef.current
     instance.selectPoints(lodIndices)
   }, [setGraphRef])
@@ -437,11 +450,80 @@ const GraphCanvasInner = ({
       if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
       if (hardStopTimerRef.current) clearTimeout(hardStopTimerRef.current)
       if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current)
+      cancelPulseRef.current?.()
     }
   }, [setGraphRef])
 
-  // Shared settle helper: called by onSimulationEnd OR the hard-stop timer,
-  // whichever fires first.
+  // ---------------------------------------------------------------------------
+  // Hub pulse animation (#1153 — gentle 3-5 second cycle, fades to steady state)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * After the simulation settles, pulse the top-N degree hubs to make the
+   * graph feel alive.  We do 3 pulse cycles (each ~3.5 seconds), then stop.
+   * The animation is implemented via Cosmograph's selectPoint / unselectAllPoints
+   * so it composes correctly with the base color mode and the Jarvis overlay.
+   *
+   * The pulse is separate from the base color mode:
+   *   - selectPoints() highlights specific indices
+   *   - The base pointColorByFn is applied by Cosmograph regardless
+   *   - This only triggers greyout of non-selected nodes during the pulse window
+   *
+   * We skip the pulse in degree-color mode since the gradient already provides
+   * visual hierarchy and the greyout would fight the Silk Road look.
+   */
+  const startHubPulse = useCallback((cosmo: NonNullable<CosmographRef>, hubIndices: number[]) => {
+    if (hubIndices.length === 0) return
+
+    let cancelled = false
+    let cycleCount = 0
+    const MAX_CYCLES = 3
+
+    // Store a cancel fn so unmount can abort the animation
+    cancelPulseRef.current = () => { cancelled = true }
+
+    function runCycle() {
+      if (cancelled || cycleCount >= MAX_CYCLES) {
+        // Fade out — restore full visibility at end of animation
+        if (!cancelled) cosmo.unselectAllPoints()
+        cancelPulseRef.current = null
+        return
+      }
+      cycleCount++
+
+      // Pulse ON — highlight hubs
+      cosmo.selectPoints(hubIndices)
+      // Re-pause to prevent selectPoints from bumping alpha
+      cosmo.pause()
+
+      // Pulse OFF after 800ms — restore all
+      const offTimer = setTimeout(() => {
+        if (cancelled) return
+        cosmo.unselectAllPoints()
+        cosmo.pause()
+
+        // Wait gap before next pulse — ~2.5s between pulses for 3-4s total cycle
+        const gapTimer = setTimeout(() => {
+          if (!cancelled) runCycle()
+        }, 2500)
+        cancelPulseRef.current = () => { cancelled = true; clearTimeout(gapTimer) }
+      }, 800)
+
+      cancelPulseRef.current = () => { cancelled = true; clearTimeout(offTimer) }
+    }
+
+    // Short delay so the camera has finished fitting before pulse starts
+    const startTimer = setTimeout(runCycle, 500)
+    cancelPulseRef.current = () => { cancelled = true; clearTimeout(startTimer) }
+  }, [])
+
+  // ---------------------------------------------------------------------------
+  // Simulation settle / hard-stop
+  // ---------------------------------------------------------------------------
+
+  const hasSettledRef = useRef(false)
+  hasSettledRef.current = hasSettled
+
   const doSettle = useCallback(() => {
     if (hardStopTimerRef.current) {
       clearTimeout(hardStopTimerRef.current)
@@ -450,24 +532,25 @@ const GraphCanvasInner = ({
     cosmographRef.current?.pause()
     setHasSettled(true)
     onSimulationRunningChange?.(false)
-  }, [onSimulationRunningChange])
 
-  // onSimulationEnd fires when Cosmograph's force layout reaches alpha ≈ 0.
-  // On first settle we auto-pause and notify the parent so it can show
-  // a "Resume layout" button.  After that, parent controls the state.
+    // Kick off hub pulse in repo/community modes — skip in degree mode
+    // (the Silk Road gradient already provides the "alive" look)
+    if (colorMode !== 'degree' && cosmographRef.current) {
+      const hubs = topHubIndices(nodesRef.current, 12)
+      startHubPulse(cosmographRef.current, hubs)
+    }
+  }, [onSimulationRunningChange, colorMode, startHubPulse])
+
   const handleSimulationEnd = useCallback(() => {
     if (!hasSettled) {
       doSettle()
     }
   }, [hasSettled, doSettle])
 
-  // Hard-stop: if onSimulationEnd never fires (large graph may never converge)
-  // force-pause after 8 seconds. The timer is set on mount and cleared either by
-  // doSettle (natural convergence wins) or on unmount.
   useEffect(() => {
     if (hasSettled) return
     hardStopTimerRef.current = window.setTimeout(() => {
-      if (!hasSettled) {
+      if (!hasSettledRef.current) {
         doSettle()
       }
     }, 8000)
@@ -478,11 +561,10 @@ const GraphCanvasInner = ({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])  // intentionally run once on mount; doSettle is stable via useCallback
+  }, [])
 
-  // React to parent-controlled simulationRunning changes after first settle.
   useEffect(() => {
-    if (!hasSettled) return          // before first settle, Cosmograph owns it
+    if (!hasSettled) return
     if (simulationRunning === true) {
       cosmographRef.current?.start()
     } else if (simulationRunning === false) {
@@ -490,12 +572,23 @@ const GraphCanvasInner = ({
     }
   }, [simulationRunning, hasSettled])
 
-  // Point color accessor — receives the value of the `pointColorBy` column ('id'),
-  // so `value` here is the node id string.
-  const pointColorByFn = useCallback((nodeId: string) => {
+  // ---------------------------------------------------------------------------
+  // Point color logic — decoupled from selectPoints() (#1157 Jarvis constraint)
+  //
+  // colorMode='repo'      → pointColorByFn on 'id' column (existing behavior)
+  // colorMode='degree'    → pointColorStrategy='connections count' (Cosmograph built-in)
+  // colorMode='community' → pointColorByFn on 'community_id' column
+  //
+  // selectPoints() is NEVER called from inside these accessors — it is only
+  // called from the LoD effect, the hover handler, and the hub pulse animation.
+  // This ensures the Jarvis highlight overlay (Phase 1) can call selectPoints()
+  // independently without fighting the color accessor.
+  // ---------------------------------------------------------------------------
+
+  // Repo mode: color by id (so we can match selectedNodeId/hoveredNodeId)
+  const pointColorByFnRepo = useCallback((nodeId: string) => {
     if (nodeId === selectedNodeId) return '#38bdf8'   // sky-400 — selected
     if (nodeId === hoveredNodeId)  return '#e2e8f0'   // slate-200 — hovered
-    // Find node to determine color strategy
     const node = nodesRef.current.find((n) => n.id === nodeId)
     if (!node) return '#64748b'
     if (node.is_centroid) return communityColor(node.community_id ?? 0)
@@ -503,26 +596,27 @@ const GraphCanvasInner = ({
     return repoColor(node.repo)
   }, [selectedNodeId, hoveredNodeId])
 
-  // #1059: size nodes by degree (hub nodes appear larger than leaves).
-  // CosmographPointSizeStrategy.Degree uses quantile-bounded degree distribution.
-  // pointSizeRange controls min/max pixel sizes across the full degree spectrum.
+  // Community mode: color by community_id (numeric column)
+  const pointColorByFnCommunity = useCallback((communityId: unknown) => {
+    const cid = typeof communityId === 'number' ? communityId
+      : typeof communityId === 'string' ? parseInt(communityId, 10)
+      : 0
+    return communityColor(isNaN(cid) ? 0 : cid)
+  }, [])
 
-  // Link color accessor — receives the value of the `linkColorBy` column ('__crossRepo').
-  // __crossRepo is 1 for cross-repo edges, 0 for intra-repo (#1065).
-  // Values come in as number, but DuckDB-WASM may convert them to string — handle both.
+  // Link color accessor — same across all color modes
   const linkColorByFn = useCallback((crossRepo: unknown) => {
     const isCross = crossRepo === 1 || crossRepo === '1'
     if (isCross) {
-      // sky-400 at 70% opacity — bright accent for cross-repo bridges
       return highContrast ? 'rgba(56,189,248,1.0)' : 'rgba(56,189,248,0.7)'
     }
-    // slate-500 at reduced opacity for intra-repo
     return highContrast ? 'rgba(100,116,139,0.5)' : 'rgba(100,116,139,0.15)'
   }, [highContrast])
 
-  // Click: Cosmograph provides the point index in the current `nodes` array.
-  // index === undefined means click landed on empty canvas (Cosmograph fires onBackgroundClick
-  // for that case, but guard here too for belt-and-suspenders).
+  // ---------------------------------------------------------------------------
+  // Click / hover handlers
+  // ---------------------------------------------------------------------------
+
   const handleClick = useCallback((index: number | undefined) => {
     if (index === undefined) {
       onEmptyClick?.()
@@ -530,7 +624,6 @@ const GraphCanvasInner = ({
     }
     const node = nodesRef.current[index]
     if (!node) return
-    // Toggle: clicking the already-selected node deselects it
     if (node.id === selectedNodeId) {
       onEmptyClick?.()
       return
@@ -538,7 +631,6 @@ const GraphCanvasInner = ({
     onNodeClick(node)
   }, [onNodeClick, onEmptyClick, selectedNodeId])
 
-  // Background click: clear hover + greyout + deselect node
   const handleBackgroundClick = useCallback(() => {
     if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
     lastHoverIndexRef.current = null
@@ -547,81 +639,73 @@ const GraphCanvasInner = ({
     onEmptyClick?.()
   }, [onNodeHover, onEmptyClick])
 
-  // Hover: Cosmograph provides the point index on mouse move.
-  // Debounced 50 ms to avoid thrashing GPU on rapid micro-movements.
-  // When a node is hovered, selectPoint with selectConnectedPoints=true activates
-  // Cosmograph's greyout: non-selected/non-adjacent nodes get pointGreyoutOpacity.
-  //
-  // IMPORTANT: after the sim has settled (hasSettled=true) we re-pause immediately
-  // after selectPoint because Cosmograph internally bumps alpha on selection changes,
-  // which causes perpetual micro-motion if unchecked (#1071 side-effect).
-  const hasSettledRef = useRef(false)
-  hasSettledRef.current = hasSettled
-
   const handleMouseMove = useCallback((index: number | undefined) => {
     if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
 
     if (index === undefined) {
-      // Schedule clear with slight delay so leaving a node doesn't flicker
       hoverDebounceRef.current = setTimeout(() => {
         lastHoverIndexRef.current = null
         cosmographRef.current?.unselectAllPoints()
-        // Re-pause if sim was settled — unselectAllPoints may nudge alpha
         if (hasSettledRef.current) cosmographRef.current?.pause()
         onNodeHover(null)
       }, 50)
       return
     }
 
-    // Same node — no work needed
     if (index === lastHoverIndexRef.current) return
 
     hoverDebounceRef.current = setTimeout(() => {
       lastHoverIndexRef.current = index
       const node = nodesRef.current[index]
       if (!node) return
-      // selectPoint with selectConnectedPoints=true highlights the hovered node
-      // and its direct neighbors; all others get greyout opacity applied by Cosmograph.
+      // selectPoint with selectConnectedPoints=true highlights node + 1-degree neighbors.
+      // This is decoupled from the base color mode — Jarvis overlay can compose on top.
       cosmographRef.current?.selectPoint(index, false, true)
-      // Re-pause immediately so selectPoint's internal alpha bump doesn't restart motion
       if (hasSettledRef.current) cosmographRef.current?.pause()
       onNodeHover(node)
     }, 50)
   }, [onNodeHover])
 
-  // Track raw screen cursor position for tooltip overlay
   const handleWrapperMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     onCursorMove?.(e.clientX, e.clientY)
   }, [onCursorMove])
 
-  // Debounce timer for zoom LoD updates — prevents thrashing on rapid scroll
+  // Debounce timer for zoom LoD updates
   const zoomDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Zoom: Cosmograph's onZoom fires with a D3 zoom event; extract the k scale.
-  // #1107: also update local currentZoom (debounced 80ms) so LoD band changes
-  // don't fire on every pixel of scroll — only when the user pauses.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleZoom = useCallback((e: any) => {
-    const k: number = e?.transform?.k ?? 1
+  const handleZoom = useCallback((e: unknown) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const k: number = (e as any)?.transform?.k ?? 1
     setZoomLevel(k)
     onZoomChange?.(k)
-    // Debounced LoD update
     if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current)
     zoomDebounceRef.current = setTimeout(() => {
       setCurrentZoom(k)
     }, 80)
   }, [setZoomLevel, onZoomChange])
 
-  // Theme-aware canvas background:
-  //   dark mode  → deep slate-950 (#020617) — same as before, no visual regression
-  //   light mode → slate-50 (#f8fafc) — avoids the jarring black-on-light layout
+  // ---------------------------------------------------------------------------
+  // Theme + label styles
+  // ---------------------------------------------------------------------------
+
   const canvasBg = isDark ? '#020617' : '#f8fafc'
 
-  // Label pill style — gives a semi-transparent background behind label text so
-  // it reads over edges. Uses inline CSS (Cosmograph className prop accepts style strings).
   const labelPillStyle = isDark
     ? 'background: rgba(2,6,23,0.72); color: #e2e8f0; font-weight: 500; padding: 1px 5px; border-radius: 4px; font-size: 11px; white-space: nowrap;'
     : 'background: rgba(248,250,252,0.82); color: #1e293b; font-weight: 500; padding: 1px 5px; border-radius: 4px; font-size: 11px; white-space: nowrap;'
+
+  // ---------------------------------------------------------------------------
+  // Cosmograph config derived from colorMode
+  // ---------------------------------------------------------------------------
+
+  // When colorMode='degree', Cosmograph's built-in strategy drives colors.
+  // We must not pass pointColorByFn or pointColorBy in that case — they conflict.
+  const isDegreeMode = colorMode === 'degree'
+  const isCommunityMode = colorMode === 'community'
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <div
@@ -635,6 +719,13 @@ const GraphCanvasInner = ({
         Interactive GPU-accelerated force-directed graph. Use the inspector panel to navigate nodes with keyboard.
       </span>
 
+      {/* Hover cursor ring — subtle white ring that follows the cursor on the canvas.
+          Implemented as a CSS-animated pseudo-element overlay so it's always on top
+          of the WebGL canvas without requiring canvas access. The ring appears only
+          when the cursor is inside the canvas div (tracked via onMouseMove).
+          pointer-events: none so it doesn't block Cosmograph interactions. */}
+      <HoverRing />
+
       <Cosmograph
         ref={cosmographRef}
         style={{ width: '100%', height: '100%' }}
@@ -644,11 +735,6 @@ const GraphCanvasInner = ({
         points={cosmographPoints as unknown as Record<string, unknown>[]}
         pointIdBy="id"
         pointIndexBy="__idx"
-        // Explicit allowlist guards against any future non-primitive field reaching
-        // DuckDB-WASM (nested objects/arrays crash columnar type inference).
-        // __idx is included so Cosmograph can resolve its numeric index lookups.
-        // #1072: __cluster_id and __cluster_strength added for semantic layout.
-        // #1106: __x and __y added for repo-first initial position seeding.
         pointIncludeColumns={['__idx', 'id', 'label', 'kind', 'repo', 'community_id', 'pagerank', 'is_centroid', 'centroid_size', 'source_file', 'start_line', 'degree', '__cluster_id', '__cluster_strength', '__size', '__x', '__y']}
 
         links={visibleLinks as unknown as Record<string, unknown>[]}
@@ -656,49 +742,48 @@ const GraphCanvasInner = ({
         linkSourceIndexBy="__srcIdx"
         linkTargetBy="target"
         linkTargetIndexBy="__tgtIdx"
-        // __crossRepo carries the cross-repo flag for color/width differentiation (#1065)
         linkIncludeColumns={['kind', '__crossRepo']}
 
         // ── Repo-first semantic layout (#1072 / #1106) ───────────────────────
-        // #1106: two-layer approach for guaranteed island separation:
-        //
-        // 1. pointXBy/pointYBy: SEED each node's initial position near its repo's
-        //    canvas center (pre-computed in cosmographPoints as __x/__y).
-        //    Nodes start already-separated — the sim doesn't have to fight
-        //    through random-soup to discover repo boundaries.
-        //    NOTE: when pointXBy/pointYBy are set, clusterPositionsMap has no
-        //    effect per Cosmograph docs — so we omit it here.
-        //
-        // 2. pointClusterBy (repo-first cluster id) + pointClusterStrengthBy:
-        //    cluster force keeps nodes near their repo region during the sim.
-        //    The composite id encodes repo as the dominant key so the cluster
-        //    force always pulls toward the correct repo region.
         pointXBy="__x"
         pointYBy="__y"
         pointClusterBy="__cluster_id"
         pointClusterStrengthBy="__cluster_strength"
 
         // ── Node appearance ────────────────────────────────────────────────
-        pointColorBy="id"
-        pointColorByFn={pointColorByFn as (value: unknown) => string}
-        // #1089: log-scale sizing so degree-750 god nodes are dramatically larger
-        // than degree-1 leaves. pointSizeByFn receives the __size pre-computed value;
-        // pointSizeRange [2, 60] remaps the log output to final pixel sizes.
-        // log formula: d=0 → 2 px, d=10 → ~14 px, d=100 → ~26 px, d=750 → ~36 px (before remap).
-        // After remap the hub (deg=750, raw≈36) lands at ~60 px; leaf (deg=1, raw≈3.6) → ~2 px.
+        // Color mode routing — mutually exclusive props:
+        //   degree mode:    pointColorStrategy (Cosmograph built-in gradient)
+        //   repo mode:      pointColorBy='id'  + pointColorByFn
+        //   community mode: pointColorBy='community_id' + pointColorByFn
+        {...(isDegreeMode
+          ? {
+              pointColorStrategy: DEGREE_COLOR_STRATEGY as unknown as undefined,
+            }
+          : isCommunityMode
+          ? {
+              pointColorBy: 'community_id',
+              pointColorByFn: pointColorByFnCommunity as (value: unknown) => string,
+            }
+          : {
+              pointColorBy: 'id',
+              pointColorByFn: pointColorByFnRepo as (value: unknown) => string,
+            }
+        )}
+
+        // #1153: Silk Road size + scale params
+        // #1127: pointSizeBy='__size' preserves Process node cap
         pointSizeBy="__size"
-        // Wider range so leaf nodes stay visible (min 5px) and hub nodes are
-        // dramatically larger (max 80px). Fixes uniform-tiny-dot appearance.
+        // #1153: pointSizeScale=1.42578 (Silk Road param) — multiplies node sizes.
+        // Combined with pointSizeRange for wide dynamic range.
+        pointSizeScale={1.42578}
         pointSizeRange={[5, 80]}
+        // #1153: scalePointsOnZoom=true — nodes scale with zoom (Silk Road behavior).
+        // This complements zoom-LoD (#1120): at high zoom, nodes grow naturally so
+        // individual entities are easier to click without needing LoD to be disabled.
+        scalePointsOnZoom={true}
         pointLabelBy="label"
 
         // ── Labels ────────────────────────────────────────────────────────
-        // #1059: show dynamic + top labels so hubs are named at a glance.
-        // showDynamicLabels: evenly distributed visible nodes get labels automatically.
-        // showTopLabels: highest-degree nodes always show labels regardless of viewport.
-        // Truncate long entity names at 30 chars; pill background for readability.
-        // showTopLabels: hub nodes always labelled; showDynamicLabels: evenly distributed.
-        // #1107: scale topLabels limit per zoom band (overview=50, mid=30, full=20)
         showLabels={true}
         showTopLabels={true}
         showTopLabelsLimit={currentBand.topLabels}
@@ -711,41 +796,56 @@ const GraphCanvasInner = ({
         pointLabelClassName={labelPillStyle}
 
         // ── Edge appearance ────────────────────────────────────────────────
-        // Color driven by __crossRepo: cross-repo = sky-400, intra-repo = slate-500 (#1065)
         linkColorBy="__crossRepo"
         linkColorByFn={linkColorByFn as (value: unknown) => string}
-        // Cross-repo edges drawn thicker: range maps to [intra-repo, cross-repo] width
         linkWidthRange={highContrast ? [1, 3] : [0.5, 2]}
+        // #1153: linkWidthScale=0.31752 (Silk Road param) — thinner edges overall,
+        // making the Silk Road galaxy look less cluttered.
+        linkWidthScale={0.31752}
 
         // ── Background ────────────────────────────────────────────────────
         backgroundColor={canvasBg}
 
         // ── Greyout opacity ────────────────────────────────────────────────
-        // #1069: when repo filter is active, opacity=0 makes filtered-out nodes
-        // and edges invisible. When no filter is active, hover-focus greyout (#1060)
-        // uses 0.15 so non-adjacent nodes dim on hover.
-        // #1107: LoD filter also uses selectPoints — hidden nodes must be opacity=0.
-        // When either filter is active, greyout=0 so hidden nodes are invisible.
         pointGreyoutOpacity={(repoFilterActive || currentBand.label !== 'full') ? 0 : 0.15}
         linkGreyoutOpacity={(repoFilterActive || currentBand.label !== 'full') ? 0 : 0.1}
 
-        // ── Simulation ─────────────────────────────────────────────────────
+        // ── Simulation — #1153 Silk Road params ────────────────────────────
         enableSimulation={true}
         preservePointPositionsOnDataUpdate={true}
-        // #1106: Stay at default friction (0.85) for fast settle.
-        simulationFriction={0.85}
-        // #1106: Raise repulsion significantly (was 0.8) so nodes from different
-        // repos physically repel each other, pushing the 3 repo islands apart.
-        // 1.5 is strong but anchored because each node starts near its repo center.
+        // #1153: simulationLinkSpring=0.08 (was ~1.0) — very weak link spring
+        // lets nodes spread out naturally without being pulled tight together.
+        simulationLinkSpring={0.08}
+        // #1153: simulationLinkDistance=2 — short target link distance
+        // combined with weak spring creates the Silk Road gossamer aesthetic.
+        simulationLinkDistance={2}
+        // #1153: simulationGravity=0.46 (was 0.1) — stronger gravity centers
+        // the whole graph while weak springs keep individual clusters loose.
+        simulationGravity={0.46}
+        // #1153: simulationFriction=0.77 (was 0.85) — lower friction keeps
+        // the sim more fluid during layout, allowing natural cluster formation.
+        simulationFriction={0.77}
+        // #1153: simulationDecay=1000 (was 1500) — faster alpha decay means
+        // the sim settles in ~1s instead of 1.5s (triggers pulse animation sooner).
+        simulationDecay={1000}
+        // #1153: simulationCluster=0.1 — additional cluster force that gently
+        // pulls same-cluster nodes together without over-collapsing them.
+        simulationCluster={0.1}
+        // Keep repulsion strong so repo islands stay separated (#1114)
         simulationRepulsion={1.5}
-        // #1106: Mild per-node gravity toward origin prevents drift off-canvas.
-        // With nodes pre-positioned at R=1500–3000px, 0.1 is gentle enough not
-        // to collapse the islands back toward the center.
-        simulationGravity={0.1}
-        // Tiny center-mass force as a safety net against extreme drift
         simulationCenter={0.05}
-        // #1106: Faster decay (was 2000) → simulation settles within the 8s hard-stop.
-        simulationDecay={1500}
+
+        // ── Space + layout ─────────────────────────────────────────────────
+        // #1153: spaceSize=8192 — larger canvas space gives more room for islands
+        // to spread, matching Silk Road's open-space aesthetic.
+        spaceSize={8192}
+        // #1153: rescalePositions=true — Cosmograph normalizes initial positions
+        // to fill the canvas; combines with pre-seeded __x/__y for fast convergence.
+        rescalePositions={true}
+        // #1153: fitViewOnInit=true + fitViewDelay=1000ms — smooth initial fit
+        // so the whole graph is visible on load (no jarring jumps).
+        fitViewOnInit={true}
+        fitViewDelay={1000}
 
         // ── Selection / interaction ────────────────────────────────────────
         selectPointOnClick="single"
@@ -761,13 +861,11 @@ const GraphCanvasInner = ({
         onMouseMove={handleMouseMove}
         onZoom={handleZoom}
 
-        // Suppress internal status messages — we have our own loading states
         statusIndicatorMode={false}
         disableLogging={true}
       />
 
-      {/* Vignette overlay — radial gradient darker at edges for perceived depth.
-          pointer-events:none so it doesn't block canvas interaction. */}
+      {/* Vignette overlay — radial gradient for perceived depth. */}
       <div
         aria-hidden
         style={{
@@ -782,5 +880,78 @@ const GraphCanvasInner = ({
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// HoverRing — subtle cursor trail on the canvas (#1153 polish)
+// ---------------------------------------------------------------------------
+
+/**
+ * A soft white ring that follows the cursor inside the canvas.
+ * Implemented as a React component so it re-uses the parent's onMouseMove
+ * without needing canvas access. The ring is always pointer-events:none
+ * so it never blocks Cosmograph interactions.
+ *
+ * CSS custom property --hx / --hy are set via JS on mousemove.
+ * The ring uses CSS transitions for smooth trailing behavior.
+ */
+const HoverRing = memo(function HoverRing() {
+  const ringRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const parent = ringRef.current?.parentElement
+    if (!parent) return
+
+    let rafId: number | null = null
+
+    const onMove = (e: MouseEvent) => {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        const rect = parent.getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
+        if (ringRef.current) {
+          ringRef.current.style.left = `${x}px`
+          ringRef.current.style.top = `${y}px`
+          ringRef.current.style.opacity = '1'
+        }
+      })
+    }
+
+    const onLeave = () => {
+      if (ringRef.current) ringRef.current.style.opacity = '0'
+    }
+
+    parent.addEventListener('mousemove', onMove)
+    parent.addEventListener('mouseleave', onLeave)
+    return () => {
+      parent.removeEventListener('mousemove', onMove)
+      parent.removeEventListener('mouseleave', onLeave)
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
+  }, [])
+
+  return (
+    <div
+      ref={ringRef}
+      aria-hidden
+      style={{
+        position: 'absolute',
+        width: 28,
+        height: 28,
+        marginLeft: -14,
+        marginTop: -14,
+        borderRadius: '50%',
+        border: '1.5px solid rgba(226,232,240,0.35)',
+        boxShadow: '0 0 6px rgba(148,163,184,0.2)',
+        pointerEvents: 'none',
+        opacity: 0,
+        transition: 'left 60ms linear, top 60ms linear, opacity 200ms ease',
+        zIndex: 10,
+        transform: 'translateZ(0)',  // GPU layer hint
+      }}
+    />
+  )
+})
 
 export const GraphCanvas = memo(GraphCanvasInner)

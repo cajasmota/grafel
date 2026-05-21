@@ -7,6 +7,8 @@ import { useEntityInspector } from '@/hooks/graph/useEntityInspector'
 import { useCommunityColors } from '@/hooks/graph/useCommunityColors'
 import { useGraphSearch } from '@/hooks/graph/useGraphSearch'
 import { useHoverLabel } from '@/hooks/graph/useHoverLabel'
+import { useColorMode } from '@/hooks/graph/useColorMode'
+import { useGraphHighlight } from '@/hooks/graph/useGraphHighlight'
 import { useGraphCameraStore, useSimulationRunning } from '@/store/graphCameraStore'
 import { useThemeContext } from '@/context/ThemeContext'
 import { GraphCanvas } from '@/components/graph/GraphCanvas'
@@ -48,6 +50,12 @@ export function GraphRoute() {
   // ── Camera state ───────────────────────────────────────────────────────────
   const { hoveredNodeId, setHoveredNode, zoomToNode, resetView, fitView, resetZoom, toggleSimulation, graphRef } = useGraphCameraStore()
   const simulationRunning = useSimulationRunning()
+
+  // ── Color mode (#1153 — persisted to localStorage) ────────────────────────
+  const { colorMode, setColorMode } = useColorMode()
+
+  // ── Jarvis MCP highlight overlay (#1157 — stub, reserved for future) ─────
+  const { highlightedNodeIds } = useGraphHighlight()
 
   // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -341,11 +349,55 @@ export function GraphRoute() {
 
       {/* Main area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left: repo filter + community legend */}
+        {/* Left: color mode + repo filter + community legend */}
         <aside
           className="hidden lg:flex flex-col w-48 min-w-[160px] border-r border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 p-2 gap-2 overflow-y-auto"
           aria-label="Graph filters sidebar"
         >
+          {/* Color mode toggle (#1153) */}
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold px-2 pb-1">
+              Color by
+            </p>
+            <div className="flex flex-col gap-0.5" role="radiogroup" aria-label="Graph color mode">
+              {(
+                [
+                  { value: 'repo',      label: 'Repo',      title: 'Color nodes by repository' },
+                  { value: 'degree',    label: 'Degree',    title: 'Silk Road gradient — purple→pink→yellow by connection count' },
+                  { value: 'community', label: 'Community', title: 'Color nodes by community cluster' },
+                ] as const
+              ).map(({ value, label, title }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={colorMode === value}
+                  onClick={() => setColorMode(value)}
+                  title={title}
+                  className={[
+                    'flex items-center gap-2 px-2 py-1 rounded text-left text-xs w-full transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
+                    colorMode === value
+                      ? 'bg-sky-900/40 text-sky-300 dark:text-sky-300'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800/60',
+                  ].join(' ')}
+                >
+                  {/* Active indicator dot */}
+                  <span
+                    className={[
+                      'w-1.5 h-1.5 rounded-full shrink-0 transition-all',
+                      colorMode === value ? 'bg-sky-400' : 'bg-slate-600',
+                    ].join(' ')}
+                    aria-hidden
+                  />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 dark:border-slate-700" />
+
           {/* Repo filter */}
           {allRepoSlugs.length > 0 && (
             <div>
@@ -404,14 +456,32 @@ export function GraphRoute() {
             <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold px-2 pb-1">
               Communities
             </p>
-            <CommunityLegend
-              communities={communities}
-              colorMap={colorMap}
-              highlightId={hoveredCommunityId}
-              onHover={setHoveredCommunityId}
-              onSelect={handleCommunityClick}
-              selectedId={selectedCommunityId}
-            />
+            {communities.length === 0 && !isLoading ? (
+              /* Empty community filter hint (#1153 polish) */
+              <p className="px-2 py-2 text-[10px] text-slate-500 dark:text-slate-600 leading-relaxed">
+                No communities visible.{' '}
+                {selectedCommunityId !== null ? (
+                  <button
+                    type="button"
+                    onClick={handleClearCommunity}
+                    className="text-sky-500 hover:text-sky-400 underline underline-offset-1 focus-visible:outline-none"
+                  >
+                    Try expanding the filter
+                  </button>
+                ) : (
+                  'Try expanding the filter or loading more data.'
+                )}
+              </p>
+            ) : (
+              <CommunityLegend
+                communities={communities}
+                colorMap={colorMap}
+                highlightId={hoveredCommunityId}
+                onHover={setHoveredCommunityId}
+                onSelect={handleCommunityClick}
+                selectedId={selectedCommunityId}
+              />
+            )}
           </div>
         </aside>
 
@@ -447,6 +517,8 @@ export function GraphRoute() {
               onSimulationRunningChange={toggleSimulation}
               className="w-full h-full"
               activeRepos={effectiveActiveRepos}
+              colorMode={colorMode}
+              forceVisibleIds={highlightedNodeIds}
             />
           )}
 
