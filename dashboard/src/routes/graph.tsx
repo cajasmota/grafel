@@ -9,6 +9,8 @@ import { useGraphSearch } from '@/hooks/graph/useGraphSearch'
 import { useHoverLabel } from '@/hooks/graph/useHoverLabel'
 import { useColorMode } from '@/hooks/graph/useColorMode'
 import { useSimulationConfig } from '@/hooks/graph/useSimulationConfig'
+import { saveLayout, loadLayout, clearLayout } from '@/hooks/graph/useLayoutCache'
+import type { LayoutCacheEntry } from '@/hooks/graph/useLayoutCache'
 import { useGraphHighlight } from '@/hooks/graph/useGraphHighlight'
 import { useGraphFilter, filterNodes } from '@/hooks/graph/useGraphFilter'
 import { useGraphKeyboardNav } from '@/hooks/graph/useGraphKeyboardNav'
@@ -169,6 +171,32 @@ export function GraphRoute() {
       effectiveActiveRepos,
       showExternal,
     )
+
+  // ── Layout position cache (#1399) ──────────────────────────────────────────
+  // Persist settled positions so a reload skips the explode/settle animation.
+  const [cachedLayout, setCachedLayout] = useState<LayoutCacheEntry | null>(null)
+  const [relayoutRequested, setRelayoutRequested] = useState(false)
+
+  const layoutNodeIds = useMemo(() => nodes.map((n) => String(n.id)), [nodes])
+
+  useEffect(() => {
+    if (!group || nodes.length === 0) return
+    if (relayoutRequested) return // fresh sim requested — ignore cache
+    setCachedLayout(loadLayout(group, layoutNodeIds))
+  }, [group, layoutNodeIds, relayoutRequested, nodes.length])
+
+  const handleLayoutSaved = useCallback((positions: Float32Array) => {
+    if (!group || layoutNodeIds.length === 0) return
+    saveLayout(group, layoutNodeIds, positions)
+    setRelayoutRequested(false)
+  }, [group, layoutNodeIds])
+
+  const handleRelayout = useCallback(() => {
+    if (!group || layoutNodeIds.length === 0) return
+    clearLayout(group, layoutNodeIds)
+    setCachedLayout(null)
+    setRelayoutRequested(true)
+  }, [group, layoutNodeIds])
 
   const colorMap = useCommunityColors(communities)
 
@@ -637,6 +665,7 @@ export function GraphRoute() {
             setParam={setSimParam}
             applyPreset={applySimPreset}
             shareHash={simShareHash}
+            onRelayout={handleRelayout}
           />
 
           <div className="border-t border-slate-200 dark:border-slate-700" />
@@ -805,6 +834,10 @@ export function GraphRoute() {
               nodeFilterIndices={filterIndices}
               nodeSizingConfig={nodeSizingConfig}
               renderConfig={renderConfig}
+              group={group}
+              savedLayout={cachedLayout}
+              onLayoutSaved={handleLayoutSaved}
+              relayoutRequested={relayoutRequested}
             />
           )}
 
