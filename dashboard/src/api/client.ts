@@ -87,6 +87,7 @@ import type {
   GraphResponse,
   GraphFilters,
   GraphLabelsResponse,
+  GraphThumbnailResponse,
   EntityNeighborResponse,
   PendingRepairsResponse,
   PendingEnrichmentsResponse,
@@ -450,6 +451,34 @@ export async function fetchEntityNeighbors(
     .filter((x): x is NonNullable<typeof x> => x !== null)
 
   return { entity: raw.entity, outbound, inbound }
+}
+
+// ── Landing card thumbnail: layout-snapshot (#983) ───────────────────────────
+
+/**
+ * GET /api/graph/{group}/layout-snapshot?top=200
+ *
+ * Returns a compact positional snapshot (top-N nodes by degree, normalised
+ * [0,1] positions) for rendering a static inline SVG thumbnail on landing
+ * cards.  No Cosmograph/WebGL required.
+ *
+ * On 404 (group not yet indexed) an empty response is returned so the card
+ * can show a no-preview placeholder.
+ */
+export async function fetchGraphThumbnail(
+  group: string,
+  top = 200,
+): Promise<GraphThumbnailResponse> {
+  if (USE_MOCKS) return { nodes: [], total_nodes: 0 }
+  try {
+    const params = new URLSearchParams({ top: String(top) })
+    return await apiFetch<GraphThumbnailResponse>(`/api/graph/${group}/layout-snapshot?${params}`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return { nodes: [], total_nodes: 0 }
+    }
+    throw err
+  }
 }
 
 // ── Tier 2: Graph labels ──────────────────────────────────────────────────────

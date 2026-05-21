@@ -9,6 +9,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Database, GitBranch, Clock, TerminalSquare, Activity } from 'lucide-react'
 import { useRegistry } from '@/hooks/shared/useRegistry'
+import { GroupGraphThumbnail } from '@/components/landing/GroupGraphThumbnail'
 import type { GroupMeta } from '@/types/api'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,30 +126,35 @@ function Sparkline({ history, bugRate, width = 60, height = 24 }: SparklineProps
 function GroupCardSkeleton() {
   return (
     <div
-      className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 h-[232px] space-y-4"
+      className="rounded-xl border border-slate-800 bg-slate-900/60 h-[312px] space-y-4 overflow-hidden"
       role="status"
       aria-label="Loading group…"
     >
-      {/* header row */}
-      <div className="flex items-center justify-between">
-        <div className="h-5 w-32 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-        <div className="h-6 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-      </div>
-      {/* stats row */}
-      <div className="flex items-center gap-4">
-        <div className="h-4 w-12 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-        <div className="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-        <div className="h-4 w-14 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-        <div className="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-      </div>
-      {/* footer skeleton */}
-      <div className="border-t border-slate-800/60 pt-3 space-y-2">
-        <div className="flex gap-1">
-          <div className="h-4 w-14 rounded bg-slate-800 animate-pulse" />
-          <div className="h-4 w-12 rounded bg-slate-800 animate-pulse" />
-          <div className="h-4 w-10 rounded bg-slate-800 animate-pulse" />
+      {/* thumbnail skeleton */}
+      <div className="h-[80px] w-full bg-slate-800 animate-pulse" />
+      {/* card body skeleton — padded like the real card body */}
+      <div className="px-5 space-y-4">
+        {/* header row */}
+        <div className="flex items-center justify-between">
+          <div className="h-5 w-32 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+          <div className="h-6 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
         </div>
-        <div className="h-3 w-36 rounded bg-slate-800 animate-pulse" />
+        {/* stats row */}
+        <div className="flex items-center gap-4">
+          <div className="h-4 w-12 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+          <div className="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+          <div className="h-4 w-14 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+          <div className="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
+        </div>
+        {/* footer skeleton */}
+        <div className="border-t border-slate-800/60 pt-3 space-y-2">
+          <div className="flex gap-1">
+            <div className="h-4 w-14 rounded bg-slate-800 animate-pulse" />
+            <div className="h-4 w-12 rounded bg-slate-800 animate-pulse" />
+            <div className="h-4 w-10 rounded bg-slate-800 animate-pulse" />
+          </div>
+          <div className="h-3 w-36 rounded bg-slate-800 animate-pulse" />
+        </div>
       </div>
       <span className="sr-only">Loading…</span>
     </div>
@@ -257,9 +263,10 @@ function RepoRow({ repos }: RepoRowProps) {
 interface GroupCardProps {
   group: GroupMeta
   onClick: () => void
+  onNavigateToNode?: (nodeId: string) => void
 }
 
-function GroupCard({ group, onClick }: GroupCardProps) {
+function GroupCard({ group, onClick, onNavigateToNode }: GroupCardProps) {
   const rateColor = bugRateColor(group.bug_rate)
   const rateLabel =
     group.bug_rate !== undefined ? `${group.bug_rate.toFixed(1)}%` : 'not measured'
@@ -267,81 +274,96 @@ function GroupCard({ group, onClick }: GroupCardProps) {
   const hasIndexedAt = Boolean(group.indexed_at)
 
   return (
-    <button
-      type="button"
+    <div
       data-card
-      onClick={onClick}
       className={[
-        'w-full text-left rounded-xl border bg-slate-900/60 p-5',
-        // Fixed height: 152px (stats) + 80px (footer) = 232px.
+        'w-full rounded-xl border bg-slate-900/60 overflow-hidden',
+        // Fixed height: 80px thumbnail + 232px card body = 312px.
         // All cards identical height regardless of framework count.
-        'h-[232px] flex flex-col',
-        'transition-all duration-150 cursor-pointer',
+        'h-[312px] flex flex-col',
+        'transition-all duration-150',
         'border-slate-200 dark:border-slate-800 hover:border-sky-500/40 hover:-translate-y-px hover:bg-slate-200 dark:hover:bg-slate-900',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60',
       ].join(' ')}
     >
-      {/* Main content — grows to fill available space */}
-      <div className="flex-1 flex flex-col justify-between min-h-0">
-        {/* Header: group name + sparkline */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <GitBranch className="w-4 h-4 text-sky-400 shrink-0" aria-hidden />
-            <span className="text-xl font-semibold text-slate-100 truncate">
-              {group.display_name}
-            </span>
+      {/* Thumbnail — 80px, lazy-loaded, lazy-rendered (#983) */}
+      <GroupGraphThumbnail
+        group={group.id}
+        enabled={hasRealData}
+        onNodeClick={onNavigateToNode}
+      />
+
+      {/* Card body — clickable area for group navigation */}
+      <button
+        type="button"
+        onClick={onClick}
+        className={[
+          'flex-1 flex flex-col text-left p-5 min-h-0',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60 focus-visible:ring-inset',
+          'cursor-pointer',
+        ].join(' ')}
+      >
+        {/* Main content — grows to fill available space */}
+        <div className="flex-1 flex flex-col justify-between min-h-0">
+          {/* Header: group name + sparkline */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <GitBranch className="w-4 h-4 text-sky-400 shrink-0" aria-hidden />
+              <span className="text-xl font-semibold text-slate-100 truncate">
+                {group.display_name}
+              </span>
+            </div>
+            <div className="shrink-0 pt-0.5">
+              <Sparkline history={group.bug_rate_history} bugRate={group.bug_rate} />
+            </div>
           </div>
-          <div className="shrink-0 pt-0.5">
-            <Sparkline history={group.bug_rate_history} bugRate={group.bug_rate} />
+
+          {/* Stats grid — 2×2 to keep consistent height */}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+            {/* Repos */}
+            <StatPill
+              icon={<Database className="w-3.5 h-3.5" aria-hidden />}
+              tooltip="Number of repositories in this group"
+              label="Repos"
+              value={String(group.repos.length)}
+            />
+
+            {/* Entities */}
+            <StatPill
+              icon={<TerminalSquare className="w-3.5 h-3.5" aria-hidden />}
+              tooltip="Total entities across all repos"
+              label="Entities"
+              value={formatCount(group.entity_count)}
+              dimmed={!hasRealData}
+            />
+
+            {/* Unresolved edges */}
+            <StatPill
+              icon={<Activity className="w-3.5 h-3.5" aria-hidden />}
+              tooltip="Percentage of graph edges that point to unknown or ambiguous targets. Lower is better. Drops as the resolver improves."
+              label="Unresolved edges"
+              value={rateLabel}
+              valueClass={`text-xs font-medium font-mono ${rateColor}`}
+              dimmed={group.bug_rate === undefined}
+            />
+
+            {/* Last indexed */}
+            <StatPill
+              icon={<Clock className="w-3.5 h-3.5" aria-hidden />}
+              tooltip="Time since most recent indexing"
+              label="Indexed"
+              value={relativeTime(group.indexed_at)}
+              dimmed={!hasIndexedAt}
+            />
           </div>
         </div>
 
-        {/* Stats grid — 2×2 to keep consistent height */}
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-          {/* Repos */}
-          <StatPill
-            icon={<Database className="w-3.5 h-3.5" aria-hidden />}
-            tooltip="Number of repositories in this group"
-            label="Repos"
-            value={String(group.repos.length)}
-          />
-
-          {/* Entities */}
-          <StatPill
-            icon={<TerminalSquare className="w-3.5 h-3.5" aria-hidden />}
-            tooltip="Total entities across all repos"
-            label="Entities"
-            value={formatCount(group.entity_count)}
-            dimmed={!hasRealData}
-          />
-
-          {/* Unresolved edges */}
-          <StatPill
-            icon={<Activity className="w-3.5 h-3.5" aria-hidden />}
-            tooltip="Percentage of graph edges that point to unknown or ambiguous targets. Lower is better. Drops as the resolver improves."
-            label="Unresolved edges"
-            value={rateLabel}
-            valueClass={`text-xs font-medium font-mono ${rateColor}`}
-            dimmed={group.bug_rate === undefined}
-          />
-
-          {/* Last indexed */}
-          <StatPill
-            icon={<Clock className="w-3.5 h-3.5" aria-hidden />}
-            tooltip="Time since most recent indexing"
-            label="Indexed"
-            value={relativeTime(group.indexed_at)}
-            dimmed={!hasIndexedAt}
-          />
+        {/* Footer — fixed height: framework chips + repo names */}
+        <div className="h-[80px] flex flex-col justify-center gap-1.5 pt-3 border-t border-slate-800/60 mt-3 shrink-0">
+          <FrameworkChips frameworks={group.frameworks} />
+          <RepoRow repos={group.repos} />
         </div>
-      </div>
-
-      {/* Footer — fixed 80px: framework chips + repo names */}
-      <div className="h-[80px] flex flex-col justify-center gap-1.5 pt-3 border-t border-slate-800/60 mt-3 shrink-0">
-        <FrameworkChips frameworks={group.frameworks} />
-        <RepoRow repos={group.repos} />
-      </div>
-    </button>
+      </button>
+    </div>
   )
 }
 
@@ -433,6 +455,9 @@ export function GroupSelector() {
             key={group.id}
             group={group}
             onClick={() => navigate(`/graph/${group.id}`)}
+            onNavigateToNode={(nodeId) =>
+              navigate(`/graph/${group.id}`, { state: { selectedNodeId: nodeId } })
+            }
           />
         ))}
       </div>

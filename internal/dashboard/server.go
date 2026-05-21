@@ -159,6 +159,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/graph/{group}", s.handleGraph)
 	mux.HandleFunc("GET /api/graph/{group}/labels", s.handleGraphLabels)
 	mux.HandleFunc("GET /api/graph/{group}/entity/{id}", s.handleGraphEntity)
+	// Landing card thumbnail — top-N node positions for inline SVG preview (#983)
+	mux.HandleFunc("GET /api/graph/{group}/layout-snapshot", s.handleGraphLayoutSnapshot)
 
 	// Process flows
 	mux.HandleFunc("GET /api/flows/{group}", s.handleFlowsList)

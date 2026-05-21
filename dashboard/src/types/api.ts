@@ -105,6 +105,32 @@ export interface Registry {
   version: string
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Graph thumbnail / layout-snapshot (#983)
+// GET /api/graph/{group}/layout-snapshot
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Single node in the layout-snapshot response. Positions are normalised [0,1]. */
+export interface ThumbnailNode {
+  /** Prefixed entity ID (repo:hash) */
+  id: string
+  /** Repo slug — used for per-repo colour fallback when community_id absent */
+  repo: string
+  /** Community cluster id — drives fill colour */
+  c?: number
+  /** Normalised x position [0,1] */
+  x: number
+  /** Normalised y position [0,1] */
+  y: number
+  /** Total degree (in+out) — drives dot radius */
+  d: number
+}
+
+export interface GraphThumbnailResponse {
+  nodes: ThumbnailNode[]
+  total_nodes: number
+}
+
 export interface DashboardInitResponse {
   registry: Registry
   groups: GroupMeta[]
@@ -311,6 +337,7 @@ export interface Process {
 export interface FlowEntryKindGroup {
   kind: FlowEntryKind
   count: number
+}
 
 // ── Dead-ends (#1145) ─────────────────────────────────────────────────────────
 
