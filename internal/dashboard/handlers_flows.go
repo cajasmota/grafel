@@ -324,7 +324,7 @@ func (s *Server) handleTriggerEnrichment(w http.ResponseWriter, r *http.Request)
 		kind = "describe_entity"
 	}
 
-	id, err := s.jobQueue.Enqueue(group, processID, kind)
+	id, err := s.jobQueue.Enqueue(group, processID, kind, "")
 	if err != nil {
 		writeErr(w, http.StatusTooManyRequests, "job queue full: "+err.Error())
 		return

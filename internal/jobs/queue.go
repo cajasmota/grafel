@@ -39,15 +39,19 @@ const DefaultTimeout = 5 * time.Minute
 
 // Job is one enrichment dispatch request.
 type Job struct {
-	ID         string    `json:"id"`
-	SubjectID  string    `json:"subject_id"`
-	Kind       string    `json:"kind"`
-	Group      string    `json:"group"`
-	Status     string    `json:"status"`
-	Error      string    `json:"error,omitempty"`
-	QueuedAt   time.Time `json:"queued_at"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ID              string     `json:"id"`
+	SubjectID       string     `json:"subject_id"`
+	Kind            string     `json:"kind"`
+	Group           string     `json:"group"`
+	Status          string     `json:"status"`
+	Error           string     `json:"error,omitempty"`
+	QueuedAt        time.Time  `json:"queued_at"`
+	StartedAt       *time.Time `json:"started_at,omitempty"`
+	FinishedAt      *time.Time `json:"finished_at,omitempty"`
+	// CriticalityBand is the priority tier of the enrichment subject
+	// ("critical" | "high" | "medium" | "low"). Used by the progress endpoint
+	// (#1286) to bucket job counts per tier. Empty string is treated as "low".
+	CriticalityBand string `json:"criticality_band,omitempty"`
 	// CancelFn is not serialised — it is wired by the worker at runtime.
 	cancelFn func()
 }
@@ -109,18 +113,20 @@ func (q *Queue) Stop() {
 	q.wg.Wait()
 }
 
-// Enqueue creates a new job for (group, subjectID, kind) and returns its ID.
+// Enqueue creates a new job for (group, subjectID, kind, criticalityBand) and
+// returns its ID. criticalityBand may be "" to default to "low" at query time.
 // The job is immediately placed in the work channel; a free worker will pick
 // it up as soon as capacity allows.
-func (q *Queue) Enqueue(group, subjectID, kind string) (string, error) {
+func (q *Queue) Enqueue(group, subjectID, kind, criticalityBand string) (string, error) {
 	id := newJobID()
 	job := &Job{
-		ID:        id,
-		SubjectID: subjectID,
-		Kind:      kind,
-		Group:     group,
-		Status:    StatusQueued,
-		QueuedAt:  time.Now().UTC(),
+		ID:              id,
+		SubjectID:       subjectID,
+		Kind:            kind,
+		Group:           group,
+		Status:          StatusQueued,
+		QueuedAt:        time.Now().UTC(),
+		CriticalityBand: criticalityBand,
 	}
 
 	q.mu.Lock()

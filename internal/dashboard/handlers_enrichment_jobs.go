@@ -43,18 +43,22 @@ func (s *Server) handleEnrichmentTrigger(w http.ResponseWriter, r *http.Request)
 		kind = "describe_entity"
 	}
 
+	// criticality_band is optional — when absent the progress endpoint falls
+	// back to "low". Accepted values: critical, high, medium, low.
+	band := r.URL.Query().Get("criticality_band")
+
 	if s.jobQueue == nil {
 		writeErr(w, http.StatusServiceUnavailable, "job queue not initialised")
 		return
 	}
 
-	id, err := s.jobQueue.Enqueue(group, subjectID, kind)
+	id, err := s.jobQueue.Enqueue(group, subjectID, kind, band)
 	if err != nil {
 		s.auditor.Err("enrichment_trigger", group, map[string]any{"subject_id": subjectID, "kind": kind}, err.Error())
 		writeErr(w, http.StatusTooManyRequests, "job queue full: "+err.Error())
 		return
 	}
-	s.auditor.OK("enrichment_trigger", group, map[string]any{"subject_id": subjectID, "kind": kind, "job_id": id})
+	s.auditor.OK("enrichment_trigger", group, map[string]any{"subject_id": subjectID, "kind": kind, "criticality_band": band, "job_id": id})
 
 	job, _ := s.jobQueue.Get(id)
 	writeJSON(w, http.StatusAccepted, jobToWire(job))
@@ -126,6 +130,9 @@ func jobToWire(j jobs.Job) map[string]any {
 		"group":      j.Group,
 		"status":     j.Status,
 		"queued_at":  j.QueuedAt,
+	}
+	if j.CriticalityBand != "" {
+		out["criticality_band"] = j.CriticalityBand
 	}
 	if j.Error != "" {
 		out["error"] = j.Error

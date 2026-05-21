@@ -787,6 +787,38 @@ export interface PendingEnrichmentsResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Enrichment progress — GET /api/enrichments/{group}/progress (#1286)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** One criticality tier in the progress response. */
+export interface EnrichmentProgressBand {
+  /** "critical" | "high" | "medium" | "low" */
+  band: string
+  /** Total jobs submitted for this tier. */
+  total: number
+  /** Jobs that finished with status "done". */
+  done: number
+  /** Jobs currently executing. */
+  running: number
+  /** Jobs waiting in queue. */
+  queued: number
+  /** Jobs that failed or were cancelled. */
+  failed: number
+  /** Seconds until this tier completes, based on rolling-window throughput.
+   *  Absent when fewer than 2 jobs have finished (not enough data). */
+  eta_seconds?: number
+}
+
+/** Response shape for GET /api/enrichments/{group}/progress. */
+export interface EnrichmentProgressResponse {
+  tiers: EnrichmentProgressBand[]
+  overall_done: number
+  overall_total: number
+  /** ISO timestamp of the earliest running job's started_at. */
+  started_at?: string
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Surface 1 — Graph Viewer
 // ────────────────────────────────────────────────────────────────────────────
 
