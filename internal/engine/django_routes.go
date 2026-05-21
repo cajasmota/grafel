@@ -15,19 +15,95 @@
 // include-prefix paths it "claimed" so the surrounding engine can suppress
 // the duplicate flat Routes the YAML rules would otherwise emit.
 //
-// Refs #64.
+// Cross-file suppression (#1278): when router.register() calls live in one
+// file and path("api/v1/", include(router.urls)) lives in another file, the
+// per-file claimedRegisterNames set is empty during the register-file pass and
+// cannot suppress the bare YAML Route entities. A global pre-pass registry
+// (drfGlobalRegisterNames) is populated by ScanDRFRegisterNames before
+// per-file extraction begins. The suppression gate in applyDjangoRouteComposition
+// now also consults this global set so cross-file bare Routes are correctly dropped.
+//
+// Refs #64, #1278.
 package engine
 
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
+	"sync"
 
 	sitter "github.com/smacker/go-tree-sitter"
 
 	"github.com/cajasmota/archigraph/internal/treesitter"
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// ---------------------------------------------------------------------------
+// Cross-file DRF register-name registry (#1278)
+// ---------------------------------------------------------------------------
+
+// drfRegisterScanRe is a lightweight line-based regex that captures every
+// router.register() basename from a Python file without an AST parse. Used
+// in the cross-file pre-pass (ScanDRFRegisterNames) to build a global set
+// of claimed register names before per-file extraction runs.
+//
+// Accepts both raw-string (r"name") and plain-string ("name" / 'name') forms.
+// Anchors the receiver to router-like identifiers (same pattern as the YAML
+// rule) to avoid false positives from unrelated .register() calls.
+var drfRegisterScanRe = regexp.MustCompile(
+	`(?:[\w]*[Rr]outer|api_router|v\d+_router|router_v\d+)\.register\s*\(\s*r?["']([^"']+)["']`,
+)
+
+// drfGlobalMu guards drfGlobalRegisterNames for concurrent pre-pass callers.
+var drfGlobalMu sync.RWMutex
+
+// drfGlobalRegisterNames is the cross-repo set of all router.register()
+// basenames found during the ScanDRFRegisterNames pre-pass. It is consulted
+// by applyDjangoRouteComposition when the per-file claimedRegisterNames set
+// is empty (cross-file scenario). Reset by ClearDRFRegisterNames at the
+// start of each index run.
+var drfGlobalRegisterNames = map[string]bool{}
+
+// ScanDRFRegisterNames scans a single Python file's content and merges every
+// router.register() basename into the global cross-file registry. Safe for
+// concurrent calls from parallel file-walkers.
+//
+// Call this for every .py file BEFORE per-file extraction begins (same
+// lifecycle as pyextr.ScanPythonClassRegistry). The global set is then
+// available to applyDjangoRouteComposition when suppressing cross-file ghosts.
+func ScanDRFRegisterNames(content []byte) {
+	if len(content) == 0 {
+		return
+	}
+	matches := drfRegisterScanRe.FindAllSubmatch(content, -1)
+	if len(matches) == 0 {
+		return
+	}
+	drfGlobalMu.Lock()
+	defer drfGlobalMu.Unlock()
+	for _, m := range matches {
+		if len(m) >= 2 && len(m[1]) > 0 {
+			drfGlobalRegisterNames[string(m[1])] = true
+		}
+	}
+}
+
+// ClearDRFRegisterNames resets the global DRF register-name registry.
+// Call at the start of each index run and in test teardowns.
+func ClearDRFRegisterNames() {
+	drfGlobalMu.Lock()
+	defer drfGlobalMu.Unlock()
+	drfGlobalRegisterNames = map[string]bool{}
+}
+
+// isDRFGlobalRegisterName reports whether name appears in the cross-file
+// DRF register-name registry populated by the ScanDRFRegisterNames pre-pass.
+func isDRFGlobalRegisterName(name string) bool {
+	drfGlobalMu.RLock()
+	defer drfGlobalMu.RUnlock()
+	return drfGlobalRegisterNames[name]
+}
 
 // composedDjangoRoutes holds the output of the Django AST pass.
 type composedDjangoRoutes struct {
@@ -52,6 +128,18 @@ type composedDjangoRoutes struct {
 // dropping the now-redundant flat Routes and the orphan parent-path Route.
 //
 // `lang` lets the engine no-op cleanly for non-Python files.
+//
+// #1278 — two-phase suppression:
+//
+//  1. Global cross-file suppression: always applied for any Python file. Drops
+//     YAML Route entities and ROUTES_TO edges whose bare name appears in the
+//     cross-file DRF register-name registry (built by the ScanDRFRegisterNames
+//     pre-pass). This handles the case where router.register() calls live in
+//     one file but the include(router.urls) call lives in another file.
+//
+//  2. Per-file composed suppression: applied only when the file contains both
+//     include() and .register() calls (same-file composition). Replaces the
+//     bare Route entities with the AST-composed prefixed routes.
 func applyDjangoRouteComposition(
 	ctx context.Context,
 	lang string,
@@ -63,6 +151,22 @@ func applyDjangoRouteComposition(
 	if lang != "python" || len(content) == 0 {
 		return rawEntities, rawRels
 	}
+
+	// Phase 1 — global cross-file suppression (#1278): drop bare YAML Route
+	// entities (and their ROUTES_TO edges) whose name is in the global
+	// register-name set, regardless of whether this file contains an include()
+	// binding. This handles register-only files (no include() in this file)
+	// where the per-file claimedRegisterNames set would be empty.
+	//
+	// We apply this even for files that will also go through Phase 2 (the
+	// same-file composition path) to keep the logic uniform; Phase 2's
+	// claimedRegisterNames set is a strict subset of the global set.
+	entities := suppressGlobalDRFOrphans(path, rawEntities, rawRels)
+	rawEntities = entities.ents
+	rawRels = entities.rels
+
+	// Phase 2 — per-file AST-driven composed suppression (original #64 logic):
+	// only fires when the file contains both include() and .register() calls.
 	// Cheap pre-filter: a DRF-composing urls.py has at minimum a `path(`
 	// and an `include(` somewhere, plus a `.register(` for the router.
 	if !bytesContainsAll(content, "path(", "include(", ".register(") {
@@ -104,6 +208,81 @@ func applyDjangoRouteComposition(
 	filteredRels = append(filteredRels, composed.relationships...)
 
 	return filteredEntities, filteredRels
+}
+
+// suppressedEntities bundles filtered entity + relationship slices.
+type suppressedEntities struct {
+	ents []types.EntityRecord
+	rels []types.RelationshipRecord
+}
+
+// suppressGlobalDRFOrphans drops bare YAML Route entities and their ROUTES_TO
+// edges from rawEntities/rawRels when the entity name appears in the global
+// cross-file DRF register-name registry. This is Phase 1 of the #1278 fix.
+//
+// Returns a new suppressedEntities with the filtered results. When the global
+// registry is empty (no router.register() found anywhere in the repo, or the
+// pre-pass hasn't run yet), the inputs are returned unchanged.
+func suppressGlobalDRFOrphans(
+	filePath string,
+	rawEntities []types.EntityRecord,
+	rawRels []types.RelationshipRecord,
+) suppressedEntities {
+	// Fast path: if the global set is empty nothing to do.
+	drfGlobalMu.RLock()
+	globalEmpty := len(drfGlobalRegisterNames) == 0
+	drfGlobalMu.RUnlock()
+	if globalEmpty {
+		return suppressedEntities{ents: rawEntities, rels: rawRels}
+	}
+
+	// Check whether any entity in this file is a candidate for suppression
+	// before allocating new slices. This keeps the hot path allocation-free
+	// for files with no YAML Route entities.
+	hasCandidates := false
+	for _, e := range rawEntities {
+		if e.Kind == "Route" && e.SourceFile == filePath && isDRFGlobalRegisterName(e.Name) {
+			hasCandidates = true
+			break
+		}
+	}
+	if !hasCandidates {
+		// Also check rels in case an orphan edge slipped through without a
+		// corresponding entity (unusual but possible with out-of-order processing).
+		for _, r := range rawRels {
+			if r.Kind == "ROUTES_TO" && strings.HasPrefix(r.FromID, "Route:") {
+				bare := strings.TrimPrefix(r.FromID, "Route:")
+				if isDRFGlobalRegisterName(bare) {
+					hasCandidates = true
+					break
+				}
+			}
+		}
+	}
+	if !hasCandidates {
+		return suppressedEntities{ents: rawEntities, rels: rawRels}
+	}
+
+	filteredEnts := rawEntities[:0:0]
+	for _, e := range rawEntities {
+		if e.Kind == "Route" && e.SourceFile == filePath && isDRFGlobalRegisterName(e.Name) {
+			continue // suppress cross-file ghost
+		}
+		filteredEnts = append(filteredEnts, e)
+	}
+
+	filteredRels := rawRels[:0:0]
+	for _, r := range rawRels {
+		if r.Kind == "ROUTES_TO" && strings.HasPrefix(r.FromID, "Route:") {
+			bare := strings.TrimPrefix(r.FromID, "Route:")
+			if isDRFGlobalRegisterName(bare) {
+				continue // suppress orphan ROUTES_TO edge
+			}
+		}
+		filteredRels = append(filteredRels, r)
+	}
+
+	return suppressedEntities{ents: filteredEnts, rels: filteredRels}
 }
 
 // bytesContainsAll returns true iff every needle is present in content.

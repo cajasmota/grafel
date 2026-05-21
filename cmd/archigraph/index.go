@@ -1465,7 +1465,13 @@ func (i *Indexer) runPass1ExtractWithProgress(ctx context.Context, absRepo strin
 	// This allows extractBaseClasses in the Python extractor to resolve
 	// cross-file `class Foo(Bar):` shapes to the correct source file when
 	// exactly one project file declares `Bar`.
+	//
+	// Pre-pass (#1278): build the cross-file DRF register-name registry.
+	// Scans every Python file for router.register() basenames so that
+	// applyDjangoRouteComposition can suppress bare Route entities produced by
+	// the YAML rules even when include(router.urls) lives in a different file.
 	pyextr.ClearPythonClassRegistry()
+	engine.ClearDRFRegisterNames()
 	for _, rel := range files {
 		abs := filepath.Join(absRepo, rel)
 		if !strings.HasSuffix(strings.ToLower(rel), ".py") {
@@ -1473,6 +1479,7 @@ func (i *Indexer) runPass1ExtractWithProgress(ctx context.Context, absRepo strin
 		}
 		if content, err := os.ReadFile(abs); err == nil {
 			pyextr.ScanPythonClassRegistry(rel, string(content))
+			engine.ScanDRFRegisterNames(content)
 		}
 	}
 

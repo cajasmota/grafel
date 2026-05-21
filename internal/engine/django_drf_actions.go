@@ -594,6 +594,14 @@ func findParentIncludePrefixes(
 ) []string {
 	var prefixes []string
 	seen := map[string]bool{}
+
+	// Determine whether the target file contains any router.register() calls.
+	// Used to gate the attribute-form include heuristic below (#1278).
+	var targetHasRegister bool
+	if targetContent := fileReader(targetRelPath); len(targetContent) > 0 {
+		targetHasRegister = drfRouterRegisterDetailedRe.Match(targetContent)
+	}
+
 	for _, candidate := range parentFiles {
 		if candidate == targetRelPath {
 			continue
@@ -606,6 +614,8 @@ func findParentIncludePrefixes(
 			continue
 		}
 		src := string(content)
+
+		// String-form include: path("prefix", include("module.path"))
 		for _, m := range djangoIncludeStringRe.FindAllStringSubmatch(src, -1) {
 			parentPrefix := m[1]
 			modulePath := m[2]
@@ -619,6 +629,37 @@ func findParentIncludePrefixes(
 			if !seen[parentPrefix] {
 				prefixes = append(prefixes, parentPrefix)
 				seen[parentPrefix] = true
+			}
+		}
+
+		// #1278 — Attribute-form include: path("prefix", include(routerVar.urls)).
+		// When the parent file mounts a router variable via attribute-form include
+		// rather than a string module path, djangoIncludeStringRe doesn't match.
+		// Heuristic: if the candidate parent file has `path("prefix",
+		// include(someVar.urls))` AND the target file contains router.register()
+		// calls, treat this as a parent-include relationship and use the prefix.
+		//
+		// This heuristic is safe because:
+		// - We only fire it when the target file actually defines router registrations.
+		// - In the vast majority of DRF projects, each urlconf file is mounted at
+		//   most one attribute-form router, so false-positive prefix collisions are
+		//   extremely unlikely.
+		// - If the heuristic over-fires (two router files in same project with same
+		//   parent), the worst case is a duplicate http_endpoint at the correct
+		//   prefix — the dedup pass removes it.
+		if targetHasRegister {
+			flatSrc := flattenParenthesised(src)
+			for _, m := range drfRouterAttrIncludeRe.FindAllStringSubmatch(flatSrc, -1) {
+				parentPrefix := m[1]
+				if parentPrefix == "" {
+					continue
+				}
+				// Only apply when the string-form include did NOT already find a
+				// prefix for this file — avoid double-adding the same prefix.
+				if !seen[parentPrefix] {
+					prefixes = append(prefixes, parentPrefix)
+					seen[parentPrefix] = true
+				}
 			}
 		}
 	}

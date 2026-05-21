@@ -142,8 +142,14 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 	// `class Foo(Bar):` shapes to the correct source file. Scanning is a
 	// lightweight line-based pass (no AST). ClearPythonClassRegistry resets any
 	// state from a prior batch to avoid bleeding across unrelated index runs.
+	//
+	// Pre-pass (#1278): build cross-file DRF register-name registry. Scans
+	// every Python file for router.register() basenames so that
+	// applyDjangoRouteComposition can suppress bare Route entities even when
+	// the matching include(router.urls) call lives in a different file.
 	if runExtract {
 		pyextr.ClearPythonClassRegistry()
+		engine.ClearDRFRegisterNames()
 		for _, rel := range files {
 			abs := filepath.Join(opts.RepoRoot, rel)
 			if !strings.HasSuffix(strings.ToLower(rel), ".py") {
@@ -151,6 +157,7 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 			}
 			if pyContent, err := os.ReadFile(abs); err == nil {
 				pyextr.ScanPythonClassRegistry(rel, string(pyContent))
+				engine.ScanDRFRegisterNames(pyContent)
 			}
 		}
 	}
