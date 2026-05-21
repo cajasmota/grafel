@@ -29,6 +29,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -38,6 +39,13 @@ import (
 	"github.com/cajasmota/archigraph/internal/treesitter"
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// drfDbgEnabled in django_routes.go mirrors the one in django_drf_actions.go.
+// Both are gated on the same ARCHIGRAPH_DRF_DBG env var. Since Go evaluates
+// package-level vars at init time, the value is fixed for the process lifetime.
+// Use "var" (not "const") so the linker can dead-code-eliminate the blocks when
+// the env var is absent in production.
+var drfRoutesDbgEnabled = os.Getenv("ARCHIGRAPH_DRF_DBG") == "1"
 
 // ---------------------------------------------------------------------------
 // Cross-file DRF register-name registry (#1278)
@@ -224,7 +232,41 @@ func applyDjangoRouteComposition(
 		}
 		filteredEntities = append(filteredEntities, e)
 	}
-	filteredEntities = append(filteredEntities, composed.entities...)
+
+	// #1297 — suppress bare-prefix AST-composed Route entities when they
+	// duplicate a DRF register name. This handles the case where a
+	// routers.py file mounts its router locally via path("",
+	// include(router.urls)) — the local empty prefix produces a composed
+	// Route:/alternate-addresses — but the file is ALSO included from a
+	// parent urls.py via path("api/v1/", include("core.routers")). The
+	// ApplyDjangoDRFRoutes pass (which sees the parent include) correctly
+	// emits /api/v1/alternate-addresses; the locally-composed
+	// Route:/alternate-addresses is a ghost that must be suppressed.
+	//
+	// We suppress a composed entity when:
+	//   - Its kind is Route and SourceFile is the current file.
+	//   - Its bare name (TrimLeft("/")) appears in drfGlobalRegisterNames,
+	//     meaning a router.register() call with that basename exists somewhere
+	//     in the repo.
+	// This is safe because isDRFGlobalRegisterName only matches single-segment
+	// basenames (e.g. "alternate-addresses"), never multi-segment composed
+	// paths like "api/v1/alternate-addresses". If the local prefix were
+	// non-empty, the composed entity name would include the prefix and would
+	// NOT match a bare register name.
+	var composedFiltered []types.EntityRecord
+	for _, e := range composed.entities {
+		if e.Kind == "Route" && e.SourceFile == path {
+			bare := strings.TrimLeft(e.Name, "/")
+			if isDRFGlobalRegisterName(bare) {
+				if drfRoutesDbgEnabled {
+					fmt.Fprintf(os.Stderr, "DRF: suppressing bare ast_driven Route %q (global register name match)\n", e.Name)
+				}
+				continue
+			}
+		}
+		composedFiltered = append(composedFiltered, e)
+	}
+	filteredEntities = append(filteredEntities, composedFiltered...)
 
 	// Drop YAML ROUTES_TO edges whose source Route is one of the bare
 	// register names we just replaced. The YAML edge is

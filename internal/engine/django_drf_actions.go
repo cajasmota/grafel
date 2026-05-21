@@ -28,6 +28,8 @@
 package engine
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -35,6 +37,10 @@ import (
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// drfDbgEnabled gates the diagnostic stderr tracing for the DRF ghost-path
+// investigation. Set ARCHIGRAPH_DRF_DBG=1 to enable.
+var drfDbgEnabled = os.Getenv("ARCHIGRAPH_DRF_DBG") == "1"
 
 // drfRouterRegisterDetailedRe captures the (routerVar, prefix, ViewSet identifier)
 // triple of every `router.register(r"prefix", ViewSetClass, ...)` call in a
@@ -311,9 +317,15 @@ func ApplyDjangoDRFRoutes(
 		// valid, and required so routes still land somewhere rather than being
 		// silently dropped).
 		parentPrefixes := findParentIncludePrefixes(relPath, parentFiles, fileReader)
+		if drfDbgEnabled {
+			fmt.Fprintf(os.Stderr, "DRF: file=%s parentPrefixes=%v\n", relPath, parentPrefixes)
+		}
 		if len(parentPrefixes) == 0 {
 			// File is not included from anywhere — emit at bare prefix.
 			parentPrefixes = []string{""}
+			if drfDbgEnabled {
+				fmt.Fprintf(os.Stderr, "DRF: file=%s NO parent found → bare prefix fallback\n", relPath)
+			}
 		}
 
 		// Find every router.register() call. Each yields (routerVar, prefix, ViewSet).
@@ -615,13 +627,24 @@ func findParentIncludePrefixes(
 		}
 		src := string(content)
 
+		if drfDbgEnabled {
+			fmt.Fprintf(os.Stderr, "DRF: scanning candidate=%s for target=%s\n", candidate, targetRelPath)
+		}
+
 		// String-form include: path("prefix", include("module.path"))
 		for _, m := range djangoIncludeStringRe.FindAllStringSubmatch(src, -1) {
 			parentPrefix := m[1]
 			modulePath := m[2]
 			resolved := modulePathToFilePath(modulePath)
+			if drfDbgEnabled {
+				fmt.Fprintf(os.Stderr, "DRF:   include match prefix=%q module=%q resolved=%q target=%q\n",
+					parentPrefix, modulePath, resolved, targetRelPath)
+			}
 			if resolved != targetRelPath {
 				alt := modulePathToFilePath_relToParent(modulePath, candidate)
+				if drfDbgEnabled {
+					fmt.Fprintf(os.Stderr, "DRF:   alt=%q\n", alt)
+				}
 				if alt != targetRelPath {
 					continue
 				}
@@ -629,6 +652,10 @@ func findParentIncludePrefixes(
 			if !seen[parentPrefix] {
 				prefixes = append(prefixes, parentPrefix)
 				seen[parentPrefix] = true
+				if drfDbgEnabled {
+					fmt.Fprintf(os.Stderr, "DRF:   FOUND prefix=%q for target=%s from candidate=%s\n",
+						parentPrefix, targetRelPath, candidate)
+				}
 			}
 		}
 
