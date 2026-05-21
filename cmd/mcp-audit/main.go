@@ -37,10 +37,10 @@ import (
 )
 
 // defaultCeiling is the maximum allowed handshake token count.
-// Empirical baseline: 4,219 tokens (32 tools, measured 2026-05-21 with 4-chars/token).
-// Ceiling = baseline + 7 % headroom, rounded up to nearest 100.
+// Empirical baseline: 2,963 tokens (28 tools, measured 2026-05-21 with 4-chars/token,
+// after refactor/mcp-real-3k schema compression). Ceiling = 3,000 (hard spec target).
 // Bump this constant when intentionally adding new tools (with justification comment).
-const defaultCeiling = 4500
+const defaultCeiling = 3000
 
 // maxDescLen is the per-tool description character limit.
 const maxDescLen = 80

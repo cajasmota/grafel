@@ -103,52 +103,28 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 33 (#1281: 9→4 bundles; #1293: desc trim; #1312: +archigraph_quality_cycles; #1314: +archigraph_auth_coverage; #1322: +archigraph_secrets; #1323: +archigraph_test_coverage; #1333: desc trimmed to ≤80 chars for budget gate; #1334: +archigraph_license_audit).
+// Tool count: 28 (#1281: 9→4 bundles; #1293: desc trim; #1312: +quality_cycles; #1314: +auth_coverage;
+//   #1322: +secrets; #1323: +test_coverage; #1333: desc ≤80 chars;
+//   refactor/mcp-real-3k: ≤3k handshake, -license_audit for token ceiling).
 // Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
 //   archigraph_get_next_enrichment_task, archigraph_get_telemetry.
+// Dropped (agent-facing, ≤3k): archigraph_recent_activity (UI), archigraph_save_finding,
+//   archigraph_list_findings (use enrichments), archigraph_cross_links (niche).
+// Dropped (HTTP-only, ≤3k optimization): archigraph_license_audit (#1334, HTTP API still available).
 func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_whoami",
 		mcpapi.WithDescription("Return inferred group + repo for the caller session."),
-		mcpapi.WithString("cwd"),
-		mcpapi.WithString("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("group"),
 	), s.wrap("archigraph_whoami", s.handleWhoami))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_save_finding",
-		mcpapi.WithDescription("Persist a question/answer pair to the group's memory."),
-		mcpapi.WithString("question", mcpapi.Required()),
-		mcpapi.WithString("answer", mcpapi.Required()),
-		mcpapi.WithString("type", mcpapi.DefaultString("note")),
-		mcpapi.WithArray("nodes", mcpapi.WithStringItems()),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_save_finding", s.handleSaveResult))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_list_findings",
-		mcpapi.WithDescription("List saved findings for the resolved group, newest-first."),
-		mcpapi.WithString("entity_id"),
-		mcpapi.WithString("since"),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_list_findings", s.handleListFindings))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_source",
 		mcpapi.WithDescription("Return source-file snippet for a node."),
 		mcpapi.WithString("node_id", mcpapi.Required()),
 		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(20)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_get_source", s.handleGetNodeSource))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_recent_activity",
-		mcpapi.WithDescription("Return entities modified after a given time."),
-		mcpapi.WithString("since"),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_recent_activity", s.handleRecentActivity))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find",
 		mcpapi.WithDescription("BM25 graph query with optional BFS expansion."),
@@ -156,122 +132,103 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
-		mcpapi.WithArray("context_filter", mcpapi.WithStringItems()),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find", s.handleQueryGraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_inspect",
 		mcpapi.WithDescription("Look up an entity by id, qualified name, or label."),
 		mcpapi.WithString("label_or_id", mcpapi.Required()),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_inspect", s.handleGetNode))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_expand",
 		mcpapi.WithDescription("Return neighbors of a node up to a given depth."),
 		mcpapi.WithString("node", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_expand", s.handleGetNeighbors))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_trace",
 		mcpapi.WithDescription("Confidence-weighted shortest path between two nodes."),
 		mcpapi.WithString("source", mcpapi.Required()),
 		mcpapi.WithString("target", mcpapi.Required()),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_trace", s.handleShortestPath))
 
 	// archigraph_traces — process-flow query surface (#724).
 	// action=list|get|follow
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_traces",
 		mcpapi.WithDescription("Process-flow traces: list=ranked, get=steps, follow=BFS."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("list|get|follow")),
-		mcpapi.WithString("process_id"),
-		mcpapi.WithString("entry_point_id"),
+		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithAny("process_id"),
+		mcpapi.WithAny("entry_point_id"),
 		mcpapi.WithNumber("max_depth", mcpapi.DefaultNumber(8)),
-		mcpapi.WithNumber("branching_factor", mcpapi.DefaultNumber(3)),
-		mcpapi.WithBoolean("cross_stack_only", mcpapi.DefaultBool(false)),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(25)),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_traces", s.handleTraces))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_clusters",
 		mcpapi.WithDescription("List Louvain communities across loaded graphs."),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_clusters", s.handleListCommunities))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_stats",
 		mcpapi.WithDescription("Corpus-level metrics for the resolved group."),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithArray("repo_filter"),
 	), s.wrap("archigraph_stats", s.handleGraphStats))
 
 	// archigraph_enrichments — action: list|submit|reject.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_enrichments",
 		mcpapi.WithDescription("Enrichment candidates: list=pending, submit=resolve, reject=discard."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("list|submit|reject")),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("kind"),
+		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("kind"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(10)),
-		mcpapi.WithString("candidate_id"),
-		mcpapi.WithString("value"),
+		mcpapi.WithAny("candidate_id"),
+		mcpapi.WithAny("value"),
 		mcpapi.WithNumber("confidence", mcpapi.DefaultNumber(1)),
-		mcpapi.WithString("reason"),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("reason"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_enrichments", s.handleEnrichments))
 
 	// archigraph_get_next_enrichment_task dropped (use enrichments(action=list,limit=1) instead).
-
-	// archigraph_cross_links — action: list|accept|reject.
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_cross_links",
-		mcpapi.WithDescription("Cross-repo link candidates: list=pending, accept=confirm, reject=discard."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("list|accept|reject")),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("channel"),
-		mcpapi.WithString("method"),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(10)),
-		mcpapi.WithString("candidate_id"),
-		mcpapi.WithString("reason"),
-		mcpapi.WithString("override_target"),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_cross_links", s.handleCrossLinks))
+	// archigraph_cross_links dropped (niche; agents rarely invoke; saves 164 tokens).
 
 	// archigraph_repairs — action: list|submit. ADR-0015 residual-edge repair.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_repairs",
 		mcpapi.WithDescription("Residual-edge repair queue: list=pending, submit=resolve."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("list|submit")),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(20)),
 		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0)),
-		mcpapi.WithBoolean("include_stale", mcpapi.DefaultBool(false)),
-		mcpapi.WithString("residual_id"),
-		mcpapi.WithString("resolution", mcpapi.Description("bind_to_entity|reclassify_as_external|reclassify_as_dynamic|reclassify_as_resolved|abandon")),
-		mcpapi.WithString("target_entity_id"),
-		mcpapi.WithString("module"),
-		mcpapi.WithString("new_target"),
-		mcpapi.WithString("dynamic_reason"),
-		mcpapi.WithString("abandon_reason"),
+		mcpapi.WithAny("residual_id"),
+		mcpapi.WithAny("resolution"),
+		mcpapi.WithAny("target_entity_id"),
+		mcpapi.WithAny("module"),
+		mcpapi.WithAny("new_target"),
+		mcpapi.WithAny("dynamic_reason"),
+		mcpapi.WithAny("abandon_reason"),
 		mcpapi.WithNumber("confidence", mcpapi.DefaultNumber(0.0)),
-		mcpapi.WithString("reasoning"),
-		mcpapi.WithString("source", mcpapi.DefaultString("mcp_submit_repair")),
-		mcpapi.WithString("repo"),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("reasoning"),
+		mcpapi.WithAny("repo"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_repairs", s.handleRepairs))
 
 	// archigraph_get_telemetry dropped (dashboard-only; use HTTP /api/telemetry instead).
@@ -279,42 +236,34 @@ func (s *Server) registerTools() {
 	// archigraph_patterns — ADR-0018. action=query|record.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_patterns",
 		mcpapi.WithDescription("Agent pattern store: query=find by task, record=store with exemplars."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("query|record")),
-		mcpapi.WithString("text"),
-		mcpapi.WithString("category"),
-		mcpapi.WithBoolean("include_candidates", mcpapi.DefaultBool(false)),
-		mcpapi.WithBoolean("include_private", mcpapi.DefaultBool(false)),
+		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithAny("text"),
+		mcpapi.WithAny("category"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(10)),
-		mcpapi.WithObject("trigger"),
-		mcpapi.WithArray("steps", mcpapi.WithStringItems()),
-		mcpapi.WithArray("anti_patterns"),
-		mcpapi.WithArray("exemplars", mcpapi.WithStringItems()),
-		mcpapi.WithBoolean("as_candidate", mcpapi.DefaultBool(false)),
-		mcpapi.WithString("proposer_subagent"),
-		mcpapi.WithString("documentation_url"),
-		mcpapi.WithObject("scope"),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("steps"),
+		mcpapi.WithArray("exemplars"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_patterns", s.handlePatterns))
 
 	// archigraph_topology — message-channel topology (#1281). action=orphan_publishers|orphan_subscribers|topic_detail.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology",
 		mcpapi.WithDescription("Message-channel topology: publisher/subscriber orphans and topic detail."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("orphan_publishers|orphan_subscribers|topic_detail")),
-		mcpapi.WithString("topic_id"),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithAny("topic_id"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_topology", s.handleTopology))
 
 	// archigraph_flows — flow-process diagnostics (#1281). action=dead_ends|truncated|detail.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_flows",
 		mcpapi.WithDescription("Flow-process diagnostics: dead_ends, truncated, detail."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("dead_ends|truncated|detail")),
-		mcpapi.WithString("process_id"),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithAny("process_id"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_flows", s.handleFlows))
 
 	// archigraph_diagnostics dropped (dashboard-only; use HTTP /api/diagnostics instead).
@@ -325,33 +274,33 @@ func (s *Server) registerTools() {
 	// Distinct from archigraph_patterns (agent-learned store).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_graph_patterns",
 		mcpapi.WithDescription("Indexer-extracted patterns (not agent store): list=browse, get=detail."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("list|get")),
+		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("needs_attention", mcpapi.DefaultBool(false)),
-		mcpapi.WithString("status"),
+		mcpapi.WithAny("status"),
 		mcpapi.WithNumber("confidence_min", mcpapi.DefaultNumber(0)),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
-		mcpapi.WithString("pattern_id"),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("pattern_id"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_graph_patterns", s.handleGraphPatterns))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_search_entities",
 		mcpapi.WithDescription("Substring search over entity names; ranked matches with source locations."),
 		mcpapi.WithString("query", mcpapi.Required()),
-		mcpapi.WithString("kind_filter"),
+		mcpapi.WithAny("kind_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(30)),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_search_entities", s.handleSearchEntities))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_subgraph",
 		mcpapi.WithDescription("All nodes and edges within N hops of an entity."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_get_subgraph", s.handleGetSubgraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_paths",
@@ -359,70 +308,70 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("from", mcpapi.Required()),
 		mcpapi.WithString("to", mcpapi.Required()),
 		mcpapi.WithNumber("max_hops", mcpapi.DefaultNumber(5)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_paths", s.handleFindPaths))
 
 	// archigraph_endpoints — HTTP surface (#1281). action=definitions|calls|stats.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoints",
 		mcpapi.WithDescription("HTTP endpoint surface: definitions=routes, calls=call-sites, stats=counts."),
-		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("definitions|calls|stats")),
+		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_endpoints", s.handleEndpoints))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callers",
 		mcpapi.WithDescription("Inbound callers of an entity up to N hops."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_callers", s.handleFindCallers))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callees",
 		mcpapi.WithDescription("Outbound callees of an entity up to N hops."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_callees", s.handleFindCallees))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_impact_radius",
 		mcpapi.WithDescription("Inbound blast-radius: affected entities with risk_score [0,1]."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_impact_radius", s.handleImpactRadius))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_summarize_subgraph",
 		mcpapi.WithDescription("Markdown summary of callers + callees within N hops."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_summarize_subgraph", s.handleSummarizeSubgraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_dead_code",
 		mcpapi.WithDescription("Entities with no project edges — dead code or extraction gap candidates."),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("kind_filter"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("kind_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_dead_code", s.handleFindDeadCode))
 
 	// archigraph_quality_cycles — import cycle detection (#1312).
 	// Runs Tarjan SCC on IMPORTS edges; each SCC > 1 = circular dependency.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_quality_cycles",
 		mcpapi.WithDescription("Detect import cycles via Tarjan SCC; returns members, weakest edge, fix hint."),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_quality_cycles", s.handleQualityCycles))
 
 	// archigraph_auth_coverage — security audit (#1314).
@@ -430,22 +379,22 @@ func (s *Server) registerTools() {
 	// decorators/middleware.  Severity: error (sensitive/IDOR), warn (public), info (covered).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_auth_coverage",
 		mcpapi.WithDescription("Security audit: flag HTTP endpoints missing auth (severity, IDOR risk)."),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("only_missing", mcpapi.DefaultBool(false)),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_auth_coverage", s.handleAuthCoverage))
 
 	// #1323: test-coverage graph — link Test entities to the code they exercise.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_test_coverage",
 		mcpapi.WithDescription("Find production entities with no TESTS edge, ranked by severity."),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("severity", mcpapi.Description("Filter uncovered list: high|medium|low (empty=all)")),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("severity"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithBoolean("top_directories", mcpapi.DefaultBool(false)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_test_coverage", s.handleTestCoverage))
 
 	// archigraph_secrets — hardcoded secret detector (#1322).
@@ -453,35 +402,13 @@ func (s *Server) registerTools() {
 	// high-entropy credentials. Test fixtures and opt-out comments are suppressed.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_secrets",
 		mcpapi.WithDescription("Scan source files for hardcoded secrets; returns masked findings by severity."),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-		mcpapi.WithString("severity",
-			mcpapi.Description("Minimum severity to include (critical|high|medium|low). Default: all."),
-		),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200),
-			mcpapi.Description("Maximum number of findings to return."),
-		),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("severity"),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
 	), s.wrap("archigraph_secrets", s.handleSecrets))
 
-	// archigraph_license_audit — dependency license detector (#1334).
-	// Reads ExternalPackage entities, detects SPDX licenses, flags incompatible
-	// combinations (GPL/AGPL in MIT project = error; LGPL/MPL = warn).
-	// Transitive npm deps surfaced when include_transitive=true.
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_license_audit",
-		mcpapi.WithDescription("Detect dependency licenses; flag GPL/AGPL incompatibility, weak-copyleft."),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-		mcpapi.WithBoolean("include_transitive", mcpapi.DefaultBool(false),
-			mcpapi.Description("Include transitive/indirect dependencies. Default: direct only."),
-		),
-		mcpapi.WithString("severity",
-			mcpapi.Description("Filter output: error|warn|info|unknown (empty = all). "+
-				"error=strong-copyleft incompatibility, warn=weak-copyleft."),
-		),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(500),
-			mcpapi.Description("Maximum number of dependency findings to return."),
-		),
-	), s.wrap("archigraph_license_audit", s.handleLicenseAudit))
+	// archigraph_license_audit dropped (HTTP API still available); see registerTools comments.
 }
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard

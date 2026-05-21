@@ -385,49 +385,11 @@ func TestTokenBudgetEnforcement(t *testing.T) {
 	}
 }
 
-// 8. List+resolve link candidate round-trip.
+// 8. archigraph_cross_links was dropped in refactor/mcp-real-3k (≤3k handshake).
+// The link-candidate handler still exists internally; this test is skipped to reflect
+// the tool's removal from the MCP surface.
 func TestLinkCandidateRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	r1 := filepath.Join(dir, "rA")
-	r2 := filepath.Join(dir, "rB")
-	_ = os.MkdirAll(r1, 0o755)
-	_ = os.MkdirAll(r2, 0o755)
-	writeGraph(t, r1, fixtureDoc("rA"))
-	writeGraph(t, r2, fixtureDoc("rB"))
-	regPath := makeRegistry(t, dir, map[string]map[string]string{
-		"g": {"rA": r1, "rB": r2},
-	})
-	// Pre-populate candidate file at HOME-based default location.
-	candPath := filepath.Join(dir, ".archigraph", "groups", "g-link-candidates.json")
-	_ = os.MkdirAll(filepath.Dir(candPath), 0o755)
-	cands := []LinkCandidate{{ID: "c1", Source: "rA::a1", Target: "rB::a4", Kind: "USES", Confidence: 0.8}}
-	cd, _ := json.MarshalIndent(cands, "", "  ")
-	_ = os.WriteFile(candPath, cd, 0o644)
-
-	srv, err := NewServer(Config{RegistryPath: regPath})
-	if err != nil {
-		t.Fatal(err)
-	}
-	listRes := callTool(t, srv, "archigraph_cross_links", map[string]any{"action": "list"})
-	if !strings.Contains(resultText(listRes), "c1") {
-		t.Fatalf("expected c1 in list, got: %s", resultText(listRes))
-	}
-	resolveRes := callTool(t, srv, "archigraph_cross_links", map[string]any{
-		"action": "accept", "candidate_id": "c1",
-	})
-	if strings.Contains(resultText(resolveRes), "error") {
-		t.Fatalf("resolve failed: %s", resultText(resolveRes))
-	}
-	// Links file should have grown.
-	linksPath := filepath.Join(dir, ".archigraph", "groups", "g-links.json")
-	data, err := os.ReadFile(linksPath)
-	if err != nil {
-		t.Fatalf("links file missing: %v", err)
-	}
-	if !strings.Contains(string(data), "rA::a1") {
-		t.Errorf("expected accepted link in links file, got: %s", string(data))
-	}
+	t.Skip("archigraph_cross_links dropped from MCP surface in refactor/mcp-real-3k")
 }
 
 // 9. Enrichment candidate submit round-trip.
@@ -547,19 +509,20 @@ func TestToolNameSurface(t *testing.T) {
 	for _, st := range srv.MCP.ListTools() {
 		registered[st.Tool.Name] = true
 	}
-	// 28 tools post this PR: 4 dashboard-only tools dropped.
-	// Dropped: archigraph_diagnostics, archigraph_quality_orphans,
+	// 28 tools post refactor/mcp-real-3k: 4 dashboard-only + 4 agent-facing tools dropped.
+	// Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
 	//   archigraph_get_next_enrichment_task, archigraph_get_telemetry.
+	// Dropped (≤3k budget): archigraph_recent_activity, archigraph_save_finding,
+	//   archigraph_list_findings, archigraph_cross_links.
 	wantPresent := []string{
 		// renamed (5)
 		"archigraph_find", "archigraph_inspect", "archigraph_expand",
 		"archigraph_clusters", "archigraph_stats",
-		// bundled (3 pre-#1281)
-		"archigraph_enrichments", "archigraph_cross_links", "archigraph_repairs",
-		// unchanged (4) — trace included here as it was not renamed
+		// bundled (2 retained; cross_links dropped)
+		"archigraph_enrichments", "archigraph_repairs",
+		// unchanged — trace included here as it was not renamed
 		"archigraph_trace",
-		"archigraph_whoami", "archigraph_save_finding", "archigraph_list_findings",
-		"archigraph_get_source",
+		"archigraph_whoami", "archigraph_get_source",
 		// ADR-0018 β
 		"archigraph_patterns",
 		// #724 process-flow BFS query surface
@@ -583,8 +546,6 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_summarize_subgraph",
 		"archigraph_find_dead_code",
 		"archigraph_auth_coverage",
-		// recent activity
-		"archigraph_recent_activity",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -620,69 +581,37 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_endpoint_definitions",
 		"archigraph_endpoint_calls",
 		"archigraph_endpoint_stats",
-		// dashboard-only tools dropped in this PR (32 → 28)
+		// dashboard-only tools dropped (32 → 28)
 		"archigraph_diagnostics",
 		"archigraph_quality_orphans",
 		"archigraph_get_next_enrichment_task",
 		"archigraph_get_telemetry",
+		// agent-facing tools dropped in refactor/mcp-real-3k (≤3k budget)
+		"archigraph_recent_activity",
+		"archigraph_save_finding",
+		"archigraph_list_findings",
+		"archigraph_cross_links",
 	}
 	for _, n := range wantAbsent {
 		if registered[n] {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count: 33 (31 pre-#1323 + archigraph_secrets + archigraph_license_audit).
-	if got := len(srv.MCP.ListTools()); got != 33 {
-		t.Errorf("expected 33 registered tools, got %d", got)
+	// Total count: 28 (33 pre-refactor/mcp-real-3k minus 5 dropped for ≤3k budget:
+	// -archigraph_save_finding, -archigraph_list_findings, -archigraph_recent_activity,
+	// -archigraph_cross_links, -archigraph_license_audit [HTTP API still available]).
+	if got := len(srv.MCP.ListTools()); got != 28 {
+		t.Errorf("expected 28 registered tools, got %d", got)
 	}
 }
 
-// 14. archigraph_save_finding round-trips through archigraph_list_findings
-// (Refs #59). Findings persist forbidden-term-free content.
+// 14. archigraph_save_finding / archigraph_list_findings dropped in refactor/mcp-real-3k.
 func TestFindingsRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	repo := filepath.Join(dir, "r1")
-	_ = os.MkdirAll(repo, 0o755)
-	writeGraph(t, repo, fixtureDoc("r1"))
-	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
-	srv, err := NewServer(Config{RegistryPath: regPath})
-	if err != nil {
-		t.Fatal(err)
-	}
-	saveRes := callTool(t, srv, "archigraph_save_finding", map[string]any{
-		"question": "what does DashboardScreen render",
-		"answer":   "It renders the proposal counts widget at the top of the screen.",
-		"type":     "note",
-		"nodes":    []any{"a1"},
-	})
-	if saveRes.IsError {
-		t.Fatalf("save_finding errored: %s", resultText(saveRes))
-	}
-	listRes := callTool(t, srv, "archigraph_list_findings", nil)
-	txt := resultText(listRes)
-	if !strings.Contains(txt, "DashboardScreen render") {
-		t.Fatalf("expected saved finding in list output, got: %s", txt)
-	}
-	if !strings.Contains(txt, "proposal counts widget") {
-		t.Fatalf("expected answer body in list output, got: %s", txt)
-	}
-	// entity_id filter narrows correctly.
-	filtered := callTool(t, srv, "archigraph_list_findings", map[string]any{
-		"entity_id": "a1",
-	})
-	if !strings.Contains(resultText(filtered), "DashboardScreen render") {
-		t.Fatalf("expected entity_id-filtered finding, got: %s", resultText(filtered))
-	}
-	// entity_id miss returns empty array.
-	miss := callTool(t, srv, "archigraph_list_findings", map[string]any{
-		"entity_id": "zzz-nonexistent",
-	})
-	if mt := strings.TrimSpace(resultText(miss)); mt != "[]" && mt != "null" {
-		t.Fatalf("expected empty findings for unknown entity_id, got: %s", mt)
-	}
+	t.Skip("archigraph_save_finding and archigraph_list_findings dropped from MCP surface in refactor/mcp-real-3k")
 }
 
 // 15. inspect attaches saved findings keyed by entity ID (Refs #59 strategy A).
+// archigraph_save_finding was dropped; write the finding JSON directly to disk.
 func TestDescribeAttachesFindings(t *testing.T) {
 	dir := t.TempDir()
 	repo := filepath.Join(dir, "r1")
@@ -691,12 +620,19 @@ func TestDescribeAttachesFindings(t *testing.T) {
 	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
 	srv, _ := NewServer(Config{RegistryPath: regPath})
 
-	// Save a finding tied to entity a1 (DashboardScreen).
-	callTool(t, srv, "archigraph_save_finding", map[string]any{
+	// Write a finding directly to the group's memory dir.
+	// makeRegistry sets MemoryDir = filepath.Join(dir, g+"-memory"), so use dir/g-memory.
+	memDir := filepath.Join(dir, "g-memory")
+	_ = os.MkdirAll(memDir, 0o755)
+	finding := map[string]any{
 		"question": "purpose of DashboardScreen",
 		"answer":   "Top-level home view.",
-		"nodes":    []any{"a1"},
-	})
+		"nodes":    []string{"a1"},
+		"saved_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	fd, _ := json.MarshalIndent(finding, "", "  ")
+	_ = os.WriteFile(filepath.Join(memDir, "f1.json"), fd, 0o644)
+
 	// Inspect should include it under "findings".
 	res := callTool(t, srv, "archigraph_inspect", map[string]any{
 		"label_or_id": "DashboardScreen",
@@ -710,28 +646,9 @@ func TestDescribeAttachesFindings(t *testing.T) {
 	}
 }
 
-// 16. since filter on list_findings drops older entries.
+// 16. archigraph_list_findings dropped in refactor/mcp-real-3k.
 func TestListFindingsSinceFilter(t *testing.T) {
-	dir := t.TempDir()
-	repo := filepath.Join(dir, "r1")
-	_ = os.MkdirAll(repo, 0o755)
-	writeGraph(t, repo, fixtureDoc("r1"))
-	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
-	srv, _ := NewServer(Config{RegistryPath: regPath})
-
-	callTool(t, srv, "archigraph_save_finding", map[string]any{
-		"question": "older",
-		"answer":   "older body",
-	})
-	// Since "now+1h" -> nothing.
-	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
-	res := callTool(t, srv, "archigraph_list_findings", map[string]any{
-		"since": future,
-	})
-	txt := strings.TrimSpace(resultText(res))
-	if txt != "[]" && txt != "null" {
-		t.Fatalf("expected empty list with future since, got: %s", txt)
-	}
+	t.Skip("archigraph_list_findings dropped from MCP surface in refactor/mcp-real-3k")
 }
 
 // TestGraphStatsRepoFilter verifies repo_filter narrows graph_stats to the
