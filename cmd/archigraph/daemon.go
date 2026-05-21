@@ -22,6 +22,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/dashboard"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/mcp"
+	"github.com/cajasmota/archigraph/internal/quality"
 	"github.com/cajasmota/archigraph/internal/quality/audit"
 	"github.com/cajasmota/archigraph/internal/registry"
 	"github.com/cajasmota/archigraph/internal/resolve"
@@ -421,6 +422,53 @@ func daemonQualityAuditFunc(args proto.QualityAuditRequest) (proto.QualityAuditR
 	}, nil
 }
 
+// daemonRecallFunc is the RecallRunner injected into the dashboard server.
+// It runs the full in-process indexer against a named golden fixture and
+// returns the quality.JSONReport serialised as JSON bytes.
+//
+// The fixture must be one of the directories inside internal/quality/golden/;
+// the path is resolved via goldenFixturesDir() inside the handler.
+func daemonRecallFunc(fixtureName string) ([]byte, error) {
+	goldenDir, err := dashboard.GoldenFixturesDir()
+	if err != nil {
+		return nil, fmt.Errorf("locate fixtures: %w", err)
+	}
+	fixtureDir := filepath.Join(goldenDir, fixtureName)
+
+	fix, err := quality.LoadFixture(fixtureDir)
+	if err != nil {
+		return nil, fmt.Errorf("load fixture %q: %w", fixtureName, err)
+	}
+	srcDir := quality.SourceDir(fixtureDir)
+	if st, serr := os.Stat(srcDir); serr != nil || !st.IsDir() {
+		return nil, fmt.Errorf("fixture src/ missing or not a directory: %s", srcDir)
+	}
+
+	tmp, err := os.MkdirTemp("", "archigraph-recall-*")
+	if err != nil {
+		return nil, fmt.Errorf("mktemp: %w", err)
+	}
+	defer os.RemoveAll(tmp)
+
+	graphPath := filepath.Join(tmp, "graph.json")
+	if err := Index(srcDir, graphPath, fix.Name, nil, false, false, WithExportJSON(true)); err != nil {
+		return nil, fmt.Errorf("index fixture src: %w", err)
+	}
+
+	doc, err := loadDocument(graphPath)
+	if err != nil {
+		return nil, fmt.Errorf("load graph: %w", err)
+	}
+
+	rep := quality.Evaluate(fix, doc)
+	jr := rep.ToJSON()
+	raw, err := json.Marshal(jr)
+	if err != nil {
+		return nil, fmt.Errorf("encode recall report: %w", err)
+	}
+	return raw, nil
+}
+
 // mustEncodeStatus is a small helper for the `status` command when it
 // prints the daemon's reply as JSON. Lives here so cmd/archigraph
 // doesn't have to import encoding/json from a half-dozen call sites.
@@ -488,6 +536,7 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 		// Tell the dashboard server when the daemon started so /api/info
 		// can compute and report uptime (#991).
 		srv.SetDaemonStartedAt(daemonStartedAt)
+<<<<<<< HEAD
 
 		// Wire MCP activity broker (epic #1157, Phase 1: Jarvis).
 		// The same broker is injected into the shared MCP server so tool
@@ -507,6 +556,11 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 			mcpSrv.SetActivityBroker(activityBroker)
 		}
 
+=======
+		// Wire the recall runner so POST /api/quality/recall can run the
+		// in-process indexer against golden fixtures (#1198).
+		srv.SetRecallRunner(daemonRecallFunc)
+>>>>>>> 20aa111 ([dashboard] Quality surface — orphan audit + recall measurement in web UI (#1198))
 		srv.UseListener(l)
 		if logger != nil {
 			logger.Printf("dashboard ready http://%s/", addr)

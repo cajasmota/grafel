@@ -45,6 +45,13 @@ type Server struct {
 	// mcpActivityLog is the absolute path to the on-disk JSONL activity log.
 	// Empty string disables the /api/mcp-activity/history endpoint.
 	mcpActivityLog string
+
+	// recallRunner is the function injected by cmd/archigraph that runs the
+	// full indexer against a named golden fixture and returns the
+	// quality.JSONReport as a JSON byte slice. Optional: when nil the
+	// POST /api/quality/recall endpoint returns 503.
+	// Set via SetRecallRunner before calling Serve.
+	recallRunner func(fixtureName string) ([]byte, error)
 }
 
 // NewServer wires a server against the given config and registry-store
@@ -93,6 +100,13 @@ func (s *Server) SetMCPActivityBroker(b *mcp.MCPActivityBroker) {
 // /api/mcp-activity/history will read recent events from this file.
 func (s *Server) SetMCPActivityLog(path string) {
 	s.mcpActivityLog = path
+}
+
+// SetRecallRunner wires the quality recall function into the server so that
+// POST /api/quality/recall can run the full indexer against a golden fixture.
+// Call this from cmd/archigraph before Serve.
+func (s *Server) SetRecallRunner(fn func(fixtureName string) ([]byte, error)) {
+	s.recallRunner = fn
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is
@@ -271,6 +285,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/groups/{group}/repos/{repo}/reset", s.handleRepoReset)
 	mux.HandleFunc("GET /api/cleanup/preview", s.handleCleanupPreview)
 	mux.HandleFunc("POST /api/cleanup", s.handleCleanup)
+
+	// Quality surface (#1198)
+	mux.HandleFunc("GET /api/quality/orphans/{group}", s.handleQualityOrphans)
+	mux.HandleFunc("GET /api/quality/fixtures", s.handleQualityFixtures)
+	mux.HandleFunc("POST /api/quality/recall", s.handleQualityRecall)
 
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
