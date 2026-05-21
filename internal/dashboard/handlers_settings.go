@@ -33,6 +33,13 @@ type AppSettings struct {
 	WatcherDebounceSecs  int `json:"watcher_debounce_secs"`  // 1–60
 	IndexerParallelism   int `json:"indexer_parallelism"`    // 1–32
 
+	// PerfBudgets holds configurable threshold values used by the performance
+	// budget monitor (#1319). Keys are metric names (e.g. "index_wall_ms");
+	// values are the maximum acceptable measurement. Use the
+	// internal/perf.DefaultBudgets() map as the canonical starting point.
+	// A nil or empty map means "use package defaults".
+	PerfBudgets map[string]float64 `json:"perf_budgets,omitempty"`
+
 	// Logs
 	LogLevel string `json:"log_level"` // "debug" | "info" | "warn" | "error"
 }

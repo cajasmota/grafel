@@ -24,6 +24,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/perf"
+	"github.com/cajasmota/archigraph/internal/registry"
 )
 
 // ── Injected function types ───────────────────────────────────────────────────
@@ -118,6 +121,19 @@ func (s *Service) MCPToolList(_ *MCPToolListArgs, reply *MCPToolListReply) error
 		})
 	}
 	reply.Tools = tools
+
+	// Record MCP handshake size for the performance budget monitor (#1319).
+	// We serialize to JSON to measure the wire size faithfully.
+	go func() {
+		if b, jerr := json.Marshal(reply); jerr == nil {
+			homeDir, _ := registry.HomeDir()
+			if homeDir != "" {
+				rec := perf.NewRecorder(homeDir + "/perf-history.jsonl")
+				_ = rec.Record("mcp_handshake_bytes", "", float64(len(b)))
+			}
+		}
+	}()
+
 	return nil
 }
 

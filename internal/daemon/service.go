@@ -15,6 +15,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/install/hooks"
+	"github.com/cajasmota/archigraph/internal/perf"
 	"github.com/cajasmota/archigraph/internal/registry"
 	"github.com/cajasmota/archigraph/internal/version"
 )
@@ -315,7 +316,19 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	reply.Warning = warning
 	reply.TotalEntities = sess.totalEntities
 	reply.TotalRels = sess.totalRels
-	reply.ElapsedSec = time.Since(sess.startedAt).Seconds()
+	elapsedSec := time.Since(sess.startedAt).Seconds()
+	reply.ElapsedSec = elapsedSec
+
+	// Record index wall-time for the performance budget monitor (#1319).
+	// Best-effort: do not fail the rebuild if recording fails.
+	go func() {
+		homeDir, _ := registry.HomeDir()
+		if homeDir != "" {
+			rec := perf.NewRecorder(homeDir + "/perf-history.jsonl")
+			_ = rec.Record("index_wall_ms", args.Group, elapsedSec*1000)
+		}
+	}()
+
 	return nil
 }
 

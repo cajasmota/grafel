@@ -16,9 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"sync"
+
 	"github.com/cajasmota/archigraph/internal/audit"
 	"github.com/cajasmota/archigraph/internal/jobs"
 	"github.com/cajasmota/archigraph/internal/mcp"
+	"github.com/cajasmota/archigraph/internal/perf"
 	"github.com/cajasmota/archigraph/internal/progress"
 )
 
@@ -79,6 +82,11 @@ type Server struct {
 	// POST /api/diagnostics/force-rescan endpoint returns 503.
 	// Set via SetWatcher before Serve (#1270).
 	watcher watcherForceRescan
+
+	// perfRecorder is the lazy-init recorder for perf-history.jsonl (#1319).
+	// Guarded by perfMu; initialised on first call to perfComponents().
+	perfRecorder *perf.Recorder
+	perfMu       sync.Mutex
 }
 
 // watcherForceRescan is the subset of the watch.Watcher surface used by
@@ -418,6 +426,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/mcp-setup/install", s.handleMCPSetupInstall)
 	mux.HandleFunc("POST /api/mcp-setup/uninstall", s.handleMCPSetupUninstall)
 	mux.HandleFunc("POST /api/mcp-setup/verify", s.handleMCPSetupVerify)
+
+	// Performance budget monitor (#1319) — track index time, query p95, RSS
+	mux.HandleFunc("GET /api/perf/budgets", s.handlePerfBudgets)
+	mux.HandleFunc("POST /api/perf/record", s.handlePerfRecord)
 
 	return s.withAuth(withGzip(mux))
 }
