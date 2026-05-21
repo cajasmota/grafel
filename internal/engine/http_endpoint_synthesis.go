@@ -96,7 +96,7 @@ func synthesisSupportsLanguage(lang string) bool {
 	// rules are compiled for them so the per-protocol synthesizers can
 	// run. Files in these languages that contain none of the recognised
 	// anchors are no-ops in the synthesizers themselves.
-	case "kotlin", "go", "csharp", "ruby":
+	case "kotlin", "go", "csharp", "ruby", "php":
 		return true
 	default:
 		return false
@@ -301,6 +301,8 @@ func applyHTTPEndpointSynthesis(
 		// Consumer side (#721 wave 2c): reqwest, hyper, ureq, surf.
 		synthesizeRustClientWithRuntime(string(content), emitClientRuntime)
 	case "php":
+		// Producer side (#1419): Laravel Route::verb/resource/apiResource.
+		synthesizeLaravel(string(content), emit)
 		// Consumer side (#721 wave 2c): Guzzle, Symfony HttpClient, cURL, file_get_contents,
 		// WordPress HTTP API, Laravel Http facade.
 		synthesizePHPClientWithRuntime(string(content), emitClientRuntime)
