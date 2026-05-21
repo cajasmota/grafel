@@ -297,12 +297,115 @@ func TestHTTPPass_NormalizePathForIndex(t *testing.T) {
 		{"", ""},
 		// version numbers should NOT be collapsed — v1, v2 are literal
 		{"/api/v1/users/{pk}", "/api/v1/users/{*}"},
+		// #1409 — Django/Flask angle-bracket params collapse too.
+		{"/users/<int:id>", "/users/{*}"},
+		{"/users/<slug>", "/users/{*}"},
+		{"/users/<uuid:pk>/posts/<int:post_id>", "/users/{*}/posts/{*}"},
+		// #1409 — case-insensitive normalization.
+		{"/Users/{Id}", "/users/{*}"},
+		{"/API/V1/Users", "/api/v1/users"},
+		// #1409 — trailing slash stripped (Django convention).
+		{"/users/{pk}/", "/users/{*}"},
+		{"/contracts/", "/contracts"},
 	}
 	for _, c := range cases {
 		got := normalizePathForIndex(c.in)
 		if got != c.want {
 			t.Errorf("normalizePathForIndex(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// TestStripAPIPrefix covers the property-free generic API/version prefix strip
+// added in #1409. Only well-known api/version segments are stripped; arbitrary
+// first segments and non-prefix paths are left alone.
+func TestStripAPIPrefix(t *testing.T) {
+	cases := []struct {
+		in       string
+		want     string
+		stripped bool
+	}{
+		{"/api/v1/inspections/{*}", "/inspections/{*}", true},
+		{"/api/users", "/users", true},
+		{"/v2/x", "/x", true},
+		{"/v1", "/", true},
+		{"/api", "/", true},
+		{"/api/v1", "/", true},
+		// no false positives
+		{"/apixyz/foo", "", false},
+		{"/users/{*}", "", false},
+		{"/version/foo", "", false},
+		{"/", "", false},
+	}
+	for _, c := range cases {
+		got, ok := stripAPIPrefix(c.in)
+		if ok != c.stripped || (ok && got != c.want) {
+			t.Errorf("stripAPIPrefix(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.want, c.stripped)
+		}
+	}
+}
+
+// TestHTTPPass_GenericPrefixMatch verifies that a producer serving
+// `/api/v1/inspections/{pk}` links to a consumer calling `/inspections/{id}`
+// even when the producer carries NO url_prefix property — the concrete upvate
+// case from issue #1409 (#819 only handled the property-driven strip).
+func TestHTTPPass_GenericPrefixMatch(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "InspectionView", "kind": "Controller", "source_file": "app/views.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/inspections/{pk}", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/inspections/{pk}",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+					// NOTE: deliberately NO url_prefix — exercises the generic strip.
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "getInspection", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/inspections/{id}", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/inspections/{id}",
+					"framework":     "axios",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:getInspection",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g-generic-prefix", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g-generic-prefix-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected cross-repo link for /api/v1 prefix mismatch w/o url_prefix; got %+v", doc.Links)
 	}
 }
 

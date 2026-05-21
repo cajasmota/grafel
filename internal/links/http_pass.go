@@ -68,23 +68,76 @@ import (
 // pathParamRe matches any path-parameter placeholder regardless of origin:
 //   - {pk}, {id}, {param}, {userId}, {branchId}, etc.  (curly-brace style)
 //   - :id, :pk, :userId, etc.                           (Express/Rails colon style)
+//   - <int:id>, <slug>, <uuid:pk>, etc.                 (Django/Flask angle style)
 //
 // All of these are replaced with the canonical token {*} for byPath index
 // lookup only — the original canonicalPath is preserved on the hit object.
-var pathParamRe = regexp.MustCompile(`\{[^}]+\}|:[a-zA-Z][a-zA-Z0-9_]*`)
+//
+// Producer synthetics are normally canonicalised to {name} form before they
+// reach this pass, but consumer-side synthetics (and a few producer paths that
+// skip canonicalisation) can still arrive with raw `:id` / `<int:id>` shapes;
+// matching all three styles here makes the byPath index resilient regardless
+// of which synthesizer emitted the hit.
+var pathParamRe = regexp.MustCompile(`\{[^}]+\}|:[a-zA-Z][a-zA-Z0-9_]*|<[^>]+>`)
+
+// apiPrefixRe matches a leading API/version prefix on a path so the byPath
+// index can register a prefix-stripped alias. This complements the
+// url_prefix-driven strip (#819): many producers (urlconf_nested_include,
+// hand-written routers) and consumers carry an `/api`, `/api/v1`, or bare
+// `/v2` prefix WITHOUT a populated url_prefix property, so a property-free
+// generic strip is needed to bucket `/api/v1/inspections/{*}` together with a
+// consumer's `/inspections/{*}`.
+//
+// Only the FIRST segment group is stripped and only the well-known `api` /
+// version forms — we never strip an arbitrary first segment, which would
+// collapse genuinely-distinct routes. Go's RE2 has no lookahead, so the
+// pattern requires either a following `/` (kept out of the match via the
+// trailing optional segment) or end-of-string; stripAPIPrefix anchors on the
+// match end and re-adds the leading slash.
+var apiPrefixRe = regexp.MustCompile(`^/(?:api(?:/v\d+)?|v\d+)(/|$)`)
 
 // normalizePathForIndex canonicalizes all path-parameter placeholders to
-// the uniform token {*} so that route shapes from different extractors can
-// be compared without caring about parameter names.
+// the uniform token {*}, lower-cases the result, and strips a trailing slash
+// so that route shapes from different extractors can be compared without
+// caring about parameter names, case, or trailing-slash convention.
 //
 // Examples:
 //
 //	/users/{pk}             → /users/{*}
 //	/users/:id              → /users/{*}
+//	/users/<int:id>         → /users/{*}
+//	/Users/{userId}/        → /users/{*}
 //	/users/{userId}/posts/{postId} → /users/{*}/posts/{*}
-//	/api/v1/static          → /api/v1/static  (unchanged)
+//	/api/v1/static          → /api/v1/static  (prefix handled separately)
 func normalizePathForIndex(path string) string {
-	return pathParamRe.ReplaceAllString(path, "{*}")
+	path = pathParamRe.ReplaceAllString(path, "{*}")
+	path = strings.ToLower(path)
+	if len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+		if path == "" {
+			path = "/"
+		}
+	}
+	return path
+}
+
+// stripAPIPrefix removes a leading `/api`, `/api/vN`, or `/vN` segment from an
+// already-index-normalized path. Returns ("", false) when no such prefix is
+// present so callers can avoid registering a duplicate alias. The returned
+// path always keeps a leading slash.
+func stripAPIPrefix(normalizedPath string) (string, bool) {
+	m := apiPrefixRe.FindStringSubmatchIndex(normalizedPath)
+	if m == nil {
+		return "", false
+	}
+	// Group 1 (m[2]:m[3]) captured the boundary `/` or "". Strip everything up
+	// to the start of group 1 so a trailing `/` boundary is preserved as the
+	// new leading slash.
+	stripped := normalizedPath[m[2]:]
+	if stripped == "" {
+		stripped = "/"
+	}
+	return stripped, stripped != normalizedPath
 }
 
 // MethodHTTP identifies this pass's emissions in links.json.
@@ -319,6 +372,18 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						byPath[strippedKey] = append(byPath[strippedKey], h)
 					}
 				}
+
+				// #1409 — property-free generic API/version prefix strip.
+				// Many producers (urlconf_nested_include, hand-written
+				// routers, Express/gin Routers) and consumers carry an
+				// `/api`, `/api/vN`, or bare `/vN` prefix WITHOUT a populated
+				// url_prefix property; register a stripped alias so the two
+				// sides bucket together regardless. Registering this on BOTH
+				// sides means a `/api/v1/x` producer and a `/api/x` consumer
+				// both also appear under `/x`.
+				if genericKey, ok := stripAPIPrefix(key); ok {
+					byPath[genericKey] = append(byPath[genericKey], h)
+				}
 			}
 		}
 	}
@@ -345,18 +410,29 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		// path. The wildcarded counterpart contributes producer /
 		// consumer hits keyed by ITS own repo set.
 		if verb, p, ok := parseHTTPName(name); ok {
-			for _, h := range byPath[normalizePathForIndex(p)] {
-				if h.name == name {
-					continue
-				}
-				hVerb, _, _ := parseHTTPName(h.name)
-				if !verbsCompatible(verb, hVerb) {
-					continue
-				}
-				if h.side == sideProducer {
-					producers = appendUnique(producers, h)
-				} else if h.side == sideConsumer {
-					consumers = appendUnique(consumers, h)
+			// Probe the byPath index under the normalized path AND its
+			// generic API/version-stripped form (#1409), so a name carrying
+			// `/api/v1/...` finds the `/...` bucket and vice versa. The
+			// stripped alias was registered on both sides during index build.
+			normKey := normalizePathForIndex(p)
+			probeKeys := []string{normKey}
+			if strippedKey, sok := stripAPIPrefix(normKey); sok {
+				probeKeys = append(probeKeys, strippedKey)
+			}
+			for _, pk := range probeKeys {
+				for _, h := range byPath[pk] {
+					if h.name == name {
+						continue
+					}
+					hVerb, _, _ := parseHTTPName(h.name)
+					if !verbsCompatible(verb, hVerb) {
+						continue
+					}
+					if h.side == sideProducer {
+						producers = appendUnique(producers, h)
+					} else if h.side == sideConsumer {
+						consumers = appendUnique(consumers, h)
+					}
 				}
 			}
 		}

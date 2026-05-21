@@ -15,6 +15,11 @@ import (
 // long-running daemon mode (plus the per-group linker, which both the
 // daemon and `archigraph rebuild` need).
 func main() {
+	// Hidden verification harness for issue #1409 (not part of the public
+	// command surface; intercepted before cobra dispatch).
+	if len(os.Args) >= 2 && os.Args[1] == "xrepo-verify" {
+		os.Exit(runXRepoVerify(os.Args[2:]))
+	}
 	cli.Execute(cli.Hooks{
 		RunDaemon:    runDaemon,
 		RunLinks:     runLinksHook,
