@@ -60,3 +60,53 @@ export interface Group {
   indexedAt: number | null;
   health: GroupHealth;
 }
+
+// ----------------------------------------------------------------
+// Settings screen types (mirrors v2_group_settings.go wire shapes)
+// ----------------------------------------------------------------
+
+export interface SettingsFeatures {
+  watchers: boolean;
+  gitHooks: boolean;
+}
+
+export interface MonorepoPkg {
+  path: string;
+  stack: string;
+  indexed: boolean;
+  files: number;
+}
+
+export interface MonorepoInfo {
+  detector: string;
+  packages: MonorepoPkg[];
+}
+
+export interface SettingsRepo {
+  slug: string;
+  path: string;
+  stack: string;
+  files: number;
+  entities: number;
+  indexedAt: number | null;
+  monorepo: MonorepoInfo | null;
+}
+
+export interface SettingsGroup {
+  id: string;
+  name: string;
+  entities: number;
+  fidelity: number;
+  indexedAt: number | null;
+  health: GroupHealth;
+  features: SettingsFeatures;
+  docsPath: string;
+  repos: SettingsRepo[];
+}
+
+export interface DoctorCheck {
+  id: string;
+  label: string;
+  status: "ok" | "warning" | "info" | "error";
+  detail: string;
+}

@@ -520,6 +520,19 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/groups", s.handleV2Groups)
 	mux.HandleFunc("POST /api/v2/groups", s.handleV2CreateGroup)
 
+	// Settings screen — per-group management surface (#1436, epic #1432).
+	mux.HandleFunc("GET /api/v2/groups/{group}", s.handleV2GetGroup)
+	mux.HandleFunc("PATCH /api/v2/groups/{group}/features", s.handleV2PatchFeatures)
+	mux.HandleFunc("PATCH /api/v2/groups/{group}/docs", s.handleV2PatchDocs)
+	mux.HandleFunc("POST /api/v2/groups/{group}/rebuild", s.handleV2RebuildGroup)
+	mux.HandleFunc("DELETE /api/v2/groups/{group}", s.handleV2DeleteGroup)
+	mux.HandleFunc("POST /api/v2/groups/{group}/repos", s.handleV2AddRepo)
+	mux.HandleFunc("DELETE /api/v2/groups/{group}/repos/{repo}", s.handleV2RemoveRepo)
+	mux.HandleFunc("POST /api/v2/groups/{group}/repos/{repo}/rebuild", s.handleV2RebuildRepo)
+	mux.HandleFunc("POST /api/v2/groups/{group}/repos/{repo}/reset", s.handleV2ResetRepo)
+	mux.HandleFunc("PATCH /api/v2/groups/{group}/repos/{repo}/monorepo", s.handleV2PatchMonorepo)
+	mux.HandleFunc("POST /api/v2/groups/{group}/doctor", s.handleV2Doctor)
+
 	return s.withAuth(withGzip(mux))
 }
 
