@@ -60,12 +60,12 @@ type topicDetailResponse struct {
 	DocgenStatus    string             `json:"docgen_status"`
 	// EnrichmentHealth reports which structured fields are populated.
 	// Only present when DocgenStatus == "enriched" or "stale".
-	EnrichmentHealth *enrichmentHealth  `json:"enrichment_health,omitempty"`
+	EnrichmentHealth *topicEnrichmentHealth  `json:"enrichment_health,omitempty"`
 }
 
 // enrichmentHealth reports which message_topic enrichment fields are present,
 // so the frontend can surface a completeness hint alongside the detail panel.
-type enrichmentHealth struct {
+type topicEnrichmentHealth struct {
 	HasSummary              bool `json:"has_summary"`
 	HasSchema               bool `json:"has_schema"`
 	HasVolumeEstimate       bool `json:"has_volume_estimate"`
@@ -196,7 +196,7 @@ func buildTopicDetail(grp *DashGroup, groupName, topicID string) (topicDetailRes
 
 	// --- Docgen status + stale detection ---
 	docgenStatus := "pending"
-	var enrichHealth *enrichmentHealth
+	var enrichHealth *topicEnrichmentHealth
 	if enrichment != nil {
 		// Determine stale/enriched by comparing the doc file's mtime against
 		// the topic's last_indexed timestamp (r.Doc.GeneratedAt for its repo).
@@ -563,14 +563,14 @@ func dedupStrings(sl []string) []string {
 	return out
 }
 
-// computeEnrichmentHealth returns a populated enrichmentHealth for a message_topic
+// computeEnrichmentHealth returns a populated topicEnrichmentHealth for a message_topic
 // frontmatter, counting which of the six structured fields are filled.
-func computeEnrichmentHealth(fm *EnrichmentFrontmatter) *enrichmentHealth {
+func computeEnrichmentHealth(fm *EnrichmentFrontmatter) *topicEnrichmentHealth {
 	if fm == nil {
 		return nil
 	}
 	const total = 6
-	h := &enrichmentHealth{
+	h := &topicEnrichmentHealth{
 		HasSummary:            fm.Summary != "",
 		HasSchema:             fm.Schema != "",
 		HasVolumeEstimate:     fm.VolumeEstimate != "",

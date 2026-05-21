@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/progress"
 )
 
 // Server is an embedded HTTP dashboard. It is intentionally small: it
@@ -28,6 +30,11 @@ type Server struct {
 	srv             *http.Server
 	rng             *rand.Rand
 	daemonStartedAt time.Time // zero when not embedded inside a daemon process
+
+	// progressBroker is the shared pub/sub bus for real-time indexing progress.
+	// It is optional: when nil the /api/index-progress endpoints return 503.
+	// Set via SetProgressBroker before calling Serve.
+	progressBroker *progress.Broker
 }
 
 // NewServer wires a server against the given config and registry-store
@@ -56,6 +63,13 @@ func NewServer(cfg Config, store RegistryStore) (*Server, error) {
 // after the daemon's embedded server is wired up.
 func (s *Server) SetDaemonStartedAt(t time.Time) {
 	s.daemonStartedAt = t
+}
+
+// SetProgressBroker wires the shared indexer progress broker into the server
+// so that /api/index-progress endpoints can stream live events. Call this from
+// cmd/archigraph (or any daemon entrypoint) before Serve.
+func (s *Server) SetProgressBroker(b *progress.Broker) {
+	s.progressBroker = b
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is
@@ -210,6 +224,10 @@ func (s *Server) routes() http.Handler {
 
 	// WebSocket push
 	mux.HandleFunc("/ws/events", s.handleWSEvents)
+
+	// SSE progress streams (Sub-C of epic #1118)
+	mux.HandleFunc("GET /api/index-progress", s.handleIndexProgressAll)
+	mux.HandleFunc("GET /api/index-progress/{group}", s.handleIndexProgressGroup)
 
 	return s.withAuth(mux)
 }

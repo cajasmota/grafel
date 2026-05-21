@@ -48,19 +48,27 @@ func NewBroker() *Broker {
 	}
 }
 
-// Publish fans an event out to every subscriber registered for e.GroupSlug.
-// Each send is attempted with a non-blocking select; if the subscriber's channel
-// is full the event is discarded for that subscriber (drop-on-full, not
-// drop-oldest). This keeps the publisher lock-free on the hot path.
+// wildcardGroup is the internal key used to register subscribers that want
+// events from every group. It must not be a valid group slug (group slugs are
+// non-empty URL path segments).
+const wildcardGroup = "\x00wildcard"
+
+// Publish fans an event out to every subscriber registered for e.GroupSlug,
+// plus any wildcard subscribers registered via SubscribeAll. Each send is
+// attempted with a non-blocking select; if the subscriber's channel is full the
+// event is discarded for that subscriber (drop-on-full, not drop-oldest). This
+// keeps the publisher lock-free on the hot path.
 //
 // Publish implements the Publisher interface so the indexer can use the broker
 // without importing a concrete type.
 func (b *Broker) Publish(e Event) {
 	b.mu.RLock()
-	subs := b.subs[e.GroupSlug]
-	// Snapshot the slice under the read lock so we can send without holding it.
-	targets := make([]*subscriber, len(subs))
-	copy(targets, subs)
+	groupSubs := b.subs[e.GroupSlug]
+	wildcardSubs := b.subs[wildcardGroup]
+	// Snapshot both slices under the read lock so we can send without holding it.
+	targets := make([]*subscriber, 0, len(groupSubs)+len(wildcardSubs))
+	targets = append(targets, groupSubs...)
+	targets = append(targets, wildcardSubs...)
 	b.mu.RUnlock()
 
 	for _, s := range targets {
@@ -72,8 +80,10 @@ func (b *Broker) Publish(e Event) {
 	}
 }
 
-// BroadcastAll delivers an event to every subscriber across all groups. Useful
-// for daemon-level lifecycle events (e.g. daemon shutdown notice).
+// BroadcastAll delivers an event to every subscriber across all groups,
+// including wildcard subscribers registered via SubscribeAll. Useful for
+// daemon-level lifecycle events (e.g. daemon shutdown notice) and for the
+// daemon-wide SSE endpoint.
 func (b *Broker) BroadcastAll(e Event) {
 	b.mu.RLock()
 	var targets []*subscriber
@@ -88,6 +98,16 @@ func (b *Broker) BroadcastAll(e Event) {
 		default:
 		}
 	}
+}
+
+// SubscribeAll registers a consumer that receives events from every group.
+// It works by registering under the internal wildcardGroup key; Publish
+// delivers to wildcardGroup in addition to the event's own group.
+//
+// Returns a receive-only channel and a cancel function. The caller must call
+// cancel when done (e.g. when the HTTP connection closes).
+func (b *Broker) SubscribeAll() (<-chan Event, func()) {
+	return b.Subscribe(wildcardGroup)
 }
 
 // Subscribe registers a new consumer for progress events from the given group.
