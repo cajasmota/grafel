@@ -17,7 +17,7 @@ import {
 const GROUP_DEFAULT = 'fixture-a'
 
 const EXPLORE_PREFIXES = ['/graph/', '/flows/', '/topology/', '/paths/', '/docs/', '/pending/']
-const OPERATE_PREFIXES = ['/diagnostics', '/quality', '/patterns/', '/system', '/update', '/mcp-activity', '/settings']
+const OPERATE_PREFIXES = ['/diagnostics', '/quality', '/patterns/', '/system', '/update', '/mcp-activity', '/mcp-setup', '/settings']
 
 export function AppLayout() {
   const { group = GROUP_DEFAULT } = useParams()

@@ -14,7 +14,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Network, Workflow, Radio, Globe, BookOpen, Clock,
   Stethoscope, Sparkles, Server, RefreshCw, ChevronDown,
-  BarChart2, Settings, Activity,
+  BarChart2, Settings, Activity, Zap,
 } from 'lucide-react'
 
 /* ── Types ──────────────────────────────────────────────────────────────────── */
@@ -58,6 +58,7 @@ export function operateItems(group: string): NavEntry[] {
     { label: 'System',        to: '/system',            icon: <Server      className="w-4 h-4" /> },
     { label: 'Update',        to: '/update',            icon: <RefreshCw   className="w-4 h-4" /> },
     { label: 'MCP Activity',  to: '/mcp-activity',      icon: <Activity    className="w-4 h-4" /> },
+    { label: 'MCP Setup',     to: '/mcp-setup',         icon: <Zap         className="w-4 h-4" /> },
     { label: 'Settings',      to: '/settings',          icon: <Settings    className="w-4 h-4" /> },
   ]
 }
