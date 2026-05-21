@@ -41,11 +41,7 @@ var (
 		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*(?:viewsets\.)?(?:ModelViewSet|ReadOnlyModelViewSet|ViewSet|GenericViewSet|ViewSetMixin)[^)]*\)\s*:`)
 	djangoRouterRegRe = regexp.MustCompile(
 		`(?m)router\.register\s*\(\s*(?:r)?["']([^"']*)["']\s*,\s*(\w+)`)
-	djangoCeleryTaskRe = regexp.MustCompile(
-		`(?m)@(?:shared_task|(?:\w+\.)?task)\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
-	djangoCeleryQueueRe      = regexp.MustCompile(`queue\s*=\s*["']([^"']+)["']`)
-	djangoCeleryApplyAsyncRe = regexp.MustCompile(`(?m)(\w+)\.(apply_async|delay)\s*\(`)
-	djangoMiddlewareClassRe  = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*Middleware)\s*(?:\([^)]*\))?\s*:`)
+	djangoMiddlewareClassRe = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*Middleware)\s*(?:\([^)]*\))?\s*:`)
 	djangoMiddlewareMethodRe = regexp.MustCompile(
 		`(?m)^\s{4,}def\s+(process_(?:request|response|view|exception|template_response))\s*\(`)
 	djangoTemplateFilterRe    = regexp.MustCompile(`(?m)@register\.filter\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
@@ -97,13 +93,27 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			map[string]string{"framework": "django", "pattern_type": "url_include", "included_module": modulePath}))
 	}
 
+	// #1411: Pre-collect DRF ViewSet class names so section 2 (CBV) can skip
+	// them. A ViewSet is emitted as SCOPE.Component/viewset by section 5b; if
+	// the CBV regex also matched it we'd emit a duplicate SCOPE.Operation/endpoint.
+	drfViewsetNames := map[string]bool{}
+	for _, idx := range allMatchesIndex(djangoDRFViewsetRe, source) {
+		drfViewsetNames[source[idx[2]:idx[3]]] = true
+	}
+
 	// 2. CBV classes and their HTTP method handlers
 	for _, idx := range allMatchesIndex(djangoCBVClassRe, source) {
 		className := source[idx[2]:idx[3]]
 		bases := strings.TrimSpace(source[idx[4]:idx[5]])
 		classLine := lineOf(source, idx[0])
-		out = append(out, entity(className, "SCOPE.Operation", "endpoint", file.Path, classLine,
-			map[string]string{"framework": "django", "pattern_type": "cbv", "base_classes": bases}))
+
+		// #1411: Skip the CBV class entity if section 5b will emit this class
+		// as a DRF ViewSet (SCOPE.Component/viewset). HTTP method children are
+		// still emitted for both ViewSet and non-ViewSet CBVs.
+		if !drfViewsetNames[className] {
+			out = append(out, entity(className, "SCOPE.Operation", "endpoint", file.Path, classLine,
+				map[string]string{"framework": "django", "pattern_type": "cbv", "base_classes": bases}))
+		}
 
 		// Extract class body and find HTTP methods
 		body := extractClassBody(source, idx[0])
@@ -204,26 +214,15 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			map[string]string{"framework": "drf", "pattern_type": "router_entry", "prefix": prefix, "viewset": viewsetName}))
 	}
 
-	// 6. Celery tasks (within Django context)
-	for _, idx := range allMatchesIndex(djangoCeleryTaskRe, source) {
-		taskName := source[idx[2]:idx[3]]
-		line := lineOf(source, idx[0])
-		props := map[string]string{"framework": "django", "pattern_type": "celery_task"}
-		decoratorText := source[idx[0]:min(idx[0]+200, len(source))]
-		if qm := djangoCeleryQueueRe.FindStringSubmatch(decoratorText); qm != nil {
-			props["queue"] = qm[1]
-		}
-		out = append(out, entity(taskName, "SCOPE.Operation", "function", file.Path, line, props))
-	}
-
-	// 6b. apply_async / delay call sites
-	for _, idx := range allMatchesIndex(djangoCeleryApplyAsyncRe, source) {
-		taskRefName := source[idx[2]:idx[3]]
-		callMethod := source[idx[4]:idx[5]]
-		line := lineOf(source, idx[0])
-		out = append(out, entity(taskRefName+"."+callMethod, "SCOPE.Operation", "function", file.Path, line,
-			map[string]string{"framework": "django", "pattern_type": "celery_apply_async", "task": taskRefName, "call_method": callMethod}))
-	}
+	// NOTE: Celery tasks (@shared_task / @app.task) and apply_async/delay call
+	// sites are extracted by the dedicated python_celery extractor
+	// (internal/custom/python/celery.go) which emits canonical SCOPE.Service/task
+	// nodes with richer metadata (queue, bind, max_retries) and by
+	// scheduled_jobs_edges.go which emits SCOPE.ScheduledJob + TRIGGERS edges.
+	// Duplicating that extraction here (#1411) caused 2–3× node inflation for
+	// every Celery task and fragmented find_callers queries. Sections 6 + 6b
+	// have been removed. The Celery pub/sub topology (TRIGGERS/PUBLISHES_TO) is
+	// unaffected — it is owned by scheduled_jobs_edges.go, not this extractor.
 
 	// 7. Middleware classes
 	for _, idx := range allMatchesIndex(djangoMiddlewareClassRe, source) {
