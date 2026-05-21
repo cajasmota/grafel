@@ -1315,6 +1315,7 @@ export function postRefreshRules(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
 // Maintenance ops — Rebuild / Reset / Cleanup (#1200)
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1420,4 +1421,95 @@ export async function postCleanup(dryRun = false): Promise<CleanupReply> {
     return { dry_run: dryRun, orphaned: [], removed: 0, message: 'No orphaned registry entries found' }
   }
   return apiFetch<CleanupReply>(`/api/cleanup${dryRun ? '?dry_run=true' : ''}`, { method: 'POST' })
+}
+
+// Quality surface — GET /api/quality/orphans/{group}
+//                   GET /api/quality/fixtures
+//                   POST /api/quality/recall
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface OrphanTotals {
+  entities: number
+  orphans: number
+  orphan_rate: number
+}
+
+export interface RepoOrphanStats {
+  slug: string
+  path: string
+  entities: number
+  orphans: number
+  orphan_rate: number
+  risk_score: number
+}
+
+export interface KindStat {
+  kind: string
+  count: number
+  orphan_rate: number
+}
+
+export interface QualityRecommendation {
+  priority: number
+  issue: string
+  affected_repos: number
+  recoverable_entities_estimate: number
+}
+
+export interface OrphanAuditReply {
+  group: string
+  audited_at: string
+  total: OrphanTotals
+  per_repo: RepoOrphanStats[]
+  per_kind: KindStat[]
+  health_score: number
+  recommendations: QualityRecommendation[]
+}
+
+export interface FixturesReply {
+  fixtures: string[]
+}
+
+export interface RecallMissingItem {
+  name: string
+  kind: string
+  source_file?: string
+}
+
+export interface RecallRelItem {
+  from: string
+  from_kind?: string
+  kind: string
+  to: string
+  to_kind?: string
+  from_resolved: boolean
+  to_resolved: boolean
+}
+
+export interface RecallReply {
+  fixture: string
+  entity_recall: number
+  relationship_recall: number
+  entity_expected: number
+  entity_found: number
+  relationship_expected: number
+  relationship_found: number
+  forbidden_hits: number
+  missing_entities?: RecallMissingItem[]
+  missing_relationships?: RecallRelItem[]
+}
+
+export async function fetchQualityOrphans(group: string): Promise<OrphanAuditReply> {
+  return apiFetch<OrphanAuditReply>(`/api/quality/orphans/${encodeURIComponent(group)}`)
+}
+
+export async function fetchQualityFixtures(): Promise<FixturesReply> {
+  return apiFetch<FixturesReply>('/api/quality/fixtures')
+}
+
+export async function postQualityRecall(fixture: string, group?: string): Promise<RecallReply> {
+  return apiFetch<RecallReply>('/api/quality/recall', {
+    method: 'POST',
+    body: JSON.stringify({ fixture, group }),
+  })
 }

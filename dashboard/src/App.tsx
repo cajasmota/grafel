@@ -16,6 +16,7 @@ import { PatternsRoute } from '@/routes/patterns'
 import { SystemRoute } from '@/routes/system'
 import { UpdateRoute } from '@/routes/update'
 import { SettingsRoute } from '@/routes/settings'
+import { QualityRoute } from '@/routes/quality'
 import { RouterErrorBoundary } from '@/components/RouterErrorBoundary'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Globe } from 'lucide-react'
@@ -94,7 +95,11 @@ const router = createBrowserRouter([
       // Surface 10 — Update / Version management (#1199)
       { path: 'update', element: <UpdateRoute /> },
 
-      // Surface 11 — Settings (#1206)
+      // Surface 11 — Quality (#1198)
+      { path: 'quality', element: <Navigate to="/quality/fixture-a" replace /> },
+      { path: 'quality/:group', element: <QualityRoute /> },
+
+      // Surface 12 — Settings (#1206)
       { path: 'settings', element: <SettingsRoute /> },
     ],
   },
