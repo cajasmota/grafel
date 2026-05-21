@@ -1,0 +1,306 @@
+/* ============================================================
+   archigraph — design tokens
+   Light = default. Dark via [data-theme="dark"].
+   Palette = "cool" (default) | "warm" — toggle via [data-palette].
+   ============================================================ */
+
+:root,
+[data-theme="light"] {
+  /* -- Surfaces (cool slate base) -- */
+  --bg:            #f7f8fa;   /* very subtle cool off-white */
+  --bg-soft:       #eef1f5;   /* sidebar / subtle surfaces */
+  --surface:       #ffffff;   /* cards, panels */
+  --surface-2:     #f3f5f8;   /* hover for surface */
+  --surface-3:     #e8ebf0;   /* pressed / active */
+  --overlay:       rgba(255, 255, 255, 0.82);
+
+  /* -- Borders -- */
+  --border:        #e4e7ec;
+  --border-strong: #cdd2da;
+  --border-soft:   #edf0f4;
+
+  /* -- Text (slate scale) -- */
+  --text:          #0f172a;   /* slate-900 */
+  --text-2:        #334155;   /* slate-700 */
+  --text-3:        #64748b;   /* slate-500 */
+  --text-4:        #94a3b8;   /* slate-400 */
+  --text-inverse:  #f8fafc;
+
+  /* -- Accent (sky cyan, tunable via Tweaks) -- */
+  --accent:        #0ea5e9;
+  --accent-soft:   #e0f2fe;
+  --accent-strong: #0284c7;
+  --accent-text:   #ffffff;
+  --accent-ring:   rgba(14, 165, 233, 0.24);
+
+  /* -- Status -- */
+  --success:       #10b981;
+  --success-soft:  #d1fae5;
+  --warning:       #f59e0b;
+  --warning-soft:  #fef3c7;
+  --danger:        #ef4444;
+  --danger-soft:   #fee2e2;
+  --info:          #6366f1;
+  --info-soft:     #e0e7ff;
+
+  /* -- Pastel categorical (community / repo colors) -- */
+  --pastel-1:  #a5cde3;   /* sky      */
+  --pastel-2:  #b3dec3;   /* mint     */
+  --pastel-3:  #fac8a0;   /* peach    */
+  --pastel-4:  #f0b1bd;   /* rose     */
+  --pastel-5:  #cdb9e5;   /* lavender */
+  --pastel-6:  #efd99a;   /* butter   */
+  --pastel-7:  #b0d3b3;   /* sage     */
+  --pastel-8:  #f4bfca;   /* blush    */
+  --pastel-9:  #b8c0e0;   /* cornflower */
+  --pastel-10: #f7caa3;   /* apricot  */
+
+  --pastel-1-ink:  #3e7fa3;
+  --pastel-2-ink:  #4e8f6e;
+  --pastel-3-ink:  #c47a3a;
+  --pastel-4-ink:  #b66078;
+  --pastel-5-ink:  #7960b0;
+  --pastel-6-ink:  #b08f36;
+  --pastel-7-ink:  #5d8e62;
+  --pastel-8-ink:  #c2718a;
+  --pastel-9-ink:  #6573b3;
+  --pastel-10-ink: #c08741;
+
+  /* -- Graph canvas -- */
+  --canvas-bg:        #f7f8fa;
+  --canvas-grid:      rgba(15, 23, 42, 0.045);
+  --edge-color:       rgba(15, 23, 42, 0.14);
+  --edge-color-hi:    rgba(14, 165, 233, 0.65);
+  --node-stroke:      rgba(15, 23, 42, 0.18);
+  --node-stroke-hi:   rgba(14, 165, 233, 1);
+
+  /* -- Elevation -- */
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-2: 0 2px 8px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-3: 0 12px 32px -8px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-4: 0 24px 64px -16px rgba(15, 23, 42, 0.22), 0 8px 24px rgba(15, 23, 42, 0.08);
+
+  /* -- Radii -- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-2xl: 20px;
+  --r-full: 9999px;
+
+  /* -- Spacing scale -- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* -- Type -- */
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "JetBrains Mono", "Menlo", monospace;
+
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 13px;
+  --text-md:   14px;
+  --text-lg:   16px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  32px;
+
+  --leading-tight:  1.2;
+  --leading-normal: 1.45;
+  --leading-relaxed: 1.6;
+
+  /* -- Motion -- */
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 280ms;
+}
+
+/* ============================================================
+   Optional: warm palette overlay (Claude-paper feel)
+   Toggle via <html data-palette="warm">
+   ============================================================ */
+[data-palette="warm"] {
+  --bg:            #fbfaf7;
+  --bg-soft:       #f5f3ee;
+  --surface:       #ffffff;
+  --surface-2:     #f8f6f1;
+  --surface-3:     #efece5;
+  --border:        #e8e4dc;
+  --border-strong: #d6d1c4;
+  --border-soft:   #f0ecdf;
+  --text:          #1c1b18;
+  --text-2:        #4a4843;
+  --text-3:        #76736b;
+  --text-4:        #a5a299;
+  --canvas-bg:     #fbfaf7;
+  --canvas-grid:   rgba(28, 27, 24, 0.04);
+  --edge-color:    rgba(28, 27, 24, 0.14);
+  --node-stroke:   rgba(28, 27, 24, 0.18);
+}
+
+[data-theme="dark"] {
+  /* muted slate — softened "moonlight" feel, not neon */
+  --bg:            #0f131c;
+  --bg-soft:       #141923;
+  --surface:       #1a1f2b;
+  --surface-2:     #20262f;
+  --surface-3:     #262d38;
+  --overlay:       rgba(20, 25, 35, 0.85);
+
+  --border:        #252b36;
+  --border-strong: #34394a;
+  --border-soft:   #1d222c;
+
+  --text:          #d3d8e0;    /* slightly muted, easier on the eyes */
+  --text-2:        #9aa3b3;
+  --text-3:        #6b7385;
+  --text-4:        #464d5c;
+  --text-inverse:  #0f131c;
+
+  /* less saturated accent so it doesn't scream against deep bg */
+  --accent:        #6cb8d9;
+  --accent-soft:   #102531;
+  --accent-strong: #4ea3c8;
+  --accent-text:   #0a141d;
+  --accent-ring:   rgba(108, 184, 217, 0.26);
+
+  --success:       #5fb88a;
+  --success-soft:  #0d2419;
+  --warning:       #d5a866;
+  --warning-soft:  #251a07;
+  --danger:        #d97c7c;
+  --danger-soft:   #28100f;
+  --info:          #8189c4;
+  --info-soft:     #181a2f;
+
+  /* desaturated pastels for dark bg — softer, less candy-bright */
+  --pastel-1:  #6f9bb3;
+  --pastel-2:  #7da689;
+  --pastel-3:  #c4956d;
+  --pastel-4:  #b8838f;
+  --pastel-5:  #9686b3;
+  --pastel-6:  #b8a565;
+  --pastel-7:  #82a384;
+  --pastel-8:  #c08699;
+  --pastel-9:  #8a91b3;
+  --pastel-10: #c4986f;
+
+  --pastel-1-ink:  #95c1d9;
+  --pastel-2-ink:  #a4cfb0;
+  --pastel-3-ink:  #e8b893;
+  --pastel-4-ink:  #dcaab5;
+  --pastel-5-ink:  #bcabd9;
+  --pastel-6-ink:  #dcc88b;
+  --pastel-7-ink:  #a9caaa;
+  --pastel-8-ink:  #e1aabb;
+  --pastel-9-ink:  #b1b8d9;
+  --pastel-10-ink: #e8be93;
+
+  --canvas-bg:        #0b0e15;
+  --canvas-grid:      rgba(211, 216, 224, 0.04);
+  --edge-color:       rgba(211, 216, 224, 0.10);
+  --edge-color-hi:    rgba(108, 184, 217, 0.55);
+  --node-stroke:      rgba(211, 216, 224, 0.16);
+  --node-stroke-hi:   rgba(108, 184, 217, 0.95);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-4: 0 24px 64px -16px rgba(0, 0, 0, 0.75), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"][data-palette="warm"] {
+  --bg:            #161513;
+  --bg-soft:       #1c1a18;
+  --surface:       #1f1d1a;
+  --surface-2:     #25221f;
+  --surface-3:     #2c2925;
+  --border:        #2d2a26;
+  --border-strong: #423e38;
+  --border-soft:   #25221f;
+  --text:          #f5f2ec;
+  --text-2:        #cbc7be;
+  --text-3:        #908b80;
+  --text-4:        #5e5a52;
+  --canvas-bg:     #131210;
+  --canvas-grid:   rgba(245, 242, 236, 0.04);
+  --edge-color:    rgba(245, 242, 236, 0.12);
+  --node-stroke:   rgba(245, 242, 236, 0.18);
+}
+
+/* ============================================================
+   Base + reset
+   ============================================================ */
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+input, textarea {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--r-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-4); }
+
+::selection { background: var(--accent-ring); }
+
+/* utility classes used across components */
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--text-3); }
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-width: 1.5px;
+  border-radius: var(--r-xs);
+}

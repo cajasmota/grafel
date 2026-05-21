@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-palette="cool" data-density="comfortable">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>archigraph</title>
+    <script>
+      // Apply persisted theme/palette/density before first paint — no flash on load.
+      (function () {
+        try {
+          var root = document.documentElement;
+          var t = localStorage.getItem("ag.theme");
+          var p = localStorage.getItem("ag.palette");
+          var d = localStorage.getItem("ag.density");
+          if (t) root.setAttribute("data-theme", t);
+          if (p) root.setAttribute("data-palette", p);
+          if (d) root.setAttribute("data-density", d);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,112 @@
+/* ============================================================
+   app.css — the token bridge.
+
+   Layer order matters:
+   1. tokens.css     → the SOURCE OF TRUTH (CSS custom properties + reset).
+   2. tailwindcss    → utilities.
+   3. @theme         → re-export tokens as Tailwind theme keys so utilities
+                       like `bg-surface`, `text-text-2`, `rounded-md`,
+                       `font-mono` resolve to the exact token values.
+
+   Components NEVER hardcode color/spacing/radii — they consume tokens,
+   either through these Tailwind utilities or via var(--token) directly.
+   ============================================================ */
+
+@import "./tokens.css";
+@import "tailwindcss";
+
+@theme {
+  /* -- Surfaces -- */
+  --color-bg: var(--bg);
+  --color-bg-soft: var(--bg-soft);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  /* -- Borders -- */
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-soft: var(--border-soft);
+
+  /* -- Text -- */
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-text-4: var(--text-4);
+  --color-text-inverse: var(--text-inverse);
+
+  /* -- Accent -- */
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-text: var(--accent-text);
+
+  /* -- Status -- */
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  /* -- Radii -- */
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-2xl);
+  --radius-full: var(--r-full);
+
+  /* -- Spacing (extends Tailwind's default scale with token-named steps) -- */
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+  --spacing-12: var(--space-12);
+
+  /* -- Type -- */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-md: var(--text-md);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+  --text-3xl: var(--text-3xl);
+
+  /* -- Motion -- */
+  --ease-out: var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+
+  /* -- Shadows -- */
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+  --shadow-3: var(--shadow-3);
+  --shadow-4: var(--shadow-4);
+}
+
+/* The app shell owns scrolling per-pane, so allow the document to scroll
+   on standalone pages (the showcase) without fighting the tokens reset. */
+.ag-scroll {
+  overflow: auto;
+}
+
+/* Honor reduced-motion globally (per handoff motion rules). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
