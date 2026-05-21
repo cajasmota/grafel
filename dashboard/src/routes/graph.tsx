@@ -419,9 +419,9 @@ export function GraphRoute() {
             <div className="flex flex-col gap-0.5" role="radiogroup" aria-label="Graph color mode">
               {(
                 [
-                  { value: 'repo',      label: 'Repo',      title: 'Color nodes by repository' },
-                  { value: 'degree',    label: 'Degree',    title: 'Silk Road gradient — purple→pink→yellow by connection count' },
+                  { value: 'repo',      label: 'Repo',      title: 'Color nodes by repository (default)' },
                   { value: 'community', label: 'Community', title: 'Color nodes by community cluster' },
+                  { value: 'degree',    label: 'Degree',    title: 'Silk Road gradient — purple→pink→yellow by connection count' },
                 ] as const
               ).map(({ value, label, title }) => (
                 <button

@@ -68,19 +68,23 @@ export function kindColors(kind: EntityKind): { bg: string; text: string } {
 
 /**
  * Returns a stable hex color for a repo slug.
- * Uses a fixed palette of 8 distinct hues; repos beyond 8 wrap around.
- * The palette avoids red/green (reserved for error/success UI) and grey
- * (reserved for unknown/filtered nodes).
+ * Uses a high-contrast 10-color palette; repos beyond 10 wrap around.
+ *
+ * #1356: Updated to high-contrast palette for better visibility at high node density.
+ * Repo 1 = sky blue, Repo 2 = violet, Repo 3 = emerald as spec'd in issue #1356.
+ * Avoids muddy/similar hues that bleed into each other on dense WebGL renders.
  */
 const REPO_COLOR_PALETTE: string[] = [
-  '#38bdf8', // sky-400    — repo 0
-  '#a78bfa', // violet-400 — repo 1
-  '#34d399', // emerald-400 — repo 2
-  '#fbbf24', // amber-400  — repo 3
-  '#f472b6', // pink-400   — repo 4
-  '#60a5fa', // blue-400   — repo 5
-  '#fb923c', // orange-400 — repo 6
-  '#4ade80', // green-400  — repo 7
+  '#0EA5E9', // sky-500     — repo 0 (sky blue, high contrast)
+  '#A855F7', // violet-500  — repo 1 (violet)
+  '#10B981', // emerald-500 — repo 2 (emerald)
+  '#F59E0B', // amber-500   — repo 3 (warm amber, not muddy)
+  '#EC4899', // pink-500    — repo 4 (hot pink)
+  '#3B82F6', // blue-500    — repo 5 (clean blue)
+  '#F97316', // orange-500  — repo 6 (vivid orange)
+  '#14B8A6', // teal-500    — repo 7 (teal, distinct from emerald)
+  '#8B5CF6', // violet-600  — repo 8 (deeper violet)
+  '#06B6D4', // cyan-500    — repo 9 (cyan)
 ]
 
 const repoColorCache = new Map<string, string>()

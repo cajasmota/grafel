@@ -83,29 +83,27 @@ function buildRepoCenters(
 // ---------------------------------------------------------------------------
 
 /**
- * Six zoom bands that control how many nodes are visible (#1108).
+ * Four zoom bands — macro and overview removed (#1356 density fix).
  *
- *   macro    (zoom < 0.3)   — top-50 mega-hubs only (degree ≥ 30)
- *   overview (zoom < 0.6)   — top-150 hubs (degree ≥ 15)
- *   high     (zoom < 1.0)   — degree ≥ 6, up to 400 nodes
- *   mid      (zoom < 2.0)   — degree ≥ 2 (no topN cap)
- *   full     (zoom < 4.0)   — degree ≥ 0 (no topN cap)
- *   detail   (zoom ≥ 4.0)   — all nodes (forensics / specific entity hunt)
+ * All nodes are always visible regardless of zoom level (degreeMin=0, topN=null).
+ * Only label density decreases on zoom-out to reduce clutter.
  *
- * Each band is ~3-5x the density of the previous one for smooth visual progression.
- * `degreeMin` is a floor; `topN` (when set) enforces an absolute count cap so
- * small graphs (few high-degree nodes) still show something at compressed zooms.
+ *   high     (zoom < 1.0)   — all nodes visible, top-50 labels
+ *   mid      (zoom < 2.0)   — all nodes visible, top-30 labels
+ *   full     (zoom < 4.0)   — all nodes visible, top-20 labels
+ *   detail   (zoom ≥ 4.0)   — all nodes visible, top-15 labels (forensics)
+ *
+ * Dropping macro/overview means default zoom lands in 'high' so the graph is
+ * never depopulated at startup (#1356 — 3 isolated clumps in empty space fix).
  *
  * Designed to NOT restart the force simulation on band change — only the
  * Cosmograph selectPoints() call is fired (pure visibility toggle).
  */
 const ZOOM_BANDS = [
-  { maxZoom: 0.3,      degreeMin: 30, topN: 50   as number | null, label: 'macro',    topLabels: 30 },
-  { maxZoom: 0.6,      degreeMin: 15, topN: 150  as number | null, label: 'overview', topLabels: 50 },
-  { maxZoom: 1.0,      degreeMin: 6,  topN: 400  as number | null, label: 'high',     topLabels: 40 },
-  { maxZoom: 2.0,      degreeMin: 2,  topN: null as number | null, label: 'mid',      topLabels: 30 },
-  { maxZoom: 4.0,      degreeMin: 0,  topN: null as number | null, label: 'full',     topLabels: 20 },
-  { maxZoom: Infinity, degreeMin: 0,  topN: null as number | null, label: 'detail',   topLabels: 15 },
+  { maxZoom: 1.0,      degreeMin: 0,  topN: null as number | null, label: 'high',   topLabels: 50 },
+  { maxZoom: 2.0,      degreeMin: 0,  topN: null as number | null, label: 'mid',    topLabels: 30 },
+  { maxZoom: 4.0,      degreeMin: 0,  topN: null as number | null, label: 'full',   topLabels: 20 },
+  { maxZoom: Infinity, degreeMin: 0,  topN: null as number | null, label: 'detail', topLabels: 15 },
 ]
 
 type ZoomBand = typeof ZOOM_BANDS[number]
@@ -128,8 +126,9 @@ function computeLodIndices(
   activeRepos: Set<string> | null | undefined,
   forceVisibleIds: ReadonlySet<string>,
 ): number[] | null {
-  // 'full' and 'detail' bands show all nodes — return null (no filter) when no overrides active
-  const isUnfilteredBand = band.label === 'full' || band.label === 'detail'
+  // #1356: All bands now show all nodes (degreeMin=0, topN=null for all bands).
+  // Every band is effectively an unfiltered band — return null when no overrides active.
+  const isUnfilteredBand = band.topN === null && band.degreeMin === 0
   if (isUnfilteredBand && !activeRepos && forceVisibleIds.size === 0) {
     return null
   }
@@ -139,7 +138,8 @@ function computeLodIndices(
   if (isUnfilteredBand) {
     eligible = nodes.map((_, i) => i)
   } else if (band.topN !== null) {
-    // macro / overview / high: take top-N by degree, then also include degreeMin floor
+    // Legacy path: take top-N by degree, then also include degreeMin floor
+    // (retained for forward compat if topN bands are ever re-added)
     const sorted = nodes
       .map((n, i) => ({ i, deg: n.degree ?? 0 }))
       .sort((a, b) => b.deg - a.deg)
@@ -149,7 +149,7 @@ function computeLodIndices(
       .filter(({ n, i }) => (n.degree ?? 0) >= band.degreeMin || topNSet.has(i))
       .map(({ i }) => i)
   } else {
-    // mid: degree threshold only (no topN cap)
+    // Legacy path: degree threshold only (no topN cap)
     eligible = nodes
       .map((n, i) => ({ n, i }))
       .filter(({ n }) => (n.degree ?? 0) >= band.degreeMin)
@@ -405,7 +405,8 @@ const GraphCanvasInner = ({
     const cosmo = cosmographRef.current
     if (!cosmo) return
 
-    const isUnfilteredBand = currentBand.label === 'full' || currentBand.label === 'detail'
+    // #1356: all bands are now unfiltered (topN=null, degreeMin=0).
+    const isUnfilteredBand = currentBand.topN === null && currentBand.degreeMin === 0
     if (isUnfilteredBand && !activeRepos && effectiveForceIds.size === 0) {
       cosmo.selectPoints(null)
     } else {
@@ -413,11 +414,11 @@ const GraphCanvasInner = ({
     }
   }, [lodVisibleIndices, currentBand, activeRepos, effectiveForceIds])
 
-  // Fallback repo-filter application at full/detail zoom (before LoD fires)
+  // Fallback repo-filter application when band is unfiltered (before LoD fires)
   useEffect(() => {
     const cosmo = cosmographRef.current
     if (!cosmo) return
-    const isUnfilteredBand = currentBand.label === 'full' || currentBand.label === 'detail'
+    const isUnfilteredBand = currentBand.topN === null && currentBand.degreeMin === 0
     if (!isUnfilteredBand) return
     cosmo.selectPoints(visibleIndices)
   }, [visibleIndices, currentBand])
@@ -830,9 +831,11 @@ const GraphCanvasInner = ({
         linkTargetIndexBy="__tgtIdx"
         linkIncludeColumns={['kind', '__crossRepo', '__linkState']}
 
-        // ── Repo-first semantic layout (#1072 / #1106) ───────────────────────
-        pointXBy="__x"
-        pointYBy="__y"
+        // ── Cluster layout (repo + community + module signal) ────────────────
+        // #1356: pointXBy/pointYBy seed positions DROPPED — let the simulation
+        // cluster naturally using the Silk Road params. Pre-seeded positions were
+        // spreading repos too far apart (contributing to the empty-space problem).
+        // Cluster force still applied via __cluster_id so repo islands form naturally.
         pointClusterBy="__cluster_id"
         pointClusterStrengthBy="__cluster_strength"
 
@@ -859,14 +862,14 @@ const GraphCanvasInner = ({
         // #1153: Silk Road size + scale params
         // #1127: pointSizeBy='__size' preserves Process node cap
         pointSizeBy="__size"
-        // #1153: pointSizeScale=1.42578 (Silk Road param) — multiplies node sizes.
+        // #1356: pointSizeScale=1.6 — slightly bigger base than Silk Road original.
         // Combined with pointSizeRange for wide dynamic range.
-        pointSizeScale={1.42578}
+        pointSizeScale={1.6}
         pointSizeRange={[5, 80]}
-        // #1153: scalePointsOnZoom=true — nodes scale with zoom (Silk Road behavior).
-        // This complements zoom-LoD (#1120): at high zoom, nodes grow naturally so
-        // individual entities are easier to click without needing LoD to be disabled.
-        scalePointsOnZoom={true}
+        // #1356: scalePointsOnZoom=false — THE FIX. scalePointsOnZoom=true was
+        // causing nodes to shrink to sub-pixel size at default zoom with spaceSize=8192,
+        // making the graph appear as 3 invisible clumps in empty space.
+        scalePointsOnZoom={false}
         pointLabelBy="label"
 
         // ── Labels ────────────────────────────────────────────────────────
@@ -893,8 +896,9 @@ const GraphCanvasInner = ({
         backgroundColor={canvasBg}
 
         // ── Greyout opacity ────────────────────────────────────────────────
-        pointGreyoutOpacity={(repoFilterActive || (currentBand.label !== 'full' && currentBand.label !== 'detail')) ? 0 : 0.15}
-        linkGreyoutOpacity={(repoFilterActive || (currentBand.label !== 'full' && currentBand.label !== 'detail')) ? 0 : 0.1}
+        // #1356: all bands are unfiltered, so greyout only applies when repo filter is active.
+        pointGreyoutOpacity={repoFilterActive ? 0 : 0.15}
+        linkGreyoutOpacity={repoFilterActive ? 0 : 0.1}
 
         // ── Simulation — #1153 Silk Road params ────────────────────────────
         enableSimulation={true}
@@ -922,9 +926,11 @@ const GraphCanvasInner = ({
         simulationCenter={0.05}
 
         // ── Space + layout ─────────────────────────────────────────────────
-        // #1153: spaceSize=8192 — larger canvas space gives more room for islands
-        // to spread, matching Silk Road's open-space aesthetic.
-        spaceSize={8192}
+        // #1356: spaceSize=4096 — halved from 8192. Smaller canvas space means nodes
+        // are physically closer together at default zoom, eliminating the "3 tiny clumps
+        // in empty space" density problem (#1356). Silk Road aesthetic preserved via
+        // simulation params; the open-space feel comes from low spring strength, not canvas size.
+        spaceSize={4096}
         // #1153: rescalePositions=true — Cosmograph normalizes initial positions
         // to fill the canvas; combines with pre-seeded __x/__y for fast convergence.
         rescalePositions={true}
