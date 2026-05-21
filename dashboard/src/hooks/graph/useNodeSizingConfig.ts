@@ -10,11 +10,11 @@
  *
  * Tiers (degree percentile bands):
  *   0 → lowest 50%        → 1.0×
- *   1 → 50–75%            → 1.5×
- *   2 → 75–90%            → 2.0×
- *   3 → 90–97%            → 3.0×
- *   4 → 97–99.5%          → 5.0×
- *   5 → top 0.5%          → 10.0×
+ *   1 → 50–75%            → 1.2×
+ *   2 → 75–90%            → 1.5×
+ *   3 → 90–97%            → 1.8×
+ *   4 → 97–99.5%          → 2.3×
+ *   5 → top 0.5%          → 3.0×
  *
  * All values are persisted to localStorage under key `archigraph:graph:sizing`.
  */
@@ -23,13 +23,20 @@ import { useState, useCallback } from 'react'
 export const TIER_COUNT = 6
 
 // Base size for the lowest-degree tier (~the bottom 50% of nodes, which is the
-// vast majority at 19k+). Kept small (6px) so the low-degree population doesn't
-// overplot into a saturated additive-white core in dense island centers — the
-// Silk Road look needs the cores to read as COLOR, not white. High-degree hubs
-// still stand out via the per-tier multipliers below (tier 5 = ×10 = 60px).
-export const DEFAULT_BASE_SIZE = 6
+// vast majority at 19k+).
+//
+// scalePointsOnZoom:true means rendered screen-px = setPointSizes[i] * pointSizeScale * zoomLevel.
+// Full-fit zoom for 19k nodes ≈ 0.074 (nodes span ~12k of 32768 spaceSize on 1248px canvas).
+// With pointSizeScale=0.22 (GraphCanvas): rendered_px = baseSize * 0.22 * 0.074 = baseSize * 0.016.
+// To hit 2px at full-fit: baseSize = 2 / 0.016 = 125. We use 120 as a round number.
+// At zoom=5 (mid zoom): 120 * 0.22 * 5 = 132px — clearly visible and clickable.
+// At zoom=1.4 (after clicking a cluster): 120 * 0.22 * 1.4 = 37px — prominent dots.
+export const DEFAULT_BASE_SIZE = 120
 
-export const DEFAULT_MULTIPLIERS: readonly number[] = [1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
+// With scalePointsOnZoom:true and DEFAULT_BASE_SIZE=120, multipliers are kept
+// tight (max 3×) so hub nodes don't fill the screen at moderate zoom levels.
+// At zoom=1.4: tier-0 = 37px, tier-5 = 111px (prominent hub).
+export const DEFAULT_MULTIPLIERS: readonly number[] = [1.0, 1.2, 1.5, 1.8, 2.3, 3.0]
 
 /**
  * Percentile upper-bounds per tier (inclusive, 0-100).
