@@ -377,7 +377,11 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 				_ = os.RemoveAll(daemon.StateDirForRepo(w.r.Path))
 			}
 			t0 := time.Now()
-			indexErr := rebuildIndexFunc(w.r.Path, "", "", nil, false, false)
+			var opts []IndexOption
+			if args.Incremental && !args.Wipe {
+				opts = append(opts, WithIncremental(daemon.StateDirForRepo(w.r.Path)))
+			}
+			indexErr := rebuildIndexFunc(w.r.Path, "", "", nil, false, false, opts...)
 			results[i] = repoResult{
 				path: w.r.Path,
 				slug: w.r.Slug,
@@ -400,7 +404,11 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 					_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
 				}
 				t0 := time.Now()
-				indexErr := rebuildIndexFunc(rw.r.Path, "", "", nil, false, false)
+				var opts []IndexOption
+				if args.Incremental && !args.Wipe {
+					opts = append(opts, WithIncremental(daemon.StateDirForRepo(rw.r.Path)))
+				}
+				indexErr := rebuildIndexFunc(rw.r.Path, "", "", nil, false, false, opts...)
 				results[idx] = repoResult{
 					path: rw.r.Path,
 					slug: rw.r.Slug,

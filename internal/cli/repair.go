@@ -30,6 +30,8 @@ func newRebuildCmd() *cobra.Command {
 	var quiet bool
 	var jsonProgress bool
 	var plain bool
+	var incremental bool
+	var full bool
 
 	cmd := &cobra.Command{
 		Use:   "rebuild [group] [slug]",
@@ -41,14 +43,20 @@ broker — the same events the web dashboard shows.
 Flags:
   --quiet           suppress progress output; print only the final summary
   --plain           no ANSI color or carriage-return overwriting (CI-safe)
-  --json-progress   NDJSON output: one broker event per line (for scripting)`,
+  --json-progress   NDJSON output: one broker event per line (for scripting)
+  --incremental     only re-process files changed since the last index (faster)
+  --full            force a full rebuild, ignoring any cached file-hash manifest`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRebuildClient(cmd, args, false, quiet, jsonProgress, plain)
+			// --full overrides --incremental.
+			inc := incremental && !full
+			return runRebuildClient(cmd, args, false, quiet, jsonProgress, plain, inc)
 		},
 	}
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress progress output; print only the final summary")
 	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit one NDJSON broker event per line (for scripting)")
 	cmd.Flags().BoolVar(&plain, "plain", false, "disable ANSI color and carriage-return overwrites (CI-safe)")
+	cmd.Flags().BoolVar(&incremental, "incremental", false, "only re-process files changed since the last index")
+	cmd.Flags().BoolVar(&full, "full", false, "force full rebuild, ignoring cached file-hash manifest")
 	return cmd
 }
 
@@ -116,10 +124,12 @@ func fmtDuration(d time.Duration) string {
 //
 // The primary Rebuild RPC runs in a goroutine (it blocks until done); progress
 // is rendered concurrently from whichever source is available.
-func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, jsonProgress bool, plain bool) error {
+func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, jsonProgress bool, plain bool, incremental ...bool) error {
 	if len(args) == 0 {
 		return errors.New("supply [group] (and optional [slug])")
 	}
+
+	inc := len(incremental) > 0 && incremental[0]
 
 	c, err := client.Dial()
 	if err != nil {
@@ -140,7 +150,7 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 
 	// --quiet: skip progress, run synchronously with no token.
 	if quiet {
-		reply, err := c.Rebuild(proto.RebuildArgs{Group: group, Slug: slug, Wipe: wipe})
+		reply, err := c.Rebuild(proto.RebuildArgs{Group: group, Slug: slug, Wipe: wipe, Incremental: inc})
 		if err != nil {
 			return err
 		}
@@ -169,6 +179,7 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			Slug:          slug,
 			Wipe:          wipe,
 			ProgressToken: token,
+			Incremental:   inc,
 		})
 		outcomeCh <- rebuildOutcome{
 			repos:    reply.Repos,

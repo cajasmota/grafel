@@ -21,6 +21,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/extract"
 	"github.com/cajasmota/archigraph/internal/daemon/walk"
+	idiff "github.com/cajasmota/archigraph/internal/indexer/diff"
 	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/external"
@@ -91,6 +92,14 @@ type Indexer struct {
 	// disposition reclassification pass and rewrites edges per the
 	// trust-model rules in docs/specs/repair-trust-model.md.
 	enableRepairApply bool
+
+	// incremental enables diff-aware re-indexing (issue #1339). When true the
+	// indexer loads the per-repo file-hash manifest from incrementalStateDir,
+	// filters the walk result down to only changed files, and updates the
+	// manifest after a successful write. Full rebuild still runs when the
+	// manifest is absent or stale.
+	incremental         bool
+	incrementalStateDir string // directory that holds file-index.json
 
 	// exportFB is a deprecated no-op field retained for back-compat with
 	// existing callers that pass WithExportFB(true). graph.fb is now
@@ -206,6 +215,21 @@ func WithProgressSlugs(groupSlug, repoSlug string) IndexOption {
 	return func(i *Indexer) {
 		i.groupSlug = groupSlug
 		i.repoSlug = repoSlug
+	}
+}
+
+// WithIncremental enables diff-aware re-indexing (issue #1339). The indexer
+// loads `.archigraph/file-index.json` from stateDir, filters the walked file
+// list down to only files whose SHA-256 content hash changed since the last
+// successful run, and updates the manifest after writing. When the manifest is
+// absent or empty every file is processed (equivalent to a full rebuild).
+//
+// Pass stateDir = daemon.StateDirForRepo(repoPath) to use the standard per-repo
+// state directory.
+func WithIncremental(stateDir string) IndexOption {
+	return func(i *Indexer) {
+		i.incremental = true
+		i.incrementalStateDir = stateDir
 	}
 }
 
@@ -477,6 +501,30 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Emit a second scan event now that we know the total.
 	trk.Tick(progress.PhaseScan, len(files), 0, "", 0)
 	fmt.Fprintf(os.Stderr, "archigraph: discovered %d candidate files in %s\n", len(files), absRepo)
+
+	// Incremental mode (issue #1339): filter files down to those whose
+	// content hash changed since the last successful index. The manifest is
+	// loaded once before filtering; it is written back in saveGraph below
+	// only when the index completes successfully.
+	var (
+		diffManifest *idiff.Manifest
+		allFiles     = files // original full list for manifest update
+	)
+	if i.incremental && i.incrementalStateDir != "" {
+		diffManifest = idiff.LoadManifest(i.incrementalStateDir)
+		changed, unchanged := idiff.FilterWithGit(absRepo, files, diffManifest)
+		if len(unchanged) > 0 {
+			diffStats := idiff.Stats{
+				Total:     len(files),
+				Changed:   len(changed),
+				Unchanged: len(unchanged),
+			}
+			fmt.Fprintf(os.Stderr,
+				"archigraph: incremental — processing %d of %d files (%.1f%% cache hit)\n",
+				diffStats.Changed, diffStats.Total, diffStats.CacheHitRate())
+			files = changed
+		}
+	}
 
 	var (
 		pass1Records []types.EntityRecord
@@ -901,6 +949,19 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		printRelBreakdown(os.Stderr, i.stats.pass1RelsByLang, "pass1")
 		printRelBreakdown(os.Stderr, i.stats.pass3RelsByExt, "pass3")
 	}
+
+	// Incremental mode (issue #1339): persist the updated file-hash manifest
+	// so the next incremental run can skip unchanged files. We update all
+	// files (changed + unchanged) so the manifest stays complete even when
+	// only a subset was re-extracted this run. Best-effort: a write failure
+	// is logged but never fails the index.
+	if i.incremental && diffManifest != nil {
+		idiff.UpdateManifest(absRepo, allFiles, diffManifest)
+		if err := idiff.SaveManifest(i.incrementalStateDir, absRepo, diffManifest); err != nil {
+			fmt.Fprintf(os.Stderr, "archigraph: save incremental manifest: %v (non-fatal)\n", err)
+		}
+	}
+
 	return doc, nil
 }
 

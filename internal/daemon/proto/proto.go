@@ -133,6 +133,11 @@ type RebuildArgs struct {
 	// IndexProgress RPC. Clients should use a short unique string (e.g.
 	// a timestamp + random suffix). Empty disables progress tracking.
 	ProgressToken string `json:"progress_token,omitempty"`
+	// Incremental enables diff-aware re-indexing (issue #1339). When true
+	// the daemon only re-processes files whose SHA-256 content hash changed
+	// since the last successful run. Wipe=true overrides Incremental (a wipe
+	// is always a full rebuild).
+	Incremental bool `json:"incremental,omitempty"`
 }
 
 // RebuildReply lists the repos that were rebuilt and any warning that
