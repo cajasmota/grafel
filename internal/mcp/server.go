@@ -15,14 +15,10 @@ import (
 // It tells agents to call archigraph_whoami first and act on suggested_action.
 const mcpInstructions = `archigraph — code graph MCP
 
-On first connect: call archigraph_whoami (cwd= set to caller's working directory).
-Act on suggested_action:
-  "run /generate-docs"   → offer to run doc generation before graph queries.
-  "refresh docs"         → offer to refresh (N files changed).
-  "pattern/repair cands" → offer to review after the user's current task.
-  "none — graph healthy" → proceed normally.
-
-Set ARCHIGRAPH_WHOAMI_NUDGE=quiet to suppress doc-state fields (CI).`
+Call archigraph_whoami first (cwd= caller's working directory). Act on suggested_action:
+  "run /generate-docs" → offer doc generation. "refresh docs" → offer refresh.
+  "pattern/repair cands" → offer after current task. "none — graph healthy" → proceed.
+ARCHIGRAPH_WHOAMI_NUDGE=quiet suppresses doc-state (CI).`
 
 // Config controls server construction.
 type Config struct {
@@ -112,7 +108,9 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 32 (#1281: 9 tools merged into 4 bundles; #1293: aggressive desc+schema trim, -42% tokens).
+// Tool count: 28 (#1281: 9→4 bundles; #1293: desc trim; this PR: drop 4 dashboard-only tools).
+// Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
+//   archigraph_get_next_enrichment_task, archigraph_get_telemetry.
 func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_whoami",
 		mcpapi.WithDescription("Return inferred group + repo for the caller session."),
@@ -134,7 +132,7 @@ func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_list_findings",
 		mcpapi.WithDescription("List saved findings for the resolved group, newest-first."),
 		mcpapi.WithString("entity_id", mcpapi.Description("Filter by entity ID, qname, or label.")),
-		mcpapi.WithString("since", mcpapi.Description("RFC3339 lower bound.")),
+		mcpapi.WithString("since"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
@@ -150,7 +148,7 @@ func (s *Server) registerTools() {
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_recent_activity",
 		mcpapi.WithDescription("Return entities modified after a given time."),
-		mcpapi.WithString("since", mcpapi.Description("RFC3339 timestamp.")),
+		mcpapi.WithString("since"),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
 		mcpapi.WithString("group"),
@@ -241,15 +239,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_enrichments", s.handleEnrichments))
 
-	// archigraph_get_next_enrichment_task — highest-priority task (1 entity, N actions).
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_next_enrichment_task",
-		mcpapi.WithDescription("Return the next enrichment task: one entity with all pending actions. Prefer over enrichments action=list to enrich one entity fully before moving on."),
-		mcpapi.WithString("kind", mcpapi.Description("Filter to tasks with at least one action of this kind.")),
-		mcpapi.WithBoolean("overdue_only", mcpapi.DefaultBool(false), mcpapi.Description("Only tasks with oldest action >7 days old.")),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_get_next_enrichment_task", s.handleGetNextEnrichmentTask))
+	// archigraph_get_next_enrichment_task dropped (use enrichments(action=list,limit=1) instead).
 
 	// archigraph_cross_links — action: list|accept|reject.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_cross_links",
@@ -274,8 +264,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(20)),
 		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0)),
 		mcpapi.WithBoolean("include_stale", mcpapi.DefaultBool(false), mcpapi.Description("(list) Return stale repairs from repair_stats.json.")),
-		mcpapi.WithString("residual_id", mcpapi.Description("(submit) er:<hex16> from action=list.")),
-		mcpapi.WithString("resolution", mcpapi.Description("(submit) bind_to_entity|reclassify_as_external|reclassify_as_dynamic|reclassify_as_resolved|abandon")),
+		mcpapi.WithString("residual_id"),
+		mcpapi.WithString("resolution", mcpapi.Description("bind_to_entity|reclassify_as_external|reclassify_as_dynamic|reclassify_as_resolved|abandon")),
 		mcpapi.WithString("target_entity_id"),
 		mcpapi.WithString("module"),
 		mcpapi.WithString("new_target"),
@@ -289,9 +279,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_repairs", s.handleRepairs))
 
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_telemetry",
-		mcpapi.WithDescription("Server uptime, per-tool counters, reload counts."),
-	), s.wrap("archigraph_get_telemetry", s.handleGetTelemetry))
+	// archigraph_get_telemetry dropped (dashboard-only; use HTTP /api/telemetry instead).
 
 	// archigraph_patterns — ADR-0018. action=query|record.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_patterns",
@@ -334,20 +322,9 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_flows", s.handleFlows))
 
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_diagnostics",
-		mcpapi.WithDescription("Per-repo load health, entity counts, cross-link stats."),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_diagnostics", s.handleDiagnostics))
+	// archigraph_diagnostics dropped (dashboard-only; use HTTP /api/diagnostics instead).
 
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_quality_orphans",
-		mcpapi.WithDescription("List fully isolated nodes — dead code or extraction gap candidates."),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("kind_filter"),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_quality_orphans", s.handleQualityOrphans))
+	// archigraph_quality_orphans dropped (measurement; use archigraph_find_dead_code for agents).
 
 	// archigraph_graph_patterns — indexer-extracted patterns (#1281). action=list|get.
 	// Distinct from archigraph_patterns (agent-learned store).
@@ -403,7 +380,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_endpoints", s.handleEndpoints))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callers",
-		mcpapi.WithDescription("Inbound callers of an entity up to N hops — use before refactoring."),
+		mcpapi.WithDescription("Inbound callers of an entity up to N hops."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1), mcpapi.Description("Hops 1–5.")),
 		mcpapi.WithString("group"),
@@ -411,7 +388,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_find_callers", s.handleFindCallers))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callees",
-		mcpapi.WithDescription("Outbound callees of an entity up to N hops — maps implementation dependencies."),
+		mcpapi.WithDescription("Outbound callees of an entity up to N hops."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1), mcpapi.Description("Hops 1–5.")),
 		mcpapi.WithString("group"),
@@ -419,7 +396,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_find_callees", s.handleFindCallees))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_impact_radius",
-		mcpapi.WithDescription("Inbound blast-radius: entities affected if this entity changes, with risk_score [0,1]."),
+		mcpapi.WithDescription("Entities affected if this entity changes, with risk_score [0,1]."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2), mcpapi.Description("Inbound depth 1–6.")),
 		mcpapi.WithString("group"),
@@ -435,7 +412,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_summarize_subgraph", s.handleSummarizeSubgraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_dead_code",
-		mcpapi.WithDescription("Entities with no project edges — dead code candidates (reflection entry points may appear here)."),
+		mcpapi.WithDescription("Entities with no project edges — dead code or extraction-gap candidates."),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("kind_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
