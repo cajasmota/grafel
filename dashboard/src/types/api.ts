@@ -267,6 +267,62 @@ export interface Process {
   steps?: ProcessStep[]
   /** entity_kind of the process entry point (http, kafka_consumer, scheduled, ws_handler) */
   entity_kind?: 'http' | 'kafka_consumer' | 'scheduled' | 'ws_handler'
+  /** #1147 annotations */
+  flow_side_effects?: string[]
+  complexity_score?: number
+  is_cross_repo?: boolean
+}
+
+// ── Dead-ends (#1145) ─────────────────────────────────────────────────────────
+
+export type DeadEndReason =
+  | 'no_useful_sink'
+  | 'single_step'
+  | 'unresolved_callee'
+  | 'phantom_terminal'
+  | 'dead_end'
+
+export interface FlowDeadEnd {
+  process_id: string
+  entry_name: string
+  entry_id: string
+  entry_kind?: 'http' | 'kafka_consumer' | 'scheduled' | 'ws_handler'
+  repo: string
+  step_count: number
+  reason: DeadEndReason
+}
+
+export interface FlowDeadEndsResponse {
+  dead_ends: FlowDeadEnd[]
+  total: number
+}
+
+// ── Truncated flows (#1146) ───────────────────────────────────────────────────
+
+export type TruncatedReason =
+  | 'unresolved_callee'
+  | 'cycle_detected'
+  | 'depth_exceeded'
+  | 'external_boundary'
+  | 'truncated'
+
+export type TruncatedSeverity = 'info' | 'warn' | 'error'
+
+export interface FlowTruncated {
+  process_id: string
+  entry_name: string
+  entry_id: string
+  entry_kind?: 'http' | 'kafka_consumer' | 'scheduled' | 'ws_handler'
+  repo: string
+  step_count: number
+  truncation_step: number
+  reason: TruncatedReason
+  severity: TruncatedSeverity
+}
+
+export interface FlowTruncatedResponse {
+  truncated: FlowTruncated[]
+  total: number
 }
 
 export interface FlowListResponse {

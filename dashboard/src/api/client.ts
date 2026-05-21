@@ -78,6 +78,8 @@ import type {
   FlowListResponse,
   FlowDetailResponse,
   FlowFilters,
+  FlowDeadEndsResponse,
+  FlowTruncatedResponse,
   TopologyResponse,
   TopologyFilters,
   TopologyProtocol,
@@ -233,6 +235,44 @@ export async function fetchFlows(
   }
   const params = buildParams(filters as Record<string, unknown>)
   return apiFetch<FlowListResponse>(`/api/flows/${group}?${params}`)
+}
+
+/**
+ * GET /api/flows/{group}/dead-ends (#1145)
+ * Returns flows that terminate without reaching a useful sink.
+ */
+export async function fetchFlowDeadEnds(
+  group: string,
+): Promise<FlowDeadEndsResponse> {
+  if (USE_MOCKS) return { dead_ends: [], total: 0 }
+  try {
+    return await apiFetch<FlowDeadEndsResponse>(`/api/flows/${group}/dead-ends`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      console.info('[flows] dead-ends endpoint not yet available (404)')
+      return { dead_ends: [], total: 0 }
+    }
+    throw err
+  }
+}
+
+/**
+ * GET /api/flows/{group}/truncated (#1146)
+ * Returns flows that were cut short during chain resolution.
+ */
+export async function fetchFlowTruncated(
+  group: string,
+): Promise<FlowTruncatedResponse> {
+  if (USE_MOCKS) return { truncated: [], total: 0 }
+  try {
+    return await apiFetch<FlowTruncatedResponse>(`/api/flows/${group}/truncated`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      console.info('[flows] truncated endpoint not yet available (404)')
+      return { truncated: [], total: 0 }
+    }
+    throw err
+  }
 }
 
 export async function fetchFlowDetail(
