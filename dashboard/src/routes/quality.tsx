@@ -3,10 +3,11 @@ import { useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   fetchQualityOrphans, fetchQualityFixtures, postQualityRecall,
-  fetchQualityHistory,
+  fetchQualityHistory, fetchQualityTrends,
   type OrphanAuditReply, type RecallReply, type KindStat, type RepoOrphanStats,
   type HealthEntry,
   type QualityHistoryReply,
+  type MetricTrend, type TrendPoint,
 } from '@/api/client'
 import {
   ShieldCheck, ShieldAlert, PlayCircle, RefreshCw,
@@ -392,7 +393,7 @@ function downloadCSV(entries: HealthEntry[], group: string) {
 // Tab type
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tab = 'history' | 'orphans' | 'recall'
+type Tab = 'history' | 'trends' | 'orphans' | 'recall'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // History tab (#1214)
@@ -1070,6 +1071,264 @@ function SummaryCard({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Inline SVG Sparkline (no external chart dependency)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SparklineProps {
+  points: TrendPoint[]
+  /** When true, lower values are better (colours inverted). */
+  lowerIsBetter?: boolean
+  goal?: number
+  width?: number
+  height?: number
+}
+
+/** Tiny inline SVG sparkline — one per metric in the Trends grid. */
+function Sparkline({ points, lowerIsBetter = false, goal, width = 120, height = 36 }: SparklineProps) {
+  if (points.length === 0) return <span className="text-xs text-slate-400 italic">no data</span>
+  if (points.length === 1) {
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width, height }}>
+        <circle cx={width / 2} cy={height / 2} r={3} className="fill-sky-500" />
+      </svg>
+    )
+  }
+
+  const vals = points.map((p) => p.v)
+  const minV = Math.min(...vals)
+  const maxV = Math.max(...vals)
+  const range = Math.max(maxV - minV, 1)
+
+  const PAD = { x: 4, y: 4 }
+  const innerW = width - PAD.x * 2
+  const innerH = height - PAD.y * 2
+
+  const toX = (i: number) => PAD.x + (i / (points.length - 1)) * innerW
+  const toY = (v: number) => PAD.y + innerH - ((v - minV) / range) * innerH
+
+  const polyline = points.map((p, i) => `${toX(i)},${toY(p.v)}`).join(' ')
+
+  const last = vals[vals.length - 1]
+  const first = vals[0]
+  const improved = lowerIsBetter ? last <= first : last >= first
+  const lineColor = improved ? '#10b981' /* emerald-500 */ : '#ef4444' /* red-500 */
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width, height }} className="overflow-visible">
+      {/* Goal line when within view range */}
+      {goal !== undefined && goal >= minV && goal <= maxV && (
+        <line
+          x1={PAD.x} y1={toY(goal)}
+          x2={PAD.x + innerW} y2={toY(goal)}
+          stroke="#94a3b8"
+          strokeWidth={0.8}
+          strokeDasharray="3 2"
+        />
+      )}
+      <polyline
+        points={polyline}
+        fill="none"
+        stroke={lineColor}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      {/* Last-point dot */}
+      <circle
+        cx={toX(points.length - 1)}
+        cy={toY(last)}
+        r={2.5}
+        fill={lineColor}
+      />
+    </svg>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Metric card (one per metric in the Trends grid)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TrendArrow({ delta, lowerIsBetter }: { delta: number; lowerIsBetter: boolean }) {
+  const improved = lowerIsBetter ? delta <= 0 : delta >= 0
+  const sign = delta > 0 ? '+' : ''
+  if (Math.abs(delta) < 0.1) {
+    return <span className="inline-flex items-center gap-0.5 text-xs text-slate-400"><Minus className="w-3 h-3" />stable</span>
+  }
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${improved ? 'text-emerald-500' : 'text-red-500'}`}>
+      {improved ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+      {sign}{delta.toFixed(1)}
+    </span>
+  )
+}
+
+function MetricCard({ mt }: { mt: MetricTrend }) {
+  const hasGoal = mt.goal > 0
+  const onTarget = mt.latest !== undefined && hasGoal && (
+    mt.lower_is_better ? mt.latest <= mt.goal : mt.latest >= mt.goal
+  )
+
+  return (
+    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 flex flex-col gap-2">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-tight">{mt.label}</span>
+        {hasGoal && (
+          <span className={`text-xs px-1.5 py-0.5 rounded-full font-mono shrink-0 ${
+            onTarget
+              ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+          }`}>
+            goal {mt.goal}{mt.unit === '%' ? '%' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Sparkline */}
+      <div className="flex items-end justify-center py-1">
+        <Sparkline points={mt.points} lowerIsBetter={mt.lower_is_better} goal={mt.goal} width={140} height={40} />
+      </div>
+
+      {/* Latest value + deltas */}
+      <div className="flex items-end justify-between gap-2">
+        <div>
+          <span className="font-mono text-lg font-bold text-slate-800 dark:text-slate-100">
+            {mt.latest !== undefined ? mt.latest.toFixed(mt.unit === '%' ? 1 : 0) : '—'}
+          </span>
+          <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">{mt.unit}</span>
+        </div>
+        <div className="flex flex-col items-end gap-0.5">
+          {mt.delta_7d !== undefined && (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-slate-400">7d</span>
+              <TrendArrow delta={mt.delta_7d} lowerIsBetter={mt.lower_is_better} />
+            </div>
+          )}
+          {mt.delta_30d !== undefined && (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-slate-400">30d</span>
+              <TrendArrow delta={mt.delta_30d} lowerIsBetter={mt.lower_is_better} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trends tab (#1329) — per-metric sparklines
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TrendsTab({ group }: { group: string }) {
+  const [days, setDays] = useState<number>(30)
+
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey: ['quality-trends', group, days],
+    queryFn: () => fetchQualityTrends(group, days),
+    staleTime: 60_000,
+  })
+
+  const metrics = data?.metrics ?? []
+
+  return (
+    <div className="space-y-5">
+      {/* Controls */}
+      <div className="flex items-center justify-between">
+        <div className="flex rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
+          {([7, 30, 90] as const).map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={[
+                'px-3 py-1.5 transition-colors',
+                days === d
+                  ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 font-semibold'
+                  : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800',
+              ].join(' ')}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="p-1.5 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
+          aria-label="Refresh"
+        >
+          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center justify-center py-16 text-slate-400">
+          <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+          Loading trends…
+        </div>
+      )}
+
+      {isError && (
+        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+          Failed to load quality trends. Make sure the daemon is running and the group exists.
+        </div>
+      )}
+
+      {!isLoading && !isError && metrics.length === 0 && (
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-6 py-10 text-center">
+          <Activity className="w-8 h-8 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">No trend data yet</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            Run{' '}
+            <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 rounded">
+              archigraph rebuild {group}
+            </code>{' '}
+            a few times to start accumulating metrics.
+          </p>
+        </div>
+      )}
+
+      {!isLoading && !isError && metrics.length > 0 && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {metrics.map((mt) => (
+              <MetricCard key={mt.label} mt={mt} />
+            ))}
+          </div>
+
+          {/* Regression alert: any metric that degraded significantly vs 7d */}
+          {(() => {
+            const regressions = metrics.filter((mt) => {
+              if (mt.delta_7d === undefined) return false
+              const worsened = mt.lower_is_better ? mt.delta_7d > 0 : mt.delta_7d < 0
+              return worsened && Math.abs(mt.delta_7d) >= 5
+            })
+            if (regressions.length === 0) return null
+            return (
+              <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                    Regression detected (vs 7 days ago)
+                  </span>
+                </div>
+                <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-0.5 ml-6 list-disc">
+                  {regressions.map((mt) => (
+                    <li key={mt.label}>
+                      <strong>{mt.label}</strong>: {mt.delta_7d! > 0 ? '+' : ''}{mt.delta_7d!.toFixed(1)}{mt.unit === '%' ? '%' : ''} change
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Root route component
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1086,14 +1345,14 @@ export function QualityRoute() {
           <div>
             <h1 className="text-lg font-bold text-slate-800 dark:text-slate-200">Quality</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Health-score history, orphan audit, and recall measurement for <strong>{group}</strong>
+              Per-metric trend sparklines, history, orphan audit, and recall for <strong>{group}</strong>
             </p>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800">
-          {(['history', 'orphans', 'recall'] as const).map(tab => (
+          {(['trends', 'history', 'orphans', 'recall'] as const).map(tab => (
             <button
               key={tab}
               type="button"
@@ -1105,13 +1364,20 @@ export function QualityRoute() {
                   : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
               ].join(' ')}
             >
-              {tab === 'history' ? 'History' : tab === 'orphans' ? 'Orphan audit' : 'Recall measurement'}
+              {tab === 'trends'
+                ? 'Trends'
+                : tab === 'history'
+                ? 'History'
+                : tab === 'orphans'
+                ? 'Orphan audit'
+                : 'Recall measurement'}
             </button>
           ))}
         </div>
 
         {/* Tab content */}
         <div className="min-h-64">
+          {activeTab === 'trends' && <TrendsTab group={group} />}
           {activeTab === 'history' && <HistoryTab group={group} />}
           {activeTab === 'orphans' && <OrphanTab group={group} />}
           {activeTab === 'recall' && <RecallTab />}

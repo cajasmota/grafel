@@ -414,8 +414,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/mcp-activity/stream", s.handleMCPActivityStream)
 	mux.HandleFunc("GET /api/mcp-activity/history", s.handleMCPActivityHistory)
 
-	// Surface 11 — Quality history (#1214)
+	// Surface 11 — Quality history (#1214) + per-metric trends (#1329)
 	mux.HandleFunc("GET /api/quality/history/{group}", s.handleQualityHistory)
+	mux.HandleFunc("GET /api/quality/trends/{group}", s.handleQualityTrends)
 
 	// Surface 12 — Web onboarding wizard (#1239)
 	mux.HandleFunc("POST /api/onboard/check-path", s.handleOnboardCheckPath)

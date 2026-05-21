@@ -132,3 +132,63 @@ func TestReadHistory_DayFilter(t *testing.T) {
 		t.Errorf("wrong entry returned: orphan_rate=%v", got[0].OrphanRate)
 	}
 }
+
+// TestAppendAndReadHistory_ExtendedFields verifies that the new fields added
+// in #1329 (coverage_pct, cycles, auth_uncovered, secrets, total_flows,
+// total_endpoints) round-trip correctly through JSONL.
+func TestAppendAndReadHistory_ExtendedFields(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	covPct := 72.5
+	cycles := 4
+	authUncov := 2
+	secrets := 1
+
+	entry := quality.HealthEntry{
+		Timestamp:      now,
+		Group:          "ext-group",
+		TotalEntities:  500,
+		TotalFlows:     12,
+		TotalEndpoints: 30,
+		OrphanRate:     8.0,
+		BugRate:        2.5,
+		HealthScore:    quality.ComputeHealthScore(8.0, 2.5),
+		CoveragePct:    &covPct,
+		Cycles:         &cycles,
+		AuthUncovered:  &authUncov,
+		Secrets:        &secrets,
+	}
+
+	if err := quality.AppendEntry(root, entry); err != nil {
+		t.Fatalf("AppendEntry: %v", err)
+	}
+
+	got, err := quality.ReadHistory(root, "ext-group", 7)
+	if err != nil {
+		t.Fatalf("ReadHistory: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(got))
+	}
+
+	e := got[0]
+	if e.TotalFlows != 12 {
+		t.Errorf("total_flows: got %d, want 12", e.TotalFlows)
+	}
+	if e.TotalEndpoints != 30 {
+		t.Errorf("total_endpoints: got %d, want 30", e.TotalEndpoints)
+	}
+	if e.CoveragePct == nil || *e.CoveragePct != 72.5 {
+		t.Errorf("coverage_pct: got %v, want 72.5", e.CoveragePct)
+	}
+	if e.Cycles == nil || *e.Cycles != 4 {
+		t.Errorf("cycles: got %v, want 4", e.Cycles)
+	}
+	if e.AuthUncovered == nil || *e.AuthUncovered != 2 {
+		t.Errorf("auth_uncovered: got %v, want 2", e.AuthUncovered)
+	}
+	if e.Secrets == nil || *e.Secrets != 1 {
+		t.Errorf("secrets: got %v, want 1", e.Secrets)
+	}
+}
