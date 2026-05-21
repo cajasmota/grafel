@@ -36,6 +36,8 @@ import {
 } from '@/components/graph/GraphEmptyState'
 import { MCPActivityOverlay } from '@/components/graph/MCPActivityOverlay'
 import { NodeSizingControls } from '@/components/graph/NodeSizingControls'
+import { RenderingControls } from '@/components/graph/RenderingControls'
+import { useRenderConfig } from '@/hooks/graph/useRenderConfig'
 import { IndexingProgressModal } from '@/components/indexing/IndexingProgressModal'
 import { SnapshotModal } from '@/components/graph/SnapshotModal'
 import { useSnapshotExport } from '@/hooks/graph/useSnapshotExport'
@@ -96,6 +98,14 @@ export function GraphRoute() {
     setMultiplier: setNodeSizingMultiplier,
     resetToDefaults: resetNodeSizing,
   } = useNodeSizingConfig()
+
+  // ── Render config (#1380 — live rendering knobs persisted to localStorage) ──
+  const {
+    config: renderConfig,
+    setParam: setRenderParam,
+    resetToDefaults: resetRenderConfig,
+    isModified: renderConfigModified,
+  } = useRenderConfig()
 
   // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -659,6 +669,16 @@ export function GraphRoute() {
 
           <div className="border-t border-slate-200 dark:border-slate-700" />
 
+          {/* Rendering controls (#1380) */}
+          <RenderingControls
+            config={renderConfig}
+            isModified={renderConfigModified}
+            setParam={setRenderParam}
+            onReset={resetRenderConfig}
+          />
+
+          <div className="border-t border-slate-200 dark:border-slate-700" />
+
           {/* Repo filter */}
           {allRepoSlugs.length > 0 && (
             <div>
@@ -784,6 +804,7 @@ export function GraphRoute() {
               simulationConfig={simConfig}
               nodeFilterIndices={filterIndices}
               nodeSizingConfig={nodeSizingConfig}
+              renderConfig={renderConfig}
             />
           )}
 
