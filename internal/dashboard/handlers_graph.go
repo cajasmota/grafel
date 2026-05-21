@@ -417,12 +417,41 @@ func (s *Server) handleGraphEntity(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	// Compute in/out degree counts (same-repo + cross-repo).
+	inDegree := len(inbound)
+	outDegree := len(outbound)
+
+	// Look up community name for this entity.
+	var communityName string
+	if entity.CommunityID != nil {
+		for _, c := range repo.Doc.Communities {
+			if c.ID == *entity.CommunityID {
+				if c.AgentName != "" {
+					communityName = c.AgentName
+				} else {
+					communityName = c.AutoName
+				}
+				break
+			}
+		}
+	}
+
+	resp := map[string]any{
 		"entity":         serializeEntity(repo.Slug, entity),
 		"inbound_edges":  inbound,
 		"outbound_edges": outbound,
 		"neighbors":      neighbors,
-	})
+		"in_degree":      inDegree,
+		"out_degree":     outDegree,
+	}
+	if communityName != "" {
+		resp["community_name"] = communityName
+	}
+	if entity.Centrality != nil {
+		resp["betweenness"] = *entity.Centrality
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleGroupCommunities — GET /api/groups/{group}/communities
