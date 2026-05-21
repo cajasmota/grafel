@@ -113,14 +113,38 @@ type ModuleCoverage struct {
 
 // coverageEntityKinds is the set of entity kinds that count as "production
 // entities" for coverage purposes.
+//
+// "SCOPE.Operation" is the canonical kind emitted by every language extractor
+// for functions and methods (Go, Python, JS/TS, Java, Rust, Ruby, …). The
+// bare "Function" / "Method" keys are kept for forward compatibility with any
+// third-party or future extractors that emit those kinds directly.
 var coverageEntityKinds = map[string]bool{
-	"Function":                   true,
-	"Method":                     true,
+	"SCOPE.Operation":            true, // canonical: all language extractors
+	"Function":                   true, // compat / future
+	"Method":                     true, // compat / future
 	"Class":                      true,
 	"Interface":                  true,
 	"Struct":                     true,
 	"http_endpoint":              true,
 	"http_endpoint_definition":   true,
+}
+
+// testEntityKinds is the set of entity kinds that count as "test entities"
+// for coverage purposes. Only callable kinds (SCOPE.Operation, Function,
+// Method) are counted — not every entity that happens to live in a test file
+// (imports, constants, class declarations, SCOPE.Pattern wrappers, etc.).
+//
+// The previous behaviour of counting every entity from a test file inflated
+// TotalTests because the Python / JS / Go extractors emit an entity per
+// symbol, so a 3-file test suite could report 500+ "test entities" when only
+// ~10 test functions exist (issue #1410).
+//
+// "SCOPE.Operation" is the canonical kind emitted by every language extractor;
+// the bare "Function" / "Method" keys are kept for forward compatibility.
+var testEntityKinds = map[string]bool{
+	"SCOPE.Operation": true, // canonical: all language extractors
+	"Function":        true, // compat / future
+	"Method":          true, // compat / future
 }
 
 // isTestFile returns true when the source file path matches a recognised test
@@ -175,9 +199,11 @@ func isProductionEntity(e *Entity) bool {
 	return coverageEntityKinds[e.Kind] && !isTestFile(e.SourceFile)
 }
 
-// isTestEntity returns true when e is a test entity.
+// isTestEntity returns true when e is a test entity.  Only Function and
+// Method entities inside test files are counted — not every symbol extracted
+// from a test file (see testEntityKinds for rationale).
 func isTestEntity(e *Entity) bool {
-	return isTestFile(e.SourceFile)
+	return isTestFile(e.SourceFile) && testEntityKinds[e.Kind]
 }
 
 // entitySeverity classifies the coverage importance of a production entity.
@@ -185,7 +211,7 @@ func entitySeverity(e *Entity) string {
 	switch e.Kind {
 	case "http_endpoint", "http_endpoint_definition":
 		return "high"
-	case "Function", "Method":
+	case "SCOPE.Operation", "Function", "Method":
 		// Exported (capitalised, not leading underscore) → medium.
 		if isExported(e.Name) {
 			return "medium"

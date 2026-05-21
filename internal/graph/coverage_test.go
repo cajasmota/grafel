@@ -308,3 +308,43 @@ func TestComputeCoverage_HTTPEndpointHighSeverity(t *testing.T) {
 		t.Errorf("HTTP endpoint severity want high, got %s", report.UncoveredEntities[0].Severity)
 	}
 }
+
+// TestComputeCoverage_TotalTestsCountsOnlyCallables verifies that TotalTests
+// counts only SCOPE.Operation / Function / Method entities from test files —
+// not every symbol that happens to live in a test file (imports, constants,
+// class declarations, SCOPE.Pattern wrapper entities, etc.).
+//
+// This exercises issue #1410 where 593 test entities were reported for ~3
+// test files because every Python / Go symbol was counted, including imports,
+// module-level constants, and testmap's SCOPE.Pattern wrapper records.
+func TestComputeCoverage_TotalTestsCountsOnlyCallables(t *testing.T) {
+	entities := []Entity{
+		// Test file — the actual test function emitted as SCOPE.Operation (counts).
+		{ID: "t1", Name: "test_create_order", Kind: "SCOPE.Operation", SourceFile: "tests/test_orders.py"},
+		// Test file — a helper class (must NOT count).
+		{ID: "t2", Name: "OrderTestHelper", Kind: "Class", SourceFile: "tests/test_orders.py"},
+		// Test file — a SCOPE.Component (file node, must NOT count).
+		{ID: "t3", Name: "tests/test_orders.py", Kind: "SCOPE.Component", SourceFile: "tests/test_orders.py"},
+		// Test file — a SCOPE.Pattern wrapper emitted by testmap (must NOT count).
+		{ID: "t4", Name: "test_create_order -> create_order", Kind: "SCOPE.Pattern",
+			SourceFile: "tests/test_orders.py",
+			Properties: map[string]string{"pattern_kind": "test_coverage"}},
+		// Production entity — SCOPE.Operation as emitted by Go/Python/JS extractors.
+		{ID: "p1", Name: "create_order", Kind: "SCOPE.Operation", SourceFile: "orders/service.py"},
+	}
+	rels := []Relationship{
+		{ID: "r1", FromID: "t1", ToID: "p1", Kind: "TESTS"},
+	}
+	report := ComputeCoverage(makeDoc(entities, rels))
+	// Only the SCOPE.Operation from the test file (t1) counts as a test entity.
+	if report.TotalTests != 1 {
+		t.Errorf("TotalTests want 1 (only callable test entities), got %d", report.TotalTests)
+	}
+	// The production SCOPE.Operation is covered.
+	if report.TotalProduction != 1 {
+		t.Errorf("TotalProduction want 1 (SCOPE.Operation now in scope), got %d", report.TotalProduction)
+	}
+	if report.CoveredProduction != 1 {
+		t.Errorf("CoveredProduction want 1, got %d", report.CoveredProduction)
+	}
+}
