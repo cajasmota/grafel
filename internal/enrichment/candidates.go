@@ -62,6 +62,11 @@ type Candidate struct {
 	ID                   string         `json:"id"`
 	Kind                 string         `json:"kind"`
 	SubjectID            string         `json:"subject_id"`
+	// TaskType distinguishes the candidate queue a job belongs to.
+	// "entity" covers describe_entity / classify_domain / describe_role / …;
+	// "community" covers name_community jobs. Absent on older records —
+	// consumers should treat empty-string as "entity" for backward compat.
+	TaskType             string         `json:"task_type,omitempty"`
 	Context              map[string]any `json:"context,omitempty"`
 	PromptTemplate       string         `json:"prompt_template,omitempty"`
 	ConfidenceFloor      float64        `json:"confidence_floor,omitempty"`
@@ -1319,6 +1324,7 @@ func CollectCommunityCandidates(doc *graph.Document, rejected map[string]bool) [
 			ID:        candidateID(sid, KindNameCommunity),
 			Kind:      KindNameCommunity,
 			SubjectID: sid,
+			TaskType:  "community",
 			Context: map[string]any{
 				"community_id": c.ID,
 				"auto_name":    c.AutoName,

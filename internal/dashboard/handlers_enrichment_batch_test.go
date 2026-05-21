@@ -151,7 +151,7 @@ func TestHandleEnrichmentBatch_alreadyQueued(t *testing.T) {
 	srv, q := newZeroWorkerJobsServer(t)
 
 	// Pre-enqueue "ep-001" so it shows as already_queued.
-	_, _ = q.Enqueue("g1", "ep-001", "http_endpoint")
+	_, _ = q.Enqueue("g1", "ep-001", "http_endpoint", "")
 
 	candidates := []batchCandidate{
 		{EntityID: "ep-001", Kind: "http_endpoint"}, // already_queued
@@ -192,7 +192,7 @@ func TestHandleEnrichmentBatch_alreadyEnriched(t *testing.T) {
 	srv, q := newBatchJobsServer(t)
 
 	// Enqueue "ep-done" and wait for it to reach done state.
-	id, _ := q.Enqueue("g1", "ep-done", "http_endpoint")
+	id, _ := q.Enqueue("g1", "ep-done", "http_endpoint", "")
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		j, ok := q.Get(id)

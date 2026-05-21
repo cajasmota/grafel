@@ -25,6 +25,14 @@ var repairKinds = map[string]bool{
 	"dynamic_baseurl_endpoint":   true,
 }
 
+// communityNamingKinds is the closed set of candidate kinds surfaced on the
+// dedicated "Community naming" tab. Separated from entity-level enrichment
+// because community-naming is a different workflow (naming clusters, not
+// enriching individual entities) — refs #1301.
+var communityNamingKinds = map[string]bool{
+	"name_community": true,
+}
+
 // pendingCandidateRow is the wire shape shared by both /api/repairs and
 // /api/enrichments. The richer Context map is forwarded as-is so the
 // dashboard can display subject / proposed-value without a second round-trip.
@@ -130,6 +138,9 @@ func (s *Server) handleEnrichments(w http.ResponseWriter, r *http.Request) {
 			if repairKinds[c.Kind] {
 				continue // repair tab handles these
 			}
+			if communityNamingKinds[c.Kind] {
+				continue // community-naming tab handles these (#1301)
+			}
 			items = append(items, pendingCandidateRow{
 				CandidateID:     c.ID,
 				Repo:            slug,
@@ -167,6 +178,8 @@ type candidateRaw struct {
 	ID              string         `json:"id"`
 	Kind            string         `json:"kind"`
 	SubjectID       string         `json:"subject_id"`
+	// TaskType is "entity" or "community"; empty means "entity" (backward compat).
+	TaskType        string         `json:"task_type,omitempty"`
 	Context         map[string]any `json:"context,omitempty"`
 	Hint            string         `json:"hint,omitempty"`
 	Confidence      float64        `json:"confidence,omitempty"`
@@ -264,6 +277,9 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 		for _, c := range readAllCandidates(repo.Path) {
 			if repairKinds[c.Kind] {
 				continue // repair tab handles these
+			}
+			if communityNamingKinds[c.Kind] {
+				continue // community-naming tab handles these (#1301)
 			}
 			key := c.SubjectID + "|" + c.Kind
 			completed := resolvedSet[key]

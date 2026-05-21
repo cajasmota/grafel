@@ -1,13 +1,13 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchRepairs, fetchEnrichments, postCandidateAction } from '@/api/client'
-import type { PendingCandidateRow, QualificationSignal, EnrichmentProgressBand } from '@/types/api'
+import { fetchRepairs, fetchEnrichments, fetchCommunityNaming, postCandidateAction } from '@/api/client'
+import type { PendingCandidateRow, QualificationSignal, EnrichmentProgressBand, CommunityNamingRow } from '@/types/api'
 import { useEnrichmentProgress } from '@/hooks/shared/useEnrichmentProgress'
 import {
   Wrench, Sparkles, CheckCircle, XCircle, AlertCircle,
   ChevronDown, ChevronRight, Search, EyeOff,
-  ArrowUpDown, Loader2,
+  ArrowUpDown, Loader2, Network,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -881,15 +881,113 @@ function TieredList({ rows, group, emptyMessage, onApplied }: TieredListProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CommunityNamingList — flat list of name_community candidates (#1301)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CommunityNamingListProps {
+  rows: CommunityNamingRow[]
+}
+
+function CommunityNamingList({ rows }: CommunityNamingListProps) {
+  const [searchQ, setSearchQ] = useState('')
+  const q = searchQ.trim().toLowerCase()
+
+  const filtered = useMemo(() =>
+    q ? rows.filter((r) => {
+      const autoName = (r.context?.auto_name as string | undefined ?? '').toLowerCase()
+      const topEntities = JSON.stringify(r.context?.top_entities ?? '').toLowerCase()
+      return autoName.includes(q) || topEntities.includes(q) || r.repo.toLowerCase().includes(q)
+    }) : rows,
+  [rows, q])
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400 dark:text-slate-500">
+        <CheckCircle className="w-10 h-10 text-emerald-400/70" />
+        <p className="text-sm">No pending community naming — all clusters resolved</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-1 min-w-[160px] max-w-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1.5">
+          <Search className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
+          <input
+            type="search"
+            aria-label="Search community naming candidates"
+            placeholder="Search clusters…"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            className="flex-1 bg-transparent text-sm text-slate-700 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-500 outline-none"
+          />
+        </div>
+        <span className="ml-auto text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+          {filtered.length} of {rows.length} clusters
+        </span>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-2 text-slate-400 dark:text-slate-500">
+            <Search className="w-8 h-8 text-slate-300" />
+            <p className="text-sm">No clusters match "{searchQ}"</p>
+          </div>
+        ) : (
+          filtered.map((row) => {
+            const autoName = row.context?.auto_name as string | undefined
+            const size = row.context?.size as number | undefined
+            const topEntities = (row.context?.top_entities as string[] | undefined) ?? []
+            return (
+              <div
+                key={row.candidate_id}
+                className="flex items-start gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+              >
+                <Network className="w-4 h-4 mt-0.5 shrink-0 text-violet-500 dark:text-violet-400" aria-hidden="true" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                    {autoName ?? row.subject_id}
+                    {size != null && (
+                      <span className="ml-2 text-xs font-normal text-slate-400 dark:text-slate-500">
+                        {size} nodes
+                      </span>
+                    )}
+                  </p>
+                  {topEntities.length > 0 && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                      {topEntities.slice(0, 5).join(', ')}
+                      {topEntities.length > 5 && ` +${topEntities.length - 5} more`}
+                    </p>
+                  )}
+                  {row.repo && (
+                    <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{row.repo}</span>
+                  )}
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PendingRoute — Surface 6
 // ─────────────────────────────────────────────────────────────────────────────
 
-type TabId = 'repairs' | 'enrichments'
+type TabId = 'repairs' | 'enrichments' | 'community-naming'
 
 /**
  * Surface 6 — Pending queue.
- * Two tabs: Repair candidates (repair_edge + dynamic_baseurl) and
- * Enrichment candidates (describe_entity, classify_domain, …).
+ * Three tabs:
+ *   1. Repair candidates (repair_edge + dynamic_baseurl)
+ *   2. Enrichment candidates (describe_entity, classify_domain, …) — entity-level
+ *   3. Community naming (name_community) — cluster naming, separated per #1301
+ *
  * Enrichments are bucketed into 4 collapsible tiers: Critical / High / Medium / Low.
  */
 export function PendingRoute() {
@@ -911,6 +1009,13 @@ export function PendingRoute() {
     staleTime: 30 * 1000,
   })
 
+  const communityNamingQuery = useQuery({
+    queryKey: ['community-naming', group],
+    queryFn: () => fetchCommunityNaming(group ?? ''),
+    enabled: !!group,
+    staleTime: 30 * 1000,
+  })
+
   if (!group) {
     return (
       <div className="h-full flex items-center justify-center text-slate-400 dark:text-slate-500">
@@ -921,8 +1026,9 @@ export function PendingRoute() {
 
   const repairCount = repairsQuery.data?.total ?? 0
   const enrichCount = enrichmentsQuery.data?.total ?? 0
-  const isLoading = repairsQuery.isLoading || enrichmentsQuery.isLoading
-  const hasError = repairsQuery.isError || enrichmentsQuery.isError
+  const communityCount = communityNamingQuery.data?.total ?? 0
+  const isLoading = repairsQuery.isLoading || enrichmentsQuery.isLoading || communityNamingQuery.isLoading
+  const hasError = repairsQuery.isError || enrichmentsQuery.isError || communityNamingQuery.isError
 
   const tabs: { id: TabId; label: string; count: number; icon: React.ReactNode }[] = [
     {
@@ -936,6 +1042,12 @@ export function PendingRoute() {
       label: 'Enrichment candidates',
       count: enrichCount,
       icon: <Sparkles className="w-3.5 h-3.5" />,
+    },
+    {
+      id: 'community-naming',
+      label: 'Community naming',
+      count: communityCount,
+      icon: <Network className="w-3.5 h-3.5" />,
     },
   ]
 
@@ -1040,6 +1152,12 @@ export function PendingRoute() {
               emptyMessage="No pending enrichments — all candidates resolved"
               onApplied={() => setAppliedCount((n) => n + 1)}
             />
+          </div>
+        )}
+
+        {!isLoading && !hasError && activeTab === 'community-naming' && (
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <CommunityNamingList rows={communityNamingQuery.data?.items ?? []} />
           </div>
         )}
       </div>

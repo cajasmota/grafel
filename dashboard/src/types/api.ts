@@ -787,6 +787,27 @@ export interface PendingEnrichmentsResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Community naming queue — GET /api/community-naming/{group} (#1301)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** One row returned by GET /api/community-naming/{group}. */
+export interface CommunityNamingRow {
+  candidate_id: string
+  repo: string
+  kind: string
+  subject_id: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context?: Record<string, any>
+  confidence?: number
+  discovered_at?: string
+}
+
+export interface CommunityNamingResponse {
+  items: CommunityNamingRow[]
+  total: number
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Enrichment progress — GET /api/enrichments/{group}/progress (#1286)
 // ────────────────────────────────────────────────────────────────────────────
 

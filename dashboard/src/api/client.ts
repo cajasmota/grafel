@@ -92,6 +92,7 @@ import type {
   EntityNeighborResponse,
   PendingRepairsResponse,
   PendingEnrichmentsResponse,
+  CommunityNamingResponse,
   EnrichmentProgressResponse,
   OrphanCallersResponse,
   OrphanPublishersResponse,
@@ -934,6 +935,14 @@ export async function fetchEnrichments(group: string): Promise<PendingEnrichment
     return { items: [], total: 0 }
   }
   return apiFetch<PendingEnrichmentsResponse>(`/api/enrichments/${group}`)
+}
+
+/** GET /api/community-naming/{group} — name_community candidates (#1301) */
+export async function fetchCommunityNaming(group: string): Promise<CommunityNamingResponse> {
+  if (USE_MOCKS) {
+    return { items: [], total: 0 }
+  }
+  return apiFetch<CommunityNamingResponse>(`/api/community-naming/${group}`)
 }
 
 /** GET /api/enrichments/{group}/progress — per-tier job progress (#1286) */
