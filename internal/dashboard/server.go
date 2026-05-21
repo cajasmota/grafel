@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/jobs"
 	"github.com/cajasmota/archigraph/internal/mcp"
 	"github.com/cajasmota/archigraph/internal/progress"
 )
@@ -52,6 +53,11 @@ type Server struct {
 	// POST /api/quality/recall endpoint returns 503.
 	// Set via SetRecallRunner before calling Serve.
 	recallRunner func(fixtureName string) ([]byte, error)
+
+	// jobQueue is the enrichment job dispatch queue (#1244). Optional: when nil
+	// POST /api/enrichments/{group}/trigger returns 503 and the jobs list is empty.
+	// Set via SetJobQueue before calling Serve.
+	jobQueue *jobs.Queue
 }
 
 // NewServer wires a server against the given config and registry-store
@@ -107,6 +113,14 @@ func (s *Server) SetMCPActivityLog(path string) {
 // Call this from cmd/archigraph before Serve.
 func (s *Server) SetRecallRunner(fn func(fixtureName string) ([]byte, error)) {
 	s.recallRunner = fn
+}
+
+// SetJobQueue wires the enrichment job queue into the dashboard server so
+// that POST /api/enrichments/{group}/trigger dispatches real jobs and
+// GET /api/enrichments/{group}/jobs returns live status.
+// Call this from cmd/archigraph (or any daemon entrypoint) before Serve.
+func (s *Server) SetJobQueue(q *jobs.Queue) {
+	s.jobQueue = q
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is
@@ -254,6 +268,10 @@ func (s *Server) routes() http.Handler {
 	// Candidate apply/reject actions (#1016)
 	mux.HandleFunc("POST /api/repairs/{group}/action", s.handleRepairAction)
 	mux.HandleFunc("POST /api/enrichments/{group}/action", s.handleEnrichmentAction)
+	// Enrichment job dispatch (#1244) — trigger, list, cancel
+	mux.HandleFunc("POST /api/enrichments/{group}/trigger", s.handleEnrichmentTrigger)
+	mux.HandleFunc("GET /api/enrichments/{group}/jobs", s.handleEnrichmentJobs)
+	mux.HandleFunc("POST /api/enrichments/{group}/jobs/{jobId}/cancel", s.handleEnrichmentJobCancel)
 
 	// Settings surface (#1206)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)

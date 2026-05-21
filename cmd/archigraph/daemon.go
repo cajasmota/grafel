@@ -21,6 +21,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/dashboard"
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/jobs"
 	"github.com/cajasmota/archigraph/internal/mcp"
 	"github.com/cajasmota/archigraph/internal/quality"
 	"github.com/cajasmota/archigraph/internal/quality/audit"
@@ -559,6 +560,22 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 		// Wire the recall runner so POST /api/quality/recall can run the
 		// in-process indexer against golden fixtures (#1198).
 		srv.SetRecallRunner(daemonRecallFunc)
+
+		// Wire the enrichment job queue (#1244). Jobs persist to
+		// ~/.archigraph/jobs.jsonl so history survives daemon restarts.
+		var jobHistoryPath string
+		if daemonLayout, layoutErr := daemon.DefaultLayout(); layoutErr == nil {
+			jobHistoryPath = filepath.Join(daemonLayout.Root, "jobs.jsonl")
+		}
+		jobQueue := jobs.NewQueue(jobHistoryPath, jobs.DefaultWorkers)
+		jobQueue.Start()
+		srv.SetJobQueue(jobQueue)
+		// Stop the job queue when the daemon context is cancelled.
+		go func() {
+			<-ctx.Done()
+			jobQueue.Stop()
+		}()
+
 		srv.UseListener(l)
 		if logger != nil {
 			logger.Printf("dashboard ready http://%s/", addr)

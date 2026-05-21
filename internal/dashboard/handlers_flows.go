@@ -294,9 +294,11 @@ func enrichmentHealth(fm *EnrichmentFrontmatter) map[string]bool {
 
 // handleTriggerEnrichment — POST /api/flows/{group}/{processId}/trigger-enrichment
 //
-// Stub endpoint: records intent to regenerate enrichment for a specific flow.
-// Full implementation (invoking the /generate-docs skill via MCP) is deferred
-// to a future epic. Returns 202 Accepted with a status message.
+// Enqueues an enrichment job for a specific flow entity. The job is dispatched
+// to the internal job queue (#1244); the actual agent invocation is stubbed
+// (logs "would invoke agent") until real MCP wiring lands in a follow-up.
+//
+// Returns 202 with the job record so the frontend can poll status.
 func (s *Server) handleTriggerEnrichment(w http.ResponseWriter, r *http.Request) {
 	group := r.PathValue("group")
 	processID := r.PathValue("processId")
@@ -304,12 +306,32 @@ func (s *Server) handleTriggerEnrichment(w http.ResponseWriter, r *http.Request)
 		writeErr(w, http.StatusBadRequest, "group and processId required")
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{
-		"status":     "queued",
-		"message":    "Enrichment regeneration queued for " + processID + ". Run /generate-docs to populate.",
-		"process_id": processID,
-		"group":      group,
-	})
+
+	if s.jobQueue == nil {
+		// Graceful degradation when the queue is not wired (e.g. tests that
+		// don't call SetJobQueue). Return the same 202 shape the stub did.
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"status":     "queued",
+			"message":    "job queue not initialised; enrichment not dispatched",
+			"subject_id": processID,
+			"group":      group,
+		})
+		return
+	}
+
+	kind := r.URL.Query().Get("kind")
+	if kind == "" {
+		kind = "describe_entity"
+	}
+
+	id, err := s.jobQueue.Enqueue(group, processID, kind)
+	if err != nil {
+		writeErr(w, http.StatusTooManyRequests, "job queue full: "+err.Error())
+		return
+	}
+
+	job, _ := s.jobQueue.Get(id)
+	writeJSON(w, http.StatusAccepted, jobToWire(job))
 }
 
 // handleFlowDetail — GET /api/flows/{group}/{processId}
