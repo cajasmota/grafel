@@ -1,0 +1,150 @@
+package progress
+
+import (
+	"os"
+	"strconv"
+	"sync"
+)
+
+const (
+	// defaultBufferSize is the channel capacity per subscriber. Progress events
+	// are best-effort: a slow subscriber gets the most recent events once its
+	// buffer drains — older events are silently dropped rather than blocking the
+	// publisher (and therefore the indexer).
+	defaultBufferSize = 64
+)
+
+// bufferSize returns the effective per-subscriber channel capacity. It can be
+// overridden at process startup via the ARCHIGRAPH_PROGRESS_BUFFER env var.
+func bufferSize() int {
+	if v := os.Getenv("ARCHIGRAPH_PROGRESS_BUFFER"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultBufferSize
+}
+
+// subscriber holds one consumer's channel and its position in the group slice.
+type subscriber struct {
+	ch chan Event
+}
+
+// Broker is a fan-out pub/sub bus keyed by group slug. One Broker instance lives
+// for the lifetime of the daemon process. The indexer publishes events; CLI
+// rebuild, dashboard SSE handlers, and future MCP tools subscribe to them.
+//
+// Publish is non-blocking: if a subscriber's buffer is full the oldest event is
+// dropped so the indexer never stalls waiting for a slow HTTP client.
+type Broker struct {
+	mu   sync.RWMutex
+	subs map[string][]*subscriber
+}
+
+// NewBroker constructs an empty Broker ready for use.
+func NewBroker() *Broker {
+	return &Broker{
+		subs: make(map[string][]*subscriber),
+	}
+}
+
+// Publish fans an event out to every subscriber registered for e.GroupSlug.
+// Each send is attempted with a non-blocking select; if the subscriber's channel
+// is full the event is discarded for that subscriber (drop-on-full, not
+// drop-oldest). This keeps the publisher lock-free on the hot path.
+//
+// Publish implements the Publisher interface so the indexer can use the broker
+// without importing a concrete type.
+func (b *Broker) Publish(e Event) {
+	b.mu.RLock()
+	subs := b.subs[e.GroupSlug]
+	// Snapshot the slice under the read lock so we can send without holding it.
+	targets := make([]*subscriber, len(subs))
+	copy(targets, subs)
+	b.mu.RUnlock()
+
+	for _, s := range targets {
+		select {
+		case s.ch <- e:
+		default:
+			// Subscriber buffer full — drop this event. Progress is best-effort.
+		}
+	}
+}
+
+// BroadcastAll delivers an event to every subscriber across all groups. Useful
+// for daemon-level lifecycle events (e.g. daemon shutdown notice).
+func (b *Broker) BroadcastAll(e Event) {
+	b.mu.RLock()
+	var targets []*subscriber
+	for _, subs := range b.subs {
+		targets = append(targets, subs...)
+	}
+	b.mu.RUnlock()
+
+	for _, s := range targets {
+		select {
+		case s.ch <- e:
+		default:
+		}
+	}
+}
+
+// Subscribe registers a new consumer for progress events from the given group.
+// It returns a receive-only channel and a cancel function. The caller must call
+// cancel when it is done (e.g. when the HTTP connection closes) to free
+// resources and close the channel. Calling cancel more than once is safe.
+//
+//	ch, cancel := broker.Subscribe("my-group")
+//	defer cancel()
+//	for e := range ch { ... }
+func (b *Broker) Subscribe(group string) (<-chan Event, func()) {
+	buf := bufferSize()
+	s := &subscriber{ch: make(chan Event, buf)}
+
+	b.mu.Lock()
+	b.subs[group] = append(b.subs[group], s)
+	b.mu.Unlock()
+
+	var once sync.Once
+	cancel := func() {
+		once.Do(func() {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			b.removeLocked(group, s)
+		})
+	}
+	return s.ch, cancel
+}
+
+// removeLocked removes sub from the group slice and closes its channel.
+// Must be called with b.mu held for writing.
+func (b *Broker) removeLocked(group string, sub *subscriber) {
+	subs := b.subs[group]
+	for i, s := range subs {
+		if s == sub {
+			// Replace with last element and shrink slice.
+			subs[i] = subs[len(subs)-1]
+			subs[len(subs)-1] = nil
+			b.subs[group] = subs[:len(subs)-1]
+			break
+		}
+	}
+	if len(b.subs[group]) == 0 {
+		delete(b.subs, group)
+	}
+	close(sub.ch)
+}
+
+// Stats returns a snapshot of the number of active subscribers per group. It is
+// intended for diagnostics (e.g. a /healthz or metrics endpoint) and takes a
+// read lock so it does not interfere with ongoing publishes.
+func (b *Broker) Stats() map[string]int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make(map[string]int, len(b.subs))
+	for group, subs := range b.subs {
+		out[group] = len(subs)
+	}
+	return out
+}
