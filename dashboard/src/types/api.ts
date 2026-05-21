@@ -406,6 +406,48 @@ export interface TopologyFilters {
   topic?: string
 }
 
+// ── Orphan Publishers / Subscribers (#1136, #1137) ───────────────────────────
+
+export type OrphanReason = 'no_consumer' | 'no_producer' | 'no_handler'
+
+export interface OrphanPublisher {
+  id: string
+  topic_id: string
+  topic_label: string
+  broker: string
+  service: string
+  producer_count: number
+  reason: OrphanReason
+  /** File path of the publish call site */
+  file?: string
+  /** Line number of the publish call site */
+  line?: number
+}
+
+export interface OrphanSubscriber {
+  id: string
+  topic_id: string
+  topic_label: string
+  broker: string
+  service: string
+  consumer_count: number
+  reason: OrphanReason
+  /** File path of the consume call site */
+  file?: string
+  /** Line number of the consume call site */
+  line?: number
+}
+
+export interface OrphanPublishersResponse {
+  publishers: OrphanPublisher[]
+  total: number
+}
+
+export interface OrphanSubscribersResponse {
+  subscribers: OrphanSubscriber[]
+  total: number
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Cross-surface
 // ────────────────────────────────────────────────────────────────────────────

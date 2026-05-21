@@ -88,6 +88,8 @@ import type {
   PendingRepairsResponse,
   PendingEnrichmentsResponse,
   OrphanCallersResponse,
+  OrphanPublishersResponse,
+  OrphanSubscribersResponse,
 } from '@/types/api'
 import type { DocTreeResponse, DocContentResponse, DocSearchResponse, EntityCard } from '@/types/docs'
 
@@ -450,6 +452,46 @@ export async function fetchTopology(
   }
   const params = buildParams(filters as Record<string, unknown>)
   return apiFetch<TopologyResponse>(`/api/topology/${group}?${params}`)
+}
+
+/**
+ * GET /api/topology/{group}/orphan-publishers
+ * Returns producer call sites with no matching consumer. (#1136)
+ * Gracefully returns empty on 404 (backend not yet deployed).
+ */
+export async function fetchOrphanPublishers(
+  group: string,
+): Promise<OrphanPublishersResponse> {
+  if (USE_MOCKS) return { publishers: [], total: 0 }
+  try {
+    return await apiFetch<OrphanPublishersResponse>(`/api/topology/${group}/orphan-publishers`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      console.info('[topology] orphan-publishers endpoint not yet available (404)')
+      return { publishers: [], total: 0 }
+    }
+    throw err
+  }
+}
+
+/**
+ * GET /api/topology/{group}/orphan-subscribers
+ * Returns consumer call sites with no matching producer. (#1137)
+ * Gracefully returns empty on 404 (backend not yet deployed).
+ */
+export async function fetchOrphanSubscribers(
+  group: string,
+): Promise<OrphanSubscribersResponse> {
+  if (USE_MOCKS) return { subscribers: [], total: 0 }
+  try {
+    return await apiFetch<OrphanSubscribersResponse>(`/api/topology/${group}/orphan-subscribers`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      console.info('[topology] orphan-subscribers endpoint not yet available (404)')
+      return { subscribers: [], total: 0 }
+    }
+    throw err
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
