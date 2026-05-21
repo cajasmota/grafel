@@ -281,7 +281,32 @@ func RunProcessFlow(doc *graph.Document, cfg ProcessFlowConfig) processStats {
 				}
 			}
 		}
-		label := fmt.Sprintf("%s → %s", entry.Name, terminalName)
+		// entryLabel is the human-readable name for the entry entity.
+		// entry.Name is the canonical source; fall back through QualifiedName
+		// and then the last path component of the ID so the Process entity
+		// always carries a non-empty, non-hash Name field.
+		entryLabel := entry.Name
+		if entryLabel == "" {
+			entryLabel = entry.QualifiedName
+		}
+		if entryLabel == "" {
+			// Strip any "<repo>::<kind>:" prefix from the ID.
+			if idx := strings.LastIndex(entry.ID, ":"); idx >= 0 && idx < len(entry.ID)-1 {
+				entryLabel = entry.ID[idx+1:]
+			} else {
+				entryLabel = entry.ID
+			}
+		}
+		// terminalLabel: prefer the human name, fall back to last ID segment.
+		terminalLabel := terminalName
+		if terminalLabel == terminalID && terminalID != "" {
+			// terminalName still equals the raw ID (phantom fallback or missing name).
+			// Try stripping the ID prefix for a shorter display value.
+			if idx := strings.LastIndex(terminalID, ":"); idx >= 0 && idx < len(terminalID)-1 {
+				terminalLabel = terminalID[idx+1:]
+			}
+		}
+		label := fmt.Sprintf("%s → %s", entryLabel, terminalLabel)
 
 		props := map[string]string{
 			"entry_id":             entry.ID,

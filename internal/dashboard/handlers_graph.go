@@ -56,6 +56,55 @@ import (
 // X-Graph-Warning response header so the frontend can surface a notice.
 const softNodeWarnThreshold = 50_000
 
+// entityLabel returns the human-readable display label for an entity.
+//
+// For most entities this is e.Name. For Process (SCOPE.Process) entities the
+// Name field holds a synthesised "<entry> → <terminal>" string set by the
+// process-flow BFS pass. If that Name is somehow empty (e.g. the entity was
+// written by an older indexer version, or the entry function itself had an
+// empty Name), we reconstruct a readable label from the stored Properties:
+//
+//  1. entry_name property (the entry function's name, always stored by the pass)
+//  2. chain_labels property (full "A → B → C" string, first/last segment pair)
+//  3. entry_id property (last path component of the entry entity id)
+//  4. The raw entity ID itself (still better than nothing — callers that show
+//     the raw id will at least see a shorter string via this field)
+func entityLabel(e *graph.Entity) string {
+	if e.Name != "" {
+		return e.Name
+	}
+	// Only apply the Properties fallback for Process entities — other kinds
+	// with empty Names are normal (anonymous lambdas, generated stubs, etc.)
+	// and should just propagate the empty string without confusing the caller.
+	if e.Kind != "SCOPE.Process" {
+		return e.Name
+	}
+	if e.Properties != nil {
+		// Prefer the pre-stored entry_name which is the entry function's name.
+		if en := e.Properties["entry_name"]; en != "" {
+			// If we also have chain_labels, derive the terminal name for a richer
+			// "entry → terminal" label that matches what the pass would have built.
+			if cl := e.Properties["chain_labels"]; cl != "" {
+				// chain_labels is "A → B → … → Z"; extract the last segment.
+				parts := strings.Split(cl, " → ")
+				if len(parts) >= 2 {
+					return en + " → " + parts[len(parts)-1]
+				}
+			}
+			return en + " flow"
+		}
+		// Fallback: last path component of entry_id (strips the scope prefix).
+		if eid := e.Properties["entry_id"]; eid != "" {
+			if idx := strings.LastIndexAny(eid, ":./"); idx >= 0 && idx < len(eid)-1 {
+				return eid[idx+1:] + " flow"
+			}
+			return eid + " flow"
+		}
+	}
+	// Last resort: return the raw entity ID so the caller at least has something.
+	return e.ID
+}
+
 // buildDegreeMap returns a map from entity ID to total degree (in + out) for
 // all relationships in a repo.  Used by the dense/mid samplers to rank nodes
 // by connectivity rather than PageRank alone (#1020).
@@ -138,13 +187,16 @@ const externalKindSuffix = "External"
 
 // graphNodeWire is the Tier-1 compact node shape sent over the wire.
 // Fields tagged omitempty are absent for most nodes — keeps JSON tight.
+// Label is NOT omitempty: an empty string must be transmitted explicitly so
+// the frontend client receives "" rather than undefined, which would cause
+// it to fall back to the raw id (e.g. "repo::proc:<hash>").
 type graphNodeWire struct {
 	ID          string `json:"id"`
 	Repo        string `json:"repo"`
 	Kind        string `json:"kind"`
 	Degree      int    `json:"degree"`
 	CommunityID *int   `json:"community_id,omitempty"`
-	Label       string `json:"label,omitempty"`
+	Label       string `json:"label"`
 }
 
 // graphEdgeWire is the Tier-1 compact edge shape.
@@ -265,14 +317,16 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, grp *DashGroup, repos []
 			// Tier 1 compact node: id, repo, kind, degree, community_id, label.
 			// `kind` is included so the frontend can special-case Process sizing (#1121 P3).
 			// `label` is included for ALL entities (#1374) so the frontend never falls back
-			// to repo::<hash-id> for non-Process nodes. Uses e.Name, the same field
-			// returned by the MCP inspect tool.
+			// to repo::<hash-id> for non-Process nodes. entityLabel handles the
+			// SCOPE.Process fallback path: when e.Name is empty (older graph data or
+			// entry function with no name), it reconstructs a readable label from
+			// Properties["entry_name"] and Properties["chain_labels"].
 			node := graphNodeWire{
 				ID:     pid,
 				Repo:   r.Slug,
 				Kind:   strippedKind,
 				Degree: degreeMap[e.ID],
-				Label:  e.Name,
+				Label:  entityLabel(e),
 			}
 			if e.CommunityID != nil {
 				node.CommunityID = e.CommunityID
@@ -376,7 +430,7 @@ func (s *Server) handleGraphLabels(w http.ResponseWriter, r *http.Request) {
 				e := &r.Doc.Entities[i]
 				pid := dashPrefixedID(r.Slug, e.ID)
 				if want[pid] {
-					out = append(out, labelEntry{ID: pid, Label: e.Name})
+					out = append(out, labelEntry{ID: pid, Label: entityLabel(e)})
 				}
 			}
 		}
@@ -410,7 +464,7 @@ func (s *Server) handleGraphLabels(w http.ResponseWriter, r *http.Request) {
 		for i := range repo.Doc.Entities {
 			e := &repo.Doc.Entities[i]
 			pid := dashPrefixedID(repo.Slug, e.ID)
-			all = append(all, degreeLabel{id: pid, label: e.Name, degree: degMap[e.ID]})
+			all = append(all, degreeLabel{id: pid, label: entityLabel(e), degree: degMap[e.ID]})
 		}
 	}
 
@@ -527,7 +581,7 @@ func (s *Server) handleGraphEntity(w http.ResponseWriter, r *http.Request) {
 		if e, ok := entityIndex[nid]; ok {
 			neighbors = append(neighbors, neighborWire{
 				ID:         dashPrefixedID(repo.Slug, e.ID),
-				Label:      e.Name,
+				Label:      entityLabel(e),
 				Kind:       dashStripScopePrefix(e.Kind),
 				SourceFile: e.SourceFile,
 				StartLine:  e.StartLine,
@@ -653,7 +707,7 @@ func (s *Server) handleGroupGodNodes(w http.ResponseWriter, r *http.Request) {
 			}
 			nodes = append(nodes, godNode{
 				ID:       dashPrefixedID(r.Slug, e.ID),
-				Label:    e.Name,
+				Label:    entityLabel(e),
 				Kind:     dashStripScopePrefix(e.Kind),
 				Repo:     r.Slug,
 				PageRank: pr,
