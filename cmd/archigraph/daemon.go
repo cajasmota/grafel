@@ -16,9 +16,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/agents"
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/dashboard"
+	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/quality/audit"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
@@ -296,6 +298,19 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 		// enrichment-candidates.json) when building the post-rebuild summary.
 		// Returning slugs here was the root cause of #1076 (zero counts).
 		rebuilt = append(rebuilt, r.Path)
+
+		// Auto-inject Architecture Map block into AGENTS.md / CLAUDE.md when
+		// opted in. Best-effort: a write failure is logged but never fails the
+		// rebuild so a read-only repo or missing permissions don't surface as
+		// an error to the user (#1216).
+		if cfg.Features.AutoInjectAgentsMD {
+			mapStats := buildAgentsMapStats(cfg.Name, r.Path)
+			if err := agents.InjectArchitectureMap(r.Path, mapStats); err != nil {
+				fmt.Fprintf(os.Stderr,
+					"archigraph: auto-inject agents map for %s: %v (non-fatal)\n",
+					r.Slug, err)
+			}
+		}
 	}
 	// Cross-repo link passes run after every member is indexed.
 	warning := ""
@@ -304,6 +319,49 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 		warning = fmt.Sprintf("link passes failed: %v", err)
 	}
 	return rebuilt, warning, nil
+}
+
+// buildAgentsMapStats loads the per-repo graph artefacts produced by the
+// just-completed index and assembles the Stats struct passed to
+// agents.InjectArchitectureMap. It is intentionally best-effort — any read
+// failure yields a zero-valued field rather than an error.
+func buildAgentsMapStats(group, repoPath string) agents.Stats {
+	stateDir := daemon.StateDirForRepo(repoPath)
+
+	s := agents.Stats{
+		Group:         group,
+		DashboardPort: resolveDefaultDashboardPort(),
+	}
+
+	// Read graph.fb for per-kind entity breakdown. Falls back gracefully if the
+	// file is absent or the FB decoder is unavailable.
+	if doc, err := loadGraphFromStateDir(stateDir); err == nil && doc != nil {
+		s.Entities = doc.Stats.Entities
+		s.Relationships = doc.Stats.Relationships
+		for _, e := range doc.Entities {
+			switch e.Kind {
+			case "http_endpoint":
+				s.HTTPEndpoints++
+			case "queue":
+				s.Queues++
+			case "topic", "pubsub_topic":
+				s.Topics++
+			}
+			if strings.HasPrefix(e.Kind, "SCOPE.Process") || e.Kind == "process" {
+				s.ProcessFlows++
+			}
+		}
+	}
+
+	return s
+}
+
+// loadGraphFromStateDir is a thin wrapper around graph.LoadGraphFromDir that
+// isolates the graph-loading call used by buildAgentsMapStats. Keeping it
+// separate makes it easy to stub in tests without touching the full graph
+// package.
+func loadGraphFromStateDir(stateDir string) (*graph.Document, error) {
+	return graph.LoadGraphFromDir(stateDir)
 }
 
 // daemonQualityAuditFunc is the QualityAuditFunc handed to daemon.Run.
