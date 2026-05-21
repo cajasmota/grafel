@@ -23,6 +23,7 @@ import { SystemRoute } from '@/routes/system'
 import { UpdateRoute } from '@/routes/update'
 import { SettingsRoute } from '@/routes/settings'
 import { QualityRoute } from '@/routes/quality'
+import { SecurityRoute } from '@/routes/security'
 import { MCPActivityRoute } from '@/routes/mcp-activity'
 import { AuditLogRoute } from '@/routes/audit-log'
 import { OnboardRoute } from '@/routes/onboard'
@@ -125,6 +126,10 @@ const router = createBrowserRouter([
       // Surface 11 — Quality / health-score history (#1198, #1214)
       { path: 'quality', element: <Navigate to="/quality/fixture-a" replace /> },
       { path: 'quality/:group', element: <QualityRoute /> },
+
+      // Surface 17 — Security & Quality findings (#1330)
+      { path: 'security', element: <Navigate to="/security/fixture-a" replace /> },
+      { path: 'security/:group', element: <SecurityRoute /> },
 
       // Surface 12 — Settings (#1206)
       { path: 'settings', element: <SettingsRoute /> },

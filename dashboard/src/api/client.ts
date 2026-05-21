@@ -1904,3 +1904,159 @@ export async function fetchExportDSL(
   return res.text()
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Security surface (#1330)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AuthEndpointFinding {
+  entity_id: string
+  name: string
+  repo: string
+  source_file?: string
+  start_line?: number
+  method?: string
+  path?: string
+  has_auth: boolean
+  auth_evidence?: string
+  severity: 'error' | 'warn' | 'info'
+  sensitive_op?: boolean
+  idor_risk?: boolean
+}
+
+export interface GroupAuthCoverageReport {
+  group: string
+  total_endpoints: number
+  covered_count: number
+  uncovered_count: number
+  coverage_pct: number
+  error_count: number
+  warn_count: number
+  info_count: number
+  findings: AuthEndpointFinding[]
+}
+
+export interface SecretFinding {
+  entity_id: string
+  name: string
+  repo: string
+  source_file?: string
+  start_line?: number
+  language?: string
+  category: 'hardcoded_credential' | 'secrets_management' | string
+  provider?: string
+  severity: 'error' | 'warn' | 'info'
+  remediation?: string
+}
+
+export interface GroupSecretsReport {
+  group: string
+  total_findings: number
+  error_count: number
+  warn_count: number
+  info_count: number
+  by_category: Record<string, number>
+  findings: SecretFinding[]
+}
+
+export interface CycleFindingEdge {
+  from_id: string
+  to_id: string
+}
+
+export interface CycleFinding {
+  repo: string
+  members: string[]
+  edges: CycleFindingEdge[]
+  weakest_link_from_id?: string
+  weakest_link_to_id?: string
+  suggested_extraction_id?: string
+  size: number
+  severity: 'error' | 'warn' | 'info'
+}
+
+export interface GroupCyclesReport {
+  group: string
+  total_cycles: number
+  error_count: number
+  warn_count: number
+  info_count: number
+  findings: CycleFinding[]
+}
+
+// N+1 re-export shape (already from /api/quality/anti-patterns)
+export interface NPlusOneFindingFE {
+  caller_entity_id: string
+  caller_name: string
+  caller_file: string
+  caller_start_line: number
+  query_entity_id: string
+  query_name: string
+  query_file: string
+  query_line: number
+  orm: string
+  language: string
+  loop_entity_id?: string
+  loop_subtype?: string
+  suggestion: string
+  severity: 'error' | 'warn' | 'info'
+}
+
+export interface GroupNPlusOneReportFE {
+  group: string
+  total_findings: number
+  entities_scanned: number
+  rels_scanned: number
+  by_orm: Record<string, number>
+  by_language: Record<string, number>
+  findings: NPlusOneFindingFE[]
+}
+
+/** GET /api/security/auth-coverage/{group} */
+export async function fetchSecurityAuthCoverage(
+  group: string,
+  opts?: { severity?: string; file?: string; only_uncovered?: boolean },
+): Promise<GroupAuthCoverageReport> {
+  const params = new URLSearchParams()
+  if (opts?.severity) params.set('severity', opts.severity)
+  if (opts?.file) params.set('file', opts.file)
+  if (opts?.only_uncovered) params.set('only_uncovered', 'true')
+  const qs = params.toString() ? `?${params}` : ''
+  return apiFetch<GroupAuthCoverageReport>(`/api/security/auth-coverage/${encodeURIComponent(group)}${qs}`)
+}
+
+/** GET /api/security/secrets/{group} */
+export async function fetchSecuritySecrets(
+  group: string,
+  opts?: { severity?: string; file?: string },
+): Promise<GroupSecretsReport> {
+  const params = new URLSearchParams()
+  if (opts?.severity) params.set('severity', opts.severity)
+  if (opts?.file) params.set('file', opts.file)
+  const qs = params.toString() ? `?${params}` : ''
+  return apiFetch<GroupSecretsReport>(`/api/security/secrets/${encodeURIComponent(group)}${qs}`)
+}
+
+/** GET /api/security/cycles/{group} */
+export async function fetchSecurityCycles(
+  group: string,
+  opts?: { severity?: string; min_size?: number },
+): Promise<GroupCyclesReport> {
+  const params = new URLSearchParams()
+  if (opts?.severity) params.set('severity', opts.severity)
+  if (opts?.min_size !== undefined) params.set('min_size', String(opts.min_size))
+  const qs = params.toString() ? `?${params}` : ''
+  return apiFetch<GroupCyclesReport>(`/api/security/cycles/${encodeURIComponent(group)}${qs}`)
+}
+
+/** GET /api/quality/anti-patterns/{group} — N+1 reused here for security surface */
+export async function fetchSecurityNPlusOne(
+  group: string,
+  opts?: { orm?: string; file?: string },
+): Promise<GroupNPlusOneReportFE> {
+  const params = new URLSearchParams()
+  if (opts?.orm) params.set('orm', opts.orm)
+  if (opts?.file) params.set('file', opts.file)
+  const qs = params.toString() ? `?${params}` : ''
+  return apiFetch<GroupNPlusOneReportFE>(`/api/quality/anti-patterns/${encodeURIComponent(group)}${qs}`)
+}
+

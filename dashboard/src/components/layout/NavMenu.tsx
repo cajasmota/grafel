@@ -21,6 +21,7 @@ import {
   Network, Workflow, Radio, Globe, BookOpen, Clock,
   Stethoscope, Sparkles, Server, RefreshCw, ChevronDown,
   BarChart2, Settings, Activity, ClipboardList, Zap, HelpCircle,
+  ShieldAlert,
 } from 'lucide-react'
 import {
   prefetchSurface,
@@ -65,9 +66,10 @@ export function exploreItems(group: string): NavEntry[] {
 
 export function operateItems(group: string): NavEntry[] {
   return [
-    { label: 'Diagnostics',   to: '/diagnostics',       icon: <Stethoscope className="w-4 h-4" /> },
-    { label: 'Quality',       to: '/quality',           icon: <BarChart2   className="w-4 h-4" /> },
-    { label: 'Patterns',      to: `/patterns/${group}`,  icon: <Sparkles    className="w-4 h-4" /> },
+    { label: 'Diagnostics',   to: '/diagnostics',          icon: <Stethoscope  className="w-4 h-4" /> },
+    { label: 'Security',      to: `/security/${group}`,    icon: <ShieldAlert  className="w-4 h-4" /> },
+    { label: 'Quality',       to: '/quality',              icon: <BarChart2    className="w-4 h-4" /> },
+    { label: 'Patterns',      to: `/patterns/${group}`,    icon: <Sparkles     className="w-4 h-4" /> },
     { label: 'System',        to: '/system',            icon: <Server      className="w-4 h-4" /> },
     { label: 'Update',        to: '/update',            icon: <RefreshCw   className="w-4 h-4" /> },
     { label: 'MCP Activity',  to: '/mcp-activity',      icon: <Activity       className="w-4 h-4" /> },

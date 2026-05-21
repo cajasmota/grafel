@@ -388,6 +388,11 @@ func (s *Server) routes() http.Handler {
 	// #1323: test-coverage graph — link Test entities to production code.
 	mux.HandleFunc("GET /api/quality/coverage/{group}", s.handleQualityCoverage)
 
+	// #1330: Security & Quality surface — auth coverage, secrets, cycles.
+	mux.HandleFunc("GET /api/security/auth-coverage/{group}", s.handleSecurityAuthCoverage)
+	mux.HandleFunc("GET /api/security/secrets/{group}", s.handleSecuritySecrets)
+	mux.HandleFunc("GET /api/security/cycles/{group}", s.handleSecurityCycles)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)
