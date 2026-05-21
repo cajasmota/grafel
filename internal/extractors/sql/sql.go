@@ -1,21 +1,29 @@
 // Package sql implements the tree-sitter–based extractor for SQL source files.
 //
 // Extracted entities:
-//   - CREATE TABLE  → Kind="SCOPE.Datastore", Subtype="table"
-//   - column        → Kind="SCOPE.Schema",    Subtype="column" (one per column inside a CREATE TABLE)
-//   - CREATE VIEW   → Kind="SCOPE.Datastore", Subtype="view"
-//   - CREATE INDEX  → Kind="SCOPE.Datastore", Subtype="index"
+//   - CREATE TABLE        → Kind="SCOPE.Datastore", Subtype="table"
+//   - column              → Kind="SCOPE.Schema",    Subtype="column" (one per column inside a CREATE TABLE)
+//   - CREATE VIEW         → Kind="SCOPE.Datastore", Subtype="view"
+//   - CREATE INDEX        → Kind="SCOPE.Datastore", Subtype="index"
+//   - CREATE FUNCTION     → Kind="SCOPE.Datastore", Subtype="function"
+//   - CREATE PROCEDURE    → Kind="SCOPE.Datastore", Subtype="procedure"
+//   - RETURNS TRIGGER fn  → Kind="SCOPE.Datastore", Subtype="trigger_function"
+//   - CREATE TRIGGER      → Kind="SCOPE.Datastore", Subtype="trigger"
 //   - dbt {{ ref('model') }}    → Kind="SCOPE.Component",  Subtype="dbt_ref"
 //   - dbt {{ source('s','t') }} → Kind="SCOPE.Datastore",  Subtype="dbt_source"
 //   - dbt {{ config(...) }}     → Kind="SCOPE.Component",  Subtype="dbt_config"
 //
 // Relationships emitted:
-//   - Table    → Column          : CONTAINS
-//   - Column   → ReferencedTable  : REFERENCES (foreign key)
-//   - Index    → Table            : INDEXES
-//   - View     → Table            : READS_FROM   (Issue #389)
-//   - Function → Table            : READS_FROM   (Issue #389; SELECT in body)
-//   - Function → Table            : WRITES_TO    (Issue #389; INSERT/UPDATE/DELETE in body)
+//   - Table            → Column              : CONTAINS
+//   - Column           → ReferencedTable     : REFERENCES (foreign key)
+//   - Index            → Table              : INDEXES
+//   - View             → Table              : READS_FROM   (Issue #389)
+//   - Function         → Table              : READS_FROM   (Issue #389; SELECT in body)
+//   - Function         → Table              : WRITES_TO    (Issue #389; INSERT/UPDATE/DELETE in body)
+//   - Procedure        → Table              : READS_FROM / WRITES_TO (same as function)
+//   - Trigger          → TriggerFunction    : FIRES        (Issue #1414)
+//   - Trigger          → Table              : DEFINED_ON   (Issue #1414)
+//   - TriggerFunction  → Table              : READS_FROM / WRITES_TO (body DML)
 //
 // Migration metadata (Issue #1275):
 //   When a .sql file lives under a migrations/ directory, every emitted table
@@ -66,8 +74,27 @@ var (
 	indexRE = regexp.MustCompile(
 		`(?i)(?m)^\s*CREATE\s+(?:UNIQUE\s+)?(?:CONCURRENTLY\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+ON\s+(?:\w+\.)?(\w+)`,
 	)
+	// funcRE matches CREATE [OR REPLACE] FUNCTION (but NOT PROCEDURE — handled separately).
 	funcRE = regexp.MustCompile(
-		`(?i)(?m)^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:AGGREGATE\s+|PROCEDURE\s+|FUNCTION\s+)(\w+)\s*\(`,
+		`(?i)(?m)^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:AGGREGATE\s+|FUNCTION\s+)(\w+)\s*\(`,
+	)
+
+	// procRE matches CREATE [OR REPLACE] PROCEDURE name(
+	procRE = regexp.MustCompile(
+		`(?i)(?m)^\s*CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+(?:\w+\.)?(\w+)\s*\(`,
+	)
+
+	// triggerFuncBodyRE detects "RETURNS TRIGGER" in a function body —
+	// used to reclassify FUNCTION entities that are PostgreSQL trigger
+	// handler functions (Subtype="trigger_function").
+	triggerFuncBodyRE = regexp.MustCompile(`(?i)\bRETURNS\s+TRIGGER\b`)
+
+	// triggerRE matches CREATE [CONSTRAINT] TRIGGER name ... ON table ...
+	// EXECUTE {FUNCTION|PROCEDURE} func_name
+	// Captures: (1) trigger_name, (2) event (BEFORE|AFTER|INSTEAD OF),
+	//           (3) table_name, (4) func_name
+	triggerRE = regexp.MustCompile(
+		`(?is)CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+(\w+)\s+(?:(BEFORE|AFTER|INSTEAD\s+OF)\s+)?(?:\w+\s+(?:OR\s+\w+\s+)*)?ON\s+(?:\w+\.)?(\w+)\s+.*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:\w+\.)?(\w+)\s*\(`,
 	)
 
 	// dbt Jinja patterns.
@@ -424,7 +451,12 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 		})
 	}
 
-	// Functions / Procedures.
+	// Functions (including trigger-handler functions reclassified to trigger_function).
+	//
+	// Issue #1414: a FUNCTION whose body contains "RETURNS TRIGGER" is a
+	// PostgreSQL trigger handler. Emit it with Subtype="trigger_function" so
+	// downstream graph queries can distinguish it from plain functions and so
+	// TRIGGER entities can reference it via a typed FIRES edge.
 	for _, m := range funcRE.FindAllStringSubmatchIndex(src, -1) {
 		name := src[m[2]:m[3]]
 		key := "function:" + name
@@ -443,13 +475,6 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 		body := sliceFuncBody(src, m[1])
 		reads, writes := extractDMLTargets(body)
 		var rels []types.RelationshipRecord
-		dmlKindFor := func(table string, isWrite bool) string {
-			if isWrite {
-				return "write"
-			}
-			_ = table
-			return "select"
-		}
 		for _, t := range reads {
 			if t == name {
 				continue
@@ -458,7 +483,7 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     name,
 				ToID:       t,
 				Kind:       "READS_FROM",
-				Properties: map[string]string{"dml": dmlKindFor(t, false)},
+				Properties: map[string]string{"dml": "select"},
 			})
 		}
 		for _, t := range writes {
@@ -469,19 +494,139 @@ func extractSQL(src, filePath string) []types.EntityRecord {
 				FromID:     name,
 				ToID:       t,
 				Kind:       "WRITES_TO",
-				Properties: map[string]string{"dml": dmlKindFor(t, true)},
+				Properties: map[string]string{"dml": "write"},
+			})
+		}
+
+		// Determine whether this is a trigger handler function.
+		// RETURNS TRIGGER appears between the parameter list close-paren and
+		// the AS $$ body start. We build a "declaration region" that covers
+		// from the CREATE keyword through the first $$ (or first semicolon for
+		// non-dollar-quoted bodies) so the triggerFuncBodyRE can find it.
+		subtype := "function"
+		signature := fmt.Sprintf("CREATE FUNCTION %s", name)
+		declRegion := sliceFuncDecl(src, m[0], m[1])
+		if triggerFuncBodyRE.MatchString(declRegion) {
+			subtype = "trigger_function"
+			signature = fmt.Sprintf("CREATE FUNCTION %s RETURNS TRIGGER", name)
+		}
+
+		entities = append(entities, types.EntityRecord{
+			Name:               name,
+			Kind:               "SCOPE.Datastore",
+			Subtype:            subtype,
+			SourceFile:         filePath,
+			Language:           "sql",
+			StartLine:          startLine,
+			EndLine:            endLine,
+			Signature:          signature,
+			EnrichmentRequired: false,
+			Relationships:      rels,
+		})
+	}
+
+	// Procedures (Issue #1414): CREATE [OR REPLACE] PROCEDURE name(...)
+	// Distinct from FUNCTION — emitted with Subtype="procedure" and a
+	// correct "CREATE PROCEDURE" signature.
+	for _, m := range procRE.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		key := "procedure:" + name
+		if seen[key] {
+			continue
+		}
+		// Also guard against a name that was already claimed by the funcRE pass
+		// (shouldn't happen given the split regex, but be defensive).
+		if seen["function:"+name] {
+			continue
+		}
+		seen[key] = true
+		startLine := strings.Count(src[:m[0]], "\n") + 1
+		endLine := findBlockEnd(src, m[1]-1)
+
+		body := sliceFuncBody(src, m[1])
+		reads, writes := extractDMLTargets(body)
+		var rels []types.RelationshipRecord
+		for _, t := range reads {
+			if t == name {
+				continue
+			}
+			rels = append(rels, types.RelationshipRecord{
+				FromID:     name,
+				ToID:       t,
+				Kind:       "READS_FROM",
+				Properties: map[string]string{"dml": "select"},
+			})
+		}
+		for _, t := range writes {
+			if t == name {
+				continue
+			}
+			rels = append(rels, types.RelationshipRecord{
+				FromID:     name,
+				ToID:       t,
+				Kind:       "WRITES_TO",
+				Properties: map[string]string{"dml": "write"},
 			})
 		}
 
 		entities = append(entities, types.EntityRecord{
 			Name:               name,
 			Kind:               "SCOPE.Datastore",
-			Subtype:            "function",
+			Subtype:            "procedure",
 			SourceFile:         filePath,
 			Language:           "sql",
 			StartLine:          startLine,
 			EndLine:            endLine,
-			Signature:          fmt.Sprintf("CREATE FUNCTION %s", name),
+			Signature:          fmt.Sprintf("CREATE PROCEDURE %s", name),
+			EnrichmentRequired: false,
+			Relationships:      rels,
+		})
+	}
+
+	// Triggers (Issue #1414): CREATE [CONSTRAINT] TRIGGER name ... ON table
+	// EXECUTE FUNCTION|PROCEDURE func_name(...)
+	//
+	// Emits two edges from the trigger entity:
+	//   - FIRES      → trigger function (the EXECUTE FUNCTION target)
+	//   - DEFINED_ON → table            (the ON <table> target)
+	for _, m := range triggerRE.FindAllStringSubmatchIndex(src, -1) {
+		triggerName := src[m[2]:m[3]]
+		// m[4]:m[5] is the event (BEFORE/AFTER/INSTEAD OF) — optional
+		tableName := src[m[6]:m[7]]
+		funcName := src[m[8]:m[9]]
+
+		key := "trigger:" + triggerName
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		startLine := strings.Count(src[:m[0]], "\n") + 1
+		endLine := findStmtEnd(src, m[0])
+
+		rels := []types.RelationshipRecord{
+			{
+				FromID:     triggerName,
+				ToID:       funcName,
+				Kind:       "FIRES",
+				Properties: map[string]string{"trigger_target": "function"},
+			},
+			{
+				FromID:     triggerName,
+				ToID:       tableName,
+				Kind:       "DEFINED_ON",
+				Properties: map[string]string{"trigger_table": tableName},
+			},
+		}
+
+		entities = append(entities, types.EntityRecord{
+			Name:               triggerName,
+			Kind:               "SCOPE.Datastore",
+			Subtype:            "trigger",
+			SourceFile:         filePath,
+			Language:           "sql",
+			StartLine:          startLine,
+			EndLine:            endLine,
+			Signature:          fmt.Sprintf("CREATE TRIGGER %s ON %s EXECUTE FUNCTION %s", triggerName, tableName, funcName),
 			EnrichmentRequired: false,
 			Relationships:      rels,
 		})
@@ -931,4 +1076,41 @@ func findStmtEnd(src string, startPos int) int {
 		return strings.Count(src, "\n") + 1
 	}
 	return strings.Count(src[:startPos+idx], "\n") + 1
+}
+
+// sliceFuncDecl returns the "declaration region" of a CREATE FUNCTION statement:
+// the text from createStart up to (but not including) the start of the $$ body
+// or the first semicolon.
+//
+// This region contains the function header including the RETURNS clause (e.g.
+// "RETURNS TRIGGER") that sits between the parameter list close-paren and the
+// body marker. It is used by the trigger_function reclassification to find
+// "RETURNS TRIGGER" without scanning the full dollar-quoted body.
+//
+// createStart is the byte offset of "CREATE" in src.
+// headerEnd is the byte offset immediately AFTER the opening "(" of the
+// parameter list (i.e. m[1] from the funcRE match).
+func sliceFuncDecl(src string, createStart, headerEnd int) string {
+	if createStart < 0 || headerEnd < 0 || headerEnd > len(src) {
+		return ""
+	}
+	// Find the close-paren of the parameter list.
+	paramCloseIdx := findBlockEndOffset(src, headerEnd-1)
+	scanFrom := headerEnd
+	if paramCloseIdx > 0 && paramCloseIdx < len(src) {
+		scanFrom = paramCloseIdx + 1
+	}
+	if scanFrom >= len(src) {
+		return src[createStart:]
+	}
+	rest := src[scanFrom:]
+	// Stop at the first $$ (dollar-quote body start).
+	if i := strings.Index(rest, "$$"); i >= 0 {
+		return src[createStart : scanFrom+i]
+	}
+	// No dollar-quote — stop at the first semicolon.
+	if i := strings.Index(rest, ";"); i >= 0 {
+		return src[createStart : scanFrom+i]
+	}
+	return src[createStart:]
 }

@@ -169,6 +169,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		emitReferences(root, file, &entities)
 	}()
 
+	// Issue #1414 — raw SQL procedure call + view read edges.
+	// Scans for cursor.execute("CALL proc(...)") and
+	// cursor.execute("SELECT ... FROM view") patterns and emits
+	// CALLS / READS_FROM edges from the enclosing Python function to
+	// the SQL procedure / view entity. Safe: never removes existing edges.
+	func() {
+		defer func() { _ = recover() }()
+		emitRawSQLDBCallEdges(string(file.Content), file.Path, &entities)
+	}()
+
 	// Track B (analog of #642 for Python) — IMPORTS ToID rewrite.
 	// Rewrites IMPORTS edges whose source_module points at a known
 	// external Python package to an `ext:<module>[:<name>]` ToID so
