@@ -182,10 +182,39 @@ export interface PathTreeNode {
   children: PathTreeNode[]
 }
 
+/** One backend service in the grouped-by-owning_backend response (#1218/#1219). */
+export interface BackendInfo {
+  /** Canonical backend slug / repo name, e.g. "api-service" */
+  name: string
+  /** Human-readable service type, e.g. "REST", "gRPC", "GraphQL" */
+  service_type?: string
+  /** Number of endpoint definitions owned by this backend */
+  count: number
+  /** Paths owned by this backend (populated by Sub-B #1218) */
+  paths: PathRow[]
+  /**
+   * ANY-rate for this backend — fraction of FETCH edges whose method resolves
+   * to ANY (post-#1126 method resolution). Range [0, 1].
+   * Present when the backend analysis has run; absent otherwise.
+   */
+  any_rate?: number
+  /**
+   * True when at least one endpoint in another backend's repo calls a path
+   * defined in this backend.
+   */
+  has_cross_backend_refs?: boolean
+}
+
 export interface PathListResponse {
   paths: PathRow[]
   tree: PathTreeNode[]
   total: number
+  /**
+   * Backend-grouped response from Sub-B (#1218).
+   * Present when the backend has been rebuilt with the grouped handler.
+   * Absent (undefined) in older backends — fall back to flat `paths[]`.
+   */
+  backends?: BackendInfo[]
 }
 
 // ── Orphan Callers — frontend FETCH call sites with no backend handler match ──

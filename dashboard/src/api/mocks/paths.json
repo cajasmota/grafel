@@ -1061,5 +1061,55 @@
   "total": 20,
   "has_more": false,
   "page": 1,
-  "page_size": 50
+  "page_size": 50,
+  "backends": [
+    {
+      "name": "api-service",
+      "service_type": "REST",
+      "count": 4,
+      "any_rate": 0.0,
+      "has_cross_backend_refs": false,
+      "paths": []
+    },
+    {
+      "name": "orders-service",
+      "service_type": "REST",
+      "count": 5,
+      "any_rate": 0.1,
+      "has_cross_backend_refs": true,
+      "paths": []
+    },
+    {
+      "name": "auth-service",
+      "service_type": "REST",
+      "count": 5,
+      "any_rate": 0.0,
+      "has_cross_backend_refs": false,
+      "paths": []
+    },
+    {
+      "name": "catalog-service",
+      "service_type": "REST",
+      "count": 4,
+      "any_rate": 0.0,
+      "has_cross_backend_refs": false,
+      "paths": []
+    },
+    {
+      "name": "payments-service",
+      "service_type": "REST",
+      "count": 1,
+      "any_rate": 0.0,
+      "has_cross_backend_refs": false,
+      "paths": []
+    },
+    {
+      "name": "ci-service",
+      "service_type": "REST",
+      "count": 1,
+      "any_rate": 0.0,
+      "has_cross_backend_refs": false,
+      "paths": []
+    }
+  ]
 }

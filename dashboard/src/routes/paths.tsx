@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, Outlet, useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronUp, ChevronDown, List, Globe } from 'lucide-react'
+import { ChevronUp, ChevronDown, List, Globe, Columns2 } from 'lucide-react'
 import { PathRow } from '@/components/paths/PathRow'
 import { PathsGroup } from '@/components/paths/PathsGroup'
+import { BackendGroup, readCollapsed, writeCollapsed } from '@/components/paths/BackendGroup'
 import { PathSearchInput } from '@/components/paths/PathSearchInput'
 import { OrphanCallersTab } from '@/components/paths/OrphanCallersTab'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -13,10 +14,14 @@ import { usePathList } from '@/hooks/paths/usePathList'
 import { usePathFilters } from '@/hooks/paths/usePathFilters'
 import { useOrphanCallers } from '@/hooks/paths/useOrphanCallers'
 import { groupPaths } from '@/lib/groupPaths'
-import type { PathRow as PathRowType } from '@/types/api'
+import type { PathRow as PathRowType, BackendInfo } from '@/types/api'
 
 // ─── localStorage key for flat/grouped preference ────────────────────────────
 const LS_FLAT_KEY = 'paths-view-flat'
+
+// ─── Default collapse threshold for backends (#1219) ─────────────────────────
+// Backends with fewer than this many endpoints default to collapsed.
+const BACKEND_SMALL_THRESHOLD = 5
 
 function readFlatPref(): boolean {
   try {
@@ -217,6 +222,31 @@ export function PathsRoute() {
     setExpandedGroups((prev) => ({ ...prev, [name]: !prev[name] }))
   }, [])
 
+  // ── Backend expand/collapse state (#1219) ─────────────────────────────────
+  // Map: backendName → expanded boolean.
+  // Initialised lazily from localStorage; small backends default to collapsed.
+  const [expandedBackends, setExpandedBackends] = useState<Record<string, boolean>>({})
+
+  const initBackendExpanded = useCallback((backends: BackendInfo[]) => {
+    const next: Record<string, boolean> = {}
+    for (const b of backends) {
+      const defaultCollapsed = b.count < BACKEND_SMALL_THRESHOLD
+      next[b.name] = !readCollapsed(b.name, defaultCollapsed)
+    }
+    setExpandedBackends(next)
+  }, [])
+
+  const toggleBackend = useCallback((name: string) => {
+    setExpandedBackends((prev) => {
+      const next = { ...prev, [name]: !prev[name] }
+      writeCollapsed(name, !next[name])
+      return next
+    })
+  }, [])
+
+  // ── Compare backends stub (#1219) ─────────────────────────────────────────
+  const [compareOpen, setCompareOpen] = useState(false)
+
   // Filter to backend definitions only — drop any frontend-only FETCH call-site rows.
   // PathRow.endpoints is the discriminant: entries with is_webhook=false and at least one
   // handler in a backend framework are backend defs. In practice the backend already
@@ -225,6 +255,24 @@ export function PathsRoute() {
   const paths = allPaths  // backend already filters; no extra client filter needed
 
   const totalLabel = data ? `${data.total} paths` : ''
+
+  // ── Backend info (#1218/#1219) ────────────────────────────────────────────
+  // Use the backends[] array from Sub-B if available, else undefined (single-backend fallback).
+  const backends = data?.backends
+
+  // Derive whether we are in multi-backend mode
+  const isMultiBackend = backends !== undefined && backends.length > 1
+
+  // Initialise backend expand state when backends change
+  const prevBackendNamesRef = useRef<string>('')
+  useEffect(() => {
+    if (!backends) return
+    const key = backends.map((b) => b.name).join(',')
+    if (key !== prevBackendNamesRef.current) {
+      prevBackendNamesRef.current = key
+      initBackendExpanded(backends)
+    }
+  }, [backends, initBackendExpanded])
 
   // ── Group computation ─────────────────────────────────────────────────────
   const groups = useMemo(() => groupPaths(paths), [paths])
@@ -359,6 +407,19 @@ export function PathsRoute() {
                     Collapse all
                   </button>
                   <span className="flex-1" />
+                  {/* Compare 2 backends — stub UI (#1219) */}
+                  {isMultiBackend && (
+                    <button
+                      type="button"
+                      title="Compare 2 backends side-by-side"
+                      onClick={() => setCompareOpen(true)}
+                      className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                      aria-label="Compare 2 backends"
+                    >
+                      <Columns2 className="w-3.5 h-3.5" aria-hidden />
+                      Compare
+                    </button>
+                  )}
                   <button
                     type="button"
                     title="Switch to flat list"
@@ -386,6 +447,30 @@ export function PathsRoute() {
                     <List className="w-3.5 h-3.5" aria-hidden />
                     Flat list
                   </button>
+                </div>
+              )}
+
+              {/* Compare backends stub — shown when triggered (#1219) */}
+              {compareOpen && isMultiBackend && (
+                <div
+                  className="mx-3 my-2 p-3 rounded border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-xs text-slate-500 dark:text-slate-400"
+                  role="dialog"
+                  aria-label="Compare backends"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-slate-700 dark:text-slate-300">Compare backends</span>
+                    <button
+                      type="button"
+                      onClick={() => setCompareOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                      aria-label="Close compare panel"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p className="text-slate-400 dark:text-slate-500">
+                    Side-by-side backend diff — coming soon. Select two backends from the list to compare endpoint coverage.
+                  </p>
                 </div>
               )}
 
@@ -417,8 +502,57 @@ export function PathsRoute() {
                     group={group}
                     onSelect={(hash) => navigate(`/paths/${group}/${hash}`)}
                   />
+                ) : isMultiBackend && backends ? (
+                  /* ── Two-level grouped list: backend → controller (#1219) ──── */
+                  <div
+                    ref={groupedListRef}
+                    className="flex-1 overflow-y-auto"
+                    role="grid"
+                    aria-label="API paths grouped by backend"
+                    aria-busy={isLoading}
+                  >
+                    <div>
+                      {backends.map((backend) => {
+                        const backendGroups = groupPaths(backend.paths)
+                        const isEmpty = backend.paths.length === 0
+                        return (
+                          <BackendGroup
+                            key={backend.name}
+                            backend={backend}
+                            isExpanded={!!expandedBackends[backend.name]}
+                            onToggle={() => toggleBackend(backend.name)}
+                          >
+                            {isEmpty ? (
+                              /* Empty backend hint */
+                              <div className="px-4 py-3 text-xs text-slate-400 dark:text-slate-500 italic">
+                                {backend.count} endpoint{backend.count !== 1 ? 's' : ''} defined here — index this backend to see details.
+                              </div>
+                            ) : (
+                              backendGroups.map((g) => (
+                                <PathsGroup
+                                  key={`${backend.name}::${g.name}`}
+                                  group={g}
+                                  isExpanded={!!expandedGroups[`${backend.name}::${g.name}`]}
+                                  onToggle={() => toggleGroup(`${backend.name}::${g.name}`)}
+                                >
+                                  {g.paths.map((path) => (
+                                    <PathRow
+                                      key={path.path_hash}
+                                      path={path}
+                                      group={group}
+                                      onSelect={() => navigate(`/paths/${group}/${path.path_hash}`)}
+                                    />
+                                  ))}
+                                </PathsGroup>
+                              ))
+                            )}
+                          </BackendGroup>
+                        )
+                      })}
+                    </div>
+                  </div>
                 ) : (
-                  /* ── Grouped list ──────────────────────────────────────────── */
+                  /* ── Single-backend grouped list (controller only) ─────────── */
                   <div
                     ref={groupedListRef}
                     className="flex-1 overflow-y-auto"

@@ -73,6 +73,7 @@ async function loadMock<T>(name: string): Promise<T> {
 import type {
   Registry,
   PathListResponse,
+  PathRow,
   PathDetailResponse,
   PathFilters,
   FlowListResponse,
@@ -168,15 +169,36 @@ function normalizeTreeNode(n: WireTreeNode): PathTreeNode {
 }
 
 function normalizePathListResponse(raw: PathListResponse): PathListResponse {
+  const normalizedPaths = (raw.paths ?? []).map((p) => ({
+    ...p,
+    verbs: p.verbs ?? [],
+    handlers: (p as unknown as { handlers?: unknown[] }).handlers as never ?? [],
+    repos: p.repos ?? [],
+    frameworks: p.frameworks ?? [],
+  }))
+
+  // Normalize backends if present (#1218/#1219).
+  // When a backend's paths[] is empty (legacy shape or mock), back-fill from the
+  // flat normalizedPaths array by matching against path.repos.
+  let backends = raw.backends
+  if (backends && backends.length > 0) {
+    backends = backends.map((b) => {
+      const bPaths = b.paths && b.paths.length > 0
+        ? b.paths.map((p) => ({
+            ...p,
+            verbs: p.verbs ?? [],
+            repos: p.repos ?? [],
+            frameworks: p.frameworks ?? [],
+          }))
+        : normalizedPaths.filter((p) => p.repos.includes(b.name))
+      return { ...b, paths: bPaths }
+    })
+  }
+
   return {
     ...raw,
-    paths: (raw.paths ?? []).map((p) => ({
-      ...p,
-      verbs: p.verbs ?? [],
-      handlers: (p as unknown as { handlers?: unknown[] }).handlers as never ?? [],
-      repos: p.repos ?? [],
-      frameworks: p.frameworks ?? [],
-    })),
+    paths: normalizedPaths,
+    backends,
     tree: (raw.tree ?? []).map((n) => normalizeTreeNode(n as unknown as WireTreeNode)),
   }
 }
@@ -749,32 +771,43 @@ function applyMockFilters(
   data: PathListResponse,
   filters: PathFilters,
 ): PathListResponse {
-  let paths = [...data.paths]
+  function filterPathRows(rows: PathRow[]): PathRow[] {
+    let result = [...rows]
+    if (filters.q) {
+      const q = filters.q.toLowerCase()
+      result = result.filter((p) => p.path.toLowerCase().includes(q))
+    }
+    if (filters.prefix) {
+      result = result.filter((p) => p.path.startsWith(filters.prefix!))
+    }
+    if (filters.repo) {
+      result = result.filter((p) => p.repos.includes(filters.repo!))
+    }
+    if (filters.framework) {
+      result = result.filter((p) => p.frameworks.includes(filters.framework!))
+    }
+    if (filters.is_webhook !== undefined) {
+      result = result.filter((p) => p.is_webhook === filters.is_webhook)
+    }
+    return result
+  }
 
-  if (filters.q) {
-    const q = filters.q.toLowerCase()
-    paths = paths.filter((p) => p.path.toLowerCase().includes(q))
-  }
-  if (filters.prefix) {
-    paths = paths.filter((p) => p.path.startsWith(filters.prefix!))
-  }
-  if (filters.repo) {
-    paths = paths.filter((p) => p.repos.includes(filters.repo!))
-  }
-  if (filters.framework) {
-    paths = paths.filter((p) => p.frameworks.includes(filters.framework!))
-  }
-  if (filters.is_webhook !== undefined) {
-    paths = paths.filter((p) => p.is_webhook === filters.is_webhook)
-  }
+  const paths = filterPathRows(data.paths)
+
+  // Also filter backend paths to keep them in sync with the flat list
+  const backends = data.backends?.map((b) => {
+    const filtered = filterPathRows(b.paths)
+    return { ...b, paths: filtered, count: filtered.length }
+  }).filter((b) => b.paths.length > 0)
 
   return {
     ...data,
     paths,
+    backends,
     total: paths.length,
-    has_more: false,
   }
 }
+
 
 // ── Surface 5: Docs ───────────────────────────────────────────────────────────
 
