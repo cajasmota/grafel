@@ -257,7 +257,12 @@ const GraphCanvasInner = ({
   // ---------------------------------------------------------------------------
   // Derived per-node values
   // ---------------------------------------------------------------------------
-  const computeSize = (d: number): number => 2 + Math.log10(d + 1) * 12
+  // scalePointsOnZoom:true means rendered screen-px = setPointSizes[i] * pointSizeScale * zoomLevel.
+  // Full-fit zoom for 19k nodes ≈ 0.074 (nodes span ~12k of 32768 space on 1248px canvas).
+  // With pointSizeScale=0.22: rendered_px = size * 0.22 * 0.074 = size * 0.016.
+  // DEFAULT_BASE_SIZE=120 → ~2px at full-fit (visible dots), 120*0.22*5=132px at zoom=5.
+  // The fallback computeSize uses the same base so both paths produce compatible sizes.
+  const computeSize = (d: number): number => 120 + Math.log10(d + 1) * 30
 
   const sortedDegrees = useMemo(
     () => nodes.map((n) => n.degree ?? 0).sort((a, b) => a - b),
@@ -302,7 +307,8 @@ const GraphCanvasInner = ({
       clusterStrength[i] = 0.04 + normalizedPR * 0.06
 
       sizes[i] = n.kind === 'Process'
-        ? 4 + Math.min((n.degree ?? 0) * 0.005, 6)
+        // Process nodes: same base scale (120) so they're visible at fit zoom
+        ? 120 + Math.min((n.degree ?? 0) * 0.5, 60)
         : nodeSizingConfig
           ? computeTunedSize(n.degree ?? 0, getPercentile, nodeSizingConfig)
           : computeSize(n.degree ?? 0)
@@ -568,26 +574,32 @@ const GraphCanvasInner = ({
       backgroundColor: bg,
       // Max space so the galaxy can expand into distinct islands instead of
       // collapsing to one dense disc. Larger = more room between communities.
-      spaceSize: 16384,
+      // Raised from 16384 → 32768 so the seed jitter radius (up to ~10k units
+      // for large repos) stays well within the half-space (16384 margin) and
+      // nodes never stack against the simulation boundary (which created the
+      // rectangular perimeter artifact visible at full-fit zoom).
+      spaceSize: 32768,
       pixelRatio: Math.min(window.devicePixelRatio, 1.5),
-      scalePointsOnZoom: false,
-      // Shrink every point's on-screen footprint. At the full-fit zoom level
-      // 19k nodes pack hundreds of points per pixel in dense island cores; even
-      // at low opacity that many additive overlaps clip to white and hide both
-      // the degree gradient AND the per-community island colors. A sub-1 size
-      // scale cuts the per-pixel overlap count so cores read as COLOR at fit
-      // zoom, while scalePointsOnZoom:false keeps detail legible when zoomed in.
-      pointSizeScale: 0.5,
-      // cosmos.gl blends points additively — at 19k+ node density, opaque
-      // points saturate the dense core to pure WHITE and wash out the gradient
-      // (the Phase-1 "glowing white blob"). Additive RGB clips to white once
-      // ~4-5 points overlap, so opacity alone isn't enough when island cores
-      // are tightly packed — we ALSO loosen the cluster force below so each
-      // island spreads internally and local point density drops. At 0.22 even
-      // a handful of overlaps stay below saturation, so dense cores show their
-      // COLOR (the Silk Road degree gradient) instead of clipping to white.
-      pointOpacity: 0.15,
-      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.12,
+      // scalePointsOnZoom: true — nodes grow visibly as you zoom in so you can
+      // see and click individual nodes at deep zoom. Phase 2 had this false which
+      // kept nodes as tiny dots even at maximum zoom. With scale-on-zoom enabled
+      // we can afford a larger base size (see useNodeSizingConfig DEFAULT_BASE_SIZE
+      // raised to 9) and a moderate pointSizeScale that balances both extremes:
+      //   full-fit  → nodes are small (far out) but not washed out / white
+      //   deep zoom → nodes grow with zoom and are clearly visible + clickable
+      scalePointsOnZoom: true,
+      // Size scale tuned for scalePointsOnZoom:true with DEFAULT_BASE_SIZE=120.
+      // With base=120 and fit-zoom≈0.074:
+      //   rendered_px = 120 * pointSizeScale * 0.074 = 120 * 0.22 * 0.074 ≈ 2px at full-fit
+      //   rendered_px = 120 * 0.22 * 5 = 132px at zoom=5 (clearly big nodes)
+      // This gives sub-3px dots at full-fit (not washed out) and very visible
+      // nodes at any reasonable deep-zoom level.
+      pointSizeScale: 0.22,
+      // At full-fit each pixel is covered by many tiny dots (additive blend).
+      // 0.25 keeps dense cores from saturating to white while still showing color.
+      // At deep zoom nodes are 100px+ circles with few overlaps → looks great.
+      pointOpacity: 0.25,
+      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.18,
       // Links also blend additively; at this density they were a major source
       // of the white wash. Keep them extremely faint so node color dominates.
       linkGreyoutOpacity: repoFilterActive ? 0 : 0.05,
@@ -630,8 +642,15 @@ const GraphCanvasInner = ({
       // No center pull — center gravity re-fuses islands into a single mass.
       simulationCenter: 0.0,
 
-      // Use our wide pre-seeded positions directly (no rescale-to-fit collapse).
-      rescalePositions: false,
+      // rescalePositions: true — let cosmos.gl rescale the seeded ring positions
+      // into the canvas space at init. Phase 2 had this false which, combined
+      // with the 16384 spaceSize, caused the outermost seeded nodes (at radius
+      // up to ~10k) to land near or at the simulation boundary, producing a
+      // hard RECTANGULAR perimeter (nodes piled on the box edges). With
+      // rescalePositions:true the engine fits the positions into the canvas
+      // area so no nodes start at a boundary, and the cluster + repulsion forces
+      // pull them into organic island shapes instead of a box outline.
+      rescalePositions: true,
       fitViewOnInit: true,
       fitViewDelay: 3500,
 
@@ -762,7 +781,7 @@ const GraphCanvasInner = ({
     // spaceSize at runtime forces a costly resize + re-layout.
     g.setConfig({
       backgroundColor: isDark ? '#020617' : '#f8fafc',
-      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.15,
+      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.18,
       linkGreyoutOpacity: repoFilterActive ? 0 : 0.1,
       simulationLinkSpring: simCfg.linkSpring,
       simulationLinkDistance: simCfg.linkDistance,
