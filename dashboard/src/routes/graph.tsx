@@ -11,6 +11,7 @@ import { useColorMode } from '@/hooks/graph/useColorMode'
 import { useSimulationConfig } from '@/hooks/graph/useSimulationConfig'
 import { useGraphHighlight } from '@/hooks/graph/useGraphHighlight'
 import { useGraphFilter, filterNodes } from '@/hooks/graph/useGraphFilter'
+import { useGraphKeyboardNav } from '@/hooks/graph/useGraphKeyboardNav'
 import { useGraphCameraStore, useSimulationRunning } from '@/store/graphCameraStore'
 import { useThemeContext } from '@/context/ThemeContext'
 import { GraphCanvas } from '@/components/graph/GraphCanvas'
@@ -21,6 +22,7 @@ import { EdgeKindFilters } from '@/components/graph/EdgeKindFilters'
 import { CommunityLegend } from '@/components/graph/CommunityLegend'
 import { EntityInspector } from '@/components/graph/EntityInspector'
 import { GraphSearchTypeahead } from '@/components/graph/GraphSearchTypeahead'
+import { NodeBreadcrumb } from '@/components/graph/NodeBreadcrumb'
 import {
   GraphEmptyState,
   GraphLoadingState,
@@ -213,6 +215,19 @@ export function GraphRoute() {
     setShowSearchResults(searchQuery.length > 0)
   }, [searchQuery])
 
+  // ── Keyboard navigation (#1368) ────────────────────────────────────────────
+  const searchResultIds = useMemo(() => searchResults.map((n) => n.id), [searchResults])
+
+  const { navHistory, historyIdx } = useGraphKeyboardNav({
+    nodes,
+    edges,
+    selectedNodeId,
+    selectNode,
+    clearSelection,
+    searchResultIds,
+    enabled: !isLoading && !error && nodes.length > 0,
+  })
+
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleNodeClick = useCallback((node: GraphNode) => {
     selectNode(node.id)
@@ -225,12 +240,10 @@ export function GraphRoute() {
   }, [clearSelection, graphRef])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  // Note: '/' (search focus), arrow-nav, Tab, F, 0, n, p, Cmd+[/] are handled
+  // by useGraphKeyboardNav (#1368). This handler keeps Escape for search / deselect.
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      if (e.key === '/' && !isInputActive()) {
-        e.preventDefault()
-        document.getElementById('graph-search')?.focus()
-      }
       if (e.key === 'Escape') {
         if (showSearchResults) {
           setShowSearchResults(false)
@@ -258,6 +271,12 @@ export function GraphRoute() {
     zoomToNode(node.id)
     setSearchQuery('')
     setShowSearchResults(false)
+  }, [selectNode, zoomToNode])
+
+  /** Jump to node from breadcrumb trail (#1368) */
+  const handleBreadcrumbSelect = useCallback((id: string) => {
+    selectNode(id)
+    zoomToNode(id)
   }, [selectNode, zoomToNode])
 
   /** Opens the Snapshot view modal. #1362 */
@@ -453,6 +472,18 @@ export function GraphRoute() {
           >
             ✕ back to all
           </button>
+        </div>
+      )}
+
+      {/* Keyboard navigation breadcrumb — only shown after 2+ nodes visited (#1368) */}
+      {navHistory.length > 1 && (
+        <div className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80">
+          <NodeBreadcrumb
+            nodes={nodes}
+            history={navHistory}
+            historyIdx={historyIdx}
+            onSelectNode={handleBreadcrumbSelect}
+          />
         </div>
       )}
 
@@ -815,10 +846,4 @@ export function GraphRoute() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function isInputActive(): boolean {
-  const el = document.activeElement
-  return el instanceof HTMLInputElement ||
-    el instanceof HTMLTextAreaElement ||
-    (el instanceof HTMLElement && el.isContentEditable)
-}
+// (isInputActive moved to useGraphKeyboardNav — #1368)
