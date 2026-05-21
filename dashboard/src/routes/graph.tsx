@@ -22,6 +22,7 @@ import {
   GraphLoadingState,
   GraphErrorState,
 } from '@/components/graph/GraphEmptyState'
+import { MCPActivityOverlay } from '@/components/graph/MCPActivityOverlay'
 import { IndexingProgressModal } from '@/components/indexing/IndexingProgressModal'
 import { repoColor } from '@/lib/colors'
 import { RefreshCw } from 'lucide-react'
@@ -56,8 +57,19 @@ export function GraphRoute() {
   // ── Color mode (#1153 — persisted to localStorage) ────────────────────────
   const { colorMode, setColorMode } = useColorMode()
 
-  // ── Jarvis MCP highlight overlay (#1157 — stub, reserved for future) ─────
-  const { highlightedNodeIds } = useGraphHighlight()
+  // ── Jarvis MCP highlight overlay (#1157, Phase 2 — live SSE subscription) ─
+  const {
+    highlightedNodeIds,
+    highlightedEdgeIds,
+    isActive: mcpHighlightActive,
+    agentId: mcpAgentId,
+    enabled: mcpOverlayEnabled,
+    setEnabled: setMcpOverlayEnabled,
+    sseConnected: mcpSseConnected,
+    eventLog: mcpEventLog,
+    totalCount: mcpTotalCount,
+    replayHighlight: mcpReplayHighlight,
+  } = useGraphHighlight()
 
   // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -421,6 +433,40 @@ export function GraphRoute() {
 
           <div className="border-t border-slate-200 dark:border-slate-700" />
 
+          {/* MCP activity overlay toggle (#1157, Phase 2) */}
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-600 font-semibold px-2 pb-1">
+              Overlays
+            </p>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={mcpOverlayEnabled}
+              onClick={() => setMcpOverlayEnabled(!mcpOverlayEnabled)}
+              title={mcpOverlayEnabled ? 'Disable MCP activity overlay' : 'Enable MCP activity overlay'}
+              className={[
+                'flex items-center gap-2 px-2 py-1 rounded text-left text-xs w-full transition-colors',
+                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
+                mcpOverlayEnabled
+                  ? 'bg-sky-900/40 text-sky-300 dark:text-sky-300'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800/60',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'w-1.5 h-1.5 rounded-full shrink-0 transition-all',
+                  mcpOverlayEnabled
+                    ? mcpHighlightActive ? 'bg-sky-300 animate-pulse' : 'bg-sky-400'
+                    : 'bg-slate-600',
+                ].join(' ')}
+                aria-hidden
+              />
+              MCP activity
+            </button>
+          </div>
+
+          <div className="border-t border-slate-200 dark:border-slate-700" />
+
           {/* Repo filter */}
           {allRepoSlugs.length > 0 && (
             <div>
@@ -542,8 +588,21 @@ export function GraphRoute() {
               activeRepos={effectiveActiveRepos}
               colorMode={colorMode}
               forceVisibleIds={highlightedNodeIds}
+              highlightedEdgeIds={highlightedEdgeIds}
             />
           )}
+
+          {/* #1157 Phase 2: Jarvis MCP activity overlay — pulse badge + log panel */}
+          <MCPActivityOverlay
+            enabled={mcpOverlayEnabled}
+            connected={mcpSseConnected}
+            isActive={mcpHighlightActive}
+            agentId={mcpAgentId}
+            totalCount={mcpTotalCount}
+            eventLog={mcpEventLog}
+            onReplay={mcpReplayHighlight}
+            isDark={isDark}
+          />
 
           {/* Hover tooltip — label + neighbor counts (#1060) */}
           {hoveredNodeId && cursorPos && (() => {
