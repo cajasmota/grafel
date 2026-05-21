@@ -41,6 +41,128 @@ export interface Entity {
   outbound: number;
 }
 
+/* ------------------------------------------------------------------ *
+ * Graph screen — wire + domain shapes.
+ *
+ * The wire shapes (snake_case) mirror v2_graph.go's JSON exactly. The
+ * data hook normalizes them into the camelCase domain shapes the screen +
+ * cosmos canvas consume.
+ * ------------------------------------------------------------------ */
+
+/** Raw node as emitted by GET /api/v2/graph/{group}. */
+export interface GraphNodeWire {
+  id: string;
+  label: string;
+  kind: string;
+  repo: string;
+  degree: number;
+  pagerank: number;
+  community_id?: number;
+  source_file?: string;
+}
+
+export interface GraphEdgeWire {
+  source: string;
+  target: string;
+  kind: string;
+}
+
+export interface GraphCommunityWire {
+  id: number;
+  label: string;
+  repo: string;
+  size: number;
+  color_index: number;
+}
+
+export interface GraphRepoWire {
+  id: string;
+  language: string;
+  color_index: number;
+}
+
+export interface GraphPayloadWire {
+  nodes: GraphNodeWire[];
+  edges: GraphEdgeWire[];
+  communities: GraphCommunityWire[];
+  repos: GraphRepoWire[];
+  total_node_count: number;
+}
+
+/** Normalized node consumed by the canvas + inspector. */
+export interface GraphNode {
+  id: string;
+  label: string;
+  kind: string;
+  repo: string;
+  degree: number;
+  pageRank: number;
+  communityId: number | null;
+  sourceFile: string;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  kind: string;
+}
+
+export interface GraphCommunity {
+  id: number;
+  label: string;
+  repo: string;
+  size: number;
+  colorIndex: number;
+}
+
+export interface GraphRepo {
+  id: string;
+  language: string;
+  colorIndex: number;
+}
+
+export interface GraphPayload {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  communities: GraphCommunity[];
+  repos: GraphRepo[];
+  totalNodeCount: number;
+}
+
+/** Tier-3 entity detail — GET /api/graph/{group}/entity/{id} (v1, reused). */
+export interface EntityEdgeWire {
+  from_id: string;
+  to_id: string;
+  kind: string;
+  cross_repo?: boolean;
+}
+export interface EntityNeighborWire {
+  id: string;
+  label: string;
+  kind: string;
+  source_file: string;
+  start_line: number;
+  repo: string;
+}
+export interface EntityDetailWire {
+  entity: {
+    id: string;
+    name: string;
+    kind: string;
+    source_file: string;
+    start_line: number;
+    repo?: string;
+    pagerank?: number;
+  };
+  inbound_edges: EntityEdgeWire[];
+  outbound_edges: EntityEdgeWire[];
+  neighbors: EntityNeighborWire[];
+  in_degree: number;
+  out_degree: number;
+  community_name?: string;
+  betweenness?: number;
+}
+
 /** Derived health state for a group (computed server-side in v2_groups.go). */
 export type GroupHealth = "healthy" | "warning" | "unindexed";
 

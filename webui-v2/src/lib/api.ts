@@ -9,7 +9,16 @@
    UI never hardcodes the live :47274 daemon during development.
    ============================================================ */
 
-import type { Group, Entity, Community, SettingsGroup, SettingsFeatures, DoctorCheck } from "@/data/types";
+import type {
+  Group,
+  Entity,
+  Community,
+  GraphPayloadWire,
+  EntityDetailWire,
+  SettingsGroup,
+  SettingsFeatures,
+  DoctorCheck,
+} from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
 const BASE_V2 = import.meta.env.VITE_AG_API_BASE_V2 ?? "/api/v2";
@@ -90,8 +99,23 @@ export const api = {
   createGroup: (name: string) =>
     requestV2<Group>("/groups", { method: "POST", body: JSON.stringify({ name }) }),
 
+  /** v2 — the full graph payload (nodes/edges/communities/repos) for the Graph
+   *  screen. `params` maps to the daemon's repo/kind filters. */
+  getGraph: (groupId: string, params?: { repos?: string[]; filterKind?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.repos && params.repos.length > 0) qs.set("repos", params.repos.join(","));
+    if (params?.filterKind) qs.set("filter_kind", params.filterKind);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return requestV2<GraphPayloadWire>(`/graph/${encodeURIComponent(groupId)}${suffix}`);
+  },
+
   // --- v1 surfaces still used by other (placeholder) screens ---
   getGroup: (groupId: string) => request<Group>(`/groups/${groupId}`),
+  /** v1 — Tier-3 entity detail for the inspector (lazy, on node click). */
+  getEntityDetail: (groupId: string, entityId: string) =>
+    request<EntityDetailWire>(
+      `/graph/${encodeURIComponent(groupId)}/entity/${encodeURIComponent(entityId)}`,
+    ),
   listCommunities: (groupId: string) => request<Community[]>(`/groups/${groupId}/communities`),
   searchEntities: (groupId: string, q: string) =>
     request<Entity[]>(`/groups/${groupId}/entities?q=${encodeURIComponent(q)}`),
