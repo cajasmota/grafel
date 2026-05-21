@@ -497,6 +497,14 @@ func (s *Server) routes() http.Handler {
 	// #1345: Architectural fitness functions — user-defined rules with CI gates.
 	mux.HandleFunc("GET /api/fitness/{group}", s.handleFitness)
 
+	// #1353: Graph snapshots — save, list, delete, diff graph state across time.
+	// NOTE: /api/snapshots/{group}/{id}/diff must be registered before
+	// /api/snapshots/{group}/{id} so the static suffix wins Go 1.22 precedence.
+	mux.HandleFunc("POST /api/snapshots/{group}", s.handleSaveSnapshot)
+	mux.HandleFunc("GET /api/snapshots/{group}", s.handleListSnapshots)
+	mux.HandleFunc("GET /api/snapshots/{group}/{id}/diff", s.handleSnapshotDiff)
+	mux.HandleFunc("DELETE /api/snapshots/{group}/{id}", s.handleDeleteSnapshot)
+
 	return s.withAuth(withGzip(mux))
 }
 
