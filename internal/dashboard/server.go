@@ -488,6 +488,9 @@ func (s *Server) routes() http.Handler {
 	// GET /api/dependencies/{group}  — declared + used/unused/phantom classification
 	mux.HandleFunc("GET /api/dependencies/{group}", s.handleDependencies)
 
+	// #1345: Architectural fitness functions — user-defined rules with CI gates.
+	mux.HandleFunc("GET /api/fitness/{group}", s.handleFitness)
+
 	return s.withAuth(withGzip(mux))
 }
 
