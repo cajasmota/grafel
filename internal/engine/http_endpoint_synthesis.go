@@ -300,6 +300,11 @@ func applyHTTPEndpointSynthesis(
 	case "kotlin":
 		// Consumer side (#721 wave 2a): Ktor, OkHttp-Kotlin, Retrofit-K.
 		synthesizeKotlinClientWithRuntime(string(content), emitClientRuntime)
+		// Consumer side (#1421): Spring RestTemplate / WebClient / FeignClient
+		// are commonly used in Kotlin Spring Boot services. The Java client
+		// synthesizer covers these patterns idiomatically since both JVM
+		// languages share the same Spring APIs.
+		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
 	case "ruby":
 		// Consumer side (#721 wave 2b): Net::HTTP, Faraday, HTTParty, RestClient.
 		synthesizeRubyClientWithRuntime(string(content), emitClientRuntime)
