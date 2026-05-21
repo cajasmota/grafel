@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -29,6 +30,7 @@ import (
 	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
+	"github.com/cajasmota/archigraph/internal/progress"
 	"github.com/cajasmota/archigraph/internal/resolve"
 	"github.com/cajasmota/archigraph/internal/treesitter"
 	"github.com/cajasmota/archigraph/internal/types"
@@ -110,6 +112,14 @@ type Indexer struct {
 	// list; merged into the hard-coded skip list at walk-time.
 	additionalSkipDirs []string
 
+	// publisher receives structured progress events at every pipeline phase
+	// boundary and at every TickEveryNFiles interval during AST extraction.
+	// Defaults to progress.NoOpPublisher so callers that do not wire a sink
+	// pay zero overhead.
+	publisher  progress.Publisher
+	groupSlug  string // forwarded to every Event.GroupSlug
+	repoSlug   string // forwarded to every Event.RepoSlug; defaults to repoTag
+
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
 
@@ -179,6 +189,24 @@ func WithPrintSkipped(enabled bool) IndexOption {
 // with per-group names from fleet.json's additional_skip_dirs field.
 func WithAdditionalSkipDirs(dirs []string) IndexOption {
 	return func(i *Indexer) { i.additionalSkipDirs = dirs }
+}
+
+// WithPublisher wires a progress.Publisher into the indexer. The publisher
+// receives one Event per pipeline phase boundary, per N=TickEveryNFiles
+// files during AST extraction, and per algorithm entry/exit. Defaults to
+// progress.NoOpPublisher when not set.
+func WithPublisher(pub progress.Publisher) IndexOption {
+	return func(i *Indexer) { i.publisher = pub }
+}
+
+// WithProgressSlugs sets the group and repo slug forwarded on every progress
+// event. Call this alongside WithPublisher when the indexer is running inside
+// a daemon rebuild (where the group and slug are known).
+func WithProgressSlugs(groupSlug, repoSlug string) IndexOption {
+	return func(i *Indexer) {
+		i.groupSlug = groupSlug
+		i.repoSlug = repoSlug
+	}
 }
 
 type indexerStats struct {
@@ -415,17 +443,39 @@ func emitJSONStats(w io.Writer, idx *Indexer, doc *graph.Document) error {
 func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, error) {
 	start := time.Now()
 
+	// Resolve the publisher. Default to NoOp so callers without a sink pay
+	// zero overhead (a nil check on every Publish call is more expensive than
+	// a virtual dispatch to an empty method).
+	pub := i.publisher
+	if pub == nil {
+		pub = progress.NoOpPublisher{}
+	}
+	repoSlug := i.repoSlug
+	if repoSlug == "" {
+		repoSlug = i.repoTag
+	}
+	trk := progress.NewTracker(pub, i.groupSlug, repoSlug)
+
 	walkOpts := &walk.Options{
 		AdditionalSkipDirs: i.additionalSkipDirs,
 	}
 	if i.printSkipped {
 		walkOpts.PrintSkipped = os.Stderr
 	}
+
+	// Emit a scanning phase event before the walk so the UI shows activity
+	// immediately. A second event follows once the walk completes with the
+	// real file count.
+	trk.PhaseStart(progress.PhaseScan, 0, 0)
 	files, _, err := walk.WalkRepo(absRepo, walkOpts)
 	if err != nil {
+		trk.Fail(err.Error())
 		return nil, fmt.Errorf("walk repo: %w", err)
 	}
 	i.stats.files = len(files)
+	trk.SetFilesTotal(len(files))
+	// Emit a second scan event now that we know the total.
+	trk.Tick(progress.PhaseScan, len(files), 0, "", 0)
 	fmt.Fprintf(os.Stderr, "archigraph: discovered %d candidate files in %s\n", len(files), absRepo)
 
 	var (
@@ -443,6 +493,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// fork-execs `archigraph extract` per language-bucketed batch and
 	// returns the merged record set (Pass 1 + 2.5 + 3 combined); the
 	// daemon then runs everything from buildDocument onward unchanged.
+	trk.PhaseStart(progress.PhaseExtractAST, 0, 0)
 	if subprocExtract() {
 		res, cerr := extract.Coordinate(ctx, absRepo, files, extract.CoordinatorConfig{
 			Concurrency: subprocConcurrency(),
@@ -451,6 +502,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			Stderr:      os.Stderr,
 		})
 		if cerr != nil {
+			trk.Fail(cerr.Error())
 			return nil, fmt.Errorf("subprocess extract: %w", cerr)
 		}
 		// The coordinator merges Pass 1 / 2.5 / 3 entity records into a
@@ -480,17 +532,22 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		for _, e := range res.NonFatalErrors {
 			fmt.Fprintf(os.Stderr, "archigraph: subproc-extract warning: %s\n", e)
 		}
+		// Emit a single done-with-extraction event covering all files.
+		trk.Tick(progress.PhaseExtractAST, len(files), 0, "", len(res.Entities))
 	} else {
-		// Pass 1 — per-language AST extraction.
-		pass1Records, classified, err = i.runPass1Extract(ctx, absRepo, files)
+		// Pass 1 — per-language AST extraction (instrumented with per-file ticks).
+		pass1Records, classified, err = i.runPass1ExtractWithProgress(ctx, absRepo, files, trk)
 		if err != nil {
+			trk.Fail(err.Error())
 			return nil, fmt.Errorf("pass 1: %w", err)
 		}
 		i.stats.pass1Rels = countEmbeddedRels(pass1Records)
 
 		// Pass 2.5 — YAML-driven framework rules.
+		trk.PhaseStart(progress.PhaseResolveRefs, len(files), len(pass1Records))
 		pass2Records, pass2Rels, err = i.runPass25FrameworkRules(ctx, absRepo, classified)
 		if err != nil {
+			trk.Fail(err.Error())
 			return nil, fmt.Errorf("pass 2.5: %w", err)
 		}
 		i.stats.pass2Rels = len(pass2Rels) + countEmbeddedRels(pass2Records)
@@ -498,6 +555,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		// Pass 3 — cross-language extractors.
 		pass3Records, err = i.runPass3CrossLang(ctx, absRepo, classified)
 		if err != nil {
+			trk.Fail(err.Error())
 			return nil, fmt.Errorf("pass 3: %w", err)
 		}
 		i.stats.pass3Rels = countEmbeddedRels(pass3Records)
@@ -636,6 +694,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	runtime.GC()
 
 	// Pass 5 — build document (deduped).
+	trk.PhaseStart(progress.PhaseMaterialize, len(files), 0)
 	doc := i.buildDocument(pass1Records, pass2Records, pass2Rels, pass3Records)
 	// Drop the per-pass record slices now that buildDocument has produced
 	// the merged + deduped graph.Entity / graph.Relationship slices. These
@@ -791,7 +850,8 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			}
 			return ra.Kind < rb.Kind
 		})
-		i.runPass4Algorithms(doc)
+		trk.PhaseStart(progress.PhaseAlgorithms, len(files), doc.Stats.Entities)
+		i.runPass4AlgorithmsWithProgress(doc, trk)
 	}
 
 	// Pass 7 — process-flow BFS (#724). Runs AFTER all CALLS edges are
@@ -822,6 +882,9 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Properties BEFORE candidate emission, so previously agent-resolved
 	// values are preserved AND emitters skip already-described entities.
 	i.runPass6EmitEnrichmentCandidates(doc, absRepo)
+
+	// Emit the final done event before the summary log line.
+	trk.Done(len(files), doc.Stats.Entities)
 
 	dur := time.Since(start)
 	fmt.Fprintf(os.Stderr,
@@ -1228,7 +1291,22 @@ func printRelBreakdown(w *os.File, counts map[string]int, label string) {
 // are appended to the Document and copied into the graph-stats.json sidecar
 // at write time.
 func (i *Indexer) runPass4Algorithms(doc *graph.Document) {
+	i.runPass4AlgorithmsWithProgress(doc, nil)
+}
+
+// runPass4AlgorithmsWithProgress is the instrumented variant of runPass4Algorithms.
+// trk may be nil (treated as no-op). Emits an AlgorithmEvent at the entry and
+// exit of each named algorithm.
+func (i *Indexer) runPass4AlgorithmsWithProgress(doc *graph.Document, trk *progress.Tracker) {
+	entityCount := doc.Stats.Entities
+
+	if trk != nil {
+		trk.AlgorithmEvent("Louvain+PageRank+Betweenness", entityCount)
+	}
 	res := graph.RunAlgorithms(doc.Entities, doc.Relationships)
+	if trk != nil {
+		trk.AlgorithmEvent("ArticulationPoints+SurpriseEdges", entityCount)
+	}
 
 	for k := range doc.Entities {
 		e := &doc.Entities[k]
@@ -1366,11 +1444,18 @@ func (i *Indexer) runPass6EmitEnrichmentCandidates(doc *graph.Document, absRepo 
 // slice is also returned for reuse by Pass 2.5 and Pass 3 so we don't pay the
 // classification + read + parse cost twice.
 func (i *Indexer) runPass1Extract(ctx context.Context, absRepo string, files []string) ([]types.EntityRecord, []classifiedFile, error) {
+	return i.runPass1ExtractWithProgress(ctx, absRepo, files, nil)
+}
+
+// runPass1ExtractWithProgress is the instrumented variant of runPass1Extract.
+// trk may be nil; when non-nil it receives a Tick every progress.TickEveryNFiles
+// files processed, with the current repo-relative file path and byte count.
+func (i *Indexer) runPass1ExtractWithProgress(ctx context.Context, absRepo string, files []string, trk *progress.Tracker) ([]types.EntityRecord, []classifiedFile, error) {
 	if i.skipPasses[PassExtract] {
 		// Even when Pass 1 is skipped we still need to classify+read so
 		// downstream passes have file content. Run the worker loop in
 		// classification-only mode.
-		classified, _ := i.classifyAndRead(ctx, absRepo, files, false)
+		classified, _ := i.classifyAndReadWithProgress(ctx, absRepo, files, false, trk)
 		return nil, classified, nil
 	}
 
@@ -1391,15 +1476,22 @@ func (i *Indexer) runPass1Extract(ctx context.Context, absRepo string, files []s
 		}
 	}
 
-	classified, records := i.classifyAndRead(ctx, absRepo, files, true)
+	classified, records := i.classifyAndReadWithProgress(ctx, absRepo, files, true, trk)
 	return records, classified, nil
 }
 
-// classifyAndRead is the shared worker pool used by Pass 1. When runExtract
-// is true it also dispatches to per-language extractors and accumulates
-// EntityRecords. The classifiedFile slice is always populated for files that
-// survived classification, so other passes can reuse the parse tree + bytes.
-func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []string, runExtract bool) ([]classifiedFile, []types.EntityRecord) {
+// classifyAndReadWithProgress is like classifyAndRead but also publishes
+// per-file progress ticks via trk (which may be nil for no-op behaviour).
+// A tick is published every progress.TickEveryNFiles files to bound the
+// event rate on large repos.
+func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo string, files []string, runExtract bool, trk *progress.Tracker) ([]classifiedFile, []types.EntityRecord) {
+	// Use a shared atomic counter so all workers contribute to the same
+	// tick cadence without needing an additional mutex acquisition per file.
+	var (
+		fileCounter int64 // total files processed (classified + skipped + failed)
+		byteCounter int64 // cumulative bytes read
+	)
+
 	tasks := make(chan fileTask, len(files))
 	for _, rel := range files {
 		tasks <- fileTask{relPath: rel, absPath: filepath.Join(absRepo, rel)}
@@ -1411,6 +1503,13 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 		allRecords []types.EntityRecord
 		classified []classifiedFile
 	)
+
+	publishTick := func(filesDone int, bytesSeen int64, currentFile string) {
+		if trk == nil {
+			return
+		}
+		trk.Tick(progress.PhaseExtractAST, filesDone, bytesSeen, currentFile, 0)
+	}
 
 	var wg sync.WaitGroup
 	for w := 0; w < i.workers; w++ {
@@ -1427,6 +1526,10 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 					mu.Lock()
 					i.stats.skipped++
 					mu.Unlock()
+					n := int(atomic.AddInt64(&fileCounter, 1))
+					if n%progress.TickEveryNFiles == 0 {
+						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
+					}
 					continue
 				}
 
@@ -1435,8 +1538,17 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 					mu.Lock()
 					i.stats.failed++
 					mu.Unlock()
+					n := int(atomic.AddInt64(&fileCounter, 1))
+					if n%progress.TickEveryNFiles == 0 {
+						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
+					}
 					continue
 				}
+
+				if size < 0 {
+					size = int64(len(content))
+				}
+				atomic.AddInt64(&byteCounter, size)
 
 				cf := classifiedFile{
 					relPath:  t.relPath,
@@ -1477,26 +1589,22 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 					mu.Lock()
 					classified = append(classified, cf)
 					mu.Unlock()
+					n := int(atomic.AddInt64(&fileCounter, 1))
+					if n%progress.TickEveryNFiles == 0 {
+						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
+					}
 					continue
 				}
 
-				ents, err := extractors.Extract(ctx, file)
-				// Per-language relationship count for the verbose breakdown.
+				ents, extractErr := extractors.Extract(ctx, file)
 				relCount := 0
 				for k := range ents {
 					relCount += len(ents[k].Relationships)
 				}
 				mu.Lock()
 				i.stats.processed++
-				if err != nil {
-					// Issue #481 — distinguish "no extractor for this
-					// language" (a structural skip, e.g. .toml / .lock files
-					// classified but not yet supported) from real extractor
-					// failures. The former is consistent across runs but
-					// previously bumped the flaky `failed` counter; surface
-					// it under `skipped` so failed truly means a broken
-					// extraction.
-					if errors.Is(err, extractors.ErrNoExtractorForLanguage) {
+				if extractErr != nil {
+					if errors.Is(extractErr, extractors.ErrNoExtractorForLanguage) {
 						i.stats.skipped++
 					} else {
 						i.stats.failed++
@@ -1510,6 +1618,11 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 				}
 				classified = append(classified, cf)
 				mu.Unlock()
+
+				n := int(atomic.AddInt64(&fileCounter, 1))
+				if n%progress.TickEveryNFiles == 0 {
+					publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
+				}
 			}
 		}()
 	}
@@ -1522,6 +1635,7 @@ func (i *Indexer) classifyAndRead(ctx context.Context, absRepo string, files []s
 	sortEntityRecords(allRecords)
 	return classified, allRecords
 }
+
 
 // runPass25FrameworkRules applies the YAML rule engine to every classified
 // file. Returns extra entity records (from source_patterns) plus standalone
