@@ -18,6 +18,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/agentpatterns"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/daemon/sched"
+	"github.com/cajasmota/archigraph/internal/daemon/transport"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
 )
 
@@ -144,16 +145,18 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer releasePID()
 
-	// Remove any stale socket from a previous crash. We checked the
-	// pid file above so we know no live daemon is using it.
+	// Remove any stale socket file from a previous crash (Unix only; on
+	// Windows named pipes are not filesystem objects and os.Remove is a no-op).
 	_ = os.Remove(cfg.Layout.SocketPath)
 
-	listener, err := net.Listen("unix", cfg.Layout.SocketPath)
+	listener, err := transport.Listen(cfg.Layout.SocketPath)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", cfg.Layout.SocketPath, err)
 	}
-	// 0600 makes the socket per-user; the daemon is single-user only.
-	if err := os.Chmod(cfg.Layout.SocketPath, 0o600); err != nil {
+	// On Unix, chmod 0600 makes the socket per-user. The transport package
+	// sets an equivalent ACL on Windows named pipes so no explicit Chmod is
+	// needed there. chmodSocket is a no-op on Windows.
+	if err := chmodSocket(cfg.Layout.SocketPath); err != nil {
 		_ = listener.Close()
 		return fmt.Errorf("chmod socket: %w", err)
 	}

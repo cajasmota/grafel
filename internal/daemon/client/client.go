@@ -1,10 +1,11 @@
-// Package client dials the archigraph daemon over a Unix-domain socket
-// and exposes typed wrappers around each RPC method declared in the
-// proto package.
+// Package client dials the archigraph daemon over a platform-appropriate
+// IPC transport (Unix-domain socket on Linux/macOS, named pipe on Windows)
+// and exposes typed wrappers around each RPC method declared in the proto
+// package.
 //
-// All public functions return ErrDaemonNotRunning when the socket is
-// missing or unconnectable. Callers print the canonical message from
-// ADR-0017:
+// All public functions return ErrDaemonNotRunning when the transport
+// endpoint is missing or unconnectable. Callers print the canonical message
+// from ADR-0017:
 //
 //	daemon not running; run 'archigraph start' or reinstall via 'archigraph install'
 //
@@ -15,14 +16,15 @@ package client
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/daemon/transport"
 )
 
 // ErrDaemonNotRunning indicates the daemon socket could not be reached.
@@ -48,15 +50,22 @@ func Dial() (*Client, error) {
 	return DialPath(layout.SocketPath)
 }
 
-// DialPath is the testing entrypoint — connects to an arbitrary socket.
+// DialPath is the testing entrypoint — connects to an arbitrary transport
+// address. On Unix this is a filesystem path; on Windows it is a named-pipe
+// path of the form \\.\pipe\<name>.
 func DialPath(socketPath string) (*Client, error) {
-	if _, err := os.Stat(socketPath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: %s missing", ErrDaemonNotRunning, socketPath)
+	// On Unix we can stat the socket file to give a better error message
+	// when the daemon has not been started. Named pipes on Windows are not
+	// filesystem objects and os.Stat is not meaningful for them.
+	if runtime.GOOS != "windows" {
+		if _, err := os.Stat(socketPath); err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("%w: %s missing", ErrDaemonNotRunning, socketPath)
+			}
+			return nil, fmt.Errorf("stat %s: %w", socketPath, err)
 		}
-		return nil, fmt.Errorf("stat %s: %w", socketPath, err)
 	}
-	conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
+	conn, err := transport.DialTimeout(socketPath, 2*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDaemonNotRunning, err)
 	}

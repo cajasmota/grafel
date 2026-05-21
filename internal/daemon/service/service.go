@@ -15,11 +15,12 @@ package service
 
 import (
 	"fmt"
-	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/daemon/transport"
 )
 
 // Options carries install-time parameters. All fields that are empty
@@ -29,9 +30,10 @@ type Options struct {
 	// empty, Install resolves it via os.Executable().
 	BinPath string
 
-	// SocketPath is the Unix-domain socket the daemon listens on.
-	// When empty it defaults to ~/.archigraph/sockets/daemon.sock
-	// (matches daemon.DefaultLayout).
+	// SocketPath is the IPC transport address the daemon listens on.
+	// On Unix this is a filesystem path (defaults to ~/.archigraph/sockets/daemon.sock).
+	// On Windows this is a named-pipe path (\\.\pipe\archigraph-daemon-<user>).
+	// When empty, resolveOptions fills it from daemon.DefaultLayout.
 	SocketPath string
 
 	// LogDir is the directory for stdout/stderr logs. When empty it
@@ -87,7 +89,8 @@ func Status(opts Options) (StatusInfo, error) {
 
 // resolveOptions fills in empty Options fields from OS defaults. This
 // runs before any platform call so platform code can assume opts is
-// complete.
+// complete. Platform-specific path resolution is in service_unix.go and
+// service_windows.go.
 func resolveOptions(opts *Options) error {
 	if opts.BinPath == "" {
 		bin, err := os.Executable()
@@ -96,19 +99,7 @@ func resolveOptions(opts *Options) error {
 		}
 		opts.BinPath = bin
 	}
-	if opts.SocketPath == "" || opts.LogDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("os.UserHomeDir: %w", err)
-		}
-		if opts.SocketPath == "" {
-			opts.SocketPath = home + "/.archigraph/sockets/daemon.sock"
-		}
-		if opts.LogDir == "" {
-			opts.LogDir = home + "/.archigraph/logs"
-		}
-	}
-	return nil
+	return resolvePlatformPaths(opts)
 }
 
 // stopRunningDaemon sends a Stop RPC to any daemon currently listening
@@ -121,7 +112,7 @@ func resolveOptions(opts *Options) error {
 // dial fails silently; if the socket never disappears we proceed anyway
 // and let the OS service manager restart the daemon after it crashes.
 func stopRunningDaemon(socketPath string) {
-	conn, err := net.DialTimeout("unix", socketPath, time.Second)
+	conn, err := transport.DialTimeout(socketPath, time.Second)
 	if err != nil {
 		return // nothing listening — nothing to stop
 	}
@@ -146,12 +137,12 @@ func waitForSocket(socketPath string, deadline time.Duration) error {
 	const pollInterval = 200 * time.Millisecond
 	end := time.Now().Add(deadline)
 	for time.Now().Before(end) {
-		conn, err := net.DialTimeout("unix", socketPath, 200*time.Millisecond)
+		conn, err := transport.DialTimeout(socketPath, 200*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			return nil
 		}
 		time.Sleep(pollInterval)
 	}
-	return fmt.Errorf("socket %s did not appear within %s", socketPath, deadline)
+	return fmt.Errorf("transport endpoint %s did not appear within %s", socketPath, deadline)
 }
