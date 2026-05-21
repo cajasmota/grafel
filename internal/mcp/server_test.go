@@ -586,6 +586,12 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_endpoint_definitions",
 		"archigraph_endpoint_calls",
 		"archigraph_endpoint_stats",
+		// #1252 flow-aware traversal tools
+		"archigraph_find_callers",
+		"archigraph_find_callees",
+		"archigraph_impact_radius",
+		"archigraph_summarize_subgraph",
+		"archigraph_find_dead_code",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -613,12 +619,14 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count must be exactly 34 (18 pre-#1202 + 13 from #1202 + 3 from #1220).
+	// Total count must be exactly 39 (18 pre-#1202 + 13 from #1202 + 3 from #1220 + 5 from #1252).
 	// #1202 tools: topology×3, flows×3, diagnostics, quality_orphans,
 	// patterns_list, patterns_get, search_entities, get_subgraph, find_paths.
 	// #1220 tools: endpoint_definitions, endpoint_calls, endpoint_stats.
-	if got := len(srv.MCP.ListTools()); got != 34 {
-		t.Errorf("expected 34 registered tools, got %d", got)
+	// #1252 tools: find_callers, find_callees, impact_radius,
+	//   summarize_subgraph, find_dead_code.
+	if got := len(srv.MCP.ListTools()); got != 39 {
+		t.Errorf("expected 39 registered tools, got %d", got)
 	}
 }
 

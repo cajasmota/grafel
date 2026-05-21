@@ -124,10 +124,12 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 34 (14 original + 13 from #1202 + 3 from #1220).
+// Tool count: 39 (14 original + 13 from #1202 + 3 from #1220 + 5 from #1252).
 // #1202 tools: topology×3, flows×3, diagnostics, quality_orphans,
 //   patterns_list, patterns_get, search_entities, get_subgraph, find_paths.
 // #1220 tools: endpoint_definitions, endpoint_calls, endpoint_stats.
+// #1252 tools: find_callers, find_callees, impact_radius,
+//   summarize_subgraph, find_dead_code.
 func (s *Server) registerTools() {
 	// -----------------------------------------------------------------------
 	// Unchanged tools (5)
@@ -526,6 +528,51 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_endpoint_stats", s.handleEndpointStats))
+
+	// -----------------------------------------------------------------------
+	// Flow-aware traversal tools (#1252)
+	// -----------------------------------------------------------------------
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callers",
+		mcpapi.WithDescription("Find entities that call the given entity — walks the inbound call graph up to N hops. Use to understand who depends on a function before refactoring it."),
+		mcpapi.WithString("entity_id", mcpapi.Required(), mcpapi.Description("Target entity ID (bare or repo-prefixed).")),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1), mcpapi.Description("Inbound hop depth (1–5). depth=1 returns direct callers only.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_find_callers", s.handleFindCallers))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callees",
+		mcpapi.WithDescription("Find entities called by the given entity — walks the outbound call graph up to N hops. Use to map an implementation's dependencies before extracting or moving code."),
+		mcpapi.WithString("entity_id", mcpapi.Required(), mcpapi.Description("Source entity ID (bare or repo-prefixed).")),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1), mcpapi.Description("Outbound hop depth (1–5). depth=1 returns direct callees only.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_find_callees", s.handleFindCallees))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_impact_radius",
+		mcpapi.WithDescription("List entities affected if the given entity changes — inbound blast-radius analysis with per-entity risk_score [0,1]. Sorted by risk descending. Use before refactoring to plan the test scope."),
+		mcpapi.WithString("entity_id", mcpapi.Required(), mcpapi.Description("Root entity ID (bare or repo-prefixed).")),
+		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2), mcpapi.Description("Inbound hop depth for impact traversal (1–6).")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_impact_radius", s.handleImpactRadius))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_summarize_subgraph",
+		mcpapi.WithDescription("Return a Markdown summary of an entity's call neighbourhood — callers and callees within N hops. Paste directly into a doc or use as context for a follow-up prompt."),
+		mcpapi.WithString("entity_id", mcpapi.Required(), mcpapi.Description("Root entity ID (bare or repo-prefixed).")),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2), mcpapi.Description("Hop depth for both inbound and outbound traversal (1–4).")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_summarize_subgraph", s.handleSummarizeSubgraph))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_dead_code",
+		mcpapi.WithDescription("List entities with no inbound or outbound edges to other project entities — dead code candidates. Stdlib/external entities are excluded automatically. Verify before deletion: entry points reached by reflection will appear here."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("Repos to scope.")),
+		mcpapi.WithString("kind_filter", mcpapi.Description("Optional entity kind to restrict (e.g. 'Function', 'Class').")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100), mcpapi.Description("Max results returned.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_find_dead_code", s.handleFindDeadCode))
 }
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard
@@ -593,7 +640,8 @@ func extractIDs(res *mcpapi.CallToolResult) (nodeIDs, edgeIDs []string) {
 		nodeIDs = append(nodeIDs, collectSliceIDs(payload,
 			"results", "nodes", "steps", "orphans", "patterns", "orphan_publishers",
 			"orphan_subscribers", "dead_ends", "truncated_flows", "publishers",
-			"subscribers", "exemplars")...)
+			"subscribers", "exemplars",
+			"callers", "callees", "affected", "dead_code")...)
 		edgeIDs = append(edgeIDs, collectSliceIDs(payload, "edges")...)
 	}
 	return dedup(nodeIDs), dedup(edgeIDs)
