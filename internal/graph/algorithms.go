@@ -12,6 +12,21 @@
 //
 // Top-level corpus aggregates are exposed via AlgorithmResults: per-community
 // stats, surprise-edge list, and timing.
+//
+// # Community detection algorithm
+//
+// We use Louvain modularity maximisation (gonum's community.Modularize) with a
+// fixed PCG seed (1, 2) and stable node-ordering so results are byte-identical
+// across re-runs of the same graph.
+//
+// Leiden was evaluated for this release (#1382) and deferred because no
+// production-quality Go Leiden library exists: github.com/vsuryav/leiden-go and
+// github.com/k8nstantin/go-leiden are both pre-v1, un-tagged, and lack the
+// weighted-graph + deterministic-seeding APIs required. An in-house Leiden port
+// would require porting the full CPM refinement phase (~500 LOC) and is
+// out-of-scope for this PR. The gonum Louvain implementation already produces
+// stable, well-connected communities with a fixed seed; the main noise problem
+// is addressed by the min-size denoise filter (see CommunityOptions.MinSize).
 package graph
 
 import (
@@ -54,6 +69,30 @@ type SurpriseEdge struct {
 	Reason string  `json:"reason"`
 }
 
+// CommunityOptions controls community-detection behaviour. It is passed to
+// RunAlgorithmsWithOptions; RunAlgorithms uses DefaultCommunityOptions.
+type CommunityOptions struct {
+	// MinSize is the minimum number of nodes a community must contain to be
+	// emitted as a named community. Communities smaller than MinSize have their
+	// members remapped to community -1 ("ungrouped") and are dropped from the
+	// CommunityResult slice. This eliminates singleton and micro-community
+	// noise without affecting the graph structure or any other algorithm pass.
+	//
+	// Default: 5  (configurable via ~/.archigraph/algorithms.json or
+	// the ARCHIGRAPH_COMMUNITY_MIN_SIZE environment variable).
+	//
+	// Set to 1 to disable denoising (all communities emitted, matching the
+	// pre-#1382 behaviour).
+	MinSize int `json:"min_size"`
+}
+
+// DefaultCommunityOptions returns the production defaults for community
+// detection. MinSize=5 removes singletons and micro-communities that
+// contribute noise without structural signal.
+func DefaultCommunityOptions() CommunityOptions {
+	return CommunityOptions{MinSize: 5}
+}
+
 // AlgorithmStats are the corpus-level metrics exposed both inside graph.json
 // and inside the .archigraph/graph-stats.json sidecar.
 type AlgorithmStats struct {
@@ -63,6 +102,10 @@ type AlgorithmStats struct {
 	NumArticulationPts int     `json:"num_articulation_points"`
 	NumSurpriseEdges   int     `json:"num_surprise_edges"`
 	RuntimeMS          int64   `json:"runtime_ms"`
+	// DenoisedCommunities is the number of raw Louvain communities that were
+	// collapsed into the "ungrouped" bucket (community_id=-1) because they
+	// fell below CommunityOptions.MinSize. Zero when MinSize <= 1.
+	DenoisedCommunities int `json:"denoised_communities,omitempty"`
 }
 
 // AlgorithmResults bundles the per-entity and corpus-level outputs of Pass 4.
@@ -223,9 +266,15 @@ func atofSafe(s string) float64 {
 // ComputeCommunities runs Louvain modularity maximisation on the undirected
 // projection of g. Returns:
 //   - per-community summary (size, modularity contribution, top entity names)
-//   - mapping from entity ID -> community id
+//   - mapping from entity ID -> community id (community_id=-1 for ungrouped)
 //   - overall modularity score
-func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityNames map[string]string) ([]CommunityResult, map[string]int, float64) {
+//   - number of raw communities that were denoised (below opts.MinSize)
+//
+// Denoise: communities with fewer than opts.MinSize nodes are removed from the
+// result slice and their members are assigned community_id=-1 ("ungrouped").
+// This prevents singleton/micro-community noise from reaching the MCP surface
+// and the dashboard. Set opts.MinSize=1 to disable denoising.
+func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityNames map[string]string, opts CommunityOptions) ([]CommunityResult, map[string]int, float64, int) {
 	// Project the directed graph onto an undirected graph; community detection
 	// in gonum operates on undirected (or otherwise symmetric) inputs.
 	und := simple.NewWeightedUndirectedGraph(0, 0)
@@ -416,7 +465,36 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 		}
 		return results[i].ID < results[j].ID
 	})
-	return results, communityOf, overallQ
+
+	// Issue #1382 — denoise: drop communities below MinSize into the
+	// "ungrouped" bucket (community_id = -1). This eliminates singleton and
+	// micro-community noise that inflates community counts and pollutes the MCP
+	// and dashboard surfaces. The graph topology (edges, centrality, PageRank)
+	// is unaffected; only the community membership label changes.
+	minSize := opts.MinSize
+	if minSize < 1 {
+		minSize = 1 // safety: never discard everything
+	}
+	var denoised int
+	if minSize > 1 {
+		kept := results[:0]
+		for _, r := range results {
+			if r.Size >= minSize {
+				kept = append(kept, r)
+			} else {
+				denoised++
+				// Remap members to ungrouped (-1).
+				for eid, cid := range communityOf {
+					if cid == r.ID {
+						communityOf[eid] = -1
+					}
+				}
+			}
+		}
+		results = kept
+	}
+
+	return results, communityOf, overallQ, denoised
 }
 
 // ComputeCentrality returns betweenness centrality and PageRank, both keyed by
@@ -740,10 +818,18 @@ func IdentifyArticulationPoints(g *simple.WeightedDirectedGraph, idx *nodeIndex)
 	return out
 }
 
-// RunAlgorithms executes the full Pass 4 sweep and bundles every result into
-// AlgorithmResults. The caller decides how to attach the per-entity attributes
-// onto the on-disk Document and where to emit the corpus aggregate.
+// RunAlgorithms executes the full Pass 4 sweep with default options (community
+// MinSize=5). It is a convenience wrapper over RunAlgorithmsWithOptions.
 func RunAlgorithms(entities []Entity, rels []Relationship) *AlgorithmResults {
+	return RunAlgorithmsWithOptions(entities, rels, DefaultCommunityOptions())
+}
+
+// RunAlgorithmsWithOptions executes the full Pass 4 sweep and bundles every
+// result into AlgorithmResults. opts controls community-detection behaviour
+// (e.g. MinSize for denoising). The caller decides how to attach the
+// per-entity attributes onto the on-disk Document and where to emit the corpus
+// aggregate.
+func RunAlgorithmsWithOptions(entities []Entity, rels []Relationship, opts CommunityOptions) *AlgorithmResults {
 	start := time.Now()
 
 	g, idx := BuildGraph(entities, rels)
@@ -753,7 +839,7 @@ func RunAlgorithms(entities []Entity, rels []Relationship) *AlgorithmResults {
 		names[e.ID] = e.Name
 	}
 
-	commResults, commOf, overallQ := ComputeCommunities(g, idx, names)
+	commResults, commOf, overallQ, denoised := ComputeCommunities(g, idx, names, opts)
 	// Layer-1 deterministic naming (TF-IDF over member entity names +
 	// qualified names + source-file basenames). Mutates commResults in place.
 	AssignCommunityNames(commResults, entities, commOf)
@@ -786,7 +872,8 @@ func RunAlgorithms(entities []Entity, rels []Relationship) *AlgorithmResults {
 			// Issue #481 — RuntimeMS is wall-clock and therefore varies run to
 			// run. When SOURCE_DATE_EPOCH is set (reproducible-builds mode)
 			// emit 0 so graph.json stays byte-stable.
-			RuntimeMS: runtimeMSFor(start),
+			RuntimeMS:           runtimeMSFor(start),
+			DenoisedCommunities: denoised,
 		},
 	}
 }
