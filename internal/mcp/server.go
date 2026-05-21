@@ -468,13 +468,7 @@ func (s *Server) registerTools() {
 	// combinations (GPL/AGPL in MIT project = error; LGPL/MPL = warn).
 	// Transitive npm deps surfaced when include_transitive=true.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_license_audit",
-		mcpapi.WithDescription(
-			"License audit: detect SPDX licenses for all ExternalPackage dependencies and flag "+
-				"incompatible combinations. error=GPL/AGPL in non-copyleft project; "+
-				"warn=LGPL/MPL/EUPL/CDDL or Proprietary dep. "+
-				"Returns per-repo project_license, license_density, and flagged dep list. "+
-				"Set include_transitive=true to include indirect/transitive dependencies.",
-		),
+		mcpapi.WithDescription("Detect dependency licenses; flag GPL/AGPL incompatibility, weak-copyleft."),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
 		mcpapi.WithBoolean("include_transitive", mcpapi.DefaultBool(false),
