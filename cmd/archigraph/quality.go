@@ -40,6 +40,10 @@ func runQuality(argv []string) error {
 	if len(argv) >= 1 && argv[0] == "bug-rate-corpus" {
 		return runBugRateCorpus(argv[1:])
 	}
+	// `quality check [--strict] <group|repo-path>` — architectural fitness functions (#1345).
+	if len(argv) >= 1 && argv[0] == "check" {
+		return runQualityCheck(argv[1:])
+	}
 	fs := flag.NewFlagSet("quality", flag.ContinueOnError)
 	jsonOut := fs.String("json", "", "write JSON report to this path (default: stderr-only human summary)")
 	keepGraph := fs.Bool("keep-graph", false, "preserve the temp graph.json (path printed on stderr)")
