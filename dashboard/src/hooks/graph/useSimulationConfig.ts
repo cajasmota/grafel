@@ -23,6 +23,8 @@ export interface SimulationConfig {
   linkSpring:   number   // 0.0–2.0
   linkDistance: number   // 1–50
   friction:     number   // 0.5–0.95
+  repulsion:    number   // 0.1–10.0
+  center:       number   // 0.0–1.0
 }
 
 export type SimulationPreset = 'silk-road' | 'dense'
@@ -45,6 +47,8 @@ export const SILK_ROAD_DEFAULTS: SimulationConfig = {
   linkSpring:   0.08,
   linkDistance: 2,
   friction:     0.77,
+  repulsion:    4.0,
+  center:       0.15,
 }
 
 export const DENSE_DEFAULTS: SimulationConfig = {
@@ -53,6 +57,8 @@ export const DENSE_DEFAULTS: SimulationConfig = {
   linkSpring:   0.5,
   linkDistance: 1,
   friction:     0.88,
+  repulsion:    2.0,
+  center:       0.3,
 }
 
 export const PRESET_CONFIGS: Record<SimulationPreset, SimulationConfig> = {
@@ -67,6 +73,8 @@ export const PRESET_CONFIGS: Record<SimulationPreset, SimulationConfig> = {
 export const SLIDER_META: SliderMeta[] = [
   { key: 'spaceSize',    label: 'Space Size',     min: 1024,  max: 16384, step: 256  },
   { key: 'gravity',      label: 'Gravity',        min: 0.0,   max: 1.0,   step: 0.01 },
+  { key: 'repulsion',    label: 'Repulsion',      min: 0.1,   max: 10.0,  step: 0.1  },
+  { key: 'center',       label: 'Center Force',   min: 0.0,   max: 1.0,   step: 0.01 },
   { key: 'linkSpring',   label: 'Link Spring',    min: 0.0,   max: 2.0,   step: 0.01 },
   { key: 'linkDistance', label: 'Link Distance',  min: 1,     max: 50,    step: 1    },
   { key: 'friction',     label: 'Friction',       min: 0.50,  max: 0.95,  step: 0.01 },
@@ -86,6 +94,8 @@ function encodeToHash(cfg: SimulationConfig): string {
     ls:  String(cfg.linkSpring),
     ld:  String(cfg.linkDistance),
     fr:  String(cfg.friction),
+    rp:  String(cfg.repulsion),
+    ct:  String(cfg.center),
   })
   return params.toString()
 }
@@ -99,6 +109,8 @@ function decodeFromHash(hash: string): Partial<SimulationConfig> {
     const ls = Number(params.get('ls'));  if (isFinite(ls))            out.linkSpring   = ls
     const ld = Number(params.get('ld'));  if (isFinite(ld) && ld > 0) out.linkDistance = ld
     const fr = Number(params.get('fr'));  if (isFinite(fr))            out.friction     = fr
+    const rp = Number(params.get('rp'));  if (isFinite(rp) && rp > 0) out.repulsion    = rp
+    const ct = Number(params.get('ct'));  if (isFinite(ct))            out.center       = ct
     return out
   } catch {
     return {}
