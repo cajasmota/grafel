@@ -181,12 +181,17 @@ func synthesizeLaravel(content string, emit emitFn) {
 		}
 
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
-		handler := laravelHandlerFromMatch(content, m)
-		handlerKind := "Controller"
-		if handler == "" {
-			handlerKind = ""
-		}
-		emit(verb, canonical, "laravel", handlerKind, handler)
+		// Laravel routes are always in a separate file from their controller
+		// classes (PSR-4 autoloading). Emitting the controller reference as
+		// source_handler causes the resolve pass to drop the synthetic when
+		// the controller entity is not in the same file (which is the normal
+		// case for routes/*.php files). We pass empty handler so the
+		// synthetic gets NoHandlerProp treatment (kept unconditionally) and
+		// survives as an http_endpoint_definition for cross-repo linking.
+		// The controller reference is captured by laravelHandlerFromMatch but
+		// intentionally not forwarded here — it can be added as a plain
+		// property in a follow-up when the cross-file resolver supports it.
+		emit(verb, canonical, "laravel", "", "")
 	}
 
 	// --- Route::resource → 7 CRUD endpoints ---
