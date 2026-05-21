@@ -57,20 +57,6 @@ export function GraphRoute() {
   // ── Color mode (#1153 — persisted to localStorage) ────────────────────────
   const { colorMode, setColorMode } = useColorMode()
 
-  // ── Jarvis MCP highlight overlay (#1157, Phase 2 — live SSE subscription) ─
-  const {
-    highlightedNodeIds,
-    highlightedEdgeIds,
-    isActive: mcpHighlightActive,
-    agentId: mcpAgentId,
-    enabled: mcpOverlayEnabled,
-    setEnabled: setMcpOverlayEnabled,
-    sseConnected: mcpSseConnected,
-    eventLog: mcpEventLog,
-    totalCount: mcpTotalCount,
-    replayHighlight: mcpReplayHighlight,
-  } = useGraphHighlight()
-
   // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchResults, setShowSearchResults] = useState(false)
@@ -246,6 +232,42 @@ export function GraphRoute() {
   const handleOpenInFlows = useCallback((entityId: string) => {
     navigate(`/${group}/flows?entry=${encodeURIComponent(entityId)}`)
   }, [group, navigate])
+
+  const handleOpenInPaths = useCallback((entityId: string) => {
+    navigate(`/${group}/paths?highlight=${encodeURIComponent(entityId)}`)
+  }, [group, navigate])
+
+  const handleOpenInTopology = useCallback((entityId: string) => {
+    navigate(`/${group}/topology?highlight=${encodeURIComponent(entityId)}`)
+  }, [group, navigate])
+
+  // ── Inspector pin state ────────────────────────────────────────────────────
+  const [inspectorPinned, setInspectorPinned] = useState(false)
+  const handleTogglePin = useCallback(() => setInspectorPinned((p) => !p), [])
+
+  // When pinned, deselecting a node does NOT close the panel (the pin holds it).
+  const handleDeselectWithPin = useCallback(() => {
+    if (!inspectorPinned) handleDeselect()
+  }, [inspectorPinned, handleDeselect])
+
+  // ── Highlight subgraph (uses useGraphHighlight imperative API) ─────────────
+  const {
+    highlightedNodeIds,
+    highlightedEdgeIds,
+    isActive: mcpHighlightActive,
+    agentId: mcpAgentId,
+    enabled: mcpOverlayEnabled,
+    setEnabled: setMcpOverlayEnabled,
+    sseConnected: mcpSseConnected,
+    eventLog: mcpEventLog,
+    totalCount: mcpTotalCount,
+    replayHighlight: mcpReplayHighlight,
+    highlight: imperativeHighlight,
+  } = useGraphHighlight()
+
+  const handleHighlightSubgraph = useCallback((nodeIds: string[]) => {
+    imperativeHighlight(nodeIds, [], 8000)
+  }, [imperativeHighlight])
 
   // ── Community drill-in handlers ────────────────────────────────────────────
   const handleCommunityClick = useCallback((id: number, name: string) => {
@@ -671,12 +693,17 @@ export function GraphRoute() {
           <EntityInspector
             data={inspectorData}
             isLoading={inspectorLoading}
-            onClose={handleDeselect}
+            onClose={handleDeselectWithPin}
             onSelectEntity={(id) => {
               selectNode(id)
               zoomToNode(id)
             }}
             onOpenInFlows={handleOpenInFlows}
+            onOpenInPaths={handleOpenInPaths}
+            onOpenInTopology={handleOpenInTopology}
+            onHighlightSubgraph={handleHighlightSubgraph}
+            pinned={inspectorPinned}
+            onTogglePin={handleTogglePin}
           />
         )}
       </div>

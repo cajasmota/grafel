@@ -849,6 +849,14 @@ export interface EntityNeighborResponse {
   entity: Entity
   outbound: Array<{ edge: GraphEdge; node: GraphNode }>
   inbound: Array<{ edge: GraphEdge; node: GraphNode }>
+  /** Total inbound edge count (same-repo + cross-repo) */
+  in_degree?: number
+  /** Total outbound edge count (same-repo + cross-repo) */
+  out_degree?: number
+  /** Resolved community name (AgentName or AutoName) for this entity's community_id */
+  community_name?: string
+  /** Betweenness centrality score (from graph algorithm pass) */
+  betweenness?: number
 }
 
 // ── Tier 2: Graph labels ──────────────────────────────────────────────────────

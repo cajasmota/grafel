@@ -446,6 +446,10 @@ export async function fetchEntityNeighbors(
     inbound_edges: RawEdge[]
     outbound_edges: RawEdge[]
     neighbors: RawNeighbor[]
+    in_degree?: number
+    out_degree?: number
+    community_name?: string
+    betweenness?: number
   }>(`/api/graph/${group}/entity/${encodeURIComponent(entityId)}`)
 
   const neighborMap = new Map((raw.neighbors ?? []).map((n) => [n.id, n]))
@@ -472,7 +476,15 @@ export async function fetchEntityNeighbors(
     .map((re) => toEdgeNode(re, re.from_id))
     .filter((x): x is NonNullable<typeof x> => x !== null)
 
-  return { entity: raw.entity, outbound, inbound }
+  return {
+    entity: raw.entity,
+    outbound,
+    inbound,
+    in_degree: raw.in_degree,
+    out_degree: raw.out_degree,
+    community_name: raw.community_name,
+    betweenness: raw.betweenness,
+  }
 }
 
 // ── Landing card thumbnail: layout-snapshot (#983) ───────────────────────────
