@@ -468,3 +468,188 @@ func TestParseSimpleFloat(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// archigraph_topology dispatch (#1281)
+// ---------------------------------------------------------------------------
+
+func TestHandleTopology_OrphanPublishers(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "t1", Name: "order.created", Kind: "Topic"},
+		{ID: "svc", Name: "OrderService", Kind: "Class"},
+	}
+	rels := []graph.Relationship{
+		{ID: "r1", FromID: "svc", ToID: "t1", Kind: "PUBLISHES_TO"},
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	out := callDashboardTool(t, srv.handleTopology, map[string]any{
+		"group":  "test",
+		"action": "orphan_publishers",
+	})
+	if _, ok := out["orphan_publishers"]; !ok {
+		t.Error("expected orphan_publishers key in response")
+	}
+}
+
+func TestHandleTopology_OrphanSubscribers(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "t2", Name: "ghost.topic", Kind: "Topic"},
+		{ID: "svc", Name: "ConsumerService", Kind: "Class"},
+	}
+	rels := []graph.Relationship{
+		{ID: "r1", FromID: "svc", ToID: "t2", Kind: "SUBSCRIBES_TO"},
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	out := callDashboardTool(t, srv.handleTopology, map[string]any{
+		"group":  "test",
+		"action": "orphan_subscribers",
+	})
+	if _, ok := out["orphan_subscribers"]; !ok {
+		t.Error("expected orphan_subscribers key in response")
+	}
+}
+
+func TestHandleTopology_TopicDetail(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "t1", Name: "payment.processed", Kind: "Topic"},
+		{ID: "pub", Name: "PaymentService", Kind: "Class"},
+	}
+	rels := []graph.Relationship{
+		{ID: "r1", FromID: "pub", ToID: "t1", Kind: "PUBLISHES_TO"},
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+	out := callDashboardTool(t, srv.handleTopology, map[string]any{
+		"group":    "test",
+		"action":   "topic_detail",
+		"topic_id": "t1",
+	})
+	if out["found"] != true {
+		t.Error("expected found=true for existing topic")
+	}
+}
+
+func TestHandleTopology_UnknownAction(t *testing.T) {
+	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	req := newReq(map[string]any{"group": "test", "action": "bogus"})
+	res, err := srv.handleTopology(ctxBg(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.IsError {
+		t.Error("expected IsError=true for unknown action")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// archigraph_flows dispatch (#1281)
+// ---------------------------------------------------------------------------
+
+func TestHandleFlows_DeadEnds(t *testing.T) {
+	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	out := callDashboardTool(t, srv.handleFlows, map[string]any{
+		"group":  "test",
+		"action": "dead_ends",
+	})
+	if _, ok := out["dead_ends"]; !ok {
+		t.Error("expected dead_ends key in response")
+	}
+}
+
+func TestHandleFlows_Truncated(t *testing.T) {
+	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	out := callDashboardTool(t, srv.handleFlows, map[string]any{
+		"group":  "test",
+		"action": "truncated",
+	})
+	if _, ok := out["truncated_flows"]; !ok {
+		t.Error("expected truncated_flows key in response")
+	}
+}
+
+func TestHandleFlows_Detail_NotFound(t *testing.T) {
+	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	out := callDashboardTool(t, srv.handleFlows, map[string]any{
+		"group":      "test",
+		"action":     "detail",
+		"process_id": "nonexistent",
+	})
+	if out["found"] != false {
+		t.Error("expected found=false for nonexistent process")
+	}
+}
+
+func TestHandleFlows_UnknownAction(t *testing.T) {
+	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	req := newReq(map[string]any{"group": "test", "action": "bogus"})
+	res, err := srv.handleFlows(ctxBg(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.IsError {
+		t.Error("expected IsError=true for unknown action")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// archigraph_graph_patterns dispatch (#1281)
+// ---------------------------------------------------------------------------
+
+func TestHandleGraphPatterns_List(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "p1", Name: "RepositoryPattern", Kind: "SCOPE.Pattern",
+			Properties: map[string]string{"status": "active", "confidence": "0.9"}},
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	out := callDashboardTool(t, srv.handleGraphPatterns, map[string]any{
+		"group":  "test",
+		"action": "list",
+	})
+	if _, ok := out["patterns"]; !ok {
+		t.Error("expected patterns key in response")
+	}
+	count := int(out["count"].(float64))
+	if count != 1 {
+		t.Errorf("expected 1 pattern, got %d", count)
+	}
+}
+
+func TestHandleGraphPatterns_Get(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "p1", Name: "RepositoryPattern", Kind: "SCOPE.Pattern"},
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+	out := callDashboardTool(t, srv.handleGraphPatterns, map[string]any{
+		"group":      "test",
+		"action":     "get",
+		"pattern_id": "p1",
+	})
+	if out["found"] != true {
+		t.Error("expected found=true for existing pattern")
+	}
+}
+
+func TestHandleGraphPatterns_UnknownAction(t *testing.T) {
+	srv := newTestServerWithDoc(t, minDoc(nil, nil))
+	req := newReq(map[string]any{"group": "test", "action": "bogus"})
+	res, err := srv.handleGraphPatterns(ctxBg(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.IsError {
+		t.Error("expected IsError=true for unknown action")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// helpers for dispatch tests
+// ---------------------------------------------------------------------------
+
+func newReq(args map[string]any) mcpapi.CallToolRequest {
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = args
+	return req
+}
+
+func ctxBg() context.Context {
+	return context.Background()
+}

@@ -20,6 +20,82 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// archigraph_topology — action-dispatch bundle (#1281)
+// Replaces: topology_orphan_publishers, topology_orphan_subscribers,
+//           topology_topic_detail
+// ---------------------------------------------------------------------------
+
+// handleTopology dispatches on action= to the appropriate topology handler.
+func (s *Server) handleTopology(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	action, err := req.RequireString("action")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	switch action {
+	case "orphan_publishers":
+		return s.handleTopologyOrphanPublishers(ctx, req)
+	case "orphan_subscribers":
+		return s.handleTopologyOrphanSubscribers(ctx, req)
+	case "topic_detail":
+		return s.handleTopologyTopicDetail(ctx, req)
+	default:
+		return mcpapi.NewToolResultError(
+			"unknown action " + action + " (allowed: orphan_publishers, orphan_subscribers, topic_detail)",
+		), nil
+	}
+}
+
+// ---------------------------------------------------------------------------
+// archigraph_flows — action-dispatch bundle (#1281)
+// Replaces: flow_dead_ends, flow_truncated, flow_detail
+// ---------------------------------------------------------------------------
+
+// handleFlows dispatches on action= to the appropriate flow handler.
+func (s *Server) handleFlows(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	action, err := req.RequireString("action")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	switch action {
+	case "dead_ends":
+		return s.handleFlowDeadEnds(ctx, req)
+	case "truncated":
+		return s.handleFlowTruncated(ctx, req)
+	case "detail":
+		return s.handleFlowDetail(ctx, req)
+	default:
+		return mcpapi.NewToolResultError(
+			"unknown action " + action + " (allowed: dead_ends, truncated, detail)",
+		), nil
+	}
+}
+
+// ---------------------------------------------------------------------------
+// archigraph_graph_patterns — action-dispatch bundle (#1281)
+// Replaces: patterns_list, patterns_get (renamed to disambiguate from
+// archigraph_patterns agent-learned store)
+// ---------------------------------------------------------------------------
+
+// handleGraphPatterns dispatches on action= to the appropriate graph-indexed
+// pattern handler.
+func (s *Server) handleGraphPatterns(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	action, err := req.RequireString("action")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	switch action {
+	case "list":
+		return s.handlePatternsListGraph(ctx, req)
+	case "get":
+		return s.handlePatternsGetGraph(ctx, req)
+	default:
+		return mcpapi.NewToolResultError(
+			"unknown action " + action + " (allowed: list, get)",
+		), nil
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Topology v2 tools
 // ---------------------------------------------------------------------------
 

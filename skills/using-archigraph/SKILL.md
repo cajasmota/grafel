@@ -16,7 +16,7 @@ when-to-use: >
 # using-archigraph
 
 A practical guide for AI agents working in an archigraph-registered codebase.
-This skill covers when to use archigraph vs. grep, which of the 19 MCP tools
+This skill covers when to use archigraph vs. grep, which of the 32 MCP tools
 to call for which task, Pass-based workflows, and hard anti-patterns.
 
 ---
@@ -40,8 +40,8 @@ find where a string literal appears, read a specific file, check a config value.
 | "What changed in the last hour?" | `archigraph_recent_activity` |
 | "How many entities does this group have?" | `archigraph_stats` |
 | "Find where `ORDER_STATUS_PENDING` is defined" | `grep` / `rg` |
-| "Which HTTP endpoints does the frontend call?" | `archigraph_endpoint_calls` |
-| "Are there any orphan call-sites (calls with no handler)?" | `archigraph_endpoint_calls(orphan_only=true)` |
+| "Which HTTP endpoints does the frontend call?" | `archigraph_endpoints(action=calls)` |
+| "Are there any orphan call-sites (calls with no handler)?" | `archigraph_endpoints(action=calls, orphan_only=true)` |
 | "What is the overall architecture of this group?" | `archigraph_clusters` + `archigraph_stats` |
 | "What is `OrderViewSet`'s source?" | `archigraph_get_source` |
 
@@ -237,33 +237,33 @@ archigraph_recent_activity(since="2026-05-20T00:00:00Z", limit=20)
 
 ### 3.5 HTTP endpoint tools
 
-Three tools added in the paths v2 epic for precise HTTP surface analysis:
+`archigraph_endpoints` (#1281 consolidation of endpoint_definitions + endpoint_calls + endpoint_stats):
 
-#### `archigraph_endpoint_definitions`
+#### `archigraph_endpoints(action=definitions)`
 Lists HTTP endpoint handler/route definitions (`http_endpoint_definition`
 kind). Use to audit what server-side routes exist.
 
 ```
-archigraph_endpoint_definitions(repo_filter=["orders-api"])
+archigraph_endpoints(action="definitions", repo_filter=["orders-api"])
 → { "definitions": [{ "entity_id": "...", "method": "POST", "path": "/api/v1/orders" }], "count": 7 }
 ```
 
-#### `archigraph_endpoint_calls`
+#### `archigraph_endpoints(action=calls)`
 Lists client-side call-sites (`http_endpoint_call` kind). Use to find what
 HTTP calls clients make, and to surface orphan callers (calls with no matching
 definition in the group).
 
 ```
-archigraph_endpoint_calls(repo_filter=["mobile-app"])
-archigraph_endpoint_calls(orphan_only=true)  # only unmatched calls
+archigraph_endpoints(action="calls", repo_filter=["mobile-app"])
+archigraph_endpoints(action="calls", orphan_only=true)  # only unmatched calls
 ```
 
-#### `archigraph_endpoint_stats`
+#### `archigraph_endpoints(action=stats)`
 Counts definitions vs. calls vs. legacy entities vs. orphan callers per repo.
 Use to assess migration progress or quickly understand the HTTP surface size.
 
 ```
-archigraph_endpoint_stats()
+archigraph_endpoints(action="stats")
 → { "totals": { "definitions": 12, "calls": 8, "orphan_calls": 2 }, "migrated": true }
 ```
 
@@ -432,7 +432,7 @@ archigraph_save_finding(
 archigraph_whoami()
 
 # 2. List server-side definitions
-archigraph_endpoint_definitions(repo_filter=["orders-api"])
+archigraph_endpoints(action="definitions", repo_filter=["orders-api"])
 
 # 3. Find the matching entity
 archigraph_find(question="POST /api/v1/orders create order", depth=1)
@@ -462,8 +462,8 @@ archigraph_traces(action="follow", entry_point_id="CheckoutController.submit",
 ### "Find orphan code (callers with no matching handler)"
 
 ```
-archigraph_endpoint_stats()                           # check orphan_calls count
-archigraph_endpoint_calls(orphan_only=true)           # list them
+archigraph_endpoints(action="stats")                          # check orphan_calls count
+archigraph_endpoints(action="calls", orphan_only=true)        # list them
 # For each orphan call:
 archigraph_inspect(label_or_id="<orphan-entity-id>")
 archigraph_expand(node="<orphan-entity-id>", depth=1)

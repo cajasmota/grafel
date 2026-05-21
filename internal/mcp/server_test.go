@@ -547,12 +547,14 @@ func TestToolNameSurface(t *testing.T) {
 	for _, st := range srv.MCP.ListTools() {
 		registered[st.Tool.Name] = true
 	}
-	// 34 tools: 18 original + 13 new (#1202) + 3 endpoint tools (#1220).
+	// 31 tools post-#1281: 9 tools merged into 4 action-dispatch bundles.
+	// Bundles: archigraph_topology (was 3), archigraph_flows (was 3),
+	//   archigraph_endpoints (was 3), archigraph_graph_patterns (was 2).
 	wantPresent := []string{
 		// renamed (5)
 		"archigraph_find", "archigraph_inspect", "archigraph_expand",
 		"archigraph_clusters", "archigraph_stats",
-		// bundled (3)
+		// bundled (3 pre-#1281)
 		"archigraph_enrichments", "archigraph_cross_links", "archigraph_repairs",
 		// unchanged (5) — trace included here as it was not renamed
 		"archigraph_trace",
@@ -564,29 +566,22 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_traces",
 		// #1134 per-entity task view
 		"archigraph_get_next_enrichment_task",
-		// #1202 topology v2
-		"archigraph_topology_orphan_publishers",
-		"archigraph_topology_orphan_subscribers",
-		"archigraph_topology_topic_detail",
-		// #1202 flows v2
-		"archigraph_flow_dead_ends",
-		"archigraph_flow_truncated",
-		"archigraph_flow_detail",
-		// #1202 diagnostics + quality
+		// #1281 consolidated topology v2 (was 3 tools)
+		"archigraph_topology",
+		// #1281 consolidated flows v2 (was 3 tools)
+		"archigraph_flows",
+		// #1202 diagnostics + quality (kept as-is)
 		"archigraph_diagnostics",
 		"archigraph_quality_orphans",
-		// #1202 graph-indexed patterns
-		"archigraph_patterns_list",
-		"archigraph_patterns_get",
-		// #1202 bonus traversal
+		// #1281 consolidated graph-indexed patterns (was 2 tools; renamed)
+		"archigraph_graph_patterns",
+		// #1202 bonus traversal (kept as-is)
 		"archigraph_search_entities",
 		"archigraph_get_subgraph",
 		"archigraph_find_paths",
-		// #1220 HTTP endpoint kind aliasing
-		"archigraph_endpoint_definitions",
-		"archigraph_endpoint_calls",
-		"archigraph_endpoint_stats",
-		// #1252 flow-aware traversal tools
+		// #1281 consolidated HTTP endpoint tools (was 3 tools)
+		"archigraph_endpoints",
+		// #1252 flow-aware traversal tools (kept as-is)
 		"archigraph_find_callers",
 		"archigraph_find_callees",
 		"archigraph_impact_radius",
@@ -599,8 +594,9 @@ func TestToolNameSurface(t *testing.T) {
 		}
 	}
 	// Old names (pre-#668) must not exist.
+	// #1281 consolidated names must also be absent.
 	wantAbsent := []string{
-		// old singular tool names replaced by bundles
+		// old singular tool names replaced by bundles (pre-#668)
 		"archigraph_list_link_candidates", "archigraph_resolve_link_candidate",
 		"archigraph_list_enrichment_candidates", "archigraph_submit_enrichment", "archigraph_reject_enrichment",
 		"archigraph_list_residuals", "archigraph_submit_repair",
@@ -613,20 +609,34 @@ func TestToolNameSurface(t *testing.T) {
 		"search", "describe", "related",
 		"list_clusters", "save_finding", "get_source",
 		"whoami", "recent_activity", "graph_stats", "get_telemetry",
+		// #1281 removed (merged into bundles)
+		"archigraph_topology_orphan_publishers",
+		"archigraph_topology_orphan_subscribers",
+		"archigraph_topology_topic_detail",
+		"archigraph_flow_dead_ends",
+		"archigraph_flow_truncated",
+		"archigraph_flow_detail",
+		"archigraph_patterns_list",
+		"archigraph_patterns_get",
+		"archigraph_endpoint_definitions",
+		"archigraph_endpoint_calls",
+		"archigraph_endpoint_stats",
 	}
 	for _, n := range wantAbsent {
 		if registered[n] {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count must be exactly 39 (18 pre-#1202 + 13 from #1202 + 3 from #1220 + 5 from #1252).
-	// #1202 tools: topology×3, flows×3, diagnostics, quality_orphans,
-	// patterns_list, patterns_get, search_entities, get_subgraph, find_paths.
-	// #1220 tools: endpoint_definitions, endpoint_calls, endpoint_stats.
-	// #1252 tools: find_callers, find_callees, impact_radius,
-	//   summarize_subgraph, find_dead_code.
-	if got := len(srv.MCP.ListTools()); got != 39 {
-		t.Errorf("expected 39 registered tools, got %d", got)
+	// Total count must be exactly 31 after #1281 consolidation.
+	// Pre-#1281: 39. Removed 9 (3 topology + 3 flows + 3 endpoint + 2 patterns),
+	// added 4 bundles (topology + flows + endpoints + graph_patterns) → 39 - 9 + 4 = 34.
+	// Wait: 39 - 9 + 4 = 34, but archigraph_patterns_list and archigraph_patterns_get
+	// are the 2 patterns tools → 39 - 9 + 4 = 34. Recount:
+	// removed: topology×3 + flows×3 + patterns×2 + endpoints×3 = 11 tools removed
+	// added: topology(1) + flows(1) + graph_patterns(1) + endpoints(1) = 4 tools added
+	// 39 - 11 + 4 = 32.
+	if got := len(srv.MCP.ListTools()); got != 32 {
+		t.Errorf("expected 32 registered tools, got %d", got)
 	}
 }
 

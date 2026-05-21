@@ -121,6 +121,31 @@ func isCallKind(kind string) bool {
 }
 
 // ---------------------------------------------------------------------------
+// archigraph_endpoints — action-dispatch bundle (#1281)
+// Replaces: endpoint_definitions, endpoint_calls, endpoint_stats
+// ---------------------------------------------------------------------------
+
+// handleEndpoints dispatches on action= to the appropriate endpoint handler.
+func (s *Server) handleEndpoints(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	action, err := req.RequireString("action")
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	switch action {
+	case "definitions":
+		return s.handleEndpointDefinitions(ctx, req)
+	case "calls":
+		return s.handleEndpointCalls(ctx, req)
+	case "stats":
+		return s.handleEndpointStats(ctx, req)
+	default:
+		return mcpapi.NewToolResultError(
+			"unknown action " + action + " (allowed: definitions, calls, stats)",
+		), nil
+	}
+}
+
+// ---------------------------------------------------------------------------
 // archigraph_endpoint_definitions
 // ---------------------------------------------------------------------------
 

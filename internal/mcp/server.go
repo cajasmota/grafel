@@ -124,12 +124,13 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 39 (14 original + 13 from #1202 + 3 from #1220 + 5 from #1252).
-// #1202 tools: topology×3, flows×3, diagnostics, quality_orphans,
-//   patterns_list, patterns_get, search_entities, get_subgraph, find_paths.
-// #1220 tools: endpoint_definitions, endpoint_calls, endpoint_stats.
-// #1252 tools: find_callers, find_callees, impact_radius,
-//   summarize_subgraph, find_dead_code.
+// Tool count: 31 (#1281 consolidation: 9 tools merged into 4 action-dispatch bundles,
+//   8 verbose descriptions trimmed).
+// Bundles (#1281):
+//   archigraph_endpoints(action=definitions|calls|stats) ← endpoint_definitions + endpoint_calls + endpoint_stats
+//   archigraph_flows(action=dead_ends|truncated|detail)  ← flow_dead_ends + flow_truncated + flow_detail
+//   archigraph_topology(action=orphan_publishers|orphan_subscribers|topic_detail) ← topology_orphan_* + topology_topic_detail
+//   archigraph_graph_patterns(action=list|get) ← patterns_list + patterns_get (renamed to disambiguate from archigraph_patterns)
 func (s *Server) registerTools() {
 	// -----------------------------------------------------------------------
 	// Unchanged tools (5)
@@ -364,54 +365,41 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_patterns", s.handlePatterns))
 
 	// -----------------------------------------------------------------------
-	// Topology v2 tools (#1202)
+	// Topology v2 — consolidated (#1281, was 3 tools)
+	// action=orphan_publishers | orphan_subscribers | topic_detail
 	// -----------------------------------------------------------------------
 
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology_orphan_publishers",
-		mcpapi.WithDescription("List topics that are published to but never consumed — potential data leaks or dead producers."),
+	// archigraph_topology — bundles topology_orphan_publishers,
+	//   topology_orphan_subscribers, topology_topic_detail.
+	//   action=orphan_publishers: topics published to but never consumed.
+	//   action=orphan_subscribers: topics consumed but never published to.
+	//   action=topic_detail: publishers + subscribers for one topic.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology",
+		mcpapi.WithDescription("Message-channel topology. action=orphan_publishers: unpublished topics; action=orphan_subscribers: unconsumed topics; action=topic_detail: full topic connectivity."),
+		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("orphan_publishers|orphan_subscribers|topic_detail")),
+		mcpapi.WithString("topic_id", mcpapi.Description("(topic_detail) Topic entity ID (bare or repo-prefixed).")),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_topology_orphan_publishers", s.handleTopologyOrphanPublishers))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology_orphan_subscribers",
-		mcpapi.WithDescription("List topics that are consumed but never published to — potential missing producers or dead consumers."),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_topology_orphan_subscribers", s.handleTopologyOrphanSubscribers))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology_topic_detail",
-		mcpapi.WithDescription("Return publishers and subscribers for one topic — full connectivity picture for a single message channel."),
-		mcpapi.WithString("topic_id", mcpapi.Required(), mcpapi.Description("Topic entity ID (bare or repo-prefixed).")),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_topology_topic_detail", s.handleTopologyTopicDetail))
+	), s.wrap("archigraph_topology", s.handleTopology))
 
 	// -----------------------------------------------------------------------
-	// Flows v2 tools (#1202)
+	// Flows v2 — consolidated (#1281, was 3 tools)
+	// action=dead_ends | truncated | detail
 	// -----------------------------------------------------------------------
 
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_flow_dead_ends",
-		mcpapi.WithDescription("List flows whose terminal step has no outbound CALLS edges — signals incomplete traces or missing implementations."),
+	// archigraph_flows — bundles flow_dead_ends, flow_truncated, flow_detail.
+	//   action=dead_ends: flows whose terminal step has no outbound CALLS edges.
+	//   action=truncated: flows cut short during extraction.
+	//   action=detail: full step chain + side effects for one flow process.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_flows",
+		mcpapi.WithDescription("Flow-process diagnostics. action=dead_ends: terminal steps with no CALLS; action=truncated: extraction-cut flows; action=detail: full step chain for one process."),
+		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("dead_ends|truncated|detail")),
+		mcpapi.WithString("process_id", mcpapi.Description("(detail) Process entity ID (bare or repo-prefixed).")),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_flow_dead_ends", s.handleFlowDeadEnds))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_flow_truncated",
-		mcpapi.WithDescription("List flows cut short during extraction — use to identify flows that need manual tracing or deeper indexing."),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_flow_truncated", s.handleFlowTruncated))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_flow_detail",
-		mcpapi.WithDescription("Return full step chain and side effects for one flow process — use when archigraph_traces action=get is not enough detail."),
-		mcpapi.WithString("process_id", mcpapi.Required(), mcpapi.Description("Process entity ID (bare or repo-prefixed).")),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_flow_detail", s.handleFlowDetail))
+	), s.wrap("archigraph_flows", s.handleFlows))
 
 	// -----------------------------------------------------------------------
 	// Diagnostics + Quality (#1202)
@@ -433,26 +421,28 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_quality_orphans", s.handleQualityOrphans))
 
 	// -----------------------------------------------------------------------
-	// Indexed patterns (graph-side, distinct from agentpatterns store) (#1202)
+	// Indexed patterns — consolidated + renamed (#1281, was patterns_list + patterns_get)
+	// Renamed archigraph_patterns_list/get → archigraph_graph_patterns(action=list|get)
+	// to disambiguate from the agent-learned archigraph_patterns store.
 	// -----------------------------------------------------------------------
 
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_patterns_list",
-		mcpapi.WithDescription("List SCOPE.Pattern entities extracted by the indexer — use to browse structural patterns found in the codebase."),
+	// archigraph_graph_patterns — bundles patterns_list + patterns_get.
+	//   action=list: SCOPE.Pattern entities extracted by the indexer.
+	//   action=get: full details for one indexed pattern with exemplars.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_graph_patterns",
+		mcpapi.WithDescription("Indexer-extracted graph patterns (distinct from archigraph_patterns agent store). action=list: browse patterns; action=get: inspect one pattern with exemplars."),
+		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("list|get")),
+		// list args
+		mcpapi.WithBoolean("needs_attention", mcpapi.DefaultBool(false), mcpapi.Description("(list) Only return needs_attention=true patterns.")),
+		mcpapi.WithString("status", mcpapi.Description("(list) Status filter (e.g. 'active', 'deprecated').")),
+		mcpapi.WithNumber("confidence_min", mcpapi.DefaultNumber(0), mcpapi.Description("(list) Min confidence threshold.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50), mcpapi.Description("(list) Max patterns returned.")),
+		// get args
+		mcpapi.WithString("pattern_id", mcpapi.Description("(get) Pattern entity ID (bare or repo-prefixed).")),
 		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
-		mcpapi.WithBoolean("needs_attention", mcpapi.DefaultBool(false), mcpapi.Description("When true, return only patterns flagged needs_attention=true.")),
-		mcpapi.WithString("status", mcpapi.Description("Optional status filter (e.g. 'active', 'deprecated').")),
-		mcpapi.WithNumber("confidence_min", mcpapi.DefaultNumber(0), mcpapi.Description("Only return patterns with confidence >= this value.")),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_patterns_list", s.handlePatternsListGraph))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_patterns_get",
-		mcpapi.WithDescription("Return full details for one indexed pattern including exemplar entities — use after archigraph_patterns_list to inspect a specific pattern."),
-		mcpapi.WithString("pattern_id", mcpapi.Required(), mcpapi.Description("Pattern entity ID (bare or repo-prefixed).")),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_patterns_get", s.handlePatternsGetGraph))
+	), s.wrap("archigraph_graph_patterns", s.handleGraphPatterns))
 
 	// -----------------------------------------------------------------------
 	// Bonus graph traversal tools (#1202)
@@ -486,48 +476,24 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_find_paths", s.handleFindPaths))
 
 	// -----------------------------------------------------------------------
-	// HTTP endpoint tools (#1220)
-	// Backward-compat: all tools that accept a kind_filter also recognise
-	// the legacy "http_endpoint" value, which expands to both
-	// "http_endpoint_definition" and "http_endpoint_call".
+	// HTTP endpoint tools — consolidated (#1281, was 3 tools)
+	// action=definitions | calls | stats
+	// kind_filter alias: "http_endpoint" expands to definition + call kinds.
 	// -----------------------------------------------------------------------
 
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoint_definitions",
-		mcpapi.WithDescription(
-			"List HTTP endpoint handler/route definitions (http_endpoint_definition kind). "+
-				"Also returns entities with the legacy http_endpoint kind that are identified as producers. "+
-				"'http_endpoint' kind is deprecated; prefer http_endpoint_definition for handler/route entities.",
-		),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("Repos to scope.")),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200), mcpapi.Description("Max definitions returned.")),
+	// archigraph_endpoints — bundles endpoint_definitions, endpoint_calls, endpoint_stats.
+	//   action=definitions: list http_endpoint_definition handler/route entities.
+	//   action=calls: list http_endpoint_call consumer entities with orphan detection.
+	//   action=stats: per-repo counts + orphan summary.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoints",
+		mcpapi.WithDescription("HTTP endpoint surface. action=definitions: route handlers; action=calls: call-sites with orphan hints; action=stats: per-repo counts."),
+		mcpapi.WithString("action", mcpapi.Required(), mcpapi.Description("definitions|calls|stats")),
+		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false), mcpapi.Description("(calls) Only return unmatched call-sites.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200), mcpapi.Description("(definitions|calls) Max results.")),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_endpoint_definitions", s.handleEndpointDefinitions))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoint_calls",
-		mcpapi.WithDescription(
-			"List HTTP endpoint call-sites (http_endpoint_call kind) — the consumer side of FETCHES edges. "+
-				"Also returns entities with the legacy http_endpoint kind that are identified as client-synthesis consumers. "+
-				"'http_endpoint' kind is deprecated; prefer http_endpoint_call for consumer-side call-site entities. "+
-				"Each unresolved call-site includes an orphan_hint field explaining that the call has no matching definition.",
-		),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("Repos to scope.")),
-		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false), mcpapi.Description("When true, return only call-sites with no matching definition.")),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200), mcpapi.Description("Max call-sites returned.")),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_endpoint_calls", s.handleEndpointCalls))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoint_stats",
-		mcpapi.WithDescription(
-			"Return counts of http_endpoint_definition, http_endpoint_call, and legacy http_endpoint entities per repo, "+
-				"plus a count of orphan call-sites (FETCHES edges with no matching definition). "+
-				"Use to assess the migration status from the legacy http_endpoint kind to the new split kinds.",
-		),
-		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("Repos to scope.")),
-		mcpapi.WithString("group"),
-		mcpapi.WithString("cwd"),
-	), s.wrap("archigraph_endpoint_stats", s.handleEndpointStats))
+	), s.wrap("archigraph_endpoints", s.handleEndpoints))
 
 	// -----------------------------------------------------------------------
 	// Flow-aware traversal tools (#1252)

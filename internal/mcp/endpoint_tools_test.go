@@ -450,3 +450,78 @@ func TestQualityOrphans_LegacyKindFilterExpands(t *testing.T) {
 		t.Errorf("expected 2 orphans (both http_endpoint_* kinds), got %d: %v", len(orphans), orphans)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// archigraph_endpoints dispatch (#1281)
+// ---------------------------------------------------------------------------
+
+func TestHandleEndpoints_Definitions(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpoints, map[string]any{
+		"group":  "test",
+		"action": "definitions",
+	})
+	if _, ok := res["definitions"]; !ok {
+		t.Error("expected definitions key in response for action=definitions")
+	}
+	defs := getSlice(t, res, "definitions")
+	if len(defs) != 2 {
+		t.Errorf("action=definitions: expected 2 definitions, got %d", len(defs))
+	}
+}
+
+func TestHandleEndpoints_Calls(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpoints, map[string]any{
+		"group":  "test",
+		"action": "calls",
+	})
+	if _, ok := res["calls"]; !ok {
+		t.Error("expected calls key in response for action=calls")
+	}
+	calls := getSlice(t, res, "calls")
+	if len(calls) != 2 {
+		t.Errorf("action=calls: expected 2 calls, got %d", len(calls))
+	}
+}
+
+func TestHandleEndpoints_CallsOrphanOnly(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpoints, map[string]any{
+		"group":       "test",
+		"action":      "calls",
+		"orphan_only": true,
+	})
+	calls := getSlice(t, res, "calls")
+	for _, c := range calls {
+		obj := c.(map[string]any)
+		hint, _ := obj["orphan_hint"].(string)
+		if hint == "" {
+			t.Errorf("orphan_only=true via dispatch: got call with empty orphan_hint: %v", obj)
+		}
+	}
+}
+
+func TestHandleEndpoints_Stats(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpoints, map[string]any{
+		"group":  "test",
+		"action": "stats",
+	})
+	if _, ok := res["totals"]; !ok {
+		t.Error("expected totals key in response for action=stats")
+	}
+}
+
+func TestHandleEndpoints_UnknownAction(t *testing.T) {
+	srv := newEndpointServer(t)
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"group": "test", "action": "bogus"}
+	res, err := srv.handleEndpoints(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.IsError {
+		t.Error("expected IsError=true for unknown action")
+	}
+}
