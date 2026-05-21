@@ -19,10 +19,11 @@ for clients (Claude Code, Windsurf, etc.) and tracks the implementation in
 - **Transport:** stdio
 - **Process model:** one server per machine, multiple registered groups, lazy
   mtime-driven reload before every tool call. See ADR-0004.
-- **Tool count:** 32 (as of #1281), all prefixed `archigraph_*` to avoid client-side
+- **Tool count:** 28 (as of this PR), all prefixed `archigraph_*` to avoid client-side
   collisions when other MCP servers are installed alongside (Refs #62).
   Prior history: 19 tools → #668 bundled 3 action-dispatch tools (saved 4) → 39 tools
-  after #1202/#1220/#1252 additions → #1281 merged 9 tools into 4 bundles → 32 tools.
+  after #1202/#1220/#1252 additions → #1281 merged 9 tools into 4 bundles → 32 tools
+  → this PR dropped 4 dashboard-only tools → 28 tools.
 - **State:** in-memory `Document`s loaded from per-repo `.archigraph/graph.json`
   files; no database. See ADR-0006.
 - **Routing:** every tool that touches graph data resolves a group via the
@@ -102,13 +103,13 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_list_findings`](#archigraph_list_findings) | List previously saved findings, optionally filtered. |
 | [`archigraph_get_source`](#archigraph_get_source) | Return source-file snippet for a node from disk. |
 | [`archigraph_recent_activity`](#archigraph_recent_activity) | Entities whose source files were modified after a given time. |
-| [`archigraph_get_telemetry`](#archigraph_get_telemetry) | Server uptime, per-tool counters, reload counts. |
+| ~~`archigraph_get_telemetry`~~ | Dropped — HTTP-only. |
 | [`archigraph_patterns`](#archigraph_patterns) | Agent-learned pattern store (action: query\|record\|refine\|apply\|reject\|promote\|get). |
-| [`archigraph_get_next_enrichment_task`](#archigraph_get_next_enrichment_task) | Next highest-priority enrichment task for one entity. |
+| ~~`archigraph_get_next_enrichment_task`~~ | Dropped — use `enrichments(action=list,limit=1)`. |
 | [`archigraph_topology`](#archigraph_topology) | Message-channel topology (action: orphan\_publishers\|orphan\_subscribers\|topic\_detail). |
 | [`archigraph_flows`](#archigraph_flows) | Flow-process diagnostics (action: dead\_ends\|truncated\|detail). |
-| [`archigraph_diagnostics`](#archigraph_diagnostics) | Per-repo load health, entity counts, cross-link stats. |
-| [`archigraph_quality_orphans`](#archigraph_quality_orphans) | Entities with no graph edges — dead code candidates. |
+| ~~`archigraph_diagnostics`~~ | Dropped — HTTP-only (`/api/diagnostics`). |
+| ~~`archigraph_quality_orphans`~~ | Dropped — use `archigraph_find_dead_code`. |
 | [`archigraph_graph_patterns`](#archigraph_graph_patterns) | Indexer-extracted graph patterns (action: list\|get). |
 | [`archigraph_search_entities`](#archigraph_search_entities) | Full-text substring search across entity names. |
 | [`archigraph_get_subgraph`](#archigraph_get_subgraph) | All nodes and edges within N hops of an entity. |

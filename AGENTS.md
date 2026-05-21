@@ -108,7 +108,7 @@ The following runtime-distributed systems are fully wired:
 
 **Patterns (1):** `archigraph_patterns` (ADR-0018 agent-learned pattern store: query/record).
 
-**Introspection (2):** `archigraph_whoami` (inferred group + repo + doc-state nudge), `archigraph_get_telemetry` (uptime, per-tool counters, reload counts).
+**Introspection (1):** `archigraph_whoami` (inferred group + repo + doc-state nudge).
 
 Clients auto-discover via `archigraph mcp serve`.
 

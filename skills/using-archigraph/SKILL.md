@@ -16,7 +16,7 @@ when-to-use: >
 # using-archigraph
 
 A practical guide for AI agents working in an archigraph-registered codebase.
-This skill covers when to use archigraph vs. grep, which of the 32 MCP tools
+This skill covers when to use archigraph vs. grep, which of the 28 MCP tools
 to call for which task, Pass-based workflows, and hard anti-patterns.
 
 ---
@@ -79,7 +79,7 @@ From these three calls you learn:
 
 ---
 
-## 3. Tool catalogue (all 19 tools)
+## 3. Tool catalogue (all 28 tools)
 
 ### 3.1 Orientation tools
 
@@ -330,19 +330,6 @@ querying the graph.
 ```
 archigraph_list_findings(since="2026-05-01T00:00:00Z")
 archigraph_list_findings(entity_id="ChargeService")
-```
-
----
-
-### 3.8 Diagnostics
-
-#### `archigraph_get_telemetry`
-Returns server uptime, per-tool call counters, error rates, and p50/p95
-latency. Use only when debugging MCP server issues — not for normal workflows.
-
-```
-archigraph_get_telemetry()
-→ { "uptime_ms": 1234567, "reload_count": 12, "tools": { "archigraph_find": { "p95_ms": 31.7 } } }
 ```
 
 ---
