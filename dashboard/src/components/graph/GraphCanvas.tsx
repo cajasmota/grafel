@@ -308,6 +308,12 @@ export interface GraphCanvasProps {
    * Omit to use Silk Road defaults.
    */
   simulationConfig?: SimulationConfig
+  /**
+   * #1367: Multi-criteria filter — pre-computed array of node indices that pass
+   * all active filter criteria. When non-null the canvas shows only these nodes
+   * (intersected with the repo filter and LoD band). null = no filter active.
+   */
+  nodeFilterIndices?: number[] | null
 }
 
 /** Truncate long labels at ~30 chars for layout legibility */
@@ -356,6 +362,7 @@ const GraphCanvasInner = ({
   forceVisibleIds,
   highlightedEdgeIds,
   simulationConfig,
+  nodeFilterIndices,
 }: GraphCanvasProps) => {
   // #1361: merge tunable params with Silk Road defaults so omitted props fall back correctly
   const simCfg: SimulationConfig = useMemo(
@@ -415,18 +422,31 @@ const GraphCanvasInner = ({
   }, [nodes, currentBand, activeRepos, effectiveForceIds])
 
   // Apply LoD visibility via Cosmograph's imperative selection API.
+  // #1367: when nodeFilterIndices is non-null, intersect it with the LoD band result.
   useEffect(() => {
     const cosmo = cosmographRef.current
     if (!cosmo) return
 
     // #1356: all bands are now unfiltered (topN=null, degreeMin=0).
     const isUnfilteredBand = currentBand.topN === null && currentBand.degreeMin === 0
-    if (isUnfilteredBand && !activeRepos && effectiveForceIds.size === 0) {
+    const noOverrides = !activeRepos && effectiveForceIds.size === 0 && !nodeFilterIndices
+
+    if (isUnfilteredBand && noOverrides) {
       cosmo.selectPoints(null)
     } else {
-      cosmo.selectPoints(lodVisibleIndices)
+      // Intersect lod indices with nodeFilterIndices when both are present
+      let effective: number[] | null = lodVisibleIndices
+      if (nodeFilterIndices !== null && nodeFilterIndices !== undefined) {
+        if (effective === null) {
+          effective = nodeFilterIndices
+        } else {
+          const filterSet = new Set(nodeFilterIndices)
+          effective = effective.filter((i) => filterSet.has(i))
+        }
+      }
+      cosmo.selectPoints(effective)
     }
-  }, [lodVisibleIndices, currentBand, activeRepos, effectiveForceIds])
+  }, [lodVisibleIndices, currentBand, activeRepos, effectiveForceIds, nodeFilterIndices])
 
   // Fallback repo-filter application when band is unfiltered (before LoD fires)
   useEffect(() => {
@@ -434,8 +454,18 @@ const GraphCanvasInner = ({
     if (!cosmo) return
     const isUnfilteredBand = currentBand.topN === null && currentBand.degreeMin === 0
     if (!isUnfilteredBand) return
-    cosmo.selectPoints(visibleIndices)
-  }, [visibleIndices, currentBand])
+    // If nodeFilterIndices active, intersect with repo filter
+    if (nodeFilterIndices !== null && nodeFilterIndices !== undefined) {
+      if (visibleIndices !== null) {
+        const filterSet = new Set(nodeFilterIndices)
+        cosmo.selectPoints(visibleIndices.filter((i) => filterSet.has(i)))
+      } else {
+        cosmo.selectPoints(nodeFilterIndices)
+      }
+    } else {
+      cosmo.selectPoints(visibleIndices)
+    }
+  }, [visibleIndices, currentBand, nodeFilterIndices])
 
   // ---------------------------------------------------------------------------
   // Node data with pre-computed cluster + size + position fields
@@ -911,7 +941,7 @@ const GraphCanvasInner = ({
 
         // ── Greyout opacity ────────────────────────────────────────────────
         // #1356: all bands are unfiltered, so greyout only applies when repo filter is active.
-        pointGreyoutOpacity={repoFilterActive ? 0 : 0.15}
+        pointGreyoutOpacity={(repoFilterActive || !!nodeFilterIndices) ? 0 : 0.15}
         linkGreyoutOpacity={repoFilterActive ? 0 : 0.1}
 
         // ── Simulation — #1153 Silk Road defaults, #1361 tunable via sidebar sliders ───

@@ -10,10 +10,12 @@ import { useHoverLabel } from '@/hooks/graph/useHoverLabel'
 import { useColorMode } from '@/hooks/graph/useColorMode'
 import { useSimulationConfig } from '@/hooks/graph/useSimulationConfig'
 import { useGraphHighlight } from '@/hooks/graph/useGraphHighlight'
+import { useGraphFilter, filterNodes } from '@/hooks/graph/useGraphFilter'
 import { useGraphCameraStore, useSimulationRunning } from '@/store/graphCameraStore'
 import { useThemeContext } from '@/context/ThemeContext'
 import { GraphCanvas } from '@/components/graph/GraphCanvas'
 import { SimulationControls } from '@/components/graph/SimulationControls'
+import { FilterPanel } from '@/components/graph/FilterPanel'
 import { GraphToolbar } from '@/components/graph/GraphToolbar'
 import { EdgeKindFilters } from '@/components/graph/EdgeKindFilters'
 import { CommunityLegend } from '@/components/graph/CommunityLegend'
@@ -64,6 +66,20 @@ export function GraphRoute() {
   // ── Simulation config (#1361 — tunable params persisted to localStorage) ──
   const { config: simConfig, setParam: setSimParam, applyPreset: applySimPreset, shareHash: simShareHash } = useSimulationConfig()
 
+  // ── Multi-criteria graph filter (#1367) ────────────────────────────────────
+  const {
+    filter: graphFilter,
+    activeFilter: graphFilterActive,
+    setKinds: setFilterKinds,
+    setCommunityIds: setFilterCommunities,
+    setMinDegree: setFilterMinDegree,
+    setFileGlob: setFilterFileGlob,
+    setHasProperty: setFilterHasProperty,
+    setInvert: setFilterInvert,
+    setLogic: setFilterLogic,
+    clearAll: clearGraphFilter,
+  } = useGraphFilter()
+
   // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchResults, setShowSearchResults] = useState(false)
@@ -109,6 +125,8 @@ export function GraphRoute() {
     ? (activeRepos.size === allRepoSlugs.length ? null : activeRepos)
     : null
 
+  // #1367: multi-criteria filter indices — computed after useGraphData returns nodes.
+
   const { nodes, edges, communities, allEdgeKinds, totalNodeCount, isLoading, error, refetch } =
     useGraphData(
       group ?? '',
@@ -124,6 +142,17 @@ export function GraphRoute() {
     )
 
   const colorMap = useCommunityColors(communities)
+
+  // ── #1367: multi-criteria filter — compute matching indices + match count ──
+  const filterIndices = useMemo<number[] | null>(() => {
+    if (!graphFilterActive) return null
+    return filterNodes(nodes, graphFilter)
+  }, [nodes, graphFilter, graphFilterActive])
+
+  const filterMatchCount = useMemo(() => {
+    if (!graphFilterActive) return nodes.length
+    return filterIndices?.length ?? 0
+  }, [nodes.length, graphFilterActive, filterIndices])
 
   // ── Hover neighbor counts (#1060) ──────────────────────────────────────────
   // Pre-index edges by source and target so neighbor lookup is O(1) per query.
@@ -534,6 +563,23 @@ export function GraphRoute() {
 
           <div className="border-t border-slate-200 dark:border-slate-700" />
 
+          {/* Multi-criteria filter panel (#1367) */}
+          <FilterPanel
+            filter={graphFilter}
+            matchCount={isLoading ? -1 : filterMatchCount}
+            communities={communities}
+            onSetKinds={setFilterKinds}
+            onSetCommunities={setFilterCommunities}
+            onSetMinDegree={setFilterMinDegree}
+            onSetFileGlob={setFilterFileGlob}
+            onSetHasProperty={setFilterHasProperty}
+            onSetInvert={setFilterInvert}
+            onSetLogic={setFilterLogic}
+            onClearAll={clearGraphFilter}
+          />
+
+          <div className="border-t border-slate-200 dark:border-slate-700" />
+
           {/* Repo filter */}
           {allRepoSlugs.length > 0 && (
             <div>
@@ -657,6 +703,7 @@ export function GraphRoute() {
               forceVisibleIds={highlightedNodeIds}
               highlightedEdgeIds={highlightedEdgeIds}
               simulationConfig={simConfig}
+              nodeFilterIndices={filterIndices}
             />
           )}
 
