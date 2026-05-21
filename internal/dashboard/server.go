@@ -337,6 +337,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/onboard/detect-monorepo", s.handleOnboardDetectMonorepo)
 	mux.HandleFunc("POST /api/onboard/create-group", s.handleOnboardCreateGroup)
 
+	// MCP Setup Wizard (#1247) — one-click install / uninstall / verify
+	mux.HandleFunc("GET /api/mcp-setup/hosts", s.handleMCPSetupHosts)
+	mux.HandleFunc("POST /api/mcp-setup/install", s.handleMCPSetupInstall)
+	mux.HandleFunc("POST /api/mcp-setup/uninstall", s.handleMCPSetupUninstall)
+	mux.HandleFunc("POST /api/mcp-setup/verify", s.handleMCPSetupVerify)
+
 	return s.withAuth(mux)
 }
 

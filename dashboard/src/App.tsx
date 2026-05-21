@@ -19,6 +19,7 @@ import { SettingsRoute } from '@/routes/settings'
 import { QualityRoute } from '@/routes/quality'
 import { MCPActivityRoute } from '@/routes/mcp-activity'
 import { OnboardRoute } from '@/routes/onboard'
+import { MCPSetupRoute } from '@/routes/mcp-setup'
 import { RouterErrorBoundary } from '@/components/RouterErrorBoundary'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Globe } from 'lucide-react'
@@ -109,6 +110,9 @@ const router = createBrowserRouter([
 
       // Surface 13 — Web onboarding wizard (#1239)
       { path: 'onboard', element: <OnboardRoute /> },
+
+      // Surface 14 — MCP Setup Wizard (#1247)
+      { path: 'mcp-setup', element: <MCPSetupRoute /> },
     ],
   },
 ])
