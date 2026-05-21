@@ -31,10 +31,13 @@ frameworks:
 file_conventions: []
 
 source_patterns:
-  # LCEL chain: prompt | model | parser
-  - pattern: "\\w+\\s*=\\s*.+\\|.+"
+  # LCEL chain: chain = prompt | model | parser
+  # Uses (?m) for line-anchored matching. Each pipe-separated segment must be
+  # an identifier, attribute access, or call — NOT a string literal, integer,
+  # or f-string. Captures the LHS variable name (group 1). Issue #1415.
+  - pattern: "(?m)^(\\w+)\\s*=\\s*[A-Za-z_][\\w.()]*(?:\\s*\\|\\s*[A-Za-z_][\\w.()]*)+\\s*$"
     entity_type: Operation
-    name_group: 0
+    name_group: 1
     scope: file
   # @tool decorator
   - pattern: "@tool\\b"

@@ -106,6 +106,61 @@ def bar(x, y):
 	}
 }
 
+// TestExtract_QualifiedName verifies that extracted Python entities carry
+// a module-path-qualified name. Issue #1413.
+func TestExtract_QualifiedName(t *testing.T) {
+	src := `def foo():
+    pass
+
+class Bar:
+    def baz(self):
+        pass
+`
+	tree := parse(t, []byte(src))
+	ext, ok := extractor.Get("python")
+	if !ok {
+		t.Fatal("python extractor not registered")
+	}
+
+	// Use a file path that resembles a real module path so we can assert
+	// the dotted module form.
+	fi := extractor.FileInput{
+		Path:     "app/orders/handlers.py",
+		Content:  []byte(src),
+		Language: "python",
+		Tree:     tree,
+	}
+	entities, err := ext.Extract(context.Background(), fi)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	entities = stripFileEntity(entities)
+
+	byName := make(map[string]types.EntityRecord)
+	for _, e := range entities {
+		byName[e.Name] = e
+	}
+
+	cases := []struct {
+		entityName string
+		wantQN     string
+	}{
+		{"foo", "orders.handlers.foo"},
+		{"Bar", "orders.handlers.Bar"},
+		{"Bar.baz", "orders.handlers.Bar.baz"},
+	}
+	for _, tc := range cases {
+		e, ok := byName[tc.entityName]
+		if !ok {
+			t.Errorf("entity %q not found", tc.entityName)
+			continue
+		}
+		if e.QualifiedName != tc.wantQN {
+			t.Errorf("entity %q: QualifiedName=%q, want %q", tc.entityName, e.QualifiedName, tc.wantQN)
+		}
+	}
+}
+
 // TestExtract_FunctionLineNumbers verifies exact line numbers for a single function.
 func TestExtract_FunctionLineNumbers(t *testing.T) {
 	src := `# comment
@@ -377,10 +432,10 @@ func TestExtract_ClassNoMethods(t *testing.T) {
 	}
 }
 
-// TestExtract_QualifiedNameNull verifies that the base extractor sets an empty
-// QualifiedName for all entities (not a qualified path like ClassName.method).
-// The golden fixture has qualified_name=null for all entities.
-func TestExtract_QualifiedNameNull(t *testing.T) {
+// TestExtract_QualifiedNamePopulated verifies that the base extractor sets a
+// module-path-qualified QualifiedName on all function, class, and method
+// entities (issue #1413). makeFile uses path "test.py" → module "test".
+func TestExtract_QualifiedNamePopulated(t *testing.T) {
 	src := `class Validator:
     def validate(self):
         return True
@@ -396,9 +451,25 @@ def standalone():
 		t.Fatalf("Extract: %v", err)
 	}
 	entities = stripFileEntity(entities)
+
+	wantQN := map[string]string{
+		"Validator":          "test.Validator",
+		"Validator.validate": "test.Validator.validate",
+		"standalone":         "test.standalone",
+	}
 	for _, e := range entities {
-		if e.QualifiedName != "" {
-			t.Errorf("entity %q: expected empty QualifiedName (null in JSON), got %q", e.Name, e.QualifiedName)
+		if e.Kind != "SCOPE.Operation" && e.Kind != "SCOPE.Component" {
+			continue // only assert on function/class/method entities
+		}
+		if e.Subtype == "field" || e.Subtype == "module" || e.Subtype == "file" {
+			continue
+		}
+		want, ok := wantQN[e.Name]
+		if !ok {
+			continue // schema fields etc. are excluded
+		}
+		if e.QualifiedName != want {
+			t.Errorf("entity %q: QualifiedName=%q, want %q", e.Name, e.QualifiedName, want)
 		}
 	}
 }

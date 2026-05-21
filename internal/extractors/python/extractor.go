@@ -13,8 +13,10 @@
 //   - CALLS:     function → callee   (bare-name target, resolver rewrites cross-file)
 //   - IMPORTS:   file     → module   (one per import path)
 //
-// QualifiedName is left empty (null in JSON) for all entities, matching the
-// Python base parser. Framework-specific qualified names are added by later passes.
+// QualifiedName is set to the module-path-qualified name for function, method,
+// and class entities (issue #1413). The module path is derived from the file
+// path using filePathToModule — e.g. "app/orders/handlers.py" → "orders.handlers",
+// so a function "createOrder" gets QualifiedName "orders.handlers.createOrder".
 //
 // The extractor registers itself via init() and is auto-imported by the
 // generated registry_gen.go.
@@ -36,6 +38,33 @@ import (
 
 func init() {
 	extractor.Register("python", &Extractor{})
+}
+
+// filePathToModule converts a repo-relative Python file path to its
+// dotted module path. Mirrors modulesForPythonFile in internal/resolve
+// but is intentionally self-contained to avoid an import cycle.
+//
+// Examples:
+//
+//	"app/orders/handlers.py"        → "orders.handlers"  (app/ prefix stripped)
+//	"users/__init__.py"             → "users"
+//	"src/app/models.py"             → "app.models"        (src/ prefix stripped)
+//	"manage.py"                     → "manage"
+func filePathToModule(filePath string) string {
+	// Strip .py suffix.
+	s := strings.TrimSuffix(filePath, ".py")
+	// __init__ rolls up to its parent directory.
+	if strings.HasSuffix(s, "/__init__") {
+		s = strings.TrimSuffix(s, "/__init__")
+	}
+	// Strip well-known source-root prefixes (mirrors sourceRootPrefixes in resolve).
+	for _, prefix := range []string{"src/", "lib/", "app/"} {
+		if strings.HasPrefix(s, prefix) {
+			s = strings.TrimPrefix(s, prefix)
+			break
+		}
+	}
+	return strings.ReplaceAll(s, "/", ".")
 }
 
 // Extractor implements extractors.Extractor for Python.
@@ -233,6 +262,14 @@ func walkNode(
 				rec.Name = parentClass + "." + rec.Name
 				rec.Signature = "class " + rec.Name
 			}
+			// Issue #1413 — re-derive QualifiedName from the (possibly updated)
+			// rec.Name so nested classes get the fully-dotted qualified form,
+			// e.g. "orders.handlers.Outer.Inner" not "orders.handlers.Inner".
+			if mod := filePathToModule(file.Path); mod != "" {
+				rec.QualifiedName = mod + "." + rec.Name
+			} else {
+				rec.QualifiedName = rec.Name
+			}
 			classIdx := len(*out)
 			*out = append(*out, rec)
 			*classCount++
@@ -381,6 +418,12 @@ func walkNode(
 					rec.Name = parentClass + "." + rec.Name
 					rec.Signature = "class " + rec.Name
 				}
+				// Issue #1413 — re-derive QualifiedName after name qualification.
+				if mod := filePathToModule(file.Path); mod != "" {
+					rec.QualifiedName = mod + "." + rec.Name
+				} else {
+					rec.QualifiedName = rec.Name
+				}
 				classIdx := len(*out)
 				*out = append(*out, rec)
 				*classCount++
@@ -449,6 +492,9 @@ func walkNode(
 }
 
 // buildClass constructs a SCOPE.Component EntityRecord for a class_definition node.
+// QualifiedName is set to "<module>.<name>" where module is derived from
+// the file path (issue #1413). For nested classes the caller must re-derive
+// QualifiedName after prefixing rec.Name with the parent class path.
 func buildClass(node *sitter.Node, file extractor.FileInput) types.EntityRecord {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
@@ -456,8 +502,15 @@ func buildClass(node *sitter.Node, file extractor.FileInput) types.EntityRecord 
 	}
 	name := nodeText(nameNode, file.Content)
 
+	mod := filePathToModule(file.Path)
+	qn := mod + "." + name
+	if mod == "" {
+		qn = name
+	}
+
 	return types.EntityRecord{
 		Name:               name,
+		QualifiedName:      qn,
 		Kind:               "SCOPE.Component",
 		Subtype:            "class",
 		Language:           "python",
@@ -506,8 +559,18 @@ func buildFunction(node *sitter.Node, file extractor.FileInput, parentClass stri
 		returnType = " -> " + nodeText(retNode, file.Content)
 	}
 
+	// Issue #1413 — set qualified_name to "<module>.<emittedName>".
+	// emittedName already contains the dotted class path for methods,
+	// so the qualified form is simply module + "." + emittedName.
+	mod := filePathToModule(file.Path)
+	qn := mod + "." + emittedName
+	if mod == "" {
+		qn = emittedName
+	}
+
 	return types.EntityRecord{
 		Name:               emittedName,
+		QualifiedName:      qn,
 		Kind:               "SCOPE.Operation",
 		Subtype:            subtype,
 		Language:           "python",

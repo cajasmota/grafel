@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -151,10 +152,25 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 
 	for _, cs := range sets {
 		// Extract entities from source patterns.
+		// Issue #1413 — use FindAllStringSubmatchIndex so we have byte offsets
+		// for computing StartLine. Also derives QualifiedName for Python entities.
 		for _, sp := range cs.sourcePatterns {
-			matches := sp.regex.FindAllStringSubmatch(content, -1)
-			for _, match := range matches {
-				name := extractGroup(match, sp.nameGroup)
+			idxMatches := sp.regex.FindAllStringSubmatchIndex(content, -1)
+			for _, idxMatch := range idxMatches {
+				if len(idxMatch) < 2 {
+					continue
+				}
+				name := extractGroupFromIndex(content, idxMatch, sp.nameGroup)
+				if name == "" {
+					// nameGroup 0 means the full match.
+					if sp.nameGroup == 0 {
+						name = content[idxMatch[0]:idxMatch[1]]
+					}
+				}
+				if name == "" {
+					continue
+				}
+				name = strings.TrimSpace(name)
 				if name == "" {
 					continue
 				}
@@ -165,11 +181,25 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 				}
 				seenEntities[key] = true
 
+				startLine := matchStartLine(content, idxMatch[0])
+
+				// Derive qualified_name for Python entities (issue #1413).
+				qn := ""
+				if file.Language == "python" {
+					if mod := detectorFilePathToModule(file.Path); mod != "" {
+						qn = mod + "." + name
+					} else {
+						qn = name
+					}
+				}
+
 				entity := types.EntityRecord{
-					Name:       name,
-					Kind:       sp.entityType,
-					SourceFile: file.Path,
-					Language:   file.Language,
+					Name:          name,
+					QualifiedName: qn,
+					Kind:          sp.entityType,
+					SourceFile:    file.Path,
+					Language:      file.Language,
+					StartLine:     startLine,
 					Properties: map[string]string{
 						"framework":    sp.framework,
 						"pattern_type": "yaml_driven",
@@ -429,6 +459,61 @@ func extractGroup(match []string, group int) string {
 		return ""
 	}
 	return match[group]
+}
+
+// extractGroupFromIndex extracts the text of the capture group at groupIdx from
+// an index-format submatch (as returned by FindAllStringSubmatchIndex).
+// groupIdx 0 returns the full match (idxMatch[0]:idxMatch[1]).
+// Returns "" when the group is absent (negative offset) or out of range.
+func extractGroupFromIndex(content string, idxMatch []int, groupIdx int) string {
+	// idxMatch layout: [fullStart, fullEnd, g1Start, g1End, g2Start, g2End, …]
+	pairIdx := groupIdx * 2
+	if pairIdx+1 >= len(idxMatch) {
+		return ""
+	}
+	start, end := idxMatch[pairIdx], idxMatch[pairIdx+1]
+	if start < 0 || end < 0 || start > end || end > len(content) {
+		return ""
+	}
+	return content[start:end]
+}
+
+// matchStartLine returns the 1-based line number of the start of a regex match
+// within content, given its byte offset. Returns 1 for offsets at or below 0.
+func matchStartLine(content string, byteOffset int) int {
+	if byteOffset <= 0 {
+		return 1
+	}
+	line := 1
+	for i := 0; i < byteOffset && i < len(content); i++ {
+		if content[i] == '\n' {
+			line++
+		}
+	}
+	return line
+}
+
+// detectorFilePathToModule converts a repo-relative Python file path to its
+// dotted module path. Mirrors filePathToModule in internal/extractors/python
+// but kept local to avoid an import cycle.
+//
+// Examples:
+//
+//	"app/orders/handlers.py"  → "orders.handlers"  (app/ stripped)
+//	"src/app/models.py"       → "app.models"         (src/ stripped)
+//	"users/__init__.py"       → "users"
+func detectorFilePathToModule(filePath string) string {
+	s := strings.TrimSuffix(filePath, ".py")
+	if strings.HasSuffix(s, "/__init__") {
+		s = strings.TrimSuffix(s, "/__init__")
+	}
+	for _, prefix := range []string{"src/", "lib/", "app/"} {
+		if strings.HasPrefix(s, prefix) {
+			s = strings.TrimPrefix(s, prefix)
+			break
+		}
+	}
+	return strings.ReplaceAll(s, "/", ".")
 }
 
 // isComplexEntity returns true for entity types that warrant LLM enrichment.
