@@ -245,6 +245,15 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		ctx, file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// Spring MVC AST pass for Kotlin: same prefix-composition logic as the
+	// Java pass above, but adapted for the Kotlin tree-sitter CST shape.
+	// Emits http_endpoint_definition entities directly (no intermediate Route
+	// layer) because there is no YAML rule layer for Kotlin Spring controllers.
+	// No-op for non-Kotlin files. Refs #1421.
+	entities, relationships = applySpringRouteCompositionKotlin(
+		ctx, file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// Django REST Framework AST pass: compose the parent `path("api/",
 	// include(<router>.urls))` prefix with each `<router>.register("name",
 	// ViewSet)` call into a single composed Route. The YAML rules above
