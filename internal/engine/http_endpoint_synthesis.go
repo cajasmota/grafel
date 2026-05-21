@@ -280,6 +280,12 @@ func applyHTTPEndpointSynthesis(
 	case "javascript", "typescript":
 		// Producer side: Express.
 		synthesizeExpress(string(content), emit)
+		// Producer side: NestJS @Controller + @Get/@Post/... decorators (#1418).
+		synthesizeNestJS(string(content), emit)
+		// Producer side: Apollo / GraphQL resolvers (#1422). GraphQL is
+		// schema-first rather than REST, so resolver fields are emitted as
+		// graphql_field endpoint-ish entities keyed by operation + field.
+		synthesizeGraphQLResolvers(string(content), emit)
 		// Consumer side (#721): fetch / axios / generic *Client
 		// HTTP client calls. Now emits FETCHES edges at extraction time.
 		synthesizeFetchAxiosWithRuntime(string(content), emitClientRuntime)
@@ -761,6 +767,22 @@ func synthesizeExpress(content string, emit emitFn) {
 		if !looksLikeExpressPath(raw) {
 			continue
 		}
+		// #1423 — inline arrow / function-expression handlers. The
+		// handler-named regex's group-4 `([\w$.]+)` greedily captures an
+		// identifier from *inside* an inline handler — e.g.
+		// `app.get("/x", async (req, res) => {...})` captures `res` (the
+		// last param before the `)`), yielding `source_handler=Controller:res`
+		// which the resolve pass can never bind and therefore DROPS the whole
+		// synthetic (handler_dropped). When the matched region between the
+		// path literal and the handler token contains a `(` it means the
+		// "handler" is actually a function parameter, not a named reference.
+		// In that case clear the handler so the synthetic is emitted with no
+		// source_handler (NoHandlerProp keep-path) and survives resolve. The
+		// path-only second pass would otherwise dedup it away with a handler
+		// it can't use, so we MUST claim the (verb,path) here.
+		if isInlineExpressHandler(m[0], raw) {
+			handler = ""
+		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
 		// Express `.all(...)` registers every verb on the path; emit as ANY.
 		if verb == "ALL" {
@@ -795,6 +817,168 @@ func synthesizeExpress(content string, emit emitFn) {
 			continue
 		}
 		emit(verb, canonical, "express", "Controller", "")
+	}
+}
+
+// isInlineExpressHandler reports whether the handler captured by
+// expressVerbRe came from inside an inline function expression / arrow
+// function rather than being a bare named-reference handler.
+//
+// expressVerbRe's group 4 (`([\w$.]+)`) can match a function parameter when
+// the handler is inline, e.g. `app.get("/x", async (req, res) => {...})`
+// captures `res`. We distinguish the two cases by inspecting the matched
+// region AFTER the path literal: if it contains an opening paren `(` or a
+// `function` keyword, the captured token is a parameter name (inline
+// handler), not a named handler reference. Named handlers like
+// `app.get("/x", handlerFn)` have no `(` between the path and the token.
+func isInlineExpressHandler(fullMatch, raw string) bool {
+	// Find the path literal inside the full match and inspect the tail.
+	idx := strings.Index(fullMatch, raw)
+	if idx < 0 {
+		return false
+	}
+	tail := fullMatch[idx+len(raw):]
+	return strings.ContainsRune(tail, '(') || strings.Contains(tail, "function")
+}
+
+// ---------------------------------------------------------------------------
+// NestJS (JS/TS) — #1418
+// ---------------------------------------------------------------------------
+//
+// NestJS controllers declare a class-level route prefix via
+// `@Controller('prefix')` (or `@Controller()` for the root) and per-handler
+// verbs via method decorators `@Get()`, `@Post('sub')`, `@Put(':id')`, etc.
+// The combined route is `<prefix>/<method-path>` and the verb is the
+// decorator name. We emit one http_endpoint_definition per decorated method
+// with the composed canonical path, mirroring the Spring/JAX-RS shape.
+//
+// This is a regex pass (no AST) consistent with the other framework
+// synthesizers. It handles the single-controller-per-file convention that
+// NestJS overwhelmingly follows; a file with two @Controller classes will
+// attribute all methods to the first prefix (acceptable — the cross-repo
+// linker matches on path, and split controllers are rare).
+
+// nestControllerRe captures the class-level @Controller('prefix') value.
+// The prefix is optional (`@Controller()` → root prefix ""). Accepts single,
+// double, or backtick quotes.
+var nestControllerRe = regexp.MustCompile(
+	"@Controller\\s*\\(\\s*(?:['\"`]([^'\"`\\n\\r]*)['\"`])?\\s*\\)",
+)
+
+// nestMethodDecoratorRe captures a NestJS HTTP-verb method decorator and the
+// following method name. The decorator path argument is optional. We allow
+// intervening decorators (e.g. @UseGuards, @HttpCode, @Param) and modifiers
+// (public/private/async/static) between the verb decorator and the method
+// declaration.
+//
+// Capture groups: 1 = verb, 2 = optional decorator path, 3 = method name.
+var nestMethodDecoratorRe = regexp.MustCompile(
+	"@(Get|Post|Put|Delete|Patch|Head|Options|All)\\s*\\(\\s*(?:['\"`]([^'\"`\\n\\r]*)['\"`])?\\s*[^)]*\\)" +
+		"\\s*[\\r\\n]+(?:\\s*@[\\w.]+\\s*(?:\\([^)]*\\))?\\s*[\\r\\n]+)*" +
+		"\\s*(?:public\\s+|private\\s+|protected\\s+|static\\s+|readonly\\s+|async\\s+)*" +
+		"([A-Za-z_$][\\w$]*)\\s*\\(",
+)
+
+func synthesizeNestJS(content string, emit emitFn) {
+	if !strings.Contains(content, "@Controller") {
+		return
+	}
+	prefix := ""
+	if m := nestControllerRe.FindStringSubmatch(content); len(m) >= 2 {
+		prefix = m[1]
+	}
+	for _, m := range nestMethodDecoratorRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		verb := strings.ToUpper(m[1])
+		methodPath := m[2]
+		methodName := m[3]
+		if verb == "ALL" {
+			verb = "ANY"
+		}
+		full := joinPathFragments("/"+strings.Trim(prefix, "/"), methodPath)
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, full)
+		if canonical == "" {
+			continue
+		}
+		emit(verb, canonical, "nestjs", "Controller", methodName)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Apollo / GraphQL resolvers (JS/TS) — #1422
+// ---------------------------------------------------------------------------
+//
+// GraphQL is a single-endpoint protocol — every operation is POSTed to one
+// `/graphql` mount — so it does not map cleanly onto the REST route↔fetch
+// model. To give the cross-repo linker and the topology view *something* to
+// match, we emit one endpoint-ish synthetic per resolver field under the
+// Query / Mutation / Subscription roots, using the synthetic verb GRAPHQL and
+// a canonical path of `/graphql/<Operation>/<field>`. The HTTP CALL sites the
+// resolvers make to downstream REST services (via serviceClient/axios) are
+// captured by the consumer-side synthesizer (synthesizeFetchAxios) — that is
+// where the real cross-repo edges (search-graphql → catalog/orders/semantic)
+// come from. The resolver-field synthetics are graph-discoverability sugar.
+//
+// Detection is intentionally narrow: we only fire inside an object literal
+// whose key is one of Query / Mutation / Subscription, capturing the field
+// name of each `<field>: (...) => ...` / `<field>(...) {` / `async <field>(`
+// resolver entry.
+
+// gqlRootBlockRe matches a `Query: {`, `Mutation: {`, `Subscription: {`
+// resolver-map root and captures the root name. Used to scope field
+// extraction to resolver blocks only.
+var gqlRootBlockRe = regexp.MustCompile(`\b(Query|Mutation|Subscription)\s*:\s*\{`)
+
+// gqlFieldRe matches a resolver field entry inside a resolver-map root block:
+//
+//	searchProducts: async (_, { q }) => { ... }
+//	order: (parent, args) => { ... }
+//	createOrder(parent, args) { ... }
+//
+// Capture group 1 = field name.
+var gqlFieldRe = regexp.MustCompile(
+	`(?m)^[ \t]*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?\(` +
+		`|(?m)^[ \t]*(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{`,
+)
+
+func synthesizeGraphQLResolvers(content string, emit emitFn) {
+	// Only operate on files that look like a GraphQL resolver map.
+	if !strings.Contains(content, "Query") && !strings.Contains(content, "Mutation") &&
+		!strings.Contains(content, "Subscription") {
+		return
+	}
+	if !strings.Contains(content, "resolvers") && !strings.Contains(content, "Resolver") {
+		return
+	}
+	for _, rb := range gqlRootBlockRe.FindAllStringSubmatchIndex(content, -1) {
+		root := content[rb[2]:rb[3]]
+		// The root block opens at the `{` consumed by the regex (rb[1]-1).
+		blockOpen := rb[1] - 1
+		blockClose := findMatchingBrace(content, blockOpen)
+		if blockClose < 0 {
+			continue
+		}
+		body := content[blockOpen+1 : blockClose]
+		seenField := map[string]bool{}
+		for _, fm := range gqlFieldRe.FindAllStringSubmatch(body, -1) {
+			field := fm[1]
+			if field == "" && len(fm) > 2 {
+				field = fm[2]
+			}
+			if field == "" || seenField[field] {
+				continue
+			}
+			seenField[field] = true
+			path := "/graphql/" + root + "/" + field
+			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, path)
+			// Empty handler ref: the resolver-field name is not a separately
+			// extracted entity, so passing it as source_handler would make the
+			// resolve pass drop the synthetic (handler_dropped). Emit with no
+			// handler so it lands in the NoHandlerProp keep-path and survives.
+			emit("GRAPHQL", canonical, "graphql", "", "")
+		}
 	}
 }
 
@@ -857,28 +1041,28 @@ func hasDynamicBaseURLPath(path string) bool {
 // file and stop at the first directory that contains one of these files.
 var manifestFileNames = []string{
 	"pyproject.toml", "setup.py", "setup.cfg", // Python
-	"package.json",                             // JS/TS/Node
-	"go.mod",                                   // Go
-	"Cargo.toml",                               // Rust
+	"package.json",                                // JS/TS/Node
+	"go.mod",                                      // Go
+	"Cargo.toml",                                  // Rust
 	"pom.xml", "build.gradle", "build.gradle.kts", // Java/Kotlin
-	"Gemfile",                                  // Ruby
-	"composer.json",                            // PHP
-	"*.csproj",                                 // C#
-	"requirements.txt",                         // Python fallback
+	"Gemfile",          // Ruby
+	"composer.json",    // PHP
+	"*.csproj",         // C#
+	"requirements.txt", // Python fallback
 }
 
 // frameworkMarkerFiles are files whose presence (anywhere in the directory
 // walk) signals a framework boundary even when no manifest is found.
 var frameworkMarkerFiles = []string{
-	"manage.py",      // Django
-	"wsgi.py",        // WSGI-based Python
-	"asgi.py",        // ASGI-based Python
-	"app.py",         // Flask / FastAPI common entry
-	"main.py",        // FastAPI common entry
-	"server.js",      // Express
-	"app.js",         // Express
-	"index.js",       // Node.js entry
-	"main.go",        // Go entry
+	"manage.py", // Django
+	"wsgi.py",   // WSGI-based Python
+	"asgi.py",   // ASGI-based Python
+	"app.py",    // Flask / FastAPI common entry
+	"main.py",   // FastAPI common entry
+	"server.js", // Express
+	"app.js",    // Express
+	"index.js",  // Node.js entry
+	"main.go",   // Go entry
 }
 
 // deriveOwningBackend walks up the directory tree from filePath until it
