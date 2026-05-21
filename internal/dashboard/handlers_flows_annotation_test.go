@@ -98,39 +98,39 @@ func TestClassifyStepKind_NeverEmpty(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Unit tests: inferEntryKind
+// Unit tests: inferEntryKindFromKind (lower-level helper, #1147)
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestInferEntryKind_HTTPHandler(t *testing.T) {
-	got := inferEntryKind("HTTPHandler", nil)
+func TestInferEntryKindFromKind_HTTPHandler(t *testing.T) {
+	got := inferEntryKindFromKind("HTTPHandler", nil)
 	if got != "http_handler" {
 		t.Errorf("want http_handler, got %q", got)
 	}
 }
 
-func TestInferEntryKind_MessageConsumer(t *testing.T) {
-	got := inferEntryKind("Consumer", nil)
+func TestInferEntryKindFromKind_MessageConsumer(t *testing.T) {
+	got := inferEntryKindFromKind("Consumer", nil)
 	if got != "message_consumer" {
 		t.Errorf("want message_consumer, got %q", got)
 	}
 }
 
-func TestInferEntryKind_ScheduledTask(t *testing.T) {
-	got := inferEntryKind("CronJob", nil)
+func TestInferEntryKindFromKind_ScheduledTask(t *testing.T) {
+	got := inferEntryKindFromKind("CronJob", nil)
 	if got != "scheduled_task" {
 		t.Errorf("want scheduled_task, got %q", got)
 	}
 }
 
-func TestInferEntryKind_Component(t *testing.T) {
-	got := inferEntryKind("Component", nil)
+func TestInferEntryKindFromKind_Component(t *testing.T) {
+	got := inferEntryKindFromKind("Component", nil)
 	if got != "component" {
 		t.Errorf("want component, got %q", got)
 	}
 }
 
-func TestInferEntryKind_Function(t *testing.T) {
-	got := inferEntryKind("Function", nil)
+func TestInferEntryKindFromKind_Function(t *testing.T) {
+	got := inferEntryKindFromKind("Function", nil)
 	if got != "function" {
 		t.Errorf("want function, got %q", got)
 	}

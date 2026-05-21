@@ -60,43 +60,32 @@ func inferEntryKind(grp *DashGroup, entryID string) string {
 		k = after
 	}
 
-	for _, sub := range []string{"Handler", "Route", "Controller", "View", "HTTPEndpoint"} {
-		if strings.Contains(k, sub) {
-			return "http_handler"
+	// Collect incoming edge kinds for this entry across all repos.
+	inEdgeKinds := map[string]bool{}
+	for _, r := range sortedRepos(grp) {
+		for _, rel := range r.Doc.Relationships {
+			if rel.ToID == entryID || dashPrefixedID(r.Slug, rel.ToID) == entryID {
+				inEdgeKinds[rel.Kind] = true
+			}
 		}
 	}
-	if strings.Contains(k, "Component") {
+
+	// Delegate classification to the lower-level helper.
+	result := inferEntryKindFromKind(k, inEdgeKinds)
+
+	// inferEntryKindFromKind uses "component" but the #1148 spec uses
+	// "component_render" for Component kinds — preserve that distinction.
+	if result == "component" {
 		return "component_render"
 	}
-	for _, sub := range []string{"ScheduledJob", "Task", "Cron", "Scheduled"} {
-		if strings.Contains(k, sub) {
-			return "scheduled_task"
-		}
-	}
-	for _, sub := range []string{"Test", "Spec"} {
-		if strings.Contains(k, sub) {
-			return "test"
-		}
-	}
+	// inferEntryKindFromKind has no "cli_command" branch; keep it here.
 	for _, sub := range []string{"CLI", "Command", "Main", "Entrypoint"} {
 		if strings.Contains(k, sub) {
 			return "cli_command"
 		}
 	}
 
-	// Check for incoming message-consumption edges across all repos.
-	for _, r := range sortedRepos(grp) {
-		for _, rel := range r.Doc.Relationships {
-			if rel.ToID != entryID && dashPrefixedID(r.Slug, rel.ToID) != entryID {
-				continue
-			}
-			if rel.Kind == "SUBSCRIBES_TO" || rel.Kind == "READS_FROM" {
-				return "message_consumer"
-			}
-		}
-	}
-
-	return "function"
+	return result
 }
 
 // entryModuleFromPath extracts a short module label from a file path.

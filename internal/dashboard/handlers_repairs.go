@@ -276,13 +276,13 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 
 			actions := make([]enrichmentActionWire, 0, len(se.actions))
 			for _, a := range se.actions {
-				if a.Score > maxScore {
-					maxScore = a.Score
+				if a.score > maxScore {
+					maxScore = a.score
 				}
-				if !a.Completed {
+				if !a.completed {
 					pendingCount++
-					if a.Score > overallScore {
-						overallScore = a.Score
+					if a.score > overallScore {
+						overallScore = a.score
 					}
 					if oldestPending == "" || (a.discoveredAt != "" && a.discoveredAt < oldestPending) {
 						oldestPending = a.discoveredAt
@@ -291,7 +291,7 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 				actions = append(actions, enrichmentActionWire{
 					Kind:        a.kind,
 					CandidateID: a.candidateID,
-					Score:       a.Score,
+					Score:       a.score,
 					Reason:      a.reason,
 					Completed:   a.completed,
 				})
