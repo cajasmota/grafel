@@ -10,6 +10,27 @@ decisions are in [`docs/adrs/`](docs/adrs/). Track progress and roadmap
 via the [issue tracker](https://github.com/cajasmota/archigraph/issues)
 and [milestones](https://github.com/cajasmota/archigraph/milestones).
 
+## What's new (v0.9 → v1.0-rc)
+
+- **Paths v2, Topology v2, Flows v2** — rich list + detail panel surfaces
+  for HTTP endpoints, message-bus topics, and process flows.
+- **12 dashboard surfaces** — see [Surfaces map](#surfaces-map) below.
+- **Explore / Operate nav** — grouped dropdown menus replace the flat nav bar.
+- **Cmd+K command palette** — fuzzy search all surfaces and actions from
+  anywhere in the dashboard.
+- **Real-time indexing progress** — SSE stream at `/api/index-progress`
+  drives an in-dashboard progress modal during `archigraph rebuild`.
+- **MCP Activity surface (Jarvis)** — live view of every MCP tool call,
+  with real-time graph node highlighting for the returned entities.
+- **AGENTS.md auto-injection** — after each rebuild, archigraph writes an
+  Architecture Map block directly into `AGENTS.md` in every indexed repo.
+- **`http_endpoint_definition` + `http_endpoint_call`** — the legacy
+  `http_endpoint` kind is split into two distinct entity kinds for
+  precise orphan-caller detection (#1217).
+- **13 new MCP tools** — Topology v2, Flows v2, Quality, and graph
+  traversal surfaces exposed to agents. See
+  [`internal/mcp/SCHEMA.md`](internal/mcp/SCHEMA.md).
+
 ## Install
 
 ### macOS / Linux
@@ -114,6 +135,155 @@ archigraph patterns config           # show / set pattern thresholds
 
 `archigraph help advanced` lists the full set.
 
+## Surfaces map
+
+The dashboard at http://127.0.0.1:47274/ has 12 surfaces grouped into two
+menus.
+
+```
+Dashboard (http://127.0.0.1:47274/)
+│
+├── Explore
+│   ├── Graph        /graph          — Cosmograph node-link canvas + 6-band LoD
+│   ├── Flows        /flows          — Process-flow DAG list + per-flow detail panel
+│   ├── Topology     /topology       — Message-bus topics + broker/service grouping
+│   ├── Pending      /pending        — Tiered enrichment queue (Critical/High/Med/Low)
+│   ├── Paths        /paths          — HTTP endpoint definitions grouped by backend
+│   └── Docs         /docs           — Indexed markdown document tree
+│
+└── Operate
+    ├── Diagnostics  /diagnostics    — Daemon + per-group health checks
+    ├── Quality      /quality        — Orphan audit + recall measurement + history trend
+    ├── Patterns     /patterns       — Agent-learned patterns list/edit/delete/export
+    ├── System       /system         — Daemon control panel (restart, stop, logs)
+    ├── Update       /update         — Version check + apply + refresh-rules-lite
+    └── Settings     /settings       — Theme, auto-update, telemetry, MCP config, log level
+
+Special
+    └── MCP Activity /mcp-activity   — Live Jarvis view of MCP tool calls + graph highlighting
+```
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+K` (macOS) / `Ctrl+K` (Linux/Win) | Open command palette |
+| `Esc` | Close command palette / close detail panel |
+| `↑` / `↓` | Navigate palette results |
+| `Enter` | Activate selected result |
+
+## How agents use archigraph
+
+archigraph exposes a Model Context Protocol (MCP) server that AI agents
+connect to over stdio. The daemon registers one MCP server per machine;
+multiple groups can be active simultaneously.
+
+### MCP setup
+
+After `archigraph install <group>`, the daemon writes an MCP server entry
+to your Claude Code `~/.claude/claude.json` (or equivalent for other
+clients). No manual configuration is needed.
+
+To verify the wiring:
+
+```sh
+archigraph status <group>     # shows MCP: connected / disconnected
+```
+
+### What agents can do
+
+The MCP server exposes 19 tools prefixed `archigraph_`. Common workflows:
+
+| Goal | Tool |
+|------|------|
+| Orient to codebase | `archigraph_whoami` → `archigraph_stats` |
+| Find a symbol | `archigraph_find` (BM25 + BFS) |
+| Inspect an entity | `archigraph_inspect` |
+| Walk the call graph | `archigraph_expand` |
+| Trace a data path | `archigraph_trace` |
+| Understand flows | `archigraph_traces` |
+| Find HTTP endpoints | `archigraph_endpoint_definitions` |
+| Find orphan callers | `archigraph_endpoint_calls` |
+| Save a finding | `archigraph_save_finding` |
+
+Full tool reference: [`internal/mcp/SCHEMA.md`](internal/mcp/SCHEMA.md).
+
+### Real-time MCP activity
+
+The Jarvis MCP Activity surface (`/mcp-activity`) shows every tool call in
+real time. The graph canvas subscribes to the SSE stream at
+`/api/mcp-activity/stream` and pulses the returned nodes — so you can watch
+the agent's graph exploration as it happens.
+
+### AGENTS.md auto-injection
+
+After every `archigraph rebuild`, archigraph writes a fenced Architecture
+Map block into `AGENTS.md` (or creates the file if absent) in each indexed
+repo. Agents reading `AGENTS.md` at session start automatically receive the
+latest structure without any manual step.
+
+## Real-time indexing progress
+
+During `archigraph rebuild`, the indexer emits progress events to an
+in-process pub/sub broker. The dashboard subscribes via:
+
+```
+GET /api/index-progress           — progress across all groups (SSE)
+GET /api/index-progress/{group}   — progress for a specific group (SSE)
+```
+
+Each SSE event is a JSON object:
+
+```json
+{
+  "group": "my-group",
+  "repo": "api-server",
+  "phase": "resolve",
+  "pct": 62,
+  "elapsed_ms": 4210
+}
+```
+
+The dashboard shows a live `IndexingProgressModal` while any rebuild is
+running.
+
+## Settings file
+
+User preferences are persisted to `~/.archigraph/settings.json`. All
+fields are optional; missing keys fall back to defaults.
+
+```json
+{
+  "theme": "light",
+  "default_group": "",
+  "auto_check_updates": true,
+  "update_channel": "stable",
+  "refresh_schedule": "",
+  "telemetry_enabled": false,
+  "daemon_rss_budget_mb": 512,
+  "watcher_debounce_secs": 2,
+  "indexer_parallelism": 4,
+  "log_level": "info"
+}
+```
+
+| Field | Values | Default | Notes |
+|-------|--------|---------|-------|
+| `theme` | `light` \| `dark` \| `auto` | `light` | |
+| `default_group` | group slug | `""` | Shown on first dashboard load |
+| `auto_check_updates` | bool | `true` | |
+| `update_channel` | `stable` \| `dev` | `stable` | |
+| `refresh_schedule` | cron or `""` | `""` | Empty = manual only |
+| `telemetry_enabled` | bool | `false` | |
+| `daemon_rss_budget_mb` | 100–2000 | `512` | Requires daemon restart |
+| `watcher_debounce_secs` | 1–60 | `2` | |
+| `indexer_parallelism` | 1–32 | `4` | Requires daemon restart |
+| `log_level` | `debug` \| `info` \| `warn` \| `error` | `info` | |
+
+The Settings surface (`/settings`) in the dashboard edits this file
+through `GET/PUT /api/settings`. A `POST /api/settings/reset` restores
+factory defaults.
+
 ## Contributing
 
 If you're an AI agent contributing to archigraph, see [AGENTS.md](AGENTS.md) for conventions.
@@ -140,6 +310,26 @@ sample applications, one per supported language family. Framework
 internals are deliberately excluded as primary fixtures — see
 [ADR-0014](docs/adrs/0014-corpus-expansion-strategy.md). New language
 support lands together with the sample apps that exercise it.
+
+## Roadmap
+
+### v1.0 ship-gate
+
+- [ ] Bug-rate below 10% on the full validation corpus
+- [ ] Daemon determinism (#481) resolved — reliable measurement across runs
+- [ ] HTTP overhaul — unified HTTP client/server pairing
+- [ ] Per-language quality pass (residual orphan elimination)
+
+Track the v1.0 milestone: https://github.com/cajasmota/archigraph/milestone/1
+
+### v1.1 plan
+
+- **Paths v2 epic** — cross-repo endpoint stitching, prefix-aware dedup
+  (#1082, not yet dispatched)
+- **Embedding strategy** — bundled MiniLM (`hugot` + `simplego`) + BYO
+  endpoint for semantic search
+- **BYO extractor pipeline** — custom-extractor registration without a
+  daemon restart
 
 ## License
 

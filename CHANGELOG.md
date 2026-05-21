@@ -1,0 +1,165 @@
+# Changelog
+
+All notable changes are documented here. Entries are grouped by the session
+or release they landed in. PR numbers link to
+https://github.com/cajasmota/archigraph/pull/<N>.
+
+---
+
+## [Unreleased] — v1.0-rc (2026-05-21, overnight session)
+
+### Dashboard — new surfaces and nav
+
+- **Cmd+K command palette** — fuzzy search all surfaces and actions from
+  anywhere in the dashboard. (#1234, #1237)
+- **Nav redesign** — 9 surfaces reorganised into Explore / Operate dropdown
+  menus. (#1210, #1213)
+- **MCP Activity surface (Jarvis)** — live log of every MCP tool call at
+  `/mcp-activity`. (#1226, #1230)
+- **Graph canvas Jarvis integration** — graph nodes pulse in real time when
+  returned by an MCP tool. (#1225, #1232)
+- **Quality surface** — orphan audit + recall measurement + health-score
+  history trend line. (#1198, #1205, #1214, #1223)
+- **Patterns surface** — list, edit, delete, and export agent-learned
+  patterns. (#1189, #1197)
+- **Settings surface** — theme, auto-update, telemetry, MCP config, log
+  level, all persisted to `~/.archigraph/settings.json`. (#1206, #1211)
+- **System surface** — daemon control panel with restart, stop, and live
+  log tail. (#1195, #1203)
+- **Update surface** — version check, apply, and refresh-rules-lite. (#1199,
+  #1208)
+- **Diagnostics surface** — daemon + per-group health checks. (#1187, #1193)
+- **Maintenance ops** — rebuild, reset, and cleanup actions per group or
+  per repo in the dashboard. (#1200, #1204)
+- **Graph thumbnail** — group cards on the landing page show a preview of the
+  indexed graph. (#983, #1194)
+- **Pending surface tiers** — tiered enrichment queue buckets
+  (Critical / High / Medium / Low). (#1133, #1185)
+
+### Paths v2
+
+- `/api/paths/{group}` returns endpoint definitions grouped by
+  `owning_backend`. (#1218, #1227)
+- Orphan-caller detection at `/api/paths/{group}/orphan-callers`. (#1225)
+- Duplicate path elimination (105 dupes removed, same endpoint with and
+  without prefix). (#1124, #1163)
+- XPath / XML namespace strings filtered from the Paths list. (#1125, #1160)
+- DRF `ANY`-verb paths deduplicated via `http_endpoint_synthesis` entries.
+  (#1126, #1158)
+
+### Topology v2
+
+- Rich per-topic detail panel v2 at
+  `/api/topology/{group}/topic/{topicId}`. (#1141, #1178)
+- `broker_canonical` + `owning_service` + `broker_groups` metadata. (#1139,
+  #1175)
+- Orphan publisher detector at `/api/topology/{group}/orphan-publishers`.
+  (#1136, #1155)
+- Orphan subscriber detector at `/api/topology/{group}/orphan-subscribers`.
+  (#1137, #1159)
+- Broker + service grouping headers in the list view. (#1142, #1176)
+- Four-tab structure: All / Orphan Publishers / Orphan Subscribers /
+  Scheduled Jobs. (#1140, #1168)
+- `message_topic` YAML frontmatter wired into detail endpoint. (#1143, #1182)
+- `Task`/`ScheduledJob` entity kinds bucketed into the Topology queue view.
+  (#1116, #1122)
+
+### Flows v2
+
+- Per-flow React Flow DAG detail panel. (#1150, #1177)
+- `process_flow` frontmatter wired into the flow detail panel. (#1152, #1181)
+- Four-tab structure for Flows v2. (#1149, #1170)
+- Entry-kind grouping headers in the flow list. (#1151, #1171)
+- Entry-kind grouping metadata on `/api/flows/{group}` list endpoint. (#1148,
+  #1167)
+- Step-kind annotation and side-effect classification. (#1147, #1166)
+- Truncated flow detector at `/api/flows/{group}/truncated`. (#1146, #1161)
+- Dead-end flow classifier at `/api/flows/{group}/dead-ends`. (#1145, #1156)
+
+### Real-time indexing progress (SSE)
+
+- In-memory pub/sub broker for indexer progress events. (#1183, #1184)
+- Internal `progress` package instruments the full indexer pipeline. (#1188)
+- SSE endpoint `/api/index-progress` (all groups) and
+  `/api/index-progress/{group}`. (#1186, #1190)
+- `rebuild` CLI subscribes to broker for real-time terminal progress. (#1196,
+  #1201)
+- Dashboard `useIndexProgress` hook + `IndexingProgressModal`. (#1191, #1207)
+
+### MCP — new tools and Jarvis broker
+
+- MCP event broker + SSE endpoint `/api/mcp-activity/stream` (Phase 1).
+  (#1215, #1222)
+- 3 new HTTP endpoint tools: `archigraph_endpoint_definitions`,
+  `archigraph_endpoint_calls`, `archigraph_endpoint_stats`. (#1220, #1229)
+- 13 additional tools for Topology v2, Flows v2, Quality, and graph
+  traversal. (#1202, #1209)
+
+### Entity model
+
+- **`http_endpoint_definition` + `http_endpoint_call`** — `http_endpoint`
+  split into two distinct entity kinds at the extractor layer. Legacy
+  `http_endpoint` remains readable via compatibility helper. (#1217, #1233)
+- Confidence score (0–100) added to every enrichment `Candidate`. (#1131,
+  #1179)
+- Enrichment model: 1 `EnrichmentTask` per entity with N pending actions.
+  (#1134, #1165)
+- Rebuild summary includes per-kind breakdown + color-coded percentage. (#1132,
+  #1174)
+- `describe_entity` emitter switched to research-driven positive selection;
+  noise kinds excluded. (#1130, #1154, #1162, #1173)
+
+### AGENTS.md auto-injection
+
+- After every `archigraph rebuild`, an Architecture Map block is written into
+  `AGENTS.md` in each indexed repo. (#1216, #1221)
+
+### Graph rendering
+
+- 6-band zoom LoD (expanded from 3) for smoother level-of-detail
+  progression. (#1108, #1192)
+- Four rendering pathologies fixed: LoD threshold, Process pile-up, sizing,
+  and hash labels. (#1121, #1127)
+- Galaxy tune + 3-way color mode + Jarvis hook. (#1153, #1172)
+
+### Extractors
+
+- Stdlib placeholder elimination extended to PHP, Elixir, Clojure, and
+  Erlang. (#1085, #1224)
+
+### Docs / skills
+
+- `generate-docs` skill: Topology v2 + Flows v2 frontmatter schemas and Pass
+  14 validation. (#1212)
+
+### Bug fixes
+
+- Resolve leftover conflict marker from earlier rebase (build). (#1231)
+- Merge conflict markers in `daemon.go` resolved. (#1228)
+- `inferEntryKind` helper rename to resolve collision. (#1169)
+- `actionEntry` field name consistency fix. (standalone commit)
+- Unblock `npm run build` — fix tsc errors in test files. (#1180)
+
+---
+
+## Earlier sessions (2026-05-19 – 2026-05-20)
+
+Covered by the session checkpoints in `MEMORY.md`. Key highlights:
+
+- Daemon install-and-forget architecture (ADR-0017).
+- `-81%` RSS via profile-driven fix (#637).
+- Patterns chain: agent-learned patterns via ADR-0018.
+- Cosmograph migration + tuning.
+- 25+ new language extractors.
+- Custom-extractor pipeline wiring (#1086).
+- Lifecycle CLI (#1090).
+- Near-zero Python orphans.
+- Cross-repo functional testing.
+- Paths v2 shipped (#1099, #1098, #1100, #1104).
+- Unified enrichment schema (#1105).
+- Graph hard-stop (#1101).
+- Repo-first layout (#1106, not yet landed at session end).
+
+---
+
+_Older history is tracked in the [GitHub releases](https://github.com/cajasmota/archigraph/releases)._
