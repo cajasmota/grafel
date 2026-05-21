@@ -402,6 +402,19 @@ func qualifiesForEnrichment(e *graph.Entity) (qualified bool, signals []string) 
 		signals = append(signals, "articulation_point")
 	}
 	if len(signals) > 0 {
+		// Self-descriptive operation names are excluded even when structurally
+		// central (the name already communicates the purpose; describe_entity
+		// adds no value). Exception: god nodes still warrant description because
+		// they are hubs that developers need context on beyond the name alone.
+		if (e.Kind == "SCOPE.Operation" || e.Kind == "Operation") &&
+			selfDescriptiveOperationRE.MatchString(e.Name) &&
+			!e.IsGodNode {
+			// Articulation point but self-descriptive name — skip describe_entity.
+			// describe_role is still valid and is handled by describeRoleEmitter
+			// separately (which has its own selfDescriptiveOperationRE guard that
+			// already correctly filters non-god nodes via its own check).
+			return false, nil
+		}
 		return true, signals
 	}
 
@@ -498,6 +511,10 @@ func (describeEntityEmitter) Name() string { return KindDescribeEntity }
 
 func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candidate {
 	if e == nil || e.Name == "" {
+		return nil
+	}
+	// Skip template-literal names (extracted URL templates, not describable entities).
+	if strings.Contains(e.Name, "${") {
 		return nil
 	}
 	// Skip if already described.

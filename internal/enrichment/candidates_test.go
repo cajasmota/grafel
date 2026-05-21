@@ -875,3 +875,148 @@ func TestComputeScore_NilEntity(t *testing.T) {
 		t.Errorf("nil entity band = %q, want low", band)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Tests for issue #1279 — Tighten enrichment selection
+// ---------------------------------------------------------------------------
+
+// TestSignal2_SelfDescriptiveOpArticulationPoint verifies that a SCOPE.Operation
+// entity that is an articulation point but has a self-descriptive name does NOT
+// qualify for describe_entity (Signal 2 guard, fix #1279).
+func TestSignal2_SelfDescriptiveOpArticulationPoint(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+
+	selfDescriptiveNames := []string{
+		"setFilters",
+		"fetchData",
+		"useCreateNote",
+		"getUserById",
+		"validateToken",
+		"parseResponse",
+	}
+
+	for _, name := range selfDescriptiveNames {
+		doc := mkDoc(graph.Entity{
+			ID:               "op1",
+			Name:             name,
+			Kind:             "SCOPE.Operation",
+			IsArticulationPt: true,
+			// IsGodNode is false — articulation-only
+		})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("self-descriptive articulation-pt op %q: expected 0 describe_entity candidates, got %d", name, len(got))
+		}
+	}
+
+	// Also test plain "Operation" kind.
+	doc := mkDoc(graph.Entity{
+		ID:               "op2",
+		Name:             "fetchData",
+		Kind:             "Operation",
+		IsArticulationPt: true,
+	})
+	if got := CollectCandidates(doc, emitter, nil); len(got) != 0 {
+		t.Errorf("plain Operation kind fetchData articulation-pt: expected 0, got %d", len(got))
+	}
+}
+
+// TestSignal2_GodNodeSelfDescriptiveOpStillQualifies verifies that a god node
+// with a self-descriptive name still qualifies for describe_entity even though
+// it also matches selfDescriptiveOperationRE. God nodes are architectural hubs
+// that need description regardless of name pattern (fix #1279).
+func TestSignal2_GodNodeSelfDescriptiveOpStillQualifies(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+
+	doc := mkDoc(graph.Entity{
+		ID:        "gn1",
+		Name:      "fetchData",
+		Kind:      "SCOPE.Operation",
+		IsGodNode: true,
+	})
+	got := CollectCandidates(doc, emitter, nil)
+	if len(got) != 1 {
+		t.Fatalf("god node with self-descriptive name: expected 1 describe_entity candidate, got %d", len(got))
+	}
+	found := false
+	for _, sig := range got[0].QualificationSignals {
+		if sig == "god_node" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected god_node signal in %v", got[0].QualificationSignals)
+	}
+}
+
+// TestSignal2_ArticulationPtNonOpStillQualifies verifies that non-Operation
+// entities that are articulation points still qualify for describe_entity.
+// The self-descriptive guard in Signal 2 targets only SCOPE.Operation / Operation
+// kinds (fix #1279).
+func TestSignal2_ArticulationPtNonOpStillQualifies(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+
+	doc := mkDoc(graph.Entity{
+		ID:               "svc1",
+		Name:             "fetchData", // self-descriptive name but not an Operation kind
+		Kind:             "Service",
+		IsArticulationPt: true,
+	})
+	got := CollectCandidates(doc, emitter, nil)
+	if len(got) != 1 {
+		t.Fatalf("non-Op articulation pt: expected 1 candidate, got %d", len(got))
+	}
+}
+
+// TestDescribeRoleEmitter_ArticulationPtSelfDescriptiveOp verifies that
+// describeRoleEmitter still emits describe_role for an articulation-point
+// operation with a self-descriptive name. The describe_entity guard must
+// not affect describeRoleEmitter (fix #1279 — preserving describe_role).
+func TestDescribeRoleEmitter_ArticulationPtSelfDescriptiveOp(t *testing.T) {
+	emitter := []CandidateEmitter{describeRoleEmitter{}}
+
+	// describeRoleEmitter already has its own selfDescriptiveOperationRE check
+	// that filters self-descriptive names. Verify that a non-self-descriptive
+	// name on an articulation-pt does emit describe_role.
+	doc := mkDoc(graph.Entity{
+		ID:               "ap1",
+		Name:             "Bridge",
+		Kind:             "class",
+		IsArticulationPt: true,
+	})
+	got := CollectCandidates(doc, emitter, nil)
+	if len(got) != 1 {
+		t.Fatalf("describe_role articulation pt Bridge: expected 1 candidate, got %d", len(got))
+	}
+	if got[0].Kind != KindDescribeRole {
+		t.Errorf("kind = %q, want %q", got[0].Kind, KindDescribeRole)
+	}
+}
+
+// TestTemplateLiteralName_SkipsDescribeEntity verifies that entity names
+// containing "${" are excluded from describe_entity enrichment entirely
+// (template-literal URL guard, fix #1279).
+func TestTemplateLiteralName_SkipsDescribeEntity(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+
+	templateLiteralNames := []string{
+		"${import.meta.env.VITE_CORE_API}/devices/?${queryParams.toString()}",
+		"${baseURL}/api/v1",
+		"${host}:${port}",
+	}
+
+	for _, name := range templateLiteralNames {
+		// Use an http_endpoint kind so that without the guard it would qualify
+		// via Signal 1 (ensuring the guard is what stops emission).
+		doc := mkDoc(graph.Entity{
+			ID:   "ext1",
+			Name: name,
+			Kind: "SCOPE.ExternalAPI",
+		})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("template-literal name %q: expected 0 candidates, got %d", name, len(got))
+		}
+	}
+}
