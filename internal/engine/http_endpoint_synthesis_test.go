@@ -1092,3 +1092,124 @@ func TestSynth_DjangoComposed_RejectsXMLPaths(t *testing.T) {
 		t.Errorf("real Django route http:ANY:/api/v1/documents should be emitted; got %v", emitted)
 	}
 }
+
+// TestSynth_DjangoAdmin_NotSynthesized verifies that Route entities whose
+// path begins with "admin/" or whose view references admin.site.urls are
+// NOT synthesized as http_endpoint_definition entities. These are Django
+// admin CMS scaffolding routes, not application API endpoints. Fixes #1412.
+func TestSynth_DjangoAdmin_NotSynthesized(t *testing.T) {
+	adminRoutes := []types.EntityRecord{
+		{
+			Name:       "admin/",
+			Kind:       "Route",
+			SourceFile: "myapp/urls.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+				"view":         "admin.site.urls",
+			},
+		},
+		{
+			Name:       "admin/auth/user/",
+			Kind:       "Route",
+			SourceFile: "myapp/urls.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+				"view":         "admin.site.urls",
+			},
+		},
+	}
+
+	var emitted []string
+	synthesizeDjangoFromComposed(
+		adminRoutes,
+		"myapp/urls.py",
+		func(method, canonicalPath, framework, refKind, refName string) {
+			id := httproutes.SyntheticID(method, canonicalPath)
+			emitted = append(emitted, id)
+		},
+	)
+
+	// No admin routes should be emitted.
+	for _, id := range emitted {
+		if strings.Contains(strings.ToLower(id), "admin") {
+			t.Errorf("#1412: admin route synthesized as http_endpoint: %q", id)
+		}
+	}
+	if len(emitted) != 0 {
+		t.Errorf("#1412: expected 0 synthetics for admin routes, got %v", emitted)
+	}
+}
+
+// TestSynth_DjangoAdmin_RealRoutesUnaffected verifies that the admin noise
+// guard (#1412) does NOT suppress non-admin routes in the same urls.py.
+func TestSynth_DjangoAdmin_RealRoutesUnaffected(t *testing.T) {
+	mixed := []types.EntityRecord{
+		{
+			Name:       "admin/",
+			Kind:       "Route",
+			SourceFile: "myapp/urls.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+				"view":         "admin.site.urls",
+			},
+		},
+		{
+			Name:       "/api/v1/orders",
+			Kind:       "Route",
+			SourceFile: "myapp/urls.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+			},
+		},
+		{
+			Name:       "/api/v1/products",
+			Kind:       "Route",
+			SourceFile: "myapp/urls.py",
+			Language:   "python",
+			Properties: map[string]string{
+				"framework":    "python",
+				"pattern_type": "ast_driven",
+			},
+		},
+	}
+
+	var emitted []string
+	synthesizeDjangoFromComposed(
+		mixed,
+		"myapp/urls.py",
+		func(method, canonicalPath, framework, refKind, refName string) {
+			id := httproutes.SyntheticID(method, canonicalPath)
+			emitted = append(emitted, id)
+		},
+	)
+
+	// Admin route must be absent.
+	for _, id := range emitted {
+		if strings.Contains(strings.ToLower(id), "admin") {
+			t.Errorf("#1412: admin route leaked into synthetics: %q", id)
+		}
+	}
+
+	// Real routes must be present.
+	wantRoutes := []string{"http:ANY:/api/v1/orders", "http:ANY:/api/v1/products"}
+	for _, want := range wantRoutes {
+		found := false
+		for _, id := range emitted {
+			if id == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("#1412 guard: non-admin route %q must still be synthesized; got %v", want, emitted)
+		}
+	}
+}

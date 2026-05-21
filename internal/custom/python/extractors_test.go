@@ -169,7 +169,9 @@ func TestDjango_CeleryTask(t *testing.T) {
 def send_email(to, subject):
     pass
 `
-	ents := extract(t, "python_django", src)
+	// #1411: Celery task extraction is owned by python_celery, not python_django.
+	// The Django extractor no longer re-emits Celery tasks to avoid duplicate nodes.
+	ents := extract(t, "python_celery", src)
 	found := false
 	for _, e := range ents {
 		if e.Name == "send_email" && e.Props["queue"] == "emails" {
@@ -497,6 +499,114 @@ def replicate_invoice(sender, instance, **kwargs):
 		if !hasEdge {
 			t.Errorf("handler %q missing HANDLES_SIGNAL edge", e.Name)
 		}
+	}
+}
+
+// ---- #1411: duplicate-kind node regression tests ----
+
+// TestDjango_ViewSet_SingleNode verifies that a DRF ViewSet class is emitted
+// as ONE entity (Component/viewset), not two (Component/viewset + endpoint/cbv).
+// Fixes #1411.
+func TestDjango_ViewSet_SingleNode(t *testing.T) {
+	src := `from rest_framework import viewsets
+
+class OrderViewSet(viewsets.ModelViewSet):
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+`
+	ents := extract(t, "python_django", src)
+	viewsetCount := 0
+	cbvCount := 0
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "viewset" {
+			viewsetCount++
+		}
+		if e.Props["pattern_type"] == "cbv" {
+			cbvCount++
+		}
+	}
+	if viewsetCount != 1 {
+		t.Fatalf("#1411 ViewSet: expected 1 viewset entity, got %d", viewsetCount)
+	}
+	if cbvCount != 0 {
+		t.Fatalf("#1411 ViewSet: expected 0 cbv entities (ViewSet should not also be a CBV), got %d (total ents=%d)", cbvCount, len(ents))
+	}
+}
+
+// TestDjango_ViewSet_CBVMethodsStillEmitted verifies that HTTP method handlers
+// (def get, def post, etc.) inside a ViewSet ARE still emitted as cbv_method
+// entities even after the ViewSet-as-CBV deduplication guard. Edges from those
+// methods need to attach to the canonical ViewSet entity.
+func TestDjango_ViewSet_CBVMethodsStillEmitted(t *testing.T) {
+	src := `from rest_framework import viewsets
+
+class ItemViewSet(viewsets.ModelViewSet):
+    def get(self, request, pk=None):
+        pass
+
+    def post(self, request):
+        pass
+`
+	ents := extract(t, "python_django", src)
+	methodCount := 0
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "cbv_method" {
+			methodCount++
+		}
+	}
+	if methodCount != 2 {
+		t.Fatalf("#1411 ViewSet methods: expected 2 cbv_method entities, got %d", methodCount)
+	}
+}
+
+// TestDjango_CeleryTask_NoDuplicate verifies that a @shared_task in a Django
+// file is NOT re-emitted by the Django extractor as a second
+// SCOPE.Operation/function entity (the python_celery extractor owns Celery).
+// Fixes #1411.
+func TestDjango_CeleryTask_NoDuplicate(t *testing.T) {
+	src := `from celery import shared_task
+
+@shared_task(queue="billing")
+def charge_subscription(customer_id):
+    pass
+`
+	ents := extract(t, "python_django", src)
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "celery_task" {
+			t.Fatalf("#1411 Celery: django extractor must NOT emit celery_task entities (conflicts with python_celery extractor); got entity name=%q", e.Name)
+		}
+	}
+}
+
+// ---- #1412: admin endpoint noise regression tests ----
+
+// TestDjango_AdminRegister_NoEndpoint verifies that admin.site.register and
+// @admin.register do NOT cause http_endpoint or SCOPE.Operation/endpoint
+// entities to appear in the extractor output. Admin registrations should emit
+// admin_class entities only. Fixes #1412.
+func TestDjango_AdminRegister_NoEndpoint(t *testing.T) {
+	src := `admin.site.register(Order, OrderAdmin)
+admin.site.register(Product)
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    pass
+`
+	ents := extract(t, "python_django", src)
+	for _, e := range ents {
+		if e.Kind == "http_endpoint" || e.Kind == "http_endpoint_definition" {
+			t.Fatalf("#1412: admin registration emitted an endpoint entity: name=%q kind=%q subtype=%q", e.Name, e.Kind, e.Subtype)
+		}
+	}
+	// Confirm admin_class entities ARE still emitted (3 registrations)
+	adminCount := 0
+	for _, e := range ents {
+		if e.Subtype == "admin_class" {
+			adminCount++
+		}
+	}
+	if adminCount != 3 {
+		t.Fatalf("#1412: expected 3 admin_class entities, got %d", adminCount)
 	}
 }
 
