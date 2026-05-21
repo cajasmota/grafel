@@ -79,6 +79,10 @@ archigraph dashboard
 
 The `/generate-docs` skill produces per-repo documentation (overview, module guides, API reference, patterns) and a cross-repo synthesis. It runs a 12-pass pipeline that typically takes 25–60 minutes for small repos, 1–2 hours for medium repos, and 2–4 hours for large repos. Estimates and pass details are in the [generate-docs skill docs](skills/generate-docs/SKILL.md).
 
+Pass 13 (LLM enrichment) should run with Haiku to avoid high costs. See
+[`docs/agent-hosts.md`](docs/agent-hosts.md) for per-host setup instructions
+(Claude Code, Cursor, Windsurf, Continue, Aider, Cline).
+
 ## Usage
 
 archigraph is a CLI plus a unified daemon process that manages indexing,
