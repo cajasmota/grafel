@@ -582,6 +582,7 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_impact_radius",
 		"archigraph_summarize_subgraph",
 		"archigraph_find_dead_code",
+		"archigraph_auth_coverage",
 		// recent activity
 		"archigraph_recent_activity",
 	}
@@ -630,9 +631,9 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count: 29 (28 pre-#1312 + archigraph_quality_cycles).
-	if got := len(srv.MCP.ListTools()); got != 29 {
-		t.Errorf("expected 29 registered tools, got %d", got)
+	// Total count: 30 (28 pre-#1312 + archigraph_quality_cycles + archigraph_auth_coverage).
+	if got := len(srv.MCP.ListTools()); got != 30 {
+		t.Errorf("expected 30 registered tools, got %d", got)
 	}
 }
 
