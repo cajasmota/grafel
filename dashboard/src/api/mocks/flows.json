@@ -8,6 +8,10 @@
       "entry_name": "UserListView",
       "entry_kind": "Endpoint",
       "entity_kind": "http",
+      "flow_entry_kind": "http_handler",
+      "entry_module": "acme_api.views.users",
+      "priority_hint": "high",
+      "complexity_score": 12,
       "terminal_id": "acme-api::user_table",
       "step_count": 4,
       "cross_stack": false,
@@ -65,6 +69,10 @@
       "entry_name": "UserSignupConsumer",
       "entry_kind": "Component",
       "entity_kind": "kafka_consumer",
+      "flow_entry_kind": "message_consumer",
+      "entry_module": "acme_workers.consumers.user_signup",
+      "priority_hint": "medium",
+      "complexity_score": 8,
       "terminal_id": "acme-workers::email_queue",
       "step_count": 4,
       "cross_stack": false,
@@ -79,6 +87,10 @@
       "entry_name": "NightlyReportJob",
       "entry_kind": "Component",
       "entity_kind": "scheduled",
+      "flow_entry_kind": "scheduled_task",
+      "entry_module": "acme_workers.jobs.nightly_report",
+      "priority_hint": "medium",
+      "complexity_score": 9,
       "terminal_id": "acme-workers::report_table",
       "step_count": 5,
       "cross_stack": true,
@@ -911,5 +923,11 @@
     }
   ],
   "total": 60,
-  "has_more": false
+  "has_more": false,
+  "entry_kind_groups": [
+    { "kind": "http_handler",     "count": 38 },
+    { "kind": "message_consumer", "count": 11 },
+    { "kind": "scheduled_task",   "count":  6 },
+    { "kind": "internal",         "count":  5 }
+  ]
 }

@@ -127,6 +127,7 @@ export function FlowsRoute() {
   const crossRepoTotal = processes.filter((p: Process) => p.is_cross_repo || p.cross_stack).length
   const deadEndsTotal = deadEndsData?.total ?? 0
   const truncatedTotal = truncatedData?.total ?? 0
+  const entryKindGroups = flowData?.entry_kind_groups
 
   const hasSelection = !!selectedProcessId
 
@@ -228,6 +229,7 @@ export function FlowsRoute() {
                 processes={processes}
                 selectedProcessId={selectedProcessId}
                 onSelectProcess={handleSelectProcess}
+                entryKindGroups={entryKindGroups}
               />
             )}
           </div>

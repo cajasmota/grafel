@@ -249,6 +249,18 @@ export interface ProcessStep {
   edge_kind: RelationshipKind
 }
 
+export type FlowEntryKind =
+  | 'http_handler'
+  | 'message_consumer'
+  | 'scheduled_task'
+  | 'component_render'
+  | 'test'
+  | 'cli_command'
+  | 'function'
+  | 'internal'
+
+export type FlowPriorityHint = 'high' | 'medium' | 'low'
+
 export interface Process {
   process_id: string
   repo: string
@@ -269,8 +281,19 @@ export interface Process {
   entity_kind?: 'http' | 'kafka_consumer' | 'scheduled' | 'ws_handler'
   /** #1147 annotations */
   flow_side_effects?: string[]
-  complexity_score?: number
   is_cross_repo?: boolean
+  /** #1148 — new per-process fields from Flows v2 backend */
+  flow_entry_kind?: FlowEntryKind
+  entry_module?: string
+  priority_hint?: FlowPriorityHint
+  dominant_step_kind?: RelationshipKind | null
+  complexity_score?: number
+}
+
+/** Summary entry in the top-level entry_kind_groups array (#1148) */
+export interface FlowEntryKindGroup {
+  kind: FlowEntryKind
+  count: number
 }
 
 // ── Dead-ends (#1145) ─────────────────────────────────────────────────────────
@@ -329,6 +352,8 @@ export interface FlowListResponse {
   processes: Process[]
   total: number
   has_more: boolean
+  /** Present when the backend has classified processes by entry_kind (#1148) */
+  entry_kind_groups?: FlowEntryKindGroup[]
 }
 
 export interface FlowDetailResponse {
