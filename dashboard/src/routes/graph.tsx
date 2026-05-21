@@ -16,6 +16,12 @@ import { useGraphFilter, filterNodes } from '@/hooks/graph/useGraphFilter'
 import { useGraphKeyboardNav } from '@/hooks/graph/useGraphKeyboardNav'
 import { useGraphCameraStore, useSimulationRunning } from '@/store/graphCameraStore'
 import { useThemeContext } from '@/context/ThemeContext'
+import {
+  useNodeSizingConfig,
+  buildDegreePercentileFn,
+  percentileToTier,
+  TIER_COUNT,
+} from '@/hooks/graph/useNodeSizingConfig'
 import { GraphCanvas } from '@/components/graph/GraphCanvas'
 import { SimulationControls } from '@/components/graph/SimulationControls'
 import { FilterPanel } from '@/components/graph/FilterPanel'
@@ -31,6 +37,7 @@ import {
   GraphErrorState,
 } from '@/components/graph/GraphEmptyState'
 import { MCPActivityOverlay } from '@/components/graph/MCPActivityOverlay'
+import { NodeSizingControls } from '@/components/graph/NodeSizingControls'
 import { IndexingProgressModal } from '@/components/indexing/IndexingProgressModal'
 import { SnapshotModal } from '@/components/graph/SnapshotModal'
 import { useSnapshotExport } from '@/hooks/graph/useSnapshotExport'
@@ -83,6 +90,14 @@ export function GraphRoute() {
     setLogic: setFilterLogic,
     clearAll: clearGraphFilter,
   } = useGraphFilter()
+
+  // ── Node sizing config (#1360 — persisted to localStorage) ────────────────
+  const {
+    config: nodeSizingConfig,
+    setBaseSize: setNodeSizingBaseSize,
+    setMultiplier: setNodeSizingMultiplier,
+    resetToDefaults: resetNodeSizing,
+  } = useNodeSizingConfig()
 
   // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -178,6 +193,26 @@ export function GraphRoute() {
     if (!graphFilterActive) return nodes.length
     return filterIndices?.length ?? 0
   }, [nodes.length, graphFilterActive, filterIndices])
+
+  // ── Node sizing tier counts (#1360) — histogram for NodeSizingControls ──────
+  // Count how many non-Process nodes fall in each degree-percentile tier so the
+  // sidebar can show e.g. "Tier 1 (3847)" next to the multiplier input.
+  const nodeSizingTierCounts = useMemo<number[]>(() => {
+    const counts = new Array<number>(TIER_COUNT).fill(0)
+    if (nodes.length === 0) return counts
+    const sortedDegrees = nodes
+      .filter((n) => n.kind !== 'Process')
+      .map((n) => n.degree ?? 0)
+      .sort((a, b) => a - b)
+    const getPercentile = buildDegreePercentileFn(sortedDegrees)
+    for (const n of nodes) {
+      if (n.kind === 'Process') continue
+      const pct = getPercentile(n.degree ?? 0)
+      const tier = percentileToTier(pct)
+      counts[tier]++
+    }
+    return counts
+  }, [nodes])
 
   // ── Hover neighbor counts (#1060) ──────────────────────────────────────────
   // Pre-index edges by source and target so neighbor lookup is O(1) per query.
@@ -671,6 +706,17 @@ export function GraphRoute() {
 
           <div className="border-t border-slate-200 dark:border-slate-700" />
 
+          {/* Node sizing controls (#1360) */}
+          <NodeSizingControls
+            config={nodeSizingConfig}
+            tierCounts={nodeSizingTierCounts}
+            onBaseSizeChange={setNodeSizingBaseSize}
+            onMultiplierChange={setNodeSizingMultiplier}
+            onReset={resetNodeSizing}
+          />
+
+          <div className="border-t border-slate-200 dark:border-slate-700" />
+
           {/* Repo filter */}
           {allRepoSlugs.length > 0 && (
             <div>
@@ -797,6 +843,7 @@ export function GraphRoute() {
               nodeFilterIndices={filterIndices}
               onZoomTransform={setMinimapZoom}
               onNodePositions={setMinimapPositions}
+              nodeSizingConfig={nodeSizingConfig}
             />
           )}
 

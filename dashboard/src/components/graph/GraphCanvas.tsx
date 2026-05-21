@@ -8,6 +8,11 @@ import { useGraphCameraStore } from '@/store/graphCameraStore'
 import type { ColorMode } from '@/hooks/graph/useColorMode'
 import type { SimulationConfig } from '@/hooks/graph/useSimulationConfig'
 import { SILK_ROAD_DEFAULTS } from '@/hooks/graph/useSimulationConfig'
+import type { NodeSizingConfig } from '@/hooks/graph/useNodeSizingConfig'
+import {
+  buildDegreePercentileFn,
+  computeTunedSize,
+} from '@/hooks/graph/useNodeSizingConfig'
 
 // ---------------------------------------------------------------------------
 // Semantic layout helpers (#1072 / #1106 repo-first layout)
@@ -324,6 +329,11 @@ export interface GraphCanvasProps {
    * to pass the flat [x0,y0,x1,y1,...] node positions to the minimap.
    */
   onNodePositions?: (positions: Float32Array | number[]) => void
+  /**
+   * #1360: Tunable node sizing config — base size + per-tier multipliers.
+   * When omitted, falls back to the legacy log-scale formula.
+   */
+  nodeSizingConfig?: NodeSizingConfig
 }
 
 /** Truncate long labels at ~30 chars for layout legibility */
@@ -375,6 +385,7 @@ const GraphCanvasInner = ({
   nodeFilterIndices,
   onZoomTransform,
   onNodePositions,
+  nodeSizingConfig,
 }: GraphCanvasProps) => {
   // #1361: merge tunable params with Silk Road defaults so omitted props fall back correctly
   const simCfg: SimulationConfig = useMemo(
@@ -483,8 +494,15 @@ const GraphCanvasInner = ({
   // Node data with pre-computed cluster + size + position fields
   // ---------------------------------------------------------------------------
 
+  // Legacy log-scale formula — used as fallback when no nodeSizingConfig is provided.
   const computeSize = (d: number): number =>
     2 + Math.log10(d + 1) * 12
+
+  // #1360: Tunable sizing — pre-sort degrees for percentile lookup.
+  const sortedDegrees = useMemo(
+    () => nodes.map((n) => n.degree ?? 0).sort((a, b) => a - b),
+    [nodes],
+  )
 
   const repoToIdx = useMemo(() => {
     const repos = Array.from(new Set(nodes.map((n) => n.repo ?? ''))).sort()
@@ -504,15 +522,21 @@ const GraphCanvasInner = ({
       repoEntityCount.set(repo, (repoEntityCount.get(repo) ?? 0) + 1)
     }
 
+    // #1360: build percentile lookup once per node set
+    const getPercentile = buildDegreePercentileFn(sortedDegrees)
+
     return nodes.map((n, i) => {
       const repoIdx = repoToIdx.get(n.repo ?? '') ?? 0
       const cid = clusterIdFor(n, repoIdx)
       const normalizedPR = (n.pagerank ?? 0) / maxPR
       const strength = 0.10 + normalizedPR * 0.08
-      // #1127 P3: Process entities use a flat small range
+      // #1127 P3: Process entities keep flat small range (sizing config doesn't apply)
+      // #1360: all other kinds use tunable sizing when config is provided
       const __size = n.kind === 'Process'
         ? 4 + Math.min((n.degree ?? 0) * 0.005, 6)
-        : computeSize(n.degree ?? 0)
+        : nodeSizingConfig
+          ? computeTunedSize(n.degree ?? 0, getPercentile, nodeSizingConfig)
+          : computeSize(n.degree ?? 0)
       const center = repoCenters.get(n.repo ?? '')
       const jitterR = Math.sqrt(repoEntityCount.get(n.repo ?? '') ?? 1) * 8
       const angle = Math.random() * 2 * Math.PI
@@ -522,7 +546,7 @@ const GraphCanvasInner = ({
       return { ...n, __idx: i, __cluster_id: cid, __cluster_strength: strength, __size, __x, __y }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, repoToIdx, repoCenters])
+  }, [nodes, repoToIdx, repoCenters, sortedDegrees, nodeSizingConfig])
 
   const cosmographLinks = useMemo(() => {
     const idToIdx = new Map(nodes.map((n, i) => [String(n.id), i]))
