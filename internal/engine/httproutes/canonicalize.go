@@ -32,6 +32,9 @@ const (
 	FrameworkGin  = "gin"
 	FrameworkEcho = "echo"
 	FrameworkChi  = "chi"
+	// FrameworkAxum (#1420) uses {param} curly-brace syntax identical to
+	// FastAPI/JAX-RS; canonicalisation reuses canonicalizeCurlyBraces.
+	FrameworkAxum = "axum"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -52,7 +55,7 @@ func Canonicalize(framework, raw string) string {
 	switch framework {
 	case FrameworkDjango, FrameworkFlask:
 		out = canonicalizeAngleBrackets(raw)
-	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS:
+	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum:
 		out = canonicalizeCurlyBraces(raw)
 	case FrameworkExpress, FrameworkGin, FrameworkEcho, FrameworkChi:
 		out = canonicalizeColonParams(raw)
