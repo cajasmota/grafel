@@ -1683,3 +1683,64 @@ export function subscribeMCPActivityStream(
 
   return () => { es.close() }
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Onboarding wizard (#1239)
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface OnboardCheckPathReply {
+  valid: boolean
+  abs_path: string
+  suggested_group_name: string
+  suggested_slug: string
+  stack: string
+  is_monorepo: boolean
+  has_agents_md: boolean
+  has_archigraph_config: boolean
+  existing_group_name?: string
+  error?: string
+}
+
+export interface OnboardDetectMonorepoReply {
+  kind: string
+  packages: string[]
+}
+
+export interface OnboardRepoSpec {
+  path: string
+  slug: string
+  modules?: string[]
+}
+
+export interface OnboardCreateGroupReply {
+  group: string
+  repos_added: number
+  progress_token: string
+}
+
+/** POST /api/onboard/check-path — validate a path and get suggested name + stack. */
+export async function onboardCheckPath(path: string): Promise<OnboardCheckPathReply> {
+  return apiFetch<OnboardCheckPathReply>('/api/onboard/check-path', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  })
+}
+
+/** POST /api/onboard/detect-monorepo — scan a repo path for workspace packages. */
+export async function onboardDetectMonorepo(path: string): Promise<OnboardDetectMonorepoReply> {
+  return apiFetch<OnboardDetectMonorepoReply>('/api/onboard/detect-monorepo', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  })
+}
+
+/** POST /api/onboard/create-group — register the group + repos and kick indexing. */
+export async function onboardCreateGroup(
+  groupName: string,
+  repos: OnboardRepoSpec[],
+): Promise<OnboardCreateGroupReply> {
+  return apiFetch<OnboardCreateGroupReply>('/api/onboard/create-group', {
+    method: 'POST',
+    body: JSON.stringify({ group_name: groupName, repos }),
+  })
+}
