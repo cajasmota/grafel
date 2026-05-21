@@ -103,6 +103,13 @@ type Config struct {
 	// (e.g. cmd/archigraph) to wire the watcher into the dashboard
 	// without creating an import cycle. Added in #1270.
 	OnWatcherReady func(w *watch.Watcher)
+
+	// MaxConcurrentGroups controls how many groups can be indexed in
+	// parallel during a Rebuild RPC (cold start or forced rebuild).
+	// 0 or 1 → serial (legacy behaviour). Default when unset: 2.
+	// Configurable via --max-concurrent-groups on the daemon subcommand
+	// or ARCHIGRAPH_MAX_CONCURRENT_GROUPS env var. Added in #1276.
+	MaxConcurrentGroups int
 }
 
 // Run starts the daemon. It blocks until either:
@@ -156,7 +163,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}()
 
 	stopReq := make(chan struct{})
-	svc := newService(cfg.Index, cfg.Rebuild, cfg.QualityAudit, cfg.Layout.SocketPath, stopReq, logger)
+	svc := newService(cfg.Index, cfg.Rebuild, cfg.QualityAudit, cfg.Layout.SocketPath, stopReq, logger, cfg.MaxConcurrentGroups)
 	svc.mcpListTools = cfg.MCPListTools
 	svc.mcpCallTool = cfg.MCPCallTool
 	if cfg.DashboardPort > 0 {

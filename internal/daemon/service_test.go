@@ -21,6 +21,7 @@ func TestStatusRSSReportsActualMemory(t *testing.T) {
 		"/tmp/test.sock",
 		make(chan struct{}),
 		nil, // logger
+		2,   // maxConcurrentGroups
 	)
 
 	// Attach a scheduler with a non-zero budget.

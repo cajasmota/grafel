@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/agents"
@@ -38,6 +39,32 @@ const defaultDashboardPort = 47274
 // from the real-fixture benchmark.
 const defaultRSSBudgetMB = 500
 
+// defaultMaxConcurrentGroups is the production default for parallel group
+// indexing during a Rebuild RPC (#1276). With 2 concurrent group slots a
+// 4-group cold-start completes in approximately half the serial time.
+const defaultMaxConcurrentGroups = 2
+
+// rebuildConcurrency is the package-level concurrency cap used by
+// daemonRebuildFunc. It is set once by runDaemon before the RPC server
+// starts accepting connections. Concurrent calls to daemonRebuildFunc
+// each get their own semaphore, so different group rebuilds do not share
+// the cap — the cap applies to repos within a single group rebuild.
+var rebuildConcurrency = defaultMaxConcurrentGroups
+
+// rebuildIndexFunc is the per-repo index entrypoint used by daemonRebuildFunc.
+// It defaults to the package-level Index function but can be replaced in tests
+// to validate parallelism semantics without running a real extractor pass.
+// Must be set before the daemon accepts connections (write-once, then read-only).
+var rebuildIndexFunc = func(repoPath, outPath, repoTag string, skipPasses []string, pretty, jsonStats bool, opts ...IndexOption) error {
+	return Index(repoPath, outPath, repoTag, skipPasses, pretty, jsonStats, opts...)
+}
+
+// rebuildLinksFunc is the cross-repo link hook used by daemonRebuildFunc.
+// Defaults to runLinksHook but can be swapped in tests.
+var rebuildLinksFunc = func(group string) error {
+	return runLinksHook(group)
+}
+
 // runDaemon is the long-running mode of the archigraph binary. It is
 // wired into the CLI as a hidden `archigraph daemon` subcommand —
 // users normally reach it via `archigraph start`, which forks this
@@ -59,6 +86,17 @@ func runDaemon(argv []string) error {
 	}
 	fs.Int64Var(&maxRSSBudget, "max-rss-budget", envBudget,
 		"max predicted RSS (MB) for concurrent index jobs; 0 disables admission control")
+
+	var maxConcurrentGroups int
+	envConcGroups := defaultMaxConcurrentGroups
+	if v := os.Getenv("ARCHIGRAPH_MAX_CONCURRENT_GROUPS"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil && parsed >= 1 {
+			envConcGroups = parsed
+		}
+	}
+	fs.IntVar(&maxConcurrentGroups, "max-concurrent-groups", envConcGroups,
+		"max groups indexed in parallel during rebuild (default 2; 1 = serial)")
+
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -112,8 +150,9 @@ func runDaemon(argv []string) error {
 		SchedulerLinks: daemonSchedulerLinks,
 		SchedulerAlgo:  daemonSchedulerAlgo,
 
-		MaxRSSBudgetMB: maxRSSBudget,
-		RSSHistoryPath: filepath.Join(filepath.Dir(layout.PIDPath), "repo-rss-history.json"),
+		MaxRSSBudgetMB:      maxRSSBudget,
+		RSSHistoryPath:      filepath.Join(filepath.Dir(layout.PIDPath), "repo-rss-history.json"),
+		MaxConcurrentGroups: maxConcurrentGroups,
 
 		// Pattern confidence time-decay: runs every 6 hours.
 		// PatternGroupDirs returns the patterns storage directory for each
@@ -132,6 +171,12 @@ func runDaemon(argv []string) error {
 		DashboardServe: makeDaemonDashboardServe(time.Now()),
 		DashboardPort:  dashPort,
 		DashboardBind:  "127.0.0.1",
+	}
+
+	// Apply the concurrency cap before the RPC server opens so
+	// daemonRebuildFunc picks it up immediately. Written once; no race.
+	if maxConcurrentGroups >= 1 {
+		rebuildConcurrency = maxConcurrentGroups
 	}
 
 	ctx := context.Background()
@@ -267,6 +312,12 @@ func daemonIndexFunc(args proto.IndexArgs) (string, string, error) {
 // daemonRebuildFunc force-indexes every repo in a group. We deliberately
 // re-implement the iteration here rather than calling into internal/cli
 // to avoid pulling cobra back into the daemon's call graph.
+//
+// Parallelism (#1276): repos are indexed concurrently up to rebuildConcurrency
+// workers. One failing repo does not stop the others — all are attempted and
+// any errors are collected and returned together. Per-repo wall time is logged
+// to stderr for diagnostics. The cross-repo link pass runs only once all
+// per-repo indexes complete.
 func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 	groups, err := registry.Groups()
 	if err != nil {
@@ -291,39 +342,116 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 	for lang, names := range cfg.ExtraStdlibFilter {
 		resolve.RegisterExtraStdlibFilter(lang, names)
 	}
-	var rebuilt []string
+
+	// Collect repos to index, respecting the optional single-slug filter.
+	type repoWork struct {
+		r registry.Repo
+	}
+	var work []repoWork
 	for _, r := range cfg.Repos {
 		if args.Slug != "" && r.Slug != args.Slug {
 			continue
 		}
-		if args.Wipe {
-			_ = os.RemoveAll(daemon.StateDirForRepo(r.Path))
+		work = append(work, repoWork{r: r})
+	}
+
+	// Serial fast path: single worker or single repo skips goroutine overhead.
+	conc := rebuildConcurrency
+	if conc < 1 {
+		conc = 1
+	}
+
+	// Results collected from workers.
+	type repoResult struct {
+		path string
+		slug string
+		err  error
+		took time.Duration
+	}
+	results := make([]repoResult, len(work))
+
+	if conc == 1 || len(work) <= 1 {
+		// --- Serial path ---
+		for i, w := range work {
+			if args.Wipe {
+				_ = os.RemoveAll(daemon.StateDirForRepo(w.r.Path))
+			}
+			t0 := time.Now()
+			indexErr := rebuildIndexFunc(w.r.Path, "", "", nil, false, false)
+			results[i] = repoResult{
+				path: w.r.Path,
+				slug: w.r.Slug,
+				err:  indexErr,
+				took: time.Since(t0),
+			}
 		}
-		if err := Index(r.Path, "", "", nil, false, false); err != nil {
-			return rebuilt, "", fmt.Errorf("index %s: %w", r.Slug, err)
+	} else {
+		// --- Parallel path: semaphore-bounded worker pool ---
+		sem := make(chan struct{}, conc)
+		var wg sync.WaitGroup
+		for i, w := range work {
+			wg.Add(1)
+			go func(idx int, rw repoWork) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				if args.Wipe {
+					_ = os.RemoveAll(daemon.StateDirForRepo(rw.r.Path))
+				}
+				t0 := time.Now()
+				indexErr := rebuildIndexFunc(rw.r.Path, "", "", nil, false, false)
+				results[idx] = repoResult{
+					path: rw.r.Path,
+					slug: rw.r.Slug,
+					err:  indexErr,
+					took: time.Since(t0),
+				}
+			}(i, w)
 		}
-		// Append the absolute repo path, not the slug.  The CLI uses these
-		// paths to locate per-repo state directories (graph.fb, graph-stats.json,
-		// enrichment-candidates.json) when building the post-rebuild summary.
-		// Returning slugs here was the root cause of #1076 (zero counts).
-		rebuilt = append(rebuilt, r.Path)
+		wg.Wait()
+	}
+
+	// Collect successful paths; log per-repo wall time; gather errors.
+	var rebuilt []string
+	var errs []string
+	for _, res := range results {
+		if res.path == "" {
+			continue // slot never filled (shouldn't happen)
+		}
+		fmt.Fprintf(os.Stderr, "archigraph: rebuild %s took %s",
+			res.slug, res.took.Truncate(time.Millisecond))
+		if res.err != nil {
+			fmt.Fprintf(os.Stderr, " [FAILED: %v]\n", res.err)
+			errs = append(errs, fmt.Sprintf("index %s: %v", res.slug, res.err))
+			continue
+		}
+		fmt.Fprintln(os.Stderr, "")
+		rebuilt = append(rebuilt, res.path)
 
 		// Auto-inject Architecture Map block into AGENTS.md / CLAUDE.md when
 		// opted in. Best-effort: a write failure is logged but never fails the
 		// rebuild so a read-only repo or missing permissions don't surface as
 		// an error to the user (#1216).
 		if cfg.Features.AutoInjectAgentsMD {
-			mapStats := buildAgentsMapStats(cfg.Name, r.Path)
-			if err := agents.InjectArchitectureMap(r.Path, mapStats); err != nil {
+			mapStats := buildAgentsMapStats(cfg.Name, res.path)
+			if err := agents.InjectArchitectureMap(res.path, mapStats); err != nil {
 				fmt.Fprintf(os.Stderr,
 					"archigraph: auto-inject agents map for %s: %v (non-fatal)\n",
-					r.Slug, err)
+					res.slug, err)
 			}
 		}
 	}
+
+	// Return a combined error if any repos failed. The rebuilt list still
+	// contains all repos that succeeded, so the caller can report partial results.
+	if len(errs) > 0 {
+		return rebuilt, "", fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+
 	// Cross-repo link passes run after every member is indexed.
 	warning := ""
-	if err := runLinksHook(args.Group); err != nil {
+	if err := rebuildLinksFunc(args.Group); err != nil {
 		// Best-effort — surface as a warning, not a hard failure.
 		warning = fmt.Sprintf("link passes failed: %v", err)
 	}
