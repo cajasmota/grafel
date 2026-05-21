@@ -3,7 +3,7 @@
  *
  * Two menus:
  *   Explore: Graph, Flows, Topology, Paths, Docs, Pending
- *   Operate: Diagnostics, Quality, Patterns, System, Update, Settings, MCP Activity
+ *   Operate: Diagnostics, Quality, Patterns, System, Update, Settings, MCP Activity, Help
  *
  * Built on @radix-ui/react-dropdown-menu for keyboard nav, a11y,
  * and proper focus management out of the box.
@@ -14,7 +14,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Network, Workflow, Radio, Globe, BookOpen, Clock,
   Stethoscope, Sparkles, Server, RefreshCw, ChevronDown,
-  BarChart2, Settings, Activity, Zap,
+  BarChart2, Settings, Activity, Zap, HelpCircle,
 } from 'lucide-react'
 
 /* ── Types ──────────────────────────────────────────────────────────────────── */
@@ -60,6 +60,7 @@ export function operateItems(group: string): NavEntry[] {
     { label: 'MCP Activity',  to: '/mcp-activity',      icon: <Activity    className="w-4 h-4" /> },
     { label: 'MCP Setup',     to: '/mcp-setup',         icon: <Zap         className="w-4 h-4" /> },
     { label: 'Settings',      to: '/settings',          icon: <Settings    className="w-4 h-4" /> },
+    { label: 'Help & About',  to: '/help',              icon: <HelpCircle  className="w-4 h-4" /> },
   ]
 }
 

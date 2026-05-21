@@ -1,4 +1,4 @@
-import { Link, Outlet, useParams } from 'react-router-dom'
+import { Link, Outlet, useParams, useNavigate } from 'react-router-dom'
 import { useCallback, useEffect, useState } from 'react'
 import { GitBranch, Moon, Search, Sun } from 'lucide-react'
 import { useRegistry } from '@/hooks/shared/useRegistry'
@@ -17,9 +17,10 @@ import {
 const GROUP_DEFAULT = 'fixture-a'
 
 const EXPLORE_PREFIXES = ['/graph/', '/flows/', '/topology/', '/paths/', '/docs/', '/pending/']
-const OPERATE_PREFIXES = ['/diagnostics', '/quality', '/patterns/', '/system', '/update', '/mcp-activity', '/mcp-setup', '/settings']
+const OPERATE_PREFIXES = ['/diagnostics', '/quality', '/patterns/', '/system', '/update', '/mcp-activity', '/mcp-setup', '/settings', '/help']
 
 export function AppLayout() {
+  const navigate = useNavigate()
   const { group = GROUP_DEFAULT } = useParams()
   const { data: registry } = useRegistry()
   const groups = registry?.groups ?? []
@@ -94,6 +95,21 @@ export function AppLayout() {
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [paletteOpen, shortcutsOpen, openShortcuts])
+
+  // Keyboard shortcut: ⌘? (Cmd+Shift+/) → open /help
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (paletteOpen) return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      // '/' with shift gives '?' on US layout; also handle '?' directly
+      if ((e.metaKey || e.ctrlKey) && (e.key === '?' || (e.shiftKey && e.key === '/'))) {
+        e.preventDefault()
+        navigate('/help')
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [paletteOpen, navigate])
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-200">
