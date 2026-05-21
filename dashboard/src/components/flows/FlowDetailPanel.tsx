@@ -1,5 +1,5 @@
 /**
- * Full-chain detail panel, opened when a flow row is clicked (#1150).
+ * Full-chain detail panel, opened when a flow row is clicked (#1150, #1152).
  *
  * Additions over original:
  *  - React Flow DAG tab (lazy-loaded @xyflow/react chunk)
@@ -13,11 +13,12 @@
  *  - Linked topic (entry_kind=message_consumer) → Topology cross-link
  *  - Complexity score badge
  *  - Print-friendly button
+ *  - AI-generated enrichment insights (#1152)
  *
  * Jarvis hook reserve: useGraphHighlight from #1153 applied here for MCP-driven
  * step highlight in a future story (#1157). The prop is wired but no-op for now.
  */
-import { X, ArrowLeftRight, Link, BookOpen, Printer, ChevronDown, ChevronUp, Globe, Database } from 'lucide-react'
+import { X, ArrowLeftRight, Link, BookOpen, Printer, ChevronDown, ChevronUp, Globe, Database, Sparkles, RefreshCw } from 'lucide-react'
 import * as Tabs from '@radix-ui/react-tabs'
 import { RepoChip } from '@/components/shared/RepoChip'
 import { CrossStackBadge } from './CrossStackBadge'
@@ -30,7 +31,7 @@ import { useSwimLaneLayout } from '@/hooks/flows/useSwimLaneLayout'
 import { useChainNavigation } from '@/hooks/flows/useChainNavigation'
 import { FlowDagLazy } from './FlowDagLazy'
 import { stepKindSpec, entryKindLabel } from '@/lib/flowKinds'
-import type { ProcessStep } from '@/types/api'
+import type { ProcessStep, FlowEnrichment } from '@/types/api'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -476,6 +477,13 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
           </FlowTabTrigger>
           <FlowTabTrigger value="chain">Chain ({steps.length})</FlowTabTrigger>
           <FlowTabTrigger value="info">Info</FlowTabTrigger>
+          <FlowTabTrigger value="insights">
+            <Sparkles className="w-3.5 h-3.5" aria-hidden />
+            AI Insights
+            {process.docgen_status === 'stale' && (
+              <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1 rounded">stale</span>
+            )}
+          </FlowTabTrigger>
         </Tabs.List>
 
         <div className="flex-1 overflow-y-auto">
@@ -619,6 +627,16 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
               />
             )}
           </Tabs.Content>
+
+          {/* AI Insights view (#1152) */}
+          <Tabs.Content value="insights" className="p-4">
+            <AIInsightsSection
+              group={group}
+              processId={processId}
+              enrichment={process.enrichment}
+              docgenStatus={process.docgen_status}
+            />
+          </Tabs.Content>
         </div>
       </Tabs.Root>
 
@@ -633,5 +651,172 @@ export function FlowDetailPanel({ group, processId, onClose }: FlowDetailPanelPr
         </div>
       )}
     </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Insights section (#1152) — renders YAML frontmatter fields from /generate-docs
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AIInsightsSectionProps {
+  group: string
+  processId: string
+  enrichment?: FlowEnrichment
+  docgenStatus?: 'enriched' | 'pending' | 'stale'
+}
+
+function AIInsightsSection({ group, processId, enrichment, docgenStatus }: AIInsightsSectionProps) {
+  const [triggerState, setTriggerState] = useState<'idle' | 'queuing' | 'queued'>('idle')
+
+  async function handleTrigger() {
+    setTriggerState('queuing')
+    try {
+      await fetch(`/api/flows/${group}/${encodeURIComponent(processId)}/trigger-enrichment`, {
+        method: 'POST',
+      })
+      setTriggerState('queued')
+    } catch {
+      setTriggerState('idle')
+    }
+  }
+
+  // No enrichment at all.
+  if (!enrichment || docgenStatus === 'pending') {
+    return (
+      <div className="flex flex-col items-center gap-3 py-8 text-center">
+        <Sparkles className="w-8 h-8 text-slate-300 dark:text-slate-700" />
+        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">
+          No AI documentation found for this flow. Run{' '}
+          <code className="font-mono text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">/generate-docs</code>{' '}
+          to generate insights.
+        </p>
+        <TriggerButton state={triggerState} onClick={handleTrigger} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Stale warning */}
+      {docgenStatus === 'stale' && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+          <RefreshCw className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              AI documentation may be out of date. Re-run{' '}
+              <code className="font-mono text-[10px] bg-amber-100 dark:bg-amber-900/40 px-1 rounded">/generate-docs</code>{' '}
+              to refresh.
+            </p>
+          </div>
+          <TriggerButton state={triggerState} onClick={handleTrigger} compact />
+        </div>
+      )}
+
+      {/* Summary */}
+      {enrichment.summary && (
+        <InsightRow label="Summary">
+          <p className="text-sm text-slate-700 dark:text-slate-300">{enrichment.summary}</p>
+        </InsightRow>
+      )}
+
+      {/* Preconditions */}
+      {enrichment.preconditions && (
+        <InsightRow label="Preconditions">
+          <p className="text-sm text-slate-700 dark:text-slate-300">{enrichment.preconditions}</p>
+        </InsightRow>
+      )}
+
+      {/* Expected outcome */}
+      {enrichment.expected_outcome && (
+        <InsightRow label="Expected outcome">
+          <p className="text-sm text-slate-700 dark:text-slate-300">{enrichment.expected_outcome}</p>
+        </InsightRow>
+      )}
+
+      {/* AI-documented steps */}
+      {enrichment.steps && enrichment.steps.length > 0 && (
+        <InsightRow label="AI-documented steps">
+          <ol className="space-y-1 list-none">
+            {enrichment.steps.map((step, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+                <span className="text-[10px] font-mono text-slate-400 dark:text-slate-600 mt-0.5 w-4 flex-shrink-0">
+                  {i + 1}.
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </InsightRow>
+      )}
+
+      {/* Gaps */}
+      {enrichment.gaps && enrichment.gaps.length > 0 && (
+        <InsightRow label="Known gaps">
+          <ul className="space-y-1">
+            {enrichment.gaps.map((gap, i) => (
+              <li key={i} className="text-sm text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
+                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-amber-400 dark:bg-amber-600 flex-shrink-0" />
+                {gap}
+              </li>
+            ))}
+          </ul>
+        </InsightRow>
+      )}
+
+      {/* Trigger enrichment (enriched state — refresh option) */}
+      {docgenStatus === 'enriched' && (
+        <div className="pt-2 flex justify-end">
+          <TriggerButton state={triggerState} onClick={handleTrigger} compact />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InsightRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div className="px-3 py-1.5 bg-slate-100/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800">
+        <span className="text-[10px] font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-500">
+          {label}
+        </span>
+      </div>
+      <div className="px-3 py-2">{children}</div>
+    </div>
+  )
+}
+
+function TriggerButton({
+  state,
+  onClick,
+  compact = false,
+}: {
+  state: 'idle' | 'queuing' | 'queued'
+  onClick: () => void
+  compact?: boolean
+}) {
+  if (state === 'queued') {
+    return (
+      <span className={`text-xs text-emerald-600 dark:text-emerald-400 ${compact ? '' : 'px-3 py-1.5'}`}>
+        Queued — run /generate-docs to apply
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={state === 'queuing'}
+      className={[
+        'flex items-center gap-1.5 text-xs rounded transition-colors',
+        compact
+          ? 'px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+          : 'px-3 py-1.5 bg-sky-600 text-white hover:bg-sky-700',
+        state === 'queuing' ? 'opacity-60 cursor-not-allowed' : '',
+      ].join(' ')}
+    >
+      <RefreshCw className={`w-3 h-3 ${state === 'queuing' ? 'animate-spin' : ''}`} />
+      {state === 'queuing' ? 'Queuing…' : 'Trigger enrichment'}
+    </button>
   )
 }

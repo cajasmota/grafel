@@ -265,6 +265,30 @@ export type FlowEntryKind =
 
 export type FlowPriorityHint = 'high' | 'medium' | 'low'
 
+/** AI-generated enrichment frontmatter for a process_flow entity (#1152). */
+export interface FlowEnrichment {
+  entity_id?: string
+  kind?: string
+  summary?: string
+  preconditions?: string
+  expected_outcome?: string
+  steps?: string[]
+  gaps?: string[]
+  group?: string
+  group_label?: string
+  rank?: number
+  disqualified?: boolean
+}
+
+/** Which enrichment fields are populated for a flow (#1152). */
+export interface EnrichmentHealth {
+  summary: boolean
+  preconditions: boolean
+  expected_outcome: boolean
+  steps: boolean
+  gaps: boolean
+}
+
 export interface Process {
   process_id: string
   repo: string
@@ -305,6 +329,10 @@ export interface Process {
     linked_endpoint_id?: string
     linked_topic_id?: string
   }
+  /** #1152 enrichment fields */
+  docs_summary?: string
+  docgen_status?: 'enriched' | 'pending' | 'stale'
+  enrichment_health?: EnrichmentHealth
 }
 
 /** Summary entry in the top-level entry_kind_groups array (#1148) */
@@ -376,6 +404,14 @@ export interface FlowDetailResponse {
   process: Process
   chain_entities: Entity[]
   source_snippets: Record<string, string>
+}
+
+/** Response shape for POST /api/flows/{group}/{processId}/trigger-enrichment */
+export interface TriggerEnrichmentResponse {
+  status: 'queued'
+  message: string
+  process_id: string
+  group: string
 }
 
 export interface FlowFilters {

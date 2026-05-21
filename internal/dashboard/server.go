@@ -165,6 +165,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/flows/{group}/dead-ends", s.handleFlowDeadEnds)
 	mux.HandleFunc("GET /api/flows/{group}/truncated", s.handleFlowTruncated)
 	mux.HandleFunc("GET /api/flows/{group}/{processId}", s.handleFlowDetail)
+	mux.HandleFunc("POST /api/flows/{group}/{processId}/trigger-enrichment", s.handleTriggerEnrichment)
 
 	// API paths / contracts
 	mux.HandleFunc("GET /api/paths/{group}", s.handlePathsList)

@@ -254,6 +254,64 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// docgenStatus computes 'enriched' | 'pending' | 'stale' for a flow entity.
+//
+//   - enriched: a doc file with process_flow frontmatter was found and parsed.
+//   - stale:    a doc file exists but its frontmatter has no kind/summary (legacy).
+//   - pending:  no doc file found for this entity.
+func docgenStatus(fm *EnrichmentFrontmatter, fallback string) string {
+	if fm != nil && fm.HasData() {
+		return "enriched"
+	}
+	if fallback != "" {
+		// A doc file exists but lacks structured frontmatter.
+		return "stale"
+	}
+	return "pending"
+}
+
+// enrichmentHealth returns a map of frontmatter field names → bool indicating
+// whether the field is populated for a process_flow entity.
+// Callers can surface this in the UI to show which fields are missing.
+func enrichmentHealth(fm *EnrichmentFrontmatter) map[string]bool {
+	if fm == nil {
+		return map[string]bool{
+			"summary":          false,
+			"preconditions":    false,
+			"expected_outcome": false,
+			"steps":            false,
+			"gaps":             false,
+		}
+	}
+	return map[string]bool{
+		"summary":          fm.Summary != "",
+		"preconditions":    fm.Preconditions != "",
+		"expected_outcome": fm.ExpectedOutcome != "",
+		"steps":            len(fm.Steps) > 0,
+		"gaps":             len(fm.Gaps) > 0,
+	}
+}
+
+// handleTriggerEnrichment — POST /api/flows/{group}/{processId}/trigger-enrichment
+//
+// Stub endpoint: records intent to regenerate enrichment for a specific flow.
+// Full implementation (invoking the /generate-docs skill via MCP) is deferred
+// to a future epic. Returns 202 Accepted with a status message.
+func (s *Server) handleTriggerEnrichment(w http.ResponseWriter, r *http.Request) {
+	group := r.PathValue("group")
+	processID := r.PathValue("processId")
+	if group == "" || processID == "" {
+		writeErr(w, http.StatusBadRequest, "group and processId required")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"status":     "queued",
+		"message":    "Enrichment regeneration queued for " + processID + ". Run /generate-docs to populate.",
+		"process_id": processID,
+		"group":      group,
+	})
+}
+
 // handleFlowDetail — GET /api/flows/{group}/{processId}
 //
 // Returns the full step chain for one Process entity, with source snippets
@@ -410,6 +468,9 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 		"is_cross_repo":     flowMeta.IsCrossRepo,
 		"data_lineage":      flowMeta.DataLineage,
 	}
+	process["docgen_status"] = docgenStatus(enrichedFM, enrichedSummary)
+	process["enrichment_health"] = enrichmentHealth(enrichedFM)
+
 	if enrichedFM != nil {
 		process["docs_summary"] = enrichedFM.Summary
 		process["group"] = enrichedFM.Group
@@ -446,29 +507,64 @@ func splitChainLabels(s string) []string {
 }
 
 // extractFlowDocs looks up enrichment documentation for a process_flow entity.
-// It searches docgen-state.json GeneratedPaths for a doc file whose name
-// contains the entity id (or "flow"), reads it, and returns the parsed
-// EnrichmentFrontmatter (or a fallback first-line summary when frontmatter
-// is absent).
+// It searches docgen-state.json GeneratedPaths for a doc file that matches by:
 //
+//  1. Primary: file path contains the entityID substring.
+//  2. Secondary: file path contains "flow" (case-insensitive).
+//  3. Tertiary: parsed frontmatter has kind == "process_flow" (catches hashed IDs
+//     where the path alone gives no useful signal — mirrors the topology
+//     improvement from #1143).
+//
+// Returns (frontmatter, "") when a structured doc is found.
+// Returns (nil, firstLineSummary) when a doc exists but lacks frontmatter.
 // Returns (nil, "") when no documentation file is found.
 func extractFlowDocs(group, entityID string, docgenState *mcp.DocgenState) (*EnrichmentFrontmatter, string) {
+	return extractFlowDocsWithResolver(entityID, docgenState, func(docPath string) string {
+		return getDocFilePath(group, docPath)
+	})
+}
+
+// extractFlowDocsWithResolver is the testable core of extractFlowDocs.
+// resolver maps a raw docPath from GeneratedPaths to an absolute file path.
+func extractFlowDocsWithResolver(entityID string, docgenState *mcp.DocgenState, resolver func(string) string) (*EnrichmentFrontmatter, string) {
 	if docgenState == nil || docgenState.GeneratedPaths == nil {
 		return nil, ""
 	}
+
+	// Two-pass: first look for entity-id / "flow" path matches (fast path),
+	// then fall back to a full scan matching on frontmatter kind (slow path).
 	for _, docPath := range docgenState.GeneratedPaths {
-		if !strings.Contains(docPath, entityID) && !strings.Contains(strings.ToLower(docPath), "flow") {
+		pathLower := strings.ToLower(docPath)
+		pathMatch := strings.Contains(docPath, entityID) || strings.Contains(pathLower, "flow")
+		if !pathMatch {
 			continue
 		}
-		fullPath := getDocFilePath(group, docPath)
+		fullPath := resolver(docPath)
 		fm, fallback := extractEnrichmentFromFile(fullPath)
 		if fm != nil && fm.HasData() {
-			return fm, ""
+			if fm.Kind == "process_flow" || fm.Kind == "" {
+				// Exact or untyped match — return immediately.
+				return fm, ""
+			}
+			// Kind is set but not process_flow; don't use this doc.
+			continue
 		}
 		if fallback != "" {
 			return nil, fallback
 		}
 	}
+
+	// Tertiary pass: scan all paths for frontmatter with kind == process_flow
+	// whose entity_id field matches (handles hashed IDs).
+	for _, docPath := range docgenState.GeneratedPaths {
+		fullPath := resolver(docPath)
+		fm, _ := extractEnrichmentFromFile(fullPath)
+		if fm != nil && fm.Kind == "process_flow" &&
+			(fm.EntityID == entityID || strings.Contains(fm.EntityID, entityID) || strings.Contains(entityID, fm.EntityID)) {
+			return fm, ""
+		}
+	}
+
 	return nil, ""
 }
 
