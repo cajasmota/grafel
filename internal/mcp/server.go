@@ -103,7 +103,7 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 29 (#1281: 9→4 bundles; #1293: desc trim; #1312: +archigraph_quality_cycles).
+// Tool count: 30 (#1281: 9→4 bundles; #1293: desc trim; #1312: +archigraph_quality_cycles; #1314: +archigraph_auth_coverage).
 // Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
 //   archigraph_get_next_enrichment_task, archigraph_get_telemetry.
 func (s *Server) registerTools() {
@@ -424,6 +424,20 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_quality_cycles", s.handleQualityCycles))
+
+	// archigraph_auth_coverage — security audit (#1314).
+	// Walk all http_endpoint_definition entities and flag those without auth
+	// decorators/middleware.  Severity: error (sensitive/IDOR), warn (public), info (covered).
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_auth_coverage",
+		mcpapi.WithDescription("Security audit: list HTTP endpoints and flag those missing auth decorators or middleware. "+
+			"Returns has_auth, severity (error/warn/info), IDOR risk, and sensitive-operation flags per endpoint. "+
+			"error = unprotected sensitive operation or IDOR risk; warn = potentially public endpoint; info = auth present."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithBoolean("only_missing", mcpapi.DefaultBool(false)),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_auth_coverage", s.handleAuthCoverage))
 }
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard

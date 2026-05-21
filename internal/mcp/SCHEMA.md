@@ -19,11 +19,11 @@ for clients (Claude Code, Windsurf, etc.) and tracks the implementation in
 - **Transport:** stdio
 - **Process model:** one server per machine, multiple registered groups, lazy
   mtime-driven reload before every tool call. See ADR-0004.
-- **Tool count:** 28 (as of this PR), all prefixed `archigraph_*` to avoid client-side
+- **Tool count:** 29 (as of this PR), all prefixed `archigraph_*` to avoid client-side
   collisions when other MCP servers are installed alongside (Refs #62).
   Prior history: 19 tools → #668 bundled 3 action-dispatch tools (saved 4) → 39 tools
   after #1202/#1220/#1252 additions → #1281 merged 9 tools into 4 bundles → 32 tools
-  → this PR dropped 4 dashboard-only tools → 28 tools.
+  → dropped 4 dashboard-only tools → 28 tools → #1314 added auth_coverage → 29 tools.
 - **State:** in-memory `Document`s loaded from per-repo `.archigraph/graph.json`
   files; no database. See ADR-0006.
 - **Routing:** every tool that touches graph data resolves a group via the
@@ -120,6 +120,7 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_impact_radius`](#archigraph_impact_radius) | Blast-radius analysis with per-entity risk score. |
 | [`archigraph_summarize_subgraph`](#archigraph_summarize_subgraph) | Markdown summary of entity call neighbourhood. |
 | [`archigraph_find_dead_code`](#archigraph_find_dead_code) | Entities with 0 inbound/outbound project edges. |
+| [`archigraph_auth_coverage`](#archigraph_auth_coverage) | Security audit: flag HTTP endpoints missing auth decorators/middleware. |
 
 ---
 
@@ -1010,6 +1011,100 @@ entity). Use to assess Sub-A (#1217) migration progress.
 `migrated: true` means no legacy `http_endpoint` entities remain — all have been
 split into `http_endpoint_definition` / `http_endpoint_call` by Sub-A (#1217).
 When `migrated: false`, `note` contains a migration reminder.
+
+---
+
+---
+
+### `archigraph_auth_coverage`
+
+Security audit tool (#1314). Walk every `http_endpoint_definition` entity in the group and
+determine whether it is covered by an auth decorator, middleware, or guard.
+
+**Detection signals (applied in priority order)**
+
+1. Entity property `auth_decorator` / `auth_middleware` / `auth_guard` set by an extractor.
+2. `TAGGED_AS` relationship from the endpoint to an `auth_policy` entity.
+3. An `auth_policy` entity (emitted by the pattern extractor) shares the same source file.
+
+**Auth annotations recognised (per framework)**
+
+| Framework | Recognised markers |
+|-----------|-------------------|
+| Django | `@login_required`, `@permission_required`, `@user_passes_test` |
+| DRF | `permission_classes = [IsAuthenticated]` |
+| Flask | `@login_required`, `@jwt_required`, `@roles_required` |
+| FastAPI | `Depends(get_current_user)`, `Depends(oauth2_scheme)` |
+| Express | `requireAuth`, `authMiddleware`, `verifyToken`, `passport.authenticate` |
+| NestJS | `@UseGuards(JwtAuthGuard)` |
+| Spring | `@PreAuthorize`, `@Secured`, `@RolesAllowed` |
+| ASP.NET | `[Authorize]`, `[Authorize(Roles=...)]`, `[Authorize(Policy=...)]` |
+| Rails | `before_action :authenticate_user!` |
+
+**Severity rules**
+
+| Condition | Severity |
+|-----------|----------|
+| Auth present | `info` |
+| No auth + sensitive operation (payment/delete/admin/…) | `error` |
+| No auth + IDOR-risk path (`{user_id}`, `:account_id`, …) | `error` |
+| No auth + anything else | `warn` |
+
+**Default-allow vs default-deny**
+
+If ≥ 80 % of endpoints in a repo are covered, the repo is classified as `default-deny`
+(auth is the norm). Otherwise `default-allow` (auth is the exception — higher risk posture).
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `group` | string | no | inferred | Group name (registry key). |
+| `cwd` | string | no | — | CWD for group inference. |
+| `repo_filter` | string[] | no | all | Limit to specific repos. |
+| `only_missing` | bool | no | `false` | When true, return only endpoints where `has_auth=false`. |
+| `limit` | int | no | `200` | Max endpoints returned. |
+
+**Output**
+
+```json
+{
+  "endpoints": [
+    {
+      "entity_id": "myrepo::a1b2c3d4e5f6a7b8",
+      "name": "delete_user",
+      "repo": "myrepo",
+      "source_file": "api/users.py",
+      "start_line": 42,
+      "method": "DELETE",
+      "path": "/api/users/{user_id}",
+      "has_auth": false,
+      "auth_evidence": "",
+      "severity": "error",
+      "sensitive_op": true,
+      "idor_risk": true,
+      "sensitive_terms": "delete, user_id"
+    }
+  ],
+  "count": 1,
+  "total": 1,
+  "truncated": false,
+  "repo_summaries": [
+    {
+      "repo": "myrepo",
+      "total": 12,
+      "covered": 10,
+      "uncovered": 2,
+      "coverage_rate": 0.833,
+      "default_policy": "default-deny",
+      "error_count": 1,
+      "warn_count": 1
+    }
+  ],
+  "overall_coverage": 0.833,
+  "note": "..."
+}
+```
 
 ---
 
