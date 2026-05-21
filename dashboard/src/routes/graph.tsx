@@ -1,7 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { MiniMap, MiniMapToggleButton } from '@/components/graph/MiniMap'
-import type { ZoomTransform } from '@/components/graph/MiniMap'
 import { useGraphData } from '@/hooks/graph/useGraphData'
 import { useGraphSelection } from '@/hooks/graph/useGraphSelection'
 import { useEdgeKindFilters } from '@/hooks/graph/useEdgeKindFilters'
@@ -116,26 +114,7 @@ export function GraphRoute() {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
-  // ── Minimap state (#1366) ──────────────────────────────────────────────────
-  const [minimapVisible, setMinimapVisible] = useState(true)
-  const [minimapPositions, setMinimapPositions] = useState<Float32Array | number[] | null>(null)
-  const [minimapZoom, setMinimapZoom] = useState<ZoomTransform>({ k: 0.3, x: 0, y: 0 })
   const canvasContainerRef = useRef<HTMLDivElement>(null)
-  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 })
-
-  // Track canvas dimensions via ResizeObserver
-  useEffect(() => {
-    const el = canvasContainerRef.current
-    if (!el) return
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect
-        setCanvasSize({ width, height })
-      }
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
 
   // ── External node visibility state (#1067) ─────────────────────────────────
   // Hidden by default — External stdlib/builtin placeholders clutter the graph.
@@ -369,17 +348,6 @@ export function GraphRoute() {
       setSnapshotExporting(false)
     }
   }, [exportSnapshot, group, colorMode, allRepoSlugs, nodes, edges, isDark])
-
-  // ── Minimap pan handler (#1366) ────────────────────────────────────────────
-  const handleMinimapPan = useCallback((graphX: number, graphY: number) => {
-    if (!graphRef) return
-    // Pan to graph-space coordinates by fitting to a small region around that point
-    const span = 400 / minimapZoom.k  // use current zoom level to maintain scale
-    graphRef.fitViewByCoordinates?.(
-      [graphX - span, graphY - span, graphX + span, graphY + span],
-      300,
-    )
-  }, [graphRef, minimapZoom.k])
 
   const handleOpenInFlows = useCallback((entityId: string) => {
     navigate(`/${group}/flows?entry=${encodeURIComponent(entityId)}`)
@@ -649,32 +617,6 @@ export function GraphRoute() {
               />
               MCP activity
             </button>
-
-            {/* #1366: Minimap toggle */}
-            {!minimapVisible && (
-              <MiniMapToggleButton onShow={() => setMinimapVisible(true)} isDark={isDark} />
-            )}
-            {minimapVisible && (
-              <button
-                type="button"
-                role="switch"
-                aria-checked={true}
-                onClick={() => setMinimapVisible(false)}
-                title="Hide minimap"
-                data-testid="minimap-sidebar-toggle"
-                className={[
-                  'flex items-center gap-2 px-2 py-1 rounded text-left text-xs w-full transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
-                  'bg-sky-900/40 text-sky-300 dark:text-sky-300',
-                ].join(' ')}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0 bg-sky-400"
-                  aria-hidden
-                />
-                Minimap
-              </button>
-            )}
           </div>
 
           <div className="border-t border-slate-200 dark:border-slate-700" />
@@ -841,24 +783,7 @@ export function GraphRoute() {
               highlightedEdgeIds={highlightedEdgeIds}
               simulationConfig={simConfig}
               nodeFilterIndices={filterIndices}
-              onZoomTransform={setMinimapZoom}
-              onNodePositions={setMinimapPositions}
               nodeSizingConfig={nodeSizingConfig}
-            />
-          )}
-
-          {/* #1366: Minimap overlay — bottom-right of the graph canvas */}
-          {canvasReady && !isEmpty && (
-            <MiniMap
-              positions={minimapPositions}
-              zoomTransform={minimapZoom}
-              canvasWidth={canvasSize.width}
-              canvasHeight={canvasSize.height}
-              onPan={handleMinimapPan}
-              isDark={isDark}
-              visible={minimapVisible}
-              onHide={() => setMinimapVisible(false)}
-              nodeCount={nodes.length}
             />
           )}
 

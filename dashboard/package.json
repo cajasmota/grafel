@@ -15,6 +15,7 @@
   "dependencies": {
     "@cosmograph/cosmograph": "^2.3.2",
     "@cosmograph/react": "^2.3.2",
+    "@cosmos.gl/graph": "2.6.4",
     "@radix-ui/react-dialog": "^1.1.4",
     "@radix-ui/react-dropdown-menu": "^2.1.4",
     "@radix-ui/react-select": "^2.1.4",
