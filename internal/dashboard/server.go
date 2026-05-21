@@ -373,6 +373,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/quality/fixtures", s.handleQualityFixtures)
 	mux.HandleFunc("POST /api/quality/recall", s.handleQualityRecall)
 	mux.HandleFunc("GET /api/quality/composite/{group}", s.handleQualityComposite)
+	// #1313: N+1 query anti-pattern detector.
+	mux.HandleFunc("GET /api/quality/anti-patterns/{group}", s.handleNPlusOne)
 
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
