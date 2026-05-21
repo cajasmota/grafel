@@ -335,6 +335,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/enrichments/{group}/progress", s.handleEnrichmentProgress)
 	// Agent description write-back — persists generated descriptions to graph + frontmatter (#1304)
 	mux.HandleFunc("POST /api/enrichments/{group}/write", s.handleEnrichmentWriteback)
+	// Pre-run cost estimator — shows token/USD estimate before batch enrichment (#1287)
+	mux.HandleFunc("GET /api/enrichments/{group}/estimate", s.handleEnrichmentEstimate)
 
 	// Settings surface (#1206)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)

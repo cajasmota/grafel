@@ -94,6 +94,7 @@ import type {
   PendingEnrichmentsResponse,
   CommunityNamingResponse,
   EnrichmentProgressResponse,
+  EnrichmentEstimateResponse,
   OrphanCallersResponse,
   OrphanPublishersResponse,
   OrphanSubscribersResponse,
@@ -962,6 +963,25 @@ export async function fetchEnrichmentProgress(group: string): Promise<Enrichment
   return apiFetch<EnrichmentProgressResponse>(`/api/enrichments/${group}/progress`)
 }
 
+/** GET /api/enrichments/{group}/estimate — pre-run cost estimate (#1287) */
+export async function fetchEnrichmentEstimate(group: string): Promise<EnrichmentEstimateResponse> {
+  if (USE_MOCKS) {
+    return {
+      tiers: [
+        { band: 'critical', model: 'sonnet', count: 0, est_tokens: 0, est_usd: 0 },
+        { band: 'high',     model: 'haiku',  count: 0, est_tokens: 0, est_usd: 0 },
+        { band: 'medium',   model: 'haiku',  count: 0, est_tokens: 0, est_usd: 0 },
+        { band: 'low',      model: 'haiku',  count: 0, est_tokens: 0, est_usd: 0 },
+      ],
+      already_enriched: 0,
+      total_est_tokens: 0,
+      total_est_usd: 0,
+      est_minutes: 0,
+    }
+  }
+  return apiFetch<EnrichmentEstimateResponse>(`/api/enrichments/${group}/estimate`)
+}
+
 /**
  * POST a resolution (apply) or rejection for a single candidate.
  * The daemon MCP RPC handles the actual write; this just POSTs to the
@@ -980,6 +1000,33 @@ export async function postCandidateAction(
   await apiFetch<unknown>(`/api/enrichments/${group}/action`, {
     method: 'POST',
     body: JSON.stringify({ candidate_id: candidateId, action, value }),
+  })
+}
+
+/** POST /api/enrichments/{group}/batch-enrich — enqueue all pending candidates (#1285) */
+export interface BatchEnrichCandidate {
+  entity_id: string
+  kind?: string
+  criticality_band?: string
+}
+
+export interface BatchEnrichResponse {
+  batch_id: string
+  accepted: number
+  rejected: number
+  job_ids: string[]
+}
+
+export async function postBatchEnrich(
+  group: string,
+  candidates: BatchEnrichCandidate[],
+): Promise<BatchEnrichResponse> {
+  if (USE_MOCKS) {
+    return { batch_id: 'batch-mock', accepted: candidates.length, rejected: 0, job_ids: [] }
+  }
+  return apiFetch<BatchEnrichResponse>(`/api/enrichments/${group}/batch-enrich`, {
+    method: 'POST',
+    body: JSON.stringify({ candidates }),
   })
 }
 
