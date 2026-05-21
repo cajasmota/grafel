@@ -469,6 +469,26 @@ export interface FunctionNode {
   handler_ids: string[]
 }
 
+/** Broker-level grouping metadata — populated by backend when #1139 lands.
+ *  The frontend derives the same structure client-side when this is absent.  */
+export interface BrokerServiceGroup {
+  /** Broker display name e.g. "RabbitMQ" */
+  broker: string
+  /** Machine-safe broker slug e.g. "rabbitmq" */
+  broker_slug: TopologyProtocol
+  /** Topic / queue / channel IDs belonging to this broker */
+  topic_ids: string[]
+  /** Per-service breakdown within this broker */
+  services: Array<{
+    service: string
+    topic_ids: string[]
+  }>
+  /** Count of topics with zero consumers (orphan publishers) */
+  orphan_publisher_count: number
+  /** Count of topics with zero producers (orphan subscribers) */
+  orphan_subscriber_count: number
+}
+
 export interface TopologyResponse {
   topics: TopicNode[]
   queues: QueueNode[]
@@ -480,6 +500,8 @@ export interface TopologyResponse {
   transforms: TopologyTransform[]
   producers: Record<string, TopologyEntityStub>
   consumers: Record<string, TopologyEntityStub>
+  /** Broker / service grouping metadata (#1139). May be absent in older backends — derive client-side when missing. */
+  broker_groups?: BrokerServiceGroup[]
 }
 
 export interface TopologyFilters {
