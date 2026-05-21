@@ -1313,6 +1313,166 @@ func TestGraph_Dense_EdgeConnectivity(t *testing.T) {
 	}
 }
 
+// TestGraph_CrossRepoEdges_MergedIntoPayload verifies that cross-repo links
+// (grp.Links) are included in the GET /api/graph/{group} edge list when both
+// endpoints are present in the returned node set. Regression test for #1388:
+// before the fix serveGraphDense only iterated per-repo Relationships and
+// never emitted grp.Links, so the unified multi-repo graph showed 0 cross-repo
+// edges even though the link pass had computed them.
+func TestGraph_CrossRepoEdges_MergedIntoPayload(t *testing.T) {
+	st := newFakeStore()
+	st.groups["xrepogrp"] = GroupSummary{
+		Name:       "xrepogrp",
+		ConfigPath: "/tmp/xrepogrp.json",
+		Repos:      []string{"frontend", "backend"},
+	}
+	cfg := DefaultConfig()
+	srv, err := NewServer(cfg, st)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	frontendDoc := &graph.Document{
+		Repo: "frontend",
+		Entities: []graph.Entity{
+			{ID: "fe1", Name: "FetchUsers", Kind: "SCOPE.Function", SourceFile: "src/api.ts", Language: "typescript"},
+		},
+	}
+	backendDoc := &graph.Document{
+		Repo: "backend",
+		Entities: []graph.Entity{
+			{ID: "be1", Name: "GET /api/users", Kind: "http_endpoint_definition", SourceFile: "routes.go", Language: "go"},
+		},
+	}
+
+	grp := &DashGroup{
+		Name: "xrepogrp",
+		Repos: map[string]*DashRepo{
+			"frontend": {Slug: "frontend", Path: "/tmp/frontend", Doc: frontendDoc},
+			"backend":  {Slug: "backend", Path: "/tmp/backend", Doc: backendDoc},
+		},
+		// Cross-repo link: frontend FetchUsers → backend GET /api/users
+		Links: []CrossRepoLink{
+			{
+				Source:     "frontend::fe1",
+				Target:     "backend::be1",
+				Kind:       "HTTP_FETCH",
+				Confidence: 0.95,
+			},
+		},
+	}
+	srv.graphs.mu.Lock()
+	srv.graphs.entries["xrepogrp"] = &cacheEntry{group: grp, loadedAt: time.Now()}
+	srv.graphs.mu.Unlock()
+
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+
+	code, body := getJSON(t, ts.URL, "/api/graph/xrepogrp")
+	if code != 200 {
+		t.Fatalf("status=%d body=%v", code, body)
+	}
+
+	edges, _ := body["edges"].([]interface{})
+	// Must contain the cross-repo edge.
+	var xrepoEdgeCount int
+	for _, e := range edges {
+		em, _ := e.(map[string]any)
+		from, _ := em["from_id"].(string)
+		to, _ := em["to_id"].(string)
+		if from == "frontend::fe1" && to == "backend::be1" {
+			xrepoEdgeCount++
+		}
+	}
+	if xrepoEdgeCount == 0 {
+		t.Errorf("cross-repo edge frontend::fe1 → backend::be1 missing from /api/graph payload (edges=%d); fix #1388", len(edges))
+	}
+
+	// Verify the cross-repo edge connects nodes from different repos.
+	nodes, _ := body["nodes"].([]interface{})
+	nodeRepos := map[string]string{}
+	for _, n := range nodes {
+		nm, _ := n.(map[string]any)
+		id, _ := nm["id"].(string)
+		repo, _ := nm["repo"].(string)
+		nodeRepos[id] = repo
+	}
+	for _, e := range edges {
+		em, _ := e.(map[string]any)
+		from, _ := em["from_id"].(string)
+		to, _ := em["to_id"].(string)
+		if from == "frontend::fe1" && to == "backend::be1" {
+			if nodeRepos[from] == nodeRepos[to] {
+				t.Errorf("cross-repo edge endpoints are in the same repo %q; expected different repos", nodeRepos[from])
+			}
+		}
+	}
+}
+
+// TestGraph_CrossRepoEdges_ExcludedWhenRepoFiltered verifies that cross-repo
+// edges are excluded from the response when one endpoint is filtered out by
+// a repo filter. This prevents dangling edge references (#1388 filter guard).
+func TestGraph_CrossRepoEdges_ExcludedWhenRepoFiltered(t *testing.T) {
+	st := newFakeStore()
+	st.groups["xrepofilter"] = GroupSummary{
+		Name:       "xrepofilter",
+		ConfigPath: "/tmp/xrepofilter.json",
+		Repos:      []string{"frontend", "backend"},
+	}
+	cfg := DefaultConfig()
+	srv, err := NewServer(cfg, st)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	frontendDoc := &graph.Document{
+		Repo: "frontend",
+		Entities: []graph.Entity{
+			{ID: "fe1", Name: "FetchUsers", Kind: "SCOPE.Function", SourceFile: "src/api.ts", Language: "typescript"},
+		},
+	}
+	backendDoc := &graph.Document{
+		Repo: "backend",
+		Entities: []graph.Entity{
+			{ID: "be1", Name: "GET /api/users", Kind: "http_endpoint_definition", SourceFile: "routes.go", Language: "go"},
+		},
+	}
+
+	grp := &DashGroup{
+		Name: "xrepofilter",
+		Repos: map[string]*DashRepo{
+			"frontend": {Slug: "frontend", Path: "/tmp/frontend", Doc: frontendDoc},
+			"backend":  {Slug: "backend", Path: "/tmp/backend", Doc: backendDoc},
+		},
+		Links: []CrossRepoLink{
+			{Source: "frontend::fe1", Target: "backend::be1", Kind: "HTTP_FETCH"},
+		},
+	}
+	srv.graphs.mu.Lock()
+	srv.graphs.entries["xrepofilter"] = &cacheEntry{group: grp, loadedAt: time.Now()}
+	srv.graphs.mu.Unlock()
+
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+
+	// Filter to only the frontend repo — backend node is absent, so the
+	// cross-repo edge must not appear (would dangle to an unknown target).
+	code, body := getJSON(t, ts.URL, "/api/graph/xrepofilter?filter_repo=frontend")
+	if code != 200 {
+		t.Fatalf("status=%d body=%v", code, body)
+	}
+
+	edges, _ := body["edges"].([]interface{})
+	for _, e := range edges {
+		em, _ := e.(map[string]any)
+		from, _ := em["from_id"].(string)
+		to, _ := em["to_id"].(string)
+		if from == "frontend::fe1" && to == "backend::be1" {
+			t.Errorf("cross-repo edge must be excluded when target repo (backend) is filtered out")
+		}
+	}
+}
+
 // TestGraph_Dense_TotalNodeCount verifies the dense response includes total_node_count
 // (replacing the old lod_level field removed in #1023).
 func TestGraph_Dense_TotalNodeCount(t *testing.T) {
