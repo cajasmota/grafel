@@ -103,7 +103,7 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 28 (#1281: 9→4 bundles; #1293: desc trim; this PR: drop 4 dashboard-only tools).
+// Tool count: 29 (#1281: 9→4 bundles; #1293: desc trim; #1312: +archigraph_quality_cycles).
 // Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
 //   archigraph_get_next_enrichment_task, archigraph_get_telemetry.
 func (s *Server) registerTools() {
@@ -414,6 +414,16 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_find_dead_code", s.handleFindDeadCode))
+
+	// archigraph_quality_cycles — import cycle detection (#1312).
+	// Runs Tarjan SCC on IMPORTS edges; each SCC > 1 = circular dependency.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_quality_cycles",
+		mcpapi.WithDescription("Detect import cycles via Tarjan SCC on IMPORTS edges. Returns cycle members, weakest-link edge, and suggested extraction target."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_quality_cycles", s.handleQualityCycles))
 }
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard

@@ -630,9 +630,9 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count: 28 (32 post-#1281 minus 4 dashboard-only tools dropped here).
-	if got := len(srv.MCP.ListTools()); got != 28 {
-		t.Errorf("expected 28 registered tools, got %d", got)
+	// Total count: 29 (28 pre-#1312 + archigraph_quality_cycles).
+	if got := len(srv.MCP.ListTools()); got != 29 {
+		t.Errorf("expected 29 registered tools, got %d", got)
 	}
 }
 
