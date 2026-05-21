@@ -9,7 +9,7 @@
    UI never hardcodes the live :47274 daemon during development.
    ============================================================ */
 
-import type { Group, Entity, Community } from "@/data/types";
+import type { Group, Entity, Community, SettingsGroup, SettingsFeatures, DoctorCheck } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
 const BASE_V2 = import.meta.env.VITE_AG_API_BASE_V2 ?? "/api/v2";
@@ -95,6 +95,76 @@ export const api = {
   listCommunities: (groupId: string) => request<Community[]>(`/groups/${groupId}/communities`),
   searchEntities: (groupId: string, q: string) =>
     request<Entity[]>(`/groups/${groupId}/entities?q=${encodeURIComponent(q)}`),
+
+  // --- v2 Settings screen ---
+  /** GET /api/v2/groups/:id — full SettingsGroup for the Settings screen. */
+  getSettingsGroup: (groupId: string) =>
+    requestV2<SettingsGroup>(`/groups/${encodeURIComponent(groupId)}`),
+
+  /** PATCH /api/v2/groups/:id/features — live-save feature toggles. */
+  patchFeatures: (groupId: string, features: SettingsFeatures) =>
+    requestV2<SettingsFeatures>(`/groups/${encodeURIComponent(groupId)}/features`, {
+      method: "PATCH",
+      body: JSON.stringify(features),
+    }),
+
+  /** PATCH /api/v2/groups/:id/docs — update docsPath. */
+  patchDocs: (groupId: string, docsPath: string) =>
+    requestV2<{ docsPath: string }>(`/groups/${encodeURIComponent(groupId)}/docs`, {
+      method: "PATCH",
+      body: JSON.stringify({ docsPath }),
+    }),
+
+  /** POST /api/v2/groups/:id/rebuild — enqueue group rebuild (stub → 202). */
+  rebuildGroup: (groupId: string) =>
+    requestV2<{ status: string; message: string }>(`/groups/${encodeURIComponent(groupId)}/rebuild`, {
+      method: "POST",
+    }),
+
+  /** DELETE /api/v2/groups/:id — delete the group. */
+  deleteGroup: (groupId: string) =>
+    requestV2<{ deleted: string }>(`/groups/${encodeURIComponent(groupId)}`, {
+      method: "DELETE",
+    }),
+
+  /** POST /api/v2/groups/:id/repos — add a repo to the group. */
+  addRepo: (groupId: string, slug: string, path: string) =>
+    requestV2<SettingsGroup>(`/groups/${encodeURIComponent(groupId)}/repos`, {
+      method: "POST",
+      body: JSON.stringify({ slug, path }),
+    }),
+
+  /** DELETE /api/v2/groups/:id/repos/:slug — remove a repo from the group. */
+  removeRepo: (groupId: string, repoSlug: string, keepCache = false) =>
+    requestV2<{ removed: string }>(
+      `/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repoSlug)}?keepCache=${keepCache}`,
+      { method: "DELETE" },
+    ),
+
+  /** POST /api/v2/groups/:id/repos/:slug/rebuild — enqueue repo rebuild (stub). */
+  rebuildRepo: (groupId: string, repoSlug: string) =>
+    requestV2<{ status: string; message: string }>(`/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repoSlug)}/rebuild`, {
+      method: "POST",
+    }),
+
+  /** POST /api/v2/groups/:id/repos/:slug/reset — reset cache + rebuild (stub). */
+  resetRepo: (groupId: string, repoSlug: string) =>
+    requestV2<{ status: string; message: string }>(`/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repoSlug)}/reset`, {
+      method: "POST",
+    }),
+
+  /** PATCH /api/v2/groups/:id/repos/:slug/monorepo — update package selection. */
+  patchMonorepo: (groupId: string, repoSlug: string, packages: string[]) =>
+    requestV2<{ saved: boolean; packages: string[]; watcher_reloaded: boolean }>(
+      `/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repoSlug)}/monorepo`,
+      { method: "PATCH", body: JSON.stringify({ packages }) },
+    ),
+
+  /** POST /api/v2/groups/:id/doctor — run health check, returns DoctorCheck[]. */
+  runDoctor: (groupId: string) =>
+    requestV2<DoctorCheck[]>(`/groups/${encodeURIComponent(groupId)}/doctor`, {
+      method: "POST",
+    }),
 };
 
 export type Api = typeof api;
