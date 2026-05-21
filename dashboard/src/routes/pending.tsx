@@ -1,9 +1,13 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchRepairs, fetchEnrichments, fetchCommunityNaming, postCandidateAction } from '@/api/client'
+import {
+  fetchRepairs, fetchEnrichments, fetchCommunityNaming, postCandidateAction,
+  fetchEnrichmentEstimate, postBatchEnrich,
+} from '@/api/client'
 import type { PendingCandidateRow, QualificationSignal, EnrichmentProgressBand, CommunityNamingRow } from '@/types/api'
 import { useEnrichmentProgress } from '@/hooks/shared/useEnrichmentProgress'
+import { EnrichmentCostModal } from '@/components/indexing/EnrichmentCostModal'
 import {
   Wrench, Sparkles, CheckCircle, XCircle, AlertCircle,
   ChevronDown, ChevronRight, Search, EyeOff,
@@ -710,6 +714,48 @@ function TieredList({ rows, group, emptyMessage, onApplied }: TieredListProps) {
   // Hide-forever stubs (flag only — no backend action yet)
   const [hiddenTiers, setHiddenTiers] = useState<Set<TierId>>(new Set())
 
+  // ── Cost estimator modal (#1287) ─────────────────────────────────────────
+  const [showCostModal, setShowCostModal] = useState(false)
+  const qc = useQueryClient()
+
+  const estimateQuery = useQuery({
+    queryKey: ['enrichment-estimate', group],
+    queryFn: () => fetchEnrichmentEstimate(group),
+    enabled: showCostModal, // only fetch when modal is open
+    staleTime: 30 * 1000,
+  })
+
+  const batchMutation = useMutation({
+    mutationFn: () => {
+      // Build candidates list from all visible rows (the backend deduplicates
+      // already-enriched entities, but we keep it simple here).
+      const candidates = rows.map((r) => ({
+        entity_id: r.subject_id,
+        kind: r.entity_kind ?? r.kind,
+        criticality_band: r.criticality_band ?? '',
+      }))
+      return postBatchEnrich(group, candidates)
+    },
+    onSuccess: () => {
+      setShowCostModal(false)
+      void qc.invalidateQueries({ queryKey: ['enrichments', group] })
+      void qc.invalidateQueries({ queryKey: ['enrichment-progress', group] })
+    },
+  })
+
+  const handleRunClick = useCallback(() => {
+    setShowCostModal(true)
+  }, [])
+
+  const handleModalClose = useCallback(() => {
+    setShowCostModal(false)
+    batchMutation.reset()
+  }, [batchMutation])
+
+  const handleModalConfirm = useCallback(() => {
+    batchMutation.mutate()
+  }, [batchMutation])
+
   const toggleExpanded = useCallback((tierId: TierId) => {
     setExpandedTiers((prev) => {
       const next = { ...prev, [tierId]: !prev[tierId] }
@@ -834,6 +880,19 @@ function TieredList({ rows, group, emptyMessage, onApplied }: TieredListProps) {
           </select>
         </div>
 
+        {/* Run enrichment button — opens cost estimator dialog (#1287) */}
+        {rows.length > 0 && (
+          <button
+            type="button"
+            onClick={handleRunClick}
+            data-testid="run-enrichment-btn"
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-sm transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Run enrichment
+          </button>
+        )}
+
         {/* Bulk selection feedback */}
         {totalSelected > 0 && (
           <span className="text-xs text-sky-600 dark:text-sky-400 font-medium tabular-nums">
@@ -841,6 +900,18 @@ function TieredList({ rows, group, emptyMessage, onApplied }: TieredListProps) {
           </span>
         )}
       </div>
+
+      {/* ── Cost estimator modal (#1287) ──────────────────────────────────────── */}
+      {showCostModal && (
+        <EnrichmentCostModal
+          estimate={estimateQuery.data ?? null}
+          isLoading={estimateQuery.isLoading}
+          isError={estimateQuery.isError}
+          onClose={handleModalClose}
+          onConfirm={handleModalConfirm}
+          isConfirming={batchMutation.isPending}
+        />
+      )}
 
       {/* ── Tier sections ─────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-0">

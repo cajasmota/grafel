@@ -840,6 +840,35 @@ export interface EnrichmentProgressResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Enrichment cost estimator — GET /api/enrichments/{group}/estimate (#1287)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Per-band cost breakdown in the estimate response. */
+export interface EnrichmentEstimateTier {
+  /** "critical" | "high" | "medium" | "low" */
+  band: string
+  /** "sonnet" (critical) or "haiku" (all other bands) */
+  model: string
+  /** Number of pending candidates in this band. */
+  count: number
+  /** Total estimated tokens for all candidates in this band. */
+  est_tokens: number
+  /** Estimated USD cost at Anthropic published rates. */
+  est_usd: number
+}
+
+/** Response from GET /api/enrichments/{group}/estimate. */
+export interface EnrichmentEstimateResponse {
+  tiers: EnrichmentEstimateTier[]
+  /** Number of entities with a completed job — excluded from the estimate. */
+  already_enriched: number
+  total_est_tokens: number
+  total_est_usd: number
+  /** Rough wall-clock estimate in minutes. */
+  est_minutes: number
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Surface 1 — Graph Viewer
 // ────────────────────────────────────────────────────────────────────────────
 
