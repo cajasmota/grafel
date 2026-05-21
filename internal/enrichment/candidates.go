@@ -299,14 +299,43 @@ var describeEntityNoiseKinds = map[string]bool{
 // selfDescriptiveOperationRE matches SCOPE.Operation names that are fully
 // self-describing: the name is a verb prefix + capitalised noun, so a
 // one-sentence description would be a trivial paraphrase of the name itself
-// (e.g. "getUserById" → "Gets a user by ID"). Emitting candidates for these
-// entities wastes agent budget without producing actionable signal.
+// (e.g. "getUserById" → "Gets a user by ID", "makeDeficiencyId" → "Makes a
+// deficiency ID", "handleSave" → "Handles save"). Emitting candidates for
+// these entities wastes agent budget without producing actionable signal.
 //
 // Pattern: verb prefix followed immediately by an uppercase letter, meaning
 // the whole name encodes both the action and the subject.
+//
+// Expanded in deep-tightening audit (issue #1162 follow-up): the original
+// list covered only 16 verbs; a 1,000-entity sample showed that 167 more
+// score=55 articulation-point operations slipped through because their verb
+// prefix (make, handle, list, apply, …) was not in the set. These are still
+// trivially paraphraseable and add no enrichment value. God nodes are always
+// exempt from this filter (IsGodNode check at call site).
 var selfDescriptiveOperationRE = regexp.MustCompile(
-	`^(get|set|is|has|can|validate|parse|format|create|delete|fetch|load|save|send|build|render|on|use)[A-Z][a-zA-Z]+$`,
+	`^(get|set|is|has|can|validate|parse|format|create|delete|fetch|load|save|send|build|render|on|use|` +
+		`make|handle|list|apply|update|remove|add|check|compute|convert|find|search|sort|filter|` +
+		`process|merge|split|count|calculate|init|setup|reset|clear|show|hide|toggle|enable|disable|` +
+		`open|close|read|write|log|map|reduce|transform|normalize|extract|inject|wrap|unwrap|` +
+		`register|unregister|start|stop|emit|dispatch|cancel|submit|publish|subscribe|unsubscribe|` +
+		`connect|disconnect)[A-Z][a-zA-Z0-9]*$`,
 )
+
+// schemaMetaAttrRE matches SCOPE.Schema entity names that represent Django
+// Meta class attributes (e.g. "UserSerializer.Meta.fields",
+// "Building.Meta.db_table"). These are framework-generated class body
+// declarations — the name IS the complete specification; no agent description
+// can add information beyond what the name already states. Filtering them
+// avoids enriching structural boilerplate.
+var schemaMetaAttrRE = regexp.MustCompile(`\.Meta\.`)
+
+// schemaSimpleFieldRE matches SCOPE.Schema names of the form
+// "ModelOrClass.snake_case_field" (one dot, lowercase field name), e.g.
+// "ContractFile.file_name", "User.email", "MongoDBConnection._pid". These
+// are individual model field declarations — a one-sentence description would
+// only restate the field name. The pattern intentionally excludes names
+// already caught by schemaMetaAttrRE (which have two dots).
+var schemaSimpleFieldRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\.[a-z_][a-z0-9_]*$`)
 
 // qualifyHTTPKinds is the set of entity kinds that represent public API
 // surface — HTTP endpoints and route definitions — that always qualify for
@@ -377,6 +406,8 @@ func containsSlash(s string) bool {
 //     SCOPE.Stylesheet, SCOPE.CodeBlock, SCOPE.Document  (noise / structural)
 //   - SCOPE.Operation / SCOPE.Component with self-descriptive names
 //   - Plain state variables and small helpers (the long tail)
+//   - SCOPE.Schema Django Meta class attributes and model field declarations
+//   - Low-confidence entities (score proxy: short-name private helpers ≤4 chars)
 //
 // Empirical target: 20-30% of entities in a typical codebase qualify.
 func qualifiesForEnrichment(e *graph.Entity) (qualified bool, signals []string) {
@@ -387,6 +418,23 @@ func qualifiesForEnrichment(e *graph.Entity) (qualified bool, signals []string) 
 	// --- Noise kinds: never qualify ---
 	if describeEntityNoiseKinds[e.Kind] {
 		return false, nil
+	}
+
+	// --- SCOPE.Schema tightening: framework boilerplate exclusions ---
+	// Django Meta class attributes (Foo.Meta.fields, Bar.Meta.db_table, …) and
+	// simple model field declarations (ContractFile.file_name, User.email, …)
+	// are framework-generated structural nodes whose name IS the specification.
+	// No agent description can add information beyond what the name already
+	// states. These checks run before Signal 1 because they apply even when the
+	// entity would otherwise qualify via structural signals (god_node, etc.),
+	// since the fundamental problem is that the name fully self-specifies.
+	if e.Kind == "SCOPE.Schema" {
+		if schemaMetaAttrRE.MatchString(e.Name) {
+			return false, nil // e.g. "UserSerializer.Meta.fields"
+		}
+		if schemaSimpleFieldRE.MatchString(e.Name) {
+			return false, nil // e.g. "User.email", "MongoDBConnection._pid"
+		}
 	}
 
 	// --- Signal 1: HTTP endpoint / Route (public API surface) ---
@@ -406,6 +454,11 @@ func qualifiesForEnrichment(e *graph.Entity) (qualified bool, signals []string) 
 		// central (the name already communicates the purpose; describe_entity
 		// adds no value). Exception: god nodes still warrant description because
 		// they are hubs that developers need context on beyond the name alone.
+		//
+		// The selfDescriptiveOperationRE was expanded in the deep-tightening
+		// audit to cover make/handle/list/apply/… in addition to the original
+		// 16 verbs — 198 additional articulation-point ops were slipping
+		// through because their prefix was absent from the original pattern.
 		if (e.Kind == "SCOPE.Operation" || e.Kind == "Operation") &&
 			selfDescriptiveOperationRE.MatchString(e.Name) &&
 			!e.IsGodNode {
@@ -451,6 +504,26 @@ func qualifiesForEnrichment(e *graph.Entity) (qualified bool, signals []string) 
 				}
 			}
 			if allLower {
+				// --- Minimum-confidence gate for ambiguous-name candidates ---
+				//
+				// Two sub-cases are filtered out:
+				//
+				// 1. Private helpers (underscore prefix / snake_case): "_s",
+				//    "_m", "_mask_key", "_norm". These are implementation
+				//    details with no caller-visible contract worth documenting.
+				//
+				// 2. SCOPE.Component names ≤ 3 characters: "cx", "db", "bg",
+				//    "mo". These are local variable captures by the scope
+				//    extractor — single abbreviations with no stable meaning
+				//    across files. Operations of the same length are still
+				//    allowed because very short function names ("run", "do")
+				//    are often top-level entry points that ARE worth describing.
+				if isPrivateHelper(n) {
+					return false, nil // e.g. "_s", "_mask_key", "_norm"
+				}
+				if e.Kind == "SCOPE.Component" && len(n) <= 3 {
+					return false, nil // e.g. "cx", "db", "bg", "mo"
+				}
 				return true, []string{"ambiguous_name"}
 			}
 		}

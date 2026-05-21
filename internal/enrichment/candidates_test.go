@@ -552,6 +552,138 @@ func TestQualifiesForEnrichment_AmbiguousNameBoundary(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Tests for deep-tightening audit (issue #1162 follow-up)
+// ---------------------------------------------------------------------------
+
+// TestDeepTightening_SelfDescriptiveREExtension verifies that the expanded
+// selfDescriptiveOperationRE correctly filters articulation-point operations
+// whose names are trivially paraphraseable (make/handle/list/… prefixes).
+func TestDeepTightening_SelfDescriptiveREExtension(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	// These names should NOT produce a describe_entity candidate — each encodes
+	// its own action+subject and an agent description would be a tautology.
+	selfDesc := []string{
+		"makeDeficiencyId",
+		"handleFetchGroup",
+		"listNotesByEntity",
+		"handleSave",
+		"updateLogoProps",
+		"removeGroupJurisdiction",
+		"checkVersion",
+		"addInspectionResult",
+		"computeScore",
+		"findBuildingByAddress",
+		"filterActiveDevices",
+		"normalizeLoadedInspections",
+		"startSyncQueue",
+		"stopPendingRequests",
+		"cancelExport",
+		"submitDeficiency",
+	}
+	for _, name := range selfDesc {
+		// Articulation point, NOT a god node — selfDescriptiveRE should block.
+		doc := mkDoc(graph.Entity{ID: "x", Name: name, Kind: "SCOPE.Operation", IsArticulationPt: true})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("self-descriptive name %q (articulation, non-god): expected 0 candidates, got %d", name, len(got))
+		}
+	}
+	// A god-node with a self-descriptive name should STILL produce a candidate
+	// (god_node exemption — it's a hub, description adds structural context).
+	godDoc := mkDoc(graph.Entity{ID: "g", Name: "handleSave", Kind: "SCOPE.Operation", IsGodNode: true})
+	if got := CollectCandidates(godDoc, emitter, nil); len(got) != 1 {
+		t.Errorf("god_node with self-descriptive name: expected 1 candidate, got %d", len(got))
+	}
+}
+
+// TestDeepTightening_DjangoMetaAttrs verifies that SCOPE.Schema entities whose
+// names contain ".Meta." (Django Meta class attributes) are excluded.
+func TestDeepTightening_DjangoMetaAttrs(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	metaEntities := []struct {
+		id   string
+		name string
+	}{
+		{"m1", "UserSerializer.Meta.fields"},
+		{"m2", "Building.Meta.db_table"},
+		{"m3", "ChecklistItem.Meta.ordering"},
+		{"m4", "ContractAvailableSerializer.Meta.fields"},
+	}
+	for _, tc := range metaEntities {
+		doc := mkDoc(graph.Entity{ID: tc.id, Name: tc.name, Kind: "SCOPE.Schema", IsArticulationPt: true})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("Django Meta attr %q: expected 0 candidates, got %d", tc.name, len(got))
+		}
+	}
+}
+
+// TestDeepTightening_ModelFieldDeclarations verifies that SCOPE.Schema entities
+// matching the "ModelName.field_name" pattern are excluded.
+func TestDeepTightening_ModelFieldDeclarations(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	fieldEntities := []struct {
+		id   string
+		name string
+	}{
+		{"f1", "User.email"},
+		{"f2", "ContractFile.file_name"},
+		{"f3", "MongoDBConnection._pid"},
+		{"f4", "ChecklistCategory.name"},
+	}
+	for _, tc := range fieldEntities {
+		doc := mkDoc(graph.Entity{ID: tc.id, Name: tc.name, Kind: "SCOPE.Schema", IsArticulationPt: true})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("model field decl %q: expected 0 candidates, got %d", tc.name, len(got))
+		}
+	}
+	// A real schema type (no dot or mixed-case) should still qualify via articulation_point.
+	realSchema := mkDoc(graph.Entity{ID: "s1", Name: "Deficiency", Kind: "SCOPE.Schema", IsArticulationPt: true})
+	if got := CollectCandidates(realSchema, emitter, nil); len(got) != 1 {
+		t.Errorf("real schema type: expected 1 candidate, got %d", len(got))
+	}
+}
+
+// TestDeepTightening_PrivateHelperOperations verifies that underscore-prefixed
+// private helpers are excluded from the ambiguous-name signal.
+func TestDeepTightening_PrivateHelperOperations(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	privateHelpers := []string{"_s", "_m", "_mask_key", "_norm", "_norm_str"}
+	for _, name := range privateHelpers {
+		doc := mkDoc(graph.Entity{ID: "ph", Name: name, Kind: "SCOPE.Operation"})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("private helper %q: expected 0 candidates, got %d", name, len(got))
+		}
+	}
+}
+
+// TestDeepTightening_ShortComponentVariables verifies that SCOPE.Component
+// names of 1–3 characters (local variable captures) are excluded.
+func TestDeepTightening_ShortComponentVariables(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	shortVars := []string{"cx", "db", "bg", "mo", "mx"}
+	for _, name := range shortVars {
+		doc := mkDoc(graph.Entity{ID: "sv", Name: name, Kind: "SCOPE.Component"})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("short component variable %q: expected 0 candidates, got %d", name, len(got))
+		}
+	}
+	// 4-char SCOPE.Component names are still allowed (e.g. "tabs", "auth").
+	fourCharDoc := mkDoc(graph.Entity{ID: "fc", Name: "tabs", Kind: "SCOPE.Component"})
+	if got := CollectCandidates(fourCharDoc, emitter, nil); len(got) != 1 {
+		t.Errorf("4-char component %q: expected 1 candidate (ambiguous), got %d", "tabs", len(got))
+	}
+	// Short SCOPE.Operation names (e.g. "run", "do") are still allowed.
+	opDoc := mkDoc(graph.Entity{ID: "op", Name: "run", Kind: "SCOPE.Operation"})
+	if got := CollectCandidates(opDoc, emitter, nil); len(got) != 1 {
+		t.Errorf("3-char operation %q: expected 1 candidate (ambiguous), got %d", "run", len(got))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Tests for issue #1134 — EnrichmentTask (1-per-entity aggregated view)
 // ---------------------------------------------------------------------------
 
