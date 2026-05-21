@@ -98,6 +98,9 @@ func synthesisSupportsLanguage(lang string) bool {
 	// anchors are no-ops in the synthesizers themselves.
 	case "kotlin", "go", "csharp", "ruby":
 		return true
+	// #1420: axum producer-side route extraction + reqwest consumer side.
+	case "rust", "php":
+		return true
 	default:
 		return false
 	}
@@ -304,6 +307,8 @@ func applyHTTPEndpointSynthesis(
 		// Consumer side (#721 wave 2b): HttpClient, RestSharp, Refit, WebClient.
 		synthesizeCSharpClientWithRuntime(string(content), emitClientRuntime)
 	case "rust":
+		// Producer side (#1420): axum Router::new().route(...) registrations.
+		synthesizeAxumRoutes(string(content), emit)
 		// Consumer side (#721 wave 2c): reqwest, hyper, ureq, surf.
 		synthesizeRustClientWithRuntime(string(content), emitClientRuntime)
 	case "php":
