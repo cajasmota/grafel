@@ -79,24 +79,34 @@ function buildRepoCenters(
 }
 
 // ---------------------------------------------------------------------------
-// Zoom-driven Level-of-Detail (#1107 / #1120)
+// Zoom-driven Level-of-Detail (#1107 / #1120 / #1108)
 // ---------------------------------------------------------------------------
 
 /**
- * Three zoom bands that control how many nodes are visible.
+ * Six zoom bands that control how many nodes are visible (#1108).
  *
- *   overview  (zoom < 0.5)   — only the top-30-50 hubs (degree ≥ 50 or top-30 by degree)
- *   mid       (zoom < 2.0)   — degree ≥ 5  (~1500–3000 nodes)
- *   full      (zoom ≥ 2.0)   — all nodes
+ *   macro    (zoom < 0.3)   — top-50 mega-hubs only (degree ≥ 30)
+ *   overview (zoom < 0.6)   — top-150 hubs (degree ≥ 15)
+ *   high     (zoom < 1.0)   — degree ≥ 6, up to 400 nodes
+ *   mid      (zoom < 2.0)   — degree ≥ 2 (no topN cap)
+ *   full     (zoom < 4.0)   — degree ≥ 0 (no topN cap)
+ *   detail   (zoom ≥ 4.0)   — all nodes (forensics / specific entity hunt)
  *
+ * Each band is ~3-5x the density of the previous one for smooth visual progression.
  * `degreeMin` is a floor; `topN` (when set) enforces an absolute count cap so
- * small graphs (few high-degree nodes) still show something at overview.
+ * small graphs (few high-degree nodes) still show something at compressed zooms.
+ *
+ * Designed to NOT restart the force simulation on band change — only the
+ * Cosmograph selectPoints() call is fired (pure visibility toggle).
  */
 const ZOOM_BANDS = [
-  { maxZoom: 0.5,      degreeMin: 10,  topN: 150, label: 'overview', topLabels: 50 },
-  { maxZoom: 2.0,      degreeMin: 2,   topN: null, label: 'mid',      topLabels: 30 },
-  { maxZoom: Infinity, degreeMin: 0,   topN: null, label: 'full',     topLabels: 20 },
-] as const
+  { maxZoom: 0.3,      degreeMin: 30, topN: 50   as number | null, label: 'macro',    topLabels: 30 },
+  { maxZoom: 0.6,      degreeMin: 15, topN: 150  as number | null, label: 'overview', topLabels: 50 },
+  { maxZoom: 1.0,      degreeMin: 6,  topN: 400  as number | null, label: 'high',     topLabels: 40 },
+  { maxZoom: 2.0,      degreeMin: 2,  topN: null as number | null, label: 'mid',      topLabels: 30 },
+  { maxZoom: 4.0,      degreeMin: 0,  topN: null as number | null, label: 'full',     topLabels: 20 },
+  { maxZoom: Infinity, degreeMin: 0,  topN: null as number | null, label: 'detail',   topLabels: 15 },
+]
 
 type ZoomBand = typeof ZOOM_BANDS[number]
 
@@ -118,16 +128,18 @@ function computeLodIndices(
   activeRepos: Set<string> | null | undefined,
   forceVisibleIds: ReadonlySet<string>,
 ): number[] | null {
-  if (band.label === 'full' && !activeRepos && forceVisibleIds.size === 0) {
+  // 'full' and 'detail' bands show all nodes — return null (no filter) when no overrides active
+  const isUnfilteredBand = band.label === 'full' || band.label === 'detail'
+  if (isUnfilteredBand && !activeRepos && forceVisibleIds.size === 0) {
     return null
   }
 
   let eligible: number[]
 
-  if (band.label === 'full') {
+  if (isUnfilteredBand) {
     eligible = nodes.map((_, i) => i)
   } else if (band.topN !== null) {
-    // overview: take top-N by degree, then also include degreeMin floor
+    // macro / overview / high: take top-N by degree, then also include degreeMin floor
     const sorted = nodes
       .map((n, i) => ({ i, deg: n.degree ?? 0 }))
       .sort((a, b) => b.deg - a.deg)
@@ -137,7 +149,7 @@ function computeLodIndices(
       .filter(({ n, i }) => (n.degree ?? 0) >= band.degreeMin || topNSet.has(i))
       .map(({ i }) => i)
   } else {
-    // mid: degree threshold only
+    // mid: degree threshold only (no topN cap)
     eligible = nodes
       .map((n, i) => ({ n, i }))
       .filter(({ n }) => (n.degree ?? 0) >= band.degreeMin)
@@ -165,6 +177,54 @@ function computeLodIndices(
 
   return merged
 }
+
+// ---------------------------------------------------------------------------
+// ZoomBandHUD — band label overlay for power users (#1108)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tiny HUD chip in the bottom-right corner of the canvas that shows the
+ * current zoom band label (macro / overview / high / mid / full / detail).
+ *
+ * The chip fades in/out on band change with a 200ms CSS transition so
+ * it doesn't distract during normal use — just confirms which band is active.
+ */
+const ZoomBandHUD = memo(function ZoomBandHUD({
+  label,
+  isDark,
+}: {
+  label: string
+  isDark: boolean
+}) {
+  return (
+    <div
+      aria-live="polite"
+      aria-label={`Graph zoom band: ${label}`}
+      data-testid="zoom-band-hud"
+      style={{
+        position: 'absolute',
+        bottom: 12,
+        right: 14,
+        pointerEvents: 'none',
+        zIndex: 20,
+        padding: '2px 7px',
+        borderRadius: 5,
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        userSelect: 'none',
+        // Fade-in transition on band change (#1108 smooth transitions)
+        transition: 'opacity 200ms ease, background 200ms ease, color 200ms ease',
+        background: isDark ? 'rgba(2,6,23,0.65)' : 'rgba(248,250,252,0.80)',
+        color: isDark ? 'rgba(148,163,184,0.85)' : 'rgba(51,65,85,0.80)',
+        border: isDark ? '1px solid rgba(51,65,85,0.4)' : '1px solid rgba(148,163,184,0.4)',
+      }}
+    >
+      {label}
+    </div>
+  )
+})
 
 // ---------------------------------------------------------------------------
 // Hub pulse animation helpers (#1153 — Silk Road aesthetic)
@@ -338,18 +398,20 @@ const GraphCanvasInner = ({
     const cosmo = cosmographRef.current
     if (!cosmo) return
 
-    if (currentBand.label === 'full' && !activeRepos && effectiveForceIds.size === 0) {
+    const isUnfilteredBand = currentBand.label === 'full' || currentBand.label === 'detail'
+    if (isUnfilteredBand && !activeRepos && effectiveForceIds.size === 0) {
       cosmo.selectPoints(null)
     } else {
       cosmo.selectPoints(lodVisibleIndices)
     }
   }, [lodVisibleIndices, currentBand, activeRepos, effectiveForceIds])
 
-  // Fallback repo-filter application at full-zoom (before LoD fires)
+  // Fallback repo-filter application at full/detail zoom (before LoD fires)
   useEffect(() => {
     const cosmo = cosmographRef.current
     if (!cosmo) return
-    if (currentBand.label !== 'full') return
+    const isUnfilteredBand = currentBand.label === 'full' || currentBand.label === 'detail'
+    if (!isUnfilteredBand) return
     cosmo.selectPoints(visibleIndices)
   }, [visibleIndices, currentBand])
 
@@ -807,8 +869,8 @@ const GraphCanvasInner = ({
         backgroundColor={canvasBg}
 
         // ── Greyout opacity ────────────────────────────────────────────────
-        pointGreyoutOpacity={(repoFilterActive || currentBand.label !== 'full') ? 0 : 0.15}
-        linkGreyoutOpacity={(repoFilterActive || currentBand.label !== 'full') ? 0 : 0.1}
+        pointGreyoutOpacity={(repoFilterActive || (currentBand.label !== 'full' && currentBand.label !== 'detail')) ? 0 : 0.15}
+        linkGreyoutOpacity={(repoFilterActive || (currentBand.label !== 'full' && currentBand.label !== 'detail')) ? 0 : 0.1}
 
         // ── Simulation — #1153 Silk Road params ────────────────────────────
         enableSimulation={true}
@@ -877,6 +939,17 @@ const GraphCanvasInner = ({
             : 'radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(226,232,240,0.45) 100%)',
         }}
       />
+
+      {/* #1108: Zoom band HUD — shows current band label for power users */}
+      <ZoomBandHUD label={currentBand.label} isDark={isDark} />
+
+      {/*
+        #1108: Band transition fade — a thin overlay that briefly pulses opacity
+        on zoom-band change to signal the LoD threshold crossing without being
+        jarring. Uses a keyed div whose key changes on band label; the CSS
+        animation fires on mount. pointer-events:none so it never blocks interaction.
+      */}
+      <BandTransitionFlash key={currentBand.label} isDark={isDark} />
     </div>
   )
 }
@@ -953,5 +1026,55 @@ const HoverRing = memo(function HoverRing() {
     />
   )
 })
+
+// ---------------------------------------------------------------------------
+// BandTransitionFlash — brief fade pulse on zoom-band change (#1108)
+// ---------------------------------------------------------------------------
+
+/**
+ * A full-canvas overlay that plays a very subtle 200ms fade-in/out animation
+ * whenever the zoom band changes. The key prop on this component is set to
+ * `currentBand.label` in the parent, so React remounts it on every band
+ * transition — causing the CSS animation to replay.
+ *
+ * The flash is intentionally dim (max opacity 0.04) so it reads as a smooth
+ * transition signal rather than a disruptive flash. pointer-events:none.
+ */
+const BandTransitionFlash = memo(function BandTransitionFlash({
+  isDark,
+}: {
+  isDark: boolean
+}) {
+  return (
+    <div
+      aria-hidden
+      data-testid="band-transition-flash"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: 15,
+        background: isDark ? 'rgba(148,163,184,1)' : 'rgba(51,65,85,1)',
+        // keyframe: fade from 0.04 → 0 over 200ms (band transition feel)
+        animation: 'lodBandFlash 200ms ease-out forwards',
+      }}
+    />
+  )
+})
+
+// Inject the keyframe once into the document. Using a module-level var
+// so we only inject once across all renders.
+let _flashKeyframeInjected = false
+if (typeof document !== 'undefined' && !_flashKeyframeInjected) {
+  _flashKeyframeInjected = true
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes lodBandFlash {
+      0%   { opacity: 0.04; }
+      100% { opacity: 0; }
+    }
+  `
+  document.head.appendChild(style)
+}
 
 export const GraphCanvas = memo(GraphCanvasInner)
