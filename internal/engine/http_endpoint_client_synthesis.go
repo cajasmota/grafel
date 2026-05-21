@@ -532,6 +532,11 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		!strings.Contains(content, "axios.") &&
 		!strings.Contains(content, "axios(") &&
 		!strings.Contains(content, "Client.") &&
+		// #1418/#1422 — HTTP-client factory assignment (serviceClient(...),
+		// httpClient(...), makeClient(...)). The resulting instance's
+		// `.get/.post(...)` calls are recognised via the axios-instance table.
+		!strings.Contains(content, "Client(") &&
+		!strings.Contains(content, "client(") &&
 		!strings.Contains(content, "httpClient.") &&
 		!strings.Contains(content, "apiClient.") &&
 		!strings.Contains(content, "endpoint:") &&
@@ -1111,21 +1116,65 @@ type axiosInstance struct {
 	baseURL string
 }
 
-// buildAxiosInstanceTable scans the file for axios.create() declarations
-// and returns a map from instance-name → metadata.
+// httpClientFactoryRe matches assignments of an HTTP-client instance from a
+// project-level factory function rather than a direct `axios.create()`, e.g.:
+//
+//	const orders = serviceClient(process.env.ORDERS_URL || "http://orders:8000");
+//	const catalog = httpClient("http://catalog:3001");
+//	const api = makeClient(baseURL);
+//
+// This is the ShipFast `serviceClient(...)` convention (#1418/#1422): a thin
+// wrapper around `axios.create({ baseURL })` exported from a shared lib. The
+// resulting variable is an axios instance whose `.get/.post/...` calls must be
+// recognised as consumer-side HTTP calls. We detect by FACTORY NAME SHAPE —
+// any function whose name contains "client" (case-insensitive) — to avoid
+// hardcoding `serviceClient`. The first string-literal argument (or the
+// literal inside a `X || "literal"` default) is used as the baseURL when it
+// looks like a URL; otherwise the instance carries no static baseURL.
+//
+// Capture groups: 1 = instance name, 2 = factory name, 3 = whole arg list.
+var httpClientFactoryRe = regexp.MustCompile(
+	`(?m)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*[Cc]lient)\s*\(([^;\n\r]*)\)`,
+)
+
+// factoryBaseURLRe pulls the first http(s) URL string literal out of a
+// factory call's argument list, e.g. from
+// `process.env.ORDERS_URL || "http://orders:8000"` → `http://orders:8000`.
+var factoryBaseURLRe = regexp.MustCompile(
+	`['"]((?:https?://|/)[^'"\n\r]*)['"]`,
+)
+
+// buildAxiosInstanceTable scans the file for axios.create() declarations and
+// HTTP-client factory assignments (#1418/#1422), returning a map from
+// instance-name → metadata.
 func buildAxiosInstanceTable(content string) map[string]axiosInstance {
 	out := make(map[string]axiosInstance)
-	if !strings.Contains(content, "axios.create") {
-		return out
+	if strings.Contains(content, "axios.create") {
+		for _, m := range axiosCreateRe.FindAllStringSubmatchIndex(content, -1) {
+			if len(m) < 6 {
+				continue
+			}
+			name := content[m[2]:m[3]]
+			opts := content[m[4]:m[5]]
+			base := ""
+			if bm := axiosCreateBaseURLRe.FindStringSubmatch(opts); len(bm) >= 2 {
+				base = stripURLHost(bm[1])
+			}
+			out[name] = axiosInstance{name: name, baseURL: base}
+		}
 	}
-	for _, m := range axiosCreateRe.FindAllStringSubmatchIndex(content, -1) {
-		if len(m) < 6 {
+	// HTTP-client factory assignments (serviceClient/httpClient/makeClient/…).
+	for _, m := range httpClientFactoryRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 4 {
 			continue
 		}
-		name := content[m[2]:m[3]]
-		opts := content[m[4]:m[5]]
+		name := m[1]
+		// Don't clobber an axios.create() instance with the same name.
+		if _, exists := out[name]; exists {
+			continue
+		}
 		base := ""
-		if bm := axiosCreateBaseURLRe.FindStringSubmatch(opts); len(bm) >= 2 {
+		if bm := factoryBaseURLRe.FindStringSubmatch(m[3]); len(bm) >= 2 {
 			base = stripURLHost(bm[1])
 		}
 		out[name] = axiosInstance{name: name, baseURL: base}

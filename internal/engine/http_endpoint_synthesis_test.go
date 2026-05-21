@@ -1006,8 +1006,8 @@ func TestIsXMLNamespacePath(t *testing.T) {
 		{"/", false},
 		{"", false},
 		// Paths with longer "prefixes" that are NOT XML namespaces.
-		{"/version:1/items", false},       // "version" is >4 chars
-		{"/abcde:something/foo", false},   // >4 chars prefix
+		{"/version:1/items", false},     // "version" is >4 chars
+		{"/abcde:something/foo", false}, // >4 chars prefix
 	}
 	for _, tc := range cases {
 		got := isXMLNamespacePath(tc.path)
@@ -1212,4 +1212,150 @@ func TestSynth_DjangoAdmin_RealRoutesUnaffected(t *testing.T) {
 			t.Errorf("#1412 guard: non-admin route %q must still be synthesized; got %v", want, emitted)
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// #1423 — Express inline arrow / function-expression handlers
+// ---------------------------------------------------------------------------
+
+// TestSynth_Express_InlineArrowHandler verifies that routes registered with
+// an inline arrow-function or function-expression handler still emit a
+// synthetic, and crucially do NOT carry a bogus source_handler captured from
+// the handler's parameter list (e.g. `Controller:res`). A bad handler ref
+// would cause the resolve pass to DROP the synthetic (handler_dropped),
+// which is the bug reported for the ShipFast catalog service.
+func TestSynth_Express_InlineArrowHandler(t *testing.T) {
+	src := "const express = require('express');\n" +
+		"const app = express();\n" +
+		"app.get('/products', async (req, res) => { res.json([]); });\n" +
+		"app.put('/products/:sku', async (req, res) => { res.json({}); });\n" +
+		"app.post('/products', function (req, res) { res.json({}); });\n"
+	got, res := runDetect(t, "typescript", "index.ts", src)
+	want := []string{
+		"http:GET:/products",
+		"http:POST:/products",
+		"http:PUT:/products/{sku}",
+	}
+	requireContains(t, got, want, "Express inline-handler")
+
+	// No express synthetic may carry a source_handler pointing at a function
+	// parameter name (req/res) — that is the resolve-drop trigger.
+	for _, e := range res.Entities {
+		if e.Properties == nil || e.Properties["framework"] != "express" {
+			continue
+		}
+		sh := e.Properties["source_handler"]
+		if sh == "Controller:req" || sh == "Controller:res" {
+			t.Errorf("inline-handler synthetic %q carries bogus source_handler %q (would be dropped at resolve)", e.ID, sh)
+		}
+	}
+}
+
+// TestSynth_Express_NamedHandlerStillResolves guards that the inline-handler
+// fix does not regress named-reference handlers — those must keep their
+// source_handler so the resolve pass can wire the IMPLEMENTS edge.
+func TestSynth_Express_NamedHandlerStillResolves(t *testing.T) {
+	src := "const app = require('express')();\n" +
+		"app.get('/users/:id', getUser);\n"
+	_, res := runDetect(t, "javascript", "app.js", src)
+	found := false
+	for _, e := range res.Entities {
+		if e.Properties != nil && e.Properties["source_handler"] == "Controller:getUser" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("named-reference handler must retain source_handler=Controller:getUser")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1418 — NestJS controllers
+// ---------------------------------------------------------------------------
+
+// TestSynth_NestJS covers @Controller('prefix') + @Get/@Post/@Put/@Delete
+// decorated methods, including the root @Get() (no decorator path) and
+// param-shaped sub-paths (@Get(':id')).
+func TestSynth_NestJS(t *testing.T) {
+	src := "import { Controller, Get, Post, Param, Body } from '@nestjs/common';\n" +
+		"\n" +
+		"@Controller('orders')\n" +
+		"export class OrdersProxyController {\n" +
+		"  @Post()\n" +
+		"  async create(@Body() body: any) { return {}; }\n" +
+		"\n" +
+		"  @Get(':id')\n" +
+		"  async get(@Param('id') id: string) { return {}; }\n" +
+		"}\n"
+	got, _ := runDetect(t, "typescript", "orders.controller.ts", src)
+	want := []string{
+		"http:GET:/orders/{id}",
+		"http:POST:/orders",
+	}
+	requireContains(t, got, want, "NestJS")
+}
+
+// TestSynth_NestJS_RootController covers @Controller() with no prefix and a
+// sub-path on the method decorator.
+func TestSynth_NestJS_RootController(t *testing.T) {
+	src := "import { Controller, Get } from '@nestjs/common';\n" +
+		"@Controller('catalog')\n" +
+		"export class CatalogProxyController {\n" +
+		"  @Get('products')\n" +
+		"  async list() { return []; }\n" +
+		"}\n"
+	got, _ := runDetect(t, "typescript", "catalog.controller.ts", src)
+	requireContains(t, got, []string{"http:GET:/catalog/products"}, "NestJS root")
+}
+
+// ---------------------------------------------------------------------------
+// #1422 — Apollo / GraphQL resolvers
+// ---------------------------------------------------------------------------
+
+// TestSynth_GraphQLResolvers verifies that resolver fields under Query /
+// Mutation roots are emitted as graphql endpoint-ish synthetics, AND that the
+// downstream REST calls the resolvers make (via a serviceClient/axios
+// instance) are captured as consumer-side http_endpoint_call synthetics.
+func TestSynth_GraphQLResolvers(t *testing.T) {
+	src := "import { serviceClient } from '@shipfast/js-shared';\n" +
+		"const catalog = serviceClient(process.env.CATALOG_URL || 'http://catalog:3001');\n" +
+		"const orders = serviceClient(process.env.ORDERS_URL || 'http://orders:8000');\n" +
+		"export const resolvers = {\n" +
+		"  Query: {\n" +
+		"    searchProducts: async (_, { q }) => {\n" +
+		"      const { data } = await catalog.get('/products', { params: { q } });\n" +
+		"      return data;\n" +
+		"    },\n" +
+		"    order: async (_, { id }) => {\n" +
+		"      const { data } = await orders.get('/orders/' + id);\n" +
+		"      return data;\n" +
+		"    },\n" +
+		"  },\n" +
+		"};\n"
+	got, _ := runDetect(t, "typescript", "resolvers.ts", src)
+	// GraphQL resolver-field endpoints.
+	requireContains(t, got, []string{
+		"http:GRAPHQL:/graphql/Query/searchProducts",
+		"http:GRAPHQL:/graphql/Query/order",
+	}, "GraphQL resolver fields")
+	// Downstream REST call via the serviceClient factory instance.
+	requireContains(t, got, []string{
+		"http:GET:/products",
+	}, "GraphQL resolver downstream call")
+}
+
+// TestSynth_ServiceClientFactoryCalls verifies the serviceClient(...) factory
+// convention (#1418/#1422) is recognised as an axios-instance so that
+// `<instance>.<verb>(path)` calls emit consumer-side http_endpoint_call
+// synthetics. This is what lets the gateway/search-graphql services link as
+// cross-repo consumers.
+func TestSynth_ServiceClientFactoryCalls(t *testing.T) {
+	src := "import { serviceClient } from '@shipfast/js-shared';\n" +
+		"const orders = serviceClient(process.env.ORDERS_URL || 'http://orders:8000');\n" +
+		"async function create(body) {\n" +
+		"  const { data } = await orders.post('/orders', body);\n" +
+		"  return data;\n" +
+		"}\n"
+	got, _ := runDetect(t, "typescript", "orders.controller.ts", src)
+	requireContains(t, got, []string{"http:POST:/orders"}, "serviceClient factory call")
 }
