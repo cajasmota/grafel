@@ -1873,3 +1873,34 @@ export function subscribeAuditStream(
 
   return () => es.close()
 }
+
+// ── DSL export (#1318) ────────────────────────────────────────────────────────
+
+export type ExportFormat = 'mermaid' | 'graphviz' | 'plantuml' | 'd2'
+
+/**
+ * Fetch a subgraph as paste-ready DSL text.
+ *
+ * GET /api/export/{group}/{entity_id}/{format}?depth=N&limit=M
+ *
+ * Returns the raw diagram source (text/plain). Throws ApiError on failure.
+ */
+export async function fetchExportDSL(
+  group: string,
+  entityId: string,
+  format: ExportFormat,
+  opts?: { depth?: number; limit?: number },
+): Promise<string> {
+  const params = new URLSearchParams()
+  if (opts?.depth !== undefined) params.set('depth', String(opts.depth))
+  if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
+  const qs = params.toString() ? `?${params}` : ''
+  const url = `/api/export/${encodeURIComponent(group)}/${encodeURIComponent(entityId)}/${format}${qs}`
+  const res = await fetch(url)
+  if (!res.ok) {
+    const body = await res.text()
+    throw new ApiError(res.status, body, `API ${res.status}: ${url}`)
+  }
+  return res.text()
+}
+

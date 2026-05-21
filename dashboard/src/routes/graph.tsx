@@ -698,6 +698,7 @@ export function GraphRoute() {
               selectNode(id)
               zoomToNode(id)
             }}
+            group={group}
             onOpenInFlows={handleOpenInFlows}
             onOpenInPaths={handleOpenInPaths}
             onOpenInTopology={handleOpenInTopology}

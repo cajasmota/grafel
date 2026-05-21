@@ -8,6 +8,7 @@ import { RepoChip } from '@/components/shared/RepoChip'
 import { SourceSnippet } from '@/components/shared/SourceSnippet'
 import { NodeChip } from './NodeChip'
 import { EdgeBadge } from './EdgeBadge'
+import { ExportDiagramButton } from './ExportDiagramButton'
 import type { EntityNeighborResponse, EntityKind, GraphEdge, GraphNode } from '@/types/api'
 
 interface EntityInspectorProps {
@@ -15,6 +16,8 @@ interface EntityInspectorProps {
   isLoading: boolean
   onClose: () => void
   onSelectEntity: (id: string) => void
+  /** The active group name — required for the DSL export endpoint (#1318) */
+  group?: string
   /** Deep-link to Flows surface for process_flow entities */
   onOpenInFlows?: (entityId: string) => void
   /** Deep-link to Paths surface for http_endpoint/handler entities */
@@ -116,6 +119,7 @@ export function EntityInspector({
   isLoading,
   onClose,
   onSelectEntity,
+  group,
   onOpenInFlows,
   onOpenInPaths,
   onOpenInTopology,
@@ -477,6 +481,15 @@ export function EntityInspector({
                 <Network className="w-3.5 h-3.5" />
                 Highlight subgraph
               </button>
+            )}
+
+            {/* Copy as diagram — DSL export (#1318) */}
+            {group && (
+              <ExportDiagramButton
+                group={group}
+                entityId={data.entity.id}
+                depth={2}
+              />
             )}
 
             {/* Open in editor */}

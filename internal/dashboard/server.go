@@ -433,6 +433,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/perf/budgets", s.handlePerfBudgets)
 	mux.HandleFunc("POST /api/perf/record", s.handlePerfRecord)
 
+	// DSL export — Graph subgraph → Mermaid / Graphviz / PlantUML / D2 (#1318)
+	mux.HandleFunc("GET /api/export/{group}/{entity_id}/{format}", s.handleExportDSL)
+
 	return s.withAuth(withGzip(mux))
 }
 
