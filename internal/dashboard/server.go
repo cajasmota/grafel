@@ -387,6 +387,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/quality/anti-patterns/{group}", s.handleNPlusOne)
 	// #1323: test-coverage graph — link Test entities to production code.
 	mux.HandleFunc("GET /api/quality/coverage/{group}", s.handleQualityCoverage)
+	// #1322: hardcoded secret detector.
+	mux.HandleFunc("GET /api/quality/secrets/{group}", s.handleQualitySecrets)
 
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
