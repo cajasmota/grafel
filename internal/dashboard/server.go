@@ -218,6 +218,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/repairs/{group}/action", s.handleRepairAction)
 	mux.HandleFunc("POST /api/enrichments/{group}/action", s.handleEnrichmentAction)
 
+	// Settings surface (#1206)
+	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
+	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
+	mux.HandleFunc("POST /api/settings/reset", s.handleResetSettings)
+
 	// Build / version info
 	mux.HandleFunc("GET /api/info", s.handleInfo)
 
