@@ -116,7 +116,7 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		repos = filtered
 	}
 
-	s.serveGraphDense(w, group, repos, filterKind, includeExternal)
+	s.serveGraphDense(w, grp, repos, filterKind, includeExternal)
 }
 
 // externalKindSuffix is the trailing portion of the SCOPE.External kind after
@@ -180,7 +180,7 @@ type graphDenseResponse struct {
 // Perf (#1249): uses typed structs (graphNodeWire, graphEdgeWire) to eliminate
 // per-node map allocations.  Pre-sizes slices from entity/relationship counts
 // to avoid slice growth copies.
-func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*DashRepo, filterKind string, includeExternal bool) {
+func (s *Server) serveGraphDense(w http.ResponseWriter, grp *DashGroup, repos []*DashRepo, filterKind string, includeExternal bool) {
 	// Pre-size: count total entities + relationships across repos to avoid
 	// repeated slice growth under GC pressure.
 	totalEntities, totalRels, totalCommunities := 0, 0, 0
@@ -276,6 +276,20 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, group string, repos []*D
 					Kind:   rel.Kind,
 				})
 			}
+		}
+	}
+
+	// Merge cross-repo links (group-level edges produced by the link pass).
+	// Only emit a cross-repo edge when BOTH endpoints are in the visible set so
+	// that single-repo filtered views don't reference nodes that weren't returned.
+	// See issue #1388.
+	for _, l := range grp.Links {
+		if visible[l.Source] && visible[l.Target] {
+			edges = append(edges, graphEdgeWire{
+				FromID: l.Source,
+				ToID:   l.Target,
+				Kind:   l.Kind,
+			})
 		}
 	}
 
