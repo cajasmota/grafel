@@ -253,6 +253,24 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 	}
 	res.Results = append(res.Results, p5)
 
+	// P6 — cross-repo gRPC client-stub → server-impl linker. Uses
+	// SCOPE.GrpcMethod entities with canonical name grpc:Service/Method
+	// emitted by the gRPC engine pass (#725) as the join key.
+	p6, err := runGRPCPass(graphs, paths, rejects)
+	if err != nil {
+		return nil, fmt.Errorf("grpc pass: %w", err)
+	}
+	res.Results = append(res.Results, p6)
+
+	// P7 — cross-repo message-topic publisher↔subscriber linker. Uses
+	// SCOPE.MessageTopic entities emitted by the Kafka/SNS/SQS/EventBridge
+	// passes as the join key, matched by canonical topic Name.
+	p7, err := runTopicPass(graphs, paths, rejects)
+	if err != nil {
+		return nil, fmt.Errorf("topic pass: %w", err)
+	}
+	res.Results = append(res.Results, p7)
+
 	for _, r := range res.Results {
 		res.TotalLinks += r.LinksAdded
 		res.TotalCandid += r.Candidates
