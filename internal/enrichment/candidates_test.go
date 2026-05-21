@@ -729,3 +729,149 @@ func TestUniqueSubjectCount(t *testing.T) {
 		t.Errorf("UniqueSubjectCount = %d, want 2", n)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Tests for issue #1131: 0–100 confidence score on every Candidate
+// ---------------------------------------------------------------------------
+
+// TestComputeScore_GodHTTPEndpoint — a god-node HTTP endpoint is the highest
+// possible signal: base 80 + god_node 20 = 100 (clamped).
+func TestComputeScore_GodHTTPEndpoint(t *testing.T) {
+	e := &graph.Entity{
+		ID:        "e1",
+		Name:      "http:POST:/api/orders",
+		Kind:      "http_endpoint",
+		IsGodNode: true,
+		SourceFile: "handlers/orders.go",
+	}
+	score, breakdown, band := ComputeScore(e)
+	if score != 100 {
+		t.Errorf("god HTTP endpoint score = %d, want 100 (breakdown: %s)", score, breakdown)
+	}
+	if band != "critical" {
+		t.Errorf("band = %q, want critical", band)
+	}
+}
+
+// TestComputeScore_PrivateHelper — a short snake_case name with no source file
+// should land in the low band.
+func TestComputeScore_PrivateHelper(t *testing.T) {
+	pr := 0.001 // low pagerank
+	e := &graph.Entity{
+		ID:       "e2",
+		Name:     "__helper",
+		Kind:     "SCOPE.Operation",
+		PageRank: &pr,
+		// SourceFile intentionally empty → -10
+		// __helper: isPrivateHelper → -20, len=8 > 4 so no -15 short name
+	}
+	score, breakdown, band := ComputeScore(e)
+	// base_operation:40 - private_helper:20 - no_source_file:10 = 10
+	if score > 20 {
+		t.Errorf("private helper score = %d, want ≤20 (breakdown: %s)", score, breakdown)
+	}
+	if band == "critical" || band == "high" {
+		t.Errorf("private helper band = %q, want medium or low", band)
+	}
+}
+
+// TestComputeScore_AmbiguousNameOperation — an ambiguous-name operation with an
+// articulation point signal.
+func TestComputeScore_AmbiguousNameOperation(t *testing.T) {
+	e := &graph.Entity{
+		ID:               "e3",
+		Name:             "process",
+		Kind:             "SCOPE.Operation",
+		IsArticulationPt: true,
+		SourceFile:       "core/handler.py",
+	}
+	score, _, _ := ComputeScore(e)
+	// base_operation:40 + articulation:15 + ambiguous_name:15 = 70
+	if score != 70 {
+		t.Errorf("ambiguous-name articulation-point score = %d, want 70", score)
+	}
+}
+
+// TestComputeScore_CriticalityBands — verify the four bands map correctly.
+func TestComputeScore_CriticalityBands(t *testing.T) {
+	cases := []struct {
+		score int
+		band  string
+	}{
+		{100, "critical"},
+		{80, "critical"},
+		{79, "high"},
+		{60, "high"},
+		{59, "medium"},
+		{40, "medium"},
+		{39, "low"},
+		{0, "low"},
+	}
+	for _, tc := range cases {
+		got := criticalityBand(tc.score)
+		if got != tc.band {
+			t.Errorf("criticalityBand(%d) = %q, want %q", tc.score, got, tc.band)
+		}
+	}
+}
+
+// TestComputeScore_ScoreOnEmittedCandidate — verify that Score, ScoreBreakdown,
+// and CriticalityBand are populated on candidates emitted by the built-in
+// emitters (end-to-end check).
+func TestComputeScore_ScoreOnEmittedCandidate(t *testing.T) {
+	pr := 0.05 // high pagerank → +10
+	doc := mkDoc(graph.Entity{
+		ID:         "e1",
+		Name:       "http:GET:/api/users",
+		Kind:       "http_endpoint",
+		PageRank:   &pr,
+		SourceFile: "handlers.go",
+	})
+	cands := CollectCandidates(doc, []CandidateEmitter{describeEntityEmitter{}}, nil)
+	if len(cands) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(cands))
+	}
+	c := cands[0]
+	if c.Score == 0 {
+		t.Errorf("Score = 0, want > 0 (breakdown: %s)", c.ScoreBreakdown)
+	}
+	if c.ScoreBreakdown == "" {
+		t.Errorf("ScoreBreakdown is empty")
+	}
+	if c.CriticalityBand == "" {
+		t.Errorf("CriticalityBand is empty")
+	}
+	// http_endpoint base=80 + high_pagerank=10 = 90 → critical.
+	if c.Score != 90 {
+		t.Errorf("http_endpoint + high_pagerank score = %d, want 90 (breakdown: %s)", c.Score, c.ScoreBreakdown)
+	}
+	if c.CriticalityBand != "critical" {
+		t.Errorf("band = %q, want critical", c.CriticalityBand)
+	}
+}
+
+// TestComputeScore_ScoreClampZero — modifiers cannot push below 0.
+func TestComputeScore_ScoreClampZero(t *testing.T) {
+	e := &graph.Entity{
+		ID:   "e4",
+		Name: "_x",
+		Kind: "SCOPE.Component",
+		// len 2 → -15, no source file → -10, isPrivateHelper("_x")==true → -20
+		// base 35 - 15 - 10 - 20 = -10 → clamped to 0
+	}
+	score, _, _ := ComputeScore(e)
+	if score < 0 {
+		t.Errorf("score below zero: %d", score)
+	}
+}
+
+// TestComputeScore_NilEntity — nil entity must return (0, ..., "low") safely.
+func TestComputeScore_NilEntity(t *testing.T) {
+	score, _, band := ComputeScore(nil)
+	if score != 0 {
+		t.Errorf("nil entity score = %d, want 0", score)
+	}
+	if band != "low" {
+		t.Errorf("nil entity band = %q, want low", band)
+	}
+}

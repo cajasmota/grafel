@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -65,6 +67,173 @@ type Candidate struct {
 	ConfidenceFloor      float64        `json:"confidence_floor,omitempty"`
 	DiscoveredAt         string         `json:"discovered_at,omitempty"`
 	QualificationSignals []string       `json:"qualification_signals,omitempty"`
+	// Score is the 0–100 prioritisation score for this candidate, computed at
+	// emit time by ComputeScore. Higher scores indicate higher enrichment value
+	// (UX-critical: used to sort the dashboard pending queue and determine the
+	// criticality band displayed to the user).
+	Score          int    `json:"score,omitempty"`
+	// ScoreBreakdown is a human-readable string listing every modifier that
+	// fired, e.g. "base:40 + ambiguous_name:+15 + articulation:+15 = 70".
+	// Provided for debugging and agent reasoning.
+	ScoreBreakdown string `json:"score_breakdown,omitempty"`
+	// CriticalityBand is the tier derived from Score:
+	//   critical (>=80) / high (60–79) / medium (40–59) / low (<40)
+	CriticalityBand string `json:"criticality_band,omitempty"`
+}
+
+// kindBaseScore returns the base score for an entity kind.
+// Values calibrated against the enrichment research from issue #1162.
+func kindBaseScore(kind string) (int, string) {
+	switch kind {
+	// Public API surface — always highest priority.
+	case "http_endpoint", "HTTPEndpoint", "SCOPE.HTTPEndpoint", "Route", "SCOPE.Route":
+		return 80, "base_http_endpoint:80"
+	// Named architectural roles.
+	case "Service", "SCOPE.Service", "Controller", "SCOPE.Controller",
+		"View", "SCOPE.View":
+		return 65, "base_service_controller:65"
+	case "Schema", "Model":
+		return 60, "base_schema_model:60"
+	case "DataAccess", "SCOPE.DataAccess":
+		return 55, "base_data_access:55"
+	// Background task / process kinds.
+	case "Task", "SCOPE.ScheduledJob", "Process":
+		return 45, "base_process:45"
+	// Generic operations.
+	case "Operation", "SCOPE.Operation":
+		return 40, "base_operation:40"
+	// Components.
+	case "Component", "SCOPE.Component":
+		return 35, "base_component:35"
+	default:
+		return 35, "base_default:35"
+	}
+}
+
+// ambiguousNames is the set of very common verb names that indicate an entity
+// whose role is unclear from the name alone (+15 modifier).
+var ambiguousNames = map[string]bool{
+	"process": true, "handle": true, "run": true, "make": true,
+	"do": true, "main": true, "init": true, "setup": true,
+	"update": true, "execute": true,
+}
+
+// criticalityBand returns the criticality tier name for a 0–100 score.
+func criticalityBand(score int) string {
+	switch {
+	case score >= 80:
+		return "critical"
+	case score >= 60:
+		return "high"
+	case score >= 40:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+// ComputeScore calculates the 0–100 confidence score for a candidate, together
+// with a human-readable breakdown and a criticality band. The entity e must be
+// the same entity whose ID is c.SubjectID; passing nil produces a safe zero.
+//
+// Scoring formula (from issue #1131 spec):
+//
+//	Base by kind:
+//	  http_endpoint / Route              → 80
+//	  Service / Controller / View / Route → 65
+//	  Schema / Model                     → 60
+//	  DataAccess                         → 55
+//	  Process / Task / ScheduledJob      → 45
+//	  Operation                          → 40
+//	  Component                          → 35 (default)
+//
+//	Positive modifiers:
+//	  +20  is_god_node
+//	  +15  is_articulation_point
+//	  +10  pagerank >= 0.01
+//	  +15  name in {process, handle, run, make, do, main, init, setup, update, execute}
+//
+//	Negative modifiers:
+//	  -15  len(name) <= 4
+//	  -10  source_file empty
+//	  -20  all-lowercase-underscore name with len < 10 (private helper heuristic)
+//
+// The result is clamped to [0, 100].
+func ComputeScore(e *graph.Entity) (score int, breakdown string, band string) {
+	if e == nil {
+		return 0, "nil_entity", "low"
+	}
+
+	base, baseLabel := kindBaseScore(e.Kind)
+	total := base
+	parts := []string{baseLabel}
+
+	// +20 god node.
+	if e.IsGodNode {
+		total += 20
+		parts = append(parts, "+god_node:20")
+	}
+	// +15 articulation point.
+	if e.IsArticulationPt {
+		total += 15
+		parts = append(parts, "+articulation:15")
+	}
+	// +10 high pagerank.
+	if e.PageRank != nil && *e.PageRank >= 0.01 {
+		total += 10
+		parts = append(parts, "+pagerank:10")
+	}
+	// +15 genuinely ambiguous name (common verb with no domain context).
+	nameLower := strings.ToLower(e.Name)
+	if ambiguousNames[nameLower] {
+		total += 15
+		parts = append(parts, "+ambiguous_name:15")
+	}
+
+	// -15 very short name (≤4 chars, hard to describe meaningfully).
+	if len(e.Name) <= 4 {
+		total -= 15
+		parts = append(parts, "-short_name:15")
+	}
+	// -10 no source file (synthetic / cross-repo placeholder).
+	if e.SourceFile == "" {
+		total -= 10
+		parts = append(parts, "-no_source_file:10")
+	}
+	// -20 private helper heuristic: all-lowercase with underscore prefix or
+	// pure snake_case name shorter than 10 chars.
+	if len(e.Name) < 10 && isPrivateHelper(e.Name) {
+		total -= 20
+		parts = append(parts, "-private_helper:20")
+	}
+
+	// Clamp.
+	if total > 100 {
+		total = 100
+	}
+	if total < 0 {
+		total = 0
+	}
+
+	bd := strings.Join(parts, " ") + " = " + strconv.Itoa(total)
+	return total, bd, criticalityBand(total)
+}
+
+// isPrivateHelper returns true for names that follow lowercase-underscore
+// conventions typical of private helper functions (e.g. "__helper", "_run",
+// "do_it", "run_fn").
+func isPrivateHelper(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	// Must start with underscore or be all lowercase with underscores/digits only.
+	for _, ch := range name {
+		if ch >= 'A' && ch <= 'Z' {
+			return false // has uppercase → not private helper
+		}
+	}
+	// Require underscore to indicate snake_case or dunder naming.
+	return strings.ContainsRune(name, '_')
 }
 
 // Resolution is one row in <repo>/.archigraph/enrichment-resolutions.json.
@@ -340,6 +509,7 @@ func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 	if !ok {
 		return nil
 	}
+	sc, bd, band := ComputeScore(e)
 	return []Candidate{{
 		ID:        candidateID(e.ID, KindDescribeEntity),
 		Kind:      KindDescribeEntity,
@@ -355,6 +525,9 @@ func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 		ConfidenceFloor:      0.6,
 		DiscoveredAt:         nowRFC3339(),
 		QualificationSignals: sigs,
+		Score:                sc,
+		ScoreBreakdown:       bd,
+		CriticalityBand:      band,
 	}}
 }
 
@@ -389,6 +562,7 @@ func (classifyDomainEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 	if len(sigs) == 0 {
 		return nil
 	}
+	sc, bd, band := ComputeScore(e)
 	return []Candidate{{
 		ID:        candidateID(e.ID, KindClassifyDomain),
 		Kind:      KindClassifyDomain,
@@ -402,6 +576,9 @@ func (classifyDomainEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 		ConfidenceFloor:      0.5,
 		DiscoveredAt:         nowRFC3339(),
 		QualificationSignals: sigs,
+		Score:                sc,
+		ScoreBreakdown:       bd,
+		CriticalityBand:      band,
 	}}
 }
 
@@ -436,6 +613,7 @@ func (describeRoleEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candida
 	if e.IsArticulationPt {
 		sigs = append(sigs, "articulation_point")
 	}
+	sc, bd, band := ComputeScore(e)
 	return []Candidate{{
 		ID:        candidateID(e.ID, KindDescribeRole),
 		Kind:      KindDescribeRole,
@@ -450,6 +628,9 @@ func (describeRoleEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candida
 		ConfidenceFloor:      0.5,
 		DiscoveredAt:         nowRFC3339(),
 		QualificationSignals: sigs,
+		Score:                sc,
+		ScoreBreakdown:       bd,
+		CriticalityBand:      band,
 	}}
 }
 

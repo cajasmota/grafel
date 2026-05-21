@@ -60,6 +60,40 @@ function proposedValue(row: PendingCandidateRow): string | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ScoreBadge — displays the 0–100 confidence score with criticality colouring
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ScoreBadgeProps {
+  score: number
+  band?: string
+  breakdown?: string
+}
+
+function ScoreBadge({ score, band, breakdown }: ScoreBadgeProps) {
+  const label = band
+    ? `${band.charAt(0).toUpperCase()}${band.slice(1)} ${score}`
+    : `${score}`
+
+  const colorClass =
+    band === 'critical'
+      ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700'
+      : band === 'high'
+        ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700'
+        : band === 'medium'
+          ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700'
+          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+
+  return (
+    <span
+      className={`shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${colorClass}`}
+      title={breakdown ?? `Score: ${score}`}
+    >
+      {label}
+    </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CandidateRow component
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -125,12 +159,14 @@ function CandidateRow({ row, group, onApplied }: CandidateRowProps) {
         )}
       </div>
 
-      {/* Confidence */}
-      {row.confidence != null && row.confidence > 0 && (
+      {/* Score badge (issue #1131) — shown when a 0–100 score is present */}
+      {row.score != null && row.score > 0 ? (
+        <ScoreBadge score={row.score} band={row.criticality_band} breakdown={row.score_breakdown} />
+      ) : row.confidence != null && row.confidence > 0 ? (
         <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500 tabular-nums mt-1">
           {(row.confidence * 100).toFixed(0)}%
         </span>
-      )}
+      ) : null}
 
       {/* Actions */}
       <div className="shrink-0 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity focus-within:opacity-100">

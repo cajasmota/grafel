@@ -560,6 +560,12 @@ export interface PendingCandidateRow {
   confidence?: number
   discovered_at?: string
   auto_resolvable?: boolean
+  /** 0–100 prioritisation score (issue #1131). Present on enrichment rows. */
+  score?: number
+  /** Human-readable modifier breakdown, e.g. "base:80 + god_node:20 = 100". */
+  score_breakdown?: string
+  /** "critical" | "high" | "medium" | "low" */
+  criticality_band?: string
 }
 
 export interface PendingRepairsResponse {

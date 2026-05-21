@@ -29,15 +29,22 @@ var repairKinds = map[string]bool{
 // /api/enrichments. The richer Context map is forwarded as-is so the
 // dashboard can display subject / proposed-value without a second round-trip.
 type pendingCandidateRow struct {
-	CandidateID    string         `json:"candidate_id"`
-	Repo           string         `json:"repo"`
-	Kind           string         `json:"kind"`
-	SubjectID      string         `json:"subject_id"`
-	Context        map[string]any `json:"context,omitempty"`
-	Hint           string         `json:"hint,omitempty"`
-	Confidence     float64        `json:"confidence,omitempty"`
-	DiscoveredAt   string         `json:"discovered_at,omitempty"`
-	AutoResolvable bool           `json:"auto_resolvable"`
+	CandidateID     string         `json:"candidate_id"`
+	Repo            string         `json:"repo"`
+	Kind            string         `json:"kind"`
+	SubjectID       string         `json:"subject_id"`
+	Context         map[string]any `json:"context,omitempty"`
+	Hint            string         `json:"hint,omitempty"`
+	Confidence      float64        `json:"confidence,omitempty"`
+	DiscoveredAt    string         `json:"discovered_at,omitempty"`
+	AutoResolvable  bool           `json:"auto_resolvable"`
+	// Score is the 0–100 prioritisation score (issue #1131). Present on
+	// enrichment candidates; absent (0) on repair candidates.
+	Score           int    `json:"score,omitempty"`
+	// ScoreBreakdown lists the modifiers that produced Score.
+	ScoreBreakdown  string `json:"score_breakdown,omitempty"`
+	// CriticalityBand is "critical" / "high" / "medium" / "low".
+	CriticalityBand string `json:"criticality_band,omitempty"`
 }
 
 // handleRepairs — GET /api/repairs/{group}
@@ -124,15 +131,26 @@ func (s *Server) handleEnrichments(w http.ResponseWriter, r *http.Request) {
 				continue // repair tab handles these
 			}
 			items = append(items, pendingCandidateRow{
-				CandidateID:  c.ID,
-				Repo:         slug,
-				Kind:         c.Kind,
-				SubjectID:    c.SubjectID,
-				Context:      c.Context,
-				Hint:         c.Hint,
-				Confidence:   c.Confidence,
-				DiscoveredAt: c.DiscoveredAt,
+				CandidateID:     c.ID,
+				Repo:            slug,
+				Kind:            c.Kind,
+				SubjectID:       c.SubjectID,
+				Context:         c.Context,
+				Hint:            c.Hint,
+				Confidence:      c.Confidence,
+				DiscoveredAt:    c.DiscoveredAt,
+				Score:           c.Score,
+				ScoreBreakdown:  c.ScoreBreakdown,
+				CriticalityBand: c.CriticalityBand,
 			})
+		}
+	}
+
+	// Sort by Score DESC (high-priority first), then SubjectID for stable tiebreak.
+	for i := 1; i < len(items); i++ {
+		for j := i; j > 0 && (items[j].Score > items[j-1].Score ||
+			(items[j].Score == items[j-1].Score && items[j].SubjectID < items[j-1].SubjectID)); j-- {
+			items[j], items[j-1] = items[j-1], items[j]
 		}
 	}
 
@@ -146,13 +164,16 @@ func (s *Server) handleEnrichments(w http.ResponseWriter, r *http.Request) {
 // We parse the Context map so the REST layer can forward it without importing
 // internal/enrichment.
 type candidateRaw struct {
-	ID           string         `json:"id"`
-	Kind         string         `json:"kind"`
-	SubjectID    string         `json:"subject_id"`
-	Context      map[string]any `json:"context,omitempty"`
-	Hint         string         `json:"hint,omitempty"`
-	Confidence   float64        `json:"confidence,omitempty"`
-	DiscoveredAt string         `json:"discovered_at,omitempty"`
+	ID              string         `json:"id"`
+	Kind            string         `json:"kind"`
+	SubjectID       string         `json:"subject_id"`
+	Context         map[string]any `json:"context,omitempty"`
+	Hint            string         `json:"hint,omitempty"`
+	Confidence      float64        `json:"confidence,omitempty"`
+	DiscoveredAt    string         `json:"discovered_at,omitempty"`
+	Score           int            `json:"score,omitempty"`
+	ScoreBreakdown  string         `json:"score_breakdown,omitempty"`
+	CriticalityBand string         `json:"criticality_band,omitempty"`
 }
 
 // readAllCandidates reads every entry from a repo's enrichment-candidates.json.
@@ -223,12 +244,14 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 
 		// Group candidates by SubjectID.
 		type actionEntry struct {
-			candidateID  string
-			kind         string
-			score        float64
-			reason       string
-			discoveredAt string
-			completed    bool
+			candidateID     string
+			kind            string
+			score           float64
+			intScore        int
+			criticalityBand string
+			reason          string
+			discoveredAt    string
+			completed       bool
 		}
 		type subjectEntry struct {
 			subjectKind string
@@ -259,18 +282,21 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			se.actions = append(se.actions, actionEntry{
-				candidateID:  c.ID,
-				kind:         c.Kind,
-				score:        c.Confidence,
-				reason:       c.Hint,
-				discoveredAt: c.DiscoveredAt,
-				completed:    completed,
+				candidateID:     c.ID,
+				kind:            c.Kind,
+				score:           c.Confidence,
+				intScore:        c.Score,
+				criticalityBand: c.CriticalityBand,
+				reason:          c.Hint,
+				discoveredAt:    c.DiscoveredAt,
+				completed:       completed,
 			})
 		}
 
 		for _, sid := range subjectOrder {
 			se := subjects[sid]
 			var overallScore, maxScore float64
+			var maxIntScore int
 			var oldestPending string
 			pendingCount := 0
 
@@ -278,6 +304,9 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 			for _, a := range se.actions {
 				if a.score > maxScore {
 					maxScore = a.score
+				}
+				if a.intScore > maxIntScore {
+					maxIntScore = a.intScore
 				}
 				if !a.completed {
 					pendingCount++
@@ -289,11 +318,13 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				actions = append(actions, enrichmentActionWire{
-					Kind:        a.kind,
-					CandidateID: a.candidateID,
-					Score:       a.score,
-					Reason:      a.reason,
-					Completed:   a.completed,
+					Kind:            a.kind,
+					CandidateID:     a.candidateID,
+					Score:           a.score,
+					IntScore:        a.intScore,
+					CriticalityBand: a.criticalityBand,
+					Reason:          a.reason,
+					Completed:       a.completed,
 				})
 			}
 
@@ -307,17 +338,32 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 			}
 			totalActions += pendingCount
 
+			// Derive criticality band from the max integer score.
+			var taskBand string
+			switch {
+			case maxIntScore >= 80:
+				taskBand = "critical"
+			case maxIntScore >= 60:
+				taskBand = "high"
+			case maxIntScore >= 40:
+				taskBand = "medium"
+			default:
+				taskBand = "low"
+			}
+
 			allTasks = append(allTasks, enrichmentTaskRow{
-				SubjectID:      sid,
-				SubjectKind:    se.subjectKind,
-				SubjectName:    se.subjectName,
-				Repo:           slug,
-				PendingActions: actions,
-				PendingCount:   pendingCount,
-				OverallScore:   overallScore,
-				MaxActionScore: maxScore,
-				Overdue:        overdue,
-				DiscoveredAt:   oldestPending,
+				SubjectID:       sid,
+				SubjectKind:     se.subjectKind,
+				SubjectName:     se.subjectName,
+				Repo:            slug,
+				PendingActions:  actions,
+				PendingCount:    pendingCount,
+				OverallScore:    overallScore,
+				MaxActionScore:  maxScore,
+				IntScore:        maxIntScore,
+				CriticalityBand: taskBand,
+				Overdue:         overdue,
+				DiscoveredAt:    oldestPending,
 			})
 		}
 	}
@@ -339,25 +385,32 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 
 // enrichmentActionWire is the JSON-wire shape for one action inside a task row.
 type enrichmentActionWire struct {
-	Kind        string  `json:"kind"`
-	CandidateID string  `json:"candidate_id"`
-	Score       float64 `json:"score,omitempty"`
-	Reason      string  `json:"reason,omitempty"`
-	Completed   bool    `json:"completed"`
+	Kind            string  `json:"kind"`
+	CandidateID     string  `json:"candidate_id"`
+	Score           float64 `json:"score,omitempty"`
+	// IntScore is the 0–100 integer score from issue #1131.
+	IntScore        int     `json:"int_score,omitempty"`
+	CriticalityBand string  `json:"criticality_band,omitempty"`
+	Reason          string  `json:"reason,omitempty"`
+	Completed       bool    `json:"completed"`
 }
 
 // enrichmentTaskRow is the JSON-wire shape for one task row.
 type enrichmentTaskRow struct {
-	SubjectID      string                 `json:"subject_id"`
-	SubjectKind    string                 `json:"subject_kind,omitempty"`
-	SubjectName    string                 `json:"subject_name,omitempty"`
-	Repo           string                 `json:"repo"`
-	PendingActions []enrichmentActionWire `json:"pending_actions"`
-	PendingCount   int                    `json:"pending_count"`
-	OverallScore   float64                `json:"overall_score"`
-	MaxActionScore float64                `json:"max_action_score,omitempty"`
-	Overdue        bool                   `json:"overdue"`
-	DiscoveredAt   string                 `json:"discovered_at,omitempty"`
+	SubjectID       string                 `json:"subject_id"`
+	SubjectKind     string                 `json:"subject_kind,omitempty"`
+	SubjectName     string                 `json:"subject_name,omitempty"`
+	Repo            string                 `json:"repo"`
+	PendingActions  []enrichmentActionWire `json:"pending_actions"`
+	PendingCount    int                    `json:"pending_count"`
+	OverallScore    float64                `json:"overall_score"`
+	MaxActionScore  float64                `json:"max_action_score,omitempty"`
+	// IntScore is the maximum integer 0–100 score across pending actions (issue #1131).
+	IntScore        int     `json:"int_score,omitempty"`
+	// CriticalityBand is derived from IntScore: critical/high/medium/low.
+	CriticalityBand string  `json:"criticality_band,omitempty"`
+	Overdue         bool    `json:"overdue"`
+	DiscoveredAt    string  `json:"discovered_at,omitempty"`
 }
 
 // buildResolvedSet reads enrichment-resolutions.json for a repo and returns a
@@ -401,6 +454,11 @@ func sortEnrichmentTasks(tasks []enrichmentTaskRow) {
 }
 
 func enrichmentTaskLess(a, b enrichmentTaskRow) bool {
+	// Primary: integer 0–100 score DESC (issue #1131) — prefers the new field
+	// when both tasks have been scored. Falls back to the legacy float score.
+	if a.IntScore != b.IntScore {
+		return a.IntScore > b.IntScore
+	}
 	if a.OverallScore != b.OverallScore {
 		return a.OverallScore > b.OverallScore
 	}
