@@ -9,7 +9,10 @@
    UI never hardcodes the live :47274 daemon during development.
    ============================================================ */
 
-import type { Group, Entity, Community, SettingsGroup, SettingsFeatures, DoctorCheck } from "@/data/types";
+import type {
+  Group, Entity, Community, SettingsGroup, SettingsFeatures, DoctorCheck,
+  PathsListResponse, PathDetail, OrphansResponse,
+} from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
 const BASE_V2 = import.meta.env.VITE_AG_API_BASE_V2 ?? "/api/v2";
@@ -165,6 +168,19 @@ export const api = {
     requestV2<DoctorCheck[]>(`/groups/${encodeURIComponent(groupId)}/doctor`, {
       method: "POST",
     }),
+
+  // --- v2 Paths screen ---
+  /** GET /api/v2/groups/:id/paths — backend-grouped route list + totals. */
+  listPaths: (groupId: string) =>
+    requestV2<PathsListResponse>(`/groups/${encodeURIComponent(groupId)}/paths`),
+
+  /** GET /api/v2/groups/:id/paths/:hash — full route detail (Swagger++). */
+  getPathDetail: (groupId: string, pathHash: string) =>
+    requestV2<PathDetail>(`/groups/${encodeURIComponent(groupId)}/paths/${encodeURIComponent(pathHash)}`),
+
+  /** GET /api/v2/groups/:id/paths/orphans — orphan caller list. */
+  listOrphans: (groupId: string) =>
+    requestV2<OrphansResponse>(`/groups/${encodeURIComponent(groupId)}/paths/orphans`),
 };
 
 export type Api = typeof api;
