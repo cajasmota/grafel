@@ -50,11 +50,12 @@ const (
 	PassRenameDetect   = "rename-detect"   // Pass 5.5: detect entity renames across rebuilds (#1344)
 	PassEnrichment     = "enrichment"      // Pass 6: emit enrichment candidates
 	PassProcessFlow    = "process-flow"    // Pass 7: process-flow BFS over CALLS (#724)
+	PassModuleAgg      = "module-agg"      // Pass 8: module-level aggregation (#1383)
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow,
+	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassModuleAgg,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -972,6 +973,22 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		// process entities into the canonical id ordering.
 		doc.Stats.Entities = len(doc.Entities)
 		doc.Stats.Relationships = len(doc.Relationships)
+	}
+
+	// Pass 8 — module-level aggregation (issue #1383 / EPIC #1380).
+	// Runs AFTER all entity/relationship passes are finalised (Pass 7 process-
+	// flow is the last mutating pass) so the Module→entity CONTAINS edges and
+	// Module→Module DEPENDS_ON edges reflect the final graph topology. Module
+	// nodes are stored IN the main document alongside real entities; callers
+	// that want only the entity-level graph filter by kind != "Module". The
+	// pass is skippable via --skip-pass=module-agg.
+	if !i.skipPasses[PassModuleAgg] {
+		aggStats := module.Aggregate(doc)
+		if verbose() || aggStats.ModuleNodes > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: module-agg modules=%d contains=%d depends_on=%d\n",
+				aggStats.ModuleNodes, aggStats.ContainsEdges, aggStats.DependsOnEdges)
+		}
 	}
 
 	// Pass 6 — enrichment candidate emission (PORT-LLM / issue #15). Runs
