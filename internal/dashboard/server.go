@@ -201,8 +201,13 @@ func (s *Server) routes() http.Handler {
 	// Global typeahead search
 	mux.HandleFunc("GET /api/search/{group}", s.handleSearch)
 
-	// Pattern store
+	// Pattern store — full CRUD + GC + export (#1189)
 	mux.HandleFunc("GET /api/patterns/{group}", s.handlePatterns)
+	mux.HandleFunc("GET /api/patterns/{group}/{id}", s.handlePatternDetail)
+	mux.HandleFunc("PUT /api/patterns/{group}/{id}", s.handlePatternUpdate)
+	mux.HandleFunc("DELETE /api/patterns/{group}/{id}", s.handlePatternDelete)
+	mux.HandleFunc("POST /api/patterns/{group}/gc", s.handlePatternGC)
+	mux.HandleFunc("POST /api/patterns/{group}/export", s.handlePatternExport)
 
 	// Pending queue — repair candidates + enrichment candidates (#987)
 	mux.HandleFunc("GET /api/repairs/{group}", s.handleRepairs)

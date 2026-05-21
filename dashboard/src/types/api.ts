@@ -834,3 +834,61 @@ export interface GraphLabelEntry {
 export interface GraphLabelsResponse {
   labels: GraphLabelEntry[]
 }
+
+// ── Patterns surface (#1189) ──────────────────────────────────────────────────
+
+export type PatternStatus = 'active' | 'candidate' | 'rejected'
+
+export interface PatternRow {
+  id: string
+  kind: string
+  category: string
+  trigger: string
+  confidence: number
+  observations: number
+  last_seen: string
+  status: PatternStatus
+  is_candidate: boolean
+  needs_attention: boolean
+  stale: boolean
+  reject_reason?: string
+  approval_note?: string
+  steps: string[]
+  anti_patterns: Array<{ do_not: string; reason: string; private?: boolean }>
+  exemplars?: string[]
+  touches?: string[]
+  scope?: {
+    repos?: string[]
+    languages?: string[]
+    stacks?: string[]
+    entity_kinds?: string[]
+  }
+  convergence_count?: number
+}
+
+export interface PatternStats {
+  total: number
+  pending_review: number
+  rejected: number
+  stale: number
+  needs_attention: number
+}
+
+export interface PatternsResponse {
+  patterns: PatternRow[]
+  count: number
+  stats: PatternStats
+}
+
+export interface PatternGCResponse {
+  dry_run: boolean
+  pruned_count: number
+  pruned: PatternRow[]
+  remaining_count: number
+  candidate_decay_days: number
+}
+
+export interface PatternExportResponse {
+  exported: number
+  target: string
+}

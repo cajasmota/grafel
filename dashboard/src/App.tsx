@@ -12,6 +12,7 @@ import { PathsDetailRoute } from '@/routes/paths.detail'
 import { DocsRoute } from '@/routes/docs'
 import { PendingRoute } from '@/routes/pending'
 import { DiagnosticsRoute } from '@/routes/diagnostics'
+import { PatternsRoute } from '@/routes/patterns'
 import { RouterErrorBoundary } from '@/components/RouterErrorBoundary'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Globe } from 'lucide-react'
@@ -79,6 +80,10 @@ const router = createBrowserRouter([
 
       // Surface 7 — Diagnostics (#1187)
       { path: 'diagnostics', element: <DiagnosticsRoute /> },
+
+      // Surface 8 — Patterns (#1189)
+      { path: 'patterns', element: <Navigate to="/patterns/fixture-a" replace /> },
+      { path: 'patterns/:group', element: <PatternsRoute /> },
     ],
   },
 ])

@@ -2,7 +2,7 @@ import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
 import { useEffect } from 'react'
 import {
   GitBranch, Network, Workflow, Radio, Globe, BookOpen,
-  Moon, Sun, Clock, Stethoscope,
+  Moon, Sun, Clock, Stethoscope, Sparkles,
 } from 'lucide-react'
 import { useRegistry } from '@/hooks/shared/useRegistry'
 import { useThemeContext } from '@/context/ThemeContext'
@@ -44,7 +44,7 @@ export function AppLayout() {
           archigraph
         </Link>
 
-        {/* Surface nav — 7 chips (Graph / Flows / Topology / Pending / Paths / Docs / Diagnostics) */}
+        {/* Surface nav — 8 chips (Graph / Flows / Topology / Pending / Paths / Docs / Diagnostics / Patterns) */}
         <nav className="flex items-center gap-0.5 ml-2 sm:ml-4 sm:gap-1 flex-shrink-0" aria-label="Surface navigation">
           <NavItem to={`/graph/${group}`} icon={<Network className="w-4 h-4" />} label="Graph" />
           <NavItem to={`/flows/${group}`} icon={<Workflow className="w-4 h-4" />} label="Flows" />
@@ -53,6 +53,7 @@ export function AppLayout() {
           <NavItem to={`/paths/${group}`} icon={<Globe className="w-4 h-4" />} label="Paths" />
           <NavItem to={`/docs/${group}`} icon={<BookOpen className="w-4 h-4" />} label="Docs" />
           <NavItem to="/diagnostics" icon={<Stethoscope className="w-4 h-4" />} label="Diagnostics" />
+          <NavItem to={`/patterns/${group}`} icon={<Sparkles className="w-4 h-4" />} label="Patterns" />
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
