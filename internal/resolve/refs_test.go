@@ -1532,6 +1532,66 @@ func TestReferences_TestmapUnknownProdFile_QnameRewrite(t *testing.T) {
 	}
 }
 
+// Issue #1410 — testmap "?" form resolves via byName when the qname is a
+// unique entity name across the whole graph (common for small Python services
+// where each domain function has a unique name).
+func TestReferences_TestmapUnknownProdFile_ByNameRewrite(t *testing.T) {
+	entities := []types.EntityRecord{{
+		ID:         "cccccccccccccccc",
+		Kind:       "Function",
+		Name:       "create_order",
+		SourceFile: "services/orders/orders.py",
+	}}
+	rels := []types.RelationshipRecord{{
+		FromID:     "0000000000000000",
+		ToID:       "scope:operation:?#create_order",
+		Kind:       "TESTS",
+		Properties: map[string]string{"language": "python"},
+	}}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "cccccccccccccccc" {
+		t.Fatalf("expected byName rewrite to cccccccccccccccc, ToID=%s", rels[0].ToID)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("expected ToRewritten=1, got %+v", stats)
+	}
+}
+
+// Issue #1410 — testmap "?" form resolves via nameKinds[Function] when byName
+// is ambiguous across kinds (e.g. a Function and a Class share the name) but
+// the name is unique within the Function kind.
+func TestReferences_TestmapUnknownProdFile_NameKindsFunctionRewrite(t *testing.T) {
+	entities := []types.EntityRecord{
+		{
+			ID:         "dddddddddddddddd",
+			Kind:       "Function",
+			Name:       "process_payment",
+			SourceFile: "payments/service.py",
+		},
+		{
+			ID:         "eeeeeeeeeeeeeeee",
+			Kind:       "Class",
+			Name:       "process_payment",
+			SourceFile: "payments/model.py",
+		},
+	}
+	rels := []types.RelationshipRecord{{
+		FromID:     "0000000000000000",
+		ToID:       "scope:operation:?#process_payment",
+		Kind:       "TESTS",
+		Properties: map[string]string{"language": "python"},
+	}}
+	idx := BuildIndex(entities)
+	stats := References(rels, idx)
+	if rels[0].ToID != "dddddddddddddddd" {
+		t.Fatalf("expected nameKinds[Function] rewrite to dddddddddddddddd, ToID=%s", rels[0].ToID)
+	}
+	if stats.ToRewritten != 1 {
+		t.Fatalf("expected ToRewritten=1, got %+v", stats)
+	}
+}
+
 // Issue #432 — Python `from .compat import urlparse` reaches the resolver
 // as a bare ToID `.compat.urlparse` (the leading dot is preserved by the
 // extractor so the resolver sees the relative form). These are intra-package

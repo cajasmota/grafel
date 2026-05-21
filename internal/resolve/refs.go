@@ -1333,21 +1333,46 @@ func (idx Index) lookupStructural(stub string) (id string, status int, handled b
 	// cross-language test→production extractor emits this 3-segment shape
 	// when the production file cannot be inferred (high/medium confidence
 	// calls inside a test body). The standard 6-segment structural-ref
-	// path can't match it. Try a QualifiedName lookup first; failing that
-	// hand off to isHeuristicScopeStub (Dynamic) via the parts-length
-	// guard below. The minority of these stubs whose qname is a unique
-	// graph entity (test bodies that reference symbols by full path —
-	// e.g. `requests.get` when only one entity has that qname) earn a
-	// resolution credit instead of being silently dropped to Dynamic.
+	// path can't match it.
+	//
+	// Resolution ladder (issue #1410):
+	//  1. byQualifiedName — resolves fully-qualified stubs like "pkg.Func".
+	//  2. byName — resolves bare names that are unique across the entire
+	//     graph (e.g. "create_order" when only one entity has that name).
+	//     This is the common case for same-package Python/Go calls.
+	//  3. nameKinds under "Function" / "Method" — a tighter probe when
+	//     byName is ambiguous across kinds but unique within the callable
+	//     family; avoids false-positive matches on same-name Classes.
+	// If all three fail the stub is left as Dynamic / Unmatched.
 	if strings.HasPrefix(stub, "scope:operation:?#") {
 		qname := stub[len("scope:operation:?#"):]
 		if qname != "" {
+			// Tier 1: fully-qualified name (e.g. "pkg.Func" or "module.func")
 			if qid, ok := idx.byQualifiedName[qname]; ok {
 				if qid == "" {
-					// QualifiedName collision — fall through to Dynamic.
-					return "", statusUnmatched, true
+					return "", statusUnmatched, true // collision
 				}
 				return qid, statusRewritten, true
+			}
+			// Tier 2: bare name unique across the whole graph
+			if qid, ok := idx.byName[qname]; ok && qid != "" {
+				return qid, statusRewritten, true
+			}
+			// Tier 3: unique within the callable (Function/Method) kind family
+			if bucket := idx.nameKinds[qname]; len(bucket) > 0 {
+				var hit string
+				for _, knd := range []string{"Function", "Method"} {
+					if id, ok := bucket[knd]; ok && id != "" {
+						if hit != "" && hit != id {
+							hit = "" // ambiguous across function/method
+							break
+						}
+						hit = id
+					}
+				}
+				if hit != "" {
+					return hit, statusRewritten, true
+				}
 			}
 		}
 		return "", statusUnmatched, true
