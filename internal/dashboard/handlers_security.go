@@ -59,8 +59,9 @@ type GroupAuthCoverageReport struct {
 // Secrets wire shapes
 // ─────────────────────────────────────────────────────────────────────────────
 
-// SecretFinding is a single secret-related finding.
-type SecretFinding struct {
+// SecuritySecretFinding is a single secret-related finding returned by
+// GET /api/security/secrets/{group}.
+type SecuritySecretFinding struct {
 	EntityID   string `json:"entity_id"`
 	Name       string `json:"name"`
 	Repo       string `json:"repo"`
@@ -68,11 +69,11 @@ type SecretFinding struct {
 	StartLine  int    `json:"start_line,omitempty"`
 	Language   string `json:"language,omitempty"`
 	// Category: "hardcoded_credential" | "secrets_management"
-	Category     string `json:"category"`
+	Category string `json:"category"`
 	// Provider is set for secrets_management findings (e.g. "vault", "aws_secrets_manager")
-	Provider     string `json:"provider,omitempty"`
-	Severity     string `json:"severity"` // "error" | "warn" | "info"
-	Remediation  string `json:"remediation,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	Severity    string `json:"severity"` // "error" | "warn" | "info"
+	Remediation string `json:"remediation,omitempty"`
 }
 
 // GroupSecretsReport is the wire shape for GET /api/security/secrets/{group}.
@@ -83,7 +84,7 @@ type GroupSecretsReport struct {
 	WarnCount      int             `json:"warn_count"`
 	InfoCount      int             `json:"info_count"`
 	ByCategory     map[string]int  `json:"by_category"`
-	Findings       []SecretFinding `json:"findings"`
+	Findings       []SecuritySecretFinding `json:"findings"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -405,7 +406,7 @@ func (s *Server) handleSecuritySecrets(w http.ResponseWriter, r *http.Request) {
 			}
 			result.ByCategory[category]++
 
-			result.Findings = append(result.Findings, SecretFinding{
+			result.Findings = append(result.Findings, SecuritySecretFinding{
 				EntityID:    rp.Slug + "/" + e.ID,
 				Name:        e.Name,
 				Repo:        rp.Slug,

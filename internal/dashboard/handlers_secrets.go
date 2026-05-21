@@ -29,8 +29,9 @@ import (
 // Wire shapes
 // ─────────────────────────────────────────────────────────────────────────────
 
-// SecretFinding is the API-level representation of one detected secret.
-type SecretFinding struct {
+// QualitySecretFinding is the API-level representation of one detected secret
+// returned by GET /api/quality/secrets/{group}.
+type QualitySecretFinding struct {
 	File            string `json:"file"`
 	Line            int    `json:"line"`
 	Kind            string `json:"kind"`
@@ -45,7 +46,7 @@ type SecretFileRollup struct {
 	Repo     string          `json:"repo"`
 	Count    int             `json:"count"`
 	Severity string          `json:"severity"`
-	Findings []SecretFinding `json:"findings"`
+	Findings []QualitySecretFinding `json:"findings"`
 }
 
 // SecretScanReply is the wire shape returned by GET /api/quality/secrets/{group}.
@@ -116,12 +117,12 @@ func (s *Server) handleQualitySecrets(w http.ResponseWriter, r *http.Request) {
 			if !passesSeverityFilter(secrets.Severity(fr.Severity), severityFilter) {
 				continue
 			}
-			var apiFindings []SecretFinding
+			var apiFindings []QualitySecretFinding
 			for _, f := range fr.Findings {
 				if !passesSeverityFilter(f.Severity, severityFilter) {
 					continue
 				}
-				apiFindings = append(apiFindings, SecretFinding{
+				apiFindings = append(apiFindings, QualitySecretFinding{
 					File:            f.File,
 					Line:            f.Line,
 					Kind:            f.Kind,
