@@ -83,6 +83,9 @@ below; per-tool tables omit them unless the semantics differ.
 | [`archigraph_get_source`](#archigraph_get_source) | Return source-file snippet for a node from disk. |
 | [`archigraph_recent_activity`](#archigraph_recent_activity) | Entities whose source files were modified after a given time. |
 | [`archigraph_get_telemetry`](#archigraph_get_telemetry) | Server uptime, per-tool counters, reload counts. |
+| [`archigraph_endpoint_definitions`](#archigraph_endpoint_definitions) | List HTTP endpoint handler/route definitions. |
+| [`archigraph_endpoint_calls`](#archigraph_endpoint_calls) | List HTTP endpoint call-sites with orphan detection. |
+| [`archigraph_endpoint_stats`](#archigraph_endpoint_stats) | Count http\_endpoint\_definition/call/legacy entities + orphan callers. |
 
 ---
 
@@ -834,6 +837,145 @@ memory directory:
 - **No deduplication beyond the filename hash:** repeated calls with the
   same Q/A in the same UTC second collapse to one file; otherwise a fresh
   file is written.
+
+---
+
+### `archigraph_endpoint_definitions`
+
+> Added in #1220 (Sub-D of paths v2 epic #1115).
+
+List HTTP endpoint handler/route definitions. Returns entities of kind
+`http_endpoint_definition` as well as the legacy `http_endpoint` kind when the
+graph has not yet been re-indexed with Sub-A (#1217). Client-synthesis entities
+(call-side) are excluded.
+
+**Backward-compatibility note:** the legacy `http_endpoint` kind remains valid
+in all kind-filter parameters across the server and will transparently expand to
+both `http_endpoint_definition` and `http_endpoint_call`.
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `repo_filter` | string[] | no | [] | Repos to scope. |
+| `limit` | number | no | 200 | Max results. |
+| `group` / `cwd` | string | no | — | Standard routing args. |
+
+**Output** — JSON object:
+
+```json
+{
+  "definitions": [
+    {
+      "entity_id": "repo1::ep1",
+      "name": "POST /api/v1/orders",
+      "kind": "http_endpoint_definition",
+      "repo": "repo1",
+      "source_file": "routes/orders.go",
+      "start_line": 42,
+      "method": "POST",
+      "path": "/api/v1/orders"
+    }
+  ],
+  "count": 1,
+  "total": 1,
+  "truncated": false,
+  "note": "http_endpoint kind is deprecated; prefer http_endpoint_definition for handler/route entities."
+}
+```
+
+---
+
+### `archigraph_endpoint_calls`
+
+> Added in #1220 (Sub-D of paths v2 epic #1115).
+
+List HTTP endpoint call-sites (consumer side of FETCHES edges). Returns entities
+of kind `http_endpoint_call` plus legacy `http_endpoint` entities whose
+`pattern_type` is `http_endpoint_client_synthesis`. Call-sites with no matching
+definition in the group receive an `orphan_hint` field containing a reasoning
+note.
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `repo_filter` | string[] | no | [] | Repos to scope. |
+| `orphan_only` | boolean | no | false | When true, return only call-sites with no matching definition. |
+| `limit` | number | no | 200 | Max results. |
+| `group` / `cwd` | string | no | — | Standard routing args. |
+
+**Output** — JSON object:
+
+```json
+{
+  "calls": [
+    {
+      "entity_id": "repo1::call1",
+      "name": "fetchOrders",
+      "kind": "http_endpoint_call",
+      "repo": "repo1",
+      "source_file": "services/orders.go",
+      "start_line": 99,
+      "method": "POST",
+      "path": "/api/v1/orders",
+      "matched_definition": "repo1::ep1",
+      "orphan_hint": ""
+    }
+  ],
+  "count": 1,
+  "total": 1,
+  "truncated": false,
+  "note": "http_endpoint kind is deprecated; prefer http_endpoint_call for consumer-side call-site entities."
+}
+```
+
+When `orphan_hint` is non-empty it reads: `"this call to /some/path has no matching definition — see orphan_callers"`.
+
+---
+
+### `archigraph_endpoint_stats`
+
+> Added in #1220 (Sub-D of paths v2 epic #1115).
+
+Return a count breakdown of all HTTP-endpoint kind variants per repo, plus the
+number of orphan call-sites (FETCHES edges whose target is not a definition
+entity). Use to assess Sub-A (#1217) migration progress.
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `repo_filter` | string[] | no | [] | Repos to scope. |
+| `group` / `cwd` | string | no | — | Standard routing args. |
+
+**Output** — JSON object:
+
+```json
+{
+  "totals": {
+    "definitions":  12,
+    "calls":         8,
+    "legacy_kind":   0,
+    "orphan_calls":  2
+  },
+  "per_repo": [
+    {
+      "repo": "orders-service",
+      "definitions": 7,
+      "calls": 5,
+      "legacy_kind": 0,
+      "orphan_calls": 1
+    }
+  ],
+  "migrated": true,
+  "note": ""
+}
+```
+
+`migrated: true` means no legacy `http_endpoint` entities remain — all have been
+split into `http_endpoint_definition` / `http_endpoint_call` by Sub-A (#1217).
+When `migrated: false`, `note` contains a migration reminder.
 
 ---
 

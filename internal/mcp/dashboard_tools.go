@@ -495,7 +495,9 @@ func (s *Server) handleQualityOrphans(_ context.Context, req mcpapi.CallToolRequ
 			if connected[e.ID] {
 				continue
 			}
-			if kindFilter != "" && !strings.EqualFold(e.Kind, kindFilter) {
+			// matchesKindFilter expands alias kinds (e.g. "http_endpoint" →
+			// [http_endpoint, http_endpoint_definition, http_endpoint_call]).
+			if !matchesKindFilter(e, kindFilter) {
 				continue
 			}
 			out = append(out, item{
@@ -711,7 +713,9 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 		}
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			if kindFilter != "" && !strings.EqualFold(e.Kind, kindFilter) {
+			// matchesKindFilter expands alias kinds (e.g. "http_endpoint" →
+			// [http_endpoint, http_endpoint_definition, http_endpoint_call]).
+			if !matchesKindFilter(e, kindFilter) {
 				continue
 			}
 			nameL := strings.ToLower(e.Name)

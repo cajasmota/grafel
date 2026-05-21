@@ -124,9 +124,10 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 27 (14 original + 13 new: topology×3, flows×3, diagnostics,
-// quality_orphans, patterns_list, patterns_get, search_entities, get_subgraph,
-// find_paths). Issue #1202.
+// Tool count: 34 (14 original + 13 from #1202 + 3 from #1220).
+// #1202 tools: topology×3, flows×3, diagnostics, quality_orphans,
+//   patterns_list, patterns_get, search_entities, get_subgraph, find_paths.
+// #1220 tools: endpoint_definitions, endpoint_calls, endpoint_stats.
 func (s *Server) registerTools() {
 	// -----------------------------------------------------------------------
 	// Unchanged tools (5)
@@ -481,6 +482,50 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_find_paths", s.handleFindPaths))
+
+	// -----------------------------------------------------------------------
+	// HTTP endpoint tools (#1220)
+	// Backward-compat: all tools that accept a kind_filter also recognise
+	// the legacy "http_endpoint" value, which expands to both
+	// "http_endpoint_definition" and "http_endpoint_call".
+	// -----------------------------------------------------------------------
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoint_definitions",
+		mcpapi.WithDescription(
+			"List HTTP endpoint handler/route definitions (http_endpoint_definition kind). "+
+				"Also returns entities with the legacy http_endpoint kind that are identified as producers. "+
+				"'http_endpoint' kind is deprecated; prefer http_endpoint_definition for handler/route entities.",
+		),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("Repos to scope.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200), mcpapi.Description("Max definitions returned.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_endpoint_definitions", s.handleEndpointDefinitions))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoint_calls",
+		mcpapi.WithDescription(
+			"List HTTP endpoint call-sites (http_endpoint_call kind) — the consumer side of FETCHES edges. "+
+				"Also returns entities with the legacy http_endpoint kind that are identified as client-synthesis consumers. "+
+				"'http_endpoint' kind is deprecated; prefer http_endpoint_call for consumer-side call-site entities. "+
+				"Each unresolved call-site includes an orphan_hint field explaining that the call has no matching definition.",
+		),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("Repos to scope.")),
+		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false), mcpapi.Description("When true, return only call-sites with no matching definition.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200), mcpapi.Description("Max call-sites returned.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_endpoint_calls", s.handleEndpointCalls))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoint_stats",
+		mcpapi.WithDescription(
+			"Return counts of http_endpoint_definition, http_endpoint_call, and legacy http_endpoint entities per repo, "+
+				"plus a count of orphan call-sites (FETCHES edges with no matching definition). "+
+				"Use to assess the migration status from the legacy http_endpoint kind to the new split kinds.",
+		),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems(), mcpapi.Description("Repos to scope.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_endpoint_stats", s.handleEndpointStats))
 }
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard

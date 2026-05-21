@@ -547,7 +547,7 @@ func TestToolNameSurface(t *testing.T) {
 	for _, st := range srv.MCP.ListTools() {
 		registered[st.Tool.Name] = true
 	}
-	// 31 tools: 18 original + 13 new (#1202).
+	// 34 tools: 18 original + 13 new (#1202) + 3 endpoint tools (#1220).
 	wantPresent := []string{
 		// renamed (5)
 		"archigraph_find", "archigraph_inspect", "archigraph_expand",
@@ -582,6 +582,10 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_search_entities",
 		"archigraph_get_subgraph",
 		"archigraph_find_paths",
+		// #1220 HTTP endpoint kind aliasing
+		"archigraph_endpoint_definitions",
+		"archigraph_endpoint_calls",
+		"archigraph_endpoint_stats",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -609,11 +613,12 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count must be exactly 31 (18 pre-#1202 + 13 new from #1202).
-	// New tools: topology×3, flows×3, diagnostics, quality_orphans,
+	// Total count must be exactly 34 (18 pre-#1202 + 13 from #1202 + 3 from #1220).
+	// #1202 tools: topology×3, flows×3, diagnostics, quality_orphans,
 	// patterns_list, patterns_get, search_entities, get_subgraph, find_paths.
-	if got := len(srv.MCP.ListTools()); got != 31 {
-		t.Errorf("expected 31 registered tools, got %d", got)
+	// #1220 tools: endpoint_definitions, endpoint_calls, endpoint_stats.
+	if got := len(srv.MCP.ListTools()); got != 34 {
+		t.Errorf("expected 34 registered tools, got %d", got)
 	}
 }
 
