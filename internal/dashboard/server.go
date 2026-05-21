@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/audit"
 	"github.com/cajasmota/archigraph/internal/jobs"
 	"github.com/cajasmota/archigraph/internal/mcp"
 	"github.com/cajasmota/archigraph/internal/progress"
@@ -59,6 +60,20 @@ type Server struct {
 	// POST /api/enrichments/{group}/trigger returns 503 and the jobs list is empty.
 	// Set via SetJobQueue before calling Serve.
 	jobQueue *jobs.Queue
+
+	// auditLog is the append-only disk sink for audit entries (#1258).
+	// Optional: nil disables disk logging; the in-memory broker still works.
+	// Set via SetAuditLog before calling Serve.
+	auditLog *audit.Log
+
+	// auditBroker fans audit entries to SSE subscribers (#1258).
+	// Optional: nil disables /api/audit/stream (returns 503).
+	// Set via SetAuditBroker before calling Serve.
+	auditBroker *audit.Broker
+
+	// auditor is the combined writer (disk + broker). Mutation handlers call
+	// s.auditor.OK / s.auditor.Err. Initialised by SetAuditLog / SetAuditBroker.
+	auditor *audit.Writer
 }
 
 // NewServer wires a server against the given config and registry-store
@@ -73,13 +88,16 @@ func NewServer(cfg Config, store RegistryStore) (*Server, error) {
 	}
 	h := newWSHub()
 	go h.run()
-	return &Server{
+	srv := &Server{
 		cfg:      cfg,
 		registry: store,
 		graphs:   NewGraphCache(60 * time.Second),
 		hub:      h,
 		rng:      rand.New(rand.NewSource(time.Now().UnixNano())),
-	}, nil
+	}
+	// auditor starts as a no-op writer; replaced when SetAuditLog/SetAuditBroker is called.
+	srv.auditor = audit.NewWriter(nil, nil)
+	return srv, nil
 }
 
 // SetDaemonStartedAt records when the parent daemon process started so
@@ -122,6 +140,20 @@ func (s *Server) SetRecallRunner(fn func(fixtureName string) ([]byte, error)) {
 // Call this from cmd/archigraph (or any daemon entrypoint) before Serve.
 func (s *Server) SetJobQueue(q *jobs.Queue) {
 	s.jobQueue = q
+}
+
+// SetAuditLog wires the audit disk log into the dashboard server.
+// Call from the daemon entrypoint before Serve (#1258).
+func (s *Server) SetAuditLog(l *audit.Log) {
+	s.auditLog = l
+	s.auditor = audit.NewWriter(s.auditLog, s.auditBroker)
+}
+
+// SetAuditBroker wires the audit SSE broker into the dashboard server.
+// Call from the daemon entrypoint before Serve (#1258).
+func (s *Server) SetAuditBroker(b *audit.Broker) {
+	s.auditBroker = b
+	s.auditor = audit.NewWriter(s.auditLog, s.auditBroker)
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is
@@ -337,6 +369,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/onboard/check-path", s.handleOnboardCheckPath)
 	mux.HandleFunc("POST /api/onboard/detect-monorepo", s.handleOnboardDetectMonorepo)
 	mux.HandleFunc("POST /api/onboard/create-group", s.handleOnboardCreateGroup)
+
+	// Surface 13 — Audit log (#1258)
+	mux.HandleFunc("GET /api/audit", s.handleAuditHistory)
+	mux.HandleFunc("GET /api/audit/stream", s.handleAuditStream)
+	mux.HandleFunc("GET /api/audit/export", s.handleAuditExport)
 
 	// MCP Setup Wizard (#1247) — one-click install / uninstall / verify
 	mux.HandleFunc("GET /api/mcp-setup/hosts", s.handleMCPSetupHosts)

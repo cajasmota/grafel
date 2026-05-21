@@ -191,6 +191,10 @@ func (s *Server) dispatchRebuild(w http.ResponseWriter, group, repo string, wipe
 		_, _ = bgClient.Rebuild(args)
 	}()
 
+	// Audit the dispatched operation.
+	auditParams := map[string]any{"repo": repo, "wipe": wipe, "progress_token": token}
+	s.auditor.OK(op, group, auditParams)
+
 	reply := MaintenanceAckReply{
 		Op:            op,
 		Group:         group,
@@ -263,6 +267,7 @@ func (s *Server) runCleanup(w http.ResponseWriter, dryRun bool) {
 	reply.Removed = len(orphaned)
 	reply.Message = fmt.Sprintf("Removed %d orphaned %s",
 		len(orphaned), maintenancePluralEntry(len(orphaned)))
+	s.auditor.OK("cleanup", "", map[string]any{"removed": len(orphaned)})
 	writeJSON(w, http.StatusOK, reply)
 }
 

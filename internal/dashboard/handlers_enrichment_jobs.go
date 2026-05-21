@@ -50,9 +50,11 @@ func (s *Server) handleEnrichmentTrigger(w http.ResponseWriter, r *http.Request)
 
 	id, err := s.jobQueue.Enqueue(group, subjectID, kind)
 	if err != nil {
+		s.auditor.Err("enrichment_trigger", group, map[string]any{"subject_id": subjectID, "kind": kind}, err.Error())
 		writeErr(w, http.StatusTooManyRequests, "job queue full: "+err.Error())
 		return
 	}
+	s.auditor.OK("enrichment_trigger", group, map[string]any{"subject_id": subjectID, "kind": kind, "job_id": id})
 
 	job, _ := s.jobQueue.Get(id)
 	writeJSON(w, http.StatusAccepted, jobToWire(job))

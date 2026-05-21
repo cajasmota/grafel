@@ -1756,3 +1756,46 @@ export async function onboardCreateGroup(
     body: JSON.stringify({ group_name: groupName, repos }),
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit Log (#1258)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { AuditEntry, AuditHistoryResponse } from '@/types/api'
+
+/** GET /api/audit?limit=N&filter=op — last N audit entries, newest-first. */
+export async function fetchAuditHistory(
+  limit = 100,
+  filter?: string,
+): Promise<AuditHistoryResponse> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (filter) params.set('filter', filter)
+  return apiFetch<AuditHistoryResponse>(`/api/audit?${params}`)
+}
+
+/**
+ * Subscribe to /api/audit/stream (SSE) for real-time audit entries.
+ * Returns a cleanup function — call it on component unmount.
+ */
+export function subscribeAuditStream(
+  onEvent: (entry: AuditEntry) => void,
+  onError?: () => void,
+): () => void {
+  const es = new EventSource('/api/audit/stream')
+
+  es.addEventListener('audit', (e: MessageEvent) => {
+    try {
+      const entry = JSON.parse(e.data) as AuditEntry
+      onEvent(entry)
+    } catch {
+      // ignore parse errors
+    }
+  })
+
+  es.onerror = () => {
+    onError?.()
+    es.close()
+  }
+
+  return () => es.close()
+}

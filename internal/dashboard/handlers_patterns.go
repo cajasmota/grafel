@@ -218,9 +218,11 @@ func (s *Server) handlePatternUpdate(w http.ResponseWriter, r *http.Request) {
 
 	patterns = agentpatterns.Upsert(patterns, updated)
 	if err := agentpatterns.Save(dir, patterns); err != nil {
+		s.auditor.Err("pattern_update", group+"/"+id, nil, err.Error())
 		writeErr(w, http.StatusInternalServerError, "save patterns: "+err.Error())
 		return
 	}
+	s.auditor.OK("pattern_update", group+"/"+id, nil)
 
 	writeJSON(w, http.StatusOK, &updated)
 }
@@ -257,9 +259,11 @@ func (s *Server) handlePatternDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := agentpatterns.Save(dir, out); err != nil {
+		s.auditor.Err("pattern_delete", group+"/"+id, nil, err.Error())
 		writeErr(w, http.StatusInternalServerError, "save patterns: "+err.Error())
 		return
 	}
+	s.auditor.OK("pattern_delete", group+"/"+id, nil)
 
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
 }

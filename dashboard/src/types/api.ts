@@ -994,3 +994,33 @@ export interface MCPActivityHistoryResponse {
   count: number
   note?: string
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit Log (#1258)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One audit log entry — mirrors internal/audit.Entry.
+ * Returned by GET /api/audit and streamed via SSE /api/audit/stream.
+ */
+export interface AuditEntry {
+  /** RFC 3339 with milliseconds */
+  timestamp: string
+  /** Short snake_case verb: rebuild, settings_update, pattern_delete, … */
+  operation: string
+  /** Group slug, repo slug, setting key, or other target identifier */
+  target?: string
+  /** Optional structured context (request body fields, job IDs, etc.) */
+  params?: Record<string, unknown>
+  /** "ok" or "error" */
+  result: 'ok' | 'error'
+  /** Error message when result === "error" */
+  error?: string
+}
+
+/** Wire shape of GET /api/audit?limit=N&filter=op */
+export interface AuditHistoryResponse {
+  entries: AuditEntry[]
+  count: number
+  note?: string
+}

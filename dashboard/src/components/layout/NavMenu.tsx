@@ -20,7 +20,7 @@ import { useRef } from 'react'
 import {
   Network, Workflow, Radio, Globe, BookOpen, Clock,
   Stethoscope, Sparkles, Server, RefreshCw, ChevronDown,
-  BarChart2, Settings, Activity, Zap, HelpCircle,
+  BarChart2, Settings, Activity, ClipboardList, Zap, HelpCircle,
 } from 'lucide-react'
 import {
   prefetchSurface,
@@ -70,7 +70,8 @@ export function operateItems(group: string): NavEntry[] {
     { label: 'Patterns',      to: `/patterns/${group}`,  icon: <Sparkles    className="w-4 h-4" /> },
     { label: 'System',        to: '/system',            icon: <Server      className="w-4 h-4" /> },
     { label: 'Update',        to: '/update',            icon: <RefreshCw   className="w-4 h-4" /> },
-    { label: 'MCP Activity',  to: '/mcp-activity',      icon: <Activity    className="w-4 h-4" /> },
+    { label: 'MCP Activity',  to: '/mcp-activity',      icon: <Activity       className="w-4 h-4" /> },
+    { label: 'Audit Log',     to: '/audit-log',         icon: <ClipboardList  className="w-4 h-4" /> },
     { label: 'MCP Setup',     to: '/mcp-setup',         icon: <Zap         className="w-4 h-4" /> },
     { label: 'Settings',      to: '/settings',          icon: <Settings    className="w-4 h-4" /> },
     { label: 'Help & About',  to: '/help',              icon: <HelpCircle  className="w-4 h-4" /> },

@@ -200,9 +200,11 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := saveSettings(current); err != nil {
+		s.auditor.Err("settings_update", "", nil, err.Error())
 		writeErr(w, http.StatusInternalServerError, "failed to save settings: "+err.Error())
 		return
 	}
+	s.auditor.OK("settings_update", "", map[string]any{"restart_required": restartKeys})
 
 	writeJSON(w, http.StatusOK, settingsReply{
 		Settings:        current,
@@ -216,9 +218,11 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleResetSettings(w http.ResponseWriter, _ *http.Request) {
 	d := DefaultAppSettings()
 	if err := saveSettings(d); err != nil {
+		s.auditor.Err("settings_reset", "", nil, err.Error())
 		writeErr(w, http.StatusInternalServerError, "failed to reset settings: "+err.Error())
 		return
 	}
+	s.auditor.OK("settings_reset", "", nil)
 	writeJSON(w, http.StatusOK, settingsReply{
 		Settings: d,
 		Defaults: d,

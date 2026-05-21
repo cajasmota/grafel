@@ -24,6 +24,7 @@ import { UpdateRoute } from '@/routes/update'
 import { SettingsRoute } from '@/routes/settings'
 import { QualityRoute } from '@/routes/quality'
 import { MCPActivityRoute } from '@/routes/mcp-activity'
+import { AuditLogRoute } from '@/routes/audit-log'
 import { OnboardRoute } from '@/routes/onboard'
 import { MCPSetupRoute } from '@/routes/mcp-setup'
 import { HelpRoute } from '@/routes/help'
@@ -134,10 +135,13 @@ const router = createBrowserRouter([
       // Surface 13 — Web onboarding wizard (#1239)
       { path: 'onboard', element: <OnboardRoute /> },
 
-      // Surface 14 — MCP Setup Wizard (#1247)
+      // Surface 14 — Audit Log (#1258)
+      { path: 'audit-log', element: <AuditLogRoute /> },
+
+      // Surface 15 — MCP Setup Wizard (#1247)
       { path: 'mcp-setup', element: <MCPSetupRoute /> },
 
-      // Surface 15 — Help & About (#1253)
+      // Surface 16 — Help & About (#1253)
       { path: 'help', element: <HelpRoute /> },
     ],
   },
