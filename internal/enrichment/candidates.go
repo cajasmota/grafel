@@ -86,7 +86,11 @@ type Candidate struct {
 func kindBaseScore(kind string) (int, string) {
 	switch kind {
 	// Public API surface — always highest priority.
-	case "http_endpoint", "HTTPEndpoint", "SCOPE.HTTPEndpoint", "Route", "SCOPE.Route":
+	// http_endpoint_definition is the canonical post-#1217 kind for
+	// handler/route entities; the legacy http_endpoint alias is kept for
+	// graphs produced before the split.
+	case "http_endpoint", "http_endpoint_definition",
+		"HTTPEndpoint", "SCOPE.HTTPEndpoint", "Route", "SCOPE.Route":
 		return 80, "base_http_endpoint:80"
 	// Named architectural roles.
 	case "Service", "SCOPE.Service", "Controller", "SCOPE.Controller",
@@ -132,36 +136,66 @@ func criticalityBand(score int) string {
 	}
 }
 
+// ScoreHints carries per-entity graph-level signals that require access to the
+// full Document (relationship index, cross-repo adjacency). These are computed
+// once per entity at emit time and passed into ComputeScore so the function
+// itself remains pure (no Document traversal at score time).
+type ScoreHints struct {
+	// OutboundEdges is the number of outgoing relationships from this entity
+	// in the indexed graph. Used to differentiate high-degree hub nodes within
+	// the critical band.
+	OutboundEdges int
+	// HasCrossRepoInbound is true when at least one inbound relationship
+	// originates from a different repository (cross-repo dependency signal).
+	HasCrossRepoInbound bool
+}
+
 // ComputeScore calculates the 0–100 confidence score for a candidate, together
 // with a human-readable breakdown and a criticality band. The entity e must be
 // the same entity whose ID is c.SubjectID; passing nil produces a safe zero.
 //
-// Scoring formula (from issue #1131 spec):
+// hints is optional — pass nil (or omit) when no Document context is available.
+// When provided, graph-level signals (outbound degree, cross-repo inbound) are
+// incorporated into the score.
+//
+// Scoring formula (from issue #1131 spec, updated in #1301):
 //
 //	Base by kind:
-//	  http_endpoint / Route              → 80
-//	  Service / Controller / View / Route → 65
-//	  Schema / Model                     → 60
-//	  DataAccess                         → 55
-//	  Process / Task / ScheduledJob      → 45
-//	  Operation                          → 40
-//	  Component                          → 35 (default)
+//	  http_endpoint / http_endpoint_definition / Route → 80
+//	  Service / Controller / View                      → 65
+//	  Schema / Model                                   → 60
+//	  DataAccess                                       → 55
+//	  Process / Task / ScheduledJob                    → 45
+//	  Operation                                        → 40
+//	  Component                                        → 35 (default)
 //
 //	Positive modifiers:
 //	  +20  is_god_node
 //	  +15  is_articulation_point
 //	  +10  pagerank >= 0.01
 //	  +15  name in {process, handle, run, make, do, main, init, setup, update, execute}
+//	  +10  line_span > 30 (complex function body)
+//	  +5   outbound_edges > 20 (high-degree hub — critical-band differentiator)
+//	  +5   pagerank > 0.05 (top ~1% by pagerank — critical-band differentiator)
+//	  +5   cross-repo inbound dependency (cross-repo critical-band differentiator)
 //
 //	Negative modifiers:
+//	  -15  self-descriptive Operation name matching selfDescriptiveOperationRE
+//	       (applies even to articulation points; god nodes are exempt)
 //	  -15  len(name) <= 4
 //	  -10  source_file empty
 //	  -20  all-lowercase-underscore name with len < 10 (private helper heuristic)
+//	  -15  line_span <= 5 (trivial body — single-line or near-trivial)
 //
 // The result is clamped to [0, 100].
-func ComputeScore(e *graph.Entity) (score int, breakdown string, band string) {
+func ComputeScore(e *graph.Entity, hints ...*ScoreHints) (score int, breakdown string, band string) {
 	if e == nil {
 		return 0, "nil_entity", "low"
+	}
+
+	var h *ScoreHints
+	if len(hints) > 0 {
+		h = hints[0]
 	}
 
 	base, baseLabel := kindBaseScore(e.Kind)
@@ -178,7 +212,7 @@ func ComputeScore(e *graph.Entity) (score int, breakdown string, band string) {
 		total += 15
 		parts = append(parts, "+articulation:15")
 	}
-	// +10 high pagerank.
+	// +10 high pagerank (broad threshold — any entity in the top ~10%).
 	if e.PageRank != nil && *e.PageRank >= 0.01 {
 		total += 10
 		parts = append(parts, "+pagerank:10")
@@ -188,6 +222,48 @@ func ComputeScore(e *graph.Entity) (score int, breakdown string, band string) {
 	if ambiguousNames[nameLower] {
 		total += 15
 		parts = append(parts, "+ambiguous_name:15")
+	}
+
+	// Line-span modifiers: derived from StartLine/EndLine. These fire when
+	// the entity has non-zero line information (avoids penalising synthetic
+	// or cross-repo placeholder nodes that have no source location).
+	if e.EndLine > 0 && e.StartLine > 0 {
+		lineSpan := e.EndLine - e.StartLine
+		if lineSpan > 30 {
+			total += 10
+			parts = append(parts, "+complex_body:10")
+		} else if lineSpan <= 5 {
+			total -= 15
+			parts = append(parts, "-trivial_body:15")
+		}
+	}
+
+	// Critical-band differentiators (require ScoreHints from Document context).
+	// These break ties within the 80–100 range so god nodes and HTTP hubs
+	// score differently from plain critical entities.
+	if h != nil {
+		if h.OutboundEdges > 20 {
+			total += 5
+			parts = append(parts, "+high_degree:5")
+		}
+		if e.PageRank != nil && *e.PageRank > 0.05 {
+			total += 5
+			parts = append(parts, "+top_pagerank:5")
+		}
+		if h.HasCrossRepoInbound {
+			total += 5
+			parts = append(parts, "+cross_repo:5")
+		}
+	}
+
+	// Utility-function penalty: self-descriptive Operation names get -15 even
+	// when they are articulation points. God nodes are exempt because their hub
+	// status makes the description valuable even when the name is self-evident.
+	if !e.IsGodNode &&
+		(e.Kind == "SCOPE.Operation" || e.Kind == "Operation") &&
+		selfDescriptiveOperationRE.MatchString(e.Name) {
+		total -= 15
+		parts = append(parts, "-self_descriptive:15")
 	}
 
 	// -15 very short name (≤4 chars, hard to describe meaningfully).
@@ -344,12 +420,15 @@ var schemaSimpleFieldRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\.[a-z_][a-
 // qualifyHTTPKinds is the set of entity kinds that represent public API
 // surface — HTTP endpoints and route definitions — that always qualify for
 // enrichment because their intent and contract must be documented.
+// http_endpoint_definition is the post-#1217 canonical kind; http_endpoint
+// is the legacy alias emitted by older indexer versions.
 var qualifyHTTPKinds = map[string]bool{
-	"http_endpoint":      true,
-	"HTTPEndpoint":       true,
-	"Route":              true,
-	"SCOPE.Route":        true,
-	"SCOPE.HTTPEndpoint": true,
+	"http_endpoint":            true,
+	"http_endpoint_definition": true,
+	"HTTPEndpoint":             true,
+	"Route":                    true,
+	"SCOPE.Route":              true,
+	"SCOPE.HTTPEndpoint":       true,
 }
 
 // qualifyHighArchKinds is the set of entity kinds that represent named
@@ -652,6 +731,47 @@ var commonProgrammingTerms = map[string]bool{
 }
 
 // ---------------------------------------------------------------------------
+// ScoreHints index helpers
+// ---------------------------------------------------------------------------
+
+// scoreHintsIndex pre-computes ScoreHints for every entity in doc from its
+// relationship list. Call once per Document and reuse the returned map across
+// all entities in that document to avoid O(E×N) traversal.
+//
+// Cross-repo inbound detection: a relationship's FromID is considered
+// cross-repo when it does not appear in the entity ID set of doc. This is a
+// conservative heuristic — true cross-repo resolution requires the multi-repo
+// corpus index — but it correctly identifies entities that are referenced from
+// external graphs merged into this document via the links pass.
+func scoreHintsIndex(doc *graph.Document) map[string]*ScoreHints {
+	if doc == nil {
+		return nil
+	}
+	// Build a set of entity IDs that belong to this document.
+	localIDs := make(map[string]bool, len(doc.Entities))
+	for i := range doc.Entities {
+		localIDs[doc.Entities[i].ID] = true
+	}
+	idx := make(map[string]*ScoreHints, len(doc.Entities))
+	for i := range doc.Entities {
+		idx[doc.Entities[i].ID] = &ScoreHints{}
+	}
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		if h, ok := idx[r.FromID]; ok {
+			h.OutboundEdges++
+		}
+		if h, ok := idx[r.ToID]; ok {
+			// Inbound from a non-local entity → cross-repo signal.
+			if !localIDs[r.FromID] {
+				h.HasCrossRepoInbound = true
+			}
+		}
+	}
+	return idx
+}
+
+// ---------------------------------------------------------------------------
 // Built-in emitters
 // ---------------------------------------------------------------------------
 
@@ -663,11 +783,28 @@ var commonProgrammingTerms = map[string]bool{
 // graph nothing has a description, so everything qualified (22,427 candidates
 // ≈ 100% of entities). The new rule inverts this: default policy is NOT to
 // enrich; an entity qualifies only when it hits a positive signal.
-type describeEntityEmitter struct{}
+//
+// The emitter caches the scoreHintsIndex for the current document so the
+// relationship table is only traversed once per CollectCandidates call.
+type describeEntityEmitter struct {
+	cachedDoc   *graph.Document
+	cachedHints map[string]*ScoreHints
+}
 
-func (describeEntityEmitter) Name() string { return KindDescribeEntity }
+func (em *describeEntityEmitter) Name() string { return KindDescribeEntity }
 
-func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candidate {
+func (em *describeEntityEmitter) hintsFor(e *graph.Entity, doc *graph.Document) *ScoreHints {
+	if doc != em.cachedDoc {
+		em.cachedDoc = doc
+		em.cachedHints = scoreHintsIndex(doc)
+	}
+	if em.cachedHints == nil {
+		return nil
+	}
+	return em.cachedHints[e.ID]
+}
+
+func (em *describeEntityEmitter) EmitFor(e *graph.Entity, doc *graph.Document) []Candidate {
 	if e == nil || e.Name == "" {
 		return nil
 	}
@@ -684,7 +821,8 @@ func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 	if !ok {
 		return nil
 	}
-	sc, bd, band := ComputeScore(e)
+	hints := em.hintsFor(e, doc)
+	sc, bd, band := ComputeScore(e, hints)
 	return []Candidate{{
 		ID:        candidateID(e.ID, KindDescribeEntity),
 		Kind:      KindDescribeEntity,
@@ -709,11 +847,25 @@ func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 // classifyDomainEmitter emits a candidate for entities that look
 // architecturally significant — high pagerank or god-node flag — so the
 // agent assigns a domain (auth, billing, search, ...).
-type classifyDomainEmitter struct{}
+type classifyDomainEmitter struct {
+	cachedDoc   *graph.Document
+	cachedHints map[string]*ScoreHints
+}
 
-func (classifyDomainEmitter) Name() string { return KindClassifyDomain }
+func (em *classifyDomainEmitter) Name() string { return KindClassifyDomain }
 
-func (classifyDomainEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candidate {
+func (em *classifyDomainEmitter) hintsFor(e *graph.Entity, doc *graph.Document) *ScoreHints {
+	if doc != em.cachedDoc {
+		em.cachedDoc = doc
+		em.cachedHints = scoreHintsIndex(doc)
+	}
+	if em.cachedHints == nil {
+		return nil
+	}
+	return em.cachedHints[e.ID]
+}
+
+func (em *classifyDomainEmitter) EmitFor(e *graph.Entity, doc *graph.Document) []Candidate {
 	if e == nil || e.Name == "" {
 		return nil
 	}
@@ -742,7 +894,8 @@ func (classifyDomainEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 	if len(sigs) == 0 {
 		return nil
 	}
-	sc, bd, band := ComputeScore(e)
+	hints := em.hintsFor(e, doc)
+	sc, bd, band := ComputeScore(e, hints)
 	return []Candidate{{
 		ID:        candidateID(e.ID, KindClassifyDomain),
 		Kind:      KindClassifyDomain,
@@ -765,11 +918,25 @@ func (classifyDomainEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 // describeRoleEmitter emits a candidate for clearly architectural nodes
 // (god nodes, articulation points) so the agent assigns a role label
 // (controller / adapter / policy / orchestrator / ...).
-type describeRoleEmitter struct{}
+type describeRoleEmitter struct {
+	cachedDoc   *graph.Document
+	cachedHints map[string]*ScoreHints
+}
 
-func (describeRoleEmitter) Name() string { return KindDescribeRole }
+func (em *describeRoleEmitter) Name() string { return KindDescribeRole }
 
-func (describeRoleEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candidate {
+func (em *describeRoleEmitter) hintsFor(e *graph.Entity, doc *graph.Document) *ScoreHints {
+	if doc != em.cachedDoc {
+		em.cachedDoc = doc
+		em.cachedHints = scoreHintsIndex(doc)
+	}
+	if em.cachedHints == nil {
+		return nil
+	}
+	return em.cachedHints[e.ID]
+}
+
+func (em *describeRoleEmitter) EmitFor(e *graph.Entity, doc *graph.Document) []Candidate {
 	if e == nil || e.Name == "" {
 		return nil
 	}
@@ -798,7 +965,8 @@ func (describeRoleEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candida
 	if e.IsArticulationPt {
 		sigs = append(sigs, "articulation_point")
 	}
-	sc, bd, band := ComputeScore(e)
+	hints := em.hintsFor(e, doc)
+	sc, bd, band := ComputeScore(e, hints)
 	return []Candidate{{
 		ID:        candidateID(e.ID, KindDescribeRole),
 		Kind:      KindDescribeRole,
@@ -821,11 +989,13 @@ func (describeRoleEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candida
 
 // DefaultEmitters returns the built-in emitter set. Callers are free to
 // extend this slice; CollectCandidates accepts any []CandidateEmitter.
+// Each emitter is returned as a pointer so its internal ScoreHints cache
+// is shared across all EmitFor calls within a single CollectCandidates run.
 func DefaultEmitters() []CandidateEmitter {
 	return []CandidateEmitter{
-		describeEntityEmitter{},
-		classifyDomainEmitter{},
-		describeRoleEmitter{},
+		&describeEntityEmitter{},
+		&classifyDomainEmitter{},
+		&describeRoleEmitter{},
 	}
 }
 

@@ -26,7 +26,7 @@ func mkDoc(es ...graph.Entity) *graph.Document {
 func TestEmitFor_DescribeEntity_NoDescription(t *testing.T) {
 	// http_endpoint qualifies (public API surface — always signal 1).
 	doc := mkDoc(graph.Entity{ID: "e1", Name: "http:GET:/api/users", Kind: "http_endpoint"})
-	cands := CollectCandidates(doc, []CandidateEmitter{describeEntityEmitter{}}, nil)
+	cands := CollectCandidates(doc, []CandidateEmitter{&describeEntityEmitter{}}, nil)
 	if len(cands) != 1 {
 		t.Fatalf("expected 1 candidate, got %d", len(cands))
 	}
@@ -45,13 +45,13 @@ func TestEmitFor_DescribeEntity_NoDescription(t *testing.T) {
 		ID: "e2", Name: "http:POST:/api/orders", Kind: "http_endpoint",
 		Properties: map[string]string{"description": "already set"},
 	})
-	if got := CollectCandidates(doc2, []CandidateEmitter{describeEntityEmitter{}}, nil); len(got) != 0 {
+	if got := CollectCandidates(doc2, []CandidateEmitter{&describeEntityEmitter{}}, nil); len(got) != 0 {
 		t.Fatalf("expected 0 candidates for described entity, got %d", len(got))
 	}
 
 	// Generic "class" kind does NOT qualify under positive selection.
 	doc3 := mkDoc(graph.Entity{ID: "e3", Name: "AuthService", Kind: "class"})
-	if got := CollectCandidates(doc3, []CandidateEmitter{describeEntityEmitter{}}, nil); len(got) != 0 {
+	if got := CollectCandidates(doc3, []CandidateEmitter{&describeEntityEmitter{}}, nil); len(got) != 0 {
 		t.Fatalf("expected 0 candidates for non-qualifying kind, got %d", len(got))
 	}
 }
@@ -59,7 +59,7 @@ func TestEmitFor_DescribeEntity_NoDescription(t *testing.T) {
 // Test 2: a god node triggers a describe_role candidate.
 func TestEmitFor_DescribeRole_GodNode(t *testing.T) {
 	doc := mkDoc(graph.Entity{ID: "g1", Name: "Coordinator", Kind: "class", IsGodNode: true})
-	cands := CollectCandidates(doc, []CandidateEmitter{describeRoleEmitter{}}, nil)
+	cands := CollectCandidates(doc, []CandidateEmitter{&describeRoleEmitter{}}, nil)
 	if len(cands) != 1 {
 		t.Fatalf("expected 1 describe_role candidate, got %d", len(cands))
 	}
@@ -69,13 +69,13 @@ func TestEmitFor_DescribeRole_GodNode(t *testing.T) {
 
 	// Articulation-point also qualifies.
 	doc2 := mkDoc(graph.Entity{ID: "a1", Name: "Bridge", Kind: "class", IsArticulationPt: true})
-	if got := CollectCandidates(doc2, []CandidateEmitter{describeRoleEmitter{}}, nil); len(got) != 1 {
+	if got := CollectCandidates(doc2, []CandidateEmitter{&describeRoleEmitter{}}, nil); len(got) != 1 {
 		t.Fatalf("articulation point: expected 1 candidate, got %d", len(got))
 	}
 
 	// A vanilla entity should NOT trigger describe_role.
 	doc3 := mkDoc(graph.Entity{ID: "v1", Name: "Plain", Kind: "function"})
-	if got := CollectCandidates(doc3, []CandidateEmitter{describeRoleEmitter{}}, nil); len(got) != 0 {
+	if got := CollectCandidates(doc3, []CandidateEmitter{&describeRoleEmitter{}}, nil); len(got) != 0 {
 		t.Fatalf("vanilla entity: expected 0, got %d", len(got))
 	}
 }
@@ -125,7 +125,7 @@ func TestEmit_SkipsRejected(t *testing.T) {
 		graph.Entity{ID: "e1", Name: "http:GET:/api/rejected", Kind: "http_endpoint"},
 		graph.Entity{ID: "e2", Name: "http:GET:/api/allowed", Kind: "http_endpoint"},
 	)
-	cands := CollectCandidatesSkippingRejected(doc, []CandidateEmitter{describeEntityEmitter{}}, dir)
+	cands := CollectCandidatesSkippingRejected(doc, []CandidateEmitter{&describeEntityEmitter{}}, dir)
 	if len(cands) != 1 {
 		t.Fatalf("expected 1 candidate after rejection filter, got %d", len(cands))
 	}
@@ -310,7 +310,7 @@ func TestEmitFor_NoiseKinds(t *testing.T) {
 		"SCOPE.CodeBlock",
 		"SCOPE.Document",
 	}
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	for _, kind := range noiseKinds {
 		doc := mkDoc(graph.Entity{ID: "n1", Name: "SomeName", Kind: kind})
 		got := CollectCandidates(doc, emitter, nil)
@@ -343,7 +343,7 @@ func TestEmitFor_SelfDescriptiveOperation(t *testing.T) {
 		"onClick",
 		"useEffect",
 	}
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	for _, name := range selfDescriptive {
 		doc := mkDoc(graph.Entity{ID: "op1", Name: name, Kind: "SCOPE.Operation"})
 		got := CollectCandidates(doc, emitter, nil)
@@ -367,7 +367,7 @@ func TestEmitFor_AmbiguousOperation(t *testing.T) {
 		"apply",     // 5 chars, all-lowercase
 		"transform", // 9 chars, all-lowercase
 	}
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	for _, name := range ambiguous {
 		doc := mkDoc(graph.Entity{ID: "op2", Name: name, Kind: "SCOPE.Operation"})
 		got := CollectCandidates(doc, emitter, nil)
@@ -388,7 +388,7 @@ func TestEmitFor_OperationWithDescription(t *testing.T) {
 			"description": "Processes the incoming payload through the validation pipeline.",
 		},
 	})
-	got := CollectCandidates(doc, []CandidateEmitter{describeEntityEmitter{}}, nil)
+	got := CollectCandidates(doc, []CandidateEmitter{&describeEntityEmitter{}}, nil)
 	if len(got) != 0 {
 		t.Fatalf("Operation with description: expected 0 candidates, got %d", len(got))
 	}
@@ -398,7 +398,7 @@ func TestEmitFor_OperationWithDescription(t *testing.T) {
 // and non-qualifying kinds do not. Under positive selection (issue #1162) the
 // default policy is NOT to enrich; an entity must hit a positive signal.
 func TestEmitFor_PositiveSelection(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 
 	// Qualifying kinds: must produce a candidate.
 	qualifying := []struct {
@@ -450,7 +450,7 @@ func TestEmitFor_PositiveSelection(t *testing.T) {
 // described in issue #1162: 1 HTTPEndpoint, 1 god node, 1 ambiguous-name Op,
 // 1 trivial helper → exactly 3 candidates (helper not selected).
 func TestQualifiesForEnrichment_Scenario(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	doc := mkDoc(
 		// Signal 1 — HTTP endpoint: qualifies
 		graph.Entity{ID: "ep1", Name: "http:POST:/api/orders", Kind: "http_endpoint"},
@@ -477,7 +477,7 @@ func TestQualifiesForEnrichment_Scenario(t *testing.T) {
 // TestQualifiesForEnrichment_Signals checks that QualificationSignals is
 // populated and contains the correct signal name for each qualifying trigger.
 func TestQualifiesForEnrichment_Signals(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 
 	cases := []struct {
 		entity graph.Entity
@@ -514,7 +514,7 @@ func TestQualifiesForEnrichment_Signals(t *testing.T) {
 // TestQualifiesForEnrichment_NoiseKindDefaultsOut verifies that entities in
 // the noise kind set are excluded even if they are god nodes.
 func TestQualifiesForEnrichment_NoiseKindDefaultsOut(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	noiseGodNode := graph.Entity{
 		ID: "n1", Name: "SomePattern", Kind: "SCOPE.Pattern", IsGodNode: true,
 	}
@@ -529,7 +529,7 @@ func TestQualifiesForEnrichment_NoiseKindDefaultsOut(t *testing.T) {
 // for the ambiguous-name signal: exactly at 9 chars (qualifies), 10 chars
 // (does not), camelCase (does not, has uppercase).
 func TestQualifiesForEnrichment_AmbiguousNameBoundary(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 
 	// 9 chars all-lowercase → qualifies
 	doc9 := mkDoc(graph.Entity{ID: "o1", Name: "transform", Kind: "SCOPE.Operation"}) // exactly 9
@@ -559,7 +559,7 @@ func TestQualifiesForEnrichment_AmbiguousNameBoundary(t *testing.T) {
 // selfDescriptiveOperationRE correctly filters articulation-point operations
 // whose names are trivially paraphraseable (make/handle/list/… prefixes).
 func TestDeepTightening_SelfDescriptiveREExtension(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	// These names should NOT produce a describe_entity candidate — each encodes
 	// its own action+subject and an agent description would be a tautology.
 	selfDesc := []string{
@@ -599,7 +599,7 @@ func TestDeepTightening_SelfDescriptiveREExtension(t *testing.T) {
 // TestDeepTightening_DjangoMetaAttrs verifies that SCOPE.Schema entities whose
 // names contain ".Meta." (Django Meta class attributes) are excluded.
 func TestDeepTightening_DjangoMetaAttrs(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	metaEntities := []struct {
 		id   string
 		name string
@@ -621,7 +621,7 @@ func TestDeepTightening_DjangoMetaAttrs(t *testing.T) {
 // TestDeepTightening_ModelFieldDeclarations verifies that SCOPE.Schema entities
 // matching the "ModelName.field_name" pattern are excluded.
 func TestDeepTightening_ModelFieldDeclarations(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	fieldEntities := []struct {
 		id   string
 		name string
@@ -648,7 +648,7 @@ func TestDeepTightening_ModelFieldDeclarations(t *testing.T) {
 // TestDeepTightening_PrivateHelperOperations verifies that underscore-prefixed
 // private helpers are excluded from the ambiguous-name signal.
 func TestDeepTightening_PrivateHelperOperations(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	privateHelpers := []string{"_s", "_m", "_mask_key", "_norm", "_norm_str"}
 	for _, name := range privateHelpers {
 		doc := mkDoc(graph.Entity{ID: "ph", Name: name, Kind: "SCOPE.Operation"})
@@ -662,7 +662,7 @@ func TestDeepTightening_PrivateHelperOperations(t *testing.T) {
 // TestDeepTightening_ShortComponentVariables verifies that SCOPE.Component
 // names of 1–3 characters (local variable captures) are excluded.
 func TestDeepTightening_ShortComponentVariables(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 	shortVars := []string{"cx", "db", "bg", "mo", "mx"}
 	for _, name := range shortVars {
 		doc := mkDoc(graph.Entity{ID: "sv", Name: name, Kind: "SCOPE.Component"})
@@ -959,7 +959,7 @@ func TestComputeScore_ScoreOnEmittedCandidate(t *testing.T) {
 		PageRank:   &pr,
 		SourceFile: "handlers.go",
 	})
-	cands := CollectCandidates(doc, []CandidateEmitter{describeEntityEmitter{}}, nil)
+	cands := CollectCandidates(doc, []CandidateEmitter{&describeEntityEmitter{}}, nil)
 	if len(cands) != 1 {
 		t.Fatalf("expected 1 candidate, got %d", len(cands))
 	}
@@ -1016,7 +1016,7 @@ func TestComputeScore_NilEntity(t *testing.T) {
 // entity that is an articulation point but has a self-descriptive name does NOT
 // qualify for describe_entity (Signal 2 guard, fix #1279).
 func TestSignal2_SelfDescriptiveOpArticulationPoint(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 
 	selfDescriptiveNames := []string{
 		"setFilters",
@@ -1058,7 +1058,7 @@ func TestSignal2_SelfDescriptiveOpArticulationPoint(t *testing.T) {
 // it also matches selfDescriptiveOperationRE. God nodes are architectural hubs
 // that need description regardless of name pattern (fix #1279).
 func TestSignal2_GodNodeSelfDescriptiveOpStillQualifies(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 
 	doc := mkDoc(graph.Entity{
 		ID:        "gn1",
@@ -1087,7 +1087,7 @@ func TestSignal2_GodNodeSelfDescriptiveOpStillQualifies(t *testing.T) {
 // The self-descriptive guard in Signal 2 targets only SCOPE.Operation / Operation
 // kinds (fix #1279).
 func TestSignal2_ArticulationPtNonOpStillQualifies(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 
 	doc := mkDoc(graph.Entity{
 		ID:               "svc1",
@@ -1106,7 +1106,7 @@ func TestSignal2_ArticulationPtNonOpStillQualifies(t *testing.T) {
 // operation with a self-descriptive name. The describe_entity guard must
 // not affect describeRoleEmitter (fix #1279 — preserving describe_role).
 func TestDescribeRoleEmitter_ArticulationPtSelfDescriptiveOp(t *testing.T) {
-	emitter := []CandidateEmitter{describeRoleEmitter{}}
+	emitter := []CandidateEmitter{&describeRoleEmitter{}}
 
 	// describeRoleEmitter already has its own selfDescriptiveOperationRE check
 	// that filters self-descriptive names. Verify that a non-self-descriptive
@@ -1130,7 +1130,7 @@ func TestDescribeRoleEmitter_ArticulationPtSelfDescriptiveOp(t *testing.T) {
 // containing "${" are excluded from describe_entity enrichment entirely
 // (template-literal URL guard, fix #1279).
 func TestTemplateLiteralName_SkipsDescribeEntity(t *testing.T) {
-	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	emitter := []CandidateEmitter{&describeEntityEmitter{}}
 
 	templateLiteralNames := []string{
 		"${import.meta.env.VITE_CORE_API}/devices/?${queryParams.toString()}",
@@ -1300,7 +1300,7 @@ func TestFilter_HttpEndpointCall(t *testing.T) {
 // trivial-prop terms in commonProgrammingTerms suppress the ambiguous-name
 // signal and produce no candidates.
 func TestFilter_ExtendedCommonTerms(t *testing.T) {
-	emitters := []CandidateEmitter{describeEntityEmitter{}}
+	emitters := []CandidateEmitter{&describeEntityEmitter{}}
 	trivialNames := []string{
 		"variant", "height", "width", "color", "speed",
 		"gap", "align", "sticky", "sync", "year", "month",
@@ -1326,4 +1326,243 @@ func candidateKinds(cs []Candidate) []string {
 		kinds[i] = c.Kind
 	}
 	return kinds
+}
+
+// ---------------------------------------------------------------------------
+// Tests for issue #1301: score-function fixes
+// ---------------------------------------------------------------------------
+
+// TestComputeScore_HTTPEndpointDefinition verifies that the post-#1217 kind
+// "http_endpoint_definition" receives base score 80 (not the default 35).
+func TestComputeScore_HTTPEndpointDefinition(t *testing.T) {
+	e := &graph.Entity{
+		ID:         "ep1",
+		Name:       "http:GET:/api/v1/users",
+		Kind:       "http_endpoint_definition",
+		SourceFile: "handlers/users.go",
+	}
+	score, breakdown, band := ComputeScore(e)
+	if score < 80 {
+		t.Errorf("http_endpoint_definition: score = %d, want >= 80; breakdown: %s", score, breakdown)
+	}
+	if band != "critical" {
+		t.Errorf("http_endpoint_definition: band = %q, want \"critical\"; breakdown: %s", band, breakdown)
+	}
+}
+
+// TestComputeScore_HTTPEndpointDefinitionQualifies verifies that
+// http_endpoint_definition entities are emitted by describeEntityEmitter
+// (qualifyHTTPKinds guard added in #1301).
+func TestComputeScore_HTTPEndpointDefinitionQualifies(t *testing.T) {
+	doc := mkDoc(graph.Entity{
+		ID:         "ep2",
+		Name:       "http:POST:/api/v1/orders",
+		Kind:       "http_endpoint_definition",
+		SourceFile: "handlers/orders.go",
+	})
+	got := CollectCandidates(doc, []CandidateEmitter{&describeEntityEmitter{}}, nil)
+	if len(got) != 1 {
+		t.Fatalf("http_endpoint_definition: expected 1 candidate, got %d", len(got))
+	}
+	if got[0].CriticalityBand != "critical" {
+		t.Errorf("http_endpoint_definition: band = %q, want \"critical\"; breakdown: %s",
+			got[0].CriticalityBand, got[0].ScoreBreakdown)
+	}
+}
+
+// TestComputeScore_CriticalBandDifferentiation verifies that the three
+// critical-band differentiators (+5 each for outbound degree, top pagerank,
+// cross-repo inbound) break ties within 80–100 and that scores are not
+// uniformly 80.
+func TestComputeScore_CriticalBandDifferentiation(t *testing.T) {
+	pr := 0.06 // above the 0.05 top-pagerank threshold
+	tests := []struct {
+		name      string
+		entity    graph.Entity
+		hints     *ScoreHints
+		wantScore int
+		wantBand  string
+	}{
+		{
+			name: "god-node + high-degree + top-pagerank + cross-repo breaks plain critical tie",
+			// class base 35 + god 20 + pagerank 10 + high_degree 5 + top_pagerank 5 + cross_repo 5 = 80
+			entity: graph.Entity{
+				ID:         "g1",
+				Name:       "Notification",
+				Kind:       "class",
+				SourceFile: "core/notification.go",
+				IsGodNode:  true,
+				PageRank:   &pr,
+			},
+			hints:     &ScoreHints{OutboundEdges: 25, HasCrossRepoInbound: true},
+			wantScore: 80,
+			wantBand:  "critical",
+		},
+		{
+			name: "http_endpoint_definition god-node = at least 100",
+			entity: graph.Entity{
+				ID:         "ep3",
+				Name:       "http:GET:/api/v1/users",
+				Kind:       "http_endpoint_definition",
+				SourceFile: "handlers/users.go",
+				IsGodNode:  true,
+				PageRank:   &pr,
+			},
+			hints:     &ScoreHints{OutboundEdges: 25, HasCrossRepoInbound: true},
+			wantScore: 100, // 80+20+5+5+5 = 115 → clamped to 100
+			wantBand:  "critical",
+		},
+		{
+			name: "plain http_endpoint_definition no hints = 80",
+			entity: graph.Entity{
+				ID:         "ep4",
+				Name:       "http:DELETE:/api/v1/orders",
+				Kind:       "http_endpoint_definition",
+				SourceFile: "handlers/orders.go",
+			},
+			hints:     nil,
+			wantScore: 80,
+			wantBand:  "critical",
+		},
+		{
+			name: "plain Route with high-degree = 85",
+			entity: graph.Entity{
+				ID:         "rt1",
+				Name:       "/blog/",
+				Kind:       "Route",
+				SourceFile: "routes/blog.go",
+			},
+			hints:     &ScoreHints{OutboundEdges: 25},
+			wantScore: 85, // 80 + 5 high-degree
+			wantBand:  "critical",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			score, bd, band := ComputeScore(&tc.entity, tc.hints)
+			if score != tc.wantScore {
+				t.Errorf("score = %d, want %d; breakdown: %s", score, tc.wantScore, bd)
+			}
+			if band != tc.wantBand {
+				t.Errorf("band = %q, want %q; breakdown: %s", band, tc.wantBand, bd)
+			}
+		})
+	}
+}
+
+// TestComputeScore_UtilityFunctionPenalty verifies that self-descriptive
+// Operation names are penalised -15 even when they are articulation points,
+// but god nodes remain exempt.
+func TestComputeScore_UtilityFunctionPenalty(t *testing.T) {
+	// Articulation-point setLoading: 40 base + 15 articulation - 15 self_descriptive = 40 (Medium)
+	e := &graph.Entity{
+		ID:               "op1",
+		Name:             "setLoading",
+		Kind:             "SCOPE.Operation",
+		SourceFile:       "src/hooks/useData.ts",
+		IsArticulationPt: true,
+	}
+	score, bd, band := ComputeScore(e)
+	if score >= 60 {
+		t.Errorf("setLoading articulation-pt: score = %d, want < 60 (High or Critical); breakdown: %s", score, bd)
+	}
+	if band == "high" || band == "critical" {
+		t.Errorf("setLoading articulation-pt: band = %q, want medium or low; breakdown: %s", band, bd)
+	}
+
+	// God-node getUser: 40 base + 20 god — penalty exempt — = 60 (High)
+	eGod := &graph.Entity{
+		ID:         "op2",
+		Name:       "getUser",
+		Kind:       "SCOPE.Operation",
+		SourceFile: "src/api/user.ts",
+		IsGodNode:  true,
+	}
+	scoreGod, bdGod, bandGod := ComputeScore(eGod)
+	if scoreGod < 55 {
+		t.Errorf("getUser god-node: score = %d, want >= 55 (god exempt from penalty); breakdown: %s", scoreGod, bdGod)
+	}
+	_ = bandGod
+}
+
+// TestComputeScore_LineSpanModifiers verifies that line-span affects the score:
+// +10 for large functions (>30 lines), -15 for trivial bodies (<=5 lines).
+func TestComputeScore_LineSpanModifiers(t *testing.T) {
+	// Complex function: name "authorize" does not match selfDescriptiveOperationRE
+	// (no uppercase after verb prefix), so no -15 penalty.
+	// 40 base + 10 complex_body = 50 (Medium).
+	complex := &graph.Entity{
+		ID:         "fn1",
+		Name:       "authorize",
+		Kind:       "SCOPE.Operation",
+		SourceFile: "auth/authorize.go",
+		StartLine:  10,
+		EndLine:    55, // span = 45 > 30
+	}
+	scoreComplex, bdComplex, _ := ComputeScore(complex)
+	if scoreComplex != 50 {
+		t.Errorf("complex function: score = %d, want 50; breakdown: %s", scoreComplex, bdComplex)
+	}
+
+	// Trivial function: name "adapter" (7 chars, not short, not self-descriptive).
+	// 40 base - 15 trivial_body = 25 (Low).
+	trivial := &graph.Entity{
+		ID:         "fn2",
+		Name:       "adapter",
+		Kind:       "SCOPE.Operation",
+		SourceFile: "util/adapter.go",
+		StartLine:  1,
+		EndLine:    3, // span = 2 <= 5
+	}
+	scoreTrivial, bdTrivial, bandTrivial := ComputeScore(trivial)
+	if scoreTrivial != 25 {
+		t.Errorf("trivial function: score = %d, want 25; breakdown: %s", scoreTrivial, bdTrivial)
+	}
+	if bandTrivial != "low" {
+		t.Errorf("trivial function: band = %q, want \"low\"; breakdown: %s", bandTrivial, bdTrivial)
+	}
+}
+
+// TestComputeScore_ScoreHintsFromDocument verifies that scoreHintsIndex
+// correctly counts outbound edges and detects cross-repo inbound.
+func TestComputeScore_ScoreHintsFromDocument(t *testing.T) {
+	doc := &graph.Document{
+		Version: graph.SchemaVersion,
+		Repo:    "testrepo",
+		Entities: []graph.Entity{
+			{ID: "a", Name: "AuthService", Kind: "Service", SourceFile: "auth.go"},
+			{ID: "b", Name: "UserRepo", Kind: "SCOPE.DataAccess", SourceFile: "repo.go"},
+		},
+		Relationships: []graph.Relationship{
+			// a → b (outbound for a, inbound for b from a local entity)
+			{ID: "r1", FromID: "a", ToID: "b", Kind: "calls"},
+			// external → b (cross-repo inbound for b)
+			{ID: "r2", FromID: "external-repo-entity", ToID: "b", Kind: "imports"},
+			// a → c (non-existent target is fine, still counts as outbound for a)
+			{ID: "r3", FromID: "a", ToID: "c", Kind: "imports"},
+		},
+	}
+	idx := scoreHintsIndex(doc)
+	hA := idx["a"]
+	if hA == nil {
+		t.Fatal("no hints for entity a")
+	}
+	if hA.OutboundEdges != 2 {
+		t.Errorf("entity a: OutboundEdges = %d, want 2", hA.OutboundEdges)
+	}
+	if hA.HasCrossRepoInbound {
+		t.Errorf("entity a: HasCrossRepoInbound = true, want false (all inbound from local)")
+	}
+
+	hB := idx["b"]
+	if hB == nil {
+		t.Fatal("no hints for entity b")
+	}
+	if hB.OutboundEdges != 0 {
+		t.Errorf("entity b: OutboundEdges = %d, want 0", hB.OutboundEdges)
+	}
+	if !hB.HasCrossRepoInbound {
+		t.Errorf("entity b: HasCrossRepoInbound = false, want true (inbound from external-repo-entity)")
+	}
 }
