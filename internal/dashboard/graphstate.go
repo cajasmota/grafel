@@ -30,6 +30,85 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// graphPayloadCache — serialised-bytes cache for GET /api/graph/{group}
+// ---------------------------------------------------------------------------
+//
+// Each entry stores the already-JSON-encoded response body and a strong ETag
+// so repeat requests can be served with a single map lookup and a memcpy,
+// skipping the O(nodes + edges) build loop entirely.
+//
+// Cache key: "<group>::<params-fingerprint>" where the fingerprint is a
+// hex-encoded SHA-256 of the sorted query parameters that affect the output
+// (filterKind, filterRepo, repos, includeExternal, includeModules).
+//
+// Invalidation: any call to graphPayloadCache.InvalidateGroup(group) drops
+// ALL entries whose key starts with "<group>::".  This is called from
+// GraphCache.Invalidate / InvalidateAll so the two caches are always in sync.
+
+// payloadEntry is one cached response.
+type payloadEntry struct {
+	body []byte // raw JSON bytes (not compressed — withGzip compresses on write)
+	etag string // strong ETag value, including the surrounding quotes
+}
+
+// graphPayloadCache is a concurrency-safe store of pre-serialised graph
+// payloads.  It is intentionally separate from GraphCache so the two caches
+// can be invalidated together without circular dependencies.
+type graphPayloadCache struct {
+	mu      sync.RWMutex
+	entries map[string]*payloadEntry // cache key → entry
+}
+
+func newGraphPayloadCache() *graphPayloadCache {
+	return &graphPayloadCache{entries: map[string]*payloadEntry{}}
+}
+
+// payloadCacheKey returns a stable, collision-resistant key for the given
+// (group, params) combination.  The params fingerprint is a truncated
+// SHA-256 of the sorted param string so the map key stays short.
+func payloadCacheKey(group, filterKind, filterRepo, reposParam string, includeExternal, includeModules bool) string {
+	params := fmt.Sprintf("fk=%s&fr=%s&repos=%s&ext=%v&mod=%v",
+		filterKind, filterRepo, reposParam, includeExternal, includeModules)
+	sum := sha256.Sum256([]byte(params))
+	return group + "::" + fmt.Sprintf("%x", sum[:8])
+}
+
+// Get returns the cached entry and true when a valid entry exists,
+// or nil and false on a miss.
+func (c *graphPayloadCache) Get(key string) (*payloadEntry, bool) {
+	c.mu.RLock()
+	e, ok := c.entries[key]
+	c.mu.RUnlock()
+	return e, ok
+}
+
+// Set stores (or replaces) a payload entry.
+func (c *graphPayloadCache) Set(key string, body []byte, etag string) {
+	c.mu.Lock()
+	c.entries[key] = &payloadEntry{body: body, etag: etag}
+	c.mu.Unlock()
+}
+
+// InvalidateGroup drops all entries whose key begins with "<group>::".
+func (c *graphPayloadCache) InvalidateGroup(group string) {
+	prefix := group + "::"
+	c.mu.Lock()
+	for k := range c.entries {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.entries, k)
+		}
+	}
+	c.mu.Unlock()
+}
+
+// InvalidateAll drops every entry.
+func (c *graphPayloadCache) InvalidateAll() {
+	c.mu.Lock()
+	c.entries = map[string]*payloadEntry{}
+	c.mu.Unlock()
+}
+
+// ---------------------------------------------------------------------------
 // Helpers (mirrors of unexported mcp helpers; small enough to inline)
 // ---------------------------------------------------------------------------
 
@@ -131,33 +210,43 @@ type cacheEntry struct {
 // concurrent use.  Reload is lazy: the first call for a group loads it;
 // subsequent calls check mtime and skip the reload when graphs haven't
 // changed.
+//
+// GraphCache also owns a graphPayloadCache so that Invalidate/InvalidateAll
+// atomically bust both the loaded-group cache and the pre-serialised payload
+// cache.  Handlers call c.Payloads to access the payload cache directly.
 type GraphCache struct {
-	mu      sync.Mutex
-	entries map[string]*cacheEntry
-	ttl     time.Duration
+	mu       sync.Mutex
+	entries  map[string]*cacheEntry
+	ttl      time.Duration
+	Payloads *graphPayloadCache // pre-serialised dense graph JSON, keyed by group+params
 }
 
 // NewGraphCache returns a cache with the given TTL.  Use 60 * time.Second
 // for production; tests may use a lower value.
 func NewGraphCache(ttl time.Duration) *GraphCache {
 	return &GraphCache{
-		entries: map[string]*cacheEntry{},
-		ttl:     ttl,
+		entries:  map[string]*cacheEntry{},
+		ttl:      ttl,
+		Payloads: newGraphPayloadCache(),
 	}
 }
 
 // Invalidate drops the cached entry for group (called on re-index events).
+// It also busts the pre-serialised payload cache for that group so the next
+// GET /api/graph/{group} request rebuilds a fresh payload from the new graph.
 func (c *GraphCache) Invalidate(group string) {
 	c.mu.Lock()
 	delete(c.entries, group)
 	c.mu.Unlock()
+	c.Payloads.InvalidateGroup(group)
 }
 
-// InvalidateAll drops every cached entry.
+// InvalidateAll drops every cached entry and every pre-serialised payload.
 func (c *GraphCache) InvalidateAll() {
 	c.mu.Lock()
 	c.entries = map[string]*cacheEntry{}
 	c.mu.Unlock()
+	c.Payloads.InvalidateAll()
 }
 
 // GetGroup returns the loaded group, refreshing from disk when the TTL has

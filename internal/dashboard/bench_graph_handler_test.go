@@ -161,3 +161,115 @@ func benchmarkServeGraphDense(b *testing.B, nEntities, avgDegree int) {
 		})
 	}
 }
+
+// BenchmarkServeGraphDenseCacheHit measures the warm-path (payload-cache hit)
+// for GET /api/graph/{group} so we can compare against the cold-path benchmarks.
+//
+// Run with:
+//
+//	go test ./internal/dashboard/ -bench=BenchmarkServeGraphDenseCacheHit -benchmem -run=^$ -count=3
+func BenchmarkServeGraphDenseCacheHit20k(b *testing.B) {
+	benchmarkServeGraphDenseCacheHit(b, 20_000, 4)
+}
+
+func BenchmarkServeGraphDenseCacheHit100k(b *testing.B) {
+	benchmarkServeGraphDenseCacheHit(b, 100_000, 4)
+}
+
+func benchmarkServeGraphDenseCacheHit(b *testing.B, nEntities, avgDegree int) {
+	b.Helper()
+	doc := makeSyntheticDoc(nEntities, avgDegree)
+	s := newBenchServer(b, doc)
+	handler := s.routes()
+
+	// Cold request to prime the payload cache.
+	prime := httptest.NewRequest(http.MethodGet, "/api/graph/bench", nil)
+	primew := httptest.NewRecorder()
+	handler.ServeHTTP(primew, prime)
+	if primew.Code != http.StatusOK {
+		b.Fatalf("prime request status=%d", primew.Code)
+	}
+
+	// Warm path — plain and gzip.
+	for _, compress := range []bool{true, false} {
+		name := "plain"
+		if compress {
+			name = "gzip"
+		}
+		b.Run(name, func(b *testing.B) {
+			req := httptest.NewRequest(http.MethodGet, "/api/graph/bench", nil)
+			if compress {
+				req.Header.Set("Accept-Encoding", "gzip")
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				rw := httptest.NewRecorder()
+				handler.ServeHTTP(rw, req)
+				if rw.Code != http.StatusOK {
+					b.Fatalf("unexpected status %d body=%s", rw.Code, rw.Body.String())
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkPayloadCacheDirectHit measures the hot-path cost of a cache hit
+// in serveGraphDense without gzip compression, to isolate the
+// "map lookup + memcpy" cost from the "build + encode" cost.
+//
+// Cold: serveGraphDense 20k-plain ≈ 300-480 µs
+// Warm: BenchmarkPayloadCacheDirect20k/plain ≈ <5 µs  (expected)
+func BenchmarkPayloadCacheDirect20k(b *testing.B) {
+	benchmarkPayloadCacheDirect(b, 20_000, 4)
+}
+
+func benchmarkPayloadCacheDirect(b *testing.B, nEntities, avgDegree int) {
+	b.Helper()
+	doc := makeSyntheticDoc(nEntities, avgDegree)
+	s := newBenchServer(b, doc)
+	handler := s.routes()
+
+	// Seed the payload cache with one cold request.
+	seedReq := httptest.NewRequest(http.MethodGet, "/api/graph/bench", nil)
+	seedRW := httptest.NewRecorder()
+	handler.ServeHTTP(seedRW, seedReq)
+	if seedRW.Code != http.StatusOK {
+		b.Fatalf("seed status=%d", seedRW.Code)
+	}
+
+	// Confirm the cache was populated.
+	cacheKey := payloadCacheKey("bench", "", "", "", false, false)
+	if _, hit := s.graphs.Payloads.Get(cacheKey); !hit {
+		b.Fatal("payload cache was not populated after seed request")
+	}
+
+	b.Run("plain-cache-hit", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/api/graph/bench", nil)
+			rw := httptest.NewRecorder()
+			handler.ServeHTTP(rw, req)
+			if rw.Code != http.StatusOK {
+				b.Fatalf("status=%d", rw.Code)
+			}
+		}
+	})
+
+	b.Run("etag-304-cache-hit", func(b *testing.B) {
+		// Get the ETag from the seed response.
+		etag := seedRW.Header().Get("ETag")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/api/graph/bench", nil)
+			req.Header.Set("If-None-Match", etag)
+			rw := httptest.NewRecorder()
+			handler.ServeHTTP(rw, req)
+			if rw.Code != http.StatusNotModified {
+				b.Fatalf("expected 304, got %d", rw.Code)
+			}
+		}
+	})
+}
