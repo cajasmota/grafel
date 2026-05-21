@@ -912,7 +912,7 @@ export async function postCandidateAction(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Diagnostics — GET /api/diagnostics, POST /api/diagnostics/kill-stale
+// Surface 6: Diagnostics — GET /api/diagnostics, POST /api/diagnostics/kill-stale
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface RepoDiagnostics {
@@ -1001,4 +1001,93 @@ export async function postKillStale(dryRun = false): Promise<KillStaleReply> {
     `/api/diagnostics/kill-stale${dryRun ? '?dry_run=true' : ''}`,
     { method: 'POST' },
   )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Surface 8: Patterns (#1189) ───────────────────────────────────────────────
+
+import type {
+  PatternsResponse,
+  PatternRow,
+  PatternGCResponse,
+  PatternExportResponse,
+} from '@/types/api'
+
+/** GET /api/patterns/{group} — list all patterns with optional filters */
+export async function fetchPatterns(
+  group: string,
+  filters: {
+    needs_attention?: boolean
+    status?: 'active' | 'candidate' | 'rejected'
+    confidence_min?: number
+  } = {},
+): Promise<PatternsResponse> {
+  if (USE_MOCKS) {
+    return {
+      patterns: [],
+      count: 0,
+      stats: { total: 0, pending_review: 0, rejected: 0, stale: 0, needs_attention: 0 },
+    }
+  }
+  const params = new URLSearchParams()
+  if (filters.needs_attention) params.set('needs_attention', 'true')
+  if (filters.status) params.set('status', filters.status)
+  if (filters.confidence_min !== undefined) {
+    params.set('confidence_min', String(filters.confidence_min))
+  }
+  const qs = params.toString()
+  return apiFetch<PatternsResponse>(`/api/patterns/${group}${qs ? `?${qs}` : ''}`)
+}
+
+/** GET /api/patterns/{group}/{id} — single pattern detail */
+export async function fetchPatternDetail(group: string, id: string): Promise<PatternRow> {
+  if (USE_MOCKS) throw new Error('No mock for pattern detail')
+  return apiFetch<PatternRow>(`/api/patterns/${group}/${encodeURIComponent(id)}`)
+}
+
+/** PUT /api/patterns/{group}/{id} — update mutable fields */
+export async function updatePattern(
+  group: string,
+  id: string,
+  patch: Partial<Pick<PatternRow, 'confidence' | 'is_candidate' | 'approval_note' | 'reject_reason' | 'steps' | 'category'>>,
+): Promise<PatternRow> {
+  if (USE_MOCKS) throw new Error('No mock for pattern update')
+  return apiFetch<PatternRow>(`/api/patterns/${group}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  })
+}
+
+/** DELETE /api/patterns/{group}/{id} — remove a pattern */
+export async function deletePattern(group: string, id: string): Promise<void> {
+  if (USE_MOCKS) return
+  await apiFetch<unknown>(`/api/patterns/${group}/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+/** POST /api/patterns/{group}/gc — dry-run or execute garbage collection */
+export async function runPatternGC(
+  group: string,
+  dryRun: boolean,
+): Promise<PatternGCResponse> {
+  if (USE_MOCKS) {
+    return { dry_run: dryRun, pruned_count: 0, pruned: [], remaining_count: 0, candidate_decay_days: 90 }
+  }
+  return apiFetch<PatternGCResponse>(`/api/patterns/${group}/gc`, {
+    method: 'POST',
+    body: JSON.stringify({ dry_run: dryRun }),
+  })
+}
+
+/** POST /api/patterns/{group}/export — write CLAUDE.md marker block */
+export async function exportPatterns(
+  group: string,
+  target: { file?: string; repo?: string },
+): Promise<PatternExportResponse> {
+  if (USE_MOCKS) return { exported: 0, target: '' }
+  return apiFetch<PatternExportResponse>(`/api/patterns/${group}/export`, {
+    method: 'POST',
+    body: JSON.stringify(target),
+  })
 }
