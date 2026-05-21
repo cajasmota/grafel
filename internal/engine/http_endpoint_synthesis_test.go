@@ -31,7 +31,8 @@ func runDetect(t *testing.T, language, path, content string) ([]string, *DetectR
 	}
 	var ids []string
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind {
+		// #1217: accept both the new split kinds and the legacy kind for backward compat.
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind {
 			ids = append(ids, e.ID)
 		}
 	}
@@ -581,7 +582,7 @@ func contains(xs []string, want string) bool {
 // while allowing the consumer-side pass to run.
 func hasExpressProducer(res *DetectResult) bool {
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.Properties != nil && e.Properties["framework"] == "express" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.Properties != nil && e.Properties["framework"] == "express" {
 			return true
 		}
 	}
@@ -594,7 +595,7 @@ func hasExpressProducer(res *DetectResult) bool {
 func expressProducerIDs(res *DetectResult) []string {
 	var out []string
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.Properties != nil && e.Properties["framework"] == "express" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.Properties != nil && e.Properties["framework"] == "express" {
 			out = append(out, e.ID)
 		}
 	}
@@ -686,7 +687,8 @@ def get_thing(id):
 	// `source_handler` property.
 	var sawHandler bool
 	for _, e := range res.Entities {
-		if e.Kind != "http_endpoint" || e.ID != "http:GET:/things/{id}" {
+		// #1217: producer-side routes are now emitted as http_endpoint_definition.
+		if (e.Kind != "http_endpoint" && e.Kind != "http_endpoint_definition") || e.ID != "http:GET:/things/{id}" {
 			continue
 		}
 		if e.Properties != nil && strings.HasSuffix(e.Properties["source_handler"], ":get_thing") {
@@ -772,9 +774,10 @@ def update_user(user_id: int):
 	}
 
 	// Verify the verb property is correct on each emitted entity.
+	// #1217: accept both the new split kind and the legacy kind.
 	verbFor := map[string]string{}
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind {
 			verbFor[e.ID] = e.Properties["verb"]
 		}
 	}

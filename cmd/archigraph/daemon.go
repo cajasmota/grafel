@@ -348,7 +348,8 @@ func buildAgentsMapStats(group, repoPath string) agents.Stats {
 		s.Relationships = doc.Stats.Relationships
 		for _, e := range doc.Entities {
 			switch e.Kind {
-			case "http_endpoint":
+			// #1217: count all three http endpoint kind strings.
+			case "http_endpoint", "http_endpoint_definition", "http_endpoint_call":
 				s.HTTPEndpoints++
 			case "queue":
 				s.Queues++

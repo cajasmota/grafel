@@ -13,10 +13,17 @@ import (
 
 // shapeOf returns the http_endpoint synthetic with the given verb+path
 // from a runDetect result. Failing the lookup is a test error.
+// isHTTPEndpointKindLocal reports whether kind is any of the three HTTP
+// endpoint kind strings for test helpers. #1217.
+func isHTTPEndpointKindLocal(kind string) bool {
+	return kind == httpEndpointKind || kind == httpEndpointDefinitionKind || kind == httpEndpointCallKind
+}
+
 func shapeOf(t *testing.T, res *DetectResult, id string) map[string]string {
 	t.Helper()
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == id {
+		// #1217: accept all three http endpoint kind strings.
+		if isHTTPEndpointKindLocal(e.Kind) && e.ID == id {
 			return e.Properties
 		}
 	}
@@ -27,7 +34,8 @@ func shapeOf(t *testing.T, res *DetectResult, id string) map[string]string {
 func dumpEndpointIDs(res *DetectResult) string {
 	var out []string
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind {
+		// #1217: accept all three http endpoint kind strings.
+		if isHTTPEndpointKindLocal(e.Kind) {
 			out = append(out, e.ID)
 		}
 	}

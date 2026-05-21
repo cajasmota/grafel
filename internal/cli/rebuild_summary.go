@@ -150,7 +150,8 @@ func ComputeRebuildSummary(group string, repoPaths []string, elapsed time.Durati
 				s.TotalEntities++
 				k := normaliseEntityKind(e.Kind)
 				s.EntityByKind[k]++
-				if e.Kind == "http_endpoint" {
+				// #1217: count all three http endpoint kind strings.
+				if e.Kind == "http_endpoint" || e.Kind == "http_endpoint_definition" || e.Kind == "http_endpoint_call" {
 					s.HTTPEndpoints++
 				}
 				if strings.HasPrefix(e.Kind, "SCOPE.Process") || e.Kind == "process" {
@@ -205,7 +206,8 @@ func normaliseEntityKind(kind string) string {
 		return "Class"
 	case "variable", "constant", "field":
 		return "Variable"
-	case "http_endpoint":
+	// #1217: normalise all three http endpoint kind strings to the same bucket.
+	case "http_endpoint", "http_endpoint_definition", "http_endpoint_call":
 		return "HTTPEndpoint"
 	default:
 		return kind

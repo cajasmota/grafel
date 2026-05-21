@@ -65,7 +65,8 @@ func applyResponseShapes(lang string, content []byte, entities []types.EntityRec
 	src := string(content)
 	for i := range entities {
 		e := &entities[i]
-		if e.Kind != httpEndpointKind {
+		// #1217: apply response shape extraction to all three http endpoint kinds.
+		if e.Kind != httpEndpointKind && e.Kind != httpEndpointDefinitionKind && e.Kind != httpEndpointCallKind {
 			continue
 		}
 		if e.Properties == nil {

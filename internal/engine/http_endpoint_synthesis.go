@@ -39,6 +39,8 @@ package engine
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -46,10 +48,21 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-// httpEndpointKind is the entity Kind used for synthetic HTTP endpoints.
-// Every synthetic emitted by this pass uses this kind so downstream
-// queries can filter on it cleanly.
+// httpEndpointKind is the legacy entity Kind retained for backward
+// compatibility. After #1217 the synthesis pass emits
+// httpEndpointDefinitionKind for producer-side handlers and
+// httpEndpointCallKind for consumer-side call sites. The legacy constant
+// is kept so that the resolve pass, dashboard, and link layers can use
+// IsHTTPEndpointKind() to match all three forms transparently.
 const httpEndpointKind = "http_endpoint"
+
+// httpEndpointDefinitionKind is the new kind for backend handler definitions
+// (producer side). Introduced by #1217.
+const httpEndpointDefinitionKind = "http_endpoint_definition"
+
+// httpEndpointCallKind is the new kind for consumer-side HTTP call sites.
+// Introduced by #1217.
+const httpEndpointCallKind = "http_endpoint_call"
 
 // servesEdgeKind is the relationship Kind from a synthetic http_endpoint
 // to its handler (Route / Controller / Operation / View). Direction:
@@ -113,15 +126,11 @@ func applyHTTPEndpointSynthesis(
 	// regex (e.g. Spring's @GetMapping pattern). We only want one
 	// synthetic per endpoint per file.
 	seen := map[string]bool{}
-	// makeEmit builds an emit-closure parameterised by `patternType`
-	// (producer vs. consumer) and the property key used to record the
-	// related-entity reference (`source_handler` for the producer side
-	// from #534, `source_caller` for the consumer side from #533 Phase 1).
-	// The Phase-2 resolver (`ResolveHTTPEndpointHandlers`) only acts on
-	// `source_handler`; consumer synthetics with `source_caller` fall
-	// through the resolver untouched and land in the cross-repo linker
-	// by Name (`http:<verb>:<path>`) — the linker matches across repos
-	// on Name only, so no edge wiring is required for cross-repo links.
+	// makeEmit builds an emit-closure for the PRODUCER (backend handler) side.
+	// #1217: entities are now emitted with httpEndpointDefinitionKind. The
+	// synthetic ID retains the canonical `http:<METHOD>:<path>` form so
+	// cross-repo linkers continue to pair definitions with calls by Name.
+	// owning_backend is derived by walking the handler file path upward.
 	makeEmit := func(patternType, refPropKey string) emitFn {
 		return func(method, canonicalPath, framework, refKind, refName string) {
 			if canonicalPath == "" {
@@ -142,25 +151,35 @@ func applyHTTPEndpointSynthesis(
 			if refName != "" {
 				props[refPropKey] = fmt.Sprintf("%s:%s", refKind, refName)
 			}
+			// #1217 — derive owning_backend for producer-side definitions.
+			// Walk up from the handler file until a manifest or framework
+			// marker is found; fall back to the top-level directory name.
+			if patternType == "http_endpoint_synthesis" {
+				props["owning_backend"] = deriveOwningBackend(path)
+			}
+
 			// Issue #708 — mark consumer-side synthetics whose canonical
 			// path begins with a `{<name>}` placeholder, either at the
 			// very start or immediately after the leading slash (e.g.
 			// `{tenantId}/contracts/{id}` or `/{tenantId}/contracts/{id}`).
 			// The first segment is a tenant ID / environment selector that
 			// determines which backend the call targets at runtime — static
-			// link matching can never land these. The flag is consumed by
-			// enrichment.CollectDynamicBaseURLCandidates, which surfaces
-			// them in archigraph_repairs action=list with
-			// category="cross-repo runtime".
+			// link matching can never land these.
 			if patternType == "http_endpoint_client_synthesis" &&
 				hasDynamicBaseURLPath(canonicalPath) {
 				props["dynamic_baseurl"] = "true"
 			}
 
+			// #1217: use the new split kinds.
+			kind := httpEndpointDefinitionKind
+			if patternType == "http_endpoint_client_synthesis" {
+				kind = httpEndpointCallKind
+			}
+
 			entities = append(entities, types.EntityRecord{
 				ID:                 id,
 				Name:               id,
-				Kind:               httpEndpointKind,
+				Kind:               kind,
 				SourceFile:         path,
 				Language:           lang,
 				Properties:         props,
@@ -178,6 +197,9 @@ func applyHTTPEndpointSynthesis(
 	// (`<kind>:<name>`) that the downstream resolver binds to a stamped
 	// entity. When `runtimeDynamic` is true the synthetic carries
 	// `runtime_dynamic=true`, surfacing the URL to the repair flow (#732).
+	// #1217: the emitted entity is http_endpoint_call (via emitClient).
+	// caller_file is stamped from the containing file path and url_kind is
+	// derived from the path shape.
 	makeRuntimeEmit := func() func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool) {
 		return func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool) {
 			if canonicalPath == "" {
@@ -190,10 +212,16 @@ func applyHTTPEndpointSynthesis(
 			// is the first time we see this ID and the URL was derived
 			// from a runtime-dynamic source (env var, unresolved const).
 			// Note: the entity is the last one appended by emitClient.
-			if !alreadySeen && runtimeDynamic && len(entities) > 0 {
-				entities[len(entities)-1].Properties["runtime_dynamic"] = "true"
+			if !alreadySeen && len(entities) > 0 {
+				last := &entities[len(entities)-1]
+				if runtimeDynamic {
+					last.Properties["runtime_dynamic"] = "true"
+				}
+				// #1217 — stamp caller_file and url_kind on every http_endpoint_call.
+				last.Properties["caller_file"] = path
+				last.Properties["url_kind"] = urlKindFromPath(canonicalPath, runtimeDynamic)
 			}
-			// FETCHES edge: <kind>:<name> → http_endpoint:<verb>:<path>.
+			// FETCHES edge: <kind>:<name> → http_endpoint_call:<verb>:<path>.
 			// We only emit the edge when we have a caller reference; the
 			// resolver will discard edges whose FromID never resolves.
 			if refName != "" {
@@ -809,6 +837,105 @@ func hasDynamicBaseURLPath(path string) bool {
 	rest := strings.TrimPrefix(path, "/")
 	// First character of the first segment must open a placeholder.
 	return strings.HasPrefix(rest, "{")
+}
+
+// ---------------------------------------------------------------------------
+// #1217: owning_backend derivation + url_kind classification
+// ---------------------------------------------------------------------------
+
+// manifestFileNames is the ordered list of file names that indicate a
+// backend service boundary. We walk up the directory tree from a handler
+// file and stop at the first directory that contains one of these files.
+var manifestFileNames = []string{
+	"pyproject.toml", "setup.py", "setup.cfg", // Python
+	"package.json",                             // JS/TS/Node
+	"go.mod",                                   // Go
+	"Cargo.toml",                               // Rust
+	"pom.xml", "build.gradle", "build.gradle.kts", // Java/Kotlin
+	"Gemfile",                                  // Ruby
+	"composer.json",                            // PHP
+	"*.csproj",                                 // C#
+	"requirements.txt",                         // Python fallback
+}
+
+// frameworkMarkerFiles are files whose presence (anywhere in the directory
+// walk) signals a framework boundary even when no manifest is found.
+var frameworkMarkerFiles = []string{
+	"manage.py",      // Django
+	"wsgi.py",        // WSGI-based Python
+	"asgi.py",        // ASGI-based Python
+	"app.py",         // Flask / FastAPI common entry
+	"main.py",        // FastAPI common entry
+	"server.js",      // Express
+	"app.js",         // Express
+	"index.js",       // Node.js entry
+	"main.go",        // Go entry
+}
+
+// deriveOwningBackend walks up the directory tree from filePath until it
+// finds a directory containing a manifest file or a framework marker, then
+// returns the directory name as the owning_backend. Falls back to the
+// top-level directory name if no manifest is found within 8 levels.
+//
+// Example: for `apps/api/handlers/users.py` it might find `apps/api` (if
+// that directory contains `pyproject.toml`) and return "api".
+func deriveOwningBackend(filePath string) string {
+	dir := filepath.Dir(filePath)
+	maxLevels := 8
+	for i := 0; i < maxLevels; i++ {
+		if dir == "." || dir == "" || dir == "/" {
+			break
+		}
+		if directoryHasManifest(dir) {
+			return filepath.Base(dir)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	// Fallback: use the top-level directory segment of the file path.
+	// This covers single-backend repos where there is no nested manifest.
+	parts := strings.SplitN(filepath.ToSlash(filePath), "/", 3)
+	if len(parts) > 0 && parts[0] != "" && parts[0] != "." {
+		return parts[0]
+	}
+	return "unknown"
+}
+
+// directoryHasManifest reports whether dir contains a manifest file or
+// framework marker. Uses os.Stat so it works with both real file trees
+// (during actual indexing) and in-memory test scenarios.
+func directoryHasManifest(dir string) bool {
+	allMarkers := append(manifestFileNames, frameworkMarkerFiles...)
+	for _, name := range allMarkers {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// urlKindFromPath classifies a canonical URL path into one of three
+// url_kind values used on http_endpoint_call entities (#1217):
+//   - "dynamic_baseurl"  — the first path segment is a runtime placeholder
+//   - "template_literal" — the path contains a mid-path placeholder
+//   - "literal"          — fully static path string
+func urlKindFromPath(canonicalPath string, runtimeDynamic bool) string {
+	if runtimeDynamic || hasDynamicBaseURLPath(canonicalPath) {
+		return "dynamic_baseurl"
+	}
+	// Mid-path template-literal placeholder: ${…} (JS) or {name} (generic)
+	// at any position except the first segment (which is already handled above).
+	if strings.Contains(canonicalPath, "${") {
+		return "template_literal"
+	}
+	// Canonical path parameters like /users/{id} are NOT template literals —
+	// those are static route patterns. Only flag mid-path {…} segments that
+	// do NOT look like route parameters (i.e. the placeholder itself contains
+	// a space, $, or operator character — indicating a variable expansion).
+	return "literal"
 }
 
 // isXMLNamespacePath reports whether a canonical path looks like an XML

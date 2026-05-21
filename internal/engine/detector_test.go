@@ -285,7 +285,8 @@ func TestDetect_GinEntityProperties(t *testing.T) {
 		// pass (#722) intentionally carry framework=gin / pattern_type=
 		// http_endpoint_synthesis — those are not subject to the YAML
 		// invariants below.
-		if e.Kind == httpEndpointKind {
+		// #1217: skip all three http endpoint kind variants (synthesis emits definition/call now).
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind {
 			continue
 		}
 		if e.Properties["framework"] != "go" {

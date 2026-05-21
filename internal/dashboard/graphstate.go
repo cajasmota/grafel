@@ -26,6 +26,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/registry"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -328,7 +329,9 @@ func groupTopFrameworks(grp *DashGroup, cap int) []string {
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
 			kind := dashStripScopePrefix(e.Kind)
-			if !strings.EqualFold(kind, httpEndpointKind) && kind != "Endpoint" && kind != "Route" {
+			// #1217 backward compat: accept all three http endpoint kind strings.
+			if !types.IsHTTPEndpointKind(kind) && !strings.EqualFold(kind, httpEndpointKind) &&
+				kind != "Endpoint" && kind != "Route" {
 				continue
 			}
 			if fw := e.Properties["framework"]; fw != "" {

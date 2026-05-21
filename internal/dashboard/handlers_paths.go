@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/mcp"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 const (
@@ -112,16 +113,20 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 		}
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
+			// #1217: accept all three http endpoint kind strings for backward
+			// compat with graphs indexed before the split. Exclude call-site
+			// synthetics (consumer side) — they belong in the Orphan Callers tab.
 			kind := dashStripScopePrefix(e.Kind)
 			isDefinition := strings.EqualFold(kind, httpEndpointDefinitionKind)
-			isEndpoint := strings.EqualFold(kind, httpEndpointKind) ||
+			isHTTPEndpoint := types.IsHTTPEndpointKind(kind) ||
+				strings.EqualFold(kind, httpEndpointKind) ||
 				e.Kind == "Endpoint" || e.Kind == "Route"
-			if !isDefinition && !isEndpoint {
+			if !isHTTPEndpoint {
 				continue
 			}
-			// Skip frontend-only synthetic call-site entries — those belong
-			// in the Orphan Callers tab, not the Endpoints list.
-			if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+			// Exclude call-site entities (new kind) and legacy consumer-side synthetics.
+			if e.Kind == "http_endpoint_call" ||
+				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
 				continue
 			}
 			path := e.Properties["path"]
@@ -313,12 +318,16 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 	for _, repo := range sortedRepos(grp) {
 		for i := range repo.Doc.Entities {
 			e := &repo.Doc.Entities[i]
-			if !strings.EqualFold(dashStripScopePrefix(e.Kind), httpEndpointKind) &&
-				e.Kind != "Endpoint" && e.Kind != "Route" {
+			// #1217 backward compat — accept all three http endpoint kinds.
+			isHTTPEndpoint2 := types.IsHTTPEndpointKind(dashStripScopePrefix(e.Kind)) ||
+				strings.EqualFold(dashStripScopePrefix(e.Kind), httpEndpointKind) ||
+				e.Kind == "Endpoint" || e.Kind == "Route"
+			if !isHTTPEndpoint2 {
 				continue
 			}
-			// Skip frontend-only call-site synthetics — they are not real endpoints.
-			if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+			// Exclude call-site entities — they are not real endpoints.
+			if e.Kind == "http_endpoint_call" ||
+				e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
 				continue
 			}
 			path := e.Properties["path"]

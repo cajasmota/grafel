@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // handleSearch — GET /api/search/{group}?q=
@@ -100,7 +101,10 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	for _, r := range sortedRepos(grp) {
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			if !strings.EqualFold(dashStripScopePrefix(e.Kind), httpEndpointKind) &&
+			// #1217 backward compat: accept all three http endpoint kind strings.
+			bareKind := dashStripScopePrefix(e.Kind)
+			if !types.IsHTTPEndpointKind(bareKind) &&
+				!strings.EqualFold(bareKind, httpEndpointKind) &&
 				e.Kind != "Endpoint" && e.Kind != "Route" {
 				continue
 			}

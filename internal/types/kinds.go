@@ -84,6 +84,33 @@ const (
 	// the same synthetic ID so the existing import-channel linker joins them
 	// without any new linker code.
 	EntityKindEventBusEvent EntityKind = "SCOPE.EventBusEvent"
+
+	// #1217 (Sub-A of #1115): Split http_endpoint into two distinct kinds.
+	//
+	// HTTPEndpointDefinition is emitted for backend handler registrations
+	// (e.g. @app.route, APIRouter, Express app.get). It carries an
+	// owning_backend property derived by walking the handler file path up
+	// until a framework manifest (pyproject.toml, package.json, go.mod) or
+	// framework marker is found. The synthetic ID retains the canonical
+	// `http:<METHOD>:<path>` form so the cross-repo linker continues to
+	// match producer↔consumer by Name without code changes.
+	//
+	// HTTPEndpointCall is emitted for consumer-side call sites (fetch, axios,
+	// requests.get, etc.). It carries caller_file, caller_line, and url_kind
+	// ("literal" | "template_literal" | "dynamic_baseurl"). One entity per
+	// call site — no merging.
+	//
+	// Backward compatibility: all existing dashboard, link, and MCP query
+	// code that compares e.Kind against "http_endpoint" uses the helper
+	// IsHTTPEndpointKind() to match either new kind. The old kind string
+	// is preserved as HTTPEndpointKindLegacy for aliasing only — no new
+	// producers should emit it.
+	EntityKindHTTPEndpointDefinition EntityKind = "http_endpoint_definition"
+	EntityKindHTTPEndpointCall       EntityKind = "http_endpoint_call"
+	// HTTPEndpointKindLegacy is the pre-#1217 kind string. Kept so that
+	// on-disk graphs indexed before this release can still be read without
+	// a migration step. No extractor emits this kind after #1217.
+	HTTPEndpointKindLegacy EntityKind = "http_endpoint"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -132,7 +159,41 @@ func AllEntityKinds() []EntityKind {
 		EntityKindServerlessFunction,
 		// #927:
 		EntityKindEventBusEvent,
+		// #1217:
+		EntityKindHTTPEndpointDefinition,
+		EntityKindHTTPEndpointCall,
+		HTTPEndpointKindLegacy,
 	}
+}
+
+// IsHTTPEndpointKind reports whether kind is any of the three HTTP endpoint
+// entity kinds: the pre-#1217 legacy kind and the two new split kinds.
+// Use this helper everywhere instead of a raw string comparison against
+// "http_endpoint" so that existing code transparently handles graphs
+// indexed before and after the #1217 split.
+func IsHTTPEndpointKind(kind string) bool {
+	switch kind {
+	case string(HTTPEndpointKindLegacy),
+		string(EntityKindHTTPEndpointDefinition),
+		string(EntityKindHTTPEndpointCall):
+		return true
+	}
+	return false
+}
+
+// IsHTTPEndpointDefinitionKind reports whether kind represents a backend
+// handler definition (either the new dedicated kind or the legacy kind,
+// which was exclusively producer-side before the #1217 split for graphs
+// where pattern_type != "http_endpoint_client_synthesis").
+func IsHTTPEndpointDefinitionKind(kind string) bool {
+	return kind == string(EntityKindHTTPEndpointDefinition) || kind == string(HTTPEndpointKindLegacy)
+}
+
+// IsHTTPEndpointCallKind reports whether kind represents a consumer call
+// site (either the new dedicated kind or the legacy kind with
+// pattern_type == "http_endpoint_client_synthesis").
+func IsHTTPEndpointCallKind(kind string) bool {
+	return kind == string(EntityKindHTTPEndpointCall)
 }
 
 // IsValidEntityKind reports whether s is one of the typed EntityKind values.
@@ -276,6 +337,15 @@ const (
 	RelationshipKindEventBridgeTriggers RelationshipKind = "EVENTBRIDGE_TRIGGERS"
 	RelationshipKindEventGridTriggers   RelationshipKind = "EVENTGRID_TRIGGERS"
 	RelationshipKindCloudEventFlows     RelationshipKind = "CLOUDEVENT_FLOWS"
+
+	// #1217 (Sub-A of #1115): HTTP endpoint kind split.
+	// UNRESOLVED_FETCH is emitted from an http_endpoint_call to an
+	// http_endpoint_definition when the static linker cannot pair them
+	// (e.g. dynamic base URL, template-literal path, or no matching
+	// definition in the indexed group). Orphan calls that previously
+	// required a post-hoc regex pass (#1099) become first-class graph
+	// citizens via this edge kind.
+	RelationshipKindUnresolvedFetch RelationshipKind = "UNRESOLVED_FETCH"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -339,6 +409,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindEventBridgeTriggers,
 		RelationshipKindEventGridTriggers,
 		RelationshipKindCloudEventFlows,
+		// #1217:
+		RelationshipKindUnresolvedFetch,
 	}
 }
 

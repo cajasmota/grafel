@@ -329,7 +329,8 @@ app.get("/api/things", (req, res) => { res.json({}); });
 	_, res := runDetect(t, "javascript", "server.js", src)
 	count := 0
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:GET:/api/things" {
+		// #1217: producer-side routes are now emitted as http_endpoint_definition.
+		if e.Kind == httpEndpointDefinitionKind && e.ID == "http:GET:/api/things" {
 			count++
 			if pt := e.Properties["pattern_type"]; pt != "http_endpoint_synthesis" {
 				t.Errorf("expected pattern_type=http_endpoint_synthesis for producer-side route, got %q", pt)
@@ -355,7 +356,8 @@ async def list_items():
 	_, res := runDetect(t, "python", "server.py", src)
 	count := 0
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:GET:/api/items" {
+		// #1217: producer-side routes are now emitted as http_endpoint_definition.
+		if e.Kind == httpEndpointDefinitionKind && e.ID == "http:GET:/api/items" {
 			count++
 			if pt := e.Properties["pattern_type"]; pt != "http_endpoint_synthesis" {
 				t.Errorf("expected producer-side pattern_type, got %q", pt)
@@ -1040,7 +1042,7 @@ export async function loadUsers() {
 	_, res := runDetect(t, "typescript", "721-process-env-fetch.ts", src)
 	foundDynamic := false
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:GET:/users" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.ID == "http:GET:/users" {
 			if e.Properties["runtime_dynamic"] == "true" {
 				foundDynamic = true
 			}
@@ -1063,7 +1065,7 @@ export async function listItems() {
 	_, res := runDetect(t, "typescript", "721-import-meta-axios.ts", src)
 	foundDynamic := false
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:GET:/items" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.ID == "http:GET:/items" {
 			if e.Properties["runtime_dynamic"] == "true" {
 				foundDynamic = true
 			}
@@ -1085,7 +1087,7 @@ export async function getHealth() {
 	_, res := runDetect(t, "typescript", "721-next-public.ts", src)
 	foundDynamic := false
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:GET:/health" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.ID == "http:GET:/health" {
 			if e.Properties["runtime_dynamic"] == "true" {
 				foundDynamic = true
 			}
@@ -1112,7 +1114,7 @@ def fetch_users():
 	_, res := runDetect(t, "python", "721-py-env-concat.py", src)
 	foundDynamic := false
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:GET:/users" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.ID == "http:GET:/users" {
 			if e.Properties["runtime_dynamic"] == "true" {
 				foundDynamic = true
 			}
@@ -1135,7 +1137,7 @@ def create_item(body):
 	_, res := runDetect(t, "python", "721-py-getenv-concat.py", src)
 	foundDynamic := false
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:POST:/items" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.ID == "http:POST:/items" {
 			if e.Properties["runtime_dynamic"] == "true" {
 				foundDynamic = true
 			}
@@ -1281,7 +1283,7 @@ public class UserService {
 	_, res := runDetect(t, "java", "721-java-getenv.java", src)
 	foundDynamic := false
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:GET:/users" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.ID == "http:GET:/users" {
 			if e.Properties["runtime_dynamic"] == "true" {
 				foundDynamic = true
 			}
@@ -1311,7 +1313,7 @@ export async function fetchContracts(tenantId, contractId) {
 	_, res := runDetect(t, "typescript", "708-dynamic-baseurl.ts", src)
 	var foundPath, foundPatternType, foundDynBaseURL string
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.Properties["dynamic_baseurl"] == "true" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.Properties["dynamic_baseurl"] == "true" {
 			foundPath = e.Properties["path"]
 			foundPatternType = e.Properties["pattern_type"]
 			foundDynBaseURL = e.Properties["dynamic_baseurl"]
@@ -1345,7 +1347,7 @@ export async function loadUsers() {
 	_, res := runDetect(t, "typescript", "708-env-baseurl.ts", src)
 	found := false
 	for _, e := range res.Entities {
-		if e.Kind == httpEndpointKind && e.ID == "http:GET:/users" {
+		if e.Kind == httpEndpointKind || e.Kind == httpEndpointDefinitionKind || e.Kind == httpEndpointCallKind && e.ID == "http:GET:/users" {
 			if e.Properties["runtime_dynamic"] == "true" {
 				found = true
 			}

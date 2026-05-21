@@ -27,6 +27,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // OrphanCallerRow is one unresolved call site returned by the endpoint.
@@ -104,11 +106,19 @@ func collectOrphanCallers(grp *DashGroup) []OrphanCallerRow {
 			bare := e.ID
 			prefixed := dashPrefixedID(repo.Slug, bare)
 
-			isHTTPEndpoint := strings.EqualFold(dashStripScopePrefix(e.Kind), httpEndpointKind)
+			// #1217 backward compat: accept all three http endpoint kind strings.
+			bareKind := dashStripScopePrefix(e.Kind)
+			isHTTPEndpoint := types.IsHTTPEndpointKind(bareKind) ||
+				strings.EqualFold(bareKind, httpEndpointKind)
 			if !isHTTPEndpoint {
 				continue
 			}
-			isProducer := e.Properties["pattern_type"] != "http_endpoint_client_synthesis"
+			// #1217: http_endpoint_definition is always producer-side;
+			// http_endpoint_call is always consumer-side.
+			// For legacy http_endpoint, fall back to pattern_type check.
+			isProducer := e.Kind == "http_endpoint_definition" ||
+				(e.Kind != "http_endpoint_call" &&
+					e.Properties["pattern_type"] != "http_endpoint_client_synthesis")
 
 			endpointByID[bare] = endpointEntry{repo: repo.Slug, isProducer: isProducer}
 			endpointByID[prefixed] = endpointEntry{repo: repo.Slug, isProducer: isProducer}

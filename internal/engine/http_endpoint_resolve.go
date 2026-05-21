@@ -76,12 +76,18 @@ var resolverKindEquivalents = map[string][]string{
 // Exposed so cmd/archigraph can log a stats line analogous to the
 // import-aware resolver line.
 type ResolveHTTPEndpointStats struct {
-	Synthetics       int // total http_endpoint records seen
+	Synthetics       int // total http_endpoint* records seen
 	HandlerResolved  int // source_handler resolved → IMPLEMENTS edge emitted
 	HandlerDropped   int // synthetics dropped because source_handler unresolved
 	NoHandlerProp    int // synthetics with no source_handler property (kept as-is)
 	CallerResolved   int // #754: source_caller resolved → FETCHES edge emitted
 	CallerUnresolved int // #754: source_caller present but not found in-file
+	// #1217 migration counters.
+	DefinitionsMigrated int // entities that were http_endpoint (legacy) → definition
+	CallsMigrated       int // entities that were http_endpoint (legacy) → call
+	// #1217 cross-link counters.
+	CallsLinked      int // call → definition FETCHES edges emitted
+	CallsUnresolved  int // call entities with no matching definition (UNRESOLVED_FETCH)
 }
 
 // ResolveHTTPEndpointHandlers runs the Phase-2 post-pass over `merged`.
@@ -112,10 +118,30 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 	// can locate and scan the actual handler body.
 	type knKey struct{ kind, name string }
 	globalIdx := make(map[knKey]int, len(merged))
+	// #1217: migrate legacy http_endpoint entities to the new split kinds
+	// based on their pattern_type property. Graphs indexed before this
+	// release may still carry the old kind string; we rewrite it in-place
+	// so the rest of the resolve pass works uniformly with the new kinds.
 	for i := range merged {
 		r := &merged[i]
-		if r.Kind == httpEndpointKind {
-			continue // never resolve a synthetic against another synthetic
+		if r.Kind != httpEndpointKind {
+			continue
+		}
+		if r.Properties != nil && r.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
+			r.Kind = httpEndpointCallKind
+			stats.CallsMigrated++
+		} else {
+			r.Kind = httpEndpointDefinitionKind
+			stats.DefinitionsMigrated++
+		}
+	}
+
+	for i := range merged {
+		r := &merged[i]
+		// Exclude all three http endpoint kinds from the handler index to
+		// avoid synthetics resolving against each other.
+		if r.Kind == httpEndpointDefinitionKind || r.Kind == httpEndpointCallKind || r.Kind == httpEndpointKind {
+			continue
 		}
 		k := key{r.Kind, r.Name, r.SourceFile}
 		if _, ok := idx[k]; !ok {
@@ -127,12 +153,26 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 		}
 	}
 
+	// Build an index of definitions by canonical Name (= synthetic ID)
+	// so that http_endpoint_call entities can be linked to their matching
+	// http_endpoint_definition via a FETCHES edge (#1217).
+	// Key: synthetic ID (e.g. "http:GET:/api/users") → merged index.
+	definitionByName := make(map[string]int, len(merged))
+	for i := range merged {
+		r := &merged[i]
+		if r.Kind == httpEndpointDefinitionKind {
+			if _, ok := definitionByName[r.Name]; !ok {
+				definitionByName[r.Name] = i
+			}
+		}
+	}
+
 	// Collect indices of synthetics to drop (unresolved handlers).
 	drop := map[int]bool{}
 
 	for i := range merged {
 		r := &merged[i]
-		if r.Kind != httpEndpointKind {
+		if r.Kind != httpEndpointDefinitionKind && r.Kind != httpEndpointCallKind {
 			continue
 		}
 		stats.Synthetics++
@@ -150,6 +190,48 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 					stats.CallerUnresolved++
 				}
 			}
+		}
+
+		// #1217 — for http_endpoint_call entities, attempt to link to the
+		// matching http_endpoint_definition by canonical Name (= synthetic ID).
+		// The synthetic ID is identical on both sides (http:<VERB>:<path>),
+		// so a simple name lookup is sufficient. Emit FETCHES on success;
+		// emit UNRESOLVED_FETCH when no definition is found in the merged set.
+		if r.Kind == httpEndpointCallKind {
+			if defIdx, found := definitionByName[r.Name]; found {
+				def := &merged[defIdx]
+				callStub := r.Kind + ":" + r.Name
+				defStub := def.Kind + ":" + def.Name
+				r.Relationships = append(r.Relationships, types.RelationshipRecord{
+					FromID: callStub,
+					ToID:   defStub,
+					Kind:   fetchesEdgeKind,
+					Properties: map[string]string{
+						"pattern_type": "http_endpoint_split_resolved",
+						"resolved":     "true",
+					},
+				})
+				stats.CallsLinked++
+			} else {
+				// No matching definition found — emit UNRESOLVED_FETCH so the
+				// orphan is first-class in the graph topology (deprecates the
+				// post-hoc orphan_caller detection from #1099).
+				r.Relationships = append(r.Relationships, types.RelationshipRecord{
+					FromID: r.Kind + ":" + r.Name,
+					ToID:   r.Name, // canonical ID stub — no definition entity exists
+					Kind:   string(types.RelationshipKindUnresolvedFetch),
+					Properties: map[string]string{
+						"pattern_type": "http_endpoint_split_unresolved",
+						"path":         propOr(r, "path", ""),
+						"verb":         propOr(r, "verb", ""),
+					},
+				})
+				stats.CallsUnresolved++
+			}
+			// http_endpoint_call has no source_handler — skip the handler
+			// resolution branch below.
+			stats.NoHandlerProp++
+			continue
 		}
 
 		handlerRef := ""
@@ -335,8 +417,8 @@ func resolveCallerToFetchesEdge(
 		if !isFallbackCallerCandidate(c) {
 			continue
 		}
-		// Skip the synthetic itself.
-		if c.Kind == httpEndpointKind {
+		// Skip any http endpoint synthetic (all three kind variants).
+		if c.Kind == httpEndpointKind || c.Kind == httpEndpointDefinitionKind || c.Kind == httpEndpointCallKind {
 			continue
 		}
 		emit(i)

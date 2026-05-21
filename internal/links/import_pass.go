@@ -80,10 +80,24 @@ func isBuiltinExt(id string, subtypes map[string]string) bool {
 	return true // bare-name built-in placeholder — skip.
 }
 
-// httpEndpointKindLink is the entity Kind used by the synthetic
-// http_endpoint emission pass (#534 Phase 1). Repeated here as a string
-// literal to avoid an internal/engine import cycle.
+// httpEndpointKindLink is the legacy entity Kind used by the synthetic
+// http_endpoint emission pass (#534 Phase 1). After #1217 the synthesis
+// pass emits http_endpoint_definition (producer) and http_endpoint_call
+// (consumer). This constant is kept for the constant references below;
+// use isHTTPEndpointLink() for kind-matching logic.
 const httpEndpointKindLink = "http_endpoint"
+
+// isHTTPEndpointLink reports whether kind is any of the three HTTP endpoint
+// entity kinds (legacy + the two new split kinds from #1217). Used throughout
+// the links package to match entities regardless of which extractor version
+// produced them.
+func isHTTPEndpointLink(kind string) bool {
+	switch kind {
+	case "http_endpoint", "http_endpoint_definition", "http_endpoint_call":
+		return true
+	}
+	return false
+}
 
 // runImportPass implements P1: structural cross-repo imports/calls edges.
 //
@@ -214,7 +228,7 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 	httpByName := map[string]map[string]httpEntry{}
 	for _, g := range graphs {
 		for _, e := range g.Entities {
-			if e.Kind != httpEndpointKindLink {
+			if !isHTTPEndpointLink(e.Kind) {
 				continue
 			}
 			if e.Name == "" {

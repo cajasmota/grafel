@@ -107,7 +107,8 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			if err == nil && doc != nil {
 				rs.Files = doc.Stats.Files
 				for _, e := range doc.Entities {
-					if e.Kind == "http_endpoint" {
+					// #1217: count all three http endpoint kind strings.
+					if e.Kind == "http_endpoint" || e.Kind == "http_endpoint_definition" || e.Kind == "http_endpoint_call" {
 						s.HTTPEndpoints++
 					}
 					// Check for process flows: SCOPE.Process or process kind.

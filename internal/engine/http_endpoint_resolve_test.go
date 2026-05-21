@@ -44,7 +44,9 @@ func TestResolveHandlers_EmitsImplementsEdgeAndClearsProperty(t *testing.T) {
 	if rel.Kind != implementsEdgeKind {
 		t.Errorf("expected kind=%s, got %s", implementsEdgeKind, rel.Kind)
 	}
-	if rel.FromID != "Controller:get_thing" || rel.ToID != "http_endpoint:http:GET:/things/{id}" {
+	// #1217: the legacy http_endpoint kind is migrated to http_endpoint_definition
+	// by ResolveHTTPEndpointHandlers, so the edge ToID uses the new kind.
+	if rel.FromID != "Controller:get_thing" || rel.ToID != "http_endpoint_definition:http:GET:/things/{id}" {
 		t.Errorf("edge ids wrong: from=%s to=%s", rel.FromID, rel.ToID)
 	}
 	// Synthetic's source_handler property cleared.
@@ -153,8 +155,9 @@ func TestResolveHandlers_FBVCrossFileKindFallback(t *testing.T) {
 	if rel.FromID != "SCOPE.Operation:health_check" {
 		t.Errorf("edge FromID wrong: got %q, want SCOPE.Operation:health_check", rel.FromID)
 	}
-	if rel.ToID != "http_endpoint:http:ANY:/users/health" {
-		t.Errorf("edge ToID wrong: got %q, want http_endpoint:http:ANY:/users/health", rel.ToID)
+	// #1217: legacy kind migrated to http_endpoint_definition.
+	if rel.ToID != "http_endpoint_definition:http:ANY:/users/health" {
+		t.Errorf("edge ToID wrong: got %q, want http_endpoint_definition:http:ANY:/users/health", rel.ToID)
 	}
 	// source_handler cleared from synthetic.
 	if _, ok := out[1].Properties["source_handler"]; ok {
@@ -199,8 +202,9 @@ func TestResolveCallers_EmitsFetchesEdge(t *testing.T) {
 			if r.FromID != "Function:fetchUsers" {
 				t.Errorf("FETCHES from = %q, want Function:fetchUsers", r.FromID)
 			}
-			if r.ToID != "http_endpoint:http:GET:/api/users" {
-				t.Errorf("FETCHES to = %q, want http_endpoint:http:GET:/api/users", r.ToID)
+			// #1217: legacy kind migrated to http_endpoint_call for consumer synthetics.
+			if r.ToID != "http_endpoint_call:http:GET:/api/users" {
+				t.Errorf("FETCHES to = %q, want http_endpoint_call:http:GET:/api/users", r.ToID)
 			}
 		}
 	}

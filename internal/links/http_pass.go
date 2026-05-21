@@ -196,7 +196,9 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 		type entKey struct{ kind, name, file string }
 		entIDByKey := map[entKey]string{}
 		for _, e := range g.Entities {
-			if e.Kind == httpEndpointKindLink {
+			// #1217: exclude all three http endpoint kind variants from the
+			// entID index so synthetics don't resolve against each other.
+			if isHTTPEndpointLink(e.Kind) {
 				continue
 			}
 			k := entKey{e.Kind, e.Name, e.SourceFile}
@@ -205,7 +207,8 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 			}
 		}
 		for _, e := range g.Entities {
-			if e.Kind != httpEndpointKindLink {
+			// #1217: match all three http endpoint kind variants.
+			if !isHTTPEndpointLink(e.Kind) {
 				continue
 			}
 			if e.Name == "" {

@@ -1938,13 +1938,24 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	merged, httpEndpointStats = engine.ResolveHTTPEndpointHandlers(merged)
 	if httpEndpointStats.Synthetics > 0 {
 		fmt.Fprintf(os.Stderr,
-			"http-endpoint-resolve: synthetics=%d handler_resolved=%d handler_dropped=%d no_handler_prop=%d caller_resolved=%d caller_unresolved=%d\n",
+			"http-endpoint-resolve: synthetics=%d handler_resolved=%d handler_dropped=%d no_handler_prop=%d caller_resolved=%d caller_unresolved=%d calls_linked=%d calls_unresolved=%d\n",
 			httpEndpointStats.Synthetics,
 			httpEndpointStats.HandlerResolved,
 			httpEndpointStats.HandlerDropped,
 			httpEndpointStats.NoHandlerProp,
 			httpEndpointStats.CallerResolved,
-			httpEndpointStats.CallerUnresolved)
+			httpEndpointStats.CallerUnresolved,
+			httpEndpointStats.CallsLinked,
+			httpEndpointStats.CallsUnresolved)
+	}
+	// #1217 migration hints: log how many legacy http_endpoint entities were
+	// rewritten to the split kinds. These lines appear only when a graph
+	// pre-dates #1217 (i.e. still has the old kind string on disk).
+	if httpEndpointStats.DefinitionsMigrated > 0 || httpEndpointStats.CallsMigrated > 0 {
+		fmt.Fprintf(os.Stderr,
+			"http-endpoint-split: %d entities migrated from http_endpoint to http_endpoint_definition, %d to http_endpoint_call\n",
+			httpEndpointStats.DefinitionsMigrated,
+			httpEndpointStats.CallsMigrated)
 	}
 
 	// Stamp deterministic entity IDs onto every record so the resolver can
