@@ -205,6 +205,37 @@ this endpoint; the created group reports `health: "unindexed"`.
 
 ---
 
+## 6b. Graph surface (Graph screen)
+
+`GET /api/v2/graph/{group}`
+
+Returns the full dependency graph for the WebUI v2 hero surface, wrapped in a
+`v2OK` envelope:
+
+```jsonc
+{ "ok": true, "data": {
+  "nodes": [{ "id", "label", "kind", "repo", "degree", "pagerank",
+              "community_id?", "source_file?" }],
+  "edges": [{ "source", "target", "kind" }],
+  "communities": [{ "id", "label", "repo", "size", "color_index" }],
+  "repos": [{ "id", "language", "color_index" }],
+  "total_node_count": 1234
+}}
+```
+
+Query params (mirror the v1 `/api/graph` handler): `repos=slug1,slug2`,
+`filter_kind=`, `include_external=true`, `view=modules`.
+
+This is a NEW endpoint, not a reuse of v1 `/api/graph/{group}`. Rationale: the
+v1 tier-1 payload deliberately omits `pagerank` + `source_file` to keep its wire
+shape tight, but the cosmos.gl renderer needs both (node sizing + the "module"
+group-by). A clean v2 endpoint keeps the two UIs independent. Like v1, it shares
+the server-side payload cache + strong ETag/304 + mux-level gzip (cache keys are
+namespaced with a `v2:` prefix). Entity detail for the inspector still uses the
+v1 `GET /api/graph/{group}/entity/{id}` (unchanged, raw JSON).
+
+---
+
 ## 7. Adding a new v2 endpoint — checklist
 
 - [ ] Handler file named `v2_<surface>.go`.

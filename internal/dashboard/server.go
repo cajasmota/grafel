@@ -520,6 +520,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/groups", s.handleV2Groups)
 	mux.HandleFunc("POST /api/v2/groups", s.handleV2CreateGroup)
 
+	// Graph — the WebUI v2 hero surface payload (nodes/edges/communities/repos).
+	// Carries pagerank + source_file for cosmos.gl node sizing + module group-by.
+	mux.HandleFunc("GET /api/v2/graph/{group}", s.handleV2Graph)
+
 	return s.withAuth(withGzip(mux))
 }
 

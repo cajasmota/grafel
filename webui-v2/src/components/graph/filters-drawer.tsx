@@ -1,0 +1,135 @@
+/* ============================================================
+   components/graph/filters-drawer.tsx — right slide-out filters + tuning.
+
+   Sections: Edge types · Repositories · Level of detail · (tuning panels).
+   ============================================================ */
+
+import { Dialog, DrawerContent, DialogTitle, Button } from "@/components/ui";
+import { useGraphStore, type LodLevel } from "@/store/use-graph-store";
+import type { EdgeKind, GraphRepo } from "@/data/types";
+import { TuningPanels } from "./tuning-panels";
+
+const EDGE_KINDS: EdgeKind[] = [
+  "CALLS",
+  "REFERENCES",
+  "RENDERS",
+  "DEPENDS_ON",
+  "EXTENDS",
+  "CONTAINS",
+  "IMPORTS",
+];
+
+const LODS: LodLevel[] = ["low", "mid", "high"];
+
+export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
+  const filtersOpen = useGraphStore((s) => s.filtersOpen);
+  const setFiltersOpen = useGraphStore((s) => s.setFiltersOpen);
+  const enabledEdgeKinds = useGraphStore((s) => s.enabledEdgeKinds);
+  const toggleEdgeKind = useGraphStore((s) => s.toggleEdgeKind);
+  const activeRepos = useGraphStore((s) => s.activeRepos);
+  const toggleRepo = useGraphStore((s) => s.toggleRepo);
+  const lod = useGraphStore((s) => s.lod);
+  const setLod = useGraphStore((s) => s.setLod);
+  const clearAllFilters = useGraphStore((s) => s.clearAllFilters);
+
+  return (
+    <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+      <DrawerContent className="flex flex-col">
+        <DialogTitle className="text-md font-semibold text-text">Filters</DialogTitle>
+
+        <div className="ag-scroll mt-4 min-h-0 flex-1 space-y-4">
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-3">Edge types</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {EDGE_KINDS.map((k) => {
+                const on = enabledEdgeKinds.has(k);
+                return (
+                  <button
+                    key={k}
+                    onClick={() => toggleEdgeKind(k)}
+                    aria-pressed={on}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs transition-colors ${
+                      on
+                        ? "border-transparent bg-accent-soft text-accent-strong"
+                        : "border-border bg-surface text-text-3 hover:bg-surface-2"
+                    }`}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                    {k}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-3">Repositories</h4>
+            <div className="space-y-1.5">
+              {repos.map((r) => {
+                const on = activeRepos?.has(r.id) ?? false;
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => toggleRepo(r.id)}
+                    aria-pressed={on}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-1.5 text-left transition-colors ${
+                      on
+                        ? "border-transparent bg-accent-soft text-accent-strong"
+                        : "border-border bg-surface text-text-2 hover:bg-surface-2"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ background: `var(--pastel-${((r.colorIndex - 1) % 10) + 1})` }}
+                      />
+                      <span className="font-mono text-sm">{r.id}</span>
+                    </span>
+                    <span className="text-xs text-text-3">{r.language}</span>
+                  </button>
+                );
+              })}
+              {repos.length === 0 ? <p className="text-sm text-text-3">No repos.</p> : null}
+            </div>
+            {activeRepos ? (
+              <p className="mt-1.5 text-xs text-text-3">{activeRepos.size} selected · others hidden</p>
+            ) : (
+              <p className="mt-1.5 text-xs text-text-3">No selection = all repos shown</p>
+            )}
+          </section>
+
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-3">Level of detail</h4>
+            <div className="grid grid-cols-3 gap-1">
+              {LODS.map((l) => (
+                <button
+                  key={l}
+                  onClick={() => setLod(l)}
+                  aria-pressed={lod === l}
+                  className={`h-7 rounded-md border text-xs font-medium uppercase transition-colors ${
+                    lod === l
+                      ? "border-transparent bg-accent-soft text-accent-strong"
+                      : "border-border bg-surface text-text-2 hover:bg-surface-2"
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <TuningPanels />
+        </div>
+
+        <footer className="mt-4 flex items-center justify-between gap-2 border-t border-border pt-3">
+          <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+            Clear all
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => setFiltersOpen(false)}>
+            Done
+          </Button>
+        </footer>
+      </DrawerContent>
+    </Dialog>
+  );
+}
