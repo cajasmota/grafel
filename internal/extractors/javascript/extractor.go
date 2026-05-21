@@ -14,8 +14,13 @@
 //   - method_definition          → Kind="SCOPE.Operation"
 //   - public_field_definition (arrow RHS) → Kind="SCOPE.Operation" (issue #771)
 //   - public_field_definition (non-arrow, plain value) → Kind="SCOPE.Schema/field" (issue #679)
-//   - interface_declaration (TS) → Kind="SCOPE.Schema"
-//   - type_alias_declaration (TS)→ Kind="SCOPE.Schema"
+//   - interface_declaration (TS) → Kind="SCOPE.Schema" subtype="interface"
+//     Properties: fields (comma-sep), generics (comma-sep), extends (comma-sep)
+//     Edges: EXTENDS per extends clause (issue #1343)
+//   - type_alias_declaration (TS)→ Kind="SCOPE.Schema" subtype="type_alias"
+//     Properties: generics (comma-sep), type_body (raw rhs text) (issue #1343)
+//   - enum_declaration (TS)      → Kind="SCOPE.Schema" subtype="enum"
+//     Properties: members (comma-sep) (issue #1343)
 //   - import_statement + require → IMPORTS edge on file entity (issue #742)
 package javascript
 
@@ -387,6 +392,32 @@ func (x *extractor) emitWithRels(name, kind string, n *sitter.Node, subtype stri
 	x.entities = append(x.entities, e)
 }
 
+// emitWithProps appends an entity to the extraction results using a caller-supplied
+// Properties map rather than the default {"kind": ..., "subtype": ...} map.
+// Used by handlers that need to store structured metadata (fields, generics, etc.).
+func (x *extractor) emitWithProps(name, kind string, n *sitter.Node, subtype string, sig string, props map[string]string, rels []types.RelationshipRecord) {
+	if name == "" || name == "?" {
+		return
+	}
+	start, end := lines(n)
+	e := types.EntityRecord{
+		Name:             name,
+		Kind:             kind,
+		SourceFile:       x.filePath,
+		StartLine:        start,
+		EndLine:          end,
+		Language:         x.language,
+		Subtype:          subtype,
+		Signature:        sig,
+		Properties:       props,
+		EnrichmentStatus: types.StatusPending,
+		QualityScore:     1.0,
+		Relationships:    rels,
+	}
+	e.ID = e.ComputeID()
+	x.entities = append(x.entities, e)
+}
+
 // walk performs a depth-first traversal of the CST, dispatching on node type.
 // parentClass is non-empty when inside a class body (used to tag methods).
 // cb carries the field-type bindings for the enclosing class so receiver-
@@ -428,6 +459,10 @@ func (x *extractor) walk(n *sitter.Node, parentClass string, cb *classBindings) 
 
 	case "type_alias_declaration":
 		x.handleTypeAliasDeclaration(n)
+		return
+
+	case "enum_declaration":
+		x.handleEnumDeclaration(n)
 		return
 
 	case "lexical_declaration", "variable_declaration":
@@ -646,23 +681,242 @@ func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass stri
 }
 
 // handleInterfaceDeclaration handles TypeScript interface declarations.
+//
+// Emits a SCOPE.Schema entity (subtype="interface") with structured Properties:
+//   - "fields"    : comma-separated list of field names declared in the body
+//   - "generics"  : comma-separated list of type-parameter names
+//   - "extends"   : comma-separated list of base interface names
+//
+// Also emits one EXTENDS relationship per base interface so the graph
+// captures the structural type hierarchy without requiring a resolver pass.
+// (issue #1343)
 func (x *extractor) handleInterfaceDeclaration(n *sitter.Node) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" {
 		return
 	}
-	x.emit(name, "SCOPE.Schema", n, "interface", fmt.Sprintf("interface %s", name))
+
+	props := map[string]string{
+		"kind":    "SCOPE.Schema",
+		"subtype": "interface",
+	}
+
+	// Generic type parameters: <T, U extends Foo>
+	var generics []string
+	if tpNode := n.ChildByFieldName("type_parameters"); tpNode != nil {
+		for i := 0; i < int(tpNode.ChildCount()); i++ {
+			ch := tpNode.Child(i)
+			if ch == nil {
+				continue
+			}
+			// type_parameter node has a "name" field
+			if ch.Type() == "type_parameter" {
+				if pn := ch.ChildByFieldName("name"); pn != nil {
+					generics = append(generics, x.nodeText(pn))
+				}
+			}
+		}
+	}
+	if len(generics) > 0 {
+		props["generics"] = strings.Join(generics, ", ")
+	}
+
+	// Extends clauses: interface Foo extends Bar, Baz
+	var extendsList []string
+	for i := 0; i < int(n.ChildCount()); i++ {
+		ch := n.Child(i)
+		if ch == nil {
+			continue
+		}
+		if ch.Type() == "extends_type_clause" {
+			// Each child of the clause that is a type_identifier or generic_type
+			for j := 0; j < int(ch.ChildCount()); j++ {
+				item := ch.Child(j)
+				if item == nil {
+					continue
+				}
+				switch item.Type() {
+				case "type_identifier", "identifier":
+					extendsList = append(extendsList, x.nodeText(item))
+				case "generic_type":
+					// e.g. Base<T> — use only the name part
+					if nn := item.ChildByFieldName("name"); nn != nil {
+						extendsList = append(extendsList, x.nodeText(nn))
+					}
+				}
+			}
+		}
+	}
+	if len(extendsList) > 0 {
+		props["extends"] = strings.Join(extendsList, ", ")
+	}
+
+	// Body fields: collect property_signature and method_signature names
+	var fields []string
+	if body := n.ChildByFieldName("body"); body != nil {
+		for i := 0; i < int(body.ChildCount()); i++ {
+			member := body.Child(i)
+			if member == nil {
+				continue
+			}
+			switch member.Type() {
+			case "property_signature", "method_signature", "index_signature":
+				if fn := member.ChildByFieldName("name"); fn != nil {
+					fields = append(fields, x.nodeText(fn))
+				}
+			}
+		}
+	}
+	if len(fields) > 0 {
+		props["fields"] = strings.Join(fields, ", ")
+	}
+
+	// Build EXTENDS edges for each base interface
+	var rels []types.RelationshipRecord
+	for _, base := range extendsList {
+		rels = append(rels, types.RelationshipRecord{
+			ToID: base,
+			Kind: "EXTENDS",
+		})
+	}
+
+	sig := fmt.Sprintf("interface %s", name)
+	if len(generics) > 0 {
+		sig = fmt.Sprintf("interface %s<%s>", name, strings.Join(generics, ", "))
+	}
+
+	start, end := lines(n)
+	e := types.EntityRecord{
+		Name:             name,
+		Kind:             "SCOPE.Schema",
+		SourceFile:       x.filePath,
+		StartLine:        start,
+		EndLine:          end,
+		Language:         x.language,
+		Subtype:          "interface",
+		Signature:        sig,
+		Properties:       props,
+		EnrichmentStatus: types.StatusPending,
+		QualityScore:     1.0,
+		Relationships:    rels,
+	}
+	e.ID = e.ComputeID()
+	x.entities = append(x.entities, e)
 }
 
 // handleTypeAliasDeclaration handles TypeScript type aliases: type Foo = ...
+//
+// Emits a SCOPE.Schema entity (subtype="type_alias") with Properties:
+//   - "generics"   : comma-separated type parameter names
+//   - "type_body"  : raw text of the right-hand-side type expression
+//
+// (issue #1343)
 func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" {
 		return
 	}
-	x.emit(name, "SCOPE.Schema", n, "type_alias", fmt.Sprintf("type %s", name))
+
+	props := map[string]string{
+		"kind":    "SCOPE.Schema",
+		"subtype": "type_alias",
+	}
+
+	// Generic type parameters
+	var generics []string
+	if tpNode := n.ChildByFieldName("type_parameters"); tpNode != nil {
+		for i := 0; i < int(tpNode.ChildCount()); i++ {
+			ch := tpNode.Child(i)
+			if ch == nil {
+				continue
+			}
+			if ch.Type() == "type_parameter" {
+				if pn := ch.ChildByFieldName("name"); pn != nil {
+					generics = append(generics, x.nodeText(pn))
+				}
+			}
+		}
+	}
+	if len(generics) > 0 {
+		props["generics"] = strings.Join(generics, ", ")
+	}
+
+	// RHS type body — capture raw text for union/intersection visibility
+	if valueNode := n.ChildByFieldName("value"); valueNode != nil {
+		body := x.nodeText(valueNode)
+		if body != "" && len(body) <= 512 {
+			props["type_body"] = body
+		}
+	}
+
+	sig := fmt.Sprintf("type %s", name)
+	if len(generics) > 0 {
+		sig = fmt.Sprintf("type %s<%s>", name, strings.Join(generics, ", "))
+	}
+
+	start, end := lines(n)
+	e := types.EntityRecord{
+		Name:             name,
+		Kind:             "SCOPE.Schema",
+		SourceFile:       x.filePath,
+		StartLine:        start,
+		EndLine:          end,
+		Language:         x.language,
+		Subtype:          "type_alias",
+		Signature:        sig,
+		Properties:       props,
+		EnrichmentStatus: types.StatusPending,
+		QualityScore:     1.0,
+	}
+	e.ID = e.ComputeID()
+	x.entities = append(x.entities, e)
+}
+
+// handleEnumDeclaration handles TypeScript enum declarations: enum Direction { Up, Down }
+//
+// Emits a SCOPE.Schema entity (subtype="enum") with Properties:
+//   - "members" : comma-separated list of enum member names
+//
+// (issue #1343)
+func (x *extractor) handleEnumDeclaration(n *sitter.Node) {
+	nameNode := n.ChildByFieldName("name")
+	name := x.nodeText(nameNode)
+	if name == "" {
+		return
+	}
+
+	props := map[string]string{
+		"kind":    "SCOPE.Schema",
+		"subtype": "enum",
+	}
+
+	// Collect enum member names from the enum_body
+	var members []string
+	if body := n.ChildByFieldName("body"); body != nil {
+		for i := 0; i < int(body.ChildCount()); i++ {
+			member := body.Child(i)
+			if member == nil {
+				continue
+			}
+			if member.Type() == "enum_assignment" || member.Type() == "property_identifier" || member.Type() == "identifier" {
+				members = append(members, x.nodeText(member))
+			} else if member.Type() == "enum_member" {
+				// Some grammars wrap in enum_member
+				if mn := member.ChildByFieldName("name"); mn != nil {
+					members = append(members, x.nodeText(mn))
+				} else if mn2 := member.Child(0); mn2 != nil {
+					members = append(members, x.nodeText(mn2))
+				}
+			}
+		}
+	}
+	if len(members) > 0 {
+		props["members"] = strings.Join(members, ", ")
+	}
+
+	x.emitWithProps(name, "SCOPE.Schema", n, "enum", fmt.Sprintf("enum %s", name), props, nil)
 }
 
 // handleVariableDeclaration handles: const/let foo = (...) => {...} or = function(...) {...}
