@@ -22,7 +22,9 @@ import {
   GraphLoadingState,
   GraphErrorState,
 } from '@/components/graph/GraphEmptyState'
+import { IndexingProgressModal } from '@/components/indexing/IndexingProgressModal'
 import { repoColor } from '@/lib/colors'
+import { RefreshCw } from 'lucide-react'
 import type { GraphNode, RelationshipKind } from '@/types/api'
 
 /**
@@ -61,6 +63,7 @@ export function GraphRoute() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [highContrast, setHighContrast] = useState(false)
+  const [reindexOpen, setReindexOpen] = useState(false)
   const [crossRepoOnly, setCrossRepoOnly] = useState(false)
   const [hoveredCommunityId, setHoveredCommunityId] = useState<number | null>(null)
 
@@ -278,6 +281,26 @@ export function GraphRoute() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Rebuild index floating button */}
+      <button
+        type="button"
+        onClick={() => setReindexOpen(true)}
+        className={[
+          'fixed bottom-4 left-[200px] z-30',
+          'flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors shadow-md',
+          'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
+          'border-slate-300 dark:border-slate-700',
+          'hover:text-sky-400 hover:border-sky-600',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
+        ].join(' ')}
+        aria-label="Rebuild index"
+        data-testid="graph-reindex-btn"
+        title="Rebuild index for this group"
+      >
+        <RefreshCw className="w-2.5 h-2.5" />
+        Rebuild
+      </button>
+
       {/* Toolbar */}
       <div ref={searchContainerRef} className="relative">
         <GraphToolbar
@@ -572,6 +595,15 @@ export function GraphRoute() {
                 HC
               </button>
             </div>
+          )}
+
+          {/* Indexing progress modal — triggered by Rebuild button */}
+          {group && (
+            <IndexingProgressModal
+              isOpen={reindexOpen}
+              groupSlug={group}
+              onClose={() => setReindexOpen(false)}
+            />
           )}
         </div>
 
