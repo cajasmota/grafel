@@ -2,11 +2,12 @@ import { useState, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchRepairs, fetchEnrichments, postCandidateAction } from '@/api/client'
-import type { PendingCandidateRow, QualificationSignal } from '@/types/api'
+import type { PendingCandidateRow, QualificationSignal, EnrichmentProgressBand } from '@/types/api'
+import { useEnrichmentProgress } from '@/hooks/shared/useEnrichmentProgress'
 import {
   Wrench, Sparkles, CheckCircle, XCircle, AlertCircle,
   ChevronDown, ChevronRight, Search, EyeOff,
-  ArrowUpDown,
+  ArrowUpDown, Loader2,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,6 +115,181 @@ function scoreTier(score: number): TierId {
   if (score >= 60) return 'high'
   if (score >= 40) return 'medium'
   return 'low'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ETA formatter
+// ─────────────────────────────────────────────────────────────────────────────
+
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.round(seconds / 60)
+  return `~${m}m`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EnrichmentProgressPanel — live per-tier bars (#1286)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TIER_COLOR: Record<string, { bar: string; text: string; bg: string }> = {
+  critical: {
+    bar: 'bg-red-500 dark:bg-red-400',
+    text: 'text-red-700 dark:text-red-400',
+    bg: 'bg-red-100 dark:bg-red-900/20',
+  },
+  high: {
+    bar: 'bg-orange-500 dark:bg-orange-400',
+    text: 'text-orange-700 dark:text-orange-400',
+    bg: 'bg-orange-100 dark:bg-orange-900/20',
+  },
+  medium: {
+    bar: 'bg-yellow-500 dark:bg-yellow-400',
+    text: 'text-yellow-700 dark:text-yellow-400',
+    bg: 'bg-yellow-100 dark:bg-yellow-900/20',
+  },
+  low: {
+    bar: 'bg-slate-400 dark:bg-slate-500',
+    text: 'text-slate-600 dark:text-slate-400',
+    bg: 'bg-slate-100 dark:bg-slate-800/40',
+  },
+}
+
+interface TierProgressBarProps {
+  band: EnrichmentProgressBand
+}
+
+function TierProgressBar({ band }: TierProgressBarProps) {
+  const colors = TIER_COLOR[band.band] ?? TIER_COLOR.low
+  const pct = band.total > 0 ? Math.round((band.done / band.total) * 100) : 0
+  const hasWork = band.running > 0 || band.queued > 0
+  const isNotStarted = band.total > 0 && band.done === 0 && !hasWork
+  const isDone = band.total > 0 && band.done === band.total
+
+  let statusText: string
+  if (band.total === 0) {
+    statusText = 'no jobs'
+  } else if (isDone) {
+    statusText = 'done'
+  } else if (isNotStarted) {
+    statusText = 'not started'
+  } else if (band.eta_seconds != null) {
+    statusText = `ETA ${formatEta(band.eta_seconds)}`
+  } else if (hasWork) {
+    statusText = 'calculating…'
+  } else {
+    statusText = `${band.done}/${band.total}`
+  }
+
+  const label = `${band.band.charAt(0).toUpperCase() + band.band.slice(1)}: ${band.done}/${band.total} done. ${statusText}`
+
+  return (
+    <div
+      role="group"
+      aria-label={`${band.band} tier enrichment progress`}
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg ${colors.bg}`}
+    >
+      {/* Tier label */}
+      <span className={`w-16 text-xs font-semibold shrink-0 capitalize ${colors.text}`}>
+        {band.band}
+      </span>
+
+      {/* Progress bar */}
+      <div className="flex-1 min-w-0">
+        <div
+          role="progressbar"
+          aria-label={label}
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"
+        >
+          <div
+            className={`h-full rounded-full transition-all duration-700 ease-out ${colors.bar} ${band.running > 0 ? 'animate-pulse' : ''}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Count */}
+      <span className="w-20 text-xs tabular-nums text-slate-600 dark:text-slate-400 shrink-0 text-right">
+        {band.total > 0 ? `${band.done}/${band.total}` : '—'}
+      </span>
+
+      {/* ETA / status */}
+      <span className="w-24 text-xs text-slate-500 dark:text-slate-400 shrink-0 text-right">
+        {statusText}
+      </span>
+
+      {/* Running spinner */}
+      {band.running > 0 && (
+        <Loader2 className="w-3.5 h-3.5 shrink-0 text-sky-500 animate-spin" aria-hidden="true" />
+      )}
+    </div>
+  )
+}
+
+interface EnrichmentProgressPanelProps {
+  group: string
+}
+
+/**
+ * EnrichmentProgressPanel renders a collapsible live-progress overlay for
+ * the enrichment queue (#1286). It auto-shows when jobs are active and
+ * collapses once all tiers reach 100%.
+ */
+function EnrichmentProgressPanel({ group }: EnrichmentProgressPanelProps) {
+  const { progress, isActive } = useEnrichmentProgress(group)
+  const [collapsed, setCollapsed] = useState(false)
+
+  // Don't render if we've never fetched or there are no jobs at all.
+  if (progress == null || progress.overall_total === 0) return null
+
+  const allDone = progress.overall_done === progress.overall_total
+  // Once everything is done, collapse automatically after first render.
+  if (allDone && !collapsed && !isActive) {
+    // We don't mutate state here — we just show a "Completed" state.
+  }
+
+  return (
+    <div
+      data-testid="enrichment-progress-panel"
+      className="mx-4 mt-3 mb-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden"
+    >
+      {/* Header */}
+      <button
+        type="button"
+        aria-expanded={!collapsed}
+        aria-controls="enrichment-progress-body"
+        onClick={() => setCollapsed((c) => !c)}
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+      >
+        {collapsed
+          ? <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+        }
+        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+          Enrichment Progress
+          {isActive && <Loader2 className="w-3.5 h-3.5 text-sky-500 animate-spin" aria-label="enrichment running" />}
+        </span>
+        <span className="ml-auto text-xs tabular-nums text-slate-500 dark:text-slate-400">
+          {progress.overall_done}/{progress.overall_total}
+          {allDone && <span className="ml-1.5 text-emerald-600 dark:text-emerald-400 font-medium">Complete</span>}
+        </span>
+      </button>
+
+      {/* Body */}
+      {!collapsed && (
+        <div
+          id="enrichment-progress-body"
+          className="px-4 pb-3 space-y-1.5"
+        >
+          {progress.tiers.map((band) => (
+            <TierProgressBar key={band.band} band={band} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -855,12 +1031,16 @@ export function PendingRoute() {
         )}
 
         {!isLoading && !hasError && activeTab === 'enrichments' && (
-          <TieredList
-            rows={enrichmentsQuery.data?.items ?? []}
-            group={group}
-            emptyMessage="No pending enrichments — all candidates resolved"
-            onApplied={() => setAppliedCount((n) => n + 1)}
-          />
+          <div className="flex flex-col flex-1 overflow-hidden">
+            {/* Per-tier live progress (#1286) */}
+            <EnrichmentProgressPanel group={group} />
+            <TieredList
+              rows={enrichmentsQuery.data?.items ?? []}
+              group={group}
+              emptyMessage="No pending enrichments — all candidates resolved"
+              onApplied={() => setAppliedCount((n) => n + 1)}
+            />
+          </div>
         )}
       </div>
     </div>

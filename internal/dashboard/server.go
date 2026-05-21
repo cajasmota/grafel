@@ -329,6 +329,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/enrichments/{group}/jobs/{jobId}/cancel", s.handleEnrichmentJobCancel)
 	// Batched enrichment (#1285) — N candidates → N jobs in one round-trip
 	mux.HandleFunc("POST /api/enrichments/{group}/batch-enrich", s.handleEnrichmentBatch)
+	// Per-tier enrichment progress — polled every 3 s by the /pending surface (#1286)
+	mux.HandleFunc("GET /api/enrichments/{group}/progress", s.handleEnrichmentProgress)
 
 	// Settings surface (#1206)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)

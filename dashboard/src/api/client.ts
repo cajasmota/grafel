@@ -92,6 +92,7 @@ import type {
   EntityNeighborResponse,
   PendingRepairsResponse,
   PendingEnrichmentsResponse,
+  EnrichmentProgressResponse,
   OrphanCallersResponse,
   OrphanPublishersResponse,
   OrphanSubscribersResponse,
@@ -933,6 +934,23 @@ export async function fetchEnrichments(group: string): Promise<PendingEnrichment
     return { items: [], total: 0 }
   }
   return apiFetch<PendingEnrichmentsResponse>(`/api/enrichments/${group}`)
+}
+
+/** GET /api/enrichments/{group}/progress — per-tier job progress (#1286) */
+export async function fetchEnrichmentProgress(group: string): Promise<EnrichmentProgressResponse> {
+  if (USE_MOCKS) {
+    return {
+      tiers: [
+        { band: 'critical', total: 0, done: 0, running: 0, queued: 0, failed: 0 },
+        { band: 'high',     total: 0, done: 0, running: 0, queued: 0, failed: 0 },
+        { band: 'medium',   total: 0, done: 0, running: 0, queued: 0, failed: 0 },
+        { band: 'low',      total: 0, done: 0, running: 0, queued: 0, failed: 0 },
+      ],
+      overall_done: 0,
+      overall_total: 0,
+    }
+  }
+  return apiFetch<EnrichmentProgressResponse>(`/api/enrichments/${group}/progress`)
 }
 
 /**

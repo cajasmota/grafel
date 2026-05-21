@@ -14,7 +14,7 @@ func TestEnqueue_basic(t *testing.T) {
 	q.Start()
 	defer q.Stop()
 
-	id, err := q.Enqueue("g1", "flow::checkout", "describe_entity")
+	id, err := q.Enqueue("g1", "flow::checkout", "describe_entity", "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestEnqueue_multiple(t *testing.T) {
 
 	ids := make([]string, 4)
 	for i := range ids {
-		id, err := q.Enqueue("g1", "flow::x", "describe_entity")
+		id, err := q.Enqueue("g1", "flow::x", "describe_entity", "")
 		if err != nil {
 			t.Fatalf("Enqueue %d: %v", i, err)
 		}
@@ -86,7 +86,7 @@ func TestCancel_queued(t *testing.T) {
 	q.Start()
 	defer q.Stop()
 
-	id, _ := q.Enqueue("g1", "flow::x", "describe_entity")
+	id, _ := q.Enqueue("g1", "flow::x", "describe_entity", "")
 	q.Cancel(id)
 
 	j, ok := q.Get(id)
@@ -107,9 +107,9 @@ func TestListForGroup(t *testing.T) {
 	q.Start()
 	defer q.Stop()
 
-	q.Enqueue("groupA", "flow::a", "describe_entity")
-	q.Enqueue("groupB", "flow::b", "describe_entity")
-	q.Enqueue("groupA", "flow::c", "describe_entity")
+	q.Enqueue("groupA", "flow::a", "describe_entity", "")
+	q.Enqueue("groupB", "flow::b", "describe_entity", "")
+	q.Enqueue("groupA", "flow::c", "describe_entity", "")
 
 	// Wait for all to complete.
 	deadline := time.Now().Add(2 * time.Second)
@@ -144,7 +144,7 @@ func TestHistory_persistence(t *testing.T) {
 
 	q := NewQueue(hist, 1)
 	q.Start()
-	id, _ := q.Enqueue("g1", "flow::x", "describe_entity")
+	id, _ := q.Enqueue("g1", "flow::x", "describe_entity", "")
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {

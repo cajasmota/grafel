@@ -124,9 +124,9 @@ func TestHandleEnrichmentJobs_empty(t *testing.T) {
 
 func TestHandleEnrichmentJobs_afterTrigger(t *testing.T) {
 	srv, q := newJobsServer(t)
-	q.Enqueue("g1", "flow::checkout", "describe_entity")
-	q.Enqueue("g1", "flow::payment", "describe_entity")
-	q.Enqueue("g2", "flow::other", "describe_entity") // different group
+	q.Enqueue("g1", "flow::checkout", "describe_entity", "")
+	q.Enqueue("g1", "flow::payment", "describe_entity", "")
+	q.Enqueue("g2", "flow::other", "describe_entity", "") // different group
 
 	// Wait for jobs to settle.
 	deadline := time.Now().Add(2 * time.Second)
@@ -182,7 +182,7 @@ func TestHandleEnrichmentJobCancel_success(t *testing.T) {
 	t.Cleanup(q.Stop)
 	srv.SetJobQueue(q)
 
-	id, _ := q.Enqueue("g1", "flow::x", "describe_entity")
+	id, _ := q.Enqueue("g1", "flow::x", "describe_entity", "")
 
 	target := "/api/enrichments/g1/jobs/" + id + "/cancel"
 	w := doRequest(t, srv, "POST", target)
