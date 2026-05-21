@@ -9,7 +9,7 @@
    UI never hardcodes the live :47274 daemon during development.
    ============================================================ */
 
-import type { Group, Entity, Community } from "@/data/types";
+import type { Group, Entity, Community, DocsTreeNode, DocsEntityDetail } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
 const BASE_V2 = import.meta.env.VITE_AG_API_BASE_V2 ?? "/api/v2";
@@ -89,6 +89,12 @@ export const api = {
   /** v2 — create an empty group from a name (Landing wizard). */
   createGroup: (name: string) =>
     requestV2<Group>("/groups", { method: "POST", body: JSON.stringify({ name }) }),
+
+  // --- v2 Docs entity browser (#1438) ---
+  getDocsTree: (groupId: string) =>
+    requestV2<DocsTreeNode[]>(`/groups/${groupId}/docs/tree`),
+  getDocsEntity: (groupId: string, entityId: string) =>
+    requestV2<DocsEntityDetail>(`/groups/${groupId}/docs/entities/${encodeURIComponent(entityId)}`),
 
   // --- v1 surfaces still used by other (placeholder) screens ---
   getGroup: (groupId: string) => request<Group>(`/groups/${groupId}`),
