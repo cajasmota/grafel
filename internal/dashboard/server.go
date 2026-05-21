@@ -540,6 +540,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/repos/{repo}/monorepo", s.handleV2PatchMonorepo)
 	mux.HandleFunc("POST /api/v2/groups/{group}/doctor", s.handleV2Doctor)
 
+	// --- v2 Pending screen (#1442) ---
+	mux.HandleFunc("GET /api/v2/groups/{group}/candidates", s.handleV2Candidates)
+	mux.HandleFunc("PUT /api/v2/groups/{group}/candidates/{cid}/hint", s.handleV2CandidateHint)
+
 	return s.withAuth(withGzip(mux))
 }
 
