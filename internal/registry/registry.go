@@ -51,6 +51,12 @@ type GroupConfig struct {
 	Features  struct {
 		Watchers bool `json:"watchers"`
 		GitHooks bool `json:"git_hooks"`
+		// AutoInjectAgentsMD, when true, causes archigraph to append (or
+		// update) an "Architecture Map" marker block in each repo's AGENTS.md
+		// (or CLAUDE.md / GEMINI.md) after every rebuild. The block tells AI
+		// coding agents that the repo is indexed, where the dashboard is, and
+		// which MCP endpoints to query. Default false — opt-in only.
+		AutoInjectAgentsMD bool `json:"auto_inject_agents_md,omitempty"`
 	} `json:"features"`
 }
 
