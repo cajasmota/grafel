@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cajasmota/archigraph/internal/quality"
 	"github.com/cajasmota/archigraph/internal/quality/audit"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
@@ -34,7 +35,7 @@ import (
 
 // OrphanAuditReply is the wire shape for GET /api/quality/orphans/{group}.
 type OrphanAuditReply struct {
-	Group    string             `json:"group"`
+	Group     string            `json:"group"`
 	AuditedAt string            `json:"audited_at"`
 	Total     OrphanTotals      `json:"total"`
 	PerRepo   []RepoOrphanStats `json:"per_repo"`
@@ -48,9 +49,9 @@ type OrphanAuditReply struct {
 
 // OrphanTotals rolls up aggregate counts across the whole group.
 type OrphanTotals struct {
-	Entities    int     `json:"entities"`
-	Orphans     int     `json:"orphans"`
-	OrphanRate  float64 `json:"orphan_rate"`
+	Entities   int     `json:"entities"`
+	Orphans    int     `json:"orphans"`
+	OrphanRate float64 `json:"orphan_rate"`
 }
 
 // RepoOrphanStats is a per-repo summary row for the result table.
@@ -91,16 +92,16 @@ type RecallRequest struct {
 
 // RecallReply is the wire shape for POST /api/quality/recall.
 type RecallReply struct {
-	Fixture              string               `json:"fixture"`
-	EntityRecall         float64              `json:"entity_recall"`
-	RelationshipRecall   float64              `json:"relationship_recall"`
-	EntityExpected       int                  `json:"entity_expected"`
-	EntityFound          int                  `json:"entity_found"`
-	RelationshipExpected int                  `json:"relationship_expected"`
-	RelationshipFound    int                  `json:"relationship_found"`
-	ForbiddenHits        int                  `json:"forbidden_hits"`
-	MissingEntities      []RecallMissingItem  `json:"missing_entities,omitempty"`
-	MissingRelationships []RecallRelItem      `json:"missing_relationships,omitempty"`
+	Fixture              string              `json:"fixture"`
+	EntityRecall         float64             `json:"entity_recall"`
+	RelationshipRecall   float64             `json:"relationship_recall"`
+	EntityExpected       int                 `json:"entity_expected"`
+	EntityFound          int                 `json:"entity_found"`
+	RelationshipExpected int                 `json:"relationship_expected"`
+	RelationshipFound    int                 `json:"relationship_found"`
+	ForbiddenHits        int                 `json:"forbidden_hits"`
+	MissingEntities      []RecallMissingItem `json:"missing_entities,omitempty"`
+	MissingRelationships []RecallRelItem     `json:"missing_relationships,omitempty"`
 }
 
 // RecallMissingItem is a missing entity in a recall report.
@@ -318,15 +319,15 @@ func (s *Server) handleQualityRecall(w http.ResponseWriter, r *http.Request) {
 
 	// Unmarshal into a local shape that mirrors quality.JSONReport fields.
 	var jr struct {
-		Fixture                    string  `json:"fixture"`
-		EntityExpected             int     `json:"entity_expected"`
-		EntityFound                int     `json:"entity_found"`
-		EntityRecall               float64 `json:"entity_recall"`
-		RelationshipExpected       int     `json:"relationship_expected"`
-		RelationshipFound          int     `json:"relationship_found"`
-		RelationshipRecall         float64 `json:"relationship_recall"`
-		ForbiddenHits              int     `json:"forbidden_hits"`
-		MissingEntities []struct {
+		Fixture              string  `json:"fixture"`
+		EntityExpected       int     `json:"entity_expected"`
+		EntityFound          int     `json:"entity_found"`
+		EntityRecall         float64 `json:"entity_recall"`
+		RelationshipExpected int     `json:"relationship_expected"`
+		RelationshipFound    int     `json:"relationship_found"`
+		RelationshipRecall   float64 `json:"relationship_recall"`
+		ForbiddenHits        int     `json:"forbidden_hits"`
+		MissingEntities      []struct {
 			Name string `json:"name"`
 			Kind string `json:"kind"`
 			File string `json:"source_file,omitempty"`
@@ -448,4 +449,91 @@ func goldenFixturesDir() (string, error) {
 		return candidate, nil
 	}
 	return "", fmt.Errorf("could not locate golden fixtures directory (set ARCHIGRAPH_FIXTURES_DIR)")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/quality/composite/{group}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// CompositeScoreReply is the wire shape for GET /api/quality/composite/{group}.
+type CompositeScoreReply struct {
+	Group string `json:"group"`
+	// Score is the composite health score (0–100, higher is better).
+	Score float64 `json:"score"`
+	// Grade is the letter grade (A–F) derived from Score.
+	Grade string `json:"grade"`
+	// OrphanRatePct is the fraction of entities with no inbound edges * 100.
+	OrphanRatePct float64 `json:"orphan_rate_pct"`
+	// BugRatePct is the fraction of unresolved import edges * 100.
+	BugRatePct float64 `json:"bug_rate_pct"`
+	// RecallMissPct is always 0 for live-graph measurements (no golden fixture).
+	RecallMissPct float64 `json:"recall_miss_pct"`
+	// Entities is the total entity count across all repos in the group.
+	Entities int `json:"entities"`
+	// Repos is the number of repos measured.
+	Repos int `json:"repos"`
+}
+
+// handleQualityComposite computes the composite graph-health score for the
+// requested group and returns it as JSON. The handler runs the orphan audit
+// in-process (same as handleQualityOrphans) and then applies the composite
+// formula from internal/quality.CompositeScoreFromPcts.
+func (s *Server) handleQualityComposite(w http.ResponseWriter, r *http.Request) {
+	groupName := r.PathValue("group")
+	if groupName == "" {
+		writeErr(w, http.StatusBadRequest, "group required")
+		return
+	}
+
+	repoPaths, err := repoPathsForGroup(groupName)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Sprintf("group %q: %v", groupName, err))
+		return
+	}
+	if len(repoPaths) == 0 {
+		writeErr(w, http.StatusNotFound, fmt.Sprintf("group %q has no repos", groupName))
+		return
+	}
+
+	// Audit each repo and accumulate totals.
+	totalEntities := 0
+	totalOrphans := 0
+	totalImports := 0
+	goodImports := 0
+	repos := 0
+
+	for _, rp := range repoPaths {
+		rep, aErr := audit.AuditPath(rp.Path, false)
+		if aErr != nil || len(rep.Repos) == 0 {
+			continue
+		}
+		rr := rep.Repos[0]
+		repos++
+		totalEntities += rr.Entities
+		totalOrphans += rr.Orphans
+		totalImports += rr.ImportsTotal
+		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
+			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
+	}
+
+	orphanPct := 0.0
+	if totalEntities > 0 {
+		orphanPct = 100.0 * float64(totalOrphans) / float64(totalEntities)
+	}
+	bugPct := 0.0
+	if totalImports > 0 {
+		bugPct = 100.0 * float64(totalImports-goodImports) / float64(totalImports)
+	}
+
+	cr := quality.CompositeScoreFromPcts(orphanPct, bugPct, 0)
+	writeJSON(w, http.StatusOK, CompositeScoreReply{
+		Group:         groupName,
+		Score:         cr.Score,
+		Grade:         cr.Grade,
+		OrphanRatePct: cr.OrphanRatePct,
+		BugRatePct:    cr.BugRatePct,
+		RecallMissPct: cr.RecallMissPct,
+		Entities:      totalEntities,
+		Repos:         repos,
+	})
 }

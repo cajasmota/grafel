@@ -153,6 +153,7 @@ Dashboard:
 Quality:
   quality <fixture-dir>                       Measure extraction recall vs a golden fixture
   quality audit-orphans [--corpus] <path>     Audit orphan rate + edge hygiene; emits md or JSON
+  quality bug-rate-corpus [flags] <dir>       Composite health score across a corpus of indexed groups
 
 Agent-learned patterns (ADR-0018):
   patterns list [--needs-attention]           Show patterns table (rejected/low-conf/stale with --needs-attention)

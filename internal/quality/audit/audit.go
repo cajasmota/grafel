@@ -174,6 +174,14 @@ func AuditPath(path string, corpus bool) (*Report, error) {
 	return rep, nil
 }
 
+// HasGraph returns true if dir has any indexable graph (graph.fb or
+// graph.json) in its .archigraph state directory. Exported so corpus
+// scanners (e.g. the bug-rate-corpus command) can test directories without
+// calling the full AuditPath pipeline.
+func HasGraph(dir string) bool {
+	return hasGraphJSON(dir)
+}
+
 // hasGraph returns true if dir has any indexable graph (graph.fb or
 // graph.json) in its .archigraph state directory.
 // Renamed from hasGraphJSON for ADR-0016 flip-day (#808).

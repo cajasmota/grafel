@@ -286,10 +286,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/cleanup/preview", s.handleCleanupPreview)
 	mux.HandleFunc("POST /api/cleanup", s.handleCleanup)
 
-	// Quality surface (#1198)
+	// Quality surface (#1198, #1236)
 	mux.HandleFunc("GET /api/quality/orphans/{group}", s.handleQualityOrphans)
 	mux.HandleFunc("GET /api/quality/fixtures", s.handleQualityFixtures)
 	mux.HandleFunc("POST /api/quality/recall", s.handleQualityRecall)
+	mux.HandleFunc("GET /api/quality/composite/{group}", s.handleQualityComposite)
 
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
