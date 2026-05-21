@@ -10,8 +10,19 @@
    ============================================================ */
 
 import type {
-  Group, Entity, Community, SettingsGroup, SettingsFeatures, DoctorCheck,
-  PathsListResponse, PathDetail, OrphansResponse,
+  Group,
+  Entity,
+  Community,
+  DocsTreeNode,
+  DocsEntityDetail,
+  GraphPayloadWire,
+  EntityDetailWire,
+  SettingsGroup,
+  SettingsFeatures,
+  DoctorCheck,
+  PathsListResponse,
+  PathDetail,
+  OrphansResponse,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -93,8 +104,28 @@ export const api = {
   createGroup: (name: string) =>
     requestV2<Group>("/groups", { method: "POST", body: JSON.stringify({ name }) }),
 
+  // --- v2 Docs entity browser (#1438) ---
+  getDocsTree: (groupId: string) =>
+    requestV2<DocsTreeNode[]>(`/groups/${groupId}/docs/tree`),
+  getDocsEntity: (groupId: string, entityId: string) =>
+    requestV2<DocsEntityDetail>(`/groups/${groupId}/docs/entities/${encodeURIComponent(entityId)}`),
+  /** v2 — the full graph payload (nodes/edges/communities/repos) for the Graph
+   *  screen. `params` maps to the daemon's repo/kind filters. */
+  getGraph: (groupId: string, params?: { repos?: string[]; filterKind?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.repos && params.repos.length > 0) qs.set("repos", params.repos.join(","));
+    if (params?.filterKind) qs.set("filter_kind", params.filterKind);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return requestV2<GraphPayloadWire>(`/graph/${encodeURIComponent(groupId)}${suffix}`);
+  },
+
   // --- v1 surfaces still used by other (placeholder) screens ---
   getGroup: (groupId: string) => request<Group>(`/groups/${groupId}`),
+  /** v1 — Tier-3 entity detail for the inspector (lazy, on node click). */
+  getEntityDetail: (groupId: string, entityId: string) =>
+    request<EntityDetailWire>(
+      `/graph/${encodeURIComponent(groupId)}/entity/${encodeURIComponent(entityId)}`,
+    ),
   listCommunities: (groupId: string) => request<Community[]>(`/groups/${groupId}/communities`),
   searchEntities: (groupId: string, q: string) =>
     request<Entity[]>(`/groups/${groupId}/entities?q=${encodeURIComponent(q)}`),
