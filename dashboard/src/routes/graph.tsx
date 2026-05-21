@@ -9,6 +9,13 @@ import { useGraphSearch } from '@/hooks/graph/useGraphSearch'
 import { useHoverLabel } from '@/hooks/graph/useHoverLabel'
 import { useColorMode } from '@/hooks/graph/useColorMode'
 import { useGroupByConfig } from '@/hooks/graph/useGroupByConfig'
+import {
+  useFocusNeighborhood,
+  buildAdjacency,
+  computeNeighborhood,
+  MIN_HOP_DEPTH,
+  MAX_HOP_DEPTH,
+} from '@/hooks/graph/useFocusNeighborhood'
 import { useSimulationConfig } from '@/hooks/graph/useSimulationConfig'
 import { saveLayout, loadLayout, clearLayout } from '@/hooks/graph/useLayoutCache'
 import type { LayoutCacheEntry } from '@/hooks/graph/useLayoutCache'
@@ -45,6 +52,7 @@ import { IndexingProgressModal } from '@/components/indexing/IndexingProgressMod
 import { SnapshotModal } from '@/components/graph/SnapshotModal'
 import { useSnapshotExport } from '@/hooks/graph/useSnapshotExport'
 import { repoColor } from '@/lib/colors'
+import { nodeDisplayLabel } from '@/lib/utils'
 import { RefreshCw } from 'lucide-react'
 import type { GraphNode, RelationshipKind } from '@/types/api'
 
@@ -79,6 +87,16 @@ export function GraphRoute() {
 
   // ── Group by — clustering dimension (#1392, persisted to localStorage) ─────
   const { groupBy, setGroupBy } = useGroupByConfig()
+
+  // ── Click-to-focus N-hop ego graph (#1392-refine item 5) ───────────────────
+  const {
+    focusNodeId,
+    hopDepth,
+    setFocus,
+    clearFocus,
+    setHopDepth,
+    isFocused,
+  } = useFocusNeighborhood()
 
   // ── Simulation config (#1361 — tunable params persisted to localStorage) ──
   const { config: simConfig, setParam: setSimParam, applyPreset: applySimPreset, shareHash: simShareHash } = useSimulationConfig()
@@ -178,15 +196,20 @@ export function GraphRoute() {
 
   // ── Layout position cache (#1399) ──────────────────────────────────────────
   // Persist settled positions so a reload skips the explode/settle animation.
-  const [cachedLayout, setCachedLayout] = useState<LayoutCacheEntry | null>(null)
   const [relayoutRequested, setRelayoutRequested] = useState(false)
 
   const layoutNodeIds = useMemo(() => nodes.map((n) => String(n.id)), [nodes])
 
-  useEffect(() => {
-    if (!group || nodes.length === 0) return
-    if (relayoutRequested) return // fresh sim requested — ignore cache
-    setCachedLayout(loadLayout(group, layoutNodeIds))
+  // #1392-refine (item 1) — load the cached layout SYNCHRONOUSLY via useMemo so
+  // it is available on the SAME render that GraphCanvas first mounts. Previously
+  // this lived in a useEffect, so cachedLayout was null on the mount render and
+  // GraphCanvas (mount-only init) always took the fresh-simulation path even
+  // when a cache existed. With the synchronous read, a cached layout renders
+  // settled INSTANTLY (no animation). loadLayout is a cheap localStorage read.
+  // A null result (no cache / cleared / re-layout requested) → fresh auto-settle.
+  const cachedLayout = useMemo<LayoutCacheEntry | null>(() => {
+    if (!group || nodes.length === 0 || relayoutRequested) return null
+    return loadLayout(group, layoutNodeIds)
   }, [group, layoutNodeIds, relayoutRequested, nodes.length])
 
   const handleLayoutSaved = useCallback((positions: Float32Array) => {
@@ -198,7 +221,6 @@ export function GraphRoute() {
   const handleRelayout = useCallback(() => {
     if (!group || layoutNodeIds.length === 0) return
     clearLayout(group, layoutNodeIds)
-    setCachedLayout(null)
     setRelayoutRequested(true)
   }, [group, layoutNodeIds])
 
@@ -214,6 +236,32 @@ export function GraphRoute() {
     if (!graphFilterActive) return nodes.length
     return filterIndices?.length ?? 0
   }, [nodes.length, graphFilterActive, filterIndices])
+
+  // ── Focus N-hop neighborhood → node-array indices (#1392-refine item 5) ─────
+  // Adjacency is built once per edge set; the BFS + index mapping recompute only
+  // when the focused node or hop depth changes. All client-side from the loaded
+  // edge list — no backend call.
+  const focusAdjacency = useMemo(() => buildAdjacency(edges), [edges])
+
+  const focusNeighborhood = useMemo<Set<string> | null>(() => {
+    if (!focusNodeId) return null
+    // Guard: focused node must still be present in the current node set.
+    if (!nodes.some((n) => n.id === focusNodeId)) return null
+    return computeNeighborhood(focusAdjacency, focusNodeId, hopDepth)
+  }, [focusNodeId, hopDepth, focusAdjacency, nodes])
+
+  const focusedNodeIndices = useMemo<number[] | null>(() => {
+    if (!focusNeighborhood) return null
+    const out: number[] = []
+    nodes.forEach((n, i) => { if (focusNeighborhood.has(n.id)) out.push(i) })
+    return out
+  }, [focusNeighborhood, nodes])
+
+  const focusNodeLabel = useMemo(() => {
+    if (!focusNodeId) return null
+    const n = nodes.find((nn) => nn.id === focusNodeId)
+    return n ? nodeDisplayLabel(n) : focusNodeId
+  }, [focusNodeId, nodes])
 
   // ── Node sizing tier counts (#1360) — histogram for NodeSizingControls ──────
   // Count how many non-Process nodes fall in each degree-percentile tier so the
@@ -308,15 +356,25 @@ export function GraphRoute() {
   })
 
   // ── Handlers ───────────────────────────────────────────────────────────────
+  // #1392-refine (item 5) — clicking a node BOTH opens the inspector AND focuses
+  // the camera/render on its N-hop ego graph (only the neighborhood stays
+  // visible, camera re-fits to it).
   const handleNodeClick = useCallback((node: GraphNode) => {
     selectNode(node.id)
-  }, [selectNode])
+    setFocus(node.id)
+  }, [selectNode, setFocus])
 
-  /** Clears node selection: removes URL param + signals Cosmograph to unhighlight. */
+  /** Clears node selection + focus: removes URL param + unhighlights + restores full graph. */
   const handleDeselect = useCallback(() => {
     clearSelection()
+    clearFocus()
     graphRef?.unselectPoints?.()
-  }, [clearSelection, graphRef])
+  }, [clearSelection, clearFocus, graphRef])
+
+  /** Clears only the focus (back to full graph) while keeping the inspector. */
+  const handleClearFocus = useCallback(() => {
+    clearFocus()
+  }, [clearFocus])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   // Note: '/' (search focus), arrow-nav, Tab, F, 0, n, p, Cmd+[/] are handled
@@ -881,6 +939,7 @@ export function GraphRoute() {
               highlightedEdgeIds={highlightedEdgeIds}
               simulationConfig={simConfig}
               nodeFilterIndices={filterIndices}
+              focusedNodeIndices={focusedNodeIndices}
               nodeSizingConfig={nodeSizingConfig}
               renderConfig={renderConfig}
               group={group}
@@ -888,6 +947,55 @@ export function GraphRoute() {
               onLayoutSaved={handleLayoutSaved}
               relayoutRequested={relayoutRequested}
             />
+          )}
+
+          {/* #1392-refine (item 5): focus ego-graph control bar — hop depth +
+              clear-focus affordance. Shown only while a node is focused. Esc and
+              clicking empty background also clear focus. */}
+          {isFocused && (
+            <div
+              className="absolute top-3 left-3 z-20 flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-sky-700 bg-slate-900/95 text-xs text-slate-200 shadow-lg"
+              data-testid="graph-focus-bar"
+            >
+              <span className="text-sky-300 font-medium">Focused</span>
+              {focusNodeLabel && (
+                <span className="max-w-[180px] truncate text-slate-300" title={focusNodeLabel}>
+                  {focusNodeLabel}
+                </span>
+              )}
+              <span className="text-slate-500" aria-hidden>·</span>
+              <span className="text-slate-400">hops</span>
+              <div className="flex items-center gap-0.5" role="group" aria-label="Focus hop depth">
+                {Array.from({ length: MAX_HOP_DEPTH - MIN_HOP_DEPTH + 1 }, (_, k) => MIN_HOP_DEPTH + k).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setHopDepth(n)}
+                    aria-pressed={hopDepth === n}
+                    className={[
+                      'w-5 h-5 rounded text-[11px] font-mono transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400',
+                      hopDepth === n
+                        ? 'bg-sky-600 text-white'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700',
+                    ].join(' ')}
+                    title={`${n}-hop neighborhood`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleClearFocus}
+                className="ml-1 px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+                aria-label="Clear focus — back to full graph"
+                title="Clear focus (Esc)"
+                data-testid="graph-clear-focus"
+              >
+                ✕ full graph
+              </button>
+            </div>
           )}
 
           {/* #1157 Phase 2: Jarvis MCP activity overlay — pulse badge + log panel */}
@@ -917,7 +1025,7 @@ export function GraphRoute() {
                 style={{ left: tx, top: ty }}
                 aria-hidden="true"
               >
-                <div className="font-medium truncate">{hovNode.label ?? hovNode.id}</div>
+                <div className="font-medium truncate">{nodeDisplayLabel(hovNode)}</div>
                 {(callerCount > 0 || calleeCount > 0) && (
                   <div className="mt-0.5 text-slate-400 flex gap-2">
                     {callerCount > 0 && <span>{callerCount} caller{callerCount !== 1 ? 's' : ''}</span>}

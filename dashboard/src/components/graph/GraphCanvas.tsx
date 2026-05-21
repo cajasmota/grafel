@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback, memo, useMemo, useState } from 'react'
 import { Graph } from '@cosmos.gl/graph'
 import { communityColor } from '@/hooks/graph/useCommunityColors'
 import { repoColor } from '@/lib/colors'
+import { nodeDisplayLabel } from '@/lib/utils'
 import type { GraphNode, GraphEdge } from '@/types/api'
 import { useGraphCameraStore } from '@/store/graphCameraStore'
 import type { ColorMode } from '@/hooks/graph/useColorMode'
@@ -126,6 +127,12 @@ function buildGroupCenters(
   )
 }
 
+// #1392-refine (item 4) — Fit padding as a fraction of the node bounding box.
+// cosmos.gl's default fitView padding leaves large empty margins; a small
+// padding makes the settled graph FILL the viewport. Used for both the fresh
+// settle fit and the cached-layout fit.
+const FIT_PADDING = 0.1
+
 // ---------------------------------------------------------------------------
 // Color helpers — cosmos.gl wants packed RGBA Float32Array
 //   format: [r, g, b, a, ...] where r/g/b are 0–255 and a is 0–1.
@@ -244,6 +251,12 @@ export interface GraphCanvasProps {
   highlightedEdgeIds?: ReadonlySet<string>
   simulationConfig?: SimulationConfig
   nodeFilterIndices?: number[] | null
+  /**
+   * #1392-refine (item 5) — click-to-focus N-hop ego graph. When non-null, only
+   * these node indices are rendered (everything else hard-hidden) and the camera
+   * re-fits to them so it reads as a fresh subgraph of just the related nodes.
+   */
+  focusedNodeIndices?: number[] | null
   nodeSizingConfig?: NodeSizingConfig
   renderConfig?: RenderConfig
   /** #1392 — clustering dimension: repo (default) / community / module / none. */
@@ -294,6 +307,7 @@ const GraphCanvasInner = ({
   highlightedEdgeIds,
   simulationConfig,
   nodeFilterIndices,
+  focusedNodeIndices,
   nodeSizingConfig,
   renderConfig,
   groupBy = 'repo',
@@ -325,6 +339,10 @@ const GraphCanvasInner = ({
 
   const [hasSettled, setHasSettled] = useState(false)
   const hardStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // #1392-refine: ensures we auto-start the fresh-load simulation exactly once
+  // (no manual Play needed). Stays false on the cached-layout path (that path
+  // settles instantly without animating).
+  const didAutoStartRef = useRef(false)
 
   // Mirror of nodes so click handler can resolve index → GraphNode synchronously
   const nodesRef = useRef<GraphNode[]>(nodes)
@@ -340,6 +358,36 @@ const GraphCanvasInner = ({
 
   const stableEmptySet = useMemo(() => new Set<string>(), [])
   const effectiveForceIds = forceVisibleIds ?? stableEmptySet
+
+  // #1392-refine (item 2) — base point-size scaling constants. Largest tier node
+  // = BASE * MAX_MULT (matches the tier-5 multiplier in useNodeSizingConfig).
+  const SIZE_BASE = 120
+  const SIZE_MAX_MULT = 3.0
+
+  // Live render-config ref so the zoom handler can read maxPointSize /
+  // pointSizeScale / scalePointsOnZoom without re-binding the mount-only handler.
+  const rcRef = useRef(rc)
+  rcRef.current = rc
+
+  /**
+   * #1392-refine (item 2) — compute the effective pointSizeScale so the LARGEST
+   * node never exceeds maxPointSize on screen, accounting for zoom.
+   *
+   * With scalePointsOnZoom:true, rendered_px = size * pointSizeScale * zoom.
+   * Without a zoom-aware cap, zooming in inflates EVERY node into a giant
+   * overlapping blob (degree differentiation lost in a wall of identical
+   * circles). We cap the scale so size_max * scale * zoom <= maxPointSize:
+   *   effScale = min(pointSizeScale, maxPointSize / (SIZE_BASE*SIZE_MAX_MULT*zoom))
+   * Because the cap multiplies ALL sizes uniformly, the per-degree size buffer
+   * still differentiates hubs from leaves — they just stop ballooning together.
+   */
+  const effectiveScaleForZoom = useCallback((zoom: number): number => {
+    const cfg = rcRef.current
+    const z = cfg.scalePointsOnZoom ? Math.max(zoom, 0.0001) : 1
+    const sizeMax = SIZE_BASE * SIZE_MAX_MULT
+    const zoomCap = cfg.maxPointSize / (sizeMax * z)
+    return Math.min(cfg.pointSizeScale, zoomCap)
+  }, [])
 
   const repoFilterActive = activeRepos != null
 
@@ -588,7 +636,7 @@ const GraphCanvasInner = ({
         idx,
         x: sx,
         y: sy - (radius ?? 4) - 6,
-        text: truncateLabel(n.label ?? String(n.id)),
+        text: truncateLabel(nodeDisplayLabel(n)),
       })
     }
     setLabelPositions(out)
@@ -597,8 +645,14 @@ const GraphCanvasInner = ({
   // ---------------------------------------------------------------------------
   // Simulation settle / hard-stop
   // ---------------------------------------------------------------------------
+  // #1392-refine — hasSettledRef is AUTHORITATIVE and mutated only by doSettle
+  // (→true) and the re-layout / group-by effects (→false). It is intentionally
+  // NOT auto-mirrored from the `hasSettled` state on every render: that mirror
+  // could transiently reset the ref to a stale `false` between doSettle()'s
+  // synchronous ref-set and the state commit, letting a second doSettle slip
+  // past the idempotency guard and double-toggle the Play/Pause store (which
+  // left the cached/settled graph drifting with the button stuck on "running").
   const hasSettledRef = useRef(false)
-  hasSettledRef.current = hasSettled
 
   // Stable refs for layout-cache props so the mount-only effect + settle
   // callback can read live values without re-running.
@@ -610,6 +664,15 @@ const GraphCanvasInner = ({
   relayoutRequestedRef.current = relayoutRequested
 
   const doSettle = useCallback(() => {
+    // #1392-refine — idempotency guard. doSettle can be reached from multiple
+    // sources (cached-layout rAF, onSimulationEnd, the wall-clock cap, re-layout
+    // cap). hasSettledRef is mirrored from state and lags a render, so two of
+    // these can fire before the re-render and BOTH run — double-toggling the
+    // Play/Pause store (onSimulationRunningChange is a flip, not a setter) and
+    // leaving the sim visibly running after settle. Set the ref synchronously
+    // and bail if we've already settled so the body runs exactly once.
+    if (hasSettledRef.current) return
+    hasSettledRef.current = true
     if (hardStopTimerRef.current) {
       clearTimeout(hardStopTimerRef.current)
       hardStopTimerRef.current = null
@@ -620,8 +683,10 @@ const GraphCanvasInner = ({
     // #1392 — Fit the camera to the actual NODE bounding box (cosmos.gl fitView
     // frames the points, not the square simulation space) so the settled graph
     // FILLS the 16:9 viewport instead of sitting tiny inside the square space.
-    // A short animation feels intentional; runs once on settle.
-    graphRef.current?.fitView(400)
+    // A short animation feels intentional; runs once on settle. #1392-refine
+    // (item 4) — explicit small padding so the graph FILLS the viewport instead
+    // of sitting tiny inside large empty margins.
+    graphRef.current?.fitView(400, FIT_PADDING)
     labelDirtyRef.current = true
     // refresh labels after the fit animation positions are applied
     refreshLabels()
@@ -635,6 +700,24 @@ const GraphCanvasInner = ({
 
   const doSettleRef = useRef(doSettle)
   doSettleRef.current = doSettle
+
+  // Live mirror of the user's run/pause intent so post-settle buffer pushes
+  // (render()/create() restart cosmos's sim loop when enableSimulation:true)
+  // can re-assert the paused state instead of letting the graph drift forever.
+  const simulationRunningRef = useRef(simulationRunning)
+  simulationRunningRef.current = simulationRunning
+
+  /**
+   * #1392-refine — re-assert the settled/paused state after an imperative
+   * render()/create(). cosmos.gl restarts its simulation loop on create() when
+   * enableSimulation is true; once we've settled (and the user hasn't pressed
+   * Play) we must pause again or the cached/settled graph keeps drifting.
+   */
+  const reassertPauseIfSettled = useCallback(() => {
+    if (hasSettledRef.current && simulationRunningRef.current !== true) {
+      graphRef.current?.pause()
+    }
+  }, [])
 
   // ---------------------------------------------------------------------------
   // Event handlers (stable — read live values from refs)
@@ -736,7 +819,7 @@ const GraphCanvasInner = ({
       scalePointsOnZoom: rc.scalePointsOnZoom,
       pointSizeScale: rc.pointSizeScale,
       pointOpacity: rc.pointOpacity,
-      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.18,
+      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices || !!focusedNodeIndices) ? 0 : 0.18,
       linkGreyoutOpacity: repoFilterActive ? 0 : rc.linkOpacity * 0.5,
       linkWidthScale: rc.showLinks ? rc.linkWidthScale : 0,
       renderHoveredPointRing: true,
@@ -792,6 +875,9 @@ const GraphCanvasInner = ({
       rescalePositions: true,
       fitViewOnInit: true,
       fitViewDelay: 3500,
+      // #1392-refine (item 4) — fill the viewport with a small bounding-box
+      // padding instead of cosmos.gl's larger default margins.
+      fitViewPadding: FIT_PADDING,
 
       onSimulationEnd: () => {
         if (!hasSettledRef.current) doSettleRef.current()
@@ -812,6 +898,13 @@ const GraphCanvasInner = ({
         const k = t?.k ?? 1
         setZoomLevel(k)
         onZoomChangeRef.current?.(k)
+        // #1392-refine (item 2) — zoom-aware size cap. Re-apply the effective
+        // pointSizeScale so the largest node stays <= maxPointSize at this zoom,
+        // preventing the "uniform giant overlapping blobs" the owner reported.
+        const g = graphRef.current
+        if (g && rcRef.current.scalePointsOnZoom) {
+          g.setConfig({ pointSizeScale: effectiveScaleForZoom(k) })
+        }
         // Reposition labels on pan/zoom
         if (labelRafRef.current === null) {
           labelRafRef.current = requestAnimationFrame(() => {
@@ -923,9 +1016,33 @@ const GraphCanvasInner = ({
     // create() throws "missing buffer pointIndices" (verified in 2.6.4 dist).
     g.render()
     g.create()
+    // #1392-refine — AUTO-SETTLE ON LOAD (item 1). On the first data upload for a
+    // FRESH layout (no cached positions, no re-layout pending) start the force
+    // simulation immediately so the graph settles WITHOUT the user pressing Play.
+    // The wall-clock settle-time cap (mount effect) auto-pauses + saves positions
+    // once it settles. The cached-layout path is skipped here — it settled
+    // instantly in the mount effect. start() is also a no-op once hasSettled.
+    if (!didAutoStartRef.current && !hasSettledRef.current) {
+      const hasSavedLayout =
+        !relayoutRequestedRef.current && savedLayoutRef.current?.positions != null
+      if (!hasSavedLayout) {
+        didAutoStartRef.current = true
+        // Kick the force sim. We do NOT notify onSimulationRunningChange here:
+        // the camera store already initialises simulationRunning=true and the
+        // toolbar treats the callback as a flip (toggleSimulation), not a
+        // setter. doSettle() flips it to paused once the layout settles, so
+        // calling it here too would double-toggle and desync the Play/Pause
+        // button (leaving it stuck showing "running" after settle).
+        g.start(1)
+      }
+    }
+    // If we've already settled (e.g. cached-layout load, or a recolor-triggered
+    // re-push), create() above restarted cosmos's sim loop — re-pause so the
+    // settled graph stays put instead of drifting.
+    reassertPauseIfSettled()
     labelDirtyRef.current = true
     if (usePrev) refreshLabels()
-  }, [packed, packPointColors, linkData, packLinkColors, packLinkWidths, topLabelIndices, refreshLabels])
+  }, [packed, packPointColors, linkData, packLinkColors, packLinkWidths, topLabelIndices, refreshLabels, reassertPauseIfSettled])
 
   // Recolor when colorMode / theme / hover-selection styling changes.
   useEffect(() => {
@@ -936,7 +1053,8 @@ const GraphCanvasInner = ({
     g.setLinkWidths(packLinkWidths())
     g.render()
     g.create()
-  }, [packPointColors, packLinkColors, packLinkWidths])
+    reassertPauseIfSettled()
+  }, [packPointColors, packLinkColors, packLinkWidths, reassertPauseIfSettled])
 
   // ---------------------------------------------------------------------------
   // Config updates — sim sliders / theme / greyout (setConfig merges in 2.6.4)
@@ -949,7 +1067,7 @@ const GraphCanvasInner = ({
     // spaceSize at runtime forces a costly resize + re-layout.
     g.setConfig({
       backgroundColor: isDark ? '#020617' : '#f8fafc',
-      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.18,
+      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices || !!focusedNodeIndices) ? 0 : 0.18,
       linkGreyoutOpacity: repoFilterActive ? 0 : 0.1,
       simulationLinkSpring: simCfg.linkSpring,
       simulationLinkDistance: simCfg.linkDistance,
@@ -957,7 +1075,7 @@ const GraphCanvasInner = ({
       simulationRepulsion: simCfg.repulsion,
       simulationCenter: simCfg.center,
     })
-  }, [isDark, repoFilterActive, nodeFilterIndices, simCfg])
+  }, [isDark, repoFilterActive, nodeFilterIndices, focusedNodeIndices, simCfg])
 
   // Live settle-time cap: when the "Settle time (s)" slider changes WHILE a
   // fresh layout is still settling, re-arm the wall-clock cap to the new value
@@ -1046,9 +1164,12 @@ const GraphCanvasInner = ({
     renderDebounceRef.current = setTimeout(() => {
       const g = graphRef.current
       if (!g) return
-      const BASE = 120
-      const MAX_MULT = 3.0
-      const clampedScale = Math.min(rc.pointSizeScale, rc.maxPointSize / (BASE * MAX_MULT))
+      // #1392-refine (item 2) — zoom-aware clamp: cap pointSizeScale so the
+      // largest node stays <= maxPointSize at the CURRENT zoom (not just zoom=1).
+      // This keeps the Rendering panel's maxPointSize/sizeScale knobs working
+      // while preventing zoomed-in nodes from ballooning into uniform blobs.
+      const currentZoom = g.getZoomLevel?.() ?? 1
+      const clampedScale = effectiveScaleForZoom(currentZoom)
       g.setConfig({
         pointOpacity: rc.pointOpacity,
         pointSizeScale: clampedScale,
@@ -1059,6 +1180,7 @@ const GraphCanvasInner = ({
       g.setLinkColors(packLinkColors())
       g.setLinkWidths(packLinkWidths())
       g.render()
+      reassertPauseIfSettled()
     }, 16)
     return () => {
       if (renderDebounceRef.current) clearTimeout(renderDebounceRef.current)
@@ -1079,7 +1201,8 @@ const GraphCanvasInner = ({
   useEffect(() => {
     const g = graphRef.current
     if (!g) return
-    const noOverrides = !activeRepos && effectiveForceIds.size === 0 && !nodeFilterIndices
+    const noOverrides =
+      !activeRepos && effectiveForceIds.size === 0 && !nodeFilterIndices && !focusedNodeIndices
     if (noOverrides) {
       g.selectPointsByIndices(null)
       return
@@ -1100,8 +1223,43 @@ const GraphCanvasInner = ({
       nodes.forEach((n, i) => { if (effectiveForceIds.has(n.id)) set.add(i) })
       effective = Array.from(set)
     }
+    // #1392-refine (item 5) — focus is a HARD restriction applied LAST: the
+    // rendered set becomes exactly the N-hop neighborhood, intersected with any
+    // active repo/criteria filter so focus never re-reveals filtered-out nodes.
+    if (focusedNodeIndices != null) {
+      if (effective === null) {
+        effective = focusedNodeIndices
+      } else {
+        const fs = new Set(effective)
+        effective = focusedNodeIndices.filter((i) => fs.has(i))
+      }
+    }
     g.selectPointsByIndices(effective)
-  }, [visibleIndices, activeRepos, effectiveForceIds, nodeFilterIndices, nodes])
+  }, [visibleIndices, activeRepos, effectiveForceIds, nodeFilterIndices, focusedNodeIndices, nodes])
+
+  // ---------------------------------------------------------------------------
+  // #1392-refine (item 5) — re-fit the camera to the focused subgraph so it
+  // FILLS the viewport (reads as a fresh, smaller graph). When focus clears,
+  // re-fit back to the full node bounding box. Gated on hasSettled so we never
+  // fight the initial settle fit. A short animation makes the transition read.
+  // ---------------------------------------------------------------------------
+  const prevFocusKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!hasSettled) return
+    const g = graphRef.current
+    if (!g) return
+    // Cheap structural key so we only re-fit when the focus set actually changes.
+    const key = focusedNodeIndices ? focusedNodeIndices.join(',') : null
+    if (prevFocusKeyRef.current === key) return
+    prevFocusKeyRef.current = key
+    if (focusedNodeIndices && focusedNodeIndices.length > 0) {
+      g.fitViewByPointIndices(focusedNodeIndices, 400, FIT_PADDING)
+    } else {
+      g.fitView(400, FIT_PADDING)
+    }
+    labelDirtyRef.current = true
+    setTimeout(() => { labelDirtyRef.current = true; refreshLabels() }, 450)
+  }, [focusedNodeIndices, hasSettled, refreshLabels])
 
   // ---------------------------------------------------------------------------
   // Simulation run/pause (resume layout)
