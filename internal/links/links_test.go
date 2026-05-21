@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 )
 
 // fixtureGraph is a minimal helper to write a per-repo graph.json that
@@ -597,3 +600,127 @@ func itoa(n int) string {
 
 // keep strings import used.
 var _ = strings.HasPrefix
+
+// TestLoadAllGraphs_FBOnly verifies that loadAllGraphs can load repos that
+// have only graph.fb (no graph.json). This is the default ADR-0016 mode.
+// Regression test for #1374 item #4 (cross_repo_links = 0).
+func TestLoadAllGraphs_FBOnly(t *testing.T) {
+	root := t.TempDir()
+
+	// Helper: write a minimal graph.Document as graph.fb into root/<slug>.
+	writeFB := func(slug string, doc *graph.Document) {
+		t.Helper()
+		dir := filepath.Join(root, slug)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := fbwriter.WriteAtomic(filepath.Join(dir, "graph.fb"), doc); err != nil {
+			t.Fatalf("write graph.fb for %s: %v", slug, err)
+		}
+	}
+
+	writeFB("frontend", &graph.Document{
+		Repo: "frontend",
+		Entities: []graph.Entity{
+			{ID: "f1", Name: "callSchedule", Kind: "function", SourceFile: "src/api.ts"},
+		},
+	})
+	writeFB("backend", &graph.Document{
+		Repo: "backend",
+		Entities: []graph.Entity{
+			{ID: "b1", Name: "ScheduleView", Kind: "class", SourceFile: "api/views.py"},
+		},
+	})
+
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatalf("loadAllGraphs: %v", err)
+	}
+	if len(graphs) != 2 {
+		t.Fatalf("expected 2 graphs, got %d", len(graphs))
+	}
+	byRepo := map[string]repoGraph{}
+	for _, g := range graphs {
+		byRepo[g.Repo] = g
+	}
+	if _, ok := byRepo["frontend"]; !ok {
+		t.Errorf("frontend repo not loaded (fb-only)")
+	}
+	if _, ok := byRepo["backend"]; !ok {
+		t.Errorf("backend repo not loaded (fb-only)")
+	}
+	if len(byRepo["frontend"].Entities) != 1 {
+		t.Errorf("frontend: expected 1 entity, got %d", len(byRepo["frontend"].Entities))
+	}
+	if len(byRepo["backend"].Entities) != 1 {
+		t.Errorf("backend: expected 1 entity, got %d", len(byRepo["backend"].Entities))
+	}
+}
+
+// TestLoadAllGraphs_MixedFBAndJSON verifies that a group where one repo has
+// graph.json and another has only graph.fb loads both repos correctly.
+// This mirrors the real upvate group (upvate_core has json; frontend/mobile are fb-only).
+func TestLoadAllGraphs_MixedFBAndJSON(t *testing.T) {
+	root := t.TempDir()
+
+	// backend: write graph.json only (old-style or explicit --export-json).
+	backendDir := filepath.Join(root, "backend")
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	backendDoc := map[string]any{
+		"version": 1,
+		"repo":    "backend",
+		"entities": []map[string]any{
+			{"id": "b1", "name": "schedule", "kind": "function", "source_file": "api.py"},
+		},
+		"relationships": []map[string]string{},
+	}
+	b, _ := json.Marshal(backendDoc)
+	if err := os.WriteFile(filepath.Join(backendDir, "graph.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// frontend: write graph.fb only (default ADR-0016 mode).
+	frontendDir := filepath.Join(root, "frontend")
+	if err := os.MkdirAll(frontendDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	frontendDoc := &graph.Document{
+		Repo: "frontend",
+		Entities: []graph.Entity{
+			{ID: "f1", Name: "fetchSchedule", Kind: "function", SourceFile: "api.ts"},
+		},
+	}
+	if err := fbwriter.WriteAtomic(filepath.Join(frontendDir, "graph.fb"), frontendDoc); err != nil {
+		t.Fatalf("write graph.fb: %v", err)
+	}
+
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatalf("loadAllGraphs: %v", err)
+	}
+	if len(graphs) != 2 {
+		t.Fatalf("expected 2 graphs (mixed fb+json), got %d", len(graphs))
+	}
+	slugs := make([]string, 0, len(graphs))
+	for _, g := range graphs {
+		slugs = append(slugs, g.Repo)
+	}
+	hasBackend := false
+	hasFrontend := false
+	for _, s := range slugs {
+		switch s {
+		case "backend":
+			hasBackend = true
+		case "frontend":
+			hasFrontend = true
+		}
+	}
+	if !hasBackend {
+		t.Errorf("backend (json-only) not loaded; repos found: %v", slugs)
+	}
+	if !hasFrontend {
+		t.Errorf("frontend (fb-only) not loaded; repos found: %v", slugs)
+	}
+}

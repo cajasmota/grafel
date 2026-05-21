@@ -19,7 +19,6 @@ package links
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -27,6 +26,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/graph"
 )
 
 // SchemaVersion is the integer version of the links file shape.
@@ -286,26 +287,14 @@ type edgeRef struct {
 	Kind   string // imports, calls, ...
 }
 
-// onDiskGraph is the minimal subset of graph.Document we need.
-type onDiskGraph struct {
-	Repo     string `json:"repo"`
-	Entities []struct {
-		ID         string            `json:"id"`
-		Name       string            `json:"name"`
-		Kind       string            `json:"kind"`
-		Subtype    string            `json:"subtype,omitempty"`
-		SourceFile string            `json:"source_file"`
-		Properties map[string]string `json:"properties,omitempty"`
-	} `json:"entities"`
-	Relationships []struct {
-		FromID string `json:"from_id"`
-		ToID   string `json:"to_id"`
-		Kind   string `json:"kind"`
-	} `json:"relationships"`
-}
-
-// loadAllGraphs walks graphsDir and returns one repoGraph per
-// <slug>/graph.json (or one if graphsDir is itself a graph.json).
+// loadAllGraphs walks graphsDir and returns one repoGraph per slug directory
+// that contains graph.fb or graph.json (graph.fb preferred per ADR-0016).
+//
+// Previously this function only walked for graph.json, which silently skipped
+// repos indexed with the default fb-only mode (ADR-0016 flip-day, issue #808).
+// The fix: collect directories that own either graph file, then load each via
+// graph.LoadGraphFromDir so the same fb-first / json-fallback logic applies
+// throughout the link passes. Fixes #1374 item #4 (cross_repo_links = 0).
 func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 	if graphsDir == "" {
 		return nil, errors.New("graphs dir required")
@@ -314,9 +303,14 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 	if err != nil {
 		return nil, err
 	}
-	var paths []string
+
+	// Collect the set of directories that contain at least one graph file.
+	// Using a set avoids double-loading when both graph.fb and graph.json
+	// are present in the same directory.
+	dirSet := map[string]bool{}
 	if !fi.IsDir() {
-		paths = []string{graphsDir}
+		// Caller passed a graph.json directly — treat its parent as the dir.
+		dirSet[filepath.Dir(graphsDir)] = true
 	} else {
 		err := filepath.WalkDir(graphsDir, func(p string, d os.DirEntry, err error) error {
 			if err != nil {
@@ -325,8 +319,9 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 			if d.IsDir() {
 				return nil
 			}
-			if filepath.Base(p) == "graph.json" {
-				paths = append(paths, p)
+			base := filepath.Base(p)
+			if base == "graph.json" || base == "graph.fb" {
+				dirSet[filepath.Dir(p)] = true
 			}
 			return nil
 		})
@@ -334,39 +329,45 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 			return nil, err
 		}
 	}
-	sort.Strings(paths)
-	graphs := make([]repoGraph, 0, len(paths))
+
+	// Deterministic iteration order.
+	dirs := make([]string, 0, len(dirSet))
+	for d := range dirSet {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+
+	graphs := make([]repoGraph, 0, len(dirs))
 	seen := map[string]bool{}
-	for _, p := range paths {
-		b, err := os.ReadFile(p)
+	for _, dir := range dirs {
+		// Resolve symlinks so FileRoot points at the real repository.
+		realDir := dir
+		if rp, err := filepath.EvalSymlinks(dir); err == nil {
+			realDir = rp
+		}
+
+		doc, err := graph.LoadGraphFromDir(dir)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("load graph in %s: %w", dir, err)
 		}
-		var g onDiskGraph
-		if err := json.Unmarshal(b, &g); err != nil {
-			return nil, fmt.Errorf("parse %s: %w", p, err)
+
+		repoName := doc.Repo
+		if repoName == "" {
+			// Fallback: derive from the slug sub-directory name (one level up
+			// from the staged dir, which has layout <tmp>/<slug>/graph.{fb,json}).
+			repoName = filepath.Base(realDir)
 		}
-		if g.Repo == "" {
-			// Fallback: derive from parent dir name.
-			g.Repo = filepath.Base(filepath.Dir(filepath.Dir(p)))
-		}
-		if seen[g.Repo] {
+		if seen[repoName] {
 			continue
 		}
-		seen[g.Repo] = true
-		// Resolve the on-disk source-file root: if `p` is a symlink, follow
-		// it so FileRoot points at the real repository (where the source
-		// files live), not the staging directory we may have built.
-		realPath := p
-		if rp, err := filepath.EvalSymlinks(p); err == nil {
-			realPath = rp
-		}
+		seen[repoName] = true
+
 		rg := repoGraph{
-			Repo:     g.Repo,
-			Path:     p,
-			FileRoot: filepath.Dir(filepath.Dir(realPath)),
+			Repo:     repoName,
+			Path:     filepath.Join(dir, "graph.json"), // keep for logging/compat
+			FileRoot: filepath.Dir(realDir),
 		}
-		for _, e := range g.Entities {
+		for _, e := range doc.Entities {
 			rg.Entities = append(rg.Entities, entityNode{
 				ID:         e.ID,
 				Name:       e.Name,
@@ -376,7 +377,7 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 				Properties: e.Properties,
 			})
 		}
-		for _, r := range g.Relationships {
+		for _, r := range doc.Relationships {
 			rg.Edges = append(rg.Edges, edgeRef{FromID: r.FromID, ToID: r.ToID, Kind: r.Kind})
 		}
 		graphs = append(graphs, rg)
