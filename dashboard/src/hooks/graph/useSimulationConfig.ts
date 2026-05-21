@@ -25,6 +25,15 @@ export interface SimulationConfig {
   friction:     number   // 0.5–0.95
   repulsion:    number   // 0.1–10.0
   center:       number   // 0.0–1.0
+  /**
+   * settleTime — wall-clock cap (seconds) for the explode/settle animation on
+   * a FRESH layout (no cached positions). GraphCanvas force-calls doSettle()
+   * after this many seconds even if onSimulationEnd never fired, so the
+   * initial → explode → settle animation never runs longer than this.
+   * Default 2.0s, range 0.5–6s. Ignored when a saved layout is restored
+   * (the simulation is skipped entirely in that case).
+   */
+  settleTime:   number   // 0.5–6.0 (seconds)
 }
 
 export type SimulationPreset = 'silk-road' | 'dense'
@@ -49,6 +58,7 @@ export const SILK_ROAD_DEFAULTS: SimulationConfig = {
   friction:     0.77,
   repulsion:    4.0,
   center:       0.15,
+  settleTime:   2.0,
 }
 
 export const DENSE_DEFAULTS: SimulationConfig = {
@@ -59,6 +69,7 @@ export const DENSE_DEFAULTS: SimulationConfig = {
   friction:     0.88,
   repulsion:    2.0,
   center:       0.3,
+  settleTime:   2.0,
 }
 
 export const PRESET_CONFIGS: Record<SimulationPreset, SimulationConfig> = {
@@ -78,6 +89,7 @@ export const SLIDER_META: SliderMeta[] = [
   { key: 'linkSpring',   label: 'Link Spring',    min: 0.0,   max: 2.0,   step: 0.01 },
   { key: 'linkDistance', label: 'Link Distance',  min: 1,     max: 50,    step: 1    },
   { key: 'friction',     label: 'Friction',       min: 0.50,  max: 0.95,  step: 0.01 },
+  { key: 'settleTime',   label: 'Settle time (s)', min: 0.5,  max: 6.0,   step: 0.1  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -96,6 +108,7 @@ function encodeToHash(cfg: SimulationConfig): string {
     fr:  String(cfg.friction),
     rp:  String(cfg.repulsion),
     ct:  String(cfg.center),
+    st:  String(cfg.settleTime),
   })
   return params.toString()
 }
@@ -111,6 +124,7 @@ function decodeFromHash(hash: string): Partial<SimulationConfig> {
     const fr = Number(params.get('fr'));  if (isFinite(fr))            out.friction     = fr
     const rp = Number(params.get('rp'));  if (isFinite(rp) && rp > 0) out.repulsion    = rp
     const ct = Number(params.get('ct'));  if (isFinite(ct))            out.center       = ct
+    const st = Number(params.get('st'));  if (isFinite(st) && st > 0) out.settleTime   = st
     return out
   } catch {
     return {}
