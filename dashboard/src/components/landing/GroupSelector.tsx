@@ -380,6 +380,7 @@ function GroupCard({ group, onClick, onNavigateToNode }: GroupCardProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function NoGroupsState() {
+  const navigate = useNavigate()
   return (
     <div className="flex flex-col items-center justify-center gap-6 py-24 px-8 text-center">
       <div className="rounded-full bg-slate-200 dark:bg-slate-800 p-5">
@@ -391,7 +392,21 @@ function NoGroupsState() {
           Register a group and index at least one repo to see it here.
         </p>
       </div>
+
+      {/* Primary CTA — web wizard */}
+      <button
+        onClick={() => navigate('/onboard')}
+        className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-colors"
+        data-testid="landing-get-started"
+      >
+        Get started <Activity className="w-4 h-4" />
+      </button>
+
+      {/* CLI fallback */}
       <div className="w-full max-w-md space-y-3 text-left">
+        <p className="text-xs text-center text-slate-500 dark:text-slate-600 font-medium uppercase tracking-wider">
+          or use the CLI
+        </p>
         <div className="rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4">
           <p className="text-xs text-slate-400 dark:text-slate-500 mb-2 font-mono uppercase tracking-wider">Step 1 — register a group</p>
           <pre className="text-sm text-slate-700 dark:text-slate-300 font-mono whitespace-pre-wrap">

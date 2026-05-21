@@ -18,6 +18,7 @@ import { UpdateRoute } from '@/routes/update'
 import { SettingsRoute } from '@/routes/settings'
 import { QualityRoute } from '@/routes/quality'
 import { MCPActivityRoute } from '@/routes/mcp-activity'
+import { OnboardRoute } from '@/routes/onboard'
 import { RouterErrorBoundary } from '@/components/RouterErrorBoundary'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Globe } from 'lucide-react'
@@ -105,6 +106,9 @@ const router = createBrowserRouter([
 
       // Surface 12 — MCP Activity Log (#1226)
       { path: 'mcp-activity', element: <MCPActivityRoute /> },
+
+      // Surface 13 — Web onboarding wizard (#1239)
+      { path: 'onboard', element: <OnboardRoute /> },
     ],
   },
 ])

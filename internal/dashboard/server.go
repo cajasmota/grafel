@@ -313,6 +313,11 @@ func (s *Server) routes() http.Handler {
 	// Surface 11 — Quality history (#1214)
 	mux.HandleFunc("GET /api/quality/history/{group}", s.handleQualityHistory)
 
+	// Surface 12 — Web onboarding wizard (#1239)
+	mux.HandleFunc("POST /api/onboard/check-path", s.handleOnboardCheckPath)
+	mux.HandleFunc("POST /api/onboard/detect-monorepo", s.handleOnboardDetectMonorepo)
+	mux.HandleFunc("POST /api/onboard/create-group", s.handleOnboardCreateGroup)
+
 	return s.withAuth(mux)
 }
 
