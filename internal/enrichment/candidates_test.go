@@ -20,10 +20,12 @@ func mkDoc(es ...graph.Entity) *graph.Document {
 	}
 }
 
-// Test 1: an entity with no description triggers exactly one
-// describe_entity candidate.
+// Test 1: a qualifying entity with no description triggers exactly one
+// describe_entity candidate. Positive selection — only entities that hit a
+// research-validated signal are emitted (issue #1162).
 func TestEmitFor_DescribeEntity_NoDescription(t *testing.T) {
-	doc := mkDoc(graph.Entity{ID: "e1", Name: "AuthService", Kind: "class"})
+	// http_endpoint qualifies (public API surface — always signal 1).
+	doc := mkDoc(graph.Entity{ID: "e1", Name: "http:GET:/api/users", Kind: "http_endpoint"})
 	cands := CollectCandidates(doc, []CandidateEmitter{describeEntityEmitter{}}, nil)
 	if len(cands) != 1 {
 		t.Fatalf("expected 1 candidate, got %d", len(cands))
@@ -34,13 +36,23 @@ func TestEmitFor_DescribeEntity_NoDescription(t *testing.T) {
 	if cands[0].SubjectID != "e1" {
 		t.Fatalf("subject_id = %q, want e1", cands[0].SubjectID)
 	}
-	// Already-described entity → no candidate.
+	if len(cands[0].QualificationSignals) == 0 {
+		t.Fatalf("expected qualification_signals to be set, got empty")
+	}
+
+	// Already-described qualifying entity → no candidate.
 	doc2 := mkDoc(graph.Entity{
-		ID: "e2", Name: "X", Kind: "class",
+		ID: "e2", Name: "http:POST:/api/orders", Kind: "http_endpoint",
 		Properties: map[string]string{"description": "already set"},
 	})
 	if got := CollectCandidates(doc2, []CandidateEmitter{describeEntityEmitter{}}, nil); len(got) != 0 {
 		t.Fatalf("expected 0 candidates for described entity, got %d", len(got))
+	}
+
+	// Generic "class" kind does NOT qualify under positive selection.
+	doc3 := mkDoc(graph.Entity{ID: "e3", Name: "AuthService", Kind: "class"})
+	if got := CollectCandidates(doc3, []CandidateEmitter{describeEntityEmitter{}}, nil); len(got) != 0 {
+		t.Fatalf("expected 0 candidates for non-qualifying kind, got %d", len(got))
 	}
 }
 
@@ -90,6 +102,8 @@ func TestEmit_Idempotent(t *testing.T) {
 }
 
 // Test 4: rejected (subject_id, kind) pairs are not re-emitted.
+// Both entities are http_endpoints (qualifying kind) so the rejection filter
+// is what determines the count, not positive selection.
 func TestEmit_SkipsRejected(t *testing.T) {
 	dir := t.TempDir()
 	// Pre-seed rejections file.
@@ -108,8 +122,8 @@ func TestEmit_SkipsRejected(t *testing.T) {
 	}
 
 	doc := mkDoc(
-		graph.Entity{ID: "e1", Name: "Rejected", Kind: "class"},
-		graph.Entity{ID: "e2", Name: "Allowed", Kind: "class"},
+		graph.Entity{ID: "e1", Name: "http:GET:/api/rejected", Kind: "http_endpoint"},
+		graph.Entity{ID: "e2", Name: "http:GET:/api/allowed", Kind: "http_endpoint"},
 	)
 	cands := CollectCandidatesSkippingRejected(doc, []CandidateEmitter{describeEntityEmitter{}}, dir)
 	if len(cands) != 1 {
@@ -340,16 +354,18 @@ func TestEmitFor_SelfDescriptiveOperation(t *testing.T) {
 }
 
 // TestEmitFor_AmbiguousOperation verifies that SCOPE.Operation entities with
-// ambiguous names (single-word, no obvious verb+noun decomposition) DO produce
-// a describe_entity candidate because an agent can add value.
+// ambiguous names (short all-lowercase, no obvious verb+noun decomposition)
+// DO produce a describe_entity candidate because an agent can add value.
+// The ambiguous-name signal fires for names ≤ 9 chars, all-lowercase, not
+// matching the self-descriptive verb+Noun pattern (issue #1162).
 func TestEmitFor_AmbiguousOperation(t *testing.T) {
 	ambiguous := []string{
-		"process",
-		"handle",
-		"execute",
-		"run",
-		"apply",
-		"transform",
+		"process",   // 7 chars, all-lowercase
+		"handle",    // 6 chars, all-lowercase
+		"execute",   // 7 chars, all-lowercase
+		"run",       // 3 chars, all-lowercase
+		"apply",     // 5 chars, all-lowercase
+		"transform", // 9 chars, all-lowercase
 	}
 	emitter := []CandidateEmitter{describeEntityEmitter{}}
 	for _, name := range ambiguous {
@@ -378,23 +394,160 @@ func TestEmitFor_OperationWithDescription(t *testing.T) {
 	}
 }
 
-// TestEmitFor_NonNoiseKindStillEmits verifies that a non-noise kind (e.g.
-// SCOPE.Class) still produces a candidate after the noise filter is applied,
-// confirming the filter is not over-broad.
-func TestEmitFor_NonNoiseKindStillEmits(t *testing.T) {
-	normalKinds := []string{
-		"SCOPE.Class",
-		"SCOPE.Function",
-		"SCOPE.Component",
-		"SCOPE.Service",
-	}
+// TestEmitFor_PositiveSelection verifies that qualifying kinds emit candidates
+// and non-qualifying kinds do not. Under positive selection (issue #1162) the
+// default policy is NOT to enrich; an entity must hit a positive signal.
+func TestEmitFor_PositiveSelection(t *testing.T) {
 	emitter := []CandidateEmitter{describeEntityEmitter{}}
-	for _, kind := range normalKinds {
-		doc := mkDoc(graph.Entity{ID: "e1", Name: "AuthService", Kind: kind})
+
+	// Qualifying kinds: must produce a candidate.
+	qualifying := []struct {
+		name string
+		kind string
+	}{
+		{"http:GET:/api/users", "http_endpoint"},
+		{"http:POST:/api/orders", "Route"},
+		{"PaymentService", "Service"},
+		{"OrderController", "Controller"},
+		{"ReportScheduledJob", "SCOPE.ScheduledJob"},
+		{"UserDataAccess", "SCOPE.DataAccess"},
+	}
+	for _, tc := range qualifying {
+		doc := mkDoc(graph.Entity{ID: "e1", Name: tc.name, Kind: tc.kind})
 		got := CollectCandidates(doc, emitter, nil)
 		if len(got) != 1 {
-			t.Errorf("kind %q: expected 1 candidate (normal kind), got %d", kind, len(got))
+			t.Errorf("qualifying kind %q name %q: expected 1 candidate, got %d", tc.kind, tc.name, len(got))
 		}
+		if len(got) == 1 && len(got[0].QualificationSignals) == 0 {
+			t.Errorf("qualifying kind %q: expected qualification_signals to be set", tc.kind)
+		}
+	}
+
+	// Non-qualifying kinds: must produce no candidates.
+	nonQualifying := []struct {
+		name string
+		kind string
+	}{
+		{"AuthService", "SCOPE.Class"},
+		{"helper", "SCOPE.Function"},
+		{"getUserById", "SCOPE.Operation"}, // self-descriptive
+		{"UserProfile", "SCOPE.Schema"},
+	}
+	for _, tc := range nonQualifying {
+		doc := mkDoc(graph.Entity{ID: "e1", Name: tc.name, Kind: tc.kind})
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 0 {
+			t.Errorf("non-qualifying kind %q name %q: expected 0 candidates, got %d", tc.kind, tc.name, len(got))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests for issue #1162 — Positive-selection predicate
+// ---------------------------------------------------------------------------
+
+// TestQualifiesForEnrichment_Scenario verifies the four-entity scenario
+// described in issue #1162: 1 HTTPEndpoint, 1 god node, 1 ambiguous-name Op,
+// 1 trivial helper → exactly 3 candidates (helper not selected).
+func TestQualifiesForEnrichment_Scenario(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	doc := mkDoc(
+		// Signal 1 — HTTP endpoint: qualifies
+		graph.Entity{ID: "ep1", Name: "http:POST:/api/orders", Kind: "http_endpoint"},
+		// Signal 2 — god node: qualifies
+		graph.Entity{ID: "gn1", Name: "Coordinator", Kind: "class", IsGodNode: true},
+		// Signal 5 — ambiguous name: qualifies
+		graph.Entity{ID: "op1", Name: "execute", Kind: "SCOPE.Operation"},
+		// No signal — trivial helper: does NOT qualify
+		graph.Entity{ID: "op2", Name: "getUserById", Kind: "SCOPE.Operation"},
+	)
+	got := CollectCandidates(doc, emitter, nil)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 candidates (trivial helper excluded), got %d", len(got))
+	}
+	ids := map[string]bool{}
+	for _, c := range got {
+		ids[c.SubjectID] = true
+	}
+	if ids["op2"] {
+		t.Errorf("trivial helper op2 (getUserById) should not have been selected")
+	}
+}
+
+// TestQualifiesForEnrichment_Signals checks that QualificationSignals is
+// populated and contains the correct signal name for each qualifying trigger.
+func TestQualifiesForEnrichment_Signals(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+
+	cases := []struct {
+		entity graph.Entity
+		want   string
+	}{
+		{graph.Entity{ID: "ep", Name: "http:GET:/api/x", Kind: "http_endpoint"}, "http_endpoint"},
+		{graph.Entity{ID: "gn", Name: "Hub", Kind: "class", IsGodNode: true}, "god_node"},
+		{graph.Entity{ID: "ap", Name: "Bridge", Kind: "class", IsArticulationPt: true}, "articulation_point"},
+		{graph.Entity{ID: "svc", Name: "AuthService", Kind: "Service"}, "high_arch_kind:Service"},
+		{graph.Entity{ID: "cmp", Name: "PaymentContextProvider", Kind: "SCOPE.Component"}, "complex_component"},
+		{graph.Entity{ID: "amb", Name: "run", Kind: "SCOPE.Operation"}, "ambiguous_name"},
+	}
+
+	for _, tc := range cases {
+		doc := mkDoc(tc.entity)
+		got := CollectCandidates(doc, emitter, nil)
+		if len(got) != 1 {
+			t.Errorf("entity %q kind %q: expected 1 candidate, got %d", tc.entity.Name, tc.entity.Kind, len(got))
+			continue
+		}
+		found := false
+		for _, sig := range got[0].QualificationSignals {
+			if sig == tc.want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("entity %q: expected signal %q in %v", tc.entity.Name, tc.want, got[0].QualificationSignals)
+		}
+	}
+}
+
+// TestQualifiesForEnrichment_NoiseKindDefaultsOut verifies that entities in
+// the noise kind set are excluded even if they are god nodes.
+func TestQualifiesForEnrichment_NoiseKindDefaultsOut(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+	noiseGodNode := graph.Entity{
+		ID: "n1", Name: "SomePattern", Kind: "SCOPE.Pattern", IsGodNode: true,
+	}
+	doc := mkDoc(noiseGodNode)
+	got := CollectCandidates(doc, emitter, nil)
+	if len(got) != 0 {
+		t.Errorf("noise kind with god_node: expected 0 candidates, got %d", len(got))
+	}
+}
+
+// TestQualifiesForEnrichment_AmbiguousNameBoundary checks boundary conditions
+// for the ambiguous-name signal: exactly at 9 chars (qualifies), 10 chars
+// (does not), camelCase (does not, has uppercase).
+func TestQualifiesForEnrichment_AmbiguousNameBoundary(t *testing.T) {
+	emitter := []CandidateEmitter{describeEntityEmitter{}}
+
+	// 9 chars all-lowercase → qualifies
+	doc9 := mkDoc(graph.Entity{ID: "o1", Name: "transform", Kind: "SCOPE.Operation"}) // exactly 9
+	if got := CollectCandidates(doc9, emitter, nil); len(got) != 1 {
+		t.Errorf("9-char lowercase name: expected 1 candidate, got %d", len(got))
+	}
+
+	// 10 chars all-lowercase → does not qualify via ambiguous-name signal
+	// (unless another signal fires, which it won't here)
+	doc10 := mkDoc(graph.Entity{ID: "o2", Name: "transforms2", Kind: "SCOPE.Operation"}) // 11 chars
+	if got := CollectCandidates(doc10, emitter, nil); len(got) != 0 {
+		t.Errorf("11-char name: expected 0 candidates (too long for ambiguous-name), got %d", len(got))
+	}
+
+	// CamelCase → does not qualify via ambiguous-name (has uppercase)
+	docCC := mkDoc(graph.Entity{ID: "o3", Name: "runIt", Kind: "SCOPE.Operation"})
+	if got := CollectCandidates(docCC, emitter, nil); len(got) != 0 {
+		t.Errorf("camelCase name: expected 0 candidates, got %d", len(got))
 	}
 }
 
@@ -437,9 +590,10 @@ func TestCollectTasks_ThreeActions(t *testing.T) {
 }
 
 // TestCollectTasks_OneAction verifies that an entity needing only describe_entity
-// produces one task with one action.
+// produces one task with one action. The entity is a Route (qualifying kind)
+// but not a god-node/articulation-point so it gets only describe_entity.
 func TestCollectTasks_OneAction(t *testing.T) {
-	doc := mkDoc(graph.Entity{ID: "e1", Name: "PaymentHandler", Kind: "class"})
+	doc := mkDoc(graph.Entity{ID: "e1", Name: "http:GET:/api/payments", Kind: "http_endpoint"})
 
 	tasks := CollectTasks(doc, DefaultEmitters(), nil, nil)
 
@@ -498,7 +652,7 @@ func TestCollectTasks_CompletedActionRemains(t *testing.T) {
 func TestCollectTasks_UniqueSubjectCount(t *testing.T) {
 	pr := 0.05
 	doc := mkDoc(
-		graph.Entity{ID: "e1", Name: "Plain", Kind: "class"},                                              // 1 action
+		graph.Entity{ID: "e1", Name: "http:GET:/api/plain", Kind: "http_endpoint"},                        // 1 action (describe_entity only)
 		graph.Entity{ID: "g1", Name: "God", Kind: "class", IsGodNode: true, PageRank: &pr},                // 3 actions
 		graph.Entity{ID: "a1", Name: "Bridge", Kind: "class", IsArticulationPt: true},                    // 2 actions (describe+role)
 	)

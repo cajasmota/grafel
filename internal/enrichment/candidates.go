@@ -57,13 +57,14 @@ const CandidatesSchemaVersion = 2
 // Candidate is one row in <repo>/.archigraph/enrichment-candidates.json.
 // Subject_id is always the local entity id (NOT prefixed with repo).
 type Candidate struct {
-	ID              string         `json:"id"`
-	Kind            string         `json:"kind"`
-	SubjectID       string         `json:"subject_id"`
-	Context         map[string]any `json:"context,omitempty"`
-	PromptTemplate  string         `json:"prompt_template,omitempty"`
-	ConfidenceFloor float64        `json:"confidence_floor,omitempty"`
-	DiscoveredAt    string         `json:"discovered_at,omitempty"`
+	ID                   string         `json:"id"`
+	Kind                 string         `json:"kind"`
+	SubjectID            string         `json:"subject_id"`
+	Context              map[string]any `json:"context,omitempty"`
+	PromptTemplate       string         `json:"prompt_template,omitempty"`
+	ConfidenceFloor      float64        `json:"confidence_floor,omitempty"`
+	DiscoveredAt         string         `json:"discovered_at,omitempty"`
+	QualificationSignals []string       `json:"qualification_signals,omitempty"`
 }
 
 // Resolution is one row in <repo>/.archigraph/enrichment-resolutions.json.
@@ -138,13 +139,190 @@ var selfDescriptiveOperationRE = regexp.MustCompile(
 	`^(get|set|is|has|can|validate|parse|format|create|delete|fetch|load|save|send|build|render|on|use)[A-Z][a-zA-Z]+$`,
 )
 
+// qualifyHTTPKinds is the set of entity kinds that represent public API
+// surface — HTTP endpoints and route definitions — that always qualify for
+// enrichment because their intent and contract must be documented.
+var qualifyHTTPKinds = map[string]bool{
+	"http_endpoint":      true,
+	"HTTPEndpoint":       true,
+	"Route":              true,
+	"SCOPE.Route":        true,
+	"SCOPE.HTTPEndpoint": true,
+}
+
+// qualifyHighArchKinds is the set of entity kinds that represent named
+// architectural roles (controllers, services, background tasks, etc.). These
+// are not self-describing from their name alone and benefit from an
+// agent-written description that explains their responsibility.
+var qualifyHighArchKinds = map[string]bool{
+	"Controller":         true,
+	"Service":            true,
+	"SCOPE.Service":      true,
+	"SCOPE.Controller":   true,
+	"SCOPE.ExternalAPI":  true,
+	"SCOPE.ScheduledJob": true,
+	"SCOPE.DataAccess":   true,
+	"Model":              true,
+	"Task":               true,
+	"View":               true,
+}
+
+// qualifyComplexComponentRE matches SCOPE.Component names whose name starts
+// with an uppercase letter and encodes an architectural pattern suffix
+// (Manager, Handler, Provider, Context, Reducer, Store, Orchestrator,
+// Coordinator). The pattern requires an uppercase letter before the suffix
+// so it fires on "OrderManager" but not on "setCurrentPage" or path names
+// that happen to contain these words. File-path names containing "/" are
+// excluded separately by the caller.
+var qualifyComplexComponentRE = regexp.MustCompile(
+	`^[A-Z][A-Za-z]*(Manager|Handler|Provider|Context|Reducer|Orchestrat|Coordinator)$`,
+)
+
+// containsSlash reports whether s contains a "/" character. Used to detect
+// file-path-like component names (e.g. "src/hooks/useAuth.ts") which are
+// module-level containers rather than individually describable entities.
+func containsSlash(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '/' {
+			return true
+		}
+	}
+	return false
+}
+
+// qualifiesForEnrichment returns true when entity e is a research-validated
+// candidate for agent enrichment, together with the signals that drove the
+// decision. The default policy is NOT to enrich: an entity qualifies ONLY
+// when it hits at least one positive criterion.
+//
+// Signal hierarchy (from Phase 1 research on a 500-entity sample of the
+// target codebase, 2026-05-21):
+//  1. http_endpoint / Route          → 100% enrichment value (public API surface)
+//  2. god_node / articulation_point  → high structural importance
+//  3. high_arch_kind                 → named architectural role
+//  4. complex_component              → SCOPE.Component with architectural name
+//  5. ambiguous_name                 → very short lowercase name (no semantic signal)
+//
+// Kinds explicitly excluded:
+//   - SCOPE.Schema, SCOPE.Pattern, SCOPE.External, SCOPE.Heading,
+//     SCOPE.Stylesheet, SCOPE.CodeBlock, SCOPE.Document  (noise / structural)
+//   - SCOPE.Operation / SCOPE.Component with self-descriptive names
+//   - Plain state variables and small helpers (the long tail)
+//
+// Empirical target: 20-30% of entities in a typical codebase qualify.
+func qualifiesForEnrichment(e *graph.Entity) (qualified bool, signals []string) {
+	if e == nil || e.Name == "" {
+		return false, nil
+	}
+
+	// --- Noise kinds: never qualify ---
+	if describeEntityNoiseKinds[e.Kind] {
+		return false, nil
+	}
+
+	// --- Signal 1: HTTP endpoint / Route (public API surface) ---
+	if qualifyHTTPKinds[e.Kind] {
+		return true, []string{"http_endpoint"}
+	}
+
+	// --- Signal 2: structural importance ---
+	if e.IsGodNode {
+		signals = append(signals, "god_node")
+	}
+	if e.IsArticulationPt {
+		signals = append(signals, "articulation_point")
+	}
+	if len(signals) > 0 {
+		return true, signals
+	}
+
+	// --- Signal 3: named architectural role ---
+	if qualifyHighArchKinds[e.Kind] {
+		return true, []string{"high_arch_kind:" + e.Kind}
+	}
+
+	// --- Signal 4: complex SCOPE.Component (architectural pattern in name) ---
+	// File-path names (containing "/") are module-level containers, not
+	// individually describable components, so they are excluded.
+	if e.Kind == "SCOPE.Component" &&
+		!containsSlash(e.Name) &&
+		qualifyComplexComponentRE.MatchString(e.Name) {
+		return true, []string{"complex_component"}
+	}
+
+	// --- Signal 5: genuinely ambiguous name ---
+	// A single-word, all-lowercase name of 2–9 characters that is NOT a common
+	// programming/domain term qualifies when attached to an Operation or
+	// Component kind, because without a description the reader has no hint
+	// about the entity's purpose. Common state-variable terms (data, loading,
+	// error, form, …) are excluded because they are self-explanatory in context.
+	if (e.Kind == "SCOPE.Operation" || e.Kind == "SCOPE.Component" || e.Kind == "Operation") &&
+		!selfDescriptiveOperationRE.MatchString(e.Name) &&
+		!commonProgrammingTerms[e.Name] {
+		n := e.Name
+		if len(n) >= 2 && len(n) <= 9 {
+			allLower := true
+			for i := 0; i < len(n); i++ {
+				if n[i] >= 'A' && n[i] <= 'Z' || n[i] == '.' || n[i] == ':' {
+					allLower = false
+					break
+				}
+			}
+			if allLower {
+				return true, []string{"ambiguous_name"}
+			}
+		}
+	}
+
+	// Default: does not qualify
+	return false, nil
+}
+
+// commonProgrammingTerms is the set of short lowercase names that are
+// self-explanatory in a React/Python/TypeScript context and should NOT
+// trigger the ambiguous-name enrichment signal even when they are ≤ 9 chars.
+// These terms are unambiguous to any developer without a written description.
+var commonProgrammingTerms = map[string]bool{
+	// React / component primitives
+	"data": true, "loading": true, "error": true, "form": true, "modal": true,
+	"state": true, "items": true, "list": true, "table": true, "row": true,
+	"columns": true, "filters": true, "styles": true, "style": true,
+	"title": true, "label": true, "value": true, "values": true,
+	"onChange": true, "onPress": true, "onClick": true,
+	// Auth / API primitives
+	"token": true, "tokens": true, "id": true, "ids": true, "key": true,
+	"payload": true, "params": true, "body": true, "headers": true,
+	"status": true, "result": true, "results": true, "response": true,
+	"request": true, "options": true, "config": true, "settings": true,
+	// Pagination / list
+	"limit": true, "offset": true, "page": true, "pages": true, "total": true,
+	"count": true, "index": true, "size": true,
+	// Component lifecycle / state
+	"current": true, "next": true, "prev": true, "initial": true,
+	"pending": true, "done": true, "open": true, "show": true, "hide": true,
+	"active": true, "enabled": true, "visible": true, "checked": true,
+	"selected": true, "focused": true, "editing": true, "saving": true,
+	"progress": true, "refetch": true, "refresh": true, "reset": true,
+	"clear": true, "submit": true,
+	// Misc short terms
+	"ref": true, "refs": true, "item": true, "type": true, "kind": true,
+	"name": true, "text": true, "url": true, "path": true, "uri": true,
+	"user": true, "role": true, "scope": true, "mode": true, "time": true,
+	"date": true, "message": true, "msg": true,
+}
+
 // ---------------------------------------------------------------------------
 // Built-in emitters
 // ---------------------------------------------------------------------------
 
-// describeEntityEmitter emits a candidate for any entity that has neither
-// a Description-equivalent property already nor an explicit signature, so
-// the agent can write a single-sentence description.
+// describeEntityEmitter emits a candidate for any entity that passes the
+// research-validated positive-selection predicate qualifiesForEnrichment.
+//
+// Prior behaviour (issue #1162): the emitter used a negative rule — emit for
+// any entity that "lacks a description property". For a freshly-extracted
+// graph nothing has a description, so everything qualified (22,427 candidates
+// ≈ 100% of entities). The new rule inverts this: default policy is NOT to
+// enrich; an entity qualifies only when it hits a positive signal.
 type describeEntityEmitter struct{}
 
 func (describeEntityEmitter) Name() string { return KindDescribeEntity }
@@ -153,16 +331,13 @@ func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 	if e == nil || e.Name == "" {
 		return nil
 	}
-	// A — skip structural/framework noise kinds that are not enrichable code entities.
-	if describeEntityNoiseKinds[e.Kind] {
-		return nil
-	}
-	// B — skip SCOPE.Operation entities whose name is fully self-descriptive
-	// (verb prefix + capitalised noun). A description would just paraphrase the name.
-	if e.Kind == "SCOPE.Operation" && selfDescriptiveOperationRE.MatchString(e.Name) {
-		return nil
-	}
+	// Skip if already described.
 	if v, ok := e.Properties["description"]; ok && v != "" {
+		return nil
+	}
+	// Positive selection: emit only when the entity passes research-validated criteria.
+	ok, sigs := qualifiesForEnrichment(e)
+	if !ok {
 		return nil
 	}
 	return []Candidate{{
@@ -176,9 +351,10 @@ func (describeEntityEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 			"source_file": e.SourceFile,
 			"signature":   e.Signature,
 		},
-		PromptTemplate:  "Describe the {{kind}} {{name}} in one sentence.",
-		ConfidenceFloor: 0.6,
-		DiscoveredAt:    nowRFC3339(),
+		PromptTemplate:       "Describe the {{kind}} {{name}} in one sentence.",
+		ConfidenceFloor:      0.6,
+		DiscoveredAt:         nowRFC3339(),
+		QualificationSignals: sigs,
 	}}
 }
 
@@ -193,14 +369,24 @@ func (classifyDomainEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 	if e == nil || e.Name == "" {
 		return nil
 	}
+	// Pre-check: skip noise kinds and self-descriptive operations uniformly.
+	if describeEntityNoiseKinds[e.Kind] {
+		return nil
+	}
+	if e.Kind == "SCOPE.Operation" && selfDescriptiveOperationRE.MatchString(e.Name) {
+		return nil
+	}
 	if v, ok := e.Properties["domain"]; ok && v != "" {
 		return nil
 	}
-	high := e.IsGodNode
-	if e.PageRank != nil && *e.PageRank >= 0.01 {
-		high = true
+	var sigs []string
+	if e.IsGodNode {
+		sigs = append(sigs, "god_node")
 	}
-	if !high {
+	if e.PageRank != nil && *e.PageRank >= 0.01 {
+		sigs = append(sigs, "high_pagerank")
+	}
+	if len(sigs) == 0 {
 		return nil
 	}
 	return []Candidate{{
@@ -212,9 +398,10 @@ func (classifyDomainEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 			"kind":        e.Kind,
 			"is_god_node": e.IsGodNode,
 		},
-		PromptTemplate:  "Classify the business domain of {{name}}.",
-		ConfidenceFloor: 0.5,
-		DiscoveredAt:    nowRFC3339(),
+		PromptTemplate:       "Classify the business domain of {{name}}.",
+		ConfidenceFloor:      0.5,
+		DiscoveredAt:         nowRFC3339(),
+		QualificationSignals: sigs,
 	}}
 }
 
@@ -229,11 +416,25 @@ func (describeRoleEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candida
 	if e == nil || e.Name == "" {
 		return nil
 	}
+	// Pre-check: skip noise kinds and self-descriptive operations uniformly.
+	if describeEntityNoiseKinds[e.Kind] {
+		return nil
+	}
+	if e.Kind == "SCOPE.Operation" && selfDescriptiveOperationRE.MatchString(e.Name) {
+		return nil
+	}
 	if v, ok := e.Properties["architectural_role"]; ok && v != "" {
 		return nil
 	}
 	if !e.IsGodNode && !e.IsArticulationPt {
 		return nil
+	}
+	var sigs []string
+	if e.IsGodNode {
+		sigs = append(sigs, "god_node")
+	}
+	if e.IsArticulationPt {
+		sigs = append(sigs, "articulation_point")
 	}
 	return []Candidate{{
 		ID:        candidateID(e.ID, KindDescribeRole),
@@ -245,9 +446,10 @@ func (describeRoleEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candida
 			"is_god_node":           e.IsGodNode,
 			"is_articulation_point": e.IsArticulationPt,
 		},
-		PromptTemplate:  "Describe the architectural role of {{name}} (controller/adapter/policy/orchestrator/...).",
-		ConfidenceFloor: 0.5,
-		DiscoveredAt:    nowRFC3339(),
+		PromptTemplate:       "Describe the architectural role of {{name}} (controller/adapter/policy/orchestrator/...).",
+		ConfidenceFloor:      0.5,
+		DiscoveredAt:         nowRFC3339(),
+		QualificationSignals: sigs,
 	}}
 }
 
