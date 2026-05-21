@@ -540,6 +540,13 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/repos/{repo}/monorepo", s.handleV2PatchMonorepo)
 	mux.HandleFunc("POST /api/v2/groups/{group}/doctor", s.handleV2Doctor)
 
+	// Paths screen — API & Endpoints Explorer (#1439, epic #1432).
+	// NOTE: /orphans must be registered before /{hash} so the static suffix
+	// wins Go 1.22+ ServeMux precedence.
+	mux.HandleFunc("GET /api/v2/groups/{id}/paths", s.handleV2PathsList)
+	mux.HandleFunc("GET /api/v2/groups/{id}/paths/orphans", s.handleV2PathsOrphans)
+	mux.HandleFunc("GET /api/v2/groups/{id}/paths/{hash}", s.handleV2PathDetail)
+
 	return s.withAuth(withGzip(mux))
 }
 
