@@ -375,6 +375,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/audit/stream", s.handleAuditStream)
 	mux.HandleFunc("GET /api/audit/export", s.handleAuditExport)
 
+	// Surface 14 — Indexer error registry (#1268)
+	mux.HandleFunc("GET /api/indexer-errors", s.handleIndexerErrors)
+
 	// MCP Setup Wizard (#1247) — one-click install / uninstall / verify
 	mux.HandleFunc("GET /api/mcp-setup/hosts", s.handleMCPSetupHosts)
 	mux.HandleFunc("POST /api/mcp-setup/install", s.handleMCPSetupInstall)
