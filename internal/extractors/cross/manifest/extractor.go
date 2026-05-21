@@ -9,6 +9,9 @@
 //   - Cargo.toml           (cargo)
 //   - pyproject.toml       (pip/poetry)
 //   - pom.xml              (maven)
+//   - requirements.txt     (pip)
+//   - pubspec.yaml         (pub/dart)
+//   - Gemfile              (bundler/ruby)
 //
 // Entity kind: "SCOPE.Component"
 // Relationships emitted: DEPENDS_ON(kind=external_dependency)
@@ -55,6 +58,8 @@ type dep struct {
 	name    string
 	version string
 	isDev   bool
+	// kind is "runtime", "dev", or "peer"
+	kind string
 }
 
 // ---------------------------------------------------------------------------
@@ -75,11 +80,14 @@ func projectRef(filePath string) string {
 
 // exactManifestNames lists supported manifest basenames (case-sensitive).
 var exactManifestNames = map[string]bool{
-	"package.json":   true,
-	"go.mod":         true,
-	"Cargo.toml":     true,
-	"pyproject.toml": true,
-	"pom.xml":        true,
+	"package.json":     true,
+	"go.mod":           true,
+	"Cargo.toml":       true,
+	"pyproject.toml":   true,
+	"pom.xml":          true,
+	"requirements.txt": true,
+	"pubspec.yaml":     true,
+	"Gemfile":          true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -91,11 +99,14 @@ func IsManifest(filePath string) bool {
 // detectPackageManager returns the package manager for a manifest path.
 func detectPackageManager(filePath string) string {
 	pm := map[string]string{
-		"package.json":   "npm",
-		"go.mod":         "go_modules",
-		"Cargo.toml":     "cargo",
-		"pyproject.toml": "pip",
-		"pom.xml":        "maven",
+		"package.json":     "npm",
+		"go.mod":           "go_modules",
+		"Cargo.toml":       "cargo",
+		"pyproject.toml":   "pip",
+		"pom.xml":          "maven",
+		"requirements.txt": "pip",
+		"pubspec.yaml":     "pub",
+		"Gemfile":          "bundler",
 	}
 	if v, ok := pm[filepath.Base(filePath)]; ok {
 		return v
@@ -109,18 +120,22 @@ func detectPackageManager(filePath string) string {
 
 func parsePackageJSON(source string) []dep {
 	var data struct {
-		Dependencies    map[string]string `json:"dependencies"`
-		DevDependencies map[string]string `json:"devDependencies"`
+		Dependencies     map[string]string `json:"dependencies"`
+		DevDependencies  map[string]string `json:"devDependencies"`
+		PeerDependencies map[string]string `json:"peerDependencies"`
 	}
 	if err := json.Unmarshal([]byte(source), &data); err != nil {
 		return nil
 	}
 	var out []dep
 	for pkg, ver := range data.Dependencies {
-		out = append(out, dep{name: pkg, version: ver, isDev: false})
+		out = append(out, dep{name: pkg, version: ver, isDev: false, kind: "runtime"})
 	}
 	for pkg, ver := range data.DevDependencies {
-		out = append(out, dep{name: pkg, version: ver, isDev: true})
+		out = append(out, dep{name: pkg, version: ver, isDev: true, kind: "dev"})
+	}
+	for pkg, ver := range data.PeerDependencies {
+		out = append(out, dep{name: pkg, version: ver, isDev: false, kind: "peer"})
 	}
 	return out
 }
@@ -148,7 +163,7 @@ func parseGoMod(source string) []dep {
 				continue
 			}
 			seen[name] = true
-			out = append(out, dep{name: name, version: lm[2], isDev: false})
+			out = append(out, dep{name: name, version: lm[2], isDev: false, kind: "runtime"})
 		}
 	}
 	for _, m := range goRequireSingleRE.FindAllStringSubmatch(source, -1) {
@@ -157,7 +172,7 @@ func parseGoMod(source string) []dep {
 			continue
 		}
 		seen[name] = true
-		out = append(out, dep{name: name, version: m[2], isDev: false})
+		out = append(out, dep{name: name, version: m[2], isDev: false, kind: "runtime"})
 	}
 	return out
 }
@@ -196,7 +211,7 @@ func parseCargoToml(source string) []dep {
 		return ""
 	}
 
-	parseBody := func(body string, isDev bool) []dep {
+	parseBody := func(body string, isDev bool, depKind string) []dep {
 		var out []dep
 		for _, m := range cargoDepLineRE.FindAllStringSubmatch(body, -1) {
 			name := m[1]
@@ -204,15 +219,15 @@ func parseCargoToml(source string) []dep {
 			if version == "" {
 				version = m[3]
 			}
-			out = append(out, dep{name: name, version: version, isDev: isDev})
+			out = append(out, dep{name: name, version: version, isDev: isDev, kind: depKind})
 		}
 		return out
 	}
 
 	var out []dep
-	out = append(out, parseBody(bodyFor("dependencies"), false)...)
-	out = append(out, parseBody(bodyFor("dev-dependencies"), true)...)
-	out = append(out, parseBody(bodyFor("build-dependencies"), false)...)
+	out = append(out, parseBody(bodyFor("dependencies"), false, "runtime")...)
+	out = append(out, parseBody(bodyFor("dev-dependencies"), true, "dev")...)
+	out = append(out, parseBody(bodyFor("build-dependencies"), false, "runtime")...)
 	return out
 }
 
@@ -254,7 +269,7 @@ func parsePyprojectToml(source string) []dep {
 		return ""
 	}
 
-	extractDeps := func(body string, isDev bool) []dep {
+	extractDeps := func(body string, isDev bool, depKind string) []dep {
 		var out []dep
 		listMatch := pyProjectDepListRE.FindStringSubmatch(body)
 		if listMatch != nil {
@@ -273,7 +288,7 @@ func parsePyprojectToml(source string) []dep {
 				name := m[1]
 				version := strings.TrimSpace(m[2])
 				if name != "" && name != "python" {
-					out = append(out, dep{name: name, version: version, isDev: isDev})
+					out = append(out, dep{name: name, version: version, isDev: isDev, kind: depKind})
 				}
 			}
 			return out
@@ -297,7 +312,7 @@ func parsePyprojectToml(source string) []dep {
 			if skip[name] {
 				continue
 			}
-			out = append(out, dep{name: name, version: version, isDev: isDev})
+			out = append(out, dep{name: name, version: version, isDev: isDev, kind: depKind})
 		}
 		return out
 	}
@@ -313,9 +328,9 @@ func parsePyprojectToml(source string) []dep {
 		}
 	}
 
-	addDeps(extractDeps(bodyFor("project"), false))
-	addDeps(extractDeps(bodyFor("tool.poetry.dependencies"), false))
-	addDeps(extractDeps(bodyFor("tool.poetry.dev-dependencies"), true))
+	addDeps(extractDeps(bodyFor("project"), false, "runtime"))
+	addDeps(extractDeps(bodyFor("tool.poetry.dependencies"), false, "runtime"))
+	addDeps(extractDeps(bodyFor("tool.poetry.dev-dependencies"), true, "dev"))
 	for _, s := range sections[:len(sections)-1] {
 		if strings.HasPrefix(s.name, "tool.poetry.group.") && strings.HasSuffix(s.name, ".dependencies") {
 			parts := strings.Split(s.name, ".")
@@ -324,7 +339,11 @@ func parsePyprojectToml(source string) []dep {
 				groupName = parts[3]
 			}
 			isDev := groupName == "dev" || groupName == "test" || groupName == "docs" || groupName == "lint"
-			addDeps(extractDeps(bodyFor(s.name), isDev))
+			depKind := "runtime"
+			if isDev {
+				depKind = "dev"
+			}
+			addDeps(extractDeps(bodyFor(s.name), isDev, depKind))
 		}
 	}
 	return out
@@ -371,7 +390,154 @@ func parsePomXML(source string) []dep {
 			scope = "compile"
 		}
 		isDev := scope == "test" || scope == "provided"
-		out = append(out, dep{name: name, version: d.Version, isDev: isDev})
+		depKind := "runtime"
+		if isDev {
+			depKind = "dev"
+		}
+		out = append(out, dep{name: name, version: d.Version, isDev: isDev, kind: depKind})
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Parser: requirements.txt
+// ---------------------------------------------------------------------------
+
+// reqLineRE matches "package[extras]>=version" in requirements.txt.
+var reqLineRE = regexp.MustCompile(`(?m)^([A-Za-z0-9](?:[A-Za-z0-9._-]*)?)(?:\[[^\]]*\])?(?:\s*([^#\n]*))?`)
+
+func parseRequirementsTxt(source string) []dep {
+	var out []dep
+	seen := map[string]bool{}
+	for _, line := range strings.Split(source, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
+			continue
+		}
+		m := reqLineRE.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		name := m[1]
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		version := strings.TrimSpace(m[2])
+		out = append(out, dep{name: name, version: version, isDev: false, kind: "runtime"})
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Parser: pubspec.yaml (Dart/Flutter)
+// ---------------------------------------------------------------------------
+
+var pubspecSectionRE = regexp.MustCompile(`(?m)^([a-z_]+):\s*$`)
+var pubspecDepLineRE = regexp.MustCompile(`(?m)^\s{2}([A-Za-z0-9_-]+)\s*:\s*(.*)$`)
+
+func parsePubspecYaml(source string) []dep {
+	// Find section positions (top-level keys followed by newline).
+	sectionMatches := pubspecSectionRE.FindAllStringSubmatchIndex(source, -1)
+	type sectionEntry struct {
+		start int
+		name  string
+	}
+	sections := make([]sectionEntry, 0, len(sectionMatches))
+	for _, m := range sectionMatches {
+		sections = append(sections, sectionEntry{
+			start: m[0],
+			name:  source[m[2]:m[3]],
+		})
+	}
+	sections = append(sections, sectionEntry{start: len(source), name: "__end__"})
+
+	bodyFor := func(name string) string {
+		for i, s := range sections[:len(sections)-1] {
+			if s.name == name {
+				return source[s.start:sections[i+1].start]
+			}
+		}
+		return ""
+	}
+
+	extractDeps := func(body string, isDev bool, depKind string) []dep {
+		var out []dep
+		for _, m := range pubspecDepLineRE.FindAllStringSubmatch(body, -1) {
+			name := strings.TrimSpace(m[1])
+			if name == "" {
+				continue
+			}
+			version := strings.TrimSpace(m[2])
+			out = append(out, dep{name: name, version: version, isDev: isDev, kind: depKind})
+		}
+		return out
+	}
+
+	var out []dep
+	out = append(out, extractDeps(bodyFor("dependencies"), false, "runtime")...)
+	out = append(out, extractDeps(bodyFor("dev_dependencies"), true, "dev")...)
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Parser: Gemfile (Ruby/Bundler)
+// ---------------------------------------------------------------------------
+
+// gemLineRE matches `gem 'name'` or `gem "name", '~> 1.0'`.
+var gemLineRE = regexp.MustCompile(`(?m)^\s*gem\s+['"]([A-Za-z0-9_-]+)['"](?:\s*,\s*['"]([^'"]+)['"])?`)
+var gemGroupRE = regexp.MustCompile(`(?m)^\s*group\s+(.*?)\s+do\s*$`)
+
+func parseGemfile(source string) []dep {
+	var out []dep
+	seen := map[string]bool{}
+
+	// Find group blocks so we can flag dev/test gems.
+	type groupBlock struct {
+		start int
+		end   int
+		isDev bool
+	}
+	var groups []groupBlock
+	groupMatches := gemGroupRE.FindAllStringSubmatchIndex(source, -1)
+	for _, gm := range groupMatches {
+		groupLabel := strings.ToLower(source[gm[2]:gm[3]])
+		isDev := strings.Contains(groupLabel, "dev") || strings.Contains(groupLabel, "test")
+		// Find matching "end" after this block start.
+		start := gm[0]
+		end := strings.Index(source[start:], "\nend")
+		blockEnd := len(source)
+		if end >= 0 {
+			blockEnd = start + end + 4
+		}
+		groups = append(groups, groupBlock{start: start, end: blockEnd, isDev: isDev})
+	}
+
+	inDevGroup := func(pos int) bool {
+		for _, g := range groups {
+			if pos >= g.start && pos <= g.end {
+				return g.isDev
+			}
+		}
+		return false
+	}
+
+	for _, m := range gemLineRE.FindAllStringSubmatchIndex(source, -1) {
+		name := source[m[2]:m[3]]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		version := ""
+		if m[4] >= 0 {
+			version = source[m[4]:m[5]]
+		}
+		isDev := inDevGroup(m[0])
+		depKind := "runtime"
+		if isDev {
+			depKind = "dev"
+		}
+		out = append(out, dep{name: name, version: version, isDev: isDev, kind: depKind})
 	}
 	return out
 }
@@ -383,11 +549,14 @@ func parsePomXML(source string) []dep {
 type parserFn func(source string) []dep
 
 var parsers = map[string]parserFn{
-	"package.json":   parsePackageJSON,
-	"go.mod":         parseGoMod,
-	"Cargo.toml":     parseCargoToml,
-	"pyproject.toml": parsePyprojectToml,
-	"pom.xml":        parsePomXML,
+	"package.json":     parsePackageJSON,
+	"go.mod":           parseGoMod,
+	"Cargo.toml":       parseCargoToml,
+	"pyproject.toml":   parsePyprojectToml,
+	"pom.xml":          parsePomXML,
+	"requirements.txt": parseRequirementsTxt,
+	"pubspec.yaml":     parsePubspecYaml,
+	"Gemfile":          parseGemfile,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {
@@ -448,6 +617,13 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 		if d.isDev {
 			isDev = "true"
 		}
+		depKind := d.kind
+		if depKind == "" {
+			depKind = "runtime"
+			if d.isDev {
+				depKind = "dev"
+			}
+		}
 
 		// #560: emit a single SCOPE.Component carrying the DEPENDS_ON edge
 		// embedded in its Relationships, rather than a real entity plus a
@@ -464,6 +640,7 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 				"package_manager":     packageManager,
 				"version":             d.version,
 				"is_dev":              isDev,
+				"dependency_kind":     depKind,
 				"ref":                 pRef,
 				"provenance":          "INFERRED_FROM_PACKAGE_MANIFEST",
 			},
@@ -477,6 +654,7 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 						"package_manager": packageManager,
 						"version":         d.version,
 						"is_dev":          isDev,
+						"dependency_kind": depKind,
 					},
 				},
 			},
