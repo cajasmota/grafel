@@ -741,17 +741,20 @@ func inferProviderFromID(id string) string {
 // merges enrichment fields (summary, group, rank, gaps, disqualified,
 // enrichment) into the entry map. No-op when no doc file exists or when
 // docgenState is nil.
+//
+// Matching strategy (in order):
+//  1. Doc path contains the entity ID (exact substring match).
+//  2. Doc path contains "topic" or "topology" AND the frontmatter kind is
+//     "message_topic" — secondary signal for hashed entity IDs.
+//
+// When a match is found the resolved absolute file path is stored under
+// "_doc_path" so callers can perform stale detection via os.Stat.
 func applyTopologyEnrichment(entry map[string]any, group, entityID string, docgenState *mcp.DocgenState) {
 	if docgenState == nil || docgenState.GeneratedPaths == nil {
 		return
 	}
-	for _, docPath := range docgenState.GeneratedPaths {
-		if !strings.Contains(docPath, entityID) &&
-			!strings.Contains(strings.ToLower(docPath), "topic") &&
-			!strings.Contains(strings.ToLower(docPath), "topology") {
-			continue
-		}
-		fullPath := getDocFilePath(group, docPath)
+
+	tryPath := func(fullPath string) bool {
 		fm, fallback := extractEnrichmentFromFile(fullPath)
 		if fm != nil && fm.HasData() {
 			entry["docs_summary"] = fm.Summary
@@ -761,10 +764,50 @@ func applyTopologyEnrichment(entry map[string]any, group, entityID string, docge
 			entry["gaps"] = fm.Gaps
 			entry["disqualified"] = fm.Disqualified
 			entry["enrichment"] = fm
+			entry["_doc_path"] = fullPath
+			return true
+		}
+		if fallback != "" {
+			entry["docs_summary"] = fallback
+			entry["_doc_path"] = fullPath
+			return true
+		}
+		return false
+	}
+
+	// Pass 1: entity ID substring match (reliable for non-hashed IDs).
+	for _, docPath := range docgenState.GeneratedPaths {
+		if !strings.Contains(docPath, entityID) {
+			continue
+		}
+		if tryPath(getDocFilePath(group, docPath)) {
+			return
+		}
+	}
+
+	// Pass 2: topic/topology path + kind == "message_topic" in frontmatter
+	// (handles hashed IDs where the path alone cannot be matched by ID).
+	for _, docPath := range docgenState.GeneratedPaths {
+		lower := strings.ToLower(docPath)
+		if !strings.Contains(lower, "topic") && !strings.Contains(lower, "topology") {
+			continue
+		}
+		fullPath := getDocFilePath(group, docPath)
+		fm, fallback := extractEnrichmentFromFile(fullPath)
+		if fm != nil && fm.HasData() && fm.Kind == "message_topic" {
+			entry["docs_summary"] = fm.Summary
+			entry["group"] = fm.Group
+			entry["group_label"] = fm.GroupLabel
+			entry["rank"] = fm.Rank
+			entry["gaps"] = fm.Gaps
+			entry["disqualified"] = fm.Disqualified
+			entry["enrichment"] = fm
+			entry["_doc_path"] = fullPath
 			return
 		}
 		if fallback != "" {
 			entry["docs_summary"] = fallback
+			entry["_doc_path"] = fullPath
 			return
 		}
 	}

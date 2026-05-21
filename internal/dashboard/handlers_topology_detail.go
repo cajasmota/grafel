@@ -11,7 +11,9 @@ package dashboard
 
 import (
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/mcp"
@@ -52,6 +54,26 @@ type topicDetailResponse struct {
 	LifecycleState string              `json:"lifecycle_state"`
 	DocsSummary    string              `json:"docs_summary,omitempty"`
 	Enrichment     *EnrichmentFrontmatter `json:"enrichment,omitempty"`
+	// DocgenStatus is "enriched" when YAML frontmatter was found for this entity,
+	// "stale" when the frontmatter file is older than the topic's last_indexed
+	// timestamp, or "pending" when no doc file exists.
+	DocgenStatus    string             `json:"docgen_status"`
+	// EnrichmentHealth reports which structured fields are populated.
+	// Only present when DocgenStatus == "enriched" or "stale".
+	EnrichmentHealth *enrichmentHealth  `json:"enrichment_health,omitempty"`
+}
+
+// enrichmentHealth reports which message_topic enrichment fields are present,
+// so the frontend can surface a completeness hint alongside the detail panel.
+type enrichmentHealth struct {
+	HasSummary              bool `json:"has_summary"`
+	HasSchema               bool `json:"has_schema"`
+	HasVolumeEstimate       bool `json:"has_volume_estimate"`
+	HasTypicalPayloadSize   bool `json:"has_typical_payload_size"`
+	HasExpectedConsumers    bool `json:"has_expected_consumers"`
+	HasGaps                 bool `json:"has_gaps"`
+	FilledFieldCount        int  `json:"filled_field_count"`
+	TotalFieldCount         int  `json:"total_field_count"`
 }
 
 // handleTopicDetail — GET /api/topology/{group}/topic/{topicId}
@@ -172,28 +194,74 @@ func buildTopicDetail(grp *DashGroup, groupName, topicID string) (topicDetailRes
 		enrichment = fm
 	}
 
+	// --- Docgen status + stale detection ---
+	docgenStatus := "pending"
+	var enrichHealth *enrichmentHealth
+	if enrichment != nil {
+		// Determine stale/enriched by comparing the doc file's mtime against
+		// the topic's last_indexed timestamp (r.Doc.GeneratedAt for its repo).
+		docgenStatus = "enriched"
+		if docPath, ok := entry["_doc_path"].(string); ok && docPath != "" {
+			fi, statErr := os.Stat(docPath)
+			if statErr == nil {
+				var lastIndexed time.Time
+				if r, rOK := grp.Repos[topicRepoSlug]; rOK && r.Doc != nil && !r.Doc.GeneratedAt.IsZero() {
+					lastIndexed = r.Doc.GeneratedAt
+				}
+				if !lastIndexed.IsZero() && fi.ModTime().Before(lastIndexed) {
+					docgenStatus = "stale"
+				}
+			}
+		}
+		enrichHealth = computeEnrichmentHealth(enrichment)
+	}
+
+	// If frontmatter carries a schema, prefer it over the entity-derived value
+	// (human-edited frontmatter beats inferred graph property).
+	if enrichment != nil && enrichment.Schema != "" {
+		messageSchema = enrichment.Schema
+	}
+
+	// Merge frontmatter related_topics hints into the graph-derived list.
+	// (These are display names / slugs from the AI doc; they complement the
+	// entity-ID-based relatedTopics already computed above.)
+	if enrichment != nil && len(enrichment.ExpectedConsumers) > 0 {
+		existing := make(map[string]struct{}, len(relatedTopics))
+		for _, rt := range relatedTopics {
+			existing[rt] = struct{}{}
+		}
+		for _, hint := range enrichment.ExpectedConsumers {
+			if _, seen := existing[hint]; !seen {
+				relatedTopics = append(relatedTopics, hint)
+				existing[hint] = struct{}{}
+			}
+		}
+	}
+
 	resp := topicDetailResponse{
-		ID:             dashPrefixedID(topicRepoSlug, topicEnt.ID),
-		Label:          topicEnt.Name,
-		Protocol:       protocol,
-		Broker:         broker,
-		Framework:      framework,
-		Schedule:       schedule,
-		Scheduled:      scheduled,
-		MessageSchema:  messageSchema,
-		Repo:           topicRepoSlug,
-		SourceFile:     topicEnt.SourceFile,
-		StartLine:      topicEnt.StartLine,
-		Producers:      producers,
-		Consumers:      consumers,
-		Tests:          tests,
-		RelatedTopics:  relatedTopics,
-		UsageHistory:   []any{},
-		FlowCount:      flowCount,
-		CrossRepo:      crossRepo,
-		LifecycleState: lifecycleState,
-		DocsSummary:    docsSummary,
-		Enrichment:     enrichment,
+		ID:               dashPrefixedID(topicRepoSlug, topicEnt.ID),
+		Label:            topicEnt.Name,
+		Protocol:         protocol,
+		Broker:           broker,
+		Framework:        framework,
+		Schedule:         schedule,
+		Scheduled:        scheduled,
+		MessageSchema:    messageSchema,
+		Repo:             topicRepoSlug,
+		SourceFile:       topicEnt.SourceFile,
+		StartLine:        topicEnt.StartLine,
+		Producers:        producers,
+		Consumers:        consumers,
+		Tests:            tests,
+		RelatedTopics:    relatedTopics,
+		UsageHistory:     []any{},
+		FlowCount:        flowCount,
+		CrossRepo:        crossRepo,
+		LifecycleState:   lifecycleState,
+		DocsSummary:      docsSummary,
+		Enrichment:       enrichment,
+		DocgenStatus:     docgenStatus,
+		EnrichmentHealth: enrichHealth,
 	}
 	return resp, true
 }
@@ -493,4 +561,43 @@ func dedupStrings(sl []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// computeEnrichmentHealth returns a populated enrichmentHealth for a message_topic
+// frontmatter, counting which of the six structured fields are filled.
+func computeEnrichmentHealth(fm *EnrichmentFrontmatter) *enrichmentHealth {
+	if fm == nil {
+		return nil
+	}
+	const total = 6
+	h := &enrichmentHealth{
+		HasSummary:            fm.Summary != "",
+		HasSchema:             fm.Schema != "",
+		HasVolumeEstimate:     fm.VolumeEstimate != "",
+		HasTypicalPayloadSize: fm.TypicalPayloadSizeBytes > 0,
+		HasExpectedConsumers:  len(fm.ExpectedConsumers) > 0,
+		HasGaps:               len(fm.Gaps) > 0,
+		TotalFieldCount:       total,
+	}
+	count := 0
+	if h.HasSummary {
+		count++
+	}
+	if h.HasSchema {
+		count++
+	}
+	if h.HasVolumeEstimate {
+		count++
+	}
+	if h.HasTypicalPayloadSize {
+		count++
+	}
+	if h.HasExpectedConsumers {
+		count++
+	}
+	if h.HasGaps {
+		count++
+	}
+	h.FilledFieldCount = count
+	return h
 }
