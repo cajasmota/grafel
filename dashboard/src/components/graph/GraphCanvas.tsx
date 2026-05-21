@@ -12,6 +12,8 @@ import {
   buildDegreePercentileFn,
   computeTunedSize,
 } from '@/hooks/graph/useNodeSizingConfig'
+import type { RenderConfig } from '@/hooks/graph/useRenderConfig'
+import { DEFAULT_RENDER_CONFIG } from '@/hooks/graph/useRenderConfig'
 
 // ---------------------------------------------------------------------------
 // cosmos.gl (MIT) engine wrapper — replaces @cosmograph/react (#1373)
@@ -175,6 +177,7 @@ export interface GraphCanvasProps {
   simulationConfig?: SimulationConfig
   nodeFilterIndices?: number[] | null
   nodeSizingConfig?: NodeSizingConfig
+  renderConfig?: RenderConfig
 }
 
 /** Truncate long labels at ~30 chars for layout legibility */
@@ -214,11 +217,19 @@ const GraphCanvasInner = ({
   simulationConfig,
   nodeFilterIndices,
   nodeSizingConfig,
+  renderConfig,
 }: GraphCanvasProps) => {
   // #1361: merge tunable params with Silk Road defaults
   const simCfg: SimulationConfig = useMemo(
     () => simulationConfig ? { ...SILK_ROAD_DEFAULTS, ...simulationConfig } : SILK_ROAD_DEFAULTS,
     [simulationConfig],
+  )
+
+  // #1380: merge tunable render params with defaults so nothing changes if
+  // renderConfig is not supplied (maintains backward compat with all callers).
+  const rc: RenderConfig = useMemo(
+    () => renderConfig ? { ...DEFAULT_RENDER_CONFIG, ...renderConfig } : DEFAULT_RENDER_CONFIG,
+    [renderConfig],
   )
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -407,11 +418,13 @@ const GraphCanvasInner = ({
     for (let i = 0; i < states.length; i++) {
       let rgba: RGBA
       if (states[i] === 2) {
-        rgba = highContrast ? [251, 146, 60, 1.0] : [251, 146, 60, 0.85] // amber — Jarvis
+        rgba = highContrast ? [251, 146, 60, 1.0] : [251, 146, 60, 0.85] // amber — highlighted
       } else if (states[i] === 1) {
         rgba = highContrast ? [56, 189, 248, 1.0] : [56, 189, 248, 0.7]  // sky — cross-repo
       } else {
-        rgba = highContrast ? [100, 116, 139, 0.5] : [100, 116, 139, 0.15] // slate — same-repo
+        // same-repo: use live linkOpacity knob (#1380, was hardcoded 0.15)
+        const alpha = highContrast ? Math.min(1, rc.linkOpacity * 2) : rc.linkOpacity
+        rgba = [100, 116, 139, alpha] // slate
       }
       out[i * 4] = rgba[0]
       out[i * 4 + 1] = rgba[1]
@@ -419,17 +432,19 @@ const GraphCanvasInner = ({
       out[i * 4 + 3] = rgba[3]
     }
     return out
-  }, [linkData, highContrast])
+  }, [linkData, highContrast, rc])
 
   const packLinkWidths = useCallback((): Float32Array => {
     const { states } = linkData
     const out = new Float32Array(states.length)
+    if (!rc.showLinks) return out // all zeros → edges hidden
     const base = highContrast ? 1.5 : 1.0
     for (let i = 0; i < states.length; i++) {
-      out[i] = states[i] === 0 ? base * 0.6 : base
+      // #1380: apply live linkWidthScale knob (was implicit via cosmos linkWidthScale config only)
+      out[i] = (states[i] === 0 ? base * 0.6 : base) * rc.linkWidthScale
     }
     return out
-  }, [linkData, highContrast])
+  }, [linkData, highContrast, rc])
 
   // ---------------------------------------------------------------------------
   // Top-N labels by degree (HTML overlay)
@@ -590,23 +605,15 @@ const GraphCanvasInner = ({
       // raised to 9) and a moderate pointSizeScale that balances both extremes:
       //   full-fit  → nodes are small (far out) but not washed out / white
       //   deep zoom → nodes grow with zoom and are clearly visible + clickable
-      scalePointsOnZoom: true,
-      // Size scale tuned for scalePointsOnZoom:true with DEFAULT_BASE_SIZE=120.
-      // With base=120 and fit-zoom≈0.074:
-      //   rendered_px = 120 * pointSizeScale * 0.074 = 120 * 0.22 * 0.074 ≈ 2px at full-fit
-      //   rendered_px = 120 * 0.22 * 5 = 132px at zoom=5 (clearly big nodes)
-      // This gives sub-3px dots at full-fit (not washed out) and very visible
-      // nodes at any reasonable deep-zoom level.
-      pointSizeScale: 0.22,
-      // At full-fit each pixel is covered by many tiny dots (additive blend).
-      // 0.25 keeps dense cores from saturating to white while still showing color.
-      // At deep zoom nodes are 100px+ circles with few overlaps → looks great.
-      pointOpacity: 0.25,
+      // #1380: scalePointsOnZoom, pointSizeScale, pointOpacity, linkWidthScale are
+      // now driven by the renderConfig prop (live tuning panel). The initial values
+      // match the previous hardcoded defaults so nothing changes until the owner tweaks.
+      scalePointsOnZoom: rc.scalePointsOnZoom,
+      pointSizeScale: rc.pointSizeScale,
+      pointOpacity: rc.pointOpacity,
       pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.18,
-      // Links also blend additively; at this density they were a major source
-      // of the white wash. Keep them extremely faint so node color dominates.
-      linkGreyoutOpacity: repoFilterActive ? 0 : 0.05,
-      linkWidthScale: 0.16,
+      linkGreyoutOpacity: repoFilterActive ? 0 : rc.linkOpacity * 0.5,
+      linkWidthScale: rc.showLinks ? rc.linkWidthScale : 0,
       renderHoveredPointRing: true,
       hoveredPointRingColor: isDark ? '#e2e8f0' : '#1e293b',
       pointSamplingDistance: 120,
@@ -791,6 +798,39 @@ const GraphCanvasInner = ({
       simulationFriction: simCfg.friction,
     })
   }, [isDark, repoFilterActive, nodeFilterIndices, simCfg])
+
+  // ---------------------------------------------------------------------------
+  // #1380: Live render config — apply immediately via setConfig (no re-init).
+  // Debounced at 16 ms so rapid slider drags don't spam per-frame setConfig calls.
+  // maxPointSize clamp: cosmos.gl 2.6.4 has no maxPointSize option; we enforce
+  // it by capping pointSizeScale so a tier-5 node (base=120, mult=3.0) never
+  // exceeds maxPointSize px at zoom=1.
+  // ---------------------------------------------------------------------------
+  const renderDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (renderDebounceRef.current) clearTimeout(renderDebounceRef.current)
+    renderDebounceRef.current = setTimeout(() => {
+      const g = graphRef.current
+      if (!g) return
+      const BASE = 120
+      const MAX_MULT = 3.0
+      const clampedScale = Math.min(rc.pointSizeScale, rc.maxPointSize / (BASE * MAX_MULT))
+      g.setConfig({
+        pointOpacity: rc.pointOpacity,
+        pointSizeScale: clampedScale,
+        scalePointsOnZoom: rc.scalePointsOnZoom,
+        linkWidthScale: rc.showLinks ? rc.linkWidthScale : 0,
+      })
+      // Re-push link colors/widths so linkOpacity + hide/show takes effect immediately
+      g.setLinkColors(packLinkColors())
+      g.setLinkWidths(packLinkWidths())
+      g.render()
+    }, 16)
+    return () => {
+      if (renderDebounceRef.current) clearTimeout(renderDebounceRef.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rc.pointOpacity, rc.pointSizeScale, rc.scalePointsOnZoom, rc.linkWidthScale, rc.showLinks, rc.linkOpacity, rc.maxPointSize])
 
   // ---------------------------------------------------------------------------
   // Selection — repo filter + multi-criteria filter (visibility via greyout)
