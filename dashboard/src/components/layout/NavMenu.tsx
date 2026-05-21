@@ -3,7 +3,7 @@
  *
  * Two menus:
  *   Explore: Graph, Flows, Topology, Paths, Docs, Pending
- *   Operate: Diagnostics, Quality, Patterns, System, Update, Settings
+ *   Operate: Diagnostics, Quality, Patterns, System, Update, Settings, MCP Activity
  *
  * Built on @radix-ui/react-dropdown-menu for keyboard nav, a11y,
  * and proper focus management out of the box.
@@ -14,7 +14,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Network, Workflow, Radio, Globe, BookOpen, Clock,
   Stethoscope, Sparkles, Server, RefreshCw, ChevronDown,
-  BarChart2, Settings,
+  BarChart2, Settings, Activity,
 } from 'lucide-react'
 
 /* ── Types ──────────────────────────────────────────────────────────────────── */
@@ -52,12 +52,13 @@ export function exploreItems(group: string): NavEntry[] {
 
 export function operateItems(group: string): NavEntry[] {
   return [
-    { label: 'Diagnostics', to: '/diagnostics',      icon: <Stethoscope className="w-4 h-4" /> },
-    { label: 'Quality',     to: '/quality',          icon: <BarChart2   className="w-4 h-4" /> },
-    { label: 'Patterns',    to: `/patterns/${group}`, icon: <Sparkles    className="w-4 h-4" /> },
-    { label: 'System',      to: '/system',           icon: <Server      className="w-4 h-4" /> },
-    { label: 'Update',      to: '/update',           icon: <RefreshCw   className="w-4 h-4" /> },
-    { label: 'Settings',    to: '/settings',         icon: <Settings    className="w-4 h-4" /> },
+    { label: 'Diagnostics',   to: '/diagnostics',       icon: <Stethoscope className="w-4 h-4" /> },
+    { label: 'Quality',       to: '/quality',           icon: <BarChart2   className="w-4 h-4" /> },
+    { label: 'Patterns',      to: `/patterns/${group}`,  icon: <Sparkles    className="w-4 h-4" /> },
+    { label: 'System',        to: '/system',            icon: <Server      className="w-4 h-4" /> },
+    { label: 'Update',        to: '/update',            icon: <RefreshCw   className="w-4 h-4" /> },
+    { label: 'MCP Activity',  to: '/mcp-activity',      icon: <Activity    className="w-4 h-4" /> },
+    { label: 'Settings',      to: '/settings',          icon: <Settings    className="w-4 h-4" /> },
   ]
 }
 
