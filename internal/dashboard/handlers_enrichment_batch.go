@@ -154,7 +154,7 @@ func (s *Server) handleEnrichmentBatch(w http.ResponseWriter, r *http.Request) {
 			kind = "describe_entity"
 		}
 
-		id, err := s.jobQueue.Enqueue(group, entityID, kind)
+		id, err := s.jobQueue.Enqueue(group, entityID, kind, "")
 		if err != nil {
 			s.auditor.Err("batch_enrich_enqueue", group,
 				map[string]any{"entity_id": entityID, "kind": kind, "batch_id": batchID},
