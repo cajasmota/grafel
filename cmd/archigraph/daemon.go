@@ -536,7 +536,6 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 		// Tell the dashboard server when the daemon started so /api/info
 		// can compute and report uptime (#991).
 		srv.SetDaemonStartedAt(daemonStartedAt)
-<<<<<<< HEAD
 
 		// Wire MCP activity broker (epic #1157, Phase 1: Jarvis).
 		// The same broker is injected into the shared MCP server so tool
@@ -556,11 +555,9 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 			mcpSrv.SetActivityBroker(activityBroker)
 		}
 
-=======
 		// Wire the recall runner so POST /api/quality/recall can run the
 		// in-process indexer against golden fixtures (#1198).
 		srv.SetRecallRunner(daemonRecallFunc)
->>>>>>> 20aa111 ([dashboard] Quality surface — orphan audit + recall measurement in web UI (#1198))
 		srv.UseListener(l)
 		if logger != nil {
 			logger.Printf("dashboard ready http://%s/", addr)
