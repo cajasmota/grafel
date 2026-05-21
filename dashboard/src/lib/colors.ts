@@ -90,7 +90,12 @@ const REPO_COLOR_PALETTE: string[] = [
 const repoColorCache = new Map<string, string>()
 const repoOrder: string[] = []
 
-export function repoColor(slug: string): string {
+/** Fallback for nodes whose repo is unknown/undefined (e.g. Module-kind nodes). */
+const UNKNOWN_REPO_COLOR = '#64748b' // slate-500, matches graph dark theme
+
+export function repoColor(slug: string | null | undefined): string {
+  // Guard: Module-kind nodes and other edge-cases may have no repo slug
+  if (!slug) return UNKNOWN_REPO_COLOR
   if (repoColorCache.has(slug)) return repoColorCache.get(slug)!
   if (!repoOrder.includes(slug)) repoOrder.push(slug)
   const idx = repoOrder.indexOf(slug)

@@ -57,10 +57,20 @@ export function useCommunityColors(
   }, [communities])
 }
 
+/** Neutral muted gray used for the denoised/ungrouped bucket (community_id = -1)
+ *  and any other undefined/null community. Slate-500 matches the graph's dark theme.
+ */
+const UNGROUPED_COLOR = '#64748b' // slate-500
+
 /**
  * Returns the hex color for a given communityId, using the palette directly.
  * Use this for one-off lookups without hooks.
+ * community_id = -1 (denoised/ungrouped nodes) and null/undefined both return
+ * a muted gray rather than crashing or producing undefined.
  */
-export function communityColor(communityId: number): string {
-  return COMMUNITY_PALETTE[communityId % COMMUNITY_PALETTE.length]
+export function communityColor(communityId: number | null | undefined): string {
+  if (communityId == null || communityId === -1) return UNGROUPED_COLOR
+  // % on a negative number returns negative in JS — ensure positive index
+  const idx = ((communityId % COMMUNITY_PALETTE.length) + COMMUNITY_PALETTE.length) % COMMUNITY_PALETTE.length
+  return COMMUNITY_PALETTE[idx]
 }

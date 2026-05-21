@@ -86,7 +86,9 @@ function buildRepoCenters(
 type RGBA = [number, number, number, number]
 
 /** Parse a #rrggbb / #rgb / rgba(...) string into [r,g,b,a] (rgb 0-255, a 0-1). */
-function parseColor(c: string): RGBA {
+function parseColor(c: string | null | undefined): RGBA {
+  // Guard: if c is not a non-empty string, return the slate-500 fallback immediately
+  if (!c || typeof c !== 'string') return [100, 116, 139, 1]
   if (c.startsWith('#')) {
     let hex = c.slice(1)
     if (hex.length === 3) {
@@ -352,10 +354,11 @@ const GraphCanvasInner = ({
         const t = Math.pow(pct, 0.7)
         rgba = silkRoadColor(t)
       } else if (colorMode === 'community') {
-        rgba = parseColor(communityColor(n.community_id ?? 0))
+        // Pass community_id directly; communityColor handles -1 (ungrouped) and null/undefined
+        rgba = parseColor(communityColor(n.community_id))
       } else {
         // repo mode
-        if (n.is_centroid) rgba = parseColor(communityColor(n.community_id ?? 0))
+        if (n.is_centroid) rgba = parseColor(communityColor(n.community_id))
         else rgba = parseColor(repoColor(n.repo))
       }
       out[i * 4] = rgba[0]
