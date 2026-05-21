@@ -21,10 +21,16 @@
 //	Kubernetes CronJob     — YAML manifests with spec.schedule
 //	GitHub Actions         — schedule: / cron: in .github/workflows/*.yml
 //
+// Celery pub/sub topology edges — #1404:
+//
+//	Publisher edge: call sites (<task>.delay() / <task>.apply_async() /
+//	  <task>.s().delay() / send_task("name") / signature("name")) emit
+//	  PUBLISHES_TO from the enclosing function → SCOPE.ScheduledJob entity.
+//
 // All emissions are append-only — existing entities and edges are never
 // modified or removed, so this pass cannot regress surrounding passes.
 //
-// Refs #728.
+// Refs #728, #1404.
 package engine
 
 import (
@@ -101,6 +107,12 @@ func applyScheduledJobEdges(
 	switch lang {
 	case "python":
 		synthesizePyCelery(src, path, emitJob)
+		// #1404: Publisher edges — emit PUBLISHES_TO from call sites to the
+		// ScheduledJob entity just produced by synthesizePyCelery. We pass the
+		// already-emitted job IDs (seenJob map) so the call-site detector can
+		// resolve `task.delay()` references to canonical entity IDs without
+		// creating phantom nodes.
+		relationships = synthesizeCeleryCallSiteEdges(src, path, seenJob, relationships)
 		synthesizePyAPScheduler(src, path, emitJob)
 		synthesizePyScheduleLib(src, path, emitJob)
 	case "javascript", "typescript":
@@ -182,6 +194,154 @@ func synthesizePyCelery(
 			})
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Python — Celery call-site publisher edges (#1404)
+// ---------------------------------------------------------------------------
+
+// pyCeleryDelayRe matches `<taskvar>.delay(` or `<taskvar>.apply_async(`.
+// Group 1 = task variable name.
+var pyCeleryDelayRe = regexp.MustCompile(`(?m)\b(\w+)\.(?:delay|apply_async)\s*\(`)
+
+// pyCelerySigRe matches `<taskvar>.s(` or `<taskvar>.si(` (canvas signatures).
+// Group 1 = task variable name.
+var pyCelerySigRe = regexp.MustCompile(`(?m)\b(\w+)\.si?\s*\(`)
+
+// pyCelerySendTaskRe matches `app.send_task("task.name"` or `celery.send_task("...".
+// Group 1 = task dotted name.
+var pyCelerySendTaskRe = regexp.MustCompile(`(?m)\w+\.send_task\s*\(\s*["']([^"']+)["']`)
+
+// pyCelerySignatureRe matches `signature("task.name"` or `subtask("task.name"`.
+// Group 1 = task dotted name.
+var pyCelerySignatureRe = regexp.MustCompile(`(?m)(?:signature|subtask)\s*\(\s*["']([^"']+)["']`)
+
+// pyCeleryEnclosingFuncRe finds the nearest enclosing `def <name>` before a position.
+// We use a simple scan: find the last `def <name>(` before the match offset.
+var pyCeleryEnclosingFuncRe = regexp.MustCompile(`(?m)^(?:async\s+)?def\s+(\w+)\s*\(`)
+
+// enclosingFunction returns the name of the Python function that contains the
+// byte offset `pos` in `src`. Returns "" if no enclosing function is found.
+func enclosingFunction(src string, pos int) string {
+	// Scan all def statements before pos; the last one is the enclosing function.
+	sub := src[:pos]
+	matches := pyCeleryEnclosingFuncRe.FindAllStringSubmatch(sub, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[len(matches)-1][1]
+}
+
+// synthesizeCeleryCallSiteEdges scans `src` for Celery call sites and emits
+// PUBLISHES_TO relationship records from the enclosing function to the
+// canonical ScheduledJob entity. Only emits edges for task names that resolve
+// to a known job ID in `knownJobs` (the seenJob map from synthesizePyCelery) —
+// this prevents phantom node creation (#1377 lesson).
+//
+// `path` is the source file path; `knownJobs` maps celery:<path>:<name> →
+// true for every task defined in this file by synthesizePyCelery.
+func synthesizeCeleryCallSiteEdges(
+	src, path string,
+	knownJobs map[string]bool,
+	relationships []types.RelationshipRecord,
+) []types.RelationshipRecord {
+	if !strings.Contains(src, "celery") && !strings.Contains(src, "Celery") &&
+		!strings.Contains(src, ".delay(") && !strings.Contains(src, ".apply_async(") &&
+		!strings.Contains(src, "send_task") && !strings.Contains(src, "signature") {
+		return relationships
+	}
+
+	// Build a quick lookup: task variable name → jobID.
+	// For @app.task/@shared_task decorated defs the variable name equals the function name.
+	taskVarToJobID := map[string]string{}
+	for jobID := range knownJobs {
+		// jobID format: "celery:<path>:<funcname>" or "celery_beat:<dotted.path>"
+		if !strings.HasPrefix(jobID, "celery:") {
+			continue
+		}
+		// Strip "celery:<path>:" prefix to get the function name.
+		rest := strings.TrimPrefix(jobID, "celery:")
+		colonIdx := strings.LastIndex(rest, ":")
+		if colonIdx < 0 {
+			continue
+		}
+		funcName := rest[colonIdx+1:]
+		if funcName != "" {
+			taskVarToJobID[funcName] = jobID
+		}
+	}
+
+	seenEdge := map[string]bool{}
+
+	emitPublishesTo := func(callerFunc, jobID string) {
+		if callerFunc == "" || jobID == "" {
+			return
+		}
+		key := callerFunc + "|" + jobID
+		if seenEdge[key] {
+			return
+		}
+		seenEdge[key] = true
+		relationships = append(relationships, types.RelationshipRecord{
+			FromID: "SCOPE.Operation:" + callerFunc,
+			ToID:   scheduledJobKind + ":" + jobID,
+			Kind:   "PUBLISHES_TO",
+			Properties: map[string]string{
+				"framework":    "celery",
+				"pattern_type": "celery_pubsub_synthesis",
+			},
+		})
+	}
+
+	// 1. task.delay(...) / task.apply_async(...)
+	for _, idx := range pyCeleryDelayRe.FindAllStringSubmatchIndex(src, -1) {
+		taskVar := src[idx[2]:idx[3]]
+		if jobID, ok := taskVarToJobID[taskVar]; ok {
+			caller := enclosingFunction(src, idx[0])
+			// Skip if call site is inside the task's own definition (self-call edge).
+			if caller == taskVar {
+				continue
+			}
+			emitPublishesTo(caller, jobID)
+		}
+	}
+
+	// 2. task.s(...) / task.si(...) — canvas signatures used in chains/chords.
+	for _, idx := range pyCelerySigRe.FindAllStringSubmatchIndex(src, -1) {
+		taskVar := src[idx[2]:idx[3]]
+		if jobID, ok := taskVarToJobID[taskVar]; ok {
+			caller := enclosingFunction(src, idx[0])
+			if caller == taskVar {
+				continue
+			}
+			emitPublishesTo(caller, jobID)
+		}
+	}
+
+	// 3. app.send_task("module.task_name") — string-based dispatch.
+	for _, m := range pyCelerySendTaskRe.FindAllStringSubmatchIndex(src, -1) {
+		taskPath := src[m[2]:m[3]]
+		// Last segment of the dotted path is the function name.
+		parts := strings.Split(taskPath, ".")
+		funcName := parts[len(parts)-1]
+		if jobID, ok := taskVarToJobID[funcName]; ok {
+			caller := enclosingFunction(src, m[0])
+			emitPublishesTo(caller, jobID)
+		}
+	}
+
+	// 4. signature("module.task_name") / subtask("module.task_name").
+	for _, m := range pyCelerySignatureRe.FindAllStringSubmatchIndex(src, -1) {
+		taskPath := src[m[2]:m[3]]
+		parts := strings.Split(taskPath, ".")
+		funcName := parts[len(parts)-1]
+		if jobID, ok := taskVarToJobID[funcName]; ok {
+			caller := enclosingFunction(src, m[0])
+			emitPublishesTo(caller, jobID)
+		}
+	}
+
+	return relationships
 }
 
 // ---------------------------------------------------------------------------

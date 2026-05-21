@@ -523,6 +523,12 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 
 // brokerEdges returns producers, consumers, and TRANSFORMS targets for a
 // MessageTopic or Queue entity.
+//
+// #1404: TRIGGERS edges (emitted by the Celery scheduled-job pass) are read
+// as consumer / subscriber edges so that the /topology view renders a
+// publisher→topic→handler diagram instead of isolated topic circles.
+// TRIGGERS direction: SCOPE.ScheduledJob:<jobID> → Function:<handlerName>;
+// when FromID matches the entity ID the handler (ToID) is the consumer.
 func brokerEdges(r *DashRepo, entityID string) (producers, consumers, transformsTo []string) {
 	producers = []string{}
 	consumers = []string{}
@@ -551,6 +557,15 @@ func brokerEdges(r *DashRepo, entityID string) (producers, consumers, transforms
 		case "WRITES_TO":
 			if rel.ToID == entityID {
 				producers = append(producers, dashPrefixedID(r.Slug, rel.FromID))
+			}
+		// #1404: Celery TRIGGERS — the handler function IS the subscriber/consumer
+		// of a Celery task (SCOPE.ScheduledJob). The edge direction is
+		// SCOPE.ScheduledJob:<jobID> → Function:<handler>, so FromID is the task
+		// entity and ToID is the handler. This mirrors the SUBSCRIBES_TO pattern
+		// used by Kafka/RabbitMQ consumers.
+		case "TRIGGERS":
+			if rel.FromID == entityID {
+				consumers = append(consumers, dashPrefixedID(r.Slug, rel.ToID))
 			}
 		}
 	}
