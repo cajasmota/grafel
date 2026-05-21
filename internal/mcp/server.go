@@ -103,7 +103,7 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 30 (#1281: 9→4 bundles; #1293: desc trim; #1312: +archigraph_quality_cycles; #1314: +archigraph_auth_coverage).
+// Tool count: 32 (#1281: 9→4 bundles; #1293: desc trim; #1312: +archigraph_quality_cycles; #1314: +archigraph_auth_coverage; #1322: +archigraph_secrets; #1323: +archigraph_test_coverage already on main).
 // Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
 //   archigraph_get_next_enrichment_task, archigraph_get_telemetry.
 func (s *Server) registerTools() {
@@ -453,6 +453,21 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_test_coverage", s.handleTestCoverage))
+
+	// archigraph_secrets — hardcoded secret detector (#1322).
+	// Walks source files; flags API keys, passwords, JWT tokens, and other
+	// high-entropy credentials. Test fixtures and opt-out comments are suppressed.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_secrets",
+		mcpapi.WithDescription("Scan source files for hardcoded secrets (API keys, passwords, JWT tokens, AWS credentials, private keys). Returns masked findings with severity grades and suggested env-var names."),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+		mcpapi.WithString("severity",
+			mcpapi.Description("Minimum severity to include (critical|high|medium|low). Default: all."),
+		),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200),
+			mcpapi.Description("Maximum number of findings to return."),
+		),
+	), s.wrap("archigraph_secrets", s.handleSecrets))
 }
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard

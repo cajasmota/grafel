@@ -121,6 +121,7 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_summarize_subgraph`](#archigraph_summarize_subgraph) | Markdown summary of entity call neighbourhood. |
 | [`archigraph_find_dead_code`](#archigraph_find_dead_code) | Entities with 0 inbound/outbound project edges. |
 | [`archigraph_auth_coverage`](#archigraph_auth_coverage) | Security audit: flag HTTP endpoints missing auth decorators/middleware. |
+| [`archigraph_secrets`](#archigraph_secrets) | Security scan: detect hardcoded API keys, passwords, JWT tokens, and other credentials in source files. |
 
 ---
 
@@ -1103,6 +1104,69 @@ If ≥ 80 % of endpoints in a repo are covered, the repo is classified as `defau
   ],
   "overall_coverage": 0.833,
   "note": "..."
+}
+```
+
+---
+
+### `archigraph_secrets`
+
+Hardcoded-secret detector (#1322). Walks every source file in each repo of the group and flags
+lines that appear to contain embedded credentials: AWS access keys, GitHub tokens, JWT tokens,
+Stripe keys, SendGrid keys, Slack tokens, generic high-entropy assignments, and password literals.
+
+**Suppression rules**
+
+- Files in test directories (`/test/`, `/tests/`, `/testdata/`, `__tests__`, `*.test.*`, `*_test.go`, etc.) are skipped entirely.
+- Lines with the opt-out comment `// archigraph: ignore-secret` are skipped.
+- Values that match common placeholder patterns (`example`, `changeme`, `REPLACE_ME`, all-same-char sequences, well-known AWS documentation keys) are suppressed.
+
+**Severity grades**
+
+| Severity | Patterns |
+|----------|----------|
+| `critical` | AWS access key (`AKIA…`), AWS secret key, PEM private key block |
+| `high` | GitHub token (`ghp_`/`gho_`/`ghs_`), JWT, Stripe live key, SendGrid API key, Slack token |
+| `medium` | Generic `api_key=`, `secret_key=`, `password=` assignments, high-entropy catch-all |
+| `low` | Other keyword matches |
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `group` | string | no | inferred | Group name (registry key). |
+| `cwd` | string | no | — | CWD for group inference. |
+| `severity` | string | no | all | Minimum severity to include (`critical`\|`high`\|`medium`\|`low`). |
+| `limit` | int | no | `200` | Maximum number of findings returned. |
+
+**Output**
+
+```json
+{
+  "scanned_repos": 3,
+  "total_findings": 5,
+  "truncated": false,
+  "by_severity": { "critical": 1, "high": 2, "medium": 2, "low": 0 },
+  "files": [
+    {
+      "repo": "backend",
+      "file": "config/settings.go",
+      "count": 2,
+      "severity": "critical",
+      "findings": [
+        {
+          "repo": "backend",
+          "file": "config/settings.go",
+          "line": 14,
+          "kind": "aws_access_key",
+          "masked_value": "AKIA****ABCD",
+          "severity": "critical",
+          "suggested_env_var": "AWS_KEY"
+        }
+      ]
+    }
+  ],
+  "tip": "Add '// archigraph: ignore-secret' to suppress a specific line. Replace hardcoded values with the suggested env var."
 }
 ```
 
