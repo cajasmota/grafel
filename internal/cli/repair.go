@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,32 +27,44 @@ import (
 func newRebuildCmd() *cobra.Command {
 	var quiet bool
 	var jsonProgress bool
+	var plain bool
 
 	cmd := &cobra.Command{
 		Use:   "rebuild [group] [slug]",
 		Short: "Force rebuild via the daemon",
+		Long: `Force rebuild triggers an AST extraction + graph rebuild for every repo in
+a group (or one slug). Progress is streamed live from the indexer's event
+broker — the same events the web dashboard shows.
+
+Flags:
+  --quiet           suppress progress output; print only the final summary
+  --plain           no ANSI color or carriage-return overwriting (CI-safe)
+  --json-progress   NDJSON output: one broker event per line (for scripting)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRebuildClient(cmd, args, false, quiet, jsonProgress)
+			return runRebuildClient(cmd, args, false, quiet, jsonProgress, plain)
 		},
 	}
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress progress output; print only the final summary")
-	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit one JSON event per line (for scripting)")
+	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit one NDJSON broker event per line (for scripting)")
+	cmd.Flags().BoolVar(&plain, "plain", false, "disable ANSI color and carriage-return overwrites (CI-safe)")
 	return cmd
 }
 
 func newResetCmd() *cobra.Command {
 	var quiet bool
 	var jsonProgress bool
+	var plain bool
 
 	cmd := &cobra.Command{
 		Use:   "reset [group] [slug]",
 		Short: "Wipe .archigraph/ and rebuild via the daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRebuildClient(cmd, args, true, quiet, jsonProgress)
+			return runRebuildClient(cmd, args, true, quiet, jsonProgress, plain)
 		},
 	}
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "suppress progress output; print only the final summary")
-	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit one JSON event per line (for scripting)")
+	cmd.Flags().BoolVar(&jsonProgress, "json-progress", false, "emit one NDJSON broker event per line (for scripting)")
+	cmd.Flags().BoolVar(&plain, "plain", false, "disable ANSI color and carriage-return overwrites (CI-safe)")
 	return cmd
 }
 
@@ -92,14 +105,16 @@ func fmtDuration(d time.Duration) string {
 
 // runRebuildClient runs the rebuild or reset command with live progress output.
 //
-// The design uses two daemon connections:
-//  1. Primary (long-lived): sends the blocking Rebuild RPC.
-//  2. Poll (short-lived): opened on the same socket to poll IndexProgress
-//     every 2 seconds while the primary connection is blocked.
+// Progress strategy (tries in order):
+//  1. Broker via SSE: subscribe to /api/index-progress/{group} on the daemon's
+//     dashboard HTTP port. Gives the CLI the exact same event stream as the web
+//     dashboard — single source of truth from the in-memory broker.
+//  2. Poll fallback: if SSE is unavailable (dashboard not running, old daemon),
+//     fall back to the existing 2-second RPC poll of IndexProgress.
 //
-// This is necessary because net/rpc serialises calls on a single connection;
-// a blocked Rebuild call would starve all IndexProgress polls on the same Client.
-func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, jsonProgress bool) error {
+// The primary Rebuild RPC runs in a goroutine (it blocks until done); progress
+// is rendered concurrently from whichever source is available.
+func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, jsonProgress bool, plain bool) error {
 	if len(args) == 0 {
 		return errors.New("supply [group] (and optional [slug])")
 	}
@@ -137,46 +152,87 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 		return nil
 	}
 
+	// Attempt to resolve the dashboard port for SSE subscription.
+	dashPort := 0
+	if st, stErr := c.Status(); stErr == nil && st.DashboardPort > 0 {
+		dashPort = st.DashboardPort
+	}
+
+	// Kick off the async rebuild RPC on the primary connection.
+	outcomeCh := make(chan rebuildOutcome, 1)
 	token := progressToken()
-
-	// Open a second connection for polling (avoids blocking on the primary).
-	pollClient, pollDialErr := client.DialProgress(c.SocketPath())
-	if pollDialErr != nil {
-		// Polling unavailable — fall back to quiet mode.
-		reply, err2 := c.Rebuild(proto.RebuildArgs{Group: group, Slug: slug, Wipe: wipe})
-		if err2 != nil {
-			return err2
-		}
-		for _, r := range reply.Repos {
-			// reply.Repos contains absolute paths since #1076 fix; show basename.
-			fmt.Fprintf(w, "rebuilt %s\n", filepath.Base(r))
-		}
-		if reply.Warning != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", reply.Warning)
-		}
-		return nil
-	}
-	defer pollClient.Close()
-
-	// Start the rebuild asynchronously on the primary connection.
-	type rebuildResult struct {
-		reply proto.RebuildReply
-		err   error
-	}
-	resultCh := make(chan rebuildResult, 1)
 	go func() {
-		reply, err := c.Rebuild(proto.RebuildArgs{
+		reply, rpcErr := c.Rebuild(proto.RebuildArgs{
 			Group:         group,
 			Slug:          slug,
 			Wipe:          wipe,
 			ProgressToken: token,
 		})
-		resultCh <- rebuildResult{reply: reply, err: err}
+		outcomeCh <- rebuildOutcome{
+			repos:    reply.Repos,
+			warning:  reply.Warning,
+			elapsed:  reply.ElapsedSec,
+			entities: reply.TotalEntities,
+			rels:     reply.TotalRels,
+			err:      rpcErr,
+		}
 	}()
 
 	if !jsonProgress {
 		fmt.Fprintf(w, "Rebuilding group '%s'...\n", group)
 	}
+
+	// --- Path 1: broker via SSE ---
+	if dashPort > 0 {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		sseCh, sseErr := subscribeSSE(ctx, dashPort, group)
+		if sseErr == nil {
+			outcome := runBrokerProgress(ctx, w, group, sseCh, outcomeCh, plain, jsonProgress)
+			cancel()
+			if outcome.err != nil {
+				return outcome.err
+			}
+			return finishRebuild(cmd, w, group, token, outcome.repos, outcome.warning,
+				outcome.elapsed, outcome.entities, outcome.rels, jsonProgress)
+		}
+		// SSE connect failed — fall through to poll path.
+	}
+
+	// --- Path 2: poll fallback ---
+	return runPollProgress(cmd, w, group, slug, token, wipe, outcomeCh, jsonProgress, c)
+}
+
+// runPollProgress is the legacy 2-second RPC polling fallback. It is used when
+// the SSE endpoint is unavailable (dashboard not running or old daemon version).
+func runPollProgress(
+	cmd *cobra.Command,
+	w io.Writer,
+	group, _ string,
+	token string,
+	_ bool,
+	resultCh <-chan rebuildOutcome,
+	jsonProgress bool,
+	c *client.Client,
+) error {
+	// Open a second connection for polling (avoids blocking on the primary).
+	pollClient, pollDialErr := client.DialProgress(c.SocketPath())
+	if pollDialErr != nil {
+		// Polling unavailable — wait for RPC result silently.
+		outcome := <-resultCh
+		if outcome.err != nil {
+			return outcome.err
+		}
+		for _, r := range outcome.repos {
+			fmt.Fprintf(w, "rebuilt %s\n", filepath.Base(r))
+		}
+		if outcome.warning != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", outcome.warning)
+		}
+		return nil
+	}
+	defer pollClient.Close()
 
 	// Poll loop — 2-second interval, heartbeat after 10s of silence.
 	// Track the last printed phase per repo path to avoid duplicating unchanged lines.
@@ -187,12 +243,12 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
-	var finalResult rebuildResult
+	var finalOutcome rebuildOutcome
 	done := false
 
 	for !done {
 		select {
-		case finalResult = <-resultCh:
+		case finalOutcome = <-resultCh:
 			done = true
 			// Fall through to do one final poll.
 		case <-ticker.C:
@@ -239,15 +295,28 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 		}
 	}
 
-	if finalResult.err != nil {
-		return finalResult.err
+	if finalOutcome.err != nil {
+		return finalOutcome.err
 	}
 
-	reply := finalResult.reply
+	return finishRebuild(cmd, w, group, token, finalOutcome.repos, finalOutcome.warning,
+		finalOutcome.elapsed, finalOutcome.entities, finalOutcome.rels, jsonProgress)
+}
 
+// finishRebuild renders the final summary after a rebuild completes.
+func finishRebuild(
+	cmd *cobra.Command,
+	w io.Writer,
+	group, token string,
+	repos []string,
+	warning string,
+	elapsedSec float64,
+	totalEntities, totalRels int64,
+	jsonProgress bool,
+) error {
 	var elapsedStr string
-	elapsed := time.Duration(reply.ElapsedSec * float64(time.Second))
-	if reply.ElapsedSec > 0 {
+	elapsed := time.Duration(elapsedSec * float64(time.Second))
+	if elapsedSec > 0 {
 		elapsedStr = fmtDuration(elapsed)
 	}
 
@@ -264,8 +333,8 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 		}
 		// Convert absolute paths back to slug/basename for the JSON event so
 		// the wire format stays stable (slugs, not paths).
-		slugs := make([]string, len(reply.Repos))
-		for i, r := range reply.Repos {
+		slugs := make([]string, len(repos))
+		for i, r := range repos {
 			slugs[i] = filepath.Base(r)
 		}
 		enc := json.NewEncoder(w)
@@ -274,15 +343,15 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			Token:    token,
 			Group:    group,
 			Repos:    slugs,
-			Entities: reply.TotalEntities,
-			Rels:     reply.TotalRels,
+			Entities: totalEntities,
+			Rels:     totalRels,
 			Elapsed:  elapsedStr,
-			Warning:  reply.Warning,
+			Warning:  warning,
 		})
 	} else {
 		// Rich summary — read graph artefacts client-side and render the full table.
-		if len(reply.Repos) > 0 {
-			sum := ComputeRebuildSummary(group, reply.Repos, elapsed)
+		if len(repos) > 0 {
+			sum := ComputeRebuildSummary(group, repos, elapsed)
 			PrintRebuildSummary(w, sum)
 		} else {
 			// No repos reported (e.g. single-slug rebuild with no stats). Fall
@@ -291,17 +360,17 @@ func runRebuildClient(cmd *cobra.Command, args []string, wipe bool, quiet bool, 
 			if elapsedStr != "" {
 				summaryParts = append(summaryParts, elapsedStr)
 			}
-			if reply.TotalEntities > 0 {
+			if totalEntities > 0 {
 				summaryParts = append(summaryParts,
-					fmt.Sprintf("%d entities", reply.TotalEntities),
-					fmt.Sprintf("%d relationships", reply.TotalRels))
+					fmt.Sprintf("%d entities", totalEntities),
+					fmt.Sprintf("%d relationships", totalRels))
 			}
 			if len(summaryParts) > 0 {
 				fmt.Fprintf(w, "Group '%s' rebuilt (%s)\n", group, strings.Join(summaryParts, ", "))
 			}
 		}
-		if reply.Warning != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", reply.Warning)
+		if warning != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning)
 		}
 	}
 	return nil
