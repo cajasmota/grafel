@@ -892,3 +892,43 @@ export interface PatternExportResponse {
   exported: number
   target: string
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// System / daemon control panel (#1195)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Wire shape of GET /api/system */
+export interface SystemStatus {
+  status: 'running' | 'stopped' | 'unhealthy'
+  uptime_seconds?: number
+  uptime_human?: string
+  pid: number
+  rss_mb: number
+  rss_budget_mb?: number
+  socket_path?: string
+  dashboard_url?: string
+  version: string
+  commit_sha: string
+  built_at: string
+  days_since_build?: number
+  stale_build: boolean
+}
+
+/** Wire shape of POST /api/system/restart and /api/system/stop */
+export interface SystemActionReply {
+  ok: boolean
+  message: string
+}
+
+/** One log line from GET /api/system/logs */
+export interface LogLine {
+  raw: string
+  severity: 'error' | 'warn' | 'info' | 'debug'
+}
+
+/** Wire shape of GET /api/system/logs (non-SSE) */
+export interface SystemLogsReply {
+  lines: LogLine[]
+  total: number
+  path: string
+}

@@ -8,7 +8,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Info, ExternalLink, GitCommit, Clock, Globe } from 'lucide-react'
+import { Info, ExternalLink, GitCommit, Clock, Globe, Server } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { fetchInfo, type DaemonInfo } from '@/api/client'
 
 const CACHE_TTL_MS = 5_000
@@ -227,9 +228,17 @@ export function VersionPopover() {
             </>
           )}
 
-          {/* Footer divider + GitHub link */}
+          {/* Footer divider + links */}
           <div className="mx-4 border-t border-slate-200 dark:border-slate-800" />
-          <div className="px-4 py-2">
+          <div className="px-4 py-2 space-y-1.5">
+            <Link
+              to="/system"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-sky-400 dark:hover:text-sky-300 transition-colors text-sm"
+            >
+              <Server className="w-3.5 h-3.5" />
+              System panel
+            </Link>
             <a
               href="https://github.com/cajasmota/archigraph"
               target="_blank"

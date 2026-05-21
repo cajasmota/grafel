@@ -225,6 +225,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/diagnostics", s.handleDiagnostics)
 	mux.HandleFunc("POST /api/diagnostics/kill-stale", s.handleDiagnosticsKillStale)
 
+	// System / daemon control panel (#1195)
+	mux.HandleFunc("GET /api/system", s.handleSystem)
+	mux.HandleFunc("POST /api/system/restart", s.handleSystemRestart)
+	mux.HandleFunc("POST /api/system/stop", s.handleSystemStop)
+	mux.HandleFunc("GET /api/system/logs", s.handleSystemLogs)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)

@@ -1091,3 +1091,65 @@ export async function exportPatterns(
     body: JSON.stringify(target),
   })
 }
+
+// ── System / daemon control panel (#1195) ─────────────────────────────────────
+
+import type { SystemStatus, SystemActionReply, SystemLogsReply } from '@/types/api'
+
+/** Mock system status returned when VITE_USE_MOCKS=true */
+const MOCK_SYSTEM: SystemStatus = {
+  status: 'running',
+  uptime_seconds: 5040,
+  uptime_human: '1h 24m',
+  pid: 12345,
+  rss_mb: 182.4,
+  rss_budget_mb: 500,
+  socket_path: '~/.archigraph/sockets/daemon.sock',
+  dashboard_url: 'http://127.0.0.1:47274/',
+  version: '0.0.0-dev',
+  commit_sha: 'abc1234567890',
+  built_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  days_since_build: 0,
+  stale_build: false,
+}
+
+/** GET /api/system — live daemon status snapshot */
+export async function fetchSystemStatus(): Promise<SystemStatus> {
+  if (USE_MOCKS) return MOCK_SYSTEM
+  return apiFetch<SystemStatus>('/api/system')
+}
+
+/** POST /api/system/restart — trigger daemon restart (SIGTERM + launchd/systemd restarts it) */
+export async function postSystemRestart(): Promise<SystemActionReply> {
+  if (USE_MOCKS) return { ok: true, message: '[mock] Restart signal sent.' }
+  return apiFetch<SystemActionReply>('/api/system/restart', { method: 'POST' })
+}
+
+/** POST /api/system/stop — danger-zone: SIGTERM without restart */
+export async function postSystemStop(): Promise<SystemActionReply> {
+  if (USE_MOCKS) return { ok: true, message: '[mock] Stop signal sent.' }
+  return apiFetch<SystemActionReply>('/api/system/stop', { method: 'POST' })
+}
+
+/** GET /api/system/logs — tail of daemon.log */
+export async function fetchSystemLogs(opts: {
+  n?: number
+  q?: string
+  severity?: 'error' | 'warn' | ''
+} = {}): Promise<SystemLogsReply> {
+  if (USE_MOCKS) {
+    const lines = [
+      { raw: '2026-05-21 10:00:00 archigraph-daemon: starting up', severity: 'info' as const },
+      { raw: '2026-05-21 10:00:01 archigraph-daemon: dashboard ready http://127.0.0.1:47274/', severity: 'info' as const },
+      { raw: '2026-05-21 10:01:12 archigraph-daemon: warn - watcher events dropped (1)', severity: 'warn' as const },
+      { raw: '2026-05-21 10:02:05 archigraph-daemon: error - failed to index /tmp/test: no such file', severity: 'error' as const },
+      { raw: '2026-05-21 10:05:32 archigraph-daemon: index complete (2400 entities)', severity: 'info' as const },
+    ]
+    return { lines, total: lines.length, path: '~/.archigraph/logs/daemon.log' }
+  }
+  const params = new URLSearchParams()
+  if (opts.n) params.set('n', String(opts.n))
+  if (opts.q) params.set('q', opts.q)
+  if (opts.severity) params.set('severity', opts.severity)
+  return apiFetch<SystemLogsReply>(`/api/system/logs?${params}`)
+}
