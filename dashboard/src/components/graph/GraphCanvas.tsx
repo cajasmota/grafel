@@ -6,6 +6,8 @@ import { repoColor } from '@/lib/colors'
 import type { GraphNode, GraphEdge } from '@/types/api'
 import { useGraphCameraStore } from '@/store/graphCameraStore'
 import type { ColorMode } from '@/hooks/graph/useColorMode'
+import type { SimulationConfig } from '@/hooks/graph/useSimulationConfig'
+import { SILK_ROAD_DEFAULTS } from '@/hooks/graph/useSimulationConfig'
 
 // ---------------------------------------------------------------------------
 // Semantic layout helpers (#1072 / #1106 repo-first layout)
@@ -301,6 +303,11 @@ export interface GraphCanvasProps {
    * the standard cross-repo / same-repo color.
    */
   highlightedEdgeIds?: ReadonlySet<string>
+  /**
+   * #1361: Tunable simulation params — live-applied from the sidebar sliders.
+   * Omit to use Silk Road defaults.
+   */
+  simulationConfig?: SimulationConfig
 }
 
 /** Truncate long labels at ~30 chars for layout legibility */
@@ -348,7 +355,14 @@ const GraphCanvasInner = ({
   colorMode = 'repo',
   forceVisibleIds,
   highlightedEdgeIds,
+  simulationConfig,
 }: GraphCanvasProps) => {
+  // #1361: merge tunable params with Silk Road defaults so omitted props fall back correctly
+  const simCfg: SimulationConfig = useMemo(
+    () => simulationConfig ? { ...SILK_ROAD_DEFAULTS, ...simulationConfig } : SILK_ROAD_DEFAULTS,
+    [simulationConfig],
+  )
+
   const cosmographRef = useRef<CosmographRef>(undefined)
   const { setGraphRef, setZoomLevel } = useGraphCameraStore()
 
@@ -900,37 +914,25 @@ const GraphCanvasInner = ({
         pointGreyoutOpacity={repoFilterActive ? 0 : 0.15}
         linkGreyoutOpacity={repoFilterActive ? 0 : 0.1}
 
-        // ── Simulation — #1153 Silk Road params ────────────────────────────
+        // ── Simulation — #1153 Silk Road defaults, #1361 tunable via sidebar sliders ───
         enableSimulation={true}
         preservePointPositionsOnDataUpdate={true}
-        // #1153: simulationLinkSpring=0.08 (was ~1.0) — very weak link spring
-        // lets nodes spread out naturally without being pulled tight together.
-        simulationLinkSpring={0.08}
-        // #1153: simulationLinkDistance=2 — short target link distance
-        // combined with weak spring creates the Silk Road gossamer aesthetic.
-        simulationLinkDistance={2}
-        // #1153: simulationGravity=0.46 (was 0.1) — stronger gravity centers
-        // the whole graph while weak springs keep individual clusters loose.
-        simulationGravity={0.46}
-        // #1153: simulationFriction=0.77 (was 0.85) — lower friction keeps
-        // the sim more fluid during layout, allowing natural cluster formation.
-        simulationFriction={0.77}
-        // #1153: simulationDecay=1000 (was 1500) — faster alpha decay means
-        // the sim settles in ~1s instead of 1.5s (triggers pulse animation sooner).
+        // #1361: live-tunable via SimulationControls sidebar (falls back to Silk Road defaults)
+        simulationLinkSpring={simCfg.linkSpring}
+        simulationLinkDistance={simCfg.linkDistance}
+        simulationGravity={simCfg.gravity}
+        simulationFriction={simCfg.friction}
+        // #1153: simulationDecay=1000 — faster alpha decay for quicker settle.
         simulationDecay={1000}
-        // #1153: simulationCluster=0.1 — additional cluster force that gently
-        // pulls same-cluster nodes together without over-collapsing them.
+        // #1153: simulationCluster=0.1 — gentle cluster pull without over-collapse.
         simulationCluster={0.1}
         // Keep repulsion strong so repo islands stay separated (#1114)
         simulationRepulsion={1.5}
         simulationCenter={0.05}
 
         // ── Space + layout ─────────────────────────────────────────────────
-        // #1356: spaceSize=4096 — halved from 8192. Smaller canvas space means nodes
-        // are physically closer together at default zoom, eliminating the "3 tiny clumps
-        // in empty space" density problem (#1356). Silk Road aesthetic preserved via
-        // simulation params; the open-space feel comes from low spring strength, not canvas size.
-        spaceSize={4096}
+        // #1361: spaceSize is tunable via sidebar (default 4096 — #1356 Silk Road fix)
+        spaceSize={simCfg.spaceSize}
         // #1153: rescalePositions=true — Cosmograph normalizes initial positions
         // to fill the canvas; combines with pre-seeded __x/__y for fast convergence.
         rescalePositions={true}

@@ -8,10 +8,12 @@ import { useCommunityColors } from '@/hooks/graph/useCommunityColors'
 import { useGraphSearch } from '@/hooks/graph/useGraphSearch'
 import { useHoverLabel } from '@/hooks/graph/useHoverLabel'
 import { useColorMode } from '@/hooks/graph/useColorMode'
+import { useSimulationConfig } from '@/hooks/graph/useSimulationConfig'
 import { useGraphHighlight } from '@/hooks/graph/useGraphHighlight'
 import { useGraphCameraStore, useSimulationRunning } from '@/store/graphCameraStore'
 import { useThemeContext } from '@/context/ThemeContext'
 import { GraphCanvas } from '@/components/graph/GraphCanvas'
+import { SimulationControls } from '@/components/graph/SimulationControls'
 import { GraphToolbar } from '@/components/graph/GraphToolbar'
 import { EdgeKindFilters } from '@/components/graph/EdgeKindFilters'
 import { CommunityLegend } from '@/components/graph/CommunityLegend'
@@ -58,6 +60,9 @@ export function GraphRoute() {
 
   // ── Color mode (#1153 — persisted to localStorage) ────────────────────────
   const { colorMode, setColorMode } = useColorMode()
+
+  // ── Simulation config (#1361 — tunable params persisted to localStorage) ──
+  const { config: simConfig, setParam: setSimParam, applyPreset: applySimPreset, shareHash: simShareHash } = useSimulationConfig()
 
   // ── View state ─────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -519,6 +524,16 @@ export function GraphRoute() {
 
           <div className="border-t border-slate-200 dark:border-slate-700" />
 
+          {/* Simulation tuning (#1361) */}
+          <SimulationControls
+            config={simConfig}
+            setParam={setSimParam}
+            applyPreset={applySimPreset}
+            shareHash={simShareHash}
+          />
+
+          <div className="border-t border-slate-200 dark:border-slate-700" />
+
           {/* Repo filter */}
           {allRepoSlugs.length > 0 && (
             <div>
@@ -641,6 +656,7 @@ export function GraphRoute() {
               colorMode={colorMode}
               forceVisibleIds={highlightedNodeIds}
               highlightedEdgeIds={highlightedEdgeIds}
+              simulationConfig={simConfig}
             />
           )}
 
