@@ -346,6 +346,10 @@ const (
 	// required a post-hoc regex pass (#1099) become first-class graph
 	// citizens via this edge kind.
 	RelationshipKindUnresolvedFetch RelationshipKind = "UNRESOLVED_FETCH"
+
+	// #1343: TypeScript type extraction edges.
+	//   HAS_TYPE     : entity → SCOPE.Schema  (e.g. a variable or field whose declared type is the target schema)
+	RelationshipKindHasType RelationshipKind = "HAS_TYPE"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -411,6 +415,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindCloudEventFlows,
 		// #1217:
 		RelationshipKindUnresolvedFetch,
+		// #1343:
+		RelationshipKindHasType,
 	}
 }
 
