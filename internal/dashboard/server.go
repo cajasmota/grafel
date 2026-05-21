@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/mcp"
 	"github.com/cajasmota/archigraph/internal/progress"
 )
 
@@ -35,6 +36,15 @@ type Server struct {
 	// It is optional: when nil the /api/index-progress endpoints return 503.
 	// Set via SetProgressBroker before calling Serve.
 	progressBroker *progress.Broker
+
+	// mcpActivityBroker is the fan-out bus for MCP tool call events (epic #1157).
+	// Optional: when nil, /api/mcp-activity/stream returns 503.
+	// Set via SetMCPActivityBroker before calling Serve.
+	mcpActivityBroker *mcp.MCPActivityBroker
+
+	// mcpActivityLog is the absolute path to the on-disk JSONL activity log.
+	// Empty string disables the /api/mcp-activity/history endpoint.
+	mcpActivityLog string
 }
 
 // NewServer wires a server against the given config and registry-store
@@ -70,6 +80,19 @@ func (s *Server) SetDaemonStartedAt(t time.Time) {
 // cmd/archigraph (or any daemon entrypoint) before Serve.
 func (s *Server) SetProgressBroker(b *progress.Broker) {
 	s.progressBroker = b
+}
+
+// SetMCPActivityBroker wires the MCP activity broker into the dashboard server
+// so that /api/mcp-activity/stream can fan events to browser subscribers.
+// Call from the daemon entrypoint before Serve (epic #1157, Phase 1).
+func (s *Server) SetMCPActivityBroker(b *mcp.MCPActivityBroker) {
+	s.mcpActivityBroker = b
+}
+
+// SetMCPActivityLog sets the path to the on-disk JSONL activity log. When set,
+// /api/mcp-activity/history will read recent events from this file.
+func (s *Server) SetMCPActivityLog(path string) {
+	s.mcpActivityLog = path
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is
@@ -255,6 +278,10 @@ func (s *Server) routes() http.Handler {
 	// SSE progress streams (Sub-C of epic #1118)
 	mux.HandleFunc("GET /api/index-progress", s.handleIndexProgressAll)
 	mux.HandleFunc("GET /api/index-progress/{group}", s.handleIndexProgressGroup)
+
+	// MCP activity stream + history (Phase 1 of epic #1157 — Jarvis)
+	mux.HandleFunc("GET /api/mcp-activity/stream", s.handleMCPActivityStream)
+	mux.HandleFunc("GET /api/mcp-activity/history", s.handleMCPActivityHistory)
 
 	return s.withAuth(mux)
 }

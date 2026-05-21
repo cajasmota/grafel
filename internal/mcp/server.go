@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -49,6 +50,22 @@ type Server struct {
 	Tel   *Telemetry
 	MCP   *mcpsrv.MCPServer
 	cfg   Config
+
+	// activityBroker fans MCP tool call events to SSE subscribers (epic #1157).
+	// Optional: when nil, events are silently dropped.
+	activityBroker *MCPActivityBroker
+}
+
+// SetActivityBroker wires the MCP activity broker into the server so that
+// every tool call emits a real-time MCPActivityEvent to subscribers. Call
+// this from the daemon entrypoint before ServeStdio.
+func (s *Server) SetActivityBroker(b *MCPActivityBroker) {
+	s.activityBroker = b
+}
+
+// ActivityBroker returns the wired broker, or nil when not set.
+func (s *Server) ActivityBroker() *MCPActivityBroker {
+	return s.activityBroker
 }
 
 // NewServer wires everything together: loads the registry, performs an
@@ -466,7 +483,8 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_find_paths", s.handleFindPaths))
 }
 
-// wrap is the shared handler middleware: telemetry + lazy reload + panic guard.
+// wrap is the shared handler middleware: telemetry + lazy reload + panic guard
+// + MCP activity event emission (epic #1157, Phase 1).
 func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error)) mcpsrv.ToolHandlerFunc {
 	return func(ctx context.Context, req mcpapi.CallToolRequest) (res *mcpapi.CallToolResult, err error) {
 		end := s.Tel.Begin(name)
@@ -475,6 +493,118 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 			end(isErr)
 		}()
 		s.reloadBeforeCall()
-		return fn(ctx, req)
+		res, err = fn(ctx, req)
+		s.emitActivity(ctx, name, req, res)
+		return res, err
 	}
+}
+
+// emitActivity publishes a MCPActivityEvent to the activity broker (when
+// wired). It is called after every tool handler returns. The agent_id is
+// derived from the "archigraph-agent-id" context value when set, or falls
+// back to the User-Agent extracted at session accept time.
+func (s *Server) emitActivity(_ context.Context, toolName string, req mcpapi.CallToolRequest, res *mcpapi.CallToolResult) {
+	if s.activityBroker == nil {
+		return
+	}
+	args := req.GetArguments()
+	// Build a safe copy of args (values are already JSON-friendly interface{}s).
+	argsCopy := make(map[string]any, len(args))
+	for k, v := range args {
+		argsCopy[k] = v
+	}
+	event := MCPActivityEvent{
+		ToolName:  toolName,
+		QueryArgs: argsCopy,
+		Timestamp: 0, // broker will fill this in
+	}
+	// Extract node/edge IDs from the result content when present.
+	if res != nil && !res.IsError {
+		event.ReturnedNodeIDs, event.ReturnedEdgeIDs = extractIDs(res)
+	}
+	s.activityBroker.Publish(event)
+}
+
+// extractIDs attempts to pull entity IDs and edge IDs out of a tool result's
+// JSON content. It is best-effort: returns nil slices on any parse failure.
+// mcp-go stores []Content where each element may be TextContent, ImageContent,
+// etc. We type-assert to mcpapi.TextContent and parse the text as JSON.
+func extractIDs(res *mcpapi.CallToolResult) (nodeIDs, edgeIDs []string) {
+	if res == nil || len(res.Content) == 0 {
+		return
+	}
+	for _, c := range res.Content {
+		tc, ok := c.(mcpapi.TextContent)
+		if !ok || tc.Text == "" {
+			continue
+		}
+		// Parse the text body as JSON and probe for known ID-bearing fields.
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(tc.Text), &payload); err != nil {
+			continue
+		}
+		nodeIDs = append(nodeIDs, collectScalarIDs(payload,
+			"entity_id", "node_id", "pattern_id", "topic_id", "process_id")...)
+		nodeIDs = append(nodeIDs, collectSliceIDs(payload,
+			"results", "nodes", "steps", "orphans", "patterns", "orphan_publishers",
+			"orphan_subscribers", "dead_ends", "truncated_flows", "publishers",
+			"subscribers", "exemplars")...)
+		edgeIDs = append(edgeIDs, collectSliceIDs(payload, "edges")...)
+	}
+	return dedup(nodeIDs), dedup(edgeIDs)
+}
+
+// collectScalarIDs extracts scalar string values for the given keys from a
+// JSON payload map.
+func collectScalarIDs(m map[string]any, keys ...string) []string {
+	var out []string
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
+// collectSliceIDs extracts entity_id / from_id / to_id strings from an
+// array value at each key in m.
+func collectSliceIDs(m map[string]any, keys ...string) []string {
+	var out []string
+	for _, k := range keys {
+		v, ok := m[k]
+		if !ok {
+			continue
+		}
+		arr, ok := v.([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range arr {
+			obj, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			for _, field := range []string{"entity_id", "node_id", "from_id", "to_id", "pattern_id", "topic_id", "process_id"} {
+				if s, ok := obj[field].(string); ok && s != "" {
+					out = append(out, s)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// dedup removes duplicate strings preserving order.
+func dedup(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }

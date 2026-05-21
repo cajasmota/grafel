@@ -21,6 +21,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
 	"github.com/cajasmota/archigraph/internal/dashboard"
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/mcp"
 	"github.com/cajasmota/archigraph/internal/quality/audit"
 	"github.com/cajasmota/archigraph/internal/registry"
 	"github.com/cajasmota/archigraph/internal/resolve"
@@ -487,6 +488,25 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 		// Tell the dashboard server when the daemon started so /api/info
 		// can compute and report uptime (#991).
 		srv.SetDaemonStartedAt(daemonStartedAt)
+
+		// Wire MCP activity broker (epic #1157, Phase 1: Jarvis).
+		// The same broker is injected into the shared MCP server so tool
+		// calls emit events that flow through the dashboard SSE endpoint.
+		activityBroker := mcp.NewMCPActivityBroker()
+		logPath := mcp.DefaultActivityLogPath()
+		if logPath != "" {
+			actLog := mcp.NewActivityLog(logPath)
+			activityBroker.SetLog(actLog)
+			srv.SetMCPActivityLog(logPath)
+		}
+		srv.SetMCPActivityBroker(activityBroker)
+		// Wire the broker into the shared MCP server (lazily initialised).
+		// We call mcpServerInstance here to ensure it exists; on failure we
+		// proceed without activity emission rather than crashing the daemon.
+		if mcpSrv, initErr := mcpServerInstance(); initErr == nil {
+			mcpSrv.SetActivityBroker(activityBroker)
+		}
+
 		srv.UseListener(l)
 		if logger != nil {
 			logger.Printf("dashboard ready http://%s/", addr)
