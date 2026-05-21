@@ -1152,3 +1152,178 @@ func TestTemplateLiteralName_SkipsDescribeEntity(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Full-tightening filter tests (2026-05-21 census — issue #XXXX)
+// ---------------------------------------------------------------------------
+
+// TestFilter_FilepathComponent verifies that SCOPE.Component entities whose
+// name is a file path (contains "/") produce no candidates from any emitter,
+// even when they are god-nodes or articulation-points.
+func TestFilter_FilepathComponent(t *testing.T) {
+	emitters := DefaultEmitters()
+	filepathNames := []string{
+		"src/features/auth/login/Login.hooks.tsx",
+		"components/notes/viewers/AttachmentImagePage.tsx",
+		"src/services/_config/httpClient.ts",
+	}
+	for _, name := range filepathNames {
+		doc := mkDoc(graph.Entity{
+			ID:           "fp1",
+			Name:         name,
+			Kind:         "SCOPE.Component",
+			SourceFile:   name,
+			IsGodNode:    true,
+			IsArticulationPt: true,
+		})
+		got := CollectCandidates(doc, emitters, nil)
+		if len(got) != 0 {
+			t.Errorf("filepath component %q: expected 0 candidates, got %d (kinds: %v)",
+				name, len(got), candidateKinds(got))
+		}
+	}
+
+	// A non-filepath SCOPE.Component that IS a god-node should still qualify.
+	doc := mkDoc(graph.Entity{
+		ID:        "comp1",
+		Name:      "NotificationsContext",
+		Kind:      "SCOPE.Component",
+		IsGodNode: true,
+	})
+	got := CollectCandidates(doc, emitters, nil)
+	if len(got) == 0 {
+		t.Errorf("non-filepath god-node SCOPE.Component: expected candidates, got 0")
+	}
+}
+
+// TestFilter_GeneratedMigration verifies that Django-style Migration classes
+// under /migrations/ produce no candidates from any emitter, even as god-nodes.
+func TestFilter_GeneratedMigration(t *testing.T) {
+	emitters := DefaultEmitters()
+	migrationFiles := []string{
+		"core/migrations/0043_enable_pgcrypto.py",
+		"core/migrations/0001_initial.py",
+		"app/migrations/0027_permissions_is_navigable.py",
+	}
+	for _, sf := range migrationFiles {
+		doc := mkDoc(graph.Entity{
+			ID:           "mig1",
+			Name:         "Migration",
+			Kind:         "SCOPE.Component",
+			SourceFile:   sf,
+			IsGodNode:    true,
+			IsArticulationPt: true,
+		})
+		got := CollectCandidates(doc, emitters, nil)
+		if len(got) != 0 {
+			t.Errorf("migration %q: expected 0 candidates, got %d", sf, len(got))
+		}
+	}
+
+	// A non-migration "Migration" entity (different source path) should not be suppressed.
+	doc := mkDoc(graph.Entity{
+		ID:         "mig2",
+		Name:       "Migration",
+		Kind:       "SCOPE.Component",
+		SourceFile: "core/services/migration_helper.py", // no /migrations/ segment
+		IsGodNode:  true,
+	})
+	got := CollectCandidates(doc, emitters, nil)
+	if len(got) == 0 {
+		t.Errorf("non-migrations-dir Migration: expected candidates, got 0")
+	}
+}
+
+// TestFilter_RawSQLDataAccess verifies that SCOPE.DataAccess entities whose
+// name starts with a SQL keyword produce no candidates from any emitter.
+func TestFilter_RawSQLDataAccess(t *testing.T) {
+	emitters := DefaultEmitters()
+	sqlNames := []string{
+		"SELECT users",
+		"TRUNCATE checklists_categories",
+		"INSERT INTO audit_log",
+		"UPDATE contracts SET status",
+		"DELETE FROM temp_queue",
+	}
+	for _, name := range sqlNames {
+		doc := mkDoc(graph.Entity{
+			ID:           "sql1",
+			Name:         name,
+			Kind:         "SCOPE.DataAccess",
+			SourceFile:   "core/data_access.py",
+			IsGodNode:    true,
+		})
+		got := CollectCandidates(doc, emitters, nil)
+		if len(got) != 0 {
+			t.Errorf("raw SQL DataAccess %q: expected 0 candidates, got %d", name, len(got))
+		}
+	}
+
+	// A named DataAccess (not raw SQL) should still qualify via high_arch_kind.
+	doc := mkDoc(graph.Entity{
+		ID:         "da1",
+		Name:       "UserRepository",
+		Kind:       "SCOPE.DataAccess",
+		SourceFile: "core/repos/user.py",
+	})
+	got := CollectCandidates(doc, emitters, nil)
+	if len(got) == 0 {
+		t.Errorf("named DataAccess UserRepository: expected candidates, got 0")
+	}
+}
+
+// TestFilter_HttpEndpointCall verifies that http_endpoint_call entities
+// (call-site references) produce no candidates from any emitter.
+func TestFilter_HttpEndpointCall(t *testing.T) {
+	emitters := DefaultEmitters()
+	callNames := []string{
+		"http:GET:/checklist-catalogs",
+		"http:POST:/api/v1/inspections",
+		"http:GET:/{apiUrl}/schedule/confirm/{token}",
+	}
+	for _, name := range callNames {
+		doc := mkDoc(graph.Entity{
+			ID:           "hec1",
+			Name:         name,
+			Kind:         "http_endpoint_call",
+			SourceFile:   "src/api/client.ts",
+			IsGodNode:    true,
+		})
+		got := CollectCandidates(doc, emitters, nil)
+		if len(got) != 0 {
+			t.Errorf("http_endpoint_call %q: expected 0 candidates, got %d", name, len(got))
+		}
+	}
+}
+
+// TestFilter_ExtendedCommonTerms verifies that the newly added visual/CSS/
+// trivial-prop terms in commonProgrammingTerms suppress the ambiguous-name
+// signal and produce no candidates.
+func TestFilter_ExtendedCommonTerms(t *testing.T) {
+	emitters := []CandidateEmitter{describeEntityEmitter{}}
+	trivialNames := []string{
+		"variant", "height", "width", "color", "speed",
+		"gap", "align", "sticky", "sync", "year", "month",
+	}
+	for _, name := range trivialNames {
+		doc := mkDoc(graph.Entity{
+			ID:         "triv1",
+			Name:       name,
+			Kind:       "SCOPE.Operation",
+			SourceFile: "src/utils/style.ts",
+		})
+		got := CollectCandidates(doc, emitters, nil)
+		if len(got) != 0 {
+			t.Errorf("trivial term %q: expected 0 ambiguous-name candidates, got %d", name, len(got))
+		}
+	}
+}
+
+// candidateKinds returns the Kind field of each candidate for use in test messages.
+func candidateKinds(cs []Candidate) []string {
+	kinds := make([]string, len(cs))
+	for i, c := range cs {
+		kinds[i] = c.Kind
+	}
+	return kinds
+}

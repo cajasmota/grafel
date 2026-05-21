@@ -286,14 +286,18 @@ var nowRFC3339 = func() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // describeEntityNoiseKinds is the set of entity kinds that are structural or
 // framework artefacts and therefore not meaningful targets for agent-written
-// descriptions. Entities in this set are skipped by describeEntityEmitter.
+// descriptions. Entities in this set are skipped by all emitters.
+//
+// http_endpoint_call is a call-site reference (not a definition), so there is
+// nothing to describe — the endpoint definition already captures the contract.
 var describeEntityNoiseKinds = map[string]bool{
-	"SCOPE.Pattern":    true,
-	"SCOPE.External":   true,
-	"SCOPE.Heading":    true,
-	"SCOPE.Stylesheet": true,
-	"SCOPE.CodeBlock":  true,
-	"SCOPE.Document":   true,
+	"SCOPE.Pattern":      true,
+	"SCOPE.External":     true,
+	"SCOPE.Heading":      true,
+	"SCOPE.Stylesheet":   true,
+	"SCOPE.CodeBlock":    true,
+	"SCOPE.Document":     true,
+	"http_endpoint_call": true, // call-site reference, not a definition
 }
 
 // selfDescriptiveOperationRE matches SCOPE.Operation names that are fully
@@ -388,6 +392,44 @@ func containsSlash(s string) bool {
 	return false
 }
 
+// isFilepathComponent returns true for SCOPE.Component entities whose label is
+// a file path (contains "/"). These are module-level containers, not individual
+// describable entities — they become god-nodes because every importer references
+// the file, not because they have interesting architectural behaviour of their own.
+// This guard extends containsSlash to cover all emitters (not just complexComponentRE).
+func isFilepathComponent(e *graph.Entity) bool {
+	return e.Kind == "SCOPE.Component" && containsSlash(e.Name)
+}
+
+// isGeneratedMigration returns true for auto-generated Django (or similar ORM)
+// migration classes. These classes are always named "Migration", live under a
+// /migrations/ directory, and are mechanically produced — an agent description
+// adds no value.
+func isGeneratedMigration(e *graph.Entity) bool {
+	return e.Name == "Migration" && strings.Contains(e.SourceFile, "/migrations/")
+}
+
+// rawSQLPrefixes is the set of SQL statement prefixes that appear in SCOPE.DataAccess
+// entity names when the extractor captures raw query strings. These names are
+// self-descriptive (the SQL is the documentation) and do not benefit from
+// agent-written descriptions.
+var rawSQLPrefixes = []string{"SELECT ", "TRUNCATE ", "INSERT ", "UPDATE ", "DELETE "}
+
+// isRawSQLDataAccess returns true for SCOPE.DataAccess entities whose name
+// starts with a SQL keyword. These are raw-query call sites, not named data-access
+// abstractions, so describe_entity / describe_role produce only paraphrases of the SQL.
+func isRawSQLDataAccess(e *graph.Entity) bool {
+	if e.Kind != "SCOPE.DataAccess" {
+		return false
+	}
+	for _, prefix := range rawSQLPrefixes {
+		if strings.HasPrefix(e.Name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // qualifiesForEnrichment returns true when entity e is a research-validated
 // candidate for agent enrichment, together with the signals that drove the
 // decision. The default policy is NOT to enrich: an entity qualifies ONLY
@@ -417,6 +459,28 @@ func qualifiesForEnrichment(e *graph.Entity) (qualified bool, signals []string) 
 
 	// --- Noise kinds: never qualify ---
 	if describeEntityNoiseKinds[e.Kind] {
+		return false, nil
+	}
+
+	// --- Cheap structural false-positive guards (ordered by check cost) ---
+	//
+	// These run before any positive signal so they suppress even god-nodes and
+	// articulation-points that happen to fall into a low-value category.
+	//
+	// 1. File-path SCOPE.Component: a module-level container (e.g.
+	//    "src/features/auth/Login.hooks.tsx") is a god-node because every
+	//    importer references the file, not because it has interesting behaviour.
+	if isFilepathComponent(e) {
+		return false, nil
+	}
+	// 2. Auto-generated Django migrations: always named "Migration", always
+	//    under /migrations/. Describing them adds no value.
+	if isGeneratedMigration(e) {
+		return false, nil
+	}
+	// 3. Raw-SQL DataAccess names: "SELECT users", "TRUNCATE checklists", etc.
+	//    The SQL is already self-documenting; agent descriptions are paraphrases.
+	if isRawSQLDataAccess(e) {
 		return false, nil
 	}
 
@@ -564,6 +628,27 @@ var commonProgrammingTerms = map[string]bool{
 	"name": true, "text": true, "url": true, "path": true, "uri": true,
 	"user": true, "role": true, "scope": true, "mode": true, "time": true,
 	"date": true, "message": true, "msg": true,
+	// Visual / CSS layout props — unambiguous to any frontend developer.
+	// Full-census audit (2026-05-21) found these generate ambiguous-name
+	// candidates that produce only paraphrase descriptions (e.g. "height:
+	// the height of the component").
+	"variant": true, "speed": true, "height": true, "width": true,
+	"color": true, "gap": true, "flex": true, "align": true, "justify": true,
+	"wrap": true, "sticky": true, "opacity": true, "radius": true,
+	"border": true, "shadow": true, "weight": true,
+	// HTML attributes self-explanatory in any web context.
+	"href": true, "src": true, "alt": true, "placeholder": true,
+	"disabled": true, "readonly": true, "required": true, "multiple": true,
+	// Data-sync / offline-queue terms common in mobile React-Native apps.
+	"sync": true, "prefetch": true, "resume": true,
+	// Temporal primitives.
+	"year": true, "month": true, "week": true, "day": true,
+	"hour": true, "minute": true, "second": true,
+	// Domain-list nouns that are fully self-explanatory in context.
+	"addresses": true, "devices": true, "recents": true, "remedies": true,
+	"timeframe": true, "highlight": true,
+	// Diff / mutation markers.
+	"_removed": true, "log_step": true,
 }
 
 // ---------------------------------------------------------------------------
@@ -636,6 +721,11 @@ func (classifyDomainEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candi
 	if describeEntityNoiseKinds[e.Kind] {
 		return nil
 	}
+	// Skip structural false-positives that inflate the god-node / articulation
+	// signal but carry no independently classifiable business domain.
+	if isFilepathComponent(e) || isGeneratedMigration(e) || isRawSQLDataAccess(e) {
+		return nil
+	}
 	if e.Kind == "SCOPE.Operation" && selfDescriptiveOperationRE.MatchString(e.Name) {
 		return nil
 	}
@@ -685,6 +775,11 @@ func (describeRoleEmitter) EmitFor(e *graph.Entity, _ *graph.Document) []Candida
 	}
 	// Pre-check: skip noise kinds and self-descriptive operations uniformly.
 	if describeEntityNoiseKinds[e.Kind] {
+		return nil
+	}
+	// Skip structural false-positives that inflate the god-node / articulation
+	// signal but carry no independently describable architectural role.
+	if isFilepathComponent(e) || isGeneratedMigration(e) || isRawSQLDataAccess(e) {
 		return nil
 	}
 	if e.Kind == "SCOPE.Operation" && selfDescriptiveOperationRE.MatchString(e.Name) {
