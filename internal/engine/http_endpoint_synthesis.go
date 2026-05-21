@@ -96,10 +96,7 @@ func synthesisSupportsLanguage(lang string) bool {
 	// rules are compiled for them so the per-protocol synthesizers can
 	// run. Files in these languages that contain none of the recognised
 	// anchors are no-ops in the synthesizers themselves.
-	case "kotlin", "go", "csharp", "ruby", "php":
-		return true
-	// #1420: axum producer-side route extraction + reqwest consumer side.
-	case "rust", "php":
+	case "kotlin", "go", "csharp", "ruby", "php", "rust":
 		return true
 	default:
 		return false
