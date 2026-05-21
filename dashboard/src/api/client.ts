@@ -881,3 +881,95 @@ export async function postCandidateAction(
     body: JSON.stringify({ candidate_id: candidateId, action, value }),
   })
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Diagnostics — GET /api/diagnostics, POST /api/diagnostics/kill-stale
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface RepoDiagnostics {
+  slug: string
+  path: string
+  status: 'OK' | 'STALE' | 'MISSING'
+  last_indexed_at?: string
+  last_indexed_age: string
+  entities: number
+  relationships: number
+  cross_repo_edges: number
+}
+
+export interface IssueDiagnostic {
+  description: string
+  remediation?: string
+}
+
+export interface GroupDiagnostics {
+  name: string
+  status: 'HEALTHY' | 'DEGRADED' | 'FAILED'
+  daemon_managed: boolean
+  total_entities: number
+  total_relationships: number
+  total_cross_repo_edges: number
+  orphan_entities: number
+  orphan_rate: number
+  bug_rate: number
+  pending_repairs: number
+  pending_enrichments: number
+  watcher_repo_count: number
+  watcher_dir_count: number
+  watcher_events_dropped: number
+  last_watcher_activity?: string
+  repos: RepoDiagnostics[]
+  issues_found: IssueDiagnostic[]
+}
+
+export interface DaemonDiagnostics {
+  running: boolean
+  status: string
+  pid: number
+  uptime_seconds: number
+  uptime_human: string
+  rss_mb: number
+  version: string
+  commit: string
+  built_at: string
+  socket_reachable: boolean
+  workspace_writable: boolean
+  dashboard_port: number
+  dashboard_port_available: boolean
+  launch_agent_installed: boolean
+  mcp_claude_code: boolean
+  mcp_windsurf: boolean
+  registry_path: string
+  group_count: number
+}
+
+export interface DiagnosticsReply {
+  checked_at: string
+  daemon: DaemonDiagnostics
+  groups: GroupDiagnostics[]
+  nominal: boolean
+}
+
+export interface KilledProcess {
+  pid: number
+  ppid: number
+  exe: string
+  killed: boolean
+  kill_err?: string
+}
+
+export interface KillStaleReply {
+  killed: KilledProcess[]
+  dry_run: boolean
+}
+
+export async function fetchDiagnostics(): Promise<DiagnosticsReply> {
+  return apiFetch<DiagnosticsReply>('/api/diagnostics')
+}
+
+export async function postKillStale(dryRun = false): Promise<KillStaleReply> {
+  return apiFetch<KillStaleReply>(
+    `/api/diagnostics/kill-stale${dryRun ? '?dry_run=true' : ''}`,
+    { method: 'POST' },
+  )
+}

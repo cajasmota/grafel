@@ -200,6 +200,10 @@ func (s *Server) routes() http.Handler {
 	// Build / version info
 	mux.HandleFunc("GET /api/info", s.handleInfo)
 
+	// Diagnostics (#1187)
+	mux.HandleFunc("GET /api/diagnostics", s.handleDiagnostics)
+	mux.HandleFunc("POST /api/diagnostics/kill-stale", s.handleDiagnosticsKillStale)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)
