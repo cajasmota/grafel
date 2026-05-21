@@ -431,6 +431,17 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					if h.side == sideProducer {
 						producers = appendUnique(producers, h)
 					} else if h.side == sideConsumer {
+						// #1445: skip consumer hits whose canonical name has its
+						// own entry in the top-level hits map. That consumer will
+						// be linked (or not) in its own name-bucket iteration.
+						// Pulling it into the current bucket via byPath causes
+						// cross-bucket deduplication: consumerRepos picks it as
+						// the first consumer for its repo, which may already have
+						// a link from its own bucket, leaving the current
+						// bucket's real consumers permanently unlinked.
+						if _, hasOwnBucket := hits[h.name]; hasOwnBucket {
+							continue
+						}
 						consumers = appendUnique(consumers, h)
 					}
 				}

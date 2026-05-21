@@ -1479,3 +1479,124 @@ func TestHTTPPass_URLPrefixStrip_Idempotence(t *testing.T) {
 		t.Errorf("match_quality: want exact_verb for same-name match, got %q", httpLinks[0].MatchQuality)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Cross-bucket consumer collision regression test (issue #1445)
+// ---------------------------------------------------------------------------
+
+// TestHTTPPass_CrossBucketConsumerCollision reproduces the root cause of
+// issue #1445: two frontend consumer synthetics exist —
+//
+//   consumerA: http:GET:/roles        (a direct call to /roles)
+//   consumerB: http:GET:/api/v1/roles (a call to the versioned path)
+//
+// The backend has one producer: http:GET:/api/v1/roles (DRF router-expanded,
+// url_prefix=/api/v1, so byPath also registers the stripped alias /roles).
+//
+// Before the fix, when processing the "http:GET:/api/v1/roles" name bucket
+// the byPath expansion probed "/roles" and pulled in consumerA.  Because
+// consumerA's canonical name ("http:GET:/roles") already had its own entry in
+// the hits map, consumerRepos deduplication picked consumerA first (it sorts
+// lower), causing the link for consumerA to be blocked by the emitted-map
+// after the "/roles" bucket ran.  consumerB (the real caller) was never
+// linked.
+//
+// After the fix consumerA is skipped in the "/api/v1/roles" bucket (it has
+// its own bucket), so consumerB gets linked correctly and both consumers
+// receive their links.
+func TestHTTPPass_CrossBucketConsumerCollision(t *testing.T) {
+	root := fixtureRoot(t)
+
+	// Backend: one producer, DRF-router-expanded with url_prefix=/api/v1.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{
+				"id": "handler1", "name": "RoleViewSet", "kind": "Controller",
+				"source_file": "app/views.py",
+			},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/roles", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/roles",
+					"framework":    "django",
+					"pattern_type": "http_endpoint_synthesis",
+					"url_prefix":   "/api/v1",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "handler1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+
+	// Frontend: two distinct consumers.
+	//   consumerA calls /roles directly (its own name bucket in hits map).
+	//   consumerB calls /api/v1/roles (exact-name match to the producer).
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{
+				"id": "callerA", "name": "useRoles", "kind": "Function",
+				"source_file": "src/network/hooks/roles.js",
+			},
+			{
+				"id": "consumerA", "name": "http:GET:/roles", "kind": "http_endpoint",
+				"source_file": "src/network/hooks/roles.js",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/roles",
+					"framework":     "fetch",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:useRoles",
+				},
+			},
+			{
+				"id": "callerB", "name": "ContactForm", "kind": "Function",
+				"source_file": "src/pages/contacts/ContactForm.jsx",
+			},
+			{
+				"id": "consumerB", "name": "http:GET:/api/v1/roles", "kind": "http_endpoint",
+				"source_file": "src/pages/contacts/ContactForm.jsx",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/api/v1/roles",
+					"framework":     "fetch",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:ContactForm",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g1445-collision", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g1445-collision-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build a set of (source, target) pairs for all HTTP links.
+	type pair struct{ src, tgt string }
+	linked := map[pair]bool{}
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			linked[pair{l.Source, l.Target}] = true
+		}
+	}
+
+	// consumerB (exact-name match) MUST produce a link: frontend::callerB → backend::handler1.
+	if !linked[pair{"frontend::callerB", "backend::handler1"}] {
+		t.Errorf("#1445 regression: consumerB (http:GET:/api/v1/roles) not linked to handler1; links=%+v", doc.Links)
+	}
+
+	// consumerA (prefix-strip match via /roles → /api/v1/roles) MUST also be linked.
+	if !linked[pair{"frontend::callerA", "backend::handler1"}] {
+		t.Errorf("#1445 regression: consumerA (http:GET:/roles) not linked to handler1 via prefix-strip; links=%+v", doc.Links)
+	}
+}
