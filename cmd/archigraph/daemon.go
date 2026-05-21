@@ -455,6 +455,18 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 		// Best-effort — surface as a warning, not a hard failure.
 		warning = fmt.Sprintf("link passes failed: %v", err)
 	}
+
+	// Persist a quality-metrics snapshot to health-history.jsonl (#1329).
+	// Best-effort: failure is logged but never blocks the caller.
+	go func() {
+		if layout, lerr := daemon.DefaultLayout(); lerr == nil {
+			if herr := appendRebuildHistory(layout.Root, args.Group, cfg, rebuilt); herr != nil {
+				fmt.Fprintf(os.Stderr, "archigraph: record quality history for %s: %v (non-fatal)\n",
+					args.Group, herr)
+			}
+		}
+	}()
+
 	return rebuilt, warning, nil
 }
 

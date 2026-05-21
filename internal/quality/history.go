@@ -25,6 +25,10 @@ type HealthEntry struct {
 	Group string `json:"group"`
 	// TotalEntities is the total entity count across all repos in the group.
 	TotalEntities int `json:"total_entities"`
+	// TotalFlows is the number of process-flow entities in the group.
+	TotalFlows int `json:"total_flows,omitempty"`
+	// TotalEndpoints is the number of http_endpoint entities in the group.
+	TotalEndpoints int `json:"total_endpoints,omitempty"`
 	// OrphanRate is the percentage of entities with no incoming relationship (0–100).
 	OrphanRate float64 `json:"orphan_rate"`
 	// BugRate is the percentage of entities that are repair candidates (0–100).
@@ -33,6 +37,18 @@ type HealthEntry struct {
 	// HealthScore is a composite quality score (0–100, higher is better).
 	// Computed as max(0, 100 - OrphanRate - BugRate).
 	HealthScore float64 `json:"health_score"`
+	// CoveragePct is the test-coverage percentage (0–100) measured from
+	// Test-entity → production-entity edges. Omitted when not available.
+	CoveragePct *float64 `json:"coverage_pct,omitempty"`
+	// Cycles is the total number of import cycles detected. Omitted when
+	// cycle detection was not run.
+	Cycles *int `json:"cycles,omitempty"`
+	// AuthUncovered is the number of HTTP endpoints with no auth annotation.
+	// Omitted when not available.
+	AuthUncovered *int `json:"auth_uncovered,omitempty"`
+	// Secrets is the total number of hardcoded-secret findings. Omitted when
+	// the secret scan was not run.
+	Secrets *int `json:"secrets,omitempty"`
 	// RecallPct is the enrichment recall percentage when available (0–100).
 	// Omitted (null) when not measured.
 	RecallPct *float64 `json:"recall_pct,omitempty"`

@@ -1386,12 +1386,22 @@ export interface HealthEntry {
   timestamp: string
   group: string
   total_entities: number
+  total_flows?: number
+  total_endpoints?: number
   /** Percentage of entities with no incoming relationship (0–100). */
   orphan_rate: number
   /** Percentage of repair candidates (0–100). */
   bug_rate: number
   /** Composite quality score: max(0, 100 - orphan_rate - bug_rate). */
   health_score: number
+  /** Test coverage % (0–100) when available. */
+  coverage_pct?: number
+  /** Number of import cycles detected. */
+  cycles?: number
+  /** Number of HTTP endpoints with no auth annotation. */
+  auth_uncovered?: number
+  /** Number of hardcoded-secret findings. */
+  secrets?: number
   /** Enrichment recall percentage when available. */
   recall_pct?: number
 }
@@ -1409,6 +1419,47 @@ export async function fetchQualityHistory(
 ): Promise<QualityHistoryReply> {
   return apiFetch<QualityHistoryReply>(
     `/api/quality/history/${encodeURIComponent(group)}?days=${days}`,
+  )
+}
+
+// ── Quality trends — per-metric sparklines (#1329) ───────────────────────────
+
+/** One data point in a metric time series. */
+export interface TrendPoint {
+  /** ISO-8601 timestamp. */
+  ts: string
+  /** Metric value at this timestamp. */
+  v: number
+}
+
+/** Time-series data for a single quality metric. */
+export interface MetricTrend {
+  label: string
+  unit: '%' | 'count'
+  lower_is_better: boolean
+  /** Target threshold (0 when none). */
+  goal: number
+  points: TrendPoint[]
+  latest?: number
+  /** Change vs ~7 days ago (positive = improvement when !lower_is_better). */
+  delta_7d?: number
+  /** Change vs ~30 days ago. */
+  delta_30d?: number
+}
+
+export interface QualityTrendsReply {
+  group: string
+  days: number
+  metrics: MetricTrend[]
+}
+
+/** GET /api/quality/trends/{group}?days=N */
+export async function fetchQualityTrends(
+  group: string,
+  days = 30,
+): Promise<QualityTrendsReply> {
+  return apiFetch<QualityTrendsReply>(
+    `/api/quality/trends/${encodeURIComponent(group)}?days=${days}`,
   )
 }
 
