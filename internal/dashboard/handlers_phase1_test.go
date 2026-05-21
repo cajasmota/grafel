@@ -1494,3 +1494,232 @@ func TestGraph_Dense_TotalNodeCount(t *testing.T) {
 		t.Fatalf("expected total_node_count=6, got %v", totalNodeCount)
 	}
 }
+
+// TestGraph_CrossRepoLinks_WrappedFileFormat verifies that readCrossRepoLinks
+// handles both the bare-array format and the wrapped {"version":N,"links":[...]}
+// format written by the link pass (BUG 1 root cause: graphstate.go was only
+// trying the bare-array unmarshal which fails silently on the wrapper format).
+func TestGraph_CrossRepoLinks_WrappedFileFormat(t *testing.T) {
+	// Bare-array format (legacy).
+	bareJSON := `[{"source":"a::1","target":"b::2","kind":"CALLS"}]`
+	links, err := readCrossRepoLinks([]byte(bareJSON))
+	if err != nil {
+		t.Fatalf("bare array: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("bare array: want 1 link, got %d", len(links))
+	}
+	if links[0].Source != "a::1" || links[0].Target != "b::2" || links[0].Kind != "CALLS" {
+		t.Errorf("bare array: unexpected link %+v", links[0])
+	}
+
+	// Wrapped object format (written by the link pass, e.g. upvate-links.json).
+	wrappedJSON := `{"version":1,"links":[{"source":"c::3","target":"d::4","relation":"calls"}]}`
+	links, err = readCrossRepoLinks([]byte(wrappedJSON))
+	if err != nil {
+		t.Fatalf("wrapped: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("wrapped: want 1 link, got %d", len(links))
+	}
+	if links[0].Source != "c::3" || links[0].Target != "d::4" {
+		t.Errorf("wrapped: unexpected link source/target %+v", links[0])
+	}
+	// "relation" field must be mapped to Kind.
+	if links[0].Kind != "calls" {
+		t.Errorf("wrapped: relation field not mapped to Kind; got %q, want %q", links[0].Kind, "calls")
+	}
+}
+
+// TestGraph_CrossRepoLinks_LoadedFromFile verifies that serveGraphDense emits
+// cross-repo edges when grp.Links is populated from a wrapped JSON file on
+// disk (regression for BUG 1: daemon used to leave grp.Links empty because
+// the file format didn't match the bare-array unmarshal).
+func TestGraph_CrossRepoLinks_LoadedFromFile(t *testing.T) {
+	// Write a wrapped-format links file to a temp dir.
+	dir := t.TempDir()
+	linksPath := filepath.Join(dir, "testfilelinks-links.json")
+	linksJSON := `{"version":1,"links":[
+		{"source":"frontend::fe1","target":"backend::be1","relation":"HTTP_FETCH","confidence":0.95}
+	]}`
+	if err := os.WriteFile(linksPath, []byte(linksJSON), 0o644); err != nil {
+		t.Fatalf("write links file: %v", err)
+	}
+
+	// Parse via readCrossRepoLinks (simulates what loadGroup does).
+	data, err := os.ReadFile(linksPath)
+	if err != nil {
+		t.Fatalf("read links file: %v", err)
+	}
+	links, err := readCrossRepoLinks(data)
+	if err != nil {
+		t.Fatalf("readCrossRepoLinks: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("want 1 link, got %d", len(links))
+	}
+	if links[0].Kind != "HTTP_FETCH" {
+		t.Errorf("kind: got %q, want %q", links[0].Kind, "HTTP_FETCH")
+	}
+
+	// Now inject into a handler test and verify the edge appears in /api/graph.
+	st := newFakeStore()
+	st.groups["testfilelinks"] = GroupSummary{
+		Name:       "testfilelinks",
+		ConfigPath: "/tmp/testfilelinks.json",
+		Repos:      []string{"frontend", "backend"},
+	}
+	cfg := DefaultConfig()
+	srv, srvErr := NewServer(cfg, st)
+	if srvErr != nil {
+		t.Fatalf("NewServer: %v", srvErr)
+	}
+
+	frontendDoc := &graph.Document{
+		Repo: "frontend",
+		Entities: []graph.Entity{
+			{ID: "fe1", Name: "FetchUsers", Kind: "SCOPE.Function", SourceFile: "src/api.ts", Language: "typescript"},
+		},
+	}
+	backendDoc := &graph.Document{
+		Repo: "backend",
+		Entities: []graph.Entity{
+			{ID: "be1", Name: "GET /api/users", Kind: "http_endpoint_definition", SourceFile: "routes.go", Language: "go"},
+		},
+	}
+
+	grp := &DashGroup{
+		Name: "testfilelinks",
+		Repos: map[string]*DashRepo{
+			"frontend": {Slug: "frontend", Path: "/tmp/frontend", Doc: frontendDoc},
+			"backend":  {Slug: "backend", Path: "/tmp/backend", Doc: backendDoc},
+		},
+		Links: links, // loaded from wrapped JSON file
+	}
+	srv.graphs.mu.Lock()
+	srv.graphs.entries["testfilelinks"] = &cacheEntry{group: grp, loadedAt: time.Now()}
+	srv.graphs.mu.Unlock()
+
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+
+	code, body := getJSON(t, ts.URL, "/api/graph/testfilelinks")
+	if code != 200 {
+		t.Fatalf("status=%d body=%v", code, body)
+	}
+
+	edges, _ := body["edges"].([]interface{})
+	var xrepoCount int
+	for _, e := range edges {
+		em, _ := e.(map[string]any)
+		from, _ := em["from_id"].(string)
+		to, _ := em["to_id"].(string)
+		if from == "frontend::fe1" && to == "backend::be1" {
+			xrepoCount++
+		}
+	}
+	if xrepoCount == 0 {
+		t.Errorf("cross-repo edge from wrapped links file missing from payload (total edges=%d); BUG 1 regression", len(edges))
+	}
+}
+
+// TestGraph_ModuleNodes_ExcludedByDefault verifies that synthetic Module-kind
+// nodes and their incident CONTAINS/DEPENDS_ON edges are excluded from the
+// default GET /api/graph/{group} response.  They should only appear when
+// ?view=modules is passed (BUG 2: module aggregation pollutes default view).
+func TestGraph_ModuleNodes_ExcludedByDefault(t *testing.T) {
+	st := newFakeStore()
+	st.groups["modgrp"] = GroupSummary{
+		Name:       "modgrp",
+		ConfigPath: "/tmp/modgrp.json",
+		Repos:      []string{"svc"},
+	}
+	cfg := DefaultConfig()
+	srv, err := NewServer(cfg, st)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	// Inject a doc with a Module node and normal entity nodes.
+	doc := &graph.Document{
+		Repo: "svc",
+		Entities: []graph.Entity{
+			{ID: "fn1", Name: "HandleLogin", Kind: "SCOPE.Function", SourceFile: "auth.go", Language: "go"},
+			{ID: "fn2", Name: "ValidateToken", Kind: "SCOPE.Function", SourceFile: "auth.go", Language: "go"},
+			{ID: "mod1", Name: "auth", Kind: "Module", SourceFile: "", Language: ""},
+		},
+		Relationships: []graph.Relationship{
+			// Normal entity-to-entity edge — must always appear.
+			{FromID: "fn1", ToID: "fn2", Kind: "CALLS"},
+			// Module CONTAINS edge — must be excluded in default view.
+			{FromID: "mod1", ToID: "fn1", Kind: "CONTAINS"},
+			{FromID: "mod1", ToID: "fn2", Kind: "CONTAINS"},
+		},
+	}
+
+	grp := &DashGroup{
+		Name:  "modgrp",
+		Repos: map[string]*DashRepo{"svc": {Slug: "svc", Path: "/tmp/svc", Doc: doc}},
+	}
+	srv.graphs.mu.Lock()
+	srv.graphs.entries["modgrp"] = &cacheEntry{group: grp, loadedAt: time.Now()}
+	srv.graphs.mu.Unlock()
+
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+
+	// Default view: 0 Module nodes, 0 CONTAINS edges from Module.
+	code, body := getJSON(t, ts.URL, "/api/graph/modgrp")
+	if code != 200 {
+		t.Fatalf("default: status=%d body=%v", code, body)
+	}
+	nodes, _ := body["nodes"].([]interface{})
+	edges, _ := body["edges"].([]interface{})
+
+	for _, n := range nodes {
+		nm, _ := n.(map[string]any)
+		kind, _ := nm["kind"].(string)
+		if kind == "Module" {
+			t.Errorf("default view: Module-kind node %v must be excluded", nm["id"])
+		}
+	}
+	var containsCount int
+	for _, e := range edges {
+		em, _ := e.(map[string]any)
+		if em["kind"] == "CONTAINS" {
+			containsCount++
+		}
+	}
+	if containsCount > 0 {
+		t.Errorf("default view: got %d CONTAINS edges from Module node; want 0", containsCount)
+	}
+	// Normal CALLS edge must still be present.
+	var callsCount int
+	for _, e := range edges {
+		em, _ := e.(map[string]any)
+		if em["kind"] == "CALLS" {
+			callsCount++
+		}
+	}
+	if callsCount == 0 {
+		t.Errorf("default view: normal CALLS edge must not be excluded (total edges=%d)", len(edges))
+	}
+	_ = nodes
+
+	// ?view=modules: Module node appears, CONTAINS edges appear.
+	code2, body2 := getJSON(t, ts.URL, "/api/graph/modgrp?view=modules")
+	if code2 != 200 {
+		t.Fatalf("view=modules: status=%d body=%v", code2, body2)
+	}
+	nodes2, _ := body2["nodes"].([]interface{})
+	var moduleNodeCount int
+	for _, n := range nodes2 {
+		nm, _ := n.(map[string]any)
+		if nm["kind"] == "Module" {
+			moduleNodeCount++
+		}
+	}
+	if moduleNodeCount == 0 {
+		t.Errorf("view=modules: Module node must be present in opt-in response")
+	}
+}

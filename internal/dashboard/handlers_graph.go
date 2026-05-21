@@ -49,6 +49,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/module"
 )
 
 // softNodeWarnThreshold is the node count above which the API adds an
@@ -81,6 +82,13 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	// include_external defaults to false: External stdlib/builtin placeholder
 	// entities are excluded unless the caller explicitly opts in.
 	includeExternal := r.URL.Query().Get("include_external") == "true"
+
+	// view=modules or include=modules opts into the module-aggregation layer
+	// (#1393).  By default Module-kind synthetic nodes and their incident
+	// CONTAINS / DEPENDS_ON edges are excluded from the entity graph to avoid
+	// cluttering the default view.
+	includeModules := r.URL.Query().Get("view") == "modules" ||
+		r.URL.Query().Get("include") == "modules"
 
 	grp, err := s.graphs.GetGroup(group)
 	if err != nil {
@@ -116,7 +124,7 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		repos = filtered
 	}
 
-	s.serveGraphDense(w, grp, repos, filterKind, includeExternal)
+	s.serveGraphDense(w, grp, repos, filterKind, includeExternal, includeModules)
 }
 
 // externalKindSuffix is the trailing portion of the SCOPE.External kind after
@@ -177,10 +185,14 @@ type graphDenseResponse struct {
 // includeExternal controls whether SCOPE.External placeholder entities are
 // emitted. Default (false) hides stdlib/builtin nodes from the graph view.
 //
+// includeModules controls whether synthetic Module-kind nodes and their
+// incident CONTAINS/DEPENDS_ON edges are included.  Default (false) hides them
+// to avoid cluttering the entity graph; pass ?view=modules to opt in (#1393).
+//
 // Perf (#1249): uses typed structs (graphNodeWire, graphEdgeWire) to eliminate
 // per-node map allocations.  Pre-sizes slices from entity/relationship counts
 // to avoid slice growth copies.
-func (s *Server) serveGraphDense(w http.ResponseWriter, grp *DashGroup, repos []*DashRepo, filterKind string, includeExternal bool) {
+func (s *Server) serveGraphDense(w http.ResponseWriter, grp *DashGroup, repos []*DashRepo, filterKind string, includeExternal bool, includeModules bool) {
 	// Pre-size: count total entities + relationships across repos to avoid
 	// repeated slice growth under GC pressure.
 	totalEntities, totalRels, totalCommunities := 0, 0, 0
@@ -235,6 +247,13 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, grp *DashGroup, repos []
 			if !includeExternal && strippedKind == externalKindSuffix {
 				continue
 			}
+			// Exclude synthetic Module aggregation nodes from the default view
+			// (#1393).  They are only returned when includeModules is true
+			// (e.g. ?view=modules).  This avoids cluttering the entity graph
+			// with 100+ container nodes and thousands of CONTAINS edges.
+			if !includeModules && strippedKind == module.KindModule {
+				continue
+			}
 			if filterKind != "" && strippedKind != filterKind {
 				continue
 			}
@@ -270,6 +289,12 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, grp *DashGroup, repos []
 			from := dashPrefixedID(r.Slug, rel.FromID)
 			to := dashPrefixedID(r.Slug, rel.ToID)
 			if visible[from] && visible[to] {
+				// When Module nodes are excluded, also skip edges that are
+				// incident to them (CONTAINS from a Module node, and DEPENDS_ON
+				// between Module nodes).  The visibility check already ensures
+				// Module-kind nodes are absent from the visible set when
+				// includeModules=false, so this guard is a safety belt for
+				// any edge whose Module endpoint was excluded above.
 				edges = append(edges, graphEdgeWire{
 					FromID: from,
 					ToID:   to,

@@ -75,6 +75,10 @@ type DashGroup struct {
 }
 
 // CrossRepoLink mirrors mcp.CrossRepoLink.
+//
+// The on-disk links file written by the link pass uses "relation" for the
+// edge kind; the dashboard struct also accepts "kind" for backward compat
+// (tests and older files).  UnmarshalJSON prefers "relation" when present.
 type CrossRepoLink struct {
 	Source     string  `json:"source"`
 	Target     string  `json:"target"`
@@ -82,6 +86,35 @@ type CrossRepoLink struct {
 	Confidence float64 `json:"confidence,omitempty"`
 	Channel    string  `json:"channel,omitempty"`
 	Method     string  `json:"method,omitempty"`
+}
+
+// UnmarshalJSON handles the "relation" field used by the link pass as a
+// synonym for "kind".  When the JSON object has a non-empty "relation" key
+// and an absent or empty "kind" key, the relation value is used as Kind.
+func (l *CrossRepoLink) UnmarshalJSON(b []byte) error {
+	type plain struct {
+		Source     string  `json:"source"`
+		Target     string  `json:"target"`
+		Kind       string  `json:"kind"`
+		Relation   string  `json:"relation"`
+		Confidence float64 `json:"confidence,omitempty"`
+		Channel    string  `json:"channel,omitempty"`
+		Method     string  `json:"method,omitempty"`
+	}
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	l.Source = p.Source
+	l.Target = p.Target
+	l.Kind = p.Kind
+	if l.Kind == "" && p.Relation != "" {
+		l.Kind = p.Relation
+	}
+	l.Confidence = p.Confidence
+	l.Channel = p.Channel
+	l.Method = p.Method
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -198,11 +231,12 @@ func (c *GraphCache) loadGroup(groupName string) (*DashGroup, error) {
 		grp.Repos[r.Slug] = dr
 	}
 
-	// Load cross-repo links file.
+	// Load cross-repo links file.  The file can be either a bare array of
+	// CrossRepoLink objects or the wrapper format {"version":N,"links":[...]}.
+	// Both forms are accepted; the wrapper form is written by the link pass.
 	lf := defaultLinksFile(groupName)
 	if data, err := os.ReadFile(lf); err == nil {
-		var links []CrossRepoLink
-		if json.Unmarshal(data, &links) == nil {
+		if links, err2 := readCrossRepoLinks(data); err2 == nil {
 			grp.Links = links
 		}
 	}
@@ -243,6 +277,25 @@ func attachAlgorithmResults(doc *graph.Document) {
 func defaultLinksFile(group string) string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".archigraph", "groups", group+"-links.json")
+}
+
+// readCrossRepoLinks parses cross-repo links from raw JSON.
+// The file can be either a bare array or the wrapper object
+// {"version": N, "links": [...]}.  Both formats are accepted.
+func readCrossRepoLinks(data []byte) ([]CrossRepoLink, error) {
+	// Try bare array first (older format).
+	var asArr []CrossRepoLink
+	if err := json.Unmarshal(data, &asArr); err == nil {
+		return asArr, nil
+	}
+	// Try wrapped object format {"links":[...]}.
+	var asObj struct {
+		Links []CrossRepoLink `json:"links"`
+	}
+	if err := json.Unmarshal(data, &asObj); err != nil {
+		return nil, err
+	}
+	return asObj.Links, nil
 }
 
 // sortedRepos returns the repos of a group in deterministic slug order.
