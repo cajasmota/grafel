@@ -36,8 +36,8 @@ describe('repoColor', () => {
   it('returns different colors for different slugs', () => {
     const c1 = repoColor('repo-alpha')
     const c2 = repoColor('repo-beta-very-different')
-    // Colors may differ — just ensure both have valid structure
-    expect(c1.bg).toBeTruthy()
-    expect(c2.bg).toBeTruthy()
+    // repoColor returns a hex string, not an object
+    expect(c1).toBeTruthy()
+    expect(c2).toBeTruthy()
   })
 })
