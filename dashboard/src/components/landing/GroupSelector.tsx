@@ -4,14 +4,22 @@
  * Shows all indexed groups as cards with name, sparkline, repo count,
  * entity count, unresolved edges and last-indexed time. Clicking a card navigates
  * to /graph/<group>.
+ *
+ * Live indexing badges: when a group is being rebuilt the card shows a pulsing
+ * chip overlay courtesy of useAllIndexProgress. Clicking the chip opens the
+ * full IndexingProgressModal.
  */
 
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, GitBranch, Clock, TerminalSquare, Activity } from 'lucide-react'
+import { Database, GitBranch, Clock, TerminalSquare, Activity, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useRegistry } from '@/hooks/shared/useRegistry'
+import { useAllIndexProgress } from '@/hooks/shared/useAllIndexProgress'
 import { GroupGraphThumbnail } from '@/components/landing/GroupGraphThumbnail'
 import { GroupOpsMenu } from '@/components/landing/GroupOpsMenu'
+import { IndexingProgressModal } from '@/components/indexing/IndexingProgressModal'
 import type { GroupMeta } from '@/types/api'
+import type { IndexProgressState } from '@/types/indexProgress'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -258,6 +266,87 @@ function RepoRow({ repos }: RepoRowProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// IndexingBadge — pulsing chip overlay shown on cards during active indexing
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface IndexingBadgeProps {
+  state: IndexProgressState
+  onOpenModal: () => void
+}
+
+function IndexingBadge({ state, onOpenModal }: IndexingBadgeProps) {
+  const { status, overall_pct, repos } = state
+
+  // Build the aggregate repo sub-status label for the tooltip
+  const repoSummary = repos.length > 0
+    ? repos.map((r) => `${r.slug}: ${r.phase}`).join(', ')
+    : undefined
+
+  if (status === 'done') {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onOpenModal() }}
+        aria-label="Indexing complete"
+        title={repoSummary}
+        data-testid="indexing-badge-done"
+        className={[
+          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+          'bg-emerald-900/80 border border-emerald-700 text-emerald-300',
+          'shadow-lg backdrop-blur-sm',
+          'animate-[fadeIn_0.2s_ease-out]',
+        ].join(' ')}
+      >
+        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden />
+        Done
+      </button>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onOpenModal() }}
+        aria-label="Indexing error — click to view details"
+        title={state.error ?? repoSummary}
+        data-testid="indexing-badge-error"
+        className={[
+          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+          'bg-red-900/80 border border-red-700 text-red-300',
+          'shadow-lg backdrop-blur-sm',
+        ].join(' ')}
+      >
+        <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden />
+        Error
+      </button>
+    )
+  }
+
+  // 'indexing' or 'connecting'
+  const pctLabel = overall_pct > 0 ? `${overall_pct}%` : '…'
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onOpenModal() }}
+      aria-label={`Indexing in progress — ${pctLabel} complete. Click to view details.`}
+      title={repoSummary}
+      data-testid="indexing-badge-active"
+      className={[
+        'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+        'bg-sky-900/80 border border-sky-700 text-sky-200',
+        'shadow-lg backdrop-blur-sm',
+        'animate-pulse',
+      ].join(' ')}
+    >
+      <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" aria-hidden />
+      Indexing {pctLabel}
+    </button>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Group card
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -265,17 +354,28 @@ interface GroupCardProps {
   group: GroupMeta
   onClick: () => void
   onNavigateToNode?: (nodeId: string) => void
+  /** Present when this group has an active/recent indexing run. */
+  indexProgress?: IndexProgressState
 }
 
-function GroupCard({ group, onClick, onNavigateToNode }: GroupCardProps) {
+function GroupCard({ group, onClick, onNavigateToNode, indexProgress }: GroupCardProps) {
   // Stop propagation on ops menu clicks so they don't trigger card navigation.
+  const [modalOpen, setModalOpen] = useState(false)
   const rateColor = bugRateColor(group.bug_rate)
   const rateLabel =
     group.bug_rate !== undefined ? `${group.bug_rate.toFixed(1)}%` : 'not measured'
   const hasRealData = group.entity_count > 0
   const hasIndexedAt = Boolean(group.indexed_at)
 
+  const isIndexing =
+    indexProgress &&
+    (indexProgress.status === 'indexing' ||
+      indexProgress.status === 'connecting' ||
+      indexProgress.status === 'done' ||
+      indexProgress.status === 'error')
+
   return (
+    <>
     <div
       data-card
       className={[
@@ -285,17 +385,26 @@ function GroupCard({ group, onClick, onNavigateToNode }: GroupCardProps) {
         'h-[312px] flex flex-col',
         'transition-all duration-150',
         'border-slate-200 dark:border-slate-800 hover:border-sky-500/40 hover:-translate-y-px hover:bg-slate-200 dark:hover:bg-slate-900',
+        isIndexing && indexProgress.status !== 'done' && indexProgress.status !== 'error'
+          ? 'opacity-80'
+          : '',
       ].join(' ')}
     >
       {/* Thumbnail — 80px, lazy-loaded, lazy-rendered (#983) */}
-      {/* Ops menu sits in the top-right corner, overlaid on the thumbnail. */}
+      {/* Ops menu + optional indexing badge sit in the top-right corner. */}
       <div className="relative">
         <GroupGraphThumbnail
           group={group.id}
           enabled={hasRealData}
           onNodeClick={onNavigateToNode}
         />
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 flex items-center gap-1.5">
+          {indexProgress && isIndexing && (
+            <IndexingBadge
+              state={indexProgress}
+              onOpenModal={() => setModalOpen(true)}
+            />
+          )}
           <GroupOpsMenu group={group.id} displayName={group.display_name} />
         </div>
       </div>
@@ -372,6 +481,17 @@ function GroupCard({ group, onClick, onNavigateToNode }: GroupCardProps) {
         </div>
       </button>
     </div>
+
+    {/* IndexingProgressModal — rendered when user clicks the badge */}
+    {modalOpen && (
+      <IndexingProgressModal
+        isOpen={modalOpen}
+        groupSlug={group.id}
+        onClose={() => setModalOpen(false)}
+        onReopen={() => setModalOpen(true)}
+      />
+    )}
+    </>
   )
 }
 
@@ -416,6 +536,7 @@ function NoGroupsState() {
 export function GroupSelector() {
   const navigate = useNavigate()
   const { data: registry, isLoading, isError } = useRegistry()
+  const { progress: allProgress } = useAllIndexProgress()
 
   if (isLoading) {
     return (
@@ -466,6 +587,7 @@ export function GroupSelector() {
             onNavigateToNode={(nodeId) =>
               navigate(`/graph/${group.id}`, { state: { selectedNodeId: nodeId } })
             }
+            indexProgress={allProgress.get(group.id)}
           />
         ))}
       </div>
