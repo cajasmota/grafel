@@ -1550,3 +1550,103 @@ export async function postQualityRecall(fixture: string, group?: string): Promis
     body: JSON.stringify({ fixture, group }),
   })
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// MCP Activity Log — GET /api/mcp-activity/history (#1226)
+// ────────────────────────────────────────────────────────────────────────────
+
+import type { MCPActivityEvent, MCPActivityHistoryResponse } from '@/types/api'
+
+/**
+ * Seed events for mock mode — representative set of tool calls with varied
+ * tool_name, agent_id, and returned_node_ids to exercise all UI features.
+ */
+const MOCK_MCP_EVENTS: MCPActivityEvent[] = [
+  {
+    tool_name: 'archigraph_search_entities',
+    query_args: { query: 'UserService', kind: 'Class', limit: 10 },
+    returned_node_ids: ['entity-user-service', 'entity-user-repo'],
+    agent_id: 'agent-alpha',
+    timestamp: Date.now() - 120_000,
+  },
+  {
+    tool_name: 'archigraph_get_neighbors',
+    query_args: { entity_id: 'entity-user-service', depth: 2 },
+    returned_node_ids: ['entity-user-service', 'entity-auth-middleware', 'entity-db-pool'],
+    returned_edge_ids: ['edge-1', 'edge-2'],
+    agent_id: 'agent-alpha',
+    timestamp: Date.now() - 90_000,
+  },
+  {
+    tool_name: 'archigraph_find_paths',
+    query_args: { from: 'entity-user-service', to: 'entity-payments-svc' },
+    returned_node_ids: ['entity-user-service', 'entity-event-bus', 'entity-payments-svc'],
+    agent_id: 'agent-beta',
+    timestamp: Date.now() - 60_000,
+  },
+  {
+    tool_name: 'archigraph_search_entities',
+    query_args: { query: 'PaymentProcessor', kind: 'Function' },
+    returned_node_ids: ['entity-payment-processor'],
+    agent_id: 'agent-beta',
+    timestamp: Date.now() - 30_000,
+  },
+  {
+    tool_name: 'archigraph_get_entity',
+    query_args: { entity_id: 'entity-payment-processor' },
+    returned_node_ids: ['entity-payment-processor'],
+    agent_id: 'agent-gamma',
+    timestamp: Date.now() - 10_000,
+  },
+]
+
+/** GET /api/mcp-activity/history?limit=N — last N MCP tool call events from disk log. */
+export async function fetchMCPActivityHistory(limit = 100): Promise<MCPActivityHistoryResponse> {
+  if (USE_MOCKS) {
+    const events = MOCK_MCP_EVENTS.slice(-limit)
+    return { events, count: events.length }
+  }
+  const params = new URLSearchParams({ limit: String(limit) })
+  return apiFetch<MCPActivityHistoryResponse>(`/api/mcp-activity/history?${params}`)
+}
+
+/**
+ * Subscribe to /api/mcp-activity/stream (SSE) for real-time MCP tool call events.
+ *
+ * Returns a cleanup function — call it when the component unmounts or when
+ * you want to stop receiving events.
+ *
+ * In mock mode a timer emits one synthetic event every 8 seconds to keep the
+ * live-tail UI exercised without a running daemon.
+ */
+export function subscribeMCPActivityStream(
+  onEvent: (event: MCPActivityEvent) => void,
+  onConnected?: () => void,
+  onError?: (msg: string) => void,
+): () => void {
+  if (USE_MOCKS) {
+    let i = 0
+    const timer = setInterval(() => {
+      const evt = MOCK_MCP_EVENTS[i % MOCK_MCP_EVENTS.length]
+      onEvent({ ...evt, timestamp: Date.now() })
+      i++
+    }, 8_000)
+    onConnected?.()
+    return () => clearInterval(timer)
+  }
+
+  const es = new EventSource('/api/mcp-activity/stream')
+
+  es.addEventListener('connected', () => { onConnected?.() })
+  es.addEventListener('mcp_activity', (e: MessageEvent) => {
+    try {
+      const event = JSON.parse(e.data) as MCPActivityEvent
+      onEvent(event)
+    } catch { /* ignore malformed */ }
+  })
+  es.addEventListener('heartbeat', () => { /* no-op — keep-alive */ })
+  es.addEventListener('close', () => { es.close() })
+  es.onerror = () => { onError?.('SSE connection error') }
+
+  return () => { es.close() }
+}

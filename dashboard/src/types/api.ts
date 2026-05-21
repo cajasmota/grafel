@@ -932,3 +932,28 @@ export interface SystemLogsReply {
   total: number
   path: string
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MCP Activity Log (#1226)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One MCP tool invocation event — mirrors internal/mcp.MCPActivityEvent.
+ * Returned by GET /api/mcp-activity/history and streamed via SSE.
+ */
+export interface MCPActivityEvent {
+  tool_name: string
+  query_args?: Record<string, unknown>
+  returned_node_ids?: string[]
+  returned_edge_ids?: string[]
+  agent_id?: string
+  /** Unix milliseconds */
+  timestamp: number
+}
+
+/** Wire shape of GET /api/mcp-activity/history?limit=N */
+export interface MCPActivityHistoryResponse {
+  events: MCPActivityEvent[]
+  count: number
+  note?: string
+}
