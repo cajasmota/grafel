@@ -43,7 +43,8 @@ func itoa(n int) string {
 
 // TestLouvainTwoCommunities — 4-node graph with two obvious clusters
 // (A-B densely linked, C-D densely linked, single bridge B-C). Louvain
-// should split A,B from C,D.
+// should split A,B from C,D. Uses MinSize=1 to disable denoising so the
+// structural community assignment is testable on small fixtures.
 func TestLouvainTwoCommunities(t *testing.T) {
 	ents := makeEntities("A", "B", "C", "D")
 	rels := []Relationship{
@@ -51,7 +52,7 @@ func TestLouvainTwoCommunities(t *testing.T) {
 		rel("C", "D"), rel("D", "C"),
 		rel("B", "C"),
 	}
-	res := RunAlgorithms(ents, rels)
+	res := RunAlgorithmsWithOptions(ents, rels, CommunityOptions{MinSize: 1})
 	if len(res.Communities) < 2 {
 		t.Fatalf("expected >= 2 communities, got %d", len(res.Communities))
 	}
@@ -120,7 +121,8 @@ func TestArticulationBridge(t *testing.T) {
 }
 
 // TestSurpriseEdges — two dense 3-cliques connected by a single edge. That
-// single edge should be flagged as a surprise.
+// single edge should be flagged as a surprise. Uses MinSize=1 to disable
+// denoising so the cross-community edge detection works on small fixtures.
 func TestSurpriseEdges(t *testing.T) {
 	ents := makeEntities("A1", "A2", "A3", "B1", "B2", "B3")
 	rels := []Relationship{
@@ -128,7 +130,7 @@ func TestSurpriseEdges(t *testing.T) {
 		rel("B1", "B2"), rel("B2", "B3"), rel("B3", "B1"),
 		rel("A1", "B1"), // the lone cross edge
 	}
-	res := RunAlgorithms(ents, rels)
+	res := RunAlgorithmsWithOptions(ents, rels, CommunityOptions{MinSize: 1})
 	if len(res.SurpriseEdges) == 0 {
 		t.Fatalf("expected at least one surprise edge")
 	}
@@ -171,6 +173,7 @@ func TestEdgeWeightingAffectsCentrality(t *testing.T) {
 }
 
 // TestAlgorithmStatsPopulated — RunAlgorithms must populate every stat field.
+// Uses MinSize=1 so small fixtures (2×3-node communities) are not denoised.
 func TestAlgorithmStatsPopulated(t *testing.T) {
 	ents := makeEntities("A", "B", "C", "D", "E", "F")
 	rels := []Relationship{
@@ -178,7 +181,7 @@ func TestAlgorithmStatsPopulated(t *testing.T) {
 		rel("D", "E"), rel("E", "F"), rel("F", "D"),
 		rel("A", "D"),
 	}
-	res := RunAlgorithms(ents, rels)
+	res := RunAlgorithmsWithOptions(ents, rels, CommunityOptions{MinSize: 1})
 	if res.Stats.NumCommunities == 0 {
 		t.Error("NumCommunities should be > 0")
 	}
@@ -271,5 +274,122 @@ func TestRoundForDeterminism_Precision(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("roundForDeterminism(%v) = %v, want %v", tc.input, got, tc.want)
 		}
+	}
+}
+
+// TestDefaultCommunityOptions — DefaultCommunityOptions must set MinSize=5.
+func TestDefaultCommunityOptions(t *testing.T) {
+	opts := DefaultCommunityOptions()
+	if opts.MinSize != 5 {
+		t.Errorf("DefaultCommunityOptions().MinSize = %d, want 5", opts.MinSize)
+	}
+}
+
+// TestDenoise_SingletonsMergedToUngrouped — a graph with two dense clusters of
+// 8 nodes each plus two isolated singleton nodes. With MinSize=5, the
+// singletons should be assigned community_id=-1 and not appear in
+// Communities. The two large clusters should survive.
+func TestDenoise_SingletonsMergedToUngrouped(t *testing.T) {
+	// Build two 8-cliques (each node connects to all 7 others) plus 2 singletons.
+	var ids []string
+	var rels []Relationship
+	clique := func(prefix string, n int) []string {
+		ns := make([]string, n)
+		for i := range ns {
+			ns[i] = fmt.Sprintf("%s%d", prefix, i)
+			ids = append(ids, ns[i])
+		}
+		// fully connected
+		for i := 0; i < n; i++ {
+			for j := 0; j < n; j++ {
+				if i != j {
+					rels = append(rels, rel(ns[i], ns[j]))
+				}
+			}
+		}
+		return ns
+	}
+	clique("X", 8) // cluster X
+	clique("Y", 8) // cluster Y
+	// Two isolated singletons (no edges).
+	ids = append(ids, "SOLO1", "SOLO2")
+
+	ents := makeEntities(ids...)
+	res := RunAlgorithmsWithOptions(ents, rels, CommunityOptions{MinSize: 5})
+
+	// Singletons must be ungrouped.
+	if res.CommunityID["SOLO1"] != -1 {
+		t.Errorf("SOLO1 expected community -1 (ungrouped), got %d", res.CommunityID["SOLO1"])
+	}
+	if res.CommunityID["SOLO2"] != -1 {
+		t.Errorf("SOLO2 expected community -1 (ungrouped), got %d", res.CommunityID["SOLO2"])
+	}
+
+	// The two 8-cliques should appear in Communities (size >= 5).
+	if len(res.Communities) < 2 {
+		t.Fatalf("expected >= 2 named communities, got %d", len(res.Communities))
+	}
+	for _, c := range res.Communities {
+		if c.Size < 5 {
+			t.Errorf("community %d has size %d < MinSize 5 (should have been denoised)", c.ID, c.Size)
+		}
+	}
+
+	// DenoisedCommunities in stats should reflect the dropped singletons.
+	if res.Stats.DenoisedCommunities == 0 {
+		t.Error("expected DenoisedCommunities > 0 (singletons should have been denoised)")
+	}
+}
+
+// TestDenoise_MinSizeOne_NoDenoise — with MinSize=1, no communities are dropped
+// even for a graph where every node is isolated.
+func TestDenoise_MinSizeOne_NoDenoise(t *testing.T) {
+	ents := makeEntities("A", "B", "C")
+	// No edges: every node is isolated → 3 singleton communities.
+	res := RunAlgorithmsWithOptions(ents, nil, CommunityOptions{MinSize: 1})
+	if res.Stats.DenoisedCommunities != 0 {
+		t.Errorf("MinSize=1 should not denoise anything, got DenoisedCommunities=%d",
+			res.Stats.DenoisedCommunities)
+	}
+}
+
+// TestDenoise_DefaultOptions_MatchesBehavior — RunAlgorithms (which uses
+// DefaultCommunityOptions) should produce fewer or equal named communities
+// compared to MinSize=1 on a graph that has small communities.
+func TestDenoise_DefaultOptions_MatchesBehavior(t *testing.T) {
+	// Ring of 5-node cliques → mix of reasonable communities.
+	ents, rels := makeLargeGraph(4) // 4 cliques × 8 nodes = 32 nodes
+	// Add extra 3 isolated nodes to ensure singletons exist.
+	ents = append(ents, makeEntities("ISO1", "ISO2", "ISO3")...)
+
+	resDefault := RunAlgorithms(ents, rels)                                              // MinSize=5
+	resNoFilter := RunAlgorithmsWithOptions(ents, rels, CommunityOptions{MinSize: 1})    // no denoise
+
+	if len(resDefault.Communities) > len(resNoFilter.Communities) {
+		t.Errorf("default (MinSize=5) has MORE communities (%d) than MinSize=1 (%d) — denoise logic inverted",
+			len(resDefault.Communities), len(resNoFilter.Communities))
+	}
+}
+
+// TestDenoise_Determinism — running denoise twice on the same graph must
+// produce byte-identical community assignments.
+func TestDenoise_Determinism(t *testing.T) {
+	ents, rels := makeLargeGraph(10) // 80 nodes
+	// Add isolated singletons to ensure denoising is exercised.
+	ents = append(ents, makeEntities("X1", "X2", "X3")...)
+
+	r1 := RunAlgorithms(ents, rels)
+	r2 := RunAlgorithms(ents, rels)
+
+	if len(r1.Communities) != len(r2.Communities) {
+		t.Fatalf("community count changed: %d vs %d", len(r1.Communities), len(r2.Communities))
+	}
+	for id := range r1.CommunityID {
+		if r1.CommunityID[id] != r2.CommunityID[id] {
+			t.Errorf("community_id[%s] = %d vs %d across runs", id, r1.CommunityID[id], r2.CommunityID[id])
+		}
+	}
+	if r1.Stats.DenoisedCommunities != r2.Stats.DenoisedCommunities {
+		t.Errorf("DenoisedCommunities differs: %d vs %d", r1.Stats.DenoisedCommunities, r2.Stats.DenoisedCommunities)
 	}
 }
