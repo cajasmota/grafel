@@ -310,6 +310,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/mcp-activity/stream", s.handleMCPActivityStream)
 	mux.HandleFunc("GET /api/mcp-activity/history", s.handleMCPActivityHistory)
 
+	// Surface 11 — Quality history (#1214)
+	mux.HandleFunc("GET /api/quality/history/{group}", s.handleQualityHistory)
+
 	return s.withAuth(mux)
 }
 

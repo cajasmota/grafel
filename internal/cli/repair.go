@@ -15,8 +15,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/client"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/quality"
 )
 
 // rebuild and reset both forward to the daemon's Rebuild RPC; reset
@@ -353,6 +355,7 @@ func finishRebuild(
 		if len(repos) > 0 {
 			sum := ComputeRebuildSummary(group, repos, elapsed)
 			PrintRebuildSummary(w, sum)
+			recordHealthHistory(group, sum)
 		} else {
 			// No repos reported (e.g. single-slug rebuild with no stats). Fall
 			// back to the legacy one-liner so the output is never empty.
@@ -524,6 +527,24 @@ func emitJSONProgressState(w io.Writer, token string, r proto.RepoProgressState)
 		Rels:     r.Rels,
 		ErrMsg:   r.ErrMsg,
 	})
+}
+
+// recordHealthHistory appends a HealthEntry to ~/.archigraph/health-history.jsonl
+// after a successful rebuild. Errors are silently ignored so a storage failure
+// never disrupts the CLI output.
+func recordHealthHistory(group string, sum *RebuildSummary) {
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return
+	}
+	entry := quality.HealthEntry{
+		Timestamp:     time.Now().UTC(),
+		Group:         group,
+		TotalEntities: sum.TotalEntities,
+		OrphanRate:    sum.OrphanRate,
+		HealthScore:   quality.ComputeHealthScore(sum.OrphanRate, 0),
+	}
+	_ = quality.AppendEntry(layout.Root, entry)
 }
 
 // emitJSONEvent emits a simple JSON heartbeat/generic event line.

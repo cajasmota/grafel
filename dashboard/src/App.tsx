@@ -95,7 +95,7 @@ const router = createBrowserRouter([
       // Surface 10 — Update / Version management (#1199)
       { path: 'update', element: <UpdateRoute /> },
 
-      // Surface 11 — Quality (#1198)
+      // Surface 11 — Quality / health-score history (#1198, #1214)
       { path: 'quality', element: <Navigate to="/quality/fixture-a" replace /> },
       { path: 'quality/:group', element: <QualityRoute /> },
 

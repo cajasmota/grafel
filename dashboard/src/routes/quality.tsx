@@ -3,12 +3,16 @@ import { useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   fetchQualityOrphans, fetchQualityFixtures, postQualityRecall,
+  fetchQualityHistory,
   type OrphanAuditReply, type RecallReply, type KindStat, type RepoOrphanStats,
+  type HealthEntry,
+  type QualityHistoryReply,
 } from '@/api/client'
 import {
   ShieldCheck, ShieldAlert, PlayCircle, RefreshCw,
   AlertTriangle, CheckCircle2, XCircle, ChevronDown, ChevronUp,
   Download, BarChart3,
+  Activity, TrendingDown, TrendingUp, Minus,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -17,6 +21,25 @@ import {
 
 function pct(v: number) {
   return `${(v * 100).toFixed(1)}%`
+}
+
+function fmt1(n: number) {
+  return n.toFixed(1)
+}
+
+function fmtDate(iso: string) {
+  const d = new Date(iso)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function fmtDateFull(iso: string) {
+  const d = new Date(iso)
+  return d.toLocaleString()
+}
+
+/** Clamp n to [lo, hi]. */
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n))
 }
 
 function healthColor(score: number) {
@@ -42,10 +65,532 @@ function downloadJSON(data: unknown, filename: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Velocity badge
+// ─────────────────────────────────────────────────────────────────────────────
+
+function VelocityBadge({ delta }: { delta: number }) {
+  if (Math.abs(delta) < 0.5) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+        <Minus className="w-3 h-3" />
+        stable
+      </span>
+    )
+  }
+  if (delta > 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+        <TrendingUp className="w-3 h-3" />
+        +{fmt1(delta)}pts
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-red-500 dark:text-red-400 font-medium">
+      <TrendingDown className="w-3 h-3" />
+      {fmt1(delta)}pts
+    </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SVG trend chart
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TooltipState {
+  x: number
+  y: number
+  entry: HealthEntry
+}
+
+interface TrendChartProps {
+  entries: HealthEntry[]
+  width?: number
+  height?: number
+}
+
+function TrendChart({ entries, width = 640, height = 140 }: TrendChartProps) {
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+
+  if (entries.length === 0) return null
+
+  const PAD = { top: 12, right: 16, bottom: 28, left: 36 }
+  const innerW = width - PAD.left - PAD.right
+  const innerH = height - PAD.top - PAD.bottom
+
+  // Map entries to pixel coords.
+  const scores = entries.map((e) => e.health_score)
+  const minScore = Math.max(0, Math.floor(Math.min(...scores) / 10) * 10 - 10)
+  const maxScore = Math.min(100, Math.ceil(Math.max(...scores) / 10) * 10 + 10)
+  const scoreRange = Math.max(1, maxScore - minScore)
+
+  const toX = (i: number) =>
+    PAD.left + (entries.length === 1 ? innerW / 2 : (i / (entries.length - 1)) * innerW)
+
+  const toY = (score: number) =>
+    PAD.top + innerH - ((score - minScore) / scoreRange) * innerH
+
+  const points = entries.map((e, i) => ({ x: toX(i), y: toY(e.health_score), entry: e }))
+
+  const polyline = points.map((p) => `${p.x},${p.y}`).join(' ')
+
+  // Y-axis ticks.
+  const yTicks: number[] = []
+  for (let v = minScore; v <= maxScore; v += 20) yTicks.push(v)
+
+  // Health-score colour: green ≥ 80, yellow ≥ 60, red otherwise.
+  const lastScore = scores[scores.length - 1]
+  const lineColor =
+    lastScore >= 80
+      ? '#10b981' /* emerald-500 */
+      : lastScore >= 60
+        ? '#f59e0b' /* amber-500 */
+        : '#ef4444' /* red-500 */
+
+  return (
+    <div className="relative select-none">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full"
+        style={{ height }}
+        onMouseLeave={() => setTooltip(null)}
+      >
+        {/* Y-axis grid lines + labels */}
+        {yTicks.map((v) => {
+          const cy = toY(v)
+          return (
+            <g key={v}>
+              <line
+                x1={PAD.left}
+                y1={cy}
+                x2={PAD.left + innerW}
+                y2={cy}
+                stroke="currentColor"
+                strokeWidth={0.5}
+                className="text-slate-200 dark:text-slate-700"
+                strokeDasharray="3 3"
+              />
+              <text
+                x={PAD.left - 4}
+                y={cy}
+                textAnchor="end"
+                dominantBaseline="middle"
+                fontSize={9}
+                className="fill-slate-400 dark:fill-slate-500"
+              >
+                {v}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* X-axis date labels (show first + last + up to 3 evenly spaced) */}
+        {entries.map((e, i) => {
+          const total = entries.length
+          const show =
+            i === 0 ||
+            i === total - 1 ||
+            (total > 2 && i % Math.max(1, Math.floor(total / 4)) === 0)
+          if (!show) return null
+          return (
+            <text
+              key={i}
+              x={toX(i)}
+              y={PAD.top + innerH + 14}
+              textAnchor="middle"
+              fontSize={8}
+              className="fill-slate-400 dark:fill-slate-500"
+            >
+              {fmtDate(e.timestamp)}
+            </text>
+          )
+        })}
+
+        {/* Trend line */}
+        {entries.length > 1 && (
+          <polyline
+            points={polyline}
+            fill="none"
+            stroke={lineColor}
+            strokeWidth={2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )}
+
+        {/* Data points + hit targets */}
+        {points.map((p, i) => (
+          <g key={i}>
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={4}
+              fill={lineColor}
+              stroke="white"
+              strokeWidth={1.5}
+              className="dark:stroke-slate-900 cursor-pointer"
+            />
+            {/* Invisible wider hit target */}
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={10}
+              fill="transparent"
+              className="cursor-pointer"
+              onMouseEnter={() =>
+                setTooltip({ x: p.x, y: p.y, entry: p.entry })
+              }
+            />
+          </g>
+        ))}
+      </svg>
+
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          className="pointer-events-none absolute z-10 rounded-md shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs px-3 py-2 min-w-[160px]"
+          style={{
+            left: clamp((tooltip.x / width) * 100, 5, 70) + '%',
+            top: tooltip.y < 60 ? '60%' : '5%',
+          }}
+        >
+          <div className="font-semibold text-slate-700 dark:text-slate-200 mb-1">
+            {fmtDateFull(tooltip.entry.timestamp)}
+          </div>
+          <div className="space-y-0.5 text-slate-500 dark:text-slate-400">
+            <div>
+              Health score:{' '}
+              <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                {fmt1(tooltip.entry.health_score)}
+              </span>
+            </div>
+            <div>
+              Orphan rate:{' '}
+              <span className="font-mono">{fmt1(tooltip.entry.orphan_rate)}%</span>
+            </div>
+            <div>
+              Bug rate:{' '}
+              <span className="font-mono">{fmt1(tooltip.entry.bug_rate)}%</span>
+            </div>
+            <div>
+              Entities:{' '}
+              <span className="font-mono">
+                {tooltip.entry.total_entities.toLocaleString()}
+              </span>
+            </div>
+            {tooltip.entry.recall_pct !== undefined && (
+              <div>
+                Recall:{' '}
+                <span className="font-mono">{fmt1(tooltip.entry.recall_pct)}%</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Summary cards (current / 7d / 30d comparisons)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function entryAtOrBefore(entries: HealthEntry[], daysAgo: number): HealthEntry | undefined {
+  const cutoff = Date.now() - daysAgo * 24 * 60 * 60 * 1000
+  // Walk backwards; find last entry older than cutoff.
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (new Date(entries[i].timestamp).getTime() <= cutoff) {
+      return entries[i]
+    }
+  }
+  return undefined
+}
+
+interface CompareCardProps {
+  label: string
+  current: number
+  reference?: HealthEntry
+}
+
+function CompareCard({ label, current, reference }: CompareCardProps) {
+  const delta = reference !== undefined ? current - reference.health_score : undefined
+  return (
+    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 flex flex-col gap-1">
+      <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
+      {delta !== undefined ? (
+        <>
+          <div className="font-mono text-2xl font-semibold text-slate-800 dark:text-slate-100">
+            {fmt1(reference!.health_score)}
+          </div>
+          <VelocityBadge delta={current - reference!.health_score} />
+        </>
+      ) : (
+        <div className="font-mono text-sm text-slate-400 dark:text-slate-600 italic">
+          no data
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Metric row (orphan / bug rates)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MetricBar({ label, value, danger = 20 }: { label: string; value: number; danger?: number }) {
+  const color =
+    value <= danger * 0.5
+      ? 'bg-emerald-400'
+      : value <= danger
+        ? 'bg-amber-400'
+        : 'bg-red-400'
+
+  return (
+    <div className="flex items-center gap-3 text-sm">
+      <span className="text-slate-500 dark:text-slate-400 w-28 shrink-0">{label}</span>
+      <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${color}`}
+          style={{ width: `${clamp(value, 0, 100)}%` }}
+        />
+      </div>
+      <span className="font-mono text-xs text-slate-700 dark:text-slate-300 w-12 text-right">
+        {fmt1(value)}%
+      </span>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSV export
+// ─────────────────────────────────────────────────────────────────────────────
+
+function downloadCSV(entries: HealthEntry[], group: string) {
+  const header = 'timestamp,group,total_entities,orphan_rate,bug_rate,health_score,recall_pct'
+  const rows = entries.map((e) =>
+    [
+      e.timestamp,
+      e.group,
+      e.total_entities,
+      e.orphan_rate,
+      e.bug_rate,
+      e.health_score,
+      e.recall_pct ?? '',
+    ].join(','),
+  )
+  const csv = [header, ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `quality-history-${group}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tab type
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Tab = 'orphans' | 'recall'
+type Tab = 'history' | 'orphans' | 'recall'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// History tab (#1214)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DAY_OPTIONS = [7, 30, 90] as const
+
+function HistoryTab({ group }: { group: string }) {
+  const [days, setDays] = useState<number>(30)
+
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<QualityHistoryReply>({
+    queryKey: ['quality-history', group, days],
+    queryFn: () => fetchQualityHistory(group, days),
+    staleTime: 60_000,
+  })
+
+  const entries = data?.entries ?? []
+  const latest = entries.at(-1)
+
+  // Velocity vs reference windows.
+  const ref7 = entryAtOrBefore(entries, 7)
+  const ref30 = entryAtOrBefore(entries, 30)
+
+  return (
+    <div className="space-y-6">
+      {/* ── Controls ────────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div className="flex rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
+          {DAY_OPTIONS.map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={[
+                'px-3 py-1.5 transition-colors',
+                days === d
+                  ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 font-semibold'
+                  : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800',
+              ].join(' ')}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="p-1.5 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
+            aria-label="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+          </button>
+
+          {entries.length > 0 && (
+            <button
+              onClick={() => downloadCSV(entries, group)}
+              className="text-xs px-2.5 py-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              Export CSV
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Loading / error ─────────────────────────────────────────────────── */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-16 text-slate-400">
+          <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+          Loading history…
+        </div>
+      )}
+
+      {isError && (
+        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+          Failed to load quality history. Make sure the daemon is running and the group exists.
+        </div>
+      )}
+
+      {!isLoading && !isError && entries.length === 0 && (
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-6 py-10 text-center">
+          <Activity className="w-8 h-8 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+            No history yet
+          </p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            Run <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 rounded">archigraph rebuild {group}</code> a few times to start accumulating data.
+          </p>
+        </div>
+      )}
+
+      {!isLoading && !isError && entries.length > 0 && (
+        <div className="space-y-6">
+          {/* ── Trend chart ──────────────────────────────────────────────── */}
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                Health score over time
+              </span>
+              {latest && (
+                <span className="font-mono text-sm text-slate-500 dark:text-slate-400">
+                  current: <span className="font-semibold text-slate-800 dark:text-slate-100">{fmt1(latest.health_score)}</span>
+                </span>
+              )}
+            </div>
+            <TrendChart entries={entries} />
+          </div>
+
+          {/* ── Velocity comparison cards ─────────────────────────────────── */}
+          {latest && (
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
+                vs. earlier snapshots
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 flex flex-col gap-1">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">Current</div>
+                  <div className="font-mono text-2xl font-semibold text-slate-800 dark:text-slate-100">
+                    {fmt1(latest.health_score)}
+                  </div>
+                  <div className="text-xs text-slate-400 dark:text-slate-500">
+                    {fmtDateFull(latest.timestamp)}
+                  </div>
+                </div>
+                <CompareCard
+                  label="7 days ago"
+                  current={latest.health_score}
+                  reference={ref7}
+                />
+                <CompareCard
+                  label="30 days ago"
+                  current={latest.health_score}
+                  reference={ref30}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── Current metric bars ───────────────────────────────────────── */}
+          {latest && (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3">
+              <h2 className="text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                Latest snapshot metrics
+              </h2>
+              <MetricBar label="Orphan rate" value={latest.orphan_rate} danger={20} />
+              <MetricBar label="Bug rate" value={latest.bug_rate} danger={10} />
+              {latest.recall_pct !== undefined && (
+                <MetricBar label="Recall" value={100 - latest.recall_pct} danger={20} />
+              )}
+              <div className="pt-1 text-xs text-slate-400 dark:text-slate-500">
+                {latest.total_entities.toLocaleString()} total entities
+              </div>
+            </div>
+          )}
+
+          {/* ── Raw history table ─────────────────────────────────────────── */}
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">Date</th>
+                  <th className="text-right px-3 py-2 font-medium">Score</th>
+                  <th className="text-right px-3 py-2 font-medium">Orphan %</th>
+                  <th className="text-right px-3 py-2 font-medium">Bug %</th>
+                  <th className="text-right px-3 py-2 font-medium">Entities</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {[...entries].reverse().map((e, i) => (
+                  <tr
+                    key={i}
+                    className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  >
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono">
+                      {fmtDateFull(e.timestamp)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-slate-800 dark:text-slate-100">
+                      {fmt1(e.health_score)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400">
+                      {fmt1(e.orphan_rate)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400">
+                      {fmt1(e.bug_rate)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400">
+                      {e.total_entities.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health score gauge
@@ -530,7 +1075,7 @@ function SummaryCard({
 
 export function QualityRoute() {
   const { group = 'fixture-a' } = useParams()
-  const [activeTab, setActiveTab] = useState<Tab>('orphans')
+  const [activeTab, setActiveTab] = useState<Tab>('history')
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50 dark:bg-slate-950">
@@ -541,14 +1086,14 @@ export function QualityRoute() {
           <div>
             <h1 className="text-lg font-bold text-slate-800 dark:text-slate-200">Quality</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Orphan audit and recall measurement for <strong>{group}</strong>
+              Health-score history, orphan audit, and recall measurement for <strong>{group}</strong>
             </p>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800">
-          {(['orphans', 'recall'] as const).map(tab => (
+          {(['history', 'orphans', 'recall'] as const).map(tab => (
             <button
               key={tab}
               type="button"
@@ -560,13 +1105,14 @@ export function QualityRoute() {
                   : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
               ].join(' ')}
             >
-              {tab === 'orphans' ? 'Orphan audit' : 'Recall measurement'}
+              {tab === 'history' ? 'History' : tab === 'orphans' ? 'Orphan audit' : 'Recall measurement'}
             </button>
           ))}
         </div>
 
         {/* Tab content */}
         <div className="min-h-64">
+          {activeTab === 'history' && <HistoryTab group={group} />}
           {activeTab === 'orphans' && <OrphanTab group={group} />}
           {activeTab === 'recall' && <RecallTab />}
         </div>

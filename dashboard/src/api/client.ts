@@ -1257,6 +1257,44 @@ export function postUpdatesApply(
   return () => { cancelled = true }
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Surface 11 — Quality history (#1214)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** One health measurement recorded after a rebuild. */
+export interface HealthEntry {
+  /** ISO-8601 timestamp of the rebuild completion. */
+  timestamp: string
+  group: string
+  total_entities: number
+  /** Percentage of entities with no incoming relationship (0–100). */
+  orphan_rate: number
+  /** Percentage of repair candidates (0–100). */
+  bug_rate: number
+  /** Composite quality score: max(0, 100 - orphan_rate - bug_rate). */
+  health_score: number
+  /** Enrichment recall percentage when available. */
+  recall_pct?: number
+}
+
+export interface QualityHistoryReply {
+  group: string
+  days: number
+  entries: HealthEntry[]
+}
+
+/** GET /api/quality/history/{group}?days=N */
+export async function fetchQualityHistory(
+  group: string,
+  days = 30,
+): Promise<QualityHistoryReply> {
+  return apiFetch<QualityHistoryReply>(
+    `/api/quality/history/${encodeURIComponent(group)}?days=${days}`,
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 /**
  * POST /api/updates/refresh-rules — refresh YAML rules without binary update.
  * Same SSE streaming pattern as apply.
@@ -1315,7 +1353,6 @@ export function postRefreshRules(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-<<<<<<< HEAD
 // Maintenance ops — Rebuild / Reset / Cleanup (#1200)
 // ────────────────────────────────────────────────────────────────────────────
 
