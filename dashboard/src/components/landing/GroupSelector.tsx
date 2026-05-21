@@ -6,12 +6,11 @@
  * to /graph/<group>.
  */
 
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, GitBranch, Clock, TerminalSquare, Activity, RefreshCw } from 'lucide-react'
+import { Database, GitBranch, Clock, TerminalSquare, Activity } from 'lucide-react'
 import { useRegistry } from '@/hooks/shared/useRegistry'
 import { GroupGraphThumbnail } from '@/components/landing/GroupGraphThumbnail'
-import { IndexingProgressModal } from '@/components/indexing/IndexingProgressModal'
+import { GroupOpsMenu } from '@/components/landing/GroupOpsMenu'
 import type { GroupMeta } from '@/types/api'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -266,10 +265,10 @@ interface GroupCardProps {
   group: GroupMeta
   onClick: () => void
   onNavigateToNode?: (nodeId: string) => void
-  onReindex: (groupId: string) => void
 }
 
-function GroupCard({ group, onClick, onNavigateToNode, onReindex }: GroupCardProps) {
+function GroupCard({ group, onClick, onNavigateToNode }: GroupCardProps) {
+  // Stop propagation on ops menu clicks so they don't trigger card navigation.
   const rateColor = bugRateColor(group.bug_rate)
   const rateLabel =
     group.bug_rate !== undefined ? `${group.bug_rate.toFixed(1)}%` : 'not measured'
@@ -277,116 +276,100 @@ function GroupCard({ group, onClick, onNavigateToNode, onReindex }: GroupCardPro
   const hasIndexedAt = Boolean(group.indexed_at)
 
   return (
-    <div className="relative group/card">
-      <div
-        data-card
-        className={[
-          'w-full rounded-xl border bg-slate-900/60 overflow-hidden',
-          // Fixed height: 80px thumbnail + 232px card body = 312px.
-          // All cards identical height regardless of framework count.
-          'h-[312px] flex flex-col',
-          'transition-all duration-150',
-          'border-slate-200 dark:border-slate-800 hover:border-sky-500/40 hover:-translate-y-px hover:bg-slate-200 dark:hover:bg-slate-900',
-        ].join(' ')}
-      >
-        {/* Thumbnail — 80px, lazy-loaded, lazy-rendered (#983) */}
+    <div
+      data-card
+      className={[
+        'w-full rounded-xl border bg-slate-900/60 overflow-hidden',
+        // Fixed height: 80px thumbnail + 232px card body = 312px.
+        // All cards identical height regardless of framework count.
+        'h-[312px] flex flex-col',
+        'transition-all duration-150',
+        'border-slate-200 dark:border-slate-800 hover:border-sky-500/40 hover:-translate-y-px hover:bg-slate-200 dark:hover:bg-slate-900',
+      ].join(' ')}
+    >
+      {/* Thumbnail — 80px, lazy-loaded, lazy-rendered (#983) */}
+      {/* Ops menu sits in the top-right corner, overlaid on the thumbnail. */}
+      <div className="relative">
         <GroupGraphThumbnail
           group={group.id}
           enabled={hasRealData}
           onNodeClick={onNavigateToNode}
         />
-
-        {/* Card body — clickable area for group navigation */}
-        <button
-          type="button"
-          onClick={onClick}
-          className={[
-            'flex-1 flex flex-col text-left p-5 min-h-0',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60 focus-visible:ring-inset',
-            'cursor-pointer',
-          ].join(' ')}
-        >
-          {/* Main content — grows to fill available space */}
-          <div className="flex-1 flex flex-col justify-between min-h-0">
-            {/* Header: group name + sparkline */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <GitBranch className="w-4 h-4 text-sky-400 shrink-0" aria-hidden />
-                <span className="text-xl font-semibold text-slate-100 truncate">
-                  {group.display_name}
-                </span>
-              </div>
-              <div className="shrink-0 pt-0.5">
-                <Sparkline history={group.bug_rate_history} bugRate={group.bug_rate} />
-              </div>
-            </div>
-
-            {/* Stats grid — 2×2 to keep consistent height */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-              {/* Repos */}
-              <StatPill
-                icon={<Database className="w-3.5 h-3.5" aria-hidden />}
-                tooltip="Number of repositories in this group"
-                label="Repos"
-                value={String(group.repos.length)}
-              />
-
-              {/* Entities */}
-              <StatPill
-                icon={<TerminalSquare className="w-3.5 h-3.5" aria-hidden />}
-                tooltip="Total entities across all repos"
-                label="Entities"
-                value={formatCount(group.entity_count)}
-                dimmed={!hasRealData}
-              />
-
-              {/* Unresolved edges */}
-              <StatPill
-                icon={<Activity className="w-3.5 h-3.5" aria-hidden />}
-                tooltip="Percentage of graph edges that point to unknown or ambiguous targets. Lower is better. Drops as the resolver improves."
-                label="Unresolved edges"
-                value={rateLabel}
-                valueClass={`text-xs font-medium font-mono ${rateColor}`}
-                dimmed={group.bug_rate === undefined}
-              />
-
-              {/* Last indexed */}
-              <StatPill
-                icon={<Clock className="w-3.5 h-3.5" aria-hidden />}
-                tooltip="Time since most recent indexing"
-                label="Indexed"
-                value={relativeTime(group.indexed_at)}
-                dimmed={!hasIndexedAt}
-              />
-            </div>
-          </div>
-
-          {/* Footer — fixed height: framework chips + repo names */}
-          <div className="h-[80px] flex flex-col justify-center gap-1.5 pt-3 border-t border-slate-800/60 mt-3 shrink-0">
-            <FrameworkChips frameworks={group.frameworks} />
-            <RepoRow repos={group.repos} />
-          </div>
-        </button>
+        <div className="absolute top-2 right-2">
+          <GroupOpsMenu group={group.id} displayName={group.display_name} />
+        </div>
       </div>
 
-      {/* Reindex button — floats top-right on card hover */}
+      {/* Card body — clickable area for group navigation */}
       <button
         type="button"
-        aria-label={`Reindex ${group.display_name}`}
-        title="Reindex"
-        data-testid={`reindex-btn-${group.id}`}
-        onClick={(e) => {
-          e.stopPropagation()
-          onReindex(group.id)
-        }}
+        onClick={onClick}
         className={[
-          'absolute top-2 right-2 p-1.5 rounded-lg',
-          'text-slate-500 hover:text-sky-400 hover:bg-slate-800',
-          'opacity-0 group-hover/card:opacity-100 transition-all duration-150',
-          'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
+          'flex-1 flex flex-col text-left p-5 min-h-0',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60 focus-visible:ring-inset',
+          'cursor-pointer',
         ].join(' ')}
       >
-        <RefreshCw className="w-3.5 h-3.5" />
+        {/* Main content — grows to fill available space */}
+        <div className="flex-1 flex flex-col justify-between min-h-0">
+          {/* Header: group name + sparkline */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <GitBranch className="w-4 h-4 text-sky-400 shrink-0" aria-hidden />
+              <span className="text-xl font-semibold text-slate-100 truncate">
+                {group.display_name}
+              </span>
+            </div>
+            <div className="shrink-0 pt-0.5">
+              <Sparkline history={group.bug_rate_history} bugRate={group.bug_rate} />
+            </div>
+          </div>
+
+          {/* Stats grid — 2×2 to keep consistent height */}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+            {/* Repos */}
+            <StatPill
+              icon={<Database className="w-3.5 h-3.5" aria-hidden />}
+              tooltip="Number of repositories in this group"
+              label="Repos"
+              value={String(group.repos.length)}
+            />
+
+            {/* Entities */}
+            <StatPill
+              icon={<TerminalSquare className="w-3.5 h-3.5" aria-hidden />}
+              tooltip="Total entities across all repos"
+              label="Entities"
+              value={formatCount(group.entity_count)}
+              dimmed={!hasRealData}
+            />
+
+            {/* Unresolved edges */}
+            <StatPill
+              icon={<Activity className="w-3.5 h-3.5" aria-hidden />}
+              tooltip="Percentage of graph edges that point to unknown or ambiguous targets. Lower is better. Drops as the resolver improves."
+              label="Unresolved edges"
+              value={rateLabel}
+              valueClass={`text-xs font-medium font-mono ${rateColor}`}
+              dimmed={group.bug_rate === undefined}
+            />
+
+            {/* Last indexed */}
+            <StatPill
+              icon={<Clock className="w-3.5 h-3.5" aria-hidden />}
+              tooltip="Time since most recent indexing"
+              label="Indexed"
+              value={relativeTime(group.indexed_at)}
+              dimmed={!hasIndexedAt}
+            />
+          </div>
+        </div>
+
+        {/* Footer — fixed height: framework chips + repo names */}
+        <div className="h-[80px] flex flex-col justify-center gap-1.5 pt-3 border-t border-slate-800/60 mt-3 shrink-0">
+          <FrameworkChips frameworks={group.frameworks} />
+          <RepoRow repos={group.repos} />
+        </div>
       </button>
     </div>
   )
@@ -433,8 +416,6 @@ function NoGroupsState() {
 export function GroupSelector() {
   const navigate = useNavigate()
   const { data: registry, isLoading, isError } = useRegistry()
-  const [reindexGroup, setReindexGroup] = useState<string | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
 
   if (isLoading) {
     return (
@@ -485,22 +466,10 @@ export function GroupSelector() {
             onNavigateToNode={(nodeId) =>
               navigate(`/graph/${group.id}`, { state: { selectedNodeId: nodeId } })
             }
-            onReindex={(id) => { setReindexGroup(id); setModalOpen(true) }}
           />
         ))}
       </div>
 
-      {/* Indexing progress modal — triggered by reindex button.
-          The modal is kept mounted while reindexGroup is set so the hook
-          keeps streaming even when the user minimises the panel. */}
-      {reindexGroup && (
-        <IndexingProgressModal
-          isOpen={modalOpen}
-          groupSlug={reindexGroup}
-          onClose={() => setModalOpen(false)}
-          onReopen={() => setModalOpen(true)}
-        />
-      )}
     </div>
   )
 }

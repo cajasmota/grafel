@@ -241,6 +241,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/updates/apply", s.handleUpdatesApply)
 	mux.HandleFunc("POST /api/updates/refresh-rules", s.handleUpdatesRefreshRules)
 
+	// Maintenance ops — rebuild / reset / cleanup (#1200)
+	mux.HandleFunc("POST /api/groups/{group}/rebuild", s.handleGroupRebuild)
+	mux.HandleFunc("POST /api/groups/{group}/repos/{repo}/rebuild", s.handleRepoRebuild)
+	mux.HandleFunc("POST /api/groups/{group}/reset", s.handleGroupReset)
+	mux.HandleFunc("POST /api/groups/{group}/repos/{repo}/reset", s.handleRepoReset)
+	mux.HandleFunc("GET /api/cleanup/preview", s.handleCleanupPreview)
+	mux.HandleFunc("POST /api/cleanup", s.handleCleanup)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)

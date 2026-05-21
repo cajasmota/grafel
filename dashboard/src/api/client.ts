@@ -1313,3 +1313,111 @@ export function postRefreshRules(
   })()
   return () => { cancelled = true }
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Maintenance ops — Rebuild / Reset / Cleanup (#1200)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Wire shape returned by all async rebuild/reset endpoints (202 Accepted). */
+export interface MaintenanceAckReply {
+  op: 'rebuild' | 'reset'
+  group: string
+  repo?: string
+  /** Token to pass to /api/index-progress SSE to track this specific op. */
+  progress_token: string
+  enqueued_at: string
+}
+
+/** One orphaned registry entry found by cleanup. */
+export interface CleanupOrphan {
+  name: string
+  config_path: string
+}
+
+/** Wire shape returned by GET /api/cleanup/preview and POST /api/cleanup. */
+export interface CleanupReply {
+  dry_run: boolean
+  orphaned: CleanupOrphan[]
+  removed: number
+  message: string
+}
+
+/** POST /api/groups/{group}/rebuild — enqueue a full group rebuild. */
+export async function postGroupRebuild(group: string): Promise<MaintenanceAckReply> {
+  if (USE_MOCKS) {
+    return {
+      op: 'rebuild',
+      group,
+      progress_token: `web-${Date.now()}`,
+      enqueued_at: new Date().toISOString(),
+    }
+  }
+  return apiFetch<MaintenanceAckReply>(`/api/groups/${encodeURIComponent(group)}/rebuild`, {
+    method: 'POST',
+  })
+}
+
+/** POST /api/groups/{group}/repos/{repo}/rebuild — rebuild a single repo. */
+export async function postRepoRebuild(group: string, repo: string): Promise<MaintenanceAckReply> {
+  if (USE_MOCKS) {
+    return {
+      op: 'rebuild',
+      group,
+      repo,
+      progress_token: `web-${Date.now()}`,
+      enqueued_at: new Date().toISOString(),
+    }
+  }
+  return apiFetch<MaintenanceAckReply>(
+    `/api/groups/${encodeURIComponent(group)}/repos/${encodeURIComponent(repo)}/rebuild`,
+    { method: 'POST' },
+  )
+}
+
+/** POST /api/groups/{group}/reset — wipe + rebuild all repos (DESTRUCTIVE). */
+export async function postGroupReset(group: string): Promise<MaintenanceAckReply> {
+  if (USE_MOCKS) {
+    return {
+      op: 'reset',
+      group,
+      progress_token: `web-${Date.now()}`,
+      enqueued_at: new Date().toISOString(),
+    }
+  }
+  return apiFetch<MaintenanceAckReply>(`/api/groups/${encodeURIComponent(group)}/reset`, {
+    method: 'POST',
+  })
+}
+
+/** POST /api/groups/{group}/repos/{repo}/reset — wipe + rebuild a single repo. */
+export async function postRepoReset(group: string, repo: string): Promise<MaintenanceAckReply> {
+  if (USE_MOCKS) {
+    return {
+      op: 'reset',
+      group,
+      repo,
+      progress_token: `web-${Date.now()}`,
+      enqueued_at: new Date().toISOString(),
+    }
+  }
+  return apiFetch<MaintenanceAckReply>(
+    `/api/groups/${encodeURIComponent(group)}/repos/${encodeURIComponent(repo)}/reset`,
+    { method: 'POST' },
+  )
+}
+
+/** GET /api/cleanup/preview — list orphaned registry entries without removing. */
+export async function fetchCleanupPreview(): Promise<CleanupReply> {
+  if (USE_MOCKS) {
+    return { dry_run: true, orphaned: [], removed: 0, message: 'No orphaned registry entries found' }
+  }
+  return apiFetch<CleanupReply>('/api/cleanup/preview')
+}
+
+/** POST /api/cleanup — remove orphaned registry entries. Pass dryRun=true to preview. */
+export async function postCleanup(dryRun = false): Promise<CleanupReply> {
+  if (USE_MOCKS) {
+    return { dry_run: dryRun, orphaned: [], removed: 0, message: 'No orphaned registry entries found' }
+  }
+  return apiFetch<CleanupReply>(`/api/cleanup${dryRun ? '?dry_run=true' : ''}`, { method: 'POST' })
+}
