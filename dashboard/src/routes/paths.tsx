@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, Outlet, useNavigate } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronUp, ChevronDown, List, Globe, Columns2 } from 'lucide-react'
+import { ChevronUp, ChevronDown, List, Globe, Columns2, FileDown } from 'lucide-react'
 import { PathRow } from '@/components/paths/PathRow'
 import { PathsGroup } from '@/components/paths/PathsGroup'
 import { BackendGroup, readCollapsed, writeCollapsed } from '@/components/paths/BackendGroup'
@@ -717,6 +717,18 @@ export function PathsRoute() {
               <span className="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0 tabular-nums">
                 {isFetching && !isLoading ? '↻ ' : ''}{totalLabel}
               </span>
+            )}
+            {activeTab === 'endpoints' && (data?.total ?? 0) > 0 && (
+              <a
+                href={`/api/export/${group}/openapi?format=yaml`}
+                download={`${group}-openapi.yaml`}
+                title="Download OpenAPI 3.0 spec (YAML)"
+                className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors flex-shrink-0"
+                aria-label="Download OpenAPI spec"
+              >
+                <FileDown className="w-3.5 h-3.5" aria-hidden />
+                OpenAPI
+              </a>
             )}
           </div>
 

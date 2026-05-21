@@ -441,6 +441,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/perf/budgets", s.handlePerfBudgets)
 	mux.HandleFunc("POST /api/perf/record", s.handlePerfRecord)
 
+	// OpenAPI 3.0 export — HTTP endpoints → openapi.yaml / openapi.json (#1340)
+	// The literal segment "openapi" is more specific than the DSL wildcard
+	// {entity_id}/{format}, so Go 1.22+ ServeMux routes here first.
+	mux.HandleFunc("GET /api/export/{group}/openapi", s.handleExportOpenAPI)
+
 	// DSL export — Graph subgraph → Mermaid / Graphviz / PlantUML / D2 (#1318)
 	mux.HandleFunc("GET /api/export/{group}/{entity_id}/{format}", s.handleExportDSL)
 
