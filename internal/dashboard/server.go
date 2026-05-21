@@ -436,6 +436,10 @@ func (s *Server) routes() http.Handler {
 	// DSL export — Graph subgraph → Mermaid / Graphviz / PlantUML / D2 (#1318)
 	mux.HandleFunc("GET /api/export/{group}/{entity_id}/{format}", s.handleExportDSL)
 
+	// Surface 15 — External dependency graph (#1321)
+	// GET /api/dependencies/{group}  — declared + used/unused/phantom classification
+	mux.HandleFunc("GET /api/dependencies/{group}", s.handleDependencies)
+
 	return s.withAuth(withGzip(mux))
 }
 

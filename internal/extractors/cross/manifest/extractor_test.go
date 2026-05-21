@@ -353,6 +353,9 @@ func TestIsManifest(t *testing.T) {
 		{"repo/Cargo.toml", true},
 		{"repo/pyproject.toml", true},
 		{"repo/pom.xml", true},
+		{"repo/requirements.txt", true},
+		{"repo/pubspec.yaml", true},
+		{"repo/Gemfile", true},
 		{"repo/main.go", false},
 		{"repo/README.md", false},
 	}
@@ -361,5 +364,180 @@ func TestIsManifest(t *testing.T) {
 		if got != c.want {
 			t.Errorf("IsManifest(%q)=%v want %v", c.path, got, c.want)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// requirements.txt
+// ---------------------------------------------------------------------------
+
+func TestRequirementsTxt_Basic(t *testing.T) {
+	src := `requests>=2.28.0
+fastapi[all]>=0.100.0
+# dev deps below
+pytest==7.4.0
+`
+	records := runExtract(t, "requirements.txt", src)
+	deps := depEntities(records)
+	if len(deps) < 3 {
+		t.Fatalf("expected at least 3 deps, got %d", len(deps))
+	}
+	for _, d := range deps {
+		if d.Properties["package_manager"] != "pip" {
+			t.Errorf("package_manager=%q want pip", d.Properties["package_manager"])
+		}
+		if d.Properties["dependency_kind"] == "" {
+			t.Errorf("dependency_kind empty for %s", d.Name)
+		}
+	}
+}
+
+func TestRequirementsTxt_SkipsComments(t *testing.T) {
+	src := `# This is a comment
+requests>=2.28
+`
+	records := runExtract(t, "requirements.txt", src)
+	deps := depEntities(records)
+	if len(deps) != 1 {
+		t.Fatalf("expected 1 dep, got %d", len(deps))
+	}
+	if deps[0].Name != "requests" {
+		t.Errorf("name=%q want requests", deps[0].Name)
+	}
+}
+
+func TestRequirementsTxt_Empty(t *testing.T) {
+	src := `# nothing here`
+	records := runExtract(t, "requirements.txt", src)
+	if deps := depEntities(records); len(deps) != 0 {
+		t.Errorf("expected 0 deps, got %d", len(deps))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// pubspec.yaml
+// ---------------------------------------------------------------------------
+
+func TestPubspecYaml_Basic(t *testing.T) {
+	src := `name: myapp
+version: 1.0.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.1.0
+  provider: ^6.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mockito: ^5.0.0
+`
+	records := runExtract(t, "pubspec.yaml", src)
+	deps := depEntities(records)
+	// expect: http, provider, flutter (runtime) + mockito, flutter_test (dev)
+	if len(deps) == 0 {
+		t.Fatalf("expected deps, got 0")
+	}
+	for _, d := range deps {
+		if d.Properties["package_manager"] != "pub" {
+			t.Errorf("package_manager=%q want pub", d.Properties["package_manager"])
+		}
+	}
+	// mockito should be dev
+	for _, d := range deps {
+		if d.Name == "mockito" && d.Properties["is_dev"] != "true" {
+			t.Errorf("mockito should be is_dev=true")
+		}
+	}
+	// http should be runtime
+	for _, d := range deps {
+		if d.Name == "http" && d.Properties["is_dev"] != "false" {
+			t.Errorf("http should be is_dev=false")
+		}
+	}
+}
+
+func TestPubspecYaml_Empty(t *testing.T) {
+	src := `name: empty
+version: 0.0.1
+`
+	records := runExtract(t, "pubspec.yaml", src)
+	if deps := depEntities(records); len(deps) != 0 {
+		t.Errorf("expected 0 deps, got %d", len(deps))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Gemfile
+// ---------------------------------------------------------------------------
+
+func TestGemfile_Basic(t *testing.T) {
+	src := `source 'https://rubygems.org'
+gem 'rails', '~> 7.0'
+gem 'pg', '>= 0.18'
+
+group :development, :test do
+  gem 'rspec-rails'
+  gem 'factory_bot_rails'
+end
+`
+	records := runExtract(t, "Gemfile", src)
+	deps := depEntities(records)
+	if len(deps) < 2 {
+		t.Fatalf("expected at least 2 deps, got %d", len(deps))
+	}
+	for _, d := range deps {
+		if d.Properties["package_manager"] != "bundler" {
+			t.Errorf("package_manager=%q want bundler", d.Properties["package_manager"])
+		}
+	}
+	// rails should be runtime
+	for _, d := range deps {
+		if d.Name == "rails" && d.Properties["is_dev"] != "false" {
+			t.Errorf("rails should be is_dev=false")
+		}
+	}
+	// rspec-rails should be dev
+	for _, d := range deps {
+		if d.Name == "rspec-rails" && d.Properties["is_dev"] != "true" {
+			t.Errorf("rspec-rails should be is_dev=true")
+		}
+	}
+}
+
+func TestGemfile_Empty(t *testing.T) {
+	src := `source 'https://rubygems.org'`
+	records := runExtract(t, "Gemfile", src)
+	if deps := depEntities(records); len(deps) != 0 {
+		t.Errorf("expected 0 deps, got %d", len(deps))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// dependency_kind property
+// ---------------------------------------------------------------------------
+
+func TestDependencyKind_PackageJSON(t *testing.T) {
+	src := `{
+  "dependencies": {"react": "^18.0.0"},
+  "devDependencies": {"jest": "^29.0.0"},
+  "peerDependencies": {"react-dom": "^18.0.0"}
+}`
+	records := runExtract(t, "package.json", src)
+	deps := depEntities(records)
+	byName := map[string]types.EntityRecord{}
+	for _, d := range deps {
+		byName[d.Name] = d
+	}
+
+	if byName["react"].Properties["dependency_kind"] != "runtime" {
+		t.Errorf("react dependency_kind=%q want runtime", byName["react"].Properties["dependency_kind"])
+	}
+	if byName["jest"].Properties["dependency_kind"] != "dev" {
+		t.Errorf("jest dependency_kind=%q want dev", byName["jest"].Properties["dependency_kind"])
+	}
+	if byName["react-dom"].Properties["dependency_kind"] != "peer" {
+		t.Errorf("react-dom dependency_kind=%q want peer", byName["react-dom"].Properties["dependency_kind"])
 	}
 }
