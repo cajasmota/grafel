@@ -331,6 +331,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/enrichments/{group}/batch-enrich", s.handleEnrichmentBatch)
 	// Per-tier enrichment progress — polled every 3 s by the /pending surface (#1286)
 	mux.HandleFunc("GET /api/enrichments/{group}/progress", s.handleEnrichmentProgress)
+	// Agent description write-back — persists generated descriptions to graph + frontmatter (#1304)
+	mux.HandleFunc("POST /api/enrichments/{group}/write", s.handleEnrichmentWriteback)
 
 	// Settings surface (#1206)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
