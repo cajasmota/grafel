@@ -151,9 +151,11 @@ func containsAny(s string, subs ...string) bool {
 // Entry-kind inference
 // ─────────────────────────────────────────────────────────────────────────────
 
-// inferEntryKind returns the flow's entry_kind string from the entry entity's
-// Kind and its incoming/outgoing edge sets.
-func inferEntryKind(entityKind string, inEdgeKinds map[string]bool) string {
+// inferEntryKindFromKind returns the flow's entry_kind string from an already-
+// resolved entityKind string and the set of incoming edge kinds on that entity.
+// It is the lower-level helper; callers that have a *DashGroup and an entry ID
+// should use inferEntryKind in handlers_flows.go instead.
+func inferEntryKindFromKind(entityKind string, inEdgeKinds map[string]bool) string {
 	el := strings.ToLower(entityKind)
 
 	// HTTP handler / endpoint
@@ -406,7 +408,7 @@ func annotateFlowSteps(
 	complexityScore := float64(len(steps)) * float64(len(kindSet))
 
 	meta := FlowMeta{
-		EntryKind:       inferEntryKind(entryEntityKind, entryInEdges),
+		EntryKind:       inferEntryKindFromKind(entryEntityKind, entryInEdges),
 		FlowSideEffects: flowSideEffects,
 		ComplexityScore: complexityScore,
 		IsCrossRepo:     isCrossRepo,
