@@ -608,6 +608,20 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+// gzipWriterPool recycles *gzip.Writer instances to avoid paying the
+// allocator on every compressed request.  Reset(w) re-targets an existing
+// writer at a new io.Writer so the underlying Huffman tables are reused.
+//
+// Perf (#1399): on a busy daemon serving many graph requests the pool
+// eliminates one ~8 kB heap allocation per request for the gzip internal
+// state buffer.
+var gzipWriterPool = sync.Pool{
+	New: func() any {
+		gz, _ := gzip.NewWriterLevel(nil, gzip.DefaultCompression)
+		return gz
+	},
+}
+
 // withGzip wraps next with transparent gzip compression for clients that
 // send Accept-Encoding: gzip.  Only compresses JSON API responses;
 // static assets and SSE/WebSocket streams are always passed through as-is.
@@ -616,6 +630,9 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 // gzip at the default level reduces it to ~1-2 MiB, cutting LAN transfer time
 // by ~6x and loopback time by ~3x.  The compression cost (~40 ms at 100k nodes)
 // is amortized by staleTime=5min caching in the React Query layer.
+//
+// Perf (#1399): gzip.Writer instances are pooled via gzipWriterPool so the
+// allocator is hit once per pool-miss, not once per request.
 //
 // SSE and WebSocket paths are excluded: they are streaming protocols that require
 // an unbuffered, unflushed write path and must never be gzip-compressed.
@@ -639,12 +656,12 @@ func withGzip(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		gz, err := gzip.NewWriterLevel(w, gzip.DefaultCompression)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		defer gz.Close()
+		gz := gzipWriterPool.Get().(*gzip.Writer)
+		gz.Reset(w)
+		defer func() {
+			_ = gz.Close()
+			gzipWriterPool.Put(gz)
+		}()
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Del("Content-Length") // length changes after compression
 		next.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, Writer: gz}, r)
