@@ -291,10 +291,16 @@ export interface GraphCanvasProps {
   colorMode?: ColorMode
   /**
    * #1157: Node IDs that MUST remain visible regardless of LoD zoom band.
-   * Used by the future Jarvis MCP highlighting overlay. Pass an empty Set
+   * Used by the Jarvis MCP highlighting overlay. Pass an empty Set
    * (or omit) when no Jarvis session is active.
    */
   forceVisibleIds?: ReadonlySet<string>
+  /**
+   * #1157 Phase 2: Edge IDs currently highlighted by the Jarvis MCP overlay.
+   * Highlighted edges are rendered with the Jarvis pulse color instead of
+   * the standard cross-repo / same-repo color.
+   */
+  highlightedEdgeIds?: ReadonlySet<string>
 }
 
 /** Truncate long labels at ~30 chars for layout legibility */
@@ -341,6 +347,7 @@ const GraphCanvasInner = ({
   activeRepos,
   colorMode = 'repo',
   forceVisibleIds,
+  highlightedEdgeIds,
 }: GraphCanvasProps) => {
   const cosmographRef = useRef<CosmographRef>(undefined)
   const { setGraphRef, setZoomLevel } = useGraphCameraStore()
@@ -467,16 +474,25 @@ const GraphCanvasInner = ({
       .map((e, i) => {
         const srcRepo = idToRepo.get(String(e.source)) ?? ''
         const tgtRepo = idToRepo.get(String(e.target)) ?? ''
+        const isCrossRepo = srcRepo !== tgtRepo
+        // #1157 Phase 2: __linkState encodes both highlight + cross-repo in one column:
+        //   2 = Jarvis-highlighted (takes priority)
+        //   1 = cross-repo (not highlighted)
+        //   0 = same-repo (not highlighted)
+        const isHighlighted = highlightedEdgeIds?.has(String(e.id)) ?? false
+        const __linkState = isHighlighted ? 2 : (isCrossRepo ? 1 : 0)
         return {
           ...e,
           __idx: i,
           __srcIdx: idToIdx.get(String(e.source)),
           __tgtIdx: idToIdx.get(String(e.target)),
-          __crossRepo: srcRepo !== tgtRepo ? 1 : 0,
+          __crossRepo: isCrossRepo ? 1 : 0,
+          __linkState,
         }
       })
       .filter((e) => e.__srcIdx !== undefined && e.__tgtIdx !== undefined)
-  }, [nodes, edges])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges, highlightedEdgeIds])
 
   const visibleLinks = useMemo(
     () => crossRepoOnly ? cosmographLinks.filter((e) => e.__crossRepo === 1) : cosmographLinks,
@@ -666,10 +682,18 @@ const GraphCanvasInner = ({
     return communityColor(isNaN(cid) ? 0 : cid)
   }, [])
 
-  // Link color accessor — same across all color modes
-  const linkColorByFn = useCallback((crossRepo: unknown) => {
-    const isCross = crossRepo === 1 || crossRepo === '1'
-    if (isCross) {
+  // Link color accessor — handles Jarvis highlight (state=2), cross-repo (state=1), same-repo (state=0)
+  // #1157 Phase 2: __linkState=2 → Jarvis pulse color (amber glow), takes priority over cross-repo.
+  const linkColorByFn = useCallback((linkState: unknown) => {
+    const state = typeof linkState === 'number' ? linkState
+      : typeof linkState === 'string' ? parseInt(linkState, 10)
+      : 0
+    if (state === 2) {
+      // Jarvis highlighted edge — amber/orange pulse color
+      return highContrast ? 'rgba(251,146,60,1.0)' : 'rgba(251,146,60,0.85)'
+    }
+    if (state === 1) {
+      // Cross-repo edge
       return highContrast ? 'rgba(56,189,248,1.0)' : 'rgba(56,189,248,0.7)'
     }
     return highContrast ? 'rgba(100,116,139,0.5)' : 'rgba(100,116,139,0.15)'
@@ -804,7 +828,7 @@ const GraphCanvasInner = ({
         linkSourceIndexBy="__srcIdx"
         linkTargetBy="target"
         linkTargetIndexBy="__tgtIdx"
-        linkIncludeColumns={['kind', '__crossRepo']}
+        linkIncludeColumns={['kind', '__crossRepo', '__linkState']}
 
         // ── Repo-first semantic layout (#1072 / #1106) ───────────────────────
         pointXBy="__x"
@@ -858,7 +882,7 @@ const GraphCanvasInner = ({
         pointLabelClassName={labelPillStyle}
 
         // ── Edge appearance ────────────────────────────────────────────────
-        linkColorBy="__crossRepo"
+        linkColorBy="__linkState"
         linkColorByFn={linkColorByFn as (value: unknown) => string}
         linkWidthRange={highContrast ? [1, 3] : [0.5, 2]}
         // #1153: linkWidthScale=0.31752 (Silk Road param) — thinner edges overall,
