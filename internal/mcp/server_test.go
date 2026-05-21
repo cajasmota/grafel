@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
+	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -2054,5 +2055,96 @@ func TestPatterns_ConcurrentRefineApply(t *testing.T) {
 	// Confidence must be within valid bounds.
 	if conf, _ := out["confidence"].(float64); conf < 0.0 || conf > 1.0 {
 		t.Errorf("confidence out of bounds after concurrent ops: %v", conf)
+	}
+}
+
+// writeGraphFB writes a graph.Document to <repoDir>/.archigraph/graph.fb
+// (FlatBuffers format). Used to verify fix for issue #1374 item #1.
+func writeGraphFB(t *testing.T, repoDir string, doc *graph.Document) string {
+	t.Helper()
+	dir := filepath.Join(repoDir, ".archigraph")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "graph.fb")
+	if err := fbwriter.WriteAtomic(path, doc); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestReloadFBOnlyRepo verifies fix for issue #1374 item #1:
+// State.Reload() must load repos that have only graph.fb (no graph.json).
+// Previously the stat-guard pointed at graph.json → ENOENT → repo silently dropped.
+func TestReloadFBOnlyRepo(t *testing.T) {
+	dir := t.TempDir()
+
+	// Three repos: one with graph.json only, one with graph.fb only, one with both.
+	repoJSON := filepath.Join(dir, "repo-json")
+	repoFB := filepath.Join(dir, "repo-fb")
+	repoBoth := filepath.Join(dir, "repo-both")
+	for _, p := range []string{repoJSON, repoFB, repoBoth} {
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	docJSON := fixtureDoc("repo-json")
+	docFB := fixtureDoc("repo-fb")
+	docBoth := fixtureDoc("repo-both")
+
+	writeGraph(t, repoJSON, docJSON)   // graph.json only
+	writeGraphFB(t, repoFB, docFB)    // graph.fb only
+	writeGraph(t, repoBoth, docBoth)  // graph.json
+	writeGraphFB(t, repoBoth, docBoth) // + graph.fb
+
+	reg := &Registry{
+		Groups: map[string]RegistryGroup{
+			"test-group": {
+				Repos: map[string]RegistryRepo{
+					"repo-json": {Path: repoJSON},
+					"repo-fb":   {Path: repoFB},
+					"repo-both": {Path: repoBoth},
+				},
+			},
+		},
+	}
+	state := NewState(reg)
+	n, err := state.Reload()
+	if err != nil {
+		t.Fatalf("Reload error: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("expected 3 repos reloaded, got %d", n)
+	}
+
+	grp := state.Group("test-group")
+	if grp == nil {
+		t.Fatal("group not found after Reload")
+	}
+
+	for _, rName := range []string{"repo-json", "repo-fb", "repo-both"} {
+		lr := grp.Repos[rName]
+		if lr == nil {
+			t.Errorf("repo %q missing from loaded group", rName)
+			continue
+		}
+		if lr.Doc == nil {
+			t.Errorf("repo %q: Doc is nil (loadErr=%q)", rName, lr.loadErr)
+			continue
+		}
+		if lr.loadErr != "" {
+			t.Errorf("repo %q: unexpected loadErr=%q", rName, lr.loadErr)
+		}
+		if len(lr.Doc.Entities) != 4 {
+			t.Errorf("repo %q: expected 4 entities, got %d", rName, len(lr.Doc.Entities))
+		}
+	}
+
+	// repo-both: GraphFile should point at graph.fb (fb is preferred when both exist).
+	if lr := grp.Repos["repo-both"]; lr != nil {
+		if !strings.HasSuffix(lr.GraphFile, "graph.fb") {
+			t.Errorf("repo-both: expected GraphFile to end in graph.fb, got %q", lr.GraphFile)
+		}
 	}
 }

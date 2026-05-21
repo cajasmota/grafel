@@ -262,27 +262,39 @@ func (s *State) Reload() (int, error) {
 		seen := map[string]bool{}
 		for rName, rEntry := range gEntry.Repos {
 			seen[rName] = true
-			gf := rEntry.graphFile()
+			// Use FindGraphFile to discover graph.fb (preferred) or graph.json,
+			// fixing issue #1374 item #1: repos that only have graph.fb were
+			// silently dropped because the old os.Stat always targeted graph.json.
+			graphPath, modtimeNs := daemon.FindGraphFile(rEntry.Path)
+			if graphPath == "" {
+				// Neither graph.fb nor graph.json exists yet; skip without error.
+				lr, exists := grp.Repos[rName]
+				if !exists {
+					lr = &LoadedRepo{Repo: rName, Path: rEntry.Path}
+					grp.Repos[rName] = lr
+				}
+				lr.loadErr = "no graph file found (graph.fb or graph.json)"
+				continue
+			}
 			lr, ok := grp.Repos[rName]
 			if !ok {
-				lr = &LoadedRepo{Repo: rName, Path: rEntry.Path, GraphFile: gf}
+				lr = &LoadedRepo{Repo: rName, Path: rEntry.Path, GraphFile: graphPath}
 				grp.Repos[rName] = lr
 			}
-			info, err := os.Stat(gf)
-			if err != nil {
-				lr.loadErr = err.Error()
+			// Update GraphFile in case .fb appeared after initial load.
+			lr.GraphFile = graphPath
+			fileMtime := time.Unix(0, modtimeNs)
+			if fileMtime.Equal(lr.mtime) && lr.Doc != nil {
 				continue
 			}
-			if info.ModTime().Equal(lr.mtime) && lr.Doc != nil {
-				continue
-			}
-			doc, err := readDocument(gf)
+			stateDir := daemon.StateDirForRepo(rEntry.Path)
+			doc, err := readDocumentFromDir(stateDir)
 			if err != nil {
 				lr.loadErr = err.Error()
 				continue
 			}
 			lr.Doc = doc
-			lr.mtime = info.ModTime()
+			lr.mtime = fileMtime
 			lr.loadErr = ""
 			lr.LabelIndex = BuildLabelIndex(doc)
 			lr.BM25 = BuildBM25(doc)
@@ -333,11 +345,20 @@ func (s *State) SnapshotGroups() []*LoadedGroup {
 	return out
 }
 
+// readDocumentFromDir loads a graph document from a state directory.
+// Delegates to graph.LoadGraphFromDir which prefers graph.fb over graph.json
+// (ADR-0016, issue #808).
+func readDocumentFromDir(stateDir string) (*graph.Document, error) {
+	return graph.LoadGraphFromDir(stateDir)
+}
+
 // readDocument loads a graph document from disk. It receives the
 // graph.json path for back-compat with the registry's graphFile()
 // helper, derives the state directory, then delegates to
 // graph.LoadGraphFromDir which prefers graph.fb when present (ADR-0016
 // flip-day, issue #808).
+//
+// Deprecated: callers should prefer readDocumentFromDir.
 func readDocument(graphJSONPath string) (*graph.Document, error) {
 	stateDir := filepath.Dir(graphJSONPath)
 	return graph.LoadGraphFromDir(stateDir)
