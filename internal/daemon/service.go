@@ -101,6 +101,15 @@ type Service struct {
 	stopped      int32 // atomic; 1 once stopReq has been closed
 	inFlight     int64
 
+	// maxConcurrentGroups controls how many groups may be rebuilt in
+	// parallel inside a Rebuild RPC. 0 and 1 both mean serial; >= 2
+	// enables the worker pool introduced in #1276.
+	maxConcurrentGroups int
+
+	// groupRebuildMu prevents a concurrent double-rebuild of the same
+	// group. Keyed by group name.
+	groupRebuildMu   sync.Map // map[string]*sync.Mutex
+
 	// Phase B — populated only when the daemon is run with a watcher
 	// + scheduler attached. Both may be nil in test wiring that
 	// exercises just the RPC surface.
@@ -134,16 +143,22 @@ type Service struct {
 // service itself never re-closes it (a stopped atomic guards the close).
 // logger may be nil; it is forwarded to the MCP dispatcher for debug-level
 // per-call logging (tool=name elapsed=X repo=Y).
-func newService(idx IndexFunc, rb RebuildFunc, qa QualityAuditFunc, socketPath string, stopReq chan<- struct{}, logger *log.Logger) *Service {
+// maxConcurrentGroups controls how many groups may be rebuilt in parallel
+// (0 or 1 → serial; ≥2 → worker pool). Added in #1276.
+func newService(idx IndexFunc, rb RebuildFunc, qa QualityAuditFunc, socketPath string, stopReq chan<- struct{}, logger *log.Logger, maxConcurrentGroups int) *Service {
+	if maxConcurrentGroups < 1 {
+		maxConcurrentGroups = 1
+	}
 	return &Service{
-		startedAt:    time.Now(),
-		socketPath:   socketPath,
-		index:        idx,
-		rebuild:      rb,
-		qualityAudit: qa,
-		stopReq:      stopReq,
-		progress:     make(map[string]*rebuildSession),
-		logger:       logger,
+		startedAt:           time.Now(),
+		socketPath:          socketPath,
+		index:               idx,
+		rebuild:             rb,
+		qualityAudit:        qa,
+		stopReq:             stopReq,
+		progress:            make(map[string]*rebuildSession),
+		logger:              logger,
+		maxConcurrentGroups: maxConcurrentGroups,
 	}
 }
 
