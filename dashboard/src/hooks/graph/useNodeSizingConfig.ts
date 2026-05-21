@@ -22,7 +22,12 @@ import { useState, useCallback } from 'react'
 
 export const TIER_COUNT = 6
 
-export const DEFAULT_BASE_SIZE = 10
+// Base size for the lowest-degree tier (~the bottom 50% of nodes, which is the
+// vast majority at 19k+). Kept small (6px) so the low-degree population doesn't
+// overplot into a saturated additive-white core in dense island centers — the
+// Silk Road look needs the cores to read as COLOR, not white. High-degree hubs
+// still stand out via the per-tier multipliers below (tier 5 = ×10 = 60px).
+export const DEFAULT_BASE_SIZE = 6
 
 export const DEFAULT_MULTIPLIERS: readonly number[] = [1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
 

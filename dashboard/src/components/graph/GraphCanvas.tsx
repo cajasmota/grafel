@@ -69,7 +69,7 @@ function buildRepoCenters(
   const repos = Array.from(new Set(nodes.map((n) => n.repo ?? ''))).sort()
   const N = repos.length
   if (N === 0) return new Map()
-  const R = Math.max(1500, Math.sqrt(nodes.length) * 30)
+  const R = Math.max(3000, Math.sqrt(nodes.length) * 50)
   return new Map(
     repos.map((repo, i) => {
       const angle = (i / N) * 2 * Math.PI
@@ -117,10 +117,17 @@ function parseColor(c: string): RGBA {
 // Brighter / more saturated stops than the literal Tailwind ramp: cosmos.gl
 // blends points additively, so a dark indigo low end disappears into the
 // background. These lifted cool→warm stops keep the gradient legible.
+// Silk Road degree ramp: deep-violet (low degree) → purple → pink → yellow
+// (high degree). The COOL end is kept dark/saturated on purpose: ~95% of nodes
+// are low-degree and pile up in island cores, and cosmos.gl blends additively.
+// A dark deep-violet floor accumulates toward purple rather than clipping to
+// white, so dense low-degree cores read as COLOR. The warm hubs still pop
+// because the percentile/gamma ramp pushes the rare high-degree nodes to the
+// pink/yellow stops.
 const SILK_STOPS: RGBA[] = [
-  [99, 102, 241, 1],  // indigo-500  (low degree, cool but visible)
-  [168, 85, 247, 1],  // purple-500
-  [236, 72, 153, 1],  // pink-500
+  [49, 46, 129, 1],   // indigo-900  (low degree — dark, additive-safe floor)
+  [124, 58, 237, 1],  // violet-600
+  [219, 39, 119, 1],  // pink-600
   [250, 204, 21, 1],  // yellow-400  (high degree, warm)
 ]
 
@@ -264,12 +271,6 @@ const GraphCanvasInner = ({
 
   const repoCenters = useMemo(() => buildRepoCenters(nodes), [nodes])
 
-  const maxDegree = useMemo(() => {
-    let m = 0
-    for (const n of nodes) if ((n.degree ?? 0) > m) m = n.degree ?? 0
-    return m || 1
-  }, [nodes])
-
   // Per-node packed buffers (positions seed, sizes, clusters, strengths).
   const packed = useMemo(() => {
     const count = nodes.length
@@ -293,8 +294,12 @@ const GraphCanvasInner = ({
     nodes.forEach((n, i) => {
       const repoIdx = repoToIdx.get(n.repo ?? '') ?? 0
       clusters[i] = clusterIdFor(n, repoIdx)
+      // Per-node pull toward the cluster center. Kept LOW so islands form but
+      // don't collapse their cores into a single overplotted (additive-white)
+      // point — high-pagerank hubs anchor a little harder so they sit nearer
+      // the island core, while the bulk stays loosely spread for legible color.
       const normalizedPR = (n.pagerank ?? 0) / maxPR
-      clusterStrength[i] = 0.10 + normalizedPR * 0.08
+      clusterStrength[i] = 0.04 + normalizedPR * 0.06
 
       sizes[i] = n.kind === 'Process'
         ? 4 + Math.min((n.degree ?? 0) * 0.005, 6)
@@ -324,11 +329,22 @@ const GraphCanvasInner = ({
   const packPointColors = useCallback((): Float32Array => {
     const count = nodes.length
     const out = new Float32Array(count * 4)
+    // Degree distributions are heavily long-tailed: a handful of hubs hold most
+    // of the connections while the vast majority of nodes are degree 0–2. A
+    // LINEAR degree/maxDegree ramp therefore leaves ~95% of the graph stuck at
+    // the cool (indigo) end and the gradient never reads. Map degree through
+    // its PERCENTILE rank instead so the purple→pink→yellow ramp spreads across
+    // the actual population (this is what makes the Silk Road look pop).
+    const pctFn = colorMode === 'degree' ? buildDegreePercentileFn(sortedDegrees) : null
     for (let i = 0; i < count; i++) {
       const n = nodes[i]
       let rgba: RGBA
       if (colorMode === 'degree') {
-        rgba = silkRoadColor((n.degree ?? 0) / maxDegree)
+        // percentile in [0,100] → t in [0,1]; gamma <1 lifts mid/high so hubs
+        // reach the warm end while the bulk still shows graded cool→violet.
+        const pct = pctFn!(n.degree ?? 0) / 100
+        const t = Math.pow(pct, 0.7)
+        rgba = silkRoadColor(t)
       } else if (colorMode === 'community') {
         rgba = parseColor(communityColor(n.community_id ?? 0))
       } else {
@@ -342,7 +358,7 @@ const GraphCanvasInner = ({
       out[i * 4 + 3] = rgba[3]
     }
     return out
-  }, [nodes, colorMode, maxDegree])
+  }, [nodes, colorMode, sortedDegrees])
 
   // ---------------------------------------------------------------------------
   // Links — packed [src, tgt, ...] + per-link RGBA colors + widths
@@ -550,43 +566,74 @@ const GraphCanvasInner = ({
 
     const graph = new Graph(container, {
       backgroundColor: bg,
-      // Max space so the galaxy can expand instead of collapsing to a disc.
-      spaceSize: 8192,
+      // Max space so the galaxy can expand into distinct islands instead of
+      // collapsing to one dense disc. Larger = more room between communities.
+      spaceSize: 16384,
       pixelRatio: Math.min(window.devicePixelRatio, 1.5),
       scalePointsOnZoom: false,
+      // Shrink every point's on-screen footprint. At the full-fit zoom level
+      // 19k nodes pack hundreds of points per pixel in dense island cores; even
+      // at low opacity that many additive overlaps clip to white and hide both
+      // the degree gradient AND the per-community island colors. A sub-1 size
+      // scale cuts the per-pixel overlap count so cores read as COLOR at fit
+      // zoom, while scalePointsOnZoom:false keeps detail legible when zoomed in.
+      pointSizeScale: 0.5,
       // cosmos.gl blends points additively — at 19k+ node density, opaque
-      // points saturate the dense core to white and wash out the gradient.
-      // A sub-1 point opacity makes overlaps blend instead of clip, so the
-      // Silk Road degree gradient stays legible (bright hubs, cool periphery).
-      pointOpacity: 0.45,
-      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.15,
-      linkGreyoutOpacity: repoFilterActive ? 0 : 0.1,
-      linkWidthScale: 0.31752,
+      // points saturate the dense core to pure WHITE and wash out the gradient
+      // (the Phase-1 "glowing white blob"). Additive RGB clips to white once
+      // ~4-5 points overlap, so opacity alone isn't enough when island cores
+      // are tightly packed — we ALSO loosen the cluster force below so each
+      // island spreads internally and local point density drops. At 0.22 even
+      // a handful of overlaps stay below saturation, so dense cores show their
+      // COLOR (the Silk Road degree gradient) instead of clipping to white.
+      pointOpacity: 0.15,
+      pointGreyoutOpacity: (repoFilterActive || !!nodeFilterIndices) ? 0 : 0.12,
+      // Links also blend additively; at this density they were a major source
+      // of the white wash. Keep them extremely faint so node color dominates.
+      linkGreyoutOpacity: repoFilterActive ? 0 : 0.05,
+      linkWidthScale: 0.16,
       renderHoveredPointRing: true,
       hoveredPointRingColor: isDark ? '#e2e8f0' : '#1e293b',
       pointSamplingDistance: 120,
 
-      // Simulation — Silk Road defaults (#1153), tunable via sidebar (#1361)
+      // Simulation — Silk Road island params (#1153 / Phase 2). The goal is
+      // run.cosmograph.app's look: many DISTINCT separated island clusters on a
+      // dark field, not one fused blob. Lever summary:
+      //   - near-zero gravity + zero center pull → no global collapse
+      //   - strong cluster force → each repo/community contracts into an island
+      //   - strong repulsion → islands push APART from each other
+      //   - longer link distance → edges don't yank everything into one mass
+      //   - slow decay → enough sim time for islands to separate before cooling
       enableSimulation: true,
       simulationLinkSpring: simCfg.linkSpring,
-      simulationLinkDistance: simCfg.linkDistance,
-      // Lower gravity than the Cosmograph preset so the galaxy stays expanded
-      // (cosmos.gl gravity collapses faster than the old product layer).
-      simulationGravity: 0.05,
+      // Longer link rest length so connected nodes don't collapse into a single
+      // overplotted core; gives islands breathing room.
+      simulationLinkDistance: Math.max(simCfg.linkDistance, 8),
+      // Near-zero gravity: cosmos.gl gravity collapses far faster than the old
+      // Cosmograph product layer, so any meaningful value fuses the islands.
+      simulationGravity: 0.02,
       simulationFriction: simCfg.friction,
-      // Slower decay so repulsion has time to separate the dense seed before
-      // the simulation cools (avoids the overplotted-disc failure mode).
-      simulationDecay: 4000,
-      simulationCluster: 0.22,
-      // Strong repulsion expands the galaxy so the dense core spreads out and
-      // the degree gradient becomes visible instead of collapsing to a disc.
-      simulationRepulsion: 2.0,
+      // Slower decay so repulsion + cluster forces have time to pull the
+      // communities into separated islands before the simulation cools.
+      simulationDecay: 6000,
+      // Moderate cluster force pulls each repo/community toward its own island
+      // center — strong enough to form distinct islands, but NOT so strong it
+      // collapses every island into a single overplotted dot (which re-creates
+      // the white-core washout locally even at low opacity). We rely on the
+      // higher repulsion below to give each island internal breathing room.
+      simulationCluster: 0.28,
+      // High repulsion does double duty: it (a) pushes the separate islands
+      // APART from each other and (b) spreads nodes WITHIN each island so the
+      // core isn't a single saturated point — local density drops and the
+      // purple→pink→yellow degree gradient becomes legible across the island.
+      simulationRepulsion: 4.0,
+      // No center pull — center gravity re-fuses islands into a single mass.
       simulationCenter: 0.0,
 
       // Use our wide pre-seeded positions directly (no rescale-to-fit collapse).
       rescalePositions: false,
       fitViewOnInit: true,
-      fitViewDelay: 2500,
+      fitViewDelay: 3500,
 
       onSimulationEnd: () => {
         if (!hasSettledRef.current) doSettleRef.current()
@@ -643,10 +690,11 @@ const GraphCanvasInner = ({
     }
     setGraphRef(shim as unknown as Parameters<typeof setGraphRef>[0])
 
-    // Hard-stop in case onSimulationEnd never fires (#1153)
+    // Hard-stop in case onSimulationEnd never fires (#1153). Raised to 16s to
+    // give the slower decay time to settle into separated islands first.
     hardStopTimerRef.current = setTimeout(() => {
       if (!hasSettledRef.current) doSettleRef.current()
-    }, 12000)
+    }, 16000)
 
     return () => {
       if (hardStopTimerRef.current) clearTimeout(hardStopTimerRef.current)
