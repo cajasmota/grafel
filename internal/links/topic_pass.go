@@ -90,6 +90,23 @@ func brokerFromTopicName(name string) string {
 	return "message"
 }
 
+// minString returns the lexicographically smallest string in ids, or "" when
+// ids is empty. Used to pick a single deterministic representative entity per
+// side so the topic pass emits one cross-repo edge per repo pair instead of
+// the full publisher×subscriber product (#1453).
+func minString(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	m := ids[0]
+	for _, s := range ids[1:] {
+		if s < m {
+			m = s
+		}
+	}
+	return m
+}
+
 // runTopicPass implements P7: cross-repo message-topic publisher↔subscriber
 // linker.
 func runTopicPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (PassResult, error) {
@@ -198,53 +215,56 @@ func runTopicPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 		broker := brokerFromTopicName(name)
 
 		for _, pub := range publishers {
-			// Sort publisher IDs for deterministic selection.
-			sortedPubIDs := make([]string, len(pub.publisherIDs))
-			copy(sortedPubIDs, pub.publisherIDs)
-			sort.Strings(sortedPubIDs)
+			// Choose a single, deterministic representative publisher entity
+			// for this repo. Emitting the FULL (publisher × subscriber) entity
+			// product per repo pair is a combinatorial blow-up: a topic touched
+			// by R repos with k publish/subscribe ops each produces O(R²·k²)
+			// links, which on a grown multi-repo graph (e.g. shipfast's hot
+			// topics) explodes into millions of links and stalls the link pass
+			// during group-load (#1453). The meaningful cross-repo signal is a
+			// single publisher-repo → subscriber-repo edge, so we pick one
+			// representative entity per side — mirroring the HTTP pass, which
+			// likewise uses the first handler/caller per endpoint (#1453).
+			srcID := minString(pub.publisherIDs)
+			if srcID == "" {
+				continue
+			}
 
 			for _, sub := range subscribers {
 				if pub.repo == sub.repo {
 					continue // never emit a self-pair as a cross-repo edge
 				}
 
-				// Sort subscriber IDs for deterministic selection.
-				sortedSubIDs := make([]string, len(sub.subscriberIDs))
-				copy(sortedSubIDs, sub.subscriberIDs)
-				sort.Strings(sortedSubIDs)
-
-				// Emit one link per (publisher entity, subscriber entity) pair
-				// so that when multiple functions publish/subscribe to the same
-				// topic in one repo, each gets its own cross-repo edge.
-				for _, srcID := range sortedPubIDs {
-					for _, tgtID := range sortedSubIDs {
-						source := entityKey(pub.repo, srcID)
-						target := entityKey(sub.repo, tgtID)
-						id := MakeID(source, target, MethodTopic)
-						if emitted[id] {
-							continue
-						}
-						emitted[id] = true
-
-						ident := name
-						ch := broker
-						fresh = append(fresh, Link{
-							ID:           id,
-							Source:       source,
-							Target:       target,
-							Relation:     RelationPublishesTo,
-							Method:       MethodTopic,
-							Confidence:   ScoreImport(),
-							Channel:      &ch,
-							Identifier:   &ident,
-							DiscoveredAt: now,
-							SourceLocations: [][]string{
-								{pub.sourceFile},
-								{sub.sourceFile},
-							},
-						})
-					}
+				tgtID := minString(sub.subscriberIDs)
+				if tgtID == "" {
+					continue
 				}
+
+				source := entityKey(pub.repo, srcID)
+				target := entityKey(sub.repo, tgtID)
+				id := MakeID(source, target, MethodTopic)
+				if emitted[id] {
+					continue
+				}
+				emitted[id] = true
+
+				ident := name
+				ch := broker
+				fresh = append(fresh, Link{
+					ID:           id,
+					Source:       source,
+					Target:       target,
+					Relation:     RelationPublishesTo,
+					Method:       MethodTopic,
+					Confidence:   ScoreImport(),
+					Channel:      &ch,
+					Identifier:   &ident,
+					DiscoveredAt: now,
+					SourceLocations: [][]string{
+						{pub.sourceFile},
+						{sub.sourceFile},
+					},
+				})
 			}
 		}
 	}
