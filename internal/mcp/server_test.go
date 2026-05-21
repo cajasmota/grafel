@@ -547,7 +547,7 @@ func TestToolNameSurface(t *testing.T) {
 	for _, st := range srv.MCP.ListTools() {
 		registered[st.Tool.Name] = true
 	}
-	// 16 tools: 9 renamed/bundled + 5 unchanged + 1 new (archigraph_patterns) + 1 new (#1134).
+	// 31 tools: 18 original + 13 new (#1202).
 	wantPresent := []string{
 		// renamed (5)
 		"archigraph_find", "archigraph_inspect", "archigraph_expand",
@@ -564,6 +564,24 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_traces",
 		// #1134 per-entity task view
 		"archigraph_get_next_enrichment_task",
+		// #1202 topology v2
+		"archigraph_topology_orphan_publishers",
+		"archigraph_topology_orphan_subscribers",
+		"archigraph_topology_topic_detail",
+		// #1202 flows v2
+		"archigraph_flow_dead_ends",
+		"archigraph_flow_truncated",
+		"archigraph_flow_detail",
+		// #1202 diagnostics + quality
+		"archigraph_diagnostics",
+		"archigraph_quality_orphans",
+		// #1202 graph-indexed patterns
+		"archigraph_patterns_list",
+		"archigraph_patterns_get",
+		// #1202 bonus traversal
+		"archigraph_search_entities",
+		"archigraph_get_subgraph",
+		"archigraph_find_paths",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -591,12 +609,11 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count must be exactly 18 (17 pre-#1134 + archigraph_get_next_enrichment_task).
-	// Bundles: enrichments (3→1, saves 2), cross_links (2→1, saves 1),
-	// repairs (2→1, saves 1). Plus archigraph_patterns (ADR-0018 β),
-	// archigraph_traces (#724), and archigraph_get_next_enrichment_task (#1134).
-	if got := len(srv.MCP.ListTools()); got != 18 {
-		t.Errorf("expected 18 registered tools, got %d", got)
+	// Total count must be exactly 31 (18 pre-#1202 + 13 new from #1202).
+	// New tools: topology×3, flows×3, diagnostics, quality_orphans,
+	// patterns_list, patterns_get, search_entities, get_subgraph, find_paths.
+	if got := len(srv.MCP.ListTools()); got != 31 {
+		t.Errorf("expected 31 registered tools, got %d", got)
 	}
 }
 

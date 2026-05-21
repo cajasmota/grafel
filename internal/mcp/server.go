@@ -107,8 +107,9 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 14 (9 renamed/bundled + 5 unchanged: whoami, save_finding,
-// list_findings, get_source, recent_activity, get_telemetry).
+// Tool count: 27 (14 original + 13 new: topology×3, flows×3, diagnostics,
+// quality_orphans, patterns_list, patterns_get, search_entities, get_subgraph,
+// find_paths). Issue #1202.
 func (s *Server) registerTools() {
 	// -----------------------------------------------------------------------
 	// Unchanged tools (5)
@@ -341,6 +342,128 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group"),
 		mcpapi.WithString("cwd"),
 	), s.wrap("archigraph_patterns", s.handlePatterns))
+
+	// -----------------------------------------------------------------------
+	// Topology v2 tools (#1202)
+	// -----------------------------------------------------------------------
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology_orphan_publishers",
+		mcpapi.WithDescription("List topics that are published to but never consumed — potential data leaks or dead producers."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_topology_orphan_publishers", s.handleTopologyOrphanPublishers))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology_orphan_subscribers",
+		mcpapi.WithDescription("List topics that are consumed but never published to — potential missing producers or dead consumers."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_topology_orphan_subscribers", s.handleTopologyOrphanSubscribers))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology_topic_detail",
+		mcpapi.WithDescription("Return publishers and subscribers for one topic — full connectivity picture for a single message channel."),
+		mcpapi.WithString("topic_id", mcpapi.Required(), mcpapi.Description("Topic entity ID (bare or repo-prefixed).")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_topology_topic_detail", s.handleTopologyTopicDetail))
+
+	// -----------------------------------------------------------------------
+	// Flows v2 tools (#1202)
+	// -----------------------------------------------------------------------
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_flow_dead_ends",
+		mcpapi.WithDescription("List flows whose terminal step has no outbound CALLS edges — signals incomplete traces or missing implementations."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_flow_dead_ends", s.handleFlowDeadEnds))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_flow_truncated",
+		mcpapi.WithDescription("List flows cut short during extraction — use to identify flows that need manual tracing or deeper indexing."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_flow_truncated", s.handleFlowTruncated))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_flow_detail",
+		mcpapi.WithDescription("Return full step chain and side effects for one flow process — use when archigraph_traces action=get is not enough detail."),
+		mcpapi.WithString("process_id", mcpapi.Required(), mcpapi.Description("Process entity ID (bare or repo-prefixed).")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_flow_detail", s.handleFlowDetail))
+
+	// -----------------------------------------------------------------------
+	// Diagnostics + Quality (#1202)
+	// -----------------------------------------------------------------------
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_diagnostics",
+		mcpapi.WithDescription("Return per-repo load health, entity counts, and cross-link stats — use to verify the daemon has loaded all repos correctly."),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_diagnostics", s.handleDiagnostics))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_quality_orphans",
+		mcpapi.WithDescription("List entities with no graph edges (fully isolated nodes) — dead code candidates or extraction gaps."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithString("kind_filter", mcpapi.Description("Optional entity kind to restrict results (e.g. 'Function').")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200), mcpapi.Description("Max orphans returned.")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_quality_orphans", s.handleQualityOrphans))
+
+	// -----------------------------------------------------------------------
+	// Indexed patterns (graph-side, distinct from agentpatterns store) (#1202)
+	// -----------------------------------------------------------------------
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_patterns_list",
+		mcpapi.WithDescription("List SCOPE.Pattern entities extracted by the indexer — use to browse structural patterns found in the codebase."),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithBoolean("needs_attention", mcpapi.DefaultBool(false), mcpapi.Description("When true, return only patterns flagged needs_attention=true.")),
+		mcpapi.WithString("status", mcpapi.Description("Optional status filter (e.g. 'active', 'deprecated').")),
+		mcpapi.WithNumber("confidence_min", mcpapi.DefaultNumber(0), mcpapi.Description("Only return patterns with confidence >= this value.")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_patterns_list", s.handlePatternsListGraph))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_patterns_get",
+		mcpapi.WithDescription("Return full details for one indexed pattern including exemplar entities — use after archigraph_patterns_list to inspect a specific pattern."),
+		mcpapi.WithString("pattern_id", mcpapi.Required(), mcpapi.Description("Pattern entity ID (bare or repo-prefixed).")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_patterns_get", s.handlePatternsGetGraph))
+
+	// -----------------------------------------------------------------------
+	// Bonus graph traversal tools (#1202)
+	// -----------------------------------------------------------------------
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_search_entities",
+		mcpapi.WithDescription("Full-text substring search across entity names and qualified names — returns ranked matches with source locations."),
+		mcpapi.WithString("query", mcpapi.Required(), mcpapi.Description("Substring to search for in entity names.")),
+		mcpapi.WithString("kind_filter", mcpapi.Description("Optional entity kind to restrict (e.g. 'Function', 'Class').")),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(30), mcpapi.Description("Max results returned.")),
+		mcpapi.WithArray("repo_filter", mcpapi.WithStringItems()),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_search_entities", s.handleSearchEntities))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_subgraph",
+		mcpapi.WithDescription("Return all nodes and edges within N hops of an entity — a focused neighbourhood extract for impact analysis."),
+		mcpapi.WithString("entity_id", mcpapi.Required(), mcpapi.Description("Root entity ID (bare or repo-prefixed).")),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2), mcpapi.Description("Hop depth (1–5).")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_get_subgraph", s.handleGetSubgraph))
+
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_paths",
+		mcpapi.WithDescription("Find the shortest path between two entities — returns ordered step chain with confidence score."),
+		mcpapi.WithString("from", mcpapi.Required(), mcpapi.Description("Source entity ID (bare or repo-prefixed).")),
+		mcpapi.WithString("to", mcpapi.Required(), mcpapi.Description("Target entity ID (bare or repo-prefixed).")),
+		mcpapi.WithNumber("max_hops", mcpapi.DefaultNumber(5), mcpapi.Description("Max path length (1–8).")),
+		mcpapi.WithString("group"),
+		mcpapi.WithString("cwd"),
+	), s.wrap("archigraph_find_paths", s.handleFindPaths))
 }
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard.
