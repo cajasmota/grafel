@@ -314,6 +314,16 @@ export interface GraphCanvasProps {
    * (intersected with the repo filter and LoD band). null = no filter active.
    */
   nodeFilterIndices?: number[] | null
+  /**
+   * #1366: Minimap — called on every zoom/pan with the current d3 transform
+   * so the minimap can draw the viewport indicator.
+   */
+  onZoomTransform?: (transform: { k: number; x: number; y: number }) => void
+  /**
+   * #1366: Minimap — called after simulation settles (or on demand)
+   * to pass the flat [x0,y0,x1,y1,...] node positions to the minimap.
+   */
+  onNodePositions?: (positions: Float32Array | number[]) => void
 }
 
 /** Truncate long labels at ~30 chars for layout legibility */
@@ -363,6 +373,8 @@ const GraphCanvasInner = ({
   highlightedEdgeIds,
   simulationConfig,
   nodeFilterIndices,
+  onZoomTransform,
+  onNodePositions,
 }: GraphCanvasProps) => {
   // #1361: merge tunable params with Silk Road defaults so omitted props fall back correctly
   const simCfg: SimulationConfig = useMemo(
@@ -647,6 +659,10 @@ const GraphCanvasInner = ({
   const hasSettledRef = useRef(false)
   hasSettledRef.current = hasSettled
 
+  // #1366: ref wrapper so doSettle can always call the latest onNodePositions
+  const onNodePositionsRef = useRef(onNodePositions)
+  onNodePositionsRef.current = onNodePositions
+
   const doSettle = useCallback(() => {
     if (hardStopTimerRef.current) {
       clearTimeout(hardStopTimerRef.current)
@@ -655,6 +671,17 @@ const GraphCanvasInner = ({
     cosmographRef.current?.pause()
     setHasSettled(true)
     onSimulationRunningChange?.(false)
+
+    // #1366: emit node positions for the minimap once layout settles
+    // Use a small delay so positions are fully committed
+    if (onNodePositionsRef.current) {
+      setTimeout(() => {
+        const positions = cosmographRef.current?.getPointPositions?.()
+        if (positions && positions.length > 0) {
+          onNodePositionsRef.current?.(positions)
+        }
+      }, 500)
+    }
 
     // Kick off hub pulse in repo/community modes — skip in degree mode
     // (the Silk Road gradient already provides the "alive" look)
@@ -806,14 +833,19 @@ const GraphCanvasInner = ({
 
   const handleZoom = useCallback((e: unknown) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const k: number = (e as any)?.transform?.k ?? 1
+    const t = (e as any)?.transform
+    const k: number = t?.k ?? 1
+    const x: number = t?.x ?? 0
+    const y: number = t?.y ?? 0
     setZoomLevel(k)
     onZoomChange?.(k)
+    // #1366: propagate full transform to minimap
+    onZoomTransform?.({ k, x, y })
     if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current)
     zoomDebounceRef.current = setTimeout(() => {
       setCurrentZoom(k)
     }, 80)
-  }, [setZoomLevel, onZoomChange])
+  }, [setZoomLevel, onZoomChange, onZoomTransform])
 
   // ---------------------------------------------------------------------------
   // Theme + label styles
