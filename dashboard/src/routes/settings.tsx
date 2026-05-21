@@ -7,14 +7,16 @@ import {
   mcpConfigBlock,
   type AppSettings,
   type SettingsReply,
+  type ThemePreset,
 } from '@/api/settings'
 import { fetchInfo } from '@/api/client'
 import {
   Settings, Sun, Moon, Monitor, RefreshCw, BarChart2,
   Zap, FileText, Copy, Check, AlertTriangle, RotateCcw,
-  Save, ChevronDown, ChevronRight,
+  Save, ChevronDown, ChevronRight, Palette,
 } from 'lucide-react'
 import { useThemeContext } from '@/context/ThemeContext'
+import { ThemePaletteEditor } from '@/components/settings/ThemePaletteEditor'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // helpers
@@ -261,9 +263,36 @@ function MCPSection({ port }: { port: number }) {
 const QUERY_KEY = ['settings'] as const
 const DEBOUNCE_MS = 800
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Preset descriptors
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PRESET_OPTIONS: Array<{ value: ThemePreset; label: string; description: string }> = [
+  { value: 'default',           label: 'Default',          description: 'Standard slate palette (light/dark)' },
+  { value: 'solarized-dark',    label: 'Solarized Dark',   description: 'Low-contrast retro warmth' },
+  { value: 'nord',              label: 'Nord',             description: 'Polar night arctic cool' },
+  { value: 'catppuccin-mocha',  label: 'Catppuccin Mocha', description: 'Pastel soft dark' },
+  { value: 'high-contrast',     label: 'High Contrast',    description: 'Maximum accessibility contrast' },
+  { value: 'custom',            label: 'Custom',           description: 'Define your own colours' },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main SettingsRoute
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function SettingsRoute() {
   const qc = useQueryClient()
-  const { theme: ctxTheme, toggle } = useThemeContext()
+  const {
+    theme: ctxTheme,
+    toggle,
+    preset,
+    palette,
+    setPreset,
+    setPalette,
+    exportPaletteJSON,
+    importPaletteJSON,
+    resetPalette,
+  } = useThemeContext()
 
   const { data, isLoading, error } = useQuery<SettingsReply>({
     queryKey: QUERY_KEY,
@@ -463,7 +492,58 @@ export function SettingsRoute() {
           </Row>
         </Section>
 
-        {/* 2. Updates */}
+        {/* 2. Themes */}
+        <Section
+          title="Themes & Colours"
+          icon={<Palette className="w-4 h-4" />}
+          defaultOpen={false}
+        >
+          <div data-testid="themes-section">
+            {/* Preset grid */}
+            <div className="space-y-2 mb-5">
+              <Label note="Pick a built-in colour preset or create your own.">Colour preset</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2" data-testid="preset-grid">
+                {PRESET_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setPreset(opt.value)}
+                    data-testid={`preset-btn-${opt.value}`}
+                    className={cls(
+                      'flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-lg border text-left transition-colors',
+                      preset === opt.value
+                        ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800',
+                    )}
+                  >
+                    <span className="text-sm font-medium">{opt.label}</span>
+                    <span className="text-xs opacity-70">{opt.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom palette editor — only shown when custom preset is active */}
+            {preset === 'custom' && (
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                <Label note="Adjust individual colours. Changes apply instantly.">
+                  Custom palette
+                </Label>
+                <div className="mt-3">
+                  <ThemePaletteEditor
+                    palette={palette}
+                    onChangePalette={setPalette}
+                    onExport={exportPaletteJSON}
+                    onImport={importPaletteJSON}
+                    onReset={resetPalette}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* 3. Updates */}
         <Section title="Updates" icon={<RefreshCw className="w-4 h-4" />}>
           <Row>
             <Label note="Check for a new daemon version on each launch.">Auto-check for updates</Label>

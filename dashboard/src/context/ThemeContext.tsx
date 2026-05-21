@@ -1,4 +1,6 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react'
+import { useThemePreset } from '@/hooks/useThemePreset'
+import type { UseThemePresetReturn } from '@/hooks/useThemePreset'
 
 type Theme = 'dark' | 'light'
 
@@ -6,6 +8,14 @@ interface ThemeContextType {
   theme: Theme
   isDark: boolean
   toggle: () => void
+  // Preset & custom palette support
+  preset: UseThemePresetReturn['preset']
+  palette: UseThemePresetReturn['palette']
+  setPreset: UseThemePresetReturn['setPreset']
+  setPalette: UseThemePresetReturn['setPalette']
+  exportPaletteJSON: UseThemePresetReturn['exportPaletteJSON']
+  importPaletteJSON: UseThemePresetReturn['importPaletteJSON']
+  resetPalette: UseThemePresetReturn['resetPalette']
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
@@ -32,11 +42,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     const initial = getInitialTheme()
     // Apply synchronously so first paint matches the stored/system preference.
-    // main.tsx already does this before React boots, but ThemeProvider guards
-    // against the edge-case where main.tsx runs before localStorage is ready.
     applyTheme(initial)
     return initial
   })
+
+  const presetHook = useThemePreset()
 
   useEffect(() => {
     applyTheme(theme)
@@ -47,7 +57,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <ThemeContext.Provider value={{ theme, toggle, isDark: theme === 'dark' }}>
+    <ThemeContext.Provider
+      value={{
+        theme,
+        toggle,
+        isDark: theme === 'dark',
+        preset: presetHook.preset,
+        palette: presetHook.palette,
+        setPreset: presetHook.setPreset,
+        setPalette: presetHook.setPalette,
+        exportPaletteJSON: presetHook.exportPaletteJSON,
+        importPaletteJSON: presetHook.importPaletteJSON,
+        resetPalette: presetHook.resetPalette,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   )

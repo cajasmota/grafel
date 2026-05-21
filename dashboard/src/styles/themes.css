@@ -1,0 +1,96 @@
+/*
+ * Theme CSS custom properties — archigraph custom palette support (#1267)
+ *
+ * Each theme is a class on <html>. The default theme uses Tailwind's slate
+ * scale via @apply; presets override a set of CSS variables consumed by the
+ * theme-aware utility classes below.
+ *
+ * Variables:
+ *   --ag-bg         main page background
+ *   --ag-bg-card    card / panel background
+ *   --ag-bg-input   input / select background
+ *   --ag-fg         primary foreground text
+ *   --ag-fg-muted   secondary / muted text
+ *   --ag-border     default border colour
+ *   --ag-accent     accent / interactive colour (buttons, links, rings)
+ *   --ag-accent-fg  foreground on accent backgrounds
+ */
+
+/* ── Default (inherits Tailwind slate) ──────────────────────────────────── */
+/* No overrides — Tailwind dark: classes handle light/dark. */
+
+/* ── Solarized Dark ──────────────────────────────────────────────────────── */
+html.theme-solarized-dark {
+  --ag-bg:        #002b36;
+  --ag-bg-card:   #073642;
+  --ag-bg-input:  #073642;
+  --ag-fg:        #839496;
+  --ag-fg-muted:  #586e75;
+  --ag-border:    #073642;
+  --ag-accent:    #268bd2;
+  --ag-accent-fg: #fdf6e3;
+
+  color-scheme: dark;
+}
+
+/* ── Nord ────────────────────────────────────────────────────────────────── */
+html.theme-nord {
+  --ag-bg:        #2e3440;
+  --ag-bg-card:   #3b4252;
+  --ag-bg-input:  #3b4252;
+  --ag-fg:        #d8dee9;
+  --ag-fg-muted:  #4c566a;
+  --ag-border:    #4c566a;
+  --ag-accent:    #88c0d0;
+  --ag-accent-fg: #2e3440;
+
+  color-scheme: dark;
+}
+
+/* ── Catppuccin Mocha ────────────────────────────────────────────────────── */
+html.theme-catppuccin-mocha {
+  --ag-bg:        #1e1e2e;
+  --ag-bg-card:   #313244;
+  --ag-bg-input:  #313244;
+  --ag-fg:        #cdd6f4;
+  --ag-fg-muted:  #6c7086;
+  --ag-border:    #45475a;
+  --ag-accent:    #89b4fa;
+  --ag-accent-fg: #1e1e2e;
+
+  color-scheme: dark;
+}
+
+/* ── High Contrast ───────────────────────────────────────────────────────── */
+html.theme-high-contrast {
+  --ag-bg:        #000000;
+  --ag-bg-card:   #111111;
+  --ag-bg-input:  #111111;
+  --ag-fg:        #ffffff;
+  --ag-fg-muted:  #aaaaaa;
+  --ag-border:    #555555;
+  --ag-accent:    #ffff00;
+  --ag-accent-fg: #000000;
+
+  color-scheme: dark;
+}
+
+/* ── Custom palette (injected via JS as inline CSS vars on <html>) ───────── */
+/* When html.theme-custom is set, inline style vars take over. */
+
+/* ── Themed body override (only when a preset class is active) ───────────── */
+html[class*="theme-"] body {
+  background-color: var(--ag-bg) !important;
+  color: var(--ag-fg) !important;
+}
+
+/* ── Utility classes consumed by components ──────────────────────────────── */
+@layer utilities {
+  .ag-bg         { background-color: var(--ag-bg, inherit); }
+  .ag-bg-card    { background-color: var(--ag-bg-card, inherit); }
+  .ag-fg         { color: var(--ag-fg, inherit); }
+  .ag-fg-muted   { color: var(--ag-fg-muted, inherit); }
+  .ag-border     { border-color: var(--ag-border, inherit); }
+  .ag-accent     { background-color: var(--ag-accent, inherit); }
+  .ag-accent-text { color: var(--ag-accent, inherit); }
+}

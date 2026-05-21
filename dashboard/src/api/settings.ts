@@ -8,9 +8,43 @@
 
 // ── Wire types ────────────────────────────────────────────────────────────────
 
+/** Built-in colour preset names. 'default' means the standard Tailwind slate palette. */
+export type ThemePreset =
+  | 'default'
+  | 'solarized-dark'
+  | 'nord'
+  | 'catppuccin-mocha'
+  | 'high-contrast'
+  | 'custom'
+
+/** Per-component colour overrides used by the 'custom' preset. */
+export interface CustomPalette {
+  bg: string
+  bg_card: string
+  bg_input: string
+  fg: string
+  fg_muted: string
+  border: string
+  accent: string
+  accent_fg: string
+}
+
+export const DEFAULT_CUSTOM_PALETTE: CustomPalette = {
+  bg:       '#0f172a',
+  bg_card:  '#1e293b',
+  bg_input: '#1e293b',
+  fg:       '#e2e8f0',
+  fg_muted: '#64748b',
+  border:   '#334155',
+  accent:   '#0ea5e9',
+  accent_fg:'#ffffff',
+}
+
 export interface AppSettings {
   // General
   theme: 'light' | 'dark' | 'auto'
+  theme_preset: ThemePreset
+  theme_custom: CustomPalette
   default_group: string
 
   // Updates
