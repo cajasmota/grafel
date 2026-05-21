@@ -111,16 +111,13 @@ source_patterns:
     entity_type: Config
     name_group: 1
     scope: class
-  # Admin registration: admin.site.register(MyModel)
-  - pattern: "admin\\.site\\.register\\s*\\(\\s*(\\w+)"
-    entity_type: Controller
-    name_group: 1
-    scope: file
-  # Signal handler: @receiver(post_save, sender=...)
-  - pattern: "@receiver\\s*\\([^)]*sender\\s*=\\s*(\\w+)"
-    entity_type: Service
-    name_group: 1
-    scope: function
+  # Admin registrations and signal receivers are handled by the Go-side
+  # DjangoExtractor (internal/custom/python/django.go) which emits the
+  # correct handler/admin-class entities together with REGISTERS and
+  # HANDLES_SIGNAL edges to the existing model entity.  The YAML patterns
+  # that used to be here emitted phantom Controller:<ModelName> and
+  # Service:<ModelName> entities (capturing the sender/model name instead
+  # of the handler name) with no edges — removed by #1374.
 
 # relationship_rules: regex patterns that produce edges between entities.
 relationship_rules:

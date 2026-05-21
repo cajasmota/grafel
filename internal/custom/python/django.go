@@ -2,6 +2,7 @@ package python
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -116,18 +117,38 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 	}
 
 	// 3. Signal receivers
+	// The handler function is the entity; the sender model becomes the TARGET
+	// of a HANDLES_SIGNAL edge — not a new entity.  This avoids the
+	// Service:<ModelName> phantom orphans introduced by the old YAML pattern
+	// (issue #1374 item 3).
 	for _, idx := range allMatchesIndex(djangoReceiverRe, source) {
 		signalType := source[idx[2]:idx[3]]
 		handlerName := source[idx[6]:idx[7]]
 		line := lineOf(source, idx[0])
 		props := map[string]string{"framework": "django", "pattern_type": "signal", "signal_type": signalType}
+		var senderModel string
 		if idx[4] != -1 {
-			props["sender"] = source[idx[4]:idx[5]]
+			senderModel = source[idx[4]:idx[5]]
+			props["sender"] = senderModel
 		}
-		out = append(out, entity(handlerName, "SCOPE.Operation", "function", file.Path, line, props))
+		ent := entity(handlerName, "SCOPE.Operation", "function", file.Path, line, props)
+		// Emit HANDLES_SIGNAL → sender model so the handler is connected to
+		// the existing model entity instead of leaving it as an orphan.
+		if senderModel != "" {
+			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+				ToID:       djangoModelRef(senderModel),
+				Kind:       string(types.RelationshipKindHandlesSignal),
+				Properties: map[string]string{"signal_type": signalType, "framework": "django"},
+			})
+		}
+		out = append(out, ent)
 	}
 
 	// 4. Admin registrations
+	// Each registration emits an admin-class entity plus a REGISTERS edge to
+	// the existing model entity.  The old YAML pattern emitted a phantom
+	// Controller:<ModelName> entity with no edges; that has been removed
+	// (issue #1374 item 3).
 	for _, idx := range allMatchesIndex(djangoAdminRegRe, source) {
 		modelName := source[idx[2]:idx[3]]
 		adminClass := modelName + "Admin"
@@ -135,15 +156,27 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			adminClass = source[idx[4]:idx[5]]
 		}
 		line := lineOf(source, idx[0])
-		out = append(out, entity(adminClass, "SCOPE.Component", "admin_class", file.Path, line,
-			map[string]string{"framework": "django", "pattern_type": "admin_register", "model": modelName}))
+		ent := entity(adminClass, "SCOPE.Component", "admin_class", file.Path, line,
+			map[string]string{"framework": "django", "pattern_type": "admin_register", "model": modelName})
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID:       djangoModelRef(modelName),
+			Kind:       string(types.RelationshipKindRegisters),
+			Properties: map[string]string{"framework": "django", "model": modelName},
+		})
+		out = append(out, ent)
 	}
 	for _, idx := range allMatchesIndex(djangoAdminDecorRe, source) {
 		modelName := source[idx[2]:idx[3]]
 		adminClass := source[idx[4]:idx[5]]
 		line := lineOf(source, idx[0])
-		out = append(out, entity(adminClass, "SCOPE.Component", "admin_class", file.Path, line,
-			map[string]string{"framework": "django", "pattern_type": "admin_decorator", "model": modelName}))
+		ent := entity(adminClass, "SCOPE.Component", "admin_class", file.Path, line,
+			map[string]string{"framework": "django", "pattern_type": "admin_decorator", "model": modelName})
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID:       djangoModelRef(modelName),
+			Kind:       string(types.RelationshipKindRegisters),
+			Properties: map[string]string{"framework": "django", "model": modelName},
+		})
+		out = append(out, ent)
 	}
 
 	// 5. DRF serializers
@@ -274,6 +307,18 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil
+}
+
+// djangoModelRef returns the structural reference ID used as the ToID for
+// REGISTERS and HANDLES_SIGNAL edges targeting a Django model class.
+//
+// The "Class:<Name>" format matches the intra-repo resolver's byName lookup
+// against SCOPE.Component/class and SCOPE.Schema entities emitted by the
+// Python extractor for `class <Name>(models.Model)`.  This is identical to
+// the convention used by applyORMQueries (engine/orm_queries.go) so both
+// passes connect to the same canonical model node.
+func djangoModelRef(modelName string) string {
+	return fmt.Sprintf("Class:%s", modelName)
 }
 
 // extractClassBody returns the class body text from class_start to the next

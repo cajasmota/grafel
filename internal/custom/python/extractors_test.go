@@ -9,14 +9,24 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractor"
 )
 
-// extract returns extracted entities with fields for assertion.
-func extract(t *testing.T, key, content string) []struct {
+// extractResult holds extracted entity fields for assertion.
+type extractResult struct {
 	Name      string
 	Kind      string
 	Subtype   string
 	StartLine int
 	Props     map[string]string
-} {
+	Rels      []relResult
+}
+
+// relResult holds a relationship's ToID and Kind for assertion.
+type relResult struct {
+	ToID string
+	Kind string
+}
+
+// extract returns extracted entities with fields for assertion.
+func extract(t *testing.T, key, content string) []extractResult {
 	t.Helper()
 	ext, ok := extractor.Get(key)
 	if !ok {
@@ -30,21 +40,20 @@ func extract(t *testing.T, key, content string) []struct {
 	if err != nil {
 		t.Fatalf("Extract(%s): %v", key, err)
 	}
-	var result []struct {
-		Name      string
-		Kind      string
-		Subtype   string
-		StartLine int
-		Props     map[string]string
-	}
+	var result []extractResult
 	for _, e := range entities {
-		result = append(result, struct {
-			Name      string
-			Kind      string
-			Subtype   string
-			StartLine int
-			Props     map[string]string
-		}{e.Name, e.Kind, e.Subtype, e.StartLine, e.Properties})
+		var rels []relResult
+		for _, r := range e.Relationships {
+			rels = append(rels, relResult{ToID: r.ToID, Kind: r.Kind})
+		}
+		result = append(result, extractResult{
+			Name:      e.Name,
+			Kind:      e.Kind,
+			Subtype:   e.Subtype,
+			StartLine: e.StartLine,
+			Props:     e.Properties,
+			Rels:      rels,
+		})
 	}
 	return result
 }
@@ -263,6 +272,231 @@ class RegularClass:
 	ents := extract(t, "python_django", src)
 	if len(ents) != 0 {
 		t.Fatalf("expected 0 entities for non-Django code, got %d", len(ents))
+	}
+}
+
+// ---- #1374 item 3: phantom-orphan regression tests ----
+
+// TestDjango_SignalReceiver_HandlesSignalEdge verifies that the signal handler
+// function is the emitted entity (not the sender model) and that a
+// HANDLES_SIGNAL edge targets the sender model via "Class:<Model>" ref.
+func TestDjango_SignalReceiver_HandlesSignalEdge(t *testing.T) {
+	src := `@receiver(post_save, sender=Contract)
+def replicate_contract(sender, instance, created, **kwargs):
+    pass
+`
+	ents := extract(t, "python_django", src)
+
+	// Entity name must be the HANDLER function, not the sender model.
+	var handler *extractResult
+	for i := range ents {
+		if ents[i].Name == "replicate_contract" {
+			handler = &ents[i]
+		}
+	}
+	if handler == nil {
+		t.Fatal("expected entity named 'replicate_contract' (handler function), not found")
+	}
+
+	// The sender model must NOT be emitted as a new entity.
+	for _, e := range ents {
+		if e.Name == "Contract" {
+			t.Fatalf("phantom entity emitted for sender model 'Contract' — should only be a relationship target")
+		}
+	}
+
+	// The handler entity must carry a HANDLES_SIGNAL edge to Class:Contract.
+	found := false
+	for _, r := range handler.Rels {
+		if r.Kind == "HANDLES_SIGNAL" && r.ToID == "Class:Contract" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected HANDLES_SIGNAL → Class:Contract edge on handler entity; got rels: %+v", handler.Rels)
+	}
+
+	// Signal type captured in properties.
+	if handler.Props["signal_type"] != "post_save" {
+		t.Errorf("expected signal_type=post_save, got %q", handler.Props["signal_type"])
+	}
+}
+
+// TestDjango_SignalReceiver_NoSender verifies that a @receiver without a
+// sender= kwarg still emits the handler entity (with no phantom orphan).
+func TestDjango_SignalReceiver_NoSender(t *testing.T) {
+	src := `@receiver(request_finished)
+def flush_cache(sender, **kwargs):
+    pass
+`
+	ents := extract(t, "python_django", src)
+	var handler *extractResult
+	for i := range ents {
+		if ents[i].Name == "flush_cache" {
+			handler = &ents[i]
+		}
+	}
+	if handler == nil {
+		t.Fatal("expected entity named 'flush_cache'")
+	}
+	// No HANDLES_SIGNAL edge when there is no sender.
+	for _, r := range handler.Rels {
+		if r.Kind == "HANDLES_SIGNAL" {
+			t.Errorf("unexpected HANDLES_SIGNAL edge without sender= kwarg: %+v", r)
+		}
+	}
+}
+
+// TestDjango_AdminRegister_RegistersEdge verifies that admin.site.register
+// emits the admin-class entity (not a phantom Controller:<Model>) plus a
+// REGISTERS edge targeting the model via "Class:<Model>".
+func TestDjango_AdminRegister_RegistersEdge(t *testing.T) {
+	src := `admin.site.register(Contract, ContractAdmin)
+`
+	ents := extract(t, "python_django", src)
+
+	// Must find the admin-class entity by the ADMIN CLASS name, not the model name.
+	var adminEnt *extractResult
+	for i := range ents {
+		if ents[i].Name == "ContractAdmin" && ents[i].Subtype == "admin_class" {
+			adminEnt = &ents[i]
+		}
+	}
+	if adminEnt == nil {
+		t.Fatal("expected entity named 'ContractAdmin' with subtype=admin_class")
+	}
+
+	// The model name must NOT appear as a new phantom entity.
+	for _, e := range ents {
+		if e.Name == "Contract" {
+			t.Fatalf("phantom entity emitted for model 'Contract' — should only be a relationship target")
+		}
+	}
+
+	// The admin entity must carry a REGISTERS edge to Class:Contract.
+	found := false
+	for _, r := range adminEnt.Rels {
+		if r.Kind == "REGISTERS" && r.ToID == "Class:Contract" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected REGISTERS → Class:Contract edge on ContractAdmin; got rels: %+v", adminEnt.Rels)
+	}
+}
+
+// TestDjango_AdminRegister_ImpliedAdminClass verifies the synthesised
+// "<Model>Admin" name when admin.site.register is called with only the model.
+func TestDjango_AdminRegister_ImpliedAdminClass(t *testing.T) {
+	src := `admin.site.register(Invoice)
+`
+	ents := extract(t, "python_django", src)
+
+	var adminEnt *extractResult
+	for i := range ents {
+		if ents[i].Name == "InvoiceAdmin" && ents[i].Subtype == "admin_class" {
+			adminEnt = &ents[i]
+		}
+	}
+	if adminEnt == nil {
+		t.Fatal("expected synthesised entity named 'InvoiceAdmin'")
+	}
+	found := false
+	for _, r := range adminEnt.Rels {
+		if r.Kind == "REGISTERS" && r.ToID == "Class:Invoice" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected REGISTERS → Class:Invoice edge; got rels: %+v", adminEnt.Rels)
+	}
+}
+
+// TestDjango_AdminDecorator_RegistersEdge verifies that @admin.register(Model)
+// emits the decorated admin class with a REGISTERS edge.
+func TestDjango_AdminDecorator_RegistersEdge(t *testing.T) {
+	src := `@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    pass
+`
+	ents := extract(t, "python_django", src)
+
+	var adminEnt *extractResult
+	for i := range ents {
+		if ents[i].Name == "PaymentAdmin" && ents[i].Subtype == "admin_class" {
+			adminEnt = &ents[i]
+		}
+	}
+	if adminEnt == nil {
+		t.Fatal("expected entity named 'PaymentAdmin' with subtype=admin_class")
+	}
+	for _, e := range ents {
+		if e.Name == "Payment" {
+			t.Fatalf("phantom entity emitted for model 'Payment'")
+		}
+	}
+	found := false
+	for _, r := range adminEnt.Rels {
+		if r.Kind == "REGISTERS" && r.ToID == "Class:Payment" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected REGISTERS → Class:Payment edge on PaymentAdmin; got rels: %+v", adminEnt.Rels)
+	}
+}
+
+// TestDjango_MultipleSignals_NoPhantoms is the regression fixture for the
+// "Contract appears as 5 disconnected nodes" symptom: multiple @receiver
+// handlers on the same model must produce one handler entity each (with
+// HANDLES_SIGNAL edges) and zero phantom model entities.
+func TestDjango_MultipleSignals_NoPhantoms(t *testing.T) {
+	src := `@receiver(post_save, sender=Contract)
+def replicate_on_save(sender, instance, **kwargs):
+    pass
+
+@receiver(post_delete, sender=Contract)
+def replicate_on_delete(sender, instance, **kwargs):
+    pass
+
+@receiver(post_save, sender=Invoice)
+def replicate_invoice(sender, instance, **kwargs):
+    pass
+`
+	ents := extract(t, "python_django", src)
+
+	// Count handler entities.
+	handlerCount := 0
+	for _, e := range ents {
+		if e.Props["pattern_type"] == "signal" {
+			handlerCount++
+		}
+	}
+	if handlerCount != 3 {
+		t.Fatalf("expected 3 signal handler entities, got %d", handlerCount)
+	}
+
+	// No phantom model entities (Service or Controller named after models).
+	for _, e := range ents {
+		if e.Name == "Contract" || e.Name == "Invoice" {
+			t.Fatalf("phantom entity emitted for model name %q (kind=%s)", e.Name, e.Kind)
+		}
+	}
+
+	// Each handler must have a HANDLES_SIGNAL edge.
+	for _, e := range ents {
+		if e.Props["pattern_type"] != "signal" {
+			continue
+		}
+		hasEdge := false
+		for _, r := range e.Rels {
+			if r.Kind == "HANDLES_SIGNAL" {
+				hasEdge = true
+			}
+		}
+		if !hasEdge {
+			t.Errorf("handler %q missing HANDLES_SIGNAL edge", e.Name)
+		}
 	}
 }
 

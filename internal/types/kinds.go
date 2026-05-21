@@ -358,6 +358,18 @@ const (
 	// (name_exact+same_file, name_fuzzy+neighborhood, moved, split, …).
 	// The edge is append-only and never modifies existing entities or edges.
 	RelationshipKindRenamedFrom RelationshipKind = "RENAMED_FROM"
+
+	// #1374: Django signal/admin connectivity edges.
+	//   HANDLES_SIGNAL : signal-handler function entity → sender model entity
+	//                    (emitted for every @receiver(signal, sender=Model) handler).
+	//   REGISTERS      : admin class entity → registered model entity
+	//                    (emitted for admin.site.register(Model[, AdminClass]) and
+	//                    @admin.register(Model) class AdminClass(…)).
+	// Both edges use the model's bare name as the ToID structural-ref
+	// ("Class:<ModelName>") so the intra-repo resolver matches the existing
+	// SCOPE.Component/class or SCOPE.Schema model entity without new linker code.
+	RelationshipKindHandlesSignal RelationshipKind = "HANDLES_SIGNAL"
+	RelationshipKindRegisters     RelationshipKind = "REGISTERS"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -427,6 +439,9 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindHasType,
 		// #1344 rename detection:
 		RelationshipKindRenamedFrom,
+		// #1374 Django signal/admin connectivity:
+		RelationshipKindHandlesSignal,
+		RelationshipKindRegisters,
 	}
 }
 
