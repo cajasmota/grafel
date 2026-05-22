@@ -163,8 +163,13 @@ var phpWPRemoteRe = regexp.MustCompile(
 // phpLaravelHttpRe matches `Http::get("url")`, `Http::post("url", $data)`,
 // and the chained form `Http::withHeaders([...])->get("url")`.
 // Capture groups: 1 = verb, 2 = double-quoted url, 3 = single-quoted url, 4 = variable url.
+//
+// The modifier argument allows one level of nested parentheses
+// (e.g. Http::withToken(config('services.erp.token'))->post(...)) via
+// (?:[^)(]|\([^)]*\))* — without this, a `config(...)` call inside the
+// modifier breaks the `[^)]*` anchor (issue #1466).
 var phpLaravelHttpRe = regexp.MustCompile(
-	`\bHttp\s*(?:::\s*(?:withHeaders|withToken|withBasicAuth|timeout|retry|acceptJson|asJson|asForm|asMultipart|baseUrl|withOptions)\s*\([^)]*\)\s*->\s*)?\s*::\s*(get|post|put|patch|delete|head|options)\s*\(\s*(?:` +
+	`\bHttp\s*(?:::\s*(?:withHeaders|withToken|withBasicAuth|timeout|retry|acceptJson|asJson|asForm|asMultipart|baseUrl|withOptions)\s*\((?:[^)(]|\([^)]*\))*\)\s*->\s*)?\s*::\s*(get|post|put|patch|delete|head|options)\s*\(\s*(?:` +
 		`"([^"\n\r]+)"` + // group 2: double-quoted url
 		`|` +
 		`'([^'\n\r]+)'` + // group 3: single-quoted url
@@ -174,10 +179,14 @@ var phpLaravelHttpRe = regexp.MustCompile(
 )
 
 // phpLaravelHttpChainedRe matches the chained form:
-// Http::withHeaders([...])->get("/path"), Http::withToken($t)->post("/path")
+// Http::withHeaders([...])->get("/path"), Http::withToken($t)->post("/path"),
+// Http::withToken(config('x'))->post("/path").
 // Capture groups: 1 = verb, 2 = double-quoted url, 3 = single-quoted url, 4 = variable url.
+//
+// (?:[^)(]|\([^)]*\))* allows one level of nested parens in the modifier
+// argument so that helpers like config('key') or env('VAR') work (issue #1466).
 var phpLaravelHttpChainedRe = regexp.MustCompile(
-	`\bHttp\s*::\s*(?:withHeaders|withToken|withBasicAuth|timeout|retry|acceptJson|asJson|asForm|asMultipart|baseUrl|withOptions)\s*\([^)]*\)\s*->\s*(get|post|put|patch|delete|head|options)\s*\(\s*(?:` +
+	`\bHttp\s*::\s*(?:withHeaders|withToken|withBasicAuth|timeout|retry|acceptJson|asJson|asForm|asMultipart|baseUrl|withOptions)\s*\((?:[^)(]|\([^)]*\))*\)\s*->\s*(get|post|put|patch|delete|head|options)\s*\(\s*(?:` +
 		`"([^"\n\r]+)"` + // group 2: double-quoted url
 		`|` +
 		`'([^'\n\r]+)'` + // group 3: single-quoted url

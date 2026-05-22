@@ -34,6 +34,7 @@
 package engine
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -118,6 +119,41 @@ var pySessionClientRe = regexp.MustCompile(
 		`|` +
 		`([A-Za-z_][\w]*)` + // group 4: bare ident
 		`)`,
+)
+
+// pyContextManagerAliasRe matches `with` / `async with` context-manager
+// forms that bind an httpx or requests client to a user-chosen variable:
+//
+//	async with httpx.AsyncClient() as c:
+//	async with httpx.AsyncClient(base_url="...") as svc:
+//	with httpx.Client(base_url="...") as http:
+//	with requests.Session() as sess:
+//
+// Capture groups:
+//
+//	1 = client type  (AsyncClient | Client | Session)
+//	2 = optional base_url value (may be empty)
+//	3 = alias identifier
+var pyContextManagerAliasRe = regexp.MustCompile(
+	`(?:async\s+)?with\s+(?:httpx\.(?:Async)?Client|requests\.Session)\s*\(` +
+		`[^)]*?(?:base_url\s*=\s*["']([^"'\n\r]*)["'])?[^)]*\)\s+as\s+([A-Za-z_]\w*)`,
+)
+
+// pyLocalVarStringRe captures simple local string assignments inside a
+// function body:
+//
+//	pricing_endpoint = "http://pricing/api/v1/price"
+//	url = f"/items/{item_id}"
+//
+// We deliberately allow both lower and UPPER names (unlike the module-level
+// pyStringConstRe which skips pure-uppercase to avoid re-capturing constants
+// a second time — here all names are equally valid).
+//
+// The indentation prefix is required (at least one whitespace char) to avoid
+// matching module-level constants again; those are already handled by
+// buildPyStringSymbolTable.
+var pyLocalVarStringRe = regexp.MustCompile(
+	`(?m)^[ \t]+([a-zA-Z_][\w]*)\s*=\s*(f?)["']([^"'\n\r]{1,512})["']`,
 )
 
 // pyAiohttpInlineRe matches `aiohttp.ClientSession().<verb>("path", ...)`.
@@ -259,7 +295,17 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 	}
 	funcs := indexPyEnclosingFunctions(content)
 	syms := buildPyStringSymbolTable(content)
+	locals := buildPyLocalVarTable(content)
 	instances := buildPySessionInstanceTable(content)
+	// Merge local variables into syms for URL resolution (locals win on
+	// collision, as they are more specific than module-level constants).
+	mergedSyms := make(map[string]string, len(syms)+len(locals))
+	for k, v := range syms {
+		mergedSyms[k] = v
+	}
+	for k, v := range locals {
+		mergedSyms[k] = v
+	}
 
 	// requests.<verb>(...) / httpx.<verb>(...)
 	for _, m := range pyTopLevelVerbRe.FindAllStringSubmatchIndex(content, -1) {
@@ -268,11 +314,11 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 		}
 		framework := content[m[2]:m[3]]
 		verb := strings.ToUpper(content[m[4]:m[5]])
-		raw, isFString, dynamic := pyResolveURLArg(content, m, 6, syms)
+		raw, isFString, dynamic := pyResolveURLArg(content, m, 6, mergedSyms)
 		if raw == "" {
 			continue
 		}
-		path, ok := pyCanonicalize(raw, isFString, syms)
+		path, ok := pyCanonicalize(raw, isFString, mergedSyms)
 		if !ok {
 			continue
 		}
@@ -288,11 +334,11 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 		}
 		framework := content[m[2]:m[3]]
 		verb := strings.ToUpper(content[m[4]:m[5]])
-		raw, isFString, dynamic := pyResolveURLArg(content, m, 6, syms)
+		raw, isFString, dynamic := pyResolveURLArg(content, m, 6, mergedSyms)
 		if raw == "" {
 			continue
 		}
-		path, ok := pyCanonicalize(raw, isFString, syms)
+		path, ok := pyCanonicalize(raw, isFString, mergedSyms)
 		if !ok {
 			continue
 		}
@@ -306,11 +352,11 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 		if len(m) < 6 {
 			continue
 		}
-		raw, isFString, dynamic := pyResolveURLArg(content, m, 2, syms)
+		raw, isFString, dynamic := pyResolveURLArg(content, m, 2, mergedSyms)
 		if raw == "" {
 			continue
 		}
-		path, ok := pyCanonicalize(raw, isFString, syms)
+		path, ok := pyCanonicalize(raw, isFString, mergedSyms)
 		if !ok {
 			continue
 		}
@@ -324,11 +370,11 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 		if len(m) < 8 {
 			continue
 		}
-		raw, isFString, dynamic := pyResolveURLArg(content, m, 2, syms)
+		raw, isFString, dynamic := pyResolveURLArg(content, m, 2, mergedSyms)
 		if raw == "" {
 			continue
 		}
-		path, ok := pyCanonicalize(raw, isFString, syms)
+		path, ok := pyCanonicalize(raw, isFString, mergedSyms)
 		if !ok {
 			continue
 		}
@@ -344,7 +390,7 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 		emit(verb, canonical, "urllib", "Function", caller, dynamic)
 	}
 
-	// Session / client instance calls.
+	// Session / client instance calls — static allowlist.
 	for _, m := range pySessionClientRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 10 {
 			continue
@@ -361,11 +407,11 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 		if verb == "REQUEST" {
 			continue
 		}
-		raw, isFString, dynamic := pyResolveURLArg(content, m, 6, syms)
+		raw, isFString, dynamic := pyResolveURLArg(content, m, 6, mergedSyms)
 		if raw == "" {
 			continue
 		}
-		path, ok := pyCanonicalize(raw, isFString, syms)
+		path, ok := pyCanonicalize(raw, isFString, mergedSyms)
 		if !ok {
 			continue
 		}
@@ -378,17 +424,51 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 		emit(verb, canonical, "http_client", "Function", caller, dynamic)
 	}
 
+	// Session / client instance calls — dynamic aliases from context managers
+	// and explicit constructor assignments (e.g. `c = httpx.AsyncClient()`).
+	// Only fires for aliases NOT already covered by the static allowlist above
+	// to avoid double-emitting.
+	if dynRe := pyBuildDynamicAliasRe(instances); dynRe != nil {
+		for _, m := range dynRe.FindAllStringSubmatchIndex(content, -1) {
+			if len(m) < 10 {
+				continue
+			}
+			if m[0] > 0 && content[m[0]-1] == '@' {
+				continue
+			}
+			receiver := content[m[2]:m[3]]
+			verb := strings.ToUpper(content[m[4]:m[5]])
+			if verb == "REQUEST" {
+				continue
+			}
+			raw, isFString, dynamic := pyResolveURLArg(content, m, 6, mergedSyms)
+			if raw == "" {
+				continue
+			}
+			path, ok := pyCanonicalize(raw, isFString, mergedSyms)
+			if !ok {
+				continue
+			}
+			if base, ok := instances[receiver]; ok && base != "" {
+				path = composeBaseURL(base, path)
+			}
+			caller := enclosingPyFuncAt(funcs, m[0])
+			canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
+			emit(verb, canonical, "http_client", "Function", caller, dynamic)
+		}
+	}
+
 	// aiohttp inline form.
 	for _, m := range pyAiohttpInlineRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 8 {
 			continue
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
-		raw, isFString, dynamic := pyResolveURLArg(content, m, 4, syms)
+		raw, isFString, dynamic := pyResolveURLArg(content, m, 4, mergedSyms)
 		if raw == "" {
 			continue
 		}
-		path, ok := pyCanonicalize(raw, isFString, syms)
+		path, ok := pyCanonicalize(raw, isFString, mergedSyms)
 		if !ok {
 			continue
 		}
@@ -403,11 +483,11 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 			continue
 		}
 		verb := strings.ToUpper(content[m[2]:m[3]])
-		raw, isFString, dynamic := pyResolveURLArg(content, m, 4, syms)
+		raw, isFString, dynamic := pyResolveURLArg(content, m, 4, mergedSyms)
 		if raw == "" {
 			continue
 		}
-		path, ok := pyCanonicalize(raw, isFString, syms)
+		path, ok := pyCanonicalize(raw, isFString, mergedSyms)
 		if !ok {
 			continue
 		}
@@ -454,6 +534,42 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 	}
 }
 
+// pyStaticAliasSet is the set of receiver names already matched by the
+// compiled pySessionClientRe. Used by pyBuildDynamicAliasRe to avoid
+// emitting duplicates.
+var pyStaticAliasSet = map[string]bool{
+	"session": true, "client": true, "http_client": true,
+	"api_client": true, "http": true, "api": true,
+}
+
+// pyBuildDynamicAliasRe builds a regex that matches `<alias>.<verb>(url)`
+// for every alias in `instances` that is NOT already covered by the static
+// pySessionClientRe allowlist. Returns nil when there are no new aliases.
+func pyBuildDynamicAliasRe(instances map[string]string) *regexp.Regexp {
+	var extras []string
+	for name := range instances {
+		if !pyStaticAliasSet[name] {
+			extras = append(extras, regexp.QuoteMeta(name))
+		}
+	}
+	if len(extras) == 0 {
+		return nil
+	}
+	pattern := fmt.Sprintf(
+		`\b(%s)\s*\.\s*(get|post|put|patch|delete|head|options|request)\s*\(\s*(?:`+
+			`f?["']([^"'\n\r]+)["']`+
+			`|`+
+			`([A-Za-z_][\w]*)`+
+			`)`,
+		strings.Join(extras, "|"),
+	)
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+	return re
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -495,6 +611,12 @@ func buildPyStringSymbolTable(content string) map[string]string {
 // name → base URL. Sources:
 //   - `<n> = httpx.Client(base_url="...")` and AsyncClient
 //   - `<n>.base_url = "..."` mutation
+//   - `with/async with httpx.AsyncClient(...) as <alias>` context managers
+//   - `with/async with requests.Session() as <alias>` context managers
+//
+// The empty-string value "" is used when no base_url is known; the
+// caller in synthesizePyClientWithRuntime only composes a prefix when the
+// base is non-empty.
 func buildPySessionInstanceTable(content string) map[string]string {
 	out := make(map[string]string)
 	for _, m := range pyHttpxClientCtorRe.FindAllStringSubmatch(content, -1) {
@@ -505,6 +627,48 @@ func buildPySessionInstanceTable(content string) map[string]string {
 	for _, m := range pySessionBaseURLRe.FindAllStringSubmatch(content, -1) {
 		if len(m) >= 3 {
 			out[m[1]] = stripURLHost(m[2])
+		}
+	}
+	// Context-manager alias bindings: `with httpx.AsyncClient() as c` etc.
+	// Register every alias so it is recognised as a client receiver even when
+	// the name is not in the pySessionClientRe allowlist.
+	for _, m := range pyContextManagerAliasRe.FindAllStringSubmatch(content, -1) {
+		// m[1] = optional base_url, m[2] = alias
+		if len(m) >= 3 {
+			alias := m[2]
+			base := ""
+			if m[1] != "" {
+				base = stripURLHost(m[1])
+			}
+			if _, exists := out[alias]; !exists {
+				out[alias] = base
+			}
+		}
+	}
+	return out
+}
+
+// buildPyLocalVarTable returns a map from local-variable name → string value
+// for every indented (function-body-level) string assignment in the file.
+// It intentionally includes all names regardless of case so that patterns
+// like `pricing_endpoint = "http://..."` are resolved when used as a URL
+// argument later in the same function.
+//
+// Note: this is a file-wide scan — we do not attempt true per-function
+// scoping. False-positive variable capture across function boundaries is
+// extremely rare in practice and the worst outcome is resolving a URL from
+// another function in the same file (which still produces a valid edge).
+func buildPyLocalVarTable(content string) map[string]string {
+	out := make(map[string]string)
+	for _, m := range pyLocalVarStringRe.FindAllStringSubmatch(content, -1) {
+		// m[1]=name, m[2]="f" if f-string, m[3]=body
+		if len(m) < 4 {
+			continue
+		}
+		name := m[1]
+		val := m[3]
+		if _, dup := out[name]; !dup {
+			out[name] = val
 		}
 	}
 	return out

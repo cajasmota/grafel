@@ -278,6 +278,227 @@ export interface DoctorCheck {
   detail: string;
 }
 
+// ── Topology screen ──────────────────────────────────────────────────────────
+
+/** Canonical broker identifiers used for color/shape mapping. */
+export type BrokerCanonical =
+  | "kafka"
+  | "rabbitmq"
+  | "sqs"
+  | "pubsub"
+  | "nats"
+  | "websocket"
+  | "sse"
+  | "graphql_subscription"
+  | "redis_pubsub"
+  | "redis"
+  | "redis-stream"
+  | "celery"
+  | "task-queue"
+  | "serverless"
+  | "unknown"
+  | (string & Record<never, never>); // allow extension strings
+
+/** Lifecycle state of a channel (producer/consumer presence). */
+export type ChannelLifecycle =
+  | "active"
+  | "orphan_publisher"
+  | "orphan_subscriber"
+  | "orphan";
+
+/**
+ * Wire shape for a single channel (topic/queue/sse/ws/graphql-sub/serverless).
+ * Mirrors the JSON produced by GET /api/topology/:group (non-v2).
+ * Critical: no `last_message_seen`, no `usage_history` — those are always null/[].
+ */
+export interface TopologyChannel {
+  id: string;
+  label: string;
+  broker: string;
+  broker_canonical: BrokerCanonical;
+  framework?: string;
+  owning_service: string;
+  producers: string[];   // entity ids
+  consumers: string[];
+  scheduled?: boolean;
+  schedule?: string;
+  repo: string;
+  channel_type?: "websocket" | "sse" | "redis_pubsub" | "graphql_subscription";
+  // optional enrichment fields (present only after /generate-docs)
+  docs_summary?: string;
+  docgen_status?: "enriched" | "stale" | "pending";
+  // cross-repo flag (derived client-side from broker_groups)
+  cross_repo?: boolean;
+}
+
+/** Serverless function entry in the topology payload. */
+export interface TopologyFunction {
+  id: string;
+  label: string;
+  repo: string;
+  provider?: string;
+  invokers: string[];
+  handlers: string[];
+}
+
+/** Transform edge (channel → channel). */
+export interface TopologyTransform {
+  from_id: string;
+  to_id: string;
+  repo: string;
+}
+
+/** Per-service aggregated stats inside a broker group. */
+export interface BrokerServiceStat {
+  name: string;
+  topic_count: number;
+}
+
+/** Health breakdown per broker. */
+export interface BrokerHealthSummary {
+  active: number;
+  orphan_publisher: number;
+  orphan_subscriber: number;
+  orphan: number;
+}
+
+/** One element of `broker_groups` in the topology payload. */
+export interface TopologyBrokerGroup {
+  broker: BrokerCanonical;
+  count: number;
+  services: BrokerServiceStat[];
+  orphan_publishers: number;
+  orphan_subscribers: number;
+  cross_repo_topic_count: number;
+  health_summary: BrokerHealthSummary;
+  last_index_timestamp?: string; // ISO-8601
+}
+
+/**
+ * Full wire response from GET /api/topology/:group.
+ * All array fields are guaranteed non-null by the daemon.
+ */
+export interface TopologyResponse {
+  topics: TopologyChannel[];
+  queues: TopologyChannel[];
+  channels: TopologyChannel[];
+  nats_subjects: TopologyChannel[];
+  graphql_subscriptions: TopologyChannel[];
+  functions: TopologyFunction[];
+  transforms: TopologyTransform[];
+  broker_groups: TopologyBrokerGroup[];
+}
+
+/** Detailed channel view — GET /api/topology/:group/topic/:topicId. */
+export interface TopologyChannelDetail extends TopologyChannel {
+  source_file: string;
+  start_line: number;
+  protocol: string;
+  message_schema?: string;
+  tests: string[];
+  related_topics: { id: string; label: string; broker_canonical: BrokerCanonical }[];
+  flow_count: number;
+  cross_repo: boolean;
+  lifecycle_state: ChannelLifecycle;
+  enrichment_health?: {
+    has_summary: boolean;
+    has_schema: boolean;
+    has_volume_estimate: boolean;
+    has_typical_payload_size: boolean;
+    has_expected_consumers: boolean;
+    has_gaps: boolean;
+    filled_field_count: number;
+    total_field_count: number;
+  };
+}
+
+/** Orphan publisher entry — GET /api/topology/:group/orphan-publishers. */
+export interface OrphanPublisherEntry {
+  id: string;
+  label: string;
+  broker_canonical: BrokerCanonical;
+  repo: string;
+  producers: string[];
+  reason?: string;
+}
+
+/** Orphan subscriber entry — GET /api/topology/:group/orphan-subscribers. */
+export interface OrphanSubscriberEntry {
+  id: string;
+  label: string;
+  broker_canonical: BrokerCanonical;
+  repo: string;
+  consumers: string[];
+  reason?: string;
+}
+// =============================================================
+// Pending screen types — v2_pending.go wire shapes (#1442)
+// =============================================================
+
+export type EntityKind =
+  | "function"
+  | "component"
+  | "hook"
+  | "class"
+  | "method"
+  | "http_endpoint";
+
+export interface EntityRef {
+  name: string;
+  type: EntityKind;
+  repo: string;
+  /** Includes `:line` suffix. */
+  file: string;
+}
+
+export type RepairIssueType =
+  | "missing_docstring"
+  | "dead_code"
+  | "mismatched_handler"
+  | "untyped_params"
+  | "broken_link"
+  | "stale_cache";
+
+export type EnrichmentType =
+  | "summary"
+  | "param_descriptions"
+  | "relationship_tag"
+  | "tags";
+
+export type Severity = "critical" | "warning" | "info";
+
+export interface RepairCandidate {
+  id: string;
+  severity: Severity;
+  issueType: RepairIssueType;
+  entity: EntityRef;
+  description: string;
+  /** 0..1 */
+  confidence: number;
+  /** Unix ms. */
+  detectedAt: number;
+}
+
+export interface EnrichmentCandidate {
+  id: string;
+  enrichmentType: EnrichmentType;
+  entity: EntityRef;
+  description: string;
+  confidence: number;
+  detectedAt: number;
+}
+
+export type Candidate = RepairCandidate | EnrichmentCandidate;
+
+/** Hints stored per-candidate-id in local state and persisted via PUT hint. */
+export type HintMap = Record<string, string>;
+
+/** Wire shape returned by GET /api/v2/groups/:id/candidates */
+export interface V2CandidatesResponse {
+  repairs: RepairCandidate[];
+  enrichments: EnrichmentCandidate[];
+}
+
 // ─── Flows (Process Flow Explorer) ────────────────────────────────────────────
 
 export type EntryKind =

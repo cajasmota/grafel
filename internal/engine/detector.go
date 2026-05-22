@@ -304,6 +304,17 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.RepoRoot, file.Content, entities, relationships,
 	)
 
+	// Kafka wrapper + transport idiom detection (#1467). Extends topic
+	// extraction with four new families: Python KafkaBus wrapper
+	// (bus.publish / bus.consumer), Spring RedisTemplate.convertAndSend,
+	// Java Kafka Streams (builder.stream / kStream.to), and AWS SNS
+	// publish (boto3, aws-sdk-java, aws-sdk-js, aws-sdk-go-v2). Emits
+	// MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO edges.
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	entities, relationships = applyKafkaWrapperEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// RabbitMQ producer/consumer cross-repo edges (wave 2 of #726). Emits
 	// SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for pika
 	// (Python), amqplib (Node), Spring AMQP / direct RabbitMQ client (Java),

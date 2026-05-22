@@ -540,6 +540,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/repos/{repo}/monorepo", s.handleV2PatchMonorepo)
 	mux.HandleFunc("POST /api/v2/groups/{group}/doctor", s.handleV2Doctor)
 
+	// Topology screen — WebUI v2 (#1440, epic #1432).
+	// Wraps the v1 collectTopologyResponse + buildTopicDetail in the v2 envelope.
+	// The v1 topology routes above are UNCHANGED.
+	mux.HandleFunc("GET /api/v2/topology/{group}", s.handleV2Topology)
+	mux.HandleFunc("GET /api/v2/topology/{group}/topic/{topicId}", s.handleV2TopologyDetail)
+	// --- v2 Pending screen (#1442) ---
+	mux.HandleFunc("GET /api/v2/groups/{group}/candidates", s.handleV2Candidates)
+	mux.HandleFunc("PUT /api/v2/groups/{group}/candidates/{cid}/hint", s.handleV2CandidateHint)
 	// Flows (Process Flow Explorer) — v2 envelope wrappers (#1441).
 	// NOTE: /dead-ends and /truncated are registered before any wildcard so
 	// Go 1.22 ServeMux picks the more-specific path first.
