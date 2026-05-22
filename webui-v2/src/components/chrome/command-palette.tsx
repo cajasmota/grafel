@@ -143,7 +143,6 @@ export function CommandPalette() {
 
           <Command
             className="flex flex-col"
-            shouldFilter={!hasEntityResults}
           >
             {/* Search input */}
             <div className="flex items-center gap-2 px-4 border-b border-border h-12">
@@ -176,7 +175,7 @@ export function CommandPalette() {
                 {NAV_ACTIONS.map(({ id, label, path, Icon }) => (
                   <PaletteItem
                     key={id}
-                    value={`navigate-${id}-${label}`}
+                    value={`navigate ${label}`}
                     onSelect={() => navigateTo(path)}
                   >
                     <Icon size={15} className="text-text-3 shrink-0" />
@@ -197,7 +196,7 @@ export function CommandPalette() {
                   {entities.map((entity) => (
                     <PaletteItem
                       key={entity.id}
-                      value={`entity-${entity.id}`}
+                      value={`entity ${entity.qualifiedName} ${entity.kind}`}
                       onSelect={() => navigateToEntity(entity.id)}
                     >
                       <Box size={15} className="text-text-3 shrink-0" />
@@ -216,7 +215,7 @@ export function CommandPalette() {
                 {groups.map((g) => (
                   <PaletteItem
                     key={g.id}
-                    value={`group-${g.id}-${g.name}`}
+                    value={`group ${g.name} ${g.id}`}
                     onSelect={() => navigateToGroup(g.id)}
                   >
                     <span className="size-2 rounded-full bg-accent shrink-0" aria-hidden />
