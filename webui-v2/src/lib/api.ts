@@ -23,6 +23,9 @@ import type {
   FlowsListResponse,
   FlowDetailResponse,
   FlowDeadEndsResponse,
+  PathsListResponse,
+  PathDetail,
+  OrphansResponse,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -220,6 +223,18 @@ export const api = {
       `/flows/${groupId}/${encodeURIComponent(processId)}/trigger-enrichment`,
       { method: "POST" },
     ),
+  // --- v2 Paths screen ---
+  /** GET /api/v2/groups/:id/paths — backend-grouped route list + totals. */
+  listPaths: (groupId: string) =>
+    requestV2<PathsListResponse>(`/groups/${encodeURIComponent(groupId)}/paths`),
+
+  /** GET /api/v2/groups/:id/paths/:hash — full route detail (Swagger++). */
+  getPathDetail: (groupId: string, pathHash: string) =>
+    requestV2<PathDetail>(`/groups/${encodeURIComponent(groupId)}/paths/${encodeURIComponent(pathHash)}`),
+
+  /** GET /api/v2/groups/:id/paths/orphans — orphan caller list. */
+  listOrphans: (groupId: string) =>
+    requestV2<OrphansResponse>(`/groups/${encodeURIComponent(groupId)}/paths/orphans`),
 };
 
 export type Api = typeof api;
