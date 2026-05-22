@@ -542,6 +542,9 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 		!strings.Contains(content, "endpoint:") &&
 		!strings.Contains(content, "endpoint :") &&
 		!strings.Contains(content, "axios.create") &&
+		// #1483 — NestJS HttpService (RxJS) and Apollo Client URI.
+		!strings.Contains(content, "httpService") &&
+		!strings.Contains(content, "ApolloClient") &&
 		!strings.Contains(content, "$") {
 		return
 	}
@@ -742,6 +745,12 @@ func synthesizeFetchAxios(content string, emit emitFn) {
 	// the path is a file-local string constant (not a quoted literal).
 	// The symbol table already exists from the template-literal phase.
 	synthesizeBareIdentifierCalls(content, funcs, syms, instances, emit)
+
+	// -----------------------------------------------------------------
+	// #1483 — NestJS HttpService (RxJS) + Apollo Client URI
+	// -----------------------------------------------------------------
+	synthesizeNestHttpService(content, funcs, syms, emit)
+	synthesizeApolloClientURI(content, funcs, emit)
 }
 
 // jsRuntimeEmitFn is the runtime-dynamic-aware emitter type used by

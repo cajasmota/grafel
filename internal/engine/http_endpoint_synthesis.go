@@ -98,6 +98,9 @@ func synthesisSupportsLanguage(lang string) bool {
 	// anchors are no-ops in the synthesizers themselves.
 	case "kotlin", "go", "csharp", "ruby", "php", "rust":
 		return true
+	// #1483: Elixir Finch / HTTPoison consumer-side extraction.
+	case "elixir":
+		return true
 	default:
 		return false
 	}
@@ -319,6 +322,9 @@ func applyHTTPEndpointSynthesis(
 		// Consumer side (#721 wave 2c): Guzzle, Symfony HttpClient, cURL, file_get_contents,
 		// WordPress HTTP API, Laravel Http facade.
 		synthesizePHPClientWithRuntime(string(content), emitClientRuntime)
+	case "elixir":
+		// Consumer side (#1483): Finch.build(:verb, url) + HTTPoison.<verb>(url).
+		synthesizeElixirHTTPClients(string(content), emitClient)
 	}
 
 	// #722 — response/request shape extraction. Mutates Properties on
