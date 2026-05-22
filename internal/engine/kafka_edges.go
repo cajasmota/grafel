@@ -58,7 +58,7 @@ const transformsEdgeKind = "TRANSFORMS"
 // and Go — the languages with non-trivial Kafka adoption in the corpora.
 func kafkaSynthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "java", "kotlin", "javascript", "typescript", "python", "go":
+	case "java", "kotlin", "javascript", "typescript", "python", "go", "php":
 		return true
 	default:
 		return false
@@ -179,6 +179,8 @@ func applyKafkaEdges(
 		synthesizePyKafka(src, emitTopic, emitEdge)
 	case "go":
 		synthesizeGoKafka(src, emitTopic, emitEdge)
+	case "php":
+		synthesizePHPRdKafka(src, emitTopic, emitEdge)
 	}
 
 	return entities, relationships
@@ -963,4 +965,189 @@ func surroundingText(src string, offset, radius int) string {
 		end = len(src)
 	}
 	return src[start:end]
+}
+
+// ---------------------------------------------------------------------------
+// PHP — ext-rdkafka (RdKafka\KafkaConsumer + RdKafka\Producer)
+// ---------------------------------------------------------------------------
+//
+// Covers the two dominant RdKafka idioms found in PHP codebases:
+//
+//   Consumer (high-level):
+//     $consumer = new KafkaConsumer($conf);
+//     $consumer->subscribe(['payments.settled', 'orders.placed']);
+//
+//   Consumer (partition-assign):
+//     $consumer->assign([new TopicPartition('payments.settled', 0)]);
+//
+//   Producer (high-level):
+//     $producer->newTopic('payments.settled')->produce(...);
+//
+//   Producer (low-level):
+//     $topic = $producer->newTopic('payments.settled');
+//     $topic->produce(RD_KAFKA_PARTITION_UA, 0, $msg);
+//
+// Caller attribution: the PHP extractor emits SCOPE.Operation entities
+// with Name="ClassName.methodName" for class methods and "functionName"
+// for top-level functions.  We walk backward from the call site to find
+// the nearest `function` or `public function` declaration and use
+// "ClassName.methodName" when a class name is also discoverable.
+// Falls back to "module" when no enclosing function is found.
+
+// phpRdKafkaSubscribeRe captures `->subscribe([...])` with one or more
+// string literals as topic names.  Matches both single and double-quoted
+// strings inside the array argument.
+// Group 1 = the full comma-separated list body (between the [ ]).
+var phpRdKafkaSubscribeRe = regexp.MustCompile(
+	`->\s*subscribe\s*\(\s*\[([^\]]+)\]`,
+)
+
+// phpRdKafkaAssignRe captures `->assign([new TopicPartition('topic', ...)])`.
+// Group 1 = first string argument (the topic name) of each TopicPartition call.
+var phpRdKafkaAssignRe = regexp.MustCompile(
+	`new\s+(?:RdKafka\\)?TopicPartition\s*\(\s*['"]([^'"]+)['"]`,
+)
+
+// phpRdKafkaNewTopicRe captures `->newTopic('topic')` — used by both
+// RdKafka\Producer and the high-level RdKafka\KafkaProducer to obtain a
+// topic handle before calling ->produce().
+// Group 1 = topic name string literal.
+var phpRdKafkaNewTopicRe = regexp.MustCompile(
+	`->\s*newTopic\s*\(\s*['"]([^'"]+)['"]`,
+)
+
+// phpClassNameRe captures the nearest `class Foo` declaration.
+var phpClassNameRe = regexp.MustCompile(`(?m)\bclass\s+(\w+)`)
+
+// phpMethodRe captures PHP method / function declarations.
+// Group 1 = method name (for class methods), group 2 = function name.
+var phpMethodRe = regexp.MustCompile(
+	`(?m)(?:public|protected|private|static|abstract|final|\s)+function\s+(\w+)\s*\(|(?:^|\s)function\s+(\w+)\s*\(`,
+)
+
+// synthesizePHPRdKafka extracts Kafka topic subscriptions and publications
+// from PHP files that use ext-rdkafka (RdKafka\KafkaConsumer,
+// RdKafka\Producer).  Emits SUBSCRIBES_TO and PUBLISHES_TO edges toward
+// the canonical `kafka:<topic>` MessageTopic entities.
+func synthesizePHPRdKafka(
+	src string,
+	emitTopic func(topicID, topicName, broker string, dynamic bool, props map[string]string),
+	emitEdge func(callerKind, callerName, topicID, edgeKind string, props map[string]string),
+) {
+	// Fast pre-filter: only process files that reference RdKafka or subscribe.
+	if !strings.Contains(src, "RdKafka") && !strings.Contains(src, "rdkafka") &&
+		!strings.Contains(src, "KafkaConsumer") && !strings.Contains(src, "KafkaProducer") {
+		return
+	}
+
+	// Resolve the first class name in the file for caller attribution.
+	className := ""
+	if m := phpClassNameRe.FindStringSubmatch(src); len(m) >= 2 {
+		className = m[1]
+	}
+
+	enclosing := func(offset int) string {
+		return findEnclosingPHPName(src, offset, className)
+	}
+
+	// Consumer: ->subscribe(['topic1', 'topic2', ...])
+	for _, m := range phpRdKafkaSubscribeRe.FindAllStringSubmatchIndex(src, -1) {
+		body := src[m[2]:m[3]]
+		caller := enclosing(m[0])
+		for _, tok := range strings.Split(body, ",") {
+			tok = strings.TrimSpace(tok)
+			if tok == "" {
+				continue
+			}
+			// Strip surrounding single or double quotes.
+			tok = strings.Trim(tok, `'"`)
+			tok = strings.TrimSpace(tok)
+			if !looksLikeKafkaTopic(tok) {
+				continue
+			}
+			id := kafkaTopicID(tok)
+			emitTopic(id, tok, "kafka", false, map[string]string{
+				"messaging_layer": "rdkafka",
+			})
+			emitEdge("SCOPE.Operation", caller, id, subscribesToEdgeKind, map[string]string{
+				"messaging_layer": "rdkafka",
+			})
+			// Class-level fallback so the consumer class itself is linked.
+			if className != "" {
+				emitEdge("SCOPE.Component", className, id, subscribesToEdgeKind, map[string]string{
+					"messaging_layer": "rdkafka",
+				})
+			}
+		}
+	}
+
+	// Consumer: ->assign([new TopicPartition('topic', partition)])
+	for _, m := range phpRdKafkaAssignRe.FindAllStringSubmatchIndex(src, -1) {
+		topic := src[m[2]:m[3]]
+		if !looksLikeKafkaTopic(topic) {
+			continue
+		}
+		caller := enclosing(m[0])
+		id := kafkaTopicID(topic)
+		emitTopic(id, topic, "kafka", false, map[string]string{
+			"messaging_layer": "rdkafka",
+		})
+		emitEdge("SCOPE.Operation", caller, id, subscribesToEdgeKind, map[string]string{
+			"messaging_layer": "rdkafka",
+		})
+		if className != "" {
+			emitEdge("SCOPE.Component", className, id, subscribesToEdgeKind, map[string]string{
+				"messaging_layer": "rdkafka",
+			})
+		}
+	}
+
+	// Producer: ->newTopic('topic-name') — the returned handle is used to
+	// call ->produce(...), so the topic-handle creation is the publish point.
+	for _, m := range phpRdKafkaNewTopicRe.FindAllStringSubmatchIndex(src, -1) {
+		topic := src[m[2]:m[3]]
+		if !looksLikeKafkaTopic(topic) {
+			continue
+		}
+		caller := enclosing(m[0])
+		id := kafkaTopicID(topic)
+		emitTopic(id, topic, "kafka", false, map[string]string{
+			"messaging_layer": "rdkafka",
+		})
+		emitEdge("SCOPE.Operation", caller, id, publishesToEdgeKind, map[string]string{
+			"messaging_layer": "rdkafka",
+		})
+		if className != "" {
+			emitEdge("SCOPE.Component", className, id, publishesToEdgeKind, map[string]string{
+				"messaging_layer": "rdkafka",
+			})
+		}
+	}
+}
+
+// findEnclosingPHPName returns the "ClassName.methodName" or "functionName"
+// for the nearest enclosing function declaration before `offset` in `src`.
+// Falls back to "module" when no function declaration is found.
+func findEnclosingPHPName(src string, offset int, className string) string {
+	start := offset - 4000
+	if start < 0 {
+		start = 0
+	}
+	window := src[start:offset]
+	matches := phpMethodRe.FindAllStringSubmatch(window, -1)
+	if len(matches) == 0 {
+		return "module"
+	}
+	last := matches[len(matches)-1]
+	methodName := last[1]
+	if methodName == "" {
+		methodName = last[2]
+	}
+	if methodName == "" {
+		return "module"
+	}
+	if className != "" {
+		return className + "." + methodName
+	}
+	return methodName
 }

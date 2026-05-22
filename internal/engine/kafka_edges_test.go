@@ -488,3 +488,212 @@ func TestKafka_NoOpForUnsupportedLanguage(t *testing.T) {
 		t.Fatalf("expected no-op for unsupported language, got ents=%v rels=%v", ents, rels)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// PHP — ext-rdkafka (RdKafka\KafkaConsumer + RdKafka\Producer) — Fixes #1495
+// ---------------------------------------------------------------------------
+
+// TestKafka_PHPRdKafkaConsumerSubscribe verifies that
+// `$consumer->subscribe(['payments.settled'])` emits a canonical
+// kafka:payments.settled MessageTopic + SUBSCRIBES_TO edge.
+// This is the exact pattern used by billing/app/Console/Commands/ConsumePaymentsSettled.php.
+func TestKafka_PHPRdKafkaConsumerSubscribe(t *testing.T) {
+	src := `<?php
+namespace App\Console\Commands;
+
+use RdKafka\Conf;
+use RdKafka\KafkaConsumer;
+
+class ConsumePaymentsSettled extends Command
+{
+    public function handle(): int
+    {
+        $conf = new Conf();
+        $conf->set('group.id', 'billing-invoicing');
+        $consumer = new KafkaConsumer($conf);
+        $consumer->subscribe(['payments.settled']);
+
+        while (true) {
+            $message = $consumer->consume(120 * 1000);
+        }
+        return self::SUCCESS;
+    }
+}
+`
+	ents, rels := runKafkaDetect(t, "php", "app/Console/Commands/ConsumePaymentsSettled.php", src)
+
+	// Must emit a MessageTopic for payments.settled.
+	tp := topicByName(ents, "payments.settled")
+	if tp == nil {
+		t.Fatalf("expected MessageTopic for payments.settled, ents=%v", ents)
+	}
+	if tp.Properties["broker"] != "kafka" {
+		t.Errorf("broker: want kafka, got %q", tp.Properties["broker"])
+	}
+	if tp.Name != "kafka:payments.settled" {
+		t.Errorf("topic entity Name: want kafka:payments.settled, got %q", tp.Name)
+	}
+
+	// Must emit a SUBSCRIBES_TO edge.
+	subs := edgesOfKind(rels, subscribesToEdgeKind)
+	if len(subs) == 0 {
+		t.Fatalf("expected SUBSCRIBES_TO edge, rels=%v", rels)
+	}
+	// One of the edges must target kafka:payments.settled.
+	found := false
+	for _, s := range subs {
+		if strings.Contains(s.ToID, "kafka:payments.settled") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no SUBSCRIBES_TO edge targeting kafka:payments.settled in %v", subs)
+	}
+}
+
+// TestKafka_PHPRdKafkaConsumerSubscribeMulti verifies multi-topic subscribe.
+func TestKafka_PHPRdKafkaConsumerSubscribeMulti(t *testing.T) {
+	src := `<?php
+use RdKafka\KafkaConsumer;
+class OrderConsumer {
+    public function run() {
+        $consumer = new KafkaConsumer($conf);
+        $consumer->subscribe(['orders.placed', 'orders.cancelled']);
+    }
+}
+`
+	ents, rels := runKafkaDetect(t, "php", "app/OrderConsumer.php", src)
+
+	for _, topic := range []string{"orders.placed", "orders.cancelled"} {
+		tp := topicByName(ents, topic)
+		if tp == nil {
+			t.Errorf("expected MessageTopic for %s, ents=%v", topic, ents)
+		}
+	}
+	subs := edgesOfKind(rels, subscribesToEdgeKind)
+	if len(subs) < 2 {
+		t.Errorf("expected at least 2 SUBSCRIBES_TO edges for 2 topics, got %d: %v", len(subs), subs)
+	}
+}
+
+// TestKafka_PHPRdKafkaConsumerAssign verifies partition-assign consumer pattern.
+func TestKafka_PHPRdKafkaConsumerAssign(t *testing.T) {
+	src := `<?php
+use RdKafka\KafkaConsumer;
+use RdKafka\TopicPartition;
+
+class PartitionConsumer {
+    public function handle() {
+        $consumer = new KafkaConsumer($conf);
+        $consumer->assign([new TopicPartition('inventory.reserved', 0)]);
+    }
+}
+`
+	ents, rels := runKafkaDetect(t, "php", "app/PartitionConsumer.php", src)
+
+	tp := topicByName(ents, "inventory.reserved")
+	if tp == nil {
+		t.Fatalf("expected MessageTopic for inventory.reserved, ents=%v", ents)
+	}
+	subs := edgesOfKind(rels, subscribesToEdgeKind)
+	if len(subs) == 0 {
+		t.Fatalf("expected SUBSCRIBES_TO edge from assign pattern, rels=%v", rels)
+	}
+	found := false
+	for _, s := range subs {
+		if strings.Contains(s.ToID, "kafka:inventory.reserved") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no SUBSCRIBES_TO targeting inventory.reserved in %v", subs)
+	}
+}
+
+// TestKafka_PHPRdKafkaProducerNewTopic verifies ->newTopic('topic') producer.
+func TestKafka_PHPRdKafkaProducerNewTopic(t *testing.T) {
+	src := `<?php
+use RdKafka\Producer;
+
+class PaymentProducer {
+    public function publish(array $event): void {
+        $producer = new Producer();
+        $topic = $producer->newTopic('payments.settled');
+        $topic->produce(RD_KAFKA_PARTITION_UA, 0, json_encode($event));
+    }
+}
+`
+	ents, rels := runKafkaDetect(t, "php", "app/PaymentProducer.php", src)
+
+	tp := topicByName(ents, "payments.settled")
+	if tp == nil {
+		t.Fatalf("expected MessageTopic for payments.settled, ents=%v", ents)
+	}
+	pubs := edgesOfKind(rels, publishesToEdgeKind)
+	if len(pubs) == 0 {
+		t.Fatalf("expected PUBLISHES_TO edge from newTopic, rels=%v", rels)
+	}
+	found := false
+	for _, p := range pubs {
+		if strings.Contains(p.ToID, "kafka:payments.settled") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no PUBLISHES_TO targeting payments.settled in %v", pubs)
+	}
+}
+
+// TestKafka_PHPNoOpWithoutRdKafka verifies that plain PHP without RdKafka
+// import does not cause false positives.
+func TestKafka_PHPNoOpWithoutRdKafka(t *testing.T) {
+	src := `<?php
+class OrderController {
+    public function subscribe(array $topics): void {
+        // generic subscribe, no kafka
+        foreach ($topics as $t) {
+            $this->eventBus->register($t);
+        }
+    }
+}
+`
+	ents, rels := runKafkaDetect(t, "php", "app/OrderController.php", src)
+	if len(ents) != 0 || len(rels) != 0 {
+		t.Fatalf("expected no-op for PHP without RdKafka import, got ents=%v rels=%v", ents, rels)
+	}
+}
+
+// TestKafka_PHPCallerAttribution verifies that the caller entity name is
+// "ClassName.methodName" matching the PHP extractor's SCOPE.Operation naming.
+func TestKafka_PHPCallerAttribution(t *testing.T) {
+	src := `<?php
+use RdKafka\KafkaConsumer;
+
+class ConsumePaymentsSettled {
+    public function handle(): int {
+        $consumer = new KafkaConsumer($conf);
+        $consumer->subscribe(['payments.settled']);
+        return 0;
+    }
+}
+`
+	_, rels := runKafkaDetect(t, "php", "app/ConsumePaymentsSettled.php", src)
+	subs := edgesOfKind(rels, subscribesToEdgeKind)
+	if len(subs) == 0 {
+		t.Fatalf("expected SUBSCRIBES_TO edge, rels=%v", rels)
+	}
+	// Find the SCOPE.Operation edge (not the class-level fallback).
+	found := false
+	for _, s := range subs {
+		if strings.HasPrefix(s.FromID, "SCOPE.Operation:") &&
+			strings.Contains(s.FromID, "ConsumePaymentsSettled.handle") &&
+			strings.Contains(s.ToID, "kafka:payments.settled") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected SCOPE.Operation:ConsumePaymentsSettled.handle → kafka:payments.settled edge, got %v", subs)
+	}
+}
