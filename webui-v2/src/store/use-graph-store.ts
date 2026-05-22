@@ -83,10 +83,36 @@ export const DEFAULT_NODE_SIZING: NodeSizingConfig = {
   // Fix #1532-4: out-of-box defaults must not produce overlapping "blobs".
   // Lower base + gentler degree scale + a tight max multiplier so a high-degree
   // hub stays at most ~1.8× the base size (was 3× of a much larger base).
+  //
+  // Fix #1580: this is the REFERENCE base size for a small/mid graph. On a large
+  // (≈19k-node) graph that fixed 90 is far too big — nodes overlap into colored
+  // blobs when zoomed out. The graph-canvas now AUTO-SCALES this down inversely
+  // with sqrt(nodeCount) (see baseSizeForCount), so the user-facing default knob
+  // can stay readable on a small graph while a huge graph renders as fine points.
   baseSize: 90,
   degreeScale: 18,
   maxMultiplier: 1.8,
 };
+
+// Fix #1580: the base-size slider/clamp floor. Lowered from 40 to 4 so a very
+// dense (≈19k-node) graph can be tuned down to fine points instead of blobs.
+export const NODE_BASE_SIZE_MIN = 4;
+export const NODE_BASE_SIZE_MAX = 320;
+
+/**
+ * Fix #1580: node-count-aware DEFAULT base size. A 19k-node graph needs a much
+ * smaller base than a 200-node one, so scale the reference default DOWN inversely
+ * with sqrt(nodeCount), normalized to a ~1.5k-node reference graph, and floor it
+ * at NODE_BASE_SIZE_MIN. This is applied in graph-canvas to the EFFECTIVE base
+ * size whenever the user hasn't overridden the knob, so a freshly-loaded huge
+ * graph renders as points, not blobs, with no manual tuning.
+ */
+export function baseSizeForCount(count: number, reference = DEFAULT_NODE_SIZING.baseSize): number {
+  if (!Number.isFinite(count) || count <= 0) return reference;
+  const REF_NODES = 1500; // graph size the reference baseSize was tuned for
+  const scaled = reference * Math.sqrt(REF_NODES / count);
+  return Math.max(NODE_BASE_SIZE_MIN, Math.min(reference, scaled));
+}
 
 export const DEFAULT_RENDER: RenderConfig = {
   pointOpacity: 0.92,
@@ -125,7 +151,9 @@ const ALL_EDGE_KINDS: EdgeKind[] = [
 // the stale stored tuning and adopt the new code defaults. Bump this whenever a
 // default in DEFAULT_SIMULATION / DEFAULT_NODE_SIZING / DEFAULT_RENDER changes so
 // the change actually lands on next load with no manual Reset.
-const DEFAULTS_VERSION = 2;
+// Fix #1580: bump so the lowered base-size floor + auto-scale defaults reach
+// users who already have a stored sizing blob (e.g. baseSize 90 from v2).
+const DEFAULTS_VERSION = 3;
 const VERSION_KEY = "ag.v2.graph.defaultsVersion";
 
 function readStoredVersion(): number {
@@ -326,6 +354,14 @@ export const useGraphStore = create<GraphState>((set) => ({
   setNodeSizing: (patch) =>
     set((s) => {
       const nodeSizing = { ...s.nodeSizing, ...patch };
+      // Fix #1580: clamp baseSize to the lowered floor so the knob can go to
+      // single digits (fine points on a dense graph) but never below 4 / above max.
+      if (patch.baseSize !== undefined) {
+        nodeSizing.baseSize = Math.max(
+          NODE_BASE_SIZE_MIN,
+          Math.min(NODE_BASE_SIZE_MAX, nodeSizing.baseSize),
+        );
+      }
       persist("ag.v2.graph.sizing", nodeSizing);
       return { nodeSizing };
     }),
