@@ -106,10 +106,13 @@ function buildGroupCenters(
   const keys = Array.from(new Set(nodes.map((n) => groupKeyFor(n, mode)))).sort();
   const N = keys.length;
   if (N === 0) return new Map();
-  // Fix #1548-2: the prior ring radius (N*700, sqrt(n)*50) flung clusters far
-  // apart, leaving the canvas mostly empty. Tighten it so clusters sit in a
-  // compact ring and the stronger center force pulls the whole graph together.
-  const R = Math.max(900, Math.sqrt(nodes.length) * 20, N * 150);
+  // Fix #1558-2: the ring radius still scaled with the GROUP COUNT (N*150) which,
+  // on a many-module monorepo, flung the clusters into a wide hollow ring with an
+  // empty middle. The ring is now only a SEEDING hint — keep it tight so the
+  // initial spokes start close to center, then let the link-spring + center
+  // gravity pull connected modules inward to fill the canvas. Scale with node
+  // count (not group count), so adding more groups no longer expands the ring.
+  const R = Math.min(1400, Math.max(450, Math.sqrt(nodes.length) * 28));
   return new Map(
     keys.map((key, i) => {
       const angle = (i / N) * 2 * Math.PI;
@@ -199,6 +202,11 @@ function GraphCanvasInner(
   const graphRef = useRef<Graph | null>(null);
   const hasSettledRef = useRef(false);
   const capTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Fix #1558-2: timer for the mid-settle re-heat (see mount effect) + a flag so
+  // the first early onSimulationEnd doesn't freeze a still-spread hollow ring
+  // before the re-heat has had a chance to finish converging.
+  const reheatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reheatedRef = useRef(false);
   const didAutoStartRef = useRef(false);
   const mountTimeRef = useRef(Date.now());
 
@@ -285,7 +293,10 @@ function GraphCanvasInner(
       const repoIdx = repoToIdx.get(n.repo ?? "") ?? 0;
       clusters[i] = clusterIdFor(n, repoIdx, groupBy);
       const normPR = (n.pageRank ?? 0) / maxPR;
-      clusterStrength[i] = grouping ? 0.45 + normPR * 0.25 : 0.04 + normPR * 0.06;
+      // Fix #1558-2: lower the per-node cluster pull so it nudges (rather than
+      // pins) nodes to their group center; the cross-module link-spring then wins
+      // where it matters, drawing connected modules together (was 0.45 + .25).
+      clusterStrength[i] = grouping ? 0.22 + normPR * 0.15 : 0.04 + normPR * 0.06;
 
       // log-scaled size by degree (graph.md: radius scales with PageRank/degree),
       // hard-capped at maxMultiplier × base so high-degree hubs never bloom into
@@ -296,13 +307,17 @@ function GraphCanvasInner(
 
       const gkey = groupKeyFor(n, groupBy);
       const center = grouping ? groupCenters.get(gkey) : undefined;
-      const jitterR = Math.max(600, Math.sqrt(groupCount.get(gkey) ?? 1) * 40);
+      // Fix #1558-2: seed nodes TIGHTLY around their group center (and seed the
+      // ungrouped fallback near the middle, not across a 4000-wide field). Within
+      // the ≤2s settle cap the strong center/gravity + link-spring then pull the
+      // already-compact start into a canvas-filling mass — no hollow ring.
+      const jitterR = Math.max(280, Math.sqrt(groupCount.get(gkey) ?? 1) * 26);
       const angle = Math.random() * 2 * Math.PI;
       const r = Math.random() * jitterR;
-      positions[i * 2] = center ? center.x + r * Math.cos(angle) : (Math.random() - 0.5) * 4000;
+      positions[i * 2] = center ? center.x + r * Math.cos(angle) : (Math.random() - 0.5) * 1600;
       positions[i * 2 + 1] = center
         ? center.y + r * Math.sin(angle)
-        : (Math.random() - 0.5) * 4000;
+        : (Math.random() - 0.5) * 1600;
     });
 
     return { positions, sizes, clusters, clusterStrength };
@@ -371,8 +386,19 @@ function GraphCanvasInner(
     const { states } = linkData;
     const out = new Float32Array(states.length);
     if (!render.showLinks) return out;
+    // Fix #1558-1: links must stay visible at EVERY zoom level — especially the
+    // long cross-module "bridge" links between islands, which previously thinned
+    // to sub-pixel and vanished when zoomed out. `scaleLinksOnZoom` is off so the
+    // width is a constant on-screen pixel value; we floor every link at a
+    // perceptible minimum (cross-module links a touch heavier so the bridges read
+    // first) and never let linkWidthScale push them below that floor.
+    const MIN_SAME = 1.1;
+    const MIN_CROSS = 2.4;
     for (let i = 0; i < states.length; i++) {
-      out[i] = (states[i] === 1 ? 2.2 : 0.6) * render.linkWidthScale;
+      const cross = states[i] === 1;
+      const base = cross ? 2.6 : 1.0;
+      const floor = cross ? MIN_CROSS : MIN_SAME;
+      out[i] = Math.max(floor, base * render.linkWidthScale);
     }
     return out;
   }, [linkData, render.showLinks, render.linkWidthScale]);
@@ -591,6 +617,11 @@ function GraphCanvasInner(
       pointGreyoutOpacity: 0.15,
       linkGreyoutOpacity: render.linkOpacity * 0.5,
       linkWidthScale: render.showLinks ? render.linkWidthScale : 0,
+      // Fix #1558-1: keep links at a CONSTANT on-screen pixel width regardless of
+      // zoom. With this off, the floored widths from packLinkWidths hold at every
+      // zoom level, so the long inter-island bridge links never thin out and
+      // disappear when the user zooms all the way out.
+      scaleLinksOnZoom: false,
       // Fix #1548-2: cosmos.gl fades links by their ON-SCREEN length
       // (linkVisibilityDistanceRange, in px) and caps far-link alpha at
       // linkVisibilityMinTransparency. The defaults ([50,150] / 0.25) made
@@ -606,18 +637,37 @@ function GraphCanvasInner(
       enableSimulation: true,
       simulationLinkSpring: simulation.linkSpring,
       simulationLinkDistance: Math.max(simulation.linkDistance, 8),
-      simulationGravity: 0.02,
+      // Fix #1558-2: more gravity (was 0.02) reinforces the center pull so
+      // disconnected islands drift inward instead of sitting on the rim, filling
+      // the canvas rather than leaving an empty middle.
+      simulationGravity: 0.35,
       simulationFriction: simulation.friction,
-      simulationDecay: 1500,
-      simulationCluster: 0.5,
+      // Fix #1558-2: a slower cool-down (was 1500) keeps the simulation active
+      // long enough for the strong center + gravity to pull the islands inward
+      // before it freezes — otherwise it ended early at the spread state and the
+      // graph settled as a hollow ring. The ≤settleTime wall-clock cap still
+      // bounds total settle time.
+      simulationDecay: 3000,
+      // Fix #1558-2: the cluster force pinned every node hard to its ring center,
+      // overriding the cross-module link-spring and locking in the hollow ring.
+      // Soften it so groups still coalesce locally but connected modules are free
+      // to be pulled together by their shared edges (was 0.5).
+      simulationCluster: 0.2,
       simulationRepulsion: simulation.repulsion,
       simulationCenter: simulation.center,
       rescalePositions: true,
-      fitViewOnInit: true,
-      fitViewDelay: 3500,
+      // Fix #1558-2: let OUR doSettle own the final fit (after the mid-settle
+      // re-heat has converged). cosmos's own fitViewOnInit fired at a fixed delay
+      // mid-reheat and captured the still-spread layout, so the graph looked like
+      // it floated/ringed even though it later converged. Disable it here.
+      fitViewOnInit: false,
       fitViewPadding: FIT_PADDING,
       onSimulationEnd: () => {
-        if (!hasSettledRef.current) doSettleRef.current();
+        // Fix #1558-2: ignore the FIRST early cool-down (before the mid-settle
+        // re-heat) so we don't freeze a still-spread hollow ring. After the
+        // re-heat has run, the second cool-down settles the converged layout. The
+        // cap timer is the hard backstop either way.
+        if (!hasSettledRef.current && reheatedRef.current) doSettleRef.current();
       },
       onSimulationTick: scheduleLabelsLive,
       onClick: (index?: number) => {
@@ -668,6 +718,19 @@ function GraphCanvasInner(
       });
     } else {
       const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
+      // Fix #1558-2: a single alpha=1 pass from the (spread) seed cools down
+      // before the strong center/gravity finish pulling the islands inward — the
+      // graph froze as a hollow ring. Re-heat the simulation once partway through
+      // the settle window so it keeps converging on the now-partially-collapsed
+      // positions, reliably reaching the canvas-filling layout (this mirrors the
+      // manual second `start()` that was needed to converge). Still bounded by the
+      // settleTime cap below.
+      reheatedRef.current = false;
+      reheatTimerRef.current = setTimeout(() => {
+        const gg = graphRef.current;
+        reheatedRef.current = true;
+        if (gg && !hasSettledRef.current) gg.start(1);
+      }, Math.round(capMs * 0.45));
       capTimerRef.current = setTimeout(() => {
         if (!hasSettledRef.current) doSettleRef.current();
       }, capMs);
@@ -675,6 +738,7 @@ function GraphCanvasInner(
 
     return () => {
       if (capTimerRef.current) clearTimeout(capTimerRef.current);
+      if (reheatTimerRef.current) clearTimeout(reheatTimerRef.current);
       if (labelTimerRef.current !== null) clearTimeout(labelTimerRef.current);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       interactingRef.current = false;
