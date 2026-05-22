@@ -23,7 +23,11 @@ package links
 // pass so the same topic Name appears in every repo that touches it. P7
 // joins by Name, exactly like P4 joins http_endpoint synthetics by Name.
 //
-// Emits one link per (publisher-entity, subscriber-entity) cross-repo pair:
+// Emits one link per (topicName, publisherRepo, subscriberRepo) triple — i.e.
+// one edge per distinct topic per repo-pair. Two different topics flowing
+// between the same repo-pair produce two separate edges (#1474). Within a
+// single topic the representative-per-side entity selection still collapses
+// the publisher×subscriber entity cartesian to O(1) per repo-pair (#1453).
 //
 //	relation   = "publishes_to"
 //	method     = "topic"
@@ -265,7 +269,16 @@ func runTopicPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 
 				source := entityKey(pub.repo, srcID)
 				target := entityKey(sub.repo, tgtID)
-				id := MakeID(source, target, MethodTopic)
+				// Dedup key is (topicName, publisherRepo, subscriberRepo): two
+				// distinct topics flowing between the same repo-pair must each emit
+				// their own edge. Before #1474 the key was just (source, target,
+				// method) — which collapsed when the same representative entity was
+				// the minimum publisher/subscriber for two different topic Names,
+				// suppressing the second edge (#1474). Including `name` in the ID
+				// hash produces a unique key per (topic, repo-pair) while keeping
+				// the O(R²) rep-per-side bound intact. Link.Method stays MethodTopic
+				// so replaceByMethod segregation is unchanged.
+				id := MakeID(source, target, MethodTopic+":"+name)
 				if emitted[id] {
 					continue
 				}

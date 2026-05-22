@@ -360,3 +360,103 @@ func TestTopicPass_EventBridgeChannel(t *testing.T) {
 		t.Errorf("channel: want eventbridge, got %v", topicLinks[0].Channel)
 	}
 }
+
+// TestTopicPass_TwoDistinctTopicsSameRepoPair is the #1474 regression guard.
+//
+// When two DIFFERENT topic names both flow from the same publisher repo to the
+// same subscriber repo, the pre-#1474 code collapsed them into a single edge
+// because the dedup key was (source-entity, target-entity, method). If the same
+// representative entity (lexicographic minimum) was chosen for BOTH topics on
+// each side, MakeID produced an identical hash and the second edge was dropped.
+//
+// After the fix the dedup key is (topicName, source-entity, target-entity), so
+// each distinct topic between a given repo-pair emits its own edge.
+func TestTopicPass_TwoDistinctTopicsSameRepoPair(t *testing.T) {
+	root := fixtureRoot(t)
+
+	// orders repo: one function publishes BOTH topics.
+	// Using the SAME entity ID ("shared_pub") as the publisher for both ensures
+	// the pre-fix code would choose the same representative and produce a
+	// colliding MakeID → dropping the second topic edge.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "orders",
+		Entities: []map[string]any{
+			// shared_pub is the lex-minimum publisher entity for both topics.
+			{"id": "shared_pub", "name": "publish_events", "kind": "SCOPE.Operation", "source_file": "orders/producer.py"},
+			{"id": "topic_placed", "name": "kafka:orders.placed", "kind": "SCOPE.MessageTopic", "source_file": ""},
+			{"id": "topic_shipped", "name": "kafka:orders.shipped", "kind": "SCOPE.MessageTopic", "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "shared_pub", "to_id": "topic_placed", "kind": "PUBLISHES_TO"},
+			{"from_id": "shared_pub", "to_id": "topic_shipped", "kind": "PUBLISHES_TO"},
+		},
+	})
+
+	// notifications repo: one function subscribes to BOTH topics.
+	// Same pattern: shared_sub is the lex-minimum subscriber for both topics.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "notifications",
+		Entities: []map[string]any{
+			{"id": "shared_sub", "name": "handle_order_event", "kind": "SCOPE.Operation", "source_file": "notifications/handler.js"},
+			{"id": "topic_placed_n", "name": "kafka:orders.placed", "kind": "SCOPE.MessageTopic", "source_file": ""},
+			{"id": "topic_shipped_n", "name": "kafka:orders.shipped", "kind": "SCOPE.MessageTopic", "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "shared_sub", "to_id": "topic_placed_n", "kind": "SUBSCRIBES_TO"},
+			{"from_id": "shared_sub", "to_id": "topic_shipped_n", "kind": "SUBSCRIBES_TO"},
+		},
+	})
+
+	home := filepath.Join(root, "ag-home-topic-1474")
+	result, err := RunAllPasses("tg1474", root, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	doc, err := readDoc(filepath.Join(home, "groups", "tg1474-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var topicLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodTopic {
+			topicLinks = append(topicLinks, l)
+		}
+	}
+
+	// Must emit 2 edges: one per distinct topic, not 1 (the pre-#1474 collapse).
+	if len(topicLinks) != 2 {
+		t.Fatalf("#1474 regression: expected 2 topic links (one per distinct topic), got %d; "+
+			"pass results=%+v; links=%+v", len(topicLinks), result.Results, topicLinks)
+	}
+
+	// Both edges must share the same source and target (same rep entities).
+	for _, l := range topicLinks {
+		if l.Source != "orders::shared_pub" {
+			t.Errorf("source: want orders::shared_pub, got %s", l.Source)
+		}
+		if l.Target != "notifications::shared_sub" {
+			t.Errorf("target: want notifications::shared_sub, got %s", l.Target)
+		}
+	}
+
+	// Verify both topic identifiers are present.
+	identifiers := map[string]bool{}
+	for _, l := range topicLinks {
+		if l.Identifier != nil {
+			identifiers[*l.Identifier] = true
+		}
+	}
+	if !identifiers["kafka:orders.placed"] {
+		t.Error("expected kafka:orders.placed identifier among topic links")
+	}
+	if !identifiers["kafka:orders.shipped"] {
+		t.Error("expected kafka:orders.shipped identifier among topic links")
+	}
+
+	// Both link IDs must be distinct.
+	if topicLinks[0].ID == topicLinks[1].ID {
+		t.Errorf("link IDs must be distinct per topic; both got %s", topicLinks[0].ID)
+	}
+}
