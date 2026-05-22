@@ -69,6 +69,15 @@ type v2ScanInspectReply struct {
 	Monorepo string `json:"monorepo"`
 	// Packages is the list of repo-relative package roots for a monorepo.
 	Packages []string `json:"packages"`
+	// ChildGitRepos is the list of immediate child directory names (relative to
+	// AbsPath) that contain a .git directory. Populated when the parent dir is NOT
+	// itself a git repo but contains N child git repos (the multi-repo-parent
+	// pattern). Takes precedence over Packages when both would be non-empty.
+	ChildGitRepos []string `json:"childGitRepos"`
+	// ChildrenKind is "git-repos" when ChildGitRepos is non-empty, "packages"
+	// when Packages is non-empty, "" when neither. The frontend uses this to
+	// label the checkbox list appropriately.
+	ChildrenKind string `json:"childrenKind"`
 	// HasAgentsMD is true when AGENTS.md / CLAUDE.md / GEMINI.md exists at the root.
 	HasAgentsMD bool `json:"hasAgentsMd"`
 	// AlreadyRegistered is the existing group name if .archigraph/group.json exists.
@@ -98,6 +107,28 @@ type v2ScanReposReq struct {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v2/scan/inspect — resolve + detect (no writes)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// detectChildGitRepos returns the names of immediate subdirectories of dir
+// that contain a .git entry (file or directory), sorted alphabetically. It
+// does NOT recurse; only depth-1 children are checked. Returns nil (not an
+// empty slice) when no such children exist so callers can test with len().
+func detectChildGitRepos(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var children []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(dir, e.Name(), ".git")
+		if _, err := os.Stat(candidate); err == nil {
+			children = append(children, e.Name())
+		}
+	}
+	return children
+}
 
 // handleV2ScanInspect resolves a server-side path and returns a stack +
 // monorepo detection preview. It performs NO registry writes; it is the
@@ -144,6 +175,28 @@ func (s *Server) handleV2ScanInspect(w http.ResponseWriter, r *http.Request) {
 		pkgs = []string{}
 	}
 
+	// Detect child git repos (the multi-repo-parent pattern). A parent directory
+	// containing N sub-repos is NOT itself a monorepo (no workspace manifest), so
+	// DetectMonorepo returns KindNone. We detect it by checking which immediate
+	// subdirs contain a .git entry. If child git repos are found we prefer them
+	// over monorepo packages (a plain parent dir can't meaningfully be both).
+	childGitRepos := detectChildGitRepos(abs)
+	if childGitRepos == nil {
+		childGitRepos = []string{}
+	}
+
+	// Determine childrenKind and resolve precedence: child git repos win over
+	// monorepo packages when both would be present (shouldn't happen in practice
+	// but be explicit and safe).
+	var childrenKind string
+	if len(childGitRepos) > 0 {
+		// Child git repos detected — clear packages to avoid confusion.
+		pkgs = []string{}
+		childrenKind = "git-repos"
+	} else if len(pkgs) > 0 {
+		childrenKind = "packages"
+	}
+
 	reply := v2ScanInspectReply{
 		Valid:          true,
 		AbsPath:        abs,
@@ -152,6 +205,8 @@ func (s *Server) handleV2ScanInspect(w http.ResponseWriter, r *http.Request) {
 		Stack:          detect.Stack(abs),
 		Monorepo:       string(mono.Kind),
 		Packages:       pkgs,
+		ChildGitRepos:  childGitRepos,
+		ChildrenKind:   childrenKind,
 		HasAgentsMD:    fileExists(abs, "AGENTS.md") || fileExists(abs, "CLAUDE.md") || fileExists(abs, "GEMINI.md"),
 	}
 	if fileExists(abs, ".archigraph/group.json") {
