@@ -27,6 +27,8 @@ import type { GraphCanvasHandle } from "@/components/graph/graph-canvas";
 import { NodeInspector } from "@/components/graph/node-inspector";
 import { FiltersDrawer } from "@/components/graph/filters-drawer";
 import { CommunitiesPopover } from "@/components/graph/communities-popover";
+import { MCPActivityOverlay } from "@/components/graph/mcp-activity-overlay";
+import { useGraphHighlight } from "@/hooks/use-graph-highlight";
 
 const COLOR_MODES: { id: ColorMode; label: string }[] = [
   { id: "repo", label: "Repo" },
@@ -46,6 +48,10 @@ export default function GraphScreen() {
 
   const searchRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<GraphCanvasHandle>(null);
+
+  // #1157 Jarvis: subscribe to the MCP activity SSE stream and derive the
+  // transient glow set + epoch the canvas animates. Default ON.
+  const jarvis = useGraphHighlight();
 
   // ── ?node= deep-link: restore on mount, persist on selection change ──────────
   // On first render, if the URL carries ?node=<id>, apply it as the selected
@@ -351,8 +357,21 @@ export default function GraphScreen() {
                 onNodeClick={onNodeClick}
                 onNodeHover={(n) => s.setHoveredNode(n?.id ?? null)}
                 onSettled={() => {}}
+                highlightedNodeIds={jarvis.enabled ? jarvis.highlightedNodeIds : undefined}
+                highlightEpoch={jarvis.epoch}
               />
             </Suspense>
+
+            {/* #1157 Jarvis: MCP activity badge + log + on/off toggle. */}
+            <MCPActivityOverlay
+              enabled={jarvis.enabled}
+              connected={jarvis.sseConnected}
+              isActive={jarvis.isActive}
+              totalCount={jarvis.totalCount}
+              eventLog={jarvis.eventLog}
+              onToggle={jarvis.setEnabled}
+              onReplay={jarvis.replay}
+            />
 
             {/* Fix #1548-3: clear "focused on X — exit" affordance. */}
             {focusActive ? (
