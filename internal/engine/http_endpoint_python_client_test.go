@@ -505,3 +505,179 @@ async def get_stock(item_id: str):
 	requireContains(t, ids, want, "imported-const-path-param")
 	requireFetches(t, rels, "http:GET:/items/{item_id}/stock", "imported-const-path-param")
 }
+
+// ---------------------------------------------------------------------------
+// #1491 — cross-MODULE f-string URL resolution via local variable
+// ---------------------------------------------------------------------------
+
+// TestPyClient_XModule_LocalVarFString_SameFile covers the core scenario
+// from #1491: a module-level URL constant is used inside an f-string that is
+// assigned to a local variable, which is then passed to the HTTP client.
+//
+//	PRICING_URL = "http://pricing:8000"    # same file (module-level)
+//	pricing_endpoint = f"{PRICING_URL}/quote"
+//	await client.post(pricing_endpoint, ...)  → POST:/quote
+//
+// Before the fix this emitted `POST:/{PRICING_URL}/quote` because the local
+// variable table stored the raw f-string body without resolving it, and
+// pyResolveURLArg returned isFString=false for bare-identifier lookups.
+func TestPyClient_XModule_LocalVarFString_SameFile(t *testing.T) {
+	src := `
+import httpx
+
+PRICING_URL = "http://pricing:8084"
+
+async def create_order(payload: dict):
+    pricing_endpoint = f"{PRICING_URL}/quote"
+    async with httpx.AsyncClient() as client:
+        quote = await client.post(pricing_endpoint, json={"sku": "abc"})
+    return quote.json()
+`
+	ids, rels := runDetectWithRels(t, "python", "routes.py", src)
+	want := []string{"http:POST:/quote"}
+	requireContains(t, ids, want, "xmod-localvar-fstring-samefile")
+	requireFetches(t, rels, "http:POST:/quote", "xmod-localvar-fstring-samefile")
+	for _, id := range ids {
+		if strings.Contains(id, "PRICING_URL") {
+			t.Errorf("xmod-localvar-fstring-samefile: emitted literal placeholder %q", id)
+		}
+	}
+}
+
+// TestPyClient_XModule_LocalVarFString_Imported covers the cross-module case:
+// PRICING_URL is imported from another module and the local variable holds
+// the f-string that references it.
+//
+//	from app.config import PRICING_URL
+//	pricing_endpoint = f"{PRICING_URL}/quote"
+//	await client.post(pricing_endpoint, ...)  → POST:/quote  (not /{PRICING_URL}/quote)
+func TestPyClient_XModule_LocalVarFString_Imported(t *testing.T) {
+	src := `
+from app.config import PRICING_URL
+import httpx
+
+async def create_order(payload: dict):
+    pricing_endpoint = f"{PRICING_URL}/quote"
+    async with httpx.AsyncClient() as client:
+        quote = await client.post(pricing_endpoint, json={"sku": "abc"})
+    return quote.json()
+`
+	ids, rels := runDetectWithRels(t, "python", "routes.py", src)
+	want := []string{"http:POST:/quote"}
+	requireContains(t, ids, want, "xmod-localvar-fstring-imported")
+	requireFetches(t, rels, "http:POST:/quote", "xmod-localvar-fstring-imported")
+	for _, id := range ids {
+		if strings.Contains(id, "PRICING_URL") {
+			t.Errorf("xmod-localvar-fstring-imported: emitted literal placeholder %q", id)
+		}
+	}
+}
+
+// TestPyClient_XModule_LocalVarFString_FlagGated covers the polyglot-platform
+// orders/routes.py pattern: an if-branch overwrites pricing_endpoint with a
+// V2 URL, but both branches must resolve to valid paths (not raw f-string
+// bodies).
+func TestPyClient_XModule_LocalVarFString_FlagGated(t *testing.T) {
+	src := `
+import httpx
+
+PRICING_URL = "http://pricing:8084"
+PRICING_V2_URL = "http://pricing:8084/v2"
+
+async def create_order(payload: dict):
+    pricing_endpoint = f"{PRICING_URL}/quote"
+    if payload.get("new_engine"):
+        pricing_endpoint = f"{PRICING_V2_URL}/quote"
+
+    async with httpx.AsyncClient() as client:
+        quote = await client.post(pricing_endpoint, json={"sku": "abc"})
+    return quote.json()
+`
+	ids, rels := runDetectWithRels(t, "python", "routes.py", src)
+	// Both /quote and /v2/quote are valid resolved paths.
+	requireContains(t, ids, []string{"http:POST:/quote"}, "flag-gated-v1")
+	requireFetches(t, rels, "http:POST:/quote", "flag-gated-v1")
+	for _, id := range ids {
+		if strings.Contains(id, "PRICING_URL") || strings.Contains(id, "PRICING_V2_URL") {
+			t.Errorf("flag-gated: emitted literal placeholder %q", id)
+		}
+	}
+}
+
+// TestPyClient_XModule_LocalVarFString_OrderSagaInventory covers
+// order-saga→inventory: INVENTORY_URL module const in f-string local var.
+func TestPyClient_XModule_LocalVarFString_OrderSagaInventory(t *testing.T) {
+	src := `
+import httpx
+
+INVENTORY_URL = "http://inventory:50051"
+
+async def reserve_stock(item_id: str, qty: int):
+    url = f"{INVENTORY_URL}/reserve"
+    async with httpx.AsyncClient() as c:
+        await c.post(url, json={"item_id": item_id, "qty": qty})
+`
+	ids, rels := runDetectWithRels(t, "python", "steps.py", src)
+	requireContains(t, ids, []string{"http:POST:/reserve"}, "saga-inventory-localvar")
+	requireFetches(t, rels, "http:POST:/reserve", "saga-inventory-localvar")
+	for _, id := range ids {
+		if strings.Contains(id, "INVENTORY_URL") {
+			t.Errorf("saga-inventory: emitted placeholder %q", id)
+		}
+	}
+}
+
+// TestPyClient_XModule_LocalVarFString_SemanticSearchCatalog covers
+// semantic-search→catalog: CATALOG_URL module const, direct f-string to
+// client.get (no intermediate local var). Uses a simple identifier path
+// param (not a subscript expression like hit['sku'] which is a pre-existing
+// limitation). Verifies that CATALOG_URL is stripped correctly.
+func TestPyClient_XModule_LocalVarFString_SemanticSearchCatalog(t *testing.T) {
+	src := `
+import httpx
+
+CATALOG_URL = "http://catalog:3001"
+
+async def enrich(hits: list) -> list:
+    products = []
+    async with httpx.AsyncClient() as client:
+        for hit in hits:
+            sku = hit["sku"]
+            resp = await client.get(f"{CATALOG_URL}/products/{sku}")
+            products.append(resp.json())
+    return products
+`
+	ids, rels := runDetectWithRels(t, "python", "routes.py", src)
+	// CATALOG_URL is a same-file constant, should be resolved via f-string path.
+	requireContains(t, ids, []string{"http:GET:/products/{sku}"}, "semantic-search-catalog-direct-fstring")
+	requireFetches(t, rels, "http:GET:/products/{sku}", "semantic-search-catalog-direct-fstring")
+	for _, id := range ids {
+		if strings.Contains(id, "CATALOG_URL") {
+			t.Errorf("semantic-search-catalog: emitted placeholder %q", id)
+		}
+	}
+}
+
+// TestPyClient_XModule_LocalVarFString_SemanticSearchViaLocalVar covers the
+// case where the URL is built into a local variable using an f-string.
+func TestPyClient_XModule_LocalVarFString_SemanticSearchViaLocalVar(t *testing.T) {
+	src := `
+import httpx
+
+CATALOG_URL = "http://catalog:3001"
+
+async def enrich(sku: str) -> dict:
+    url = f"{CATALOG_URL}/products/{sku}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url)
+    return resp.json()
+`
+	ids, rels := runDetectWithRels(t, "python", "routes.py", src)
+	requireContains(t, ids, []string{"http:GET:/products/{sku}"}, "semantic-search-catalog-localvar")
+	requireFetches(t, rels, "http:GET:/products/{sku}", "semantic-search-catalog-localvar")
+	for _, id := range ids {
+		if strings.Contains(id, "CATALOG_URL") {
+			t.Errorf("semantic-search-catalog: emitted placeholder %q", id)
+		}
+	}
+}
