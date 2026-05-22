@@ -20,6 +20,9 @@ import type {
   SettingsGroup,
   SettingsFeatures,
   DoctorCheck,
+  FlowsListResponse,
+  FlowDetailResponse,
+  FlowDeadEndsResponse,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -196,6 +199,27 @@ export const api = {
     requestV2<DoctorCheck[]>(`/groups/${encodeURIComponent(groupId)}/doctor`, {
       method: "POST",
     }),
+
+  // --- Flows (Process Flow Explorer) ---
+  listFlows: (groupId: string, params?: { tab?: string; search?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set("search", params.search);
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.tab === "crossrepo") q.set("cross_stack_only", "false");
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<FlowsListResponse>(`/flows/${groupId}${qs}`);
+  },
+  getFlowDetail: (groupId: string, processId: string) =>
+    request<FlowDetailResponse>(`/flows/${groupId}/${encodeURIComponent(processId)}`),
+  listFlowDeadEnds: (groupId: string) =>
+    request<FlowDeadEndsResponse>(`/flows/${groupId}/dead-ends`),
+  listFlowTruncated: (groupId: string) =>
+    request<FlowsListResponse>(`/flows/${groupId}/truncated`),
+  generateFlowDocs: (groupId: string, processId: string) =>
+    request<{ status: string; message: string }>(
+      `/flows/${groupId}/${encodeURIComponent(processId)}/trigger-enrichment`,
+      { method: "POST" },
+    ),
 };
 
 export type Api = typeof api;

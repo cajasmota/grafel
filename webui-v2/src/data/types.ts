@@ -277,3 +277,128 @@ export interface DoctorCheck {
   status: "ok" | "warning" | "info" | "error";
   detail: string;
 }
+
+// ─── Flows (Process Flow Explorer) ────────────────────────────────────────────
+
+export type EntryKind =
+  | "http_handler"
+  | "message_consumer"
+  | "kafka_consumer"
+  | "scheduled_task"
+  | "component_render"
+  | "test"
+  | "cli_command"
+  | "ws_handler"
+  | "function";
+
+export type StepKind =
+  | "http_fetch"
+  | "db_query"
+  | "db_write"
+  | "message_publish"
+  | "message_consume"
+  | "transform"
+  | "validation"
+  | "side_effect"
+  | "external_lib"
+  | "test_assert"
+  | "component_render"
+  | "render"
+  | "function_call"
+  | "unknown";
+
+export type FlowRelationshipKind =
+  | "CALLS"
+  | "FETCHES"
+  | "QUERIES"
+  | "PUBLISHES_TO"
+  | "SUBSCRIBES_TO"
+  | "RENDERS"
+  | "REFERENCES";
+
+export interface FlowEnrichment {
+  ai_summary?: string;
+  preconditions?: string[];
+  expected_outcome?: string;
+  writes_db_table?: string[];
+  publishes_to?: string[];
+  external_calls?: string[];
+  read_sources?: string[];
+  write_sinks?: string[];
+  linked_endpoint_id?: string;
+  linked_topic_id?: string;
+  gaps?: string[];
+  rank?: number;
+}
+
+export interface ProcessStep {
+  entity_id: string;
+  name: string;
+  kind: string;
+  step_index: number;
+  source_file: string;
+  start_line?: number;
+  repo: string;
+  edge_kind: FlowRelationshipKind | null;
+  step_kind?: StepKind;
+  side_effects?: string[];
+}
+
+export interface Process {
+  process_id: string;
+  label: string;
+  repo: string;
+  entry_id: string;
+  entry_name: string;
+  entry_kind: EntryKind;
+  entry_module?: string;
+  terminal_id: string;
+  step_count: number;
+  cross_stack: boolean;
+  is_cross_repo?: boolean;
+  crosses_external_lib?: boolean;
+  terminal_is_phantom?: boolean;
+  chain_labels: string[];
+  source_file?: string;
+  priority_hint?: "high" | "medium" | "low";
+  dominant_step_kind?: FlowRelationshipKind;
+  complexity_score?: number;
+  steps?: ProcessStep[];
+  flow_side_effects?: string[];
+  enrichment?: FlowEnrichment;
+  docgen_status?: "enriched" | "pending" | "stale";
+  source_snippets?: Record<string, string>;
+}
+
+export interface FlowDeadEnd {
+  process_id: string;
+  process_name: string;
+  repo: string;
+  reason: "no_useful_sink" | "single_step" | "unresolved_callee" | "phantom_terminal" | "dead_end";
+  step_count: number;
+  dead_end_step_id?: string;
+  dead_end_step_name?: string;
+  cross_stack?: boolean;
+}
+
+export interface EntryKindGroup {
+  kind: EntryKind;
+  count: number;
+}
+
+export interface FlowsListResponse {
+  processes: Process[];
+  count: number;
+  entry_kind_groups: EntryKindGroup[];
+}
+
+export interface FlowDetailResponse {
+  process: Process;
+  chain_entities: ProcessStep[];
+  source_snippets: Record<string, string>;
+}
+
+export interface FlowDeadEndsResponse {
+  dead_ends: FlowDeadEnd[];
+  count: number;
+}

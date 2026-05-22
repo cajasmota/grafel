@@ -540,6 +540,13 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/repos/{repo}/monorepo", s.handleV2PatchMonorepo)
 	mux.HandleFunc("POST /api/v2/groups/{group}/doctor", s.handleV2Doctor)
 
+	// Flows (Process Flow Explorer) — v2 envelope wrappers (#1441).
+	// NOTE: /dead-ends and /truncated are registered before any wildcard so
+	// Go 1.22 ServeMux picks the more-specific path first.
+	mux.HandleFunc("GET /api/v2/groups/{group}/flows", s.handleV2FlowsList)
+	mux.HandleFunc("GET /api/v2/groups/{group}/flows/dead-ends", s.handleV2FlowDeadEnds)
+	mux.HandleFunc("GET /api/v2/groups/{group}/flows/truncated", s.handleV2FlowTruncated)
+
 	return s.withAuth(withGzip(mux))
 }
 
