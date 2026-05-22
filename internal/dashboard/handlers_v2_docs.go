@@ -38,17 +38,27 @@ import (
 
 // ── Wire shapes ────────────────────────────────────────────────────────────
 
+// v2DocsTreeReply wraps the per-repo tree with a top-level flag that
+// tells the UI whether the generate-docs skill has run for this group.
+// When SkillGenerated is false, the tree may contain pre-existing repo
+// README files, not skill output — the UI shows the onboarding CTA.
+type v2DocsTreeReply struct {
+	SkillGenerated bool        `json:"skillGenerated"`
+	Nodes          []v2DocNode `json:"nodes"`
+}
+
 // v2DocNode is one node in the generated-docs file tree. It mirrors the
 // DocNode TypeScript interface in data/types.ts.
 //
 //	dir  → "folder"   (repo root, modules/, reference/, patterns/, …)
 //	file → "doc"      (a renderable .md document; Path is its API key)
 type v2DocNode struct {
-	Type     string      `json:"type"` // "folder" | "doc"
-	Name     string      `json:"name"` // display label
-	Path     string      `json:"path,omitempty"`     // doc key for /docs/page?path=  (docs only)
-	Category string      `json:"category,omitempty"` // top-level section: overview|modules|reference|patterns|guide
-	Children []v2DocNode `json:"children,omitempty"`
+	Type       string      `json:"type"`                 // "folder" | "doc"
+	Name       string      `json:"name"`                 // display label
+	Path       string      `json:"path,omitempty"`       // doc key for /docs/page?path=  (docs only)
+	Category   string      `json:"category,omitempty"`   // top-level section: overview|modules|reference|patterns|guide
+	IsRepoDocs bool        `json:"isRepoDocs,omitempty"` // true = not skill-generated (raw repo markdown)
+	Children   []v2DocNode `json:"children,omitempty"`
 }
 
 // v2DocPageReply is the data payload for a single rendered doc page.
@@ -64,8 +74,9 @@ type v2DocPageReply struct {
 //
 // Returns the tree of GENERATED markdown documents for the Docs screen left
 // pane, grouped per-repo then by doc category (overview / modules / reference
-// / patterns / guides). When no docs have been generated yet the tree is the
-// empty array `[]` and the UI shows the agent-skill empty state.
+// / patterns / guides). The response includes a top-level skillGenerated flag
+// so the UI can distinguish skill output from pre-existing repo READMEs.
+// When no docs exist the response is {skillGenerated:false, nodes:[]}.
 func (s *Server) handleV2DocsTree(w http.ResponseWriter, r *http.Request) {
 	group := r.PathValue("group")
 	if _, err := s.graphs.GetGroup(group); err != nil {
@@ -75,12 +86,14 @@ func (s *Server) handleV2DocsTree(w http.ResponseWriter, r *http.Request) {
 
 	docPaths, err := groupDocPaths(group)
 	if err != nil {
-		// No registered docs path → treat as "not generated yet".
-		writeV2JSON(w, http.StatusOK, v2OK([]v2DocNode{}))
+		// No registered docs path — not generated yet.
+		writeV2JSON(w, http.StatusOK, v2OK(v2DocsTreeReply{SkillGenerated: false, Nodes: []v2DocNode{}}))
 		return
 	}
 
 	roots := []v2DocNode{}
+	skillGenerated := false
+
 	// Deterministic repo order.
 	slugs := make([]string, 0, len(docPaths))
 	for slug := range docPaths {
@@ -96,13 +109,18 @@ func (s *Server) handleV2DocsTree(w http.ResponseWriter, r *http.Request) {
 		if _, err := os.Stat(docPath); err != nil {
 			continue
 		}
+		isSkill := isSkillGeneratedDir(docPath)
+		if isSkill {
+			skillGenerated = true
+		}
 		repoNode := buildV2DocTree(docPath, slug)
+		repoNode.IsRepoDocs = !isSkill
 		if len(repoNode.Children) > 0 {
 			roots = append(roots, repoNode)
 		}
 	}
 
-	writeV2JSON(w, http.StatusOK, v2OK(roots))
+	writeV2JSON(w, http.StatusOK, v2OK(v2DocsTreeReply{SkillGenerated: skillGenerated, Nodes: roots}))
 }
 
 // handleV2DocsPage — GET /api/v2/groups/{group}/docs/page?path=<repoSlug/rel/path.md>
@@ -181,6 +199,23 @@ func docCategory(rel string) (label, key string) {
 	default:
 		return "Guides", "guide"
 	}
+}
+
+// isSkillGeneratedDir reports whether a docs directory looks like it was
+// produced by the archigraph generate-docs skill. The skill always writes
+// at least one of:
+//   - docs/overview.md
+//   - docs/modules/ (directory)
+//
+// Pre-existing repo READMEs never have this structure.
+func isSkillGeneratedDir(docPath string) bool {
+	if _, err := os.Stat(filepath.Join(docPath, "overview.md")); err == nil {
+		return true
+	}
+	if info, err := os.Stat(filepath.Join(docPath, "modules")); err == nil && info.IsDir() {
+		return true
+	}
+	return false
 }
 
 // categoryOrder gives a deterministic display order for doc sections.
