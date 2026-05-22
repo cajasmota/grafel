@@ -9,8 +9,8 @@ package dashboard
 //
 // The handler subscribes to the shared Broker on s.progressBroker, writes
 // Server-Sent Events to the response body, and tears down cleanly on client
-// disconnect. A 15-second heartbeat keeps load-balancers and reverse proxies
-// from closing idle connections.
+// disconnect. A 1-second heartbeat (#1527) keeps load-balancers and reverse
+// proxies from closing idle connections and keeps fast streams looking live.
 //
 // Wire format (SSE):
 //
@@ -36,7 +36,11 @@ import (
 )
 
 const (
-	heartbeatInterval = 15 * time.Second
+	// heartbeatInterval is the SSE keepalive cadence for the index-progress
+	// stream. Real progress events flow on every extraction tick; this is only
+	// the idle keepalive. Dropped from 15s to 1s (#1527) so a fast repo that
+	// finishes between ticks still produces a perceptibly live stream.
+	heartbeatInterval = 1 * time.Second
 	// sseWildcardGroup is the sentinel used internally when a caller subscribes
 	// to all groups (the daemon-wide /api/index-progress endpoint).
 	sseWildcardGroup = ""

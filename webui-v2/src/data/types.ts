@@ -958,6 +958,63 @@ export interface WizardRepo {
   modules?: string[];
 }
 
+/* ------------------------------------------------------------------ *
+ * Real-time per-repo / per-MODULE indexing progress (#1527). Streamed as
+ * SSE `progress` events from GET /api/index-progress/:group. Mirrors the Go
+ * progress.Event shape (internal/progress/event.go). For a monorepo each
+ * event carries a `module` (package-root) label so the UI renders one row
+ * per module instead of one aggregate row for the whole repo.
+ * ------------------------------------------------------------------ */
+
+export type ProgressPhase =
+  | "scanning"
+  | "extracting_ast"
+  | "resolving_refs"
+  | "running_algorithms"
+  | "materializing"
+  | "done"
+  | "error";
+
+/** One SSE progress event off /api/index-progress/:group. */
+export interface ProgressEvent {
+  group_slug: string;
+  repo_slug: string;
+  phase: ProgressPhase;
+  files_done: number;
+  files_total: number;
+  entities_so_far: number;
+  eta_ms?: number;
+  error?: string;
+  ts: number;
+  bytes_seen?: number;
+  current_file?: string;
+  phase_started_at_ms?: number;
+  algorithm_name?: string;
+  /** Package-root label; present only when indexing a monorepo. */
+  module?: string;
+}
+
+/**
+ * One UI row in the per-repo / per-module progress feed. Keyed by
+ * `${repo_slug}` for single repos or `${repo_slug}/${module}` for monorepo
+ * packages; the latest event per key collapses into one row.
+ */
+export interface ProgressRow {
+  key: string;
+  repoSlug: string;
+  /** Package-root for monorepo modules; undefined for whole-repo rows. */
+  module?: string;
+  phase: ProgressPhase;
+  filesDone: number;
+  filesTotal: number;
+  entitiesSoFar: number;
+  currentFile?: string;
+  etaMs?: number;
+  error?: string;
+  /** Wall-clock ms of the most recent event for this row. */
+  ts: number;
+}
+
 /** POST /api/v2/maintenance/cleanup result. */
 export interface CleanupReply {
   dry_run: boolean;

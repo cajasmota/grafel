@@ -107,6 +107,14 @@ type Event struct {
 	// AlgorithmName is set during PhaseAlgorithms events to name the
 	// individual algorithm (e.g. "Louvain", "PageRank", "Betweenness").
 	AlgorithmName string `json:"algorithm_name,omitempty"`
+
+	// Module is the package-root label that CurrentFile rolls up to, derived
+	// deterministically by internal/module.Derive. For a monorepo this lets
+	// the UI render one progress row per package (e.g. "services/auth",
+	// "packages/ui") instead of a single aggregate row for the whole repo.
+	// Empty when the repo is not a monorepo, or on phase-boundary events with
+	// no current file.
+	Module string `json:"module,omitempty"`
 }
 
 // nowMS returns the current wall-clock time as Unix milliseconds.
@@ -185,6 +193,29 @@ type Tracker struct {
 	filesTotal       int
 	phaseStartedAtMS int64
 	currentPhase     string
+
+	// moduleResolver maps a repo-relative file path to a package-root module
+	// label. When set (monorepo indexing), Tick stamps Event.Module so the UI
+	// can render per-module rows. Decoupled via a func so the progress package
+	// stays free of an internal/module dependency.
+	moduleResolver func(currentFile string) string
+}
+
+// SetModuleResolver installs a function that maps a repo-relative file path to
+// a package-root module label. Pass nil (the default) to disable per-module
+// attribution. The resolver must be safe for concurrent use — Tick may be
+// called from multiple extraction workers.
+func (t *Tracker) SetModuleResolver(fn func(currentFile string) string) {
+	t.moduleResolver = fn
+}
+
+// module returns the module label for currentFile, or "" when no resolver is
+// set or currentFile is empty.
+func (t *Tracker) module(currentFile string) string {
+	if t.moduleResolver == nil || currentFile == "" {
+		return ""
+	}
+	return t.moduleResolver(currentFile)
 }
 
 // NewTracker constructs a Tracker for one indexing job. pub must not be nil;
@@ -230,6 +261,7 @@ func (t *Tracker) Tick(phase string, filesDone int, bytesSeen int64, currentFile
 		EntitiesSoFar:    entitiesSoFar,
 		BytesSeen:        bytesSeen,
 		CurrentFile:      currentFile,
+		Module:           t.module(currentFile),
 		PhaseStartedAtMS: t.phaseStartedAtMS,
 		TS:               nowMS(),
 	})

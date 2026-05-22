@@ -46,6 +46,13 @@ const (
 // pruned from the registry.
 const actionJobTTL = 30 * time.Minute
 
+// jobStreamHeartbeat is the SSE keepalive cadence for the job-status stream.
+// `job` events already fire on every status transition; this is only the
+// idle-keepalive. It was 15s, long enough that a fast job could begin and
+// finish between two ticks and leave the stream looking dead (#1527). 1s is
+// sub-second-perceptible without being chatty.
+const jobStreamHeartbeat = 1 * time.Second
+
 // actionJob is one async action (rebuild/reset) tracked by the daemon.
 type actionJob struct {
 	ID            string `json:"id"`
@@ -204,7 +211,8 @@ func (s *Server) handleV2JobGet(w http.ResponseWriter, r *http.Request) {
 //
 // Emits the standard v2 SSE lifecycle: a `connected` event, one `job` event
 // per status transition (and immediately for the current state), `heartbeat`
-// every 15s, and a final `close` once the job reaches a terminal state.
+// every jobStreamHeartbeat (~1s), and a final `close` once the job reaches a
+// terminal state.
 func (s *Server) handleV2JobStream(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	flusher, ok := w.(http.Flusher)
@@ -227,7 +235,7 @@ func (s *Server) handleV2JobStream(w http.ResponseWriter, r *http.Request) {
 	writeV2SSEEvent(w, "connected", string(connected))
 	flusher.Flush()
 
-	heartbeat := time.NewTicker(15 * time.Second)
+	heartbeat := time.NewTicker(jobStreamHeartbeat)
 	defer heartbeat.Stop()
 
 	ctx := r.Context()

@@ -36,6 +36,8 @@ import {
   useScanReposIntoGroup,
   useWizardJob,
 } from "@/hooks/use-wizard";
+import { useIndexProgress } from "@/hooks/use-index-progress";
+import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
 import { ApiError } from "@/lib/api";
 import type { ScanInspectReply } from "@/data/types";
 import { cn } from "@/lib/utils";
@@ -78,7 +80,16 @@ export function ScanWizard(props: ScanWizardProps) {
   const inspect = useScanInspect();
   const createFromScan = useCreateGroupFromScan();
   const scanRepos = useScanReposIntoGroup(groupId ?? "");
-  const job = useWizardJob(jobId, mode === "create" ? scan?.suggestedGroup : groupId);
+  // The target group slug for both the job poller and the per-repo/per-module
+  // progress stream. In create mode it is the slug we just created.
+  const targetGroup = mode === "create" ? slugify(name || scan?.suggestedGroup || "") : groupId;
+  const job = useWizardJob(jobId, targetGroup);
+
+  // #1527 — subscribe to the per-repo / per-MODULE progress stream once we're
+  // on the Index step and have a group. For a monorepo this yields one row per
+  // package; for a single repo, one row per repo.
+  const progressActive = step === "index" && !!targetGroup;
+  const indexProgress = useIndexProgress(targetGroup, progressActive);
 
   // Reset everything when the dialog closes.
   function reset() {
@@ -366,6 +377,14 @@ export function ScanWizard(props: ScanWizardProps) {
                 style={{ width: `${jobStatus === "done" ? 100 : jobProgress}%` }}
               />
             </div>
+
+            {/* Per-repo / per-MODULE rows (#1527). For a monorepo this shows
+                one row per package; for a single repo, one row per repo. */}
+            <IndexProgressFeed
+              rows={indexProgress.rows}
+              loading={!indexProgress.hasData && !terminal}
+              className="max-h-64 overflow-y-auto pr-0.5"
+            />
 
             <div className="flex justify-end gap-2 pt-1">
               <Button

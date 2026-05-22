@@ -78,6 +78,8 @@ import {
   useRunRecall,
 } from "@/hooks/use-operations";
 import { useRunDoctor } from "@/hooks/use-settings";
+import { useIndexProgress } from "@/hooks/use-index-progress";
+import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
 import { cn } from "@/lib/utils";
 import type { DoctorCheck, LogLine, PatternRow, SystemStatus } from "@/data/types";
 
@@ -421,8 +423,24 @@ function SystemTab({ groupId }: { groupId: string }) {
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
 
+  // #1527 — live per-repo / per-MODULE indexing activity for this group. The
+  // stream is always open while on Operations; rows only appear when a
+  // rebuild/index is actually running, so the section self-hides when idle.
+  const indexProgress = useIndexProgress(groupId, true);
+
   return (
     <div className="space-y-6">
+      {/* Live indexing activity (#1527) — one row per repo, or per MODULE for
+          monorepos. Self-hides when nothing is indexing. */}
+      {indexProgress.hasData && (
+        <Section
+          title="Indexing activity"
+          sub="Live progress per repo — and per module for monorepos."
+        >
+          <IndexProgressFeed rows={indexProgress.rows} className="max-h-80 overflow-y-auto pr-0.5" />
+        </Section>
+      )}
+
       {/* Daemon status */}
       <Section title="Daemon" sub="Live process state. Auto-refreshes every 5 seconds.">
         {isLoading ? (

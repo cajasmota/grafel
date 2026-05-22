@@ -32,6 +32,7 @@ import (
 	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
+	"github.com/cajasmota/archigraph/internal/install/detect"
 	"github.com/cajasmota/archigraph/internal/module"
 	"github.com/cajasmota/archigraph/internal/progress"
 	"github.com/cajasmota/archigraph/internal/resolve"
@@ -490,6 +491,33 @@ func emitJSONStats(w io.Writer, idx *Indexer, doc *graph.Document) error {
 	return enc.Encode(js)
 }
 
+// moduleForFile maps a repo-relative file path to the monorepo package root it
+// belongs to. It returns the longest package root in pkgRoots that prefixes the
+// file (so nested packages win over their parents). When no detected package
+// root matches — e.g. a file outside any workspace package — it falls back to
+// module.Derive so the file still lands in a sensible module row rather than
+// vanishing from the per-module feed. Pure + stateless: safe for concurrent use.
+func moduleForFile(currentFile string, pkgRoots []string, markers module.MarkerSet) string {
+	f := strings.ReplaceAll(currentFile, "\\", "/")
+	f = strings.TrimPrefix(f, "./")
+	best := ""
+	for _, root := range pkgRoots {
+		r := strings.Trim(strings.ReplaceAll(root, "\\", "/"), "/")
+		if r == "" || r == "." {
+			continue
+		}
+		if f == r || strings.HasPrefix(f, r+"/") {
+			if len(r) > len(best) {
+				best = r
+			}
+		}
+	}
+	if best != "" {
+		return best
+	}
+	return module.Derive(f, markers)
+}
+
 // Run executes the orchestrated pipeline. Each pass is a named method so
 // callers (and tests) can reason about per-pass output independently.
 func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, error) {
@@ -536,6 +564,22 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Indexer and consumed by buildDocument to stamp Properties["module"]
 	// on every entity.
 	i.moduleMarkers = module.BuildMarkerSet(files)
+
+	// Issue #1527 — per-MODULE progress for monorepos. Detect the monorepo
+	// package roots once and install a resolver on the tracker so every
+	// extraction Tick stamps Event.Module with the file's package root. The UI
+	// renders one progress row per module instead of a single aggregate row for
+	// the whole repo. Non-monorepos get no resolver (Module stays empty → the
+	// UI falls back to a single per-repo row). The resolver is pure + stateless,
+	// so it is safe to call from the concurrent extraction workers.
+	if mono, err := detect.DetectMonorepo(absRepo); err == nil && len(mono.Packages) > 1 {
+		pkgRoots := make([]string, len(mono.Packages))
+		copy(pkgRoots, mono.Packages)
+		markers := i.moduleMarkers
+		trk.SetModuleResolver(func(currentFile string) string {
+			return moduleForFile(currentFile, pkgRoots, markers)
+		})
+	}
 
 	// Incremental mode (issue #1339): filter files down to those whose
 	// content hash changed since the last successful index. The manifest is

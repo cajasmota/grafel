@@ -121,6 +121,15 @@ export interface Meta {
 }
 
 export const api = {
+  /**
+   * #1527 — absolute URL of the real-time per-repo / per-MODULE indexing
+   * progress SSE stream for a group. The stream lives on the v1 surface
+   * (/api/index-progress/:group), not /api/v2, so it derives from BASE. The
+   * caller opens an EventSource against this URL.
+   */
+  progressStreamUrl: (group: string) =>
+    `${BASE}/index-progress/${encodeURIComponent(group)}`,
+
   /** v2 — daemon bootstrap: version, supported surfaces, group slugs. */
   getMeta: () => requestV2<Meta>("/meta"),
   /** v2 — rich group list for the Landing screen. */
