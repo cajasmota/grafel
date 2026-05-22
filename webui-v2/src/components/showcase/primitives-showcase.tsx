@@ -35,6 +35,7 @@ import {
   TabsContent,
 } from "@/components/ui";
 import { useAppStore } from "@/store/use-app-store";
+import { CommandPalette } from "@/components/chrome/command-palette";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -46,7 +47,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function PrimitivesShowcase() {
-  const { theme, palette, density, toggleTheme, setPalette, setDensity } = useAppStore();
+  const { theme, palette, density, toggleTheme, setPalette, setDensity, setCommandOpen } = useAppStore();
 
   return (
     <div className="h-full ag-scroll bg-bg">
@@ -175,6 +176,13 @@ export default function PrimitivesShowcase() {
               <p className="text-md text-text-2">Surface, border, radius, and shadow all bound to tokens.</p>
             </CardBody>
           </Card>
+        </Section>
+
+        <Section title="Command palette">
+          <Button variant="secondary" onClick={() => setCommandOpen(true)}>
+            Open ⌘K palette
+          </Button>
+          <CommandPalette />
         </Section>
       </div>
     </div>
