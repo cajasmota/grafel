@@ -9,6 +9,7 @@
 import { Outlet, useParams, useMatches } from "react-router-dom";
 import { NavRail } from "@/components/chrome/nav-rail";
 import { TopBar } from "@/components/chrome/top-bar";
+import { CommandPalette } from "@/components/chrome/command-palette";
 
 interface RouteHandle {
   surfaceLabel?: string;
@@ -29,6 +30,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette />
     </div>
   );
 }
