@@ -25,6 +25,7 @@ func (s *Server) handleQualityCycles(_ context.Context, req mcpapi.CallToolReque
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 	limit := argInt(req, "limit", 100)
+	repoFilter := argStringSlice(req, "repo_filter")
 
 	type memberDetail struct {
 		EntityID   string  `json:"entity_id"`
@@ -139,12 +140,66 @@ func (s *Server) handleQualityCycles(_ context.Context, req mcpapi.CallToolReque
 		all = all[:limit]
 	}
 
+	// ── Service-level SCC detection (#1502) ──────────────────────────────────
+	// Per-repo IMPORTS cycles above cannot see cross-service coupling that flows
+	// through HTTP-endpoint / topic synthetic nodes. Aggregate the group's
+	// resolved cross-repo links into a directed service graph and run Tarjan SCC
+	// over it so e.g. orders↔payments (REST one way, Kafka the other) surfaces.
+	serviceCycles := buildServiceCycles(lg, repoFilter)
+
 	return jsonResult(map[string]any{
-		"cycles":    all,
-		"count":     len(all),
-		"total":     total,
-		"truncated": total > len(all),
+		"cycles":         all,
+		"count":          len(all),
+		"total":          total,
+		"truncated":      total > len(all),
+		"service_cycles": serviceCycles,
+		"service_count":  len(serviceCycles),
 	}), nil
+}
+
+// buildServiceCycles aggregates a group's cross-repo links into a directed
+// service graph and returns every strongly-connected component of size >= 2.
+//
+// Only directed-dependency relations (calls / imports / publishes_to) feed the
+// graph; undirected co-occurrence relations (shared_label, string_match) are
+// excluded so they cannot manufacture spurious cycles. When repoFilter is set,
+// the graph is restricted to links whose BOTH endpoints are in the filter.
+func buildServiceCycles(lg *LoadedGroup, repoFilter []string) []graph.ServiceCycle {
+	if lg == nil || len(lg.Links) == 0 {
+		return nil
+	}
+	keep := map[string]bool{}
+	for _, r := range repoFilter {
+		keep[r] = true
+	}
+	inFilter := func(repo string) bool {
+		if len(keep) == 0 {
+			return true
+		}
+		return keep[repo]
+	}
+
+	links := make([]graph.ServiceLink, 0, len(lg.Links))
+	for _, l := range lg.Links {
+		rel := l.EffectiveKind()
+		if !graph.IsDirectedServiceRelation(rel) {
+			continue
+		}
+		fromRepo, _ := splitPrefixed(l.Source)
+		toRepo, _ := splitPrefixed(l.Target)
+		if fromRepo == "" || toRepo == "" {
+			continue
+		}
+		if !inFilter(fromRepo) || !inFilter(toRepo) {
+			continue
+		}
+		links = append(links, graph.ServiceLink{
+			FromService: fromRepo,
+			ToService:   toRepo,
+			Relation:    rel,
+		})
+	}
+	return graph.FindServiceCycles(links)
 }
 
 // buildPageRankMap extracts per-entity PageRank scores from a loaded Document.

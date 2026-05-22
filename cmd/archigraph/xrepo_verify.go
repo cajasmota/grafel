@@ -129,7 +129,49 @@ func runXRepoVerify(args []string) int {
 		diagnoseOrphans(tmpGraphs, linkedSources)
 	}
 
+	// Service-level SCC detection over the produced links (#1502). Aggregates
+	// directed cross-repo links into a service graph and reports cycles.
+	reportServiceCycles(linksPath)
+
 	return 0
+}
+
+// reportServiceCycles reads the produced links.json, aggregates directed
+// cross-service links (calls / publishes_to) into a service graph, runs Tarjan
+// SCC, and prints every SCC of size >= 2. Exercises the exact #1502 code path
+// on a real fixture without touching the live daemon.
+func reportServiceCycles(linksPath string) {
+	b, err := os.ReadFile(linksPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "read links for SCC:", err)
+		return
+	}
+	var doc struct {
+		Links []struct {
+			Source   string `json:"source"`
+			Target   string `json:"target"`
+			Relation string `json:"relation"`
+		} `json:"links"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		fmt.Fprintln(os.Stderr, "parse links for SCC:", err)
+		return
+	}
+	sl := make([]graph.ServiceLink, 0, len(doc.Links))
+	for _, l := range doc.Links {
+		from := repoOf(l.Source)
+		to := repoOf(l.Target)
+		sl = append(sl, graph.ServiceLink{FromService: from, ToService: to, Relation: l.Relation})
+	}
+	cycles := graph.FindServiceCycles(sl)
+	fmt.Println("\n=== SERVICE-LEVEL SCC / CYCLES (#1502) ===")
+	fmt.Printf("service SCCs (size >= 2): %d\n", len(cycles))
+	for i, c := range cycles {
+		fmt.Printf("[%d] size=%d members=%v\n", i+1, c.Size, c.Members)
+		for _, e := range c.Edges {
+			fmt.Printf("     %s -> %s  (%v)\n", e.From, e.To, e.Relations)
+		}
+	}
 }
 
 type fwkCov struct {
@@ -307,13 +349,13 @@ func stripAPIPrefixDiag(p string) (string, bool) {
 
 // orphanRecord holds information about an orphan consumer call.
 type orphanRecord struct {
-	repo          string
-	verb          string
-	path          string
-	name          string
-	framework     string
-	urlPrefix     string
-	callerEntity  string
+	repo         string
+	verb         string
+	path         string
+	name         string
+	framework    string
+	urlPrefix    string
+	callerEntity string
 }
 
 // diagnoseOrphans dumps orphan consumer calls with nearest producer candidates.
@@ -429,9 +471,9 @@ func diagnoseOrphans(graphsDir string, linkedSources map[string]bool) {
 
 	// Categorise miss reasons.
 	type missReason struct {
-		reason  string
-		consVerb string
-		consPath string
+		reason      string
+		consVerb    string
+		consPath    string
 		prodMatches []string
 	}
 	reasonCounts := map[string]int{}

@@ -178,12 +178,27 @@ func (r RegistryRepo) graphFile() string {
 // Per ADR-0009, source/target are written as "<repo>::<localId>". Confidence
 // in [0,1]. Channel/method are free-form labels carried for filtering.
 type CrossRepoLink struct {
-	Source     string  `json:"source"`
-	Target     string  `json:"target"`
+	Source string `json:"source"`
+	Target string `json:"target"`
+	// Kind holds the edge relation. The MCP-appended candidate format writes
+	// "kind"; the links-pass on-disk format (internal/links) writes "relation".
+	// Accept both so service-level SCC detection (#1502) sees pass-emitted
+	// links (calls / imports / publishes_to). Relation is the on-disk alias;
+	// EffectiveKind() collapses them.
 	Kind       string  `json:"kind"`
+	Relation   string  `json:"relation,omitempty"`
 	Confidence float64 `json:"confidence,omitempty"`
 	Channel    string  `json:"channel,omitempty"`
 	Method     string  `json:"method,omitempty"`
+}
+
+// EffectiveKind returns the link's relation, preferring the explicit "kind"
+// field and falling back to the links-pass "relation" field.
+func (l CrossRepoLink) EffectiveKind() string {
+	if l.Kind != "" {
+		return l.Kind
+	}
+	return l.Relation
 }
 
 // LoadedRepo is one repo's graph plus index plus mtime tracking.
