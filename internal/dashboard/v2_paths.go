@@ -235,6 +235,10 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 	var eps []rawEP
 
 	for _, repo := range sortedRepos(grp) {
+		// #1646 — per-repo handler-resolution index so each endpoint definition
+		// can be grouped by its owning viewset/module rather than the shared
+		// route-registration file (routers.py / urls.py).
+		idx := buildRepoEntityIndex(repo)
 		for i := range repo.Doc.Entities {
 			e := &repo.Doc.Entities[i]
 			kind := dashStripScopePrefix(e.Kind)
@@ -269,12 +273,38 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 			// top-level grouping key on a real multi-repo platform (#1551).
 			owningBackend := repo.Slug
 
-			// Controller/module = the source file the handler lives in. For
-			// framework controllers ("orders.controller.ts") and GraphQL
-			// resolver files ("resolvers.ts") this maps directly to the unit a
-			// developer thinks in, which the raw `controller` property
-			// (one-per-endpoint garbage) does not. Fall back to a name heuristic.
-			controllerID := controllerKeyFromFile(e.SourceFile)
+			// Controller/module — resolve the endpoint definition to its handler
+			// (the viewset method that IMPLEMENTS it) and group by the OWNING
+			// VIEWSET/CLASS ("RoleViewSet"), which is the unit a developer thinks
+			// in. DRF router-expanded definitions all share routers.py:0, so
+			// grouping by the definition's own file collapses dozens of viewsets
+			// into a single "routers" node — the #1646 bug. The handler's source
+			// file is the real controller file. We fall back to the framework
+			// controller-file convention (NestJS/GraphQL) and then a name
+			// heuristic when no handler resolves. (#1646)
+			controllerID := ""
+			controllerFile := e.SourceFile
+			// Only re-key by the resolved handler when the endpoint entity is a
+			// synthetic definition that resolved to a DISTINCT handler (the DRF
+			// router-expanded case). Endpoint entities that are themselves the
+			// route (NestJS/GraphQL/Go) keep the file-based grouping below.
+			if strings.EqualFold(dashStripScopePrefix(e.Kind), httpEndpointDefinitionKind) {
+				if handlerEnts := idx.resolveHandlers(e); len(handlerEnts) > 0 {
+					h := handlerEnts[0]
+					if h.ID != e.ID &&
+						!strings.EqualFold(dashStripScopePrefix(h.Kind), httpEndpointDefinitionKind) {
+						controllerID = handlerGroupKey(h)
+						if h.SourceFile != "" {
+							controllerFile = h.SourceFile
+						}
+					}
+				}
+			}
+			if controllerID == "" {
+				// Framework controllers ("orders.controller.ts") / GraphQL
+				// resolver files map cleanly to a developer unit by file.
+				controllerID = controllerKeyFromFile(e.SourceFile)
+			}
 			if controllerID == "" {
 				controllerID = e.Properties["controller"]
 			}
@@ -296,7 +326,7 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 				StartLine:      e.StartLine,
 				OwningBackend:  owningBackend,
 				ControllerID:   controllerID,
-				ControllerFile: e.SourceFile,
+				ControllerFile: controllerFile,
 				Language:       e.Language,
 			})
 		}
@@ -434,7 +464,7 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 			}
 			groups = append(groups, v2ControllerGroup{
 				ID:        cID,
-				Label:     controllerLabelFromFile(cm.file),
+				Label:     controllerLabel(cID, cm.file),
 				File:      cm.file,
 				IsWebhook: isWebhookCtrl,
 				Routes:    routes,
@@ -529,7 +559,10 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		DocsPath      string
 		ResponseKeys  []string
 		StatusCodes   []int
-		InboundIDs    []string
+		// CalledByIDs / OutboundIDs / SideEffectIDs / TestIDs are collected from
+		// the RESOLVED handler (the viewset method that IMPLEMENTS this endpoint
+		// definition), not the synthetic definition entity itself (#1646).
+		CalledByIDs   []string
 		OutboundIDs   []string
 		SideEffectIDs []string
 		TestIDs       []string
@@ -539,6 +572,10 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 	var pathStr string
 	var isWebhook bool
 	var webhookProv string
+
+	// Per-repo entity index + handler-resolution map, built lazily and reused
+	// across all matched endpoint definitions in the same repo (#1646).
+	repoIdx := map[string]*repoEntityIndex{}
 
 	docgenState, _ := mcp.LoadDocgenState(id)
 
@@ -600,49 +637,68 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Collect edge IDs.
-			inbound := []string{}
-			outbound := []string{}
-			sideEffects := []string{}
-			tests := []string{}
-			for _, rel := range repo.Doc.Relationships {
-				if rel.ToID == e.ID && rel.Kind == "FETCHES" {
-					inbound = append(inbound, dashPrefixedID(repo.Slug, rel.FromID))
-				}
-				if rel.FromID == e.ID {
-					switch rel.Kind {
-					case "QUERIES", "ACCESSES_TABLE":
-						outbound = append(outbound, dashPrefixedID(repo.Slug, rel.ToID))
-					case "EMITS", "PUBLISHES_TO":
-						sideEffects = append(sideEffects, dashPrefixedID(repo.Slug, rel.ToID))
-					case "TESTS":
-						tests = append(tests, dashPrefixedID(repo.Slug, rel.ToID))
+			// #1646 — resolve this endpoint definition to its real handler(s)
+			// (the viewset method that IMPLEMENTS it) and collect the section
+			// edges from the HANDLER, not the synthetic definition (which carries
+			// no body edges). The definition ID is still passed so retargeted
+			// inbound FETCHES (caller → definition) surface as Called-by.
+			idx := repoIdx[repo.Slug]
+			if idx == nil {
+				idx = buildRepoEntityIndex(repo)
+				repoIdx[repo.Slug] = idx
+			}
+			handlerEnts := idx.resolveHandlers(e)
+			handlerIDs := make([]string, 0, len(handlerEnts))
+			for _, h := range handlerEnts {
+				handlerIDs = append(handlerIDs, h.ID)
+			}
+			classified := classifyHandlerEdges(idx, handlerIDs, []string{e.ID})
+
+			// Prefer the resolved handler's identity for the handler card so the
+			// detail shows the real viewset method + its source location, not the
+			// routers.py:0 synthetic. Fall back to the definition when unresolved.
+			handlerName := e.Name
+			handlerQN := e.Properties["qualified_name"]
+			handlerFile := e.SourceFile
+			handlerLine := e.StartLine
+			handlerLang := e.Language
+			if len(handlerEnts) > 0 {
+				h := handlerEnts[0]
+				if !strings.EqualFold(dashStripScopePrefix(h.Kind), httpEndpointDefinitionKind) {
+					handlerName = h.Name
+					if h.QualifiedName != "" {
+						handlerQN = h.QualifiedName
+					}
+					handlerFile = h.SourceFile
+					handlerLine = h.StartLine
+					if h.Language != "" {
+						handlerLang = h.Language
 					}
 				}
 			}
 
 			hits = append(hits, matched{
 				Verb:          verb,
-				Handler:       e.Name,
-				QualifiedName: e.Properties["qualified_name"],
+				Handler:       handlerName,
+				QualifiedName: handlerQN,
 				Framework:     e.Properties["framework"],
 				IsWebhook:     e.Properties["is_webhook"] == "true",
 				WebhookProv:   e.Properties["webhook_provider"],
 				Auth:          e.Properties["auth"] == "true" || e.Properties["auth_scheme"] != "",
 				AuthScheme:    e.Properties["auth_scheme"],
 				Repo:          repo.Slug,
-				SourceFile:    e.SourceFile,
-				StartLine:     e.StartLine,
-				Language:      e.Language,
+				SourceFile:    handlerFile,
+				StartLine:     handlerLine,
+				Language:      handlerLang,
 				HasDocs:       hasDocs,
 				DocsSummary:   docsSummary,
 				DocsPath:      docsPath,
 				ResponseKeys:  respKeys,
 				StatusCodes:   statusCodes,
-				InboundIDs:    inbound,
-				OutboundIDs:   outbound,
-				SideEffectIDs: sideEffects,
-				TestIDs:       tests,
+				CalledByIDs:   classified.calledBy,
+				OutboundIDs:   classified.downstream,
+				SideEffectIDs: classified.sideEffects,
+				TestIDs:       classified.tests,
 			})
 		}
 	}
@@ -748,18 +804,22 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 	// Extract parameters from path segments (dynamic path params).
 	params := extractPathParameters(pathStr, verbs)
 
-	// Resolve entity IDs.
-	inboundIDs := collectUniqueIDs(hits, func(h matched) []string { return h.InboundIDs })
+	// Resolve entity IDs (#1646: all collected from the resolved handler).
+	calledByIDs := collectUniqueIDs(hits, func(h matched) []string { return h.CalledByIDs })
 	outboundIDs := collectUniqueIDs(hits, func(h matched) []string { return h.OutboundIDs })
 	sideEffectIDs := collectUniqueIDs(hits, func(h matched) []string { return h.SideEffectIDs })
 	testIDs := collectUniqueIDs(hits, func(h matched) []string { return h.TestIDs })
 
-	inboundFetches := resolveEntitySlice(grp, inboundIDs, "FETCHES")
-	outboundAll := resolveEntitySlice(grp, outboundIDs, "QUERIES")
-	sideEffectEntities := resolveEntitySlice(grp, sideEffectIDs, "EMITS")
+	// Called-by: inbound callers resolved to this endpoint (frontend FETCHES
+	// retargeted to the definition + intra-repo CALLS into the handler).
+	inboundFetches := resolveEntitySlice(grp, calledByIDs, "CALLED_BY")
+	// Downstream: the handler's outbound CALLS (services, helpers, DB-access fns).
+	outboundAll := resolveEntitySlice(grp, outboundIDs, "CALLS")
+	// Side effects: DB writes / model mutation / pub-sub the handler performs.
+	sideEffectEntities := resolveEntitySlice(grp, sideEffectIDs, "SIDE_EFFECT")
 	testEntities := resolveEntitySlice(grp, testIDs, "TESTS")
 
-	// Split outbound by kind.
+	// Split downstream callees by kind for the structured Outbound section.
 	outbound := v2OutboundQueries{
 		DB:       []v2PathEntity{},
 		Event:    []v2PathEntity{},
@@ -769,7 +829,7 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, e := range outboundAll {
 		switch strings.ToLower(e.Kind) {
-		case "datastore", "table", "db", "database":
+		case "datastore", "table", "db", "database", "model", "dataaccess", "collection":
 			outbound.DB = append(outbound.DB, e)
 		case "event", "topic":
 			outbound.Event = append(outbound.Event, e)
@@ -906,6 +966,18 @@ func inferControllerName(handlerName string) string {
 		return handlerName[sc+2:]
 	}
 	return handlerName
+}
+
+// controllerLabel produces the display label for a controller group. When the
+// group id is a resolved viewset/class name (the #1646 path — it is not a file
+// path), it is used verbatim ("RoleViewSet"). Otherwise the group was keyed by
+// source file (NestJS/GraphQL/fallback) and we derive a friendly label from the
+// file convention.
+func controllerLabel(controllerID, file string) string {
+	if controllerID != "" && !strings.ContainsAny(controllerID, "/.") {
+		return controllerID
+	}
+	return controllerLabelFromFile(file)
 }
 
 // controllerKeyFromFile derives a stable controller/module grouping key from a
