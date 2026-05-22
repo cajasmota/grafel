@@ -17,9 +17,8 @@ import {
   Clock,
   Copy,
   ExternalLink,
-  AlertCircle,
   CheckCircle2,
-  Map,
+  Map as MapIcon,
   LayoutList,
 } from "lucide-react";
 
@@ -272,208 +271,138 @@ function RepoChip({
 }
 
 // ---------------------------------------------------------------------------
-// § EntityChip
+// § Entity-ref resolution helpers (#1583)
+//
+// The topology LIST endpoint now ships `producer_refs` / `consumer_refs` —
+// resolved entity objects with name + source_file:line — alongside the raw
+// hashed id arrays. These helpers normalise either shape to a display ref so
+// the UI NEVER renders a bare hash.
+// ---------------------------------------------------------------------------
+
+type DisplayRef = {
+  name: string;
+  repo?: string;
+  sourceFile?: string;
+  startLine?: number;
+  entityId?: string;
+  kind?: string;
+};
+
+/** Best-effort name from a raw "repo::local:hash" id, used only as a last
+ *  resort when no resolved ref is available. */
+function nameFromId(id: string): { name: string; repo: string | null } {
+  const parts = (id ?? "").split("::");
+  const tail = parts[parts.length - 1] ?? "";
+  const name = tail.split(":").pop() || id;
+  const repo = parts.length > 1 ? parts[0] : null;
+  return { name, repo };
+}
+
+function refToDisplay(ref: TopologyEntityRef): DisplayRef {
+  // The backend emits "unresolved" kind with a derived name when an id can't be
+  // matched; still prefer that name over the raw hash.
+  return {
+    name: ref.name || nameFromId(ref.entity_id).name,
+    repo: ref.repo,
+    sourceFile: ref.source_file || undefined,
+    startLine: ref.start_line || undefined,
+    entityId: ref.entity_id,
+    kind: ref.kind,
+  };
+}
+
+function idToDisplay(id: string): DisplayRef {
+  const { name, repo } = nameFromId(id);
+  return { name, repo: repo ?? undefined, entityId: id };
+}
+
+/** Resolve display refs for a channel side, preferring resolved refs over ids. */
+function resolveSide(
+  refs: TopologyEntityRef[] | undefined,
+  ids: string[] | undefined,
+): DisplayRef[] {
+  if (refs && refs.length > 0) return refs.map(refToDisplay);
+  return (ids ?? []).map(idToDisplay);
+}
+
+function shortFile(path?: string): string {
+  if (!path) return "";
+  return path.split("/").pop() ?? path;
+}
+
+/** Build an editor deep-link (VS Code / Cursor "vscode://file/…:line").
+ *  source_file is repo-relative; we still emit a vscode://file URI which most
+ *  editors resolve against the open workspace. Returns null when no file. */
+function editorHref(sourceFile?: string, startLine?: number): string | null {
+  if (!sourceFile) return null;
+  const line = startLine && startLine > 0 ? `:${startLine}` : "";
+  return `vscode://file/${sourceFile}${line}`;
+}
+
+// ---------------------------------------------------------------------------
+// § EntityChip — resolved publisher/subscriber chip (name + source ref)
 // ---------------------------------------------------------------------------
 
 function EntityChip({
-  id,
+  ref,
   crossRepo = false,
 }: {
-  id: string;
+  ref: DisplayRef;
   crossRepo?: boolean;
 }) {
-  const parts = (id ?? "").split("::");
-  const name = (parts[parts.length - 1] ?? "").split(":").pop() || id;
-  const repo = parts.length > 1 ? parts[0] : null;
+  const fileRef = ref.sourceFile
+    ? `${shortFile(ref.sourceFile)}${ref.startLine ? `:${ref.startLine}` : ""}`
+    : null;
+  const title = [
+    ref.name,
+    ref.sourceFile ? `${ref.sourceFile}${ref.startLine ? `:${ref.startLine}` : ""}` : null,
+    ref.entityId,
+  ]
+    .filter(Boolean)
+    .join("\n");
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 h-5 px-2 rounded-full text-xs border shrink-0",
+        "inline-flex items-center gap-1 h-5 px-2 rounded-full text-xs border shrink-0 max-w-full",
         crossRepo
           ? "border-[#a78bfa55] bg-[#a78bfa18] text-[#a78bfa]"
           : "border-border bg-surface-2 text-text-2",
       )}
-      title={id}
+      title={title}
     >
-      {repo && crossRepo && (
-        <span className="text-[10px] opacity-70">{repo}/</span>
+      {crossRepo && ref.repo && (
+        <span className="text-[10px] opacity-70 shrink-0">{ref.repo}/</span>
       )}
-      <span className="font-mono truncate max-w-[120px]">{name}</span>
+      <span className="font-mono truncate max-w-[110px]">{ref.name}</span>
+      {fileRef && (
+        <span className="text-[9px] text-text-4 font-mono shrink-0">{fileRef}</span>
+      )}
     </span>
   );
 }
 
 // ---------------------------------------------------------------------------
-// § FlowEdge
-// ---------------------------------------------------------------------------
-
-function FlowEdge({ type }: { type: "solid" | "dashed" | "dashed-violet" }) {
-  const isDashed = type === "dashed" || type === "dashed-violet";
-  const color = type === "dashed-violet" ? "#a78bfa" : "var(--border-strong)";
-  return (
-    <svg
-      width={32}
-      height={16}
-      viewBox="0 0 32 16"
-      aria-hidden
-      className="shrink-0"
-    >
-      <line
-        x1={0}
-        y1={8}
-        x2={28}
-        y2={8}
-        stroke={color}
-        strokeWidth={1.5}
-        strokeDasharray={isDashed ? "4 3" : undefined}
-      />
-      <polygon points="28,4 32,8 28,12" fill={color} />
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// § FlowUnit — per-channel mini-Sankey card
+// § FlatChannel
 // ---------------------------------------------------------------------------
 
 type FlatChannel = TopologyChannel & { lifecycle_state: ChannelLifecycle };
 
-function FlowUnit({
-  channel,
-  selected,
-  onClick,
-}: {
-  channel: FlatChannel;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  const m = brokerMeta(channel.broker_canonical);
-  const producerList = channel.producers ?? [];
-  const consumerList = channel.consumers ?? [];
-  const producers = producerList.slice(0, 3);
-  const producerOverflow = producerList.length - 3;
-  const consumers = consumerList.slice(0, 3);
-  const consumerOverflow = consumerList.length - 3;
-  const hasProducers = producerList.length > 0;
-  const hasConsumers = consumerList.length > 0;
-
-  const leftEdge = hasProducers ? "solid" : "dashed";
-  const rightEdge = hasConsumers ? "solid" : "dashed";
-
-  const lifecycleOutline =
-    channel.lifecycle_state === "orphan_publisher" ||
-    channel.lifecycle_state === "orphan_subscriber"
-      ? "ring-1 ring-amber-400/50"
-      : channel.lifecycle_state === "orphan"
-        ? "ring-1 ring-slate-500/40 ring-dashed"
-        : "";
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "w-full text-left px-3 py-2 rounded-lg border transition-all duration-100",
-        selected
-          ? "border-accent bg-accent-soft/20"
-          : "border-border bg-surface hover:bg-surface-2 hover:border-border-strong",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]",
-      )}
-      aria-selected={selected}
-    >
-      <div className="flex items-center gap-2 min-h-[40px]">
-        {/* Producers */}
-        <div className="flex flex-col gap-1 w-[130px] shrink-0 items-end">
-          {!hasProducers ? (
-            <span className="text-xs text-text-4 italic">no publisher</span>
-          ) : (
-            <>
-              {producers.map((p) => (
-                <EntityChip key={p} id={p} crossRepo={channel.cross_repo} />
-              ))}
-              {producerOverflow > 0 && (
-                <span className="text-xs text-text-3">+{producerOverflow} more</span>
-              )}
-            </>
-          )}
-        </div>
-
-        <FlowEdge type={leftEdge} />
-
-        {/* Channel node */}
-        <div className="flex flex-col items-center gap-1 shrink-0 min-w-[100px]">
-          <div className={cn("rounded-md p-0.5", lifecycleOutline)}>
-            <BrokerShapeIcon canonical={channel.broker_canonical} size={28} />
-          </div>
-          <span className="font-mono text-[11px] text-text max-w-[100px] truncate text-center leading-tight">
-            {channel.label}
-          </span>
-          <div className="flex flex-wrap gap-1 justify-center">
-            <span
-              className="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium"
-              style={{ color: m.color, background: m.bgColor }}
-            >
-              {channel.broker_canonical}
-            </span>
-            {channel.cross_repo && (
-              <span className="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium border-dashed border border-[#a78bfa] text-[#a78bfa]">
-                cross-repo
-              </span>
-            )}
-            {channel.scheduled && (
-              <span className="inline-flex items-center gap-0.5 h-4 px-1.5 rounded text-[10px] font-medium bg-yellow-950/30 text-yellow-300 border border-yellow-700/40">
-                <Clock size={9} />
-                {channel.schedule ?? "scheduled"}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <FlowEdge type={rightEdge} />
-
-        {/* Consumers */}
-        <div className="flex flex-col gap-1 w-[130px] shrink-0 items-start">
-          {!hasConsumers ? (
-            <span className="text-xs text-text-4 italic">no subscriber</span>
-          ) : (
-            <>
-              {consumers.map((c) => (
-                <EntityChip key={c} id={c} crossRepo={channel.cross_repo} />
-              ))}
-              {consumerOverflow > 0 && (
-                <span className="text-xs text-text-3">+{consumerOverflow} more</span>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Lifecycle chip */}
-        <div className="ml-auto pl-2 shrink-0">
-          {channel.lifecycle_state !== "active" && (
-            <LifecycleChip state={channel.lifecycle_state} />
-          )}
-        </div>
-      </div>
-    </button>
-  );
-}
-
 // ---------------------------------------------------------------------------
-// § BrokerBand
+// § BrokerDiagram — visual topology: publishers → channels → subscribers (#1583)
+//
+// A columnar SVG diagram for one broker group. Three columns:
+//   left   = distinct publisher entities
+//   middle = channel nodes (clickable, drive the detail panel)
+//   right  = distinct subscriber entities
+// Edges connect publisher→channel and channel→subscriber with bezier links.
+// Node count is capped per column to stay memory-safe on huge graphs; the cap
+// is surfaced as a "+N more" footer so nothing is silently hidden.
 // ---------------------------------------------------------------------------
 
-function relativeTime(ts?: string): string | null {
-  if (!ts) return null;
-  const diff = Date.now() - new Date(ts).getTime();
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
-}
+const DIAGRAM_MAX_CHANNELS = 40; // per broker
+const DIAGRAM_MAX_SIDE = 60; // per side column
 
-function BrokerBand({
+function BrokerDiagram({
   brokerGroup,
   channels,
   selectedId,
@@ -487,18 +416,55 @@ function BrokerBand({
   const [open, setOpen] = useState(true);
   const m = brokerMeta(brokerGroup.broker);
 
-  const isDegradedCelery =
-    brokerGroup.broker === "celery" &&
-    channels.every(
-      (ch) => (ch.producers?.length ?? 0) === 0 && (ch.consumers?.length ?? 0) === 0,
-    );
+  // Cap channels rendered to keep the SVG bounded.
+  const shownChannels = channels.slice(0, DIAGRAM_MAX_CHANNELS);
+  const channelOverflow = channels.length - shownChannels.length;
 
-  const ts = relativeTime(brokerGroup.last_index_timestamp);
-  const hs = brokerGroup.health_summary ?? {
-    active: 0,
-    orphan_publisher: 0,
-    orphan_subscriber: 0,
-  };
+  // Build distinct publisher / subscriber node sets keyed by entityId|name.
+  const pubMap = new Map<string, DisplayRef>();
+  const subMap = new Map<string, DisplayRef>();
+  // Edges as [sideKey, channelIndex].
+  const pubEdges: { key: string; ci: number }[] = [];
+  const subEdges: { key: string; ci: number }[] = [];
+
+  shownChannels.forEach((ch, ci) => {
+    for (const p of resolveSide(ch.producer_refs, ch.producers)) {
+      const key = p.entityId ?? p.name;
+      if (!pubMap.has(key)) pubMap.set(key, p);
+      pubEdges.push({ key, ci });
+    }
+    for (const c of resolveSide(ch.consumer_refs, ch.consumers)) {
+      const key = c.entityId ?? c.name;
+      if (!subMap.has(key)) subMap.set(key, c);
+      subEdges.push({ key, ci });
+    }
+  });
+
+  const pubKeys = Array.from(pubMap.keys()).slice(0, DIAGRAM_MAX_SIDE);
+  const subKeys = Array.from(subMap.keys()).slice(0, DIAGRAM_MAX_SIDE);
+  const pubIdx = new Map(pubKeys.map((k, i) => [k, i]));
+  const subIdx = new Map(subKeys.map((k, i) => [k, i]));
+
+  // Layout geometry.
+  const ROW_H = 30;
+  const NODE_H = 24;
+  const PAD_Y = 16;
+  const COL_W = 168; // side-column node width
+  const CH_W = 150; // channel node width
+  const GAP = 96; // horizontal gap between columns
+  const leftX = 8;
+  const chX = leftX + COL_W + GAP;
+  const rightX = chX + CH_W + GAP;
+  const width = rightX + COL_W + 8;
+
+  const rows = Math.max(pubKeys.length, shownChannels.length, subKeys.length, 1);
+  const height = PAD_Y * 2 + rows * ROW_H;
+
+  const yOf = (i: number) => PAD_Y + i * ROW_H + NODE_H / 2;
+
+  function nodeColor(ref: DisplayRef) {
+    return ref.kind === "unresolved" ? "var(--text-4)" : "var(--text-2)";
+  }
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
@@ -521,37 +487,191 @@ function BrokerBand({
         </div>
         <span className="font-medium text-text-2 capitalize">{brokerGroup.broker}</span>
         <span className="text-md text-text-3">{brokerGroup.count} channels</span>
-        <div className="ml-auto flex items-center gap-2 text-xs">
-          {hs.active > 0 && <span className="text-[var(--success)]">{hs.active} active</span>}
-          {hs.orphan_publisher > 0 && (
-            <span className="text-amber-400">{hs.orphan_publisher} orphan-pub</span>
-          )}
-          {hs.orphan_subscriber > 0 && (
-            <span className="text-orange-400">{hs.orphan_subscriber} orphan-sub</span>
-          )}
-          {ts && <span className="text-text-4 ml-1">indexed {ts}</span>}
+        <div className="ml-auto flex items-center gap-3 text-xs text-text-4">
+          <span>{pubMap.size} publishers</span>
+          <span>{subMap.size} subscribers</span>
         </div>
       </button>
 
       {open && (
-        <div className="p-3 space-y-2 bg-bg">
-          {isDegradedCelery && (
-            <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-800/40 bg-amber-950/20 text-amber-300 text-sm italic">
-              <AlertCircle size={14} className="mt-0.5 shrink-0" />
-              <span>
-                Producer/consumer edges aren&apos;t indexed for Celery yet — these channels are
-                real but their wiring is unknown.
-              </span>
-            </div>
+        <div className="bg-bg overflow-x-auto ag-scroll">
+          {/* Column headers */}
+          <div
+            className="grid text-[10px] uppercase tracking-wide text-text-4 px-0 pt-2"
+            style={{
+              gridTemplateColumns: `${leftX + COL_W}px ${GAP + CH_W}px 1fr`,
+              minWidth: width,
+            }}
+          >
+            <span className="text-right pr-2">Publishers</span>
+            <span className="text-center">Channel</span>
+            <span className="pl-2" style={{ marginLeft: GAP }}>
+              Subscribers
+            </span>
+          </div>
+
+          <svg
+            width={width}
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            className="block"
+            style={{ minWidth: width }}
+          >
+            {/* Edges: publisher → channel */}
+            {pubEdges.map((e, i) => {
+              const pi = pubIdx.get(e.key);
+              if (pi === undefined) return null;
+              const y1 = yOf(pi);
+              const y2 = yOf(e.ci);
+              const x1 = leftX + COL_W;
+              const x2 = chX;
+              const mx = (x1 + x2) / 2;
+              const isSel = shownChannels[e.ci]?.id === selectedId;
+              return (
+                <path
+                  key={`pe-${i}`}
+                  d={`M ${x1},${y1} C ${mx},${y1} ${mx},${y2} ${x2},${y2}`}
+                  fill="none"
+                  stroke={isSel ? m.color : "var(--border-strong)"}
+                  strokeWidth={isSel ? 1.6 : 1}
+                  opacity={isSel ? 0.9 : 0.45}
+                />
+              );
+            })}
+            {/* Edges: channel → subscriber */}
+            {subEdges.map((e, i) => {
+              const si = subIdx.get(e.key);
+              if (si === undefined) return null;
+              const y1 = yOf(e.ci);
+              const y2 = yOf(si);
+              const x1 = chX + CH_W;
+              const x2 = rightX;
+              const mx = (x1 + x2) / 2;
+              const isSel = shownChannels[e.ci]?.id === selectedId;
+              return (
+                <path
+                  key={`se-${i}`}
+                  d={`M ${x1},${y1} C ${mx},${y1} ${mx},${y2} ${x2},${y2}`}
+                  fill="none"
+                  stroke={isSel ? m.color : "var(--border-strong)"}
+                  strokeWidth={isSel ? 1.6 : 1}
+                  opacity={isSel ? 0.9 : 0.45}
+                />
+              );
+            })}
+
+            {/* Publisher nodes */}
+            {pubKeys.map((k, i) => {
+              const ref = pubMap.get(k)!;
+              const y = PAD_Y + i * ROW_H;
+              return (
+                <g key={`p-${k}`}>
+                  <rect
+                    x={leftX}
+                    y={y}
+                    width={COL_W}
+                    height={NODE_H}
+                    rx={5}
+                    fill="var(--surface)"
+                    stroke="var(--border)"
+                  />
+                  <text
+                    x={leftX + COL_W - 8}
+                    y={y + NODE_H / 2 + 4}
+                    textAnchor="end"
+                    fontSize={11}
+                    fontFamily="ui-monospace, monospace"
+                    fill={nodeColor(ref)}
+                  >
+                    {ref.name.length > 22 ? ref.name.slice(0, 21) + "…" : ref.name}
+                    <title>
+                      {ref.name}
+                      {ref.sourceFile ? `\n${ref.sourceFile}:${ref.startLine ?? ""}` : ""}
+                    </title>
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Channel nodes (clickable) */}
+            {shownChannels.map((ch, i) => {
+              const y = PAD_Y + i * ROW_H;
+              const isSel = ch.id === selectedId;
+              return (
+                <g
+                  key={`c-${ch.id}`}
+                  onClick={() => onSelect(ch)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <rect
+                    x={chX}
+                    y={y}
+                    width={CH_W}
+                    height={NODE_H}
+                    rx={5}
+                    fill={isSel ? m.bgColor : "var(--surface-2)"}
+                    stroke={isSel ? m.color : m.color + "66"}
+                    strokeWidth={isSel ? 1.6 : 1}
+                  />
+                  <text
+                    x={chX + CH_W / 2}
+                    y={y + NODE_H / 2 + 4}
+                    textAnchor="middle"
+                    fontSize={11}
+                    fontFamily="ui-monospace, monospace"
+                    fill="var(--text)"
+                  >
+                    {ch.label.length > 20 ? ch.label.slice(0, 19) + "…" : ch.label}
+                    <title>{ch.label}</title>
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Subscriber nodes */}
+            {subKeys.map((k, i) => {
+              const ref = subMap.get(k)!;
+              const y = PAD_Y + i * ROW_H;
+              return (
+                <g key={`s-${k}`}>
+                  <rect
+                    x={rightX}
+                    y={y}
+                    width={COL_W}
+                    height={NODE_H}
+                    rx={5}
+                    fill="var(--surface)"
+                    stroke="var(--border)"
+                  />
+                  <text
+                    x={rightX + 8}
+                    y={y + NODE_H / 2 + 4}
+                    textAnchor="start"
+                    fontSize={11}
+                    fontFamily="ui-monospace, monospace"
+                    fill={nodeColor(ref)}
+                  >
+                    {ref.name.length > 22 ? ref.name.slice(0, 21) + "…" : ref.name}
+                    <title>
+                      {ref.name}
+                      {ref.sourceFile ? `\n${ref.sourceFile}:${ref.startLine ?? ""}` : ""}
+                    </title>
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+
+          {(channelOverflow > 0 ||
+            pubMap.size > pubKeys.length ||
+            subMap.size > subKeys.length) && (
+            <p className="px-4 py-2 text-xs text-text-4 border-t border-border">
+              {channelOverflow > 0 && `+${channelOverflow} more channels `}
+              {pubMap.size > pubKeys.length && `· +${pubMap.size - pubKeys.length} publishers `}
+              {subMap.size > subKeys.length && `· +${subMap.size - subKeys.length} subscribers `}
+              — switch to List view to see all.
+            </p>
           )}
-          {channels.map((ch) => (
-            <FlowUnit
-              key={ch.id}
-              channel={ch}
-              selected={selectedId === ch.id}
-              onClick={() => onSelect(ch)}
-            />
-          ))}
         </div>
       )}
     </div>
@@ -599,12 +719,12 @@ function MapView({
         ))}
       </div>
 
-      {/* Broker bands */}
+      {/* Broker diagrams — visual publisher → channel → subscriber flow */}
       {brokerGroups.map((bg) => {
         const bandChannels = channels.filter((ch) => ch.broker_canonical === bg.broker);
         if (bandChannels.length === 0) return null;
         return (
-          <BrokerBand
+          <BrokerDiagram
             key={bg.broker}
             brokerGroup={bg}
             channels={bandChannels}
@@ -621,6 +741,53 @@ function MapView({
 // § ListView
 // ---------------------------------------------------------------------------
 
+/** Compact "first-name (+N)" summary for one channel side, used in aligned rows. */
+function SideSummary({
+  refs,
+  align,
+  emptyLabel,
+}: {
+  refs: DisplayRef[];
+  align: "left" | "right";
+  emptyLabel: string;
+}) {
+  if (refs.length === 0) {
+    return <span className="text-xs text-text-4 italic truncate block">{emptyLabel}</span>;
+  }
+  const first = refs[0];
+  const overflow = refs.length - 1;
+  const title = refs
+    .map((r) => `${r.name}${r.sourceFile ? ` — ${shortFile(r.sourceFile)}:${r.startLine ?? ""}` : ""}`)
+    .join("\n");
+  return (
+    <span
+      className={cn("flex items-baseline gap-1 min-w-0", align === "right" && "justify-end")}
+      title={title}
+    >
+      <span className="font-mono text-sm text-text-2 truncate">{first.name}</span>
+      {overflow > 0 && <span className="text-xs text-text-4 shrink-0">+{overflow}</span>}
+    </span>
+  );
+}
+
+// Shared column template so the header and every row align perfectly (#1583).
+const LIST_GRID =
+  "grid grid-cols-[minmax(0,1fr)_16px_minmax(0,1.2fr)_16px_minmax(0,1fr)_120px_84px] items-center gap-2";
+
+function ListHeader() {
+  return (
+    <div className={cn(LIST_GRID, "px-3 py-1 text-[10px] uppercase tracking-wide text-text-4")}>
+      <span className="text-right">Publisher</span>
+      <span />
+      <span>Channel</span>
+      <span />
+      <span>Subscriber</span>
+      <span>Status</span>
+      <span className="text-right">Repo</span>
+    </div>
+  );
+}
+
 function ListRow({
   channel,
   selected,
@@ -630,29 +797,38 @@ function ListRow({
   selected: boolean;
   onClick: () => void;
 }) {
+  const producers = resolveSide(channel.producer_refs, channel.producers);
+  const consumers = resolveSide(channel.consumer_refs, channel.consumers);
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors",
+        LIST_GRID,
+        "w-full px-3 py-1.5 rounded-md text-left transition-colors",
         selected
           ? "bg-accent-soft/20 border border-accent"
           : "border border-transparent hover:bg-surface-2",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]",
       )}
     >
-      <BrokerShapeIcon canonical={channel.broker_canonical} size={18} />
-      <span className="font-mono text-md text-text truncate flex-1">{channel.label}</span>
-      <span className="text-xs text-text-3 shrink-0 hidden sm:flex items-center gap-1">
-        <span>{channel.producers?.length ?? 0}</span>
-        <span className="text-text-4">→</span>
-        <BrokerShapeIcon canonical={channel.broker_canonical} size={12} />
-        <span className="text-text-4">→</span>
-        <span>{channel.consumers?.length ?? 0}</span>
+      {/* Publisher column (right-aligned, points into the channel) */}
+      <SideSummary refs={producers} align="right" emptyLabel="no publisher" />
+      <span className="text-text-4 text-xs text-center">→</span>
+      {/* Channel column */}
+      <span className="flex items-center gap-1.5 min-w-0">
+        <BrokerShapeIcon canonical={channel.broker_canonical} size={16} />
+        <span className="font-mono text-md text-text truncate" title={channel.label}>
+          {channel.label}
+        </span>
       </span>
-      <LifecycleChip state={channel.lifecycle_state} className="shrink-0" />
-      <RepoChip repo={channel.repo} className="shrink-0" />
+      <span className="text-text-4 text-xs text-center">→</span>
+      {/* Subscriber column */}
+      <SideSummary refs={consumers} align="left" emptyLabel="no subscriber" />
+      {/* Status */}
+      <LifecycleChip state={channel.lifecycle_state} className="justify-self-start" />
+      {/* Repo */}
+      <RepoChip repo={channel.repo} className="justify-self-end max-w-full truncate" />
     </button>
   );
 }
@@ -680,6 +856,7 @@ function ListView({
               <span className="capitalize">{bg.broker}</span>
               <span className="ml-auto text-text-4">{rows.length}</span>
             </div>
+            <ListHeader />
             <div className="space-y-0.5">
               {rows.map((ch) => (
                 <ListRow
@@ -746,42 +923,69 @@ function EntityList({ ids }: { ids: string[] }) {
 
 /**
  * Renders a list of producer/consumer entries from the topic-detail endpoint.
- * The detail endpoint returns rich entity objects (name/kind/repo/source_file),
- * NOT plain entity-id strings — so we render each field explicitly (#1543).
+ * Each entry shows the real function/class NAME, its kind, a clickable
+ * source_file:line ("Open source" deep-link), and repo. Handles both the rich
+ * entity-object shape (detail endpoint) and the plain id-string shape (#1583).
+ *
+ * `verb` is the action this side performs on the channel ("publishes" /
+ * "subscribes"), surfaced so the panel says what the entity does, not just who.
  */
-function EntityRefList({ entries }: { entries: (TopologyEntityRef | string)[] }) {
+function EntityRefList({
+  entries,
+  verb,
+}: {
+  entries: (TopologyEntityRef | string)[];
+  verb: "publishes" | "subscribes";
+}) {
   if (!entries || entries.length === 0) return null;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {entries.map((entry, i) => {
-        if (typeof entry === "string") {
-          // Fallback: plain id string (list-endpoint shape)
-          const parts = (entry ?? "").split("::");
-          const name = (parts[parts.length - 1] ?? "").split(":").pop() || entry;
-          const repo = parts.length > 1 ? parts[0] : null;
-          return (
-            <div key={entry || i} className="flex items-center gap-2 text-sm">
-              {repo && <RepoChip repo={repo} className="text-[10px]" />}
-              <span className="font-mono text-text truncate">{name}</span>
-            </div>
-          );
-        }
-        // Rich entity object shape from the detail endpoint
-        const fileBasename = (entry.source_file ?? "").split("/").pop() ?? "";
+        const ref: DisplayRef =
+          typeof entry === "string" ? idToDisplay(entry) : refToDisplay(entry);
+        const href = editorHref(ref.sourceFile, ref.startLine);
+        const fileRef = ref.sourceFile
+          ? `${shortFile(ref.sourceFile)}${ref.startLine ? `:${ref.startLine}` : ""}`
+          : null;
         return (
-          <div key={entry.entity_id || i} className="flex items-center gap-2 text-sm min-w-0">
-            {entry.repo && <RepoChip repo={entry.repo} className="text-[10px] shrink-0" />}
-            <span className="font-mono text-text truncate flex-1" title={entry.name}>
-              {entry.name}
-            </span>
-            {fileBasename && (
-              <span
-                className="text-[10px] text-text-4 font-mono shrink-0 truncate max-w-[140px]"
-                title={`${entry.source_file}:${entry.start_line}`}
-              >
-                {fileBasename}:{entry.start_line}
+          <div
+            key={ref.entityId || i}
+            className="rounded-md border border-border bg-surface px-2.5 py-1.5"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-mono text-sm text-text truncate flex-1" title={ref.name}>
+                {ref.name}
               </span>
-            )}
+              {ref.kind && ref.kind !== "unresolved" && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-4 border border-border shrink-0">
+                  {ref.kind}
+                </span>
+              )}
+              {ref.repo && <RepoChip repo={ref.repo} className="text-[10px] shrink-0" />}
+            </div>
+            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-text-4 min-w-0">
+              <span className="shrink-0">{verb} this channel</span>
+              {fileRef && (
+                <>
+                  <span className="text-text-4/60">·</span>
+                  {href ? (
+                    <a
+                      href={href}
+                      className="font-mono text-accent hover:underline truncate inline-flex items-center gap-1"
+                      title={`Open ${ref.sourceFile}:${ref.startLine ?? ""}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink size={9} className="shrink-0" />
+                      {fileRef}
+                    </a>
+                  ) : (
+                    <span className="font-mono truncate" title={ref.sourceFile}>
+                      {fileRef}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         );
       })}
@@ -870,8 +1074,25 @@ function DetailPanel({
             {d?.source_file && (
               <>
                 <dt className="text-text-4">Source</dt>
-                <dd className="font-mono text-text-2 truncate">
-                  {d.source_file}{d.start_line ? `:${d.start_line}` : ""}
+                <dd className="font-mono text-text-2 truncate min-w-0">
+                  {editorHref(d.source_file, d.start_line) ? (
+                    <a
+                      href={editorHref(d.source_file, d.start_line)!}
+                      className="text-accent hover:underline inline-flex items-center gap-1"
+                      title={`Open ${d.source_file}:${d.start_line ?? ""}`}
+                    >
+                      <ExternalLink size={10} className="shrink-0" />
+                      <span className="truncate">
+                        {d.source_file}
+                        {d.start_line ? `:${d.start_line}` : ""}
+                      </span>
+                    </a>
+                  ) : (
+                    <>
+                      {d.source_file}
+                      {d.start_line ? `:${d.start_line}` : ""}
+                    </>
+                  )}
                 </dd>
               </>
             )}
@@ -921,7 +1142,9 @@ function DetailPanel({
               : undefined
           }
         >
-          {producerEntries.length > 0 ? <EntityRefList entries={producerEntries} /> : null}
+          {producerEntries.length > 0 ? (
+            <EntityRefList entries={producerEntries} verb="publishes" />
+          ) : null}
         </DetailSection>
 
         {/* Subscribers */}
@@ -934,7 +1157,9 @@ function DetailPanel({
               : undefined
           }
         >
-          {consumerEntries.length > 0 ? <EntityRefList entries={consumerEntries} /> : null}
+          {consumerEntries.length > 0 ? (
+            <EntityRefList entries={consumerEntries} verb="subscribes" />
+          ) : null}
         </DetailSection>
 
         {/* Message schema */}
@@ -995,10 +1220,20 @@ function DetailPanel({
           <Copy size={11} />
           Copy id
         </Button>
-        {d?.source_file && (
-          <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
-            <ExternalLink size={11} />
-            Open source
+        {d?.source_file && editorHref(d.source_file, d.start_line) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs"
+            asChild
+          >
+            <a
+              href={editorHref(d.source_file, d.start_line)!}
+              title={`Open ${d.source_file}:${d.start_line ?? ""}`}
+            >
+              <ExternalLink size={11} />
+              Open source
+            </a>
           </Button>
         )}
       </div>
@@ -1052,7 +1287,7 @@ function OrphanPublisherTab({ groupId }: { groupId: string }) {
             <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
             <div className="flex gap-1 flex-wrap">
               {(e.producers ?? []).slice(0, 3).map((p) => (
-                <EntityChip key={p} id={p} />
+                <EntityChip key={p} ref={idToDisplay(p)} />
               ))}
               {(e.producers?.length ?? 0) > 3 && (
                 <span className="text-xs text-text-3">+{(e.producers?.length ?? 0) - 3}</span>
@@ -1112,7 +1347,7 @@ function OrphanSubscriberTab({ groupId }: { groupId: string }) {
             <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
             <div className="flex gap-1 flex-wrap">
               {(e.consumers ?? []).slice(0, 3).map((c) => (
-                <EntityChip key={c} id={c} />
+                <EntityChip key={c} ref={idToDisplay(c)} />
               ))}
               {(e.consumers?.length ?? 0) > 3 && (
                 <span className="text-xs text-text-3">+{(e.consumers?.length ?? 0) - 3}</span>
@@ -1411,7 +1646,7 @@ export default function TopologyScreen() {
                 aria-pressed={viewMode === "map"}
                 title="Map view"
               >
-                <Map size={13} />
+                <MapIcon size={13} />
                 Map
               </button>
               <button

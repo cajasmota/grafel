@@ -51,16 +51,16 @@ type topologyResponse struct {
 
 // brokerServiceStat holds per-service aggregated counts inside a broker group.
 type brokerServiceStat struct {
-	Name        string `json:"name"`
-	TopicCount  int    `json:"topic_count"`
+	Name       string `json:"name"`
+	TopicCount int    `json:"topic_count"`
 }
 
 // brokerHealthSummary breaks down entity health per broker.
 type brokerHealthSummary struct {
-	Active            int `json:"active"`
-	OrphanPublisher   int `json:"orphan_publisher"`
-	OrphanSubscriber  int `json:"orphan_subscriber"`
-	Orphan            int `json:"orphan"`
+	Active           int `json:"active"`
+	OrphanPublisher  int `json:"orphan_publisher"`
+	OrphanSubscriber int `json:"orphan_subscriber"`
+	Orphan           int `json:"orphan"`
 }
 
 // brokerGroup is one element of topologyResponse.BrokerGroups.
@@ -172,7 +172,7 @@ func (s *Server) handleGroupTopics(w http.ResponseWriter, r *http.Request) {
 // can produce the BrokerGroups summary in a single pass.
 type brokerAccum struct {
 	count               int
-	services            map[string]int   // service name → topic/queue count
+	services            map[string]int // service name → topic/queue count
 	orphanPublishers    int
 	orphanSubscribers   int
 	crossRepoTopicCount int
@@ -255,6 +255,8 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 					"owning_service":   svc,
 					"producers":        producers,
 					"consumers":        consumers,
+					"producer_refs":    resolvePrefixedEntityRecords(grp, r.Slug, producers),
+					"consumer_refs":    resolvePrefixedEntityRecords(grp, r.Slug, consumers),
 					"transforms_to":    transformsTo,
 				}
 				// Enrich topic with frontmatter when available.
@@ -308,6 +310,8 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 					"owning_service":   svc,
 					"producers":        producers,
 					"consumers":        consumers,
+					"producer_refs":    resolvePrefixedEntityRecords(grp, r.Slug, producers),
+					"consumer_refs":    resolvePrefixedEntityRecords(grp, r.Slug, consumers),
 				}
 				// #1116: ScheduledJob entities (emitted by the scheduled-job pass for
 				// Celery beat, APScheduler, node-cron, Spring @Scheduled, etc.) carry a

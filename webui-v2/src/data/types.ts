@@ -306,6 +306,11 @@ export interface TopologyChannel {
   owning_service: string;
   producers: string[];   // entity ids
   consumers: string[];
+  // Resolved producer/consumer entity refs (name + source_file:line), so the
+  // list rows and detail panel can show real NAMES instead of hashed ids (#1583).
+  // The LIST endpoint now emits these alongside the raw id arrays.
+  producer_refs?: TopologyEntityRef[];
+  consumer_refs?: TopologyEntityRef[];
   scheduled?: boolean;
   schedule?: string;
   repo: string;

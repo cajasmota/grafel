@@ -33,47 +33,47 @@ type topicEntityRecord struct {
 // topicDetailResponse is the wire shape for GET /api/topology/{group}/topic/{topicId}.
 // All slice fields are guaranteed non-nil (JSON [] not null).
 type topicDetailResponse struct {
-	ID             string              `json:"id"`
-	Label          string              `json:"label"`
-	Protocol       string              `json:"protocol"`
-	Broker         string              `json:"broker"`
-	Framework      string              `json:"framework"`
-	Schedule       string              `json:"schedule"`
-	Scheduled      bool                `json:"scheduled"`
-	MessageSchema  string              `json:"message_schema"`
-	Repo           string              `json:"repo"`
-	SourceFile     string              `json:"source_file"`
-	StartLine      int                 `json:"start_line"`
-	Producers      []topicEntityRecord `json:"producers"`
-	Consumers      []topicEntityRecord `json:"consumers"`
-	Tests          []topicEntityRecord `json:"tests"`
-	RelatedTopics  []string            `json:"related_topics"`
-	UsageHistory   []any               `json:"usage_history"`
-	FlowCount      int                 `json:"flow_count"`
-	CrossRepo      bool                `json:"cross_repo"`
-	LifecycleState string              `json:"lifecycle_state"`
-	DocsSummary    string              `json:"docs_summary,omitempty"`
+	ID             string                 `json:"id"`
+	Label          string                 `json:"label"`
+	Protocol       string                 `json:"protocol"`
+	Broker         string                 `json:"broker"`
+	Framework      string                 `json:"framework"`
+	Schedule       string                 `json:"schedule"`
+	Scheduled      bool                   `json:"scheduled"`
+	MessageSchema  string                 `json:"message_schema"`
+	Repo           string                 `json:"repo"`
+	SourceFile     string                 `json:"source_file"`
+	StartLine      int                    `json:"start_line"`
+	Producers      []topicEntityRecord    `json:"producers"`
+	Consumers      []topicEntityRecord    `json:"consumers"`
+	Tests          []topicEntityRecord    `json:"tests"`
+	RelatedTopics  []string               `json:"related_topics"`
+	UsageHistory   []any                  `json:"usage_history"`
+	FlowCount      int                    `json:"flow_count"`
+	CrossRepo      bool                   `json:"cross_repo"`
+	LifecycleState string                 `json:"lifecycle_state"`
+	DocsSummary    string                 `json:"docs_summary,omitempty"`
 	Enrichment     *EnrichmentFrontmatter `json:"enrichment,omitempty"`
 	// DocgenStatus is "enriched" when YAML frontmatter was found for this entity,
 	// "stale" when the frontmatter file is older than the topic's last_indexed
 	// timestamp, or "pending" when no doc file exists.
-	DocgenStatus    string             `json:"docgen_status"`
+	DocgenStatus string `json:"docgen_status"`
 	// EnrichmentHealth reports which structured fields are populated.
 	// Only present when DocgenStatus == "enriched" or "stale".
-	EnrichmentHealth *topicEnrichmentHealth  `json:"enrichment_health,omitempty"`
+	EnrichmentHealth *topicEnrichmentHealth `json:"enrichment_health,omitempty"`
 }
 
 // topicEnrichmentHealth reports which message_topic enrichment fields are present,
 // so the frontend can surface a completeness hint alongside the detail panel.
 type topicEnrichmentHealth struct {
-	HasSummary              bool `json:"has_summary"`
-	HasSchema               bool `json:"has_schema"`
-	HasVolumeEstimate       bool `json:"has_volume_estimate"`
-	HasTypicalPayloadSize   bool `json:"has_typical_payload_size"`
-	HasExpectedConsumers    bool `json:"has_expected_consumers"`
-	HasGaps                 bool `json:"has_gaps"`
-	FilledFieldCount        int  `json:"filled_field_count"`
-	TotalFieldCount         int  `json:"total_field_count"`
+	HasSummary            bool `json:"has_summary"`
+	HasSchema             bool `json:"has_schema"`
+	HasVolumeEstimate     bool `json:"has_volume_estimate"`
+	HasTypicalPayloadSize bool `json:"has_typical_payload_size"`
+	HasExpectedConsumers  bool `json:"has_expected_consumers"`
+	HasGaps               bool `json:"has_gaps"`
+	FilledFieldCount      int  `json:"filled_field_count"`
+	TotalFieldCount       int  `json:"total_field_count"`
 }
 
 // handleTopicDetail — GET /api/topology/{group}/topic/{topicId}
@@ -367,6 +367,73 @@ func resolveEntityRecords(grp *DashGroup, ownerRepo string, localIDs []string) [
 		}
 	}
 	return out
+}
+
+// resolvePrefixedEntityRecords resolves a list of fully-prefixed entity IDs
+// ("repo::localID") into rich topicEntityRecord values (name + source ref).
+// Used by the topology LIST endpoint so publisher/subscriber rows can show the
+// real entity NAME and source_file:line instead of a bare hashed ID (#1583).
+//
+// Each ID is split into its repo hint + local ID. When an ID carries no repo
+// prefix we fall back to the supplied ownerRepo. Unresolvable IDs are emitted
+// with a best-effort fallback name derived from the trailing path segment so
+// the frontend never has to render a bare hash.
+func resolvePrefixedEntityRecords(grp *DashGroup, ownerRepo string, prefixedIDs []string) []topicEntityRecord {
+	out := make([]topicEntityRecord, 0, len(prefixedIDs))
+	for _, pid := range prefixedIDs {
+		repoHint, localID := dashSplitPrefixed(pid)
+		searchRepo := repoHint
+		if searchRepo == "" {
+			searchRepo = ownerRepo
+		}
+		rec, found := lookupEntityRecord(grp, searchRepo, localID)
+		if !found {
+			// Last resort: scan all repos by local ID.
+			rec, found = lookupEntityRecord(grp, "", localID)
+		}
+		if found {
+			out = append(out, rec)
+			continue
+		}
+		// Fallback: never surface a bare hash. Derive a readable-ish name from
+		// the trailing segment; flag kind "unresolved" so the UI can label it.
+		name := localID
+		if i := strings.LastIndex(name, ":"); i >= 0 && i < len(name)-1 {
+			name = name[i+1:]
+		}
+		out = append(out, topicEntityRecord{
+			EntityID: pid,
+			Name:     name,
+			Kind:     "unresolved",
+			Repo:     searchRepo,
+		})
+	}
+	return out
+}
+
+// lookupEntityRecord finds an entity by local ID within a specific repo (or all
+// repos when repoSlug == "") and returns its resolved record.
+func lookupEntityRecord(grp *DashGroup, repoSlug, localID string) (topicEntityRecord, bool) {
+	if repoSlug != "" {
+		if r, ok := grp.Repos[repoSlug]; ok && r.Doc != nil {
+			for i := range r.Doc.Entities {
+				e := &r.Doc.Entities[i]
+				if e.ID == localID {
+					return entityToRecord(repoSlug, e), true
+				}
+			}
+		}
+		return topicEntityRecord{}, false
+	}
+	for _, r := range sortedRepos(grp) {
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			if e.ID == localID {
+				return entityToRecord(r.Slug, e), true
+			}
+		}
+	}
+	return topicEntityRecord{}, false
 }
 
 func entityToRecord(repo string, e *graph.Entity) topicEntityRecord {
