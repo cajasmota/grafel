@@ -339,6 +339,8 @@ func TestIsHardcodedSkip(t *testing.T) {
 		{"__pycache__", true},
 		{".gradle", true},
 		{"myapp.egg-info", true},
+		// generated dirs (MANIFEST §25 D24)
+		{"_generated", true},
 		{"src", false},
 		{"app", false},
 		{"internal", false},
@@ -348,4 +350,161 @@ func TestIsHardcodedSkip(t *testing.T) {
 			t.Errorf("IsHardcodedSkip(%q) = %v, want %v", tc.name, got, tc.want)
 		}
 	}
+}
+
+// TestWalkRepo_SkipsGeneratedDir verifies that a directory named _generated
+// (MANIFEST §25 / D24 fixture) is excluded from the walk via the hardcoded
+// skip list, and that sibling source files are still returned.
+func TestWalkRepo_SkipsGeneratedDir(t *testing.T) {
+	root := t.TempDir()
+	// Generated proto/OpenAPI stubs — must be excluded.
+	mkfile(t, root, "services/orders/app/_generated/orderspb/orders_pb2.py", "# generated")
+	mkfile(t, root, "services/orders/app/_generated/openapi_client/payments_api.py", "# generated")
+	// Legitimate source alongside the generated dir.
+	mkfile(t, root, "services/orders/app/handlers.py", "# real source")
+	mkfile(t, root, "services/orders/app/models.py", "# real source")
+
+	files, skipped, err := WalkRepo(root, nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+
+	// _generated must appear in the skipped list.
+	generatedSkipped := false
+	for _, s := range skipped {
+		if filepath.Base(s.AbsPath) == "_generated" {
+			generatedSkipped = true
+			break
+		}
+	}
+	if !generatedSkipped {
+		t.Errorf("expected _generated dir to be skipped; skipped=%v", skipped)
+	}
+
+	// No generated file should leak into results.
+	for _, f := range files {
+		if strings.Contains(f, "_generated/") {
+			t.Errorf("generated file leaked into walk results: %q", f)
+		}
+	}
+
+	// Legitimate source files must still be present.
+	fileSet := make(map[string]bool)
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	for _, want := range []string{
+		"services/orders/app/handlers.py",
+		"services/orders/app/models.py",
+	} {
+		if !fileSet[want] {
+			t.Errorf("expected source file %q in results; files=%v", want, files)
+		}
+	}
+}
+
+// TestWalkRepo_SkipsVendorDir verifies that vendor/ directories (D24/D25 vendored
+// dirs) are excluded, while legitimate top-level source is preserved.
+func TestWalkRepo_SkipsVendorDir(t *testing.T) {
+	root := t.TempDir()
+	mkfile(t, root, "vendor/carrier-sdk/client.go", "// vendored sdk")
+	mkfile(t, root, "vendor/grpc_health/health.go", "// vendored grpc")
+	mkfile(t, root, "internal/service/service.go", "package service")
+
+	files, skipped, err := WalkRepo(root, nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+
+	vendorSkipped := false
+	for _, s := range skipped {
+		if filepath.Base(s.AbsPath) == "vendor" {
+			vendorSkipped = true
+			break
+		}
+	}
+	if !vendorSkipped {
+		t.Errorf("expected vendor/ to be skipped; skipped=%v", skipped)
+	}
+
+	for _, f := range files {
+		if strings.HasPrefix(f, "vendor/") {
+			t.Errorf("vendored file leaked into walk results: %q", f)
+		}
+	}
+
+	fileSet := make(map[string]bool)
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	if !fileSet["internal/service/service.go"] {
+		t.Errorf("expected internal/service/service.go in results")
+	}
+}
+
+// TestWalkRepo_SkipsLinguistGeneratedDir verifies Layer 4 (P3): a directory
+// containing a .gitattributes file with "* linguist-generated=true" is skipped
+// even if its name is not in the hardcoded list.
+func TestWalkRepo_SkipsLinguistGeneratedDir(t *testing.T) {
+	root := t.TempDir()
+	// Simulate a dir with a linguist-generated marker (non-standard name).
+	mkfile(t, root, "proto_out/.gitattributes", "# auto-generated\n* linguist-generated=true\n")
+	mkfile(t, root, "proto_out/foo_pb2.py", "# generated code")
+	mkfile(t, root, "src/main.go", "package main")
+
+	files, skipped, err := WalkRepo(root, nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+
+	linguistSkipped := false
+	for _, s := range skipped {
+		if filepath.Base(s.AbsPath) == "proto_out" && s.Rule == "linguist-generated" {
+			linguistSkipped = true
+			break
+		}
+	}
+	if !linguistSkipped {
+		t.Errorf("expected proto_out to be skipped via linguist-generated rule; skipped=%v", skipped)
+	}
+
+	for _, f := range files {
+		if strings.HasPrefix(f, "proto_out/") {
+			t.Errorf("linguist-generated file leaked into walk results: %q", f)
+		}
+	}
+
+	fileSet := make(map[string]bool)
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	if !fileSet["src/main.go"] {
+		t.Errorf("expected src/main.go in results")
+	}
+}
+
+// TestIsLinguistGeneratedDir tests the helper directly.
+func TestIsLinguistGeneratedDir(t *testing.T) {
+	t.Run("marks_all_generated", func(t *testing.T) {
+		dir := t.TempDir()
+		writeIgnoreFile(t, dir, ".gitattributes", "# generated\n* linguist-generated=true\n")
+		if !isLinguistGeneratedDir(dir) {
+			t.Error("expected true for '* linguist-generated=true'")
+		}
+	})
+
+	t.Run("partial_pattern_not_wildcard", func(t *testing.T) {
+		dir := t.TempDir()
+		writeIgnoreFile(t, dir, ".gitattributes", "*.pb.go linguist-generated=true\n")
+		if isLinguistGeneratedDir(dir) {
+			t.Error("expected false: partial pattern should not trigger directory skip")
+		}
+	})
+
+	t.Run("no_gitattributes", func(t *testing.T) {
+		dir := t.TempDir()
+		if isLinguistGeneratedDir(dir) {
+			t.Error("expected false: no .gitattributes present")
+		}
+	})
 }
