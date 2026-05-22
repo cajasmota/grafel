@@ -173,7 +173,15 @@ Previously named `archigraph_search` (renamed in #668).
 | `context_filter` | string[] | no | `[]` | Edge-kind filter (see [Relationship Types](#relationship-types)). |
 | `repo_filter` | string[] | no | `[]` | Repo names to scope. `["*"]` requests a full dump. |
 | `full` | boolean | no | `false` | Return raw JSON instead of compact text. |
+| `include_noise` | boolean | no | `false` | Keep synthetic nodes (file/module container components, inferred class-hierarchy shadows, raw `SCOPE.Pattern` nodes, built-in `Process` nodes). Excluded by default (#1614). |
 | `group`, `cwd` | string | no | — | Common args. |
+
+By default results are **de-noised and re-ranked** (#1614): file/module container
+components, inferred class-hierarchy shadows, raw Pattern nodes and array-built-in
+Process nodes are dropped, and real **lined** entities (`start_line > 0`) rank above
+lineless route/resource entities — both above any retained synthetic node. The same
+filtering applies to the `full=true` JSON dump. Set `include_noise=true` to recover
+the unfiltered list.
 
 **Output** — text (default) or JSON when `full=true`:
 
@@ -655,6 +663,12 @@ writes to. Files that fail to parse as JSON are silently skipped.
 Return the source-file snippet for a node from disk, with `context_lines`
 above and below the entity's recorded `[start_line, end_line]` range.
 
+**Span guard (#1614):** when `end_line <= start_line` or either is `0` (common
+for synthetic / shadow / route entities), the span is clamped to a fixed
+fallback window (`start_line + 60`). A **hard cap of 200 emitted lines** is then
+applied unconditionally, so `get_source` can never dump an entire file no matter
+what span the entity records.
+
 **Inputs**
 
 | Name | Type | Required | Default | Description |
@@ -894,8 +908,12 @@ both `http_endpoint_definition` and `http_endpoint_call`.
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `repo_filter` | string[] | no | [] | Repos to scope. |
-| `limit` | number | no | 200 | Max results. |
+| `limit` | number | no | 200 | Max results in this page (0 = no cap). |
+| `offset` | number | no | 0 | Pagination offset (#1614) — page through every route with `offset`+`limit` to enumerate all paths. |
 | `group` / `cwd` | string | no | — | Standard routing args. |
+
+The response carries `total`, `offset`, and `truncated` so a caller can answer
+"which endpoints exist" by paging until `truncated` is `false`.
 
 **Output** — JSON object:
 
@@ -938,7 +956,8 @@ note.
 |------|------|----------|---------|-------------|
 | `repo_filter` | string[] | no | [] | Repos to scope. |
 | `orphan_only` | boolean | no | false | When true, return only call-sites with no matching definition. |
-| `limit` | number | no | 200 | Max results. |
+| `limit` | number | no | 200 | Max results in this page (0 = no cap). |
+| `offset` | number | no | 0 | Pagination offset (#1614) — page with `offset`+`limit` to enumerate every call-site path. |
 | `group` / `cwd` | string | no | — | Standard routing args. |
 
 **Output** — JSON object:

@@ -287,6 +287,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	depth := argInt(req, "depth", 3)
 	tokenBudget := argInt(req, "token_budget", 800)
 	full := argBool(req, "full", false)
+	includeNoise := argBool(req, "include_noise", false)
 	repoFilter := argStringSlice(req, "repo_filter")
 	contextFilter := contextFilterSet(argStringSlice(req, "context_filter"))
 	mode := argString(req, "mode", "bfs")
@@ -304,7 +305,32 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 			all = append(all, scored{repo: r, hit: h})
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return all[i].hit.Score > all[j].hit.Score })
+
+	// De-noise (#1614): drop file/module container components, inferred class
+	// shadows, raw Pattern nodes and Process built-in nodes from the default
+	// ranked list. They remain reachable via include_noise:true. Applied to
+	// BOTH the compact and full (structured) outputs.
+	if !includeNoise {
+		filtered := all[:0]
+		for _, sc := range all {
+			if isNoise(sc.hit.Entity) {
+				continue
+			}
+			filtered = append(filtered, sc)
+		}
+		all = filtered
+	}
+
+	// Re-rank (#1614): real, lined, qualified entities sort above
+	// shadows/containers/patterns. Within a tier, BM25 score order is preserved.
+	// (When include_noise is set, this still floats real hits above the noise.)
+	sort.SliceStable(all, func(i, j int) bool {
+		ti, tj := rankTier(all[i].hit.Entity), rankTier(all[j].hit.Entity)
+		if ti != tj {
+			return ti < tj
+		}
+		return all[i].hit.Score > all[j].hit.Score
+	})
 
 	// "always-1" rule: if nothing matched but repos contain entities, return
 	// the highest-PageRank entity as a single-result fallback so callers see
@@ -913,11 +939,34 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024)
-	start := e.StartLine - contextLines
+
+	// Bound the requested span (#1614). Synthetic / shadow / route entities
+	// frequently carry end_line<=start_line or start_line==0, which previously
+	// caused get_source to emit the entire file. Clamp a degenerate span to a
+	// fixed fallback window, and ALWAYS apply a hard max-lines cap so the
+	// returned chunk can never be a whole-file dump regardless of the recorded
+	// span.
+	const fallbackSpan = 60  // lines, when end<=start or either is 0
+	const hardMaxLines = 200 // absolute cap on emitted source lines
+
+	startLine := e.StartLine
+	endLine := e.EndLine
+	if startLine < 1 {
+		startLine = 1
+	}
+	if endLine <= startLine || e.StartLine == 0 || e.EndLine == 0 {
+		endLine = startLine + fallbackSpan
+	}
+
+	start := startLine - contextLines
 	if start < 1 {
 		start = 1
 	}
-	end := e.EndLine + contextLines
+	end := endLine + contextLines
+	// Hard cap: never emit more than hardMaxLines.
+	if end-start+1 > hardMaxLines {
+		end = start + hardMaxLines - 1
+	}
 	var b strings.Builder
 	line := 0
 	for scanner.Scan() {

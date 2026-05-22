@@ -104,12 +104,18 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
 // Tool count: 28 (#1281: 9→4 bundles; #1293: desc trim; #1312: +quality_cycles; #1314: +auth_coverage;
-//   #1322: +secrets; #1323: +test_coverage; #1333: desc ≤80 chars;
-//   refactor/mcp-real-3k: ≤3k handshake, -license_audit for token ceiling).
+//
+//	#1322: +secrets; #1323: +test_coverage; #1333: desc ≤80 chars;
+//	refactor/mcp-real-3k: ≤3k handshake, -license_audit for token ceiling).
+//
 // Dropped (HTTP-only): archigraph_diagnostics, archigraph_quality_orphans,
-//   archigraph_get_next_enrichment_task, archigraph_get_telemetry.
+//
+//	archigraph_get_next_enrichment_task, archigraph_get_telemetry.
+//
 // Dropped (agent-facing, ≤3k): archigraph_recent_activity (UI), archigraph_save_finding,
-//   archigraph_list_findings (use enrichments), archigraph_cross_links (niche).
+//
+//	archigraph_list_findings (use enrichments), archigraph_cross_links (niche).
+//
 // Dropped (HTTP-only, ≤3k optimization): archigraph_license_audit (#1334, HTTP API still available).
 func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_whoami",
@@ -127,13 +133,14 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_get_source", s.handleGetNodeSource))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find",
-		mcpapi.WithDescription("BM25 graph query with optional BFS expansion."),
+		mcpapi.WithDescription("BM25 graph query, de-noised; include_noise:true keeps synthetic nodes."),
 		mcpapi.WithString("question", mcpapi.Required()),
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false)),
+		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find", s.handleQueryGraph))
@@ -318,6 +325,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
+		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0)),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
