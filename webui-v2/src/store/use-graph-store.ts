@@ -117,14 +117,60 @@ const ALL_EDGE_KINDS: EdgeKind[] = [
   "IMPORTS",
 ];
 
-function persistedJSON<T>(key: string, fallback: T): T {
+// Fix #1567-4: persisted-defaults VERSION. The localStorage tuning keys
+// (ag.v2.graph.sim/sizing/render) override new code defaults forever, so shipped
+// default changes (e.g. #1569's + this PR's) never reach users who already have
+// a stored value — a recurring papercut. Stamp a version alongside the stored
+// tuning; on load, if the stored version is missing or < the current one, DISCARD
+// the stale stored tuning and adopt the new code defaults. Bump this whenever a
+// default in DEFAULT_SIMULATION / DEFAULT_NODE_SIZING / DEFAULT_RENDER changes so
+// the change actually lands on next load with no manual Reset.
+const DEFAULTS_VERSION = 2;
+const VERSION_KEY = "ag.v2.graph.defaultsVersion";
+
+function readStoredVersion(): number {
+  if (typeof localStorage === "undefined") return DEFAULTS_VERSION;
+  const raw = localStorage.getItem(VERSION_KEY);
+  const v = raw == null ? 0 : Number.parseInt(raw, 10);
+  return Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * Fix #1567-4: load a persisted tuning blob ONLY if the stored defaults version
+ * is current. On a stale (or missing) version we ignore localStorage entirely and
+ * return the code default, so new shipped defaults apply on next load. The version
+ * stamp is (re)written by migrateDefaults() once at module init.
+ */
+function persistedJSON<T>(key: string, fallback: T, storedVersion: number): T {
   if (typeof localStorage === "undefined") return fallback;
+  if (storedVersion < DEFAULTS_VERSION) return fallback; // discard stale tuning
   try {
     const raw = localStorage.getItem(key);
     return raw ? ({ ...fallback, ...JSON.parse(raw) } as T) : fallback;
   } catch {
     return fallback;
   }
+}
+
+/**
+ * Fix #1567-4: on a stale stored version, clear the old tuning keys and stamp the
+ * current version, so subsequent setSimulation/etc. persist fresh. Returns the
+ * version that was on disk at load time (used to gate persistedJSON above).
+ */
+function migrateDefaults(): number {
+  const stored = readStoredVersion();
+  if (typeof localStorage === "undefined") return stored;
+  if (stored < DEFAULTS_VERSION) {
+    try {
+      localStorage.removeItem("ag.v2.graph.sim");
+      localStorage.removeItem("ag.v2.graph.sizing");
+      localStorage.removeItem("ag.v2.graph.render");
+      localStorage.setItem(VERSION_KEY, String(DEFAULTS_VERSION));
+    } catch {
+      /* ignore quota / private-mode */
+    }
+  }
+  return stored;
 }
 
 function persist<T>(key: string, value: T): void {
@@ -205,6 +251,11 @@ interface GraphState {
   resetView: () => void;
 }
 
+// Fix #1567-4: run the migration ONCE at module init (before the store reads any
+// persisted tuning). Captures the on-disk version (to gate persistedJSON) and
+// clears stale keys + stamps the current version as a side effect.
+const STORED_DEFAULTS_VERSION = migrateDefaults();
+
 export const useGraphStore = create<GraphState>((set) => ({
   selectedNodeId: null,
   hoveredNodeId: null,
@@ -224,9 +275,9 @@ export const useGraphStore = create<GraphState>((set) => ({
   groupBy: "repo",
   groupingTouched: false,
 
-  simulation: persistedJSON("ag.v2.graph.sim", DEFAULT_SIMULATION),
-  nodeSizing: persistedJSON("ag.v2.graph.sizing", DEFAULT_NODE_SIZING),
-  render: persistedJSON("ag.v2.graph.render", DEFAULT_RENDER),
+  simulation: persistedJSON("ag.v2.graph.sim", DEFAULT_SIMULATION, STORED_DEFAULTS_VERSION),
+  nodeSizing: persistedJSON("ag.v2.graph.sizing", DEFAULT_NODE_SIZING, STORED_DEFAULTS_VERSION),
+  render: persistedJSON("ag.v2.graph.render", DEFAULT_RENDER, STORED_DEFAULTS_VERSION),
 
   relayoutNonce: 0,
 

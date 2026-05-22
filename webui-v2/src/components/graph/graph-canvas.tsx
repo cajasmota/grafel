@@ -44,7 +44,7 @@ import {
   degreeColor,
   linkPalette,
 } from "@/lib/graph-colors";
-import { saveLayout, loadLayout } from "@/lib/graph-layout-cache";
+import { saveLayout, loadLayout, isDegenerateLayout } from "@/lib/graph-layout-cache";
 import type {
   ColorMode,
   GroupByMode,
@@ -306,6 +306,14 @@ function GraphCanvasInner(
     return new Map(repos.map((r, i) => [r, i]));
   }, [nodes]);
 
+  // Fix #1567-1: a group is MULTI-REPO when it spans 2+ distinct repos (e.g.
+  // upvate = 3 islands). In that case the cross-REPO island↔island links are the
+  // structure the user wants to trace, so they become the EMPHASIZED tier and the
+  // cross-MODULE-within-a-repo links drop to SUBTLE. In a single-repo monorepo
+  // there are no cross-repo edges, so cross-MODULE stays the emphasized tier
+  // (the #1569 behavior). Detected from the actual repo count.
+  const isMultiRepo = useMemo(() => repoToIdx.size >= 2, [repoToIdx]);
+
   const groupCenters = useMemo(() => buildGroupCenters(nodes, groupBy), [nodes, groupBy]);
 
   // Stable 1-based module color index (alphabetical) for the "module" color
@@ -468,47 +476,75 @@ function GraphCanvasInner(
     // a distinct bright bridge color in BOTH themes. Re-packed on theme change
     // (isDark is a dep), so the dark/light toggle flows through live.
     const pal = linkPalette(isDark);
-    // Fix #1564-2: emphasize the inter-module/inter-repo wiring. Cross edges
-    // ride near-opaque so they pop; intra-module edges fade to the background so
-    // the structure stands out instead of looking like disconnected islands.
-    // Fix #1566: tone the emphasis WAY down. Cross edges are now only modestly
-    // more opaque than intra (not near-opaque), so they read as a slightly
-    // distinct thread, not a dominating rope. Traceable on inspection, not
-    // overwhelming.
+    // Fix #1566: keep emphasis muted + thin (no violet/sky spaghetti) — cross
+    // edges read as a slightly distinct thread, not a dominating rope.
+    // Fix #1567-1: make the emphasis tier REPO-AWARE. We compute three opacity
+    // tiers — faded / subtle / emphasized — then map each edge STATE onto a tier
+    // depending on whether the group is multi-repo:
+    //   • multi-repo:  cross-REPO (st 2) = emphasized, cross-MODULE (st 1) =
+    //                  subtle, intra-module (st 0) = faded. So in upvate the
+    //                  island↔island bridges light up, NOT the in-repo wiring.
+    //   • single-repo: no st-2 edges; cross-MODULE (st 1) = emphasized,
+    //                  intra-module (st 0) = faded (the #1569 behavior).
     const base = render.linkOpacity;
-    const intraA = Math.min(0.5, base * 0.6);
-    const crossModuleA = Math.min(0.75, Math.max(0.55, base * 0.95));
-    const crossRepoA = Math.min(0.8, Math.max(0.6, base * 1.05));
+    const fadedA = Math.min(0.5, base * 0.6);
+    const subtleA = Math.min(0.7, Math.max(0.5, base * 0.85));
+    const emphA = Math.min(0.8, Math.max(0.6, base * 1.05));
     for (let i = 0; i < states.length; i++) {
       const st = states[i];
-      const c = st === 2 ? pal.crossRepo : st === 1 ? pal.crossModule : pal.intraModule;
-      const a = st === 2 ? crossRepoA : st === 1 ? crossModuleA : intraA;
+      // tier: 0 faded, 1 subtle, 2 emphasized — repo-aware.
+      let tier: 0 | 1 | 2;
+      let c: RGBA;
+      if (st === 2) {
+        // cross-repo — always the brightest bridge color; emphasized tier.
+        tier = 2;
+        c = pal.crossRepo;
+      } else if (st === 1) {
+        // cross-module — emphasized in a single-repo monorepo, subtle when
+        // cross-repo links exist (so they don't compete with the bridges).
+        tier = isMultiRepo ? 1 : 2;
+        c = pal.crossModule;
+      } else {
+        tier = 0;
+        c = pal.intraModule;
+      }
+      const a = tier === 2 ? emphA : tier === 1 ? subtleA : fadedA;
       const rgba: RGBA = [c[0], c[1], c[2], a];
       writeNormalizedRGBA(out, i, rgba);
     }
     return out;
-  }, [linkData, render.linkOpacity, isDark]);
+  }, [linkData, render.linkOpacity, isDark, isMultiRepo]);
 
   const packLinkWidths = useCallback((): Float32Array => {
     const { states } = linkData;
     const out = new Float32Array(states.length);
     if (!render.showLinks) return out;
     // Fix #1558-1: links stay visible at EVERY zoom level (constant on-screen
-    // pixel width, scaleLinksOnZoom off). Fix #1566: #1565's thick cross ropes
-    // (2.6 / 3.4, floors 2.2 / 3.0) became "violet spaghetti". Pull cross widths
-    // back to NEAR the intra width — only a hair thicker — so cross edges are
-    // distinguishable on inspection without dominating the canvas.
-    const MIN_INTRA = 0.8;
-    const MIN_CROSS_MODULE = 1.0;
-    const MIN_CROSS_REPO = 1.2;
+    // pixel width, scaleLinksOnZoom off). Fix #1566: keep cross widths NEAR the
+    // intra width — only a hair thicker — so they're traceable, not spaghetti.
+    // Fix #1567-1: width follows the same REPO-AWARE tier as color. The
+    // emphasized tier (cross-repo on multi-repo groups; cross-module on a single
+    // repo) gets the thickest hair; the subtle tier sits between; intra is
+    // thinnest. So upvate's island bridges read as the distinct tier, not the
+    // in-repo wiring.
+    const W_FADED = 0.8;
+    const W_SUBTLE = 1.0;
+    const W_EMPH = 1.3;
+    const FLOOR_FADED = 0.8;
+    const FLOOR_SUBTLE = 1.0;
+    const FLOOR_EMPH = 1.2;
     for (let i = 0; i < states.length; i++) {
       const st = states[i];
-      const base = st === 2 ? 1.3 : st === 1 ? 1.1 : 0.8;
-      const floor = st === 2 ? MIN_CROSS_REPO : st === 1 ? MIN_CROSS_MODULE : MIN_INTRA;
+      let tier: 0 | 1 | 2;
+      if (st === 2) tier = 2;
+      else if (st === 1) tier = isMultiRepo ? 1 : 2;
+      else tier = 0;
+      const base = tier === 2 ? W_EMPH : tier === 1 ? W_SUBTLE : W_FADED;
+      const floor = tier === 2 ? FLOOR_EMPH : tier === 1 ? FLOOR_SUBTLE : FLOOR_FADED;
       out[i] = Math.max(floor, base * render.linkWidthScale);
     }
     return out;
-  }, [linkData, render.showLinks, render.linkWidthScale]);
+  }, [linkData, render.showLinks, render.linkWidthScale, isMultiRepo]);
 
   // Fix #1564-3: index-level adjacency so a hovered node can also label its
   // DIRECT neighbors (built from the same packed link buffer). Bidirectional.
@@ -706,7 +742,13 @@ function GraphCanvasInner(
     if (repaired) {
       console.warn("[graph-canvas] non-finite positions at settle; clamped before fit/cache");
     }
-    if (positions.length > 0) {
+    // Fix #1567-2: ONLY snapshot the layout cache once the settle has a GOOD
+    // spread. The cap timer can fire while the sim is still mid-collapse (an
+    // over-contracted blob); persisting that made RELOAD render the bad layout
+    // while Reset (re-run sim) looked right. Skip the cache write on a degenerate
+    // (collapsed / tiny-bbox) layout so the next load re-settles instead of
+    // restoring junk. (We never load a degenerate cache either — see load paths.)
+    if (positions.length > 0 && !isDegenerateLayout(positions)) {
       saveLayout(group, nodeIds, positions);
     }
 
@@ -853,7 +895,10 @@ function GraphCanvasInner(
     // Fix #1562: a layout cached BEFORE this fix could contain NaN/Infinity from
     // a diverged settle; loading it would crash on the first fit. Only trust a
     // fully-finite cache; otherwise fall through to a fresh (now-stable) layout.
-    if (saved && allFinite(saved.positions)) {
+    // Fix #1567-2: ALSO reject a degenerate (over-contracted / collapsed) cache so
+    // a reload re-settles to the good spread instead of restoring a bad blob — the
+    // reload now matches Reset.
+    if (saved && allFinite(saved.positions) && !isDegenerateLayout(saved.positions)) {
       requestAnimationFrame(() => {
         const gg = graphRef.current;
         if (!gg) return;
@@ -916,7 +961,9 @@ function GraphCanvasInner(
     g.create();
     if (!didAutoStartRef.current && !hasSettledRef.current) {
       const saved = loadLayout(group, nodeIds);
-      if (!saved) {
+      // Fix #1567-2: a degenerate cache is treated as a miss → kick a fresh
+      // settle (the mount handler also ignores it), so we don't render a blob.
+      if (!saved || isDegenerateLayout(saved.positions)) {
         didAutoStartRef.current = true;
         g.start(1);
       }
@@ -995,10 +1042,12 @@ function GraphCanvasInner(
     mountTimeRef.current = Date.now();
     const saved = loadLayout(group, nodeIds);
     // Fix #1562: ignore a non-finite cached layout (see mount handler).
+    // Fix #1567-2: also ignore a degenerate (collapsed) cache → re-settle.
     if (
       saved &&
       saved.positions.length === packed.positions.length &&
-      allFinite(saved.positions)
+      allFinite(saved.positions) &&
+      !isDegenerateLayout(saved.positions)
     ) {
       g.setPointPositions(saved.positions, true);
       g.render();
@@ -1041,19 +1090,44 @@ function GraphCanvasInner(
     }, capMs);
   }, [groupBy, packed]);
 
-  // ── visibility / repo + community selection ──────────────────────────────────
+  // ── visibility / hover spotlight + repo + community selection ─────────────────
   // Fix #1548-3: ego focus is no longer a greyout — the parent passes a pre-built
-  // ego SUB-graph as nodes/edges, so here we only handle repo filter (hard-hide)
-  // and community focus (soft-dim).
-  useEffect(() => {
+  // ego SUB-graph as nodes/edges, so here we only handle repo filter (hard-hide),
+  // community focus (soft-dim), and the hover spotlight.
+  //
+  // Fix #1567-3: HOVER SPOTLIGHT. On node hover we DIM the whole graph and keep
+  // only the hovered node + its DIRECT neighbors (and the links among them) at
+  // full opacity. cosmos.gl's selectPointsByIndices does exactly this: selected
+  // points stay full, everything else greys to pointGreyoutOpacity and their links
+  // to linkGreyoutOpacity — and a link is only kept bright when BOTH endpoints are
+  // selected, so the in-neighborhood links light up while the rest recede. Hover
+  // takes priority while hovering; on un-hover we fall back to the repo/community
+  // selection state (so the spotlight cleanly restores). This is a config/select
+  // call only (no re-layout), so it's smooth + rAF-free.
+  const applySelection = useCallback(() => {
     const g = graphRef.current;
     if (!g) return;
+    const hovId = hoveredNodeId;
+    const hovIdx = hovId != null ? idToIdx.get(hovId) : undefined;
+
+    // Hover spotlight wins while a node is hovered.
+    if (hovIdx !== undefined) {
+      const sel = new Set<number>([hovIdx]);
+      for (const nb of neighborIdx.get(hovIdx) ?? []) sel.add(nb);
+      g.selectPointsByIndices(Array.from(sel));
+      // Dim the rest hard so the neighborhood reads as a spotlight (but still
+      // faintly visible for context).
+      g.setConfig({ pointGreyoutOpacity: isDark ? 0.08 : 0.1 });
+      g.render();
+      return;
+    }
+
     const repoActive = activeRepos != null;
     const communityActive = focusedCommunityId != null;
-
     if (!repoActive && !communityActive) {
       g.selectPointsByIndices(null);
       g.setConfig({ pointGreyoutOpacity: 0.15 });
+      g.render();
       return;
     }
     const effective: number[] = nodes
@@ -1065,7 +1139,12 @@ function GraphCanvasInner(
       .filter((i) => i !== -1);
     g.selectPointsByIndices(effective);
     g.setConfig({ pointGreyoutOpacity: repoActive ? 0 : 0.18 });
-  }, [nodes, activeRepos, focusedCommunityId]);
+    g.render();
+  }, [nodes, activeRepos, focusedCommunityId, hoveredNodeId, idToIdx, neighborIdx, isDark]);
+
+  useEffect(() => {
+    applySelection();
+  }, [applySelection]);
 
   // ── refresh the hover label when the hovered node changes (Fix #1564-3) ──────
   // This is now the PRIMARY label trigger: a label appears when a node is
