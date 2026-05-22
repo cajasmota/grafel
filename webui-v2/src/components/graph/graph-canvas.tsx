@@ -42,8 +42,7 @@ import {
   readPastelScale,
   pastelAt,
   degreeColor,
-  CROSS_REPO_EDGE,
-  SAME_REPO_EDGE,
+  linkPalette,
 } from "@/lib/graph-colors";
 import { saveLayout, loadLayout } from "@/lib/graph-layout-cache";
 import type {
@@ -207,15 +206,10 @@ export interface GraphCanvasProps {
   className?: string;
 }
 
-// Labels (Fix #1532-5) are zoom/LOD-gated: a small always-on set of the
-// highest-degree hubs (plus the hovered node), with progressively more labels
-// revealed as the user zooms in — readable, not cluttered.
-const LABEL_BASE_COUNT = 12; // shown at the default (zoomed-out) level
-const LABEL_MAX_COUNT = 160; // ceiling once fully zoomed in
-// Fix #1548-1: during continuous pan/zoom we drive labels from the camera every
-// frame (rAF). Label compute is heavy, so while interacting we render only the
-// top-N hubs; the full zoom-gated set is restored on interaction-end.
-const LABEL_MOTION_CAP = 24;
+// Fix #1564-3: labels are HOVER-ONLY. The old always-on zoom/hub-gated label
+// layer cluttered the canvas; now we show a label ONLY for the hovered node and
+// its direct neighbors while hovered, so the canvas stays clean. The hover
+// label still tracks smoothly during pan/zoom via the existing rAF loop.
 const truncate = (s: string) => (s.length > 30 ? s.slice(0, 28) + "…" : s);
 
 /**
@@ -416,20 +410,27 @@ function GraphCanvasInner(
     return out;
   }, [nodes, colorMode, repoToIdx, moduleToIdx, degreePercentile]);
 
-  // Links — packed [src,tgt] + cross-repo state.
+  // Links — packed [src,tgt] + an edge CLASS per link (#1564-2):
+  //   2 = cross-repo (bridge), 1 = cross-module (same repo, diff module),
+  //   0 = intra-module. The class drives both color (theme-aware, #1564-1) and
+  //   width/opacity so the inter-module/inter-repo wiring visually stands out
+  //   while intra-module edges fade back. We determine cross-vs-intra from the
+  //   repo + module of each edge's two endpoints.
   const linkData = useMemo(() => {
     const idToRepo = new Map(nodes.map((n) => [n.id, n.repo ?? ""]));
+    const idToModule = new Map(nodes.map((n) => [n.id, moduleKey(n.sourceFile)]));
     const src: number[] = [];
     const tgt: number[] = [];
-    const states: number[] = []; // 1 cross-repo, 0 same-repo
+    const states: number[] = []; // 2 cross-repo, 1 cross-module, 0 intra-module
     for (const e of edges) {
       const s = idToIdx.get(e.source);
       const t = idToIdx.get(e.target);
       if (s === undefined || t === undefined) continue;
-      const cross = idToRepo.get(e.source) !== idToRepo.get(e.target);
+      const crossRepo = idToRepo.get(e.source) !== idToRepo.get(e.target);
+      const crossModule = idToModule.get(e.source) !== idToModule.get(e.target);
       src.push(s);
       tgt.push(t);
-      states.push(cross ? 1 : 0);
+      states.push(crossRepo ? 2 : crossModule ? 1 : 0);
     }
     const links = new Float32Array(src.length * 2);
     for (let i = 0; i < src.length; i++) {
@@ -442,47 +443,62 @@ function GraphCanvasInner(
   const packLinkColors = useCallback((): Float32Array => {
     const { states } = linkData;
     const out = new Float32Array(states.length * 4);
-    const sameA = render.linkOpacity;
-    const crossA = Math.min(1, Math.max(0.55, render.linkOpacity * 3.5));
+    // Fix #1564-1: theme-aware palette (lighter on dark, darker on light), with
+    // a distinct bright bridge color in BOTH themes. Re-packed on theme change
+    // (isDark is a dep), so the dark/light toggle flows through live.
+    const pal = linkPalette(isDark);
+    // Fix #1564-2: emphasize the inter-module/inter-repo wiring. Cross edges
+    // ride near-opaque so they pop; intra-module edges fade to the background so
+    // the structure stands out instead of looking like disconnected islands.
+    const base = render.linkOpacity;
+    const intraA = Math.min(0.5, base * 0.55);
+    const crossModuleA = Math.min(1, Math.max(0.8, base * 1.5));
+    const crossRepoA = Math.min(1, Math.max(0.9, base * 1.8));
     for (let i = 0; i < states.length; i++) {
-      const base = states[i] === 1 ? CROSS_REPO_EDGE : SAME_REPO_EDGE;
-      const rgba: RGBA = [base[0], base[1], base[2], states[i] === 1 ? crossA : sameA];
+      const st = states[i];
+      const c = st === 2 ? pal.crossRepo : st === 1 ? pal.crossModule : pal.intraModule;
+      const a = st === 2 ? crossRepoA : st === 1 ? crossModuleA : intraA;
+      const rgba: RGBA = [c[0], c[1], c[2], a];
       writeNormalizedRGBA(out, i, rgba);
     }
     return out;
-  }, [linkData, render.linkOpacity]);
+  }, [linkData, render.linkOpacity, isDark]);
 
   const packLinkWidths = useCallback((): Float32Array => {
     const { states } = linkData;
     const out = new Float32Array(states.length);
     if (!render.showLinks) return out;
-    // Fix #1558-1: links must stay visible at EVERY zoom level — especially the
-    // long cross-module "bridge" links between islands, which previously thinned
-    // to sub-pixel and vanished when zoomed out. `scaleLinksOnZoom` is off so the
-    // width is a constant on-screen pixel value; we floor every link at a
-    // perceptible minimum (cross-module links a touch heavier so the bridges read
-    // first) and never let linkWidthScale push them below that floor.
-    const MIN_SAME = 1.1;
-    const MIN_CROSS = 2.4;
+    // Fix #1558-1 + #1564-2: links stay visible at EVERY zoom level (constant
+    // on-screen pixel width, scaleLinksOnZoom off). Cross-module + cross-repo
+    // edges are THICKER so the inter-module/inter-repo wiring reads first;
+    // intra-module edges are thin so the structure isn't drowned out.
+    const MIN_INTRA = 0.8;
+    const MIN_CROSS_MODULE = 2.2;
+    const MIN_CROSS_REPO = 3.0;
     for (let i = 0; i < states.length; i++) {
-      const cross = states[i] === 1;
-      const base = cross ? 2.6 : 1.0;
-      const floor = cross ? MIN_CROSS : MIN_SAME;
+      const st = states[i];
+      const base = st === 2 ? 3.4 : st === 1 ? 2.6 : 0.8;
+      const floor = st === 2 ? MIN_CROSS_REPO : st === 1 ? MIN_CROSS_MODULE : MIN_INTRA;
       out[i] = Math.max(floor, base * render.linkWidthScale);
     }
     return out;
   }, [linkData, render.showLinks, render.linkWidthScale]);
 
-  // Nodes ranked by degree (descending) — the highest-degree hubs are labelled
-  // first; the count revealed grows with zoom level. (Fix #1532-5)
-  const rankedByDegree = useMemo(
-    () =>
-      nodes
-        .map((n, i) => ({ i, d: n.degree ?? 0 }))
-        .sort((a, b) => b.d - a.d)
-        .map((x) => x.i),
-    [nodes],
-  );
+  // Fix #1564-3: index-level adjacency so a hovered node can also label its
+  // DIRECT neighbors (built from the same packed link buffer). Bidirectional.
+  const neighborIdx = useMemo(() => {
+    const m = new Map<number, Set<number>>();
+    const { links } = linkData;
+    for (let i = 0; i < links.length; i += 2) {
+      const a = links[i];
+      const b = links[i + 1];
+      if (!m.has(a)) m.set(a, new Set());
+      if (!m.has(b)) m.set(b, new Set());
+      m.get(a)!.add(b);
+      m.get(b)!.add(a);
+    }
+    return m;
+  }, [linkData]);
   const labelLayerRef = useRef<HTMLDivElement>(null);
 
   const escapeLabel = (s: string) =>
@@ -499,41 +515,33 @@ function GraphCanvasInner(
       strong ? `;outline:1px solid ${isDark ? "#38bdf8" : "#0284c7"}` : ""
     }">${escapeLabel(text)}</span>`;
 
-  const refreshLabels = useCallback((motion = false) => {
+  // Fix #1564-3: HOVER-ONLY labels. Render a label only for the hovered node
+  // (drawn strong) plus its direct neighbors (drawn quiet) while hovering;
+  // nothing otherwise → a clean canvas. Still re-projects from the live camera
+  // so the label tracks the node during pan/zoom (the rAF loop calls this).
+  const refreshLabels = useCallback(() => {
     const g = graphRef.current;
     const layer = labelLayerRef.current;
     if (!g || !layer) return;
+    const hovId = hoveredRef.current;
+    const hovIdx = hovId != null ? idToIdx.get(hovId) : undefined;
+    if (hovIdx === undefined) {
+      // Not hovering → clear the layer (clean canvas).
+      if (layer.innerHTML !== "") layer.innerHTML = "";
+      return;
+    }
     const positions = g.getPointPositions();
     if (!positions || positions.length === 0) return;
     const w = containerRef.current?.clientWidth ?? 0;
     const h = containerRef.current?.clientHeight ?? 0;
 
-    // Zoom-gated count: at the fitted level show only the top hubs; reveal more
-    // (up to a ceiling) the further the user zooms in.
-    let zoom = 1;
-    try {
-      zoom = g.getZoomLevel() || 1;
-    } catch {
-      /* engine not ready */
-    }
-    const factor = Math.max(1, Math.pow(Math.max(zoom, 0.0001) * 3.2, 1.4));
-    // Fix #1548-1: while panning/zooming, cap to the top hubs so the per-frame
-    // label compute stays cheap and tracks the nodes smoothly with no lag.
-    const idleCount = Math.min(
-      LABEL_MAX_COUNT,
-      rankedByDegree.length,
-      Math.round(LABEL_BASE_COUNT * factor),
-    );
-    const count = motion ? Math.min(idleCount, LABEL_MOTION_CAP) : idleCount;
-
-    const shown = new Set<number>(rankedByDegree.slice(0, count));
-    // Always include the hovered node, even if it's a low-degree leaf.
-    const hovId = hoveredRef.current;
-    const hovIdx = hovId != null ? idToIdx.get(hovId) : undefined;
-    if (hovIdx !== undefined) shown.add(hovIdx);
+    // The hovered node, then its direct neighbors (quiet) so the local
+    // structure is readable without cluttering the whole canvas.
+    const shown: { idx: number; strong: boolean }[] = [{ idx: hovIdx, strong: true }];
+    for (const nb of neighborIdx.get(hovIdx) ?? []) shown.push({ idx: nb, strong: false });
 
     const frag: string[] = [];
-    for (const idx of shown) {
+    for (const { idx, strong } of shown) {
       const n = nodesRef.current[idx];
       if (!n) continue;
       const px = positions[idx * 2];
@@ -541,10 +549,10 @@ function GraphCanvasInner(
       if (px === undefined || py === undefined) continue;
       const [sx, sy] = g.spaceToScreenPosition([px, py]);
       if (sx < -50 || sy < -50 || sx > w + 50 || sy > h + 50) continue;
-      frag.push(labelSpan(sx, sy, n.label, idx === hovIdx));
+      frag.push(labelSpan(sx, sy, n.label, strong));
     }
     layer.innerHTML = frag.join("");
-  }, [rankedByDegree, idToIdx, isDark]);
+  }, [neighborIdx, idToIdx, isDark]);
 
   // Always invoke the LATEST refreshLabels via a ref: the mount-only engine
   // handlers (onZoom / onSimulationTick) and a stable scheduleLabels would
@@ -582,7 +590,9 @@ function GraphCanvasInner(
       rafRef.current = null;
       return;
     }
-    refreshLabelsRef.current(true); // motion=true → capped count, cheap
+    // Fix #1564-3: only the hovered node + neighbors are ever labelled, so the
+    // per-frame work is tiny — the hover label tracks smoothly during pan/zoom.
+    refreshLabelsRef.current();
     rafRef.current = requestAnimationFrame(motionLoop);
   }, []);
   const startInteraction = useCallback(() => {
@@ -595,8 +605,8 @@ function GraphCanvasInner(
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    // Restore the full zoom-gated label set now that motion has stopped.
-    requestAnimationFrame(() => refreshLabelsRef.current(false));
+    // Re-project the hover label now that motion has stopped.
+    requestAnimationFrame(() => refreshLabelsRef.current());
   }, []);
   const startInteractionRef = useRef(startInteraction);
   startInteractionRef.current = startInteraction;
@@ -1030,25 +1040,13 @@ function GraphCanvasInner(
     g.setConfig({ pointGreyoutOpacity: repoActive ? 0 : 0.18 });
   }, [nodes, activeRepos, focusedCommunityId]);
 
-  // ── refresh labels when the hovered node changes (Fix #1532-5) ───────────────
+  // ── refresh the hover label when the hovered node changes (Fix #1564-3) ──────
+  // This is now the PRIMARY label trigger: a label appears when a node is
+  // hovered and is cleared when hover leaves. The settle/tick/zoom schedulers
+  // simply keep the (single) hover label projected on the right pixel.
   useEffect(() => {
     scheduleLabels();
   }, [hoveredNodeId, scheduleLabels]);
-
-  // Once node data is available, kick a few delayed label refreshes so the
-  // labels appear after the engine has positions — the mount-time settle may
-  // have scheduled a refresh while the node list was still empty. (Fix #1532-5)
-  useEffect(() => {
-    if (rankedByDegree.length === 0) return;
-    const t1 = setTimeout(scheduleLabels, 300);
-    const t2 = setTimeout(scheduleLabels, 1200);
-    const t3 = setTimeout(scheduleLabels, 2600);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [rankedByDegree, scheduleLabels]);
 
   // ── Fix #1548-3: camera snapshot / restore for ego focus enter / exit ─────────
   // cosmos.gl exposes no public pan setter, so we capture (a) the zoom level and
@@ -1094,7 +1092,7 @@ function GraphCanvasInner(
             gg.setZoomLevel(snap.zoom, 0);
             gg.setPointPositions(frozen, true);
             gg.pause();
-            refreshLabelsRef.current(false);
+            refreshLabelsRef.current();
           } catch (err) {
             console.error("[graph-canvas] restoreCamera failed; recovering", err);
             try {
@@ -1129,7 +1127,7 @@ function GraphCanvasInner(
     // The re-layout settles via the cap timer; fit a few times as positions land.
     const fit = () => {
       fitNowRef.current();
-      refreshLabelsRef.current(false);
+      refreshLabelsRef.current();
     };
     const t1 = setTimeout(fit, 350);
     const t2 = setTimeout(fit, 1100);
@@ -1140,6 +1138,46 @@ function GraphCanvasInner(
       clearTimeout(t3);
     };
   }, [isFocusView]);
+
+  // ── Fix #1564-4: re-layout the ego sub-graph LIVE when the hops slider moves ──
+  // While already in focus, dragging the hops slider swaps the ego node SET (but
+  // `group` stays `…::ego`, so the group-change effect doesn't fire and the
+  // settled engine would just re-pin the new scattered seed and pause). When the
+  // node count changes inside focus, reset the settle flag, run a fresh layout
+  // over the new set, and re-fit so the expanded/contracted sub-graph fills the
+  // viewport.
+  const prevEgoCountRef = useRef(nodes.length);
+  useEffect(() => {
+    const changed = prevEgoCountRef.current !== nodes.length;
+    prevEgoCountRef.current = nodes.length;
+    if (!isFocusView || !changed) return;
+    const g = graphRef.current;
+    if (!g) return;
+    hasSettledRef.current = false;
+    didAutoStartRef.current = true;
+    mountTimeRef.current = Date.now();
+    g.setPointPositions(packed.positions);
+    g.setPointClusters(packed.clusters);
+    g.setPointClusterStrength(packed.clusterStrength);
+    g.render();
+    g.create();
+    g.start(1);
+    const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
+    if (capTimerRef.current) clearTimeout(capTimerRef.current);
+    capTimerRef.current = setTimeout(() => {
+      if (!hasSettledRef.current) doSettleRef.current();
+    }, capMs);
+    const fit = () => {
+      fitNowRef.current();
+      refreshLabelsRef.current();
+    };
+    const t1 = setTimeout(fit, 350);
+    const t2 = setTimeout(fit, capMs + 200);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [nodes.length, isFocusView, packed]);
 
   return (
     <div className={`relative h-full w-full ${className}`} role="img" aria-label="Dependency graph">

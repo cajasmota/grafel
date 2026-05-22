@@ -135,6 +135,11 @@ interface GraphState {
   focusedCommunityId: number | null;
   /** N-hop ego-graph focus: explicit node ids, or null for the full graph. */
   focusNodeIds: Set<string> | null;
+  /** The node the ego sub-graph is rooted at (so the hops slider can re-run
+   *  the BFS at a new depth). null when not in focus. (Fix #1564-4) */
+  focusRootId: string | null;
+  /** BFS depth for the ego sub-graph; the focus-view hops slider. (Fix #1564-4) */
+  egoHops: number;
   filtersOpen: boolean;
   communitiesOpen: boolean;
 
@@ -167,6 +172,8 @@ interface GraphState {
   setSearch: (q: string) => void;
   setFocusedCommunity: (id: number | null) => void;
   setFocusNodes: (ids: Set<string> | null) => void;
+  setFocusRoot: (id: string | null) => void;
+  setEgoHops: (hops: number) => void;
   setFiltersOpen: (open: boolean) => void;
   setCommunitiesOpen: (open: boolean) => void;
   toggleEdgeKind: (kind: EdgeKind) => void;
@@ -196,6 +203,8 @@ export const useGraphStore = create<GraphState>((set) => ({
   search: "",
   focusedCommunityId: null,
   focusNodeIds: null,
+  focusRootId: null,
+  egoHops: 3,
   filtersOpen: false,
   communitiesOpen: false,
 
@@ -218,6 +227,8 @@ export const useGraphStore = create<GraphState>((set) => ({
   setSearch: (search) => set({ search }),
   setFocusedCommunity: (focusedCommunityId) => set({ focusedCommunityId }),
   setFocusNodes: (focusNodeIds) => set({ focusNodeIds }),
+  setFocusRoot: (focusRootId) => set({ focusRootId }),
+  setEgoHops: (egoHops) => set({ egoHops: Math.max(1, Math.min(6, Math.round(egoHops))) }),
   setFiltersOpen: (filtersOpen) => set({ filtersOpen }),
   setCommunitiesOpen: (communitiesOpen) => set({ communitiesOpen }),
 
@@ -279,5 +290,6 @@ export const useGraphStore = create<GraphState>((set) => ({
       hoveredNodeId: null,
       focusedCommunityId: null,
       focusNodeIds: null,
+      focusRootId: null,
     }),
 }));

@@ -142,12 +142,11 @@ export default function GraphScreen() {
     return m;
   }, [edges]);
 
-  // Fix #1548-3: focus builds a NEW ego sub-graph = the node + neighbors up to
-  // ~5 hops (BFS over the edge set). We render ONLY that sub-graph (see the
-  // `egoNodes`/`egoEdges` memo below) and fit the camera to it. Default 5 hops
-  // so far neighbors stay reachable (was 1 hop + hide-the-rest).
-  const EGO_HOPS = 5;
-  const focusEgo = (id: string, hops = EGO_HOPS) => {
+  // Fix #1548-3 / #1564-4: focus builds a NEW ego sub-graph = the node +
+  // neighbors up to N hops (BFS over the edge set). We render ONLY that
+  // sub-graph (see `egoNodes`/`egoEdges` below) and fit the camera to it. N is
+  // the store's egoHops, driven LIVE by the hops slider in the focus banner.
+  const bfsEgo = (id: string, hops: number): Set<string> => {
     const set = new Set<string>([id]);
     let frontier = [id];
     for (let h = 0; h < hops; h++) {
@@ -162,10 +161,23 @@ export default function GraphScreen() {
       }
       frontier = next;
     }
+    return set;
+  };
+  const focusEgo = (id: string) => {
     // Snapshot the current camera so EXIT can restore it exactly (#1548-3).
     canvasRef.current?.snapshotCamera();
-    s.setFocusNodes(set);
+    s.setFocusRoot(id);
+    s.setFocusNodes(bfsEgo(id, s.egoHops));
   };
+
+  // Fix #1564-4: re-run the BFS at the new depth when the hops slider moves,
+  // re-rendering + re-fitting the ego sub-graph live. Only while focused.
+  useEffect(() => {
+    if (!s.focusRootId) return;
+    s.setFocusNodes(bfsEgo(s.focusRootId, s.egoHops));
+    // adjacency/focusRootId captured; re-run on hops or adjacency change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.egoHops, s.focusRootId, adjacency]);
 
   // Once data arrives, if a node was deep-linked, focus its ego-graph.
   useEffect(() => {
@@ -196,13 +208,15 @@ export default function GraphScreen() {
   }, [edges, focusActive, s.focusNodeIds]);
   const focusLabel = useMemo(() => {
     if (!focusActive) return "";
-    const root = nodes.find((n) => n.id === s.selectedNodeId);
+    const rootId = s.focusRootId ?? s.selectedNodeId;
+    const root = nodes.find((n) => n.id === rootId);
     if (root) return root.label;
     return nodes.find((n) => s.focusNodeIds!.has(n.id))?.label ?? "node";
-  }, [focusActive, nodes, s.focusNodeIds, s.selectedNodeId]);
+  }, [focusActive, nodes, s.focusNodeIds, s.focusRootId, s.selectedNodeId]);
 
   const exitFocus = () => {
     s.setFocusNodes(null);
+    s.setFocusRoot(null);
     s.setSelectedNode(null);
     // Restore the full-graph camera (zoom + pan) snapshotted on focus enter.
     canvasRef.current?.restoreCamera();
@@ -344,8 +358,24 @@ export default function GraphScreen() {
             {focusActive ? (
               <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-accent/40 bg-surface/90 px-3 py-1 text-sm text-text shadow-sm backdrop-blur-sm">
                 <span className="text-text-3">Focused on</span>
-                <span className="max-w-[18rem] truncate font-medium">{focusLabel}</span>
+                <span className="max-w-[14rem] truncate font-medium">{focusLabel}</span>
                 <span className="text-text-4 tabular-nums">· {egoNodes.length} nodes</span>
+                {/* Fix #1564-4: hops slider — re-runs the ego BFS live. */}
+                <span className="ml-1 h-4 w-px bg-border" aria-hidden />
+                <label className="flex items-center gap-1.5 text-xs text-text-3">
+                  <span>Hops</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={6}
+                    step={1}
+                    value={s.egoHops}
+                    onChange={(e) => s.setEgoHops(Number(e.target.value))}
+                    aria-label="Ego sub-graph hops"
+                    className="h-1 w-20 cursor-pointer accent-accent"
+                  />
+                  <span className="w-3 tabular-nums font-medium text-text-2">{s.egoHops}</span>
+                </label>
                 <button
                   onClick={exitFocus}
                   aria-label="Exit focus"
