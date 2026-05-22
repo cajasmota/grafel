@@ -18,6 +18,22 @@ export function useCandidates(groupId: string) {
 }
 
 /**
+ * Returns the total number of pending items (repairs + enrichments) for use
+ * in the NavRail badge.  Shares the same React Query cache key as
+ * useCandidates so no extra network request is ever issued when the Pending
+ * screen is also mounted.
+ */
+export function usePendingCount(groupId: string): number {
+  const { data } = useQuery({
+    queryKey: ["candidates", groupId],
+    queryFn: () => api.listCandidates(groupId),
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+  return (data?.repairs.length ?? 0) + (data?.enrichments.length ?? 0);
+}
+
+/**
  * Mutation to persist a hint for one entity.
  * Pass the stable `entityId` from the candidate (NOT the ephemeral `id`)
  * so hints survive candidate-ID churn across re-index sweeps (#1518).
