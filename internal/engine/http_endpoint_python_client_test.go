@@ -335,3 +335,173 @@ async def list_orders():
 		t.Errorf("no-regression-static-allowlist: expected exactly 1 FETCHES edge to http:GET:/api/orders, got %d", len(hits))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #1472 regression tests: module-constant f-string URL prefix resolution
+// ---------------------------------------------------------------------------
+
+// TestPyClient_ModuleConst_FString_SameFile covers the primary case: a
+// module-level URL constant defined in the SAME file used as an f-string
+// prefix. The constant value must be substituted so the path resolves to
+// the actual endpoint path rather than the literal `/{CONST}/path`.
+//
+//	PRICING_URL = "http://pricing:8000"
+//	requests.post(f"{PRICING_URL}/quote", ...)  → http:POST:/quote
+func TestPyClient_ModuleConst_FString_SameFile(t *testing.T) {
+	src := `
+import requests
+
+PRICING_URL = "http://pricing:8000"
+
+def get_quote(item_id: str):
+    return requests.post(f"{PRICING_URL}/quote", json={"item_id": item_id})
+`
+	ids, rels := runDetectWithRels(t, "python", "orders.py", src)
+	want := []string{"http:POST:/quote"}
+	requireContains(t, ids, want, "module-const-fstring-same-file")
+	requireFetches(t, rels, "http:POST:/quote", "module-const-fstring-same-file")
+	// Must NOT emit the literal-placeholder form.
+	for _, id := range ids {
+		if strings.Contains(id, "PRICING_URL") {
+			t.Errorf("module-const-fstring-same-file: emitted literal placeholder %q instead of resolved path", id)
+		}
+	}
+}
+
+// TestPyClient_ModuleConst_FString_ContextManagerAlias covers the cross-repo
+// fixture pattern: a context-manager alias `c` combined with a module
+// constant URL prefix in the same file (orders → pricing service).
+func TestPyClient_ModuleConst_FString_ContextManagerAlias(t *testing.T) {
+	src := `
+import httpx
+
+PRICING_URL = "http://pricing:8000"
+
+async def create_order(item_id: str):
+    async with httpx.AsyncClient() as c:
+        r = await c.post(f"{PRICING_URL}/quote", json={"item_id": item_id})
+    return r
+`
+	ids, rels := runDetectWithRels(t, "python", "orders.py", src)
+	want := []string{"http:POST:/quote"}
+	requireContains(t, ids, want, "module-const-fstring-alias")
+	requireFetches(t, rels, "http:POST:/quote", "module-const-fstring-alias")
+	for _, id := range ids {
+		if strings.Contains(id, "PRICING_URL") {
+			t.Errorf("module-const-fstring-alias: emitted literal placeholder %q", id)
+		}
+	}
+}
+
+// TestPyClient_ModuleConst_FString_Imported covers the cross-module import
+// case: PRICING_URL is imported from another module and therefore NOT in the
+// local symbol table. The extractor must strip the unknown URL-constant
+// prefix rather than emitting `/{PRICING_URL}/quote` as a false path.
+//
+//	from config import PRICING_URL
+//	requests.post(f"{PRICING_URL}/quote")  → http:POST:/quote  (not /{PRICING_URL}/quote)
+func TestPyClient_ModuleConst_FString_Imported(t *testing.T) {
+	src := `
+from config import PRICING_URL
+
+import requests
+
+def get_quote(item_id: str):
+    return requests.post(f"{PRICING_URL}/quote", json={"item_id": item_id})
+`
+	ids, rels := runDetectWithRels(t, "python", "orders.py", src)
+	want := []string{"http:POST:/quote"}
+	requireContains(t, ids, want, "module-const-fstring-imported")
+	requireFetches(t, rels, "http:POST:/quote", "module-const-fstring-imported")
+	for _, id := range ids {
+		if strings.Contains(id, "PRICING_URL") {
+			t.Errorf("module-const-fstring-imported: emitted literal placeholder %q", id)
+		}
+	}
+}
+
+// TestPyClient_ModuleConst_FString_AllThreeFixtures covers the three cross-repo
+// orphan patterns from the #1472 fixture: orders→pricing, order-saga→inventory,
+// semantic-search→catalog. Each uses a module-level URL constant (same file)
+// as an f-string prefix.
+func TestPyClient_ModuleConst_FString_AllThreeFixtures(t *testing.T) {
+	// orders → pricing
+	orders := `
+import httpx
+PRICING_URL = "http://pricing:8000"
+async def create_order(item_id: str):
+    async with httpx.AsyncClient() as c:
+        return await c.post(f"{PRICING_URL}/quote", json={"item_id": item_id})
+`
+	ids1, rels1 := runDetectWithRels(t, "python", "orders.py", orders)
+	requireContains(t, ids1, []string{"http:POST:/quote"}, "orders-pricing")
+	requireFetches(t, rels1, "http:POST:/quote", "orders-pricing")
+
+	// order-saga → inventory
+	saga := `
+import httpx
+INVENTORY_URL = "http://inventory:8001"
+async def reserve(item_id: str):
+    async with httpx.AsyncClient() as c:
+        return await c.post(f"{INVENTORY_URL}/reserve", json={"item_id": item_id})
+`
+	ids2, rels2 := runDetectWithRels(t, "python", "saga.py", saga)
+	requireContains(t, ids2, []string{"http:POST:/reserve"}, "saga-inventory")
+	requireFetches(t, rels2, "http:POST:/reserve", "saga-inventory")
+
+	// semantic-search → catalog
+	search := `
+import httpx
+CATALOG_URL = "http://catalog:8002"
+async def search_products(q: str):
+    async with httpx.AsyncClient() as c:
+        return await c.get(f"{CATALOG_URL}/products/search?q={q}")
+`
+	ids3, rels3 := runDetectWithRels(t, "python", "search.py", search)
+	requireContains(t, ids3, []string{"http:GET:/products/search"}, "search-catalog")
+	requireFetches(t, rels3, "http:GET:/products/search", "search-catalog")
+
+	// None may emit a literal-placeholder path.
+	for _, id := range append(append(ids1, ids2...), ids3...) {
+		if strings.Contains(id, "_URL") || strings.Contains(id, "PRICING") ||
+			strings.Contains(id, "INVENTORY") || strings.Contains(id, "CATALOG") {
+			t.Errorf("fixture: emitted literal placeholder %q", id)
+		}
+	}
+}
+
+// TestPyClient_ModuleConst_FString_PathParam verifies that stripping a URL
+// constant prefix does not disturb path-parameter substitutions in the
+// remainder of the f-string. The path-param `{item_id}` must be kept.
+func TestPyClient_ModuleConst_FString_PathParam(t *testing.T) {
+	src := `
+import requests
+
+PRICING_URL = "http://pricing:8000"
+
+def get_item_price(item_id: str):
+    return requests.get(f"{PRICING_URL}/items/{item_id}/price")
+`
+	ids, rels := runDetectWithRels(t, "python", "pricing.py", src)
+	want := []string{"http:GET:/items/{item_id}/price"}
+	requireContains(t, ids, want, "module-const-fstring-path-param")
+	requireFetches(t, rels, "http:GET:/items/{item_id}/price", "module-const-fstring-path-param")
+}
+
+// TestPyClient_ModuleConst_FString_ImportedPathParam covers the imported-const +
+// path-param combination: the URL constant prefix is stripped and the path
+// parameter placeholder is preserved.
+func TestPyClient_ModuleConst_FString_ImportedPathParam(t *testing.T) {
+	src := `
+from services import INVENTORY_URL
+import httpx
+
+async def get_stock(item_id: str):
+    async with httpx.AsyncClient() as c:
+        return await c.get(f"{INVENTORY_URL}/items/{item_id}/stock")
+`
+	ids, rels := runDetectWithRels(t, "python", "inv.py", src)
+	want := []string{"http:GET:/items/{item_id}/stock"}
+	requireContains(t, ids, want, "imported-const-path-param")
+	requireFetches(t, rels, "http:GET:/items/{item_id}/stock", "imported-const-path-param")
+}

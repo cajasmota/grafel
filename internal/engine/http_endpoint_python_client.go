@@ -264,6 +264,37 @@ var pyFStringSubstRe = regexp.MustCompile(`\{([^{}!:]+)(?:[!:][^{}]*)?\}`)
 // pyIdentRe validates a single Python identifier.
 var pyIdentRe = regexp.MustCompile(`^[A-Za-z_]\w*$`)
 
+// pyURLConstSuffixRe matches identifier names that are conventional URL/host
+// constant names: ALL_CAPS identifiers, or names ending with _URL, _HOST,
+// _ADDR, _ENDPOINT, _BASE, _SVC, _SERVICE. When such an identifier appears
+// as the FIRST substitution in an f-string and its value is not in the
+// symbol table (e.g. it was imported from another module), we treat it as
+// a host/base prefix and strip it rather than emitting it as a path
+// parameter placeholder like `/{PRICING_URL}/quote`.
+var pyURLConstSuffixRe = regexp.MustCompile(
+	`(?i)_(url|host|addr|endpoint|base|svc|service)$`,
+)
+
+// pyIsURLConstName reports whether name looks like a URL/host constant
+// (all-uppercase, or matches a conventional suffix).
+func pyIsURLConstName(name string) bool {
+	if name == "" {
+		return false
+	}
+	// All-uppercase (e.g. BASE, PRICING_URL, API_HOST).
+	allUpper := true
+	for _, r := range name {
+		if r >= 'a' && r <= 'z' {
+			allUpper = false
+			break
+		}
+	}
+	if allUpper {
+		return true
+	}
+	return pyURLConstSuffixRe.MatchString(name)
+}
+
 // ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
@@ -733,18 +764,36 @@ func pyCanonicalize(raw string, isFString bool, syms map[string]string) (string,
 	raw = normed.Path
 
 	if isFString {
-		// Substitute {ident} with constant values from syms when known,
-		// otherwise canonicalise to a `{name}` placeholder.
+		// Substitute {ident} with constant values from syms when known.
+		// For the FIRST substitution only: if the identifier is not in syms
+		// but its name looks like a URL/host constant (all-caps or conventional
+		// _URL/_HOST/_ADDR suffix), strip it entirely so that
+		// `f"{PRICING_URL}/quote"` → `/quote` rather than `/{PRICING_URL}/quote`
+		// when PRICING_URL is imported from another module. Subsequent
+		// substitutions (path params like {item_id}) keep their {name} form.
+		firstSub := true
 		replaced := pyFStringSubstRe.ReplaceAllStringFunc(raw, func(match string) string {
 			mm := pyFStringSubstRe.FindStringSubmatch(match)
 			if len(mm) < 2 {
+				firstSub = false
 				return "{param}"
 			}
 			expr := strings.TrimSpace(mm[1])
-			// Constant fold simple identifiers.
+			isFirst := firstSub
+			firstSub = false
+			// Constant fold simple identifiers — works for both same-file
+			// constants and any imported constant that was captured in mergedSyms.
 			if pyIdentRe.MatchString(expr) {
 				if val, ok := syms[expr]; ok {
 					return val
+				}
+				// Not in syms. If this is the first (prefix) substitution and
+				// the name looks like a URL/host constant, strip it so the
+				// remaining path is still useful. This handles the cross-module
+				// import case: `from config import PRICING_URL` where the value
+				// is only known at the config module level.
+				if isFirst && pyIsURLConstName(expr) {
+					return ""
 				}
 				return "{" + expr + "}"
 			}
