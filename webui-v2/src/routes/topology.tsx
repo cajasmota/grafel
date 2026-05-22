@@ -44,6 +44,7 @@ import type {
   ChannelLifecycle,
   BrokerCanonical,
   TopologyChannelDetail,
+  TopologyEntityRef,
   OrphanPublisherEntry,
   OrphanSubscriberEntry,
 } from "@/data/types";
@@ -744,6 +745,51 @@ function EntityList({ ids }: { ids: string[] }) {
   );
 }
 
+/**
+ * Renders a list of producer/consumer entries from the topic-detail endpoint.
+ * The detail endpoint returns rich entity objects (name/kind/repo/source_file),
+ * NOT plain entity-id strings — so we render each field explicitly (#1543).
+ */
+function EntityRefList({ entries }: { entries: (TopologyEntityRef | string)[] }) {
+  if (!entries || entries.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      {entries.map((entry, i) => {
+        if (typeof entry === "string") {
+          // Fallback: plain id string (list-endpoint shape)
+          const parts = (entry ?? "").split("::");
+          const name = (parts[parts.length - 1] ?? "").split(":").pop() || entry;
+          const repo = parts.length > 1 ? parts[0] : null;
+          return (
+            <div key={entry || i} className="flex items-center gap-2 text-sm">
+              {repo && <RepoChip repo={repo} className="text-[10px]" />}
+              <span className="font-mono text-text truncate">{name}</span>
+            </div>
+          );
+        }
+        // Rich entity object shape from the detail endpoint
+        const fileBasename = (entry.source_file ?? "").split("/").pop() ?? "";
+        return (
+          <div key={entry.entity_id || i} className="flex items-center gap-2 text-sm min-w-0">
+            {entry.repo && <RepoChip repo={entry.repo} className="text-[10px] shrink-0" />}
+            <span className="font-mono text-text truncate flex-1" title={entry.name}>
+              {entry.name}
+            </span>
+            {fileBasename && (
+              <span
+                className="text-[10px] text-text-4 font-mono shrink-0 truncate max-w-[140px]"
+                title={`${entry.source_file}:${entry.start_line}`}
+              >
+                {fileBasename}:{entry.start_line}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function DetailPanel({
   channel,
   onClose,
@@ -761,12 +807,17 @@ function DetailPanel({
     void navigator.clipboard.writeText(channel.id);
   }
 
-  const producerIds = d
-    ? (d.producers ?? []).map((p) => (typeof p === "string" ? p : String(p)))
-    : channel.producers ?? [];
-  const consumerIds = d
-    ? (d.consumers ?? []).map((c) => (typeof c === "string" ? c : String(c)))
-    : channel.consumers ?? [];
+  // The detail endpoint returns producers/consumers as rich entity objects
+  // (TopologyEntityRef), NOT plain string ids. The base TopologyChannel type
+  // says string[] (list-endpoint shape); cast at the boundary. String(obj)
+  // would produce "[object Object]" — use EntityRefList which handles both
+  // shapes so it renders name/repo/source_file correctly (#1543).
+  const producerEntries: (TopologyEntityRef | string)[] = d
+    ? ((d.producers ?? []) as unknown as (TopologyEntityRef | string)[])
+    : (channel.producers ?? []);
+  const consumerEntries: (TopologyEntityRef | string)[] = d
+    ? ((d.consumers ?? []) as unknown as (TopologyEntityRef | string)[])
+    : (channel.consumers ?? []);
 
   return (
     <aside
@@ -864,27 +915,27 @@ function DetailPanel({
         {/* Publishers */}
         <DetailSection
           label="Publishers"
-          count={producerIds.length}
+          count={producerEntries.length}
           empty={
-            producerIds.length === 0
+            producerEntries.length === 0
               ? "No publishers found in indexed code — this is the orphan-subscriber signal."
               : undefined
           }
         >
-          {producerIds.length > 0 ? <EntityList ids={producerIds} /> : null}
+          {producerEntries.length > 0 ? <EntityRefList entries={producerEntries} /> : null}
         </DetailSection>
 
         {/* Subscribers */}
         <DetailSection
           label="Subscribers"
-          count={consumerIds.length}
+          count={consumerEntries.length}
           empty={
-            consumerIds.length === 0
+            consumerEntries.length === 0
               ? "No subscribers found in indexed code — this is the orphan-publisher signal."
               : undefined
           }
         >
-          {consumerIds.length > 0 ? <EntityList ids={consumerIds} /> : null}
+          {consumerEntries.length > 0 ? <EntityRefList entries={consumerEntries} /> : null}
         </DetailSection>
 
         {/* Message schema */}
@@ -989,27 +1040,32 @@ function OrphanPublisherTab({ groupId }: { groupId: string }) {
   }
   return (
     <div className="p-4 space-y-2">
-      {entries.map((e) => (
-        <div
-          key={e.id}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface"
-        >
-          <BrokerShapeIcon canonical={e.broker_canonical} size={18} />
-          <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
-          <div className="flex gap-1 flex-wrap">
-            {(e.producers ?? []).slice(0, 3).map((p) => (
-              <EntityChip key={p} id={p} />
-            ))}
-            {(e.producers?.length ?? 0) > 3 && (
-              <span className="text-xs text-text-3">+{(e.producers?.length ?? 0) - 3}</span>
-            )}
+      {entries.map((e) => {
+        // The daemon returns `broker` (raw name), not `broker_canonical`.
+        // Resolve whichever field is present so the icon/color renders correctly (#1543).
+        const brokerKey = (e.broker_canonical ?? e.broker ?? "unknown") as BrokerCanonical;
+        return (
+          <div
+            key={e.id}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface"
+          >
+            <BrokerShapeIcon canonical={brokerKey} size={18} />
+            <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
+            <div className="flex gap-1 flex-wrap">
+              {(e.producers ?? []).slice(0, 3).map((p) => (
+                <EntityChip key={p} id={p} />
+              ))}
+              {(e.producers?.length ?? 0) > 3 && (
+                <span className="text-xs text-text-3">+{(e.producers?.length ?? 0) - 3}</span>
+              )}
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-950/30 text-amber-300 border border-amber-700/40 shrink-0">
+              no subscriber found
+            </span>
+            <RepoChip repo={e.repo} />
           </div>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-950/30 text-amber-300 border border-amber-700/40 shrink-0">
-            no subscriber found
-          </span>
-          <RepoChip repo={e.repo} />
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1045,36 +1101,40 @@ function OrphanSubscriberTab({ groupId }: { groupId: string }) {
   }
   return (
     <div className="p-4 space-y-2">
-      {entries.map((e) => (
-        <div
-          key={e.id}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface"
-        >
-          <BrokerShapeIcon canonical={e.broker_canonical} size={18} />
-          <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
-          <div className="flex gap-1 flex-wrap">
-            {(e.consumers ?? []).slice(0, 3).map((c) => (
-              <EntityChip key={c} id={c} />
-            ))}
-            {(e.consumers?.length ?? 0) > 3 && (
-              <span className="text-xs text-text-3">+{(e.consumers?.length ?? 0) - 3}</span>
-            )}
-          </div>
-          <span
-            className={cn(
-              "text-xs px-2 py-0.5 rounded-full shrink-0",
-              e.reason === "publisher_only_in_external_lib"
-                ? "bg-slate-900/30 text-slate-400 border border-dashed border-slate-600"
-                : "bg-amber-950/30 text-amber-300 border border-amber-700/40",
-            )}
+      {entries.map((e) => {
+        // Resolve broker: the daemon returns `broker`, not `broker_canonical` (#1543).
+        const brokerKey = (e.broker_canonical ?? e.broker ?? "unknown") as BrokerCanonical;
+        return (
+          <div
+            key={e.id}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface"
           >
-            {e.reason === "publisher_only_in_external_lib"
-              ? "publisher in external lib"
-              : "no publisher found"}
-          </span>
-          <RepoChip repo={e.repo} />
-        </div>
-      ))}
+            <BrokerShapeIcon canonical={brokerKey} size={18} />
+            <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
+            <div className="flex gap-1 flex-wrap">
+              {(e.consumers ?? []).slice(0, 3).map((c) => (
+                <EntityChip key={c} id={c} />
+              ))}
+              {(e.consumers?.length ?? 0) > 3 && (
+                <span className="text-xs text-text-3">+{(e.consumers?.length ?? 0) - 3}</span>
+              )}
+            </div>
+            <span
+              className={cn(
+                "text-xs px-2 py-0.5 rounded-full shrink-0",
+                e.reason === "publisher_only_in_external_lib"
+                  ? "bg-slate-900/30 text-slate-400 border border-dashed border-slate-600"
+                  : "bg-amber-950/30 text-amber-300 border border-amber-700/40",
+              )}
+            >
+              {e.reason === "publisher_only_in_external_lib"
+                ? "publisher in external lib"
+                : "no publisher found"}
+            </span>
+            <RepoChip repo={e.repo} />
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -389,7 +389,28 @@ export interface TopologyResponse {
   broker_groups: TopologyBrokerGroup[];
 }
 
-/** Detailed channel view — GET /api/topology/:group/topic/:topicId. */
+/**
+ * One producer/consumer entry as returned by the daemon's topic-detail endpoint.
+ * The real daemon emits full entity objects (not raw entity-id strings).
+ */
+export interface TopologyEntityRef {
+  entity_id: string;
+  name: string;
+  kind: string;
+  source_file: string;
+  start_line: number;
+  repo: string;
+}
+
+/** Detailed channel view — GET /api/topology/:group/topic/:topicId.
+ *
+ *  NOTE: the detail endpoint returns `producers` and `consumers` as rich
+ *  `TopologyEntityRef` objects, not plain entity-id strings.  The base
+ *  TopologyChannel.producers / consumers type says string[] (list-endpoint
+ *  shape).  The mismatch is intentional — callers MUST use TopologyEntityRef
+ *  helpers when consuming detail-endpoint data.  See DetailPanel in
+ *  topology.tsx and the TopologyEntityRef type for the correct shape.
+ */
 export interface TopologyChannelDetail extends TopologyChannel {
   source_file: string;
   start_line: number;
@@ -412,21 +433,31 @@ export interface TopologyChannelDetail extends TopologyChannel {
   };
 }
 
-/** Orphan publisher entry — GET /api/topology/:group/orphan-publishers. */
+/** Orphan publisher entry — GET /api/topology/:group/orphan-publishers.
+ *  The real daemon returns `broker` (raw name), not `broker_canonical`.
+ *  Keep both so callers can use `broker_canonical ?? broker` for display. */
 export interface OrphanPublisherEntry {
   id: string;
   label: string;
-  broker_canonical: BrokerCanonical;
+  /** Raw broker name as returned by the daemon (e.g. "kafka"). */
+  broker: string;
+  /** Canonical broker key used for icon/color mapping.
+   *  Present only when the daemon pre-normalises the field; fall back to `broker`. */
+  broker_canonical?: BrokerCanonical;
   repo: string;
   producers: string[];
   reason?: string;
 }
 
-/** Orphan subscriber entry — GET /api/topology/:group/orphan-subscribers. */
+/** Orphan subscriber entry — GET /api/topology/:group/orphan-subscribers.
+ *  Same broker field convention as OrphanPublisherEntry above. */
 export interface OrphanSubscriberEntry {
   id: string;
   label: string;
-  broker_canonical: BrokerCanonical;
+  /** Raw broker name as returned by the daemon. */
+  broker: string;
+  /** Canonical broker key; fall back to `broker` when absent. */
+  broker_canonical?: BrokerCanonical;
   repo: string;
   consumers: string[];
   reason?: string;
