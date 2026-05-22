@@ -20,6 +20,7 @@ import { GroupOpsMenu } from '@/components/landing/GroupOpsMenu'
 import { IndexingProgressModal } from '@/components/indexing/IndexingProgressModal'
 import type { GroupMeta } from '@/types/api'
 import type { IndexProgressState } from '@/types/indexProgress'
+import { deriveHealthBucket, HEALTH_DOT_CLASS, healthTooltip } from '@/lib/groupHealth'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -421,13 +422,23 @@ function GroupCard({ group, onClick, onNavigateToNode, indexProgress }: GroupCar
       >
         {/* Main content — grows to fill available space */}
         <div className="flex-1 flex flex-col justify-between min-h-0">
-          {/* Header: group name + sparkline */}
+          {/* Header: group name + health dot + sparkline */}
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <GitBranch className="w-4 h-4 text-sky-400 shrink-0" aria-hidden />
               <span className="text-xl font-semibold text-slate-100 truncate">
                 {group.display_name}
               </span>
+              {/* Health status dot — same encoding as project switcher + top-bar */}
+              <span
+                title={healthTooltip(group)}
+                aria-label={healthTooltip(group)}
+                data-testid="landing-health-dot"
+                className={[
+                  'w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5',
+                  HEALTH_DOT_CLASS[deriveHealthBucket(group)],
+                ].join(' ')}
+              />
             </div>
             <div className="shrink-0 pt-0.5">
               <Sparkline history={group.bug_rate_history} bugRate={group.bug_rate} />

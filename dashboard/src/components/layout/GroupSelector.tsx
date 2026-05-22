@@ -5,13 +5,14 @@
  * Mobile (≤640 px): full-screen sheet from the top.
  *
  * Features:
- *  - Trigger: current group display name + ChevronDown
+ *  - Trigger: health dot for the current group + display name + ChevronDown
  *  - Search input at top of panel
  *  - Pinned groups section (max 3, star toggle per row)
  *  - Other groups section
- *  - Unresolved edges status dot: green ≤5% / amber 5–15% / red >15%
- *  - Entity-count tooltip
- *  - Selected row visually highlighted
+ *  - Health status dot: green = healthy (≤5% unresolved), amber = degraded
+ *    (5–15%), red = critical (>15%), grey = not yet indexed.
+ *    Driven by GroupMeta.bug_rate via shared deriveHealthBucket / healthTooltip.
+ *  - Active row highlighted with checkmark (separate affordance from health colour)
  *  - Closes on outside-click or Escape
  *  - Switching preserves the current surface (path replacement)
  */
@@ -25,33 +26,13 @@ import {
   KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
-import { Search, Pin, PinOff, ChevronDown, X } from 'lucide-react'
+import { Search, Pin, PinOff, ChevronDown, X, Check } from 'lucide-react'
 import type { GroupMeta } from '@/types/api'
 import { getPinnedGroups, togglePin } from '@/lib/groupPins'
+import { deriveHealthBucket, HEALTH_DOT_CLASS, healthTooltip } from '@/lib/groupHealth'
 
 interface GroupSelectorProps {
   groups: GroupMeta[]
-}
-
-/** Derive a synthetic unresolved edges bucket from entity_count for mock data. */
-function bugRateBucket(g: GroupMeta): 'green' | 'amber' | 'red' {
-  const sum = g.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
-  const pct = sum % 30
-  if (pct <= 5) return 'green'
-  if (pct <= 15) return 'amber'
-  return 'red'
-}
-
-const bucketClass: Record<'green' | 'amber' | 'red', string> = {
-  green: 'bg-emerald-500',
-  amber: 'bg-amber-400',
-  red: 'bg-red-500',
-}
-
-const bucketLabel: Record<'green' | 'amber' | 'red', string> = {
-  green: '≤5% unresolved edges',
-  amber: '5–15% unresolved edges',
-  red: '>15% unresolved edges',
 }
 
 /** Extracts the current surface prefix from a pathname like "/flows/fixture-a" → "flows" */
@@ -74,10 +55,16 @@ export function GroupSelector({ groups }: GroupSelectorProps) {
 
   const surface = surfaceFromPath(location.pathname)
 
-  // Find display name for the active group
-  const activeDisplay = useMemo(() => {
-    return groups.find((g) => g.id === activeGroup)?.display_name ?? activeGroup
+  // Find the active group meta (for display name + health dot in trigger)
+  const activeGroupMeta = useMemo(() => {
+    return groups.find((g) => g.id === activeGroup)
   }, [groups, activeGroup])
+
+  const activeDisplay = activeGroupMeta?.display_name ?? activeGroup
+
+  // Health dot for the trigger button (current project)
+  const activeBucket = activeGroupMeta ? deriveHealthBucket(activeGroupMeta) : 'unknown'
+  const activeTip = activeGroupMeta ? healthTooltip(activeGroupMeta) : 'Health: unknown'
 
   // Filter groups by search query
   const filtered = useMemo(() => {
@@ -170,6 +157,16 @@ export function GroupSelector({ groups }: GroupSelectorProps) {
         ].join(' ')}
         data-testid="group-selector-trigger"
       >
+        {/* Health dot for the current project in the trigger */}
+        <span
+          title={activeTip}
+          aria-label={activeTip}
+          data-testid="group-selector-health-dot"
+          className={[
+            'w-2 h-2 rounded-full flex-shrink-0',
+            HEALTH_DOT_CLASS[activeBucket],
+          ].join(' ')}
+        />
         <span className="font-mono max-w-[12rem] truncate" data-testid="group-selector-label">
           {activeDisplay || 'Select group'}
         </span>
@@ -282,7 +279,8 @@ function GroupSection({ label, groups, activeGroup, pinnedIds, onSelect, onToggl
         {groups.map((g) => {
           const isActive = g.id === activeGroup
           const isPinned = pinnedIds.includes(g.id)
-          const bucket = bugRateBucket(g)
+          const bucket = deriveHealthBucket(g)
+          const tip = healthTooltip(g)
 
           return (
             <li key={g.id}>
@@ -299,6 +297,17 @@ function GroupSection({ label, groups, activeGroup, pinnedIds, onSelect, onToggl
                     : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 hover:text-slate-800 dark:hover:text-slate-300',
                 ].join(' ')}
               >
+                {/* Current-project checkmark (separate affordance from health colour) */}
+                <span
+                  aria-hidden
+                  className={[
+                    'w-3 h-3 flex-shrink-0',
+                    isActive ? 'text-sky-400' : 'invisible',
+                  ].join(' ')}
+                >
+                  {isActive && <Check className="w-3 h-3" />}
+                </span>
+
                 {/* Group name */}
                 <span className="flex-1 font-mono truncate" title={g.display_name}>
                   {g.display_name}
@@ -328,11 +337,11 @@ function GroupSection({ label, groups, activeGroup, pinnedIds, onSelect, onToggl
                   {isPinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
                 </span>
 
-                {/* Unresolved edges dot */}
+                {/* Health status dot — encodes fidelity, NOT active state */}
                 <span
-                  title={`${bucketLabel[bucket]} — ${g.entity_count.toLocaleString()} entities`}
-                  aria-label={bucketLabel[bucket]}
-                  className={['w-2 h-2 rounded-full flex-shrink-0', bucketClass[bucket]].join(' ')}
+                  title={tip}
+                  aria-label={tip}
+                  className={['w-2 h-2 rounded-full flex-shrink-0', HEALTH_DOT_CLASS[bucket]].join(' ')}
                 />
               </button>
             </li>

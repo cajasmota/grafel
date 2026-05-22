@@ -11,6 +11,7 @@ const mockGroups: GroupMeta[] = [
     repos: [],
     entity_count: 6916,
     indexed_at: '2026-05-20T10:05:00Z',
+    bug_rate: 3,   // healthy — green
   },
   {
     id: 'fixture-b',
@@ -18,6 +19,7 @@ const mockGroups: GroupMeta[] = [
     repos: [],
     entity_count: 4557,
     indexed_at: '2026-05-20T09:05:00Z',
+    bug_rate: 10,  // degraded — amber
   },
 ]
 
@@ -78,13 +80,22 @@ describe('GroupSelector', () => {
     expect(options[0].textContent).toContain('Fixture B')
   })
 
-  it('renders status dots for all groups', () => {
+  it('renders health status dots for all groups', () => {
     renderWithRouter('/graph/fixture-a')
     fireEvent.click(screen.getByTestId('group-selector-trigger'))
+    // Each group option row should have a health dot with aria-label starting with "Health:"
     const dots = screen.getAllByRole('option').flatMap(
-      (o) => Array.from(o.querySelectorAll('[aria-label*="bug rate"]')),
+      (o) => Array.from(o.querySelectorAll('[aria-label^="Health:"]')),
     )
     expect(dots.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('shows correct health tooltip on trigger dot', () => {
+    renderWithRouter('/graph/fixture-a')
+    const triggerDot = screen.getByTestId('group-selector-health-dot')
+    // fixture-a has bug_rate=3 → healthy, fidelity 97%
+    expect(triggerDot.getAttribute('title')).toContain('healthy')
+    expect(triggerDot.getAttribute('title')).toContain('97')
   })
 
   it('shows "No groups match" when filter has no results', () => {

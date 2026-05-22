@@ -4,46 +4,24 @@
  * Features:
  *  - Search/filter input
  *  - Pinned groups float to top (localStorage, max 3)
- *  - Unresolved edges status dot: green ≤5% / amber 5-15% / red >15%
- *    (uses entity_count as proxy until a real unresolved_edges field ships)
- *  - Entity count in tooltip
- *  - Active group: bg-slate-200 dark:bg-slate-800 + sky-500 left border
+ *  - Health status dot: green = healthy (≤5% unresolved), amber = degraded
+ *    (5–15%), red = critical (>15%), grey = not yet indexed.
+ *    Driven by GroupMeta.bug_rate via shared deriveHealthBucket / healthTooltip.
+ *  - Active group: bg-slate-200 dark:bg-slate-800 + sky-500 left border +
+ *    checkmark icon (separate from health colour)
  *  - Switching preserves current surface (e.g. /flows/A → /flows/B)
  */
 
 import { useState, useMemo, useCallback } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
-import { Search, Pin, PinOff } from 'lucide-react'
+import { Search, Pin, PinOff, Check } from 'lucide-react'
 import type { GroupMeta } from '@/types/api'
 import { getPinnedGroups, togglePin } from '@/lib/groupPins'
+import { deriveHealthBucket, HEALTH_DOT_CLASS, healthTooltip } from '@/lib/groupHealth'
 
 interface GroupSwitcherProps {
   groups: GroupMeta[]
   onNavigate?: () => void   // called after navigation (e.g. close mobile drawer)
-}
-
-/** Derive a synthetic unresolved edges bucket from entity_count for mock data. */
-function bugRateBucket(g: GroupMeta): 'green' | 'amber' | 'red' {
-  // Real API will eventually carry a `unresolved_edges` field.
-  // Until then we use a deterministic hash of the id so fixture groups get
-  // stable (but varied) colours in the UI.
-  const sum = g.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
-  const pct = sum % 30   // 0-29
-  if (pct <= 5) return 'green'
-  if (pct <= 15) return 'amber'
-  return 'red'
-}
-
-const bucketClass: Record<'green' | 'amber' | 'red', string> = {
-  green: 'bg-emerald-500',
-  amber: 'bg-amber-400',
-  red: 'bg-red-500',
-}
-
-const bucketLabel: Record<'green' | 'amber' | 'red', string> = {
-  green: '≤5% unresolved edges',
-  amber: '5–15% unresolved edges',
-  red: '>15% unresolved edges',
 }
 
 /** Extracts the current surface prefix from a pathname like "/flows/fixture-a" → "flows" */
@@ -141,7 +119,8 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
         {sorted.map((g) => {
           const isActive = g.id === activeGroup
           const isPinned = pinnedIds.includes(g.id)
-          const bucket = bugRateBucket(g)
+          const bucket = deriveHealthBucket(g)
+          const tip = healthTooltip(g)
 
           return (
             <li key={g.id}>
@@ -158,6 +137,17 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
                     : 'border-transparent text-slate-400 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 hover:text-slate-700 dark:hover:text-slate-300',
                 ].join(' ')}
               >
+                {/* Current-project checkmark (separate affordance from health colour) */}
+                <span
+                  aria-hidden
+                  className={[
+                    'w-3 h-3 flex-shrink-0',
+                    isActive ? 'text-sky-400' : 'invisible',
+                  ].join(' ')}
+                >
+                  {isActive && <Check className="w-3 h-3" />}
+                </span>
+
                 {/* Group name */}
                 <span className="flex-1 font-mono truncate" title={g.display_name}>
                   {g.display_name}
@@ -192,13 +182,13 @@ export function GroupSwitcher({ groups, onNavigate }: GroupSwitcherProps) {
                   )}
                 </span>
 
-                {/* Unresolved edges status dot */}
+                {/* Health status dot — encodes fidelity, NOT active state */}
                 <span
-                  title={`${bucketLabel[bucket]} — ${g.entity_count.toLocaleString()} entities`}
-                  aria-label={bucketLabel[bucket]}
+                  title={tip}
+                  aria-label={tip}
                   className={[
                     'w-2 h-2 rounded-full flex-shrink-0',
-                    bucketClass[bucket],
+                    HEALTH_DOT_CLASS[bucket],
                   ].join(' ')}
                 />
               </button>

@@ -11,6 +11,7 @@ const mockGroups: GroupMeta[] = [
     repos: [],
     entity_count: 6916,
     indexed_at: '2026-05-20T10:05:00Z',
+    bug_rate: 3,   // healthy — green
   },
   {
     id: 'fixture-b',
@@ -18,6 +19,7 @@ const mockGroups: GroupMeta[] = [
     repos: [],
     entity_count: 4557,
     indexed_at: '2026-05-20T09:05:00Z',
+    bug_rate: 10,  // degraded — amber
   },
 ]
 
@@ -61,13 +63,26 @@ describe('GroupSwitcher', () => {
     expect(options[0].textContent).toContain('Fixture B')
   })
 
-  it('renders status dots for all groups', () => {
+  it('renders health status dots for all groups', () => {
     renderWithRouter('/graph/fixture-a')
-    // Each group option should have a status dot (role=none span with aria-label)
+    // Each group option should have a health status dot with aria-label starting with "Health:"
     const dots = screen.getAllByRole('option').flatMap(
-      (o) => Array.from(o.querySelectorAll('[aria-label*="bug rate"]')),
+      (o) => Array.from(o.querySelectorAll('[aria-label^="Health:"]')),
     )
     expect(dots.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('active group has checkmark and health dot independently', () => {
+    renderWithRouter('/graph/fixture-a')
+    const activeOption = screen.getAllByRole('option').find(
+      (o) => o.getAttribute('aria-selected') === 'true',
+    )!
+    // Checkmark icon should be present (not invisible)
+    const checkSpan = activeOption.querySelector('[aria-hidden]')
+    expect(checkSpan).not.toBeNull()
+    // Health dot should carry "Health:" tooltip
+    const healthDot = activeOption.querySelector('[aria-label^="Health:"]')
+    expect(healthDot).not.toBeNull()
   })
 
   it('calls onNavigate when a group is selected', () => {
