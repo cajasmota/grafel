@@ -48,6 +48,7 @@ import type {
   UpdateApplyReply,
   ScanInspectReply,
   WizardRepo,
+  FsListReply,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -137,6 +138,17 @@ export const api = {
   /** v2 — create an empty group from a name (Landing wizard). */
   createGroup: (name: string) =>
     requestV2<Group>("/groups", { method: "POST", body: JSON.stringify({ name }) }),
+
+  /**
+   * GET /api/v2/fs/list — list the subdirectories of an absolute path on the
+   * daemon's own filesystem (#1529). Powers the wizard's server-side folder
+   * browser: navigating a folder yields its absolute path, so picking it is
+   * enough to proceed — no manual paste. Empty path defaults to the daemon's
+   * home directory (with Documents/Projects shortcuts). Path errors are
+   * carried in `error` (HTTP 200), not thrown.
+   */
+  fsList: (path?: string) =>
+    requestV2<FsListReply>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
 
   // --- v2 create-group / add-repo scan wizard (#1517) ---
   /**

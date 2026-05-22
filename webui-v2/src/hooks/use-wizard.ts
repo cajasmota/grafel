@@ -16,6 +16,25 @@ import type { WizardRepo } from "@/data/types";
 import { groupsQueryKey } from "@/hooks/use-groups";
 import { settingsQueryKey } from "@/hooks/use-settings";
 
+/**
+ * Server-side folder browser (#1529): lists the subdirectories of an absolute
+ * path on the daemon's OWN filesystem so the wizard can navigate to a folder
+ * and proceed with its absolute path — no manual paste.
+ *
+ * `path` is the directory to list; null/undefined means "the daemon's home
+ * directory" (the default landing view, which also surfaces shortcuts). Use
+ * `enabled` to gate the fetch to when the browser is actually visible. Path
+ * errors are surfaced in `data.error` (the request itself still succeeds).
+ */
+export function useFsList(path: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["fs-list", path],
+    queryFn: () => api.fsList(path ?? undefined),
+    enabled,
+    staleTime: 5_000,
+  });
+}
+
 /** Detect step: resolve + inspect a server-side path. */
 export function useScanInspect() {
   return useMutation({
