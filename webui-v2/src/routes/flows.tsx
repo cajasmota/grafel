@@ -521,7 +521,7 @@ function ListRail({
 
   return (
     <aside
-      className="flex flex-col border-r border-border bg-bg-soft min-h-0 min-w-0"
+      className="flex flex-col h-full border-r border-border bg-bg-soft min-h-0 min-w-0"
       style={{ overflow: "hidden" }}
     >
       {/* Toolbar */}
@@ -799,7 +799,10 @@ function FlowDag({
   const viewportRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ x: number; y: number; px: number; py: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{
+    x: number; y: number; px: number; py: number;
+    moved: boolean; captured: boolean; pointerId: number;
+  } | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const { positions, totalHeight, totalWidth, perLane } = useMemo(
@@ -878,37 +881,63 @@ function FlowDag({
   };
 
   // Drag-to-pan.
+  //
+  // CRITICAL: we must NOT call setPointerCapture on pointerdown. Capturing the
+  // pointer on the viewport retargets the subsequent `click` event to the
+  // viewport instead of the element actually under the cursor — which is why
+  // the zoom/fit buttons AND the step nodes were dead (#1554 regressed):
+  // their native onClick never fired because the click was stolen by the
+  // captured viewport. Instead we only capture once a real drag begins (after
+  // the movement threshold) so plain clicks dispatch normally to their target.
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y, moved: false };
+    // Don't start a pan when the press lands on an interactive control
+    // (step node, zoom button, etc.) — let the click reach it.
+    const t = e.target as HTMLElement;
+    if (t?.closest?.("button, a, input, [data-no-pan]")) return;
+    dragRef.current = {
+      x: e.clientX, y: e.clientY, px: pan.x, py: pan.y,
+      moved: false, captured: false, pointerId: e.pointerId,
+    };
     setDragging(true);
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
-    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
-    setPan({ x: d.px + dx, y: d.py + dy });
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 3) {
+      d.moved = true;
+      // Capture only now that we're actually panning, so wheel/move stay
+      // tracked even if the cursor leaves the viewport mid-drag.
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(d.pointerId);
+        d.captured = true;
+      } catch {
+        /* capture may be unavailable */
+      }
+    }
+    if (d.moved) setPan({ x: d.px + dx, y: d.py + dy });
   };
   const endDrag = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (d) {
-      // A click on empty canvas (no drag, target is not a step node) deselects
-      // the current step. Node buttons are <button> elements, so a click that
-      // did not land on/inside a button is an empty-canvas click.
+      // A click on empty canvas (no drag) deselects the current step. Because
+      // we never capture on a plain click, clicks on step nodes reach their
+      // own onClick; here we only handle the empty-canvas deselect.
       if (!d.moved && e.type === "pointerup") {
         const onNode = (e.target as HTMLElement)?.closest?.("button[data-step-node]");
         if (!onNode) onPickStep(null);
       }
+      if (d.captured) {
+        try {
+          (e.currentTarget as HTMLElement).releasePointerCapture(d.pointerId);
+        } catch {
+          /* pointer may already be released */
+        }
+      }
       dragRef.current = null;
       setDragging(false);
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {
-        /* pointer may already be released */
-      }
     }
   };
 
@@ -2081,12 +2110,17 @@ export default function FlowsScreen() {
         style={{
           display: "grid",
           gridTemplateColumns: showDetail ? "400px 1fr" : "400px 1fr",
+          // Constrain the single grid row to the workspace height. Without an
+          // explicit row track the implicit row is `auto` and grows to fit the
+          // (tall) flow list, so the inner overflow-y-auto never activates and
+          // the list can't scroll. minmax(0,1fr) lets children shrink + scroll.
+          gridTemplateRows: "minmax(0, 1fr)",
         }}
       >
         {/* List rail — always rendered (hidden on narrow when detail is open) */}
         <div
           className={cn(
-            "min-h-0 overflow-hidden",
+            "min-h-0 h-full overflow-hidden",
             showDetail ? "max-[1180px]:hidden" : "",
           )}
         >
@@ -2101,7 +2135,7 @@ export default function FlowsScreen() {
         </div>
 
         {/* Detail panel */}
-        <div className="min-h-0 overflow-hidden">
+        <div className="min-h-0 h-full overflow-hidden">
           <DetailPanel
             selection={selection}
             groupId={groupId}
