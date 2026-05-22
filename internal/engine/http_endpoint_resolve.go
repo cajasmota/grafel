@@ -88,6 +88,9 @@ type ResolveHTTPEndpointStats struct {
 	// #1217 cross-link counters.
 	CallsLinked      int // call → definition FETCHES edges emitted
 	CallsUnresolved  int // call entities with no matching definition (UNRESOLVED_FETCH)
+	// #1615 — caller→call-synthetic FETCHES edges retargeted at the resolved
+	// definition so the call-site is no longer an orphan.
+	CallerEdgesRetargeted int
 }
 
 // ResolveHTTPEndpointHandlers runs the Phase-2 post-pass over `merged`.
@@ -158,17 +161,38 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 	// http_endpoint_definition via a FETCHES edge (#1217).
 	// Key: synthetic ID (e.g. "http:GET:/api/users") → merged index.
 	definitionByName := make(map[string]int, len(merged))
+	// #1615 — structural fallback index: normalized-path-key → []merged index.
+	// When the exact-Name match misses (because the call and the definition
+	// differ on API prefix / param-token name / trailing slash / case) we look
+	// the call's normalized path keys up here and accept any definition with a
+	// compatible verb. Conservative: only well-known API/version prefixes are
+	// stripped and ANY-verb is the only cross-verb match (see
+	// http_endpoint_match.go).
+	definitionByPath := make(map[string][]int, len(merged))
 	for i := range merged {
 		r := &merged[i]
 		if r.Kind == httpEndpointDefinitionKind {
 			if _, ok := definitionByName[r.Name]; !ok {
 				definitionByName[r.Name] = i
 			}
+			for _, k := range endpointMatchKeys(propOr(r, "path", "")) {
+				definitionByPath[k] = append(definitionByPath[k], i)
+			}
 		}
 	}
 
 	// Collect indices of synthetics to drop (unresolved handlers).
 	drop := map[int]bool{}
+
+	// #1615 — records, for every call synthetic that resolves to a definition,
+	// the rewrite from its FETCHES stub (http_endpoint_call:<name>) to the
+	// definition stub (http_endpoint_definition:<name>). After the main loop we
+	// sweep every caller→call-synthetic FETCHES edge and retarget it at the
+	// definition so the call-site is no longer counted as an orphan. Without
+	// this retarget, the structural call→definition match links the synthetic
+	// pair but the inbound caller edge still points at the (non-definition)
+	// call synthetic and keeps inflating the orphan-call metric.
+	callStubToDefStub := map[string]string{}
 
 	for i := range merged {
 		r := &merged[i]
@@ -198,7 +222,13 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 		// so a simple name lookup is sufficient. Emit FETCHES on success;
 		// emit UNRESOLVED_FETCH when no definition is found in the merged set.
 		if r.Kind == httpEndpointCallKind {
-			if defIdx, found := definitionByName[r.Name]; found {
+			defIdx, found := definitionByName[r.Name]
+			if !found {
+				// #1615 — structural fallback: match by normalized path shape
+				// + compatible verb when the exact Name missed.
+				defIdx, found = resolveCallByPath(r, merged, definitionByPath)
+			}
+			if found {
 				def := &merged[defIdx]
 				callStub := r.Kind + ":" + r.Name
 				defStub := def.Kind + ":" + def.Name
@@ -211,6 +241,10 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 						"resolved":     "true",
 					},
 				})
+				// #1615 — remember the stub rewrite so the post-loop sweep can
+				// retarget inbound caller→call-synthetic FETCHES edges at the
+				// definition.
+				callStubToDefStub[callStub] = defStub
 				stats.CallsLinked++
 			} else {
 				// No matching definition found — emit UNRESOLVED_FETCH so the
@@ -322,6 +356,37 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 		// Clear the now-redundant property.
 		delete(r.Properties, "source_handler")
 		stats.HandlerResolved++
+	}
+
+	// #1615 — retarget caller→call-synthetic FETCHES edges at the resolved
+	// definition. The caller edges were emitted by resolveCallerToFetchesEdge
+	// with ToID = "http_endpoint_call:<name>"; once that call synthetic has been
+	// matched (exact or structural) to a definition we point the caller straight
+	// at the definition so the call-site stops counting as an orphan. Only
+	// http_endpoint_client_synthesis_resolved edges are touched; all other
+	// FETCHES edges (including the call→def edges we just emitted) are left
+	// intact. No-op when callStubToDefStub is empty.
+	if len(callStubToDefStub) > 0 {
+		for i := range merged {
+			rels := merged[i].Relationships
+			for j := range rels {
+				rel := &rels[j]
+				if rel.Kind != fetchesEdgeKind {
+					continue
+				}
+				if rel.Properties["pattern_type"] != "http_endpoint_client_synthesis_resolved" {
+					continue
+				}
+				if defStub, ok := callStubToDefStub[rel.ToID]; ok {
+					rel.ToID = defStub
+					if rel.Properties == nil {
+						rel.Properties = map[string]string{}
+					}
+					rel.Properties["retargeted"] = "http_endpoint_call_to_definition"
+					stats.CallerEdgesRetargeted++
+				}
+			}
+		}
 	}
 
 	if len(drop) == 0 {

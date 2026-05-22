@@ -2118,7 +2118,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	merged, httpEndpointStats = engine.ResolveHTTPEndpointHandlers(merged)
 	if httpEndpointStats.Synthetics > 0 {
 		fmt.Fprintf(os.Stderr,
-			"http-endpoint-resolve: synthetics=%d handler_resolved=%d handler_dropped=%d no_handler_prop=%d caller_resolved=%d caller_unresolved=%d calls_linked=%d calls_unresolved=%d\n",
+			"http-endpoint-resolve: synthetics=%d handler_resolved=%d handler_dropped=%d no_handler_prop=%d caller_resolved=%d caller_unresolved=%d calls_linked=%d calls_unresolved=%d caller_edges_retargeted=%d\n",
 			httpEndpointStats.Synthetics,
 			httpEndpointStats.HandlerResolved,
 			httpEndpointStats.HandlerDropped,
@@ -2126,7 +2126,8 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			httpEndpointStats.CallerResolved,
 			httpEndpointStats.CallerUnresolved,
 			httpEndpointStats.CallsLinked,
-			httpEndpointStats.CallsUnresolved)
+			httpEndpointStats.CallsUnresolved,
+			httpEndpointStats.CallerEdgesRetargeted)
 	}
 	// #1217 migration hints: log how many legacy http_endpoint entities were
 	// rewritten to the split kinds. These lines appear only when a graph
