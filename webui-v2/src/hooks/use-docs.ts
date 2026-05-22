@@ -5,7 +5,7 @@
    `generate-docs` skill (run by the user's coding agent), served by
    the v2 endpoints in handlers_v2_docs.go:
 
-     useDocsTree — tree of generated documents (per-repo → category → doc)
+     useDocsTree — tree + skillGenerated flag (per-repo → category → doc)
      useDocPage  — raw markdown of one document, by its tree path key
    ============================================================ */
 
@@ -13,11 +13,22 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import type { DocNode, DocPage } from "@/data/types";
 
+export interface DocsTreeResult {
+  /** Whether the generate-docs skill has run for this group. */
+  skillGenerated: boolean;
+  /** Per-repo tree of documents. */
+  nodes: DocNode[];
+}
+
 export function useDocsTree(groupId: string) {
-  return useQuery<DocNode[], ApiError>({
+  return useQuery<DocsTreeResult, ApiError>({
     queryKey: ["docs-tree", groupId],
-    queryFn: () => api.getDocsTree(groupId),
+    queryFn: async () => {
+      const res = await api.getDocsTree(groupId);
+      return { skillGenerated: res.skillGenerated, nodes: res.nodes };
+    },
     staleTime: 30_000,
+    placeholderData: { skillGenerated: false, nodes: [] },
   });
 }
 

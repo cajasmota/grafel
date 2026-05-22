@@ -13,7 +13,6 @@ import type {
   Group,
   Entity,
   Community,
-  DocNode,
   DocPage,
   DocsTreeResponse,
   GraphPayloadWire,
