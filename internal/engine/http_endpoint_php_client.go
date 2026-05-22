@@ -236,11 +236,19 @@ var phpStringVarRe = regexp.MustCompile(
 //	$ordersUrl  = config('services.orders.url');
 //	$baseUrl    = env('ORDERS_BASE');
 //	$apiBaseUrl = config("services.notifications.url");
+//	$erpUrl     = env('ERP_URL', 'http://legacy-erp:8090');   // two-arg form (#1490)
 //
-// Group 1 = variable name, group 2+ = config key (unused by caller — just
+// The two-argument env() form is the most common in Laravel (key + fallback
+// default). We match everything from the opening `(` up to the closing `)`
+// using a non-greedy `[^)]*` so that simple nested parens in the fallback
+// value (rare) don't misfire. The matching is permissive — we only care
+// whether the call is present (to mark the variable as runtime-dynamic),
+// not about extracting the key or default value.
+//
+// Group 1 = variable name; group 2+ = config key (unused by caller — just
 // the presence of the assignment is needed to mark the var as runtime-dynamic).
 var phpConfigVarRe = regexp.MustCompile(
-	`(?m)(\$[A-Za-z_][\w]*)\s*=\s*(?:config|env)\s*\(\s*(?:"[^"\n\r]{1,256}"|'[^'\n\r]{1,256}')\s*\)`,
+	`(?m)(\$[A-Za-z_][\w]*)\s*=\s*(?:config|env)\s*\([^)]{1,512}\)`,
 )
 
 // phpInterpLeadingVarRe matches a PHP double-quoted string whose FIRST
@@ -343,6 +351,30 @@ var phpGuzzleVerbConcatRe = regexp.MustCompile(
 var phpEnclosingFnRe = regexp.MustCompile(
 	`(?m)^\s*(?:(?:abstract|final|public|protected|private|static|\s)+\s+)?function\s+([A-Za-z_]\w*)\s*\(`,
 )
+
+// phpClassDeclRe captures PHP class declarations so we can qualify method
+// names in the same way the PHP tree-sitter extractor does
+// (Name = "ClassName.methodName"). Without this, the synthesizer emits
+// source_caller="Function:methodName" but the resolver looks for
+// "SCOPE.Operation:ClassName.methodName" — the name mismatch means
+// caller_resolved stays 0 for all class-based PHP consumers. (#1490)
+//
+// We only need the class NAME and its start offset; the class body
+// extends from the `{` after the declaration to the matching `}`.
+// We approximate class body end with the next top-level class
+// declaration or end-of-file, which is accurate for the single-class-
+// per-file convention used in Laravel/Symfony services.
+var phpClassDeclRe = regexp.MustCompile(
+	`(?m)^(?:(?:abstract|final|readonly)\s+)*class\s+([A-Za-z_]\w*)`,
+)
+
+// phpClassSpan records the source-offset range of a class body and its name.
+// Used by indexPHPEnclosingFns to produce class-qualified method names.
+type phpClassSpan struct {
+	start int    // byte offset of the `class` keyword
+	end   int    // byte offset just past the class body (exclusive)
+	name  string // bare class name
+}
 
 // ---------------------------------------------------------------------------
 // Public entry points
@@ -1004,21 +1036,111 @@ func phpPickEnvSuffix(content string, m []int, litStart int) string {
 	return ""
 }
 
-// indexPHPEnclosingFns builds a sorted (offset, name) list for every
+// indexPHPClassSpans builds a sorted slice of phpClassSpan for every class
+// declaration in content. The span.end is determined by brace-counting from
+// the opening `{` of the class body to its matching `}`, so file-scope
+// functions after the closing brace are NOT included in the class span.
+func indexPHPClassSpans(content string) []phpClassSpan {
+	ms := phpClassDeclRe.FindAllStringSubmatchIndex(content, -1)
+	if len(ms) == 0 {
+		return nil
+	}
+	out := make([]phpClassSpan, 0, len(ms))
+	for _, m := range ms {
+		if len(m) < 4 {
+			continue
+		}
+		end := phpClassBodyEnd(content, m[0])
+		out = append(out, phpClassSpan{
+			start: m[0],
+			end:   end,
+			name:  content[m[2]:m[3]],
+		})
+	}
+	return out
+}
+
+// phpClassBodyEnd scans content from classStart (the byte offset of the
+// `class` keyword) and returns the byte offset just past the closing `}` of
+// the class body. Brace depth handles nested classes, method bodies, and
+// anonymous function literals. String literals are skipped so braces inside
+// PHP string values don't affect the depth counter.
+func phpClassBodyEnd(content string, classStart int) int {
+	// Locate the first `{` that opens the class body.
+	openIdx := strings.IndexByte(content[classStart:], '{')
+	if openIdx < 0 {
+		return len(content)
+	}
+	pos := classStart + openIdx + 1
+	depth := 1
+	for pos < len(content) && depth > 0 {
+		ch := content[pos]
+		switch ch {
+		case '{':
+			depth++
+		case '}':
+			depth--
+		case '"', '\'':
+			// Skip the string body so braces inside strings are ignored.
+			pos++
+			for pos < len(content) {
+				c := content[pos]
+				if c == ch {
+					break
+				}
+				if c == '\\' {
+					pos++ // skip escaped character
+				}
+				pos++
+			}
+		}
+		pos++
+	}
+	return pos
+}
+
+// phpEnclosingClassAt returns the class name for a call-site at pos, or ""
+// when the call is at file scope (outside any class body).
+func phpEnclosingClassAt(classes []phpClassSpan, pos int) string {
+	for i := len(classes) - 1; i >= 0; i-- {
+		c := classes[i]
+		if pos >= c.start && pos < c.end {
+			return c.name
+		}
+	}
+	return ""
+}
+
+// indexPHPEnclosingFns builds a sorted (offset, qualifiedName) list for every
 // PHP function/method definition in the file.
+//
+// When the function is a method inside a class body the returned name is
+// "ClassName.methodName" — exactly the form produced by the PHP tree-sitter
+// extractor (internal/extractors/php/php.go, line "rec.Name = parentClass +
+// "." + bareName"). This makes the source_caller ref shape match the real
+// entity name so the http-endpoint-resolve pass can successfully emit the
+// FETCHES edge (caller_resolved > 0). Fix for #1490.
 func indexPHPEnclosingFns(content string) []jsFuncSpan {
+	classes := indexPHPClassSpans(content)
 	var out []jsFuncSpan
 	for _, m := range phpEnclosingFnRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
 			continue
 		}
-		out = append(out, jsFuncSpan{offset: m[0], name: content[m[2]:m[3]]})
+		bareName := content[m[2]:m[3]]
+		name := bareName
+		if cls := phpEnclosingClassAt(classes, m[0]); cls != "" {
+			name = cls + "." + bareName
+		}
+		out = append(out, jsFuncSpan{offset: m[0], name: name})
 	}
 	return out
 }
 
 // enclosingPHPFnAt returns the name of the nearest preceding function
-// definition for a call site at pos.
+// definition for a call site at pos. For methods inside a class the returned
+// name is class-qualified ("ClassName.method") to match entity names emitted
+// by the PHP tree-sitter extractor.
 func enclosingPHPFnAt(funcs []jsFuncSpan, pos int) string {
 	return enclosingJSFuncAt(funcs, pos)
 }
