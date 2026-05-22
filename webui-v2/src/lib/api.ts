@@ -447,9 +447,19 @@ export const api = {
   applyUpdate: () =>
     requestV2<UpdateApplyReply>(`/update/apply`, { method: "POST" }),
 
-  /** GET /api/quality/orphans/{group} — orphan audit for a group. */
+  /**
+   * GET /api/quality/orphans/{group} — last PERSISTED orphan audit for a group.
+   * Returns has_run=false (never-run, no real numbers) until runOrphanAudit is
+   * called. Does NOT trigger the expensive audit.
+   */
   getOrphanAudit: (groupId: string) =>
     request<OrphanAuditReply>(`/quality/orphans/${encodeURIComponent(groupId)}`),
+
+  /** POST /api/quality/orphans/{group} — run the audit, persist + return it. */
+  runOrphanAudit: (groupId: string) =>
+    request<OrphanAuditReply>(`/quality/orphans/${encodeURIComponent(groupId)}`, {
+      method: "POST",
+    }),
 
   /** GET /api/quality/fixtures — list golden fixture names. */
   listQualityFixtures: () => request<FixturesReply>("/quality/fixtures"),

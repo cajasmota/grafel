@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/quality"
 	"github.com/cajasmota/archigraph/internal/quality/audit"
@@ -33,16 +34,30 @@ import (
 // Wire shapes
 // ─────────────────────────────────────────────────────────────────────────────
 
-// OrphanAuditReply is the wire shape for GET /api/quality/orphans/{group}.
+// OrphanAuditReply is the wire shape for GET/POST /api/quality/orphans/{group}.
 type OrphanAuditReply struct {
-	Group     string            `json:"group"`
-	AuditedAt string            `json:"audited_at"`
-	Total     OrphanTotals      `json:"total"`
-	PerRepo   []RepoOrphanStats `json:"per_repo"`
-	PerKind   []KindStat        `json:"per_kind"`
-	// HealthScore is a composite 0-100 metric: orphan rate + import hygiene +
-	// references density, equally weighted.
+	Group string `json:"group"`
+	// AuditedAt is the RFC3339 timestamp of the run. Empty string means the
+	// audit has NEVER been run for this group — the client must render an
+	// empty/never-run state rather than treating the zero-valued numbers below
+	// as a real measurement.
+	AuditedAt string `json:"audited_at"`
+	// HasRun is true only when a real audit has been persisted for this group.
+	// It is the authoritative "is this data real?" flag for the client.
+	HasRun  bool              `json:"has_run"`
+	Total   OrphanTotals      `json:"total"`
+	PerRepo []RepoOrphanStats `json:"per_repo"`
+	PerKind []KindStat        `json:"per_kind"`
+	// HealthScore is the composite graph-health score (0–100, higher is better)
+	// from quality.CompositeScoreFromPcts using the REAL orphan + bug rates.
+	// It is distinct from Fidelity: Health is a composite (orphans + bug-rate +
+	// recall), Fidelity is extraction correctness (100 − bug_rate).
 	HealthScore int `json:"health_score"`
+	// Fidelity is 100 − bug_rate (the owner-defined primary quality number),
+	// expressed as a 0–1 ratio to match the Landing card. Null when unknown.
+	Fidelity *float64 `json:"fidelity"`
+	// BugRatePct is the unresolved-import rate (0–100); fidelity = 100 − this.
+	BugRatePct float64 `json:"bug_rate_pct"`
 	// Recommendations is the punch list from the audit engine.
 	Recommendations []RecommendationItem `json:"recommendations"`
 }
@@ -66,7 +81,14 @@ type RepoOrphanStats struct {
 
 // KindStat is one row in the per-kind breakdown (e.g. Function 12.3%).
 type KindStat struct {
-	Kind       string  `json:"kind"`
+	Kind string `json:"kind"`
+	// Entities is the TOTAL number of entities of this kind (not the orphan
+	// count). Orphans holds the orphaned subset.
+	Entities int `json:"entities"`
+	// Orphans is the number of entities of this kind with no inbound edge.
+	Orphans int `json:"orphans"`
+	// Count is retained for backward compatibility; it mirrors Entities so old
+	// clients keep working. New clients should read Entities/Orphans.
 	Count      int     `json:"count"`
 	OrphanRate float64 `json:"orphan_rate"`
 }
@@ -126,9 +148,42 @@ type RecallRelItem struct {
 // GET /api/quality/orphans/{group}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// handleQualityOrphans runs the orphan audit against every repo in the
-// requested group and returns the aggregated result.
+// handleQualityOrphans (GET) returns the LAST PERSISTED orphan audit for the
+// group. It does NOT run the (expensive) audit — running is an explicit user
+// action via POST. When no audit has ever been persisted, it returns a
+// never-run reply (HasRun=false, AuditedAt="") so the client can render an
+// honest empty state instead of treating zero-valued defaults as a real
+// measurement (#1574).
 func (s *Server) handleQualityOrphans(w http.ResponseWriter, r *http.Request) {
+	groupName := r.PathValue("group")
+	if groupName == "" {
+		writeErr(w, http.StatusBadRequest, "group required")
+		return
+	}
+	// Confirm the group exists so a typo 404s rather than silently returning a
+	// never-run state.
+	if _, err := repoPathsForGroup(groupName); err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Sprintf("group %q: %v", groupName, err))
+		return
+	}
+
+	if cached, ok := loadOrphanAudit(s.daemonRoot(), groupName); ok {
+		writeJSON(w, http.StatusOK, cached)
+		return
+	}
+	// Never run: honest empty state, no fake numbers.
+	writeJSON(w, http.StatusOK, OrphanAuditReply{
+		Group:    groupName,
+		HasRun:   false,
+		PerRepo:  []RepoOrphanStats{},
+		PerKind:  []KindStat{},
+		Fidelity: nil,
+	})
+}
+
+// handleRunQualityOrphans (POST) runs the orphan audit against every repo in
+// the requested group, persists the result, and returns it.
+func (s *Server) handleRunQualityOrphans(w http.ResponseWriter, r *http.Request) {
 	groupName := r.PathValue("group")
 	if groupName == "" {
 		writeErr(w, http.StatusBadRequest, "group required")
@@ -165,20 +220,32 @@ func (s *Server) handleQualityOrphans(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reply := buildOrphanAuditReply(groupName, allRepos)
+	reply.HasRun = true
+	reply.AuditedAt = time.Now().UTC().Format(time.RFC3339)
+
+	// Persist so the next GET returns the real numbers (and so a fresh page load
+	// shows the last run rather than re-running the heavy audit on mount).
+	if err := saveOrphanAudit(s.daemonRoot(), groupName, reply); err != nil {
+		// Persistence failure is non-fatal: still return the live result.
+		_ = err
+	}
+
 	writeJSON(w, http.StatusOK, reply)
 }
 
 // buildOrphanAuditReply converts raw audit.RepoReport slice into the wire reply.
 func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditReply {
 	reply := OrphanAuditReply{
-		Group:     group,
-		AuditedAt: "",
+		Group:   group,
+		PerRepo: []RepoOrphanStats{},
+		PerKind: []KindStat{},
 	}
 
 	// Aggregate totals and build per-repo rows.
 	kindEntities := map[string]int{}
 	kindOrphans := map[string]int{}
-	sumScore := 0
+	totalImports := 0
+	goodImports := 0
 
 	for _, rr := range repos {
 		if rr == nil {
@@ -186,6 +253,10 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 		}
 		reply.Total.Entities += rr.Entities
 		reply.Total.Orphans += rr.Orphans
+
+		totalImports += rr.ImportsTotal
+		goodImports += rr.ImportsToIDFormat[audit.ImportFormatHex] +
+			rr.ImportsToIDFormat[audit.ImportFormatExtQualified]
 
 		slug := filepath.Base(rr.Path)
 		rate := 0.0
@@ -201,14 +272,14 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 			RiskScore:  rr.RiskScore,
 		})
 
-		// Accumulate kind histograms.
+		// Accumulate kind histograms. TopKinds = total entities of each kind;
+		// TopOrphanKinds = orphaned subset of each kind.
 		for _, kv := range rr.TopKinds {
 			kindEntities[kv.Key] += kv.Count
 		}
 		for _, kv := range rr.TopOrphanKinds {
 			kindOrphans[kv.Key] += kv.Count
 		}
-		sumScore += rr.RiskScore
 	}
 
 	// Compute total orphan rate.
@@ -216,7 +287,7 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 		reply.Total.OrphanRate = float64(reply.Total.Orphans) / float64(reply.Total.Entities)
 	}
 
-	// Per-kind breakdown (orphan rate per kind).
+	// Per-kind breakdown: real TOTAL entities + orphan subset + orphan rate.
 	for kind, total := range kindEntities {
 		orphaned := kindOrphans[kind]
 		rate := 0.0
@@ -225,21 +296,35 @@ func buildOrphanAuditReply(group string, repos []*audit.RepoReport) OrphanAuditR
 		}
 		reply.PerKind = append(reply.PerKind, KindStat{
 			Kind:       kind,
-			Count:      orphaned,
+			Entities:   total,
+			Orphans:    orphaned,
+			Count:      total, // back-compat mirror
 			OrphanRate: rate,
 		})
 	}
 	sort.Slice(reply.PerKind, func(i, j int) bool {
+		// Order by orphan rate first, then by entity count, then name — so the
+		// most-orphaned kinds bubble up but populated kinds never read as 0.
 		if reply.PerKind[i].OrphanRate != reply.PerKind[j].OrphanRate {
 			return reply.PerKind[i].OrphanRate > reply.PerKind[j].OrphanRate
+		}
+		if reply.PerKind[i].Entities != reply.PerKind[j].Entities {
+			return reply.PerKind[i].Entities > reply.PerKind[j].Entities
 		}
 		return reply.PerKind[i].Kind < reply.PerKind[j].Kind
 	})
 
-	// Health score: average of per-repo risk scores.
-	if len(repos) > 0 {
-		reply.HealthScore = sumScore / len(repos)
+	// Health + fidelity from the REAL measured rates (not an avg risk score).
+	orphanPct := reply.Total.OrphanRate * 100
+	bugPct := 0.0
+	if totalImports > 0 {
+		bugPct = 100.0 * float64(totalImports-goodImports) / float64(totalImports)
 	}
+	reply.BugRatePct = bugPct
+	cr := quality.CompositeScoreFromPcts(orphanPct, bugPct, 0)
+	reply.HealthScore = int(cr.Score + 0.5)
+	fid := fidelityFromBugRate(bugPct)
+	reply.Fidelity = &fid
 
 	return reply
 }

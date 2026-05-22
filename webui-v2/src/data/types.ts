@@ -1118,6 +1118,11 @@ export interface RepoOrphanStats {
 /** Per-kind orphan stats */
 export interface KindStat {
   kind: string;
+  /** Total number of entities of this kind. */
+  entities: number;
+  /** Orphaned subset of this kind. */
+  orphans: number;
+  /** @deprecated mirrors `entities` for back-compat; read `entities`/`orphans`. */
   count: number;
   orphan_rate: number;
 }
@@ -1130,14 +1135,22 @@ export interface RecommendationItem {
   recoverable_entities_estimate: number;
 }
 
-/** Wire shape for GET /api/quality/orphans/{group} */
+/** Wire shape for GET/POST /api/quality/orphans/{group} */
 export interface OrphanAuditReply {
   group: string;
+  /** RFC3339 timestamp; empty string when never run. */
   audited_at: string;
+  /** True only when a real audit has been run + persisted for this group. */
+  has_run: boolean;
   total: OrphanAuditTotals;
   per_repo: RepoOrphanStats[];
   per_kind: KindStat[];
+  /** Composite graph-health score (0–100): orphans + bug-rate + recall. */
   health_score: number;
+  /** Fidelity = 100 − bug_rate, as a 0–1 ratio (null when unknown). */
+  fidelity: number | null;
+  /** Unresolved-import rate (0–100); fidelity = 100 − this. */
+  bug_rate_pct: number;
   recommendations: RecommendationItem[];
 }
 

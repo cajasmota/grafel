@@ -59,6 +59,7 @@ import {
   TabsList,
   TabsTrigger,
   TooltipProvider,
+  InfoLabel,
 } from "@/components/ui";
 import {
   useSystemStatus,
@@ -1006,23 +1007,42 @@ function PatternsTab({ groupId }: { groupId: string }) {
 // 3. QUALITY TAB — orphan audit + recall
 // ---------------------------------------------------------------------------
 
+const FIDELITY_TIP_OPS =
+  "Fidelity = 100 − bug-rate: the share of import/reference edges that resolve to a real target. This is the owner-defined primary quality number, shown the same way on the Home cards.";
+const HEALTH_TIP_OPS =
+  "Health is a composite score (0–100) that ALSO factors in orphan rate and recall miss — not just extraction correctness. It is computed only from a real audit run, so it can differ from Fidelity: a graph can extract correctly (high fidelity) yet still have many orphaned entities (lower health).";
+
 function OrphanAuditPane({ groupId }: { groupId: string }) {
   const { data, isLoading } = useOrphanAudit(groupId);
   const runAudit = useRunOrphanAudit(groupId);
 
-  const healthColor = !data
+  // Only a real, persisted run counts as "audited". Until then we must NOT
+  // surface health/fidelity/orphan numbers as if they were measured (#1574).
+  const hasRun = !!data?.has_run;
+
+  const healthColor = !hasRun
     ? "text-text-3"
-    : data.health_score >= 80
+    : data!.health_score >= 80
     ? "text-success"
-    : data.health_score >= 50
+    : data!.health_score >= 50
     ? "text-warning"
     : "text-danger";
+
+  const fidelityPct = data?.fidelity == null ? null : Math.round(data.fidelity * 100);
+  const fidelityColor =
+    fidelityPct == null
+      ? "text-text-3"
+      : fidelityPct >= 90
+      ? "text-success"
+      : fidelityPct >= 75
+      ? "text-warning"
+      : "text-danger";
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        {data ? (
-          <p className="text-xs text-text-4">Last audited {relativeTime(data.audited_at)}</p>
+        {hasRun ? (
+          <p className="text-xs text-text-4">Last audited {relativeTime(data!.audited_at)}</p>
         ) : (
           <span />
         )}
@@ -1057,51 +1077,68 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
             <Skeleton key={i} h="h-16" className="rounded-lg" />
           ))}
         </div>
-      ) : !data ? (
+      ) : !hasRun ? (
         <div className="flex flex-col items-center justify-center py-16 text-center text-text-3">
           <Activity size={28} className="text-text-4 mb-3" />
-          <p className="text-sm font-medium">No audit data yet.</p>
-          <p className="text-xs mt-1">Click Run audit to measure orphan rate for this group.</p>
+          <p className="text-sm font-medium">Not audited yet</p>
+          <p className="text-xs mt-1">
+            Run audit to measure orphans and the composite health score for this group.
+          </p>
         </div>
       ) : (
         <>
-          {/* Score + totals */}
+          {/* Score + totals. Fidelity is the PRIMARY quality number (same as the
+              Home cards); Health is the composite, clearly distinguished. */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Health score", value: String(data.health_score ?? "—"), color: healthColor },
-              {
-                label: "Total entities",
-                value: (data.total?.entities ?? 0).toLocaleString(),
-                color: "text-text",
-              },
-              {
-                label: "Orphans",
-                value: (data.total?.orphans ?? 0).toLocaleString(),
-                color: "text-warning",
-              },
-              {
-                label: "Orphan rate",
-                value: pct(data.total?.orphan_rate ?? 0),
-                color:
-                  (data.total?.orphan_rate ?? 0) > 0.2
+            <Card className="p-4 text-center">
+              <p className={cn("text-xl font-mono font-semibold tabular-nums", fidelityColor)}>
+                {fidelityPct == null ? "—" : `${fidelityPct}%`}
+              </p>
+              <div className="mt-1 flex justify-center">
+                <InfoLabel label="Fidelity" hint={FIDELITY_TIP_OPS} />
+              </div>
+            </Card>
+            <Card className="p-4 text-center">
+              <p className={cn("text-xl font-mono font-semibold tabular-nums", healthColor)}>
+                {data!.health_score ?? "—"}
+              </p>
+              <div className="mt-1 flex justify-center">
+                <InfoLabel label="Health score" hint={HEALTH_TIP_OPS} />
+              </div>
+            </Card>
+            <Card className="p-4 text-center">
+              <p className="text-xl font-mono font-semibold tabular-nums text-warning">
+                {(data!.total?.orphans ?? 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-text-3 mt-1">
+                Orphans{" "}
+                <span className="text-text-4">
+                  / {(data!.total?.entities ?? 0).toLocaleString()} entities
+                </span>
+              </p>
+            </Card>
+            <Card className="p-4 text-center">
+              <p
+                className={cn(
+                  "text-xl font-mono font-semibold tabular-nums",
+                  (data!.total?.orphan_rate ?? 0) > 0.2
                     ? "text-danger"
-                    : (data.total?.orphan_rate ?? 0) > 0.1
+                    : (data!.total?.orphan_rate ?? 0) > 0.1
                     ? "text-warning"
                     : "text-success",
-              },
-            ].map(({ label, value, color }) => (
-              <Card key={label} className="p-4 text-center">
-                <p className={cn("text-xl font-mono font-semibold tabular-nums", color)}>{value}</p>
-                <p className="text-xs text-text-3 mt-1">{label}</p>
-              </Card>
-            ))}
+                )}
+              >
+                {pct(data!.total?.orphan_rate ?? 0)}
+              </p>
+              <p className="text-xs text-text-3 mt-1">Orphan rate</p>
+            </Card>
           </div>
 
           {/* Per-kind */}
-          {(data.per_kind?.length ?? 0) > 0 && (
+          {(data!.per_kind?.length ?? 0) > 0 && (
             <Section title="By entity kind">
               <div className="space-y-2">
-                {data.per_kind.map((k) => (
+                {data!.per_kind.map((k) => (
                   <div key={k.kind} className="flex items-center gap-3">
                     <span className="text-sm text-text-2 w-32 truncate">{k.kind}</span>
                     <div className="flex-1 h-1.5 rounded-full bg-surface-3 overflow-hidden">
@@ -1116,8 +1153,8 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
                     <span className="text-xs font-mono tabular-nums text-text-3 w-12 text-right">
                       {pct(k.orphan_rate)}
                     </span>
-                    <span className="text-xs text-text-4 font-mono w-20 text-right">
-                      {k.count.toLocaleString()} entities
+                    <span className="text-xs text-text-4 font-mono w-28 text-right">
+                      {(k.orphans ?? 0).toLocaleString()} / {(k.entities ?? k.count ?? 0).toLocaleString()}
                     </span>
                   </div>
                 ))}
@@ -1126,7 +1163,7 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
           )}
 
           {/* Per-repo */}
-          {(data.per_repo?.length ?? 0) > 0 && (
+          {(data!.per_repo?.length ?? 0) > 0 && (
             <Section title="By repository">
               <div className="rounded-lg border border-border overflow-hidden">
                 <table className="w-full text-sm">
@@ -1140,7 +1177,7 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-soft">
-                    {data.per_repo.map((r) => (
+                    {data!.per_repo.map((r) => (
                       <tr key={r.slug} className="hover:bg-surface-2">
                         <td className="px-3 py-2.5 font-mono text-xs text-text-2">{r.slug}</td>
                         <td className="px-3 py-2.5 font-mono tabular-nums text-text-3">
@@ -1175,10 +1212,10 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
           )}
 
           {/* Recommendations */}
-          {(data.recommendations?.length ?? 0) > 0 && (
+          {(data!.recommendations?.length ?? 0) > 0 && (
             <Section title="Recommendations">
               <div className="space-y-2">
-                {data.recommendations.map((rec, i) => (
+                {data!.recommendations.map((rec, i) => (
                   <div
                     key={i}
                     className="flex items-start gap-3 rounded-lg border border-border-soft bg-surface-2 p-3"

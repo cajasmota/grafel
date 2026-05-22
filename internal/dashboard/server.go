@@ -458,6 +458,7 @@ func (s *Server) routes() http.Handler {
 
 	// Quality surface (#1198, #1236)
 	mux.HandleFunc("GET /api/quality/orphans/{group}", s.handleQualityOrphans)
+	mux.HandleFunc("POST /api/quality/orphans/{group}", s.handleRunQualityOrphans)
 	mux.HandleFunc("GET /api/quality/fixtures", s.handleQualityFixtures)
 	mux.HandleFunc("POST /api/quality/recall", s.handleQualityRecall)
 	mux.HandleFunc("GET /api/quality/composite/{group}", s.handleQualityComposite)

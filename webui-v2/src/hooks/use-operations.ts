@@ -154,7 +154,8 @@ export function useOrphanAudit(groupId: string) {
 export function useRunOrphanAudit(groupId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.getOrphanAudit(groupId),
+    // POST actually runs + persists the audit (GET only reads the last result).
+    mutationFn: () => api.runOrphanAudit(groupId),
     onSuccess: (data) => {
       qc.setQueryData(orphanAuditKey(groupId), data);
     },
