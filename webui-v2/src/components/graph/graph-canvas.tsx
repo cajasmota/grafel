@@ -45,12 +45,14 @@ import {
   linkPalette,
 } from "@/lib/graph-colors";
 import { saveLayout, loadLayout, isDegenerateLayout } from "@/lib/graph-layout-cache";
-import type {
-  ColorMode,
-  GroupByMode,
-  SimulationConfig,
-  NodeSizingConfig,
-  RenderConfig,
+import {
+  baseSizeForCount,
+  DEFAULT_NODE_SIZING,
+  type ColorMode,
+  type GroupByMode,
+  type SimulationConfig,
+  type NodeSizingConfig,
+  type RenderConfig,
 } from "@/store/use-graph-store";
 
 const SPACE_SIZE = 32768;
@@ -356,6 +358,17 @@ function GraphCanvasInner(
     for (const n of nodes) if ((n.pageRank ?? 0) > maxPR) maxPR = n.pageRank ?? 0;
     if (maxPR === 0) maxPR = 1;
 
+    // Fix #1580: AUTO-SCALE the base size DOWN as the graph grows. The knob's
+    // value is tuned for a ~1.5k-node reference graph; on a ≈19k-node graph that
+    // base produces overlapping colored blobs when zoomed out. We scale the
+    // EFFECTIVE base inversely with sqrt(nodeCount) so a huge graph renders as
+    // fine points out of the box. The knob still works: we scale it by the same
+    // count-derived ratio as the default, so turning the slider down further
+    // shrinks points proportionally (and it now reaches single digits).
+    const countScale =
+      baseSizeForCount(count) / DEFAULT_NODE_SIZING.baseSize; // ≤1, →small for big graphs
+    const effectiveBase = Math.max(1, nodeSizing.baseSize * countScale);
+
     const grouping = groupBy !== "none";
     const groupCount = new Map<string, number>();
     for (const n of nodes) {
@@ -395,8 +408,8 @@ function GraphCanvasInner(
       // hard-capped at maxMultiplier × base so high-degree hubs never bloom into
       // overlapping blobs. (Fix #1532-4)
       const raw =
-        nodeSizing.baseSize + Math.log10((n.degree ?? 0) + 1) * nodeSizing.degreeScale;
-      sizes[i] = Math.min(raw, nodeSizing.baseSize * nodeSizing.maxMultiplier);
+        effectiveBase + Math.log10((n.degree ?? 0) + 1) * nodeSizing.degreeScale * countScale;
+      sizes[i] = Math.min(raw, effectiveBase * nodeSizing.maxMultiplier);
 
       const gkey = groupKeyFor(n, groupBy);
       const center = grouping ? groupCenters.get(gkey) : undefined;
@@ -1115,18 +1128,31 @@ function GraphCanvasInner(
       const sel = new Set<number>([hovIdx]);
       for (const nb of neighborIdx.get(hovIdx) ?? []) sel.add(nb);
       g.selectPointsByIndices(Array.from(sel));
-      // Dim the rest hard so the neighborhood reads as a spotlight (but still
-      // faintly visible for context).
-      g.setConfig({ pointGreyoutOpacity: isDark ? 0.08 : 0.1 });
+      // Fix #1567-3: dim non-neighbor NODES hard so the neighborhood reads as a
+      // spotlight (still faintly visible for context).
+      // Fix #1580: also FADE the non-neighbor LINKS to near-zero. cosmos.gl keeps a
+      // link bright only when BOTH endpoints are selected, and greys every other
+      // link to linkGreyoutOpacity. The default greyout (linkOpacity*0.5) left the
+      // whole link mesh visible — the dimmed graph looked like a skeleton of
+      // threads. Drop linkGreyoutOpacity to ~0 so only the hovered node + its
+      // direct neighbors AND the links AMONG them stay bright; everything else
+      // recedes, cleanly isolating the neighborhood. Restored on un-hover below.
+      g.setConfig({
+        pointGreyoutOpacity: isDark ? 0.08 : 0.1,
+        linkGreyoutOpacity: 0,
+      });
       g.render();
       return;
     }
 
+    // Fix #1580: not hovering → restore the default link greyout so the
+    // repo/community selection (and the un-hovered full graph) shows links again.
+    const restoredLinkGreyout = render.linkOpacity * 0.5;
     const repoActive = activeRepos != null;
     const communityActive = focusedCommunityId != null;
     if (!repoActive && !communityActive) {
       g.selectPointsByIndices(null);
-      g.setConfig({ pointGreyoutOpacity: 0.15 });
+      g.setConfig({ pointGreyoutOpacity: 0.15, linkGreyoutOpacity: restoredLinkGreyout });
       g.render();
       return;
     }
@@ -1138,9 +1164,21 @@ function GraphCanvasInner(
       })
       .filter((i) => i !== -1);
     g.selectPointsByIndices(effective);
-    g.setConfig({ pointGreyoutOpacity: repoActive ? 0 : 0.18 });
+    g.setConfig({
+      pointGreyoutOpacity: repoActive ? 0 : 0.18,
+      linkGreyoutOpacity: restoredLinkGreyout,
+    });
     g.render();
-  }, [nodes, activeRepos, focusedCommunityId, hoveredNodeId, idToIdx, neighborIdx, isDark]);
+  }, [
+    nodes,
+    activeRepos,
+    focusedCommunityId,
+    hoveredNodeId,
+    idToIdx,
+    neighborIdx,
+    isDark,
+    render.linkOpacity,
+  ]);
 
   useEffect(() => {
     applySelection();

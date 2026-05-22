@@ -31,6 +31,8 @@ import {
   DEFAULT_SIMULATION,
   DEFAULT_NODE_SIZING,
   DEFAULT_RENDER,
+  NODE_BASE_SIZE_MIN,
+  NODE_BASE_SIZE_MAX,
 } from "@/store/use-graph-store";
 import { Button } from "@/components/ui";
 
@@ -233,9 +235,9 @@ export function TuningPanels() {
         <Slider
           label="Base size"
           value={nodeSizing.baseSize}
-          min={40}
-          max={320}
-          step={10}
+          min={NODE_BASE_SIZE_MIN}
+          max={NODE_BASE_SIZE_MAX}
+          step={2}
           onChange={(v) => setNodeSizing({ baseSize: v })}
         />
         <Slider
