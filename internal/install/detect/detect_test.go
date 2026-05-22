@@ -88,6 +88,143 @@ func TestDetectMonorepoNx(t *testing.T) {
 	}
 }
 
+// TestDetectMonorepoPolyglot builds a synthetic polyglot monorepo mirroring the
+// polyglot-platform fixture: a pnpm-workspace.yaml that lists ONLY the Node
+// services, plus many non-Node services (Python/Go/Java/Kotlin/Rust/PHP/Elixir)
+// the manifest does not list. Detection must surface ALL of them, not just the
+// pnpm packages (regression for #1559).
+func TestDetectMonorepoPolyglot(t *testing.T) {
+	dir := t.TempDir()
+	// pnpm workspace listing ONLY the Node services + frontends.
+	write(t, filepath.Join(dir, "pnpm-workspace.yaml"),
+		"packages:\n  - 'services/gateway'\n  - 'services/catalog'\n  - 'frontend/*'\n")
+	write(t, filepath.Join(dir, "services/gateway/package.json"), `{"name":"gateway"}`)
+	write(t, filepath.Join(dir, "services/gateway/src/index.ts"), "export const x = 1\n")
+	write(t, filepath.Join(dir, "services/catalog/package.json"), `{"name":"catalog"}`)
+	write(t, filepath.Join(dir, "services/catalog/src/index.ts"), "export const y = 1\n")
+	write(t, filepath.Join(dir, "frontend/web/package.json"), `{"name":"web"}`)
+	write(t, filepath.Join(dir, "frontend/web/src/app.tsx"), "export const A = 1\n")
+
+	// Non-Node services NOT in the workspace manifest.
+	write(t, filepath.Join(dir, "services/orders/requirements.txt"), "fastapi\n")
+	write(t, filepath.Join(dir, "services/orders/app/db.py"), "x = 1\n")
+	write(t, filepath.Join(dir, "services/analytics/analytics/main.py"), "print(1)\n") // no manifest, .py only
+	write(t, filepath.Join(dir, "services/inventory/go.mod"), "module inventory\n")
+	write(t, filepath.Join(dir, "services/inventory/main.go"), "package main\n")
+	write(t, filepath.Join(dir, "services/notifications/build.gradle.kts"), "// kt\n")
+	write(t, filepath.Join(dir, "services/notifications/src/Main.kt"), "fun main(){}\n")
+	write(t, filepath.Join(dir, "services/legacy-erp/pom.xml"), "<project/>\n")
+	write(t, filepath.Join(dir, "services/legacy-erp/src/Main.java"), "class M{}\n")
+	write(t, filepath.Join(dir, "services/pricing/Cargo.toml"), "[package]\n")
+	write(t, filepath.Join(dir, "services/pricing/src/main.rs"), "fn main(){}\n")
+	write(t, filepath.Join(dir, "services/billing/composer.json"), `{}`)
+	write(t, filepath.Join(dir, "services/billing/routes/web.php"), "<?php\n")
+	write(t, filepath.Join(dir, "services/realtime-dashboard/mix.exs"), "defmodule M do end\n")
+	// Top-level non-container module dir.
+	write(t, filepath.Join(dir, "data-pipeline/dags/etl.py"), "x = 1\n")
+	// libs/
+	write(t, filepath.Join(dir, "libs/go-shared/go.mod"), "module shared\n")
+	write(t, filepath.Join(dir, "libs/py-shared/pyproject.toml"), "[project]\n")
+	// Noise that must be ignored.
+	write(t, filepath.Join(dir, "node_modules/junk/index.js"), "//\n")
+	write(t, filepath.Join(dir, "infra/k8s/deploy.yaml"), "kind: x\n")
+	write(t, filepath.Join(dir, "vendor/carrier-sdk/main.go"), "package x\n")
+
+	m, err := DetectMonorepo(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]bool{}
+	for _, p := range m.Packages {
+		got[p] = true
+	}
+	// Every polyglot service must be present, not just the Node ones.
+	wantPresent := []string{
+		"services/gateway", "services/catalog", "frontend/web", // Node
+		"services/orders", "services/analytics", "data-pipeline", "libs/py-shared", // Python
+		"services/inventory", "libs/go-shared", // Go
+		"services/notifications",     // Kotlin
+		"services/legacy-erp",        // Java
+		"services/pricing",           // Rust
+		"services/billing",           // PHP
+		"services/realtime-dashboard", // Elixir
+	}
+	for _, w := range wantPresent {
+		if !got[w] {
+			t.Errorf("missing expected module %q; got %v", w, m.Packages)
+		}
+	}
+	// Noise must NOT appear.
+	for _, bad := range []string{"node_modules", "infra", "vendor", "node_modules/junk"} {
+		if got[bad] {
+			t.Errorf("ignored dir leaked as module: %q", bad)
+		}
+	}
+	if m.Kind != KindPNPM {
+		t.Errorf("kind: want pnpm (workspace manifest wins), got %q", m.Kind)
+	}
+	if len(m.Packages) < 14 {
+		t.Errorf("expected >=14 modules across languages, got %d: %v", len(m.Packages), m.Packages)
+	}
+}
+
+// TestDetectMonorepoPolyglotNoManifest covers a polyglot monorepo with NO
+// workspace manifest at all — detection should still find all services via the
+// code-dir scan and report KindPolyglot.
+func TestDetectMonorepoPolyglotNoManifest(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "services/orders/app/main.py"), "x=1\n")
+	write(t, filepath.Join(dir, "services/inventory/main.go"), "package main\n")
+	write(t, filepath.Join(dir, "services/billing/index.php"), "<?php\n")
+	m, _ := DetectMonorepo(dir)
+	if m.Kind != KindPolyglot {
+		t.Fatalf("kind: want polyglot, got %q (%v)", m.Kind, m.Packages)
+	}
+	if len(m.Packages) != 3 {
+		t.Fatalf("want 3 modules, got %d: %v", len(m.Packages), m.Packages)
+	}
+}
+
+// TestDetectMonorepoRealPolyglotPlatform asserts against the REAL fixture on
+// disk when present. Skipped in CI where the fixture is absent.
+func TestDetectMonorepoRealPolyglotPlatform(t *testing.T) {
+	const fixture = "/Users/jorgecajas/Documents/Projects/polyglot-platform"
+	if _, err := os.Stat(fixture); err != nil {
+		t.Skip("polyglot-platform fixture not present")
+	}
+	m, err := DetectMonorepo(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, p := range m.Packages {
+		got[p] = true
+	}
+	// Non-Node services that the pnpm-workspace.yaml does NOT list.
+	mustHave := []string{
+		"services/orders", "services/analytics", "services/workers", "services/order-saga",
+		"services/semantic-search", "services/ledger", // Python
+		"services/inventory", "services/shipping", "libs/go-shared", // Go
+		"services/notifications",                      // Kotlin
+		"services/legacy-erp", "services/stream-processor", // Java
+		"services/pricing", "services/rate-limiter", // Rust
+		"services/billing",            // PHP
+		"services/realtime-dashboard", // Elixir
+	}
+	missing := 0
+	for _, w := range mustHave {
+		if !got[w] {
+			t.Errorf("real fixture missing polyglot module %q", w)
+			missing++
+		}
+	}
+	if len(m.Packages) < 20 {
+		t.Errorf("expected >=20 modules from polyglot-platform, got %d: %v", len(m.Packages), m.Packages)
+	}
+	t.Logf("polyglot-platform detected %d modules (kind=%s)", len(m.Packages), m.Kind)
+}
+
 func TestDetectMonorepoNone(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "go.mod"), "module x\n")

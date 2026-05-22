@@ -49,14 +49,56 @@ func Stack(repo string) string {
 type MonorepoKind string
 
 const (
-	KindNone  MonorepoKind = ""
-	KindPNPM  MonorepoKind = "pnpm"
-	KindNPM   MonorepoKind = "npm"
-	KindNx    MonorepoKind = "nx"
-	KindTurbo MonorepoKind = "turbo"
-	KindLerna MonorepoKind = "lerna"
-	KindMulti MonorepoKind = "multi"
+	KindNone     MonorepoKind = ""
+	KindPNPM     MonorepoKind = "pnpm"
+	KindNPM      MonorepoKind = "npm"
+	KindNx       MonorepoKind = "nx"
+	KindTurbo    MonorepoKind = "turbo"
+	KindLerna    MonorepoKind = "lerna"
+	KindMulti    MonorepoKind = "multi"
+	KindPolyglot MonorepoKind = "polyglot"
 )
+
+// containerDirs are the conventional top-level directories that hold service
+// or package modules in a (polyglot) monorepo. Each immediate child that
+// contains source code is treated as a selectable module.
+var containerDirs = []string{"services", "apps", "packages", "libs", "lib", "frontend", "backend", "modules", "cmd", "pkg"}
+
+// ecosystemManifests are per-package manifest filenames across ecosystems. A
+// directory containing any of these is a package root regardless of language.
+var ecosystemManifests = []string{
+	"package.json",                            // npm/pnpm/yarn (Node)
+	"pyproject.toml", "setup.py", "setup.cfg", // Python
+	"requirements.txt", "Pipfile", // Python
+	"go.mod",                            // Go
+	"pom.xml", "build.gradle", "build.gradle.kts", // Maven/Gradle (JVM)
+	"Cargo.toml",    // Rust
+	"composer.json", // PHP
+	"mix.exs",       // Elixir
+	"Gemfile",       // Ruby
+	"*.csproj",      // .NET (matched specially)
+}
+
+// sourceExts is the set of file extensions that count as "source code" for the
+// code-dir fallback. Kept in sync (loosely) with the classifier's language map
+// but inlined here to keep the detect package dependency-free and cheap.
+var sourceExts = map[string]struct{}{
+	".py": {}, ".pyi": {}, ".pyw": {},
+	".go":  {},
+	".js":  {}, ".jsx": {}, ".mjs": {}, ".cjs": {},
+	".ts":  {}, ".tsx": {}, ".mts": {}, ".cts": {},
+	".java": {},
+	".kt":   {}, ".kts": {},
+	".rb": {}, ".rake": {},
+	".php": {},
+	".rs":  {},
+	".cs":  {},
+	".swift": {},
+	".scala": {}, ".sc": {},
+	".ex": {}, ".exs": {},
+	".c": {}, ".h": {}, ".cpp": {}, ".cc": {}, ".cxx": {}, ".hpp": {},
+	".dart": {},
+}
 
 // Monorepo describes a detected monorepo layout.
 type Monorepo struct {
@@ -67,38 +109,310 @@ type Monorepo struct {
 // DetectMonorepo inspects a repo root and returns its kind plus the
 // list of package roots (repo-relative). Returns Monorepo{Kind:KindNone}
 // if no monorepo signal is present.
+//
+// Detection is a HYBRID of two strategies, unioned so a polyglot monorepo
+// surfaces ALL its services (not just the pnpm/Node ones a workspace manifest
+// happens to list):
+//
+//  1. Ecosystem workspace manifests (pnpm-workspace.yaml, package.json
+//     `workspaces`, nx/turbo/lerna) — the JS/TS workspace packages.
+//  2. A polyglot code-dir scan — every immediate child of the conventional
+//     container dirs (services/, apps/, libs/, frontend/, …) plus top-level
+//     module dirs that contain SOURCE CODE in any supported language or an
+//     ecosystem manifest (go.mod, pyproject.toml, pom.xml, Cargo.toml,
+//     composer.json, mix.exs, …).
+//
+// The union means a pure-Node workspace still reports exactly its workspace
+// packages, while a polyglot platform reports its Python/Go/Java/Kotlin/Rust/
+// PHP/Elixir services too. The reported Kind reflects the dominant signal: a
+// workspace manifest's kind when one exists, else KindMulti/KindPolyglot.
 func DetectMonorepo(repo string) (Monorepo, error) {
+	kind := KindNone
+	seen := map[string]struct{}{}
+
+	add := func(pkgs []string) {
+		for _, p := range pkgs {
+			seen[filepath.ToSlash(p)] = struct{}{}
+		}
+	}
+
+	// 1. Ecosystem workspace manifests (Node/JS/TS).
 	switch {
 	case exists(repo, "pnpm-workspace.yaml"):
 		pkgs, err := scanWorkspaces(repo, parseYAMLPackages(filepath.Join(repo, "pnpm-workspace.yaml")))
-		return Monorepo{Kind: KindPNPM, Packages: pkgs}, err
+		if err != nil {
+			return Monorepo{}, err
+		}
+		add(pkgs)
+		kind = KindPNPM
 	case exists(repo, "nx.json"):
 		pkgs, err := scanWorkspaces(repo, parsePackageJSONWorkspaces(repo))
-		return Monorepo{Kind: KindNx, Packages: pkgs}, err
+		if err != nil {
+			return Monorepo{}, err
+		}
+		add(pkgs)
+		kind = KindNx
 	case exists(repo, "turbo.json"):
 		pkgs, err := scanWorkspaces(repo, parsePackageJSONWorkspaces(repo))
-		return Monorepo{Kind: KindTurbo, Packages: pkgs}, err
+		if err != nil {
+			return Monorepo{}, err
+		}
+		add(pkgs)
+		kind = KindTurbo
 	case exists(repo, "lerna.json"):
 		pkgs, err := scanWorkspaces(repo, parseLernaPackages(filepath.Join(repo, "lerna.json")))
-		return Monorepo{Kind: KindLerna, Packages: pkgs}, err
+		if err != nil {
+			return Monorepo{}, err
+		}
+		add(pkgs)
+		kind = KindLerna
 	case exists(repo, "package.json"):
 		ws := parsePackageJSONWorkspaces(repo)
 		if len(ws) > 0 {
 			pkgs, err := scanWorkspaces(repo, ws)
-			return Monorepo{Kind: KindNPM, Packages: pkgs}, err
+			if err != nil {
+				return Monorepo{}, err
+			}
+			add(pkgs)
+			kind = KindNPM
 		}
 	}
-	// Heuristic fallback: presence of a top-level packages/ or apps/ dir
-	// each containing >1 manifest.
-	for _, sub := range []string{"packages", "apps", "services"} {
-		if isDir(filepath.Join(repo, sub)) {
-			pkgs, err := scanGlob(repo, []string{sub + "/*"})
-			if err == nil && len(pkgs) > 1 {
-				return Monorepo{Kind: KindMulti, Packages: pkgs}, nil
+
+	// 2. Polyglot code-dir scan — surfaces non-Node services the workspace
+	//    manifest doesn't list (orders/Python, inventory/Go, notifications/
+	//    Kotlin, pricing/Rust, billing/PHP, realtime-dashboard/Elixir, …).
+	add(scanPolyglotModules(repo))
+
+	// Decide the reported kind. If a workspace manifest set a kind, keep it.
+	// Otherwise label the layout from the code-dir scan: KindPolyglot when the
+	// detected modules span more than one language, else KindMulti.
+	if kind == KindNone && len(seen) > 1 {
+		if len(distinctLanguages(repo, seen)) > 1 {
+			kind = KindPolyglot
+		} else {
+			kind = KindMulti
+		}
+	}
+	if len(seen) == 0 {
+		return Monorepo{Kind: KindNone}, nil
+	}
+
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return Monorepo{Kind: kind, Packages: out}, nil
+}
+
+// scanPolyglotModules returns repo-relative paths to every directory that looks
+// like a service/package module in ANY language. It scans the immediate
+// children of the conventional container dirs plus the top-level dirs of the
+// repo, and includes a directory when it either contains an ecosystem manifest
+// (go.mod, pyproject.toml, pom.xml, Cargo.toml, composer.json, mix.exs,
+// package.json, requirements.txt, build.gradle[.kts], …) OR contains source
+// files in a supported language within its first couple of levels.
+func scanPolyglotModules(repo string) []string {
+	var out []string
+	seen := map[string]struct{}{}
+
+	consider := func(rel string) {
+		if rel == "" || rel == "." {
+			return
+		}
+		rel = filepath.ToSlash(rel)
+		if _, ok := seen[rel]; ok {
+			return
+		}
+		abs := filepath.Join(repo, rel)
+		if !isDir(abs) {
+			return
+		}
+		if isModuleDir(abs) {
+			seen[rel] = struct{}{}
+			out = append(out, rel)
+		}
+	}
+
+	// Immediate children of conventional container dirs.
+	for _, container := range containerDirs {
+		cdir := filepath.Join(repo, container)
+		entries, err := os.ReadDir(cdir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() || isIgnoredDir(e.Name()) {
+				continue
+			}
+			consider(filepath.Join(container, e.Name()))
+		}
+	}
+
+	// Top-level service/package dirs that aren't themselves containers
+	// (e.g. data-pipeline, py-shared sitting at the repo root).
+	topEntries, err := os.ReadDir(repo)
+	if err == nil {
+		for _, e := range topEntries {
+			if !e.IsDir() || isIgnoredDir(e.Name()) {
+				continue
+			}
+			name := e.Name()
+			// Skip the container dirs themselves; their children were scanned.
+			if isContainer(name) {
+				continue
+			}
+			consider(name)
+		}
+	}
+
+	sort.Strings(out)
+	return out
+}
+
+// distinctLanguages returns the set of source languages across the given
+// repo-relative module paths. Used to decide KindPolyglot vs KindMulti. It
+// probes by source-file extension (shallow) rather than the root-manifest-only
+// Stack(), so a Python service whose only signal is nested *.py files still
+// counts.
+func distinctLanguages(repo string, modules map[string]struct{}) map[string]struct{} {
+	langs := map[string]struct{}{}
+	for rel := range modules {
+		moduleLanguages(filepath.Join(repo, rel), 2, langs)
+	}
+	return langs
+}
+
+// extLanguage maps a (lower-cased) extension to a coarse language label for
+// polyglot classification.
+var extLanguage = map[string]string{
+	".py": "python", ".pyi": "python", ".pyw": "python",
+	".go":  "go",
+	".js":  "node", ".jsx": "node", ".mjs": "node", ".cjs": "node",
+	".ts":  "node", ".tsx": "node", ".mts": "node", ".cts": "node",
+	".java": "jvm", ".kt": "jvm", ".kts": "jvm", ".scala": "jvm",
+	".rb":  "ruby",
+	".php": "php",
+	".rs":  "rust",
+	".cs":  "dotnet",
+	".swift": "swift",
+	".ex": "elixir", ".exs": "elixir",
+	".dart": "dart",
+	".c": "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp",
+}
+
+// moduleLanguages adds the languages found in dir (up to maxDepth) into langs.
+func moduleLanguages(dir string, maxDepth int, langs map[string]struct{}) {
+	if maxDepth < 0 {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			if !isIgnoredDir(e.Name()) {
+				moduleLanguages(filepath.Join(dir, e.Name()), maxDepth-1, langs)
+			}
+			continue
+		}
+		if l, ok := extLanguage[strings.ToLower(filepath.Ext(e.Name()))]; ok {
+			langs[l] = struct{}{}
+		}
+	}
+}
+
+func isContainer(name string) bool {
+	for _, c := range containerDirs {
+		if c == name {
+			return true
+		}
+	}
+	return false
+}
+
+// isIgnoredDir skips dot-dirs and well-known non-source directories so the
+// scan never surfaces node_modules/vendor/.git as "modules".
+func isIgnoredDir(name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	switch name {
+	case "node_modules", "vendor", "target", "build", "dist", "out",
+		"__pycache__", ".venv", "venv", "bin", "obj", "tmp",
+		"contracts", "infra", "docs", "deploy", "scripts", "test", "tests",
+		"testdata", "fixtures", "examples", "third_party":
+		return true
+	}
+	return false
+}
+
+// isModuleDir reports whether dir is a source module: it has an ecosystem
+// manifest OR contains source files in a supported language (scanned shallowly,
+// up to ~2 levels deep — enough to catch services/orders/app/db.py).
+func isModuleDir(dir string) bool {
+	if hasEcosystemManifest(dir) {
+		return true
+	}
+	return hasSourceFiles(dir, 2)
+}
+
+// hasEcosystemManifest reports whether dir contains any per-package manifest.
+func hasEcosystemManifest(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		for _, m := range ecosystemManifests {
+			if m == "*.csproj" {
+				if strings.HasSuffix(name, ".csproj") {
+					return true
+				}
+				continue
+			}
+			if name == m {
+				return true
 			}
 		}
 	}
-	return Monorepo{Kind: KindNone}, nil
+	return false
+}
+
+// hasSourceFiles reports whether dir (or a subdir within maxDepth) contains at
+// least one supported source file. It stops at the first hit and skips ignored
+// directories so it stays cheap on large trees.
+func hasSourceFiles(dir string, maxDepth int) bool {
+	if maxDepth < 0 {
+		return false
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	var subdirs []string
+	for _, e := range entries {
+		if e.IsDir() {
+			if !isIgnoredDir(e.Name()) {
+				subdirs = append(subdirs, e.Name())
+			}
+			continue
+		}
+		if _, ok := sourceExts[strings.ToLower(filepath.Ext(e.Name()))]; ok {
+			return true
+		}
+	}
+	for _, sd := range subdirs {
+		if hasSourceFiles(filepath.Join(dir, sd), maxDepth-1) {
+			return true
+		}
+	}
+	return false
 }
 
 func exists(dir, name string) bool {

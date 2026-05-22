@@ -379,6 +379,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			side := &graph.GraphStatsSidecar{
 				Version:            1,
 				ComputedAt:         deterministicGeneratedAt(),
+				TotalFiles:         doc.Stats.Files,
 				TotalEntities:      doc.Stats.Entities,
 				TotalRelationships: doc.Stats.Relationships,
 				Communities:        doc.AlgorithmStats.NumCommunities,

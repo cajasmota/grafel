@@ -74,7 +74,7 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 			if json.Unmarshal(data, &side) == nil {
 				rs.Entities = side.TotalEntities
 				rs.Relationships = side.TotalRelationships
-				rs.Files = side.TotalEntities // Placeholder — graph-stats doesn't track files
+				rs.Files = side.TotalFiles // real indexed file count (#1559)
 				if !side.ComputedAt.IsZero() {
 					rs.LastIndexed = side.ComputedAt
 					rs.LastIndexedAge = formatTimeSince(side.ComputedAt)

@@ -105,6 +105,7 @@ func RelationshipID(fromID, toID, kind string) string {
 type GraphStatsSidecar struct {
 	Version            int       `json:"version"`
 	ComputedAt         time.Time `json:"computed_at"`
+	TotalFiles         int       `json:"total_files,omitempty"`
 	TotalEntities      int       `json:"total_entities"`
 	TotalRelationships int       `json:"total_relationships"`
 	Communities        int       `json:"communities"`
