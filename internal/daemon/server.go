@@ -213,12 +213,33 @@ func Run(ctx context.Context, cfg Config) error {
 		} else {
 			svc.watcher = watcher
 			defer watcher.Stop()
+			// #1456: subscribe repos OFF the critical boot path. Each
+			// AddRepo recursively walks the repo tree and issues an
+			// fsnotify (kqueue/inotify) Add per directory. On a grown
+			// multi-repo fixture this is thousands of filesystem syscalls,
+			// and a single stalled stat/Add (slow mount, FD pressure,
+			// firmlink/snapshot dir, kqueue contention from sibling watch
+			// processes) used to block Run() before it ever bound the RPC
+			// socket or dashboard — the daemon would sit at 0% CPU and
+			// never serve. Live boot logs showed 10/328 boots stalling here
+			// between "scheduler: RSS-budget" and "pattern decay started",
+			// having registered 0–3 of 27 repos. Doing the walk in a
+			// goroutine lets boot reach "ready" + acceptLoop promptly; the
+			// graph is served from the on-disk .fb regardless, and reactive
+			// reindex simply becomes live once each repo finishes
+			// subscribing.
 			if cfg.ReposToWatch != nil {
-				for _, r := range cfg.ReposToWatch() {
-					if _, err := watcher.AddRepo(r); err != nil {
-						logger.Printf("watcher: add repo %s: %v", r, err)
+				go func() {
+					t0 := time.Now()
+					repos := cfg.ReposToWatch()
+					for _, r := range repos {
+						if _, err := watcher.AddRepo(r); err != nil {
+							logger.Printf("watcher: add repo %s: %v", r, err)
+						}
 					}
-				}
+					logger.Printf("watcher: subscription complete repos=%d took=%s",
+						len(repos), time.Since(t0).Truncate(time.Millisecond))
+				}()
 			}
 			if cfg.OnWatcherReady != nil {
 				cfg.OnWatcherReady(watcher)
