@@ -18,9 +18,9 @@
 //     and handleSearchEntities. It calls expandKindAlias so those tools gain
 //     alias support without further changes.
 //   - Three new focused tools:
-//       archigraph_endpoint_definitions — list definition-side entities only
-//       archigraph_endpoint_calls       — list call-site entities only
-//       archigraph_endpoint_stats       — counts of each kind + orphan summary
+//     archigraph_endpoint_definitions — list definition-side entities only
+//     archigraph_endpoint_calls       — list call-site entities only
+//     archigraph_endpoint_stats       — counts of each kind + orphan summary
 //
 // Migration path (for agents and external callers)
 //
@@ -212,15 +212,15 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		return out[i].Name < out[j].Name
 	})
 	total := len(out)
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
-	}
+	offset := argInt(req, "offset", 0)
+	out = pageSlice(out, offset, limit)
 	return jsonResult(map[string]any{
 		"definitions": out,
 		"count":       len(out),
 		"total":       total,
-		"truncated":   total > len(out),
-		"note":        "http_endpoint kind is deprecated; prefer http_endpoint_definition for handler/route entities.",
+		"offset":      offset,
+		"truncated":   offset+len(out) < total,
+		"note":        "http_endpoint kind is deprecated; prefer http_endpoint_definition for handler/route entities. Page with offset+limit to enumerate all paths.",
 	}), nil
 }
 
@@ -260,17 +260,17 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 	}
 
 	type item struct {
-		EntityID         string            `json:"entity_id"`
-		Name             string            `json:"name"`
-		Kind             string            `json:"kind"`
-		Repo             string            `json:"repo"`
-		SourceFile       string            `json:"source_file,omitempty"`
-		StartLine        int               `json:"start_line,omitempty"`
-		Method           string            `json:"method,omitempty"`
-		Path             string            `json:"path,omitempty"`
-		MatchedDefinition string           `json:"matched_definition,omitempty"`
-		OrphanHint       string            `json:"orphan_hint,omitempty"`
-		Properties       map[string]string `json:"properties,omitempty"`
+		EntityID          string            `json:"entity_id"`
+		Name              string            `json:"name"`
+		Kind              string            `json:"kind"`
+		Repo              string            `json:"repo"`
+		SourceFile        string            `json:"source_file,omitempty"`
+		StartLine         int               `json:"start_line,omitempty"`
+		Method            string            `json:"method,omitempty"`
+		Path              string            `json:"path,omitempty"`
+		MatchedDefinition string            `json:"matched_definition,omitempty"`
+		OrphanHint        string            `json:"orphan_hint,omitempty"`
+		Properties        map[string]string `json:"properties,omitempty"`
 	}
 
 	// Build FETCHES edge map: callerID → toID (definition target).
@@ -375,16 +375,32 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 	})
 
 	total := len(out)
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
-	}
+	offset := argInt(req, "offset", 0)
+	out = pageSlice(out, offset, limit)
 	return jsonResult(map[string]any{
 		"calls":     out,
 		"count":     len(out),
 		"total":     total,
-		"truncated": total > len(out),
-		"note":      "http_endpoint kind is deprecated; prefer http_endpoint_call for consumer-side call-site entities.",
+		"offset":    offset,
+		"truncated": offset+len(out) < total,
+		"note":      "http_endpoint kind is deprecated; prefer http_endpoint_call for consumer-side call-site entities. Page with offset+limit to enumerate all call-site paths.",
 	}), nil
+}
+
+// pageSlice returns the [offset, offset+limit) window of s, clamped to bounds.
+// A limit<=0 means "no limit" (return everything from offset onward).
+func pageSlice[T any](s []T, offset, limit int) []T {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(s) {
+		return s[:0]
+	}
+	s = s[offset:]
+	if limit > 0 && len(s) > limit {
+		s = s[:limit]
+	}
+	return s
 }
 
 // ---------------------------------------------------------------------------
@@ -487,8 +503,8 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			"legacy_kind":  totalLegacy,
 			"orphan_calls": totalOrphans,
 		},
-		"per_repo":  perRepo,
-		"migrated":  migrated,
-		"note":      note,
+		"per_repo": perRepo,
+		"migrated": migrated,
+		"note":     note,
 	}), nil
 }

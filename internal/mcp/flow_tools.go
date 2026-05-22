@@ -107,6 +107,13 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 			if e == nil {
 				continue
 			}
+			// #1614: drop file/module CONTAINER components and inferred
+			// shadows. Callers should be operation/component-level referencers,
+			// not the synthetic file node that "contains" the call. (q02/q03/q10)
+			switch classifyNoise(e) {
+			case noiseContainer, noiseShadow:
+				continue
+			}
 			callers = append(callers, caller{
 				EntityID:   prefixedID(r.Repo, e.ID),
 				Name:       e.Name,
