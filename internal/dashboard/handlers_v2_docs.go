@@ -45,6 +45,12 @@ import (
 type v2DocsTreeReply struct {
 	SkillGenerated bool        `json:"skillGenerated"`
 	Nodes          []v2DocNode `json:"nodes"`
+	// BusinessNodes holds the SEPARATE, non-per-repo business documentation
+	// set (capabilities / domain / user-journeys / business-rules) when the
+	// docs skill has produced it under a `business/` doc set. Empty when no
+	// business docs exist — the UI then shows a business onboarding state.
+	// See #1622 (chooser) + #1623 (business-docs skill).
+	BusinessNodes []v2DocNode `json:"businessNodes"`
 }
 
 // v2DocNode is one node in the generated-docs file tree. It mirrors the
@@ -92,6 +98,7 @@ func (s *Server) handleV2DocsTree(w http.ResponseWriter, r *http.Request) {
 	}
 
 	roots := []v2DocNode{}
+	businessRoots := []v2DocNode{}
 	skillGenerated := false
 
 	// Deterministic repo order.
@@ -113,14 +120,28 @@ func (s *Server) handleV2DocsTree(w http.ResponseWriter, r *http.Request) {
 		if isSkill {
 			skillGenerated = true
 		}
+		// TECHNICAL tree: the per-repo doc tree, excluding the business/ set.
 		repoNode := buildV2DocTree(docPath, slug)
 		repoNode.IsRepoDocs = !isSkill
 		if len(repoNode.Children) > 0 {
 			roots = append(roots, repoNode)
 		}
+		// BUSINESS docs: a dedicated `business/` set under the repo's docs
+		// dir, surfaced in a SEPARATE, non-per-repo view. See #1622/#1623.
+		bizDir := filepath.Join(docPath, "business")
+		if info, err := os.Stat(bizDir); err == nil && info.IsDir() {
+			bizNode := buildV2BusinessTree(docPath, bizDir, slug)
+			if len(bizNode.Children) > 0 {
+				businessRoots = append(businessRoots, bizNode)
+			}
+		}
 	}
 
-	writeV2JSON(w, http.StatusOK, v2OK(v2DocsTreeReply{SkillGenerated: skillGenerated, Nodes: roots}))
+	writeV2JSON(w, http.StatusOK, v2OK(v2DocsTreeReply{
+		SkillGenerated: skillGenerated,
+		Nodes:          roots,
+		BusinessNodes:  businessRoots,
+	}))
 }
 
 // handleV2DocsPage — GET /api/v2/groups/{group}/docs/page?path=<repoSlug/rel/path.md>
@@ -264,9 +285,15 @@ func buildV2DocTree(docRoot, repoSlug string) v2DocNode {
 		if rerr != nil {
 			return nil
 		}
+		relSlash := filepath.ToSlash(rel)
 		// Skip enrichment frontmatter files — they back the graph surfaces,
 		// not the human-readable docs portal.
-		if strings.HasPrefix(filepath.ToSlash(rel), "enrichments/") {
+		if strings.HasPrefix(relSlash, "enrichments/") {
+			return nil
+		}
+		// Skip the business/ doc set — it is surfaced separately in the
+		// Business documentation view, not the technical per-repo tree.
+		if strings.HasPrefix(relSlash, "business/") {
 			return nil
 		}
 		catName, catKey := docCategory(rel)
@@ -309,6 +336,47 @@ func buildV2DocTree(docRoot, repoSlug string) v2DocNode {
 			})
 		}
 		repoNode.Children = append(repoNode.Children, catNode)
+	}
+	return repoNode
+}
+
+// buildV2BusinessTree walks the `business/` doc set under a repo and produces a
+// flat per-repo node whose doc keys remain rooted at the repo docs dir
+// (repoSlug + "/business/" + rel) so the page endpoint resolves them. Business
+// docs are NOT grouped by the technical categories; they are listed by file.
+func buildV2BusinessTree(docRoot, bizDir, repoSlug string) v2DocNode {
+	type docFile struct{ rel string }
+	var files []docFile
+
+	_ = filepath.Walk(bizDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		name := info.Name()
+		if strings.HasPrefix(name, ".") {
+			return nil
+		}
+		if !strings.EqualFold(filepath.Ext(name), ".md") {
+			return nil
+		}
+		// rel is rooted at docRoot so the key is "<slug>/business/<...>".
+		rel, rerr := filepath.Rel(docRoot, path)
+		if rerr != nil {
+			return nil
+		}
+		files = append(files, docFile{rel: filepath.ToSlash(rel)})
+		return nil
+	})
+
+	sort.Slice(files, func(i, j int) bool { return files[i].rel < files[j].rel })
+
+	repoNode := v2DocNode{Type: "folder", Name: repoSlug}
+	for _, f := range files {
+		repoNode.Children = append(repoNode.Children, v2DocNode{
+			Type: "doc",
+			Name: docLabel(f.rel),
+			Path: repoSlug + "/" + f.rel,
+		})
 	}
 	return repoNode
 }

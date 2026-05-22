@@ -13,6 +13,24 @@
    ============================================================ */
 
 import { Fragment, type ReactNode } from "react";
+import { Mermaid } from "./mermaid";
+
+// ── Pre-processing ───────────────────────────────────────────────────────────
+
+/**
+ * Strip ALL HTML comments from markdown before rendering.
+ *
+ * The generate-docs skill emits region/idempotency markers as HTML comments:
+ *   <!-- docs:auto -->
+ *   <!-- auto:start id=patterns -->
+ *   <!-- auto:end -->
+ * These are machine markers, never human content. The dependency-free renderer
+ * does not parse HTML, so without this strip they leak through as literal text.
+ * Handles multi-line comments too (the `s`-style [\s\S] match).
+ */
+export function stripHtmlComments(src: string): string {
+  return src.replace(/<!--[\s\S]*?-->/g, "");
+}
 
 // ── Inline parsing ─────────────────────────────────────────────────────────
 
@@ -106,7 +124,9 @@ function renderEmphasis(text: string, keyPrefix: string): ReactNode[] {
 // ── Block parsing ────────────────────────────────────────────────────────────
 
 export function Markdown({ source }: { source: string }) {
-  const lines = source.replace(/\r\n/g, "\n").split("\n");
+  // Strip docs-skill region/idempotency HTML-comment markers before parsing —
+  // they are never content (P0: literal `<!-- auto:* -->` leak).
+  const lines = stripHtmlComments(source).replace(/\r\n/g, "\n").split("\n");
   const blocks: ReactNode[] = [];
   let i = 0;
   let key = 0;
@@ -125,6 +145,12 @@ export function Markdown({ source }: { source: string }) {
         i++;
       }
       i++; // skip closing fence
+      // Mermaid fenced block → render as an actual diagram (P0). On parse/
+      // render failure the Mermaid component falls back to a labeled code block.
+      if (lang.toLowerCase() === "mermaid") {
+        blocks.push(<Mermaid key={nextKey()} code={buf.join("\n")} />);
+        continue;
+      }
       blocks.push(
         <pre
           key={nextKey()}

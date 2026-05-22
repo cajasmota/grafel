@@ -16,8 +16,10 @@ import type { DocNode, DocPage } from "@/data/types";
 export interface DocsTreeResult {
   /** Whether the generate-docs skill has run for this group. */
   skillGenerated: boolean;
-  /** Per-repo tree of documents. */
+  /** Per-repo tree of TECHNICAL documents. */
   nodes: DocNode[];
+  /** Separate, non-per-repo BUSINESS documentation set (#1622/#1623). */
+  businessNodes: DocNode[];
 }
 
 export function useDocsTree(groupId: string) {
@@ -25,10 +27,14 @@ export function useDocsTree(groupId: string) {
     queryKey: ["docs-tree", groupId],
     queryFn: async () => {
       const res = await api.getDocsTree(groupId);
-      return { skillGenerated: res.skillGenerated, nodes: res.nodes };
+      return {
+        skillGenerated: res.skillGenerated,
+        nodes: res.nodes,
+        businessNodes: res.businessNodes ?? [],
+      };
     },
     staleTime: 30_000,
-    placeholderData: { skillGenerated: false, nodes: [] },
+    placeholderData: { skillGenerated: false, nodes: [], businessNodes: [] },
   });
 }
 

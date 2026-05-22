@@ -219,6 +219,12 @@ export interface DocPage {
 export interface DocsTreeResponse {
   skillGenerated: boolean;
   nodes: DocNode[];
+  /**
+   * Separate, non-per-repo BUSINESS documentation set (capabilities, domain /
+   * glossary, user journeys, business rules), surfaced under the Business
+   * documentation view. Empty when no business docs exist. See #1622/#1623.
+   */
+  businessNodes?: DocNode[];
 }
 
 // ----------------------------------------------------------------
