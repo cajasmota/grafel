@@ -150,6 +150,13 @@ type Indexer struct {
 	// used by buildDocument to derive Properties["module"] for every entity.
 	// Issue #1381 — module extraction via path rollup.
 	moduleMarkers module.MarkerSet
+
+	// singleModuleLabel, when non-empty, forces every entity in this repo into
+	// ONE module row instead of the per-directory path rollup. It is set for
+	// PLAIN (non-monorepo) repos so the per-module progress + Group-by-Module
+	// graph treat the repo as a single unit (issue #1628). For TRUE monorepos
+	// it stays empty and module.Derive's per-package rollup applies.
+	singleModuleLabel string
 }
 
 // IndexOption configures optional behaviour on the Indexer. Used as a
@@ -354,6 +361,29 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		}
 		// If no previous graph exists (first run) or it cannot be loaded,
 		// we simply skip rename detection — this is not an error.
+	}
+
+	// Carry-forward of Pass-4 community/algorithm attributes (#1620).
+	//
+	// The daemon's fast reactive re-index runs with --skip-pass=graph-algo so
+	// a freshly-saved file becomes queryable within seconds; the full algo
+	// pass is debounced and may be cancel/rescheduled by subsequent writes. If
+	// we wrote graph.fb with empty community data here, the live graph would be
+	// left community-free between the fast index and the (possibly never-firing)
+	// algo pass — archigraph_clusters would return [] and the docs skill would
+	// fall back to dir-derived modules.
+	//
+	// To avoid that, when the algo pass is skipped we copy the prior graph's
+	// per-entity community_id/pagerank/centrality/flags (matched by stable
+	// entity ID) plus the aggregate Communities list and AlgorithmStats onto
+	// the freshly-built doc. New entities (no prior match) simply stay
+	// un-annotated until the next full algo pass runs — never worse than the
+	// pre-fix behaviour where ALL entities lost their community.
+	if skipSet[PassGraphAlgo] {
+		stateDir := filepath.Dir(outPath)
+		if prevDoc, perr := graph.LoadGraphFromDir(stateDir); perr == nil && prevDoc != nil {
+			carryForwardAlgoAttrs(doc, prevDoc)
+		}
 	}
 
 	if !skipSet[PassBuildDocument] {
@@ -591,13 +621,33 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// the whole repo. Non-monorepos get no resolver (Module stays empty → the
 	// UI falls back to a single per-repo row). The resolver is pure + stateless,
 	// so it is safe to call from the concurrent extraction workers.
-	if mono, err := detect.DetectMonorepo(absRepo); err == nil && len(mono.Packages) > 1 {
+	//
+	// Issue #1628 — only TRUE monorepos (a workspace manifest or a real
+	// container/multi-package layout) get a per-module breakdown. A PLAIN repo
+	// (DetectMonorepo → KindNone) is indexed as a SINGLE unit: we install a
+	// resolver that maps every file to one per-repo label, and stamp that same
+	// label as Properties["module"] so the Group-by-Module graph does not
+	// fragment a plain repo by its top-level directories.
+	mono, derr := detect.DetectMonorepo(absRepo)
+	isMonorepo := derr == nil && mono.Kind != detect.KindNone && len(mono.Packages) > 1
+	if isMonorepo {
 		pkgRoots := make([]string, len(mono.Packages))
 		copy(pkgRoots, mono.Packages)
 		markers := i.moduleMarkers
 		trk.SetModuleResolver(func(currentFile string) string {
 			return moduleForFile(currentFile, pkgRoots, markers)
 		})
+	} else {
+		// Plain repo → one module row for the whole repo.
+		label := repoSlug
+		if label == "" {
+			label = i.repoTag
+		}
+		if label == "" {
+			label = "_repo"
+		}
+		i.singleModuleLabel = label
+		trk.SetModuleResolver(func(string) string { return label })
 	}
 
 	// Incremental mode (issue #1339): filter files down to those whose
@@ -770,6 +820,31 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			fmt.Fprintf(os.Stderr, "archigraph: django_admin_synthetic=%d entities\n", len(adminEntities))
 		}
 		pass3Records = append(pass3Records, adminEntities...)
+
+		// Pass 2.6e — Celery cross-file dispatch edges (#1617). The per-file
+		// scheduled-job pass only links `task.delay()` call sites that share a
+		// file with the @shared_task definition. This repo-wide pass resolves
+		// dispatch sites across files (tasks/ ← views/ ← signals/ ← services/)
+		// and emits CALLS edges so find_callees / find_callers on a task and
+		// the flows view show task dispatch. Append-only.
+		celeryDispatchRels := runCeleryDispatchEdges(classified)
+		if len(celeryDispatchRels) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: celery_dispatch_edges=%d\n", len(celeryDispatchRels))
+		}
+		pass2Rels = append(pass2Rels, celeryDispatchRels...)
+
+		// Pass 2.6f — Django custom-signal pub/sub edges (#1617). Models each
+		// `sig = Signal()` custom signal as a SCOPE.MessageTopic, with
+		// SUBSCRIBES_TO from every @receiver(sig) handler and PUBLISHES_TO from
+		// every sig.send()/send_robust() caller, so the signal dispatch surfaces
+		// as a publisher → signal → handler diagram in /topology and /flows.
+		signalEnts, signalRels := runDjangoSignalPubSub(classified)
+		if len(signalEnts) > 0 || len(signalRels) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: django_signal_pubsub=%d topics %d edges\n",
+				len(signalEnts), len(signalRels))
+		}
+		pass3Records = append(pass3Records, signalEnts...)
+		pass2Rels = append(pass2Rels, signalRels...)
 	}
 
 	// Pass 2.6 — Java JAX-RS / Spring MVC annotation route composition.
@@ -1476,6 +1551,58 @@ func printRelBreakdown(w *os.File, counts map[string]int, label string) {
 	fmt.Fprintf(w, "archigraph: %s_rels_by_source: %s\n", label, strings.Join(parts, " "))
 }
 
+// carryForwardAlgoAttrs copies Pass-4 community/algorithm output from a
+// previously-indexed graph (prev) onto a freshly-built graph (cur) whose
+// algo pass was skipped (#1620). Per-entity attributes are matched by stable
+// entity ID; the aggregate Communities list and AlgorithmStats are copied
+// wholesale. Entities present in cur but not prev (newly added since the last
+// full index) are left un-annotated until the next full algo pass runs.
+//
+// This is what keeps the daemon's fast reactive re-index from stripping the
+// live graph community-free: instead of overwriting graph.fb with empty algo
+// data, the fast path preserves the last-known communities.
+func carryForwardAlgoAttrs(cur, prev *graph.Document) {
+	if cur == nil || prev == nil || len(prev.Entities) == 0 {
+		return
+	}
+	// Index prior entities by ID for O(1) lookup of their algo attributes.
+	prevByID := make(map[string]*graph.Entity, len(prev.Entities))
+	for i := range prev.Entities {
+		prevByID[prev.Entities[i].ID] = &prev.Entities[i]
+	}
+	for k := range cur.Entities {
+		e := &cur.Entities[k]
+		p, ok := prevByID[e.ID]
+		if !ok {
+			continue
+		}
+		if p.CommunityID != nil {
+			cid := *p.CommunityID
+			e.CommunityID = &cid
+		}
+		if p.Centrality != nil {
+			c := *p.Centrality
+			e.Centrality = &c
+		}
+		if p.PageRank != nil {
+			pr := *p.PageRank
+			e.PageRank = &pr
+		}
+		e.IsGodNode = p.IsGodNode
+		e.IsSurpriseEndpoint = p.IsSurpriseEndpoint
+		e.IsArticulationPt = p.IsArticulationPt
+	}
+	// Carry the aggregate community list + corpus stats forward so
+	// archigraph_clusters and the graph Community view keep working between
+	// full algo passes.
+	cur.Communities = prev.Communities
+	cur.SurpriseEdges = prev.SurpriseEdges
+	if prev.AlgorithmStats != nil {
+		as := *prev.AlgorithmStats
+		cur.AlgorithmStats = &as
+	}
+}
+
 // runPass4Algorithms executes the gonum-backed graph-algorithm sweep against
 // the deduped entity set inside doc. Per-entity attributes (community_id,
 // centrality, pagerank, is_*-flags) are attached in place; corpus aggregates
@@ -2041,7 +2168,68 @@ func runDjangoAdminRoutes(classified []classifiedFile) []types.EntityRecord {
 	reader := func(relPath string) []byte {
 		return contentByPath[relPath]
 	}
-	return engine.ApplyDjangoAdminRoutes(pyPaths, reader)
+	all := engine.ApplyDjangoAdminRoutes(pyPaths, reader)
+
+	// #1617 — drop the Django admin CRUD scaffolding endpoints. The synthesis
+	// pass tags every framework-generated route (changelist/add/change/delete/
+	// history/login/logout/…) with scaffolding="true"; only project-authored
+	// custom actions and get_urls() overrides carry scaffolding="false". The
+	// scaffolding family (88 on upvate, 11.6% of all defs) has no inbound
+	// architectural signal and swamps the real endpoint surface, so we exclude
+	// it from the graph here.
+	kept := all[:0]
+	for _, e := range all {
+		if e.Properties != nil && e.Properties["scaffolding"] == "true" {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if dropped := len(all) - len(kept); dropped > 0 {
+		fmt.Fprintf(os.Stderr, "archigraph: django_admin_scaffolding_pruned=%d endpoints\n", dropped)
+	}
+	return kept
+}
+
+// runCeleryDispatchEdges runs the repo-wide Celery cross-file dispatch pass
+// (#1617). Collects every @shared_task / @app.task definition across the repo
+// and emits a CALLS edge from each `task.delay()` / `.apply_async()` / `.s()`
+// call site's enclosing function to the task definition.
+func runCeleryDispatchEdges(classified []classifiedFile) []types.RelationshipRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte { return contentByPath[relPath] }
+	return engine.ApplyCeleryDispatchEdges(pyPaths, reader)
+}
+
+// runDjangoSignalPubSub runs the repo-wide Django custom-signal pub/sub pass
+// (#1617). Models each `sig = Signal()` as a SCOPE.MessageTopic with
+// SUBSCRIBES_TO from @receiver(sig) handlers and PUBLISHES_TO from sig.send()
+// callers.
+func runDjangoSignalPubSub(classified []classifiedFile) ([]types.EntityRecord, []types.RelationshipRecord) {
+	if len(classified) == 0 {
+		return nil, nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte { return contentByPath[relPath] }
+	return engine.ApplyDjangoSignalPubSub(pyPaths, reader)
 }
 
 // runDjangoCBVRoutes runs the Django CBV generic-method resolution pass
@@ -2108,6 +2296,292 @@ func (i *Indexer) buildPatternContainsRels(records []types.EntityRecord) []types
 		})
 	}
 	return out
+}
+
+// foldShadowStats reports the result of foldClassHierarchyShadows for the
+// stderr log line.
+type foldShadowStats struct {
+	// ShadowsFolded is the number of INFERRED_FROM_CLASS_HIERARCHY shadows
+	// dropped because a real typed node existed for the same source+symbol.
+	ShadowsFolded int
+	// EdgesRepointed is the number of edge endpoints (FromID/ToID, embedded
+	// or standalone) rewritten from a folded shadow's ID to its survivor.
+	EdgesRepointed int
+	// ShadowsBackfilled is the number of shadows that survived (no real typed
+	// node) and now carry a real start_line (>0) from the extractor.
+	ShadowsBackfilled int
+	// ShadowsStillLine0 is the residual count of surviving shadows that still
+	// have start_line==0 (regex could not anchor a line — should be ~0).
+	ShadowsStillLine0 int
+}
+
+// frameworkClassKindPriority ranks framework-typed node kinds by how strongly
+// they represent a class/type *declaration* (vs a nested artifact that merely
+// shares the class name, e.g. a Django Meta `Constraint`). These are the only
+// kinds eligible to be a fold *survivor*. When several share a fold source's
+// source_file+name, the highest-priority kind wins. Higher value = stronger
+// class signal. SCOPE.Component is intentionally absent: it is the generic AST
+// node we fold AWAY into a framework-typed survivor (so a class with a View
+// resolves to ONE node), and it is itself the survivor only when no
+// framework-typed node exists (handled separately, never as a candidate here).
+var frameworkClassKindPriority = map[string]int{
+	"Model":          100,
+	"View":           100,
+	"Controller":     100,
+	"Service":        100,
+	"Middleware":     100,
+	"Repository":     100,
+	"TestClass":      90,
+	"Schema":         80,
+	"Plugin":         80,
+	"Implementation": 80,
+	"Interface":      80,
+	"Task":           70,
+}
+
+func isShadowRecord(r *types.EntityRecord) bool {
+	return r.Properties["provenance"] == "INFERRED_FROM_CLASS_HIERARCHY"
+}
+
+// classLikeComponentSubtypes are the SCOPE.Component subtypes that denote a
+// class/type declaration (as opposed to subtype="file"/"import"/"module").
+var classLikeComponentSubtypes = map[string]bool{
+	"class": true, "struct": true, "interface": true,
+	"protocol": true, "trait": true, "behaviour": true,
+}
+
+// isFoldSource reports whether r is a class-representation node that should be
+// folded into a framework-typed node when one exists for the same symbol:
+//   - the INFERRED_FROM_CLASS_HIERARCHY shadow emitted by the hierarchy pass, OR
+//   - the generic SCOPE.Component class node emitted by the per-language AST
+//     extractor (these two share an EntityID and pre-merge at assembly).
+//
+// When NO framework-typed node exists, a fold source is kept as the single
+// node for that class (it already carries a real line from its extractor).
+func isFoldSource(r *types.EntityRecord) bool {
+	if r.Name == "" {
+		return false
+	}
+	if isShadowRecord(r) {
+		return true
+	}
+	return r.Kind == "SCOPE.Component" && classLikeComponentSubtypes[r.Subtype]
+}
+
+// foldClassHierarchyShadows folds line-less / generic class nodes into the real
+// framework-typed node (View/Model/Controller/…) for the same source_file +
+// symbol when one exists, so every class resolves to ONE node with a real line
+// span + qualified_name. Issue #1613.
+//
+// Fold sources (see isFoldSource): the INFERRED_FROM_CLASS_HIERARCHY shadow and
+// the generic SCOPE.Component/class AST node. For each:
+//   - If a framework-typed node (see frameworkClassKindPriority) exists for the
+//     same (SourceFile, Name): DROP the source and remap its stamped ID to the
+//     survivor. The survivor keeps its real start_line/end_line/qualified_name/
+//     language; any property the source carried that the survivor lacks (e.g.
+//     is_abstract) is copied over.
+//   - Otherwise the source SURVIVES as the single node for that class — the
+//     extractor already stamped a real start_line (+ qualified_name for Python).
+//
+// After deciding folds, every edge endpoint (embedded EntityRecord.Relationships
+// across ALL records, plus the standalone pass2Rels stream) that points at a
+// folded source's ID is rewritten to the survivor's ID. Embedded edges OWNED by
+// a folded source (those it emitted) are re-homed onto the survivor record so
+// they are still surfaced at assembly time. Edges are never dropped.
+//
+// Runs after stampEntityIDs + the resolver passes so r.ID is populated and
+// embedded rel endpoints are already in hex-ID form where resolvable.
+func (i *Indexer) foldClassHierarchyShadows(
+	merged []types.EntityRecord,
+	pass2Rels []types.RelationshipRecord,
+) ([]types.EntityRecord, []types.RelationshipRecord, foldShadowStats) {
+	var stats foldShadowStats
+
+	// Index framework-typed survivor candidates by (SourceFile, Name).
+	type cand struct {
+		idx int
+		id  string
+		pri int
+		ln  int
+	}
+	bySymbol := make(map[[2]string][]cand)
+	for k := range merged {
+		r := &merged[k]
+		if r.Name == "" {
+			continue
+		}
+		pri, ok := frameworkClassKindPriority[r.Kind]
+		if !ok {
+			continue
+		}
+		key := [2]string{r.SourceFile, r.Name}
+		bySymbol[key] = append(bySymbol[key], cand{idx: k, id: r.ID, pri: pri, ln: r.StartLine})
+	}
+
+	// Index non-shadow records by stamped ID so a surviving shadow can detect a
+	// sibling AST SCOPE.Component node (same ID) to defer to (#1613): the shadow
+	// and the per-language AST class node share an EntityID, so only one is
+	// emitted at assembly. We want the AST node (real coordinates, no inference
+	// provenance) to win, and we strip the now-misleading shadow provenance from
+	// any shadow that survives with real coordinates.
+	nonShadowByID := make(map[string]bool)
+	for k := range merged {
+		r := &merged[k]
+		if r.ID != "" && !isShadowRecord(r) {
+			nonShadowByID[r.ID] = true
+		}
+	}
+
+	// remap: folded source ID -> survivor ID.
+	remap := make(map[string]string)
+	drop := make(map[int]bool)
+
+	for k := range merged {
+		r := &merged[k]
+		if !isFoldSource(r) {
+			continue
+		}
+		cands := bySymbol[[2]string{r.SourceFile, r.Name}]
+		if len(cands) == 0 {
+			// No framework-typed survivor — this node IS the single class node.
+			if isShadowRecord(r) {
+				// If a sibling AST SCOPE.Component node (same ID) exists, drop
+				// the shadow and let the AST node carry the class (it has real
+				// coordinates and no inference provenance). Otherwise the shadow
+				// is the only node: keep it, but strip the now-misleading
+				// INFERRED_FROM_CLASS_HIERARCHY provenance since it points at
+				// real source (start_line>0). Record residual stats.
+				if nonShadowByID[r.ID] {
+					drop[k] = true
+					stats.ShadowsFolded++
+					// Re-home edges the shadow owns onto the standalone stream
+					// with an explicit FromID (== the shared ID the AST sibling
+					// also uses) so they are not lost when this record is dropped.
+					for ri := range r.Relationships {
+						rel := r.Relationships[ri]
+						if rel.FromID == "" {
+							rel.FromID = r.ID
+						}
+						pass2Rels = append(pass2Rels, rel)
+					}
+					r.Relationships = nil
+					continue
+				}
+				if r.StartLine > 0 {
+					stats.ShadowsBackfilled++
+					delete(r.Properties, "provenance")
+				} else {
+					stats.ShadowsStillLine0++
+				}
+			}
+			continue
+		}
+		// Pick the strongest class-like candidate: highest priority, then
+		// smallest start_line (the declaration), then smallest id for stability.
+		best := cands[0]
+		for _, c := range cands[1:] {
+			if c.pri != best.pri {
+				if c.pri > best.pri {
+					best = c
+				}
+				continue
+			}
+			if c.ln != best.ln {
+				// Prefer a real (>0) smaller line; treat 0 as "no line" (worst).
+				switch {
+				case best.ln == 0 && c.ln > 0:
+					best = c
+				case c.ln > 0 && c.ln < best.ln:
+					best = c
+				}
+				continue
+			}
+			if c.id < best.id {
+				best = c
+			}
+		}
+		if best.id == r.ID {
+			// Degenerate (same ID) — leave as-is.
+			continue
+		}
+		drop[k] = true
+		remap[r.ID] = best.id
+		stats.ShadowsFolded++
+
+		// Copy useful properties the survivor lacks (e.g. is_abstract, role).
+		sv := &merged[best.idx]
+		if sv.Properties == nil {
+			sv.Properties = map[string]string{}
+		}
+		for pk, pv := range r.Properties {
+			if pk == "provenance" || pk == "ref" {
+				continue
+			}
+			if _, exists := sv.Properties[pk]; !exists {
+				sv.Properties[pk] = pv
+			}
+		}
+		// Re-home edges the shadow OWNS (emitted on its own record). Their
+		// FromID may be "" (meaning the owner's ID) — bind it to the survivor.
+		for ri := range r.Relationships {
+			rel := r.Relationships[ri]
+			if rel.FromID == "" || rel.FromID == r.ID {
+				rel.FromID = best.id
+			}
+			sv.Relationships = append(sv.Relationships, rel)
+		}
+		r.Relationships = nil
+	}
+
+	if len(remap) == 0 && len(drop) == 0 {
+		return merged, pass2Rels, stats
+	}
+
+	// Re-point every edge endpoint that targets a folded shadow.
+	rewrite := func(id string) (string, bool) {
+		if nv, ok := remap[id]; ok {
+			return nv, true
+		}
+		return id, false
+	}
+	for k := range merged {
+		if drop[k] {
+			continue
+		}
+		r := &merged[k]
+		for ri := range r.Relationships {
+			rel := &r.Relationships[ri]
+			if nv, ok := rewrite(rel.FromID); ok {
+				rel.FromID = nv
+				stats.EdgesRepointed++
+			}
+			if nv, ok := rewrite(rel.ToID); ok {
+				rel.ToID = nv
+				stats.EdgesRepointed++
+			}
+		}
+	}
+	for ri := range pass2Rels {
+		rel := &pass2Rels[ri]
+		if nv, ok := rewrite(rel.FromID); ok {
+			rel.FromID = nv
+			stats.EdgesRepointed++
+		}
+		if nv, ok := rewrite(rel.ToID); ok {
+			rel.ToID = nv
+			stats.EdgesRepointed++
+		}
+	}
+
+	// Compact: drop the folded shadow records.
+	out := merged[:0]
+	for k := range merged {
+		if drop[k] {
+			continue
+		}
+		out = append(out, merged[k])
+	}
+	return out, pass2Rels, stats
 }
 
 // buildDocument merges entity records from every pass, dedupes by stable
@@ -2294,6 +2768,27 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		pass2Rels = append(pass2Rels, pruneOrphanRels...)
 	}
 
+	// #1613 — fold class-hierarchy Component shadows into their real typed
+	// node. The class-hierarchy pass emits every class as a SCOPE.Component
+	// (provenance=INFERRED_FROM_CLASS_HIERARCHY). When a real typed node
+	// (View/Model/Controller/struct/…) already exists for the same
+	// source_file+symbol, that shadow is a line-less duplicate: drop it and
+	// re-point its edges onto the surviving typed node. Shadows with no real
+	// typed node keep their (now real, from the extractor) line span +
+	// qualified_name and survive as the single node for that class.
+	var foldStats foldShadowStats
+	// ARCHIGRAPH_DISABLE_1613_FOLD is a verification escape hatch (compare
+	// folded vs unfolded graphs on the same binary); unset in production.
+	if os.Getenv("ARCHIGRAPH_DISABLE_1613_FOLD") == "" {
+		merged, pass2Rels, foldStats = i.foldClassHierarchyShadows(merged, pass2Rels)
+	}
+	if foldStats.ShadowsFolded > 0 || foldStats.ShadowsBackfilled > 0 {
+		fmt.Fprintf(os.Stderr,
+			"class-shadow-fold: folded=%d (edges_repointed=%d) survived_with_real_lines=%d still_line0=%d\n",
+			foldStats.ShadowsFolded, foldStats.EdgesRepointed,
+			foldStats.ShadowsBackfilled, foldStats.ShadowsStillLine0)
+	}
+
 	entities := make([]graph.Entity, 0, len(merged))
 	relationships := make([]graph.Relationship, 0)
 
@@ -2309,7 +2804,20 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			// assembly time using the deterministic path-rollup algorithm.
 			// EnsureModule is a no-op when the key is already set (extractor
 			// overrides are preserved).
-			r.Properties = module.EnsureModule(r.Properties, r.SourceFile, i.moduleMarkers)
+			//
+			// Issue #1628 — for a PLAIN repo (single-unit mode) force the
+			// per-repo label on every sourced entity so the Group-by-Module
+			// graph shows one node for the repo instead of fragmenting by
+			// top-level directory. Synthetic/sourceless entities are handled
+			// by the _external pass below and are left untouched here.
+			if i.singleModuleLabel != "" && r.SourceFile != "" {
+				if r.Properties == nil {
+					r.Properties = map[string]string{}
+				}
+				r.Properties["module"] = i.singleModuleLabel
+			} else {
+				r.Properties = module.EnsureModule(r.Properties, r.SourceFile, i.moduleMarkers)
+			}
 			entities = append(entities, graph.Entity{
 				ID:            id,
 				Name:          r.Name,

@@ -6,10 +6,14 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/quality"
+	"github.com/cajasmota/archigraph/internal/registry"
 )
 
 // ---------------------------------------------------------------------------
@@ -359,5 +363,121 @@ func TestV2GetGroup_RealFidelityViaServer(t *testing.T) {
 	}
 	if hlth != healthWarning {
 		t.Errorf("health: want %q, got %q", healthWarning, hlth)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/v2/groups/{group} — per-repo state cleanup (#1635)
+// ---------------------------------------------------------------------------
+
+// TestV2DeleteGroup_CleansRepoState verifies that deleting a group removes the
+// per-repo state directories for every repo in the group (#1635), in addition
+// to de-registering the group and removing the fleet config.
+func TestV2DeleteGroup_CleansRepoState(t *testing.T) {
+	// Isolate registry + daemon state to temp dirs so this test is hermetic
+	// and parallel-safe.
+	archHome := t.TempDir()
+	daemonRoot := t.TempDir()
+	t.Setenv("ARCHIGRAPH_HOME", archHome)
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", daemonRoot)
+
+	// Write a minimal fleet config with two repos.
+	configDir := filepath.Join(archHome, "configs")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs: %v", err)
+	}
+	configPath := filepath.Join(configDir, "testgroup.fleet.json")
+	cfg := registry.GroupConfig{Name: "testgroup"}
+	cfg.Repos = []registry.Repo{
+		{Slug: "repo-a", Path: "/repos/alpha"},
+		{Slug: "repo-b", Path: "/repos/beta"},
+	}
+	cfgBytes, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal cfg: %v", err)
+	}
+	if err := os.WriteFile(configPath, cfgBytes, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	// Register the group so registry.Groups() can find it.
+	if err := registry.AddGroup("testgroup", configPath); err != nil {
+		t.Fatalf("AddGroup: %v", err)
+	}
+
+	// Create synthetic per-repo state dirs with a marker file inside each.
+	// With ARCHIGRAPH_DAEMON_ROOT set, daemon.StateDirForRepo returns
+	// $ARCHIGRAPH_DAEMON_ROOT/state/<hash>/. We use the same helper the
+	// handler uses so the paths are guaranteed to match.
+	repoPaths := []string{"/repos/alpha", "/repos/beta"}
+	for _, rp := range repoPaths {
+		stateDir := daemon.StateDirForRepo(rp)
+		if err := os.MkdirAll(stateDir, 0o755); err != nil {
+			t.Fatalf("mkdir state %s: %v", stateDir, err)
+		}
+		// Write a dummy graph-stats.json to represent indexed state.
+		if err := os.WriteFile(filepath.Join(stateDir, "graph-stats.json"), []byte(`{}`), 0o644); err != nil {
+			t.Fatalf("write marker: %v", err)
+		}
+	}
+
+	// Build a test server backed by fakeStore. The handler reads the on-disk
+	// registry via registry.Groups(); the fakeStore only backs the unrelated
+	// list/graph endpoints.
+	st := newFakeStore()
+	srv, err := NewServer(DefaultConfig(), st)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	ts := httptest.NewServer(srv.routes())
+	defer ts.Close()
+
+	// Issue DELETE /api/v2/groups/testgroup.
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/v2/groups/testgroup", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var body struct {
+		OK   bool              `json:"ok"`
+		Data map[string]string `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.OK {
+		t.Fatalf("want ok=true")
+	}
+	if body.Data["deleted"] != "testgroup" {
+		t.Errorf("deleted: want %q, got %q", "testgroup", body.Data["deleted"])
+	}
+
+	// Assert: both per-repo state dirs have been removed.
+	for _, rp := range repoPaths {
+		stateDir := daemon.StateDirForRepo(rp)
+		if _, err := os.Stat(stateDir); !os.IsNotExist(err) {
+			t.Errorf("state dir for %s should be removed, but still exists at %s", rp, stateDir)
+		}
+	}
+
+	// Assert: the fleet config file is removed.
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Errorf("fleet config should be removed, but still exists at %s", configPath)
+	}
+
+	// Assert: group is no longer in the registry.
+	groups, err := registry.Groups()
+	if err != nil {
+		t.Fatalf("registry.Groups: %v", err)
+	}
+	for _, g := range groups {
+		if g.Name == "testgroup" {
+			t.Errorf("group %q should be de-registered but was found in registry", "testgroup")
+		}
 	}
 }

@@ -101,6 +101,87 @@ var swiftProtocolRE = regexp.MustCompile(`(?m)^protocol\s+(\w+)`)
 var genericRE = regexp.MustCompile(`<[^>]*>`)
 
 // ---------------------------------------------------------------------------
+// Source-span helpers (issue #1613)
+//
+// The class-hierarchy pass historically emitted every class as a line-less
+// SCOPE.Component "shadow" (start_line=0, qualified_name=""). When a real
+// typed node (View/Model/struct/…) exists for the same source_file+name the
+// shadow is folded away in buildDocument; but for classes the typed-node pass
+// never produces (plain serializers, middleware, helper classes), the shadow
+// is the ONLY node and must carry real coordinates. These helpers give the
+// primary declared class a real start_line + a best-effort qualified_name so
+// the surviving node points at real source instead of :0.
+// ---------------------------------------------------------------------------
+
+// lineAtOffset returns the 1-based line number for byteOffset within source.
+func lineAtOffset(source string, byteOffset int) int {
+	if byteOffset <= 0 {
+		return 1
+	}
+	line := 1
+	for i := 0; i < byteOffset && i < len(source); i++ {
+		if source[i] == '\n' {
+			line++
+		}
+	}
+	return line
+}
+
+// pyModulePath converts a repo-relative .py path to its dotted module path.
+// Mirrors detectorFilePathToModule in internal/engine so the qualified_name we
+// stamp on a folded Python class matches the typed-node convention exactly
+// (so a future typed node and this shadow agree on qualified_name).
+func pyModulePath(filePath string) string {
+	s := strings.TrimSuffix(filePath, ".py")
+	if strings.HasSuffix(s, "/__init__") {
+		s = strings.TrimSuffix(s, "/__init__")
+	}
+	for _, prefix := range []string{"src/", "lib/", "app/"} {
+		if strings.HasPrefix(s, prefix) {
+			s = strings.TrimPrefix(s, prefix)
+			break
+		}
+	}
+	return strings.ReplaceAll(s, "/", ".")
+}
+
+// pyQualifiedName builds module.Class for a Python class declaration.
+func pyQualifiedName(filePath, clsName string) string {
+	if mod := pyModulePath(filePath); mod != "" {
+		return mod + "." + clsName
+	}
+	return clsName
+}
+
+// groupStrings materialises submatch group text from a FindAllStringSubmatchIndex
+// match. idx layout: [fullStart, fullEnd, g1Start, g1End, …]. n is the number
+// of groups including group 0 (the full match). Out-of-range / unmatched groups
+// (-1 offsets) yield "".
+func groupStrings(source string, idx []int, n int) []string {
+	out := make([]string, n)
+	for g := 0; g < n; g++ {
+		s, e := idx[2*g], idx[2*g+1]
+		if s < 0 || e < 0 || s > e || e > len(source) {
+			out[g] = ""
+			continue
+		}
+		out[g] = source[s:e]
+	}
+	return out
+}
+
+// classKeywordOffset returns the byte offset to anchor a class declaration's
+// start line on. We use the name group (group 2) start when present so the
+// reported line is the line of the declaration regardless of any leading
+// delimiter the full match consumed; fall back to the full-match start.
+func classKeywordOffset(idx []int) int {
+	if len(idx) >= 6 && idx[4] >= 0 {
+		return idx[4]
+	}
+	return idx[0]
+}
+
+// ---------------------------------------------------------------------------
 // Ref builders
 // ---------------------------------------------------------------------------
 
@@ -173,7 +254,9 @@ func (r *result) addRel(from, to, kind string, props map[string]string) {
 // ---------------------------------------------------------------------------
 
 func extractJTCSharp(source, filePath, language string, res *result) {
-	for _, m := range jtcClassRE.FindAllStringSubmatch(source, -1) {
+	idxMatches := jtcClassRE.FindAllStringSubmatchIndex(source, -1)
+	for _, im := range idxMatches {
+		m := groupStrings(source, im, 5)
 		abstract := m[1] != ""
 		clsName := m[2]
 		extendsRaw := strings.TrimSpace(m[3])
@@ -187,6 +270,9 @@ func extractJTCSharp(source, filePath, language string, res *result) {
 		if abstract {
 			res.abstractFound++
 		}
+		// #1613 — anchor the line at the `class` keyword (group 2 is the name;
+		// the full match may start a few bytes earlier on a leading delimiter).
+		startLine := lineAtOffset(source, classKeywordOffset(im))
 		clsID := classRef(filePath, clsName, language)
 		res.addEntity(types.EntityRecord{
 			Name:       clsName,
@@ -194,6 +280,8 @@ func extractJTCSharp(source, filePath, language string, res *result) {
 			Subtype:    "class",
 			SourceFile: filePath,
 			Language:   language,
+			StartLine:  startLine,
+			EndLine:    startLine,
 			Properties: map[string]string{
 				"role":        "class",
 				"is_abstract": boolStr(abstract),
@@ -254,7 +342,8 @@ func extractJTCSharp(source, filePath, language string, res *result) {
 // C# / Kotlin (and other JTC-family langs). Emits EXTENDS edges from the
 // declared interface to each parent interface. Issue #612.
 func extractJTCInterface(source, filePath, language string, res *result) {
-	for _, m := range jtcInterfaceRE.FindAllStringSubmatch(source, -1) {
+	for _, im := range jtcInterfaceRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 3)
 		ifaceName := m[1]
 		extendsRaw := strings.TrimSpace(m[2])
 		if extendsRaw == "" {
@@ -262,6 +351,7 @@ func extractJTCInterface(source, filePath, language string, res *result) {
 		}
 
 		res.classesFound++
+		startLine := lineAtOffset(source, classKeywordOffset(im))
 		ifaceID := ifaceRef(ifaceName, language)
 		res.addEntity(types.EntityRecord{
 			Name:       ifaceName,
@@ -269,6 +359,8 @@ func extractJTCInterface(source, filePath, language string, res *result) {
 			Subtype:    "interface",
 			SourceFile: filePath,
 			Language:   language,
+			StartLine:  startLine,
+			EndLine:    startLine,
 			Properties: map[string]string{
 				"role":       "interface",
 				"ref":        ifaceID,
@@ -295,7 +387,8 @@ func extractJTCInterface(source, filePath, language string, res *result) {
 }
 
 func extractPython(source, filePath string, res *result) {
-	for _, m := range pyClassRE.FindAllStringSubmatch(source, -1) {
+	for _, im := range pyClassRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 3)
 		clsName := m[1]
 		basesRaw := strings.TrimSpace(m[2])
 		if basesRaw == "" {
@@ -319,13 +412,19 @@ func extractPython(source, filePath string, res *result) {
 		if isAbstract {
 			res.abstractFound++
 		}
+		// #1613 — anchor at the `class` keyword (full-match start; pyClassRE is
+		// line-anchored with ^class so the full match begins at the keyword).
+		startLine := lineAtOffset(source, im[0])
 		clsID := classRef(filePath, clsName, "python")
 		res.addEntity(types.EntityRecord{
-			Name:       clsName,
-			Kind:       "SCOPE.Component",
-			Subtype:    "class",
-			SourceFile: filePath,
-			Language:   "python",
+			Name:          clsName,
+			Kind:          "SCOPE.Component",
+			Subtype:       "class",
+			SourceFile:    filePath,
+			Language:      "python",
+			StartLine:     startLine,
+			EndLine:       startLine,
+			QualifiedName: pyQualifiedName(filePath, clsName),
 			Properties: map[string]string{
 				"role":        "class",
 				"is_abstract": boolStr(isAbstract),
@@ -378,17 +477,20 @@ func extractPython(source, filePath string, res *result) {
 }
 
 func extractRuby(source, filePath string, res *result) {
-	for _, m := range rubyClassRE.FindAllStringSubmatch(source, -1) {
+	for _, im := range rubyClassRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 3)
 		clsName := m[1]
 		parentName := strings.TrimSpace(m[2])
 
 		res.classesFound++
+		startLine := lineAtOffset(source, im[0])
 		clsID := classRef(filePath, clsName, "ruby")
 		parentID := classRef(filePath, parentName, "ruby")
 
 		res.addEntity(types.EntityRecord{
 			Name: clsName, Kind: "SCOPE.Component", Subtype: "class",
 			SourceFile: filePath, Language: "ruby",
+			StartLine: startLine, EndLine: startLine,
 			Properties: map[string]string{
 				"role": "class", "ref": clsID,
 				"provenance": "INFERRED_FROM_CLASS_HIERARCHY",
@@ -410,7 +512,8 @@ func extractRuby(source, filePath string, res *result) {
 }
 
 func extractGo(source, filePath string, res *result) {
-	for _, sm := range goStructRE.FindAllStringSubmatch(source, -1) {
+	for _, im := range goStructRE.FindAllStringSubmatchIndex(source, -1) {
+		sm := groupStrings(source, im, 3)
 		clsName := sm[1]
 		body := sm[2]
 
@@ -423,10 +526,13 @@ func extractGo(source, filePath string, res *result) {
 		}
 
 		res.classesFound++
+		startLine := lineAtOffset(source, im[0])
+		endLine := lineAtOffset(source, im[1])
 		clsID := classRef(filePath, clsName, "go")
 		res.addEntity(types.EntityRecord{
 			Name: clsName, Kind: "SCOPE.Component", Subtype: "struct",
 			SourceFile: filePath, Language: "go",
+			StartLine: startLine, EndLine: endLine,
 			Properties: map[string]string{
 				"role": "struct", "ref": clsID,
 				"provenance": "INFERRED_FROM_CLASS_HIERARCHY",
@@ -453,17 +559,20 @@ func extractGo(source, filePath string, res *result) {
 }
 
 func extractRust(source, filePath string, res *result) {
-	for _, m := range rustImplRE.FindAllStringSubmatch(source, -1) {
+	for _, im := range rustImplRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 3)
 		traitName := strings.TrimSpace(m[1])
 		structName := strings.TrimSpace(m[2])
 
 		res.classesFound++
+		startLine := lineAtOffset(source, im[0])
 		structID := classRef(filePath, structName, "rust")
 		traitID := ifaceRef(traitName, "rust")
 
 		res.addEntity(types.EntityRecord{
 			Name: structName, Kind: "SCOPE.Component", Subtype: "struct",
 			SourceFile: filePath, Language: "rust",
+			StartLine: startLine, EndLine: startLine,
 			Properties: map[string]string{
 				"role": "struct", "ref": structID,
 				"provenance": "INFERRED_FROM_CLASS_HIERARCHY",
@@ -514,12 +623,14 @@ func extractElixir(source, filePath string, res *result) {
 		}
 
 		res.classesFound++
+		startLine := lineAtOffset(source, bm[0])
 		modID := classRef(filePath, moduleName, "elixir")
 		behID := ifaceRef(behaviourName, "elixir")
 
 		res.addEntity(types.EntityRecord{
 			Name: moduleName, Kind: "SCOPE.Component", Subtype: "module",
 			SourceFile: filePath, Language: "elixir",
+			StartLine: startLine, EndLine: startLine,
 			Properties: map[string]string{
 				"role": "module", "ref": modID,
 				"provenance": "INFERRED_FROM_CLASS_HIERARCHY",
@@ -542,14 +653,17 @@ func extractElixir(source, filePath string, res *result) {
 }
 
 func extractSwift(source, filePath string, res *result) {
-	for _, m := range swiftProtocolRE.FindAllStringSubmatch(source, -1) {
+	for _, im := range swiftProtocolRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 2)
 		protoName := m[1]
 		res.classesFound++
 		res.abstractFound++
+		startLine := lineAtOffset(source, im[0])
 		protoID := classRef(filePath, protoName, "swift")
 		res.addEntity(types.EntityRecord{
 			Name: protoName, Kind: "SCOPE.Component", Subtype: "protocol",
 			SourceFile: filePath, Language: "swift",
+			StartLine: startLine, EndLine: startLine,
 			Properties: map[string]string{
 				"role":        "protocol",
 				"is_abstract": "true",

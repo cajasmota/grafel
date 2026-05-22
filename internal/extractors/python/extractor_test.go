@@ -1739,3 +1739,58 @@ func entityNames(entities []types.EntityRecord) []string {
 	}
 	return names
 }
+
+// TestExtract_MigrationFilePruned verifies that auto-generated Django migration
+// files (#1617) emit only the file-level SCOPE.Component and no per-class or
+// per-field entities, while a non-migration file with identical content is
+// fully extracted.
+func TestExtract_MigrationFilePruned(t *testing.T) {
+	src := `from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+    dependencies = [("core", "0041_prev")]
+
+    operations = [
+        migrations.AddField(
+            model_name="device",
+            name="serial",
+            field=models.CharField(max_length=64),
+        ),
+    ]
+`
+	ext, ok := extractor.Get("python")
+	if !ok {
+		t.Fatal("python extractor not registered")
+	}
+
+	// Migration path → pruned to just the file entity.
+	tree := parse(t, []byte(src))
+	migEnts, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path: "core/migrations/0042_device_serial.py", Content: []byte(src),
+		Language: "python", Tree: tree,
+	})
+	if err != nil {
+		t.Fatalf("extract migration: %v", err)
+	}
+	semantic := stripFileEntity(migEnts)
+	for _, e := range semantic {
+		t.Errorf("migration file should emit no semantic entities, got %s/%s %q", e.Kind, e.Subtype, e.Name)
+	}
+	if len(migEnts) == 0 {
+		t.Fatal("migration file should still emit the file-level entity for import resolution")
+	}
+
+	// Same content in a non-migration path → fully extracted (the Migration class).
+	tree2 := parse(t, []byte(src))
+	normEnts, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path: "core/models/device.py", Content: []byte(src),
+		Language: "python", Tree: tree2,
+	})
+	if err != nil {
+		t.Fatalf("extract normal: %v", err)
+	}
+	if len(stripFileEntity(normEnts)) == 0 {
+		t.Error("non-migration file with a class should emit semantic entities")
+	}
+}

@@ -180,6 +180,55 @@ type GraphMeta struct {
 	RepoTag    string
 }
 
+// CommunityCount returns the number of aggregate Louvain communities
+// encoded in the graph (#1620). Zero when the algo pass did not run.
+func (r *Reader) CommunityCount() int {
+	if r == nil || r.root == nil {
+		return 0
+	}
+	return r.root.CommunitiesLength()
+}
+
+// CommunityAt returns the i-th aggregate community, or nil. Decodes on
+// demand against the mmap'd bytes (#1620).
+func (r *Reader) CommunityAt(i int) *fb.Community {
+	if r == nil || r.root == nil || i < 0 || i >= r.root.CommunitiesLength() {
+		return nil
+	}
+	out := &fb.Community{}
+	if r.root.Communities(out, i) {
+		return out
+	}
+	return nil
+}
+
+// AlgoStats are the corpus-level Pass-4 aggregates carried on the Graph
+// root (#1620). Returned by LoadAlgoStats.
+type AlgoStats struct {
+	LouvainModularity   float64
+	NumGodNodes         int
+	NumArticulationPts  int
+	NumSurpriseEdges    int
+	RuntimeMS           int64
+	DenoisedCommunities int
+}
+
+// LoadAlgoStats returns the corpus-level Pass-4 aggregates from the Graph
+// root. All-zero when the algo pass did not run (#1620).
+func (r *Reader) LoadAlgoStats() AlgoStats {
+	if r == nil || r.root == nil {
+		return AlgoStats{}
+	}
+	return AlgoStats{
+		LouvainModularity:   r.root.LouvainModularity(),
+		NumGodNodes:         int(r.root.NumGodNodes()),
+		NumArticulationPts:  int(r.root.NumArticulationPoints()),
+		NumSurpriseEdges:    int(r.root.NumSurpriseEdges()),
+		RuntimeMS:           r.root.AlgoRuntimeMs(),
+		DenoisedCommunities: int(r.root.DenoisedCommunities()),
+	}
+}
+
 // LoadGraphMeta returns the (cheap) header fields of the graph: schema
 // version, computed-at timestamp, repo tag. No vectors are touched.
 func (r *Reader) LoadGraphMeta() GraphMeta {

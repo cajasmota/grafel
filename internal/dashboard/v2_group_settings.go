@@ -349,6 +349,16 @@ func (s *Server) handleV2DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Load the config so we can clean up per-repo state before de-registering.
+	// Best-effort: if the config can't be read we still proceed with removal.
+	if cfg, cfgErr := registry.LoadGroupConfig(configPath); cfgErr == nil {
+		for _, rep := range cfg.Repos {
+			stateDir := daemon.StateDirForRepo(rep.Path)
+			// Best-effort: non-fatal per repo — do NOT touch source code.
+			_ = os.RemoveAll(stateDir)
+		}
+	}
+
 	// Remove group from registry.
 	if err := registry.RemoveGroup(groupName); err != nil {
 		writeV2Err(w, http.StatusInternalServerError, "internal_error", "remove group: "+err.Error())

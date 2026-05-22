@@ -12,13 +12,25 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Search, X } from "lucide-react";
+import { Search, X, ChevronLeft } from "lucide-react";
 import { Kbd } from "@/components/ui";
 import { useDocsTree, useDocPage } from "@/hooks/use-docs";
 import { ApiError } from "@/lib/api";
 import { DocsTree } from "@/components/docs/docs-tree";
 import { DocsReader } from "@/components/docs/docs-reader";
 import { DocsNotGenerated, DocsPickDocument } from "@/components/docs/docs-empty";
+import { DocsChooser, BusinessNotGenerated, type DocTier } from "@/components/docs/docs-chooser";
+
+// Walk a doc tree collecting every leaf doc path key.
+function collectPaths(nodes: { path?: string; children?: unknown }[]): Set<string> {
+  const out = new Set<string>();
+  const walk = (n: { path?: string; children?: { path?: string; children?: unknown }[] }) => {
+    if (n.path) out.add(n.path);
+    n.children?.forEach((c) => walk(c as never));
+  };
+  nodes.forEach((n) => walk(n as never));
+  return out;
+}
 
 // ── DocsScreen ────────────────────────────────────────────────────────────────
 
@@ -31,6 +43,9 @@ export default function DocsScreen() {
 
   const [search, setSearch] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(wildcardPath || null);
+  // null = show the Technical/Business chooser entry. Set once the user picks
+  // a tier (or implied by a deep-linked document).
+  const [tier, setTier] = useState<DocTier | null>(null);
 
   useEffect(() => {
     setSelectedPath(wildcardPath || null);
@@ -77,8 +92,29 @@ export default function DocsScreen() {
     [treeResult],
   );
 
+  const businessNodes = useMemo(
+    () => treeResult?.businessNodes ?? [],
+    [treeResult],
+  );
+  const hasBusinessDocs = businessNodes.length > 0;
+
   const hasSkillDocs =
     !treeLoading && (treeResult?.skillGenerated ?? false) && skillNodes.length > 0;
+
+  // A deep-linked document implies its tier: infer from the business path set.
+  const businessPathSet = useMemo(() => collectPaths(businessNodes), [businessNodes]);
+  useEffect(() => {
+    if (!selectedPath) return;
+    setTier((prev) => prev ?? (businessPathSet.has(selectedPath) ? "business" : "technical"));
+  }, [selectedPath, businessPathSet]);
+
+  // Returning to the chooser: clear tier + any open document.
+  const backToChooser = useCallback(() => {
+    setTier(null);
+    setSelectedPath(null);
+    setSearch("");
+    navigate(`/g/${groupId}/docs`, { replace: false });
+  }, [groupId, navigate]);
 
   // Keyboard: "/" focuses search input
   const searchRef = useRef<HTMLInputElement>(null);
@@ -93,10 +129,49 @@ export default function DocsScreen() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // No skill-generated docs at all → onboarding CTA (whole screen, no chooser).
+  if (!treeLoading && !hasSkillDocs) {
+    return (
+      <div className="flex flex-col h-full">
+        <DocsNotGenerated groupId={groupId} />
+      </div>
+    );
+  }
+
+  // Docs entry: Technical vs Business chooser (no tier picked yet).
+  if (!treeLoading && tier === null) {
+    return (
+      <div className="flex flex-col h-full">
+        <DocsChooser onPick={setTier} hasBusiness={hasBusinessDocs} />
+      </div>
+    );
+  }
+
+  // Business tier selected but no business docs present → empty onboarding.
+  if (tier === "business" && !hasBusinessDocs && !treeLoading) {
+    return (
+      <div className="flex flex-col h-full">
+        <TierHeader tier="business" onBack={backToChooser} />
+        <BusinessNotGenerated />
+      </div>
+    );
+  }
+
+  const activeNodes = tier === "business" ? businessNodes : skillNodes;
+  const activeRepoDocs = tier === "business" ? [] : repoDocNodes;
+
   return (
     <div className="flex flex-col h-full">
-      {/* Controls row: search for the document tree */}
+      {/* Controls row: back-to-chooser + search for the document tree */}
       <div className="flex items-center gap-3 h-10 shrink-0 px-4 border-b border-border bg-bg">
+        <button
+          onClick={backToChooser}
+          className="flex items-center gap-1 text-xs text-text-3 hover:text-text shrink-0 -ml-1 pr-1"
+          aria-label="Back to documentation chooser"
+        >
+          <ChevronLeft size={14} />
+          {tier === "business" ? "Business" : "Technical"}
+        </button>
         <div className="relative flex items-center flex-1 max-w-xs">
           <Search size={13} className="absolute left-2.5 text-text-4 pointer-events-none" />
           <input
@@ -124,43 +199,54 @@ export default function DocsScreen() {
         )}
       </div>
 
-      {/* No skill-generated docs → onboarding CTA with copyable prompt */}
-      {!treeLoading && !hasSkillDocs ? (
-        <DocsNotGenerated groupId={groupId} />
-      ) : (
-        <div className="flex flex-1 min-h-0">
-          {/* Left pane: document index */}
-          {treeLoading ? (
-            <div className="w-[320px] shrink-0 border-r border-border flex items-center justify-center">
-              <span className="text-sm text-text-4">Loading…</span>
-            </div>
-          ) : (
-            <DocsTree
-              tree={skillNodes}
-              repoDocs={repoDocNodes}
-              selectedPath={selectedPath}
-              onSelect={handleSelect}
-              query={debouncedSearch}
-            />
-          )}
-
-          {/* Right pane: rendered markdown */}
-          <div className="flex-1 overflow-y-auto">
-            {!selectedPath ? (
-              <DocsPickDocument />
-            ) : pageLoading ? (
-              <div className="mx-auto max-w-3xl px-8 py-6 space-y-3 animate-pulse">
-                <div className="h-7 w-1/2 rounded bg-surface-2" />
-                <div className="h-4 w-full rounded bg-surface-2" />
-                <div className="h-4 w-5/6 rounded bg-surface-2" />
-                <div className="h-4 w-2/3 rounded bg-surface-2" />
-              </div>
-            ) : page ? (
-              <DocsReader page={page} />
-            ) : null}
+      <div className="flex flex-1 min-h-0">
+        {/* Left pane: document index */}
+        {treeLoading ? (
+          <div className="w-[320px] shrink-0 border-r border-border flex items-center justify-center">
+            <span className="text-sm text-text-4">Loading…</span>
           </div>
+        ) : (
+          <DocsTree
+            tree={activeNodes}
+            repoDocs={activeRepoDocs}
+            selectedPath={selectedPath}
+            onSelect={handleSelect}
+            query={debouncedSearch}
+          />
+        )}
+
+        {/* Right pane: rendered markdown */}
+        <div className="flex-1 overflow-y-auto">
+          {!selectedPath ? (
+            <DocsPickDocument />
+          ) : pageLoading ? (
+            <div className="mx-auto max-w-3xl px-8 py-6 space-y-3 animate-pulse">
+              <div className="h-7 w-1/2 rounded bg-surface-2" />
+              <div className="h-4 w-full rounded bg-surface-2" />
+              <div className="h-4 w-5/6 rounded bg-surface-2" />
+              <div className="h-4 w-2/3 rounded bg-surface-2" />
+            </div>
+          ) : page ? (
+            <DocsReader page={page} />
+          ) : null}
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+// Slim header strip with a back-to-chooser control (used by tier empty states).
+function TierHeader({ tier, onBack }: { tier: DocTier; onBack: () => void }) {
+  return (
+    <div className="flex items-center gap-3 h-10 shrink-0 px-4 border-b border-border bg-bg">
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1 text-xs text-text-3 hover:text-text shrink-0 -ml-1"
+        aria-label="Back to documentation chooser"
+      >
+        <ChevronLeft size={14} />
+        {tier === "business" ? "Business" : "Technical"}
+      </button>
     </div>
   );
 }

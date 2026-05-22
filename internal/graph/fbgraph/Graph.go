@@ -118,8 +118,100 @@ func (rcv *Graph) RelationshipsLength() int {
 	return 0
 }
 
+func (rcv *Graph) Communities(obj *Community, j int) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
+	if o != 0 {
+		x := rcv._tab.Vector(o)
+		x += flatbuffers.UOffsetT(j) * 4
+		x = rcv._tab.Indirect(x)
+		obj.Init(rcv._tab.Bytes, x)
+		return true
+	}
+	return false
+}
+
+func (rcv *Graph) CommunitiesLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(14))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
+func (rcv *Graph) LouvainModularity() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *Graph) MutateLouvainModularity(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(16, n)
+}
+
+func (rcv *Graph) NumGodNodes() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(18))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *Graph) MutateNumGodNodes(n int32) bool {
+	return rcv._tab.MutateInt32Slot(18, n)
+}
+
+func (rcv *Graph) NumArticulationPoints() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(20))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *Graph) MutateNumArticulationPoints(n int32) bool {
+	return rcv._tab.MutateInt32Slot(20, n)
+}
+
+func (rcv *Graph) NumSurpriseEdges() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(22))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *Graph) MutateNumSurpriseEdges(n int32) bool {
+	return rcv._tab.MutateInt32Slot(22, n)
+}
+
+func (rcv *Graph) AlgoRuntimeMs() int64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(24))
+	if o != 0 {
+		return rcv._tab.GetInt64(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *Graph) MutateAlgoRuntimeMs(n int64) bool {
+	return rcv._tab.MutateInt64Slot(24, n)
+}
+
+func (rcv *Graph) DenoisedCommunities() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *Graph) MutateDenoisedCommunities(n int32) bool {
+	return rcv._tab.MutateInt32Slot(26, n)
+}
+
 func GraphStart(builder *flatbuffers.Builder) {
-	builder.StartObject(5)
+	builder.StartObject(12)
 }
 func GraphAddVersion(builder *flatbuffers.Builder, version int32) {
 	builder.PrependInt32Slot(0, version, 2)
@@ -141,6 +233,30 @@ func GraphAddRelationships(builder *flatbuffers.Builder, relationships flatbuffe
 }
 func GraphStartRelationshipsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
+}
+func GraphAddCommunities(builder *flatbuffers.Builder, communities flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(5, flatbuffers.UOffsetT(communities), 0)
+}
+func GraphStartCommunitiesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(4, numElems, 4)
+}
+func GraphAddLouvainModularity(builder *flatbuffers.Builder, louvainModularity float64) {
+	builder.PrependFloat64Slot(6, louvainModularity, 0.0)
+}
+func GraphAddNumGodNodes(builder *flatbuffers.Builder, numGodNodes int32) {
+	builder.PrependInt32Slot(7, numGodNodes, 0)
+}
+func GraphAddNumArticulationPoints(builder *flatbuffers.Builder, numArticulationPoints int32) {
+	builder.PrependInt32Slot(8, numArticulationPoints, 0)
+}
+func GraphAddNumSurpriseEdges(builder *flatbuffers.Builder, numSurpriseEdges int32) {
+	builder.PrependInt32Slot(9, numSurpriseEdges, 0)
+}
+func GraphAddAlgoRuntimeMs(builder *flatbuffers.Builder, algoRuntimeMs int64) {
+	builder.PrependInt64Slot(10, algoRuntimeMs, 0)
+}
+func GraphAddDenoisedCommunities(builder *flatbuffers.Builder, denoisedCommunities int32) {
+	builder.PrependInt32Slot(11, denoisedCommunities, 0)
 }
 func GraphEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

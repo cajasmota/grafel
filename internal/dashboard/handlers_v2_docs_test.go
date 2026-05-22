@@ -86,9 +86,21 @@ func TestHandleV2DocsTree(t *testing.T) {
 	if !env.OK {
 		t.Fatal("envelope.ok is false")
 	}
-	data, ok := env.Data.([]interface{})
+	// The reply is the v2DocsTreeReply object: {skillGenerated, nodes, businessNodes}.
+	reply, ok := env.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected reply object, got %T %v", env.Data, env.Data)
+	}
+	if reply["skillGenerated"] != true {
+		t.Errorf("expected skillGenerated=true, got %v", reply["skillGenerated"])
+	}
+	data, ok := reply["nodes"].([]interface{})
 	if !ok || len(data) == 0 {
-		t.Fatalf("expected non-empty tree, got %T %v", env.Data, env.Data)
+		t.Fatalf("expected non-empty tree, got %T %v", reply["nodes"], reply["nodes"])
+	}
+	// No business/ dir in this fixture → businessNodes is empty.
+	if biz, _ := reply["businessNodes"].([]interface{}); len(biz) != 0 {
+		t.Errorf("expected empty businessNodes, got %v", biz)
 	}
 	// Root is the repo folder; it should contain category folders.
 	repo, _ := data[0].(map[string]interface{})
@@ -111,6 +123,89 @@ func TestHandleV2DocsTree(t *testing.T) {
 			// enrichments would land in "Guides" — assert it isn't there
 			t.Errorf("enrichments leaked into doc tree: %v", cm)
 		}
+	}
+}
+
+// TestHandleV2DocsTreeBusiness verifies that a `business/` doc set is split out
+// into businessNodes (the separate, non-per-repo Business view) and is NOT
+// duplicated in the technical per-repo tree. See #1622/#1623.
+func TestHandleV2DocsTreeBusiness(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ARCHIGRAPH_HOME", home)
+
+	repoPath := t.TempDir()
+	docsDir := filepath.Join(repoPath, "docs")
+	mustWrite(t, filepath.Join(docsDir, "overview.md"), "# Repo\n\nOverview.\n")
+	mustWrite(t, filepath.Join(docsDir, "business", "capabilities.md"), "# Capabilities\n")
+	mustWrite(t, filepath.Join(docsDir, "business", "glossary.md"), "# Glossary\n")
+
+	cfgPath := filepath.Join(home, "bizgrp.json")
+	cfg := &registry.GroupConfig{Name: "bizgrp", Repos: []registry.Repo{{Slug: "repo1", Path: repoPath}}}
+	if err := registry.SaveGroupConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("SaveGroupConfig: %v", err)
+	}
+	if err := registry.AddGroup("bizgrp", cfgPath); err != nil {
+		t.Fatalf("AddGroup: %v", err)
+	}
+
+	srv, err := NewServer(DefaultConfig(), newFakeStore())
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	srv.graphs.mu.Lock()
+	srv.graphs.entries["bizgrp"] = &cacheEntry{
+		group:    &DashGroup{Name: "bizgrp", Repos: map[string]*DashRepo{"repo1": {Slug: "repo1", Path: repoPath}}},
+		loadedAt: time.Now().Add(60 * time.Second),
+	}
+	srv.graphs.mu.Unlock()
+
+	r := httptest.NewRequest("GET", "/api/v2/groups/bizgrp/docs/tree", nil)
+	w := httptest.NewRecorder()
+	srv.routes().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var env v2Envelope
+	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	reply, _ := env.Data.(map[string]interface{})
+
+	// businessNodes must contain the business/ docs.
+	biz, _ := reply["businessNodes"].([]interface{})
+	if len(biz) != 1 {
+		t.Fatalf("expected 1 business repo node, got %d: %v", len(biz), biz)
+	}
+	bizRepo, _ := biz[0].(map[string]interface{})
+	bizDocs, _ := bizRepo["children"].([]interface{})
+	if len(bizDocs) != 2 {
+		t.Fatalf("expected 2 business docs, got %d: %v", len(bizDocs), bizDocs)
+	}
+	// Business doc keys must keep the business/ prefix so the page endpoint resolves.
+	d0, _ := bizDocs[0].(map[string]interface{})
+	if got := d0["path"]; got != "repo1/business/capabilities.md" {
+		t.Errorf("expected business doc key repo1/business/capabilities.md, got %v", got)
+	}
+
+	// The technical tree must NOT contain the business/ docs.
+	nodes, _ := reply["nodes"].([]interface{})
+	for _, n := range nodes {
+		walkAssertNoBusiness(t, n)
+	}
+}
+
+// walkAssertNoBusiness fails the test if any doc leaf path contains "/business/".
+func walkAssertNoBusiness(t *testing.T, node interface{}) {
+	t.Helper()
+	m, _ := node.(map[string]interface{})
+	if p, _ := m["path"].(string); p != "" {
+		if filepath.Base(filepath.Dir(p)) == "business" {
+			t.Errorf("business doc leaked into technical tree: %v", p)
+		}
+	}
+	for _, c := range func() []interface{} { cs, _ := m["children"].([]interface{}); return cs }() {
+		walkAssertNoBusiness(t, c)
 	}
 }
 

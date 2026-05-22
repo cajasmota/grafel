@@ -105,6 +105,22 @@ func loadFBDocument(path string) (*Document, error) {
 		rels = append(rels, fbRelToGraphRel(fbRel))
 	}
 
+	// Restore the aggregate Pass-4 community list + corpus stats (#1620).
+	// These are empty/zero when the graph was written with the algo pass
+	// skipped, so the resulting Document matches the JSON path exactly.
+	nComms := r.CommunityCount()
+	var communities []CommunityResult
+	if nComms > 0 {
+		communities = make([]CommunityResult, 0, nComms)
+		for i := 0; i < nComms; i++ {
+			fbComm := r.CommunityAt(i)
+			if fbComm == nil {
+				continue
+			}
+			communities = append(communities, fbCommunityToResult(fbComm))
+		}
+	}
+
 	doc := &Document{
 		// Preserve SchemaVersion (JSON schema = 1) rather than the FB
 		// binary format version (2) so callers that check Version == 1
@@ -114,10 +130,27 @@ func loadFBDocument(path string) (*Document, error) {
 		Repo:          meta.RepoTag,
 		Entities:      entities,
 		Relationships: rels,
+		Communities:   communities,
 		Stats: Stats{
 			Entities:      len(entities),
 			Relationships: len(rels),
 		},
+	}
+
+	// AlgorithmStats: only attach when the algo pass actually ran. We treat
+	// "any communities present" as the signal, matching how the indexer only
+	// emits AlgorithmStats when Pass 4 ran (index.go).
+	if nComms > 0 {
+		as := r.LoadAlgoStats()
+		doc.AlgorithmStats = &AlgorithmStats{
+			LouvainModularity:   as.LouvainModularity,
+			NumCommunities:      nComms,
+			NumGodNodes:         as.NumGodNodes,
+			NumArticulationPts:  as.NumArticulationPts,
+			NumSurpriseEdges:    as.NumSurpriseEdges,
+			RuntimeMS:           as.RuntimeMS,
+			DenoisedCommunities: as.DenoisedCommunities,
+		}
 	}
 	return doc, nil
 }
@@ -173,7 +206,44 @@ func fbEntityToGraphEntity(e *fb.Entity) Entity {
 	if lang, ok := props["language"]; ok {
 		ent.Language = lang
 	}
+	// Restore Pass 4 (graph-algorithm) attributes (#1620). community_id uses
+	// a sentinel of -2 to mean "not computed"; only materialise the pointer
+	// when the algo pass actually ran so an Entity loaded from a
+	// graph-algo-skipped graph.fb stays byte-identical to the JSON path
+	// (nil pointers, false flags).
+	if cid := e.CommunityId(); cid != -2 {
+		c := int(cid)
+		ent.CommunityID = &c
+	}
+	if pr := e.Pagerank(); pr != 0 {
+		p := pr
+		ent.PageRank = &p
+	}
+	if cen := e.Centrality(); cen != 0 {
+		c := cen
+		ent.Centrality = &c
+	}
+	ent.IsGodNode = e.IsGodNode()
+	ent.IsSurpriseEndpoint = e.IsSurpriseEndpoint()
+	ent.IsArticulationPt = e.IsArticulationPoint()
 	return ent
+}
+
+// fbCommunityToResult converts one lazy FlatBuffers Community view into a
+// graph.CommunityResult, copying all strings out of the mmap'd bytes (#1620).
+func fbCommunityToResult(c *fb.Community) CommunityResult {
+	top := make([]string, 0, c.TopEntitiesLength())
+	for i := 0; i < c.TopEntitiesLength(); i++ {
+		top = append(top, string(c.TopEntities(i)))
+	}
+	return CommunityResult{
+		ID:          int(c.Id()),
+		Size:        int(c.Size()),
+		Modularity:  c.Modularity(),
+		TopEntities: top,
+		AutoName:    string(c.AutoName()),
+		AgentName:   string(c.AgentName()),
+	}
 }
 
 // fbRelToGraphRel converts one lazy FlatBuffers Relationship view into

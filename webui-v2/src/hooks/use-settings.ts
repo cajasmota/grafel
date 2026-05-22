@@ -9,6 +9,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { groupsQueryKey } from "@/hooks/use-groups";
 import type { SettingsFeatures } from "@/data/types";
 
 /** Query key for the settings detail of a group. */
@@ -60,10 +61,20 @@ export function useRebuildGroup(groupId: string) {
   });
 }
 
-/** Deletes the group. Does NOT invalidate — caller navigates away. */
+/** Deletes the group. Invalidates the groups list so Landing + project switcher
+ *  refresh immediately; caller is also responsible for navigating away. */
 export function useDeleteGroup(groupId: string) {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.deleteGroup(groupId),
+    onSuccess: () => {
+      // Remove the deleted group from the landing cache immediately so no
+      // stale card lingers, then invalidate to trigger a fresh fetch.
+      void qc.invalidateQueries({ queryKey: groupsQueryKey });
+      // Also remove any cached settings for this group so stale :groupId routes
+      // cannot serve data for a group that no longer exists.
+      void qc.removeQueries({ queryKey: settingsQueryKey(groupId) });
+    },
   });
 }
 

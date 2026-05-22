@@ -144,10 +144,10 @@ func TestDetectMonorepoPolyglot(t *testing.T) {
 		"services/gateway", "services/catalog", "frontend/web", // Node
 		"services/orders", "services/analytics", "data-pipeline", "libs/py-shared", // Python
 		"services/inventory", "libs/go-shared", // Go
-		"services/notifications",     // Kotlin
-		"services/legacy-erp",        // Java
-		"services/pricing",           // Rust
-		"services/billing",           // PHP
+		"services/notifications",      // Kotlin
+		"services/legacy-erp",         // Java
+		"services/pricing",            // Rust
+		"services/billing",            // PHP
 		"services/realtime-dashboard", // Elixir
 	}
 	for _, w := range wantPresent {
@@ -206,7 +206,7 @@ func TestDetectMonorepoRealPolyglotPlatform(t *testing.T) {
 		"services/orders", "services/analytics", "services/workers", "services/order-saga",
 		"services/semantic-search", "services/ledger", // Python
 		"services/inventory", "services/shipping", "libs/go-shared", // Go
-		"services/notifications",                      // Kotlin
+		"services/notifications",                           // Kotlin
 		"services/legacy-erp", "services/stream-processor", // Java
 		"services/pricing", "services/rate-limiter", // Rust
 		"services/billing",            // PHP
@@ -231,5 +231,82 @@ func TestDetectMonorepoNone(t *testing.T) {
 	m, _ := DetectMonorepo(dir)
 	if m.Kind != KindNone {
 		t.Fatalf("expected KindNone, got %q", m.Kind)
+	}
+}
+
+// TestDetectMonorepoPlainFrontend regresses issue #1628: a PLAIN frontend repo
+// (a single package.json at the root, source split across bare top-level dirs
+// like src/, components/, docs/, assets/ — NO workspace manifest, NO container
+// layout) must be treated as a SINGLE unit, not split per-top-level-dir.
+func TestDetectMonorepoPlainFrontend(t *testing.T) {
+	dir := t.TempDir()
+	// One root package.json with NO "workspaces" field.
+	write(t, filepath.Join(dir, "package.json"), `{"name":"core-frontend","version":"1.0.0"}`)
+	write(t, filepath.Join(dir, "src/index.tsx"), "export const A = 1\n")
+	write(t, filepath.Join(dir, "src/components/Button.tsx"), "export const B = 1\n")
+	write(t, filepath.Join(dir, "components/Card.tsx"), "export const C = 1\n")
+	write(t, filepath.Join(dir, "docs/readme.md"), "# docs\n")
+	write(t, filepath.Join(dir, "assets/images/logo.svg"), "<svg/>\n")
+	write(t, filepath.Join(dir, ".windsurf/skills/x.ts"), "export const D = 1\n")
+
+	m, err := DetectMonorepo(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Kind != KindNone {
+		t.Fatalf("plain frontend repo must be KindNone (single unit), got %q with packages %v", m.Kind, m.Packages)
+	}
+	if len(m.Packages) != 0 {
+		t.Fatalf("plain repo must report 0 modules, got %d: %v", len(m.Packages), m.Packages)
+	}
+}
+
+// TestDetectMonorepoPlainMobile regresses #1628 for a plain Go/mobile-style repo
+// with bare top-level source dirs and no manifests below the root.
+func TestDetectMonorepoPlainMobile(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "go.mod"), "module core-mobile\n")
+	write(t, filepath.Join(dir, "main.go"), "package main\n")
+	write(t, filepath.Join(dir, "src/app.go"), "package src\n")
+	write(t, filepath.Join(dir, "internal/store/store.go"), "package store\n")
+	write(t, filepath.Join(dir, "ui/screen.go"), "package ui\n")
+	m, _ := DetectMonorepo(dir)
+	if m.Kind != KindNone || len(m.Packages) != 0 {
+		t.Fatalf("plain mobile repo must be single unit (KindNone, 0 pkgs), got %q %v", m.Kind, m.Packages)
+	}
+}
+
+// TestDetectMonorepoSingleWorkspaceManifest confirms an explicit workspace
+// manifest still flags a monorepo even with a single listed package — the
+// author has DECLARED a workspace, so we honour it.
+func TestDetectMonorepoSingleWorkspaceManifest(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "pnpm-workspace.yaml"), "packages:\n  - 'packages/only'\n")
+	write(t, filepath.Join(dir, "packages/only/package.json"), `{"name":"only"}`)
+	m, _ := DetectMonorepo(dir)
+	if m.Kind != KindPNPM {
+		t.Fatalf("declared workspace must be a monorepo, got %q", m.Kind)
+	}
+}
+
+// TestDetectMonorepoMultipleTopLevelManifests confirms that two+ independently
+// manifested top-level dirs (e.g. two go.mod packages side by side, no
+// container dir) DO constitute a monorepo.
+func TestDetectMonorepoMultipleTopLevelManifests(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "auth/go.mod"), "module auth\n")
+	write(t, filepath.Join(dir, "auth/main.go"), "package main\n")
+	write(t, filepath.Join(dir, "billing/go.mod"), "module billing\n")
+	write(t, filepath.Join(dir, "billing/main.go"), "package main\n")
+	m, _ := DetectMonorepo(dir)
+	if m.Kind == KindNone {
+		t.Fatalf("two top-level go.mod packages must be a monorepo, got KindNone")
+	}
+	got := map[string]bool{}
+	for _, p := range m.Packages {
+		got[p] = true
+	}
+	if !got["auth"] || !got["billing"] {
+		t.Fatalf("expected auth+billing modules, got %v", m.Packages)
 	}
 }

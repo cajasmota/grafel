@@ -85,6 +85,19 @@ func Marshal(doc *graph.Document) ([]byte, error) {
 	}
 	relsVec := b.EndVector(len(relOffsets))
 
+	// Build the aggregate community list (#1620). Empty when the algo pass
+	// did not run; the resulting vector is then a zero-length vector which
+	// the reader treats as "no communities".
+	commOffsets := make([]flatbuffers.UOffsetT, 0, len(doc.Communities))
+	for i := range doc.Communities {
+		commOffsets = append(commOffsets, buildCommunity(b, &doc.Communities[i]))
+	}
+	fb.GraphStartCommunitiesVector(b, len(commOffsets))
+	for i := len(commOffsets) - 1; i >= 0; i-- {
+		b.PrependUOffsetT(commOffsets[i])
+	}
+	commsVec := b.EndVector(len(commOffsets))
+
 	computedAt := b.CreateString(doc.GeneratedAt.UTC().Format("2006-01-02T15:04:05Z"))
 	repoTag := b.CreateString(doc.Repo)
 
@@ -94,6 +107,16 @@ func Marshal(doc *graph.Document) ([]byte, error) {
 	fb.GraphAddRepoTag(b, repoTag)
 	fb.GraphAddEntities(b, entitiesVec)
 	fb.GraphAddRelationships(b, relsVec)
+	fb.GraphAddCommunities(b, commsVec)
+	if doc.AlgorithmStats != nil {
+		st := doc.AlgorithmStats
+		fb.GraphAddLouvainModularity(b, st.LouvainModularity)
+		fb.GraphAddNumGodNodes(b, int32(st.NumGodNodes))
+		fb.GraphAddNumArticulationPoints(b, int32(st.NumArticulationPts))
+		fb.GraphAddNumSurpriseEdges(b, int32(st.NumSurpriseEdges))
+		fb.GraphAddAlgoRuntimeMs(b, st.RuntimeMS)
+		fb.GraphAddDenoisedCommunities(b, int32(st.DenoisedCommunities))
+	}
 	root := fb.GraphEnd(b)
 	fb.FinishGraphBuffer(b, root)
 	return b.FinishedBytes(), nil
@@ -129,6 +152,30 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	fb.EntityAddSourceLine(b, int32(e.StartLine))
 	fb.EntityAddSourceCol(b, 0)
 	fb.EntityAddProperties(b, propsVec)
+
+	// Pass 4 (graph-algorithm) attributes (#1620). Pointers + sentinel so a
+	// document written with --skip-pass=graph-algo round-trips with the
+	// fields absent (community_id defaults to -2 = "not computed"). Only
+	// emit each scalar when it carries real data so old-vs-new on-disk bytes
+	// stay identical when the algo pass did not run.
+	if e.CommunityID != nil {
+		fb.EntityAddCommunityId(b, int32(*e.CommunityID))
+	}
+	if e.PageRank != nil {
+		fb.EntityAddPagerank(b, *e.PageRank)
+	}
+	if e.Centrality != nil {
+		fb.EntityAddCentrality(b, *e.Centrality)
+	}
+	if e.IsGodNode {
+		fb.EntityAddIsGodNode(b, true)
+	}
+	if e.IsSurpriseEndpoint {
+		fb.EntityAddIsSurpriseEndpoint(b, true)
+	}
+	if e.IsArticulationPt {
+		fb.EntityAddIsArticulationPoint(b, true)
+	}
 	return fb.EntityEnd(b)
 }
 
@@ -143,6 +190,34 @@ func buildRelationship(b *flatbuffers.Builder, r *graph.Relationship) flatbuffer
 	fb.RelationshipAddKind(b, kindOff)
 	fb.RelationshipAddProperties(b, propsVec)
 	return fb.RelationshipEnd(b)
+}
+
+// buildCommunity serializes a single graph.CommunityResult into a
+// Community table (#1620). top_entities are written in their existing
+// (already-deterministic) order; strings are created before the table is
+// opened per FlatBuffers ordering rules.
+func buildCommunity(b *flatbuffers.Builder, c *graph.CommunityResult) flatbuffers.UOffsetT {
+	autoOff := b.CreateString(c.AutoName)
+	agentOff := b.CreateString(c.AgentName)
+
+	topOffsets := make([]flatbuffers.UOffsetT, 0, len(c.TopEntities))
+	for _, t := range c.TopEntities {
+		topOffsets = append(topOffsets, b.CreateString(t))
+	}
+	fb.CommunityStartTopEntitiesVector(b, len(topOffsets))
+	for i := len(topOffsets) - 1; i >= 0; i-- {
+		b.PrependUOffsetT(topOffsets[i])
+	}
+	topVec := b.EndVector(len(topOffsets))
+
+	fb.CommunityStart(b)
+	fb.CommunityAddId(b, int32(c.ID))
+	fb.CommunityAddSize(b, int32(c.Size))
+	fb.CommunityAddModularity(b, c.Modularity)
+	fb.CommunityAddTopEntities(b, topVec)
+	fb.CommunityAddAutoName(b, autoOff)
+	fb.CommunityAddAgentName(b, agentOff)
+	return fb.CommunityEnd(b)
 }
 
 func buildPropertyVector(b *flatbuffers.Builder, props map[string]string) flatbuffers.UOffsetT {
