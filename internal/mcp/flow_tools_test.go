@@ -192,6 +192,47 @@ func TestFindCallers_NoCallers(t *testing.T) {
 	}
 }
 
+// TestFindCallers_NoEdgeSignal verifies that when an entity is found but has no
+// callers, the response carries the explicit no-edge signal (#1618).
+func TestFindCallers_NoEdgeSignal(t *testing.T) {
+	doc := buildChainDoc()
+	srv := newTestServerWithDoc(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "ent-a",
+		"depth":     float64(1),
+	})
+	// "result" field must be present and set to "no_incoming_edges".
+	res, ok := out["result"].(string)
+	if !ok {
+		t.Fatalf("expected string 'result' field in no-caller response, got %T: %v", out["result"], out["result"])
+	}
+	if res != "no_incoming_edges" {
+		t.Errorf("expected result=no_incoming_edges, got %q", res)
+	}
+	// "note" field must be present and non-empty.
+	note, ok := out["note"].(string)
+	if !ok || note == "" {
+		t.Errorf("expected non-empty 'note' field in no-caller response")
+	}
+}
+
+// TestFindCallers_WithCallersNoSignal verifies that the no-edge signal is NOT
+// present when callers are found (#1618 regression guard).
+func TestFindCallers_WithCallersNoSignal(t *testing.T) {
+	doc := buildChainDoc()
+	srv := newTestServerWithDoc(t, doc)
+
+	// FuncB has 1 caller (FuncA) — result field must NOT be set.
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "ent-b",
+		"depth":     float64(1),
+	})
+	if _, hasResult := out["result"]; hasResult {
+		t.Errorf("expected no 'result' field when callers are present, got %v", out["result"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestFindCallees
 // ---------------------------------------------------------------------------
@@ -245,6 +286,48 @@ func TestFindCallees_LeafReturnsEmpty(t *testing.T) {
 	callees := out["callees"].([]any)
 	if len(callees) != 0 {
 		t.Errorf("expected 0 callees for leaf, got %d", len(callees))
+	}
+}
+
+// TestFindCallees_NoEdgeSignal verifies that when an entity is found but has no
+// callees, the response carries the explicit no-edge signal (#1618).
+func TestFindCallees_NoEdgeSignal(t *testing.T) {
+	doc := buildChainDoc()
+	srv := newTestServerWithDoc(t, doc)
+
+	// FuncC is a leaf — no outbound edges.
+	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
+		"entity_id": "ent-c",
+		"depth":     float64(1),
+	})
+	// "result" field must be present and set to "no_outgoing_edges".
+	res, ok := out["result"].(string)
+	if !ok {
+		t.Fatalf("expected string 'result' field in no-callee response, got %T: %v", out["result"], out["result"])
+	}
+	if res != "no_outgoing_edges" {
+		t.Errorf("expected result=no_outgoing_edges, got %q", res)
+	}
+	// "note" field must be present and non-empty.
+	note, ok := out["note"].(string)
+	if !ok || note == "" {
+		t.Errorf("expected non-empty 'note' field in no-callee response")
+	}
+}
+
+// TestFindCallees_WithCalleesNoSignal verifies that the no-edge signal is NOT
+// present when callees are found (#1618 regression guard).
+func TestFindCallees_WithCalleesNoSignal(t *testing.T) {
+	doc := buildChainDoc()
+	srv := newTestServerWithDoc(t, doc)
+
+	// FuncA calls FuncB — result field must NOT be set.
+	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
+		"entity_id": "ent-a",
+		"depth":     float64(1),
+	})
+	if _, hasResult := out["result"]; hasResult {
+		t.Errorf("expected no 'result' field when callees are present, got %v", out["result"])
 	}
 }
 
@@ -508,5 +591,76 @@ func TestImpactRiskScore_WithCoverage(t *testing.T) {
 	scoreUncovered := impactRiskScore(eUncovered, 0)
 	if scoreCovered >= scoreUncovered {
 		t.Errorf("covered entity (%v) should score lower than uncovered (%v)", scoreCovered, scoreUncovered)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestExpand_NoEdgeSignal (#1618)
+// ---------------------------------------------------------------------------
+
+// buildIsolatedDoc builds a single entity with no edges.
+func buildIsolatedDoc() *graph.Document {
+	return minDoc(
+		[]graph.Entity{
+			{ID: "iso-1", Name: "IsolatedFunc", Kind: "Function", SourceFile: "iso.go", StartLine: 1},
+		},
+		[]graph.Relationship{},
+	)
+}
+
+// TestExpand_NoEdgeSignal verifies that archigraph_expand returns the explicit
+// no-edge signal when the entity is found but has zero neighbours (#1618).
+func TestExpand_NoEdgeSignal(t *testing.T) {
+	doc := buildIsolatedDoc()
+	srv := newTestServerWithDoc(t, doc)
+
+	out := callFlowTool(t, srv.handleGetNeighbors, map[string]any{
+		"node": "iso-1",
+	})
+	if out == nil {
+		t.Fatal("expected JSON response, got nil")
+	}
+	res, ok := out["result"].(string)
+	if !ok {
+		t.Fatalf("expected string 'result' field in no-edge response, got %T: %v", out["result"], out["result"])
+	}
+	if res != "no_edges" {
+		t.Errorf("expected result=no_edges, got %q", res)
+	}
+	note, ok := out["note"].(string)
+	if !ok || note == "" {
+		t.Errorf("expected non-empty 'note' field in no-edge response")
+	}
+	count, ok := out["count"].(float64)
+	if !ok || count != 0 {
+		t.Errorf("expected count=0, got %v", out["count"])
+	}
+}
+
+// TestExpand_WithEdgesNoSignal verifies that the no-edge signal is NOT present
+// when the entity has neighbours (#1618 regression guard).
+func TestExpand_WithEdgesNoSignal(t *testing.T) {
+	doc := buildChainDoc()
+	srv := newTestServerWithDoc(t, doc)
+
+	// FuncA has an outbound edge to FuncB — no no-edge signal expected.
+	// handleGetNeighbors returns a flat array for the non-empty case, which
+	// does not decode to map[string]any. We just verify it's not an error and
+	// does not contain result=no_edges.
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"node": "ent-a"}
+	res, err := srv.handleGetNeighbors(nil, req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %v", res.Content)
+	}
+	for _, c := range res.Content {
+		if tc, ok := c.(mcpapi.TextContent); ok {
+			if strings.Contains(tc.Text, `"result"`) && strings.Contains(tc.Text, `"no_edges"`) {
+				t.Errorf("no_edges signal must not appear when edges exist: %s", tc.Text)
+			}
+		}
 	}
 }

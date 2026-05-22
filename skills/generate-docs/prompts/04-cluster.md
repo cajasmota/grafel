@@ -89,6 +89,14 @@ Until #769 lands, `archigraph_traces` returns chains that stay within a single r
 
 When you find entities of kind `Queue` (generic message broker abstraction, e.g., RabbitMQ, SQS, Google Pub-Sub) or `MessageTopic` (Kafka-specific topic), treat them as message destinations and document them in the event-flows section rather than the data-model section. Note the distinction: `Queue` is a broker-agnostic concept, while `MessageTopic` is Kafka-specific.
 
+**Empty-result rule (#1618 — the top quality failure).** When `archigraph_find_callees`, `archigraph_find_callers`, `archigraph_expand`, or `archigraph_traces(action=follow)` returns an empty edge list for a valid entity, the response carries `"result": "no_outgoing_edges"` / `"no_incoming_edges"` / `"no_edges"` / `"no_outgoing_calls"`. This is an explicit graph signal, not a gap to fill.
+
+Required behaviour:
+- **State the absence verbatim**: "The graph records no callee/edge for `X`."
+- **Never** infer a plausible relationship from training data, context, or naming convention to fill the gap. Confident fabrication ("create() does an ORM save", "store calls LoginSerializer") is the most common quality failure and the hardest to catch after the fact.
+- If you suspect an extraction gap (the connection may exist in code but was not indexed), say so explicitly and mark it unverified — do not state it as fact.
+- A `result` field on a traversal response means: **the entity was found, the graph was queried, nothing was returned.** This is different from `entity not found` (which is an error).
+
 ### Step 3 — Pull source where needed
 
 Within your `source_snippets` budget, use `archigraph_get_source(node_id=<id>, context_lines=20)` for entities whose intent is unclear from name + neighbors alone. Quote at most ~10 lines per snippet in the doc; reference the file path in backticks.

@@ -485,7 +485,51 @@ archigraph_expand(node="PaymentService.charge", depth=1)  # direct neighbours in
 
 ---
 
-## 6. Anti-patterns
+## 6. Empty-result contract — never fabricate edges
+
+**The top quality failure** in archigraph-assisted analysis is confident fabrication:
+an agent invents a plausible relationship (e.g. "create() does an ORM save",
+"mobile store calls LoginSerializer") when a traversal tool returned zero edges.
+
+### The contract
+
+When `archigraph_find_callees`, `archigraph_find_callers`, `archigraph_expand`,
+or `archigraph_traces(action=follow)` returns an empty edge list for a **valid**
+entity, the response carries an explicit signal:
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| `result` | `"no_outgoing_edges"` | Entity found; graph has zero outbound edges |
+| `result` | `"no_incoming_edges"` | Entity found; graph has zero inbound edges |
+| `result` | `"no_edges"` | Entity found; graph has zero neighbours of any kind |
+| `result` | `"no_outgoing_calls"` | Entry point found; no CALLS chain in the graph |
+| `note` | (human-readable message) | Instruction not to infer |
+
+These are distinct from `entity not found` errors (which return `IsError: true`).
+
+### Required behaviour
+
+- If a traversal tool returns a `result` field (no-edge signal): **state that the graph shows no edge here**. Do not speculate, do not fill the gap from training data, do not describe a "likely" or "probable" relationship.
+- Phrase it explicitly: _"The graph shows no callees for `create()`. No relationship was found between these entities."_
+- **Only** after confirming no graph edge exists may you note that the connection may exist but was not extracted (extraction gaps are real). Even then, mark it as unverified — do not state it as fact.
+
+### Pattern that causes fabrication (avoid)
+
+```
+# WRONG — invents a relationship when the graph returned no callees:
+archigraph_find_callees(entity_id="orders-api::create")
+→ { "callees": [], "result": "no_outgoing_edges", "note": "..." }
+# Agent output: "create() calls the ORM save method to persist the order"  ← FABRICATION
+
+# RIGHT:
+# Agent output: "The graph shows no outgoing edges from create(). No callee
+# relationship is recorded. If an ORM save is expected, this may be an
+# extraction gap — verify via archigraph_get_source before asserting it."
+```
+
+---
+
+## 7. Anti-patterns
 
 ### Do not use archigraph for symbol lookup
 
@@ -551,7 +595,7 @@ return "tool not found" errors:
 
 ---
 
-## 7. Reading responses
+## 8. Reading responses
 
 ### Entity IDs
 
@@ -581,7 +625,7 @@ question.
 
 ---
 
-## 8. Scoping rules
+## 9. Scoping rules
 
 | Scenario | How to scope |
 |----------|-------------|
@@ -596,7 +640,7 @@ group — provide `group=` explicitly or navigate to a registered repo.
 
 ---
 
-## 9. Related skills
+## 10. Related skills
 
 - `/generate-docs` — full documentation pipeline that uses archigraph at every
   pass. This skill is a prerequisite for understanding what `/generate-docs`
@@ -608,7 +652,7 @@ group — provide `group=` explicitly or navigate to a registered repo.
 - `/archigraph-patterns-discover` — finds and records structural patterns
   across the codebase.
 
-## 10. References
+## 11. References
 
 - `internal/mcp/SCHEMA.md` — canonical tool contract (inputs, outputs, notes)
 - ADR-0003 — SCOPE entity taxonomy (kind names)

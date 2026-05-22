@@ -267,14 +267,22 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 				"steps":       steps,
 			})
 		}
-		return jsonResult(map[string]any{
+		// #1618: explicit no-edge signal when the entity was found but BFS
+		// yielded no call chains. Agents MUST NOT infer a plausible flow —
+		// report the absence verbatim.
+		result := map[string]any{
 			"entry_point_id": prefixedID(r.Repo, entryEnt.ID),
 			"repo":           r.Repo,
 			"max_depth":      maxDepth,
 			"branching":      branch,
 			"chains":         out,
 			"count":          len(out),
-		}), nil
+		}
+		if len(out) == 0 {
+			result["result"] = "no_outgoing_calls"
+			result["note"] = "Graph shows no outgoing CALLS edges from this entity. Do not infer a flow — report the absence."
+		}
+		return jsonResult(result), nil
 	}
 	return mcpapi.NewToolResultError("entry_point_id not found in any loaded repo"), nil
 }

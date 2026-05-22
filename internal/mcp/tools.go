@@ -667,6 +667,20 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 			})
 		}
 	}
+	// #1618: explicit no-edge signal when the entity was found but has zero
+	// graph neighbours. Agents MUST NOT infer relationships from an empty
+	// result — report the absence verbatim.
+	if len(out) == 0 {
+		return jsonResult(map[string]any{
+			"node_id":   prefixedID(startRepo.Repo, start.ID),
+			"label":     start.Name,
+			"repo":      startRepo.Repo,
+			"neighbors": []any{},
+			"count":     0,
+			"result":    "no_edges",
+			"note":      "Graph shows no neighbours for this entity. Do not infer a relationship — report the absence.",
+		}), nil
+	}
 	return jsonResult(out), nil
 }
 

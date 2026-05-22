@@ -136,14 +136,23 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 		if root != nil {
 			rootName = root.Name
 		}
-		return jsonResult(map[string]any{
+		// #1618: distinguish "entity found, zero callers" from "entity not found".
+		// An empty callers array with result="no_incoming_edges" is an explicit
+		// graph signal — agents MUST NOT infer a plausible relationship to fill
+		// the gap. Report the absence verbatim.
+		result := map[string]any{
 			"entity_id":   prefixedID(r.Repo, target),
 			"entity_name": rootName,
 			"repo":        r.Repo,
 			"depth":       depth,
 			"callers":     callers,
 			"count":       len(callers),
-		}), nil
+		}
+		if len(callers) == 0 {
+			result["result"] = "no_incoming_edges"
+			result["note"] = "Graph shows no callers for this entity within the requested depth. Do not infer a relationship — report the absence."
+		}
+		return jsonResult(result), nil
 	}
 	return mcpapi.NewToolResultError("entity not found: " + entityID), nil
 }
@@ -255,14 +264,23 @@ func (s *Server) handleFindCallees(_ context.Context, req mcpapi.CallToolRequest
 		if root != nil {
 			rootName = root.Name
 		}
-		return jsonResult(map[string]any{
+		// #1618: distinguish "entity found, zero callees" from "entity not found".
+		// An empty callees array with result="no_outgoing_edges" is an explicit
+		// graph signal — agents MUST NOT infer a plausible relationship to fill
+		// the gap. Report the absence verbatim.
+		result := map[string]any{
 			"entity_id":   prefixedID(r.Repo, target),
 			"entity_name": rootName,
 			"repo":        r.Repo,
 			"depth":       depth,
 			"callees":     callees,
 			"count":       len(callees),
-		}), nil
+		}
+		if len(callees) == 0 {
+			result["result"] = "no_outgoing_edges"
+			result["note"] = "Graph shows no callees for this entity. Do not infer a relationship — report the absence."
+		}
+		return jsonResult(result), nil
 	}
 	return mcpapi.NewToolResultError("entity not found: " + entityID), nil
 }
