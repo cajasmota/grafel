@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
+	"github.com/cajasmota/archigraph/internal/embed"
 	"github.com/cajasmota/archigraph/internal/graph"
 )
 
@@ -209,6 +210,9 @@ type LoadedRepo struct {
 	Doc        *graph.Document
 	LabelIndex *LabelIndex
 	BM25       *BM25Index
+	Semantic   *embed.Store // per-repo vector index (nil when no embeddings.bin)
+	semMtime   time.Time
+	byID       map[string]*graph.Entity // entity ID -> entity, for semantic hit resolution
 	mtime      time.Time
 	loadErr    string // populated when last reload failed; doc may be stale
 }
@@ -299,21 +303,39 @@ func (s *State) Reload() (int, error) {
 			// Update GraphFile in case .fb appeared after initial load.
 			lr.GraphFile = graphPath
 			fileMtime := time.Unix(0, modtimeNs)
-			if fileMtime.Equal(lr.mtime) && lr.Doc != nil {
-				continue
-			}
 			stateDir := daemon.StateDirForRepo(rEntry.Path)
-			doc, err := readDocumentFromDir(stateDir)
-			if err != nil {
-				lr.loadErr = err.Error()
-				continue
+			if !(fileMtime.Equal(lr.mtime) && lr.Doc != nil) {
+				doc, err := readDocumentFromDir(stateDir)
+				if err != nil {
+					lr.loadErr = err.Error()
+					continue
+				}
+				lr.Doc = doc
+				lr.mtime = fileMtime
+				lr.loadErr = ""
+				lr.LabelIndex = BuildLabelIndex(doc)
+				lr.BM25 = BuildBM25(doc)
+				lr.byID = make(map[string]*graph.Entity, len(doc.Entities))
+				for i := range doc.Entities {
+					lr.byID[doc.Entities[i].ID] = &doc.Entities[i]
+				}
+				reloaded++
 			}
-			lr.Doc = doc
-			lr.mtime = fileMtime
-			lr.loadErr = ""
-			lr.LabelIndex = BuildLabelIndex(doc)
-			lr.BM25 = BuildBM25(doc)
-			reloaded++
+			// Refresh the semantic vector sidecar independently of the
+			// graph mtime — embeddings.bin may be written after the graph
+			// by a debounced embed pass. Missing file → Semantic stays nil
+			// and the MCP search path falls back to BM25-only.
+			if lr.Doc != nil {
+				semPath := embed.StorePath(stateDir)
+				if fi, statErr := os.Stat(semPath); statErr == nil {
+					if !fi.ModTime().Equal(lr.semMtime) {
+						if st, lerr := embed.Load(semPath, 0); lerr == nil && st.Len() > 0 {
+							lr.Semantic = st
+							lr.semMtime = fi.ModTime()
+						}
+					}
+				}
+			}
 		}
 		// Drop repos no longer in the registry.
 		for rName := range grp.Repos {

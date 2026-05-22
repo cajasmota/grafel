@@ -52,11 +52,12 @@ const (
 	PassEnrichment    = "enrichment"     // Pass 6: emit enrichment candidates
 	PassProcessFlow   = "process-flow"   // Pass 7: process-flow BFS over CALLS (#724)
 	PassModuleAgg     = "module-agg"     // Pass 8: module-level aggregation (#1383)
+	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassModuleAgg,
+	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassModuleAgg, PassEmbed,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -419,6 +420,18 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			now := time.Now()
 			_ = os.Chtimes(fbPath, now, now)
 			_ = os.Chtimes(outPath, now, now)
+		}
+
+		// Pass 9 — semantic embeddings sidecar (#461 / ADR-0019). Skipped via
+		// --skip-pass=embed, and silently skipped when the configured backend
+		// is "disabled" (BM25-only mode) or fails to initialise (e.g. builtin
+		// requested in a non-simplego build, or HTTP endpoint unreachable).
+		// The pass is incremental: only entities whose embed-text hash has
+		// changed since the previous embeddings.bin are re-embedded.
+		if !skipSet[PassEmbed] {
+			if err := writeEmbeddings(doc, absRepo, filepath.Dir(outPath)); err != nil {
+				fmt.Fprintf(os.Stderr, "archigraph: embeddings: %v\n", err)
+			}
 		}
 
 		// Sidecar: corpus-level metrics for `archigraph doctor` and the future

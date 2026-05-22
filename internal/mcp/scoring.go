@@ -170,6 +170,63 @@ func tokenize(s string) []string {
 type Hit struct {
 	Entity *graph.Entity
 	Score  float64
+	// Source records how this hit was surfaced for transparency: "bm25",
+	// "semantic", or "bm25+semantic" after RRF fusion. Empty for legacy
+	// BM25-only callers.
+	Source string
+}
+
+// rrfK is the Reciprocal Rank Fusion constant. score = Σ 1/(rrfK + rank).
+// 60 is the canonical value from Cormack et al.; no score normalization is
+// applied across the two rankers (#461 / ADR-0019).
+const rrfK = 60.0
+
+// FuseRRF combines a BM25 ranking and a semantic ranking into a single ranked
+// list via Reciprocal Rank Fusion. Rankings are passed already sorted best
+// first. Entities are matched by pointer identity (both rankers index the same
+// repo Doc). The returned hits carry the fused score and a Source tag.
+func FuseRRF(bm25, semantic []Hit) []Hit {
+	type agg struct {
+		entity *graph.Entity
+		score  float64
+		inBM25 bool
+		inSem  bool
+	}
+	order := []*graph.Entity{}
+	byEntity := map[*graph.Entity]*agg{}
+	get := func(e *graph.Entity) *agg {
+		a, ok := byEntity[e]
+		if !ok {
+			a = &agg{entity: e}
+			byEntity[e] = a
+			order = append(order, e)
+		}
+		return a
+	}
+	for rank, h := range bm25 {
+		a := get(h.Entity)
+		a.score += 1.0 / (rrfK + float64(rank+1))
+		a.inBM25 = true
+	}
+	for rank, h := range semantic {
+		a := get(h.Entity)
+		a.score += 1.0 / (rrfK + float64(rank+1))
+		a.inSem = true
+	}
+	out := make([]Hit, 0, len(order))
+	for _, e := range order {
+		a := byEntity[e]
+		src := "bm25"
+		switch {
+		case a.inBM25 && a.inSem:
+			src = "bm25+semantic"
+		case a.inSem:
+			src = "semantic"
+		}
+		out = append(out, Hit{Entity: a.entity, Score: a.score, Source: src})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	return out
 }
 
 // Search runs a BM25 query and returns a sorted slice of hits, highest first.
