@@ -34,6 +34,7 @@ import type {
 } from "@/data/types";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // ─── Step-kind metadata ───────────────────────────────────────────────────────
 
@@ -191,10 +192,10 @@ function AIChip() {
 function SkeletonRow() {
   return (
     <div className="flex gap-2.5 px-3.5 py-2.5 border-b border-border-soft">
-      <div className="w-[22px] h-[22px] rounded-xs bg-surface-2 animate-pulse flex-none" />
+      <Skeleton w="w-[22px]" h="h-[22px]" className="rounded-xs flex-none" />
       <div className="flex-1 flex flex-col gap-1.5">
-        <div className="h-3 w-3/4 rounded bg-surface-2 animate-pulse" />
-        <div className="h-2.5 w-1/2 rounded bg-surface-2 animate-pulse" />
+        <Skeleton w="w-3/4" />
+        <Skeleton w="w-1/2" h="h-2.5" />
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ import {
   Layers, Box, List, Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge, Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui";
+import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/components/ui";
 import { usePaths, usePathDetail, useOrphans } from "@/hooks/use-paths";
 import type {
   PathBackend, ControllerGroupShape, PathRoute, PathDetail,
@@ -133,25 +133,14 @@ function kindIcon(kind: string): React.ReactNode {
 }
 
 /* ============================================================
-   Skeleton primitives
+   Skeleton primitives — use shared Skeleton from UI layer
    ============================================================ */
-
-function SkeletonLine({ w = "w-full", h = "h-3" }: { w?: string; h?: string }) {
-  return (
-    <div
-      className={cn(
-        "rounded bg-surface-2 animate-pulse motion-reduce:animate-none",
-        w, h,
-      )}
-    />
-  );
-}
 
 function ListSkeleton() {
   return (
     <div className="p-3 space-y-2">
       {[80, 60, 70, 50, 65].map((w, i) => (
-        <SkeletonLine key={i} w={`w-[${w}%]`} />
+        <Skeleton key={i} w={`w-[${w}%]`} />
       ))}
     </div>
   );
@@ -160,11 +149,11 @@ function ListSkeleton() {
 function DetailSkeleton() {
   return (
     <div className="p-6 space-y-4">
-      <SkeletonLine w="w-48" h="h-4" />
-      <SkeletonLine w="w-72" h="h-6" />
-      <SkeletonLine w="w-full" />
-      <SkeletonLine w="w-4/5" />
-      <SkeletonLine w="w-3/4" />
+      <Skeleton w="w-48" h="h-4" />
+      <Skeleton w="w-72" h="h-6" />
+      <Skeleton w="w-full" />
+      <Skeleton w="w-4/5" />
+      <Skeleton w="w-3/4" />
     </div>
   );
 }
@@ -1008,7 +997,7 @@ function OrphansPanel({ groupId }: { groupId: string }) {
     return (
       <div className="p-4 space-y-2">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 rounded bg-surface-2 animate-pulse motion-reduce:animate-none" />
+          <Skeleton key={i} h="h-14" />
         ))}
       </div>
     );
@@ -1229,8 +1218,8 @@ export default function PathsScreen() {
           </>
         ) : isLoading ? (
           <div className="flex items-center gap-3">
-            <SkeletonLine w="w-20" h="h-2.5" />
-            <SkeletonLine w="w-20" h="h-2.5" />
+            <Skeleton w="w-20" h="h-2.5" />
+            <Skeleton w="w-20" h="h-2.5" />
           </div>
         ) : null}
       </div>

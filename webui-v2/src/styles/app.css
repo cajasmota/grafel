@@ -23,6 +23,10 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
 
+  /* -- Skeleton -- */
+  --color-skeleton-base: var(--skeleton-base);
+  --color-skeleton-highlight: var(--skeleton-highlight);
+
   /* -- Borders -- */
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
@@ -99,6 +103,35 @@
    on standalone pages (the showcase) without fighting the tokens reset. */
 .ag-scroll {
   overflow: auto;
+}
+
+/* ── Skeleton shimmer ────────────────────────────────────────────────────────
+   Used by the shared <Skeleton> primitive (components/ui/skeleton.tsx).
+   Uses token-driven colours so light/dark/warm palettes all look correct.
+   The shimmer gradient travels 200% so the bright band fully crosses the bar.
+   ──────────────────────────────────────────────────────────────────────── */
+@keyframes ag-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+.ag-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base)      0%,
+    var(--skeleton-base)      35%,
+    var(--skeleton-highlight) 50%,
+    var(--skeleton-base)      65%,
+    var(--skeleton-base)      100%
+  );
+  background-size: 200% auto;
+  animation: ag-shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ag-skeleton {
+    animation: none;
+  }
 }
 
 /* Honor reduced-motion globally (per handoff motion rules). */

@@ -58,6 +58,7 @@ import {
 import { ScanWizard } from "@/components/chrome/scan-wizard";
 import { ApiError } from "@/lib/api";
 import type { SettingsRepo, SettingsGroup, DoctorCheck, MonorepoPkg } from "@/data/types";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -1204,7 +1205,7 @@ export default function SettingsScreen() {
     return (
       <div className="mx-auto w-full max-w-[880px] px-6 py-10 space-y-4">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-24 rounded-xl bg-surface-2 animate-pulse" />
+          <Skeleton key={i} h="h-24" className="rounded-xl" />
         ))}
       </div>
     );

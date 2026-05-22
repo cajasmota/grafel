@@ -3,14 +3,7 @@
    Rendered while useDocsEntity is pending.
    ============================================================ */
 
-function SkeletonLine({ w = "100%" }: { w?: string }) {
-  return (
-    <div
-      className="h-3 rounded bg-surface-2 animate-pulse"
-      style={{ width: w }}
-    />
-  );
-}
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function DocsEntitySkeleton() {
   return (
@@ -18,26 +11,26 @@ export function DocsEntitySkeleton() {
       {/* Head */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <SkeletonLine w="56px" />
-          <SkeletonLine w="240px" />
+          <Skeleton w="w-14" />
+          <Skeleton w="w-60" />
         </div>
-        <SkeletonLine w="320px" />
+        <Skeleton w="w-80" />
         <div className="flex gap-2">
-          <SkeletonLine w="72px" />
-          <SkeletonLine w="72px" />
+          <Skeleton w="w-18" />
+          <Skeleton w="w-18" />
         </div>
       </div>
       {/* Signature block */}
       <div className="flex flex-col gap-2">
-        <SkeletonLine w="80px" />
-        <div className="h-20 rounded-md bg-surface-2 animate-pulse" />
+        <Skeleton w="w-20" />
+        <Skeleton h="h-20" className="rounded-md" />
       </div>
       {/* Description */}
       <div className="flex flex-col gap-2">
-        <SkeletonLine w="80px" />
-        <SkeletonLine w="100%" />
-        <SkeletonLine w="90%" />
-        <SkeletonLine w="60%" />
+        <Skeleton w="w-20" />
+        <Skeleton w="w-full" />
+        <Skeleton w="w-[90%]" />
+        <Skeleton w="w-[60%]" />
       </div>
     </article>
   );

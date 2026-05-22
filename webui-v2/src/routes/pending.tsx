@@ -16,7 +16,7 @@ import { toast } from "sonner";
 
 import { useCandidates, useSaveHint } from "@/hooks/use-pending";
 import { usePendingStore } from "@/store/use-pending-store";
-import { Badge, Button, Tabs, TabsList, TabsTrigger } from "@/components/ui";
+import { Badge, Button, Tabs, TabsList, TabsTrigger, Skeleton } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -562,10 +562,10 @@ function PendingSkeleton() {
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
-            className="px-3 py-2 border-b border-border-soft animate-pulse"
+            className="px-3 py-2 border-b border-border-soft flex flex-col gap-1.5"
           >
-            <div className="h-3 bg-surface-3 rounded w-3/4 mb-1.5" />
-            <div className="h-2.5 bg-surface-3 rounded w-1/2" />
+            <Skeleton w="w-3/4" />
+            <Skeleton w="w-1/2" h="h-2.5" />
           </div>
         ))}
       </aside>

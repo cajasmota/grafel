@@ -22,3 +22,4 @@ export {
   DialogDescription,
 } from "./dialog";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
+export { Skeleton } from "./skeleton";

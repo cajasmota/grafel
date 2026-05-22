@@ -28,6 +28,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
   useTopology,
@@ -204,11 +205,11 @@ function BrokerShapeIcon({
 
 function SkeletonFlowUnit() {
   return (
-    <div className="flex items-center gap-3 h-16 px-4 rounded-lg bg-surface-2 animate-pulse border border-border">
-      <div className="size-6 rounded-full bg-surface-3 shrink-0" />
+    <div className="flex items-center gap-3 h-16 px-4 rounded-lg border border-border">
+      <Skeleton w="w-6" h="h-6" className="rounded-full shrink-0" />
       <div className="flex-1 space-y-2">
-        <div className="h-3 bg-surface-3 rounded w-1/3" />
-        <div className="h-2 bg-surface-3 rounded w-1/4" />
+        <Skeleton w="w-1/3" />
+        <Skeleton w="w-1/4" h="h-2" />
       </div>
     </div>
   );

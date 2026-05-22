@@ -66,6 +66,10 @@
   --pastel-9-ink:  #6573b3;
   --pastel-10-ink: #c08741;
 
+  /* -- Skeleton / loading placeholders -- */
+  --skeleton-base:      #e2e6ed;   /* noticeably darker than surface-2 (#f3f5f8) */
+  --skeleton-highlight: #edf0f5;   /* shimmer highlight — lighter band */
+
   /* -- Graph canvas -- */
   --canvas-bg:        #f7f8fa;
   --canvas-grid:      rgba(15, 23, 42, 0.045);
@@ -142,6 +146,8 @@
   --text-2:        #4a4843;
   --text-3:        #76736b;
   --text-4:        #a5a299;
+  --skeleton-base:      #e4dfd6;   /* warm light skeleton base */
+  --skeleton-highlight: #eeece6;   /* warm light shimmer highlight */
   --canvas-bg:     #fbfaf7;
   --canvas-grid:   rgba(28, 27, 24, 0.04);
   --edge-color:    rgba(28, 27, 24, 0.14);
@@ -206,6 +212,10 @@
   --pastel-9-ink:  #b1b8d9;
   --pastel-10-ink: #e8be93;
 
+  /* -- Skeleton / loading placeholders -- */
+  --skeleton-base:      #2a3140;   /* clearly lighter than surface (#1a1f2b) */
+  --skeleton-highlight: #333d4e;   /* shimmer highlight — lighter band */
+
   --canvas-bg:        #0b0e15;
   --canvas-grid:      rgba(211, 216, 224, 0.04);
   --edge-color:       rgba(211, 216, 224, 0.10);
@@ -232,6 +242,8 @@
   --text-2:        #cbc7be;
   --text-3:        #908b80;
   --text-4:        #5e5a52;
+  --skeleton-base:      #312e29;   /* warm dark skeleton base */
+  --skeleton-highlight: #3b3731;   /* warm dark shimmer highlight */
   --canvas-bg:     #131210;
   --canvas-grid:   rgba(245, 242, 236, 0.04);
   --edge-color:    rgba(245, 242, 236, 0.12);

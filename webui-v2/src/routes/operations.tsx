@@ -80,6 +80,7 @@ import {
 import { useRunDoctor } from "@/hooks/use-settings";
 import { useIndexProgress } from "@/hooks/use-index-progress";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { DoctorCheck, LogLine, PatternRow, SystemStatus } from "@/data/types";
 
@@ -444,7 +445,7 @@ function SystemTab({ groupId }: { groupId: string }) {
       {/* Daemon status */}
       <Section title="Daemon" sub="Live process state. Auto-refreshes every 5 seconds.">
         {isLoading ? (
-          <div className="h-28 rounded-lg bg-surface-2 animate-pulse" />
+          <Skeleton h="h-28" className="rounded-lg" />
         ) : isError || !status ? (
           <div className="flex items-center gap-2 text-sm text-text-3 py-4">
             <AlertTriangle size={14} className="text-warning" />
@@ -917,7 +918,7 @@ function PatternsTab({ groupId }: { groupId: string }) {
       {isLoading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-12 rounded-lg bg-surface-2 animate-pulse" />
+            <Skeleton key={i} h="h-12" className="rounded-lg" />
           ))}
         </div>
       ) : isError ? (
@@ -1053,7 +1054,7 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
       {isLoading ? (
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 rounded-lg bg-surface-2 animate-pulse" />
+            <Skeleton key={i} h="h-16" className="rounded-lg" />
           ))}
         </div>
       ) : !data ? (
@@ -1215,7 +1216,7 @@ function RecallPane({ groupId }: { groupId: string }) {
         <div className="flex-1">
           <label className="block text-sm text-text-2 mb-1">Golden fixture</label>
           {fixturesLoading ? (
-            <div className="h-8 rounded-md bg-surface-2 animate-pulse" />
+            <Skeleton h="h-8" className="rounded-md" />
           ) : fixtures.length === 0 ? (
             <p className="text-sm text-text-3">
               No fixtures found. Add test fixtures to{" "}
@@ -1402,7 +1403,7 @@ function UpdatesTab() {
         }
       >
         {isLoading ? (
-          <div className="h-20 rounded-lg bg-surface-2 animate-pulse" />
+          <Skeleton h="h-20" className="rounded-lg" />
         ) : isError || !data ? (
           <div className="flex items-center gap-2 text-sm text-text-3 py-4">
             <AlertTriangle size={14} className="text-warning" />

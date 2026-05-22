@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, Plus, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button, Card, InfoLabel, Kbd } from "@/components/ui";
+import { Button, Card, InfoLabel, Kbd, Skeleton } from "@/components/ui";
 import { LandingTopBar } from "@/components/chrome/landing-top-bar";
 import { ScanWizard } from "@/components/chrome/scan-wizard";
 import { Constellation, seedFromString } from "@/components/viz/constellation";
@@ -307,7 +307,7 @@ export default function Landing() {
           ) : isLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[0, 1, 2].map((i) => (
-                <Card key={i} className="h-[200px] animate-pulse bg-surface-2" />
+                <Skeleton key={i} h="h-[200px]" className="rounded-lg" />
               ))}
             </div>
           ) : list.length === 0 ? (
