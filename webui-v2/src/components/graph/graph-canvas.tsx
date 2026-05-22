@@ -43,6 +43,8 @@ import {
   pastelAt,
   degreeColor,
   linkPalette,
+  lerpRGBA,
+  JARVIS_GLOW,
 } from "@/lib/graph-colors";
 import { saveLayout, loadLayout, isDegenerateLayout, isLayoutHealthy } from "@/lib/graph-layout-cache";
 import {
@@ -53,6 +55,10 @@ import {
   type NodeSizingConfig,
   type RenderConfig,
 } from "@/store/use-graph-store";
+
+// #1157: a module-stable empty set so an unset highlightedNodeIds prop never
+// creates a new identity each render.
+const EMPTY_HIGHLIGHT: ReadonlySet<string> = new Set();
 
 const SPACE_SIZE = 32768;
 // Fix #1532-3 / #1548-2: a small padding makes the settled graph FILL the
@@ -214,6 +220,19 @@ export interface GraphCanvasProps {
   onNodeClick: (node: GraphNode | null) => void;
   onNodeHover: (node: GraphNode | null) => void;
   onSettled: () => void;
+  /**
+   * #1157 Jarvis: node IDs the most recent MCP tool call touched. The canvas
+   * runs a transient GLOW/PULSE on these nodes (and any edge whose both
+   * endpoints are in the set) that decays to nothing — a real-time view of the
+   * agent working through the graph. Empty set = no glow.
+   */
+  highlightedNodeIds?: ReadonlySet<string>;
+  /**
+   * #1157 Jarvis: monotonic counter bumped on every fresh highlight. A change
+   * (re)starts the glow rAF loop from full intensity, so back-to-back MCP
+   * queries each re-pulse even if the node set overlaps.
+   */
+  highlightEpoch?: number;
   className?: string;
 }
 
@@ -253,6 +272,8 @@ function GraphCanvasInner(
     onNodeClick,
     onNodeHover,
     onSettled,
+    highlightedNodeIds,
+    highlightEpoch = 0,
     className = "",
   }: GraphCanvasProps,
   ref: React.Ref<GraphCanvasHandle>,
@@ -1322,6 +1343,148 @@ function GraphCanvasInner(
   useEffect(() => {
     scheduleLabels();
   }, [hoveredNodeId, scheduleLabels]);
+
+  // ── #1157 Jarvis: transient GLOW/PULSE on MCP-touched nodes + edges ──────────
+  // When the MCP server queries/returns graph entities, the activity SSE stream
+  // (useGraphHighlight) hands us the touched node IDs + a bumped `highlightEpoch`.
+  // We run a short rAF loop that OVERWRITES only the affected entries in the GPU
+  // color/size buffers with a decaying amber pulse, then restores the base
+  // buffers when the pulse ends. This is a pure transient overlay — it never
+  // re-layouts, re-clusters, or moves a single node, so it stays performant on
+  // the 20k-node upvate graph (only the touched indices are rewritten each frame;
+  // a typical MCP result touches a handful to a few dozen nodes).
+  //
+  // Edges: WebUI v2 edges have no synthetic id, so an edge glows when BOTH its
+  // endpoints are in the highlighted node set (resolved against linkData.links,
+  // which is index-based and parallel to the packed link color buffer).
+  const glowRafRef = useRef<number | null>(null);
+  // Stable empty fallback so an undefined prop doesn't thrash the effect deps.
+  const highlightSet = highlightedNodeIds ?? EMPTY_HIGHLIGHT;
+  useEffect(() => {
+    const g = graphRef.current;
+    if (!g) return;
+
+    // Cancel any in-flight glow loop (a new epoch supersedes the previous pulse).
+    if (glowRafRef.current !== null) {
+      cancelAnimationFrame(glowRafRef.current);
+      glowRafRef.current = null;
+    }
+
+    // Resolve the affected NODE indices.
+    const nodeIdxs: number[] = [];
+    for (const id of highlightSet) {
+      const i = idToIdx.get(id);
+      if (i !== undefined) nodeIdxs.push(i);
+    }
+
+    // Resolve the affected EDGE (link) indices: an edge glows when both its
+    // endpoints are highlighted. linkData.links is a flat [src,tgt,...] index
+    // buffer parallel to the per-link color quads.
+    const edgeIdxs: number[] = [];
+    if (nodeIdxs.length > 0) {
+      const hiIdx = new Set(nodeIdxs);
+      const { links } = linkData;
+      for (let li = 0, e = 0; li < links.length; li += 2, e++) {
+        if (hiIdx.has(links[li]) && hiIdx.has(links[li + 1])) edgeIdxs.push(e);
+      }
+    }
+
+    // Nothing to glow (decay finished, or no entity in the current view) →
+    // restore the base buffers so any prior pulse is fully cleared, then stop.
+    if (nodeIdxs.length === 0) {
+      g.setPointColors(packPointColors());
+      g.setPointSizes(packed.sizes);
+      g.setLinkColors(packLinkColors());
+      g.render();
+      return;
+    }
+
+    // Snapshot the BASE buffers once; each frame we re-derive from these so the
+    // pulse blends from the node's real color/size (theme + colorMode aware).
+    const baseColors = packPointColors();
+    const baseSizes = packed.sizes;
+    const baseLinkColors = packLinkColors();
+    const glowColors = new Float32Array(baseColors);
+    const glowSizes = new Float32Array(baseSizes);
+    const glowLinkColors = new Float32Array(baseLinkColors);
+
+    const start = performance.now();
+    // GLOW_MS mirrors useGraphHighlight.DECAY_MS (~1.8s) — kept local so the
+    // canvas has no import cycle with the hook.
+    const GLOW_MS = 1800;
+
+    const frame = (now: number) => {
+      const gg = graphRef.current;
+      if (!gg) return;
+      const t = Math.min(1, (now - start) / GLOW_MS);
+      // Decay envelope: bright instantly, ease out to 0. A gentle 2-beat pulse
+      // rides on top so the glow "breathes" while it fades (the Jarvis feel).
+      const decay = 1 - t * t; // ease-out quadratic → 0 at end
+      const pulse = 0.78 + 0.22 * Math.cos(t * Math.PI * 4); // ~2 beats over the life
+      const intensity = decay * pulse; // 0..1
+
+      // ── nodes: blend base color → amber, and scale size up ──────────────────
+      for (const i of nodeIdxs) {
+        const o = i * 4;
+        const base: RGBA = [
+          baseColors[o] * 255,
+          baseColors[o + 1] * 255,
+          baseColors[o + 2] * 255,
+          baseColors[o + 3],
+        ];
+        // Blend toward amber, force full opacity at the peak so the node pops
+        // even if its base alpha (pointOpacity) is low.
+        const blended = lerpRGBA(base, JARVIS_GLOW, intensity);
+        const a = base[3] + (1 - base[3]) * intensity;
+        writeNormalizedRGBA(glowColors, i, [blended[0], blended[1], blended[2], a]);
+        // Scale the node up to 2.4× at peak for a visible "halo" bloom.
+        glowSizes[i] = baseSizes[i] * (1 + 1.4 * intensity);
+      }
+
+      // ── edges: blend base link color → amber + lift alpha ───────────────────
+      for (const e of edgeIdxs) {
+        const o = e * 4;
+        const base: RGBA = [
+          baseLinkColors[o] * 255,
+          baseLinkColors[o + 1] * 255,
+          baseLinkColors[o + 2] * 255,
+          baseLinkColors[o + 3],
+        ];
+        const blended = lerpRGBA(base, JARVIS_GLOW, intensity);
+        const a = Math.max(base[3], 0.35) + (1 - Math.max(base[3], 0.35)) * intensity;
+        writeNormalizedRGBA(glowLinkColors, e, [blended[0], blended[1], blended[2], a]);
+      }
+
+      gg.setPointColors(glowColors);
+      gg.setPointSizes(glowSizes);
+      if (edgeIdxs.length > 0) gg.setLinkColors(glowLinkColors);
+      gg.render();
+
+      if (t < 1) {
+        glowRafRef.current = requestAnimationFrame(frame);
+      } else {
+        // Pulse done → restore the exact base buffers (clean slate).
+        gg.setPointColors(baseColors);
+        gg.setPointSizes(baseSizes);
+        gg.setLinkColors(baseLinkColors);
+        gg.render();
+        glowRafRef.current = null;
+      }
+    };
+    glowRafRef.current = requestAnimationFrame(frame);
+
+    return () => {
+      if (glowRafRef.current !== null) {
+        cancelAnimationFrame(glowRafRef.current);
+        glowRafRef.current = null;
+      }
+    };
+    // Re-run on each fresh highlight (epoch) — NOT on every set identity churn.
+    // packPointColors/packLinkColors/packed are stable between data/theme pushes;
+    // when those change the data-push / recolor effects re-assert the base
+    // buffers, and the next epoch restarts the glow from the new base.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightEpoch]);
 
   // ── Fix #1548-3: camera snapshot / restore for ego focus enter / exit ─────────
   // cosmos.gl exposes no public pan setter, so we capture (a) the zoom level and

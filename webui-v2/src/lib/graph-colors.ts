@@ -171,3 +171,26 @@ export function linkPalette(isDark: boolean): LinkPalette {
 export const SAME_REPO_EDGE: RGBA = [71, 85, 105, 1];
 /** Highlighted (focused-neighbor) edge color — amber. */
 export const HIGHLIGHT_EDGE: RGBA = [251, 146, 60, 1];
+
+/**
+ * Jarvis MCP-query glow color (#1157). A warm amber that pops in BOTH themes
+ * against the repo/community pastels and the slate edge mesh, so a node/edge the
+ * MCP agent just touched visibly lights up before fading. Same hue as
+ * HIGHLIGHT_EDGE for consistency, lifted slightly for the additive glow blend.
+ */
+export const JARVIS_GLOW: RGBA = [255, 176, 59, 1];
+
+/**
+ * Linear-interpolate between two RGBA colors. t in [0,1]. Alpha lerps too.
+ * Used by the canvas glow loop to blend a node's base color toward the Jarvis
+ * amber at the current pulse intensity.
+ */
+export function lerpRGBA(a: RGBA, b: RGBA, t: number): RGBA {
+  const x = Math.max(0, Math.min(1, t));
+  return [
+    a[0] + (b[0] - a[0]) * x,
+    a[1] + (b[1] - a[1]) * x,
+    a[2] + (b[2] - a[2]) * x,
+    a[3] + (b[3] - a[3]) * x,
+  ];
+}
