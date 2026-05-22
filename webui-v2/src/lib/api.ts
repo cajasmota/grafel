@@ -20,6 +20,14 @@ import type {
   SettingsGroup,
   SettingsFeatures,
   DoctorCheck,
+  TopologyResponse,
+  TopologyChannelDetail,
+  OrphanPublisherEntry,
+  OrphanSubscriberEntry,
+  V2CandidatesResponse,
+  FlowsListResponse,
+  FlowDetailResponse,
+  FlowDeadEndsResponse,
   PathsListResponse,
   PathDetail,
   OrphansResponse,
@@ -119,6 +127,40 @@ export const api = {
     return requestV2<GraphPayloadWire>(`/graph/${encodeURIComponent(groupId)}${suffix}`);
   },
 
+  // --- Topology screen (#1440, epic #1432) ---
+  // v2 endpoints wrap collectTopologyResponse + buildTopicDetail in the v2 envelope.
+  // All data is static graph extraction — no runtime metrics.
+
+  /**
+   * GET /api/v2/topology/:group
+   * Full topology payload in the v2 envelope (topics/queues/channels/functions/broker_groups).
+   */
+  getTopology: (groupId: string) =>
+    requestV2<TopologyResponse>(`/topology/${encodeURIComponent(groupId)}`),
+
+  /**
+   * GET /api/v2/topology/:group/topic/:topicId
+   * Detailed channel view in the v2 envelope.
+   */
+  getTopologyDetail: (groupId: string, topicId: string) =>
+    requestV2<TopologyChannelDetail>(
+      `/topology/${encodeURIComponent(groupId)}/topic/${encodeURIComponent(topicId)}`,
+    ),
+
+  /**
+   * GET /api/topology/:group/orphan-publishers
+   * Orphan publishers — v1 endpoint (no v2 wrapper needed for these list endpoints).
+   */
+  getOrphanPublishers: (groupId: string) =>
+    request<OrphanPublisherEntry[]>(`/topology/${encodeURIComponent(groupId)}/orphan-publishers`),
+
+  /**
+   * GET /api/topology/:group/orphan-subscribers
+   * Orphan subscribers — v1 endpoint.
+   */
+  getOrphanSubscribers: (groupId: string) =>
+    request<OrphanSubscriberEntry[]>(`/topology/${encodeURIComponent(groupId)}/orphan-subscribers`),
+
   // --- v1 surfaces still used by other (placeholder) screens ---
   getGroup: (groupId: string) => request<Group>(`/groups/${groupId}`),
   /** v1 — Tier-3 entity detail for the inspector (lazy, on node click). */
@@ -200,6 +242,38 @@ export const api = {
       method: "POST",
     }),
 
+  // --- v2 Pending screen (#1442) ---
+  /** Fetch repair + enrichment candidates for a group. */
+  listCandidates: (groupId: string, tab?: "repairs" | "enrichments") =>
+    requestV2<V2CandidatesResponse>(
+      `/groups/${encodeURIComponent(groupId)}/candidates${tab ? `?tab=${tab}` : ""}`,
+    ),
+  /** Persist a hint for a candidate. Empty string clears the hint. */
+  saveHint: (groupId: string, candidateId: string, hint: string) =>
+    requestV2<{ ok: true }>(
+      `/groups/${encodeURIComponent(groupId)}/candidates/${encodeURIComponent(candidateId)}/hint`,
+      { method: "PUT", body: JSON.stringify({ hint }) },
+    ),
+  // --- Flows (Process Flow Explorer) ---
+  listFlows: (groupId: string, params?: { tab?: string; search?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set("search", params.search);
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.tab === "crossrepo") q.set("cross_stack_only", "false");
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<FlowsListResponse>(`/flows/${groupId}${qs}`);
+  },
+  getFlowDetail: (groupId: string, processId: string) =>
+    request<FlowDetailResponse>(`/flows/${groupId}/${encodeURIComponent(processId)}`),
+  listFlowDeadEnds: (groupId: string) =>
+    request<FlowDeadEndsResponse>(`/flows/${groupId}/dead-ends`),
+  listFlowTruncated: (groupId: string) =>
+    request<FlowsListResponse>(`/flows/${groupId}/truncated`),
+  generateFlowDocs: (groupId: string, processId: string) =>
+    request<{ status: string; message: string }>(
+      `/flows/${groupId}/${encodeURIComponent(processId)}/trigger-enrichment`,
+      { method: "POST" },
+    ),
   // --- v2 Paths screen ---
   /** GET /api/v2/groups/:id/paths — backend-grouped route list + totals. */
   listPaths: (groupId: string) =>
