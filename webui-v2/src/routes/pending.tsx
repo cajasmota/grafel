@@ -600,6 +600,7 @@ export default function PendingScreen() {
     toggleGroup,
     setDraft,
     confirmSave,
+    seedServerHints,
   } = usePendingStore();
 
   // All items for the current tab.
@@ -614,6 +615,17 @@ export default function PendingScreen() {
       setFocusedId(allItems[0].id);
     }
   }, [allItems, focusedId, setFocusedId]);
+
+  // Seed server-provided hints into the store so they populate the input on
+  // first render without a separate PUT round-trip (#1518).
+  useEffect(() => {
+    if (!data) return;
+    const hints: Record<string, string> = {};
+    for (const c of [...data.repairs, ...data.enrichments]) {
+      if (c.hint) hints[c.entityId] = c.hint;
+    }
+    seedServerHints(hints);
+  }, [data, seedServerHints]);
 
   // Filter candidates.
   const filtered = useMemo(
@@ -662,18 +674,20 @@ export default function PendingScreen() {
   const focusedItem = focusedId
     ? allItems.find((i) => i.id === focusedId) ?? null
     : null;
-  const focusedDraft = focusedId
-    ? (drafts[focusedId] ?? savedHints[focusedId] ?? "")
+  // Hints are keyed by entityId (stable), not by the ephemeral candidate id (#1518).
+  const focusedEntityId = focusedItem?.entityId ?? null;
+  const focusedDraft = focusedEntityId
+    ? (drafts[focusedEntityId] ?? savedHints[focusedEntityId] ?? "")
     : "";
-  const focusedSaved = focusedId ? (savedHints[focusedId] ?? "") : "";
+  const focusedSaved = focusedEntityId ? (savedHints[focusedEntityId] ?? "") : "";
 
   const handleSaveHint = () => {
     if (!focusedItem) return;
     saveHintMutation.mutate(
-      { candidateId: focusedItem.id, hint: focusedDraft },
+      { entityId: focusedItem.entityId, hint: focusedDraft },
       {
         onSuccess: () => {
-          confirmSave(focusedItem.id, focusedDraft);
+          confirmSave(focusedItem.entityId, focusedDraft);
           toast.success("Hint saved.");
         },
         onError: () => {
@@ -800,7 +814,7 @@ export default function PendingScreen() {
               tab={tab}
               draft={focusedDraft}
               savedHint={focusedSaved}
-              onDraftChange={(v) => focusedId && setDraft(focusedId, v)}
+              onDraftChange={(v) => focusedEntityId && setDraft(focusedEntityId, v)}
               onSave={handleSaveHint}
               saving={saveHintMutation.isPending}
               groupId={groupId}

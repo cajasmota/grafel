@@ -236,6 +236,94 @@ v1 `GET /api/graph/{group}/entity/{id}` (unchanged, raw JSON).
 
 ---
 
+## 6c. Action endpoints + async-job convention (#1512)
+
+The Operations + Settings screens trigger CLI-equivalent mutating actions.
+Every such endpoint is a thin REST wrapper over the SAME internal function the
+corresponding `archigraph` CLI command calls — no logic is duplicated.
+
+### Async jobs (rebuild / reset)
+
+Indexing is long-running and MUST NOT block the HTTP handler — the daemon has
+to keep serving reads while a rebuild runs (the #1487 serving-mutex invariant).
+So rebuild/reset endpoints are **asynchronous**:
+
+1. The handler validates the group, fires the daemon `Rebuild` RPC in a
+   background goroutine (same path as the CLI), and returns **`202 Accepted`**
+   immediately with a job id.
+2. Clients poll **`GET /api/v2/jobs/{id}`** or subscribe to the SSE feed
+   **`GET /api/v2/jobs/{id}/stream`** to track status.
+
+**202 ack body** (`v2OK` envelope):
+
+```json
+{ "ok": true, "data": {
+  "job_id": "aj-1716300000000000000",
+  "op": "rebuild",                   // "rebuild" | "reset"
+  "group": "acme",
+  "repo": "core",                    // omitted for whole-group rebuild
+  "status": "queued",
+  "progress_token": "web-1716300000000",
+  "status_url": "/api/v2/jobs/aj-...",
+  "stream_url": "/api/v2/jobs/aj-.../stream"
+}}
+```
+
+**Job shape** (`GET /api/v2/jobs/{id}`):
+
+```json
+{ "ok": true, "data": {
+  "id": "aj-...", "op": "rebuild", "group": "acme", "repo": "core",
+  "status": "running",               // queued | running | done | failed
+  "progress": 5,                     // 0..100, coarse
+  "message": "indexing started",
+  "error": "",
+  "progress_token": "web-...",
+  "queued_at": 1716300000000,        // unix-ms
+  "started_at": 1716300000050,
+  "finished_at": null
+}}
+```
+
+Jobs are tracked in an in-memory, TTL-pruned registry (finished jobs drop after
+30 min) so a long-lived daemon never accumulates unbounded state. Live per-file
+indexing progress is still on the v1 `/api/index-progress/{group}` SSE stream,
+keyed on `progress_token`.
+
+**Job SSE** (`GET /api/v2/jobs/{id}/stream`) follows §3: `connected` →
+`job` (one per status transition) → `heartbeat` every 15 s → `close` once the
+job reaches a terminal state. The path ends in `/stream` so `withGzip` excludes
+it automatically.
+
+### Action endpoint reference
+
+| Method + path | Wraps | Notes |
+|---|---|---|
+| `POST /api/v2/groups/{group}/rebuild` | `archigraph rebuild <group>` | async → 202 + job id |
+| `POST /api/v2/groups/{group}/repos/{repo}/rebuild` | `archigraph rebuild <group> <repo>` | async → 202 + job id |
+| `POST /api/v2/groups/{group}/repos/{repo}/reset` | `archigraph rebuild --wipe` | async → 202 + job id (destructive) |
+| `GET /api/v2/jobs/{id}` | — | job status/progress |
+| `GET /api/v2/jobs/{id}/stream` | — | job SSE feed |
+| `PATCH /api/v2/groups/{group}/repos/{repo}/monorepo` | module selection | persists to fleet.json **and** triggers a watcher `ForceRescan` so the running daemon re-reconciles (no longer persist-only). Reports `watcher_reloaded`. |
+| `POST /api/v2/maintenance/cleanup` | `archigraph cleanup` | body `{"dry_run":true}` (default) previews orphaned registry entries; `false` removes them |
+| `POST /api/v2/update/apply` | `archigraph update` | runs the updater as a subprocess (so this daemon is not replaced mid-request); returns `{exit_code, output[], applied}`. Version check stays at `GET /api/updates/check`. |
+| `POST /api/v2/patterns/{group}/export` | `archigraph patterns export` | body `{"file"}` or `{"repo"}` → writes approved patterns to CLAUDE.md |
+| `POST /api/v2/patterns/{group}/gc` | `archigraph patterns gc` | body `{"dry_run":true}` (default) previews; `false` prunes decayed candidates |
+
+---
+
+## 10. Intentionally CLI-only (no REST wrapper)
+
+**Daemon install / uninstall** (`archigraph daemon install|uninstall`) are NOT
+exposed over REST. They register/unregister a launchd service (macOS) /
+systemd unit (Linux), which requires elevated privileges and filesystem changes
+outside the daemon's own process — there is no safe in-process REST trigger
+(the daemon would be modifying the very service definition that supervises it).
+These remain CLI-only by design; the Settings screen surfaces them as a CLI
+hint rather than a button.
+
+---
+
 ## 7. Adding a new v2 endpoint — checklist
 
 - [ ] Handler file named `v2_<surface>.go`.

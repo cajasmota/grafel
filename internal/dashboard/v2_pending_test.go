@@ -318,19 +318,24 @@ func TestHandleV2Candidates_communityNamingExcluded(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// PUT /api/v2/groups/{group}/candidates/{cid}/hint
+// PUT /api/v2/groups/{group}/candidates/{cid}/hint  (cid = entity ID, #1518)
 // ---------------------------------------------------------------------------
 
+// TestHandleV2CandidateHint_ok verifies that a hint is stored in the
+// entity-hints store keyed by SubjectID (entity ID) and that a subsequent
+// GET /candidates returns the hint attached to the candidate.
 func TestHandleV2CandidateHint_ok(t *testing.T) {
 	repoPath := t.TempDir()
 	seedPendingCandidates(t, repoPath, []candidateRaw{
-		{ID: "c99", Kind: "repair_edge", SubjectID: "X", Confidence: 0.9},
+		// ID "c99" is the ephemeral candidate ID; "entity:X" is the stable entity ID.
+		{ID: "c99", Kind: "repair_edge", SubjectID: "entity:X", Confidence: 0.9},
 	})
 
 	ts := newPendingServer(t, "grpH", "repo1", repoPath)
 	body := bytes.NewBufferString(`{"hint":"check the migration guide"}`)
+	// URL now uses entity ID, not candidate ID.
 	req, _ := http.NewRequest("PUT",
-		ts.URL+"/api/v2/groups/grpH/candidates/c99/hint", body)
+		ts.URL+"/api/v2/groups/grpH/candidates/entity:X/hint", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -355,27 +360,146 @@ func TestHandleV2CandidateHint_ok(t *testing.T) {
 	if env.Data["hint"] != "check the migration guide" {
 		t.Errorf("want hint in response, got %v", env.Data)
 	}
-
-	// Verify hint was persisted to disk.
-	saved := readAllCandidates(repoPath)
-	if len(saved) == 0 {
-		t.Fatal("no candidates on disk after PUT")
+	if env.Data["entityId"] != "entity:X" {
+		t.Errorf("want entityId in response, got %v", env.Data)
 	}
-	if saved[0].Hint != "check the migration guide" {
-		t.Errorf("hint not persisted; got %q", saved[0].Hint)
+
+	// Verify hint is in the entity-hints store, NOT mutated onto the candidate.
+	hints := readEntityHints(repoPath)
+	if hints["entity:X"] != "check the migration guide" {
+		t.Errorf("hint not in entity-hints store; got %q", hints["entity:X"])
+	}
+	// The raw candidate's Hint field should NOT have been modified.
+	raw := readAllCandidates(repoPath)
+	if len(raw) == 0 {
+		t.Fatal("no candidates on disk")
+	}
+	if raw[0].Hint != "" {
+		t.Errorf("raw candidate Hint should be untouched; got %q", raw[0].Hint)
+	}
+
+	// GET /candidates should return the hint attached to the repair candidate.
+	gresp, err := http.Get(ts.URL + "/api/v2/groups/grpH/candidates")
+	if err != nil {
+		t.Fatalf("GET candidates: %v", err)
+	}
+	defer gresp.Body.Close()
+	var genv struct {
+		Data v2CandidatesResponse `json:"data"`
+	}
+	if err := json.NewDecoder(gresp.Body).Decode(&genv); err != nil {
+		t.Fatalf("decode candidates: %v", err)
+	}
+	if len(genv.Data.Repairs) != 1 {
+		t.Fatalf("want 1 repair, got %d", len(genv.Data.Repairs))
+	}
+	if genv.Data.Repairs[0].Hint != "check the migration guide" {
+		t.Errorf("hint not re-attached on GET; got %q", genv.Data.Repairs[0].Hint)
+	}
+	if genv.Data.Repairs[0].EntityID != "entity:X" {
+		t.Errorf("want entityId entity:X, got %q", genv.Data.Repairs[0].EntityID)
+	}
+}
+
+// TestHandleV2CandidateHint_survivesReindex verifies that the hint survives
+// a simulated re-index that replaces the candidate ID while keeping the same
+// entity ID (SubjectID).  This is the core regression tested by #1518.
+func TestHandleV2CandidateHint_survivesReindex(t *testing.T) {
+	repoPath := t.TempDir()
+	// First index: candidate ID "old-cid", entity "entity:Y".
+	seedPendingCandidates(t, repoPath, []candidateRaw{
+		{ID: "old-cid", Kind: "repair_edge", SubjectID: "entity:Y", Confidence: 0.9},
+	})
+
+	ts := newPendingServer(t, "grpReindex", "repo1", repoPath)
+
+	// Save hint by entity ID.
+	body := bytes.NewBufferString(`{"hint":"important context"}`)
+	req, _ := http.NewRequest("PUT",
+		ts.URL+"/api/v2/groups/grpReindex/candidates/entity:Y/hint", body)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT hint: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT want 200, got %d", resp.StatusCode)
+	}
+
+	// Simulate re-index: same SubjectID but new candidate ID "new-cid".
+	seedPendingCandidates(t, repoPath, []candidateRaw{
+		{ID: "new-cid", Kind: "repair_edge", SubjectID: "entity:Y", Confidence: 0.9},
+	})
+
+	// GET candidates — hint should still be present.
+	gresp, err := http.Get(ts.URL + "/api/v2/groups/grpReindex/candidates")
+	if err != nil {
+		t.Fatalf("GET candidates: %v", err)
+	}
+	defer gresp.Body.Close()
+	var genv struct {
+		Data v2CandidatesResponse `json:"data"`
+	}
+	if err := json.NewDecoder(gresp.Body).Decode(&genv); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(genv.Data.Repairs) != 1 {
+		t.Fatalf("want 1 repair after re-index, got %d", len(genv.Data.Repairs))
+	}
+	rc := genv.Data.Repairs[0]
+	if rc.ID != "new-cid" {
+		t.Errorf("want new-cid after re-index, got %q", rc.ID)
+	}
+	if rc.Hint != "important context" {
+		t.Errorf("hint lost after re-index; got %q", rc.Hint)
+	}
+}
+
+// TestHandleV2CandidateHint_backwardCompatLegacyHintField verifies that
+// candidates whose Hint field is still populated in enrichment-candidates.json
+// (legacy format before #1518) still have their hint returned via GET.
+func TestHandleV2CandidateHint_backwardCompatLegacyHintField(t *testing.T) {
+	repoPath := t.TempDir()
+	seedPendingCandidates(t, repoPath, []candidateRaw{
+		// Legacy: hint baked into the candidate JSON (old format).
+		{ID: "legacy-cid", Kind: "repair_edge", SubjectID: "entity:Z", Confidence: 0.9, Hint: "legacy hint"},
+	})
+
+	ts := newPendingServer(t, "grpLegacy", "repo1", repoPath)
+	gresp, err := http.Get(ts.URL + "/api/v2/groups/grpLegacy/candidates")
+	if err != nil {
+		t.Fatalf("GET candidates: %v", err)
+	}
+	defer gresp.Body.Close()
+	var genv struct {
+		Data v2CandidatesResponse `json:"data"`
+	}
+	if err := json.NewDecoder(gresp.Body).Decode(&genv); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(genv.Data.Repairs) != 1 {
+		t.Fatalf("want 1 repair, got %d", len(genv.Data.Repairs))
+	}
+	if genv.Data.Repairs[0].Hint != "legacy hint" {
+		t.Errorf("legacy hint not returned; got %q", genv.Data.Repairs[0].Hint)
 	}
 }
 
 func TestHandleV2CandidateHint_clearHint(t *testing.T) {
 	repoPath := t.TempDir()
 	seedPendingCandidates(t, repoPath, []candidateRaw{
-		{ID: "c1", Kind: "repair_edge", SubjectID: "X", Confidence: 0.9, Hint: "old hint"},
+		{ID: "c1", Kind: "repair_edge", SubjectID: "entity:ClearMe", Confidence: 0.9},
 	})
+	// Pre-seed a hint in the entity store.
+	if err := os.WriteFile(entityHintsFile(repoPath), []byte(`{"entity:ClearMe":"old hint"}`), 0o644); err != nil {
+		t.Fatalf("seed entity hints: %v", err)
+	}
 
 	ts := newPendingServer(t, "grpH2", "repo1", repoPath)
 	body := bytes.NewBufferString(`{"hint":""}`)
 	req, _ := http.NewRequest("PUT",
-		ts.URL+"/api/v2/groups/grpH2/candidates/c1/hint", body)
+		ts.URL+"/api/v2/groups/grpH2/candidates/entity:ClearMe/hint", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -387,25 +511,24 @@ func TestHandleV2CandidateHint_clearHint(t *testing.T) {
 		t.Fatalf("want 200, got %d", resp.StatusCode)
 	}
 
-	saved := readAllCandidates(repoPath)
-	if len(saved) == 0 {
-		t.Fatal("no candidates on disk")
-	}
-	if saved[0].Hint != "" {
-		t.Errorf("hint should be cleared, got %q", saved[0].Hint)
+	// Hint should be gone from the entity store.
+	hints := readEntityHints(repoPath)
+	if h, ok := hints["entity:ClearMe"]; ok {
+		t.Errorf("hint should be removed; got %q", h)
 	}
 }
 
 func TestHandleV2CandidateHint_notFound(t *testing.T) {
 	repoPath := t.TempDir()
 	seedPendingCandidates(t, repoPath, []candidateRaw{
-		{ID: "c1", Kind: "repair_edge", SubjectID: "X", Confidence: 0.9},
+		{ID: "c1", Kind: "repair_edge", SubjectID: "entity:Known", Confidence: 0.9},
 	})
 
 	ts := newPendingServer(t, "grpH3", "repo1", repoPath)
 	body := bytes.NewBufferString(`{"hint":"irrelevant"}`)
+	// Use an entity ID that doesn't exist in candidates.
 	req, _ := http.NewRequest("PUT",
-		ts.URL+"/api/v2/groups/grpH3/candidates/no-such-id/hint", body)
+		ts.URL+"/api/v2/groups/grpH3/candidates/entity:NoSuchEntity/hint", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)

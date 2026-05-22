@@ -42,6 +42,10 @@ import type {
   OrphanAuditReply,
   FixturesReply,
   RecallReply,
+  JobAck,
+  ActionJob,
+  CleanupReply,
+  UpdateApplyReply,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -202,9 +206,12 @@ export const api = {
       body: JSON.stringify({ docsPath }),
     }),
 
-  /** POST /api/v2/groups/:id/rebuild — enqueue group rebuild (stub → 202). */
+  /**
+   * POST /api/v2/groups/:id/rebuild — trigger an ASYNC group rebuild (#1512).
+   * Returns 202 + a job id immediately; poll getJob / stream pollJob.
+   */
   rebuildGroup: (groupId: string) =>
-    requestV2<{ status: string; message: string }>(`/groups/${encodeURIComponent(groupId)}/rebuild`, {
+    requestV2<JobAck>(`/groups/${encodeURIComponent(groupId)}/rebuild`, {
       method: "POST",
     }),
 
@@ -228,17 +235,20 @@ export const api = {
       { method: "DELETE" },
     ),
 
-  /** POST /api/v2/groups/:id/repos/:slug/rebuild — enqueue repo rebuild (stub). */
+  /** POST /api/v2/groups/:id/repos/:slug/rebuild — ASYNC repo rebuild → 202 + job id (#1512). */
   rebuildRepo: (groupId: string, repoSlug: string) =>
-    requestV2<{ status: string; message: string }>(`/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repoSlug)}/rebuild`, {
+    requestV2<JobAck>(`/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repoSlug)}/rebuild`, {
       method: "POST",
     }),
 
-  /** POST /api/v2/groups/:id/repos/:slug/reset — reset cache + rebuild (stub). */
+  /** POST /api/v2/groups/:id/repos/:slug/reset — ASYNC wipe + rebuild → 202 + job id (#1512). */
   resetRepo: (groupId: string, repoSlug: string) =>
-    requestV2<{ status: string; message: string }>(`/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repoSlug)}/reset`, {
+    requestV2<JobAck>(`/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repoSlug)}/reset`, {
       method: "POST",
     }),
+
+  /** GET /api/v2/jobs/:id — poll the status/progress of an async action job (#1512). */
+  getJob: (jobId: string) => requestV2<ActionJob>(`/jobs/${encodeURIComponent(jobId)}`),
 
   /** PATCH /api/v2/groups/:id/repos/:slug/monorepo — update package selection. */
   patchMonorepo: (groupId: string, repoSlug: string, packages: string[]) =>
@@ -259,10 +269,14 @@ export const api = {
     requestV2<V2CandidatesResponse>(
       `/groups/${encodeURIComponent(groupId)}/candidates${tab ? `?tab=${tab}` : ""}`,
     ),
-  /** Persist a hint for a candidate. Empty string clears the hint. */
-  saveHint: (groupId: string, candidateId: string, hint: string) =>
-    requestV2<{ ok: true }>(
-      `/groups/${encodeURIComponent(groupId)}/candidates/${encodeURIComponent(candidateId)}/hint`,
+  /**
+   * Persist a hint for an entity.  Pass the stable `entityId` field from the
+   * candidate (NOT the ephemeral `id`) so hints survive candidate-ID churn
+   * across re-index sweeps (#1518).  Empty string clears the hint.
+   */
+  saveHint: (groupId: string, entityId: string, hint: string) =>
+    requestV2<{ hint: string; entityId: string }>(
+      `/groups/${encodeURIComponent(groupId)}/candidates/${encodeURIComponent(entityId)}/hint`,
       { method: "PUT", body: JSON.stringify({ hint }) },
     ),
   // --- Flows (Process Flow Explorer) ---
@@ -357,6 +371,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(target),
     }),
+
+  /**
+   * POST /api/v2/maintenance/cleanup — preview/execute orphaned-registry cleanup (#1512).
+   * dryRun:true (default) previews; false removes.
+   */
+  runCleanup: (dryRun = true) =>
+    requestV2<CleanupReply>(`/maintenance/cleanup`, {
+      method: "POST",
+      body: JSON.stringify({ dry_run: dryRun }),
+    }),
+
+  /**
+   * POST /api/v2/update/apply — run `archigraph update` (#1512).
+   * Subprocess-based, so the daemon is not replaced mid-request. The version
+   * check stays on GET /api/updates/check (checkForUpdates above).
+   */
+  applyUpdate: () =>
+    requestV2<UpdateApplyReply>(`/update/apply`, { method: "POST" }),
 
   /** GET /api/quality/orphans/{group} — orphan audit for a group. */
   getOrphanAudit: (groupId: string) =>

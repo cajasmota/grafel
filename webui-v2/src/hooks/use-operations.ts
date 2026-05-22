@@ -70,6 +70,29 @@ export function useUpdateCheck() {
   });
 }
 
+/** Runs `archigraph update` (#1512). Re-checks the version on success. */
+export function useApplyUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.applyUpdate(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: updateCheckKey() }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance — cleanup orphaned registry entries (#1512)
+// ---------------------------------------------------------------------------
+
+/**
+ * Previews (dryRun:true, default) or executes (false) registry cleanup.
+ * Wraps POST /api/v2/maintenance/cleanup.
+ */
+export function useCleanup() {
+  return useMutation({
+    mutationFn: (dryRun: boolean) => api.runCleanup(dryRun),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Patterns
 // ---------------------------------------------------------------------------

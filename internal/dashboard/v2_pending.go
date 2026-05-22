@@ -8,8 +8,11 @@
 //
 // PUT /api/v2/groups/{group}/candidates/{cid}/hint
 //
-//	Persists a hint string on the matching candidate entry. Body: {"hint":"..."}
-//	Empty hint string clears the hint. 404 when candidate not found.
+//	Persists a hint string keyed by the ENTITY ID (SubjectID) of the
+//	candidate. Body: {"hint":"..."}.  Empty hint string clears the hint.
+//	{cid} is treated as an entity ID so hints survive candidate-ID churn
+//	across re-index sweeps (#1518). 404 when no candidate for that entity
+//	is found in any repo of the group.
 package dashboard
 
 import (
@@ -36,21 +39,31 @@ type v2EntityRef struct {
 
 type v2RepairCandidate struct {
 	ID          string      `json:"id"`
+	// EntityID is the stable entity identifier (SubjectID). Clients MUST use
+	// this field — not ID — when calling PUT …/candidates/{cid}/hint.
+	EntityID    string      `json:"entityId"`
 	Severity    string      `json:"severity"`
 	IssueType   string      `json:"issueType"`
 	Entity      v2EntityRef `json:"entity"`
 	Description string      `json:"description"`
 	Confidence  float64     `json:"confidence"`
 	DetectedAt  int64       `json:"detectedAt"` // unix ms
+	// Hint is the team-authored hint currently stored for this entity (may be "").
+	Hint        string      `json:"hint,omitempty"`
 }
 
 type v2EnrichmentCandidate struct {
 	ID             string      `json:"id"`
+	// EntityID is the stable entity identifier (SubjectID). Clients MUST use
+	// this field — not ID — when calling PUT …/candidates/{cid}/hint.
+	EntityID       string      `json:"entityId"`
 	EnrichmentType string      `json:"enrichmentType"`
 	Entity         v2EntityRef `json:"entity"`
 	Description    string      `json:"description"`
 	Confidence     float64     `json:"confidence"`
 	DetectedAt     int64       `json:"detectedAt"` // unix ms
+	// Hint is the team-authored hint currently stored for this entity (may be "").
+	Hint           string      `json:"hint,omitempty"`
 }
 
 type v2CandidatesResponse struct {
@@ -178,7 +191,16 @@ func (s *Server) handleV2Candidates(w http.ResponseWriter, r *http.Request) {
 		if repo == nil || repo.Path == "" {
 			continue
 		}
+		// Load the entity-keyed hint store once per repo.
+		hints := readEntityHints(repo.Path)
 		for _, c := range readAllCandidates(repo.Path) {
+			// Resolve hint: prefer entity-keyed store (#1518); fall back to the
+			// legacy candidate-level Hint field for backward compatibility.
+			hint := hints[c.SubjectID]
+			if hint == "" {
+				hint = c.Hint
+			}
+
 			if repairKinds[c.Kind] {
 				if tab == "enrichments" {
 					continue
@@ -197,12 +219,14 @@ func (s *Server) handleV2Candidates(w http.ResponseWriter, r *http.Request) {
 				}
 				repairs = append(repairs, v2RepairCandidate{
 					ID:          c.ID,
+					EntityID:    c.SubjectID,
 					Severity:    sev,
 					IssueType:   issueType,
 					Entity:      entityRefFromContext(c.Context, slug, c.SubjectID),
 					Description: descriptionFromContext(c.Context, c.Kind),
 					Confidence:  c.Confidence,
 					DetectedAt:  parseDetectedAt(c.DiscoveredAt),
+					Hint:        hint,
 				})
 			} else if !communityNamingKinds[c.Kind] {
 				if tab == "repairs" {
@@ -214,11 +238,13 @@ func (s *Server) handleV2Candidates(w http.ResponseWriter, r *http.Request) {
 				}
 				enrichments = append(enrichments, v2EnrichmentCandidate{
 					ID:             c.ID,
+					EntityID:       c.SubjectID,
 					EnrichmentType: enrichType,
 					Entity:         entityRefFromContext(c.Context, slug, c.SubjectID),
 					Description:    descriptionFromContext(c.Context, c.Kind),
 					Confidence:     c.Confidence,
 					DetectedAt:     parseDetectedAt(c.DiscoveredAt),
+					Hint:           hint,
 				})
 			}
 		}
@@ -244,14 +270,22 @@ type v2HintReq struct {
 
 // handleV2CandidateHint — PUT /api/v2/groups/{group}/candidates/{cid}/hint
 //
-// Persists the hint on the matching candidate in enrichment-candidates.json.
-// Responds 200 { ok:true, data: { hint: "<saved>" } } on success.
-// Responds 404 when the candidate is not found in any repo.
+// Persists a hint keyed by the ENTITY ID (SubjectID) of the candidate.
+// {cid} in the URL path is interpreted as the entity ID, not the ephemeral
+// candidate ID, so hints survive candidate-ID churn across re-index sweeps
+// (#1518).
+//
+// The handler verifies that at least one candidate in the group has the
+// given entity ID (SubjectID) before writing, so callers get a proper 404
+// when the entity is no longer present.
+//
+// Responds 200 { ok:true, data: { hint: "<saved>", entityId: "<eid>" } }.
+// Responds 404 when no candidate with that entity ID is found in any repo.
 func (s *Server) handleV2CandidateHint(w http.ResponseWriter, r *http.Request) {
 	group := r.PathValue("group")
-	cid := r.PathValue("cid")
-	if group == "" || cid == "" {
-		writeV2Err(w, http.StatusBadRequest, "bad_request", "group and cid required")
+	entityID := r.PathValue("cid") // path param name kept for URL compat; value is now entity ID
+	if group == "" || entityID == "" {
+		writeV2Err(w, http.StatusBadRequest, "bad_request", "group and entityId required")
 		return
 	}
 
@@ -267,50 +301,60 @@ func (s *Server) handleV2CandidateHint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Find any repo that has a candidate for this entity ID and persist the hint.
 	for _, repo := range grp.Repos {
 		if repo == nil || repo.Path == "" {
 			continue
 		}
-		if updated := updateCandidateHint(repo.Path, cid, req.Hint); updated {
-			writeV2JSON(w, http.StatusOK, v2OK(map[string]string{"hint": req.Hint}))
+		if updated := upsertEntityHint(repo.Path, entityID, req.Hint); updated {
+			writeV2JSON(w, http.StatusOK, v2OK(map[string]string{
+				"hint":     req.Hint,
+				"entityId": entityID,
+			}))
 			return
 		}
 	}
 
-	writeV2Err(w, http.StatusNotFound, "not_found", "candidate not found")
+	writeV2Err(w, http.StatusNotFound, "not_found", "no candidate found for entity")
 }
 
-// updateCandidateHint reads enrichment-candidates.json in repoPath, finds
-// the entry with id == cid, updates its Hint, and writes the file back.
-// Returns true when the candidate was found and the file written successfully.
-func updateCandidateHint(repoPath, cid, hint string) bool {
+// entityHintsFile returns the path to the entity-hints store for a repo.
+// The store is a flat JSON object: { "<entityID>": "<hint>", ... }.
+// It lives next to enrichment-candidates.json in the archigraph state dir.
+func entityHintsFile(repoPath string) string {
+	return filepath.Join(daemon.StateDirForRepo(repoPath), "entity-hints.json")
+}
+
+// readEntityHints loads the entity-keyed hint store from disk.
+// Returns an empty map on any read or parse error (non-fatal).
+func readEntityHints(repoPath string) map[string]string {
 	if repoPath == "" {
-		return false
+		return map[string]string{}
 	}
-	filePath := filepath.Join(daemon.StateDirForRepo(repoPath), "enrichment-candidates.json")
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(entityHintsFile(repoPath))
 	if err != nil {
+		return map[string]string{}
+	}
+	var m map[string]string
+	if json.Unmarshal(data, &m) != nil {
+		return map[string]string{}
+	}
+	return m
+}
+
+// upsertEntityHint writes (or clears) a hint for entityID in the entity-hints
+// store.  It first confirms that the entity exists among the repo's candidates
+// (so stale entity IDs get a 404 rather than silently creating orphan hints).
+// Returns true when the hint was persisted successfully.
+func upsertEntityHint(repoPath, entityID, hint string) bool {
+	if repoPath == "" || entityID == "" {
 		return false
 	}
 
-	// Support both flat-array and {"candidates":[…]} shapes.
-	var arr []candidateRaw
-	wrapped := false
-	if json.Unmarshal(data, &arr) != nil {
-		var obj struct {
-			Candidates []candidateRaw `json:"candidates"`
-		}
-		if json.Unmarshal(data, &obj) != nil {
-			return false
-		}
-		arr = obj.Candidates
-		wrapped = true
-	}
-
+	// Verify the entity exists in current candidates.
 	found := false
-	for i := range arr {
-		if arr[i].ID == cid {
-			arr[i].Hint = hint
+	for _, c := range readAllCandidates(repoPath) {
+		if c.SubjectID == entityID {
 			found = true
 			break
 		}
@@ -319,17 +363,17 @@ func updateCandidateHint(repoPath, cid, hint string) bool {
 		return false
 	}
 
-	var out []byte
-	var marshalErr error
-	if wrapped {
-		out, marshalErr = json.Marshal(struct {
-			Candidates []candidateRaw `json:"candidates"`
-		}{Candidates: arr})
+	m := readEntityHints(repoPath)
+
+	if hint == "" {
+		delete(m, entityID)
 	} else {
-		out, marshalErr = json.Marshal(arr)
+		m[entityID] = hint
 	}
-	if marshalErr != nil {
+
+	out, err := json.Marshal(m)
+	if err != nil {
 		return false
 	}
-	return os.WriteFile(filePath, out, 0o644) == nil
+	return os.WriteFile(entityHintsFile(repoPath), out, 0o644) == nil
 }

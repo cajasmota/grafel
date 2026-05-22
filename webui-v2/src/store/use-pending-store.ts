@@ -20,9 +20,16 @@ interface PendingState {
   focusedId: string | null;
   /** Map of groupKey → collapsed (false means collapsed; absent/true means open). */
   openMap: Record<string, boolean>;
-  /** Per-candidate-id hint text typed but not yet saved to the server. */
+  /**
+   * Per-ENTITY-ID hint text typed but not yet saved to the server (#1518).
+   * Keyed by candidate.entityId (SubjectID), NOT by candidate.id.
+   */
   drafts: Record<string, string>;
-  /** Per-candidate-id hint text that has been confirmed saved (from PUT response). */
+  /**
+   * Per-ENTITY-ID hint text confirmed saved (from PUT response or seeded from
+   * server-returned hint field) (#1518).
+   * Keyed by candidate.entityId (SubjectID), NOT by candidate.id.
+   */
   savedHints: Record<string, string>;
 
   setTab: (tab: PendingTab) => void;
@@ -30,8 +37,12 @@ interface PendingState {
   setGroupBy: (groupBy: PendingGroupBy) => void;
   setFocusedId: (id: string | null) => void;
   toggleGroup: (key: string) => void;
-  setDraft: (id: string, text: string) => void;
-  confirmSave: (id: string, hint: string) => void;
+  /** Set draft hint text for an entity. Pass candidate.entityId as key. */
+  setDraft: (entityId: string, text: string) => void;
+  /** Confirm that a hint was successfully saved for an entity. */
+  confirmSave: (entityId: string, hint: string) => void;
+  /** Seed server-provided hints (from GET /candidates response) into savedHints. */
+  seedServerHints: (hints: Record<string, string>) => void;
 }
 
 export const usePendingStore = create<PendingState>((set) => ({
@@ -51,11 +62,17 @@ export const usePendingStore = create<PendingState>((set) => ({
     set((s) => ({
       openMap: { ...s.openMap, [key]: s.openMap[key] === false ? true : false },
     })),
-  setDraft: (id, text) => set((s) => ({ drafts: { ...s.drafts, [id]: text } })),
-  confirmSave: (id, hint) =>
+  setDraft: (entityId, text) =>
+    set((s) => ({ drafts: { ...s.drafts, [entityId]: text } })),
+  confirmSave: (entityId, hint) =>
     set((s) => {
       const drafts = { ...s.drafts };
-      delete drafts[id];
-      return { drafts, savedHints: { ...s.savedHints, [id]: hint } };
+      delete drafts[entityId];
+      return { drafts, savedHints: { ...s.savedHints, [entityId]: hint } };
     }),
+  seedServerHints: (hints) =>
+    set((s) => ({
+      // Merge server hints; locally confirmed saves take precedence.
+      savedHints: { ...hints, ...s.savedHints },
+    })),
 }));

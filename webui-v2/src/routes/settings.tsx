@@ -54,6 +54,7 @@ import {
   useResetRepo,
   usePatchMonorepo,
   useRunDoctor,
+  useActionJob,
 } from "@/hooks/use-settings";
 import { ApiError } from "@/lib/api";
 import type { SettingsRepo, SettingsGroup, DoctorCheck, MonorepoPkg } from "@/data/types";
@@ -504,6 +505,20 @@ function RepositoriesSection({
   const resetRepo = useResetRepo(groupId);
   const patchMonorepo = usePatchMonorepo(groupId);
 
+  // Track the in-flight async repo job (#1512): poll until terminal, then toast.
+  const [repoJobId, setRepoJobId] = useState<string | null>(null);
+  const repoJob = useActionJob(groupId, repoJobId);
+  useEffect(() => {
+    if (!repoJob.data) return;
+    if (repoJob.data.status === "done") {
+      toast.success(repoJob.data.message ?? "Rebuild complete.");
+      setRepoJobId(null);
+    } else if (repoJob.data.status === "failed") {
+      toast.error(repoJob.data.error ?? "Rebuild failed.");
+      setRepoJobId(null);
+    }
+  }, [repoJob.data]);
+
   const handleTogglePackage = (repo: SettingsRepo, pkg: MonorepoPkg) => {
     if (!repo.monorepo) return;
     const current = repo.monorepo.packages.map((p) =>
@@ -544,13 +559,19 @@ function RepositoriesSection({
             onRemove={() => onRemove(repo)}
             onRebuild={() =>
               rebuildRepo.mutate(repo.slug, {
-                onSuccess: (d) => toast.info(d.message ?? "Rebuild queued."),
+                onSuccess: (d) => {
+                  toast.info("Rebuild queued.");
+                  setRepoJobId(d.job_id);
+                },
                 onError: () => toast.error("Failed to queue rebuild."),
               })
             }
             onReset={() =>
               resetRepo.mutate(repo.slug, {
-                onSuccess: (d) => toast.info(d.message ?? "Reset queued."),
+                onSuccess: (d) => {
+                  toast.info("Reset queued.");
+                  setRepoJobId(d.job_id);
+                },
                 onError: () => toast.error("Failed to queue reset."),
               })
             }
@@ -1250,6 +1271,20 @@ export default function SettingsScreen() {
   const { data: group, isLoading, isError, error } = useSettingsGroup(groupId);
   const rebuildGroup = useRebuildGroup(groupId);
 
+  // Track the in-flight async group-rebuild job (#1512) and toast on completion.
+  const [groupJobId, setGroupJobId] = useState<string | null>(null);
+  const groupJob = useActionJob(groupId, groupJobId);
+  useEffect(() => {
+    if (!groupJob.data) return;
+    if (groupJob.data.status === "done") {
+      toast.success(groupJob.data.message ?? "Rebuild complete.");
+      setGroupJobId(null);
+    } else if (groupJob.data.status === "failed") {
+      toast.error(groupJob.data.error ?? "Rebuild failed.");
+      setGroupJobId(null);
+    }
+  }, [groupJob.data]);
+
   const [removeRepo, setRemoveRepo] = useState<SettingsRepo | null>(null);
   const [addRepoOpen, setAddRepoOpen] = useState(false);
   const [confirm, setConfirm] = useState<{ kind: ConfirmKind; repo?: SettingsRepo } | null>(null);
@@ -1348,7 +1383,8 @@ export default function SettingsScreen() {
             if (confirm?.kind === "rebuild-group") {
               rebuildGroup.mutate(undefined, {
                 onSuccess: (d) => {
-                  toast.info(d.message ?? "Rebuild queued.");
+                  toast.info("Rebuild queued.");
+                  setGroupJobId(d.job_id);
                   setConfirm(null);
                 },
                 onError: () => {

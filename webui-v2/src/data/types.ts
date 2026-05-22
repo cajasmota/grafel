@@ -469,6 +469,8 @@ export type Severity = "critical" | "warning" | "info";
 
 export interface RepairCandidate {
   id: string;
+  /** Stable entity identifier (SubjectID). Use this — not id — for hint keying. */
+  entityId: string;
   severity: Severity;
   issueType: RepairIssueType;
   entity: EntityRef;
@@ -477,20 +479,26 @@ export interface RepairCandidate {
   confidence: number;
   /** Unix ms. */
   detectedAt: number;
+  /** Team-authored hint currently stored for this entity (may be absent). */
+  hint?: string;
 }
 
 export interface EnrichmentCandidate {
   id: string;
+  /** Stable entity identifier (SubjectID). Use this — not id — for hint keying. */
+  entityId: string;
   enrichmentType: EnrichmentType;
   entity: EntityRef;
   description: string;
   confidence: number;
   detectedAt: number;
+  /** Team-authored hint currently stored for this entity (may be absent). */
+  hint?: string;
 }
 
 export type Candidate = RepairCandidate | EnrichmentCandidate;
 
-/** Hints stored per-candidate-id in local state and persisted via PUT hint. */
+/** Hints stored per-entity-id in local state and persisted via PUT hint (#1518). */
 export type HintMap = Record<string, string>;
 
 /** Wire shape returned by GET /api/v2/groups/:id/candidates */
@@ -887,6 +895,54 @@ export interface PatternGCReply {
   pruned: PatternRow[];
   remaining_count: number;
   candidate_decay_days: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * Async action jobs (#1512) — rebuild / reset return a JobAck (202) and
+ * the frontend polls ActionJob via GET /api/v2/jobs/:id. See API_V2.md §6c.
+ * ------------------------------------------------------------------ */
+
+/** 202 ack returned by an async action endpoint. */
+export interface JobAck {
+  job_id: string;
+  op: "rebuild" | "reset";
+  group: string;
+  repo?: string;
+  status: string;
+  progress_token: string;
+  status_url: string;
+  stream_url: string;
+}
+
+/** Live status of an async action job. */
+export interface ActionJob {
+  id: string;
+  op: "rebuild" | "reset";
+  group: string;
+  repo?: string;
+  status: "queued" | "running" | "done" | "failed";
+  progress: number;
+  message?: string;
+  error?: string;
+  progress_token: string;
+  queued_at: number;
+  started_at?: number;
+  finished_at?: number;
+}
+
+/** POST /api/v2/maintenance/cleanup result. */
+export interface CleanupReply {
+  dry_run: boolean;
+  orphaned: { name: string; config_path: string }[];
+  removed: number;
+  message: string;
+}
+
+/** POST /api/v2/update/apply result. */
+export interface UpdateApplyReply {
+  exit_code: number;
+  output: string[];
+  applied: boolean;
 }
 
 /** Orphan audit totals */

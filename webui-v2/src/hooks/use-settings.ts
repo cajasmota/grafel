@@ -50,7 +50,10 @@ export function usePatchDocs(groupId: string) {
   });
 }
 
-/** Enqueues a full group rebuild (stub → 202 Accepted). */
+/**
+ * Triggers an async full-group rebuild (#1512). Resolves to a JobAck (202) —
+ * the caller feeds job_id into useActionJob to track progress.
+ */
 export function useRebuildGroup(groupId: string) {
   return useMutation({
     mutationFn: () => api.rebuildGroup(groupId),
@@ -84,17 +87,42 @@ export function useRemoveRepo(groupId: string) {
   });
 }
 
-/** Enqueues a single-repo rebuild (stub). */
+/** Triggers an async single-repo rebuild (#1512). Resolves to a JobAck. */
 export function useRebuildRepo(groupId: string) {
   return useMutation({
     mutationFn: (repoSlug: string) => api.rebuildRepo(groupId, repoSlug),
   });
 }
 
-/** Resets repo cache + rebuild (stub). */
+/** Triggers an async repo cache-wipe + rebuild (#1512). Resolves to a JobAck. */
 export function useResetRepo(groupId: string) {
   return useMutation({
     mutationFn: (repoSlug: string) => api.resetRepo(groupId, repoSlug),
+  });
+}
+
+/**
+ * Polls an async action job (#1512) until it reaches a terminal state.
+ * Pass null to disable. On completion, invalidates the settings query so the
+ * screen reflects the freshly-indexed entity counts.
+ */
+export function useActionJob(groupId: string, jobId: string | null) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["action-job", jobId],
+    queryFn: async () => {
+      const job = await api.getJob(jobId as string);
+      if (job.status === "done" || job.status === "failed") {
+        void qc.invalidateQueries({ queryKey: settingsQueryKey(groupId) });
+      }
+      return job;
+    },
+    enabled: !!jobId,
+    // Poll every second while running; stop once terminal.
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === "done" || s === "failed" ? false : 1000;
+    },
   });
 }
 

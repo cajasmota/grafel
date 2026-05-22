@@ -17,12 +17,17 @@ export function useCandidates(groupId: string) {
   });
 }
 
-/** Mutation to persist a hint for one candidate. Invalidates candidates query on success. */
+/**
+ * Mutation to persist a hint for one entity.
+ * Pass the stable `entityId` from the candidate (NOT the ephemeral `id`)
+ * so hints survive candidate-ID churn across re-index sweeps (#1518).
+ * Invalidates the candidates query on success.
+ */
 export function useSaveHint(groupId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ candidateId, hint }: { candidateId: string; hint: string }) =>
-      api.saveHint(groupId, candidateId, hint),
+    mutationFn: ({ entityId, hint }: { entityId: string; hint: string }) =>
+      api.saveHint(groupId, entityId, hint),
     onSuccess: () => {
       // Invalidate so a background refetch picks up the persisted hint value.
       qc.invalidateQueries({ queryKey: ["candidates", groupId] });

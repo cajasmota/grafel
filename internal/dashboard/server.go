@@ -99,6 +99,17 @@ type Server struct {
 	// endpoints but does not prevent build or read-only webhook list routes.
 	// Set via SetWebhookDispatcher before Serve.
 	webhookDispatcher webhookDispatcherIface
+
+	// actionJobs tracks async v2 action jobs (rebuild/reset) so the
+	// Operations + Settings screens can poll/stream their status without the
+	// triggering HTTP handler ever blocking on the work (#1512). Always
+	// non-nil; initialised in NewServer.
+	actionJobs *actionJobRegistry
+
+	// rebuildRunner, when non-nil, replaces the default daemon-RPC rebuild path
+	// used by the v2 async rebuild/reset endpoints (#1512). Test-only injection
+	// point so the async job lifecycle can run without a live daemon.
+	rebuildRunner rebuildRunner
 }
 
 // watcherForceRescan is the subset of the watch.Watcher surface used by
@@ -132,11 +143,12 @@ func NewServer(cfg Config, store RegistryStore) (*Server, error) {
 	h := newWSHub()
 	go h.run()
 	srv := &Server{
-		cfg:      cfg,
-		registry: store,
-		graphs:   NewGraphCache(60 * time.Second),
-		hub:      h,
-		rng:      rand.New(rand.NewSource(time.Now().UnixNano())),
+		cfg:        cfg,
+		registry:   store,
+		graphs:     NewGraphCache(60 * time.Second),
+		hub:        h,
+		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
+		actionJobs: newActionJobRegistry(),
 	}
 	// auditor starts as a no-op writer; replaced when SetAuditLog/SetAuditBroker is called.
 	srv.auditor = audit.NewWriter(nil, nil)
@@ -550,14 +562,25 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/groups/{group}", s.handleV2GetGroup)
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/features", s.handleV2PatchFeatures)
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/docs", s.handleV2PatchDocs)
-	mux.HandleFunc("POST /api/v2/groups/{group}/rebuild", s.handleV2RebuildGroup)
 	mux.HandleFunc("DELETE /api/v2/groups/{group}", s.handleV2DeleteGroup)
 	mux.HandleFunc("POST /api/v2/groups/{group}/repos", s.handleV2AddRepo)
 	mux.HandleFunc("DELETE /api/v2/groups/{group}/repos/{repo}", s.handleV2RemoveRepo)
-	mux.HandleFunc("POST /api/v2/groups/{group}/repos/{repo}/rebuild", s.handleV2RebuildRepo)
-	mux.HandleFunc("POST /api/v2/groups/{group}/repos/{repo}/reset", s.handleV2ResetRepo)
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/repos/{repo}/monorepo", s.handleV2PatchMonorepo)
 	mux.HandleFunc("POST /api/v2/groups/{group}/doctor", s.handleV2Doctor)
+
+	// --- v2 action endpoints (#1512): real REST wrappers over CLI-only ops. ---
+	// Rebuild/reset are ASYNC: handler returns 202 + a job id immediately and
+	// runs the index in a background goroutine (never blocks the daemon from
+	// serving — the #1487 serving-mutex invariant). Poll/stream via /api/v2/jobs.
+	mux.HandleFunc("POST /api/v2/groups/{group}/rebuild", s.handleV2RebuildGroupAsync)
+	mux.HandleFunc("POST /api/v2/groups/{group}/repos/{repo}/rebuild", s.handleV2RebuildRepoAsync)
+	mux.HandleFunc("POST /api/v2/groups/{group}/repos/{repo}/reset", s.handleV2ResetRepoAsync)
+	mux.HandleFunc("GET /api/v2/jobs/{id}", s.handleV2JobGet)
+	mux.HandleFunc("GET /api/v2/jobs/{id}/stream", s.handleV2JobStream)
+	mux.HandleFunc("POST /api/v2/maintenance/cleanup", s.handleV2Cleanup)
+	mux.HandleFunc("POST /api/v2/update/apply", s.handleV2UpdateApply)
+	mux.HandleFunc("POST /api/v2/patterns/{group}/export", s.handleV2PatternExport)
+	mux.HandleFunc("POST /api/v2/patterns/{group}/gc", s.handleV2PatternGC)
 
 	// Topology screen — WebUI v2 (#1440, epic #1432).
 	// Wraps the v1 collectTopologyResponse + buildTopicDetail in the v2 envelope.

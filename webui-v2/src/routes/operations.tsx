@@ -66,9 +66,12 @@ import {
   useStopDaemon,
   useSystemLogs,
   useUpdateCheck,
+  useApplyUpdate,
+  useCleanup,
   usePatterns,
   useDeletePattern,
   usePatternGC,
+  useExportPatterns,
   useOrphanAudit,
   useRunOrphanAudit,
   useQualityFixtures,
@@ -413,6 +416,7 @@ function SystemTab({ groupId }: { groupId: string }) {
   const restartDaemon = useRestartDaemon();
   const stopDaemon = useStopDaemon();
   const runDoctor = useRunDoctor(groupId);
+  const cleanup = useCleanup();
   const [logsOpen, setLogsOpen] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
@@ -458,12 +462,38 @@ function SystemTab({ groupId }: { groupId: string }) {
               </a>.
             </p>
             <p>
-              <span className="text-text-2 font-medium">Cleanup</span> — removes orphaned registry
-              entries. Run from terminal:
+              <span className="text-text-2 font-medium">Cleanup</span> — removes registry entries
+              whose config file no longer exists. Preview first, then remove.
             </p>
-            <code className="block font-mono text-text-2 bg-bg-soft border border-border-soft rounded px-2 py-1 text-xs">
-              archigraph cleanup
-            </code>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={cleanup.isPending}
+                onClick={() => {
+                  cleanup.mutate(true, {
+                    onSuccess: (res) => toast.info(res.message),
+                    onError: () => toast.error("Cleanup preview failed."),
+                  });
+                }}
+              >
+                Preview orphans
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={cleanup.isPending}
+                onClick={() => {
+                  cleanup.mutate(false, {
+                    onSuccess: (res) =>
+                      res.removed > 0 ? toast.success(res.message) : toast.info(res.message),
+                    onError: () => toast.error("Cleanup failed."),
+                  });
+                }}
+              >
+                Remove orphans
+              </Button>
+            </div>
           </div>
         </div>
       </Section>
@@ -698,6 +728,7 @@ function PatternsTab({ groupId }: { groupId: string }) {
   const [exportTarget, setExportTarget] = useState("");
 
   const patternGC = usePatternGC(groupId);
+  const exportPatterns = useExportPatterns(groupId);
 
   const { data, isLoading, isError } = usePatterns(groupId, {
     needs_attention: needsAttentionOnly || undefined,
@@ -828,28 +859,34 @@ function PatternsTab({ groupId }: { groupId: string }) {
         <div className="rounded-lg border border-border bg-surface p-4 text-sm space-y-3">
           <p className="font-medium text-text">Export patterns to CLAUDE.md</p>
           <p className="text-text-3">
-            Writes the approved pattern block to a file. Use the CLI for full control:
+            Writes the approved pattern block to the given CLAUDE.md (or a repo
+            path, in which case it targets &lt;repo&gt;/CLAUDE.md).
           </p>
-          <code className="block font-mono text-text-2 bg-bg-soft border border-border-soft rounded px-2 py-1 text-xs">
-            archigraph patterns export --repo /path/to/repo
-          </code>
           <div className="flex gap-2 pt-1">
             <Input
               value={exportTarget}
               onChange={(e) => setExportTarget(e.target.value)}
-              placeholder="/path/to/CLAUDE.md"
+              placeholder="/path/to/CLAUDE.md or /path/to/repo"
               className="flex-1 font-mono text-sm"
             />
             <Button
               variant="secondary"
               size="sm"
-              disabled={!exportTarget}
+              disabled={!exportTarget || exportPatterns.isPending}
               onClick={() => {
-                toast.info("Export via REST is coming. Use the CLI for now.");
-                setExportOpen(false);
+                const t = exportTarget.trim();
+                // Treat a path ending in .md as a file; otherwise a repo dir.
+                const target = t.endsWith(".md") ? { file: t } : { repo: t };
+                exportPatterns.mutate(target, {
+                  onSuccess: (res) => {
+                    toast.success(`Exported ${res.exported} pattern(s) to ${res.target}`);
+                    setExportOpen(false);
+                  },
+                  onError: () => toast.error("Pattern export failed."),
+                });
               }}
             >
-              Export
+              {exportPatterns.isPending ? "Exporting…" : "Export"}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setExportOpen(false)}>
               Cancel
@@ -1327,6 +1364,7 @@ function QualityTab({ groupId }: { groupId: string }) {
 
 function UpdatesTab() {
   const { data, isLoading, isError, refetch, isFetching } = useUpdateCheck();
+  const applyUpdate = useApplyUpdate();
 
   return (
     <div className="space-y-5">
@@ -1410,14 +1448,23 @@ function UpdatesTab() {
                     <Button
                       variant="primary"
                       size="sm"
+                      disabled={applyUpdate.isPending}
                       onClick={() => {
-                        toast.info(
-                          "Run `archigraph update` from your terminal. SSE streaming is planned for a follow-up PR.",
-                        );
+                        toast.info("Applying update…");
+                        applyUpdate.mutate(undefined, {
+                          onSuccess: (res) => {
+                            if (res.exit_code === 0) {
+                              toast.success("Update applied. Restart the daemon to run the new version.");
+                            } else {
+                              toast.error(`Update exited ${res.exit_code}. Check the output.`);
+                            }
+                          },
+                          onError: () => toast.error("Failed to apply update."),
+                        });
                       }}
                     >
                       <Download size={12} />
-                      Update now
+                      {applyUpdate.isPending ? "Updating…" : "Update now"}
                     </Button>
                   </div>
                 </div>

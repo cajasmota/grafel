@@ -72,13 +72,13 @@ type v2GroupFeatures struct {
 
 // v2SettingsRepo matches the SettingsRepo interface.
 type v2SettingsRepo struct {
-	Slug      string           `json:"slug"`
-	Path      string           `json:"path"`
-	Stack     string           `json:"stack"`
-	Files     int              `json:"files"`
-	Entities  int              `json:"entities"`
-	IndexedAt *int64           `json:"indexedAt"`
-	Monorepo  *v2MonorepoInfo  `json:"monorepo"`
+	Slug      string          `json:"slug"`
+	Path      string          `json:"path"`
+	Stack     string          `json:"stack"`
+	Files     int             `json:"files"`
+	Entities  int             `json:"entities"`
+	IndexedAt *int64          `json:"indexedAt"`
+	Monorepo  *v2MonorepoInfo `json:"monorepo"`
 }
 
 // v2MonorepoInfo matches the SettingsRepo.monorepo shape.
@@ -337,21 +337,8 @@ func (s *Server) handleV2PatchDocs(w http.ResponseWriter, r *http.Request) {
 	writeV2JSON(w, http.StatusOK, v2OK(map[string]string{"docsPath": cfg.GroupDocs}))
 }
 
-// handleV2RebuildGroup — POST /api/v2/groups/{group}/rebuild
-//
-// STUB: the real indexer trigger is not yet wired via REST. Returns 202 Accepted.
-func (s *Server) handleV2RebuildGroup(w http.ResponseWriter, r *http.Request) {
-	groupName := r.PathValue("group")
-	if _, err := groupConfigPath(groupName); err != nil {
-		writeV2Err(w, http.StatusNotFound, "not_found", err.Error())
-		return
-	}
-	writeV2JSON(w, http.StatusAccepted, v2OK(map[string]string{
-		"status":  "queued",
-		"message": "Rebuild queued. Use the CLI: archigraph rebuild " + groupName,
-		"note":    "REST-triggered rebuild wiring is tracked in epic #1432.",
-	}))
-}
+// NOTE: the former handleV2RebuildGroup / handleV2RebuildRepo / handleV2ResetRepo
+// stubs were replaced by the real async wrappers in v2_actions.go (#1512).
 
 // handleV2DeleteGroup — DELETE /api/v2/groups/{group}
 func (s *Server) handleV2DeleteGroup(w http.ResponseWriter, r *http.Request) {
@@ -469,45 +456,12 @@ func (s *Server) handleV2RemoveRepo(w http.ResponseWriter, r *http.Request) {
 	writeV2JSON(w, http.StatusOK, v2OK(map[string]string{"removed": repoSlug}))
 }
 
-// handleV2RebuildRepo — POST /api/v2/groups/{group}/repos/{repo}/rebuild
-//
-// STUB: see rebuild-group note above.
-func (s *Server) handleV2RebuildRepo(w http.ResponseWriter, r *http.Request) {
-	groupName := r.PathValue("group")
-	repoSlug := r.PathValue("repo")
-	if _, err := groupConfigPath(groupName); err != nil {
-		writeV2Err(w, http.StatusNotFound, "not_found", err.Error())
-		return
-	}
-	writeV2JSON(w, http.StatusAccepted, v2OK(map[string]string{
-		"status":  "queued",
-		"message": "Rebuild queued. Use the CLI: archigraph rebuild " + groupName + " " + repoSlug,
-		"note":    "REST-triggered rebuild wiring is tracked in epic #1432.",
-	}))
-}
-
-// handleV2ResetRepo — POST /api/v2/groups/{group}/repos/{repo}/reset
-//
-// STUB: see rebuild-group note above.
-func (s *Server) handleV2ResetRepo(w http.ResponseWriter, r *http.Request) {
-	groupName := r.PathValue("group")
-	repoSlug := r.PathValue("repo")
-	if _, err := groupConfigPath(groupName); err != nil {
-		writeV2Err(w, http.StatusNotFound, "not_found", err.Error())
-		return
-	}
-	writeV2JSON(w, http.StatusAccepted, v2OK(map[string]string{
-		"status":  "queued",
-		"message": "Cache reset + rebuild queued for " + repoSlug + " in " + groupName,
-		"note":    "REST-triggered rebuild wiring is tracked in epic #1432.",
-	}))
-}
-
 // handleV2PatchMonorepo — PATCH /api/v2/groups/{group}/repos/{repo}/monorepo
 //
-// Persists the module selection to fleet.json. The running watcher/indexer
-// is NOT hot-reloaded — a manual rebuild is needed (or the next watch event).
-// This is documented as a stub in the PR body.
+// Persists the module selection to fleet.json AND triggers a watcher rescan so
+// the running daemon re-reconciles the repo against the updated config (#1512).
+// When no watcher is wired into this server, it falls back to persist-only and
+// reports watcher_reloaded:false.
 func (s *Server) handleV2PatchMonorepo(w http.ResponseWriter, r *http.Request) {
 	groupName := r.PathValue("group")
 	repoSlug := r.PathValue("repo")
@@ -542,11 +496,24 @@ func (s *Server) handleV2PatchMonorepo(w http.ResponseWriter, r *http.Request) {
 		writeV2Err(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
+
+	// Trigger a watcher rescan so the running daemon re-reconciles every repo
+	// against the updated module selection. ForceRescan queues a full diff for
+	// all registered repos; the next index picks up the changed Modules.
+	reloaded := false
+	if s.watcher != nil {
+		s.watcher.ForceRescan()
+		reloaded = true
+	}
+	note := "Watcher rescan triggered; the changed module selection is picked up on the next reconcile."
+	if !reloaded {
+		note = "No watcher wired in this server; rebuild the repo to apply."
+	}
 	writeV2JSON(w, http.StatusOK, v2OK(map[string]any{
 		"saved":            true,
 		"packages":         req.Packages,
-		"watcher_reloaded": false,
-		"note":             "Watcher hot-reload not yet wired; rebuild the repo to apply.",
+		"watcher_reloaded": reloaded,
+		"note":             note,
 	}))
 }
 
