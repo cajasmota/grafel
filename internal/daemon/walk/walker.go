@@ -1,18 +1,21 @@
 // Package walk provides the repo file-walker used by the indexer.
-// It combines three skip layers at directory-entry time:
+// It combines four skip layers at directory-entry time:
 //
 //   - Layer 1 (P0): .gitignore semantics (root + nested, lazily loaded)
 //   - Layer 2 (P1): extended hard-coded skip list
 //   - Layer 3 (P2): .archigraphignore overlay
+//   - Layer 4 (P3): .gitattributes linguist-generated=true wildcard
 //
 // Directory-level skipping avoids enumerating every file inside build/
 // cache trees — the key performance win for large mobile repos.
 package walk
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -117,6 +120,16 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 
 			// Check Layer 1+3 (P0/P2): gitignore stack.
 			if skip, rule := igStack.Match(rel); skip {
+				skipped = append(skipped, SkipEntry{AbsPath: absPath, Rule: rule})
+				if opts.PrintSkipped != nil {
+					fmt.Fprintf(opts.PrintSkipped, "[skip] %s (rule: %s)\n", absPath, rule)
+				}
+				return filepath.SkipDir
+			}
+
+			// Check Layer 4 (P3): .gitattributes linguist-generated wildcard.
+			if isLinguistGeneratedDir(absPath) {
+				rule := "linguist-generated"
 				skipped = append(skipped, SkipEntry{AbsPath: absPath, Rule: rule})
 				if opts.PrintSkipped != nil {
 					fmt.Fprintf(opts.PrintSkipped, "[skip] %s (rule: %s)\n", absPath, rule)
@@ -231,6 +244,10 @@ var hardcodedSkipDirs = map[string]struct{}{
 
 	// Misc IDE
 	".vscode": {},
+
+	// Generated code (MANIFEST §25, D24): protobuf/OpenAPI/gRPC stubs and
+	// any directory named "_generated" must be excluded from the graph.
+	"_generated": {},
 }
 
 func init() {
@@ -248,6 +265,42 @@ func IsHardcodedSkip(base string) bool {
 	// *.egg-info directories created by Python packaging.
 	if strings.HasSuffix(base, ".egg-info") {
 		return true
+	}
+	return false
+}
+
+// isLinguistGeneratedDir returns true when a directory contains a
+// .gitattributes file that marks all of its content as linguist-generated
+// (i.e. it has a line matching "* linguist-generated=true" or
+// "* -linguist-detectable" with a wildcard covering all files). This is
+// Layer 4 (P3) — a lightweight backstop for generated dirs that use the
+// GitHub linguist convention instead of _generated naming.
+//
+// We only trigger on the strict wildcard pattern (`* linguist-generated=true`)
+// to avoid false positives from partial attribute files.
+func isLinguistGeneratedDir(absPath string) bool {
+	p := filepath.Join(absPath, ".gitattributes")
+	f, err := os.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Matches lines like: "* linguist-generated=true"
+		// (with any amount of whitespace between the glob and the attribute).
+		parts := strings.Fields(line)
+		if len(parts) >= 2 && parts[0] == "*" {
+			for _, attr := range parts[1:] {
+				if strings.EqualFold(attr, "linguist-generated=true") {
+					return true
+				}
+			}
+		}
 	}
 	return false
 }

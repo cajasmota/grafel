@@ -73,6 +73,8 @@ var SkipDirs = map[string]struct{}{
 	// IDE
 	".idea":   {},
 	".vscode": {},
+	// Generated code (MANIFEST §25, D24)
+	"_generated": {},
 }
 
 // SkipExts is the suffix list for files we never re-index for. Lock
