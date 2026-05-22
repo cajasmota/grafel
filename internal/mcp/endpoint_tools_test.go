@@ -224,7 +224,7 @@ func TestMatchesKindFilter_NonHTTPKindNotAffected(t *testing.T) {
 
 func TestEndpointDefinitions_ReturnsDefinitionsOnly(t *testing.T) {
 	srv := newEndpointServer(t)
-	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test"})
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test", "verbose": true})
 
 	defs := getSlice(t, res, "definitions")
 	// Expect: ep_legacy (producer http_endpoint) + ep_def (http_endpoint_definition)
@@ -248,7 +248,7 @@ func TestEndpointDefinitions_ReturnsDefinitionsOnly(t *testing.T) {
 
 func TestEndpointDefinitions_ExcludesClientSynthesis(t *testing.T) {
 	srv := newEndpointServer(t)
-	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test"})
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test", "verbose": true})
 	defs := getSlice(t, res, "definitions")
 	for _, d := range defs {
 		obj := d.(map[string]any)
@@ -317,7 +317,7 @@ func TestEndpointCalls_OrphanOnly(t *testing.T) {
 
 func TestEndpointCalls_ExcludesNonCallEntities(t *testing.T) {
 	srv := newEndpointServer(t)
-	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{"group": "test"})
+	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{"group": "test", "verbose": true})
 	calls := getSlice(t, res, "calls")
 	for _, c := range calls {
 		obj := c.(map[string]any)
@@ -510,6 +510,53 @@ func TestHandleEndpoints_Stats(t *testing.T) {
 	})
 	if _, ok := res["totals"]; !ok {
 		t.Error("expected totals key in response for action=stats")
+	}
+}
+
+// #1650: path_contains and method filter server-side.
+func TestEndpointDefinitions_PathContainsFilter(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":         "test",
+		"path_contains": "users",
+	})
+	defs := getSlice(t, res, "definitions")
+	if len(defs) != 1 {
+		t.Fatalf("expected 1 def for path_contains=users, got %d", len(defs))
+	}
+	obj := defs[0].(map[string]any)
+	if path, _ := obj["path"].(string); path != "/api/v2/users" {
+		t.Errorf("unexpected path: %v", obj)
+	}
+}
+
+func TestEndpointDefinitions_MethodFilter(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":  "test",
+		"method": "POST",
+	})
+	defs := getSlice(t, res, "definitions")
+	if len(defs) != 1 {
+		t.Fatalf("expected 1 def for method=POST, got %d", len(defs))
+	}
+}
+
+// #1650: terse default returns "lines" with one-line entries; verbose=true
+// returns full per-record fields without "lines".
+func TestEndpointDefinitions_TerseDefault(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test"})
+	if _, ok := res["lines"]; !ok {
+		t.Error("expected 'lines' key in terse default response")
+	}
+	defs := getSlice(t, res, "definitions")
+	for _, d := range defs {
+		obj := d.(map[string]any)
+		// Terse rows omit name/kind/properties.
+		if _, has := obj["properties"]; has {
+			t.Errorf("terse row should omit properties: %v", obj)
+		}
 	}
 }
 

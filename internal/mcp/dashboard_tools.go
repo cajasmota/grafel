@@ -937,7 +937,9 @@ func (s *Server) handleGetSubgraph(_ context.Context, req mcpapi.CallToolRequest
 	return mcpapi.NewToolResultError("entity not found: " + entityID), nil
 }
 
-// handleFindPaths finds all simple paths between two entities up to max_hops.
+// handleFindPaths finds the shortest path between two entities up to max_hops.
+// #1650: traverses cross-repo edges via lg.Links, so an id in repo A can reach
+// an id in repo B when a link connects the two graphs.
 func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	from, err := req.RequireString("from")
 	if err != nil {
@@ -959,85 +961,99 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 		maxHops = 8
 	}
 
-	fromRepo, fromLocal := splitPrefixed(from)
-	toRepo, toLocal := splitPrefixed(to)
-
-	// Only intra-repo for now; cross-repo paths need overlay graph.
-	repos := reposToConsider(lg, nil)
-	if fromRepo != "" && fromRepo == toRepo {
-		if r, ok := lg.Repos[fromRepo]; ok && r.Doc != nil {
-			repos = []*LoadedRepo{r}
-		}
+	// Resolve both endpoints to PREFIXED ids. Accept either a "<repo>::<id>"
+	// string or a bare local id / label that LabelIndex can resolve.
+	prefSrc := normalizePrefixed(lg, from)
+	prefDst := normalizePrefixed(lg, to)
+	if prefSrc == "" {
+		return jsonResult(map[string]any{
+			"from":  from,
+			"to":    to,
+			"found": false,
+			"error": "'from' entity not found in any loaded repo (try a prefixed id like <repo>::<id>)",
+		}), nil
+	}
+	if prefDst == "" {
+		return jsonResult(map[string]any{
+			"from":  prefSrc,
+			"to":    to,
+			"found": false,
+			"error": "'to' entity not found in any loaded repo",
+		}), nil
 	}
 
 	type step struct {
 		EntityID string `json:"entity_id"`
 		Name     string `json:"name"`
 		Kind     string `json:"kind"`
+		Repo     string `json:"repo"`
 	}
 
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		src := fromLocal
-		if src == "" {
-			src = from
-		}
-		dst := toLocal
-		if dst == "" {
-			dst = to
-		}
-		byID := indexByID(r.Doc)
-		if _, ok := byID[src]; !ok {
-			continue
-		}
-		if _, ok := byID[dst]; !ok {
-			continue
-		}
-		// Run Dijkstra for shortest path, then enumerate simple paths up to limit.
-		adj := buildAdjacency(r.Doc, r.Repo)
-		// Use dijkstra to find shortest.
-		expand := func(id string) []edge {
-			return adj.out[id]
-		}
-		path, kinds, conf, found := dijkstra(src, dst, expand)
-		if !found {
-			return jsonResult(map[string]any{
-				"from":  prefixedID(r.Repo, src),
-				"to":    prefixedID(r.Repo, dst),
-				"paths": []any{},
-				"found": false,
-			}), nil
-		}
-		// Build the output path.
-		steps := make([]step, 0, len(path))
-		for _, pid := range path {
-			if e := byID[pid]; e != nil {
-				steps = append(steps, step{
-					EntityID: prefixedID(r.Repo, e.ID),
-					Name:     e.Name,
-					Kind:     e.Kind,
+	// Expand function: intra-repo CALLS/IMPORTS/etc. + cross-repo overlay.
+	expand := func(node string) []edge {
+		repo, local := splitPrefixed(node)
+		out := []edge{}
+		if r, ok := lg.Repos[repo]; ok && r.Doc != nil {
+			a := buildAdjacency(r.Doc, r.Repo)
+			for _, e := range a.out[local] {
+				out = append(out, edge{
+					target: prefixedID(repo, e.target),
+					kind:   e.kind,
+					weight: 1, // unit cost — we want shortest hop count
 				})
 			}
 		}
-		_ = kinds
+		// Cross-repo overlay: source-side matches the current node.
+		for _, l := range lg.Links {
+			if l.Source == node {
+				out = append(out, edge{
+					target: l.Target,
+					kind:   l.EffectiveKind(),
+					weight: 1,
+				})
+			}
+		}
+		return out
+	}
+
+	path, kinds, _, found := dijkstra(prefSrc, prefDst, expand)
+	if !found {
 		return jsonResult(map[string]any{
-			"from":       prefixedID(r.Repo, src),
-			"to":         prefixedID(r.Repo, dst),
-			"repo":       r.Repo,
-			"max_hops":   maxHops,
-			"confidence": conf,
-			"hop_count":  len(path) - 1,
-			"steps":      steps,
-			"found":      true,
+			"from":  prefSrc,
+			"to":    prefDst,
+			"paths": []any{},
+			"found": false,
+			"note":  "no path within max_hops; entities may not be connected even via cross-repo links",
 		}), nil
 	}
+
+	steps := make([]step, 0, len(path))
+	crosses := false
+	firstRepo, _ := splitPrefixed(prefSrc)
+	for _, pid := range path {
+		repo, local := splitPrefixed(pid)
+		if repo != firstRepo {
+			crosses = true
+		}
+		st := step{EntityID: pid, Repo: repo}
+		if r, ok := lg.Repos[repo]; ok && r.Doc != nil {
+			if e := r.LabelIndex.ByID[local]; e != nil {
+				st.Name = e.Name
+				st.Kind = e.Kind
+			}
+		}
+		steps = append(steps, st)
+	}
+	_ = kinds
 	return jsonResult(map[string]any{
-		"from":  from,
-		"to":    to,
-		"found": false,
-		"error": "one or both entities not found in any loaded repo",
+		"from":          prefSrc,
+		"to":            prefDst,
+		"max_hops":      maxHops,
+		"hop_count":     len(path) - 1,
+		"crosses_repos": crosses,
+		"steps":         steps,
+		"edge_kinds":    kinds,
+		"found":         true,
 	}), nil
 }
 

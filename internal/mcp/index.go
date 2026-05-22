@@ -54,3 +54,20 @@ func (l *LabelIndex) Lookup(s string) *graph.Entity {
 	}
 	return nil
 }
+
+// LookupAll returns every entity matching s by ID, qualified name, or label.
+// Used by get_source/inspect to surface a clarifier list when a label is
+// ambiguous within a repo (#1650).
+func (l *LabelIndex) LookupAll(s string) []*graph.Entity {
+	if e, ok := l.ByID[s]; ok {
+		return []*graph.Entity{e}
+	}
+	low := strings.ToLower(s)
+	if e, ok := l.ByQName[low]; ok {
+		return []*graph.Entity{e}
+	}
+	if es, ok := l.ByLabel[low]; ok && len(es) > 0 {
+		return es
+	}
+	return nil
+}

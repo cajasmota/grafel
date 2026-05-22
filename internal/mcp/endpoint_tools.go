@@ -36,12 +36,43 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/graph"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
+
+// endpointDefItem is the package-level shape for a definition row, used by
+// both handleEndpointDefinitions and renderTerseDefinitions.
+type endpointDefItem struct {
+	EntityID   string            `json:"entity_id"`
+	Name       string            `json:"name,omitempty"`
+	Kind       string            `json:"kind,omitempty"`
+	Repo       string            `json:"repo"`
+	SourceFile string            `json:"source_file,omitempty"`
+	StartLine  int               `json:"start_line,omitempty"`
+	Method     string            `json:"method,omitempty"`
+	Path       string            `json:"path,omitempty"`
+	Properties map[string]string `json:"properties,omitempty"`
+}
+
+// endpointCallItem is the package-level shape for a call-site row.
+type endpointCallItem struct {
+	EntityID          string            `json:"entity_id"`
+	Name              string            `json:"name,omitempty"`
+	Kind              string            `json:"kind,omitempty"`
+	Repo              string            `json:"repo"`
+	SourceFile        string            `json:"source_file,omitempty"`
+	StartLine         int               `json:"start_line,omitempty"`
+	Method            string            `json:"method,omitempty"`
+	Path              string            `json:"path,omitempty"`
+	MatchedDefinition string            `json:"matched_definition,omitempty"`
+	OrphanHint        string            `json:"orphan_hint,omitempty"`
+	Properties        map[string]string `json:"properties,omitempty"`
+}
 
 // ---------------------------------------------------------------------------
 // Kind alias expansion
@@ -153,6 +184,12 @@ func (s *Server) handleEndpoints(ctx context.Context, req mcpapi.CallToolRequest
 // legacy http_endpoint kind when Sub-A has not yet landed). This tool returns
 // ONLY definition-side entries — no call-sites.
 //
+// #1650 overhaul:
+//   - server-side path_contains + method filters
+//   - default terse rendering (one-line entries, no repeated path fields)
+//   - limit defaults to 50 and caps the RENDERED size, not just record count
+//   - hard byte budget so a single call cannot overflow the harness token cap
+//
 // Tool name: archigraph_endpoint_definitions
 func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	_, lg, errRes := s.resolveAndGroup(req)
@@ -160,23 +197,12 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-	limit := argInt(req, "limit", 200)
-	group := argString(req, "group", "")
-	_ = group
+	limit := argInt(req, "limit", 50)
+	pathContains := strings.ToLower(argString(req, "path_contains", ""))
+	method := strings.ToUpper(argString(req, "method", ""))
+	verbose := argBool(req, "verbose", false)
 
-	type item struct {
-		EntityID   string            `json:"entity_id"`
-		Name       string            `json:"name"`
-		Kind       string            `json:"kind"`
-		Repo       string            `json:"repo"`
-		SourceFile string            `json:"source_file,omitempty"`
-		StartLine  int               `json:"start_line,omitempty"`
-		Method     string            `json:"method,omitempty"`
-		Path       string            `json:"path,omitempty"`
-		Properties map[string]string `json:"properties,omitempty"`
-	}
-
-	var out []item
+	var out []endpointDefItem
 	for _, r := range repos {
 		if r.Doc == nil {
 			continue
@@ -186,22 +212,31 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 			if !isDefinitionKind(e.Kind) {
 				continue
 			}
-			// Exclude entities whose pattern_type marks them as client-synthesis
-			// (consumer-side) — those belong in archigraph_endpoint_calls.
 			if e.Properties["pattern_type"] == "http_endpoint_client_synthesis" {
 				continue
 			}
-			out = append(out, item{
+			p := e.Properties["path"]
+			m := e.Properties["verb"]
+			if pathContains != "" && !strings.Contains(strings.ToLower(p), pathContains) {
+				continue
+			}
+			if method != "" && !strings.EqualFold(m, method) {
+				continue
+			}
+			it := endpointDefItem{
 				EntityID:   prefixedID(r.Repo, e.ID),
-				Name:       e.Name,
-				Kind:       e.Kind,
 				Repo:       r.Repo,
 				SourceFile: e.SourceFile,
 				StartLine:  e.StartLine,
-				Method:     e.Properties["verb"],
-				Path:       e.Properties["path"],
-				Properties: e.Properties,
-			})
+				Method:     m,
+				Path:       p,
+			}
+			if verbose {
+				it.Name = e.Name
+				it.Kind = e.Kind
+				it.Properties = e.Properties
+			}
+			out = append(out, it)
 		}
 	}
 
@@ -209,19 +244,120 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		if out[i].Repo != out[j].Repo {
 			return out[i].Repo < out[j].Repo
 		}
-		return out[i].Name < out[j].Name
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].Method < out[j].Method
 	})
 	total := len(out)
 	offset := argInt(req, "offset", 0)
 	out = pageSlice(out, offset, limit)
-	return jsonResult(map[string]any{
-		"definitions": out,
-		"count":       len(out),
-		"total":       total,
-		"offset":      offset,
-		"truncated":   offset+len(out) < total,
-		"note":        "http_endpoint kind is deprecated; prefer http_endpoint_definition for handler/route entities. Page with offset+limit to enumerate all paths.",
-	}), nil
+
+	// Token-budget guard: if even after limit the payload would still be too
+	// large for the harness, shed entries from the tail until we're under
+	// ~64 KB. This prevents the Finding #2 overflow on dense corpuses.
+	const maxRenderBytes = 64 * 1024
+	out = capByRenderedBytes(out, maxRenderBytes, !verbose)
+
+	resp := map[string]any{
+		"definitions":  out,
+		"count":        len(out),
+		"total":        total,
+		"offset":       offset,
+		"truncated":    offset+len(out) < total,
+		"verbose":      verbose,
+		"path_contains": pathContains,
+		"method":       method,
+		"note":         "verbose=false (default) returns terse one-line shape. Use path_contains/method to narrow; limit caps rendered size, not just record count.",
+	}
+	if !verbose {
+		resp["lines"] = renderTerseDefinitions(out)
+	}
+	return jsonResult(resp), nil
+}
+
+// terseLine is the minimal struct each terse renderer feeds into for
+// homogeneous handling. Both definitions and calls map their items onto it.
+type terseLine struct {
+	Method     string
+	Path       string
+	SourceFile string
+	StartLine  int
+	Repo       string
+	Name       string // for calls: caller symbol name
+}
+
+func renderTerseLines(lines []terseLine) []string {
+	out := make([]string, 0, len(lines))
+	for _, it := range lines {
+		var b strings.Builder
+		if it.Method != "" {
+			b.WriteString(it.Method)
+			b.WriteString(" ")
+		}
+		if it.Path != "" {
+			b.WriteString(it.Path)
+		}
+		if it.Name != "" {
+			b.WriteString("  → ")
+			b.WriteString(it.Name)
+		}
+		if it.SourceFile != "" {
+			b.WriteString("  ")
+			b.WriteString(it.SourceFile)
+			if it.StartLine > 0 {
+				b.WriteString(":")
+				b.WriteString(strconv.Itoa(it.StartLine))
+			}
+		}
+		if it.Repo != "" {
+			b.WriteString("  (")
+			b.WriteString(it.Repo)
+			b.WriteString(")")
+		}
+		out = append(out, b.String())
+	}
+	return out
+}
+
+// renderTerseDefinitions adapts the definition item slice for renderTerseLines.
+func renderTerseDefinitions(items []endpointDefItem) []string {
+	lines := make([]terseLine, 0, len(items))
+	for _, it := range items {
+		lines = append(lines, terseLine{
+			Method:     it.Method,
+			Path:       it.Path,
+			SourceFile: it.SourceFile,
+			StartLine:  it.StartLine,
+			Repo:       it.Repo,
+			Name:       it.Name,
+		})
+	}
+	return renderTerseLines(lines)
+}
+
+// rendered/capByRenderedBytes operate on item via its terse-line size; we use
+// JSON-marshal of the slice as a proxy for token cost.
+func capByRenderedBytes[T any](items []T, maxBytes int, _ bool) []T {
+	if maxBytes <= 0 {
+		return items
+	}
+	data, err := json.Marshal(items)
+	if err != nil || len(data) <= maxBytes {
+		return items
+	}
+	// Binary search the largest prefix that fits.
+	lo, hi := 0, len(items)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		data, _ := json.Marshal(items[:mid])
+		if len(data) <= maxBytes {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return items[:lo]
 }
 
 // ---------------------------------------------------------------------------
@@ -240,8 +376,11 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-	limit := argInt(req, "limit", 200)
+	limit := argInt(req, "limit", 50)
 	orphanOnly := argBool(req, "orphan_only", false)
+	pathContains := strings.ToLower(argString(req, "path_contains", ""))
+	method := strings.ToUpper(argString(req, "method", ""))
+	verbose := argBool(req, "verbose", false)
 
 	// Build a set of all definition-side entity IDs so we can detect
 	// call-sites with no matching definition (orphan callers).
@@ -257,20 +396,6 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 				definitionIDs[e.ID] = true // bare form for same-repo lookups
 			}
 		}
-	}
-
-	type item struct {
-		EntityID          string            `json:"entity_id"`
-		Name              string            `json:"name"`
-		Kind              string            `json:"kind"`
-		Repo              string            `json:"repo"`
-		SourceFile        string            `json:"source_file,omitempty"`
-		StartLine         int               `json:"start_line,omitempty"`
-		Method            string            `json:"method,omitempty"`
-		Path              string            `json:"path,omitempty"`
-		MatchedDefinition string            `json:"matched_definition,omitempty"`
-		OrphanHint        string            `json:"orphan_hint,omitempty"`
-		Properties        map[string]string `json:"properties,omitempty"`
 	}
 
 	// Build FETCHES edge map: callerID → toID (definition target).
@@ -299,7 +424,16 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		}
 	}
 
-	var out []item
+	// Cross-repo link resolution (#1650 follow-up to iter2 #1615): a call may
+	// be matched by a cross-repo link entry (lg.Links) instead of an in-repo
+	// FETCHES target. Build a quick set of sources covered by links so we
+	// don't flag them as orphans.
+	linkedSources := map[string]bool{}
+	for _, l := range lg.Links {
+		linkedSources[l.Source] = true
+	}
+
+	var out []endpointCallItem
 	for _, r := range repos {
 		if r.Doc == nil {
 			continue
@@ -312,6 +446,14 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			if !isCall {
 				continue
 			}
+			p := e.Properties["path"]
+			m := e.Properties["verb"]
+			if pathContains != "" && !strings.Contains(strings.ToLower(p), pathContains) {
+				continue
+			}
+			if method != "" && !strings.EqualFold(m, method) {
+				continue
+			}
 
 			eid := prefixedID(r.Repo, e.ID)
 
@@ -321,11 +463,13 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 			if fe, ok := callerToTarget[eid]; ok {
 				if definitionIDs[fe.toID] || definitionIDs[prefixedID(r.Repo, fe.toID)] {
 					matched = fe.toID
+				} else if linkedSources[eid] {
+					// Resolved via cross-repo links pass.
+					matched = "cross_repo_link"
 				} else {
-					// No matching definition found — produce a reasoning hint.
 					urlPattern := fe.path
 					if urlPattern == "" {
-						urlPattern = e.Properties["path"]
+						urlPattern = p
 					}
 					if urlPattern != "" {
 						orphanHint = "this call to " + urlPattern + " has no matching definition — see orphan_callers"
@@ -333,11 +477,11 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 						orphanHint = "this call has no matching definition — see orphan_callers"
 					}
 				}
+			} else if linkedSources[eid] {
+				matched = "cross_repo_link"
 			} else {
-				// No FETCHES edge at all — possibly an isolated call-site.
-				urlPattern := e.Properties["path"]
-				if urlPattern != "" {
-					orphanHint = "this call to " + urlPattern + " has no matching definition — see orphan_callers"
+				if p != "" {
+					orphanHint = "this call to " + p + " has no matching definition — see orphan_callers"
 				}
 			}
 
@@ -345,19 +489,22 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 				continue
 			}
 
-			out = append(out, item{
+			it := endpointCallItem{
 				EntityID:          eid,
-				Name:              e.Name,
-				Kind:              e.Kind,
 				Repo:              r.Repo,
 				SourceFile:        e.SourceFile,
 				StartLine:         e.StartLine,
-				Method:            e.Properties["verb"],
-				Path:              e.Properties["path"],
+				Method:            m,
+				Path:              p,
 				MatchedDefinition: matched,
 				OrphanHint:        orphanHint,
-				Properties:        e.Properties,
-			})
+			}
+			if verbose {
+				it.Name = e.Name
+				it.Kind = e.Kind
+				it.Properties = e.Properties
+			}
+			out = append(out, it)
 		}
 	}
 
@@ -377,14 +524,33 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 	total := len(out)
 	offset := argInt(req, "offset", 0)
 	out = pageSlice(out, offset, limit)
-	return jsonResult(map[string]any{
-		"calls":     out,
-		"count":     len(out),
-		"total":     total,
-		"offset":    offset,
-		"truncated": offset+len(out) < total,
-		"note":      "http_endpoint kind is deprecated; prefer http_endpoint_call for consumer-side call-site entities. Page with offset+limit to enumerate all call-site paths.",
-	}), nil
+	const maxRenderBytes = 64 * 1024
+	out = capByRenderedBytes(out, maxRenderBytes, !verbose)
+	resp := map[string]any{
+		"calls":         out,
+		"count":         len(out),
+		"total":         total,
+		"offset":        offset,
+		"truncated":     offset+len(out) < total,
+		"verbose":       verbose,
+		"path_contains": pathContains,
+		"method":        method,
+		"note":          "verbose=false (default) returns terse one-line shape. path_contains/method narrow server-side; cross-repo link matches surface as matched_definition=\"cross_repo_link\".",
+	}
+	if !verbose {
+		lines := make([]terseLine, 0, len(out))
+		for _, it := range out {
+			lines = append(lines, terseLine{
+				Method:     it.Method,
+				Path:       it.Path,
+				SourceFile: it.SourceFile,
+				StartLine:  it.StartLine,
+				Repo:       it.Repo,
+			})
+		}
+		resp["lines"] = renderTerseLines(lines)
+	}
+	return jsonResult(resp), nil
 }
 
 // pageSlice returns the [offset, offset+limit) window of s, clamped to bounds.
@@ -420,11 +586,12 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 
 	type repoStats struct {
-		Repo        string `json:"repo"`
-		Definitions int    `json:"definitions"`
-		Calls       int    `json:"calls"`
-		LegacyKind  int    `json:"legacy_kind"` // entities whose kind is plain "http_endpoint" (not split yet)
-		OrphanCalls int    `json:"orphan_calls"`
+		Repo               string `json:"repo"`
+		Definitions        int    `json:"definitions"`
+		Calls              int    `json:"calls"`
+		LegacyKind         int    `json:"legacy_kind"` // entities whose kind is plain "http_endpoint" (not split yet)
+		OrphanCalls        int    `json:"orphan_calls"`
+		CrossRepoResolved  int    `json:"cross_repo_resolved"`
 	}
 
 	// Build definition-ID set first (needed for orphan detection below).
@@ -442,8 +609,17 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		}
 	}
 
+	// #1650: fold cross-repo link resolutions into orphan accounting. The
+	// link pass writes <repo>::<localId> on the source side; collect those so
+	// a FETCHES whose ToID is unresolved intra-repo but whose FromID is
+	// covered by a cross-repo link is NOT counted as orphan.
+	linkedSources := map[string]bool{}
+	for _, l := range lg.Links {
+		linkedSources[l.Source] = true
+	}
+
 	var perRepo []repoStats
-	totalDefs, totalCalls, totalLegacy, totalOrphans := 0, 0, 0, 0
+	totalDefs, totalCalls, totalLegacy, totalOrphans, totalCross := 0, 0, 0, 0, 0
 
 	for _, r := range repos {
 		if r.Doc == nil {
@@ -470,21 +646,30 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 			}
 		}
 
-		// Count orphan call-sites: FETCHES edges whose ToID is not a definition.
+		// Count orphan call-sites: FETCHES edges whose ToID is not a definition
+		// AND whose FromID isn't covered by a cross-repo link entry.
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
 			if rel.Kind != "FETCHES" {
 				continue
 			}
-			if !definitionIDs[rel.ToID] && !definitionIDs[prefixedID(r.Repo, rel.ToID)] {
-				rs.OrphanCalls++
+			resolvedIntra := definitionIDs[rel.ToID] || definitionIDs[prefixedID(r.Repo, rel.ToID)]
+			if resolvedIntra {
+				continue
 			}
+			srcPrefixed := prefixedID(r.Repo, rel.FromID)
+			if linkedSources[srcPrefixed] {
+				rs.CrossRepoResolved++
+				continue
+			}
+			rs.OrphanCalls++
 		}
 
 		totalDefs += rs.Definitions
 		totalCalls += rs.Calls
 		totalLegacy += rs.LegacyKind
 		totalOrphans += rs.OrphanCalls
+		totalCross += rs.CrossRepoResolved
 		perRepo = append(perRepo, rs)
 	}
 
@@ -498,10 +683,12 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 
 	return jsonResult(map[string]any{
 		"totals": map[string]any{
-			"definitions":  totalDefs,
-			"calls":        totalCalls,
-			"legacy_kind":  totalLegacy,
-			"orphan_calls": totalOrphans,
+			"definitions":         totalDefs,
+			"calls":               totalCalls,
+			"legacy_kind":         totalLegacy,
+			"orphan_calls":        totalOrphans,
+			"cross_repo_resolved": totalCross,
+			"cross_repo_links":    len(lg.Links),
 		},
 		"per_repo": perRepo,
 		"migrated": migrated,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -26,6 +27,13 @@ func resolveGroup(s *State, explicit, cwd string) (string, string, error) {
 			return g, "cwd", nil
 		}
 	}
+	// Registry-based cwd inference (#1650): when no group.json marker is found,
+	// walk the registry and pick the group whose repo path is a prefix of cwd.
+	// If exactly one group matches we honor it as "cwd_registry"; multiple
+	// matches fall through to the ambiguous-group error.
+	if g := groupFromRegistry(s, cwd); g != "" {
+		return g, "cwd_registry", nil
+	}
 	if len(s.registry.Groups) == 1 {
 		for g := range s.registry.Groups {
 			return g, "singleton", nil
@@ -38,7 +46,65 @@ func resolveGroup(s *State, explicit, cwd string) (string, string, error) {
 	for g := range s.registry.Groups {
 		known = append(known, g)
 	}
+	sort.Strings(known)
 	return "", "", errors.New("ambiguous group; pass `group=<name>`. registered groups: " + strings.Join(known, ", "))
+}
+
+// groupFromRegistry returns the registered group whose repo path is an
+// ancestor of cwd. Returns "" when cwd is empty, no registered repo path
+// covers cwd, or multiple groups cover it (ambiguous). The match prefers the
+// longest path (most specific repo) when several repos under the SAME group
+// could cover cwd; when different groups each cover cwd, "" is returned and
+// the caller surfaces the standard ambiguous-group error.
+func groupFromRegistry(s *State, cwd string) string {
+	if cwd == "" || s == nil || s.registry == nil {
+		return ""
+	}
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		abs = cwd
+	}
+	abs = filepath.Clean(abs)
+	type hit struct {
+		group string
+		path  string
+	}
+	var hits []hit
+	for gname, gentry := range s.registry.Groups {
+		for _, repo := range gentry.Repos {
+			if repo.Path == "" {
+				continue
+			}
+			rp := filepath.Clean(repo.Path)
+			if pathContains(rp, abs) {
+				hits = append(hits, hit{group: gname, path: rp})
+			}
+		}
+	}
+	if len(hits) == 0 {
+		return ""
+	}
+	// All hits same group → unambiguous; pick longest path (most specific).
+	first := hits[0].group
+	for _, h := range hits[1:] {
+		if h.group != first {
+			return "" // ambiguous across groups
+		}
+	}
+	return first
+}
+
+// pathContains reports whether ancestor is an ancestor (or equal to) child.
+// Both paths must already be absolute + clean.
+func pathContains(ancestor, child string) bool {
+	if ancestor == child {
+		return true
+	}
+	sep := string(os.PathSeparator)
+	if !strings.HasSuffix(ancestor, sep) {
+		ancestor += sep
+	}
+	return strings.HasPrefix(child+sep, ancestor)
 }
 
 // groupFromCWD walks dir upward looking for .archigraph/group.json which

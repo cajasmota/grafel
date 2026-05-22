@@ -516,18 +516,50 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 			}
 		}
 	}
+	// #1650: collect every label/qname/id match across repos. Multiple matches
+	// return a clarifier list with ids rather than silently picking the first.
+	type matchPair struct {
+		ent  *graph.Entity
+		repo *LoadedRepo
+	}
+	var matches []matchPair
 	for _, r := range repos {
-		if e := r.LabelIndex.Lookup(key); e != nil {
-			scopeIsOne := len(repos) == 1
-			out := serializeEntity(r.Repo, e, scopeIsOne)
-			out["findings"] = findingsToJSON(findingsForEntity(allFindings, e.ID, prefixedID(r.Repo, e.ID)), 0)
-			if agentEdges := agentResolvedEdgesForEntity(r.Doc, r.Repo, e.ID, scopeIsOne); len(agentEdges) > 0 {
-				out["agent_resolved_edges"] = agentEdges
-			}
-			return jsonResult(out), nil
+		for _, hit := range r.LabelIndex.LookupAll(key) {
+			matches = append(matches, matchPair{ent: hit, repo: r})
 		}
 	}
-	return mcpapi.NewToolResultError(fmt.Sprintf("not found: %s", key)), nil
+	if len(matches) == 0 {
+		return mcpapi.NewToolResultError(fmt.Sprintf("not found: %s", key)), nil
+	}
+	if len(matches) > 1 {
+		out := make([]map[string]any, 0, len(matches))
+		for _, m := range matches {
+			out = append(out, map[string]any{
+				"id":             prefixedID(m.repo.Repo, m.ent.ID),
+				"qualified_name": m.ent.QualifiedName,
+				"label":          m.ent.Name,
+				"repo":           m.repo.Repo,
+				"source_file":    m.ent.SourceFile,
+				"start_line":     m.ent.StartLine,
+				"kind":           stripScopePrefix(m.ent.Kind),
+			})
+		}
+		return jsonResult(map[string]any{
+			"ambiguous": true,
+			"query":     key,
+			"count":     len(out),
+			"matches":   out,
+			"note":      "multiple entities match; call again with one of the ids above.",
+		}), nil
+	}
+	m := matches[0]
+	scopeIsOne := len(repos) == 1
+	out := serializeEntity(m.repo.Repo, m.ent, scopeIsOne)
+	out["findings"] = findingsToJSON(findingsForEntity(allFindings, m.ent.ID, prefixedID(m.repo.Repo, m.ent.ID)), 0)
+	if agentEdges := agentResolvedEdgesForEntity(m.repo.Doc, m.repo.Repo, m.ent.ID, scopeIsOne); len(agentEdges) > 0 {
+		out["agent_resolved_edges"] = agentEdges
+	}
+	return jsonResult(out), nil
 }
 
 // agentResolvedEdgesForEntity returns the outgoing relationships from entity e
@@ -927,20 +959,50 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 			lr = r
 		}
 	}
+	// #1650: accept qualified_name or label. Gather all matches across repos;
+	// if more than one resolves we return a clarifier list of {id,
+	// qualified_name, file:line, repo} so the caller can disambiguate without
+	// a follow-up inspect round-trip.
 	if e == nil {
+		type cand struct {
+			ent  *graph.Entity
+			repo *LoadedRepo
+		}
+		var cands []cand
 		for _, r := range lg.Repos {
 			if r.Doc == nil {
 				continue
 			}
-			if hit := r.LabelIndex.Lookup(nodeID); hit != nil {
-				e = hit
-				lr = r
-				break
+			for _, hit := range r.LabelIndex.LookupAll(nodeID) {
+				cands = append(cands, cand{ent: hit, repo: r})
 			}
 		}
-	}
-	if e == nil {
-		return mcpapi.NewToolResultError("node not found"), nil
+		if len(cands) == 0 {
+			return mcpapi.NewToolResultError("node not found: " + nodeID), nil
+		}
+		if len(cands) > 1 {
+			out := make([]map[string]any, 0, len(cands))
+			for _, c := range cands {
+				out = append(out, map[string]any{
+					"id":             prefixedID(c.repo.Repo, c.ent.ID),
+					"qualified_name": c.ent.QualifiedName,
+					"label":          c.ent.Name,
+					"repo":           c.repo.Repo,
+					"source_file":    c.ent.SourceFile,
+					"start_line":     c.ent.StartLine,
+					"kind":           stripScopePrefix(c.ent.Kind),
+				})
+			}
+			return jsonResult(map[string]any{
+				"ambiguous": true,
+				"query":     nodeID,
+				"count":     len(out),
+				"matches":   out,
+				"note":      "multiple entities match this label; call again with one of the ids above.",
+			}), nil
+		}
+		e = cands[0].ent
+		lr = cands[0].repo
 	}
 	abs := e.SourceFile
 	if !filepath.IsAbs(abs) && lr.Path != "" {

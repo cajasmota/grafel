@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/version"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
@@ -125,7 +126,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_whoami", s.handleWhoami))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_source",
-		mcpapi.WithDescription("Return source-file snippet for a node."),
+		mcpapi.WithDescription("Return source for a node; accepts id, qualified_name, or label."),
 		mcpapi.WithString("node_id", mcpapi.Required()),
 		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(20)),
 		mcpapi.WithAny("group"),
@@ -323,13 +324,18 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_paths", s.handleFindPaths))
 
-	// archigraph_endpoints — HTTP surface (#1281). action=definitions|calls|stats.
+	// archigraph_endpoints — HTTP surface (#1281, overhaul #1650).
+	// action=definitions|calls|stats; filters: path_contains, method;
+	// verbose=false (default) returns one-line terse entries.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoints",
-		mcpapi.WithDescription("HTTP endpoint surface: definitions=routes, calls=call-sites, stats=counts."),
+		mcpapi.WithDescription("HTTP endpoints: definitions|calls|stats."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
 		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0)),
+		mcpapi.WithAny("path_contains"),
+		mcpapi.WithAny("method"),
+		mcpapi.WithBoolean("verbose", mcpapi.DefaultBool(false)),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -379,7 +385,7 @@ func (s *Server) registerTools() {
 	// archigraph_quality_cycles — import cycle detection (#1312).
 	// Runs Tarjan SCC on IMPORTS edges; each SCC > 1 = circular dependency.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_quality_cycles",
-		mcpapi.WithDescription("Detect import cycles via Tarjan SCC; returns members, weakest edge, fix hint."),
+		mcpapi.WithDescription("Detect import cycles via Tarjan SCC; weakest edge, fix hint."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithAny("group"),
@@ -413,7 +419,7 @@ func (s *Server) registerTools() {
 	// Walks source files; flags API keys, passwords, JWT tokens, and other
 	// high-entropy credentials. Test fixtures and opt-out comments are suppressed.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_secrets",
-		mcpapi.WithDescription("Scan source files for hardcoded secrets; returns masked findings by severity."),
+		mcpapi.WithDescription("Scan for hardcoded secrets; masked findings by severity."),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("severity"),
@@ -427,6 +433,7 @@ func (s *Server) registerTools() {
 // + MCP activity event emission (epic #1157, Phase 1).
 func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error)) mcpsrv.ToolHandlerFunc {
 	return func(ctx context.Context, req mcpapi.CallToolRequest) (res *mcpapi.CallToolResult, err error) {
+		start := time.Now()
 		end := s.Tel.Begin(name)
 		defer func() {
 			isErr := err != nil || (res != nil && res.IsError)
@@ -434,9 +441,70 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 		}()
 		s.reloadBeforeCall()
 		res, err = fn(ctx, req)
+		// #1650: stamp every JSON tool payload with elapsed_ms so callers can
+		// benchmark latency without shelling out to `date`. We probe the text
+		// content for a top-level JSON object/array and rewrite it in place;
+		// non-JSON payloads (compact rendered text, markdown) are left as-is.
+		elapsed := time.Since(start).Milliseconds()
+		if res != nil && !res.IsError {
+			res = injectElapsedMS(res, elapsed)
+		}
 		s.emitActivity(ctx, name, req, res)
 		return res, err
 	}
+}
+
+// injectElapsedMS rewrites the first TextContent in res whose body is a JSON
+// object so it carries an "elapsed_ms" field. JSON arrays are wrapped in an
+// envelope {"items":[...], "elapsed_ms": N} so the latency is still exposed
+// without breaking shape consumers (existing array consumers should switch to
+// the "items" key — none in current tree). Non-JSON payloads are untouched.
+func injectElapsedMS(res *mcpapi.CallToolResult, ms int64) *mcpapi.CallToolResult {
+	if res == nil || len(res.Content) == 0 {
+		return res
+	}
+	for i, c := range res.Content {
+		tc, ok := c.(mcpapi.TextContent)
+		if !ok || tc.Text == "" {
+			continue
+		}
+		trimmed := tc.Text
+		// Cheap check for JSON object/array first byte.
+		for len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\n' || trimmed[0] == '\t' || trimmed[0] == '\r') {
+			trimmed = trimmed[1:]
+		}
+		if len(trimmed) == 0 {
+			continue
+		}
+		switch trimmed[0] {
+		case '{':
+			var obj map[string]any
+			if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
+				obj["elapsed_ms"] = ms
+				if data, err := json.MarshalIndent(obj, "", "  "); err == nil {
+					res.Content[i] = mcpapi.NewTextContent(string(data))
+					return res
+				}
+			}
+		case '[':
+			var arr []any
+			if err := json.Unmarshal([]byte(tc.Text), &arr); err == nil {
+				env := map[string]any{
+					"items":      arr,
+					"count":      len(arr),
+					"elapsed_ms": ms,
+				}
+				if data, err := json.MarshalIndent(env, "", "  "); err == nil {
+					res.Content[i] = mcpapi.NewTextContent(string(data))
+					return res
+				}
+			}
+		}
+		// Non-JSON payload: append a trailing comment line. Cheap, no parse.
+		res.Content[i] = mcpapi.NewTextContent(tc.Text + fmt.Sprintf("\n# elapsed_ms=%d\n", ms))
+		return res
+	}
+	return res
 }
 
 // emitActivity publishes a MCPActivityEvent to the activity broker (when
