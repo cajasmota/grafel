@@ -22,6 +22,10 @@ type edge struct {
 }
 
 // buildAdjacency constructs in/out neighbor lists for one repo.
+//
+// Called ONCE per reload (cached on LoadedRepo.Adjacency, #1656). Handlers
+// must NOT call this per-query — they pay an O(R)=117k scan plus thousands
+// of allocations every time. Use repo.Adjacency instead.
 func buildAdjacency(doc *graph.Document, repo string) *adjacency {
 	a := &adjacency{
 		out: make(map[string][]edge, len(doc.Entities)),
@@ -34,6 +38,41 @@ func buildAdjacency(doc *graph.Document, repo string) *adjacency {
 		a.in[r.ToID] = append(a.in[r.ToID], edge{target: r.FromID, kind: r.Kind, weight: w, repo: repo})
 	}
 	return a
+}
+
+// buildCallsAdjacency precomputes the forward CALLS adjacency consumed by
+// traces.followCallsBFS. Built ONCE per reload (cached on
+// LoadedRepo.CallsAdj, #1656). Targets within each entry are pre-sorted so
+// callers don't need to sort.Strings on the hot path.
+func buildCallsAdjacency(doc *graph.Document) map[string][]string {
+	adj := make(map[string][]string)
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		if r.Kind != "CALLS" {
+			continue
+		}
+		adj[r.FromID] = append(adj[r.FromID], r.ToID)
+	}
+	for k := range adj {
+		// Sort once at build time so query-time can copy directly.
+		sortStrings(adj[k])
+	}
+	return adj
+}
+
+// sortStrings is a tiny insertion sort wrapper to avoid pulling "sort" into
+// the hot path here (keeps the file self-contained). Lists are small (most
+// entries are <= 16 callees).
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		v := s[i]
+		j := i - 1
+		for j >= 0 && s[j] > v {
+			s[j+1] = s[j]
+			j--
+		}
+		s[j+1] = v
+	}
 }
 
 // bfs walks `depth` hops outward from `start` along the given adjacency,

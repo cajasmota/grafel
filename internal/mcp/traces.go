@@ -174,7 +174,7 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 			if e.Kind != processEntityKind || e.ID != target {
 				continue
 			}
-			steps := buildProcessSteps(r.Doc, e)
+			steps := buildProcessSteps(r.Doc, e, r.ByID)
 			return jsonResult(map[string]any{
 				"process_id":  prefixedID(r.Repo, e.ID),
 				"repo":        r.Repo,
@@ -230,20 +230,16 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 		if target == "" {
 			target = entry
 		}
-		var entryEnt *graph.Entity
-		for i := range r.Doc.Entities {
-			if r.Doc.Entities[i].ID == target {
-				entryEnt = &r.Doc.Entities[i]
-				break
-			}
-		}
+		// #1656: O(1) lookup via cached ByID instead of an O(N) scan over
+		// every entity in the repo to find the entry point.
+		entryEnt := r.ByID[target]
 		if entryEnt == nil {
 			continue
 		}
-		chains := followCallsBFS(r.Doc, target, maxDepth, branch)
+		chains := followCallsBFS(r.Doc, target, maxDepth, branch, r.CallsAdj)
 		// Materialise the chains into step lists with labels.
 		out := make([]map[string]any, 0, len(chains))
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		for _, c := range chains {
 			steps := make([]map[string]any, 0, len(c))
 			for i, id := range c {
@@ -290,8 +286,12 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 // buildProcessSteps reconstructs the ordered step list for one Process
 // from its STEP_IN_PROCESS edges, falling back to the `chain` property
 // when the edges are missing.
-func buildProcessSteps(doc *graph.Document, proc *graph.Entity) []map[string]any {
-	byID := indexByID(doc)
+func buildProcessSteps(doc *graph.Document, proc *graph.Entity, byID map[string]*graph.Entity) []map[string]any {
+	if byID == nil {
+		// Defensive fallback: callers should always pass a cached map (#1656),
+		// but synthesize on the fly if absent so tests that pass nil still work.
+		byID = indexByID(doc)
+	}
 	type indexed struct {
 		idx int
 		id  string
@@ -338,25 +338,33 @@ func buildProcessSteps(doc *graph.Document, proc *graph.Entity) []map[string]any
 // followCallsBFS is the query-time equivalent of engine.bfsTraces — it
 // walks forward CALLS edges from entry, bounded by maxDepth and
 // branching, and returns each terminal chain.
-func followCallsBFS(doc *graph.Document, entry string, maxDepth, branch int) [][]string {
+//
+// When callsAdj is non-nil it is used directly (cached at reload, #1656);
+// otherwise the function falls back to an on-the-fly O(R) scan to remain
+// backward-compatible with paths/tests that don't hold a LoadedRepo.
+func followCallsBFS(doc *graph.Document, entry string, maxDepth, branch int, callsAdj map[string][]string) [][]string {
 	out := make(map[string][]string)
 	type fr struct {
 		chain []string
 		seen  map[string]bool
 	}
-	// Build single-repo CALLS adjacency on the fly. The MCP path doesn't
-	// import internal/engine so it can ship to consumers without taking
-	// the indexer's transitive deps.
-	adj := make(map[string][]string)
-	for i := range doc.Relationships {
-		r := &doc.Relationships[i]
-		if r.Kind != "CALLS" {
-			continue
+	var adj map[string][]string
+	if callsAdj != nil {
+		adj = callsAdj
+	} else {
+		// Fallback: build single-repo CALLS adjacency on the fly. The MCP
+		// path doesn't import internal/engine so it ships standalone.
+		adj = make(map[string][]string)
+		for i := range doc.Relationships {
+			r := &doc.Relationships[i]
+			if r.Kind != "CALLS" {
+				continue
+			}
+			adj[r.FromID] = append(adj[r.FromID], r.ToID)
 		}
-		adj[r.FromID] = append(adj[r.FromID], r.ToID)
-	}
-	for k := range adj {
-		sort.Strings(adj[k])
+		for k := range adj {
+			sort.Strings(adj[k])
+		}
 	}
 	work := []fr{{chain: []string{entry}, seen: map[string]bool{entry: true}}}
 	for len(work) > 0 {

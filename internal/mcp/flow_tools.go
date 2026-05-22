@@ -72,13 +72,13 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 		if target == "" {
 			target = entityID
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		if _, ok := byID[target]; !ok {
 			continue
 		}
 
 		// BFS over inbound-only adjacency.
-		adj := buildAdjacency(r.Doc, r.Repo)
+		adj := r.Adjacency
 		visited := map[string]int{target: 0}
 		frontier := []string{target}
 		for d := 0; d < depth; d++ {
@@ -207,13 +207,13 @@ func (s *Server) handleFindCallees(_ context.Context, req mcpapi.CallToolRequest
 		if target == "" {
 			target = entityID
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		if _, ok := byID[target]; !ok {
 			continue
 		}
 
 		// BFS over outbound-only adjacency.
-		adj := buildAdjacency(r.Doc, r.Repo)
+		adj := r.Adjacency
 		visited := map[string]int{target: 0}
 		frontier := []string{target}
 		for d := 0; d < depth; d++ {
@@ -377,7 +377,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 		if target == "" {
 			target = entityID
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		if _, ok := byID[target]; !ok {
 			continue
 		}
@@ -391,7 +391,7 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 
 		// Impact radius = entities that transitively depend on `target`.
 		// We walk the INBOUND graph from target: callers of callers.
-		adj := buildAdjacency(r.Doc, r.Repo)
+		adj := r.Adjacency
 		visited := map[string]int{target: 0}
 		frontier := []string{target}
 		for d := 0; d < hops; d++ {
@@ -524,13 +524,13 @@ func (s *Server) handleSummarizeSubgraph(_ context.Context, req mcpapi.CallToolR
 		if target == "" {
 			target = entityID
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		root, ok := byID[target]
 		if !ok {
 			continue
 		}
 
-		adj := buildAdjacency(r.Doc, r.Repo)
+		adj := r.Adjacency
 
 		// Gather inbound callers (depth hops).
 		inVisited := map[string]int{}

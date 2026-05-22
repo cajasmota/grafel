@@ -420,7 +420,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	}
 	if mode != "none" {
 		for _, sc := range keep {
-			adj := buildAdjacency(sc.repo.Doc, sc.repo.Repo)
+			adj := sc.repo.Adjacency // cached at reload (#1656)
 			vis := bfs(adj, sc.hit.Entity.ID, depth, contextFilter)
 			for nid, d := range vis {
 				if nid == sc.hit.Entity.ID {
@@ -716,7 +716,7 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 	if start == nil {
 		return mcpapi.NewToolResultError("node not found: " + key), nil
 	}
-	adj := buildAdjacency(startRepo.Doc, startRepo.Repo)
+	adj := startRepo.Adjacency // cached at reload (#1656)
 	vis := bfs(adj, start.ID, depth, nil)
 	out := []map[string]any{}
 	for nid, d := range vis {
@@ -794,7 +794,7 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 		repo, local := splitPrefixed(node)
 		out := []edge{}
 		if r, ok := lg.Repos[repo]; ok && r.Doc != nil {
-			a := buildAdjacency(r.Doc, r.Repo)
+			a := r.Adjacency
 			for _, e := range a.out[local] {
 				out = append(out, edge{
 					target: prefixedID(repo, e.target),

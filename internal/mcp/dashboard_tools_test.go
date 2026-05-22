@@ -27,6 +27,10 @@ func newTestServerWithDoc(t *testing.T, doc *graph.Document) *Server {
 	st := NewState(reg)
 	// Inject the document directly rather than loading from disk.
 	st.mu.Lock()
+	byID := make(map[string]*graph.Entity, len(doc.Entities))
+	for i := range doc.Entities {
+		byID[doc.Entities[i].ID] = &doc.Entities[i]
+	}
 	st.groups["test"] = &LoadedGroup{
 		Name: "test",
 		Repos: map[string]*LoadedRepo{
@@ -35,6 +39,9 @@ func newTestServerWithDoc(t *testing.T, doc *graph.Document) *Server {
 				Doc:        doc,
 				LabelIndex: BuildLabelIndex(doc),
 				BM25:       BuildBM25(doc),
+				Adjacency:  buildAdjacency(doc, "repo1"),
+				CallsAdj:   buildCallsAdjacency(doc),
+				ByID:       byID,
 			},
 		},
 	}

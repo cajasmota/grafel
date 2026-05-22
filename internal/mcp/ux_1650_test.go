@@ -260,11 +260,18 @@ func newTestServerWithDocs(t *testing.T, docs map[string]*graph.Document) *Serve
 	st.mu.Lock()
 	lg := &LoadedGroup{Name: "test", Repos: map[string]*LoadedRepo{}}
 	for name, doc := range docs {
+		byID := make(map[string]*graph.Entity, len(doc.Entities))
+		for i := range doc.Entities {
+			byID[doc.Entities[i].ID] = &doc.Entities[i]
+		}
 		lg.Repos[name] = &LoadedRepo{
 			Repo:       name,
 			Doc:        doc,
 			LabelIndex: BuildLabelIndex(doc),
 			BM25:       BuildBM25(doc),
+			Adjacency:  buildAdjacency(doc, name),
+			CallsAdj:   buildCallsAdjacency(doc),
+			ByID:       byID,
 		}
 	}
 	st.groups["test"] = lg
