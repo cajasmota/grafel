@@ -29,9 +29,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: dashboard/package-lock.json
-      - name: dashboard typecheck + build
-        working-directory: dashboard
+          cache-dependency-path: webui-v2/package-lock.json
+      - name: dashboard (webui-v2) typecheck + build
+        working-directory: webui-v2
         run: |
           npm ci
           npm run build

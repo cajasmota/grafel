@@ -8,17 +8,20 @@ LDFLAGS := -s -w \
   -X github.com/cajasmota/archigraph/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown) \
   -X github.com/cajasmota/archigraph/internal/version.Date=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# dashboard-build: compile the React SPA and copy the output into
-# internal/dashboard/dist/ so the Go embed directive picks it up.
+# dashboard-build: compile the webui-v2 React SPA and copy the output into
+# internal/dashboard/dist/ so the Go embed directive picks it up. webui-v2 is
+# the one and only dashboard — it is served EMBEDDED by the daemon at
+# http://127.0.0.1:47274, so `archigraph install` ships the full UI with no
+# separate dev server. (Run `cd webui-v2 && npm run dev` only for dev iteration.)
 # Must run before `go build` or the embed will fail (no dist/ dir).
 # We use `vite build` directly instead of `npm run build` (which calls
 # `tsc -b && vite build`) to skip the TypeScript emit step — Vite has
 # its own transpilation pass. Type-checking is done separately via
 # `npm run lint` (tsc --noEmit).
 dashboard-build:
-	cd dashboard && $(NPM) ci && npx vite build
+	cd webui-v2 && $(NPM) ci && npx vite build
 	rm -rf internal/dashboard/dist
-	cp -r dashboard/dist internal/dashboard/dist
+	cp -r webui-v2/dist internal/dashboard/dist
 
 # build: full binary including embedded SPA. Depends on dashboard-build
 # so `make build` always produces a self-contained binary.

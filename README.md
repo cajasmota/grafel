@@ -43,7 +43,7 @@ and [milestones](https://github.com/cajasmota/archigraph/milestones).
 - **Go 1.25.5+** with **CGO enabled** — tree-sitter needs a C compiler
   (Xcode Command Line Tools on macOS: `xcode-select --install`; `build-essential`
   on Debian/Ubuntu).
-- **Node.js 20+** and npm — used to build the dashboards.
+- **Node.js 20+** and npm — used to build the dashboard.
 - **git**.
 
 ### 1. Clone and build
@@ -82,18 +82,27 @@ several git repos and they become one multi-repo group. (You can also click
 
 ### 4. Open the dashboard
 
-The actively-developed UI lives in `webui-v2` and runs as a local dev server
-that proxies to the daemon:
+The full dashboard is **embedded in the daemon** — `make build` bundles it into
+the binary and `archigraph install` serves it. Just open:
 
-```sh
-cd webui-v2
-npm install
-npm run dev                # → http://localhost:47280
+```
+http://127.0.0.1:47274
 ```
 
-> The daemon also serves an older embedded dashboard at
-> http://127.0.0.1:47274. **For testing, use `webui-v2` on
-> http://localhost:47280** — that's the current UI.
+No separate dev server is needed for testing. Deep links and browser reloads
+work on every screen (Graph, Topology, Flows, Paths, Docs, Operations, Pending,
+Settings) — the daemon SPA-falls-back to the app for client-side routes.
+
+> **Developing the dashboard?** The UI source lives in `webui-v2`. For hot-reload
+> dev iteration, run a dev server that proxies `/api/*` to the daemon:
+>
+> ```sh
+> cd webui-v2
+> npm install
+> npm run dev              # → http://localhost:47280 (dev only)
+> ```
+>
+> For testing the shipped build, use the embedded UI at http://127.0.0.1:47274.
 
 ### Stop / clean up
 
