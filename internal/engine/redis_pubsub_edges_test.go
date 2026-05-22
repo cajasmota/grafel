@@ -826,3 +826,45 @@ class CacheService(private val redisTemplate: RedisTemplate<String, String>) {
 		}
 	}
 }
+
+// TestRedisPubSub_ElixirRedixSubscribe is the #1489 regression test: the real
+// polyglot fixture's realtime-dashboard (Elixir) consumes notifications.push
+// via Redix.PubSub with the channel held in a @module attribute. Before #1489
+// Elixir was unsupported, so realtime-dashboard emitted no SCOPE.Queue entity
+// and never paired with the Kotlin notifications publisher.
+func TestRedisPubSub_ElixirRedixSubscribe(t *testing.T) {
+	src := `defmodule RealtimeDashboard.NotificationsSubscriber do
+  use GenServer
+  @redis_channel "notifications.push"
+
+  def init(_state) do
+    {:ok, pubsub} = Redix.PubSub.start_link(host: "redis", port: 6379)
+    {:ok, _ref} = Redix.PubSub.subscribe(pubsub, @redis_channel, self())
+    {:ok, %{pubsub: pubsub}}
+  end
+end
+`
+	ents, rels := runRedisPubSub(t, "elixir", src)
+	want := "channel:redis-pubsub:notifications.push"
+	if !hasEntity(ents, want) {
+		t.Fatalf("expected SCOPE.Queue %q (canonical cross-repo ID), ents=%v", want, ents)
+	}
+	if !hasRel(rels, "SUBSCRIBES_TO|Service:RealtimeDashboard.NotificationsSubscriber|SCOPE.Queue:"+want) {
+		t.Fatalf("expected SUBSCRIBES_TO edge to %q, rels=%v", want, rels)
+	}
+}
+
+// TestRedisPubSub_ElixirRedixSubscribeLiteral covers the inline string-literal
+// form (no module attribute).
+func TestRedisPubSub_ElixirRedixSubscribeLiteral(t *testing.T) {
+	src := `defmodule Foo do
+  def go(pubsub) do
+    Redix.PubSub.subscribe(pubsub, "tracking.location", self())
+  end
+end
+`
+	ents, _ := runRedisPubSub(t, "elixir", src)
+	if !hasEntity(ents, "channel:redis-pubsub:tracking.location") {
+		t.Fatalf("expected literal-channel SCOPE.Queue, ents=%v", ents)
+	}
+}

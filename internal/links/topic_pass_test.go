@@ -460,3 +460,66 @@ func TestTopicPass_TwoDistinctTopicsSameRepoPair(t *testing.T) {
 		t.Errorf("link IDs must be distinct per topic; both got %s", topicLinks[0].ID)
 	}
 }
+
+// TestTopicPass_RedisPubSubQueueJoin is the #1489 regression test: the Redis
+// pub/sub engine pass emits SCOPE.Queue entities (Name
+// `channel:redis-pubsub:<name>`), NOT SCOPE.MessageTopic. Before #1489 P7
+// only scanned SCOPE.MessageTopic, so a redis publisher and subscriber in
+// different repos sharing the identical channel Name were never paired. This
+// mirrors the real fixture: notifications (Kotlin) publishes
+// notifications.push; tracking-ws (Node) and realtime-dashboard (Elixir)
+// subscribe.
+func TestTopicPass_RedisPubSubQueueJoin(t *testing.T) {
+	root := fixtureRoot(t)
+
+	q := func(repo, entID, opName, file, edge string) {
+		writeFixture(t, root, fixtureGraph{
+			Repo: repo,
+			Entities: []map[string]any{
+				{"id": opName, "name": opName, "kind": "SCOPE.Operation", "source_file": file},
+				{
+					"id": entID, "name": "channel:redis-pubsub:notifications.push",
+					"kind": "SCOPE.Queue", "source_file": "",
+					"properties": map[string]any{"broker": "redis", "channel_type": "pubsub"},
+				},
+			},
+			Edges: []map[string]string{
+				{"from_id": opName, "to_id": entID, "kind": edge},
+			},
+		})
+	}
+	q("notifications", "q_pub", "publishPush", "Listeners.kt", "PUBLISHES_TO")
+	q("tracking-ws", "q_sub1", "module", "index.ts", "SUBSCRIBES_TO")
+	q("realtime-dashboard", "q_sub2", "Subscriber", "subscriber.ex", "SUBSCRIBES_TO")
+
+	home := filepath.Join(root, "ag-home-redisq")
+	if _, err := RunAllPasses("tgredis", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "tgredis-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	targets := map[string]bool{}
+	for _, l := range doc.Links {
+		if l.Method != MethodTopic {
+			continue
+		}
+		// P7 links from the publisher OPERATION (edge from_id), not the queue
+		// entity id.
+		if l.Source != "notifications::publishPush" {
+			t.Errorf("source: want notifications::publishPush, got %s", l.Source)
+		}
+		if l.Channel == nil || *l.Channel != "redis" {
+			t.Errorf("channel: want redis, got %v", l.Channel)
+		}
+		targets[l.Target] = true
+	}
+	if !targets["tracking-ws::module"] {
+		t.Error("expected notifications→tracking-ws redis link")
+	}
+	if !targets["realtime-dashboard::Subscriber"] {
+		t.Error("expected notifications→realtime-dashboard redis link")
+	}
+}

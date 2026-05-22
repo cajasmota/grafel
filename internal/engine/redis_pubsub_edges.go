@@ -80,7 +80,7 @@ const redisPubSubChannelEntityKind = "SCOPE.Queue"
 // can emit synthetics for `lang`.
 func redisPubSubSynthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "python", "javascript", "typescript", "go", "ruby", "java", "kotlin":
+	case "python", "javascript", "typescript", "go", "ruby", "java", "kotlin", "elixir":
 		return true
 	default:
 		return false
@@ -115,7 +115,10 @@ func applyRedisPubSubEdges(
 	srcLower := strings.ToLower(src)
 	hasPublish := strings.Contains(srcLower, "publish")
 	hasSubscribe := strings.Contains(srcLower, "subscribe") // covers subscribe, psubscribe, PSubscribe, Subscribe
-	hasRedis := strings.Contains(srcLower, "redis")
+	// "redis" matches the client/import; "redix" is the Elixir client lib
+	// (Redix / Redix.PubSub) — note "redix" does NOT contain "redis", so it
+	// must be checked explicitly or Elixir files would be filtered out (#1489).
+	hasRedis := strings.Contains(srcLower, "redis") || strings.Contains(srcLower, "redix")
 	// A publish or subscribe call is only a pub/sub signal when the file also
 	// references redis — UNLESS the call is PSubscribe/psubscribe which is
 	// Redis-specific and can appear without an explicit "redis" import when
@@ -208,6 +211,8 @@ func applyRedisPubSubEdges(
 		synthesizeRubyRedisPubSub(src, emitChannel, emitEdge)
 	case "java", "kotlin":
 		synthesizeSpringRedisPubSub(src, emitChannel, emitEdge)
+	case "elixir":
+		synthesizeElixirRedisPubSub(src, emitChannel, emitEdge)
 	}
 
 	return entities, relationships
@@ -846,6 +851,108 @@ func synthesizeSpringRedisPubSub(
 			"messaging_layer": "spring-data-redis",
 			"channel_type":    "pubsub",
 			"is_pattern":      "true",
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Elixir — Redix.PubSub (#1489)
+// ---------------------------------------------------------------------------
+//
+// The real polyglot fixture's realtime-dashboard (Phoenix/Elixir) consumes the
+// `notifications.push` Redis channel via:
+//
+//	@redis_channel "notifications.push"
+//	{:ok, pubsub} = Redix.PubSub.start_link(...)
+//	{:ok, _ref} = Redix.PubSub.subscribe(pubsub, @redis_channel, self())
+//
+// and may also publish via Redix.command(conn, ["PUBLISH", "chan", msg]).
+// Before #1489 Elixir was unsupported, so realtime-dashboard emitted no
+// SCOPE.Queue entity and never paired with the Kotlin notifications publisher.
+// This synthesizer resolves module-attribute channel constants
+// (`@name "value"`) and string literals on Redix.PubSub.subscribe /
+// .psubscribe and Redix PUBLISH commands, emitting the SAME canonical
+// `channel:redis-pubsub:<name>` SCOPE.Queue ID so P7 joins it cross-repo.
+
+// Note: module-attribute constants (`@name "value"`) are parsed with
+// elixirModuleAttrRe, defined in http_endpoint_jsts_client_1483.go.
+
+// elixirRedixSubscribeRe captures Redix.PubSub.subscribe / .psubscribe with a
+// string-literal or @module-attribute channel argument (after the pubsub conn
+// arg). Group 1 = "" or method suffix, Group 2 = literal, Group 3 = @attr.
+var elixirRedixSubscribeRe = regexp.MustCompile(
+	`Redix\.PubSub\.(p?subscribe)\s*\(\s*[^,]+,\s*(?:"([^"\n\r]+)"|@([a-z_][a-zA-Z0-9_]*))`,
+)
+
+// elixirRedixPublishRe captures Redix.command/Redix.noreply_command with a
+// PUBLISH verb: `Redix.command(conn, ["PUBLISH", "chan", msg])` where the
+// channel is a literal (group 1) or @attr (group 2).
+var elixirRedixPublishRe = regexp.MustCompile(
+	`(?i)Redix\.[a-z_]*command[a-z_!]*\s*\([^,]+,\s*\[\s*"PUBLISH"\s*,\s*(?:"([^"\n\r]+)"|@([a-z_][a-zA-Z0-9_]*))`,
+)
+
+// elixirModuleNameRe captures the enclosing `defmodule Foo.Bar do` so subscribe
+// edges carry a stable per-file caller name.
+var elixirModuleNameRe = regexp.MustCompile(`defmodule\s+([A-Za-z0-9_.]+)\s+do`)
+
+func synthesizeElixirRedisPubSub(
+	src string,
+	emitChannel func(channelID, channelName, channelType string, isWildcard bool, props map[string]string),
+	emitEdge func(callerKind, callerName, channelID, edgeKind string, props map[string]string),
+) {
+	if !strings.Contains(src, "Redix") {
+		return
+	}
+
+	// Build the module-attribute constant table (@redis_channel "x").
+	attrs := map[string]string{}
+	for _, m := range elixirModuleAttrRe.FindAllStringSubmatch(src, -1) {
+		attrs[m[1]] = m[2]
+	}
+
+	caller := "module"
+	if m := elixirModuleNameRe.FindStringSubmatch(src); len(m) >= 2 {
+		caller = m[1]
+	}
+
+	resolve := func(lit, attr string) (string, bool) {
+		if lit != "" {
+			return lit, true
+		}
+		if attr == "" {
+			return "", false
+		}
+		v, ok := attrs[attr]
+		return v, ok
+	}
+
+	// Subscribers: Redix.PubSub.subscribe / psubscribe.
+	for _, m := range elixirRedixSubscribeRe.FindAllStringSubmatch(src, -1) {
+		isPattern := m[1] == "psubscribe"
+		ch, ok := resolve(m[2], m[3])
+		if !ok || !looksLikeRedisChannel(ch) {
+			continue
+		}
+		id := redisPubSubChannelID(ch)
+		emitChannel(id, ch, "pubsub", isPattern, map[string]string{"messaging_layer": "redix"})
+		emitEdge("Service", caller, id, subscribesToEdgeKind, map[string]string{
+			"messaging_layer": "redix",
+			"channel_type":    "pubsub",
+			"is_pattern":      boolStr(isPattern),
+		})
+	}
+
+	// Publishers: Redix.command(conn, ["PUBLISH", chan, msg]).
+	for _, m := range elixirRedixPublishRe.FindAllStringSubmatch(src, -1) {
+		ch, ok := resolve(m[1], m[2])
+		if !ok || !looksLikeRedisChannel(ch) {
+			continue
+		}
+		id := redisPubSubChannelID(ch)
+		emitChannel(id, ch, "pubsub", false, map[string]string{"messaging_layer": "redix"})
+		emitEdge("Service", caller, id, publishesToEdgeKind, map[string]string{
+			"messaging_layer": "redix",
+			"channel_type":    "pubsub",
 		})
 	}
 }

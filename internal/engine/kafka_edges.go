@@ -199,9 +199,15 @@ var quarkusIncomingRe = regexp.MustCompile(`@Incoming\s*\(\s*"([^"\n\r]+)"\s*\)`
 // annotations. These typically decorate `Emitter<T>` producer fields.
 var quarkusChannelRe = regexp.MustCompile(`@Channel\s*\(\s*"([^"\n\r]+)"\s*\)`)
 
-// springKafkaListenerRe captures `@KafkaListener(topics = "topic")` and
-// `@KafkaListener(topics = {"a", "b"})`. The topic list is in group 1.
-var springKafkaListenerRe = regexp.MustCompile(`@KafkaListener\s*\(\s*[^)]*?topics\s*=\s*(?:\{([^}]+)\}|"([^"\n\r]+)")`)
+// springKafkaListenerRe captures `@KafkaListener(topics = "topic")`, the Java
+// brace-array form `@KafkaListener(topics = {"a", "b"})`, and the KOTLIN
+// bracket-array form `@KafkaListener(topics = ["a", "b"])`. Kotlin annotation
+// arrays use `[...]` rather than Java's `{...}`, so the notifications service's
+// `@KafkaListener(topics = ["orders.high_value"])` subscriber was previously
+// dropped, severing the stream-processor→notifications high_value link (#1489).
+// The list body (brace OR bracket) is captured into group 1 and parsed by the
+// same comma-split/quote-trim logic; a bare single literal is group 2.
+var springKafkaListenerRe = regexp.MustCompile(`@KafkaListener\s*\(\s*[^)]*?topics\s*=\s*(?:[\{\[]([^}\]]+)[\}\]]|"([^"\n\r]+)")`)
 
 // directKafkaSendRe captures `KafkaTemplate.send("topic", ...)` and
 // `producer.send(new ProducerRecord<>("topic", ...))` style calls.

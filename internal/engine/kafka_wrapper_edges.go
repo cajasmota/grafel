@@ -304,26 +304,79 @@ func synthesizeJavaRedisConvertAndSend(
 
 // javaKafkaStreamBuilderRe captures `builder.stream("topic")` and
 // `streams.builder().stream("topic")` — the source topic read by a topology.
-// Group 1 = topic name.
+// Also matches a CONSTANT identifier arg (`builder.stream(SRC_ORDERS)`),
+// resolved against the file's `static final String` table (#1489).
+// Group 1 = string-literal topic name (may be empty), Group 2 = identifier.
 var javaKafkaStreamBuilderRe = regexp.MustCompile(
-	`\.stream\s*\(\s*"([^"\n\r]+)"`,
+	`\.stream\s*\(\s*(?:"([^"\n\r]+)"|([A-Za-z_][A-Za-z0-9_.]*))`,
 )
 
 // javaKafkaStreamToRe captures `kStream.to("topic")` — the sink topic written
 // by a Kafka Streams topology. Also fires for chained forms like
 // `.filter(...).to("topic")`, `.mapValues(...).to("topic")`, and
-// `.branch(...)[n].to("topic")`. Group 1 = topic name.
+// `.branch(...)[n].to("topic")`. Group 1 = literal, Group 2 = identifier
+// constant arg (`enriched.to(OUT_ENRICHED)`), resolved via the const table.
 var javaKafkaStreamToRe = regexp.MustCompile(
-	`\.to\s*\(\s*"([^"\n\r]+)"`,
+	`\.to\s*\(\s*(?:"([^"\n\r]+)"|([A-Za-z_][A-Za-z0-9_.]*))`,
 )
 
 // javaKafkaStreamThroughRe captures `kStream.through("topic")` — the
 // rerouting operator that both consumes from and produces to an intermediate
 // topic, acting as both source and sink in the topology.
-// Group 1 = topic name.
+// Group 1 = literal, Group 2 = identifier constant arg.
 var javaKafkaStreamThroughRe = regexp.MustCompile(
-	`\.through\s*\(\s*"([^"\n\r]+)"`,
+	`\.through\s*\(\s*(?:"([^"\n\r]+)"|([A-Za-z_][A-Za-z0-9_.]*))`,
 )
+
+// kafkaKotlinStringConstRe captures Kotlin string constants
+// (`const val NAME = "value"` / `val NAME: String = "value"`), which the
+// Java-oriented javaStringConstRe (requires `String` keyword + trailing `;`)
+// does not match. Used alongside javaStringConstRe so Kafka Streams topology
+// calls written with named constants resolve in either language. Group 1 =
+// constant name, Group 2 = string value (#1489).
+var kafkaKotlinStringConstRe = regexp.MustCompile(
+	`(?m)\b(?:const\s+)?val\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*String)?\s*=\s*"([^"\n\r]+)"`,
+)
+
+// javaStringConstTable builds name→value for Java `static final String NAME =
+// "value";` constants (reusing javaStringConstRe from http_endpoint_java_client.go)
+// plus Kotlin `val`/`const val` constants. Used to resolve constant-arg Kafka
+// Streams topic references such as `enriched.to(OUT_ENRICHED)` (#1489).
+func javaStringConstTable(src string) map[string]string {
+	table := map[string]string{}
+	for _, m := range javaStringConstRe.FindAllStringSubmatch(src, -1) {
+		table[m[1]] = m[2]
+	}
+	for _, m := range kafkaKotlinStringConstRe.FindAllStringSubmatch(src, -1) {
+		if _, ok := table[m[1]]; !ok {
+			table[m[1]] = m[2]
+		}
+	}
+	return table
+}
+
+// resolveJavaTopicArg returns the topic name for a Kafka Streams call match,
+// where group 1 is a string literal and group 2 is an identifier. A bare
+// identifier is resolved against the const table; an unresolved identifier
+// (e.g. a runtime variable) yields "" so the caller skips it. A possibly
+// qualified identifier (`Topics.OUT_ENRICHED`) is resolved on its last
+// segment. Returns ("", false) when nothing usable was captured.
+func resolveJavaTopicArg(lit, ident string, table map[string]string) (string, bool) {
+	if lit != "" {
+		return lit, true
+	}
+	if ident == "" {
+		return "", false
+	}
+	key := ident
+	if i := strings.LastIndexByte(key, '.'); i >= 0 {
+		key = key[i+1:]
+	}
+	if v, ok := table[key]; ok {
+		return v, true
+	}
+	return "", false
+}
 
 func synthesizeJavaKafkaStreams(
 	src string,
@@ -347,10 +400,28 @@ func synthesizeJavaKafkaStreams(
 		caller = "streams"
 	}
 
+	// Resolve named topic constants (`static final String OUT = "x"`) so
+	// constant-arg topology calls like `.to(OUT_ENRICHED)` resolve (#1489).
+	constTable := javaStringConstTable(src)
+
+	// captureTopic pulls the literal (group 1 = idx 2/3) or constant identifier
+	// (group 2 = idx 4/5) from a FindAllStringSubmatchIndex match.
+	captureTopic := func(m []int) (string, bool) {
+		lit := ""
+		if m[2] >= 0 {
+			lit = src[m[2]:m[3]]
+		}
+		ident := ""
+		if m[4] >= 0 {
+			ident = src[m[4]:m[5]]
+		}
+		return resolveJavaTopicArg(lit, ident, constTable)
+	}
+
 	// Source topics: builder.stream("topic") — consumer side.
 	for _, m := range javaKafkaStreamBuilderRe.FindAllStringSubmatchIndex(src, -1) {
-		topic := src[m[2]:m[3]]
-		if !looksLikeKafkaTopic(topic) {
+		topic, ok := captureTopic(m)
+		if !ok || !looksLikeKafkaTopic(topic) {
 			continue
 		}
 		id := kafkaTopicID(topic)
@@ -366,8 +437,8 @@ func synthesizeJavaKafkaStreams(
 	// Also fires for chained DSL forms: .filter(...).to("x"),
 	// .mapValues(...).to("x"), .branch(...)[n].to("x").
 	for _, m := range javaKafkaStreamToRe.FindAllStringSubmatchIndex(src, -1) {
-		topic := src[m[2]:m[3]]
-		if !looksLikeKafkaTopic(topic) {
+		topic, ok := captureTopic(m)
+		if !ok || !looksLikeKafkaTopic(topic) {
 			continue
 		}
 		// Avoid matching Java method calls that happen to look like .to("…")
@@ -401,8 +472,8 @@ func synthesizeJavaKafkaStreams(
 	// back internally). Emit both edges so cross-repo linkers can match either
 	// side of the through-topic connection.
 	for _, m := range javaKafkaStreamThroughRe.FindAllStringSubmatchIndex(src, -1) {
-		topic := src[m[2]:m[3]]
-		if !looksLikeKafkaTopic(topic) {
+		topic, ok := captureTopic(m)
+		if !ok || !looksLikeKafkaTopic(topic) {
 			continue
 		}
 		id := kafkaTopicID(topic)

@@ -49,8 +49,29 @@ const MethodTopic = "topic"
 // More precise than RelationCalls for message-bus flows.
 const RelationPublishesTo = "publishes_to"
 
-// topicMessageTopicKind is the entity kind emitted by broker engine passes.
+// topicMessageTopicKind is the entity kind emitted by the Kafka/SNS/SQS/
+// EventBridge engine passes.
 const topicMessageTopicKind = "SCOPE.MessageTopic"
+
+// topicQueueKind is the entity kind emitted by the Redis pub/sub + Streams
+// engine pass (redis_pubsub_edges.go). These carry a broker-prefixed Name
+// (`channel:redis-pubsub:<name>` / `stream:redis:<name>`) plus PUBLISHES_TO /
+// SUBSCRIBES_TO edges, exactly like SCOPE.MessageTopic, but use a distinct
+// kind. Before #1489 P7 ignored them entirely, so a Redis publisher and
+// subscriber in different repos sharing an identical channel Name were never
+// paired — the real polyglot fixture's
+// notifications→{tracking-ws,realtime-dashboard}
+// `channel:redis-pubsub:notifications.push` links silently dropped. P7 now
+// treats SCOPE.Queue identically: the canonical Name already matches across
+// repos, so it joins on Name with no new matching logic (#1489).
+const topicQueueKind = "SCOPE.Queue"
+
+// isTopicEntityKind reports whether a graph entity participates in the P7
+// publisher↔subscriber join. Both the broker MessageTopic synthetics and the
+// Redis pub/sub Queue synthetics qualify (#1489).
+func isTopicEntityKind(kind string) bool {
+	return kind == topicMessageTopicKind || kind == topicQueueKind
+}
 
 // topicEmissionCapPerName bounds the number of cross-repo edges a single
 // topic Name may emit. #1454 already collapsed the per-repo-pair entity
@@ -102,6 +123,21 @@ func brokerFromTopicName(name string) string {
 			return rest[:i] // "eventbridge", "eventgrid", "cloudevents"
 		}
 		return "event"
+	}
+	// Redis pub/sub queue synthetics: "channel:redis-pubsub:<name>" and Redis
+	// Streams "stream:redis:<name>". The second segment carries the transport
+	// (redis-pubsub / redis); normalise both to the "redis" channel so emitted
+	// links read consistently with the rest of the topic pass (#1489).
+	if strings.HasPrefix(name, "channel:") || strings.HasPrefix(name, "stream:") {
+		rest := name[strings.IndexByte(name, ':')+1:]
+		if i := strings.IndexByte(rest, ':'); i > 0 {
+			transport := rest[:i]
+			if strings.HasPrefix(transport, "redis") {
+				return "redis"
+			}
+			return transport
+		}
+		return "redis"
 	}
 	// Simple "broker:..." form (kafka, sns, sqs, redis, nats, pubsub, etc.).
 	if i := strings.IndexByte(name, ':'); i > 0 {
@@ -164,7 +200,7 @@ func runTopicPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 	for _, g := range graphs {
 		inbound := inboundByRepo[g.Repo]
 		for _, e := range g.Entities {
-			if e.Kind != topicMessageTopicKind {
+			if !isTopicEntityKind(e.Kind) {
 				continue
 			}
 			if e.Name == "" {

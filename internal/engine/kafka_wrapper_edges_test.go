@@ -420,6 +420,91 @@ public class OrderEnrichmentTopology {
 		len(ents), len(subs), len(pubs))
 }
 
+// TestKafkaWrapper_JavaKafkaStreams_ConstantTopicArgs is the #1489 regression
+// test: the REAL polyglot fixture's OrderEnrichmentTopology uses named
+// `static final String` constants for every topic, not inline literals:
+//
+//	public static final String OUT_ENRICHED = "orders.enriched";
+//	builder.stream(SRC_ORDERS, ...); enriched.to(OUT_ENRICHED, ...);
+//
+// Before #1489 the `.stream(...)` / `.to(...)` regexes only matched string
+// literals, so stream-processor emitted ZERO topic entities on the real graph
+// (verified) and the stream-processor→{analytics,search-os,notifications}
+// cross-repo links never fired despite the synthetic literal test passing.
+func TestKafkaWrapper_JavaKafkaStreams_ConstantTopicArgs(t *testing.T) {
+	src := `package io.shipfast.streams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.KafkaStreams;
+
+public class OrderEnrichmentTopology {
+    public static final String SRC_ORDERS = "orders.placed";
+    public static final String SRC_PAYMENTS = "payments.settled";
+    public static final String OUT_ENRICHED = "orders.enriched";
+    public static final String OUT_HIGH_VALUE = "orders.high_value";
+
+    public Topology build() {
+        StreamsBuilder builder = new StreamsBuilder();
+        KStream<String, String> orders = builder.stream(SRC_ORDERS, Consumed.with());
+        KStream<String, String> payments = builder.stream(SRC_PAYMENTS, Consumed.with());
+        KStream<String, String> enriched = orders.join(payments, OrderEnricher::merge);
+        enriched.to(OUT_ENRICHED, Produced.with());
+        enriched.filter((k, v) -> total(v) >= 100000L).to(OUT_HIGH_VALUE, Produced.with());
+        return builder.build();
+    }
+}
+`
+	ents, rels := runWrapperDetect(t, "java",
+		"stream-processor/src/main/java/io/shipfast/streams/OrderEnrichmentTopology.java", src)
+
+	wantIDs := map[string]bool{
+		"kafka:orders.placed":     false,
+		"kafka:payments.settled":  false,
+		"kafka:orders.enriched":   false,
+		"kafka:orders.high_value": false,
+	}
+	for _, e := range ents {
+		if e.Kind == messageTopicKind {
+			if _, ok := wantIDs[e.Name]; ok {
+				wantIDs[e.Name] = true
+			}
+		}
+	}
+	for id, seen := range wantIDs {
+		if !seen {
+			t.Errorf("constant-arg topology: MessageTopic %q not emitted; ents=%v", id, ents)
+		}
+	}
+
+	if subs := edgesOfKind(rels, subscribesToEdgeKind); len(subs) < 2 {
+		t.Errorf("expected ≥2 SUBSCRIBES_TO (constant source topics), got %d", len(subs))
+	}
+	if pubs := edgesOfKind(rels, publishesToEdgeKind); len(pubs) < 2 {
+		t.Errorf("expected ≥2 PUBLISHES_TO (constant sink topics), got %d", len(pubs))
+	}
+}
+
+// TestKafkaWrapper_JavaKafkaStreams_UnresolvedConstantSkipped verifies that a
+// `.to(SOME_VAR)` whose identifier is NOT a known string constant is skipped
+// rather than emitting a topic named after the variable.
+func TestKafkaWrapper_JavaKafkaStreams_UnresolvedConstantSkipped(t *testing.T) {
+	src := `package io.demo;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.KafkaStreams;
+public class T {
+    void build(KStream<String,String> enriched, String runtimeTopic) {
+        enriched.to(runtimeTopic);
+    }
+}
+`
+	ents, _ := runWrapperDetect(t, "java", "demo/T.java", src)
+	for _, e := range ents {
+		if e.Kind == messageTopicKind {
+			t.Errorf("unresolved identifier should emit no topic, got %q", e.Name)
+		}
+	}
+}
+
 // TestKafkaWrapper_JavaKafkaStreams_ThroughTopicNoFireOnPlainJava verifies
 // that .through() on a plain Java non-Streams file does not emit any topic.
 func TestKafkaWrapper_JavaKafkaStreams_ThroughTopicNoFireOnPlainJava(t *testing.T) {

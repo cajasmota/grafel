@@ -383,6 +383,35 @@ public class OrderConsumer {
 	}
 }
 
+// TestKafka_Kotlin_SpringKafkaListenerBracketArray is the #1489 regression
+// test: Kotlin annotation arrays use `[...]`, not Java's `{...}`. The real
+// fixture's notifications service declares
+// `@KafkaListener(topics = ["orders.high_value"])`; before #1489 the regex
+// only matched braces, so the stream-processor→notifications high_value link
+// was severed even though the synthetic Java brace test passed.
+func TestKafka_Kotlin_SpringKafkaListenerBracketArray(t *testing.T) {
+	src := `package io.shipfast.notifications
+import org.springframework.kafka.annotation.KafkaListener
+
+class Listeners {
+    @KafkaListener(topics = ["orders.placed"], groupId = "notifications")
+    fun onOrderPlaced(payload: String) {}
+
+    @KafkaListener(topics = ["orders.high_value"], groupId = "notifications-vip")
+    fun onHighValue(payload: String) {}
+}
+`
+	ents, rels := runKafkaDetect(t, "kotlin", "Listeners.kt", src)
+	for _, want := range []string{"orders.placed", "orders.high_value"} {
+		if topicByName(ents, want) == nil {
+			t.Errorf("expected MessageTopic for bracket-array topic %q, ents=%v", want, ents)
+		}
+	}
+	if subs := edgesOfKind(rels, subscribesToEdgeKind); len(subs) < 2 {
+		t.Errorf("expected ≥2 SUBSCRIBES_TO edges, got %d; rels=%v", len(subs), rels)
+	}
+}
+
 // TestKafka_Java_TransformDetected covers the @Incoming + @Outgoing on the
 // same method shape — the pass must emit a TRANSFORMS edge between the
 // input topic and the output topic.
