@@ -23,6 +23,9 @@ import SettingsScreen from "./settings";
 import PendingScreen from "./pending";
 import OperationsScreen from "./operations";
 
+// Errors screen — #1443, epic #1432
+import { NotFoundPage, GroupGonePage, DaemonDownPage, UpgradingPage } from "./errors";
+
 export const router = createBrowserRouter([
   { path: "/", element: <Landing /> },
   { path: "/showcase", element: <PrimitivesShowcase /> },
@@ -40,7 +43,13 @@ export const router = createBrowserRouter([
       { path: "settings", element: <SettingsScreen />, handle: { surfaceLabel: "Group settings" } },
       { path: "pending", element: <PendingScreen />, handle: { surfaceLabel: "Pending" } },
       { path: "operations", element: <OperationsScreen />, handle: { surfaceLabel: "Operations" } },
+      // Errors — in-group variants (full chrome provided by AppShell)
+      { path: "missing", element: <GroupGonePage />, handle: { surfaceLabel: "Group not found" } },
+      { path: "error/daemon-down", element: <DaemonDownPage />, handle: { surfaceLabel: "Daemon unreachable" } },
+      { path: "error/upgrading", element: <UpgradingPage />, handle: { surfaceLabel: "Upgrading" } },
     ],
   },
+  // Errors — top-level routes (minimal chrome, no group context)
+  { path: "/error/404", element: <NotFoundPage /> },
   { path: "*", element: <NotFound /> },
 ]);
