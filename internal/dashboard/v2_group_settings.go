@@ -131,7 +131,9 @@ type v2PatchMonorepoReq struct {
 // ---------------------------------------------------------------------------
 
 // loadV2SettingsGroup loads the full SettingsGroup shape from disk.
-func loadV2SettingsGroup(groupName string) (*v2SettingsGroup, error) {
+// histRoot is the daemon root directory used to read health-history.jsonl
+// for the real fidelity score; pass s.daemonRoot() from handlers.
+func loadV2SettingsGroup(groupName, histRoot string) (*v2SettingsGroup, error) {
 	groups, err := registry.Groups()
 	if err != nil {
 		return nil, err
@@ -209,8 +211,16 @@ func loadV2SettingsGroup(groupName string) (*v2SettingsGroup, error) {
 	if !latestIndexed.IsZero() {
 		ms := latestIndexed.UnixMilli()
 		sg.IndexedAt = &ms
-		sg.Fidelity = 1.0 // placeholder — real fidelity lands with the scoring PR
-		sg.Health = healthHealthy
+		// Use real bug_rate from history when available.
+		if bugRate, ok := latestGroupBugRate(groupName, histRoot); ok {
+			f := fidelityFromBugRate(bugRate)
+			sg.Fidelity = f
+			_, sg.Health = deriveHealthFromFidelity(f)
+		} else {
+			// No history yet — neutral fallback (stable wire contract).
+			sg.Fidelity = 1.0
+			sg.Health = healthHealthy
+		}
 	} else if totalEntities == 0 {
 		sg.Health = healthUnindexed
 	} else {
@@ -259,7 +269,7 @@ func groupConfigPath(groupName string) (string, error) {
 // handleV2GetGroup — GET /api/v2/groups/{group}
 func (s *Server) handleV2GetGroup(w http.ResponseWriter, r *http.Request) {
 	groupName := r.PathValue("group")
-	sg, err := loadV2SettingsGroup(groupName)
+	sg, err := loadV2SettingsGroup(groupName, s.daemonRoot())
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			writeV2Err(w, http.StatusNotFound, "not_found", err.Error())
@@ -408,7 +418,7 @@ func (s *Server) handleV2AddRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Return the updated full SettingsGroup.
-	sg, err := loadV2SettingsGroup(groupName)
+	sg, err := loadV2SettingsGroup(groupName, s.daemonRoot())
 	if err != nil {
 		writeV2Err(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
