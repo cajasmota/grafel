@@ -212,6 +212,7 @@ func (liveStore) CreateGroup(name string) (GroupSummary, error) {
 		return GroupSummary{}, fmt.Errorf("group %q already exists", name)
 	}
 	cfg := &registry.GroupConfig{Name: name}
+	cfg.Features.Watchers = true // new groups default to watcher ON (debounced partial reindex)
 	if err := registry.SaveGroupConfig(configPath, cfg); err != nil {
 		return GroupSummary{}, err
 	}

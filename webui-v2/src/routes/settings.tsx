@@ -65,6 +65,30 @@ import { cn } from "@/lib/utils";
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Determine whether a group is a monorepo group (a single git root split into
+ * N module paths, each registered as a Repo entry with a non-null .monorepo
+ * field) vs a true multi-repo group (N separate git roots, each without
+ * per-repo monorepo metadata).
+ *
+ * Detection heuristic (client-only, no extra API field needed):
+ *   • Monorepo group  — every repo in the group has a non-null .monorepo
+ *     field (i.e. was registered with detected modules). Noun = "module",
+ *     count = group.repos.length (each entry IS a module).
+ *   • Multi-repo group — at least one repo has .monorepo == null (separate
+ *     git roots). Noun = "repo", count = group.repos.length.
+ *
+ * Edge case: empty group → defaults to "repo".
+ */
+function groupRepoNoun(group: SettingsGroup): { count: number; noun: string; nounPlural: string } {
+  const isMonorepoGroup =
+    group.repos.length > 0 && group.repos.every((r) => r.monorepo != null);
+  if (isMonorepoGroup) {
+    return { count: group.repos.length, noun: "module", nounPlural: "modules" };
+  }
+  return { count: group.repos.length, noun: "repo", nounPlural: "repos" };
+}
+
 function relativeTime(ms: number | null): string {
   if (!ms) return "never";
   const diff = Date.now() - ms;
@@ -165,6 +189,12 @@ const HEALTH_CONFIG = {
 
 function HeaderCard({ group, onRebuild }: { group: SettingsGroup; onRebuild: () => void }) {
   const h = HEALTH_CONFIG[group.health];
+  const { count: repoCount, noun: repoNoun } = groupRepoNoun(group);
+  const repoLabel = repoNoun === "module" ? "Modules" : "Repositories";
+  const repoHint =
+    repoNoun === "module"
+      ? "Detected sub-modules within this monorepo. Each module is indexed independently."
+      : "Top-level git repos indexed in this group.";
 
   return (
     <Card className="p-5">
@@ -189,9 +219,9 @@ function HeaderCard({ group, onRebuild }: { group: SettingsGroup; onRebuild: () 
         {[
           {
             key: "repos",
-            label: "Repositories",
-            hint: "Top-level git repos indexed here. Monorepos count as one.",
-            value: group.repos.length,
+            label: repoLabel,
+            hint: repoHint,
+            value: repoCount,
             mono: true,
           },
           {
@@ -532,11 +562,15 @@ function RepositoriesSection({
     );
   };
 
+  const { count: repoCount, noun: repoNoun, nounPlural: repoNounPlural } = groupRepoNoun(group);
+  const sectionTitle = repoNoun === "module" ? "Modules" : "Repositories";
+  const sectionSub = `${repoCount} ${repoNounPlural} indexed in this group.`;
+
   return (
     <Section
       id="repositories"
-      title="Repositories"
-      sub={`${group.repos.length} repos indexed in this group.`}
+      title={sectionTitle}
+      sub={sectionSub}
       action={
         <Button variant="ghost" size="sm" onClick={onAddRepo}>
           <Plus size={13} />
