@@ -11,6 +11,13 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
-  server: { port: 47280, strictPort: true },
+  server: {
+    port: 47280,
+    strictPort: true,
+    proxy: {
+      // Proxy /api/* to the archigraph daemon during dev so the SPA can talk to a real dataset.
+      "/api": { target: "http://localhost:47274", changeOrigin: false },
+    },
+  },
   preview: { port: 47281, strictPort: true },
 });
