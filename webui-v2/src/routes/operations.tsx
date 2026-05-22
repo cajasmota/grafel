@@ -754,7 +754,7 @@ function PatternsTab({ groupId }: { groupId: string }) {
   });
 
   const filtered =
-    data?.patterns.filter((p) =>
+    data?.patterns?.filter((p) =>
       searchQ
         ? p.id.includes(searchQ) ||
           p.kind?.toLowerCase().includes(searchQ.toLowerCase()) ||
@@ -1067,24 +1067,24 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
           {/* Score + totals */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: "Health score", value: String(data.health_score), color: healthColor },
+              { label: "Health score", value: String(data.health_score ?? "—"), color: healthColor },
               {
                 label: "Total entities",
-                value: data.total.entities.toLocaleString(),
+                value: (data.total?.entities ?? 0).toLocaleString(),
                 color: "text-text",
               },
               {
                 label: "Orphans",
-                value: data.total.orphans.toLocaleString(),
+                value: (data.total?.orphans ?? 0).toLocaleString(),
                 color: "text-warning",
               },
               {
                 label: "Orphan rate",
-                value: pct(data.total.orphan_rate),
+                value: pct(data.total?.orphan_rate ?? 0),
                 color:
-                  data.total.orphan_rate > 0.2
+                  (data.total?.orphan_rate ?? 0) > 0.2
                     ? "text-danger"
-                    : data.total.orphan_rate > 0.1
+                    : (data.total?.orphan_rate ?? 0) > 0.1
                     ? "text-warning"
                     : "text-success",
               },
@@ -1097,7 +1097,7 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
           </div>
 
           {/* Per-kind */}
-          {data.per_kind.length > 0 && (
+          {(data.per_kind?.length ?? 0) > 0 && (
             <Section title="By entity kind">
               <div className="space-y-2">
                 {data.per_kind.map((k) => (
@@ -1125,7 +1125,7 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
           )}
 
           {/* Per-repo */}
-          {data.per_repo.length > 0 && (
+          {(data.per_repo?.length ?? 0) > 0 && (
             <Section title="By repository">
               <div className="rounded-lg border border-border overflow-hidden">
                 <table className="w-full text-sm">
@@ -1174,7 +1174,7 @@ function OrphanAuditPane({ groupId }: { groupId: string }) {
           )}
 
           {/* Recommendations */}
-          {data.recommendations.length > 0 && (
+          {(data.recommendations?.length ?? 0) > 0 && (
             <Section title="Recommendations">
               <div className="space-y-2">
                 {data.recommendations.map((rec, i) => (
@@ -1304,10 +1304,10 @@ function RecallPane({ groupId }: { groupId: string }) {
                 ))}
               </div>
 
-              {r.missing_relationships.length > 0 && (
+              {(r.missing_relationships?.length ?? 0) > 0 && (
                 <Section
                   title="Missing relationships"
-                  sub={`${r.missing_relationships.length} relationships not found in this fixture`}
+                  sub={`${r.missing_relationships?.length ?? 0} relationships not found in this fixture`}
                 >
                   <div className="rounded-lg border border-border overflow-hidden">
                     <table className="w-full text-xs">
@@ -1321,7 +1321,7 @@ function RecallPane({ groupId }: { groupId: string }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border-soft font-mono">
-                        {r.missing_relationships.slice(0, 50).map((rel, i) => (
+                        {(r.missing_relationships ?? []).slice(0, 50).map((rel, i) => (
                           <tr key={i} className="hover:bg-surface-2">
                             <td
                               className="px-3 py-1.5 text-text-3 truncate max-w-[200px]"

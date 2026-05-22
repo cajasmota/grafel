@@ -395,7 +395,7 @@ function RepoRow({
 }) {
   const isMono = !!repo.monorepo;
   const [expanded, setExpanded] = useState(isMono);
-  const indexedPkgs = repo.monorepo?.packages.filter((p) => p.indexed).length ?? 0;
+  const indexedPkgs = repo.monorepo?.packages?.filter((p) => p.indexed).length ?? 0;
 
   return (
     <div className="border border-border-soft rounded-lg overflow-hidden">

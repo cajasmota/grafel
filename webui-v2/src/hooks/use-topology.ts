@@ -45,7 +45,7 @@ export function flattenChannels(
   if (!data) return [];
 
   const crossRepoIds = new Set<string>();
-  for (const bg of data.broker_groups) {
+  for (const bg of data.broker_groups ?? []) {
     // cross_repo_topic_count > 0 doesn't tell us which IDs, so we derive from
     // broker_groups health.  Exact per-channel cross_repo flag would need the v2
     // detail endpoint; for the list we approximate by broker.
@@ -57,8 +57,8 @@ export function flattenChannels(
   function annotate(
     ch: TopologyChannel,
   ): TopologyChannel & { lifecycle_state: ChannelLifecycle } {
-    const hasP = ch.producers.length > 0;
-    const hasC = ch.consumers.length > 0;
+    const hasP = (ch.producers?.length ?? 0) > 0;
+    const hasC = (ch.consumers?.length ?? 0) > 0;
     let lifecycle_state: ChannelLifecycle;
     if (hasP && hasC) lifecycle_state = "active";
     else if (hasP && !hasC) lifecycle_state = "orphan_subscriber";
@@ -67,12 +67,12 @@ export function flattenChannels(
     return { ...ch, lifecycle_state };
   }
 
-  for (const ch of data.topics) all.push(annotate(ch));
-  for (const ch of data.queues) all.push(annotate(ch));
-  for (const ch of data.nats_subjects) all.push(annotate(ch));
-  for (const ch of data.graphql_subscriptions)
+  for (const ch of data.topics ?? []) all.push(annotate(ch));
+  for (const ch of data.queues ?? []) all.push(annotate(ch));
+  for (const ch of data.nats_subjects ?? []) all.push(annotate(ch));
+  for (const ch of data.graphql_subscriptions ?? [])
     all.push(annotate({ ...ch, broker_canonical: "graphql_subscription" as BrokerCanonical }));
-  for (const ch of data.channels) all.push(annotate(ch));
+  for (const ch of data.channels ?? []) all.push(annotate(ch));
 
   // Mark cross_repo for any channel whose id appears in any broker_group with
   // cross_repo_topic_count > 0. Since we don't have per-id flags here, we use
@@ -100,10 +100,10 @@ export function deriveCounts(
     if (ch.scheduled) scheduled++;
   }
   let active = 0;
-  for (const bg of brokerGroups) {
-    active += bg.health_summary.active;
+  for (const bg of brokerGroups ?? []) {
+    active += bg.health_summary?.active ?? 0;
   }
-  return { total: channels.length, orphanPub, orphanSub, scheduled, active };
+  return { total: channels?.length ?? 0, orphanPub, orphanSub, scheduled, active };
 }
 
 // ---------------------------------------------------------------------------

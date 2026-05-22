@@ -89,6 +89,7 @@ function VerbChip({ verb, lg = false }: { verb: string; lg?: boolean }) {
 
 /** Monospace path with dynamic {segments} and ${var} highlighted amber. */
 function PathString({ path, className }: { path: string; className?: string }) {
+  path = path ?? "";
   const parts: React.ReactNode[] = [];
   let i = 0;
   const re = /(\{[\w]+\}|\$\{[\w]+\})/g;
@@ -118,7 +119,7 @@ function statusCodeClass(code: number): string {
 }
 
 function kindIcon(kind: string): React.ReactNode {
-  switch (kind.toLowerCase()) {
+  switch ((kind ?? "").toLowerCase()) {
     case "component": return <Box size={12} />;
     case "datastore":
     case "db":        return <Database size={12} />;
@@ -199,7 +200,7 @@ function RouteRow({
       {/* Verbs + path */}
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-1 mb-0.5">
-          {route.verbs.map((v) => <VerbChip key={v} verb={v} />)}
+          {(route.verbs ?? []).map((v) => <VerbChip key={v} verb={v} />)}
           {route.is_webhook && (
             <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[10px] font-medium bg-[var(--info-soft)] text-[var(--info)] border border-[var(--info-soft)]">
               🪝 {route.webhook_provider ?? "webhook"}
@@ -210,7 +211,7 @@ function RouteRow({
       </div>
       {/* Right meta */}
       <div className="flex items-center gap-1 shrink-0 mt-0.5">
-        {route.multiplicity > route.verbs.length && (
+        {route.multiplicity > (route.verbs?.length ?? 0) && (
           <span className="text-[10px] text-text-4 tabular-nums">×{route.multiplicity}</span>
         )}
         {route.auth && (
@@ -218,9 +219,9 @@ function RouteRow({
             <Lock size={10} className="text-success" />
           </span>
         )}
-        {route.repos.length > 1 ? (
-          <span className="text-[10px] text-text-4 font-mono">+{route.repos.length}</span>
-        ) : route.repos[0] ? (
+        {(route.repos?.length ?? 0) > 1 ? (
+          <span className="text-[10px] text-text-4 font-mono">+{route.repos?.length}</span>
+        ) : route.repos?.[0] ? (
           <span className="text-[10px] text-text-4 font-mono truncate max-w-[64px]">{route.repos[0]}</span>
         ) : null}
       </div>
@@ -248,9 +249,10 @@ function ControllerSection({
   const key = `${backend.id}::${group.id}`;
   const open = openMap[key] !== false;
 
+  const groupRoutes = group.routes ?? [];
   const matches = search
-    ? group.routes.filter((r) => r.path.toLowerCase().includes(search.toLowerCase()))
-    : group.routes;
+    ? groupRoutes.filter((r) => (r.path ?? "").toLowerCase().includes(search.toLowerCase()))
+    : groupRoutes;
 
   if (search && matches.length === 0) return null;
 
@@ -309,16 +311,19 @@ function BackendSection({
   const key = `be::${backend.id}`;
   const open = openMap[key] !== false;
 
+  const backendGroups = backend.groups ?? [];
   const filteredGroups = search
-    ? backend.groups.filter((g) =>
-        g.routes.some((r) => r.path.toLowerCase().includes(search.toLowerCase())),
+    ? backendGroups.filter((g) =>
+        (g.routes ?? []).some((r) => (r.path ?? "").toLowerCase().includes(search.toLowerCase())),
       )
-    : backend.groups;
+    : backendGroups;
 
   if (search && filteredGroups.length === 0) return null;
 
-  const totalEndpoints = backend.groups.reduce(
-    (sum, g) => sum + g.routes.reduce((s, r) => s + (r.handlers_count || r.verbs.length), 0),
+  const totalEndpoints = backendGroups.reduce(
+    (sum, g) =>
+      sum +
+      (g.routes ?? []).reduce((s, r) => s + (r.handlers_count || (r.verbs?.length ?? 0)), 0),
     0,
   );
 
@@ -411,9 +416,9 @@ function FlatRouteList({
 }) {
   const allRoutes = useMemo(() => {
     const out: PathRoute[] = [];
-    for (const b of backends) {
-      for (const g of b.groups) {
-        for (const r of g.routes) {
+    for (const b of backends ?? []) {
+      for (const g of b.groups ?? []) {
+        for (const r of g.routes ?? []) {
           out.push(r);
         }
       }
@@ -422,7 +427,7 @@ function FlatRouteList({
   }, [backends]);
 
   const filtered = search
-    ? allRoutes.filter((r) => r.path.toLowerCase().includes(search.toLowerCase()))
+    ? allRoutes.filter((r) => (r.path ?? "").toLowerCase().includes(search.toLowerCase()))
     : allRoutes;
 
   if (filtered.length === 0) return null;
@@ -505,7 +510,23 @@ function EntityRow({ entity }: { entity: PathEntity }) {
   );
 }
 
-function DetailPane({ detail }: { detail: PathDetail }) {
+function DetailPane({ detail: rawDetail }: { detail: PathDetail }) {
+  // Real polyglot data can omit array/object fields entirely. Normalize once so
+  // every downstream access is null-safe (#1536).
+  const detail = {
+    ...rawDetail,
+    verbs: rawDetail.verbs ?? [],
+    repos: rawDetail.repos ?? [],
+    parameters: rawDetail.parameters ?? [],
+    response_shapes: rawDetail.response_shapes ?? [],
+    handlers: rawDetail.handlers ?? [],
+    inbound_fetches: rawDetail.inbound_fetches ?? [],
+    side_effects: rawDetail.side_effects ?? [],
+    tests: rawDetail.tests ?? [],
+    path_hash: rawDetail.path_hash ?? "",
+    path: rawDetail.path ?? "",
+    outbound: rawDetail.outbound ?? {},
+  } as PathDetail;
   const [verbFilter, setVerbFilter] = useState<string>("all");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     description: true,
@@ -745,7 +766,7 @@ function DetailPane({ detail }: { detail: PathDetail }) {
                     <div className="flex items-center gap-2 px-3 py-2 bg-bg-soft border-b border-border">
                       <VerbChip verb={shape.verb} />
                       <div className="flex flex-wrap gap-1">
-                        {shape.status_codes.map((sc) => (
+                        {(shape.status_codes ?? []).map((sc) => (
                           <span key={sc} className={cn("text-xs font-mono font-semibold", statusCodeClass(sc))}>
                             {sc}
                           </span>
@@ -815,7 +836,7 @@ function DetailPane({ detail }: { detail: PathDetail }) {
                           className="text-[10px] font-mono text-text-4 shrink-0"
                           title={`${h.source_file}:${h.start_line}`}
                         >
-                          {h.source_file.split("/").slice(-1)[0]}:{h.start_line}
+                          {(h.source_file ?? "").split("/").slice(-1)[0]}:{h.start_line}
                         </span>
                       </div>
                       <div className="px-3 py-2">
@@ -1181,7 +1202,7 @@ export default function PathsScreen() {
     const next: Record<string, boolean> = {};
     for (const b of backends) {
       next[`be::${b.id}`] = true;
-      for (const g of b.groups) {
+      for (const g of b.groups ?? []) {
         next[`${b.id}::${g.id}`] = true;
       }
     }
@@ -1192,7 +1213,7 @@ export default function PathsScreen() {
     const next: Record<string, boolean> = {};
     for (const b of backends) {
       next[`be::${b.id}`] = false;
-      for (const g of b.groups) {
+      for (const g of b.groups ?? []) {
         next[`${b.id}::${g.id}`] = false;
       }
     }
@@ -1204,9 +1225,12 @@ export default function PathsScreen() {
     return backends.reduce(
       (sum, b) =>
         sum +
-        b.groups.reduce(
+        (b.groups ?? []).reduce(
           (gs, g) =>
-            gs + g.routes.filter((r) => r.path.toLowerCase().includes(search.toLowerCase())).length,
+            gs +
+            (g.routes ?? []).filter((r) =>
+              (r.path ?? "").toLowerCase().includes(search.toLowerCase()),
+            ).length,
           0,
         ),
       0,

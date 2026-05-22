@@ -606,7 +606,7 @@ export default function PendingScreen() {
   // All items for the current tab.
   const allItems: Candidate[] = useMemo(() => {
     if (!data) return [];
-    return tab === "repairs" ? data.repairs : data.enrichments;
+    return (tab === "repairs" ? data.repairs : data.enrichments) ?? [];
   }, [data, tab]);
 
   // Auto-select first row when tab switches or data loads (nothing focused yet).
@@ -621,7 +621,7 @@ export default function PendingScreen() {
   useEffect(() => {
     if (!data) return;
     const hints: Record<string, string> = {};
-    for (const c of [...data.repairs, ...data.enrichments]) {
+    for (const c of [...(data.repairs ?? []), ...(data.enrichments ?? [])]) {
       if (c.hint) hints[c.entityId] = c.hint;
     }
     seedServerHints(hints);
@@ -657,8 +657,8 @@ export default function PendingScreen() {
         key = item.severity;
         label = SEVERITY_META[item.severity].label;
       } else if (groupBy === "repo") {
-        key = item.entity.repo;
-        label = item.entity.repo;
+        key = item.entity?.repo ?? "unknown";
+        label = item.entity?.repo ?? "unknown";
       } else {
         key = "_all";
         label = "All";

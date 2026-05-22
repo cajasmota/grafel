@@ -281,8 +281,8 @@ function EntityChip({
   id: string;
   crossRepo?: boolean;
 }) {
-  const parts = id.split("::");
-  const name = parts[parts.length - 1].split(":").pop() ?? id;
+  const parts = (id ?? "").split("::");
+  const name = (parts[parts.length - 1] ?? "").split(":").pop() || id;
   const repo = parts.length > 1 ? parts[0] : null;
   return (
     <span
@@ -347,12 +347,14 @@ function FlowUnit({
   onClick: () => void;
 }) {
   const m = brokerMeta(channel.broker_canonical);
-  const producers = channel.producers.slice(0, 3);
-  const producerOverflow = channel.producers.length - 3;
-  const consumers = channel.consumers.slice(0, 3);
-  const consumerOverflow = channel.consumers.length - 3;
-  const hasProducers = channel.producers.length > 0;
-  const hasConsumers = channel.consumers.length > 0;
+  const producerList = channel.producers ?? [];
+  const consumerList = channel.consumers ?? [];
+  const producers = producerList.slice(0, 3);
+  const producerOverflow = producerList.length - 3;
+  const consumers = consumerList.slice(0, 3);
+  const consumerOverflow = consumerList.length - 3;
+  const hasProducers = producerList.length > 0;
+  const hasConsumers = consumerList.length > 0;
 
   const leftEdge = hasProducers ? "solid" : "dashed";
   const rightEdge = hasConsumers ? "solid" : "dashed";
@@ -486,10 +488,16 @@ function BrokerBand({
 
   const isDegradedCelery =
     brokerGroup.broker === "celery" &&
-    channels.every((ch) => ch.producers.length === 0 && ch.consumers.length === 0);
+    channels.every(
+      (ch) => (ch.producers?.length ?? 0) === 0 && (ch.consumers?.length ?? 0) === 0,
+    );
 
   const ts = relativeTime(brokerGroup.last_index_timestamp);
-  const hs = brokerGroup.health_summary;
+  const hs = brokerGroup.health_summary ?? {
+    active: 0,
+    orphan_publisher: 0,
+    orphan_subscriber: 0,
+  };
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
@@ -564,10 +572,10 @@ function MapView({
   selectedId: string | null;
   onSelect: (ch: FlatChannel) => void;
 }) {
-  const totalCrossRepo = brokerGroups.reduce((n, bg) => n + bg.cross_repo_topic_count, 0);
-  const totalOrphanPub = brokerGroups.reduce((n, bg) => n + bg.orphan_publishers, 0);
-  const totalOrphanSub = brokerGroups.reduce((n, bg) => n + bg.orphan_subscribers, 0);
-  const totalActive = brokerGroups.reduce((n, bg) => n + bg.health_summary.active, 0);
+  const totalCrossRepo = brokerGroups.reduce((n, bg) => n + (bg.cross_repo_topic_count ?? 0), 0);
+  const totalOrphanPub = brokerGroups.reduce((n, bg) => n + (bg.orphan_publishers ?? 0), 0);
+  const totalOrphanSub = brokerGroups.reduce((n, bg) => n + (bg.orphan_subscribers ?? 0), 0);
+  const totalActive = brokerGroups.reduce((n, bg) => n + (bg.health_summary?.active ?? 0), 0);
 
   const summaryItems = [
     { label: `${channels.length} channels` },
@@ -636,11 +644,11 @@ function ListRow({
       <BrokerShapeIcon canonical={channel.broker_canonical} size={18} />
       <span className="font-mono text-md text-text truncate flex-1">{channel.label}</span>
       <span className="text-xs text-text-3 shrink-0 hidden sm:flex items-center gap-1">
-        <span>{channel.producers.length}</span>
+        <span>{channel.producers?.length ?? 0}</span>
         <span className="text-text-4">→</span>
         <BrokerShapeIcon canonical={channel.broker_canonical} size={12} />
         <span className="text-text-4">→</span>
-        <span>{channel.consumers.length}</span>
+        <span>{channel.consumers?.length ?? 0}</span>
       </span>
       <LifecycleChip state={channel.lifecycle_state} className="shrink-0" />
       <RepoChip repo={channel.repo} className="shrink-0" />
@@ -717,12 +725,12 @@ function DetailSection({
 }
 
 function EntityList({ ids }: { ids: string[] }) {
-  if (ids.length === 0) return null;
+  if (!ids || ids.length === 0) return null;
   return (
     <div className="space-y-1">
       {ids.map((id) => {
-        const parts = id.split("::");
-        const name = parts[parts.length - 1].split(":").pop() ?? id;
+        const parts = (id ?? "").split("::");
+        const name = (parts[parts.length - 1] ?? "").split(":").pop() || id;
         const repo = parts.length > 1 ? parts[0] : null;
         return (
           <div key={id} className="flex items-center gap-2 text-sm">
@@ -753,11 +761,11 @@ function DetailPanel({
   }
 
   const producerIds = d
-    ? d.producers.map((p) => (typeof p === "string" ? p : String(p)))
-    : channel.producers;
+    ? (d.producers ?? []).map((p) => (typeof p === "string" ? p : String(p)))
+    : channel.producers ?? [];
   const consumerIds = d
-    ? d.consumers.map((c) => (typeof c === "string" ? c : String(c)))
-    : channel.consumers;
+    ? (d.consumers ?? []).map((c) => (typeof c === "string" ? c : String(c)))
+    : channel.consumers ?? [];
 
   return (
     <aside
@@ -962,7 +970,13 @@ function OrphanPublisherTab({ groupId }: { groupId: string }) {
       </div>
     );
   }
-  const entries = (data ?? []) as OrphanPublisherEntry[];
+  // Real daemon returns { orphan_publishers: [...] }, not a bare array (#1535).
+  const entries = (
+    Array.isArray(data)
+      ? data
+      : ((data as { orphan_publishers?: OrphanPublisherEntry[] } | undefined)
+          ?.orphan_publishers ?? [])
+  ) as OrphanPublisherEntry[];
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center py-16 text-center gap-3">
@@ -982,11 +996,11 @@ function OrphanPublisherTab({ groupId }: { groupId: string }) {
           <BrokerShapeIcon canonical={e.broker_canonical} size={18} />
           <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
           <div className="flex gap-1 flex-wrap">
-            {e.producers.slice(0, 3).map((p) => (
+            {(e.producers ?? []).slice(0, 3).map((p) => (
               <EntityChip key={p} id={p} />
             ))}
-            {e.producers.length > 3 && (
-              <span className="text-xs text-text-3">+{e.producers.length - 3}</span>
+            {(e.producers?.length ?? 0) > 3 && (
+              <span className="text-xs text-text-3">+{(e.producers?.length ?? 0) - 3}</span>
             )}
           </div>
           <span className="text-xs px-2 py-0.5 rounded-full bg-amber-950/30 text-amber-300 border border-amber-700/40 shrink-0">
@@ -1010,7 +1024,13 @@ function OrphanSubscriberTab({ groupId }: { groupId: string }) {
       </div>
     );
   }
-  const entries = (data ?? []) as OrphanSubscriberEntry[];
+  // Real daemon returns { orphan_subscribers: [...] }, not a bare array (#1535).
+  const entries = (
+    Array.isArray(data)
+      ? data
+      : ((data as { orphan_subscribers?: OrphanSubscriberEntry[] } | undefined)
+          ?.orphan_subscribers ?? [])
+  ) as OrphanSubscriberEntry[];
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center py-16 text-center gap-3">
@@ -1032,11 +1052,11 @@ function OrphanSubscriberTab({ groupId }: { groupId: string }) {
           <BrokerShapeIcon canonical={e.broker_canonical} size={18} />
           <span className="font-mono text-md text-text truncate flex-1">{e.label}</span>
           <div className="flex gap-1 flex-wrap">
-            {e.consumers.slice(0, 3).map((c) => (
+            {(e.consumers ?? []).slice(0, 3).map((c) => (
               <EntityChip key={c} id={c} />
             ))}
-            {e.consumers.length > 3 && (
-              <span className="text-xs text-text-3">+{e.consumers.length - 3}</span>
+            {(e.consumers?.length ?? 0) > 3 && (
+              <span className="text-xs text-text-3">+{(e.consumers?.length ?? 0) - 3}</span>
             )}
           </div>
           <span
@@ -1076,7 +1096,7 @@ function ScheduledTab({ channels }: { channels: FlatChannel[] }) {
     );
   }
   const sorted = [...scheduled].sort((a, b) =>
-    a.broker_canonical.localeCompare(b.broker_canonical),
+    (a.broker_canonical ?? "").localeCompare(b.broker_canonical ?? ""),
   );
   return (
     <div className="p-4 space-y-2">
@@ -1157,7 +1177,7 @@ export default function TopologyScreen() {
   }, [setSearchParams]);
 
   const filteredChannels = channels.filter((ch) => {
-    if (search && !ch.label.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !(ch.label ?? "").toLowerCase().includes(search.toLowerCase())) return false;
     if (activeBrokers.size > 0 && !activeBrokers.has(ch.broker_canonical)) return false;
     return true;
   });
