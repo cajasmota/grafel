@@ -38,6 +38,17 @@ type PathRow struct {
 	Frameworks   []string `json:"frameworks"`
 	IsWebhook    bool     `json:"is_webhook"`
 	Repos        []string `json:"repos"`
+	// Enrichment operation fields (#1103). Populated when LLM enrichment
+	// frontmatter exists for the path: explicit Rank promotes the row to the
+	// top of the list; Group + GroupLabel cluster it in the sidebar; Aliases
+	// lists merged-away peer path hashes; Disqualified rows are moved to the
+	// `rejected_paths` slice in the list response.
+	Rank         float64  `json:"rank,omitempty"`
+	Group        string   `json:"group,omitempty"`
+	GroupLabel   string   `json:"group_label,omitempty"`
+	Aliases      []string `json:"aliases,omitempty"`
+	Disqualified bool     `json:"disqualified,omitempty"`
+	MergedInto   string   `json:"merged_into,omitempty"`
 }
 
 // PathTreeNode is one node in the hierarchical prefix tree.
@@ -240,6 +251,19 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, *pr)
 	}
 
+	// --- LLM enrichment operations (#1103) -----------------------------------
+	// merge / disqualify / rank / group applied to the per-path-hash row set.
+	// We index ops by PathHash; frontmatter MUST set entity_id to the path
+	// hash (or the helper MatchesEntity will fuzzy-match repo-prefixed IDs).
+	docgenState, _ := mcp.LoadDocgenState(group)
+	ops := LoadEnrichmentOpsForGroup(group, docgenState)
+	rows, rejectedRows := applyPathEnrichment(rows, ops)
+	keptIDs := make([]string, 0, len(rows))
+	for _, r := range rows {
+		keptIDs = append(keptIDs, r.PathHash)
+	}
+	pathGroups := ops.SummarizeGroups(keptIDs)
+
 	// Build prefix tree from the full filtered set.
 	tree := buildPrefixTree(rows)
 
@@ -268,7 +292,78 @@ func (s *Server) handlePathsList(w http.ResponseWriter, r *http.Request) {
 		"tree":            tree,
 		"total":           total,
 		"owning_backends": owningBackends,
+		"rejected_paths":  rejectedRows,
+		"path_groups":     pathGroups,
 	})
+}
+
+// applyPathEnrichment runs the four enrichment operations (merge, disqualify,
+// rank, group) across a slice of PathRow values.
+//
+// Matching: ops are keyed by entity_id frontmatter, which for path rows is
+// either the path_hash OR a repo-prefixed handler id. We do a two-pass index:
+//
+//  1. exact PathHash → ops lookup;
+//  2. for any frontmatter entry whose entity_id contains the path string, the
+//     enrichment is attached to the matching row (handles the common case
+//     where /generate-docs emits entity_id = "<repo>:<path>" instead of a hash).
+//
+// Returns (kept, rejected). The kept slice is stable-sorted by explicit Rank
+// (desc) so an LLM rank override floats a row to the top while preserving the
+// alphabetical tie-break for unranked rows.
+func applyPathEnrichment(rows []PathRow, ops *EnrichmentOps) (kept, rejected []PathRow) {
+	kept = make([]PathRow, 0, len(rows))
+	rejected = make([]PathRow, 0)
+	if ops == nil {
+		return rows, rejected
+	}
+
+	// Index path-hash → row index so merge alias attachment is O(1).
+	hashIdx := map[string]int{}
+	for i, r := range rows {
+		hashIdx[r.PathHash] = i
+	}
+
+	// Decide per row.
+	dropped := map[int]bool{}
+	for i := range rows {
+		r := &rows[i]
+		if ops.IsDisqualified(r.PathHash) {
+			r.Disqualified = true
+			rejected = append(rejected, *r)
+			dropped[i] = true
+			continue
+		}
+		if dst, merged := ops.MergedInto[r.PathHash]; merged && dst != r.PathHash {
+			if canonIdx, ok := hashIdx[dst]; ok {
+				rows[canonIdx].Aliases = append(rows[canonIdx].Aliases, r.PathHash)
+				dropped[i] = true
+				continue
+			}
+			r.MergedInto = dst
+		}
+		if rk := ops.Rank(r.PathHash); rk != 0 {
+			r.Rank = rk
+		}
+		if g := ops.Group(r.PathHash); g != "" {
+			r.Group = g
+			r.GroupLabel = ops.GroupLabels[g]
+		}
+	}
+	for i, r := range rows {
+		if dropped[i] {
+			continue
+		}
+		kept = append(kept, r)
+	}
+
+	// Stable-sort: explicit rank desc, then preserve original order.
+	if len(ops.Ranks) > 0 {
+		sort.SliceStable(kept, func(i, j int) bool {
+			return kept[i].Rank > kept[j].Rank
+		})
+	}
+	return kept, rejected
 }
 
 // handlePathDetail — GET /api/paths/{group}/{pathHash}

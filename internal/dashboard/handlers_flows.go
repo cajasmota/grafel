@@ -257,13 +257,45 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 		}
 		return items[i].Label < items[j].Label
 	})
-	if len(items) > limit {
-		items = items[:limit]
+
+	// --- LLM enrichment operations (#1103) -----------------------------------
+	// merge   → drop process items whose merged_into points at another item in
+	//           the same surface; record aliases on the canonical item.
+	// disqualify → split items into the "rejected_processes" bucket.
+	// rank    → stable-sort kept items so explicit rank wins ties.
+	// group   → emit process_groups summary keyed by enrichment.group.
+	ops := LoadEnrichmentOpsForGroup(group, docgenState)
+	present := map[string]bool{}
+	for _, it := range items {
+		present[it.ProcessID] = true
+	}
+	kept := make([]ProcessItem, 0, len(items))
+	rejected := make([]ProcessItem, 0)
+	aliasesByCanonical := map[string][]string{}
+	for _, it := range items {
+		if it.Disqualified || ops.IsDisqualified(it.ProcessID) {
+			it.Disqualified = true
+			rejected = append(rejected, it)
+			continue
+		}
+		if dst, merged := ops.MergedInto[it.ProcessID]; merged && dst != it.ProcessID && present[dst] {
+			aliasesByCanonical[dst] = append(aliasesByCanonical[dst], it.ProcessID)
+			continue
+		}
+		kept = append(kept, it)
+	}
+	if len(ops.Ranks) > 0 {
+		sort.SliceStable(kept, func(i, j int) bool {
+			return ops.Rank(kept[i].ProcessID) > ops.Rank(kept[j].ProcessID)
+		})
+	}
+	if len(kept) > limit {
+		kept = kept[:limit]
 	}
 
 	// Build entry_kind_groups summary (sorted by count descending).
 	kindCounts := map[string]int{}
-	for _, it := range items {
+	for _, it := range kept {
 		kindCounts[it.EntryKind]++
 	}
 	entryKindGroups := make([]EntryKindGroup, 0, len(kindCounts))
@@ -277,10 +309,20 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 		return entryKindGroups[i].Kind < entryKindGroups[j].Kind
 	})
 
+	// Process groups (#1103) — from enrichment frontmatter.
+	keptIDs := make([]string, 0, len(kept))
+	for _, it := range kept {
+		keptIDs = append(keptIDs, it.ProcessID)
+	}
+	processGroups := ops.SummarizeGroups(keptIDs)
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"processes":         items,
-		"count":             len(items),
-		"entry_kind_groups": entryKindGroups,
+		"processes":          kept,
+		"count":              len(kept),
+		"entry_kind_groups":  entryKindGroups,
+		"rejected_processes": rejected,
+		"process_groups":     processGroups,
+		"aliases":            aliasesByCanonical,
 	})
 }
 

@@ -47,6 +47,19 @@ type topologyResponse struct {
 	// contains per-service topic counts, orphan counts, cross-repo topic
 	// counts, a health summary, and the last index timestamp.
 	BrokerGroups []brokerGroup `json:"broker_groups"`
+
+	// Enrichment operations output (#1103). When an enrichment store is
+	// available, candidates flagged disqualified are MOVED OUT of their
+	// natural bucket into the matching *_rejected slice; canonical entries
+	// receive an "aliases" field listing merged-away peers; an explicit
+	// rank promotes entries to the top of their bucket; and a group
+	// summary is emitted at the top level so the dashboard sidebar can
+	// render LLM-inferred clusters.
+	TopicsRejected    []map[string]any         `json:"topics_rejected"`
+	QueuesRejected    []map[string]any         `json:"queues_rejected"`
+	ChannelsRejected  []map[string]any         `json:"channels_rejected"`
+	FunctionsRejected []map[string]any         `json:"functions_rejected"`
+	EnrichmentGroups  []EnrichmentGroupSummary `json:"enrichment_groups"`
 }
 
 // brokerServiceStat holds per-service aggregated counts inside a broker group.
@@ -199,6 +212,11 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 		Transforms:           []map[string]any{},
 		Functions:            []map[string]any{},
 		BrokerGroups:         []brokerGroup{},
+		TopicsRejected:       []map[string]any{},
+		QueuesRejected:       []map[string]any{},
+		ChannelsRejected:     []map[string]any{},
+		FunctionsRejected:    []map[string]any{},
+		EnrichmentGroups:     []EnrichmentGroupSummary{},
 	}
 
 	// brokerAccums accumulates data keyed by broker_canonical for the top-level
@@ -520,6 +538,34 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 			HealthSummary:       a.healthSummary,
 			LastIndexTimestamp:  a.lastIndexTS,
 		})
+	}
+
+	// --- Apply LLM enrichment operations (#1103) -----------------------------
+	// merge / disqualify / rank / group across every topology bucket. The
+	// EnrichmentOps store is derived from the SAME doc-file frontmatter that
+	// applyTopologyEnrichment already reads above; this pass turns the data
+	// into actual graph operations on the wire payload.
+	if groupName != "" {
+		ops := LoadEnrichmentOpsForGroup(groupName, docgenState)
+		allKeptIDs := []string{}
+
+		applyBucket := func(bucket []map[string]any) (kept, rejected []map[string]any) {
+			k, r, _, _ := ops.ApplyToEntries(bucket)
+			for _, e := range k {
+				if id := EntryIDOf(e); id != "" {
+					allKeptIDs = append(allKeptIDs, id)
+				}
+			}
+			return k, r
+		}
+
+		resp.Topics, resp.TopicsRejected = applyBucket(resp.Topics)
+		resp.Queues, resp.QueuesRejected = applyBucket(resp.Queues)
+		resp.Channels, resp.ChannelsRejected = applyBucket(resp.Channels)
+		resp.Functions, resp.FunctionsRejected = applyBucket(resp.Functions)
+
+		// Unified group summary across all kept topology entries.
+		resp.EnrichmentGroups = ops.SummarizeGroups(allKeptIDs)
 	}
 
 	return resp
