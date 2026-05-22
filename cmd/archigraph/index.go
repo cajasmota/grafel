@@ -22,7 +22,6 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/extract"
 	"github.com/cajasmota/archigraph/internal/daemon/walk"
-	idiff "github.com/cajasmota/archigraph/internal/indexer/diff"
 	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/external"
@@ -32,6 +31,7 @@ import (
 	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
+	idiff "github.com/cajasmota/archigraph/internal/indexer/diff"
 	"github.com/cajasmota/archigraph/internal/install/detect"
 	"github.com/cajasmota/archigraph/internal/module"
 	"github.com/cajasmota/archigraph/internal/progress"
@@ -47,11 +47,11 @@ const (
 	PassFramework     = "framework"      // Pass 2.5: YAML-driven framework rules
 	PassCrossLang     = "cross-lang"     // Pass 3: cross-language extractors
 	PassGraphAlgo     = "graph-algo"     // Pass 4: placeholder for PORT-4
-	PassBuildDocument  = "build-document"  // Pass 5: assemble graph.Document
-	PassRenameDetect   = "rename-detect"   // Pass 5.5: detect entity renames across rebuilds (#1344)
-	PassEnrichment     = "enrichment"      // Pass 6: emit enrichment candidates
-	PassProcessFlow    = "process-flow"    // Pass 7: process-flow BFS over CALLS (#724)
-	PassModuleAgg      = "module-agg"      // Pass 8: module-level aggregation (#1383)
+	PassBuildDocument = "build-document" // Pass 5: assemble graph.Document
+	PassRenameDetect  = "rename-detect"  // Pass 5.5: detect entity renames across rebuilds (#1344)
+	PassEnrichment    = "enrichment"     // Pass 6: emit enrichment candidates
+	PassProcessFlow   = "process-flow"   // Pass 7: process-flow BFS over CALLS (#724)
+	PassModuleAgg     = "module-agg"     // Pass 8: module-level aggregation (#1383)
 )
 
 // allPassNames is used to validate --skip-pass entries.
@@ -130,9 +130,9 @@ type Indexer struct {
 	// boundary and at every TickEveryNFiles interval during AST extraction.
 	// Defaults to progress.NoOpPublisher so callers that do not wire a sink
 	// pay zero overhead.
-	publisher  progress.Publisher
-	groupSlug  string // forwarded to every Event.GroupSlug
-	repoSlug   string // forwarded to every Event.RepoSlug; defaults to repoTag
+	publisher progress.Publisher
+	groupSlug string // forwarded to every Event.GroupSlug
+	repoSlug  string // forwarded to every Event.RepoSlug; defaults to repoTag
 
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
@@ -752,6 +752,31 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			fmt.Fprintf(os.Stderr, "archigraph: django_admin_synthetic=%d entities\n", len(adminEntities))
 		}
 		pass3Records = append(pass3Records, adminEntities...)
+
+		// Pass 2.6e — Celery cross-file dispatch edges (#1617). The per-file
+		// scheduled-job pass only links `task.delay()` call sites that share a
+		// file with the @shared_task definition. This repo-wide pass resolves
+		// dispatch sites across files (tasks/ ← views/ ← signals/ ← services/)
+		// and emits CALLS edges so find_callees / find_callers on a task and
+		// the flows view show task dispatch. Append-only.
+		celeryDispatchRels := runCeleryDispatchEdges(classified)
+		if len(celeryDispatchRels) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: celery_dispatch_edges=%d\n", len(celeryDispatchRels))
+		}
+		pass2Rels = append(pass2Rels, celeryDispatchRels...)
+
+		// Pass 2.6f — Django custom-signal pub/sub edges (#1617). Models each
+		// `sig = Signal()` custom signal as a SCOPE.MessageTopic, with
+		// SUBSCRIBES_TO from every @receiver(sig) handler and PUBLISHES_TO from
+		// every sig.send()/send_robust() caller, so the signal dispatch surfaces
+		// as a publisher → signal → handler diagram in /topology and /flows.
+		signalEnts, signalRels := runDjangoSignalPubSub(classified)
+		if len(signalEnts) > 0 || len(signalRels) > 0 {
+			fmt.Fprintf(os.Stderr, "archigraph: django_signal_pubsub=%d topics %d edges\n",
+				len(signalEnts), len(signalRels))
+		}
+		pass3Records = append(pass3Records, signalEnts...)
+		pass2Rels = append(pass2Rels, signalRels...)
 	}
 
 	// Pass 2.6 — Java JAX-RS / Spring MVC annotation route composition.
@@ -1816,7 +1841,6 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 	return classified, allRecords
 }
 
-
 // runPass25FrameworkRules applies the YAML rule engine to every classified
 // file. Returns extra entity records (from source_patterns) plus standalone
 // relationship records (from relationship_rules).
@@ -2024,7 +2048,68 @@ func runDjangoAdminRoutes(classified []classifiedFile) []types.EntityRecord {
 	reader := func(relPath string) []byte {
 		return contentByPath[relPath]
 	}
-	return engine.ApplyDjangoAdminRoutes(pyPaths, reader)
+	all := engine.ApplyDjangoAdminRoutes(pyPaths, reader)
+
+	// #1617 — drop the Django admin CRUD scaffolding endpoints. The synthesis
+	// pass tags every framework-generated route (changelist/add/change/delete/
+	// history/login/logout/…) with scaffolding="true"; only project-authored
+	// custom actions and get_urls() overrides carry scaffolding="false". The
+	// scaffolding family (88 on upvate, 11.6% of all defs) has no inbound
+	// architectural signal and swamps the real endpoint surface, so we exclude
+	// it from the graph here.
+	kept := all[:0]
+	for _, e := range all {
+		if e.Properties != nil && e.Properties["scaffolding"] == "true" {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if dropped := len(all) - len(kept); dropped > 0 {
+		fmt.Fprintf(os.Stderr, "archigraph: django_admin_scaffolding_pruned=%d endpoints\n", dropped)
+	}
+	return kept
+}
+
+// runCeleryDispatchEdges runs the repo-wide Celery cross-file dispatch pass
+// (#1617). Collects every @shared_task / @app.task definition across the repo
+// and emits a CALLS edge from each `task.delay()` / `.apply_async()` / `.s()`
+// call site's enclosing function to the task definition.
+func runCeleryDispatchEdges(classified []classifiedFile) []types.RelationshipRecord {
+	if len(classified) == 0 {
+		return nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte { return contentByPath[relPath] }
+	return engine.ApplyCeleryDispatchEdges(pyPaths, reader)
+}
+
+// runDjangoSignalPubSub runs the repo-wide Django custom-signal pub/sub pass
+// (#1617). Models each `sig = Signal()` as a SCOPE.MessageTopic with
+// SUBSCRIBES_TO from @receiver(sig) handlers and PUBLISHES_TO from sig.send()
+// callers.
+func runDjangoSignalPubSub(classified []classifiedFile) ([]types.EntityRecord, []types.RelationshipRecord) {
+	if len(classified) == 0 {
+		return nil, nil
+	}
+	contentByPath := make(map[string][]byte, len(classified))
+	var pyPaths []string
+	for _, cf := range classified {
+		if cf.language != "python" {
+			continue
+		}
+		contentByPath[cf.relPath] = cf.content
+		pyPaths = append(pyPaths, cf.relPath)
+	}
+	reader := func(relPath string) []byte { return contentByPath[relPath] }
+	return engine.ApplyDjangoSignalPubSub(pyPaths, reader)
 }
 
 // runDjangoCBVRoutes runs the Django CBV generic-method resolution pass
