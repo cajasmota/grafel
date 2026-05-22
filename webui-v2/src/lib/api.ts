@@ -20,6 +20,7 @@ import type {
   SettingsGroup,
   SettingsFeatures,
   DoctorCheck,
+  V2CandidatesResponse,
   FlowsListResponse,
   FlowDetailResponse,
   FlowDeadEndsResponse,
@@ -203,6 +204,18 @@ export const api = {
       method: "POST",
     }),
 
+  // --- v2 Pending screen (#1442) ---
+  /** Fetch repair + enrichment candidates for a group. */
+  listCandidates: (groupId: string, tab?: "repairs" | "enrichments") =>
+    requestV2<V2CandidatesResponse>(
+      `/groups/${encodeURIComponent(groupId)}/candidates${tab ? `?tab=${tab}` : ""}`,
+    ),
+  /** Persist a hint for a candidate. Empty string clears the hint. */
+  saveHint: (groupId: string, candidateId: string, hint: string) =>
+    requestV2<{ ok: true }>(
+      `/groups/${encodeURIComponent(groupId)}/candidates/${encodeURIComponent(candidateId)}/hint`,
+      { method: "PUT", body: JSON.stringify({ hint }) },
+    ),
   // --- Flows (Process Flow Explorer) ---
   listFlows: (groupId: string, params?: { tab?: string; search?: string; limit?: number }) => {
     const q = new URLSearchParams();

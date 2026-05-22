@@ -278,6 +278,74 @@ export interface DoctorCheck {
   detail: string;
 }
 
+// =============================================================
+// Pending screen types — v2_pending.go wire shapes (#1442)
+// =============================================================
+
+export type EntityKind =
+  | "function"
+  | "component"
+  | "hook"
+  | "class"
+  | "method"
+  | "http_endpoint";
+
+export interface EntityRef {
+  name: string;
+  type: EntityKind;
+  repo: string;
+  /** Includes `:line` suffix. */
+  file: string;
+}
+
+export type RepairIssueType =
+  | "missing_docstring"
+  | "dead_code"
+  | "mismatched_handler"
+  | "untyped_params"
+  | "broken_link"
+  | "stale_cache";
+
+export type EnrichmentType =
+  | "summary"
+  | "param_descriptions"
+  | "relationship_tag"
+  | "tags";
+
+export type Severity = "critical" | "warning" | "info";
+
+export interface RepairCandidate {
+  id: string;
+  severity: Severity;
+  issueType: RepairIssueType;
+  entity: EntityRef;
+  description: string;
+  /** 0..1 */
+  confidence: number;
+  /** Unix ms. */
+  detectedAt: number;
+}
+
+export interface EnrichmentCandidate {
+  id: string;
+  enrichmentType: EnrichmentType;
+  entity: EntityRef;
+  description: string;
+  confidence: number;
+  detectedAt: number;
+}
+
+export type Candidate = RepairCandidate | EnrichmentCandidate;
+
+/** Hints stored per-candidate-id in local state and persisted via PUT hint. */
+export type HintMap = Record<string, string>;
+
+/** Wire shape returned by GET /api/v2/groups/:id/candidates */
+export interface V2CandidatesResponse {
+  repairs: RepairCandidate[];
+  enrichments: EnrichmentCandidate[];
+}
+
 // ─── Flows (Process Flow Explorer) ────────────────────────────────────────────
 
 export type EntryKind =
