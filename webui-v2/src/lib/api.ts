@@ -134,10 +134,11 @@ export const api = {
     requestV2<DocsEntityDetail>(`/groups/${groupId}/docs/entities/${encodeURIComponent(entityId)}`),
   /** v2 — the full graph payload (nodes/edges/communities/repos) for the Graph
    *  screen. `params` maps to the daemon's repo/kind filters. */
-  getGraph: (groupId: string, params?: { repos?: string[]; filterKind?: string }) => {
+  getGraph: (groupId: string, params?: { repos?: string[]; filterKind?: string; lod?: string }) => {
     const qs = new URLSearchParams();
     if (params?.repos && params.repos.length > 0) qs.set("repos", params.repos.join(","));
     if (params?.filterKind) qs.set("filter_kind", params.filterKind);
+    if (params?.lod) qs.set("lod", params.lod);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return requestV2<GraphPayloadWire>(`/graph/${encodeURIComponent(groupId)}${suffix}`);
   },
