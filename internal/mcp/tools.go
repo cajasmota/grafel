@@ -350,7 +350,20 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 
 	// Smart scoping: no filter, multiple repos -> per-repo top 3.
 	if len(repoFilter) == 0 && len(lg.Repos) > 1 {
-		return mcpapi.NewToolResultText(renderPerRepoSummary(all, lg)), nil
+		summary := renderPerRepoSummary(all, lg)
+		// Record the prefixed ids of the top-3-per-repo hits actually shown so
+		// the MCP-activity glow has nodes to highlight (the markdown body
+		// carries no machine-readable ids). Mirrors renderPerRepoSummary's
+		// own per-repo top-3 selection.
+		perRepoShown := map[string]int{}
+		for _, sc := range all {
+			if perRepoShown[sc.repo.Repo] >= 3 {
+				continue
+			}
+			perRepoShown[sc.repo.Repo]++
+			recordNodeIDs(ctx, prefixedID(sc.repo.Repo, sc.hit.Entity.ID))
+		}
+		return mcpapi.NewToolResultText(summary), nil
 	}
 
 	// Otherwise BFS-expand from each top hit and render compact.
@@ -407,6 +420,11 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 		Nodes:        visibleNodes,
 		Edges:        visibleEdges,
 		OneRepo:      oneRepo,
+	}
+	// Record the prefixed ids of every visible node so the MCP-activity glow
+	// highlights the compact result set (the rendered markdown has no ids).
+	for _, nw := range visibleNodes {
+		recordNodeIDs(ctx, prefixedID(nw.Repo, nw.Entity.ID))
 	}
 	return mcpapi.NewToolResultText(renderCompact(rr, tokenBudget)), nil
 }

@@ -8,11 +8,85 @@
 package mcp
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 )
+
+// ---------------------------------------------------------------------------
+// Per-call ID collector (epic #1157)
+// ---------------------------------------------------------------------------
+//
+// Many archigraph tools render their results as markdown (archigraph_find's
+// per-repo summary, the compact node/edge view) or as JSON whose id field is
+// just "id" rather than "entity_id". In both cases the post-hoc extractIDs
+// text-parser cannot recover the entity ids the call actually touched, so the
+// MCP-activity event reaches the SSE stream with empty returned_node_ids and
+// the WebUI glow has nothing to highlight.
+//
+// idCollector lets a handler (or a shared render helper) record the prefixed
+// ids it surfaced directly, while it still has them in hand. wrap() installs a
+// collector into the request context; emitActivity reads it back. This is a
+// side channel only — collected ids never enter the tool's wire response, so
+// nothing leaks to the calling agent.
+
+type idCollectorKey struct{}
+
+// idCollector accumulates node/edge ids touched during a single tool call.
+// Goroutine-safe so concurrent render helpers can record without coordination.
+type idCollector struct {
+	mu    sync.Mutex
+	nodes []string
+	edges []string
+}
+
+// withIDCollector returns a child context carrying a fresh collector plus the
+// collector itself. emitActivity drains the collector after the handler runs.
+func withIDCollector(ctx context.Context) (context.Context, *idCollector) {
+	c := &idCollector{}
+	return context.WithValue(ctx, idCollectorKey{}, c), c
+}
+
+// collectorFrom returns the collector installed in ctx, or nil when absent
+// (e.g. unit tests that call a handler directly without wrap()).
+func collectorFrom(ctx context.Context) *idCollector {
+	if ctx == nil {
+		return nil
+	}
+	c, _ := ctx.Value(idCollectorKey{}).(*idCollector)
+	return c
+}
+
+// recordNodeIDs adds prefixed node ids to the collector in ctx (no-op when
+// ctx carries no collector). Safe to call from any render path.
+func recordNodeIDs(ctx context.Context, ids ...string) {
+	if c := collectorFrom(ctx); c != nil {
+		c.mu.Lock()
+		c.nodes = append(c.nodes, ids...)
+		c.mu.Unlock()
+	}
+}
+
+// recordEdgeIDs adds edge ids to the collector in ctx (no-op when absent).
+func recordEdgeIDs(ctx context.Context, ids ...string) {
+	if c := collectorFrom(ctx); c != nil {
+		c.mu.Lock()
+		c.edges = append(c.edges, ids...)
+		c.mu.Unlock()
+	}
+}
+
+// drain returns the deduped collected node/edge ids.
+func (c *idCollector) drain() (nodes, edges []string) {
+	if c == nil {
+		return nil, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return dedup(c.nodes), dedup(c.edges)
+}
 
 // ---------------------------------------------------------------------------
 // Event

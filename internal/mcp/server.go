@@ -433,8 +433,12 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 			end(isErr)
 		}()
 		s.reloadBeforeCall()
+		// Install a per-call id collector so render helpers can record the
+		// entity ids they surface (markdown tools have no machine-readable ids
+		// in their wire output). emitActivity drains it afterwards.
+		ctx, collector := withIDCollector(ctx)
 		res, err = fn(ctx, req)
-		s.emitActivity(ctx, name, req, res)
+		s.emitActivity(ctx, name, req, res, collector)
 		return res, err
 	}
 }
@@ -443,7 +447,7 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 // wired). It is called after every tool handler returns. The agent_id is
 // derived from the "archigraph-agent-id" context value when set, or falls
 // back to the User-Agent extracted at session accept time.
-func (s *Server) emitActivity(_ context.Context, toolName string, req mcpapi.CallToolRequest, res *mcpapi.CallToolResult) {
+func (s *Server) emitActivity(_ context.Context, toolName string, req mcpapi.CallToolRequest, res *mcpapi.CallToolResult, collector *idCollector) {
 	if s.activityBroker == nil {
 		return
 	}
@@ -458,11 +462,51 @@ func (s *Server) emitActivity(_ context.Context, toolName string, req mcpapi.Cal
 		QueryArgs: argsCopy,
 		Timestamp: 0, // broker will fill this in
 	}
-	// Extract node/edge IDs from the result content when present.
+
 	if res != nil && !res.IsError {
-		event.ReturnedNodeIDs, event.ReturnedEdgeIDs = extractIDs(res)
+		// Resolve the touched entity ids in priority order:
+		//  1. Ids explicitly recorded by the handler / render helpers (covers
+		//     markdown-formatted tools like archigraph_find whose wire output
+		//     carries no machine-readable ids).
+		//  2. Ids parsed out of a JSON result body (covers structured tools).
+		//  3. The request's own id-bearing arguments (covers single-entity
+		//     tools like inspect / get_source / expand even when neither of the
+		//     above fires).
+		nodeIDs, edgeIDs := collector.drain()
+		jn, je := extractIDs(res)
+		nodeIDs = append(nodeIDs, jn...)
+		edgeIDs = append(edgeIDs, je...)
+		nodeIDs = append(nodeIDs, idsFromArgs(args)...)
+		event.ReturnedNodeIDs = dedup(nodeIDs)
+		event.ReturnedEdgeIDs = dedup(edgeIDs)
 	}
 	s.activityBroker.Publish(event)
+}
+
+// idsFromArgs harvests entity ids that the caller passed in as arguments.
+// These are the exact nodes a single-entity tool (inspect, get_source,
+// expand, impact_radius, …) operated on, so they are a sound fallback when
+// the rendered result exposes no ids of its own. Free-text fields such as
+// "question" or "label" are intentionally excluded — they are not ids.
+func idsFromArgs(args map[string]any) []string {
+	var out []string
+	for _, k := range []string{
+		"node_id", "entity_id", "target_entity_id", "from_id", "to_id",
+	} {
+		if v, ok := args[k]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	// label_or_id is an id only when it carries the "<repo>::<local>" prefix;
+	// a bare label would not match any graph node id, so skip it then.
+	if v, ok := args["label_or_id"].(string); ok && v != "" {
+		if r, _ := splitPrefixed(v); r != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // extractIDs attempts to pull entity IDs and edge IDs out of a tool result's
@@ -484,7 +528,7 @@ func extractIDs(res *mcpapi.CallToolResult) (nodeIDs, edgeIDs []string) {
 			continue
 		}
 		nodeIDs = append(nodeIDs, collectScalarIDs(payload,
-			"entity_id", "node_id", "pattern_id", "topic_id", "process_id")...)
+			"id", "entity_id", "node_id", "pattern_id", "topic_id", "process_id")...)
 		nodeIDs = append(nodeIDs, collectSliceIDs(payload,
 			"results", "nodes", "steps", "orphans", "patterns", "orphan_publishers",
 			"orphan_subscribers", "dead_ends", "truncated_flows", "publishers",
@@ -527,7 +571,7 @@ func collectSliceIDs(m map[string]any, keys ...string) []string {
 			if !ok {
 				continue
 			}
-			for _, field := range []string{"entity_id", "node_id", "from_id", "to_id", "pattern_id", "topic_id", "process_id"} {
+			for _, field := range []string{"id", "entity_id", "node_id", "from_id", "to_id", "pattern_id", "topic_id", "process_id"} {
 				if s, ok := obj[field].(string); ok && s != "" {
 					out = append(out, s)
 				}

@@ -88,7 +88,10 @@ export function useMCPActivity(enabled = true): UseMCPActivityReturn {
       setState((prev) => ({ ...prev, connected: true }));
     });
 
-    es.addEventListener("activity", (ev: MessageEvent) => {
+    // The Go backend emits this event as "mcp_activity"
+    // (internal/dashboard/handlers_mcp_activity.go). Listening for the wrong
+    // name silently drops every event → "No MCP queries yet" / no glow.
+    es.addEventListener("mcp_activity", (ev: MessageEvent) => {
       try {
         const event: MCPActivityEvent = JSON.parse(ev.data as string);
         setState((prev) => {
