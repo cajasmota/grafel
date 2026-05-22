@@ -108,10 +108,55 @@ export function degreeColor(t: number): RGBA {
   ];
 }
 
-/** Cross-repo "bridge" edge color — bright sky so integration points pop. */
+/** Cross-repo "bridge" edge color — bright sky so integration points pop.
+ *  Distinct + bright in BOTH themes (#1564-1). */
 export const CROSS_REPO_EDGE: RGBA = [56, 189, 248, 1];
-/** Same-repo edge color — slate, lifted brighter (#1532-2) so edges read on
- *  the light background instead of fading into it. */
+
+/**
+ * Fix #1564-1 / #1564-2: theme-aware link palette. The legacy SAME_REPO_EDGE
+ * slate (71,85,105) was tuned for the LIGHT background; on the near-black dark
+ * bg (#020617) it vanished. Link colors must adapt to the active theme AND
+ * encode the cross-vs-intra structure so inter-module/inter-repo wiring stands
+ * out (#1564-2). We classify every edge into one of three buckets:
+ *
+ *   • cross-repo  — brightest, a distinct sky/cyan in BOTH themes (bridges).
+ *   • cross-module (same repo, different module) — bright + emphasized so the
+ *     inter-module structure reads as wiring, not islands.
+ *   • intra-module — faded into the background so the structure above pops.
+ *
+ * On DARK we use LIGHTER colors (links sit on a dark bg); on LIGHT we use
+ * DARKER colors (links sit on a light bg). Re-read on theme change by the
+ * caller (re-packs link colors), so the toggle flows through live.
+ */
+export interface LinkPalette {
+  crossRepo: RGBA;
+  crossModule: RGBA;
+  intraModule: RGBA;
+}
+
+export function linkPalette(isDark: boolean): LinkPalette {
+  if (isDark) {
+    return {
+      // bright sky — pops on the near-black bg.
+      crossRepo: [56, 189, 248, 1],
+      // bright violet/blue — clearly distinct from intra, reads as wiring.
+      crossModule: [167, 139, 250, 1],
+      // light slate — visible on dark but quiet, so it recedes.
+      intraModule: [148, 163, 184, 1],
+    };
+  }
+  return {
+    // deep sky — bright + saturated against the light bg.
+    crossRepo: [2, 132, 199, 1],
+    // indigo/violet — distinct from the slate intra edges.
+    crossModule: [109, 40, 217, 1],
+    // dark slate — quiet, recedes into the light bg.
+    intraModule: [71, 85, 105, 1],
+  };
+}
+
+/** Same-repo edge color — slate, lifted brighter (#1532-2). Retained for
+ *  back-compat; the live canvas now uses linkPalette() (#1564). */
 export const SAME_REPO_EDGE: RGBA = [71, 85, 105, 1];
 /** Highlighted (focused-neighbor) edge color — amber. */
 export const HIGHLIGHT_EDGE: RGBA = [251, 146, 60, 1];
