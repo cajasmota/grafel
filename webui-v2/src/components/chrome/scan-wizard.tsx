@@ -4,12 +4,15 @@
    Used by BOTH Landing (mode="create") and Settings (mode="add-repo").
    Three steps:
 
-     1. Pick directory — a server-side PATH the daemon resolves + indexes.
-        showDirectoryPicker() is offered only as a convenience to PREFILL the
-        folder-name hint; the browser File System Access API yields an opaque
-        FileSystemDirectoryHandle with no real on-disk path, so it cannot tell
-        the daemon WHICH directory to index. The path text field is the source
-        of truth. (See v2_wizard.go for the matching backend note.)
+     1. Pick directory — a SERVER-SIDE folder browser (#1529). The daemon
+        runs on this machine, so GET /api/v2/fs/list walks ITS filesystem:
+        the user navigates folders and "Select this folder" yields a real
+        ABSOLUTE path — no manual paste required. (The browser File System
+        Access API only yields an opaque handle with no on-disk path, so it
+        can't tell the daemon WHICH directory to index — that's why the
+        daemon lists its own filesystem instead.) A manual path field is
+        kept as a fallback for users who prefer to paste. (See v2_fs.go /
+        v2_wizard.go for the matching backend notes.)
 
      2. Detect — POST /api/v2/scan/inspect previews the detected stack +
         monorepo layout + suggested group/slug. The user confirms.
@@ -20,7 +23,16 @@
    ============================================================ */
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, FolderSearch, Loader2, AlertTriangle, ArrowRight } from "lucide-react";
+import {
+  CheckCircle2,
+  Folder,
+  ChevronRight,
+  CornerLeftUp,
+  Loader2,
+  AlertTriangle,
+  ArrowRight,
+  Check,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button, Input, Badge } from "@/components/ui";
@@ -35,6 +47,7 @@ import {
   useCreateGroupFromScan,
   useScanReposIntoGroup,
   useWizardJob,
+  useFsList,
 } from "@/hooks/use-wizard";
 import { useIndexProgress } from "@/hooks/use-index-progress";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
@@ -63,11 +76,6 @@ function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-/** showDirectoryPicker is non-standard; narrow it without `any`. */
-type DirPickerWindow = Window & {
-  showDirectoryPicker?: () => Promise<{ name: string }>;
-};
-
 export function ScanWizard(props: ScanWizardProps) {
   const { open, onOpenChange, mode, groupId, groupName, takenNames = [], existingPaths = [], onIndexed } = props;
 
@@ -76,6 +84,12 @@ export function ScanWizard(props: ScanWizardProps) {
   const [scan, setScan] = useState<ScanInspectReply | null>(null);
   const [name, setName] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
+
+  // Server-side folder browser (#1529). `browseDir` is the directory currently
+  // being listed; null defaults to the daemon's home dir. `null` while the
+  // dialog is closed avoids a wasted fetch.
+  const [browseDir, setBrowseDir] = useState<string | null>(null);
+  const fs = useFsList(browseDir, open && step === "pick");
 
   const inspect = useScanInspect();
   const createFromScan = useCreateGroupFromScan();
@@ -98,6 +112,7 @@ export function ScanWizard(props: ScanWizardProps) {
     setScan(null);
     setName("");
     setJobId(null);
+    setBrowseDir(null);
     inspect.reset();
     createFromScan.reset();
     scanRepos.reset();
@@ -119,32 +134,26 @@ export function ScanWizard(props: ScanWizardProps) {
   const nameDuplicate = takenNames.includes(nameSlug);
 
   // --- Step 1: pick directory ---
-  async function browse() {
-    const picker = (window as DirPickerWindow).showDirectoryPicker;
-    if (!picker) {
-      toast.info("Your browser can't open a folder picker — type or paste the path.");
-      return;
-    }
-    try {
-      const handle = await picker();
-      // The handle has NO real on-disk path (browser sandbox). We can only use
-      // its name as a hint; the user still confirms the absolute path below.
-      if (handle?.name && path.trim() === "") {
-        toast.info(`Picked “${handle.name}” — paste its full path to continue.`);
-      }
-    } catch {
-      /* user cancelled — no-op */
-    }
-  }
+  // The folder browser's "Select this folder" target — the absolute path the
+  // user has navigated INTO (fs.data.path), which is what gets indexed. Falls
+  // back to the manual-paste field when the user typed a path instead.
+  const browsePath = fs.data?.path ?? "";
 
-  async function runDetect() {
-    if (path.trim() === "" || pathDuplicate) return;
+  // runDetect scans an explicit absolute path. The folder browser passes the
+  // directory the user navigated into; the manual field passes its trimmed
+  // text. Either way a single value drives the Detect step — no typing needed
+  // when browsing.
+  async function runDetect(target: string) {
+    const p = target.trim();
+    if (p === "" || existingPaths.includes(p)) return;
     try {
-      const result = await inspect.mutateAsync(path.trim());
+      const result = await inspect.mutateAsync(p);
       setScan(result);
       if (result.valid) {
         setName((prev) => prev || result.suggestedGroup);
         setStep("detect");
+      } else {
+        toast.error(result.error ?? "That path can't be indexed.");
       }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Failed to scan path.");
@@ -217,54 +226,153 @@ export function ScanWizard(props: ScanWizardProps) {
           ))}
         </ol>
 
-        {/* Step 1 — pick directory */}
+        {/* Step 1 — pick directory: a server-side folder browser (#1529). The
+            daemon lists ITS OWN filesystem so navigating to a folder and
+            selecting it yields a real absolute path. No typing required. */}
         {step === "pick" && (
-          <form
-            className="mt-4 space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void runDetect();
-            }}
-          >
-            <label className="block">
-              <span className="text-sm text-text-2">Repository path</span>
-              <div className="mt-1 flex gap-2">
-                <Input
-                  autoFocus
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  placeholder="/Users/you/code/my-repo"
-                  className="flex-1 font-mono text-sm"
-                  data-testid="wizard-path"
-                />
-                <Button type="button" variant="secondary" size="sm" onClick={() => void browse()}>
-                  <FolderSearch size={13} />
-                  Browse…
-                </Button>
+          <div className="mt-4 space-y-3" data-testid="wizard-fsbrowser">
+            {/* Current directory + Up control */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!fs.data?.parent}
+                onClick={() => setBrowseDir(fs.data?.parent ?? null)}
+                data-testid="wizard-fs-up"
+                title="Up one level"
+              >
+                <CornerLeftUp size={13} />
+              </Button>
+              <code
+                className="min-w-0 flex-1 truncate rounded-md border border-border bg-surface px-2 py-1.5 font-mono text-xs text-text-2"
+                title={browsePath}
+                data-testid="wizard-fs-cwd"
+              >
+                {browsePath || "…"}
+              </code>
+            </div>
+
+            {/* Shortcuts (home view only) */}
+            {fs.data?.shortcuts && fs.data.shortcuts.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {fs.data.shortcuts.map((sc) => (
+                  <Button
+                    key={sc.path}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setBrowseDir(sc.path)}
+                  >
+                    {sc.label}
+                  </Button>
+                ))}
               </div>
-              {pathDuplicate && (
-                <p className="mt-1 text-xs text-danger">This path is already in the group.</p>
+            )}
+
+            {/* Subfolder list */}
+            <div
+              className="max-h-64 overflow-y-auto rounded-lg border border-border bg-surface"
+              data-testid="wizard-fs-list"
+            >
+              {fs.isLoading ? (
+                <div className="flex items-center gap-2 p-3 text-sm text-text-3">
+                  <Loader2 size={14} className="animate-spin" /> Loading…
+                </div>
+              ) : fs.data?.error ? (
+                <div className="flex items-start gap-2 p-3 text-sm text-danger">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                  <span>{fs.data.error}</span>
+                </div>
+              ) : (fs.data?.entries.length ?? 0) === 0 ? (
+                <div className="p-3 text-sm text-text-4">No subfolders here.</div>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {fs.data!.entries.map((e) => (
+                    <li key={e.path}>
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2",
+                          e.hidden ? "text-text-4" : "text-text-2",
+                        )}
+                        onClick={() => setBrowseDir(e.path)}
+                        data-testid="wizard-fs-entry"
+                        title={e.path}
+                      >
+                        <Folder size={14} className="shrink-0 text-text-3" />
+                        <span className="min-w-0 flex-1 truncate font-mono">{e.name}</span>
+                        <ChevronRight size={14} className="shrink-0 text-text-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </label>
-            <p className="text-xs text-text-4">
-              archigraph indexes the folder on this machine — paste its absolute path. (Browsers
-              can't hand a real path to the daemon, so the picker only prefills the name.)
-            </p>
-            <div className="flex justify-end gap-2 pt-1">
+            </div>
+
+            {/* Select-this-folder: picking is sufficient to proceed. */}
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-text-4">
+                Navigate to a repo folder, then select it — no typing needed.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!browsePath || inspect.isPending}
+                onClick={() => {
+                  setPath(browsePath);
+                  void runDetect(browsePath);
+                }}
+                data-testid="wizard-fs-select"
+              >
+                {inspect.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                Select this folder
+              </Button>
+            </div>
+
+            {/* Manual-paste fallback. */}
+            <form
+              className="border-t border-border/60 pt-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void runDetect(path);
+              }}
+            >
+              <label className="block">
+                <span className="text-xs text-text-3">Or paste an absolute path</span>
+                <div className="mt-1 flex gap-2">
+                  <Input
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                    placeholder="/Users/you/code/my-repo"
+                    className="flex-1 font-mono text-sm"
+                    data-testid="wizard-path"
+                  />
+                  <Button
+                    type="submit"
+                    variant="ghost"
+                    size="sm"
+                    disabled={path.trim() === "" || pathDuplicate || inspect.isPending}
+                    data-testid="wizard-scan"
+                  >
+                    Scan
+                    <ArrowRight size={13} />
+                  </Button>
+                </div>
+                {pathDuplicate && (
+                  <p className="mt-1 text-xs text-danger">This path is already in the group.</p>
+                )}
+              </label>
+            </form>
+
+            <div className="flex justify-end pt-1">
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={path.trim() === "" || pathDuplicate || inspect.isPending}
-                data-testid="wizard-scan"
-              >
-                {inspect.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
-                Scan
-                <ArrowRight size={13} />
-              </Button>
             </div>
-          </form>
+          </div>
         )}
 
         {/* Step 2 — detect preview */}

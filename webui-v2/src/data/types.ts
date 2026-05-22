@@ -951,6 +951,40 @@ export interface ScanInspectReply {
   error?: string;
 }
 
+/* ------------------------------------------------------------------ *
+ * Server-side folder browser (#1529). The browser File System Access API
+ * can't hand the daemon a real on-disk path, so the wizard navigates the
+ * daemon's OWN filesystem via GET /api/v2/fs/list. Picking a folder yields
+ * its absolute path — no manual paste required.
+ * ------------------------------------------------------------------ */
+
+/** One subdirectory entry returned by GET /api/v2/fs/list. */
+export interface FsEntry {
+  name: string;
+  /** Absolute on-disk path the daemon will index. */
+  path: string;
+  isDir: boolean;
+  hidden: boolean;
+}
+
+/** A quick-jump shortcut (home / Documents / Projects), only on the home view. */
+export interface FsShortcut {
+  label: string;
+  path: string;
+}
+
+/** GET /api/v2/fs/list — subdirectories of an absolute path. */
+export interface FsListReply {
+  /** The resolved absolute path that was listed. */
+  path: string;
+  /** Absolute parent path, or "" at the filesystem root. */
+  parent: string;
+  entries: FsEntry[];
+  shortcuts?: FsShortcut[];
+  /** Human-readable reason when the path couldn't be listed. */
+  error?: string;
+}
+
 /** One repo the wizard wants registered + indexed. */
 export interface WizardRepo {
   path: string;

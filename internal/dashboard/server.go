@@ -559,6 +559,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v2/scan/inspect", s.handleV2ScanInspect)
 	mux.HandleFunc("POST /api/v2/groups/from-scan", s.handleV2CreateGroupFromScan)
 	mux.HandleFunc("POST /api/v2/groups/{group}/repos/scan", s.handleV2ScanRepos)
+	// fs/list powers the ScanWizard's server-side folder browser (#1529): the
+	// daemon lists its OWN filesystem so picking a folder yields its absolute
+	// path — no manual paste required.
+	mux.HandleFunc("GET /api/v2/fs/list", s.handleV2FsList)
 
 	// Docs entity browser — WebUI v2 (#1438)
 	mux.HandleFunc("GET /api/v2/groups/{group}/docs/tree", s.handleV2DocsTree)
