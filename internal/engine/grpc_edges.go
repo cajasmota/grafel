@@ -698,10 +698,24 @@ func findEnclosingGoFuncName(src string, offset int) string {
 var pyAddServicerRe = regexp.MustCompile(
 	`\w+_pb2_grpc\.add_(\w+)Servicer_to_server\s*\(\s*(\w+)\s*[(),]`)
 
-// pyStubRe captures `stub = pb2_grpc.ServiceStub(channel)`.
-// Group 1: variable name. Group 2: service name.
+// pyStubRe captures the module-qualified stub construction form:
+//
+//	stub = inventory_pb2_grpc.InventoryServiceStub(channel)
+//
+// Group 1: variable name. Group 2: service name (prefix before "Stub").
 var pyStubRe = regexp.MustCompile(
 	`(\w+)\s*=\s*\w+_pb2_grpc\.(\w+)Stub\s*\(`)
+
+// pyStubDirectRe captures the directly-imported stub form (cross-file import):
+//
+//	from inventory_pb2_grpc import InventoryServiceStub
+//	stub = InventoryServiceStub(channel)
+//
+// Group 1: variable name. Group 2: service name (prefix before "Stub").
+// Only fires when the file also contains a _pb2_grpc import so we don't
+// false-positive on unrelated "SomethingStub" class names.
+var pyStubDirectRe = regexp.MustCompile(
+	`(\w+)\s*=\s*(\w+)Stub\s*\(`)
 
 // pyMethodCallRe captures `stub.method(req)` call sites.
 // Group 1: stub variable. Group 2: method name.
@@ -793,6 +807,7 @@ func synthesizePythonGRPC(
 	// ---- Client side ----
 	stubRegistry := map[string]string{} // var name → service name
 
+	// Module-qualified form: stub = inventory_pb2_grpc.InventoryServiceStub(ch)
 	for _, m := range pyStubRe.FindAllStringSubmatch(src, -1) {
 		if len(m) < 3 {
 			continue
@@ -801,6 +816,31 @@ func synthesizePythonGRPC(
 		serviceName := m[2]
 		stubRegistry[varName] = serviceName
 		emitService(serviceName, "grpc_python_client", map[string]string{"role": "client"})
+	}
+
+	// Directly-imported form (cross-file): stub = InventoryServiceStub(ch)
+	// Only applies when the file has a _pb2_grpc import (avoids false positives).
+	if strings.Contains(src, "_pb2_grpc") {
+		for _, m := range pyStubDirectRe.FindAllStringSubmatch(src, -1) {
+			if len(m) < 3 {
+				continue
+			}
+			varName := m[1]
+			serviceName := m[2]
+			// Skip if already registered by the module-qualified form.
+			if _, exists := stubRegistry[varName]; exists {
+				continue
+			}
+			// Skip names that don't look like gRPC service stubs (must end
+			// in "Stub" — already guaranteed by the regex — and the prefix
+			// must be non-empty and not a local variable name in lower_snake).
+			// Convention: protoc-generated stub classes are PascalCase.
+			if serviceName == "" || (serviceName[0] >= 'a' && serviceName[0] <= 'z') {
+				continue
+			}
+			stubRegistry[varName] = serviceName
+			emitService(serviceName, "grpc_python_client", map[string]string{"role": "client"})
+		}
 	}
 
 	if len(stubRegistry) == 0 {

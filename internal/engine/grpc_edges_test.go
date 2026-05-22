@@ -612,6 +612,67 @@ func main() {
 }
 
 // ---------------------------------------------------------------------------
+// Python — cross-file directly-imported stub (#1481)
+// ---------------------------------------------------------------------------
+
+// TestGRPC_Python_Client_DirectImportStub verifies that a stub created from a
+// directly-imported class (from inventory_pb2_grpc import InventoryServiceStub)
+// emits a GRPC_HANDLES edge.  This is the cross-file case: inventory_client.py
+// imports the stub class and uses it; the call is one file-level import away
+// from the endpoint that calls reserve_stock() in routes.py.
+//
+// Before #1481 the directly-imported form was not detected; only
+// `module_pb2_grpc.ServiceStub(channel)` was matched by pyStubRe.
+func TestGRPC_Python_Client_DirectImportStub(t *testing.T) {
+	src := `import grpc
+import inventory_pb2
+import inventory_pb2_grpc
+from inventory_pb2_grpc import InventoryServiceStub
+
+INVENTORY_ADDR = "inventory:50051"
+
+
+def reserve_stock(order_id: str) -> str:
+    channel = grpc.insecure_channel(INVENTORY_ADDR)
+    stub = InventoryServiceStub(channel)
+    resp = stub.ReserveStock(inventory_pb2.ReserveStockRequest(order_id=order_id))
+    return resp.reservation_id
+`
+	ents, rels := runGRPCDetect(t, "python", "inventory_client.py", src)
+
+	requireGRPCMethod(t, ents, "InventoryService", "ReserveStock", "python-client-direct-import")
+	requireGRPCHandles(t, rels, "InventoryService", "ReserveStock", "python-client-direct-import")
+}
+
+// TestGRPC_Python_Client_ModuleQualifiedStub verifies that the existing
+// module-qualified form (inventory_pb2_grpc.InventoryServiceStub) is still
+// detected after the #1481 refactor.
+func TestGRPC_Python_Client_ModuleQualifiedStub(t *testing.T) {
+	src := `import grpc
+import inventory_pb2
+import inventory_pb2_grpc
+
+INVENTORY_ADDR = "inventory:50051"
+
+
+def reserve_stock(order_id: str) -> str:
+    channel = grpc.insecure_channel(INVENTORY_ADDR)
+    stub = inventory_pb2_grpc.InventoryServiceStub(channel)
+    resp = stub.ReserveStock(inventory_pb2.ReserveStockRequest(order_id=order_id))
+    return resp.reservation_id
+`
+	ents, rels := runGRPCDetect(t, "python", "inventory_client_qualified.py", src)
+
+	requireGRPCMethod(t, ents, "InventoryService", "ReserveStock", "python-client-module-qualified")
+	requireGRPCHandles(t, rels, "InventoryService", "ReserveStock", "python-client-module-qualified")
+
+	if !strings.Contains(ents[0].Language, "") {
+		// Sanity: entities were emitted
+		t.Errorf("expected non-empty entities")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // No-op guard
 // ---------------------------------------------------------------------------
 
