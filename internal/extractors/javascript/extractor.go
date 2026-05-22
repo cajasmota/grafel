@@ -99,6 +99,9 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		// considering the repo-root tsconfig.
 		aliases:  AliasMapForFile(file.RepoRoot, file.Path),
 		repoRoot: file.RepoRoot,
+		// Issue #1616 — derive the dotted module path once so emit() can
+		// stamp QualifiedName on every entity.
+		module: dottedModuleFromPath(file.Path),
 	}
 
 	// Issue #570 — emit a file-level SCOPE.Component (subtype="file")
@@ -253,6 +256,13 @@ type extractor struct {
 	entities      []types.EntityRecord
 	relationships []types.RelationshipRecord
 
+	// module — Issue #1616. The dotted module path derived from filePath
+	// (e.g. "src/stores/authReducer.js" → "src.stores.authReducer"). Set
+	// once in Extract before walk() runs. Used to populate every emitted
+	// entity's QualifiedName ("<module>.<name>"), mirroring the Python
+	// extractor (#1413). Empty when filePath is empty.
+	module string
+
 	// imports / importByLocal — issue #421. Populated once per file
 	// before walk() runs. Receiver-typed CALLS emission consults
 	// importByLocal[<typeName>] to resolve a typed receiver to the
@@ -356,6 +366,18 @@ func lines(n *sitter.Node) (int, int) {
 	return start, end
 }
 
+// qualify returns the module-path-qualified name for an emitted entity
+// (Issue #1616). Mirrors the Python extractor (#1413): "<module>.<name>",
+// falling back to the bare name when the module is empty. name may already
+// carry a dotted class path for methods (e.g. "Foo.bar"), in which case the
+// result is "<module>.Foo.bar".
+func (x *extractor) qualify(name string) string {
+	if x.module == "" {
+		return name
+	}
+	return x.module + "." + name
+}
+
 // emit appends an entity to the extraction results.
 func (x *extractor) emit(name, kind string, n *sitter.Node, subtype string, sig string) {
 	if name == "" || name == "?" {
@@ -372,14 +394,15 @@ func (x *extractor) emitWithRels(name, kind string, n *sitter.Node, subtype stri
 	}
 	start, end := lines(n)
 	e := types.EntityRecord{
-		Name:       name,
-		Kind:       kind,
-		SourceFile: x.filePath,
-		StartLine:  start,
-		EndLine:    end,
-		Language:   x.language,
-		Subtype:    subtype,
-		Signature:  sig,
+		Name:          name,
+		QualifiedName: x.qualify(name),
+		Kind:          kind,
+		SourceFile:    x.filePath,
+		StartLine:     start,
+		EndLine:       end,
+		Language:      x.language,
+		Subtype:       subtype,
+		Signature:     sig,
 		Properties: map[string]string{
 			"kind":    kind,
 			"subtype": subtype,
@@ -402,6 +425,7 @@ func (x *extractor) emitWithProps(name, kind string, n *sitter.Node, subtype str
 	start, end := lines(n)
 	e := types.EntityRecord{
 		Name:             name,
+		QualifiedName:    x.qualify(name),
 		Kind:             kind,
 		SourceFile:       x.filePath,
 		StartLine:        start,
@@ -789,6 +813,7 @@ func (x *extractor) handleInterfaceDeclaration(n *sitter.Node) {
 	start, end := lines(n)
 	e := types.EntityRecord{
 		Name:             name,
+		QualifiedName:    x.qualify(name),
 		Kind:             "SCOPE.Schema",
 		SourceFile:       x.filePath,
 		StartLine:        start,
@@ -859,6 +884,7 @@ func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
 	start, end := lines(n)
 	e := types.EntityRecord{
 		Name:             name,
+		QualifiedName:    x.qualify(name),
 		Kind:             "SCOPE.Schema",
 		SourceFile:       x.filePath,
 		StartLine:        start,
@@ -1225,15 +1251,31 @@ func (x *extractor) findInnerFunctionBody(n *sitter.Node) *sitter.Node {
 //   - stateHook=true (issue #513) → array elements at index≥1 get subtype
 //     "state_setter" so setX() calls resolve to a real entity
 //
-// Each emit is anchored to valueNode for line numbers (the LHS doesn't
-// carry useful position info beyond what's already on the declarator).
+// Issue #1616 — each binding is anchored to ITS OWN identifier node for
+// line numbers, not the shared valueNode. Previously every binding in a
+// multi-line destructure (e.g. `export const { setToken, getToken, ... } =
+// authSlice.actions;`) was pinned to the single line of the RHS member
+// expression, producing a cluster of entities all reporting the same
+// start_line. Anchoring on the bound identifier attributes each entity to
+// its real declaration line.
 func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, opLift bool, stateHook bool, parentClass string, cb *classBindings) {
 	if pattern == nil {
 		return
 	}
-	anchor := valueNode
-	if anchor == nil {
-		anchor = pattern
+	// fallbackAnchor is used only when a binding node is somehow nil; the
+	// per-binding identifier node is preferred for line attribution (#1616).
+	fallbackAnchor := valueNode
+	if fallbackAnchor == nil {
+		fallbackAnchor = pattern
+	}
+	// anchorFor returns the node to use for line numbers for a given
+	// binding: the binding's own identifier node when available, else the
+	// shared fallback (#1616).
+	anchorFor := func(bind *sitter.Node) *sitter.Node {
+		if bind != nil {
+			return bind
+		}
+		return fallbackAnchor
 	}
 	kind := "SCOPE.Component"
 	subtype := "const_destructure"
@@ -1271,7 +1313,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 					if stateHook && elemIdx >= 1 {
 						elemSubtype = "state_setter"
 					}
-					x.emit(name, kind, anchor, elemSubtype, fmt.Sprintf("%s [%s, ...]", sigPrefix, name))
+					x.emit(name, kind, anchorFor(ch), elemSubtype, fmt.Sprintf("%s [%s, ...]", sigPrefix, name))
 					elemIdx++
 				case "object_pattern", "array_pattern":
 					walk(ch, elemIdx)
@@ -1279,7 +1321,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 				case "rest_pattern":
 					if id := firstIdentifierChild(ch); id != nil {
 						name := x.nodeText(id)
-						x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s [...%s]", sigPrefix, name))
+						x.emit(name, kind, anchorFor(id), subtype, fmt.Sprintf("%s [...%s]", sigPrefix, name))
 					}
 					elemIdx++
 				case "assignment_pattern":
@@ -1287,7 +1329,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 					if left := ch.ChildByFieldName("left"); left != nil {
 						if left.Type() == "identifier" {
 							name := x.nodeText(left)
-							x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s [%s = ...]", sigPrefix, name))
+							x.emit(name, kind, anchorFor(left), subtype, fmt.Sprintf("%s [%s = ...]", sigPrefix, name))
 						} else {
 							walk(left, -1)
 						}
@@ -1297,7 +1339,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 			}
 		case "shorthand_property_identifier_pattern":
 			name := x.nodeText(p)
-			x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { %s }", sigPrefix, name))
+			x.emit(name, kind, anchorFor(p), subtype, fmt.Sprintf("%s { %s }", sigPrefix, name))
 		case "object_assignment_pattern":
 			// `{ foo = defaultValue }` — tree-sitter wraps the
 			// shorthand identifier in an object_assignment_pattern when
@@ -1308,7 +1350,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 				switch left.Type() {
 				case "shorthand_property_identifier_pattern", "identifier":
 					name := x.nodeText(left)
-					x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { %s = ... }", sigPrefix, name))
+					x.emit(name, kind, anchorFor(left), subtype, fmt.Sprintf("%s { %s = ... }", sigPrefix, name))
 				default:
 					walk(left, -1)
 				}
@@ -1323,14 +1365,14 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 			switch value.Type() {
 			case "identifier":
 				name := x.nodeText(value)
-				x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { ...: %s }", sigPrefix, name))
+				x.emit(name, kind, anchorFor(value), subtype, fmt.Sprintf("%s { ...: %s }", sigPrefix, name))
 			case "object_pattern", "array_pattern":
 				walk(value, -1)
 			case "assignment_pattern":
 				if left := value.ChildByFieldName("left"); left != nil {
 					if left.Type() == "identifier" {
 						name := x.nodeText(left)
-						x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { ...: %s = ... }", sigPrefix, name))
+						x.emit(name, kind, anchorFor(left), subtype, fmt.Sprintf("%s { ...: %s = ... }", sigPrefix, name))
 					} else {
 						walk(left, -1)
 					}
@@ -1339,20 +1381,20 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 		case "rest_pattern":
 			if id := firstIdentifierChild(p); id != nil {
 				name := x.nodeText(id)
-				x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s { ...%s }", sigPrefix, name))
+				x.emit(name, kind, anchorFor(id), subtype, fmt.Sprintf("%s { ...%s }", sigPrefix, name))
 			}
 		case "assignment_pattern":
 			if left := p.ChildByFieldName("left"); left != nil {
 				if left.Type() == "identifier" {
 					name := x.nodeText(left)
-					x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s %s = ...", sigPrefix, name))
+					x.emit(name, kind, anchorFor(left), subtype, fmt.Sprintf("%s %s = ...", sigPrefix, name))
 				} else {
 					walk(left, -1)
 				}
 			}
 		case "identifier":
 			name := x.nodeText(p)
-			x.emit(name, kind, anchor, subtype, fmt.Sprintf("%s %s", sigPrefix, name))
+			x.emit(name, kind, anchorFor(p), subtype, fmt.Sprintf("%s %s", sigPrefix, name))
 		}
 	}
 	walk(pattern, -1)
@@ -1571,6 +1613,47 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 	return rels
 }
 
+// builtinMethodNames is the set of JS/TS built-in prototype methods on
+// Array, String, Object, Promise, Map, Set, and Number that the extractor
+// must NOT emit as user-defined CALLS targets (Issue #1616). A bare
+// `<expr>.map(...)` whose receiver did not type-resolve to a user class is
+// almost always a built-in iteration/transform, not a call into the user's
+// own code; emitting it produces unresolvable bug-extractor edges and
+// spurious SCOPE.Process flow steps. The list is deliberately limited to
+// unambiguous, high-frequency built-ins.
+var builtinMethodNames = map[string]bool{
+	// Array iteration / transformation
+	"map": true, "filter": true, "reduce": true, "reduceRight": true,
+	"forEach": true, "some": true, "every": true, "find": true,
+	"findIndex": true, "findLast": true, "findLastIndex": true,
+	"flat": true, "flatMap": true, "sort": true, "reverse": true,
+	"fill": true, "copyWithin": true, "entries": true, "keys": true,
+	"values": true, "indexOf": true, "lastIndexOf": true,
+	"includes": true, "push": true, "pop": true, "shift": true,
+	"unshift": true, "splice": true,
+	// Array + String shared
+	"slice": true, "concat": true, "join": true,
+	// String
+	"trim": true, "trimStart": true, "trimEnd": true, "split": true,
+	"replace": true, "replaceAll": true, "toLowerCase": true,
+	"toUpperCase": true, "padStart": true, "padEnd": true,
+	"startsWith": true, "endsWith": true, "charAt": true,
+	"charCodeAt": true, "codePointAt": true, "substring": true,
+	"substr": true, "repeat": true, "match": true, "matchAll": true,
+	"search": true, "normalize": true, "localeCompare": true,
+	// Promise instance
+	"then": true, "catch": true, "finally": true,
+	// Number / common formatting
+	"toFixed": true, "toString": true, "toPrecision": true,
+	"valueOf": true, "hasOwnProperty": true,
+}
+
+// isBuiltinMethodName reports whether method is a JS/TS built-in prototype
+// method that should not be modeled as a user-defined CALLS target (#1616).
+func isBuiltinMethodName(method string) bool {
+	return builtinMethodNames[method]
+}
+
 // callTarget resolves the callee name from a call_expression / new_expression.
 // Returns the trailing identifier of the function expression, or "" when the
 // callee is an unsupported expression form (numeric literal, complex
@@ -1633,6 +1716,21 @@ func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
 		// to the bare method name (existing behaviour preserved).
 		if id := x.receiverNodeStdlibTarget(fn, method); id != "" {
 			return id
+		}
+		// Issue #1616 — drop CALLS edges to JS/TS built-in array, string,
+		// Object, and Promise prototype methods (.map/.filter/.reduce/
+		// .forEach/.some/.every/.find/.join/.split/.trim/.slice/...). These
+		// are language built-ins, not user-defined operations: emitting a
+		// bare-name CALLS edge to them produces unresolvable targets that
+		// the resolver dumps into bug-extractor AND, downstream, causes the
+		// process-flow builder to synthesise spurious SCOPE.Process steps
+		// (e.g. `Login → map`, `Login → trim`). We only filter when the
+		// receiver did NOT type-resolve to a user class and is NOT a Node
+		// stdlib namespace (both handled above), so a genuine user method
+		// that happens to share a built-in name (resolved via typing) is
+		// preserved.
+		if isBuiltinMethodName(method) {
+			return ""
 		}
 		return method
 	case "parenthesized_expression":
