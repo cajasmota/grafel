@@ -948,6 +948,18 @@ export interface ScanInspectReply {
   /** "pnpm" | "npm" | "turbo" | "nx" | "lerna" | "multi" | "" */
   monorepo: string;
   packages: string[];
+  /**
+   * Names of immediate child directories that contain a .git entry — the
+   * multi-repo-parent pattern (#1531 follow-up). Non-empty only when the
+   * parent dir is NOT a git repo itself but wraps N child git repos. Takes
+   * precedence over packages when both would be present.
+   */
+  childGitRepos: string[];
+  /**
+   * "git-repos" when childGitRepos is non-empty, "packages" when packages is
+   * non-empty, "" otherwise. The UI uses this to label the checkbox list.
+   */
+  childrenKind: "git-repos" | "packages" | "";
   hasAgentsMd: boolean;
   alreadyRegistered?: string;
   error?: string;
