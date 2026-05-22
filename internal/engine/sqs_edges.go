@@ -544,6 +544,14 @@ var goSQSQueueURLFieldRe = regexp.MustCompile(`QueueUrl\s*:\s*aws\.String\s*\(\s
 // Group 1 = queue name.
 var goSQSCreateRe = regexp.MustCompile(`CreateQueueInput\s*\{[^}]*?QueueName\s*:\s*aws\.String\s*\(\s*"([^"\n\r]+)"`)
 
+// goSQSQueueURLVarFieldRe captures the constant-resolved struct-field form:
+//
+//	QueueUrl: aws.String(inventoryReservedQueueURL)
+//	QueueUrl: &queueURLConst
+//
+// Group 1 = identifier name (resolved against the Go string-const table).
+var goSQSQueueURLVarFieldRe = regexp.MustCompile(`QueueUrl\s*:\s*(?:aws\.String\s*\(\s*&?|&)([A-Za-z_][A-Za-z0-9_]*)\s*\)?`)
+
 func synthesizeGoSQS(
 	src string,
 	emitQueue func(queueID, queueName string, props map[string]string),
@@ -597,6 +605,36 @@ func synthesizeGoSQS(
 	for _, m := range goSQSQueueURLFieldRe.FindAllStringSubmatchIndex(src, -1) {
 		queueURL := src[m[2]:m[3]]
 		if !looksLikeSQSQueue(queueURL) {
+			continue
+		}
+		qID := sqsQueueID(queueURL)
+		qName := sqsQueueDisplayName(queueURL)
+		ctx := surroundingText(src, m[0], 300)
+		isSend := strings.Contains(ctx, "SendMessage") || strings.Contains(ctx, "SendMessageInput")
+		isReceive := strings.Contains(ctx, "ReceiveMessage") || strings.Contains(ctx, "ReceiveMessageInput")
+		if !isSend && !isReceive {
+			continue
+		}
+		emitQueue(qID, qName, nil)
+		caller := enclosing(m[0])
+		edgeKind := subscribesToEdgeKind
+		if isSend {
+			edgeKind = publishesToEdgeKind
+		}
+		emitEdge("Function", caller, qID, edgeKind, map[string]string{
+			"messaging_layer": "aws-sdk-go-v2",
+			"queue_url":       queueURL,
+		})
+	}
+
+	// Struct-literal QueueUrl field referencing a named string constant —
+	// covers `QueueUrl: aws.String(queueURLConst)` where the URL is a
+	// package-level const rather than an inline literal.
+	consts := buildGoStringSymbolTable(src)
+	for _, m := range goSQSQueueURLVarFieldRe.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		queueURL, ok := consts[name]
+		if !ok || !looksLikeSQSQueue(queueURL) {
 			continue
 		}
 		qID := sqsQueueID(queueURL)

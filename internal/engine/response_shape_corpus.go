@@ -51,6 +51,19 @@ import (
 // for cross-file resolution in the corpus-wide response-shape pass.
 type handlerKey struct{ kind, name string }
 
+// isHTTPEndpointKind reports whether a kind is one of the three http
+// endpoint synthetic kinds. Post-#1217 the synthesizer splits endpoints
+// into http_endpoint_definition / http_endpoint_call alongside the legacy
+// http_endpoint kind; the corpus-wide response-shape pass must consider all
+// three (it previously only matched the legacy kind, leaving cross-file
+// definitions — e.g. Go gin routes whose handlers live in a sibling file —
+// with empty response shapes).
+func isHTTPEndpointKind(kind string) bool {
+	return kind == httpEndpointKind ||
+		kind == httpEndpointDefinitionKind ||
+		kind == httpEndpointCallKind
+}
+
 // CorpusFileReader returns the source bytes for a repo-relative file
 // path, or nil if not available. The corpus-wide post-pass uses this
 // to read handler source from a different file than the route
@@ -108,7 +121,7 @@ func ApplyResponseShapesCorpus(
 	byName := make(map[string][]*types.EntityRecord, len(entities))
 	for i := range entities {
 		e := &entities[i]
-		if e.Kind == httpEndpointKind {
+		if isHTTPEndpointKind(e.Kind) {
 			continue
 		}
 		k := handlerKey{e.Kind, e.Name}
@@ -152,7 +165,7 @@ func ApplyResponseShapesCorpus(
 
 	for i := range entities {
 		e := &entities[i]
-		if e.Kind != httpEndpointKind {
+		if !isHTTPEndpointKind(e.Kind) {
 			continue
 		}
 		if e.Properties == nil {

@@ -702,6 +702,38 @@ func PublishOrdersPlaced(ctx context.Context, client *sns.Client, msg string) er
 	}
 }
 
+// TestKafkaWrapper_GoSNSPublish_ConstResolved verifies that a TopicArn that
+// references a package-level string const (rather than an inline literal) is
+// resolved via the Go const table. Regression for #1553 — the ShipFast
+// inventory service publishes inventory.reserved with a named ARN const.
+func TestKafkaWrapper_GoSNSPublish_ConstResolved(t *testing.T) {
+	src := `package internal
+
+import (
+    "context"
+    "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/service/sns"
+)
+
+const inventoryReservedTopicARN = "arn:aws:sns:us-east-1:000000000000:inventory.reserved"
+
+func publishReserved(ctx context.Context, c *sns.Client, msg string) {
+    c.Publish(ctx, &sns.PublishInput{
+        TopicArn: aws.String(inventoryReservedTopicARN),
+        Message:  aws.String(msg),
+    })
+}
+`
+	ents, rels := runWrapperDetect(t, "go", "inventory/consumer.go", src)
+
+	if topicByName(ents, "inventory.reserved") == nil {
+		t.Fatalf("expected MessageTopic for inventory.reserved (const-resolved), ents=%v", ents)
+	}
+	if len(edgesOfKind(rels, publishesToEdgeKind)) == 0 {
+		t.Fatalf("expected PUBLISHES_TO edge, rels=%v", rels)
+	}
+}
+
 // TestKafkaWrapper_SNSTopicNameFromARN exercises the ARN-to-name extractor.
 func TestKafkaWrapper_SNSTopicNameFromARN(t *testing.T) {
 	cases := []struct {

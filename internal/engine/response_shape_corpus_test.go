@@ -289,6 +289,73 @@ class UserDto {
 	}
 }
 
+// TestCorpusResponseShape_GoDefinitionKindCrossFile is a regression for
+// #1553: the corpus pass previously only matched the legacy http_endpoint
+// kind, so post-#1217 http_endpoint_definition entities (e.g. a Go gin route
+// whose handler + struct live in a sibling file) never had their response
+// shapes resolved cross-file. This exercises the http_endpoint_definition
+// path end-to-end.
+func TestCorpusResponseShape_GoDefinitionKindCrossFile(t *testing.T) {
+	handlerContent := []byte(`package internal
+
+import "github.com/gin-gonic/gin"
+import "net/http"
+
+type Shipment struct {
+    OrderID  string ` + "`json:\"order_id\"`" + `
+    Carrier  string ` + "`json:\"carrier\"`" + `
+    Status   string ` + "`json:\"status\"`" + `
+}
+
+func GetShipment(c *gin.Context) {
+    c.JSON(http.StatusOK, Shipment{OrderID: "x", Status: "IN_TRANSIT"})
+}
+`)
+
+	entities := []types.EntityRecord{
+		{
+			Kind:       "Function",
+			Name:       "GetShipment",
+			SourceFile: "shipping/internal/handlers.go",
+			Language:   "go",
+		},
+		{
+			Kind:       httpEndpointDefinitionKind,
+			Name:       "http:GET:/shipments/{orderId}",
+			SourceFile: "shipping/main.go",
+			Language:   "go",
+			Properties: map[string]string{
+				"framework":      "gin",
+				"verb":           "GET",
+				"path":           "/shipments/{orderId}",
+				"pattern_type":   "http_endpoint_synthesis",
+				"source_handler": "Function:GetShipment",
+			},
+		},
+	}
+
+	reader := func(p string) []byte {
+		if p == "shipping/internal/handlers.go" {
+			return handlerContent
+		}
+		return nil
+	}
+
+	stats := ApplyResponseShapesCorpus(entities, nil, reader)
+	if stats.Endpoints != 1 {
+		t.Fatalf("Endpoints=%d want 1 (definition kind must be considered); stats=%+v", stats.Endpoints, stats)
+	}
+	if stats.ShapeExtracted != 1 {
+		t.Fatalf("ShapeExtracted=%d want 1; stats=%+v", stats.ShapeExtracted, stats)
+	}
+	got := entities[1].Properties["response_keys"]
+	for _, k := range []string{"order_id", "carrier", "status"} {
+		if !csvContains(got, k) {
+			t.Errorf("response_keys=%q missing %q", got, k)
+		}
+	}
+}
+
 // csvContains is a tiny helper that checks if a comma-joined string
 // contains a value (used to keep test assertions readable).
 func csvContains(csv, want string) bool {

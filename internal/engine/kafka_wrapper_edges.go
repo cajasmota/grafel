@@ -747,13 +747,24 @@ func synthesizeNodeSNSPublish(
 	}
 }
 
-// goAWSSNSPublishRe captures Go AWS SDK v2:
+// goAWSSNSPublishRe captures Go AWS SDK v2 with a literal ARN:
 //
 //	snsClient.Publish(ctx, &sns.PublishInput{TopicArn: aws.String("arn:..."), ...})
 //
 // Group 1 = TopicArn value.
 var goAWSSNSPublishRe = regexp.MustCompile(
 	`TopicArn\s*:\s*(?:aws\.String\s*\(\s*)?["` + "`" + `]([^"` + "`" + `\n\r]+)["` + "`" + `]`,
+)
+
+// goAWSSNSPublishVarRe captures the constant-resolved form where the ARN is a
+// package-level identifier rather than an inline string literal:
+//
+//	TopicArn: aws.String(inventoryReservedTopicARN)
+//	TopicArn: &topicARNConst
+//
+// Group 1 = identifier name (resolved against the Go const/var table).
+var goAWSSNSPublishVarRe = regexp.MustCompile(
+	`TopicArn\s*:\s*(?:aws\.String\s*\(\s*&?|&)([A-Za-z_][A-Za-z0-9_]*)\s*\)?`,
 )
 
 func synthesizeGoSNSPublish(
@@ -773,20 +784,40 @@ func synthesizeGoSNSPublish(
 		return findEnclosingGoName(src, offset)
 	}
 
-	for _, m := range goAWSSNSPublishRe.FindAllStringSubmatchIndex(src, -1) {
-		arn := src[m[2]:m[3]]
+	emit := func(offset int, arn string) {
 		topicName := snsTopicNameFromARN(arn)
 		if !looksLikeKafkaTopic(topicName) {
-			continue
+			return
 		}
 		id := snsTopicID(topicName)
 		emitTopic(id, topicName, "sns", map[string]string{
 			"messaging_layer": "aws-sdk-go-v2",
 			"arn":             arn,
 		})
-		emitEdge("Function", enclosing(m[0]), id, publishesToEdgeKind, map[string]string{
+		emitEdge("Function", enclosing(offset), id, publishesToEdgeKind, map[string]string{
 			"broker":          "sns",
 			"messaging_layer": "aws-sdk-go-v2",
 		})
+	}
+
+	// Literal ARN form.
+	litSpans := map[int]bool{}
+	for _, m := range goAWSSNSPublishRe.FindAllStringSubmatchIndex(src, -1) {
+		litSpans[m[0]] = true
+		emit(m[0], src[m[2]:m[3]])
+	}
+
+	// Constant-resolved form: TopicArn: aws.String(NAME) / &NAME.
+	consts := buildGoStringSymbolTable(src)
+	for _, m := range goAWSSNSPublishVarRe.FindAllStringSubmatchIndex(src, -1) {
+		if litSpans[m[0]] {
+			continue // already handled as a literal
+		}
+		name := src[m[2]:m[3]]
+		arn, ok := consts[name]
+		if !ok {
+			continue
+		}
+		emit(m[0], arn)
 	}
 }

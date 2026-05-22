@@ -244,6 +244,30 @@ def test_get_user():
 	}
 }
 
+// TestPytest_AsyncDef is a regression for #1553: async test functions
+// (`async def test_*`) were not detected because the pytest function regex
+// only matched a leading `def`. The ShipFast orders integration test is an
+// `async def`, so no TESTS edge formed and the endpoint Tests section stayed
+// empty.
+func TestPytest_AsyncDef(t *testing.T) {
+	src := `import pytest
+from app.routes import create_order
+
+@pytest.mark.asyncio
+async def test_create_order_publishes_event(monkeypatch):
+    result = await create_order({"user_id": "u1"}, _claims={})
+    assert result["status"] == "PENDING"
+`
+	recs := runExtract(t, "tests/test_orders.py", "python", src)
+	rec := findByTested(t, recs, "test_create_order_publishes_event", "create_order")
+	if rec.Properties["test_framework"] != "pytest" {
+		t.Errorf("framework=%q", rec.Properties["test_framework"])
+	}
+	if rec.Properties["confidence"] != "high" {
+		t.Errorf("confidence=%q, want high", rec.Properties["confidence"])
+	}
+}
+
 func TestPytest_MockerPatchMedium(t *testing.T) {
 	src := `import pytest
 def test_mocked(mocker):

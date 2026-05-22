@@ -258,6 +258,38 @@ func Poll(ctx context.Context, client *sqs.Client) {
 	}
 }
 
+// TestSQS_Go_ReceiveMessage_ConstResolved verifies that a QueueUrl referencing
+// a package-level const (rather than an inline literal) is resolved via the Go
+// const table. Regression for #1553 — the ShipFast shipping service receives
+// from the inventory-reserved queue using a named queue-URL const.
+func TestSQS_Go_ReceiveMessage_ConstResolved(t *testing.T) {
+	src := `package internal
+
+import (
+    "context"
+    "github.com/aws/aws-sdk-go-v2/service/sqs"
+    "github.com/aws/aws-sdk-go-v2/aws"
+)
+
+const inventoryReservedQueueURL = "https://sqs.us-east-1.amazonaws.com/000000000000/inventory-reserved"
+
+func pollOnce(ctx context.Context, c *sqs.Client) {
+    out, _ := c.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
+        QueueUrl: aws.String(inventoryReservedQueueURL),
+    })
+    _ = out
+}
+`
+	ents, rels := runSQSDetect(t, "go", "consumer.go", src)
+	qID := sqsQueueID("inventory-reserved")
+	if queueByName(ents, qID) == nil {
+		t.Fatalf("expected SCOPE.Queue for inventory-reserved (const-resolved), ents=%v", ents)
+	}
+	if len(relsByKind(rels, subscribesToEdgeKind)) == 0 {
+		t.Fatalf("expected SUBSCRIBES_TO edge, rels=%v", rels)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Helpers and guards
 // ---------------------------------------------------------------------------

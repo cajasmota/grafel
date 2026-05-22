@@ -228,7 +228,7 @@ func detectGoTest(source string) []testFunction {
 // ---------------------------------------------------------------------------
 
 var pytestFuncRE = regexp.MustCompile(
-	`(?m)^([ \t]*)def\s+(test_\w+)\s*\([^)]*\)\s*(?:->\s*[\w\[\], ]+)?\s*:`,
+	`(?m)^([ \t]*)(?:async\s+)?def\s+(test_\w+)\s*\([^)]*\)\s*(?:->\s*[\w\[\], ]+)?\s*:`,
 )
 
 func detectPytest(source string) []testFunction {
