@@ -77,6 +77,46 @@ export function loadLayout(group: string, nodeIds: string[]): LayoutCacheEntry |
   }
 }
 
+/**
+ * Fix #1567-2: detect a DEGENERATE (over-contracted / collapsed) cached layout.
+ * The bug: doSettle's cap timer can fire while the sim is still mid-collapse, so
+ * the cache snapshots a contracted blob; reloading then renders that blob (Reset
+ * re-runs the sim → good spread). We treat a layout as degenerate when its
+ * bounding box is tiny relative to the node count — i.e. the nodes are all piled
+ * near one point instead of spread across the canvas. A well-settled layout for N
+ * nodes spans roughly sqrt(N)*spacing; if the actual span is far below that the
+ * cache is bad and the caller should re-settle (skip the cache) instead.
+ */
+export function isDegenerateLayout(positions: Float32Array): boolean {
+  const n = positions.length / 2;
+  if (n < 2) return false;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = positions[i * 2];
+    const y = positions[i * 2 + 1];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return true; // garbage → degenerate
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  const span = Math.max(spanX, spanY);
+  // Degenerate = the cloud has COLLAPSED toward a point — its span is tiny
+  // relative to the node count. A healthy cosmos.gl settle spreads roughly
+  // sqrt(n) × ~10 units of span (empirically ~584 for 3000 nodes); a contracted /
+  // mid-collapse snapshot is many times smaller. We threshold well BELOW the
+  // healthy span (sqrt(n) × 3, ≈164 for 3000) so a good spread is never rejected,
+  // while a true collapse (all nodes piled together) still trips it. The floor
+  // (40) catches the fully-collapsed case on tiny graphs.
+  const minHealthySpan = Math.max(40, Math.sqrt(n) * 3);
+  return span < minHealthySpan;
+}
+
 export function clearLayout(group: string, nodeIds: string[]): void {
   try {
     localStorage.removeItem(layoutKey(group, nodeIds));
