@@ -1,0 +1,160 @@
+/* ============================================================
+   hooks/use-operations.ts — Operations screen data hooks.
+
+   Per the Lego layering: screens never call api.* directly;
+   they go through TanStack Query hooks defined here.
+
+   Covers: System status, logs, updates, patterns, quality/orphan audit,
+   recall measurement.
+   ============================================================ */
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+
+// ---------------------------------------------------------------------------
+// System panel
+// ---------------------------------------------------------------------------
+
+export const systemStatusKey = () => ["ops", "system"] as const;
+
+/** Polls GET /api/system every 5 s. */
+export function useSystemStatus() {
+  return useQuery({
+    queryKey: systemStatusKey(),
+    queryFn: () => api.getSystemStatus(),
+    refetchInterval: 5000,
+    retry: 1,
+  });
+}
+
+export function useRestartDaemon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.restartDaemon(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: systemStatusKey() }),
+  });
+}
+
+export function useStopDaemon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.stopDaemon(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: systemStatusKey() }),
+  });
+}
+
+export const logsKey = (params: { n?: number; q?: string; severity?: string }) =>
+  ["ops", "logs", params] as const;
+
+export function useSystemLogs(params?: { n?: number; q?: string; severity?: string }) {
+  return useQuery({
+    queryKey: logsKey(params ?? {}),
+    queryFn: () => api.getSystemLogs(params),
+    retry: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Updates
+// ---------------------------------------------------------------------------
+
+export const updateCheckKey = () => ["ops", "updates"] as const;
+
+export function useUpdateCheck() {
+  return useQuery({
+    queryKey: updateCheckKey(),
+    queryFn: () => api.checkForUpdates(),
+    // Don't auto-refresh — user triggers manually or on mount.
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Patterns
+// ---------------------------------------------------------------------------
+
+export const patternsKey = (groupId: string, filters?: { needs_attention?: boolean; status?: string; confidence_min?: number }) =>
+  ["ops", "patterns", groupId, filters] as const;
+
+export function usePatterns(groupId: string, filters?: { needs_attention?: boolean; status?: string; confidence_min?: number }) {
+  return useQuery({
+    queryKey: patternsKey(groupId, filters),
+    queryFn: () => api.listPatterns(groupId, filters),
+    enabled: !!groupId,
+    retry: 1,
+  });
+}
+
+export function useDeletePattern(groupId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patternId: string) => api.deletePattern(groupId, patternId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ops", "patterns", groupId] }),
+  });
+}
+
+export function usePatternGC(groupId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dryRun: boolean) => api.runPatternGC(groupId, dryRun),
+    onSuccess: (_data, dryRun) => {
+      // Only invalidate on actual GC (not dry-run preview).
+      if (!dryRun) void qc.invalidateQueries({ queryKey: ["ops", "patterns", groupId] });
+    },
+  });
+}
+
+export function useExportPatterns(groupId: string) {
+  return useMutation({
+    mutationFn: (target: { file?: string; repo?: string }) => api.exportPatterns(groupId, target),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Quality — orphan audit
+// ---------------------------------------------------------------------------
+
+export const orphanAuditKey = (groupId: string) => ["ops", "orphan-audit", groupId] as const;
+
+export function useOrphanAudit(groupId: string) {
+  return useQuery({
+    queryKey: orphanAuditKey(groupId),
+    queryFn: () => api.getOrphanAudit(groupId),
+    enabled: !!groupId,
+    // Don't auto-refresh; user triggers manually.
+    staleTime: Infinity,
+    retry: 1,
+  });
+}
+
+export function useRunOrphanAudit(groupId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.getOrphanAudit(groupId),
+    onSuccess: (data) => {
+      qc.setQueryData(orphanAuditKey(groupId), data);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Quality — recall measurement
+// ---------------------------------------------------------------------------
+
+export const fixturesKey = () => ["ops", "quality", "fixtures"] as const;
+
+export function useQualityFixtures() {
+  return useQuery({
+    queryKey: fixturesKey(),
+    queryFn: () => api.listQualityFixtures(),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useRunRecall(groupId?: string) {
+  return useMutation({
+    mutationFn: (fixture: string) => api.runRecall(fixture, groupId),
+  });
+}

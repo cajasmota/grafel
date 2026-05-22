@@ -780,3 +780,173 @@ export interface OrphansResponse {
     template_literal: number;
   };
 }
+
+// ----------------------------------------------------------------
+// Operations screen types (mirrors handlers_system/patterns/quality/updates)
+// ----------------------------------------------------------------
+
+/** Wire shape for GET /api/system */
+export interface SystemStatus {
+  status: "running" | "stopped" | "unhealthy";
+  uptime_seconds?: number;
+  uptime_human?: string;
+  pid: number;
+  rss_mb: number;
+  rss_budget_mb?: number;
+  socket_path?: string;
+  dashboard_url?: string;
+  version: string;
+  commit_sha: string;
+  built_at: string;
+  days_since_build?: number;
+  stale_build: boolean;
+}
+
+/** Wire shape for POST /api/system/restart and /api/system/stop */
+export interface SystemActionReply {
+  ok: boolean;
+  message: string;
+}
+
+/** One log line from GET /api/system/logs */
+export interface LogLine {
+  raw: string;
+  severity: "error" | "warn" | "info" | "debug";
+}
+
+/** Wire shape for GET /api/system/logs */
+export interface SystemLogsReply {
+  lines: LogLine[];
+  total: number;
+  path: string;
+}
+
+/** Wire shape for GET /api/updates/check */
+export interface UpdateCheckReply {
+  current_version: string;
+  current_commit: string;
+  current_built_at: string;
+  latest_version: string;
+  latest_tag: string;
+  latest_body: string;
+  latest_html_url: string;
+  published_at?: string;
+  update_available: boolean;
+  fetch_error?: string;
+  checked_at: string;
+}
+
+/** One pattern row from GET /api/patterns/{group} */
+export interface PatternRow {
+  id: string;
+  kind: string;
+  category: string;
+  trigger: string;
+  confidence: number;
+  observations: number;
+  last_seen: string;
+  status: "active" | "candidate" | "rejected";
+  is_candidate: boolean;
+  needs_attention: boolean;
+  stale: boolean;
+  reject_reason: string;
+  approval_note: string;
+  steps: string[];
+  anti_patterns: unknown[];
+  exemplars: unknown[];
+  touches: number;
+  scope: string;
+  convergence_count: number;
+}
+
+/** Stats header for patterns */
+export interface PatternStats {
+  total: number;
+  pending_review: number;
+  rejected: number;
+  stale: number;
+  needs_attention: number;
+}
+
+/** Wire shape for GET /api/patterns/{group} */
+export interface PatternsListReply {
+  patterns: PatternRow[];
+  count: number;
+  stats: PatternStats;
+}
+
+/** Wire shape for DELETE /api/patterns/{group}/{id} */
+export interface PatternDeleteReply {
+  deleted: string;
+}
+
+/** Wire shape for POST /api/patterns/{group}/gc */
+export interface PatternGCReply {
+  dry_run: boolean;
+  pruned_count: number;
+  pruned: PatternRow[];
+  remaining_count: number;
+  candidate_decay_days: number;
+}
+
+/** Orphan audit totals */
+export interface OrphanAuditTotals {
+  entities: number;
+  orphans: number;
+  orphan_rate: number;
+}
+
+/** Per-repo orphan stats */
+export interface RepoOrphanStats {
+  slug: string;
+  path: string;
+  entities: number;
+  orphans: number;
+  orphan_rate: number;
+  risk_score: number;
+}
+
+/** Per-kind orphan stats */
+export interface KindStat {
+  kind: string;
+  count: number;
+  orphan_rate: number;
+}
+
+/** Recommendation item from orphan audit */
+export interface RecommendationItem {
+  priority: number;
+  issue: string;
+  affected_repos: number;
+  recoverable_entities_estimate: number;
+}
+
+/** Wire shape for GET /api/quality/orphans/{group} */
+export interface OrphanAuditReply {
+  group: string;
+  audited_at: string;
+  total: OrphanAuditTotals;
+  per_repo: RepoOrphanStats[];
+  per_kind: KindStat[];
+  health_score: number;
+  recommendations: RecommendationItem[];
+}
+
+/** Golden fixture entry */
+export interface FixturesReply {
+  fixtures: string[];
+}
+
+/** Wire shape for POST /api/quality/recall */
+export interface RecallReply {
+  fixture: string;
+  entity_recall: number;
+  relationship_recall: number;
+  entity_expected: number;
+  entity_found: number;
+  relationship_expected: number;
+  relationship_found: number;
+  missing_relationships: { source_id: string; target_id: string; kind: string }[];
+  errors: string[];
+  elapsed_ms: number;
+}

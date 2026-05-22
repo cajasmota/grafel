@@ -31,6 +31,17 @@ import type {
   PathsListResponse,
   PathDetail,
   OrphansResponse,
+  SystemStatus,
+  SystemActionReply,
+  SystemLogsReply,
+  UpdateCheckReply,
+  PatternsListReply,
+  PatternRow,
+  PatternDeleteReply,
+  PatternGCReply,
+  OrphanAuditReply,
+  FixturesReply,
+  RecallReply,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -286,6 +297,80 @@ export const api = {
   /** GET /api/v2/groups/:id/paths/orphans — orphan caller list. */
   listOrphans: (groupId: string) =>
     requestV2<OrphansResponse>(`/groups/${encodeURIComponent(groupId)}/paths/orphans`),
+
+  // --- Operations screen (system / patterns / quality / updates) ---
+  // These call the existing v1 endpoints; no v2 wrapper needed since
+  // the data shapes are stable and the Operations surface is new.
+
+  /** GET /api/system — live daemon status snapshot. */
+  getSystemStatus: () => request<SystemStatus>("/system"),
+
+  /** POST /api/system/restart — signal daemon to restart (confirm required). */
+  restartDaemon: () =>
+    request<SystemActionReply>("/system/restart", { method: "POST" }),
+
+  /** POST /api/system/stop — SIGTERM daemon (danger, confirm required). */
+  stopDaemon: () =>
+    request<SystemActionReply>("/system/stop", { method: "POST" }),
+
+  /** GET /api/system/logs — tail of daemon.log. */
+  getSystemLogs: (params?: { n?: number; q?: string; severity?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.n) qs.set("n", String(params.n));
+    if (params?.q) qs.set("q", params.q);
+    if (params?.severity) qs.set("severity", params.severity);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<SystemLogsReply>(`/system/logs${suffix}`);
+  },
+
+  /** GET /api/updates/check — fetch latest GitHub release info. */
+  checkForUpdates: () => request<UpdateCheckReply>("/updates/check"),
+
+  /** GET /api/patterns/{group} — list agent-learned patterns. */
+  listPatterns: (groupId: string, params?: { needs_attention?: boolean; status?: string; confidence_min?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.needs_attention) qs.set("needs_attention", "true");
+    if (params?.status) qs.set("status", params.status);
+    if (params?.confidence_min != null) qs.set("confidence_min", String(params.confidence_min));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<PatternsListReply>(`/patterns/${encodeURIComponent(groupId)}${suffix}`);
+  },
+
+  /** GET /api/patterns/{group}/{id} — single pattern detail. */
+  getPattern: (groupId: string, patternId: string) =>
+    request<PatternRow>(`/patterns/${encodeURIComponent(groupId)}/${encodeURIComponent(patternId)}`),
+
+  /** DELETE /api/patterns/{group}/{id} — delete a pattern. */
+  deletePattern: (groupId: string, patternId: string) =>
+    request<PatternDeleteReply>(`/patterns/${encodeURIComponent(groupId)}/${encodeURIComponent(patternId)}`, { method: "DELETE" }),
+
+  /** POST /api/patterns/{group}/gc — GC dry-run or execute. */
+  runPatternGC: (groupId: string, dryRun = true) =>
+    request<PatternGCReply>(`/patterns/${encodeURIComponent(groupId)}/gc`, {
+      method: "POST",
+      body: JSON.stringify({ dry_run: dryRun }),
+    }),
+
+  /** POST /api/patterns/{group}/export — export approved patterns to CLAUDE.md. */
+  exportPatterns: (groupId: string, target: { file?: string; repo?: string }) =>
+    request<{ exported: number; target: string }>(`/patterns/${encodeURIComponent(groupId)}/export`, {
+      method: "POST",
+      body: JSON.stringify(target),
+    }),
+
+  /** GET /api/quality/orphans/{group} — orphan audit for a group. */
+  getOrphanAudit: (groupId: string) =>
+    request<OrphanAuditReply>(`/quality/orphans/${encodeURIComponent(groupId)}`),
+
+  /** GET /api/quality/fixtures — list golden fixture names. */
+  listQualityFixtures: () => request<FixturesReply>("/quality/fixtures"),
+
+  /** POST /api/quality/recall — recall measurement against a fixture. */
+  runRecall: (fixture: string, groupId?: string) =>
+    request<RecallReply>("/quality/recall", {
+      method: "POST",
+      body: JSON.stringify({ fixture, group: groupId }),
+    }),
 };
 
 export type Api = typeof api;
