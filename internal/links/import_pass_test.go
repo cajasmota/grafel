@@ -2,6 +2,7 @@ package links
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,10 +48,17 @@ func TestImportPass_SkipsBareNameExt(t *testing.T) {
 	}
 }
 
-// TestImportPass_EmitsQualifiedExt verifies the converse: qualified
-// "ext:<module>:<name>" placeholders (e.g. `ext:react:useState`) DO
-// carry real module identity and remain eligible for cross-repo
-// linking when two repos point at the same qualified ID.
+// TestImportPass_EmitsQualifiedExt was the converse of #509: qualified
+// "ext:<module>:<name>" placeholders (e.g. `ext:react:useState`) were
+// eligible for cross-repo linking when two repos referenced the same ID.
+//
+// Issue #1507 supersedes this: any ext:* ID that appears in more than one
+// repo is a shared external placeholder with no stable repo owner; emitting
+// a directional cross-repo link between the two consuming repos (e.g.
+// beta::b_comp → alpha::ext:react:useState) implies beta imports from alpha
+// when in reality both repos independently depend on the react library.
+// Guard B in runImportPass removes all multi-repo ext:* IDs from entRepo,
+// so zero import-method links are emitted in this scenario.
 func TestImportPass_EmitsQualifiedExt(t *testing.T) {
 	root := fixtureRoot(t)
 	writeFixture(t, root, fixtureGraph{
@@ -81,22 +89,29 @@ func TestImportPass_EmitsQualifiedExt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var count int
+	// Guard B (#1507): ext:react:useState appears in both repos → removed
+	// from entRepo → no import-method link is emitted between the two repos.
 	for _, l := range doc.Links {
 		if l.Method == MethodImport {
-			count++
+			t.Errorf("expected zero import-method links for shared ext:react:useState (#1507 Guard B); got %+v", l)
 		}
-	}
-	if count != 1 {
-		t.Fatalf("expected exactly 1 import-method link for ext:react:useState, got %d (%+v)", count, doc.Links)
 	}
 }
 
-// TestImportPass_EmitsSharedPackageExt is the issue #566 fix:
+// TestImportPass_EmitsSharedPackageExt was the issue #566 fix:
 // real npm packages emitted by external-synth as `ext:<package>`
-// (single colon, subtype="package") MUST produce cross-repo links when
-// two repos share the placeholder. #509 was over-aggressive and
-// dropped these alongside true bare-name built-ins.
+// (single colon, subtype="package") produced cross-repo links when two
+// repos shared the placeholder.
+//
+// Issue #1507 supersedes this: the directional cross-repo link
+// (beta::b_local → alpha::ext:axios) was misleading — it implied beta
+// imports from alpha when both repos independently depend on axios.
+// Guard B in runImportPass removes all multi-repo ext:* IDs from entRepo,
+// so zero import-method links are emitted for shared external packages.
+//
+// The isBuiltinExt gate (#509 fix) remains: bare-name ext:* with no
+// subtype=package is still filtered. This test now documents that
+// subtype=package shared ext:* links are also suppressed by Guard B.
 func TestImportPass_EmitsSharedPackageExt(t *testing.T) {
 	root := fixtureRoot(t)
 	writeFixture(t, root, fixtureGraph{
@@ -127,14 +142,12 @@ func TestImportPass_EmitsSharedPackageExt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var imports []Link
+	// Guard B (#1507): ext:axios appears in both repos → removed from
+	// entRepo → no import-method link is emitted between alpha and beta.
 	for _, l := range doc.Links {
 		if l.Method == MethodImport {
-			imports = append(imports, l)
+			t.Errorf("expected zero import-method links for shared ext:axios (#1507 Guard B); got %+v", l)
 		}
-	}
-	if len(imports) == 0 {
-		t.Fatalf("expected ≥1 import-method links for shared ext:axios (subtype=package), got 0; links=%+v", doc.Links)
 	}
 }
 
@@ -249,11 +262,13 @@ func TestImportPass_SameModuleDifferentName(t *testing.T) {
 	}
 }
 
-// TestImportPass_ScopedNpmPackage covers case (e) of #566:
-// scoped npm packages like `@tanstack/react-query` are emitted as
-// `ext:@tanstack/react-query` — a single-colon ID containing a slash.
-// Pre-#566 the second-colon test dropped these; the subtype="package"
-// admission restores them.
+// TestImportPass_ScopedNpmPackage covers scoped npm packages like
+// `@tanstack/react-query` emitted as `ext:@tanstack/react-query`.
+// Pre-#566 the second-colon test dropped these. Post-#1507 Guard B
+// suppresses the cross-repo link when both repos share the placeholder,
+// because the directional link was misleading (implies alpha imports from
+// beta when both independently depend on the package). Guard B removes any
+// ext:* ID that appears in more than one repo from entRepo.
 func TestImportPass_ScopedNpmPackage(t *testing.T) {
 	root := fixtureRoot(t)
 	writeFixture(t, root, fixtureGraph{
@@ -280,14 +295,12 @@ func TestImportPass_ScopedNpmPackage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var imports int
+	// Guard B (#1507): ext:@tanstack/react-query appears in both repos →
+	// removed from entRepo → no import-method link is emitted.
 	for _, l := range doc.Links {
 		if l.Method == MethodImport {
-			imports++
+			t.Errorf("expected zero import-method links for shared scoped npm package (#1507 Guard B); got %+v", l)
 		}
-	}
-	if imports == 0 {
-		t.Fatalf("expected ≥1 import-method links for shared scoped npm package, got 0; links=%+v", doc.Links)
 	}
 }
 
@@ -425,6 +438,173 @@ func TestImportPass_HTTPEndpointDoesNotMatchAcrossDifferentNames(t *testing.T) {
 	for _, l := range doc.Links {
 		if l.Method == MethodImport {
 			t.Errorf("expected no import links for mismatched http_endpoint Names; got %+v", l)
+		}
+	}
+}
+
+// TestImportPass_NoSpuriousLinksViaSharedExtPlaceholder is the regression
+// test for issue #1507. Four repos all import the same Python shared-lib
+// (`py_shared`), producing `ext:py_shared` entities in each. The linker
+// must NOT emit cross-repo links between the consuming services (orders,
+// analytics, order-saga, workers) — those services don't import each other.
+//
+// Guard B (multi-origin): ext:py_shared appears in 4 repos → removed from
+// entRepo → no spurious import links are emitted.
+func TestImportPass_NoSpuriousLinksViaSharedExtPlaceholder(t *testing.T) {
+	root := fixtureRoot(t)
+	services := []string{"orders", "analytics", "order-saga", "workers"}
+	for _, svc := range services {
+		writeFixture(t, root, fixtureGraph{
+			Repo: svc,
+			Entities: []map[string]any{
+				{"id": svc + "_local", "name": "handler", "kind": "function", "source_file": "app/main.py"},
+				// Each service emits an ext:py_shared entity (subtype=package)
+				// when it resolves `import py_shared` through the external synth.
+				{"id": "ext:py_shared", "name": "py_shared", "kind": "SCOPE.External", "subtype": "package", "source_file": ""},
+			},
+			Edges: []map[string]string{
+				{"from_id": svc + "_local", "to_id": "ext:py_shared", "kind": "imports"},
+			},
+		})
+	}
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g1507-multiservice", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g1507-multiservice-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method != MethodImport {
+			continue
+		}
+		srcRepo := l.Source
+		if i := strings.Index(srcRepo, "::"); i >= 0 {
+			srcRepo = srcRepo[:i]
+		}
+		tgtRepo := l.Target
+		if i := strings.Index(tgtRepo, "::"); i >= 0 {
+			tgtRepo = tgtRepo[:i]
+		}
+		// None of the services import each other — any import link between
+		// two service repos is spurious.
+		for _, s1 := range services {
+			for _, s2 := range services {
+				if s1 != s2 && srcRepo == s1 && tgtRepo == s2 {
+					t.Errorf("spurious import link %s → %s (should be zero); link=%+v", s1, s2, l)
+				}
+			}
+		}
+	}
+}
+
+// TestImportPass_NoSpuriousLinkWhenExtNameMatchesGroupedRepo verifies Guard A
+// (issue #1507): when the base name of an ext:* ID matches a repo slug in the
+// indexed group, the entity is removed from entRepo and no spurious cross-repo
+// import links are produced between the consuming services.
+//
+// Scenario: "py-shared" is an indexed repo. "orders" and "analytics" both
+// emit `ext:py_shared` (guard A normalises hyphens to underscores). The
+// linker must not create orders→analytics or analytics→orders links.
+func TestImportPass_NoSpuriousLinkWhenExtNameMatchesGroupedRepo(t *testing.T) {
+	root := fixtureRoot(t)
+	// The actual shared-lib repo (no edges pointing at ext:py_shared).
+	writeFixture(t, root, fixtureGraph{
+		Repo: "py-shared",
+		Entities: []map[string]any{
+			{"id": "pyshared_order_model", "name": "Order", "kind": "SCOPE.Component", "source_file": "py_shared/models.py"},
+		},
+		Edges: []map[string]string{},
+	})
+	// Consuming services — both emit ext:py_shared as an external placeholder.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "orders",
+		Entities: []map[string]any{
+			{"id": "orders_handler", "name": "create_order", "kind": "function", "source_file": "app/routes.py"},
+			{"id": "ext:py_shared", "name": "py_shared", "kind": "SCOPE.External", "subtype": "package", "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "orders_handler", "to_id": "ext:py_shared", "kind": "imports"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "analytics",
+		Entities: []map[string]any{
+			{"id": "analytics_main", "name": "process", "kind": "function", "source_file": "analytics/main.py"},
+			{"id": "ext:py_shared", "name": "py_shared", "kind": "SCOPE.External", "subtype": "package", "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "analytics_main", "to_id": "ext:py_shared", "kind": "imports"},
+		},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g1507-reponame", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g1507-reponame-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method != MethodImport {
+			continue
+		}
+		// No import-method links should exist between the consuming services.
+		srcRepo := l.Source
+		if i := strings.Index(srcRepo, "::"); i >= 0 {
+			srcRepo = srcRepo[:i]
+		}
+		tgtRepo := l.Target
+		if i := strings.Index(tgtRepo, "::"); i >= 0 {
+			tgtRepo = tgtRepo[:i]
+		}
+		if (srcRepo == "orders" && tgtRepo == "analytics") ||
+			(srcRepo == "analytics" && tgtRepo == "orders") {
+			t.Errorf("spurious import link between consuming services %s→%s; link=%+v", srcRepo, tgtRepo, l)
+		}
+	}
+}
+
+// TestImportPass_NoSpuriousLinkTwoReposSharedExt verifies that Guard B
+// suppresses cross-repo links even for the two-repo shared-external case.
+// Previously #566 emitted a link when exactly two repos shared ext:axios;
+// issue #1507 removes this: the directional link (bff::fn → frontend::ext:axios)
+// implies bff imports from frontend when both simply depend on the axios library.
+func TestImportPass_NoSpuriousLinkTwoReposSharedExt(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fe_comp", "name": "FetchUser", "kind": "function", "source_file": "src/api.ts"},
+			{"id": "ext:axios", "name": "axios", "kind": "SCOPE.External", "subtype": "package", "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "fe_comp", "to_id": "ext:axios", "kind": "imports"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "bff",
+		Entities: []map[string]any{
+			{"id": "bff_comp", "name": "ProxyRequest", "kind": "function", "source_file": "src/proxy.ts"},
+			{"id": "ext:axios", "name": "axios", "kind": "SCOPE.External", "subtype": "package", "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "bff_comp", "to_id": "ext:axios", "kind": "imports"},
+		},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g1507-twoaxios", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g1507-twoaxios-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Guard B (#1507): ext:axios in both repos → no cross-repo import link.
+	for _, l := range doc.Links {
+		if l.Method == MethodImport {
+			t.Errorf("expected zero import-method links for two-repo shared ext:axios; got %+v", l)
 		}
 	}
 }

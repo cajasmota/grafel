@@ -138,13 +138,70 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 	// the JS repo's `local → ext:log` consults the JS repo's subtype
 	// (function) and the bare-name filter rejects it correctly.
 	subtypeByRepo := map[string]map[string]string{}
+
+	// Issue #1507 — spurious cross-repo imports via shared ext:* placeholders.
+	//
+	// `ext:*` entity IDs are NOT repo-scoped: every repo that references the
+	// same external package emits an entity with the SAME literal ID string.
+	// The first-write-wins assignment of entRepo[extID] = firstRepo produces
+	// an ARBITRARY repo attribution. A subsequent repo whose edge references
+	// the same `ext:*` ID finds a DIFFERENT repo in entRepo, making the edge
+	// look like a cross-repo import when it is an intra-repo reference.
+	//
+	// Concrete failure mode: if orders, analytics, order-saga, and workers all
+	// import `py_shared`, each emits an `ext:py_shared` entity. entRepo assigns
+	// ext:py_shared to whichever repo loaded first (say, analytics). Then every
+	// orders/order-saga/workers edge `local_fn → ext:py_shared` resolves as
+	// fromRepo=X, toRepo=analytics → spurious orders→analytics,
+	// order-saga→analytics, workers→analytics cross-repo links are emitted.
+	//
+	// Fix (two complementary guards):
+	//
+	//  Guard A — repo-name collision: if the base name of the ext:* ID
+	//   (everything after "ext:") exactly matches (case-folded, hyphen/
+	//   underscore normalised) a slug in the indexed group, the external
+	//   placeholder is a proxy for that repo's code. Remove it from entRepo
+	//   entirely so the fromRepo/toRepo guard below treats it as unresolved.
+	//   Example: ext:py_shared with group containing "py-shared" → removed.
+	//   This ensures imports of a grouped library don't produce cross-repo
+	//   links between the consuming services (orders, analytics, etc.) instead
+	//   of to the library itself.
+	//
+	//  Guard B — multi-origin collision: if the same ext:* ID appears in
+	//   MORE THAN ONE distinct repo, its entRepo attribution is arbitrary
+	//   (first-write-wins) and the resulting directional link (e.g.
+	//   orders::create_order → analytics::ext:opentelemetry) is misleading:
+	//   it looks like orders imports from analytics, when both repos simply
+	//   share the same external monitoring lib. Remove any such ext:* ID from
+	//   entRepo. This supersedes the original #566 "two repos share
+	//   ext:axios" behaviour: #566 links were informative but created false
+	//   service-level import edges that confuse the topology view. Issue
+	//   #1507 establishes that cross-repo import edges must represent actual
+	//   code-level dependencies, not shared external-package usage.
+
+	// Build the normalised repo-slug set for Guard A.
+	repoSlugs := make(map[string]struct{}, len(graphs))
+	for _, g := range graphs {
+		repoSlugs[normalizeSlug(g.Repo)] = struct{}{}
+	}
+
+	// extRepos[id] tracks the distinct repos that contain each ext:* entity.
+	extRepos := map[string]map[string]struct{}{}
+
 	for _, g := range graphs {
 		for _, e := range g.Entities {
-			// First write wins on repo: structural ids are stable per
+			// First write wins on repo: structural IDs are stable per
 			// (repo, kind, name, file) so collision across repos is
-			// already disambiguated by the per-repo seed.
+			// already disambiguated by the per-repo seed. The exception
+			// is ext:* IDs — handled by the guards below.
 			if _, ok := entRepo[e.ID]; !ok {
 				entRepo[e.ID] = g.Repo
+			}
+			if strings.HasPrefix(e.ID, "ext:") {
+				if extRepos[e.ID] == nil {
+					extRepos[e.ID] = map[string]struct{}{}
+				}
+				extRepos[e.ID][g.Repo] = struct{}{}
 			}
 			st, ok := subtypeByRepo[g.Repo]
 			if !ok {
@@ -154,6 +211,26 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 			if existing := st[e.ID]; existing == "" && e.Subtype != "" {
 				st[e.ID] = e.Subtype
 			}
+		}
+	}
+
+	// Apply Guard A and Guard B: remove ext:* IDs whose entRepo attribution
+	// would produce spurious cross-repo links.
+	for id, repos := range extRepos {
+		// Guard A: ext:* name matches a repo slug in this group.
+		baseName := id[len("ext:"):]
+		// Strip a qualifier suffix (ext:module:name → base is "module").
+		if colon := strings.IndexByte(baseName, ':'); colon > 0 {
+			baseName = baseName[:colon]
+		}
+		if _, isRepo := repoSlugs[normalizeSlug(baseName)]; isRepo {
+			delete(entRepo, id)
+			continue
+		}
+		// Guard B: same ext:* ID in more than one repo — arbitrary attribution
+		// and misleading directional link (issue #1507).
+		if len(repos) > 1 {
+			delete(entRepo, id)
 		}
 	}
 
@@ -292,6 +369,16 @@ func runImportPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pa
 	res.LinksAdded = added
 	res.Skipped = skipped
 	return res, nil
+}
+
+// normalizeSlug folds a repo slug or ext:* base name to a canonical form
+// for comparison. Lowercases and replaces hyphens with underscores so that
+// "py-shared" and "py_shared" are treated as the same slug.
+// Used by runImportPass Guard A (issue #1507).
+func normalizeSlug(s string) string {
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, "-", "_")
+	return s
 }
 
 // normalizedRelation maps a graph relationship Kind to one of the
