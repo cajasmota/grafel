@@ -21,6 +21,12 @@ import type {
   SettingsFeatures,
   DoctorCheck,
   V2CandidatesResponse,
+  FlowsListResponse,
+  FlowDetailResponse,
+  FlowDeadEndsResponse,
+  PathsListResponse,
+  PathDetail,
+  OrphansResponse,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -210,6 +216,38 @@ export const api = {
       `/groups/${encodeURIComponent(groupId)}/candidates/${encodeURIComponent(candidateId)}/hint`,
       { method: "PUT", body: JSON.stringify({ hint }) },
     ),
+  // --- Flows (Process Flow Explorer) ---
+  listFlows: (groupId: string, params?: { tab?: string; search?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set("search", params.search);
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.tab === "crossrepo") q.set("cross_stack_only", "false");
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<FlowsListResponse>(`/flows/${groupId}${qs}`);
+  },
+  getFlowDetail: (groupId: string, processId: string) =>
+    request<FlowDetailResponse>(`/flows/${groupId}/${encodeURIComponent(processId)}`),
+  listFlowDeadEnds: (groupId: string) =>
+    request<FlowDeadEndsResponse>(`/flows/${groupId}/dead-ends`),
+  listFlowTruncated: (groupId: string) =>
+    request<FlowsListResponse>(`/flows/${groupId}/truncated`),
+  generateFlowDocs: (groupId: string, processId: string) =>
+    request<{ status: string; message: string }>(
+      `/flows/${groupId}/${encodeURIComponent(processId)}/trigger-enrichment`,
+      { method: "POST" },
+    ),
+  // --- v2 Paths screen ---
+  /** GET /api/v2/groups/:id/paths — backend-grouped route list + totals. */
+  listPaths: (groupId: string) =>
+    requestV2<PathsListResponse>(`/groups/${encodeURIComponent(groupId)}/paths`),
+
+  /** GET /api/v2/groups/:id/paths/:hash — full route detail (Swagger++). */
+  getPathDetail: (groupId: string, pathHash: string) =>
+    requestV2<PathDetail>(`/groups/${encodeURIComponent(groupId)}/paths/${encodeURIComponent(pathHash)}`),
+
+  /** GET /api/v2/groups/:id/paths/orphans — orphan caller list. */
+  listOrphans: (groupId: string) =>
+    requestV2<OrphansResponse>(`/groups/${encodeURIComponent(groupId)}/paths/orphans`),
 };
 
 export type Api = typeof api;

@@ -48,6 +48,22 @@ const RelationPublishesTo = "publishes_to"
 // topicMessageTopicKind is the entity kind emitted by broker engine passes.
 const topicMessageTopicKind = "SCOPE.MessageTopic"
 
+// topicEmissionCapPerName bounds the number of cross-repo edges a single
+// topic Name may emit. #1454 already collapsed the per-repo-pair entity
+// product to one representative each, leaving the emission at O(R²) repo
+// pairs per topic. This belt-and-suspenders cap defends the link pass (and
+// therefore group-load) against a future re-index that restores a dense
+// fan-out topology — e.g. a hub topic touched by every repo in a large
+// group as both publisher and subscriber — where R² alone could still
+// produce tens of thousands of edges from one Name. The cap keeps the pass
+// terminating in bounded time regardless of fixture growth (#1456).
+//
+// Sized generously: a legitimate hot topic linking up to ~32 distinct
+// publisher/subscriber repo-pairs is preserved in full; only pathological
+// fan-outs beyond that are truncated. Mirrors labelEmissionCap in
+// label_pass.go.
+const topicEmissionCapPerName = 1024
+
 // topicPublishesEdge / topicSubscribesEdge are matched case-insensitively.
 const topicPublishesEdge = "PUBLISHES_TO"
 const topicSubscribesEdge = "SUBSCRIBES_TO"
@@ -214,7 +230,11 @@ func runTopicPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 
 		broker := brokerFromTopicName(name)
 
+		emittedForName := 0
 		for _, pub := range publishers {
+			if emittedForName >= topicEmissionCapPerName {
+				break
+			}
 			// Choose a single, deterministic representative publisher entity
 			// for this repo. Emitting the FULL (publisher × subscriber) entity
 			// product per repo pair is a combinatorial blow-up: a topic touched
@@ -231,6 +251,9 @@ func runTopicPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 			}
 
 			for _, sub := range subscribers {
+				if emittedForName >= topicEmissionCapPerName {
+					break
+				}
 				if pub.repo == sub.repo {
 					continue // never emit a self-pair as a cross-repo edge
 				}
@@ -247,6 +270,7 @@ func runTopicPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pas
 					continue
 				}
 				emitted[id] = true
+				emittedForName++
 
 				ident := name
 				ch := broker
