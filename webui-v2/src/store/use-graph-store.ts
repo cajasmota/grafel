@@ -46,16 +46,23 @@ export interface RenderConfig {
 }
 
 export const DEFAULT_SIMULATION: SimulationConfig = {
-  // Fix #1548-2: the layout was over-spread (clusters flung far apart, mostly
-  // empty canvas). A firmer center pull + slightly lower repulsion pulls the
-  // clusters together so the graph uses space sensibly (was center 0.4 /
-  // repulsion 1.2). Kept moderate so clusters stay legible, not collapsed.
-  linkSpring: 1.0,
-  linkDistance: 10,
+  // Fix #1558-2: the graph showed a HOLLOW RING of islands with an empty middle —
+  // the cluster force pinned each module to a wide ring while the cross-module
+  // links were too weak to pull connected modules together. Raise link-spring so
+  // edges (esp. the 36 cross-module bridges) contract, raise center gravity so
+  // the whole graph collapses inward and FILLS the canvas, and drop repulsion so
+  // unconnected islands stop shoving each other to the rim. Balanced — clusters
+  // still read as clusters, the graph is not a single blob.
+  // (was linkSpring 1.0 / repulsion 1.0 / center 0.55)
+  linkSpring: 2.2,
+  linkDistance: 8,
   friction: 0.85,
-  repulsion: 1.0,
-  center: 0.55,
-  settleTime: 2.0,
+  repulsion: 0.12,
+  center: 1.6,
+  // A slightly longer settle (still ≤ the 6s hard cap) lets the strong center +
+  // gravity converge from the seed into the canvas-filling mass — the 2s cap
+  // stopped it while the islands were still spread. (Fix #1558-2)
+  settleTime: 4.5,
 };
 
 export const DEFAULT_NODE_SIZING: NodeSizingConfig = {
@@ -74,7 +81,11 @@ export const DEFAULT_RENDER: RenderConfig = {
   // Fix #1532-4: cap the on-screen pixel size so no node becomes a giant blob
   // even when zoomed in (was 60).
   maxPointSize: 34,
-  linkWidthScale: 1.0,
+  // Fix #1558-1: the long cross-module links between islands vanished when
+  // zoomed OUT. Raise the default width scale so even the thin same-repo links
+  // clear the visible-pixel floor at every zoom level (see packLinkWidths,
+  // which now also enforces a hard minimum on-screen width).
+  linkWidthScale: 1.4,
   // Fix #1548-2: edges must read clearly from the FIRST paint (not just after
   // settle). Raise the default same-repo link opacity further so relationships
   // are visible immediately on a light background.
