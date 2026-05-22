@@ -1,6 +1,8 @@
-# Phase 2 - With-MCP run
+# Phase 3 - With-MCP run
 
 Answer every question from `questions.json` using **only archigraph MCP tools**. Record full per-question metrics. Your output is `with-mcp.json` in the run directory.
+
+> **Context isolation:** This phase runs in a FRESH subagent context. You have NOT seen the grep-only results from Phase 2. Do not open `without-mcp.json` during this phase. This ordering is intentional: grep-only runs first (Phase 2) so that run cannot be contaminated by MCP results; you run second and must not look back.
 
 ## Allowed tools
 
@@ -76,4 +78,4 @@ If the host does not surface `usage_info`, fall back to `len(text) / 4` for inpu
 
 ## Output
 
-Write `with-mcp.json` to the run directory and print a one-line summary: `<n> questions answered, <unknown> unknown, total <tokens> tokens, total <wall_ms>ms`. Return control to the orchestrator.
+Write `with-mcp.json` to the run directory and print a one-line summary: `<n> questions answered, <unknown> unknown, total <tokens> tokens, total <wall_ms>ms`. Return control to the orchestrator. Phase 4 (quality judgment) reads both `without-mcp.json` and `with-mcp.json` after this phase completes.

@@ -46,28 +46,40 @@ This skill **runs against the user's existing daemon**. It does not start, resta
 - The agent never kills any `archigraph` process.
 - If MCP tool calls fail with "no daemon" errors, the skill stops and asks the user to run their own start command.
 
-## Pass numbering (Phase 1 through Phase 5)
+## Pass numbering (Phase 1 through Phase 6)
 
 The skill is a strict pipeline. Each phase has a dedicated prompt under `prompts/`. A subagent reads the prompt and follows it; the orchestrator (this skill) tracks progress and gates each phase on the previous one's output.
+
+**Critical ordering: grep-only runs FIRST (Phase 2), MCP runs SECOND (Phase 3).** This prevents cross-run contamination — the grep agent answers before it can see which files or entities MCP found. Each of Phases 2 and 3 must run in a **separate, fresh subagent context**; the orchestrator spawns independent agents so neither phase sees the other's transcript.
 
 | Phase | Prompt | Purpose |
 |------|--------|---------|
 | 1 | `prompts/01-question-generation.md` | Call `archigraph_whoami`, learn the group's real entities, generate ~10-15 questions across nine categories. Persist as `questions.json`. |
-| 2 | `prompts/02-with-mcp-run.md` | Answer every question using archigraph MCP tools. Record tokens / time / tool calls / confidence per question. Persist as `with-mcp.json`. |
-| 3 | `prompts/03-without-mcp-run.md` | Answer the **same** questions using only `rg` / `grep` / `Read` / `Bash`. No archigraph MCP. Same metrics. Persist as `without-mcp.json`. |
-| 4 | `prompts/04-quality-judgment.md` | Determine ground truth by reading source code directly. Judge both runs against ground truth: full / partial / wrong / unknown plus per-question misses. Persist as `judgment.json`. |
+| 2 | `prompts/02-without-mcp-run.md` | Answer every question using **only** `rg` / `grep` / `Read` / `Bash`. No archigraph MCP. Record tokens / time / tool calls / confidence per question. Persist as `without-mcp.json`. **Runs FIRST** — fresh context, no MCP results in scope. |
+| 3 | `prompts/03-with-mcp-run.md` | Answer the **same** questions using archigraph MCP tools only. Same metrics. Persist as `with-mcp.json`. **Runs SECOND** — fresh context that has not seen Phase 2's transcript. |
+| 4 | `prompts/04-quality-judgment.md` | Determine ground truth by reading source code directly (independent grep+read pass, no MCP). Judge both runs against ground truth: full / partial / wrong / unknown plus per-question misses. Persist as `judgment.json`. |
 | 5 | `prompts/05-report.md` | Render the markdown report at `--output`. Tables, findings, issues, recommendations, raw-data appendix. |
 | 6 | `prompts/06-extraction-calibration.md` | Evaluate whether archigraph is OVER- or UNDER-extracting on this group. Quantify phantom/duplicate nodes, noise, and missing relationships against grep+read ground truth. Persist as `calibration.json` and append an "Extraction calibration" section to the report. |
 
 Phase 6 runs after Phase 5 (it consumes the same group + ground-truth passes and appends to the report). It is **not** gated on the benchmark questions — it is a structural audit of the graph itself, independent of the head-to-head. Run it whenever the benchmark runs; skip only if the user passes `--no-calibration`.
+
+### Subagent isolation requirement
+
+The orchestrator **must** enforce the following context boundaries:
+
+- **Phase 2 subagent** — spawned with only `questions.json` in scope. Writes `without-mcp.json` and terminates. Must not have access to any MCP tool results.
+- **Phase 3 subagent** — spawned after Phase 2 completes, also with only `questions.json` in scope. Must not receive Phase 2's transcript, tool-call log, or any side-channel that reveals which files or entities the grep run visited. Writes `with-mcp.json` and terminates.
+- **Phase 4 subagent (judge)** — independent context. Establishes ground truth via its own fresh grep+read pass **before** opening `with-mcp.json` or `without-mcp.json`, so scoring is not anchored by either prior run.
+
+If the orchestrator cannot guarantee full context isolation, it must at minimum instruct the Phase 3 agent explicitly: "Do not read `without-mcp.json`. Answer every question from scratch using only MCP tools."
 
 Each phase reads its predecessor's output from the run directory:
 
 ```
 ~/.archigraph/quality-check/<YYYY-MM-DD-HHMMSS>/
   questions.json       # Phase 1
-  with-mcp.json        # Phase 2
-  without-mcp.json     # Phase 3
+  without-mcp.json     # Phase 2 (grep-only, runs FIRST)
+  with-mcp.json        # Phase 3 (MCP, runs SECOND)
   judgment.json        # Phase 4
   report.md            # Phase 5 (also copied to --output)
   calibration.json     # Phase 6 (extraction over/under audit; report section appended)
@@ -179,7 +191,7 @@ Source snippets are referenced by path+line, not embedded. The raw-data appendix
 
 ## Beyond the minimum (flags)
 
-- `--iterations N` - re-runs Phases 2-4 N times per question, reports median + stddev.
+- `--iterations N` - re-runs Phases 2-3-4 N times per question (each pair in fresh isolated contexts), reports median + stddev.
 - `--focus <category>` - restricts Phase 1 to one category from the nine above. Useful when the user wants to stress-test, e.g., pattern discovery.
 - `--question-set <path>` - skip Phase 1's generation, load the user's curated questions.
 - `--baseline <path>` - load a prior report, surface per-question deltas: token saved or lost, quality changes, new failure modes.
@@ -187,19 +199,20 @@ Source snippets are referenced by path+line, not embedded. The raw-data appendix
 
 ## Acceptance criteria
 
-- The skill's five prompt files exist and reference each other in the order documented above.
+- The skill's six prompt files exist: `01` through `06`, with `02-without-mcp-run.md` (grep first) preceding `03-with-mcp-run.md` (MCP second).
+- The orchestrator spawns Phase 2 and Phase 3 as independent subagents with no shared transcript.
 - The skill calls `archigraph_whoami` before generating any question, and questions reference only entities actually present in the group.
 - Token counts come from the host's `usage_info`, with a labeled estimation fallback.
-- Ground truth is established by an independent grep+read pass before scoring either answer.
+- Ground truth is established by an independent grep+read pass in Phase 4 before scoring either answer — Phase 4 does not read `without-mcp.json` or `with-mcp.json` until after its own grep pass is committed.
 - The report is written to `--output` (default `~/private/benchmarks/mcp-quality-bench-<date>.md`).
 - The skill never spawns a daemon and never names real competitor tools in any artifact.
 - Phase 6 runs by default (unless `--no-calibration`), writes `calibration.json`, and appends an "Extraction calibration" table with quantified over- and under-extraction rows plus prune/add recommendations, each citing a count or rate established against grep+read ground truth.
 
 ## Outputs
 
-- `~/.archigraph/quality-check/<timestamp>/questions.json` - input set.
-- `~/.archigraph/quality-check/<timestamp>/with-mcp.json` - Phase 2 results.
-- `~/.archigraph/quality-check/<timestamp>/without-mcp.json` - Phase 3 results.
+- `~/.archigraph/quality-check/<timestamp>/questions.json` - input set (Phase 1).
+- `~/.archigraph/quality-check/<timestamp>/without-mcp.json` - Phase 2 results (grep-only, runs first).
+- `~/.archigraph/quality-check/<timestamp>/with-mcp.json` - Phase 3 results (MCP, runs second).
 - `~/.archigraph/quality-check/<timestamp>/judgment.json` - Phase 4 scoring.
 - `~/.archigraph/quality-check/<timestamp>/calibration.json` - Phase 6 over/under-extraction audit.
 - `<--output>` (default `~/private/benchmarks/mcp-quality-bench-<date>.md`) - final shareable report (includes the "Extraction calibration" section).

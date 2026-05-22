@@ -1,14 +1,16 @@
-# Phase 3 - Without-MCP run
+# Phase 2 - Without-MCP (grep-only) run
 
-Answer the **same** questions from `questions.json` using **only** `rg` / `ripgrep` / `grep` / `Read` / `Bash` (no archigraph MCP). Use the best non-MCP approach for each question - give grep+read a fair shot. Your output is `without-mcp.json`.
+Answer every question from `questions.json` using **only** `rg` / `ripgrep` / `grep` / `Read` / `Bash` (no archigraph MCP). Use the best non-MCP approach for each question — give grep+read a fair shot. Your output is `without-mcp.json`.
+
+> **Context isolation:** This phase runs in a FRESH subagent context. You have NOT seen any MCP results. Do not open `with-mcp.json` — it does not exist yet (Phase 3 runs after you). This ordering is intentional: grep-only runs first so it cannot be contaminated by MCP results.
 
 ## Forbidden tools
 
 - Any `archigraph_*` MCP tool.
-- Any reference to a prior MCP answer in `with-mcp.json` (do not open that file in this phase).
+- Any reference to `with-mcp.json` (that file does not exist yet — Phase 3 runs after you).
 - Any external code-search service.
 
-If you accidentally see archigraph state on disk (e.g., `.archigraph/graph.json`), do not read it - it would leak MCP results into a grep-only run.
+If you accidentally see archigraph state on disk (e.g., `.archigraph/graph.json`), do not read it — it would bias the grep-only baseline.
 
 ## Allowed approach per category
 
@@ -26,7 +28,7 @@ These are reasonable best-effort strategies. Use whichever you would honestly us
 
 ## Per-question protocol
 
-Identical to Phase 2 but using grep tools instead of MCP:
+Same protocol as Phase 3 (with-MCP) but using grep tools instead of MCP:
 
 1. Snapshot `usage_info` at question start.
 2. Note `wall_clock_start`.
@@ -77,13 +79,14 @@ Identical to Phase 2 but using grep tools instead of MCP:
 
 ## Token accounting
 
-Same protocol as Phase 2. Use the host's `usage_info`; fall back to char/4 with `"estimated": true` if unavailable.
+Use the host's `usage_info`; fall back to char/4 with `"estimated": true` if unavailable. Same accounting as Phase 3 (with-MCP).
 
 ## Privacy
 
-- Same constraints as Phase 2: no source content in answer text; reference by `path:line`.
+- No source content in answer text; reference by `path:line`.
+- `args_digest` not raw args.
 - `args_digest` not raw args.
 
 ## Output
 
-Write `without-mcp.json`. Print a one-line summary mirroring Phase 2's. Return to orchestrator.
+Write `without-mcp.json`. Print a one-line summary: `<n> questions answered, <unknown> unknown, total <tokens> tokens, total <wall_ms>ms`. Return to orchestrator.
