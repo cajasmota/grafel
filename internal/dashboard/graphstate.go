@@ -382,11 +382,72 @@ func (c *GraphCache) loadGroup(groupName string) (*DashGroup, error) {
 	lf := defaultLinksFile(groupName)
 	if data, err := os.ReadFile(lf); err == nil {
 		if links, err2 := readCrossRepoLinks(data); err2 == nil {
-			grp.Links = links
+			grp.Links = normalizeLinkEndpoints(links, grp.Repos)
 		}
 	}
 
 	return grp, nil
+}
+
+// normalizeLinkEndpoints rewrites the "<repo-slug>::<entity-id>" endpoints of
+// cross-repo links so each one matches the canonical prefixed node ID used by
+// the served graph (built with dashPrefixedID(rp.Slug, entity.ID)). Without
+// this rewrite the merge guard `visible[l.Source] && visible[l.Target]` in
+// buildV2Graph / serveGraphDense never matches and every cross-repo edge is
+// silently dropped from the served graph — the #1582 symptom (0 of 37,104
+// served edges were cross-repo).
+//
+// The repo-slug PREFIX written by the link pass diverges from the dashboard
+// repo slugs in (at least) two ways observed in the corpus:
+//
+//   - underscore vs dash:   "upvate_core"  vs  "upvate-core"
+//   - short name vs full:   "catalog"      vs  "polyglot-platform-services-catalog"
+//
+// Because the <entity-id> suffix is globally unique within a group (verified:
+// 0 collisions across upvate's 19,613 and polyglot-platform's 1,316 nodes),
+// the most reliable resolution is by that suffix: we index every entity ID ->
+// its canonical prefixed node ID and rewrite each endpoint to the canonical
+// form of the entity it points at. Endpoints whose entity ID is unknown (or
+// whose suffix collides — a defensive guard) are left untouched, so the merge
+// guard drops them exactly as before.
+func normalizeLinkEndpoints(links []CrossRepoLink, repos map[string]*DashRepo) []CrossRepoLink {
+	if len(repos) == 0 || len(links) == 0 {
+		return links
+	}
+	// entity-ID suffix -> canonical prefixed node ID. Suffixes seen more than
+	// once are recorded as ambiguous and never used for rewriting.
+	canonical := make(map[string]string)
+	ambiguous := make(map[string]bool)
+	for _, rp := range repos {
+		if rp == nil || rp.Doc == nil {
+			continue
+		}
+		for i := range rp.Doc.Entities {
+			id := rp.Doc.Entities[i].ID
+			if _, seen := canonical[id]; seen {
+				ambiguous[id] = true
+				continue
+			}
+			canonical[id] = dashPrefixedID(rp.Slug, id)
+		}
+	}
+	rewrite := func(endpoint string) string {
+		_, local := dashSplitPrefixed(endpoint)
+		if local == "" || ambiguous[local] {
+			return endpoint
+		}
+		if cid, ok := canonical[local]; ok {
+			return cid
+		}
+		return endpoint // unknown entity; leave as-is (merge guard drops it)
+	}
+	out := make([]CrossRepoLink, len(links))
+	for i, l := range links {
+		l.Source = rewrite(l.Source)
+		l.Target = rewrite(l.Target)
+		out[i] = l
+	}
+	return out
 }
 
 // attachAlgorithmResults re-derives community, pagerank, and god-node data

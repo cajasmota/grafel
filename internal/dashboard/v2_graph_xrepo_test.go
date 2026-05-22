@@ -96,3 +96,74 @@ func TestBuildV2Graph_CrossRepoEdge_SlugMismatchDrops(t *testing.T) {
 		t.Fatalf("cross-repo edges = %d; want 0 for the divergent-slug bug condition — guards the #1576 contract", got)
 	}
 }
+
+// TestNormalizeLinkEndpoints_UnderscoreSlugRewrite is the #1582 fix: the link
+// pass still writes <group>-links.json with underscore-normalised repo slugs
+// ("upvate_core_frontend", "upvate_core") even after #1576/#1579, while the
+// dashboard repos / served node IDs use the dash form. normalizeLinkEndpoints
+// (called from loadGroup at link-load time) rewrites the slug prefix to the
+// canonical config slug, so buildV2Graph's visibility guard then matches and
+// the cross-repo edge IS served. Without the rewrite the edge is silently
+// dropped (the symptom: 0 of 37,104 served edges were cross-repo).
+func TestNormalizeLinkEndpoints_UnderscoreSlugRewrite(t *testing.T) {
+	grp := twoRepoGroup("upvate-core-frontend", "upvate-core", "upvate_core_frontend", "upvate_core")
+	grp.Links = normalizeLinkEndpoints(grp.Links, grp.Repos)
+
+	if got := grp.Links[0].Source; got != "upvate-core-frontend::aaaa000000000000" {
+		t.Fatalf("Source not normalised: got %q", got)
+	}
+	if got := grp.Links[0].Target; got != "upvate-core::bbbb000000000000" {
+		t.Fatalf("Target not normalised: got %q", got)
+	}
+
+	var s Server
+	resp := s.buildV2Graph(sortedRepos(grp), grp, "", false, false)
+	if got := countCrossRepoEdges(resp); got != 1 {
+		t.Fatalf("cross-repo edges = %d; want 1 after slug normalisation — #1582", got)
+	}
+}
+
+// TestNormalizeLinkEndpoints_UnknownRepoLeftAsIs verifies an endpoint whose
+// slug resolves to no known repo is left untouched (and therefore dropped by
+// the merge guard, the prior behaviour) rather than corrupted.
+func TestNormalizeLinkEndpoints_UnknownEntityLeftAsIs(t *testing.T) {
+	repos := map[string]*DashRepo{"upvate-core": {
+		Slug: "upvate-core",
+		Doc:  &graph.Document{Repo: "upvate-core", Entities: []graph.Entity{{ID: "yyyy"}}},
+	}}
+	// "x" is not a known entity ID; "y" is (under upvate-core), but the link
+	// uses the divergent "upvate_core" prefix — suffix resolution rewrites it.
+	links := []CrossRepoLink{{Source: "ghost_repo::x", Target: "upvate_core::yyyy", Kind: "calls"}}
+	out := normalizeLinkEndpoints(links, repos)
+	if out[0].Source != "ghost_repo::x" {
+		t.Fatalf("unknown-entity Source mutated: %q", out[0].Source)
+	}
+	if out[0].Target != "upvate-core::yyyy" {
+		t.Fatalf("known-entity Target not normalised: %q", out[0].Target)
+	}
+}
+
+// TestNormalizeLinkEndpoints_ShortSlugRewrite covers the polyglot-platform
+// shape: the link slug is a short service name ("catalog") while the dashboard
+// repo slug is the full monorepo path. Suffix-based resolution still rewrites
+// the endpoint to the canonical node ID.
+func TestNormalizeLinkEndpoints_ShortSlugRewrite(t *testing.T) {
+	repos := map[string]*DashRepo{
+		"polyglot-platform-services-catalog": {
+			Slug: "polyglot-platform-services-catalog",
+			Doc:  &graph.Document{Repo: "polyglot-platform-services-catalog", Entities: []graph.Entity{{ID: "cccc"}}},
+		},
+		"polyglot-platform-frontend-admin": {
+			Slug: "polyglot-platform-frontend-admin",
+			Doc:  &graph.Document{Repo: "polyglot-platform-frontend-admin", Entities: []graph.Entity{{ID: "aaaa"}}},
+		},
+	}
+	links := []CrossRepoLink{{Source: "admin::aaaa", Target: "catalog::cccc", Kind: "calls"}}
+	out := normalizeLinkEndpoints(links, repos)
+	if out[0].Source != "polyglot-platform-frontend-admin::aaaa" {
+		t.Fatalf("short-slug Source not normalised: %q", out[0].Source)
+	}
+	if out[0].Target != "polyglot-platform-services-catalog::cccc" {
+		t.Fatalf("short-slug Target not normalised: %q", out[0].Target)
+	}
+}
