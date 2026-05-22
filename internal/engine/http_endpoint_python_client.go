@@ -326,7 +326,7 @@ func synthesizePyClientWithRuntime(content string, emit pyClientEmitFn) {
 	}
 	funcs := indexPyEnclosingFunctions(content)
 	syms := buildPyStringSymbolTable(content)
-	locals := buildPyLocalVarTable(content)
+	locals := buildPyLocalVarTable(content, syms)
 	instances := buildPySessionInstanceTable(content)
 	// Merge local variables into syms for URL resolution (locals win on
 	// collision, as they are more specific than module-level constants).
@@ -685,11 +685,25 @@ func buildPySessionInstanceTable(content string) map[string]string {
 // like `pricing_endpoint = "http://..."` are resolved when used as a URL
 // argument later in the same function.
 //
+// moduleSyms is the module-level constant table built by
+// buildPyStringSymbolTable. It is used to eagerly resolve f-string
+// local variables so that patterns like:
+//
+//	PRICING_URL = "http://pricing:8084"        # module level
+//	pricing_endpoint = f"{PRICING_URL}/quote"  # function body
+//	await client.post(pricing_endpoint, ...)
+//
+// produce the resolved value "http://pricing:8084/quote" for
+// pricing_endpoint rather than storing the raw f-string body
+// "{PRICING_URL}/quote". Without this, pyResolveURLArg would return
+// isFString=false for bare-identifier lookups, causing the
+// {PRICING_URL} placeholder to appear in the emitted path. (#1491)
+//
 // Note: this is a file-wide scan — we do not attempt true per-function
 // scoping. False-positive variable capture across function boundaries is
 // extremely rare in practice and the worst outcome is resolving a URL from
 // another function in the same file (which still produces a valid edge).
-func buildPyLocalVarTable(content string) map[string]string {
+func buildPyLocalVarTable(content string, moduleSyms map[string]string) map[string]string {
 	out := make(map[string]string)
 	for _, m := range pyLocalVarStringRe.FindAllStringSubmatch(content, -1) {
 		// m[1]=name, m[2]="f" if f-string, m[3]=body
@@ -697,12 +711,59 @@ func buildPyLocalVarTable(content string) map[string]string {
 			continue
 		}
 		name := m[1]
-		val := m[3]
+		body := m[3]
+		isFString := m[2] == "f" || m[2] == "F"
+
+		var val string
+		if isFString {
+			// Eagerly resolve f-string substitutions using module-level
+			// constants. This turns `f"{PRICING_URL}/quote"` into
+			// "http://pricing:8084/quote" (or "/quote" after stripURLHost)
+			// so that later bare-identifier lookups get the full resolved
+			// value rather than the raw {NAME} body.
+			//
+			// Even when moduleSyms is empty (e.g. PRICING_URL is imported
+			// from another module), pyResolveFStringBody strips URL/host-
+			// shaped identifiers (pyIsURLConstName) so that
+			// `f"{PRICING_URL}/quote"` → "/quote" rather than
+			// "/{PRICING_URL}/quote". (#1491)
+			val = pyResolveFStringBody(body, moduleSyms)
+		} else {
+			val = body
+		}
+
 		if _, dup := out[name]; !dup {
 			out[name] = val
 		}
 	}
 	return out
+}
+
+// pyResolveFStringBody substitutes {identifier} placeholders in an f-string
+// body using the provided symbol table. When a placeholder identifier is
+// present in syms, its value is substituted directly. When it is absent but
+// looks like a URL/host constant (pyIsURLConstName), it is stripped (replaced
+// with empty string), so that `{PRICING_URL}/quote` → `/quote` rather than
+// `/{PRICING_URL}/quote`. Other unknown identifiers are left as-is (they will
+// be treated as path parameters by pyCanonicalize later).
+func pyResolveFStringBody(body string, syms map[string]string) string {
+	return pyFStringSubstRe.ReplaceAllStringFunc(body, func(match string) string {
+		mm := pyFStringSubstRe.FindStringSubmatch(match)
+		if len(mm) < 2 {
+			return match
+		}
+		expr := strings.TrimSpace(mm[1])
+		if pyIdentRe.MatchString(expr) {
+			if val, ok := syms[expr]; ok {
+				return val
+			}
+			// Unknown identifier: strip URL/host constants, keep path params.
+			if pyIsURLConstName(expr) {
+				return ""
+			}
+		}
+		return match
+	})
 }
 
 // pyResolveURLArg picks the URL argument from a match's submatch slice.
