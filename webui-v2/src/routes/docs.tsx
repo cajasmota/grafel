@@ -25,62 +25,6 @@ import { DocsTree } from "@/components/docs/docs-tree";
 import { DocsReader } from "@/components/docs/docs-reader";
 import { DocsNotGenerated, DocsPickDocument } from "@/components/docs/docs-empty";
 
-// ── Inline DocsTopBar ─────────────────────────────────────────────────────────
-
-function DocsTopBar({
-  group,
-  search,
-  onSearch,
-}: {
-  group: string;
-  search: string;
-  onSearch: (v: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "/" && document.activeElement?.tagName !== "INPUT") {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
-
-  return (
-    <div className="flex items-center justify-between h-11 shrink-0 px-4 gap-4 border-b border-border bg-bg">
-      <span className="text-sm text-text-3 font-mono shrink-0">{group} / Docs</span>
-
-      <div className="relative flex items-center flex-1 max-w-xs">
-        <Search size={13} className="absolute left-2.5 text-text-4 pointer-events-none" />
-        <input
-          ref={inputRef}
-          type="text"
-          className="w-full pl-8 pr-8 h-7 rounded-md bg-surface border border-border text-sm text-text placeholder:text-text-4 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] focus:border-[var(--accent)]"
-          placeholder="Search documents…"
-          value={search}
-          onChange={(e) => onSearch(e.target.value)}
-        />
-        {search ? (
-          <button
-            className="absolute right-2 text-text-4 hover:text-text-2"
-            onClick={() => onSearch("")}
-            aria-label="Clear"
-          >
-            <X size={11} />
-          </button>
-        ) : (
-          <Kbd className="absolute right-2 text-[10px]">/</Kbd>
-        )}
-      </div>
-
-      <span className="text-xs text-text-3 shrink-0">Generated docs</span>
-    </div>
-  );
-}
-
 // ── DocsScreen ────────────────────────────────────────────────────────────────
 
 export default function DocsScreen() {
@@ -130,9 +74,47 @@ export default function DocsScreen() {
 
   const hasDocs = tree.length > 0;
 
+  // Keyboard: "/" focuses search input
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
-      <DocsTopBar group={groupId} search={search} onSearch={setSearch} />
+      {/* Controls row: search for the document tree */}
+      <div className="flex items-center gap-3 h-10 shrink-0 px-4 border-b border-border bg-bg">
+        <div className="relative flex items-center flex-1 max-w-xs">
+          <Search size={13} className="absolute left-2.5 text-text-4 pointer-events-none" />
+          <input
+            ref={searchRef}
+            type="text"
+            className="w-full pl-8 pr-8 h-7 rounded-md bg-surface border border-border text-sm text-text placeholder:text-text-4 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] focus:border-[var(--accent)]"
+            placeholder="Search documents…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search ? (
+            <button
+              className="absolute right-2 text-text-4 hover:text-text-2"
+              onClick={() => setSearch("")}
+              aria-label="Clear"
+            >
+              <X size={11} />
+            </button>
+          ) : (
+            <Kbd className="absolute right-2 text-[10px]">/</Kbd>
+          )}
+        </div>
+        <span className="text-xs text-text-3 ml-auto shrink-0">Generated docs</span>
+      </div>
 
       {/* No documents generated yet → whole-screen agent-skill empty state. */}
       {!treeLoading && !hasDocs ? (

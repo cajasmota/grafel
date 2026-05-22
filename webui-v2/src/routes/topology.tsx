@@ -23,7 +23,6 @@ import {
   LayoutList,
 } from "lucide-react";
 
-import { TopBar } from "@/components/chrome/top-bar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
@@ -1286,7 +1285,6 @@ export default function TopologyScreen() {
   if (!isLoading && !isError && channels.length === 0) {
     return (
       <div className="flex flex-col h-full bg-bg">
-        <TopBar group={groupId} surfaceLabel="Topology" />
         <div className="flex flex-col items-center justify-center flex-1 text-center gap-4 px-6">
           <p className="text-xl font-semibold text-text">No async channels indexed</p>
           <p className="text-md text-text-3 max-w-sm">
@@ -1300,8 +1298,6 @@ export default function TopologyScreen() {
 
   return (
     <div className="flex flex-col h-full bg-bg">
-      <TopBar group={groupId} surfaceLabel="Topology" />
-
       <Tabs value={tab} onValueChange={setTab} className="flex flex-col flex-1 min-h-0">
         {/* Tab strip */}
         <div className="border-b border-border shrink-0 px-4">
