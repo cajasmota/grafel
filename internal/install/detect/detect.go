@@ -70,7 +70,7 @@ var ecosystemManifests = []string{
 	"package.json",                            // npm/pnpm/yarn (Node)
 	"pyproject.toml", "setup.py", "setup.cfg", // Python
 	"requirements.txt", "Pipfile", // Python
-	"go.mod",                            // Go
+	"go.mod",                                      // Go
 	"pom.xml", "build.gradle", "build.gradle.kts", // Maven/Gradle (JVM)
 	"Cargo.toml",    // Rust
 	"composer.json", // PHP
@@ -84,15 +84,15 @@ var ecosystemManifests = []string{
 // but inlined here to keep the detect package dependency-free and cheap.
 var sourceExts = map[string]struct{}{
 	".py": {}, ".pyi": {}, ".pyw": {},
-	".go":  {},
-	".js":  {}, ".jsx": {}, ".mjs": {}, ".cjs": {},
-	".ts":  {}, ".tsx": {}, ".mts": {}, ".cts": {},
+	".go": {},
+	".js": {}, ".jsx": {}, ".mjs": {}, ".cjs": {},
+	".ts": {}, ".tsx": {}, ".mts": {}, ".cts": {},
 	".java": {},
 	".kt":   {}, ".kts": {},
 	".rb": {}, ".rake": {},
-	".php": {},
-	".rs":  {},
-	".cs":  {},
+	".php":   {},
+	".rs":    {},
+	".cs":    {},
 	".swift": {},
 	".scala": {}, ".sc": {},
 	".ex": {}, ".exs": {},
@@ -178,10 +178,45 @@ func DetectMonorepo(repo string) (Monorepo, error) {
 		}
 	}
 
+	// A workspace manifest is, by itself, definitive monorepo evidence even
+	// when it lists a single package — record that before the code-dir scan so
+	// the plain-repo gate below does not discard a legitimately-empty manifest.
+	hadWorkspaceManifest := kind != KindNone
+
 	// 2. Polyglot code-dir scan — surfaces non-Node services the workspace
 	//    manifest doesn't list (orders/Python, inventory/Go, notifications/
 	//    Kotlin, pricing/Rust, billing/PHP, realtime-dashboard/Elixir, …).
-	add(scanPolyglotModules(repo))
+	//
+	// The scan distinguishes two classes of candidate (issue #1628):
+	//
+	//   - container-based modules: immediate children of conventional monorepo
+	//     container dirs (services/, apps/, packages/, libs/, …). A repo laid
+	//     out this way IS a monorepo, so source-only children count.
+	//   - manifested top-level dirs: count as real package boundaries.
+	//   - source-only top-level dirs (src/, components/, docs/, …): weak — only
+	//     surfaced once the repo is independently established as a monorepo.
+	//     A plain repo's bare top-level source dirs must NOT be promoted to
+	//     "modules" — that is the mis-split this issue fixes.
+	containerMods, manifestedTop, sourceOnlyTop := scanPolyglotModules(repo)
+	add(containerMods)
+	add(manifestedTop)
+
+	// Plain-repo gate: a repo is a TRUE monorepo only when there is real
+	// multi-package evidence — a workspace manifest, a conventional container
+	// layout, or more than one independently-manifested top-level package.
+	// A repo whose ONLY structure is bare source-only top-level dirs (src/,
+	// components/, docs/) is a PLAIN repo: report KindNone so it indexes as a
+	// SINGLE unit (no per-top-level-dir module breakdown).
+	isMonorepo := hadWorkspaceManifest ||
+		len(containerMods) > 0 ||
+		len(manifestedTop) > 1
+	if !isMonorepo {
+		return Monorepo{Kind: KindNone}, nil
+	}
+
+	// Now that the repo is confirmed a monorepo, source-only top-level dirs are
+	// legitimate sibling modules (e.g. data-pipeline/ alongside services/).
+	add(sourceOnlyTop)
 
 	// Decide the reported kind. If a workspace manifest set a kind, keep it.
 	// Otherwise label the layout from the code-dir scan: KindPolyglot when the
@@ -205,36 +240,40 @@ func DetectMonorepo(repo string) (Monorepo, error) {
 	return Monorepo{Kind: kind, Packages: out}, nil
 }
 
-// scanPolyglotModules returns repo-relative paths to every directory that looks
-// like a service/package module in ANY language. It scans the immediate
-// children of the conventional container dirs plus the top-level dirs of the
-// repo, and includes a directory when it either contains an ecosystem manifest
-// (go.mod, pyproject.toml, pom.xml, Cargo.toml, composer.json, mix.exs,
-// package.json, requirements.txt, build.gradle[.kts], …) OR contains source
-// files in a supported language within its first couple of levels.
-func scanPolyglotModules(repo string) []string {
-	var out []string
+// scanPolyglotModules returns repo-relative paths to directories that look like
+// service/package modules in ANY language, split into two classes so the caller
+// can apply the plain-repo gate (issue #1628):
+//
+//   - containerMods: immediate children of conventional container dirs
+//     (services/, apps/, packages/, libs/, …). A directory laid out this way is
+//     a recognized monorepo convention, so a child counts when it has an
+//     ecosystem manifest OR merely contains source files.
+//   - manifestedTop: top-level dirs that are NOT container dirs and carry their
+//     OWN ecosystem manifest (go.mod, pyproject.toml, package.json, Cargo.toml,
+//     pom.xml, composer.json, mix.exs, …) — a real, self-declared package
+//     boundary (e.g. libs/py-shared at the root).
+//   - sourceOnlyTop: top-level dirs that are NOT container dirs and contain
+//     only source files (no manifest) — e.g. src/, components/, docs/,
+//     data-pipeline/. These are WEAK evidence: they are reported as modules
+//     ONLY when the repo is independently established as a monorepo (container
+//     layout or workspace manifest). In a plain repo they are part of the
+//     single unit, NOT separate modules — this is the mis-split #1628 fixes.
+func scanPolyglotModules(repo string) (containerMods, manifestedTop, sourceOnlyTop []string) {
 	seen := map[string]struct{}{}
 
-	consider := func(rel string) {
-		if rel == "" || rel == "." {
-			return
-		}
+	considerContainer := func(rel string) {
 		rel = filepath.ToSlash(rel)
 		if _, ok := seen[rel]; ok {
 			return
 		}
 		abs := filepath.Join(repo, rel)
-		if !isDir(abs) {
-			return
-		}
-		if isModuleDir(abs) {
+		if isDir(abs) && isModuleDir(abs) {
 			seen[rel] = struct{}{}
-			out = append(out, rel)
+			containerMods = append(containerMods, rel)
 		}
 	}
 
-	// Immediate children of conventional container dirs.
+	// Immediate children of conventional container dirs (source-only counts).
 	for _, container := range containerDirs {
 		cdir := filepath.Join(repo, container)
 		entries, err := os.ReadDir(cdir)
@@ -245,12 +284,11 @@ func scanPolyglotModules(repo string) []string {
 			if !e.IsDir() || isIgnoredDir(e.Name()) {
 				continue
 			}
-			consider(filepath.Join(container, e.Name()))
+			considerContainer(filepath.Join(container, e.Name()))
 		}
 	}
 
-	// Top-level service/package dirs that aren't themselves containers
-	// (e.g. data-pipeline, py-shared sitting at the repo root).
+	// Top-level service/package dirs that aren't themselves containers.
 	topEntries, err := os.ReadDir(repo)
 	if err == nil {
 		for _, e := range topEntries {
@@ -262,12 +300,28 @@ func scanPolyglotModules(repo string) []string {
 			if isContainer(name) {
 				continue
 			}
-			consider(name)
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			abs := filepath.Join(repo, name)
+			if !isDir(abs) {
+				continue
+			}
+			switch {
+			case hasEcosystemManifest(abs):
+				seen[name] = struct{}{}
+				manifestedTop = append(manifestedTop, name)
+			case hasSourceFiles(abs, 2):
+				seen[name] = struct{}{}
+				sourceOnlyTop = append(sourceOnlyTop, name)
+			}
 		}
 	}
 
-	sort.Strings(out)
-	return out
+	sort.Strings(containerMods)
+	sort.Strings(manifestedTop)
+	sort.Strings(sourceOnlyTop)
+	return containerMods, manifestedTop, sourceOnlyTop
 }
 
 // distinctLanguages returns the set of source languages across the given
@@ -287,18 +341,18 @@ func distinctLanguages(repo string, modules map[string]struct{}) map[string]stru
 // polyglot classification.
 var extLanguage = map[string]string{
 	".py": "python", ".pyi": "python", ".pyw": "python",
-	".go":  "go",
-	".js":  "node", ".jsx": "node", ".mjs": "node", ".cjs": "node",
-	".ts":  "node", ".tsx": "node", ".mts": "node", ".cts": "node",
+	".go": "go",
+	".js": "node", ".jsx": "node", ".mjs": "node", ".cjs": "node",
+	".ts": "node", ".tsx": "node", ".mts": "node", ".cts": "node",
 	".java": "jvm", ".kt": "jvm", ".kts": "jvm", ".scala": "jvm",
-	".rb":  "ruby",
-	".php": "php",
-	".rs":  "rust",
-	".cs":  "dotnet",
+	".rb":    "ruby",
+	".php":   "php",
+	".rs":    "rust",
+	".cs":    "dotnet",
 	".swift": "swift",
-	".ex": "elixir", ".exs": "elixir",
+	".ex":    "elixir", ".exs": "elixir",
 	".dart": "dart",
-	".c": "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp",
+	".c":    "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp",
 }
 
 // moduleLanguages adds the languages found in dir (up to maxDepth) into langs.

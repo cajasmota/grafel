@@ -22,7 +22,6 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/extract"
 	"github.com/cajasmota/archigraph/internal/daemon/walk"
-	idiff "github.com/cajasmota/archigraph/internal/indexer/diff"
 	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/enrichment"
 	"github.com/cajasmota/archigraph/internal/external"
@@ -32,6 +31,7 @@ import (
 	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
+	idiff "github.com/cajasmota/archigraph/internal/indexer/diff"
 	"github.com/cajasmota/archigraph/internal/install/detect"
 	"github.com/cajasmota/archigraph/internal/module"
 	"github.com/cajasmota/archigraph/internal/progress"
@@ -47,11 +47,11 @@ const (
 	PassFramework     = "framework"      // Pass 2.5: YAML-driven framework rules
 	PassCrossLang     = "cross-lang"     // Pass 3: cross-language extractors
 	PassGraphAlgo     = "graph-algo"     // Pass 4: placeholder for PORT-4
-	PassBuildDocument  = "build-document"  // Pass 5: assemble graph.Document
-	PassRenameDetect   = "rename-detect"   // Pass 5.5: detect entity renames across rebuilds (#1344)
-	PassEnrichment     = "enrichment"      // Pass 6: emit enrichment candidates
-	PassProcessFlow    = "process-flow"    // Pass 7: process-flow BFS over CALLS (#724)
-	PassModuleAgg      = "module-agg"      // Pass 8: module-level aggregation (#1383)
+	PassBuildDocument = "build-document" // Pass 5: assemble graph.Document
+	PassRenameDetect  = "rename-detect"  // Pass 5.5: detect entity renames across rebuilds (#1344)
+	PassEnrichment    = "enrichment"     // Pass 6: emit enrichment candidates
+	PassProcessFlow   = "process-flow"   // Pass 7: process-flow BFS over CALLS (#724)
+	PassModuleAgg     = "module-agg"     // Pass 8: module-level aggregation (#1383)
 )
 
 // allPassNames is used to validate --skip-pass entries.
@@ -130,9 +130,9 @@ type Indexer struct {
 	// boundary and at every TickEveryNFiles interval during AST extraction.
 	// Defaults to progress.NoOpPublisher so callers that do not wire a sink
 	// pay zero overhead.
-	publisher  progress.Publisher
-	groupSlug  string // forwarded to every Event.GroupSlug
-	repoSlug   string // forwarded to every Event.RepoSlug; defaults to repoTag
+	publisher progress.Publisher
+	groupSlug string // forwarded to every Event.GroupSlug
+	repoSlug  string // forwarded to every Event.RepoSlug; defaults to repoTag
 
 	// Statistics — populated as passes run, surfaced in the final summary.
 	stats indexerStats
@@ -150,6 +150,13 @@ type Indexer struct {
 	// used by buildDocument to derive Properties["module"] for every entity.
 	// Issue #1381 — module extraction via path rollup.
 	moduleMarkers module.MarkerSet
+
+	// singleModuleLabel, when non-empty, forces every entity in this repo into
+	// ONE module row instead of the per-directory path rollup. It is set for
+	// PLAIN (non-monorepo) repos so the per-module progress + Group-by-Module
+	// graph treat the repo as a single unit (issue #1628). For TRUE monorepos
+	// it stays empty and module.Derive's per-package rollup applies.
+	singleModuleLabel string
 }
 
 // IndexOption configures optional behaviour on the Indexer. Used as a
@@ -573,13 +580,33 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// the whole repo. Non-monorepos get no resolver (Module stays empty → the
 	// UI falls back to a single per-repo row). The resolver is pure + stateless,
 	// so it is safe to call from the concurrent extraction workers.
-	if mono, err := detect.DetectMonorepo(absRepo); err == nil && len(mono.Packages) > 1 {
+	//
+	// Issue #1628 — only TRUE monorepos (a workspace manifest or a real
+	// container/multi-package layout) get a per-module breakdown. A PLAIN repo
+	// (DetectMonorepo → KindNone) is indexed as a SINGLE unit: we install a
+	// resolver that maps every file to one per-repo label, and stamp that same
+	// label as Properties["module"] so the Group-by-Module graph does not
+	// fragment a plain repo by its top-level directories.
+	mono, derr := detect.DetectMonorepo(absRepo)
+	isMonorepo := derr == nil && mono.Kind != detect.KindNone && len(mono.Packages) > 1
+	if isMonorepo {
 		pkgRoots := make([]string, len(mono.Packages))
 		copy(pkgRoots, mono.Packages)
 		markers := i.moduleMarkers
 		trk.SetModuleResolver(func(currentFile string) string {
 			return moduleForFile(currentFile, pkgRoots, markers)
 		})
+	} else {
+		// Plain repo → one module row for the whole repo.
+		label := repoSlug
+		if label == "" {
+			label = i.repoTag
+		}
+		if label == "" {
+			label = "_repo"
+		}
+		i.singleModuleLabel = label
+		trk.SetModuleResolver(func(string) string { return label })
 	}
 
 	// Incremental mode (issue #1339): filter files down to those whose
@@ -1816,7 +1843,6 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 	return classified, allRecords
 }
 
-
 // runPass25FrameworkRules applies the YAML rule engine to every classified
 // file. Returns extra entity records (from source_patterns) plus standalone
 // relationship records (from relationship_rules).
@@ -2292,7 +2318,20 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			// assembly time using the deterministic path-rollup algorithm.
 			// EnsureModule is a no-op when the key is already set (extractor
 			// overrides are preserved).
-			r.Properties = module.EnsureModule(r.Properties, r.SourceFile, i.moduleMarkers)
+			//
+			// Issue #1628 — for a PLAIN repo (single-unit mode) force the
+			// per-repo label on every sourced entity so the Group-by-Module
+			// graph shows one node for the repo instead of fragmenting by
+			// top-level directory. Synthetic/sourceless entities are handled
+			// by the _external pass below and are left untouched here.
+			if i.singleModuleLabel != "" && r.SourceFile != "" {
+				if r.Properties == nil {
+					r.Properties = map[string]string{}
+				}
+				r.Properties["module"] = i.singleModuleLabel
+			} else {
+				r.Properties = module.EnsureModule(r.Properties, r.SourceFile, i.moduleMarkers)
+			}
 			entities = append(entities, graph.Entity{
 				ID:            id,
 				Name:          r.Name,
