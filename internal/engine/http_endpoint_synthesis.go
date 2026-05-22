@@ -101,6 +101,15 @@ func synthesisSupportsLanguage(lang string) bool {
 	// #1483: Elixir Finch / HTTPoison consumer-side extraction.
 	case "elixir":
 		return true
+	// #1596: Infrastructure-as-Code languages have no compiled YAML rule sets
+	// of their own (Terraform rules live under the `hcl` key; CloudFormation
+	// YAML has none), so without this they would short-circuit out of Detect
+	// before the IaC-aware synthesis passes run. Allowing them through lets
+	// applyEventBusEdges (HCL EventBridge / serverless.yml) and applyIaCSNSEdges
+	// (Terraform / CloudFormation SNS→SQS fan-out) scan the raw content. Files
+	// with none of the recognised anchors are no-ops inside those passes.
+	case "terraform", "hcl", "yaml":
+		return true
 	default:
 		return false
 	}

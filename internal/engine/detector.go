@@ -333,6 +333,17 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// IaC-declared SNS → SQS fan-out edges (#1596). Reads SNS→SQS
+	// subscriptions declared in AWS CDK (TS), Terraform (HCL), and
+	// CloudFormation (YAML) and emits a synthetic SNS topic (SCOPE.Queue,
+	// broker=sns) plus a SUBSCRIBES_TO edge per SQS subscriber. Subscriptions
+	// for the same topic name declared across different IaC tools collapse
+	// onto a single SNS topic node, surfacing the fan-out in /topology.
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	entities, relationships = applyIaCSNSEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// Google Cloud Pub/Sub producer/consumer cross-repo edges (wave 3 of #726).
 	// Emits SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for
 	// google-cloud-pubsub (Python/Node/Go/Java), Pub/Sub Lite, and
