@@ -17,6 +17,7 @@ import { useParams } from "react-router-dom";
 import { Kbd } from "@/components/ui";
 import { useAppStore } from "@/store/use-app-store";
 import { useGroups } from "@/hooks/use-groups";
+import { healthDisplay, healthTooltip } from "@/lib/health";
 
 export interface TopBarProps {
   group: string;
@@ -30,6 +31,8 @@ export function TopBar({ group, surfaceLabel }: TopBarProps) {
 
   const current = groups.find((g) => g.id === (groupId ?? group));
   const projectName = current?.name ?? group;
+  const hd = current ? healthDisplay(current.health) : healthDisplay("unindexed");
+  const tip = current ? healthTooltip(current.health, current.fidelity) : "Health: unknown";
 
   return (
     <header className="flex items-center justify-between h-14 shrink-0 px-4 border-b border-border bg-bg">
@@ -46,7 +49,15 @@ export function TopBar({ group, surfaceLabel }: TopBarProps) {
         aria-label="Switch project"
         className="inline-flex items-center gap-2 h-8 pl-3 pr-2 rounded-md border border-border bg-surface text-text-2 text-md hover:bg-surface-2 transition-colors max-w-[260px]"
       >
-        <span className="size-2 rounded-full bg-accent shrink-0" aria-hidden />
+        {/* Health dot — encodes group health, NOT "this is the active project".
+            Active-project is conveyed by the button context itself (you're
+            already inside this group). */}
+        <span
+          className="size-2 rounded-full shrink-0"
+          style={{ background: hd.color }}
+          title={tip}
+          aria-label={tip}
+        />
         <span className="font-medium text-text truncate">{projectName}</span>
         <span className="text-text-4">·</span>
         <Kbd>⌘K</Kbd>

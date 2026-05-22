@@ -21,17 +21,10 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Search, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { healthDisplay, healthTooltip } from "@/lib/health";
 import { useAppStore } from "@/store/use-app-store";
 import { useGroups } from "@/hooks/use-groups";
 import { SCREEN_SEGMENTS } from "./screens";
-import type { GroupHealth } from "@/data/types";
-
-const HEALTH_DOT: Record<GroupHealth, string> = {
-  healthy: "var(--success)",
-  warning: "var(--warning)",
-  degraded: "var(--danger)",
-  unindexed: "var(--text-4)",
-};
 
 /** Segment after the group id in the current path (default graph). */
 function currentSegment(pathname: string, groupId: string | undefined): string {
@@ -132,6 +125,8 @@ export function CommandPalette() {
               >
                 {groups.map((g) => {
                   const active = g.id === groupId;
+                  const hd = healthDisplay(g.health);
+                  const tip = healthTooltip(g.health, g.fidelity);
                   return (
                     <PaletteItem
                       key={g.id}
@@ -140,8 +135,9 @@ export function CommandPalette() {
                     >
                       <span
                         className="size-2.5 rounded-full shrink-0"
-                        style={{ background: HEALTH_DOT[g.health] }}
-                        aria-hidden
+                        style={{ background: hd.color }}
+                        title={tip}
+                        aria-label={tip}
                       />
                       <span className={cn("font-mono", active && "font-medium text-text")}>{g.name}</span>
                       {active && <Check size={14} className="ml-auto text-accent shrink-0" />}

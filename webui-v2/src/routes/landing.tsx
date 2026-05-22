@@ -20,17 +20,9 @@ import { ScanWizard } from "@/components/chrome/scan-wizard";
 import { Constellation, seedFromString } from "@/components/viz/constellation";
 import { useGroups } from "@/hooks/use-groups";
 import { useMeta } from "@/hooks/use-meta";
-import type { Group, GroupHealth } from "@/data/types";
+import type { Group } from "@/data/types";
 import { cn } from "@/lib/utils";
-
-/* ---------- helpers ---------- */
-
-const HEALTH: Record<GroupHealth, { label: string; dot: string }> = {
-  healthy: { label: "Healthy", dot: "var(--success)" },
-  warning: { label: "Low fidelity", dot: "var(--warning)" },
-  degraded: { label: "Needs work", dot: "var(--danger)" },
-  unindexed: { label: "Not indexed", dot: "var(--text-4)" },
-};
+import { healthDisplay, healthTooltip } from "@/lib/health";
 
 function fidelityColor(f: number | null): string {
   if (f == null) return "var(--text-4)";
@@ -65,7 +57,8 @@ const FIDELITY_TIP =
 
 function GroupCard({ group, onPick, onManage }: { group: Group; onPick: () => void; onManage: () => void }) {
   const isEmpty = group.health === "unindexed";
-  const health = HEALTH[group.health];
+  const health = healthDisplay(group.health);
+  const tip = healthTooltip(group.health, group.fidelity);
 
   return (
     <Card className="group relative p-0 overflow-hidden text-left transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[var(--shadow-3)] focus-within:-translate-y-0.5">
@@ -90,9 +83,9 @@ function GroupCard({ group, onPick, onManage }: { group: Group; onPick: () => vo
           <div className="flex items-center gap-2">
             <span
               className="size-2 rounded-full shrink-0"
-              style={{ background: health.dot }}
-              title={health.label}
-              aria-label={health.label}
+              style={{ background: health.color }}
+              title={tip}
+              aria-label={tip}
             />
             <span className="font-mono font-semibold text-text truncate">{group.name}</span>
             <span className="ml-auto text-sm text-text-4 whitespace-nowrap">
