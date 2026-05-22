@@ -49,6 +49,19 @@ func writeMonorepo(t *testing.T, dir string) {
 	}
 }
 
+// writeChildGitRepos creates a parent directory fixture with N named child
+// git repos — each subdirectory contains a real .git dir (empty, just the
+// marker). This simulates the multi-repo-parent pattern.
+func writeChildGitRepos(t *testing.T, parentDir string, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		gitDir := filepath.Join(parentDir, name, ".git")
+		if err := os.MkdirAll(gitDir, 0o755); err != nil {
+			t.Fatalf("writeChildGitRepos mkdir %s: %v", gitDir, err)
+		}
+	}
+}
+
 // TestV2ScanInspect_DetectsMonorepo verifies the scan/detect step resolves a
 // real path and surfaces the stack + monorepo layout without any registry write.
 func TestV2ScanInspect_DetectsMonorepo(t *testing.T) {
@@ -112,6 +125,87 @@ func TestV2ScanInspect_InvalidPath(t *testing.T) {
 	}
 	if env.Data.Error == "" {
 		t.Fatalf("expected error message for missing path")
+	}
+}
+
+// TestV2ScanInspect_DetectsChildGitRepos verifies that pointing at a parent
+// directory whose immediate children are git repos returns childGitRepos + sets
+// childrenKind to "git-repos".
+func TestV2ScanInspect_DetectsChildGitRepos(t *testing.T) {
+	ts, _ := newWizardTestServer(t, func(proto.RebuildArgs) (proto.RebuildReply, error) {
+		return proto.RebuildReply{}, nil
+	})
+	parentDir := t.TempDir()
+	writeChildGitRepos(t, parentDir, "core", "frontend", "mobile")
+
+	body := `{"path":` + jsonQuote(parentDir) + `}`
+	resp, err := http.Post(ts.URL+"/api/v2/scan/inspect", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST scan/inspect: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d; want 200", resp.StatusCode)
+	}
+	var env struct {
+		OK   bool               `json:"ok"`
+		Data v2ScanInspectReply `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !env.OK || !env.Data.Valid {
+		t.Fatalf("scan should be valid: %+v", env)
+	}
+	if len(env.Data.ChildGitRepos) != 3 {
+		t.Fatalf("childGitRepos = %v; want 3 entries (core, frontend, mobile)", env.Data.ChildGitRepos)
+	}
+	if env.Data.ChildrenKind != "git-repos" {
+		t.Fatalf("childrenKind = %q; want git-repos", env.Data.ChildrenKind)
+	}
+	// Packages must be empty — child git repos take precedence.
+	if len(env.Data.Packages) != 0 {
+		t.Fatalf("packages = %v; want empty (child git repos take precedence)", env.Data.Packages)
+	}
+}
+
+// TestV2ScanInspect_PrefersChildGitReposOverMonorepo verifies that when a
+// directory has BOTH a pnpm-workspace.yaml (monorepo packages) AND child git
+// repos, child git repos take precedence (childrenKind="git-repos", packages=[]).
+func TestV2ScanInspect_PrefersChildGitReposOverMonorepo(t *testing.T) {
+	ts, _ := newWizardTestServer(t, func(proto.RebuildArgs) (proto.RebuildReply, error) {
+		return proto.RebuildReply{}, nil
+	})
+	parentDir := t.TempDir()
+	// Plant a monorepo marker.
+	writeMonorepo(t, parentDir)
+	// Also plant child git repos (the precedence case).
+	writeChildGitRepos(t, parentDir, "repo-a", "repo-b")
+
+	body := `{"path":` + jsonQuote(parentDir) + `}`
+	resp, err := http.Post(ts.URL+"/api/v2/scan/inspect", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST scan/inspect: %v", err)
+	}
+	defer resp.Body.Close()
+	var env struct {
+		OK   bool               `json:"ok"`
+		Data v2ScanInspectReply `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !env.OK || !env.Data.Valid {
+		t.Fatalf("scan should be valid: %+v", env)
+	}
+	if env.Data.ChildrenKind != "git-repos" {
+		t.Fatalf("childrenKind = %q; want git-repos (child git repos take precedence)", env.Data.ChildrenKind)
+	}
+	if len(env.Data.ChildGitRepos) < 2 {
+		t.Fatalf("childGitRepos = %v; want >= 2", env.Data.ChildGitRepos)
+	}
+	if len(env.Data.Packages) != 0 {
+		t.Fatalf("packages = %v; want empty when child git repos present", env.Data.Packages)
 	}
 }
 
