@@ -151,6 +151,18 @@ function clusterKeyFor(n: GraphNode, repoIdx: number, mode: GroupByMode): string
   return groupKeyFor(n, mode);
 }
 
+// Fix #1566: a tiny deterministic hash → [0,1) so cluster seed offsets are
+// stable across re-packs (no jitter on every render) without storing state.
+function hash01(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  // map to [0,1)
+  return ((h >>> 0) % 100000) / 100000;
+}
+
 function buildGroupCenters(
   nodes: GraphNode[],
   mode: GroupByMode,
@@ -159,17 +171,23 @@ function buildGroupCenters(
   const keys = Array.from(new Set(nodes.map((n) => groupKeyFor(n, mode)))).sort();
   const N = keys.length;
   if (N === 0) return new Map();
-  // Fix #1558-2: the ring radius still scaled with the GROUP COUNT (N*150) which,
-  // on a many-module monorepo, flung the clusters into a wide hollow ring with an
-  // empty middle. The ring is now only a SEEDING hint — keep it tight so the
-  // initial spokes start close to center, then let the link-spring + center
-  // gravity pull connected modules inward to fill the canvas. Scale with node
-  // count (not group count), so adding more groups no longer expands the ring.
-  const R = Math.min(1400, Math.max(450, Math.sqrt(nodes.length) * 28));
+  // Fix #1566: the REAL cause of the hollow ring. Every prior fix kept seeding
+  // cluster centroids on a CIRCLE (R*cos/sin(angle)); cosmos's cluster force
+  // then pulled each cluster back toward its ring slot, so connected modules
+  // could never migrate next to each other — the middle stayed empty no matter
+  // how strong the link-spring was. We now DROP the radial ring entirely and
+  // seed every cluster centroid in a SMALL random blob near the center (stable
+  // hash offsets). With the cluster force softened to color-only strength
+  // (see simulationCluster + clusterStrength), the link-spring + center gravity
+  // now DOMINATE placement: connected clusters pull adjacent and fill the
+  // middle, while same-group nodes still read together by color.
+  const SEED_R = Math.min(700, Math.max(260, Math.sqrt(nodes.length) * 14));
   return new Map(
-    keys.map((key, i) => {
-      const angle = (i / N) * 2 * Math.PI;
-      return [key, { x: R * Math.cos(angle), y: R * Math.sin(angle) }];
+    keys.map((key) => {
+      // Two independent hashes → an angle + radius inside a centered disc.
+      const a = hash01(key) * 2 * Math.PI;
+      const r = Math.sqrt(hash01(key + "·r")) * SEED_R;
+      return [key, { x: r * Math.cos(a), y: r * Math.sin(a) }];
     }),
   );
 }
@@ -357,10 +375,13 @@ function GraphCanvasInner(
       }
       clusters[i] = cidx;
       const normPR = (n.pageRank ?? 0) / maxPR;
-      // Fix #1558-2: lower the per-node cluster pull so it nudges (rather than
-      // pins) nodes to their group center; the cross-module link-spring then wins
-      // where it matters, drawing connected modules together (was 0.45 + .25).
-      clusterStrength[i] = grouping ? 0.22 + normPR * 0.15 : 0.04 + normPR * 0.06;
+      // Fix #1566: keep clustering for COLOR/cohesion only — drop the per-node
+      // cluster pull to a WEAK nudge so it merely keeps same-group nodes loosely
+      // together, while the link-spring + center gravity own the macro layout.
+      // A strong cluster pull (0.22+) is what re-formed the ring by yanking each
+      // group back toward its seeded centroid; at this strength connectivity
+      // wins and connected groups migrate adjacent. (was 0.22 + normPR*0.15)
+      clusterStrength[i] = grouping ? 0.06 + normPR * 0.06 : 0.03 + normPR * 0.04;
 
       // log-scaled size by degree (graph.md: radius scales with PageRank/degree),
       // hard-capped at maxMultiplier × base so high-degree hubs never bloom into
@@ -450,10 +471,14 @@ function GraphCanvasInner(
     // Fix #1564-2: emphasize the inter-module/inter-repo wiring. Cross edges
     // ride near-opaque so they pop; intra-module edges fade to the background so
     // the structure stands out instead of looking like disconnected islands.
+    // Fix #1566: tone the emphasis WAY down. Cross edges are now only modestly
+    // more opaque than intra (not near-opaque), so they read as a slightly
+    // distinct thread, not a dominating rope. Traceable on inspection, not
+    // overwhelming.
     const base = render.linkOpacity;
-    const intraA = Math.min(0.5, base * 0.55);
-    const crossModuleA = Math.min(1, Math.max(0.8, base * 1.5));
-    const crossRepoA = Math.min(1, Math.max(0.9, base * 1.8));
+    const intraA = Math.min(0.5, base * 0.6);
+    const crossModuleA = Math.min(0.75, Math.max(0.55, base * 0.95));
+    const crossRepoA = Math.min(0.8, Math.max(0.6, base * 1.05));
     for (let i = 0; i < states.length; i++) {
       const st = states[i];
       const c = st === 2 ? pal.crossRepo : st === 1 ? pal.crossModule : pal.intraModule;
@@ -468,16 +493,17 @@ function GraphCanvasInner(
     const { states } = linkData;
     const out = new Float32Array(states.length);
     if (!render.showLinks) return out;
-    // Fix #1558-1 + #1564-2: links stay visible at EVERY zoom level (constant
-    // on-screen pixel width, scaleLinksOnZoom off). Cross-module + cross-repo
-    // edges are THICKER so the inter-module/inter-repo wiring reads first;
-    // intra-module edges are thin so the structure isn't drowned out.
+    // Fix #1558-1: links stay visible at EVERY zoom level (constant on-screen
+    // pixel width, scaleLinksOnZoom off). Fix #1566: #1565's thick cross ropes
+    // (2.6 / 3.4, floors 2.2 / 3.0) became "violet spaghetti". Pull cross widths
+    // back to NEAR the intra width — only a hair thicker — so cross edges are
+    // distinguishable on inspection without dominating the canvas.
     const MIN_INTRA = 0.8;
-    const MIN_CROSS_MODULE = 2.2;
-    const MIN_CROSS_REPO = 3.0;
+    const MIN_CROSS_MODULE = 1.0;
+    const MIN_CROSS_REPO = 1.2;
     for (let i = 0; i < states.length; i++) {
       const st = states[i];
-      const base = st === 2 ? 3.4 : st === 1 ? 2.6 : 0.8;
+      const base = st === 2 ? 1.3 : st === 1 ? 1.1 : 0.8;
       const floor = st === 2 ? MIN_CROSS_REPO : st === 1 ? MIN_CROSS_MODULE : MIN_INTRA;
       out[i] = Math.max(floor, base * render.linkWidthScale);
     }
@@ -762,11 +788,12 @@ function GraphCanvasInner(
       // simulation alive long enough to wander into a divergent state. The
       // ≤settleTime wall-clock cap still bounds total settle time.
       simulationDecay: 2000,
-      // Fix #1558-2: soft cluster pull so groups coalesce locally without pinning
-      // nodes hard to a ring center; the link-spring then draws connected modules
-      // together. Kept moderate (with restored repulsion this no longer
-      // destabilizes large graphs). (was 0.5)
-      simulationCluster: 0.2,
+      // Fix #1566: weak GLOBAL cluster force — clustering is now essentially
+      // color-only. A moderate value (0.2) still re-formed the ring by holding
+      // each cluster near its seeded slot; at this low strength the link-spring
+      // + center own the macro layout and connected clusters sit adjacent,
+      // filling the center. Bounded — no destabilization at 1316 nodes. (was 0.2)
+      simulationCluster: 0.05,
       simulationRepulsion: simulation.repulsion,
       simulationCenter: simulation.center,
       rescalePositions: true,

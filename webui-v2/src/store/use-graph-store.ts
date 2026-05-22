@@ -61,11 +61,19 @@ export const DEFAULT_SIMULATION: SimulationConfig = {
   // still coheres and fills the canvas (no hollow ring) but the net force stays
   // bounded so positions can never diverge. (was linkSpring 2.2 / repulsion 0.12
   // / center 1.6 / gravity 0.35 / settle 4.5)
-  linkSpring: 1.3,
+  //
+  // Fix #1566: now that the radial cluster ring + strong cluster force are gone
+  // (see buildGroupCenters + simulationCluster), the link-spring and center are
+  // the dominant placement forces — so raise them (BOUNDED) so connected
+  // clusters pull adjacent and the mass fills the center instead of ringing.
+  // Repulsion is kept ample so the stronger attraction can't collapse/diverge
+  // at 1316 nodes (the #1562 stability invariant). (was linkSpring 1.3 /
+  // center 0.9 / repulsion 0.7)
+  linkSpring: 1.7,
   linkDistance: 12,
   friction: 0.88,
-  repulsion: 0.7,
-  center: 0.9,
+  repulsion: 0.85,
+  center: 1.2,
   // A 3s settle is enough for this balance to converge while staying ≤ the 6s
   // hard cap. (Fix #1562)
   settleTime: 3.0,
