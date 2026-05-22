@@ -12,15 +12,17 @@
    Query.
    ============================================================ */
 
-import { useEffect, useMemo, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, lazy, Suspense } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { X, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { SearchInput, Pill, Kbd } from "@/components/ui";
 import { useGraph } from "@/hooks/use-graph";
 import { useGraphStore, type ColorMode } from "@/store/use-graph-store";
 import { useAppStore } from "@/store/use-app-store";
 import type { EdgeKind, GraphNode } from "@/data/types";
-import { GraphCanvas } from "@/components/graph/graph-canvas";
+const GraphCanvas = lazy(() =>
+  import("@/components/graph/graph-canvas").then((m) => ({ default: m.GraphCanvas })),
+);
 import { NodeInspector } from "@/components/graph/node-inspector";
 import { FiltersDrawer } from "@/components/graph/filters-drawer";
 import { CommunitiesPopover } from "@/components/graph/communities-popover";
@@ -37,9 +39,38 @@ export default function GraphScreen() {
   const isDark = theme === "dark";
 
   const s = useGraphStore();
-  const { data, isLoading, isError } = useGraph(groupId);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { data, isLoading, isError } = useGraph(groupId, { lod: s.lod });
 
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // ── ?node= deep-link: restore on mount, persist on selection change ──────────
+  // On first render, if the URL carries ?node=<id>, apply it as the selected
+  // node. focusEgo is called in a separate data-ready effect below.
+  useEffect(() => {
+    const nodeParam = searchParams.get("node");
+    if (nodeParam && !s.selectedNodeId) {
+      s.setSelectedNode(nodeParam);
+    }
+    // Only run on mount — searchParams intentionally excluded to avoid loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mirror selectedNodeId → URL so a deep-link can be copied.
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (s.selectedNodeId) {
+          next.set("node", s.selectedNodeId);
+        } else {
+          next.delete("node");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }, [s.selectedNodeId, setSearchParams]);
 
   // ── keyboard: / focus search, F filters, Escape cascade ─────────────────────
   useEffect(() => {
@@ -108,6 +139,15 @@ export default function GraphScreen() {
     }
     s.setFocusNodes(set);
   };
+
+  // Once data arrives, if a node was deep-linked, focus its ego-graph.
+  useEffect(() => {
+    if (data && s.selectedNodeId && !s.focusNodeIds) {
+      focusEgo(s.selectedNodeId, 1);
+    }
+    // Only trigger when data first becomes available.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!data]);
 
   const selectedNode: GraphNode | null = useMemo(
     () => nodes.find((n) => n.id === s.selectedNodeId) ?? null,
@@ -216,25 +256,33 @@ export default function GraphScreen() {
           </div>
         ) : (
           <>
-            <GraphCanvas
-              group={groupId}
-              nodes={nodes}
-              edges={edges}
-              selectedNodeId={s.selectedNodeId}
-              isDark={isDark}
-              colorMode={s.colorMode}
-              groupBy={s.groupBy}
-              simulation={s.simulation}
-              nodeSizing={s.nodeSizing}
-              render={s.render}
-              activeRepos={s.activeRepos}
-              focusedCommunityId={s.focusedCommunityId}
-              focusNodeIds={s.focusNodeIds}
-              relayoutNonce={s.relayoutNonce}
-              onNodeClick={onNodeClick}
-              onNodeHover={(n) => s.setHoveredNode(n?.id ?? null)}
-              onSettled={() => {}}
-            />
+            <Suspense
+              fallback={
+                <div className="grid h-full place-items-center bg-bg">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-accent" />
+                </div>
+              }
+            >
+              <GraphCanvas
+                group={groupId}
+                nodes={nodes}
+                edges={edges}
+                selectedNodeId={s.selectedNodeId}
+                isDark={isDark}
+                colorMode={s.colorMode}
+                groupBy={s.groupBy}
+                simulation={s.simulation}
+                nodeSizing={s.nodeSizing}
+                render={s.render}
+                activeRepos={s.activeRepos}
+                focusedCommunityId={s.focusedCommunityId}
+                focusNodeIds={s.focusNodeIds}
+                relayoutNonce={s.relayoutNonce}
+                onNodeClick={onNodeClick}
+                onNodeHover={(n) => s.setHoveredNode(n?.id ?? null)}
+                onSettled={() => {}}
+              />
+            </Suspense>
 
             <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-md border border-border bg-surface/80 px-2 py-1 font-mono text-xs text-text-3 backdrop-blur-sm">
               LOD: {lodLabel}

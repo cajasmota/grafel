@@ -103,6 +103,7 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	includeExternal := r.URL.Query().Get("include_external") == "true"
 	includeModules := r.URL.Query().Get("view") == "modules" ||
 		r.URL.Query().Get("include") == "modules"
+	lodParam := r.URL.Query().Get("lod")
 
 	grp, err := s.graphs.GetGroup(group)
 	if err != nil {
@@ -112,7 +113,8 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 
 	// Payload cache + strong ETag/304. A "v2:" prefix keeps the v2 payload
 	// cache entries distinct from v1's for the same (group, params) tuple.
-	cacheKey := "v2:" + payloadCacheKey(group, filterKind, "", reposParam, includeExternal, includeModules)
+	// The lod suffix is appended so each LoD level has its own cache entry.
+	cacheKey := "v2:" + payloadCacheKey(group, filterKind, "", reposParam, includeExternal, includeModules) + ":lod=" + lodParam
 	if entry, hit := s.graphs.Payloads.Get(cacheKey); hit {
 		w.Header().Set("ETag", entry.etag)
 		w.Header().Set("Vary", "Accept-Encoding")
@@ -142,6 +144,27 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := s.buildV2Graph(repos, grp, filterKind, includeExternal, includeModules)
+
+	// Apply LoD thinning: cap nodes by pagerank, then drop orphaned edges.
+	// total_node_count is preserved as the un-thinned count so the UI badge
+	// can read "500 / 12 000" even after thinning.
+	totalBeforeThin := resp.TotalNodeCount
+	nodeCap := lodNodeCap(lodParam)
+	if nodeCap > 0 && len(resp.Nodes) > nodeCap {
+		resp.Nodes = thinByPagerank(resp.Nodes, nodeCap)
+		keptIDs := make(map[string]bool, len(resp.Nodes))
+		for _, n := range resp.Nodes {
+			keptIDs[n.ID] = true
+		}
+		pruned := resp.Edges[:0]
+		for _, e := range resp.Edges {
+			if keptIDs[e.Source] && keptIDs[e.Target] {
+				pruned = append(pruned, e)
+			}
+		}
+		resp.Edges = pruned
+	}
+	resp.TotalNodeCount = totalBeforeThin
 
 	if resp.TotalNodeCount > softNodeWarnThreshold {
 		w.Header().Set("X-Graph-Warning", "large-graph: node count exceeds 50k; consider filtering by repo or kind")
@@ -298,6 +321,42 @@ func communityColorIndex(id int) int {
 		return 1
 	}
 	return (id % pastelScaleSize) + 1
+}
+
+// ── LoD helpers ──────────────────────────────────────────────────────────────
+
+// lodNodeCap maps a ?lod= query value to a node budget (0 = unlimited).
+// Canonical names: overview|normal|full.
+// Legacy frontend LodLevel strings: low|mid|high are also accepted.
+func lodNodeCap(lod string) int {
+	switch lod {
+	case "overview", "low":
+		return 500
+	case "full", "high":
+		return 0 // unlimited
+	default:
+		// "normal", "mid", "" (no param), and unknown values all default to 3000.
+		return 3000
+	}
+}
+
+// thinByPagerank returns at most cap nodes from nodes, keeping those with
+// the highest pagerank (ties broken by degree). If cap == 0 or
+// cap >= len(nodes) it returns nodes unchanged. The returned slice is a
+// new allocation sorted descending by pagerank.
+func thinByPagerank(nodes []v2GraphNode, cap int) []v2GraphNode {
+	if cap == 0 || len(nodes) <= cap {
+		return nodes
+	}
+	sorted := make([]v2GraphNode, len(nodes))
+	copy(sorted, nodes)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].PageRank != sorted[j].PageRank {
+			return sorted[i].PageRank > sorted[j].PageRank
+		}
+		return sorted[i].Degree > sorted[j].Degree
+	})
+	return sorted[:cap]
 }
 
 // dominantLanguage returns the most frequent non-empty Language across the

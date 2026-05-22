@@ -14,8 +14,8 @@ import type {
   EntityDetailWire,
 } from "@/data/types";
 
-export const graphQueryKey = (groupId: string, repos?: string[], filterKind?: string) =>
-  ["graph", groupId, repos?.slice().sort().join(",") ?? "", filterKind ?? ""] as const;
+export const graphQueryKey = (groupId: string, repos?: string[], filterKind?: string, lod?: string) =>
+  ["graph", groupId, repos?.slice().sort().join(",") ?? "", filterKind ?? "", lod ?? ""] as const;
 
 /** Normalize the wire payload (snake_case) into the domain shape. */
 function normalize(w: GraphPayloadWire): GraphPayload {
@@ -50,10 +50,10 @@ function normalize(w: GraphPayloadWire): GraphPayload {
  */
 export function useGraph(
   groupId: string,
-  opts?: { repos?: string[]; filterKind?: string },
+  opts?: { repos?: string[]; filterKind?: string; lod?: string },
 ) {
   return useQuery({
-    queryKey: graphQueryKey(groupId, opts?.repos, opts?.filterKind),
+    queryKey: graphQueryKey(groupId, opts?.repos, opts?.filterKind, opts?.lod),
     queryFn: async () => normalize(await api.getGraph(groupId, opts)),
     // The payload is large + server-cached (ETag/304); keep it warm.
     staleTime: 5 * 60 * 1000,
