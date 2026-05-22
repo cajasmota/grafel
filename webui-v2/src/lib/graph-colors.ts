@@ -135,21 +135,26 @@ export interface LinkPalette {
 }
 
 export function linkPalette(isDark: boolean): LinkPalette {
+  // Fix #1566: #1565 made cross edges thick + bright violet — "violet
+  // spaghetti" that dominated the canvas. Dial the hue WAY back: cross edges
+  // are now only a SLIGHTLY-distinct, more muted tone than intra (a soft
+  // sky / lavender-ish slate) so the user can TRACE them on inspection rather
+  // than be overwhelmed. Still theme-aware (#1564) + dark-visible.
   if (isDark) {
     return {
-      // bright sky — pops on the near-black bg.
-      crossRepo: [56, 189, 248, 1],
-      // bright violet/blue — clearly distinct from intra, reads as wiring.
-      crossModule: [167, 139, 250, 1],
+      // muted sky — distinct but not blaring on the near-black bg.
+      crossRepo: [125, 211, 252, 1],
+      // soft periwinkle — only slightly distinct from intra slate.
+      crossModule: [165, 180, 252, 1],
       // light slate — visible on dark but quiet, so it recedes.
       intraModule: [148, 163, 184, 1],
     };
   }
   return {
-    // deep sky — bright + saturated against the light bg.
-    crossRepo: [2, 132, 199, 1],
-    // indigo/violet — distinct from the slate intra edges.
-    crossModule: [109, 40, 217, 1],
+    // medium sky — distinct but not saturated against the light bg.
+    crossRepo: [56, 154, 214, 1],
+    // muted indigo — only slightly distinct from the slate intra edges.
+    crossModule: [99, 102, 180, 1],
     // dark slate — quiet, recedes into the light bg.
     intraModule: [71, 85, 105, 1],
   };
