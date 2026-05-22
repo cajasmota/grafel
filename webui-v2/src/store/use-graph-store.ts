@@ -153,7 +153,12 @@ const ALL_EDGE_KINDS: EdgeKind[] = [
 // the change actually lands on next load with no manual Reset.
 // Fix #1580: bump so the lowered base-size floor + auto-scale defaults reach
 // users who already have a stored sizing blob (e.g. baseSize 90 from v2).
-const DEFAULTS_VERSION = 3;
+// Fix #1581: bump again — the recurring "reload restores a contracted layout"
+// bug is rooted in stale CACHED LAYOUTS produced by retired force defaults. We
+// scope the layout cache by graph-layout-cache.LAYOUT_VERSION (kept in lock-step
+// with this constant); bumping here also discards stale persisted TUNING so the
+// current force defaults (which produce the good spread) actually apply on load.
+const DEFAULTS_VERSION = 4;
 const VERSION_KEY = "ag.v2.graph.defaultsVersion";
 
 function readStoredVersion(): number {

@@ -5,16 +5,37 @@
    localStorage lets a return visit skip the explode/settle animation
    entirely and render the laid-out graph INSTANTLY.
 
-   Key:   archigraph.v2.layout.<group>.<nodesetHash>
+   Key:   archigraph.v2.layout.<layoutVersion>.<group>.<nodesetHash>
    Value: base64-encoded Float32Array of [x0, y0, x1, y1, ...]
 
    The node-set hash (FNV-1a over sorted node IDs) keys the cache so a graph
    whose nodes changed (re-index) misses and re-lays-out. A 2 MB guard avoids
    blowing the localStorage quota on huge graphs.
+
+   Fix #1581: the cache key is ALSO scoped by a LAYOUT_VERSION. The settled
+   positions are a product of the simulation / force defaults; when we ship new
+   force defaults (#1566/#1569/#1586/…) the OLD cached positions are stale — a
+   reload restored a layout produced by forces that no longer exist (the
+   over-contracted blob), while Reset re-ran the sim with the new forces and
+   produced the good spread. Bumping LAYOUT_VERSION whenever the layout-producing
+   defaults change makes every key under the old version a guaranteed MISS, so a
+   ship of new forces always re-settles. (Keep this in lock-step with the store's
+   DEFAULTS_VERSION — bump both when DEFAULT_SIMULATION changes.)
    ============================================================ */
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const PREFIX = "archigraph.v2.layout";
+
+/**
+ * Fix #1581: version stamp baked into every layout-cache key. Bump this whenever
+ * a change can alter the SETTLED GEOMETRY for the same node set — i.e. any change
+ * to the simulation / force defaults (DEFAULT_SIMULATION), the cluster-seeding, or
+ * the settle routine. Old-version entries become unreachable keys (a miss), so the
+ * graph re-settles with the current forces on next load instead of restoring a
+ * layout baked by retired forces. Tracks the store's DEFAULTS_VERSION (=4 at the
+ * time of #1581).
+ */
+export const LAYOUT_VERSION = 4;
 
 function fnv1a32(s: string): string {
   let h = 0x811c9dc5 >>> 0;
@@ -27,7 +48,8 @@ function fnv1a32(s: string): string {
 
 function layoutKey(group: string, nodeIds: string[]): string {
   const hash = fnv1a32([...nodeIds].sort().join(","));
-  return `${PREFIX}.${group}.${hash}`;
+  // Fix #1581: scope by LAYOUT_VERSION so a defaults bump invalidates old caches.
+  return `${PREFIX}.${LAYOUT_VERSION}.${group}.${hash}`;
 }
 
 function float32ToBase64(arr: Float32Array): string {
@@ -56,9 +78,29 @@ export function saveLayout(group: string, nodeIds: string[], positions: Float32A
   try {
     const encoded = float32ToBase64(positions);
     if (encoded.length > MAX_BYTES) return;
+    // Fix #1581: drop any layout entries from an OLDER version for this group +
+    // node set so stale blobs can never be read back and don't accumulate in
+    // localStorage. (We can only namespace-scan the keys we know how to rebuild.)
+    pruneOldVersions(group, nodeIds);
     localStorage.setItem(layoutKey(group, nodeIds), encoded);
   } catch {
     /* ignore quota / private-mode */
+  }
+}
+
+/**
+ * Fix #1581: remove layout-cache entries written under a PREVIOUS LAYOUT_VERSION
+ * for this exact group + node set, so a reload can never fall back to a layout
+ * baked by retired forces and localStorage doesn't grow unbounded across ships.
+ */
+function pruneOldVersions(group: string, nodeIds: string[]): void {
+  try {
+    const hash = fnv1a32([...nodeIds].sort().join(","));
+    for (let v = 0; v < LAYOUT_VERSION; v++) {
+      localStorage.removeItem(`${PREFIX}.${v}.${group}.${hash}`);
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -106,15 +148,32 @@ export function isDegenerateLayout(positions: Float32Array): boolean {
   const spanX = maxX - minX;
   const spanY = maxY - minY;
   const span = Math.max(spanX, spanY);
-  // Degenerate = the cloud has COLLAPSED toward a point — its span is tiny
-  // relative to the node count. A healthy cosmos.gl settle spreads roughly
-  // sqrt(n) × ~10 units of span (empirically ~584 for 3000 nodes); a contracted /
-  // mid-collapse snapshot is many times smaller. We threshold well BELOW the
-  // healthy span (sqrt(n) × 3, ≈164 for 3000) so a good spread is never rejected,
-  // while a true collapse (all nodes piled together) still trips it. The floor
-  // (40) catches the fully-collapsed case on tiny graphs.
-  const minHealthySpan = Math.max(40, Math.sqrt(n) * 3);
+  // Fix #1581: reject both a COLLAPSED layout (all nodes piled near a point) AND
+  // an OVER-CONTRACTED one (a tight ball / mushed clusters — the bug). A healthy
+  // cosmos.gl settle under the current forces spreads roughly sqrt(n) × ~10 units
+  // (empirically ~584 for 3000 nodes); the over-contracted reload blob is several
+  // times smaller. The earlier threshold (sqrt(n) × 3) only caught a near-total
+  // collapse, so the tight-ball reload slipped through and looked wrong vs Reset.
+  // Raise the healthy floor to sqrt(n) × 6 (≈329 for 3000) — still comfortably
+  // below a real spread so a good layout is never rejected, but now a contracted
+  // ball trips it and the caller re-settles (matching Reset). The absolute floor
+  // (60) catches the fully-collapsed case on tiny graphs.
+  const minHealthySpan = Math.max(60, Math.sqrt(n) * 6);
   return span < minHealthySpan;
+}
+
+/**
+ * Fix #1581: convenience predicate — a cached layout is GOOD (reusable on load)
+ * when every coordinate is finite AND the bounding-box spread is healthy for the
+ * node count (not collapsed, not an over-contracted ball). Callers reuse the cache
+ * only when this passes; otherwise they re-settle (== Reset).
+ */
+export function isLayoutHealthy(positions: Float32Array, expectedLen: number): boolean {
+  if (positions.length !== expectedLen) return false;
+  for (let i = 0; i < positions.length; i++) {
+    if (!Number.isFinite(positions[i])) return false;
+  }
+  return !isDegenerateLayout(positions);
 }
 
 export function clearLayout(group: string, nodeIds: string[]): void {

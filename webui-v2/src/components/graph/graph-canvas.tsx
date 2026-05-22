@@ -44,7 +44,7 @@ import {
   degreeColor,
   linkPalette,
 } from "@/lib/graph-colors";
-import { saveLayout, loadLayout, isDegenerateLayout } from "@/lib/graph-layout-cache";
+import { saveLayout, loadLayout, isDegenerateLayout, isLayoutHealthy } from "@/lib/graph-layout-cache";
 import {
   baseSizeForCount,
   DEFAULT_NODE_SIZING,
@@ -96,14 +96,6 @@ function sanitizePositions(
     out[i] = v;
   }
   return { array: out, repaired };
-}
-
-/** Fix #1562: true only if EVERY coordinate is a finite number. */
-function allFinite(positions: ArrayLike<number> | null | undefined): boolean {
-  const len = positions?.length ?? 0;
-  if (len === 0) return false;
-  for (let i = 0; i < len; i++) if (!Number.isFinite(positions![i])) return false;
-  return true;
 }
 
 // ── group / cluster helpers ──────────────────────────────────────────────────
@@ -794,6 +786,64 @@ function GraphCanvasInner(
   const doSettleRef = useRef(doSettle);
   doSettleRef.current = doSettle;
 
+  // Fix #1581: keep the latest packed buffers in a ref so the UNIFIED settle
+  // routine below can be a stable (dep-free) callback shared by every fresh-settle
+  // entry point (first load, Reset/Re-layout, group / group-by change, ego
+  // re-layout) without each one re-deriving the kick logic.
+  const packedRef = useRef(packed);
+  packedRef.current = packed;
+
+  // Fix #1581: THE single source of truth for "run a fresh settle". Previously the
+  // first-load no-cache path (mount effect) and the Reset/Re-layout path used
+  // DIFFERENT kick routines: the mount path scheduled a mid-settle re-heat (a
+  // second alpha pass partway through the window) gated by reheatedRef +
+  // onSimulationEnd, while Reset just did `g.start(1)` + a lone cap timer with NO
+  // re-heat. So a fresh page LOAD converged via the re-heat to the good spread,
+  // but a Reset (and the diverging older logic) could freeze before the islands
+  // finished pulling in — reload and Reset did not match. We now route BOTH
+  // through this one function so a fresh load is byte-for-byte the SAME settle the
+  // Reset button runs: reseed from packed.positions → start → mid-settle re-heat →
+  // hard cap → doSettle (fit + cache). Reload === Reset by construction.
+  const kickFreshSettle = useCallback(() => {
+    const g = graphRef.current;
+    if (!g) return;
+    const p = packedRef.current;
+    hasSettledRef.current = false;
+    didAutoStartRef.current = true;
+    reheatedRef.current = false;
+    mountTimeRef.current = Date.now();
+    if (capTimerRef.current) {
+      clearTimeout(capTimerRef.current);
+      capTimerRef.current = null;
+    }
+    if (reheatTimerRef.current) {
+      clearTimeout(reheatTimerRef.current);
+      reheatTimerRef.current = null;
+    }
+    g.setPointPositions(p.positions);
+    g.setPointClusters(p.clusters);
+    g.setPointClusterStrength(p.clusterStrength);
+    g.render();
+    g.create();
+    g.start(1);
+    const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
+    // Mid-settle re-heat: a single alpha pass partway through cools down before the
+    // strong center/gravity finish pulling the islands inward (the hollow-ring
+    // failure). Re-heat once at ~45% so it keeps converging to the canvas-filling
+    // spread, then the cap is the hard backstop. onSimulationEnd ignores the first
+    // (pre-re-heat) cool-down via reheatedRef so it never freezes a half-spread.
+    reheatTimerRef.current = setTimeout(() => {
+      const gg = graphRef.current;
+      reheatedRef.current = true;
+      if (gg && !hasSettledRef.current) gg.start(1);
+    }, Math.round(capMs * 0.45));
+    capTimerRef.current = setTimeout(() => {
+      if (!hasSettledRef.current) doSettleRef.current();
+    }, capMs);
+  }, []);
+  const kickFreshSettleRef = useRef(kickFreshSettle);
+  kickFreshSettleRef.current = kickFreshSettle;
+
   // ── mount the engine ONCE ─────────────────────────────────────────────────
   useEffect(() => {
     const container = containerRef.current;
@@ -908,10 +958,12 @@ function GraphCanvasInner(
     // Fix #1562: a layout cached BEFORE this fix could contain NaN/Infinity from
     // a diverged settle; loading it would crash on the first fit. Only trust a
     // fully-finite cache; otherwise fall through to a fresh (now-stable) layout.
-    // Fix #1567-2: ALSO reject a degenerate (over-contracted / collapsed) cache so
-    // a reload re-settles to the good spread instead of restoring a bad blob — the
-    // reload now matches Reset.
-    if (saved && allFinite(saved.positions) && !isDegenerateLayout(saved.positions)) {
+    // Fix #1567-2 / #1581: ALSO reject a degenerate (collapsed) OR over-contracted
+    // cache via isLayoutHealthy, and the cache is now version-scoped so a layout
+    // baked by retired force defaults is a guaranteed MISS. On any reject we run
+    // the EXACT same fresh settle the Reset button runs (kickFreshSettle) so the
+    // reload converges to the good spread — reload === Reset.
+    if (saved && isLayoutHealthy(saved.positions, nodeIds.length * 2)) {
       requestAnimationFrame(() => {
         const gg = graphRef.current;
         if (!gg) return;
@@ -919,23 +971,13 @@ function GraphCanvasInner(
         doSettleRef.current();
       });
     } else {
-      const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
-      // Fix #1558-2: a single alpha=1 pass from the (spread) seed cools down
-      // before the strong center/gravity finish pulling the islands inward — the
-      // graph froze as a hollow ring. Re-heat the simulation once partway through
-      // the settle window so it keeps converging on the now-partially-collapsed
-      // positions, reliably reaching the canvas-filling layout (this mirrors the
-      // manual second `start()` that was needed to converge). Still bounded by the
-      // settleTime cap below.
-      reheatedRef.current = false;
-      reheatTimerRef.current = setTimeout(() => {
-        const gg = graphRef.current;
-        reheatedRef.current = true;
-        if (gg && !hasSettledRef.current) gg.start(1);
-      }, Math.round(capMs * 0.45));
-      capTimerRef.current = setTimeout(() => {
-        if (!hasSettledRef.current) doSettleRef.current();
-      }, capMs);
+      // No valid cache → fresh settle, identical to Reset/Re-layout. Claim the
+      // auto-start synchronously so the data-push effect (which runs right after
+      // this mount effect in the same commit) doesn't kick its own competing
+      // g.start(1); the unified kick (deferred a frame so buffers are uploaded)
+      // owns the settle.
+      didAutoStartRef.current = true;
+      requestAnimationFrame(() => kickFreshSettleRef.current());
     }
 
     return () => {
@@ -974,11 +1016,14 @@ function GraphCanvasInner(
     g.create();
     if (!didAutoStartRef.current && !hasSettledRef.current) {
       const saved = loadLayout(group, nodeIds);
-      // Fix #1567-2: a degenerate cache is treated as a miss → kick a fresh
-      // settle (the mount handler also ignores it), so we don't render a blob.
-      if (!saved || isDegenerateLayout(saved.positions)) {
-        didAutoStartRef.current = true;
-        g.start(1);
+      // Fix #1581: an unhealthy/missing cache → run the UNIFIED fresh settle (the
+      // same routine Reset uses) instead of a bare g.start(1) here. This is a
+      // safety net: the mount effect normally claims the auto-start, but if the
+      // first data push beat it (or arrived after a node-set change), route through
+      // kickFreshSettle so reload still === Reset. A healthy cache is left to the
+      // mount/group handlers to pin + settle.
+      if (!saved || !isLayoutHealthy(saved.positions, nodeIds.length * 2)) {
+        kickFreshSettleRef.current();
       }
     }
     if (hasSettledRef.current) g.pause();
@@ -1020,24 +1065,13 @@ function GraphCanvasInner(
   }, [render, simulation, packLinkColors, packLinkWidths]);
 
   // ── re-layout request (Reset / re-layout) ───────────────────────────────────
+  // Fix #1581: this IS the canonical fresh-settle now; it (and first load) both
+  // call kickFreshSettle so the two paths are identical.
   useEffect(() => {
     if (relayoutRef.current === relayoutNonce) return;
     relayoutRef.current = relayoutNonce;
-    const g = graphRef.current;
-    if (!g) return;
-    hasSettledRef.current = false;
-    mountTimeRef.current = Date.now();
-    g.setPointPositions(packed.positions);
-    g.setPointClusters(packed.clusters);
-    g.setPointClusterStrength(packed.clusterStrength);
-    g.render();
-    g.create();
-    g.start(1);
-    const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
-    if (capTimerRef.current) clearTimeout(capTimerRef.current);
-    capTimerRef.current = setTimeout(() => {
-      if (!hasSettledRef.current) doSettleRef.current();
-    }, capMs);
+    if (!graphRef.current) return;
+    kickFreshSettleRef.current();
   }, [relayoutNonce, packed]);
 
   // ── re-layout when the node SET changes (Fix #1548-3 ego enter/exit) ─────────
@@ -1054,31 +1088,17 @@ function GraphCanvasInner(
     didAutoStartRef.current = true;
     mountTimeRef.current = Date.now();
     const saved = loadLayout(group, nodeIds);
-    // Fix #1562: ignore a non-finite cached layout (see mount handler).
-    // Fix #1567-2: also ignore a degenerate (collapsed) cache → re-settle.
-    if (
-      saved &&
-      saved.positions.length === packed.positions.length &&
-      allFinite(saved.positions) &&
-      !isDegenerateLayout(saved.positions)
-    ) {
+    // Fix #1562/#1567-2/#1581: reuse the cache only when it's HEALTHY (finite, not
+    // collapsed, not over-contracted) AND version-current; otherwise run the
+    // unified fresh settle (== Reset).
+    if (saved && isLayoutHealthy(saved.positions, packed.positions.length)) {
       g.setPointPositions(saved.positions, true);
       g.render();
       g.create();
       doSettleRef.current();
       return;
     }
-    g.setPointPositions(packed.positions);
-    g.setPointClusters(packed.clusters);
-    g.setPointClusterStrength(packed.clusterStrength);
-    g.render();
-    g.create();
-    g.start(1);
-    const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
-    if (capTimerRef.current) clearTimeout(capTimerRef.current);
-    capTimerRef.current = setTimeout(() => {
-      if (!hasSettledRef.current) doSettleRef.current();
-    }, capMs);
+    kickFreshSettleRef.current();
   }, [group, packed, nodeIds]);
 
   // ── re-cluster on group-by change ───────────────────────────────────────────
@@ -1086,21 +1106,9 @@ function GraphCanvasInner(
   useEffect(() => {
     if (prevGroupByRef.current === groupBy) return;
     prevGroupByRef.current = groupBy;
-    const g = graphRef.current;
-    if (!g) return;
-    hasSettledRef.current = false;
-    mountTimeRef.current = Date.now();
-    g.setPointPositions(packed.positions);
-    g.setPointClusters(packed.clusters);
-    g.setPointClusterStrength(packed.clusterStrength);
-    g.render();
-    g.create();
-    g.start(1);
-    const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
-    if (capTimerRef.current) clearTimeout(capTimerRef.current);
-    capTimerRef.current = setTimeout(() => {
-      if (!hasSettledRef.current) doSettleRef.current();
-    }, capMs);
+    if (!graphRef.current) return;
+    // Fix #1581: a group-by change re-clusters → run the unified fresh settle.
+    kickFreshSettleRef.current();
   }, [groupBy, packed]);
 
   // ── visibility / hover spotlight + repo + community selection ─────────────────
@@ -1297,20 +1305,9 @@ function GraphCanvasInner(
     if (!isFocusView || !changed) return;
     const g = graphRef.current;
     if (!g) return;
-    hasSettledRef.current = false;
-    didAutoStartRef.current = true;
-    mountTimeRef.current = Date.now();
-    g.setPointPositions(packed.positions);
-    g.setPointClusters(packed.clusters);
-    g.setPointClusterStrength(packed.clusterStrength);
-    g.render();
-    g.create();
-    g.start(1);
+    // Fix #1581: unified fresh settle for the new ego node set.
+    kickFreshSettleRef.current();
     const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
-    if (capTimerRef.current) clearTimeout(capTimerRef.current);
-    capTimerRef.current = setTimeout(() => {
-      if (!hasSettledRef.current) doSettleRef.current();
-    }, capMs);
     const fit = () => {
       fitNowRef.current();
       refreshLabelsRef.current();
