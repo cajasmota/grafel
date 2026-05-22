@@ -31,6 +31,34 @@ table Entity {
   source_line: int;
   source_col: int;
   properties: [PropertyEntry];
+
+  // Pass 4 (graph-algorithm) per-entity attributes. Appended after the
+  // original v2 fields so existing field IDs are unchanged and old
+  // graph.fb files read back with these defaulted (#1620).
+  //
+  // community_id uses a sentinel of -2 to mean "not computed" so that the
+  // real "ungrouped" community (-1, emitted by the MinSize denoise filter)
+  // round-trips distinctly from "the algo pass never ran". Readers map -2
+  // back to a nil *int on the in-memory Entity.
+  community_id: int = -2;
+  pagerank: double = 0;
+  centrality: double = 0;
+  is_god_node: bool = false;
+  is_surprise_endpoint: bool = false;
+  is_articulation_point: bool = false;
+}
+
+// Community is one Louvain modularity community summarised for the
+// on-disk graph (mirrors graph.CommunityResult). The aggregate list lets
+// `archigraph_clusters` return real communities straight from graph.fb
+// without re-running Pass 4 (#1620).
+table Community {
+  id: int;
+  size: int;
+  modularity: double;
+  top_entities: [string];
+  auto_name: string;
+  agent_name: string;
 }
 
 table Relationship {
@@ -46,6 +74,17 @@ table Graph {
   repo_tag: string;
   entities: [Entity];
   relationships: [Relationship];
+
+  // Pass 4 corpus aggregates. Appended after the original v2 fields so
+  // existing field IDs are unchanged and old files read back with these
+  // empty / zeroed (#1620).
+  communities: [Community];
+  louvain_modularity: double = 0;
+  num_god_nodes: int = 0;
+  num_articulation_points: int = 0;
+  num_surprise_edges: int = 0;
+  algo_runtime_ms: long = 0;
+  denoised_communities: int = 0;
 }
 
 root_type Graph;

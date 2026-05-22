@@ -174,8 +174,80 @@ func (rcv *Entity) PropertiesLength() int {
 	return 0
 }
 
+func (rcv *Entity) CommunityId() int32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(24))
+	if o != 0 {
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
+	}
+	return -2
+}
+
+func (rcv *Entity) MutateCommunityId(n int32) bool {
+	return rcv._tab.MutateInt32Slot(24, n)
+}
+
+func (rcv *Entity) Pagerank() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *Entity) MutatePagerank(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(26, n)
+}
+
+func (rcv *Entity) Centrality() float64 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		return rcv._tab.GetFloat64(o + rcv._tab.Pos)
+	}
+	return 0.0
+}
+
+func (rcv *Entity) MutateCentrality(n float64) bool {
+	return rcv._tab.MutateFloat64Slot(28, n)
+}
+
+func (rcv *Entity) IsGodNode() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(30))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *Entity) MutateIsGodNode(n bool) bool {
+	return rcv._tab.MutateBoolSlot(30, n)
+}
+
+func (rcv *Entity) IsSurpriseEndpoint() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(32))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *Entity) MutateIsSurpriseEndpoint(n bool) bool {
+	return rcv._tab.MutateBoolSlot(32, n)
+}
+
+func (rcv *Entity) IsArticulationPoint() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(34))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *Entity) MutateIsArticulationPoint(n bool) bool {
+	return rcv._tab.MutateBoolSlot(34, n)
+}
+
 func EntityStart(builder *flatbuffers.Builder) {
-	builder.StartObject(10)
+	builder.StartObject(16)
 }
 func EntityAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -209,6 +281,24 @@ func EntityAddProperties(builder *flatbuffers.Builder, properties flatbuffers.UO
 }
 func EntityStartPropertiesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
+}
+func EntityAddCommunityId(builder *flatbuffers.Builder, communityId int32) {
+	builder.PrependInt32Slot(10, communityId, -2)
+}
+func EntityAddPagerank(builder *flatbuffers.Builder, pagerank float64) {
+	builder.PrependFloat64Slot(11, pagerank, 0.0)
+}
+func EntityAddCentrality(builder *flatbuffers.Builder, centrality float64) {
+	builder.PrependFloat64Slot(12, centrality, 0.0)
+}
+func EntityAddIsGodNode(builder *flatbuffers.Builder, isGodNode bool) {
+	builder.PrependBoolSlot(13, isGodNode, false)
+}
+func EntityAddIsSurpriseEndpoint(builder *flatbuffers.Builder, isSurpriseEndpoint bool) {
+	builder.PrependBoolSlot(14, isSurpriseEndpoint, false)
+}
+func EntityAddIsArticulationPoint(builder *flatbuffers.Builder, isArticulationPoint bool) {
+	builder.PrependBoolSlot(15, isArticulationPoint, false)
 }
 func EntityEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

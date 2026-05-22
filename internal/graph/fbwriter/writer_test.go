@@ -75,3 +75,120 @@ func TestRoundtripSmallGraph(t *testing.T) {
 		t.Errorf("rels from a: got %d want 2", len(out2))
 	}
 }
+
+// TestRoundtripCommunityAttrs verifies the Pass-4 community/algorithm
+// attributes added in #1620 survive a write→read cycle through graph.fb:
+// per-entity community_id/pagerank/flags AND the aggregate Communities list
+// + corpus AlgorithmStats. A graph written WITHOUT these (algo skipped) must
+// read back with nil pointers / zero communities so the JSON path stays
+// byte-equivalent.
+func TestRoundtripCommunityAttrs(t *testing.T) {
+	cid := 7
+	pr := 0.0421
+	cen := 1.5
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Date(2026, 5, 23, 0, 0, 0, 0, time.UTC),
+		Repo:        "fixture-comm",
+		Entities: []graph.Entity{
+			{
+				ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "a.go", StartLine: 1,
+				CommunityID: &cid, PageRank: &pr, Centrality: &cen,
+				IsGodNode: true, IsArticulationPt: true,
+			},
+			// No algo attrs — must read back nil/false.
+			{ID: "ent0000000000000b", Name: "bar", Kind: "function", SourceFile: "b.go", StartLine: 2},
+		},
+		Communities: []graph.CommunityResult{
+			{ID: 7, Size: 42, Modularity: 0.68, TopEntities: []string{"foo", "bar"}, AutoName: "auth-core"},
+			{ID: 9, Size: 13, Modularity: 0.51, AutoName: "billing"},
+		},
+		AlgorithmStats: &graph.AlgorithmStats{
+			LouvainModularity: 0.68, NumCommunities: 2, NumGodNodes: 1,
+			NumArticulationPts: 1, RuntimeMS: 1234, DenoisedCommunities: 3,
+		},
+	}
+	doc.Stats.Entities = len(doc.Entities)
+
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, doc); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(filepath.Dir(out))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	// Aggregate communities.
+	if len(got.Communities) != 2 {
+		t.Fatalf("communities: got %d want 2", len(got.Communities))
+	}
+	c0 := got.Communities[0]
+	if c0.ID != 7 || c0.Size != 42 || c0.AutoName != "auth-core" {
+		t.Errorf("community[0] mismatch: %+v", c0)
+	}
+	if len(c0.TopEntities) != 2 || c0.TopEntities[0] != "foo" {
+		t.Errorf("community[0] top_entities mismatch: %+v", c0.TopEntities)
+	}
+	if got.AlgorithmStats == nil {
+		t.Fatal("algorithm_stats: nil")
+	}
+	if got.AlgorithmStats.NumGodNodes != 1 || got.AlgorithmStats.DenoisedCommunities != 3 || got.AlgorithmStats.RuntimeMS != 1234 {
+		t.Errorf("algorithm_stats mismatch: %+v", *got.AlgorithmStats)
+	}
+
+	// Per-entity attrs (entity a).
+	var ea, eb *graph.Entity
+	for i := range got.Entities {
+		switch got.Entities[i].ID {
+		case "ent0000000000000a":
+			ea = &got.Entities[i]
+		case "ent0000000000000b":
+			eb = &got.Entities[i]
+		}
+	}
+	if ea == nil || eb == nil {
+		t.Fatalf("entities not found: a=%v b=%v", ea, eb)
+	}
+	if ea.CommunityID == nil || *ea.CommunityID != 7 {
+		t.Errorf("entity a community_id: got %v want 7", ea.CommunityID)
+	}
+	if ea.PageRank == nil || *ea.PageRank != 0.0421 {
+		t.Errorf("entity a pagerank: got %v want 0.0421", ea.PageRank)
+	}
+	if !ea.IsGodNode || !ea.IsArticulationPt {
+		t.Errorf("entity a flags: god=%v artic=%v", ea.IsGodNode, ea.IsArticulationPt)
+	}
+	// Entity b had no algo attrs — must be nil/false.
+	if eb.CommunityID != nil || eb.PageRank != nil || eb.IsGodNode {
+		t.Errorf("entity b should be un-annotated: cid=%v pr=%v god=%v", eb.CommunityID, eb.PageRank, eb.IsGodNode)
+	}
+}
+
+// TestRoundtripNoAlgoData verifies a graph written with NO community data
+// (the --skip-pass=graph-algo case) reads back with zero communities, nil
+// AlgorithmStats, and un-annotated entities (#1620 — old-file compatibility).
+func TestRoundtripNoAlgoData(t *testing.T) {
+	doc := &graph.Document{
+		Version: 1, GeneratedAt: time.Now().UTC(), Repo: "fixture-noalgo",
+		Entities: []graph.Entity{{ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "a.go"}},
+	}
+	doc.Stats.Entities = 1
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, doc); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(filepath.Dir(out))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(got.Communities) != 0 {
+		t.Errorf("communities: got %d want 0", len(got.Communities))
+	}
+	if got.AlgorithmStats != nil {
+		t.Errorf("algorithm_stats: got %+v want nil", got.AlgorithmStats)
+	}
+	if got.Entities[0].CommunityID != nil {
+		t.Errorf("entity community_id: got %v want nil", got.Entities[0].CommunityID)
+	}
+}

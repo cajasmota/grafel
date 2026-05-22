@@ -347,6 +347,29 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// we simply skip rename detection — this is not an error.
 	}
 
+	// Carry-forward of Pass-4 community/algorithm attributes (#1620).
+	//
+	// The daemon's fast reactive re-index runs with --skip-pass=graph-algo so
+	// a freshly-saved file becomes queryable within seconds; the full algo
+	// pass is debounced and may be cancel/rescheduled by subsequent writes. If
+	// we wrote graph.fb with empty community data here, the live graph would be
+	// left community-free between the fast index and the (possibly never-firing)
+	// algo pass — archigraph_clusters would return [] and the docs skill would
+	// fall back to dir-derived modules.
+	//
+	// To avoid that, when the algo pass is skipped we copy the prior graph's
+	// per-entity community_id/pagerank/centrality/flags (matched by stable
+	// entity ID) plus the aggregate Communities list and AlgorithmStats onto
+	// the freshly-built doc. New entities (no prior match) simply stay
+	// un-annotated until the next full algo pass runs — never worse than the
+	// pre-fix behaviour where ALL entities lost their community.
+	if skipSet[PassGraphAlgo] {
+		stateDir := filepath.Dir(outPath)
+		if prevDoc, perr := graph.LoadGraphFromDir(stateDir); perr == nil && prevDoc != nil {
+			carryForwardAlgoAttrs(doc, prevDoc)
+		}
+	}
+
 	if !skipSet[PassBuildDocument] {
 		// Issue #481 — belt-and-braces final sort. Even with every fan-in
 		// already sorted, external.Synthesize appends placeholders and Pass 4
@@ -1456,6 +1479,58 @@ func printRelBreakdown(w *os.File, counts map[string]int, label string) {
 		parts = append(parts, fmt.Sprintf("%s=%d", k, counts[k]))
 	}
 	fmt.Fprintf(w, "archigraph: %s_rels_by_source: %s\n", label, strings.Join(parts, " "))
+}
+
+// carryForwardAlgoAttrs copies Pass-4 community/algorithm output from a
+// previously-indexed graph (prev) onto a freshly-built graph (cur) whose
+// algo pass was skipped (#1620). Per-entity attributes are matched by stable
+// entity ID; the aggregate Communities list and AlgorithmStats are copied
+// wholesale. Entities present in cur but not prev (newly added since the last
+// full index) are left un-annotated until the next full algo pass runs.
+//
+// This is what keeps the daemon's fast reactive re-index from stripping the
+// live graph community-free: instead of overwriting graph.fb with empty algo
+// data, the fast path preserves the last-known communities.
+func carryForwardAlgoAttrs(cur, prev *graph.Document) {
+	if cur == nil || prev == nil || len(prev.Entities) == 0 {
+		return
+	}
+	// Index prior entities by ID for O(1) lookup of their algo attributes.
+	prevByID := make(map[string]*graph.Entity, len(prev.Entities))
+	for i := range prev.Entities {
+		prevByID[prev.Entities[i].ID] = &prev.Entities[i]
+	}
+	for k := range cur.Entities {
+		e := &cur.Entities[k]
+		p, ok := prevByID[e.ID]
+		if !ok {
+			continue
+		}
+		if p.CommunityID != nil {
+			cid := *p.CommunityID
+			e.CommunityID = &cid
+		}
+		if p.Centrality != nil {
+			c := *p.Centrality
+			e.Centrality = &c
+		}
+		if p.PageRank != nil {
+			pr := *p.PageRank
+			e.PageRank = &pr
+		}
+		e.IsGodNode = p.IsGodNode
+		e.IsSurpriseEndpoint = p.IsSurpriseEndpoint
+		e.IsArticulationPt = p.IsArticulationPt
+	}
+	// Carry the aggregate community list + corpus stats forward so
+	// archigraph_clusters and the graph Community view keep working between
+	// full algo passes.
+	cur.Communities = prev.Communities
+	cur.SurpriseEdges = prev.SurpriseEdges
+	if prev.AlgorithmStats != nil {
+		as := *prev.AlgorithmStats
+		cur.AlgorithmStats = &as
+	}
 }
 
 // runPass4Algorithms executes the gonum-backed graph-algorithm sweep against
