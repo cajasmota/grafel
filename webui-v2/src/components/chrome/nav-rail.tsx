@@ -20,6 +20,7 @@ import { Sun, Moon, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui";
 import { useAppStore } from "@/store/use-app-store";
+import { usePendingCount } from "@/hooks/use-pending";
 import { SCREENS, PENDING_SCREEN, SETTINGS_SCREEN } from "./screens";
 
 function rowClass(active: boolean) {
@@ -38,6 +39,7 @@ export function NavRail() {
 
   const { Icon: PendingIcon } = PENDING_SCREEN;
   const { Icon: SettingsIcon } = SETTINGS_SCREEN;
+  const pendingCount = usePendingCount(groupId);
 
   return (
     <aside
@@ -73,9 +75,11 @@ export function NavRail() {
           <span className="flex-1 whitespace-nowrap text-md opacity-0 group-hover/rail:opacity-100 transition-opacity">
             {PENDING_SCREEN.label}
           </span>
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-text text-[10px] tabular-nums">
-            12
-          </span>
+          {pendingCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-text text-[10px] tabular-nums">
+              {pendingCount}
+            </span>
+          )}
         </NavLink>
       </nav>
 
