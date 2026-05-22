@@ -86,7 +86,9 @@ func setupTracesServer(t *testing.T) *Server {
 
 func TestTraces_ListReturnsAllProcesses(t *testing.T) {
 	srv := setupTracesServer(t)
-	res := callTool(t, srv, "archigraph_traces", map[string]any{"action": "list"})
+	// min_steps=0 disables the short-flow filter (#1639) — these fixtures
+	// have 3-step chains and the test asserts list completeness, not filtering.
+	res := callTool(t, srv, "archigraph_traces", map[string]any{"action": "list", "min_steps": 0})
 	txt := resultText(res)
 	if !strings.Contains(txt, "\"count\": 2") {
 		t.Errorf("expected count=2, got: %s", txt)
@@ -101,6 +103,7 @@ func TestTraces_ListCrossStackOnly(t *testing.T) {
 	res := callTool(t, srv, "archigraph_traces", map[string]any{
 		"action":           "list",
 		"cross_stack_only": true,
+		"min_steps":        0,
 	})
 	txt := resultText(res)
 	if !strings.Contains(txt, "\"count\": 1") {

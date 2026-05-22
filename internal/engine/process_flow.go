@@ -407,6 +407,13 @@ type callsAdjacency struct {
 	in      map[string]int
 	fetches map[edgeKey]bool
 	phantom map[edgeKey]bool
+	// handlerCont records (from,to) pairs that are synthetic "handler
+	// continuation" edges injected by buildCallsAdjacency: an
+	// http_endpoint_definition → its backend handler, derived by reversing
+	// the handler IMPLEMENTS http_endpoint_definition edge (#1639). These
+	// let the BFS continue a flow PAST the HTTP boundary into the resolved
+	// backend handler instead of dead-ending at the endpoint synthetic.
+	handlerCont map[edgeKey]bool
 }
 
 // edgeKey is a directed (from,to) edge identity.
@@ -421,10 +428,11 @@ type edgeKey struct{ from, to string }
 // definite cross-repo fetch points, not fuzzy resolution candidates.
 func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 	a := &callsAdjacency{
-		out:     make(map[string][]string),
-		in:      make(map[string]int),
-		fetches: make(map[edgeKey]bool),
-		phantom: make(map[edgeKey]bool),
+		out:         make(map[string][]string),
+		in:          make(map[string]int),
+		fetches:     make(map[edgeKey]bool),
+		phantom:     make(map[edgeKey]bool),
+		handlerCont: make(map[edgeKey]bool),
 	}
 	seen := make(map[string]map[string]bool)
 	for i := range doc.Relationships {
@@ -467,6 +475,52 @@ func buildCallsAdjacency(doc *graph.Document) *callsAdjacency {
 			a.phantom[edgeKey{r.FromID, r.ToID}] = true
 		}
 	}
+	// #1639 — handler continuation edges. The HTTP resolve pass (#1615/#1217)
+	// links a caller to an http_endpoint_definition (via the retargeted FETCHES
+	// edge) and links the backend handler to that same definition via an
+	// IMPLEMENTS edge (handler → http_endpoint_definition). The BFS can reach
+	// the definition (forward over CALLS/FETCHES) but then dead-ends because
+	// the definition has no outgoing edge — the handler points INTO it. We
+	// reverse the IMPLEMENTS edge so the definition gains an outgoing
+	// continuation edge to the handler, letting a flow track deeper across the
+	// HTTP boundary into the backend handler (and onward through the handler's
+	// own CALLS chain). Only IMPLEMENTS edges whose ToID is an
+	// http_endpoint_definition (producer-side, the resolved backend route) are
+	// reversed; consumer synthetics and other IMPLEMENTS shapes are untouched.
+	defKinds := make(map[string]bool, len(doc.Entities))
+	for i := range doc.Entities {
+		e := &doc.Entities[i]
+		if strings.EqualFold(e.Kind, "http_endpoint_definition") {
+			defKinds[e.ID] = true
+		}
+	}
+	for i := range doc.Relationships {
+		r := &doc.Relationships[i]
+		if r.Kind != "IMPLEMENTS" {
+			continue
+		}
+		// handler --IMPLEMENTS--> http_endpoint_definition. Reverse it so the
+		// definition continues into the handler.
+		if !defKinds[r.ToID] {
+			continue
+		}
+		from, to := r.ToID, r.FromID // definition → handler
+		if from == to {
+			continue
+		}
+		if seen[from] == nil {
+			seen[from] = make(map[string]bool)
+		}
+		if seen[from][to] {
+			a.handlerCont[edgeKey{from, to}] = true
+			continue
+		}
+		seen[from][to] = true
+		a.out[from] = append(a.out[from], to)
+		a.in[to]++
+		a.handlerCont[edgeKey{from, to}] = true
+	}
+
 	for k := range a.out {
 		sort.Strings(a.out[k])
 	}
@@ -721,27 +775,50 @@ func chainCrossesRepoBoundary(
 	byID map[string]*graph.Entity,
 	adj *callsAdjacency,
 ) (bool, string) {
+	// #1639 — repo-aware cross-repo flag. A chain is cross-repo ONLY when it
+	// genuinely leaves the source repo. With the handler-continuation fix, an
+	// HTTP call that resolves to a SAME-repo backend now continues caller →
+	// http_endpoint_call → (FETCHES) → http_endpoint_definition →
+	// (continuation) → backend handler — all inside this repo. That chain
+	// must NOT be tagged cross-repo even though it traverses FETCHES edges and
+	// touches http_endpoint synthetics. So the FETCHES edge alone is no longer
+	// a cross-repo signal; we require an authoritative boundary marker:
+	//
+	//   1. A phantom cross-repo CALLS edge (#769): target_repo != this repo.
+	//   2. A consumer http_endpoint synthetic that the chain does NOT resolve
+	//      INTO a same-repo handler (no handler-continuation edge leaves it).
+	//      An unresolved consumer synthetic is, by construction, a call whose
+	//      backend lives in another repo (the cross-repo HTTP linker pairs it
+	//      with a producer elsewhere). When the chain DID continue into a
+	//      same-repo handler, the call resolved locally and is intra-repo.
+	hasContinuation := false
+	for i := 1; i < len(chain); i++ {
+		if adj != nil && adj.handlerCont[edgeKey{chain[i-1], chain[i]}] {
+			hasContinuation = true
+			break
+		}
+	}
+
 	// Walk pairwise — every transition has an originating edge.
 	for i := 1; i < len(chain); i++ {
 		from, to := chain[i-1], chain[i]
-		if adj != nil && adj.fetches[edgeKey{from, to}] {
-			return true, fmt.Sprintf("FETCHES edge at step %d (%s → %s)", i, from, to)
-		}
 		// #769 — phantom CALLS edge: cross-repo link promoted by the
 		// phantom-edge pass. The target entity lives in another repo; the
 		// BFS terminates there (no outgoing edges), making this the final
-		// step. Separate label from crosses_external_lib.
+		// step. This is the authoritative cross-repo signal.
 		if adj != nil && adj.phantom[edgeKey{from, to}] {
 			return true, fmt.Sprintf("phantom cross-repo CALLS edge at step %d (%s → %s)", i, from, to)
 		}
-		if isConsumerHTTPEndpoint(byID[to]) {
-			return true, fmt.Sprintf("consumer http_endpoint at step %d (%s)", i, to)
+		// A consumer synthetic that did NOT resolve into a same-repo handler
+		// is a call whose backend lives in another repo.
+		if !hasContinuation && isConsumerHTTPEndpoint(byID[to]) {
+			return true, fmt.Sprintf("unresolved consumer http_endpoint at step %d (%s) — backend in another repo", i, to)
 		}
 	}
 	// Also check the entry itself — a Process whose entry IS a consumer
 	// synthetic (unusual but possible) still crosses repos.
-	if len(chain) > 0 && isConsumerHTTPEndpoint(byID[chain[0]]) {
-		return true, fmt.Sprintf("consumer http_endpoint at step 0 (%s)", chain[0])
+	if !hasContinuation && len(chain) > 0 && isConsumerHTTPEndpoint(byID[chain[0]]) {
+		return true, fmt.Sprintf("unresolved consumer http_endpoint at step 0 (%s)", chain[0])
 	}
 	return false, ""
 }

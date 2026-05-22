@@ -180,6 +180,10 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("entry_point_id"),
 		mcpapi.WithNumber("max_depth", mcpapi.DefaultNumber(8)),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(25)),
+		// min_steps (default 4) and cross_stack_only are accepted as optional
+		// args read from the request map (see handleTracesList); they are not
+		// declared in the schema to keep the handshake token budget under its
+		// ceiling (#1639).
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),

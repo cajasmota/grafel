@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -788,5 +789,69 @@ func TestHandleFlowTruncated_EmptyResult(t *testing.T) {
 	}
 	if total, _ := body["total"].(float64); total != 0 {
 		t.Errorf("total: want 0, got %v", total)
+	}
+}
+
+// TestHandleFlowsList_ShortFlowFilter verifies the #1639 default short-flow
+// filter: the default list excludes 2-3 step trivial flows but keeps >=4-step
+// flows; min_steps=0 returns everything; cross-repo short flows are exempt.
+func TestHandleFlowsList_ShortFlowFilter(t *testing.T) {
+	e := entryEntity("e", "handler", "Handler")
+	long := procWithEntry("p-long", "longFlow", e.ID, e.Name, "a.go", 6)
+	short := procWithEntry("p-short", "shortFlow", e.ID, e.Name, "b.go", 2)
+	crossShort := procWithEntry("p-cross", "crossFlow", e.ID, e.Name, "c.go", 2)
+	crossShort.Properties["cross_stack"] = "true"
+
+	grp := makeGroupWithEntries(
+		[]graph.Entity{long, short, crossShort},
+		[]graph.Entity{e},
+		nil,
+	)
+	ts := newFlowQualityTestServer(t, grp)
+
+	get := func(path string) []string {
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		var body struct {
+			Processes []struct {
+				ProcessID string `json:"process_id"`
+			} `json:"processes"`
+		}
+		b, _ := io.ReadAll(resp.Body)
+		if err := json.Unmarshal(b, &body); err != nil {
+			t.Fatalf("decode %s: %v\n%s", path, err, b)
+		}
+		var ids []string
+		for _, p := range body.Processes {
+			ids = append(ids, p.ProcessID)
+		}
+		return ids
+	}
+
+	def := get("/api/flows/testgrp")
+	hasID := func(ids []string, sub string) bool {
+		for _, id := range ids {
+			if strings.Contains(id, sub) {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasID(def, "p-long") {
+		t.Errorf("default list must include >=4-step flow; got %v", def)
+	}
+	if hasID(def, "p-short") {
+		t.Errorf("default list must exclude 2-step trivial flow; got %v", def)
+	}
+	if !hasID(def, "p-cross") {
+		t.Errorf("default list must keep short cross-repo flow; got %v", def)
+	}
+
+	all := get("/api/flows/testgrp?min_steps=0")
+	if !hasID(all, "p-short") {
+		t.Errorf("min_steps=0 must include short flow; got %v", all)
 	}
 }

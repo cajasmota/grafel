@@ -443,3 +443,84 @@ func TestProcessFlow_PhantomEdgeMinStepsRelaxed(t *testing.T) {
 		t.Errorf("expected a Process entity for 2-step phantom chain, got none")
 	}
 }
+
+// findProcess returns the first Process entity in doc, or nil.
+func findProcess(doc *graph.Document) *graph.Entity {
+	for i := range doc.Entities {
+		if doc.Entities[i].Kind == EntityKindProcess {
+			return &doc.Entities[i]
+		}
+	}
+	return nil
+}
+
+// TestProcessFlow_HTTPContinuesIntoBackendHandler is the core #1639 fix:
+// an HTTP call that resolves to a SAME-repo backend definition must continue
+// the flow INTO the backend handler instead of dead-ending at the
+// http_endpoint_definition node. The chain should read:
+//
+//	caller → http_endpoint_call → http_endpoint_definition → backend handler → repo work
+//
+// and the flow must NOT be tagged cross-repo (resolution stayed in-repo).
+func TestProcessFlow_HTTPContinuesIntoBackendHandler(t *testing.T) {
+	doc := &graph.Document{Repo: "r"}
+	doc.Entities = []graph.Entity{
+		{ID: "caller", Name: "submitOrder", Kind: "SCOPE.Function", Language: "go", SourceFile: "client.go"},
+		{ID: "call", Name: "http:POST:/api/orders", Kind: "http_endpoint_call", Language: "go", SourceFile: "client.go",
+			Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"}},
+		{ID: "def", Name: "http:POST:/api/orders", Kind: "http_endpoint_definition", Language: "go", SourceFile: "handler.go",
+			Properties: map[string]string{"pattern_type": "http_endpoint_synthesis"}},
+		{ID: "handler", Name: "CreateOrder", Kind: "SCOPE.Function", Language: "go", SourceFile: "handler.go"},
+		{ID: "repo", Name: "saveOrder", Kind: "SCOPE.Function", Language: "go", SourceFile: "repo.go"},
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "caller", ToID: "call", Kind: "FETCHES"},
+		{ID: "2", FromID: "call", ToID: "def", Kind: "FETCHES"},
+		// handler IMPLEMENTS the backend definition (producer side).
+		{ID: "3", FromID: "handler", ToID: "def", Kind: "IMPLEMENTS"},
+		{ID: "4", FromID: "handler", ToID: "repo", Kind: "CALLS"},
+	}
+	RunProcessFlow(doc, DefaultProcessFlowConfig())
+	p := findProcess(doc)
+	if p == nil {
+		t.Fatal("expected a Process entity, got none")
+	}
+	chain := p.Properties["chain"]
+	// The chain must reach the backend handler and onward into repo work.
+	for _, want := range []string{"call", "def", "handler", "repo"} {
+		if !strings.Contains(chain, want) {
+			t.Errorf("chain %q missing step %q (did the flow continue into the backend handler?)", chain, want)
+		}
+	}
+	if cs := p.Properties["cross_stack"]; cs != "false" {
+		t.Errorf("same-repo HTTP resolution: cross_stack = %q, want false", cs)
+	}
+}
+
+// TestProcessFlow_CrossRepoOnlyWhenPhantom verifies a chain that crosses a
+// genuine repo boundary (phantom edge) IS tagged cross_stack, while a chain
+// whose HTTP call resolves into a same-repo handler is NOT.
+func TestProcessFlow_CrossRepoOnlyWhenPhantom(t *testing.T) {
+	doc := &graph.Document{Repo: "frontend"}
+	doc.Entities = []graph.Entity{
+		{ID: "entry", Name: "loadDashboard", Kind: "SCOPE.Function", Language: "ts", SourceFile: "app.ts"},
+		{ID: "svc", Name: "fetchUsers", Kind: "SCOPE.Function", Language: "ts", SourceFile: "app.ts"},
+		{ID: "call", Name: "http:GET:/api/users", Kind: "http_endpoint_call", Language: "ts", SourceFile: "app.ts",
+			Properties: map[string]string{"pattern_type": "http_endpoint_client_synthesis"}},
+	}
+	doc.Relationships = []graph.Relationship{
+		{ID: "1", FromID: "entry", ToID: "svc", Kind: "CALLS"},
+		{ID: "2", FromID: "svc", ToID: "call", Kind: "FETCHES"},
+		// Phantom cross-repo edge: the backend lives in another repo.
+		{ID: "3", FromID: "call", ToID: "backend::handler", Kind: "CALLS",
+			Properties: map[string]string{"cross_repo": "true", "target_repo": "backend"}},
+	}
+	RunProcessFlow(doc, DefaultProcessFlowConfig())
+	p := findProcess(doc)
+	if p == nil {
+		t.Fatal("expected a Process entity, got none")
+	}
+	if cs := p.Properties["cross_stack"]; cs != "true" {
+		t.Errorf("phantom cross-repo chain: cross_stack = %q, want true", cs)
+	}
+}

@@ -36,6 +36,7 @@ func (s *Server) handleV2FlowsList(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	crossOnly := q.Get("cross_stack_only") == "true"
+	minSteps := flowMinStepsFromQuery(q)
 	limit := 200
 	if v := q.Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -82,8 +83,13 @@ func (s *Server) handleV2FlowsList(w http.ResponseWriter, r *http.Request) {
 			if crossOnly && !cs {
 				continue
 			}
-			pid := dashPrefixedID(repo.Slug, e.ID)
 			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			// #1639 — exclude trivial short flows from the default list;
+			// cross-repo flows are exempt (meaningful even when short).
+			if sc < minSteps && !cs {
+				continue
+			}
+			pid := dashPrefixedID(repo.Slug, e.ID)
 			entID := e.Properties["entry_id"]
 			ek := inferEntryKind(grp, entID)
 			fm, summary := extractFlowDocs(group, e.ID, docgenState)

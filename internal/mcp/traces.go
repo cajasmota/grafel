@@ -29,6 +29,11 @@ const (
 	processEntityKind = "SCOPE.Process"
 	stepInProcessEdge = "STEP_IN_PROCESS"
 	entryPointOfEdge  = "ENTRY_POINT_OF"
+	// defaultFlowMinSteps mirrors engine.DefaultFlowMinSteps (#1639): flows
+	// shorter than this are excluded from the default trace list. Override
+	// with min_steps=0 to include every flow. Literal to avoid an
+	// internal/engine import.
+	defaultFlowMinSteps = 4
 )
 
 // handleTraces dispatches archigraph_traces to one of its sub-actions.
@@ -61,6 +66,14 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 		limit = 25
 	}
 	crossOnly := argBool(req, "cross_stack_only", false)
+	// #1639 — short-flow filter. Flows with fewer than min_steps steps are
+	// excluded from the default list (they are usually helper calls, not
+	// meaningful end-to-end processes). Defaults to defaultFlowMinSteps;
+	// pass min_steps=0 to include every flow.
+	minSteps := argInt(req, "min_steps", defaultFlowMinSteps)
+	if minSteps < 0 {
+		minSteps = defaultFlowMinSteps
+	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 
 	type listItem struct {
@@ -91,6 +104,11 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 				continue
 			}
 			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			// #1639 — exclude trivial short flows from the default list;
+			// cross-repo flows are exempt (meaningful even when short).
+			if sc < minSteps && !cs {
+				continue
+			}
 			items = append(items, listItem{
 				ProcessID:   prefixedID(r.Repo, e.ID),
 				Repo:        r.Repo,

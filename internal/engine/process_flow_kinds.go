@@ -11,6 +11,15 @@ package engine
 // emitted by RunProcessFlow. Name: "<entry> → <terminal>".
 const EntityKindProcess = "SCOPE.Process"
 
+// DefaultFlowMinSteps is the minimum step_count for a Process to appear in
+// the DEFAULT flows list (#1639). Flows shorter than this are most likely
+// not meaningful end-to-end processes (a 2-3 step chain is usually a
+// helper call, not a business flow). The engine still EMITS shorter flows
+// — they remain queryable by passing a lower min_steps threshold to the
+// flows list endpoints / MCP trace tool — but they are excluded from the
+// default view to cut false-positive noise.
+const DefaultFlowMinSteps = 4
+
 // RelationshipKindStepInProcess identifies a Process → step edge.
 // The step_index property (0-based) records position in the chain.
 const RelationshipKindStepInProcess = "STEP_IN_PROCESS"

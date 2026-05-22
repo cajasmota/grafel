@@ -209,7 +209,7 @@ func TestHandleFlowsList_EntryKindFields(t *testing.T) {
 
 	ts := newFlowQualityTestServer(t, grp)
 
-	resp, err := http.Get(ts.URL + "/api/flows/testgrp")
+	resp, err := http.Get(ts.URL + "/api/flows/testgrp?min_steps=0")
 	if err != nil {
 		t.Fatalf("GET /api/flows/testgrp: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestHandleFlowsList_EntryKindGroups_Sorting(t *testing.T) {
 	grp.Name = "testgrp"
 	ts := newFlowQualityTestServer(t, grp)
 
-	resp, err := http.Get(ts.URL + "/api/flows/testgrp")
+	resp, err := http.Get(ts.URL + "/api/flows/testgrp?min_steps=0")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}

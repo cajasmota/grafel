@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,7 +22,28 @@ import (
 const (
 	processEntityKind = "SCOPE.Process"
 	stepInProcessEdge = "STEP_IN_PROCESS"
+	// defaultFlowMinSteps mirrors engine.DefaultFlowMinSteps (#1639): the
+	// minimum step_count for a flow to appear in the default flows list.
+	// Shorter flows are excluded from the default view but remain queryable
+	// via the min_steps query parameter. Duplicated as a literal to avoid an
+	// internal/engine import in the dashboard package.
+	defaultFlowMinSteps = 4
 )
+
+// flowMinStepsFromQuery parses the optional ?min_steps= override. Returns
+// defaultFlowMinSteps when absent. A value of 0 (or negative) disables the
+// short-flow filter entirely so every emitted flow is returned.
+func flowMinStepsFromQuery(q url.Values) int {
+	v := q.Get("min_steps")
+	if v == "" {
+		return defaultFlowMinSteps
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return defaultFlowMinSteps
+	}
+	return n
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entry-kind classification
@@ -132,6 +154,7 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	entryFilter := q.Get("entry")
+	minSteps := flowMinStepsFromQuery(q)
 
 	grp, err := s.graphs.GetGroup(group)
 	if err != nil {
@@ -184,6 +207,13 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			sc, _ := strconv.Atoi(e.Properties["step_count"])
+			// #1639 — exclude trivial short flows from the default list.
+			// Cross-repo flows are exempt: a short chain that genuinely spans
+			// repos is meaningful even at 2-3 steps (the cross-repo bridge is
+			// the load-bearing signal).
+			if sc < minSteps && !cs {
+				continue
+			}
 			entID := e.Properties["entry_id"]
 			ek := inferEntryKind(grp, entID)
 			item := ProcessItem{

@@ -421,7 +421,9 @@ func TestGraph_LitePayload_LabelOnAllNodes(t *testing.T) {
 
 func TestFlowsList_200(t *testing.T) {
 	ts, _ := newPhase1Server(t)
-	code, body := getJSON(t, ts.URL, "/api/flows/testgroup")
+	// min_steps=0 disables the short-flow filter (#1639) — this fixture
+	// process has only 2 steps and is testing list shape, not filtering.
+	code, body := getJSON(t, ts.URL, "/api/flows/testgroup?min_steps=0")
 	if code != 200 {
 		t.Fatalf("status=%d", code)
 	}
@@ -437,7 +439,7 @@ func TestFlowsList_200(t *testing.T) {
 
 func TestFlowsList_CrossStackFilter(t *testing.T) {
 	ts, _ := newPhase1Server(t)
-	code, body := getJSON(t, ts.URL, "/api/flows/testgroup?cross_stack_only=true")
+	code, body := getJSON(t, ts.URL, "/api/flows/testgroup?cross_stack_only=true&min_steps=0")
 	if code != 200 {
 		t.Fatalf("status=%d", code)
 	}
