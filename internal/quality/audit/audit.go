@@ -50,6 +50,23 @@ const (
 	CauseMisc              OrphanCause = "misc"
 )
 
+// structuralRelKinds are containment / declaration edges that do NOT represent
+// semantic connectivity. An entity whose only relationship is one of these is
+// still effectively an orphan: it is "contained" by its file/parent but has no
+// caller, reference, import, or data-flow edge linking it into the graph.
+//
+// Issue #1597: the audit previously treated ANY relationship (including the
+// ~1980 CONTAINS edges every file emits for its members) as proof a node was
+// connected, which reported 0 orphans on graphs that visibly render ~24% of
+// nodes as isolated dots. We exclude these structural edges so the orphan count
+// reflects real connectivity and matches what the graph canvas renders (the
+// containment parent is frequently filtered out of the served payload, leaving
+// the node edge-less).
+var structuralRelKinds = map[string]bool{
+	"CONTAINS": true,
+	"DECLARES": true,
+}
+
 // RepoReport is the per-repo result of an audit. Aggregate-level numbers are
 // produced by combining many of these in Report.Aggregate.
 type RepoReport struct {
@@ -305,8 +322,12 @@ func auditRepo(repoPath string) (*RepoReport, error) {
 		r := &doc.Relationships[i]
 		k := strings.ToUpper(r.Kind)
 		relKinds[k]++
-		touched[r.FromID] = struct{}{}
-		touched[r.ToID] = struct{}{}
+		// Only non-structural edges count toward connectivity. A node linked
+		// solely by CONTAINS/DECLARES is treated as an orphan (Issue #1597).
+		if !structuralRelKinds[k] {
+			touched[r.FromID] = struct{}{}
+			touched[r.ToID] = struct{}{}
+		}
 		lang := relLanguage(r, entByID)
 		switch k {
 		case "IMPORTS":

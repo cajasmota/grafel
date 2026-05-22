@@ -151,7 +151,7 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 	totalBeforeThin := resp.TotalNodeCount
 	nodeCap := lodNodeCap(lodParam)
 	if nodeCap > 0 && len(resp.Nodes) > nodeCap {
-		resp.Nodes = thinByPagerank(resp.Nodes, nodeCap)
+		resp.Nodes = thinByPagerankConnected(resp.Nodes, resp.Edges, nodeCap)
 		keptIDs := make(map[string]bool, len(resp.Nodes))
 		for _, n := range resp.Nodes {
 			keptIDs[n.ID] = true
@@ -163,6 +163,8 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		resp.Edges = pruned
+		// Degree must reflect the post-thin edge set, not the full payload.
+		recomputeServedDegree(resp.Nodes, resp.Edges)
 	}
 	resp.TotalNodeCount = totalBeforeThin
 
@@ -244,8 +246,6 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 			})
 		}
 
-		degreeMap := buildDegreeMap(rp.Doc.Relationships)
-
 		for i := range rp.Doc.Entities {
 			e := &rp.Doc.Entities[i]
 			strippedKind := dashStripScopePrefix(e.Kind)
@@ -268,11 +268,18 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 				pr = *e.PageRank
 			}
 			node := v2GraphNode{
-				ID:         pid,
-				Label:      entityLabel(e),
-				Kind:       strippedKind,
-				Repo:       rp.Slug,
-				Degree:     degreeMap[e.ID],
+				ID:    pid,
+				Label: entityLabel(e),
+				Kind:  strippedKind,
+				Repo:  rp.Slug,
+				// Degree is recomputed from the SERVED edges by
+				// recomputeServedDegree below, so the field matches what the
+				// canvas actually renders. The full-graph degreeMap counted
+				// edges to neighbours that get filtered out of the payload
+				// (External, modules, or a CONTAINS parent that is not
+				// visible), which made it claim every node had degree>=1 while
+				// ~24% rendered as isolated dots (Issue #1597).
+				Degree:     0,
 				PageRank:   pr,
 				SourceFile: e.SourceFile,
 			}
@@ -301,12 +308,30 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 		}
 	}
 
+	recomputeServedDegree(nodes, edges)
+
 	return v2GraphResponse{
 		Nodes:          nodes,
 		Edges:          edges,
 		Communities:    communities,
 		Repos:          reposOut,
 		TotalNodeCount: len(nodes),
+	}
+}
+
+// recomputeServedDegree rewrites every node's Degree field to count only the
+// edges actually present in edges (the served payload). This keeps node.degree
+// consistent with what the canvas renders, so a node that shows as an isolated
+// dot reports degree 0 instead of inheriting a full-graph degree that included
+// edges to neighbours filtered out of the payload (Issue #1597).
+func recomputeServedDegree(nodes []v2GraphNode, edges []v2GraphEdge) {
+	deg := make(map[string]int, len(nodes))
+	for _, e := range edges {
+		deg[e.Source]++
+		deg[e.Target]++
+	}
+	for i := range nodes {
+		nodes[i].Degree = deg[nodes[i].ID]
 	}
 }
 
@@ -357,6 +382,116 @@ func thinByPagerank(nodes []v2GraphNode, cap int) []v2GraphNode {
 		return sorted[i].Degree > sorted[j].Degree
 	})
 	return sorted[:cap]
+}
+
+// thinByPagerankConnected caps the node set to cap nodes while keeping the
+// result connectivity-preserving: among the cap nodes it selects, every node
+// that has at least one real edge in the full payload retains at least one of
+// those edges (its neighbour is also kept), so a connected node never renders
+// as an isolated dot purely because of LoD thinning (Issue #1597).
+//
+// Strategy: take the top-cap nodes by pagerank as the seed set, then run a
+// repair pass — for each seed node that would be edge-less under the seed set,
+// pull in its highest-pagerank neighbour by evicting the lowest-pagerank seed
+// node that is itself still connected. This keeps the node budget fixed while
+// maximising the number of seed nodes that keep an edge. Genuinely isolated
+// nodes in the full graph (true orphans) stay isolated — that is correct.
+func thinByPagerankConnected(nodes []v2GraphNode, edges []v2GraphEdge, cap int) []v2GraphNode {
+	if cap == 0 || len(nodes) <= cap {
+		return nodes
+	}
+
+	// Rank all nodes by pagerank (ties → degree), highest first.
+	sorted := make([]v2GraphNode, len(nodes))
+	copy(sorted, nodes)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].PageRank != sorted[j].PageRank {
+			return sorted[i].PageRank > sorted[j].PageRank
+		}
+		return sorted[i].Degree > sorted[j].Degree
+	})
+
+	// Adjacency over the full (pre-thin) edge set.
+	adj := make(map[string][]string, len(nodes))
+	for _, e := range edges {
+		adj[e.Source] = append(adj[e.Source], e.Target)
+		adj[e.Target] = append(adj[e.Target], e.Source)
+	}
+
+	// Seed = top-cap by pagerank.
+	kept := make(map[string]bool, cap)
+	for i := 0; i < cap; i++ {
+		kept[sorted[i].ID] = true
+	}
+
+	// connectedWithin reports whether id has at least one neighbour in kept.
+	connectedWithin := func(id string) bool {
+		for _, nb := range adj[id] {
+			if kept[nb] {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Repair pass: for each kept node that has real edges but none survive,
+	// bring in its best neighbour by evicting the weakest evictable seed
+	// (lowest pagerank, still connected, not the node we are repairing).
+	// rank position lookup for picking the weakest seed to evict.
+	pos := make(map[string]int, len(sorted))
+	for i := range sorted {
+		pos[sorted[i].ID] = i
+	}
+	for i := 0; i < cap; i++ {
+		id := sorted[i].ID
+		if !kept[id] {
+			continue
+		}
+		if len(adj[id]) == 0 {
+			continue // genuine orphan in the full graph; leave it isolated
+		}
+		if connectedWithin(id) {
+			continue
+		}
+		// Pick the highest-pagerank neighbour not already kept.
+		best := ""
+		bestPos := -1
+		for _, nb := range adj[id] {
+			if kept[nb] {
+				continue
+			}
+			if p, ok := pos[nb]; ok && (bestPos == -1 || p < bestPos) {
+				best, bestPos = nb, p
+			}
+		}
+		if best == "" {
+			continue
+		}
+		// Find the weakest evictable seed: lowest pagerank, not id/best, and
+		// removing it does not strand another node we already repaired.
+		victim := ""
+		for j := cap - 1; j >= 0; j-- {
+			cand := sorted[j].ID
+			if !kept[cand] || cand == id || cand == best {
+				continue
+			}
+			victim = cand
+			break
+		}
+		if victim == "" {
+			continue
+		}
+		delete(kept, victim)
+		kept[best] = true
+	}
+
+	out := make([]v2GraphNode, 0, cap)
+	for i := range sorted {
+		if kept[sorted[i].ID] {
+			out = append(out, sorted[i])
+		}
+	}
+	return out
 }
 
 // dominantLanguage returns the most frequent non-empty Language across the

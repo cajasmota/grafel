@@ -174,3 +174,92 @@ func TestV2GraphLoD_EdgesDropped(t *testing.T) {
 		}
 	}
 }
+
+// TestV2GraphServedDegree_MatchesEdges (Issue #1597) verifies node.degree
+// reflects only the SERVED edges, not the full-graph degree. A node whose only
+// relationship is to a filtered-out neighbour (here: a CONTAINS edge to a node
+// excluded by include_modules=false) must report degree 0, not 1, so it never
+// claims connectivity the canvas does not render.
+func TestV2GraphServedDegree_MatchesEdges(t *testing.T) {
+	prHi, prLo := 0.9, 0.1
+	entities := []graph.Entity{
+		{ID: "fn", Kind: "function", PageRank: &prHi},
+		// "mod" is a Module entity; excluded by default (include_modules=false).
+		{ID: "mod", Kind: "Module", PageRank: &prLo},
+	}
+	rels := []graph.Relationship{
+		// fn's only edge is a CONTAINS to the (filtered-out) module.
+		{FromID: "mod", ToID: "fn", Kind: "CONTAINS"},
+	}
+	grp := makeGraphTestGroup(entities, rels)
+	ts := newV2GraphTestServerWithGroup(t, grp)
+	data := fetchV2Graph(t, ts, "full")
+
+	var fn *v2GraphNode
+	for i := range data.Nodes {
+		if data.Nodes[i].ID == "testrepo::fn" {
+			fn = &data.Nodes[i]
+		}
+	}
+	if fn == nil {
+		t.Fatalf("fn node not served; nodes=%v", data.Nodes)
+	}
+	if fn.Degree != 0 {
+		t.Errorf("served degree = %d, want 0 (its only edge is to a filtered-out module)", fn.Degree)
+	}
+	// Cross-check: no served edge touches fn.
+	for _, e := range data.Edges {
+		if e.Source == "testrepo::fn" || e.Target == "testrepo::fn" {
+			t.Errorf("unexpected served edge touching fn: %+v", e)
+		}
+	}
+}
+
+// TestV2GraphThinning_ConnectivityPreserved (Issue #1597) builds a star graph
+// where a high-pagerank hub connects to many low-pagerank leaves. Plain
+// top-by-pagerank thinning would keep the hub but could keep leaves whose only
+// neighbour (the hub) survives — the failure mode is a kept node rendering with
+// zero served edges. We assert that every kept node that HAS edges in the full
+// graph retains at least one served edge.
+func TestV2GraphThinning_ConnectivityPreserved(t *testing.T) {
+	const n = 700 // > overview cap 500
+	entities := make([]graph.Entity, 0, n)
+	rels := make([]graph.Relationship, 0, n)
+	// Pair up nodes: e(2k) <-> e(2k+1). Give each pair adjacent pageranks so
+	// the thinner that ignores connectivity tends to split pairs.
+	for i := 0; i < n; i++ {
+		pr := float64(i) / float64(n)
+		entities = append(entities, graph.Entity{ID: fmt.Sprintf("e%d", i), Kind: "function", PageRank: &pr})
+	}
+	for k := 0; k+1 < n; k += 2 {
+		rels = append(rels, graph.Relationship{
+			FromID: fmt.Sprintf("e%d", k), ToID: fmt.Sprintf("e%d", k+1), Kind: "CALLS",
+		})
+	}
+	grp := makeGraphTestGroup(entities, rels)
+	ts := newV2GraphTestServerWithGroup(t, grp)
+	data := fetchV2Graph(t, ts, "overview")
+
+	served := map[string]int{}
+	for _, e := range data.Edges {
+		served[e.Source]++
+		served[e.Target]++
+	}
+	isolatedKept := 0
+	for _, nd := range data.Nodes {
+		if served[nd.ID] == 0 {
+			isolatedKept++
+		}
+		// node.degree must equal served degree.
+		if nd.Degree != served[nd.ID] {
+			t.Errorf("node %s: degree=%d, served=%d (must match)", nd.ID, nd.Degree, served[nd.ID])
+		}
+	}
+	// Every node in this fixture has a real edge, so a connectivity-preserving
+	// thinner should leave (near) zero isolated kept nodes. Allow a small slack
+	// for the fixed-budget repair pass but require it to be far below the naive
+	// failure rate.
+	if isolatedKept > len(data.Nodes)/10 {
+		t.Errorf("connectivity not preserved: %d/%d kept nodes are isolated", isolatedKept, len(data.Nodes))
+	}
+}
