@@ -280,9 +280,39 @@ func daemonSchedulerLinks(_ context.Context, group string) error {
 // writes, so this is allowed to be slow.
 func daemonSchedulerAlgo(_ context.Context, repoPath string) error {
 	// ADR-0016 flip-day (#808): graph.fb is always written by default now.
-	err := Index(repoPath, "", "", nil, false, false)
+	// #1576: tag with the registered CONFIG slug when this path is known to a
+	// group, so a watcher-triggered re-index keeps doc.Repo aligned with the
+	// dashboard's node slugs and the cross-repo link endpoints. An empty
+	// repoTag would fall back to the dir basename and diverge from a slugified
+	// config slug (e.g. upvate_core vs upvate-core), dropping cross-repo edges.
+	err := Index(repoPath, "", configSlugForPath(repoPath), nil, false, false)
 	invalidateAfterIndex(repoPath)
 	return err
+}
+
+// configSlugForPath returns the registered config slug for repoPath by
+// scanning all group configs, or "" when the path is not registered (in which
+// case Index falls back to the directory basename). Paths are compared after
+// filepath.Clean so trailing-slash / relative differences do not defeat the
+// match.
+func configSlugForPath(repoPath string) string {
+	want := filepath.Clean(repoPath)
+	groups, err := registry.Groups()
+	if err != nil {
+		return ""
+	}
+	for _, g := range groups {
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil {
+			continue
+		}
+		for _, r := range cfg.Repos {
+			if filepath.Clean(r.Path) == want {
+				return r.Slug
+			}
+		}
+	}
+	return ""
 }
 
 // daemonIndexFunc is the IndexFunc handed to daemon.Run. It bridges the
@@ -395,7 +425,13 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 			opts = append(opts,
 				WithPublisher(daemonProgressBroker),
 				WithProgressSlugs(args.Group, w.r.Slug))
-			indexErr := rebuildIndexFunc(w.r.Path, "", "", nil, false, false, opts...)
+			// #1576: tag the graph with the CONFIG slug (not the on-disk
+			// directory basename) so doc.Repo matches the slug the dashboard
+			// keys nodes by and the slug the cross-repo link pass emits as the
+			// link endpoint prefix. When the wizard slugifies a repo name
+			// (e.g. upvate_core → upvate-core) an empty repoTag would fall back
+			// to the dir basename and diverge, dropping every cross-repo edge.
+			indexErr := rebuildIndexFunc(w.r.Path, "", w.r.Slug, nil, false, false, opts...)
 			results[i] = repoResult{
 				path: w.r.Path,
 				slug: w.r.Slug,
@@ -427,7 +463,8 @@ func daemonRebuildFunc(args proto.RebuildArgs) ([]string, string, error) {
 				opts = append(opts,
 					WithPublisher(daemonProgressBroker),
 					WithProgressSlugs(args.Group, rw.r.Slug))
-				indexErr := rebuildIndexFunc(rw.r.Path, "", "", nil, false, false, opts...)
+				// #1576: tag with the CONFIG slug — see serial path above.
+				indexErr := rebuildIndexFunc(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
 				results[idx] = repoResult{
 					path: rw.r.Path,
 					slug: rw.r.Slug,
