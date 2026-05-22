@@ -1,3 +1,0 @@
-import{a as e,au as o,aN as n,B as i}from"./MermaidBlock-BTms9C2y.js";import{p}from"./wardley-L42UT6IY-cM4PfUF2.js";import"./query-B1Ohp7i8.js";import"./vendor-CEiLhMIW.js";import"./index-D7efKNdb.js";import"./radix-D6Aya7L5.js";var g={parse:e(async r=>{const a=await p("info",r);o.debug(a)},"parse")},v={version:"11.15.0"},d=e(()=>v.version,"getVersion"),m={getVersion:d},c=e((r,a,s)=>{o.debug(`rendering info diagram
-`+r);const t=n(a);i(t,100,400,!0),t.append("g").append("text").attr("x",100).attr("y",40).attr("class","version").attr("font-size",32).style("text-anchor","middle").text(`v${s}`)},"draw"),u={draw:c},S={parser:g,db:m,renderer:u};export{S as diagram};
-//# sourceMappingURL=infoDiagram-5YYISTIA-C3w7uw-B.js.map
