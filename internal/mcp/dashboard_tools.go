@@ -233,7 +233,7 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 		if target == "" {
 			target = topicID
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		topicEnt, ok := byID[target]
 		if !ok {
 			continue
@@ -307,7 +307,7 @@ func (s *Server) handleFlowDeadEnds(_ context.Context, req mcpapi.CallToolReques
 		if r.Doc == nil {
 			continue
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		// Build outbound CALLS set.
 		hasOutCalls := map[string]bool{}
 		for i := range r.Doc.Relationships {
@@ -428,7 +428,7 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 		if target == "" {
 			target = pid
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		var procEnt *graph.Entity
 		for i := range r.Doc.Entities {
 			if r.Doc.Entities[i].Kind == processEntityKind && r.Doc.Entities[i].ID == target {
@@ -439,7 +439,7 @@ func (s *Server) handleFlowDetail(_ context.Context, req mcpapi.CallToolRequest)
 		if procEnt == nil {
 			continue
 		}
-		steps := buildProcessSteps(r.Doc, procEnt)
+		steps := buildProcessSteps(r.Doc, procEnt, r.ByID)
 		// Collect SIDE_EFFECT_OF edges attached to any step in this process.
 		stepSet := map[string]bool{}
 		for _, st := range steps {
@@ -714,7 +714,7 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 		if target == "" {
 			target = patternID
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		e, ok := byID[target]
 		if !ok || (e.Kind != "SCOPE.Pattern" && e.Kind != "Pattern") {
 			continue
@@ -865,13 +865,13 @@ func (s *Server) handleGetSubgraph(_ context.Context, req mcpapi.CallToolRequest
 		if target == "" {
 			target = entityID
 		}
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 		if _, ok := byID[target]; !ok {
 			continue
 		}
-		adj := buildAdjacency(r.Doc, r.Repo)
+		adj := r.Adjacency
 		visited := bfs(adj, target, depth, nil)
-		byID2 := indexByID(r.Doc)
+		byID2 := r.ByID
 		type nodeOut struct {
 			EntityID   string `json:"entity_id"`
 			Name       string `json:"name"`
@@ -994,7 +994,7 @@ func (s *Server) handleFindPaths(_ context.Context, req mcpapi.CallToolRequest) 
 		repo, local := splitPrefixed(node)
 		out := []edge{}
 		if r, ok := lg.Repos[repo]; ok && r.Doc != nil {
-			a := buildAdjacency(r.Doc, r.Repo)
+			a := r.Adjacency
 			for _, e := range a.out[local] {
 				out = append(out, edge{
 					target: prefixedID(repo, e.target),

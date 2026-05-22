@@ -203,6 +203,11 @@ func (l CrossRepoLink) EffectiveKind() string {
 }
 
 // LoadedRepo is one repo's graph plus index plus mtime tracking.
+//
+// Pre-computed indexes (LabelIndex, BM25, Adjacency, CallsAdj, ByID) are
+// rebuilt only when the graph file mtime changes. This eliminates the
+// O(N) + O(R) cost per MCP query that handlers used to pay by calling
+// indexByID / buildAdjacency on every invocation (#1656).
 type LoadedRepo struct {
 	Repo       string
 	Path       string
@@ -210,9 +215,12 @@ type LoadedRepo struct {
 	Doc        *graph.Document
 	LabelIndex *LabelIndex
 	BM25       *BM25Index
-	Semantic   *embed.Store // per-repo vector index (nil when no embeddings.bin)
+	Adjacency  *adjacency               // in/out neighbor lists (#1656)
+	CallsAdj   map[string][]string      // CALLS-only forward adjacency (#1656)
+	ByID       map[string]*graph.Entity // entity ID -> entity (#1656)
+	Semantic   *embed.Store             // per-repo vector index (nil when no embeddings.bin)
 	semMtime   time.Time
-	byID       map[string]*graph.Entity // entity ID -> entity, for semantic hit resolution
+	byID       map[string]*graph.Entity // deprecated alias for ByID — kept for back-compat during #1656 rollout
 	mtime      time.Time
 	loadErr    string // populated when last reload failed; doc may be stale
 }
@@ -315,10 +323,18 @@ func (s *State) Reload() (int, error) {
 				lr.loadErr = ""
 				lr.LabelIndex = BuildLabelIndex(doc)
 				lr.BM25 = BuildBM25(doc)
-				lr.byID = make(map[string]*graph.Entity, len(doc.Entities))
+				lr.ByID = make(map[string]*graph.Entity, len(doc.Entities))
 				for i := range doc.Entities {
-					lr.byID[doc.Entities[i].ID] = &doc.Entities[i]
+					lr.ByID[doc.Entities[i].ID] = &doc.Entities[i]
 				}
+				lr.byID = lr.ByID // back-compat alias (deprecated)
+				// Pre-build adjacency once per reload. Eliminates the per-query
+				// O(R)=117k scan that every flow/traversal handler used to pay
+				// via buildAdjacency(r.Doc, r.Repo). (#1656)
+				lr.Adjacency = buildAdjacency(doc, lr.Repo)
+				// CALLS-only forward adjacency for traces.followCallsBFS, which
+				// previously rebuilt this on every traces=follow query. (#1656)
+				lr.CallsAdj = buildCallsAdjacency(doc)
 				reloaded++
 			}
 			// Refresh the semantic vector sidecar independently of the

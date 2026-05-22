@@ -64,7 +64,7 @@ func (s *Server) handleQualityCycles(_ context.Context, req mcpapi.CallToolReque
 		}
 
 		// Index entities by ID for name lookup.
-		byID := indexByID(r.Doc)
+		byID := r.ByID
 
 		for _, c := range cycles {
 			members := make([]memberDetail, 0, len(c.Members))
