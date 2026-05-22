@@ -189,11 +189,11 @@ func inferEntryKindFromKind(entityKind string, inEdgeKinds map[string]bool) stri
 // FlowMeta carries the top-level computed annotations added to the
 // handleFlowDetail response.
 type FlowMeta struct {
-	EntryKind        string          `json:"entry_kind"`
-	FlowSideEffects  []string        `json:"flow_side_effects"`
-	ComplexityScore  float64         `json:"complexity_score"`
-	IsCrossRepo      bool            `json:"is_cross_repo"`
-	DataLineage      []DataLineagePair `json:"data_lineage"`
+	EntryKind       string            `json:"entry_kind"`
+	FlowSideEffects []string          `json:"flow_side_effects"`
+	ComplexityScore float64           `json:"complexity_score"`
+	IsCrossRepo     bool              `json:"is_cross_repo"`
+	DataLineage     []DataLineagePair `json:"data_lineage"`
 }
 
 // DataLineagePair records a (read_source → write_sink) relationship observed
@@ -240,7 +240,11 @@ func stepEdgeMaps(r *DashRepo) (
 // AnnotatedStep mirrors the exported Step struct in handlers_flows.go but
 // carries the additional Flows v2 fields.
 type AnnotatedStep struct {
-	EntityID    string   `json:"entity_id"`
+	EntityID string `json:"entity_id"`
+	// Name is the entity's qualified name (e.g. "ReceivablesService.postSale").
+	// Emitted as both `name` (consumed by the WebUI v2 step nodes) and `label`
+	// for backward compatibility with the v1 frontend.
+	Name        string   `json:"name"`
 	Label       string   `json:"label"`
 	SourceFile  string   `json:"source_file"`
 	StartLine   int      `json:"start_line"`
@@ -322,8 +326,8 @@ func annotateFlowSteps(
 		}
 
 		pe := getEdges(repoSlug)
-		outMap := pe.out[localID]    // kind → []toID
-		inMap := pe.in[localID]     // kind → bool
+		outMap := pe.out[localID] // kind → []toID
+		inMap := pe.in[localID]   // kind → bool
 
 		// Flatten outMap keys into a set for classifier.
 		outKindSet := make(map[string]bool, len(outMap))
@@ -386,6 +390,7 @@ func annotateFlowSteps(
 
 		annotated = append(annotated, AnnotatedStep{
 			EntityID:    s.EntityID,
+			Name:        s.Label,
 			Label:       s.Label,
 			SourceFile:  s.SourceFile,
 			StartLine:   s.StartLine,

@@ -562,8 +562,10 @@ export interface FlowEnrichment {
 
 export interface ProcessStep {
   entity_id: string;
-  name: string;
-  kind: string;
+  /** Qualified name, e.g. "ReceivablesService.postSale". Older endpoints emit `label` only. */
+  name?: string;
+  label?: string;
+  kind?: string;
   step_index: number;
   source_file: string;
   start_line?: number;

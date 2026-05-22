@@ -22,7 +22,7 @@ import {
   Globe, Database, Send, ArrowDownToLine, Wrench, Shield, AlertTriangle,
   Package, CheckCircle2, Layout, Terminal, Clock, TestTube2, Wifi,
   ChevronRight, Search, X, Copy, Share2, ExternalLink, ZoomIn, ZoomOut,
-  Maximize2, ArrowUpDown, Download, Link2, Sparkles, Info, Check,
+  Maximize2, Link2, Sparkles, Info, Check,
   type LucideProps,
 } from "lucide-react";
 import type { ForwardRefExoticComponent, RefAttributes } from "react";
@@ -81,6 +81,12 @@ function getStepMeta(sk?: StepKind | string) {
 
 function getEntryMeta(ek?: EntryKind | string) {
   return ENTRY_META[ek ?? "function"] ?? ENTRY_META.function;
+}
+
+// The detail endpoint serves the qualified entity name as `label`; older builds
+// used `name`. Prefer whichever is populated so step nodes are always readable.
+function stepName(s: ProcessStep): string {
+  return s.name || s.label || s.entity_id || "step";
 }
 
 // ─── PathString — highlights {segment} patterns amber ────────────────────────
@@ -738,18 +744,30 @@ function ListRail({
 // ─── DAG constants ────────────────────────────────────────────────────────────
 
 const NODE_W = 220;
-const NODE_H = 58;
-const NODE_VGAP = 36;
+const NODE_H = 64;
+const NODE_HGAP = 56; // horizontal gap between nodes in a lane
+const NODE_VGAP = 44; // vertical gap between wrapped lanes
 const CANVAS_PAD = 28;
+const MAX_PER_LANE = 5; // wrap to a new lane after this many nodes
 
+// Left-to-right layered layout: entry on the left, terminal on the right,
+// edges flow horizontally. Long chains wrap onto stacked lanes so the wide
+// canvas is used instead of a single tall column.
 function layoutDAG(steps: ProcessStep[]) {
-  const positions = steps.map((_, i) => ({
-    x: 0,
-    y: CANVAS_PAD + i * (NODE_H + NODE_VGAP),
-  }));
-  const totalHeight = CANVAS_PAD * 2 + steps.length * (NODE_H + NODE_VGAP);
-  const totalWidth = NODE_W + 100;
-  return { positions, totalHeight, totalWidth };
+  const perLane = Math.max(1, Math.min(MAX_PER_LANE, steps.length));
+  const positions = steps.map((_, i) => {
+    const lane = Math.floor(i / perLane);
+    const col = i % perLane;
+    return {
+      x: CANVAS_PAD + col * (NODE_W + NODE_HGAP),
+      y: CANVAS_PAD + lane * (NODE_H + NODE_VGAP),
+    };
+  });
+  const lanes = Math.ceil(steps.length / perLane);
+  const cols = Math.min(perLane, steps.length);
+  const totalWidth = CANVAS_PAD * 2 + cols * NODE_W + (cols - 1) * NODE_HGAP;
+  const totalHeight = CANVAS_PAD * 2 + lanes * NODE_H + (lanes - 1) * NODE_VGAP;
+  return { positions, totalHeight, totalWidth, perLane };
 }
 
 // ─── FlowDag ──────────────────────────────────────────────────────────────────
@@ -766,6 +784,109 @@ function FlowDag({
   onPickStep: (i: number) => void;
 }) {
   const steps = detailSteps ?? flow.steps ?? [];
+
+  // ── Zoom + pan state ──────────────────────────────────────────────────────
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const { positions, totalHeight, totalWidth, perLane } = useMemo(
+    () => layoutDAG(steps),
+    [steps],
+  );
+
+  const clampZoom = (z: number) => Math.min(2.5, Math.max(0.3, z));
+
+  const fitToView = () => {
+    const vp = viewportRef.current;
+    if (!vp || totalWidth === 0 || totalHeight === 0) {
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const pad = 24;
+    const z = clampZoom(
+      Math.min(
+        (vp.clientWidth - pad) / totalWidth,
+        (vp.clientHeight - pad) / totalHeight,
+        1,
+      ),
+    );
+    setZoom(z);
+    setPan({
+      x: (vp.clientWidth - totalWidth * z) / 2,
+      y: (vp.clientHeight - totalHeight * z) / 2,
+    });
+  };
+
+  const zoomAtCenter = (factor: number) => {
+    const vp = viewportRef.current;
+    setZoom((z) => {
+      const nz = clampZoom(z * factor);
+      if (vp) {
+        const cx = vp.clientWidth / 2;
+        const cy = vp.clientHeight / 2;
+        setPan((p) => ({
+          x: cx - ((cx - p.x) / z) * nz,
+          y: cy - ((cy - p.y) / z) * nz,
+        }));
+      }
+      return nz;
+    });
+  };
+
+  // Fit when the flow changes.
+  const flowKey = flow.process_id + ":" + steps.length;
+  useEffect(() => {
+    const t = setTimeout(fitToView, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowKey]);
+
+  // Scroll-to-zoom (anchored on cursor).
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const rect = vp.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    setZoom((z) => {
+      const nz = clampZoom(z * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+      setPan((p) => ({
+        x: mx - ((mx - p.x) / z) * nz,
+        y: my - ((my - p.y) / z) * nz,
+      }));
+      return nz;
+    });
+  };
+
+  // Drag-to-pan.
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+    setDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setPan({ x: d.px + (e.clientX - d.x), y: d.py + (e.clientY - d.y) });
+  };
+  const endDrag = (e: React.PointerEvent) => {
+    if (dragRef.current) {
+      dragRef.current = null;
+      setDragging(false);
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* pointer may already be released */
+      }
+    }
+  };
+
   if (steps.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[280px] text-text-4 text-sm">
@@ -774,41 +895,59 @@ function FlowDag({
     );
   }
 
-  const { positions, totalHeight, totalWidth } = layoutDAG(steps);
-  const centerX = totalWidth / 2;
-
+  // Horizontal edges: exit right edge of node i-1, enter left edge of node i.
+  // When the chain wraps to the next lane, route down-then-across.
   const edges: Array<{
     from: { x: number; y: number };
     to: { x: number; y: number };
     kind: string | null;
     xrepo: boolean;
+    wrap: boolean;
   }> = [];
   for (let i = 1; i < steps.length; i++) {
+    const a = positions[i - 1];
+    const b = positions[i];
+    const wrap = i % perLane === 0; // first node of a new lane
     edges.push({
-      from: { x: centerX, y: positions[i - 1].y + NODE_H },
-      to: { x: centerX, y: positions[i].y },
+      from: { x: a.x + NODE_W, y: a.y + NODE_H / 2 },
+      to: { x: b.x, y: b.y + NODE_H / 2 },
       kind: steps[i].edge_kind,
       xrepo: steps[i].repo !== steps[i - 1].repo,
+      wrap,
     });
   }
 
   return (
     <div
-      className="relative overflow-auto border-b border-border flex-none"
+      ref={viewportRef}
+      className={cn(
+        "relative overflow-hidden border-b border-border flex-none select-none",
+        dragging ? "cursor-grabbing" : "cursor-grab",
+      )}
       style={{
         background:
           "radial-gradient(circle at 1px 1px, var(--canvas-grid) 1px, transparent 1px) 0 0 / 18px 18px, var(--canvas-bg)",
-        minHeight: 280,
-        maxHeight: 520,
+        minHeight: 320,
+        height: 400,
+        maxHeight: 560,
       }}
+      onWheel={onWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerLeave={endDrag}
     >
       <div
-        className="relative mx-auto"
-        style={{ width: totalWidth, height: totalHeight }}
+        className="absolute top-0 left-0 origin-top-left"
+        style={{
+          width: totalWidth,
+          height: totalHeight,
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+        }}
       >
         {/* Edges */}
         <svg
-          className="absolute inset-0 pointer-events-none"
+          className="absolute inset-0 pointer-events-none overflow-visible"
           width={totalWidth}
           height={totalHeight}
         >
@@ -821,9 +960,23 @@ function FlowDag({
             `}</style>
           </defs>
           {edges.map((ed, i) => {
-            const midY = (ed.from.y + ed.to.y) / 2;
-            const path = `M ${ed.from.x} ${ed.from.y} L ${ed.from.x} ${midY - 6} L ${ed.to.x} ${midY + 6} L ${ed.to.x} ${ed.to.y}`;
             const stroke = ed.xrepo ? "#a78bfa" : "#475569";
+            let path: string;
+            let labelX: number;
+            let labelY: number;
+            if (ed.wrap) {
+              // Route: out the right of the previous node, down, then back
+              // across to the left of the wrapped node on the next lane.
+              const downY = (ed.from.y + ed.to.y) / 2;
+              path = `M ${ed.from.x} ${ed.from.y} L ${ed.from.x + 14} ${ed.from.y} L ${ed.from.x + 14} ${downY} L ${ed.to.x - 14} ${downY} L ${ed.to.x - 14} ${ed.to.y} L ${ed.to.x} ${ed.to.y}`;
+              labelX = ed.to.x + 6;
+              labelY = ed.to.y - 8;
+            } else {
+              const midX = (ed.from.x + ed.to.x) / 2;
+              path = `M ${ed.from.x} ${ed.from.y} L ${midX - 6} ${ed.from.y} L ${midX + 6} ${ed.to.y} L ${ed.to.x} ${ed.to.y}`;
+              labelX = midX - 4;
+              labelY = (ed.from.y + ed.to.y) / 2 - 6;
+            }
             return (
               <g key={i}>
                 <path
@@ -834,15 +987,17 @@ function FlowDag({
                   strokeDasharray={ed.xrepo ? "5 3" : undefined}
                   className={ed.xrepo ? "fx-xedge" : undefined}
                 />
+                {/* Arrowhead pointing into the left edge of the target node. */}
                 <polygon
-                  points={`${ed.to.x - 4},${ed.to.y - 6} ${ed.to.x + 4},${ed.to.y - 6} ${ed.to.x},${ed.to.y - 1}`}
+                  points={`${ed.to.x - 6},${ed.to.y - 4} ${ed.to.x - 6},${ed.to.y + 4} ${ed.to.x - 1},${ed.to.y}`}
                   fill={stroke}
                 />
                 {ed.kind && (
                   <text
-                    x={ed.to.x + 8}
-                    y={midY + 4}
+                    x={labelX}
+                    y={labelY}
                     fontSize={9}
+                    textAnchor="middle"
                     fontFamily="var(--font-mono)"
                     fill={ed.xrepo ? "#a78bfa" : "var(--text-3)"}
                     paintOrder="stroke"
@@ -865,7 +1020,8 @@ function FlowDag({
           const isTerminal = i === steps.length - 1;
           const isPhantom = flow.terminal_is_phantom && isTerminal;
           const meta = getStepMeta(s.step_kind);
-          const verb = isTerminal ? getHttpVerb(s.name) : null;
+          const name = stepName(s);
+          const verb = isTerminal ? getHttpVerb(name) : null;
           const isXrepo = i > 0 && steps[i - 1].repo !== s.repo;
           const pos = positions[i];
 
@@ -883,7 +1039,7 @@ function FlowDag({
                 isPhantom ? "border-dashed opacity-85" : "",
               )}
               style={{
-                left: centerX - NODE_W / 2,
+                left: pos.x,
                 top: pos.y,
                 width: NODE_W,
                 minHeight: NODE_H,
@@ -937,14 +1093,23 @@ function FlowDag({
                   </span>
                 )}
                 <span
-                  className="font-mono text-[11px] text-text flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-                  title={s.name}
+                  className="font-mono text-[11px] text-text font-medium flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+                  title={name}
                 >
-                  {s.name}
+                  {name}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-1">
-                <span className="text-[9px] text-text-4">{meta.label}</span>
+                <span
+                  className="inline-flex items-center gap-1 text-[9px] font-medium"
+                  style={{ color: meta.color }}
+                >
+                  <span
+                    className="w-[6px] h-[6px] rounded-[2px] flex-none"
+                    style={{ background: meta.color }}
+                  />
+                  {meta.label}
+                </span>
                 <span
                   className="font-mono text-[9px]"
                   style={isXrepo ? { color: "#a78bfa" } : { color: "var(--text-3)" }}
@@ -957,24 +1122,26 @@ function FlowDag({
         })}
       </div>
 
-      {/* Canvas controls (decorative) */}
+      {/* Canvas controls */}
       <div className="absolute right-3 top-3 flex gap-1 rounded-md border border-border bg-[var(--overlay)] p-1 backdrop-blur-sm z-10">
         {[
-          { icon: <Maximize2 size={12} />, title: "Fit to view" },
-          { icon: <ZoomIn size={12} />, title: "Zoom in" },
-          { icon: <ZoomOut size={12} />, title: "Zoom out" },
-          { icon: <ArrowUpDown size={12} />, title: "Toggle direction" },
-          { icon: <Download size={12} />, title: "Export PNG" },
+          { icon: <Maximize2 size={12} />, title: "Fit to view", onClick: fitToView },
+          { icon: <ZoomIn size={12} />, title: "Zoom in", onClick: () => zoomAtCenter(1.2) },
+          { icon: <ZoomOut size={12} />, title: "Zoom out", onClick: () => zoomAtCenter(1 / 1.2) },
         ].map((btn) => (
           <button
             key={btn.title}
             type="button"
             title={btn.title}
+            onClick={btn.onClick}
             className="w-6 h-6 inline-flex items-center justify-center rounded-sm text-text-3 hover:bg-surface-2 hover:text-text"
           >
             {btn.icon}
           </button>
         ))}
+        <span className="inline-flex items-center px-1.5 font-mono text-[9px] text-text-3 select-none">
+          {Math.round(zoom * 100)}%
+        </span>
       </div>
 
       {/* Legend */}
@@ -1040,7 +1207,7 @@ function StepInspector({
           <meta.Icon size={14} />
         </span>
         <span className="font-mono text-sm text-text font-medium flex-1 min-w-0 truncate">
-          {step.name}
+          {stepName(step)}
         </span>
         <span
           className="font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-xs flex-none"
@@ -1053,7 +1220,7 @@ function StepInspector({
         </span>
       </div>
       <div className="flex flex-wrap gap-2.5 text-[11px] text-text-3">
-        <span>{step.kind}</span>
+        <span>{meta.label}</span>
         <span>·</span>
         <span className="font-mono">
           {step.source_file}
