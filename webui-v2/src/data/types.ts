@@ -930,6 +930,34 @@ export interface ActionJob {
   finished_at?: number;
 }
 
+/* ------------------------------------------------------------------ *
+ * Create-group / add-repo scan wizard (#1517). The wizard sends a
+ * server-side PATH string (the daemon resolves + indexes it); see
+ * v2_wizard.go for the browser-File-handle limitation note.
+ * ------------------------------------------------------------------ */
+
+/** POST /api/v2/scan/inspect — stack + monorepo detection preview (no writes). */
+export interface ScanInspectReply {
+  valid: boolean;
+  absPath: string;
+  suggestedGroup: string;
+  suggestedSlug: string;
+  stack: string;
+  /** "pnpm" | "npm" | "turbo" | "nx" | "lerna" | "multi" | "" */
+  monorepo: string;
+  packages: string[];
+  hasAgentsMd: boolean;
+  alreadyRegistered?: string;
+  error?: string;
+}
+
+/** One repo the wizard wants registered + indexed. */
+export interface WizardRepo {
+  path: string;
+  slug?: string;
+  modules?: string[];
+}
+
 /** POST /api/v2/maintenance/cleanup result. */
 export interface CleanupReply {
   dry_run: boolean;

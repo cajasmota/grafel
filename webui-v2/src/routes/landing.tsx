@@ -14,18 +14,12 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, Plus, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button, Card, Input, InfoLabel, Kbd } from "@/components/ui";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui";
+import { Button, Card, InfoLabel, Kbd } from "@/components/ui";
 import { LandingTopBar } from "@/components/chrome/landing-top-bar";
+import { ScanWizard } from "@/components/chrome/scan-wizard";
 import { Constellation, seedFromString } from "@/components/viz/constellation";
-import { useGroups, useCreateGroup } from "@/hooks/use-groups";
+import { useGroups } from "@/hooks/use-groups";
 import { useMeta } from "@/hooks/use-meta";
-import { ApiError } from "@/lib/api";
 import type { Group, GroupHealth } from "@/data/types";
 import { cn } from "@/lib/utils";
 
@@ -56,10 +50,6 @@ function relativeTime(ms: number | null): string {
   const day = Math.floor(hr / 24);
   if (day < 7) return `${day}d ago`;
   return `${Math.floor(day / 7)}w ago`;
-}
-
-function slugify(s: string): string {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 /* ---------- info tips ---------- */
@@ -282,97 +272,6 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-/* ---------- create-group modal ---------- */
-
-function CreateGroupModal({
-  open,
-  onOpenChange,
-  takenNames,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  takenNames: string[];
-}) {
-  const [name, setName] = useState("");
-  const create = useCreateGroup();
-  const slug = slugify(name);
-  const duplicate = takenNames.includes(slug);
-  const valid = slug.length > 0 && !duplicate;
-
-  function reset() {
-    setName("");
-    create.reset();
-  }
-
-  async function submit() {
-    if (!valid) return;
-    try {
-      const g = await create.mutateAsync(slug);
-      toast.success(`Group “${g.name}” created.`);
-      reset();
-      onOpenChange(false);
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : "Failed to create group.";
-      toast.error(msg);
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) reset();
-        onOpenChange(v);
-      }}
-    >
-      <DialogContent>
-        <DialogTitle>New group</DialogTitle>
-        <DialogDescription>
-          Name your group. You can add repositories to it afterwards.
-        </DialogDescription>
-
-        <form
-          className="mt-4 space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit();
-          }}
-        >
-          <label className="block">
-            <span className="text-sm text-text-2">Group name</span>
-            <Input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. platform"
-              className="mt-1.5"
-            />
-          </label>
-
-          {slug && (
-            <p className="text-sm text-text-3">
-              Config:{" "}
-              <span className="font-mono text-text-2">~/.config/archigraph/{slug}.fleet.json</span>
-            </p>
-          )}
-          {duplicate && (
-            <p className="text-sm text-danger">A group named “{slug}” already exists.</p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!valid || create.isPending}>
-              {create.isPending ? "Creating…" : "Create group"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* ---------- screen ---------- */
 
 export default function Landing() {
@@ -445,7 +344,13 @@ export default function Landing() {
         </div>
       </main>
 
-      <CreateGroupModal open={wizardOpen} onOpenChange={setWizardOpen} takenNames={takenNames} />
+      <ScanWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        mode="create"
+        takenNames={takenNames}
+        onIndexed={(group) => navigate(`/g/${group}/graph`)}
+      />
     </div>
   );
 }

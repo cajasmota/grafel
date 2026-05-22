@@ -48,7 +48,6 @@ import {
   usePatchDocs,
   useRebuildGroup,
   useDeleteGroup,
-  useAddRepo,
   useRemoveRepo,
   useRebuildRepo,
   useResetRepo,
@@ -56,6 +55,7 @@ import {
   useRunDoctor,
   useActionJob,
 } from "@/hooks/use-settings";
+import { ScanWizard } from "@/components/chrome/scan-wizard";
 import { ApiError } from "@/lib/api";
 import type { SettingsRepo, SettingsGroup, DoctorCheck, MonorepoPkg } from "@/data/types";
 import { cn } from "@/lib/utils";
@@ -1067,102 +1067,6 @@ function RemoveRepoModal({
   );
 }
 
-function AddRepoModal({
-  open,
-  groupId,
-  groupName,
-  existingPaths,
-  onClose,
-}: {
-  open: boolean;
-  groupId: string;
-  groupName: string;
-  existingPaths: string[];
-  onClose: () => void;
-}) {
-  const addRepo = useAddRepo(groupId);
-  const [slug, setSlug] = useState("");
-  const [path, setPath] = useState("");
-  const pathError = path && existingPaths.includes(path) ? "This path is already in the group." : "";
-
-  const valid = path.trim() !== "" && !pathError;
-
-  const handleAdd = async () => {
-    if (!valid) return;
-    try {
-      await addRepo.mutateAsync({ slug: slug.trim() || undefined as unknown as string, path: path.trim() });
-      toast.success(`Repo added to ${groupName}.`);
-      setSlug("");
-      setPath("");
-      onClose();
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : "Failed to add repo.";
-      toast.error(msg);
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v && !addRepo.isPending) {
-          setSlug("");
-          setPath("");
-          onClose();
-        }
-      }}
-    >
-      <DialogContent>
-        <DialogTitle>
-          Add repos to <span className="font-mono">{groupName}</span>
-        </DialogTitle>
-        <DialogDescription>
-          New repos inherit this group's features (watchers + git hooks).
-        </DialogDescription>
-
-        <form
-          className="mt-4 space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void handleAdd();
-          }}
-        >
-          <label className="block">
-            <span className="text-sm text-text-2">Repository path</span>
-            <Input
-              autoFocus
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="/path/to/repo"
-              className="mt-1 font-mono text-sm"
-            />
-            {pathError && <p className="mt-1 text-xs text-danger">{pathError}</p>}
-          </label>
-          <label className="block">
-            <span className="text-sm text-text-2">Slug (optional — derived from folder name)</span>
-            <Input
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="my-repo"
-              className="mt-1 font-mono text-sm"
-            />
-          </label>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={addRepo.isPending}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!valid || addRepo.isPending}>
-              {addRepo.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
-              Add repo
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Rebuild confirm specs (single source of truth per design doc)
 // ---------------------------------------------------------------------------
@@ -1361,12 +1265,13 @@ export default function SettingsScreen() {
         onClose={() => setRemoveRepo(null)}
       />
 
-      <AddRepoModal
+      <ScanWizard
         open={addRepoOpen}
+        onOpenChange={setAddRepoOpen}
+        mode="add-repo"
         groupId={groupId}
         groupName={group.name}
         existingPaths={group.repos.map((r) => r.path)}
-        onClose={() => setAddRepoOpen(false)}
       />
 
       {confirmSpec && (

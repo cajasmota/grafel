@@ -46,6 +46,8 @@ import type {
   ActionJob,
   CleanupReply,
   UpdateApplyReply,
+  ScanInspectReply,
+  WizardRepo,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -126,6 +128,37 @@ export const api = {
   /** v2 — create an empty group from a name (Landing wizard). */
   createGroup: (name: string) =>
     requestV2<Group>("/groups", { method: "POST", body: JSON.stringify({ name }) }),
+
+  // --- v2 create-group / add-repo scan wizard (#1517) ---
+  /**
+   * POST /api/v2/scan/inspect — resolve a server-side path and detect its
+   * stack + monorepo layout. No registry writes; the "detect" wizard step.
+   */
+  scanInspect: (path: string) =>
+    requestV2<ScanInspectReply>("/scan/inspect", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+
+  /**
+   * POST /api/v2/groups/from-scan — create a group, register the scanned repos,
+   * and enqueue an async index job. Returns a 202 JobAck the wizard streams.
+   */
+  createGroupFromScan: (name: string, repos: WizardRepo[]) =>
+    requestV2<JobAck>("/groups/from-scan", {
+      method: "POST",
+      body: JSON.stringify({ name, repos }),
+    }),
+
+  /**
+   * POST /api/v2/groups/:id/repos/scan — register scanned repos into an
+   * existing group + enqueue an async index job (Settings add-repo). 202 JobAck.
+   */
+  scanReposIntoGroup: (groupId: string, repos: WizardRepo[]) =>
+    requestV2<JobAck>(`/groups/${encodeURIComponent(groupId)}/repos/scan`, {
+      method: "POST",
+      body: JSON.stringify({ repos }),
+    }),
 
   // --- v2 Docs entity browser (#1438) ---
   getDocsTree: (groupId: string) =>

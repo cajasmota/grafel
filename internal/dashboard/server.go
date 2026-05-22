@@ -551,6 +551,15 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/groups", s.handleV2Groups)
 	mux.HandleFunc("POST /api/v2/groups", s.handleV2CreateGroup)
 
+	// Create-group / add-repo scan→detect→index wizard (#1517).
+	// scan/inspect detects stack + monorepo (no writes); from-scan creates a
+	// group + registers repos + enqueues an async index job; repos/scan does
+	// the same for an existing group. All index steps return a 202 JobAck the
+	// wizard streams via /api/v2/jobs/{id}/stream.
+	mux.HandleFunc("POST /api/v2/scan/inspect", s.handleV2ScanInspect)
+	mux.HandleFunc("POST /api/v2/groups/from-scan", s.handleV2CreateGroupFromScan)
+	mux.HandleFunc("POST /api/v2/groups/{group}/repos/scan", s.handleV2ScanRepos)
+
 	// Docs entity browser — WebUI v2 (#1438)
 	mux.HandleFunc("GET /api/v2/groups/{group}/docs/tree", s.handleV2DocsTree)
 	mux.HandleFunc("GET /api/v2/groups/{group}/docs/entities/{entityId}", s.handleV2DocsEntityDetail)
