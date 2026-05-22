@@ -54,7 +54,7 @@ import {
 import { useIndexProgress } from "@/hooks/use-index-progress";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
 import { ApiError } from "@/lib/api";
-import type { ScanInspectReply } from "@/data/types";
+import type { ScanInspectReply, WizardRepo } from "@/data/types";
 import { cn } from "@/lib/utils";
 
 type WizardStep = "pick" | "detect" | "index";
@@ -91,6 +91,10 @@ export function ScanWizard(props: ScanWizardProps) {
   // its own repo (its absolute sub-path), so indexing a subset works and the
   // Index step shows one row per chosen module. Default: all packages checked.
   const [selectedPkgs, setSelectedPkgs] = useState<Set<string>>(new Set());
+  // Multi-repo-parent selection (#1531 follow-up). When Detect finds child git
+  // repos, the user picks WHICH ones to index; each is registered as its own
+  // repo (its absolute sub-path). Default: all children checked.
+  const [selectedChildren, setSelectedChildren] = useState<Set<string>>(new Set());
 
   // Server-side folder browser (#1529). `browseDir` is the directory currently
   // being listed; null defaults to the daemon's home dir. `null` while the
@@ -120,6 +124,7 @@ export function ScanWizard(props: ScanWizardProps) {
     setName("");
     setJobId(null);
     setSelectedPkgs(new Set());
+    setSelectedChildren(new Set());
     setBrowseDir(null);
     inspect.reset();
     createFromScan.reset();
@@ -162,6 +167,8 @@ export function ScanWizard(props: ScanWizardProps) {
         // Default to ALL detected packages checked (#1531). Empty for a single
         // repo — then runIndex registers the whole folder as one repo.
         setSelectedPkgs(new Set(result.packages ?? []));
+        // Default all child git repos checked (#1531 follow-up).
+        setSelectedChildren(new Set(result.childGitRepos ?? []));
         setStep("detect");
       } else {
         toast.error(result.error ?? "That path can't be indexed.");
@@ -174,21 +181,30 @@ export function ScanWizard(props: ScanWizardProps) {
   // --- Step 3: create/register + index ---
   async function runIndex() {
     if (!scan?.valid) return;
-    // Monorepo with a package list → register ONLY the SELECTED package roots,
-    // each as its own repo (its absolute sub-path). The daemon walks each
-    // sub-path independently, so indexing a subset works and the Index step
-    // streams one progress row per chosen module (#1531). A single repo (no
-    // packages) registers the whole folder as one repo, as before.
+    // Build the repo list based on what was detected:
+    //   1. Child git repos (multi-repo-parent, #1531 follow-up): each selected
+    //      child dir as its own repo (absolute sub-path).
+    //   2. Monorepo packages (#1531): each selected package as its own repo.
+    //   3. Single repo: the whole folder, as before.
+    const hasChildGitRepos = (scan.childGitRepos?.length ?? 0) > 0;
     const isMonorepo = (scan.packages?.length ?? 0) > 0;
-    const repos = isMonorepo
-      ? [...selectedPkgs].sort().map((pkg) => ({
-          path: `${scan.absPath}/${pkg}`,
-          slug: slugify(`${scan.suggestedSlug}-${pkg}`),
-          modules: [pkg],
-        }))
-      : [{ path: scan.absPath, slug: scan.suggestedSlug }];
+    let repos: WizardRepo[];
+    if (hasChildGitRepos) {
+      repos = [...selectedChildren].sort().map((child) => ({
+        path: `${scan.absPath}/${child}`,
+        slug: slugify(child),
+      }));
+    } else if (isMonorepo) {
+      repos = [...selectedPkgs].sort().map((pkg) => ({
+        path: `${scan.absPath}/${pkg}`,
+        slug: slugify(`${scan.suggestedSlug}-${pkg}`),
+        modules: [pkg],
+      }));
+    } else {
+      repos = [{ path: scan.absPath, slug: scan.suggestedSlug }];
+    }
     if (repos.length === 0) {
-      toast.error("Select at least one package to index.");
+      toast.error("Select at least one repo to index.");
       return;
     }
     try {
@@ -433,7 +449,11 @@ export function ScanWizard(props: ScanWizardProps) {
                   <div className="flex items-center justify-between py-1">
                     <dt className="text-text-3">Layout</dt>
                     <dd>
-                      {scan.monorepo ? (
+                      {(scan.childGitRepos?.length ?? 0) > 0 ? (
+                        <Badge tone="info">
+                          {scan.childGitRepos.length} repositor{scan.childGitRepos.length === 1 ? "y" : "ies"} detected
+                        </Badge>
+                      ) : scan.monorepo ? (
                         <Badge tone="info">
                           {scan.monorepo} monorepo · {scan.packages.length} package
                           {scan.packages.length === 1 ? "" : "s"}
@@ -452,6 +472,84 @@ export function ScanWizard(props: ScanWizardProps) {
                     </div>
                   )}
                 </dl>
+
+                {/* Child git repos selection (#1531 follow-up): multi-repo-parent
+                    pattern — pick which child repos to index. Each selected child
+                    dir is registered as its own repo. Only shown when childGitRepos
+                    is non-empty (takes precedence over monorepo packages). */}
+                {(scan.childGitRepos?.length ?? 0) > 0 && (
+                  <div data-testid="wizard-child-repos">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-text-2">
+                        Repositories to index
+                        <span className="ml-1.5 text-xs text-text-4">
+                          ({selectedChildren.size}/{scan.childGitRepos.length})
+                        </span>
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs"
+                          onClick={() => setSelectedChildren(new Set(scan.childGitRepos))}
+                          data-testid="wizard-child-repos-all"
+                        >
+                          Select all
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs"
+                          onClick={() => setSelectedChildren(new Set())}
+                          data-testid="wizard-child-repos-none"
+                        >
+                          None
+                        </Button>
+                      </div>
+                    </div>
+                    <ul className="mt-1.5 max-h-48 overflow-y-auto rounded-lg border border-border bg-surface divide-y divide-border/60">
+                      {scan.childGitRepos.map((child) => {
+                        const checked = selectedChildren.has(child);
+                        return (
+                          <li key={child}>
+                            <button
+                              type="button"
+                              role="checkbox"
+                              aria-checked={checked}
+                              className={cn(
+                                "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2",
+                                checked ? "text-text-2" : "text-text-4",
+                              )}
+                              onClick={() =>
+                                setSelectedChildren((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(child)) next.delete(child);
+                                  else next.add(child);
+                                  return next;
+                                })
+                              }
+                              data-testid="wizard-child-repo"
+                              data-child={child}
+                              data-checked={checked}
+                            >
+                              {checked ? (
+                                <CheckSquare size={15} className="shrink-0 text-accent-strong" />
+                              ) : (
+                                <Square size={15} className="shrink-0 text-text-4" />
+                              )}
+                              <span className="min-w-0 flex-1 truncate font-mono">{child}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {selectedChildren.size === 0 && (
+                      <p className="mt-1 text-xs text-danger">Select at least one repository to index.</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Monorepo module selection (#1531): pick which package roots
                     to index. Default all-checked; only the SELECTED packages are
@@ -557,6 +655,7 @@ export function ScanWizard(props: ScanWizardProps) {
                 disabled={
                   !scan.valid ||
                   indexing ||
+                  ((scan.childGitRepos?.length ?? 0) > 0 && selectedChildren.size === 0) ||
                   (scan.packages.length > 0 && selectedPkgs.size === 0) ||
                   (mode === "create" && (!nameSlug || nameDuplicate))
                 }
