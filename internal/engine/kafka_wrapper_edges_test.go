@@ -258,6 +258,188 @@ public class Utils {
 	}
 }
 
+// TestKafkaWrapper_JavaKafkaStreams_Through verifies that kStream.through("topic")
+// emits a MessageTopic with BOTH PUBLISHES_TO and SUBSCRIBES_TO edges, since
+// Kafka Streams writes to the through-topic and reads it back internally
+// (repartition / intermediate routing).
+func TestKafkaWrapper_JavaKafkaStreams_Through(t *testing.T) {
+	src := `package io.demo;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.KafkaStreams;
+
+public class PaymentRouter {
+    public Topology buildTopology() {
+        StreamsBuilder builder = new StreamsBuilder();
+        KStream<String, Payment> payments = builder.stream("payments.settled");
+        KStream<String, Payment> repartitioned = payments.through("payments.normalised");
+        repartitioned.filter((k, v) -> v != null)
+                     .to("orders.enriched");
+        return builder.build();
+    }
+}
+`
+	ents, rels := runWrapperDetect(t, "java", "stream-processor/PaymentRouter.java", src)
+
+	// through-topic must be present as a MessageTopic entity.
+	throughTopic := topicByName(ents, "payments.normalised")
+	if throughTopic == nil {
+		t.Fatalf("expected MessageTopic for payments.normalised (through), ents=%v", ents)
+	}
+	if throughTopic.Properties["stream_role"] != "through" {
+		t.Errorf("stream_role: want through, got %q", throughTopic.Properties["stream_role"])
+	}
+
+	// through-topic must have BOTH PUBLISHES_TO and SUBSCRIBES_TO edges.
+	var pubToThrough, subToThrough bool
+	for _, r := range rels {
+		if strings.Contains(r.ToID, "kafka:payments.normalised") {
+			switch r.Kind {
+			case publishesToEdgeKind:
+				pubToThrough = true
+			case subscribesToEdgeKind:
+				subToThrough = true
+			}
+		}
+	}
+	if !pubToThrough {
+		t.Errorf("expected PUBLISHES_TO edge for through-topic payments.normalised, rels=%v", rels)
+	}
+	if !subToThrough {
+		t.Errorf("expected SUBSCRIBES_TO edge for through-topic payments.normalised, rels=%v", rels)
+	}
+
+	// Source + final sink must also be present.
+	if topicByName(ents, "payments.settled") == nil {
+		t.Fatalf("expected MessageTopic for payments.settled (source), ents=%v", ents)
+	}
+	if topicByName(ents, "orders.enriched") == nil {
+		t.Fatalf("expected MessageTopic for orders.enriched (sink), ents=%v", ents)
+	}
+}
+
+// TestKafkaWrapper_JavaKafkaStreams_MapValuesThenTo verifies that a chained
+// .mapValues(...).to("topic") form produces a PUBLISHES_TO edge for the sink.
+func TestKafkaWrapper_JavaKafkaStreams_MapValuesThenTo(t *testing.T) {
+	src := `package io.demo;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.KafkaStreams;
+
+public class OrderEnricher {
+    public Topology buildTopology() {
+        StreamsBuilder builder = new StreamsBuilder();
+        KStream<String, Order> orders = builder.stream("orders.placed");
+        orders.mapValues(order -> enrich(order))
+              .to("orders.enriched");
+        return builder.build();
+    }
+}
+`
+	ents, rels := runWrapperDetect(t, "java", "stream-processor/OrderEnricher.java", src)
+
+	if topicByName(ents, "orders.placed") == nil {
+		t.Fatalf("expected MessageTopic for orders.placed, ents=%v", ents)
+	}
+	if topicByName(ents, "orders.enriched") == nil {
+		t.Fatalf("expected MessageTopic for orders.enriched, ents=%v", ents)
+	}
+	if len(edgesOfKind(rels, publishesToEdgeKind)) == 0 {
+		t.Errorf("expected PUBLISHES_TO edge for orders.enriched, rels=%v", rels)
+	}
+}
+
+// TestKafkaWrapper_JavaKafkaStreams_StreamProcessorFixture verifies the full
+// stream-processor fixture: consumes orders.placed + payments.settled,
+// produces orders.enriched + orders.high_value.
+// This is the fixture-level recall test for #1480 — equivalent of
+// TestKafkaWrapper_ShipFastTopicRecall but for the Kafka Streams DSL.
+func TestKafkaWrapper_JavaKafkaStreams_StreamProcessorFixture(t *testing.T) {
+	// OrderEnrichmentTopology: source=orders.placed + payments.settled,
+	// sink=orders.enriched + orders.high_value.
+	enrichmentSrc := `package io.streamprocessor;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.KafkaStreams;
+
+public class OrderEnrichmentTopology {
+    public Topology buildTopology() {
+        StreamsBuilder builder = new StreamsBuilder();
+        KStream<String, Order> ordersStream = builder.stream("orders.placed");
+        KStream<String, Payment> paymentsStream = builder.stream("payments.settled");
+        KStream<String, EnrichedOrder> enriched = ordersStream.mapValues(order -> enrich(order));
+        enriched.to("orders.enriched");
+        enriched.filter((key, value) -> value != null && value.total > 1000)
+                .to("orders.high_value");
+        return builder.build();
+    }
+}
+`
+	ents, rels := runWrapperDetect(t, "java",
+		"stream-processor/src/main/java/io/streamprocessor/OrderEnrichmentTopology.java",
+		enrichmentSrc)
+
+	// All four expected topics must be present.
+	for _, want := range []string{"orders.placed", "payments.settled", "orders.enriched", "orders.high_value"} {
+		if topicByName(ents, want) == nil {
+			t.Errorf("expected MessageTopic for %q, ents=%v", want, ents)
+		}
+	}
+
+	// Two SUBSCRIBES_TO edges (source topics).
+	subs := edgesOfKind(rels, subscribesToEdgeKind)
+	if len(subs) < 2 {
+		t.Errorf("expected ≥2 SUBSCRIBES_TO edges (source topics), got %d; rels=%v", len(subs), rels)
+	}
+
+	// Two PUBLISHES_TO edges (sink topics).
+	pubs := edgesOfKind(rels, publishesToEdgeKind)
+	if len(pubs) < 2 {
+		t.Errorf("expected ≥2 PUBLISHES_TO edges (sink topics), got %d; rels=%v", len(pubs), rels)
+	}
+
+	// Canonical IDs must match what P7 will join on.
+	wantIDs := map[string]bool{
+		"kafka:orders.placed":    false,
+		"kafka:payments.settled": false,
+		"kafka:orders.enriched":  false,
+		"kafka:orders.high_value": false,
+	}
+	for _, e := range ents {
+		if e.Kind == messageTopicKind {
+			wantIDs[e.Name] = true
+		}
+	}
+	for id, seen := range wantIDs {
+		if !seen {
+			t.Errorf("canonical MessageTopic %q not emitted — P7 cross-repo link will miss it", id)
+		}
+	}
+
+	t.Logf("stream-processor fixture: %d topics, %d SUBSCRIBES_TO, %d PUBLISHES_TO",
+		len(ents), len(subs), len(pubs))
+}
+
+// TestKafkaWrapper_JavaKafkaStreams_ThroughTopicNoFireOnPlainJava verifies
+// that .through() on a plain Java non-Streams file does not emit any topic.
+func TestKafkaWrapper_JavaKafkaStreams_ThroughTopicNoFireOnPlainJava(t *testing.T) {
+	src := `package io.demo;
+
+public class UrlBuilder {
+    // through() here is a path-component helper, not Kafka Streams.
+    public String buildUrl(String base) {
+        return base.through("normalised");
+    }
+}
+`
+	ents, _ := runWrapperDetect(t, "java", "UrlBuilder.java", src)
+	for _, e := range ents {
+		if e.Kind == messageTopicKind {
+			t.Errorf("must not emit MessageTopic from plain through() call, got %v", e)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 3. Java Spring RedisTemplate.convertAndSend
 // ---------------------------------------------------------------------------

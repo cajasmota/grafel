@@ -294,7 +294,8 @@ func synthesizeJavaRedisConvertAndSend(
 }
 
 // ---------------------------------------------------------------------------
-// 3. Java Kafka Streams: builder.stream("topic") / kStream.to("topic")
+// 3. Java Kafka Streams: builder.stream("topic") / kStream.to("topic") /
+//    kStream.through("topic") / chained .filter().to() / .branch()[n].to()
 // ---------------------------------------------------------------------------
 
 // javaKafkaStreamBuilderRe captures `builder.stream("topic")` and
@@ -305,14 +306,20 @@ var javaKafkaStreamBuilderRe = regexp.MustCompile(
 )
 
 // javaKafkaStreamToRe captures `kStream.to("topic")` — the sink topic written
-// by a Kafka Streams topology. Group 1 = topic name.
+// by a Kafka Streams topology. Also fires for chained forms like
+// `.filter(...).to("topic")`, `.mapValues(...).to("topic")`, and
+// `.branch(...)[n].to("topic")`. Group 1 = topic name.
 var javaKafkaStreamToRe = regexp.MustCompile(
 	`\.to\s*\(\s*"([^"\n\r]+)"`,
 )
 
-// javaKafkaStreamBranchToRe captures `.branch(...)` followed by `.to("topic")`
-// for branched topologies. Same regex as javaKafkaStreamToRe — handled by the
-// same scan.
+// javaKafkaStreamThroughRe captures `kStream.through("topic")` — the
+// rerouting operator that both consumes from and produces to an intermediate
+// topic, acting as both source and sink in the topology.
+// Group 1 = topic name.
+var javaKafkaStreamThroughRe = regexp.MustCompile(
+	`\.through\s*\(\s*"([^"\n\r]+)"`,
+)
 
 func synthesizeJavaKafkaStreams(
 	src string,
@@ -352,6 +359,8 @@ func synthesizeJavaKafkaStreams(
 	}
 
 	// Sink topics: kStream.to("topic") — producer side.
+	// Also fires for chained DSL forms: .filter(...).to("x"),
+	// .mapValues(...).to("x"), .branch(...)[n].to("x").
 	for _, m := range javaKafkaStreamToRe.FindAllStringSubmatchIndex(src, -1) {
 		topic := src[m[2]:m[3]]
 		if !looksLikeKafkaTopic(topic) {
@@ -359,7 +368,7 @@ func synthesizeJavaKafkaStreams(
 		}
 		// Avoid matching Java method calls that happen to look like .to("…")
 		// but are not Kafka Streams topology calls. Heuristic: if the
-		// surrounding ~200 chars contain KStream / KTable / topology tokens,
+		// surrounding ~300 chars contain KStream / KTable / topology tokens,
 		// it's safe to claim this.
 		ctx := surroundingText(src, m[0], 300)
 		if !strings.Contains(ctx, "KStream") &&
@@ -368,6 +377,7 @@ func synthesizeJavaKafkaStreams(
 			!strings.Contains(ctx, ".through(") &&
 			!strings.Contains(ctx, ".branch(") &&
 			!strings.Contains(ctx, ".filter(") &&
+			!strings.Contains(ctx, ".mapValues(") &&
 			!strings.Contains(ctx, "topology") &&
 			!strings.Contains(src, "KafkaStreams") {
 			continue
@@ -378,6 +388,30 @@ func synthesizeJavaKafkaStreams(
 			"broker":          "kafka",
 			"messaging_layer": "kafka_streams",
 			"stream_role":     "sink",
+		})
+	}
+
+	// Through topics: kStream.through("topic") — intermediate rerouting.
+	// The topology PUBLISHES_TO the through-topic AND SUBSCRIBES_TO it
+	// (Kafka Streams writes records to the through-topic and then reads them
+	// back internally). Emit both edges so cross-repo linkers can match either
+	// side of the through-topic connection.
+	for _, m := range javaKafkaStreamThroughRe.FindAllStringSubmatchIndex(src, -1) {
+		topic := src[m[2]:m[3]]
+		if !looksLikeKafkaTopic(topic) {
+			continue
+		}
+		id := kafkaTopicID(topic)
+		emitTopic(id, topic, "kafka", map[string]string{"messaging_layer": "kafka_streams", "stream_role": "through"})
+		emitEdge("Service", caller, id, publishesToEdgeKind, map[string]string{
+			"broker":          "kafka",
+			"messaging_layer": "kafka_streams",
+			"stream_role":     "through",
+		})
+		emitEdge("Service", caller, id, subscribesToEdgeKind, map[string]string{
+			"broker":          "kafka",
+			"messaging_layer": "kafka_streams",
+			"stream_role":     "through",
 		})
 	}
 }
