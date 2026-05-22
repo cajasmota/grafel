@@ -13,8 +13,8 @@ import type {
   Group,
   Entity,
   Community,
-  DocsTreeNode,
-  DocsEntityDetail,
+  DocNode,
+  DocPage,
   GraphPayloadWire,
   EntityDetailWire,
   SettingsGroup,
@@ -181,11 +181,13 @@ export const api = {
       body: JSON.stringify({ repos }),
     }),
 
-  // --- v2 Docs entity browser (#1438) ---
+  // --- v2 Docs portal — generated markdown documents (#1552) ---
   getDocsTree: (groupId: string) =>
-    requestV2<DocsTreeNode[]>(`/groups/${groupId}/docs/tree`),
-  getDocsEntity: (groupId: string, entityId: string) =>
-    requestV2<DocsEntityDetail>(`/groups/${groupId}/docs/entities/${encodeURIComponent(entityId)}`),
+    requestV2<DocNode[]>(`/groups/${groupId}/docs/tree`),
+  getDocPage: (groupId: string, path: string) =>
+    requestV2<DocPage>(
+      `/groups/${encodeURIComponent(groupId)}/docs/page?path=${encodeURIComponent(path)}`,
+    ),
   /** v2 — the full graph payload (nodes/edges/communities/repos) for the Graph
    *  screen. `params` maps to the daemon's repo/kind filters. */
   getGraph: (groupId: string, params?: { repos?: string[]; filterKind?: string; lod?: string }) => {

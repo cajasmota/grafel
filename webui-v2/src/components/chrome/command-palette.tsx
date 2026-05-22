@@ -104,8 +104,10 @@ export function CommandPalette() {
   }
 
   function navigateToEntity(entityId: string) {
+    // Docs no longer browses entities (#1552 — it renders generated markdown).
+    // Entity search jumps to the Graph surface focused on the node instead.
     if (groupId) {
-      navigate(`/g/${groupId}/docs/${encodeURIComponent(entityId)}`);
+      navigate(`/g/${groupId}/graph?node=${encodeURIComponent(entityId)}`);
     }
     close();
   }

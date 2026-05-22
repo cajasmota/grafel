@@ -183,49 +183,35 @@ export interface Group {
   health: GroupHealth;
 }
 
-// ── Docs screen ─────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------
+// Docs screen types — GENERATED markdown documents (#1552).
+//
+// The Docs screen renders the markdown produced by the `generate-docs`
+// SKILL (run by the user's coding agent), NOT the entity graph. The skill
+// writes markdown under <repo>/docs/ (overview.md, modules/<slug>/README.md,
+// reference/*.md, patterns/<cat>/*.md, plus cross-cutting guides). The tree
+// groups documents per-repo then by category; leaves are renderable docs.
+// ----------------------------------------------------------------
 
-export type DocsEntityKind =
-  | "function"
-  | "component"
-  | "hook"
-  | "class"
-  | "method"
-  | "http_endpoint"
-  | "module"
-  | "folder"
-  | "repo";
+export type DocCategory =
+  | "overview"
+  | "guide"
+  | "modules"
+  | "reference"
+  | "patterns";
 
-export interface DocsTreeNode {
-  type: DocsEntityKind;
+export interface DocNode {
+  type: "folder" | "doc";
   name: string;
-  id?: string;           // leaf only
-  children?: DocsTreeNode[];
+  path?: string;          // doc leaf only — key for the page endpoint
+  category?: DocCategory; // top-level section
+  children?: DocNode[];
 }
 
-export interface DocsParam {
-  name: string;
-  type: string;
-  desc: string;
-}
-
-export interface DocsEntityDetail {
-  name: string;
-  type: DocsEntityKind;
-  repo: string;
-  file: string;
-  line: number;
-  signature: string;
-  description: string;
-  aiGenerated: boolean;
-  params: DocsParam[];
-  returns: { type: string; desc?: string } | null;
-  inbound: number;
-  outbound: number;
-  callers: string[];
-  callees: string[];
-  responseShapes?: { status: number; shape: string }[];
-  stub?: boolean;
+export interface DocPage {
+  path: string;
+  title: string;
+  markdown: string;
 }
 
 // ----------------------------------------------------------------

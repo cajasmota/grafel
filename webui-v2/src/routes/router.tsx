@@ -44,7 +44,8 @@ export const router = createBrowserRouter([
           { path: "topology", element: <TopologyScreen />, handle: { surfaceLabel: "Topology" } },
           { path: "paths", element: <PathsScreen />, handle: { surfaceLabel: "Paths" } },
           { path: "docs", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },
-          { path: "docs/:entityId", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },
+          // Wildcard: the doc key (repoSlug/rel/path.md) may contain slashes.
+          { path: "docs/*", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },
           { path: "settings", element: <SettingsScreen />, handle: { surfaceLabel: "Group settings" } },
           { path: "pending", element: <PendingScreen />, handle: { surfaceLabel: "Pending" } },
           { path: "operations", element: <OperationsScreen />, handle: { surfaceLabel: "Operations" } },
