@@ -506,6 +506,20 @@ func injectElapsedMS(res *mcpapi.CallToolResult, ms int64) *mcpapi.CallToolResul
 		case '{':
 			var obj map[string]any
 			if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
+				// #1686: when the object is the standard list-tool envelope
+				// {items:[...], count:N, elapsed_ms?} produced by #1661, attempt
+				// TOON conversion on the items array — same logic as the top-level
+				// array branch so consumers see an identical wire shape regardless
+				// of which path produced the response.
+				if toonWireEnabled() {
+					if rawItems, ok := obj["items"]; ok {
+						if arr, ok := rawItems.([]any); ok {
+							if toon, ok := recordsToTOON(arr); ok {
+								obj["items"] = toon
+							}
+						}
+					}
+				}
 				obj["elapsed_ms"] = ms
 				// #1663: minified JSON on the wire. Schema preserved.
 				if data, err := json.Marshal(obj); err == nil {
