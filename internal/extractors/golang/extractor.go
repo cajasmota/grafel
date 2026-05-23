@@ -821,6 +821,34 @@ func unwrapGenericType(node *sitter.Node, src []byte) string {
 	return ""
 }
 
+// collectIntraFileFuncNames returns the set of bare names of all top-level
+// functions (function_declaration, NOT method_declaration) in the node slice.
+// Only nodes of type "function_declaration" are included; method_declaration
+// nodes have a receiver and their entity Name carries the "Recv.method" dotted
+// form, so they are excluded — method calls are resolved through the
+// receiver_type machinery, not the intraFileFuncs set.
+//
+// Issue #1806: used by extractFunctions to build the same-file symbol table
+// passed into extractCallRelationships. Enables the intra-file / cross-file
+// distinction for bare-identifier CALLS edge emission.
+func collectIntraFileFuncNames(nodes []*sitter.Node, src []byte) map[string]struct{} {
+	funcs := make(map[string]struct{})
+	for _, n := range nodes {
+		if n.Type() != "function_declaration" {
+			continue
+		}
+		nameNode := n.ChildByFieldName("name")
+		if nameNode == nil {
+			continue
+		}
+		name := nodeText(nameNode, src)
+		if name != "" {
+			funcs[name] = struct{}{}
+		}
+	}
+	return funcs
+}
+
 // extractFunctions extracts function_declaration and method_declaration nodes.
 // Returns entity records and the count of function-type entities.
 //
@@ -831,6 +859,20 @@ func unwrapGenericType(node *sitter.Node, src []byte) string {
 func extractFunctions(root *sitter.Node, src []byte, filePath string, structFields map[string]map[string]string) ([]types.EntityRecord, int) {
 	importStems := collectImportStems(root, src)
 	nodes := findAll(root, "function_declaration", "method_declaration")
+
+	// Issue #1806 — intra-file function symbol table.
+	// First pass: collect the bare names of all top-level functions (not
+	// methods — methods have a receiver and are named "Recv.Method") declared
+	// in this file. The set is passed into extractCallRelationships so that
+	// bare-identifier call_expression nodes whose target name matches an
+	// intra-file function can be identified as same-file intra-package calls.
+	// Cross-file same-package calls (callee defined in a sibling .go file of
+	// the same package) are also emitted — the resolver's byPackageOperation
+	// index handles those via the structural-ref's caller-file path (v1
+	// limitation: only single-file resolution confirmed at extraction time;
+	// cross-file resolution depends on byPackageOperation being unambiguous
+	// for the target name in the package directory).
+	intraFileFuncs := collectIntraFileFuncNames(nodes, src)
 
 	var records []types.EntityRecord
 	funcCount := 0
@@ -945,7 +987,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 		// Body-derived var types do NOT include closure-param shadowing — the
 		// per-call walker below maintains its own scope stack to disambiguate.
 		paramTypes = mergeVarTypes(paramTypes, collectBodyVarTypes(bodyOrNode, src))
-		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes, filePath, structFields)
+		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes, filePath, structFields, intraFileFuncs)
 		// Rewrite FromID on each CALLS edge to the qualified Name so the
 		// edge source matches the entity ID downstream.
 		//
@@ -1031,7 +1073,30 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 // entity. Calls on other selector operands (e.g. `other.foo()`, package-
 // qualified calls) are NOT stamped — the heuristic is intentionally
 // conservative to avoid false same-package binds (Refs #94 lesson).
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string, structFields map[string]map[string]string) []types.RelationshipRecord {
+//
+// Issue #1806 — intra-package bare-function calls.
+// The intraFileFuncs set carries the bare names of all top-level functions
+// declared in the same source file (not methods). When a bare-identifier
+// call_expression targets a name in this set, the CALLS edge ToID is the
+// caller-file structural-ref `scope:operation:method:go:<file>:<name>`,
+// which resolves directly via byLocation[file][name] in the resolver —
+// no cross-file fallback needed. This is the same structural-ref shape used
+// for all bare identifier calls (Refs #44/#476) but the intraFileFuncs check
+// makes the same-file contract explicit and guarantees the byLocation path
+// fires without ambiguity from other-package collisions.
+//
+// Bare calls to names NOT in intraFileFuncs (cross-file same-package
+// functions, builtins, closures passed as values, etc.) also emit the
+// structural-ref keyed on the caller's file. The resolver's
+// byPackageOperation[pkgDir][name] index handles cross-file same-package
+// resolution when the target name is unambiguous in the package. If
+// byPackageOperation marks the name as ambiguous (e.g., the same function
+// is defined in two platform-specific files under the same package directory),
+// the structural-ref stub routes to Dynamic via isHeuristicScopeStub rather
+// than bug-resolver — a v1 limitation documented in the comment above
+// (single-file confirmation at extraction time; cross-file resolution depends
+// on byPackageOperation being unambiguous).
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string, structFields map[string]map[string]string, intraFileFuncs map[string]struct{}) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -1194,9 +1259,39 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 				// (no per-file rewrite); the structural-ref would bury
 				// the bare name inside a `scope:operation:` stub that
 				// the dispatch lookup cannot match.
+				// Issue #1806 — intra-package bare-function call resolution.
+				// Two sub-cases share the same structural-ref shape:
+				//
+				// (a) Intra-file call: target is a top-level function declared
+				//     in the same source file (confirmed via intraFileFuncs).
+				//     The structural-ref scope:operation:method:go:<file>:<name>
+				//     resolves directly via byLocation[file][name]; no
+				//     cross-file fallback is needed. This is the canonical
+				//     "function calling a sibling helper" pattern.
+				//
+				// (b) Cross-file same-package call: target is defined in a
+				//     sibling .go file of the same package (not present in
+				//     intraFileFuncs). The same structural-ref shape is used;
+				//     the resolver's byPackageOperation[pkgDir][name] index
+				//     handles resolution when the target name is unambiguous
+				//     in the package directory. If byPackageOperation has an
+				//     ambiguity sentinel (e.g., the function is defined in two
+				//     platform-conditional files), the stub routes to Dynamic —
+				//     a v1 limitation; cross-file resolution is best-effort.
 				hasIfaceDispatch := rec.Properties["interface_dispatch_type"] != ""
 				if operand == "" && !isSelfReceiver && filePath != "" && !hasIfaceDispatch {
 					rec.ToID = extractor.BuildOperationStructuralRef("go", filePath, target)
+					// Stamp intra_file=true when the callee is confirmed to be
+					// in the same source file. Consumers can use this property
+					// to distinguish "same-file helper call" (always resolves
+					// via byLocation) from "cross-file same-package call"
+					// (resolves via byPackageOperation, best-effort).
+					if _, isIntraFile := intraFileFuncs[target]; isIntraFile {
+						if rec.Properties == nil {
+							rec.Properties = map[string]string{}
+						}
+						rec.Properties["intra_file"] = "true"
+					}
 				}
 				rels = append(rels, rec)
 			}
