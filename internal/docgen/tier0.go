@@ -146,7 +146,7 @@ func Run(opts RunOpts) (mdPath string, scoreFile string, score Score, err error)
 	}
 
 	// Load the group's graphs and locate the seed entity.
-	doc, entity, neighbours, _, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	doc, entity, neighbours, _, _, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return
 	}
@@ -261,7 +261,17 @@ func normalizeSeedEntityID(id string) (string, error) { return NormalizeSeedEnti
 // path of the seed entity. The returned seedRepo is always an absolute path
 // resolved from the fleet config — never a bare slug — so callers can safely
 // join it with entity.SourceFile regardless of the working directory.
-func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, seedRepo string, err error) {
+//
+// neighbourKinds is index-aligned with neighbours: neighbourKinds[i] is the
+// graph edge `kind` (e.g. "CALLS", "IMPORTS", "CONTAINS", "REFERENCES",
+// "DEPENDS_ON", "FK_TO") of the first relationship discovered between the seed
+// and neighbours[i]. The kind is preserved verbatim from the graph regardless
+// of edge direction so docgen can surface typed relationships in
+// NeighbourBrief.Relationship (#1879). When a neighbour is connected through
+// multiple relationships, the first edge encountered (in document iteration
+// order) wins; this is deterministic for a given graph state, which matches
+// the determinism guarantee already documented on this function.
+func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, neighbourKinds []string, seedRepo string, err error) {
 	seedID, err = normalizeSeedEntityID(seedID)
 	if err != nil {
 		return
@@ -329,7 +339,9 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 		}
 	}
 
-	// Collect 1-hop neighbours via relationships.
+	// Collect 1-hop neighbours via relationships. neighbourKinds is built in
+	// lockstep with neighbours so that downstream NeighbourBrief construction
+	// can surface the typed edge kind (#1879).
 	seen := make(map[string]bool)
 	if seed != nil {
 		for _, rel := range allRels {
@@ -348,6 +360,7 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 			seen[neighbourID] = true
 			if n, ok := byID[neighbourID]; ok {
 				neighbours = append(neighbours, *n)
+				neighbourKinds = append(neighbourKinds, rel.Kind)
 			}
 		}
 	}
