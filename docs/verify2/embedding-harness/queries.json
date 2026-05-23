@@ -1,0 +1,199 @@
+{
+  "_comment": "Embedding-quality test set for archigraph (#462). Each query has a natural-language question plus a list of ground-truth entities expected to surface in the top-K. Ground-truth matchers identify entities by SourceFile substring + Name (no fragile 16-char IDs). An entity is a 'hit' for a query when ANY matcher's source_file substring appears in entity.SourceFile AND the matcher.name equals entity.Name (case-sensitive). The harness uses these matchers to compute Recall@5, Recall@10, and MRR per backend.",
+  "version": 1,
+  "corpus": "archigraph (self)",
+  "queries": [
+    {
+      "id": "q01-build-bm25",
+      "question": "how does archigraph build a BM25 index over entities?",
+      "truth": [
+        {"source_file": "internal/mcp/scoring.go", "name": "BuildBM25"},
+        {"source_file": "internal/mcp/scoring.go", "name": "buildDocTerms"},
+        {"source_file": "internal/mcp/scoring.go", "name": "BM25Index"}
+      ]
+    },
+    {
+      "id": "q02-rrf-fuse",
+      "question": "how are BM25 and semantic search results fused together?",
+      "truth": [
+        {"source_file": "internal/mcp/scoring.go", "name": "FuseRRF"}
+      ]
+    },
+    {
+      "id": "q03-embed-text",
+      "question": "function that builds the text representation of an entity for embedding",
+      "truth": [
+        {"source_file": "internal/embed/chunk.go", "name": "EmbedText"},
+        {"source_file": "internal/embed/chunk.go", "name": "headWindow"}
+      ]
+    },
+    {
+      "id": "q04-content-hash",
+      "question": "how does archigraph compute a stable hash to invalidate embeddings on change?",
+      "truth": [
+        {"source_file": "internal/embed/chunk.go", "name": "ContentHash"}
+      ]
+    },
+    {
+      "id": "q05-load-graph",
+      "question": "load a graph from disk, preferring the flatbuffers binary",
+      "truth": [
+        {"source_file": "internal/graph/load.go", "name": "LoadGraphFromDir"},
+        {"source_file": "internal/graph/load.go", "name": "loadFBDocument"}
+      ]
+    },
+    {
+      "id": "q06-state-dir",
+      "question": "where do we resolve the per-repo state directory path",
+      "truth": [
+        {"source_file": "internal/daemon/state_path.go", "name": "StateDirForRepo"},
+        {"source_file": "internal/daemon/state_path.go", "name": "GraphPathForRepo"}
+      ]
+    },
+    {
+      "id": "q07-http-embed-backend",
+      "question": "openai-compatible HTTP embedding backend implementation",
+      "truth": [
+        {"source_file": "internal/embed/http.go", "name": "httpBackend"},
+        {"source_file": "internal/embed/http.go", "name": "newHTTPBackend"},
+        {"source_file": "internal/embed/http.go", "name": "Embed"}
+      ]
+    },
+    {
+      "id": "q08-builtin-minilm",
+      "question": "bundled in-process MiniLM embedding backend via hugot",
+      "truth": [
+        {"source_file": "internal/embed/builtin_simplego.go", "name": "newBuiltinBackend"},
+        {"source_file": "internal/embed/builtin_simplego.go", "name": "builtinBackend"}
+      ]
+    },
+    {
+      "id": "q09-vector-store-save",
+      "question": "save the per-repo vector sidecar to disk atomically",
+      "truth": [
+        {"source_file": "internal/embed/store.go", "name": "Save"},
+        {"source_file": "internal/embed/store.go", "name": "writeTo"}
+      ]
+    },
+    {
+      "id": "q10-vector-search",
+      "question": "cosine similarity top-K vector search",
+      "truth": [
+        {"source_file": "internal/embed/store.go", "name": "Search"}
+      ]
+    },
+    {
+      "id": "q11-embed-document",
+      "question": "how does the indexer re-embed only entities whose content changed",
+      "truth": [
+        {"source_file": "internal/embed/index.go", "name": "EmbedDocument"},
+        {"source_file": "internal/embed/index.go", "name": "embeddable"}
+      ]
+    },
+    {
+      "id": "q12-l2-normalize",
+      "question": "L2 normalize an embedding vector so dot product equals cosine",
+      "truth": [
+        {"source_file": "internal/embed/http.go", "name": "l2Normalize"}
+      ]
+    },
+    {
+      "id": "q13-load-embed-config",
+      "question": "load embeddings.json config and apply environment variable overrides",
+      "truth": [
+        {"source_file": "internal/embed/config.go", "name": "LoadConfig"},
+        {"source_file": "internal/embed/config.go", "name": "applyEnvOverrides"}
+      ]
+    },
+    {
+      "id": "q14-tokenize",
+      "question": "tokenize text splitting camelCase and snake_case for the BM25 index",
+      "truth": [
+        {"source_file": "internal/mcp/scoring.go", "name": "tokenize"}
+      ]
+    },
+    {
+      "id": "q15-entity-id",
+      "question": "compute a stable hex id for an entity from kind name and source file",
+      "truth": [
+        {"source_file": "internal/graph/graph.go", "name": "EntityID"},
+        {"source_file": "internal/graph/graph.go", "name": "RelationshipID"}
+      ]
+    },
+    {
+      "id": "q16-snippet-reader",
+      "question": "read source code lines for an entity using its start and end line",
+      "truth": [
+        {"source_file": "internal/embed/chunk.go", "name": "snippet"},
+        {"source_file": "internal/embed/chunk.go", "name": "lines"},
+        {"source_file": "internal/embed/chunk.go", "name": "newSnippetReader"}
+      ]
+    },
+    {
+      "id": "q17-store-load",
+      "question": "decode the embeddings.bin vector sidecar from disk",
+      "truth": [
+        {"source_file": "internal/embed/store.go", "name": "Load"},
+        {"source_file": "internal/embed/store.go", "name": "decode"}
+      ]
+    },
+    {
+      "id": "q18-new-backend",
+      "question": "factory that selects builtin or HTTP embedding backend from config",
+      "truth": [
+        {"source_file": "internal/embed/backend.go", "name": "NewBackend"}
+      ]
+    },
+    {
+      "id": "q19-store-retain",
+      "question": "drop vectors for entities that no longer exist after reindexing",
+      "truth": [
+        {"source_file": "internal/embed/store.go", "name": "Retain"}
+      ]
+    },
+    {
+      "id": "q20-embed-result",
+      "question": "type that summarizes how many entities were embedded reused or evicted in a run",
+      "truth": [
+        {"source_file": "internal/embed/index.go", "name": "Result"}
+      ]
+    },
+    {
+      "id": "q21-normalize-url",
+      "question": "accept either a base URL or full embeddings endpoint URL",
+      "truth": [
+        {"source_file": "internal/embed/http.go", "name": "normalizeEmbeddingsURL"}
+      ]
+    },
+    {
+      "id": "q22-config-normalize",
+      "question": "validate and normalize embedding backend config requires url for http",
+      "truth": [
+        {"source_file": "internal/embed/config.go", "name": "normalize"}
+      ]
+    },
+    {
+      "id": "q23-bm25-search",
+      "question": "score entities against a query string using BM25",
+      "truth": [
+        {"source_file": "internal/mcp/scoring.go", "name": "Search"}
+      ]
+    },
+    {
+      "id": "q24-quantized-onnx",
+      "question": "pick platform-specific quantized ONNX model weights file",
+      "truth": [
+        {"source_file": "internal/embed/builtin_simplego.go", "name": "quantizedOnnxFile"},
+        {"source_file": "internal/embed/builtin_simplego.go", "name": "modelCacheDir"}
+      ]
+    },
+    {
+      "id": "q25-store-put",
+      "question": "insert or replace a vector record in the in-memory store",
+      "truth": [
+        {"source_file": "internal/embed/store.go", "name": "Put"},
+        {"source_file": "internal/embed/store.go", "name": "Get"}
+      ]
+    }
+  ]
+}
