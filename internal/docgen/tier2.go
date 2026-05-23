@@ -251,6 +251,11 @@ type entityRecord struct {
 // pickSliceEntities returns up to maxPages entity IDs for the slice:
 // the seed entity first, then the highest-priority dependents.
 func pickSliceEntities(group, seedID string, maxPages int) ([]string, error) {
+	// Normalise seedID so both raw hex and prefixed forms work.
+	if norm, err := normalizeSeedEntityID(seedID); err == nil {
+		seedID = norm
+	}
+
 	// Load all entities and relationships for the group.
 	repoGraphDirs, err := findGroupGraphDirs(group)
 	if err != nil {
@@ -336,7 +341,14 @@ func pickSliceEntities(group, seedID string, maxPages int) ([]string, error) {
 }
 
 // resolveEntity finds an entity by exact ID, then by prefix/suffix.
+// It normalises seedID via normalizeSeedEntityID so callers can pass either
+// the raw hex ("7a349f6cd77984c9") or the prefixed form returned by
+// archigraph_find ("archigraph::7a349f6cd77984c9", "upvate-core::7a349f6cd77984c9").
 func resolveEntity(byID map[string]*graph.Entity, seedID string) *graph.Entity {
+	// Strip optional <group>:: prefix — ignore error, fall through to raw lookup.
+	if norm, err := normalizeSeedEntityID(seedID); err == nil {
+		seedID = norm
+	}
 	if e, ok := byID[seedID]; ok {
 		return e
 	}

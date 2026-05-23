@@ -230,10 +230,40 @@ func defaultOutDir(group string) (string, error) {
 	return filepath.Join(home, "docs", group, ".tier0-"+ts), nil
 }
 
+// NormalizeSeedEntityID strips an optional <group>:: or <repo>:: prefix from
+// a seed entity ID and returns the raw 16-char hex. This lets users pass the
+// prefixed form returned by archigraph_find (e.g. "archigraph::7a349f6cd77984c9"
+// or "upvate-core::7a349f6cd77984c9") directly to --seed-entity without having
+// to manually trim the prefix.
+//
+// Accepted forms (all resolve to the same raw hex):
+//   - "7a349f6cd77984c9"               — raw hex (unchanged)
+//   - "archigraph::7a349f6cd77984c9"   — group-prefixed
+//   - "upvate-core::7a349f6cd77984c9"  — repo-prefixed
+//
+// Returns an error when the input contains "::" but the RHS is empty.
+func NormalizeSeedEntityID(id string) (string, error) {
+	if !strings.Contains(id, "::") {
+		return id, nil
+	}
+	parts := strings.SplitN(id, "::", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return "", fmt.Errorf("invalid --seed-entity %q: prefixed form must be <group>::<hex> with a non-empty hex part", id)
+	}
+	return parts[1], nil
+}
+
+// normalizeSeedEntityID is the unexported alias used internally.
+func normalizeSeedEntityID(id string) (string, error) { return NormalizeSeedEntityID(id) }
+
 // loadEntityContext loads all graphs for the group, finds the seed entity,
 // and returns it along with its 1-hop neighbours and the repo root of the
 // seed entity (Document.Repo from the graph document that contains it).
 func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, seedRepo string, err error) {
+	seedID, err = normalizeSeedEntityID(seedID)
+	if err != nil {
+		return
+	}
 	repoGraphDirs, err := findGroupGraphDirs(group)
 	if err != nil {
 		return

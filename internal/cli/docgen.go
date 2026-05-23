@@ -222,7 +222,9 @@ Available sections (--section, used by --tier=0 only):
 	cmd.Flags().StringVar(&group, "group", "",
 		"group name (defaults to sole registered group)")
 	cmd.Flags().StringVar(&seedEntity, "seed-entity", "",
-		"entity ID (or prefix) to render (required for all tiers)")
+		"entity ID to render (required for all tiers). Accepts both raw hex (e.g. 7a349f6cd77984c9) "+
+			"and the prefixed form returned by archigraph_find (e.g. archigraph::7a349f6cd77984c9 "+
+			"or upvate-core::7a349f6cd77984c9). The <group>:: prefix is stripped automatically.")
 	cmd.Flags().StringVar(&section, "section", "",
 		fmt.Sprintf("section type to render (required for --tier=0); one of: %s", strings.Join(docgen.KnownSections, ", ")))
 	cmd.Flags().StringVar(&pageID, "page-id", "",

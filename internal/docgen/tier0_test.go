@@ -165,6 +165,74 @@ func TestRun_CreatesOutputDir(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// NormalizeSeedEntityID — unit tests for #1826
+// ---------------------------------------------------------------------------
+
+func TestNormalizeSeedEntityID_RawHex(t *testing.T) {
+	// Raw hex passes through unchanged — regression escape.
+	got, err := docgen.NormalizeSeedEntityID("7a349f6cd77984c9")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "7a349f6cd77984c9" {
+		t.Errorf("want %q, got %q", "7a349f6cd77984c9", got)
+	}
+}
+
+func TestNormalizeSeedEntityID_ArchigraphPrefix(t *testing.T) {
+	// archigraph::<hex> — was broken before this fix.
+	got, err := docgen.NormalizeSeedEntityID("archigraph::7a349f6cd77984c9")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "7a349f6cd77984c9" {
+		t.Errorf("want %q, got %q", "7a349f6cd77984c9", got)
+	}
+}
+
+func TestNormalizeSeedEntityID_ArbitraryGroupPrefix(t *testing.T) {
+	// Any <group>:: prefix should be stripped — upvate-core form.
+	got, err := docgen.NormalizeSeedEntityID("upvate-core::7a349f6cd77984c9")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "7a349f6cd77984c9" {
+		t.Errorf("want %q, got %q", "7a349f6cd77984c9", got)
+	}
+}
+
+func TestNormalizeSeedEntityID_InvalidEmptyRHS(t *testing.T) {
+	// "group::" with empty RHS must return an error.
+	_, err := docgen.NormalizeSeedEntityID("archigraph::")
+	if err == nil {
+		t.Fatal("expected error for 'archigraph::', got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid --seed-entity") {
+		t.Errorf("expected 'invalid --seed-entity' in error, got: %v", err)
+	}
+}
+
+func TestNormalizeSeedEntityID_DoubleColonOnlyRHS(t *testing.T) {
+	// Just "::" with no prefix and no suffix — invalid.
+	_, err := docgen.NormalizeSeedEntityID("::")
+	if err == nil {
+		t.Fatal("expected error for '::', got nil")
+	}
+}
+
+func TestNormalizeSeedEntityID_NestedDoubleColon(t *testing.T) {
+	// "a::b::c" — only the FIRST "::" is split; RHS is "b::c", which is valid
+	// (we take everything after the first "::").
+	got, err := docgen.NormalizeSeedEntityID("a::b::c")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "b::c" {
+		t.Errorf("want %q, got %q", "b::c", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // KnownSections completeness
 // ---------------------------------------------------------------------------
 
