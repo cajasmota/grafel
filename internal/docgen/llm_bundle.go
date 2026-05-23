@@ -120,7 +120,58 @@ type LLMGraphContext struct {
 	// only when the seed entity is class-like (Class, Component, Controller,
 	// Service, Model, View, etc.). Nil for non-class seeds. (#1861)
 	ClassManifest *ClassManifest `json:"class_manifest,omitempty"`
+	// ModuleReadme is the README content found in the same directory as the
+	// module entity. Populated only for Module-kind seeds (#1880). Nil for
+	// non-Module seeds.
+	ModuleReadme *ModuleReadme `json:"module_readme,omitempty"`
+	// ModuleConfigs is the list of sibling Config entities linked to this
+	// module via DEPENDS_ON_CONFIG edges. Populated only for Module-kind seeds
+	// (#1880). Nil/empty for non-Module seeds.
+	ModuleConfigs []ModuleConfigEntry `json:"module_configs,omitempty"`
 }
+
+// ModuleReadme holds the README content embedded into a Module bundle (#1880).
+type ModuleReadme struct {
+	// File is the repo-relative path of the README (e.g. "README.md").
+	File string `json:"file"`
+	// Content is the first ModuleReadmeMaxLines lines of the README.
+	Content string `json:"content"`
+	// Language is the inferred markup language: "markdown", "rst", or "text".
+	Language string `json:"language"`
+}
+
+// ModuleConfigEntry holds the extracted metadata from one sibling Config entity
+// linked to a Module via a DEPENDS_ON_CONFIG edge (#1880).
+type ModuleConfigEntry struct {
+	// Name is the basename of the config file (e.g. "package.json").
+	Name string `json:"name"`
+	// Format is the format string stored on the Config entity (e.g. "json", "toml").
+	Format string `json:"format,omitempty"`
+	// Subtype is the config subtype (e.g. "node_project", "python_project").
+	Subtype string `json:"subtype,omitempty"`
+	// ProjectName is the project/package name extracted from the config file.
+	ProjectName string `json:"project_name,omitempty"`
+	// Dependencies is the comma-joined list of production dependencies.
+	// Capped at ModuleConfigMaxKeys entries.
+	Dependencies string `json:"dependencies,omitempty"`
+	// Scripts is the comma-joined list of script/target names.
+	Scripts string `json:"scripts,omitempty"`
+	// KeysTopLevel is the comma-joined list of top-level config keys.
+	// Capped at ModuleConfigMaxKeys entries. Included for generic configs.
+	KeysTopLevel string `json:"keys_top_level,omitempty"`
+}
+
+// ModuleReadmeMaxLines is the cap on the number of lines read from a README
+// file when embedding into the module bundle (#1880).
+const ModuleReadmeMaxLines = 400
+
+// ModuleConfigMaxConfigs is the maximum number of sibling Config entities
+// embedded into a Module bundle (#1880).
+const ModuleConfigMaxConfigs = 3
+
+// ModuleConfigMaxKeys is the cap on the number of keys_top_level entries
+// embedded per config entry (#1880).
+const ModuleConfigMaxKeys = 50
 
 // ClassManifest is a structured enumeration of a class entity's public
 // surface area. It lets the LLM cite specific methods and fields by name
@@ -562,6 +613,11 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		if isClassLikeKind(entity.Kind) {
 			gc.ClassManifest = buildClassManifest(entity, neighbours, neighbourKinds)
 		}
+
+		// Populate ModuleReadme and ModuleConfigs for Module-kind seeds (#1880).
+		if isModuleKind(entity.Kind) {
+			gc.ModuleReadme, gc.ModuleConfigs = buildModuleSupplements(entity, seedRepo, neighbours, neighbourKinds)
+		}
 	}
 
 	// Determine section list and profile (profile carries per-kind guidance overrides).
@@ -886,6 +942,168 @@ func buildClassManifest(entity *graph.Entity, neighbours []graph.Entity, neighbo
 	}
 
 	return m
+}
+
+// ---------------------------------------------------------------------------
+// Module supplements helpers (#1880)
+// ---------------------------------------------------------------------------
+
+// readmeNames lists the README basenames we recognise, in priority order.
+var readmeNames = []string{"README.md", "README.rst", "README.txt", "README"}
+
+// readmeLanguage returns the markup language token for a README filename.
+func readmeLanguage(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.HasSuffix(lower, ".md"):
+		return "markdown"
+	case strings.HasSuffix(lower, ".rst"):
+		return "rst"
+	default:
+		return "text"
+	}
+}
+
+// findReadmeInDir returns the repo-relative path of the first recognised README
+// found in dir. Case-insensitive. Returns "" when none exists.
+func findReadmeInDir(repoRoot, relDir string) string {
+	absDir := filepath.Join(repoRoot, relDir)
+	entries, err := os.ReadDir(absDir)
+	if err != nil {
+		return ""
+	}
+	entryMap := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			entryMap[strings.ToLower(e.Name())] = e.Name()
+		}
+	}
+	for _, candidate := range readmeNames {
+		if actual, ok := entryMap[strings.ToLower(candidate)]; ok {
+			return filepath.ToSlash(filepath.Join(relDir, actual))
+		}
+	}
+	return ""
+}
+
+// readFirstNLines reads at most n lines from absPath. Returns "" on error.
+func readFirstNLines(absPath string, n int) string {
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// capKeysTopLevel truncates a comma-joined keys string to ModuleConfigMaxKeys,
+// appending "+N more" when truncation occurs.
+func capKeysTopLevel(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) <= ModuleConfigMaxKeys {
+		return raw
+	}
+	more := len(parts) - ModuleConfigMaxKeys
+	return fmt.Sprintf("%s,+%d more", strings.Join(parts[:ModuleConfigMaxKeys], ","), more)
+}
+
+// isModuleKind returns true when the entity kind is a Module kind (#1880).
+func isModuleKind(kind string) bool {
+	k := strings.ToLower(strings.TrimPrefix(kind, "SCOPE."))
+	return k == "module" || strings.Contains(k, "module")
+}
+
+// buildModuleSupplements locates the README in the module directory and
+// collects sibling Config entities from DEPENDS_ON_CONFIG edges (#1880).
+func buildModuleSupplements(entity *graph.Entity, repoRoot string, neighbours []graph.Entity, neighbourKinds []string) (*ModuleReadme, []ModuleConfigEntry) {
+	if entity == nil {
+		return nil, nil
+	}
+	relDir := "."
+	if entity.SourceFile != "" {
+		d := filepath.ToSlash(filepath.Dir(entity.SourceFile))
+		if d != "" && d != "." {
+			relDir = d
+		}
+	}
+	var moduleReadme *ModuleReadme
+	if relReadme := findReadmeInDir(repoRoot, relDir); relReadme != "" {
+		absReadme := filepath.Join(repoRoot, filepath.FromSlash(relReadme))
+		if content := readFirstNLines(absReadme, ModuleReadmeMaxLines); content != "" {
+			moduleReadme = &ModuleReadme{
+				File:     relReadme,
+				Content:  content,
+				Language: readmeLanguage(filepath.Base(relReadme)),
+			}
+		}
+	}
+	var configs []ModuleConfigEntry
+	for i, n := range neighbours {
+		if len(configs) >= ModuleConfigMaxConfigs {
+			break
+		}
+		rel := ""
+		if i < len(neighbourKinds) {
+			rel = neighbourKinds[i]
+		}
+		if rel != "DEPENDS_ON_CONFIG" {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(n.Kind), "config") {
+			continue
+		}
+		configs = append(configs, configEntryFromEntity(&n))
+	}
+	if len(configs) == 0 {
+		configs = nil
+	}
+	return moduleReadme, configs
+}
+
+// configEntryFromEntity extracts ModuleConfigEntry fields from a SCOPE.Config entity.
+func configEntryFromEntity(n *graph.Entity) ModuleConfigEntry {
+	props := n.Properties
+	get := func(key string) string {
+		if props == nil {
+			return ""
+		}
+		return props[key]
+	}
+	entry := ModuleConfigEntry{
+		Name:    n.Name,
+		Format:  get("format"),
+		Subtype: get("subtype"),
+	}
+	name := strings.ToLower(n.Name)
+	switch {
+	case name == "pyproject.toml":
+		entry.ProjectName = get("project_name")
+		entry.Dependencies = get("dependencies")
+		entry.Scripts = get("scripts")
+		entry.KeysTopLevel = capKeysTopLevel(get("keys_top_level"))
+	case name == "package.json":
+		entry.ProjectName = get("project_name")
+		entry.Dependencies = get("dependencies")
+		entry.Scripts = get("scripts")
+	case name == "pom.xml":
+		entry.ProjectName = get("project_name")
+		entry.Dependencies = get("dependencies")
+	case name == "go.mod":
+		entry.ProjectName = get("project_name")
+		entry.Dependencies = get("dependencies")
+	default:
+		entry.ProjectName = get("project_name")
+		entry.Dependencies = get("dependencies")
+		entry.Scripts = get("scripts")
+		entry.KeysTopLevel = capKeysTopLevel(get("keys_top_level"))
+	}
+	return entry
 }
 
 // ---------------------------------------------------------------------------
