@@ -55,6 +55,44 @@ the Business tab.
 > emitting a path that starts with the repo working tree, redirect it to
 > the store path documented here.
 
+## LLM-mode orchestrate (Pass 20)
+
+When a `*-page-bundle.json` exists in the docgen output directory and you want
+Claude Code itself to fill the LLM sections and close the loop, run Pass 20
+instead of the normal pass pipeline:
+
+```bash
+# Step 1 — emit a bundle for a seed entity (daemon side, already landed):
+archigraph docgen --tier=1 --group=<group> --seed-entity=<id> --llm-mode=emit
+
+# Step 2 — orchestrate: Claude Code reads the bundle, fills every section,
+#           writes the result, and invokes apply automatically:
+# (invoke this skill, Pass 20 — see prompts/20-llm-orchestrate.md)
+```
+
+Pass 20 is the **orchestrator side** of the emit-and-orchestrate loop. It:
+
+1. Locates `*-page-bundle.json` files under the docs directory.
+2. Reads each `LLMPromptBundle` (schema version `"1"`).
+3. For every `bundle.sections[]` entry, generates prose markdown using the
+   section's `guidance`, `graph_context`, `neighbour_briefs`, and
+   `source_window` as the prompt context.
+4. Assembles an `LLMRunResult` JSON with the matching `prompt_hash`.
+5. Writes `<pageID>-page-result.json` next to the bundle.
+6. Invokes `archigraph docgen --tier=1 --llm-mode=apply --bundle-file=...
+   --result-file=...` to produce the final page.
+
+Pass 20 is **idempotent**: it skips any bundle whose result file already
+exists and whose `prompt_hash` matches. Re-run safely after any failure.
+
+The full procedure — including per-section prompt shape, result assembly
+rules, exact JSON schema, and apply error reference — is in
+`prompts/20-llm-orchestrate.md`.
+
+> **Do NOT use Pass 20 inside the standard Passes 0–19 pipeline.** It is a
+> standalone mode triggered only when a bundle file exists and the user wants
+> Claude Code to act as the LLM caller.
+
 ## When to use this skill
 
 Invoke this skill when the user asks for any of:
@@ -62,6 +100,7 @@ Invoke this skill when the user asks for any of:
 - "Document this repo / this group."
 - "Regenerate the docs after the recent refactor."
 - "Write API reference / module guide / cross-repo overview."
+- "Fill the LLM bundle" / "run docgen in LLM mode" / "orchestrate the bundle."
 Do not invoke it for one-off docstrings, README touch-ups, or commit-message writing. The skill assumes the archigraph daemon is running, the target repos are registered (`archigraph register <repo>`), and each repo has been indexed at least once.
 
 ## Inputs the skill expects
@@ -118,6 +157,7 @@ glossary); Pass 19 runs last (it indexes the rest).
 | 17 | `prompts/17-business-journeys.md` | User journeys as plain-language narratives — a user accomplishing a goal end-to-end across the product. Replaces the audit's symbol-heavy mermaid "journey". | 5–15 min |
 | 18 | `prompts/18-business-rules.md` | Business rules / requirements reverse-engineered from validation/permission/conditional logic, stated as product requirements. | 5–15 min |
 | 19 | `prompts/19-business-overview.md` | Business landing page: pitch + indexes into capabilities, journeys, glossary, rules. Runs last. | 3–5 min |
+| 20 | `prompts/20-llm-orchestrate.md` | **LLM-mode orchestrate** (standalone, not part of the standard pipeline): locate bundle files, fill sections via LLM, write result JSON, invoke `--llm-mode=apply`. Run only when `*-page-bundle.json` files exist. | varies — one LLM call per section per bundle |
 
 **Total wall time:** typically **25–65 minutes** for small repos (1k entities), **1–2 hours** for medium repos (10k entities), **2–4 hours** for large repos (100k+ entities). Pass 4 parallelizes across module clusters, so the critical path is dominated by Pass 0 (user interaction), Passes 1–2 (discovery), and Passes 4–5 (content generation).
 
@@ -698,6 +738,7 @@ After applying, `archigraph_stats` now includes `fidelity` (0–1 ratio), `fidel
 
 ## Related
 
+- `skills/generate-docs/prompts/20-llm-orchestrate.md` - Pass 20 full procedure: bundle location, per-section prompt shape, LLMRunResult assembly, result write, apply invocation, error reference. This is the orchestrator side of the LLM emit-and-orchestrate loop (ticket F / #1813 chain). The daemon side lives in `internal/docgen/llm_bundle.go` (emit) and `internal/docgen/llm_apply.go` (apply).
 - `skills/generate-docs/snippets/docgen-repair-emission.md` - full emission procedure every writer pass follows; confidence bands, JSONL path, worked examples, and invariants.
 - `skills/extend-convention/SKILL.md` - companion skill for adding a new stack convention.
 - `skills/archigraph-repair/SKILL.md` - standalone repair flow for ad-hoc residual cleanup outside doc generation.
