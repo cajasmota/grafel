@@ -66,8 +66,15 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 	// accept loop, dashboard goroutine, and "ready" log all sit AFTER the
 	// watcher subscription on the boot path. A synchronous stall there means
 	// the daemon binds the fd but never answers — exactly the live symptom
-	// (0% CPU, :47274 never serving). We give a generous 2s budget; the boot
-	// path itself is sub-100ms.
+	// (0% CPU, :47274 never serving).
+	//
+	// Budget bumped from 2s → 4s (#1797 / #937 investigation): under
+	// `go test -race` on shared CI runners the race detector adds ~2× overhead
+	// to goroutine scheduling; 2s was routinely too tight and caused
+	// sync.Cond-Wait to outlast the whole test-suite timeout (10 min).
+	// The boot path itself is sub-100ms on any tier of hardware so 4s is
+	// still a tight regression guard while being robust to CI noise.
+	//
 	// pingOnce dials and Pings with a hard per-attempt timeout. net/rpc's
 	// Call blocks until the server's accept loop reads the request, so a
 	// blocked daemon would otherwise hang this attempt indefinitely and
@@ -89,7 +96,7 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 		}
 	}
 
-	servedDeadline := time.Now().Add(2 * time.Second)
+	servedDeadline := time.Now().Add(4 * time.Second)
 	served := false
 	for time.Now().Before(servedDeadline) {
 		if pingOnce(200 * time.Millisecond) {
@@ -99,7 +106,7 @@ func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if !served {
-		t.Fatalf("daemon did not answer an RPC within 2s while the watcher "+
+		t.Fatalf("daemon did not answer an RPC within 4s while the watcher "+
 			"subscription was stalled for %s — watcher setup is blocking the "+
 			"boot critical path (#1456 regression)", stall)
 	}

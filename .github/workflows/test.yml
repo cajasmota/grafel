@@ -45,4 +45,9 @@ jobs:
 
       - run: go build ./...
 
-      - run: go test -race -count=1 ./...
+      # -timeout 5m: one stuck test (e.g. TestBoot_WatcherSubscriptionDoesNotBlockBind
+      # under race on a slow CI runner) previously ate the full default 10-minute
+      # suite timeout before Go reported the failure. 5m is ample for the suite
+      # (~30s on macos-latest with -race) while failing fast on any deadlock.
+      # See #1797 / #937 for the root-cause investigation.
+      - run: go test -race -count=1 -timeout 5m ./...
