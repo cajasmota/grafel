@@ -157,16 +157,24 @@ func (s *Service) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCallReply) er
 		return nil
 	}
 
+	// #1678: emit a "received" log line BEFORE dispatching so a hung handler
+	// still leaves a trace in daemon.log. The original "elapsed=Xms" line only
+	// fired after mcpCallTool returned, which made hangs invisible (the call
+	// looked like it had never reached the dispatcher).
+	repoLabel := args.CWD
+	if repoLabel == "" {
+		repoLabel = "(cwd not provided)"
+	}
+	if s.logger != nil {
+		s.logger.Printf("[mcp-rpc] tool=%s received repo=%s", args.Name, repoLabel)
+	}
+
 	start := time.Now()
 	result, err := s.mcpCallTool(args.Name, args.Arguments, args.CWD)
 	elapsed := time.Since(start)
 
 	// Debug log: tool=name elapsed=Xms repo=Y (from CWD when available)
 	if s.logger != nil {
-		repoLabel := args.CWD
-		if repoLabel == "" {
-			repoLabel = "(cwd not provided)"
-		}
 		s.logger.Printf("[mcp-rpc] tool=%s elapsed=%dms repo=%s", args.Name, elapsed.Milliseconds(), repoLabel)
 	}
 

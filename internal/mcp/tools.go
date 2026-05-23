@@ -1063,13 +1063,6 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 	if !filepath.IsAbs(abs) && lr.Path != "" {
 		abs = filepath.Join(lr.Path, e.SourceFile)
 	}
-	f, err := os.Open(abs)
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024)
 
 	// Bound the requested span (#1614). Synthetic / shadow / route entities
 	// frequently carry end_line<=start_line or start_line==0, which previously
@@ -1098,6 +1091,57 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 	if end-start+1 > hardMaxLines {
 		end = start + hardMaxLines - 1
 	}
+
+	// #1678: bound the file I/O with a hard deadline. The daemon owns fsnotify
+	// watchers on every indexed source tree; under certain macOS conditions a
+	// raw open(2) on a watched-but-otherwise-normal file has been observed to
+	// block indefinitely inside the kernel — the original handler had no
+	// timeout, so a single stuck Open wedged the entire MCP session (the
+	// shared bridge jsonrpc.Client serializes calls per #1671/#1677). Running
+	// the read on a worker goroutine and select-ing on a context deadline lets
+	// the handler return a clean error instead of hanging the bridge.
+	//
+	// Budget: 5s is generous for any local file but short enough that a
+	// genuine kernel/FS stall surfaces as a real error the caller can retry
+	// or route around.
+	readCtx, readCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer readCancel()
+
+	type readOut struct {
+		text string
+		err  error
+	}
+	resCh := make(chan readOut, 1)
+	go func() {
+		text, rerr := readSourceWindow(abs, start, end)
+		resCh <- readOut{text: text, err: rerr}
+	}()
+
+	select {
+	case out := <-resCh:
+		if out.err != nil {
+			return mcpapi.NewToolResultError(out.err.Error()), nil
+		}
+		return mcpapi.NewToolResultText(out.text), nil
+	case <-readCtx.Done():
+		return mcpapi.NewToolResultError(fmt.Sprintf(
+			"get_source: read timed out after 5s on %s (file may be on a stalled filesystem or watched-path kernel stall); node_id=%s",
+			abs, nodeID,
+		)), nil
+	}
+}
+
+// readSourceWindow opens path, scans lines [start,end] (1-indexed inclusive),
+// and returns the formatted text. Split out so handleGetNodeSource can run
+// the call on a worker goroutine bounded by a context deadline (#1678).
+func readSourceWindow(path string, start, end int) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024)
 	var b strings.Builder
 	line := 0
 	for scanner.Scan() {
@@ -1110,7 +1154,10 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 		}
 		b.WriteString(fmt.Sprintf("%5d  %s\n", line, scanner.Text()))
 	}
-	return mcpapi.NewToolResultText(b.String()), nil
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return b.String(), nil
 }
 
 // ---------------------------------------------------------------------------
