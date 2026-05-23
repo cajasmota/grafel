@@ -35,6 +35,21 @@ package docgen
 
 import "strings"
 
+// SourceWindowStrategyDefault is the baseline strategy: emit ±sourceWindowHalfLines
+// lines around entity.StartLine (the original behaviour pre-#1876).
+const SourceWindowStrategyDefault = ""
+
+// SourceWindowStrategyWholeBody causes BuildBundle to emit the entire class body
+// from entity.StartLine to entity.EndLine (inclusive), capped at
+// SourceWindowWholeBodyMaxLines with a truncation annotation.  Intended for
+// Model entities where every field declaration carries semantic information.
+const SourceWindowStrategyWholeBody = "whole-body"
+
+// SourceWindowWholeBodyMaxLines is the safety cap applied when
+// SourceWindowStrategyWholeBody is in effect.  Models larger than this limit
+// are clipped and a "truncated_at_line" comment is appended to the window.
+const SourceWindowWholeBodyMaxLines = 400
+
 // SectionProfile pairs an ordered section list with optional per-kind guidance
 // overrides.  Both fields are safe to read concurrently after init.
 type SectionProfile struct {
@@ -48,6 +63,11 @@ type SectionProfile struct {
 	// When non-empty for a section, BuildBundle uses it instead of the
 	// corresponding entry in defaultSectionGuidance.
 	GuidanceOverrides map[string]string
+
+	// SourceWindowStrategy controls how BuildBundle constructs the source_window
+	// excerpt for entities matching this profile.  Use the SourceWindowStrategy*
+	// constants.  Empty string selects SourceWindowStrategyDefault.
+	SourceWindowStrategy string
 }
 
 // sectionsByKind is the authoritative per-kind profile registry.
@@ -85,6 +105,11 @@ var sectionsByKind = map[string]SectionProfile{
 			"glossary",
 			"module-readme",
 		},
+		// SourceWindowStrategyWholeBody: for Model entities the class body IS the
+		// semantic — every field declaration, association, and Meta class must be
+		// visible to the LLM.  The ±20-line default clips mid-class and loses all
+		// field declarations (#1876).
+		SourceWindowStrategy: SourceWindowStrategyWholeBody,
 		GuidanceOverrides: map[string]string{
 			"overview": "Write a 2–3 sentence description of what this data model represents and where it is persisted. " +
 				"Note if it is a core aggregate, a join table, or a read-model projection. " +
