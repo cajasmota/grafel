@@ -52,7 +52,11 @@ export interface UseMCPActivityReturn extends MCPActivityState {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SSE_URL = "/api/mcp-activity/stream";
-const MAX_LOG = 50;
+// #1932: bumped from 50 → 100. Replay-all walks the whole panel and the spec
+// calls for "50+ activity entries stay smooth". With the generic flow engine
+// driving the comet, 100 entries (a few hundred flattened steps) is fine on
+// a typical laptop.
+const MAX_LOG = 100;
 
 const INITIAL_STATE: MCPActivityState = {
   connected: false,

@@ -12,7 +12,7 @@
    Query.
    ============================================================ */
 
-import { useEffect, useMemo, useRef, lazy, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { X, RotateCcw, SlidersHorizontal, Boxes } from "lucide-react";
 import { SearchInput, Pill, Kbd } from "@/components/ui";
@@ -30,7 +30,9 @@ import { NodeInspector } from "@/components/graph/node-inspector";
 import { FiltersDrawer } from "@/components/graph/filters-drawer";
 import { CommunitiesPopover } from "@/components/graph/communities-popover";
 import { MCPActivityOverlay } from "@/components/graph/mcp-activity-overlay";
+import { GraphJarvisOverlay } from "@/components/graph/graph-jarvis-overlay";
 import { useGraphHighlight } from "@/hooks/use-graph-highlight";
+import { useGraphJarvisReplay } from "@/hooks/use-graph-jarvis-replay";
 
 /**
  * #1386 — derive the entity-level "module key" from a node's source file.
@@ -70,11 +72,38 @@ export default function GraphScreen() {
   });
 
   const searchRef = useRef<HTMLInputElement>(null);
-  const canvasRef = useRef<GraphCanvasHandle>(null);
+  const canvasRef = useRef<GraphCanvasHandle | null>(null);
 
   // #1157 Jarvis: subscribe to the MCP activity SSE stream and derive the
   // transient glow set + epoch the canvas animates. Default ON.
   const jarvis = useGraphHighlight();
+
+  // #1932 JARVIS overhaul: the SVG overlay (chevrons + comet + trail) lives in
+  // its own component and reads node positions through the canvas's imperative
+  // handle. The lazy GraphCanvas only resolves AFTER Suspense, so we bump this
+  // tick state once the ref attaches so the overlay re-renders with a live
+  // handle. (Refs alone don't trigger re-renders.)
+  const [canvasReady, setCanvasReady] = useState(0);
+  const setCanvasRef = useCallback((h: GraphCanvasHandle | null) => {
+    canvasRef.current = h;
+    if (h) setCanvasReady((v) => v + 1);
+  }, []);
+
+  // #1932 JARVIS replay controller. Re-uses the existing per-entry glow path
+  // (jarvis.replay) for the daemon-side highlight and adds the comet / pulse /
+  // scrubber on top via the shared FlowAnim engine.
+  const isBridgeEdgeProxy = useCallback((src: string, tgt: string) => {
+    return canvasRef.current?.isBridgeEdge(src, tgt) ?? false;
+  }, []);
+  const replay = useGraphJarvisReplay({
+    eventLog: jarvis.eventLog,
+    onReplayEvent: jarvis.replay,
+    isBridgeEdge: isBridgeEdgeProxy,
+  });
+  // Pass the live handle through a render-dep variable. canvasReady bumps when
+  // setCanvasRef attaches, ensuring the overlay receives the actual ref value
+  // (not the initial null) once mount completes.
+  const liveCanvasHandle = canvasReady > 0 ? canvasRef.current : null;
 
   // ── ?node= deep-link: restore on mount, persist on selection change ──────────
   // On first render, if the URL carries ?node=<id>, apply it as the selected
@@ -450,7 +479,7 @@ export default function GraphScreen() {
               }
             >
               <GraphCanvas
-                ref={canvasRef}
+                ref={setCanvasRef}
                 group={focusActive ? `${groupId}::ego` : groupId}
                 nodes={egoNodes}
                 edges={egoEdges}
@@ -474,7 +503,26 @@ export default function GraphScreen() {
               />
             </Suspense>
 
-            {/* #1157 Jarvis: MCP activity badge + log + on/off toggle. */}
+            {/* #1932 JARVIS SVG overlay — chevrons + comet + trail tint.
+                Placed BEFORE the activity overlay so the badge/log paint on
+                top, but above the WebGL vignette (via z-index inside the
+                overlay's own root). */}
+            <GraphJarvisOverlay
+              canvasHandle={liveCanvasHandle}
+              steps={replay.steps}
+              currentTarget={replay.snapshot.currentTarget}
+              edgeProgress={replay.snapshot.edgeProgress}
+              traversedEdges={new Set(replay.snapshot.traversedEdges)}
+              running={replay.snapshot.running}
+              paused={replay.snapshot.paused}
+              reducedMotion={replay.reducedMotion}
+              highlightedNodeIds={jarvis.enabled ? jarvis.highlightedNodeIds : undefined}
+              className="z-20"
+            />
+
+            {/* #1157 Jarvis: MCP activity badge + log + on/off toggle.
+                #1932: now also hosts Replay-all, speed, pause/resume, scrubber,
+                audio toggle. Per-entry 🔄 + Glow toggle + dismiss X all stay. */}
             <MCPActivityOverlay
               enabled={jarvis.enabled}
               connected={jarvis.sseConnected}
@@ -483,6 +531,13 @@ export default function GraphScreen() {
               eventLog={jarvis.eventLog}
               onToggle={jarvis.setEnabled}
               onReplay={jarvis.replay}
+              replayController={replay.controller}
+              replaySnapshot={replay.snapshot}
+              replaySteps={replay.steps}
+              speedKey={replay.speedKey}
+              onSpeedKey={replay.setSpeedKey}
+              audioOn={replay.audioOn}
+              onAudioToggle={replay.setAudioOn}
             />
 
             {/* Fix #1548-3: clear "focused on X — exit" affordance. */}

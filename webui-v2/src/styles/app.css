@@ -153,10 +153,19 @@
   --ag-flow-accent: var(--accent, #60a5fa);
   --ag-flow-edge:   var(--border-strong, #475569);
   --ag-flow-bridge: #a78bfa;
+  /* Graph view (#1932) — JARVIS overhaul on the cosmos.gl main graph.
+     Aliases the flow palette so the two surfaces stay coherent across
+     dark/light + cool/warm, but the names are scoped to the graph surface so
+     the two can diverge later without churning the flow palette. */
+  --ag-graph-accent: var(--ag-flow-accent);
+  --ag-graph-edge:   var(--ag-flow-edge);
+  --ag-graph-bridge-accent: var(--ag-flow-bridge);
 }
 /* Warm palette override (matches the `[data-palette="warm"]` selector used
    by tokens.css when the user picks a warm theme). */
 [data-palette="warm"] {
   --ag-flow-accent: #f59e0b;
   --ag-flow-bridge: #f472b6;
+  --ag-graph-accent: #f59e0b;
+  --ag-graph-bridge-accent: #f472b6;
 }

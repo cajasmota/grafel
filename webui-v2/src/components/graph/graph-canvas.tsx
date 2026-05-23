@@ -250,6 +250,21 @@ const truncate = (s: string) => (s.length > 30 ? s.slice(0, 28) + "…" : s);
 export interface GraphCanvasHandle {
   snapshotCamera: () => void;
   restoreCamera: () => void;
+  /**
+   * #1932: resolve a node id to its CURRENT screen (px) position relative to
+   * the canvas container. Returns null when the id is unknown or the engine
+   * isn't ready yet. Used by the JARVIS SVG overlay to draw chevrons + the
+   * MCP-replay comet without re-implementing the cosmos.gl camera math.
+   */
+  getNodeScreenPosition: (id: string) => { x: number; y: number } | null;
+  /**
+   * #1932: list every edge in the current graph as `{src,tgt,bridge}` where
+   * `bridge` is true when the edge crosses two repos (the dashed + distinct-
+   * accent tier). The overlay renders chevrons + bridge styling from this.
+   */
+  getEdgeList: () => ReadonlyArray<{ src: string; tgt: string; bridge: boolean }>;
+  /** #1932: true when the named edge crosses repos (bridge). */
+  isBridgeEdge: (src: string, tgt: string) => boolean;
 }
 
 function GraphCanvasInner(
@@ -1491,10 +1506,68 @@ function GraphCanvasInner(
   // (b) the space coordinate currently at the viewport center. To restore we
   // re-center on that point (degenerate fitViewByPointPositions box) then set the
   // recorded zoom — together that reproduces the prior pan + zoom exactly.
+  // #1932: live refs so the imperative handle (mount-only `[]` deps) can read
+  // the current id→idx map, edge states, and link buffer without re-creating
+  // the handle on every render.
+  const idToIdxRef = useRef(idToIdx);
+  idToIdxRef.current = idToIdx;
+  const linkDataRef = useRef(linkData);
+  linkDataRef.current = linkData;
+  const nodeIdsForHandleRef = useRef(nodeIds);
+  nodeIdsForHandleRef.current = nodeIds;
+
   const cameraSnapRef = useRef<{ zoom: number; center: [number, number] } | null>(null);
   useImperativeHandle(
     ref,
     () => ({
+      getNodeScreenPosition: (id: string) => {
+        const g = graphRef.current;
+        if (!g) return null;
+        const idx = idToIdxRef.current.get(id);
+        if (idx === undefined) return null;
+        try {
+          const positions = g.getPointPositions();
+          const px = positions[idx * 2];
+          const py = positions[idx * 2 + 1];
+          if (px === undefined || py === undefined) return null;
+          if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+          const [sx, sy] = g.spaceToScreenPosition([px, py]);
+          if (!Number.isFinite(sx) || !Number.isFinite(sy)) return null;
+          return { x: sx, y: sy };
+        } catch {
+          return null;
+        }
+      },
+      getEdgeList: () => {
+        const { links, states } = linkDataRef.current;
+        const ids = nodeIdsForHandleRef.current;
+        const out: { src: string; tgt: string; bridge: boolean }[] = [];
+        for (let i = 0, e = 0; i < links.length; i += 2, e++) {
+          const a = links[i];
+          const b = links[i + 1];
+          const src = ids[a];
+          const tgt = ids[b];
+          if (!src || !tgt) continue;
+          out.push({ src, tgt, bridge: states[e] === 2 });
+        }
+        return out;
+      },
+      isBridgeEdge: (src: string, tgt: string) => {
+        const idToIdxNow = idToIdxRef.current;
+        const a = idToIdxNow.get(src);
+        const b = idToIdxNow.get(tgt);
+        if (a === undefined || b === undefined) return false;
+        const { links, states } = linkDataRef.current;
+        for (let i = 0, e = 0; i < links.length; i += 2, e++) {
+          if (
+            (links[i] === a && links[i + 1] === b) ||
+            (links[i] === b && links[i + 1] === a)
+          ) {
+            return states[e] === 2;
+          }
+        }
+        return false;
+      },
       snapshotCamera: () => {
         const g = graphRef.current;
         const el = containerRef.current;
