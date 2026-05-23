@@ -24,6 +24,55 @@ import (
 	"github.com/cajasmota/archigraph/internal/mcp"
 )
 
+// v2FlowsProcessItem is the wire shape of one row in the Flows v2 list. It is
+// declared at package level (rather than inside the handler) so the
+// confidence filter can convert each item into a map[string]any without
+// duplicating the field list. (#1129)
+type v2FlowsProcessItem struct {
+	ProcessID         string                 `json:"process_id"`
+	Repo              string                 `json:"repo"`
+	Label             string                 `json:"label"`
+	EntryID           string                 `json:"entry_id"`
+	EntryName         string                 `json:"entry_name"`
+	EntryKind         string                 `json:"entry_kind"`
+	EntryModule       string                 `json:"entry_module,omitempty"`
+	TerminalID        string                 `json:"terminal_id"`
+	TerminalIsPhantom bool                   `json:"terminal_is_phantom,omitempty"`
+	StepCount         int                    `json:"step_count"`
+	CrossStack        bool                   `json:"cross_stack"`
+	IsCrossRepo       bool                   `json:"is_cross_repo,omitempty"`
+	ChainLabels       []string               `json:"chain_labels"`
+	SourceFile        string                 `json:"source_file,omitempty"`
+	PriorityHint      string                 `json:"priority_hint"`
+	DocgenStatus      string                 `json:"docgen_status"`
+	Enrichment        *EnrichmentFrontmatter `json:"enrichment,omitempty"`
+}
+
+// processItemToEntry converts a v2FlowsProcessItem into a wire-format map so
+// the candidate-confidence filter (which is map-based for cross-surface reuse)
+// can score and partition it without a second copy of the field list.
+func processItemToEntry(it v2FlowsProcessItem) map[string]any {
+	return map[string]any{
+		"process_id":          it.ProcessID,
+		"repo":                it.Repo,
+		"label":               it.Label,
+		"entry_id":            it.EntryID,
+		"entry_name":          it.EntryName,
+		"entry_kind":          it.EntryKind,
+		"entry_module":        it.EntryModule,
+		"terminal_id":         it.TerminalID,
+		"terminal_is_phantom": it.TerminalIsPhantom,
+		"step_count":          it.StepCount,
+		"cross_stack":         it.CrossStack,
+		"is_cross_repo":       it.IsCrossRepo,
+		"chain_labels":        it.ChainLabels,
+		"source_file":         it.SourceFile,
+		"priority_hint":       it.PriorityHint,
+		"docgen_status":       it.DocgenStatus,
+		"enrichment":          it.Enrichment,
+	}
+}
+
 // handleV2FlowsList — GET /api/v2/groups/{group}/flows
 //
 // Returns the process-flow list (with entry-kind groups) wrapped in a v2
@@ -52,27 +101,7 @@ func (s *Server) handleV2FlowsList(w http.ResponseWriter, r *http.Request) {
 
 	docgenState, _ := mcp.LoadDocgenState(group)
 
-	type processItem struct {
-		ProcessID         string                 `json:"process_id"`
-		Repo              string                 `json:"repo"`
-		Label             string                 `json:"label"`
-		EntryID           string                 `json:"entry_id"`
-		EntryName         string                 `json:"entry_name"`
-		EntryKind         string                 `json:"entry_kind"`
-		EntryModule       string                 `json:"entry_module,omitempty"`
-		TerminalID        string                 `json:"terminal_id"`
-		TerminalIsPhantom bool                   `json:"terminal_is_phantom,omitempty"`
-		StepCount         int                    `json:"step_count"`
-		CrossStack        bool                   `json:"cross_stack"`
-		IsCrossRepo       bool                   `json:"is_cross_repo,omitempty"`
-		ChainLabels       []string               `json:"chain_labels"`
-		SourceFile        string                 `json:"source_file,omitempty"`
-		PriorityHint      string                 `json:"priority_hint"`
-		DocgenStatus      string                 `json:"docgen_status"`
-		Enrichment        *EnrichmentFrontmatter `json:"enrichment,omitempty"`
-	}
-
-	var items []processItem
+	var items []v2FlowsProcessItem
 	for _, repo := range sortedRepos(grp) {
 		for i := range repo.Doc.Entities {
 			e := &repo.Doc.Entities[i]
@@ -93,7 +122,7 @@ func (s *Server) handleV2FlowsList(w http.ResponseWriter, r *http.Request) {
 			entID := e.Properties["entry_id"]
 			ek := inferEntryKind(grp, entID)
 			fm, summary := extractFlowDocs(group, e.ID, docgenState)
-			items = append(items, processItem{
+			items = append(items, v2FlowsProcessItem{
 				ProcessID:    pid,
 				Repo:         repo.Slug,
 				Label:        e.Name,
@@ -124,7 +153,8 @@ func (s *Server) handleV2FlowsList(w http.ResponseWriter, r *http.Request) {
 		items = items[:limit]
 	}
 
-	// Build entry-kind group summary.
+	// Build entry-kind group summary (over ALL items — before confidence
+	// partitioning so the group counts reflect the underlying graph).
 	kindCounts := map[string]int{}
 	for _, it := range items {
 		kindCounts[it.EntryKind]++
@@ -144,10 +174,32 @@ func (s *Server) handleV2FlowsList(w http.ResponseWriter, r *http.Request) {
 		return entryKindGroups[i].Kind < entryKindGroups[j].Kind
 	})
 
+	// #1129 — apply per-surface confidence floor BEFORE response shaping so
+	// trivial-noise flows are hidden from the default list. Convert the
+	// typed slice through map[string]any (the format FilterByConfidence
+	// understands) and rebuild the response from the kept partition.
+	entries := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		entries = append(entries, processItemToEntry(it))
+	}
+	filtered := FilterByConfidence(SurfaceFlows, entries, nil)
+
+	includeLow := r.URL.Query().Get("include") == "low_confidence"
+	visible := filtered.Kept
+	if includeLow {
+		// Append low-confidence entries (each already tagged low_confidence:true)
+		// to the end of the visible list so the UI can render them in a
+		// distinct group without a second round-trip.
+		visible = append(visible, filtered.LowConfidence...)
+	}
+
 	writeV2JSON(w, http.StatusOK, v2OK(map[string]any{
-		"processes":         items,
-		"count":             len(items),
-		"entry_kind_groups": entryKindGroups,
+		"processes":            visible,
+		"count":                len(visible),
+		"entry_kind_groups":    entryKindGroups,
+		"low_confidence":       filtered.LowConfidence,
+		"noise_rejected_count": filtered.NoiseRejectedCount,
+		"confidence_floor":     filtered.FloorApplied,
 	}))
 }
 
