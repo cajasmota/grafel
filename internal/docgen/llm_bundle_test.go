@@ -3,6 +3,7 @@ package docgen_test
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -199,7 +200,7 @@ func TestRoundTrip_NeighbourBrief(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if got != orig {
+	if !reflect.DeepEqual(got, orig) {
 		t.Errorf("round-trip mismatch: got %+v want %+v", got, orig)
 	}
 }

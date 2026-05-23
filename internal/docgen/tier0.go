@@ -146,7 +146,7 @@ func Run(opts RunOpts) (mdPath string, scoreFile string, score Score, err error)
 	}
 
 	// Load the group's graphs and locate the seed entity.
-	doc, entity, neighbours, _, _, _, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	doc, entity, neighbours, _, _, _, _, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return
 	}
@@ -283,7 +283,7 @@ func normalizeSeedEntityID(id string) (string, error) { return NormalizeSeedEnti
 // source of the edge (seed → neighbour) and NeighbourDirectionInbound when the
 // seed is the target (neighbour → seed). This lets callers distinguish inbound
 // callers from outbound callees when the edge kind alone is ambiguous (#1965).
-func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, neighbourKinds []string, neighbourDirections []string, seedRepo string, err error) {
+func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, neighbourKinds []string, neighbourDirections []string, neighbourProperties []map[string]string, seedRepo string, err error) {
 	seedID, err = normalizeSeedEntityID(seedID)
 	if err != nil {
 		return
@@ -351,22 +351,29 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 		}
 	}
 
-	// Collect 1-hop neighbours via relationships. neighbourKinds and
-	// neighbourDirections are built in lockstep with neighbours so that
-	// downstream NeighbourBrief construction can surface the typed edge kind
-	// (#1879) and the direction relative to the seed (#1965).
+	// Collect 1-hop neighbours via relationships. neighbourKinds,
+	// neighbourDirections, and neighbourProperties are built in lockstep with
+	// neighbours so that downstream NeighbourBrief construction can surface
+	// the typed edge kind (#1879), the direction relative to the seed (#1965),
+	// and the per-edge Properties map stamped by extractor post-passes
+	// (#2018 — e.g. dead_import, re_export, live, is_async, cross_repo).
 	seen := make(map[string]bool)
-	if seed != nil {
+	// collect collects a (rel, neighbourID, dir) triple from the neighbour
+	// of the supplied anchor entity (seed itself, or a sibling entity
+	// reachable from the seed via CONTAINS — see the Module→file pass
+	// below for #2020). Maintains the seen set across both walks so a
+	// neighbour reached via both anchors is surfaced only once.
+	collect := func(anchorID string) {
 		for _, rel := range allRels {
 			var neighbourID string
 			var dir string
 			switch {
-			case rel.FromID == seed.ID:
-				// Outbound: seed → neighbour (seed is the source).
+			case rel.FromID == anchorID:
+				// Outbound: anchor → neighbour (anchor is the source).
 				neighbourID = rel.ToID
 				dir = NeighbourDirectionOutbound
-			case rel.ToID == seed.ID:
-				// Inbound: neighbour → seed (seed is the target).
+			case rel.ToID == anchorID:
+				// Inbound: neighbour → anchor (anchor is the target).
 				neighbourID = rel.FromID
 				dir = NeighbourDirectionInbound
 			default:
@@ -380,11 +387,62 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 				neighbours = append(neighbours, *n)
 				neighbourKinds = append(neighbourKinds, rel.Kind)
 				neighbourDirections = append(neighbourDirections, dir)
+				neighbourProperties = append(neighbourProperties, rel.Properties)
+			}
+		}
+	}
+	if seed != nil {
+		// Mark the seed itself so the second walk (Module→file pass below)
+		// never echoes the seed back as a neighbour.
+		seen[seed.ID] = true
+		collect(seed.ID)
+
+		// Issue #2020 — Python Module entities are dual-emitted alongside a
+		// parallel SCOPE.Component(file) entity for the same __init__.py
+		// source file. IMPORTS / CONTAINS edges attach to the file entity,
+		// not the Module, so Module-seeded docgen previously surfaced zero
+		// neighbours. The extractor now emits a CONTAINS edge from Module
+		// → the file SCOPE.Component (see emitPackageModuleEntity in
+		// internal/extractors/python/package_module.go), and we walk that
+		// contained file's 1-hop neighbourhood here so all IMPORTS edges
+		// surface on the Module's bundle. The first walk above already
+		// added the file entity itself as a neighbour (CONTAINS); this
+		// pass surfaces its outbound IMPORTS / inbound CALLS / etc.
+		if isPythonModuleEntity(seed) {
+			for _, rel := range allRels {
+				if rel.Kind != "CONTAINS" || rel.FromID != seed.ID {
+					continue
+				}
+				containedID := rel.ToID
+				contained, ok := byID[containedID]
+				if !ok {
+					continue
+				}
+				if contained.Kind != "SCOPE.Component" || contained.Subtype != "file" {
+					continue
+				}
+				collect(containedID)
 			}
 		}
 	}
 
 	return
+}
+
+// isPythonModuleEntity reports whether e is a Python package-Module entity
+// emitted by internal/extractors/python/package_module.go (#1884). Used by
+// loadEntityContext to widen the neighbour walk so Module-seeded bundles
+// surface the IMPORTS edges attached to the parallel file SCOPE.Component
+// (#2020). The check is intentionally narrow — only the python Module
+// emission has this dual-entity shape today.
+func isPythonModuleEntity(e *graph.Entity) bool {
+	if e == nil {
+		return false
+	}
+	if e.Kind != "Module" {
+		return false
+	}
+	return e.Language == "python" || e.Language == ""
 }
 
 // repoEntry pairs a graph state directory with its absolute repo path from the
