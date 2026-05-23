@@ -374,7 +374,25 @@ type NeighbourBrief struct {
 	// "downstream callees" without inference. Falls back to
 	// NeighbourRelationshipRelated only when the graph lacks an explicit kind.
 	Relationship string `json:"relationship"`
+	// Direction is the edge direction relative to the seed entity:
+	//   "outbound" — seed is the source (seed → neighbour, e.g. seed CALLS neighbour)
+	//   "inbound"  — seed is the target (neighbour → seed, e.g. neighbour CALLS seed)
+	// This field allows docgen to distinguish inbound callers from outbound
+	// callees when the Relationship kind alone is ambiguous (fixes #1965).
+	Direction string `json:"direction"`
 }
+
+// Canonical NeighbourBrief.Direction values.
+const (
+	// NeighbourDirectionOutbound indicates the seed is the source of the edge
+	// (seed → neighbour). E.g. seed CALLS neighbour means the neighbour is a
+	// callee/downstream entity.
+	NeighbourDirectionOutbound = "outbound"
+	// NeighbourDirectionInbound indicates the seed is the target of the edge
+	// (neighbour → seed). E.g. neighbour CALLS seed means the neighbour is a
+	// caller/upstream entity.
+	NeighbourDirectionInbound = "inbound"
+)
 
 // Canonical NeighbourBrief.Relationship values. The graph may emit other
 // kinds — these constants name the well-known set that docgen section
@@ -596,7 +614,9 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 	// NeighbourBrief.Relationship surfaces the actual graph relationship
 	// (CALLS, IMPORTS, CONTAINS, REFERENCES, DEPENDS_ON, FK_TO, ...) instead
 	// of a flat "RELATED" placeholder (#1879).
-	_, entity, neighbours, neighbourKinds, seedRepo, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	// neighbourDirections carries "inbound"/"outbound" per neighbour so that
+	// callers/callees can be distinguished (#1965).
+	_, entity, neighbours, neighbourKinds, neighbourDirections, seedRepo, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return nil, err
 	}
@@ -612,6 +632,8 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 	// when a kind is somehow missing (defensive: should not happen for a
 	// well-formed graph) we fall back to "RELATED" to preserve a valid
 	// non-empty enum-shaped value for downstream consumers (#1879).
+	// Direction is sourced from the index-aligned neighbourDirections slice
+	// (#1965): "outbound" when seed → neighbour, "inbound" when neighbour → seed.
 	var neighbourIDs []string
 	var briefs []NeighbourBrief
 	for i, n := range neighbours {
@@ -620,11 +642,16 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		if i < len(neighbourKinds) && neighbourKinds[i] != "" {
 			rel = neighbourKinds[i]
 		}
+		dir := NeighbourDirectionOutbound
+		if i < len(neighbourDirections) && neighbourDirections[i] != "" {
+			dir = neighbourDirections[i]
+		}
 		briefs = append(briefs, NeighbourBrief{
 			EntityID:     n.ID,
 			Name:         n.Name,
 			Kind:         n.Kind,
 			Relationship: rel,
+			Direction:    dir,
 		})
 	}
 
