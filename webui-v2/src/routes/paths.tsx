@@ -68,6 +68,39 @@ const SEVERITY_STYLES: Record<OrphanReason, { dot: string; label: string; classe
   template_literal:  { dot: "var(--text-4)",  label: "template literal", classes: "bg-surface-2 text-text-3 border border-dashed border-border-strong" },
 };
 
+/** Conventional verb sort order — matches Swagger / OpenAPI display convention. */
+const VERB_ORDER: Record<string, number> = {
+  GET: 0, POST: 1, PUT: 2, PATCH: 3, DELETE: 4, HEAD: 5, OPTIONS: 6, GRPC: 7, ANY: 8,
+};
+
+/** A single row in the flattened verb list — one route × one verb. */
+interface VerbRow {
+  route: PathRoute;
+  verb: string;
+  /** Stable key used for selection: `<path_hash>:<verb>` */
+  rowKey: string;
+}
+
+/** Flatten a PathRoute array into per-verb rows, sorted by path asc then verb order. */
+function flattenToVerbRows(routes: PathRoute[]): VerbRow[] {
+  const rows: VerbRow[] = [];
+  for (const route of routes) {
+    const verbs = (route.verbs ?? []).slice().sort(
+      (a, b) => (VERB_ORDER[a] ?? 99) - (VERB_ORDER[b] ?? 99),
+    );
+    for (const verb of verbs) {
+      rows.push({ route, verb, rowKey: `${route.path_hash}:${verb}` });
+    }
+  }
+  // Sort by path asc, then by verb order within the same path
+  rows.sort((a, b) => {
+    const pc = (a.route.path ?? "").localeCompare(b.route.path ?? "");
+    if (pc !== 0) return pc;
+    return (VERB_ORDER[a.verb] ?? 99) - (VERB_ORDER[b.verb] ?? 99);
+  });
+  return rows;
+}
+
 /* ============================================================
    Helpers
    ============================================================ */
@@ -163,22 +196,24 @@ function DetailSkeleton() {
    List panel — route row + controller + backend sections
    ============================================================ */
 
-function RouteRow({
-  route,
+/** Swagger-style one-verb-per-row. Each verb gets its own independently clickable row. */
+function VerbRouteRow({
+  row,
   selected,
   onClick,
 }: {
-  route: PathRoute;
+  row: VerbRow;
   selected: boolean;
   onClick: () => void;
 }) {
+  const { route, verb } = row;
   return (
     <button
       type="button"
       onClick={onClick}
-      data-testid={`route-row-${route.path_hash}`}
+      data-testid={`route-row-${route.path_hash}-${verb}`}
       className={cn(
-        "w-full text-left px-3 py-2 flex items-start gap-2 min-w-0",
+        "w-full text-left px-3 py-1.5 flex items-center gap-2 min-w-0",
         "transition-colors duration-100 focus-visible:outline-none",
         "focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)] rounded-sm",
         selected
@@ -186,23 +221,19 @@ function RouteRow({
           : "hover:bg-surface-2 border-l-[3px] border-transparent pl-[calc(0.75rem-3px)]",
       )}
     >
-      {/* Verbs + path */}
-      <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-1 mb-0.5">
-          {(route.verbs ?? []).map((v) => <VerbChip key={v} verb={v} />)}
-          {route.is_webhook && (
-            <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[10px] font-medium bg-[var(--info-soft)] text-[var(--info)] border border-[var(--info-soft)]">
-              🪝 {route.webhook_provider ?? "webhook"}
-            </span>
-          )}
-        </div>
-        <PathString path={route.path} className="text-xs text-text-2 leading-tight" />
-      </div>
-      {/* Right meta */}
-      <div className="flex items-center gap-1 shrink-0 mt-0.5">
-        {route.multiplicity > (route.verbs?.length ?? 0) && (
-          <span className="text-[10px] text-text-4 tabular-nums">×{route.multiplicity}</span>
+      {/* Fixed-width verb chip column so all paths align */}
+      <span className="w-[56px] shrink-0 flex items-center gap-1">
+        <VerbChip verb={verb} />
+        {route.is_webhook && (
+          <span className="inline-flex items-center h-4 px-1 rounded text-[9px] font-medium bg-[var(--info-soft)] text-[var(--info)] border border-[var(--info-soft)]">
+            🪝
+          </span>
         )}
+      </span>
+      {/* Path */}
+      <PathString path={route.path} className="flex-1 text-xs text-text-2 leading-tight min-w-0 truncate" />
+      {/* Right meta */}
+      <div className="flex items-center gap-1 shrink-0">
         {route.auth && (
           <span title="Authenticated">
             <Lock size={10} className="text-success" />
@@ -211,7 +242,7 @@ function RouteRow({
         {(route.repos?.length ?? 0) > 1 ? (
           <span className="text-[10px] text-text-4 font-mono">+{route.repos?.length}</span>
         ) : route.repos?.[0] ? (
-          <span className="text-[10px] text-text-4 font-mono truncate max-w-[64px]">{route.repos[0]}</span>
+          <span className="text-[10px] text-text-4 font-mono truncate max-w-[72px]">{route.repos[0]}</span>
         ) : null}
       </div>
     </button>
@@ -223,7 +254,7 @@ function ControllerSection({
   group,
   openMap,
   toggle,
-  selectedHash,
+  isRowSelected,
   onSelect,
   search,
 }: {
@@ -231,19 +262,22 @@ function ControllerSection({
   group: ControllerGroupShape;
   openMap: Record<string, boolean>;
   toggle: (k: string) => void;
-  selectedHash: string | null;
-  onSelect: (r: PathRoute) => void;
+  selectedRowKey: string | null;
+  isRowSelected: (rowKey: string) => boolean;
+  onSelect: (r: PathRoute, verb: string) => void;
   search: string;
 }) {
   const key = `${backend.id}::${group.id}`;
   const open = openMap[key] !== false;
 
   const groupRoutes = group.routes ?? [];
-  const matches = search
+  const matchedRoutes = search
     ? groupRoutes.filter((r) => (r.path ?? "").toLowerCase().includes(search.toLowerCase()))
     : groupRoutes;
 
-  if (search && matches.length === 0) return null;
+  if (search && matchedRoutes.length === 0) return null;
+
+  const verbRows = flattenToVerbRows(matchedRoutes);
 
   return (
     <div>
@@ -266,16 +300,16 @@ function ControllerSection({
         <span className="font-mono truncate">{group.label}</span>
         <span className="text-text-4 font-normal truncate max-w-[120px]">· {group.file}</span>
         {group.is_webhook && <span className="text-[10px] text-info ml-1">🪝</span>}
-        <span className="ml-auto text-text-4 tabular-nums">{matches.length}</span>
+        <span className="ml-auto text-text-4 tabular-nums">{verbRows.length}</span>
       </button>
 
       {(open || !!search) &&
-        matches.map((route) => (
-          <RouteRow
-            key={route.path_hash}
-            route={route}
-            selected={selectedHash === route.path_hash}
-            onClick={() => onSelect(route)}
+        verbRows.map((row) => (
+          <VerbRouteRow
+            key={row.rowKey}
+            row={row}
+            selected={isRowSelected(row.rowKey)}
+            onClick={() => onSelect(row.route, row.verb)}
           />
         ))}
     </div>
@@ -286,15 +320,16 @@ function BackendSection({
   backend,
   openMap,
   toggle,
-  selectedHash,
+  isRowSelected,
   onSelect,
   search,
 }: {
   backend: PathBackend;
   openMap: Record<string, boolean>;
   toggle: (k: string) => void;
-  selectedHash: string | null;
-  onSelect: (r: PathRoute) => void;
+  selectedRowKey: string | null;
+  isRowSelected: (rowKey: string) => boolean;
+  onSelect: (r: PathRoute, verb: string) => void;
   search: string;
 }) {
   const key = `be::${backend.id}`;
@@ -383,7 +418,8 @@ function BackendSection({
             group={group}
             openMap={openMap}
             toggle={toggle}
-            selectedHash={selectedHash}
+            selectedRowKey={null}
+            isRowSelected={isRowSelected}
             onSelect={onSelect}
             search={search}
           />
@@ -395,13 +431,14 @@ function BackendSection({
 function FlatRouteList({
   backends,
   search,
-  selectedHash,
+  isRowSelected,
   onSelect,
 }: {
   backends: PathBackend[];
   search: string;
-  selectedHash: string | null;
-  onSelect: (r: PathRoute) => void;
+  selectedRowKey: string | null;
+  isRowSelected: (rowKey: string) => boolean;
+  onSelect: (r: PathRoute, verb: string) => void;
 }) {
   const allRoutes = useMemo(() => {
     const out: PathRoute[] = [];
@@ -415,20 +452,22 @@ function FlatRouteList({
     return out;
   }, [backends]);
 
-  const filtered = search
+  const filteredRoutes = search
     ? allRoutes.filter((r) => (r.path ?? "").toLowerCase().includes(search.toLowerCase()))
     : allRoutes;
 
-  if (filtered.length === 0) return null;
+  const verbRows = useMemo(() => flattenToVerbRows(filteredRoutes), [filteredRoutes]);
+
+  if (verbRows.length === 0) return null;
 
   return (
     <div>
-      {filtered.map((route) => (
-        <RouteRow
-          key={route.path_hash}
-          route={route}
-          selected={selectedHash === route.path_hash}
-          onClick={() => onSelect(route)}
+      {verbRows.map((row) => (
+        <VerbRouteRow
+          key={row.rowKey}
+          row={row}
+          selected={isRowSelected(row.rowKey)}
+          onClick={() => onSelect(row.route, row.verb)}
         />
       ))}
     </div>
@@ -499,7 +538,7 @@ function EntityRow({ entity }: { entity: PathEntity }) {
   );
 }
 
-function DetailPane({ detail: rawDetail }: { detail: PathDetail }) {
+function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; initialVerb?: string }) {
   // Real polyglot data can omit array/object fields entirely. Normalize once so
   // every downstream access is null-safe (#1536).
   const detail = {
@@ -516,7 +555,11 @@ function DetailPane({ detail: rawDetail }: { detail: PathDetail }) {
     path: rawDetail.path ?? "",
     outbound: rawDetail.outbound ?? {},
   } as PathDetail;
-  const [verbFilter, setVerbFilter] = useState<string>("all");
+  // Default to the verb selected in the list row (from URL), fall back to "all".
+  const [verbFilter, setVerbFilter] = useState<string>(() => {
+    if (initialVerb && (rawDetail.verbs ?? []).includes(initialVerb as HttpVerb)) return initialVerb;
+    return "all";
+  });
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     description: true,
     parameters: true,
@@ -1355,7 +1398,13 @@ export default function PathsScreen() {
   // URL state — backend drives the drill-down level.
   const activeTab = (searchParams.get("tab") ?? "endpoints") as "endpoints" | "orphans";
   const selectedHash = searchParams.get("path");
+  const selectedVerb = searchParams.get("verb") ?? undefined;
   const selectedBackendId = searchParams.get("backend");
+
+  // Stable row key: "<hash>:<verb>" for exact-verb highlight; just "<hash>" for legacy deep-links.
+  const selectedRowKey = selectedHash
+    ? selectedVerb ? `${selectedHash}:${selectedVerb}` : selectedHash
+    : null;
 
   // Local list state
   const [search, setSearch] = useState("");
@@ -1411,12 +1460,25 @@ export default function PathsScreen() {
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
+  /** isRowSelected: matches exact <hash>:<verb> or any verb when legacy hash-only key. */
+  const isRowSelected = useCallback(
+    (rowKey: string): boolean => {
+      if (!selectedRowKey) return false;
+      if (rowKey === selectedRowKey) return true;
+      // Legacy deep-link has no ":" — highlight all verb rows for that path
+      if (!selectedRowKey.includes(":")) return rowKey.startsWith(`${selectedRowKey}:`);
+      return false;
+    },
+    [selectedRowKey],
+  );
+
   const selectRoute = useCallback(
-    (hash: string, backendId?: string) => {
+    (hash: string, verb?: string, backendId?: string) => {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
         next.set("path", hash);
         next.set("tab", "endpoints");
+        if (verb) next.set("verb", verb); else next.delete("verb");
         if (backendId) next.set("backend", backendId);
         return next;
       });
@@ -1761,8 +1823,9 @@ export default function PathsScreen() {
                       backend={b}
                       openMap={openMap}
                       toggle={toggleOpen}
-                      selectedHash={selectedHash}
-                      onSelect={(r) => selectRoute(r.path_hash, b.id)}
+                      selectedRowKey={selectedRowKey}
+                      isRowSelected={isRowSelected}
+                      onSelect={(r, verb) => selectRoute(r.path_hash, verb, b.id)}
                       search={search}
                     />
                   ))
@@ -1770,8 +1833,9 @@ export default function PathsScreen() {
                   <FlatRouteList
                     backends={backends}
                     search={search}
-                    selectedHash={selectedHash}
-                    onSelect={(r) => selectRoute(r.path_hash, selectedBackend?.id)}
+                    selectedRowKey={selectedRowKey}
+                    isRowSelected={isRowSelected}
+                    onSelect={(r, verb) => selectRoute(r.path_hash, verb, selectedBackend?.id)}
                   />
                 )}
               </div>
@@ -1797,7 +1861,7 @@ export default function PathsScreen() {
                   <p className="text-sm text-text-3">Route detail not found.</p>
                 </div>
               ) : (
-                <DetailPane detail={detail} />
+                <DetailPane detail={detail} initialVerb={selectedVerb} />
               )}
             </div>
           </div>
