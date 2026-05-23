@@ -77,6 +77,15 @@ type Tier2RunOpts struct {
 	// ConcurrencyLimit controls the goroutine pool used per Tier 1 page render.
 	// Default 4.
 	ConcurrencyLimit int
+	// LLMMode is propagated to each Tier 1 RunOpts. Valid values are "" (default),
+	// "emit", and "apply". "apply" at Tier 2+ returns an error; use Tier 1 apply
+	// per page instead.
+	LLMMode string
+	// CacheDir overrides the section-level LLM cache directory propagated to Tier 1.
+	// Ignored when NoCache is true.
+	CacheDir string
+	// NoCache disables both cache reads and writes for all Tier 1 sub-runs.
+	NoCache bool
 }
 
 // Tier2Score is the slice-level scorecard written by Tier 2.
@@ -94,6 +103,9 @@ type Tier2Score struct {
 	SliceMermaidBudgetViolations int     `json:"slice_mermaid_budget_violations"`
 	SliceEntityIDs              []string `json:"slice_entity_ids"`
 	Violations                  []string `json:"violations,omitempty"`
+	// LLMMode is set to "emit" when the run was invoked with --llm-mode=emit.
+	// Empty string means the default deterministic-stub-only mode.
+	LLMMode string `json:"llm_mode,omitempty"`
 }
 
 // PageOutput holds the result of a single Tier 1 page render within the slice.
@@ -108,6 +120,20 @@ type PageOutput struct {
 // It returns the output directory path and the slice-level score.
 func RunTier2(opts Tier2RunOpts) (outDir string, score Tier2Score, err error) {
 	start := time.Now()
+
+	// Tier 2 apply mode is not yet implemented. Emit mode works; for apply, run
+	// Tier 1 --llm-mode=apply per page separately.
+	if opts.LLMMode == "apply" {
+		err = fmt.Errorf(
+			"--llm-mode=apply is not yet implemented for --tier=2; " +
+				"emit mode works at Tier 2+; use --tier=1 --llm-mode=apply per page instead",
+		)
+		return
+	}
+	if opts.LLMMode != "" && opts.LLMMode != "emit" {
+		err = validateLLMMode(opts.LLMMode)
+		return
+	}
 
 	if opts.MaxPages <= 0 {
 		opts.MaxPages = 5
@@ -194,6 +220,7 @@ func RunTier2(opts Tier2RunOpts) (outDir string, score Tier2Score, err error) {
 		SliceMermaidBudgetViolations: mermaidBudget,
 		SliceEntityIDs:               entityIDs,
 		Violations:                   violationStrings(allViolations),
+		LLMMode:                      opts.LLMMode,
 	}
 
 	// Write score.json.
@@ -336,6 +363,9 @@ func renderSlicePages(entityIDs []string, opts Tier2RunOpts) ([]PageOutput, erro
 			SeedEntityID:     eid,
 			OutputDir:        opts.OutputDir,
 			ConcurrencyLimit: opts.ConcurrencyLimit,
+			LLMMode:          opts.LLMMode,
+			CacheDir:         opts.CacheDir,
+			NoCache:          opts.NoCache,
 		}
 		mdPath, _, score, err := RunTier1(t1Opts)
 		if err != nil {

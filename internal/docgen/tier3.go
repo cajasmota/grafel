@@ -91,6 +91,15 @@ type Tier3RunOpts struct {
 	OutputDir string
 	// ConcurrencyLimit is forwarded to Tier 2 for per-slice page rendering.
 	ConcurrencyLimit int
+	// LLMMode is propagated through Tier 2 → Tier 1. Valid values are ""
+	// (default), "emit", and "apply". "apply" at Tier 3+ returns an error;
+	// use Tier 1 apply per page instead.
+	LLMMode string
+	// CacheDir overrides the section-level LLM cache directory propagated to Tier 2/1.
+	// Ignored when NoCache is true.
+	CacheDir string
+	// NoCache disables both cache reads and writes for all sub-runs.
+	NoCache bool
 }
 
 // Tier3Score is the repo-level scorecard written by Tier 3.
@@ -107,6 +116,9 @@ type Tier3Score struct {
 	IndexLinkUnresolved      int      `json:"index_link_unresolved"`
 	SkippedBelowBudgetCount  int      `json:"skipped_below_budget_count"`
 	Violations               []string `json:"violations,omitempty"`
+	// LLMMode is set to "emit" when the run was invoked with --llm-mode=emit.
+	// Empty string means the default deterministic-stub-only mode.
+	LLMMode string `json:"llm_mode,omitempty"`
 }
 
 // repoInfo holds the resolved repo slug + graph-state directory.
@@ -120,6 +132,20 @@ type repoInfo struct {
 // Returns the output directory and the repo-level score.
 func RunTier3(opts Tier3RunOpts) (outDir string, score Tier3Score, err error) {
 	start := time.Now()
+
+	// Tier 3 apply mode is not yet implemented. Emit mode works; for apply, run
+	// Tier 1 --llm-mode=apply per page separately.
+	if opts.LLMMode == "apply" {
+		err = fmt.Errorf(
+			"--llm-mode=apply is not yet implemented for --tier=3; " +
+				"emit mode works at Tier 3+; use --tier=1 --llm-mode=apply per page instead",
+		)
+		return
+	}
+	if opts.LLMMode != "" && opts.LLMMode != "emit" {
+		err = validateLLMMode(opts.LLMMode)
+		return
+	}
 
 	if opts.MaxPages <= 0 {
 		opts.MaxPages = 5
@@ -172,6 +198,9 @@ func RunTier3(opts Tier3RunOpts) (outDir string, score Tier3Score, err error) {
 			MermaidBudget:    opts.MermaidBudget,
 			OutputDir:        repoOutDir,
 			ConcurrencyLimit: opts.ConcurrencyLimit,
+			LLMMode:          opts.LLMMode,
+			CacheDir:         opts.CacheDir,
+			NoCache:          opts.NoCache,
 		}
 		_, t2Score, t2Err := RunTier2(t2Opts)
 		if t2Err != nil {
@@ -232,6 +261,7 @@ func RunTier3(opts Tier3RunOpts) (outDir string, score Tier3Score, err error) {
 		IndexLinkUnresolved:     indexLinkUnresolved,
 		SkippedBelowBudgetCount: skippedCount,
 		Violations:              repoViolationStrings(repoViolations),
+		LLMMode:                 opts.LLMMode,
 	}
 
 	// Write score.json.

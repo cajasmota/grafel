@@ -98,6 +98,8 @@ func newDocgenCmd() *cobra.Command {
 		llmMode       string
 		bundleFile    string
 		resultFile    string
+		cacheDir      string
+		noCache       bool
 	)
 
 	cmd := &cobra.Command{
@@ -200,11 +202,11 @@ Available sections (--section, used by --tier=0 only):
 			case 1:
 				return runDocgenTier1(cmd, group, seedEntity, pageID, outputDir, llmMode, bundleFile, resultFile)
 			case 2:
-				return runDocgenTier2(cmd, group, seedEntity, outputDir, maxPages, mermaidBudget)
+				return runDocgenTier2(cmd, group, seedEntity, outputDir, llmMode, cacheDir, maxPages, mermaidBudget, noCache)
 			case 3:
-				return runDocgenTier3(cmd, group, repoSlug, outputDir, maxPages, mermaidBudget)
+				return runDocgenTier3(cmd, group, repoSlug, outputDir, llmMode, cacheDir, maxPages, mermaidBudget, noCache)
 			case 4:
-				return runDocgenTier4(cmd, group, outputDir, maxPages, mermaidBudget)
+				return runDocgenTier4(cmd, group, outputDir, llmMode, cacheDir, maxPages, mermaidBudget, noCache)
 			default:
 				return fmt.Errorf("--tier=%d is not yet implemented; available: 0, 1, 2, 3, 4", tier)
 			}
@@ -232,11 +234,15 @@ Available sections (--section, used by --tier=0 only):
 	cmd.Flags().BoolVar(&listSecs, "list-sections", false,
 		"print all valid section names and exit")
 	cmd.Flags().StringVar(&llmMode, "llm-mode", "",
-		`LLM integration mode: "" (default, stub-only), "emit" (write LLMPromptBundle JSON alongside stub), "apply" (read result file, validate, assemble final page)`)
+		`LLM integration mode: "" (default, stub-only), "emit" (write LLMPromptBundle JSON alongside stub), "apply" (Tier 0/1 only: read result file, validate, assemble final page; Tier 2/3/4 returns error)`)
 	cmd.Flags().StringVar(&bundleFile, "bundle-file", "",
-		"path to the LLMPromptBundle JSON file (required when --llm-mode=apply)")
+		"path to the LLMPromptBundle JSON file (required when --llm-mode=apply at Tier 0/1)")
 	cmd.Flags().StringVar(&resultFile, "result-file", "",
-		"path to the LLMRunResult JSON file written by the orchestrator (required when --llm-mode=apply)")
+		"path to the LLMRunResult JSON file written by the orchestrator (required when --llm-mode=apply at Tier 0/1)")
+	cmd.Flags().StringVar(&cacheDir, "cache-dir", "",
+		"override the section-level LLM cache directory (default: ~/.archigraph/docs/<group>/.llm-cache/); applies to all tiers")
+	cmd.Flags().BoolVar(&noCache, "no-cache", false,
+		"disable section-level LLM cache reads and writes for this run; applies to all tiers")
 
 	return cmd
 }
@@ -435,7 +441,7 @@ func runDocgenTier1Apply(cmd *cobra.Command, pageID, outputDir, bundleFile, resu
 }
 
 // runDocgenTier2 executes the Tier 2 coherent-slice path (<10 min).
-func runDocgenTier2(cmd *cobra.Command, group, seedEntity, outputDir string, maxPages, mermaidBudget int) error {
+func runDocgenTier2(cmd *cobra.Command, group, seedEntity, outputDir, llmMode, cacheDir string, maxPages, mermaidBudget int, noCache bool) error {
 	resolvedGroup, err := resolveGroup(group)
 	if err != nil {
 		return err
@@ -451,6 +457,9 @@ func runDocgenTier2(cmd *cobra.Command, group, seedEntity, outputDir string, max
 		MaxPages:      maxPages,
 		MermaidBudget: mermaidBudget,
 		OutputDir:     outputDir,
+		LLMMode:       llmMode,
+		CacheDir:      cacheDir,
+		NoCache:       noCache,
 	}
 
 	outDir, score, err := docgen.RunTier2(opts)
@@ -470,6 +479,9 @@ func runDocgenTier2(cmd *cobra.Command, group, seedEntity, outputDir string, max
 	fmt.Fprintf(out, "  pattern-links:  %d violations\n", score.PatternLinkViolations)
 	fmt.Fprintf(out, "  anchor-consist: %d violations\n", score.AnchorConsistencyViolations)
 	fmt.Fprintf(out, "  mermaid-budget: %d violations\n", score.SliceMermaidBudgetViolations)
+	if score.LLMMode != "" {
+		fmt.Fprintf(out, "  llm-mode:       %s\n", score.LLMMode)
+	}
 
 	totalViolations := score.FlowDuplicationViolations + score.PatternLinkViolations +
 		score.AnchorConsistencyViolations + score.SliceMermaidBudgetViolations
@@ -491,7 +503,7 @@ func runDocgenTier2(cmd *cobra.Command, group, seedEntity, outputDir string, max
 }
 
 // runDocgenTier3 executes the Tier 3 full-repo doc set path (<20 min).
-func runDocgenTier3(cmd *cobra.Command, group, repoSlug, outputDir string, maxPages, mermaidBudget int) error {
+func runDocgenTier3(cmd *cobra.Command, group, repoSlug, outputDir, llmMode, cacheDir string, maxPages, mermaidBudget int, noCache bool) error {
 	resolvedGroup, err := resolveGroup(group)
 	if err != nil {
 		return err
@@ -503,6 +515,9 @@ func runDocgenTier3(cmd *cobra.Command, group, repoSlug, outputDir string, maxPa
 		MaxPages:      maxPages,
 		MermaidBudget: mermaidBudget,
 		OutputDir:     outputDir,
+		LLMMode:       llmMode,
+		CacheDir:      cacheDir,
+		NoCache:       noCache,
 	}
 
 	rootDir, score, err := docgen.RunTier3(opts)
@@ -521,6 +536,9 @@ func runDocgenTier3(cmd *cobra.Command, group, repoSlug, outputDir string, maxPa
 	fmt.Fprintf(out, "  missing-coverage: %d\n", score.MissingCoverageCount)
 	fmt.Fprintf(out, "  ownership-conflicts: %d\n", score.OwnershipConflictCount)
 	fmt.Fprintf(out, "  skipped:          %d (above %d-seed cap)\n", score.SkippedBelowBudgetCount, docgen.MaxSeedsPerRepo)
+	if score.LLMMode != "" {
+		fmt.Fprintf(out, "  llm-mode:         %s\n", score.LLMMode)
+	}
 
 	totalViolations := score.MissingCoverageCount + score.OwnershipConflictCount + score.IndexLinkUnresolved
 	if totalViolations > 0 {
@@ -541,7 +559,7 @@ func runDocgenTier3(cmd *cobra.Command, group, repoSlug, outputDir string, maxPa
 }
 
 // runDocgenTier4 executes the Tier 4 full-group doc set path (<60 s).
-func runDocgenTier4(cmd *cobra.Command, group, outputDir string, maxPages, mermaidBudget int) error {
+func runDocgenTier4(cmd *cobra.Command, group, outputDir, llmMode, cacheDir string, maxPages, mermaidBudget int, noCache bool) error {
 	resolvedGroup, err := resolveGroup(group)
 	if err != nil {
 		return err
@@ -552,6 +570,9 @@ func runDocgenTier4(cmd *cobra.Command, group, outputDir string, maxPages, merma
 		MaxPages:      maxPages,
 		MermaidBudget: mermaidBudget,
 		OutputDir:     outputDir,
+		LLMMode:       llmMode,
+		CacheDir:      cacheDir,
+		NoCache:       noCache,
 	}
 
 	rootDir, score, err := docgen.RunTier4(opts)
@@ -569,6 +590,9 @@ func runDocgenTier4(cmd *cobra.Command, group, outputDir string, maxPages, merma
 	fmt.Fprintf(out, "  cross-repo-links:      %d (unresolved: %d)\n", score.CrossRepoLinkCount, score.CrossRepoLinkUnresolved)
 	fmt.Fprintf(out, "  flow-dedup-violations: %d\n", score.CrossRepoFlowDedupViolations)
 	fmt.Fprintf(out, "  group-index-unresolved:%d\n", score.GroupIndexUnresolved)
+	if score.LLMMode != "" {
+		fmt.Fprintf(out, "  llm-mode:              %s\n", score.LLMMode)
+	}
 
 	totalViolations := score.CrossRepoLinkUnresolved + score.CrossRepoFlowDedupViolations + score.GroupIndexUnresolved
 	if totalViolations > 0 || len(score.Violations) > 0 {

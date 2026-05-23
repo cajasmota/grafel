@@ -60,6 +60,15 @@ type Tier4RunOpts struct {
 	// ConcurrencyLimit controls the per-repo Tier 3 internal concurrency.
 	// Default 4.
 	ConcurrencyLimit int
+	// LLMMode is propagated through Tier 3 → Tier 2 → Tier 1. Valid values are
+	// "" (default), "emit", and "apply". "apply" at Tier 4 returns an error;
+	// use Tier 1 apply per page instead.
+	LLMMode string
+	// CacheDir overrides the section-level LLM cache directory propagated to all sub-runs.
+	// Ignored when NoCache is true.
+	CacheDir string
+	// NoCache disables both cache reads and writes for all sub-runs.
+	NoCache bool
 }
 
 // Tier4Score is the group-level scorecard written by Tier 4.
@@ -76,6 +85,9 @@ type Tier4Score struct {
 	GroupIndexUnresolved        int          `json:"group_index_unresolved"`
 	PerRepoScores               []Tier3Score `json:"per_repo_scores"`
 	Violations                  []string     `json:"violations,omitempty"`
+	// LLMMode is set to "emit" when the run was invoked with --llm-mode=emit.
+	// Empty string means the default deterministic-stub-only mode.
+	LLMMode string `json:"llm_mode,omitempty"`
 }
 
 // repoTier3Result is the result of a single concurrent Tier 3 invocation.
@@ -91,6 +103,20 @@ type repoTier3Result struct {
 // Returns the output directory and the group-level score.
 func RunTier4(opts Tier4RunOpts) (outDir string, score Tier4Score, err error) {
 	start := time.Now()
+
+	// Tier 4 apply mode is not yet implemented. Emit mode works; for apply, run
+	// Tier 1 --llm-mode=apply per page separately.
+	if opts.LLMMode == "apply" {
+		err = fmt.Errorf(
+			"--llm-mode=apply is not yet implemented for --tier=4; " +
+				"emit mode works at Tier 4; use --tier=1 --llm-mode=apply per page instead",
+		)
+		return
+	}
+	if opts.LLMMode != "" && opts.LLMMode != "emit" {
+		err = validateLLMMode(opts.LLMMode)
+		return
+	}
 
 	if opts.MaxPages <= 0 {
 		opts.MaxPages = 5
@@ -200,6 +226,7 @@ func RunTier4(opts Tier4RunOpts) (outDir string, score Tier4Score, err error) {
 		GroupIndexUnresolved:         groupIndexUnresolved,
 		PerRepoScores:                perRepoScores,
 		Violations:                   nilIfEmpty(allViolations),
+		LLMMode:                      opts.LLMMode,
 	}
 
 	// Write group-level score.json.
@@ -256,6 +283,9 @@ func runTier3Concurrently(repos []groupRepo, opts Tier4RunOpts, rootDir string) 
 					MermaidBudget:    opts.MermaidBudget,
 					OutputDir:        rootDir,
 					ConcurrencyLimit: opts.ConcurrencyLimit,
+					LLMMode:          opts.LLMMode,
+					CacheDir:         opts.CacheDir,
+					NoCache:          opts.NoCache,
 				}
 				repoOutDir, t3Score, t3Err := RunTier3(t3Opts)
 
