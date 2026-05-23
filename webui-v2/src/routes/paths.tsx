@@ -723,41 +723,74 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             onToggle={() => toggleSection("response")}
           />
           {openSections.response && (
-            <div className="px-4 py-2 space-y-2">
+            <div className="px-4 py-2">
               {filteredShapes.length === 0 ? (
-                <p className="text-xs text-text-4">None</p>
+                <p className="text-xs text-text-4 py-1">None</p>
               ) : (
-                filteredShapes.map((shape, i) => (
-                  <div key={i} className="rounded-md border border-border overflow-hidden">
-                    <div className="flex items-center gap-2 px-3 py-2 bg-bg-soft border-b border-border">
-                      <VerbChip verb={shape.verb} />
-                      <div className="flex flex-wrap gap-1">
-                        {(shape.status_codes ?? []).map((sc) => (
-                          <span key={sc} className={cn("text-xs font-mono font-semibold", statusCodeClass(sc))}>
-                            {sc}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="px-3 py-2">
-                      {shape.dynamic ? (
-                        <span className="text-xs text-warning italic">
-                          Dynamic — shape determined at runtime
-                        </span>
-                      ) : shape.keys && shape.keys.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {shape.keys.map((k) => (
-                            <span key={k} className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-2">
-                              {k}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-text-4">No body</span>
-                      )}
-                    </div>
-                  </div>
-                ))
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">Name</th>
+                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">In</th>
+                      <th className="text-left py-1.5 text-text-4 font-medium pr-3">Type</th>
+                      <th className="text-left py-1.5 text-text-4 font-medium">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredShapes.flatMap((shape, shapeIdx) =>
+                      (shape.status_codes ?? []).map((statusCode) => {
+                        const hasBody = !shape.dynamic && shape.keys && shape.keys.length > 0;
+                        const typeDisplay = shape.dynamic
+                          ? "Dynamic"
+                          : hasBody
+                            ? shape.keys.join(", ")
+                            : "—";
+                        const description = shape.dynamic
+                          ? "Shape determined at runtime"
+                          : hasBody
+                            ? ""
+                            : "No response body for this status";
+                        const isMuted = !hasBody && !shape.dynamic;
+
+                        return (
+                          <tr
+                            key={`${shapeIdx}-${statusCode}`}
+                            className={cn(
+                              "border-b border-border-soft last:border-0",
+                              isMuted && "opacity-60",
+                            )}
+                          >
+                            <td className="py-1.5 pr-3 font-mono text-text">
+                              {hasBody ? "response" : "(none)"}
+                            </td>
+                            <td className="py-1.5 pr-3">
+                              <span
+                                className={cn(
+                                  "px-1.5 py-0.5 rounded-sm text-[10px] font-medium",
+                                  "bg-[var(--success-soft)] text-[var(--success)]",
+                                )}
+                              >
+                                body
+                              </span>
+                            </td>
+                            <td className="py-1.5 pr-3 font-mono text-text-3">
+                              <span className={cn(
+                                "text-xs font-mono font-semibold",
+                                statusCodeClass(statusCode),
+                              )}>
+                                {statusCode}
+                              </span>
+                              {typeDisplay !== "—" && (
+                                <span className="ml-2 text-text-3">{typeDisplay}</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 text-text-3 leading-snug">{description}</td>
+                          </tr>
+                        );
+                      }),
+                    )}
+                  </tbody>
+                </table>
               )}
             </div>
           )}
