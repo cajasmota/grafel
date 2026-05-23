@@ -118,13 +118,11 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_graph_patterns`](#archigraph_graph_patterns) | Indexer-extracted graph patterns (action: list\|get). |
 | [`archigraph_search_entities`](#archigraph_search_entities) | Full-text substring search across entity names. |
 | [`archigraph_subgraph`](#archigraph_subgraph) | Nodes+edges (format=raw) or Markdown summary (format=markdown) within N hops. |
-| ~~`archigraph_get_subgraph`~~ | Deprecated — use `archigraph_subgraph(format=raw)`. |
 | [`archigraph_find_paths`](#archigraph_find_paths) | Shortest path between two entities. |
 | [`archigraph_endpoints`](#archigraph_endpoints) | HTTP endpoint surface (action: definitions\|calls\|stats). |
 | [`archigraph_find_callers`](#archigraph_find_callers) | Inbound call graph up to N hops. |
 | [`archigraph_find_callees`](#archigraph_find_callees) | Outbound call graph up to N hops. |
 | [`archigraph_impact_radius`](#archigraph_impact_radius) | Blast-radius analysis with per-entity risk score. |
-| ~~`archigraph_summarize_subgraph`~~ | Deprecated — use `archigraph_subgraph(format=markdown)`. |
 | [`archigraph_find_dead_code`](#archigraph_find_dead_code) | Entities with 0 inbound/outbound project edges. |
 | [`archigraph_auth_coverage`](#archigraph_auth_coverage) | Security audit: flag HTTP endpoints missing auth decorators/middleware. |
 | [`archigraph_secrets`](#archigraph_secrets) | Security scan: detect hardcoded API keys, passwords, JWT tokens, and other credentials in source files. |

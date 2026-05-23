@@ -384,16 +384,17 @@ func TestImpactRadius_RootHasNoUpstreamImpact(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestSummarizeSubgraph
+// TestSubgraph_FormatMarkdown (format=markdown path of the unified tool)
 // ---------------------------------------------------------------------------
 
-func TestSummarizeSubgraph_MarkdownContainsName(t *testing.T) {
+func TestSubgraph_FormatMarkdown_ContainsStructure(t *testing.T) {
 	doc := buildChainDoc()
 	srv := newTestServerWithDoc(t, doc)
 
-	text := callFlowToolText(t, srv.handleSummarizeSubgraph, map[string]any{
+	text := callFlowToolText(t, srv.handleSubgraph, map[string]any{
 		"entity_id": "ent-b",
 		"depth":     float64(1),
+		"format":    "markdown",
 	})
 
 	if !strings.Contains(text, "FuncB") {
@@ -407,13 +408,14 @@ func TestSummarizeSubgraph_MarkdownContainsName(t *testing.T) {
 	}
 }
 
-func TestSummarizeSubgraph_RootNoCallers(t *testing.T) {
+func TestSubgraph_FormatMarkdown_RootNoCallers(t *testing.T) {
 	doc := buildChainDoc()
 	srv := newTestServerWithDoc(t, doc)
 
-	text := callFlowToolText(t, srv.handleSummarizeSubgraph, map[string]any{
+	text := callFlowToolText(t, srv.handleSubgraph, map[string]any{
 		"entity_id": "ent-a",
 		"depth":     float64(1),
+		"format":    "markdown",
 	})
 	if !strings.Contains(text, "No callers") {
 		t.Errorf("FuncA has no callers; summary should say so:\n%s", text)
@@ -454,10 +456,9 @@ func TestSubgraph_FormatRaw_DefaultsToRaw(t *testing.T) {
 	}
 }
 
-// TestSubgraph_FormatRaw_MatchesLegacyGetSubgraph verifies byte-identical
-// node_count + edge_count output for the same seed/depth between the unified
-// tool with format="raw" and the legacy handleGetSubgraph trampoline.
-func TestSubgraph_FormatRaw_MatchesLegacyGetSubgraph(t *testing.T) {
+// TestSubgraph_FormatRaw_GraphCounts verifies node_count and edge_count for
+// a known fixture using format="raw" on the canonical archigraph_subgraph tool.
+func TestSubgraph_FormatRaw_GraphCounts(t *testing.T) {
 	entities := []graph.Entity{
 		{ID: "root", Name: "Root", Kind: "Function"},
 		{ID: "child", Name: "Child", Kind: "Function"},
@@ -469,45 +470,37 @@ func TestSubgraph_FormatRaw_MatchesLegacyGetSubgraph(t *testing.T) {
 	}
 	srv := newTestServerWithDoc(t, minDoc(entities, rels))
 
-	args := map[string]any{"group": "test", "entity_id": "root", "depth": float64(2)}
-
-	// Legacy path via deprecated handleGetSubgraph trampoline.
-	legacyArgs := map[string]any{"group": "test", "entity_id": "root", "depth": float64(2)}
-	legacy := callDashboardTool(t, srv.handleGetSubgraph, legacyArgs)
-
-	// New unified path with explicit format="raw".
-	args["format"] = "raw"
-	unified := callFlowTool(t, srv.handleSubgraph, args)
+	// depth=2 from root should reach root+child+grandchild (3 nodes, 2 edges).
+	unified := callFlowTool(t, srv.handleSubgraph, map[string]any{
+		"group":     "test",
+		"entity_id": "root",
+		"depth":     float64(2),
+		"format":    "raw",
+	})
 	if unified == nil {
 		t.Fatal("expected JSON output for format=raw")
 	}
-
-	if legacy["node_count"] != unified["node_count"] {
-		t.Errorf("node_count mismatch: legacy=%v unified=%v", legacy["node_count"], unified["node_count"])
+	if nc := int(unified["node_count"].(float64)); nc != 3 {
+		t.Errorf("expected node_count=3, got %d", nc)
 	}
-	if legacy["edge_count"] != unified["edge_count"] {
-		t.Errorf("edge_count mismatch: legacy=%v unified=%v", legacy["edge_count"], unified["edge_count"])
+	if ec := int(unified["edge_count"].(float64)); ec != 2 {
+		t.Errorf("expected edge_count=2, got %d", ec)
 	}
 }
 
-// TestSubgraph_FormatMarkdown_MatchesLegacySummarize verifies that
-// format="markdown" produces identical content to the legacy trampoline.
-func TestSubgraph_FormatMarkdown_MatchesLegacySummarize(t *testing.T) {
+// TestSubgraph_FormatMarkdown_ContainsEntityName verifies that format="markdown"
+// returns a summary containing the target entity name.
+func TestSubgraph_FormatMarkdown_ContainsEntityName(t *testing.T) {
 	doc := buildChainDoc()
 	srv := newTestServerWithDoc(t, doc)
 
-	unifiedText := callFlowToolText(t, srv.handleSubgraph, map[string]any{
+	text := callFlowToolText(t, srv.handleSubgraph, map[string]any{
 		"entity_id": "ent-b",
 		"depth":     float64(1),
 		"format":    "markdown",
 	})
-	legacyText := callFlowToolText(t, srv.handleSummarizeSubgraph, map[string]any{
-		"entity_id": "ent-b",
-		"depth":     float64(1),
-	})
-
-	if unifiedText != legacyText {
-		t.Errorf("format=markdown output differs from legacy summarize_subgraph:\nunified:\n%s\nlegacy:\n%s", unifiedText, legacyText)
+	if !strings.Contains(text, "FuncB") {
+		t.Errorf("format=markdown should contain FuncB in output:\n%s", text)
 	}
 }
 
@@ -528,41 +521,6 @@ func TestSubgraph_InvalidFormat(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Fatal("expected IsError=true for invalid format")
-	}
-}
-
-// TestSubgraph_LegacyGetSubgraph_TrampolineWorks ensures the deprecated
-// handleGetSubgraph still produces valid JSON output via the trampoline.
-func TestSubgraph_LegacyGetSubgraph_TrampolineWorks(t *testing.T) {
-	entities := []graph.Entity{
-		{ID: "a", Name: "A", Kind: "Function"},
-		{ID: "b", Name: "B", Kind: "Function"},
-	}
-	rels := []graph.Relationship{{ID: "r1", FromID: "a", ToID: "b", Kind: "CALLS"}}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
-
-	out := callDashboardTool(t, srv.handleGetSubgraph, map[string]any{
-		"group":     "test",
-		"entity_id": "a",
-		"depth":     float64(1),
-	})
-	if int(out["node_count"].(float64)) != 2 {
-		t.Errorf("expected 2 nodes via legacy trampoline, got %v", out["node_count"])
-	}
-}
-
-// TestSubgraph_LegacySummarizeSubgraph_TrampolineWorks ensures the deprecated
-// handleSummarizeSubgraph still produces markdown output via the trampoline.
-func TestSubgraph_LegacySummarizeSubgraph_TrampolineWorks(t *testing.T) {
-	doc := buildChainDoc()
-	srv := newTestServerWithDoc(t, doc)
-
-	text := callFlowToolText(t, srv.handleSummarizeSubgraph, map[string]any{
-		"entity_id": "ent-b",
-		"depth":     float64(1),
-	})
-	if !strings.Contains(text, "FuncB") {
-		t.Errorf("legacy trampoline should still return FuncB in markdown:\n%s", text)
 	}
 }
 

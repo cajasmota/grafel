@@ -344,14 +344,6 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_subgraph", s.handleSubgraph))
 
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_subgraph",
-		mcpapi.WithDescription("Deprecated — use archigraph_subgraph(format=raw)."),
-		mcpapi.WithString("entity_id", mcpapi.Required()),
-		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
-		mcpapi.WithAny("group"),
-		mcpapi.WithAny("cwd"),
-	), s.wrap("archigraph_get_subgraph", s.handleGetSubgraph))
-
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_paths",
 		mcpapi.WithDescription("Shortest path between two entities with confidence."),
 		mcpapi.WithString("from", mcpapi.Required()),
@@ -407,14 +399,6 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_impact_radius", s.handleImpactRadius))
-
-	s.MCP.AddTool(mcpapi.NewTool("archigraph_summarize_subgraph",
-		mcpapi.WithDescription("Deprecated — use archigraph_subgraph(format=markdown)."),
-		mcpapi.WithString("entity_id", mcpapi.Required()),
-		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
-		mcpapi.WithAny("group"),
-		mcpapi.WithAny("cwd"),
-	), s.wrap("archigraph_summarize_subgraph", s.handleSummarizeSubgraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_dead_code",
 		mcpapi.WithDescription("Entities with no project edges — dead code or extraction gap candidates."),

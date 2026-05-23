@@ -783,7 +783,7 @@ func (s *Server) handlePatternsGetGraph(_ context.Context, req mcpapi.CallToolRe
 }
 
 // ---------------------------------------------------------------------------
-// Bonus tools: search_entities, get_subgraph, find_paths
+// Bonus tools: search_entities, find_paths
 // ---------------------------------------------------------------------------
 
 // handleSearchEntities performs a substring / prefix search across entity
@@ -866,21 +866,6 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 		"total":     total,
 		"truncated": total > len(out),
 	}), nil
-}
-
-// handleGetSubgraph returns all nodes and edges within `depth` hops of the
-// given entity_id — a local neighbourhood extract.
-//
-// Deprecated: use archigraph_subgraph with format="raw".
-func (s *Server) handleGetSubgraph(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	// Trampoline: delegate to unified handler with format="raw".
-	args := req.GetArguments()
-	if args == nil {
-		args = map[string]any{}
-		req.Params.Arguments = args
-	}
-	args["format"] = "raw"
-	return s.handleSubgraph(ctx, req)
 }
 
 // reverseTraversalEdgeKinds is the set of edge kinds where the BFS in

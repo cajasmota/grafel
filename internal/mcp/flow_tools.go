@@ -5,7 +5,6 @@
 //   - archigraph_find_callees       — what does this entity call (outbound edges, N hops)
 //   - archigraph_impact_radius      — entities affected if this one changes, with risk score
 //   - archigraph_subgraph           — unified subgraph tool (format=raw|markdown) (#1754)
-//   - archigraph_summarize_subgraph — deprecated alias for archigraph_subgraph(format=markdown)
 //   - archigraph_find_dead_code     — unreferenced public operations carrying a dead-code marker
 //
 // All handlers operate against the in-memory LoadedGroup data — no HTTP calls.
@@ -819,26 +818,6 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 		return mcpapi.NewToolResultText(b.String()), nil
 	}
 	return mcpapi.NewToolResultError("entity not found: " + entityID), nil
-}
-
-// ---------------------------------------------------------------------------
-// archigraph_summarize_subgraph (deprecated — trampoline to archigraph_subgraph)
-// ---------------------------------------------------------------------------
-
-// handleSummarizeSubgraph returns an LLM-friendly Markdown summary of an
-// entity's local neighbourhood. The summary can be pasted directly into a
-// doc or used as context for a follow-up agent prompt.
-//
-// Deprecated: use archigraph_subgraph with format="markdown".
-func (s *Server) handleSummarizeSubgraph(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	// Trampoline: delegate to unified handler with format="markdown".
-	args := req.GetArguments()
-	if args == nil {
-		args = map[string]any{}
-		req.Params.Arguments = args
-	}
-	args["format"] = "markdown"
-	return s.handleSubgraph(ctx, req)
 }
 
 // ---------------------------------------------------------------------------

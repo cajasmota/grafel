@@ -585,47 +585,6 @@ func TestHandleSearchEntities_KindFilter(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// archigraph_get_subgraph
-// ---------------------------------------------------------------------------
-
-func TestHandleGetSubgraph(t *testing.T) {
-	entities := []graph.Entity{
-		{ID: "root", Name: "Root", Kind: "Function"},
-		{ID: "child", Name: "Child", Kind: "Function"},
-		{ID: "grandchild", Name: "GrandChild", Kind: "Function"},
-		{ID: "distant", Name: "Distant", Kind: "Function"},
-	}
-	rels := []graph.Relationship{
-		{ID: "r1", FromID: "root", ToID: "child", Kind: "CALLS"},
-		{ID: "r2", FromID: "child", ToID: "grandchild", Kind: "CALLS"},
-		{ID: "r3", FromID: "grandchild", ToID: "distant", Kind: "CALLS"},
-	}
-	srv := newTestServerWithDoc(t, minDoc(entities, rels))
-
-	// depth=1: root + child
-	out := callDashboardTool(t, srv.handleGetSubgraph, map[string]any{
-		"group":     "test",
-		"entity_id": "root",
-		"depth":     float64(1),
-	})
-	nc := int(out["node_count"].(float64))
-	if nc != 2 {
-		t.Errorf("depth=1 expected 2 nodes, got %d", nc)
-	}
-
-	// depth=2: root + child + grandchild
-	out2 := callDashboardTool(t, srv.handleGetSubgraph, map[string]any{
-		"group":     "test",
-		"entity_id": "root",
-		"depth":     float64(2),
-	})
-	nc2 := int(out2["node_count"].(float64))
-	if nc2 != 3 {
-		t.Errorf("depth=2 expected 3 nodes, got %d", nc2)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // archigraph_find_paths
 // ---------------------------------------------------------------------------
 

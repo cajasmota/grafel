@@ -541,7 +541,6 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_graph_patterns",
 		// #1202 bonus traversal
 		"archigraph_search_entities",
-		"archigraph_get_subgraph",
 		"archigraph_find_paths",
 		// #1281 consolidated HTTP endpoint tools (was 3 tools)
 		"archigraph_endpoints",
@@ -549,7 +548,6 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_find_callers",
 		"archigraph_find_callees",
 		"archigraph_impact_radius",
-		"archigraph_summarize_subgraph",
 		"archigraph_find_dead_code",
 		"archigraph_auth_coverage",
 		// #1659 docgen→graph repair feedback loop
@@ -597,6 +595,9 @@ func TestToolNameSurface(t *testing.T) {
 		// agent-facing tools dropped in refactor/mcp-real-3k (≤3k budget)
 		"archigraph_recent_activity",
 		"archigraph_save_finding",
+		// deprecated shims dropped in feat/drop-subgraph-shims (no real callers per #1742)
+		"archigraph_get_subgraph",
+		"archigraph_summarize_subgraph",
 		"archigraph_list_findings",
 		"archigraph_cross_links",
 	}
@@ -605,13 +606,13 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count: 31 (28 baseline + archigraph_module_analysis from #1384,
-	// + archigraph_apply_docgen_repairs from #1659: docgen→graph repair feedback
-	// loop — emit repair candidates in generate-docs, apply high-confidence ones
-	// immediately as enrichment resolutions, queue low-confidence for review,
-	// + archigraph_subgraph unified tool from #1754).
-	if got := len(srv.MCP.ListTools()); got != 31 {
-		t.Errorf("expected 31 registered tools, got %d", got)
+	// Total count: 29 (28 baseline + archigraph_module_analysis from #1384,
+	// + archigraph_apply_docgen_repairs from #1659,
+	// + archigraph_subgraph from #1754,
+	// - archigraph_get_subgraph shim dropped (feat/drop-subgraph-shims),
+	// - archigraph_summarize_subgraph shim dropped (feat/drop-subgraph-shims)).
+	if got := len(srv.MCP.ListTools()); got != 29 {
+		t.Errorf("expected 29 registered tools, got %d — update this count if tools are added/removed", got)
 	}
 }
 
@@ -2704,13 +2705,11 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_graph_patterns":      {"group": "g", "action": "list"},
 		"archigraph_search_entities":     {"group": "g", "query": "Dashboard"},
 		"archigraph_subgraph":            {"group": "g", "entity_id": "r1::a1"},
-		"archigraph_get_subgraph":        {"group": "g", "entity_id": "r1::a1"},
 		"archigraph_find_paths":          {"group": "g", "from": "r1::a1", "to": "r1::a4"},
 		"archigraph_endpoints":           {"group": "g", "action": "definitions"},
 		"archigraph_find_callers":        {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_find_callees":        {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_impact_radius":       {"group": "g", "entity_id": "r1::a2"},
-		"archigraph_summarize_subgraph":  {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_find_dead_code":      {"group": "g"},
 		"archigraph_quality_cycles":      {"group": "g"},
 		"archigraph_auth_coverage":       {"group": "g"},
@@ -2761,8 +2760,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 31 {
-		t.Errorf("expected 31 registered tools, got %d — update minimalArgs if new tools were added", len(tools))
+	if len(tools) != 29 {
+		t.Errorf("expected 29 registered tools, got %d — update minimalArgs if tools are added/removed", len(tools))
 	}
 
 	for _, st := range tools {
