@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // get_source_timeout_test.go — #1678 / #1773 regression coverage.
 //
 // Background: real MCP calls to archigraph_get_source against the live daemon
