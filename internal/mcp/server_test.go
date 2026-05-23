@@ -2336,3 +2336,143 @@ func TestReloadFBOnlyRepo(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #1687: elapsed_ms coverage audit — every registered tool must return
+// elapsed_ms regardless of success/error outcome.
+// ---------------------------------------------------------------------------
+
+// TestElapsedMSCoverageAllTools iterates every tool registered on the MCP
+// server, calls it via the wrap middleware (which injects elapsed_ms), and
+// asserts that elapsed_ms is extractable from the response text.
+//
+// Extraction logic mirrors the e2e bench:
+//  1. Try to parse the text as JSON; if successful, check for top-level
+//     "elapsed_ms" key (success JSON shape).
+//  2. Otherwise scan for the "# elapsed_ms=N" trailer (non-JSON / markdown
+//     shape, including error responses).
+//
+// All 30 registered tools must pass.
+func TestElapsedMSCoverageAllTools(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "r1")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGraph(t, repo, fixtureDoc("r1"))
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// minimalArgs maps each tool name to the minimum set of arguments needed
+	// to avoid a "missing required argument" hard error before the handler
+	// body runs. We intentionally pass args that may not resolve to real data
+	// (e.g. entity_id="nonexistent") so that handlers that require resolved
+	// entities still return a real response (with elapsed_ms) rather than a
+	// Go-level error. The wrap middleware injects elapsed_ms on both success
+	// and IsError=true results, so this test validates both paths.
+	minimalArgs := map[string]map[string]any{
+		"archigraph_whoami":              {"group": "g"},
+		"archigraph_get_source":          {"group": "g", "node_id": "DashboardScreen"},
+		"archigraph_find":                {"group": "g", "question": "DashboardScreen"},
+		"archigraph_inspect":             {"group": "g", "label_or_id": "DashboardScreen"},
+		"archigraph_expand":              {"group": "g", "node": "DashboardScreen"},
+		"archigraph_trace":               {"group": "g", "source": "r1::a1", "target": "r1::a4"},
+		"archigraph_traces":              {"group": "g", "action": "list"},
+		"archigraph_clusters":            {"group": "g"},
+		"archigraph_stats":               {"group": "g"},
+		"archigraph_enrichments":         {"group": "g", "action": "list"},
+		"archigraph_repairs":             {"group": "g", "action": "list"},
+		"archigraph_apply_docgen_repairs": {"group": "g"},
+		"archigraph_patterns":            {"group": "g", "action": "query", "text": "test"},
+		"archigraph_topology":            {"group": "g", "action": "orphan_publishers"},
+		"archigraph_flows":               {"group": "g", "action": "dead_ends"},
+		"archigraph_graph_patterns":      {"group": "g", "action": "list"},
+		"archigraph_search_entities":     {"group": "g", "query": "Dashboard"},
+		"archigraph_get_subgraph":        {"group": "g", "entity_id": "r1::a1"},
+		"archigraph_find_paths":          {"group": "g", "from": "r1::a1", "to": "r1::a4"},
+		"archigraph_endpoints":           {"group": "g", "action": "definitions"},
+		"archigraph_find_callers":        {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_find_callees":        {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_impact_radius":       {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_summarize_subgraph":  {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_find_dead_code":      {"group": "g"},
+		"archigraph_quality_cycles":      {"group": "g"},
+		"archigraph_auth_coverage":       {"group": "g"},
+		"archigraph_test_coverage":       {"group": "g"},
+		"archigraph_module_analysis":     {"group": "g"},
+		"archigraph_secrets":             {"group": "g"},
+	}
+
+	// extractElapsedMS mirrors the bench extraction logic:
+	// first try JSON top-level field, then fall back to regex on the trailer.
+	extractElapsedMS := func(text string) (int64, bool) {
+		// JSON path.
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(text), &obj); err == nil {
+			if v, ok := obj["elapsed_ms"]; ok {
+				switch n := v.(type) {
+				case float64:
+					return int64(n), true
+				case int64:
+					return n, true
+				case json.Number:
+					if i, err := n.Int64(); err == nil {
+						return i, true
+					}
+				}
+			}
+		}
+		// Trailing-comment path (non-JSON or error responses).
+		const marker = "elapsed_ms="
+		idx := strings.Index(text, marker)
+		if idx < 0 {
+			return 0, false
+		}
+		rest := text[idx+len(marker):]
+		end := strings.IndexAny(rest, "\n\r ")
+		if end < 0 {
+			end = len(rest)
+		}
+		raw := rest[:end]
+		n := int64(0)
+		for _, c := range raw {
+			if c < '0' || c > '9' {
+				break
+			}
+			n = n*10 + int64(c-'0')
+		}
+		return n, len(raw) > 0
+	}
+
+	tools := srv.MCP.ListTools()
+	if len(tools) != 30 {
+		t.Errorf("expected 30 registered tools, got %d — update minimalArgs if new tools were added", len(tools))
+	}
+
+	for _, st := range tools {
+		name := st.Tool.Name
+		args, ok := minimalArgs[name]
+		if !ok {
+			t.Errorf("tool %q has no entry in minimalArgs — add it", name)
+			continue
+		}
+		res := callTool(t, srv, name, args)
+		if res == nil {
+			t.Errorf("tool %q: callTool returned nil", name)
+			continue
+		}
+		text := resultText(res)
+		if text == "" {
+			t.Errorf("tool %q: empty response text", name)
+			continue
+		}
+		_, found := extractElapsedMS(text)
+		if !found {
+			t.Errorf("tool %q: elapsed_ms not found in response (IsError=%v):\n%s",
+				name, res.IsError, text)
+		}
+	}
+}

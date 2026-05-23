@@ -244,6 +244,33 @@ func TestUX1650_WrapInjectsElapsedMS(t *testing.T) {
 	}
 }
 
+// scenario_h — #1687: error responses also carry elapsed_ms so callers can
+// measure latency even when the tool returns a validation or lookup error.
+func TestUX1687_WrapInjectsElapsedMSOnError(t *testing.T) {
+	srv := newTestServerWithDoc(t, &graph.Document{
+		Entities: []graph.Entity{{ID: "x", Name: "x", Kind: "Function"}},
+	})
+	// handleFindCallers requires entity_id; call with the wrong key so it
+	// returns IsError=true immediately (before any graph lookup).
+	wrapped := srv.wrap("archigraph_find_callers", srv.handleFindCallers)
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"group": "test", "node_id": "x"} // wrong key
+	res, err := wrapped(context.Background(), req)
+	if err != nil {
+		t.Fatalf("wrap: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true for missing entity_id, got success")
+	}
+	tc, ok := res.Content[0].(mcpapi.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent in error result, got %T", res.Content[0])
+	}
+	if !strings.Contains(tc.Text, "elapsed_ms=") {
+		t.Errorf("expected elapsed_ms= trailer in error response, got: %q", tc.Text)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
