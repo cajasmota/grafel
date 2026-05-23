@@ -54,11 +54,12 @@ const (
 	PassModuleAgg     = "module-agg"     // Pass 8: module-level aggregation (#1383)
 	PassCommitCouple  = "commit-couple"  // Pass 8.5: VCS-derived COMMIT_COUPLED soft edges (#21)
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
+	PassTestsWalkUp   = "tests-walkup"  // Pass 3.5: derive TESTS edges via helper walk-up
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassModuleAgg, PassCommitCouple, PassEmbed,
+	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassModuleAgg, PassCommitCouple, PassEmbed,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -1079,6 +1080,28 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			i.resolveIdx = nil
 			runtime.GC()
 		}
+	}
+
+	// Pass 3.5 — TESTS edge walk-up (tests-edge-walk-up from helpers).
+	// Runs AFTER the resolver has replaced all stub endpoints with real entity
+	// IDs AND after the final reclassification pass, so the CALLS edges are
+	// fully resolved when we query the inbound-CALLS index.
+	// Derives additional TESTS edges: test_fn → viewset_method when the test
+	// directly calls a helper (test_fn → helper) and the helper is called by
+	// a viewset / handler (viewset → helper via CALLS). Derived edges are
+	// written to doc.Relationships with confidence=0.7 and
+	// source=tests-walkup so downstream consumers can distinguish them from
+	// explicit testmap edges. Skippable via --skip-pass=tests-walkup.
+	if !i.skipPasses[PassTestsWalkUp] {
+		walkUpStats := graph.DeriveTestsWalkUp(doc)
+		if verbose() || walkUpStats.DerivedEdges > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: tests-walkup helpers=%d derived=%d high_fan_in_skipped=%d duplicates_suppressed=%d\n",
+				walkUpStats.HelperTargets, walkUpStats.DerivedEdges,
+				walkUpStats.SkippedHighFanIn, walkUpStats.DuplicatesSuppressed)
+		}
+		// Re-sync Stats so subsequent passes see the correct edge count.
+		doc.Stats.Relationships = len(doc.Relationships)
 	}
 
 	// Pass 4 — graph algorithms. Conceptually this runs "between" pass 3 and
