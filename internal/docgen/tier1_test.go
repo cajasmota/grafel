@@ -370,3 +370,57 @@ func TestRunTier1_WallTimeUnder120s(t *testing.T) {
 		t.Errorf("wall_time_ms %d >= 120000 ms budget", score.WallTimeMS)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// countDuplicatedFlows — emit-side deduplication (#1971)
+// ---------------------------------------------------------------------------
+
+func TestCountDuplicatedFlows_SameFlowWithinSection(t *testing.T) {
+	// The same mermaid flow appears 3 times in the "flows" section,
+	// but only appears there (no cross-section duplication).
+	// The count should be 0 because it's all within one section.
+	// This is the issue #1971 scenario: emit stub produces 3 duplicate flow
+	// warnings per page when the same stub is regenerated.
+	flow := "graph LR\n  A-->B"
+	mermaidBlock := "```mermaid\n" + flow + "\n```\n"
+
+	sectionMap := map[string]string{
+		"flows":    mermaidBlock + "\n" + mermaidBlock + "\n" + mermaidBlock,
+		"overview": "Some other content without the flow",
+	}
+
+	duplicates := docgen.CountDuplicatedFlows(sectionMap)
+	if duplicates != 0 {
+		t.Errorf("expected 0 duplicates for same flow within one section, got %d", duplicates)
+	}
+}
+
+func TestCountDuplicatedFlows_SameFlowAcrossSections(t *testing.T) {
+	// The same mermaid flow appears in two different sections.
+	// This should be counted as 1 duplicate (cross-section duplication).
+	flow := "graph LR\n  A-->B"
+	mermaidBlock := "```mermaid\n" + flow + "\n```\n"
+
+	sectionMap := map[string]string{
+		"flows":    mermaidBlock,
+		"overview": mermaidBlock,
+	}
+
+	duplicates := docgen.CountDuplicatedFlows(sectionMap)
+	if duplicates != 1 {
+		t.Errorf("expected 1 duplicate for same flow in 2 sections, got %d", duplicates)
+	}
+}
+
+func TestCountDuplicatedFlows_NoMatchingFlows(t *testing.T) {
+	// Each section has a unique flow.
+	sectionMap := map[string]string{
+		"flows":    "```mermaid\ngraph LR\n  A-->B\n```\n",
+		"overview": "```mermaid\ngraph LR\n  C-->D\n```\n",
+	}
+
+	duplicates := docgen.CountDuplicatedFlows(sectionMap)
+	if duplicates != 0 {
+		t.Errorf("expected 0 duplicates for unique flows, got %d", duplicates)
+	}
+}

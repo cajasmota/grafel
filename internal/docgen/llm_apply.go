@@ -151,7 +151,7 @@ func ApplyResult(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier
 	mermaidOversized := countMermaidOversized(sectionMap)
 	internalLinks := countInternalPageLinks(page)
 	unresolvedLinks := countUnresolvedPageLinks(page, anchors)
-	duplicatedFlows := countDuplicatedFlows(sectionMap)
+	duplicatedFlows := CountDuplicatedFlows(sectionMap)
 	words := countWords(page)
 	wordsPerSection := 0
 	if len(sections) > 0 {

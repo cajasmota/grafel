@@ -183,7 +183,7 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 	mermaidOversized := countMermaidOversized(sectionMap)
 	internalLinks := countInternalPageLinks(page)
 	unresolvedLinks := countUnresolvedPageLinks(page, anchors)
-	duplicatedFlows := countDuplicatedFlows(sectionMap)
+	duplicatedFlows := CountDuplicatedFlows(sectionMap)
 	words := countWords(page)
 	wordsPerSection := 0
 	if len(sections) > 0 {
@@ -503,20 +503,36 @@ func countUnresolvedPageLinks(page string, anchors map[string]bool) int {
 // flowBlockRE matches mermaid fenced blocks for duplicate-flow detection.
 var flowBlockRE = regexp.MustCompile("(?s)```mermaid\n(.*?)```")
 
-// countDuplicatedFlows returns the number of mermaid blocks whose trimmed
+// CountDuplicatedFlows returns the number of mermaid blocks whose trimmed
 // content is identical to another block across any section.
-func countDuplicatedFlows(sectionMap map[string]string) int {
-	seen := make(map[string]int)
-	for _, md := range sectionMap {
+// Note: blocks that appear multiple times within the SAME section are deduplicated
+// first (they don't constitute cross-section duplication).
+// Exported so tests and external tooling can call it directly.
+func CountDuplicatedFlows(sectionMap map[string]string) int {
+	// Map from flow body → list of sections containing it (deduplicated per section).
+	flowSections := make(map[string]map[string]bool)
+	for sec, md := range sectionMap {
+		// Deduplicate flows within this section first.
+		flowsInSection := make(map[string]bool)
 		for _, m := range flowBlockRE.FindAllStringSubmatch(md, -1) {
 			body := strings.TrimSpace(m[1])
-			seen[body]++
+			if body != "" {
+				flowsInSection[body] = true
+			}
+		}
+		// Record which sections contain each unique flow.
+		for body := range flowsInSection {
+			if flowSections[body] == nil {
+				flowSections[body] = make(map[string]bool)
+			}
+			flowSections[body][sec] = true
 		}
 	}
+	// Count flows that appear in multiple sections.
 	duplicates := 0
-	for _, count := range seen {
-		if count > 1 {
-			duplicates += count - 1
+	for _, sections := range flowSections {
+		if len(sections) > 1 {
+			duplicates++
 		}
 	}
 	return duplicates
