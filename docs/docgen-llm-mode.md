@@ -9,6 +9,21 @@ workflows.
 
 ---
 
+## MCP + grep, paired
+
+archigraph MCP gives you a navigable, accurate map of the code; grep gives you raw pattern matches.
+Use MCP for structural questions: who calls X? what is the flow? where does Y live in the graph?
+Use grep for raw enumeration: every `if err != nil`, every import line, every TODO.
+Pair them: MCP narrows the search space; grep verifies edge-property questions MCP can't answer yet.
+
+In the LLM-mode docgen loop specifically: the emit phase uses MCP tools to resolve the structural
+context that fills `graph_context` and `neighbour_briefs` in the bundle; the apply phase uses the
+already-resolved context rather than re-querying. If you need to verify an exact symbol spelling or
+confirm a source line number inside a section prompt, use grep on the source file — do not make an
+additional MCP round-trip for text-level detail that grep resolves in milliseconds.
+
+---
+
 ## 1. The 5-Tier Docgen Ladder
 
 Archigraph docgen is built around a progressive-validation ladder. Each tier

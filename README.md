@@ -180,6 +180,8 @@ command recipes, section cache details, and troubleshooting reference.
 
 ## Usage
 
+> **Using archigraph MCP with an AI agent?** See [`CLAUDE.md`](CLAUDE.md#when-to-use-archigraph-mcp-vs-grep) for the MCP + grep pairing philosophy: when to use MCP for structural questions vs grep for raw enumeration, and how to combine them.
+
 archigraph is a CLI plus a unified daemon process that manages indexing,
 the MCP server, embedded dashboard, and file watchers. The common path:
 

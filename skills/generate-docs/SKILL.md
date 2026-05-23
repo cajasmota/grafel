@@ -113,6 +113,19 @@ Do not invoke it for one-off docstrings, README touch-ups, or commit-message wri
 
 If the daemon is not running, the skill stops at Pass 0 and tells the user to run `archigraph start`. If a repo is not yet registered, the skill tells the user to run `archigraph register <repo-path>`. Do not invoke `archigraph index` directly — it is now a thin RPC client that delegates to the daemon.
 
+## MCP + grep, paired
+
+archigraph MCP gives you a navigable, accurate map of the code; grep gives you raw pattern matches.
+Use MCP for structural questions: who calls X? what is the flow? where does Y live in the graph?
+Use grep for raw enumeration: every `if err != nil`, every import line, every TODO.
+Pair them: MCP narrows the search space; grep verifies edge-property questions MCP can't answer yet.
+
+In the docgen pipeline this means: use MCP tools (`archigraph_find`, `archigraph_callers`,
+`archigraph_clusters`) to build the structural inventory and navigate entity relationships across
+passes; use grep/`rg` inside individual writer subagents to confirm exact symbol spellings, locate
+concrete source lines for code excerpts, or enumerate every occurrence of a pattern that MCP models
+at the entity level rather than the text level.
+
 ## Pass numbering (Pass 0 through Pass 13)
 
 The skill is a strict pipeline. Each pass has a dedicated prompt file under `prompts/`. A subagent reads the prompt and follows it; the orchestrator (this skill) tracks progress and gates each pass on the previous one's output.

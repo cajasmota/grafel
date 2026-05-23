@@ -20,6 +20,18 @@ Invoke when the user asks for any of:
 
 Do **not** invoke for one-off lookups, ad-hoc grep substitution, or to "test the daemon" - the daemon health-check is a separate concern.
 
+## MCP + grep, paired
+
+archigraph MCP gives you a navigable, accurate map of the code; grep gives you raw pattern matches.
+Use MCP for structural questions: who calls X? what is the flow? where does Y live in the graph?
+Use grep for raw enumeration: every `if err != nil`, every import line, every TODO.
+Pair them: MCP narrows the search space; grep verifies edge-property questions MCP can't answer yet.
+
+This benchmark exists precisely to measure whether archigraph MCP earns its place in that pairing:
+if it does not outperform grep+read on structural questions, the pair is unbalanced and docgen will
+burn tokens for no quality gain. Phases 2 and 3 operationalise the pairing by running each side
+independently then comparing outcomes.
+
 ## Why this skill exists
 
 A predecessor MCP tool ("Tool A") was empirically found to consume **3-6× more tokens than grep+read** on representative questions, while not improving answer quality. This skill is the gate that confirms archigraph does not have the same failure mode. It is the formal step between "we built archigraph" and "we have evidence archigraph helps."

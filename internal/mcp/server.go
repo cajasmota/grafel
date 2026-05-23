@@ -638,7 +638,15 @@ func (s *Server) handleStatus(ctx context.Context, req mcpapi.CallToolRequest) (
 		msg = fmt.Sprintf("Archigraph: cwd %q is not under any registered group (registered: %v). cd into a registered repo or run `archigraph install` here. Note: new groups registered mid-session are not reflected until restart (#1772).", cwd, known)
 	}
 
-	return mcpapi.NewToolResultText(msg), nil
+	// Append the MCP + grep pairing philosophy so agents onboarding via
+	// archigraph_status understand how to use MCP alongside grep (#1836).
+	const pairingPhilosophy = "\n\n" +
+		"Pairing philosophy — " +
+		"archigraph MCP gives you a navigable, accurate map of the code; grep gives you raw pattern matches. " +
+		"Use MCP for structural questions: who calls X? what is the flow? where does Y live in the graph? " +
+		"Use grep for raw enumeration: every `if err != nil`, every import line, every TODO. " +
+		"Pair them: MCP narrows the search space; grep verifies edge-property questions MCP can't answer yet."
+	return mcpapi.NewToolResultText(msg + pairingPhilosophy), nil
 }
 
 // wrap is the shared handler middleware: telemetry + lazy reload + panic guard
