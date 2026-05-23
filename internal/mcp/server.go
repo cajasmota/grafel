@@ -287,7 +287,7 @@ func (s *Server) registerTools() {
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_inspect",
 		mcpapi.WithDescription("Look up entity by id/qname/label. verbose=true restores all fields."),
-		mcpapi.WithString("label_or_id", mcpapi.Required()),
+		mcpapi.WithString("entity_id", mcpapi.Required()),
 		// verbose=true (default false) read from request map to stay under token ceiling.
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),

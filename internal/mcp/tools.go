@@ -622,9 +622,16 @@ func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	key, err := req.RequireString("label_or_id")
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
+	// canonical name is "entity_id"; accept legacy "label_or_id" with a deprecation log.
+	key := argString(req, "entity_id", "")
+	if key == "" {
+		key = argString(req, "label_or_id", "")
+		if key != "" {
+			fmt.Fprintln(os.Stderr, "[archigraph deprecation] archigraph_inspect: param 'label_or_id' is deprecated, use 'entity_id'")
+		}
+	}
+	if key == "" {
+		return mcpapi.NewToolResultError("missing required argument: entity_id"), nil
 	}
 	_, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
