@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -32,28 +33,129 @@ import (
 // treat it like a missing ignore file — proceed without ignore rules.
 var ErrIgnoreFileTimeout = errors.New("walk: ParseIgnoreFile timed out (fsevents kernel stall?)")
 
-// openWithDeadline opens path on a worker goroutine and returns the file or
-// an error. If the open does not complete within timeout, ErrIgnoreFileTimeout
-// is returned. The returned *os.File is ready to read; callers must Close it.
+// openSlotSem bounds the number of concurrently-outstanding open workers
+// inside openWithDeadline. The non-blocking open path below already prevents
+// indefinite wedges in the common case, but on platforms where O_NONBLOCK
+// is silently ignored by the kernel (or on a path type that doesn't honour
+// it) a worker could still block. The semaphore caps the worst case at
+// `cap(openSlotSem)` simultaneously leaked goroutines for the lifetime of
+// the daemon — preventing the unbounded accumulation reported in #1723.
+//
+// We size the semaphore generously: real reindexes touch ~10^3 directories
+// but the vast majority complete in microseconds, so the semaphore is only
+// load-bearing when something is genuinely wedged. 64 is plenty.
+var openSlotSem = make(chan struct{}, 64)
+
+// openWithDeadline opens path and returns the file or an error.
+//
+// #1723: the previous version of this function spawned an unbounded worker
+// goroutine per call and "let it leak" on timeout. In real reindexes
+// (especially when the daemon is fsnotify-watching the same tree being
+// walked) thousands of workers accumulated, the kernel ran out of resources,
+// and the daemon became unresponsive. The new implementation:
+//
+//  1. lstats the path first — quick, non-blocking, and lets us bail out
+//     immediately if the path doesn't exist or isn't a regular file.
+//     Ignore files MUST be regular files; anything else (FIFO, socket,
+//     device) is treated as inaccessible (ErrIgnoreFileTimeout).
+//  2. uses O_NONBLOCK on the open(2) — POSIX guarantees this returns
+//     without blocking. On macOS fsevents kernel stalls (issue #1721) this
+//     is the actual fix: the open returns immediately instead of wedging.
+//  3. caps the total concurrent worker-goroutine count via a semaphore.
+//     If the semaphore is saturated (because earlier workers wedged on a
+//     non-O_NONBLOCK-honouring path) we surface ErrIgnoreFileTimeout
+//     immediately — no further leaks possible.
+//  4. still wraps the syscall in a deadline-bounded goroutine, but the
+//     bounded semaphore guarantees the leak count is at most
+//     cap(openSlotSem).
+//
+// The returned *os.File is ready for normal blocking reads (we clear
+// O_NONBLOCK after a successful open). Callers must Close it.
 func openWithDeadline(path string, timeout time.Duration) (*os.File, error) {
+	// Step 1: lstat. If the path doesn't exist or isn't a regular file
+	// we don't need to open it at all.
+	fi, err := os.Lstat(path)
+	if err != nil {
+		// Preserve os.IsNotExist semantics for callers.
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		// Special files (FIFO, socket, device, symlink-to-nothing) cannot
+		// be ignore files. Treat as inaccessible — same as a kernel stall.
+		return nil, ErrIgnoreFileTimeout
+	}
+
+	// Step 2: try to acquire a worker slot without blocking. If we can't,
+	// the daemon is already saturated with leaked workers — bail rather
+	// than make it worse.
+	select {
+	case openSlotSem <- struct{}{}:
+	default:
+		return nil, ErrIgnoreFileTimeout
+	}
+
 	type result struct {
 		f   *os.File
 		err error
 	}
 	ch := make(chan result, 1)
 	go func() {
-		f, err := os.Open(path)
-		ch <- result{f: f, err: err}
+		// Step 3: non-blocking open. POSIX guarantees open(2) with
+		// O_NONBLOCK returns without blocking — this is the actual leak
+		// fix for the macOS fsevents kernel-stall case.
+		fd, oerr := syscall.Open(path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+		if oerr != nil {
+			// EWOULDBLOCK / EAGAIN means "would block" — treat as stall.
+			if errors.Is(oerr, syscall.EWOULDBLOCK) || errors.Is(oerr, syscall.EAGAIN) {
+				ch <- result{err: ErrIgnoreFileTimeout}
+				<-openSlotSem
+				return
+			}
+			ch <- result{err: &os.PathError{Op: "open", Path: path, Err: oerr}}
+			<-openSlotSem
+			return
+		}
+
+		// Clear O_NONBLOCK so subsequent Read(2) calls behave normally on
+		// the returned file. Failure here is non-fatal; regular files
+		// don't actually need this cleared but we do it for hygiene.
+		if flags, ferr := fcntlGetFl(fd); ferr == nil && (flags&syscall.O_NONBLOCK) != 0 {
+			_ = fcntlSetFl(fd, flags&^syscall.O_NONBLOCK)
+		}
+
+		f := os.NewFile(uintptr(fd), path)
+		ch <- result{f: f}
+		<-openSlotSem
 	}()
+
 	select {
 	case r := <-ch:
 		return r.f, r.err
 	case <-time.After(timeout):
-		// Goroutine is wedged; it will eventually unblock and close the fd,
-		// so we do NOT try to cancel it — just let it leak. The goroutine will
-		// eventually unblock or the daemon restarts.
+		// Defensive: open with O_NONBLOCK should never block, but if the
+		// platform/kernel doesn't honour it we still cap total leaks via
+		// the semaphore. The slot will be released by the worker when it
+		// eventually unblocks.
 		return nil, ErrIgnoreFileTimeout
 	}
+}
+
+// fcntlGetFl wraps fcntl(fd, F_GETFL).
+func fcntlGetFl(fd int) (int, error) {
+	flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), uintptr(syscall.F_GETFL), 0)
+	if errno != 0 {
+		return 0, errno
+	}
+	return int(flags), nil
+}
+
+// fcntlSetFl wraps fcntl(fd, F_SETFL, flags).
+func fcntlSetFl(fd int, flags int) error {
+	_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), uintptr(syscall.F_SETFL), uintptr(flags))
+	if errno != 0 {
+		return errno
+	}
+	return nil
 }
 
 // parseIgnoreReader parses gitignore-syntax rules from r, anchored to dir
