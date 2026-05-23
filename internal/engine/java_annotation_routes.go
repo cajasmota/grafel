@@ -273,6 +273,48 @@ func extractParamTypeAndName(p string) (typ, name string) {
 	return typ, name
 }
 
+// ApplyJavaAnnotationRoutesWithContext is the auth-aware variant of
+// ApplyJavaAnnotationRoutes. The JavaAuthContext supplies project-wide
+// signals (Quarkus security extension + application.properties permission
+// blocks) so each emitted endpoint carries a resolved auth_policy
+// (#1942 Phase 1).
+//
+// Existing callers can continue using ApplyJavaAnnotationRoutes which
+// forwards an empty context — endpoints from those callsites get the
+// "unknown" policy (matching the Phase 0 #1950 muted chip).
+func ApplyJavaAnnotationRoutesWithContext(
+	javaFiles []string,
+	fileReader JavaAnnotationFileReader,
+	authCtx JavaAuthContext,
+) []types.EntityRecord {
+	var out []types.EntityRecord
+	seen := map[string]bool{}
+
+	for _, relPath := range javaFiles {
+		if !strings.HasSuffix(relPath, ".java") {
+			continue
+		}
+		content := fileReader(relPath)
+		if len(content) == 0 {
+			continue
+		}
+		src := string(content)
+		// Cheap pre-filter: skip files that have no HTTP annotation.
+		if !containsAnyHTTPAnnotation(src) {
+			continue
+		}
+
+		for _, ep := range extractJavaEndpointsWithAuth(src, relPath, authCtx) {
+			if seen[ep.ID] {
+				continue
+			}
+			seen[ep.ID] = true
+			out = append(out, ep)
+		}
+	}
+	return out
+}
+
 // ApplyJavaAnnotationRoutes scans the supplied Java files for JAX-RS or
 // Spring MVC annotation patterns and returns a slice of synthetic
 // http_endpoint EntityRecords. Caller appends these to the existing
@@ -294,32 +336,7 @@ func ApplyJavaAnnotationRoutes(
 	javaFiles []string,
 	fileReader JavaAnnotationFileReader,
 ) []types.EntityRecord {
-	var out []types.EntityRecord
-	seen := map[string]bool{}
-
-	for _, relPath := range javaFiles {
-		if !strings.HasSuffix(relPath, ".java") {
-			continue
-		}
-		content := fileReader(relPath)
-		if len(content) == 0 {
-			continue
-		}
-		src := string(content)
-		// Cheap pre-filter: skip files that have no HTTP annotation.
-		if !containsAnyHTTPAnnotation(src) {
-			continue
-		}
-
-		for _, ep := range extractJavaEndpoints(src, relPath) {
-			if seen[ep.ID] {
-				continue
-			}
-			seen[ep.ID] = true
-			out = append(out, ep)
-		}
-	}
-	return out
+	return ApplyJavaAnnotationRoutesWithContext(javaFiles, fileReader, JavaAuthContext{})
 }
 
 // containsAnyHTTPAnnotation reports whether the source likely contains
@@ -349,12 +366,20 @@ func containsAnyHTTPAnnotation(src string) bool {
 // classFrame holds per-class state during file scan: the class name (for
 // handler-reference composition), the class-level path prefix, and
 // class-level content-type metadata that method-level routes inherit.
+//
+// classAnnoText / classLine are the auth-resolver inputs added in #1942
+// Phase 1: the joined annotation block above the class declaration and the
+// 1-based line on which `class ClassName` appears. Both are propagated
+// to every endpoint emitted under this frame so class-level @Secured /
+// @RolesAllowed / @PermitAll inherit correctly.
 type classFrame struct {
 	name          string
 	prefix        string
 	framework     string // "jaxrs" or "spring" (best-effort)
 	classConsumes string
 	classProduces string
+	classAnnoText string
+	classLine     int
 }
 
 // extractJavaEndpoints walks a Java source file and returns the synthetic
@@ -375,6 +400,14 @@ type classFrame struct {
 // on the full buffer, so @POST @PermitAll @Path("/login") @Operation
 // correctly produces "/login" as the method path.
 func extractJavaEndpoints(src, relPath string) []types.EntityRecord {
+	return extractJavaEndpointsWithAuth(src, relPath, JavaAuthContext{})
+}
+
+// extractJavaEndpointsWithAuth is the auth-aware variant. It tracks line
+// numbers for class and method declarations so the resolved auth_policy
+// source-chain can point at file:line refs (consumed by the dashboard's
+// expandable evidence panel — #1949 RefLine).
+func extractJavaEndpointsWithAuth(src, relPath string, authCtx JavaAuthContext) []types.EntityRecord {
 	lines := strings.Split(src, "\n")
 
 	var out []types.EntityRecord
@@ -389,7 +422,8 @@ func extractJavaEndpoints(src, relPath string) []types.EntityRecord {
 		return buf
 	}
 
-	for _, line := range lines {
+	for idx, line := range lines {
+		lineNo := idx + 1
 		trimmed := strings.TrimSpace(line)
 
 		// Track annotation lines (and blank lines, which can occur between
@@ -408,6 +442,8 @@ func extractJavaEndpoints(src, relPath string) []types.EntityRecord {
 		if m := javaClassDeclRe.FindStringSubmatch(line); m != nil {
 			classAnnos := flushAnnoBuf()
 			cur = buildClassFrame(m[1], classAnnos)
+			cur.classAnnoText = strings.Join(classAnnos, "\n")
+			cur.classLine = lineNo
 			continue
 		}
 
@@ -426,7 +462,7 @@ func extractJavaEndpoints(src, relPath string) []types.EntityRecord {
 				// in valid Java but harmless to skip).
 				continue
 			}
-			eps := buildMethodEndpoints(cur, methodName, paramFrag, methodAnnos, relPath)
+			eps := buildMethodEndpointsWithAuth(cur, methodName, paramFrag, methodAnnos, lineNo, relPath, authCtx)
 			out = append(out, eps...)
 			continue
 		}
@@ -492,6 +528,22 @@ func buildClassFrame(className string, annos []string) classFrame {
 // Issue #1909: paramFrag is the rest of the method declaration line after the
 // opening '(' — used to infer the JAX-RS request body parameter type.
 func buildMethodEndpoints(cf classFrame, methodName, paramFrag string, annos []string, relPath string) []types.EntityRecord {
+	return buildMethodEndpointsWithAuth(cf, methodName, paramFrag, annos, 0, relPath, JavaAuthContext{})
+}
+
+// buildMethodEndpointsWithAuth is the auth-aware variant. It accepts the
+// method's declaration line (1-based) so the resolved auth_policy
+// source-chain entries point at file:line refs, and a JavaAuthContext so
+// Quarkus framework default + config-driven permissions contribute when
+// no explicit annotation covers the handler. Refs #1942 Phase 1.
+func buildMethodEndpointsWithAuth(
+	cf classFrame,
+	methodName, paramFrag string,
+	annos []string,
+	methodLine int,
+	relPath string,
+	authCtx JavaAuthContext,
+) []types.EntityRecord {
 	joined := strings.Join(annos, "\n")
 
 	// Collect method-level paths (may be empty).
@@ -582,6 +634,14 @@ func buildMethodEndpoints(cf classFrame, methodName, paramFrag string, annos []s
 	// inferRequestBodyParam needs the full verb list to decide eligibility.
 	bodyType, bodyParamName := inferRequestBodyParam(paramFrag, uniqueVerbs)
 
+	// #1942 Phase 1 — resolve auth_policy from class + method + Quarkus context.
+	policy := ResolveJavaAuthPolicy(
+		joined, methodLine,
+		cf.classAnnoText, cf.name, cf.classLine,
+		relPath, canonical, authCtx,
+	)
+	policyJSON := EncodeAuthPolicy(policy)
+
 	var out []types.EntityRecord
 	for _, verb := range uniqueVerbs {
 		id := httproutes.SyntheticID(verb, canonical)
@@ -593,6 +653,22 @@ func buildMethodEndpoints(cf classFrame, methodName, paramFrag string, annos []s
 			// Fix for #682: use "SCOPE.Operation:ClassName.methodName" to
 			// match the kind/name the Java AST extractor emits.
 			"source_handler": "SCOPE.Operation:" + cf.name + "." + methodName,
+		}
+		// #1942 Phase 1 — serialise the resolved auth policy on every emitted
+		// endpoint. The dashboard reads `auth_policy` (JSON) for the source
+		// chain and the flat companion fields for cheap filtering.
+		if policyJSON != "" {
+			props["auth_policy"] = policyJSON
+		}
+		props["auth_method"] = policy.Method
+		props["auth_confidence"] = policy.Confidence
+		if policy.Required {
+			props["auth_required"] = "true"
+		} else if policy.Method != "unknown" {
+			props["auth_required"] = "false"
+		}
+		if len(policy.Roles) > 0 {
+			props["auth_roles"] = strings.Join(policy.Roles, ",")
 		}
 		if methodConsumes != "" {
 			props["consumes"] = methodConsumes

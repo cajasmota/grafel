@@ -3280,12 +3280,27 @@ func runJavaAnnotationRoutes(classified []classifiedFile) []types.EntityRecord {
 	}
 	contentByPath := make(map[string][]byte, len(classified))
 	var javaPaths []string
+	// #1942 Phase 1 — collect Quarkus signals so the synthesised endpoints
+	// carry a resolved auth_policy (annotations → class-level inheritance →
+	// Quarkus config-driven permissions → quarkus-security framework default).
+	buildDescriptors := map[string]string{}
+	propertiesFiles := map[string]string{}
 	for _, cf := range classified {
-		if cf.language != "java" {
-			continue
+		switch cf.language {
+		case "java":
+			contentByPath[cf.relPath] = cf.content
+			javaPaths = append(javaPaths, cf.relPath)
 		}
-		contentByPath[cf.relPath] = cf.content
-		javaPaths = append(javaPaths, cf.relPath)
+		base := cf.relPath
+		if idx := strings.LastIndex(base, "/"); idx >= 0 {
+			base = base[idx+1:]
+		}
+		switch base {
+		case "pom.xml", "build.gradle", "build.gradle.kts":
+			buildDescriptors[cf.relPath] = string(cf.content)
+		case "application.properties":
+			propertiesFiles[cf.relPath] = string(cf.content)
+		}
 	}
 	if len(javaPaths) == 0 {
 		return nil
@@ -3293,7 +3308,8 @@ func runJavaAnnotationRoutes(classified []classifiedFile) []types.EntityRecord {
 	reader := func(relPath string) []byte {
 		return contentByPath[relPath]
 	}
-	return engine.ApplyJavaAnnotationRoutes(javaPaths, reader)
+	authCtx := engine.BuildJavaAuthContext(buildDescriptors, propertiesFiles)
+	return engine.ApplyJavaAnnotationRoutesWithContext(javaPaths, reader, authCtx)
 }
 
 // releaseClassifiedASTs explicitly drops the tree-sitter parse trees + source

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cajasmota/archigraph/internal/engine"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/mcp"
 	"github.com/cajasmota/archigraph/internal/types"
@@ -37,8 +38,17 @@ type v2PathRoute struct {
 	IsWebhook       bool     `json:"is_webhook"`
 	WebhookProvider string   `json:"webhook_provider,omitempty"`
 	Auth            bool     `json:"auth"`
-	Repos           []string `json:"repos"`
-	Controller      string   `json:"controller"`
+	// AuthChip is the rendered chip label for the route in the left-rail
+	// list (e.g. `[Public]`, `[Auth required]`, `[Roles: ADMIN]`,
+	// `[Auth: default]`, `[Auth: probable]`, `[Auth: unknown]`). Computed
+	// from the resolved auth_policy emitted by the indexer (#1942 Phase 1).
+	AuthChip string `json:"auth_chip,omitempty"`
+	// AuthChipTone is the visual tone hint for the chip:
+	// "accent" | "muted" | "warning". Lets the frontend keep the chip
+	// taxonomy in sync without hard-coding label parsing.
+	AuthChipTone string   `json:"auth_chip_tone,omitempty"`
+	Repos        []string `json:"repos"`
+	Controller   string   `json:"controller"`
 	// Confidence (#1129) is the 0..1 candidate-quality score computed at
 	// list-build time. Always populated when the confidence filter ran.
 	Confidence float64 `json:"confidence,omitempty"`
@@ -177,6 +187,12 @@ type v2PathDetail struct {
 	WebhookProvider string             `json:"webhook_provider,omitempty"`
 	Auth            bool               `json:"auth"`
 	AuthScheme      string             `json:"auth_scheme,omitempty"`
+	// AuthPolicy is the structured posture resolved by the indexer
+	// (#1942 Phase 1). Frontend renders the header chip from AuthChip /
+	// AuthChipTone and the expandable evidence list from SourceChain.
+	AuthPolicy   *v2AuthPolicy      `json:"auth_policy,omitempty"`
+	AuthChip     string             `json:"auth_chip,omitempty"`
+	AuthChipTone string             `json:"auth_chip_tone,omitempty"`
 	Description     v2DescriptionBlock `json:"description"`
 	Parameters      []v2PathParameter  `json:"parameters"`
 	ResponseShapes  []v2ResponseShape  `json:"response_shapes"`
@@ -185,6 +201,30 @@ type v2PathDetail struct {
 	Outbound        v2OutboundQueries  `json:"outbound"`
 	SideEffects     []v2PathEntity     `json:"side_effects"`
 	Tests           []v2PathEntity     `json:"tests"`
+}
+
+// v2AuthSignal is one evidence row in the resolved auth_policy source chain.
+// Mirrors engine.AuthSignal but uses snake_case JSON for the wire format the
+// dashboard already consumes elsewhere.
+type v2AuthSignal struct {
+	Kind     string `json:"kind"`
+	EntityID string `json:"entity_id,omitempty"`
+	Text     string `json:"text"`
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+}
+
+// v2AuthPolicy is the wire shape of the resolved auth posture surfaced on
+// the endpoint detail response (#1942 Phase 1). The frontend renders the
+// header chip from Chip/ChipTone and the expandable evidence list from
+// SourceChain.
+type v2AuthPolicy struct {
+	Required    bool           `json:"required"`
+	Method      string         `json:"method"`
+	Roles       []string       `json:"roles,omitempty"`
+	Scopes      []string       `json:"scopes,omitempty"`
+	Confidence  string         `json:"confidence"`
+	SourceChain []v2AuthSignal `json:"source_chain,omitempty"`
 }
 
 // v2OrphanCaller is one orphan caller row.
@@ -256,6 +296,8 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 		ControllerID   string
 		ControllerFile string
 		Language       string
+		// #1942 Phase 1 — resolved auth_policy for this endpoint.
+		AuthPolicy engine.AuthPolicy
 	}
 
 	var eps []rawEP
@@ -338,6 +380,7 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 				controllerID = inferControllerName(e.Name)
 			}
 
+			authPolicy := readAuthPolicyFromEntity(e.Properties)
 			eps = append(eps, rawEP{
 				ID:             dashPrefixedID(repo.Slug, e.ID),
 				Path:           path,
@@ -346,7 +389,7 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 				Framework:      e.Properties["framework"],
 				IsWebhook:      e.Properties["is_webhook"] == "true",
 				WebhookProv:    e.Properties["webhook_provider"],
-				Auth:           e.Properties["auth"] == "true" || e.Properties["auth_scheme"] != "",
+				Auth:           e.Properties["auth"] == "true" || e.Properties["auth_scheme"] != "" || authPolicy.Required,
 				Repo:           repo.Slug,
 				SourceFile:     e.SourceFile,
 				StartLine:      e.StartLine,
@@ -354,6 +397,7 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 				ControllerID:   controllerID,
 				ControllerFile: controllerFile,
 				Language:       e.Language,
+				AuthPolicy:     authPolicy,
 			})
 		}
 	}
@@ -423,6 +467,15 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 		}
 		if ep.Auth {
 			pr.Auth = true
+		}
+		// #1942 Phase 1 — accumulate the strongest auth_policy across all
+		// handlers that share this path. Precedence: high > medium > low.
+		// We attach the rendered chip directly on the route so the left-rail
+		// renders without re-resolving on the client.
+		if pr.AuthChip == "" || authPolicyStronger(ep.AuthPolicy, pr.AuthChipTone) {
+			label, tone := resolveAuthChip(ep.AuthPolicy)
+			pr.AuthChip = label
+			pr.AuthChipTone = tone
 		}
 		if !containsStr(pr.Repos, ep.Repo) {
 			pr.Repos = append(pr.Repos, ep.Repo)
@@ -676,6 +729,10 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		// parameter annotations (populated for POST/PUT/PATCH endpoints).
 		RequestBodyType      string
 		RequestBodyParamName string
+		// #1942 Phase 1 — resolved auth_policy decoded from the endpoint's
+		// `auth_policy` property. Multiple `matched` entries for the same path
+		// are reduced to the strongest policy when building the response.
+		AuthPolicy engine.AuthPolicy
 	}
 
 	var hits []matched
@@ -820,6 +877,8 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				// Issue #1909 — request body type from entity properties.
 				RequestBodyType:      e.Properties["request_body_type"],
 				RequestBodyParamName: e.Properties["request_body_param_name"],
+				// #1942 Phase 1 — auth_policy decoded from the endpoint entity.
+				AuthPolicy: readAuthPolicyFromEntity(e.Properties),
 			})
 		}
 	}
@@ -1045,6 +1104,28 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// #1942 Phase 1 — pick the strongest auth_policy across all matched
+	// handlers (a single path can have several verbs each with its own
+	// policy; the detail page shows the most decisive verdict).
+	var strongest engine.AuthPolicy
+	strongest.Method = "unknown"
+	strongest.Confidence = "low"
+	bestRank := 0
+	for _, h := range hits {
+		_, tone := resolveAuthChip(h.AuthPolicy)
+		if r := toneRank(tone); r > bestRank {
+			bestRank = r
+			strongest = h.AuthPolicy
+		}
+	}
+	authChip, authChipTone := resolveAuthChip(strongest)
+	authPolicyWire := authPolicyToWire(strongest)
+	// Detail-level `auth` boolean now also reflects a structurally resolved
+	// requirement (not only legacy `auth=true` / `auth_scheme=` props).
+	if !auth && strongest.Required {
+		auth = true
+	}
+
 	writeV2JSON(w, http.StatusOK, v2OK(v2PathDetail{
 		PathHash:        pathHash,
 		Path:            pathStr,
@@ -1053,6 +1134,9 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		IsWebhook:       isWebhook,
 		WebhookProvider: webhookProv,
 		Auth:            auth,
+		AuthPolicy:      authPolicyWire,
+		AuthChip:        authChip,
+		AuthChipTone:    authChipTone,
 		AuthScheme:      authScheme,
 		Description:     description,
 		Parameters:      params,
