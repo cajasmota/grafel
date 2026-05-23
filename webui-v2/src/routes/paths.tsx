@@ -480,10 +480,23 @@ function EntityRow({ entity }: { entity: PathEntity }) {
 
 /** HandlerRefLine — renders a handler detail using the canonical RefLine format.
  *  Issue #1910: Defined-in section collapses from verbose card to one-line ref.
- *  Issue #1934: framework/kind chip removed from RefLine — shown in header strip. */
+ *  Issue #1934: framework/kind chip removed from RefLine — shown in header strip.
+ *  Issue #1957: verb chip dropped from Defined-in rows — verb is already shown
+ *               in the panel header. Repo chip is now right-anchored inside RefLine. */
 function HandlerRefLine({ handler }: { handler: HandlerDetail }) {
+  const hasBadges = handler.auth || handler.has_docs;
+  if (!hasBadges) {
+    return (
+      <RefLine
+        repo={handler.repo ?? ""}
+        file={handler.source_file ?? ""}
+        line={handler.start_line ?? 0}
+        name={handler.qualified_name ?? handler.verb}
+      />
+    );
+  }
   return (
-    <div className="flex items-start gap-2 py-1 px-4 hover:bg-surface-2 transition-colors">
+    <div className="flex items-center gap-2 py-1 px-4 hover:bg-surface-2 transition-colors">
       <RefLine
         repo={handler.repo ?? ""}
         file={handler.source_file ?? ""}
@@ -492,7 +505,6 @@ function HandlerRefLine({ handler }: { handler: HandlerDetail }) {
         className="flex-1 px-0 py-0"
       />
       <div className="flex items-center gap-1 shrink-0">
-        <VerbChip verb={handler.verb} />
         {handler.auth && (
           <span className="inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded bg-success-soft text-success">
             <Lock size={8} /> auth

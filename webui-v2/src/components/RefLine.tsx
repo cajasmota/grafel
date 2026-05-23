@@ -7,8 +7,15 @@
    Issue #1934: file path is a full clickable link with RTL
    ellipsis on overflow; per-row kind/framework chips removed.
 
+   Issue #1957: layout overhaul:
+     - 60/40 column split: path column (60%) | name column (40%)
+     - repo chip right-anchored (after name column)
+     - center-ellipsis on path overflow: head span LTR-truncates,
+       tail span (filename:line) never shrinks, ellipsis in between
+     - native `title` attr on row for full-path hover tooltip
+
    Row layout:
-     [repo chip]  full/file/path:line (mono link, RTL trunc)  entity name (regular)
+     [path-col 60% center-ellipsis]  [name-col 40%]  [repo chip]
 
    Props:
      repo   — owning repository slug (shown as a small colored chip)
@@ -41,14 +48,46 @@ function repoColorIndex(repo: string): number {
 }
 
 /**
+ * Split a file path into head and tail for center-ellipsis rendering.
+ *
+ * The tail always contains the filename (last segment) plus the line suffix.
+ * The head contains everything before the filename (directory prefix).
+ *
+ * Example: "src/main/java/com/example/TransfersController.java:48"
+ *   tail → "TransfersController.java:48"
+ *   head → "src/main/java/com/example/"
+ */
+function splitPathForEllipsis(
+  file: string,
+  line: number,
+): { head: string; tail: string } {
+  const fileLabel = file ? `${file}:${line}` : line > 0 ? `:${line}` : "";
+  if (!fileLabel) return { head: "", tail: "" };
+
+  const lastSlash = file.lastIndexOf("/");
+  if (lastSlash < 0) {
+    return { head: "", tail: fileLabel };
+  }
+
+  const head = file.slice(0, lastSlash + 1);
+  const filename = file.slice(lastSlash + 1);
+  const tail = `${filename}:${line}`;
+  return { head, tail };
+}
+
+/**
  * RefLine — one-line entity reference used in Defined-in, Called-by, and
  * Downstream sections. Keeps all three sections visually consistent and
- * scannable: repo chip on the left, full file:line path as a clickable link
- * (RTL ellipsis so filename+line stays visible on overflow), entity name on
- * the right.
+ * scannable.
  *
- * Issue #1934: kind/framework per-row chips removed — they live in the
- * endpoint header chip strip and are redundant at row level.
+ * Issue #1957 layout:
+ *   [path-col 60%] [name-col 40%] [repo chip right]
+ *
+ * The path column uses the two-span center-ellipsis trick: the head span
+ * (directory prefix) truncates on its right with LTR ellipsis; the tail span
+ * (filename:line) never shrinks so the important part is always visible.
+ *
+ * A native `title` attribute on the row gives the full path as a hover tooltip.
  */
 export function RefLine({
   repo,
@@ -60,9 +99,9 @@ export function RefLine({
   onFileClick,
 }: RefLineProps) {
   const ci = repoColorIndex(repo);
-  // Full path including line number — never trimmed to basename.
   const fileLabel = file ? `${file}:${line}` : line > 0 ? `:${line}` : "";
   const derivedTitle = title ?? `${repo} · ${file}:${line}  ${name}`;
+  const { head, tail } = splitPathForEllipsis(file, line);
 
   return (
     <div
@@ -73,11 +112,49 @@ export function RefLine({
       )}
       title={derivedTitle}
     >
-      {/* Repo chip — distinct color per repo slug for quick scanning */}
+      {/* Path column — 60% width, center-ellipsis via two-span trick.
+          Head (directory prefix) truncates LTR; tail (filename:line) shrink-0. */}
+      {fileLabel && (
+        <button
+          type="button"
+          onClick={() => onFileClick?.(fileLabel)}
+          title={fileLabel}
+          className={cn(
+            "flex items-center min-w-0 text-left",
+            "font-mono text-[11px] tabular-nums",
+            "text-accent hover:underline cursor-pointer",
+          )}
+          style={{ flexBasis: "60%", flexShrink: 1, flexGrow: 0, minWidth: 0 }}
+        >
+          {head ? (
+            <>
+              <span className="overflow-hidden whitespace-nowrap text-ellipsis min-w-0 shrink">
+                {head}
+              </span>
+              <span className="shrink-0 whitespace-nowrap">{tail}</span>
+            </>
+          ) : (
+            <span className="overflow-hidden whitespace-nowrap text-ellipsis min-w-0">
+              {tail || fileLabel}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* Name column — 40% width, right-truncates on overflow */}
+      <span
+        className="text-xs text-text truncate font-mono min-w-0"
+        title={name}
+        style={{ flexBasis: "40%", flexShrink: 1, flexGrow: 0 }}
+      >
+        {name}
+      </span>
+
+      {/* Repo chip — right-anchored via ml-auto, never squished */}
       {repo && (
         <span
           className={cn(
-            "shrink-0 inline-flex items-center h-[18px] px-1.5 rounded",
+            "shrink-0 inline-flex items-center h-[18px] px-1.5 rounded ml-auto",
             "text-[10px] font-semibold font-mono leading-none select-none",
           )}
           style={{
@@ -89,34 +166,6 @@ export function RefLine({
           {repo}
         </span>
       )}
-
-      {/* Full file:line path — clickable link with RTL overflow so filename+line
-          remains visible when the path is long and the container is narrow.
-          `direction: rtl` causes overflow to clip on the LEFT side; the
-          rightmost content (filename:line) is always fully visible. */}
-      {fileLabel && (
-        <button
-          type="button"
-          onClick={() => onFileClick?.(fileLabel)}
-          title={fileLabel}
-          className={cn(
-            "font-mono text-[11px] tabular-nums text-left",
-            "min-w-0 overflow-hidden whitespace-nowrap text-ellipsis",
-            "text-accent hover:underline cursor-pointer",
-          )}
-          style={{ direction: "rtl", unicodeBidi: "plaintext" as const }}
-        >
-          {fileLabel}
-        </button>
-      )}
-
-      {/* Entity name — regular weight, takes remaining space */}
-      <span
-        className="text-xs text-text truncate flex-1 font-mono"
-        title={name}
-      >
-        {name}
-      </span>
     </div>
   );
 }
