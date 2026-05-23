@@ -31,7 +31,9 @@ func TestMCPHandshakeBudget(t *testing.T) {
 		// 2026-05-23 (#1384, epic #1380): ceiling bumped to 3,100 to seat the new
 		// archigraph_module_analysis tool (module-level SCC/PageRank/betweenness).
 		// Current measurement at 29 tools: 3,085 tokens. See cmd/mcp-audit/main.go.
-		tokenCeiling  = 3100
+		// 2026-05-23 (#1659): ceiling bumped to 3,200 to seat archigraph_apply_docgen_repairs
+		// (docgen→graph repair feedback loop). 30 tools, measured 3,176 tokens.
+		tokenCeiling  = 3200
 		charsPerToken = 4
 		envelopeBytes = 512 // initEnvelopeBytes constant from cmd/mcp-audit
 		maxDescLen    = 80

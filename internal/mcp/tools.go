@@ -1402,6 +1402,7 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 		}
 	}
 	sort.Strings(names)
+	totalImport, totalBug := 0, 0
 	for _, name := range names {
 		r := lg.Repos[name]
 		if r == nil {
@@ -1413,6 +1414,9 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 		}
 		totalE += len(r.Doc.Entities)
 		totalR += len(r.Doc.Relationships)
+		rImport, rBug := countEdgesForFidelity(r)
+		totalImport += rImport
+		totalBug += rBug
 		repoStats = append(repoStats, map[string]any{
 			"repo":          name,
 			"entities":      len(r.Doc.Entities),
@@ -1423,6 +1427,14 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	totals["entities"] = totalE
 	totals["relationships"] = totalR
 	totals["repos"] = repoStats
+	// Fidelity: 1 − (unresolved / total import edges). Exposed so callers
+	// can track the docgen repair loop effect over successive runs.
+	if totalImport > 0 {
+		fid := 1.0 - float64(totalBug)/float64(totalImport)
+		totals["fidelity"] = math.Round(fid*1000) / 1000 // 3 decimal places
+		totals["fidelity_import_total"] = totalImport
+		totals["fidelity_import_bug"] = totalBug
+	}
 	// Filter cross-repo links to those that touch the considered repos
 	// when an explicit repo_filter is supplied.
 	links := len(lg.Links)

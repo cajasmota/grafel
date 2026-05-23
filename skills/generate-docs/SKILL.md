@@ -636,6 +636,64 @@ Before any pass commits its output, the writer subagent runs the checks in `snip
 - **Volume control** (`prompts/02-plan.md` § Step 1b) — merge thin dir-derived modules, cap module count by LOC, and never schedule empty stub pages (`flows/index.md`). With archigraph #1620 communities now persisting, the plan prefers real graph communities over directory fallback. Fixes the 122-module over-fragmentation.
 - **`snippets/business-voice.md`** — the business-tier style contract (PM audience, zero symbols, no code mermaid). Fixes the symbol-heavy "user-journeys.md" that read as technical, not business.
 
+## Docgen Repair Feedback Contract
+
+As each writer pass (Passes 3–6, 12, and 3a) reads source and reasons about the code it is describing, it may discover facts the static extractor missed. When a writer makes such a discovery it **MUST** emit a repair candidate so Fidelity climbs toward 100% over successive runs.
+
+### When to emit
+
+A writer SHOULD emit a candidate whenever it:
+
+- Resolves an unresolved stub to a real entity (e.g. reads that `UserService` is imported from `./services/user.ts` and can pin the edge).
+- Observes a dynamic-dispatch call site that it can reason about from source context.
+- Recognises an unresolved stub as a well-known external library (e.g. `stripe`, `aws-sdk`).
+- Notices two flow entities that represent the same business flow (merge candidate).
+- Determines that an entity's Kind is mis-classified.
+
+### How to emit
+
+Append one JSON object per line to `docgen-repairs.jsonl` in the repo's state directory. Use `archigraph_apply_docgen_repairs` to find the path or ask the user. The record shape:
+
+```json
+{
+  "type": "resolve_ref | add_edge | fix_kind | label_external | merge_flow",
+  "source_entity_id": "<hex entity id>",
+  "target": "<target id or ext:module or merge-target id>",
+  "edge_kind": "CALLS",
+  "new_kind": "Service",
+  "confidence": 0.9,
+  "evidence": "auth.go@line 42: import from ./services/user",
+  "source": "generate-docs/pass-3a",
+  "emitted_at": "2026-05-23T12:00:00Z"
+}
+```
+
+Field rules (enforced by `internal/enrichment.DocgenRepairCandidate.Validate()`):
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `type` | always | one of `resolve_ref`, `add_edge`, `fix_kind`, `label_external`, `merge_flow` |
+| `source_entity_id` | always | the entity this repair applies to |
+| `target` | all except `fix_kind` | resolved id, qualified name, or `ext:<module>` |
+| `edge_kind` | for `add_edge` | relationship kind, e.g. `CALLS` |
+| `new_kind` | for `fix_kind` | replacement Kind string |
+| `confidence` | always | 0.0–1.0; use 0.9+ only when source is unambiguous |
+| `evidence` | always | `"<file>@line N: <observation>"` — no multi-line strings |
+| `source` | optional | which pass emitted this, e.g. `"generate-docs/pass-3a"` |
+
+### Apply path
+
+After the docgen run completes, call `archigraph_apply_docgen_repairs` (no required parameters). The daemon reads `docgen-repairs.jsonl` and:
+
+- **Confidence ≥ 0.8 (high)** → applied immediately as enrichment resolutions in `enrichment-resolutions.json`; reflected on next daemon reload.
+- **Confidence < 0.8 (low)** → queued in `docgen-repairs-pending.json` for human review; surfaced in the dashboard Pending tab.
+
+The tool returns `fidelity_before`, `fidelity_after`, and `fidelity_delta` per repo so the effect of the docgen run is visible.
+
+### Fidelity in `archigraph_stats`
+
+After applying, `archigraph_stats` now includes `fidelity` (0–1 ratio), `fidelity_import_total`, and `fidelity_import_bug` so callers can track progress without re-running the quality endpoint.
+
 ## Related
 
 - `skills/extend-convention/SKILL.md` - companion skill for adding a new stack convention.

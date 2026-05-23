@@ -243,6 +243,15 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_repairs", s.handleRepairs))
 
+	// archigraph_apply_docgen_repairs — docgen→graph repair feedback loop (#1659).
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_apply_docgen_repairs",
+		mcpapi.WithDescription("Docgen feedback: apply repair candidates to graph enrichments."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithBoolean("dry_run"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_apply_docgen_repairs", s.handleApplyDocgenRepairs))
+
 	// archigraph_get_telemetry dropped (dashboard-only; use HTTP /api/telemetry instead).
 
 	// archigraph_patterns — ADR-0018. action=query|record.

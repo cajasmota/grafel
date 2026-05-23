@@ -552,6 +552,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_summarize_subgraph",
 		"archigraph_find_dead_code",
 		"archigraph_auth_coverage",
+		// #1659 docgen→graph repair feedback loop
+		"archigraph_apply_docgen_repairs",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -603,12 +605,12 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count: 29 (28 baseline + 1 new archigraph_module_analysis from #1384,
-	// part of epic #1380 module-level GDS — SCC/PageRank/betweenness on the
-	// aggregated module graph; bundled into one action-dispatched tool to stay
-	// under the ≤3k handshake-token ceiling, mirroring patterns/topology/flows).
-	if got := len(srv.MCP.ListTools()); got != 29 {
-		t.Errorf("expected 29 registered tools, got %d", got)
+	// Total count: 30 (28 baseline + archigraph_module_analysis from #1384,
+	// + archigraph_apply_docgen_repairs from #1659: docgen→graph repair feedback
+	// loop — emit repair candidates in generate-docs, apply high-confidence ones
+	// immediately as enrichment resolutions, queue low-confidence for review).
+	if got := len(srv.MCP.ListTools()); got != 30 {
+		t.Errorf("expected 30 registered tools, got %d", got)
 	}
 }
 
