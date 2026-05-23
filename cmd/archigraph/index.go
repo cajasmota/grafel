@@ -2411,8 +2411,9 @@ var frameworkClassKindPriority = map[string]int{
 	// service_detector, and any other extractor that emits the canonical
 	// "SCOPE.<Kind>" form for a class-like entity). Priorities mirror the bare
 	// form so that the highest-fidelity named node always beats a generic shadow.
+	// Issue #1700.
 	"SCOPE.Service":    100,
-	"SCOPE.View":       100,
+	"SCOPE.View":       100, // #1727: View+Component fold (SCOPE-prefixed form)
 	"SCOPE.Model":      100,
 	"SCOPE.UIComponent": 100,
 	"SCOPE.GrpcService": 90,
@@ -2430,6 +2431,10 @@ func isShadowRecord(r *types.EntityRecord) bool {
 // extractors are included so that an inferential SCOPE.Component(subtype="service")
 // node emitted alongside a real SCOPE.Service node for the same class symbol is
 // recognised as a fold source and collapsed into the typed survivor. Issue #1700.
+//
+// "view" is included so that SCOPE.Component(subtype="view") nodes emitted
+// alongside a real SCOPE.View (or bare "View") node for the same class symbol
+// are recognised as fold sources. Issue #1727.
 var classLikeComponentSubtypes = map[string]bool{
 	// Language AST subtypes
 	"class": true, "struct": true, "interface": true,
@@ -2439,13 +2444,19 @@ var classLikeComponentSubtypes = map[string]bool{
 	"guard": true, "interceptor": true, "pipe": true,
 	"middleware": true, "resolver": true, "gateway": true,
 	"worker": true, "job": true, "task": true,
+	// View-type subtypes (Django CBV, MVC view layers, …) — #1727
+	"view": true,
 }
 
 // isFoldSource reports whether r is a class-representation node that should be
 // folded into a framework-typed node when one exists for the same symbol:
 //   - the INFERRED_FROM_CLASS_HIERARCHY shadow emitted by the hierarchy pass, OR
 //   - the generic SCOPE.Component class node emitted by the per-language AST
-//     extractor (these two share an EntityID and pre-merge at assembly).
+//     extractor (these two share an EntityID and pre-merge at assembly), OR
+//   - a SCOPE.Component carrying Properties["role"]="class" (hierarchy pass
+//     annotations on nodes where the language AST subtype is not yet in
+//     classLikeComponentSubtypes — e.g. TypeScript/React class components
+//     with a framework-injected role tag). Issue #1727.
 //
 // When NO framework-typed node exists, a fold source is kept as the single
 // node for that class (it already carries a real line from its extractor).
@@ -2456,7 +2467,17 @@ func isFoldSource(r *types.EntityRecord) bool {
 	if isShadowRecord(r) {
 		return true
 	}
-	return r.Kind == "SCOPE.Component" && classLikeComponentSubtypes[r.Subtype]
+	if r.Kind != "SCOPE.Component" {
+		return false
+	}
+	// Subtype-based recognition: language AST and framework-injected subtypes.
+	if classLikeComponentSubtypes[r.Subtype] {
+		return true
+	}
+	// Role-property recognition: hierarchy pass sets role="class" on SCOPE.Component
+	// nodes whose subtype is not yet in the allowlist (e.g. component, vue_component,
+	// empty subtype from certain extractors). Issue #1727.
+	return r.Properties["role"] == "class"
 }
 
 // foldClassHierarchyShadows folds line-less / generic class nodes into the real
@@ -2675,6 +2696,198 @@ func (i *Indexer) foldClassHierarchyShadows(
 	return out, pass2Rels, stats
 }
 
+// foldFileComponentStats reports the result of foldFileComponentDuplicates.
+type foldFileComponentStats struct {
+	// Folded is the number of SCOPE.Component class-like nodes collapsed into
+	// their co-located SCOPE.Component(subtype="file") sibling.
+	Folded int
+	// EdgesRepointed is the number of edge endpoints rewritten from a folded
+	// class-like component ID to its file-entity survivor ID.
+	EdgesRepointed int
+}
+
+// filePathStem returns the base filename without extension, lower-cased.
+// E.g. "src/components/LoginPage.tsx" → "loginpage".
+func filePathStem(path string) string {
+	base := filepath.Base(path)
+	ext := filepath.Ext(base)
+	stem := base[:len(base)-len(ext)]
+	return strings.ToLower(stem)
+}
+
+// foldFileComponentDuplicates collapses SCOPE.Component class-like nodes into
+// their co-located SCOPE.Component(subtype="file") sibling when the class
+// entity's name matches the file stem and there is no other distinguishing
+// structural reason to keep them separate.
+//
+// This targets the "File + Component" duplicate-kind pattern reported by iter4
+// calibration (Issue #1727): frontend repos with one-class-per-file conventions
+// (React/Vue/Svelte components, Angular services, etc.) accumulate 297+ pairs
+// where a file-level entity and a same-named class entity share source_file.
+//
+// Fold rules:
+//  1. The survivor must be a SCOPE.Component with subtype="file" (emitted by
+//     extractor.FileEntity) carrying Name == SourceFile.
+//  2. The fold source must be a SCOPE.Component with a class-like subtype (see
+//     classLikeComponentSubtypes) or role="class" property, whose Name
+//     case-insensitively matches the file stem of the survivor's SourceFile,
+//     AND whose SourceFile matches the survivor's SourceFile.
+//  3. Anti-over-fold guard: if the class entity's name does NOT match the file
+//     stem — meaning it's a *different* class inside the same file — keep both.
+//
+// Runs AFTER foldClassHierarchyShadows (so shadows are already resolved) and
+// AFTER stampEntityIDs (so r.ID is populated).
+func (i *Indexer) foldFileComponentDuplicates(
+	merged []types.EntityRecord,
+	pass2Rels []types.RelationshipRecord,
+) ([]types.EntityRecord, []types.RelationshipRecord, foldFileComponentStats) {
+	var stats foldFileComponentStats
+
+	// Index all SCOPE.Component(subtype="file") survivors by SourceFile.
+	// These are the canonical per-file module entities emitted by FileEntity().
+	type fileEnt struct {
+		idx  int
+		id   string
+		stem string // lower-cased filename without extension
+	}
+	fileBySourceFile := make(map[string]fileEnt)
+	for k := range merged {
+		r := &merged[k]
+		if r.Kind == "SCOPE.Component" && r.Subtype == "file" && r.ID != "" {
+			fileBySourceFile[r.SourceFile] = fileEnt{
+				idx:  k,
+				id:   r.ID,
+				stem: filePathStem(r.SourceFile),
+			}
+		}
+	}
+
+	if len(fileBySourceFile) == 0 {
+		return merged, pass2Rels, stats
+	}
+
+	// remap: folded class entity ID -> file entity ID.
+	remap := make(map[string]string)
+	drop := make(map[int]bool)
+
+	for k := range merged {
+		r := &merged[k]
+		// Must be a SCOPE.Component with a class-like subtype or role="class".
+		if r.Kind != "SCOPE.Component" || r.Subtype == "file" {
+			continue
+		}
+		if !classLikeComponentSubtypes[r.Subtype] && r.Properties["role"] != "class" {
+			continue
+		}
+		if r.Name == "" || r.ID == "" {
+			continue
+		}
+		fe, ok := fileBySourceFile[r.SourceFile]
+		if !ok {
+			continue
+		}
+		// Anti-over-fold: only absorb if the class entity's name matches
+		// the file stem (case-insensitive). This ensures a class named
+		// "LoginPage" in "LoginPage.tsx" is folded, but a helper class
+		// "FormValidator" in the same file is NOT absorbed.
+		if strings.ToLower(r.Name) != fe.stem {
+			continue
+		}
+		if fe.id == r.ID {
+			// Degenerate: same ID — already the same entity.
+			continue
+		}
+		drop[k] = true
+		remap[r.ID] = fe.id
+		stats.Folded++
+
+		// Copy useful properties from the class entity to the file entity
+		// (e.g. start_line, qualified_name, language) when the file entity
+		// lacks them.
+		sv := &merged[fe.idx]
+		if sv.Properties == nil {
+			sv.Properties = map[string]string{}
+		}
+		for pk, pv := range r.Properties {
+			if pk == "provenance" || pk == "ref" || pk == "kind" || pk == "subtype" {
+				continue
+			}
+			if _, exists := sv.Properties[pk]; !exists {
+				sv.Properties[pk] = pv
+			}
+		}
+		// Promote real line numbers to the file entity if it has none.
+		if sv.StartLine == 0 && r.StartLine > 0 {
+			sv.StartLine = r.StartLine
+		}
+		if sv.EndLine == 0 && r.EndLine > 0 {
+			sv.EndLine = r.EndLine
+		}
+		if sv.QualifiedName == "" && r.QualifiedName != "" {
+			sv.QualifiedName = r.QualifiedName
+		}
+		// Re-home edges the class entity owns onto the file entity.
+		for ri := range r.Relationships {
+			rel := r.Relationships[ri]
+			if rel.FromID == "" || rel.FromID == r.ID {
+				rel.FromID = fe.id
+			}
+			sv.Relationships = append(sv.Relationships, rel)
+		}
+		r.Relationships = nil
+	}
+
+	if len(remap) == 0 {
+		return merged, pass2Rels, stats
+	}
+
+	// Re-point every edge endpoint that targets a folded class entity.
+	rewrite := func(id string) (string, bool) {
+		if nv, ok := remap[id]; ok {
+			return nv, true
+		}
+		return id, false
+	}
+	for k := range merged {
+		if drop[k] {
+			continue
+		}
+		r := &merged[k]
+		for ri := range r.Relationships {
+			rel := &r.Relationships[ri]
+			if nv, ok := rewrite(rel.FromID); ok {
+				rel.FromID = nv
+				stats.EdgesRepointed++
+			}
+			if nv, ok := rewrite(rel.ToID); ok {
+				rel.ToID = nv
+				stats.EdgesRepointed++
+			}
+		}
+	}
+	for ri := range pass2Rels {
+		rel := &pass2Rels[ri]
+		if nv, ok := rewrite(rel.FromID); ok {
+			rel.FromID = nv
+			stats.EdgesRepointed++
+		}
+		if nv, ok := rewrite(rel.ToID); ok {
+			rel.ToID = nv
+			stats.EdgesRepointed++
+		}
+	}
+
+	// Compact: drop the folded class entity records.
+	out := merged[:0]
+	for k := range merged {
+		if drop[k] {
+			continue
+		}
+		out = append(out, merged[k])
+	}
+	return out, pass2Rels, stats
+}
+
 // buildDocument merges entity records from every pass, dedupes by stable
 // graph-entity ID, resolves cross-file CALLS edges, then assembles the
 // final on-disk document.
@@ -2878,6 +3091,22 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			"class-shadow-fold: folded=%d (edges_repointed=%d) survived_with_real_lines=%d still_line0=%d\n",
 			foldStats.ShadowsFolded, foldStats.EdgesRepointed,
 			foldStats.ShadowsBackfilled, foldStats.ShadowsStillLine0)
+	}
+
+	// #1727 — fold File+Component duplicate-kind pairs: SCOPE.Component class-like
+	// nodes whose name matches the file stem of a co-located SCOPE.Component(subtype="file")
+	// entity are collapsed into the file entity. This deduplicates the 297+
+	// File+Component pairs reported by iter4 calibration on one-class-per-file
+	// front-end repos (React/Vue/Svelte components).
+	// ARCHIGRAPH_DISABLE_1727_FILE_FOLD is the verification escape hatch.
+	if os.Getenv("ARCHIGRAPH_DISABLE_1727_FILE_FOLD") == "" {
+		var fileStats foldFileComponentStats
+		merged, pass2Rels, fileStats = i.foldFileComponentDuplicates(merged, pass2Rels)
+		if fileStats.Folded > 0 {
+			fmt.Fprintf(os.Stderr,
+				"file-component-fold: folded=%d (edges_repointed=%d)\n",
+				fileStats.Folded, fileStats.EdgesRepointed)
+		}
 	}
 
 	entities := make([]graph.Entity, 0, len(merged))
