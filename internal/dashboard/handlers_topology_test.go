@@ -658,3 +658,114 @@ func TestCollectTopologyResponse_BrokerGroups_CeleryFramework(t *testing.T) {
 		t.Errorf("broker_groups[0].broker = %q, want celery", bg.Broker)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #1695 — Kafka topic cross-repo dedup: ONE node per (broker, topic_name)
+// ---------------------------------------------------------------------------
+
+// TestCollectTopology_KafkaTopicDedup is the regression test for #1695.
+//
+// The same Kafka topic "payments.settled" appears as a SCOPE.MessageTopic
+// entity in 8 different repos (each with its own graph-stamped entity ID).
+// Before this fix, collectTopologyResponse emitted 8 separate topic entries.
+// After this fix, it must emit exactly ONE entry with:
+//   - all producers merged across repos
+//   - all consumers merged across repos
+//   - appears_in listing all 8 repos
+func TestCollectTopology_KafkaTopicDedup(t *testing.T) {
+	// Simulate 8 repos each carrying a SCOPE.MessageTopic for "kafka:payments.settled"
+	// with their own graph-stamped entity IDs (as happens in production).
+	repos := map[string]*DashRepo{}
+	repoSlugs := []string{
+		"orders", "payments", "notifications", "billing",
+		"analytics", "fraud", "shipping", "reporting",
+	}
+	for _, slug := range repoSlugs {
+		// Mimic graph.EntityID: each repo produces a different stamped ID.
+		entityID := graph.EntityID(slug, "SCOPE.MessageTopic", "kafka:payments.settled", "")
+		var rels []graph.Relationship
+		// Some repos publish, some subscribe, some both.
+		switch slug {
+		case "payments":
+			rels = append(rels, graph.Relationship{
+				ID: "pub-" + slug, FromID: "PaymentService", ToID: entityID, Kind: "PUBLISHES_TO",
+			})
+		case "orders":
+			rels = append(rels, graph.Relationship{
+				ID: "sub-" + slug, FromID: entityID, ToID: "OrderHandler", Kind: "SUBSCRIBES_TO",
+			})
+		default:
+			rels = append(rels, graph.Relationship{
+				ID: "sub-" + slug, FromID: entityID, ToID: slug + "Handler", Kind: "SUBSCRIBES_TO",
+			})
+		}
+		repos[slug] = &DashRepo{
+			Slug: slug,
+			Doc: &graph.Document{
+				Repo: slug,
+				Entities: []graph.Entity{
+					{
+						ID:   entityID,
+						Name: "kafka:payments.settled",
+						Kind: "SCOPE.MessageTopic",
+						Properties: map[string]string{
+							"broker":       "kafka",
+							"topic_name":   "payments.settled",
+							"pattern_type": "kafka_synthesis",
+						},
+					},
+				},
+				Relationships: rels,
+			},
+		}
+	}
+
+	grp := &DashGroup{Name: "g", Repos: repos}
+	resp := collectTopologyResponse(grp, "", nil)
+
+	// #1695 core assertion: exactly ONE topic entry for payments.settled.
+	if len(resp.Topics) != 1 {
+		t.Fatalf("#1695 regression: expected 1 merged topic entry for payments.settled, got %d (was one per repo before fix)", len(resp.Topics))
+	}
+
+	entry := resp.Topics[0]
+
+	// Label must be the canonical topic name.
+	if entry["label"] != "kafka:payments.settled" {
+		t.Errorf("label = %q, want kafka:payments.settled", entry["label"])
+	}
+
+	// All 8 repos must appear in appears_in.
+	appearsIn, _ := entry["appears_in"].([]string)
+	if len(appearsIn) != 8 {
+		t.Errorf("appears_in has %d repos, want 8: %v", len(appearsIn), appearsIn)
+	}
+
+	// Producers: only "payments" repo publishes → 1 producer.
+	producers, _ := entry["producers"].([]string)
+	if len(producers) != 1 {
+		t.Errorf("producers: got %d, want 1: %v", len(producers), producers)
+	}
+
+	// Consumers: 7 other repos subscribe → 7 consumers.
+	consumers, _ := entry["consumers"].([]string)
+	if len(consumers) != 7 {
+		t.Errorf("consumers: got %d, want 7: %v", len(consumers), consumers)
+	}
+
+	// broker_groups must have exactly one kafka entry with count=1 (not 8).
+	if len(resp.BrokerGroups) != 1 {
+		t.Fatalf("expected 1 broker_group, got %d", len(resp.BrokerGroups))
+	}
+	bg := resp.BrokerGroups[0]
+	if bg.Broker != "kafka" {
+		t.Errorf("broker_groups[0].broker = %q, want kafka", bg.Broker)
+	}
+	if bg.Count != 1 {
+		t.Errorf("broker_groups[0].count = %d, want 1 (not 8)", bg.Count)
+	}
+	// The merged topic has both producers and consumers → Active=1, not Orphan.
+	if bg.HealthSummary.Active != 1 {
+		t.Errorf("health_summary.active = %d, want 1", bg.HealthSummary.Active)
+	}
+}

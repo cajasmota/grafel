@@ -250,6 +250,41 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 		return a
 	}
 
+	// topicMergeAccum holds the cross-repo merged state for a single
+	// SCOPE.MessageTopic (keyed by canonical + name, e.g.
+	// "kafka|kafka:payments.settled"). Multiple repos may each carry their own
+	// graph-stamped copy of the same topic; we dedup them here so the
+	// topology view renders ONE node per (broker, topic_name) instead of N.
+	// Fixes #1695.
+	type topicMergeAccum struct {
+		name         string
+		rawBroker    string
+		canonical    string
+		// owningService from the first-seen occurrence — used as fallback.
+		owningService string
+		// producers and consumers keyed by prefixed entity ID for dedup.
+		producerSet  map[string]struct{}
+		consumerSet  map[string]struct{}
+		producerList []string
+		consumerList []string
+		// transformsTo IDs (already prefixed with repo slug).
+		transformsTo []string
+		// appearsIn tracks repo slugs that contributed this topic.
+		appearsIn    []string
+		appearsInSet map[string]struct{}
+		// perRepoPrefixedIDs collects all per-repo prefixed entity IDs so the
+		// cross-repo link scan (crossRepoIDs) can match against them.
+		perRepoPrefixedIDs []string
+		// lastIndexTS keeps the newest timestamp across repos.
+		lastIndexTS string
+		// topicID is the stable cross-repo ID for this merged node.
+		topicID string
+	}
+	// topicByName is the dedup map: (canonical + "|" + name) → accumulator.
+	// Using canonical as part of the key ensures that identically-named topics
+	// on different brokers (e.g. "A" on rabbitmq vs "A" on sqs) remain separate.
+	topicByName := map[string]*topicMergeAccum{}
+
 	for _, r := range sortedRepos(grp) {
 		if r.Doc == nil {
 			continue
@@ -272,52 +307,79 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 
 			switch bucket {
 			case "topic":
+				// #1695 — dedup SCOPE.MessageTopic nodes by (canonical, name) across
+				// repos. Accumulate producers, consumers, and appearance provenance
+				// into topicByName; we emit the merged entries after the loop.
 				producers, consumers, transformsTo := brokerEdges(r, e.ID)
 				rawBroker := e.Properties["broker"]
 				framework := e.Properties["framework"]
 				canonical := brokerCanonical(rawBroker, framework)
 				svc := owningService(e.Properties, r.Slug)
-				entry := map[string]any{
-					"id":               dashPrefixedID(r.Slug, e.ID),
-					"repo":             r.Slug,
-					"label":            e.Name,
-					"broker":           rawBroker,
-					"broker_canonical": canonical,
-					"owning_service":   svc,
-					"producers":        producers,
-					"consumers":        consumers,
-					"producer_refs":    resolvePrefixedEntityRecords(grp, r.Slug, producers),
-					"consumer_refs":    resolvePrefixedEntityRecords(grp, r.Slug, consumers),
-					"transforms_to":    transformsTo,
-				}
-				// Enrich topic with frontmatter when available.
-				if groupName != "" {
-					applyTopologyEnrichment(entry, groupName, e.ID, docgenState)
-				}
-				resp.Topics = append(resp.Topics, entry)
 
-				// Accumulate broker_groups data.
+				dedupKey := canonical + "|" + e.Name
+				acc, exists := topicByName[dedupKey]
+				if !exists {
+					// Stable cross-repo topic ID: hash of just the Name (no repo).
+					// Prefix "merged:" distinguishes it from per-repo stamped IDs so
+					// the frontend never accidentally resolves it as a graph entity.
+					acc = &topicMergeAccum{
+						name:          e.Name,
+						rawBroker:     rawBroker,
+						canonical:     canonical,
+						owningService: svc,
+						producerSet:   map[string]struct{}{},
+						consumerSet:   map[string]struct{}{},
+						appearsInSet:  map[string]struct{}{},
+						topicID:       "merged:" + canonical + ":" + e.Name,
+					}
+					topicByName[dedupKey] = acc
+				}
+				// Track per-repo prefixed entity ID for cross-repo link matching.
+				acc.perRepoPrefixedIDs = append(acc.perRepoPrefixedIDs, dashPrefixedID(r.Slug, e.ID))
+				// Merge producers (prefixed with repo slug for disambiguation).
+				for _, p := range producers {
+					if _, seen := acc.producerSet[p]; !seen {
+						acc.producerSet[p] = struct{}{}
+						acc.producerList = append(acc.producerList, p)
+					}
+				}
+				// Merge consumers.
+				for _, c := range consumers {
+					if _, seen := acc.consumerSet[c]; !seen {
+						acc.consumerSet[c] = struct{}{}
+						acc.consumerList = append(acc.consumerList, c)
+					}
+				}
+				// Merge TRANSFORMS edges (deduplicate by destination ID).
+				for _, tt := range transformsTo {
+					found := false
+					for _, existing := range acc.transformsTo {
+						if existing == tt {
+							found = true
+							break
+						}
+					}
+					if !found {
+						acc.transformsTo = append(acc.transformsTo, tt)
+					}
+				}
+				// Track repo appearance.
+				if _, seen := acc.appearsInSet[r.Slug]; !seen {
+					acc.appearsInSet[r.Slug] = struct{}{}
+					acc.appearsIn = append(acc.appearsIn, r.Slug)
+				}
+				// Keep newest index timestamp.
+				if repoTS > acc.lastIndexTS {
+					acc.lastIndexTS = repoTS
+				}
+
+				// Accumulate broker_groups data (one count per topic, not per repo).
+				// The health verdict is deferred until after the loop when we know
+				// the full merged producer+consumer set.
 				a := ensureBroker(canonical)
-				a.count++
-				a.services[svc]++
 				a.repoSlugs[r.Slug] = struct{}{}
 				if repoTS > a.lastIndexTS {
 					a.lastIndexTS = repoTS
-				}
-				// Determine orphan / health status.
-				hasProducer := len(producers) > 0
-				hasConsumer := len(consumers) > 0
-				switch {
-				case hasProducer && hasConsumer:
-					a.healthSummary.Active++
-				case hasProducer && !hasConsumer:
-					a.orphanSubscribers++
-					a.healthSummary.OrphanSubscriber++
-				case !hasProducer && hasConsumer:
-					a.orphanPublishers++
-					a.healthSummary.OrphanPublisher++
-				default:
-					a.healthSummary.Orphan++
 				}
 
 			case "queue":
@@ -457,51 +519,110 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 		}
 	}
 
-	// --- Second pass: compute cross_repo_topic_count and build broker_groups ---
-	// A topic/queue is "cross-repo" if producers and consumers live in different
-	// repos. We detect this by re-scanning the CrossRepoLink list in grp.Links.
-	// Any cross-repo link whose channel/kind indicates a messaging edge is counted
-	// toward the broker that owns the entity on either side.
-	//
-	// Simpler approach: count broker_groups entries whose repoSlugs set has >1
-	// element — i.e., the same broker has entries from multiple repos.  We
-	// approximate cross-repo topic count as the number of topics/queues that
-	// appear in more than one repo under the same broker canonical, which maps
-	// cleanly to how the dashboard frontend will use this number.
-	//
-	// Exact cross-repo topic detection (per entry) happens by checking whether
-	// any CrossRepoLink references a topic entity that appears in the entry list.
-	// We build a quick lookup of cross-repo linked entity IDs.
-	crossRepoIDs := map[string]struct{}{}
+	// Pre-compute crossRepoIDs from group links so the finalization block can
+	// mark topics as cross-repo before the second-pass section runs.
+	crossRepoIDsPre := map[string]struct{}{}
 	for _, lnk := range grp.Links {
-		// Links with Kind PUBLISHES_TO / SUBSCRIBES_TO spanning repos are
-		// cross-repo messaging links.
 		k := strings.ToUpper(lnk.Kind)
 		if k == "PUBLISHES_TO" || k == "SUBSCRIBES_TO" || k == "STREAMS_TO" || k == "STREAMS_FROM" {
-			crossRepoIDs[lnk.Source] = struct{}{}
-			crossRepoIDs[lnk.Target] = struct{}{}
+			crossRepoIDsPre[lnk.Source] = struct{}{}
+			crossRepoIDsPre[lnk.Target] = struct{}{}
 		}
 	}
-	// Count cross-repo entries per broker from the already-built entry lists.
-	for _, entry := range resp.Topics {
-		id, _ := entry["id"].(string)
-		canonical, _ := entry["broker_canonical"].(string)
-		if canonical == "" {
-			continue
+
+	// --- Finalize merged topics (#1695) ---
+	// Convert the topicByName dedup map into the Topics slice. Sort by key for
+	// deterministic output. Count and health are computed here from the
+	// fully-merged producer/consumer sets, so broker_groups reflects the true
+	// topology (not a per-repo per-entity count).
+	{
+		keys := make([]string, 0, len(topicByName))
+		for k := range topicByName {
+			keys = append(keys, k)
 		}
-		if _, isCross := crossRepoIDs[id]; isCross {
-			if a, ok := brokerAccums[canonical]; ok {
-				a.crossRepoTopicCount++
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			acc := topicByName[key]
+			producers := acc.producerList
+			consumers := acc.consumerList
+			if producers == nil {
+				producers = []string{}
+			}
+			if consumers == nil {
+				consumers = []string{}
+			}
+			transformsTo := acc.transformsTo
+			if transformsTo == nil {
+				transformsTo = []string{}
+			}
+			appearsIn := acc.appearsIn
+			if appearsIn == nil {
+				appearsIn = []string{}
+			}
+			// Use the first repo in appearsIn as the primary repo for
+			// resolvePrefixedEntityRecords (refs are already slug-prefixed).
+			primaryRepo := ""
+			if len(appearsIn) > 0 {
+				primaryRepo = appearsIn[0]
+			}
+			entry := map[string]any{
+				"id":               acc.topicID,
+				"repo":             primaryRepo,
+				"appears_in":       appearsIn,
+				"label":            acc.name,
+				"broker":           acc.rawBroker,
+				"broker_canonical": acc.canonical,
+				"owning_service":   acc.owningService,
+				"producers":        producers,
+				"consumers":        consumers,
+				"producer_refs":    resolvePrefixedEntityRecords(grp, primaryRepo, producers),
+				"consumer_refs":    resolvePrefixedEntityRecords(grp, primaryRepo, consumers),
+				"transforms_to":    transformsTo,
+			}
+			resp.Topics = append(resp.Topics, entry)
+
+			// Broker_groups health accounting — one count per merged topic.
+			a := ensureBroker(acc.canonical)
+			a.count++
+			a.services[acc.owningService]++
+			hasProducer := len(producers) > 0
+			hasConsumer := len(consumers) > 0
+			switch {
+			case hasProducer && hasConsumer:
+				a.healthSummary.Active++
+			case hasProducer && !hasConsumer:
+				a.orphanSubscribers++
+				a.healthSummary.OrphanSubscriber++
+			case !hasProducer && hasConsumer:
+				a.orphanPublishers++
+				a.healthSummary.OrphanPublisher++
+			default:
+				a.healthSummary.Orphan++
+			}
+
+			// Cross-repo detection: check whether any per-repo entity ID for
+			// this merged topic appears in the cross-repo link set.
+			for _, perRepoID := range acc.perRepoPrefixedIDs {
+				if _, isCross := crossRepoIDsPre[perRepoID]; isCross {
+					a.crossRepoTopicCount++
+					break // count each merged topic at most once per broker
+				}
 			}
 		}
 	}
+
+	// --- Second pass: compute cross_repo_topic_count for queues/nats ---
+	// Topics are handled in the finalization block above (crossRepoIDsPre).
+	// Queues and NATS subjects still need the cross-repo scan here using the
+	// same crossRepoIDsPre set (per-repo prefixed entity IDs from grp.Links).
 	for _, entry := range resp.Queues {
 		id, _ := entry["id"].(string)
 		canonical, _ := entry["broker_canonical"].(string)
 		if canonical == "" {
 			continue
 		}
-		if _, isCross := crossRepoIDs[id]; isCross {
+		if _, isCross := crossRepoIDsPre[id]; isCross {
 			if a, ok := brokerAccums[canonical]; ok {
 				a.crossRepoTopicCount++
 			}
@@ -513,7 +634,7 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 		if canonical == "" {
 			continue
 		}
-		if _, isCross := crossRepoIDs[id]; isCross {
+		if _, isCross := crossRepoIDsPre[id]; isCross {
 			if a, ok := brokerAccums[canonical]; ok {
 				a.crossRepoTopicCount++
 			}
