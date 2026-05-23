@@ -84,6 +84,8 @@ func newDocgenCmd() *cobra.Command {
 		mermaidBudget int
 		repoSlug      string
 		llmMode       string
+		bundleFile    string
+		resultFile    string
 	)
 
 	cmd := &cobra.Command{
@@ -171,7 +173,7 @@ Available sections (--section, used by --tier=0 only):
 			case 0:
 				return runDocgenTier0(cmd, group, seedEntity, section, outputDir, llmMode)
 			case 1:
-				return runDocgenTier1(cmd, group, seedEntity, pageID, outputDir, llmMode)
+				return runDocgenTier1(cmd, group, seedEntity, pageID, outputDir, llmMode, bundleFile, resultFile)
 			case 2:
 				return runDocgenTier2(cmd, group, seedEntity, outputDir, maxPages, mermaidBudget)
 			case 3:
@@ -203,7 +205,11 @@ Available sections (--section, used by --tier=0 only):
 	cmd.Flags().BoolVar(&listSecs, "list-sections", false,
 		"print all valid section names and exit")
 	cmd.Flags().StringVar(&llmMode, "llm-mode", "",
-		`LLM integration mode: "" (default, stub-only), "emit" (write LLMPromptBundle JSON alongside stub), "apply" (apply LLM results; not yet implemented)`)
+		`LLM integration mode: "" (default, stub-only), "emit" (write LLMPromptBundle JSON alongside stub), "apply" (read result file, validate, assemble final page)`)
+	cmd.Flags().StringVar(&bundleFile, "bundle-file", "",
+		"path to the LLMPromptBundle JSON file (required when --llm-mode=apply)")
+	cmd.Flags().StringVar(&resultFile, "result-file", "",
+		"path to the LLMRunResult JSON file written by the orchestrator (required when --llm-mode=apply)")
 
 	return cmd
 }
@@ -271,7 +277,16 @@ func runDocgenTier0(cmd *cobra.Command, group, seedEntity, section, outputDir, l
 }
 
 // runDocgenTier1 executes the Tier 1 single-page path (<120 s).
-func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir, llmMode string) error {
+// When llmMode == "apply", bundleFile and resultFile must be non-empty; the
+// function delegates to docgen.ApplyResult instead of docgen.RunTier1.
+func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir, llmMode, bundleFile, resultFile string) error {
+	// --llm-mode=apply is a special sub-path that does not require --seed-entity
+	// (the entity ID is read from the bundle file) and requires --bundle-file +
+	// --result-file instead.
+	if llmMode == "apply" {
+		return runDocgenTier1Apply(cmd, pageID, outputDir, bundleFile, resultFile)
+	}
+
 	resolvedGroup, err := resolveGroup(group)
 	if err != nil {
 		return err
@@ -331,6 +346,60 @@ func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir, ll
 		bundlePath := mdPath[:len(mdPath)-len(".md")] + "-bundle.json"
 		fmt.Fprintf(out, "  bundle:     %s\n", bundlePath)
 	}
+	fmt.Fprintf(out, "\n--- score.json ---\n")
+	scoreBytes, _ := json.MarshalIndent(score, "", "  ")
+	fmt.Fprintln(out, string(scoreBytes))
+
+	return nil
+}
+
+// runDocgenTier1Apply executes the Tier 1 --llm-mode=apply path.
+// It reads the bundle + result files, delegates to docgen.ApplyResult, and
+// prints a human-readable summary with the same layout as the normal Tier 1 run.
+func runDocgenTier1Apply(cmd *cobra.Command, pageID, outputDir, bundleFile, resultFile string) error {
+	if bundleFile == "" {
+		return errors.New("--bundle-file is required when --llm-mode=apply")
+	}
+	if resultFile == "" {
+		return errors.New("--result-file is required when --llm-mode=apply")
+	}
+
+	opts := docgen.Tier1RunOpts{
+		PageID:     pageID,
+		OutputDir:  outputDir,
+		LLMMode:    "apply",
+		BundleFile: bundleFile,
+		ResultFile: resultFile,
+	}
+
+	mdPath, scorePath, score, err := docgen.ApplyResult(opts)
+	if err != nil {
+		return fmt.Errorf("docgen tier 1 apply: %w", err)
+	}
+
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "tier1 apply complete\n\n")
+	fmt.Fprintf(out, "  entity:     %s\n", score.SeedEntity)
+	fmt.Fprintf(out, "  found:      %v\n", score.SeedEntityFound)
+	fmt.Fprintf(out, "  sections:   %d\n", score.SectionCount)
+	fmt.Fprintf(out, "  wall:       %d ms\n", score.WallTimeMS)
+	fmt.Fprintf(out, "  tokens:     ~%d\n", score.TokenCountEstimate)
+	fmt.Fprintf(out, "  mermaid:    %d (oversized sections: %d)\n", score.MermaidCount, score.MermaidOversized)
+	fmt.Fprintf(out, "  links:      %d (unresolved: %d)\n", score.InternalLinkCount, score.InternalLinkUnresolved)
+	fmt.Fprintf(out, "  dup-flows:  %d\n", score.DuplicatedFlowCount)
+	fmt.Fprintf(out, "  anchors:    %d\n", score.AnchorCount)
+	fmt.Fprintf(out, "  llm-mode:   apply\n")
+	if len(score.ContractViolations) > 0 {
+		fmt.Fprintf(out, "\n  CONTRACT VIOLATIONS (%d):\n", len(score.ContractViolations))
+		for _, v := range score.ContractViolations {
+			fmt.Fprintf(out, "    - %s\n", v)
+		}
+	} else {
+		fmt.Fprintf(out, "  contract:   PASS\n")
+	}
+	fmt.Fprintf(out, "\n")
+	fmt.Fprintf(out, "  output:     %s\n", mdPath)
+	fmt.Fprintf(out, "  score:      %s\n", scorePath)
 	fmt.Fprintf(out, "\n--- score.json ---\n")
 	scoreBytes, _ := json.MarshalIndent(score, "", "  ")
 	fmt.Fprintln(out, string(scoreBytes))
