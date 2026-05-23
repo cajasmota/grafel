@@ -381,6 +381,59 @@ func TestHandleWhoami_quietMode(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// wire_version field
+// ---------------------------------------------------------------------------
+
+// TestHandleWhoami_wireVersion asserts that archigraph_whoami always returns
+// a non-empty wire_version field, both in normal mode and in quiet mode.
+func TestHandleWhoami_wireVersion(t *testing.T) {
+	for _, quiet := range []string{"", "quiet"} {
+		quiet := quiet
+		name := "normal"
+		if quiet == "quiet" {
+			name = "quiet"
+		}
+		t.Run(name, func(t *testing.T) {
+			tmp := t.TempDir()
+			t.Setenv("HOME", tmp)
+			t.Setenv("ARCHIGRAPH_WHOAMI_NUDGE", quiet)
+
+			repoDir := filepath.Join(tmp, "repo-a")
+			doc := fixtureDoc("repo-a")
+			writeGraph(t, repoDir, doc)
+
+			regPath := makeRegistry(t, tmp, map[string]map[string]string{
+				"g": {"repo-a": repoDir},
+			})
+			srv, err := NewServer(Config{RegistryPath: regPath})
+			if err != nil {
+				t.Fatalf("NewServer: %v", err)
+			}
+
+			req := mcpapi.CallToolRequest{}
+			req.Params.Arguments = map[string]any{"group": "g"}
+			res, err := srv.handleWhoami(context.Background(), req)
+			if err != nil {
+				t.Fatalf("handleWhoami: %v", err)
+			}
+			if res.IsError {
+				t.Fatalf("tool error: %v", res.Content)
+			}
+
+			var out map[string]any
+			if err := json.Unmarshal([]byte(res.Content[0].(mcpapi.TextContent).Text), &out); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+
+			wv, ok := out["wire_version"].(string)
+			if !ok || wv == "" {
+				t.Errorf("wire_version: missing or empty (got %T: %v)", out["wire_version"], out["wire_version"])
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

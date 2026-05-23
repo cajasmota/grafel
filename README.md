@@ -1,5 +1,7 @@
 # archigraph
 
+> **Status: Preview (v0.x).** Active development. APIs, MCP tool names, and graph schema may change between minor versions. macOS is the primary supported platform; Linux is being tested; Windows works via MinGW build (#937). See [CHANGELOG.md](CHANGELOG.md) for breaking changes. See [CLAUDE.md](CLAUDE.md) for "When to use archigraph MCP vs grep" — these are paired tools, not a grep replacement.
+
 Multi-repo code knowledge graphs for AI agents.
 
 ## Status

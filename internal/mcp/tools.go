@@ -155,6 +155,11 @@ func jsonResult(v any) *mcpapi.CallToolResult {
 // whoami
 // ---------------------------------------------------------------------------
 
+// mcpWireVersion is the MCP API version advertised by archigraph_whoami.
+// Bump this on every MINOR release. Agents can use it to detect
+// incompatible daemon versions without inspecting the binary.
+const mcpWireVersion = "0.1.0"
+
 func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	cwd := s.inferCWD(req)
 	explicit := argString(req, "group", "")
@@ -165,6 +170,7 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 			"repo":          "",
 			"source":        "none",
 			"registry_path": s.State.registry.Path,
+			"wire_version":  mcpWireVersion,
 			"error":         err.Error(),
 		}), nil
 	}
@@ -176,6 +182,7 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 		"repo":          repo,
 		"source":        source,
 		"registry_path": s.State.registry.Path,
+		"wire_version":  mcpWireVersion,
 	}
 
 	// Nudge suppression: ARCHIGRAPH_WHOAMI_NUDGE=quiet disables doc-state fields.
