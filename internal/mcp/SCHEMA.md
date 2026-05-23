@@ -123,9 +123,12 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_endpoints`](#archigraph_endpoints) | HTTP endpoint surface (action: definitions\|calls\|stats). |
 | [`archigraph_find_callers`](#archigraph_find_callers) | Inbound call graph up to N hops. |
 | [`archigraph_find_callees`](#archigraph_find_callees) | Outbound call graph up to N hops. |
-| [`archigraph_impact_radius`](#archigraph_impact_radius) | Blast-radius analysis with per-entity risk score. |
-| ~~`archigraph_summarize_subgraph`~~ | Deprecated — use `archigraph_subgraph(format=markdown)`. |
-| [`archigraph_find_dead_code`](#archigraph_find_dead_code) | Entities with 0 inbound/outbound project edges. |
+| ~~[`archigraph_impact_radius`](#archigraph_impact_radius)~~ | *(deprecated)* use `archigraph_quality action=impact_radius`. |
+| ~~`archigraph_summarize_subgraph`~~ | *(deprecated)* use `archigraph_subgraph(format=markdown)`. |
+| ~~[`archigraph_find_dead_code`](#archigraph_find_dead_code)~~ | *(deprecated)* use `archigraph_quality action=dead_code`. |
+| ~~`archigraph_quality_cycles`~~ | *(deprecated)* use `archigraph_quality action=cycles`. |
+| ~~`archigraph_test_coverage`~~ | *(deprecated)* use `archigraph_quality action=test_coverage`. |
+| [`archigraph_quality`](#archigraph_quality) | Code-quality audits (action: test\_coverage\|dead\_code\|impact\_radius\|cycles). |
 | [`archigraph_auth_coverage`](#archigraph_auth_coverage) | Security audit: flag HTTP endpoints missing auth decorators/middleware. |
 | [`archigraph_secrets`](#archigraph_secrets) | Security scan: detect hardcoded API keys, passwords, JWT tokens, and other credentials in source files. |
 | [`archigraph_module_analysis`](#archigraph_module_analysis) | Module-level SCC + PageRank + betweenness over the aggregated module graph (action: cycles\|centrality\|all). |
@@ -1251,6 +1254,75 @@ When no callees exist: `"result": "no_outgoing_edges"` is set.
 
 ---
 
+### `archigraph_quality`
+
+Unified code-quality audit tool (#1755). Folds four previously separate tools under a single
+`action=` discriminator following the #1281 / #1639 pattern. Each action delegates to the
+same underlying handler as its legacy counterpart, so output is byte-identical for the same
+input.
+
+| `action` | Replaces | Description |
+|----------|----------|-------------|
+| `test_coverage` | `archigraph_test_coverage` | Production entities with no `TESTS` edge, ranked by severity (high = HTTP endpoint, medium = exported function, low = other). |
+| `dead_code` | `archigraph_find_dead_code` | Entities with zero inbound/outbound project edges (fully isolated) or unreferenced public operations carrying a dead-code name marker. |
+| `impact_radius` | `archigraph_impact_radius` | Inbound blast-radius: all entities that would be affected if the target changes, with `risk_score` [0,1]. Requires `entity_id`. |
+| `cycles` | `archigraph_quality_cycles` | Import-cycle detection via Tarjan SCC over `IMPORTS` edges. Reports weakest link + suggested extraction target. Also runs service-level SCC across cross-repo links. |
+
+**Common args (declared in schema)**
+
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| `action` | string | **yes** | — | One of `test_coverage`, `dead_code`, `impact_radius`, `cycles`. |
+| `repo_filter` | string\[\] | no | all repos | Restrict to listed repo slugs. |
+| `limit` | int | no | `100` | Max items returned. |
+| `group` | string | no | inferred | See routing rules above. |
+| `cwd` | string | no | inferred | See routing rules above. |
+
+**Action-specific args** (read from request map; omitted from schema per #1639 pattern)
+
+| Arg | Used by | Type | Default | Notes |
+|-----|---------|------|---------|-------|
+| `entity_id` | `impact_radius` | string | — | **Required** for `impact_radius`. |
+| `hops` | `impact_radius` | int | `2` | Traversal depth [1, 6]. |
+| `kind_filter` | `dead_code` | string | `""` | Filter by entity kind. |
+| `severity` | `test_coverage` | string | `""` | Filter: `high`\|`medium`\|`low`. |
+| `top_directories` | `test_coverage` | bool | `false` | Include per-directory breakdown. |
+
+**Returns**
+
+Each action returns the same JSON/text structure as its legacy counterpart. See the deprecated
+sections below for field-level details.
+
+---
+
+### ~~`archigraph_impact_radius`~~ *(deprecated — use `archigraph_quality action=impact_radius`)*
+
+Legacy trampoline kept for one release cycle (ADR-0017). Sets `action=impact_radius` then
+delegates to `archigraph_quality`. Drop next release.
+
+---
+
+### ~~`archigraph_find_dead_code`~~ *(deprecated — use `archigraph_quality action=dead_code`)*
+
+Legacy trampoline kept for one release cycle (ADR-0017). Sets `action=dead_code` then
+delegates to `archigraph_quality`. Drop next release.
+
+---
+
+### ~~`archigraph_quality_cycles`~~ *(deprecated — use `archigraph_quality action=cycles`)*
+
+Legacy trampoline kept for one release cycle (ADR-0017). Sets `action=cycles` then
+delegates to `archigraph_quality`. Drop next release.
+
+---
+
+### ~~`archigraph_test_coverage`~~ *(deprecated — use `archigraph_quality action=test_coverage`)*
+
+Legacy trampoline kept for one release cycle (ADR-0017). Sets `action=test_coverage` then
+delegates to `archigraph_quality`. Drop next release.
+
+---
+
 ### `archigraph_auth_coverage`
 
 Security audit tool (#1314). Walk every `http_endpoint_definition` entity in the group and
@@ -1416,7 +1488,9 @@ reduces the token cost paid on every new agent session.
 | Metric | Value |
 |--------|-------|
 | Measured baseline (2026-05-21, 32 tools) | **4,219 tokens** |
-| Ceiling (baseline + 7 %) | **4,500 tokens** |
+| Measured post-#1755 (32 tools, 2026-05-23) | **3,411 tokens** |
+| Ceiling (#1755) | **3,450 tokens** |
+| Previous ceiling (baseline + 7 %) | **4,500 tokens** |
 | Estimation method | conservative 4 chars/token |
 | Tool description limit | **80 characters** |
 

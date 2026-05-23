@@ -400,13 +400,34 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_callees", s.handleFindCallees))
 
+	// archigraph_quality (#1755) — unified code-quality audit tool.
+	// Replaces four individual tools under a single action= discriminator
+	// following the #1281 / #1639 pattern. Action-specific args (entity_id,
+	// hops, kind_filter, severity, top_directories) are read from the request
+	// map but omitted from the schema to keep the handshake budget minimal.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_quality",
+		mcpapi.WithDescription("Code-quality audits: action=test_coverage|dead_code|impact_radius|cycles."),
+		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_quality", s.handleQuality))
+
+	// Legacy trampolines — deprecated; use archigraph_quality action=... instead.
+	// Kept for one release cycle per ADR-0017; drop next release.
+
+	// archigraph_impact_radius (deprecated, use archigraph_quality action=impact_radius).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_impact_radius",
-		mcpapi.WithDescription("Inbound blast-radius: affected entities with risk_score [0,1]."),
+		mcpapi.WithDescription("(deprecated) use archigraph_quality action=impact_radius."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-	), s.wrap("archigraph_impact_radius", s.handleImpactRadius))
+	), s.wrap("archigraph_impact_radius", func(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+		req.Params.Arguments = qualityInjectAction(req, "impact_radius")
+		return s.handleQuality(ctx, req)
+	}))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_summarize_subgraph",
 		mcpapi.WithDescription("Deprecated — use archigraph_subgraph(format=markdown)."),
@@ -416,24 +437,30 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_summarize_subgraph", s.handleSummarizeSubgraph))
 
+	// archigraph_find_dead_code (deprecated, use archigraph_quality action=dead_code).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_dead_code",
-		mcpapi.WithDescription("Entities with no project edges — dead code or extraction gap candidates."),
+		mcpapi.WithDescription("(deprecated) use archigraph_quality action=dead_code."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("kind_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-	), s.wrap("archigraph_find_dead_code", s.handleFindDeadCode))
+	), s.wrap("archigraph_find_dead_code", func(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+		req.Params.Arguments = qualityInjectAction(req, "dead_code")
+		return s.handleQuality(ctx, req)
+	}))
 
-	// archigraph_quality_cycles — import cycle detection (#1312).
-	// Runs Tarjan SCC on IMPORTS edges; each SCC > 1 = circular dependency.
+	// archigraph_quality_cycles (deprecated, use archigraph_quality action=cycles).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_quality_cycles",
-		mcpapi.WithDescription("Detect import cycles via Tarjan SCC; weakest edge, fix hint."),
+		mcpapi.WithDescription("(deprecated) use archigraph_quality action=cycles."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-	), s.wrap("archigraph_quality_cycles", s.handleQualityCycles))
+	), s.wrap("archigraph_quality_cycles", func(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+		req.Params.Arguments = qualityInjectAction(req, "cycles")
+		return s.handleQuality(ctx, req)
+	}))
 
 	// archigraph_auth_coverage — security audit (#1314).
 	// Walk all http_endpoint_definition entities and flag those without auth
@@ -447,16 +474,19 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_auth_coverage", s.handleAuthCoverage))
 
-	// #1323: test-coverage graph — link Test entities to the code they exercise.
+	// archigraph_test_coverage (deprecated, use archigraph_quality action=test_coverage).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_test_coverage",
-		mcpapi.WithDescription("Find production entities with no TESTS edge, ranked by severity."),
+		mcpapi.WithDescription("(deprecated) use archigraph_quality action=test_coverage."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("severity"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithBoolean("top_directories", mcpapi.DefaultBool(false)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-	), s.wrap("archigraph_test_coverage", s.handleTestCoverage))
+	), s.wrap("archigraph_test_coverage", func(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+		req.Params.Arguments = qualityInjectAction(req, "test_coverage")
+		return s.handleQuality(ctx, req)
+	}))
 
 	// archigraph_module_analysis — module-level GDS (#1384, epic #1380).
 	// action=cycles|centrality|all over the aggregated module graph: SCCs,

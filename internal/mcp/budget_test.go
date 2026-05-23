@@ -41,7 +41,10 @@ func TestMCPHandshakeBudget(t *testing.T) {
 		// unified tool (format=raw|markdown discriminator folding get_subgraph +
 		// summarize_subgraph). Net: +1 schema entry with deprecated shims retained.
 		// Measured: 3,319 tokens. Full saving (~229B) lands when shims drop next release.
-		tokenCeiling  = 3350
+		// 2026-05-23 (#1755): ceiling bumped to 3,450 to seat archigraph_quality
+		// (unified action-dispatch bundle for test_coverage|dead_code|impact_radius|cycles).
+		// 32 tools post-merge with #1754; measured 3,411 tokens.
+		tokenCeiling  = 3450
 		charsPerToken = 4
 		envelopeBytes = 512 // initEnvelopeBytes constant from cmd/mcp-audit
 		maxDescLen    = 80

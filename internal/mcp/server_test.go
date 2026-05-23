@@ -605,13 +605,14 @@ func TestToolNameSurface(t *testing.T) {
 			t.Errorf("expected old tool %q to NOT be registered", n)
 		}
 	}
-	// Total count: 31 (28 baseline + archigraph_module_analysis from #1384,
+	// Total count: 32 (28 baseline + archigraph_module_analysis from #1384,
 	// + archigraph_apply_docgen_repairs from #1659: docgen→graph repair feedback
 	// loop — emit repair candidates in generate-docs, apply high-confidence ones
 	// immediately as enrichment resolutions, queue low-confidence for review,
-	// + archigraph_subgraph unified tool from #1754).
-	if got := len(srv.MCP.ListTools()); got != 31 {
-		t.Errorf("expected 31 registered tools, got %d", got)
+	// + archigraph_subgraph unified tool from #1754,
+	// + archigraph_quality from #1755: unified code-quality audit bundle).
+	if got := len(srv.MCP.ListTools()); got != 32 {
+		t.Errorf("expected 32 registered tools, got %d", got)
 	}
 }
 
@@ -2709,6 +2710,7 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_endpoints":           {"group": "g", "action": "definitions"},
 		"archigraph_find_callers":        {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_find_callees":        {"group": "g", "entity_id": "r1::a2"},
+		"archigraph_quality":             {"group": "g", "action": "dead_code"},
 		"archigraph_impact_radius":       {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_summarize_subgraph":  {"group": "g", "entity_id": "r1::a2"},
 		"archigraph_find_dead_code":      {"group": "g"},
@@ -2761,8 +2763,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 31 {
-		t.Errorf("expected 31 registered tools, got %d — update minimalArgs if new tools were added", len(tools))
+	if len(tools) != 32 {
+		t.Errorf("expected 32 registered tools, got %d — update minimalArgs if new tools were added", len(tools))
 	}
 
 	for _, st := range tools {
