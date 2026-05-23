@@ -288,6 +288,12 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 		}
 		_ = engine.RunProcessFlowWithCompanions(doc, companions, engine.DefaultProcessFlowConfig())
 
+		// #1944 Phase 1 — re-run the event-flow pub/sub walker too so
+		// EventFlow entities are refreshed alongside ProcessFlows after
+		// phantom-edge injection. Phase 1 walker is single-doc only;
+		// the Phase 3 companion-aware variant will swap in here.
+		_ = engine.RunEventFlow(doc, engine.DefaultEventFlowConfig())
+
 		// Update stats.
 		doc.Stats.Entities = len(doc.Entities)
 		doc.Stats.Relationships = len(doc.Relationships)
@@ -332,31 +338,36 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 }
 
 // stripProcessEntities returns new entity and relationship slices with all
-// SCOPE.Process entities and their STEP_IN_PROCESS / ENTRY_POINT_OF edges
-// removed. Used before re-running RunProcessFlow after phantom-edge injection.
+// SCOPE.Process AND SCOPE.EventFlow entities (and their step / entry / seed
+// edges) removed. Used before re-running RunProcessFlow + RunEventFlow after
+// phantom-edge injection so the re-emit isn't duplicated on top of the stale
+// pass.
 func stripProcessEntities(doc *graph.Document) ([]graph.Entity, []graph.Relationship) {
-	// Collect process entity IDs to drop.
-	processIDs := make(map[string]bool)
+	// Collect process + event-flow entity IDs to drop.
+	droppedIDs := make(map[string]bool)
 	for _, e := range doc.Entities {
-		if e.Kind == string(engine.EntityKindProcess) {
-			processIDs[e.ID] = true
+		if e.Kind == string(engine.EntityKindProcess) || e.Kind == engine.EntityKindEventFlow {
+			droppedIDs[e.ID] = true
 		}
 	}
-	if len(processIDs) == 0 {
+	if len(droppedIDs) == 0 {
 		return doc.Entities, doc.Relationships
 	}
 	entities := doc.Entities[:0:0]
 	for _, e := range doc.Entities {
-		if !processIDs[e.ID] {
+		if !droppedIDs[e.ID] {
 			entities = append(entities, e)
 		}
 	}
 	rels := doc.Relationships[:0:0]
 	for _, r := range doc.Relationships {
-		// Drop STEP_IN_PROCESS and ENTRY_POINT_OF edges for removed processes.
-		if processIDs[r.FromID] || processIDs[r.ToID] {
-			if r.Kind == string(engine.RelationshipKindStepInProcess) ||
-				r.Kind == string(engine.RelationshipKindEntryPointOf) {
+		// Drop step/entry/seed edges for removed flow entities.
+		if droppedIDs[r.FromID] || droppedIDs[r.ToID] {
+			switch r.Kind {
+			case string(engine.RelationshipKindStepInProcess),
+				string(engine.RelationshipKindEntryPointOf),
+				engine.RelationshipKindStepInEventFlow,
+				engine.RelationshipKindSeedOfEventFlow:
 				continue
 			}
 		}

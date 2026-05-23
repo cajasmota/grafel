@@ -28,6 +28,8 @@ import type {
   FlowsListResponse,
   FlowDetailResponse,
   FlowDeadEndsResponse,
+  EventFlowsListResponse,
+  EventFlowDetailResponse,
   PathsListResponse,
   PathDetail,
   OrphansResponse,
@@ -449,6 +451,23 @@ export const api = {
       `/flows/${groupId}/${encodeURIComponent(processId)}/trigger-enrichment`,
       { method: "POST" },
     ),
+
+  // --- Event Flows (#1944 Phase 1) — pub/sub multi-hop chains ---
+  /** GET /api/event-flows/:group — list event-flow chains. */
+  listEventFlows: (groupId: string, params?: { seed?: string; minSteps?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.seed) q.set("seed", params.seed);
+    if (params?.minSteps != null) q.set("min_steps", String(params.minSteps));
+    if (params?.limit != null) q.set("limit", String(params.limit));
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<EventFlowsListResponse>(`/event-flows/${encodeURIComponent(groupId)}${qs}`);
+  },
+  /** GET /api/event-flows/:group/:eventFlowId — full chain detail. */
+  getEventFlowDetail: (groupId: string, eventFlowId: string) =>
+    request<EventFlowDetailResponse>(
+      `/event-flows/${encodeURIComponent(groupId)}/${encodeURIComponent(eventFlowId)}`,
+    ),
+
   // --- v2 Paths screen ---
   /** GET /api/v2/groups/:id/paths — backend-grouped route list + totals. */
   listPaths: (groupId: string) =>

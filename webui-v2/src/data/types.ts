@@ -671,6 +671,58 @@ export interface FlowDeadEndsResponse {
 }
 
 // ----------------------------------------------------------------
+// Event Flows (#1944 Phase 1) — multi-hop pub/sub chains seeded by
+// channels (SCOPE.MessageTopic / SCOPE.EventBusEvent). Same Property
+// contract as ProcessFlows so the Flows DAG renderer drives both.
+// ----------------------------------------------------------------
+
+export interface EventFlowListItem {
+  event_flow_id: string;
+  repo: string;
+  label: string;
+  seed_id: string;
+  seed_name: string;
+  terminal_id: string;
+  step_count: number;
+  channel_count: number;
+  chain_labels: string[];
+  source_file?: string;
+  entry_kind: "channel";
+}
+
+export interface EventFlowsListResponse {
+  event_flows: EventFlowListItem[];
+  count: number;
+}
+
+export interface EventFlowStep {
+  entity_id: string;
+  label: string;
+  repo: string;
+  step_index: number;
+  entity_kind: string;
+  source_file?: string;
+  start_line?: number;
+  is_channel: boolean;
+}
+
+export interface EventFlowDetailResponse {
+  event_flow_id: string;
+  repo: string;
+  label: string;
+  seed_id: string;
+  seed_name: string;
+  terminal_id: string;
+  step_count: number;
+  channel_count: number;
+  chain_labels: string[];
+  /** JSON-serialised DAG (mirrors ProcessFlow.branches_dag).  */
+  branches_dag: string;
+  steps: EventFlowStep[];
+  entry_kind: "channel";
+}
+
+// ----------------------------------------------------------------
 // Paths screen types (mirrors v2_paths.go wire shapes)
 // ----------------------------------------------------------------
 

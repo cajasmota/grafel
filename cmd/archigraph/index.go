@@ -52,6 +52,7 @@ const (
 	PassRenameDetect  = "rename-detect"  // Pass 5.5: detect entity renames across rebuilds (#1344)
 	PassEnrichment    = "enrichment"     // Pass 6: emit enrichment candidates
 	PassProcessFlow   = "process-flow"   // Pass 7: process-flow BFS over CALLS (#724)
+	PassEventFlow     = "event-flow"     // Pass 7.5: event-flow pub/sub walk (#1944 Phase 1)
 	PassModuleAgg     = "module-agg"     // Pass 8: module-level aggregation (#1383)
 	PassCommitCouple  = "commit-couple"  // Pass 8.5: VCS-derived COMMIT_COUPLED soft edges (#21)
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
@@ -60,7 +61,7 @@ const (
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassModuleAgg, PassCommitCouple, PassEmbed,
+	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassEmbed,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -1165,6 +1166,24 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		// Re-sync Stats so the downstream sidecar + emission see the new
 		// entity/edge counts. The final sort below in Index() will fold the
 		// process entities into the canonical id ordering.
+		doc.Stats.Entities = len(doc.Entities)
+		doc.Stats.Relationships = len(doc.Relationships)
+	}
+
+	// Pass 7.5 — event-flow pub/sub walker (#1944 Phase 1). Runs after
+	// process-flow so EventFlow entities live alongside Process entities
+	// in the same final graph. Linear, single-channel-seed walker only:
+	// branching, cross-stack channel bridges, and conditional routing
+	// are tracked under #1944 Phase 2-5.
+	if !i.skipPasses[PassEventFlow] {
+		efStats := engine.RunEventFlow(doc, engine.DefaultEventFlowConfig())
+		if verbose() || efStats.EventFlows > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: event-flow seed_channels=%d event_flows=%d "+
+					"step_edges=%d seed_edges=%d\n",
+				efStats.SeedChannels, efStats.EventFlows,
+				efStats.StepEdges, efStats.SeedEdges)
+		}
 		doc.Stats.Entities = len(doc.Entities)
 		doc.Stats.Relationships = len(doc.Relationships)
 	}
