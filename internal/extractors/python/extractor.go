@@ -148,9 +148,18 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// resolution, preserving prior behaviour).
 	importMap := buildPythonImportMap(root, file)
 
+	// Issue #1709 — pre-scan module-level constant lists/tuples for
+	// callable attribute references (the `STEPS = [(steps.f, ...), ...]`
+	// pattern). Built after importMap so the scanner can validate attribute
+	// receivers against the import bindings. Threaded through walkNode →
+	// extractCallRelationships → extractDataDispatchCalls. Returns nil
+	// when no qualifying constants are found (zero-cost for files that
+	// don't use the pattern).
+	constReg := buildModuleConstRegistry(root, file.Content, importMap)
+
 	// Walk top-level children.
 	walkBeforeCount := len(entities)
-	walkNode(root, file, "", &entities, &functionCount, &classCount, importMap)
+	walkNode(root, file, "", &entities, &functionCount, &classCount, importMap, constReg)
 
 	// Issue #699b — emit CONTAINS edges from the file entity to every
 	// top-level class (SCOPE.Component/class) and module-level function
@@ -308,6 +317,7 @@ func walkNode(
 	funcCount *int,
 	classCount *int,
 	imports pythonImportMap,
+	constReg moduleConstRegistry,
 ) {
 	if node == nil {
 		return
@@ -353,7 +363,7 @@ func walkNode(
 			if body != nil {
 				before := len(*out)
 				for i := range int(body.ChildCount()) {
-					walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports)
+					walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports, constReg)
 				}
 				// Issue #526 — class-attribute assignments (DRF ViewSet
 				// `serializer_class = ...`, Django Model `title =
@@ -447,7 +457,7 @@ func walkNode(
 				selfName = nodeText(nameNode, file.Content)
 			}
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(node.ChildByFieldName("body"), file.Content, selfName, parentClass, imports)...)
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, selfName, parentClass, imports, constReg)...)
 			*out = append(*out, rec)
 			*funcCount++
 		}
@@ -470,7 +480,7 @@ func walkNode(
 					selfName = nodeText(nameNode, file.Content)
 				}
 				rec.Relationships = append(rec.Relationships,
-					extractCallRelationships(inner.ChildByFieldName("body"), file.Content, selfName, parentClass, imports)...)
+					extractCallRelationships(inner.ChildByFieldName("body"), file.Content, selfName, parentClass, imports, constReg)...)
 				*out = append(*out, rec)
 				*funcCount++
 			}
@@ -500,7 +510,7 @@ func walkNode(
 				if body != nil {
 					before := len(*out)
 					for i := range int(body.ChildCount()) {
-						walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports)
+						walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports, constReg)
 					}
 					// Issue #526 — see the bare class_definition branch.
 					extractClassFields(body, file, childParent, out)
@@ -550,7 +560,7 @@ func walkNode(
 	default:
 		// Recurse into all other node types.
 		for i := range int(node.ChildCount()) {
-			walkNode(node.Child(i), file, parentClass, out, funcCount, classCount, imports)
+			walkNode(node.Child(i), file, parentClass, out, funcCount, classCount, imports, constReg)
 		}
 	}
 }
@@ -676,14 +686,12 @@ func extractCallRelationships(
 	src []byte,
 	callerName, parentClass string,
 	imports pythonImportMap,
+	constReg moduleConstRegistry,
 ) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
 	calls := findAll(body, "call")
-	if len(calls) == 0 {
-		return nil
-	}
 	// Self-target in dotted form, used to drop true self-recursion when the
 	// receiver resolves back to the caller's own class.
 	selfQualified := callerName
@@ -753,6 +761,22 @@ func extractCallRelationships(
 		}
 		rels = append(rels, r)
 	}
+
+	// Issue #1709 — data-structure-driven dispatch pass.
+	// Detects `for f in STEPS: f(ctx)` patterns where STEPS is a module-level
+	// constant list of callable attribute references. Emits one CALLS edge per
+	// callable registered in the constant. Uses a seenKeyDD map bridged from
+	// the local `seen` map to prevent double-emission when the same
+	// (alias, leaf) was already emitted by the direct attribute-call path.
+	if len(constReg) > 0 {
+		ddSeen := make(map[seenKeyDD]bool, len(seen))
+		for k := range seen {
+			ddSeen[seenKeyDD{target: k.target, alias: k.alias}] = true
+		}
+		ddRels := extractDataDispatchCalls(body, src, constReg, callerName, ddSeen)
+		rels = append(rels, ddRels...)
+	}
+
 	return rels
 }
 
