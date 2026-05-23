@@ -38,6 +38,9 @@ type v2PathRoute struct {
 	Auth            bool     `json:"auth"`
 	Repos           []string `json:"repos"`
 	Controller      string   `json:"controller"`
+	// Confidence (#1129) is the 0..1 candidate-quality score computed at
+	// list-build time. Always populated when the confidence filter ran.
+	Confidence float64 `json:"confidence,omitempty"`
 }
 
 // v2ControllerGroup is one controller/module grouping inside a backend.
@@ -77,6 +80,28 @@ type v2PathTotals struct {
 type v2PathsListResponse struct {
 	Backends []v2PathBackend `json:"backends"`
 	Totals   v2PathTotals    `json:"totals"`
+
+	// Candidate-quality bar (#1129). LowConfidenceRoutes is a flat list of
+	// routes that were filtered out of the per-backend tree because their
+	// confidence score sat below the paths-surface floor (default 0.30). The
+	// UI hides these by default but exposes them via an
+	// "Include low-signal routes" toggle. NoiseRejectedCount mirrors
+	// len(LowConfidenceRoutes) for badge rendering. ConfidenceFloor is the
+	// effective floor (after env override).
+	LowConfidenceRoutes []v2LowConfidenceRoute `json:"low_confidence_routes"`
+	NoiseRejectedCount  int                    `json:"noise_rejected_count"`
+	ConfidenceFloor     float64                `json:"confidence_floor"`
+}
+
+// v2LowConfidenceRoute is the flattened shape used in the low-confidence
+// bucket. It carries enough context (backend, controller) for the UI to show
+// the route in its natural parent group when the toggle is on.
+type v2LowConfidenceRoute struct {
+	BackendID    string      `json:"backend_id"`
+	ControllerID string      `json:"controller_id"`
+	Route        v2PathRoute `json:"route"`
+	Confidence   float64     `json:"confidence"`
+	Signals      []string    `json:"signals"`
 }
 
 // v2PathParameter is one parameter in the detail pane.
@@ -510,6 +535,56 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 	// uses so the number is authoritative, not an estimate (#1551).
 	orphanCount := len(collectOrphanCallers(grp))
 
+	// ---- Phase 5: apply per-surface confidence floor (#1129) ----
+	// Routes below the paths floor (default 0.30) are pulled OUT of the
+	// per-backend tree and collected into a flat low_confidence_routes list.
+	// The default UI tree only renders high-confidence routes; the toggle
+	// surfaces the flat list when the user opts in.
+	pathsFloor := FloorFor(SurfacePaths)
+	var lowConfRoutes []v2LowConfidenceRoute
+
+	for bi := range result {
+		b := &result[bi]
+		for gi := range b.Groups {
+			g := &b.Groups[gi]
+			keptRoutes := g.Routes[:0]
+			for _, route := range g.Routes {
+				entry := pathRouteToEntry(route, b.ID, b.Framework, b.Language)
+				score, signals := ComputeCandidateConfidence(SurfacePaths, entry, nil)
+				route.Confidence = roundConfidence(score)
+				if pathsFloor > 0 && score < pathsFloor {
+					lowConfRoutes = append(lowConfRoutes, v2LowConfidenceRoute{
+						BackendID:    b.ID,
+						ControllerID: g.ID,
+						Route:        route,
+						Confidence:   route.Confidence,
+						Signals:      signals,
+					})
+					continue
+				}
+				keptRoutes = append(keptRoutes, route)
+			}
+			g.Routes = keptRoutes
+		}
+	}
+
+	if lowConfRoutes == nil {
+		lowConfRoutes = []v2LowConfidenceRoute{}
+	}
+
+	// Recompute totals AFTER filtering so the sub-stats bar reflects what the
+	// user actually sees in the tree.
+	totalRoutes, totalEndpoints, totalControllers = 0, 0, 0
+	for _, b := range result {
+		totalControllers += len(b.Groups)
+		for _, g := range b.Groups {
+			totalRoutes += len(g.Routes)
+			for _, r := range g.Routes {
+				totalEndpoints += r.HandlersCount
+			}
+		}
+	}
+
 	writeV2JSON(w, http.StatusOK, v2OK(v2PathsListResponse{
 		Backends: result,
 		Totals: v2PathTotals{
@@ -519,7 +594,32 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 			Backends:    len(result),
 			Orphans:     orphanCount,
 		},
+		LowConfidenceRoutes: lowConfRoutes,
+		NoiseRejectedCount:  len(lowConfRoutes),
+		ConfidenceFloor:     pathsFloor,
 	}))
+}
+
+// pathRouteToEntry projects a v2PathRoute into the wire-format map shape that
+// ComputeCandidateConfidence understands. Only fields the score function
+// inspects are included; everything else is a no-op for scoring.
+func pathRouteToEntry(r v2PathRoute, backendID, framework, language string) map[string]any {
+	frameworkValue := framework
+	if frameworkValue == "" && len(r.Frameworks) > 0 {
+		frameworkValue = r.Frameworks[0]
+	}
+	return map[string]any{
+		"path":           r.Path,
+		"handler":        r.Controller,
+		"controller":     r.Controller,
+		"handlers_count": r.HandlersCount,
+		"frameworks":     r.Frameworks,
+		"framework":      frameworkValue,
+		"repo":           backendID,
+		"is_webhook":     r.IsWebhook,
+		"auth":           r.Auth,
+		"language":       language,
+	}
 }
 
 // handleV2PathDetail — GET /api/v2/groups/:id/paths/:hash

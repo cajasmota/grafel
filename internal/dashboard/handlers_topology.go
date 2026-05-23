@@ -60,6 +60,19 @@ type topologyResponse struct {
 	ChannelsRejected  []map[string]any         `json:"channels_rejected"`
 	FunctionsRejected []map[string]any         `json:"functions_rejected"`
 	EnrichmentGroups  []EnrichmentGroupSummary `json:"enrichment_groups"`
+
+	// Confidence-floor partition (#1129). Each *_low_confidence slice
+	// mirrors its bucket but holds the entries whose confidence score
+	// fell below the surface-wide floor (default 0.45 for topology). The
+	// UI shows these only when the user opts in to "Show low-signal
+	// entries". NoiseRejectedCount is the total across all four buckets;
+	// ConfidenceFloor is the effective floor applied (after env override).
+	TopicsLowConfidence    []map[string]any `json:"topics_low_confidence"`
+	QueuesLowConfidence    []map[string]any `json:"queues_low_confidence"`
+	ChannelsLowConfidence  []map[string]any `json:"channels_low_confidence"`
+	FunctionsLowConfidence []map[string]any `json:"functions_low_confidence"`
+	NoiseRejectedCount     int              `json:"noise_rejected_count"`
+	ConfidenceFloor        float64          `json:"confidence_floor"`
 }
 
 // brokerServiceStat holds per-service aggregated counts inside a broker group.
@@ -566,6 +579,39 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 
 		// Unified group summary across all kept topology entries.
 		resp.EnrichmentGroups = ops.SummarizeGroups(allKeptIDs)
+	}
+
+	// --- Apply per-surface confidence floor (#1129) --------------------------
+	// Run AFTER the ops pass so explicit disqualifies still partition into
+	// *_rejected and explicit ranks lift candidates above the floor. Entries
+	// below the floor go into *_low_confidence (still queryable, but hidden
+	// from the default UI list).
+	//
+	// Gated on groupName != "" — the legacy unit-test entry point
+	// collectTopology(grp) passes "" and operates on minimal in-memory
+	// fixtures whose entries deliberately lack source_file / framework signals;
+	// scoring those would force every test fixture to satisfy a real-world
+	// signal bar. Production handlers always pass a real group name.
+	resp.TopicsLowConfidence = []map[string]any{}
+	resp.QueuesLowConfidence = []map[string]any{}
+	resp.ChannelsLowConfidence = []map[string]any{}
+	resp.FunctionsLowConfidence = []map[string]any{}
+	resp.ConfidenceFloor = FloorFor(SurfaceTopology)
+
+	if groupName != "" {
+		filterBucket := func(bucket []map[string]any) (kept, low []map[string]any) {
+			fr := FilterByConfidence(SurfaceTopology, bucket, nil)
+			return fr.Kept, fr.LowConfidence
+		}
+		resp.Topics, resp.TopicsLowConfidence = filterBucket(resp.Topics)
+		resp.Queues, resp.QueuesLowConfidence = filterBucket(resp.Queues)
+		resp.Channels, resp.ChannelsLowConfidence = filterBucket(resp.Channels)
+		resp.Functions, resp.FunctionsLowConfidence = filterBucket(resp.Functions)
+		resp.NoiseRejectedCount =
+			len(resp.TopicsLowConfidence) +
+				len(resp.QueuesLowConfidence) +
+				len(resp.ChannelsLowConfidence) +
+				len(resp.FunctionsLowConfidence)
 	}
 
 	return resp
