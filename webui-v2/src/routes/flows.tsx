@@ -23,6 +23,7 @@ import {
   Package, CheckCircle2, Layout, Terminal, Clock, TestTube2, Wifi,
   ChevronRight, Search, X, Copy, Share2, ExternalLink, ZoomIn, ZoomOut,
   Maximize2, Link2, Sparkles, Info, Check, ArrowRight, Rows2, Grid2x2,
+  Play, Pause, Square, Volume2, VolumeX, Gauge,
   type LucideProps,
 } from "lucide-react";
 import type { ForwardRefExoticComponent, RefAttributes } from "react";
@@ -34,6 +35,15 @@ import type {
 } from "@/data/types";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  createFlowAnim, useFlowAnim,
+  type FlowAnimController, type FlowAnimSnapshot,
+} from "@/lib/flow-animation";
+import { pointAt, type Pt } from "@/lib/edge-geometry";
+import {
+  playStepBlip, readFlowAudio, writeFlowAudio,
+} from "@/lib/flow-audio";
+import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
 
 // ─── Step-kind metadata ───────────────────────────────────────────────────────
 
@@ -876,12 +886,18 @@ function FlowDag({
   selectedStepIdx,
   onPickStep,
   userLayout = "auto",
+  anim,
+  reducedMotion = false,
+  onBridgeMap,
 }: {
   flow: Process;
   detailSteps?: ProcessStep[];
   selectedStepIdx: number | null;
   onPickStep: (i: number | null) => void;
   userLayout?: UserLayout;
+  anim?: FlowAnimSnapshot;
+  reducedMotion?: boolean;
+  onBridgeMap?: (bridges: boolean[]) => void;
 }) {
   const steps = detailSteps ?? flow.steps ?? [];
 
@@ -1041,25 +1057,119 @@ function FlowDag({
 
   // Horizontal edges: exit right edge of node i-1, enter left edge of node i.
   // When the chain wraps to the next lane, route down-then-across.
-  const edges: Array<{
-    from: { x: number; y: number };
-    to: { x: number; y: number };
+  //
+  // Each edge now carries an explicit `polyline` (the actual points the
+  // stroke passes through) so the comet animation can ride the same curve
+  // the renderer draws — single source of truth for the line geometry.
+  type EdgeRec = {
+    from: Pt;
+    to: Pt;
     kind: string | null;
     xrepo: boolean;
     wrap: boolean;
-  }> = [];
+    polyline: Pt[];
+    labelX: number;
+    labelY: number;
+    path: string;
+  };
+  const edges: EdgeRec[] = [];
   for (let i = 1; i < steps.length; i++) {
     const a = positions[i - 1];
     const b = positions[i];
     const wrap = i % perLane === 0; // first node of a new lane
+    const from: Pt = { x: a.x + mode.nodeW, y: a.y + mode.nodeH / 2 };
+    const to: Pt = { x: b.x, y: b.y + mode.nodeH / 2 };
+    const xrepo = steps[i].repo !== steps[i - 1].repo;
+
+    let polyline: Pt[];
+    let labelX: number, labelY: number;
+    if (wrap) {
+      const downY = (from.y + to.y) / 2;
+      polyline = [
+        from,
+        { x: from.x + 14, y: from.y },
+        { x: from.x + 14, y: downY },
+        { x: to.x - 14, y: downY },
+        { x: to.x - 14, y: to.y },
+        to,
+      ];
+      labelX = to.x + 6;
+      labelY = to.y - 8;
+    } else {
+      const midX = (from.x + to.x) / 2;
+      polyline = [
+        from,
+        { x: midX - 6, y: from.y },
+        { x: midX + 6, y: to.y },
+        to,
+      ];
+      labelX = midX - 4;
+      labelY = (from.y + to.y) / 2 - 6;
+    }
+    const path =
+      "M " + polyline.map((p) => `${p.x} ${p.y}`).join(" L ");
+
     edges.push({
-      from: { x: a.x + mode.nodeW, y: a.y + mode.nodeH / 2 },
-      to: { x: b.x, y: b.y + mode.nodeH / 2 },
+      from, to,
       kind: steps[i].edge_kind,
-      xrepo: steps[i].repo !== steps[i - 1].repo,
+      xrepo,
       wrap,
+      polyline,
+      labelX, labelY, path,
     });
   }
+
+  // Publish the bridge-edge map to the parent so the animation controller
+  // knows which edges to traverse slower (~450ms vs ~300ms).
+  // edges[i] corresponds to step index i+1 (target step). We index the
+  // returned array by target step idx so callers can look up via idx.
+  useEffect(() => {
+    if (!onBridgeMap) return;
+    const map: boolean[] = new Array(steps.length).fill(false);
+    edges.forEach((e, i) => {
+      map[i + 1] = e.xrepo;
+    });
+    onBridgeMap(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [steps.length, flow.process_id, userLayout]);
+
+  // Animation-derived sets.
+  const traversedSet = useMemo(
+    () => new Set(anim?.traversedEdges ?? []),
+    [anim?.traversedEdges],
+  );
+  const currentTarget = anim?.currentTarget ?? -1;
+  const edgeProgress = anim?.edgeProgress ?? 0;
+  const lastScrubDir = anim?.lastScrubDir ?? null;
+  // Track which edges to render with reverse-decay (fading out tint).
+  // We compute on the fly: if the user scrubbed backward, edges past
+  // playhead briefly fade — represented by `decayEdges` (those NOT in
+  // traversedSet but were recently). We approximate with a transient
+  // CSS class triggered by snapshot changes.
+  const [decayEdges, setDecayEdges] = useState<Set<number>>(new Set());
+  const prevTraversedRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!anim) return;
+    const prev = prevTraversedRef.current;
+    const next = new Set(anim.traversedEdges);
+    const removed = new Set<number>();
+    prev.forEach((idx) => {
+      if (!next.has(idx)) removed.add(idx);
+    });
+    prevTraversedRef.current = next;
+    if (removed.size > 0 && lastScrubDir === "backward") {
+      setDecayEdges((cur) => {
+        const merged = new Set(cur);
+        removed.forEach((r) => merged.add(r));
+        return merged;
+      });
+      // Fade-out window ~80ms each per spec; clear after a touch longer
+      // so they all complete (we apply CSS transition).
+      const t = setTimeout(() => setDecayEdges(new Set()), 220);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [anim?.traversedEdges, lastScrubDir]);
 
   return (
     <div
@@ -1099,51 +1209,124 @@ function FlowDag({
             <style>{`
               @media (prefers-reduced-motion: no-preference) {
                 .fx-xedge { animation: fx-dash 0.9s linear infinite; }
+                .fx-edge-pulse {
+                  animation: fx-edge-pulse 150ms ease-out 1;
+                }
+                .fx-node-bounce {
+                  animation: fx-node-bounce 180ms ease-out 1;
+                }
               }
               @keyframes fx-dash { to { stroke-dashoffset: -16; } }
+              @keyframes fx-edge-pulse {
+                0%   { stroke-width: 1.4; opacity: 0.4; }
+                50%  { stroke-width: 2.5; opacity: 1; }
+                100% { stroke-width: 1.4; opacity: 0.5; }
+              }
+              @keyframes fx-node-bounce {
+                0%   { transform: scale(1); }
+                40%  { transform: scale(0.95); }
+                70%  { transform: scale(1.05); }
+                100% { transform: scale(1); }
+              }
+              .fx-edge-decay {
+                transition: stroke-opacity 80ms ease-out, stroke 80ms ease-out;
+              }
+              .fx-comet {
+                filter: drop-shadow(0 0 6px var(--ag-flow-accent, #60a5fa))
+                        drop-shadow(0 0 2px var(--ag-flow-accent, #60a5fa));
+              }
             `}</style>
+            {/* Chevron markers — one per edge style (regular + bridge).
+                These render a static arrowhead at the target end of every
+                edge so direction reads without any animation. */}
+            <marker
+              id="ag-chev"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ag-flow-edge, #475569)" />
+            </marker>
+            <marker
+              id="ag-chev-bridge"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ag-flow-bridge, #a78bfa)" />
+            </marker>
+            <marker
+              id="ag-chev-traversed"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ag-flow-accent, #60a5fa)" />
+            </marker>
           </defs>
           {edges.map((ed, i) => {
-            const stroke = ed.xrepo ? "#a78bfa" : "#475569";
-            let path: string;
-            let labelX: number;
-            let labelY: number;
-            if (ed.wrap) {
-              // Route: out the right of the previous node, down, then back
-              // across to the left of the wrapped node on the next lane.
-              const downY = (ed.from.y + ed.to.y) / 2;
-              path = `M ${ed.from.x} ${ed.from.y} L ${ed.from.x + 14} ${ed.from.y} L ${ed.from.x + 14} ${downY} L ${ed.to.x - 14} ${downY} L ${ed.to.x - 14} ${ed.to.y} L ${ed.to.x} ${ed.to.y}`;
-              labelX = ed.to.x + 6;
-              labelY = ed.to.y - 8;
-            } else {
-              const midX = (ed.from.x + ed.to.x) / 2;
-              path = `M ${ed.from.x} ${ed.from.y} L ${midX - 6} ${ed.from.y} L ${midX + 6} ${ed.to.y} L ${ed.to.x} ${ed.to.y}`;
-              labelX = midX - 4;
-              labelY = (ed.from.y + ed.to.y) / 2 - 6;
-            }
+            const targetIdx = i + 1; // step index this edge arrives at
+            const isTraversed = traversedSet.has(targetIdx);
+            const isCurrent = currentTarget === targetIdx && (anim?.running || anim?.paused);
+            const isDecaying = decayEdges.has(targetIdx);
+            const baseStroke = ed.xrepo
+              ? "var(--ag-flow-bridge, #a78bfa)"
+              : "var(--ag-flow-edge, #475569)";
+            const traversedStroke = "var(--ag-flow-accent, #60a5fa)";
+            const stroke = isTraversed ? traversedStroke : baseStroke;
+            // Trail tinting: traversed ~ full strength, future ~ 25%.
+            const strokeOpacity = isTraversed ? 0.9 : isDecaying ? 0.4 : 0.25;
+            const markerId = isTraversed
+              ? "ag-chev-traversed"
+              : ed.xrepo
+                ? "ag-chev-bridge"
+                : "ag-chev";
+            // Pulse class — applied only on the frame the comet arrives.
+            // We approximate "on arrival" by detecting traversed state
+            // change paired with currentTarget moving forward.
+            const justArrived =
+              isTraversed &&
+              !reducedMotion &&
+              lastScrubDir !== "backward" &&
+              // The freshly-arrived edge is the one whose target matches the
+              // playhead - 1 (most recent arrival).
+              anim != null &&
+              anim.playhead - 1 === targetIdx;
             return (
               <g key={i}>
                 <path
-                  d={path}
+                  d={ed.path}
                   fill="none"
                   stroke={stroke}
-                  strokeWidth={1.4}
-                  strokeDasharray={ed.xrepo ? "5 3" : undefined}
-                  className={ed.xrepo ? "fx-xedge" : undefined}
-                />
-                {/* Arrowhead pointing into the left edge of the target node. */}
-                <polygon
-                  points={`${ed.to.x - 6},${ed.to.y - 4} ${ed.to.x - 6},${ed.to.y + 4} ${ed.to.x - 1},${ed.to.y}`}
-                  fill={stroke}
+                  strokeOpacity={strokeOpacity}
+                  strokeWidth={isCurrent ? 2.1 : 1.4}
+                  strokeDasharray={ed.xrepo ? "6 4" : undefined}
+                  markerEnd={`url(#${markerId})`}
+                  className={cn(
+                    "fx-edge-decay",
+                    ed.xrepo ? "fx-xedge" : undefined,
+                    justArrived ? "fx-edge-pulse" : undefined,
+                  )}
                 />
                 {ed.kind && (
                   <text
-                    x={labelX}
-                    y={labelY}
+                    x={ed.labelX}
+                    y={ed.labelY}
                     fontSize={9}
                     textAnchor="middle"
                     fontFamily="var(--font-mono)"
-                    fill={ed.xrepo ? "#a78bfa" : "var(--text-3)"}
+                    fill={ed.xrepo
+                      ? "var(--ag-flow-bridge, #a78bfa)"
+                      : "var(--text-3)"}
                     paintOrder="stroke"
                     stroke="var(--canvas-bg)"
                     strokeWidth={3}
@@ -1156,6 +1339,64 @@ function FlowDag({
               </g>
             );
           })}
+          {/* Comet — only when a current edge is being traversed and the
+              user has not requested reduced motion. */}
+          {!reducedMotion && anim && anim.running && !anim.paused
+            && currentTarget > 0 && currentTarget < steps.length && (() => {
+              const ed = edges[currentTarget - 1];
+              if (!ed) return null;
+              const head = pointAt(ed.polyline, edgeProgress);
+              // Trail: 4 fading dots behind the head along the same path.
+              const trail = [0.04, 0.08, 0.13, 0.19]
+                .map((d) => Math.max(0, edgeProgress - d))
+                .map((p) => pointAt(ed.polyline, p));
+              return (
+                <g className="fx-comet" pointerEvents="none">
+                  {trail.map((pt, ti) => (
+                    <circle
+                      key={ti}
+                      cx={pt.x}
+                      cy={pt.y}
+                      r={2.2 - ti * 0.35}
+                      fill="var(--ag-flow-accent, #60a5fa)"
+                      opacity={0.55 - ti * 0.12}
+                    />
+                  ))}
+                  <circle
+                    cx={head.x}
+                    cy={head.y}
+                    r={3.6}
+                    fill="var(--ag-flow-accent, #60a5fa)"
+                  />
+                </g>
+              );
+            })()}
+          {/* Paused comet — frozen mid-edge so it's still visible. */}
+          {!reducedMotion && anim && anim.paused
+            && currentTarget > 0 && currentTarget < steps.length && (() => {
+              const ed = edges[currentTarget - 1];
+              if (!ed) return null;
+              const head = pointAt(ed.polyline, edgeProgress);
+              return (
+                <g pointerEvents="none">
+                  <circle
+                    cx={head.x}
+                    cy={head.y}
+                    r={3.6}
+                    fill="var(--ag-flow-accent, #60a5fa)"
+                    opacity={0.85}
+                  />
+                  <circle
+                    cx={head.x}
+                    cy={head.y}
+                    r={6}
+                    fill="none"
+                    stroke="var(--ag-flow-accent, #60a5fa)"
+                    strokeOpacity={0.4}
+                  />
+                </g>
+              );
+            })()}
         </svg>
 
         {/* Nodes */}
@@ -1179,6 +1420,17 @@ function FlowDag({
               : baseFile
             : "";
 
+          // Node arrival bounce — applied when this node was the most
+          // recent forward arrival in the replay. Reduced-motion suppresses
+          // it via the global @media rule.
+          const justArrivedNode =
+            !reducedMotion &&
+            anim != null &&
+            anim.lastScrubDir !== "backward" &&
+            anim.playhead - 1 === i &&
+            i > 0;
+          const isInTrail =
+            anim != null && i < anim.playhead;
           return (
             <button
               key={s.entity_id}
@@ -1192,6 +1444,8 @@ function FlowDag({
                   ? "border-accent shadow-[0_0_0_2px_var(--accent-ring)]"
                   : "border-border hover:shadow-[var(--shadow-2)]",
                 isPhantom ? "border-dashed opacity-85" : "",
+                justArrivedNode ? "fx-node-bounce" : "",
+                isInTrail ? "ag-trail-node" : "",
               )}
               style={{
                 left: pos.x,
@@ -1802,6 +2056,284 @@ type Selection =
   | { kind: "flow"; flow: Process }
   | { kind: "deadend"; de: FlowDeadEnd };
 
+// ─── FlowDag wrapper that subscribes to the animation controller ─────────────
+//
+// Isolating the snapshot subscription here means the DetailPanel doesn't
+// re-render on every rAF tick; only this leaf does, which in turn passes the
+// (small) snapshot object down to FlowDag for rendering.
+function FlowDagWithAnim({
+  controller,
+  ...rest
+}: {
+  flow: Process;
+  detailSteps?: ProcessStep[];
+  selectedStepIdx: number | null;
+  onPickStep: (i: number | null) => void;
+  userLayout?: UserLayout;
+  controller: FlowAnimController | null;
+  reducedMotion?: boolean;
+  onBridgeMap?: (bridges: boolean[]) => void;
+}) {
+  if (!controller) {
+    return <FlowDag {...rest} />;
+  }
+  return <FlowDagWithAnimInner controller={controller} {...rest} />;
+}
+
+function FlowDagWithAnimInner({
+  controller,
+  ...rest
+}: {
+  flow: Process;
+  detailSteps?: ProcessStep[];
+  selectedStepIdx: number | null;
+  onPickStep: (i: number | null) => void;
+  userLayout?: UserLayout;
+  controller: FlowAnimController;
+  reducedMotion?: boolean;
+  onBridgeMap?: (bridges: boolean[]) => void;
+}) {
+  const snap = useFlowAnim(controller);
+  return <FlowDag {...rest} anim={snap} />;
+}
+
+// ─── Replay controls (#1922) ─────────────────────────────────────────────────
+
+const SPEEDS: Array<{ key: string; mult: number; label: string }> = [
+  { key: "0.5", mult: 0.5, label: "0.5×" },
+  { key: "1",   mult: 1,   label: "1×" },
+  { key: "2",   mult: 2,   label: "2×" },
+];
+
+function ReplayControls({
+  controller,
+  totalSteps,
+  speedKey,
+  onSpeedChange,
+  audioOn,
+  onAudioToggle,
+}: {
+  controller: FlowAnimController;
+  totalSteps: number;
+  speedKey: string;
+  onSpeedChange: (k: string) => void;
+  audioOn: boolean;
+  onAudioToggle: (next: boolean) => void;
+}) {
+  const snap = useFlowAnim(controller);
+  const isPlaying = snap.running && !snap.paused;
+  const canReplay = totalSteps >= 2;
+
+  return (
+    <div
+      className="inline-flex items-center gap-1 h-7 rounded-sm border border-border bg-surface px-1"
+      role="group"
+      aria-label="Replay controls"
+    >
+      <button
+        type="button"
+        title={
+          !canReplay
+            ? "Need at least 2 steps"
+            : isPlaying
+              ? "Pause replay (Esc)"
+              : snap.paused
+                ? "Resume"
+                : "Replay all steps"
+        }
+        disabled={!canReplay}
+        onClick={() => {
+          if (isPlaying) controller.pause();
+          else if (snap.paused) controller.resume();
+          else controller.start();
+        }}
+        className={cn(
+          "inline-flex items-center gap-1 h-6 px-2 rounded-sm text-[11px] font-medium",
+          "text-text-2 hover:bg-surface-2 hover:text-text disabled:opacity-40",
+          isPlaying ? "bg-surface-2 text-text" : "",
+        )}
+      >
+        {isPlaying ? <Pause size={11} /> : <Play size={11} />}
+        {isPlaying ? "Pause" : snap.paused ? "Resume" : "Replay all"}
+      </button>
+      <button
+        type="button"
+        title="Stop replay"
+        disabled={!canReplay || (!snap.running && !snap.paused && snap.playhead === 0)}
+        onClick={() => controller.reset()}
+        className="inline-flex items-center h-6 w-6 justify-center rounded-sm text-text-3 hover:bg-surface-2 hover:text-text disabled:opacity-40"
+      >
+        <Square size={10} />
+      </button>
+      <span className="inline-flex items-center gap-0.5 ml-1 pl-1 border-l border-border">
+        <Gauge size={10} className="text-text-4" />
+        {SPEEDS.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => onSpeedChange(s.key)}
+            className={cn(
+              "h-5 px-1 rounded-xs text-[10px] font-mono",
+              speedKey === s.key
+                ? "bg-surface-2 text-text font-semibold"
+                : "text-text-3 hover:text-text",
+            )}
+            title={`Replay speed ${s.label}`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </span>
+      <button
+        type="button"
+        onClick={() => onAudioToggle(!audioOn)}
+        title={audioOn ? "Audio blip on — click to mute" : "Audio blip off — click to enable"}
+        className={cn(
+          "inline-flex items-center h-6 w-6 justify-center rounded-sm ml-1",
+          audioOn ? "text-text" : "text-text-4",
+          "hover:bg-surface-2",
+        )}
+      >
+        {audioOn ? <Volume2 size={11} /> : <VolumeX size={11} />}
+      </button>
+    </div>
+  );
+}
+
+// ─── Progress scrubber (#1922) ───────────────────────────────────────────────
+
+function ProgressScrubber({
+  controller,
+  totalSteps,
+  stepLabels,
+}: {
+  controller: FlowAnimController;
+  totalSteps: number;
+  stepLabels: string[];
+}) {
+  const snap = useFlowAnim(controller);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  if (totalSteps < 2) return null;
+
+  // Fractional position of the playhead across the track (0..1).
+  // playhead counts reached nodes (0..totalSteps). Map onto (totalSteps-1)
+  // segments. While animating an edge we offset by edgeProgress.
+  const segments = totalSteps - 1;
+  const baseSeg = Math.max(0, snap.playhead - 1);
+  const inFlight = snap.running && !snap.paused && snap.edgeProgress > 0;
+  const frac = inFlight
+    ? Math.min(1, (baseSeg + snap.edgeProgress) / segments)
+    : snap.playhead === 0
+      ? 0
+      : Math.min(1, baseSeg / segments);
+
+  function idxFromEvent(e: React.PointerEvent | PointerEvent) {
+    const el = trackRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    const x = (e as PointerEvent).clientX - rect.left;
+    const t = Math.max(0, Math.min(1, x / rect.width));
+    return Math.round(t * segments) + 1; // playhead value (1..totalSteps)
+  }
+
+  return (
+    <div className="px-3 py-2 border-t border-border bg-surface flex items-center gap-2">
+      <span className="font-mono text-[10px] text-text-4 tabular-nums w-12 flex-none">
+        {snap.playhead} / {totalSteps}
+      </span>
+      <div
+        ref={trackRef}
+        className="relative flex-1 h-5 cursor-pointer select-none"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setDragging(true);
+          controller.scrubTo(idxFromEvent(e));
+        }}
+        onPointerMove={(e) => {
+          if (dragging) controller.scrubTo(idxFromEvent(e));
+        }}
+        onPointerUp={(e) => {
+          try {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          } catch { /* ignore */ }
+          setDragging(false);
+        }}
+        onMouseMove={(e) => {
+          const el = trackRef.current;
+          if (!el) return;
+          const rect = el.getBoundingClientRect();
+          const t = (e.clientX - rect.left) / rect.width;
+          const idx = Math.max(0, Math.min(totalSteps - 1, Math.round(t * (totalSteps - 1))));
+          setHoverIdx(idx);
+        }}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        {/* Track */}
+        <div
+          className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full"
+          style={{ background: "var(--border)" }}
+        />
+        {/* Filled */}
+        <div
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full"
+          style={{
+            width: `${frac * 100}%`,
+            background: "var(--ag-flow-accent, #60a5fa)",
+            transition: dragging || inFlight ? "none" : "width 120ms linear",
+          }}
+        />
+        {/* Ticks */}
+        {Array.from({ length: totalSteps }, (_, i) => (
+          <span
+            key={i}
+            className="absolute top-1/2 -translate-y-1/2"
+            style={{
+              left: `${(i / segments) * 100}%`,
+              width: 1,
+              height: i === 0 || i === totalSteps - 1 ? 10 : 6,
+              background: "var(--text-4)",
+              transform: "translate(-0.5px, -50%)",
+            }}
+          />
+        ))}
+        {/* Playhead */}
+        <span
+          className="absolute top-1/2 -translate-y-1/2 rounded-full pointer-events-none"
+          style={{
+            left: `${frac * 100}%`,
+            transform: "translate(-50%, -50%)",
+            width: 11,
+            height: 11,
+            background: "var(--ag-flow-accent, #60a5fa)",
+            boxShadow: "0 0 0 2px var(--surface), 0 0 4px var(--ag-flow-accent, #60a5fa)",
+            transition: dragging || inFlight ? "none" : "left 120ms linear",
+          }}
+        />
+        {/* Hover label */}
+        {hoverIdx != null && stepLabels[hoverIdx] && (
+          <span
+            className="absolute -top-5 px-1.5 py-0.5 rounded-xs font-mono text-[9px] bg-surface-2 border border-border text-text-2 whitespace-nowrap pointer-events-none"
+            style={{
+              left: `${(hoverIdx / segments) * 100}%`,
+              transform: "translateX(-50%)",
+              maxWidth: 240,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {hoverIdx + 1}. {stepLabels[hoverIdx]}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const SPEED_KEY = "archigraph:flows:speed";
+
 function DetailPanel({
   selection,
   groupId,
@@ -1813,6 +2345,36 @@ function DetailPanel({
 }) {
   const [selectedStepIdx, setSelectedStepIdx] = useState<number | null>(null);
   const [sideEffectsOpen, setSideEffectsOpen] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
+
+  // ── Audio + speed prefs (#1922) ──────────────────────────────────────────
+  const [audioOn, setAudioOn] = useState<boolean>(() => readFlowAudio());
+  function updateAudio(next: boolean) {
+    setAudioOn(next);
+    writeFlowAudio(next);
+  }
+
+  const [speedKey, setSpeedKey] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(SPEED_KEY);
+      if (saved && SPEEDS.some((s) => s.key === saved)) return saved;
+    } catch { /* ignore */ }
+    return "1";
+  });
+  function updateSpeed(k: string) {
+    setSpeedKey(k);
+    try { localStorage.setItem(SPEED_KEY, k); } catch { /* ignore */ }
+  }
+  const speedMult = SPEEDS.find((s) => s.key === speedKey)?.mult ?? 1;
+
+  // ── Bridge-edge map published by FlowDag ─────────────────────────────────
+  const bridgeRef = useRef<boolean[]>([]);
+
+  // ── Animation controller — recreated when the selection or step count
+  //    changes. Stored in state so any consumer re-renders when the
+  //    controller instance flips. The actual replay snapshot is observed
+  //    by children via useFlowAnim(useSyncExternalStore).
+  const [controller, setController] = useState<FlowAnimController | null>(null);
 
   // ── Layout toggle (#1907) ──────────────────────────────────────────────────
   const [userLayout, setUserLayout] = useState<UserLayout>(() => {
@@ -1847,18 +2409,74 @@ function DetailPanel({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && selection) {
-        onClose();
+      if (e.key !== "Escape" || !selection) return;
+      // If a replay is running or paused, ESC pauses/resumes — only close
+      // the panel when there's no active animation in progress.
+      const c = controller;
+      if (c) {
+        const snap = c.getSnapshot();
+        if (snap.running && !snap.paused) {
+          c.pause();
+          e.preventDefault();
+          return;
+        }
       }
+      onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [selection, onClose]);
+  }, [selection, onClose, controller]);
 
   const detailQ = useFlowDetail(
     groupId,
     selection?.kind === "flow" ? selection.flow.process_id : null,
   );
+
+  // ── Derive total step count + auto speed-bump for very long flows ────────
+  const previewFlow = selection?.kind === "flow" ? selection.flow : null;
+  const previewSteps =
+    detailQ.data?.process?.steps ??
+    detailQ.data?.chain_entities ??
+    previewFlow?.steps ??
+    [];
+  const totalSteps = previewSteps.length;
+
+  // Effective speed: respect user choice, but auto-bump to 2× on flows
+  // with >80 steps if the user is still on the default 1× (#1922 perf
+  // guidance). The slider value itself stays at 1× so the user can
+  // still override.
+  const effectiveSpeed = totalSteps > 80 && speedKey === "1" ? 2 : speedMult;
+
+  // Construct / re-construct the controller on flow change.
+  const ctrlKey = `${selection?.kind === "flow" ? selection.flow.process_id : "none"}:${totalSteps}`;
+  const lastCtrlKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (selection?.kind !== "flow" || totalSteps < 2) {
+      setController(null);
+      lastCtrlKeyRef.current = "";
+      return;
+    }
+    if (lastCtrlKeyRef.current === ctrlKey) return;
+    lastCtrlKeyRef.current = ctrlKey;
+    const c = createFlowAnim({
+      totalSteps,
+      // Looked up live from the bridge map FlowDag publishes via onBridgeMap.
+      isBridgeEdge: (idx) => Boolean(bridgeRef.current?.[idx]),
+      speed: effectiveSpeed,
+      reducedMotion,
+    });
+    c.setOnArrive(() => {
+      if (readFlowAudio()) playStepBlip();
+    });
+    setController(c);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctrlKey, reducedMotion]);
+
+  // Push speed updates into the existing controller without re-creating it
+  // (re-creating mid-flow would lose the playhead).
+  useEffect(() => {
+    controller?.setSpeed(effectiveSpeed);
+  }, [controller, effectiveSpeed]);
 
   if (!selection) {
     return (
@@ -2034,6 +2652,18 @@ function DetailPanel({
             </button>
           )}
 
+          {/* Replay controls (#1922) — between layout toggle and other actions */}
+          {controller && (
+            <ReplayControls
+              controller={controller}
+              totalSteps={totalSteps}
+              speedKey={speedKey}
+              onSpeedChange={updateSpeed}
+              audioOn={audioOn}
+              onAudioToggle={updateAudio}
+            />
+          )}
+
           {/* Layout toggle (#1907) — segmented control, right-justified */}
           <div
             className="ml-auto inline-flex items-center bg-surface-2 border border-border rounded-sm overflow-hidden h-7"
@@ -2102,7 +2732,7 @@ function DetailPanel({
               )}
               style={selectedStep ? { width: "60%" } : undefined}
             >
-              <FlowDag
+              <FlowDagWithAnim
                 flow={fullFlow}
                 detailSteps={fullFlow.steps}
                 selectedStepIdx={selectedStepIdx}
@@ -2113,7 +2743,20 @@ function DetailPanel({
                   setSideEffectsOpen(false);
                 }}
                 userLayout={userLayout}
+                controller={controller}
+                reducedMotion={reducedMotion}
+                onBridgeMap={(map) => {
+                  bridgeRef.current = map;
+                }}
               />
+              {/* Scrubber — directly under the DAG, only when steps exist. */}
+              {controller && (fullFlow.steps?.length ?? 0) >= 2 && (
+                <ProgressScrubber
+                  controller={controller}
+                  totalSteps={fullFlow.steps?.length ?? 0}
+                  stepLabels={(fullFlow.steps ?? []).map((s) => stepName(s))}
+                />
+              )}
               {/* Floating side-effects panel — only when toggled open and no
                   step is selected (consistent with previous #1895 behavior). */}
               {sideEffectsOpen && !selectedStep && (

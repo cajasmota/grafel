@@ -143,3 +143,20 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ── Flow DAG (#1922) — theme-aware accents ───────────────────────────────────
+   Comet, trail tint, chevron, and cross-repo bridge stroke all consume these
+   custom properties so dark/light + cool/warm palettes stay coherent.
+   Fallbacks live inline in the SVG (e.g. var(--ag-flow-accent, #60a5fa))
+   so the canvas remains readable even if the tokens layer changes shape. */
+:root {
+  --ag-flow-accent: var(--accent, #60a5fa);
+  --ag-flow-edge:   var(--border-strong, #475569);
+  --ag-flow-bridge: #a78bfa;
+}
+/* Warm palette override (matches the `[data-palette="warm"]` selector used
+   by tokens.css when the user picks a warm theme). */
+[data-palette="warm"] {
+  --ag-flow-accent: #f59e0b;
+  --ag-flow-bridge: #f472b6;
+}
