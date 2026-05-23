@@ -245,6 +245,7 @@ Previously named `archigraph_search` (renamed in #668).
 | `context_filter` | string[] | no | `[]` | Edge-kind filter (see [Relationship Types](#relationship-types)). |
 | `repo_filter` | string[] | no | `[]` | Repo names to scope. `["*"]` requests a full dump. |
 | `full` | boolean | no | `false` | Return raw JSON instead of compact text. |
+| `verbose` | boolean | no | `false` | When `full=true`: restore `qualified_name` and `repo` on each match item (#1739). |
 | `include_noise` | boolean | no | `false` | Keep synthetic nodes (file/module container components, inferred class-hierarchy shadows, raw `SCOPE.Pattern` nodes, built-in `Process` nodes, and Schema field members). Excluded by default (#1614, #1712). |
 | `group`, `cwd` | string | no | — | Common args. |
 
@@ -262,16 +263,17 @@ Set `include_noise=true` to recover the unfiltered list.
   "matches": [
     {
       "id": "mobile-app::a1b2c3d4e5f60718",
-      "label": "OrderViewSet",
-      "repo": "mobile-app",
+      "name": "OrderViewSet",
+      "file": "core/views/order.py",
+      "line": 42,
       "score": 12.31,
-      "source_file": "core/views/order.py",
-      "start_line": 42,
       "kind": "Component"
     }
   ]
 }
 ```
+
+With `verbose=true`, each match also includes `qualified_name` and `repo`.
 
 **Notes**
 
@@ -283,6 +285,8 @@ Set `include_noise=true` to recover the unfiltered list.
   (ADR-0009).
 - `kind` is the SCOPE-stripped form (`Component` not `SCOPE.Component`); see
   ADR-0003 and [Entity Kinds](#entity-kinds).
+- Field elision (#1739): default shape drops `qualified_name` and `repo` (redundant
+  in ranked context). Pass `verbose=true` to restore.
 
 ---
 
@@ -297,27 +301,25 @@ Previously named `archigraph_describe` (renamed in #668).
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `label_or_id` | string | yes | — | Entity ID, `<repo>::<localId>`, qualified name (case-insensitive), or label (case-insensitive). |
+| `verbose` | boolean | no | `false` | Restore `end_line`, `language`, `repo`, `pagerank`, `community_id`, `properties` (#1739). |
 | `repo_filter` | string[] | no | `[]` | Common arg. |
 | `group`, `cwd` | string | no | — | Common args. |
 
-**Output** — JSON object:
+**Output** — JSON object (narrow default, `verbose=false`):
 
 ```json
 {
   "id": "a1b2c3d4e5f60718",
-  "label": "OrderViewSet",
+  "name": "OrderViewSet",
   "qualified_name": "core.views.order.OrderViewSet",
   "kind": "Component",
-  "source_file": "core/views/order.py",
-  "start_line": 42,
-  "end_line": 130,
-  "language": "python",
-  "repo": "mobile-app",
-  "pagerank": 0.0142,
-  "community_id": 7,
-  "properties": { "framework": "drf" }
+  "file": "core/views/order.py",
+  "line": 42
 }
 ```
+
+With `verbose=true`, the response also includes `end_line`, `language`, `repo`,
+`pagerank`, `community_id`, and `properties`.
 
 If the call resolves to a single repo, `id` is local; otherwise it is prefixed.
 Returns a tool error when no entity matches.
@@ -426,8 +428,8 @@ Three sub-actions selected via the required `action` argument:
   cross-stack first then by step count. Optional `cross_stack_only=true`
   filters to chains that traverse an HTTP boundary.
 - `get` — return the full step chain for one `process_id` (bare or
-  `repo::local` prefixed). Steps include node id, name, kind,
-  source_file, and start_line.
+  `repo::local` prefixed). Steps include node id, name, file, and line.
+  Pass `verbose=true` to also include `kind` on each step.
 - `follow` — ad-hoc forward BFS from any `entry_point_id`. Useful for
   probing entities that weren't selected as pre-computed entry points.
   Honours `max_depth` (≤10) and `branching_factor` (≤4) caps.
@@ -442,6 +444,8 @@ Three sub-actions selected via the required `action` argument:
 | `max_depth` | number | no | `8` | (`follow`) BFS depth cap. Clamped to ≤10. |
 | `branching_factor` | number | no | `3` | (`follow`) Per-step branch cap. Clamped to ≤4. |
 | `cross_stack_only` | bool | no | `false` | (`list`) Only return cross-stack Processes. |
+| `min_steps` | number | no | `4` | (`list`) Minimum step count filter. |
+| `verbose` | boolean | no | `false` | (`get`/`follow`) Restore `kind` on each step (#1739). |
 | `limit` | number | no | `25` | (`list`) Max processes returned. |
 | `repo_filter` | string[] | no | `[]` | Common arg. |
 | `group`, `cwd` | string | no | — | Common args. |

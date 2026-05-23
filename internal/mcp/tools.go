@@ -293,6 +293,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	depth := argInt(req, "depth", 3)
 	tokenBudget := argInt(req, "token_budget", 800)
 	full := argBool(req, "full", false)
+	verbose := argBool(req, "verbose", false)
 	includeNoise := argBool(req, "include_noise", false)
 	repoFilter := argStringSlice(req, "repo_filter")
 	contextFilter := contextFilterSet(argStringSlice(req, "context_filter"))
@@ -381,7 +382,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 
 	if full {
 		return jsonResult(map[string]any{
-			"matches": serializeHits(all),
+			"matches": serializeHits(all, verbose),
 		}), nil
 	}
 
@@ -498,18 +499,25 @@ type scored struct {
 }
 
 // serializeHits is the structured (full=true) shape.
-func serializeHits(all []scored) []map[string]any {
+//
+// Default (verbose=false): id, name, file, line, score, kind.
+// Verbose (verbose=true): also includes qualified_name, repo.
+func serializeHits(all []scored, verbose bool) []map[string]any {
 	out := make([]map[string]any, 0, len(all))
 	for _, sc := range all {
-		out = append(out, map[string]any{
+		m := map[string]any{
 			"id":          prefixedID(sc.repo.Repo, sc.hit.Entity.ID),
-			"label":       sc.hit.Entity.Name,
-			"repo":        sc.repo.Repo,
+			"name":        sc.hit.Entity.Name,
+			"file":        sc.hit.Entity.SourceFile,
+			"line":        sc.hit.Entity.StartLine,
 			"score":       sc.hit.Score,
-			"source_file": sc.hit.Entity.SourceFile,
-			"start_line":  sc.hit.Entity.StartLine,
 			"kind":        stripScopePrefix(sc.hit.Entity.Kind),
-		})
+		}
+		if verbose {
+			m["qualified_name"] = sc.hit.Entity.QualifiedName
+			m["repo"] = sc.repo.Repo
+		}
+		out = append(out, m)
 	}
 	return out
 }
@@ -555,6 +563,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	verbose := argBool(req, "verbose", false)
 	g, _, _ := s.resolveAndGroup(req)
 	allFindings := loadFindings(findingsMemDir(g, lg))
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
@@ -562,7 +571,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
 			if e, ok := r.LabelIndex.ByID[local]; ok {
 				scopeIsOne := len(repos) == 1
-				out := serializeEntity(r.Repo, e, scopeIsOne)
+				out := serializeEntity(r.Repo, e, scopeIsOne, verbose)
 				out["findings"] = findingsToJSON(findingsForEntity(allFindings, e.ID, prefixedID(r.Repo, e.ID)), 0)
 				if agentEdges := agentResolvedEdgesForEntity(r.Doc, r.Repo, e.ID, scopeIsOne); len(agentEdges) > 0 {
 					out["agent_resolved_edges"] = agentEdges
@@ -609,7 +618,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	}
 	m := matches[0]
 	scopeIsOne := len(repos) == 1
-	out := serializeEntity(m.repo.Repo, m.ent, scopeIsOne)
+	out := serializeEntity(m.repo.Repo, m.ent, scopeIsOne, verbose)
 	out["findings"] = findingsToJSON(findingsForEntity(allFindings, m.ent.ID, prefixedID(m.repo.Repo, m.ent.ID)), 0)
 	if agentEdges := agentResolvedEdgesForEntity(m.repo.Doc, m.repo.Repo, m.ent.ID, scopeIsOne); len(agentEdges) > 0 {
 		out["agent_resolved_edges"] = agentEdges
@@ -657,30 +666,37 @@ func agentResolvedEdgesForEntity(doc *graph.Document, repo string, entityID stri
 
 // serializeEntity renders an entity as a map. When scopeIsOne, IDs are local;
 // otherwise they're prefixed with <repo>::.
-func serializeEntity(repo string, e *graph.Entity, scopeIsOne bool) map[string]any {
+//
+// Default (verbose=false): id, name, qualified_name, file, line, kind.
+// Verbose (verbose=true): also includes end_line, language, repo, pagerank,
+// community_id, properties.
+func serializeEntity(repo string, e *graph.Entity, scopeIsOne bool, verbose ...bool) map[string]any {
+	wantVerbose := len(verbose) > 0 && verbose[0]
 	id := e.ID
 	if !scopeIsOne {
 		id = prefixedID(repo, e.ID)
 	}
 	out := map[string]any{
 		"id":             id,
-		"label":          e.Name,
+		"name":           e.Name,
 		"qualified_name": e.QualifiedName,
 		"kind":           stripScopePrefix(e.Kind),
-		"source_file":    e.SourceFile,
-		"start_line":     e.StartLine,
-		"end_line":       e.EndLine,
-		"language":       e.Language,
-		"repo":           repo,
+		"file":           e.SourceFile,
+		"line":           e.StartLine,
 	}
-	if e.PageRank != nil {
-		out["pagerank"] = *e.PageRank
-	}
-	if e.CommunityID != nil {
-		out["community_id"] = *e.CommunityID
-	}
-	if len(e.Properties) > 0 {
-		out["properties"] = e.Properties
+	if wantVerbose {
+		out["end_line"] = e.EndLine
+		out["language"] = e.Language
+		out["repo"] = repo
+		if e.PageRank != nil {
+			out["pagerank"] = *e.PageRank
+		}
+		if e.CommunityID != nil {
+			out["community_id"] = *e.CommunityID
+		}
+		if len(e.Properties) > 0 {
+			out["properties"] = e.Properties
+		}
 	}
 	return out
 }

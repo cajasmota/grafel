@@ -134,7 +134,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_get_source", s.handleGetNodeSource))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find",
-		mcpapi.WithDescription("BM25 graph query, de-noised; include_noise:true keeps synthetic nodes."),
+		mcpapi.WithDescription("BM25 graph query, de-noised. verbose=true restores qualified_name+repo."),
 		mcpapi.WithString("question", mcpapi.Required()),
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
@@ -142,13 +142,15 @@ func (s *Server) registerTools() {
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false)),
 		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
+		// verbose=true (default false) read from request map to stay under token ceiling.
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find", s.handleQueryGraph))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_inspect",
-		mcpapi.WithDescription("Look up an entity by id, qualified name, or label."),
+		mcpapi.WithDescription("Look up entity by id/qname/label. verbose=true restores all fields."),
 		mcpapi.WithString("label_or_id", mcpapi.Required()),
+		// verbose=true (default false) read from request map to stay under token ceiling.
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -181,10 +183,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("entry_point_id"),
 		mcpapi.WithNumber("max_depth", mcpapi.DefaultNumber(8)),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(25)),
-		// min_steps (default 4) and cross_stack_only are accepted as optional
-		// args read from the request map (see handleTracesList); they are not
-		// declared in the schema to keep the handshake token budget under its
-		// ceiling (#1639).
+		// min_steps, cross_stack_only, verbose (default false) are accepted as
+		// optional args read from the request map to stay under token ceiling.
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -268,8 +268,9 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_patterns", s.handlePatterns))
 
 	// archigraph_topology — message-channel topology (#1281). action=orphan_publishers|orphan_subscribers|topic_detail.
+	// verbose=true (default false) read from request map to stay under token ceiling.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_topology",
-		mcpapi.WithDescription("Message-channel topology: publisher/subscriber orphans and topic detail."),
+		mcpapi.WithDescription("Message-channel topology: orphans and topic detail."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithAny("topic_id"),
 		mcpapi.WithArray("repo_filter"),
@@ -351,16 +352,18 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_endpoints", s.handleEndpoints))
 
+	// verbose=true (default false) read from request map to stay under token ceiling.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callers",
-		mcpapi.WithDescription("Inbound callers of an entity up to N hops."),
+		mcpapi.WithDescription("Inbound callers up to N hops. verbose=true restores kind+repo."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_callers", s.handleFindCallers))
 
+	// verbose=true (default false) read from request map to stay under token ceiling.
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find_callees",
-		mcpapi.WithDescription("Outbound callees of an entity up to N hops."),
+		mcpapi.WithDescription("Outbound callees up to N hops. verbose=true restores kind+repo."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithAny("group"),

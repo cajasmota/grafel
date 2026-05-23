@@ -45,6 +45,7 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 	if depth > 5 {
 		depth = 5
 	}
+	verbose := argBool(req, "verbose", false)
 
 	repoHint, local := splitPrefixed(entityID)
 	repos := reposToConsider(lg, nil)
@@ -54,13 +55,15 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 		}
 	}
 
+	// Default shape: id, name, file, line, hop_count.
+	// Verbose shape: also includes kind, repo.
 	type caller struct {
-		EntityID   string `json:"entity_id"`
+		EntityID   string `json:"id"`
 		Name       string `json:"name"`
-		Kind       string `json:"kind"`
-		Repo       string `json:"repo"`
-		SourceFile string `json:"source_file,omitempty"`
-		StartLine  int    `json:"start_line,omitempty"`
+		Kind       string `json:"kind,omitempty"`
+		Repo       string `json:"repo,omitempty"`
+		SourceFile string `json:"file,omitempty"`
+		StartLine  int    `json:"line,omitempty"`
 		HopCount   int    `json:"hop_count"`
 	}
 
@@ -114,15 +117,18 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 			case noiseContainer, noiseShadow:
 				continue
 			}
-			callers = append(callers, caller{
+			c := caller{
 				EntityID:   prefixedID(r.Repo, e.ID),
 				Name:       e.Name,
-				Kind:       stripScopePrefix(e.Kind),
-				Repo:       r.Repo,
 				SourceFile: e.SourceFile,
 				StartLine:  e.StartLine,
 				HopCount:   d,
-			})
+			}
+			if verbose {
+				c.Kind = stripScopePrefix(e.Kind)
+				c.Repo = r.Repo
+			}
+			callers = append(callers, c)
 		}
 		sort.Slice(callers, func(i, j int) bool {
 			if callers[i].HopCount != callers[j].HopCount {
@@ -180,6 +186,7 @@ func (s *Server) handleFindCallees(_ context.Context, req mcpapi.CallToolRequest
 	if depth > 5 {
 		depth = 5
 	}
+	verbose := argBool(req, "verbose", false)
 
 	repoHint, local := splitPrefixed(entityID)
 	repos := reposToConsider(lg, nil)
@@ -189,13 +196,15 @@ func (s *Server) handleFindCallees(_ context.Context, req mcpapi.CallToolRequest
 		}
 	}
 
+	// Default shape: id, name, file, line, hop_count.
+	// Verbose shape: also includes kind, repo.
 	type callee struct {
-		EntityID   string `json:"entity_id"`
+		EntityID   string `json:"id"`
 		Name       string `json:"name"`
-		Kind       string `json:"kind"`
-		Repo       string `json:"repo"`
-		SourceFile string `json:"source_file,omitempty"`
-		StartLine  int    `json:"start_line,omitempty"`
+		Kind       string `json:"kind,omitempty"`
+		Repo       string `json:"repo,omitempty"`
+		SourceFile string `json:"file,omitempty"`
+		StartLine  int    `json:"line,omitempty"`
 		HopCount   int    `json:"hop_count"`
 	}
 
@@ -242,15 +251,18 @@ func (s *Server) handleFindCallees(_ context.Context, req mcpapi.CallToolRequest
 			if e == nil {
 				continue
 			}
-			callees = append(callees, callee{
+			c := callee{
 				EntityID:   prefixedID(r.Repo, e.ID),
 				Name:       e.Name,
-				Kind:       stripScopePrefix(e.Kind),
-				Repo:       r.Repo,
 				SourceFile: e.SourceFile,
 				StartLine:  e.StartLine,
 				HopCount:   d,
-			})
+			}
+			if verbose {
+				c.Kind = stripScopePrefix(e.Kind)
+				c.Repo = r.Repo
+			}
+			callees = append(callees, c)
 		}
 		sort.Slice(callees, func(i, j int) bool {
 			if callees[i].HopCount != callees[j].HopCount {

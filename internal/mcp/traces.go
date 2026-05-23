@@ -153,6 +153,7 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 	if errRes != nil {
 		return errRes, nil
 	}
+	verbose := argBool(req, "verbose", false)
 	// process_id may be either prefixed ("repo::local") or bare local id.
 	repoHint, local := splitPrefixed(pid)
 	repos := reposToConsider(lg, nil)
@@ -174,7 +175,7 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 			if e.Kind != processEntityKind || e.ID != target {
 				continue
 			}
-			steps := buildProcessSteps(r.Doc, e, r.ByID)
+			steps := buildProcessSteps(r.Doc, e, r.ByID, verbose)
 			return jsonResult(map[string]any{
 				"process_id":  prefixedID(r.Repo, e.ID),
 				"repo":        r.Repo,
@@ -211,6 +212,7 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 	if branch <= 0 || branch > 4 {
 		branch = 3
 	}
+	verbose := argBool(req, "verbose", false)
 
 	repoHint, local := splitPrefixed(entry)
 	repos := reposToConsider(lg, nil)
@@ -238,6 +240,8 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 		}
 		chains := followCallsBFS(r.Doc, target, maxDepth, branch, r.CallsAdj)
 		// Materialise the chains into step lists with labels.
+		// Default (verbose=false): step_index, node_id, name, file, line.
+		// Verbose (verbose=true): also includes kind.
 		out := make([]map[string]any, 0, len(chains))
 		byID := r.ByID
 		for _, c := range chains {
@@ -249,10 +253,12 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 				}
 				if e, ok := byID[id]; ok {
 					step["name"] = e.Name
-					step["kind"] = e.Kind
-					step["source_file"] = e.SourceFile
+					step["file"] = e.SourceFile
 					if e.StartLine > 0 {
-						step["start_line"] = e.StartLine
+						step["line"] = e.StartLine
+					}
+					if verbose {
+						step["kind"] = e.Kind
 					}
 				}
 				steps = append(steps, step)
@@ -286,7 +292,11 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 // buildProcessSteps reconstructs the ordered step list for one Process
 // from its STEP_IN_PROCESS edges, falling back to the `chain` property
 // when the edges are missing.
-func buildProcessSteps(doc *graph.Document, proc *graph.Entity, byID map[string]*graph.Entity) []map[string]any {
+//
+// Default (verbose=false): step_index, node_id, name, file, line.
+// Verbose (verbose=true): also includes kind.
+func buildProcessSteps(doc *graph.Document, proc *graph.Entity, byID map[string]*graph.Entity, verbose ...bool) []map[string]any {
+	wantVerbose := len(verbose) > 0 && verbose[0]
 	if byID == nil {
 		// Defensive fallback: callers should always pass a cached map (#1656),
 		// but synthesize on the fly if absent so tests that pass nil still work.
@@ -324,10 +334,12 @@ func buildProcessSteps(doc *graph.Document, proc *graph.Entity, byID map[string]
 		step := map[string]any{"step_index": o.idx, "node_id": o.id}
 		if e, ok := byID[o.id]; ok {
 			step["name"] = e.Name
-			step["kind"] = e.Kind
-			step["source_file"] = e.SourceFile
+			step["file"] = e.SourceFile
 			if e.StartLine > 0 {
-				step["start_line"] = e.StartLine
+				step["line"] = e.StartLine
+			}
+			if wantVerbose {
+				step["kind"] = e.Kind
 			}
 		}
 		out = append(out, step)

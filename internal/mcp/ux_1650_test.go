@@ -41,16 +41,18 @@ func TestUX1650_FlowToolsReturnIDs(t *testing.T) {
 	}
 	for _, c := range callers {
 		obj := c.(map[string]any)
-		if eid, _ := obj["entity_id"].(string); eid == "" {
-			t.Errorf("caller missing entity_id: %v", obj)
+		// #1739: narrow default shape renamed entity_id → id.
+		if eid, _ := obj["id"].(string); eid == "" {
+			t.Errorf("caller missing id: %v", obj)
 		}
 	}
 	res = callEndpointTool(t, srv.handleFindCallees, map[string]any{"group": "test", "entity_id": "b"})
 	callees := getSlice(t, res, "callees")
 	for _, c := range callees {
 		obj := c.(map[string]any)
-		if eid, _ := obj["entity_id"].(string); eid == "" {
-			t.Errorf("callee missing entity_id: %v", obj)
+		// #1739: narrow default shape renamed entity_id → id.
+		if eid, _ := obj["id"].(string); eid == "" {
+			t.Errorf("callee missing id: %v", obj)
 		}
 	}
 }

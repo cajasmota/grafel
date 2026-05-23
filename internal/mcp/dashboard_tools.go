@@ -209,6 +209,7 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 	if errRes != nil {
 		return errRes, nil
 	}
+	verbose := argBool(req, "verbose", false)
 	repos := reposToConsider(lg, nil)
 
 	// #1703: use alias-aware repo resolution so slugs with dash/underscore
@@ -223,11 +224,13 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 		}
 	}
 
+	// Default (verbose=false): entity_id, entity_name, kind — no source_file.
+	// Verbose (verbose=true): also includes source_file, repo.
 	type participant struct {
 		EntityID   string `json:"entity_id"`
 		EntityName string `json:"entity_name"`
 		Kind       string `json:"kind"`
-		Repo       string `json:"repo"`
+		Repo       string `json:"repo,omitempty"`
 		SourceFile string `json:"source_file,omitempty"`
 	}
 
@@ -263,38 +266,47 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 			case "PUBLISHES_TO":
 				if rel.ToID == canonID {
 					if src, ok2 := byID[rel.FromID]; ok2 {
-						publishers = append(publishers, participant{
+						p := participant{
 							EntityID:   prefixedID(r.Repo, src.ID),
 							EntityName: src.Name,
 							Kind:       src.Kind,
-							Repo:       r.Repo,
-							SourceFile: src.SourceFile,
-						})
+						}
+						if verbose {
+							p.Repo = r.Repo
+							p.SourceFile = src.SourceFile
+						}
+						publishers = append(publishers, p)
 					}
 				}
 			case "SUBSCRIBES_TO":
 				if rel.ToID == canonID {
 					if src, ok2 := byID[rel.FromID]; ok2 {
-						subscribers = append(subscribers, participant{
+						p := participant{
 							EntityID:   prefixedID(r.Repo, src.ID),
 							EntityName: src.Name,
 							Kind:       src.Kind,
-							Repo:       r.Repo,
-							SourceFile: src.SourceFile,
-						})
+						}
+						if verbose {
+							p.Repo = r.Repo
+							p.SourceFile = src.SourceFile
+						}
+						subscribers = append(subscribers, p)
 					}
 				}
 			}
 		}
-		return jsonResult(map[string]any{
+		resp := map[string]any{
 			"topic_id":    prefixedID(r.Repo, topicEnt.ID),
 			"topic_name":  topicEnt.Name,
-			"repo":        r.Repo,
-			"source_file": topicEnt.SourceFile,
 			"publishers":  publishers,
 			"subscribers": subscribers,
 			"found":       true,
-		}), nil
+		}
+		if verbose {
+			resp["repo"] = r.Repo
+			resp["source_file"] = topicEnt.SourceFile
+		}
+		return jsonResult(resp), nil
 	}
 	return jsonResult(map[string]any{"found": false, "topic_id": topicID}), nil
 }
