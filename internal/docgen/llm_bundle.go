@@ -123,10 +123,33 @@ type NeighbourBrief struct {
 	Name string `json:"name"`
 	// Kind is the entity kind.
 	Kind string `json:"kind"`
-	// Relationship is the edge type from the seed to this neighbour
-	// (e.g. "CALLS", "IMPORTS", "TESTS", "IMPLEMENTS").
+	// Relationship is the typed edge kind from the seed to this neighbour as
+	// stored on the graph relationship — see NeighbourRelationship* constants
+	// for the canonical set. The value is preserved verbatim from the graph
+	// (#1879) so docgen can answer questions like "upstream callers" or
+	// "downstream callees" without inference. Falls back to
+	// NeighbourRelationshipRelated only when the graph lacks an explicit kind.
 	Relationship string `json:"relationship"`
 }
+
+// Canonical NeighbourBrief.Relationship values. The graph may emit other
+// kinds — these constants name the well-known set that docgen section
+// templates rely on (#1879, #1881, #1877). Consumers should treat the field
+// as an open string and switch on these constants for known cases.
+const (
+	NeighbourRelationshipCalls      = "CALLS"
+	NeighbourRelationshipImports    = "IMPORTS"
+	NeighbourRelationshipReferences = "REFERENCES"
+	NeighbourRelationshipContains   = "CONTAINS"
+	NeighbourRelationshipDependsOn  = "DEPENDS_ON"
+	NeighbourRelationshipFKTo       = "FK_TO"
+	NeighbourRelationshipRenders    = "RENDERS"
+	NeighbourRelationshipTests      = "TESTS"
+	NeighbourRelationshipImplements = "IMPLEMENTS"
+	// NeighbourRelationshipRelated is the fallback used only when an edge has
+	// no explicit kind on the graph. Should be rare for a well-formed graph.
+	NeighbourRelationshipRelated = "RELATED"
+)
 
 // LLMSectionResult is the per-section output written by the external
 // orchestrator after calling an LLM. The daemon reads a slice of these (wrapped
@@ -325,7 +348,11 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 	}
 
 	// Load entity context — reuses tier0.go loadEntityContext.
-	_, entity, neighbours, seedRepo, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	// neighbourKinds carries the typed edge kind for each neighbour so that
+	// NeighbourBrief.Relationship surfaces the actual graph relationship
+	// (CALLS, IMPORTS, CONTAINS, REFERENCES, DEPENDS_ON, FK_TO, ...) instead
+	// of a flat "RELATED" placeholder (#1879).
+	_, entity, neighbours, neighbourKinds, seedRepo, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return nil, err
 	}
@@ -336,20 +363,24 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		resolvedID = entity.ID
 	}
 
-	// Collect neighbour IDs and build briefs.
+	// Collect neighbour IDs and build briefs. Relationship is sourced from
+	// the index-aligned neighbourKinds slice produced by loadEntityContext;
+	// when a kind is somehow missing (defensive: should not happen for a
+	// well-formed graph) we fall back to "RELATED" to preserve a valid
+	// non-empty enum-shaped value for downstream consumers (#1879).
 	var neighbourIDs []string
 	var briefs []NeighbourBrief
-	// Build a relationship-kind lookup from the neighbours slice.
-	// loadEntityContext does not return relationship kinds, so we use a generic
-	// "RELATED" placeholder here; the emit-mode ticket (B) will wire the actual
-	// relationship kinds by passing relationships through.
-	for _, n := range neighbours {
+	for i, n := range neighbours {
 		neighbourIDs = append(neighbourIDs, n.ID)
+		rel := "RELATED"
+		if i < len(neighbourKinds) && neighbourKinds[i] != "" {
+			rel = neighbourKinds[i]
+		}
 		briefs = append(briefs, NeighbourBrief{
 			EntityID:     n.ID,
 			Name:         n.Name,
 			Kind:         n.Kind,
-			Relationship: "RELATED",
+			Relationship: rel,
 		})
 	}
 
