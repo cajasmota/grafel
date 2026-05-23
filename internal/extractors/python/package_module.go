@@ -229,6 +229,25 @@ func emitPackageModuleEntity(file extractor.FileInput, out *[]types.EntityRecord
 		Properties:    props,
 	}
 
+	// Issue #2020 — wire a CONTAINS edge from this Module to the parallel
+	// per-source-file SCOPE.Component (subtype="file") emitted by
+	// extractor.FileEntity at the top of Extract. Without this edge, a
+	// Module-seeded docgen pass cannot reach the IMPORTS / REFERENCES
+	// edges that attach to the file entity (the dominant cause of
+	// "phantom Module" empty-neighbours observed in W4R5 / W8R4 / W9R1
+	// across all 3 languages). Emitted unconditionally for both
+	// __init__.py packages AND plain .py file-modules so that
+	// per-module docgen pages work uniformly.
+	//
+	// The structural-ref is resolved by lookupStructural in
+	// internal/resolve/refs.go via byLocation[<file>][<file>] — the file
+	// entity carries Name=<file.Path> and SourceFile=<file.Path>, so the
+	// kind-aware probe in componentKindFamily finds it.
+	rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
+		ToID: extractor.BuildFileComponentStructuralRef("python", file.Path),
+		Kind: string(types.RelationshipKindContains),
+	})
+
 	// For __init__.py files: wire CONTAINS edges from this Module to every
 	// top-level class and function entity that was emitted from this same file
 	// by the main walkNode pass. We look for entities in *out whose SourceFile

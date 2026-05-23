@@ -386,6 +386,38 @@ type NeighbourBrief struct {
 	// This field allows docgen to distinguish inbound callers from outbound
 	// callees when the Relationship kind alone is ambiguous (fixes #1965).
 	Direction string `json:"direction"`
+	// Properties carries the full Properties map from the underlying graph
+	// relationship (#2018). Extractor post-passes stamp annotations like
+	// `re_export=true`, `dead_import=true`, `live=false`, `is_async=true`,
+	// `is_task=true`, `public=true`, `alias=<name>`, `cross_repo=true`,
+	// `disposition_hint=ambiguous`, `import_alias`, `call_leaf`, etc. on
+	// edges (see Bundle B / C / D in internal/extractors/python and the
+	// cross-language linker). Surfacing the full map to docgen lets LLM
+	// section prose distinguish dead-vs-live imports, public re-exports,
+	// async callees, Celery task dispatch, and any future per-edge
+	// annotation without a NeighbourBrief schema change.
+	Properties map[string]string `json:"properties,omitempty"`
+	// DeadImport is a convenience accessor mirroring
+	// Properties["dead_import"] == "true". Stamped by Python's dead-import
+	// detector (#1985) on IMPORTS edges whose local binding is never
+	// referenced in the file body.
+	DeadImport bool `json:"dead_import,omitempty"`
+	// ReExport is a convenience accessor mirroring
+	// Properties["re_export"] == "true". Stamped by Python's __init__.py
+	// re-export annotator (#1991) on IMPORTS edges that participate in a
+	// package's public surface.
+	ReExport bool `json:"re_export,omitempty"`
+	// IsAsync is a convenience accessor mirroring
+	// Properties["is_async"] == "true". Stamped by Python's async-semantics
+	// pass (#1984) on Operation entities and CALLS edges produced by await
+	// expressions / channel_layer dispatch.
+	IsAsync bool `json:"is_async,omitempty"`
+	// Live is a convenience accessor mirroring
+	// Properties["live"] != "false". Defaults to true when the property is
+	// absent so existing edges (no live annotation) remain visible.
+	// Bundle C's dead-import detector stamps live=false on dead IMPORTS
+	// edges.
+	Live bool `json:"live,omitempty"`
 }
 
 // Canonical NeighbourBrief.Direction values.
@@ -622,7 +654,7 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 	// of a flat "RELATED" placeholder (#1879).
 	// neighbourDirections carries "inbound"/"outbound" per neighbour so that
 	// callers/callees can be distinguished (#1965).
-	_, entity, neighbours, neighbourKinds, neighbourDirections, seedRepo, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	_, entity, neighbours, neighbourKinds, neighbourDirections, neighbourProperties, seedRepo, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return nil, err
 	}
@@ -652,12 +684,35 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		if i < len(neighbourDirections) && neighbourDirections[i] != "" {
 			dir = neighbourDirections[i]
 		}
+		// Issue #2018 — surface per-edge Properties so docgen LLM prose can
+		// see annotations like `re_export=true` (#1991), `dead_import=true`
+		// + `live=false` (#1985), `is_async=true` (#1984), `cross_repo=true`
+		// (#570), `disposition_hint=ambiguous`, `import_alias`, `call_leaf`,
+		// `package_init`, `public`, `alias`, etc. Without this map the LLM
+		// could not distinguish a live IMPORTS edge from a dead one, or a
+		// re-export from a private use — defeating half of Bundle B+C+D's
+		// extractor work.
+		var props map[string]string
+		if i < len(neighbourProperties) && neighbourProperties[i] != nil {
+			props = neighbourProperties[i]
+		}
 		briefs = append(briefs, NeighbourBrief{
 			EntityID:     n.ID,
 			Name:         n.Name,
 			Kind:         n.Kind,
 			Relationship: rel,
 			Direction:    dir,
+			Properties:   props,
+			// Convenience boolean accessors — derived once at build time
+			// so prompt templates and section-renderers don't need to
+			// repeat the string-comparison boilerplate.
+			DeadImport: props["dead_import"] == "true",
+			ReExport:   props["re_export"] == "true",
+			IsAsync:    props["is_async"] == "true",
+			// Live defaults to true when unset (existing edges with no
+			// dead-import pass coverage stay visible) and is false only
+			// when explicitly stamped live=false by the dead-import pass.
+			Live: props["live"] != "false",
 		})
 	}
 

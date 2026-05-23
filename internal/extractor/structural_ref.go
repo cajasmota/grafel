@@ -94,6 +94,30 @@ func BuildConstraintStructuralRef(filePath, qualifiedName string) string {
 	return "scope:constraint:python:" + filepath.ToSlash(filePath) + ":" + qualifiedName
 }
 
+// BuildFileComponentStructuralRef returns the canonical Format A structural-ref
+// for CONTAINS edges that point at a per-source-file SCOPE.Component
+// (subtype="file") entity emitted by FileEntity (#577). Shape:
+//
+//	scope:component:file:<lang>:<file>:<file>
+//
+// The 6-segment Format A shape is intentional — the resolver's
+// lookupStructural splits on stubScopeSegments=6 and indexes
+// byLocation[<file>][<name>], with the file entity carrying Name=<file>.
+// The 3-segment short-form (scope:component:file:<path>) is reserved by
+// the cross-language imports extractor for "the file is a component"
+// markers (see isHeuristicScopeStub in internal/resolve/refs.go) and
+// would be classified Dynamic instead of resolved.
+//
+// Used by the Python package-Module pass (#2020) to wire a CONTAINS edge
+// from each __init__.py Module entity to its parallel file
+// SCOPE.Component — so that Module-seeded docgen surfaces the IMPORTS /
+// REFERENCES edges that attach to the file entity rather than landing on
+// an empty neighbour list.
+func BuildFileComponentStructuralRef(lang, filePath string) string {
+	slash := filepath.ToSlash(filePath)
+	return "scope:component:file:" + lang + ":" + slash + ":" + slash
+}
+
 // BuildModuleStructuralRef returns the canonical Format A structural-ref for
 // CONTAINS edges that point at a Python package-level Module entity (#1884).
 // Shape:
