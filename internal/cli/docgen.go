@@ -1,4 +1,4 @@
-// Package cli — `archigraph docgen` subcommand (Tier 0 + Tier 1, issue #1760).
+// Package cli — `archigraph docgen` subcommand (Tier 0 + Tier 1 + Tier 2, issue #1760).
 //
 // Tier 0 produces ONE markdown section for ONE seed entity with a <30 s
 // feedback loop. It is designed for rapid prompt-quality iteration:
@@ -17,6 +17,15 @@
 //	  --group=mygroup \
 //	  --seed-entity=abc123def456
 //
+// Tier 2 produces a COHERENT SLICE of ~5 pages — the seed capability plus its
+// highest-priority dependents — and validates CROSS-PAGE contracts. Wall-time
+// target: <10 minutes:
+//
+//	archigraph docgen --tier=2 \
+//	  --group=mygroup \
+//	  --seed-entity=abc123def456 \
+//	  --max-pages=5
+//
 // Output (Tier 0):
 //
 //	~/.archigraph/docs/<group>/.tier0-<RFC3339>/<entity-id>-<section>.md
@@ -27,7 +36,12 @@
 //	~/.archigraph/docs/<group>/.tier1-<RFC3339>/<entity-id>-page.md
 //	~/.archigraph/docs/<group>/.tier1-<RFC3339>/score.json
 //
-// Full-group rendering (Tier 2–4) is not yet wired.
+// Output (Tier 2):
+//
+//	~/.archigraph/docs/<group>/.tier2-<RFC3339>/<entity-id>-page.md  (N pages)
+//	~/.archigraph/docs/<group>/.tier2-<RFC3339>/score.json
+//
+// Full-group rendering (Tier 3–4) is not yet wired.
 package cli
 
 import (
@@ -46,13 +60,15 @@ import (
 // newDocgenCmd returns the `archigraph docgen` cobra command.
 func newDocgenCmd() *cobra.Command {
 	var (
-		tier       int
-		group      string
-		seedEntity string
-		section    string
-		pageID     string
-		outputDir  string
-		listSecs   bool
+		tier          int
+		group         string
+		seedEntity    string
+		section       string
+		pageID        string
+		outputDir     string
+		listSecs      bool
+		maxPages      int
+		mermaidBudget int
 	)
 
 	cmd := &cobra.Command{
@@ -87,7 +103,24 @@ TIER 1 (--tier=1) — single complete page path (<120 s):
     archigraph docgen --tier=1 --group=mygroup \
       --seed-entity=abc123def456
 
-TIER 2–4 — full multi-page rendering:
+TIER 2 (--tier=2) — coherent slice path (<10 min):
+  Generates a coherent SLICE of pages — the seed capability entity plus its
+  highest-priority dependents (by PageRank / outbound degree). Runs Tier 1
+  per-page rendering on each entity then enforces CROSS-PAGE contracts:
+    • No flow (mermaid block body) duplicated across 2+ pages.
+    • Pattern entities in one page are referenced in related pages.
+    • Cross-page anchor links follow the <entity-id>#<section> format.
+    • Slice-wide mermaid count within budget (default 15).
+
+  Output:
+    ~/.archigraph/docs/<group>/.tier2-<timestamp>/<entity-id>-page.md  (N pages)
+    ~/.archigraph/docs/<group>/.tier2-<timestamp>/score.json
+
+  Example:
+    archigraph docgen --tier=2 --group=mygroup \
+      --seed-entity=abc123def456 --max-pages=5
+
+TIER 3–4 — full group rendering:
   Not yet implemented. Use the /generate-docs skill in Claude Code for
   full-group documentation generation.
 
@@ -106,14 +139,20 @@ Available sections (--section, used by --tier=0 only):
 				return runDocgenTier0(cmd, group, seedEntity, section, outputDir)
 			case 1:
 				return runDocgenTier1(cmd, group, seedEntity, pageID, outputDir)
+			case 2:
+				return runDocgenTier2(cmd, group, seedEntity, outputDir, maxPages, mermaidBudget)
 			default:
-				return fmt.Errorf("--tier=%d is not yet implemented; available: 0, 1", tier)
+				return fmt.Errorf("--tier=%d is not yet implemented; available: 0, 1, 2", tier)
 			}
 		},
 	}
 
 	cmd.Flags().IntVar(&tier, "tier", 0,
-		"docgen tier: 0 = single section snippet (<30 s); 1 = single complete page (<120 s); 2–4 = full group rendering (not yet implemented)")
+		"docgen tier: 0 = single section snippet (<30 s); 1 = single complete page (<120 s); 2 = coherent slice cross-page (<10 min); 3–4 = full group (not yet implemented)")
+	cmd.Flags().IntVar(&maxPages, "max-pages", 5,
+		"maximum pages to generate for --tier=2 (seed + top-N dependents)")
+	cmd.Flags().IntVar(&mermaidBudget, "mermaid-budget", 0,
+		"override slice mermaid budget for --tier=2 (default 15)")
 	cmd.Flags().StringVar(&group, "group", "",
 		"group name (defaults to sole registered group)")
 	cmd.Flags().StringVar(&seedEntity, "seed-entity", "",
@@ -228,6 +267,62 @@ func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir str
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintf(out, "  output:     %s\n", mdPath)
 	fmt.Fprintf(out, "  score:      %s\n", scorePath)
+	fmt.Fprintf(out, "\n--- score.json ---\n")
+	scoreBytes, _ := json.MarshalIndent(score, "", "  ")
+	fmt.Fprintln(out, string(scoreBytes))
+
+	return nil
+}
+
+// runDocgenTier2 executes the Tier 2 coherent-slice path (<10 min).
+func runDocgenTier2(cmd *cobra.Command, group, seedEntity, outputDir string, maxPages, mermaidBudget int) error {
+	resolvedGroup, err := resolveGroup(group)
+	if err != nil {
+		return err
+	}
+
+	if seedEntity == "" {
+		return errors.New("--seed-entity is required for --tier=2\n\nHint: run `archigraph status` to list entity IDs, or use the MCP archigraph_find tool")
+	}
+
+	opts := docgen.Tier2RunOpts{
+		Group:         resolvedGroup,
+		SeedEntityID:  seedEntity,
+		MaxPages:      maxPages,
+		MermaidBudget: mermaidBudget,
+		OutputDir:     outputDir,
+	}
+
+	outDir, score, err := docgen.RunTier2(opts)
+	if err != nil {
+		return fmt.Errorf("docgen tier 2: %w", err)
+	}
+
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "tier2 complete\n\n")
+	fmt.Fprintf(out, "  seed:           %s\n", seedEntity)
+	fmt.Fprintf(out, "  pages:          %d\n", score.PageCount)
+	fmt.Fprintf(out, "  wall:           %d ms\n", score.WallTimeMS)
+	fmt.Fprintf(out, "  tokens:         ~%d\n", score.TotalTokenCount)
+	fmt.Fprintf(out, "  mermaid:        %d (budget: %d)\n", score.SliceMermaidCount, opts.MermaidBudget)
+	fmt.Fprintf(out, "  cross-links:    %d (unresolved: %d)\n", score.CrossPageLinkCount, score.CrossPageLinkUnresolved)
+	fmt.Fprintf(out, "  flow-dups:      %d\n", score.FlowDuplicationViolations)
+	fmt.Fprintf(out, "  pattern-links:  %d violations\n", score.PatternLinkViolations)
+	fmt.Fprintf(out, "  anchor-consist: %d violations\n", score.AnchorConsistencyViolations)
+	fmt.Fprintf(out, "  mermaid-budget: %d violations\n", score.SliceMermaidBudgetViolations)
+
+	totalViolations := score.FlowDuplicationViolations + score.PatternLinkViolations +
+		score.AnchorConsistencyViolations + score.SliceMermaidBudgetViolations
+	if totalViolations > 0 {
+		fmt.Fprintf(out, "\n  CROSS-PAGE VIOLATIONS (%d):\n", totalViolations)
+		for _, v := range score.Violations {
+			fmt.Fprintf(out, "    - %s\n", v)
+		}
+	} else {
+		fmt.Fprintf(out, "  contract:       PASS\n")
+	}
+
+	fmt.Fprintf(out, "\n  output:         %s\n", outDir)
 	fmt.Fprintf(out, "\n--- score.json ---\n")
 	scoreBytes, _ := json.MarshalIndent(score, "", "  ")
 	fmt.Fprintln(out, string(scoreBytes))
