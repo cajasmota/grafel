@@ -19,6 +19,15 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 )
 
+// bridgeCWD returns the best available working-directory hint for the bridge
+// process. It is called once at startup and stored on the bridge struct.
+// Errors are silently swallowed — an empty cwd is handled gracefully by the
+// daemon (falls back to singleton / explicit-group mode).
+func bridgeCWD() string {
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
 // newMCPBridgeCmd returns the hidden `archigraph mcp-bridge` subcommand.
 //
 // The bridge is a short-lived stdio process (one per Claude Code session)
@@ -59,6 +68,7 @@ entry written by 'archigraph install'. It should not be run directly.`,
 			b := &bridge{
 				logger:     logger,
 				socketPath: socketPath,
+				startupCWD: bridgeCWD(),
 			}
 			return b.run(os.Stdin, os.Stdout)
 		},
@@ -121,9 +131,13 @@ type MCPToolListReply struct {
 }
 
 // MCPToolCallArgs / MCPToolCallReply are the wire types for Daemon.MCPToolCall.
+// This must stay in sync with daemon.MCPToolCallArgs (internal/daemon/mcp_rpc.go).
 type MCPToolCallArgs struct {
 	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments,omitempty"`
+	// CWD is the caller's working directory forwarded to the daemon for
+	// ADR-0008 CWD-aware group inference (#1661/#1679).
+	CWD string `json:"cwd,omitempty"`
 }
 
 type MCPToolCallReply struct {
@@ -136,6 +150,13 @@ type MCPToolCallReply struct {
 type bridge struct {
 	logger     *log.Logger
 	socketPath string
+
+	// startupCWD is the working directory of the bridge process at startup,
+	// used as the fallback CWD when the MCP request does not include a
+	// _meta.cwd hint. Since mcp-bridge is spawned by the MCP client inside
+	// the user's project directory, this matches the user's effective cwd
+	// for the Claude Code session.
+	startupCWD string
 
 	// callCount is used for integration test liveness only.
 	callCount int64
@@ -364,9 +385,16 @@ func (b *bridge) handleToolsList(req rpc2Request) *rpc2Response {
 // handleToolsCall proxies the tools/call call to the daemon.
 func (b *bridge) handleToolsCall(req rpc2Request) *rpc2Response {
 	// Decode the call params.
+	//
+	// _meta is the MCP extension envelope (MCP spec §6.5). Claude Code may
+	// include a cwd hint there so the daemon can infer the active group
+	// without requiring an explicit group= argument (ADR-0008 / #1661 / #1679).
 	var params struct {
 		Name      string         `json:"name"`
 		Arguments map[string]any `json:"arguments"`
+		Meta      struct {
+			CWD string `json:"cwd,omitempty"`
+		} `json:"_meta,omitempty"`
 	}
 	if req.Params != nil {
 		if err := json.Unmarshal(req.Params, &params); err != nil {
@@ -375,6 +403,18 @@ func (b *bridge) handleToolsCall(req rpc2Request) *rpc2Response {
 	}
 	if params.Name == "" {
 		return b.errorResp(req.ID, -32602, "tools/call: name is required")
+	}
+
+	// Resolve effective CWD for group inference (ADR-0008 / #1679).
+	//   1. Use _meta.cwd from the MCP request if the client provided one.
+	//   2. Fall back to the bridge process's startup working directory, which
+	//      is set by the MCP client to the user's project directory when it
+	//      spawns the bridge.
+	//   3. Leave empty if neither is available — the daemon gracefully falls
+	//      back to singleton / explicit-group mode.
+	cwd := params.Meta.CWD
+	if cwd == "" {
+		cwd = b.startupCWD
 	}
 
 	rpcClient, err := b.getRPCClient()
@@ -386,6 +426,7 @@ func (b *bridge) handleToolsCall(req rpc2Request) *rpc2Response {
 	args := MCPToolCallArgs{
 		Name:      params.Name,
 		Arguments: params.Arguments,
+		CWD:       cwd,
 	}
 	var reply MCPToolCallReply
 	if err := rpcClient.Call("Daemon.MCPToolCall", args, &reply); err != nil {
