@@ -735,6 +735,199 @@ func TestGraphStatsRepoFilter(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// #1837 archigraph_stats breakdown="unresolved_imports"
+// ---------------------------------------------------------------------------
+
+// fixtureDocWithUnresolved builds a small graph that contains a mix of resolved
+// and unresolved IMPORTS/CALLS edges so breakdown assertions have something to
+// bite on.
+func fixtureDocWithUnresolved(repo string) *graph.Document {
+	return &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Now(),
+		Repo:        repo,
+		Entities: []graph.Entity{
+			{ID: "e1", Name: "ServiceA", Kind: "class", SourceFile: "svc/a.py", Language: "python"},
+			{ID: "e2", Name: "ServiceB", Kind: "class", SourceFile: "svc/b.ts", Language: "typescript"},
+			{ID: "e3", Name: "ServiceC", Kind: "class", SourceFile: "svc/c.go", Language: "go"},
+		},
+		Relationships: []graph.Relationship{
+			// Resolved: hex ToID
+			{ID: "r1", FromID: "e1", ToID: "e2", Kind: "CALLS"},
+			// Unresolved: external Python package (dotted, no slash)
+			{
+				ID: "r2", FromID: "e1", ToID: "opentelemetry.trace", Kind: "IMPORTS",
+				Properties: map[string]string{"source_module": "opentelemetry.trace"},
+			},
+			// Unresolved: bare name (same-package unqualified)
+			{ID: "r3", FromID: "e2", ToID: "MyHelper", Kind: "CALLS"},
+			// Unresolved: Go module path (cross-repo)
+			{
+				ID: "r4", FromID: "e3", ToID: "github.com/myorg/shared/pkg", Kind: "IMPORTS",
+				Properties: map[string]string{"source_module": "github.com/myorg/shared/pkg"},
+			},
+			// Unresolved: proto import
+			{
+				ID: "r5", FromID: "e1", ToID: "myservice_pb2", Kind: "IMPORTS",
+				Properties: map[string]string{"source_module": "myservice_pb2"},
+			},
+			// Unresolved: another external Python package
+			{
+				ID: "r6", FromID: "e1", ToID: "opentelemetry.sdk", Kind: "IMPORTS",
+				Properties: map[string]string{"source_module": "opentelemetry.sdk"},
+			},
+		},
+	}
+}
+
+// TestStatsBreakdownUnresolvedImports verifies that breakdown="unresolved_imports"
+// returns the three extra fields with sensible values and does not disturb the
+// base fields present without breakdown.
+func TestStatsBreakdownUnresolvedImports(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "rX")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGraph(t, repo, fixtureDocWithUnresolved("rX"))
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"rX": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// --- 1. Without breakdown: behavior unchanged, no extra fields. ---
+	resBase := callTool(t, srv, "archigraph_stats", nil)
+	var base map[string]any
+	if err := json.Unmarshal([]byte(resultText(resBase)), &base); err != nil {
+		t.Fatalf("unmarshal base: %v", err)
+	}
+	if _, ok := base["unresolved_imports_by_disposition"]; ok {
+		t.Error("base response must NOT contain unresolved_imports_by_disposition")
+	}
+	if _, ok := base["unresolved_imports_by_language"]; ok {
+		t.Error("base response must NOT contain unresolved_imports_by_language")
+	}
+	if _, ok := base["unresolved_imports_top_roots"]; ok {
+		t.Error("base response must NOT contain unresolved_imports_top_roots")
+	}
+	// fidelity should be present (5 unresolved out of 6 import-class edges)
+	if _, ok := base["fidelity"]; !ok {
+		t.Error("base response must contain fidelity")
+	}
+
+	// --- 2. With breakdown="unresolved_imports": three extra fields present and non-empty. ---
+	resBD := callTool(t, srv, "archigraph_stats", map[string]any{"breakdown": "unresolved_imports"})
+	var bd struct {
+		Fidelity                     float64          `json:"fidelity"`
+		FidelityImportTotal          int              `json:"fidelity_import_total"`
+		FidelityImportBug            int              `json:"fidelity_import_bug"`
+		Entities                     int              `json:"entities"`
+		ByDisposition                map[string]int   `json:"unresolved_imports_by_disposition"`
+		ByLanguage                   map[string]int   `json:"unresolved_imports_by_language"`
+		TopRoots                     []map[string]any `json:"unresolved_imports_top_roots"`
+	}
+	if err := json.Unmarshal([]byte(resultText(resBD)), &bd); err != nil {
+		t.Fatalf("unmarshal breakdown: %v: %s", err, resultText(resBD))
+	}
+	// Core fields still present.
+	if bd.Entities != 3 {
+		t.Errorf("entities: want 3, got %d", bd.Entities)
+	}
+	if bd.FidelityImportBug == 0 {
+		t.Error("expected non-zero fidelity_import_bug")
+	}
+	// Breakdown fields non-empty.
+	if len(bd.ByDisposition) == 0 {
+		t.Error("unresolved_imports_by_disposition must not be empty")
+	}
+	if len(bd.ByLanguage) == 0 {
+		t.Error("unresolved_imports_by_language must not be empty")
+	}
+	if len(bd.TopRoots) == 0 {
+		t.Error("unresolved_imports_top_roots must not be empty")
+	}
+	// Check specific expected values.
+	if bd.ByDisposition["proto_generated"] == 0 {
+		t.Error("expected at least one proto_generated edge (myservice_pb2)")
+	}
+	if bd.ByDisposition["cross_repo"] == 0 {
+		t.Error("expected at least one cross_repo edge (github.com/myorg/shared/pkg)")
+	}
+	if bd.ByDisposition["same_package_unqualified"] == 0 {
+		t.Error("expected at least one same_package_unqualified edge (MyHelper)")
+	}
+	if bd.ByDisposition["external_unknown"] == 0 {
+		t.Error("expected at least one external_unknown edge (opentelemetry.*)")
+	}
+	// opentelemetry should be the top root (2 occurrences).
+	if len(bd.TopRoots) > 0 {
+		if topRoot, _ := bd.TopRoots[0]["root"].(string); topRoot != "opentelemetry" {
+			t.Errorf("expected top root to be \"opentelemetry\", got %q", topRoot)
+		}
+	}
+
+	// --- 3. breakdown="invalid_value": returns a clear error. ---
+	resErr := callTool(t, srv, "archigraph_stats", map[string]any{"breakdown": "invalid_value"})
+	txt := resultText(resErr)
+	if !strings.Contains(txt, "unsupported breakdown") {
+		t.Errorf("expected error message for invalid breakdown, got: %s", txt)
+	}
+	if resErr.IsError != true {
+		t.Error("expected IsError=true for invalid breakdown key")
+	}
+}
+
+// TestStatsBreakdownEmptyGroup ensures that breakdown="unresolved_imports" on a
+// group with no unresolved edges returns the three fields as empty collections
+// rather than null/absent.
+func TestStatsBreakdownEmptyUnresolved(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "rClean")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// fixtureDoc has only resolved (hex-like short but within the test-valid
+	// range) edges — but actually the short IDs "a1"/"a2" ARE unresolved (not
+	// 16-hex chars), so build a truly resolved fixture.
+	cleanDoc := &graph.Document{
+		Version: 1, GeneratedAt: time.Now(), Repo: "rClean",
+		Entities: []graph.Entity{
+			{ID: "aabb112233445566", Name: "Alpha", Kind: "function", SourceFile: "a.go", Language: "go"},
+			{ID: "bbcc223344556677", Name: "Beta", Kind: "function", SourceFile: "b.go", Language: "go"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "aabb112233445566", ToID: "bbcc223344556677", Kind: "CALLS"},
+		},
+	}
+	writeGraph(t, repo, cleanDoc)
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"rClean": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := callTool(t, srv, "archigraph_stats", map[string]any{"breakdown": "unresolved_imports"})
+	var out struct {
+		ByDisposition map[string]int   `json:"unresolved_imports_by_disposition"`
+		ByLanguage    map[string]int   `json:"unresolved_imports_by_language"`
+		TopRoots      []map[string]any `json:"unresolved_imports_top_roots"`
+	}
+	if err := json.Unmarshal([]byte(resultText(res)), &out); err != nil {
+		t.Fatalf("unmarshal clean: %v: %s", err, resultText(res))
+	}
+	// Empty maps/slices — not nil/absent.
+	if out.ByDisposition == nil {
+		t.Error("unresolved_imports_by_disposition should be an empty map, not nil")
+	}
+	if out.ByLanguage == nil {
+		t.Error("unresolved_imports_by_language should be an empty map, not nil")
+	}
+	if out.TopRoots == nil {
+		t.Error("unresolved_imports_top_roots should be an empty slice, not nil")
+	}
+}
+
 // ADR-0015 phase-1 (#549 + #550): archigraph_repairs action=list|submit round-trip.
 func TestRepairToolsRoundTrip(t *testing.T) {
 	dir := t.TempDir()

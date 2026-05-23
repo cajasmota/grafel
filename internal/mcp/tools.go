@@ -1478,6 +1478,17 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	if errRes != nil {
 		return errRes, nil
 	}
+	// Optional breakdown selector. Currently only "unresolved_imports" is
+	// supported. Any other non-empty value returns an error so callers learn
+	// about the supported keys early rather than silently getting a partial
+	// response.
+	breakdown := argString(req, "breakdown", "")
+	if breakdown != "" && breakdown != "unresolved_imports" {
+		return mcpapi.NewToolResultError(fmt.Sprintf(
+			"unsupported breakdown value %q — supported values: \"unresolved_imports\"", breakdown,
+		)), nil
+	}
+
 	// Build the set of repo names to consider. Empty filter or ["*"]
 	// means "every loaded repo" (matching reposToConsider semantics).
 	filter := argStringSlice(req, "repo_filter")
@@ -1501,6 +1512,9 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	}
 	sort.Strings(names)
 	totalImport, totalBug := 0, 0
+	// Collect the loaded repos so we can pass them to computeUnresolvedBreakdown
+	// without a second pass over the names slice.
+	var loadedRepos []*LoadedRepo
 	for _, name := range names {
 		r := lg.Repos[name]
 		if r == nil {
@@ -1521,6 +1535,7 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 			"relationships": len(r.Doc.Relationships),
 			"communities":   len(r.Doc.Communities),
 		})
+		loadedRepos = append(loadedRepos, r)
 	}
 	totals["entities"] = totalE
 	totals["relationships"] = totalR
@@ -1550,6 +1565,15 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	if len(unavailable) > 0 {
 		totals["unavailable"] = unavailable
 	}
+
+	// breakdown="unresolved_imports": add the three taxonomy fields.
+	if breakdown == "unresolved_imports" {
+		bd := computeUnresolvedBreakdown(loadedRepos, 10)
+		totals["unresolved_imports_by_disposition"] = bd.ByDisposition
+		totals["unresolved_imports_by_language"] = bd.ByLanguage
+		totals["unresolved_imports_top_roots"] = bd.TopRoots
+	}
+
 	return jsonResult(totals), nil
 }
 

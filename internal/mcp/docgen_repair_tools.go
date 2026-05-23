@@ -14,9 +14,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/enrichment"
+	"github.com/cajasmota/archigraph/internal/graph"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -200,4 +202,223 @@ func countEdgeRepairsFromCandidates(repairs []enrichment.DocgenRepairCandidate) 
 		}
 	}
 	return n
+}
+
+// ---------------------------------------------------------------------------
+// Unresolved-import breakdown (breakdown="unresolved_imports")
+// ---------------------------------------------------------------------------
+
+// UnresolvedBreakdown holds the three supplementary fields returned when
+// breakdown="unresolved_imports" is requested on archigraph_stats.
+type UnresolvedBreakdown struct {
+	ByDisposition map[string]int     `json:"unresolved_imports_by_disposition"`
+	ByLanguage    map[string]int     `json:"unresolved_imports_by_language"`
+	TopRoots      []importRootEntry  `json:"unresolved_imports_top_roots"`
+}
+
+// importRootEntry is one row in the top-N import roots table.
+type importRootEntry struct {
+	Root        string `json:"root"`
+	Count       int    `json:"count"`
+	Disposition string `json:"disposition"`
+}
+
+// unresolvedImportDisposition derives a human-readable disposition label for a
+// single unresolved edge using signals available in the serialised graph
+// document (ToID shape + Relationship.Properties). It does NOT reproduce the
+// full resolver Disposition enum; it maps to a coarser taxonomy that is useful
+// for triage:
+//
+//   - "proto_generated"        — source_module / ToID matches proto/grpc patterns.
+//   - "cross_repo"             — source_module contains a "/" (Go-style module
+//     path) or "." separated segments that look like an org/repo prefix, and
+//     the root is not a stdlib/well-known package.
+//   - "same_package_unqualified" — ToID is a bare unqualified name with no
+//     separator characters (no ".", "/", ":", "#", " ").
+//   - "external_unknown"       — dotted path / package that is not in-project
+//     but does not match the above categories.
+//   - "other"                  — catch-all.
+//
+// Limitation: without the resolver's per-import binding the cross_repo /
+// external_unknown boundary is heuristic. A dedicated per-edge disposition
+// property on the graph schema (tracked as a separate enhancement) would make
+// this exact. See discussion in #1837.
+func unresolvedImportDisposition(rel *graph.Relationship) string {
+	toID := rel.ToID
+	srcMod := ""
+	if rel.Properties != nil {
+		srcMod = rel.Properties["source_module"]
+	}
+
+	// Proto/gRPC generated code: proto package paths, protobuf imports,
+	// grpc stubs.
+	if matchesProto(toID) || matchesProto(srcMod) {
+		return "proto_generated"
+	}
+
+	// Cross-repo heuristic: a Go-style module path (contains "/") or a
+	// multi-segment dotted path whose root segment looks like an org prefix.
+	// We use source_module when available (IMPORTS edges) and fall back to
+	// ToID (CALLS/REFERENCES edges).
+	ref := srcMod
+	if ref == "" {
+		ref = toID
+	}
+	if strings.Contains(ref, "/") {
+		return "cross_repo"
+	}
+
+	// Same-package unqualified: ToID has no separator → bare symbol name.
+	if !strings.ContainsAny(toID, "./:# ") && toID != "" {
+		return "same_package_unqualified"
+	}
+
+	// Dotted paths without "/" are treated as external package references
+	// (Python, JS, etc.).
+	if strings.Contains(ref, ".") {
+		return "external_unknown"
+	}
+
+	return "other"
+}
+
+// matchesProto returns true when s looks like a proto/gRPC import path.
+func matchesProto(s string) bool {
+	if s == "" {
+		return false
+	}
+	sl := strings.ToLower(s)
+	return strings.Contains(sl, "proto") ||
+		strings.Contains(sl, "grpc") ||
+		strings.Contains(sl, ".pb.") ||
+		strings.HasSuffix(sl, "_pb") ||
+		strings.HasSuffix(sl, "_pb2") ||
+		strings.HasSuffix(sl, "_grpc")
+}
+
+// importRoot extracts the first path segment from an import reference.
+// For "opentelemetry.trace" → "opentelemetry".
+// For "github.com/org/repo/pkg" → "github.com" (full first slash-segment).
+// For a bare name like "myFunc" → "myFunc".
+func importRoot(rel *graph.Relationship) string {
+	ref := rel.ToID
+	if rel.Properties != nil {
+		if sm := rel.Properties["source_module"]; sm != "" {
+			ref = sm
+		}
+	}
+	if ref == "" {
+		return ""
+	}
+	// slash-first (Go module paths)
+	if idx := strings.Index(ref, "/"); idx > 0 {
+		return ref[:idx]
+	}
+	// dot-first (Python, TS, etc.)
+	if idx := strings.Index(ref, "."); idx > 0 {
+		return ref[:idx]
+	}
+	return ref
+}
+
+// computeUnresolvedBreakdown iterates the unresolved edges across all repos in
+// repos and builds the three breakdown maps. repos is the already-filtered
+// slice used by handleGraphStats.
+//
+// The top-roots list is capped at topN (default 10) entries, sorted by count
+// descending. Ties are broken alphabetically by root name for stable output.
+func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdown {
+	byDisp := map[string]int{}
+	byLang := map[string]int{}
+	// rootKey → (count, disposition of the majority)
+	type rootStat struct {
+		count       int
+		dispCounts  map[string]int
+	}
+	roots := map[string]*rootStat{}
+
+	for _, r := range repos {
+		if r == nil || r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Relationships {
+			rel := &r.Doc.Relationships[i]
+			if rel.Kind != "CALLS" && rel.Kind != "IMPORTS" && rel.Kind != "REFERENCES" {
+				continue
+			}
+			if !isBugEdgeToID(rel.ToID) {
+				continue
+			}
+
+			disp := unresolvedImportDisposition(rel)
+			byDisp[disp]++
+
+			// Language: from the source entity when the ByID index is available,
+			// otherwise from rel.Properties["language"].
+			lang := ""
+			if r.ByID != nil {
+				if ent := r.ByID[rel.FromID]; ent != nil {
+					lang = strings.ToLower(ent.Language)
+				}
+			}
+			if lang == "" && rel.Properties != nil {
+				lang = strings.ToLower(rel.Properties["language"])
+			}
+			if lang == "" {
+				lang = "unknown"
+			}
+			byLang[lang]++
+
+			// Top roots.
+			root := importRoot(rel)
+			if root == "" {
+				root = "(empty)"
+			}
+			rs := roots[root]
+			if rs == nil {
+				rs = &rootStat{dispCounts: map[string]int{}}
+				roots[root] = rs
+			}
+			rs.count++
+			rs.dispCounts[disp]++
+		}
+	}
+
+	// Build sorted top-N list.
+	type kv struct {
+		root  string
+		count int
+		disp  string
+	}
+	flat := make([]kv, 0, len(roots))
+	for root, rs := range roots {
+		// Pick the dominant disposition for this root.
+		bestDisp, bestCount := "other", 0
+		for d, c := range rs.dispCounts {
+			if c > bestCount || (c == bestCount && d < bestDisp) {
+				bestDisp = d
+				bestCount = c
+			}
+		}
+		flat = append(flat, kv{root, rs.count, bestDisp})
+	}
+	sort.Slice(flat, func(i, j int) bool {
+		if flat[i].count != flat[j].count {
+			return flat[i].count > flat[j].count
+		}
+		return flat[i].root < flat[j].root
+	})
+	if len(flat) > topN {
+		flat = flat[:topN]
+	}
+	topRoots := make([]importRootEntry, len(flat))
+	for i, f := range flat {
+		topRoots[i] = importRootEntry{Root: f.root, Count: f.count, Disposition: f.disp}
+	}
+
+	return UnresolvedBreakdown{
+		ByDisposition: byDisp,
+		ByLanguage:    byLang,
+		TopRoots:      topRoots,
+	}
 }

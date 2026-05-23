@@ -338,10 +338,11 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_clusters", s.handleListCommunities))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_stats",
-		mcpapi.WithDescription("Corpus-level metrics for the resolved group."),
+		mcpapi.WithDescription("Corpus-level metrics. breakdown=unresolved_imports adds edge taxonomy."),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithString("breakdown", mcpapi.Description("Taxonomy breakdown. Supported: \"unresolved_imports\".")),
 	), s.wrap("archigraph_stats", s.handleGraphStats))
 
 	// archigraph_enrichments — action: list|submit|reject.
