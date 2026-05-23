@@ -22,7 +22,7 @@ import {
   Globe, Database, Send, ArrowDownToLine, Wrench, Shield, AlertTriangle,
   Package, CheckCircle2, Layout, Terminal, Clock, TestTube2, Wifi,
   ChevronRight, Search, X, Copy, Share2, ExternalLink, ZoomIn, ZoomOut,
-  Maximize2, Link2, Sparkles, Info, Check,
+  Maximize2, Link2, Sparkles, Info, Check, ArrowRight, Rows2, Grid2x2,
   type LucideProps,
 } from "lucide-react";
 import type { ForwardRefExoticComponent, RefAttributes } from "react";
@@ -752,10 +752,12 @@ function ListRail({
 
 // ─── DAG layout constants ─────────────────────────────────────────────────────
 //
-// Three layout modes selected at render time by step count:
-//   short  (≤5 steps)   — full-size nodes, single horizontal row
-//   medium (6-10 steps) — ~70% scale, single horizontal row (no wrap)
-//   long   (11+ steps)  — 3-column grid with readable nodes
+// Three layout modes selected at render time by step count (adaptive default,
+// from #1904) or by explicit user selection (#1907):
+//   auto       — adaptive: short/medium/long based on step count
+//   horizontal — single row, no wrapping
+//   vertical   — single column
+//   grid       — 3-column grid
 //
 // All sizing is expressed as a LayoutMode object so the SVG edge renderer
 // and the absolute-positioned nodes always use the same values.
@@ -768,6 +770,11 @@ type LayoutMode = {
   pad: number;
   perLane: number;
 };
+
+// User-selectable layout preference ("auto" = adaptive default from #1904)
+type UserLayout = "auto" | "horizontal" | "vertical" | "grid";
+
+const LAYOUT_STORAGE_KEY = "archigraph:flows:layout";
 
 const LAYOUT_SHORT: LayoutMode = {
   nodeW: 248,
@@ -796,10 +803,45 @@ const LAYOUT_LONG: LayoutMode = {
   perLane: 3,   // 3-column grid for 11+ steps (≤15 → 5 rows; ≤30 → 10 rows)
 };
 
+// Explicit layout presets for user-selected modes (#1907)
+const LAYOUT_USER_HORIZONTAL: LayoutMode = {
+  nodeW: 220,
+  nodeH: 80,
+  hgap: 72,
+  vgap: 64,
+  pad: 32,
+  perLane: 999, // never wrap — single row
+};
+
+const LAYOUT_USER_VERTICAL: LayoutMode = {
+  nodeW: 248,
+  nodeH: 84,
+  hgap: 72,
+  vgap: 56,
+  pad: 36,
+  perLane: 1,   // one per lane = single column
+};
+
+const LAYOUT_USER_GRID: LayoutMode = {
+  nodeW: 220,
+  nodeH: 80,
+  hgap: 64,
+  vgap: 56,
+  pad: 32,
+  perLane: 3,   // 3-column grid
+};
+
 function pickLayout(stepCount: number): LayoutMode {
   if (stepCount <= 5) return LAYOUT_SHORT;
   if (stepCount <= 10) return LAYOUT_MEDIUM;
   return LAYOUT_LONG;
+}
+
+function resolveLayout(stepCount: number, userLayout: UserLayout): LayoutMode {
+  if (userLayout === "horizontal") return LAYOUT_USER_HORIZONTAL;
+  if (userLayout === "vertical") return LAYOUT_USER_VERTICAL;
+  if (userLayout === "grid") return LAYOUT_USER_GRID;
+  return pickLayout(stepCount);
 }
 
 // Left-to-right layered layout: entry on the left, terminal on the right,
@@ -807,8 +849,8 @@ function pickLayout(stepCount: number): LayoutMode {
 // canvas is used instead of a single tall column.
 // Returns the positions array plus the canvas dimensions and the layout mode
 // used (so the caller can size nodes consistently with the edges).
-function layoutDAG(steps: ProcessStep[]) {
-  const mode = pickLayout(steps.length);
+function layoutDAG(steps: ProcessStep[], userLayout: UserLayout = "auto") {
+  const mode = resolveLayout(steps.length, userLayout);
   const { nodeW, nodeH, hgap, vgap, pad, perLane } = mode;
   const effectivePerLane = Math.max(1, Math.min(perLane, steps.length));
   const positions = steps.map((_, i) => {
@@ -833,11 +875,13 @@ function FlowDag({
   detailSteps,
   selectedStepIdx,
   onPickStep,
+  userLayout = "auto",
 }: {
   flow: Process;
   detailSteps?: ProcessStep[];
   selectedStepIdx: number | null;
   onPickStep: (i: number | null) => void;
+  userLayout?: UserLayout;
 }) {
   const steps = detailSteps ?? flow.steps ?? [];
 
@@ -852,8 +896,8 @@ function FlowDag({
   const [dragging, setDragging] = useState(false);
 
   const { positions, totalHeight, totalWidth, perLane, mode } = useMemo(
-    () => layoutDAG(steps),
-    [steps],
+    () => layoutDAG(steps, userLayout),
+    [steps, userLayout],
   );
 
   const clampZoom = (z: number) => Math.min(2.5, Math.max(0.3, z));
@@ -899,8 +943,8 @@ function FlowDag({
     setZoom(nz);
   };
 
-  // Fit when the flow changes.
-  const flowKey = flow.process_id + ":" + steps.length;
+  // Fit when the flow changes or the user switches layout.
+  const flowKey = flow.process_id + ":" + steps.length + ":" + userLayout;
   useEffect(() => {
     const t = setTimeout(fitToView, 0);
     return () => clearTimeout(t);
@@ -1770,6 +1814,31 @@ function DetailPanel({
   const [selectedStepIdx, setSelectedStepIdx] = useState<number | null>(null);
   const [sideEffectsOpen, setSideEffectsOpen] = useState(false);
 
+  // ── Layout toggle (#1907) ──────────────────────────────────────────────────
+  const [userLayout, setUserLayout] = useState<UserLayout>(() => {
+    try {
+      const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
+      if (saved === "horizontal" || saved === "vertical" || saved === "grid") return saved;
+    } catch {
+      /* localStorage unavailable */
+    }
+    return "auto";
+  });
+
+  function applyLayout(l: UserLayout) {
+    setUserLayout(l);
+    try {
+      if (l === "auto") {
+        localStorage.removeItem(LAYOUT_STORAGE_KEY);
+      } else {
+        localStorage.setItem(LAYOUT_STORAGE_KEY, l);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const selId = selection?.kind === "flow" ? selection.flow.process_id : null;
   useEffect(() => {
     setSelectedStepIdx(null);
@@ -1964,6 +2033,43 @@ function DetailPanel({
               <ExternalLink size={12} /> Topic
             </button>
           )}
+
+          {/* Layout toggle (#1907) — segmented control, right-justified */}
+          <div
+            className="ml-auto inline-flex items-center bg-surface-2 border border-border rounded-sm overflow-hidden h-7"
+            role="group"
+            aria-label="DAG layout"
+          >
+            {(
+              [
+                { key: "auto" as UserLayout,       label: "Auto",  Icon: undefined },
+                { key: "horizontal" as UserLayout,  label: "H",    Icon: ArrowRight },
+                { key: "vertical" as UserLayout,    label: "V",    Icon: Rows2 },
+                { key: "grid" as UserLayout,        label: "Grid", Icon: Grid2x2 },
+              ]
+            ).map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                type="button"
+                title={
+                  key === "auto"       ? "Adaptive (default)"
+                  : key === "horizontal" ? "Horizontal — single row"
+                  : key === "vertical"   ? "Vertical — single column"
+                  : "Grid — 3-column"
+                }
+                onClick={() => applyLayout(key)}
+                className={cn(
+                  "px-2 h-full text-[10px] font-medium border-r last:border-0 border-border inline-flex items-center gap-1",
+                  userLayout === key
+                    ? "bg-surface text-text shadow-[inset_0_-2px_0_var(--accent)]"
+                    : "text-text-3 hover:text-text",
+                )}
+              >
+                {Icon ? <Icon size={11} /> : null}
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -1976,35 +2082,58 @@ function DetailPanel({
           </div>
         )}
 
-        {/* DAG canvas + floating overlays */}
+        {/* DAG canvas — when a step is selected, switch to 60/40 side-by-side.
+            The DAG takes 60% and the StepInspector takes 40%. The side-effects
+            panel remains floating (anchored bottom-left inside the DAG area)
+            and is only shown when no step is selected. */}
         {(fullFlow.steps?.length ?? 0) > 0 && (
-          <div className="relative flex-none">
-            <FlowDag
-              flow={fullFlow}
-              detailSteps={fullFlow.steps}
-              selectedStepIdx={selectedStepIdx}
-              onPickStep={(idx) => {
-                setSelectedStepIdx(idx);
-                // Selecting a step dismisses the side-effects panel so both
-                // don't overlap at once.
-                setSideEffectsOpen(false);
-              }}
-            />
-            {/* Floating step-detail card — only when a step is selected. */}
-            {selectedStep && (
-              <StepInspector
-                step={selectedStep}
-                flow={fullFlow}
-                totalSteps={fullFlow.steps?.length ?? fullFlow.step_count}
-                onClose={() => setSelectedStepIdx(null)}
-              />
+          <div
+            className={cn(
+              "flex-none",
+              selectedStep ? "flex" : "relative",
             )}
-            {/* Floating side-effects panel — only when toggled open. */}
-            {sideEffectsOpen && !selectedStep && (
-              <SideEffectsPanel
+            style={selectedStep ? { minHeight: 400 } : undefined}
+          >
+            {/* DAG — 60% when step is open, full-width otherwise */}
+            <div
+              className={cn(
+                "relative",
+                selectedStep ? "flex-none" : "w-full",
+              )}
+              style={selectedStep ? { width: "60%" } : undefined}
+            >
+              <FlowDag
                 flow={fullFlow}
-                onClose={() => setSideEffectsOpen(false)}
+                detailSteps={fullFlow.steps}
+                selectedStepIdx={selectedStepIdx}
+                onPickStep={(idx) => {
+                  setSelectedStepIdx(idx);
+                  // Selecting a step dismisses the side-effects panel so both
+                  // don't conflict at once.
+                  setSideEffectsOpen(false);
+                }}
+                userLayout={userLayout}
               />
+              {/* Floating side-effects panel — only when toggled open and no
+                  step is selected (consistent with previous #1895 behavior). */}
+              {sideEffectsOpen && !selectedStep && (
+                <SideEffectsPanel
+                  flow={fullFlow}
+                  onClose={() => setSideEffectsOpen(false)}
+                />
+              )}
+            </div>
+
+            {/* Step inspector side panel — 40% when a step is selected */}
+            {selectedStep && (
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <StepInspector
+                  step={selectedStep}
+                  flow={fullFlow}
+                  totalSteps={fullFlow.steps?.length ?? fullFlow.step_count}
+                  onClose={() => setSelectedStepIdx(null)}
+                />
+              </div>
             )}
           </div>
         )}
