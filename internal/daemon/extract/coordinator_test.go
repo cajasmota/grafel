@@ -125,6 +125,60 @@ func Hello() string { return "hi" }
 	}
 }
 
+// TestCoordinate_EmitsConfigEntities (#1885) — the coordinator must run
+// the in-process config-discovery pass after the subprocess fan-out so
+// project-level configs become first-class SCOPE.Config entities. Uses a
+// minimal repo with go.mod + Makefile + .env.
+func TestCoordinate_EmitsConfigEntities(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test — skipped in -short mode")
+	}
+	bin := buildArchigraph(t)
+
+	repo := t.TempDir()
+	must := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	must("demo.go", "package demo\nfunc Hello() string { return \"hi\" }\n")
+	must("go.mod", "module demo/x\nrequire github.com/spf13/cobra v1.8.0\n")
+	must("Makefile", ".PHONY: build\nbuild:\n\tgo build ./...\n")
+	must(".env", "API_KEY=this-value-must-never-leak\nPORT=8080\n")
+
+	files := []string{"demo.go", "go.mod", "Makefile", ".env"}
+	var stderr bytes.Buffer
+	res, err := Coordinate(context.Background(), repo, files,
+		CoordinatorConfig{BinaryPath: bin, Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("Coordinate: %v\n%s", err, stderr.String())
+	}
+
+	var sawGoMod, sawMake, sawEnv bool
+	for _, e := range res.Entities {
+		if e.Kind != "SCOPE.Config" {
+			continue
+		}
+		switch e.SourceFile {
+		case "go.mod":
+			sawGoMod = true
+		case "Makefile":
+			sawMake = true
+		case ".env":
+			sawEnv = true
+			// Security: env values must never appear in any property.
+			for k, v := range e.Properties {
+				if bytes.Contains([]byte(v), []byte("this-value-must-never-leak")) {
+					t.Errorf("SECURITY: env value leaked in property %q: %q", k, v)
+				}
+			}
+		}
+	}
+	if !sawGoMod || !sawMake || !sawEnv {
+		t.Errorf("missing config entities: go.mod=%v Makefile=%v .env=%v", sawGoMod, sawMake, sawEnv)
+	}
+}
+
 func buildArchigraph(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

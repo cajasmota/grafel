@@ -17,6 +17,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/classifier"
 	"github.com/cajasmota/archigraph/internal/engine"
+	configextract "github.com/cajasmota/archigraph/internal/extractors/config"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -270,6 +271,19 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 
 	if firstErr != nil {
 		return nil, firstErr
+	}
+
+	// #1885 — Config entity discovery pass. Runs in-process against the
+	// full file list (pre-classification) so project-level config files
+	// that no subprocess saw (Dockerfile, Makefile, .env, etc.) become
+	// first-class SCOPE.Config entities. Failure is non-fatal — config
+	// signal is supplemental.
+	if configEnts, configRels, derr := configextract.Discover(ctx, repoRoot, files); derr == nil {
+		res.Entities = append(res.Entities, configEnts...)
+		res.Relationships = append(res.Relationships, configRels...)
+	} else {
+		res.NonFatalErrors = append(res.NonFatalErrors,
+			fmt.Sprintf("config_discover: %v", derr))
 	}
 
 	// Issue #481 — deterministic ordering. Subprocesses complete in

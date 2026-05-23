@@ -27,6 +27,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/external"
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/extractors"
+	configextract "github.com/cajasmota/archigraph/internal/extractors/config"
 	"github.com/cajasmota/archigraph/internal/extractors/cross"
 	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -770,6 +771,24 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			return nil, fmt.Errorf("pass 3: %w", err)
 		}
 		i.stats.pass3Rels = countEmbeddedRels(pass3Records)
+	}
+
+	// Pass 3.5 — first-class Config entity discovery (#1885).
+	// Walks the pre-classification file list so we capture project-level
+	// config files (Dockerfile, Makefile, pyproject.toml, package.json,
+	// pom.xml, build.gradle, application.{properties,yml}, .env, …) that
+	// the classifier would otherwise drop. The pass is idempotent and
+	// always runs against `allFiles` so incremental indexing keeps the
+	// Config entities even when no source file changed.
+	configEntities, configRels, configErr := configextract.Discover(ctx, absRepo, allFiles)
+	if configErr != nil {
+		fmt.Fprintf(os.Stderr, "archigraph: config-discover warning: %v\n", configErr)
+	}
+	if len(configEntities) > 0 {
+		pass3Records = append(pass3Records, configEntities...)
+	}
+	if len(configRels) > 0 {
+		pass2Rels = append(pass2Rels, configRels...)
 	}
 
 	// Pass 2.6 — Django nested URLconf composition.

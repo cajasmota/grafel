@@ -390,6 +390,19 @@ const (
 	// SUBSCRIBES_TO edges attach to the same MessageTopic node without
 	// any cross-pass handoff.
 	RelationshipKindCaptures RelationshipKind = "CAPTURES"
+
+	// #1885: First-class config-entity edges. Emitted by the
+	// internal/extractors/config discovery pass for project-level config
+	// files (Dockerfile, Makefile, pyproject.toml, package.json, pom.xml,
+	// build.gradle, application.properties, .env, …).
+	//
+	//   DEPENDS_ON_CONFIG : Module / file entity → SCOPE.Config entity
+	//                       (the module is configured by the linked Config).
+	//   CONFIGURES        : SCOPE.Config → consumer module (best-effort
+	//                       directional inverse; emitted only when the
+	//                       config's directory contains downstream modules).
+	RelationshipKindDependsOnConfig RelationshipKind = "DEPENDS_ON_CONFIG"
+	RelationshipKindConfigures      RelationshipKind = "CONFIGURES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -464,6 +477,9 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindRegisters,
 		// #1708 Debezium / Kafka-Connect CDC connector:
 		RelationshipKindCaptures,
+		// #1885 first-class config entities:
+		RelationshipKindDependsOnConfig,
+		RelationshipKindConfigures,
 	}
 }
 
