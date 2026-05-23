@@ -130,7 +130,7 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	//    EntityRecord entries (one per import path). Not fanned out to
 	// every function/type entity.
 	// ----------------------------------------------------------------
-	importRecords := extractImportEntities(root, file.Content, file.Path)
+	importRecords := extractImportEntities(root, file.Content, file.Path, goModuleRoot(file.RepoRoot))
 	records = append(records, importRecords...)
 
 	// ----------------------------------------------------------------
@@ -1985,7 +1985,13 @@ func appendRelationshipTo(records []types.EntityRecord, target string, rel types
 //	_ "path"            → import_type="blank"
 //
 // Malformed import specs (no path child) are logged and skipped — never panic.
-func extractImportEntities(root *sitter.Node, src []byte, filePath string) []types.EntityRecord {
+//
+// When moduleRoot is non-empty (read from go.mod by the caller), in-tree
+// imports are stamped with Properties["go_module_root"] and
+// Properties["go_pkg_dir"] so the resolver's ResolveGoInTreeImports pass
+// can map them to the correct file-level SCOPE.Component entities. External
+// imports are left for the resolveImportToIDs pass to rewrite to ext: form.
+func extractImportEntities(root *sitter.Node, src []byte, filePath, moduleRoot string) []types.EntityRecord {
 	var records []types.EntityRecord
 
 	for _, spec := range findAll(root, "import_spec") {
@@ -2046,19 +2052,31 @@ func extractImportEntities(root *sitter.Node, src []byte, filePath string) []typ
 			metadata["alias"] = alias
 		}
 
+		// Build the IMPORTS relationship. For in-tree imports (when
+		// moduleRoot is known and the import path starts with it), stamp
+		// go_module_root and go_pkg_dir so the resolver can bind the edge
+		// to the importing package's file entities rather than leaving it
+		// unresolved. External imports are handled by resolveImportToIDs.
+		rel := types.RelationshipRecord{
+			FromID: filePath,
+			ToID:   importPath,
+			Kind:   "IMPORTS",
+		}
+		if moduleRoot != "" && strings.HasPrefix(importPath, moduleRoot+"/") {
+			pkgDir := importPath[len(moduleRoot)+1:]
+			rel.Properties = map[string]string{
+				"go_module_root": moduleRoot,
+				"go_pkg_dir":     pkgDir,
+			}
+		}
+
 		records = append(records, types.EntityRecord{
 			Name:       importPath,
 			Kind:       "SCOPE.Component",
 			SourceFile: filePath,
 			Language:   "go",
 			Metadata:   metadata,
-			Relationships: []types.RelationshipRecord{
-				{
-					FromID: filePath,
-					ToID:   importPath,
-					Kind:   "IMPORTS",
-				},
-			},
+			Relationships: []types.RelationshipRecord{rel},
 		})
 	}
 

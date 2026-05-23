@@ -2203,3 +2203,208 @@ func TestResolveImports_CrossModuleCall_UnknownAliasUnchanged(t *testing.T) {
 		t.Fatalf("expected bare ToID untouched, got %q", got)
 	}
 }
+
+// ─── Go in-tree import resolution tests ──────────────────────────────────────
+
+// goImporterRecord builds a Go IMPORTS entity record as the extractor would
+// emit when go.mod is present and the import is an in-tree package.
+func goImporterRecord(importerFile, importPath, pkgDir, moduleRoot string) types.EntityRecord {
+	props := map[string]string{
+		"go_pkg_dir":     pkgDir,
+		"go_module_root": moduleRoot,
+	}
+	return types.EntityRecord{
+		Name:       importPath,
+		Kind:       "SCOPE.Component",
+		SourceFile: importerFile,
+		Language:   "go",
+		Relationships: []types.RelationshipRecord{{
+			FromID:     importerFile,
+			ToID:       importPath,
+			Kind:       importRelKind,
+			Properties: props,
+		}},
+	}
+}
+
+// goFileEntity builds a Go SCOPE.Component subtype="file" entity, as the
+// extractor.FileEntity helper emits for every Go source file.
+func goFileEntity(sourceFile, id string) types.EntityRecord {
+	return types.EntityRecord{
+		ID:         id,
+		Name:       sourceFile,
+		Kind:       "SCOPE.Component",
+		Subtype:    "file",
+		SourceFile: sourceFile,
+		Language:   "go",
+	}
+}
+
+// TestResolveGoInTreeImports_BasicPackage verifies that an IMPORTS edge
+// carrying go_pkg_dir="internal/types" is rewritten to the hex entity ID of
+// the representative file in that package directory.
+func TestResolveGoInTreeImports_BasicPackage(t *testing.T) {
+	// The target file entity in internal/types/.
+	fileID := "aabbccdd11223344"
+	records := []types.EntityRecord{
+		// File-level entity for internal/types/types.go.
+		goFileEntity("internal/types/types.go", fileID),
+		// IMPORTS edge from cmd/main.go → github.com/myorg/repo/internal/types.
+		goImporterRecord(
+			"cmd/main.go",
+			"github.com/myorg/repo/internal/types",
+			"internal/types",
+			"github.com/myorg/repo",
+		),
+	}
+
+	rewrites := ResolveGoInTreeImports(records)
+	if rewrites != 1 {
+		t.Fatalf("expected 1 rewrite, got %d", rewrites)
+	}
+	// Find the IMPORTS edge and confirm the ToID was rewritten to the hex ID.
+	for k := range records {
+		for j := range records[k].Relationships {
+			r := &records[k].Relationships[j]
+			if r.Kind != importRelKind {
+				continue
+			}
+			if r.ToID != fileID {
+				t.Errorf("IMPORTS ToID = %q, want %q", r.ToID, fileID)
+			}
+		}
+	}
+}
+
+// TestResolveGoInTreeImports_MultipleFilesPicksLexFirst verifies that when a
+// package has multiple files, the lexicographically smallest SourceFile is
+// chosen as the representative.
+func TestResolveGoInTreeImports_MultipleFilesPicksLexFirst(t *testing.T) {
+	firstID := "1111111111111111"
+	secondID := "2222222222222222"
+	records := []types.EntityRecord{
+		// "b.go" comes before "a.go" in declaration order but after lex-order.
+		goFileEntity("internal/util/b.go", secondID),
+		goFileEntity("internal/util/a.go", firstID),
+		goImporterRecord(
+			"cmd/main.go",
+			"github.com/myorg/repo/internal/util",
+			"internal/util",
+			"github.com/myorg/repo",
+		),
+	}
+
+	rewrites := ResolveGoInTreeImports(records)
+	if rewrites != 1 {
+		t.Fatalf("expected 1 rewrite, got %d", rewrites)
+	}
+	for k := range records {
+		for j := range records[k].Relationships {
+			r := &records[k].Relationships[j]
+			if r.Kind != importRelKind {
+				continue
+			}
+			// lex-smallest = "internal/util/a.go" → firstID
+			if r.ToID != firstID {
+				t.Errorf("IMPORTS ToID = %q, want firstID %q (lex-smallest file)", r.ToID, firstID)
+			}
+		}
+	}
+}
+
+// TestResolveGoInTreeImports_NoPkgDirSkipped verifies that IMPORTS edges
+// without go_pkg_dir are not touched (external imports, or edges from repos
+// without go.mod).
+func TestResolveGoInTreeImports_NoPkgDirSkipped(t *testing.T) {
+	fileID := "aabbccdd11223344"
+	rawToID := "github.com/some/package"
+	records := []types.EntityRecord{
+		goFileEntity("some/package/main.go", fileID),
+		{
+			Name:       rawToID,
+			Kind:       "SCOPE.Component",
+			SourceFile: "cmd/main.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "cmd/main.go",
+				ToID:   rawToID,
+				Kind:   importRelKind,
+				// No Properties → no go_pkg_dir.
+			}},
+		},
+	}
+
+	rewrites := ResolveGoInTreeImports(records)
+	if rewrites != 0 {
+		t.Fatalf("expected 0 rewrites (no go_pkg_dir), got %d", rewrites)
+	}
+	// ToID must stay untouched.
+	for k := range records {
+		for j := range records[k].Relationships {
+			r := &records[k].Relationships[j]
+			if r.Kind != importRelKind && r.ToID == rawToID {
+				continue
+			}
+			if r.Kind == importRelKind && r.ToID != rawToID {
+				t.Errorf("IMPORTS ToID rewritten to %q; expected it unchanged (%q)", r.ToID, rawToID)
+			}
+		}
+	}
+}
+
+// TestResolveGoInTreeImports_AlreadyHexUnchanged confirms that an IMPORTS edge
+// whose ToID is already a hex ID is not rewritten again.
+func TestResolveGoInTreeImports_AlreadyHexUnchanged(t *testing.T) {
+	fileID := "aabbccdd11223344"
+	records := []types.EntityRecord{
+		goFileEntity("internal/types/types.go", fileID),
+		{
+			Name:       "github.com/myorg/repo/internal/types",
+			Kind:       "SCOPE.Component",
+			SourceFile: "cmd/main.go",
+			Language:   "go",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "cmd/main.go",
+				ToID:   fileID, // already rewritten
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"go_pkg_dir":     "internal/types",
+					"go_module_root": "github.com/myorg/repo",
+				},
+			}},
+		},
+	}
+
+	rewrites := ResolveGoInTreeImports(records)
+	if rewrites != 0 {
+		t.Fatalf("expected 0 rewrites (already hex ID), got %d", rewrites)
+	}
+}
+
+// TestResolveGoInTreeImports_UnknownPkgDirSkipped confirms that when no file
+// entity exists for go_pkg_dir the edge is left alone.
+func TestResolveGoInTreeImports_UnknownPkgDirSkipped(t *testing.T) {
+	rawToID := "github.com/myorg/repo/internal/missing"
+	records := []types.EntityRecord{
+		// No file entity for internal/missing.
+		goImporterRecord(
+			"cmd/main.go",
+			rawToID,
+			"internal/missing",
+			"github.com/myorg/repo",
+		),
+	}
+
+	rewrites := ResolveGoInTreeImports(records)
+	if rewrites != 0 {
+		t.Fatalf("expected 0 rewrites (no file entity for pkg dir), got %d", rewrites)
+	}
+	for k := range records {
+		for j := range records[k].Relationships {
+			r := &records[k].Relationships[j]
+			if r.Kind == importRelKind && r.ToID != rawToID {
+				t.Errorf("IMPORTS ToID rewritten to %q; expected it unchanged (%q)", r.ToID, rawToID)
+			}
+		}
+	}
+}

@@ -2122,6 +2122,116 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 	return stats
 }
 
+// ResolveGoInTreeImports rewrites Go IMPORTS edges whose ToID is an in-tree
+// package import path (e.g. "github.com/cajasmota/archigraph/internal/types")
+// to the hex entity ID of a representative file in the imported package
+// directory. This resolves the dominant unresolved-import pattern for Go-heavy
+// corpora: the extractor emits raw module paths as ToIDs, but the resolver's
+// entity index contains file-level SCOPE.Component entities keyed by path
+// (e.g. "internal/types/types.go"), not by module path.
+//
+// The pass requires Properties["go_pkg_dir"] to be stamped on the IMPORTS edge
+// by the Go extractor's extractImportEntities (only when go.mod is present and
+// the import path starts with the repo's module root). Edges without this
+// property are left unchanged — they either already have an ext: rewrite or
+// will be caught by the external-synthesis pass.
+//
+// Returns the number of edges rewritten.
+//
+// Algorithm:
+//  1. Build byGoPkgDir: pkgDir → representative entity ID from all Go
+//     SCOPE.Component subtype="file" entities. Uses lexicographically smallest
+//     SourceFile within each package directory as the canonical representative
+//     (stable, deterministic across map-iteration orders).
+//  2. Walk every IMPORTS edge; when Properties["go_pkg_dir"] is non-empty and
+//     the ToID is not already a hex ID or ext: form, look up pkgDir → entity
+//     and rewrite.
+func ResolveGoInTreeImports(records []types.EntityRecord) int {
+	// Pass 1 — build pkgDir → representative entity ID index.
+	byGoPkgDir := buildGoPkgDirIndex(records)
+	if len(byGoPkgDir) == 0 {
+		return 0
+	}
+
+	// Pass 2 — rewrite IMPORTS ToIDs.
+	rewrites := 0
+	for k := range records {
+		e := &records[k]
+		for j := range e.Relationships {
+			r := &e.Relationships[j]
+			if r.Kind != importRelKind {
+				continue
+			}
+			if r.Properties == nil {
+				continue
+			}
+			pkgDir := r.Properties["go_pkg_dir"]
+			if pkgDir == "" {
+				continue
+			}
+			// Already resolved (hex ID or ext: form) — skip.
+			if isHexID(r.ToID) || strings.HasPrefix(r.ToID, "ext:") {
+				continue
+			}
+			id, ok := byGoPkgDir[pkgDir]
+			if !ok || id == "" {
+				continue
+			}
+			r.ToID = id
+			rewrites++
+		}
+	}
+	return rewrites
+}
+
+// buildGoPkgDirIndex builds a map from Go package directory (e.g.
+// "internal/types") to the entity ID of a representative file in that package.
+// Only Go SCOPE.Component subtype="file" entities are considered. When multiple
+// files exist in the same directory, the one with the lexicographically smallest
+// SourceFile path wins (stable tie-break independent of entity-slice order).
+func buildGoPkgDirIndex(records []types.EntityRecord) map[string]string {
+	// pkgDir → (bestSourceFile, bestEntityID) — we track both so we can
+	// apply the stable lex-sort tie-break without a separate sort pass.
+	type entry struct {
+		sourceFile string
+		id         string
+	}
+	best := make(map[string]entry)
+
+	for k := range records {
+		e := &records[k]
+		if e.Language != "go" || e.Kind != "SCOPE.Component" || e.Subtype != "file" {
+			continue
+		}
+		if e.ID == "" || e.SourceFile == "" {
+			continue
+		}
+		sf := normalizePath(e.SourceFile)
+		if !strings.HasSuffix(sf, ".go") {
+			continue
+		}
+		// Package directory = parent directory of the source file.
+		pkgDir := sf
+		if slash := strings.LastIndexByte(sf, '/'); slash >= 0 {
+			pkgDir = sf[:slash]
+		} else {
+			// File at repo root; package dir is "" (root package).
+			pkgDir = ""
+		}
+		// Stable lex-sort: keep the entity whose SourceFile path is
+		// lexicographically smallest within the package directory.
+		if cur, ok := best[pkgDir]; !ok || sf < cur.sourceFile {
+			best[pkgDir] = entry{sourceFile: sf, id: e.ID}
+		}
+	}
+
+	out := make(map[string]string, len(best))
+	for dir, ent := range best {
+		out[dir] = ent.id
+	}
+	return out
+}
+
 // PruneImportPlaceholderStats summarises the prune pass for the
 // indexer's stderr log.
 type PruneImportPlaceholderStats struct {

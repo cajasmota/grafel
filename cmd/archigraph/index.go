@@ -2979,6 +2979,18 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	// disposition classifier sees the rewritten ID as already-resolved.
 	importTbl := resolve.BuildImportTable(merged)
 	importStats := resolve.ResolveImports(merged, importTbl)
+
+	// Go in-tree import resolution: rewrites IMPORTS edges whose ToID is a
+	// project-internal Go package path (e.g. "github.com/owner/repo/internal/pkg")
+	// to the hex entity ID of a representative file in the imported package
+	// directory. Requires Properties["go_pkg_dir"] stamped by the Go extractor
+	// when go.mod is present. Runs BEFORE BuildIndex so the disposition
+	// classifier sees the rewritten ID as already-resolved.
+	goInTreeRewrites := resolve.ResolveGoInTreeImports(merged)
+	if goInTreeRewrites > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: go-in-tree rewrote=%d IMPORTS targets\n", goInTreeRewrites)
+	}
+
 	// Always emit the stats line when the pass had work to do, so a
 	// silent-failure regression (considered>0 but rewritten=0 — e.g. the
 	// import table failed to build) surfaces in stderr instead of
