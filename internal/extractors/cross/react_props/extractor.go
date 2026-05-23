@@ -324,6 +324,26 @@ type component struct {
 	signature string // text of the "(...)" parameter list including parens
 	body      string // text of the function body, best-effort
 	kind      string // "function" | "arrow"
+	// startLine / endLine are 1-indexed source positions of the component
+	// declaration. Issue #1964 — without these the source_window helper in
+	// llm_bundle.go falls through to an empty excerpt and downstream docgen
+	// produces missing or wrong output for every React component.
+	startLine int
+	endLine   int
+}
+
+// byteOffsetToLine converts a 0-indexed byte offset in source to a 1-indexed
+// line number by counting newlines. Out-of-range offsets clamp to 1 (start)
+// or the final line count.
+func byteOffsetToLine(source string, offset int) int {
+	if offset <= 0 {
+		return 1
+	}
+	if offset > len(source) {
+		offset = len(source)
+	}
+	// Line N corresponds to (count of '\n' bytes in source[:offset]) + 1.
+	return strings.Count(source[:offset], "\n") + 1
 }
 
 // findComponents returns every function-shaped entity in source whose name
@@ -340,7 +360,8 @@ func findComponents(source string) []component {
 		}
 		name := source[m[2]:m[3]]
 		// For `function Foo(`, m[1] lands one past `(`, so parenStart is m[1]-1.
-		sig, body := sliceFromParen(source, m[1]-1)
+		parenStart := m[1] - 1
+		sig, body, bodyEnd := sliceFromParenWithEnd(source, parenStart)
 		if !looksLikeJSXBody(body) {
 			continue
 		}
@@ -348,11 +369,21 @@ func findComponents(source string) []component {
 			continue
 		}
 		seen[name] = true
+		// Use the captured-name offset (m[2]) for the start line so we
+		// don't include the trailing newline of the prior line that
+		// `(?m)^\s*` may have consumed.
+		startLine := byteOffsetToLine(source, m[2])
+		endLine := byteOffsetToLine(source, bodyEnd)
+		if endLine < startLine {
+			endLine = startLine
+		}
 		out = append(out, component{
 			name:      name,
 			signature: sig,
 			body:      body,
 			kind:      "function",
+			startLine: startLine,
+			endLine:   endLine,
 		})
 	}
 
@@ -370,7 +401,8 @@ func findComponents(source string) []component {
 			// Shouldn't happen given arrowDeclRE, but skip rather than crash.
 			continue
 		}
-		sig, body := sliceFromParen(source, nameEnd+parenIdx)
+		parenStart := nameEnd + parenIdx
+		sig, body, bodyEnd := sliceFromParenWithEnd(source, parenStart)
 		if !looksLikeJSXBody(body) {
 			continue
 		}
@@ -378,14 +410,63 @@ func findComponents(source string) []component {
 			continue
 		}
 		seen[name] = true
+		startLine := byteOffsetToLine(source, m[2])
+		endLine := byteOffsetToLine(source, bodyEnd)
+		if endLine < startLine {
+			endLine = startLine
+		}
 		out = append(out, component{
 			name:      name,
 			signature: sig,
 			body:      body,
 			kind:      "arrow",
+			startLine: startLine,
+			endLine:   endLine,
 		})
 	}
 	return out
+}
+
+// sliceFromParenWithEnd is sliceFromParen plus the absolute end byte index
+// of the body in source. The end index is one past the closing `}` /  `)`
+// of the body (so it can be passed directly to byteOffsetToLine).
+// Returns (-1) for the end when the body could not be located.
+func sliceFromParenWithEnd(source string, parenStart int) (string, string, int) {
+	if parenStart < 0 || parenStart >= len(source) || source[parenStart] != '(' {
+		return "", "", -1
+	}
+	parenEnd := matchBalanced(source, parenStart, '(', ')')
+	if parenEnd < 0 {
+		return "", "", -1
+	}
+	sig := source[parenStart : parenEnd+1]
+
+	braceStart := -1
+	for i := parenEnd + 1; i < len(source); i++ {
+		c := source[i]
+		if c == '{' {
+			braceStart = i
+			break
+		}
+		if c == ';' {
+			return sig, "", i
+		}
+		if c == '(' && i > parenEnd+3 {
+			exprEnd := matchBalanced(source, i, '(', ')')
+			if exprEnd < 0 {
+				return sig, "", -1
+			}
+			return sig, source[i+1 : exprEnd], exprEnd + 1
+		}
+	}
+	if braceStart < 0 {
+		return sig, "", -1
+	}
+	braceEnd := matchBalanced(source, braceStart, '{', '}')
+	if braceEnd < 0 {
+		return sig, source[braceStart+1:], len(source)
+	}
+	return sig, source[braceStart+1 : braceEnd], braceEnd + 1
 }
 
 // sliceFromParen takes the byte index of a `(` character opening a
@@ -741,6 +822,13 @@ func buildComponentEntity(file extractor.FileInput, c component, propNames []str
 		SourceFile:   file.Path,
 		Language:     file.Language,
 		Subtype:      "react_component",
+		// Issue #1964 — populate line range so docgen's source_window
+		// helper can read the JSX body. Before this fix every
+		// react_component entity emitted by this regex-based extractor
+		// had start_line=end_line=0; the bundle helper treated the
+		// component as having no source and the LLM filled blind.
+		StartLine:    c.startLine,
+		EndLine:      c.endLine,
 		Properties:   props,
 		QualityScore: 0.85,
 	}
