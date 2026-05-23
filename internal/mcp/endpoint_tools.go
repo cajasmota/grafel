@@ -22,6 +22,12 @@
 //     archigraph_endpoint_calls       — list call-site entities only
 //     archigraph_endpoint_stats       — counts of each kind + orphan summary
 //
+// # #1745 additions (on top of #1650 + #1751)
+//   - Triple-path dedupe: Properties["path"] and Properties["verb"] are hoisted
+//     to top-level Method/Path and stripped from the bag; Name is suppressed
+//     when it would duplicate "<verb> <path>" or just "<path>".
+//   - format="terse" (default) | "full" explicit param (alias for verbose=bool).
+//
 // Migration path (for agents and external callers)
 //
 //	Old value          Still works?  New preferred values
@@ -201,6 +207,8 @@ func (s *Server) handleEndpoints(ctx context.Context, req mcpapi.CallToolRequest
 //   - limit defaults to 50 and caps the RENDERED size, not just record count
 //   - hard byte budget so a single call cannot overflow the harness token cap
 //
+// #1745: format="terse"|"full" explicit param; triple-path dedupe.
+//
 // Tool name: archigraph_endpoint_definitions
 func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	_, lg, errRes := s.resolveAndGroup(req)
@@ -211,7 +219,15 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 	limit := argInt(req, "limit", 20)
 	pathContains := strings.ToLower(argString(req, "path_contains", ""))
 	method := strings.ToUpper(argString(req, "method", ""))
+	// format="terse"|"full" is the preferred control; verbose=bool kept for
+	// backward compatibility. format takes precedence when set explicitly.
+	format := strings.ToLower(argString(req, "format", ""))
 	verbose := argBool(req, "verbose", false)
+	if format == "full" {
+		verbose = true
+	} else if format == "terse" {
+		verbose = false
+	}
 
 	var out []endpointDefItem
 	for _, r := range repos {
@@ -243,9 +259,14 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 				Path:       p,
 			}
 			if verbose {
-				it.Name = e.Name
 				it.Kind = e.Kind
-				it.Properties = e.Properties
+				// Triple-path dedupe (#1745): suppress Name when it duplicates
+				// the Method+Path combination already expressed by top-level fields.
+				if !isRedundantName(e.Name, m, p) {
+					it.Name = e.Name
+				}
+				// Strip path/verb from Properties — already on top-level fields.
+				it.Properties = dedupeEndpointProperties(e.Properties)
 			}
 			out = append(out, it)
 		}
@@ -283,15 +304,15 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		"total":         total,
 		"offset":        offset,
 		"truncated":     offset+len(out) < total,
-		"verbose":       verbose,
+		"format":        formatLabel(verbose),
 		"path_contains": pathContains,
 		"method":        method,
 		"token_budget":  tokenBudget,
-		"note":          "verbose=false (default) returns terse one-line shape. Use path_contains/method to narrow; limit/token_budget cap rendered size.",
+		"note":          "format=terse (default) returns one-line 'lines' entries. Use path_contains/method to narrow; limit/token_budget cap rendered size.",
 	}
 	if preCapLen > len(out) {
 		resp["truncation_note"] = fmt.Sprintf(
-			"response capped at token_budget=%d (~%d bytes); %d definitions omitted — pass a larger token_budget or use limit=N",
+			"response capped at token_budget=%d (~%d bytes); %d definitions omitted — use path_contains/method to narrow or pass a larger token_budget",
 			tokenBudget, budgetBytes, preCapLen-len(out),
 		)
 	}
@@ -386,6 +407,72 @@ func capByRenderedBytes[T any](items []T, maxBytes int, _ bool) []T {
 }
 
 // ---------------------------------------------------------------------------
+// #1745 helpers — triple-path dedupe + format label
+// ---------------------------------------------------------------------------
+
+// isRedundantName reports whether a raw entity Name duplicates the information
+// already expressed by the Method and Path top-level fields.
+//
+// Redundant patterns (case-insensitive):
+//
+//	Name == path
+//	Name == "VERB path"                   (common extractor output)
+//	Name == "VERB path (…)"               (with trailing annotation)
+//	Name == "VERB path → HandlerName"     (with arrow suffix)
+func isRedundantName(name, method, path string) bool {
+	if name == "" || path == "" {
+		return false
+	}
+	nameLow := strings.ToLower(strings.TrimSpace(name))
+	pathLow := strings.ToLower(strings.TrimSpace(path))
+	if nameLow == pathLow {
+		return true
+	}
+	if method != "" {
+		verbPath := strings.ToLower(method) + " " + pathLow
+		if nameLow == verbPath {
+			return true
+		}
+		if strings.HasPrefix(nameLow, verbPath+" (") {
+			return true
+		}
+		if strings.HasPrefix(nameLow, verbPath+" →") {
+			return true
+		}
+	}
+	return false
+}
+
+// dedupeEndpointProperties returns a copy of props with "path" and "verb"
+// removed — they are already promoted to top-level Path/Method fields.
+func dedupeEndpointProperties(props map[string]string) map[string]string {
+	if len(props) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(props))
+	for k, v := range props {
+		switch strings.ToLower(k) {
+		case "path", "verb":
+			// already on top-level fields — skip
+		default:
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// formatLabel returns the canonical format string for response metadata.
+func formatLabel(verbose bool) string {
+	if verbose {
+		return "full"
+	}
+	return "terse"
+}
+
+// ---------------------------------------------------------------------------
 // archigraph_endpoint_calls
 // ---------------------------------------------------------------------------
 
@@ -393,6 +480,8 @@ func capByRenderedBytes[T any](items []T, maxBytes int, _ bool) []T {
 // invoke an HTTP endpoint (i.e. the FETCHES-edge source entities). For each
 // call-site that has no matching definition anywhere in the group, a reasoning
 // hint is included.
+//
+// #1745: format="terse"|"full" explicit param; triple-path dedupe.
 //
 // Tool name: archigraph_endpoint_calls
 func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -405,7 +494,13 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 	orphanOnly := argBool(req, "orphan_only", false)
 	pathContains := strings.ToLower(argString(req, "path_contains", ""))
 	method := strings.ToUpper(argString(req, "method", ""))
+	format := strings.ToLower(argString(req, "format", ""))
 	verbose := argBool(req, "verbose", false)
+	if format == "full" {
+		verbose = true
+	} else if format == "terse" {
+		verbose = false
+	}
 
 	// Build a set of all definition-side entity IDs so we can detect
 	// call-sites with no matching definition (orphan callers).
@@ -525,9 +620,12 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 				OrphanHint:        orphanHint,
 			}
 			if verbose {
-				it.Name = e.Name
 				it.Kind = e.Kind
-				it.Properties = e.Properties
+				// Triple-path dedupe: suppress Name when it duplicates Method+Path.
+				if !isRedundantName(e.Name, m, p) {
+					it.Name = e.Name
+				}
+				it.Properties = dedupeEndpointProperties(e.Properties)
 			}
 			out = append(out, it)
 		}
@@ -566,15 +664,15 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		"total":         total,
 		"offset":        offset,
 		"truncated":     offset+len(out) < total,
-		"verbose":       verbose,
+		"format":        formatLabel(verbose),
 		"path_contains": pathContains,
 		"method":        method,
 		"token_budget":  tokenBudget,
-		"note":          "verbose=false (default) returns terse one-line shape. path_contains/method narrow server-side; cross-repo link matches surface as matched_definition=\"cross_repo_link\".",
+		"note":          "format=terse (default) returns one-line 'lines' entries. path_contains/method narrow server-side; cross-repo link matches surface as matched_definition=\"cross_repo_link\".",
 	}
 	if preCapLen > len(out) {
 		resp["truncation_note"] = fmt.Sprintf(
-			"response capped at token_budget=%d (~%d bytes); %d calls omitted — pass a larger token_budget or use limit=N",
+			"response capped at token_budget=%d (~%d bytes); %d calls omitted — use path_contains/method to narrow or pass a larger token_budget",
 			tokenBudget, budgetBytes, preCapLen-len(out),
 		)
 	}

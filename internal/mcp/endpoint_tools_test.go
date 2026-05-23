@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -625,5 +626,258 @@ func TestEndpointTokenBudget_Definitions(t *testing.T) {
 	note, _ := out["truncation_note"].(string)
 	if note == "" {
 		t.Errorf("expected truncation_note to be set when token_budget is exceeded")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1745: format param, triple-path dedupe, filter-before-limit assertions
+// ---------------------------------------------------------------------------
+
+// TestEndpointDefinitions_FormatTerse verifies format="terse" produces "lines"
+// and the response echoes format=terse.
+func TestEndpointDefinitions_FormatTerse(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":  "test",
+		"format": "terse",
+	})
+	if _, ok := res["lines"]; !ok {
+		t.Error("format=terse should produce 'lines' key")
+	}
+	if label, _ := res["format"].(string); label != "terse" {
+		t.Errorf("expected format=terse in response, got %q", label)
+	}
+}
+
+// TestEndpointDefinitions_FormatFull verifies format="full" returns per-record
+// structs with kind and NO "lines" key.
+func TestEndpointDefinitions_FormatFull(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":  "test",
+		"format": "full",
+	})
+	if _, ok := res["lines"]; ok {
+		t.Error("format=full should NOT produce 'lines' key")
+	}
+	if label, _ := res["format"].(string); label != "full" {
+		t.Errorf("expected format=full in response, got %q", label)
+	}
+	defs := getSlice(t, res, "definitions")
+	for _, d := range defs {
+		obj := d.(map[string]any)
+		if _, has := obj["kind"]; !has {
+			t.Errorf("format=full row should include kind field: %v", obj)
+		}
+	}
+}
+
+// TestEndpointCalls_FormatTerse verifies format="terse" on calls action.
+func TestEndpointCalls_FormatTerse(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointCalls, map[string]any{
+		"group":  "test",
+		"format": "terse",
+	})
+	if _, ok := res["lines"]; !ok {
+		t.Error("format=terse should produce 'lines' key on calls")
+	}
+	if label, _ := res["format"].(string); label != "terse" {
+		t.Errorf("expected format=terse in response, got %q", label)
+	}
+}
+
+// TestEndpointDefinitions_TriplePathDedupe verifies that in full/verbose mode:
+//   - Name is suppressed when it duplicates "VERB path"
+//   - Properties bag does not contain "path" or "verb"
+//   - Meaningful Names are preserved
+func TestEndpointDefinitions_TriplePathDedupe(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{
+				// Redundant name: exactly "GET /api/v2/users" = verb + path.
+				ID: "ep1", Name: "GET /api/v2/users", Kind: "http_endpoint_definition",
+				SourceFile: "routes/users.go", StartLine: 10,
+				Properties: map[string]string{
+					"verb":         "GET",
+					"path":         "/api/v2/users",
+					"handler_func": "UsersView.list",
+				},
+			},
+			{
+				// Meaningful name: carries info beyond the path.
+				ID: "ep2", Name: "UserCreateView", Kind: "http_endpoint_definition",
+				SourceFile: "routes/users.go", StartLine: 20,
+				Properties: map[string]string{
+					"verb": "POST",
+					"path": "/api/v2/users",
+				},
+			},
+		},
+	}
+	srv := newTestServerWithDoc(t, doc)
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":  "test",
+		"format": "full",
+	})
+	defs := getSlice(t, res, "definitions")
+	if len(defs) != 2 {
+		t.Fatalf("expected 2 definitions, got %d", len(defs))
+	}
+
+	for _, d := range defs {
+		obj := d.(map[string]any)
+		entityID, _ := obj["entity_id"].(string)
+		props, _ := obj["properties"].(map[string]any)
+
+		// path and verb must not appear in Properties.
+		if props != nil {
+			if _, has := props["path"]; has {
+				t.Errorf("entity %s: Properties should not contain 'path'", entityID)
+			}
+			if _, has := props["verb"]; has {
+				t.Errorf("entity %s: Properties should not contain 'verb'", entityID)
+			}
+		}
+
+		isEp1 := entityID == "test::ep1" || entityID == "ep1"
+		isEp2 := entityID == "test::ep2" || entityID == "ep2"
+
+		if isEp1 {
+			// Redundant name must be suppressed.
+			if name, _ := obj["name"].(string); name != "" {
+				t.Errorf("ep1: redundant Name should be suppressed, got %q", name)
+			}
+		}
+		if isEp2 {
+			// Meaningful name must be preserved.
+			if name, _ := obj["name"].(string); name != "UserCreateView" {
+				t.Errorf("ep2: meaningful Name should be preserved, got %q", name)
+			}
+		}
+	}
+}
+
+// TestEndpointDefinitions_PathContainsFilterBeforeLimit asserts that
+// path_contains is applied server-side BEFORE limit — a narrow filter returns
+// only matching rows regardless of the limit value.
+func TestEndpointDefinitions_PathContainsFilterBeforeLimit(t *testing.T) {
+	entities := make([]graph.Entity, 0, 10)
+	for i := 0; i < 8; i++ {
+		entities = append(entities, graph.Entity{
+			ID: fmt.Sprintf("ep_other_%d", i), Kind: "http_endpoint_definition",
+			Properties: map[string]string{"verb": "GET", "path": fmt.Sprintf("/api/v1/orders/%d", i)},
+		})
+	}
+	entities = append(entities, graph.Entity{
+		ID: "ep_prop_1", Kind: "http_endpoint_definition",
+		Properties: map[string]string{"verb": "GET", "path": "/api/v1/proposals/list"},
+	})
+	entities = append(entities, graph.Entity{
+		ID: "ep_prop_2", Kind: "http_endpoint_definition",
+		Properties: map[string]string{"verb": "POST", "path": "/api/v1/proposals/create"},
+	})
+	srv := newTestServerWithDoc(t, &graph.Document{Entities: entities})
+
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":         "test",
+		"path_contains": "proposal",
+		"limit":         float64(5),
+	})
+	defs := getSlice(t, res, "definitions")
+	if len(defs) != 2 {
+		t.Fatalf("path_contains=proposal should match exactly 2 endpoints, got %d", len(defs))
+	}
+	for _, d := range defs {
+		obj := d.(map[string]any)
+		p, _ := obj["path"].(string)
+		if !strings.Contains(strings.ToLower(p), "proposal") {
+			t.Errorf("unexpected path %q does not contain 'proposal'", p)
+		}
+	}
+}
+
+// TestEndpointDefinitions_MethodFilterBeforeLimit verifies method filter is
+// applied before limit.
+func TestEndpointDefinitions_MethodFilterBeforeLimit(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "ep1", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "GET", "path": "/a"}},
+		{ID: "ep2", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "POST", "path": "/b"}},
+		{ID: "ep3", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "GET", "path": "/c"}},
+		{ID: "ep4", Kind: "http_endpoint_definition", Properties: map[string]string{"verb": "DELETE", "path": "/d"}},
+	}
+	srv := newTestServerWithDoc(t, &graph.Document{Entities: entities})
+
+	res := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":  "test",
+		"method": "get",
+		"limit":  float64(1),
+	})
+	defs := getSlice(t, res, "definitions")
+	if len(defs) != 1 {
+		t.Fatalf("method=GET limit=1 should return 1 result, got %d", len(defs))
+	}
+	obj := defs[0].(map[string]any)
+	if m, _ := obj["method"].(string); !strings.EqualFold(m, "GET") {
+		t.Errorf("expected GET method, got %q", m)
+	}
+}
+
+// TestIsRedundantName covers the helper function directly.
+func TestIsRedundantName(t *testing.T) {
+	cases := []struct {
+		name, method, path string
+		want               bool
+	}{
+		{"/api/v1/orders", "", "/api/v1/orders", true},
+		{"GET /api/v2/users", "GET", "/api/v2/users", true},
+		{"get /api/v2/users", "GET", "/api/v2/users", true},
+		{"POST /api/v1/orders (client)", "POST", "/api/v1/orders", true},
+		{"GET /api/v2/users → UsersView.list", "GET", "/api/v2/users", true},
+		{"UsersView", "GET", "/api/v2/users", false},
+		{"UserCreateView", "POST", "/api/v2/users", false},
+		{"", "GET", "/api/v2/users", false},
+		{"GET ", "GET", "", false},
+	}
+	for _, tc := range cases {
+		got := isRedundantName(tc.name, tc.method, tc.path)
+		if got != tc.want {
+			t.Errorf("isRedundantName(%q, %q, %q) = %v, want %v",
+				tc.name, tc.method, tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestDedupeEndpointProperties verifies path+verb removal, other keys kept.
+func TestDedupeEndpointProperties(t *testing.T) {
+	props := map[string]string{
+		"path":         "/api/v1/orders",
+		"verb":         "POST",
+		"handler_func": "OrdersView.create",
+		"pattern_type": "django_url",
+	}
+	got := dedupeEndpointProperties(props)
+	if _, has := got["path"]; has {
+		t.Error("dedupeEndpointProperties should remove 'path'")
+	}
+	if _, has := got["verb"]; has {
+		t.Error("dedupeEndpointProperties should remove 'verb'")
+	}
+	if got["handler_func"] != "OrdersView.create" {
+		t.Errorf("handler_func should be preserved, got %q", got["handler_func"])
+	}
+	if got["pattern_type"] != "django_url" {
+		t.Errorf("pattern_type should be preserved, got %q", got["pattern_type"])
+	}
+}
+
+// TestDedupeEndpointProperties_NilAndEmpty verifies edge cases.
+func TestDedupeEndpointProperties_NilAndEmpty(t *testing.T) {
+	if got := dedupeEndpointProperties(nil); got != nil {
+		t.Errorf("nil input should return nil, got %v", got)
+	}
+	onlyRedundant := map[string]string{"path": "/x", "verb": "GET"}
+	if got := dedupeEndpointProperties(onlyRedundant); got != nil {
+		t.Errorf("all-redundant props should return nil, got %v", got)
 	}
 }

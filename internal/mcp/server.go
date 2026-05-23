@@ -351,11 +351,12 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_paths", s.handleFindPaths))
 
-	// archigraph_endpoints — HTTP surface (#1281, overhaul #1650).
-	// action=definitions|calls|stats; filters: path_contains, method;
-	// verbose=false (default) returns one-line terse entries.
+	// archigraph_endpoints — HTTP surface (#1281, overhaul #1650, filter+dedupe #1745).
+	// action=definitions|calls|stats; path_contains+method filter BEFORE limit.
+	// format="terse" (default) returns one-line "lines" entries; "full" returns
+	// per-record structs with kind + deduplicated properties (path/verb stripped).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoints",
-		mcpapi.WithDescription("HTTP endpoints: definitions|calls|stats."),
+		mcpapi.WithDescription("HTTP endpoints: definitions|calls|stats. path_contains+method filter first."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(20)),
@@ -363,7 +364,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithAny("path_contains"),
 		mcpapi.WithAny("method"),
-		mcpapi.WithBoolean("verbose", mcpapi.DefaultBool(false)),
+		mcpapi.WithAny("format"),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
