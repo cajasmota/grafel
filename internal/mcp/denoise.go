@@ -43,6 +43,13 @@ const (
 	// "Login → map", "Foo → trim". Identified by the proc: ID prefix and/or
 	// the "X → builtin" label shape.
 	noiseProcess
+	// noiseSchemaField: a SCOPE.Schema entity with Subtype="field" — a
+	// single field/attribute belonging to a serializer or schema class (e.g.
+	// DeficiencyCreateSerializer.amount). These are member entities of their
+	// parent class and clutter default results when ~25 fields accompany every
+	// serializer. Suppressed by default (#1712); the parent class surfaces
+	// normally. Reachable via include_noise:true.
+	noiseSchemaField
 )
 
 // arrayBuiltins is the set of array/string built-in method names whose Process
@@ -105,6 +112,15 @@ func classifyNoise(e *graph.Entity) noiseKind {
 		}
 	}
 
+	// Schema field members (#1712): a SCOPE.Schema entity whose Subtype is
+	// "field" is a single attribute of a parent serializer/schema class
+	// (e.g. DeficiencyCreateSerializer.amount). ~25 of these accompany every
+	// serializer class and pollute default ranked results. The parent class
+	// entity (same Kind, no "field" Subtype) surfaces normally.
+	if bareKind == "schema" && e.Subtype == "field" {
+		return noiseSchemaField
+	}
+
 	return noiseNone
 }
 
@@ -153,6 +169,8 @@ func rankTier(e *graph.Entity) int {
 		return 6
 	case noiseProcess:
 		return 6
+	case noiseSchemaField:
+		return 7
 	}
 	// Real entity. Lined entities (whether or not they carry a qualified_name)
 	// share the top tier so that BM25 relevance — not the mere presence of a
