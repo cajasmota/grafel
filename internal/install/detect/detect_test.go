@@ -105,6 +105,10 @@ func TestDetectMonorepoPolyglot(t *testing.T) {
 	write(t, filepath.Join(dir, "frontend/web/package.json"), `{"name":"web"}`)
 	write(t, filepath.Join(dir, "frontend/web/src/app.tsx"), "export const A = 1\n")
 
+	// IaC subdirs under infra/. Per-tool IaC trees register as their own
+	// modules (issue #1696) so the IaC-extraction passes reach them.
+	write(t, filepath.Join(dir, "infra/terraform/main.tf"), "resource \"x\" \"y\" {}\n")
+	write(t, filepath.Join(dir, "infra/cloudformation/stack.yaml"), "Resources: {}\n")
 	// Non-Node services NOT in the workspace manifest.
 	write(t, filepath.Join(dir, "services/orders/requirements.txt"), "fastapi\n")
 	write(t, filepath.Join(dir, "services/orders/app/db.py"), "x = 1\n")
@@ -149,6 +153,9 @@ func TestDetectMonorepoPolyglot(t *testing.T) {
 		"services/pricing",            // Rust
 		"services/billing",            // PHP
 		"services/realtime-dashboard", // Elixir
+		"infra/terraform",             // Terraform (issue #1696)
+		"infra/cloudformation",        // CloudFormation (issue #1696)
+		"infra/k8s",                   // K8s manifests (issue #1696)
 	}
 	for _, w := range wantPresent {
 		if !got[w] {
@@ -156,6 +163,9 @@ func TestDetectMonorepoPolyglot(t *testing.T) {
 		}
 	}
 	// Noise must NOT appear.
+	// "infra" (bare) must NOT appear — it is a CONTAINER dir now, not a
+	// module. Its per-tool children (infra/k8s, infra/terraform, …) ARE
+	// modules and are asserted above.
 	for _, bad := range []string{"node_modules", "infra", "vendor", "node_modules/junk"} {
 		if got[bad] {
 			t.Errorf("ignored dir leaked as module: %q", bad)
@@ -164,8 +174,8 @@ func TestDetectMonorepoPolyglot(t *testing.T) {
 	if m.Kind != KindPNPM {
 		t.Errorf("kind: want pnpm (workspace manifest wins), got %q", m.Kind)
 	}
-	if len(m.Packages) < 14 {
-		t.Errorf("expected >=14 modules across languages, got %d: %v", len(m.Packages), m.Packages)
+	if len(m.Packages) < 17 {
+		t.Errorf("expected >=17 modules across languages + IaC, got %d: %v", len(m.Packages), m.Packages)
 	}
 }
 
