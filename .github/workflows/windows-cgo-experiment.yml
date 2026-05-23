@@ -24,6 +24,7 @@ jobs:
           msystem: MINGW64
           update: true
           install: mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf
+          path-type: inherit
 
       - uses: actions/setup-go@v5
         with:
@@ -33,9 +34,8 @@ jobs:
       - name: Configure CGO for MinGW
         shell: powershell
         run: |
-          echo "CGO_ENABLED=1"                                | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "C:\msys64\mingw64\bin"                        | Out-File -FilePath $env:GITHUB_PATH -Append
-          echo "CC=C:\msys64\mingw64\bin\gcc.exe"             | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "CGO_ENABLED=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "CC=gcc.exe"    | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: go mod download
         run: go mod download
