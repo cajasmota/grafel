@@ -16,6 +16,8 @@
 //
 //	import_spec            → RelationshipRecord{Kind="IMPORTS"}       (File → Module)
 //	call_expression        → RelationshipRecord{Kind="CALLS"}         (Function → Function)
+//	method-value ref       → RelationshipRecord{Kind="CALLS", Properties["via_value"]="true"}
+//	                         (Function → Method, when method used as value: s.M passed as arg)
 //	method receiver        → RelationshipRecord{Kind="DEPENDS_ON"}    (Method → Component)
 //	struct field type      → RelationshipRecord{Kind="DEPENDS_ON"}    (Component → Component)
 //	interface satisfaction → RelationshipRecord{Kind="IMPLEMENTS"}    (Component → Component)
@@ -1079,6 +1081,48 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 				pushed = true
 			}
 		}
+		// Issue #1789 — method-value references.
+		// Detect selector_expression nodes that are NOT the function child of a
+		// call_expression — i.e. the method is used as a VALUE (passed as an
+		// argument, stored in a variable, etc.) rather than being invoked.
+		// For these cases the CALLS path never fires, so `find_callers` sees
+		// "no_incoming_edges". We emit a CALLS edge with via_value=true so the
+		// resolver binds it like any other CALLS edge, while the property lets
+		// consumers distinguish "invoked here" from "passed here".
+		//
+		// Supported shapes:
+		//   s.wrap("name", s.handler)       — method value as argument
+		//   var h = obj.Method               — method value in short/var decl
+		//   return obj.Method                — method value in return statement
+		//
+		// Not handled (v1): `m := obj.Method; m(arg)` — the through-a-local
+		// indirect call requires tracking local-var method aliases, which is a
+		// separate pass. The declaration site DOES emit via_value=true already.
+		if t == "selector_expression" && !isSelectorCalleeOf(n) {
+			mvTarget, mvRecvMatch, mvOperand := selectorMethodValue(n, src, recvVarName)
+			if mvTarget != "" && mvTarget != callerName {
+				// Deduplicate with suffix "?mv" to avoid merging with a direct
+				// CALLS edge to the same method (they carry different semantics).
+				mvKey := mvTarget + "?mv"
+				if !seen[mvKey] {
+					seen[mvKey] = true
+					mvRec := types.RelationshipRecord{
+						FromID: callerName,
+						ToID:   mvTarget,
+						Kind:   "CALLS",
+						Properties: map[string]string{"via_value": "true"},
+					}
+					if mvRecvMatch && recvType != "" {
+						mvRec.Properties["receiver_type"] = recvType
+					} else if mvOperand != "" {
+						if ty := lookup(mvOperand); ty != "" {
+							mvRec.Properties["receiver_type"] = ty
+						}
+					}
+					rels = append(rels, mvRec)
+				}
+			}
+		}
 		if t == "call_expression" {
 			target, isSelfReceiver, operand := callExpressionTargetWithOperand(n, src, recvVarName)
 			// Self-recursion suppression: drop a call only when target
@@ -1168,6 +1212,57 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 	}
 	visit(body)
 	return rels
+}
+
+// isSelectorCalleeOf reports whether sel is the `function` child of its
+// parent `call_expression`. When true, CALLS already owns the edge and the
+// method-value path must NOT emit a duplicate via_value edge.
+func isSelectorCalleeOf(sel *sitter.Node) bool {
+	if sel == nil {
+		return false
+	}
+	parent := sel.Parent()
+	if parent == nil || parent.Type() != "call_expression" {
+		return false
+	}
+	return parent.ChildByFieldName("function") == sel
+}
+
+// selectorMethodValue extracts the method name from a selector_expression
+// that is being used as a value (not invoked). Returns:
+//   - methodName: the bare field name (e.g. "handleQueryGraph")
+//   - isSelfReceiver: true when the operand matches recvVarName
+//   - operandName: the operand identifier text (for type lookup)
+//
+// Returns ("", false, "") when the selector is not a simple `obj.Method`
+// shape, or when the operand is not an identifier (chained selectors,
+// index expressions, etc.).
+//
+// Issue #1789: drives CALLS via_value=true emission for patterns like
+//
+//	s.wrap("name", s.handleQueryGraph)   — operand == recvVarName
+//	var h = obj.Method                   — operand is a known variable
+//	register("foo", obj.Method)          — generic argument
+func selectorMethodValue(sel *sitter.Node, src []byte, recvVarName string) (string, bool, string) {
+	if sel == nil {
+		return "", false, ""
+	}
+	operand := sel.ChildByFieldName("operand")
+	field := sel.ChildByFieldName("field")
+	if operand == nil || field == nil {
+		return "", false, ""
+	}
+	if operand.Type() != "identifier" {
+		// Chained selector (e.g. a.b.c used as value) — not covered in v1.
+		return "", false, ""
+	}
+	opName := nodeText(operand, src)
+	methodName := nodeText(field, src)
+	if opName == "" || methodName == "" {
+		return "", false, ""
+	}
+	isSelf := recvVarName != "" && opName == recvVarName
+	return methodName, isSelf, opName
 }
 
 // callExpressionTarget resolves the callee name from a call_expression node.
