@@ -8,6 +8,9 @@
    GET /api/mcp-activity/stream SSE endpoint via the Vite /api proxy.
 
    Lifecycle:
+     • On mount, fetches the last HISTORY_LIMIT events from
+       /api/mcp-activity/history and seeds the activity list (these are
+       marked `isHistory: true` so the UI can render them muted). (#1930)
      • Opens an EventSource when `enabled` is true (default).
      • Reconnects automatically on transient errors (browser-native ES).
      • Closes + cleans up on unmount or when toggled off.
@@ -31,6 +34,8 @@ export interface MCPActivityEvent {
   returned_edge_ids?: string[];
   agent_id?: string;
   timestamp: number;
+  /** True for events seeded from /api/mcp-activity/history on mount (#1930). */
+  isHistory?: boolean;
 }
 
 export interface MCPActivityState {
@@ -52,11 +57,14 @@ export interface UseMCPActivityReturn extends MCPActivityState {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SSE_URL = "/api/mcp-activity/stream";
+const HISTORY_URL = "/api/mcp-activity/history";
 // #1932: bumped from 50 → 100. Replay-all walks the whole panel and the spec
 // calls for "50+ activity entries stay smooth". With the generic flow engine
 // driving the comet, 100 entries (a few hundred flattened steps) is fine on
 // a typical laptop.
 const MAX_LOG = 100;
+// #1930: how many historical events to seed on mount.
+const HISTORY_LIMIT = 20;
 
 const INITIAL_STATE: MCPActivityState = {
   connected: false,
@@ -74,8 +82,44 @@ const INITIAL_STATE: MCPActivityState = {
 export function useMCPActivity(enabled = true): UseMCPActivityReturn {
   const [state, setState] = useState<MCPActivityState>(INITIAL_STATE);
   const esRef = useRef<EventSource | null>(null);
+  // Track the timestamp of the last history event seeded so live events
+  // arriving before subscribeAt don't double-count with history.
+  const subscribeAtRef = useRef<number>(0);
 
   const clear = useCallback(() => setState(INITIAL_STATE), []);
+
+  // #1930 — Seed the activity list from /api/mcp-activity/history on mount,
+  // BEFORE the SSE stream connects. History items are flagged `isHistory: true`
+  // so the UI can render them slightly muted (they don't trigger glow).
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    subscribeAtRef.current = Date.now();
+    fetch(`${HISTORY_URL}?limit=${HISTORY_LIMIT}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { events?: MCPActivityEvent[] } | null) => {
+        if (cancelled || !body?.events?.length) return;
+        const historyEvents: MCPActivityEvent[] = body.events.map((e) => ({
+          ...e,
+          isHistory: true,
+        }));
+        setState((prev) => {
+          // Don't overwrite live events that may have already arrived.
+          if (prev.eventLog.length > 0) return prev;
+          const log = historyEvents.slice(-MAX_LOG);
+          return {
+            ...prev,
+            eventLog: log,
+          };
+        });
+      })
+      .catch(() => {
+        // History fetch failing is non-fatal — SSE stream still works.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {

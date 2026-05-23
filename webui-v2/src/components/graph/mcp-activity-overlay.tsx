@@ -45,6 +45,73 @@ function formatTs(ts: number): string {
 
 const shortTool = (t: string) => t.replace(/^archigraph_/, "");
 
+// ── #1920 — primary arg extraction ────────────────────────────────────────────
+
+/**
+ * Returns a short display string for the most relevant argument of an MCP call.
+ * Rules follow the spec in #1920:
+ *   find / search               → query
+ *   inspect/get_source/find_callers/expand → entity_id (short hash)
+ *   endpoints                   → path_contains or action
+ *   traces                      → entity_id
+ *   fallback                    → first string value in query_args
+ */
+function primaryArg(ev: MCPActivityEvent): string | null {
+  const args = ev.query_args;
+  if (!args) return null;
+  const tool = shortTool(ev.tool_name);
+
+  // find / search → query
+  if (tool === "find" || tool === "search") {
+    const q = args["query"] ?? args["q"];
+    if (typeof q === "string" && q.trim()) return q;
+  }
+
+  // inspect / get_source / find_callers / expand → entity_id short
+  if (
+    tool === "inspect" ||
+    tool === "get_source" ||
+    tool === "find_callers" ||
+    tool === "expand" ||
+    tool === "traces"
+  ) {
+    const eid = args["entity_id"];
+    if (typeof eid === "string" && eid.trim()) {
+      // Short hash: take up to 12 chars before first "/" or end
+      const base = eid.split("/").pop() ?? eid;
+      return base.length > 16 ? base.slice(0, 12) + "…" : base;
+    }
+  }
+
+  // endpoints → path_contains or action
+  if (tool === "endpoints") {
+    const pc = args["path_contains"] ?? args["action"];
+    if (typeof pc === "string" && pc.trim()) return pc;
+  }
+
+  // fallback: first non-empty string in query_args (skip repo_filter)
+  for (const [k, v] of Object.entries(args)) {
+    if (k === "repo_filter" || k === "repos") continue;
+    if (typeof v === "string" && v.trim()) return v;
+  }
+  return null;
+}
+
+/** Truncate text to max length with ellipsis. */
+function trunc(s: string, max = 38): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+/** Extract repo filter chips from query_args. */
+function repoFilters(ev: MCPActivityEvent): string[] {
+  const args = ev.query_args;
+  if (!args) return [];
+  const rf = args["repo_filter"] ?? args["repos"];
+  if (Array.isArray(rf)) return rf.filter((r): r is string => typeof r === "string");
+  if (typeof rf === "string" && rf.trim()) return [rf];
+  return [];
+}
+
 function nodeCount(ev: MCPActivityEvent): number {
   return (ev.returned_node_ids?.length ?? 0) + (ev.returned_edge_ids?.length ?? 0);
 }
@@ -241,30 +308,92 @@ export const MCPActivityOverlay = memo(function MCPActivityOverlay({
                 No MCP queries yet. Run an archigraph MCP tool and watch the graph glow.
               </p>
             ) : (
-              eventLog.map((ev, i) => (
-                <div
-                  key={`${ev.timestamp}-${i}`}
-                  className="flex items-center gap-2 border-b border-border/50 px-3 py-1.5 text-xs last:border-0"
-                  data-testid="mcp-activity-entry"
-                >
-                  <span className="font-mono tabular-nums text-text-4">{formatTs(ev.timestamp)}</span>
-                  <span className="min-w-0 flex-1 truncate font-medium text-text-2">
-                    {shortTool(ev.tool_name)}
-                  </span>
-                  {nodeCount(ev) > 0 ? (
-                    <span className="tabular-nums text-text-3">{nodeCount(ev)}</span>
-                  ) : null}
-                  <button
-                    onClick={() => onReplay(ev)}
-                    aria-label="Replay this query's glow"
-                    title="Replay glow"
-                    className="rounded p-0.5 text-text-3 hover:text-amber-400"
-                    disabled={nodeCount(ev) === 0}
-                  >
-                    <RefreshCw size={11} />
-                  </button>
-                </div>
-              ))
+              (() => {
+                // #1930 — find the boundary between history and live entries
+                return eventLog.map((ev, i) => {
+                  // Insert "before this session" divider at the first live entry
+                  // (or at the very end if all entries are history items).
+                  const isFirstLive = !ev.isHistory && (i === 0 || eventLog[i - 1]?.isHistory);
+                  const showDivider =
+                    isFirstLive && i > 0;
+                  // #1920 — extract primary arg + repo chips
+                  const pArg = primaryArg(ev);
+                  const repos = repoFilters(ev);
+                  const tooltipText = ev.query_args
+                    ? JSON.stringify(ev.query_args, null, 2)
+                    : undefined;
+
+                  return (
+                    <div key={`${ev.timestamp}-${i}`}>
+                      {showDivider ? (
+                        <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] text-text-4">
+                          <span className="h-px flex-1 bg-border/50" />
+                          <span>live</span>
+                          <span className="h-px flex-1 bg-border/50" />
+                        </div>
+                      ) : null}
+                      {/* History section label before first history entry */}
+                      {ev.isHistory && i === 0 ? (
+                        <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] text-text-4">
+                          <span className="h-px flex-1 bg-border/50" />
+                          <span>before this session</span>
+                          <span className="h-px flex-1 bg-border/50" />
+                        </div>
+                      ) : null}
+                      <div
+                        title={tooltipText}
+                        className={`flex items-start gap-2 border-b border-border/50 px-3 py-1.5 text-xs last:border-0 ${
+                          ev.isHistory ? "opacity-50" : ""
+                        }`}
+                        data-testid="mcp-activity-entry"
+                        data-history={ev.isHistory ? "true" : undefined}
+                      >
+                        <span className="mt-px font-mono tabular-nums text-text-4 shrink-0">
+                          {formatTs(ev.timestamp)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-text-2 shrink-0">
+                              {shortTool(ev.tool_name)}
+                            </span>
+                            {/* #1920 — primary arg */}
+                            {pArg ? (
+                              <span className="min-w-0 truncate text-text-3" title={pArg}>
+                                {trunc(pArg)}
+                              </span>
+                            ) : null}
+                          </div>
+                          {/* #1920 — repo filter chips */}
+                          {repos.length > 0 ? (
+                            <div className="mt-0.5 flex flex-wrap gap-1">
+                              {repos.map((r) => (
+                                <span
+                                  key={r}
+                                  className="rounded-sm bg-accent/10 px-1 py-px text-[10px] text-accent"
+                                >
+                                  {r}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                        {nodeCount(ev) > 0 ? (
+                          <span className="mt-px tabular-nums text-text-3 shrink-0">{nodeCount(ev)}</span>
+                        ) : null}
+                        <button
+                          onClick={() => onReplay(ev)}
+                          aria-label="Replay this query's glow"
+                          title="Replay glow"
+                          className="mt-px rounded p-0.5 text-text-3 hover:text-amber-400 shrink-0"
+                          disabled={nodeCount(ev) === 0}
+                        >
+                          <RefreshCw size={11} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                });
+              })()
             )}
           </div>
 
@@ -294,18 +423,23 @@ export const MCPActivityOverlay = memo(function MCPActivityOverlay({
               >
                 {audioOn ? <Volume2 size={12} /> : <VolumeX size={12} />}
               </button>
+              {/* #1931 — iOS-style pill switch: explicit track + thumb so the
+                    off-state track is always visible regardless of bg-surface-2
+                    blending into the panel background. */}
               <button
                 onClick={toggleEnabled}
                 role="switch"
                 aria-checked={enabled}
                 aria-label="Toggle MCP activity glow"
-                className={`relative h-4 w-7 rounded-full transition-colors ${
-                  enabled ? "bg-accent" : "bg-surface-2"
+                className={`relative inline-flex h-4 w-[30px] shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
+                  enabled
+                    ? "border-transparent bg-accent"
+                    : "border-border bg-surface-2 [box-shadow:inset_0_0_0_1px_var(--border)]"
                 }`}
               >
                 <span
-                  className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
-                    enabled ? "translate-x-3.5" : "translate-x-0.5"
+                  className={`pointer-events-none inline-block h-3 w-3 shrink-0 rounded-full bg-white shadow transition-transform ${
+                    enabled ? "translate-x-[15px]" : "translate-x-[1px]"
                   }`}
                 />
               </button>
