@@ -128,6 +128,28 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// imported_name properties.
 	resolveImportToIDs(entities)
 
+	// Issue #1994 — final safety net for line-bound emission. Every entity
+	// MUST carry non-zero start_line + end_line so the docgen source_window
+	// helper has a usable anchor. Class-scoped synthesizers (Lombok, Panache)
+	// are stamped per-class above; this pass catches any file-level
+	// synthesized entity (Panache DSL interfaces, top-level helpers) that
+	// the per-class pass cannot reach. We use line 1 / file end as a
+	// conservative fallback — the bundle-side by-name fallback (#1987) will
+	// still rebind to the real source location when needed, but a non-zero
+	// sentinel keeps downstream rendering safe.
+	fileEnd := int(root.EndPoint().Row) + 1
+	if fileEnd < 1 {
+		fileEnd = 1
+	}
+	for i := range entities {
+		if entities[i].StartLine == 0 {
+			entities[i].StartLine = 1
+		}
+		if entities[i].EndLine == 0 {
+			entities[i].EndLine = fileEnd
+		}
+	}
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("error_pattern_count", len(errorPatterns)),
@@ -186,6 +208,39 @@ func walk(
 			subtype = "enum"
 		}
 		rec, ok := buildComponent(node, file, subtype, pkgName)
+		if ok {
+			// Issue #1996 — emit EXTENDS / IMPLEMENTS edges so the docgen
+			// ClassManifest can populate `bases` and `interfaces`. The
+			// tree-sitter Java grammar exposes the parent class via a
+			// `superclass` named child (with a single nested
+			// type_identifier) and implemented interfaces via
+			// `super_interfaces` → `type_list` → many type_identifiers.
+			// Both shapes are best-effort: malformed source still emits
+			// the class entity, just without these structural edges.
+			for _, base := range javaSuperclassNames(node, file.Content) {
+				rec.Relationships = append(rec.Relationships,
+					types.RelationshipRecord{ToID: base, Kind: "EXTENDS"})
+			}
+			for _, iface := range javaSuperInterfaceNames(node, file.Content) {
+				rec.Relationships = append(rec.Relationships,
+					types.RelationshipRecord{ToID: iface, Kind: "IMPLEMENTS"})
+			}
+			// Issue #1997 — emit a REFERENCES edge from the class entity
+			// to every type appearing on an @Inject-annotated field. This
+			// matches the cross-language convention that "consumers of X"
+			// queries walk REFERENCES edges; previously Java DI fields
+			// only produced a SCOPE.Schema child with a CONTAINS edge,
+			// which made find-consumers traversals miss them. The Schema
+			// child is preserved (extracted separately in field_declaration)
+			// for source-level symmetry — this is option B from #1997, the
+			// safer choice for downstream consumers.
+			if body := node.ChildByFieldName("body"); body != nil {
+				for _, injectedType := range javaInjectFieldTypes(body, file.Content) {
+					rec.Relationships = append(rec.Relationships,
+						types.RelationshipRecord{ToID: injectedType, Kind: "REFERENCES"})
+				}
+			}
+		}
 		if !ok {
 			// Still recurse so nested types/imports below this node are
 			// captured even when the class itself is malformed.
@@ -301,6 +356,46 @@ func walk(
 			//   SCOPE.Operation  → extractor.BuildOperationStructuralRef
 			//   SCOPE.Component  → scope:component:ref:java:<file>:<name>
 			//   SCOPE.Schema     → not emitted by synthesizers, skip
+			// Issue #1994 — stamp StartLine/EndLine on every synthesized entity
+			// (Lombok / Panache / @NamedQuery) with the class node's source
+			// range. Synthesized entities have no AST node of their own, so the
+			// next-best anchor is the declaring class — this guarantees that
+			// docgen's source_window helper and the bundle-side fallback always
+			// see non-zero line bounds and can emit useful excerpts.
+			classStart := int(node.StartPoint().Row) + 1
+			classEnd := int(node.EndPoint().Row) + 1
+			stampSynthLines := func(slice []types.EntityRecord) {
+				for i := range slice {
+					if slice[i].StartLine == 0 {
+						slice[i].StartLine = classStart
+					}
+					if slice[i].EndLine == 0 {
+						slice[i].EndLine = classEnd
+					}
+				}
+			}
+			// The class-scoped synthesizers were appended directly to *out
+			// above; mutate the trailing region of the slice in place. Each
+			// append set begins at the recorded len(*out) before it ran, but
+			// for simplicity we mutate the full lombok+panache block by
+			// stamping the local slices and re-using the post-append region.
+			stampSynthLines(lombokSynth)
+			stampSynthLines(lombokFieldSynth)
+			stampSynthLines(panacheSynth)
+			// Re-walk the *out tail to apply line numbers to entities that
+			// were appended-by-value (their stamped versions live only in the
+			// local slices above). We seek the matching name/kind in the tail
+			// and stamp in place.
+			tailStart := classIdx + 1
+			for i := tailStart; i < len(*out); i++ {
+				if (*out)[i].StartLine == 0 {
+					(*out)[i].StartLine = classStart
+				}
+				if (*out)[i].EndLine == 0 {
+					(*out)[i].EndLine = classEnd
+				}
+			}
+
 			allSynth := append(lombokSynth, lombokFieldSynth...)
 			allSynth = append(allSynth, panacheSynth...)
 			for _, s := range allSynth {
@@ -1105,6 +1200,165 @@ func buildClassSignature(node *sitter.Node, src []byte, name string) string {
 	// Strip annotation arguments: @Foo("bar") -> @Foo
 	raw = stripAnnotationArgs(raw)
 	return strings.TrimSpace(raw)
+}
+
+// javaSuperclassNames extracts the parent class name from a class_declaration
+// node's `superclass` child. Returns a slice (always 0 or 1 elements) for
+// uniform call-site iteration with javaSuperInterfaceNames. Generics are
+// stripped — `extends List<Owner>` yields "List".
+//
+// Issue #1996 — required input for the docgen ClassManifest `bases` field.
+func javaSuperclassNames(node *sitter.Node, src []byte) []string {
+	if node == nil {
+		return nil
+	}
+	sc := node.ChildByFieldName("superclass")
+	if sc == nil {
+		return nil
+	}
+	// `superclass` wraps either a type_identifier, a generic_type, or a
+	// scoped_type_identifier. leafTypeName covers all three.
+	for i := 0; i < int(sc.NamedChildCount()); i++ {
+		ch := sc.NamedChild(i)
+		if ch == nil {
+			continue
+		}
+		if name := leafTypeName(ch, src); name != "" {
+			return []string{name}
+		}
+	}
+	return nil
+}
+
+// javaSuperInterfaceNames extracts the implemented-interface names from a
+// class_declaration node's `interfaces` child (`super_interfaces` in the
+// grammar, exposed via the `interfaces` field). The interface list is a
+// `type_list` of type_identifier (or generic_type) nodes; each is
+// reduced to its leaf type identifier.
+//
+// Issue #1996 — required input for the docgen ClassManifest `interfaces`
+// field.
+func javaSuperInterfaceNames(node *sitter.Node, src []byte) []string {
+	if node == nil {
+		return nil
+	}
+	si := node.ChildByFieldName("interfaces")
+	if si == nil {
+		// Fallback: scan named children for super_interfaces (the field
+		// name varies between grammar versions).
+		for i := 0; i < int(node.NamedChildCount()); i++ {
+			ch := node.NamedChild(i)
+			if ch != nil && ch.Type() == "super_interfaces" {
+				si = ch
+				break
+			}
+		}
+	}
+	if si == nil {
+		return nil
+	}
+	var out []string
+	// si may directly be a type_list, or wrap one.
+	var list *sitter.Node
+	if si.Type() == "type_list" {
+		list = si
+	} else {
+		for i := 0; i < int(si.NamedChildCount()); i++ {
+			ch := si.NamedChild(i)
+			if ch != nil && ch.Type() == "type_list" {
+				list = ch
+				break
+			}
+		}
+	}
+	if list == nil {
+		return nil
+	}
+	for i := 0; i < int(list.NamedChildCount()); i++ {
+		ch := list.NamedChild(i)
+		if ch == nil {
+			continue
+		}
+		if name := leafTypeName(ch, src); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// javaInjectFieldTypes returns the declared leaf type of every field on a
+// class body whose `modifiers` block contains an @Inject (or @Autowired)
+// annotation. The match is case-sensitive and accepts both
+// `marker_annotation` (`@Inject`) and `annotation` (`@Inject(qualifier=...)`).
+//
+// Issue #1997 — cross-language DI consistency. Java extractor emits
+// REFERENCES edges from the containing class entity to every injected
+// type so "find consumers of UsersService" queries walk consistently with
+// Python (which already uses REFERENCES for the same shape).
+//
+// The Schema/CONTAINS edge for the field itself is still emitted by the
+// regular field_declaration case in walk(); this function does not
+// suppress it.
+func javaInjectFieldTypes(body *sitter.Node, src []byte) []string {
+	if body == nil {
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	for i := 0; i < int(body.NamedChildCount()); i++ {
+		ch := body.NamedChild(i)
+		if ch == nil || ch.Type() != "field_declaration" {
+			continue
+		}
+		if !javaFieldHasInjectAnnotation(ch, src) {
+			continue
+		}
+		typ := leafTypeName(ch.ChildByFieldName("type"), src)
+		if typ == "" || seen[typ] {
+			continue
+		}
+		seen[typ] = true
+		out = append(out, typ)
+	}
+	return out
+}
+
+// javaFieldHasInjectAnnotation reports whether a field_declaration node
+// carries an @Inject or @Autowired annotation in its `modifiers` child.
+func javaFieldHasInjectAnnotation(field *sitter.Node, src []byte) bool {
+	if field == nil {
+		return false
+	}
+	for i := 0; i < int(field.NamedChildCount()); i++ {
+		ch := field.NamedChild(i)
+		if ch == nil || ch.Type() != "modifiers" {
+			continue
+		}
+		for j := 0; j < int(ch.NamedChildCount()); j++ {
+			ann := ch.NamedChild(j)
+			if ann == nil {
+				continue
+			}
+			if ann.Type() != "marker_annotation" && ann.Type() != "annotation" {
+				continue
+			}
+			nameNode := ann.ChildByFieldName("name")
+			if nameNode == nil {
+				continue
+			}
+			name := string(src[nameNode.StartByte():nameNode.EndByte()])
+			// Accept the simple name as well as fully-qualified forms
+			// (`javax.inject.Inject` / `jakarta.inject.Inject` /
+			// `org.springframework.beans.factory.annotation.Autowired`).
+			if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
+				name = name[dot+1:]
+			}
+			if name == "Inject" || name == "Autowired" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // stripAnnotationArgs removes parenthesised arguments from Java annotations.

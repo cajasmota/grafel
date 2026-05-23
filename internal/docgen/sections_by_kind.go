@@ -384,6 +384,30 @@ var sectionsByKind = map[string]SectionProfile{
 	},
 
 	// -------------------------------------------------------------------------
+	// component.java — Java class / interface (SCOPE.Component, language=java).
+	//
+	// #1995: Quarkus controller / JAX-RS handler / Spring controller classes
+	// commonly contain 5-15 method bodies on a single class page.  The default
+	// ±20-line source_window clips at the class header + first method stub,
+	// hiding 90% of the surface the LLM needs to write capabilities, flows,
+	// and api sections accurately.  Apply SourceWindowStrategyWholeBody so the
+	// whole class body (capped at SourceWindowWholeBodyMaxLines) is visible —
+	// the same treatment Model entities receive under #1876.
+	//
+	// Profile is selected explicitly via the (kind, language) pair inside
+	// ResolveSectionProfile; substring lookup intentionally skips dotted keys
+	// so this only activates for Java.
+	//
+	// Sections mirror the default 13-section list (no curation in this PR) —
+	// the change here is strictly about source_window completeness so the
+	// existing section guidance keeps working.
+	// -------------------------------------------------------------------------
+	"component.java": {
+		Sections:             KnownSections,
+		SourceWindowStrategy: SourceWindowStrategyWholeBody,
+	},
+
+	// -------------------------------------------------------------------------
 	// default — catch-all that preserves 100% backward-compatible behaviour for
 	// any kind not yet explicitly profiled.  Sections == KnownSections (all 13).
 	// -------------------------------------------------------------------------
@@ -426,8 +450,22 @@ func operationLineTier(lineCount int) string {
 // lineCount is the optional entity line span (end_line - start_line).  Pass
 // zero or omit the argument when the line count is unavailable; the medium
 // Operation profile is used in that case.
-func ResolveSectionProfile(kind, _ string, lineCount ...int) SectionProfile {
+func ResolveSectionProfile(kind, language string, lineCount ...int) SectionProfile {
 	k := strings.ToLower(kind)
+	lang := strings.ToLower(language)
+
+	// 0. Language-specific Component override (#1995).
+	//    Java class / interface entities need WholeBody source_window so the
+	//    full controller surface is visible to the LLM.  The default profile
+	//    used by every other Component kind still produces a ±20-line window;
+	//    only Java triggers the override.  No size gate — Quarkus controllers
+	//    routinely span 200-400 lines and even smaller classes benefit from
+	//    seeing every method body.
+	if lang == "java" && strings.Contains(k, "component") {
+		if p, ok := sectionsByKind["component.java"]; ok {
+			return p
+		}
+	}
 
 	// 1. Size-aware Operation tier selection (#1986).
 	//    Check whether the lowercased kind contains "operation" and a lineCount
