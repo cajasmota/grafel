@@ -138,8 +138,14 @@ func reposToConsider(lg *LoadedGroup, filter []string) []*LoadedRepo {
 
 // jsonResult is a small helper to produce JSON tool output with a structured
 // payload for agents that prefer machine-readable shapes.
+//
+// Wire format: MINIFIED JSON (no indentation, no trailing whitespace). Field
+// names and shapes are unchanged — callers still find `id`, `qualified_name`,
+// `source_file`, `start_line`, etc. See #1663: pretty-printing was costing
+// ~20-30% of MCP payload tokens for zero semantic value (callers all
+// `json.Unmarshal` the response).
 func jsonResult(v any) *mcpapi.CallToolResult {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := json.Marshal(v)
 	if err != nil {
 		return mcpapi.NewToolResultError("marshal: " + err.Error())
 	}

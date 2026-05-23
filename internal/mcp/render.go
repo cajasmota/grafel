@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -118,6 +119,109 @@ func renderCompact(r renderResult, tokenBudget int) string {
 	}
 	if r.TruncatedNote != "" {
 		b.WriteString("# " + r.TruncatedNote + "\n")
+	}
+	return b.String()
+}
+
+// ---------------------------------------------------------------------------
+// #1663 — compact serializers
+// ---------------------------------------------------------------------------
+
+// compactJSON serializes v to minified JSON (no indentation, no trailing
+// whitespace). Field names and shapes are unchanged. Returns "null" on error;
+// callers that need to detect marshal failure should use json.Marshal directly.
+//
+// This is the wire-format helper for MCP tool responses (#1663). The package
+// disk-bound writers (repair, candidates, docstate, memory notes) intentionally
+// keep MarshalIndent because those files are read by humans on disk.
+func compactJSON(v any) string {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "null"
+	}
+	return string(data)
+}
+
+// tabularEncode serializes a slice of homogeneous records as a header-prefixed
+// row-major table. Format:
+//
+//	[!schema {f1,f2,f3}]
+//	{v1,v2,v3}
+//	{v1,v2,v3}
+//
+// Strings are escaped: backslash, comma, and brace are quoted. Numbers and
+// booleans are emitted bare. Nested objects/arrays are emitted as their
+// json.Marshal form (single-cell).
+//
+// Use only for true list-of-record payloads where the schema is fixed across
+// every row. For nested or heterogeneous shapes use compactJSON.
+//
+// NOTE: not wired to any production tool by default. The schema contract that
+// MCP callers depend on is plain JSON; opting a tool into tabularEncode is a
+// behavioural change that requires caller-side updates. The helper lives here
+// so future opt-in payloads can use it; see docs/verify2/mcp-payload-after.md
+// for projected savings.
+func tabularEncode(schema []string, rows [][]any) string {
+	var b strings.Builder
+	b.WriteString("[!schema {")
+	for i, f := range schema {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(f)
+	}
+	b.WriteString("}]\n")
+	for _, row := range rows {
+		b.WriteByte('{')
+		for i, v := range row {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(tabularCell(v))
+		}
+		b.WriteString("}\n")
+	}
+	return b.String()
+}
+
+// tabularCell renders one cell value. Strings need escaping for `,` `}` `\`.
+func tabularCell(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return tabularEscapeString(x)
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case int, int32, int64, float32, float64:
+		return fmt.Sprintf("%v", x)
+	default:
+		// Fallback: minified JSON for nested types.
+		data, err := json.Marshal(x)
+		if err != nil {
+			return ""
+		}
+		return tabularEscapeString(string(data))
+	}
+}
+
+func tabularEscapeString(s string) string {
+	if !strings.ContainsAny(s, `,}{\`) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 4)
+	for _, r := range s {
+		switch r {
+		case '\\', ',', '{', '}':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		default:
+			b.WriteRune(r)
+		}
 	}
 	return b.String()
 }
