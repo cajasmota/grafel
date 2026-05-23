@@ -643,8 +643,8 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
               <Lock size={10} /> Auth · {detail.auth_scheme ?? "Bearer"}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-warning-soft text-warning">
-              No auth
+            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-surface-2 text-text-3">
+              Auth: unknown
             </span>
           )}
           {detail.handlers[0]?.framework && (
