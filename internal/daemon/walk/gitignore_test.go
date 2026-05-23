@@ -483,6 +483,227 @@ func TestWalkRepo_SkipsLinguistGeneratedDir(t *testing.T) {
 	}
 }
 
+// TestWalkRepo_SkipsToolAgentDirs verifies issue #1629: AI / pair-programmer
+// and CI metadata dirs are filtered at the walker so they never appear in
+// the index. These dirs hold .md / .json config — not source — and were
+// previously inflating per-module file counts (e.g. .windsurf/skills/*.md).
+func TestWalkRepo_SkipsToolAgentDirs(t *testing.T) {
+	root := t.TempDir()
+	mkfile(t, root, ".windsurf/skills/coding.md", "skill")
+	mkfile(t, root, ".cursor/rules/foo.json", "{}")
+	mkfile(t, root, ".claude/settings.json", "{}")
+	mkfile(t, root, ".github/workflows/ci.yml", "name: ci")
+	mkfile(t, root, "src/main.go", "package main")
+
+	files, skipped, err := WalkRepo(root, nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+
+	skippedNames := make(map[string]bool)
+	for _, s := range skipped {
+		skippedNames[filepath.Base(s.AbsPath)] = true
+	}
+	for _, want := range []string{".windsurf", ".cursor", ".claude", ".github"} {
+		if !skippedNames[want] {
+			t.Errorf("expected %q to be skipped (issue #1629); skipped=%v", want, skipped)
+		}
+	}
+
+	for _, f := range files {
+		for _, prefix := range []string{".windsurf/", ".cursor/", ".claude/", ".github/"} {
+			if strings.HasPrefix(f, prefix) {
+				t.Errorf("tool-agent file leaked into walk results: %q", f)
+			}
+		}
+	}
+
+	fileSet := make(map[string]bool)
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	if !fileSet["src/main.go"] {
+		t.Errorf("expected src/main.go in results; files=%v", files)
+	}
+}
+
+// TestWalkRepo_SkipsAssetDirs verifies issue #1629: asset / image / media
+// dirs are filtered at the walker. assets/images/icon-dark.png and similar
+// were polluting the per-module file count for mobile repos.
+func TestWalkRepo_SkipsAssetDirs(t *testing.T) {
+	root := t.TempDir()
+	mkfile(t, root, "assets/images/icon-dark.png", "png")
+	mkfile(t, root, "assets/fonts/Inter.ttf", "font")
+	mkfile(t, root, "images/hero.jpg", "jpg")
+	mkfile(t, root, "fonts/regular.woff2", "font")
+	mkfile(t, root, "media/intro.mp4", "video")
+	mkfile(t, root, "src/main.go", "package main")
+
+	files, skipped, err := WalkRepo(root, nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+
+	skippedNames := make(map[string]bool)
+	for _, s := range skipped {
+		skippedNames[filepath.Base(s.AbsPath)] = true
+	}
+	for _, want := range []string{"assets", "images", "fonts", "media"} {
+		if !skippedNames[want] {
+			t.Errorf("expected %q to be skipped (issue #1629); skipped=%v", want, skipped)
+		}
+	}
+
+	for _, f := range files {
+		if strings.HasPrefix(f, "assets/") || strings.HasPrefix(f, "images/") ||
+			strings.HasPrefix(f, "fonts/") || strings.HasPrefix(f, "media/") {
+			t.Errorf("asset file leaked into walk results: %q", f)
+		}
+	}
+}
+
+// TestWalkRepo_SkipsDocsDir verifies issue #1629: top-level docs/ dir
+// (often generated or hand-authored markdown) is filtered. Note that
+// per #1658, generated docs live in the daemon store, not the repo,
+// so this filters legacy/hand-authored markdown trees. Source under
+// docs/ must use additional_skip_dirs override.
+func TestWalkRepo_SkipsDocsDir(t *testing.T) {
+	root := t.TempDir()
+	mkfile(t, root, "docs/architecture.md", "# arch")
+	mkfile(t, root, "docs/guide.md", "# guide")
+	mkfile(t, root, "src/main.go", "package main")
+
+	files, skipped, err := WalkRepo(root, nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+
+	docsSkipped := false
+	for _, s := range skipped {
+		if filepath.Base(s.AbsPath) == "docs" {
+			docsSkipped = true
+			break
+		}
+	}
+	if !docsSkipped {
+		t.Errorf("expected docs/ to be skipped (issue #1629); skipped=%v", skipped)
+	}
+	for _, f := range files {
+		if strings.HasPrefix(f, "docs/") {
+			t.Errorf("docs file leaked into walk results: %q", f)
+		}
+	}
+}
+
+// TestWalkRepo_SkipsBinaryExtensions verifies issue #1629: binary / image /
+// media / archive / compiled file extensions are filtered at file-level,
+// even when sitting next to real source.
+func TestWalkRepo_SkipsBinaryExtensions(t *testing.T) {
+	root := t.TempDir()
+	// Real source.
+	mkfile(t, root, "src/main.go", "package main")
+	mkfile(t, root, "src/index.ts", "export {}")
+	// Binary noise alongside source — should be filtered.
+	mkfile(t, root, "src/logo.png", "png")
+	mkfile(t, root, "src/screenshot.jpg", "jpg")
+	mkfile(t, root, "src/diagram.svg", "<svg/>")
+	mkfile(t, root, "src/intro.mp4", "video")
+	mkfile(t, root, "src/manual.pdf", "pdf")
+	mkfile(t, root, "src/bundle.zip", "zip")
+	mkfile(t, root, "src/native.dylib", "binary")
+	mkfile(t, root, "src/font.woff2", "font")
+
+	files, _, err := WalkRepo(root, nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+
+	fileSet := make(map[string]bool)
+	for _, f := range files {
+		fileSet[f] = true
+	}
+	// Real source kept.
+	for _, want := range []string{"src/main.go", "src/index.ts"} {
+		if !fileSet[want] {
+			t.Errorf("expected %q in results; files=%v", want, files)
+		}
+	}
+	// Binary extensions filtered.
+	for _, bad := range []string{
+		"src/logo.png", "src/screenshot.jpg", "src/diagram.svg",
+		"src/intro.mp4", "src/manual.pdf", "src/bundle.zip",
+		"src/native.dylib", "src/font.woff2",
+	} {
+		if fileSet[bad] {
+			t.Errorf("binary file leaked into walk results: %q", bad)
+		}
+	}
+}
+
+// TestWalkRepo_SkipsBuildOutputDirs verifies issue #1629: build / out /
+// dist / .cache / bin / obj / .terraform / .ruff_cache are filtered.
+func TestWalkRepo_SkipsBuildOutputDirs(t *testing.T) {
+	root := t.TempDir()
+	mkfile(t, root, ".cache/foo.txt", "x")
+	mkfile(t, root, "bin/server", "x")
+	mkfile(t, root, "obj/Debug/app.o", "x")
+	mkfile(t, root, ".terraform/providers/aws", "x")
+	mkfile(t, root, ".ruff_cache/foo", "x")
+	mkfile(t, root, "src/main.go", "package main")
+
+	_, skipped, err := WalkRepo(root, nil)
+	if err != nil {
+		t.Fatalf("WalkRepo: %v", err)
+	}
+	skippedNames := make(map[string]bool)
+	for _, s := range skipped {
+		skippedNames[filepath.Base(s.AbsPath)] = true
+	}
+	for _, want := range []string{".cache", "bin", "obj", ".terraform", ".ruff_cache"} {
+		if !skippedNames[want] {
+			t.Errorf("expected %q to be skipped (issue #1629); skipped=%v", want, skipped)
+		}
+	}
+}
+
+// TestDefaultWalkerHelpers verifies the read-only accessors stay in sync
+// with the canonical maps and return safe (independent) copies.
+func TestDefaultWalkerHelpers(t *testing.T) {
+	dirs := defaultWalkerSkipDirs()
+	if len(dirs) != len(hardcodedSkipDirs) {
+		t.Errorf("defaultWalkerSkipDirs len=%d want %d", len(dirs), len(hardcodedSkipDirs))
+	}
+	// Mutating the returned map must not leak.
+	dirs["bogus-test-entry"] = struct{}{}
+	if _, ok := hardcodedSkipDirs["bogus-test-entry"]; ok {
+		t.Error("defaultWalkerSkipDirs returned a live reference; mutation leaked")
+	}
+
+	exts := defaultWalkerSkipExtensions()
+	if len(exts) != len(hardcodedSkipExtensions) {
+		t.Errorf("defaultWalkerSkipExtensions len=%d want %d", len(exts), len(hardcodedSkipExtensions))
+	}
+	for _, want := range []string{".png", ".jpg", ".svg", ".mp4", ".pdf", ".zip", ".woff2"} {
+		if _, ok := exts[want]; !ok {
+			t.Errorf("default skip extensions missing %q", want)
+		}
+	}
+}
+
+// TestIsHardcodedSkip_NewEntries covers the #1629 additions for the
+// watcher and scheduler (which use IsHardcodedSkip to short-circuit).
+func TestIsHardcodedSkip_NewEntries(t *testing.T) {
+	for _, name := range []string{
+		".windsurf", ".cursor", ".claude", ".github",
+		"assets", "images", "fonts", "media", "docs",
+		".cache", "bin", "obj", ".terraform", ".ruff_cache",
+	} {
+		if !IsHardcodedSkip(name) {
+			t.Errorf("IsHardcodedSkip(%q) = false, want true (issue #1629)", name)
+		}
+	}
+}
+
 // TestIsLinguistGeneratedDir tests the helper directly.
 func TestIsLinguistGeneratedDir(t *testing.T) {
 	t.Run("marks_all_generated", func(t *testing.T) {

@@ -156,7 +156,11 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 			return nil
 		}
 
-		// It's a file.
+		// It's a file. Filter by extension (issue #1629) — binary / image /
+		// media / archive / compiled files never carry source-graph content.
+		if shouldSkipFileByExt(d.Name()) {
+			return nil
+		}
 		files = append(files, rel)
 		return nil
 	})
@@ -171,49 +175,102 @@ func hardcodedSkip(base string, extra map[string]struct{}) (string, bool) {
 	if _, ok := hardcodedSkipDirs[base]; ok {
 		return "", true
 	}
+	// *.egg-info Python packaging dirs — match by suffix.
+	if strings.HasSuffix(base, ".egg-info") {
+		return "egg-info", true
+	}
 	if _, ok := extra[base]; ok {
 		return "additional_skip_dirs", true
 	}
 	return "", false
 }
 
-// hardcodedSkipDirs is the extended set of well-known build/cache
-// directory basenames that are never source code. This is layer 2 (P1).
-// The .gitignore layer (P0) handles repos with a clean .gitignore;
-// this list is the backstop for repos that don't.
+// defaultWalkerSkipDirs returns a copy of the hard-coded directory-basename
+// skip set used by the walker (issue #1629). The set is grouped by category
+// in the variable declaration below; callers should treat it as read-only.
+func defaultWalkerSkipDirs() map[string]struct{} {
+	out := make(map[string]struct{}, len(hardcodedSkipDirs))
+	for k, v := range hardcodedSkipDirs {
+		out[k] = v
+	}
+	return out
+}
+
+// defaultWalkerSkipExtensions returns a copy of the hard-coded file-extension
+// skip set used by the walker (issue #1629). Extensions are stored lowercase,
+// with the leading dot (".png", ".mp4", ...).
+func defaultWalkerSkipExtensions() map[string]struct{} {
+	out := make(map[string]struct{}, len(hardcodedSkipExtensions))
+	for k, v := range hardcodedSkipExtensions {
+		out[k] = v
+	}
+	return out
+}
+
+// shouldSkipFileByExt reports whether a file should be skipped purely based
+// on its extension (issue #1629). Binary / image / archive / media files
+// never carry source-graph content but appear all over real repos
+// (assets/, public/, etc.). Filtering by extension catches them even when
+// the containing directory does not match a skip-list name.
+func shouldSkipFileByExt(name string) bool {
+	dot := strings.LastIndexByte(name, '.')
+	if dot < 0 {
+		return false
+	}
+	ext := strings.ToLower(name[dot:])
+	_, ok := hardcodedSkipExtensions[ext]
+	return ok
+}
+
+// hardcodedSkipDirs is the extended set of well-known build/cache /
+// tool-agent / asset / generated-docs directory basenames that are never
+// source code. This is layer 2 (P1). The .gitignore layer (P0) handles
+// repos with a clean .gitignore; this list is the backstop for repos that
+// don't and for noise that is not usually .gitignored (asset trees,
+// tool-agent dirs, hand-authored docs).
 //
-// IMPORTANT: "build" and "dist" are generic names that CAN legitimately
-// contain source in some projects. The .gitignore layer is the primary
-// signal for those; this list is conservative.
+// Categories are grouped for readability. To extend at runtime use
+// fleet.json `additional_skip_dirs` — surfaced via WithAdditionalSkipDirs.
+//
+// IMPORTANT: "build" / "dist" / "docs" are generic names that CAN
+// legitimately contain source in some projects. The .gitignore layer is
+// the primary signal; if a project really has source under docs/, set
+// `additional_skip_dirs` to override or move the source out of docs/.
 var hardcodedSkipDirs = map[string]struct{}{
 	// VCS
 	".git": {},
 	".hg":  {},
 	".svn": {},
 
-	// JS / TS
+	// JS / TS build output + caches
 	"node_modules":  {},
 	"dist":          {},
+	"build":         {},
 	"out":           {},
 	".next":         {},
 	".nuxt":         {},
 	"coverage":      {},
+	".cache":        {},
 	".expo":         {},
 	".expo-shared":  {},
 	".parcel-cache": {},
 	".turbo":        {},
 
-	// Go / Rust / Java / Python (common names in SkipDirs already)
+	// Go / Rust / Java / Python build output + caches
 	"vendor":        {},
 	"target":        {},
-	"build":         {},
+	"bin":           {},
+	"obj":           {},
 	"__pycache__":   {},
 	".pytest_cache": {},
 	".mypy_cache":   {},
+	".ruff_cache":   {},
 	".tox":          {},
 
-	// Python packaging
-	"*.egg-info": {}, // won't match via map — handled below in func
+	// Python virtualenvs
+	"venv":  {},
+	".venv": {},
+	"env":   {},
 
 	// iOS / Xcode / CocoaPods
 	"Pods":        {},
@@ -221,10 +278,10 @@ var hardcodedSkipDirs = map[string]struct{}{
 	"xcuserdata":  {},
 	".swiftpm":    {},
 
-	// Android / Gradle
-	".gradle":  {},
-	"captures": {},
-	".idea":    {},
+	// Android / Gradle / Terraform
+	".gradle":    {},
+	"captures":   {},
+	".terraform": {},
 
 	// Mobile build outputs
 	"APK":      {},
@@ -232,27 +289,163 @@ var hardcodedSkipDirs = map[string]struct{}{
 	"Builds":   {},
 	"Releases": {},
 
-	// Prior-tool outputs (use generic tool-output suffix)
+	// Prior-tool outputs
 	"graphify-out":    {},
 	"gfleet-out":      {},
 	".archigraph-out": {},
 	".archigraph":     {},
 
-	// Python virtualenvs
-	"venv":  {},
-	".venv": {},
+	// IDE / editor metadata
+	".vscode":  {},
+	".idea":    {},
+	".vs":      {},
+	".fleet":   {},
+	".project": {},
 
-	// Misc IDE
-	".vscode": {},
+	// Tool / agent dirs (issue #1629) — checked-in tool-config noise that
+	// is not source and should never enter the graph. Cover the popular
+	// AI / pair-programming and CI metadata dirs.
+	".github":         {},
+	".gitlab":         {},
+	".circleci":       {},
+	".husky":          {},
+	".devcontainer":   {},
+	".claude":         {},
+	".claude-personal": {},
+	".cursor":         {},
+	".windsurf":       {},
+	".aider":          {},
+	".aider.tags":     {},
+	".gemini":         {},
+	".continue":       {},
+	".tabnine":        {},
+	".copilot":        {},
+	".kalani":         {},
+	".archicraft":     {},
+
+	// Asset / binary / media dirs (issue #1629) — non-source by convention.
+	// Binary file extensions are also filtered (see hardcodedSkipExtensions),
+	// but skipping the directory avoids enumerating thousands of entries.
+	"assets":   {},
+	"images":   {},
+	"img":      {},
+	"media":    {},
+	"fonts":    {},
+	"icons":    {},
+	"static":   {},
+
+	// Generated / hand-authored docs (issue #1629). With #1658, generated
+	// docs live in the daemon store, NOT the repo. Remaining repo docs/
+	// dirs are mostly legacy/hand-authored markdown which is not source
+	// for the graph. Override via additional_skip_dirs if a project
+	// really has code under docs/.
+	"docs":      {},
+	"doc":       {},
+	"docsite":   {},
+	"_site":     {},
+	"site":      {},
+	"_book":     {},
+	"_posts":    {},
+	"_drafts":   {},
 
 	// Generated code (MANIFEST §25, D24): protobuf/OpenAPI/gRPC stubs and
 	// any directory named "_generated" must be excluded from the graph.
 	"_generated": {},
 }
 
-func init() {
-	// Ensure *.egg-info suffix matching is handled at walk-time in WalkRepo.
-	// (map keys are exact basenames; suffix patterns are checked separately.)
+// hardcodedSkipExtensions is the set of lowercase file extensions (with
+// leading dot) that the walker filters at file-level (issue #1629).
+// These are binary, image, audio, video, archive and document formats
+// that never carry source-graph content. Filtering at the walker means
+// extractors and the graph builder never see them.
+var hardcodedSkipExtensions = map[string]struct{}{
+	// Raster images
+	".png":  {},
+	".jpg":  {},
+	".jpeg": {},
+	".gif":  {},
+	".bmp":  {},
+	".tiff": {},
+	".tif":  {},
+	".webp": {},
+	".ico":  {},
+	".heic": {},
+	".heif": {},
+	".avif": {},
+
+	// Vector / design
+	".svg":   {},
+	".ai":    {},
+	".eps":   {},
+	".psd":   {},
+	".sketch": {},
+	".fig":   {},
+	".xd":    {},
+
+	// Video
+	".mp4":  {},
+	".mov":  {},
+	".webm": {},
+	".avi":  {},
+	".mkv":  {},
+	".m4v":  {},
+
+	// Audio
+	".wav":  {},
+	".mp3":  {},
+	".m4a":  {},
+	".ogg":  {},
+	".flac": {},
+	".aac":  {},
+
+	// Documents
+	".pdf":  {},
+	".doc":  {},
+	".docx": {},
+	".ppt":  {},
+	".pptx": {},
+	".xls":  {},
+	".xlsx": {},
+
+	// Archives / packed binaries
+	".zip":   {},
+	".tar":   {},
+	".gz":    {},
+	".tgz":   {},
+	".bz2":   {},
+	".xz":    {},
+	".7z":    {},
+	".rar":   {},
+	".jar":   {},
+	".war":   {},
+	".ear":   {},
+	".aar":   {},
+	".apk":   {},
+	".ipa":   {},
+	".dmg":   {},
+	".iso":   {},
+	".pkg":   {},
+	".deb":   {},
+	".rpm":   {},
+
+	// Compiled / object code
+	".class": {},
+	".pyc":   {},
+	".pyo":   {},
+	".o":     {},
+	".a":     {},
+	".so":    {},
+	".dylib": {},
+	".dll":   {},
+	".exe":   {},
+	".wasm":  {},
+
+	// Fonts
+	".ttf":   {},
+	".otf":   {},
+	".woff":  {},
+	".woff2": {},
+	".eot":   {},
 }
 
 // IsHardcodedSkip is exported for use by the watcher (internal/daemon/watch).
