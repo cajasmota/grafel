@@ -64,9 +64,16 @@ type Tier1RunOpts struct {
 	// LLMMode controls the LLM integration mode. Valid values:
 	//   "" — default: write page .md + score.json only (existing behaviour).
 	//   "emit" — write page .md + score.json AND an LLMPromptBundle JSON file.
-	//   "apply" — (ticket D) read *-result.json and rebuild with prose fill.
+	//   "apply" — read BundleFile + ResultFile, validate, assemble with real prose,
+	//             run contracts, write final page + score.json.
 	// Any other value is an error.
 	LLMMode string
+	// BundleFile is the path to the LLMPromptBundle JSON file.
+	// Required when LLMMode == "apply".
+	BundleFile string
+	// ResultFile is the path to the LLMRunResult JSON file written by the
+	// external orchestrator.  Required when LLMMode == "apply".
+	ResultFile string
 }
 
 // Tier1Score is the machine-readable quality scorecard written by Tier 1.
