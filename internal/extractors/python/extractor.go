@@ -138,9 +138,19 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		return entities, nil
 	}
 
+	// Issue #1694 — pre-scan top-level imports BEFORE walkNode so the
+	// CALL-extraction pass can qualify `<alias>.<leaf>(...)` shapes by
+	// resolving the receiver alias against the file's import bindings.
+	// Built once per file and threaded through walkNode →
+	// extractCallRelationships. Wildcard imports and unresolvable relative
+	// imports return nil entries that the call extractor's range guards
+	// treat as "no binding" (i.e. the call falls back to bare-name
+	// resolution, preserving prior behaviour).
+	importMap := buildPythonImportMap(root, file)
+
 	// Walk top-level children.
 	walkBeforeCount := len(entities)
-	walkNode(root, file, "", &entities, &functionCount, &classCount)
+	walkNode(root, file, "", &entities, &functionCount, &classCount, importMap)
 
 	// Issue #699b — emit CONTAINS edges from the file entity to every
 	// top-level class (SCOPE.Component/class) and module-level function
@@ -297,6 +307,7 @@ func walkNode(
 	out *[]types.EntityRecord,
 	funcCount *int,
 	classCount *int,
+	imports pythonImportMap,
 ) {
 	if node == nil {
 		return
@@ -342,7 +353,7 @@ func walkNode(
 			if body != nil {
 				before := len(*out)
 				for i := range int(body.ChildCount()) {
-					walkNode(body.Child(i), file, childParent, out, funcCount, classCount)
+					walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports)
 				}
 				// Issue #526 — class-attribute assignments (DRF ViewSet
 				// `serializer_class = ...`, Django Model `title =
@@ -436,7 +447,7 @@ func walkNode(
 				selfName = nodeText(nameNode, file.Content)
 			}
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(node.ChildByFieldName("body"), file.Content, selfName, parentClass)...)
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, selfName, parentClass, imports)...)
 			*out = append(*out, rec)
 			*funcCount++
 		}
@@ -459,7 +470,7 @@ func walkNode(
 					selfName = nodeText(nameNode, file.Content)
 				}
 				rec.Relationships = append(rec.Relationships,
-					extractCallRelationships(inner.ChildByFieldName("body"), file.Content, selfName, parentClass)...)
+					extractCallRelationships(inner.ChildByFieldName("body"), file.Content, selfName, parentClass, imports)...)
 				*out = append(*out, rec)
 				*funcCount++
 			}
@@ -489,7 +500,7 @@ func walkNode(
 				if body != nil {
 					before := len(*out)
 					for i := range int(body.ChildCount()) {
-						walkNode(body.Child(i), file, childParent, out, funcCount, classCount)
+						walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports)
 					}
 					// Issue #526 — see the bare class_definition branch.
 					extractClassFields(body, file, childParent, out)
@@ -539,7 +550,7 @@ func walkNode(
 	default:
 		// Recurse into all other node types.
 		for i := range int(node.ChildCount()) {
-			walkNode(node.Child(i), file, parentClass, out, funcCount, classCount)
+			walkNode(node.Child(i), file, parentClass, out, funcCount, classCount, imports)
 		}
 	}
 }
@@ -660,7 +671,12 @@ func buildFunction(node *sitter.Node, file extractor.FileInput, parentClass stri
 // parentClass is the dotted enclosing class path of the caller ("" for
 // module-level functions). It is used to qualify `self.X` calls and to
 // detect when an inferred class-qualified target is in fact self-recursion.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, parentClass string) []types.RelationshipRecord {
+func extractCallRelationships(
+	body *sitter.Node,
+	src []byte,
+	callerName, parentClass string,
+	imports pythonImportMap,
+) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -674,28 +690,65 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, parentC
 	if parentClass != "" {
 		selfQualified = parentClass + "." + callerName
 	}
-	seen := make(map[string]bool, len(calls))
+	// De-dup by (target, import_alias). A bare-name `foo()` and an attribute
+	// call `mod.foo()` whose leaf happens to also be `foo` are different
+	// callees in the cross-module case — they would resolve to different
+	// entities — so the alias is part of the dedup key.
+	type seenKey struct{ target, alias string }
+	seen := make(map[seenKey]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
 		target, ambiguous := callTarget(call, src, parentClass)
 		if target == "" {
 			continue
 		}
+		// Issue #1694 — cross-module attribute call.
+		// Detect the `<import_alias>.<leaf>(...)` shape and stamp the
+		// resolver hint properties. callTarget returned the bare leaf with
+		// ambiguous=true for this shape; we keep the bare leaf as ToID
+		// (so ResolveImports' `ContainsAny(":.#")` skip doesn't drop the
+		// edge before the cross-module path runs) and add the alias hint
+		// so the resolver can look the binding up against the file's
+		// import bucket.
+		var importAlias string
+		if len(imports) > 0 {
+			if alias, leaf := extractCallTargetImportAlias(call, src, imports); alias != "" {
+				importAlias = alias
+				// Defensive: extractCallTargetImportAlias returned the
+				// same leaf callTarget surfaced, but if they ever diverge
+				// (grammar drift) prefer the import-aware leaf so the
+				// resolver tuple is always consistent.
+				target = leaf
+			}
+		}
 		// Drop self-recursion. The bare-name match preserves prior behavior
 		// for module-level recursion (parentClass == ""); the dotted match
-		// catches `self.foo()` inside the owning class.
-		if target == callerName || target == selfQualified {
+		// catches `self.foo()` inside the owning class. Self-recursion can't
+		// be a cross-module call, so this only fires when importAlias == "".
+		if importAlias == "" && (target == callerName || target == selfQualified) {
 			continue
 		}
-		if seen[target] {
+		key := seenKey{target, importAlias}
+		if seen[key] {
 			continue
 		}
-		seen[target] = true
+		seen[key] = true
 		r := types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
 		}
-		if ambiguous {
+		switch {
+		case importAlias != "":
+			// Cross-module attribute call — the resolver's
+			// ResolveCrossModuleCallTarget consumes these properties to
+			// look up (source_module, leaf) against the file's import
+			// bucket. The ambiguous hint is dropped because the
+			// import_alias now disambiguates the call site precisely.
+			r.Properties = map[string]string{
+				"import_alias": importAlias,
+				"call_leaf":    target,
+			}
+		case ambiguous:
 			r.Properties = map[string]string{"disposition_hint": "ambiguous"}
 		}
 		rels = append(rels, r)
@@ -915,7 +968,14 @@ func extractImports(root *sitter.Node, file extractor.FileInput) []types.EntityR
 	}
 	for _, n := range findAll(root, "import_from_statement") {
 		modNode := n.ChildByFieldName("module_name")
-		modPath := dottedNamePath(modNode, file.Content)
+		// Issue #1694 — resolve relative imports (`from . import x`,
+		// `from ..pkg import y`) to their absolute dotted module form
+		// using the current file's path. Non-relative imports return
+		// the literal source text via dottedNamePath, matching prior
+		// behaviour exactly. This makes the resolver's `(module, leaf)`
+		// reverse index bind relative-import callsites without any
+		// extra resolution layer.
+		modPath := resolvePythonImportModule(modNode, file)
 		if modPath == "" {
 			continue
 		}

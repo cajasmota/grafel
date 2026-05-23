@@ -2099,3 +2099,107 @@ func TestResolveImports_ReferencesHexToIDUntouched(t *testing.T) {
 		t.Fatalf("expected hex REFERENCES ToID untouched, got %q", got)
 	}
 }
+
+// callerRecordWithProps builds a caller EntityRecord whose single CALLS
+// edge carries the given ToID + Properties. Used by the cross-module
+// CALL-target tests (issue #1694) to inject the `import_alias` /
+// `call_leaf` hints the Python extractor stamps for
+// `<alias>.<leaf>(...)` shapes.
+func callerRecordWithProps(name, file, target string, props map[string]string) types.EntityRecord {
+	return types.EntityRecord{
+		ID:         "0123456789abcdef",
+		Name:       name,
+		Kind:       "SCOPE.Operation",
+		Subtype:    "function",
+		SourceFile: file,
+		Language:   "python",
+		Relationships: []types.RelationshipRecord{{
+			ToID:       target,
+			Kind:       "CALLS",
+			Properties: props,
+		}},
+	}
+}
+
+// TestResolveImports_CrossModuleCall_FromImportSubmodule covers the
+// canonical PlaceOrderSaga case: `from . import steps;
+// steps.create_order()`. The extractor has resolved the relative import
+// to its absolute dotted form (`services.order_saga.app`) and stamped
+// import_alias="steps", call_leaf="create_order". The resolver must
+// probe (source_module + "." + imported_name, call_leaf) → bind to the
+// real `create_order` entity in services/order_saga/app/steps.py.
+func TestResolveImports_CrossModuleCall_FromImportSubmodule(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("services/order_saga/app/orchestrator.py", "services.order_saga.app.steps", map[string]string{
+			"local_name":    "steps",
+			"source_module": "services.order_saga.app",
+			"imported_name": "steps",
+		}),
+		targetRecord("create_order", "services/order_saga/app/steps.py", "abcdef0123456789"),
+		callerRecordWithProps("run", "services/order_saga/app/orchestrator.py", "create_order", map[string]string{
+			"import_alias": "steps",
+			"call_leaf":    "create_order",
+		}),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 rewrite, got %d (considered=%d)", stats.CallsRewritten, stats.CallsConsidered)
+	}
+	if got := records[2].Relationships[0].ToID; got != "abcdef0123456789" {
+		t.Fatalf("expected ToID rewritten to abcdef0123456789, got %q", got)
+	}
+}
+
+// TestResolveImports_CrossModuleCall_PlainImport covers `import billing;
+// billing.charge_card()`. import_alias="billing"; source_module ==
+// imported_name; the resolver probes (source_module, call_leaf) directly.
+func TestResolveImports_CrossModuleCall_PlainImport(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("services/orders/checkout.py", "billing", map[string]string{
+			"local_name":    "billing",
+			"source_module": "billing",
+			"imported_name": "billing",
+		}),
+		targetRecord("charge_card", "billing/__init__.py", "1111222233334444"),
+		callerRecordWithProps("checkout", "services/orders/checkout.py", "charge_card", map[string]string{
+			"import_alias": "billing",
+			"call_leaf":    "charge_card",
+		}),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 1 {
+		t.Fatalf("expected 1 rewrite, got %d", stats.CallsRewritten)
+	}
+	if got := records[2].Relationships[0].ToID; got != "1111222233334444" {
+		t.Fatalf("expected ToID 1111222233334444, got %q", got)
+	}
+}
+
+// TestResolveImports_CrossModuleCall_UnknownAliasUnchanged confirms that
+// when the import_alias hint references a name that is NOT in the file's
+// import bucket (e.g. the alias was shadowed by a local variable), the
+// resolver leaves the bare leaf ToID alone — it does not fall through to
+// the generic bare-name resolution that would otherwise bind the leaf
+// to a same-named symbol via wildcard / plain-import branches.
+func TestResolveImports_CrossModuleCall_UnknownAliasUnchanged(t *testing.T) {
+	// A target named `charge_card` exists in module `billing`, but the
+	// caller's file imports nothing — the cross-module probe must miss
+	// and the bare-name resolver must also miss (no binding).
+	records := []types.EntityRecord{
+		targetRecord("charge_card", "billing/__init__.py", "9999888877776666"),
+		callerRecordWithProps("checkout", "services/orders/checkout.py", "charge_card", map[string]string{
+			"import_alias": "billing", // alias not in bucket
+			"call_leaf":    "charge_card",
+		}),
+	}
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.CallsRewritten != 0 {
+		t.Fatalf("expected 0 rewrites (no import binding), got %d", stats.CallsRewritten)
+	}
+	if got := records[1].Relationships[0].ToID; got != "charge_card" {
+		t.Fatalf("expected bare ToID untouched, got %q", got)
+	}
+}

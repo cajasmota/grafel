@@ -1181,6 +1181,91 @@ func (t ImportTable) ResolveCrossFileReferenceTarget(callerFile, name string) (s
 	return "", false
 }
 
+// ResolveCrossModuleCallTarget resolves a Python attribute-call site of the
+// shape `<alias>.<leaf>(...)` where `alias` is a local name introduced by an
+// import in callerFile. Issue #1694.
+//
+// The Python extractor stamps two Properties on every CALLS edge that
+// originated from a `<alias>.<leaf>(...)` shape:
+//
+//	Properties["import_alias"] = "<alias>"
+//	Properties["call_leaf"]    = "<leaf>"
+//
+// The ToID is intentionally left as the bare leaf name so the
+// `ContainsAny(":.#")` skip in ResolveImports doesn't drop the edge before
+// this function runs. This function looks the alias up in the file's
+// import bucket and probes `lookupModuleEntity` with the correct
+// (module, name) tuple depending on which import shape introduced the
+// alias:
+//
+//	import x[.y]           → (alias=x, source_module=imported_name=x[.y])
+//	                          → lookup (x[.y], leaf)
+//	from x import y        → (alias=y, source_module=x, imported_name=y)
+//	                          → lookup (x.y, leaf)   — y is a submodule
+//	                          → lookup (x, leaf)     — y is a class/struct
+//	                            (rare: same-class chained call where the
+//	                            class lives in x and exposes a classmethod
+//	                            named `leaf`; the resolver's byMember path
+//	                            would otherwise miss because the receiver
+//	                            type is unknown at extraction time)
+//
+// The two-step probe for the `from x import y` shape is conservative — the
+// submodule lookup is tried first and only falls through to the
+// (x, leaf) shape when the submodule probe finds no match. This avoids
+// binding a true submodule call to a same-module same-named symbol.
+//
+// Returns ("", false) when:
+//   - leaf is empty
+//   - the alias is not in the file's import bucket
+//   - neither (module, leaf) tuple resolves unambiguously
+//
+// In those cases the caller leaves the original bare-name ToID in place
+// and the downstream bare-name resolver gets a turn.
+func (t ImportTable) ResolveCrossModuleCallTarget(callerFile, alias, leaf string) (string, bool) {
+	if alias == "" || leaf == "" {
+		return "", false
+	}
+	callerFile = normalizePath(callerFile)
+	bucket := t.byFile[callerFile]
+	if bucket == nil {
+		return "", false
+	}
+	b, ok := bucket[alias]
+	if !ok {
+		return "", false
+	}
+	if b.SourceModule == "" {
+		return "", false
+	}
+	// `import x` shape — alias IS the module name.
+	if b.ImportedName == b.SourceModule {
+		if id, ok := t.lookupModuleEntity(b.SourceModule, leaf); ok {
+			return id, true
+		}
+		return "", false
+	}
+	// `from x import y` shape — the alias may be a submodule of x or a
+	// symbol exposed by x. Try submodule first.
+	if b.ImportedName != "" {
+		submod := b.SourceModule + "." + b.ImportedName
+		if id, ok := t.lookupModuleEntity(submod, leaf); ok {
+			return id, true
+		}
+	}
+	// Same-class fallback: the alias is a class imported from module x,
+	// and `<alias>.<leaf>` is a classmethod call.
+	if id, ok := t.lookupModuleEntity(b.SourceModule, leaf); ok {
+		// Sanity guard — only accept this fallback when the class itself
+		// also lives in (source_module, imported_name). Otherwise we could
+		// bind to an unrelated function named `leaf` in module x.
+		if classID, classOk := t.lookupModuleEntity(b.SourceModule, b.ImportedName); classOk && classID != "" {
+			_ = classID // we only need to verify the class is in the module
+			return id, true
+		}
+	}
+	return "", false
+}
+
 // lookupModuleEntity returns (id, true) when (module, name) maps to
 // exactly one entity. Ambiguous tuples return ("", false); the caller
 // leaves the original CALLS stub alone.
@@ -1863,6 +1948,29 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					continue
 				}
 				stats.CallsConsidered++
+				// Issue #1694 — Python cross-module attribute call.
+				// The extractor stamps import_alias + call_leaf properties on
+				// CALLS edges that came from a `<alias>.<leaf>(...)` shape.
+				// Resolve those against the per-file import bucket BEFORE the
+				// generic bare-name path so a cross-module call doesn't
+				// silently bind to a same-named symbol via the wildcard or
+				// plain-import fallbacks. When the cross-module probe fails we
+				// fall through to ResolveBareCallTarget so the existing
+				// resolution surface still gets a turn (e.g. the leaf might be
+				// directly imported elsewhere in the file).
+				if rel.Properties != nil {
+					if alias := rel.Properties["import_alias"]; alias != "" {
+						leaf := rel.Properties["call_leaf"]
+						if leaf == "" {
+							leaf = to
+						}
+						if id, ok := tbl.ResolveCrossModuleCallTarget(callerFile, alias, leaf); ok {
+							rel.ToID = id
+							stats.CallsRewritten++
+							continue
+						}
+					}
+				}
 				id, ok := tbl.ResolveBareCallTarget(callerFile, to)
 				if !ok {
 					continue
