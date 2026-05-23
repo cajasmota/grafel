@@ -6,7 +6,9 @@ package dashboard
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
 )
@@ -207,6 +209,144 @@ func groupLabels(gs []v2ControllerGroup) []string {
 		out = append(out, g.Label)
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// Cross-repo Called-by (#1891)
+// ---------------------------------------------------------------------------
+
+// makeCrossRepoPathsGroup builds a two-repo DashGroup that mirrors the R5
+// dogfood topology: a backend repo exposes an http_endpoint_definition for
+// /auth/login with an IMPLEMENTS-linked handler; a client repo has an
+// http_endpoint_call entity that invokes the same endpoint. The cross-repo link
+// (Source=client:caller, Target=backend:handler) is injected into grp.Links.
+func makeCrossRepoPathsGroup() *DashGroup {
+	// Backend repo: definition + handler.
+	backendEntities := []graph.Entity{
+		{
+			ID:         "ep_login",
+			Name:       "http:POST:/auth/login",
+			Kind:       "http_endpoint_definition",
+			SourceFile: "api/auth/routes.py",
+			StartLine:  0,
+			Properties: map[string]string{"path": "/auth/login", "verb": "POST", "framework": "drf"},
+		},
+		{
+			ID:            "op_login",
+			Name:          "AuthViewSet.login",
+			QualifiedName: "api.auth.views.AuthViewSet.login",
+			Kind:          "SCOPE.Operation",
+			SourceFile:    "api/auth/views.py",
+			StartLine:     15,
+			Language:      "python",
+		},
+	}
+	backendRels := []graph.Relationship{
+		{FromID: "op_login", ToID: "ep_login", Kind: "IMPLEMENTS"},
+	}
+	backendDoc := &graph.Document{
+		Repo:          "client-fixture-d",
+		Entities:      backendEntities,
+		Relationships: backendRels,
+	}
+
+	// Client repo: an http_endpoint_call entity that calls /auth/login.
+	clientEntities := []graph.Entity{
+		{
+			ID:         "call_login",
+			Name:       "http:POST:/auth/login",
+			Kind:       "http_endpoint_call",
+			SourceFile: "src/api/auth.ts",
+			StartLine:  22,
+			Properties: map[string]string{"path": "/auth/login", "verb": "POST"},
+		},
+		{
+			ID:         "fn_do_login",
+			Name:       "doLogin",
+			Kind:       "SCOPE.Operation",
+			SourceFile: "src/api/auth.ts",
+			StartLine:  20,
+		},
+	}
+	clientRels := []graph.Relationship{
+		{FromID: "fn_do_login", ToID: "call_login", Kind: "FETCHES"},
+	}
+	clientDoc := &graph.Document{
+		Repo:          "client-fixture-e",
+		Entities:      clientEntities,
+		Relationships: clientRels,
+	}
+
+	grp := &DashGroup{
+		Name: "testgrp-cross",
+		Repos: map[string]*DashRepo{
+			"client-fixture-d": {Slug: "client-fixture-d", Path: "/tmp/fake-d", Doc: backendDoc},
+			"client-fixture-e": {Slug: "client-fixture-e", Path: "/tmp/fake-e", Doc: clientDoc},
+		},
+		// Cross-repo link: client caller → backend handler (the http_pass emits this).
+		// normalizeLinkEndpoints would normally rewrite "<repo>::<id>" → "<slug>:<id>";
+		// here we pre-compute the canonical dashPrefixedID form directly.
+		Links: []CrossRepoLink{
+			{
+				Source: dashPrefixedID("client-fixture-e", "fn_do_login"),
+				Target: dashPrefixedID("client-fixture-d", "op_login"),
+				Kind:   "calls",
+				Method: "http",
+			},
+		},
+	}
+	return grp
+}
+
+// TestV2PathDetail_CrossRepoCalledBy verifies #1891: the detail pane populates
+// the Called-by section from cross-repo links (grp.Links) when the intra-repo
+// FETCHES traversal produces no results because the caller lives in a different
+// repo than the endpoint definition.
+func TestV2PathDetail_CrossRepoCalledBy(t *testing.T) {
+	grp := makeCrossRepoPathsGroup()
+
+	store := newFakeStore()
+	store.groups["testgrp-cross"] = GroupSummary{Name: "testgrp-cross", ConfigPath: "/tmp/cross.json"}
+	srv, err := NewServer(DefaultConfig(), store)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	srv.graphs.mu.Lock()
+	srv.graphs.entries["testgrp-cross"] = &cacheEntry{group: grp, loadedAt: time.Now()}
+	srv.graphs.mu.Unlock()
+	ts := httptest.NewServer(srv.routes())
+	defer ts.Close()
+
+	hash := hashStr("/auth/login")
+	resp, err := http.Get(ts.URL + "/api/v2/groups/testgrp-cross/paths/" + hash)
+	if err != nil {
+		t.Fatalf("GET detail: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: want 200 got %d", resp.StatusCode)
+	}
+	var body struct {
+		Data v2PathDetail `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	d := body.Data
+
+	// The critical assertion: Called-by must include the cross-repo caller.
+	if len(d.InboundFetches) == 0 {
+		t.Fatalf("inbound_fetches (Called by): want ≥1 cross-repo caller, got 0 (before fix this was always 0 due to #1891)")
+	}
+	found := false
+	for _, e := range d.InboundFetches {
+		if e.Label == "doLogin" && e.Repo == "client-fixture-e" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("inbound_fetches: want doLogin from client-fixture-e, got %+v", d.InboundFetches)
+	}
 }
 
 // TestHandlerGroupKey covers the name → grouping-key heuristic.

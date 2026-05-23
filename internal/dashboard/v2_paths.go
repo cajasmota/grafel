@@ -666,6 +666,11 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		OutboundIDs   []string
 		SideEffectIDs []string
 		TestIDs       []string
+		// HandlerEntityIDs are the prefixed entity IDs for all resolved handlers
+		// (slug:entityID). DefEntityID is the prefixed definition entity ID.
+		// Both are used to match inbound cross-repo links (#1891).
+		HandlerEntityIDs []string
+		DefEntityID      string
 	}
 
 	var hits []matched
@@ -777,6 +782,12 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// Build prefixed handler entity IDs for cross-repo link lookup (#1891).
+			prefixedHandlerIDs := make([]string, 0, len(handlerIDs))
+			for _, hid := range handlerIDs {
+				prefixedHandlerIDs = append(prefixedHandlerIDs, dashPrefixedID(repo.Slug, hid))
+			}
+
 			hits = append(hits, matched{
 				Verb:          verb,
 				Handler:       handlerName,
@@ -799,6 +810,8 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				OutboundIDs:   classified.downstream,
 				SideEffectIDs: classified.sideEffects,
 				TestIDs:       classified.tests,
+				HandlerEntityIDs: prefixedHandlerIDs,
+				DefEntityID:      dashPrefixedID(repo.Slug, e.ID),
 			})
 		}
 	}
@@ -910,8 +923,46 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 	sideEffectIDs := collectUniqueIDs(hits, func(h matched) []string { return h.SideEffectIDs })
 	testIDs := collectUniqueIDs(hits, func(h matched) []string { return h.TestIDs })
 
+	// #1891 — augment calledByIDs with cross-repo callers from grp.Links.
+	// The HTTP link pass emits a cross-repo link per (caller, definition/handler)
+	// pair with Relation="calls" and Method="http". After normalizeLinkEndpoints
+	// both Source and Target are in dashPrefixedID format ("<slug>:<entityID>").
+	// Collect all handler + definition IDs this endpoint exposes, then scan links
+	// whose Target matches any of them and add the Source as an inbound caller.
+	endpointTargetSet := make(map[string]bool)
+	for _, h := range hits {
+		for _, id := range h.HandlerEntityIDs {
+			if id != "" {
+				endpointTargetSet[id] = true
+			}
+		}
+		if h.DefEntityID != "" {
+			endpointTargetSet[h.DefEntityID] = true
+		}
+	}
+	// Also include entities that IMPLEMENT any matched endpoint entity.
+	// The http_pass cross-repo link often targets the concrete handler method
+	// (e.g. AuthController.login which IMPLEMENTS the http_endpoint entity),
+	// NOT the synthetic endpoint entity itself. We resolve these by scanning
+	// intra-repo IMPLEMENTS edges whose target is any of our endpoint IDs.
+	for _, repo := range sortedRepos(grp) {
+		for _, rel := range repo.Doc.Relationships {
+			if rel.Kind != "IMPLEMENTS" {
+				continue
+			}
+			toID := dashPrefixedID(repo.Slug, rel.ToID)
+			if endpointTargetSet[toID] {
+				// The handler that implements this endpoint is also a valid link Target.
+				endpointTargetSet[dashPrefixedID(repo.Slug, rel.FromID)] = true
+			}
+		}
+	}
+	crossRepoCalledByIDs := collectCrossRepoCallers(grp, endpointTargetSet)
+	calledByIDs = mergeUniqueStrings(calledByIDs, crossRepoCalledByIDs)
+
 	// Called-by: inbound callers resolved to this endpoint (frontend FETCHES
-	// retargeted to the definition + intra-repo CALLS into the handler).
+	// retargeted to the definition + intra-repo CALLS into the handler, plus
+	// cross-repo http_endpoint_call sources from the links file).
 	inboundFetches := resolveEntitySlice(grp, calledByIDs, "CALLED_BY")
 	// Downstream: the handler's outbound CALLS (services, helpers, DB-access fns).
 	outboundAll := resolveEntitySlice(grp, outboundIDs, "CALLS")
@@ -1246,6 +1297,67 @@ func collectUniqueIDs[T any](hits []T, fn func(T) []string) []string {
 		}
 	}
 	return out
+}
+
+// collectCrossRepoCallers scans grp.Links for cross-repo entries whose Target
+// is in targetSet (the set of prefixed handler/definition entity IDs for this
+// endpoint). The link pass (internal/links/http_pass.go) emits these links with
+// Source=<caller-repo>:<caller-entity-id> and Target=<handler-repo>:<entity-id>,
+// Relation="calls", Method="http". normalizeLinkEndpoints (graphstate.go)
+// ensures both endpoints are in dashPrefixedID format ("<slug>:<entityID>")
+// before they reach this function.
+//
+// For http_endpoint_definition entities that have not yet been resolved to
+// their handler (old-style graphs), the link Target may point at the definition
+// entity ID directly; both forms are accepted via the caller-provided targetSet.
+func collectCrossRepoCallers(grp *DashGroup, targetSet map[string]bool) []string {
+	if len(grp.Links) == 0 || len(targetSet) == 0 {
+		return nil
+	}
+	// Scan links whose Target is one of our endpoint targets. The link
+	// Relation is "calls" (lower-case) written by RelationCalls in
+	// internal/links/links.go; accept any relation whose lowercase form
+	// starts with "call" or "fetch" to be robust against format evolution.
+	seen := map[string]bool{}
+	var out []string
+	for _, l := range grp.Links {
+		if !targetSet[l.Target] {
+			continue
+		}
+		rel := strings.ToLower(l.Kind)
+		// Accept "calls" (http_pass default), "fetches" (retargeted callers),
+		// "http", and "http_fetch". Reject unrelated link kinds (imports,
+		// shared_label, etc.) so only HTTP call edges surface as callers.
+		if !strings.HasPrefix(rel, "call") && !strings.HasPrefix(rel, "fetch") &&
+			rel != "http" && rel != "http_fetch" {
+			continue
+		}
+		src := l.Source
+		if src == "" || seen[src] {
+			continue
+		}
+		seen[src] = true
+		out = append(out, src)
+	}
+	return out
+}
+
+// mergeUniqueStrings appends any elements of extra not already present in base.
+func mergeUniqueStrings(base, extra []string) []string {
+	if len(extra) == 0 {
+		return base
+	}
+	seen := make(map[string]bool, len(base))
+	for _, s := range base {
+		seen[s] = true
+	}
+	for _, s := range extra {
+		if !seen[s] {
+			seen[s] = true
+			base = append(base, s)
+		}
+	}
+	return base
 }
 
 // resolveEntitySlice resolves a list of prefixed entity IDs to v2PathEntity values.
