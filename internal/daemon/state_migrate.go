@@ -22,6 +22,7 @@ var graphArtifactNames = []string{
 	"repair.json",
 	"enrichment-candidates.json",
 	"enrichment-resolutions.json",
+	"enrichment-rejections.json",
 	"fitness.yaml",
 }
 

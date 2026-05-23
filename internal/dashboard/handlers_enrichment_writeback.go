@@ -337,11 +337,18 @@ func sanitizePathSegment(s string) string {
 
 // yamlScalar wraps a string in single quotes when it contains characters that
 // would require quoting in YAML. For the simple scalar values used in the
-// frontmatter this is sufficient; it does not handle embedded single-quotes
-// in the value (those are replaced with a space for safety).
+// frontmatter this is sufficient. Embedded single quotes inside the value
+// are escaped per YAML rules by doubling them.
+//
+// Note on '#': YAML only treats '#' as a comment marker when preceded by
+// whitespace. "has#hash" is a valid plain scalar but "foo #bar" is not.
+// We therefore quote on " #", not on bare '#'.
 func yamlScalar(s string) string {
-	if strings.ContainsAny(s, ":#{}[]|>&*!,'\"") || strings.TrimSpace(s) != s || s == "" {
-		// Escape embedded single quotes by doubling them.
+	needsQuote := s == "" ||
+		strings.TrimSpace(s) != s ||
+		strings.ContainsAny(s, ":{}[]|>&*!,'\"") ||
+		strings.Contains(s, " #")
+	if needsQuote {
 		escaped := strings.ReplaceAll(s, "'", "''")
 		return "'" + escaped + "'"
 	}

@@ -299,8 +299,11 @@ func TestCollectRepairEdgeCandidates_NonHexFromID(t *testing.T) {
 			// hex FromID — covered by existing tests, here to assert
 			// the two paths produce stable, distinct edge_ids.
 			{FromID: "aaaaaaaaaaaaaaaa", ToID: "Foo:Bar", Kind: "CALLS", Properties: map[string]string{"language": "python"}},
-			// non-hex FromID — the regression case.
-			{FromID: "Model:View", ToID: "View:View", Kind: "DEPENDS_ON", Properties: map[string]string{"language": "python"}},
+			// non-hex FromID — the regression case. Use language "go" so
+			// the python-specific SQLAlchemy `Model:Name` short-circuit
+			// (DispositionDynamic) does not absorb this edge; we want
+			// the classifier to land it on BugExtractor/BugResolver.
+			{FromID: "Model:View", ToID: "View:View", Kind: "DEPENDS_ON", Properties: map[string]string{"language": "go"}},
 			// scope-prefix from — common in early-pass scope edges.
 			{FromID: "scope:component:file:src/manage.py", ToID: "execute_from_command_line", Kind: "CALLS", Properties: map[string]string{"language": "python"}},
 		},
