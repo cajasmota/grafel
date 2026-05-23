@@ -745,7 +745,23 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 			absPath := filepath.Join(seedRepo, entity.SourceFile)
 
 			// Resolve the section profile for this entity to pick the strategy.
-			entityProfile := ResolveSectionProfile(entity.Kind, entity.Language)
+			//
+			// Issue #2022 — pre-#2002 graph.json snapshots can ship entities
+			// where Language is empty (the field was added incrementally as
+			// per-language extractors got upgraded). Without language the
+			// "component.java" override in ResolveSectionProfile never fires
+			// and the Java Class falls back to the ±20-line default window
+			// — invisible methods on real controllers. As a defensive
+			// fallback, infer the language from the source-file extension
+			// when the persisted Language field is empty. New graphs always
+			// carry the field via TagRelationshipsLanguage; this fallback
+			// only matters for older graphs and for tests that build
+			// minimal Entity records without setting Language.
+			lang := entity.Language
+			if lang == "" {
+				lang = inferLanguageFromSourceFile(entity.SourceFile)
+			}
+			entityProfile := ResolveSectionProfile(entity.Kind, lang)
 
 			// Issue #1964 — when start_line OR end_line is the 0 sentinel
 			// (the extractor failed to capture boundaries) try to recover
@@ -1720,4 +1736,26 @@ func entityDeclPatterns(name, kind, subtype string) []*regexp.Regexp {
 		regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:const|let|var)\s+`+q+`\b`),
 	)
 	return out
+}
+
+// inferLanguageFromSourceFile maps a relative source-file path to the
+// canonical language token used by ResolveSectionProfile. Issue #2022 —
+// older graph.json snapshots can carry empty entity.Language for entities
+// that were extracted before the per-language extractor started stamping
+// the field. When that happens, the Java Class WholeBody override never
+// fires and only the default ±20-line source_window is emitted. By
+// inferring the language from the extension we keep the override working
+// on legacy graphs and on tests that build minimal Entity records.
+//
+// The mapping is intentionally narrow: only file extensions that
+// ResolveSectionProfile currently uses (Java today; trivially extended
+// for future per-language Component overrides). Unknown extensions
+// return "" so downstream behaviour is unchanged.
+func inferLanguageFromSourceFile(sourceFile string) string {
+	ext := strings.ToLower(filepath.Ext(sourceFile))
+	switch ext {
+	case ".java":
+		return "java"
+	}
+	return ""
 }
