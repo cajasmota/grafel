@@ -451,11 +451,15 @@ func extractJavaEndpointsWithAuth(src, relPath string, authCtx JavaAuthContext) 
 		if m := javaMethodDeclRe.FindStringSubmatch(line); m != nil {
 			methodName := m[1]
 			// m[2] is the rest of the line after the opening '(' — used for
-			// request body inference (#1909). May be empty for multi-line sigs.
+			// request body inference (#1909) and full parameter extraction
+			// (#1936 Phase 1). For multi-line signatures (one parameter per
+			// line, common in JAX-RS code), we splice subsequent lines until
+			// we hit the closing ')'.
 			paramFrag := ""
 			if len(m) > 2 {
 				paramFrag = m[2]
 			}
+			paramFrag = joinMultiLineParams(paramFrag, lines, idx)
 			methodAnnos := flushAnnoBuf()
 			if cur.name == "" {
 				// Method declared before any class header (shouldn't happen
@@ -634,6 +638,12 @@ func buildMethodEndpointsWithAuth(
 	// inferRequestBodyParam needs the full verb list to decide eligibility.
 	bodyType, bodyParamName := inferRequestBodyParam(paramFrag, uniqueVerbs)
 
+	// Issue #1936 Phase 1 — extract ALL parameter locations (query / header /
+	// cookie / form / matrix / path / body) for the Parameters table. The
+	// JSON-encoded slice is attached to every emitted endpoint entity below.
+	allParams := extractJavaParameters(paramFrag, uniqueVerbs)
+	paramsJSON := EncodeJavaParameters(allParams)
+
 	// #1942 Phase 1 — resolve auth_policy from class + method + Quarkus context.
 	policy := ResolveJavaAuthPolicy(
 		joined, methodLine,
@@ -684,6 +694,27 @@ func buildMethodEndpointsWithAuth(
 				props["request_body_param_name"] = bodyParamName
 			}
 		}
+		// Issue #1936 Phase 1 — emit the full parameter list (query / header /
+		// cookie / form / matrix / path / body) for the Parameters table. We
+		// trim the body row from the per-verb list when the verb cannot carry
+		// a body so a GET endpoint with `(@QueryParam String q, FooDTO maybeBody)`
+		// does not surface `maybeBody` as a body row.
+		if paramsJSON != "" {
+			if jaxrsVerbsThatHaveBody[strings.ToUpper(verb)] {
+				props["parameters"] = paramsJSON
+			} else {
+				filtered := make([]JavaParam, 0, len(allParams))
+				for _, pp := range allParams {
+					if pp.In == "body" || pp.In == "form" {
+						continue
+					}
+					filtered = append(filtered, pp)
+				}
+				if enc := EncodeJavaParameters(filtered); enc != "" {
+					props["parameters"] = enc
+				}
+			}
+		}
 
 		out = append(out, types.EntityRecord{
 			ID:                 id,
@@ -698,6 +729,39 @@ func buildMethodEndpointsWithAuth(
 		})
 	}
 	return out
+}
+
+// joinMultiLineParams splices subsequent source lines onto the captured
+// parameter fragment until the depth of unbalanced parentheses returns to
+// zero (meaning we have seen the closing `)`). Used for multi-line method
+// signatures where each parameter sits on its own line.
+//
+// The lines slice is the file split on "\n"; `startIdx` is the 0-based index
+// of the method-declaration line. Returns the accumulated fragment including
+// the closing `)` so existing trimming logic (`TrimRight ")}"`) still works.
+func joinMultiLineParams(firstLine string, lines []string, startIdx int) string {
+	depth := strings.Count(firstLine, "(") - strings.Count(firstLine, ")")
+	// The opening '(' was already consumed by the regex; depth here counts
+	// only what's INSIDE the param list. If we have already seen the closing
+	// ')' on the same line, depth will be -1 and we're done.
+	if depth < 0 {
+		return firstLine
+	}
+	if depth == 0 && strings.Contains(firstLine, ")") {
+		return firstLine
+	}
+	var sb strings.Builder
+	sb.WriteString(firstLine)
+	for i := startIdx + 1; i < len(lines); i++ {
+		next := lines[i]
+		sb.WriteByte(' ')
+		sb.WriteString(next)
+		depth += strings.Count(next, "(") - strings.Count(next, ")")
+		if depth < 0 {
+			break
+		}
+	}
+	return sb.String()
 }
 
 // parseRequestMappingMethods extracts every `method = RequestMethod.X` (or

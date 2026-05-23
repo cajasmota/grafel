@@ -525,3 +525,82 @@ func TestV2PathsList_V1Untouched(t *testing.T) {
 		t.Errorf("v1 GET /api/paths/{group}: want 200, got %d", resp.StatusCode)
 	}
 }
+
+// TestV2PathDetail_Issue1936_JavaParametersSurfaced verifies that when the
+// Java annotation extractor emits a `parameters` JSON property on an
+// http_endpoint entity, every parameter location surfaces in the detail
+// response with the correct `in` bucket — query/header/cookie/body in
+// addition to the path row synthesised from the URL template.
+func TestV2PathDetail_Issue1936_JavaParametersSurfaced(t *testing.T) {
+	path := "/transfers/confirm/{transferId}"
+	hash := hashStr(path)
+	// Mirror what ApplyJavaAnnotationRoutes would produce on a JAX-RS
+	// PUT handler with mixed parameter locations.
+	paramsJSON := `[` +
+		`{"name":"transferId","in":"path","type":"String","required":true,"annotations":["@PathParam"]},` +
+		`{"name":"dryRun","in":"query","type":"boolean","required":false,"default_value":"false","annotations":["@QueryParam","@DefaultValue"]},` +
+		`{"name":"X-Request-ID","in":"header","type":"String","required":true,"annotations":["@HeaderParam"]},` +
+		`{"name":"session","in":"cookie","type":"String","required":false,"annotations":["@CookieParam"]},` +
+		`{"name":"body","in":"body","type":"ConfirmRequest","required":true,"annotations":["@Valid"]}` +
+		`]`
+	entities := []graph.Entity{
+		{
+			ID:         "e-java-1",
+			Name:       "TransfersResource.confirm",
+			Kind:       "http_endpoint",
+			SourceFile: "src/main/java/TransfersResource.java",
+			StartLine:  17,
+			Language:   "java",
+			Properties: map[string]string{
+				"path":       path,
+				"verb":       "PUT",
+				"framework":  "jaxrs",
+				"parameters": paramsJSON,
+			},
+		},
+	}
+	grp := makePathsTestGroup(entities, nil)
+	ts := newPathsTestServer(t, grp)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v2/groups/testgrp/paths/" + hash)
+	if err != nil {
+		t.Fatalf("GET detail: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var body struct {
+		OK   bool         `json:"ok"`
+		Data v2PathDetail `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	wantIns := map[string]string{
+		"transferId":   "path",
+		"dryRun":       "query",
+		"X-Request-ID": "header",
+		"session":      "cookie",
+		"body":         "body",
+	}
+	gotByName := map[string]v2PathParameter{}
+	for _, p := range body.Data.Parameters {
+		gotByName[p.Name] = p
+	}
+	for name, wantIn := range wantIns {
+		p, ok := gotByName[name]
+		if !ok {
+			t.Errorf("[#1936] parameter %q missing from detail response", name)
+			continue
+		}
+		if p.In != wantIn {
+			t.Errorf("[#1936] %q: want in=%s, got %s", name, wantIn, p.In)
+		}
+	}
+	// dryRun must be optional (default value present).
+	if dr, ok := gotByName["dryRun"]; ok && dr.Required {
+		t.Errorf("[#1936] dryRun: should not be required when default value present, got %+v", dr)
+	}
+}

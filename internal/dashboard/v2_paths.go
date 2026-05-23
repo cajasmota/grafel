@@ -729,6 +729,9 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		// parameter annotations (populated for POST/PUT/PATCH endpoints).
 		RequestBodyType      string
 		RequestBodyParamName string
+		// Issue #1936 Phase 1 — full per-parameter JSON list emitted by the
+		// Java annotation extractor. Decoded into v2PathParameter rows below.
+		ParametersJSON string
 		// #1942 Phase 1 — resolved auth_policy decoded from the endpoint's
 		// `auth_policy` property. Multiple `matched` entries for the same path
 		// are reduced to the strongest policy when building the response.
@@ -877,6 +880,8 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				// Issue #1909 — request body type from entity properties.
 				RequestBodyType:      e.Properties["request_body_type"],
 				RequestBodyParamName: e.Properties["request_body_param_name"],
+				// Issue #1936 Phase 1 — full parameter list (Java extractor).
+				ParametersJSON: e.Properties["parameters"],
 				// #1942 Phase 1 — auth_policy decoded from the endpoint entity.
 				AuthPolicy: readAuthPolicyFromEntity(e.Properties),
 			})
@@ -984,11 +989,66 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 	// Extract parameters from path segments (dynamic path params).
 	params := extractPathParameters(pathStr, verbs)
 
+	// Issue #1936 Phase 1 — when the Java extractor produced a full per-param
+	// list (parameters property), surface every row with its `in` chip
+	// populated. We merge across verbs: identical (name, in) rows accumulate
+	// their verb set so a parameter shared by multiple methods of the same
+	// path collapses to one row. Path rows from the URL template are kept as
+	// a fallback when the extractor did not emit them.
+	type paramKey struct {
+		Name string
+		In   string
+	}
+	emitted := map[paramKey]int{} // index into params
+	// Seed with path rows from URL template so paths without an annotation
+	// extractor still get a baseline.
+	for i, p := range params {
+		emitted[paramKey{p.Name, p.In}] = i
+	}
+	for _, h := range hits {
+		if h.ParametersJSON == "" {
+			continue
+		}
+		decoded := engine.DecodeJavaParameters(h.ParametersJSON)
+		for _, jp := range decoded {
+			key := paramKey{jp.Name, jp.In}
+			if idx, ok := emitted[key]; ok {
+				// Same (name, in) — extend verb set; never demote required.
+				if !containsStr(params[idx].Verbs, h.Verb) {
+					params[idx].Verbs = append(params[idx].Verbs, h.Verb)
+				}
+				if jp.Required {
+					params[idx].Required = true
+				}
+				continue
+			}
+			row := v2PathParameter{
+				Name:     jp.Name,
+				In:       jp.In,
+				Type:     jp.Type,
+				Required: jp.Required,
+				Desc:     describeJavaParam(jp),
+				Verbs:    []string{h.Verb},
+			}
+			params = append(params, row)
+			emitted[key] = len(params) - 1
+		}
+	}
+
 	// Issue #1909 — append request body parameter when the Java extractor
-	// captured a JAX-RS / Spring request body type. Collect from all matched
-	// hits (may differ per verb); first non-empty wins per verb.
+	// captured a JAX-RS / Spring request body type AND the richer Phase 1
+	// parameter list did not already surface a body row for that verb. This
+	// keeps backwards compatibility with older indexer outputs that still
+	// only emit request_body_type / request_body_param_name.
 	{
 		seenBodyVerbs := map[string]bool{}
+		for _, p := range params {
+			if p.In == "body" {
+				for _, v := range p.Verbs {
+					seenBodyVerbs[v] = true
+				}
+			}
+		}
 		for _, h := range hits {
 			if h.RequestBodyType == "" || seenBodyVerbs[h.Verb] {
 				continue
@@ -1379,6 +1439,37 @@ func inferServiceTypeV2(backendName string, repos []string) string {
 		return "GraphQL"
 	}
 	return "REST"
+}
+
+// describeJavaParam renders a short human-readable description for one
+// parameter extracted by the Java annotation pass (#1936 Phase 1). The
+// dashboard already renders the `In` chip; this string is shown in the
+// description column and mentions default-value + key annotation hints.
+func describeJavaParam(p engine.JavaParam) string {
+	parts := make([]string, 0, 3)
+	switch p.In {
+	case "query":
+		parts = append(parts, "Query parameter.")
+	case "header":
+		parts = append(parts, "Request header.")
+	case "cookie":
+		parts = append(parts, "Cookie value.")
+	case "form":
+		parts = append(parts, "Form field.")
+	case "matrix":
+		parts = append(parts, "Matrix parameter.")
+	case "body":
+		parts = append(parts, "Request body.")
+	case "path":
+		parts = append(parts, "Path segment.")
+	}
+	if p.DefaultValue != "" {
+		parts = append(parts, "Default: "+p.DefaultValue+".")
+	}
+	if len(p.Annotations) > 0 {
+		parts = append(parts, strings.Join(p.Annotations, " "))
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
 // extractPathParameters builds a minimal parameter list from the path's
