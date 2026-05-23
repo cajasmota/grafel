@@ -18,10 +18,95 @@ package walk
 
 import (
 	"bufio"
+	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// ErrIgnoreFileTimeout is returned by ParseIgnoreFile when the underlying
+// open(2) or read does not complete within the deadline. The caller should
+// treat it like a missing ignore file — proceed without ignore rules.
+var ErrIgnoreFileTimeout = errors.New("walk: ParseIgnoreFile timed out (fsevents kernel stall?)")
+
+// openWithDeadline opens path on a worker goroutine and returns the file or
+// an error. If the open does not complete within timeout, ErrIgnoreFileTimeout
+// is returned. The returned *os.File is ready to read; callers must Close it.
+func openWithDeadline(path string, timeout time.Duration) (*os.File, error) {
+	type result struct {
+		f   *os.File
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		f, err := os.Open(path)
+		ch <- result{f: f, err: err}
+	}()
+	select {
+	case r := <-ch:
+		return r.f, r.err
+	case <-time.After(timeout):
+		// Goroutine is wedged; it will eventually unblock and close the fd,
+		// so we do NOT try to cancel it — just let it leak. The goroutine will
+		// eventually unblock or the daemon restarts.
+		return nil, ErrIgnoreFileTimeout
+	}
+}
+
+// parseIgnoreReader parses gitignore-syntax rules from r, anchored to dir
+// with the given source label. It is the I/O-free core of ParseIgnoreFile.
+func parseIgnoreReader(dir, source string, r io.Reader) (*IgnoreFile, error) {
+	ig := &IgnoreFile{Dir: dir, Source: source}
+	scanner := bufio.NewScanner(r)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+
+		// Skip blank lines and comments.
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Trailing spaces are ignored unless escaped.
+		line = strings.TrimRight(line, " \t")
+		if line == "" {
+			continue
+		}
+
+		pat := ignorePattern{raw: line, lineNum: lineNum}
+
+		// Negation: leading "!"
+		if strings.HasPrefix(line, "!") {
+			pat.negate = true
+			line = line[1:]
+		} else if strings.HasPrefix(line, `\!`) || strings.HasPrefix(line, `\#`) {
+			line = line[1:]
+		}
+
+		// Directory-only: trailing "/"
+		if strings.HasSuffix(line, "/") {
+			pat.dirOnly = true
+			line = strings.TrimSuffix(line, "/")
+		}
+
+		// Anchoring: pattern is anchored if it contains a "/" anywhere
+		// except at the very end (already stripped) or at the very start.
+		if strings.HasPrefix(line, "/") {
+			pat.anchored = true
+			line = line[1:]
+		} else if strings.Contains(line, "/") {
+			pat.anchored = true
+		}
+
+		pat.pattern = line
+		ig.patterns = append(ig.patterns, pat)
+	}
+	return ig, scanner.Err()
+}
 
 // SkipResult holds the outcome for a single directory-level skip check.
 type SkipResult struct {
@@ -65,66 +150,50 @@ type ignorePattern struct {
 // ParseIgnoreFile reads a .gitignore-style file and returns a parsed
 // IgnoreFile anchored to dir. If path does not exist, an empty (no-op)
 // IgnoreFile is returned with no error.
+//
+// #1721: the open(2) is performed on a worker goroutine with a 5 s deadline to
+// prevent the caller from hanging when the daemon holds fsnotify watchers on
+// the same source tree (macOS fsevents kernel stall; same class as #1678).
+// On timeout, an empty IgnoreFile is returned with ErrIgnoreFileTimeout — the
+// walker treats this identically to a missing file and proceeds without
+// ignore-rule coverage for that path (safe: upper skip layers still apply).
 func ParseIgnoreFile(dir, path, source string) (*IgnoreFile, error) {
-	f, err := os.Open(path)
+	const deadline = 5 * time.Second
+
+	f, err := openWithDeadline(path, deadline)
 	if os.IsNotExist(err) {
 		return &IgnoreFile{Dir: dir, Source: source}, nil
+	}
+	if errors.Is(err, ErrIgnoreFileTimeout) {
+		// Return empty ignore file — safe, see function doc.
+		return &IgnoreFile{Dir: dir, Source: source}, ErrIgnoreFileTimeout
 	}
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	ig := &IgnoreFile{Dir: dir, Source: source}
-	scanner := bufio.NewScanner(f)
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
+	// Run the actual scan on a worker goroutine so that a blocking Read
+	// (rare, but possible on some FS + kernel combos) is also bounded.
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
 
-		// Skip blank lines and comments.
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Trailing spaces are ignored unless escaped.
-		line = strings.TrimRight(line, " \t")
-		if line == "" {
-			continue
-		}
-
-		pat := ignorePattern{raw: line, lineNum: lineNum}
-
-		// Negation: leading "!"
-		if strings.HasPrefix(line, "!") {
-			pat.negate = true
-			line = line[1:]
-		} else if strings.HasPrefix(line, `\!`) || strings.HasPrefix(line, `\#`) {
-			// Escaped ! or #
-			line = line[1:]
-		}
-
-		// Directory-only: trailing "/"
-		if strings.HasSuffix(line, "/") {
-			pat.dirOnly = true
-			line = strings.TrimSuffix(line, "/")
-		}
-
-		// Anchoring: pattern is anchored if it contains a "/" anywhere
-		// except at the very end (already stripped) or at the very start.
-		// A leading "/" also anchors and is then stripped.
-		if strings.HasPrefix(line, "/") {
-			pat.anchored = true
-			line = line[1:]
-		} else if strings.Contains(line, "/") {
-			// Interior slash — anchored to the ignore file's dir.
-			pat.anchored = true
-		}
-
-		pat.pattern = line
-		ig.patterns = append(ig.patterns, pat)
+	type parseOut struct {
+		ig  *IgnoreFile
+		err error
 	}
-	return ig, scanner.Err()
+	resCh := make(chan parseOut, 1)
+	go func() {
+		ig, err := parseIgnoreReader(dir, source, f)
+		resCh <- parseOut{ig: ig, err: err}
+	}()
+
+	select {
+	case out := <-resCh:
+		return out.ig, out.err
+	case <-ctx.Done():
+		return &IgnoreFile{Dir: dir, Source: source}, ErrIgnoreFileTimeout
+	}
 }
 
 // MatchDir reports whether an absolute directory path should be skipped
