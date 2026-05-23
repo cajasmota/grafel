@@ -110,9 +110,9 @@ function VerbChip({ verb, lg = false }: { verb: string; lg?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center h-5 px-1.5 rounded text-[10px] font-semibold border select-none shrink-0",
+        "inline-flex items-center justify-center h-5 min-w-14 rounded text-[10px] font-semibold border select-none shrink-0",
         c.bg, c.text, c.border,
-        lg && "h-6 px-2 text-xs",
+        lg && "h-6 min-w-16 text-xs",
       )}
     >
       {verb}
