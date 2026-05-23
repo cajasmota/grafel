@@ -66,7 +66,43 @@ Pass 17). Plain language throughout.
 Headings first, then derive `anchors:` per `snippets/anchor-contract.md`. Code
 references only in the collapsed `<details>` block.
 
-### Step 5 — Verify + save
+### Step 5 — Emit repair candidates
+
+Run the emission step from `snippets/docgen-repair-emission.md`. This pass
+calls `archigraph_endpoints` and `archigraph_flows`, which surfaces concrete
+entity data. The expected repair types are:
+
+- **`merge_flow`** — Step 2's clustering often reveals two process-flow or
+  flow entities that represent the same capability. When you collapse multiple
+  flows into one capability, emit a `merge_flow` candidate for the redundant
+  flow entity pointing at the canonical one.
+
+  Example — two checkout flows collapsed into one "Conduct checkout" capability:
+
+  ```json
+  {
+    "type": "merge_flow",
+    "source_entity_id": "<checkout_legacy_flow entity id>",
+    "target": "<checkout_flow entity id>",
+    "confidence": 0.78,
+    "evidence": "archigraph_flows result: checkout_legacy_flow and checkout_flow both terminate at OrderConfirmed — same business outcome, merged into capability 'conduct-checkout'",
+    "source": "generate-docs/pass-16",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+- **`fix_kind`** — `archigraph_endpoints` may return entities that are
+  catalogued as `Function` but are clearly HTTP endpoints (they have a route
+  path and method). Emit a `fix_kind` if you observe this.
+
+Only emit when `archigraph_endpoints` / `archigraph_flows` data or a direct
+`archigraph_expand` result provides concrete evidence. Business-layer
+clustering reasoning alone does not reach the 0.5 threshold.
+
+Use `source: "generate-docs/pass-16"` in all candidates. Append to
+`~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+
+### Step 6 — Verify + save
 
 Run `snippets/verification-checklist.md`. Then once, for the capability set:
 

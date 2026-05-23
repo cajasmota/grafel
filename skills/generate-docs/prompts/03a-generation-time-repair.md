@@ -49,11 +49,37 @@ Phase 1 of #732 ships the synchronous in-prose hook. On a 5k-residual graph this
 - Skip the hook for entities whose `from_entity.id` does not appear in the cached residual set — most entities will have zero residuals.
 - Batch-submit is out of scope for Phase 1 (see ADR-0015 risks §3).
 
+## Repair candidate emission (DocgenRepairCandidate)
+
+The Pass 3a hook is also the primary site for **docgen repair emission** per
+`snippets/docgen-repair-emission.md`. The hook's repair submissions go through
+`archigraph_repairs(action=submit)` (the existing channel). But when the hook
+sees facts about an entity that are broader than the residual being acted on —
+for example, while resolving a residual for `OrderService` you notice that a
+_separate_ `UNRESOLVED` stub elsewhere in the subgraph resolves to a visible
+import — emit those broader facts as `DocgenRepairCandidate` entries appended to
+`~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+
+Use `source: "generate-docs/pass-3a"` in all candidates emitted from this hook.
+
+Confidence rules: same as `snippets/docgen-repair-emission.md`. The two
+channels complement each other:
+- `archigraph_repairs(action=submit)` — fixes the residual in the daemon
+  immediately (this pass always did this).
+- `docgen-repairs.jsonl` append — feeds the post-run `archigraph_apply_docgen_repairs`
+  batch for fidelity tracking and for repairs that touch entities outside the
+  current residual set (e.g. kind mis-classifications, external library labels).
+
+Do NOT double-count: if you already submitted a repair via
+`archigraph_repairs(action=submit)`, you MAY also emit the same observation to
+`docgen-repairs.jsonl` — the daemon deduplicates. This lets the fidelity delta
+capture every discovery regardless of which path applied it.
+
 ## Reporting
 
 Writer subagents append a line to their existing pass report:
 
-> `pass-3a hook: <N> entities scanned, <M> residuals seen, <A> auto-repaired, <D> documented as runtime-resolved.`
+> `pass-3a hook: <N> entities scanned, <M> residuals seen, <A> auto-repaired, <D> documented as runtime-resolved, <E> DocgenRepairCandidates emitted.`
 
 The orchestrator aggregates these into the final `repair-sweep.md` under a "Generation-time repairs" section.
 

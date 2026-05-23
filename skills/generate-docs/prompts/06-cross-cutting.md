@@ -78,7 +78,53 @@ directory links).
 
 After all per-repo files for the topic are written, write the group-level aggregator at `~/.archigraph/groups/<group>/cross-cutting/<topic>.md`. The aggregator is short — it points to each repo's page and calls out repo-to-repo divergence.
 
-### Step 6 — Verification
+### Step 6 — Emit repair candidates
+
+Run the emission step from `snippets/docgen-repair-emission.md`. Cross-cutting
+passes cover auth, logging, observability, and error handling — topics that
+routinely expose two discovery types:
+
+- **`resolve_ref` / `add_edge`** — auth middleware and logging utilities are
+  called from many modules; their dynamic-dispatch patterns (decorator
+  registration, middleware chaining, signal hooks) are often invisible to the
+  static extractor.
+
+  Example — from `auth.md` for a Django repo:
+
+  ```json
+  {
+    "type": "add_edge",
+    "source_entity_id": "<JWTAuthMiddleware entity id>",
+    "target": "TokenValidator",
+    "edge_kind": "CALLS",
+    "confidence": 0.85,
+    "evidence": "middleware.py@line 34: self._validator.validate(token) — TokenValidator instantiated in __init__, not visible at call site",
+    "source": "generate-docs/pass-6",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+- **`label_external`** — logging and observability sections frequently name
+  external SDKs (Datadog, Sentry, OpenTelemetry) whose stubs are unresolved.
+
+  Example — from `observability.md`:
+
+  ```json
+  {
+    "type": "label_external",
+    "source_entity_id": "<stub entity id>",
+    "target": "ext:datadog-lambda",
+    "confidence": 0.91,
+    "evidence": "tracing.go@line 9: import \"github.com/datadog/datadog-lambda-go\" — Datadog Lambda tracer SDK",
+    "source": "generate-docs/pass-6",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+Append to `~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+Use `source: "generate-docs/pass-6"` in every candidate.
+
+### Step 7 — Verification
 
 Run `snippets/verification-checklist.md` for each file produced.
 

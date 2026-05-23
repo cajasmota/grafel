@@ -219,7 +219,62 @@ verify:
 - [ ] For `message_topic`: `summary`, `schema`, `volume_estimate`, `typical_payload_size_bytes`, `expected_consumers`, and `gaps` are all present (needed for `filled_field_count` = 6).
 - [ ] The doc file path is registered in `docgen-state.json` `GeneratedPaths` so the backend can locate it.
 
-### Step 7 — Hand back
+### Step 7 — Emit repair candidates
+
+Run the emission step from `snippets/docgen-repair-emission.md`. Pass 13 reads
+`archigraph_expand` neighborhoods for every entity in the working list; this is
+rich signal for repair candidates.
+
+Primary discovery types in this pass:
+
+- **`fix_kind`** — the enrichment candidate list from `archigraph_enrichments`
+  may contain entities whose graph kind contradicts what you observe. For
+  example, a `process_flow` entity that is actually an `http_endpoint` (a
+  handler with route metadata), or a `message_topic` catalogued as `Class`.
+  Emit a `fix_kind` for each.
+
+  Example:
+
+  ```json
+  {
+    "type": "fix_kind",
+    "source_entity_id": "<entity id>",
+    "new_kind": "http_endpoint",
+    "confidence": 0.88,
+    "evidence": "orders/views.py@line 21: class OrderCreateView(APIView) — has @route decorator; listed as process_flow in graph but is an HTTP endpoint",
+    "source": "generate-docs/pass-13",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+- **`merge_flow`** — Step 3b asks you to decide whether two near-duplicate
+  entities should be merged (`merged_into`). When you make that decision, also
+  emit a `merge_flow` candidate so the graph reflects the merge, not just the
+  enrichment YAML.
+
+  Example:
+
+  ```json
+  {
+    "type": "merge_flow",
+    "source_entity_id": "<redundant entity id>",
+    "target": "<canonical entity id>",
+    "confidence": 0.82,
+    "evidence": "payments/handlers.py@line 55 and line 88 — PaymentCreateView and LegacyPaymentCreateView handle identical POST /payments route; canonical is PaymentCreateView",
+    "source": "generate-docs/pass-13",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+- **`label_external`** — `FETCHES` edges pointing at external URLs (third-party
+  APIs) are often unresolved in the graph. When you document these in
+  `http_endpoint` enrichments (the `caveats` or `examples` sections), emit a
+  `label_external` for the external target.
+
+Use `source: "generate-docs/pass-13"` in all candidates. Append to
+`~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+
+### Step 8 — Hand back
 
 Save a finding summarising enrichment coverage:
 

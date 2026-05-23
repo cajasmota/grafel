@@ -113,7 +113,24 @@ If your module references entities owned by another module, link to that module'
 
 Run every check in `snippets/verification-checklist.md`. The orchestrator will reject your output otherwise.
 
-### Step 7 — Save
+### Step 7 — Emit repair candidates
+
+Run the emission step from `snippets/docgen-repair-emission.md`. This pass is
+the richest source of repair candidates because it reads the deepest source
+context (Step 3 pulled source for many entities via `archigraph_get_source`).
+
+Collect every observation made during Steps 1–6:
+- Stubs in the module subgraph that resolved to imports you actually read.
+- Dynamic dispatch sites (event bus, string registries, dependency-injection
+  factories) whose callees you identified from source.
+- Entities in the module whose `kind` contradicts what you saw in source.
+- Outbound edges to well-known external libraries you recognised.
+- Two flows in the module that represent the same workflow under different names.
+
+Append candidates to `~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+Use `source: "generate-docs/pass-4"` in every candidate.
+
+### Step 8 — Save
 
 ```
 archigraph_save_finding(

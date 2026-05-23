@@ -66,7 +66,43 @@ Headings first, derive `anchors:` per `snippets/anchor-contract.md`. The
 capability pages forward-link to specific rule anchors, so name your rule
 headings clearly and stably. File/symbol references ONLY in `<details>`.
 
-### Step 4 — Verify + save
+### Step 4 — Emit repair candidates
+
+Run the emission step from `snippets/docgen-repair-emission.md`. This pass's
+`archigraph_find` queries on validation, permission checks, and state
+transitions produce graph data that may surface repair candidates — specifically:
+
+- **`add_edge`** — permission checks often call a shared auth/permission
+  utility whose edge to the validation logic is dynamic (decorator-based,
+  mixin-based). If you can identify the concrete callee from source context
+  while mining validation rules, emit an `add_edge`.
+
+  Example:
+
+  ```json
+  {
+    "type": "add_edge",
+    "source_entity_id": "<InspectionSubmitView entity id>",
+    "target": "IsInspectorPermission",
+    "edge_kind": "CALLS",
+    "confidence": 0.80,
+    "evidence": "inspections/views.py@line 14: permission_classes = [IsInspectorPermission] — decorator permission not captured as a CALLS edge in graph",
+    "source": "generate-docs/pass-18",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+- **`fix_kind`** — state-machine queries sometimes surface entities that are
+  mis-classified (e.g. a status enum catalogued as `Function`).
+
+Only emit when `archigraph_find` returned an entity that you then inspected
+closely enough to have concrete file-level evidence. Business rule translation
+itself is not evidence.
+
+Use `source: "generate-docs/pass-18"` in all candidates. Append to
+`~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+
+### Step 5 — Verify + save
 
 Run `snippets/verification-checklist.md`. Then:
 

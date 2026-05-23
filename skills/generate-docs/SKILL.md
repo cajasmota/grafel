@@ -638,7 +638,9 @@ Before any pass commits its output, the writer subagent runs the checks in `snip
 
 ## Docgen Repair Feedback Contract
 
-As each writer pass (Passes 3–6, 12, and 3a) reads source and reasons about the code it is describing, it may discover facts the static extractor missed. When a writer makes such a discovery it **MUST** emit a repair candidate so Fidelity climbs toward 100% over successive runs.
+As each writer pass (Passes 3, 3a, 4, 5, 6, 12, 13, 15, 16, 17, and 18) reads source and reasons about the code it is describing, it may discover facts the static extractor missed. When a writer makes such a discovery it **MUST** emit a repair candidate so Fidelity climbs toward 100% over successive runs.
+
+The full emission procedure — confidence bands, JSONL path, worked examples, and invariants — is in `snippets/docgen-repair-emission.md`. Refer to that snippet; the summary here is for orientation only.
 
 ### When to emit
 
@@ -696,6 +698,7 @@ After applying, `archigraph_stats` now includes `fidelity` (0–1 ratio), `fidel
 
 ## Related
 
+- `skills/generate-docs/snippets/docgen-repair-emission.md` - full emission procedure every writer pass follows; confidence bands, JSONL path, worked examples, and invariants.
 - `skills/extend-convention/SKILL.md` - companion skill for adding a new stack convention.
 - `skills/archigraph-repair/SKILL.md` - standalone repair flow for ad-hoc residual cleanup outside doc generation.
 - ADR-0015 (`docs/adrs/0015-residual-repair-agent-enrichment.md`) - residual repair foundation; powers Passes 1a, 1b, and 3a.

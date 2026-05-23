@@ -52,7 +52,23 @@ Open `output-templates/overview.md`, fill every section, write the result to `~/
 
 Run `snippets/verification-checklist.md`. If any check fails, fix and re-run before moving on.
 
-### Step 6 — Save the result
+### Step 6 — Emit repair candidates
+
+Run the emission step from `snippets/docgen-repair-emission.md`. As you wrote
+the overview you read source files and reasoned about entities — collect any
+observations that qualify as repair candidates (resolved stubs, dynamic
+dispatch targets, mis-classified kinds, external library references). Append
+them to `~/.archigraph/groups/<group>/docgen-repairs.jsonl`, one JSON object
+per line, and record the emission summary line in your pass report.
+
+Common discoveries in this pass:
+- Entry-point files that import modules whose stubs are unresolved in the graph.
+- Cross-repo links whose direction or target is ambiguous in the graph but clear
+  from the source you just read.
+
+Use `source: "generate-docs/pass-3"` in every candidate emitted here.
+
+### Step 7 — Save the result
 
 Call:
 
