@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -1191,34 +1190,10 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 	}
 }
 
-// readSourceWindow opens path, scans lines [start,end] (1-indexed inclusive),
-// and returns the formatted text. Split out so handleGetNodeSource can run
-// the call on a worker goroutine bounded by a context deadline (#1678).
-func readSourceWindow(path string, start, end int) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024)
-	var b strings.Builder
-	line := 0
-	for scanner.Scan() {
-		line++
-		if line < start {
-			continue
-		}
-		if line > end {
-			break
-		}
-		b.WriteString(fmt.Sprintf("%5d  %s\n", line, scanner.Text()))
-	}
-	if err := scanner.Err(); err != nil {
-		return "", err
-	}
-	return b.String(), nil
-}
+// readSourceWindow is implemented in read_source_unix.go (darwin/linux) and
+// read_source_windows.go (windows). The Unix implementation uses a non-blocking
+// open(2) to avoid macOS fsevents kernel stalls (#1773); the Windows path falls
+// back to plain os.Open (no fsevents equivalent).
 
 // ---------------------------------------------------------------------------
 // recent_activity
