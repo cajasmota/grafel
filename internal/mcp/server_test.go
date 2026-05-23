@@ -365,8 +365,9 @@ func TestCompactFormatStripsScope(t *testing.T) {
 	if strings.Contains(out, "[x]") {
 		t.Errorf("expected no per-row repo when oneRepo=true, got: %s", out)
 	}
-	if !strings.Contains(out, "implicit calls") {
-		t.Errorf("expected implicit-calls suppression note, got: %s", out)
+	// #1747: new honest footer replaces "implicit calls" with edges-summary.
+	if !strings.Contains(out, "edges-summary: available=") {
+		t.Errorf("expected edges-summary footer, got: %s", out)
 	}
 }
 
