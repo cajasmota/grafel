@@ -1,0 +1,84 @@
+name: Windows CGO Experiment
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/windows-cgo-experiment.yml"
+      - "internal/extractors/**"
+      - "internal/daemon/**"
+      - "cmd/archigraph/**"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    continue-on-error: true   # experimental until #937 closed
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Configure CGO for MinGW
+        shell: powershell
+        run: |
+          echo "CGO_ENABLED=1"                                | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "C:\msys64\mingw64\bin"                        | Out-File -FilePath $env:GITHUB_PATH -Append
+          echo "CC=C:\msys64\mingw64\bin\gcc.exe"             | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: go mod download
+        run: go mod download
+
+      - name: go vet
+        run: go vet ./...
+        continue-on-error: true   # capture both vet + build signals independently
+
+      - name: go build daemon
+        run: go build -v -o archigraph.exe ./cmd/archigraph
+
+      - name: smoke test — start daemon, hit healthz, stop
+        shell: powershell
+        run: |
+          $env:ARCHIGRAPH_DAEMON_ROOT = "$env:RUNNER_TEMP\archigraph-test"
+          New-Item -ItemType Directory -Path $env:ARCHIGRAPH_DAEMON_ROOT -Force | Out-Null
+          $proc = Start-Process -FilePath ".\archigraph.exe" -ArgumentList "daemon" -PassThru -RedirectStandardOutput "daemon.log" -RedirectStandardError "daemon.err"
+          Start-Sleep -Seconds 5
+          $code = curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:47274/healthz
+          Write-Host "healthz response code: $code"
+          if ($code -ne "200") {
+            Get-Content daemon.log -ErrorAction SilentlyContinue
+            Get-Content daemon.err -ErrorAction SilentlyContinue
+            Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Stop-Process -Id $proc.Id -Force
+
+      - name: Upload binary
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: archigraph-windows-amd64
+          path: archigraph.exe
+          retention-days: 7
+
+      - name: Upload daemon log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daemon-logs
+          path: |
+            daemon.log
+            daemon.err
+          retention-days: 7
+          if-no-files-found: ignore
