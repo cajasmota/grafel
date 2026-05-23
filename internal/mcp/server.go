@@ -476,6 +476,11 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 		elapsed := time.Since(start).Milliseconds()
 		if res != nil {
 			res = injectElapsedMS(res, elapsed)
+			// #1740: intern repeated entity IDs to short handles (@1, @2, …).
+			// Runs after elapsed-ms injection so the _id_table lands in the
+			// same top-level JSON object that carries elapsed_ms.
+			// Opt-out: MCP_NO_ID_INTERNING=1.
+			res = applyIDInterning(res)
 		}
 		s.emitActivity(ctx, name, req, res, collector)
 		return res, err
