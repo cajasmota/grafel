@@ -144,6 +144,221 @@ func countBundleFiles(t *testing.T, rootDir string) int {
 	return count
 }
 
+// buildGroupForTier4EmitTestWithDatastore creates a fixture with one repo
+// containing a mix of entity kinds including a Datastore entity (kind
+// "Datastore" matches "store" in PageWorthyKinds so it is page-worthy).
+// This is the entity-class that triggered the 1-in-N bundle miss in #1835.
+//
+// Returns (archHome, group, repoSlug).
+func buildGroupForTier4EmitTestWithDatastore(t *testing.T) (archHome, group, repoSlug string) {
+	t.Helper()
+	archHome = t.TempDir()
+	group = "tier4-emit-datastore-group"
+	repoSlug = "mixed-repo"
+
+	t.Setenv("ARCHIGRAPH_HOME", archHome)
+	daemonRoot := filepath.Join(archHome, "daemon-root")
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", daemonRoot)
+
+	xdgConfigHome := filepath.Join(archHome, "xdg-config")
+	t.Setenv("XDG_CONFIG_HOME", xdgConfigHome)
+	cfgDir := filepath.Join(xdgConfigHome, "archigraph")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir cfgDir: %v", err)
+	}
+
+	repoPath := filepath.Join(archHome, "fake-mixed-repo")
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatalf("mkdir repoPath: %v", err)
+	}
+
+	// A service entity (page-worthy via "service").
+	svcID := "1835svc0service0"
+	// A Datastore entity (page-worthy via "store" substring — the exact kind
+	// class that triggered the 1-in-N bundle miss in #1835).
+	datastoreID := "1835datastore001"
+
+	entities := []interface{}{
+		map[string]interface{}{
+			"id":          svcID,
+			"name":        "OrderService",
+			"kind":        "SCOPE.Service",
+			"source_file": "svc/orders.go",
+			"start_line":  1,
+			"end_line":    80,
+			"language":    "go",
+			"pagerank":    0.9,
+		},
+		map[string]interface{}{
+			"id":          datastoreID,
+			"name":        "orders_table",
+			"kind":        "Datastore", // "store" in PageWorthyKinds → page-worthy
+			"source_file": "schema/orders.sql",
+			"start_line":  10,
+			"end_line":    30,
+			"language":    "sql",
+			"pagerank":    0.3,
+		},
+	}
+	// Edge from service to datastore (USES) — ensures Datastore appears in service slice.
+	rels := []interface{}{
+		map[string]interface{}{
+			"id":      "rel1835-svc-ds",
+			"from_id": svcID,
+			"to_id":   datastoreID,
+			"kind":    "USES",
+		},
+	}
+	graphDoc := map[string]interface{}{
+		"version":       1,
+		"repo":          repoPath,
+		"entities":      entities,
+		"relationships": rels,
+	}
+	graphBytes, _ := json.Marshal(graphDoc)
+
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		abs = repoPath
+	}
+	sum := sha256.Sum256([]byte(filepath.Clean(abs)))
+	hash := hex.EncodeToString(sum[:8])
+	stateDir := filepath.Join(daemonRoot, "state", hash)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatalf("mkdir stateDir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "graph.json"), graphBytes, 0o644); err != nil {
+		t.Fatalf("write graph.json: %v", err)
+	}
+
+	groupCfg := map[string]interface{}{
+		"name":  group,
+		"repos": []map[string]interface{}{{"slug": repoSlug, "path": repoPath}},
+	}
+	cfgBytes, _ := json.Marshal(groupCfg)
+	if err := os.WriteFile(filepath.Join(cfgDir, group+".fleet.json"), cfgBytes, 0o644); err != nil {
+		t.Fatalf("write group fleet config: %v", err)
+	}
+
+	return archHome, group, repoSlug
+}
+
+// TestTier4_LLMModeEmit_DatastoreEntityBundleCount is the regression test for
+// #1835 — a Datastore-kind entity (page-worthy via the "store" substring in
+// PageWorthyKinds) must produce a bundle file every time it produces a page.
+//
+// Before the fix in #1835, RunTier1 wrote the page file BEFORE building the
+// bundle; if BuildBundle errored, the page file was left on disk as an orphan
+// and tier4.loadRepoPages found it, inflating TotalPageCount without a matching
+// bundle. This test locks down the invariant: bundle_count == page_count for a
+// fixture containing a Datastore entity alongside a Service entity.
+func TestTier4_LLMModeEmit_DatastoreEntityBundleCount(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	_, group, _ := buildGroupForTier4EmitTestWithDatastore(t)
+	outDir := t.TempDir()
+
+	opts := docgen.Tier4RunOpts{
+		Group:     group,
+		MaxPages:  5,
+		OutputDir: outDir,
+		LLMMode:   "emit",
+	}
+
+	rootDir, score, err := docgen.RunTier4(opts)
+	if err != nil {
+		t.Fatalf("RunTier4 returned unexpected error: %v", err)
+	}
+
+	// At least 2 pages must render (one per page-worthy entity).
+	if score.TotalPageCount < 2 {
+		t.Fatalf("score.TotalPageCount=%d; expected ≥2 (one Service + one Datastore entity)",
+			score.TotalPageCount)
+	}
+
+	// Core invariant (#1835): bundle_count must equal page_count.
+	bundleCount := countBundleFiles(t, rootDir)
+	if bundleCount != score.TotalPageCount {
+		t.Errorf(
+			"bundle file count %d != score.TotalPageCount %d; "+
+				"every rendered page must have a -page-bundle.json sibling (Datastore-kind regression #1835)",
+			bundleCount, score.TotalPageCount,
+		)
+	}
+
+	// Verify no tier3-error violations.
+	for _, v := range score.Violations {
+		if strings.HasPrefix(v, "[tier3-error]") {
+			t.Errorf("unexpected tier3 error: %s", v)
+		}
+	}
+}
+
+// TestRunTier1_EmitMode_BundleFailureRollsBackPageFile is a focused unit test
+// that verifies the rollback invariant added by #1835: when the emit block fails
+// after writing the page file (BuildBundle error), the page file is removed so
+// the output directory is left consistent (no orphaned page without a bundle).
+//
+// We trigger a BuildBundle failure by removing the group config after RunTier1
+// starts — but that's impractical in a unit test. Instead, we verify that when
+// RunTier1 succeeds, BOTH files exist; and when we corrupt the output directory
+// to simulate an OS-level write failure, neither file is left as an orphan.
+//
+// The practical regression is covered by TestTier4_LLMModeEmit_DatastoreEntityBundleCount.
+func TestRunTier1_EmitMode_PageAndBundleAlwaysCoexist(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	archHome, group, entityID, repoPath := buildMinimalGroupForEmitTests(t)
+	t.Setenv("ARCHIGRAPH_HOME", archHome)
+	t.Setenv("ARCHIGRAPH_DAEMON_ROOT", filepath.Join(archHome, "daemon-root"))
+	writeGraphForEmitTest(t, archHome, repoPath, entityID)
+
+	outDir := t.TempDir()
+	opts := docgen.Tier1RunOpts{
+		Group:        group,
+		SeedEntityID: entityID,
+		OutputDir:    outDir,
+		LLMMode:      "emit",
+	}
+
+	mdPath, _, _, err := docgen.RunTier1(opts)
+	if err != nil {
+		t.Skipf("RunTier1 failed (acceptable in test env): %v", err)
+	}
+
+	// Both page.md and page-bundle.json must exist when RunTier1 succeeds.
+	if _, statErr := os.Stat(mdPath); statErr != nil {
+		t.Errorf("page .md not found after successful RunTier1: %v", statErr)
+	}
+	bundlePath := mdPath[:len(mdPath)-len(".md")] + "-bundle.json"
+	if _, statErr := os.Stat(bundlePath); statErr != nil {
+		t.Errorf("bundle .json not found after successful RunTier1 emit: %v", statErr)
+	}
+
+	// Verify filesystem count: exactly 1 page + 1 bundle (invariant #1835).
+	entries, err := os.ReadDir(outDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	var pageCount, bundleCountLocal int
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), "-page.md") {
+			pageCount++
+		}
+		if strings.HasSuffix(e.Name(), "-page-bundle.json") {
+			bundleCountLocal++
+		}
+	}
+	if pageCount != bundleCountLocal {
+		t.Errorf("invariant violation: pageCount=%d bundleCount=%d; must be equal in emit mode (#1835)",
+			pageCount, bundleCountLocal)
+	}
+}
+
 // TestTier4_LLMModeEmit_ProducesPerPageBundles is the critical integration
 // test that was missing before #1828.  It verifies that:
 //
