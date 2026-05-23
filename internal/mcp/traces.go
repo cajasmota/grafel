@@ -15,6 +15,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,9 +62,9 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 	if errRes != nil {
 		return errRes, nil
 	}
-	limit := argInt(req, "limit", 25)
+	limit := argInt(req, "limit", 10)
 	if limit <= 0 {
-		limit = 25
+		limit = 10
 	}
 	crossOnly := argBool(req, "cross_stack_only", false)
 	// #1639 — short-flow filter. Flows with fewer than min_steps steps are
@@ -137,10 +138,30 @@ func (s *Server) handleTracesList(_ context.Context, req mcpapi.CallToolRequest)
 	if len(items) > limit {
 		items = items[:limit]
 	}
-	return jsonResult(map[string]any{
+
+	// #1738: token-budget cap — shed processes from tail until under budget.
+	tokenBudget := argInt(req, "token_budget", 800)
+	if tokenBudget < 100 {
+		tokenBudget = 100
+	}
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+	preCapLen := len(items)
+	items = capByRenderedBytes(items, budgetBytes, false)
+
+	resp := map[string]any{
 		"processes": items,
 		"count":     len(items),
-	}), nil
+	}
+	if preCapLen > len(items) {
+		resp["truncation_note"] = fmt.Sprintf(
+			"response capped at token_budget=%d (~%d bytes); %d processes omitted — pass a larger token_budget or use limit=N",
+			tokenBudget, budgetBytes, preCapLen-len(items),
+		)
+	}
+	return jsonResult(resp), nil
 }
 
 // handleTracesGet returns the full step chain for one Process entity.

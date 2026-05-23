@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -662,5 +663,146 @@ func TestExpand_WithEdgesNoSignal(t *testing.T) {
 				t.Errorf("no_edges signal must not appear when edges exist: %s", tc.Text)
 			}
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1738: token_budget enforcement tests for find_callers / find_callees / expand
+// ---------------------------------------------------------------------------
+
+// build25CallerDoc builds a doc with 25 entities all calling "target".
+func build25CallerDoc() *graph.Document {
+	entities := []graph.Entity{{ID: "target", Name: "Target", Kind: "Function", SourceFile: "t.go", StartLine: 1}}
+	rels := []graph.Relationship{}
+	for i := 0; i < 25; i++ {
+		cid := fmt.Sprintf("caller%02d", i)
+		entities = append(entities, graph.Entity{
+			ID:         cid,
+			Name:       fmt.Sprintf("Caller%02d", i),
+			Kind:       "Function",
+			SourceFile: fmt.Sprintf("c%02d.go", i),
+			StartLine:  i + 1,
+		})
+		rels = append(rels, graph.Relationship{FromID: cid, ToID: "target", Kind: "CALLS"})
+	}
+	return minDoc(entities, rels)
+}
+
+// build25CalleeDoc builds a doc where "root" calls 25 callees.
+func build25CalleeDoc() *graph.Document {
+	entities := []graph.Entity{{ID: "root", Name: "Root", Kind: "Function", SourceFile: "r.go", StartLine: 1}}
+	rels := []graph.Relationship{}
+	for i := 0; i < 25; i++ {
+		cid := fmt.Sprintf("callee%02d", i)
+		entities = append(entities, graph.Entity{
+			ID:         cid,
+			Name:       fmt.Sprintf("Callee%02d", i),
+			Kind:       "Function",
+			SourceFile: fmt.Sprintf("c%02d.go", i),
+			StartLine:  i + 1,
+		})
+		rels = append(rels, graph.Relationship{FromID: "root", ToID: cid, Kind: "CALLS"})
+	}
+	return minDoc(entities, rels)
+}
+
+// TestFindCallers_TokenBudgetEnforced verifies that a very tight token_budget
+// caps the callers slice and produces a truncation_note (#1738).
+func TestFindCallers_TokenBudgetEnforced(t *testing.T) {
+	srv := newTestServerWithDoc(t, build25CallerDoc())
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id":    "target",
+		"depth":        float64(1),
+		"token_budget": float64(50), // tiny — forces truncation
+		"group":        "test",
+	})
+	count, _ := out["count"].(float64)
+	if int(count) >= 25 {
+		t.Errorf("expected callers capped by token_budget, got count=%v", count)
+	}
+	truncNote, _ := out["truncation_note"].(string)
+	if truncNote == "" {
+		t.Errorf("expected truncation_note when token_budget is exceeded")
+	}
+}
+
+// TestFindCallees_TokenBudgetEnforced verifies the same for callees.
+func TestFindCallees_TokenBudgetEnforced(t *testing.T) {
+	srv := newTestServerWithDoc(t, build25CalleeDoc())
+	out := callFlowTool(t, srv.handleFindCallees, map[string]any{
+		"entity_id":    "root",
+		"depth":        float64(1),
+		"token_budget": float64(50),
+		"group":        "test",
+	})
+	count, _ := out["count"].(float64)
+	if int(count) >= 25 {
+		t.Errorf("expected callees capped by token_budget, got count=%v", count)
+	}
+	truncNote, _ := out["truncation_note"].(string)
+	if truncNote == "" {
+		t.Errorf("expected truncation_note when token_budget is exceeded")
+	}
+}
+
+// TestExpand_TokenBudgetEnforced verifies that archigraph_expand caps its
+// output when token_budget is tight (#1738).
+func TestExpand_TokenBudgetEnforced(t *testing.T) {
+	// Build a star graph: root connected to 30 leaf nodes via CALLS.
+	entities := []graph.Entity{{ID: "root", Name: "Root", Kind: "Function", SourceFile: "r.go", StartLine: 1}}
+	rels := []graph.Relationship{}
+	for i := 0; i < 30; i++ {
+		lid := fmt.Sprintf("leaf%02d", i)
+		entities = append(entities, graph.Entity{
+			ID:         lid,
+			Name:       fmt.Sprintf("Leaf%02d", i),
+			Kind:       "Function",
+			SourceFile: fmt.Sprintf("l%02d.go", i),
+			StartLine:  i + 1,
+		})
+		rels = append(rels, graph.Relationship{FromID: "root", ToID: lid, Kind: "CALLS"})
+	}
+	doc := minDoc(entities, rels)
+	srv := newTestServerWithDoc(t, doc)
+
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"node":         "root",
+		"depth":        float64(1),
+		"token_budget": float64(50), // very tight
+		"group":        "test",
+	}
+	res, err := srv.handleGetNeighbors(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool error: %v", res.Content)
+	}
+	var rawResult any
+	for _, c := range res.Content {
+		if tc, ok := c.(mcpapi.TextContent); ok {
+			if err := json.Unmarshal([]byte(tc.Text), &rawResult); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+		}
+	}
+	// Result is either a raw array (no truncation path) or a map (truncated path).
+	switch v := rawResult.(type) {
+	case []any:
+		if len(v) >= 30 {
+			t.Errorf("expected neighbors capped by token_budget, got %d items", len(v))
+		}
+	case map[string]any:
+		count, _ := v["count"].(float64)
+		if int(count) >= 30 {
+			t.Errorf("expected neighbors capped by token_budget, got count=%v", count)
+		}
+		truncNote, _ := v["truncation_note"].(string)
+		if truncNote == "" {
+			t.Errorf("expected truncation_note when token_budget is exceeded")
+		}
+	default:
+		t.Fatalf("unexpected result type %T", rawResult)
 	}
 }

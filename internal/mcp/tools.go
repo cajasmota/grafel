@@ -314,7 +314,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	var qVec []float32
 	var qHave bool
 	for _, r := range repos {
-		bm25Hits := r.BM25.Search(question, 50)
+		bm25Hits := r.BM25.Search(question, 10)
 		if r.Semantic != nil && r.Semantic.Len() > 0 {
 			if !qHave {
 				qVec, qHave = embedQuery(ctx, question)
@@ -324,7 +324,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 				}
 			}
 			if qHave && len(qVec) == r.Semantic.Dims {
-				semIDs := r.Semantic.Search(qVec, 50)
+				semIDs := r.Semantic.Search(qVec, 10)
 				semHits := make([]Hit, 0, len(semIDs))
 				for _, s := range semIDs {
 					if e, ok := r.byID[s.ID]; ok {
@@ -407,8 +407,8 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	// Otherwise BFS-expand from each top hit and render compact.
 	matched := len(all)
 	keep := all
-	if len(keep) > 25 {
-		keep = keep[:25]
+	if len(keep) > 10 {
+		keep = keep[:10]
 	}
 	visibleNodes := []nodeWithRepo{}
 	visibleEdges := []renderEdge{}
@@ -782,6 +782,28 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 			"count":     0,
 			"result":    "no_edges",
 			"note":      "Graph shows no neighbours for this entity. Do not infer a relationship — report the absence.",
+		}), nil
+	}
+
+	// #1738: token-budget cap — shed neighbors from tail until under budget.
+	tokenBudget := argInt(req, "token_budget", 800)
+	if tokenBudget < 100 {
+		tokenBudget = 100
+	}
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+	preCapLen := len(out)
+	out = capByRenderedBytes(out, budgetBytes, false)
+	if preCapLen > len(out) {
+		return jsonResult(map[string]any{
+			"neighbors":      out,
+			"count":          len(out),
+			"truncation_note": fmt.Sprintf(
+				"response capped at token_budget=%d (~%d bytes); %d neighbors omitted — pass a larger token_budget or reduce depth",
+				tokenBudget, budgetBytes, preCapLen-len(out),
+			),
 		}), nil
 	}
 	return jsonResult(out), nil

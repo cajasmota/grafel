@@ -256,6 +256,10 @@ entities (`start_line > 0`) rank above lineless route/resource entities — both
 any retained synthetic node. The same filtering applies to the `full=true` JSON dump.
 Set `include_noise=true` to recover the unfiltered list.
 
+**Token economy (#1738):** Internal BM25 candidate pool reduced from 50→10; BFS
+seed cap lowered from 25→10. Pass `token_budget=N` to adjust the compact-text
+byte budget (default 800 tokens ≈ 3,200 bytes).
+
 **Output** — text (default) or JSON when `full=true`:
 
 ```json
@@ -344,7 +348,8 @@ Previously named `archigraph_related` (renamed in #668).
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `node` | string | yes | — | Entity ID, prefixed cross-repo ID, qualified name, or label. |
-| `depth` | number | no | `2` | BFS depth. |
+| `depth` | number | no | `1` | BFS depth. Default reduced from 2 (#1738); pass `depth=2` to restore prior behavior. |
+| `token_budget` | number | no | `800` | Max approximate tokens; response capped via binary-search rendering (#1738). |
 | `repo_filter` | string[] | no | `[]` | Common arg. |
 | `group`, `cwd` | string | no | — | Common args. |
 
@@ -446,7 +451,8 @@ Three sub-actions selected via the required `action` argument:
 | `cross_stack_only` | bool | no | `false` | (`list`) Only return cross-stack Processes. |
 | `min_steps` | number | no | `4` | (`list`) Minimum step count filter. |
 | `verbose` | boolean | no | `false` | (`get`/`follow`) Restore `kind` on each step (#1739). |
-| `limit` | number | no | `25` | (`list`) Max processes returned. |
+| `limit` | number | no | `10` | (`list`) Max processes returned. Default reduced from 25 (#1738). |
+| `token_budget` | number | no | `800` | (`list`) Response byte cap; processes shed from tail when exceeded (#1738). |
 | `repo_filter` | string[] | no | `[]` | Common arg. |
 | `group`, `cwd` | string | no | — | Common args. |
 
@@ -1107,6 +1113,89 @@ entity). Use to assess Sub-A (#1217) migration progress.
 `migrated: true` means no legacy `http_endpoint` entities remain — all have been
 split into `http_endpoint_definition` / `http_endpoint_call` by Sub-A (#1217).
 When `migrated: false`, `note` contains a migration reminder.
+
+---
+
+### `archigraph_endpoints`
+
+> Unified HTTP endpoint surface (#1281, overhaul #1650). Replaces the separate
+> `archigraph_endpoint_definitions`, `archigraph_endpoint_calls`, and
+> `archigraph_endpoint_stats` tools.
+
+**Inputs** (shared)
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `action` | string | yes | — | `definitions` \| `calls` \| `stats` |
+| `limit` | number | no | `20` | Max results (definitions/calls). Default reduced from 50 (#1738). |
+| `offset` | number | no | `0` | Pagination offset. |
+| `token_budget` | number | no | `800` | Max approximate tokens; results shed from tail when exceeded (#1738). |
+| `path_contains` | string | no | — | Server-side path substring filter. |
+| `method` | string | no | — | HTTP method filter (e.g. `GET`). |
+| `orphan_only` | boolean | no | `false` | (`calls`) Return only call-sites with no matching definition. |
+| `verbose` | boolean | no | `false` | Include name/kind/properties fields (larger payload). |
+| `repo_filter` | string[] | no | `[]` | Common arg. |
+| `group`, `cwd` | string | no | — | Common args. |
+
+When `token_budget` is exceeded the response carries a `truncation_note` explaining
+how many items were omitted and how to get more. Use `limit=N` for simple pagination.
+
+---
+
+### `archigraph_find_callers`
+
+> Added in #1252.
+
+Return entities that call (directly or transitively) the given entity. Walks the
+inbound CALLS adjacency up to `depth` hops; results are grouped by hop distance.
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `entity_id` | string | yes | — | Entity ID or prefixed cross-repo ID. |
+| `depth` | number | no | `1` | Hop depth. Clamped to ≤5. |
+| `token_budget` | number | no | `800` | Max approximate tokens; callers shed from tail when exceeded (#1738). |
+| `group`, `cwd` | string | no | — | Common args. |
+
+**Output** — JSON object:
+
+```json
+{
+  "entity_id": "repo::abc123",
+  "entity_name": "processOrder",
+  "repo": "orders-service",
+  "depth": 1,
+  "callers": [
+    { "entity_id": "repo::def456", "name": "handleRequest", "kind": "function", "hop_count": 1 }
+  ],
+  "count": 1
+}
+```
+
+When no callers exist: `"result": "no_incoming_edges"` is set and `callers` is empty.
+When budget is exceeded: `truncation_note` explains omissions.
+
+---
+
+### `archigraph_find_callees`
+
+> Added in #1252.
+
+Return entities called by the given entity. Walks the outbound CALLS adjacency up to
+`depth` hops; results grouped by hop distance.
+
+**Inputs**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `entity_id` | string | yes | — | Entity ID or prefixed cross-repo ID. |
+| `depth` | number | no | `1` | Hop depth. Clamped to ≤5. |
+| `token_budget` | number | no | `800` | Max approximate tokens; callees shed from tail when exceeded (#1738). |
+| `group`, `cwd` | string | no | — | Common args. |
+
+**Output** — JSON object with `callees` array (same shape as `callers` in `archigraph_find_callers`).
+When no callees exist: `"result": "no_outgoing_edges"` is set.
 
 ---
 

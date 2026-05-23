@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -570,5 +571,59 @@ func TestHandleEndpoints_UnknownAction(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Error("expected IsError=true for unknown action")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1738: token budget enforcement tests
+// ---------------------------------------------------------------------------
+
+// buildLargeEndpointDoc returns a document with n http_endpoint_definition entities.
+func buildLargeEndpointDoc(n int) *graph.Document {
+	entities := make([]graph.Entity, n)
+	for i := range entities {
+		entities[i] = graph.Entity{
+			ID:         fmt.Sprintf("ep%03d", i),
+			Name:       fmt.Sprintf("GET /api/v1/resource/%03d", i),
+			Kind:       "http_endpoint_definition",
+			SourceFile: fmt.Sprintf("routes/r%03d.go", i),
+			StartLine:  i + 1,
+			Properties: map[string]string{
+				"verb": "GET",
+				"path": fmt.Sprintf("/api/v1/resource/%03d", i),
+			},
+		}
+	}
+	return &graph.Document{Entities: entities}
+}
+
+// TestEndpointDefaultLimit_Definitions verifies that without an explicit
+// limit=N, handleEndpointDefinitions returns at most 20 items (#1738).
+func TestEndpointDefaultLimit_Definitions(t *testing.T) {
+	srv := newTestServerWithDoc(t, buildLargeEndpointDoc(30))
+	out := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{"group": "test"})
+	defs := getSlice(t, out, "definitions")
+	if len(defs) > 20 {
+		t.Errorf("handleEndpointDefinitions returned %d items, want ≤20 (default limit)", len(defs))
+	}
+}
+
+// TestEndpointTokenBudget_Definitions verifies that a tight token_budget caps
+// the definitions slice and adds a truncation_note (#1738).
+func TestEndpointTokenBudget_Definitions(t *testing.T) {
+	srv := newTestServerWithDoc(t, buildLargeEndpointDoc(30))
+	// Pass a very tight budget (50 tokens = 200 bytes) — forces truncation.
+	out := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
+		"group":        "test",
+		"limit":        float64(30),   // ask for all 30
+		"token_budget": float64(50),   // tiny budget
+	})
+	defs := getSlice(t, out, "definitions")
+	if len(defs) >= 30 {
+		t.Errorf("expected definitions to be capped by token_budget, got %d items", len(defs))
+	}
+	note, _ := out["truncation_note"].(string)
+	if note == "" {
+		t.Errorf("expected truncation_note to be set when token_budget is exceeded")
 	}
 }
