@@ -236,6 +236,12 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 	// The Tier 1 bundle contains ALL sections selected for the entity kind.
 	// Cache reads are wired via BuildBundleOpts so hit sections get
 	// cache_hit=true in the emitted bundle.
+	//
+	// Atomicity invariant: in emit mode the page file and its sibling bundle
+	// must BOTH be present or BOTH be absent. If any step below fails after
+	// the page file has already been written, we remove the page file before
+	// returning the error so callers (Tier 2/3/4) never see an orphaned page
+	// that has no bundle. This ensures bundle_count == page_count. (#1835)
 	if opts.LLMMode == "emit" {
 		bundleOpts := BuildBundleOpts{
 			RunOpts: RunOpts{
@@ -245,13 +251,15 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 				CacheDir:     opts.CacheDir,
 				NoCache:      opts.NoCache,
 			},
-			PageID:  pageID,
-			Tier:    1,
+			PageID:   pageID,
+			Tier:     1,
 			CacheDir: opts.CacheDir,
 			NoCache:  opts.NoCache,
 		}
 		bundle, bErr := BuildBundle(context.Background(), bundleOpts)
 		if bErr != nil {
+			// Roll back the page file so the directory stays consistent.
+			_ = os.Remove(mdFile)
 			err = fmt.Errorf("build tier1 llm bundle: %w", bErr)
 			return
 		}
@@ -267,11 +275,15 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 
 		bundleBytes, mErr := json.MarshalIndent(bundle, "", "  ")
 		if mErr != nil {
+			// Roll back the page file so the directory stays consistent.
+			_ = os.Remove(mdFile)
 			err = fmt.Errorf("marshal tier1 llm bundle: %w", mErr)
 			return
 		}
 		bundleFile := filepath.Join(outDir, pageID+"-page-bundle.json")
 		if wErr := os.WriteFile(bundleFile, bundleBytes, 0o644); wErr != nil {
+			// Roll back the page file so the directory stays consistent.
+			_ = os.Remove(mdFile)
 			err = fmt.Errorf("write tier1 bundle file: %w", wErr)
 			return
 		}
