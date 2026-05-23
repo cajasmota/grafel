@@ -966,11 +966,12 @@ function FlowDag({
   };
 
   // Fit when the flow changes or the user switches layout.
+  // Also re-fit when DAG dimensions change (new process_id → new totalWidth/totalHeight).
   const flowKey = flow.process_id + ":" + steps.length + ":" + userLayout;
   useEffect(() => {
     const t = setTimeout(fitToView, 0);
     return () => clearTimeout(t);
-  }, [flowKey, fitToView]);
+  }, [flowKey, fitToView, totalWidth, totalHeight]);
 
   // Re-fit whenever the DAG container is resized (e.g. when the step inspector
   // side panel opens/closes, shrinking the DAG from full-width to 60% — #1933).
