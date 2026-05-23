@@ -750,33 +750,80 @@ function ListRail({
   );
 }
 
-// ─── DAG constants ────────────────────────────────────────────────────────────
+// ─── DAG layout constants ─────────────────────────────────────────────────────
+//
+// Three layout modes selected at render time by step count:
+//   short  (≤5 steps)   — full-size nodes, single horizontal row
+//   medium (6-10 steps) — ~70% scale, single horizontal row (no wrap)
+//   long   (11+ steps)  — 3-column grid with readable nodes
+//
+// All sizing is expressed as a LayoutMode object so the SVG edge renderer
+// and the absolute-positioned nodes always use the same values.
 
-const NODE_W = 248; // wider so name + kind sit on clean single lines
-const NODE_H = 84;  // taller so kind label + meta row never wrap/clip
-const NODE_HGAP = 96;  // generous horizontal gap so edge labels don't collide
-const NODE_VGAP = 72;  // generous vertical gap between wrapped lanes
-const CANVAS_PAD = 36;
-const MAX_PER_LANE = 5; // wrap to a new lane after this many nodes
+type LayoutMode = {
+  nodeW: number;
+  nodeH: number;
+  hgap: number;
+  vgap: number;
+  pad: number;
+  perLane: number;
+};
+
+const LAYOUT_SHORT: LayoutMode = {
+  nodeW: 248,
+  nodeH: 84,
+  hgap: 96,
+  vgap: 72,
+  pad: 36,
+  perLane: 5,   // ≤5 steps: single row, no wrapping needed
+};
+
+const LAYOUT_MEDIUM: LayoutMode = {
+  nodeW: 174,   // ~70% of 248 — fits 6-10 nodes on one row
+  nodeH: 59,    // ~70% of 84
+  hgap: 52,     // proportionally tighter
+  vgap: 52,
+  pad: 28,
+  perLane: 10,  // never wrap for 6-10 steps
+};
+
+const LAYOUT_LONG: LayoutMode = {
+  nodeW: 220,   // readable but slightly compressed
+  nodeH: 80,
+  hgap: 72,
+  vgap: 64,
+  pad: 32,
+  perLane: 3,   // 3-column grid for 11+ steps (≤15 → 5 rows; ≤30 → 10 rows)
+};
+
+function pickLayout(stepCount: number): LayoutMode {
+  if (stepCount <= 5) return LAYOUT_SHORT;
+  if (stepCount <= 10) return LAYOUT_MEDIUM;
+  return LAYOUT_LONG;
+}
 
 // Left-to-right layered layout: entry on the left, terminal on the right,
 // edges flow horizontally. Long chains wrap onto stacked lanes so the wide
 // canvas is used instead of a single tall column.
+// Returns the positions array plus the canvas dimensions and the layout mode
+// used (so the caller can size nodes consistently with the edges).
 function layoutDAG(steps: ProcessStep[]) {
-  const perLane = Math.max(1, Math.min(MAX_PER_LANE, steps.length));
+  const mode = pickLayout(steps.length);
+  const { nodeW, nodeH, hgap, vgap, pad, perLane } = mode;
+  const effectivePerLane = Math.max(1, Math.min(perLane, steps.length));
   const positions = steps.map((_, i) => {
-    const lane = Math.floor(i / perLane);
-    const col = i % perLane;
+    const lane = Math.floor(i / effectivePerLane);
+    const col = i % effectivePerLane;
     return {
-      x: CANVAS_PAD + col * (NODE_W + NODE_HGAP),
-      y: CANVAS_PAD + lane * (NODE_H + NODE_VGAP),
+      x: pad + col * (nodeW + hgap),
+      y: pad + lane * (nodeH + vgap),
     };
   });
-  const lanes = Math.ceil(steps.length / perLane);
-  const cols = Math.min(perLane, steps.length);
-  const totalWidth = CANVAS_PAD * 2 + cols * NODE_W + (cols - 1) * NODE_HGAP;
-  const totalHeight = CANVAS_PAD * 2 + lanes * NODE_H + (lanes - 1) * NODE_VGAP;
-  return { positions, totalHeight, totalWidth, perLane };
+  const lanes = Math.ceil(steps.length / effectivePerLane);
+  const cols = Math.min(effectivePerLane, steps.length);
+  const totalWidth = pad * 2 + cols * nodeW + (cols - 1) * hgap;
+  const totalHeight = pad * 2 + lanes * nodeH + (lanes - 1) * vgap;
+  return { positions, totalHeight, totalWidth, perLane: effectivePerLane, mode };
 }
 
 // ─── FlowDag ──────────────────────────────────────────────────────────────────
@@ -804,7 +851,7 @@ function FlowDag({
   } | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  const { positions, totalHeight, totalWidth, perLane } = useMemo(
+  const { positions, totalHeight, totalWidth, perLane, mode } = useMemo(
     () => layoutDAG(steps),
     [steps],
   );
@@ -962,8 +1009,8 @@ function FlowDag({
     const b = positions[i];
     const wrap = i % perLane === 0; // first node of a new lane
     edges.push({
-      from: { x: a.x + NODE_W, y: a.y + NODE_H / 2 },
-      to: { x: b.x, y: b.y + NODE_H / 2 },
+      from: { x: a.x + mode.nodeW, y: a.y + mode.nodeH / 2 },
+      to: { x: b.x, y: b.y + mode.nodeH / 2 },
       kind: steps[i].edge_kind,
       xrepo: steps[i].repo !== steps[i - 1].repo,
       wrap,
@@ -980,9 +1027,9 @@ function FlowDag({
       style={{
         background:
           "radial-gradient(circle at 1px 1px, var(--canvas-grid) 1px, transparent 1px) 0 0 / 18px 18px, var(--canvas-bg)",
-        minHeight: 320,
-        height: 400,
-        maxHeight: 560,
+        minHeight: mode === LAYOUT_MEDIUM ? 220 : 320,
+        height: mode === LAYOUT_LONG ? 520 : 400,
+        maxHeight: mode === LAYOUT_LONG ? 680 : 560,
       }}
       onWheel={onWheel}
       onPointerDown={onPointerDown}
@@ -1105,9 +1152,9 @@ function FlowDag({
               style={{
                 left: pos.x,
                 top: pos.y,
-                width: NODE_W,
-                minHeight: NODE_H,
-                padding: "8px 12px 8px 14px",
+                width: mode.nodeW,
+                minHeight: mode.nodeH,
+                padding: mode === LAYOUT_MEDIUM ? "5px 8px 5px 10px" : "8px 12px 8px 14px",
                 background:
                   isEntry || isTerminal
                     ? `color-mix(in srgb, ${meta.color} 8%, var(--surface))`
@@ -1182,7 +1229,7 @@ function FlowDag({
                   {s.repo}
                 </span>
               </div>
-              {locator && (
+              {locator && mode !== LAYOUT_MEDIUM && (
                 <span
                   className="font-mono text-[9px] text-text-4 truncate block min-w-0"
                   title={s.source_file ? `${s.source_file}${s.start_line ? `:${s.start_line}` : ""}` : ""}
