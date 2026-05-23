@@ -34,6 +34,7 @@ import type {
   Process, ProcessStep, FlowDeadEnd, EntryKind, StepKind, EntryKindGroup,
 } from "@/data/types";
 import { cn } from "@/lib/utils";
+import { RepoChip as SharedRepoChip } from "@/lib/repo-color";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   createFlowAnim, useFlowAnim,
@@ -152,12 +153,9 @@ function FlowLabel({ label }: { label?: string | null }) {
 
 // ─── Chip variants ────────────────────────────────────────────────────────────
 
+// RepoChip now delegates to the shared repo-color resolver (#1946).
 function RepoChip({ name }: { name: string }) {
-  return (
-    <span className="inline-flex items-center h-[18px] px-1.5 rounded-xs bg-surface-2 border border-border font-mono text-[10px] text-text-2">
-      {name}
-    </span>
-  );
+  return <SharedRepoChip slug={name} />;
 }
 
 function CrossRepoChip() {

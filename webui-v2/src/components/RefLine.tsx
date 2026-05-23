@@ -25,6 +25,7 @@
    ============================================================ */
 
 import { cn } from "@/lib/utils";
+import { getRepoColor } from "@/lib/repo-color";
 
 export interface RefLineProps {
   repo: string;
@@ -38,14 +39,9 @@ export interface RefLineProps {
   onFileClick?: (fileRef: string) => void;
 }
 
-/** Stable hash → pastel color index (1-9) for the repo chip. */
-function repoColorIndex(repo: string): number {
-  let h = 0;
-  for (let i = 0; i < repo.length; i++) {
-    h = (h * 31 + repo.charCodeAt(i)) & 0xffffffff;
-  }
-  return (Math.abs(h) % 9) + 1;
-}
+// repoColorIndex is kept for backwards compat with any callsite that still
+// uses --pastel-N variables directly, but RefLine now delegates to getRepoColor
+// from repo-color.ts for consistent chip rendering across views (#1946).
 
 /**
  * Split a file path into head and tail for center-ellipsis rendering.
@@ -98,7 +94,7 @@ export function RefLine({
   className,
   onFileClick,
 }: RefLineProps) {
-  const ci = repoColorIndex(repo);
+  const repoColors = getRepoColor(repo);
   const fileLabel = file ? `${file}:${line}` : line > 0 ? `:${line}` : "";
   const derivedTitle = title ?? `${repo} · ${file}:${line}  ${name}`;
   const { head, tail } = splitPathForEllipsis(file, line);
@@ -150,7 +146,8 @@ export function RefLine({
         {name}
       </span>
 
-      {/* Repo chip — right-anchored via ml-auto, never squished */}
+      {/* Repo chip — right-anchored via ml-auto, never squished.
+          Uses repo-color.ts resolver for theme-aware stable color (#1946). */}
       {repo && (
         <span
           className={cn(
@@ -158,8 +155,9 @@ export function RefLine({
             "text-[10px] font-semibold font-mono leading-none select-none",
           )}
           style={{
-            background: `var(--pastel-${ci})`,
-            color: `var(--pastel-${ci}-ink)`,
+            background: repoColors.background,
+            color: repoColors.foreground,
+            border: `1px solid ${repoColors.border}`,
           }}
           title={repo}
         >

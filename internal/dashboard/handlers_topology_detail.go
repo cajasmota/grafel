@@ -21,13 +21,18 @@ import (
 
 // topicEntityRecord is the resolved producer/consumer wire shape — matches
 // what the Paths v2 detail panel uses for step entities.
+//
+// FlowProcessIDs lists prefixed Process entity IDs where this entity appears
+// as a STEP_IN_PROCESS step within the same flow that also contains the
+// channel (#1943 ↗ flow action).  Empty slice when no such flow exists.
 type topicEntityRecord struct {
-	EntityID   string `json:"entity_id"`
-	Name       string `json:"name"`
-	Kind       string `json:"kind"`
-	SourceFile string `json:"source_file"`
-	StartLine  int    `json:"start_line"`
-	Repo       string `json:"repo"`
+	EntityID       string   `json:"entity_id"`
+	Name           string   `json:"name"`
+	Kind           string   `json:"kind"`
+	SourceFile     string   `json:"source_file"`
+	StartLine      int      `json:"start_line"`
+	Repo           string   `json:"repo"`
+	FlowProcessIDs []string `json:"flow_process_ids"`
 }
 
 // topicDetailResponse is the wire shape for GET /api/topology/{group}/topic/{topicId}.
@@ -161,6 +166,31 @@ func buildTopicDetail(grp *DashGroup, groupName, topicID string) (topicDetailRes
 
 	producers := resolveEntityRecords(grp, topicRepoSlug, rawProducerIDs)
 	consumers := resolveEntityRecords(grp, topicRepoSlug, rawConsumerIDs)
+
+	// Populate FlowProcessIDs for each producer/consumer so the ↗ flow action
+	// on the topology right panel can deep-link to the relevant flow (#1943).
+	topicPrefixed := dashPrefixedID(topicRepoSlug, topicEnt.ID)
+	for i := range producers {
+		flowIDs := findFlowsForEntityAndTopic(grp,
+			// local entity id extracted from prefixed form
+			func() string { _, l := dashSplitPrefixed(producers[i].EntityID); return l }(),
+			producers[i].EntityID,
+			topicEnt.ID, topicPrefixed,
+		)
+		if len(flowIDs) > 0 {
+			producers[i].FlowProcessIDs = flowIDs
+		}
+	}
+	for i := range consumers {
+		flowIDs := findFlowsForEntityAndTopic(grp,
+			func() string { _, l := dashSplitPrefixed(consumers[i].EntityID); return l }(),
+			consumers[i].EntityID,
+			topicEnt.ID, topicPrefixed,
+		)
+		if len(flowIDs) > 0 {
+			consumers[i].FlowProcessIDs = flowIDs
+		}
+	}
 
 	// Lifecycle is derived from how many edges exist, regardless of whether the
 	// peer entities resolve to known entity records.
@@ -438,13 +468,67 @@ func lookupEntityRecord(grp *DashGroup, repoSlug, localID string) (topicEntityRe
 
 func entityToRecord(repo string, e *graph.Entity) topicEntityRecord {
 	return topicEntityRecord{
-		EntityID:   dashPrefixedID(repo, e.ID),
-		Name:       e.Name,
-		Kind:       dashStripScopePrefix(e.Kind),
-		SourceFile: e.SourceFile,
-		StartLine:  e.StartLine,
-		Repo:       repo,
+		EntityID:       dashPrefixedID(repo, e.ID),
+		Name:           e.Name,
+		Kind:           dashStripScopePrefix(e.Kind),
+		SourceFile:     e.SourceFile,
+		StartLine:      e.StartLine,
+		Repo:           repo,
+		FlowProcessIDs: []string{},
 	}
+}
+
+// findFlowsForEntityAndTopic returns the prefixed Process entity IDs of every
+// flow that has:
+//   - this entity as a STEP_IN_PROCESS step
+//   - the topic entity (by localTopicID or prefixedTopicID) also as a step
+//
+// Used to populate the #1943 ↗ flow action on publisher/subscriber rows.
+func findFlowsForEntityAndTopic(
+	grp *DashGroup,
+	entityLocalID, entityPrefixed string,
+	topicLocalID, topicPrefixed string,
+) []string {
+	// Build: processID → set of step entity ids (local + prefixed both recorded).
+	type stepSet = map[string]struct{}
+	processSteps := make(map[string]stepSet) // processLocalID → {stepIDs}
+	processRepo := make(map[string]string)   // processLocalID → repoSlug
+
+	for _, r := range sortedRepos(grp) {
+		for _, rel := range r.Doc.Relationships {
+			if rel.Kind != stepInProcessEdge {
+				continue
+			}
+			pid := rel.FromID
+			sid := rel.ToID
+			if _, ok := processSteps[pid]; !ok {
+				processSteps[pid] = make(stepSet)
+				processRepo[pid] = r.Slug
+			}
+			processSteps[pid][sid] = struct{}{}
+			// Also record prefixed versions so we match both forms.
+			processSteps[pid][dashPrefixedID(r.Slug, sid)] = struct{}{}
+		}
+	}
+
+	var out []string
+	for pid, steps := range processSteps {
+		hasEntity := false
+		hasTopic := false
+		for sid := range steps {
+			if sid == entityLocalID || sid == entityPrefixed {
+				hasEntity = true
+			}
+			if sid == topicLocalID || sid == topicPrefixed {
+				hasTopic = true
+			}
+		}
+		if hasEntity && hasTopic {
+			slug := processRepo[pid]
+			out = append(out, dashPrefixedID(slug, pid))
+		}
+	}
+	return out
 }
 
 // resolveTestEntities finds entities that have a TESTS relationship pointing at

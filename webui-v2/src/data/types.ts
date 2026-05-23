@@ -404,6 +404,9 @@ export interface TopologyEntityRef {
   source_file: string;
   start_line: number;
   repo: string;
+  /** Prefixed Process entity IDs of flows that contain both this entity and
+   *  the channel as steps — powers the ↗ flow action (#1943). */
+  flow_process_ids?: string[];
 }
 
 /** Detailed channel view — GET /api/topology/:group/topic/:topicId.

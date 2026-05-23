@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Map as MapIcon,
   LayoutList,
+  ArrowUpRight,
 } from "lucide-react";
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -28,6 +29,8 @@ import { SearchInput } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { RefLine } from "@/components/RefLine";
+import { RepoChip } from "@/lib/repo-color";
 import {
   useTopology,
   useTopologyDetail,
@@ -243,31 +246,18 @@ function LifecycleChip({
 }
 
 // ---------------------------------------------------------------------------
-// § RepoChip
+// § RepoChip (topology-local)
 // ---------------------------------------------------------------------------
 
-function RepoChip({
+// Repo chip now delegates to the shared repo-color resolver (#1946).
+function LocalRepoChip({
   repo,
-  crossRepo = false,
   className,
 }: {
   repo: string;
-  crossRepo?: boolean;
   className?: string;
 }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center h-5 px-2 rounded-full text-xs font-mono border",
-        crossRepo
-          ? "border-[#a78bfa55] bg-[#a78bfa18] text-[#a78bfa]"
-          : "border-border bg-surface-2 text-text-3",
-        className,
-      )}
-    >
-      {repo}
-    </span>
-  );
+  return <RepoChip slug={repo} className={className} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -999,7 +989,7 @@ function ListRow({
       {/* Status */}
       <LifecycleChip state={channel.lifecycle_state} className="justify-self-start" />
       {/* Repo */}
-      <RepoChip repo={channel.repo} className="justify-self-end max-w-full truncate" />
+      <LocalRepoChip repo={channel.repo} className="justify-self-end max-w-full truncate" />
     </button>
   );
 }
@@ -1054,16 +1044,32 @@ function DetailSection({
   count,
   children,
   empty,
+  infoText,
 }: {
   label: string;
   count?: number;
   children?: React.ReactNode;
   empty?: string;
+  /** Optional (i) tooltip shown next to the label. */
+  infoText?: string;
 }) {
   return (
     <div className="border-t border-border pt-3 mt-3">
       <div className="flex items-center gap-1.5 mb-2 text-md font-medium text-text-2">
         <span>{label}</span>
+        {infoText && (
+          <span
+            className="inline-flex items-center justify-center text-text-4 hover:text-accent transition-colors cursor-help"
+            title={infoText}
+            aria-label={`About ${label}`}
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden fill="none">
+              <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2" />
+              <line x1="6.5" y1="5.5" x2="6.5" y2="9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <circle cx="6.5" cy="3.8" r="0.65" fill="currentColor" />
+            </svg>
+          </span>
+        )}
         {count !== undefined && (
           <span className="ml-auto text-xs text-text-4 tabular-nums">{count}</span>
         )}
@@ -1083,7 +1089,7 @@ function EntityList({ ids }: { ids: string[] }) {
         const repo = parts.length > 1 ? parts[0] : null;
         return (
           <div key={id} className="flex items-center gap-2 text-sm">
-            {repo && <RepoChip repo={repo} className="text-[10px]" />}
+            {repo && <LocalRepoChip repo={repo} className="text-[10px]" />}
             <span className="font-mono text-text truncate">{name}</span>
           </div>
         );
@@ -1094,69 +1100,103 @@ function EntityList({ ids }: { ids: string[] }) {
 
 /**
  * Renders a list of producer/consumer entries from the topic-detail endpoint.
- * Each entry shows the real function/class NAME, its kind, a clickable
- * source_file:line ("Open source" deep-link), and repo. Handles both the rich
- * entity-object shape (detail endpoint) and the plain id-string shape (#1583).
  *
- * `verb` is the action this side performs on the channel ("publishes" /
- * "subscribes"), surfaced so the panel says what the entity does, not just who.
+ * #1943 redesign:
+ *   - Primary text: entity name (large, regular) + kind chip right-aligned
+ *   - Secondary line: RefLine (repo chip + file:line) — clickable to open source
+ *   - Right-side ↗ flow button — navigates to cross-stack flow containing this
+ *     entity + channel as a bridge step (from flow_process_ids on the record)
+ *   - Unresolved entities show muted hash with tooltip
+ *   - Drop the "publishes/subscribes this channel" verb subtitle
  */
 function EntityRefList({
   entries,
-  verb,
+  groupId,
 }: {
   entries: (TopologyEntityRef | string)[];
-  verb: "publishes" | "subscribes";
+  groupId: string;
 }) {
   if (!entries || entries.length === 0) return null;
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {entries.map((entry, i) => {
         const ref: DisplayRef =
           typeof entry === "string" ? idToDisplay(entry) : refToDisplay(entry);
-        const href = editorHref(ref.sourceFile, ref.startLine);
-        const fileRef = ref.sourceFile
-          ? `${shortFile(ref.sourceFile)}${ref.startLine ? `:${ref.startLine}` : ""}`
-          : null;
+        const isUnresolved = ref.kind === "unresolved" || (!ref.name && !ref.sourceFile);
+        const flowProcessIds: string[] =
+          typeof entry !== "string" ? (entry.flow_process_ids ?? []) : [];
+        const firstFlowId = flowProcessIds[0] ?? null;
+
         return (
           <div
             key={ref.entityId || i}
-            className="rounded-md border border-border bg-surface px-2.5 py-1.5"
+            className={cn(
+              "rounded-md border bg-surface px-2.5 py-2",
+              isUnresolved ? "border-border/60 opacity-70" : "border-border",
+            )}
           >
+            {/* Row 1: name + kind chip + ↗ flow */}
             <div className="flex items-center gap-2 min-w-0">
-              <span className="font-mono text-sm text-text truncate flex-1" title={ref.name}>
-                {ref.name}
-              </span>
+              {isUnresolved ? (
+                <span
+                  className="font-mono text-xs text-text-4 truncate flex-1"
+                  title="Synthetic publisher (no resolved entity)"
+                >
+                  {ref.name || ref.entityId}
+                </span>
+              ) : (
+                <span
+                  className="text-sm font-medium text-text truncate flex-1"
+                  title={ref.name}
+                >
+                  {ref.name}
+                </span>
+              )}
               {ref.kind && ref.kind !== "unresolved" && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-4 border border-border shrink-0">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-4 border border-border shrink-0 tabular-nums">
                   {ref.kind}
                 </span>
               )}
-              {ref.repo && <RepoChip repo={ref.repo} className="text-[10px] shrink-0" />}
-            </div>
-            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-text-4 min-w-0">
-              <span className="shrink-0">{verb} this channel</span>
-              {fileRef && (
-                <>
-                  <span className="text-text-4/60">·</span>
-                  {href ? (
-                    <a
-                      href={href}
-                      className="font-mono text-accent hover:underline truncate inline-flex items-center gap-1"
-                      title={`Open ${ref.sourceFile}:${ref.startLine ?? ""}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ExternalLink size={9} className="shrink-0" />
-                      {fileRef}
-                    </a>
-                  ) : (
-                    <span className="font-mono truncate" title={ref.sourceFile}>
-                      {fileRef}
-                    </span>
+              {/* ↗ flow action — links to first matching flow */}
+              {firstFlowId && (
+                <a
+                  href={`/g/${groupId}/flows?flow=${encodeURIComponent(firstFlowId)}`}
+                  title={
+                    flowProcessIds.length > 1
+                      ? `Open in flow (${flowProcessIds.length} flows available)`
+                      : "Open in flow"
+                  }
+                  className={cn(
+                    "shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded",
+                    "text-[10px] font-medium text-accent border border-accent/30",
+                    "hover:bg-accent/10 transition-colors",
                   )}
-                </>
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ArrowUpRight size={10} />
+                  {flowProcessIds.length > 1 ? `${flowProcessIds.length} flows` : "flow"}
+                </a>
               )}
             </div>
+
+            {/* Row 2: RefLine (repo chip + file:line) */}
+            {!isUnresolved && ref.sourceFile && (
+              <div className="mt-1 -mx-1">
+                <RefLine
+                  repo={ref.repo ?? ""}
+                  file={ref.sourceFile}
+                  line={ref.startLine ?? 0}
+                  name=""
+                  title={`${ref.repo ?? ""} · ${ref.sourceFile}:${ref.startLine ?? ""}`}
+                  className="text-[11px] py-0.5 px-1"
+                />
+              </div>
+            )}
+            {isUnresolved && (
+              <p className="mt-0.5 text-[10px] text-text-4 italic">
+                Synthetic publisher (no resolved entity)
+              </p>
+            )}
           </div>
         );
       })}
@@ -1221,7 +1261,7 @@ function DetailPanel({
           >
             {channel.broker_canonical}
           </span>
-          <RepoChip repo={channel.repo} />
+          <LocalRepoChip repo={channel.repo} />
           <LifecycleChip state={channel.lifecycle_state} />
           {channel.cross_repo && (
             <span className="inline-flex items-center h-5 px-2 rounded border-dashed border border-[#a78bfa] text-[#a78bfa] text-xs">
@@ -1307,6 +1347,7 @@ function DetailPanel({
         <DetailSection
           label="Publishers"
           count={producerEntries.length}
+          infoText="Code that emits messages on this channel. Click ↗ flow to see the cross-stack flow it starts."
           empty={
             producerEntries.length === 0
               ? "No publishers found in indexed code — this is the orphan-subscriber signal."
@@ -1314,7 +1355,7 @@ function DetailPanel({
           }
         >
           {producerEntries.length > 0 ? (
-            <EntityRefList entries={producerEntries} verb="publishes" />
+            <EntityRefList entries={producerEntries} groupId={groupId} />
           ) : null}
         </DetailSection>
 
@@ -1322,6 +1363,7 @@ function DetailPanel({
         <DetailSection
           label="Subscribers"
           count={consumerEntries.length}
+          infoText="Code that consumes messages from this channel. Click ↗ flow to trace the full cross-stack path."
           empty={
             consumerEntries.length === 0
               ? "No subscribers found in indexed code — this is the orphan-publisher signal."
@@ -1329,7 +1371,7 @@ function DetailPanel({
           }
         >
           {consumerEntries.length > 0 ? (
-            <EntityRefList entries={consumerEntries} verb="subscribes" />
+            <EntityRefList entries={consumerEntries} groupId={groupId} />
           ) : null}
         </DetailSection>
 
@@ -1467,7 +1509,7 @@ function OrphanPublisherTab({ groupId }: { groupId: string }) {
             <span className="text-xs px-2 py-0.5 rounded-full bg-amber-950/30 text-amber-300 border border-amber-700/40 shrink-0">
               no subscriber found
             </span>
-            <RepoChip repo={e.repo} />
+            <LocalRepoChip repo={e.repo} />
           </div>
         );
       })}
@@ -1536,7 +1578,7 @@ function OrphanSubscriberTab({ groupId }: { groupId: string }) {
                 ? "publisher in external lib"
                 : "no publisher found"}
             </span>
-            <RepoChip repo={e.repo} />
+            <LocalRepoChip repo={e.repo} />
           </div>
         );
       })}
@@ -1584,7 +1626,7 @@ function ScheduledTab({ channels }: { channels: FlatChannel[] }) {
               {ch.framework}
             </span>
           )}
-          <RepoChip repo={ch.repo} />
+          <LocalRepoChip repo={ch.repo} />
         </div>
       ))}
     </div>
