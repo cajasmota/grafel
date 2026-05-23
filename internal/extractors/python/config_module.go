@@ -131,6 +131,14 @@ func emitConfigModuleEntity(root *sitter.Node, file extractor.FileInput, out *[]
 		props["top_level_symbols"] = strings.Join(symbolNames, ",")
 	}
 
+	// Issue #1964 — emit the real file end line so the docgen
+	// source_window helper can excerpt the entire settings/manage/celery
+	// module body instead of clipping at line 1. The config_module entity
+	// represents the whole file; its boundary is the file boundary.
+	endLine := int(root.EndPoint().Row) + 1
+	if endLine < 1 {
+		endLine = 1
+	}
 	rec := types.EntityRecord{
 		Name:          shortName,
 		QualifiedName: qualName,
@@ -139,7 +147,7 @@ func emitConfigModuleEntity(root *sitter.Node, file extractor.FileInput, out *[]
 		Language:      "python",
 		SourceFile:    file.Path,
 		StartLine:     1,
-		EndLine:       1,
+		EndLine:       endLine,
 		Signature:     "# " + base,
 		Properties:    props,
 	}

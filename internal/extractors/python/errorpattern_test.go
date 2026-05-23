@@ -68,8 +68,11 @@ func TestErrorPatternPy_SingleTry(t *testing.T) {
 	if p.StartLine != 2 {
 		t.Errorf("StartLine = %d, want 2", p.StartLine)
 	}
-	if p.EndLine != 2 {
-		t.Errorf("EndLine = %d, want 2", p.EndLine)
+	// Issue #1964 — end_line is the real AST end line (last line of the
+	// try/except block), not start_line. Source has try on line 2 and
+	// the except clause runs through line 5.
+	if p.EndLine != 5 {
+		t.Errorf("EndLine = %d, want 5 (real AST end, #1964)", p.EndLine)
 	}
 	if p.Language != "python" {
 		t.Errorf("Language = %q, want %q", p.Language, "python")

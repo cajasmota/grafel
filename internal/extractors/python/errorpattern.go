@@ -63,12 +63,19 @@ func extractErrorHandlingPatterns(root *sitter.Node, filePath string) []types.En
 		}
 		if n.Type() == "try_statement" {
 			line := int(n.StartPoint().Row) + 1
+			// Issue #1964 — emit the real end line from the AST node so the
+			// docgen source_window helper can excerpt the full try/except
+			// block instead of clipping at start_line.
+			endLine := int(n.EndPoint().Row) + 1
+			if endLine < line {
+				endLine = line
+			}
 			records = append(records, types.EntityRecord{
 				Name:       fmt.Sprintf("error_handling:try_catch:%d", line),
 				Kind:       "SCOPE.Pattern",
 				SourceFile: filePath,
 				StartLine:  line,
-				EndLine:    line,
+				EndLine:    endLine,
 				Language:   "python",
 				Metadata: map[string]interface{}{
 					"pattern_type": "error_handling",

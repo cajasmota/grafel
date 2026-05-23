@@ -346,6 +346,45 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		applyDeadImports(file, &entities, publicNames)
 	}()
 
+	// Issue #1964 + #1966 — final safety net for line-bound + language
+	// emission. Every entity emitted by ANY pass (primary walk, error
+	// patterns, imports, config_module, constraints, package_module, …)
+	// MUST carry:
+	//   - Language="python"                          (#1966)
+	//   - StartLine > 0                              (#1964)
+	//   - EndLine   > 0                              (#1964)
+	//
+	// Earlier waves observed end_line=0 sentinels on Operations/Classes/
+	// Configs/Modules/Signal-handlers in production reindex output even
+	// though buildClass / buildFunction set non-zero values themselves
+	// (issue1964_endline_test covered those paths). The leaks came from
+	// (a) entities synthesised by supplemental passes (#1709 constraint
+	// emission used file.Language which is "" when the caller doesn't
+	// stamp it; errorpattern.go used StartLine for EndLine; config_module
+	// hard-coded EndLine=1), (b) future passes that forget to set both
+	// fields. A single finalize sweep makes the extractor's contract
+	// uniform: no entity leaves Extract with EndLine=0 or Language="".
+	//
+	// We use a conservative file-end fallback for EndLine. The bundle-side
+	// by-name fallback (#1987) still rebinds to the real source location
+	// when the original boundary was unknown; this sentinel scrub keeps
+	// downstream renderers (source_window, mcp/tools.go) safe.
+	fileEnd := int(root.EndPoint().Row) + 1
+	if fileEnd < 1 {
+		fileEnd = 1
+	}
+	for i := range entities {
+		if entities[i].Language == "" {
+			entities[i].Language = "python"
+		}
+		if entities[i].StartLine == 0 {
+			entities[i].StartLine = 1
+		}
+		if entities[i].EndLine == 0 {
+			entities[i].EndLine = fileEnd
+		}
+	}
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("function_count", functionCount),
@@ -1748,12 +1787,15 @@ func extractMetaConstraintEntities(
 				}
 
 				// Emit the SCOPE.Constraint entity.
+				// Issue #1966 — set Language explicitly to "python" instead
+				// of relying on file.Language (which is unset on some caller
+				// paths and would emit an empty Language string).
 				constRec := types.EntityRecord{
 					Name:       qualifiedName,
 					Kind:       "SCOPE.Constraint",
 					Subtype:    constraintSubtype,
 					SourceFile: file.Path,
-					Language:   file.Language,
+					Language:   "python",
 					StartLine:  int(call.StartPoint().Row) + 1,
 					EndLine:    int(call.EndPoint().Row) + 1,
 					Properties: map[string]string{
