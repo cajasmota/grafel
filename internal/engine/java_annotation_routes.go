@@ -273,6 +273,91 @@ func extractParamTypeAndName(p string) (typ, name string) {
 	return typ, name
 }
 
+// extractJavaReturnType pulls the return-type token from a Java method
+// declaration line and returns it as a simple type name (without generics,
+// arrays, or `Response`/`ResponseEntity<…>` framework wrappers unwrapped).
+//
+// Refs #1935 Phase 1 — used to surface the response DTO type on the
+// endpoint entity so the dashboard can render a ShapeTree subtree under
+// the Response section.
+//
+// The strategy is: take the substring before " <methodName>(", strip
+// leading modifiers, and return what remains. When the return type is a
+// framework wrapper that holds a payload generically (e.g.
+// `ResponseEntity<LoginResponse>`, `Response<LoginResponse>`, Mono/Flux,
+// CompletableFuture, Uni, Multi), unwrap one level of generics.
+//
+// Returns "" for void, framework-noisy types, or unparseable lines.
+func extractJavaReturnType(line, methodName string) string {
+	openIdx := strings.Index(line, methodName+"(")
+	if openIdx < 0 {
+		return ""
+	}
+	head := strings.TrimSpace(line[:openIdx])
+	if head == "" {
+		return ""
+	}
+	// Strip leading modifiers.
+	modifiers := map[string]bool{
+		"public": true, "protected": true, "private": true,
+		"static": true, "final": true, "abstract": true,
+		"synchronized": true, "default": true, "native": true,
+	}
+	tokens := strings.Fields(head)
+	for len(tokens) > 0 && modifiers[tokens[0]] {
+		tokens = tokens[1:]
+	}
+	if len(tokens) == 0 {
+		return ""
+	}
+	ret := strings.Join(tokens, " ")
+	// Drop generic-method type parameters: `<T> T foo()` → strip the leading
+	// `<T>` (heuristic: starts with `<`, find the matching `>`).
+	if strings.HasPrefix(ret, "<") {
+		depth := 1
+		i := 1
+		for i < len(ret) && depth > 0 {
+			switch ret[i] {
+			case '<':
+				depth++
+			case '>':
+				depth--
+			}
+			i++
+		}
+		if depth == 0 && i < len(ret) {
+			ret = strings.TrimSpace(ret[i:])
+		}
+	}
+	// Unwrap one level of common framework wrappers (Response<T>,
+	// ResponseEntity<T>, CompletableFuture<T>, Mono<T>, Flux<T>, Uni<T>,
+	// Multi<T>, Optional<T>).
+	for _, w := range []string{
+		"ResponseEntity", "CompletableFuture", "Mono", "Flux",
+		"Uni", "Multi", "Optional", "Response",
+	} {
+		prefix := w + "<"
+		if strings.HasPrefix(ret, prefix) && strings.HasSuffix(ret, ">") {
+			inner := strings.TrimSpace(ret[len(prefix) : len(ret)-1])
+			if inner != "" {
+				ret = inner
+			}
+			break
+		}
+	}
+	// Reject framework-noisy wrappers we did NOT unwrap (bare `Response`,
+	// `void`, generic raw collections of unknown element type).
+	if isJavaNoisyType(ret) || ret == "void" {
+		return ""
+	}
+	// Strip array suffix `[]` so we resolve the element type.
+	ret = strings.TrimSuffix(ret, "[]")
+	// Strip trailing generics for the simple-name surface: `List<Foo>` →
+	// keep as-is (dashboard will display the full token), but `Foo<Bar>`
+	// without a known wrapper above should remain so callers can decide.
+	return strings.TrimSpace(ret)
+}
+
 // ApplyJavaAnnotationRoutesWithContext is the auth-aware variant of
 // ApplyJavaAnnotationRoutes. The JavaAuthContext supplies project-wide
 // signals (Quarkus security extension + application.properties permission
@@ -466,7 +551,16 @@ func extractJavaEndpointsWithAuth(src, relPath string, authCtx JavaAuthContext) 
 				// in valid Java but harmless to skip).
 				continue
 			}
+			// Refs #1935 Phase 1 — extract the return type from the method
+			// declaration so the endpoint can surface a `response_type`
+			// property used by the ShapeTree response subtree.
+			returnType := extractJavaReturnType(line, methodName)
 			eps := buildMethodEndpointsWithAuth(cur, methodName, paramFrag, methodAnnos, lineNo, relPath, authCtx)
+			for i := range eps {
+				if returnType != "" && eps[i].Properties != nil {
+					eps[i].Properties["response_type"] = returnType
+				}
+			}
 			out = append(out, eps...)
 			continue
 		}

@@ -793,6 +793,14 @@ export interface PathParameter {
   desc: string;
   /** Verbs this param applies to (for verb filter). */
   verbs?: HttpVerb[];
+  /**
+   * Refs #1935 Phase 1 — when the parameter type resolves to a known
+   * class entity in the group, type_entity_id is the prefixed entity
+   * id and has_children indicates the ShapeTree expand glyph should
+   * render. Both undefined for primitive / unresolved parameter types.
+   */
+  type_entity_id?: string;
+  has_children?: boolean;
 }
 
 /** Response shape per verb in the detail pane. */
@@ -801,6 +809,37 @@ export interface ResponseShape {
   status_codes: number[];
   keys: string[];
   dynamic?: boolean;
+  /**
+   * Refs #1935 Phase 1 — when the handler's return type resolves to a
+   * user-defined DTO, type_name is the simple-name token (rendered as
+   * the shape header) and type_entity_id + has_children drive the
+   * ShapeTree expansion exactly like PathParameter.
+   */
+  type_name?: string;
+  type_entity_id?: string;
+  has_children?: boolean;
+}
+
+/**
+ * Refs #1935 Phase 1 — one row in a ShapeTree subtree, returned by
+ * GET /api/v2/groups/:id/shape?type_entity_id=… . Each row corresponds
+ * to a field of the requested class entity.
+ */
+export interface ShapeRow {
+  name: string;
+  type: string;
+  annotations?: string[];
+  nullable?: boolean;
+  type_entity_id?: string;
+  has_children: boolean;
+}
+
+/** Response from GET /api/v2/groups/:id/shape. */
+export interface ShapeResponse {
+  type_entity_id: string;
+  type_name: string;
+  subtype?: string;
+  rows: ShapeRow[];
 }
 
 /** One handler implementation in the detail. */
