@@ -515,6 +515,8 @@ export default function GraphScreen() {
               traversedEdges={new Set(replay.snapshot.traversedEdges)}
               running={replay.snapshot.running}
               paused={replay.snapshot.paused}
+              phase={replay.snapshot.phase}
+              glowProgress={replay.snapshot.glowProgress}
               reducedMotion={replay.reducedMotion}
               highlightedNodeIds={jarvis.enabled ? jarvis.highlightedNodeIds : undefined}
               className="z-20"

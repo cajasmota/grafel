@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createFlowAnim,
+  createCallFlowAnim,
   type FlowAnimController,
   type FlowAnimSnapshot,
   useFlowAnim,
@@ -38,24 +38,32 @@ import type { JarvisStep } from "@/components/graph/graph-jarvis-overlay";
 // Storage keys are graph-scoped so flow + graph preferences don't clobber.
 const SPEED_KEY = "archigraph:graph:speed";
 
+// #1953 — speed table for the two-phase model. Per-call total time at each
+// multiplier (sweep+glow+gap = ~650ms / mult). The 4× option was added by
+// owner request for true rapid playback during long replays.
 export const GRAPH_SPEEDS: Array<{ key: string; mult: number; label: string }> = [
   { key: "0.5", mult: 0.5, label: "0.5×" },
   { key: "1", mult: 1, label: "1×" },
   { key: "2", mult: 2, label: "2×" },
+  { key: "4", mult: 4, label: "4×" },
 ];
 
-// Default base speeds — matches #1932 spec (300ms regular / 450ms bridge).
-const BASE_EDGE_MS = 300;
-const BRIDGE_EDGE_MS = 450;
-// Inter-call delay (between two MCP-event boundaries). Within a single event's
-// chain we keep the engine's default 90ms inter-step.
-const INTER_CALL_MS = 220;
+// #1953 default phase budgets (at 1×). One step == one MCP call.
+const SWEEP_MS = 200;
+const GLOW_MS = 300;
+const INTER_CALL_MS = 150;
 
 export interface UseGraphJarvisReplayOpts {
   eventLog: MCPActivityEvent[];
   /** Per-entry replay handler (the existing glow path). */
   onReplayEvent: (event: MCPActivityEvent) => void;
-  /** Map node-id pair → bridge? (resolves cross-repo edges). */
+  /**
+   * NOTE: pre-#1953 this was used to slow the comet over cross-repo bridges.
+   * In the two-phase model the sweep runs at constant velocity across the
+   * whole polyline; bridges remain visually distinct via the static dashed
+   * stroke in graph-jarvis-overlay. The opt is retained for API back-compat
+   * but is no longer consulted by the engine.
+   */
   isBridgeEdge?: (src: string, tgt: string) => boolean;
 }
 
@@ -83,20 +91,26 @@ export interface UseGraphJarvisReplayReturn {
 export function useGraphJarvisReplay(
   opts: UseGraphJarvisReplayOpts,
 ): UseGraphJarvisReplayReturn {
-  const { eventLog, onReplayEvent, isBridgeEdge } = opts;
+  const { eventLog, onReplayEvent } = opts;
   const reducedMotion = usePrefersReducedMotion();
 
-  // ── Build the step timeline ───────────────────────────────────────────────
+  // ── Build the step timeline (#1953 — one step per MCP CALL) ──────────────
+  // Each step packs ALL returned node ids for that call as a polyline. The
+  // overlay renders Phase 1 (sweep) along this polyline and Phase 2 (glow)
+  // on every node simultaneously. We still cap each call's polyline at 50
+  // hits to keep the sweep readable and the SVG light.
   const steps = useMemo<JarvisStep[]>(() => {
     const out: JarvisStep[] = [];
     eventLog.forEach((ev, evIdx) => {
       const ids = ev.returned_node_ids ?? [];
-      // Cap each event's contribution so a pathological response (thousands of
-      // ids) can't blow the timeline; the comet still walks the first 50 hits.
       const capped = ids.slice(0, 50);
-      for (const id of capped) {
-        out.push({ nodeId: id, eventIdx: evIdx, label: ev.tool_name });
-      }
+      if (capped.length === 0) return;
+      out.push({
+        nodeId: capped[0],
+        nodeIds: capped,
+        eventIdx: evIdx,
+        label: ev.tool_name,
+      });
     });
     return out;
   }, [eventLog]);
@@ -129,37 +143,8 @@ export function useGraphJarvisReplay(
   }, []);
   const speedMult = GRAPH_SPEEDS.find((s) => s.key === speedKey)?.mult ?? 1;
 
-  // ── Step-index → eventIdx map (used to fire the per-event glow on arrival
-  //    AT the FIRST node of each event). We don't fire the existing glow path
-  //    for every node — only at event boundaries — so we don't spam the
-  //    daemon on a multi-node response. The MCP glow already lights the full
-  //    set when the event fires.
-  const firstStepOfEventRef = useRef<Map<number, number>>(new Map());
-  useEffect(() => {
-    const m = new Map<number, number>();
-    steps.forEach((s, i) => {
-      if (!m.has(s.eventIdx)) m.set(s.eventIdx, i);
-    });
-    firstStepOfEventRef.current = m;
-  }, [steps]);
-
-  // ── isBridge resolver passed to the engine ───────────────────────────────
-  // edgeIdx in the engine == target step index (≥ 1). We resolve the two
-  // node ids that the comet rides between and ask the canvas if that pair
-  // crosses repos. When the canvas handle isn't wired yet we conservatively
-  // return false (regular ~300ms edge).
-  const isBridgeEdgeRef = useRef(isBridgeEdge);
-  isBridgeEdgeRef.current = isBridgeEdge;
   const stepsRef = useRef(steps);
   stepsRef.current = steps;
-
-  const resolveBridge = useCallback((edgeIdx: number): boolean => {
-    const s = stepsRef.current;
-    if (edgeIdx <= 0 || edgeIdx >= s.length) return false;
-    const fn = isBridgeEdgeRef.current;
-    if (!fn) return false;
-    return fn(s[edgeIdx - 1].nodeId, s[edgeIdx].nodeId);
-  }, []);
 
   // ── Controller lifecycle ─────────────────────────────────────────────────
   // We recreate the controller whenever the timeline LENGTH changes; mid-run
@@ -211,24 +196,23 @@ export function useGraphJarvisReplay(
       controllerRef.current.reset();
       controllerRef.current = null;
     }
-    if (totalSteps >= 2) {
-      const c = createFlowAnim({
-        totalSteps,
-        isBridgeEdge: resolveBridge,
-        baseEdgeMs: BASE_EDGE_MS,
-        bridgeEdgeMs: BRIDGE_EDGE_MS,
-        interStepMs: INTER_CALL_MS,
+    if (totalSteps >= 1) {
+      // #1953 two-phase engine: step = one MCP call. onArrive fires at the
+      // START of Phase 2 (the glow burst) — one daemon-glow + one audio blip
+      // per call, NOT per returned node.
+      const c = createCallFlowAnim({
+        totalCalls: totalSteps,
+        sweepMs: SWEEP_MS,
+        glowMs: GLOW_MS,
+        interCallMs: INTER_CALL_MS,
         speed: speedMult,
         reducedMotion: reducedMotionRef.current,
       });
       c.setOnArrive((stepIdx) => {
         const s = stepsRef.current[stepIdx];
         if (!s) return;
-        const firstIdx = firstStepOfEventRef.current.get(s.eventIdx);
-        if (firstIdx === stepIdx) {
-          const ev = eventLogRef.current[s.eventIdx];
-          if (ev) onReplayEventRef.current(ev);
-        }
+        const ev = eventLogRef.current[s.eventIdx];
+        if (ev) onReplayEventRef.current(ev);
         if (audioOnRef.current) playStepBlip();
       });
       controllerRef.current = c;
@@ -297,6 +281,8 @@ const IDLE_SNAPSHOT: FlowAnimSnapshot = {
   lastScrubDir: null,
   running: false,
   paused: false,
+  phase: "idle",
+  glowProgress: 0,
 };
 const IDLE_CONTROLLER: FlowAnimController = {
   subscribe: () => () => {},

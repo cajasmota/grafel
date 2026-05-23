@@ -124,7 +124,10 @@ export const MCPActivityOverlay = memo(function MCPActivityOverlay({
   const isReplaying = replaySnapshot.running || replaySnapshot.paused;
   const scrubberVisible =
     isReplaying || (replayController !== null && replaySnapshot.playhead > 0);
-  const canReplay = !!replayController && replaySteps.length >= 2;
+  // #1953: one step = one MCP call, so as little as a single call is replayable
+  // (sweep + glow burst). Pre-#1953 this required >=2 because steps were
+  // node-arrivals and you need 2 to have an edge.
+  const canReplay = !!replayController && replaySteps.length >= 1;
   const startOrStop = useCallback(() => {
     if (!replayController) return;
     if (isReplaying) {

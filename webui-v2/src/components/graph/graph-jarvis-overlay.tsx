@@ -33,13 +33,19 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { GraphCanvasHandle } from "./graph-canvas";
 
-// Shape of one MCP "step" in the replay timeline. A step lights up a NODE;
-// the edge between step i-1 and step i is what the comet rides. When the two
-// nodes are not directly connected we still draw a straight comet between
-// them (visual cue that the agent jumped between investigations).
+// Shape of one MCP "step" in the replay timeline (#1953 two-phase model).
+//
+// One step == one MCP CALL. Phase 1 sweeps a phantom arrow along the entire
+// `nodeIds` polyline; Phase 2 pulses every node in `nodeIds` simultaneously.
+//
+// `nodeId` is retained as a convenience (= first node, used for legacy
+// labelling like the scrubber tooltip) but the renderer should iterate
+// `nodeIds` for both sweep and glow.
 export interface JarvisStep {
-  /** The node id the agent is "arriving at" on this step. */
+  /** The PRIMARY node id (first hit) — kept for legacy label sites. */
   nodeId: string;
+  /** All returned node ids for this call, in order. Drives sweep + glow. */
+  nodeIds: string[];
   /** Which MCP event index in the activity log this step came from. */
   eventIdx: number;
   /** Optional label (tool name) shown in scrubber hover. */
@@ -49,19 +55,23 @@ export interface JarvisStep {
 export interface GraphJarvisOverlayProps {
   /** The graph canvas (used to resolve screen positions on each frame). */
   canvasHandle: GraphCanvasHandle | null;
-  /** Replay timeline. */
+  /** Replay timeline (one entry per MCP call). */
   steps: JarvisStep[];
-  /** Index of the step the comet is heading TO. -1 = idle. */
+  /** Index of the MCP call in flight. -1 = idle. */
   currentTarget: number;
-  /** 0..1 progress along the current edge. */
+  /** 0..1 progress of the Phase 1 sweep along the call's polyline. */
   edgeProgress: number;
-  /** Edge indices already traversed (i.e. target step idx). */
+  /** Completed call indices (drives trail tint). */
   traversedEdges: ReadonlySet<number>;
-  /** True while a comet is in flight (not paused / idle). */
+  /** True while a replay is in flight (not paused / idle). */
   running: boolean;
-  /** True while paused mid-flow (comet frozen). */
+  /** True while paused mid-flow. */
   paused: boolean;
-  /** Disable comet + pulse + bounce (chevrons + tint stay). */
+  /** #1953 — current phase of the in-flight call. */
+  phase?: "idle" | "sweep" | "glow" | "gap";
+  /** #1953 — 0..1 decay of the Phase 2 glow burst. */
+  glowProgress?: number;
+  /** Disable Phase 1 sweep + size animation (Phase 2 glow still fires statically). */
   reducedMotion?: boolean;
   /** Highlighted nodes (from useGraphHighlight) — drives chevron density. */
   highlightedNodeIds?: ReadonlySet<string>;
@@ -102,6 +112,8 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
   traversedEdges,
   running,
   paused,
+  phase = "idle",
+  glowProgress = 0,
   reducedMotion = false,
   highlightedNodeIds,
   className = "",
@@ -159,9 +171,9 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
 
   if (!canvasHandle) return null;
 
-  // Project the union of: every step node + every highlighted node.
+  // Project the union of: every node in every step + every highlighted node.
   const ids = new Set<string>();
-  for (const s of steps) ids.add(s.nodeId);
+  for (const s of steps) for (const id of s.nodeIds) ids.add(id);
   if (highlightedNodeIds) for (const id of highlightedNodeIds) ids.add(id);
   const projected = projectNodes(canvasHandle, ids);
 
@@ -176,42 +188,166 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
     if (chevronEdges.length >= CHEVRON_BUDGET) break;
   }
 
-  // Trail (traversed) edge geometry: for each traversed step index i, the
-  // edge i-1 → i. Both endpoints must be projected.
-  const trail: Array<{
-    x1: number; y1: number; x2: number; y2: number; bridge: boolean;
-  }> = [];
-  for (const ti of traversedEdges) {
-    if (ti <= 0 || ti >= steps.length) continue;
-    const a = projected.get(steps[ti - 1].nodeId);
-    const b = projected.get(steps[ti].nodeId);
-    if (!a || !b) continue;
-    const bridge = canvasHandle.isBridgeEdge(steps[ti - 1].nodeId, steps[ti].nodeId);
-    trail.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, bridge });
+  // ── Per-step polyline geometry ──────────────────────────────────────────
+  // For each call (step), build the array of projected points (skipping any
+  // node we couldn't project — view culled / not in current viewport). Each
+  // polyline drives both the Phase 1 sweep (current step) and the trail tint
+  // (completed steps).
+  function polylineFor(step: JarvisStep): { x: number; y: number }[] {
+    const pts: { x: number; y: number }[] = [];
+    for (const id of step.nodeIds) {
+      const p = projected.get(id);
+      if (p) pts.push(p);
+    }
+    return pts;
   }
 
-  // Comet geometry: for the current target edge.
-  let comet: {
-    x1: number; y1: number; x2: number; y2: number;
-    headX: number; headY: number; bridge: boolean;
-  } | null = null;
-  if ((running || paused) && !reducedMotion && currentTarget > 0 && currentTarget < steps.length) {
-    const a = projected.get(steps[currentTarget - 1].nodeId);
-    const b = projected.get(steps[currentTarget].nodeId);
-    if (a && b) {
+  // Cumulative arc-length helpers — used to place trail dashes at FIXED
+  // pixel offsets behind the head along the polyline (not parametric).
+  function cumLengths(pts: { x: number; y: number }[]): number[] {
+    const out: number[] = [0];
+    for (let i = 1; i < pts.length; i++) {
+      const dx = pts[i].x - pts[i - 1].x;
+      const dy = pts[i].y - pts[i - 1].y;
+      out.push(out[i - 1] + Math.hypot(dx, dy));
+    }
+    return out;
+  }
+
+  // Sample a point at arc-length `s` along the polyline.
+  function sampleAt(
+    pts: { x: number; y: number }[],
+    lens: number[],
+    s: number,
+  ): { x: number; y: number } | null {
+    if (pts.length === 0) return null;
+    if (pts.length === 1) return pts[0];
+    const total = lens[lens.length - 1];
+    if (total <= 0) return pts[0];
+    const sc = Math.max(0, Math.min(total, s));
+    // Binary-search-ish linear scan is fine: polylines are ≤ ~50 segments.
+    for (let i = 1; i < lens.length; i++) {
+      if (lens[i] >= sc) {
+        const seg = lens[i] - lens[i - 1];
+        const t = seg === 0 ? 0 : (sc - lens[i - 1]) / seg;
+        return {
+          x: lerp(pts[i - 1].x, pts[i].x, t),
+          y: lerp(pts[i - 1].y, pts[i].y, t),
+        };
+      }
+    }
+    return pts[pts.length - 1];
+  }
+
+  // Trail (completed call polylines): drawn as a faint accent stroke under
+  // the bridges/chevrons. Bridge dashing is preserved from #1932/#1948.
+  type TrailSeg = { x1: number; y1: number; x2: number; y2: number; bridge: boolean };
+  const trail: TrailSeg[] = [];
+  for (const ti of traversedEdges) {
+    if (ti < 0 || ti >= steps.length) continue;
+    const poly = polylineFor(steps[ti]);
+    for (let j = 1; j < poly.length; j++) {
+      const a = poly[j - 1];
+      const b = poly[j];
       const bridge = canvasHandle.isBridgeEdge(
-        steps[currentTarget - 1].nodeId,
-        steps[currentTarget].nodeId,
+        steps[ti].nodeIds[j - 1],
+        steps[ti].nodeIds[j],
       );
-      comet = {
-        x1: a.x,
-        y1: a.y,
-        x2: b.x,
-        y2: b.y,
-        headX: lerp(a.x, b.x, edgeProgress),
-        headY: lerp(a.y, b.y, edgeProgress),
-        bridge,
-      };
+      trail.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, bridge });
+    }
+  }
+
+  // ── Current-call geometry (Phase 1 sweep + Phase 2 glow) ────────────────
+  const inFlight = (running || paused) && currentTarget >= 0 && currentTarget < steps.length;
+  const currentStep = inFlight ? steps[currentTarget] : null;
+  const currentPoly = currentStep ? polylineFor(currentStep) : [];
+  const currentLens = currentPoly.length > 1 ? cumLengths(currentPoly) : [];
+  const currentTotalLen = currentLens.length ? currentLens[currentLens.length - 1] : 0;
+
+  // Phase 1 sweep: phantom-arrow head + 4 trailing dashes at fixed pixel
+  // offsets BEHIND the head. Dashes fade out the older they are.
+  // Trail dash spacing (#1953 spec: ~20px).
+  const TRAIL_DASH_PX = 20;
+  const TRAIL_DASH_COUNT = 4;
+  const TRAIL_DASH_OPACITIES = [0.5, 0.3, 0.15, 0.05];
+
+  type SweepDash = { x: number; y: number; opacity: number; r: number };
+  let sweepHead: { x: number; y: number } | null = null;
+  const sweepDashes: SweepDash[] = [];
+  // Base stroke geometry for the current call (drawn as a faint guide).
+  const currentSegs: TrailSeg[] = [];
+  if (
+    !reducedMotion &&
+    currentStep &&
+    currentPoly.length > 0 &&
+    (phase === "sweep" || (phase === "glow" && currentTotalLen === 0))
+  ) {
+    // Head position at current sweep progress (0..1 of total polyline length).
+    const headS = currentTotalLen * Math.max(0, Math.min(1, edgeProgress));
+    const head = sampleAt(currentPoly, currentLens, headS);
+    if (head) {
+      sweepHead = head;
+      for (let i = 0; i < TRAIL_DASH_COUNT; i++) {
+        const s = headS - (i + 1) * TRAIL_DASH_PX;
+        if (s < 0) break;
+        const p = sampleAt(currentPoly, currentLens, s);
+        if (!p) break;
+        sweepDashes.push({
+          x: p.x,
+          y: p.y,
+          opacity: TRAIL_DASH_OPACITIES[i] ?? 0.05,
+          r: 2.2 - i * 0.35,
+        });
+      }
+    }
+    for (let j = 1; j < currentPoly.length; j++) {
+      const a = currentPoly[j - 1];
+      const b = currentPoly[j];
+      const bridge = canvasHandle.isBridgeEdge(
+        currentStep.nodeIds[j - 1],
+        currentStep.nodeIds[j],
+      );
+      currentSegs.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, bridge });
+    }
+  }
+
+  // Phase 2 glow burst: every node in the current step pulses synchronously.
+  // size: 1.0 → 1.4 → 1.0 with an 80ms hold at peak.
+  //   Peak hold window = first ~80/total of glow progress (peak first).
+  // We model glowProgress 0..1 over the glow duration. With glowMs default
+  // 300ms, hold ratio ≈ 80/300 ≈ 0.27.
+  type GlowDot = { x: number; y: number; sizeMul: number; opacity: number };
+  const glowDots: GlowDot[] = [];
+  const inGlow = inFlight && phase === "glow";
+  if (currentStep && (inGlow || (reducedMotion && inFlight))) {
+    // Curve: ramp up over first ~10%, hold until ~37% (80ms of 300ms),
+    // then ease back to baseline over the remaining 63%. With reduced-
+    // motion: hold at peak the entire phase (no size animation).
+    let mul = 1.0;
+    let op = 1.0;
+    if (reducedMotion) {
+      mul = 1.0; // no size anim
+      op = 1.0;
+    } else {
+      const g = Math.max(0, Math.min(1, glowProgress));
+      const RAMP = 0.1;
+      const HOLD_END = 0.37;
+      if (g < RAMP) {
+        mul = lerp(1.0, 1.4, g / RAMP);
+        op = 1.0;
+      } else if (g < HOLD_END) {
+        mul = 1.4;
+        op = 1.0;
+      } else {
+        const t = (g - HOLD_END) / Math.max(0.0001, 1 - HOLD_END);
+        mul = lerp(1.4, 1.0, t);
+        op = lerp(1.0, 0.0, t);
+      }
+    }
+    for (const id of currentStep.nodeIds) {
+      const p = projected.get(id);
+      if (!p) continue;
+      glowDots.push({ x: p.x, y: p.y, sizeMul: mul, opacity: op });
     }
   }
 
@@ -298,7 +434,9 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
         );
       })}
 
-      {/* ── Trail tint (traversed edges, current replay only) ───────────── */}
+      {/* ── Trail tint (completed call polylines) ─────────────────────────
+          One <line> per polyline segment per completed call. Bridges keep
+          their dashed stroke + bridge-accent color (#1926/#1948 styling). */}
       {trail.map((t, i) => (
         <line
           key={`trail-${i}`}
@@ -310,54 +448,95 @@ export const GraphJarvisOverlay = memo(function GraphJarvisOverlay({
           strokeWidth={t.bridge ? 2.2 : 1.6}
           strokeLinecap="round"
           strokeDasharray={t.bridge ? "5 3" : undefined}
-          opacity={0.55}
+          opacity={0.45}
           markerEnd="url(#ag-graph-chev-accent)"
         />
       ))}
 
-      {/* ── Comet (current in-flight edge) ───────────────────────────────── */}
-      {comet ? (
-        <g>
-          {/* Base stroke under the comet so the edge reads as a path even when
-              there's no real graph edge between the two MCP hits. */}
-          <line
-            x1={comet.x1}
-            y1={comet.y1}
-            x2={comet.x2}
-            y2={comet.y2}
-            stroke={comet.bridge ? bridgeAccent : accent}
-            strokeWidth={comet.bridge ? 1.6 : 1.2}
-            strokeDasharray={comet.bridge ? "5 3" : undefined}
-            strokeLinecap="round"
-            opacity={0.45}
-          />
-          {/* Comet head: bright glowing dot at edgeProgress. */}
-          <circle
-            cx={comet.headX}
-            cy={comet.headY}
-            r={comet.bridge ? 4 : 3.4}
-            fill={comet.bridge ? bridgeAccent : accent}
-            filter="url(#ag-graph-comet-glow)"
-          />
-          <circle
-            cx={comet.headX}
-            cy={comet.headY}
-            r={comet.bridge ? 2 : 1.7}
-            fill="#ffffff"
-            opacity="0.9"
-          />
-          {/* Edge-pulse halo when nearly arrived (last ~10% of progress). */}
-          {edgeProgress > 0.9 ? (
-            <circle
-              cx={comet.x2}
-              cy={comet.y2}
-              r={9 * (1 - (1 - edgeProgress) * 10)}
-              fill="none"
-              stroke={comet.bridge ? bridgeAccent : accent}
-              strokeWidth={2}
-              opacity={(1 - edgeProgress) * 10}
+      {/* ── Phase 1 sweep (#1953) — base stroke under the current polyline,
+          phantom-arrow head, 3-4 fading trail dashes at fixed pixel offsets
+          behind the head. Bridges remain dashed by static styling. */}
+      {currentSegs.length > 0 ? (
+        <g data-testid="graph-jarvis-sweep">
+          {currentSegs.map((s, i) => (
+            <line
+              key={`cur-${i}`}
+              x1={s.x1}
+              y1={s.y1}
+              x2={s.x2}
+              y2={s.y2}
+              stroke={s.bridge ? bridgeAccent : accent}
+              strokeWidth={s.bridge ? 1.6 : 1.2}
+              strokeDasharray={s.bridge ? "5 3" : undefined}
+              strokeLinecap="round"
+              opacity={0.35}
             />
+          ))}
+          {/* Trail dashes (older = dimmer + smaller). */}
+          {sweepDashes.map((d, i) => (
+            <circle
+              key={`dash-${i}`}
+              cx={d.x}
+              cy={d.y}
+              r={Math.max(0.6, d.r)}
+              fill={accent}
+              opacity={d.opacity}
+            />
+          ))}
+          {/* Arrow HEAD — bright dot at full accent. */}
+          {sweepHead ? (
+            <>
+              <circle
+                cx={sweepHead.x}
+                cy={sweepHead.y}
+                r={3.6}
+                fill={accent}
+                filter="url(#ag-graph-comet-glow)"
+              />
+              <circle
+                cx={sweepHead.x}
+                cy={sweepHead.y}
+                r={1.8}
+                fill="#ffffff"
+                opacity="0.95"
+              />
+            </>
           ) : null}
+        </g>
+      ) : null}
+
+      {/* ── Phase 2 glow burst (#1953) — synchronized pulse on every
+          returned node for the current call. Size 1.0 → 1.4 → 1.0 with
+          80ms hold at peak; under reduced motion the pulse renders
+          statically (no size animation). */}
+      {glowDots.length > 0 ? (
+        <g data-testid="graph-jarvis-glow">
+          {glowDots.map((d, i) => (
+            <g key={`glow-${i}`}>
+              <circle
+                cx={d.x}
+                cy={d.y}
+                r={9 * d.sizeMul}
+                fill={accent}
+                opacity={d.opacity * 0.18}
+                filter="url(#ag-graph-comet-glow)"
+              />
+              <circle
+                cx={d.x}
+                cy={d.y}
+                r={4.2 * d.sizeMul}
+                fill={accent}
+                opacity={d.opacity * 0.9}
+              />
+              <circle
+                cx={d.x}
+                cy={d.y}
+                r={1.8 * d.sizeMul}
+                fill="#ffffff"
+                opacity={d.opacity * 0.95}
+              />
+            </g>
+          ))}
         </g>
       ) : null}
     </svg>

@@ -21,13 +21,20 @@ import { useSyncExternalStore } from "react";
 export type FlowAnimSnapshot = {
   // Index of the *target* step the comet is heading toward. -1 if idle.
   // When idle (after a full Replay-all), settles on totalSteps - 1.
+  //
+  // In the legacy edge-comet engine (createFlowAnim) a "step" is one node
+  // arrival between two consecutive hits. In the two-phase call engine
+  // (createCallFlowAnim, #1953) a "step" is ONE MCP CALL — the arrow sweeps
+  // the entire returned-node polyline in a single ~200ms motion, then all
+  // nodes glow synchronously.
   currentTarget: number;
   // Number of steps the playhead is at (0 = entry only, N = full chain).
-  // Equivalent to "edges traversed" + 1.
+  // Equivalent to "steps completed".
   playhead: number;
-  // 0..1 progress along the current edge. 0 when not traveling.
+  // 0..1 progress along the current edge OR (in the #1953 call engine) the
+  // current polyline sweep when phase === "sweep". 0 outside Phase 1.
   edgeProgress: number;
-  // Set of edge indices (i = target step index) currently considered
+  // Set of step indices (i = target step index) currently considered
   // "traversed" (tinted). Exposed as a sorted array for renderer use.
   traversedEdges: number[];
   // Latest scrub direction — "forward" or "backward". Lets the renderer
@@ -37,6 +44,17 @@ export type FlowAnimSnapshot = {
   running: boolean;
   // True if user paused mid-flow.
   paused: boolean;
+  // #1953 two-phase call engine fields (legacy edge engine leaves these unset).
+  //   "idle"   no step in flight
+  //   "sweep"  Phase 1 — phantom arrow sweeps the polyline (uses edgeProgress)
+  //   "glow"   Phase 2 — every returned node pulses simultaneously (uses
+  //            glowProgress: 0 at burst start, 1 at full decay)
+  //   "gap"    brief settle before the next call kicks off
+  phase?: "idle" | "sweep" | "glow" | "gap";
+  // 0..1 progress through the Phase 2 glow burst. Only meaningful when
+  // phase === "glow". Goes 0 → 1 over the glow duration; the renderer
+  // interpolates size/opacity from this.
+  glowProgress?: number;
 };
 
 export type FlowAnimController = {
@@ -342,6 +360,327 @@ export function useFlowAnim(controller: FlowAnimController): FlowAnimSnapshot {
     controller.getSnapshot,
     controller.getSnapshot,
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1953 — Two-phase CALL flow animation.
+//
+// Step model: step = ONE MCP CALL (not one edge between two hits).
+//   Phase 1 (sweep, ~200ms): the phantom arrow head linearly interpolates
+//     along the ENTIRE polyline of returned nodes for that call. The renderer
+//     samples positions along the polyline; the engine just exports a scalar
+//     0..1 progress (snap.edgeProgress).
+//   Phase 2 (glow,  ~300ms): every returned node pulses simultaneously.
+//     The engine exports `glowProgress` 0..1 for the renderer.
+//   Inter-step gap (~150ms): brief settle before the next call kicks off.
+//
+// Total per call at 1× ≈ 650ms (200 + 300 + 150). Speed-multiplier scales
+// all three phases.
+//
+// `setOnArrive(cb)` fires once per call at the START of Phase 2 (so audio
+// blips on glow burst, not per-node arrival).
+//
+// Reduced-motion: Phase 1 is skipped, Phase 2 fires instantly without
+// size animation (renderer holds glowProgress = 0 then 1 in one tick).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CreateCallOpts = {
+  // Number of MCP calls in the timeline (NOT flattened node count).
+  totalCalls: number;
+  // Phase durations (ms at speed=1). Defaults match #1953 spec.
+  sweepMs?: number;     // default 200
+  glowMs?: number;      // default 300
+  interCallMs?: number; // default 150
+  speed?: number;       // default 1
+  reducedMotion?: boolean;
+};
+
+const EMPTY_CALL: FlowAnimSnapshot = {
+  currentTarget: -1,
+  playhead: 0,
+  edgeProgress: 0,
+  traversedEdges: [],
+  lastScrubDir: null,
+  running: false,
+  paused: false,
+  phase: "idle",
+  glowProgress: 0,
+};
+
+export function createCallFlowAnim(opts: CreateCallOpts): FlowAnimController {
+  const {
+    totalCalls,
+    sweepMs = 200,
+    glowMs = 300,
+    interCallMs = 150,
+    reducedMotion = false,
+  } = opts;
+  let speed = opts.speed ?? 1;
+  let onArrive: ((stepIdx: number) => void) | null = null;
+
+  let snap: FlowAnimSnapshot = { ...EMPTY_CALL };
+  const listeners = new Set<() => void>();
+
+  let rafId: number | null = null;
+  let phaseStartTs = 0;
+  let phaseDurMs = 0;
+  let phaseProgressFrozen = 0;
+  let gapTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function emit() { listeners.forEach((l) => l()); }
+
+  function clearTimers() {
+    if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+    if (gapTimer != null) { clearTimeout(gapTimer); gapTimer = null; }
+  }
+
+  function setTraversed(upTo: number): number[] {
+    const arr: number[] = [];
+    for (let i = 0; i <= upTo; i++) arr.push(i);
+    return arr;
+  }
+
+  function tickSweep(ts: number) {
+    if (snap.paused || !snap.running) return;
+    const elapsed = ts - phaseStartTs;
+    const p = Math.min(1, elapsed / Math.max(1, phaseDurMs));
+    snap = { ...snap, edgeProgress: p };
+    emit();
+    if (p >= 1) {
+      beginGlow();
+      return;
+    }
+    rafId = requestAnimationFrame(tickSweep);
+  }
+
+  function tickGlow(ts: number) {
+    if (snap.paused || !snap.running) return;
+    const elapsed = ts - phaseStartTs;
+    const p = Math.min(1, elapsed / Math.max(1, phaseDurMs));
+    snap = { ...snap, glowProgress: p };
+    emit();
+    if (p >= 1) {
+      const arrived = snap.currentTarget;
+      snap = {
+        ...snap,
+        phase: "gap",
+        glowProgress: 1,
+        edgeProgress: 0,
+        playhead: arrived + 1,
+        traversedEdges: setTraversed(arrived),
+      };
+      emit();
+      // gap then next call (or stop)
+      if (arrived < totalCalls - 1) {
+        gapTimer = setTimeout(() => {
+          gapTimer = null;
+          beginCall(arrived + 1);
+        }, interCallMs / Math.max(0.0001, speed));
+      } else {
+        snap = { ...snap, running: false, phase: "idle" };
+        rafId = null;
+        emit();
+      }
+      return;
+    }
+    rafId = requestAnimationFrame(tickGlow);
+  }
+
+  function beginGlow() {
+    const arrived = snap.currentTarget;
+    phaseDurMs = glowMs / Math.max(0.0001, speed);
+    phaseStartTs = performance.now();
+    phaseProgressFrozen = 0;
+    snap = {
+      ...snap,
+      phase: "glow",
+      edgeProgress: 1, // sweep complete
+      glowProgress: 0,
+    };
+    emit();
+    // Fire onArrive at START of Phase 2 (audio "result landed" blip).
+    onArrive?.(arrived);
+    if (reducedMotion) {
+      // Instant glow without animation — jump to fully-decayed state.
+      snap = {
+        ...snap,
+        phase: "gap",
+        glowProgress: 1,
+        edgeProgress: 0,
+        playhead: arrived + 1,
+        traversedEdges: setTraversed(arrived),
+      };
+      emit();
+      if (arrived < totalCalls - 1) {
+        gapTimer = setTimeout(() => {
+          gapTimer = null;
+          beginCall(arrived + 1);
+        }, interCallMs / Math.max(0.0001, speed));
+      } else {
+        snap = { ...snap, running: false, phase: "idle" };
+        emit();
+      }
+      return;
+    }
+    rafId = requestAnimationFrame(tickGlow);
+  }
+
+  function beginCall(callIdx: number) {
+    if (callIdx < 0 || callIdx >= totalCalls) {
+      snap = { ...snap, running: false, phase: "idle" };
+      emit();
+      return;
+    }
+    snap = {
+      ...snap,
+      currentTarget: callIdx,
+      edgeProgress: 0,
+      glowProgress: 0,
+      phase: "sweep",
+      running: true,
+      paused: false,
+    };
+    emit();
+    if (reducedMotion) {
+      // Skip Phase 1 entirely; jump straight to Phase 2 glow burst.
+      beginGlow();
+      return;
+    }
+    phaseDurMs = sweepMs / Math.max(0.0001, speed);
+    phaseStartTs = performance.now();
+    phaseProgressFrozen = 0;
+    rafId = requestAnimationFrame(tickSweep);
+  }
+
+  function start() {
+    if (totalCalls < 1) return;
+    clearTimers();
+    snap = {
+      currentTarget: -1,
+      playhead: 0,
+      edgeProgress: 0,
+      traversedEdges: [],
+      lastScrubDir: "forward",
+      running: true,
+      paused: false,
+      phase: "idle",
+      glowProgress: 0,
+    };
+    emit();
+    beginCall(0);
+  }
+
+  function stop() {
+    clearTimers();
+    snap = {
+      ...snap,
+      running: false,
+      paused: false,
+      edgeProgress: 0,
+      glowProgress: 0,
+      phase: "idle",
+    };
+    emit();
+  }
+
+  function pause() {
+    if (!snap.running || snap.paused) return;
+    phaseProgressFrozen =
+      snap.phase === "sweep" ? (snap.edgeProgress ?? 0) :
+      snap.phase === "glow" ? (snap.glowProgress ?? 0) : 0;
+    if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+    if (gapTimer != null) { clearTimeout(gapTimer); gapTimer = null; }
+    snap = { ...snap, paused: true };
+    emit();
+  }
+
+  function resume() {
+    if (!snap.paused) return;
+    const offset = phaseProgressFrozen * phaseDurMs;
+    phaseStartTs = performance.now() - offset;
+    snap = { ...snap, paused: false };
+    emit();
+    if (snap.phase === "sweep") rafId = requestAnimationFrame(tickSweep);
+    else if (snap.phase === "glow") rafId = requestAnimationFrame(tickGlow);
+    else if (snap.phase === "gap") {
+      // Resume gap as if just-finished glow; queue next call.
+      const arrived = snap.currentTarget;
+      if (arrived < totalCalls - 1) {
+        gapTimer = setTimeout(() => {
+          gapTimer = null;
+          beginCall(arrived + 1);
+        }, interCallMs / Math.max(0.0001, speed));
+      } else {
+        snap = { ...snap, running: false, phase: "idle" };
+        emit();
+      }
+    }
+  }
+
+  function toggle() {
+    if (!snap.running && !snap.paused && snap.playhead < totalCalls) {
+      if (snap.playhead > 0 && snap.playhead < totalCalls) {
+        snap = { ...snap, running: true, paused: false };
+        emit();
+        beginCall(snap.playhead);
+        return;
+      }
+      start();
+      return;
+    }
+    if (snap.running && !snap.paused) pause();
+    else if (snap.paused) resume();
+  }
+
+  function scrubTo(target: number) {
+    const clamped = Math.max(0, Math.min(totalCalls, target));
+    const prev = snap.playhead;
+    const dir: "forward" | "backward" = clamped >= prev ? "forward" : "backward";
+    clearTimers();
+    snap = {
+      currentTarget: clamped - 1,
+      playhead: clamped,
+      edgeProgress: 0,
+      glowProgress: 0,
+      traversedEdges: setTraversed(clamped - 1),
+      lastScrubDir: dir,
+      running: false,
+      paused: false,
+      phase: "idle",
+    };
+    emit();
+  }
+
+  function reset() {
+    clearTimers();
+    snap = { ...EMPTY_CALL };
+    emit();
+  }
+
+  function setSpeed(mult: number) {
+    const next = Math.max(0.1, Math.min(16, mult));
+    if (next === speed) return;
+    if (snap.running && !snap.paused && rafId != null) {
+      const now = performance.now();
+      const elapsed = now - phaseStartTs;
+      const oldRemaining = phaseDurMs - elapsed;
+      const ratio = speed / next;
+      const newRemaining = oldRemaining * ratio;
+      phaseDurMs = phaseDurMs * ratio;
+      phaseStartTs = now - (phaseDurMs - newRemaining);
+    }
+    speed = next;
+  }
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot: () => snap,
+    start, stop, pause, resume, toggle, scrubTo, reset, setSpeed,
+    setOnArrive(cb) { onArrive = cb; },
+  };
 }
 
 export const __test_only = { noop };
