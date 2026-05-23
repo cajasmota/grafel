@@ -461,6 +461,14 @@ func walkNode(
 						extractMetaConstraintEntities(body, file, child.Name, childParent, classIdx, out)
 					}
 				}
+				// Issues #1977 / #1978 / #1989 — Django relational extraction.
+				// After SCOPE.Schema/field entities exist (extractClassFields)
+				// and CONTAINS edges are in place, enrich each field with
+				// field_type + kwargs (#1978), emit REFERENCES from FK/O2O/M2M
+				// fields to their target Model (#1977), and emit REFERENCES
+				// from the parent Model to any `<attr> = <Manager>()` style
+				// attachment (#1989).
+				enrichDjangoModelFieldsAndManagers(body, file, childParent, classIdx, before, after, out)
 			}
 		}
 		return // body handled above — do not recurse further
@@ -570,6 +578,11 @@ func walkNode(
 							extractMetaConstraintEntities(body, file, child.Name, childParent, classIdx, out)
 						}
 					}
+					// Issues #1977 / #1978 / #1989 — see the bare class branch
+					// above for the full rationale. Handles decorated model
+					// classes (e.g. @python_2_unicode_compatible on legacy
+					// Django).
+					enrichDjangoModelFieldsAndManagers(body, file, childParent, classIdx, before, after, out)
 				}
 			}
 		}
