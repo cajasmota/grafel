@@ -21,6 +21,7 @@
 //	noiseProcess (6)    — array/string built-in Process node
 //	noiseSchemaField (7) — SCOPE.Schema subtype=field member (#1715)
 //	noisePattern (8)    — SCOPE.Pattern structural node (#1733)
+//	noiseLocalScope (9) — non-addressable function-body local binding (#1748)
 package mcp
 
 import (
@@ -60,6 +61,15 @@ const (
 	// serializer. Suppressed by default (#1712); the parent class surfaces
 	// normally. Reachable via include_noise:true.
 	noiseSchemaField
+	// noiseLocalScope: a non-addressable local binding emitted inside a
+	// function/method body (#1748). Examples: `const { counts } = someData`
+	// or `const [a, b] = arr` inside a React component. These are kept in
+	// the graph so the resolver can bind REFERENCES/CALLS edges, but they
+	// are never independently inspectable via archigraph_inspect (the name
+	// is not addressable as "Component.counts") so surfacing them in
+	// archigraph_find wastes tokens and violates "everything you see is
+	// queryable". Identified by Properties["local_scope"]=="true".
+	noiseLocalScope
 )
 
 // arrayBuiltins is the set of array/string built-in method names whose Process
@@ -131,6 +141,13 @@ func classifyNoise(e *graph.Entity) noiseKind {
 	// entity (same Kind, no "field" Subtype) surfaces normally.
 	if bareKind == "schema" && e.Subtype == "field" {
 		return noiseSchemaField
+	}
+
+	// Non-addressable function-body locals (#1748): emitted at extraction
+	// time for resolver use but not independently inspectable. The extractor
+	// stamps Properties["local_scope"]="true" on these entities.
+	if e.Properties["local_scope"] == "true" {
+		return noiseLocalScope
 	}
 
 	return noiseNone

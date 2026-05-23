@@ -270,6 +270,12 @@ type extractor struct {
 	entities      []types.EntityRecord
 	relationships []types.RelationshipRecord
 
+	// funcDepth tracks how many function/method bodies deep the current
+	// walk is. Zero means module scope. Incremented before recursing into
+	// a function body, decremented on exit. Used by handleVariableDeclarator
+	// to suppress non-addressable local destructure bindings (#1748).
+	funcDepth int
+
 	// module — Issue #1616. The dotted module path derived from filePath
 	// (e.g. "src/stores/authReducer.js" → "src.stores.authReducer"). Set
 	// once in Extract before walk() runs. Used to populate every emitted
@@ -429,6 +435,21 @@ func (x *extractor) emitWithRels(name, kind string, n *sitter.Node, subtype stri
 	x.entities = append(x.entities, e)
 }
 
+// tagLocalScope stamps Properties["local_scope"]="true" on every entity
+// appended to x.entities at index >= from. Called after emitting entities that
+// were discovered inside a function/method body (funcDepth > 0) to mark them
+// as non-addressable locals. The serving layer (denoise.go) uses this flag to
+// hide these entities from archigraph_find results while still allowing the
+// resolver to use them for REFERENCES/CALLS binding (#1748).
+func (x *extractor) tagLocalScope(from int) {
+	for i := from; i < len(x.entities); i++ {
+		if x.entities[i].Properties == nil {
+			x.entities[i].Properties = map[string]string{}
+		}
+		x.entities[i].Properties["local_scope"] = "true"
+	}
+}
+
 // emitWithProps appends an entity to the extraction results using a caller-supplied
 // Properties map rather than the default {"kind": ..., "subtype": ...} map.
 // Used by handlers that need to store structured metadata (fields, generics, etc.).
@@ -552,8 +573,12 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 	x.emitWithRels(name, "SCOPE.Operation", n, subtype, sig, rels)
 
 	// Recurse into the body for nested declarations.
+	// Increment funcDepth so handleVariableDeclarator suppresses non-addressable
+	// local destructure bindings discovered inside this body (#1748).
 	if body != nil {
+		x.funcDepth++
 		x.walkChildren(body, parentClass, cb)
+		x.funcDepth--
 	}
 }
 
@@ -713,8 +738,12 @@ func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass stri
 	x.emitWithRels(name, "SCOPE.Operation", valueNode, "method", sig, rels)
 
 	// Recurse into the body for nested declarations.
+	// Increment funcDepth so nested const declarations inside this arrow
+	// class-field method are not emitted as addressable entities (#1748).
 	if body != nil {
+		x.funcDepth++
 		x.walkChildren(body, parentClass, cb)
+		x.funcDepth--
 	}
 }
 
@@ -1000,7 +1029,16 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		// "state_setter" so the resolver binds setX() calls to a real
 		// entity instead of landing in bug-extractor.
 		stateHook := nameNode.Type() == "array_pattern" && isStateHookCall(x, valueNode)
+		// Issue #1748 — inside a function body (funcDepth > 0) and not a
+		// hook-result binding, tag newly emitted entities as local_scope=true
+		// so the serving layer can filter them from archigraph_find results.
+		// We still emit the entities so the resolver can bind same-file
+		// REFERENCES/CALLS edges.
+		before := len(x.entities)
 		x.emitDestructuredEntities(nameNode, valueNode, opLift, stateHook, parentClass, cb)
+		if x.funcDepth > 0 && !opLift && !stateHook {
+			x.tagLocalScope(before)
+		}
 		if valueNode != nil {
 			x.walkChildren(valueNode, parentClass, cb)
 		}
@@ -1030,7 +1068,11 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = (...) =>", name), rels)
 		if body != nil {
+			// Increment funcDepth so nested const declarations inside this
+			// arrow body are not emitted as addressable entities (#1748).
+			x.funcDepth++
 			x.walkChildren(body, parentClass, cb)
+			x.funcDepth--
 		}
 
 	case "function", "function_expression":
@@ -1046,7 +1088,11 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		rels = append(rels, x.extractJSXRendersRelationships(body, name)...)
 		x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = function", name), rels)
 		if body != nil {
+			// Increment funcDepth so nested const declarations inside this
+			// function-expression body are not emitted as addressable entities (#1748).
+			x.funcDepth++
 			x.walkChildren(body, parentClass, cb)
+			x.funcDepth--
 		}
 
 	default:
@@ -1084,7 +1130,13 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 			// properties), NOT a callable function. Emit as SCOPE.Component with
 			// subtype="context" so Provider/Consumer relationships can attach and
 			// the entity is not confused with a regular callable.
+			before := len(x.entities)
 			x.emit(name, "SCOPE.Component", valueNode, "context", fmt.Sprintf("const %s = createContext()", name))
+			// Issue #1748 — context factories inside function bodies are
+			// unusual/non-addressable; tag as local_scope so find hides them.
+			if x.funcDepth > 0 {
+				x.tagLocalScope(before)
+			}
 		} else if x.isFunctionWrapperCall(valueNode) {
 			subtype := "function"
 			if parentClass != "" {
@@ -1098,15 +1150,27 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 			frame := x.functionParamFrame(nil, cb)
 			rels := x.extractCallRelationships(valueNode, name, frame)
 			_ = inner
+			before := len(x.entities)
 			x.emitWithRels(name, "SCOPE.Operation", valueNode, subtype, fmt.Sprintf("const %s = <wrapper>", name), rels)
+			// Issue #1748 — wrapper calls (forwardRef, memo, etc.) inside a
+			// function body are non-addressable; tag as local_scope.
+			if x.funcDepth > 0 {
+				x.tagLocalScope(before)
+			}
 		} else {
 			// Issue #709 — TS `const x: MyType = ...` has a type annotation.
 			// We need to emit it as an entity so type-position REFERENCES edges
 			// can be attributed to it. This applies only when there's an explicit
 			// type annotation on the declarator.
 			if n.ChildByFieldName("type") != nil {
+				before := len(x.entities)
 				// Has a type annotation; emit as SCOPE.Component
 				x.emit(name, "SCOPE.Component", valueNode, "const", fmt.Sprintf("const %s: Type", name))
+				// Issue #1748 — type-annotated locals inside function bodies are
+				// non-addressable; tag as local_scope.
+				if x.funcDepth > 0 {
+					x.tagLocalScope(before)
+				}
 			}
 		}
 		// Recurse so nested function/class declarations inside the value

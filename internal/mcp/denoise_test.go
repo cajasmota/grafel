@@ -113,6 +113,43 @@ func TestClassifyNoise(t *testing.T) {
 			},
 			want: noiseNone,
 		},
+		// #1748: non-addressable function-body locals are noise.
+		{
+			name: "local_scope plain destructure binding",
+			e: graph.Entity{
+				Kind: "SCOPE.Component", Subtype: "const_destructure",
+				Name:       "counts",
+				SourceFile: "src/features/ContractProposals.jsx", StartLine: 48,
+				Properties: map[string]string{
+					"kind": "SCOPE.Component", "subtype": "const_destructure",
+					"local_scope": "true",
+				},
+			},
+			want: noiseLocalScope,
+		},
+		{
+			name: "local_scope array destructure binding",
+			e: graph.Entity{
+				Kind: "SCOPE.Component", Subtype: "const_destructure",
+				Name:       "a",
+				SourceFile: "src/features/Cmp.jsx", StartLine: 10,
+				Properties: map[string]string{
+					"kind": "SCOPE.Component", "subtype": "const_destructure",
+					"local_scope": "true",
+				},
+			},
+			want: noiseLocalScope,
+		},
+		{
+			name: "real top-level component (no local_scope) is NOT noise",
+			e: graph.Entity{
+				Kind: "SCOPE.Component", Subtype: "const_destructure",
+				Name:       "foo",
+				SourceFile: "src/features/Widget.jsx", StartLine: 3,
+				// No local_scope property — module-scope binding.
+			},
+			want: noiseNone,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
