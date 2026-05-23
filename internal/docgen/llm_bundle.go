@@ -29,9 +29,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/mcp"
 )
 
@@ -113,7 +115,85 @@ type LLMGraphContext struct {
 	// SourceWindow is an optional excerpt of source lines around the entity
 	// (populated by future --source-window flag; empty in foundation ticket).
 	SourceWindow string `json:"source_window,omitempty"`
+	// ClassManifest is a structured enumeration of the class's surface area:
+	// methods, fields, bases, interfaces, and decorators/annotations. Populated
+	// only when the seed entity is class-like (Class, Component, Controller,
+	// Service, Model, View, etc.). Nil for non-class seeds. (#1861)
+	ClassManifest *ClassManifest `json:"class_manifest,omitempty"`
 }
+
+// ClassManifest is a structured enumeration of a class entity's public
+// surface area. It lets the LLM cite specific methods and fields by name
+// without re-parsing the source_window. Populated by BuildBundle when the
+// seed entity is class-like (#1861).
+type ClassManifest struct {
+	// Methods is the list of method/constructor entries found via CONTAINS edges.
+	// Capped at ClassManifestMaxMethods; see MethodsTruncatedCount.
+	Methods []ClassMethodEntry `json:"methods,omitempty"`
+	// MethodsTruncatedCount is the number of methods omitted because the class
+	// exceeded ClassManifestMaxMethods. Zero when no truncation occurred.
+	MethodsTruncatedCount int `json:"methods_truncated_count,omitempty"`
+	// Fields is the list of field/attribute entries found via CONTAINS edges.
+	// Capped at ClassManifestMaxFields; see FieldsTruncatedCount.
+	Fields []ClassFieldEntry `json:"fields,omitempty"`
+	// FieldsTruncatedCount is the number of fields omitted because the class
+	// exceeded ClassManifestMaxFields. Zero when no truncation occurred.
+	FieldsTruncatedCount int `json:"fields_truncated_count,omitempty"`
+	// Bases is the list of parent class names (EXTENDS edge targets).
+	Bases []string `json:"bases,omitempty"`
+	// Interfaces is the list of implemented interface names (IMPLEMENTS edge targets).
+	Interfaces []string `json:"interfaces,omitempty"`
+	// Decorators is the list of decorator/annotation names found on the class
+	// entity (e.g. "@Component", "@Path", "@dataclass"). Parsed from the entity
+	// Signature and from SCOPE.Pattern decorator neighbours. Deduped.
+	Decorators []string `json:"decorators,omitempty"`
+}
+
+// ClassMethodEntry describes a single method or constructor of a class.
+type ClassMethodEntry struct {
+	// Name is the short method name (without the enclosing class prefix).
+	Name string `json:"name"`
+	// Signature is the full method signature as stored by the extractor
+	// (e.g. "public String login(String username, String password)").
+	Signature string `json:"signature,omitempty"`
+	// Visibility is "public", "private", "protected", or "" (unknown).
+	// Inferred from the Signature text on a best-effort basis.
+	Visibility string `json:"visibility,omitempty"`
+	// IsStatic is true when the entity carries Properties["is_static"]="true".
+	IsStatic bool `json:"is_static,omitempty"`
+	// Subtype is the extractor subtype: "method", "constructor", or "".
+	Subtype string `json:"subtype,omitempty"`
+	// StartLine is the first line of the method body (1-indexed).
+	StartLine int `json:"start_line,omitempty"`
+	// EndLine is the last line of the method body (1-indexed). May be 0 when
+	// the extractor did not resolve the end line.
+	EndLine int `json:"end_line,omitempty"`
+}
+
+// ClassFieldEntry describes a single field or attribute of a class.
+type ClassFieldEntry struct {
+	// Name is the short field name (without the enclosing class prefix).
+	Name string `json:"name"`
+	// TypeHint is the declared type of the field as inferred from the Signature
+	// (e.g. "UserRepository", "str", "List<String>"). Empty when not available.
+	TypeHint string `json:"type_hint,omitempty"`
+	// DefaultValue is the literal default value when the extractor captured one.
+	// Empty for computed or unknown defaults.
+	DefaultValue string `json:"default_value,omitempty"`
+	// Visibility is "public", "private", "protected", or "" (unknown).
+	Visibility string `json:"visibility,omitempty"`
+	// StartLine is the line where the field is declared (1-indexed).
+	StartLine int `json:"start_line,omitempty"`
+}
+
+// ClassManifestMaxMethods is the cap on the number of method entries in a
+// ClassManifest. Classes with more methods will have the excess counted in
+// ClassManifest.MethodsTruncatedCount.
+const ClassManifestMaxMethods = 100
+
+// ClassManifestMaxFields is the cap on the number of field entries in a
+// ClassManifest.
+const ClassManifestMaxFields = 100
 
 // NeighbourBrief is a compact description of a single 1-hop neighbour entity.
 type NeighbourBrief struct {
@@ -474,6 +554,14 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 				gc.SourceWindow = sw
 			}
 		}
+
+		// Populate ClassManifest when the seed entity is class-like (#1861).
+		// Walk the neighbours collected above to build a structured enumeration
+		// of methods, fields, bases, interfaces, and decorators without requiring
+		// the LLM to re-parse the source_window.
+		if isClassLikeKind(entity.Kind) {
+			gc.ClassManifest = buildClassManifest(entity, neighbours, neighbourKinds)
+		}
 	}
 
 	// Determine section list and profile (profile carries per-kind guidance overrides).
@@ -590,6 +678,214 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 	}
 
 	return bundle, nil
+}
+
+// ---------------------------------------------------------------------------
+// ClassManifest helpers (#1861)
+// ---------------------------------------------------------------------------
+
+// decoratorTokenRE matches @Identifier patterns in a signature string.
+// Used to extract class-level annotations / decorators.
+var decoratorTokenRE = regexp.MustCompile(`@([A-Za-z_]\w*)`)
+
+// isClassLikeKind returns true when the entity kind represents a class-like
+// construct that should have a ClassManifest populated. The check is
+// case-insensitive and handles both bare kind strings ("Class", "component")
+// and SCOPE.* prefixed forms ("SCOPE.Component", "SCOPE.Class").
+//
+// Class-like kinds: Class, Component, Controller, Service, Model, View,
+// UIComponent, and their SCOPE.* variants. Deliberately excludes Operation,
+// Function, Module, Schema, and other leaf-or-file-level kinds.
+func isClassLikeKind(kind string) bool {
+	k := strings.ToLower(kind)
+	// Strip "scope." prefix for uniform matching.
+	k = strings.TrimPrefix(k, "scope.")
+	switch {
+	case k == "class",
+		k == "component",
+		k == "uicomponent",
+		k == "controller",
+		k == "service",
+		k == "model",
+		k == "view":
+		return true
+	}
+	// Substring matches for compound kinds (e.g. "datamodel", "viewcontroller").
+	for _, sub := range []string{"class", "component", "controller", "service", "model"} {
+		if strings.Contains(k, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// shortName strips an enclosing class prefix "ClassName.memberName" → "memberName".
+// If the name has no dot it is returned as-is.
+func shortName(name string) string {
+	if idx := strings.LastIndex(name, "."); idx >= 0 {
+		return name[idx+1:]
+	}
+	return name
+}
+
+// inferVisibility reads the visibility modifier from a method/field signature
+// on a best-effort basis. Returns "public", "private", "protected", or "".
+func inferVisibility(sig string) string {
+	lower := strings.ToLower(sig)
+	switch {
+	case strings.HasPrefix(lower, "private ") || strings.Contains(lower, " private "):
+		return "private"
+	case strings.HasPrefix(lower, "protected ") || strings.Contains(lower, " protected "):
+		return "protected"
+	case strings.HasPrefix(lower, "public ") || strings.Contains(lower, " public "):
+		return "public"
+	}
+	return ""
+}
+
+// typeHintFromSignature extracts the declared type from a field signature.
+// Field signatures are typically "TypeName fieldName" or just "fieldName: TypeName".
+// Returns an empty string when no type can be inferred.
+func typeHintFromSignature(sig string) string {
+	sig = strings.TrimSpace(sig)
+	if sig == "" {
+		return ""
+	}
+	// TypeScript / Python style: "fieldName: TypeName"
+	if idx := strings.Index(sig, ":"); idx >= 0 {
+		return strings.TrimSpace(sig[idx+1:])
+	}
+	// Java / C# style: "TypeName fieldName" (space-separated, first token is type).
+	// Strip modifiers first.
+	for _, mod := range []string{"private ", "public ", "protected ", "static ", "final ", "readonly "} {
+		sig = strings.ReplaceAll(sig, mod, "")
+	}
+	sig = strings.TrimSpace(sig)
+	parts := strings.Fields(sig)
+	if len(parts) >= 2 {
+		// First token is the type, last is the name.
+		return parts[0]
+	}
+	return ""
+}
+
+// buildClassManifest constructs a ClassManifest for the seed entity by
+// inspecting the neighbours slice (already loaded by loadEntityContext) and
+// the neighbourKinds slice (edge kinds, index-aligned with neighbours).
+//
+// It collects:
+//   - Method entries: CONTAINS neighbours with Kind=="SCOPE.Operation"
+//   - Field entries:  CONTAINS neighbours with Kind=="SCOPE.Schema" and Subtype=="field"
+//   - Bases:          EXTENDS neighbours
+//   - Interfaces:     IMPLEMENTS neighbours
+//   - Decorators:     parsed from entity.Signature and from SCOPE.Pattern decorator neighbours
+func buildClassManifest(entity *graph.Entity, neighbours []graph.Entity, neighbourKinds []string) *ClassManifest {
+	if entity == nil {
+		return nil
+	}
+
+	m := &ClassManifest{}
+
+	// --- Decorators from class entity Signature ---
+	if entity.Signature != "" {
+		seen := map[string]bool{}
+		for _, match := range decoratorTokenRE.FindAllString(entity.Signature, -1) {
+			if !seen[match] {
+				seen[match] = true
+				m.Decorators = append(m.Decorators, match)
+			}
+		}
+	}
+
+	// Track whether we've added a decorator name (for dedup across sources).
+	decoratorSeen := map[string]bool{}
+	for _, d := range m.Decorators {
+		decoratorSeen[d] = true
+	}
+
+	// Walk 1-hop neighbours.
+	totalMethods := 0
+	totalFields := 0
+	for i, n := range neighbours {
+		rel := ""
+		if i < len(neighbourKinds) {
+			rel = neighbourKinds[i]
+		}
+
+		switch rel {
+		case "CONTAINS":
+			lkind := strings.ToLower(n.Kind)
+			isMethod := strings.Contains(lkind, "operation") &&
+				(n.Subtype == "method" || n.Subtype == "constructor" || n.Subtype == "")
+			isField := strings.Contains(lkind, "schema") && n.Subtype == "field"
+
+			if isMethod {
+				totalMethods++
+				if totalMethods <= ClassManifestMaxMethods {
+					entry := ClassMethodEntry{
+						Name:      shortName(n.Name),
+						Signature: n.Signature,
+						Subtype:   n.Subtype,
+						StartLine: n.StartLine,
+						EndLine:   n.EndLine,
+					}
+					if n.Properties != nil && n.Properties["is_static"] == "true" {
+						entry.IsStatic = true
+					}
+					entry.Visibility = inferVisibility(n.Signature)
+					m.Methods = append(m.Methods, entry)
+				}
+			} else if isField {
+				totalFields++
+				if totalFields <= ClassManifestMaxFields {
+					entry := ClassFieldEntry{
+						Name:      shortName(n.Name),
+						TypeHint:  typeHintFromSignature(n.Signature),
+						StartLine: n.StartLine,
+					}
+					entry.Visibility = inferVisibility(n.Signature)
+					m.Fields = append(m.Fields, entry)
+				}
+			}
+
+		case "EXTENDS":
+			m.Bases = append(m.Bases, shortName(n.Name))
+
+		case "IMPLEMENTS":
+			m.Interfaces = append(m.Interfaces, shortName(n.Name))
+		}
+
+		// Decorator pattern entities: SCOPE.Pattern with subtype "decorator"
+		// that target this class (Properties["target_name"] matches class name).
+		if strings.Contains(strings.ToLower(n.Kind), "pattern") &&
+			strings.ToLower(n.Subtype) == "decorator" {
+			if dn, ok := n.Properties["decorator_name"]; ok && dn != "" {
+				token := "@" + dn
+				if !decoratorSeen[token] {
+					decoratorSeen[token] = true
+					m.Decorators = append(m.Decorators, token)
+				}
+			}
+		}
+	}
+
+	// Record truncation counts.
+	if totalMethods > ClassManifestMaxMethods {
+		m.MethodsTruncatedCount = totalMethods - ClassManifestMaxMethods
+	}
+	if totalFields > ClassManifestMaxFields {
+		m.FieldsTruncatedCount = totalFields - ClassManifestMaxFields
+	}
+
+	// Return nil manifest when no data was collected (e.g. class with no
+	// child entities in the graph and no signature annotations) — this keeps
+	// the JSON output clean for entities whose extractors haven't been run yet.
+	if len(m.Methods) == 0 && len(m.Fields) == 0 &&
+		len(m.Bases) == 0 && len(m.Interfaces) == 0 && len(m.Decorators) == 0 {
+		return nil
+	}
+
+	return m
 }
 
 // ---------------------------------------------------------------------------
