@@ -44,6 +44,7 @@ package python
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -89,7 +90,7 @@ const configAssignmentRatio = 0.80
 // Returns true when a config_module entity was appended, false otherwise.
 // Callers may use the boolean to increment an OTel attribute counter.
 func emitConfigModuleEntity(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) bool {
-	base := filepathBase(file.Path)
+	base := filepath.Base(filepath.FromSlash(file.Path))
 
 	// --- criterion 1: filename match ---
 	configType, byName := configFilenames[base]
