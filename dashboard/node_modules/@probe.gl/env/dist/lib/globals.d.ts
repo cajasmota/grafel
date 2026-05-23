@@ -1,0 +1,8 @@
+declare const global_: typeof globalThis;
+declare const window_: Window;
+declare const document_: Document;
+declare const process_: {};
+declare const console_: Console;
+declare const navigator_: Navigator;
+export { global_ as global, global_ as self, window_ as window, document_ as document, process_ as process, console_ as console, navigator_ as navigator };
+//# sourceMappingURL=globals.d.ts.map

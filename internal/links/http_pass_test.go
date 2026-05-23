@@ -1569,8 +1569,8 @@ func TestHTTPPass_URLPrefixStrip_Idempotence(t *testing.T) {
 // TestHTTPPass_CrossBucketConsumerCollision reproduces the root cause of
 // issue #1445: two frontend consumer synthetics exist —
 //
-//   consumerA: http:GET:/roles        (a direct call to /roles)
-//   consumerB: http:GET:/api/v1/roles (a call to the versioned path)
+//	consumerA: http:GET:/roles        (a direct call to /roles)
+//	consumerB: http:GET:/api/v1/roles (a call to the versioned path)
 //
 // The backend has one producer: http:GET:/api/v1/roles (DRF router-expanded,
 // url_prefix=/api/v1, so byPath also registers the stripped alias /roles).

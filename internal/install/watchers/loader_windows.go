@@ -61,8 +61,8 @@ func (windowsLoader) Load(u Unit) error {
 // operation (task registration) succeeded; only the immediate /run failed.
 type errNonFatal struct{ cause error }
 
-func (e errNonFatal) Error() string   { return e.cause.Error() }
-func (e errNonFatal) Unwrap() error   { return e.cause }
+func (e errNonFatal) Error() string    { return e.cause.Error() }
+func (e errNonFatal) Unwrap() error    { return e.cause }
 func (e errNonFatal) IsNonFatal() bool { return true }
 
 // Unload stops the scheduled task and deletes it from the Task Scheduler.

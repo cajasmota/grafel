@@ -48,10 +48,10 @@ func normalizeSPDX(raw string) string {
 	// Normalisation table — extend as needed.
 	table := map[string]string{
 		// MIT variants
-		"mit":                "MIT",
-		"mit license":        "MIT",
-		"the mit license":    "MIT",
-		"expat":              "MIT",
+		"mit":             "MIT",
+		"mit license":     "MIT",
+		"the mit license": "MIT",
+		"expat":           "MIT",
 		// Apache variants
 		"apache 2":           "Apache-2.0",
 		"apache 2.0":         "Apache-2.0",
@@ -59,11 +59,11 @@ func normalizeSPDX(raw string) string {
 		"apache license 2.0": "Apache-2.0",
 		"apache-2.0":         "Apache-2.0",
 		// BSD variants
-		"bsd":                "BSD-2-Clause",
-		"bsd 2-clause":       "BSD-2-Clause",
-		"bsd 3-clause":       "BSD-3-Clause",
-		"new bsd":            "BSD-3-Clause",
-		"revised bsd":        "BSD-3-Clause",
+		"bsd":          "BSD-2-Clause",
+		"bsd 2-clause": "BSD-2-Clause",
+		"bsd 3-clause": "BSD-3-Clause",
+		"new bsd":      "BSD-3-Clause",
+		"revised bsd":  "BSD-3-Clause",
 		// GPL variants
 		"gpl":                           "GPL-2.0-only",
 		"gpl-2":                         "GPL-2.0-only",
@@ -86,9 +86,9 @@ func normalizeSPDX(raw string) string {
 		"lgpl-3.0": "LGPL-3.0-only",
 		"lgpl3":    "LGPL-3.0-only",
 		// ISC / public domain
-		"isc":          "ISC",
-		"0bsd":         "0BSD",
-		"unlicense":    "Unlicense",
+		"isc":           "ISC",
+		"0bsd":          "0BSD",
+		"unlicense":     "Unlicense",
 		"public domain": "Unlicense",
 		// Other weak-copyleft
 		"mpl-2.0":  "MPL-2.0",
@@ -145,12 +145,12 @@ var permissiveLicenses = map[string]bool{
 // strongCopyleft are GPL/AGPL style: incompatible when used in a project
 // distributed under a permissive license.
 var strongCopyleft = map[string]bool{
-	"GPL-2.0-only":       true,
-	"GPL-2.0-or-later":   true,
-	"GPL-3.0-only":       true,
-	"GPL-3.0-or-later":   true,
-	"AGPL-3.0-only":      true,
-	"AGPL-3.0-or-later":  true,
+	"GPL-2.0-only":      true,
+	"GPL-2.0-or-later":  true,
+	"GPL-3.0-only":      true,
+	"GPL-3.0-or-later":  true,
+	"AGPL-3.0-only":     true,
+	"AGPL-3.0-or-later": true,
 }
 
 // weakCopyleft requires attribution/disclosure but is generally usable as a
@@ -203,17 +203,17 @@ func CheckCompatibility(projectLicense, depLicense string) CompatibilityLevel {
 // package with an incompatible license.
 var dropInAlternatives = map[string][]string{
 	// npm
-	"node-forge":                {"@peculiar/webcrypto", "node:crypto (built-in)"},
-	"pdfkit":                    {"jspdf"},
-	"pdf-lib":                   {"jspdf"},
-	"cron":                      {"node-cron (MIT)"},
+	"node-forge": {"@peculiar/webcrypto", "node:crypto (built-in)"},
+	"pdfkit":     {"jspdf"},
+	"pdf-lib":    {"jspdf"},
+	"cron":       {"node-cron (MIT)"},
 	// Python
-	"mysql-connector-python":    {"PyMySQL (MIT)", "aiomysql (MIT)"},
-	"psycopg2":                  {"asyncpg (Apache-2.0)"},
+	"mysql-connector-python": {"PyMySQL (MIT)", "aiomysql (MIT)"},
+	"psycopg2":               {"asyncpg (Apache-2.0)"},
 	// Go
-	"github.com/gofrs/uuid":     {"github.com/google/uuid (BSD-3-Clause)"},
+	"github.com/gofrs/uuid": {"github.com/google/uuid (BSD-3-Clause)"},
 	// General
-	"readline":                  {"libedit (BSD-3-Clause)"},
+	"readline": {"libedit (BSD-3-Clause)"},
 }
 
 // SuggestAlternatives returns known drop-in alternatives for the given

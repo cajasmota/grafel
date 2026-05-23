@@ -266,7 +266,9 @@ func TestV2TopologyDetail_NotFound(t *testing.T) {
 
 	var body struct {
 		OK    bool `json:"ok"`
-		Error struct{ Code string `json:"code"` } `json:"error"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)

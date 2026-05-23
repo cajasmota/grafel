@@ -356,10 +356,10 @@ func colorize(text, color string, tty, plain bool) string {
 
 // rebuildOutcome captures the result of the async Rebuild RPC call.
 type rebuildOutcome struct {
-	repos   []string
-	warning string
-	elapsed float64
+	repos    []string
+	warning  string
+	elapsed  float64
 	entities int64
 	rels     int64
-	err     error
+	err      error
 }

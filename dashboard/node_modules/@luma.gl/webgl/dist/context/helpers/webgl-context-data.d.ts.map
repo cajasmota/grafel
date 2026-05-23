@@ -1,0 +1,1 @@
+{"version":3,"file":"webgl-context-data.d.ts","sourceRoot":"","sources":["../../../src/context/helpers/webgl-context-data.ts"],"names":[],"mappings":"AAIA;;GAEG;AACH,MAAM,WAAW,gBAAgB;IAC/B,WAAW,EAAE,OAAO,CAAC;IACrB,WAAW,EAAE,MAAM,CAAC,MAAM,EAAE,GAAG,CAAC,CAAC;CAClC;AAED;;;GAGG;AACH,wBAAgB,mBAAmB,CAAC,EAAE,EAAE,sBAAsB,GAAG,gBAAgB,CAchF"}

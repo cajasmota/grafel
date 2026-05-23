@@ -29,26 +29,26 @@ import (
 
 // FitnessRepoResult is the per-repo evaluation result returned by the API.
 type FitnessRepoResult struct {
-	Slug        string              `json:"slug"`
-	Path        string              `json:"path"`
-	HasConfig   bool                `json:"has_config"`
-	TotalRules  int                 `json:"total_rules"`
-	PassedRules int                 `json:"passed_rules"`
-	FailedRules int                 `json:"failed_rules"`
-	ErrorCount  int                 `json:"error_count"`
-	WarnCount   int                 `json:"warn_count"`
-	InfoCount   int                 `json:"info_count"`
-	Results     []fitness.RuleResult `json:"results"`
+	Slug        string                  `json:"slug"`
+	Path        string                  `json:"path"`
+	HasConfig   bool                    `json:"has_config"`
+	TotalRules  int                     `json:"total_rules"`
+	PassedRules int                     `json:"passed_rules"`
+	FailedRules int                     `json:"failed_rules"`
+	ErrorCount  int                     `json:"error_count"`
+	WarnCount   int                     `json:"warn_count"`
+	InfoCount   int                     `json:"info_count"`
+	Results     []fitness.RuleResult    `json:"results"`
 	Suggested   []fitness.SuggestedRule `json:"suggested_rules,omitempty"`
 }
 
 // FitnessGroupReport is the wire shape for GET /api/fitness/{group}.
 type FitnessGroupReport struct {
-	Group       string               `json:"group"`
-	TotalErrors int                  `json:"total_errors"`
-	TotalWarns  int                  `json:"total_warns"`
-	TotalInfos  int                  `json:"total_infos"`
-	Repos       []FitnessRepoResult  `json:"repos"`
+	Group       string              `json:"group"`
+	TotalErrors int                 `json:"total_errors"`
+	TotalWarns  int                 `json:"total_warns"`
+	TotalInfos  int                 `json:"total_infos"`
+	Repos       []FitnessRepoResult `json:"repos"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ func (s *Server) handleFitness(w http.ResponseWriter, r *http.Request) {
 						Message:  cfgErr.Error(),
 					}},
 				}},
-				ErrorCount: 1,
+				ErrorCount:  1,
 				FailedRules: 1,
 			})
 			report.TotalErrors++

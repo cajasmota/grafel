@@ -213,8 +213,8 @@ end
 	})
 
 	wantRefs := map[string]string{
-		"before_action:auth!":         "scope:operation:method:ruby:app/controllers/posts_controller.rb:auth!",
-		"before_action:set_post":      "scope:operation:method:ruby:app/controllers/posts_controller.rb:set_post",
+		"before_action:auth!":            "scope:operation:method:ruby:app/controllers/posts_controller.rb:auth!",
+		"before_action:set_post":         "scope:operation:method:ruby:app/controllers/posts_controller.rb:set_post",
 		"around_action:wrap_transaction": "scope:operation:method:ruby:app/controllers/posts_controller.rb:wrap_transaction",
 	}
 

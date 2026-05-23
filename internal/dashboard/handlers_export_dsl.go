@@ -233,13 +233,13 @@ func bfsSubgraph(repo *DashRepo, root *graph.Entity, depth, limit int) ([]export
 // These match the graph canvas palette used in the React SPA.
 
 type kindStyle struct {
-	mermaidFill    string // hex background
-	mermaidStroke  string // hex border
-	dotFillcolor   string // for graphviz
-	dotFontcolor   string
-	pumlStereo     string // PlantUML stereotype color
-	d2StyleFill    string
-	d2StyleStroke  string
+	mermaidFill   string // hex background
+	mermaidStroke string // hex border
+	dotFillcolor  string // for graphviz
+	dotFontcolor  string
+	pumlStereo    string // PlantUML stereotype color
+	d2StyleFill   string
+	d2StyleStroke string
 }
 
 var kindStyles = map[string]kindStyle{
@@ -260,7 +260,7 @@ var kindStyles = map[string]kindStyle{
 var defaultStyle = kindStyle{
 	mermaidFill: "#f1f5f9", mermaidStroke: "#94a3b8",
 	dotFillcolor: "#f1f5f9", dotFontcolor: "#334155",
-	pumlStereo: "#f1f5f9",
+	pumlStereo:  "#f1f5f9",
 	d2StyleFill: "#f1f5f9", d2StyleStroke: "#94a3b8",
 }
 

@@ -119,12 +119,12 @@ func TestKotlinSpring_ComposedEndpoints(t *testing.T) {
 	// Verify ROUTES_TO edges exist.
 	type rel struct{ from, to string }
 	wantRels := map[rel]bool{
-		{"http:GET:/api/orders", "Controller:listOrders"}:       false,
-		{"http:POST:/api/orders", "Controller:createOrder"}:     false,
-		{"http:PUT:/api/orders/{id}", "Controller:updateOrder"}: false,
+		{"http:GET:/api/orders", "Controller:listOrders"}:          false,
+		{"http:POST:/api/orders", "Controller:createOrder"}:        false,
+		{"http:PUT:/api/orders/{id}", "Controller:updateOrder"}:    false,
 		{"http:DELETE:/api/orders/{id}", "Controller:deleteOrder"}: false,
-		{"http:PATCH:/api/orders/{id}", "Controller:patchOrder"}: false,
-		{"http:GET:/api/legacy", "Controller:legacy"}:           false,
+		{"http:PATCH:/api/orders/{id}", "Controller:patchOrder"}:   false,
+		{"http:GET:/api/legacy", "Controller:legacy"}:              false,
 	}
 	for _, r := range result.Relationships {
 		if r.Kind != "ROUTES_TO" {

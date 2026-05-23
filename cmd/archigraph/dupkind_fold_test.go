@@ -193,9 +193,9 @@ func TestDupKindFold_ViewComponent_NoOverFold(t *testing.T) {
 // SCOPE.Component(subtype="file") entity. Issue #1727.
 func TestDupKindFold_FileComponent_BasicFold(t *testing.T) {
 	const (
-		srcFile  = "src/components/LoginPage.tsx"
-		fileID   = "ffff000000000001" // pre-computed sentinel for test
-		classID  = "cccc000000000001"
+		srcFile   = "src/components/LoginPage.tsx"
+		fileID    = "ffff000000000001" // pre-computed sentinel for test
+		classID   = "cccc000000000001"
 		className = "LoginPage" // matches stem of "LoginPage.tsx"
 	)
 

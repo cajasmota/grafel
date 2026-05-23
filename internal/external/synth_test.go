@@ -5553,17 +5553,17 @@ func TestSynthesize_NoPlaceholderForPythonStdlib(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
 			{
-				ID:       callerID,
-				Name:     "process",
-				Kind:     "Function",
-				Language: "python",
+				ID:         callerID,
+				Name:       "process",
+				Kind:       "Function",
+				Language:   "python",
 				SourceFile: "app/core.py",
 			},
 			{
-				ID:       userFuncID,
-				Name:     "process",
-				Kind:     "Function",
-				Language: "python",
+				ID:         userFuncID,
+				Name:       "process",
+				Kind:       "Function",
+				Language:   "python",
 				SourceFile: "app/util.py",
 			},
 		},
@@ -5771,6 +5771,7 @@ func TestSynthesize_NoPlaceholderForGoStdlib(t *testing.T) {
 // Fixture (JS):
 //   - 6 edges to JS globals: console (×2), JSON (×2), Math (×2)
 //   - 4 edges to real npm packages: lodash.get (×2), react.useState (×2)
+//
 // Fixture (TS):
 //   - 4 edges to TS/JS globals: fetch (×2), process (×2)
 func TestSynthesize_NoPlaceholderForJSStdlib(t *testing.T) {

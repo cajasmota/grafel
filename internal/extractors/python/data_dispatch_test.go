@@ -37,10 +37,10 @@ func ddExtract(t *testing.T, filePath, src string) []ddRel {
 		for _, r := range e.Relationships {
 			if r.Kind == "CALLS" {
 				out = append(out, ddRel{
-					from:        e.Name,
-					toID:        r.ToID,
-					importAlias: r.Properties["import_alias"],
-					callLeaf:    r.Properties["call_leaf"],
+					from:         e.Name,
+					toID:         r.ToID,
+					importAlias:  r.Properties["import_alias"],
+					callLeaf:     r.Properties["call_leaf"],
 					dataDispatch: r.Properties["data_dispatch"] == "1",
 				})
 			}

@@ -1,0 +1,1 @@
+{"version":3,"file":"get-fragment-shader.d.ts","sourceRoot":"","sources":["../../src/passes/get-fragment-shader.ts"],"names":[],"mappings":"AAIA,OAAO,EAAC,UAAU,EAAC,MAAM,sBAAsB,CAAC;AAEhD;;;;GAIG;AACH,wBAAgB,8BAA8B,CAAC,OAAO,EAAE;IACtD,UAAU,EAAE,UAAU,CAAC;IACvB,MAAM,EAAE,QAAQ,GAAG,QAAQ,CAAC;IAC5B,eAAe,EAAE,MAAM,GAAG,MAAM,CAAC;CAClC,GAAG,MAAM,CAkBT"}

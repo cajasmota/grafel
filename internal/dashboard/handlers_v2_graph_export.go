@@ -83,7 +83,7 @@ type ExportManifest struct {
 // re-deriving slug hashes.
 type ExportRepoEntry struct {
 	Slug     string `json:"slug"`
-	Path     string `json:"path"`      // original absolute path on the exporting host
+	Path     string `json:"path"` // original absolute path on the exporting host
 	Stack    string `json:"stack,omitempty"`
 	CloneURL string `json:"clone_url,omitempty"`
 }

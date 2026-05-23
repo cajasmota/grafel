@@ -7,8 +7,8 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/extractor"
 	"github.com/cajasmota/archigraph/internal/extractors"
-	"github.com/cajasmota/archigraph/internal/graph"
 	pyextr "github.com/cajasmota/archigraph/internal/extractors/python"
+	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 

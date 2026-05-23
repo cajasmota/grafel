@@ -69,9 +69,9 @@ class PlaceOrderSaga:
 		t.Fatalf("want 3 CALLS edges from PlaceOrderSaga.run, got %d (%+v)", len(calls), calls)
 	}
 	wantLeaves := map[string]bool{
-		"create_order":       true,
-		"charge_payment":     true,
-		"reserve_inventory":  true,
+		"create_order":      true,
+		"charge_payment":    true,
+		"reserve_inventory": true,
 	}
 	for _, c := range calls {
 		if !wantLeaves[c.ToID] {

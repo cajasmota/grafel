@@ -114,9 +114,9 @@ func TestHandleEnrichmentEstimate_withCandidates(t *testing.T) {
 	candidates := []map[string]any{
 		{"id": "c1", "kind": "http_endpoint", "subject_id": "ep-001", "criticality_band": "critical"},
 		{"id": "c2", "kind": "http_endpoint", "subject_id": "ep-002", "criticality_band": "critical"},
-		{"id": "c3", "kind": "Service",       "subject_id": "svc-001", "criticality_band": "high"},
-		{"id": "c4", "kind": "Service",       "subject_id": "svc-002", "criticality_band": "high"},
-		{"id": "c5", "kind": "Service",       "subject_id": "svc-003", "criticality_band": "high"},
+		{"id": "c3", "kind": "Service", "subject_id": "svc-001", "criticality_band": "high"},
+		{"id": "c4", "kind": "Service", "subject_id": "svc-002", "criticality_band": "high"},
+		{"id": "c5", "kind": "Service", "subject_id": "svc-003", "criticality_band": "high"},
 	}
 	seedCandidates(t, repoPath, candidates)
 
@@ -190,7 +190,7 @@ func TestHandleEnrichmentEstimate_excludesAlreadyEnriched(t *testing.T) {
 	candidates := []map[string]any{
 		{"id": "c1", "kind": "http_endpoint", "subject_id": "ep-001", "criticality_band": "critical"},
 		{"id": "c2", "kind": "http_endpoint", "subject_id": "ep-002", "criticality_band": "critical"},
-		{"id": "c3", "kind": "Service",       "subject_id": "svc-001", "criticality_band": "medium"},
+		{"id": "c3", "kind": "Service", "subject_id": "svc-001", "criticality_band": "medium"},
 	}
 	seedCandidates(t, repoPath, candidates)
 

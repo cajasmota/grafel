@@ -239,14 +239,14 @@ func findContracts(src, filePath string) []types.EntityRecord {
 
 			callRels := collectCallsFromBody(fnBody, qualName)
 			fnRec := types.EntityRecord{
-				Name:      qualName,
-				Kind:      "SCOPE.Operation",
-				Subtype:   "function",
-				SourceFile: filePath,
-				Language:  "solidity",
-				StartLine: fnStartLine,
-				EndLine:   fnStartLine + strings.Count(fnBody, "\n"),
-				Signature: rawFnSig,
+				Name:          qualName,
+				Kind:          "SCOPE.Operation",
+				Subtype:       "function",
+				SourceFile:    filePath,
+				Language:      "solidity",
+				StartLine:     fnStartLine,
+				EndLine:       fnStartLine + strings.Count(fnBody, "\n"),
+				Signature:     rawFnSig,
 				Relationships: callRels,
 			}
 			fnIdx := len(out)
@@ -272,14 +272,14 @@ func findContracts(src, filePath string) []types.EntityRecord {
 			rawEvSig := strings.Join(strings.Fields(body[em[0]:em[1]]), " ")
 
 			evRec := types.EntityRecord{
-				Name:      qualName,
-				Kind:      "SCOPE.Operation",
-				Subtype:   "event",
+				Name:       qualName,
+				Kind:       "SCOPE.Operation",
+				Subtype:    "event",
 				SourceFile: filePath,
-				Language:  "solidity",
-				StartLine: evStartLine,
-				EndLine:   evStartLine,
-				Signature: rawEvSig,
+				Language:   "solidity",
+				StartLine:  evStartLine,
+				EndLine:    evStartLine,
+				Signature:  rawEvSig,
 			}
 			out = append(out, evRec)
 
@@ -303,14 +303,14 @@ func findContracts(src, filePath string) []types.EntityRecord {
 
 			callRels := collectCallsFromBody(modBody, qualName)
 			modRec := types.EntityRecord{
-				Name:      qualName,
-				Kind:      "SCOPE.Operation",
-				Subtype:   "modifier",
-				SourceFile: filePath,
-				Language:  "solidity",
-				StartLine: modStartLine,
-				EndLine:   modStartLine + strings.Count(modBody, "\n"),
-				Signature: rawModSig,
+				Name:          qualName,
+				Kind:          "SCOPE.Operation",
+				Subtype:       "modifier",
+				SourceFile:    filePath,
+				Language:      "solidity",
+				StartLine:     modStartLine,
+				EndLine:       modStartLine + strings.Count(modBody, "\n"),
+				Signature:     rawModSig,
 				Relationships: callRels,
 			}
 			out = append(out, modRec)
@@ -349,9 +349,9 @@ func buildImportEntities(filePath, src string) []types.EntityRecord {
 		displayName = strings.TrimSuffix(displayName, ".sol")
 
 		props := map[string]string{
-			"source_module":  importPath,
-			"imported_name":  displayName,
-			"local_name":     displayName,
+			"source_module": importPath,
+			"imported_name": displayName,
+			"local_name":    displayName,
 		}
 
 		out = append(out, types.EntityRecord{

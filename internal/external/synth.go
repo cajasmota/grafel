@@ -3219,8 +3219,8 @@ var goChiRouterNames = map[string]struct{}{
 	// "URLParam" are receiver-stripped by the Go extractor. Both names
 	// are distinctive enough within non-chi Go code but the import gate
 	// provides belt-and-braces safety.
-	"NewRouter": {},
-	"URLParam":  {},
+	"NewRouter":       {},
+	"URLParam":        {},
 	"URLParamFromCtx": {},
 }
 

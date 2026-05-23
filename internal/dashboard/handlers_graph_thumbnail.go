@@ -139,11 +139,11 @@ func (s *Server) handleGraphLayoutSnapshot(w http.ResponseWriter, r *http.Reques
 	// SVG edge.
 
 	const (
-		cx         = 0.5  // SVG centre x
-		cy         = 0.5  // SVG centre y
-		outerR     = 0.38 // community centroids ring radius
-		innerR     = 0.10 // per-community node spread radius
-		borderPad  = 0.05 // inset from [0,1] edges
+		cx        = 0.5  // SVG centre x
+		cy        = 0.5  // SVG centre y
+		outerR    = 0.38 // community centroids ring radius
+		innerR    = 0.10 // per-community node spread radius
+		borderPad = 0.05 // inset from [0,1] edges
 	)
 
 	// Build community → node list map.

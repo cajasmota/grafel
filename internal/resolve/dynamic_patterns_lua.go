@@ -19,9 +19,9 @@ import "regexp"
 //  1. Lua-unique global built-ins — identifiers that are part of the
 //     Lua standard environment and are virtually never user-defined
 //     function names in any other language:
-//       ipairs, pairs, pcall, xpcall, rawget, rawset, rawequal, rawlen,
-//       setmetatable, getmetatable, tostring, tonumber, unpack, select,
-//       coroutine.wrap → bare "wrap" (Lua-gate makes this safe enough).
+//     ipairs, pairs, pcall, xpcall, rawget, rawset, rawequal, rawlen,
+//     setmetatable, getmetatable, tostring, tonumber, unpack, select,
+//     coroutine.wrap → bare "wrap" (Lua-gate makes this safe enough).
 //     These names land as BugExtractor on every Lua corpus because the
 //     graph never contains an entity whose Name is "ipairs". With the
 //     Lua language gate the risk of false-positive against a user-defined

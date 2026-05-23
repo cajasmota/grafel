@@ -45,9 +45,9 @@ type PerfRecordRequest struct {
 
 // PerfRecordReply is the wire shape for POST /api/perf/record.
 type PerfRecordReply struct {
-	Recorded bool   `json:"recorded"`
-	Metric   string `json:"metric"`
-	Group    string `json:"group,omitempty"`
+	Recorded bool    `json:"recorded"`
+	Metric   string  `json:"metric"`
+	Group    string  `json:"group,omitempty"`
 	Value    float64 `json:"value"`
 }
 

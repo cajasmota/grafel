@@ -79,14 +79,14 @@ func TestMakeEntity_QualifiedNameStable_1725(t *testing.T) {
 
 func TestPathToModule_1725(t *testing.T) {
 	cases := map[string]string{
-		"":                          "",
-		"a.py":                      "a",
-		"a/b/c.go":                  "a.b.c",
-		"./a/b.js":                  "a.b",
-		"/leading/slash.py":         "leading.slash",
-		"win\\sep\\file.ts":         "win.sep.file",
-		"no_ext":                    "no_ext",
-		"foo/bar.test.tsx":          "foo.bar.test",
+		"":                  "",
+		"a.py":              "a",
+		"a/b/c.go":          "a.b.c",
+		"./a/b.js":          "a.b",
+		"/leading/slash.py": "leading.slash",
+		"win\\sep\\file.ts": "win.sep.file",
+		"no_ext":            "no_ext",
+		"foo/bar.test.tsx":  "foo.bar.test",
 	}
 	for in, want := range cases {
 		if got := pathToModule(in); got != want {

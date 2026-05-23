@@ -65,10 +65,10 @@ func TestRecordNodeIDsNoCollector(t *testing.T) {
 // are skipped.
 func TestIDsFromArgs(t *testing.T) {
 	got := idsFromArgs(map[string]any{
-		"node_id":         "r::n",
+		"node_id":          "r::n",
 		"target_entity_id": "r::t",
-		"question":        "where is auth", // must be ignored
-		"label_or_id":     "PlainLabel",    // bare label → skipped
+		"question":         "where is auth", // must be ignored
+		"label_or_id":      "PlainLabel",    // bare label → skipped
 	})
 	if want := []string{"r::n", "r::t"}; !reflect.DeepEqual(sortedCopy(got), want) {
 		t.Fatalf("idsFromArgs = %v, want %v", got, want)

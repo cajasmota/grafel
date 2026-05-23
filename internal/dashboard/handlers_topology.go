@@ -257,9 +257,9 @@ func collectTopologyResponse(grp *DashGroup, groupName string, docgenState *mcp.
 	// topology view renders ONE node per (broker, topic_name) instead of N.
 	// Fixes #1695.
 	type topicMergeAccum struct {
-		name         string
-		rawBroker    string
-		canonical    string
+		name      string
+		rawBroker string
+		canonical string
 		// owningService from the first-seen occurrence — used as fallback.
 		owningService string
 		// producers and consumers keyed by prefixed entity ID for dedup.

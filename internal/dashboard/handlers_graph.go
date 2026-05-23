@@ -456,14 +456,16 @@ func (s *Server) serveGraphDense(w http.ResponseWriter, r *http.Request, grp *Da
 }
 
 // handleGraphLabels — GET /api/graph/{group}/labels?top=200
-//                      GET /api/graph/{group}/labels?ids=a,b,c
+//
+//	GET /api/graph/{group}/labels?ids=a,b,c
 //
 // Tier 2: Returns {id, label} pairs so the frontend can display node labels
 // without carrying them in the main graph payload.
 //
 // ?top=N  — returns the top-N nodes by degree (default 200, max 2000).
 // ?ids=   — returns labels for an explicit comma-separated list of node IDs
-//           (used for hover-to-label of unlabeled nodes).
+//
+//	(used for hover-to-label of unlabeled nodes).
 //
 // The two params are mutually exclusive; ?ids= takes priority when present.
 func (s *Server) handleGraphLabels(w http.ResponseWriter, r *http.Request) {

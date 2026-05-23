@@ -35,12 +35,12 @@ var svelteDynamicPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^\$state$`),
 	regexp.MustCompile(`^\$derived$`),
 	regexp.MustCompile(`^\$effect$`),
-	regexp.MustCompile(`^\$effect\.pre$`),   // $effect.pre(() => {})
-	regexp.MustCompile(`^\$effect\.root$`),  // $effect.root(() => {})
+	regexp.MustCompile(`^\$effect\.pre$`),  // $effect.pre(() => {})
+	regexp.MustCompile(`^\$effect\.root$`), // $effect.root(() => {})
 	regexp.MustCompile(`^\$props$`),
 	regexp.MustCompile(`^\$bindable$`),
-	regexp.MustCompile(`^\$inspect$`),       // $inspect(value) — Svelte 5 debug rune
-	regexp.MustCompile(`^\$host$`),          // $host() — Svelte 5 custom element host rune
+	regexp.MustCompile(`^\$inspect$`), // $inspect(value) — Svelte 5 debug rune
+	regexp.MustCompile(`^\$host$`),    // $host() — Svelte 5 custom element host rune
 
 	// ── Svelte 4 lifecycle helpers ────────────────────────────────────────
 	// Imported from "svelte". These run in the component lifecycle but are

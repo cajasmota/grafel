@@ -149,13 +149,13 @@ func TestPrintDoctorHealthWithIssues(t *testing.T) {
 // TestComputeQualityMetrics verifies aggregation of quality metrics.
 func TestComputeQualityMetrics(t *testing.T) {
 	health := &DoctorGroupHealth{
-		GroupName:           "test-group",
-		Repos:               []*DoctorRepoHealth{},
-		TotalEntities:       100,
-		TotalRelationships:  50,
-		OrphanEntities:      10,
-		PendingRepairs:      5,
-		PendingEnrichments:  8,
+		GroupName:          "test-group",
+		Repos:              []*DoctorRepoHealth{},
+		TotalEntities:      100,
+		TotalRelationships: 50,
+		OrphanEntities:     10,
+		PendingRepairs:     5,
+		PendingEnrichments: 8,
 	}
 
 	computeQualityMetrics(health)

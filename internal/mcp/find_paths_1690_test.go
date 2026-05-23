@@ -186,4 +186,3 @@ func containsKind(res map[string]any, want string) bool {
 	b, _ := json.Marshal(raw)
 	return strings.Contains(string(b), want)
 }
-

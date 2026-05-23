@@ -35,18 +35,18 @@ import (
 
 // GroupCoverageReport is the wire shape for GET /api/quality/coverage/{group}.
 type GroupCoverageReport struct {
-	Group             string                `json:"group"`
-	TotalProduction   int                   `json:"total_production"`
-	CoveredProduction int                   `json:"covered_production"`
-	CoveragePct       float64               `json:"coverage_pct"`
-	TotalTests        int                   `json:"total_tests"`
-	TotalTestsEdges   int                   `json:"total_tests_edges"`
-	Repos             int                   `json:"repos"`
+	Group             string  `json:"group"`
+	TotalProduction   int     `json:"total_production"`
+	CoveredProduction int     `json:"covered_production"`
+	CoveragePct       float64 `json:"coverage_pct"`
+	TotalTests        int     `json:"total_tests"`
+	TotalTestsEdges   int     `json:"total_tests_edges"`
+	Repos             int     `json:"repos"`
 	// UncoveredEntities is sorted by severity (high first) and capped by
 	// the ?limit query parameter (default 200).
-	UncoveredEntities []graph.UncoveredEntity  `json:"uncovered_entities"`
-	ByDirectory       []graph.DirCoverage      `json:"by_directory"`
-	ByModule          []graph.ModuleCoverage   `json:"by_module"`
+	UncoveredEntities []graph.UncoveredEntity `json:"uncovered_entities"`
+	ByDirectory       []graph.DirCoverage     `json:"by_directory"`
+	ByModule          []graph.ModuleCoverage  `json:"by_module"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

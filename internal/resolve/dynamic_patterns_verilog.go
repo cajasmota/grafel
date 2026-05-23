@@ -32,33 +32,33 @@ var verilogDynamicPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^\$`), // covers $display, $monitor, $finish, $stop, $time, etc.
 
 	// ── 2. SV system functions (explicit list for clarity) ───────────────
-	regexp.MustCompile(`^\$cast$`),      // $cast(dest, src) — checked dynamic cast
-	regexp.MustCompile(`^\$realtime$`),  // $realtime — real-valued simulation time
-	regexp.MustCompile(`^\$urandom$`),   // $urandom — SV PRNG
+	regexp.MustCompile(`^\$cast$`),          // $cast(dest, src) — checked dynamic cast
+	regexp.MustCompile(`^\$realtime$`),      // $realtime — real-valued simulation time
+	regexp.MustCompile(`^\$urandom$`),       // $urandom — SV PRNG
 	regexp.MustCompile(`^\$urandom_range$`), // $urandom_range(max, min)
-	regexp.MustCompile(`^\$rose$`),      // $rose(signal) — assertion clock edge
-	regexp.MustCompile(`^\$fell$`),      // $fell(signal) — assertion clock edge
-	regexp.MustCompile(`^\$stable$`),    // $stable(signal) — no change
-	regexp.MustCompile(`^\$past$`),      // $past(signal, n) — past value
-	regexp.MustCompile(`^\$changed$`),   // $changed(signal) — value changed
-	regexp.MustCompile(`^\$isunknown$`), // $isunknown(expr) — X/Z check
-	regexp.MustCompile(`^\$onehot$`),    // $onehot(expr) — one-hot check
-	regexp.MustCompile(`^\$onehot0$`),   // $onehot0(expr) — at most one-hot
-	regexp.MustCompile(`^\$countones$`), // $countones(expr)
+	regexp.MustCompile(`^\$rose$`),          // $rose(signal) — assertion clock edge
+	regexp.MustCompile(`^\$fell$`),          // $fell(signal) — assertion clock edge
+	regexp.MustCompile(`^\$stable$`),        // $stable(signal) — no change
+	regexp.MustCompile(`^\$past$`),          // $past(signal, n) — past value
+	regexp.MustCompile(`^\$changed$`),       // $changed(signal) — value changed
+	regexp.MustCompile(`^\$isunknown$`),     // $isunknown(expr) — X/Z check
+	regexp.MustCompile(`^\$onehot$`),        // $onehot(expr) — one-hot check
+	regexp.MustCompile(`^\$onehot0$`),       // $onehot0(expr) — at most one-hot
+	regexp.MustCompile(`^\$countones$`),     // $countones(expr)
 
 	// ── 3. UVM macro targets ──────────────────────────────────────────────
 	// Extractor strips the leading backtick; resulting identifier is registered.
-	regexp.MustCompile(`^uvm_info$`),               // `uvm_info(ID, MSG, UVM_LOW)
-	regexp.MustCompile(`^uvm_error$`),              // `uvm_error(ID, MSG)
-	regexp.MustCompile(`^uvm_fatal$`),              // `uvm_fatal(ID, MSG)
-	regexp.MustCompile(`^uvm_warning$`),            // `uvm_warning(ID, MSG)
-	regexp.MustCompile(`^uvm_component_utils$`),    // `uvm_component_utils(class_name)
-	regexp.MustCompile(`^uvm_object_utils$`),       // `uvm_object_utils(class_name)
+	regexp.MustCompile(`^uvm_info$`),                  // `uvm_info(ID, MSG, UVM_LOW)
+	regexp.MustCompile(`^uvm_error$`),                 // `uvm_error(ID, MSG)
+	regexp.MustCompile(`^uvm_fatal$`),                 // `uvm_fatal(ID, MSG)
+	regexp.MustCompile(`^uvm_warning$`),               // `uvm_warning(ID, MSG)
+	regexp.MustCompile(`^uvm_component_utils$`),       // `uvm_component_utils(class_name)
+	regexp.MustCompile(`^uvm_object_utils$`),          // `uvm_object_utils(class_name)
 	regexp.MustCompile(`^uvm_component_utils_begin$`), // begin-end factory registration
 	regexp.MustCompile(`^uvm_component_utils_end$`),
 	regexp.MustCompile(`^uvm_object_utils_begin$`),
 	regexp.MustCompile(`^uvm_object_utils_end$`),
-	regexp.MustCompile(`^uvm_field_int$`),          // `uvm_field_* macros
+	regexp.MustCompile(`^uvm_field_int$`), // `uvm_field_* macros
 	regexp.MustCompile(`^uvm_field_string$`),
 	regexp.MustCompile(`^uvm_field_object$`),
 	regexp.MustCompile(`^uvm_field_array_int$`),
@@ -90,21 +90,21 @@ var verilogDynamicPatterns = []*regexp.Regexp{
 
 	// ── 6. FPGA / standard-cell IP primitives ────────────────────────────
 	// Xilinx/Vivado unisim primitives (BUFG, IBUF, OBUF, MMCME2_ADV, …)
-	regexp.MustCompile(`^BUFG`),   // BUFG, BUFGCE, BUFGMUX, …
-	regexp.MustCompile(`^IBUF`),   // IBUF, IBUFDS, IBUFGDS, …
-	regexp.MustCompile(`^OBUF`),   // OBUF, OBUFT, OBUFDS, …
-	regexp.MustCompile(`^IOBUF`),  // IOBUF, IOBUFDS
-	regexp.MustCompile(`^MMCM`),   // MMCME2_ADV, MMCME4_ADV, …
-	regexp.MustCompile(`^PLL`),    // PLLE2_ADV, PLLE4_ADV, …
-	regexp.MustCompile(`^BRAM_`),  // BRAM_SDP_MACRO, BRAM_TDP_MACRO
-	regexp.MustCompile(`^RAMB`),   // RAMB16, RAMB18E2, …
+	regexp.MustCompile(`^BUFG`),      // BUFG, BUFGCE, BUFGMUX, …
+	regexp.MustCompile(`^IBUF`),      // IBUF, IBUFDS, IBUFGDS, …
+	regexp.MustCompile(`^OBUF`),      // OBUF, OBUFT, OBUFDS, …
+	regexp.MustCompile(`^IOBUF`),     // IOBUF, IOBUFDS
+	regexp.MustCompile(`^MMCM`),      // MMCME2_ADV, MMCME4_ADV, …
+	regexp.MustCompile(`^PLL`),       // PLLE2_ADV, PLLE4_ADV, …
+	regexp.MustCompile(`^BRAM_`),     // BRAM_SDP_MACRO, BRAM_TDP_MACRO
+	regexp.MustCompile(`^RAMB`),      // RAMB16, RAMB18E2, …
 	regexp.MustCompile(`^LUT[1-6]$`), // LUT1 … LUT6
-	regexp.MustCompile(`^FDRE$`),  // D flip-flop with reset (Xilinx)
-	regexp.MustCompile(`^FDSE$`),  // D flip-flop with set (Xilinx)
-	regexp.MustCompile(`^FDCE$`),  // D flip-flop CE (Xilinx)
-	regexp.MustCompile(`^FDPE$`),  // D flip-flop PE (Xilinx)
-	regexp.MustCompile(`^LDCE$`),  // Latch with CE (Xilinx)
-	regexp.MustCompile(`^DSP48`),  // DSP48E1, DSP48E2 (Xilinx)
+	regexp.MustCompile(`^FDRE$`),     // D flip-flop with reset (Xilinx)
+	regexp.MustCompile(`^FDSE$`),     // D flip-flop with set (Xilinx)
+	regexp.MustCompile(`^FDCE$`),     // D flip-flop CE (Xilinx)
+	regexp.MustCompile(`^FDPE$`),     // D flip-flop PE (Xilinx)
+	regexp.MustCompile(`^LDCE$`),     // Latch with CE (Xilinx)
+	regexp.MustCompile(`^DSP48`),     // DSP48E1, DSP48E2 (Xilinx)
 	// SkyWater PDK sky130 standard cells
 	regexp.MustCompile(`^sky130_`), // sky130_fd_sc_hd__and2_1, etc.
 	// Intel/Altera primitives

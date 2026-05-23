@@ -756,13 +756,13 @@ func TestIsHTTPEndpointPath(t *testing.T) {
 		// XML namespace XPath strings — must be rejected.
 		{"./w:tblBorders", false},
 		{"./w:tcBorders", false},
-		{"/./w:tblBorders", false},      // canonicalized form
-		{"/api/v1/w:something", false},  // XML prefix colon in segment
+		{"/./w:tblBorders", false},     // canonicalized form
+		{"/api/v1/w:something", false}, // XML prefix colon in segment
 		{"/w:root", false},
 		{"/div[@class='x']", false}, // XPath attribute selector
 		{"", false},
 		// Long "prefix" before colon — NOT XML namespace, should pass.
-		{"/version1/items", true},  // no colon at all
+		{"/version1/items", true}, // no colon at all
 	}
 	for _, tc := range cases {
 		got := isHTTPEndpointPath(tc.path)

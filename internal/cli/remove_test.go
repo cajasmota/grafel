@@ -132,8 +132,8 @@ func TestRemove_JSONOutputShape(t *testing.T) {
 	}
 
 	var result struct {
-		Success  bool `json:"success"`
-		Removed  struct {
+		Success bool `json:"success"`
+		Removed struct {
 			Group string `json:"group"`
 			Slug  string `json:"slug"`
 		} `json:"removed"`

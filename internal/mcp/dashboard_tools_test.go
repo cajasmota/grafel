@@ -390,7 +390,7 @@ func TestSearchEntities_TopicKindAlias(t *testing.T) {
 
 	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
 		"group":       "test",
-		"query":       ".",    // matches the dot in all topic names
+		"query":       ".", // matches the dot in all topic names
 		"kind_filter": "topic",
 	})
 	results, _ := out["results"].([]any)

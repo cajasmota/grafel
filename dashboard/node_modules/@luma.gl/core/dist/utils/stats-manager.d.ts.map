@@ -1,0 +1,1 @@
+{"version":3,"file":"stats-manager.d.ts","sourceRoot":"","sources":["../../src/utils/stats-manager.ts"],"names":[],"mappings":"AAIA,OAAO,EAAC,KAAK,EAAC,MAAM,iBAAiB,CAAC;AAEtC;;GAEG;AACH,qBAAa,YAAY;IACvB,KAAK,gBAAa;IAElB,QAAQ,CAAC,IAAI,EAAE,MAAM,GAAG,KAAK;IAI7B,GAAG,CAAC,IAAI,EAAE,MAAM,GAAG,KAAK;CAOzB;AAED,2CAA2C;AAC3C,eAAO,MAAM,SAAS,EAAE,YAAiC,CAAC"}

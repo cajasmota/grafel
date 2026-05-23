@@ -9,7 +9,7 @@
 //  1. Strip the repo root prefix from source_file to get a repo-relative path.
 //  2. Scan the path bottom-up for package-boundary markers:
 //     - Go: presence of a go.mod sibling OR same directory as the file (package
-//       declarations are per-directory in Go).
+//     declarations are per-directory in Go).
 //     - Python: __init__.py in the same directory.
 //     - JS/TS: package.json OR index.ts / index.js / index.tsx in the same dir.
 //  3. If a marker boundary is found at depth D, use the first D path segments

@@ -9,8 +9,8 @@ import (
 	"log"
 	"net"
 
-	"github.com/nats-io/nats.go"
 	_ "github.com/lib/pq"
+	"github.com/nats-io/nats.go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

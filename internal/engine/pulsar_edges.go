@@ -56,8 +56,8 @@ import (
 const pulsarTopicEntityKind = messageTopicKind // "SCOPE.MessageTopic"
 
 // pulsarProducesEdge / pulsarConsumesEdge — reuse existing edge vocabulary.
-const pulsarProducesEdge = publishesToEdgeKind   // "PUBLISHES_TO"
-const pulsarConsumesEdge = subscribesToEdgeKind  // "SUBSCRIBES_TO"
+const pulsarProducesEdge = publishesToEdgeKind  // "PUBLISHES_TO"
+const pulsarConsumesEdge = subscribesToEdgeKind // "SUBSCRIBES_TO"
 
 // pulsarDefaultScheme is the scheme used when normalising a bare topic name.
 const pulsarDefaultScheme = "persistent"
@@ -149,10 +149,10 @@ func applyPulsarEdges(
 		}
 		seenTopic[id] = true
 		entities = append(entities, types.EntityRecord{
-			Name:               id,
-			Kind:               pulsarTopicEntityKind,
-			SourceFile:         "",
-			Language:           lang,
+			Name:       id,
+			Kind:       pulsarTopicEntityKind,
+			SourceFile: "",
+			Language:   lang,
 			Properties: map[string]string{
 				"broker":       "pulsar",
 				"topic_name":   canonical,

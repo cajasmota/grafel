@@ -43,10 +43,10 @@ const (
 type MCPInstallState string
 
 const (
-	StateInstalled   MCPInstallState = "installed"   // entry present and well-formed
-	StatePartial     MCPInstallState = "partial"      // entry present but malformed / wrong args
+	StateInstalled    MCPInstallState = "installed"     // entry present and well-formed
+	StatePartial      MCPInstallState = "partial"       // entry present but malformed / wrong args
 	StateNotInstalled MCPInstallState = "not_installed" // no entry found
-	StateHostAbsent  MCPInstallState = "host_absent"  // host config file not found (host may not be installed)
+	StateHostAbsent   MCPInstallState = "host_absent"   // host config file not found (host may not be installed)
 )
 
 // MCPHostInfo is the per-host response payload.

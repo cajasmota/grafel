@@ -17,14 +17,14 @@ func TestIsNewerVersion(t *testing.T) {
 		latest, current string
 		want            bool
 	}{
-		{"1.2.3", "0.0.0-dev", true},  // dev build → any release is newer
-		{"1.2.3", "1.2.3", false},     // same version → not newer
-		{"1.2.4", "1.2.3", true},      // patch bump
-		{"2.0.0", "1.9.9", true},      // major bump
-		{"1.0.0", "2.0.0", false},     // older release
-		{"", "1.0.0", false},          // empty latest
-		{"1.0.0", "", false},          // empty current
-		{"1.0.0-rc1", "0.9.9", true},  // pre-release vs older stable
+		{"1.2.3", "0.0.0-dev", true}, // dev build → any release is newer
+		{"1.2.3", "1.2.3", false},    // same version → not newer
+		{"1.2.4", "1.2.3", true},     // patch bump
+		{"2.0.0", "1.9.9", true},     // major bump
+		{"1.0.0", "2.0.0", false},    // older release
+		{"", "1.0.0", false},         // empty latest
+		{"1.0.0", "", false},         // empty current
+		{"1.0.0-rc1", "0.9.9", true}, // pre-release vs older stable
 	}
 	for _, tc := range tests {
 		got := isNewerVersion(tc.latest, tc.current)

@@ -19,15 +19,15 @@
 //
 //  3. If the caller set is non-empty:
 //     a. Filter to at most maxCallersPerHelper callers (configurable, default 5).
-//        When the caller set is larger than the limit the helper is almost
-//        certainly a widely-shared utility — emitting derived edges for every
-//        caller would inflate coverage; skip instead.
+//     When the caller set is larger than the limit the helper is almost
+//     certainly a widely-shared utility — emitting derived edges for every
+//     caller would inflate coverage; skip instead.
 //     b. For each selected caller, emit a derived TESTS relationship:
-//           test_fn → caller  (Kind="TESTS")
-//        with properties:
-//           derived=helper:<helperID>
-//           confidence=0.7    (below 1.0 to distinguish from explicit edges)
-//           source=tests-walkup
+//     test_fn → caller  (Kind="TESTS")
+//     with properties:
+//     derived=helper:<helperID>
+//     confidence=0.7    (below 1.0 to distinguish from explicit edges)
+//     source=tests-walkup
 //
 //  4. Deduplicate: if an explicit TESTS edge already covers the caller, skip.
 //

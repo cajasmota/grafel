@@ -119,14 +119,14 @@ type ModuleCoverage struct {
 // bare "Function" / "Method" keys are kept for forward compatibility with any
 // third-party or future extractors that emit those kinds directly.
 var coverageEntityKinds = map[string]bool{
-	"SCOPE.Operation":            true, // canonical: all language extractors
-	"Function":                   true, // compat / future
-	"Method":                     true, // compat / future
-	"Class":                      true,
-	"Interface":                  true,
-	"Struct":                     true,
-	"http_endpoint":              true,
-	"http_endpoint_definition":   true,
+	"SCOPE.Operation":          true, // canonical: all language extractors
+	"Function":                 true, // compat / future
+	"Method":                   true, // compat / future
+	"Class":                    true,
+	"Interface":                true,
+	"Struct":                   true,
+	"http_endpoint":            true,
+	"http_endpoint_definition": true,
 }
 
 // testEntityKinds is the set of entity kinds that count as "test entities"
@@ -397,8 +397,8 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 	}
 
 	// Classify entities.
-	prodIDs := make(map[string]bool)  // production entity IDs
-	testIDs := make(map[string]bool)  // test entity IDs
+	prodIDs := make(map[string]bool) // production entity IDs
+	testIDs := make(map[string]bool) // test entity IDs
 
 	for id, e := range entByID {
 		switch {

@@ -86,8 +86,8 @@ type perBackendResult struct {
 	skipped      bool
 	skipReason   string
 	dims         int
-	totalEnts    int    // entities considered embeddable
-	embedded     int    // entities actually embedded
+	totalEnts    int // entities considered embeddable
+	embedded     int // entities actually embedded
 	embedSecs    float64
 	queryLatency time.Duration // mean per-query encode + search
 	vectorBytes  int64         // on-disk embeddings.bin size

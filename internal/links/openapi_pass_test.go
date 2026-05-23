@@ -323,7 +323,7 @@ func TestOpenAPISpecPass_VerbMismatch(t *testing.T) {
 				"kind":        "http_endpoint",
 				"source_file": "api.ts",
 				"properties": map[string]any{
-					"verb":          "POST",  // mismatch with spec GET
+					"verb":          "POST", // mismatch with spec GET
 					"path":          "/users",
 					"pattern_type":  "http_endpoint_client_synthesis",
 					"source_caller": "Function:createUser",

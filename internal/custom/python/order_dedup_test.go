@@ -25,9 +25,9 @@ import (
 	"testing"
 
 	_ "github.com/cajasmota/archigraph/internal/custom/python"
+	"github.com/cajasmota/archigraph/internal/extractor"
 	_ "github.com/cajasmota/archigraph/internal/extractors/graphql"
 	_ "github.com/cajasmota/archigraph/internal/extractors/python"
-	"github.com/cajasmota/archigraph/internal/extractor"
 )
 
 const polyglotPlatformBase = "/Users/jorgecajas/Documents/Projects/polyglot-platform"

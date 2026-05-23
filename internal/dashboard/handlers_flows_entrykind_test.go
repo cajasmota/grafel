@@ -310,9 +310,9 @@ func TestHandleFlowsList_EntryKindFields(t *testing.T) {
 		kindCount[g.Kind] = g.Count
 	}
 	wantKinds := map[string]int{
-		"http_handler":  1,
+		"http_handler":   1,
 		"scheduled_task": 1,
-		"function":      1,
+		"function":       1,
 	}
 	for k, wc := range wantKinds {
 		if gc := kindCount[k]; gc != wc {

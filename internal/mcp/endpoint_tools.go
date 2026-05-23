@@ -725,12 +725,12 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 
 	type repoStats struct {
-		Repo               string `json:"repo"`
-		Definitions        int    `json:"definitions"`
-		Calls              int    `json:"calls"`
-		LegacyKind         int    `json:"legacy_kind"` // entities whose kind is plain "http_endpoint" (not split yet)
-		OrphanCalls        int    `json:"orphan_calls"`
-		CrossRepoResolved  int    `json:"cross_repo_resolved"`
+		Repo              string `json:"repo"`
+		Definitions       int    `json:"definitions"`
+		Calls             int    `json:"calls"`
+		LegacyKind        int    `json:"legacy_kind"` // entities whose kind is plain "http_endpoint" (not split yet)
+		OrphanCalls       int    `json:"orphan_calls"`
+		CrossRepoResolved int    `json:"cross_repo_resolved"`
 	}
 
 	// Build definition-ID set first (needed for orphan detection below).

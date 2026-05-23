@@ -1,0 +1,1 @@
+{"version":3,"file":"set-uniform.d.ts","sourceRoot":"","sources":["../../../src/adapter/helpers/set-uniform.ts"],"names":[],"mappings":"AAOA,OAAO,KAAK,EAAC,YAAY,EAAC,MAAM,eAAe,CAAC;AAChD,OAAO,EAAK,aAAa,EAAE,aAAa,EAAC,MAAM,oBAAoB,CAAC;AAEpE,8DAA8D;AAE9D,wBAAgB,UAAU,CACxB,EAAE,EAAE,sBAAsB,EAC1B,QAAQ,EAAE,oBAAoB,EAC9B,IAAI,EAAE,aAAa,GAAG,aAAa,EACnC,KAAK,EAAE,YAAY,GAClB,IAAI,CAwEN"}

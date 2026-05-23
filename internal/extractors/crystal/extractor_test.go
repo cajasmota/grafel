@@ -416,14 +416,14 @@ func TestCrystalExtractor_KemalFixtureRecall(t *testing.T) {
 
 	// Expected entities (minimum viable set for 80% recall).
 	wantNames := []string{
-		"Auth",         // module
-		"BaseHandler",  // abstract class
-		"UserHandler",  // class
-		"initialize",   // def
-		"handle",       // def
-		"find_user",    // def
-		"validate",     // def (Auth.self.validate normalised)
-		"route",        // macro
+		"Auth",        // module
+		"BaseHandler", // abstract class
+		"UserHandler", // class
+		"initialize",  // def
+		"handle",      // def
+		"find_user",   // def
+		"validate",    // def (Auth.self.validate normalised)
+		"route",       // macro
 	}
 
 	nameSet := make(map[string]bool, len(got))

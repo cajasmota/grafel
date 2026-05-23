@@ -15,7 +15,7 @@
 //  3. Inside the script block:
 //     - defineProps / defineEmits / defineExpose (Composition API macros) → SCOPE.Operation
 //     - Composition API calls: ref, reactive, computed, watch, watchEffect,
-//       onMounted, onUnmounted, provide, inject, nextTick, … → CALLS edges
+//     onMounted, onUnmounted, provide, inject, nextTick, … → CALLS edges
 //     - Vuex / Pinia: useStore, defineStore, mapState, mapGetters, mapActions → CALLS
 //     - Vue Router: useRouter, useRoute → CALLS
 //     - Options API: components, props, emits, methods → extracted as operations
@@ -84,9 +84,9 @@ var (
 	reSetupAttr = regexp.MustCompile(`(?i)\bsetup\b`)
 
 	// Composition API macros (script setup only)
-	reDefineProps   = regexp.MustCompile(`(?m)\bdefineProps\s*[(<]`)
-	reDefineEmits   = regexp.MustCompile(`(?m)\bdefineEmits\s*[(<]`)
-	reDefineExpose  = regexp.MustCompile(`(?m)\bdefineExpose\s*\(`)
+	reDefineProps  = regexp.MustCompile(`(?m)\bdefineProps\s*[(<]`)
+	reDefineEmits  = regexp.MustCompile(`(?m)\bdefineEmits\s*[(<]`)
+	reDefineExpose = regexp.MustCompile(`(?m)\bdefineExpose\s*\(`)
 
 	// Composition API calls we capture as CALLS edges
 	reCompositionCall = regexp.MustCompile(`(?m)\b(ref|reactive|computed|watch|watchEffect|onMounted|onUnmounted|onBeforeMount|onBeforeUnmount|onUpdated|onBeforeUpdate|onActivated|onDeactivated|provide|inject|nextTick|useRouter|useRoute|useStore|defineStore|mapState|mapGetters|mapActions|useI18n|useFetch|useAsyncData|useNuxtApp|createApp|defineComponent)\s*[(<]`)

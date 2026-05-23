@@ -17,9 +17,9 @@
 //  3. On the next daemon load (or via archigraph_apply_docgen_repairs),
 //     ReadDocgenRepairs loads the file and ApplyDocgenRepairs splits it:
 //     - Confidence ≥ HighConfidenceThreshold → applied immediately as
-//       graph enrichment enrichment-resolutions.json or a new edge.
+//     graph enrichment enrichment-resolutions.json or a new edge.
 //     - Confidence < HighConfidenceThreshold → written to
-//       docgen-repairs-pending.json for human review.
+//     docgen-repairs-pending.json for human review.
 //
 // # Schema contract
 //

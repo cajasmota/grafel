@@ -9,12 +9,12 @@ import (
 // makeEvent is a helper to build a minimal Event for testing.
 func makeEvent(group, repo, phase string) Event {
 	return Event{
-		GroupSlug: group,
-		RepoSlug:  repo,
-		Phase:     phase,
-		FilesDone: 1,
+		GroupSlug:  group,
+		RepoSlug:   repo,
+		Phase:      phase,
+		FilesDone:  1,
 		FilesTotal: 10,
-		TS:        time.Now().UnixMilli(),
+		TS:         time.Now().UnixMilli(),
 	}
 }
 

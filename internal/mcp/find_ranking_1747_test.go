@@ -117,8 +117,8 @@ func TestEdgesFooter_HonestWording(t *testing.T) {
 			makeTestNode("svc", "Bar", "SCOPE.Function", "bar.go", 10, 3.0),
 		},
 		Edges: []renderEdge{
-			{From: "Foo", To: "Bar", Kind: "CALLS"},  // implicit call — hidden in old format
-			{From: "Foo", To: "Bar", Kind: "USES"},   // non-call — rendered
+			{From: "Foo", To: "Bar", Kind: "CALLS"}, // implicit call — hidden in old format
+			{From: "Foo", To: "Bar", Kind: "USES"},  // non-call — rendered
 		},
 		OneRepo: true,
 	}

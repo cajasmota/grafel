@@ -21,8 +21,8 @@ import (
 // repairKinds is the closed set of candidate kinds surfaced on the "Repair
 // candidates" tab. Everything else lands on the "Enrichment candidates" tab.
 var repairKinds = map[string]bool{
-	"repair_edge":                true,
-	"dynamic_baseurl_endpoint":   true,
+	"repair_edge":              true,
+	"dynamic_baseurl_endpoint": true,
 }
 
 // communityNamingKinds is the closed set of candidate kinds surfaced on the
@@ -37,20 +37,20 @@ var communityNamingKinds = map[string]bool{
 // /api/enrichments. The richer Context map is forwarded as-is so the
 // dashboard can display subject / proposed-value without a second round-trip.
 type pendingCandidateRow struct {
-	CandidateID     string         `json:"candidate_id"`
-	Repo            string         `json:"repo"`
-	Kind            string         `json:"kind"`
-	SubjectID       string         `json:"subject_id"`
-	Context         map[string]any `json:"context,omitempty"`
-	Hint            string         `json:"hint,omitempty"`
-	Confidence      float64        `json:"confidence,omitempty"`
-	DiscoveredAt    string         `json:"discovered_at,omitempty"`
-	AutoResolvable  bool           `json:"auto_resolvable"`
+	CandidateID    string         `json:"candidate_id"`
+	Repo           string         `json:"repo"`
+	Kind           string         `json:"kind"`
+	SubjectID      string         `json:"subject_id"`
+	Context        map[string]any `json:"context,omitempty"`
+	Hint           string         `json:"hint,omitempty"`
+	Confidence     float64        `json:"confidence,omitempty"`
+	DiscoveredAt   string         `json:"discovered_at,omitempty"`
+	AutoResolvable bool           `json:"auto_resolvable"`
 	// Score is the 0–100 prioritisation score (issue #1131). Present on
 	// enrichment candidates; absent (0) on repair candidates.
-	Score           int    `json:"score,omitempty"`
+	Score int `json:"score,omitempty"`
 	// ScoreBreakdown lists the modifiers that produced Score.
-	ScoreBreakdown  string `json:"score_breakdown,omitempty"`
+	ScoreBreakdown string `json:"score_breakdown,omitempty"`
 	// CriticalityBand is "critical" / "high" / "medium" / "low".
 	CriticalityBand string `json:"criticality_band,omitempty"`
 }
@@ -175,9 +175,9 @@ func (s *Server) handleEnrichments(w http.ResponseWriter, r *http.Request) {
 // We parse the Context map so the REST layer can forward it without importing
 // internal/enrichment.
 type candidateRaw struct {
-	ID              string         `json:"id"`
-	Kind            string         `json:"kind"`
-	SubjectID       string         `json:"subject_id"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	SubjectID string `json:"subject_id"`
 	// TaskType is "entity" or "community"; empty means "entity" (backward compat).
 	TaskType        string         `json:"task_type,omitempty"`
 	Context         map[string]any `json:"context,omitempty"`
@@ -392,8 +392,8 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"tasks":        allTasks,
-		"total_tasks":  len(allTasks),
+		"tasks":         allTasks,
+		"total_tasks":   len(allTasks),
 		"total_actions": totalActions,
 		"overdue_count": overdueCount,
 	})
@@ -401,32 +401,32 @@ func (s *Server) handleEnrichmentTasks(w http.ResponseWriter, r *http.Request) {
 
 // enrichmentActionWire is the JSON-wire shape for one action inside a task row.
 type enrichmentActionWire struct {
-	Kind            string  `json:"kind"`
-	CandidateID     string  `json:"candidate_id"`
-	Score           float64 `json:"score,omitempty"`
+	Kind        string  `json:"kind"`
+	CandidateID string  `json:"candidate_id"`
+	Score       float64 `json:"score,omitempty"`
 	// IntScore is the 0–100 integer score from issue #1131.
-	IntScore        int     `json:"int_score,omitempty"`
-	CriticalityBand string  `json:"criticality_band,omitempty"`
-	Reason          string  `json:"reason,omitempty"`
-	Completed       bool    `json:"completed"`
+	IntScore        int    `json:"int_score,omitempty"`
+	CriticalityBand string `json:"criticality_band,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+	Completed       bool   `json:"completed"`
 }
 
 // enrichmentTaskRow is the JSON-wire shape for one task row.
 type enrichmentTaskRow struct {
-	SubjectID       string                 `json:"subject_id"`
-	SubjectKind     string                 `json:"subject_kind,omitempty"`
-	SubjectName     string                 `json:"subject_name,omitempty"`
-	Repo            string                 `json:"repo"`
-	PendingActions  []enrichmentActionWire `json:"pending_actions"`
-	PendingCount    int                    `json:"pending_count"`
-	OverallScore    float64                `json:"overall_score"`
-	MaxActionScore  float64                `json:"max_action_score,omitempty"`
+	SubjectID      string                 `json:"subject_id"`
+	SubjectKind    string                 `json:"subject_kind,omitempty"`
+	SubjectName    string                 `json:"subject_name,omitempty"`
+	Repo           string                 `json:"repo"`
+	PendingActions []enrichmentActionWire `json:"pending_actions"`
+	PendingCount   int                    `json:"pending_count"`
+	OverallScore   float64                `json:"overall_score"`
+	MaxActionScore float64                `json:"max_action_score,omitempty"`
 	// IntScore is the maximum integer 0–100 score across pending actions (issue #1131).
-	IntScore        int     `json:"int_score,omitempty"`
+	IntScore int `json:"int_score,omitempty"`
 	// CriticalityBand is derived from IntScore: critical/high/medium/low.
-	CriticalityBand string  `json:"criticality_band,omitempty"`
-	Overdue         bool    `json:"overdue"`
-	DiscoveredAt    string  `json:"discovered_at,omitempty"`
+	CriticalityBand string `json:"criticality_band,omitempty"`
+	Overdue         bool   `json:"overdue"`
+	DiscoveredAt    string `json:"discovered_at,omitempty"`
 }
 
 // buildResolvedSet reads enrichment-resolutions.json for a repo and returns a
@@ -613,8 +613,8 @@ type candidateActionReq struct {
 
 // candidateActionResp is the JSON body returned on success.
 type candidateActionResp struct {
-	Success     bool   `json:"success"`
-	CandidateID string `json:"updated_candidate_id"`
+	Success      bool   `json:"success"`
+	CandidateID  string `json:"updated_candidate_id"`
 	ResolutionID string `json:"resolution_id,omitempty"`
 }
 

@@ -1,0 +1,1 @@
+{"version":3,"file":"cone-geometry.d.ts","sourceRoot":"","sources":["../../src/geometries/cone-geometry.ts"],"names":[],"mappings":"AAIA,OAAO,EAAC,qBAAqB,EAAC,qCAAkC;AAGhE,MAAM,MAAM,iBAAiB,GAAG;IAC9B,EAAE,CAAC,EAAE,MAAM,CAAC;IACZ,MAAM,CAAC,EAAE,MAAM,CAAC;IAChB,GAAG,CAAC,EAAE,OAAO,CAAC;CACf,CAAC;AAEF,qBAAa,YAAa,SAAQ,qBAAqB;gBACzC,KAAK,GAAE,iBAAsB;CAW1C"}

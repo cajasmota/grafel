@@ -168,7 +168,7 @@ var lispSpecialForms = map[string]bool{
 	"define-class": true, "define/contract": true,
 	"begin": true, "delay": true, "force": true,
 	"call-with-current-continuation": true,
-	"syntax-rules": true, "syntax-case": true,
+	"syntax-rules":                   true, "syntax-case": true,
 	"let-values": true, "let*-values": true,
 	"receive": true, "guard": true,
 	// Racket additional

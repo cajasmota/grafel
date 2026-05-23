@@ -61,16 +61,16 @@ type PathTreeNode struct {
 
 // BackendEndpointRow is one endpoint definition inside a BackendGroup.
 type BackendEndpointRow struct {
-	PathHash          string   `json:"path_hash"`
-	Path              string   `json:"path"`
-	Verbs             []string `json:"verbs"`
-	Handlers          []string `json:"handlers"`
-	Multiplicity      int      `json:"multiplicity"`
-	Frameworks        []string `json:"frameworks"`
-	IsWebhook         bool     `json:"is_webhook"`
-	Repos             []string `json:"repos"`
-	OwningBackend     string   `json:"owning_backend"`
-	CrossBackendRef   bool     `json:"cross_backend_ref,omitempty"`
+	PathHash        string   `json:"path_hash"`
+	Path            string   `json:"path"`
+	Verbs           []string `json:"verbs"`
+	Handlers        []string `json:"handlers"`
+	Multiplicity    int      `json:"multiplicity"`
+	Frameworks      []string `json:"frameworks"`
+	IsWebhook       bool     `json:"is_webhook"`
+	Repos           []string `json:"repos"`
+	OwningBackend   string   `json:"owning_backend"`
+	CrossBackendRef bool     `json:"cross_backend_ref,omitempty"`
 }
 
 // BackendGroup groups endpoint definitions that belong to a single backend service.
@@ -383,19 +383,19 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Find all endpoints with this pathHash.
 	type endpointDetail struct {
-		ID              string   `json:"id"`
-		Verb            string   `json:"verb"`
-		Path            string   `json:"path"`
-		Handler         string   `json:"handler"`
-		Framework       string   `json:"framework,omitempty"`
-		IsWebhook       bool     `json:"is_webhook,omitempty"`
-		ResponseKeys    []string `json:"response_keys,omitempty"`
-		StatusCodes     []int    `json:"status_codes,omitempty"`
-		InboundFetches  []string `json:"inbound_fetches,omitempty"`
-		OutboundQueries []string `json:"outbound_queries,omitempty"`
-		Repo            string   `json:"repo"`
-		SourceFile      string   `json:"source_file"`
-		StartLine       int      `json:"start_line"`
+		ID              string                 `json:"id"`
+		Verb            string                 `json:"verb"`
+		Path            string                 `json:"path"`
+		Handler         string                 `json:"handler"`
+		Framework       string                 `json:"framework,omitempty"`
+		IsWebhook       bool                   `json:"is_webhook,omitempty"`
+		ResponseKeys    []string               `json:"response_keys,omitempty"`
+		StatusCodes     []int                  `json:"status_codes,omitempty"`
+		InboundFetches  []string               `json:"inbound_fetches,omitempty"`
+		OutboundQueries []string               `json:"outbound_queries,omitempty"`
+		Repo            string                 `json:"repo"`
+		SourceFile      string                 `json:"source_file"`
+		StartLine       int                    `json:"start_line"`
 		HasDocs         bool                   `json:"has_docs,omitempty"`
 		DocsSummary     string                 `json:"docs_summary,omitempty"`
 		DocsPath        string                 `json:"docs_path,omitempty"`
@@ -553,10 +553,10 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Build response_shapes from the matched endpoints.
 	type ResponseShape struct {
-		Verb        string `json:"verb"`
+		Verb        string   `json:"verb"`
 		Keys        []string `json:"keys"`
-		Dynamic     bool   `json:"dynamic"`
-		StatusCodes []int  `json:"status_codes"`
+		Dynamic     bool     `json:"dynamic"`
+		StatusCodes []int    `json:"status_codes"`
 	}
 
 	// Group by verb to build distinct response shapes.
@@ -635,15 +635,15 @@ func (s *Server) handlePathDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"path":               pathStr,
-		"path_hash":          pathHash,
-		"verbs":              verbs,
-		"handlers":           handlers,
-		"response_shapes":    responseShapes,
-		"inbound_fetches":    inboundFetches,
-		"outbound_queries":   outboundQueries,
-		"is_webhook":         isWebhook,
-		"webhook_provider":   webhookProvider,
+		"path":             pathStr,
+		"path_hash":        pathHash,
+		"verbs":            verbs,
+		"handlers":         handlers,
+		"response_shapes":  responseShapes,
+		"inbound_fetches":  inboundFetches,
+		"outbound_queries": outboundQueries,
+		"is_webhook":       isWebhook,
+		"webhook_provider": webhookProvider,
 	})
 }
 

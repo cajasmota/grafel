@@ -217,8 +217,8 @@ func TestTracesList_TokenBudgetEnforced(t *testing.T) {
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
 		"action":       "list",
-		"limit":        float64(20),  // ask for all 20
-		"token_budget": float64(50),  // tiny budget — forces truncation
+		"limit":        float64(20), // ask for all 20
+		"token_budget": float64(50), // tiny budget — forces truncation
 		"min_steps":    float64(0),
 		"group":        "test",
 	}

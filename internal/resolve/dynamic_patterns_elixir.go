@@ -15,11 +15,11 @@ import "regexp"
 // Ecto.Changeset, GenServer behaviour, Logger) no in-tree entity exists
 // for the callee, so the resolver cannot bind it. These stubs are
 // statically unresolvable because:
-//   1. The Ecto/Phoenix/OTP modules are imported from the Hex ecosystem
-//      — they are never indexed as in-tree entities.
-//   2. The extractor emits only the leaf name; without the receiver
-//      module the resolver cannot distinguish `Repo.all` from a
-//      user-defined function also named `all` on a domain module.
+//  1. The Ecto/Phoenix/OTP modules are imported from the Hex ecosystem
+//     — they are never indexed as in-tree entities.
+//  2. The extractor emits only the leaf name; without the receiver
+//     module the resolver cannot distinguish `Repo.all` from a
+//     user-defined function also named `all` on a domain module.
 //
 // The safer-bias rule (#94) is preserved by the per-language gate
 // (lang=="elixir"): names like `all`, `get`, `insert`, `render`,
@@ -27,10 +27,10 @@ import "regexp"
 // for Go, Python, Ruby, TypeScript, etc.
 //
 // Four categories drive the bulk of unresolved Elixir edges:
-//   1. Ecto.Repo query + mutation methods (`all`, `get`, `get!`, etc.)
-//   2. Phoenix.Conn pipeline helpers (`render`, `json`, `send_resp`, etc.)
-//   3. GenServer / OTP behaviour callbacks (`handle_call`, `handle_cast`, etc.)
-//   4. Ecto.Changeset builder methods (`cast`, `validate_required`, etc.)
+//  1. Ecto.Repo query + mutation methods (`all`, `get`, `get!`, etc.)
+//  2. Phoenix.Conn pipeline helpers (`render`, `json`, `send_resp`, etc.)
+//  3. GenServer / OTP behaviour callbacks (`handle_call`, `handle_cast`, etc.)
+//  4. Ecto.Changeset builder methods (`cast`, `validate_required`, etc.)
 var elixirDynamicPatterns = []*regexp.Regexp{
 	// ── Ecto.Repo query methods ──────────────────────────────────────
 	// `Repo.all/1`, `Repo.get/2`, `Repo.get!/2`, `Repo.get_by/2`,

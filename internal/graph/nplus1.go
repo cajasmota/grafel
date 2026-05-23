@@ -120,34 +120,34 @@ var loopSubtypes = map[string]bool{
 // suppresses the finding.
 var ormSafeMethods = map[string]bool{
 	// Django
-	"prefetch_related":       true,
-	"select_related":         true,
+	"prefetch_related":         true,
+	"select_related":           true,
 	"prefetch_related_objects": true,
 	// SQLAlchemy
-	"joinedload":             true,
-	"subqueryload":           true,
-	"selectinload":           true,
-	"lazyload":               true,
-	"immediateload":          true,
-	"contains_eager":         true,
-	"raiseload":              true,
+	"joinedload":     true,
+	"subqueryload":   true,
+	"selectinload":   true,
+	"lazyload":       true,
+	"immediateload":  true,
+	"contains_eager": true,
+	"raiseload":      true,
 	// ActiveRecord / Rails
-	"includes":               true,
-	"eager_load":             true,
-	"preload":                true,
+	"includes":   true,
+	"eager_load": true,
+	"preload":    true,
 	// Eloquent (Laravel)
-	"with":                   true,
-	"load":                   true,
-	"loadMissing":            true,
+	"with":        true,
+	"load":        true,
+	"loadMissing": true,
 	// Sequelize (Node)
-	"include":                true,
-	"findAll":                true, // only safe when include: [] is used; approximation
+	"include": true,
+	"findAll": true, // only safe when include: [] is used; approximation
 	// Hibernate / JPA
-	"fetchJoin":              true,
-	"fetch":                  true,
+	"fetchJoin": true,
+	"fetch":     true,
 	// GORM
-	"Preload":                true,
-	"Joins":                  true,
+	"Preload": true,
+	"Joins":   true,
 }
 
 // ormQueryMethods is the set of ORM method names that issue individual DB
@@ -164,25 +164,25 @@ var ormQueryMethods = map[string]bool{
 	"update": true,
 	"delete": true,
 	// SQLAlchemy
-	"query":        true,
-	"execute":      true,
-	"scalar":       true,
-	"scalars":      true,
-	"one":          true,
-	"one_or_none":  true,
-	"fetchone":     true,
-	"fetchall":     true,
+	"query":       true,
+	"execute":     true,
+	"scalar":      true,
+	"scalars":     true,
+	"one":         true,
+	"one_or_none": true,
+	"fetchone":    true,
+	"fetchall":    true,
 	// ActiveRecord
-	"find":      true,
-	"find_by":   true,
-	"where":     true,
-	"order":     true,
+	"find":    true,
+	"find_by": true,
+	"where":   true,
+	"order":   true,
 	// Eloquent
 	"findOrFail": true,
 	// Sequelize
-	"findOne":    true,
-	"findByPk":   true,
-	"count":      true,
+	"findOne":  true,
+	"findByPk": true,
+	"count":    true,
 	// GORM
 	"Find":   true,
 	"First":  true,

@@ -353,14 +353,14 @@ func computeQuality(r RepoManifestReply) ([]QualitySignal, int) {
 // hasLockFile returns true when any of the manifests is a known lock file.
 func hasLockFile(manifests []string) bool {
 	lockFiles := map[string]struct{}{
-		"go.sum":           {},
+		"go.sum":            {},
 		"package-lock.json": {},
-		"yarn.lock":        {},
-		"pnpm-lock.yaml":   {},
-		"Cargo.lock":       {},
-		"Gemfile.lock":     {},
-		"Pipfile.lock":     {},
-		"composer.lock":    {},
+		"yarn.lock":         {},
+		"pnpm-lock.yaml":    {},
+		"Cargo.lock":        {},
+		"Gemfile.lock":      {},
+		"Pipfile.lock":      {},
+		"composer.lock":     {},
 	}
 	for _, m := range manifests {
 		if _, ok := lockFiles[m]; ok {

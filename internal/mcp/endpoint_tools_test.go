@@ -412,7 +412,7 @@ func TestSearchEntities_LegacyKindFilterExpands(t *testing.T) {
 	req := mcpapi.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
 		"group":       "test",
-		"query":       "",           // empty query matches everything
+		"query":       "", // empty query matches everything
 		"kind_filter": "http_endpoint",
 	}
 	res, err := srv.handleSearchEntities(context.Background(), req)
@@ -616,8 +616,8 @@ func TestEndpointTokenBudget_Definitions(t *testing.T) {
 	// Pass a very tight budget (50 tokens = 200 bytes) — forces truncation.
 	out := callEndpointTool(t, srv.handleEndpointDefinitions, map[string]any{
 		"group":        "test",
-		"limit":        float64(30),   // ask for all 30
-		"token_budget": float64(50),   // tiny budget
+		"limit":        float64(30), // ask for all 30
+		"token_budget": float64(50), // tiny budget
 	})
 	defs := getSlice(t, out, "definitions")
 	if len(defs) >= 30 {

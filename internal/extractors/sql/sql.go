@@ -26,12 +26,13 @@
 //   - TriggerFunction  → Table              : READS_FROM / WRITES_TO (body DML)
 //
 // Migration metadata (Issue #1275):
-//   When a .sql file lives under a migrations/ directory, every emitted table
-//   entity gets two extra Properties:
-//     - "migration_file"  = basename of the file (e.g. "0003_add_orders.sql")
-//     - "migration_order" = numeric prefix extracted from the filename, zero-padded
-//       to 8 chars for lexicographic stability (e.g. "00000003"). Used by the
-//       ORM-linker and topology endpoint to order schema evolution.
+//
+//	When a .sql file lives under a migrations/ directory, every emitted table
+//	entity gets two extra Properties:
+//	  - "migration_file"  = basename of the file (e.g. "0003_add_orders.sql")
+//	  - "migration_order" = numeric prefix extracted from the filename, zero-padded
+//	    to 8 chars for lexicographic stability (e.g. "00000003"). Used by the
+//	    ORM-linker and topology endpoint to order schema evolution.
 //
 // dbt model files are SQL files containing Jinja templating. They are classified
 // as "sql" by the file classifier and receive enhanced entity extraction here.

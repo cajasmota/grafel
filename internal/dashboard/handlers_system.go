@@ -38,7 +38,7 @@ import (
 // future additions.
 type SystemReply struct {
 	// Process state
-	Status        string  `json:"status"`                   // "running" | "stopped" | "unhealthy"
+	Status        string  `json:"status"` // "running" | "stopped" | "unhealthy"
 	UptimeSeconds int64   `json:"uptime_seconds,omitempty"`
 	UptimeHuman   string  `json:"uptime_human,omitempty"`
 	PID           int     `json:"pid"`
@@ -50,11 +50,11 @@ type SystemReply struct {
 	DashboardURL string `json:"dashboard_url,omitempty"`
 
 	// Build info
-	Version      string `json:"version"`
-	CommitSHA    string `json:"commit_sha"`
-	BuiltAt      string `json:"built_at"`
-	DaysSinceBuild int  `json:"days_since_build,omitempty"`
-	StaleBuild   bool   `json:"stale_build"`   // true when >7 days since build
+	Version        string `json:"version"`
+	CommitSHA      string `json:"commit_sha"`
+	BuiltAt        string `json:"built_at"`
+	DaysSinceBuild int    `json:"days_since_build,omitempty"`
+	StaleBuild     bool   `json:"stale_build"` // true when >7 days since build
 }
 
 // SystemActionReply is the wire shape for POST /api/system/restart and stop.

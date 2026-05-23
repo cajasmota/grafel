@@ -1,0 +1,1 @@
+{"version":3,"file":"polyfill-webgl1-extensions.d.ts","sourceRoot":"","sources":["../../../src/context/polyfills/polyfill-webgl1-extensions.ts"],"names":[],"mappings":"AA4EA;;;;GAIG;AACH,wBAAgB,aAAa,CAAC,OAAO,GAAE,OAAc,GAAG,IAAI,CA0B3D;AAED,wDAAwD;AACxD,wBAAgB,wBAAwB,CAAC,EAAE,EAAE,sBAAsB,GAAG,IAAI,CAsCzE"}

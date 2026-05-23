@@ -70,14 +70,14 @@ func TestComputeRepoHealthStale(t *testing.T) {
 // TestPrintDoctorHealthCompleteOutput verifies comprehensive output generation.
 func TestPrintDoctorHealthCompleteOutput(t *testing.T) {
 	health := &DoctorGroupHealth{
-		GroupName:     "example-group",
-		Healthy:       true,
-		Status:        "HEALTHY",
-		DaemonManaged: true,
-		WatcherRepoCount: 3,
-		WatcherDirCount: 42,
+		GroupName:            "example-group",
+		Healthy:              true,
+		Status:               "HEALTHY",
+		DaemonManaged:        true,
+		WatcherRepoCount:     3,
+		WatcherDirCount:      42,
 		WatcherEventsDropped: 0,
-		LastWatcherActivity: "30s ago",
+		LastWatcherActivity:  "30s ago",
 		Repos: []*DoctorRepoHealth{
 			{
 				Slug:           "core-api",

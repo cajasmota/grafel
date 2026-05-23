@@ -362,8 +362,8 @@ func TestDenoise_DefaultOptions_MatchesBehavior(t *testing.T) {
 	// Add extra 3 isolated nodes to ensure singletons exist.
 	ents = append(ents, makeEntities("ISO1", "ISO2", "ISO3")...)
 
-	resDefault := RunAlgorithms(ents, rels)                                              // MinSize=5
-	resNoFilter := RunAlgorithmsWithOptions(ents, rels, CommunityOptions{MinSize: 1})    // no denoise
+	resDefault := RunAlgorithms(ents, rels)                                           // MinSize=5
+	resNoFilter := RunAlgorithmsWithOptions(ents, rels, CommunityOptions{MinSize: 1}) // no denoise
 
 	if len(resDefault.Communities) > len(resNoFilter.Communities) {
 		t.Errorf("default (MinSize=5) has MORE communities (%d) than MinSize=1 (%d) — denoise logic inverted",

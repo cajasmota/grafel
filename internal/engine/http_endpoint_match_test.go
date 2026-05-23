@@ -35,7 +35,7 @@ func TestStripEndpointAPIPrefix(t *testing.T) {
 		{"/v2/things", "/things", true},
 		{"/api", "/", true},
 		{"/inspections/{*}/create-deficiencies", "", false}, // no prefix
-		{"/apiary/bees", "", false},                          // not a real api prefix segment
+		{"/apiary/bees", "", false},                         // not a real api prefix segment
 	}
 	for _, c := range cases {
 		got, ok := stripEndpointAPIPrefix(c.in)
@@ -129,14 +129,14 @@ func TestResolveStructuralFallbackAndRetarget(t *testing.T) {
 func TestResolveStructuralFallbackVerbGuard(t *testing.T) {
 	merged := []types.EntityRecord{
 		{
-			Kind: httpEndpointDefinitionKind,
-			Name: "http:GET:/me-email-templates",
+			Kind:       httpEndpointDefinitionKind,
+			Name:       "http:GET:/me-email-templates",
 			Properties: map[string]string{"path": "/me-email-templates", "verb": "GET"},
 			SourceFile: "views.py",
 		},
 		{
-			Kind: httpEndpointCallKind,
-			Name: "http:DELETE:/me-email-templates",
+			Kind:       httpEndpointCallKind,
+			Name:       "http:DELETE:/me-email-templates",
 			Properties: map[string]string{"path": "/me-email-templates", "verb": "DELETE"},
 			SourceFile: "api.ts",
 		},

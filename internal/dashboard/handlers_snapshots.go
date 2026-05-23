@@ -41,28 +41,28 @@ import (
 
 // SnapshotMeta is the metadata file stored alongside snapshot graph data.
 type SnapshotMeta struct {
-	ID          string            `json:"id"`
-	Group       string            `json:"group"`
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	Repos       []string          `json:"repos"`              // slugs captured
-	Stats       map[string]int    `json:"stats"`              // repo slug → entity count
+	ID          string             `json:"id"`
+	Group       string             `json:"group"`
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	CreatedAt   time.Time          `json:"created_at"`
+	Repos       []string           `json:"repos"`                  // slugs captured
+	Stats       map[string]int     `json:"stats"`                  // repo slug → entity count
 	OrphanRates map[string]float64 `json:"orphan_rates,omitempty"` // repo → orphan %
 }
 
 // DiffSummary is the response body for the diff endpoint.
 type DiffSummary struct {
-	SnapshotID   string          `json:"snapshot_id"`
-	Group        string          `json:"group"`
-	Against      string          `json:"against"` // "current" or another snapshot ID
-	AddedCount   int             `json:"added_count"`
-	RemovedCount int             `json:"removed_count"`
-	EdgeAdded    int             `json:"edge_added_count"`
-	EdgeRemoved  int             `json:"edge_removed_count"`
-	Added        []DiffEntity    `json:"added"`
-	Removed      []DiffEntity    `json:"removed"`
-	EdgeChanges  []DiffEdge      `json:"edge_changes,omitempty"`
+	SnapshotID   string       `json:"snapshot_id"`
+	Group        string       `json:"group"`
+	Against      string       `json:"against"` // "current" or another snapshot ID
+	AddedCount   int          `json:"added_count"`
+	RemovedCount int          `json:"removed_count"`
+	EdgeAdded    int          `json:"edge_added_count"`
+	EdgeRemoved  int          `json:"edge_removed_count"`
+	Added        []DiffEntity `json:"added"`
+	Removed      []DiffEntity `json:"removed"`
+	EdgeChanges  []DiffEdge   `json:"edge_changes,omitempty"`
 }
 
 // DiffEntity is a single entity change record.

@@ -4,34 +4,34 @@
 //
 //  1. AWS EventBridge
 //     Producers: boto3 `events.put_events(Entries=[{Source,DetailType,...}])` (Python),
-//       `EventBridgeClient.send(new PutEventsCommand({Entries:[...]})` (Node/TS),
-//       `ebClient.PutEvents(ctx, &eventbridge.PutEventsInput{Entries:…})` (Go).
+//     `EventBridgeClient.send(new PutEventsCommand({Entries:[...]})` (Node/TS),
+//     `ebClient.PutEvents(ctx, &eventbridge.PutEventsInput{Entries:…})` (Go).
 //     Consumers / IaC rules: Terraform `aws_cloudwatch_event_rule` with `event_pattern`
-//       JSON containing `source` + `detail-type` fields; CDK / serverless.yml patterns
-//       detected via regex over raw text. Rule targets resolved to Lambda via
-//       lambdaFunctionID() from serverless_edges.go (#925).
+//     JSON containing `source` + `detail-type` fields; CDK / serverless.yml patterns
+//     detected via regex over raw text. Rule targets resolved to Lambda via
+//     lambdaFunctionID() from serverless_edges.go (#925).
 //     Synthetics: SCOPE.EventBusEvent keyed by `event:eventbridge:<source>:<detail-type>`.
 //     Edges: PUBLISHES_TO (producer→synthetic), SUBSCRIBES_TO (rule→synthetic),
-//            EVENTBRIDGE_TRIGGERS (rule→lambda target).
+//     EVENTBRIDGE_TRIGGERS (rule→lambda target).
 //
 //  2. Azure EventGrid
 //     Producers: `EventGridPublisherClient.send(events)` (Python azure-eventgrid,
-//       Node @azure/eventgrid), `EventGridSenderClient.sendEvents` (Node SDK v12+).
+//     Node @azure/eventgrid), `EventGridSenderClient.sendEvents` (Node SDK v12+).
 //     Consumers: `@app.event_grid_trigger(name='X')` (Python v2 model),
-//       `EventGridTrigger` binding attribute (C# / Python), Azure Function
-//       receiving an EventGridEvent.
+//     `EventGridTrigger` binding attribute (C# / Python), Azure Function
+//     receiving an EventGridEvent.
 //     Synthetics: SCOPE.EventBusEvent keyed by `event:eventgrid:<topic>:<event-type>`.
 //     Edges: PUBLISHES_TO, SUBSCRIBES_TO, EVENTGRID_TRIGGERS.
 //
 //  3. CNCF CloudEvents (spec-level, language-agnostic)
 //     Producers: `CloudEvent(...)` builder + any HTTP POST with `ce-type`/`ce-source`
-//       headers, Go `cloudevents.NewEvent()`, Python cloudevents SDK `CloudEvent(...)`,
-//       Node `new CloudEvent(...)`.
+//     headers, Go `cloudevents.NewEvent()`, Python cloudevents SDK `CloudEvent(...)`,
+//     Node `new CloudEvent(...)`.
 //     Consumers: HTTP handler that reads `ce-type`/`ce-source` headers; `@app.route`
-//       decorated with cloudevents handler; Go `cloudevents.NewClientHTTP()` receiver.
+//     decorated with cloudevents handler; Go `cloudevents.NewClientHTTP()` receiver.
 //     Synthetics: SCOPE.EventBusEvent keyed by `event:cloudevents:<source>:<type>`.
 //     Edges: PUBLISHES_TO (producer→synthetic), SUBSCRIBES_TO (consumer→synthetic),
-//            CLOUDEVENT_FLOWS (emitter route → receiver route, same-file only).
+//     CLOUDEVENT_FLOWS (emitter route → receiver route, same-file only).
 //
 // # False-positive guards
 //

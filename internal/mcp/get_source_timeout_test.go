@@ -44,16 +44,16 @@ func TestGetSource_ReturnsWindowedSnippet(t *testing.T) {
 	dir := t.TempDir()
 	srcPath := filepath.Join(dir, "sample.go")
 	lines := []string{
-		"package sample",            // 1
-		"",                          // 2
-		"func Foo() {",              // 3
-		"\tprintln(\"in Foo\")",     // 4
-		"}",                         // 5
-		"",                          // 6
-		"func Bar() {",              // 7
-		"\tprintln(\"in Bar\")",     // 8
-		"}",                         // 9
-		"",                          // 10
+		"package sample",        // 1
+		"",                      // 2
+		"func Foo() {",          // 3
+		"\tprintln(\"in Foo\")", // 4
+		"}",                     // 5
+		"",                      // 6
+		"func Bar() {",          // 7
+		"\tprintln(\"in Bar\")", // 8
+		"}",                     // 9
+		"",                      // 10
 	}
 	if err := os.WriteFile(srcPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)

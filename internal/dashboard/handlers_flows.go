@@ -163,29 +163,29 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ProcessItem struct {
-		ProcessID        string                 `json:"process_id"`
-		Repo             string                 `json:"repo"`
-		Label            string                 `json:"label"`
-		EntryID          string                 `json:"entry_id"`
-		EntryName        string                 `json:"entry_name"`
-		TerminalID       string                 `json:"terminal_id"`
-		StepCount        int                    `json:"step_count"`
-		CrossStack       bool                   `json:"cross_stack"`
-		ChainLabels      []string               `json:"chain_labels"`
-		SourceFile       string                 `json:"source_file,omitempty"`
+		ProcessID   string   `json:"process_id"`
+		Repo        string   `json:"repo"`
+		Label       string   `json:"label"`
+		EntryID     string   `json:"entry_id"`
+		EntryName   string   `json:"entry_name"`
+		TerminalID  string   `json:"terminal_id"`
+		StepCount   int      `json:"step_count"`
+		CrossStack  bool     `json:"cross_stack"`
+		ChainLabels []string `json:"chain_labels"`
+		SourceFile  string   `json:"source_file,omitempty"`
 		// Entry-kind grouping metadata (#1148).
-		EntryKind        string                 `json:"entry_kind"`
-		EntryModule      string                 `json:"entry_module,omitempty"`
-		PriorityHint     string                 `json:"priority_hint"`
-		DominantStepKind interface{}            `json:"dominant_step_kind"` // null until #1147 lands
+		EntryKind        string      `json:"entry_kind"`
+		EntryModule      string      `json:"entry_module,omitempty"`
+		PriorityHint     string      `json:"priority_hint"`
+		DominantStepKind interface{} `json:"dominant_step_kind"` // null until #1147 lands
 		// Enrichment fields (from YAML frontmatter, if a doc file exists).
-		DocsSummary      string                 `json:"docs_summary,omitempty"`
-		Group            string                 `json:"group,omitempty"`
-		GroupLabel       string                 `json:"group_label,omitempty"`
-		Rank             float64                `json:"rank,omitempty"`
-		Gaps             []string               `json:"gaps,omitempty"`
-		Disqualified     bool                   `json:"disqualified,omitempty"`
-		Enrichment       *EnrichmentFrontmatter `json:"enrichment,omitempty"`
+		DocsSummary  string                 `json:"docs_summary,omitempty"`
+		Group        string                 `json:"group,omitempty"`
+		GroupLabel   string                 `json:"group_label,omitempty"`
+		Rank         float64                `json:"rank,omitempty"`
+		Gaps         []string               `json:"gaps,omitempty"`
+		Disqualified bool                   `json:"disqualified,omitempty"`
+		Enrichment   *EnrichmentFrontmatter `json:"enrichment,omitempty"`
 	}
 
 	// Load docgen state for documentation enrichment.
@@ -544,17 +544,17 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 	enrichedFM, enrichedSummary := extractFlowDocs(group, processEnt.ID, docgenStateDetail)
 
 	process := map[string]any{
-		"process_id":        dashPrefixedID(processRepo.Slug, processEnt.ID),
-		"repo":              processRepo.Slug,
-		"label":             processEnt.Name,
-		"entry_id":          processEnt.Properties["entry_id"],
-		"entry_name":        processEnt.Properties["entry_name"],
-		"terminal_id":       processEnt.Properties["terminal_id"],
-		"step_count":        sc,
-		"cross_stack":       cs,
-		"chain_labels":      splitChainLabels(processEnt.Properties["chain_labels"]),
-		"source_file":       processEnt.SourceFile,
-		"steps":             steps,
+		"process_id":   dashPrefixedID(processRepo.Slug, processEnt.ID),
+		"repo":         processRepo.Slug,
+		"label":        processEnt.Name,
+		"entry_id":     processEnt.Properties["entry_id"],
+		"entry_name":   processEnt.Properties["entry_name"],
+		"terminal_id":  processEnt.Properties["terminal_id"],
+		"step_count":   sc,
+		"cross_stack":  cs,
+		"chain_labels": splitChainLabels(processEnt.Properties["chain_labels"]),
+		"source_file":  processEnt.SourceFile,
+		"steps":        steps,
 		// Flows v2 annotations.
 		"entry_kind":        flowMeta.EntryKind,
 		"flow_side_effects": flowMeta.FlowSideEffects,

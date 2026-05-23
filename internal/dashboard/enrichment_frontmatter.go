@@ -48,23 +48,23 @@ import (
 // All fields are optional; the zero value represents "no enrichment data".
 type EnrichmentFrontmatter struct {
 	// Universal fields.
-	EntityID    string   `json:"entity_id,omitempty"`
-	Kind        string   `json:"kind,omitempty"`
-	Disqualified bool    `json:"disqualified,omitempty"`
-	MergedInto  string   `json:"merged_into,omitempty"`
-	Rank        float64  `json:"rank,omitempty"`
-	Group       string   `json:"group,omitempty"`
-	GroupLabel  string   `json:"group_label,omitempty"`
-	Summary     string   `json:"summary,omitempty"`
-	Gaps        []string `json:"gaps,omitempty"`
+	EntityID     string   `json:"entity_id,omitempty"`
+	Kind         string   `json:"kind,omitempty"`
+	Disqualified bool     `json:"disqualified,omitempty"`
+	MergedInto   string   `json:"merged_into,omitempty"`
+	Rank         float64  `json:"rank,omitempty"`
+	Group        string   `json:"group,omitempty"`
+	GroupLabel   string   `json:"group_label,omitempty"`
+	Summary      string   `json:"summary,omitempty"`
+	Gaps         []string `json:"gaps,omitempty"`
 
 	// http_endpoint fields.
-	Method        string            `json:"method,omitempty"`
-	Path          string            `json:"path,omitempty"`
-	Parameters    []map[string]any  `json:"parameters,omitempty"`
-	Responses     map[string]any    `json:"responses,omitempty"`
-	Auth          string            `json:"auth,omitempty"`
-	TablesTouched []string          `json:"tables_touched,omitempty"`
+	Method        string           `json:"method,omitempty"`
+	Path          string           `json:"path,omitempty"`
+	Parameters    []map[string]any `json:"parameters,omitempty"`
+	Responses     map[string]any   `json:"responses,omitempty"`
+	Auth          string           `json:"auth,omitempty"`
+	TablesTouched []string         `json:"tables_touched,omitempty"`
 
 	// process_flow fields.
 	Steps           []string `json:"steps,omitempty"`
@@ -72,10 +72,10 @@ type EnrichmentFrontmatter struct {
 	ExpectedOutcome string   `json:"expected_outcome,omitempty"`
 
 	// message_topic fields.
-	Schema                 string   `json:"schema,omitempty"`
-	TypicalPayloadSizeBytes int     `json:"typical_payload_size_bytes,omitempty"`
-	VolumeEstimate         string   `json:"volume_estimate,omitempty"`
-	ExpectedConsumers      []string `json:"expected_consumers,omitempty"`
+	Schema                  string   `json:"schema,omitempty"`
+	TypicalPayloadSizeBytes int      `json:"typical_payload_size_bytes,omitempty"`
+	VolumeEstimate          string   `json:"volume_estimate,omitempty"`
+	ExpectedConsumers       []string `json:"expected_consumers,omitempty"`
 }
 
 // HasData returns true when at least the summary or kind was populated —

@@ -31,13 +31,13 @@ import (
 // Candidate kinds. These are the canonical "kind" string values the agent
 // branches on when deciding which prompt to apply.
 const (
-	KindDescribeEntity  = "describe_entity"
-	KindClassifyDomain  = "classify_domain"
-	KindInferXLangCall  = "infer_xlang_call"
-	KindSummarizeAPI    = "summarize_api"
-	KindFlagDeadCode    = "flag_dead_code"
-	KindDescribeRole    = "describe_role"
-	KindNameCommunity   = "name_community"
+	KindDescribeEntity = "describe_entity"
+	KindClassifyDomain = "classify_domain"
+	KindInferXLangCall = "infer_xlang_call"
+	KindSummarizeAPI   = "summarize_api"
+	KindFlagDeadCode   = "flag_dead_code"
+	KindDescribeRole   = "describe_role"
+	KindNameCommunity  = "name_community"
 )
 
 // communitySubjectID returns the synthetic subject ID for a community
@@ -59,9 +59,9 @@ const CandidatesSchemaVersion = 2
 // Candidate is one row in <repo>/.archigraph/enrichment-candidates.json.
 // Subject_id is always the local entity id (NOT prefixed with repo).
 type Candidate struct {
-	ID                   string         `json:"id"`
-	Kind                 string         `json:"kind"`
-	SubjectID            string         `json:"subject_id"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	SubjectID string `json:"subject_id"`
 	// TaskType distinguishes the candidate queue a job belongs to.
 	// "entity" covers describe_entity / classify_domain / describe_role / …;
 	// "community" covers name_community jobs. Absent on older records —
@@ -76,7 +76,7 @@ type Candidate struct {
 	// emit time by ComputeScore. Higher scores indicate higher enrichment value
 	// (UX-critical: used to sort the dashboard pending queue and determine the
 	// criticality band displayed to the user).
-	Score          int    `json:"score,omitempty"`
+	Score int `json:"score,omitempty"`
 	// ScoreBreakdown is a human-readable string listing every modifier that
 	// fired, e.g. "base:40 + ambiguous_name:+15 + articulation:+15 = 70".
 	// Provided for debugging and agent reasoning.

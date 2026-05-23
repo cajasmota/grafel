@@ -35,10 +35,10 @@ type Options struct {
 // Result reports what an Apply call did so the CLI can print a summary.
 type Result struct {
 	GroupConfigPath string
-	HooksInstalled  []string // repo paths
-	WatcherUnits    []string // unit-file paths
+	HooksInstalled  []string                 // repo paths
+	WatcherUnits    []string                 // unit-file paths
 	WatcherStatuses []watchers.WatcherStatus // per-unit activation state
-	MCPSettings     []string // settings.json paths touched
+	MCPSettings     []string                 // settings.json paths touched
 }
 
 // Apply registers the group, writes its config, then installs hooks +

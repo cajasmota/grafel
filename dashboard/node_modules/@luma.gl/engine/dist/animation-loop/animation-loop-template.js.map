@@ -1,0 +1,1 @@
+{"version":3,"file":"animation-loop-template.js","sourceRoot":"","sources":["../../src/animation-loop/animation-loop-template.ts"],"names":[],"mappings":"AAAA,UAAU;AACV,+BAA+B;AAC/B,oCAAoC;AAIpC;;;;;;;;;;;;;;GAcG;AACH,MAAM,OAAgB,qBAAqB;IACzC,YAAY,cAA+B,IAAG,CAAC;IAC/C,KAAK,CAAC,YAAY,CAAC,cAA8B;QAC/C,OAAO,IAAI,CAAC;IACd,CAAC;CAGF"}

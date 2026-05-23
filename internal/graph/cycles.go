@@ -98,8 +98,8 @@ func FindImportCycles(entities []Entity, rels []Relationship, pagerank map[strin
 
 	// Iterative DFS to avoid stack overflows on deep graphs.
 	type frame struct {
-		u    string
-		i    int // next child index in importsAdj[u]
+		u string
+		i int // next child index in importsAdj[u]
 	}
 
 	// Collect all nodes (sources + any targets that are also sources).

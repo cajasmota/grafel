@@ -209,7 +209,7 @@ func TestTopicPass_RealSkewedShape_BoundedEmission(t *testing.T) {
 		}
 		t.Logf("skewed real-shape run: %d topic links (bound %d), %d ops/side", topicCount, wantMax, opsPerSide)
 	case <-time.After(30 * time.Second):
-		t.Fatalf("RunAllPasses did not complete within 30s on the skewed real-shape graph — "+
+		t.Fatalf("RunAllPasses did not complete within 30s on the skewed real-shape graph — " +
 			"combinatorial blow-up regression (#1456)")
 	}
 }

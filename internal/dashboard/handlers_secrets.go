@@ -42,19 +42,19 @@ type QualitySecretFinding struct {
 
 // SecretFileRollup groups findings per file.
 type SecretFileRollup struct {
-	File     string          `json:"file"`
-	Repo     string          `json:"repo"`
-	Count    int             `json:"count"`
-	Severity string          `json:"severity"`
+	File     string                 `json:"file"`
+	Repo     string                 `json:"repo"`
+	Count    int                    `json:"count"`
+	Severity string                 `json:"severity"`
 	Findings []QualitySecretFinding `json:"findings"`
 }
 
 // SecretScanReply is the wire shape returned by GET /api/quality/secrets/{group}.
 type SecretScanReply struct {
-	Group         string              `json:"group"`
-	TotalFindings int                 `json:"total_findings"`
-	BySeverity    map[string]int      `json:"by_severity"`
-	Files         []SecretFileRollup  `json:"files"`
+	Group         string             `json:"group"`
+	TotalFindings int                `json:"total_findings"`
+	BySeverity    map[string]int     `json:"by_severity"`
+	Files         []SecretFileRollup `json:"files"`
 	// ScannedRepos is the number of repos that were actually walked.
 	ScannedRepos int `json:"scanned_repos"`
 }

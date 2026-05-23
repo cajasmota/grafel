@@ -169,9 +169,9 @@ let make = (~name) => {
 	ents := runReasonML(t, src, "comp.re")
 
 	wantImports := map[string]bool{
-		"Belt":        false,
-		"React":       false,
-		"ReactDOMRe":  false,
+		"Belt":       false,
+		"React":      false,
+		"ReactDOMRe": false,
 	}
 	for _, e := range ents {
 		for _, r := range e.Relationships {

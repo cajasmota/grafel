@@ -279,10 +279,10 @@ main = putStrLn "done"
 	ents := runHaskell(t, src, "main.hs")
 
 	wantImports := map[string]bool{
-		"Data.Map":       false,
-		"Data.List":      false,
-		"Control.Monad":  false,
-		"Text.Printf":    false,
+		"Data.Map":      false,
+		"Data.List":     false,
+		"Control.Monad": false,
+		"Text.Printf":   false,
 	}
 	for _, e := range ents {
 		for _, r := range e.Relationships {

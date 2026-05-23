@@ -11,7 +11,7 @@
 //   - cycles      ↔ archigraph_quality_cycles (entity-level IMPORTS SCC)
 //   - centrality  ↔ inline PageRank/centrality in archigraph_stats
 //   - all         returns both in one envelope (default; useful for the
-//                 dashboard / docgen consumer).
+//     dashboard / docgen consumer).
 package mcp
 
 import (
@@ -58,9 +58,9 @@ func (s *Server) handleModuleAnalysis(ctx context.Context, req mcpapi.CallToolRe
 		return s.handleModuleCombined(ctx, req)
 	}
 	return jsonResult(map[string]any{
-		"error":      "unknown action",
-		"action":     action,
-		"valid":      []string{"cycles", "centrality", "all"},
+		"error":  "unknown action",
+		"action": action,
+		"valid":  []string{"cycles", "centrality", "all"},
 	}), nil
 }
 
@@ -281,10 +281,10 @@ func (s *Server) handleModuleCycles(_ context.Context, req mcpapi.CallToolReques
 		all = all[:limit]
 	}
 	return jsonResult(map[string]any{
-		"cycles":      all,
-		"count":       len(all),
-		"total":       total,
-		"truncated":   total > len(all),
+		"cycles":        all,
+		"count":         len(all),
+		"total":         total,
+		"truncated":     total > len(all),
 		"repos_scanned": totalRepos,
 	}), nil
 }
@@ -313,14 +313,14 @@ func (s *Server) handleModuleCentrality(_ context.Context, req mcpapi.CallToolRe
 		InCycle     bool    `json:"in_cycle"`
 	}
 	type repoOut struct {
-		Repo             string                     `json:"repo"`
-		NumModules       int                        `json:"num_modules"`
-		NumModuleEdges   int                        `json:"num_module_edges"`
-		NumSCCs          int                        `json:"num_sccs"`
-		LargestSCCSize   int                        `json:"largest_scc_size"`
-		ModulesInCycle   int                        `json:"modules_in_cycle"`
-		TopPageRank      []centOut                  `json:"top_pagerank"`
-		TopBetweenness   []centOut                  `json:"top_betweenness"`
+		Repo           string    `json:"repo"`
+		NumModules     int       `json:"num_modules"`
+		NumModuleEdges int       `json:"num_module_edges"`
+		NumSCCs        int       `json:"num_sccs"`
+		LargestSCCSize int       `json:"largest_scc_size"`
+		ModulesInCycle int       `json:"modules_in_cycle"`
+		TopPageRank    []centOut `json:"top_pagerank"`
+		TopBetweenness []centOut `json:"top_betweenness"`
 	}
 
 	out := make([]repoOut, 0, len(repos))

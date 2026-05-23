@@ -53,10 +53,10 @@
 //
 //  4. Filter: keep only pairs with `support >= MinSupport` (default 5). For
 //     each kept pair, emit:
-//       - Two synthetic `File` entities (if not already emitted).
-//       - One `COMMIT_COUPLED` relationship between them, with
-//         `Properties["support"] = "<n>"`,
-//         `Properties["confidence"] = "<f>"` (formatted with 4 decimals).
+//     - Two synthetic `File` entities (if not already emitted).
+//     - One `COMMIT_COUPLED` relationship between them, with
+//     `Properties["support"] = "<n>"`,
+//     `Properties["confidence"] = "<f>"` (formatted with 4 decimals).
 //
 // # Determinism
 //
@@ -510,4 +510,3 @@ func filterPairs(support map[pairKey]int, minSupport int) []keptPair {
 func fileEntityID(repo, path string) string {
 	return graph.EntityID(repo, KindFile, path, path)
 }
-

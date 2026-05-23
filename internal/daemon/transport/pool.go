@@ -17,9 +17,9 @@ type Pool struct {
 	timeout time.Duration
 	policy  RetryPolicy
 
-	mu    sync.Mutex
-	idle  []net.Conn
-	cap   int
+	mu   sync.Mutex
+	idle []net.Conn
+	cap  int
 }
 
 // NewPool creates a Pool that maintains at most cap idle connections to addr.

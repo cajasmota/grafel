@@ -485,35 +485,35 @@ type detector struct {
 
 var detectors = []detector{
 	{
-		hints: []string{"django", "models.Model"},
+		hints:  []string{"django", "models.Model"},
 		detect: func(src, fp string) []modelLink { return detectDjango(src, fp) },
 	},
 	{
-		hints: []string{"sqlalchemy"},
+		hints:  []string{"sqlalchemy"},
 		detect: func(src, _ string) []modelLink { return detectSQLAlchemy(src) },
 	},
 	{
-		hints: []string{"activerecord", "applicationrecord"},
+		hints:  []string{"activerecord", "applicationrecord"},
 		detect: func(src, _ string) []modelLink { return detectActiveRecord(src) },
 	},
 	{
-		hints: []string{"javax.persistence", "jakarta.persistence", "hibernate"},
+		hints:  []string{"javax.persistence", "jakarta.persistence", "hibernate"},
 		detect: func(src, _ string) []modelLink { return detectJPA(src) },
 	},
 	{
-		hints: []string{"ecto"},
+		hints:  []string{"ecto"},
 		detect: func(src, _ string) []modelLink { return detectEcto(src) },
 	},
 	{
-		hints: []string{"typeorm"},
+		hints:  []string{"typeorm"},
 		detect: func(src, _ string) []modelLink { return detectTypeORM(src) },
 	},
 	{
-		hints: []string{"sequelize"},
+		hints:  []string{"sequelize"},
 		detect: func(src, _ string) []modelLink { return detectSequelize(src) },
 	},
 	{
-		hints: []string{"@prisma/client", "prisma"},
+		hints:  []string{"@prisma/client", "prisma"},
 		detect: func(src, _ string) []modelLink { return detectPrisma(src) },
 	},
 }

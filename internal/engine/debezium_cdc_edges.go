@@ -16,6 +16,7 @@
 //
 //   - a SCOPE.Component entity for the connector itself (Subtype="cdc_connector"),
 //     keyed by the JSON `name` field (e.g. "orders-postgres-cdc").
+//
 //   - a SCOPE.Datastore "table" stub entity per element of
 //     `table.include.list` (or the `x-shipfast-cdc.captured-tables`
 //     escape hatch). Stub entities collapse onto the SQL extractor's
@@ -25,26 +26,28 @@
 //     migration SQL is in the same repo. Cross-repo (CDC in services/cdc/
 //     pointing at services/orders/migrations/) still binds via the
 //     cross-repo name linker that #534 uses for HTTP and #726 for Kafka.
+//
 //   - a SCOPE.MessageTopic entity per produced Kafka topic, broker=kafka,
 //     using the canonical `kafka:<topic>` ID that the existing Kafka
 //     synthesizer uses (kafka_edges.go). This lets the CDC connector
 //     share topic nodes with downstream Kafka consumers in other repos.
+//
 //   - edges:
-//       connector  CAPTURES       table              (per captured table)
-//       connector  PUBLISHES_TO   kafka:<topic>      (per produced topic)
+//     connector  CAPTURES       table              (per captured table)
+//     connector  PUBLISHES_TO   kafka:<topic>      (per produced topic)
 //
-//   CAPTURES is a new typed edge for the CDC chain — consumers of the
-//   topic produce SUBSCRIBES_TO edges from the regular Kafka synthesis
-//   pass (e.g. a Python consumer doing `KafkaConsumer("cdc.public.orders")`)
-//   so the resulting subgraph is:
+//     CAPTURES is a new typed edge for the CDC chain — consumers of the
+//     topic produce SUBSCRIBES_TO edges from the regular Kafka synthesis
+//     pass (e.g. a Python consumer doing `KafkaConsumer("cdc.public.orders")`)
+//     so the resulting subgraph is:
 //
-//       trigger ─FIRES─▶ trigger_function
-//                         │
-//                         └─WRITES_TO─▶ audit_table
-//                                        │
-//                                        └◀─CAPTURES─ connector ─PUBLISHES_TO─▶ kafka:cdc.public.audit_table
-//                                                                                        │
-//                                                                                        └─SUBSCRIBES_TO─ consumer
+//     trigger ─FIRES─▶ trigger_function
+//     │
+//     └─WRITES_TO─▶ audit_table
+//     │
+//     └◀─CAPTURES─ connector ─PUBLISHES_TO─▶ kafka:cdc.public.audit_table
+//     │
+//     └─SUBSCRIBES_TO─ consumer
 //
 // # Topic-name derivation
 //

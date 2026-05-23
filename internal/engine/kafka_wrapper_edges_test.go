@@ -400,9 +400,9 @@ public class OrderEnrichmentTopology {
 
 	// Canonical IDs must match what P7 will join on.
 	wantIDs := map[string]bool{
-		"kafka:orders.placed":    false,
-		"kafka:payments.settled": false,
-		"kafka:orders.enriched":  false,
+		"kafka:orders.placed":     false,
+		"kafka:payments.settled":  false,
+		"kafka:orders.enriched":   false,
 		"kafka:orders.high_value": false,
 	}
 	for _, e := range ents {

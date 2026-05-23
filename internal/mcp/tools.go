@@ -527,12 +527,12 @@ func serializeHits(all []scored, verbose bool) []map[string]any {
 	out := make([]map[string]any, 0, len(all))
 	for _, sc := range all {
 		m := map[string]any{
-			"id":          prefixedID(sc.repo.Repo, sc.hit.Entity.ID),
-			"name":        sc.hit.Entity.Name,
-			"file":        sc.hit.Entity.SourceFile,
-			"line":        sc.hit.Entity.StartLine,
-			"score":       sc.hit.Score,
-			"kind":        stripScopePrefix(sc.hit.Entity.Kind),
+			"id":    prefixedID(sc.repo.Repo, sc.hit.Entity.ID),
+			"name":  sc.hit.Entity.Name,
+			"file":  sc.hit.Entity.SourceFile,
+			"line":  sc.hit.Entity.StartLine,
+			"score": sc.hit.Score,
+			"kind":  stripScopePrefix(sc.hit.Entity.Kind),
 		}
 		if verbose {
 			m["qualified_name"] = sc.hit.Entity.QualifiedName
@@ -819,8 +819,8 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 	out = capByRenderedBytes(out, budgetBytes, false)
 	if preCapLen > len(out) {
 		return jsonResult(map[string]any{
-			"neighbors":      out,
-			"count":          len(out),
+			"neighbors": out,
+			"count":     len(out),
 			"truncation_note": fmt.Sprintf(
 				"response capped at token_budget=%d (~%d bytes); %d neighbors omitted — pass a larger token_budget or reduce depth",
 				tokenBudget, budgetBytes, preCapLen-len(out),

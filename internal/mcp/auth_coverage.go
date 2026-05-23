@@ -65,21 +65,21 @@ import (
 // case-insensitive.
 var authAnnotationNames = map[string]bool{
 	// Django
-	"login_required":       true,
-	"permission_required":  true,
-	"user_passes_test":     true,
+	"login_required":        true,
+	"permission_required":   true,
+	"user_passes_test":      true,
 	"staff_member_required": true,
-	"superuser_required":   true,
+	"superuser_required":    true,
 	// DRF
-	"permission_classes":   true,
-	"isauthenticated":      true,
-	"isadminuser":          true,
+	"permission_classes":     true,
+	"isauthenticated":        true,
+	"isadminuser":            true,
 	"isauthorizedorreadonly": true,
 	// Flask / Flask-Login / Flask-JWT-Extended
-	"jwt_required":      true,
+	"jwt_required":       true,
 	"fresh_jwt_required": true,
-	"roles_required":    true,
-	"roles_accepted":    true,
+	"roles_required":     true,
+	"roles_accepted":     true,
 	// FastAPI
 	"get_current_user":        true,
 	"get_current_active_user": true,
@@ -89,27 +89,27 @@ var authAnnotationNames = map[string]bool{
 	"authenticate":            true,
 	"require_auth":            true,
 	// Express / Node
-	"requireauth":     true,
-	"authmiddleware":  true,
-	"verifyjwt":       true,
-	"verifytoken":     true,
-	"jwtauthguard":    true,
-	"authguard":       true,
+	"requireauth":    true,
+	"authmiddleware": true,
+	"verifyjwt":      true,
+	"verifytoken":    true,
+	"jwtauthguard":   true,
+	"authguard":      true,
 	// NestJS
-	"useguards":       true,
+	"useguards": true,
 	// Spring
-	"preauthorize":    true,
-	"secured":         true,
-	"rolesallowed":    true,
+	"preauthorize": true,
+	"secured":      true,
+	"rolesallowed": true,
 	// ASP.NET
-	"authorize":       true,
+	"authorize": true,
 	// Rails
-	"before_action":   true, // commonly used with authenticate_user!
+	"before_action":      true, // commonly used with authenticate_user!
 	"authenticate_user!": true,
 	// Generic
-	"auth":            true,
-	"authenticated":   true,
-	"authorized":      true,
+	"auth":          true,
+	"authenticated": true,
+	"authorized":    true,
 }
 
 // authPropertyKeys are entity property keys whose presence indicates auth.
@@ -175,14 +175,14 @@ func (s *Server) handleAuthCoverage(_ context.Context, req mcpapi.CallToolReques
 	}
 
 	type RepoSummary struct {
-		Repo           string `json:"repo"`
-		Total          int    `json:"total"`
-		Covered        int    `json:"covered"`
-		Uncovered      int    `json:"uncovered"`
-		CoverageRate   float64 `json:"coverage_rate"`
-		DefaultPolicy  string `json:"default_policy"` // "default-deny" or "default-allow"
-		ErrorCount     int    `json:"error_count"`
-		WarnCount      int    `json:"warn_count"`
+		Repo          string  `json:"repo"`
+		Total         int     `json:"total"`
+		Covered       int     `json:"covered"`
+		Uncovered     int     `json:"uncovered"`
+		CoverageRate  float64 `json:"coverage_rate"`
+		DefaultPolicy string  `json:"default_policy"` // "default-deny" or "default-allow"
+		ErrorCount    int     `json:"error_count"`
+		WarnCount     int     `json:"warn_count"`
 	}
 
 	var endpoints []EndpointRecord

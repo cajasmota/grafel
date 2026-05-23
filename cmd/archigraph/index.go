@@ -54,7 +54,7 @@ const (
 	PassModuleAgg     = "module-agg"     // Pass 8: module-level aggregation (#1383)
 	PassCommitCouple  = "commit-couple"  // Pass 8.5: VCS-derived COMMIT_COUPLED soft edges (#21)
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
-	PassTestsWalkUp   = "tests-walkup"  // Pass 3.5: derive TESTS edges via helper walk-up
+	PassTestsWalkUp   = "tests-walkup"   // Pass 3.5: derive TESTS edges via helper walk-up
 )
 
 // allPassNames is used to validate --skip-pass entries.
@@ -2412,12 +2412,12 @@ var frameworkClassKindPriority = map[string]int{
 	// "SCOPE.<Kind>" form for a class-like entity). Priorities mirror the bare
 	// form so that the highest-fidelity named node always beats a generic shadow.
 	// Issue #1700.
-	"SCOPE.Service":    100,
-	"SCOPE.View":       100, // #1727: View+Component fold (SCOPE-prefixed form)
-	"SCOPE.Model":      100,
+	"SCOPE.Service":     100,
+	"SCOPE.View":        100, // #1727: View+Component fold (SCOPE-prefixed form)
+	"SCOPE.Model":       100,
 	"SCOPE.UIComponent": 100,
 	"SCOPE.GrpcService": 90,
-	"SCOPE.Schema":     80,
+	"SCOPE.Schema":      80,
 }
 
 func isShadowRecord(r *types.EntityRecord) bool {

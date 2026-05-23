@@ -86,8 +86,8 @@ type ResolveHTTPEndpointStats struct {
 	DefinitionsMigrated int // entities that were http_endpoint (legacy) → definition
 	CallsMigrated       int // entities that were http_endpoint (legacy) → call
 	// #1217 cross-link counters.
-	CallsLinked      int // call → definition FETCHES edges emitted
-	CallsUnresolved  int // call entities with no matching definition (UNRESOLVED_FETCH)
+	CallsLinked     int // call → definition FETCHES edges emitted
+	CallsUnresolved int // call entities with no matching definition (UNRESOLVED_FETCH)
 	// #1615 — caller→call-synthetic FETCHES edges retargeted at the resolved
 	// definition so the call-site is no longer an orphan.
 	CallerEdgesRetargeted int

@@ -637,8 +637,8 @@ func dispatchRebuildWebhooks(group string, sum *RebuildSummary, healthScore floa
 // circular import between cli and dashboard packages. Settings are read
 // directly from the JSON file.
 type webhookSettingsShape struct {
-	Webhooks       []notifications.WebhookConfig    `json:"webhooks"`
-	QualityBudgets notifications.QualityBudgets     `json:"quality_budgets"`
+	Webhooks       []notifications.WebhookConfig `json:"webhooks"`
+	QualityBudgets notifications.QualityBudgets  `json:"quality_budgets"`
 }
 
 // loadWebhookSettings reads only the webhook-relevant fields from settings.json.

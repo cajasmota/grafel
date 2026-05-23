@@ -99,18 +99,18 @@ func (c *Config) heartbeatInterval() time.Duration {
 // because the volume of mutations is low (handful of repos, lifecycle
 // is registration/deregistration, not per-event).
 type Watcher struct {
-	logger      *log.Logger
-	cfg         Config
-	sink        EventSink
-	extraSkip   map[string]struct{}
-	mu          sync.Mutex
-	fs          *fsnotify.Watcher
-	repos       map[string]*repoState // key: absolute repo path
-	dirToRepo   map[string]string     // key: absolute dir path → repo path
-	stopOnce    sync.Once
-	stopCh      chan struct{}
-	stoppedCh   chan struct{}
-	restartCh   chan struct{} // signals heartbeat loop to recreate fsnotify
+	logger    *log.Logger
+	cfg       Config
+	sink      EventSink
+	extraSkip map[string]struct{}
+	mu        sync.Mutex
+	fs        *fsnotify.Watcher
+	repos     map[string]*repoState // key: absolute repo path
+	dirToRepo map[string]string     // key: absolute dir path → repo path
+	stopOnce  sync.Once
+	stopCh    chan struct{}
+	stoppedCh chan struct{}
+	restartCh chan struct{} // signals heartbeat loop to recreate fsnotify
 	// counters — accessed atomically outside mu where latency matters
 	totalEvents   uint64
 	droppedSkips  uint64

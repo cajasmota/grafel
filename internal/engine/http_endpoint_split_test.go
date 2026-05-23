@@ -100,11 +100,11 @@ func TestSplit_DefinitionCallCrossLink(t *testing.T) {
 		SourceFile: "apps/api/routes/users.py",
 		Language:   "python",
 		Properties: map[string]string{
-			"verb":            "GET",
-			"path":            "/api/users",
-			"framework":       "fastapi",
-			"pattern_type":    "http_endpoint_synthesis",
-			"owning_backend":  "api",
+			"verb":           "GET",
+			"path":           "/api/users",
+			"framework":      "fastapi",
+			"pattern_type":   "http_endpoint_synthesis",
+			"owning_backend": "api",
 		},
 	}
 	call := types.EntityRecord{
@@ -301,9 +301,9 @@ func TestSplit_BackwardCompat_LegacyKindMigrated(t *testing.T) {
 // correctly: "literal", "template_literal", and "dynamic_baseurl".
 func TestSplit_URLKindFromPath(t *testing.T) {
 	cases := []struct {
-		path          string
-		runtimeDyn    bool
-		wantURLKind   string
+		path        string
+		runtimeDyn  bool
+		wantURLKind string
 	}{
 		{"/api/users", false, "literal"},
 		{"/api/users/{id}", false, "literal"},

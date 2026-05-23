@@ -1,0 +1,25 @@
+export declare const EPSILON1 = 0.1;
+export declare const EPSILON2 = 0.01;
+export declare const EPSILON3 = 0.001;
+export declare const EPSILON4 = 0.0001;
+export declare const EPSILON5 = 0.00001;
+export declare const EPSILON6 = 0.000001;
+export declare const EPSILON7 = 1e-7;
+export declare const EPSILON8 = 1e-8;
+export declare const EPSILON9 = 1e-9;
+export declare const EPSILON10 = 1e-10;
+export declare const EPSILON11 = 1e-11;
+export declare const EPSILON12 = 1e-12;
+export declare const EPSILON13 = 1e-13;
+export declare const EPSILON14 = 1e-14;
+export declare const EPSILON15 = 1e-15;
+export declare const EPSILON16 = 1e-16;
+export declare const EPSILON17 = 1e-17;
+export declare const EPSILON18 = 1e-18;
+export declare const EPSILON19 = 1e-19;
+export declare const EPSILON20 = 1e-20;
+export declare const PI_OVER_TWO: number;
+export declare const PI_OVER_FOUR: number;
+export declare const PI_OVER_SIX: number;
+export declare const TWO_PI: number;
+//# sourceMappingURL=math-utils.d.ts.map

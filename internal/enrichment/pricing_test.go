@@ -37,7 +37,7 @@ func TestEstimateEntityTokens_includesOverhead(t *testing.T) {
 	// EstimateEntityTokens must always add at least promptOverheadTokens (200).
 	for _, kind := range []string{"http_endpoint", "Service", "unknown"} {
 		base := TokensPerEntity(kind)
-		got  := EstimateEntityTokens(kind)
+		got := EstimateEntityTokens(kind)
 		want := base + promptOverheadTokens
 		if got != want {
 			t.Errorf("EstimateEntityTokens(%q) = %d, want %d", kind, got, want)
@@ -51,8 +51,8 @@ func TestUSDForTokens_haiku(t *testing.T) {
 	//   output = 300k → 300k * $4.00/M  = $1.20
 	//   total  = $1.76
 	total := 1_000_000
-	got   := USDForTokens(total, "haiku")
-	want  := 1.76 // precomputed
+	got := USDForTokens(total, "haiku")
+	want := 1.76 // precomputed
 	if math.Abs(got-want) > 0.01 {
 		t.Errorf("USDForTokens(1M, haiku) = %.4f, want %.4f", got, want)
 	}
@@ -64,8 +64,8 @@ func TestUSDForTokens_sonnet(t *testing.T) {
 	//   output = 300k → 300k * $15.00/M = $4.50
 	//   total  = $6.60
 	total := 1_000_000
-	got   := USDForTokens(total, "sonnet")
-	want  := 6.60
+	got := USDForTokens(total, "sonnet")
+	want := 6.60
 	if math.Abs(got-want) > 0.01 {
 		t.Errorf("USDForTokens(1M, sonnet) = %.4f, want %.4f", got, want)
 	}

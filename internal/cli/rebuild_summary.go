@@ -46,8 +46,8 @@ type RebuildSummary struct {
 	// EnrichmentCandidates is the number of unique subject entities needing
 	// enrichment (one-per-entity, issue #1134). EnrichmentActions is the total
 	// number of pending action items across those entities.
-	EnrichmentCandidates int           // unique subjects (entities) needing enrichment
-	EnrichmentActions    int           // total pending actions across all subjects
+	EnrichmentCandidates int            // unique subjects (entities) needing enrichment
+	EnrichmentActions    int            // total pending actions across all subjects
 	EnrichmentByKind     map[string]int // action counts by enrichment kind (describe_entity, describe_role, etc)
 	RepairCandidates     int
 
@@ -410,4 +410,3 @@ func fmtInt(n int) string {
 	}
 	return string(out)
 }
-

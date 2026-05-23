@@ -36,23 +36,23 @@ type DoctorGroupHealth struct {
 	DaemonManaged bool // true if group has a corresponding watcher
 
 	// Watcher stats (if available)
-	WatcherRepoCount    int
-	WatcherDirCount     int
+	WatcherRepoCount     int
+	WatcherDirCount      int
 	WatcherEventsDropped int
-	LastWatcherActivity string
+	LastWatcherActivity  string
 
 	// Per-repo stats
 	Repos []*DoctorRepoHealth
 
 	// Aggregated quality metrics
-	TotalEntities      int
-	TotalRelationships int
+	TotalEntities       int
+	TotalRelationships  int
 	TotalCrossRepoEdges int
-	BugRate            float64 // unresolved-edges percentage
-	OrphanEntities     int
-	OrphanRate         float64
-	PendingRepairs     int
-	PendingEnrichments int
+	BugRate             float64 // unresolved-edges percentage
+	OrphanEntities      int
+	OrphanRate          float64
+	PendingRepairs      int
+	PendingEnrichments  int
 
 	// Issues found
 	IssuesFound []string // human-readable issue descriptions
@@ -70,11 +70,11 @@ func ComputeDoctorHealth(groups []registry.GroupRef) []*DoctorGroupHealth {
 		}
 
 		health := &DoctorGroupHealth{
-			GroupName:     g.Name,
-			Healthy:       true,
-			Status:        "HEALTHY",
-			Repos:         make([]*DoctorRepoHealth, 0),
-			IssuesFound:   make([]string, 0),
+			GroupName:   g.Name,
+			Healthy:     true,
+			Status:      "HEALTHY",
+			Repos:       make([]*DoctorRepoHealth, 0),
+			IssuesFound: make([]string, 0),
 		}
 
 		// Aggregate per-repo health
@@ -305,4 +305,3 @@ func PrintDoctorHealth(w io.Writer, groups []*DoctorGroupHealth) {
 		}
 	}
 }
-

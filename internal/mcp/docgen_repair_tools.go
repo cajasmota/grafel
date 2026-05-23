@@ -36,16 +36,16 @@ func (s *Server) handleApplyDocgenRepairs(ctx context.Context, req mcpapi.CallTo
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 
 	type repoResult struct {
-		Repo           string                   `json:"repo"`
-		Applied        int                      `json:"applied"`
-		Queued         int                      `json:"queued"`
-		Skipped        int                      `json:"skipped"`
-		FidelityBefore *float64                 `json:"fidelity_before,omitempty"`
-		FidelityAfter  *float64                 `json:"fidelity_after,omitempty"`
-		FidelityDelta  *float64                 `json:"fidelity_delta,omitempty"`
+		Repo           string                             `json:"repo"`
+		Applied        int                                `json:"applied"`
+		Queued         int                                `json:"queued"`
+		Skipped        int                                `json:"skipped"`
+		FidelityBefore *float64                           `json:"fidelity_before,omitempty"`
+		FidelityAfter  *float64                           `json:"fidelity_after,omitempty"`
+		FidelityDelta  *float64                           `json:"fidelity_delta,omitempty"`
 		RepairsApplied []enrichment.DocgenRepairCandidate `json:"repairs_applied,omitempty"`
 		RepairsQueued  []enrichment.DocgenRepairCandidate `json:"repairs_queued,omitempty"`
-		Error          string                   `json:"error,omitempty"`
+		Error          string                             `json:"error,omitempty"`
 	}
 
 	results := make([]repoResult, 0, len(repos))

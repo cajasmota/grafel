@@ -41,7 +41,7 @@ var (
 		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*(?:viewsets\.)?(?:ModelViewSet|ReadOnlyModelViewSet|ViewSet|GenericViewSet|ViewSetMixin)[^)]*\)\s*:`)
 	djangoRouterRegRe = regexp.MustCompile(
 		`(?m)router\.register\s*\(\s*(?:r)?["']([^"']*)["']\s*,\s*(\w+)`)
-	djangoMiddlewareClassRe = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*Middleware)\s*(?:\([^)]*\))?\s*:`)
+	djangoMiddlewareClassRe  = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*Middleware)\s*(?:\([^)]*\))?\s*:`)
 	djangoMiddlewareMethodRe = regexp.MustCompile(
 		`(?m)^\s{4,}def\s+(process_(?:request|response|view|exception|template_response))\s*\(`)
 	djangoTemplateFilterRe    = regexp.MustCompile(`(?m)@register\.filter\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)

@@ -15,51 +15,53 @@
 // distinguish them.
 //
 // Libraries / frameworks covered:
-//   Python (redis-py / aioredis):
-//     producer: redis.publish('channel', msg) / r.publish('channel', msg)
-//               await r.publish('channel', msg)
-//     consumer: pubsub.subscribe('channel') / r.subscribe('channel')
-//               pubsub.psubscribe('pattern') — wildcard: emits as-is
-//               pubsub.listen() / pubsub.get_message() — no channel arg,
-//                 skipped (channel was captured at subscribe time)
-//     streams:  r.xadd('stream', {...}) / await r.xadd('stream', {...})
-//               r.xreadgroup(group, consumer, {'stream': '>'})
-//               r.xread({'stream': last_id})
 //
-//   Node (ioredis / node-redis):
-//     producer: redis.publish('channel', msg) / client.publish('channel', msg)
-//               redisClient.publish('channel', msg)
-//               publisher.publish('channel', msg)
-//               pubsub.publish('channel', msg)
-//     consumer: redis.subscribe('channel', callback)
-//               subscriber.subscribe('channel', callback)
-//               redis.psubscribe('orders.*', callback) — wildcard
-//               redis.on('message', (ch, msg) => {}) — channel captured earlier
-//     streams:  client.xAdd('stream', '*', {field: val})
-//               client.xReadGroup(group, consumer, [{key:'stream',id:'>'}])
-//               client.xRead([{key:'stream',id:lastId}])
+//	Python (redis-py / aioredis):
+//	  producer: redis.publish('channel', msg) / r.publish('channel', msg)
+//	            await r.publish('channel', msg)
+//	  consumer: pubsub.subscribe('channel') / r.subscribe('channel')
+//	            pubsub.psubscribe('pattern') — wildcard: emits as-is
+//	            pubsub.listen() / pubsub.get_message() — no channel arg,
+//	              skipped (channel was captured at subscribe time)
+//	  streams:  r.xadd('stream', {...}) / await r.xadd('stream', {...})
+//	            r.xreadgroup(group, consumer, {'stream': '>'})
+//	            r.xread({'stream': last_id})
 //
-//   Go (go-redis / redis/v9):
-//     producer: rdb.Publish(ctx, "channel", message)
-//     consumer: pubsub := rdb.Subscribe(ctx, "channel")
-//               pubsub := rdb.PSubscribe(ctx, "orders.*") — wildcard
-//     streams:  rdb.XAdd(ctx, &redis.XAddArgs{Stream:"stream",...})
-//               rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Streams:[]string{"stream",">"},...})
-//               rdb.XRead(ctx, &redis.XReadArgs{Streams:[]string{"stream",lastId},...})
+//	Node (ioredis / node-redis):
+//	  producer: redis.publish('channel', msg) / client.publish('channel', msg)
+//	            redisClient.publish('channel', msg)
+//	            publisher.publish('channel', msg)
+//	            pubsub.publish('channel', msg)
+//	  consumer: redis.subscribe('channel', callback)
+//	            subscriber.subscribe('channel', callback)
+//	            redis.psubscribe('orders.*', callback) — wildcard
+//	            redis.on('message', (ch, msg) => {}) — channel captured earlier
+//	  streams:  client.xAdd('stream', '*', {field: val})
+//	            client.xReadGroup(group, consumer, [{key:'stream',id:'>'}])
+//	            client.xRead([{key:'stream',id:lastId}])
 //
-//   Ruby (redis-rb):
-//     producer: redis.publish('channel', message)
-//     consumer: redis.subscribe('channel') { |on| on.message{...} }
-//               redis.psubscribe('orders.*') { |on| ... } — wildcard
-//     streams:  redis.xadd('stream', '*', field: val)
-//               redis.xreadgroup(group, consumer, 'stream', '>') / xread(count:N,'stream',lastid)
+//	Go (go-redis / redis/v9):
+//	  producer: rdb.Publish(ctx, "channel", message)
+//	  consumer: pubsub := rdb.Subscribe(ctx, "channel")
+//	            pubsub := rdb.PSubscribe(ctx, "orders.*") — wildcard
+//	  streams:  rdb.XAdd(ctx, &redis.XAddArgs{Stream:"stream",...})
+//	            rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Streams:[]string{"stream",">"},...})
+//	            rdb.XRead(ctx, &redis.XReadArgs{Streams:[]string{"stream",lastId},...})
+//
+//	Ruby (redis-rb):
+//	  producer: redis.publish('channel', message)
+//	  consumer: redis.subscribe('channel') { |on| on.message{...} }
+//	            redis.psubscribe('orders.*') { |on| ... } — wildcard
+//	  streams:  redis.xadd('stream', '*', field: val)
+//	            redis.xreadgroup(group, consumer, 'stream', '>') / xread(count:N,'stream',lastid)
 //
 // Non-pub/sub calls (GET/SET/HSET/LPUSH/etc.) do NOT trigger detection —
 // fast-path pre-filter gate guards against false positives.
 //
 // Emit: SCOPE.Queue + PUBLISHES_TO + SUBSCRIBES_TO.
 // ID format:  channel:redis-pubsub:<channel>   (pub/sub)
-//             stream:redis:<stream>             (Streams)
+//
+//	stream:redis:<stream>             (Streams)
 //
 // Refs #930.
 package engine
@@ -149,11 +151,11 @@ func applyRedisPubSubEdges(
 		}
 		seenQueue[channelID] = true
 		merged := map[string]string{
-			"broker":        "redis",
-			"channel_name":  channelName,
-			"channel_type":  channelType, // "pubsub" or "stream"
-			"pattern_type":  "redis_pubsub_synthesis",
-			"is_wildcard":   boolStr(isWildcard),
+			"broker":       "redis",
+			"channel_name": channelName,
+			"channel_type": channelType, // "pubsub" or "stream"
+			"pattern_type": "redis_pubsub_synthesis",
+			"is_wildcard":  boolStr(isWildcard),
 		}
 		for k, v := range props {
 			if v != "" {
@@ -755,22 +757,27 @@ func synthesizeRubyRedisPubSub(
 //   (and vice-versa).
 
 // springRedisConvertAndSendRe captures
-//   `redisTemplate.convertAndSend("channel", payload)` and the
-//   `stringRedisTemplate.convertAndSend("channel", msg)` variant.
+//
+//	`redisTemplate.convertAndSend("channel", payload)` and the
+//	`stringRedisTemplate.convertAndSend("channel", msg)` variant.
+//
 // Group 1 = channel name (string literal, single or double quoted).
 var springRedisConvertAndSendRe = regexp.MustCompile(
 	`\.convertAndSend\s*\(\s*["']([^"'\n\r]+)["']`,
 )
 
 // springRedisChannelTopicRe captures
-//   `new ChannelTopic("channel")` and `ChannelTopic("channel")` in
-//   Kotlin/Java.  Group 1 = channel name.
+//
+//	`new ChannelTopic("channel")` and `ChannelTopic("channel")` in
+//	Kotlin/Java.  Group 1 = channel name.
 var springRedisChannelTopicRe = regexp.MustCompile(
 	`\bChannelTopic\s*\(\s*["']([^"'\n\r]+)["']`,
 )
 
 // springRedisPatternTopicRe captures
-//   `new PatternTopic("pattern")` — wildcard subscription.
+//
+//	`new PatternTopic("pattern")` — wildcard subscription.
+//
 // Group 1 = pattern.
 var springRedisPatternTopicRe = regexp.MustCompile(
 	`\bPatternTopic\s*\(\s*["']([^"'\n\r]+)["']`,

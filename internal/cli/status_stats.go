@@ -21,10 +21,10 @@ type StatusSummary struct {
 	GroupName string
 
 	// Aggregated totals.
-	TotalEntities      int
-	TotalRelationships int
+	TotalEntities        int
+	TotalRelationships   int
 	EnrichmentCandidates int
-	RepairCandidates   int
+	RepairCandidates     int
 
 	// Cross-repo edges loaded from <group>-links.json.
 	CrossRepoEdges int
@@ -51,8 +51,8 @@ type RepoStatus struct {
 // does not prevent summary generation.
 func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 	s := &StatusSummary{
-		GroupName:  group,
-		RepoStats:  make(map[string]*RepoStatus),
+		GroupName: group,
+		RepoStats: make(map[string]*RepoStatus),
 	}
 
 	// Track entities with incoming relationships to compute orphan rate later.

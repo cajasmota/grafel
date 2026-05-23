@@ -117,12 +117,12 @@ func TestResolveGroup_InferFromCWD(t *testing.T) {
 	}
 
 	cases := []struct {
-		name         string
-		explicit     string
-		cwd          string
-		wantGroup    string
-		wantSource   string
-		wantErrFrag  string // non-empty → expect error containing this substring
+		name        string
+		explicit    string
+		cwd         string
+		wantGroup   string
+		wantSource  string
+		wantErrFrag string // non-empty → expect error containing this substring
 	}{
 		{
 			name:       "explicit group overrides cwd",

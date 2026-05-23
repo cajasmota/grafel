@@ -96,7 +96,7 @@ var vueSpecificPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^unref$`),
 	regexp.MustCompile(`^triggerRef$`),
 	regexp.MustCompile(`^customRef$`),
-	regexp.MustCompile(`^h$`),         // Vue render function
+	regexp.MustCompile(`^h$`), // Vue render function
 	regexp.MustCompile(`^mergeProps$`),
 	regexp.MustCompile(`^withCtx$`),
 	regexp.MustCompile(`^withDirectives$`),

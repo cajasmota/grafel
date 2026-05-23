@@ -20,13 +20,13 @@ import (
 
 // enrichmentProgressBand is one tier in the progress response.
 type enrichmentProgressBand struct {
-	Band       string  `json:"band"`        // "critical" | "high" | "medium" | "low"
-	Total      int     `json:"total"`       // total jobs in this band
-	Done       int     `json:"done"`        // completed (status == "done")
-	Running    int     `json:"running"`     // currently executing
-	Queued     int     `json:"queued"`      // waiting in queue
-	Failed     int     `json:"failed"`      // failed / cancelled
-	ETASeconds *int    `json:"eta_seconds,omitempty"` // nil when not enough data
+	Band       string `json:"band"`                  // "critical" | "high" | "medium" | "low"
+	Total      int    `json:"total"`                 // total jobs in this band
+	Done       int    `json:"done"`                  // completed (status == "done")
+	Running    int    `json:"running"`               // currently executing
+	Queued     int    `json:"queued"`                // waiting in queue
+	Failed     int    `json:"failed"`                // failed / cancelled
+	ETASeconds *int   `json:"eta_seconds,omitempty"` // nil when not enough data
 }
 
 // enrichmentProgressResponse is the wire type for GET /api/enrichments/{group}/progress.

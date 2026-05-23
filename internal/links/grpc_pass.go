@@ -52,7 +52,7 @@ const grpcMethodKindLink = "SCOPE.GrpcMethod"
 
 // grpcHandlesEdge / grpcImplementsEdge are the edge kinds emitted by the
 // engine pass; compared case-insensitively to be robust to on-disk variance.
-const grpcHandlesEdgeKindLink    = "GRPC_HANDLES"
+const grpcHandlesEdgeKindLink = "GRPC_HANDLES"
 const grpcImplementsEdgeKindLink = "GRPC_IMPLEMENTS"
 
 // grpcHit collects one GrpcMethod appearance in one repo.

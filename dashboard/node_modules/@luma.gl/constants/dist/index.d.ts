@@ -1,0 +1,3 @@
+export { GL } from "./webgl-constants.js";
+export type { GLTextureTarget, GLTextureCubeMapTarget, GLTexelDataFormat, GLPrimitiveTopology, GLPrimitive, GLDataType, GLPixelType, GLUniformType, GLSamplerType, GLFunction, GLBlendEquation, GLBlendFunction, GLStencilOp, GLSamplerParameters, GLValueParameters, GLPackParameters, GLUnpackParameters, GLFunctionParameters, GLParameters, GLLimits, GLExtensions, GLPolygonMode, GLProvokingVertex } from "./webgl-types.js";
+//# sourceMappingURL=index.d.ts.map

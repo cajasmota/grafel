@@ -74,7 +74,6 @@ func requireEdgeToEB(t *testing.T, rels []types.RelationshipRecord, toID, kind, 
 	t.Errorf("%s: expected %s edge to %q; rels=%v", label, kind, toID, relSummary(rels))
 }
 
-
 func requireEdgeFromTo(t *testing.T, rels []types.RelationshipRecord, fromID, toID, kind, label string) {
 	t.Helper()
 	for _, r := range rels {
@@ -177,7 +176,7 @@ func PublishShipped(ctx context.Context, orderID string) error {
 	entry := ebtypes.PutEventsRequestEntry{
 		Source:      aws.String("fulfillment"),
 		DetailType:  aws.String("OrderShipped"),
-		Detail:      aws.String(`+"`"+`{"orderId":"`+"`"+`+orderID+`+"`"+`"}`+"`"+`),
+		Detail:      aws.String(` + "`" + `{"orderId":"` + "`" + `+orderID+` + "`" + `"}` + "`" + `),
 		EventBusName: aws.String("default"),
 	}
 	// ... send

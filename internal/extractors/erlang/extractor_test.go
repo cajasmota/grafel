@@ -443,12 +443,12 @@ func TestErlangExtractor_GenServerRecall(t *testing.T) {
 
 	wantNames := []string{
 		"cache_server", // module
-		"start_link",  // API function
+		"start_link",   // API function
 		"get",
 		"put",
 		"delete",
 		"flush",
-		"init",         // gen_server callback
+		"init", // gen_server callback
 		"handle_call",
 		"handle_cast",
 		"handle_info",

@@ -1,0 +1,1 @@
+{"version":3,"file":"get-shader-info.d.ts","sourceRoot":"","sources":["../../../src/lib/glsl-utils/get-shader-info.ts"],"names":[],"mappings":"AAIA,oDAAoD;AACpD,MAAM,MAAM,UAAU,GAAG;IACvB,IAAI,EAAE,MAAM,CAAC;IACb,QAAQ,EAAE,MAAM,GAAG,MAAM,CAAC;IAC1B,OAAO,EAAE,MAAM,CAAC;CACjB,CAAC;AAEF,mDAAmD;AACnD,wBAAgB,aAAa,CAAC,MAAM,EAAE,MAAM,EAAE,WAAW,CAAC,EAAE,MAAM,GAAG,UAAU,CAM9E"}

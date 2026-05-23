@@ -784,9 +784,9 @@ func TestCollectTasks_CompletedActionRemains(t *testing.T) {
 func TestCollectTasks_UniqueSubjectCount(t *testing.T) {
 	pr := 0.05
 	doc := mkDoc(
-		graph.Entity{ID: "e1", Name: "http:GET:/api/plain", Kind: "http_endpoint"},                        // 1 action (describe_entity only)
-		graph.Entity{ID: "g1", Name: "God", Kind: "class", IsGodNode: true, PageRank: &pr},                // 3 actions
-		graph.Entity{ID: "a1", Name: "Bridge", Kind: "class", IsArticulationPt: true},                    // 2 actions (describe+role)
+		graph.Entity{ID: "e1", Name: "http:GET:/api/plain", Kind: "http_endpoint"},         // 1 action (describe_entity only)
+		graph.Entity{ID: "g1", Name: "God", Kind: "class", IsGodNode: true, PageRank: &pr}, // 3 actions
+		graph.Entity{ID: "a1", Name: "Bridge", Kind: "class", IsArticulationPt: true},      // 2 actions (describe+role)
 	)
 
 	tasks := CollectTasks(doc, DefaultEmitters(), nil, nil)
@@ -870,10 +870,10 @@ func TestUniqueSubjectCount(t *testing.T) {
 // possible signal: base 80 + god_node 20 = 100 (clamped).
 func TestComputeScore_GodHTTPEndpoint(t *testing.T) {
 	e := &graph.Entity{
-		ID:        "e1",
-		Name:      "http:POST:/api/orders",
-		Kind:      "http_endpoint",
-		IsGodNode: true,
+		ID:         "e1",
+		Name:       "http:POST:/api/orders",
+		Kind:       "http_endpoint",
+		IsGodNode:  true,
 		SourceFile: "handlers/orders.go",
 	}
 	score, breakdown, band := ComputeScore(e)
@@ -1169,11 +1169,11 @@ func TestFilter_FilepathComponent(t *testing.T) {
 	}
 	for _, name := range filepathNames {
 		doc := mkDoc(graph.Entity{
-			ID:           "fp1",
-			Name:         name,
-			Kind:         "SCOPE.Component",
-			SourceFile:   name,
-			IsGodNode:    true,
+			ID:               "fp1",
+			Name:             name,
+			Kind:             "SCOPE.Component",
+			SourceFile:       name,
+			IsGodNode:        true,
 			IsArticulationPt: true,
 		})
 		got := CollectCandidates(doc, emitters, nil)
@@ -1207,11 +1207,11 @@ func TestFilter_GeneratedMigration(t *testing.T) {
 	}
 	for _, sf := range migrationFiles {
 		doc := mkDoc(graph.Entity{
-			ID:           "mig1",
-			Name:         "Migration",
-			Kind:         "SCOPE.Component",
-			SourceFile:   sf,
-			IsGodNode:    true,
+			ID:               "mig1",
+			Name:             "Migration",
+			Kind:             "SCOPE.Component",
+			SourceFile:       sf,
+			IsGodNode:        true,
 			IsArticulationPt: true,
 		})
 		got := CollectCandidates(doc, emitters, nil)
@@ -1247,11 +1247,11 @@ func TestFilter_RawSQLDataAccess(t *testing.T) {
 	}
 	for _, name := range sqlNames {
 		doc := mkDoc(graph.Entity{
-			ID:           "sql1",
-			Name:         name,
-			Kind:         "SCOPE.DataAccess",
-			SourceFile:   "core/data_access.py",
-			IsGodNode:    true,
+			ID:         "sql1",
+			Name:       name,
+			Kind:       "SCOPE.DataAccess",
+			SourceFile: "core/data_access.py",
+			IsGodNode:  true,
 		})
 		got := CollectCandidates(doc, emitters, nil)
 		if len(got) != 0 {
@@ -1283,11 +1283,11 @@ func TestFilter_HttpEndpointCall(t *testing.T) {
 	}
 	for _, name := range callNames {
 		doc := mkDoc(graph.Entity{
-			ID:           "hec1",
-			Name:         name,
-			Kind:         "http_endpoint_call",
-			SourceFile:   "src/api/client.ts",
-			IsGodNode:    true,
+			ID:         "hec1",
+			Name:       name,
+			Kind:       "http_endpoint_call",
+			SourceFile: "src/api/client.ts",
+			IsGodNode:  true,
 		})
 		got := CollectCandidates(doc, emitters, nil)
 		if len(got) != 0 {

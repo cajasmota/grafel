@@ -325,11 +325,11 @@ func (s *Server) handleFlowDeadEnds(_ context.Context, req mcpapi.CallToolReques
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 
 	type item struct {
-		ProcessID    string `json:"process_id"`
-		ProcessName  string `json:"process_name"`
-		Repo         string `json:"repo"`
-		DeadEndID    string `json:"dead_end_step_id"`
-		DeadEndName  string `json:"dead_end_step_name"`
+		ProcessID   string `json:"process_id"`
+		ProcessName string `json:"process_name"`
+		Repo        string `json:"repo"`
+		DeadEndID   string `json:"dead_end_step_id"`
+		DeadEndName string `json:"dead_end_step_name"`
 	}
 
 	var out []item

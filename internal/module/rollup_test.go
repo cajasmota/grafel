@@ -62,7 +62,7 @@ func TestDerive_MarkerBoundaryPython(t *testing.T) {
 		{"core/views/accounts.py", "core/views"},
 		{"core/views/deep/nested.py", "core/views"}, // capped at marker depth 2
 		{"core/models/user.py", "core/models"},
-		{"core/utils.py", "core"},        // file in 'core' dir with __init__.py
+		{"core/utils.py", "core"},              // file in 'core' dir with __init__.py
 		{"other/stuff/file.py", "other/stuff"}, // no marker → DefaultDepth = 2 → two segments
 	}
 	for _, tc := range cases {

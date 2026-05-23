@@ -142,9 +142,10 @@ func TestInferEntryKindFromKind_Function(t *testing.T) {
 
 // fixture: handler reads DB + publishes message
 // Expected: step_kinds = [db_query, message_publish]
-//           flow_side_effects = [message_publish]  (db_query is read, not a side-effect)
-//           Actually: effectKinds includes db_write and message_publish but NOT db_query.
-//           So flow_side_effects = ["message_publish"]
+//
+//	flow_side_effects = [message_publish]  (db_query is read, not a side-effect)
+//	Actually: effectKinds includes db_write and message_publish but NOT db_query.
+//	So flow_side_effects = ["message_publish"]
 func TestAnnotateFlowSteps_DBReadAndPublish(t *testing.T) {
 	proc := processEntity("proc-rp", "readAndPublish", 2, false)
 	stepRead := stepEntity("step-read", "loadUser", "Function")
@@ -187,7 +188,8 @@ func TestAnnotateFlowSteps_DBReadAndPublish(t *testing.T) {
 
 // fixture: pure transform — no external edges
 // Expected: step_kinds = [function_call, function_call]
-//           flow_side_effects = []
+//
+//	flow_side_effects = []
 func TestAnnotateFlowSteps_PureTransform(t *testing.T) {
 	proc := processEntity("proc-tr", "transform", 2, false)
 	stepA := stepEntity("step-a", "parseInput", "Function")

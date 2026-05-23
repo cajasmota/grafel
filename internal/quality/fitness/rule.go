@@ -121,8 +121,8 @@ type EvalResult struct {
 	// TotalRules is the number of rules evaluated.
 	TotalRules int `json:"total_rules"`
 	// PassedRules / FailedRules are counts.
-	PassedRules  int `json:"passed_rules"`
-	FailedRules  int `json:"failed_rules"`
+	PassedRules int `json:"passed_rules"`
+	FailedRules int `json:"failed_rules"`
 	// ErrorCount / WarnCount / InfoCount count violations by severity.
 	ErrorCount int `json:"error_count"`
 	WarnCount  int `json:"warn_count"`
@@ -601,14 +601,14 @@ func suggestRules(doc *graph.Document, entityByID map[string]*graph.Entity) []Su
 			}
 		}
 		suggestions = append(suggestions, SuggestedRule{
-			Name: "No import cycles",
-			YAML: fmt.Sprintf("- name: 'No import cycles'\n  threshold: 'import_cycles.count == 0'\n  severity: error"),
+			Name:   "No import cycles",
+			YAML:   fmt.Sprintf("- name: 'No import cycles'\n  threshold: 'import_cycles.count == 0'\n  severity: error"),
 			Reason: fmt.Sprintf("Found %d import cycle(s) (largest: %d members). Consider banning new cycles via a threshold rule.", len(cycles), maxSize),
 		})
 		if maxSize > 3 {
 			suggestions = append(suggestions, SuggestedRule{
-				Name: "Cap cycle size at 3",
-				YAML: "- name: 'Max cycle size 3'\n  threshold: 'import_cycles.max_size <= 3'\n  severity: warn",
+				Name:   "Cap cycle size at 3",
+				YAML:   "- name: 'Max cycle size 3'\n  threshold: 'import_cycles.max_size <= 3'\n  severity: warn",
 				Reason: fmt.Sprintf("Largest import cycle has %d members — smaller cycles are easier to break.", maxSize),
 			})
 		}

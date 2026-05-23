@@ -17,24 +17,24 @@ import "regexp"
 // method bodies inside @code blocks. Three groups of callee shapes show up as
 // unresolved stubs:
 //
-//   1. Blazor ComponentBase lifecycle methods (OnInitializedAsync, OnParametersSet,
-//      OnAfterRender, etc.) — handled upstream by external/synth.go (razorBareNames)
-//      which folds them to ext:microsoft; never reach the dynamic-pattern check.
+//  1. Blazor ComponentBase lifecycle methods (OnInitializedAsync, OnParametersSet,
+//     OnAfterRender, etc.) — handled upstream by external/synth.go (razorBareNames)
+//     which folds them to ext:microsoft; never reach the dynamic-pattern check.
 //
-//   2. Injected-service async method calls. When a component declares
-//      `@inject IWeatherService WeatherSvc`, calls like
-//      `await WeatherSvc.GetForecastAsync(...)` are stripped to the bare leaf
-//      `GetForecastAsync` by the extractor's reCallHead pattern. Without full
-//      .NET DI type-resolution the resolver cannot bind these leaf names to any
-//      graph entity — they are interface dispatch at runtime. The naming
-//      convention (PascalCase verb + `Async` suffix) is unique enough to the
-//      .NET ecosystem that the razor gate is safe.
+//  2. Injected-service async method calls. When a component declares
+//     `@inject IWeatherService WeatherSvc`, calls like
+//     `await WeatherSvc.GetForecastAsync(...)` are stripped to the bare leaf
+//     `GetForecastAsync` by the extractor's reCallHead pattern. Without full
+//     .NET DI type-resolution the resolver cannot bind these leaf names to any
+//     graph entity — they are interface dispatch at runtime. The naming
+//     convention (PascalCase verb + `Async` suffix) is unique enough to the
+//     .NET ecosystem that the razor gate is safe.
 //
-//   3. PascalCase single-segment helper calls in @code bodies
-//      (`LoadInitialData`, `FetchData`, `BuildViewModel`) that are private
-//      methods defined in the same component — these SHOULD resolve (the
-//      resolver finds them in the same file entity set) and must NOT be
-//      classified Dynamic. They are intentionally excluded here.
+//  3. PascalCase single-segment helper calls in @code bodies
+//     (`LoadInitialData`, `FetchData`, `BuildViewModel`) that are private
+//     methods defined in the same component — these SHOULD resolve (the
+//     resolver finds them in the same file entity set) and must NOT be
+//     classified Dynamic. They are intentionally excluded here.
 //
 // # SQL slice
 //
@@ -83,9 +83,9 @@ var razorSpecificPatterns = []*regexp.Regexp{
 	// `InvokeAsync` (already in razorBareNames → ExternalKnown) but also
 	// `HasDelegate` and receiver-stripped event-callback helpers. Guard the
 	// two shapes the extractor produces that aren't in razorBareNames.
-	regexp.MustCompile(`^OnChanged$`),   // bare EventCallback field invocation
-	regexp.MustCompile(`^OnClicked$`),   // common Blazor EventCallback parameter name
-	regexp.MustCompile(`^OnSubmit$`),    // form submit EventCallback
+	regexp.MustCompile(`^OnChanged$`),     // bare EventCallback field invocation
+	regexp.MustCompile(`^OnClicked$`),     // common Blazor EventCallback parameter name
+	regexp.MustCompile(`^OnSubmit$`),      // form submit EventCallback
 	regexp.MustCompile(`^OnValidSubmit$`), // EditForm OnValidSubmit callback
 	regexp.MustCompile(`^OnInvalidSubmit$`),
 

@@ -282,9 +282,9 @@ func TestTopicDetail_UnknownGroup(t *testing.T) {
 
 func TestTopicDetail_LifecycleStates(t *testing.T) {
 	cases := []struct {
-		name           string
-		relationships  []graph.Relationship
-		wantLifecycle  string
+		name          string
+		relationships []graph.Relationship
+		wantLifecycle string
 	}{
 		{
 			name: "orphan_publisher",

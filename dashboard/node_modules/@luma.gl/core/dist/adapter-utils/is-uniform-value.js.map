@@ -1,0 +1,1 @@
+{"version":3,"file":"is-uniform-value.js","sourceRoot":"","sources":["../../src/adapter-utils/is-uniform-value.ts"],"names":[],"mappings":"AAAA,UAAU;AACV,+BAA+B;AAC/B,oCAAoC;AAEpC,OAAO,EAAC,aAAa,EAAC,6BAA0B;AAGhD,MAAM,UAAU,cAAc,CAAC,KAAc;IAC3C,OAAO,aAAa,CAAC,KAAK,CAAC,IAAI,OAAO,KAAK,KAAK,QAAQ,IAAI,OAAO,KAAK,KAAK,SAAS,CAAC;AACzF,CAAC"}

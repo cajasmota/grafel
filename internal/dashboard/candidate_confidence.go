@@ -124,18 +124,18 @@ type ConfidenceHints struct {
 // generic container/builtin reference rather than a real artifact. Hits
 // trigger a strong negative modifier in ComputeCandidateConfidence.
 var noisyContainerNames = map[string]bool{
-	"":            true,
-	"<module>":    true,
-	"<lambda>":    true,
-	"__init__":    true,
-	"__main__":    true,
-	"_":           true,
-	"main":        true,
-	"anonymous":   true,
-	"callback":    true,
-	"handler":     true,
-	"fn":          true,
-	"cb":          true,
+	"":          true,
+	"<module>":  true,
+	"<lambda>":  true,
+	"__init__":  true,
+	"__main__":  true,
+	"_":         true,
+	"main":      true,
+	"anonymous": true,
+	"callback":  true,
+	"handler":   true,
+	"fn":        true,
+	"cb":        true,
 }
 
 // builtinMethodFragments are substrings that, when matched in a qualified
@@ -174,16 +174,16 @@ var trivialFlowTerminals = map[string]bool{
 	"usetranslation": true,
 	"useform":        true,
 	// Generic JS/lodash plumbing routinely surfacing as a sink.
-	"map":          true,
-	"filter":       true,
-	"foreach":      true,
-	"push":         true,
-	"slice":        true,
-	"keys":         true,
-	"values":       true,
-	"entries":      true,
+	"map":            true,
+	"filter":         true,
+	"foreach":        true,
+	"push":           true,
+	"slice":          true,
+	"keys":           true,
+	"values":         true,
+	"entries":        true,
 	"json.stringify": true,
-	"json.parse":   true,
+	"json.parse":     true,
 }
 
 // ComputeCandidateConfidence scores a wire-format candidate entry on a 0..1

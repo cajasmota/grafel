@@ -54,13 +54,13 @@ import (
 // import-path strings (as they appear in import statements or require()
 // calls).
 var expressFrameworkPkgs = map[string]bool{
-	"express":                      true,
-	"koa":                          true,
-	"fastify":                      true,
-	"hono":                         true,
-	"@hono/node-server":            true,
-	"@nestjs/platform-express":     true,
-	"@nestjs/platform-fastify":     true,
+	"express":                  true,
+	"koa":                      true,
+	"fastify":                  true,
+	"hono":                     true,
+	"@hono/node-server":        true,
+	"@nestjs/platform-express": true,
+	"@nestjs/platform-fastify": true,
 }
 
 // PropReceiverPackage is the edge-property key the extractor stamps on

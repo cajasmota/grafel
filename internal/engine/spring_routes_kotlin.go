@@ -4,15 +4,15 @@
 // Kotlin uses a different tree-sitter grammar from Java, so this is a
 // separate pass that understands Kotlin's annotation CST shape:
 //
-//   Marker annotation (no args):
-//     annotation → "@" + user_type → type_identifier
+//	Marker annotation (no args):
+//	  annotation → "@" + user_type → type_identifier
 //
-//   Annotation with args:
-//     annotation → "@" + constructor_invocation → user_type + value_arguments
-//       Positional: value_argument → string_literal
-//       Named:      value_argument → simple_identifier("value"|"path") + "=" + string_literal
-//       Method key: value_argument → simple_identifier("method") + "=" + collection_literal
-//         e.g. [RequestMethod.GET] — extract verb from the collection text.
+//	Annotation with args:
+//	  annotation → "@" + constructor_invocation → user_type + value_arguments
+//	    Positional: value_argument → string_literal
+//	    Named:      value_argument → simple_identifier("value"|"path") + "=" + string_literal
+//	    Method key: value_argument → simple_identifier("method") + "=" + collection_literal
+//	      e.g. [RequestMethod.GET] — extract verb from the collection text.
 //
 // Class and method bodies follow the same composition rules as the Java pass:
 // the class-level @RequestMapping prefix composes with each method-level
@@ -205,12 +205,12 @@ func processKotlinSpringClass(
 				SourceFile:    path,
 				Language:      "kotlin",
 				Properties: map[string]string{
-					"verb":            verb,
-					"path":            canonical,
-					"framework":       "spring_mvc",
-					"pattern_type":    "ast_driven",
-					"source_handler":  fmt.Sprintf("Controller:%s", methodName),
-					"owning_backend":  deriveOwningBackend(path),
+					"verb":           verb,
+					"path":           canonical,
+					"framework":      "spring_mvc",
+					"pattern_type":   "ast_driven",
+					"source_handler": fmt.Sprintf("Controller:%s", methodName),
+					"owning_backend": deriveOwningBackend(path),
 				},
 				EnrichmentRequired: false,
 				EnrichmentStatus:   types.StatusPending,

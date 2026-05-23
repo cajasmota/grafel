@@ -107,9 +107,9 @@ const stepFunctionStepInvokesEdgeKind = "STEPFUNCTION_STEP_INVOKES"
 // Synthetic entity ID helpers
 // ---------------------------------------------------------------------------
 
-func temporalWorkflowID(name string) string  { return "workflow:temporal:" + name }
-func temporalActivityID(name string) string  { return "activity:temporal:" + name }
-func sfnStateMachineID(name string) string   { return "statemachine:aws-sfn:" + name }
+func temporalWorkflowID(name string) string { return "workflow:temporal:" + name }
+func temporalActivityID(name string) string { return "activity:temporal:" + name }
+func sfnStateMachineID(name string) string  { return "statemachine:aws-sfn:" + name }
 
 // ---------------------------------------------------------------------------
 // Language gate
@@ -246,7 +246,7 @@ func applyWorkflowEdges(
 			Kind:   startsWorkflowEdgeKind,
 			Properties: map[string]string{
 				"workflow_engine": engine,
-				"pattern_type":   "workflow_synthesis",
+				"pattern_type":    "workflow_synthesis",
 			},
 		})
 	}
@@ -266,7 +266,7 @@ func applyWorkflowEdges(
 			Kind:   executesActivityEdgeKind,
 			Properties: map[string]string{
 				"workflow_engine": engine,
-				"pattern_type":   "workflow_synthesis",
+				"pattern_type":    "workflow_synthesis",
 			},
 		})
 	}
@@ -720,6 +720,7 @@ var nodeTemporalGuardRe = regexp.MustCompile(`(?:@temporalio|temporalio/|@cadenc
 // nodeProxyActivitiesRe captures:
 //   - `const { chargeCard } = proxyActivities<Activities>(...)` (destructuring before call)
 //   - `proxyActivities<Activities>({...})` followed by const { ... }
+//
 // Group 1 = destructured names (comma-separated).
 var nodeProxyActivitiesRe = regexp.MustCompile(`(?:const|let|var)\s+\{([^}]+)\}\s*=\s*proxyActivities`)
 

@@ -63,8 +63,8 @@ type CatalogSkill struct {
 
 // SkillsInstalledReply is returned by GET /api/skills/installed.
 type SkillsInstalledReply struct {
-	Skills   []InstalledSkill `json:"skills"`
-	SkillsDir string          `json:"skills_dir"`
+	Skills    []InstalledSkill `json:"skills"`
+	SkillsDir string           `json:"skills_dir"`
 }
 
 // SkillsAvailableReply is returned by GET /api/skills/available.

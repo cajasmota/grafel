@@ -219,7 +219,7 @@ func TestIsStdlibBuiltinTarget_Erlang(t *testing.T) {
 		// Unknown user name.
 		{"erlang_unknown", "my_module_fn", "erlang", false},
 		// Cross-language gate.
-		{"erlang_self_not_elixir", "self", "elixir", true},    // elixir also has self — OK
+		{"erlang_self_not_elixir", "self", "elixir", true}, // elixir also has self — OK
 		{"erlang_hd_not_python", "hd", "python", false},
 		{"erlang_spawn_not_javascript", "spawn", "javascript", false},
 	}

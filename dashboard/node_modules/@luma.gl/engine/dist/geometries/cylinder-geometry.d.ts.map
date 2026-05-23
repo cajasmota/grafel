@@ -1,0 +1,1 @@
+{"version":3,"file":"cylinder-geometry.d.ts","sourceRoot":"","sources":["../../src/geometries/cylinder-geometry.ts"],"names":[],"mappings":"AAIA,OAAO,EAAC,qBAAqB,EAAC,qCAAkC;AAGhE,MAAM,MAAM,qBAAqB,GAAG;IAClC,EAAE,CAAC,EAAE,MAAM,CAAC;IACZ,MAAM,CAAC,EAAE,MAAM,CAAC;IAChB,UAAU,CAAC,EAAE,GAAG,CAAC;CAClB,CAAC;AAEF,qBAAa,gBAAiB,SAAQ,qBAAqB;gBAC7C,KAAK,GAAE,qBAA0B;CAS9C"}

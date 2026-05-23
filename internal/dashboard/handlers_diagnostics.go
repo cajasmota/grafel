@@ -31,21 +31,21 @@ import (
 
 // DiagnosticsReply is the wire shape for GET /api/diagnostics.
 type DiagnosticsReply struct {
-	CheckedAt string            `json:"checked_at"`
-	Daemon    DaemonDiagnostics `json:"daemon"`
+	CheckedAt string             `json:"checked_at"`
+	Daemon    DaemonDiagnostics  `json:"daemon"`
 	Groups    []GroupDiagnostics `json:"groups"`
-	Nominal   bool              `json:"nominal"` // true when no issues found anywhere
+	Nominal   bool               `json:"nominal"` // true when no issues found anywhere
 }
 
 // DaemonDiagnostics covers the daemon / process-level health section.
 type DaemonDiagnostics struct {
 	// Process state
-	Running         bool    `json:"running"`
-	Status          string  `json:"status"`           // "running" | "unknown"
-	PID             int     `json:"pid"`
-	UptimeSeconds   int64   `json:"uptime_seconds"`
-	UptimeHuman     string  `json:"uptime_human"`
-	RSSМБ           float64 `json:"rss_mb"`
+	Running       bool    `json:"running"`
+	Status        string  `json:"status"` // "running" | "unknown"
+	PID           int     `json:"pid"`
+	UptimeSeconds int64   `json:"uptime_seconds"`
+	UptimeHuman   string  `json:"uptime_human"`
+	RSSМБ         float64 `json:"rss_mb"`
 
 	// Binary info (mirrors /api/info)
 	Version string `json:"version"`
@@ -75,35 +75,35 @@ type DaemonDiagnostics struct {
 
 // GroupDiagnostics covers one group's health.
 type GroupDiagnostics struct {
-	Name               string          `json:"name"`
-	Status             string          `json:"status"`              // "HEALTHY" | "DEGRADED" | "FAILED"
-	DaemonManaged      bool            `json:"daemon_managed"`
-	TotalEntities      int             `json:"total_entities"`
-	TotalRelationships int             `json:"total_relationships"`
-	TotalCrossRepoEdges int            `json:"total_cross_repo_edges"`
-	OrphanEntities     int             `json:"orphan_entities"`
-	OrphanRate         float64         `json:"orphan_rate"`
-	BugRate            float64         `json:"bug_rate"`
-	PendingRepairs     int             `json:"pending_repairs"`
-	PendingEnrichments int             `json:"pending_enrichments"`
-	WatcherRepoCount   int             `json:"watcher_repo_count"`
-	WatcherDirCount    int             `json:"watcher_dir_count"`
-	WatcherEventsDropped int           `json:"watcher_events_dropped"`
-	LastWatcherActivity  string        `json:"last_watcher_activity,omitempty"`
-	Repos              []RepoDiagnostics `json:"repos"`
-	IssuesFound        []IssueDiagnostic `json:"issues_found"`
+	Name                 string            `json:"name"`
+	Status               string            `json:"status"` // "HEALTHY" | "DEGRADED" | "FAILED"
+	DaemonManaged        bool              `json:"daemon_managed"`
+	TotalEntities        int               `json:"total_entities"`
+	TotalRelationships   int               `json:"total_relationships"`
+	TotalCrossRepoEdges  int               `json:"total_cross_repo_edges"`
+	OrphanEntities       int               `json:"orphan_entities"`
+	OrphanRate           float64           `json:"orphan_rate"`
+	BugRate              float64           `json:"bug_rate"`
+	PendingRepairs       int               `json:"pending_repairs"`
+	PendingEnrichments   int               `json:"pending_enrichments"`
+	WatcherRepoCount     int               `json:"watcher_repo_count"`
+	WatcherDirCount      int               `json:"watcher_dir_count"`
+	WatcherEventsDropped int               `json:"watcher_events_dropped"`
+	LastWatcherActivity  string            `json:"last_watcher_activity,omitempty"`
+	Repos                []RepoDiagnostics `json:"repos"`
+	IssuesFound          []IssueDiagnostic `json:"issues_found"`
 }
 
 // RepoDiagnostics covers one repo within a group.
 type RepoDiagnostics struct {
-	Slug           string  `json:"slug"`
-	Path           string  `json:"path"`
-	Status         string  `json:"status"` // "OK" | "STALE" | "MISSING"
-	LastIndexedAt  string  `json:"last_indexed_at,omitempty"`
-	LastIndexedAge string  `json:"last_indexed_age"`
-	Entities       int     `json:"entities"`
-	Relationships  int     `json:"relationships"`
-	CrossRepoEdges int     `json:"cross_repo_edges"`
+	Slug           string `json:"slug"`
+	Path           string `json:"path"`
+	Status         string `json:"status"` // "OK" | "STALE" | "MISSING"
+	LastIndexedAt  string `json:"last_indexed_at,omitempty"`
+	LastIndexedAge string `json:"last_indexed_age"`
+	Entities       int    `json:"entities"`
+	Relationships  int    `json:"relationships"`
+	CrossRepoEdges int    `json:"cross_repo_edges"`
 }
 
 // IssueDiagnostic is one auto-detected problem with an optional remediation hint.
@@ -329,21 +329,21 @@ func (s *Server) buildDaemonDiagnostics() DaemonDiagnostics {
 
 func convertGroupHealth(gh *cli.DoctorGroupHealth) GroupDiagnostics {
 	gd := GroupDiagnostics{
-		Name:                gh.GroupName,
-		Status:              gh.Status,
-		DaemonManaged:       gh.DaemonManaged,
-		TotalEntities:       gh.TotalEntities,
-		TotalRelationships:  gh.TotalRelationships,
-		TotalCrossRepoEdges: gh.TotalCrossRepoEdges,
-		OrphanEntities:      gh.OrphanEntities,
-		OrphanRate:          gh.OrphanRate,
-		BugRate:             gh.BugRate,
-		PendingRepairs:      gh.PendingRepairs,
-		PendingEnrichments:  gh.PendingEnrichments,
-		WatcherRepoCount:    gh.WatcherRepoCount,
-		WatcherDirCount:     gh.WatcherDirCount,
+		Name:                 gh.GroupName,
+		Status:               gh.Status,
+		DaemonManaged:        gh.DaemonManaged,
+		TotalEntities:        gh.TotalEntities,
+		TotalRelationships:   gh.TotalRelationships,
+		TotalCrossRepoEdges:  gh.TotalCrossRepoEdges,
+		OrphanEntities:       gh.OrphanEntities,
+		OrphanRate:           gh.OrphanRate,
+		BugRate:              gh.BugRate,
+		PendingRepairs:       gh.PendingRepairs,
+		PendingEnrichments:   gh.PendingEnrichments,
+		WatcherRepoCount:     gh.WatcherRepoCount,
+		WatcherDirCount:      gh.WatcherDirCount,
 		WatcherEventsDropped: gh.WatcherEventsDropped,
-		LastWatcherActivity: gh.LastWatcherActivity,
+		LastWatcherActivity:  gh.LastWatcherActivity,
 	}
 
 	for _, r := range gh.Repos {

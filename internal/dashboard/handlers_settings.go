@@ -23,16 +23,16 @@ type AppSettings struct {
 
 	// Updates
 	AutoCheckUpdates bool   `json:"auto_check_updates"`
-	UpdateChannel    string `json:"update_channel"` // "stable" | "dev"
+	UpdateChannel    string `json:"update_channel"`   // "stable" | "dev"
 	RefreshSchedule  string `json:"refresh_schedule"` // cron-style or "" for manual
 
 	// Telemetry
 	TelemetryEnabled bool `json:"telemetry_enabled"` // default false
 
 	// Performance — changing these requires a daemon restart
-	DaemonRSSBudgetMB    int `json:"daemon_rss_budget_mb"`   // 100–2000
-	WatcherDebounceSecs  int `json:"watcher_debounce_secs"`  // 1–60
-	IndexerParallelism   int `json:"indexer_parallelism"`    // 1–32
+	DaemonRSSBudgetMB   int `json:"daemon_rss_budget_mb"`  // 100–2000
+	WatcherDebounceSecs int `json:"watcher_debounce_secs"` // 1–60
+	IndexerParallelism  int `json:"indexer_parallelism"`   // 1–32
 
 	// PerfBudgets holds configurable threshold values used by the performance
 	// budget monitor (#1319). Keys are metric names (e.g. "index_wall_ms");
@@ -59,16 +59,16 @@ type AppSettings struct {
 // by the user's settings.json is filled from here.
 func DefaultAppSettings() AppSettings {
 	return AppSettings{
-		Theme:             "light",
-		DefaultGroup:      "",
-		AutoCheckUpdates:  true,
-		UpdateChannel:     "stable",
-		RefreshSchedule:   "",
-		TelemetryEnabled:  false,
-		DaemonRSSBudgetMB: 512,
+		Theme:               "light",
+		DefaultGroup:        "",
+		AutoCheckUpdates:    true,
+		UpdateChannel:       "stable",
+		RefreshSchedule:     "",
+		TelemetryEnabled:    false,
+		DaemonRSSBudgetMB:   512,
 		WatcherDebounceSecs: 2,
 		IndexerParallelism:  4,
-		LogLevel:          "info",
+		LogLevel:            "info",
 	}
 }
 

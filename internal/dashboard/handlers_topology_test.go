@@ -515,13 +515,13 @@ func TestCollectTopologyResponse_BrokerGroups_TwoBrokers(t *testing.T) {
 		Name: "g",
 		Repos: map[string]*DashRepo{
 			"svc-a": {Slug: "svc-a", Doc: &graph.Document{
-				Repo:     "svc-a",
-				Entities: rabbitTopics,
+				Repo:          "svc-a",
+				Entities:      rabbitTopics,
 				Relationships: makeRels(rabbitTopics, "svc-a::producer", "svc-a::consumer"),
 			}},
 			"svc-b": {Slug: "svc-b", Doc: &graph.Document{
-				Repo:     "svc-b",
-				Entities: sqsTopics,
+				Repo:          "svc-b",
+				Entities:      sqsTopics,
 				Relationships: makeRels(sqsTopics, "svc-b::producer", "svc-b::consumer"),
 			}},
 		},

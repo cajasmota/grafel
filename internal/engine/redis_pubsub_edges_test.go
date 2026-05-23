@@ -677,7 +677,8 @@ class TrackingWsConfig {
 // same canonical entity ID so P7 can link them.
 //
 // This is the core #1482 acceptance criterion:
-//   notifications → redis:notifications.push → tracking-ws
+//
+//	notifications → redis:notifications.push → tracking-ws
 func TestRedisPubSub_Spring_CrossRepoTopicLink(t *testing.T) {
 	publisherSrc := `package com.example.notifications
 

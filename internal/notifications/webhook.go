@@ -114,12 +114,12 @@ type WebhookPayload struct {
 
 // DeliveryFailure records one failed delivery attempt.
 type DeliveryFailure struct {
-	WebhookID string    `json:"webhook_id"`
-	URL       string    `json:"url"`
-	Event     EventType `json:"event"`
-	Attempt   int       `json:"attempt"`
-	StatusCode int      `json:"status_code,omitempty"` // 0 when no HTTP response
-	ErrMsg    string    `json:"err_msg"`
+	WebhookID  string    `json:"webhook_id"`
+	URL        string    `json:"url"`
+	Event      EventType `json:"event"`
+	Attempt    int       `json:"attempt"`
+	StatusCode int       `json:"status_code,omitempty"` // 0 when no HTTP response
+	ErrMsg     string    `json:"err_msg"`
 	OccurredAt time.Time `json:"occurred_at"`
 }
 
@@ -334,10 +334,10 @@ func marshalSlack(p WebhookPayload) ([]byte, error) {
 		"text": text,
 		"attachments": []map[string]any{
 			{
-				"color":      color,
-				"fields":     fields,
-				"footer":     "archigraph",
-				"ts":         p.Timestamp.Unix(),
+				"color":  color,
+				"fields": fields,
+				"footer": "archigraph",
+				"ts":     p.Timestamp.Unix(),
 			},
 		},
 	}
@@ -367,11 +367,11 @@ func marshalDiscord(p WebhookPayload) ([]byte, error) {
 		"content": "",
 		"embeds": []map[string]any{
 			{
-				"title":       text,
-				"color":       color,
-				"fields":      fields,
-				"footer":      map[string]any{"text": "archigraph"},
-				"timestamp":   p.Timestamp.Format(time.RFC3339),
+				"title":     text,
+				"color":     color,
+				"fields":    fields,
+				"footer":    map[string]any{"text": "archigraph"},
+				"timestamp": p.Timestamp.Format(time.RFC3339),
 			},
 		},
 	}

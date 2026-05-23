@@ -31,18 +31,18 @@ import (
 
 // DependenciesReply is the wire shape for GET /api/dependencies/{group}.
 type DependenciesReply struct {
-	Group   string                       `json:"group"`
-	Summary deplinker.GroupSummary       `json:"summary"`
-	ByRepo  map[string]RepoDepSummary    `json:"by_repo"`
+	Group   string                    `json:"group"`
+	Summary deplinker.GroupSummary    `json:"summary"`
+	ByRepo  map[string]RepoDepSummary `json:"by_repo"`
 }
 
 // RepoDepSummary is the per-repo dependency breakdown.
 type RepoDepSummary struct {
-	PackageManager string                  `json:"package_manager"`
-	Declared       int                     `json:"declared"`
-	Used           int                     `json:"used"`
-	Unused         int                     `json:"unused"`
-	Phantom        int                     `json:"phantom"`
+	PackageManager string                   `json:"package_manager"`
+	Declared       int                      `json:"declared"`
+	Used           int                      `json:"used"`
+	Unused         int                      `json:"unused"`
+	Phantom        int                      `json:"phantom"`
 	Packages       []deplinker.PackageEntry `json:"packages"`
 }
 

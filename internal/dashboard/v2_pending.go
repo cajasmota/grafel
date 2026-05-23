@@ -38,7 +38,7 @@ type v2EntityRef struct {
 }
 
 type v2RepairCandidate struct {
-	ID          string      `json:"id"`
+	ID string `json:"id"`
 	// EntityID is the stable entity identifier (SubjectID). Clients MUST use
 	// this field — not ID — when calling PUT …/candidates/{cid}/hint.
 	EntityID    string      `json:"entityId"`
@@ -49,11 +49,11 @@ type v2RepairCandidate struct {
 	Confidence  float64     `json:"confidence"`
 	DetectedAt  int64       `json:"detectedAt"` // unix ms
 	// Hint is the team-authored hint currently stored for this entity (may be "").
-	Hint        string      `json:"hint,omitempty"`
+	Hint string `json:"hint,omitempty"`
 }
 
 type v2EnrichmentCandidate struct {
-	ID             string      `json:"id"`
+	ID string `json:"id"`
 	// EntityID is the stable entity identifier (SubjectID). Clients MUST use
 	// this field — not ID — when calling PUT …/candidates/{cid}/hint.
 	EntityID       string      `json:"entityId"`
@@ -63,7 +63,7 @@ type v2EnrichmentCandidate struct {
 	Confidence     float64     `json:"confidence"`
 	DetectedAt     int64       `json:"detectedAt"` // unix ms
 	// Hint is the team-authored hint currently stored for this entity (may be "").
-	Hint           string      `json:"hint,omitempty"`
+	Hint string `json:"hint,omitempty"`
 }
 
 type v2CandidatesResponse struct {

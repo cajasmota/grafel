@@ -39,11 +39,11 @@ import (
 
 // openAPIDoc is the top-level OpenAPI 3.0 document.
 type openAPIDoc struct {
-	OpenAPI    string                        `json:"openapi" yaml:"openapi"`
-	Info       openAPIInfo                   `json:"info" yaml:"info"`
-	Paths      map[string]openAPIPathItem    `json:"paths" yaml:"paths"`
-	Tags       []openAPITag                  `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Components openAPIComponents             `json:"components,omitempty" yaml:"components,omitempty"`
+	OpenAPI    string                     `json:"openapi" yaml:"openapi"`
+	Info       openAPIInfo                `json:"info" yaml:"info"`
+	Paths      map[string]openAPIPathItem `json:"paths" yaml:"paths"`
+	Tags       []openAPITag               `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Components openAPIComponents          `json:"components,omitempty" yaml:"components,omitempty"`
 }
 
 type openAPIInfo struct {
@@ -86,11 +86,11 @@ func (pi *openAPIPathItem) setOperation(method string, op *openAPIOperation) {
 }
 
 type openAPIOperation struct {
-	OperationID string                    `json:"operationId,omitempty" yaml:"operationId,omitempty"`
-	Summary     string                    `json:"summary,omitempty" yaml:"summary,omitempty"`
-	Description string                    `json:"description,omitempty" yaml:"description,omitempty"`
-	Tags        []string                  `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Parameters  []openAPIParameter        `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	OperationID string                     `json:"operationId,omitempty" yaml:"operationId,omitempty"`
+	Summary     string                     `json:"summary,omitempty" yaml:"summary,omitempty"`
+	Description string                     `json:"description,omitempty" yaml:"description,omitempty"`
+	Tags        []string                   `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Parameters  []openAPIParameter         `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 	Responses   map[string]openAPIResponse `json:"responses" yaml:"responses"`
 }
 
@@ -102,8 +102,8 @@ type openAPIParameter struct {
 }
 
 type openAPIResponse struct {
-	Description string                    `json:"description" yaml:"description"`
-	Content     map[string]openAPIMedia   `json:"content,omitempty" yaml:"content,omitempty"`
+	Description string                  `json:"description" yaml:"description"`
+	Content     map[string]openAPIMedia `json:"content,omitempty" yaml:"content,omitempty"`
 }
 
 type openAPIMedia struct {

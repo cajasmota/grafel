@@ -118,7 +118,7 @@ var ponyKeywords = map[string]bool{
 	"not": true, "xor": true,
 	"use": true, "compile_intrinsic": true, "compile_error": true,
 	"object": true,
-	"ifdef": true, "iftype": true,
+	"ifdef":  true, "iftype": true,
 }
 
 // Extract processes the Pony source and returns entity records.
@@ -179,15 +179,15 @@ func extractPony(src, filePath string) []types.EntityRecord {
 				Kind: "CONTAINS",
 			})
 			entities = append(entities, types.EntityRecord{
-				Name:       name + "." + fnName,
-				Kind:       "SCOPE.Operation",
-				Subtype:    "function",
-				SourceFile: filePath,
-				Language:   "pony",
-				StartLine:  fnLine,
-				EndLine:    fnEndLine,
-				Signature:  "fun " + fnName,
-				Properties: map[string]string{"imports": importProp},
+				Name:          name + "." + fnName,
+				Kind:          "SCOPE.Operation",
+				Subtype:       "function",
+				SourceFile:    filePath,
+				Language:      "pony",
+				StartLine:     fnLine,
+				EndLine:       fnEndLine,
+				Signature:     "fun " + fnName,
+				Properties:    map[string]string{"imports": importProp},
 				Relationships: calls,
 			})
 		}
@@ -209,15 +209,15 @@ func extractPony(src, filePath string) []types.EntityRecord {
 				Kind: "CONTAINS",
 			})
 			entities = append(entities, types.EntityRecord{
-				Name:       name + "." + beName,
-				Kind:       "SCOPE.Operation",
-				Subtype:    "behavior",
-				SourceFile: filePath,
-				Language:   "pony",
-				StartLine:  beLine,
-				EndLine:    beEndLine,
-				Signature:  "be " + beName,
-				Properties: map[string]string{"imports": importProp},
+				Name:          name + "." + beName,
+				Kind:          "SCOPE.Operation",
+				Subtype:       "behavior",
+				SourceFile:    filePath,
+				Language:      "pony",
+				StartLine:     beLine,
+				EndLine:       beEndLine,
+				Signature:     "be " + beName,
+				Properties:    map[string]string{"imports": importProp},
 				Relationships: calls,
 			})
 		}
@@ -239,15 +239,15 @@ func extractPony(src, filePath string) []types.EntityRecord {
 				Kind: "CONTAINS",
 			})
 			entities = append(entities, types.EntityRecord{
-				Name:       name + "." + ctorName,
-				Kind:       "SCOPE.Operation",
-				Subtype:    "constructor",
-				SourceFile: filePath,
-				Language:   "pony",
-				StartLine:  ctorLine,
-				EndLine:    ctorEndLine,
-				Signature:  "new " + ctorName,
-				Properties: map[string]string{"imports": importProp},
+				Name:          name + "." + ctorName,
+				Kind:          "SCOPE.Operation",
+				Subtype:       "constructor",
+				SourceFile:    filePath,
+				Language:      "pony",
+				StartLine:     ctorLine,
+				EndLine:       ctorEndLine,
+				Signature:     "new " + ctorName,
+				Properties:    map[string]string{"imports": importProp},
 				Relationships: calls,
 			})
 		}

@@ -109,7 +109,7 @@ type Service struct {
 
 	// groupRebuildMu prevents a concurrent double-rebuild of the same
 	// group. Keyed by group name.
-	groupRebuildMu   sync.Map // map[string]*sync.Mutex
+	groupRebuildMu sync.Map // map[string]*sync.Mutex
 
 	// Phase B — populated only when the daemon is run with a watcher
 	// + scheduler attached. Both may be nil in test wiring that

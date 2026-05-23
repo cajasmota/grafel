@@ -13,7 +13,7 @@
 //   - `task name(...); ... endtask`              → SCOPE.Operation (task)
 //   - `Foo inst_name(...)` — module instantiations → USES edges
 //   - `import Pkg::*;` / `import Pkg::item;`     → IMPORTS (SV)
-//   - `` `include "foo.vh" ``                    → IMPORTS
+//   - “ `include "foo.vh" “                    → IMPORTS
 //
 // File extensions handled: .v, .vh (Verilog), .sv, .svh (SystemVerilog).
 //

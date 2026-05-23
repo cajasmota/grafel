@@ -9,9 +9,9 @@ package enrichment
 
 // Input pricing (USD per million tokens).
 const (
-	HaikuInputPerMTok  = 0.80
-	HaikuOutputPerMTok = 4.00
-	SonnetInputPerMTok = 3.00
+	HaikuInputPerMTok   = 0.80
+	HaikuOutputPerMTok  = 4.00
+	SonnetInputPerMTok  = 3.00
 	SonnetOutputPerMTok = 15.00
 )
 

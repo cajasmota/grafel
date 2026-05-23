@@ -17,7 +17,7 @@ func TestComputeHealthScore(t *testing.T) {
 	}{
 		{0, 0, 100},
 		{10, 5, 85},
-		{60, 50, 0},  // clamp to 0
+		{60, 50, 0}, // clamp to 0
 		{100, 0, 0},
 	}
 	for _, tc := range tests {
@@ -34,29 +34,29 @@ func TestAppendAndReadHistory(t *testing.T) {
 
 	entries := []quality.HealthEntry{
 		{
-			Timestamp:   now.Add(-48 * time.Hour),
-			Group:       "mygroup",
+			Timestamp:     now.Add(-48 * time.Hour),
+			Group:         "mygroup",
 			TotalEntities: 1000,
-			OrphanRate:  20.0,
-			BugRate:     5.0,
-			HealthScore: quality.ComputeHealthScore(20.0, 5.0),
+			OrphanRate:    20.0,
+			BugRate:       5.0,
+			HealthScore:   quality.ComputeHealthScore(20.0, 5.0),
 		},
 		{
-			Timestamp:   now.Add(-24 * time.Hour),
-			Group:       "mygroup",
+			Timestamp:     now.Add(-24 * time.Hour),
+			Group:         "mygroup",
 			TotalEntities: 1050,
-			OrphanRate:  18.0,
-			BugRate:     4.0,
-			HealthScore: quality.ComputeHealthScore(18.0, 4.0),
+			OrphanRate:    18.0,
+			BugRate:       4.0,
+			HealthScore:   quality.ComputeHealthScore(18.0, 4.0),
 		},
 		{
 			// Different group — should not appear in results for "mygroup".
-			Timestamp:   now,
-			Group:       "othergroup",
+			Timestamp:     now,
+			Group:         "othergroup",
 			TotalEntities: 500,
-			OrphanRate:  10.0,
-			BugRate:     2.0,
-			HealthScore: quality.ComputeHealthScore(10.0, 2.0),
+			OrphanRate:    10.0,
+			BugRate:       2.0,
+			HealthScore:   quality.ComputeHealthScore(10.0, 2.0),
 		},
 	}
 
@@ -102,20 +102,20 @@ func TestReadHistory_DayFilter(t *testing.T) {
 	now := time.Now().UTC()
 
 	old := quality.HealthEntry{
-		Timestamp:   now.AddDate(0, 0, -10),
-		Group:       "g",
+		Timestamp:     now.AddDate(0, 0, -10),
+		Group:         "g",
 		TotalEntities: 100,
-		OrphanRate:  15.0,
-		BugRate:     3.0,
-		HealthScore: quality.ComputeHealthScore(15.0, 3.0),
+		OrphanRate:    15.0,
+		BugRate:       3.0,
+		HealthScore:   quality.ComputeHealthScore(15.0, 3.0),
 	}
 	recent := quality.HealthEntry{
-		Timestamp:   now.AddDate(0, 0, -3),
-		Group:       "g",
+		Timestamp:     now.AddDate(0, 0, -3),
+		Group:         "g",
 		TotalEntities: 110,
-		OrphanRate:  12.0,
-		BugRate:     2.0,
-		HealthScore: quality.ComputeHealthScore(12.0, 2.0),
+		OrphanRate:    12.0,
+		BugRate:       2.0,
+		HealthScore:   quality.ComputeHealthScore(12.0, 2.0),
 	}
 
 	_ = quality.AppendEntry(root, old)

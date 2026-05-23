@@ -39,15 +39,15 @@ const DefaultTimeout = 5 * time.Minute
 
 // Job is one enrichment dispatch request.
 type Job struct {
-	ID              string     `json:"id"`
-	SubjectID       string     `json:"subject_id"`
-	Kind            string     `json:"kind"`
-	Group           string     `json:"group"`
-	Status          string     `json:"status"`
-	Error           string     `json:"error,omitempty"`
-	QueuedAt        time.Time  `json:"queued_at"`
-	StartedAt       *time.Time `json:"started_at,omitempty"`
-	FinishedAt      *time.Time `json:"finished_at,omitempty"`
+	ID         string     `json:"id"`
+	SubjectID  string     `json:"subject_id"`
+	Kind       string     `json:"kind"`
+	Group      string     `json:"group"`
+	Status     string     `json:"status"`
+	Error      string     `json:"error,omitempty"`
+	QueuedAt   time.Time  `json:"queued_at"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	// CriticalityBand is the priority tier of the enrichment subject
 	// ("critical" | "high" | "medium" | "low"). Used by the progress endpoint
 	// (#1286) to bucket job counts per tier. Empty string is treated as "low".

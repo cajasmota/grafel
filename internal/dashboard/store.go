@@ -35,7 +35,7 @@ type GroupSummary struct {
 	Repos       []string `json:"repos"`
 	EntityCount int      `json:"entity_count"`
 	LastIndexed string   `json:"last_indexed,omitempty"` // RFC3339, most-recent across repos
-	Frameworks  []string `json:"frameworks,omitempty"`  // top-8 frameworks by frequency, desc
+	Frameworks  []string `json:"frameworks,omitempty"`   // top-8 frameworks by frequency, desc
 }
 
 // ---------------------------------------------------------------------------

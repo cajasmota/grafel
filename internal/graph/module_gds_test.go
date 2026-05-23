@@ -54,9 +54,9 @@ func TestAggregation_EntityEdgesCollapseToModules(t *testing.T) {
 		makeModEntity("e4", "D", "mod_c", "r"),
 	}
 	rels := []Relationship{
-		{ID: "r1", FromID: "e1", ToID: "e2", Kind: "CALLS"}, // intra-module — drop
-		{ID: "r2", FromID: "e1", ToID: "e3", Kind: "CALLS"}, // mod_a → mod_b
-		{ID: "r3", FromID: "e2", ToID: "e3", Kind: "CALLS"}, // mod_a → mod_b (weight++)
+		{ID: "r1", FromID: "e1", ToID: "e2", Kind: "CALLS"},   // intra-module — drop
+		{ID: "r2", FromID: "e1", ToID: "e3", Kind: "CALLS"},   // mod_a → mod_b
+		{ID: "r3", FromID: "e2", ToID: "e3", Kind: "CALLS"},   // mod_a → mod_b (weight++)
 		{ID: "r4", FromID: "e3", ToID: "e4", Kind: "IMPORTS"}, // mod_b → mod_c
 	}
 	res := RunModuleAlgorithms(entities, rels)

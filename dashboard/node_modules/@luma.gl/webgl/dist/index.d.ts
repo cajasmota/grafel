@@ -1,0 +1,21 @@
+export type { WebGLDeviceLimits } from "./adapter/device-helpers/webgl-device-limits.js";
+export { webgl2Adapter } from "./adapter/webgl-adapter.js";
+export type { WebGLAdapter } from "./adapter/webgl-adapter.js";
+export { WebGLDevice } from "./adapter/webgl-device.js";
+export { WebGLCanvasContext } from "./adapter/webgl-canvas-context.js";
+export { WEBGLBuffer } from "./adapter/resources/webgl-buffer.js";
+export { WEBGLTexture } from "./adapter/resources/webgl-texture.js";
+export { WEBGLShader } from "./adapter/resources/webgl-shader.js";
+export { WEBGLSampler } from "./adapter/resources/webgl-sampler.js";
+export { WEBGLFramebuffer } from "./adapter/resources/webgl-framebuffer.js";
+export { WEBGLRenderPipeline } from "./adapter/resources/webgl-render-pipeline.js";
+export { WEBGLCommandEncoder } from "./adapter/resources/webgl-command-encoder.js";
+export { WEBGLRenderPass } from "./adapter/resources/webgl-render-pass.js";
+export { WEBGLVertexArray } from "./adapter/resources/webgl-vertex-array.js";
+export { WEBGLTransformFeedback } from "./adapter/resources/webgl-transform-feedback.js";
+export { setDeviceParameters, withDeviceParameters } from "./adapter/converters/device-parameters.js";
+export { getShaderLayoutFromGLSL } from "./adapter/helpers/get-shader-layout-from-glsl.js";
+export { WebGLStateTracker } from "./context/state-tracker/webgl-state-tracker.js";
+export { resetGLParameters, setGLParameters, getGLParameters } from "./context/parameters/unified-parameter-api.js";
+export { withGLParameters } from "./context/state-tracker/with-parameters.js";
+//# sourceMappingURL=index.d.ts.map

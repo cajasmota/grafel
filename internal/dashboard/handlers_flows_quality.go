@@ -51,7 +51,7 @@ type DeadEndItem struct {
 	EntryName  string `json:"entry_name"`
 	StepCount  int    `json:"step_count"`
 	Repo       string `json:"repo"`
-	Reason     string `json:"reason"`     // "no_useful_sink" | "single_step"
+	Reason     string `json:"reason"` // "no_useful_sink" | "single_step"
 	CrossStack bool   `json:"cross_stack"`
 }
 
@@ -202,11 +202,11 @@ type TruncatedFlowItem struct {
 	EntryName        string `json:"entry_name"`
 	StepCount        int    `json:"step_count"`
 	Repo             string `json:"repo"`
-	Reason           string `json:"reason"`     // "unresolved_callee" | "cross_repo_unindexed" | "dynamic_dispatch"
-	Severity         string `json:"severity"`   // "info" | "warn" | "error"
-	TruncationStep   string `json:"truncation_step"`         // entity ID of the offending step
-	TruncationIndex  int    `json:"truncation_point"`        // 0-based index into the step chain
-	UnresolvedTarget string `json:"unresolved_target"`       // name/ID of the entity that could not be resolved
+	Reason           string `json:"reason"`            // "unresolved_callee" | "cross_repo_unindexed" | "dynamic_dispatch"
+	Severity         string `json:"severity"`          // "info" | "warn" | "error"
+	TruncationStep   string `json:"truncation_step"`   // entity ID of the offending step
+	TruncationIndex  int    `json:"truncation_point"`  // 0-based index into the step chain
+	UnresolvedTarget string `json:"unresolved_target"` // name/ID of the entity that could not be resolved
 	IsTruncated      bool   `json:"is_truncated"`
 	CrossStack       bool   `json:"cross_stack"`
 }

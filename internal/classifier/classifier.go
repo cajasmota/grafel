@@ -483,7 +483,7 @@ var extensionLanguageMap = map[string]string{
 	".htm":    "html",
 	".svelte": "svelte",
 	// Astro SFCs — dedicated astro extractor (feat/astro-extractor)
-	".astro": "astro",
+	".astro":      "astro",
 	".erb":        "html",
 	".ejs":        "html",
 	".hbs":        "html",

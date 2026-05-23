@@ -87,11 +87,11 @@ func buildAuthCoverageDoc() *graph.Document {
 			// Auth policy entity: shares file with ep_login_required.
 			{
 				ID: "auth_login_required", Name: "login_required@views/dashboard.py:9",
-				Kind:    "SCOPE.Config",
-				Subtype: "auth_policy",
+				Kind:       "SCOPE.Config",
+				Subtype:    "auth_policy",
 				SourceFile: "views/dashboard.py", StartLine: 9,
 				Properties: map[string]string{
-					"kind":           "auth_policy",
+					"kind":            "auth_policy",
 					"annotation_name": "@login_required",
 					"middleware_name": "login_required",
 				},
@@ -99,11 +99,11 @@ func buildAuthCoverageDoc() *graph.Document {
 			// Auth policy entity: linked to ep_tagged_auth via TAGGED_AS.
 			{
 				ID: "auth_policy_tagged", Name: "auth_policy_nestjs_JwtAuthGuard",
-				Kind:    "SCOPE.Config",
-				Subtype: "auth_policy",
+				Kind:       "SCOPE.Config",
+				Subtype:    "auth_policy",
 				SourceFile: "routes/orders.py", StartLine: 18,
 				Properties: map[string]string{
-					"kind":           "auth_policy",
+					"kind":            "auth_policy",
 					"annotation_name": "@UseGuards",
 					"middleware_name": "JwtAuthGuard",
 				},

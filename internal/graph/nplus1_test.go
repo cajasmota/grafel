@@ -305,12 +305,12 @@ func TestSummariseFindingsText(t *testing.T) {
 	report := &NPlusOneReport{
 		Findings: []NPlusOneFinding{
 			{
-				CallerName:  "my_view",
-				QueryName:   "User.objects.get",
-				QueryFile:   "api.py",
-				QueryLine:   42,
-				ORM:         "django",
-				Suggestion:  "Use prefetch_related.",
+				CallerName: "my_view",
+				QueryName:  "User.objects.get",
+				QueryFile:  "api.py",
+				QueryLine:  42,
+				ORM:        "django",
+				Suggestion: "Use prefetch_related.",
 			},
 		},
 		EntitiesScanned:      10,

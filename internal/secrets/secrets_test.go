@@ -15,10 +15,10 @@ func TestShannonEntropy(t *testing.T) {
 		input    string
 		wantHigh bool // should be > entropyThreshold?
 	}{
-		{"aaaaaaaaaaaaaaaa", false},              // all same → zero entropy
-		{"aB3xY7kLpQ2mN8rTwZ5v", true},          // random mix → high entropy
-		{"AKIAIOSFODNN7REAL0000", true},           // real-looking AWS key → high entropy
-		{"sk_live_AbCdEfGhIjKlMnOpQrSt", true},   // Stripe key format
+		{"aaaaaaaaaaaaaaaa", false},            // all same → zero entropy
+		{"aB3xY7kLpQ2mN8rTwZ5v", true},         // random mix → high entropy
+		{"AKIAIOSFODNN7REAL0000", true},        // real-looking AWS key → high entropy
+		{"sk_live_AbCdEfGhIjKlMnOpQrSt", true}, // Stripe key format
 	}
 	for _, tc := range tests {
 		e := shannonEntropy(tc.input)

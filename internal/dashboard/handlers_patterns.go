@@ -329,10 +329,10 @@ func (s *Server) handlePatternGC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"dry_run":             req.DryRun,
-		"pruned_count":        len(pruned),
-		"pruned":              pruneRows,
-		"remaining_count":     len(keep),
+		"dry_run":              req.DryRun,
+		"pruned_count":         len(pruned),
+		"pruned":               pruneRows,
+		"remaining_count":      len(keep),
 		"candidate_decay_days": cfg.CandidateDecayDays,
 	})
 }
@@ -447,24 +447,24 @@ func patternToRow(p agentpatterns.Pattern) map[string]any {
 	}
 
 	return map[string]any{
-		"id":               p.ID,
-		"kind":             p.Kind,
-		"category":         string(p.Category),
-		"trigger":          trigger,
-		"confidence":       p.Confidence,
-		"observations":     p.Observations,
-		"last_seen":        lastSeen,
-		"status":           patternStatus(p),
-		"is_candidate":     p.IsCandidate,
-		"needs_attention":  patternNeedsAttention(p),
-		"stale":            patternStale(p),
-		"reject_reason":    p.RejectReason,
-		"approval_note":    p.ApprovalNote,
-		"steps":            p.Steps,
-		"anti_patterns":    p.AntiPatterns,
-		"exemplars":        p.Exemplars,
-		"touches":          p.Touches,
-		"scope":            p.Scope,
+		"id":                p.ID,
+		"kind":              p.Kind,
+		"category":          string(p.Category),
+		"trigger":           trigger,
+		"confidence":        p.Confidence,
+		"observations":      p.Observations,
+		"last_seen":         lastSeen,
+		"status":            patternStatus(p),
+		"is_candidate":      p.IsCandidate,
+		"needs_attention":   patternNeedsAttention(p),
+		"stale":             patternStale(p),
+		"reject_reason":     p.RejectReason,
+		"approval_note":     p.ApprovalNote,
+		"steps":             p.Steps,
+		"anti_patterns":     p.AntiPatterns,
+		"exemplars":         p.Exemplars,
+		"touches":           p.Touches,
+		"scope":             p.Scope,
 		"convergence_count": p.ConvergenceCount,
 	}
 }

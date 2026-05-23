@@ -1,0 +1,50 @@
+{
+  "name": "@luma.gl/core",
+  "version": "9.2.6",
+  "description": "The luma.gl core Device API",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/visgl/luma.gl"
+  },
+  "keywords": [
+    "webgl",
+    "visualization",
+    "animation",
+    "3d"
+  ],
+  "types": "dist/index.d.ts",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "src",
+    "dist",
+    "dist.min.js",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build-minified-bundle": "ocular-bundle ./bundle.ts --output=dist/dist.min.js",
+    "build-dev-bundle": "ocular-bundle ./bundle.ts --output=dist/dist.dev.js --env=dev",
+    "prepublishOnly": "npm run build-minified-bundle && npm run build-dev-bundle"
+  },
+  "dependencies": {
+    "@math.gl/types": "^4.1.0",
+    "@probe.gl/env": "^4.0.8",
+    "@probe.gl/log": "^4.0.8",
+    "@probe.gl/stats": "^4.0.8",
+    "@types/offscreencanvas": "^2019.6.4"
+  },
+  "gitHead": "9c7a3adc09c7b23800df3f916762445ebc1fa924"
+}

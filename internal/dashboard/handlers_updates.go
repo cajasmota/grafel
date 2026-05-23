@@ -34,11 +34,11 @@ type UpdateCheckReply struct {
 	CurrentBuiltAt string `json:"current_built_at"`
 
 	// Latest GitHub release (empty when fetch failed or no release exists)
-	LatestVersion  string `json:"latest_version"`
-	LatestTag      string `json:"latest_tag"`
-	LatestBody     string `json:"latest_body"`     // release notes (markdown)
-	LatestHTMLURL  string `json:"latest_html_url"` // link to GitHub release page
-	PublishedAt    string `json:"published_at,omitempty"`
+	LatestVersion string `json:"latest_version"`
+	LatestTag     string `json:"latest_tag"`
+	LatestBody    string `json:"latest_body"`     // release notes (markdown)
+	LatestHTMLURL string `json:"latest_html_url"` // link to GitHub release page
+	PublishedAt   string `json:"published_at,omitempty"`
 
 	// Derived
 	UpdateAvailable bool   `json:"update_available"`

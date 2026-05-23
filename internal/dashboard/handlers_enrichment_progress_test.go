@@ -59,7 +59,7 @@ func TestHandleEnrichmentProgress_withJobs(t *testing.T) {
 
 	// 2 critical jobs.
 	id1, _ := q.Enqueue("g1", "entity::alpha", "describe_entity", "critical")
-	id2, _ := q.Enqueue("g1", "entity::beta",  "describe_entity", "critical")
+	id2, _ := q.Enqueue("g1", "entity::beta", "describe_entity", "critical")
 	// 1 high job.
 	id3, _ := q.Enqueue("g1", "entity::gamma", "describe_entity", "high")
 

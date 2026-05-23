@@ -171,13 +171,13 @@ type classifiedHandlerEdges struct {
 // sideEffectEdgeKinds are outbound edge kinds that represent a mutation or
 // external interaction performed by the handler.
 var sideEffectEdgeKinds = map[string]bool{
-	"QUERIES":       true,
+	"QUERIES":        true,
 	"ACCESSES_TABLE": true,
-	"EMITS":         true,
-	"PUBLISHES_TO":  true,
-	"SUBSCRIBES_TO": true,
-	"TRIGGERS":      true,
-	"MAPS_TO":       true,
+	"EMITS":          true,
+	"PUBLISHES_TO":   true,
+	"SUBSCRIBES_TO":  true,
+	"TRIGGERS":       true,
+	"MAPS_TO":        true,
 }
 
 // classifyHandlerEdges walks the repo's relationships once and bucketises every
@@ -281,4 +281,3 @@ func appendUnique(sl []string, s string) []string {
 	}
 	return append(sl, s)
 }
-

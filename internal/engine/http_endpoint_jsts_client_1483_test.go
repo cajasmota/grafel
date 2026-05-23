@@ -52,8 +52,8 @@ export class OrdersProxyController {
 	}
 
 	want := []pp{
-		{"POST", "/orders", "http_endpoint_synthesis"},        // producer: @Controller("orders") @Post()
-		{"POST", "/orders", "http_endpoint_client_synthesis"}, // consumer: orders.post("/orders")
+		{"POST", "/orders", "http_endpoint_synthesis"},            // producer: @Controller("orders") @Post()
+		{"POST", "/orders", "http_endpoint_client_synthesis"},     // consumer: orders.post("/orders")
 		{"GET", "/orders/{id}", "http_endpoint_synthesis"},        // producer: @Get(":id")
 		{"GET", "/orders/{id}", "http_endpoint_client_synthesis"}, // consumer: orders.get(`/orders/${id}`)
 	}

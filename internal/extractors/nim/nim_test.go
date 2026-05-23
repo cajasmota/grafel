@@ -183,10 +183,10 @@ proc main() =
 	ents := runNim(t, src, "main.nim")
 
 	wantImports := map[string]bool{
-		"strutils":         false,
-		"sequtils":         false,
+		"strutils":          false,
+		"sequtils":          false,
 		"std/asyncdispatch": false,
-		"tables":           false,
+		"tables":            false,
 	}
 	for _, e := range ents {
 		for _, r := range e.Relationships {
