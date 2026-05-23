@@ -1,6 +1,7 @@
 package docgen_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -274,6 +275,298 @@ func TestSectionsForEntityKind_UnknownFallsToAllSections(t *testing.T) {
 			secs := docgen.SectionsForEntityKind(kind)
 			if len(secs) != len(docgen.KnownSections) {
 				t.Errorf("unknown kind %q: want %d sections, got %d", kind, len(docgen.KnownSections), len(secs))
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1986 — size-aware Operation profiles
+// ---------------------------------------------------------------------------
+
+// TestResolveSectionProfile_OperationSmall verifies that an operation with
+// fewer than 30 lines resolves to the "small" profile which omits the three
+// heavy infrastructure sections.
+func TestResolveSectionProfile_OperationSmall(t *testing.T) {
+	p := docgen.ResolveSectionProfile("operation", "", 15)
+	mustAbsent := []string{"reference-deployment", "how-to-local-dev", "reference-scripts"}
+	for _, s := range mustAbsent {
+		if containsSection(p.Sections, s) {
+			t.Errorf("operation(small): section %q should be absent; got %v", s, p.Sections)
+		}
+	}
+	// Must still have core sections.
+	mustPresent := []string{"overview", "capabilities", "api", "flows"}
+	for _, s := range mustPresent {
+		if !containsSection(p.Sections, s) {
+			t.Errorf("operation(small): missing required section %q; got %v", s, p.Sections)
+		}
+	}
+}
+
+// TestResolveSectionProfile_OperationSmallGuidanceTerse verifies that the
+// small-tier capabilities guidance is shorter / tighter than the medium tier.
+func TestResolveSectionProfile_OperationSmallGuidanceTerse(t *testing.T) {
+	small := docgen.ResolveSectionProfile("operation", "", 10)
+	medium := docgen.ResolveSectionProfile("operation", "", 50)
+	gs := docgen.ResolveGuidance(small, "capabilities")
+	gm := docgen.ResolveGuidance(medium, "capabilities")
+	if gs == gm {
+		t.Errorf("operation small/medium capabilities guidance should differ; both returned %q", gs)
+	}
+}
+
+// TestResolveSectionProfile_OperationMedium verifies that the medium tier
+// (30–149 lines) returns the baseline operation profile without deployment
+// sections but without the stripped-down small profile either.
+func TestResolveSectionProfile_OperationMedium(t *testing.T) {
+	p := docgen.ResolveSectionProfile("operation", "", 75)
+	mustAbsent := []string{"reference-deployment", "how-to-local-dev", "reference-scripts"}
+	for _, s := range mustAbsent {
+		if containsSection(p.Sections, s) {
+			t.Errorf("operation(medium): section %q should be absent; got %v", s, p.Sections)
+		}
+	}
+	// Medium has reference-dependencies; small drops it.
+	if !containsSection(p.Sections, "reference-dependencies") {
+		t.Errorf("operation(medium): want reference-dependencies; got %v", p.Sections)
+	}
+}
+
+// TestResolveSectionProfile_OperationLarge verifies that an operation with
+// 150+ lines gets the full template including deployment and local-dev.
+func TestResolveSectionProfile_OperationLarge(t *testing.T) {
+	p := docgen.ResolveSectionProfile("operation", "", 200)
+	mustPresent := []string{
+		"overview", "capabilities", "flows", "patterns", "api",
+		"reference-config", "reference-dependencies",
+		"reference-deployment", "reference-scripts", "how-to-local-dev",
+		"reference-misc", "glossary", "module-readme",
+	}
+	for _, s := range mustPresent {
+		if !containsSection(p.Sections, s) {
+			t.Errorf("operation(large): missing section %q; got %v", s, p.Sections)
+		}
+	}
+}
+
+// TestResolveSectionProfile_OperationLargeGuidanceDeep verifies that the large
+// operation overview guidance explicitly mentions orchestration or critical-path.
+func TestResolveSectionProfile_OperationLargeGuidanceDeep(t *testing.T) {
+	p := docgen.ResolveSectionProfile("operation", "", 300)
+	g := docgen.ResolveGuidance(p, "overview")
+	if !strings.Contains(strings.ToLower(g), "orchestrat") && !strings.Contains(strings.ToLower(g), "critical") {
+		t.Errorf("operation(large) overview guidance should mention orchestration or critical-path; got %q", g)
+	}
+}
+
+// TestResolveSectionProfile_OperationNoLineCount verifies that when no
+// lineCount is passed, the medium (baseline) Operation profile is returned.
+func TestResolveSectionProfile_OperationNoLineCount(t *testing.T) {
+	withoutCount := docgen.ResolveSectionProfile("operation", "")
+	withZero := docgen.ResolveSectionProfile("operation", "", 0)
+	medium := docgen.ResolveSectionProfile("operation", "", 50)
+	for _, p := range []docgen.SectionProfile{withoutCount, withZero} {
+		if len(p.Sections) != len(medium.Sections) {
+			t.Errorf("operation without lineCount: want medium section count %d, got %d",
+				len(medium.Sections), len(p.Sections))
+		}
+	}
+}
+
+// TestResolveSectionProfile_OperationBoundary_29_30_149_150 verifies the exact
+// boundary values for tier transitions.
+func TestResolveSectionProfile_OperationBoundary(t *testing.T) {
+	cases := []struct {
+		lines        int
+		wantSmall    bool // expects "operation.small" (no reference-deployment)
+		wantLarge    bool // expects "operation.large" (has reference-deployment)
+	}{
+		{29, true, false},
+		{30, false, false},
+		{149, false, false},
+		{150, false, true},
+	}
+	for _, tc := range cases {
+		p := docgen.ResolveSectionProfile("operation", "", tc.lines)
+		hasDeployment := containsSection(p.Sections, "reference-deployment")
+		hasRefDeps := containsSection(p.Sections, "reference-dependencies")
+
+		if tc.wantSmall {
+			// small: no reference-deployment, no reference-dependencies
+			if hasDeployment {
+				t.Errorf("lines=%d: small tier should not have reference-deployment", tc.lines)
+			}
+			if hasRefDeps {
+				t.Errorf("lines=%d: small tier should not have reference-dependencies", tc.lines)
+			}
+		} else if tc.wantLarge {
+			// large: has reference-deployment
+			if !hasDeployment {
+				t.Errorf("lines=%d: large tier should have reference-deployment", tc.lines)
+			}
+		} else {
+			// medium: no reference-deployment, has reference-dependencies
+			if hasDeployment {
+				t.Errorf("lines=%d: medium tier should not have reference-deployment", tc.lines)
+			}
+			if !hasRefDeps {
+				t.Errorf("lines=%d: medium tier should have reference-dependencies", tc.lines)
+			}
+		}
+	}
+}
+
+// TestResolveSectionProfile_OperationScopedKind verifies that dotted-prefix
+// kinds like "SCOPE.Operation" still participate in size-tier selection.
+func TestResolveSectionProfile_OperationScopedKind(t *testing.T) {
+	small := docgen.ResolveSectionProfile("SCOPE.Operation", "", 10)
+	if containsSection(small.Sections, "reference-deployment") {
+		t.Errorf("SCOPE.Operation(small): reference-deployment should be absent")
+	}
+	large := docgen.ResolveSectionProfile("SCOPE.Operation", "", 200)
+	if !containsSection(large.Sections, "reference-deployment") {
+		t.Errorf("SCOPE.Operation(large): reference-deployment should be present")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1970 — react_component api section guidance
+// ---------------------------------------------------------------------------
+
+// TestResolveSectionProfile_ReactComponent_ExactMatch verifies that
+// "react_component" resolves to a dedicated profile.
+func TestResolveSectionProfile_ReactComponent_ExactMatch(t *testing.T) {
+	p := docgen.ResolveSectionProfile("react_component", "")
+	if len(p.Sections) == 0 {
+		t.Fatal("react_component: expected non-empty Sections")
+	}
+	if p.GuidanceOverrides == nil {
+		t.Fatal("react_component: expected GuidanceOverrides to be set")
+	}
+	mustPresent := []string{"overview", "capabilities", "api"}
+	for _, s := range mustPresent {
+		if !containsSection(p.Sections, s) {
+			t.Errorf("react_component: missing required section %q; got %v", s, p.Sections)
+		}
+	}
+	// React components don't need deployment sections.
+	mustAbsent := []string{"reference-deployment", "how-to-local-dev", "reference-scripts"}
+	for _, s := range mustAbsent {
+		if containsSection(p.Sections, s) {
+			t.Errorf("react_component: section %q should be absent; got %v", s, p.Sections)
+		}
+	}
+}
+
+// TestResolveSectionProfile_ReactComponent_ApiGuidanceIsPropsInterface verifies
+// that the api guidance for react_component specifically references props,
+// not the generic function-signature template.
+func TestResolveSectionProfile_ReactComponent_ApiGuidanceIsPropsInterface(t *testing.T) {
+	p := docgen.ResolveSectionProfile("react_component", "")
+	g := docgen.ResolveGuidance(p, "api")
+	lower := strings.ToLower(g)
+	mustContain := []string{"props", "jsx.element", "children"}
+	for _, word := range mustContain {
+		if !strings.Contains(lower, word) {
+			t.Errorf("react_component api guidance: want %q; guidance was: %q", word, g)
+		}
+	}
+	if strings.Contains(lower, "never reuse the generic function-signature") {
+		// The instruction must be in the guidance.
+	} else if !strings.Contains(lower, "never") {
+		t.Errorf("react_component api guidance: should include NEVER-reuse instruction; got: %q", g)
+	}
+}
+
+// TestResolveSectionProfile_ReactComponent_TypeScriptAndJSDoc verifies that
+// the api guidance mentions both TypeScript interface and JSDoc @param sources.
+func TestResolveSectionProfile_ReactComponent_TypeScriptAndJSDoc(t *testing.T) {
+	p := docgen.ResolveSectionProfile("react_component", "")
+	g := docgen.ResolveGuidance(p, "api")
+	lower := strings.ToLower(g)
+	if !strings.Contains(lower, "typescript") && !strings.Contains(lower, "ts") {
+		t.Errorf("react_component api guidance: should reference TypeScript; got: %q", g)
+	}
+	if !strings.Contains(lower, "jsdoc") && !strings.Contains(lower, "@param") {
+		t.Errorf("react_component api guidance: should reference JSDoc/@param; got: %q", g)
+	}
+}
+
+// TestResolveSectionProfile_ReactComponent_NotDefaultProfile verifies that
+// react_component does NOT resolve to the default profile.
+func TestResolveSectionProfile_ReactComponent_NotDefaultProfile(t *testing.T) {
+	p := docgen.ResolveSectionProfile("react_component", "")
+	if len(p.Sections) == len(docgen.KnownSections) && p.GuidanceOverrides == nil {
+		t.Error("react_component resolved to default profile (all 13 sections, no overrides)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1992 — module-readme boundary guidance (no fabricated siblings)
+// ---------------------------------------------------------------------------
+
+// TestModuleReadmeBoundaryGuidance_AllProfiles verifies that every explicit
+// profile's module-readme guidance contains the sibling-boundary instruction.
+func TestModuleReadmeBoundaryGuidance_AllProfiles(t *testing.T) {
+	profileKinds := []string{"model", "module", "operation", "react_component"}
+	// Also check size-aware tiers.
+	operationWithSizes := []struct {
+		kind      string
+		lineCount int
+	}{
+		{"operation", 10},  // small
+		{"operation", 50},  // medium
+		{"operation", 200}, // large
+	}
+
+	check := func(t *testing.T, label string, p docgen.SectionProfile) {
+		t.Helper()
+		if !containsSection(p.Sections, "module-readme") {
+			t.Skipf("%s: profile does not include module-readme section", label)
+		}
+		g := docgen.ResolveGuidance(p, "module-readme")
+		lower := strings.ToLower(g)
+		if !strings.Contains(lower, "module_manifest") {
+			t.Errorf("%s module-readme guidance: missing module_manifest boundary; got: %q", label, g)
+		}
+		if !strings.Contains(lower, "neighbour_briefs") {
+			t.Errorf("%s module-readme guidance: missing neighbour_briefs boundary; got: %q", label, g)
+		}
+		if !strings.Contains(lower, "do not mention") {
+			t.Errorf("%s module-readme guidance: missing 'do not mention' instruction; got: %q", label, g)
+		}
+	}
+
+	for _, kind := range profileKinds {
+		t.Run(kind, func(t *testing.T) {
+			p := docgen.ResolveSectionProfile(kind, "")
+			check(t, kind, p)
+		})
+	}
+	for _, tc := range operationWithSizes {
+		label := fmt.Sprintf("%s(lines=%d)", tc.kind, tc.lineCount)
+		t.Run(label, func(t *testing.T) {
+			p := docgen.ResolveSectionProfile(tc.kind, "", tc.lineCount)
+			check(t, label, p)
+		})
+	}
+}
+
+// TestModuleReadmeBoundaryGuidance_CitationInstruction verifies that the
+// boundary guidance also instructs the LLM to cite the bundle field when a
+// sibling is mentioned.
+func TestModuleReadmeBoundaryGuidance_CitationInstruction(t *testing.T) {
+	for _, kind := range []string{"model", "module", "operation", "react_component"} {
+		t.Run(kind, func(t *testing.T) {
+			p := docgen.ResolveSectionProfile(kind, "")
+			if !containsSection(p.Sections, "module-readme") {
+				t.Skipf("%s: no module-readme section", kind)
+			}
+			g := docgen.ResolveGuidance(p, "module-readme")
+			lower := strings.ToLower(g)
+			if !strings.Contains(lower, "bundle field") && !strings.Contains(lower, "came from") {
+				t.Errorf("%s module-readme guidance: missing citation instruction; got: %q", kind, g)
 			}
 		})
 	}

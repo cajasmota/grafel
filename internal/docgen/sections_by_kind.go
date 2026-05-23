@@ -31,6 +31,16 @@
 // The GuidanceOverrides for the existing sections already carry Model-specific
 // framing so the LLM output is correctly scoped even before a dedicated section
 // is introduced.
+//
+// # Size-aware Operation profiles (#1986)
+//
+// ResolveSectionProfile accepts an optional lineCount variadic argument.
+// When provided for an Operation kind, the profile is chosen from three tiers:
+//
+//   - small  (< 30 lines): skips reference-deployment, how-to-local-dev,
+//     reference-scripts; uses shorter capabilities/api guidance.
+//   - medium (30–149 lines): current guidance (baseline Operation profile).
+//   - large  (>= 150 lines): full deep-context template with all sections.
 package docgen
 
 import "strings"
@@ -128,7 +138,10 @@ var sectionsByKind = map[string]SectionProfile{
 			"reference-misc": "Capture migration history highlights, known technical debt, or links to the ADR that introduced this model.",
 			"glossary": "Define domain terms that appear in field names, association names, or enum values. One term per row.",
 			"module-readme": "Write a README-style intro for the module that owns this model: purpose, key sibling models, " +
-				"and how to run the associated tests.",
+				"and how to run the associated tests. " +
+				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
+				"`module_manifest.functions`, or `neighbour_briefs`. " +
+				"If you cite a sibling, name the bundle field it came from.",
 		},
 	},
 
@@ -173,7 +186,10 @@ var sectionsByKind = map[string]SectionProfile{
 			"how-to-local-dev": "Provide a numbered step-by-step local development guide for this module: " +
 				"clone, configure env vars, build, run tests, start the local server, and observe output.",
 			"module-readme": "Write a README-style introduction for this module: purpose, key entities, " +
-				"quickstart build/test/run commands, and link to the full documentation page.",
+				"quickstart build/test/run commands, and link to the full documentation page. " +
+				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
+				"`module_manifest.functions`, or `neighbour_briefs`. " +
+				"If you cite a sibling, name the bundle field it came from.",
 		},
 	},
 
@@ -184,6 +200,9 @@ var sectionsByKind = map[string]SectionProfile{
 	// units of behaviour.  They do NOT need reference-deployment/scripts/
 	// how-to-local-dev (module-level concerns) reducing boilerplate by ~3 sections.
 	// They DO need flows, patterns, and api for signature documentation.
+	//
+	// This is the "medium" (30–149 line) baseline profile.  ResolveSectionProfile
+	// selects "operation.small" or "operation.large" when a lineCount is supplied.
 	// -------------------------------------------------------------------------
 	"operation": {
 		Sections: []string{
@@ -217,7 +236,150 @@ var sectionsByKind = map[string]SectionProfile{
 			"reference-misc": "Capture performance notes, known edge cases, or links to the issue/ADR that introduced this operation.",
 			"glossary": "Define domain terms appearing in the function name, parameter names, or return type. One term per row.",
 			"module-readme": "Write a brief README-style intro for the module that contains this operation: " +
-				"purpose and key sibling operations.",
+				"purpose and key sibling operations. " +
+				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
+				"`module_manifest.functions`, or `neighbour_briefs`. " +
+				"If you cite a sibling, name the bundle field it came from.",
+		},
+	},
+
+	// -------------------------------------------------------------------------
+	// Operation.small — helper function / method under 30 lines.
+	//
+	// #1986: small operations are leaf helpers; padded deployment/dev sections
+	// produce generic boilerplate and degrade quality scores.  Skip the three
+	// heavy infrastructure sections and use tighter capabilities/api guidance.
+	// -------------------------------------------------------------------------
+	"operation.small": {
+		Sections: []string{
+			"overview",
+			"capabilities",
+			"flows",
+			"patterns",
+			"api",
+			"reference-config",
+			"reference-misc",
+			"glossary",
+			"module-readme",
+		},
+		GuidanceOverrides: map[string]string{
+			"overview": "Write 1–2 sentences describing what this small helper does and when it is called. " +
+				"State its single responsibility clearly.",
+			"capabilities": "List the observable behaviours of this helper in 1–3 bullets. " +
+				"Keep it concise — small operations have narrow contracts.",
+			"flows": "Describe the execution path briefly. A single mermaid flowchart node or a short prose paragraph is sufficient.",
+			"patterns": "Note any design pattern (guard clause, delegation, pure function, etc.) in one sentence.",
+			"api": "Document the function signature: parameters (name, type), return value, and any errors raised. " +
+				"One-liner usage example if the call site is non-obvious.",
+			"reference-config": "Note any config key or feature flag read by this helper, if any. Omit section if none.",
+			"reference-misc": "Capture edge cases or performance notes specific to this helper, if any.",
+			"glossary": "Define any non-obvious domain term in the function or parameter names. Omit if all names are self-evident.",
+			"module-readme": "One sentence positioning this helper within its module. " +
+				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
+				"`module_manifest.functions`, or `neighbour_briefs`. " +
+				"If you cite a sibling, name the bundle field it came from.",
+		},
+	},
+
+	// -------------------------------------------------------------------------
+	// Operation.large — service-level function / method 150+ lines.
+	//
+	// #1986: large operations act more like service entry-points and warrant the
+	// full template including deployment context, script references, and a
+	// comprehensive local-dev guide.
+	// -------------------------------------------------------------------------
+	"operation.large": {
+		Sections: []string{
+			"overview",
+			"capabilities",
+			"flows",
+			"patterns",
+			"api",
+			"reference-config",
+			"reference-dependencies",
+			"reference-deployment",
+			"reference-scripts",
+			"how-to-local-dev",
+			"reference-misc",
+			"glossary",
+			"module-readme",
+		},
+		GuidanceOverrides: map[string]string{
+			"overview": "Write a 2–4 sentence description of what this large operation does, why it is a critical-path entry point, " +
+				"and what subsystems it orchestrates. " +
+				"Highlight god-node or articulation-point status if applicable.",
+			"capabilities": "Enumerate all discrete business capabilities this operation provides. " +
+				"Group by outcome category. One bullet per observable contract.",
+			"flows": "Trace the full execution flow using a mermaid sequence diagram. " +
+				"Show the caller → this operation → all major callees and any fork/join or retry loops.",
+			"patterns": "Identify ALL structural and architectural patterns present " +
+				"(orchestrator, saga, pipeline, strategy, command, etc.). " +
+				"Cite specific neighbour relationships as evidence for each.",
+			"api": "Document the full function signature: every parameter (name, type, purpose), all return values, " +
+				"and every error or panic path. Include a realistic usage example showing a typical call site.",
+			"reference-config": "List every environment variable, config key, or feature flag read by this operation. " +
+				"Note which alter branching behaviour and which are required vs optional.",
+			"reference-dependencies": "List all external and internal dependencies called by this operation. " +
+				"Separate required production dependencies from optional/test-only dependencies.",
+			"reference-deployment": "Describe deployment concerns relevant to this operation: " +
+				"required env vars, scaling constraints, health signals, and sidecar or infrastructure dependencies.",
+			"reference-scripts": "List Makefile targets, scripts, or shell commands that exercise or deploy this operation.",
+			"how-to-local-dev": "Provide a numbered guide for running this operation locally: " +
+				"environment setup, build steps, test execution, and observability hooks.",
+			"reference-misc": "Capture performance benchmarks, known edge cases, concurrency considerations, " +
+				"or links to the ADR / issue that introduced this operation.",
+			"glossary": "Define every domain term appearing in the function name, parameters, or return types. One term per row.",
+			"module-readme": "Write a README-style intro for the module that contains this operation. " +
+				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
+				"`module_manifest.functions`, or `neighbour_briefs`. " +
+				"If you cite a sibling, name the bundle field it came from.",
+		},
+	},
+
+	// -------------------------------------------------------------------------
+	// react_component — React UI component (TSX/JSX).
+	//
+	// #1970: the generic function-signature template produces a state-table
+	// workaround instead of a proper props-interface doc.  React components
+	// have a distinct public surface: props (not raw parameters), JSX.Element
+	// return semantics, and children/slot patterns.
+	// -------------------------------------------------------------------------
+	"react_component": {
+		Sections: []string{
+			"overview",
+			"capabilities",
+			"api",
+			"patterns",
+			"reference-config",
+			"reference-dependencies",
+			"reference-misc",
+			"glossary",
+			"module-readme",
+		},
+		GuidanceOverrides: map[string]string{
+			"overview": "Write a 2–3 sentence description of what this React component renders and when it is used. " +
+				"State its primary responsibility in the UI (layout, data display, interaction, form control, etc.).",
+			"capabilities": "List the visual/interactive capabilities this component provides. " +
+				"One bullet per user-facing behaviour or observable output.",
+			"api": "Document the props interface — NOT the generic function signature. " +
+				"For each prop: name, TypeScript type (or JSDoc @param type), default value, required/optional, and one-line purpose. " +
+				"If TypeScript: pull the interface or type alias from the declared Props type. " +
+				"If JavaScript with JSDoc: pull from @param tags on the component function. " +
+				"Show the JSX.Element return semantics (what markup is produced). " +
+				"Document children semantics: are children accepted, required, or forbidden? " +
+				"Show a minimal JSX usage example. " +
+				"NEVER reuse the generic function-signature template for this section.",
+			"patterns": "Identify React composition patterns present " +
+				"(compound component, render prop, higher-order component, controlled/uncontrolled, context consumer, etc.). " +
+				"Cite specific prop names or hook calls as evidence.",
+			"reference-config": "List any environment variables, feature flags, or config context values that alter this component's behaviour.",
+			"reference-dependencies": "List direct package dependencies (hooks, context providers, UI library components) used by this component.",
+			"reference-misc": "Capture accessibility notes (ARIA roles, keyboard nav), known edge cases, or performance considerations.",
+			"glossary": "Define any domain terms appearing in prop names or type names. One term per row.",
+			"module-readme": "Write a brief README-style intro for the module that owns this component. " +
+				"Do NOT mention sibling entities unless they appear in `module_manifest.classes`, " +
+				"`module_manifest.functions`, or `neighbour_briefs`. " +
+				"If you cite a sibling, name the bundle field it came from.",
 		},
 	},
 
@@ -231,28 +393,72 @@ var sectionsByKind = map[string]SectionProfile{
 	},
 }
 
+// operationLineTier classifies a line count into one of three Operation tiers.
+// It returns the key suffix to append to "operation" for profile lookup.
+//
+//   - lineCount < 30  → "small"
+//   - lineCount < 150 → ""      (medium — the default operation profile)
+//   - lineCount >= 150 → "large"
+func operationLineTier(lineCount int) string {
+	if lineCount < 30 {
+		return "small"
+	}
+	if lineCount < 150 {
+		return "" // medium — use the bare "operation" profile
+	}
+	return "large"
+}
+
 // ResolveSectionProfile returns the SectionProfile for the given entity kind
 // and language.  The lookup rules are:
 //
-//  1. Exact case-insensitive match on kind (e.g. "Model" → "model").
-//  2. Substring match — "SCOPE.Model" contains "model" → "model" profile.
-//  3. Fallback to "default" when no match is found.
+//  1. For Operation kinds, if lineCount is provided, a size tier is applied
+//     first: "operation.small" (<30 lines), "operation" (30–149 lines),
+//     or "operation.large" (>=150 lines).  See #1986.
+//  2. Exact case-insensitive match on kind (e.g. "Model" → "model").
+//  3. Substring match — "SCOPE.Model" contains "model" → "model" profile.
+//  4. Fallback to "default" when no match is found.
 //
 // The language parameter is accepted for future language-aware profiles
 // (e.g. Component kind differs for Java vs React); it is currently unused.
 // Pass an empty string when language is not available.
-func ResolveSectionProfile(kind, _ string) SectionProfile {
+//
+// lineCount is the optional entity line span (end_line - start_line).  Pass
+// zero or omit the argument when the line count is unavailable; the medium
+// Operation profile is used in that case.
+func ResolveSectionProfile(kind, _ string, lineCount ...int) SectionProfile {
 	k := strings.ToLower(kind)
 
-	// 1. Exact match (after lower-casing).
+	// 1. Size-aware Operation tier selection (#1986).
+	//    Check whether the lowercased kind contains "operation" and a lineCount
+	//    was provided.
+	if len(lineCount) > 0 && lineCount[0] > 0 && strings.Contains(k, "operation") {
+		tier := operationLineTier(lineCount[0])
+		profileKey := "operation"
+		if tier != "" {
+			profileKey = "operation." + tier
+		}
+		if p, ok := sectionsByKind[profileKey]; ok {
+			return p
+		}
+	}
+
+	// 2. Exact match (after lower-casing).
 	if p, ok := sectionsByKind[k]; ok {
 		return p
 	}
 
-	// 2. Substring match — covers dotted prefixes ("SCOPE.Model") and
+	// 3. Substring match — covers dotted prefixes ("SCOPE.Model") and
 	//    compound kind names ("DataModel", "ServiceModule", "OperationHandler").
+	//    Skip internal size-tier keys (e.g. "operation.small") to avoid
+	//    accidentally matching "operation" when kind is unrelated.
 	for key, profile := range sectionsByKind {
 		if key == "default" {
+			continue
+		}
+		// Skip dotted internal size-tier keys from the substring scan —
+		// they are only reachable via the explicit tier path above.
+		if strings.Contains(key, ".") {
 			continue
 		}
 		if strings.Contains(k, key) {
@@ -260,7 +466,7 @@ func ResolveSectionProfile(kind, _ string) SectionProfile {
 		}
 	}
 
-	// 3. Fallback to default — preserves current 13-section behaviour.
+	// 4. Fallback to default — preserves current 13-section behaviour.
 	return sectionsByKind["default"]
 }
 
