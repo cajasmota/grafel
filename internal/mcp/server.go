@@ -90,8 +90,13 @@ func (s *Server) reloadBeforeCall() {
 	s.Tel.MarkReload(n)
 }
 
-// inferCWD returns the caller-provided cwd from the request arguments if any,
-// falling back to the configured CWD on the server.
+// inferCWD returns the best available working-directory hint for a tool call.
+// Resolution order (ADR-0008 / #1746):
+//  1. "cwd" argument in the request (set by the bridge from _meta.cwd or bridge startup dir).
+//  2. CWD configured on the server at construction time (set by callers that
+//     know the cwd at build time, e.g. bench-mcp or tests).
+//  3. os.Getwd() of the daemon/server process — covers the stdio transport
+//     ("archigraph mcp serve" launched directly from the user's project dir).
 func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 	args := req.GetArguments()
 	if v, ok := args["cwd"]; ok {
@@ -99,7 +104,16 @@ func (s *Server) inferCWD(req mcpapi.CallToolRequest) string {
 			return str
 		}
 	}
-	return s.cfg.CWD
+	if s.cfg.CWD != "" {
+		return s.cfg.CWD
+	}
+	// Last resort: use the process working directory. On the stdio transport
+	// the daemon/server process inherits the cwd of the spawning CLI, so this
+	// is the user's project directory when they run `archigraph mcp serve`.
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return ""
 }
 
 // registerTools registers every tool handler on the MCP server.

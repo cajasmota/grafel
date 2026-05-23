@@ -9,14 +9,22 @@ import (
 	"strings"
 )
 
-// resolveGroup implements the ADR-0008 cascade:
+// resolveGroup implements the ADR-0008 cascade (#1746):
 //
 //  1. explicit `group` argument
-//  2. CWD inference (walk up looking for .archigraph/group.json)
-//  3. singleton-group fallback
+//  2. CWD inference via .archigraph/group.json marker (walk upward)
+//  3. Registry-based CWD inference: match cwd against registered repo paths
+//  4. Singleton-group fallback (only one group registered)
 //
-// Returns the chosen group name, the source ("explicit"/"cwd"/"singleton"),
-// or an error listing the registered groups when ambiguous.
+// Returns the chosen group name, the source ("explicit"/"cwd"/"cwd_registry"/
+// "singleton"), or an error when the group cannot be determined.
+//
+// Error cases:
+//   - cwd is inside repos registered to multiple groups → "ambiguous group"
+//     error listing only the matching candidate groups.
+//   - cwd is not inside any registered repo AND multiple groups exist →
+//     "ambiguous group" error listing all registered groups.
+//   - registry is empty → distinct error.
 func resolveGroup(s *State, explicit, cwd string) (string, string, error) {
 	if explicit != "" {
 		return explicit, "explicit", nil
@@ -27,12 +35,18 @@ func resolveGroup(s *State, explicit, cwd string) (string, string, error) {
 			return g, "cwd", nil
 		}
 	}
-	// Registry-based cwd inference (#1650): when no group.json marker is found,
-	// walk the registry and pick the group whose repo path is a prefix of cwd.
-	// If exactly one group matches we honor it as "cwd_registry"; multiple
-	// matches fall through to the ambiguous-group error.
-	if g := groupFromRegistry(s, cwd); g != "" {
+	// Registry-based cwd inference (#1650 / #1746): walk the registry and pick
+	// the group whose repo path is a prefix of cwd. groupFromRegistryWithCandidates
+	// returns the single matched group or "" + the distinct matching groups for the
+	// error message when multiple groups cover the cwd.
+	g, candidates := groupFromRegistryWithCandidates(s, cwd)
+	if g != "" {
 		return g, "cwd_registry", nil
+	}
+	if len(candidates) > 1 {
+		// cwd is under repos in multiple groups — genuinely ambiguous.
+		sort.Strings(candidates)
+		return "", "", errors.New("ambiguous group; pass `group=<name>`. candidate groups for your cwd: " + strings.Join(candidates, ", "))
 	}
 	if len(s.registry.Groups) == 1 {
 		for g := range s.registry.Groups {
@@ -52,13 +66,28 @@ func resolveGroup(s *State, explicit, cwd string) (string, string, error) {
 
 // groupFromRegistry returns the registered group whose repo path is an
 // ancestor of cwd. Returns "" when cwd is empty, no registered repo path
-// covers cwd, or multiple groups cover it (ambiguous). The match prefers the
-// longest path (most specific repo) when several repos under the SAME group
-// could cover cwd; when different groups each cover cwd, "" is returned and
-// the caller surfaces the standard ambiguous-group error.
+// covers cwd, or multiple groups cover it (ambiguous). See
+// groupFromRegistryWithCandidates for the richer variant that also returns
+// the matching candidate group names.
 func groupFromRegistry(s *State, cwd string) string {
+	g, _ := groupFromRegistryWithCandidates(s, cwd)
+	return g
+}
+
+// groupFromRegistryWithCandidates is the core registry-cwd matcher (#1746).
+// It walks the registry and collects all groups whose repo path is an ancestor
+// of cwd. Returns:
+//   - (group, nil) when exactly one group's repos cover cwd (unambiguous).
+//   - ("", candidates) when multiple distinct groups cover cwd; candidates
+//     lists those group names so the caller can surface a targeted error.
+//   - ("", nil) when cwd is empty, the registry is empty/nil, or no repo
+//     covers cwd.
+//
+// When multiple repos from the SAME group cover cwd, the longest (most
+// specific) repo path is preferred — that is unambiguous.
+func groupFromRegistryWithCandidates(s *State, cwd string) (string, []string) {
 	if cwd == "" || s == nil || s.registry == nil {
-		return ""
+		return "", nil
 	}
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
@@ -82,16 +111,27 @@ func groupFromRegistry(s *State, cwd string) string {
 		}
 	}
 	if len(hits) == 0 {
-		return ""
+		return "", nil
 	}
-	// All hits same group → unambiguous; pick longest path (most specific).
-	first := hits[0].group
-	for _, h := range hits[1:] {
-		if h.group != first {
-			return "" // ambiguous across groups
+	// Collect distinct matched groups.
+	groupSet := make(map[string]string) // group → longest matching path
+	for _, h := range hits {
+		if prev, ok := groupSet[h.group]; !ok || len(h.path) > len(prev) {
+			groupSet[h.group] = h.path
 		}
 	}
-	return first
+	if len(groupSet) == 1 {
+		// Unambiguous: all hits belong to the same group.
+		for g := range groupSet {
+			return g, nil
+		}
+	}
+	// Multiple distinct groups cover cwd — return candidates for error reporting.
+	candidates := make([]string, 0, len(groupSet))
+	for g := range groupSet {
+		candidates = append(candidates, g)
+	}
+	return "", candidates
 }
 
 // pathContains reports whether ancestor is an ancestor (or equal to) child.
