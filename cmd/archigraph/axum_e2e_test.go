@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"testing"
 )
 
@@ -13,6 +14,9 @@ import (
 // retains the canonical synthetic ID (e.g. "http:POST:/quote").
 func TestAxumE2E_PricingService(t *testing.T) {
 	const pricingPath = "/Users/jorgecajas/Documents/Projects/polyglot-platform/services/pricing"
+	if _, err := os.Stat(pricingPath); err != nil {
+		t.Skipf("requires local Axum fixture at %s: %v", pricingPath, err)
+	}
 	doc := runIndexerOn(t, pricingPath, "pricing", nil)
 
 	// Collect by Name (canonical ID) not by stamped hash ID.
@@ -68,6 +72,9 @@ func TestAxumE2E_PricingService(t *testing.T) {
 // verifies the POST /quote consumer-side call entity is present.
 func TestAxumE2E_OrdersCaller(t *testing.T) {
 	const ordersPath = "/Users/jorgecajas/Documents/Projects/polyglot-platform/services/orders"
+	if _, err := os.Stat(ordersPath); err != nil {
+		t.Skipf("requires local Axum fixture at %s: %v", ordersPath, err)
+	}
 	doc := runIndexerOn(t, ordersPath, "orders", nil)
 
 	// Collect by Name (canonical ID) not by stamped hash ID.
