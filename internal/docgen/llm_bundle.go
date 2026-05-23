@@ -395,21 +395,63 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		gc.Repo = seedRepo
 		gc.SourceFile = entity.SourceFile
 
-		// Populate source_window: read N lines around the entity's start_line.
-		// Uses the cross-platform readSourceWindow (build-tag split per #1780).
+		// Populate source_window: strategy is determined by the entity's kind
+		// profile (registry-driven via SectionProfile.SourceWindowStrategy, #1876).
+		//
+		// StrategyDefault (±20 lines): baseline; preserves original behaviour for
+		// all non-Model kinds.
+		//
+		// StrategyWholeBody: emit the entire class body from start_line to
+		// end_line (inclusive), capped at SourceWindowWholeBodyMaxLines.  Used for
+		// Model entities where every field declaration is semantically meaningful.
+		// A "truncated_at_line" comment is appended when the cap is reached.
+		//
 		// On error (file deleted, fsevents stall, etc.) we leave the field empty
 		// and log a warning — a missing source window must not fail the bundle.
 		const sourceWindowHalfLines = 20
 		if entity.SourceFile != "" && entity.StartLine > 0 {
 			absPath := filepath.Join(seedRepo, entity.SourceFile)
-			startLine := entity.StartLine - sourceWindowHalfLines
-			if startLine < 1 {
-				startLine = 1
+
+			// Resolve the section profile for this entity to pick the strategy.
+			entityProfile := ResolveSectionProfile(entity.Kind, entity.Language)
+
+			var startLine, endLine int
+			var truncatedAt int // non-zero when the whole-body cap fires
+
+			switch entityProfile.SourceWindowStrategy {
+			case SourceWindowStrategyWholeBody:
+				// Emit from start_line to end_line (whole class body).  Fall back
+				// to the default window when end_line is missing or equals 0 (the
+				// end_line=0 sentinel bug tracked in #1868 is not yet fixed).
+				startLine = entity.StartLine
+				if entity.EndLine > entity.StartLine {
+					endLine = entity.EndLine
+				} else {
+					// end_line absent: fall back to default window so the output
+					// is still useful rather than a 1-line stub.
+					endLine = entity.StartLine + sourceWindowHalfLines
+				}
+				// Apply the safety cap (#1876 spec: 400 lines, log a warning).
+				if endLine-startLine+1 > SourceWindowWholeBodyMaxLines {
+					truncatedAt = startLine + SourceWindowWholeBodyMaxLines - 1
+					endLine = truncatedAt
+					fmt.Fprintf(os.Stderr,
+						"docgen: source_window: Model entity %q body exceeds %d-line cap — "+
+							"clipping at line %d (end_line=%d); set truncated_at_line annotation\n",
+						entity.ID, SourceWindowWholeBodyMaxLines, truncatedAt, entity.EndLine)
+				}
+			default:
+				// SourceWindowStrategyDefault: ±20 lines around start_line.
+				startLine = entity.StartLine - sourceWindowHalfLines
+				if startLine < 1 {
+					startLine = 1
+				}
+				endLine = entity.EndLine + sourceWindowHalfLines
+				if endLine < entity.StartLine+sourceWindowHalfLines {
+					endLine = entity.StartLine + sourceWindowHalfLines
+				}
 			}
-			endLine := entity.EndLine + sourceWindowHalfLines
-			if endLine < entity.StartLine+sourceWindowHalfLines {
-				endLine = entity.StartLine + sourceWindowHalfLines
-			}
+
 			if sw, swErr := mcp.ReadSourceWindow(absPath, startLine, endLine); swErr != nil {
 				// Non-fatal: log and continue — the rest of the bundle is valid.
 				// Include the resolved absolute path, the original entity SourceFile,
@@ -425,6 +467,10 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 						"  error         : %v\n",
 					entity.ID, absPath, entity.SourceFile, seedRepo, cwd, swErr)
 			} else {
+				if truncatedAt > 0 {
+					sw += fmt.Sprintf("\n# truncated_at_line: %d (body exceeds %d-line cap; full end_line=%d)\n",
+						truncatedAt, SourceWindowWholeBodyMaxLines, entity.EndLine)
+				}
 				gc.SourceWindow = sw
 			}
 		}
