@@ -749,8 +749,13 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredShapes.flatMap((shape, shapeIdx) =>
-                      (shape.status_codes ?? []).map((statusCode) => {
+                    {filteredShapes.flatMap((shape, shapeIdx) => {
+                      // If no status_codes, render a single default row for this response shape
+                      const statusCodesToRender = (shape.status_codes ?? []).length > 0
+                        ? shape.status_codes
+                        : [undefined]; // undefined status code for empty status_codes case
+
+                      return statusCodesToRender.map((statusCode) => {
                         const hasBody = !shape.dynamic && shape.keys && shape.keys.length > 0;
                         const typeDisplay = shape.dynamic
                           ? "Dynamic"
@@ -766,7 +771,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
 
                         return (
                           <tr
-                            key={`${shapeIdx}-${statusCode}`}
+                            key={`${shapeIdx}-${statusCode ?? "default"}`}
                             className={cn(
                               "border-b border-border-soft last:border-0",
                               isMuted && "opacity-60",
@@ -786,21 +791,27 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
                               </span>
                             </td>
                             <td className="py-1.5 pr-3 font-mono text-text-3">
-                              <span className={cn(
-                                "text-xs font-mono font-semibold",
-                                statusCodeClass(statusCode),
-                              )}>
-                                {statusCode}
-                              </span>
-                              {typeDisplay !== "—" && (
-                                <span className="ml-2 text-text-3">{typeDisplay}</span>
+                              {statusCode !== undefined ? (
+                                <>
+                                  <span className={cn(
+                                    "text-xs font-mono font-semibold",
+                                    statusCodeClass(statusCode),
+                                  )}>
+                                    {statusCode}
+                                  </span>
+                                  {typeDisplay !== "—" && (
+                                    <span className="ml-2 text-text-3">{typeDisplay}</span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-text-3">{typeDisplay}</span>
                               )}
                             </td>
                             <td className="py-1.5 text-text-3 leading-snug">{description}</td>
                           </tr>
                         );
-                      }),
-                    )}
+                      });
+                    })}
                   </tbody>
                 </table>
               )}
