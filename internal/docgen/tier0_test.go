@@ -2,6 +2,7 @@ package docgen_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -249,5 +250,114 @@ func TestKnownSections_NonEmpty(t *testing.T) {
 			t.Errorf("KnownSections contains duplicate: %q", s)
 		}
 		seen[s] = true
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Mermaid node ID uniqueness validation (fix for #1983)
+// ---------------------------------------------------------------------------
+
+func TestValidateMermaidNodeIDs_ValidStub(t *testing.T) {
+	// A properly formatted stub with unique node IDs should pass validation.
+	md := `# Test Section
+
+## Diagram Placeholder
+
+` + "```mermaid\n" + `graph LR
+    seed["SeedEntity"]
+    nb0["Neighbor0"]
+    nb1["Neighbor1"]
+    nb2["Neighbor2"]
+    seed --> nb0
+    seed --> nb1
+    seed --> nb2
+` + "```\n"
+	if err := docgen.ValidateMermaidNodeIDs(md); err != nil {
+		t.Errorf("valid stub failed validation: %v", err)
+	}
+}
+
+func TestValidateMermaidNodeIDs_DuplicateNodeID(t *testing.T) {
+	// The old bug: all neighbours used the same "nb" node ID.
+	md := `# Test Section
+
+## Diagram Placeholder
+
+` + "```mermaid\n" + `graph LR
+    seed["SeedEntity"]
+    nb["Neighbor0"]
+    nb["Neighbor1"]
+    nb["Neighbor2"]
+    seed --> nb
+    seed --> nb
+    seed --> nb
+` + "```\n"
+	if err := docgen.ValidateMermaidNodeIDs(md); err == nil {
+		t.Error("expected error for duplicate node IDs, got nil")
+	}
+}
+
+func TestValidateMermaidNodeIDs_NoMermaid(t *testing.T) {
+	// Stub with no mermaid block should pass (no IDs to validate).
+	md := `# Test Section
+
+## Overview
+
+This is a section without a mermaid diagram.
+`
+	if err := docgen.ValidateMermaidNodeIDs(md); err != nil {
+		t.Errorf("stub without mermaid failed validation: %v", err)
+	}
+}
+
+func TestValidateMermaidNodeIDs_MultipleBlocks(t *testing.T) {
+	// Multiple mermaid blocks should validate independently.
+	md := `# Test Section
+
+## First Diagram
+
+` + "```mermaid\n" + `graph LR
+    a["A"]
+    b["B"]
+    a --> b
+` + "```\n" + `
+## Second Diagram
+
+` + "```mermaid\n" + `graph LR
+    x["X"]
+    y["Y"]
+    x --> y
+` + "```\n"
+	if err := docgen.ValidateMermaidNodeIDs(md); err != nil {
+		t.Errorf("multiple valid blocks failed validation: %v", err)
+	}
+}
+
+func TestValidateMermaidNodeIDs_LargeNeighbourhood(t *testing.T) {
+	// Test with a large number of neighbours (5+) to ensure scalability.
+	var b strings.Builder
+	b.WriteString("# Test Section\n\n## Diagram Placeholder\n\n")
+	b.WriteString("```mermaid\n")
+	b.WriteString("graph LR\n")
+	b.WriteString("    seed[\"SeedEntity\"]\n")
+
+	numNeighbours := 10
+	for i := 0; i < numNeighbours; i++ {
+		b.WriteString(fmt.Sprintf("    nb%d[\"Neighbor%d\"]\n", i, i))
+		b.WriteString(fmt.Sprintf("    seed --> nb%d\n", i))
+	}
+	b.WriteString("```\n")
+
+	md := b.String()
+	if err := docgen.ValidateMermaidNodeIDs(md); err != nil {
+		t.Errorf("large neighbourhood failed validation: %v", err)
+	}
+
+	// Verify the generated markdown has the correct structure.
+	if !strings.Contains(md, "nb0[\"Neighbor0\"]") {
+		t.Error("missing first neighbour node definition")
+	}
+	if !strings.Contains(md, fmt.Sprintf("nb%d[\"Neighbor%d\"]", numNeighbours-1, numNeighbours-1)) {
+		t.Error("missing last neighbour node definition")
 	}
 }

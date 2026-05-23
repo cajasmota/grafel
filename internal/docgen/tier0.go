@@ -155,6 +155,12 @@ func Run(opts RunOpts) (mdPath string, scoreFile string, score Score, err error)
 	// Render the section stub.
 	md := renderSection(opts.Section, entity, neighbours)
 
+	// Validate mermaid node IDs for uniqueness.
+	if vErr := ValidateMermaidNodeIDs(md); vErr != nil {
+		err = fmt.Errorf("mermaid validation failed: %w", vErr)
+		return
+	}
+
 	// Write the markdown file.
 	mdFile := filepath.Join(outDir, sanitizeFilename(opts.SeedEntityID)+"-"+opts.Section+".md")
 	if wErr := os.WriteFile(mdFile, []byte(md), 0o644); wErr != nil {
@@ -517,8 +523,10 @@ func renderSection(section string, seed *graph.Entity, neighbours []graph.Entity
 		b.WriteString("graph LR\n")
 		if seed != nil {
 			b.WriteString(fmt.Sprintf("    seed[\"%s\"]\n", seed.Name))
-			for _, n := range neighbours {
-				b.WriteString(fmt.Sprintf("    seed --> nb[\"%s\"]\n", n.Name))
+			for i, n := range neighbours {
+				nodeID := fmt.Sprintf("nb%d", i)
+				b.WriteString(fmt.Sprintf("    %s[\"%s\"]\n", nodeID, n.Name))
+				b.WriteString(fmt.Sprintf("    seed --> %s\n", nodeID))
 			}
 		} else {
 			b.WriteString("    %% seed entity not found\n")
@@ -572,6 +580,42 @@ func sectionExpectsMermaid(section string) bool {
 		return true
 	}
 	return false
+}
+
+// ValidateMermaidNodeIDs checks that all node IDs in the mermaid stub are unique.
+// Returns an error if any node ID collisions are detected.
+func ValidateMermaidNodeIDs(md string) error {
+	// Extract all node IDs from mermaid blocks (e.g., "nb0", "nb1", "seed").
+	nodeIDPattern := regexp.MustCompile(`(?m)^\s*([a-zA-Z_]\w*)\[`)
+
+	seen := make(map[string]bool)
+	lines := strings.Split(md, "\n")
+	inMermaid := false
+
+	for _, line := range lines {
+		if strings.Contains(line, "```mermaid") {
+			inMermaid = true
+			continue
+		}
+		if strings.Contains(line, "```") && inMermaid {
+			inMermaid = false
+			continue
+		}
+		if !inMermaid {
+			continue
+		}
+
+		matches := nodeIDPattern.FindStringSubmatch(line)
+		if len(matches) > 1 {
+			nodeID := matches[1]
+			if seen[nodeID] {
+				return fmt.Errorf("duplicate mermaid node ID: %q", nodeID)
+			}
+			seen[nodeID] = true
+		}
+	}
+
+	return nil
 }
 
 // buildScore computes the SCORE.json metrics from the rendered markdown.
