@@ -61,6 +61,7 @@ func newRoot() *cobra.Command {
 		newPatternsCmd(),
 		newMCPBridgeCmd(),
 		newCleanupCmd(),
+		newDocgenCmd(),
 		newRegisterCmd(),
 		newRemoveCmd(),
 		newDeleteCmd(),
@@ -155,6 +156,11 @@ Quality:
   quality audit-orphans [--corpus] <path>     Audit orphan rate + edge hygiene; emits md or JSON
   quality bug-rate-corpus [flags] <dir>       Composite health score across a corpus of indexed groups
   quality check [--strict] <group|path>       Evaluate architectural fitness rules (.archigraph/fitness.yaml)
+
+Documentation generation:
+  docgen --tier=0 --seed-entity=<id> --section=<name>
+                                  Render ONE section for ONE entity (<30 s feedback loop)
+  docgen --list-sections          List all valid section names
 
 Agent-learned patterns (ADR-0018):
   patterns list [--needs-attention]           Show patterns table (rejected/low-conf/stale with --needs-attention)
