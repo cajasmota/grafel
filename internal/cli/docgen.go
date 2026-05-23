@@ -1,4 +1,4 @@
-// Package cli — `archigraph docgen` subcommand (Tier 0 + Tier 1 + Tier 2, issue #1760).
+// Package cli — `archigraph docgen` subcommand (Tier 0–3, issue #1760).
 //
 // Tier 0 produces ONE markdown section for ONE seed entity with a <30 s
 // feedback loop. It is designed for rapid prompt-quality iteration:
@@ -26,6 +26,13 @@
 //	  --seed-entity=abc123def456 \
 //	  --max-pages=5
 //
+// Tier 3 produces a FULL DOC SET for ONE repo within a multi-repo group.
+// Wall-time target: <20 minutes:
+//
+//	archigraph docgen --tier=3 \
+//	  --group=mygroup \
+//	  --repo=core
+//
 // Output (Tier 0):
 //
 //	~/.archigraph/docs/<group>/.tier0-<RFC3339>/<entity-id>-<section>.md
@@ -41,7 +48,13 @@
 //	~/.archigraph/docs/<group>/.tier2-<RFC3339>/<entity-id>-page.md  (N pages)
 //	~/.archigraph/docs/<group>/.tier2-<RFC3339>/score.json
 //
-// Full-group rendering (Tier 3–4) is not yet wired.
+// Output (Tier 3):
+//
+//	~/.archigraph/docs/<group>/.tier3-<RFC3339>/<repo>/index.md
+//	~/.archigraph/docs/<group>/.tier3-<RFC3339>/<repo>/<entity-id>-page.md
+//	~/.archigraph/docs/<group>/.tier3-<RFC3339>/<repo>/score.json
+//
+// Full-group rendering (Tier 4) is not yet wired.
 package cli
 
 import (
@@ -69,6 +82,7 @@ func newDocgenCmd() *cobra.Command {
 		listSecs      bool
 		maxPages      int
 		mermaidBudget int
+		repoSlug      string
 	)
 
 	cmd := &cobra.Command{
@@ -120,7 +134,25 @@ TIER 2 (--tier=2) — coherent slice path (<10 min):
     archigraph docgen --tier=2 --group=mygroup \
       --seed-entity=abc123def456 --max-pages=5
 
-TIER 3–4 — full group rendering:
+TIER 3 (--tier=3) — full repo doc set (<20 min):
+  Enumerates all page-worthy entities in ONE repo (services, packages, modules,
+  viewsets, etc.) and runs Tier 2 per seed. Generates a repo-level index.md
+  and enforces three repo-level contracts:
+    • Every page-worthy entity has a home page (repo-coverage).
+    • No two pages claim the same entity as primary (page-ownership).
+    • Repo index.md links to every generated page (repo-index).
+
+  Requires --repo <slug> (the repo slug from the group config).
+
+  Output:
+    ~/.archigraph/docs/<group>/.tier3-<timestamp>/<repo>/index.md
+    ~/.archigraph/docs/<group>/.tier3-<timestamp>/<repo>/<entity-id>-page.md
+    ~/.archigraph/docs/<group>/.tier3-<timestamp>/<repo>/score.json
+
+  Example:
+    archigraph docgen --tier=3 --group=mygroup --repo=core
+
+TIER 4 — full group rendering:
   Not yet implemented. Use the /generate-docs skill in Claude Code for
   full-group documentation generation.
 
@@ -141,14 +173,16 @@ Available sections (--section, used by --tier=0 only):
 				return runDocgenTier1(cmd, group, seedEntity, pageID, outputDir)
 			case 2:
 				return runDocgenTier2(cmd, group, seedEntity, outputDir, maxPages, mermaidBudget)
+			case 3:
+				return runDocgenTier3(cmd, group, repoSlug, outputDir, maxPages, mermaidBudget)
 			default:
-				return fmt.Errorf("--tier=%d is not yet implemented; available: 0, 1, 2", tier)
+				return fmt.Errorf("--tier=%d is not yet implemented; available: 0, 1, 2, 3", tier)
 			}
 		},
 	}
 
 	cmd.Flags().IntVar(&tier, "tier", 0,
-		"docgen tier: 0 = single section snippet (<30 s); 1 = single complete page (<120 s); 2 = coherent slice cross-page (<10 min); 3–4 = full group (not yet implemented)")
+		"docgen tier: 0 = single section snippet (<30 s); 1 = single complete page (<120 s); 2 = coherent slice cross-page (<10 min); 3 = full repo doc set (<20 min); 4 = full group (not yet implemented)")
 	cmd.Flags().IntVar(&maxPages, "max-pages", 5,
 		"maximum pages to generate for --tier=2 (seed + top-N dependents)")
 	cmd.Flags().IntVar(&mermaidBudget, "mermaid-budget", 0,
@@ -163,6 +197,8 @@ Available sections (--section, used by --tier=0 only):
 		"override output filename stem for --tier=1 (default: sanitised entity ID)")
 	cmd.Flags().StringVar(&outputDir, "output-dir", "",
 		"override output directory (default: ~/.archigraph/docs/<group>/.tier{N}-<timestamp>/)")
+	cmd.Flags().StringVar(&repoSlug, "repo", "",
+		"repo slug within the group (required for --tier=3); see group config for available slugs")
 	cmd.Flags().BoolVar(&listSecs, "list-sections", false,
 		"print all valid section names and exit")
 
@@ -323,6 +359,56 @@ func runDocgenTier2(cmd *cobra.Command, group, seedEntity, outputDir string, max
 	}
 
 	fmt.Fprintf(out, "\n  output:         %s\n", outDir)
+	fmt.Fprintf(out, "\n--- score.json ---\n")
+	scoreBytes, _ := json.MarshalIndent(score, "", "  ")
+	fmt.Fprintln(out, string(scoreBytes))
+
+	return nil
+}
+
+// runDocgenTier3 executes the Tier 3 full-repo doc set path (<20 min).
+func runDocgenTier3(cmd *cobra.Command, group, repoSlug, outputDir string, maxPages, mermaidBudget int) error {
+	resolvedGroup, err := resolveGroup(group)
+	if err != nil {
+		return err
+	}
+
+	opts := docgen.Tier3RunOpts{
+		Group:         resolvedGroup,
+		RepoSlug:      repoSlug,
+		MaxPages:      maxPages,
+		MermaidBudget: mermaidBudget,
+		OutputDir:     outputDir,
+	}
+
+	rootDir, score, err := docgen.RunTier3(opts)
+	if err != nil {
+		return fmt.Errorf("docgen tier 3: %w", err)
+	}
+
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "tier3 complete\n\n")
+	fmt.Fprintf(out, "  repo:             %s\n", score.Repo)
+	fmt.Fprintf(out, "  pages:            %d\n", score.PageCount)
+	fmt.Fprintf(out, "  slices:           %d\n", score.SliceCount)
+	fmt.Fprintf(out, "  wall:             %d ms\n", score.WallTimeMS)
+	fmt.Fprintf(out, "  tokens:           ~%d\n", score.TotalTokenCount)
+	fmt.Fprintf(out, "  index-links:      %d (unresolved: %d)\n", score.IndexLinkCount, score.IndexLinkUnresolved)
+	fmt.Fprintf(out, "  missing-coverage: %d\n", score.MissingCoverageCount)
+	fmt.Fprintf(out, "  ownership-conflicts: %d\n", score.OwnershipConflictCount)
+	fmt.Fprintf(out, "  skipped:          %d (above %d-seed cap)\n", score.SkippedBelowBudgetCount, docgen.MaxSeedsPerRepo)
+
+	totalViolations := score.MissingCoverageCount + score.OwnershipConflictCount + score.IndexLinkUnresolved
+	if totalViolations > 0 {
+		fmt.Fprintf(out, "\n  REPO-LEVEL VIOLATIONS (%d):\n", len(score.Violations))
+		for _, v := range score.Violations {
+			fmt.Fprintf(out, "    - %s\n", v)
+		}
+	} else {
+		fmt.Fprintf(out, "  contracts:        PASS\n")
+	}
+
+	fmt.Fprintf(out, "\n  output:           %s\n", rootDir)
 	fmt.Fprintf(out, "\n--- score.json ---\n")
 	scoreBytes, _ := json.MarshalIndent(score, "", "  ")
 	fmt.Fprintln(out, string(scoreBytes))
