@@ -146,7 +146,7 @@ func Run(opts RunOpts) (mdPath string, scoreFile string, score Score, err error)
 	}
 
 	// Load the group's graphs and locate the seed entity.
-	doc, entity, neighbours, _, _, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	doc, entity, neighbours, _, _, _, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return
 	}
@@ -277,7 +277,13 @@ func normalizeSeedEntityID(id string) (string, error) { return NormalizeSeedEnti
 // multiple relationships, the first edge encountered (in document iteration
 // order) wins; this is deterministic for a given graph state, which matches
 // the determinism guarantee already documented on this function.
-func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, neighbourKinds []string, seedRepo string, err error) {
+//
+// neighbourDirections is index-aligned with neighbours:
+// neighbourDirections[i] is NeighbourDirectionOutbound when the seed is the
+// source of the edge (seed → neighbour) and NeighbourDirectionInbound when the
+// seed is the target (neighbour → seed). This lets callers distinguish inbound
+// callers from outbound callees when the edge kind alone is ambiguous (#1965).
+func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, neighbourKinds []string, neighbourDirections []string, seedRepo string, err error) {
 	seedID, err = normalizeSeedEntityID(seedID)
 	if err != nil {
 		return
@@ -345,18 +351,24 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 		}
 	}
 
-	// Collect 1-hop neighbours via relationships. neighbourKinds is built in
-	// lockstep with neighbours so that downstream NeighbourBrief construction
-	// can surface the typed edge kind (#1879).
+	// Collect 1-hop neighbours via relationships. neighbourKinds and
+	// neighbourDirections are built in lockstep with neighbours so that
+	// downstream NeighbourBrief construction can surface the typed edge kind
+	// (#1879) and the direction relative to the seed (#1965).
 	seen := make(map[string]bool)
 	if seed != nil {
 		for _, rel := range allRels {
 			var neighbourID string
+			var dir string
 			switch {
 			case rel.FromID == seed.ID:
+				// Outbound: seed → neighbour (seed is the source).
 				neighbourID = rel.ToID
+				dir = NeighbourDirectionOutbound
 			case rel.ToID == seed.ID:
+				// Inbound: neighbour → seed (seed is the target).
 				neighbourID = rel.FromID
+				dir = NeighbourDirectionInbound
 			default:
 				continue
 			}
@@ -367,6 +379,7 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 			if n, ok := byID[neighbourID]; ok {
 				neighbours = append(neighbours, *n)
 				neighbourKinds = append(neighbourKinds, rel.Kind)
+				neighbourDirections = append(neighbourDirections, dir)
 			}
 		}
 	}

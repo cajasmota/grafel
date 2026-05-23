@@ -291,3 +291,119 @@ func TestBuildBundle_NeighbourBrief_FallbackToRELATED(t *testing.T) {
 			briefs[0].Relationship, docgen.NeighbourRelationshipRelated)
 	}
 }
+
+// TestBuildBundle_NeighbourBrief_Direction verifies that NeighbourBrief.Direction
+// is "outbound" when the seed is the source (seed → neighbour) and "inbound"
+// when the seed is the target (neighbour → seed). This lets docgen distinguish
+// inbound callers from outbound callees without inference (#1965).
+//
+// Fixture topology:
+//
+//	seedFn --CALLS--> callee     (outbound: seed calls callee)
+//	caller --CALLS--> seedFn     (inbound:  caller calls seed)
+func TestBuildBundle_NeighbourBrief_Direction(t *testing.T) {
+	tmp := t.TempDir()
+
+	homeDir := filepath.Join(tmp, "home")
+	xdgDir := filepath.Join(tmp, "xdg")
+	daemonRoot := filepath.Join(tmp, "daemon")
+	repoPath := filepath.Join(tmp, "myrepo")
+
+	for _, d := range []string{homeDir, xdgDir, daemonRoot, repoPath} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+
+	t.Setenv("ARCHIGRAPH_HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	t.Setenv(daemon.EnvRoot, daemonRoot)
+
+	groupName := "direction-test-group"
+
+	cfgPath, err := registry.ConfigPathFor(groupName)
+	if err != nil {
+		t.Fatalf("ConfigPathFor: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatalf("mkdir fleet config dir: %v", err)
+	}
+	fleetJSON, _ := json.Marshal(map[string]interface{}{
+		"name": groupName,
+		"repos": []map[string]interface{}{
+			{"path": repoPath, "slug": "myrepo"},
+		},
+	})
+	if err := os.WriteFile(cfgPath, fleetJSON, 0o644); err != nil {
+		t.Fatalf("write fleet config: %v", err)
+	}
+
+	// Fixed IDs for deterministic assertions.
+	seedID := "cccccccccccccccc"
+	calleeID := "dddddddddddddddd"
+	callerID := "eeeeeeeeeeeeeeee"
+
+	doc := graph.Document{
+		Version:        1,
+		GeneratedAt:    time.Now().UTC(),
+		Repo:           repoPath,
+		IndexerVersion: "test",
+		Entities: []graph.Entity{
+			{ID: seedID, Name: "useProposalCounts", Kind: "SCOPE.Operation", SourceFile: "hooks.js", Language: "javascript"},
+			{ID: calleeID, Name: "useQuery", Kind: "SCOPE.Operation", SourceFile: "react-query.js", Language: "javascript"},
+			{ID: callerID, Name: "ContractProposals", Kind: "SCOPE.Operation", SourceFile: "proposals.jsx", Language: "javascript"},
+		},
+		Relationships: []graph.Relationship{
+			// Outbound: seed calls useQuery (seed → callee).
+			{ID: "r-out", FromID: seedID, ToID: calleeID, Kind: "CALLS"},
+			// Inbound: ContractProposals calls seed (caller → seed).
+			{ID: "r-in", FromID: callerID, ToID: seedID, Kind: "CALLS"},
+		},
+	}
+	doc.Stats = graph.Stats{Files: 3, Entities: 3, Relationships: 2}
+
+	stateDir := daemon.StateDirForRepo(repoPath)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatalf("mkdir state dir: %v", err)
+	}
+	docJSON, _ := json.Marshal(doc)
+	if err := os.WriteFile(filepath.Join(stateDir, "graph.json"), docJSON, 0o644); err != nil {
+		t.Fatalf("write graph.json: %v", err)
+	}
+
+	bundle, err := docgen.BuildBundle(context.Background(), docgen.BuildBundleOpts{
+		RunOpts: docgen.RunOpts{
+			Group:        groupName,
+			SeedEntityID: seedID,
+			Section:      "overview",
+			NoCache:      true,
+		},
+		Tier:    0,
+		NoCache: true,
+	})
+	if err != nil {
+		t.Fatalf("BuildBundle: %v", err)
+	}
+
+	briefs := bundle.GraphContext.NeighbourBriefs
+	if len(briefs) != 2 {
+		t.Fatalf("expected 2 neighbour_briefs (callee + caller), got %d", len(briefs))
+	}
+
+	// Build lookup: neighbour name → direction.
+	byName := make(map[string]string, len(briefs))
+	for _, b := range briefs {
+		byName[b.Name] = b.Direction
+	}
+
+	// useQuery is called BY the seed → outbound.
+	if got := byName["useQuery"]; got != docgen.NeighbourDirectionOutbound {
+		t.Errorf("useQuery Direction=%q want %q (seed calls useQuery — outbound)",
+			got, docgen.NeighbourDirectionOutbound)
+	}
+	// ContractProposals calls the seed → inbound.
+	if got := byName["ContractProposals"]; got != docgen.NeighbourDirectionInbound {
+		t.Errorf("ContractProposals Direction=%q want %q (ContractProposals calls seed — inbound)",
+			got, docgen.NeighbourDirectionInbound)
+	}
+}

@@ -234,6 +234,52 @@ func TestFindCallers_WithCallersNoSignal(t *testing.T) {
 	}
 }
 
+// TestFindCallers_ExcludesContainsEdges verifies that CONTAINS edges (module/file
+// CONTAINS entity) are not treated as callers — only reference kinds (CALLS,
+// REFERENCES, TESTS, …) should appear in find_callers results (#1915/#1965).
+func TestFindCallers_ExcludesContainsEdges(t *testing.T) {
+	// Topology:
+	//   fileNode --CONTAINS--> hookFn   (structural: file owns the function)
+	//   callerFn --CALLS-->    hookFn   (real caller)
+	doc := minDoc(
+		[]graph.Entity{
+			{ID: "file-node", Name: "hooks.js", Kind: "SCOPE.Component", SourceFile: "hooks.js"},
+			{ID: "hook-fn", Name: "useProposalCounts", Kind: "SCOPE.Operation", SourceFile: "hooks.js", StartLine: 10},
+			{ID: "caller-fn", Name: "ContractProposals", Kind: "SCOPE.Operation", SourceFile: "proposals.jsx", StartLine: 5},
+		},
+		[]graph.Relationship{
+			// Structural containment — must NOT appear in find_callers.
+			{FromID: "file-node", ToID: "hook-fn", Kind: "CONTAINS"},
+			// Real caller — MUST appear in find_callers.
+			{FromID: "caller-fn", ToID: "hook-fn", Kind: "CALLS"},
+		},
+	)
+	srv := newTestServerWithDoc(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "hook-fn",
+		"depth":     float64(1),
+	})
+
+	callers, ok := out["callers"].([]any)
+	if !ok {
+		t.Fatalf("expected callers array, got %T", out["callers"])
+	}
+	if len(callers) != 1 {
+		names := make([]string, 0, len(callers))
+		for _, c := range callers {
+			if cm, ok := c.(map[string]any); ok {
+				names = append(names, fmt.Sprintf("%v", cm["name"]))
+			}
+		}
+		t.Fatalf("expected exactly 1 caller (ContractProposals), got %d: %v", len(callers), names)
+	}
+	first := callers[0].(map[string]any)
+	if first["name"] != "ContractProposals" {
+		t.Errorf("expected caller=ContractProposals, got %v", first["name"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestFindCallees
 // ---------------------------------------------------------------------------

@@ -80,7 +80,11 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 			continue
 		}
 
-		// BFS over inbound-only adjacency.
+		// BFS over inbound-only adjacency, restricted to reference kinds
+		// (CALLS, REFERENCES, TESTS, ROUTES_TO, etc.). CONTAINS is excluded:
+		// a module/file that CONTAINS an entity is not a caller. Without this
+		// filter find_callers was returning CONTAINS-linked parent nodes and
+		// other structural edges as fake "callers" (#1915).
 		adj := r.Adjacency
 		visited := map[string]int{target: 0}
 		frontier := []string{target}
@@ -88,6 +92,9 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 			next := []string{}
 			for _, n := range frontier {
 				for _, e := range adj.in[n] {
+					if !inboundRefKinds[e.kind] {
+						continue
+					}
 					if _, seen := visited[e.target]; seen {
 						continue
 					}
