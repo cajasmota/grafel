@@ -1,0 +1,14 @@
+def parse_response(data):
+    return data.get('result', None)
+
+
+def format_date(dt):
+    return dt.strftime('%Y-%m-%d')
+
+
+class DateHelper:
+    def __init__(self):
+        self.fmt = '%Y-%m-%d'
+
+    def format(self, dt):
+        return dt.strftime(self.fmt)

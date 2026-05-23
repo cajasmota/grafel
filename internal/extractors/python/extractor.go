@@ -256,12 +256,22 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// source_module / imported_name properties.
 	resolveImportToIDs(entities)
 
+	// Issue #1775 — supplemental config-module pass.
+	// Runs after all primary extraction passes so it can observe the full
+	// entity list and emit a SCOPE.Config/config_module entity for files
+	// that would otherwise surface no semantic entities (e.g. settings.py
+	// with only module-level assignments) OR are canonical config files by
+	// name (e.g. manage.py, celery.py) even when they do carry functions.
+	// The pass never removes or modifies existing entities.
+	configModuleEmitted := emitConfigModuleEntity(root, file, &entities)
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("function_count", functionCount),
 		attribute.Int("class_count", classCount),
 		attribute.Int("error_pattern_count", len(errorPatterns)),
 		attribute.Int("import_count", importCount),
+		attribute.Bool("config_module_emitted", configModuleEmitted),
 	)
 	// Issue #90 — stamp Properties["language"]="python" on every embedded
 	// relationship so the resolver's per-language dynamic-pattern dispatch

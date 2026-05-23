@@ -1,0 +1,23 @@
+DEBUG = True
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'myapp',
+]
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'mydb',
+    }
+}
+
+SECRET_KEY = 'super-secret-key-here'
+
+ALLOWED_HOSTS = ['*']
+
+STATIC_URL = '/static/'
+
+MEDIA_ROOT = '/var/media/'
