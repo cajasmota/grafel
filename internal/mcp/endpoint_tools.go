@@ -37,6 +37,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -207,7 +208,7 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-	limit := argInt(req, "limit", 50)
+	limit := argInt(req, "limit", 20)
 	pathContains := strings.ToLower(argString(req, "path_contains", ""))
 	method := strings.ToUpper(argString(req, "method", ""))
 	verbose := argBool(req, "verbose", false)
@@ -263,22 +264,36 @@ func (s *Server) handleEndpointDefinitions(_ context.Context, req mcpapi.CallToo
 	offset := argInt(req, "offset", 0)
 	out = pageSlice(out, offset, limit)
 
-	// Token-budget guard: if even after limit the payload would still be too
-	// large for the harness, shed entries from the tail until we're under
-	// ~64 KB. This prevents the Finding #2 overflow on dense corpuses.
-	const maxRenderBytes = 64 * 1024
-	out = capByRenderedBytes(out, maxRenderBytes, !verbose)
+	// Token-budget guard: shed entries from the tail until under budget.
+	// default 800 tokens ≈ 3,200 bytes; hard ceiling 64 KB.
+	tokenBudget := argInt(req, "token_budget", 800)
+	if tokenBudget < 100 {
+		tokenBudget = 100
+	}
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+	preCapLen := len(out)
+	out = capByRenderedBytes(out, budgetBytes, !verbose)
 
 	resp := map[string]any{
-		"definitions":  out,
-		"count":        len(out),
-		"total":        total,
-		"offset":       offset,
-		"truncated":    offset+len(out) < total,
-		"verbose":      verbose,
+		"definitions":   out,
+		"count":         len(out),
+		"total":         total,
+		"offset":        offset,
+		"truncated":     offset+len(out) < total,
+		"verbose":       verbose,
 		"path_contains": pathContains,
-		"method":       method,
-		"note":         "verbose=false (default) returns terse one-line shape. Use path_contains/method to narrow; limit caps rendered size, not just record count.",
+		"method":        method,
+		"token_budget":  tokenBudget,
+		"note":          "verbose=false (default) returns terse one-line shape. Use path_contains/method to narrow; limit/token_budget cap rendered size.",
+	}
+	if preCapLen > len(out) {
+		resp["truncation_note"] = fmt.Sprintf(
+			"response capped at token_budget=%d (~%d bytes); %d definitions omitted — pass a larger token_budget or use limit=N",
+			tokenBudget, budgetBytes, preCapLen-len(out),
+		)
 	}
 	if !verbose {
 		resp["lines"] = renderTerseDefinitions(out)
@@ -386,7 +401,7 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		return errRes, nil
 	}
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
-	limit := argInt(req, "limit", 50)
+	limit := argInt(req, "limit", 20)
 	orphanOnly := argBool(req, "orphan_only", false)
 	pathContains := strings.ToLower(argString(req, "path_contains", ""))
 	method := strings.ToUpper(argString(req, "method", ""))
@@ -534,8 +549,17 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 	total := len(out)
 	offset := argInt(req, "offset", 0)
 	out = pageSlice(out, offset, limit)
-	const maxRenderBytes = 64 * 1024
-	out = capByRenderedBytes(out, maxRenderBytes, !verbose)
+	// Token-budget guard: shed entries from the tail until under budget.
+	tokenBudget := argInt(req, "token_budget", 800)
+	if tokenBudget < 100 {
+		tokenBudget = 100
+	}
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+	preCapLen := len(out)
+	out = capByRenderedBytes(out, budgetBytes, !verbose)
 	resp := map[string]any{
 		"calls":         out,
 		"count":         len(out),
@@ -545,7 +569,14 @@ func (s *Server) handleEndpointCalls(_ context.Context, req mcpapi.CallToolReque
 		"verbose":       verbose,
 		"path_contains": pathContains,
 		"method":        method,
+		"token_budget":  tokenBudget,
 		"note":          "verbose=false (default) returns terse one-line shape. path_contains/method narrow server-side; cross-repo link matches surface as matched_definition=\"cross_repo_link\".",
+	}
+	if preCapLen > len(out) {
+		resp["truncation_note"] = fmt.Sprintf(
+			"response capped at token_budget=%d (~%d bytes); %d calls omitted — pass a larger token_budget or use limit=N",
+			tokenBudget, budgetBytes, preCapLen-len(out),
+		)
 	}
 	if !verbose {
 		lines := make([]terseLine, 0, len(out))
