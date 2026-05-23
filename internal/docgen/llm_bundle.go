@@ -23,6 +23,7 @@
 package docgen
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -133,6 +134,11 @@ type LLMGraphContext struct {
 	// endpoints, and models. Populated only for Module-kind seeds (#1881).
 	// Nil for non-Module seeds.
 	ModuleManifest *ModuleManifest `json:"module_manifest,omitempty"`
+	// SourceWindowFallback is true when SourceWindow was populated via the
+	// by-name fallback path because the entity carried a 0 sentinel for
+	// start_line or end_line. Tracked so downstream consumers can audit
+	// how often the extractors emit broken positions (issue #1964).
+	SourceWindowFallback bool `json:"source_window_fallback,omitempty"`
 }
 
 // ModuleReadme holds the README content embedded into a Module bundle (#1880).
@@ -653,70 +659,107 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		// On error (file deleted, fsevents stall, etc.) we leave the field empty
 		// and log a warning — a missing source window must not fail the bundle.
 		const sourceWindowHalfLines = 20
-		if entity.SourceFile != "" && entity.StartLine > 0 {
+		if entity.SourceFile != "" {
 			absPath := filepath.Join(seedRepo, entity.SourceFile)
 
 			// Resolve the section profile for this entity to pick the strategy.
 			entityProfile := ResolveSectionProfile(entity.Kind, entity.Language)
 
-			var startLine, endLine int
-			var truncatedAt int // non-zero when the whole-body cap fires
-
-			switch entityProfile.SourceWindowStrategy {
-			case SourceWindowStrategyWholeBody:
-				// Emit from start_line to end_line (whole class body).  Fall back
-				// to the default window when end_line is missing or equals 0 (the
-				// end_line=0 sentinel bug tracked in #1868 is not yet fixed).
-				startLine = entity.StartLine
-				if entity.EndLine > entity.StartLine {
-					endLine = entity.EndLine
-				} else {
-					// end_line absent: fall back to default window so the output
-					// is still useful rather than a 1-line stub.
-					endLine = entity.StartLine + sourceWindowHalfLines
+			// Issue #1964 — when start_line OR end_line is the 0 sentinel
+			// (the extractor failed to capture boundaries) try to recover
+			// the real positions by locating the entity declaration by
+			// name + kind inside the source file. Tag the bundle with
+			// SourceWindowFallback so downstream tooling can audit how
+			// often this fires.
+			startSentinel := entity.StartLine <= 0
+			endSentinel := entity.EndLine <= 0
+			fallbackUsed := false
+			effectiveStart := entity.StartLine
+			effectiveEnd := entity.EndLine
+			if startSentinel || endSentinel {
+				if recStart, recEnd, ok := findEntityLinesByName(absPath, entity); ok {
+					if startSentinel {
+						effectiveStart = recStart
+					}
+					if endSentinel || effectiveEnd < effectiveStart {
+						effectiveEnd = recEnd
+					}
+					fallbackUsed = true
 				}
-				// Apply the safety cap (#1876 spec: 400 lines, log a warning).
-				if endLine-startLine+1 > SourceWindowWholeBodyMaxLines {
-					truncatedAt = startLine + SourceWindowWholeBodyMaxLines - 1
-					endLine = truncatedAt
+			}
+
+			// Without a usable start line we cannot build a window — bail
+			// gracefully (rest of bundle is still valid).
+			if effectiveStart <= 0 {
+				goto skipSourceWindow
+			}
+
+			{
+				var startLine, endLine int
+				var truncatedAt int // non-zero when the whole-body cap fires
+
+				switch entityProfile.SourceWindowStrategy {
+				case SourceWindowStrategyWholeBody:
+					// Emit from start_line to end_line (whole class body).  Fall back
+					// to the default window when end_line is missing or equals 0 (the
+					// end_line=0 sentinel bug tracked in #1964; this fix lands the
+					// recovery for that sentinel so #1918 can rely on real bounds).
+					startLine = effectiveStart
+					if effectiveEnd > effectiveStart {
+						endLine = effectiveEnd
+					} else {
+						// end_line absent and by-name fallback also failed:
+						// emit a default window so output is still useful
+						// rather than a 1-line stub.
+						endLine = effectiveStart + sourceWindowHalfLines
+					}
+					// Apply the safety cap (#1876 spec: 400 lines, log a warning).
+					if endLine-startLine+1 > SourceWindowWholeBodyMaxLines {
+						truncatedAt = startLine + SourceWindowWholeBodyMaxLines - 1
+						endLine = truncatedAt
+						fmt.Fprintf(os.Stderr,
+							"docgen: source_window: Model entity %q body exceeds %d-line cap — "+
+								"clipping at line %d (end_line=%d); set truncated_at_line annotation\n",
+							entity.ID, SourceWindowWholeBodyMaxLines, truncatedAt, effectiveEnd)
+					}
+				default:
+					// SourceWindowStrategyDefault: ±20 lines around start_line.
+					startLine = effectiveStart - sourceWindowHalfLines
+					if startLine < 1 {
+						startLine = 1
+					}
+					endLine = effectiveEnd + sourceWindowHalfLines
+					if endLine < effectiveStart+sourceWindowHalfLines {
+						endLine = effectiveStart + sourceWindowHalfLines
+					}
+				}
+
+				if sw, swErr := mcp.ReadSourceWindow(absPath, startLine, endLine); swErr != nil {
+					// Non-fatal: log and continue — the rest of the bundle is valid.
+					// Include the resolved absolute path, the original entity SourceFile,
+					// the repo root, and the current working directory so that future
+					// debugging is easy (#1834).
+					cwd, _ := os.Getwd()
 					fmt.Fprintf(os.Stderr,
-						"docgen: source_window: Model entity %q body exceeds %d-line cap — "+
-							"clipping at line %d (end_line=%d); set truncated_at_line annotation\n",
-						entity.ID, SourceWindowWholeBodyMaxLines, truncatedAt, entity.EndLine)
-				}
-			default:
-				// SourceWindowStrategyDefault: ±20 lines around start_line.
-				startLine = entity.StartLine - sourceWindowHalfLines
-				if startLine < 1 {
-					startLine = 1
-				}
-				endLine = entity.EndLine + sourceWindowHalfLines
-				if endLine < entity.StartLine+sourceWindowHalfLines {
-					endLine = entity.StartLine + sourceWindowHalfLines
+						"docgen: source_window: cannot read source file for entity %q:\n"+
+							"  resolved path : %s\n"+
+							"  entity source : %s\n"+
+							"  repo root     : %s\n"+
+							"  cwd           : %s\n"+
+							"  error         : %v\n",
+						entity.ID, absPath, entity.SourceFile, seedRepo, cwd, swErr)
+				} else {
+					if truncatedAt > 0 {
+						sw += fmt.Sprintf("\n# truncated_at_line: %d (body exceeds %d-line cap; full end_line=%d)\n",
+							truncatedAt, SourceWindowWholeBodyMaxLines, effectiveEnd)
+					}
+					gc.SourceWindow = sw
+					if fallbackUsed {
+						gc.SourceWindowFallback = true
+					}
 				}
 			}
-
-			if sw, swErr := mcp.ReadSourceWindow(absPath, startLine, endLine); swErr != nil {
-				// Non-fatal: log and continue — the rest of the bundle is valid.
-				// Include the resolved absolute path, the original entity SourceFile,
-				// the repo root, and the current working directory so that future
-				// debugging is easy (#1834).
-				cwd, _ := os.Getwd()
-				fmt.Fprintf(os.Stderr,
-					"docgen: source_window: cannot read source file for entity %q:\n"+
-						"  resolved path : %s\n"+
-						"  entity source : %s\n"+
-						"  repo root     : %s\n"+
-						"  cwd           : %s\n"+
-						"  error         : %v\n",
-					entity.ID, absPath, entity.SourceFile, seedRepo, cwd, swErr)
-			} else {
-				if truncatedAt > 0 {
-					sw += fmt.Sprintf("\n# truncated_at_line: %d (body exceeds %d-line cap; full end_line=%d)\n",
-						truncatedAt, SourceWindowWholeBodyMaxLines, entity.EndLine)
-				}
-				gc.SourceWindow = sw
-			}
+		skipSourceWindow:
 		}
 
 		// Populate ClassManifest when the seed entity is class-like (#1861).
@@ -1440,4 +1483,159 @@ func BundleHashValid(bundle *LLMPromptBundle, result *LLMRunResult) error {
 			bundle.PromptHash, result.PromptHash)
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Source-window by-name fallback (#1964)
+// ---------------------------------------------------------------------------
+
+// findEntityLinesByName scans path for a declaration whose name + entity kind
+// match e and returns the 1-indexed (start, end) line range when a usable
+// match is found. Used by BuildBundle when the extractor emits the 0
+// sentinel for start_line or end_line (issue #1964). Returns ok=false when
+// the file cannot be read or no match is found; in that case the caller
+// must fall back to whatever sentinel-aware defaults already exist.
+//
+// The match is intentionally regex-driven and language-aware on a
+// best-effort basis: when we cannot find a clear declaration we return
+// false rather than guessing.
+//
+//   - Python  def / async def / class declarations
+//   - JS / TS function / arrow / class declarations
+//   - Otherwise the FIRST line containing the bare name surrounded by
+//     non-identifier chars is used (with end_line = start + 20 fallback).
+func findEntityLinesByName(path string, e *graph.Entity) (start, end int, ok bool) {
+	if e == nil || e.Name == "" {
+		return 0, 0, false
+	}
+	f, err := os.Open(path) //nolint:gosec // path is constructed inside repo root
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+
+	// Strip any dotted class prefix the extractor encoded on methods
+	// ("ClassName.methodName" → "methodName"). For Python and JS/TS the
+	// declaration in source is the bare leaf identifier.
+	leafName := e.Name
+	if idx := strings.LastIndex(leafName, "."); idx >= 0 {
+		leafName = leafName[idx+1:]
+	}
+	if leafName == "" {
+		return 0, 0, false
+	}
+
+	patterns := entityDeclPatterns(leafName, e.Kind, e.Subtype)
+	scanner := bufio.NewScanner(f)
+	// Allow long lines (default 64 KiB is too small for minified bundles).
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	lineNum := 0
+	startLine := 0
+	lastBodyLine := 0 // last non-blank line whose indent is INSIDE the body
+	indent := -1
+	bodyLooksBraced := false
+	openBraces := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		if startLine == 0 {
+			for _, re := range patterns {
+				if re.MatchString(line) {
+					startLine = lineNum
+					lastBodyLine = lineNum
+					indent = leadingIndent(line)
+					if strings.Contains(line, "{") {
+						bodyLooksBraced = true
+						openBraces += strings.Count(line, "{") - strings.Count(line, "}")
+					}
+					break
+				}
+			}
+			continue
+		}
+		// Track end position via indent (Python) or brace balance (JS / TS).
+		if bodyLooksBraced {
+			openBraces += strings.Count(line, "{") - strings.Count(line, "}")
+			if openBraces <= 0 {
+				return startLine, lineNum, true
+			}
+			continue
+		}
+		// Python-style indent rule: body ends at the LAST non-blank line
+		// whose indent is greater than the declaration indent. Blank lines
+		// neither terminate nor extend the body.
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		curIndent := leadingIndent(line)
+		if curIndent <= indent {
+			if lastBodyLine == 0 {
+				lastBodyLine = startLine
+			}
+			return startLine, lastBodyLine, true
+		}
+		lastBodyLine = lineNum
+	}
+	if startLine == 0 {
+		return 0, 0, false
+	}
+	if lastBodyLine == 0 {
+		return startLine, startLine, true
+	}
+	return startLine, lastBodyLine, true
+}
+
+// leadingIndent returns the number of leading space-or-tab columns on line.
+// Tabs count as 1 column (consistent with Python's tokenize), which is
+// sufficient for the indent-decreases-to-end-of-block heuristic used here.
+func leadingIndent(line string) int {
+	n := 0
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if c == ' ' || c == '\t' {
+			n++
+			continue
+		}
+		break
+	}
+	return n
+}
+
+// entityDeclPatterns returns the ordered list of declaration regexes to try
+// when locating an entity by name. The first match wins; callers should
+// supply the entity's leaf name (no dotted prefix).
+func entityDeclPatterns(name, kind, subtype string) []*regexp.Regexp {
+	q := regexp.QuoteMeta(name)
+	var out []*regexp.Regexp
+
+	// Prefer kind / subtype-specific patterns when we know what to look for.
+	switch {
+	case subtype == "class" || strings.Contains(strings.ToLower(kind), "model") ||
+		strings.Contains(strings.ToLower(kind), "component"):
+		// Python:  class Foo(...):       JS / TS:  class Foo {
+		out = append(out,
+			regexp.MustCompile(`(?m)^\s*class\s+`+q+`\b`),
+		)
+	case subtype == "method" || subtype == "function" || strings.Contains(strings.ToLower(kind), "operation"):
+		// Python:  def Foo(... | async def Foo(...
+		// JS/TS:   function Foo(... | const Foo = (... => | Foo(... { (method)
+		out = append(out,
+			regexp.MustCompile(`(?m)^\s*(?:async\s+)?def\s+`+q+`\s*\(`),
+			regexp.MustCompile(`(?m)^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+`+q+`\s*\(`),
+			regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:const|let|var)\s+`+q+`\s*[:=]`),
+			regexp.MustCompile(`(?m)^\s*`+q+`\s*\([^)]*\)\s*\{`),
+		)
+	}
+
+	// Generic fallback: a Python or JS/TS declaration line carrying the
+	// bare name. Last in the priority order.
+	out = append(out,
+		regexp.MustCompile(`(?m)^\s*(?:async\s+)?def\s+`+q+`\b`),
+		regexp.MustCompile(`(?m)^\s*class\s+`+q+`\b`),
+		regexp.MustCompile(`(?m)^\s*(?:export\s+(?:default\s+)?)?function\s+`+q+`\b`),
+		regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:const|let|var)\s+`+q+`\b`),
+	)
+	return out
 }
