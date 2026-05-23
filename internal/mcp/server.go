@@ -264,7 +264,7 @@ func (s *Server) registerTools() {
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_source",
 		mcpapi.WithDescription("Return source for a node; accepts id, qualified_name, or label."),
-		mcpapi.WithString("node_id", mcpapi.Required()),
+		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(20)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -272,7 +272,7 @@ func (s *Server) registerTools() {
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find",
 		mcpapi.WithDescription("BM25 graph query, de-noised. verbose=true: wide. min_score=0.15 trims tail."),
-		mcpapi.WithString("question", mcpapi.Required()),
+		mcpapi.WithString("query", mcpapi.Required()),
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),

@@ -2689,8 +2689,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	// and IsError=true results, so this test validates both paths.
 	minimalArgs := map[string]map[string]any{
 		"archigraph_whoami":               {"group": "g"},
-		"archigraph_get_source":           {"group": "g", "node_id": "DashboardScreen"},
-		"archigraph_find":                 {"group": "g", "question": "DashboardScreen"},
+		"archigraph_get_source":           {"group": "g", "entity_id": "DashboardScreen"},
+		"archigraph_find":                 {"group": "g", "query": "DashboardScreen"},
 		"archigraph_inspect":              {"group": "g", "label_or_id": "DashboardScreen"},
 		"archigraph_expand":               {"group": "g", "node": "DashboardScreen"},
 		"archigraph_trace":                {"group": "g", "source": "r1::a1", "target": "r1::a4"},
