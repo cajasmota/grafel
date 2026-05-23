@@ -358,6 +358,13 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/flows/{group}/{processId}", s.handleFlowDetail)
 	mux.HandleFunc("POST /api/flows/{group}/{processId}/trigger-enrichment", s.handleTriggerEnrichment)
 
+	// API event-flows (#1944 Phase 1) — multi-hop pub/sub chains seeded
+	// by channels (SCOPE.MessageTopic / SCOPE.EventBusEvent). Reuses the
+	// Flows DAG renderer on the frontend; this surface emits the same
+	// chain/branches_dag contract as /api/flows.
+	mux.HandleFunc("GET /api/event-flows/{group}", s.handleEventFlowsList)
+	mux.HandleFunc("GET /api/event-flows/{group}/{eventFlowId}", s.handleEventFlowDetail)
+
 	// API paths / contracts
 	mux.HandleFunc("GET /api/paths/{group}", s.handlePathsList)
 	mux.HandleFunc("GET /api/paths/{group}/orphan-callers", s.handleOrphanCallers)

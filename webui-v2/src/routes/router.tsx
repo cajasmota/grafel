@@ -16,6 +16,7 @@ import PrimitivesShowcase from "@/components/showcase/primitives-showcase";
 
 import GraphScreen from "./graph";
 import FlowsScreen from "./flows";
+import EventFlowsScreen from "./event-flows";
 import TopologyScreen from "./topology";
 import PathsScreen from "./paths";
 import DocsScreen from "./docs";
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
           { index: true, element: <GraphScreen />, handle: { surfaceLabel: "Graph" } },
           { path: "graph", element: <GraphScreen />, handle: { surfaceLabel: "Graph" } },
           { path: "flows", element: <FlowsScreen />, handle: { surfaceLabel: "Flows" } },
+          { path: "event-flows", element: <EventFlowsScreen />, handle: { surfaceLabel: "Event Flows" } },
           { path: "topology", element: <TopologyScreen />, handle: { surfaceLabel: "Topology" } },
           { path: "paths", element: <PathsScreen />, handle: { surfaceLabel: "Paths" } },
           { path: "docs", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },
