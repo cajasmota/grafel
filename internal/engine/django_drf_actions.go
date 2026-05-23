@@ -165,6 +165,30 @@ var drfExplicitMethodRe = regexp.MustCompile(
 	`\bdef\s+(list|create|retrieve|update|partial_update|destroy)\s*\(\s*self`,
 )
 
+// drfHTTPMethodNamesRe captures the `http_method_names = ['get', 'post', ...]`
+// class-attribute assignment that DRF View / ViewSet classes use to restrict
+// the set of HTTP verbs accepted by the dispatcher. When present, ONLY the
+// listed verbs are routed — every other CRUD method that maps to an
+// unlisted verb is silently dropped at request time. Mirroring this gate
+// here turns CRUD-method derived verbs that would never actually run into
+// no-ops, which is essential for ViewSets like `RefreshViewSet(viewsets.ViewSet,
+// TokenRefreshView)` with `http_method_names=['post']` + explicit `def create()`
+// — without this gate the verb stays ANY (#1648).
+var drfHTTPMethodNamesRe = regexp.MustCompile(
+	`http_method_names\s*=\s*[\[\(]([^\]\)]+)[\]\)]`,
+)
+
+// crudMethodToVerb maps a DRF CRUD method name to the HTTP verb DRF wires it
+// to. This is the canonical DRF dispatch table.
+var crudMethodToVerb = map[string]string{
+	"list":           "GET",
+	"create":         "POST",
+	"retrieve":       "GET",
+	"update":         "PUT",
+	"partial_update": "PATCH",
+	"destroy":        "DELETE",
+}
+
 // drfViewSetClass describes a ViewSet class located on disk and parsed for
 // its CRUD method support + @action endpoints + lookup_field override.
 type drfViewSetClass struct {
@@ -1323,6 +1347,62 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 		if len(m) >= 2 {
 			out.explicitMethods[m[1]] = true
 		}
+	}
+
+	// Issue #1648 — merge explicitly-defined CRUD methods into crudMethods.
+	// A ViewSet whose base class doesn't include a CRUD mixin (e.g. bare
+	// `viewsets.ViewSet`) can still expose CRUD verbs by directly defining
+	// `def create(self, ...)` / `def list(self, ...)` etc. Previously these
+	// classes ended up with an empty crudMethods set, which caused
+	// emitOneCRUDFamily to skip every per-verb emission and fall through to
+	// the ANY catch-all — producing the verb-collapsed
+	// `http:ANY:/api/v1/auth/refresh` entries that defeat verb-aware call→def
+	// matching on the consumer side. Merging the explicit set restores the
+	// per-verb signal for these classes.
+	if out.crudMethods == nil {
+		out.crudMethods = map[string]bool{}
+	}
+	for name := range out.explicitMethods {
+		out.crudMethods[name] = true
+	}
+
+	// Issue #1648 — honour `http_method_names = [...]`. DRF treats this
+	// class-level attribute as an absolute filter: the dispatcher only
+	// routes requests whose verb appears in the list, regardless of which
+	// CRUD methods the class otherwise defines. Without applying this gate
+	// here we would emit phantom verbs (e.g. GET/PUT/PATCH/DELETE on a
+	// POST-only viewset) which dilutes the verb signal even though the
+	// emission is per-verb.
+	if m := drfHTTPMethodNamesRe.FindStringSubmatch(classBody); len(m) >= 2 {
+		allowed := parseHTTPMethodNames(m[1])
+		if len(allowed) > 0 {
+			filtered := map[string]bool{}
+			for name := range out.crudMethods {
+				if verb, ok := crudMethodToVerb[name]; ok && allowed[verb] {
+					filtered[name] = true
+				}
+			}
+			out.crudMethods = filtered
+		}
+	}
+
+	return out
+}
+
+// parseHTTPMethodNames parses the comma-separated argument list of
+// `http_method_names = [...]` into a set of UPPERCASE HTTP verbs. Single and
+// double-quoted entries are both accepted; whitespace and bare identifiers
+// are tolerated.
+func parseHTTPMethodNames(args string) map[string]bool {
+	out := map[string]bool{}
+	for _, raw := range strings.Split(args, ",") {
+		s := strings.TrimSpace(raw)
+		s = strings.Trim(s, "\"'")
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		out[strings.ToUpper(s)] = true
 	}
 	return out
 }

@@ -364,6 +364,117 @@ router.register(r"mystery", MysteryViewSet)
 	})
 }
 
+// TestApplyDjangoDRFRoutes_ExplicitCreateOnBareViewSet verifies Issue #1648.
+// A ViewSet whose base class is just `viewsets.ViewSet` (no CRUD mixins) but
+// which explicitly defines `def create(self, ...)` must emit a per-verb POST
+// endpoint at the bare prefix, not collapse to a verb-less ANY entry. This is
+// the upvate RefreshViewSet shape — without the fix every consumer-side
+// `POST /api/v1/auth/refresh` call falls into the verb-agnostic ANY bucket
+// and the cross-repo matcher can't tell apart a real POST from an accidental
+// GET / DELETE caller.
+func TestApplyDjangoDRFRoutes_ExplicitCreateOnBareViewSet(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import RefreshViewSet
+
+router = routers.DefaultRouter()
+router.register(r"auth/refresh", RefreshViewSet)
+`,
+		"views.py": `
+from rest_framework import viewsets
+
+class RefreshViewSet(viewsets.ViewSet):
+    http_method_names = ['post']
+
+    def create(self, request):
+        return None
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+	// Must emit the per-verb POST at the bare prefix (driven by the explicit
+	// `def create` + `http_method_names=['post']`).
+	assertHasAllIDs(t, got, []string{
+		"http:POST:/auth/refresh",
+	})
+	// Must NOT emit phantom verbs filtered out by http_method_names=['post'].
+	// In particular GET/list and DELETE/destroy/PUT/PATCH are forbidden by
+	// the http_method_names gate, so they should never appear.
+	assertHasNoneIDs(t, got, []string{
+		"http:GET:/auth/refresh",
+		"http:GET:/auth/refresh/{pk}",
+		"http:DELETE:/auth/refresh/{pk}",
+		"http:PUT:/auth/refresh/{pk}",
+		"http:PATCH:/auth/refresh/{pk}",
+	})
+}
+
+// TestApplyDjangoDRFRoutes_HTTPMethodNamesFiltersModelViewSet verifies that
+// `http_method_names = ['post']` on a ModelViewSet correctly suppresses every
+// CRUD method whose verb is NOT in the list. Mirrors Django REST Framework's
+// dispatch behaviour: the verb gate runs BEFORE the method handler is
+// resolved, so verbs not listed are simply unreachable in production.
+func TestApplyDjangoDRFRoutes_HTTPMethodNamesFiltersModelViewSet(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import LoginViewSet
+
+router = routers.DefaultRouter()
+router.register(r"auth/login", LoginViewSet)
+`,
+		"views.py": `
+from rest_framework import viewsets
+
+class LoginViewSet(viewsets.ModelViewSet):
+    http_method_names = ['post']
+
+    def create(self, request, *args, **kwargs):
+        return None
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+	assertHasAllIDs(t, got, []string{
+		"http:POST:/auth/login",
+	})
+	// ModelViewSet would normally emit GET/PUT/PATCH/DELETE at the detail
+	// path, but http_method_names=['post'] eliminates every non-POST verb.
+	assertHasNoneIDs(t, got, []string{
+		"http:GET:/auth/login",
+		"http:GET:/auth/login/{pk}",
+		"http:PUT:/auth/login/{pk}",
+		"http:PATCH:/auth/login/{pk}",
+		"http:DELETE:/auth/login/{pk}",
+	})
+}
+
+// TestParseHTTPMethodNames covers the small parser used by parseViewSetClass
+// when filtering CRUD methods through the http_method_names class attribute.
+func TestParseHTTPMethodNames(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string // sorted UPPERCASE verbs
+	}{
+		{`'post'`, []string{"POST"}},
+		{`"post"`, []string{"POST"}},
+		{`'get', 'post'`, []string{"GET", "POST"}},
+		{`"get", "post", "patch"`, []string{"GET", "PATCH", "POST"}},
+		{`  'post' ,  'put'  `, []string{"POST", "PUT"}},
+		{``, nil},
+	}
+	for _, tc := range tests {
+		got := parseHTTPMethodNames(tc.in)
+		gotKeys := make([]string, 0, len(got))
+		for k := range got {
+			gotKeys = append(gotKeys, k)
+		}
+		sort.Strings(gotKeys)
+		if !equalStringSlicesDRF(gotKeys, tc.want) {
+			t.Errorf("parseHTTPMethodNames(%q) = %v, want %v", tc.in, gotKeys, tc.want)
+		}
+	}
+}
+
 // TestParseActionArgs verifies the @action decorator argument parser.
 func TestParseActionArgs(t *testing.T) {
 	tests := []struct {
