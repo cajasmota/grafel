@@ -51,6 +51,21 @@ function getCtx(): AudioContext | null {
 }
 
 /**
+ * Suspend the shared AudioContext so any residual oscillator nodes stop
+ * producing output immediately. Called on route unmount (#1954) to silence
+ * audio that may be mid-play when the user navigates away from the graph view.
+ * The context is resumed automatically by playStepBlip() on the next blip.
+ */
+export function suspendAudioCtx(): void {
+  if (!ctx || ctx.state === "suspended" || ctx.state === "closed") return;
+  try {
+    void ctx.suspend();
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
  * Play a short sine-wave blip. No-op on failure (unsupported, suspended,
  * etc.) — audio is strictly optional polish.
  */

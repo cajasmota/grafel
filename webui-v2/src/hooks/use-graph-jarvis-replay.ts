@@ -31,7 +31,7 @@ import {
   useFlowAnim,
 } from "@/lib/flow-animation";
 import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
-import { playStepBlip, readGraphAudio, writeGraphAudio } from "@/lib/graph-audio";
+import { playStepBlip, readGraphAudio, suspendGraphAudio, writeGraphAudio } from "@/lib/graph-audio";
 import type { MCPActivityEvent } from "./use-mcp-activity";
 import type { JarvisStep } from "@/components/graph/graph-jarvis-overlay";
 
@@ -178,21 +178,27 @@ export function useGraphJarvisReplay(
 
   // Controller lifecycle (StrictMode-safe).
   // -----------------------------------------------------------------
-  // Earlier versions of this hook created the controller inside a
-  // useEffect and stopped it in the cleanup. Under React 18 StrictMode
-  // dev mode the cleanup runs between the double-invoked mount, which
-  // leaves the controller in state STOPPED — the user clicks Replay-all
-  // and the engine fires the first couple of arrivals before its still-
-  // pending interStepTimer gets cleared by the cleanup, then freezes.
-  //
   // We own the controller in a ref that we (re)build in the render phase
   // ONLY when the engine is idle (no replay in flight) AND the total step
   // count has shifted. This survives the StrictMode dev double-render
   // because the second render sees `controllerStepsRef.current === totalSteps`
-  // and skips the rebuild path. There's NO useEffect cleanup that could
-  // clobber a running engine.
+  // and skips the rebuild path.
+  //
+  // StrictMode cleanup problem (pre-#1954 fix): if we stopped the controller in
+  // a plain useEffect cleanup, React 18 StrictMode dev-mode would fire that
+  // cleanup between the double-mount, clobbering the running rAF and freezing
+  // the engine at step 2.
+  //
+  // Solution: track whether the component has completed its FIRST committed
+  // mount via `mountedRef`. On the StrictMode double-mount the cleanup runs
+  // before `mountedRef` is set to true; we therefore skip the stop(). On a
+  // REAL route unmount the cleanup runs after mount committed, so we stop().
+  // This gives correct teardown on navigation without breaking dev-mode replay.
   const controllerRef = useRef<FlowAnimController | null>(null);
   const controllerStepsRef = useRef<number>(-2);
+  // True after the first real commit (set in useEffect, which only runs after
+  // the browser has painted, not during StrictMode's synchronous cleanup).
+  const mountedRef = useRef(false);
 
   // Re-create the controller whenever totalSteps changes AND no replay is in
   // flight. Once a replay is running we leave the engine alone (the user can
@@ -236,13 +242,31 @@ export function useGraphJarvisReplay(
   }
   const controller = controllerRef.current;
 
-  // Note: we deliberately do NOT run a useEffect cleanup that calls
-  // controller.stop()/reset() on unmount. React 18 StrictMode dev mode
-  // would invoke that cleanup between the dev-mode double-mount, which
-  // would clear the controller's rAF + interStepTimer mid-replay and
-  // freeze the engine at step 2. The engine's only side-effects are
-  // timers; the engine is GC'd when the host route unmounts (no global
-  // listeners), so the route's natural unmount is sufficient cleanup.
+  // Route-unmount cleanup (#1954).
+  // We must stop the controller (rAF loop + scheduled blips) when the graph
+  // route unmounts for real. We cannot use a plain useEffect cleanup because
+  // React 18 StrictMode dev mode fires cleanups between the double-mount —
+  // that would stop a mid-replay engine before the user has done anything.
+  //
+  // Pattern: mark the component as "committed" in a useEffect (runs after
+  // paint, after StrictMode's synchronous cleanup). The cleanup below only
+  // calls stop() once mounted=true, which is never the case for the ephemeral
+  // StrictMode teardown, but IS true for every real route navigation.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      if (!mountedRef.current) return; // StrictMode pre-commit teardown — skip.
+      mountedRef.current = false;
+      // Stop the rAF state machine. This prevents further onArrive callbacks
+      // (which is what schedules new audio blips). Already-enqueued 60ms blip
+      // nodes will play to completion — they're too short to matter.
+      controllerRef.current?.stop();
+      // Suspend the shared AudioContext so no residual oscillator output
+      // reaches the speakers even if a blip node was mid-play.
+      suspendGraphAudio();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // empty deps: run once on mount, cleanup runs on real unmount.
 
   // Live-push speed updates without recreating the controller.
   useEffect(() => {

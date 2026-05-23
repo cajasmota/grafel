@@ -10,7 +10,7 @@
    Default OFF.
    ============================================================ */
 
-export { playStepBlip } from "./flow-audio";
+export { playStepBlip, suspendAudioCtx as suspendGraphAudio } from "./flow-audio";
 
 export const GRAPH_AUDIO_KEY = "archigraph:graph:audio";
 
