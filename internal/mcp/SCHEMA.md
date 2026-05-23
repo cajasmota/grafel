@@ -624,7 +624,11 @@ Manage the residual-edge repair queue (ADR-0015) via a single action-dispatch
 interface. Combines the former `archigraph_list_residuals` and
 `archigraph_submit_repair` tools (bundled in #668).
 
-**Inputs**
+The 10 submit-only optional params below are **not declared in the JSON-Schema**
+(#1756 — #1639 pattern) to keep the handshake under its token ceiling. They are
+read from `args` by the handler exactly as before — no behavior change.
+
+**Inputs (declared in schema)**
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
@@ -632,18 +636,23 @@ interface. Combines the former `archigraph_list_residuals` and
 | `repo_filter` | string[] | no | `[]` | **(list)** Repos to scope. |
 | `limit` | number | no | `20` | **(list)** Max residuals returned. |
 | `offset` | number | no | `0` | **(list)** Pagination offset. |
-| `residual_id` | string | cond. | — | **(submit)** `er:<hex16>` identifier from `action=list`. |
-| `resolution` | string | cond. | — | **(submit)** `bind_to_entity` \| `reclassify_as_external` \| `reclassify_as_dynamic` \| `reclassify_as_resolved` \| `abandon` |
-| `target_entity_id` | string | no | — | **(submit)** Required when `resolution=bind_to_entity`. |
-| `module` | string | no | — | **(submit)** Required when `resolution=reclassify_as_external`. |
-| `new_target` | string | no | — | **(submit)** Required when `resolution=reclassify_as_resolved`. |
-| `dynamic_reason` | string | no | — | **(submit)** Reason for dynamic dispatch classification. |
-| `abandon_reason` | string | no | — | **(submit)** Reason for abandoning repair. |
-| `confidence` | number | no | `0.0` | **(submit)** Agent confidence in `[0,1]`. |
-| `reasoning` | string | no | — | **(submit)** Free-form agent reasoning. |
-| `source` | string | no | `mcp_submit_repair` | **(submit)** Audit source tag. |
-| `repo` | string | no | — | **(submit)** Optional repo override; defaults to repo that owns `residual_id`. |
 | `group`, `cwd` | string | no | — | Common args. |
+
+**Optional params for `action=submit` (pass in args, not declared in schema)**
+
+| Name | Type | Notes |
+|------|------|-------|
+| `residual_id` | string | `er:<hex16>` identifier from `action=list`. Required for submit. |
+| `resolution` | string | `bind_to_entity` \| `reclassify_as_external` \| `reclassify_as_dynamic` \| `reclassify_as_resolved` \| `abandon`. Required for submit. |
+| `target_entity_id` | string | Required when `resolution=bind_to_entity`. |
+| `module` | string | Required when `resolution=reclassify_as_external`. |
+| `new_target` | string | Required when `resolution=reclassify_as_resolved`. |
+| `dynamic_reason` | string | Reason for dynamic dispatch classification. |
+| `abandon_reason` | string | Reason for abandoning repair. |
+| `confidence` | number | Agent confidence in `[0,1]`; default `0.0`. |
+| `reasoning` | string | Free-form agent reasoning. |
+| `repo` | string | Override repo lookup when `residual_id` is ambiguous. |
+| `source` | string | Audit source tag; default `mcp_submit_repair`. |
 
 **Output (action=list)**
 

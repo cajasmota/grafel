@@ -887,6 +887,98 @@ func TestRepairToolsRoundTrip(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// #1756: submit-only params are not declared in schema but still work in args.
+// ---------------------------------------------------------------------------
+
+// TestRepairsSubmitUndeclaredParamsStillWork is a regression guard for #1756.
+// It verifies that the 10 submit-only params removed from the JSON-Schema
+// (residual_id, resolution, target_entity_id, module, new_target, dynamic_reason,
+// abandon_reason, confidence, reasoning, repo) are still read from args by the
+// handler and produce the expected result — schema shrink must not break behavior.
+func TestRepairsSubmitUndeclaredParamsStillWork(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "rB")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGraph(t, repo, fixtureDoc("rB"))
+
+	// Seed a repair_edge candidate — same shape as TestRepairToolsRoundTrip.
+	cands := []map[string]any{
+		{
+			"id":         "ec:1756000000000001",
+			"kind":       "repair_edge",
+			"subject_id": "a1",
+			"context": map[string]any{
+				"edge_id":            "er:1756beef00000001",
+				"relation":           "CALLS",
+				"original_stub":      "doWork",
+				"disposition":        "DispositionBugResolver",
+				"disposition_reason": "duplicate_short_name",
+				"from_entity": map[string]any{
+					"id":   "a1",
+					"kind": "SCOPE.Component",
+					"name": "WorkerService",
+					"file": "src/WorkerService.go",
+					"line": 5,
+				},
+			},
+		},
+	}
+	candPath := filepath.Join(daemon.StateDirForRepo(repo), "enrichment-candidates.json")
+	if err := os.MkdirAll(filepath.Dir(candPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cd, _ := json.MarshalIndent(cands, "", "  ")
+	if err := os.WriteFile(candPath, cd, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"rB": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify none of the submit-only params appear in the declared schema.
+	byName := srv.MCP.ListTools()
+	st, ok := byName["archigraph_repairs"]
+	if !ok {
+		t.Fatal("archigraph_repairs not registered")
+	}
+	submitOnlyParams := []string{
+		"residual_id", "resolution", "target_entity_id", "module",
+		"new_target", "dynamic_reason", "abandon_reason", "confidence",
+		"reasoning", "repo",
+	}
+	props := st.Tool.InputSchema.Properties
+	for _, p := range submitOnlyParams {
+		if _, declared := props[p]; declared {
+			t.Errorf("param %q should not be declared in schema after #1756 shrink", p)
+		}
+	}
+
+	// Now verify the handler still reads residual_id, resolution, confidence,
+	// reasoning, and abandon_reason from args correctly despite them being
+	// undeclared in the schema.
+	res := callTool(t, srv, "archigraph_repairs", map[string]any{
+		"action":         "submit",
+		"residual_id":    "er:1756beef00000001", // undeclared in schema
+		"resolution":     "abandon",             // undeclared in schema
+		"abandon_reason": "test-1756 regression guard",
+		"confidence":     0.7,
+		"reasoning":      "undeclared params must still route through handler",
+	})
+	if res.IsError {
+		t.Fatalf("#1756: undeclared submit params not read by handler: %s", resultText(res))
+	}
+	text := resultText(res)
+	if !strings.Contains(text, "er:1756beef00000001") {
+		t.Fatalf("#1756: response missing residual_id: %s", text)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Source-attribution tests (ADR-0015 #4/8 — issue #547)
 // ---------------------------------------------------------------------------
 

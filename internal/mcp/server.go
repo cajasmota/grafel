@@ -239,22 +239,20 @@ func (s *Server) registerTools() {
 	// archigraph_cross_links dropped (niche; agents rarely invoke; saves 164 tokens).
 
 	// archigraph_repairs — action: list|submit. ADR-0015 residual-edge repair.
+	// Submit-only optional args are read from request map but undeclared in
+	// schema to keep the handshake token budget under its ceiling (#1639 pattern,
+	// #1756): residual_id (string), resolution (string — bind_to_entity|
+	// reclassify_as_external|reclassify_as_dynamic|reclassify_as_resolved|
+	// abandon), target_entity_id (string), module (string), new_target (string),
+	// dynamic_reason (string), abandon_reason (string), confidence (number 0-1),
+	// reasoning (string), repo (string — override when residual_id is ambiguous),
+	// source (string — audit tag, default "mcp_submit_repair").
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_repairs",
 		mcpapi.WithDescription("Residual-edge repair queue: list=pending, submit=resolve."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(20)),
 		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0)),
-		mcpapi.WithAny("residual_id"),
-		mcpapi.WithAny("resolution"),
-		mcpapi.WithAny("target_entity_id"),
-		mcpapi.WithAny("module"),
-		mcpapi.WithAny("new_target"),
-		mcpapi.WithAny("dynamic_reason"),
-		mcpapi.WithAny("abandon_reason"),
-		mcpapi.WithNumber("confidence", mcpapi.DefaultNumber(0.0)),
-		mcpapi.WithAny("reasoning"),
-		mcpapi.WithAny("repo"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_repairs", s.handleRepairs))
