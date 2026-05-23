@@ -52,12 +52,13 @@ const (
 	PassEnrichment    = "enrichment"     // Pass 6: emit enrichment candidates
 	PassProcessFlow   = "process-flow"   // Pass 7: process-flow BFS over CALLS (#724)
 	PassModuleAgg     = "module-agg"     // Pass 8: module-level aggregation (#1383)
+	PassCommitCouple  = "commit-couple"  // Pass 8.5: VCS-derived COMMIT_COUPLED soft edges (#21)
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassModuleAgg, PassEmbed,
+	PassExtract, PassFramework, PassCrossLang, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassModuleAgg, PassCommitCouple, PassEmbed,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -1139,6 +1140,29 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			fmt.Fprintf(os.Stderr,
 				"archigraph: module-agg modules=%d contains=%d depends_on=%d\n",
 				aggStats.ModuleNodes, aggStats.ContainsEdges, aggStats.DependsOnEdges)
+		}
+	}
+
+	// Pass 8.5 — commit-coupling soft edges (issue #21). Runs AFTER the main
+	// extraction + algorithm + module-agg passes. Mines `git log --name-only`
+	// to derive a co-change support count between file pairs and emits
+	// COMMIT_COUPLED edges between synthetic File entities for pairs that
+	// meet the minimum support threshold (default 5 commits). Pass 4 graph
+	// algorithms already ran above on the pre-coupling graph, so this layer
+	// does NOT influence community detection / centrality — it is a true
+	// soft-edge layer that opt-in consumers can read on demand. Skippable
+	// via --skip-pass=commit-couple.
+	if !i.skipPasses[PassCommitCouple] {
+		ccStats := engine.ApplyCommitCoupling(doc, absRepo, engine.DefaultCommitCouplingConfig())
+		if ccStats.Skipped {
+			if verbose() {
+				fmt.Fprintf(os.Stderr, "archigraph: commit-couple skipped (%s)\n", ccStats.SkipReason)
+			}
+		} else if verbose() || ccStats.CoupledEdges > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: commit-couple commits=%d candidate_pairs=%d files=%d edges=%d oversize_skipped=%d\n",
+				ccStats.TotalCommits, ccStats.CandidatePairs, ccStats.FileEntities,
+				ccStats.CoupledEdges, ccStats.SkippedOversizeCommits)
 		}
 	}
 
