@@ -141,6 +141,15 @@ type goFrame struct {
 	funcLeafName    string // bare leaf name of the enclosing operation
 	receiverType    string // "" outside a method; receiver type otherwise
 	receiverVar     string // bound name of the receiver parameter (e.g. "r" for `(r *Foo)`)
+	// varTypes is the per-function local-variable type table built by
+	// buildFunctionVarTypes in type_table.go (#1840). Maps a bound name
+	// (parameter, receiver, short-var-decl LHS, var-spec name) to its
+	// canonical type literal. handleGoSelector consults this when the
+	// selector's operand is a bare identifier that isn't the receiver
+	// var and isn't a PascalCase type/import — i.e. the dominant
+	// `<localVar>.<field>` shape that drove same_package_unqualified
+	// on the archigraph corpus.
+	varTypes goVarTypes
 }
 
 // emitReferences is the second-pass entry point invoked from Extract
@@ -271,7 +280,15 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 	type edgeKey struct{ from, to string }
 	seen := make(map[edgeKey]bool)
 
-	emit := func(fstack []goFrame, sym goSymbol) {
+	// emit appends a REFERENCES edge from the top-of-stack function to
+	// the resolved symbol. When viaReceiverType is non-empty, it's
+	// stamped on the edge's Properties as a diagnostic so #1840's
+	// "resolved via local-var type chain" cases are visible in
+	// audits (e.g. you can count how many edges the v1 lightweight
+	// scope rescued from same_package_unqualified). Empty
+	// viaReceiverType produces a property-less edge for parity with
+	// pre-#1840 receiver / PascalCase paths.
+	emit := func(fstack []goFrame, sym goSymbol, viaReceiverType string) {
 		if len(fstack) == 0 {
 			return
 		}
@@ -289,11 +306,14 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 			return
 		}
 		toID := buildGoReferenceTargetID(file.Path, sym)
-		(*entities)[idx].Relationships = append((*entities)[idx].Relationships,
-			types.RelationshipRecord{
-				ToID: toID,
-				Kind: "REFERENCES",
-			})
+		rec := types.RelationshipRecord{
+			ToID: toID,
+			Kind: "REFERENCES",
+		}
+		if viaReceiverType != "" {
+			rec.Properties = map[string]string{"via_receiver_type": viaReceiverType}
+		}
+		(*entities)[idx].Relationships = append((*entities)[idx].Relationships, rec)
 	}
 
 	var walk func(n *sitter.Node, fstack []goFrame)
@@ -326,11 +346,21 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 			if body == nil {
 				return
 			}
+			// #1840 — build the per-function var-type table so the
+			// selector handler can resolve `<localVar>.<field>`. Cost
+			// is one extra pass over the body's
+			// short_var_declaration / var_declaration nodes plus a
+			// scan of the parameter_list; both already done by the
+			// CALLS pass, so the absolute walk cost is small. When
+			// the function has no params and no typeable locals,
+			// buildFunctionVarTypes returns nil and the selector
+			// handler short-circuits via lookupVarType's nil check.
 			newFrame := goFrame{
 				funcEmittedName: emitted,
 				funcLeafName:    leaf,
 				receiverType:    recvType,
 				receiverVar:     recvVar,
+				varTypes:        buildFunctionVarTypes(n, file.Content),
 			}
 			newStack := fstack
 			if emitted != "" {
@@ -392,7 +422,7 @@ func handleGoIdentifier(
 	file extractor.FileInput,
 	fstack []goFrame,
 	bareSymbols map[string]goSymbol,
-	emit func([]goFrame, goSymbol),
+	emit func([]goFrame, goSymbol, string),
 ) {
 	name := nodeText(n, file.Content)
 	if name == "" {
@@ -422,7 +452,7 @@ func handleGoIdentifier(
 	if name == top.receiverVar && top.receiverVar != "" {
 		return
 	}
-	emit(fstack, sym)
+	emit(fstack, sym, "")
 }
 
 // handleGoSelector handles `obj.attr` (selector_expression) nodes:
@@ -441,7 +471,7 @@ func handleGoSelector(
 	fstack []goFrame,
 	bareSymbols map[string]goSymbol,
 	dottedSymbols map[string]goSymbol,
-	emit func([]goFrame, goSymbol),
+	emit func([]goFrame, goSymbol, string),
 ) {
 	// Skip if this selector IS the function child of a call_expression.
 	// The operand identifier is still picked up via the recursion (it's
@@ -479,7 +509,7 @@ func handleGoSelector(
 			if _, isReserved := goReservedNames[opName]; !isReserved {
 				if opName != top.funcLeafName && opName != top.receiverVar {
 					if sym, ok := bareSymbols[opName]; ok {
-						emit(fstack, sym)
+						emit(fstack, sym, "")
 					}
 				}
 			}
@@ -493,21 +523,60 @@ func handleGoSelector(
 		fieldName := nodeText(field, file.Content)
 		if fieldName != "" && opName != "" {
 			// Receiver-method `r.<field>` shape.
+			emittedViaPath := false
 			if top.receiverVar != "" && opName == top.receiverVar && top.receiverType != "" {
 				dotted := top.receiverType + "." + fieldName
 				if sym, ok := dottedSymbols[dotted]; ok {
 					if dotted != top.funcEmittedName {
-						emit(fstack, sym)
+						emit(fstack, sym, "")
+						emittedViaPath = true
 					}
 				}
 			}
 			// PascalCase receiver — `T.M` method expression or
 			// `T{Field: value}` composite literal field.
-			if isPascalCase(opName) {
+			if !emittedViaPath && isPascalCase(opName) {
 				dotted := opName + "." + fieldName
 				if sym, ok := dottedSymbols[dotted]; ok {
 					if dotted != top.funcEmittedName {
-						emit(fstack, sym)
+						emit(fstack, sym, "")
+						emittedViaPath = true
+					}
+				}
+			}
+			// #1840 — local-var type chain. When the operand is a
+			// bare identifier that didn't match the receiver-var
+			// path (above) and isn't a PascalCase type/import, try
+			// the per-function var-type table. This rescues the
+			// dominant same_package_unqualified bucket: parameters
+			// typed as a project struct, `:=`-declared composite
+			// literals, and `var x T` declarations where T is a
+			// same-file struct.
+			//
+			// Why guard on emittedViaPath: the receiver var is
+			// also present in varTypes (see buildFunctionVarTypes)
+			// so without the guard we'd double-emit the receiver
+			// `r.<field>` edge with two different code paths.
+			// PascalCase identifiers can also alias a local var
+			// (rare but legal), and again we'd double-emit; first-
+			// hit-wins is the right choice for a unique-edge
+			// invariant the seen-map already enforces, but the
+			// guard is cheaper than the second lookup + seen-check.
+			//
+			// Fallback semantics: a lookup miss (varTypes returns
+			// "" or the dotted lookup misses) leaves the selector
+			// unbound — the resolver downstream still routes it to
+			// the existing same_package_unqualified bucket. No
+			// regression risk vs. pre-#1840 behaviour.
+			if !emittedViaPath {
+				if opType := top.varTypes.lookupVarType(opName); opType != "" {
+					dotted := opType + "." + fieldName
+					if sym, ok := dottedSymbols[dotted]; ok {
+						if dotted != top.funcEmittedName {
+							// Stamp the resolved receiver type so audits
+							// can attribute rescued edges to this path.
+							emit(fstack, sym, opType)
+						}
 					}
 				}
 			}
