@@ -560,30 +560,61 @@ func serializeHits(all []scored, verbose bool) []map[string]any {
 }
 
 // renderPerRepoSummary is the smart-scoping default for unfiltered, multi-repo queries.
+//
+// #1848 — TOON path (default): emits {id,repo,name,kind,file,line,score} rows so
+// callers can chain directly into archigraph_docgen/archigraph_get_source without
+// adding a repo_filter first. Falls back to legacy markdown when
+// MCP_FIND_FORMAT=markdown is set.
 func renderPerRepoSummary(all []scored, lg *LoadedGroup) string {
-	perRepo := map[string][]Hit{}
+	// Compute per-repo top-3 selection (same logic in both paths).
+	perRepo := map[string][]scored{}
 	for _, sc := range all {
-		perRepo[sc.repo.Repo] = append(perRepo[sc.repo.Repo], sc.hit)
+		perRepo[sc.repo.Repo] = append(perRepo[sc.repo.Repo], sc)
 	}
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("# group: %s — per-repo top hits\n", lg.Name))
 	names := make([]string, 0, len(perRepo))
 	for r := range perRepo {
 		names = append(names, r)
 	}
 	sort.Strings(names)
+
+	// Legacy markdown fallback (MCP_FIND_FORMAT=markdown).
+	if findFormatMarkdown() {
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("# group: %s — per-repo top hits\n", lg.Name))
+		for _, rn := range names {
+			hits := perRepo[rn]
+			sort.SliceStable(hits, func(i, j int) bool { return hits[i].hit.Score > hits[j].hit.Score })
+			if len(hits) > 3 {
+				hits = hits[:3]
+			}
+			b.WriteString("\n## " + rn + "\n")
+			for _, sc := range hits {
+				b.WriteString(fmt.Sprintf("%s  %s:%d\n", sc.hit.Entity.Name, sc.hit.Entity.SourceFile, sc.hit.Entity.StartLine))
+			}
+		}
+		return b.String()
+	}
+
+	// TOON path (#1848): build nodeWithRepo slice (top-3 per repo, repos in
+	// sorted order) and delegate to hitsToTOON with oneRepo=false for the
+	// 7-column schema {id,repo,name,kind,file,line,score}.
+	nodes := make([]nodeWithRepo, 0, len(all))
 	for _, rn := range names {
 		hits := perRepo[rn]
-		sort.SliceStable(hits, func(i, j int) bool { return hits[i].Score > hits[j].Score })
+		sort.SliceStable(hits, func(i, j int) bool { return hits[i].hit.Score > hits[j].hit.Score })
 		if len(hits) > 3 {
 			hits = hits[:3]
 		}
-		b.WriteString("\n## " + rn + "\n")
-		for _, h := range hits {
-			b.WriteString(fmt.Sprintf("%s  %s:%d\n", h.Entity.Name, h.Entity.SourceFile, h.Entity.StartLine))
+		for _, sc := range hits {
+			nodes = append(nodes, nodeWithRepo{
+				Repo:   sc.repo.Repo,
+				Entity: sc.hit.Entity,
+				Score:  sc.hit.Score,
+			})
 		}
 	}
-	return b.String()
+	header := fmt.Sprintf("# group: %s — per-repo top hits\n\n", lg.Name)
+	return header + hitsToTOON(nodes, false /* multi-repo: include repo column */)
 }
 
 // ---------------------------------------------------------------------------

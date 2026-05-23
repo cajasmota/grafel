@@ -373,6 +373,115 @@ func TestIDsInLocate_FindCallees_NarrowIncludesID(t *testing.T) {
 // verbose=true preserves id (regression guard for #1744)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// archigraph_find multi-repo path — TOON rows include id (#1848)
+// ---------------------------------------------------------------------------
+
+// TestIDsInLocate_Find_MultiRepo_TOONHasIDs verifies that the smart-scoping
+// "per-repo top hits" code path (triggered when no repo_filter is given and the
+// group contains more than one repo) emits TOON rows with a prefixed id in the
+// first column, enabling callers to chain into archigraph_docgen /
+// archigraph_get_source without a repo_filter round-trip.
+//
+// Before #1848 the multi-repo path rendered plain markdown:
+//
+//	## repo-a
+//	FuncX  src/x.go:10
+//
+// After #1848 it emits a TOON table:
+//
+//	[!schema {id,repo,name,kind,file,line,score}]
+//	{repo-a::fn_x,repo-a,FuncX,...}
+func TestIDsInLocate_Find_MultiRepo_TOONHasIDs(t *testing.T) {
+	t.Setenv("MCP_WIRE_FORMAT", "")
+	t.Setenv("MCP_FIND_FORMAT", "")
+
+	// Two repos, each with a uniquely named entity so BM25 can score them.
+	docA := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "fn_widget", Name: "WidgetHandler", Kind: "SCOPE.Function",
+				QualifiedName: "pkg.WidgetHandler", SourceFile: "src/widget.go", StartLine: 10},
+		},
+	}
+	docB := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "fn_widget_b", Name: "WidgetProcessor", Kind: "SCOPE.Function",
+				QualifiedName: "pkg.WidgetProcessor", SourceFile: "src/proc.go", StartLine: 20},
+		},
+	}
+	srv := newTestServerWithDocs(t, map[string]*graph.Document{
+		"repo-a": docA,
+		"repo-b": docB,
+	})
+
+	raw := callHandlerText(t, srv.handleQueryGraph, map[string]any{
+		"group":    "test",
+		"question": "Widget",
+		// No repo_filter — triggers the multi-repo per-repo summary path.
+	})
+
+	// Must start with the TOON schema line, not a markdown heading.
+	if !strings.Contains(raw, "[!schema") {
+		t.Fatalf("multi-repo find must emit TOON schema, got:\n%s", raw)
+	}
+	// Schema must contain the id column.
+	if !strings.Contains(raw, "id,") {
+		t.Errorf("multi-repo TOON schema must include 'id' column, got:\n%s", raw)
+	}
+	// Schema must contain the repo column (7-column multi-repo schema).
+	if !strings.Contains(raw, "repo,") {
+		t.Errorf("multi-repo TOON schema must include 'repo' column, got:\n%s", raw)
+	}
+	// Every data row must contain an ADR-0009 prefixed id cell.
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "[") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// TOON data rows look like: {repo-a::fn_widget,repo-a,...}
+		if !strings.Contains(line, "::") {
+			t.Errorf("multi-repo TOON data row missing prefixed id (no '::'), got %q", line)
+		}
+	}
+}
+
+// TestIDsInLocate_Find_MultiRepo_MarkdownFallback verifies that setting
+// MCP_FIND_FORMAT=markdown restores the legacy plain-text rendering (no TOON).
+func TestIDsInLocate_Find_MultiRepo_MarkdownFallback(t *testing.T) {
+	t.Setenv("MCP_WIRE_FORMAT", "")
+	t.Setenv("MCP_FIND_FORMAT", "markdown")
+
+	docA := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "fn_gadget", Name: "GadgetHandler", Kind: "SCOPE.Function",
+				QualifiedName: "pkg.GadgetHandler", SourceFile: "src/gadget.go", StartLine: 5},
+		},
+	}
+	docB := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "fn_gadget_b", Name: "GadgetProcessor", Kind: "SCOPE.Function",
+				QualifiedName: "pkg.GadgetProcessor", SourceFile: "src/gp.go", StartLine: 7},
+		},
+	}
+	srv := newTestServerWithDocs(t, map[string]*graph.Document{
+		"repo-c": docA,
+		"repo-d": docB,
+	})
+
+	raw := callHandlerText(t, srv.handleQueryGraph, map[string]any{
+		"group":    "test",
+		"question": "Gadget",
+	})
+
+	// Markdown fallback: must start with the # group header, no TOON schema.
+	if !strings.Contains(raw, "# group:") {
+		t.Errorf("markdown fallback must contain '# group:' header, got:\n%s", raw)
+	}
+	if strings.Contains(raw, "[!schema") {
+		t.Errorf("markdown fallback must NOT contain TOON schema, got:\n%s", raw)
+	}
+}
+
 // TestIDsInLocate_VerboseModePreservesID verifies that verbose=true does not
 // remove the id field — it only adds extra fields on top of the narrow set.
 func TestIDsInLocate_VerboseModePreservesID(t *testing.T) {
