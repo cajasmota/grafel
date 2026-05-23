@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -515,5 +516,130 @@ func TestFlowDetail_FlowSideEffectsEmptyForPureTransform(t *testing.T) {
 	}
 	if len(arr) != 0 {
 		t.Errorf("flow_side_effects: want empty for pure transform, got %v", arr)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1905: bridge steps in cross-repo flows carry correct repo prefix + metadata
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestFlowDetail_BridgeStepMetadata_1905 verifies that GET /api/flows/{group}/{pid}
+// returns all steps for a cross-repo flow, with bridge steps carrying the companion
+// repo's slug in their entity_id and with name/file populated from that repo.
+func TestFlowDetail_BridgeStepMetadata_1905(t *testing.T) {
+	// Process lives in the frontend repo; its chain spans frontend + backend.
+	proc := graph.Entity{
+		ID:         "proc-xr",
+		Name:       "loadDashboard → getSummary",
+		Kind:       processEntityKind,
+		SourceFile: "dashboard.ts",
+		StartLine:  10,
+		Properties: map[string]string{
+			"entry_id":    "fe_entry",
+			"entry_name":  "loadDashboard",
+			"terminal_id": "be_handler",
+			"step_count":  "3",
+			"cross_stack": "true",
+			"chain":       "fe_entry,fe_caller,be_handler",
+		},
+	}
+	feEntry := graph.Entity{ID: "fe_entry", Name: "loadDashboard", Kind: "SCOPE.Function", SourceFile: "dashboard.ts", StartLine: 10}
+	feCaller := graph.Entity{ID: "fe_caller", Name: "fetchSummary", Kind: "SCOPE.Function", SourceFile: "dashboard.ts", StartLine: 20}
+
+	frontendDoc := &graph.Document{
+		Repo:     "frontend",
+		Entities: []graph.Entity{proc, feEntry, feCaller},
+		Relationships: []graph.Relationship{
+			// STEP_IN_PROCESS for the cross-repo chain.
+			{ID: "s0", FromID: "proc-xr", ToID: "fe_entry", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "0"}},
+			{ID: "s1", FromID: "proc-xr", ToID: "fe_caller", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "1"}},
+			// Bridge step: ToID lives in the backend doc.
+			{ID: "s2", FromID: "proc-xr", ToID: "be_handler", Kind: stepInProcessEdge, Properties: map[string]string{"step_index": "2"}},
+		},
+	}
+	beHandler := graph.Entity{
+		ID:         "be_handler",
+		Name:       "OrdersController.getSummary",
+		Kind:       "SCOPE.Operation",
+		SourceFile: "OrdersController.java",
+		StartLine:  42,
+	}
+	backendDoc := &graph.Document{
+		Repo:     "backend",
+		Entities: []graph.Entity{beHandler},
+	}
+
+	grp := &DashGroup{
+		Name: "testgrp",
+		Repos: map[string]*DashRepo{
+			"frontend": {Slug: "frontend", Path: "/tmp/frontend", Doc: frontendDoc},
+			"backend":  {Slug: "backend", Path: "/tmp/backend", Doc: backendDoc},
+		},
+	}
+	ts := newFlowDetailTestServer(t, grp)
+
+	resp, err := http.Get(ts.URL + "/api/flows/testgrp/frontend::proc-xr")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: want 200, got %d — body: %s", resp.StatusCode, b)
+	}
+
+	b, _ := io.ReadAll(resp.Body)
+	var body struct {
+		Process struct {
+			Steps []struct {
+				EntityID  string `json:"entity_id"`
+				Label     string `json:"label"`
+				StepIndex int    `json:"step_index"`
+			} `json:"steps"`
+		} `json:"process"`
+	}
+	if err := json.Unmarshal(b, &body); err != nil {
+		t.Fatalf("decode: %v\nbody: %s", err, b)
+	}
+
+	// All 3 steps must be present.
+	if len(body.Process.Steps) != 3 {
+		t.Fatalf("steps: want 3, got %d\nbody: %s", len(body.Process.Steps), b)
+	}
+
+	// Find the bridge step (index 2).
+	var bridgeStep *struct {
+		EntityID  string `json:"entity_id"`
+		Label     string `json:"label"`
+		StepIndex int    `json:"step_index"`
+	}
+	for i := range body.Process.Steps {
+		if body.Process.Steps[i].StepIndex == 2 {
+			bridgeStep = &body.Process.Steps[i]
+			break
+		}
+	}
+	if bridgeStep == nil {
+		t.Fatalf("bridge step (step_index=2) missing\nbody: %s", b)
+	}
+
+	// entity_id must carry the backend:: prefix.
+	if !strings.HasPrefix(bridgeStep.EntityID, "backend::") {
+		t.Errorf("bridge step entity_id must carry backend:: prefix, got %q\nbody: %s", bridgeStep.EntityID, b)
+	}
+	// label (name) must be populated from the backend entity.
+	if bridgeStep.Label != "OrdersController.getSummary" {
+		t.Errorf("bridge step label want OrdersController.getSummary, got %q\nbody: %s", bridgeStep.Label, b)
+	}
+
+	// Seed-repo steps must carry the frontend:: prefix.
+	for _, s := range body.Process.Steps {
+		if s.StepIndex == 2 {
+			continue
+		}
+		if !strings.HasPrefix(s.EntityID, "frontend::") {
+			t.Errorf("seed step[%d] entity_id should carry frontend:: prefix, got %q", s.StepIndex, s.EntityID)
+		}
 	}
 }

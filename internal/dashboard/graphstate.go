@@ -545,6 +545,36 @@ func findEntity(g *DashGroup, key string) (*DashRepo, *graph.Entity) {
 	return nil, nil
 }
 
+// groupEntityHit bundles an entity with its owning repo slug for group-wide lookups.
+type groupEntityHit struct {
+	repo   string
+	entity *graph.Entity
+}
+
+// buildGroupEntityIndex builds a group-wide map of entity ID → {repo, entity}.
+// When the same entity ID appears in multiple repos (should not happen given the
+// hash salting, but defensive), the first repo encountered (sorted) wins.
+// Used by handleFlowDetail to resolve bridge-step entity IDs that live in
+// companion repos (#1905).
+func buildGroupEntityIndex(g *DashGroup) map[string]groupEntityHit {
+	total := 0
+	for _, r := range g.Repos {
+		if r.Doc != nil {
+			total += len(r.Doc.Entities)
+		}
+	}
+	out := make(map[string]groupEntityHit, total)
+	for _, r := range sortedRepos(g) {
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			if _, exists := out[e.ID]; !exists {
+				out[e.ID] = groupEntityHit{repo: r.Slug, entity: e}
+			}
+		}
+	}
+	return out
+}
+
 // serializeEntity converts a graph.Entity into the REST wire shape.
 func serializeEntity(repo string, e *graph.Entity) map[string]any {
 	out := map[string]any{

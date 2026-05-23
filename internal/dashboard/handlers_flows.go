@@ -470,6 +470,13 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 	// STEP_IN_PROCESS edges are emitted as FromID=processID → ToID=stepEntityID
 	// (see engine/process_flow.go). Collect all edges whose FromID matches the
 	// process entity, then resolve the step entity from ToID.
+	//
+	// #1905 — bridge steps in cross-repo flows carry entity IDs that belong to
+	// a companion repo, not the repo that holds the STEP_IN_PROCESS edge. We
+	// build a group-wide entity index (id → repo+entity) so bridge steps are
+	// resolved and enriched correctly instead of being silently dropped.
+	groupEntityIndex := buildGroupEntityIndex(grp)
+
 	var rawSteps []rawStep
 	for _, r := range sortedRepos(grp) {
 		for _, rel := range r.Doc.Relationships {
@@ -480,27 +487,22 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 			if rel.FromID != processEnt.ID && dashPrefixedID(r.Slug, rel.FromID) != processID {
 				continue
 			}
-			// ToID is the step entity.
+			// ToID is the step entity. Resolve from the group-wide index so
+			// bridge steps (entity lives in a companion repo) are enriched
+			// with the correct repo slug and metadata (#1905).
 			stepIDLocal := rel.ToID
-			stepRepo := r
-			// Find the step entity.
-			for i := range stepRepo.Doc.Entities {
-				e := &stepRepo.Doc.Entities[i]
-				if e.ID != stepIDLocal {
-					continue
-				}
-				idx, _ := strconv.Atoi(rel.Properties["step_index"])
+			idx, _ := strconv.Atoi(rel.Properties["step_index"])
+			if hit, ok := groupEntityIndex[stepIDLocal]; ok {
 				rawSteps = append(rawSteps, rawStep{
-					EntityID:   dashPrefixedID(stepRepo.Slug, e.ID),
-					Label:      e.Name,
-					SourceFile: e.SourceFile,
-					StartLine:  e.StartLine,
-					Repo:       stepRepo.Slug,
+					EntityID:   dashPrefixedID(hit.repo, hit.entity.ID),
+					Label:      hit.entity.Name,
+					SourceFile: hit.entity.SourceFile,
+					StartLine:  hit.entity.StartLine,
+					Repo:       hit.repo,
 					StepIndex:  idx,
 					EdgeKind:   rel.Kind,
-					EntityKind: e.Kind,
+					EntityKind: hit.entity.Kind,
 				})
-				break
 			}
 		}
 	}

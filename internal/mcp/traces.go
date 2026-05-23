@@ -196,7 +196,12 @@ func (s *Server) handleTracesGet(_ context.Context, req mcpapi.CallToolRequest) 
 			if e.Kind != processEntityKind || e.ID != target {
 				continue
 			}
-			steps := buildProcessSteps(r.Doc, e, r.ByID, r.Repo, verbose)
+			// #1905 — bridge steps in cross-repo flows live in companion repos.
+			// Build a cross-repo lookup so bridge step entities are enriched with
+			// name/file/line/repo from the correct companion repo instead of being
+			// emitted as bare {id, node_id, step_index} stubs.
+			xrLookup := buildGroupCrossRepoLookup(lg, r.Repo)
+			steps := buildProcessStepsWithCrossRepo(r.Doc, e, r.ByID, r.Repo, xrLookup, verbose)
 			return jsonResult(map[string]any{
 				"process_id":  prefixedID(r.Repo, e.ID),
 				"repo":        r.Repo,
@@ -312,6 +317,43 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 	return mcpapi.NewToolResultError("entry_point_id not found in any loaded repo"), nil
 }
 
+// crossRepoLookup is a function that resolves an entity ID that may belong
+// to a companion repo. Returns the owning repo slug and entity pointer, or
+// ("", nil) when the entity is not found in any companion repo.
+// Passed to buildProcessSteps so bridge steps carry the correct repo prefix
+// and full metadata (#1905).
+type crossRepoLookup func(id string) (repoSlug string, e *graph.Entity)
+
+// buildGroupCrossRepoLookup constructs a crossRepoLookup from all repos in a
+// LoadedGroup, excluding the seed repo (seedRepo). Companion repos are searched
+// in deterministic order so the result is stable. Entities in the seed repo are
+// already covered by the byID map passed to buildProcessSteps; this lookup
+// handles bridge steps whose entities live elsewhere in the group.
+func buildGroupCrossRepoLookup(lg *LoadedGroup, seedRepo string) crossRepoLookup {
+	// Pre-collect companion repos in sorted order for determinism.
+	type companion struct {
+		slug string
+		byID map[string]*graph.Entity
+	}
+	var companions []companion
+	for slug, r := range lg.Repos {
+		if slug == seedRepo || r == nil || r.ByID == nil {
+			continue
+		}
+		companions = append(companions, companion{slug, r.ByID})
+	}
+	sort.Slice(companions, func(i, j int) bool { return companions[i].slug < companions[j].slug })
+
+	return func(id string) (string, *graph.Entity) {
+		for _, c := range companions {
+			if e, ok := c.byID[id]; ok {
+				return c.slug, e
+			}
+		}
+		return "", nil
+	}
+}
+
 // buildProcessSteps reconstructs the ordered step list for one Process
 // from its STEP_IN_PROCESS edges, falling back to the `chain` property
 // when the edges are missing.
@@ -323,7 +365,19 @@ func (s *Server) handleTracesFollow(_ context.Context, req mcpapi.CallToolReques
 // so callers can pass it directly to archigraph_get_source without a separate
 // archigraph_inspect round-trip (#1744). node_id (local ID) is preserved for
 // backward compatibility.
+//
+// crossRepo, when non-nil, is consulted for step entity IDs not found in byID.
+// This is the cross-repo companion lookup needed to enrich bridge steps in
+// flows that extend across repo boundaries (#1905). When crossRepo is nil the
+// function behaves identically to the single-repo path.
 func buildProcessSteps(doc *graph.Document, proc *graph.Entity, byID map[string]*graph.Entity, repo string, verbose ...bool) []map[string]any {
+	return buildProcessStepsWithCrossRepo(doc, proc, byID, repo, nil, verbose...)
+}
+
+// buildProcessStepsWithCrossRepo is the cross-repo-aware variant of
+// buildProcessSteps (#1905). Pass a non-nil crossRepo to resolve bridge step
+// entities that live in companion repos.
+func buildProcessStepsWithCrossRepo(doc *graph.Document, proc *graph.Entity, byID map[string]*graph.Entity, repo string, crossRepo crossRepoLookup, verbose ...bool) []map[string]any {
 	wantVerbose := len(verbose) > 0 && verbose[0]
 	if byID == nil {
 		// Defensive fallback: callers should always pass a cached map (#1656),
@@ -359,20 +413,38 @@ func buildProcessSteps(doc *graph.Document, proc *graph.Entity, byID map[string]
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].idx < ordered[j].idx })
 	out := make([]map[string]any, 0, len(ordered))
 	for _, o := range ordered {
+		// Determine which repo owns this step entity. Seed repo first (#1905):
+		// bridge steps carry IDs that live in companion repos and must use the
+		// companion's slug for the prefixed id field, not the seed repo slug.
+		stepRepo := repo
+		var ent *graph.Entity
+		if e, ok := byID[o.id]; ok {
+			ent = e
+		} else if crossRepo != nil {
+			// Not found in the seed repo — look across companion repos.
+			if slug, e := crossRepo(o.id); e != nil {
+				stepRepo = slug
+				ent = e
+			}
+		}
+
 		step := map[string]any{
-			"id":         prefixedID(repo, o.id),
+			"id":         prefixedID(stepRepo, o.id),
 			"step_index": o.idx,
 			"node_id":    o.id,
 		}
-		if e, ok := byID[o.id]; ok {
-			step["name"] = e.Name
-			step["file"] = e.SourceFile
-			if e.StartLine > 0 {
-				step["line"] = e.StartLine
+		if ent != nil {
+			step["name"] = ent.Name
+			step["file"] = ent.SourceFile
+			if ent.StartLine > 0 {
+				step["line"] = ent.StartLine
 			}
 			if wantVerbose {
-				step["kind"] = e.Kind
+				step["kind"] = ent.Kind
 			}
+			// Stamp the owning repo on every step so consumers can distinguish
+			// seed-repo steps from bridge steps without parsing the id prefix.
+			step["repo"] = stepRepo
 		}
 		out = append(out, step)
 	}
