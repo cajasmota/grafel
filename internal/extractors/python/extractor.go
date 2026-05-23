@@ -25,6 +25,7 @@ package python
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -297,27 +298,8 @@ func isDjangoMigrationFile(path string) bool {
 	if !strings.HasSuffix(path, ".py") {
 		return false
 	}
-	dir := filepathDir(path)
-	return filepathBase(dir) == "migrations"
-}
-
-// filepathDir / filepathBase are thin wrappers so this file does not need to
-// import path/filepath solely for two calls (and to keep behaviour stable on
-// the always-forward-slash repo-relative paths the indexer feeds in).
-func filepathDir(p string) string {
-	i := strings.LastIndexByte(p, '/')
-	if i < 0 {
-		return "."
-	}
-	return p[:i]
-}
-
-func filepathBase(p string) string {
-	i := strings.LastIndexByte(p, '/')
-	if i < 0 {
-		return p
-	}
-	return p[i+1:]
+	dir := filepath.Dir(filepath.FromSlash(path))
+	return filepath.Base(dir) == "migrations"
 }
 
 // walkNode performs a depth-first traversal of the CST, collecting entities.
