@@ -62,7 +62,13 @@ const (
 // containerDirs are the conventional top-level directories that hold service
 // or package modules in a (polyglot) monorepo. Each immediate child that
 // contains source code is treated as a selectable module.
-var containerDirs = []string{"services", "apps", "packages", "libs", "lib", "frontend", "backend", "modules", "cmd", "pkg"}
+//
+// `infra` is included so per-tool IaC trees (infra/cdk, infra/terraform,
+// infra/cloudformation, infra/k8s, infra/helm, infra/pulumi, infra/serverless,
+// …) surface as their own modules. Without this the IaC-extraction passes
+// (e.g. applyIaCSNSEdges from #1596/#1606) never see the SNS→SQS fan-out
+// declarations because their directory is never indexed (issue #1696).
+var containerDirs = []string{"services", "apps", "packages", "libs", "lib", "frontend", "backend", "modules", "cmd", "pkg", "infra"}
 
 // ecosystemManifests are per-package manifest filenames across ecosystems. A
 // directory containing any of these is a package root regardless of language.
@@ -98,6 +104,14 @@ var sourceExts = map[string]struct{}{
 	".ex": {}, ".exs": {},
 	".c": {}, ".h": {}, ".cpp": {}, ".cc": {}, ".cxx": {}, ".hpp": {},
 	".dart": {},
+	// Infrastructure-as-Code source. Recognised so per-tool IaC subdirs
+	// (infra/terraform, infra/cloudformation, infra/k8s, infra/helm, …)
+	// register as modules and reach the IaC-extraction passes — issue #1696.
+	// .yaml/.yml is included because CloudFormation, K8s manifests, Helm
+	// values, and serverless.yml are all YAML. The classifier downstream
+	// already routes per-extension to the right language.
+	".tf": {}, ".tfvars": {}, ".hcl": {},
+	".yaml": {}, ".yml": {},
 }
 
 // Monorepo describes a detected monorepo layout.
@@ -395,8 +409,9 @@ func isIgnoredDir(name string) bool {
 	switch name {
 	case "node_modules", "vendor", "target", "build", "dist", "out",
 		"__pycache__", ".venv", "venv", "bin", "obj", "tmp",
-		"contracts", "infra", "docs", "deploy", "scripts", "test", "tests",
+		"contracts", "docs", "deploy", "scripts", "test", "tests",
 		"testdata", "fixtures", "examples", "third_party":
+		// `infra` was previously ignored — now a containerDir (issue #1696).
 		return true
 	}
 	return false
