@@ -199,6 +199,17 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 		attribute.Int("error_pattern_count", len(errorPatterns)),
 	)
 
+	// Issue #1811 — stamp Properties["build_tag"] on every entity emitted
+	// from this file when the file carries a //go:build constraint. The
+	// resolver's BuildIndex uses this property to detect platform-variant
+	// pairs (darwin||linux vs windows) and merge them into one logical
+	// symbol instead of blanking the byPackageOperation slot with the
+	// ambiguity sentinel. Without this stamp the resolver has no way to
+	// distinguish a genuine same-package duplicate from a platform split.
+	if bt := extractBuildTag(file.Content); bt != "" {
+		stampBuildTag(records, bt)
+	}
+
 	// Issue #90 — stamp Properties["language"]="go" so the resolver's
 	// per-language dynamic-pattern dispatch picks the Go catalog.
 	extractor.TagRelationshipsLanguage(records, "go")
@@ -2058,4 +2069,60 @@ func extractImportEntities(root *sitter.Node, src []byte, filePath string) []typ
 // Called when a tree node is unexpected or a query produces no result.
 func logWarning(format string, args ...any) {
 	log.Printf("[golang extractor] WARNING: "+format, args...)
+}
+
+// extractBuildTag scans the first bytes of a Go source file and returns the
+// normalised build-constraint expression from a "//go:build <expr>" directive,
+// or "" when none is present. Only the first 4096 bytes are inspected — build
+// constraints must appear before the package clause per the Go spec.
+//
+// Issue #1811: the returned string is stamped as Properties["build_tag"] on
+// all entity records emitted from this file by stampBuildTag so the resolver
+// can identify platform-variant pairs and merge them into one logical symbol.
+func extractBuildTag(content []byte) string {
+	if len(content) == 0 {
+		return ""
+	}
+	limit := len(content)
+	if limit > 4096 {
+		limit = 4096
+	}
+	snippet := string(content[:limit])
+	// Fast-path: no build directive present.
+	if !strings.Contains(snippet, "//go:build") && !strings.Contains(snippet, "// +build") {
+		return ""
+	}
+	for _, line := range strings.SplitN(snippet, "\n", 52) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "//go:build ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "//go:build "))
+		}
+	}
+	// Legacy fallback — pre-Go-1.17 files may only have "// +build".
+	for _, line := range strings.SplitN(snippet, "\n", 52) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "// +build ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "// +build "))
+		}
+	}
+	return ""
+}
+
+// stampBuildTag sets Properties["build_tag"] = tag on every EntityRecord in
+// records that does not already have a "build_tag" property. Skips records
+// with a nil Properties map only to allocate the minimum required.
+//
+// Issue #1811: called by Extract immediately after all extraction passes so
+// the resolver's BuildIndex can read the constraint at index time.
+func stampBuildTag(records []types.EntityRecord, tag string) {
+	for i := range records {
+		r := &records[i]
+		if r.Properties == nil {
+			r.Properties = map[string]string{"build_tag": tag}
+			continue
+		}
+		if _, ok := r.Properties["build_tag"]; !ok {
+			r.Properties["build_tag"] = tag
+		}
+	}
 }

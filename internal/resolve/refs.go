@@ -687,6 +687,26 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byPackageComponent: make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string),
 	}
+
+	// Issue #1811 — build-tag tracking side-tables.
+	// These are local to BuildIndex: they record the Properties["build_tag"]
+	// of the entity that currently occupies each (pkgDir, name) slot in
+	// byPackageOperation and byPackageComponent. When a second entity arrives
+	// with the same (pkgDir, name), we check whether its build tag is mutually
+	// exclusive with the existing one. If yes, these are platform variants of
+	// the same logical symbol (e.g. _unix.go darwin||linux vs _windows.go
+	// windows) — keep the canonical entry (first alphabetically by SourceFile)
+	// rather than blanking it. If no or uncertain, blank as before.
+	//
+	// pkgOpTag / pkgCompTag: pkgDir → name → build_tag of the current winner.
+	// pkgOpSrc / pkgCompSrc: pkgDir → name → SourceFile of the current winner
+	// (needed to compare SourceFile strings for canonical selection without a
+	// separate ID→entity map).
+	pkgOpTag   := make(map[string]map[string]string)
+	pkgCompTag := make(map[string]map[string]string)
+	pkgOpSrc   := make(map[string]map[string]string) // pkgDir → name → SourceFile of winner
+	pkgCompSrc := make(map[string]map[string]string) // pkgDir → name → SourceFile of winner
+
 	for k := range entities {
 		e := &entities[k]
 		if e.ID == "" || e.Name == "" {
@@ -995,10 +1015,52 @@ func BuildIndex(entities []types.EntityRecord) Index {
 					pkgBucket = make(map[string]string)
 					idx.byPackageOperation[pkgDir] = pkgBucket
 				}
+				tagBucket := pkgOpTag[pkgDir]
+				if tagBucket == nil {
+					tagBucket = make(map[string]string)
+					pkgOpTag[pkgDir] = tagBucket
+				}
+				srcBucket := pkgOpSrc[pkgDir]
+				if srcBucket == nil {
+					srcBucket = make(map[string]string)
+					pkgOpSrc[pkgDir] = srcBucket
+				}
+				incomingTag := ""
+				if e.Properties != nil {
+					incomingTag = e.Properties["build_tag"]
+				}
 				if existing, ok := pkgBucket[e.Name]; ok && existing != e.ID {
-					pkgBucket[e.Name] = "" // blank sentinel → ambiguous
+					// Collision: check whether the two definitions are
+					// platform variants (mutually exclusive build tags).
+					// If yes, keep the canonical entry (lexicographically
+					// first SourceFile wins) and record the merged variant
+					// coverage in the tag slot. If uncertain, blank as
+					// before (genuine ambiguity).
+					existingTag := tagBucket[e.Name]
+					if buildTagsMutuallyExclusive(existingTag, incomingTag) {
+						// Platform-variant merge: pick canonical by
+						// SourceFile alphabetical order. The winner's ID
+						// is already in pkgBucket[e.Name] if the existing
+						// entity sorts before the incoming one, or we
+						// update it to the incoming ID if the incoming file
+						// sorts earlier.
+						canonicalID := existing
+						if sourceFile < srcBucket[e.Name] {
+							canonicalID = e.ID
+							srcBucket[e.Name] = sourceFile
+						}
+						pkgBucket[e.Name] = canonicalID
+						// Expand the tag slot to the merged GOOS coverage
+						// so a third variant (if ever present) can extend
+						// the same mutual-exclusion check.
+						tagBucket[e.Name] = mergePlatformVariantTags(existingTag, incomingTag)
+					} else {
+						pkgBucket[e.Name] = "" // blank sentinel → ambiguous
+					}
 				} else if _, taken := pkgBucket[e.Name]; !taken {
 					pkgBucket[e.Name] = e.ID
+					tagBucket[e.Name] = incomingTag
+					srcBucket[e.Name] = sourceFile
 				}
 			}
 		}
@@ -1027,10 +1089,37 @@ func BuildIndex(entities []types.EntityRecord) Index {
 					pkgBucket = make(map[string]string)
 					idx.byPackageComponent[pkgDir] = pkgBucket
 				}
+				tagBucket := pkgCompTag[pkgDir]
+				if tagBucket == nil {
+					tagBucket = make(map[string]string)
+					pkgCompTag[pkgDir] = tagBucket
+				}
+				srcBucket := pkgCompSrc[pkgDir]
+				if srcBucket == nil {
+					srcBucket = make(map[string]string)
+					pkgCompSrc[pkgDir] = srcBucket
+				}
+				incomingTag := ""
+				if e.Properties != nil {
+					incomingTag = e.Properties["build_tag"]
+				}
 				if existing, ok := pkgBucket[e.Name]; ok && existing != e.ID {
-					pkgBucket[e.Name] = "" // blank sentinel → ambiguous
+					existingTag := tagBucket[e.Name]
+					if buildTagsMutuallyExclusive(existingTag, incomingTag) {
+						canonicalID := existing
+						if sourceFile < srcBucket[e.Name] {
+							canonicalID = e.ID
+							srcBucket[e.Name] = sourceFile
+						}
+						pkgBucket[e.Name] = canonicalID
+						tagBucket[e.Name] = mergePlatformVariantTags(existingTag, incomingTag)
+					} else {
+						pkgBucket[e.Name] = "" // blank sentinel → ambiguous
+					}
 				} else if _, taken := pkgBucket[e.Name]; !taken {
 					pkgBucket[e.Name] = e.ID
+					tagBucket[e.Name] = incomingTag
+					srcBucket[e.Name] = sourceFile
 				}
 			}
 		}
