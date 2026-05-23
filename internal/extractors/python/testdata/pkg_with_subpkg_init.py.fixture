@@ -1,0 +1,11 @@
+# core/__init__.py — package anchor for the "core" package.
+# This file intentionally has a class and a function to verify
+# that the Module entity CONTAINS them.
+
+class CoreRegistry:
+    def register(self, name, handler):
+        self._registry[name] = handler
+
+
+def get_registry():
+    return CoreRegistry()

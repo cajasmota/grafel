@@ -265,6 +265,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// The pass never removes or modifies existing entities.
 	configModuleEmitted := emitConfigModuleEntity(root, file, &entities)
 
+	// Issue #1884 — supplemental package-module pass (Wave 1).
+	// Emits one Module entity per Python package boundary (__init__.py or
+	// plain .py module) so docgen can seed per-package pages and flow
+	// narratives can name intra-package edges. Runs last so it can observe
+	// all entities emitted by prior passes (class/function names for
+	// __init__.py CONTAINS wiring). The pass never removes or modifies
+	// existing entities.
+	packageModuleCount := emitPackageModuleEntity(file, &entities)
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("function_count", functionCount),
@@ -272,6 +281,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		attribute.Int("error_pattern_count", len(errorPatterns)),
 		attribute.Int("import_count", importCount),
 		attribute.Bool("config_module_emitted", configModuleEmitted),
+		attribute.Int("package_module_count", packageModuleCount),
 	)
 	// Issue #90 — stamp Properties["language"]="python" on every embedded
 	// relationship so the resolver's per-language dynamic-pattern dispatch

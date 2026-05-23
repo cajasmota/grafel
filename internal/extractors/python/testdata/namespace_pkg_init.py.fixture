@@ -1,0 +1,2 @@
+# mypkg/__init__.py — empty __init__.py (PEP 420-compatible namespace package).
+# Module entity must be emitted even with zero content.

@@ -93,3 +93,17 @@ func BuildSchemaFieldStructuralRef(lang, filePath, name string) string {
 func BuildConstraintStructuralRef(filePath, qualifiedName string) string {
 	return "scope:constraint:python:" + filepath.ToSlash(filePath) + ":" + qualifiedName
 }
+
+// BuildModuleStructuralRef returns the canonical Format A structural-ref for
+// CONTAINS edges that point at a Python package-level Module entity (#1884).
+// Shape:
+//
+//	module:package:python:<file>:<dottedName>
+//
+// where <file> is forward-slash normalized via filepath.ToSlash, and
+// <dottedName> is the dot-separated package name (e.g. "core.views").
+// The resolver's byLocation fallback matches the stub to the Module entity
+// via (SourceFile, Name) without requiring a hex ID at emit time.
+func BuildModuleStructuralRef(filePath, dottedName string) string {
+	return "module:package:python:" + filepath.ToSlash(filePath) + ":" + dottedName
+}

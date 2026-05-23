@@ -1,0 +1,11 @@
+# core/tasks.py — plain Python module (no __init__.py).
+# Sibling to core/__init__.py; represents a single-file module.
+
+def send_email(to, subject, body):
+    """Send an email using the configured backend."""
+    pass
+
+
+def send_sms(to, message):
+    """Send an SMS using the configured backend."""
+    pass

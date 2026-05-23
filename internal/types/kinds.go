@@ -45,6 +45,15 @@ const (
 	// in ADR-0018. Stored as "AgentPattern" (no SCOPE. prefix) to distinguish
 	// from the structural SCOPE.Pattern kind used by static-analysis extractors.
 	EntityKindAgentPattern EntityKind = "AgentPattern"
+
+	// #1884: Python package-level module entities. One Module entity is emitted
+	// per Python package boundary (__init__.py or namespace package). Kind="Module"
+	// intentionally matches the synthetic module aggregation kind used by
+	// internal/module (KindModule="Module") so that kind_filter=Module queries
+	// surface both extracted and synthetic module nodes in a single pass.
+	// Subtype="package" distinguishes extractor-produced Module entities from
+	// the synthetic ones emitted by the aggregation layer (subtype="").
+	EntityKindModule EntityKind = "Module"
 	// #726 wave 1: Kafka producer/consumer cross-repo edges. MessageTopic
 	// represents a message-broker topic. Cross-repo identity = the topic
 	// name string (per-broker namespace via the `broker` property). Wave 1
@@ -149,6 +158,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindConfig,
 		EntityKindModel,
 		EntityKindAgentPattern,
+		// #1884:
+		EntityKindModule,
 		EntityKindMessageTopic,
 		// #725:
 		EntityKindGrpcService,

@@ -1,0 +1,2 @@
+# core/views/__init__.py — package anchor for the "core.views" sub-package.
+# Empty __init__.py — still a real package boundary; must emit Module entity.

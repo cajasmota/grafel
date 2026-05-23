@@ -39,15 +39,19 @@ func makeFile(src string, tree *sitter.Tree) extractor.FileInput {
 	}
 }
 
-// stripFileEntity drops the file-level SCOPE.Component (subtype="file")
-// entity that the extractor emits for every source file (#577) so legacy
-// tests that count semantic entities (functions, classes, …) remain
-// stable. Only the file-level entity is filtered — everything else is
-// returned as-is.
+// stripFileEntity drops infrastructure-only entities that the extractor emits
+// automatically for every source file so legacy tests that count semantic
+// entities (functions, classes, …) remain stable. Filtered kinds:
+//
+//   - SCOPE.Component/file  — per-file entity (#577)
+//   - Module/package        — per-package entity (#1884)
 func stripFileEntity(entities []types.EntityRecord) []types.EntityRecord {
 	out := entities[:0:0]
 	for _, e := range entities {
-		if e.Kind == "SCOPE.Component" && e.Subtype == "file" {
+		switch {
+		case e.Kind == "SCOPE.Component" && e.Subtype == "file":
+			continue
+		case e.Kind == string(types.EntityKindModule) && e.Subtype == "package":
 			continue
 		}
 		out = append(out, e)
