@@ -142,6 +142,19 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 		if root != nil {
 			rootName = root.Name
 		}
+
+		// #1738: token-budget cap — shed callers from tail until under budget.
+		tokenBudget := argInt(req, "token_budget", 800)
+		if tokenBudget < 100 {
+			tokenBudget = 100
+		}
+		budgetBytes := tokenBudget * 4
+		if budgetBytes > 64*1024 {
+			budgetBytes = 64 * 1024
+		}
+		preCapLen := len(callers)
+		callers = capByRenderedBytes(callers, budgetBytes, false)
+
 		// #1618: distinguish "entity found, zero callers" from "entity not found".
 		// An empty callers array with result="no_incoming_edges" is an explicit
 		// graph signal — agents MUST NOT infer a plausible relationship to fill
@@ -154,7 +167,13 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 			"callers":     callers,
 			"count":       len(callers),
 		}
-		if len(callers) == 0 {
+		if preCapLen > len(callers) {
+			result["truncation_note"] = fmt.Sprintf(
+				"response capped at token_budget=%d (~%d bytes); %d callers omitted — pass a larger token_budget or reduce depth",
+				tokenBudget, budgetBytes, preCapLen-len(callers),
+			)
+		}
+		if len(callers) == 0 && preCapLen == 0 {
 			result["result"] = "no_incoming_edges"
 			result["note"] = "Graph shows no callers for this entity within the requested depth. Do not infer a relationship — report the absence."
 		}
@@ -276,6 +295,19 @@ func (s *Server) handleFindCallees(_ context.Context, req mcpapi.CallToolRequest
 		if root != nil {
 			rootName = root.Name
 		}
+
+		// #1738: token-budget cap — shed callees from tail until under budget.
+		tokenBudget := argInt(req, "token_budget", 800)
+		if tokenBudget < 100 {
+			tokenBudget = 100
+		}
+		budgetBytes := tokenBudget * 4
+		if budgetBytes > 64*1024 {
+			budgetBytes = 64 * 1024
+		}
+		preCapLen := len(callees)
+		callees = capByRenderedBytes(callees, budgetBytes, false)
+
 		// #1618: distinguish "entity found, zero callees" from "entity not found".
 		// An empty callees array with result="no_outgoing_edges" is an explicit
 		// graph signal — agents MUST NOT infer a plausible relationship to fill
@@ -288,7 +320,13 @@ func (s *Server) handleFindCallees(_ context.Context, req mcpapi.CallToolRequest
 			"callees":     callees,
 			"count":       len(callees),
 		}
-		if len(callees) == 0 {
+		if preCapLen > len(callees) {
+			result["truncation_note"] = fmt.Sprintf(
+				"response capped at token_budget=%d (~%d bytes); %d callees omitted — pass a larger token_budget or reduce depth",
+				tokenBudget, budgetBytes, preCapLen-len(callees),
+			)
+		}
+		if len(callees) == 0 && preCapLen == 0 {
 			result["result"] = "no_outgoing_edges"
 			result["note"] = "Graph shows no callees for this entity. Do not infer a relationship — report the absence."
 		}

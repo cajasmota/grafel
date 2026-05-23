@@ -784,6 +784,28 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 			"note":      "Graph shows no neighbours for this entity. Do not infer a relationship — report the absence.",
 		}), nil
 	}
+
+	// #1738: token-budget cap — shed neighbors from tail until under budget.
+	tokenBudget := argInt(req, "token_budget", 800)
+	if tokenBudget < 100 {
+		tokenBudget = 100
+	}
+	budgetBytes := tokenBudget * 4
+	if budgetBytes > 64*1024 {
+		budgetBytes = 64 * 1024
+	}
+	preCapLen := len(out)
+	out = capByRenderedBytes(out, budgetBytes, false)
+	if preCapLen > len(out) {
+		return jsonResult(map[string]any{
+			"neighbors":      out,
+			"count":          len(out),
+			"truncation_note": fmt.Sprintf(
+				"response capped at token_budget=%d (~%d bytes); %d neighbors omitted — pass a larger token_budget or reduce depth",
+				tokenBudget, budgetBytes, preCapLen-len(out),
+			),
+		}), nil
+	}
 	return jsonResult(out), nil
 }
 
