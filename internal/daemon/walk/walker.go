@@ -12,12 +12,14 @@ package walk
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // SkipEntry is one directory that was skipped during a walk.
@@ -471,13 +473,23 @@ func IsHardcodedSkip(base string) bool {
 //
 // We only trigger on the strict wildcard pattern (`* linguist-generated=true`)
 // to avoid false positives from partial attribute files.
+//
+// #1721: uses openWithDeadline (same deadline as ParseIgnoreFile) to avoid
+// blocking the walker when open(2) wedges on a watched path. On timeout
+// returns false (treat as not generated — safe conservative default).
 func isLinguistGeneratedDir(absPath string) bool {
 	p := filepath.Join(absPath, ".gitattributes")
-	f, err := os.Open(p)
+	f, err := openWithDeadline(p, 5*time.Second)
 	if err != nil {
+		// os.IsNotExist, ErrIgnoreFileTimeout, or other error — all safe to skip.
+		if !errors.Is(err, ErrIgnoreFileTimeout) && !os.IsNotExist(err) {
+			// Unexpected error — log-friendly: just return false (no panic).
+			_ = err
+		}
 		return false
 	}
 	defer f.Close()
+
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
