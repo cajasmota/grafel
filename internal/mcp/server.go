@@ -311,6 +311,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("query", mcpapi.Required()),
 		mcpapi.WithAny("kind_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(30)),
+		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),

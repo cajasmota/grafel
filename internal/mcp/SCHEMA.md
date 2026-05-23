@@ -245,15 +245,15 @@ Previously named `archigraph_search` (renamed in #668).
 | `context_filter` | string[] | no | `[]` | Edge-kind filter (see [Relationship Types](#relationship-types)). |
 | `repo_filter` | string[] | no | `[]` | Repo names to scope. `["*"]` requests a full dump. |
 | `full` | boolean | no | `false` | Return raw JSON instead of compact text. |
-| `include_noise` | boolean | no | `false` | Keep synthetic nodes (file/module container components, inferred class-hierarchy shadows, raw `SCOPE.Pattern` nodes, built-in `Process` nodes). Excluded by default (#1614). |
+| `include_noise` | boolean | no | `false` | Keep synthetic nodes (file/module container components, inferred class-hierarchy shadows, raw `SCOPE.Pattern` nodes, built-in `Process` nodes, and Schema field members). Excluded by default (#1614, #1712). |
 | `group`, `cwd` | string | no | — | Common args. |
 
-By default results are **de-noised and re-ranked** (#1614): file/module container
-components, inferred class-hierarchy shadows, raw Pattern nodes and array-built-in
-Process nodes are dropped, and real **lined** entities (`start_line > 0`) rank above
-lineless route/resource entities — both above any retained synthetic node. The same
-filtering applies to the `full=true` JSON dump. Set `include_noise=true` to recover
-the unfiltered list.
+By default results are **de-noised and re-ranked** (#1614, #1712): file/module container
+components, inferred class-hierarchy shadows, raw Pattern nodes, array-built-in
+Process nodes, and `SCOPE.Schema/field` member entities are dropped. Real **lined**
+entities (`start_line > 0`) rank above lineless route/resource entities — both above
+any retained synthetic node. The same filtering applies to the `full=true` JSON dump.
+Set `include_noise=true` to recover the unfiltered list.
 
 **Output** — text (default) or JSON when `full=true`:
 

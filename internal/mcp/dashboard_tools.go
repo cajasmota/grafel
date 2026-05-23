@@ -787,6 +787,7 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 	}
 	kindFilter := strings.ToLower(argString(req, "kind_filter", ""))
 	limit := argInt(req, "limit", 30)
+	includeNoise := argBool(req, "include_noise", false)
 	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
 	ql := strings.ToLower(query)
 
@@ -810,6 +811,12 @@ func (s *Server) handleSearchEntities(_ context.Context, req mcpapi.CallToolRequ
 			// matchesKindFilter expands alias kinds (e.g. "http_endpoint" →
 			// [http_endpoint, http_endpoint_definition, http_endpoint_call]).
 			if !matchesKindFilter(e, kindFilter) {
+				continue
+			}
+			// De-noise (#1712): Schema field members (SCOPE.Schema/field entities)
+			// are suppressed from default results — ~25 fields per serializer
+			// class clutter ranked output. Pass include_noise:true to recover them.
+			if !includeNoise && classifyNoise(e) == noiseSchemaField {
 				continue
 			}
 			nameL := strings.ToLower(e.Name)

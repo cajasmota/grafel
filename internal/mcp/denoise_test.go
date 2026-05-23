@@ -86,6 +86,33 @@ func TestClassifyNoise(t *testing.T) {
 			},
 			want: noiseNone,
 		},
+		// #1712: Schema field members are noise.
+		{
+			name: "schema field member (SCOPE.Schema subtype=field)",
+			e: graph.Entity{
+				Kind: "SCOPE.Schema", Subtype: "field",
+				Name:       "DeficiencyCreateSerializer.amount",
+				SourceFile: "core/serializers/deficiency_serializer.py", StartLine: 12,
+			},
+			want: noiseSchemaField,
+		},
+		{
+			name: "schema field member (no SCOPE. prefix)",
+			e: graph.Entity{
+				Kind: "Schema", Subtype: "field",
+				Name:       "DeficiencyCreateSerializer.created_at",
+				SourceFile: "core/serializers/deficiency_serializer.py", StartLine: 13,
+			},
+			want: noiseSchemaField,
+		},
+		{
+			name: "schema class itself (no subtype) is NOT noise",
+			e: graph.Entity{
+				Kind: "SCOPE.Schema", Name: "DeficiencyCreateSerializer",
+				SourceFile: "core/serializers/deficiency_serializer.py", StartLine: 8,
+			},
+			want: noiseNone,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -106,6 +133,29 @@ func TestRankTierOrdersRealAboveNoise(t *testing.T) {
 	}
 	if rankTier(shadow) >= rankTier(container) {
 		t.Fatalf("shadow (%d) should rank above container (%d)", rankTier(shadow), rankTier(container))
+	}
+}
+
+// TestRankTierSchemaFieldBelowParent verifies that a Schema field member ranks
+// strictly below the real parent Schema class entity (#1712).
+func TestRankTierSchemaFieldBelowParent(t *testing.T) {
+	parent := &graph.Entity{
+		Kind: "SCOPE.Schema", Name: "DeficiencyCreateSerializer",
+		SourceFile: "core/serializers/deficiency_serializer.py", StartLine: 8,
+	}
+	field := &graph.Entity{
+		Kind: "SCOPE.Schema", Subtype: "field",
+		Name:       "DeficiencyCreateSerializer.amount",
+		SourceFile: "core/serializers/deficiency_serializer.py", StartLine: 12,
+	}
+	if classifyNoise(parent) != noiseNone {
+		t.Fatalf("parent serializer should be noiseNone, got %d", classifyNoise(parent))
+	}
+	if classifyNoise(field) != noiseSchemaField {
+		t.Fatalf("schema field should be noiseSchemaField, got %d", classifyNoise(field))
+	}
+	if rankTier(parent) >= rankTier(field) {
+		t.Fatalf("parent tier (%d) should be lower (better) than field tier (%d)", rankTier(parent), rankTier(field))
 	}
 }
 

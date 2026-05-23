@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -296,6 +297,82 @@ func TestTopicDetail_RepoAliasRoundtrip(t *testing.T) {
 	})
 	if out2["found"] != true {
 		t.Fatalf("underscore-alias round-trip: expected found=true, got: %v", out2)
+	}
+}
+
+// TestSearchEntities_SchemaFieldFold verifies that SCOPE.Schema/field members
+// are suppressed from default search_entities results and restored when
+// include_noise:true is set (#1712).
+func TestSearchEntities_SchemaFieldFold(t *testing.T) {
+	// Serializer class + 3 field members, all matching the query "Deficiency".
+	entities := []graph.Entity{
+		{
+			ID:         "s1",
+			Name:       "DeficiencyCreateSerializer",
+			Kind:       "SCOPE.Schema",
+			SourceFile: "core/serializers/deficiency_serializer.py",
+			StartLine:  8,
+		},
+		{
+			ID:         "f1",
+			Name:       "DeficiencyCreateSerializer.amount",
+			Kind:       "SCOPE.Schema",
+			Subtype:    "field",
+			SourceFile: "core/serializers/deficiency_serializer.py",
+			StartLine:  12,
+		},
+		{
+			ID:         "f2",
+			Name:       "DeficiencyCreateSerializer.created_at",
+			Kind:       "SCOPE.Schema",
+			Subtype:    "field",
+			SourceFile: "core/serializers/deficiency_serializer.py",
+			StartLine:  13,
+		},
+		{
+			ID:         "f3",
+			Name:       "DeficiencyCreateSerializer.updated_at",
+			Kind:       "SCOPE.Schema",
+			Subtype:    "field",
+			SourceFile: "core/serializers/deficiency_serializer.py",
+			StartLine:  14,
+		},
+		// Unrelated real entity — must always be returned.
+		{
+			ID:        "op1",
+			Name:      "get_deficiency_list",
+			Kind:      "SCOPE.Operation",
+			StartLine: 40,
+		},
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+
+	// Default: only the parent class + the operation should appear; fields suppressed.
+	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
+		"group": "test",
+		"query": "deficiency",
+	})
+	results, _ := out["results"].([]any)
+	if len(results) != 2 {
+		t.Fatalf("default: expected 2 results (parent class + operation), got %d: %v", len(results), results)
+	}
+	for _, r := range results {
+		obj, _ := r.(map[string]any)
+		name, _ := obj["name"].(string)
+		if strings.HasPrefix(name, "DeficiencyCreateSerializer.") {
+			t.Errorf("default: schema field %q should be suppressed", name)
+		}
+	}
+
+	// include_noise:true — all 5 entities returned.
+	outNoise := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
+		"group":         "test",
+		"query":         "deficiency",
+		"include_noise": true,
+	})
+	noiseResults, _ := outNoise["results"].([]any)
+	if len(noiseResults) != 5 {
+		t.Fatalf("include_noise:true: expected 5 results, got %d: %v", len(noiseResults), noiseResults)
 	}
 }
 
