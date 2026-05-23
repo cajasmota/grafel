@@ -69,9 +69,55 @@ List direct dependencies only (no transitive). For each: name, version pin, purp
 
 Created only if the convention required it. Most repos won't have one.
 
-## Verification & save
+## Verification, repair emission, and save
 
-Run `snippets/verification-checklist.md` after each file. After all six are produced, save:
+Run `snippets/verification-checklist.md` after each file.
+
+After all six files are produced, run the emission step from
+`snippets/docgen-repair-emission.md`. Reference documentation is a strong
+source of the following discovery types:
+
+- **`label_external`** — dependency listing (`dependencies.md`) frequently
+  reveals external library stubs that the graph has not catalogued. For every
+  direct dependency whose stub appears `UNRESOLVED` in the graph, emit a
+  `label_external` candidate at confidence 0.92+ (you are reading the manifest
+  directly).
+
+  Example — from `dependencies.md` for a Node repo:
+
+  ```json
+  {
+    "type": "label_external",
+    "source_entity_id": "<entity id of the unresolved stub>",
+    "target": "ext:stripe",
+    "confidence": 0.93,
+    "evidence": "package.json@line 12: \"stripe\": \"^14.0.0\" — confirmed external SaaS payment library",
+    "source": "generate-docs/pass-5",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+- **`resolve_ref`** — the route listing in `api.md` may name handler functions
+  whose UNRESOLVED stubs become resolvable once you know the file they live in.
+
+  Example — from `api.md` for a Django repo:
+
+  ```json
+  {
+    "type": "resolve_ref",
+    "source_entity_id": "<stub entity id>",
+    "target": "<OrderViewSet entity id>",
+    "confidence": 0.95,
+    "evidence": "urls.py@line 47: path('orders/', OrderViewSet.as_view()) — stub resolved to OrderViewSet in orders/views.py",
+    "source": "generate-docs/pass-5",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+Use `source: "generate-docs/pass-5"` in every candidate. Append to
+`~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+
+Then save:
 
 ```
 archigraph_save_finding(

@@ -69,7 +69,40 @@ business-only labels. Otherwise omit. NEVER a `sequenceDiagram`.
 Headings first, derive `anchors:` per `snippets/anchor-contract.md`. Symbols and
 file paths ONLY in the collapsed `<details>` block.
 
-### Step 5 — Verify + save
+### Step 5 — Emit repair candidates
+
+Run the emission step from `snippets/docgen-repair-emission.md`. This pass
+calls `archigraph_flows`, `archigraph_traces`, and `archigraph_cross_links`.
+The expected repair types here are narrow:
+
+- **`merge_flow`** — Step 1 may reveal two flow entities returned by
+  `archigraph_flows` that represent legs of the same end-to-end journey (e.g.
+  `sync_to_office_flow` and `offline_sync_flow` are the same flow triggered
+  from two contexts). Emit a `merge_flow` only when the evidence from
+  `archigraph_traces` or `archigraph_cross_links` makes the identity
+  unambiguous (confidence ≥ 0.75).
+
+  Example:
+
+  ```json
+  {
+    "type": "merge_flow",
+    "source_entity_id": "<offline_sync_flow entity id>",
+    "target": "<sync_to_office_flow entity id>",
+    "confidence": 0.76,
+    "evidence": "archigraph_traces result: offline_sync_flow and sync_to_office_flow share identical call chain terminating at SyncService.commit — same business journey, different connectivity contexts",
+    "source": "generate-docs/pass-17",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+Do not emit candidates derived purely from business-narrative reasoning.
+Cross-link and trace data must back any emission.
+
+Use `source: "generate-docs/pass-17"` in all candidates. Append to
+`~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+
+### Step 6 — Verify + save
 
 Run `snippets/verification-checklist.md`. Then:
 

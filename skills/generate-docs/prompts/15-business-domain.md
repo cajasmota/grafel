@@ -71,7 +71,42 @@ Write headings first, then derive the `anchors:` frontmatter list per
 `snippets/anchor-contract.md`. Put any code/file references ONLY inside the
 collapsed `<details>` provenance block at the bottom.
 
-### Step 5 — Verify + save
+### Step 5 — Emit repair candidates
+
+Run the emission step from `snippets/docgen-repair-emission.md`, but only for
+observations made while reading the graph — not from business-voice prose.
+
+This pass calls `archigraph_find` against the data model and reads entity
+neighborhoods. The expected repair type here is narrow but high-value:
+
+- **`fix_kind`** — while collapsing code entities into business terms (Step 2),
+  you may notice an entity that the graph catalogued as the wrong kind. For
+  example, a serializer class that is actually a domain model for business
+  purposes (though this is usually a legitimate plumbing entity to discard — use
+  your judgment; only emit if the kind in the graph is factually wrong).
+
+  Example:
+
+  ```json
+  {
+    "type": "fix_kind",
+    "source_entity_id": "<entity id>",
+    "new_kind": "Class",
+    "confidence": 0.85,
+    "evidence": "inspections/models.py@line 8: class Inspection(models.Model) — catalogued as Function in graph; is a Django ORM model class",
+    "source": "generate-docs/pass-15",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+Only emit when the evidence is concrete (you read the source or a graph property
+confirms it). Business-tier reasoning alone does not reach confidence 0.5; skip
+emission for glossary judgments that are purely interpretive.
+
+Use `source: "generate-docs/pass-15"` in all candidates. Append to
+`~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+
+### Step 6 — Verify + save
 
 Run `snippets/verification-checklist.md` (business-voice section applies).
 

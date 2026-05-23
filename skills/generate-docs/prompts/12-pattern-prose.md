@@ -83,6 +83,56 @@ For each approved pattern `p` (every pattern with `is_candidate=false`) that was
    - Writes to `<docs_root>/<category>/<id>.md` atomically.
 4. After writing, run `CheckBacktickConvention` on the produced markdown. If violations are reported, fail the pass with the exact heading line — do NOT silently re-write.
 
+## Repair candidate emission
+
+After all pattern docs for this run are written, run the emission step from
+`snippets/docgen-repair-emission.md`. Pattern documentation is a specialised
+source of repair candidates because exemplar resolution (Step 1 of the
+Procedure) reads source files and inspects entity neighborhoods — exactly the
+context that surfaces mis-classifications and unresolved stubs.
+
+Primary discovery types in this pass:
+
+- **`fix_kind`** — exemplar entities are often mis-classified. When you call
+  `archigraph_inspect` on an exemplar and see it is, say, a Kafka topic
+  struct catalogued as `Class`, emit a `fix_kind` candidate.
+
+  Example:
+
+  ```json
+  {
+    "type": "fix_kind",
+    "source_entity_id": "<UserEventTopic entity id>",
+    "new_kind": "MessageTopic",
+    "confidence": 0.90,
+    "evidence": "events/user_event_topic.go@line 3: var UserEventTopic = kafka.Topic{Name: \"user.events\"} — topic definition misclassified as Class",
+    "source": "generate-docs/pass-12",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+- **`merge_flow`** — pattern detection sometimes surfaces two flow entities
+  that represent the same workflow (e.g. a canary variant and a stable variant
+  with the same business outcome). When you see this while building the
+  exemplar table, emit a `merge_flow` candidate.
+
+  Example:
+
+  ```json
+  {
+    "type": "merge_flow",
+    "source_entity_id": "<checkout_flow entity id>",
+    "target": "<checkout_legacy_flow entity id>",
+    "confidence": 0.80,
+    "evidence": "checkout_handler.go@line 71: A/B flag routes to checkout_flow or checkout_legacy_flow — same business outcome, different entry points",
+    "source": "generate-docs/pass-12",
+    "emitted_at": "<ISO 8601 timestamp>"
+  }
+  ```
+
+Use `source: "generate-docs/pass-12"` in all candidates. Append to
+`~/.archigraph/groups/<group>/docgen-repairs.jsonl`.
+
 ## Constraints
 
 - DO NOT generate docs for `is_candidate=true` patterns. The renderer skips them; this is a hard invariant.
