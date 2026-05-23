@@ -310,44 +310,21 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 // ---------------------------------------------------------------------------
 
 // SectionsForEntityKind selects the ordered section subset appropriate for the
-// given entity-kind string. The mapping is conservative: when the kind is
-// unrecognised the full KnownSections list is returned so the page is
-// maximally informative.
+// given entity-kind string.  It delegates to ResolveSectionProfile so that the
+// per-kind registry in sections_by_kind.go is the single source of truth.
+//
+// When the kind is unrecognised the full KnownSections list is returned so the
+// page is maximally informative (default profile = backward-compatible).
 //
 // Exported so CLI help text and tests can call it without a live entity.
 func SectionsForEntityKind(kind string) []string {
 	return sectionsForEntityKind(kind)
 }
 
+// sectionsForEntityKind is the internal implementation; callers outside the
+// package should use SectionsForEntityKind.
 func sectionsForEntityKind(kind string) []string {
-	k := strings.ToLower(kind)
-	switch {
-	case strings.Contains(k, "module") || strings.Contains(k, "package"):
-		return []string{
-			"overview", "capabilities", "flows", "patterns", "api",
-			"reference-config", "reference-dependencies", "reference-deployment",
-			"reference-scripts", "module-readme",
-		}
-	case strings.Contains(k, "class") || strings.Contains(k, "struct") ||
-		strings.Contains(k, "component") || strings.Contains(k, "schema"):
-		return []string{
-			"overview", "capabilities", "flows", "patterns", "api",
-			"reference-dependencies",
-		}
-	case strings.Contains(k, "function") || strings.Contains(k, "method") ||
-		strings.Contains(k, "handler") || strings.Contains(k, "endpoint"):
-		return []string{
-			"overview", "flows", "patterns", "api",
-		}
-	case strings.Contains(k, "service"):
-		return []string{
-			"overview", "capabilities", "flows", "patterns", "api",
-			"reference-config", "reference-dependencies", "reference-deployment",
-			"reference-scripts",
-		}
-	default:
-		return KnownSections
-	}
+	return ResolveSectionProfile(kind, "").Sections
 }
 
 // ---------------------------------------------------------------------------

@@ -430,16 +430,25 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		}
 	}
 
-	// Determine section list.
+	// Determine section list and profile (profile carries per-kind guidance overrides).
 	var sections []string
+	var profile SectionProfile
 	if tier == 0 {
 		sections = []string{opts.Section}
+		// For Tier 0, resolve the profile based on entity kind so guidance
+		// overrides apply even to single-section bundles.
+		entityKind := ""
+		if entity != nil {
+			entityKind = entity.Kind
+		}
+		profile = ResolveSectionProfile(entityKind, "")
 	} else {
 		kind := ""
 		if entity != nil {
 			kind = entity.Kind
 		}
-		sections = sectionsForEntityKind(kind)
+		profile = ResolveSectionProfile(kind, "")
+		sections = profile.Sections
 	}
 
 	// Pre-compute node hash (shared across all sections for this bundle).
@@ -472,10 +481,10 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 			continue
 		}
 
-		guidance := defaultSectionGuidance[sec]
-		if guidance == "" {
-			guidance = "_No guidance available for this section type._"
-		}
+		// ResolveGuidance checks profile.GuidanceOverrides before falling back
+		// to defaultSectionGuidance, so kind-specific prompt text takes effect
+		// without touching the shared defaults (#1875).
+		guidance := ResolveGuidance(profile, sec)
 
 		// Build deterministic stub using tier0 renderSection.
 		stub := renderSection(sec, entity, neighbours)
