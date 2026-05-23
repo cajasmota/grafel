@@ -1,7 +1,9 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/graph"
+	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
 // processFixtureDoc builds a graph with two pre-computed Process entities
@@ -151,5 +154,93 @@ func TestTraces_InvalidActionReturnsError(t *testing.T) {
 	res := callTool(t, srv, "archigraph_traces", map[string]any{"action": "bogus"})
 	if res == nil || !res.IsError {
 		t.Errorf("expected tool error for bogus action")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #1738: token_budget enforcement for traces action=list
+// ---------------------------------------------------------------------------
+
+// build20ProcessDoc returns a document with 20 SCOPE.Process entities.
+func build20ProcessDoc() *graph.Document {
+	entities := make([]graph.Entity, 20)
+	for i := range entities {
+		entities[i] = graph.Entity{
+			ID:   fmt.Sprintf("proc%02d", i),
+			Name: fmt.Sprintf("Process%02d", i),
+			Kind: "SCOPE.Process",
+			Properties: map[string]string{
+				"step_count":  "10",
+				"cross_stack": "false",
+				"entry_id":    fmt.Sprintf("e%02d", i),
+				"entry_name":  fmt.Sprintf("Entry%02d", i),
+				"terminal_id": fmt.Sprintf("t%02d", i),
+			},
+		}
+	}
+	return &graph.Document{Entities: entities}
+}
+
+// TestTracesList_DefaultLimit10 verifies that without an explicit limit,
+// the list returns at most 10 items (#1738 default reduction from 25).
+func TestTracesList_DefaultLimit10(t *testing.T) {
+	srv := newTestServerWithDoc(t, build20ProcessDoc())
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"action":    "list",
+		"min_steps": float64(0), // include all flows
+		"group":     "test",
+	}
+	res, err := srv.handleTraces(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool error: %v", res.Content)
+	}
+	var out map[string]any
+	for _, c := range res.Content {
+		if tc, ok := c.(mcpapi.TextContent); ok {
+			json.Unmarshal([]byte(tc.Text), &out)
+		}
+	}
+	count, _ := out["count"].(float64)
+	if int(count) > 10 {
+		t.Errorf("traces list returned %v items, want ≤10 (default limit)", count)
+	}
+}
+
+// TestTracesList_TokenBudgetEnforced verifies that a tight token_budget
+// caps the list and adds a truncation_note (#1738).
+func TestTracesList_TokenBudgetEnforced(t *testing.T) {
+	srv := newTestServerWithDoc(t, build20ProcessDoc())
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"action":       "list",
+		"limit":        float64(20),  // ask for all 20
+		"token_budget": float64(50),  // tiny budget — forces truncation
+		"min_steps":    float64(0),
+		"group":        "test",
+	}
+	res, err := srv.handleTraces(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool error: %v", res.Content)
+	}
+	var out map[string]any
+	for _, c := range res.Content {
+		if tc, ok := c.(mcpapi.TextContent); ok {
+			json.Unmarshal([]byte(tc.Text), &out)
+		}
+	}
+	count, _ := out["count"].(float64)
+	if int(count) >= 20 {
+		t.Errorf("traces list returned %v items, want <20 (budget cap)", count)
+	}
+	truncNote, _ := out["truncation_note"].(string)
+	if truncNote == "" {
+		t.Errorf("expected truncation_note when token_budget is exceeded")
 	}
 }
