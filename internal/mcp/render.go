@@ -124,19 +124,22 @@ func renderCompact(r renderResult, tokenBudget int) string {
 	}
 
 	// Edges: drop implicit calls between visible nodes, strip SCOPE prefix.
-	hidden := r.HiddenImpCalls
+	// Tally all available edges (calls + non-calls) for the honest summary footer.
+	totalEdges := r.HiddenImpCalls + len(r.Edges)
 	visibleEdges := []renderEdge{}
 	for _, e := range r.Edges {
 		k := stripScopePrefix(e.Kind)
 		if strings.EqualFold(k, "calls") || strings.EqualFold(k, "CALLS") {
-			// implicit call between two visible nodes -> hide
-			hidden++
+			// implicit call between two visible nodes -> counted but not rendered
 			continue
 		}
 		visibleEdges = append(visibleEdges, renderEdge{From: e.From, To: e.To, Kind: k})
 	}
-	if len(visibleEdges) > 0 || hidden > 0 {
-		b.WriteString(fmt.Sprintf("\n# edges (suppressed: %d implicit calls; shown: %d)\n", hidden, len(visibleEdges)))
+	// Honest edges footer (#1747): report total available edges and point to the
+	// right tool. Never claim a "shown" count that doesn't reflect actual rendered
+	// lines.
+	if totalEdges > 0 {
+		b.WriteString(fmt.Sprintf("\n# edges-summary: available=%d (call archigraph_expand to see relationships)\n", totalEdges))
 		for _, e := range visibleEdges {
 			line := fmt.Sprintf("%s → %s  [%s]\n", e.From, e.To, e.Kind)
 			if tokenBudget > 0 && estimateTokens(b.String()+line) > tokenBudget {

@@ -148,7 +148,7 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_get_source", s.handleGetNodeSource))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_find",
-		mcpapi.WithDescription("BM25 graph query, de-noised. verbose=true restores qualified_name+repo."),
+		mcpapi.WithDescription("BM25 graph query, de-noised. verbose=true: wide. min_score=0.15 trims tail."),
 		mcpapi.WithString("question", mcpapi.Required()),
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
@@ -157,6 +157,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithBoolean("full", mcpapi.DefaultBool(false)),
 		mcpapi.WithBoolean("include_noise", mcpapi.DefaultBool(false)),
 		// verbose=true (default false) read from request map to stay under token ceiling.
+		// min_score (default 0.15) read from request map — not in JSON-Schema (#1639 pattern).
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find", s.handleQueryGraph))

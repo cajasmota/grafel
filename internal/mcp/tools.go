@@ -295,6 +295,9 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	full := argBool(req, "full", false)
 	verbose := argBool(req, "verbose", false)
 	includeNoise := argBool(req, "include_noise", false)
+	// min_score: undeclared in JSON-Schema (#1639 pattern). Default 0.15 trims
+	// low-signal tail noise (test helpers, unrelated handlers). Set to 0 to disable.
+	minScore := argFloat(req, "min_score", 0.15)
 	repoFilter := argStringSlice(req, "repo_filter")
 	contextFilter := contextFilterSet(argStringSlice(req, "context_filter"))
 	mode := argString(req, "mode", "bfs")
@@ -369,6 +372,25 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 		}
 		return all[i].hit.Score > all[j].hit.Score
 	})
+
+	// min_score cutoff (#1747): drop ranked hits below the threshold after
+	// re-ranking so the tail is clean. Only applied when minScore > 0 and there
+	// is at least one hit above the bar (avoids blanking on noisy corpora).
+	// The "always-1" fallback below still fires if the cull leaves the list empty.
+	if minScore > 0 && len(all) > 0 {
+		// Keep hits whose BM25/RRF score clears the bar. Since re-rank tier sorts
+		// noiseNone first, the best real hit is all[0]; only trim from the tail.
+		culled := all[:0]
+		for _, sc := range all {
+			if sc.hit.Score >= minScore {
+				culled = append(culled, sc)
+			}
+		}
+		// Preserve at least one hit so the caller always gets a result.
+		if len(culled) > 0 {
+			all = culled
+		}
+	}
 
 	// "always-1" rule: if nothing matched but repos contain entities, return
 	// the highest-PageRank entity as a single-result fallback so callers see
