@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
+	mcpsrv "github.com/mark3labs/mcp-go/server"
 
 	"github.com/cajasmota/archigraph/internal/mcp"
 )
@@ -33,7 +34,10 @@ func TestMCPHandshakeBudget(t *testing.T) {
 		// Current measurement at 29 tools: 3,085 tokens. See cmd/mcp-audit/main.go.
 		// 2026-05-23 (#1659): ceiling bumped to 3,200 to seat archigraph_apply_docgen_repairs
 		// (docgen→graph repair feedback loop). 30 tools, measured 3,176 tokens.
-		tokenCeiling  = 3200
+		// 2026-05-23 (#1738): ceiling bumped to 3,300 to seat token_budget params on
+		// expand/traces/endpoints/find_callers/find_callees (5 params, +48 tokens).
+		// Measured: 3,248 tokens.
+		tokenCeiling  = 3300
 		charsPerToken = 4
 		envelopeBytes = 512 // initEnvelopeBytes constant from cmd/mcp-audit
 		maxDescLen    = 80
@@ -100,6 +104,126 @@ func validateToolDescription(t mcpapi.Tool, maxLen int) string {
 			t.Name, len(t.Description), maxLen)
 	}
 	return ""
+}
+
+// getSchemaDefault returns the numeric default for a named parameter of a tool,
+// handling both int and float64 storage (mcp-go stores the concrete inferred
+// type for generic DefaultNumber[T]).
+func getSchemaDefault(t *testing.T, toolName, paramName string, byName map[string]*mcpsrv.ServerTool) float64 {
+	t.Helper()
+	st, ok := byName[toolName]
+	if !ok {
+		t.Fatalf("tool %q not registered", toolName)
+	}
+	props := st.Tool.InputSchema.Properties
+	if props == nil {
+		t.Fatalf("tool %q has no InputSchema.Properties", toolName)
+	}
+	raw, ok := props[paramName]
+	if !ok {
+		t.Fatalf("tool %q has no param %q", toolName, paramName)
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("tool %q param %q schema is %T, want map[string]any", toolName, paramName, raw)
+	}
+	def, ok := m["default"]
+	if !ok {
+		t.Fatalf("tool %q param %q has no default", toolName, paramName)
+	}
+	switch v := def.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	default:
+		t.Fatalf("tool %q param %q default is unexpected type %T", toolName, paramName, def)
+	}
+	return 0
+}
+
+// TestDefaultLimitsReduced verifies that the tool schema defaults for
+// depth/limit on the token-economy tools are at the narrower values
+// introduced in #1738.
+func TestDefaultLimitsReduced(t *testing.T) {
+	tmp, err := os.CreateTemp(t.TempDir(), "registry-*.json")
+	if err != nil {
+		t.Fatalf("create temp registry: %v", err)
+	}
+	if _, err := tmp.WriteString(`{"groups":{}}`); err != nil {
+		t.Fatalf("write temp registry: %v", err)
+	}
+	tmp.Close()
+
+	srv, err := mcp.NewServer(mcp.Config{RegistryPath: tmp.Name()})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	byName := srv.MCP.ListTools()
+
+	cases := []struct {
+		tool  string
+		param string
+		want  float64
+	}{
+		{"archigraph_expand", "depth", 1},
+		{"archigraph_traces", "limit", 10},
+		{"archigraph_endpoints", "limit", 20},
+		{"archigraph_find_callers", "depth", 1},
+		{"archigraph_find_callees", "depth", 1},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.tool+"/"+tc.param, func(t *testing.T) {
+			got := getSchemaDefault(t, tc.tool, tc.param, byName)
+			if got != tc.want {
+				t.Errorf("tool %q param %q: default = %v, want %v", tc.tool, tc.param, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestTokenBudgetParamPresent verifies that all list-returning tools that were
+// extended in #1738 expose a token_budget param with default 800.
+func TestTokenBudgetParamPresent(t *testing.T) {
+	tmp, err := os.CreateTemp(t.TempDir(), "registry-*.json")
+	if err != nil {
+		t.Fatalf("create temp registry: %v", err)
+	}
+	if _, err := tmp.WriteString(`{"groups":{}}`); err != nil {
+		t.Fatalf("write temp registry: %v", err)
+	}
+	tmp.Close()
+
+	srv, err := mcp.NewServer(mcp.Config{RegistryPath: tmp.Name()})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	byName := srv.MCP.ListTools()
+
+	tools := []string{
+		"archigraph_find",
+		"archigraph_expand",
+		"archigraph_traces",
+		"archigraph_endpoints",
+		"archigraph_find_callers",
+		"archigraph_find_callees",
+	}
+
+	for _, toolName := range tools {
+		toolName := toolName
+		t.Run(toolName, func(t *testing.T) {
+			got := getSchemaDefault(t, toolName, "token_budget", byName)
+			if got != 800 {
+				t.Errorf("tool %q token_budget default = %v, want 800", toolName, got)
+			}
+		})
+	}
 }
 
 // TestMCPToolDescriptions checks that every registered tool has a non-empty

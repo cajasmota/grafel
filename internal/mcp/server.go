@@ -159,7 +159,8 @@ func (s *Server) registerTools() {
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_expand",
 		mcpapi.WithDescription("Return neighbors of a node up to a given depth."),
 		mcpapi.WithString("node", mcpapi.Required()),
-		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -182,7 +183,8 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("process_id"),
 		mcpapi.WithAny("entry_point_id"),
 		mcpapi.WithNumber("max_depth", mcpapi.DefaultNumber(8)),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(25)),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(10)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		// min_steps, cross_stack_only, verbose (default false) are accepted as
 		// optional args read from the request map to stay under token ceiling.
 		mcpapi.WithArray("repo_filter"),
@@ -342,8 +344,9 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("HTTP endpoints: definitions|calls|stats."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
-		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(50)),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(20)),
 		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithAny("path_contains"),
 		mcpapi.WithAny("method"),
 		mcpapi.WithBoolean("verbose", mcpapi.DefaultBool(false)),
@@ -357,6 +360,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("Inbound callers up to N hops. verbose=true restores kind+repo."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_callers", s.handleFindCallers))
@@ -366,6 +370,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithDescription("Outbound callees up to N hops. verbose=true restores kind+repo."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_find_callees", s.handleFindCallees))
