@@ -27,8 +27,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/mcp"
 )
 
 // LLMBundleVersion is the schema version embedded in every bundle.
@@ -321,7 +325,7 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 	}
 
 	// Load entity context — reuses tier0.go loadEntityContext.
-	_, entity, neighbours, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	_, entity, neighbours, seedRepo, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +361,31 @@ func BuildBundle(_ context.Context, opts BuildBundleOpts) (*LLMPromptBundle, err
 		gc.EntityName = entity.Name
 		gc.EntityKind = entity.Kind
 		gc.QualifiedName = entity.QualifiedName
+		gc.Repo = seedRepo
 		gc.SourceFile = entity.SourceFile
+
+		// Populate source_window: read N lines around the entity's start_line.
+		// Uses the cross-platform readSourceWindow (build-tag split per #1780).
+		// On error (file deleted, fsevents stall, etc.) we leave the field empty
+		// and log a warning — a missing source window must not fail the bundle.
+		const sourceWindowHalfLines = 20
+		if entity.SourceFile != "" && entity.StartLine > 0 {
+			absPath := filepath.Join(seedRepo, entity.SourceFile)
+			startLine := entity.StartLine - sourceWindowHalfLines
+			if startLine < 1 {
+				startLine = 1
+			}
+			endLine := entity.EndLine + sourceWindowHalfLines
+			if endLine < entity.StartLine+sourceWindowHalfLines {
+				endLine = entity.StartLine + sourceWindowHalfLines
+			}
+			if sw, swErr := mcp.ReadSourceWindow(absPath, startLine, endLine); swErr != nil {
+				// Non-fatal: log and continue — the rest of the bundle is valid.
+				fmt.Fprintf(os.Stderr, "docgen: source_window: cannot read %s: %v\n", absPath, swErr)
+			} else {
+				gc.SourceWindow = sw
+			}
+		}
 	}
 
 	// Determine section list.

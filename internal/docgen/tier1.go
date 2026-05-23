@@ -151,7 +151,7 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 	}
 
 	// Load entity context — reuse tier0 machinery.
-	_, entity, neighbours, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	_, entity, neighbours, _, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return
 	}
