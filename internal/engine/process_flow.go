@@ -216,71 +216,76 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 		}
 	}
 
-	// BFS from each entry point.
-	best := make(map[traceKey][]string) // key -> longest chain
+	// #1945 Phase 1 — DAG walker. The pre-#1945 path projected branched
+	// call trees into N linear chains sharing a prefix, inflating Process
+	// counts 3-5×. Now we build ONE DAG per entry and persist it via a
+	// backward-compatible "primary linear chain" + a JSON-serialised DAG
+	// blob on the Process Properties map. Existing consumers (dashboard,
+	// MCP traces, JARVIS comet) continue to walk just the linear chain.
+	type dagEmit struct {
+		entry    string
+		terminal string
+		chain    []string
+		dag      *ChainStep
+		stats    dagBuildResult
+	}
+	emits := make([]dagEmit, 0, len(candidates))
+	dagCfg := dagWalkConfig{
+		MaxDepth:        cfg.MaxDepth,
+		BranchingFactor: cfg.BranchingFactor,
+		MaxNodes:        defaultDAGMaxNodes,
+	}
 	for _, c := range candidates {
-		traces, depthTrunc, fanTrunc := bfsTraces(c.id, adj, cfg)
-		stats.TruncatedDepth += depthTrunc
-		stats.TruncatedFanout += fanTrunc
-		for _, t := range traces {
-			// #754 — short chains are allowed when the chain traverses a
-			// FETCHES edge (i.e. crosses a repo boundary). Cross-repo
-			// bridges typically have a tiny intra-repo depth (caller →
-			// consumer endpoint = 2 steps) but the cross-stack signal is
-			// the load-bearing semantic, so keep them.
-			minSteps := cfg.MinSteps
-			if chainHasFetchesEdge(t, adj) || chainCrossesRepo(t, adj) {
-				// #769 — phantom cross-repo CALLS chains are typically
-				// shallow (caller → phantom terminal = 2 steps). Relax the
-				// MinSteps gate so they survive emission.
-				minSteps = 2
-			}
-			if len(t) < minSteps {
-				continue
-			}
-			term := t[len(t)-1]
-			k := traceKey{c.id, term}
-			if prev, ok := best[k]; !ok || len(t) > len(prev) {
-				best[k] = t
-			}
+		res := buildFlowDAG(c.id, adj, byID, dagCfg)
+		stats.TruncatedDepth += res.DepthTruncated
+		stats.TruncatedFanout += res.FanoutTruncated
+		if res.Root == nil {
+			continue
 		}
+		chain := primaryPath(res.Root)
+
+		// #754 — short chains are allowed when the chain traverses a
+		// FETCHES edge (cross-repo bridge) or a phantom cross-repo edge.
+		// Cross-repo bridges typically have a tiny intra-repo depth
+		// (caller → consumer endpoint = 2 steps); the cross-stack signal
+		// is load-bearing so we keep them.
+		minSteps := cfg.MinSteps
+		if chainHasFetchesEdge(chain, adj) || chainCrossesRepo(chain, adj) {
+			minSteps = 2
+		}
+		if len(chain) < minSteps {
+			continue
+		}
+		emits = append(emits, dagEmit{
+			entry:    c.id,
+			terminal: chain[len(chain)-1],
+			chain:    chain,
+			dag:      res.Root,
+			stats:    res,
+		})
 	}
 
-	// Stable, scored ordering of the surviving traces.
-	type emit struct {
-		chain     []string
-		entryName string
-		entryFile string
-	}
-	keys := make([]traceKey, 0, len(best))
-	for k := range best {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		// Longest chains first, then by entry id, then terminal id for
-		// determinism.
-		li := len(best[keys[i]])
-		lj := len(best[keys[j]])
+	// Stable ordering: longest primary chain first, then by entry id, then
+	// terminal id. Matches the prior tie-break so determinism tests pass.
+	sort.Slice(emits, func(i, j int) bool {
+		li := len(emits[i].chain)
+		lj := len(emits[j].chain)
 		if li != lj {
 			return li > lj
 		}
-		if keys[i].entry != keys[j].entry {
-			return keys[i].entry < keys[j].entry
+		if emits[i].entry != emits[j].entry {
+			return emits[i].entry < emits[j].entry
 		}
-		return keys[i].terminal < keys[j].terminal
+		return emits[i].terminal < emits[j].terminal
 	})
-	if len(keys) > cfg.MaxProcesses {
-		keys = keys[:cfg.MaxProcesses]
+	if len(emits) > cfg.MaxProcesses {
+		emits = emits[:cfg.MaxProcesses]
 	}
 
-	// Drop chains that are a strict prefix of a longer chain emitted from
-	// the same entry. This collapses sub-trace redundancy without losing
-	// the longest representation of any branch.
-	keys = dropPrefixSubtraces(keys, best)
-
-	// Emit Process entities + edges.
-	for _, k := range keys {
-		chain := best[k]
+	// Emit Process entities + edges. One Process per surviving entry —
+	// branches are captured inside the DAG attached as `branches_dag`.
+	for _, em := range emits {
+		chain := em.chain
 		entry := byID[chain[0]]
 		terminal := byID[chain[len(chain)-1]]
 		// #769 — phantom cross-repo terminals live in another repo's
@@ -385,6 +390,22 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 		// boundary is the endpoint step itself; see chainCrossesRepoBoundary).
 		if bridgeIdx := firstPhantomStepIndex(chain, adj); bridgeIdx >= 0 {
 			props["cross_stack_bridge_at_step"] = strconv.Itoa(bridgeIdx)
+		}
+
+		// #1945 Phase 1 — DAG metadata. `chain` above remains the primary
+		// linear path (leftmost depth-first) for backward compatibility;
+		// these new properties expose the full branched DAG that the
+		// walker produced. Phase 2 will populate per-step Reason values
+		// from per-language control-flow extraction; Phase 1 leaves
+		// Reason empty on every step.
+		props["dag_node_count"] = strconv.Itoa(em.stats.NodeCount)
+		props["branch_count"] = strconv.Itoa(em.stats.BranchCount)
+		props["is_dag"] = strconv.FormatBool(em.stats.BranchCount > 0)
+		if em.stats.NodeCapHit {
+			props["dag_node_cap_hit"] = "true"
+		}
+		if dagJSON := encodeDAGJSON(em.dag); dagJSON != "" {
+			props["branches_dag"] = dagJSON
 		}
 
 		doc.Entities = append(doc.Entities, graph.Entity{
@@ -647,114 +668,10 @@ func confidenceOK(r *graph.Relationship) bool {
 	return f >= 0.5
 }
 
-// bfsTraces runs forward BFS from entry, emitting one chain per reachable
-// terminal node within the configured depth + branching bounds. A "terminal"
-// is any node with no outgoing CALLS or the node at MaxDepth.
-//
-// Returns the slice of chains plus the count of depth- and fanout-truncated
-// branches (useful for stats).
-func bfsTraces(entry string, adj *callsAdjacency, cfg ProcessFlowConfig) ([][]string, int, int) {
-	type frame struct {
-		chain []string
-		seen  map[string]bool
-	}
-	initSeen := map[string]bool{entry: true}
-	work := []frame{{chain: []string{entry}, seen: initSeen}}
-	var out [][]string
-	depthTrunc, fanTrunc := 0, 0
-
-	for len(work) > 0 {
-		// Pop last (DFS-ish iterative — order doesn't matter for the
-		// emitted set since we dedupe by (entry,terminal)).
-		f := work[len(work)-1]
-		work = work[:len(work)-1]
-
-		current := f.chain[len(f.chain)-1]
-		neighbors := adj.out[current]
-		if len(neighbors) == 0 || len(f.chain) > cfg.MaxDepth {
-			if len(f.chain) > cfg.MaxDepth {
-				depthTrunc++
-			}
-			// Emit a copy — f.chain may alias slices we will mutate later.
-			out = append(out, append([]string(nil), f.chain...))
-			continue
-		}
-		// Sort + cap to branching factor for determinism.
-		sortedN := append([]string(nil), neighbors...)
-		sort.Strings(sortedN)
-		if len(sortedN) > cfg.BranchingFactor {
-			fanTrunc += len(sortedN) - cfg.BranchingFactor
-			sortedN = sortedN[:cfg.BranchingFactor]
-		}
-		extended := false
-		for _, n := range sortedN {
-			if f.seen[n] {
-				continue
-			}
-			extended = true
-			newSeen := make(map[string]bool, len(f.seen)+1)
-			for k := range f.seen {
-				newSeen[k] = true
-			}
-			newSeen[n] = true
-			newChain := append(append([]string(nil), f.chain...), n)
-			work = append(work, frame{chain: newChain, seen: newSeen})
-		}
-		if !extended {
-			// All neighbors already visited → terminal cycle stop.
-			out = append(out, append([]string(nil), f.chain...))
-		}
-	}
-	return out, depthTrunc, fanTrunc
-}
-
-// dropPrefixSubtraces removes chains that are strict prefixes of another
-// chain emitted from the same entry id. The longer chain is kept.
-func dropPrefixSubtraces(keys []traceKey, best map[traceKey][]string) []traceKey {
-	// Bucket by entry id.
-	byEntry := make(map[string][]traceKey)
-	for _, k := range keys {
-		byEntry[k.entry] = append(byEntry[k.entry], k)
-	}
-	keep := make(map[traceKey]bool, len(keys))
-	for _, ks := range byEntry {
-		// Longest first so we can short-circuit prefix checks.
-		sort.Slice(ks, func(i, j int) bool {
-			return len(best[ks[i]]) > len(best[ks[j]])
-		})
-		for i, k := range ks {
-			isPrefix := false
-			for j := 0; j < i; j++ {
-				if isStrictPrefix(best[k], best[ks[j]]) {
-					isPrefix = true
-					break
-				}
-			}
-			if !isPrefix {
-				keep[k] = true
-			}
-		}
-	}
-	out := make([]traceKey, 0, len(keep))
-	for _, k := range keys {
-		if keep[k] {
-			out = append(out, k)
-		}
-	}
-	return out
-}
-
-func isStrictPrefix(short, long []string) bool {
-	if len(short) >= len(long) {
-		return false
-	}
-	for i := range short {
-		if short[i] != long[i] {
-			return false
-		}
-	}
-	return true
-}
+// NOTE: the original `bfsTraces` (linear chain projection) was removed in
+// #1945 Phase 1. The DAG walker in process_flow_dag.go replaces it. The
+// query-time MCP traces walker (`internal/mcp/traces.go::followCallsBFS`)
+// is a separate read-side walker and remains untouched.
 
 // chainLabels returns the human-readable names of each step (or its ID
 // when the entity is missing).
@@ -1058,13 +975,6 @@ func computeProcessID(repo string, chain []string) string {
 		h.Write([]byte{0})
 	}
 	return "proc:" + hex.EncodeToString(h.Sum(nil))[:16]
-}
-
-// traceKey is a chain identity (defined here at file scope so the
-// dropPrefixSubtraces helper can take it as a parameter).
-type traceKey struct {
-	entry    string
-	terminal string
 }
 
 // pruneReachableEntries removes candidates that are reachable from any
