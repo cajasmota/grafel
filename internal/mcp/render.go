@@ -72,24 +72,52 @@ func renderCompact(r renderResult, tokenBudget int) string {
 
 	visible := map[string]string{} // prefixedID -> label
 	shown := 0
-	for i := range r.Nodes {
-		nw := r.Nodes[i]
-		label := nw.Entity.Name
-		loc := fmt.Sprintf("%s:%d", nw.Entity.SourceFile, nw.Entity.StartLine)
-		var line string
-		if r.OneRepo {
-			line = fmt.Sprintf("%s  %s", label, loc)
-		} else {
-			line = fmt.Sprintf("[%s] %s  %s", nw.Repo, label, loc)
+
+	// #1737 — emit ranked hits as TOON when toonWireEnabled and MCP_FIND_FORMAT
+	// is not "markdown". The prose header and footer lines stay in markdown; only
+	// the per-hit rows move to the tabular encoding, yielding ~40-50% savings on
+	// the hits section.
+	if toonWireEnabled() && !findFormatMarkdown() {
+		// Enforce token budget: add nodes until we would exceed it.
+		keep := r.Nodes
+		if tokenBudget > 0 {
+			// Estimate header already written + TOON table for growing node slice.
+			for i := 1; i <= len(r.Nodes); i++ {
+				toon := hitsToTOON(r.Nodes[:i], r.OneRepo)
+				if estimateTokens(b.String()+toon) > tokenBudget {
+					keep = r.Nodes[:i-1]
+					break
+				}
+			}
 		}
-		// Token-budget enforcement: stop adding nodes if the running budget
-		// (current rendered text) exceeds the limit.
-		if tokenBudget > 0 && estimateTokens(b.String()+line+"\n") > tokenBudget {
-			break
+		if len(keep) > 0 {
+			b.WriteString(hitsToTOON(keep, r.OneRepo))
 		}
-		b.WriteString(line + "\n")
-		visible[prefixedID(nw.Repo, nw.Entity.ID)] = label
-		shown++
+		shown = len(keep)
+		// Populate visible for edge rendering.
+		for _, nw := range keep {
+			visible[prefixedID(nw.Repo, nw.Entity.ID)] = nw.Entity.Name
+		}
+	} else {
+		for i := range r.Nodes {
+			nw := r.Nodes[i]
+			label := nw.Entity.Name
+			loc := fmt.Sprintf("%s:%d", nw.Entity.SourceFile, nw.Entity.StartLine)
+			var line string
+			if r.OneRepo {
+				line = fmt.Sprintf("%s  %s", label, loc)
+			} else {
+				line = fmt.Sprintf("[%s] %s  %s", nw.Repo, label, loc)
+			}
+			// Token-budget enforcement: stop adding nodes if the running budget
+			// (current rendered text) exceeds the limit.
+			if tokenBudget > 0 && estimateTokens(b.String()+line+"\n") > tokenBudget {
+				break
+			}
+			b.WriteString(line + "\n")
+			visible[prefixedID(nw.Repo, nw.Entity.ID)] = label
+			shown++
+		}
 	}
 	if shown < len(r.Nodes) {
 		b.WriteString(fmt.Sprintf("# truncated: %d nodes hidden by token budget\n", len(r.Nodes)-shown))
@@ -195,6 +223,46 @@ func tabularEncode(schema []string, rows [][]any) string {
 func toonWireEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("MCP_WIRE_FORMAT")))
 	return v == "" || v == "toon"
+}
+
+// findFormatMarkdown returns true when the caller has opted out of TOON
+// encoding for archigraph_find ranked-hits via MCP_FIND_FORMAT=markdown.
+// By default (env unset or "toon") TOON encoding is active.
+func findFormatMarkdown() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("MCP_FIND_FORMAT")))
+	return v == "markdown"
+}
+
+// hitsToTOON serialises the ranked-hit nodes from a renderResult as a TOON
+// table. Schema: {name, kind, file, line, score}. When oneRepo is false the
+// repo column is prepended: {repo, name, kind, file, line, score}.
+//
+// Token-budget enforcement is the caller's responsibility; this helper encodes
+// all rows and returns the full table plus the number of rows written so the
+// caller can append a truncation note.
+func hitsToTOON(nodes []nodeWithRepo, oneRepo bool) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	var schema []string
+	if oneRepo {
+		schema = []string{"name", "kind", "file", "line", "score"}
+	} else {
+		schema = []string{"repo", "name", "kind", "file", "line", "score"}
+	}
+	rows := make([][]any, 0, len(nodes))
+	for _, nw := range nodes {
+		kind := stripScopePrefix(nw.Entity.Kind)
+		score := fmt.Sprintf("%.2f", nw.Score)
+		var row []any
+		if oneRepo {
+			row = []any{nw.Entity.Name, kind, nw.Entity.SourceFile, nw.Entity.StartLine, score}
+		} else {
+			row = []any{nw.Repo, nw.Entity.Name, kind, nw.Entity.SourceFile, nw.Entity.StartLine, score}
+		}
+		rows = append(rows, row)
+	}
+	return tabularEncode(schema, rows)
 }
 
 // recordsToTOON detects whether arr is a homogeneous list of records (every

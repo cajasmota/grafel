@@ -1,10 +1,12 @@
-// compact_test.go — #1663 compact serializer tests; #1672 TOON wire helpers.
+// compact_test.go — #1663 compact serializer tests; #1672 TOON wire helpers; #1737 find TOON.
 package mcp
 
 import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/archigraph/internal/graph"
 )
 
 // TestCompactJSON_Minified verifies the output has no indentation whitespace
@@ -217,4 +219,233 @@ func TestRecordsToTOON_TokenSavings(t *testing.T) {
 	}
 	t.Logf("Token savings: %.1f%% (TOON=%d vs JSON=%d for %d endpoint records)",
 		savings, toonTokens, jsonTokens, n)
+}
+
+// ---------------------------------------------------------------------------
+// #1737 — hitsToTOON + renderCompact TOON path tests
+// ---------------------------------------------------------------------------
+
+// makeTestNode constructs a nodeWithRepo for testing without needing a loaded repo.
+func makeTestNode(repo, name, kind, file string, line int, score float64) nodeWithRepo {
+	return nodeWithRepo{
+		Repo:  repo,
+		Score: score,
+		Entity: &graph.Entity{
+			ID:         name,
+			Name:       name,
+			Kind:       kind,
+			SourceFile: file,
+			StartLine:  line,
+		},
+	}
+}
+
+// TestHitsToTOON_OneRepoSchema verifies the schema line and row format for
+// single-repo mode (no repo column).
+func TestHitsToTOON_OneRepoSchema(t *testing.T) {
+	nodes := []nodeWithRepo{
+		makeTestNode("auth-svc", "Login", "operation", "src/auth.py", 42, 8.32),
+		makeTestNode("auth-svc", "LoginViewSet", "view", "core/views/auth.py", 22, 11.78),
+	}
+	got := hitsToTOON(nodes, true /* oneRepo */)
+	lines := strings.Split(strings.TrimSpace(got), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("want 3 lines (schema + 2 rows), got %d:\n%s", len(lines), got)
+	}
+	if lines[0] != "[!schema {name,kind,file,line,score}]" {
+		t.Errorf("wrong schema line: %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "{Login,") {
+		t.Errorf("row 1 should start with {Login,: %q", lines[1])
+	}
+	if !strings.Contains(lines[1], "8.32") {
+		t.Errorf("row 1 should contain score 8.32: %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "LoginViewSet") {
+		t.Errorf("row 2 should contain LoginViewSet: %q", lines[2])
+	}
+}
+
+// TestHitsToTOON_MultiRepoIncludesRepoColumn verifies repo is prepended as the
+// first column when oneRepo is false.
+func TestHitsToTOON_MultiRepoIncludesRepoColumn(t *testing.T) {
+	nodes := []nodeWithRepo{
+		makeTestNode("repo-a", "OrderService", "class", "svc/orders.go", 10, 5.5),
+	}
+	got := hitsToTOON(nodes, false /* multi-repo */)
+	if !strings.HasPrefix(got, "[!schema {repo,name,kind,file,line,score}]") {
+		t.Errorf("expected repo as first schema column: %q", got)
+	}
+	if !strings.Contains(got, "repo-a") {
+		t.Errorf("expected repo name in row: %q", got)
+	}
+}
+
+// TestHitsToTOON_StripsScopePrefix verifies that SCOPE. prefixes are stripped
+// from the kind column in TOON output.
+func TestHitsToTOON_StripsScopePrefix(t *testing.T) {
+	nodes := []nodeWithRepo{
+		makeTestNode("r", "Dashboard", "SCOPE.Component", "src/Dashboard.tsx", 1, 1.0),
+	}
+	got := hitsToTOON(nodes, true)
+	if strings.Contains(got, "SCOPE.") {
+		t.Errorf("SCOPE. prefix should be stripped in TOON output: %q", got)
+	}
+	if !strings.Contains(got, "Component") {
+		t.Errorf("stripped kind 'Component' should appear in output: %q", got)
+	}
+}
+
+// TestHitsToTOON_Empty verifies the empty-input case returns an empty string.
+func TestHitsToTOON_Empty(t *testing.T) {
+	if got := hitsToTOON(nil, true); got != "" {
+		t.Errorf("expected empty string for nil input, got %q", got)
+	}
+	if got := hitsToTOON([]nodeWithRepo{}, true); got != "" {
+		t.Errorf("expected empty string for empty input, got %q", got)
+	}
+}
+
+// TestRenderCompact_TOONPath verifies that renderCompact emits a TOON table for
+// the nodes section when toonWireEnabled() is true (default env).
+func TestRenderCompact_TOONPath(t *testing.T) {
+	// Default env: MCP_WIRE_FORMAT unset, MCP_FIND_FORMAT unset → TOON active.
+	t.Setenv("MCP_WIRE_FORMAT", "")
+	t.Setenv("MCP_FIND_FORMAT", "")
+
+	rr := renderResult{
+		MatchedTotal: 2,
+		OneRepo:      true,
+		Nodes: []nodeWithRepo{
+			makeTestNode("r1", "AuthMiddleware", "function", "src/middleware.py", 55, 9.1),
+			makeTestNode("r1", "JWTValidator", "class", "src/jwt.py", 12, 7.3),
+		},
+	}
+	got := renderCompact(rr, 0)
+
+	// Prose header must be present.
+	if !strings.HasPrefix(got, "# nodes (2 matched)") {
+		t.Errorf("expected markdown header, got: %q", got)
+	}
+	// TOON schema line must be present.
+	if !strings.Contains(got, "[!schema {name,kind,file,line,score}]") {
+		t.Errorf("expected TOON schema line in output:\n%s", got)
+	}
+	// Both entity names must appear as rows.
+	if !strings.Contains(got, "AuthMiddleware") {
+		t.Errorf("AuthMiddleware missing from TOON output:\n%s", got)
+	}
+	if !strings.Contains(got, "JWTValidator") {
+		t.Errorf("JWTValidator missing from TOON output:\n%s", got)
+	}
+	// Must NOT contain the old markdown line format "AuthMiddleware  src/…".
+	if strings.Contains(got, "AuthMiddleware  src/") {
+		t.Errorf("old markdown row format should not appear in TOON path:\n%s", got)
+	}
+}
+
+// TestRenderCompact_MarkdownFallback verifies MCP_FIND_FORMAT=markdown restores
+// the legacy text shape (no TOON schema line).
+func TestRenderCompact_MarkdownFallback(t *testing.T) {
+	t.Setenv("MCP_FIND_FORMAT", "markdown")
+
+	rr := renderResult{
+		MatchedTotal: 1,
+		OneRepo:      true,
+		Nodes: []nodeWithRepo{
+			makeTestNode("r1", "AuthMiddleware", "function", "src/middleware.py", 55, 9.1),
+		},
+	}
+	got := renderCompact(rr, 0)
+
+	if strings.Contains(got, "[!schema") {
+		t.Errorf("TOON schema should not appear when MCP_FIND_FORMAT=markdown:\n%s", got)
+	}
+	if !strings.Contains(got, "AuthMiddleware") {
+		t.Errorf("entity name missing from markdown fallback output:\n%s", got)
+	}
+	// Legacy format: "Name  file:line"
+	if !strings.Contains(got, "AuthMiddleware  src/middleware.py:55") {
+		t.Errorf("expected legacy 'Name  file:line' format:\n%s", got)
+	}
+}
+
+// TestRenderCompact_TOONTokenSavings verifies that for a representative find
+// result the TOON-encoded hits section is shorter than the equivalent JSON-array
+// encoding of the same {name,kind,file,line,score} fields — confirming the
+// tabular format pays off once all five fields are present (#1737).
+//
+// The comparison is against JSON because the alternative to TOON+kind+score is
+// not the stripped "Name  file:line" markdown (which omits kind/score entirely)
+// but the richer JSON payload that a client would need to parse those fields.
+func TestRenderCompact_TOONTokenSavings(t *testing.T) {
+	t.Setenv("MCP_WIRE_FORMAT", "")
+	t.Setenv("MCP_FIND_FORMAT", "")
+
+	// Realistic varied names/paths that mirror actual archigraph_find output.
+	fixtures := []struct {
+		name, kind, file string
+		line             int
+		score            float64
+	}{
+		{"AuthMiddleware", "function", "src/middleware/auth.py", 42, 9.1},
+		{"JWTValidator", "class", "src/auth/jwt_validator.py", 10, 7.3},
+		{"LoginViewSet", "view", "core/views/auth.py", 22, 6.8},
+		{"TokenRefreshView", "view", "core/views/token.py", 55, 6.1},
+		{"PermissionCheck", "function", "src/auth/permissions.py", 88, 5.5},
+		{"SessionManager", "class", "src/sessions/manager.py", 14, 5.0},
+		{"OAuthCallbackHandler", "function", "src/oauth/callbacks.py", 71, 4.8},
+		{"UserAuthSerializer", "class", "core/serializers/auth.py", 33, 4.6},
+		{"AuthenticationBackend", "class", "src/backends/auth.py", 19, 4.4},
+		{"verify_token", "function", "src/auth/tokens.py", 120, 4.0},
+		{"decode_jwt_claims", "function", "src/auth/jwt.py", 204, 3.8},
+		{"RequireAuthDecorator", "function", "src/decorators/auth.py", 6, 3.5},
+		{"GroupPermissions", "class", "src/rbac/permissions.py", 44, 3.3},
+		{"AccessControlList", "class", "src/rbac/acl.py", 88, 3.0},
+		{"authenticate_user", "function", "core/auth/authenticate.py", 31, 2.8},
+		{"TwoFactorAuth", "class", "src/auth/two_factor.py", 17, 2.6},
+		{"OTPHandler", "function", "src/auth/otp.py", 93, 2.4},
+		{"SSOMiddleware", "class", "src/sso/middleware.py", 5, 2.2},
+		{"ldap_authenticate", "function", "src/ldap/auth.py", 66, 2.0},
+		{"UserCredentials", "class", "src/models/credentials.py", 25, 1.9},
+		{"reset_password_view", "function", "core/views/password.py", 49, 1.7},
+		{"PasswordResetSerializer", "class", "core/serializers/password.py", 12, 1.5},
+		{"check_login_rate_limit", "function", "src/ratelimit/login.py", 38, 1.3},
+		{"ApiKeyMiddleware", "class", "src/middleware/apikey.py", 77, 1.1},
+		{"auth_signal_handler", "function", "src/signals/auth.py", 102, 0.9},
+	}
+
+	nodes := make([]nodeWithRepo, len(fixtures))
+	for i, f := range fixtures {
+		nodes[i] = makeTestNode("auth-service", f.name, f.kind, f.file, f.line, f.score)
+	}
+
+	rr := renderResult{MatchedTotal: len(nodes), OneRepo: true, Nodes: nodes}
+	toonOut := renderCompact(rr, 0)
+
+	// Build the equivalent JSON array of the same 5 fields as the JSON baseline.
+	type jsonHit struct {
+		Name  string  `json:"name"`
+		Kind  string  `json:"kind"`
+		File  string  `json:"file"`
+		Line  int     `json:"line"`
+		Score float64 `json:"score"`
+	}
+	jsonArr := make([]jsonHit, len(fixtures))
+	for i, f := range fixtures {
+		jsonArr[i] = jsonHit{f.name, f.kind, f.file, f.line, f.score}
+	}
+	jsonBytes, _ := json.Marshal(jsonArr)
+
+	toonTokens := estimateTokens(toonOut)
+	jsonTokens := estimateTokens(string(jsonBytes))
+	savings := float64(jsonTokens-toonTokens) / float64(jsonTokens) * 100
+
+	t.Logf("TOON vs JSON: %d vs %d tokens (%.1f%% savings) for %d nodes", toonTokens, jsonTokens, savings, len(fixtures))
+	if toonTokens >= jsonTokens {
+		t.Errorf("TOON (%d tokens) should be fewer than JSON (%d tokens) for same-field payload", toonTokens, jsonTokens)
+	}
+	if savings < 20 {
+		t.Errorf("expected ≥20%% token savings vs JSON, got %.1f%%", savings)
+	}
 }
