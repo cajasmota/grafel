@@ -83,6 +83,7 @@ func newDocgenCmd() *cobra.Command {
 		maxPages      int
 		mermaidBudget int
 		repoSlug      string
+		llmMode       string
 	)
 
 	cmd := &cobra.Command{
@@ -168,9 +169,9 @@ Available sections (--section, used by --tier=0 only):
 
 			switch tier {
 			case 0:
-				return runDocgenTier0(cmd, group, seedEntity, section, outputDir)
+				return runDocgenTier0(cmd, group, seedEntity, section, outputDir, llmMode)
 			case 1:
-				return runDocgenTier1(cmd, group, seedEntity, pageID, outputDir)
+				return runDocgenTier1(cmd, group, seedEntity, pageID, outputDir, llmMode)
 			case 2:
 				return runDocgenTier2(cmd, group, seedEntity, outputDir, maxPages, mermaidBudget)
 			case 3:
@@ -201,12 +202,14 @@ Available sections (--section, used by --tier=0 only):
 		"repo slug within the group (required for --tier=3); see group config for available slugs")
 	cmd.Flags().BoolVar(&listSecs, "list-sections", false,
 		"print all valid section names and exit")
+	cmd.Flags().StringVar(&llmMode, "llm-mode", "",
+		`LLM integration mode: "" (default, stub-only), "emit" (write LLMPromptBundle JSON alongside stub), "apply" (apply LLM results; not yet implemented)`)
 
 	return cmd
 }
 
 // runDocgenTier0 executes the Tier 0 single-section fast path.
-func runDocgenTier0(cmd *cobra.Command, group, seedEntity, section, outputDir string) error {
+func runDocgenTier0(cmd *cobra.Command, group, seedEntity, section, outputDir, llmMode string) error {
 	// Resolve group.
 	resolvedGroup, err := resolveGroup(group)
 	if err != nil {
@@ -226,6 +229,7 @@ func runDocgenTier0(cmd *cobra.Command, group, seedEntity, section, outputDir st
 		SeedEntityID: seedEntity,
 		Section:      section,
 		OutputDir:    outputDir,
+		LLMMode:      llmMode,
 	}
 
 	mdPath, scorePath, score, err := docgen.Run(opts)
@@ -245,9 +249,17 @@ func runDocgenTier0(cmd *cobra.Command, group, seedEntity, section, outputDir st
 	fmt.Fprintf(out, "  words:     %d\n", score.Words)
 	fmt.Fprintf(out, "  mermaid:   %d\n", score.MermaidCount)
 	fmt.Fprintf(out, "  neighbours:%d\n", score.NeighboursIncluded)
+	if score.LLMMode != "" {
+		fmt.Fprintf(out, "  llm-mode:  %s\n", score.LLMMode)
+	}
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintf(out, "  output:    %s\n", mdPath)
 	fmt.Fprintf(out, "  score:     %s\n", scorePath)
+	if llmMode == "emit" {
+		// Bundle file sits next to the stub with a predictable name.
+		bundlePath := mdPath[:len(mdPath)-len(".md")] + "-bundle.json"
+		fmt.Fprintf(out, "  bundle:    %s\n", bundlePath)
+	}
 
 	// Print SCORE.json to stdout when running interactively (pipe detection
 	// omitted intentionally — the score is small and always useful).
@@ -259,7 +271,7 @@ func runDocgenTier0(cmd *cobra.Command, group, seedEntity, section, outputDir st
 }
 
 // runDocgenTier1 executes the Tier 1 single-page path (<120 s).
-func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir string) error {
+func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir, llmMode string) error {
 	resolvedGroup, err := resolveGroup(group)
 	if err != nil {
 		return err
@@ -274,6 +286,7 @@ func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir str
 		SeedEntityID: seedEntity,
 		PageID:       pageID,
 		OutputDir:    outputDir,
+		LLMMode:      llmMode,
 	}
 
 	mdPath, scorePath, score, err := docgen.RunTier1(opts)
@@ -292,8 +305,17 @@ func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir str
 	fmt.Fprintf(out, "  links:      %d (unresolved: %d)\n", score.InternalLinkCount, score.InternalLinkUnresolved)
 	fmt.Fprintf(out, "  dup-flows:  %d\n", score.DuplicatedFlowCount)
 	fmt.Fprintf(out, "  anchors:    %d\n", score.AnchorCount)
+	if score.LLMMode != "" {
+		fmt.Fprintf(out, "  llm-mode:   %s\n", score.LLMMode)
+	}
 	if len(score.ContractViolations) > 0 {
-		fmt.Fprintf(out, "\n  CONTRACT VIOLATIONS (%d):\n", len(score.ContractViolations))
+		// In emit mode, contract violations are informational — the LLM will
+		// produce the real prose; the stub contracts are indicative only.
+		label := "CONTRACT VIOLATIONS"
+		if llmMode == "emit" {
+			label = "CONTRACT NOTES (emit mode — informational)"
+		}
+		fmt.Fprintf(out, "\n  %s (%d):\n", label, len(score.ContractViolations))
 		for _, v := range score.ContractViolations {
 			fmt.Fprintf(out, "    - %s\n", v)
 		}
@@ -303,6 +325,12 @@ func runDocgenTier1(cmd *cobra.Command, group, seedEntity, pageID, outputDir str
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintf(out, "  output:     %s\n", mdPath)
 	fmt.Fprintf(out, "  score:      %s\n", scorePath)
+	if llmMode == "emit" {
+		// Bundle file sits next to the page with a predictable name.
+		// mdPath is <outDir>/<pageID>-page.md; bundle is <outDir>/<pageID>-page-bundle.json
+		bundlePath := mdPath[:len(mdPath)-len(".md")] + "-bundle.json"
+		fmt.Fprintf(out, "  bundle:     %s\n", bundlePath)
+	}
 	fmt.Fprintf(out, "\n--- score.json ---\n")
 	scoreBytes, _ := json.MarshalIndent(score, "", "  ")
 	fmt.Fprintln(out, string(scoreBytes))

@@ -24,6 +24,7 @@
 package docgen
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -60,6 +61,12 @@ type Tier1RunOpts struct {
 	// ConcurrencyLimit controls the goroutine pool size for parallel section
 	// rendering. Defaults to 4 when 0.
 	ConcurrencyLimit int
+	// LLMMode controls the LLM integration mode. Valid values:
+	//   "" — default: write page .md + score.json only (existing behaviour).
+	//   "emit" — write page .md + score.json AND an LLMPromptBundle JSON file.
+	//   "apply" — (ticket D) read *-result.json and rebuild with prose fill.
+	// Any other value is an error.
+	LLMMode string
 }
 
 // Tier1Score is the machine-readable quality scorecard written by Tier 1.
@@ -79,6 +86,9 @@ type Tier1Score struct {
 	DuplicatedFlowCount    int      `json:"duplicated_flow_count"`
 	AnchorCount            int      `json:"anchor_count"`
 	ContractViolations     []string `json:"contract_violations,omitempty"`
+	// LLMMode is set to "emit" when the run was invoked with --llm-mode=emit.
+	// Empty string means the default deterministic-stub-only mode.
+	LLMMode                string   `json:"llm_mode,omitempty"`
 }
 
 // sectionResult holds the output of one parallel section render.
@@ -89,8 +99,19 @@ type sectionResult struct {
 
 // RunTier1 executes a Tier 1 full-page render and returns the path to the
 // output markdown file and its score.
+//
+// When opts.LLMMode == "emit" the function also writes a sibling
+// <entity-id>-page-bundle.json containing the LLMPromptBundle for ALL sections
+// on this page. The bundle is emitted ALONGSIDE the stub; no LLM is called.
+// Contract checks that depend on real prose are still run against the stub, but
+// are not fatal in emit mode (score.ContractViolations is still populated for
+// visibility).
 func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Score, err error) {
 	start := time.Now()
+
+	if err = validateLLMMode(opts.LLMMode); err != nil {
+		return
+	}
 
 	if opts.ConcurrencyLimit <= 0 {
 		opts.ConcurrencyLimit = 4
@@ -133,6 +154,8 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 	page, anchors := assemblePage(pageEntityName, sections, sectionMap)
 
 	// Run per-page contract checks.
+	// In emit mode contract violations are recorded but not fatal — the bundle
+	// is the handoff artifact, not the final rendered page.
 	violations := checkPageContract(page, anchors, sections, sectionMap)
 
 	// Compute score metrics.
@@ -163,6 +186,7 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 		DuplicatedFlowCount:    duplicatedFlows,
 		AnchorCount:            len(anchors),
 		ContractViolations:     violations,
+		LLMMode:                opts.LLMMode,
 	}
 
 	// Write page markdown file.
@@ -186,6 +210,35 @@ func RunTier1(opts Tier1RunOpts) (mdPath string, scorePath string, score Tier1Sc
 	if wErr := os.WriteFile(scoreFile, scoreBytes, 0o644); wErr != nil {
 		err = fmt.Errorf("write score.json: %w", wErr)
 		return
+	}
+
+	// --llm-mode=emit: build and persist the LLMPromptBundle alongside the page.
+	// The Tier 1 bundle contains ALL sections selected for the entity kind.
+	if opts.LLMMode == "emit" {
+		bundleOpts := BuildBundleOpts{
+			RunOpts: RunOpts{
+				Group:        opts.Group,
+				SeedEntityID: opts.SeedEntityID,
+				OutputDir:    opts.OutputDir,
+			},
+			PageID: pageID,
+			Tier:   1,
+		}
+		bundle, bErr := BuildBundle(context.Background(), bundleOpts)
+		if bErr != nil {
+			err = fmt.Errorf("build tier1 llm bundle: %w", bErr)
+			return
+		}
+		bundleBytes, mErr := json.MarshalIndent(bundle, "", "  ")
+		if mErr != nil {
+			err = fmt.Errorf("marshal tier1 llm bundle: %w", mErr)
+			return
+		}
+		bundleFile := filepath.Join(outDir, pageID+"-page-bundle.json")
+		if wErr := os.WriteFile(bundleFile, bundleBytes, 0o644); wErr != nil {
+			err = fmt.Errorf("write tier1 bundle file: %w", wErr)
+			return
+		}
 	}
 
 	mdPath = mdFile
