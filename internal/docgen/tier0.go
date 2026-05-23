@@ -25,6 +25,7 @@
 package docgen
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -38,6 +39,19 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/registry"
 )
+
+// ValidLLMModes lists the accepted values for the --llm-mode flag.
+var ValidLLMModes = []string{"", "emit", "apply"}
+
+// validateLLMMode returns an error when mode is not one of the accepted values.
+func validateLLMMode(mode string) error {
+	for _, v := range ValidLLMModes {
+		if mode == v {
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown --llm-mode=%q; valid values: \"\" (default), \"emit\", \"apply\"", mode)
+}
 
 // KnownSections is the canonical list accepted by --section.
 var KnownSections = []string{
@@ -71,6 +85,9 @@ type Score struct {
 	Words                   int    `json:"words"`
 	NeighboursIncluded      int    `json:"neighbours_included"`
 	SeedEntityFound         bool   `json:"seed_entity_found"`
+	// LLMMode is set to "emit" when the run was invoked with --llm-mode=emit.
+	// Empty string means the default deterministic-stub-only mode.
+	LLMMode                 string `json:"llm_mode,omitempty"`
 }
 
 // RunOpts contains the resolved inputs for a Tier 0 run.
@@ -84,14 +101,27 @@ type RunOpts struct {
 	// OutputDir overrides the default ~/.archigraph/docs/<group>/.tier0-<ts>/
 	// location. Useful in tests.
 	OutputDir string
+	// LLMMode controls the LLM integration mode. Valid values:
+	//   "" — default: write stub .md + score.json only (existing behaviour).
+	//   "emit" — write stub .md + score.json AND an LLMPromptBundle JSON file.
+	//   "apply" — (ticket D) read *-result.json and rebuild with prose fill.
+	// Any other value is an error.
+	LLMMode string
 }
 
 // Run executes a Tier 0 section snippet render and returns the path to the
 // output markdown file and its score.
+//
+// When opts.LLMMode == "emit" the function also writes a sibling
+// <entity-id>-<section>-bundle.json containing the LLMPromptBundle for this
+// section. The bundle is emitted ALONGSIDE the stub; no LLM is called.
 func Run(opts RunOpts) (mdPath string, scoreFile string, score Score, err error) {
 	start := time.Now()
 
 	if err = validateSection(opts.Section); err != nil {
+		return
+	}
+	if err = validateLLMMode(opts.LLMMode); err != nil {
 		return
 	}
 
@@ -128,6 +158,7 @@ func Run(opts RunOpts) (mdPath string, scoreFile string, score Score, err error)
 	// Build and write the score.
 	elapsed := time.Since(start).Milliseconds()
 	score = buildScore(opts.Section, opts.SeedEntityID, md, elapsed, len(neighbours), entity != nil)
+	score.LLMMode = opts.LLMMode
 
 	scoreBytes, jErr := json.MarshalIndent(score, "", "  ")
 	if jErr != nil {
@@ -138,6 +169,29 @@ func Run(opts RunOpts) (mdPath string, scoreFile string, score Score, err error)
 	if wErr := os.WriteFile(scoreFile, scoreBytes, 0o644); wErr != nil {
 		err = fmt.Errorf("write score.json: %w", wErr)
 		return
+	}
+
+	// --llm-mode=emit: build and persist the LLMPromptBundle alongside the stub.
+	if opts.LLMMode == "emit" {
+		bundleOpts := BuildBundleOpts{
+			RunOpts: opts,
+			Tier:    0,
+		}
+		bundle, bErr := BuildBundle(context.Background(), bundleOpts)
+		if bErr != nil {
+			err = fmt.Errorf("build llm bundle: %w", bErr)
+			return
+		}
+		bundleBytes, mErr := json.MarshalIndent(bundle, "", "  ")
+		if mErr != nil {
+			err = fmt.Errorf("marshal llm bundle: %w", mErr)
+			return
+		}
+		bundleFile := filepath.Join(outDir, sanitizeFilename(opts.SeedEntityID)+"-"+opts.Section+"-bundle.json")
+		if wErr := os.WriteFile(bundleFile, bundleBytes, 0o644); wErr != nil {
+			err = fmt.Errorf("write bundle file: %w", wErr)
+			return
+		}
 	}
 
 	mdPath = mdFile
