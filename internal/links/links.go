@@ -390,16 +390,48 @@ func loadAllGraphs(graphsDir string) ([]repoGraph, error) {
 			return nil, fmt.Errorf("load graph in %s: %w", dir, err)
 		}
 
-		repoName := doc.Repo
+		// Prefer the staged directory name as the canonical slug.
+		// When called via stageGraphsDir, each graph file is at
+		// <tmp>/<fleet-slug>/graph.{fb,json} so filepath.Base(dir) is the
+		// exact fleet slug (dash form). doc.Repo, by contrast, is set from
+		// the repoTag written at index time — historically derived from the
+		// on-disk directory basename, which may use underscores where the
+		// fleet config uses dashes (e.g. "upvate_core" vs "upvate-core").
+		// Using the directory name here means the emitter writes the correct
+		// fleet slug into Link.Source / Link.Target, so downstream readers
+		// (MCP find_paths, dashboard graph merge) never need to alias-map
+		// the underscore form. Fixes #1701.
+		//
+		// Special case: when the graph file lives in a hidden subdirectory
+		// (e.g. <repo>/.archigraph/graph.json in test fixtures and legacy
+		// on-disk layouts), the immediate basename is ".archigraph" — not
+		// a useful slug. In that case fall up one level to the repo directory
+		// name, which agrees with doc.Repo. If that is also unhelpful, fall
+		// back to doc.Repo.
+		dirBase := filepath.Base(dir)
+		if strings.HasPrefix(dirBase, ".") {
+			// Hidden sub-dir (e.g. .archigraph): use parent directory name.
+			dirBase = filepath.Base(filepath.Dir(dir))
+		}
+		repoName := dirBase
+		if repoName == "" || repoName == "." {
+			repoName = doc.Repo
+		}
 		if repoName == "" {
-			// Fallback: derive from the slug sub-directory name (one level up
-			// from the staged dir, which has layout <tmp>/<slug>/graph.{fb,json}).
+			// Final fallback: use the symlink-resolved directory.
 			repoName = filepath.Base(realDir)
 		}
 		if seen[repoName] {
 			continue
 		}
 		seen[repoName] = true
+		// Also mark the graph-embedded repo name as seen so that if the same
+		// repo is encountered a second time (e.g. both graph.fb and graph.json
+		// present, or a symlink loop), the underscore variant won't be loaded
+		// as a separate repo.
+		if doc.Repo != "" && doc.Repo != repoName {
+			seen[doc.Repo] = true
+		}
 
 		rg := repoGraph{
 			Repo:     repoName,

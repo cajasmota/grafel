@@ -724,3 +724,154 @@ func TestLoadAllGraphs_MixedFBAndJSON(t *testing.T) {
 		t.Errorf("frontend (fb-only) not loaded; repos found: %v", slugs)
 	}
 }
+
+// TestLoadAllGraphs_SlugCanonicalisation verifies that when a staged
+// directory is named after the fleet slug (dash form) but the embedded
+// doc.Repo field uses the path-derived underscore form, loadAllGraphs
+// returns the dash-slug as repoGraph.Repo. This is the #1701 regression:
+// the links emitter was writing "upvate_core::<id>" targets instead of
+// "upvate-core::<id>", causing find_paths to need an alias map.
+func TestLoadAllGraphs_SlugCanonicalisation(t *testing.T) {
+	root := t.TempDir()
+
+	// Simulate the staged layout: <tmp>/<fleet-slug>/graph.fb
+	// doc.Repo is the underscore form (as historically written by the indexer).
+	writeRepoFB := func(dirSlug, docRepo string, doc *graph.Document) {
+		t.Helper()
+		dir := filepath.Join(root, dirSlug)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		doc.Repo = docRepo
+		if err := fbwriter.WriteAtomic(filepath.Join(dir, "graph.fb"), doc); err != nil {
+			t.Fatalf("write graph.fb for %s: %v", dirSlug, err)
+		}
+	}
+
+	// Fleet slug uses dashes; on-disk repo dir used underscores.
+	writeRepoFB("api-service", "api_service", &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "a1", Name: "UserHandler", Kind: "function", SourceFile: "handler.go"},
+		},
+	})
+	writeRepoFB("mobile-app", "mobile_app", &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "m1", Name: "fetchUser", Kind: "function", SourceFile: "api.ts"},
+		},
+	})
+
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatalf("loadAllGraphs: %v", err)
+	}
+	if len(graphs) != 2 {
+		t.Fatalf("expected 2 graphs, got %d", len(graphs))
+	}
+
+	byRepo := make(map[string]repoGraph, len(graphs))
+	for _, g := range graphs {
+		byRepo[g.Repo] = g
+	}
+
+	// The canonical slug (dash form from the dir name) must be used, NOT the
+	// underscore form from doc.Repo.
+	for _, want := range []string{"api-service", "mobile-app"} {
+		if _, ok := byRepo[want]; !ok {
+			t.Errorf("expected repo %q (dash slug), got repos: %v — emitter would write underscore prefix (Fixes #1701)", want, keys(byRepo))
+		}
+	}
+	for _, bad := range []string{"api_service", "mobile_app"} {
+		if _, ok := byRepo[bad]; ok {
+			t.Errorf("repo %q (underscore form) found in output — should have been canonicalised to dash form (Fixes #1701)", bad)
+		}
+	}
+}
+
+// TestRunAllPasses_SlugCanonicalisation verifies end-to-end that RunAllPasses
+// writes Link.Source / Link.Target using the fleet slug (dir-name, dash form)
+// when the staged directories use dash-form slugs but doc.Repo uses underscore.
+// This is the emitter-level fix for #1701.
+func TestRunAllPasses_SlugCanonicalisation(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "ag-home")
+
+	// Write two repos in staged-layout (flat dir named after slug, no
+	// .archigraph subdir) with doc.Repo in the underscore form.
+	writeFlat := func(slug, docRepo string) {
+		t.Helper()
+		dir := filepath.Join(root, slug)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		raw := map[string]any{
+			"version": 1,
+			"repo":    docRepo, // underscore form — what the indexer historically wrote
+			"entities": []map[string]any{
+				{"id": slug + "1", "name": "Foo", "kind": "function", "source_file": "main.go"},
+				{"id": slug + "2", "name": "ext:" + strings.ReplaceAll(slug, "-", "_"), "kind": "class", "subtype": "package", "source_file": ""},
+			},
+			"relationships": []map[string]any{
+				{"from_id": slug + "1", "to_id": slug + "2", "kind": "imports"},
+			},
+		}
+		b, _ := json.Marshal(raw)
+		if err := os.WriteFile(filepath.Join(dir, "graph.json"), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// api-service (slug) / api_service (doc.Repo) imports mobile-app (slug) / mobile_app (doc.Repo).
+	writeFlat("api-service", "api_service")
+	writeFlat("mobile-app", "mobile_app")
+
+	// Write a graph for "mobile-app" that has an entity whose name matches the
+	// external import from "api-service" so import pass can link them.
+	mobileDir := filepath.Join(root, "mobile-app")
+	mobileDoc := map[string]any{
+		"version": 1,
+		"repo":    "mobile_app",
+		"entities": []map[string]any{
+			{"id": "mob1", "name": "MobileMain", "kind": "function", "source_file": "app.go"},
+		},
+		"relationships": []map[string]any{},
+	}
+	b, _ := json.Marshal(mobileDoc)
+	if err := os.WriteFile(filepath.Join(mobileDir, "graph.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = b
+
+	res, err := RunAllPasses("slug-test", root, home)
+	if err != nil {
+		t.Fatalf("RunAllPasses: %v", err)
+	}
+
+	doc, err := readDoc(res.OutLinks)
+	if err != nil {
+		t.Fatalf("readDoc: %v", err)
+	}
+
+	// Every Source and Target prefix must use the dash form, never the
+	// underscore form.
+	for _, l := range doc.Links {
+		for _, endpoint := range []string{l.Source, l.Target} {
+			if idx := strings.Index(endpoint, "::"); idx > 0 {
+				prefix := endpoint[:idx]
+				if strings.Contains(prefix, "_") {
+					// Reject underscore-prefixed targets (#1701).
+					t.Errorf("link %s→%s: endpoint %q uses underscore prefix (want dash slug, Fixes #1701)",
+						l.Source, l.Target, endpoint)
+				}
+			}
+		}
+	}
+}
+
+// keys returns the sorted key list of a map[string]repoGraph.
+func keys(m map[string]repoGraph) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
