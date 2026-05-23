@@ -37,6 +37,17 @@ for clients (Claude Code, Windsurf, etc.) and tracks the implementation in
 - **No backwards compat for old names:** ADR-0017 (no-backcompat guarantee).
   Agents using pre-#668 tool names will receive a clear "tool not found" error.
 
+### Deprecated parameter aliases
+
+The following parameter names were renamed for consistency (#1790). The old
+names are still accepted at runtime and print a `[archigraph deprecation]`
+message to `os.Stderr`; they will be removed in the next major version.
+
+| Tool | Old name (deprecated) | New canonical name |
+|------|-----------------------|--------------------|
+| `archigraph_find` | `question` | `query` |
+| `archigraph_get_source` | `node_id` | `entity_id` |
+
 ### Stability policy
 
 The tool surface evolves additively. New tools and new optional arguments may
@@ -237,7 +248,7 @@ Previously named `archigraph_search` (renamed in #668).
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `question` | string | yes | — | Natural-language query. |
+| `query` | string | yes | — | Natural-language query. |
 | `mode` | string | no | `bfs` | Traversal mode: `bfs` \| `dfs` \| `none`. |
 | `depth` | number | no | `3` | BFS depth from each match. |
 | `token_budget` | number | no | `800` | Max approximate tokens in compact output. |
@@ -763,7 +774,7 @@ what span the entity records.
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `node_id` | string | yes | — | Entity ID, prefixed ID, qname, or label. |
+| `entity_id` | string | yes | — | Entity ID, prefixed ID, qname, or label. |
 | `context_lines` | number | no | `20` | Lines of context above/below the entity. |
 | `group`, `cwd` | string | no | — | Common args. |
 

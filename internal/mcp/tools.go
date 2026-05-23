@@ -281,10 +281,19 @@ type patternForCount struct {
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	question, err := req.RequireString("question")
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
+	// canonical name is "query"; accept legacy "question" with a deprecation log.
+	question := argString(req, "query", "")
+	if question == "" {
+		question = argString(req, "question", "")
+		if question != "" {
+			fmt.Fprintln(os.Stderr, "[archigraph deprecation] archigraph_find: param 'question' is deprecated, use 'query'")
+		}
 	}
+	if question == "" {
+		return mcpapi.NewToolResultError("missing required argument: query"), nil
+	}
+	var err error
+	_ = err // retained for symmetry with other handlers
 	_, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
 		return errRes, nil
@@ -1056,9 +1065,16 @@ func (s *Server) handleListFindings(ctx context.Context, req mcpapi.CallToolRequ
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	nodeID, err := req.RequireString("node_id")
-	if err != nil {
-		return mcpapi.NewToolResultError(err.Error()), nil
+	// canonical name is "entity_id"; accept legacy "node_id" with a deprecation log.
+	nodeID := argString(req, "entity_id", "")
+	if nodeID == "" {
+		nodeID = argString(req, "node_id", "")
+		if nodeID != "" {
+			fmt.Fprintln(os.Stderr, "[archigraph deprecation] archigraph_get_source: param 'node_id' is deprecated, use 'entity_id'")
+		}
+	}
+	if nodeID == "" {
+		return mcpapi.NewToolResultError("missing required argument: entity_id"), nil
 	}
 	contextLines := argInt(req, "context_lines", 20)
 	_, lg, errRes := s.resolveAndGroup(req)
