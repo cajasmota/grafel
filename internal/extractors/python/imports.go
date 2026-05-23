@@ -172,6 +172,35 @@ var pythonKnownExternalRoots = map[string]struct{}{
 	"pdfplumber": {}, // PDF extraction
 	// Django REST (wave-8 fixture-a residual)
 	"coreapi": {}, // Django REST coreapi client
+	// Observability / tracing — polyglot-platform corpus gap
+	// `from opentelemetry import trace`, `from opentelemetry.sdk.trace import TracerProvider`, etc.
+	// All sub-packages share the `opentelemetry` root.
+	"opentelemetry": {},
+	// Workflow orchestration — polyglot-platform corpus gap
+	// Apache Airflow: `from airflow import DAG`, `from airflow.operators.python import PythonOperator`
+	"airflow": {},
+	// GraphQL (Strawberry) — polyglot-platform corpus gap
+	// `import strawberry`, `from strawberry.fastapi import GraphQLRouter`
+	"strawberry": {},
+	// gRPC — polyglot-platform corpus gap
+	// `import grpc`, generated stubs (`import inventory_pb2`, `import inventory_pb2_grpc`)
+	// use top-level `grpc` which is the canonical PyPI package name.
+	"grpc": {},
+	// Async messaging — polyglot-platform corpus gap
+	// `import aio_pika` (AMQP/RabbitMQ async client)
+	"aio_pika": {},
+	// Kafka pure-Python client — polyglot-platform corpus gap
+	// `from kafka import KafkaProducer, KafkaConsumer`
+	"kafka": {},
+	// HashiCorp Vault client — polyglot-platform corpus gap
+	// `import hvac`
+	"hvac": {},
+	// pgvector Postgres extension client — polyglot-platform corpus gap
+	// `from pgvector.psycopg import register_vector`
+	"pgvector": {},
+	// Sentence Transformers (ML) — polyglot-platform corpus gap
+	// `from sentence_transformers import SentenceTransformer`
+	"sentence_transformers": {},
 }
 
 // resolveImportToIDs walks every IMPORTS edge on every entity in

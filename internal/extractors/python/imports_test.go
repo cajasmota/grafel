@@ -86,6 +86,117 @@ func TestImportsLeavesUnknownAlone(t *testing.T) {
 	}
 }
 
+// Polyglot-platform corpus additions: packages that were missing from
+// pythonKnownExternalRoots and caused unresolved IMPORTS on the
+// polyglot-platform group (bug-rate experiment 2026-05-23).
+//
+// Each sub-test checks that the top-level root is rewritten to ext:<root>
+// form so the resolver's external-disposition gate classifies the edge
+// as ExternalKnown rather than routing it to bug-extractor.
+func TestImportsRewritePolyglotExternals(t *testing.T) {
+	ex := &Extractor{}
+
+	cases := []struct {
+		name       string
+		src        string
+		sourcemod  string
+		wantPrefix string
+	}{
+		{
+			name:       "opentelemetry_trace",
+			src:        "from opentelemetry import trace\n",
+			sourcemod:  "opentelemetry",
+			wantPrefix: "ext:opentelemetry",
+		},
+		{
+			name:       "opentelemetry_sdk_submodule",
+			src:        "from opentelemetry.sdk.trace import TracerProvider\n",
+			sourcemod:  "opentelemetry.sdk.trace",
+			wantPrefix: "ext:opentelemetry",
+		},
+		{
+			name:       "airflow_dag",
+			src:        "from airflow import DAG\n",
+			sourcemod:  "airflow",
+			wantPrefix: "ext:airflow",
+		},
+		{
+			name:       "airflow_operators_python",
+			src:        "from airflow.operators.python import PythonOperator\n",
+			sourcemod:  "airflow.operators.python",
+			wantPrefix: "ext:airflow",
+		},
+		{
+			name:       "strawberry_import",
+			src:        "import strawberry\n",
+			sourcemod:  "strawberry",
+			wantPrefix: "ext:strawberry",
+		},
+		{
+			name:       "strawberry_fastapi",
+			src:        "from strawberry.fastapi import GraphQLRouter\n",
+			sourcemod:  "strawberry.fastapi",
+			wantPrefix: "ext:strawberry",
+		},
+		{
+			name:       "grpc_import",
+			src:        "import grpc\n",
+			sourcemod:  "grpc",
+			wantPrefix: "ext:grpc",
+		},
+		{
+			name:       "aio_pika",
+			src:        "import aio_pika\n",
+			sourcemod:  "aio_pika",
+			wantPrefix: "ext:aio_pika",
+		},
+		{
+			name:       "kafka",
+			src:        "from kafka import KafkaProducer, KafkaConsumer\n",
+			sourcemod:  "kafka",
+			wantPrefix: "ext:kafka",
+		},
+		{
+			name:       "hvac",
+			src:        "import hvac\n",
+			sourcemod:  "hvac",
+			wantPrefix: "ext:hvac",
+		},
+		{
+			name:       "pgvector",
+			src:        "from pgvector.psycopg import register_vector\n",
+			sourcemod:  "pgvector.psycopg",
+			wantPrefix: "ext:pgvector",
+		},
+		{
+			name:       "sentence_transformers",
+			src:        "from sentence_transformers import SentenceTransformer\n",
+			sourcemod:  "sentence_transformers",
+			wantPrefix: "ext:sentence_transformers",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ents, err := ex.Extract(context.Background(), extractor.FileInput{
+				Path:     "app/main.py",
+				Language: "python",
+				Content:  []byte(tc.src),
+			})
+			if err != nil {
+				t.Fatalf("Extract: %v", err)
+			}
+			r := findImportEdge(ents, tc.sourcemod)
+			if r == nil {
+				t.Fatalf("missing IMPORTS edge for source_module=%q", tc.sourcemod)
+			}
+			if !strings.HasPrefix(r.ToID, tc.wantPrefix) {
+				t.Fatalf("ToID = %q, want prefix %q", r.ToID, tc.wantPrefix)
+			}
+		})
+	}
+}
+
 // Relative imports are never rewritten — `from .foo import bar` carries
 // a source_module starting with "." which is never an external package.
 //

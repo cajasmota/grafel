@@ -16218,6 +16218,18 @@ var knownExternalPackages = map[string]struct{}{
 	"cv2":       {}, // OpenCV
 	"pdf2image": {}, // PDF to image conversion
 	"coreapi":   {}, // Django REST coreapi client
+	// Polyglot-platform corpus additions (bug-rate experiment 2026-05-23).
+	// These packages appeared as unresolved IMPORTS on the polyglot-platform
+	// group (27.0% unresolved rate, 372/1377 edges) and were missing from the
+	// allowlist, causing the resolver to tag them ExternalUnknown / bug-extractor.
+	// Note: opentelemetry, grpc, and kafka already exist later in this map for
+	// Scala/Go uses — they are omitted here to avoid duplicate-key errors.
+	"airflow":               {}, // Apache Airflow: `from airflow import DAG`, etc.
+	"strawberry":            {}, // Strawberry GraphQL: `import strawberry`, etc.
+	"aio_pika":              {}, // Async AMQP/RabbitMQ: `import aio_pika`
+	"hvac":                  {}, // HashiCorp Vault client: `import hvac`
+	"pgvector":              {}, // pgvector Postgres extension: `from pgvector.psycopg import ...`
+	"sentence_transformers": {}, // Sentence Transformers ML: `from sentence_transformers import ...`
 	// Wave-7 third-party additions (Django/Channels/AWS/PDF/Excel
 	// stack from client-fixture-a residual).
 	"asgiref":                  {},
