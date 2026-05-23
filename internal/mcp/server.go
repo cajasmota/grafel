@@ -467,12 +467,13 @@ func (s *Server) wrap(name string, fn func(ctx context.Context, req mcpapi.CallT
 		// in their wire output). emitActivity drains it afterwards.
 		ctx, collector := withIDCollector(ctx)
 		res, err = fn(ctx, req)
-		// #1650: stamp every JSON tool payload with elapsed_ms so callers can
-		// benchmark latency without shelling out to `date`. We probe the text
-		// content for a top-level JSON object/array and rewrite it in place;
-		// non-JSON payloads (compact rendered text, markdown) are left as-is.
+		// #1650/#1687: stamp every tool payload with elapsed_ms — including error
+		// responses — so callers can benchmark latency regardless of outcome.
+		// Success responses: JSON object/array or non-JSON text (see injectElapsedMS).
+		// Error responses: plain-text content; we append the trailing comment so
+		// the same regex parser works for both paths.
 		elapsed := time.Since(start).Milliseconds()
-		if res != nil && !res.IsError {
+		if res != nil {
 			res = injectElapsedMS(res, elapsed)
 		}
 		s.emitActivity(ctx, name, req, res, collector)
