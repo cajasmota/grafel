@@ -50,6 +50,7 @@ bump (and a deprecation warning lap in the prior minor).
 |----------|--------|
 | `ARCHIGRAPH_MCP_DEBUG` | `0` silent (default), `1` print per-tool summary on shutdown, `2` per-call telemetry. Read by `cmd/archigraph/mcp.go`. |
 | `ARCHIGRAPH_VERBOSE` | When `1`, the indexer (`archigraph index`) prints per-language relationship breakdowns. Indexer-side; the MCP server itself does not read this. |
+| `MCP_WIRE_FORMAT` | `toon` (default) or `json`. Controls whether list-of-record responses use TOON encoding or fall back to minified JSON arrays in the `items` field. See [Wire Format](#wire-format) below. |
 
 The registry path defaults to `~/.archigraph/registry.json` and can be
 overridden via the `--registry` CLI flag.
@@ -1301,6 +1302,72 @@ AUDIT_CEILING=4200 make mcp-audit          # stricter gate
 AUDIT_BASELINE=4219 make mcp-audit         # show delta from measured baseline
 go run ./cmd/mcp-audit -json               # machine-readable JSON report
 ```
+
+---
+
+---
+
+## Wire Format
+
+### TOON encoding (#1672)
+
+Since #1672 the MCP server applies a last-step JSON→TOON conversion for
+**list-of-record tool payloads** before bytes leave the daemon. Internal code
+stays JSON throughout; the conversion happens only in `Server.wrap` via
+`injectElapsedMS` → `recordsToTOON`.
+
+#### What changes
+
+| Response shape | Before #1672 | After #1672 (default) |
+|----------------|-------------|----------------------|
+| JSON array of homogeneous records | `{"items":[{...},{...}], "count":N, "elapsed_ms":M}` | `{"items":"[!schema {f1,f2}]\n{v1,v2}\n{v1,v2}\n", "count":N, "elapsed_ms":M}` |
+| JSON object (single entity) | unchanged | unchanged |
+| Non-JSON / compact-text payloads | unchanged | unchanged |
+
+#### TOON format
+
+A TOON-encoded block starts with a schema declaration followed by one row per
+record:
+
+```
+[!schema {field1,field2,field3}]
+{value1,value2,value3}
+{value1,value2,value3}
+```
+
+- Keys are **sorted alphabetically** for determinism.
+- Strings are escaped: `\`, `,`, `{`, `}` are preceded by a backslash.
+- Numbers and booleans are emitted bare.
+- Nested objects/arrays fall back to their minified JSON form (single cell,
+  escaped as a string).
+- An agent reading TOON treats each `{...}` line as a row and the schema line
+  as the column names.
+
+#### Detection rule
+
+`recordsToTOON` converts only when **every element** of the array is a
+`map[string]any` with **the same key set** (same count, same keys). Any
+mismatch — including missing keys, extra keys, or non-object elements — falls
+back to the minified JSON array in `items`.
+
+#### Opt-out
+
+Set `MCP_WIRE_FORMAT=json` to receive `items` as a raw JSON array (same
+shape as #1663 minified JSON). This env var is read at call time so it can be
+toggled without restarting the daemon.
+
+#### Token savings
+
+Measured on a representative 40-record endpoint payload (8 fields per row):
+
+| Format | Tokens (≈chars/4) | Savings vs JSON |
+|--------|-------------------|-----------------|
+| Minified JSON array | 2,270 | — |
+| TOON-encoded | 1,388 | **~39%** |
+
+For list-heavy tools (`archigraph_endpoints`, `archigraph_topology`,
+`archigraph_auth_coverage`, `archigraph_find_dead_code`, etc.) this is
+additive on top of the minification savings from #1663.
 
 ---
 

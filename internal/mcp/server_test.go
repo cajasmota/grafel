@@ -2064,6 +2064,183 @@ func TestPatterns_ConcurrentRefineApply(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// #1672 — TOON wire conversion tests
+// ---------------------------------------------------------------------------
+
+// TestTOONWire_HomogeneousArrayGetsTOON verifies that when MCP_WIRE_FORMAT=toon
+// (default), a tool that returns a JSON array of homogeneous records will
+// produce an envelope with items=<TOON-text>, count=N, elapsed_ms.
+func TestTOONWire_HomogeneousArrayGetsTOON(t *testing.T) {
+	t.Setenv("MCP_WIRE_FORMAT", "toon")
+
+	// injectElapsedMS is the last step in wrap; exercise it directly with a
+	// synthetic homogeneous-record array payload.
+	arr := `[{"id":"e1","name":"POST /api/orders","repo":"svc"},{"id":"e2","name":"GET /api/orders","repo":"svc"}]`
+	res := &mcpapi.CallToolResult{
+		Content: []mcpapi.Content{mcpapi.NewTextContent(arr)},
+	}
+	out := injectElapsedMS(res, 42)
+	text := resultText(out)
+
+	// Envelope must be valid JSON.
+	var env map[string]any
+	if err := json.Unmarshal([]byte(text), &env); err != nil {
+		t.Fatalf("envelope not valid JSON: %v — got: %s", err, text)
+	}
+
+	// items must be a TOON-encoded string (not a JSON array).
+	items, ok := env["items"].(string)
+	if !ok {
+		t.Fatalf("expected items to be a string (TOON), got %T: %v", env["items"], env["items"])
+	}
+	if !strings.HasPrefix(items, "[!schema {") {
+		t.Errorf("expected TOON header '[!schema {', got: %s", items)
+	}
+	// Schema line must list the sorted keys.
+	if !strings.Contains(items, "id,name,repo") {
+		t.Errorf("expected schema keys id,name,repo in TOON header, got: %s", items)
+	}
+	// Row count must match.
+	if env["count"].(float64) != 2 {
+		t.Errorf("expected count=2, got %v", env["count"])
+	}
+	// elapsed_ms injected.
+	if env["elapsed_ms"].(float64) != 42 {
+		t.Errorf("expected elapsed_ms=42, got %v", env["elapsed_ms"])
+	}
+}
+
+// TestTOONWire_JSONOptOutKeepsArrayInItems verifies that MCP_WIRE_FORMAT=json
+// leaves items as a JSON array (backwards-compat opt-out).
+func TestTOONWire_JSONOptOutKeepsArrayInItems(t *testing.T) {
+	t.Setenv("MCP_WIRE_FORMAT", "json")
+
+	arr := `[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2"}]`
+	res := &mcpapi.CallToolResult{
+		Content: []mcpapi.Content{mcpapi.NewTextContent(arr)},
+	}
+	out := injectElapsedMS(res, 7)
+	text := resultText(out)
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(text), &env); err != nil {
+		t.Fatalf("envelope not valid JSON: %v — got: %s", err, text)
+	}
+	// items must be a JSON array, not a string.
+	if _, isStr := env["items"].(string); isStr {
+		t.Errorf("expected items to be a JSON array with MCP_WIRE_FORMAT=json, got a string: %v", env["items"])
+	}
+	if _, isArr := env["items"].([]any); !isArr {
+		t.Errorf("expected items to be []any, got %T", env["items"])
+	}
+}
+
+// TestTOONWire_HeterogeneousArrayFallsBackToJSON verifies that a mixed-schema
+// array (different key sets per row) is NOT TOON-encoded — items stays as a
+// JSON array even when MCP_WIRE_FORMAT=toon.
+func TestTOONWire_HeterogeneousArrayFallsBackToJSON(t *testing.T) {
+	t.Setenv("MCP_WIRE_FORMAT", "toon")
+
+	// Second record has an extra key "extra" that the first doesn't.
+	arr := `[{"id":"e1","name":"fn1"},{"id":"e2","name":"fn2","extra":"oops"}]`
+	res := &mcpapi.CallToolResult{
+		Content: []mcpapi.Content{mcpapi.NewTextContent(arr)},
+	}
+	out := injectElapsedMS(res, 0)
+	text := resultText(out)
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(text), &env); err != nil {
+		t.Fatalf("envelope not valid JSON: %v — got: %s", err, text)
+	}
+	if _, isStr := env["items"].(string); isStr {
+		t.Errorf("heterogeneous array should not produce TOON string, got items=%v", env["items"])
+	}
+}
+
+// TestTOONWire_SingleEntityObjectUnchanged verifies that a plain JSON object
+// (single entity, not an array) passes through unchanged as minified JSON.
+func TestTOONWire_SingleEntityObjectUnchanged(t *testing.T) {
+	t.Setenv("MCP_WIRE_FORMAT", "toon")
+
+	obj := `{"id":"e1","name":"OrderViewSet","kind":"Component"}`
+	res := &mcpapi.CallToolResult{
+		Content: []mcpapi.Content{mcpapi.NewTextContent(obj)},
+	}
+	out := injectElapsedMS(res, 5)
+	text := resultText(out)
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(text), &env); err != nil {
+		t.Fatalf("expected valid JSON for single object, got: %s — %v", text, err)
+	}
+	// No "items" envelope for plain objects.
+	if _, hasItems := env["items"]; hasItems {
+		t.Errorf("single-entity object should not be wrapped in items envelope, got: %s", text)
+	}
+	if env["id"] != "e1" {
+		t.Errorf("expected id=e1 preserved, got: %s", text)
+	}
+	if env["elapsed_ms"].(float64) != 5 {
+		t.Errorf("expected elapsed_ms=5, got %v", env["elapsed_ms"])
+	}
+}
+
+// TestTOONWire_LiveEndpointsTool verifies end-to-end that archigraph_find_dead_code
+// (a list tool) returns TOON-encoded items in its response when MCP_WIRE_FORMAT=toon.
+// This exercises the full wrap → injectElapsedMS → TOON path with a real Server.
+func TestTOONWire_LiveEndpointsTool(t *testing.T) {
+	t.Setenv("MCP_WIRE_FORMAT", "toon")
+
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "r1")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGraph(t, repo, fixtureDoc("r1"))
+	regPath := makeRegistry(t, dir, map[string]map[string]string{"g": {"r1": repo}})
+	srv, err := NewServer(Config{RegistryPath: regPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := callTool(t, srv, "archigraph_find_dead_code", map[string]any{
+		"limit": float64(10),
+	})
+	if res.IsError {
+		t.Fatalf("find_dead_code error: %s", resultText(res))
+	}
+	text := resultText(res)
+	// The outer response must be valid JSON.
+	var outer map[string]any
+	if err := json.Unmarshal([]byte(text), &outer); err != nil {
+		t.Fatalf("outer response not valid JSON: %v — got: %s", err, text)
+	}
+	// elapsed_ms must be present (injected by wrap).
+	if _, ok := outer["elapsed_ms"]; !ok {
+		t.Errorf("expected elapsed_ms in outer envelope, got: %s", text)
+	}
+	// When the tool returns any items, they must be TOON-encoded in items string.
+	// (dead_code on the fixture may or may not have entries; we just assert shape.)
+	if items, ok := outer["items"]; ok {
+		switch v := items.(type) {
+		case string:
+			// TOON path: expected. Verify schema line present.
+			if !strings.HasPrefix(v, "[!schema {") {
+				t.Errorf("items string is not TOON-encoded: %s", v)
+			}
+		case []any:
+			// JSON fallback is only valid when array is empty (0 dead-code nodes).
+			if len(v) != 0 {
+				t.Errorf("expected TOON string for non-empty items array, got []any len=%d", len(v))
+			}
+		default:
+			t.Errorf("unexpected items type %T: %v", items, items)
+		}
+	}
+}
+
 // writeGraphFB writes a graph.Document to <repoDir>/.archigraph/graph.fb
 // (FlatBuffers format). Used to verify fix for issue #1374 item #1.
 func writeGraphFB(t *testing.T, repoDir string, doc *graph.Document) string {

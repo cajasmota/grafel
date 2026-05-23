@@ -507,8 +507,19 @@ func injectElapsedMS(res *mcpapi.CallToolResult, ms int64) *mcpapi.CallToolResul
 		case '[':
 			var arr []any
 			if err := json.Unmarshal([]byte(tc.Text), &arr); err == nil {
+				// #1672: attempt TOON wire conversion for homogeneous record arrays.
+				// When MCP_WIRE_FORMAT=toon (default), replace the JSON array in
+				// "items" with a TOON-encoded text block. The envelope shape is
+				// preserved: {items:<TOON-text>, count:N, elapsed_ms:M}.
+				// Non-homogeneous arrays fall back to the minified-JSON items value.
+				var itemsVal any = arr
+				if toonWireEnabled() {
+					if toon, ok := recordsToTOON(arr); ok {
+						itemsVal = toon
+					}
+				}
 				env := map[string]any{
-					"items":      arr,
+					"items":      itemsVal,
 					"count":      len(arr),
 					"elapsed_ms": ms,
 				}

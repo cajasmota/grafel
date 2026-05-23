@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -182,6 +183,71 @@ func tabularEncode(schema []string, rows [][]any) string {
 		b.WriteString("}\n")
 	}
 	return b.String()
+}
+
+// ---------------------------------------------------------------------------
+// #1672 — TOON wire conversion helpers
+// ---------------------------------------------------------------------------
+
+// toonWireEnabled returns true when the MCP_WIRE_FORMAT env var is unset or
+// set to "toon". Set MCP_WIRE_FORMAT=json to opt out of TOON encoding and
+// receive minified JSON on the wire instead.
+func toonWireEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("MCP_WIRE_FORMAT")))
+	return v == "" || v == "toon"
+}
+
+// recordsToTOON detects whether arr is a homogeneous list of records (every
+// element is a map[string]any with the same key set) and, if so, returns the
+// TOON-encoded text. Returns ("", false) when the array is not suitable for
+// tabular encoding (empty, heterogeneous, non-object elements, etc.).
+//
+// Key ordering is sorted for determinism; the schema line mirrors the result.
+func recordsToTOON(arr []any) (string, bool) {
+	if len(arr) == 0 {
+		return "", false
+	}
+	// First pass: collect the canonical key set from the first element.
+	first, ok := arr[0].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	keys := make([]string, 0, len(first))
+	for k := range first {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return "", false
+	}
+
+	// Second pass: verify every element has exactly the same key set.
+	for _, item := range arr[1:] {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		if len(obj) != len(keys) {
+			return "", false
+		}
+		for _, k := range keys {
+			if _, has := obj[k]; !has {
+				return "", false
+			}
+		}
+	}
+
+	// Build the rows slice for tabularEncode.
+	rows := make([][]any, len(arr))
+	for i, item := range arr {
+		obj := item.(map[string]any)
+		row := make([]any, len(keys))
+		for j, k := range keys {
+			row[j] = obj[k]
+		}
+		rows[i] = row
+	}
+	return tabularEncode(keys, rows), true
 }
 
 // tabularCell renders one cell value. Strings need escaping for `,` `}` `\`.
