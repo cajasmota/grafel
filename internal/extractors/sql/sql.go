@@ -93,8 +93,16 @@ var (
 	// EXECUTE {FUNCTION|PROCEDURE} func_name
 	// Captures: (1) trigger_name, (2) event (BEFORE|AFTER|INSTEAD OF),
 	//           (3) table_name, (4) func_name
+	//
+	// Issue #1708: PostgreSQL supports an optional column list on UPDATE
+	// triggers — `UPDATE OF col[, col2]` — and column-list events may chain
+	// with `OR INSERT|DELETE`. The original DML segment only handled the
+	// `UPDATE [OR INSERT [OR DELETE]]` form (no `OF`). The .*? before `ON`
+	// now non-greedily skips ANY tokens between the event keyword and the
+	// `ON` clause, so column-list, FROM/REFERENCING, deferral, and WHEN
+	// clauses no longer prevent extraction.
 	triggerRE = regexp.MustCompile(
-		`(?is)CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+(\w+)\s+(?:(BEFORE|AFTER|INSTEAD\s+OF)\s+)?(?:\w+\s+(?:OR\s+\w+\s+)*)?ON\s+(?:\w+\.)?(\w+)\s+.*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:\w+\.)?(\w+)\s*\(`,
+		`(?is)CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+(\w+)\s+(?:(BEFORE|AFTER|INSTEAD\s+OF)\s+)?.*?\bON\s+(?:\w+\.)?(\w+)\b.*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:\w+\.)?(\w+)\s*\(`,
 	)
 
 	// dbt Jinja patterns.

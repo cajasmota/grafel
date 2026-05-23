@@ -370,6 +370,15 @@ const (
 	// SCOPE.Component/class or SCOPE.Schema model entity without new linker code.
 	RelationshipKindHandlesSignal RelationshipKind = "HANDLES_SIGNAL"
 	RelationshipKindRegisters     RelationshipKind = "REGISTERS"
+
+	// #1708: Debezium / Kafka-Connect CDC connector edges.
+	//   CAPTURES : cdc_connector → source table (one per element of the
+	//              connector's table.include.list).
+	// PUBLISHES_TO is reused (RelationshipKindPublishesTo) for the
+	// connector → kafka:<topic> edge, so downstream Kafka consumers'
+	// SUBSCRIBES_TO edges attach to the same MessageTopic node without
+	// any cross-pass handoff.
+	RelationshipKindCaptures RelationshipKind = "CAPTURES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -442,6 +451,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #1374 Django signal/admin connectivity:
 		RelationshipKindHandlesSignal,
 		RelationshipKindRegisters,
+		// #1708 Debezium / Kafka-Connect CDC connector:
+		RelationshipKindCaptures,
 	}
 }
 

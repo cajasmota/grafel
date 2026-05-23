@@ -110,6 +110,13 @@ func synthesisSupportsLanguage(lang string) bool {
 	// with none of the recognised anchors are no-ops inside those passes.
 	case "terraform", "hcl", "yaml":
 		return true
+	// #1708: Debezium / Kafka-Connect connector configs are JSON. The
+	// classifier only routes path-narrow JSON files (cdc/, debezium/,
+	// kafka-connect/, *-connector.json, …) to language="json", so this
+	// case is reached only for likely-connector files. Files that don't
+	// content-sniff as a connector are no-ops in applyDebeziumCDCEdges.
+	case "json":
+		return true
 	default:
 		return false
 	}

@@ -344,6 +344,21 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		file.Language, file.Path, file.Content, entities, relationships,
 	)
 
+	// Debezium / Kafka-Connect CDC connector edges (#1708). Parses the
+	// JSON config of a CDC connector and emits a SCOPE.Component
+	// (cdc_connector) plus CAPTURES → captured-table and PUBLISHES_TO →
+	// produced kafka:<topic> edges. Topic IDs use the same canonical
+	// "kafka:<topic>" form as the Kafka synthesis pass, so downstream
+	// SUBSCRIBES_TO edges from regular Kafka consumers attach to the same
+	// node without an explicit cross-pass handoff. Append-only — cannot
+	// regress the surrounding pipeline's bug-rate. Only fires for files
+	// whose path the classifier narrowed to language="json" (cdc/,
+	// debezium/, kafka-connect/, *-connector.json, …), then content-
+	// sniffed for `connector.class` / `io.debezium`.
+	entities, relationships = applyDebeziumCDCEdges(
+		file.Language, file.Path, file.Content, entities, relationships,
+	)
+
 	// Google Cloud Pub/Sub producer/consumer cross-repo edges (wave 3 of #726).
 	// Emits SCOPE.Queue entities + PUBLISHES_TO / SUBSCRIBES_TO edges for
 	// google-cloud-pubsub (Python/Node/Go/Java), Pub/Sub Lite, and

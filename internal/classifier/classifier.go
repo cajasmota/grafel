@@ -589,6 +589,38 @@ func detectLanguage(norm string) string {
 		return "scala"
 	}
 
+	// Issue #1708 — narrow JSON routing for Debezium / Kafka-Connect
+	// connector files. Indexing every .json file would balloon scope
+	// (package.json, tsconfig.json, jest.config.json, lockfiles, etc.), so
+	// we opt-in path patterns whose only purpose in any reasonable repo is
+	// a CDC connector definition. The downstream extractor still content-
+	// sniffs for `io.debezium` / `connector.class` to confirm before
+	// emitting any entities, so a false positive is a harmless no-op.
+	//
+	// Path patterns accept either a directory anchor (e.g. cdc/, debezium/)
+	// OR a filename suffix (*-connector.json, *.connector.json). The
+	// directory check uses both "prefix/cdc/" AND "cdc/<something>" forms
+	// because when a monorepo subrepo is indexed with its sub-directory as
+	// the root (e.g. fleet entry root=services/cdc/), the file paths the
+	// classifier receives are relative to that root and won't contain
+	// "/cdc/" as a substring — they start with the filename instead.
+	if strings.HasSuffix(lower, ".json") {
+		dirAnchor := func(seg string) bool {
+			return strings.Contains(lower, "/"+seg+"/") ||
+				strings.HasPrefix(lower, seg+"/")
+		}
+		switch {
+		case dirAnchor("cdc"),
+			dirAnchor("debezium"),
+			dirAnchor("kafka-connect"),
+			dirAnchor("connectors"),
+			strings.HasSuffix(lower, "-connector.json"),
+			strings.HasSuffix(lower, ".connector.json"),
+			strings.HasSuffix(lower, "-debezium.json"):
+			return "json"
+		}
+	}
+
 	// Issue #497 — exact-basename check before the extension lookup so that
 	// files like "Package.swift" (which carry a recognised extension) can be
 	// assigned a more specific language key ("swift_package") instead of the

@@ -1147,3 +1147,58 @@ func TestClassify_PackageSwift_IsSwiftPackage(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Issue #1708 — narrow JSON routing for Debezium / Kafka-Connect connectors
+// ---------------------------------------------------------------------------
+// The classifier must route ONLY path-narrow JSON files (cdc/, debezium/,
+// kafka-connect/, *-connector.json, etc.) to language="json" so the
+// Debezium CDC engine pass sees them. Indexing all .json files would
+// balloon scope across package.json / tsconfig.json / lockfiles.
+
+func TestClassify_DebeziumConnectorJSON(t *testing.T) {
+	c := newTestClassifier(t)
+
+	cdcPaths := []string{
+		"services/cdc/orders-connector.json",
+		"services/cdc/users.json",
+		"infra/debezium/billing.json",
+		"infra/kafka-connect/inventory.json",
+		"infra/connectors/payments.json",
+		"connectors/orders-connector.json",
+		"connectors/orders.connector.json",
+		"deploy/orders-debezium.json",
+	}
+	for _, p := range cdcPaths {
+		t.Run(p, func(t *testing.T) {
+			r := c.Classify(context.Background(), p)
+			if r.Skip {
+				t.Errorf("%s should not be skipped: %q", p, r.SkipReason)
+			}
+			if r.Language != "json" {
+				t.Errorf("expected Language=json, got %q", r.Language)
+			}
+		})
+	}
+}
+
+func TestClassify_GenericJSONNotIndexed(t *testing.T) {
+	c := newTestClassifier(t)
+	// These must NOT be picked up — they would balloon indexing scope and
+	// the Debezium pass would no-op on them anyway via the content sniff.
+	noisyPaths := []string{
+		"package.json",
+		"tsconfig.json",
+		"jest.config.json",
+		"src/data/users.json",
+		"frontend/public/manifest.json",
+	}
+	for _, p := range noisyPaths {
+		t.Run(p, func(t *testing.T) {
+			r := c.Classify(context.Background(), p)
+			if r.Language != "" {
+				t.Errorf("%s should have empty Language to skip Pass1, got %q", p, r.Language)
+			}
+		})
+	}
+}
