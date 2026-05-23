@@ -191,6 +191,145 @@ func TestHandleTopologyTopicDetail_NotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// #1703 — search_entities → topic_detail round-trip consistency
+// ---------------------------------------------------------------------------
+
+// TestTopicDetail_PrefixedIDRoundtrip verifies that the entity_id returned by
+// search_entities (a "repo::hash" prefixed form) is accepted by topic_detail.
+// This is the core tool-pair-consistency requirement from #1703.
+func TestTopicDetail_PrefixedIDRoundtrip(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "t1", Name: "payments.settled", Kind: "SCOPE.Queue"},
+		{ID: "pub", Name: "PaymentService", Kind: "Class"},
+		{ID: "sub", Name: "AuditService", Kind: "Class"},
+	}
+	rels := []graph.Relationship{
+		{ID: "r1", FromID: "pub", ToID: "t1", Kind: "PUBLISHES_TO"},
+		{ID: "r2", FromID: "sub", ToID: "t1", Kind: "SUBSCRIBES_TO"},
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+
+	// Simulate what search_entities returns: prefixedID(r.Repo, e.ID) = "repo1::t1".
+	prefixedTopicID := prefixedID("repo1", "t1")
+
+	out := callDashboardTool(t, srv.handleTopologyTopicDetail, map[string]any{
+		"group":    "test",
+		"topic_id": prefixedTopicID,
+	})
+	if out["found"] != true {
+		t.Fatalf("prefixed id round-trip: expected found=true, got: %v", out)
+	}
+	if out["topic_name"] != "payments.settled" {
+		t.Errorf("expected topic_name=payments.settled, got %v", out["topic_name"])
+	}
+	pubs, _ := out["publishers"].([]any)
+	subs, _ := out["subscribers"].([]any)
+	if len(pubs) != 1 {
+		t.Errorf("expected 1 publisher, got %d", len(pubs))
+	}
+	if len(subs) != 1 {
+		t.Errorf("expected 1 subscriber, got %d", len(subs))
+	}
+}
+
+// TestTopicDetail_NameLookupRoundtrip verifies that topic_detail accepts the
+// topic entity's NAME as topic_id (not just the hash ID), so that an LLM that
+// copies the "name" field instead of "entity_id" from search_entities output
+// still gets a useful result. (#1703)
+func TestTopicDetail_NameLookupRoundtrip(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "t1", Name: "payments.settled", Kind: "SCOPE.Queue"},
+		{ID: "pub", Name: "PaymentService", Kind: "Class"},
+	}
+	rels := []graph.Relationship{
+		{ID: "r1", FromID: "pub", ToID: "t1", Kind: "PUBLISHES_TO"},
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, rels))
+
+	// Pass the topic name directly — LabelIndex.Lookup must bridge the gap.
+	out := callDashboardTool(t, srv.handleTopologyTopicDetail, map[string]any{
+		"group":    "test",
+		"topic_id": "payments.settled",
+	})
+	if out["found"] != true {
+		t.Fatalf("name-based lookup: expected found=true, got: %v", out)
+	}
+	if out["topic_name"] != "payments.settled" {
+		t.Errorf("expected topic_name=payments.settled, got %v", out["topic_name"])
+	}
+}
+
+// TestTopicDetail_RepoAliasRoundtrip verifies that topic_detail resolves the
+// repo prefix through the alias map when the slug uses dashes but the repo key
+// uses underscores (the slug/path-basename divergence from #1690). (#1703)
+func TestTopicDetail_RepoAliasRoundtrip(t *testing.T) {
+	docA := &graph.Document{
+		Repo: "payments-service", // fleet slug
+		Entities: []graph.Entity{
+			{ID: "t1", Name: "payments.settled", Kind: "SCOPE.Queue"},
+			{ID: "pub", Name: "PaymentService", Kind: "Class"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "r1", FromID: "pub", ToID: "t1", Kind: "PUBLISHES_TO"},
+		},
+	}
+	// Register under the slug key — repo1 path-basename is "payments_service"
+	// (underscore variant).  buildRepoAliasMap must alias both forms.
+	srv := newTestServerWithDocs(t, map[string]*graph.Document{
+		"payments-service": docA,
+	})
+
+	// search_entities would emit "payments-service::t1" (canonical slug prefix).
+	// topic_detail must resolve this even if an internal alias is involved.
+	out := callDashboardTool(t, srv.handleTopologyTopicDetail, map[string]any{
+		"group":    "test",
+		"topic_id": "payments-service::t1",
+	})
+	if out["found"] != true {
+		t.Fatalf("repo-alias round-trip: expected found=true, got: %v", out)
+	}
+
+	// Also accept the underscore variant prefix (underscore alias → same repo).
+	out2 := callDashboardTool(t, srv.handleTopologyTopicDetail, map[string]any{
+		"group":    "test",
+		"topic_id": "payments_service::t1",
+	})
+	if out2["found"] != true {
+		t.Fatalf("underscore-alias round-trip: expected found=true, got: %v", out2)
+	}
+}
+
+// TestSearchEntities_TopicKindAlias verifies that search_entities with
+// kind_filter="topic" matches SCOPE.Queue and SCOPE.Topic entities so that
+// the entity_ids it returns are always valid inputs for topic_detail. (#1703)
+func TestSearchEntities_TopicKindAlias(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "q1", Name: "payments.settled", Kind: "SCOPE.Queue"},
+		{ID: "q2", Name: "user.updated", Kind: "SCOPE.Topic"},
+		{ID: "q3", Name: "order.placed", Kind: "Topic"},
+		{ID: "x1", Name: "PaymentService", Kind: "Class"}, // must not match
+	}
+	srv := newTestServerWithDoc(t, minDoc(entities, nil))
+
+	out := callDashboardTool(t, srv.handleSearchEntities, map[string]any{
+		"group":       "test",
+		"query":       ".",    // matches the dot in all topic names
+		"kind_filter": "topic",
+	})
+	results, _ := out["results"].([]any)
+	if len(results) != 3 {
+		t.Errorf("expected 3 topic results (SCOPE.Queue + SCOPE.Topic + Topic), got %d: %v", len(results), results)
+	}
+	// Verify none of the results are the Class entity.
+	for _, r := range results {
+		obj, _ := r.(map[string]any)
+		if obj["name"] == "PaymentService" {
+			t.Errorf("Class entity should not match kind_filter=topic")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // archigraph_flow_dead_ends
 // ---------------------------------------------------------------------------
 

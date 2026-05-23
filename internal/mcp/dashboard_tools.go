@@ -211,9 +211,14 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 	}
 	repos := reposToConsider(lg, nil)
 
+	// #1703: use alias-aware repo resolution so slugs with dash/underscore
+	// variants (e.g. "upvate-core" vs "upvate_core") still narrow to the
+	// correct repo.  Fall back to all repos when the hint is unrecognised —
+	// the per-repo loop below will find the entity via LabelIndex.
 	repoHint, local := splitPrefixed(topicID)
 	if repoHint != "" {
-		if r, ok := lg.Repos[repoHint]; ok && r.Doc != nil {
+		aliases := buildRepoAliasMap(lg)
+		if _, r := lookupRepo(aliases, repoHint); r != nil && r.Doc != nil {
 			repos = []*LoadedRepo{r}
 		}
 	}
@@ -230,21 +235,33 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 		if r.Doc == nil {
 			continue
 		}
-		target := local
-		if target == "" {
-			target = topicID
+		// Determine the lookup key within this repo.  Try in order:
+		//   1. local part of a "repo::id" prefixed input (exact hash ID)
+		//   2. the full topicID when no prefix was present
+		// Then fall back to LabelIndex for name/qualified-name inputs so that
+		// the id returned by search_entities (which matches by name) round-trips
+		// successfully. (#1703)
+		lookup := local
+		if lookup == "" {
+			lookup = topicID
 		}
 		byID := r.ByID
-		topicEnt, ok := byID[target]
+		topicEnt, ok := byID[lookup]
 		if !ok {
-			continue
+			// Fall back: resolve by entity name or qualified name.
+			topicEnt = r.LabelIndex.Lookup(lookup)
+			if topicEnt == nil {
+				continue
+			}
 		}
+		// Use the canonical entity ID for relationship matching.
+		canonID := topicEnt.ID
 		var publishers, subscribers []participant
 		for i := range r.Doc.Relationships {
 			rel := &r.Doc.Relationships[i]
 			switch rel.Kind {
 			case "PUBLISHES_TO":
-				if rel.ToID == target {
+				if rel.ToID == canonID {
 					if src, ok2 := byID[rel.FromID]; ok2 {
 						publishers = append(publishers, participant{
 							EntityID:   prefixedID(r.Repo, src.ID),
@@ -256,7 +273,7 @@ func (s *Server) handleTopologyTopicDetail(_ context.Context, req mcpapi.CallToo
 					}
 				}
 			case "SUBSCRIBES_TO":
-				if rel.ToID == target {
+				if rel.ToID == canonID {
 					if src, ok2 := byID[rel.FromID]; ok2 {
 						subscribers = append(subscribers, participant{
 							EntityID:   prefixedID(r.Repo, src.ID),

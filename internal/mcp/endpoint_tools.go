@@ -93,6 +93,16 @@ var kindAliases = map[string][]string{
 		"http_endpoint_definition",
 		"http_endpoint_call",
 	},
+	// #1703: "topic" is a caller-facing umbrella that covers all messaging-channel
+	// kinds.  search_entities(kind_filter="topic") must match SCOPE.Queue,
+	// SCOPE.Topic, Queue, Topic, and their dot-suffixed variants so the returned
+	// entity_ids can be passed to topic_detail without "found:false".
+	"topic": {
+		"topic",
+		"scope.topic",
+		"queue",
+		"scope.queue",
+	},
 }
 
 // expandKindAlias returns the set of kind strings that a caller-supplied kind
