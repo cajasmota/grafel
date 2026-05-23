@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/components/ui";
 import { RefLine } from "@/components/RefLine";
+import { SectionHeader } from "@/components/SectionHeader";
 import { usePaths, usePathDetail, useOrphans } from "@/hooks/use-paths";
 import type {
   PathBackend, ControllerGroupShape, PathRoute, PathDetail,
@@ -464,45 +465,6 @@ function FlatRouteList({
    Detail pane — Swagger++ sections
    ============================================================ */
 
-function SectionHeader({
-  icon,
-  title,
-  count,
-  open,
-  onToggle,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  count?: number;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={cn(
-        "w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-text-2",
-        "border-b border-border bg-bg-soft hover:bg-surface-2 transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]",
-      )}
-    >
-      <span className="text-text-3">{icon}</span>
-      {title}
-      {count !== undefined && (
-        <span className="ml-1 text-xs text-text-4 tabular-nums">({count})</span>
-      )}
-      <ChevronRight
-        size={13}
-        className={cn(
-          "ml-auto text-text-4 transition-transform duration-150",
-          open && "rotate-90",
-        )}
-      />
-    </button>
-  );
-}
-
 /** EntityRow — wraps RefLine for PathEntity values (Downstream, Side-effects, Tests).
  *  Issue #1934: kind chip dropped from row — redundant with header-level metadata. */
 function EntityRow({ entity }: { entity: PathEntity }) {
@@ -562,7 +524,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
     outbound: rawDetail.outbound ?? {},
   } as PathDetail;
   // Default to the verb selected in the list row (from URL), fall back to "all".
-  const [verbFilter, setVerbFilter] = useState<string>(() => {
+  const [verbFilter] = useState<string>(() => {
     if (initialVerb && (rawDetail.verbs ?? []).includes(initialVerb as HttpVerb)) return initialVerb;
     return "all";
   });
@@ -611,7 +573,8 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
         {/* Large verb chips + path */}
         <div className="flex flex-wrap items-start gap-2 mb-2">
           <div className="flex flex-wrap gap-1.5 items-center">
-            {detail.verbs.map((v) => <VerbChip key={v} verb={v} lg />)}
+            {verbFilter !== "all" && <VerbChip key={verbFilter} verb={verbFilter} lg />}
+            {verbFilter === "all" && detail.verbs.map((v) => <VerbChip key={v} verb={v} lg />)}
             {detail.is_webhook && (
               <span className="inline-flex items-center gap-1 h-6 px-2 rounded text-xs font-medium bg-[var(--info-soft)] text-[var(--info)]">
                 🪝 {detail.webhook_provider ?? "webhook"}
@@ -663,44 +626,6 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
         </div>
       </div>
 
-      {/* Verb filter strip — only when >1 verb */}
-      {detail.verbs.length > 1 && (
-        <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-bg-soft shrink-0 overflow-x-auto">
-          <span className="text-xs text-text-4 mr-1 shrink-0">View</span>
-          <button
-            type="button"
-            onClick={() => setVerbFilter("all")}
-            className={cn(
-              "shrink-0 h-6 px-2 rounded text-xs transition-colors",
-              verbFilter === "all"
-                ? "bg-accent-soft text-accent-strong font-medium"
-                : "text-text-3 hover:bg-surface-2",
-            )}
-          >
-            All · {detail.verbs.length} verbs
-          </button>
-          {detail.verbs.map((v) => {
-            const params = detail.parameters.filter((p) => !p.verbs || p.verbs.includes(v));
-            return (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setVerbFilter(v)}
-                className={cn(
-                  "shrink-0 h-6 px-2 rounded text-xs transition-colors flex items-center gap-1",
-                  verbFilter === v
-                    ? "bg-accent-soft text-accent-strong font-medium"
-                    : "text-text-3 hover:bg-surface-2",
-                )}
-              >
-                <VerbChip verb={v} />
-                {params.length > 0 && <span className="text-text-4">· {params.length} params</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {/* Scrollable sections */}
       <div className="flex-1 overflow-y-auto ag-scroll">
         {/* 1. Description */}
@@ -708,6 +633,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
           <SectionHeader
             icon={<Maximize2 size={14} />}
             title="Description"
+            infoText="Human-prose description of this endpoint, generated by an LLM from the surrounding code. Edit via the archigraph docs skill."
             open={openSections.description}
             onToggle={() => toggleSection("description")}
           />
@@ -745,6 +671,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             icon={<List size={14} />}
             title="Parameters"
             count={filteredParams.length}
+            infoText="Inputs the endpoint accepts — derived from path segments + handler method parameters (path, query, header, cookie, body, form)."
             open={openSections.parameters}
             onToggle={() => toggleSection("parameters")}
           />
@@ -791,6 +718,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             icon={<Box size={14} />}
             title="Response shapes"
             count={filteredShapes.length}
+            infoText="Response body types per HTTP status code, derived from handler return types + framework annotations (e.g. @APIResponse)."
             open={openSections.response}
             onToggle={() => toggleSection("response")}
           />
@@ -841,6 +769,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             icon={<Server size={14} />}
             title="Defined in"
             count={filteredHandlers.length}
+            infoText="Source location(s) where this endpoint is registered. Each row links to the file:line of the handler function."
             open={openSections.defined}
             onToggle={() => toggleSection("defined")}
           />
@@ -866,6 +795,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             icon={<Box size={14} />}
             title="Called by"
             count={detail.inbound_fetches.length}
+            infoText="Inbound HTTP calls — code in OTHER repos that fetches this endpoint via http_endpoint_call edges."
             open={openSections.calledby}
             onToggle={() => toggleSection("calledby")}
           />
@@ -886,6 +816,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             icon={<Database size={14} />}
             title="Downstream"
             count={totalDownstream}
+            infoText="Outbound dependencies — services / DB / external APIs this endpoint calls during request handling."
             open={openSections.downstream}
             onToggle={() => toggleSection("downstream")}
           />
@@ -919,6 +850,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             icon={<Zap size={14} />}
             title="Side effects"
             count={detail.side_effects.length}
+            infoText="DB writes, queue publishes, file writes, or other observable mutations performed by this endpoint."
             open={openSections.sideeffects}
             onToggle={() => toggleSection("sideeffects")}
           />
@@ -939,6 +871,7 @@ function DetailPane({ detail: rawDetail, initialVerb }: { detail: PathDetail; in
             icon={<TestTube size={14} />}
             title="Tests"
             count={detail.tests.length}
+            infoText="Test cases that exercise this endpoint, found via REFERENCES edges from test files."
             open={openSections.tests}
             onToggle={() => toggleSection("tests")}
           />
