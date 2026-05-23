@@ -90,7 +90,7 @@ func TestTraces_ListReturnsAllProcesses(t *testing.T) {
 	// have 3-step chains and the test asserts list completeness, not filtering.
 	res := callTool(t, srv, "archigraph_traces", map[string]any{"action": "list", "min_steps": 0})
 	txt := resultText(res)
-	if !strings.Contains(txt, "\"count\": 2") {
+	if !strings.Contains(txt, "\"count\":2") {
 		t.Errorf("expected count=2, got: %s", txt)
 	}
 	if !strings.Contains(txt, "handleSubmit") {
@@ -106,7 +106,7 @@ func TestTraces_ListCrossStackOnly(t *testing.T) {
 		"min_steps":        0,
 	})
 	txt := resultText(res)
-	if !strings.Contains(txt, "\"count\": 1") {
+	if !strings.Contains(txt, "\"count\":1") {
 		t.Errorf("expected count=1 cross-stack process, got: %s", txt)
 	}
 	if !strings.Contains(txt, "/api/orders") {
@@ -121,7 +121,7 @@ func TestTraces_GetReturnsFullChain(t *testing.T) {
 		"process_id": "p1",
 	})
 	txt := resultText(res)
-	if !strings.Contains(txt, "\"found\": true") {
+	if !strings.Contains(txt, "\"found\":true") {
 		t.Errorf("expected found=true, got: %s", txt)
 	}
 	if !strings.Contains(txt, "validateForm") || !strings.Contains(txt, "submitOrder") {

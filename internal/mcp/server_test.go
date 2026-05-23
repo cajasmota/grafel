@@ -338,10 +338,10 @@ func TestShortestPathCrossRepo(t *testing.T) {
 	}
 	res := callTool(t, srv, "archigraph_trace", map[string]any{"source": "rA::a1", "target": "rB::a4"})
 	txt := resultText(res)
-	if !strings.Contains(txt, "\"crosses_repos\": true") {
+	if !strings.Contains(txt, "\"crosses_repos\":true") {
 		t.Fatalf("expected crosses_repos=true, got: %s", txt)
 	}
-	if !strings.Contains(txt, "\"found\": true") {
+	if !strings.Contains(txt, "\"found\":true") {
 		t.Fatalf("expected found=true, got: %s", txt)
 	}
 }

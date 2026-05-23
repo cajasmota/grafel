@@ -1,0 +1,127 @@
+{
+  "group": "upvate",
+  "runs": 5,
+  "timestamp": "2026-05-23T05:43:56.703003+05:45",
+  "samples": [
+    {
+      "name": "find: authentication middleware",
+      "tool": "archigraph_find",
+      "runs": 5,
+      "median_ms": 0.913,
+      "p95_ms": 0.966,
+      "min_ms": 0.687,
+      "max_ms": 0.976,
+      "bytes_out": 558
+    },
+    {
+      "name": "inspect: TokenAuthenticationMiddleware",
+      "tool": "archigraph_inspect",
+      "runs": 5,
+      "median_ms": 0.318,
+      "p95_ms": 0.332,
+      "min_ms": 0.299,
+      "max_ms": 0.345,
+      "bytes_out": 407
+    },
+    {
+      "name": "get_source: TokenAuthenticationMiddleware.process_request",
+      "tool": "archigraph_get_source",
+      "runs": 5,
+      "median_ms": 0.453,
+      "p95_ms": 0.667,
+      "min_ms": 0.384,
+      "max_ms": 13.314,
+      "bytes_out": 2935
+    },
+    {
+      "name": "find_callers: TokenAuthenticationMiddleware (label-resolve)",
+      "tool": "archigraph_find_callers",
+      "runs": 5,
+      "median_ms": 0.201,
+      "p95_ms": 0.211,
+      "min_ms": 0.193,
+      "max_ms": 0.216,
+      "bytes_out": 317
+    },
+    {
+      "name": "find_callers: depth=3 (heavier BFS)",
+      "tool": "archigraph_find_callers",
+      "runs": 5,
+      "median_ms": 0.219,
+      "p95_ms": 0.233,
+      "min_ms": 0.193,
+      "max_ms": 0.282,
+      "bytes_out": 317
+    },
+    {
+      "name": "traces: list",
+      "tool": "archigraph_traces",
+      "runs": 5,
+      "median_ms": 0.682,
+      "p95_ms": 0.711,
+      "min_ms": 0.663,
+      "max_ms": 0.757,
+      "bytes_out": 15411
+    },
+    {
+      "name": "traces: follow (deep BFS)",
+      "tool": "archigraph_traces",
+      "runs": 5,
+      "median_ms": 0.209,
+      "p95_ms": 0.209,
+      "min_ms": 0.206,
+      "max_ms": 0.21,
+      "bytes_out": 781
+    },
+    {
+      "name": "expand: depth=2 (neighbors)",
+      "tool": "archigraph_expand",
+      "runs": 5,
+      "median_ms": 19.242,
+      "p95_ms": 19.606,
+      "min_ms": 18.976,
+      "max_ms": 29.722,
+      "bytes_out": 1006391
+    },
+    {
+      "name": "impact_radius: depth=2",
+      "tool": "archigraph_impact_radius",
+      "runs": 5,
+      "median_ms": 1.65,
+      "p95_ms": 1.678,
+      "min_ms": 1.621,
+      "max_ms": 1.691,
+      "bytes_out": 877
+    },
+    {
+      "name": "endpoints: definitions path=proposal",
+      "tool": "archigraph_endpoints",
+      "runs": 5,
+      "median_ms": 1.047,
+      "p95_ms": 1.052,
+      "min_ms": 1.025,
+      "max_ms": 1.062,
+      "bytes_out": 3461
+    },
+    {
+      "name": "endpoints: definitions all",
+      "tool": "archigraph_endpoints",
+      "runs": 5,
+      "median_ms": 1.713,
+      "p95_ms": 1.791,
+      "min_ms": 1.631,
+      "max_ms": 2.281,
+      "bytes_out": 44237
+    },
+    {
+      "name": "stats: corpus",
+      "tool": "archigraph_stats",
+      "runs": 5,
+      "median_ms": 0.192,
+      "p95_ms": 0.193,
+      "min_ms": 0.189,
+      "max_ms": 0.195,
+      "bytes_out": 332
+    }
+  ]
+}

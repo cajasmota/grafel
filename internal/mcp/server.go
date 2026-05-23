@@ -485,7 +485,8 @@ func injectElapsedMS(res *mcpapi.CallToolResult, ms int64) *mcpapi.CallToolResul
 			var obj map[string]any
 			if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
 				obj["elapsed_ms"] = ms
-				if data, err := json.MarshalIndent(obj, "", "  "); err == nil {
+				// #1663: minified JSON on the wire. Schema preserved.
+				if data, err := json.Marshal(obj); err == nil {
 					res.Content[i] = mcpapi.NewTextContent(string(data))
 					return res
 				}
@@ -498,7 +499,8 @@ func injectElapsedMS(res *mcpapi.CallToolResult, ms int64) *mcpapi.CallToolResul
 					"count":      len(arr),
 					"elapsed_ms": ms,
 				}
-				if data, err := json.MarshalIndent(env, "", "  "); err == nil {
+				// #1663: minified JSON on the wire. items/count envelope preserved.
+				if data, err := json.Marshal(env); err == nil {
 					res.Content[i] = mcpapi.NewTextContent(string(data))
 					return res
 				}
