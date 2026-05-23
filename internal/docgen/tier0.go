@@ -146,7 +146,7 @@ func Run(opts RunOpts) (mdPath string, scoreFile string, score Score, err error)
 	}
 
 	// Load the group's graphs and locate the seed entity.
-	doc, entity, neighbours, err := loadEntityContext(opts.Group, opts.SeedEntityID)
+	doc, entity, neighbours, _, err := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if err != nil {
 		return
 	}
@@ -231,15 +231,19 @@ func defaultOutDir(group string) (string, error) {
 }
 
 // loadEntityContext loads all graphs for the group, finds the seed entity,
-// and returns it along with its 1-hop neighbours.
-func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, err error) {
+// and returns it along with its 1-hop neighbours and the repo root of the
+// seed entity (Document.Repo from the graph document that contains it).
+func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.Entity, neighbours []graph.Entity, seedRepo string, err error) {
 	repoGraphDirs, err := findGroupGraphDirs(group)
 	if err != nil {
 		return
 	}
 
 	// Build a combined entity index and relationship index across all repos.
+	// repoByEntityID maps entity ID → Document.Repo for the document it was
+	// loaded from, so we can populate LLMGraphContext.Repo for the seed entity.
 	byID := make(map[string]*graph.Entity)
+	repoByEntityID := make(map[string]string)
 	var allRels []graph.Relationship
 	for _, dir := range repoGraphDirs {
 		d, loadErr := graph.LoadGraphFromDir(dir)
@@ -253,6 +257,7 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 		for i := range d.Entities {
 			e := d.Entities[i]
 			byID[e.ID] = &e
+			repoByEntityID[e.ID] = d.Repo
 		}
 		allRels = append(allRels, d.Relationships...)
 	}
@@ -265,10 +270,12 @@ func loadEntityContext(group, seedID string) (doc *graph.Document, seed *graph.E
 	// Locate seed entity (exact match first, then prefix match).
 	if e, ok := byID[seedID]; ok {
 		seed = e
+		seedRepo = repoByEntityID[seedID]
 	} else {
 		for id, e := range byID {
 			if strings.HasPrefix(id, seedID) || strings.HasSuffix(id, seedID) {
 				seed = e
+				seedRepo = repoByEntityID[id]
 				break
 			}
 		}

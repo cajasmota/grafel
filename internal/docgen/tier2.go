@@ -159,7 +159,7 @@ func RunTier2(opts Tier2RunOpts) (outDir string, score Tier2Score, err error) {
 	}
 
 	// Load entity context for the seed.
-	_, seedEntity, _, loadErr := loadEntityContext(opts.Group, opts.SeedEntityID)
+	_, seedEntity, _, _, loadErr := loadEntityContext(opts.Group, opts.SeedEntityID)
 	if loadErr != nil {
 		err = fmt.Errorf("load seed entity: %w", loadErr)
 		return
