@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -13,7 +15,12 @@ import (
 // mockDaemonService is a minimal RPC service that stands in for the real
 // daemon during bridge unit tests. It implements the two MCP-facing
 // methods the bridge can call.
-type mockDaemonService struct{}
+//
+// lastCWD captures the CWD field from the most recent MCPToolCall invocation
+// so tests can assert it was forwarded correctly (#1679).
+type mockDaemonService struct {
+	lastCWD string
+}
 
 func (m *mockDaemonService) MCPToolList(_ *MCPToolListArgs, reply *MCPToolListReply) error {
 	reply.Tools = []mcpToolInfo{
@@ -23,6 +30,7 @@ func (m *mockDaemonService) MCPToolList(_ *MCPToolListArgs, reply *MCPToolListRe
 }
 
 func (m *mockDaemonService) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCallReply) error {
+	m.lastCWD = args.CWD
 	reply.Content = []map[string]any{
 		{"type": "text", "text": "called: " + args.Name},
 	}
@@ -30,14 +38,22 @@ func (m *mockDaemonService) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCal
 }
 
 // startMockDaemon starts a net/rpc JSON-RPC 1.0 server on a temp Unix socket
-// and returns the socket path. The caller must close the returned net.Listener.
-func startMockDaemon(t *testing.T) (socketPath string, stop func()) {
+// and returns the socket path and the mock service (for inspecting captured
+// fields after calls). The caller must invoke stop() to clean up.
+//
+// macOS caps Unix socket paths at 104 bytes so we use os.MkdirTemp (shorter
+// names than t.TempDir()) to avoid EINVAL on long test names.
+func startMockDaemon(t *testing.T) (socketPath string, mock *mockDaemonService, stop func()) {
 	t.Helper()
-	tmp := t.TempDir()
-	socketPath = tmp + "/daemon.sock"
+	tmp, err := os.MkdirTemp("", "agbr")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	socketPath = filepath.Join(tmp, "d.sock")
 
+	mock = &mockDaemonService{}
 	srv := rpc.NewServer()
-	if err := srv.RegisterName("Daemon", &mockDaemonService{}); err != nil {
+	if err := srv.RegisterName("Daemon", mock); err != nil {
 		t.Fatalf("register mock: %v", err)
 	}
 
@@ -61,13 +77,15 @@ func startMockDaemon(t *testing.T) (socketPath string, stop func()) {
 	stop = func() {
 		l.Close()
 		<-done
+		os.RemoveAll(tmp)
 	}
-	return socketPath, stop
+	return socketPath, mock, stop
 }
 
 // roundTrip sends a JSON-RPC 2.0 request through the bridge (backed by the
-// mock daemon) and returns the decoded response.
-func roundTrip(t *testing.T, socketPath, method string, params any) rpc2Response {
+// mock daemon) and returns the decoded response. startupCWD is injected into
+// the bridge for tests that assert CWD forwarding behaviour (#1679).
+func roundTrip(t *testing.T, socketPath, method string, params any, startupCWD string) rpc2Response {
 	t.Helper()
 
 	var paramsRaw json.RawMessage
@@ -86,7 +104,7 @@ func roundTrip(t *testing.T, socketPath, method string, params any) rpc2Response
 	reqBytes = append(reqBytes, '\n')
 
 	var out bytes.Buffer
-	b := &bridge{socketPath: socketPath}
+	b := &bridge{socketPath: socketPath, startupCWD: startupCWD}
 	if err := b.run(bytes.NewReader(reqBytes), &out); err != nil {
 		t.Fatalf("bridge.run: %v", err)
 	}
@@ -99,12 +117,12 @@ func roundTrip(t *testing.T, socketPath, method string, params any) rpc2Response
 }
 
 func TestBridge_Initialize(t *testing.T) {
-	socketPath, stop := startMockDaemon(t)
+	socketPath, _, stop := startMockDaemon(t)
 	defer stop()
 
 	resp := roundTrip(t, socketPath, "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
-	})
+	}, "")
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %+v", resp.Error)
@@ -125,10 +143,10 @@ func TestBridge_Initialize(t *testing.T) {
 }
 
 func TestBridge_ToolsList(t *testing.T) {
-	socketPath, stop := startMockDaemon(t)
+	socketPath, _, stop := startMockDaemon(t)
 	defer stop()
 
-	resp := roundTrip(t, socketPath, "tools/list", nil)
+	resp := roundTrip(t, socketPath, "tools/list", nil, "")
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %+v", resp.Error)
@@ -148,13 +166,13 @@ func TestBridge_ToolsList(t *testing.T) {
 }
 
 func TestBridge_ToolsCall(t *testing.T) {
-	socketPath, stop := startMockDaemon(t)
+	socketPath, _, stop := startMockDaemon(t)
 	defer stop()
 
 	resp := roundTrip(t, socketPath, "tools/call", map[string]any{
 		"name":      "archigraph_whoami",
 		"arguments": map[string]any{"cwd": "/tmp"},
-	})
+	}, "")
 
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %+v", resp.Error)
@@ -224,7 +242,7 @@ func TestBridge_UnknownMethod(t *testing.T) {
 }
 
 func TestBridge_MultipleRequests(t *testing.T) {
-	socketPath, stop := startMockDaemon(t)
+	socketPath, _, stop := startMockDaemon(t)
 	defer stop()
 
 	// Send two requests in one stdin stream.
@@ -251,5 +269,66 @@ func TestBridge_MultipleRequests(t *testing.T) {
 		if resp.Error != nil {
 			t.Fatalf("line %d error: %+v", i, resp.Error)
 		}
+	}
+}
+
+// TestBridge_ToolsCall_CWDFromMetaHint asserts that when the MCP request
+// carries a _meta.cwd hint the bridge forwards it verbatim to the daemon's
+// MCPToolCall RPC (Fixes #1679).
+func TestBridge_ToolsCall_CWDFromMetaHint(t *testing.T) {
+	socketPath, mock, stop := startMockDaemon(t)
+	defer stop()
+
+	const wantCWD = "/home/user/myproject"
+	resp := roundTrip(t, socketPath, "tools/call", map[string]any{
+		"name":      "archigraph_whoami",
+		"arguments": map[string]any{},
+		"_meta":     map[string]any{"cwd": wantCWD},
+	}, "/other/dir") // startupCWD should be ignored when _meta.cwd is present
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp.Error)
+	}
+	if mock.lastCWD != wantCWD {
+		t.Errorf("CWD not forwarded from _meta.cwd: got %q, want %q", mock.lastCWD, wantCWD)
+	}
+}
+
+// TestBridge_ToolsCall_CWDFromStartup asserts that when no _meta.cwd hint is
+// present the bridge falls back to its startup working directory (#1679).
+func TestBridge_ToolsCall_CWDFromStartup(t *testing.T) {
+	socketPath, mock, stop := startMockDaemon(t)
+	defer stop()
+
+	const wantCWD = "/Users/user/projects/myrepo"
+	resp := roundTrip(t, socketPath, "tools/call", map[string]any{
+		"name":      "archigraph_whoami",
+		"arguments": map[string]any{},
+	}, wantCWD)
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp.Error)
+	}
+	if mock.lastCWD != wantCWD {
+		t.Errorf("CWD not forwarded from startupCWD: got %q, want %q", mock.lastCWD, wantCWD)
+	}
+}
+
+// TestBridge_ToolsCall_CWDEmpty asserts that when neither _meta.cwd nor a
+// startupCWD is available the bridge sends an empty CWD (daemon falls back to
+// singleton / explicit-group mode) without erroring (#1679).
+func TestBridge_ToolsCall_CWDEmpty(t *testing.T) {
+	socketPath, mock, stop := startMockDaemon(t)
+	defer stop()
+
+	resp := roundTrip(t, socketPath, "tools/call", map[string]any{
+		"name": "archigraph_whoami",
+	}, "") // no startupCWD and no _meta.cwd
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp.Error)
+	}
+	if mock.lastCWD != "" {
+		t.Errorf("expected empty CWD, got %q", mock.lastCWD)
 	}
 }
