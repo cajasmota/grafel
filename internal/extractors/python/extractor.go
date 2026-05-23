@@ -303,6 +303,49 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// existing entities.
 	packageModuleCount := emitPackageModuleEntity(file, &entities)
 
+	// Issue #1984 — async-semantics pass.
+	// Stamps is_async on async def entities, emits CALLS edges for any
+	// await callees the primary walker missed, and emits CALLS edges for
+	// Django Channels channel_layer dispatch sites. Append-only; never
+	// modifies prior entities except for the is_async Properties stamp.
+	func() {
+		defer func() { _ = recover() }()
+		applyAsyncSemantics(root, file, &entities)
+	}()
+
+	// Issues #1979 / #1980 — Celery decorator + dispatch enrichment.
+	// Annotates @shared_task / @app.task Operation entities with
+	// is_task + decorator kwargs (bind, max_retries, autoretry_for, ...)
+	// and emits same-file CALLS edges from .delay() / .apply_async()
+	// call sites to their task entity. The cross-file counterpart lives
+	// in internal/engine/django_signal_pubsub_edges.go.
+	func() {
+		defer func() { _ = recover() }()
+		applyCeleryAnnotations(file, &entities)
+	}()
+
+	// Issue #1991 — __init__.py re-export annotation.
+	// Stamps re_export / package_init / public / alias properties on
+	// IMPORTS edges of package __init__.py files. Returns the public
+	// names declared by __all__ so the dead-import pass can preserve
+	// them as live regardless of in-body usage.
+	var publicNames map[string]bool
+	func() {
+		defer func() { _ = recover() }()
+		publicNames = applyReExports(file, &entities)
+	}()
+
+	// Issue #1985 — dead-import detection.
+	// Scans the file body for identifier references and stamps
+	// live=false / dead_import=true on IMPORTS edges whose local
+	// binding is never referenced. Wildcards and side-effect imports
+	// are never flagged. Re-exports (publicNames from applyReExports)
+	// are treated as live.
+	func() {
+		defer func() { _ = recover() }()
+		applyDeadImports(file, &entities, publicNames)
+	}()
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("function_count", functionCount),
