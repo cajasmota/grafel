@@ -85,8 +85,19 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 		// a module/file that CONTAINS an entity is not a caller. Without this
 		// filter find_callers was returning CONTAINS-linked parent nodes and
 		// other structural edges as fake "callers" (#1915).
+		//
+		// #2039: track the edge kind that *discovered* each node. When the
+		// discovering edge is REFERENCES or IMPORTS, a file/module CONTAINER
+		// source is a legitimate caller — post-#2020 file entities own these
+		// edges (e.g. `core/admin.py` REFERENCES Models, `views.py` IMPORTS
+		// HasPermission, `__init__.py` IMPORTS a re-exported module). The
+		// noiseContainer filter below must NOT drop those.
 		adj := r.Adjacency
 		visited := map[string]int{target: 0}
+		// discoveredVia[id] = edge kind via which `id` was first reached on
+		// the inbound BFS. Used below to decide whether to allow file/module
+		// container sources through the noise filter.
+		discoveredVia := map[string]string{}
 		frontier := []string{target}
 		for d := 0; d < depth; d++ {
 			next := []string{}
@@ -99,6 +110,7 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 						continue
 					}
 					visited[e.target] = d + 1
+					discoveredVia[e.target] = e.kind
 					next = append(next, e.target)
 				}
 			}
@@ -120,9 +132,19 @@ func (s *Server) handleFindCallers(_ context.Context, req mcpapi.CallToolRequest
 			// #1614: drop file/module CONTAINER components and inferred
 			// shadows. Callers should be operation/component-level referencers,
 			// not the synthetic file node that "contains" the call. (q02/q03/q10)
+			//
+			// #2039: exception — when the discovering inbound edge is
+			// REFERENCES or IMPORTS, a file/module container IS the legitimate
+			// caller (file-level reference / import edges live on the file
+			// entity post-#2020). Keep noiseShadow filtered unconditionally.
 			switch classifyNoise(e) {
-			case noiseContainer, noiseShadow:
+			case noiseShadow:
 				continue
+			case noiseContainer:
+				dk := discoveredVia[id]
+				if dk != "REFERENCES" && dk != "IMPORTS" {
+					continue
+				}
 			}
 			c := caller{
 				EntityID:   prefixedID(r.Repo, e.ID),
@@ -861,6 +883,7 @@ func isStdlibEntity(e *graph.Entity) bool {
 var inboundRefKinds = map[string]bool{
 	"CALLS":           true,
 	"REFERENCES":      true,
+	"IMPORTS":         true, // #2039: file/module → symbol or re-exported module
 	"TESTS":           true,
 	"ROUTES_TO":       true,
 	"IMPLEMENTS":      true,

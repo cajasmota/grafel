@@ -280,6 +280,138 @@ func TestFindCallers_ExcludesContainsEdges(t *testing.T) {
 	}
 }
 
+// TestFindCallers_FileEntityReferencesSource verifies that a file/module
+// CONTAINER entity is surfaced as a caller when the inbound edge is REFERENCES
+// — post-#2020 file entities legitimately own REFERENCES edges to the targets
+// they reference (e.g. `core/admin.py` REFERENCES Models / ModelAdmin classes
+// via admin.site.register(...)). Before #2039 the noiseContainer filter
+// silently dropped these, so find_callers returned 0. (#2039 / closes #2015)
+func TestFindCallers_FileEntityReferencesSource(t *testing.T) {
+	// Topology:
+	//   adminFile (Component, subtype=file) --REFERENCES--> ContractModel
+	doc := minDoc(
+		[]graph.Entity{
+			{
+				ID: "admin-file", Name: "core/admin.py",
+				Kind: "SCOPE.Component", SourceFile: "core/admin.py",
+				Properties: map[string]string{"subtype": "file"},
+			},
+			{
+				ID: "contract-model", Name: "ContractModel",
+				Kind: "SCOPE.Schema", SourceFile: "core/models.py", StartLine: 42,
+			},
+		},
+		[]graph.Relationship{
+			{FromID: "admin-file", ToID: "contract-model", Kind: "REFERENCES"},
+		},
+	)
+	srv := newTestServerWithDoc(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "contract-model",
+		"depth":     float64(1),
+	})
+	callers, ok := out["callers"].([]any)
+	if !ok {
+		t.Fatalf("expected callers array, got %T", out["callers"])
+	}
+	if len(callers) != 1 {
+		t.Fatalf("expected 1 caller (core/admin.py via REFERENCES), got %d: %v", len(callers), callers)
+	}
+	first := callers[0].(map[string]any)
+	if first["name"] != "core/admin.py" {
+		t.Errorf("expected caller=core/admin.py, got %v", first["name"])
+	}
+}
+
+// TestFindCallers_FileEntityImportsSource verifies that a file/module CONTAINER
+// entity is surfaced as a caller when the inbound edge is IMPORTS — file-level
+// import edges live on the file entity post-#2020. (#2039 / closes #1985)
+func TestFindCallers_FileEntityImportsSource(t *testing.T) {
+	// Topology:
+	//   viewsetFile --IMPORTS--> HasPermission
+	doc := minDoc(
+		[]graph.Entity{
+			{
+				ID: "viewset-file", Name: "building_alternate_address_viewset.py",
+				Kind: "SCOPE.Component", SourceFile: "viewsets/building_alternate_address_viewset.py",
+				Properties: map[string]string{"subtype": "file"},
+			},
+			{
+				ID: "has-permission", Name: "HasPermission",
+				Kind: "SCOPE.Operation", SourceFile: "permissions.py", StartLine: 10,
+			},
+		},
+		[]graph.Relationship{
+			{FromID: "viewset-file", ToID: "has-permission", Kind: "IMPORTS"},
+		},
+	)
+	srv := newTestServerWithDoc(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "has-permission",
+		"depth":     float64(1),
+	})
+	callers, ok := out["callers"].([]any)
+	if !ok {
+		t.Fatalf("expected callers array, got %T", out["callers"])
+	}
+	if len(callers) != 1 {
+		t.Fatalf("expected 1 caller (viewset file via IMPORTS), got %d: %v", len(callers), callers)
+	}
+	first := callers[0].(map[string]any)
+	if first["name"] != "building_alternate_address_viewset.py" {
+		t.Errorf("expected caller=building_alternate_address_viewset.py, got %v", first["name"])
+	}
+}
+
+// TestFindCallers_ModuleInitReExports verifies that an __init__.py module
+// entity surfaces as a caller of a re-exported module via the IMPORTS edge
+// emitted by #2026. Before #2039 the noiseContainer filter dropped it.
+// (#2039 / closes #1991)
+func TestFindCallers_ModuleInitReExports(t *testing.T) {
+	// Topology:
+	//   upvate_core/__init__.py (Component, subtype=module) --IMPORTS--> upvate_core.celery
+	doc := minDoc(
+		[]graph.Entity{
+			{
+				ID: "init-module", Name: "upvate_core/__init__.py",
+				Kind: "SCOPE.Component", SourceFile: "upvate_core/__init__.py",
+				Properties: map[string]string{"subtype": "module"},
+			},
+			{
+				ID:   "celery-module",
+				Name: "upvate_core.celery",
+				Kind: "SCOPE.Component", SourceFile: "upvate_core/celery.py",
+				Properties: map[string]string{"subtype": "module"},
+			},
+			// Target needs a real referencable entity; the test entity itself is
+			// a module container — find_callers operates on the target as a
+			// pure id (no noise filter on the target). Walk from celery-module.
+		},
+		[]graph.Relationship{
+			{FromID: "init-module", ToID: "celery-module", Kind: "IMPORTS"},
+		},
+	)
+	srv := newTestServerWithDoc(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id": "celery-module",
+		"depth":     float64(1),
+	})
+	callers, ok := out["callers"].([]any)
+	if !ok {
+		t.Fatalf("expected callers array, got %T", out["callers"])
+	}
+	if len(callers) != 1 {
+		t.Fatalf("expected 1 caller (__init__.py via IMPORTS), got %d: %v", len(callers), callers)
+	}
+	first := callers[0].(map[string]any)
+	if first["name"] != "upvate_core/__init__.py" {
+		t.Errorf("expected caller=upvate_core/__init__.py, got %v", first["name"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestFindCallees
 // ---------------------------------------------------------------------------
