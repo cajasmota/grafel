@@ -121,6 +121,11 @@ type Server struct {
 	// linked git worktree (PH3 of epic #2087 #2091). Optional: when nil,
 	// all refs report source="branch".
 	worktreeQuerier WorktreeQuerier
+
+	// watcherQuerier provides watcher pause/resume state for the
+	// GET /api/v2/groups/:group/refs endpoint (PH2a of epic #2087 #2096).
+	// Optional: when nil, watcher_state is reported as "unknown".
+	watcherQuerier WatcherQuerier
 }
 
 // watcherForceRescan is the subset of the watch.Watcher surface used by
@@ -284,6 +289,23 @@ type WorktreeQuerier interface {
 // source="worktree". Call from the daemon entrypoint before Serve.
 func (s *Server) SetWorktreeQuerier(q WorktreeQuerier) {
 	s.worktreeQuerier = q
+}
+
+// WatcherQuerier is the narrow interface the dashboard uses to read the
+// PH2a watcher pause/resume state. The narrow interface keeps the dashboard
+// package free of a direct dependency on internal/daemon/watch.
+// PH2a of epic #2087 (#2096).
+type WatcherQuerier interface {
+	// IsPaused reports whether the fsnotify subscription for (repoPath, ref)
+	// is currently paused.
+	IsPaused(repoPath, ref string) bool
+}
+
+// SetWatcherQuerier wires the PH2a watcher state so that
+// GET /api/v2/groups/:group/refs returns watcher_state: "active"|"paused".
+// Call from the daemon entrypoint after onWatcherReady.
+func (s *Server) SetWatcherQuerier(q WatcherQuerier) {
+	s.watcherQuerier = q
 }
 
 // Listen binds to a random free port within cfg.PortRange. It is

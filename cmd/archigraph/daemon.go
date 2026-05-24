@@ -19,9 +19,10 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/agents"
 	"github.com/cajasmota/archigraph/internal/daemon"
-	"github.com/cajasmota/archigraph/internal/process"
 	"github.com/cajasmota/archigraph/internal/daemon/proto"
+	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/dashboard"
+	"github.com/cajasmota/archigraph/internal/process"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/jobs"
 	"github.com/cajasmota/archigraph/internal/mcp"
@@ -264,6 +265,21 @@ func runDaemon(argv []string) error {
 		DashboardServe: makeDaemonDashboardServe(time.Now()),
 		DashboardPort:  dashPort,
 		DashboardBind:  "127.0.0.1",
+
+		// PH2a (#2096): wire the watcher pause/resume manager once the
+		// fsnotify watcher is up and repos are subscribed. The scheduler
+		// enqueue function is injected here so the stale-detection path in
+		// tierReloadCallback can trigger a reactive reindex without a global
+		// reference to the scheduler.
+		OnWatcherReady: func(w *watch.Watcher) {
+			onWatcherReady(w, logger)
+		},
+
+		// PH2a (#2096): provide watcher pause/resume slot counts to the
+		// Status RPC via a lazy wrapper around daemonWatcherMgr (which is
+		// nil until OnWatcherReady fires, but Status is only called after
+		// the daemon is serving).
+		WatcherMgrStats: &lazyWatcherMgrStats{},
 	}
 
 	// Apply the concurrency cap before the RPC server opens so
@@ -273,6 +289,14 @@ func runDaemon(argv []string) error {
 	}
 
 	ctx := context.Background()
+
+	// PH2a (#2096): wire the scheduler enqueue function for stale-detection
+	// in cold-wake. This is set before daemon.Run so that the first cold-wake
+	// after startup can enqueue a reindex. daemonSchedulerIndex is the fast
+	// reactive reindex path (skip algo pass) used by the watcher.
+	daemonSchedulerEnqueue = func(repoPath string) {
+		_ = daemonSchedulerIndex(ctx, repoPath, "")
+	}
 
 	// PH2 (#2090): start the tiered hibernation state machine before the daemon
 	// begins serving requests. The scanner goroutine runs until ctx is cancelled.
@@ -927,6 +951,11 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 		// GET /api/v2/groups/:g/refs returns real HOT/WARM/COLD status.
 		if daemonTierMgr != nil {
 			srv.SetTierQuerier(daemonTierMgr)
+		}
+		// PH2a (#2096): wire the watcher pause/resume state into the dashboard
+		// so that GET /api/v2/groups/:g/refs returns watcher_state per ref.
+		if daemonWatcherMgr != nil {
+			srv.SetWatcherQuerier(daemonWatcherMgr)
 		}
 
 		// Wire the enrichment job queue (#1244). Jobs persist to

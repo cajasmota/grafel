@@ -106,6 +106,11 @@ type Config struct {
 	// without creating an import cycle. Added in #1270.
 	OnWatcherReady func(w *watch.Watcher)
 
+	// WatcherMgrStats, when non-nil, is queried by the Status RPC to report
+	// PH2a watcher pause/resume slot counts. Set by cmd/archigraph after
+	// onWatcherReady creates the DefaultManager. PH2a #2096.
+	WatcherMgrStats watcherMgrStatsIface
+
 	// MaxConcurrentGroups controls how many groups can be indexed in
 	// parallel during a Rebuild RPC (cold start or forced rebuild).
 	// 0 or 1 → serial (legacy behaviour). Default when unset: 2.
@@ -186,6 +191,10 @@ func Run(ctx context.Context, cfg Config) error {
 	svc.mcpCallTool = cfg.MCPCallTool
 	if cfg.DashboardPort > 0 {
 		svc.dashboardPort = cfg.DashboardPort
+	}
+	// PH2a (#2096): wire watcher pause/resume slot counts into Status RPC.
+	if cfg.WatcherMgrStats != nil {
+		svc.watcherMgrStats = cfg.WatcherMgrStats
 	}
 
 	// Layer 2 self-defense: start CPU watchdog for ephemeral /tmp daemons.

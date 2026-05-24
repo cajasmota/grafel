@@ -98,6 +98,19 @@ type ReloadCallback func(key SlotKey) error
 // Invoked synchronously from the scanner goroutine outside the Manager lock.
 type DiskEvictCallback func(key SlotKey) (freedBytes int64, err error)
 
+// WatcherHook is the narrow interface tier.Manager uses to pause/resume the
+// fsnotify subscription for a slot. Implemented by watch.DefaultManager.
+// Either method may be nil — Manager checks before calling.
+// PH2a of epic #2087 (#2096).
+type WatcherHook interface {
+	// Pause removes the fsnotify subscription for (repoPath, ref) when all
+	// refs for that repoPath are paused.
+	Pause(repoPath, ref string)
+	// Resume re-adds the fsnotify subscription for (repoPath, ref) when it
+	// was fully unsubscribed.
+	Resume(repoPath, ref string) time.Duration
+}
+
 // ---------------------------------------------------------------------------
 // SlotKey
 // ---------------------------------------------------------------------------
@@ -239,6 +252,9 @@ type Manager struct {
 	onDiskEvict DiskEvictCallback // PH6: nil = no disk deletion
 	logger      *log.Logger
 	clock       func() time.Time
+	// watcher is optional (PH2a #2096). When non-nil, Pause is called on
+	// WARM→COLD and Resume is called on COLD→HOT.
+	watcher WatcherHook
 }
 
 const defaultScanInterval = 30 * time.Second
@@ -291,6 +307,14 @@ func NewManagerForTestWithDiskEvict(ttl TTLConfig, clock func() time.Time, onEvi
 	}
 }
 
+// SetWatcherHook wires a WatcherHook so that tier transitions also pause/resume
+// the fsnotify subscription. Call before the daemon starts serving. PH2a #2096.
+func (m *Manager) SetWatcherHook(wh WatcherHook) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.watcher = wh
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -329,6 +353,16 @@ func (m *Manager) Touch(key SlotKey) error {
 	m.mu.Unlock()
 
 	if wasCold {
+		// PH2a: resume watcher subscription before reloading the graph so that
+		// any file changes that arrived while the slot was COLD are captured.
+		m.mu.Lock()
+		wh := m.watcher
+		m.mu.Unlock()
+		if wh != nil {
+			resumeElapsed := wh.Resume(key.RepoPath, key.Ref)
+			m.logger.Printf("tier: cold-wake watcher resumed %s@%s (took %s)", key.RepoPath, key.Ref, resumeElapsed.Round(time.Millisecond))
+		}
+
 		if err := m.reload(key); err != nil {
 			m.logger.Printf("tier: cold-load failed %s@%s: %v", key.RepoPath, key.Ref, err)
 			return err
@@ -445,8 +479,13 @@ func (m *Manager) scan() {
 	}
 	m.mu.Unlock()
 
+	// PH2a: pause watcher subscriptions for newly-COLD slots.
+	wh := m.watcher // read under mu already released; field is write-once after init
 	for _, k := range toEvict {
 		m.onEvict(k)
+		if wh != nil {
+			wh.Pause(k.RepoPath, k.Ref)
+		}
 	}
 	if len(toEvict) > 0 {
 		runtime.GC() // nudge GC so released graph objects are reclaimed promptly

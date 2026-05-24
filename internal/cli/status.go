@@ -65,8 +65,14 @@ func runStatus(w io.Writer, filter string) error {
 				}
 			}
 			if st.WatcherRepos > 0 || st.WatcherEvents > 0 {
-				fmt.Fprintf(w, "  watcher: repos=%d dirs=%d events=%d dropped=%d\n",
+				fmt.Fprintf(w, "  watcher: repos=%d dirs=%d events=%d dropped=%d",
 					st.WatcherRepos, st.WatcherDirs, st.WatcherEvents, st.WatcherDropped)
+				// PH2a (#2096): show pause/resume slot counts when available.
+				if st.WatcherActiveSlots > 0 || st.WatcherPausedSlots > 0 {
+					fmt.Fprintf(w, " slots_active=%d slots_paused=%d",
+						st.WatcherActiveSlots, st.WatcherPausedSlots)
+				}
+				fmt.Fprintln(w)
 			}
 			if st.QueueLen > 0 || len(st.IndexInFlight) > 0 ||
 				len(st.PendingAlgo) > 0 || len(st.PendingLinks) > 0 {

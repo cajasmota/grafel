@@ -1,7 +1,8 @@
 package main
 
 // daemon_tier.go wires the tiered hibernation state machine (PH2 of epic
-// #2087 / issue #2090, extended by PH3 #2091, PH6 #2094) into the daemon process.
+// #2087 / issue #2090, extended by PH3 #2091, PH2a #2096, PH6 #2094),
+// and the watcher pause/resume integration into the daemon process.
 //
 // Process-global daemonTierMgr tracks HOT/WARM/COLD/EXPIRED state for every
 // indexed (repoPath, ref) pair.  Integrations:
@@ -15,10 +16,11 @@ package main
 //
 //   - Eviction (WARM→COLD): daemonMCPCache.Invalidate releases the mmap'd
 //     fbreader.Reader; the dashboard cache ages out via its own TTL.
+//     PH2a: watcher subscription is also paused for the repo.
 //
 //   - Cold wake (COLD→HOT): the reload callback re-mmap's graph.fb by
 //     calling daemonMCPCache.Get; the dashboard cache reloads lazily on the
-//     next HTTP request.
+//     next HTTP request. PH2a: watcher subscription is resumed before reload.
 //
 //   - Disk eviction (COLD→EXPIRED, PH6): tierDiskEvictCallback deletes the
 //     refs/<ref>/ sub-directory for the expired slot and logs freed bytes.
@@ -31,11 +33,21 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/tier"
+	"github.com/cajasmota/archigraph/internal/daemon/watch"
 )
 
 // daemonTierMgr is the process-wide tiered hibernation state machine.
 // Nil before startDaemonTierManager is called.
 var daemonTierMgr *tier.Manager
+
+// daemonWatcherMgr is the PH2a watcher pause/resume manager.
+// Non-nil only after the fsnotify watcher is ready (set via OnWatcherReady).
+var daemonWatcherMgr *watch.DefaultManager
+
+// daemonSchedulerEnqueue is the PH2a cold-wake stale-detection enqueue hook.
+// Set by onWatcherReady when the scheduler is available. Calls
+// sched.Scheduler.Enqueue under the hood.
+var daemonSchedulerEnqueue func(repoPath string)
 
 // startDaemonTierManager constructs and starts the tier manager. Must be
 // called once from runDaemon before the daemon begins serving requests.
@@ -48,6 +60,30 @@ func startDaemonTierManager(ctx context.Context, logger *log.Logger) {
 	daemonMCPCache.SetAccessHook(func(repoPath, ref string) {
 		_ = tierTouchRepoRef(repoPath, ref)
 	})
+}
+
+// onWatcherReady is called by daemon.Run once the fsnotify watcher is up and
+// all repos have been subscribed. It creates the DefaultManager, wires it
+// into the tier state machine, and registers all already-subscribed repos so
+// reference counts are correct from the start.
+//
+// PH2a (#2096): daemon startup policy — all slots start active (no pausing at
+// boot). The watcher subscription stays alive until the first WARM→COLD tick.
+func onWatcherReady(w *watch.Watcher, logger *log.Logger) {
+	mgr := watch.NewDefaultManager(w, logger)
+	daemonWatcherMgr = mgr
+
+	// Register every currently-watched repo with the "unknown" sentinel ref
+	// so the ref-count accounting starts at 1-per-repo. Real per-ref slots
+	// are added by tierAfterIndex as index passes complete.
+	for _, repoPath := range w.Repos() {
+		mgr.Register(repoPath, "")
+	}
+
+	if daemonTierMgr != nil {
+		daemonTierMgr.SetWatcherHook(mgr)
+		logger.Printf("tier: watcher pause/resume hook wired (PH2a)")
+	}
 }
 
 // tierAfterIndex is called after every successful index pass to register
@@ -65,6 +101,12 @@ func tierAfterIndex(repoPath, ref string) {
 		kind = tier.SlotKindBranchMain
 	}
 	daemonTierMgr.Register(tier.SlotKey{RepoPath: repoPath, Ref: ref}, isPinned, kind)
+
+	// PH2a (#2096): ensure the watcher manager also has an entry for this
+	// (repoPath, ref) so reference counts are accurate for future Pause calls.
+	if daemonWatcherMgr != nil {
+		daemonWatcherMgr.Register(repoPath, ref)
+	}
 }
 
 // tierAfterIndexWorktree is like tierAfterIndex but uses SlotKindWorktree
@@ -75,6 +117,12 @@ func tierAfterIndexWorktree(repoPath, ref string) {
 		return
 	}
 	daemonTierMgr.Register(tier.SlotKey{RepoPath: repoPath, Ref: ref}, false, tier.SlotKindWorktree)
+
+	// PH2a (#2096): ensure the watcher manager also has an entry for this
+	// worktree (repoPath, ref) so reference counts are accurate for future Pause calls.
+	if daemonWatcherMgr != nil {
+		daemonWatcherMgr.Register(repoPath, ref)
+	}
 }
 
 // tierTouchRepoRef records an access for (repoPath, ref). If the slot is
@@ -98,6 +146,11 @@ func tierEvictCallback(key tier.SlotKey) {
 
 // tierReloadCallback reloads the mmap'd fbreader into the MCP graph cache
 // when a COLD slot receives a query (cold wake).
+//
+// PH2a (#2096): after reloading the graph, compare the graph.fb mtime against
+// the newest source-file mtime in the repo. If the repo has changed since the
+// graph was last indexed, enqueue a reactive reindex so the query is served
+// from the most up-to-date graph on the next request.
 func tierReloadCallback(key tier.SlotKey) error {
 	stateDir := daemon.StateDirForRepoRef(key.RepoPath, key.Ref)
 	fbPath := filepath.Join(stateDir, "graph.fb")
@@ -107,6 +160,14 @@ func tierReloadCallback(key tier.SlotKey) error {
 		return err
 	}
 	release()
+
+	// Stale-detection: if the repo has file changes newer than graph.fb,
+	// enqueue a reactive reindex so the next query gets a fresh graph.
+	if isRepoDirtyAfter(key.RepoPath, fbPath) {
+		if daemonSchedulerEnqueue != nil {
+			daemonSchedulerEnqueue(key.RepoPath)
+		}
+	}
 	return nil
 }
 
@@ -143,4 +204,78 @@ func dirSize(dir string) (int64, error) {
 		return nil
 	})
 	return total, err
+}
+
+// isRepoDirtyAfter returns true when any non-skipped file under repoPath has a
+// mtime newer than refPath. This is the cold-wake stale-detection check for
+// PH2a (#2096). It caps its walk at 50,000 files to bound latency.
+func isRepoDirtyAfter(repoPath, refPath string) bool {
+	fi, err := os.Stat(refPath)
+	if err != nil {
+		return false // graph.fb missing — let the reload fail first
+	}
+	graphMtime := fi.ModTime()
+
+	const maxWalk = 50_000
+	n := 0
+	dirty := false
+	_ = filepath.WalkDir(repoPath, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			base := filepath.Base(p)
+			// Skip the same directories the watcher skips.
+			if p != repoPath && shouldSkipDirForStale(base) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		n++
+		if n > maxWalk {
+			return filepath.SkipAll
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if info.ModTime().After(graphMtime) {
+			dirty = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return dirty
+}
+
+// shouldSkipDirForStale reuses the watcher skip list for the stale-detection
+// walk. Keep in sync with internal/daemon/watch.ShouldSkipDir.
+func shouldSkipDirForStale(base string) bool {
+	switch base {
+	case ".git", "node_modules", ".archigraph", "target", "dist",
+		".gradle", ".idea", "vendor", "__pycache__", ".tox", ".venv",
+		".mypy_cache", ".pytest_cache", ".eggs", "*.egg-info",
+		"build", "out", "bin", "obj", ".next", ".nuxt", ".cache":
+		return true
+	}
+	return false
+}
+
+// lazyWatcherMgrStats implements daemon.watcherMgrStatsIface (via structural
+// interface matching) by delegating to daemonWatcherMgr. Safe to pass before
+// daemonWatcherMgr is set — returns 0 while nil. PH2a (#2096).
+type lazyWatcherMgrStats struct{}
+
+func (l *lazyWatcherMgrStats) ActiveCount() int {
+	if daemonWatcherMgr == nil {
+		return 0
+	}
+	return daemonWatcherMgr.ActiveCount()
+}
+
+func (l *lazyWatcherMgrStats) PausedCount() int {
+	if daemonWatcherMgr == nil {
+		return 0
+	}
+	return daemonWatcherMgr.PausedCount()
 }

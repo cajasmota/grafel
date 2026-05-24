@@ -46,6 +46,13 @@ type RebuildFunc func(args proto.RebuildArgs) (repos []string, warning string, e
 // in cmd/archigraph and is injected here at construction time.
 type QualityAuditFunc func(args proto.QualityAuditRequest) (reply proto.QualityAuditReply, err error)
 
+// watcherMgrStatsIface is the narrow interface used by Service.Status to read
+// PH2a watcher pause/resume slot counts without importing internal/daemon/watch.
+type watcherMgrStatsIface interface {
+	ActiveCount() int
+	PausedCount() int
+}
+
 // rebuildSession holds in-flight progress state for one rebuild batch.
 // It is keyed by the ProgressToken supplied in RebuildArgs.
 type rebuildSession struct {
@@ -139,6 +146,10 @@ type Service struct {
 	watcher   *watch.Watcher
 	scheduler *sched.Scheduler
 
+	// watcherMgrStats provides PH2a pause/resume slot counts for the Status RPC.
+	// Optional; nil when the watcher manager is not configured.
+	watcherMgrStats watcherMgrStatsIface
+
 	// #802 progress tracking — keyed by ProgressToken.
 	progressMu sync.RWMutex
 	progress   map[string]*rebuildSession
@@ -223,6 +234,11 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 		reply.WatcherDirs = dirs
 		reply.WatcherEvents = events
 		reply.WatcherDropped = dropped
+	}
+	// PH2a (#2096): report pause/resume slot counts.
+	if s.watcherMgrStats != nil {
+		reply.WatcherActiveSlots = s.watcherMgrStats.ActiveCount()
+		reply.WatcherPausedSlots = s.watcherMgrStats.PausedCount()
 	}
 	if s.scheduler != nil {
 		snap := s.scheduler.Snapshot()

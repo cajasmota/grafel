@@ -88,6 +88,14 @@ type StatusReply struct {
 	RebuildGroupsActive    int `json:"rebuild_groups_active,omitempty"`
 	RebuildInFlight        int `json:"rebuild_in_flight,omitempty"`
 	RebuildConcurrencyCap  int `json:"rebuild_concurrency_cap,omitempty"`
+
+	// PH2a (#2096): watcher pause/resume counters.
+	// WatcherActiveSlots is the number of (repoPath,ref) slots whose fsnotify
+	// subscription is currently active.
+	// WatcherPausedSlots is the number of slots whose fsnotify subscription
+	// has been suspended because the slot is COLD.
+	WatcherActiveSlots int `json:"watcher_active_slots,omitempty"`
+	WatcherPausedSlots int `json:"watcher_paused_slots,omitempty"`
 }
 
 // InFlightJobState mirrors sched.InFlightJob on the wire.

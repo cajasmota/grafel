@@ -28,6 +28,11 @@ type v2RefEntry struct {
 	// Tier is "hot" when the ref is the currently-loaded ref for this repo
 	// (i.e. it matches the graph loaded in memory), otherwise "cold".
 	Tier string `json:"tier"`
+	// WatcherState is "active" when the fsnotify subscription for this ref is
+	// running, or "paused" when it has been suspended because the slot is COLD.
+	// "unknown" when the daemon does not support PH2a or the watcher is not
+	// configured. PH2a of epic #2087 (#2096).
+	WatcherState string `json:"watcher_state"`
 	// IndexedAt is the mtime of graph.fb for this ref. Zero when unknown.
 	IndexedAt *time.Time `json:"indexed_at,omitempty"`
 	// Entities is the entity count from the graph-stats.json sidecar.
@@ -169,13 +174,24 @@ func (s *Server) handleV2GroupRefs(w http.ResponseWriter, r *http.Request) {
 				srcStr = "worktree"
 			}
 
+			// PH2a (#2096): populate watcher_state per ref.
+			watcherState := "unknown"
+			if s.watcherQuerier != nil {
+				if s.watcherQuerier.IsPaused(r.Path, refName) {
+					watcherState = "paused"
+				} else {
+					watcherState = "active"
+				}
+			}
+
 			refs = append(refs, v2RefEntry{
-				Ref:       refName,
-				RefSafe:   refSafe,
-				Tier:      tierStr,
-				IndexedAt: indexedAt,
-				Entities:  entityCount,
-				Source:    srcStr,
+				Ref:          refName,
+				RefSafe:      refSafe,
+				Tier:         tierStr,
+				WatcherState: watcherState,
+				IndexedAt:    indexedAt,
+				Entities:     entityCount,
+				Source:       srcStr,
 			})
 		}
 
