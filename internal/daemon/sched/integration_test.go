@@ -44,7 +44,7 @@ func TestIntegrationThreeRepoBudgetSerialisesLargest(t *testing.T) {
 		Predict: func(p string) int64 {
 			return preds[p]
 		},
-		Index: func(_ context.Context, p string) error {
+		Index: func(_ context.Context, p string, _ string) error {
 			calls.Add(1)
 			mu.Lock()
 			concurrent[p] = true
@@ -133,7 +133,7 @@ func TestIntegrationThreeRepoTightBudgetDefersBig(t *testing.T) {
 		Workers:  3,
 		BudgetMB: 350,
 		Predict:  func(p string) int64 { return preds[p] },
-		Index: func(_ context.Context, p string) error {
+		Index: func(_ context.Context, p string, _ string) error {
 			mu.Lock()
 			concurrent[p] = true
 			if p == "/repo-big-c" && (concurrent["/repo-small-a"] || concurrent["/repo-small-b"]) {
@@ -221,7 +221,7 @@ func TestIntegrationBudgetBlowoutWithoutCap(t *testing.T) {
 		Workers:  3,
 		BudgetMB: 0, // disabled
 		Predict:  func(_ string) int64 { return 999 },
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			mu.Lock()
 			concurrent++
 			if concurrent > peak {

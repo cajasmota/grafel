@@ -87,7 +87,7 @@ func TestPhaseB_FileWriteTriggersReindex(t *testing.T) {
 		Rebuild: func(_ proto.RebuildArgs) ([]string, string, error) {
 			return nil, "", nil
 		},
-		SchedulerIndex: func(_ context.Context, p string) error {
+		SchedulerIndex: func(_ context.Context, p string, _ string) error {
 			indexCount.Add(1)
 			indexedCh <- p
 			return nil
@@ -143,7 +143,7 @@ func TestPhaseB_RapidWritesCoalesce(t *testing.T) {
 		Rebuild: func(_ proto.RebuildArgs) ([]string, string, error) {
 			return nil, "", nil
 		},
-		SchedulerIndex: func(_ context.Context, _ string) error {
+		SchedulerIndex: func(_ context.Context, _ string, _ string) error {
 			mu.Lock()
 			calls++
 			mu.Unlock()
@@ -195,7 +195,7 @@ func TestPhaseB_StatusRPCReflectsWatcher(t *testing.T) {
 		Rebuild: func(_ proto.RebuildArgs) ([]string, string, error) {
 			return nil, "", nil
 		},
-		SchedulerIndex: func(_ context.Context, _ string) error { return nil },
+		SchedulerIndex: func(_ context.Context, _ string, _ string) error { return nil },
 		SchedulerLinks: func(_ context.Context, _ string) error { return nil },
 		SchedulerAlgo:  func(_ context.Context, _ string) error { return nil },
 		GroupsForRepo:  func(_ string) []string { return nil },

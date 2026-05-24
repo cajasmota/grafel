@@ -27,7 +27,7 @@ func TestAdmissionDefersOversizeJobs(t *testing.T) {
 		Workers:  3,
 		BudgetMB: 100,
 		Predict:  func(_ string) int64 { return 60 },
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			mu.Lock()
 			concurrent++
 			if concurrent > maxConcurr {
@@ -86,7 +86,7 @@ func TestAdmissionAllowsParallelWhenBudgetFits(t *testing.T) {
 		Workers:  3,
 		BudgetMB: 200,
 		Predict:  func(_ string) int64 { return 50 },
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			mu.Lock()
 			concurrent++
 			if concurrent > maxConcurr {
@@ -133,7 +133,7 @@ func TestAdmissionOversizeRunsSolo(t *testing.T) {
 			}
 			return 50
 		},
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			calls.Add(1)
 			return nil
 		},
@@ -156,7 +156,7 @@ func TestSnapshotBudgetTelemetry(t *testing.T) {
 		Workers:  3,
 		BudgetMB: 100,
 		Predict:  func(_ string) int64 { return 80 },
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			<-gate
 			return nil
 		},
@@ -236,7 +236,7 @@ func TestAdmissionDeltaIgnoresProcessRSS(t *testing.T) {
 		Workers:  1,
 		BudgetMB: 200,
 		Predict:  func(_ string) int64 { return 150 },
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			admitted.Add(1)
 			<-gate
 			return nil
@@ -269,7 +269,7 @@ func TestAdmissionMultipleJobsDeltaAccounting(t *testing.T) {
 		Workers:  3,
 		BudgetMB: 300,
 		Predict:  func(_ string) int64 { return 120 },
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			admitted.Add(1)
 			<-gate
 			return nil
@@ -320,7 +320,7 @@ func TestDeadManSwitchForceAdmits(t *testing.T) {
 		Workers:  2,
 		BudgetMB: 100,
 		Predict:  func(_ string) int64 { return 50 },
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			admitted.Add(1)
 			<-done
 			return nil

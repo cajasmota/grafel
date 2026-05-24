@@ -17,7 +17,7 @@ func TestEnqueueDedups(t *testing.T) {
 	gate := make(chan struct{})
 	s := New(Config{
 		Workers: 1,
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			if calls.Add(1) == 1 {
 				close(started)
 			}
@@ -60,7 +60,7 @@ func TestAlgoDebounceCancelOnWrite(t *testing.T) {
 	s := New(Config{
 		Workers:      1,
 		AlgoDebounce: 500 * time.Millisecond,
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			indexCalls.Add(1)
 			return nil
 		},
@@ -114,7 +114,7 @@ func TestLinksDebouncePerGroup(t *testing.T) {
 	s := New(Config{
 		Workers:      2,
 		LinkDebounce: 100 * time.Millisecond,
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			return nil
 		},
 		Links: func(_ context.Context, g string) error {
@@ -144,7 +144,7 @@ func TestLinksDebouncePerGroup(t *testing.T) {
 func TestIndexErrorRecorded(t *testing.T) {
 	s := New(Config{
 		Workers: 1,
-		Index: func(_ context.Context, _ string) error {
+		Index: func(_ context.Context, _ string, _ string) error {
 			return errors.New("boom")
 		},
 	})

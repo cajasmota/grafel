@@ -22,6 +22,17 @@
 // and is retried as soon as a running job completes. This prevents
 // the post-#639 concurrent-3-repo peak (672MB) from blowing past the
 // 500MB target on the real-fixture benchmark.
+//
+// Ref-aware indexing (PH1b of epic #2087 / issue #2089):
+// The scheduler now captures the current HEAD ref at Enqueue time (via
+// RefCaptureFn) and passes it to IndexFn. This ensures that a debounced
+// batch that fires after a branch switch indexes against the ref that was
+// current when the event was first enqueued (i.e. the user's intent at
+// the moment of the change), not the ref at eventual dispatch time.
+//
+// Branch-switch events (from the GitHeadPoller) use EnqueueRef directly,
+// supplying the new ref that the poller already observed — no extra git
+// call needed.
 package sched
 
 import (
@@ -33,11 +44,22 @@ import (
 	"time"
 )
 
-// IndexFn re-indexes a single repo. The scheduler invokes it on a
-// worker goroutine; concurrent calls for distinct repos may run in
-// parallel up to the worker-pool size, but each repo path is
+// IndexFn re-indexes a single repo at a specific git ref. The scheduler
+// invokes it on a worker goroutine; concurrent calls for distinct repos may
+// run in parallel up to the worker-pool size, but each repo path is
 // serialised against itself.
-type IndexFn func(ctx context.Context, repoPath string) error
+//
+// ref is the git ref name (e.g. "main", "feat/x") captured at Enqueue time.
+// An empty ref means the current HEAD ref could not be determined; callers
+// should fall back to gitmeta.Capture(repoPath) if they need it.
+type IndexFn func(ctx context.Context, repoPath string, ref string) error
+
+// RefCaptureFn returns the current HEAD ref for repoPath. Used to snapshot
+// the ref at Enqueue time so debounced batches index against the ref that
+// was active when the file-change event fired, not the ref at dispatch time.
+// May return "" for detached HEAD or non-git directories; IndexFn must
+// tolerate an empty ref.
+type RefCaptureFn func(repoPath string) string
 
 // LinksFn re-runs the cross-repo link passes for a group.
 type LinksFn func(ctx context.Context, group string) error
@@ -82,6 +104,12 @@ type Config struct {
 	// recorded peak. The scheduler also writes each completed job's
 	// observed RSS into History.
 	History *RSSHistory
+
+	// RefCapture returns the current HEAD ref for repoPath. Called at
+	// Enqueue time so the ref is captured when the file-change event fires,
+	// not when the debounced job eventually runs. When nil, ref is always
+	// captured as "" (which callers should treat as "unknown / use HEAD").
+	RefCapture RefCaptureFn
 }
 
 // deadManTimeout is how long the scheduler waits with a non-empty pending
@@ -89,6 +117,14 @@ type Config struct {
 // job. This is the relief valve for admission-control wedge scenarios
 // (e.g. inflated RSS history predictions that exceed the budget).
 const deadManTimeout = 2 * time.Minute
+
+// enqueueRequest carries a repo path plus the ref snapshot taken at
+// Enqueue time. This is the unit flowing from public Enqueue → dedupLoop →
+// admitLoop → workerLoop.
+type enqueueRequest struct {
+	repoPath string
+	ref      string // captured at Enqueue time via RefCapture; "" = unknown
+}
 
 // Scheduler is constructed once per daemon. It owns:
 //   - a bounded job channel (per-repo dedup happens before enqueue),
@@ -99,18 +135,19 @@ const deadManTimeout = 2 * time.Minute
 type Scheduler struct {
 	cfg    Config
 	logger *log.Logger
-	enq    chan string   // public enqueue input → dedup → pending queue
-	jobs   chan jobToken // admitted jobs handed to workers
-	wake   chan struct{} // poked when a worker frees budget
+	enq    chan enqueueRequest // public enqueue input → dedup → pending queue
+	jobs   chan jobToken       // admitted jobs handed to workers
+	wake   chan struct{}       // poked when a worker frees budget
 	stop   chan struct{}
 	wg     sync.WaitGroup
 
 	mu           sync.Mutex
-	inflight     map[string]int64 // repo → predicted MB charged against the ledger
-	pendingIndex map[string]bool  // repos already enqueued but not yet running
-	pendingQ     []string         // ordered admission queue
-	queueLen     int              // pending + admitted-but-not-yet-running
-	usedMB       int64            // sum of inflight MB
+	inflight     map[string]int64         // repo → predicted MB charged against the ledger
+	pendingIndex map[string]bool          // repos already enqueued but not yet running
+	pendingRefs  map[string]string        // repo → ref captured at last Enqueue (overwritten on re-enqueue)
+	pendingQ     []string                 // ordered admission queue
+	queueLen     int                      // pending + admitted-but-not-yet-running
+	usedMB       int64                    // sum of inflight MB
 	linkTimers   map[string]*time.Timer
 	linkPending  map[string]bool
 	algoTimers   map[string]*time.Timer
@@ -126,10 +163,12 @@ type Scheduler struct {
 }
 
 // jobToken couples a repo path with the predicted MB that admission
-// control reserved for it. The worker decrements usedMB by this exact
-// amount on completion, so partial-credit history updates don't drift.
+// control reserved for it, and the ref that was captured at Enqueue time
+// (PH1b). The worker decrements usedMB by this exact amount on completion,
+// so partial-credit history updates don't drift.
 type jobToken struct {
 	repoPath    string
+	ref         string // git ref name captured at Enqueue time; "" = unknown
 	predictedMB int64
 }
 
@@ -172,12 +211,13 @@ func New(cfg Config) *Scheduler {
 	return &Scheduler{
 		cfg:          cfg,
 		logger:       cfg.Logger,
-		enq:          make(chan string, 64),
+		enq:          make(chan enqueueRequest, 64),
 		jobs:         make(chan jobToken, cfg.Workers),
 		wake:         make(chan struct{}, 1),
 		stop:         make(chan struct{}),
 		inflight:     map[string]int64{},
 		pendingIndex: map[string]bool{},
+		pendingRefs:  map[string]string{},
 		linkTimers:   map[string]*time.Timer{},
 		linkPending:  map[string]bool{},
 		algoTimers:   map[string]*time.Timer{},
@@ -220,11 +260,25 @@ func (s *Scheduler) Stop() {
 	}
 }
 
-// Enqueue requests a (debounced+deduped) reindex of repoPath. Safe to
-// call from arbitrary goroutines.
+// Enqueue requests a (debounced+deduped) reindex of repoPath. The current
+// HEAD ref is captured immediately via Config.RefCapture (if configured) so
+// the ref is snapshotted at event-fire time, not at eventual dispatch time.
+// Safe to call from arbitrary goroutines.
 func (s *Scheduler) Enqueue(repoPath string) {
+	ref := ""
+	if s.cfg.RefCapture != nil {
+		ref = s.cfg.RefCapture(repoPath)
+	}
+	s.EnqueueRef(repoPath, ref)
+}
+
+// EnqueueRef requests a (debounced+deduped) reindex of repoPath at a
+// specific git ref. Called directly by the GitHeadPoller (branch-switch
+// events) where the new ref has already been observed — no extra git call
+// needed. Safe to call from arbitrary goroutines.
+func (s *Scheduler) EnqueueRef(repoPath, ref string) {
 	select {
-	case s.enq <- repoPath:
+	case s.enq <- enqueueRequest{repoPath: repoPath, ref: ref}:
 	case <-s.stop:
 	}
 }
@@ -233,24 +287,40 @@ func (s *Scheduler) Enqueue(repoPath string) {
 // suppressing duplicates for repos already pending or running. This is
 // also where we cancel any scheduled algorithm pass — any new write
 // activity in the repo invalidates the pending algo schedule.
+//
+// Ref handling (PH1b): if a repo is already pending and a new enqueue
+// arrives for the same repo with a different ref (branch switch), the
+// stored ref is updated to the most-recently-observed one. This ensures
+// the next batch runs against the correct branch.
 func (s *Scheduler) dedupLoop() {
 	defer s.wg.Done()
 	for {
 		select {
 		case <-s.stop:
 			return
-		case p := <-s.enq:
+		case req := <-s.enq:
+			p := req.repoPath
 			s.mu.Lock()
 			s.cancelAlgoLocked(p)
 			if _, running := s.inflight[p]; running {
+				// Already running: update the stored ref so if it re-queues
+				// after completion it uses the latest ref.
+				if req.ref != "" {
+					s.pendingRefs[p] = req.ref
+				}
 				s.mu.Unlock()
 				continue
 			}
 			if s.pendingIndex[p] {
+				// Already pending: update the ref to the latest observed value.
+				if req.ref != "" {
+					s.pendingRefs[p] = req.ref
+				}
 				s.mu.Unlock()
 				continue
 			}
 			s.pendingIndex[p] = true
+			s.pendingRefs[p] = req.ref
 			s.pendingQ = append(s.pendingQ, p)
 			s.queueLen++
 			// Start the dead-man clock if nothing is currently
@@ -346,8 +416,10 @@ func (s *Scheduler) checkDeadMan() {
 		}
 	}
 	repo := s.pendingQ[smallestIdx]
+	ref := s.pendingRefs[repo]
 	// Remove from queue (preserve order for remaining entries).
 	s.pendingQ = append(s.pendingQ[:smallestIdx], s.pendingQ[smallestIdx+1:]...)
+	delete(s.pendingRefs, repo)
 	s.inflight[repo] = smallestMB
 	s.usedMB += smallestMB
 	stuckFor := now.Sub(s.deadManAt).Truncate(time.Second)
@@ -357,7 +429,7 @@ func (s *Scheduler) checkDeadMan() {
 	s.logger.Printf("sched: dead-man: force-admitting %s (predicted=%dMB) after queue stuck %s",
 		repo, smallestMB, stuckFor)
 
-	tok := jobToken{repoPath: repo, predictedMB: smallestMB}
+	tok := jobToken{repoPath: repo, ref: ref, predictedMB: smallestMB}
 	// Dispatch asynchronously so we don't hold the lock while blocking on
 	// the jobs channel. The worker pool is guaranteed to drain the channel
 	// because the pool size >= 1.
@@ -381,6 +453,7 @@ func (s *Scheduler) tryAdmit() {
 	s.mu.Lock()
 	for len(s.pendingQ) > 0 {
 		repo := s.pendingQ[0]
+		ref := s.pendingRefs[repo]
 		predicted := s.predictedFor(repo)
 		// Admission rule.
 		if s.cfg.BudgetMB > 0 {
@@ -401,12 +474,13 @@ func (s *Scheduler) tryAdmit() {
 		}
 		// Pop and dispatch.
 		s.pendingQ = s.pendingQ[1:]
+		delete(s.pendingRefs, repo)
 		s.inflight[repo] = predicted
 		s.usedMB += predicted
 		s.deadManAt = time.Time{} // job admitted — reset dead-man clock
 		s.logEventLocked("admit_ok", repo,
-			"predicted="+formatMB(predicted)+" used="+formatMB(s.usedMB))
-		tok := jobToken{repoPath: repo, predictedMB: predicted}
+			"predicted="+formatMB(predicted)+" used="+formatMB(s.usedMB)+" ref="+ref)
+		tok := jobToken{repoPath: repo, ref: ref, predictedMB: predicted}
 		s.mu.Unlock()
 		// Block on jobs channel — workers are sized to drain this
 		// without deadlock because admission already ensures we are
@@ -467,7 +541,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	s.mu.Unlock()
 
 	t0 := time.Now()
-	s.logEvent("index_start", repoPath, "predicted="+formatMB(tok.predictedMB))
+	s.logEvent("index_start", repoPath, "predicted="+formatMB(tok.predictedMB)+" ref="+tok.ref)
 
 	// Spawn RSS sampler so we capture the peak the daemon hit during
 	// this job. Records into history on completion.
@@ -496,7 +570,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 
 	var err error
 	if s.cfg.Index != nil {
-		err = s.cfg.Index(context.Background(), repoPath)
+		err = s.cfg.Index(context.Background(), repoPath, tok.ref)
 	}
 
 	close(sampleStop)
