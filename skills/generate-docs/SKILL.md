@@ -1,5 +1,61 @@
 # generate-docs
 
+---
+
+## CRITICAL TOOL DISCIPLINE (enforced on every pass — read before ANY action)
+========================
+
+For ANY question about "what entities/files exist in this codebase", "who calls X",
+"what does Y import", "what's in module Z", you MUST use archigraph MCP tools:
+- `archigraph_inspect`, `archigraph_find`, `archigraph_expand`, `archigraph_stats`,
+- `archigraph_clusters`, `archigraph_traces`, `archigraph_whoami`,
+- (full list in the "archigraph MCP tool surface" section below)
+
+You are STRICTLY FORBIDDEN from using:
+- `find` / `ls` / `wc` / `grep` on the codebase **for entity discovery**
+- Reading source files directly to enumerate APIs or list what exists
+- Inferring structure from `package.json` / `pyproject.toml` / `go.mod` etc. without first confirming via MCP
+
+The MCP daemon has the resolved graph; trust it. Use Bash ONLY for:
+- Reading specific source line ranges that `archigraph_get_source` returns
+- Running `archigraph docgen --llm-mode=apply` at the end of Pass 20
+- Writing output files under `~/.archigraph/docs/<group>/...`
+
+If the MCP returns empty or seems wrong, file a side ticket and ABORT --
+do NOT silently substitute grep results for graph queries.
+
+> **Note on grep:** grep and `rg` are permitted inside individual writer subagents for raw
+> pattern enumeration (every `if err != nil`, exact symbol spellings, finding concrete source
+> lines). They are NOT permitted as substitutes for graph navigation -- use MCP first to narrow
+> the search space, then grep only to verify edge-property questions that MCP models at the
+> entity level rather than the text level.
+
+### Pre-flight assertion (FIRST action in every pass)
+
+Call `archigraph_whoami` before doing anything else in each pass. If it errors:
+ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
+
+### Tool whitelist
+
+- `mcp__archigraph__*` (all archigraph MCP tools) -- primary navigation
+- `Read` -- source_window reads (specific line ranges from `archigraph_get_source` output) and output file reads/writes
+- `Write` / `Edit` -- output doc files under `~/.archigraph/docs/<group>/...` only
+- `Bash` -- ONLY for `archigraph docgen --llm-mode=apply` invocations and writing output files
+
+Explicitly EXCLUDED for entity discovery:
+- `Grep` for structural/inventory queries (these enable the grep-fallback anti-pattern)
+- `Glob` for enumerating what exists in the codebase
+
+### Pass telemetry (print at end of every pass)
+
+```
+[pass-N] archigraph MCP calls: X | Bash invocations: Y
+```
+
+If Y > 5 and X < 10: print warning "Likely fallback pattern detected -- investigate skill prompt."
+
+---
+
 Generate documentation for a registered archigraph group in two independent
 **tiers**:
 

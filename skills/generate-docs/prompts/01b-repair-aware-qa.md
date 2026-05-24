@@ -1,5 +1,31 @@
 # Pass 1b — Repair-aware Q&A
 
+---
+
+## CRITICAL TOOL DISCIPLINE
+========================
+For ANY question about "what entities/files exist in this codebase", "who calls X",
+"what does Y import", "what's in module Z", you MUST use archigraph MCP tools:
+`archigraph_inspect`, `archigraph_find`, `archigraph_expand`, `archigraph_stats`,
+`archigraph_clusters`, `archigraph_whoami`, (full list in SKILL.md).
+
+You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
+entity discovery, or reading source files directly to enumerate APIs.
+
+The MCP daemon has the resolved graph; trust it. Use Bash ONLY for reading specific
+source line ranges that `archigraph_get_source` returns, or writing output files.
+
+If the MCP returns empty or seems wrong, file a side ticket and ABORT --
+do NOT silently substitute grep results for graph queries.
+
+### Pre-flight assertion -- FIRST action in this pass
+
+Call `archigraph_whoami` before doing anything else in this pass. If it errors:
+ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
+
+---
+
+
 Surfaces the residuals Pass 1a could not auto-resolve (see Pass 1a § "Classify each residual" for the narrowed auto-resolve scope). The user answers in plain language; the agent translates each answer into an `archigraph_repairs(action=submit)` call.
 
 This pass handles all three resolution kinds — `bind_to_entity`, `reclassify_as_external`, `reclassify_as_dynamic` — because the user's answer provides the disambiguation that Pass 1a lacked. When the user provides a binding target for `bind_to_entity`, use `archigraph_find` to confirm the entity exists before submitting; do not fabricate ids.
@@ -123,3 +149,11 @@ Continue to Pass 2 regardless of skip/reject counts; the doc-gen pipeline is rob
 - Never invent `target_entity_id` values the user did not provide. If the user gestures at a target without an exact id, search with `archigraph_find` and present the candidates back to the user; only submit once they pick one.
 - The pass is **interactive** — never silently fall through unanswered questions. If the user requests "skip the rest," record the remaining questions back into `repair-questions.json` for the next run.
 - Don't re-ask answered residuals. The history file is authoritative.
+
+---
+
+**[pass-01b telemetry]** Print at end of this pass:
+```
+[pass-01b] archigraph MCP calls: X | Bash invocations: Y
+```
+If Y > 5 and X < 10: print warning "Likely fallback pattern detected -- investigate skill prompt."

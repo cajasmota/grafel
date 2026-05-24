@@ -1,5 +1,31 @@
 # Pass 13 — LLM Enrichment
 
+---
+
+## CRITICAL TOOL DISCIPLINE
+========================
+For ANY question about "what entities/files exist in this codebase", "who calls X",
+"what does Y import", "what's in module Z", you MUST use archigraph MCP tools:
+`archigraph_inspect`, `archigraph_find`, `archigraph_expand`, `archigraph_stats`,
+`archigraph_clusters`, `archigraph_whoami`, (full list in SKILL.md).
+
+You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
+entity discovery, or reading source files directly to enumerate APIs.
+
+The MCP daemon has the resolved graph; trust it. Use Bash ONLY for reading specific
+source line ranges that `archigraph_get_source` returns, or writing output files.
+
+If the MCP returns empty or seems wrong, file a side ticket and ABORT --
+do NOT silently substitute grep results for graph queries.
+
+### Pre-flight assertion -- FIRST action in this pass
+
+Call `archigraph_whoami` before doing anything else in this pass. If it errors:
+ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
+
+---
+
+
 Produce structured YAML frontmatter enrichments for every `http_endpoint`,
 `process_flow`, and `message_topic` entity in the group. The dashboard Paths,
 Flows, and Topology surfaces consume this data to surface summaries, group
@@ -288,3 +314,11 @@ archigraph_save_finding(
 
 Hand control back to the orchestrator. The orchestrator marks Pass 13 complete
 in docgen-state.json and queues Pass 14 (frontmatter validation).
+
+---
+
+**[pass-13 telemetry]** Print at end of this pass:
+```
+[pass-13] archigraph MCP calls: X | Bash invocations: Y
+```
+If Y > 5 and X < 10: print warning "Likely fallback pattern detected -- investigate skill prompt."

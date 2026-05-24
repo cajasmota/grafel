@@ -1,5 +1,31 @@
 # Pass 5 — Reference
 
+---
+
+## CRITICAL TOOL DISCIPLINE
+========================
+For ANY question about "what entities/files exist in this codebase", "who calls X",
+"what does Y import", "what's in module Z", you MUST use archigraph MCP tools:
+`archigraph_inspect`, `archigraph_find`, `archigraph_expand`, `archigraph_stats`,
+`archigraph_clusters`, `archigraph_whoami`, (full list in SKILL.md).
+
+You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
+entity discovery, or reading source files directly to enumerate APIs.
+
+The MCP daemon has the resolved graph; trust it. Use Bash ONLY for reading specific
+source line ranges that `archigraph_get_source` returns, or writing output files.
+
+If the MCP returns empty or seems wrong, file a side ticket and ABORT --
+do NOT silently substitute grep results for graph queries.
+
+### Pre-flight assertion -- FIRST action in this pass
+
+Call `archigraph_whoami` before doing anything else in this pass. If it errors:
+ABORT with: "archigraph MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
+
+---
+
+
 Reference docs are the dry, exhaustive, alphabetized pages. They live under `~/.archigraph/docs/<group>/<repo-slug>/reference/` and are produced one section at a time, sequentially, by a single writer subagent per repo.
 
 > **Pass 3a hook active.** Before writing any paragraph that describes an entity, run the generation-time repair hook from `prompts/03a-generation-time-repair.md`. Auto-repair residuals where unambiguous; otherwise emit the documented "Runtime-resolved edge" callout from that prompt. Do not silently drop unresolved outbound edges.
@@ -129,3 +155,11 @@ archigraph_save_finding(
 ```
 
 When all repos in the group have completed reference docs, hand back to the orchestrator.
+
+---
+
+**[pass-05 telemetry]** Print at end of this pass:
+```
+[pass-05] archigraph MCP calls: X | Bash invocations: Y
+```
+If Y > 5 and X < 10: print warning "Likely fallback pattern detected -- investigate skill prompt."
