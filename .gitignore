@@ -31,6 +31,10 @@ coverage.html
 .DS_Store
 *.swp
 
+# Worktrees (linked checkouts used for feature isolation)
+.worktrees/
+.claude/worktrees/
+
 # Local-only planning files
 BACKLOG.md
 SCRATCH.md
