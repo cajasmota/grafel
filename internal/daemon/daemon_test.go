@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -152,5 +154,130 @@ func TestDaemon_ClientReportsNotRunning(t *testing.T) {
 	_, err := client.DialPath(filepath.Join(shortTempRoot(t), "nope.sock"))
 	if !errors.Is(err, client.ErrDaemonNotRunning) {
 		t.Fatalf("want ErrDaemonNotRunning, got %v", err)
+	}
+}
+
+// TestDaemon_RebuildGroupSerialisedUnderLoad verifies #2097's per-group
+// mutex: two concurrent Rebuild RPCs for the SAME group must not overlap
+// execution of the RebuildFunc. The test detects overlapping execution by
+// counting peak concurrency inside the stub RebuildFunc and asserting it
+// never exceeds 1.
+func TestDaemon_RebuildGroupSerialisedUnderLoad(t *testing.T) {
+	if testing.Short() {
+		t.Skip("group-serialisation test skipped in short mode")
+	}
+
+	var current, peakConc int64
+	rb := func(args proto.RebuildArgs) ([]string, string, error) {
+		cur := atomic.AddInt64(&current, 1)
+		defer atomic.AddInt64(&current, -1)
+		// Record peak.
+		for {
+			pk := atomic.LoadInt64(&peakConc)
+			if cur <= pk || atomic.CompareAndSwapInt64(&peakConc, pk, cur) {
+				break
+			}
+		}
+		// Simulate non-trivial work so the two goroutines can overlap if
+		// the mutex is absent.
+		time.Sleep(40 * time.Millisecond)
+		return []string{"/tmp/fake"}, "", nil
+	}
+
+	layout := runDaemonForTest(t, nil, rb)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, err := client.DialPath(layout.SocketPath)
+			if err != nil {
+				t.Logf("dial: %v", err)
+				return
+			}
+			defer c.Close()
+			// All four RPCs target the same group — serialisation is required.
+			_, _ = c.Rebuild(proto.RebuildArgs{Group: "test-group"})
+		}()
+	}
+
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("concurrent same-group Rebuild RPCs hung after 15s")
+	}
+
+	peak := atomic.LoadInt64(&peakConc)
+	if peak > 1 {
+		t.Errorf("peak concurrent RebuildFunc executions = %d for same group, want ≤1 (#2097 per-group mutex)", peak)
+	}
+}
+
+// TestDaemon_RebuildStatusObservability verifies the new #2097 fields in
+// StatusReply: RebuildInFlight and RebuildGroupsActive are non-negative and
+// consistent while a rebuild is in flight.
+func TestDaemon_RebuildStatusObservability(t *testing.T) {
+	if testing.Short() {
+		t.Skip("rebuild observability test skipped in short mode")
+	}
+
+	// RebuildFunc that blocks until signalled, so we can observe Status mid-run.
+	unblock := make(chan struct{})
+	rb := func(args proto.RebuildArgs) ([]string, string, error) {
+		<-unblock
+		return []string{"/tmp/fake"}, "", nil
+	}
+
+	layout := runDaemonForTest(t, nil, rb)
+
+	c, err := client.DialPath(layout.SocketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close()
+
+	// Start a rebuild in the background.
+	rebuildDone := make(chan error, 1)
+	go func() {
+		_, err := c.Rebuild(proto.RebuildArgs{Group: "obs-group"})
+		rebuildDone <- err
+	}()
+
+	// Poll until a rebuild is actually in flight.
+	deadline := time.Now().Add(3 * time.Second)
+	var rebuilding bool
+	for time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+		// Need a second connection for the status poll (the first is
+		// blocked on the Rebuild RPC).
+		sc, serr := client.DialPath(layout.SocketPath)
+		if serr != nil {
+			continue
+		}
+		st, sterr := sc.Status()
+		sc.Close()
+		if sterr != nil {
+			continue
+		}
+		if st.RebuildGroupsActive > 0 || st.RebuildInFlight > 0 {
+			rebuilding = true
+			break
+		}
+	}
+
+	// Unblock the rebuild.
+	close(unblock)
+	select {
+	case <-rebuildDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("rebuild never completed after unblock")
+	}
+
+	if !rebuilding {
+		t.Error("RebuildGroupsActive and RebuildInFlight were both 0 while a rebuild was running")
 	}
 }

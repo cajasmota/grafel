@@ -72,6 +72,17 @@ type StatusReply struct {
 	// server is bound to. Zero means the dashboard is not running.
 	// Added in #938.
 	DashboardPort int `json:"dashboard_port,omitempty"`
+
+	// Rebuild observability fields added in #2097.
+	//
+	// RebuildGroupsActive is the number of groups whose per-group mutex is
+	// currently held (i.e. a Rebuild RPC is actively running for that group).
+	// A value >0 while InFlight is low hints at stalled per-group mutexes.
+	//
+	// RebuildInFlight mirrors InFlight but scoped to Rebuild RPCs only (not
+	// Index or QualityAudit calls). Populated server-side for diagnostic clarity.
+	RebuildGroupsActive int `json:"rebuild_groups_active,omitempty"`
+	RebuildInFlight     int `json:"rebuild_in_flight,omitempty"`
 }
 
 // InFlightJobState mirrors sched.InFlightJob on the wire.
