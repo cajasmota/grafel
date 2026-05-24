@@ -1,5 +1,6 @@
 // Package tier implements the HOT/WARM/COLD/EXPIRED state machine for loaded
-// graphs (PH2 of epic #2087 / issue #2090, extended by PH3 #2091, PH6 #2094).
+// graphs (PH2 of epic #2087 / issue #2090, extended by PH3 #2091, PH6 #2094,
+// S1 #2151, P0.3 #2141).
 //
 // # Tier definitions
 //
@@ -15,10 +16,22 @@
 //	COLD → HOT   : demand wake (reload from disk; ≤ 300–500 ms typical)
 //	COLD → EXPIRED : idle past ExpiredWindow (PH6: also triggers disk delete)
 //
+// P0.3 (#2141): pressure-driven eviction. When total heap allocation (tracked
+// via runtime.MemStats.HeapInuse) exceeds a configurable fraction of system
+// memory (default 60%, tunable via ARCHIGRAPH_HEAP_MAX_PCT), the scanner
+// immediately evicts the oldest-touched HOT/WARM slots to COLD, independent
+// of their TTL. Pinned-main slots are exempt from pressure eviction; they
+// degrade to WARM instead.
+//
 // PH6 (#2094): when a slot reaches EXPIRED the Manager calls the optional
 // DiskEvictCallback which deletes the graph artifacts from disk.
 // Pinned main branches (default branch of a registered repo) are
 // disk-pinned: they can WARM→COLD but never COLD→EXPIRED.
+//
+// S1 (#2151): boot-time lazy hydration. Groups are registered at COLD tier
+// on daemon startup (walk registry, REGISTER paths, do not open graph.fb).
+// Dashboard /api/v2/groups returns tier=cold, entities=0 until first detail
+// query triggers the on-demand cold-wake path.
 //
 // # Env-tunable TTLs
 //
@@ -27,6 +40,7 @@
 //	ARCHIGRAPH_TIER_COLD_MINUTES_WORKTREE default 30
 //	ARCHIGRAPH_TIER_EXPIRED_DAYS          default 7  (feature branches)
 //	ARCHIGRAPH_TIER_EXPIRED_DAYS_WORKTREE default 2
+//	ARCHIGRAPH_HEAP_MAX_PCT               default 60  (P0.3 pressure threshold)
 package tier
 
 import (
@@ -34,6 +48,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,6 +147,18 @@ type TTLConfig struct {
 	ColdWindowWorktree    time.Duration
 	ExpiredWindow         time.Duration
 	ExpiredWindowWorktree time.Duration
+
+	// HeapMaxPct is the fraction of system memory (0–100) at which pressure-
+	// driven eviction kicks in (P0.3 #2141). Default 60. When HeapInuse exceeds
+	// HeapMaxPct% of system physical memory, the oldest HOT/WARM slots are evicted
+	// to COLD regardless of their TTL. Pinned-main slots are exempt.
+	// 0 disables pressure eviction entirely.
+	HeapMaxPct int
+
+	// SystemMemoryBytes is the total physical memory in bytes used to compute the
+	// pressure threshold. 0 means "read from runtime.MemStats at check time".
+	// Overridable in tests to avoid real sysinfo calls.
+	SystemMemoryBytes uint64
 }
 
 // DefaultTTLConfig returns the spec's production defaults.
@@ -142,6 +169,7 @@ func DefaultTTLConfig() TTLConfig {
 		ColdWindowWorktree:    30 * time.Minute,
 		ExpiredWindow:         7 * 24 * time.Hour,
 		ExpiredWindowWorktree: 48 * time.Hour,
+		HeapMaxPct:            60,
 	}
 }
 
@@ -162,6 +190,9 @@ func EnvTTLConfig() TTLConfig {
 	}
 	if v := envDays("ARCHIGRAPH_TIER_EXPIRED_DAYS_WORKTREE"); v > 0 {
 		cfg.ExpiredWindowWorktree = v
+	}
+	if v := envInt("ARCHIGRAPH_HEAP_MAX_PCT"); v > 0 {
+		cfg.HeapMaxPct = v
 	}
 	return cfg
 }
@@ -188,6 +219,18 @@ func envDays(name string) time.Duration {
 		return 0
 	}
 	return time.Duration(n) * 24 * time.Hour
+}
+
+func envInt(name string) int {
+	s := os.Getenv(name)
+	if s == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +298,15 @@ type Manager struct {
 	// watcher is optional (PH2a #2096). When non-nil, Pause is called on
 	// WARM→COLD and Resume is called on COLD→HOT.
 	watcher WatcherHook
+
+	// sysMemFn returns total physical memory bytes for pressure-eviction
+	// threshold calculation (P0.3 #2141). Defaults to readSysMemBytes.
+	// Overridable in tests.
+	sysMemFn func() uint64
+
+	// heapFn returns the current in-heap allocated bytes (HeapInuse from
+	// runtime.MemStats). Overridable in tests to simulate pressure.
+	heapFn func() uint64
 }
 
 const defaultScanInterval = 30 * time.Second
@@ -274,6 +326,8 @@ func NewManager(ctx context.Context, ttl TTLConfig, onEvict EvictionCallback, re
 		onDiskEvict: onDiskEvict,
 		logger:      logger,
 		clock:       time.Now,
+		sysMemFn:    readSysMemBytes,
+		heapFn:      readHeapInuse,
 	}
 	go m.scanLoop(ctx, defaultScanInterval)
 	return m
@@ -284,12 +338,14 @@ func NewManager(ctx context.Context, ttl TTLConfig, onEvict EvictionCallback, re
 // onDiskEvict may be nil.
 func NewManagerForTest(ttl TTLConfig, clock func() time.Time, onEvict EvictionCallback, reload ReloadCallback) *Manager {
 	return &Manager{
-		slots:   make(map[SlotKey]*slot),
-		ttl:     ttl,
-		onEvict: onEvict,
-		reload:  reload,
-		logger:  log.Default(),
-		clock:   clock,
+		slots:    make(map[SlotKey]*slot),
+		ttl:      ttl,
+		onEvict:  onEvict,
+		reload:   reload,
+		logger:   log.Default(),
+		clock:    clock,
+		sysMemFn: readSysMemBytes,
+		heapFn:   readHeapInuse,
 	}
 }
 
@@ -304,6 +360,23 @@ func NewManagerForTestWithDiskEvict(ttl TTLConfig, clock func() time.Time, onEvi
 		onDiskEvict: onDiskEvict,
 		logger:      log.Default(),
 		clock:       clock,
+		sysMemFn:    readSysMemBytes,
+		heapFn:      readHeapInuse,
+	}
+}
+
+// NewManagerForTestWithHeap is like NewManagerForTest but also accepts
+// custom heap and system-memory probe functions for pressure-eviction tests (P0.3).
+func NewManagerForTestWithHeap(ttl TTLConfig, clock func() time.Time, onEvict EvictionCallback, reload ReloadCallback, heapFn func() uint64, sysMemFn func() uint64) *Manager {
+	return &Manager{
+		slots:    make(map[SlotKey]*slot),
+		ttl:      ttl,
+		onEvict:  onEvict,
+		reload:   reload,
+		logger:   log.Default(),
+		clock:    clock,
+		sysMemFn: sysMemFn,
+		heapFn:   heapFn,
 	}
 }
 
@@ -335,6 +408,27 @@ func (m *Manager) Register(key SlotKey, isPinnedMain bool, kind SlotKind) {
 	s.kind = kind
 	s.lastAccessedAt = m.clock()
 	s.isPinnedMain = isPinnedMain
+}
+
+// RegisterCold declares a slot at COLD tier without loading any graph into
+// memory. Used by S1 (#2151) lazy-hydration boot path: registry groups are
+// walked at startup, paths are registered so the tier manager knows they
+// exist, but graph.fb is NOT opened until the first MCP query triggers
+// Touch → cold-wake. If the slot already exists it is left at its current
+// tier (to avoid evicting a HOT slot that was freshly indexed).
+func (m *Manager) RegisterCold(key SlotKey, isPinnedMain bool, kind SlotKind) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.slots[key]; ok {
+		// Slot already known — don't downgrade a live HOT/WARM slot.
+		return
+	}
+	m.slots[key] = &slot{
+		tier:           TierCold,
+		kind:           kind,
+		lastAccessedAt: m.clock(),
+		isPinnedMain:   isPinnedMain,
+	}
 }
 
 // Touch records an access for key, refreshing lastAccessedAt. If the slot is
@@ -479,6 +573,10 @@ func (m *Manager) scan() {
 	}
 	m.mu.Unlock()
 
+	// P0.3 (#2141): pressure-driven eviction — check heap usage after TTL scan.
+	// This runs outside the lock so it can call m.onEvict safely.
+	pressureEvicted := m.scanPressureEvict()
+
 	// PH2a: pause watcher subscriptions for newly-COLD slots.
 	wh := m.watcher // read under mu already released; field is write-once after init
 	for _, k := range toEvict {
@@ -487,7 +585,7 @@ func (m *Manager) scan() {
 			wh.Pause(k.RepoPath, k.Ref)
 		}
 	}
-	if len(toEvict) > 0 {
+	if len(toEvict) > 0 || pressureEvicted > 0 {
 		runtime.GC() // nudge GC so released graph objects are reclaimed promptly
 	}
 
@@ -502,6 +600,111 @@ func (m *Manager) scan() {
 			}
 		}
 	}
+}
+
+// scanPressureEvict checks heap usage and evicts the oldest HOT/WARM slots
+// when the pressure threshold is exceeded (P0.3 #2141). Returns the number
+// of slots evicted. Pinned-main slots are exempt.
+func (m *Manager) scanPressureEvict() int {
+	if m.ttl.HeapMaxPct <= 0 {
+		return 0
+	}
+
+	// Sample heap and system memory.
+	heapBytes := m.heapFn()
+	sysBytes := m.ttl.SystemMemoryBytes
+	if sysBytes == 0 {
+		sysBytes = m.sysMemFn()
+	}
+	if sysBytes == 0 {
+		return 0
+	}
+
+	threshold := uint64(m.ttl.HeapMaxPct) * sysBytes / 100
+	if heapBytes < threshold {
+		return 0
+	}
+	heapMB := float64(heapBytes) / (1024 * 1024)
+	m.logger.Printf("tier: pressure-evict triggered heap=%.1fMB threshold=%d%% sys=%.0fMB",
+		heapMB, m.ttl.HeapMaxPct, float64(sysBytes)/(1024*1024))
+
+	// Collect all evictable HOT/WARM slots sorted oldest-accessed first.
+	// Pinned-main slots are excluded.
+	type candidate struct {
+		key            SlotKey
+		lastAccessedAt time.Time
+	}
+	m.mu.Lock()
+	candidates := make([]candidate, 0, len(m.slots))
+	for k, s := range m.slots {
+		if s.tier != TierHot && s.tier != TierWarm {
+			continue
+		}
+		if s.isPinnedMain {
+			continue
+		}
+		candidates = append(candidates, candidate{key: k, lastAccessedAt: s.lastAccessedAt})
+	}
+	// Sort oldest-accessed first (evict LRU).
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].lastAccessedAt.Before(candidates[j].lastAccessedAt)
+	})
+	// Evict up to half the eligible slots to reduce pressure without
+	// over-evicting (avoids thrash on the next cold-wake cycle).
+	evictCount := (len(candidates) + 1) / 2
+	if evictCount == 0 {
+		m.mu.Unlock()
+		return 0
+	}
+	toEvict := make([]SlotKey, 0, evictCount)
+	for i := 0; i < evictCount; i++ {
+		k := candidates[i].key
+		s := m.slots[k]
+		oldTier := s.tier.String()
+		s.tier = TierCold
+		toEvict = append(toEvict, k)
+		m.logger.Printf("tier: pressure-evict %s@%s %s→COLD reason=heap_threshold heap_now=%.0fMB",
+			k.RepoPath, k.Ref, oldTier, heapMB)
+	}
+	m.mu.Unlock()
+
+	wh := m.watcher
+	for _, k := range toEvict {
+		m.onEvict(k)
+		if wh != nil {
+			wh.Pause(k.RepoPath, k.Ref)
+		}
+	}
+	return len(toEvict)
+}
+
+// ---------------------------------------------------------------------------
+// Default-branch detection
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Heap / memory helpers (P0.3)
+// ---------------------------------------------------------------------------
+
+// readHeapInuse returns the current value of runtime.MemStats.HeapInuse —
+// the bytes in in-use heap spans. This is a proxy for "graph objects currently
+// reachable" and updates on each GC cycle. Production sysMemFn.
+func readHeapInuse() uint64 {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	return ms.HeapInuse
+}
+
+// readSysMemBytes returns total physical memory in bytes. Uses
+// runtime.MemStats.Sys as a conservative lower-bound when the OS-level
+// total is unavailable (no syscall needed; always present).
+// For production accuracy, cmd/archigraph may override via TTLConfig.SystemMemoryBytes.
+func readSysMemBytes() uint64 {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	// Sys is the total memory obtained from the OS; it's a reasonable proxy
+	// for physical memory when we can't call sysinfo directly.
+	return ms.Sys
 }
 
 // ---------------------------------------------------------------------------

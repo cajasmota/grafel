@@ -16,6 +16,11 @@
 // and onboard handlers) — it creates the fleet.json + registers the group with
 // no repos. Repo discovery / indexing (the full wizard) is intentionally out of
 // scope for this endpoint; see the Landing PR for the data-decision write-up.
+//
+// S1 (#2151): the "tier" field in the v2Group response reflects the aggregate
+// tier of all repos in the group (per the tier state machine). On a fresh
+// daemon start with lazy hydration, all groups start as "cold" until the first
+// MCP query wakes one up. "tier" precedence: hot > warm > cold > expired.
 
 package dashboard
 
@@ -38,6 +43,10 @@ type v2Group struct {
 	IndexedAt *int64 `json:"indexedAt"`
 	// Health is one of "healthy" | "warning" | "degraded" | "unindexed", derived server-side.
 	Health string `json:"health"`
+	// Tier is the aggregate tier for the group: "hot" | "warm" | "cold" | "expired".
+	// Precedence across repos: hot > warm > cold > expired.
+	// "cold" when the group has no graph.fb on disk (S1 #2151).
+	Tier string `json:"tier"`
 }
 
 const (
@@ -73,12 +82,16 @@ func deriveGroupHealth(s GroupSummary, histRoot string) (health string, fidelity
 	return healthHealthy, &f, indexedAt
 }
 
-func toV2Group(s GroupSummary, histRoot string) v2Group {
+func toV2Group(s GroupSummary, histRoot string, tq TierQuerier) v2Group {
 	health, fidelity, indexedAt := deriveGroupHealth(s, histRoot)
 	repos := s.Repos
 	if repos == nil {
 		repos = []string{}
 	}
+	// S1 (#2151): compute aggregate tier for the group. Use the tier querier
+	// when available; default to "cold" (conservative / correct for lazy-hydrated
+	// groups that have never been queried).
+	tierStr := groupAggregateTier(s.RepoPaths, tq)
 	return v2Group{
 		ID:          s.Name,
 		Name:        s.Name,
@@ -87,7 +100,52 @@ func toV2Group(s GroupSummary, histRoot string) v2Group {
 		Fidelity:    fidelity,
 		IndexedAt:   indexedAt,
 		Health:      health,
+		Tier:        tierStr,
 	}
+}
+
+// groupAggregateTier returns the highest tier across all repos in the group.
+// Precedence: hot > warm > cold > expired. When the tier querier is nil or no
+// repos are registered, returns "cold".
+//
+// The function uses the HEAD ref heuristic (gitmeta-free, just reads the
+// common branch names) so it can run without spawning git. For each repo it
+// queries TierForRef("main") and TierForRef("master") as a best-effort probe
+// since we don't have the ref list here. The actual ref tracking is done
+// correctly by the tier manager once a first index pass completes.
+func groupAggregateTier(repoPaths []string, tq TierQuerier) string {
+	if tq == nil || len(repoPaths) == 0 {
+		return "cold"
+	}
+	// Tier rank: hot=3, warm=2, cold=1, expired=0.
+	tierRank := func(t string) int {
+		switch t {
+		case "hot":
+			return 3
+		case "warm":
+			return 2
+		case "cold":
+			return 1
+		default: // "expired" or unknown
+			return 0
+		}
+	}
+	best := 0
+	bestStr := "cold"
+	for _, repoPath := range repoPaths {
+		// Probe the two most common default branch names.
+		for _, ref := range []string{"main", "master"} {
+			t := tq.TierForRef(repoPath, ref)
+			if r := tierRank(t); r > best {
+				best = r
+				bestStr = t
+			}
+		}
+		if best == 3 {
+			break // can't get better than HOT
+		}
+	}
+	return bestStr
 }
 
 // handleV2Groups — GET /api/v2/groups
@@ -102,7 +160,7 @@ func (s *Server) handleV2Groups(w http.ResponseWriter, r *http.Request) {
 	root := s.daemonRoot()
 	out := make([]v2Group, 0, len(groups))
 	for _, g := range groups {
-		out = append(out, toV2Group(g, root))
+		out = append(out, toV2Group(g, root, s.tierQuerier))
 	}
 	pag := parsePagination(r.URL.Query(), len(out))
 	end := pag.Offset + pag.Limit
@@ -140,5 +198,5 @@ func (s *Server) handleV2CreateGroup(w http.ResponseWriter, r *http.Request) {
 		writeV2Err(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
-	writeV2JSON(w, http.StatusCreated, v2OK(toV2Group(created, s.daemonRoot())))
+	writeV2JSON(w, http.StatusCreated, v2OK(toV2Group(created, s.daemonRoot(), s.tierQuerier)))
 }

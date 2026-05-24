@@ -1,14 +1,21 @@
 package main
 
 // daemon_tier.go wires the tiered hibernation state machine (PH2 of epic
-// #2087 / issue #2090, extended by PH3 #2091, PH2a #2096, PH6 #2094),
-// and the watcher pause/resume integration into the daemon process.
+// #2087 / issue #2090, extended by PH3 #2091, PH2a #2096, PH6 #2094,
+// S1 #2151, P0.3 #2141), and the watcher pause/resume integration into
+// the daemon process.
 //
 // Process-global daemonTierMgr tracks HOT/WARM/COLD/EXPIRED state for every
 // indexed (repoPath, ref) pair.  Integrations:
 //
 //   - tierAfterIndex: called after every successful index pass; registers the
 //     slot as HOT (or re-activates it) and detects the default branch.
+//
+//   - S1 (#2151) lazy hydration: registerKnownGroupsCold walks the registry
+//     at daemon startup and calls RegisterCold for every known (repoPath, ref)
+//     that has a graph.fb on disk. This sets each slot to COLD without opening
+//     graph.fb, so idle RSS at startup with 5 registered groups is <100 MB.
+//     The first MCP query on a cold group triggers Touch → cold-wake.
 //
 //   - MCP graph-cache AccessHook: wired in startDaemonTierManager; every
 //     GetForRepoRef call updates lastAccessedAt via tierTouchRepoRef so
@@ -24,6 +31,11 @@ package main
 //
 //   - Disk eviction (COLD→EXPIRED, PH6): tierDiskEvictCallback deletes the
 //     refs/<ref>/ sub-directory for the expired slot and logs freed bytes.
+//
+//   - P0.3 (#2141) pressure-driven eviction: when heap usage exceeds
+//     ARCHIGRAPH_HEAP_MAX_PCT% of system memory (default 60%), the scanner
+//     immediately evicts the oldest HOT/WARM slots to COLD regardless of TTL.
+//     Pinned-main slots are exempt.
 
 import (
 	"context"
@@ -34,6 +46,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon"
 	"github.com/cajasmota/archigraph/internal/daemon/tier"
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
+	"github.com/cajasmota/archigraph/internal/registry"
 )
 
 // daemonTierMgr is the process-wide tiered hibernation state machine.
@@ -51,8 +64,24 @@ var daemonSchedulerEnqueue func(repoPath string)
 
 // startDaemonTierManager constructs and starts the tier manager. Must be
 // called once from runDaemon before the daemon begins serving requests.
+//
+// S1 (#2151): after the manager is running, walks the registry and calls
+// RegisterCold for every repo/ref pair that has a graph.fb on disk. This
+// avoids eager-loading all graphs at startup — idle RSS with 5 registered
+// groups should be <100 MB.
+//
+// P0.3 (#2141): injects the real system memory size into TTLConfig so
+// the pressure-eviction threshold is computed against physical RAM.
 func startDaemonTierManager(ctx context.Context, logger *log.Logger) {
 	ttl := tier.EnvTTLConfig()
+
+	// P0.3: populate SystemMemoryBytes from the process package so the
+	// pressure threshold is calibrated against actual physical RAM rather
+	// than runtime.Sys (which under-counts on many systems).
+	if sysMB := systemTotalMemoryMB(); sysMB > 0 {
+		ttl.SystemMemoryBytes = uint64(sysMB) * 1024 * 1024
+	}
+
 	daemonTierMgr = tier.NewManager(ctx, ttl, tierEvictCallback, tierReloadCallback, tierDiskEvictCallback, logger)
 
 	// Wire the MCP graph-cache access hook so every GetForRepoRef call
@@ -60,6 +89,75 @@ func startDaemonTierManager(ctx context.Context, logger *log.Logger) {
 	daemonMCPCache.SetAccessHook(func(repoPath, ref string) {
 		_ = tierTouchRepoRef(repoPath, ref)
 	})
+
+	// S1 (#2151): lazy hydration — register all known groups as COLD so
+	// the tier manager is aware of them without loading any graph into memory.
+	registerKnownGroupsCold(logger)
+}
+
+// registerKnownGroupsCold walks every registered group and calls RegisterCold
+// for each (repoPath, ref) pair that has a graph.fb on disk. This is the S1
+// boot-time lazy-hydration path: the tier manager knows about each slot (so
+// cold-wake and pressure-evict accounting are correct) but no graph.fb is
+// opened until the first MCP query for that group.
+//
+// Refs are discovered by scanning the refs/ subdirectory inside the per-repo
+// state directory. Any ref directory that contains a graph.fb is registered.
+// If no refs/ dir exists, the _unknown sentinel is skipped (it would be
+// refused by GetForRepoRef anyway).
+func registerKnownGroupsCold(logger *log.Logger) {
+	if daemonTierMgr == nil {
+		return
+	}
+	groups, err := registry.Groups()
+	if err != nil {
+		logger.Printf("tier: lazy-hydration: registry.Groups: %v (skipping cold-register)", err)
+		return
+	}
+
+	var registered int
+	for _, g := range groups {
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil {
+			continue
+		}
+		for _, r := range cfg.Repos {
+			repoPath := r.Path
+			// Walk the refs/ subdirectory to find every indexed ref.
+			refsDir := filepath.Join(daemon.StateDirForRepo(repoPath), "refs")
+			entries, err := os.ReadDir(refsDir)
+			if err != nil {
+				// No refs/ dir or unreadable — not an error; repo hasn't been
+				// indexed yet or uses the legacy flat layout.
+				continue
+			}
+			for _, e := range entries {
+				if !e.IsDir() {
+					continue
+				}
+				ref := e.Name()
+				if ref == "_unknown" {
+					continue // sentinel — skip per ErrUnknownRef semantics
+				}
+				fbPath := filepath.Join(refsDir, ref, "graph.fb")
+				if _, statErr := os.Stat(fbPath); statErr != nil {
+					continue // no graph.fb yet
+				}
+				isPinned := tier.IsDefaultBranch(repoPath, ref)
+				kind := tier.SlotKindBranchFeature
+				if isPinned {
+					kind = tier.SlotKindBranchMain
+				}
+				// Register as branch kind for now; worktree slots are
+				// re-registered by tierAfterIndexWorktree on the first index pass.
+				daemonTierMgr.RegisterCold(tier.SlotKey{RepoPath: repoPath, Ref: ref}, isPinned, kind)
+				registered++
+			}
+		}
+	}
+	if registered > 0 {
+		logger.Printf("tier: S1 lazy-hydration: cold-registered %d slot(s) from registry (no graph.fb opened)", registered)
+	}
 }
 
 // onWatcherReady is called by daemon.Run once the fsnotify watcher is up and

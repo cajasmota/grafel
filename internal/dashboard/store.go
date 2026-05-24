@@ -36,6 +36,10 @@ type GroupSummary struct {
 	EntityCount int      `json:"entity_count"`
 	LastIndexed string   `json:"last_indexed,omitempty"` // RFC3339, most-recent across repos
 	Frameworks  []string `json:"frameworks,omitempty"`   // top-8 frameworks by frequency, desc
+
+	// RepoPaths are the absolute on-disk paths of each repo in the group.
+	// Not serialised to JSON; used internally to compute tier state (S1 #2151).
+	RepoPaths []string `json:"-"`
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +127,8 @@ func (liveStore) ListGroups() ([]GroupSummary, error) {
 			repos = cfg.Repos
 			for _, r := range cfg.Repos {
 				s.Repos = append(s.Repos, r.Slug)
+				// S1 (#2151): populate RepoPaths for tier-state reporting.
+				s.RepoPaths = append(s.RepoPaths, r.Path)
 			}
 		}
 		// Aggregate entity_count + last_indexed from per-repo graph-stats.json.
