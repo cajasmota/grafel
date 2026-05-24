@@ -3,10 +3,7 @@
    (prototype `.ag-topbar`)
 
    Left: breadcrumb — archigraph › <group> › <surface>.
-   Right: PROJECT switcher — shows the current project name; clicking
-          (or ⌘K) opens the list of indexed projects. Selecting one
-          switches the current project, keeping the current screen
-          when possible (#1572). It switches PROJECTS only.
+   Right: RefSelector (PH4 #2092) + PROJECT switcher (⌘K).
 
    The per-screen nav lives in the LEFT SIDEBAR (chrome/nav-rail.tsx).
    NAVIGATION ONLY — no numeric scope counts here (handoff rule).
@@ -18,6 +15,8 @@ import { Kbd } from "@/components/ui";
 import { useAppStore } from "@/store/use-app-store";
 import { useGroups } from "@/hooks/use-groups";
 import { healthDisplay, healthTooltip } from "@/lib/health";
+import { RefSelector } from "@/components/chrome/ref-selector";
+import { useRefState } from "@/lib/use-ref-state";
 
 export interface TopBarProps {
   group: string;
@@ -28,8 +27,10 @@ export function TopBar({ group, surfaceLabel }: TopBarProps) {
   const { groupId } = useParams<{ groupId: string }>();
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
   const { data: groups = [] } = useGroups();
+  const { currentRef, setRef } = useRefState();
 
-  const current = groups.find((g) => g.id === (groupId ?? group));
+  const resolvedGroupId = groupId ?? group;
+  const current = groups.find((g) => g.id === resolvedGroupId);
   const projectName = current?.name ?? group;
   const hd = current ? healthDisplay(current.health) : healthDisplay("unindexed");
   const tip = current ? healthTooltip(current.health, current.fidelity) : "Health: unknown";
@@ -44,25 +45,34 @@ export function TopBar({ group, surfaceLabel }: TopBarProps) {
         <span className="font-medium text-text">{surfaceLabel}</span>
       </nav>
 
-      <button
-        onClick={() => setCommandOpen(true)}
-        aria-label="Switch project"
-        className="inline-flex items-center gap-2 h-8 pl-3 pr-2 rounded-md border border-border bg-surface text-text-2 text-md hover:bg-surface-2 transition-colors max-w-[260px]"
-      >
-        {/* Health dot — encodes group health, NOT "this is the active project".
-            Active-project is conveyed by the button context itself (you're
-            already inside this group). */}
-        <span
-          className="size-2 rounded-full shrink-0"
-          style={{ background: hd.color }}
-          title={tip}
-          aria-label={tip}
+      <div className="flex items-center gap-2">
+        {/* PH4: ref selector — sits to the left of the group switcher */}
+        <RefSelector
+          groupId={resolvedGroupId}
+          currentRef={currentRef}
+          onRefChange={setRef}
         />
-        <span className="font-medium text-text truncate">{projectName}</span>
-        <span className="text-text-4">·</span>
-        <Kbd>⌘K</Kbd>
-        <ChevronsUpDown size={13} className="text-text-4 shrink-0" />
-      </button>
+
+        <button
+          onClick={() => setCommandOpen(true)}
+          aria-label="Switch project"
+          className="inline-flex items-center gap-2 h-8 pl-3 pr-2 rounded-md border border-border bg-surface text-text-2 text-md hover:bg-surface-2 transition-colors max-w-[260px]"
+        >
+          {/* Health dot — encodes group health, NOT "this is the active project".
+              Active-project is conveyed by the button context itself (you're
+              already inside this group). */}
+          <span
+            className="size-2 rounded-full shrink-0"
+            style={{ background: hd.color }}
+            title={tip}
+            aria-label={tip}
+          />
+          <span className="font-medium text-text truncate">{projectName}</span>
+          <span className="text-text-4">·</span>
+          <Kbd>⌘K</Kbd>
+          <ChevronsUpDown size={13} className="text-text-4 shrink-0" />
+        </button>
+      </div>
     </header>
   );
 }

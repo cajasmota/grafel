@@ -53,6 +53,7 @@ import type {
   WizardRepo,
   FsListReply,
   ModuleAnalysisResponse,
+  GroupRefsResponse,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -601,6 +602,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ fixture, group: groupId }),
     }),
+
+  /**
+   * GET /api/v2/groups/:g/refs — all indexed refs for every repo in the
+   * group, with tier + source + indexedAt metadata (PH4 of #2087 / #2092).
+   *
+   * Response: { refs: Record<repoSlug, RefEntry[]> }
+   * Refs are sorted server-side by tier (HOT → WARM → COLD → EXPIRED) then
+   * alpha; the UI re-sorts client-side as well for resilience.
+   */
+  getRefs: (groupId: string) =>
+    requestV2<GroupRefsResponse>(`/groups/${encodeURIComponent(groupId)}/refs`),
 };
 
 export type Api = typeof api;

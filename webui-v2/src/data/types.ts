@@ -1454,3 +1454,47 @@ export interface ModuleAnalysisResponse {
   repos: ModuleAnalysisRepoWire[];
   count: number;
 }
+
+// ----------------------------------------------------------------
+// PH4 — ref selector, worktree subtree, URL persistence (#2092)
+// ----------------------------------------------------------------
+
+/**
+ * Tier indicates how quickly the daemon can serve a ref's data.
+ * HOT = in-memory / recently warmed; WARM = on-disk cache;
+ * COLD = archived (first query triggers a warm-load ~50ms);
+ * EXPIRED = data older than retention window; UNKNOWN = not yet determined.
+ */
+export type RefTier = "HOT" | "WARM" | "COLD" | "EXPIRED" | "UNKNOWN";
+
+/** Source of a ref: a regular branch or an ephemeral worktree. */
+export type RefSource = "branch" | "worktree";
+
+/**
+ * One ref entry returned by GET /api/v2/groups/:g/repos/:r/refs
+ * (or the group-level /api/v2/groups/:g/refs aggregated endpoint).
+ */
+export interface RefEntry {
+  /** Short or full ref name (e.g. "main", "feat/foo"). */
+  name: string;
+  /** Full 40-char commit SHA. */
+  sha: string;
+  /** 7-char short SHA prefix for display. */
+  shortSha: string;
+  /** Cache tier. */
+  tier: RefTier;
+  /** ms epoch when this ref was last indexed; null if never. */
+  indexedAt: number | null;
+  /** archigraph indexer version that produced the last index. */
+  indexerVersion: string | null;
+  /** Whether this ref originates from a branch checkout or a worktree. */
+  source: RefSource;
+  /** Parent repo slug (present in aggregated endpoint responses). */
+  repoSlug?: string;
+}
+
+/** Response shape for GET /api/v2/groups/:g/refs */
+export interface GroupRefsResponse {
+  /** Key = repo slug, value = refs for that repo. */
+  refs: Record<string, RefEntry[]>;
+}
