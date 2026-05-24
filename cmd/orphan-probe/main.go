@@ -191,6 +191,13 @@ func probeGroup(cfg *registry.GroupConfig, topN int) GroupResult {
 			if e.Kind == "Module" && e.SourceFile == "" {
 				continue
 			}
+			// Exclude Lombok-synthesized and generated entities from orphan count.
+			// These are intentionally generated dead code (e.g. getters/setters from @Data/@Builder)
+			// that no caller invokes. They exist in the graph but don't count toward orphan metrics
+			// (Issue #2071).
+			if isLombokSynthesized(e) {
+				continue
+			}
 			nOrphans++
 			allOrphans = append(allOrphans, orphanEntry{
 				id:       e.ID,
@@ -493,6 +500,25 @@ func printTextReport(report ProbeReport) {
 		}
 		fmt.Println()
 	}
+}
+
+// isLombokSynthesized checks if an entity is a generated/synthesized entity
+// that should be excluded from orphan classification.
+func isLombokSynthesized(e *graph.Entity) bool {
+	if e.Properties == nil {
+		return false
+	}
+	// Check synthesized_from property for Lombok synthesis markers.
+	if synthesizedFrom, ok := e.Properties["synthesized_from"]; ok {
+		if strings.HasPrefix(synthesizedFrom, "lombok_") {
+			return true
+		}
+	}
+	// Check generated property.
+	if generated, ok := e.Properties["generated"]; ok && generated == "true" {
+		return true
+	}
+	return false
 }
 
 // suppress unused warning for reDigits (used for possible future deduplication).
