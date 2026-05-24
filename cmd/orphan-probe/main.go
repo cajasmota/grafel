@@ -453,7 +453,7 @@ func printTextReport(report ProbeReport) {
 
 		// Per-repo table.
 		if len(gr.Repos) > 0 {
-			fmt.Println("### Per-repo breakdown\n")
+			fmt.Println("### Per-repo breakdown")
 			fmt.Printf("| Repo | Entities | Orphans | Rate | Bar |\n")
 			fmt.Printf("|------|----------|---------|------|-----|\n")
 			for _, r := range gr.Repos {
@@ -469,7 +469,7 @@ func printTextReport(report ProbeReport) {
 
 		// Top clusters.
 		if len(gr.Clusters) > 0 {
-			fmt.Println("### Top orphan clusters\n")
+			fmt.Println("### Top orphan clusters")
 			fmt.Printf("| # | Kind | SourceFile pattern | Count | Rep IDs |\n")
 			fmt.Printf("|---|------|--------------------|-------|---------|\n")
 			for i, c := range gr.Clusters {
@@ -482,14 +482,14 @@ func printTextReport(report ProbeReport) {
 			}
 			fmt.Println()
 		} else {
-			fmt.Println("_No orphan clusters found._\n")
+			fmt.Println("_No orphan clusters found._")
 		}
 	}
 
 	// Cross-group patterns.
-	fmt.Println("## Cross-group patterns\n")
+	fmt.Println("## Cross-group patterns")
 	if len(report.CrossGroupPatterns) == 0 {
-		fmt.Println("_No patterns appear in more than one group._\n")
+		fmt.Println("_No patterns appear in more than one group._")
 	} else {
 		fmt.Printf("| Kind | SourceFile pattern | Groups | Total count |\n")
 		fmt.Printf("|------|--------------------|--------|-------------|\n")
